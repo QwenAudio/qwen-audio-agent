@@ -115,7 +115,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "concurrently": "^9.2.0",
+    "concurrently": "^10.0.4",
     "electron-builder": "26.15.7"
   },
   "overrides": {

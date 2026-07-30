@@ -23,6 +23,10 @@ Agent 也应该始终在场。
 
 “已经好了。”
 
+Demo 视频：
+
+https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
+
 ## 核心特色
 
 - 全双工实时语音交互、自然打断和持续多轮对话

@@ -27,6 +27,10 @@ task is complete, naturally tells you:
 
 “It’s ready.”
 
+Demo video:
+
+https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
+
 ## Core Features
 
 - Full-duplex realtime voice interaction, natural interruption, and continuous

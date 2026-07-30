@@ -23,6 +23,16 @@ Agent 也应该始终在场。
 
 “已经好了。”
 
+<p align="center">
+  <video
+    src="https://modelscope.cn/datasets/funaudio_public/qwen-audio-agent/resolve/master/demo/qwen-audio-agent-v1.mp4"
+    controls
+    width="100%">
+  </video>
+</p>
+
+[无法播放时，点击观看完整 Demo 视频](https://modelscope.cn/datasets/funaudio_public/qwen-audio-agent/resolve/master/demo/qwen-audio-agent-v1.mp4)
+
 ## 核心特色
 
 - 全双工实时语音交互、自然打断和持续多轮对话

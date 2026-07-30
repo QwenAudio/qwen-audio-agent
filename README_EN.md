@@ -27,6 +27,16 @@ task is complete, naturally tells you:
 
 “It’s ready.”
 
+<p align="center">
+  <video
+    src="https://modelscope.cn/datasets/funaudio_public/qwen-audio-agent/resolve/master/demo/qwen-audio-agent-v1.mp4"
+    controls
+    width="100%">
+  </video>
+</p>
+
+[If playback is unavailable, watch the full demo video](https://modelscope.cn/datasets/funaudio_public/qwen-audio-agent/resolve/master/demo/qwen-audio-agent-v1.mp4)
+
 ## Core Features
 
 - Full-duplex realtime voice interaction, natural interruption, and continuous

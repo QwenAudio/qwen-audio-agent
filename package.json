@@ -1,6 +1,6 @@
 {
   "name": "qwen-audio-agent",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "A realtime voice frontend for mainstream AI agents.",
   "author": "qwen-audio-agent contributors",
   "license": "Apache-2.0",

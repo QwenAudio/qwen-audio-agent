@@ -32,6 +32,12 @@ const SPECS = {
     executableEnvironment: ['QODERCLI_PATH', 'QODER_CLI_PATH'],
     integration: 'native',
   },
+  kimi: {
+    command: 'kimi',
+    executableEnvironment: 'KIMI_CODE_BIN',
+    integration: 'native',
+    minimumVersion: '0.31.0',
+  },
   hermes: {
     command: 'hermes',
     executableEnvironment: 'HERMES_BIN',
@@ -379,6 +385,17 @@ function inspectBackend(id, {
             ? `OpenCode ${version} 低于最低版本 ${spec.minimumVersion}`
             : '无法确认 OpenCode 版本'
       }
+    }
+  }
+
+  if (backend.ready && id === 'kimi') {
+    const version = readVersion(backend.path)
+    backend.version = version
+    if (!versionAtLeast(version, spec.minimumVersion)) {
+      backend.ready = false
+      backend.issue = version
+        ? `Kimi Code ${version} 低于最低版本 ${spec.minimumVersion}`
+        : '无法确认 Kimi Code 版本'
     }
   }
 

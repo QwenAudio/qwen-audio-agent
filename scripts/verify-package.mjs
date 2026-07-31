@@ -118,6 +118,7 @@ if (isMain) {
     'config/acp/workspace/AGENTS.md',
     'config/opencode/workspace/AGENTS.md',
     'config/qoder/workspace/AGENTS.md',
+    'config/kimi/workspace/AGENTS.md',
     'CONTRIBUTING.md',
     'docs/architecture.md',
     'docs/architecture-overview.png',

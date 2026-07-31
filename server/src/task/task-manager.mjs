@@ -13,6 +13,28 @@ const ACTIVE = new Set([
 const CANCELLABLE = new Set(['queued', 'running', 'delegated', 'finalizing'])
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 
+function publicResultMetadata(metadata) {
+  if (!metadata || typeof metadata !== 'object') return null
+  const source = metadata.presentation || metadata.decision?.presentation
+  if (!source || typeof source !== 'object') return null
+  const inline = source.inline && typeof source.inline === 'object'
+    && typeof source.inline.content === 'string'
+    && source.inline.content.trim()
+    ? {
+        title: typeof source.inline.title === 'string'
+          ? source.inline.title.slice(0, 120)
+          : '',
+        format: ['markdown', 'code', 'link'].includes(source.inline.format)
+          ? source.inline.format
+          : 'markdown',
+        content: source.inline.content,
+      }
+    : null
+  const speech = typeof source.speech === 'string' ? source.speech : ''
+  if (!speech && !inline) return null
+  return { presentation: { speech, inline } }
+}
+
 function publicTask(task) {
   const now = Date.now()
   return {
@@ -34,7 +56,7 @@ function publicTask(task) {
       : task.elapsedMs,
     result: task.result,
     error: task.error,
-    resultMetadata: task.resultMetadata || null,
+    resultMetadata: publicResultMetadata(task.resultMetadata),
     activity: [...(task.activity || [])],
     delegation: task.delegation
       ? {

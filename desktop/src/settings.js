@@ -35,6 +35,7 @@ function backendLabel(value) {
   if (value === 'opencode') return 'OpenCode'
   if (value === 'openclaw') return 'OpenClaw'
   if (value === 'qoder') return 'Qoder'
+  if (value === 'kimi') return 'Kimi Code'
   if (value === 'hermes') return 'Hermes'
   if (value === 'codebuddy') return 'CodeBuddy'
   if (value === 'codex') return 'Codex'

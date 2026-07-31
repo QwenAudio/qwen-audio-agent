@@ -263,8 +263,7 @@ export class Coordinator {
     return {
       content: decision.presentation.speech,
       metadata: {
-        ...(result.metadata || {}),
-        decision,
+        presentation: decision.presentation,
       },
     }
   }
@@ -289,8 +288,7 @@ export class Coordinator {
     return {
       content: decision.presentation.speech,
       metadata: {
-        ...(result.metadata || {}),
-        decision,
+        presentation: decision.presentation,
       },
     }
   }

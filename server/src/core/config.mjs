@@ -12,11 +12,14 @@ const sourceRoot = resolve(here, '../../..')
 const root = process.env.QWEN_AUDIO_AGENT_RUNTIME_ROOT || sourceRoot
 const runtimeEnvironment = loadRuntimeEnvironment({ root })
 
-function numberSetting(value, fallback, {
+export function numberSetting(value, fallback, {
   min = Number.NEGATIVE_INFINITY,
   max = Number.POSITIVE_INFINITY,
 } = {}) {
-  const parsed = Number(value)
+  if (value === null || value === undefined) return fallback
+  const source = typeof value === 'string' ? value.trim() : value
+  if (source === '') return fallback
+  const parsed = Number(source)
   if (!Number.isFinite(parsed)) return fallback
   return Math.min(max, Math.max(min, parsed))
 }
@@ -37,6 +40,15 @@ export function resolveQoderWorkspace(
   return env.QODER_WORKSPACE
     ? resolve(root, env.QODER_WORKSPACE)
     : resolve(configDirectory, 'workspaces/qoder')
+}
+
+export function resolveKimiWorkspace(
+  env = process.env,
+  configDirectory = runtimeEnvironment.configDirectory,
+) {
+  return env.KIMI_WORKSPACE
+    ? resolve(root, env.KIMI_WORKSPACE)
+    : resolve(configDirectory, 'workspaces/kimi')
 }
 
 export function resolveHermesWorkspace(
@@ -128,6 +140,7 @@ export function resolveBackendModels(env = process.env) {
     openCode: common ? `alibaba-cn/${name}` : '',
     openClaw: common ? `bailian/${name}` : '',
     qoder: name,
+    kimi: common,
     hermes: common,
     codeBuddy: name,
     codex: name,
@@ -264,6 +277,11 @@ export const config = {
   ).trim(),
   qoderModel: String(
     backendModels.qoder,
+  ).trim(),
+  kimiDirectory: resolveKimiWorkspace(),
+  kimiCliPath: String(process.env.KIMI_CODE_BIN || '').trim(),
+  kimiModel: String(
+    backendModels.kimi,
   ).trim(),
   hermesDirectory: resolveHermesWorkspace(),
   hermesCliPath: String(process.env.HERMES_BIN || '').trim(),

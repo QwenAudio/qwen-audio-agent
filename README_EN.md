@@ -77,6 +77,7 @@ module walkthrough.
 | OpenCode | Native ACP | Automatic installation and Bailian setup supported | ★★★★★ |
 | OpenClaw | Built-in ACP Bridge | Automatic installation and Bailian setup supported | ★★★★★ |
 | Qoder | Native ACP | User installation and configuration required | ★★★★★ |
+| Kimi Code | Native ACP | User installation and configuration required | ★★★★★ |
 | Hermes | Native ACP | User installation and configuration required | ★★★★☆ |
 | CodeBuddy | Native ACP | User installation and configuration required | ★★★★☆ |
 | Codex | External ACP Adapter | User installation and configuration required | ★★★★☆ |
@@ -280,11 +281,12 @@ Use Qoder:
 AGENT_PROTOCOL=qoder
 ```
 
-Hermes, CodeBuddy, Codex, and Claude Code can also be selected directly:
+Kimi Code, Hermes, CodeBuddy, Codex, and Claude Code can also be selected
+directly:
 
 ```dotenv
-AGENT_PROTOCOL=hermes
-# Or codebuddy, codex, or claude
+AGENT_PROTOCOL=kimi
+# Or hermes, codebuddy, codex, or claude
 ```
 
 These other backends currently require the user to install and configure the

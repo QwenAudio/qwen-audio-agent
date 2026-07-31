@@ -3,16 +3,29 @@ import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
+  numberSetting,
   resolveCodeBuddyWorkspace,
   resolveCodexWorkspace,
   resolveBackendModels,
   resolveHermesWorkspace,
+  resolveKimiWorkspace,
   resolveOpenCodeCoordinatorAgent,
   resolveOpenCodeWorkspace,
   resolveQoderWorkspace,
 } from '../src/core/config.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+
+test('treats missing and blank numeric settings as unset', () => {
+  for (const value of [null, undefined, '', '   ', '\t\n']) {
+    assert.equal(numberSetting(value, 120, { min: 0, max: 1000 }), 120)
+  }
+})
+
+test('preserves explicit zero numeric settings', () => {
+  assert.equal(numberSetting('0', 120, { min: 0, max: 1000 }), 0)
+  assert.equal(numberSetting(0, 120, { min: 0, max: 1000 }), 0)
+})
 
 test('uses the user data directory for the default OpenCode workspace', () => {
   const directory = resolve('/home/user/.config/qwaudio')
@@ -61,6 +74,10 @@ test('uses the user data directory for additional ACP backend workspaces', () =>
     resolve(directory, 'workspaces/hermes'),
   )
   assert.equal(
+    resolveKimiWorkspace({}, directory),
+    resolve(directory, 'workspaces/kimi'),
+  )
+  assert.equal(
     resolveCodeBuddyWorkspace({}, directory),
     resolve(directory, 'workspaces/codebuddy'),
   )
@@ -78,6 +95,7 @@ test('maps one backend model name to each managed backend provider', () => {
     openCode: 'alibaba-cn/qwen3.7-plus',
     openClaw: 'bailian/qwen3.7-plus',
     qoder: 'qwen3.7-plus',
+    kimi: 'qwen3.7-plus',
     hermes: 'qwen3.7-plus',
     codeBuddy: 'qwen3.7-plus',
     codex: 'qwen3.7-plus',
@@ -95,6 +113,7 @@ test('ignores backend-native model variables as Gateway overrides', () => {
     openCode: '',
     openClaw: '',
     qoder: '',
+    kimi: '',
     hermes: '',
     codeBuddy: '',
     codex: '',
@@ -111,6 +130,7 @@ test('treats legacy auto as no backend model override', () => {
     openCode: '',
     openClaw: '',
     qoder: '',
+    kimi: '',
     hermes: '',
     codeBuddy: '',
     codex: '',
@@ -128,6 +148,7 @@ test('uses only the unified backend model override', () => {
     openCode: 'alibaba-cn/qwen3.7-max',
     openClaw: 'bailian/qwen3.7-max',
     qoder: 'qwen3.7-max',
+    kimi: 'qwen3.7-max',
     hermes: 'qwen3.7-max',
     codeBuddy: 'qwen3.7-max',
     codex: 'qwen3.7-max',

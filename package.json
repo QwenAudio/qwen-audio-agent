@@ -1,6 +1,6 @@
 {
   "name": "qwen-audio-agent",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "A realtime voice frontend for mainstream AI agents.",
   "author": "qwen-audio-agent contributors",
   "license": "Apache-2.0",
@@ -20,6 +20,7 @@
     "opencode",
     "openclaw",
     "qoder",
+    "kimi-code",
     "claude-code"
   ],
   "type": "module",
@@ -41,6 +42,7 @@
     "config/acp/workspace/AGENTS.md",
     "config/opencode/workspace/AGENTS.md",
     "config/qoder/workspace/AGENTS.md",
+    "config/kimi/workspace/AGENTS.md",
     "docs/architecture.md",
     "docs/architecture-overview.png",
     "docs/architecture-overview-en.png",

@@ -26,6 +26,7 @@ function fixture() {
     'opencode',
     'openclaw',
     'qoder',
+    'kimi',
     'hermes',
     'codebuddy',
     'codex',
@@ -181,6 +182,10 @@ test('keeps managed backend data outside the installation directory', () => {
     resolve(result.configDirectory, 'workspaces/qoder'),
   )
   assert.equal(
+    result.kimiWorkspace,
+    resolve(result.configDirectory, 'workspaces/kimi'),
+  )
+  assert.equal(
     result.hermesWorkspace,
     resolve(result.configDirectory, 'workspaces/hermes'),
   )
@@ -215,6 +220,7 @@ test('keeps managed backend data outside the installation directory', () => {
   )
   assert.equal(env.OPENCLAW_STATE_DIR, undefined)
   assert.equal(env.QODER_WORKSPACE, result.qoderWorkspace)
+  assert.equal(env.KIMI_WORKSPACE, result.kimiWorkspace)
   assert.equal(env.HERMES_WORKSPACE, result.hermesWorkspace)
   assert.equal(env.CODEBUDDY_WORKSPACE, result.codeBuddyWorkspace)
   assert.equal(env.CODEX_WORKSPACE, result.codexWorkspace)
@@ -346,6 +352,7 @@ test('desktop client setup does not require packaged backend templates', () => {
   assert.equal(existsSync(result.openCodeWorkspace), false)
   assert.equal(existsSync(result.openClawWorkspace), false)
   assert.equal(existsSync(result.qoderWorkspace), false)
+  assert.equal(existsSync(result.kimiWorkspace), false)
   assert.equal(existsSync(result.hermesWorkspace), false)
   assert.equal(existsSync(result.codeBuddyWorkspace), false)
   assert.equal(existsSync(result.codexWorkspace), false)
@@ -355,6 +362,7 @@ test('desktop client setup does not require packaged backend templates', () => {
   assert.equal(env.QWEN_AUDIO_AGENT_OPENCLAW_WORKSPACE, undefined)
   assert.equal(env.OPENCLAW_STATE_DIR, undefined)
   assert.equal(env.QODER_WORKSPACE, undefined)
+  assert.equal(env.KIMI_WORKSPACE, undefined)
   assert.equal(env.HERMES_WORKSPACE, undefined)
   assert.equal(env.CODEBUDDY_WORKSPACE, undefined)
   assert.equal(env.CODEX_WORKSPACE, undefined)

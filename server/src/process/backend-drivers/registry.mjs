@@ -3,6 +3,7 @@ import { claudeRuntimeDriver } from './claude.mjs'
 import { codexRuntimeDriver } from './codex.mjs'
 import { genericAcpRuntimeDriver } from './generic-acp.mjs'
 import { hermesRuntimeDriver } from './hermes.mjs'
+import { kimiRuntimeDriver } from './kimi.mjs'
 import { openClawRuntimeDriver } from './openclaw.mjs'
 import { openCodeRuntimeDriver } from './opencode.mjs'
 import { qoderRuntimeDriver } from './qoder.mjs'
@@ -11,6 +12,7 @@ const drivers = new Map([
   openCodeRuntimeDriver,
   openClawRuntimeDriver,
   qoderRuntimeDriver,
+  kimiRuntimeDriver,
   hermesRuntimeDriver,
   codeBuddyRuntimeDriver,
   codexRuntimeDriver,

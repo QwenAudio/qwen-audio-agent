@@ -8,35 +8,55 @@ import {
   GATEWAY_READY_MESSAGE,
 } from '../src/gateway-process.mjs'
 
-function fakeChild({ readyOrigin = 'http://127.0.0.1:3101' } = {}) {
+function fakeChild({
+  readyOrigin = 'http://127.0.0.1:3101',
+  exitOnKill = true,
+} = {}) {
   const child = new EventEmitter()
   child.killed = 0
   child.kill = () => {
     child.killed += 1
-    queueMicrotask(() => child.emit('exit', 0, null))
+    if (exitOnKill) queueMicrotask(() => child.emit('exit', 0, null))
     return true
   }
+  child.reportReady = origin => child.emit('message', {
+    type: GATEWAY_READY_MESSAGE,
+    origin,
+  })
   if (readyOrigin) {
-    queueMicrotask(() => child.emit('message', {
-      type: GATEWAY_READY_MESSAGE,
-      origin: readyOrigin,
-    }))
+    queueMicrotask(() => child.reportReady(readyOrigin))
   }
   return child
 }
 
-function harness({ busy = false, readyOrigin } = {}) {
+function deferred() {
+  let resolvePromise
+  const promise = new Promise(resolve => {
+    resolvePromise = resolve
+  })
+  return { promise, resolve: resolvePromise }
+}
+
+function harness({
+  busy = false,
+  childFactory = null,
+  probeImpl = null,
+  readyOrigin,
+  stopTimeoutMs = 50,
+} = {}) {
   const forks = []
   const gateway = new EmbeddedGateway({
     entry: '/app/server/src/index.mjs',
-    probeImpl: async () => busy,
+    probeImpl: probeImpl || (async () => busy),
     forkImpl: (entry, args, options) => {
-      const child = fakeChild({ readyOrigin })
+      const child = childFactory
+        ? childFactory(forks.length)
+        : fakeChild({ readyOrigin })
       forks.push({ entry, args, options, child })
       return child
     },
     startupTimeoutMs: 200,
-    stopTimeoutMs: 50,
+    stopTimeoutMs,
   })
   return { forks, gateway }
 }
@@ -60,6 +80,98 @@ test('falls back to a random port when the preferred port is busy', async () => 
   const origin = await gateway.start({ preferredPort: 3101 })
   assert.equal(forks[0].options.env.PORT, '0')
   assert.equal(origin, 'http://127.0.0.1:53123')
+  await gateway.stop()
+})
+
+test('shares one in-flight start promise and forks only one child', async () => {
+  const probe = deferred()
+  const { forks, gateway } = harness({
+    probeImpl: () => probe.promise,
+  })
+  const first = gateway.start({ preferredPort: 3200 })
+  const second = gateway.start({ preferredPort: 3300 })
+  assert.equal(first, second)
+  assert.equal(forks.length, 0)
+
+  probe.resolve(false)
+  assert.equal(await first, 'http://127.0.0.1:3101')
+  assert.equal(forks.length, 1)
+  assert.equal(forks[0].options.env.PORT, '3200')
+  await gateway.stop()
+})
+
+test('clears a failed start so a later call can retry', async () => {
+  const { forks, gateway } = harness({
+    childFactory: index => fakeChild({
+      readyOrigin: index === 0
+        ? 'http://example.com'
+        : 'http://127.0.0.1:3200',
+    }),
+  })
+
+  await assert.rejects(gateway.start(), /must use HTTPS/)
+  assert.equal(forks[0].child.killed, 1)
+  assert.equal(gateway.running, false)
+
+  assert.equal(await gateway.start(), 'http://127.0.0.1:3200')
+  assert.equal(forks.length, 2)
+  assert.equal(gateway.running, true)
+  await gateway.stop()
+})
+
+test('stop cancels a start still probing without forking a child', async () => {
+  const probe = deferred()
+  const { forks, gateway } = harness({
+    probeImpl: () => probe.promise,
+  })
+  const start = gateway.start()
+  const cancelled = assert.rejects(start, /启动已取消/)
+  const stopped = gateway.stop()
+
+  probe.resolve(false)
+  await Promise.all([cancelled, stopped])
+  assert.equal(forks.length, 0)
+  assert.equal(gateway.child, null)
+  assert.equal(gateway.origin, null)
+  assert.equal(gateway.running, false)
+})
+
+test('restart replaces an in-flight start and ignores stale child events', async () => {
+  let staleChild
+  let freshChild
+  const { forks, gateway } = harness({
+    childFactory: index => {
+      const child = index === 0
+        ? fakeChild({ readyOrigin: null, exitOnKill: false })
+        : fakeChild({ readyOrigin: 'http://127.0.0.1:3200' })
+      if (index === 0) staleChild = child
+      else freshChild = child
+      return child
+    },
+    stopTimeoutMs: 5,
+  })
+  let unexpectedExit = false
+  gateway.onUnexpectedExit = () => {
+    unexpectedExit = true
+  }
+
+  const firstStart = gateway.start()
+  const cancelled = assert.rejects(firstStart, /启动已取消/)
+  await Promise.resolve()
+  assert.equal(forks.length, 1)
+
+  const origin = await gateway.restart({ preferredPort: 3200 })
+  await cancelled
+  assert.equal(origin, 'http://127.0.0.1:3200')
+  assert.equal(forks.length, 2)
+  assert.equal(gateway.child, freshChild)
+
+  staleChild.reportReady('http://127.0.0.1:3999')
+  staleChild.emit('exit', 1, null)
+  assert.equal(gateway.origin, 'http://127.0.0.1:3200')
+  assert.equal(gateway.child, freshChild)
+  assert.equal(gateway.running, true)
+  assert.equal(unexpectedExit, false)
   await gateway.stop()
 })
 

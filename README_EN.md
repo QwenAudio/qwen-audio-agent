@@ -41,12 +41,14 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
 - Full-duplex realtime voice interaction, natural interruption, and continuous
   multi-turn conversation
-- One-click connection to the Agents you prefer, reusing their existing
-  models, tools, MCP servers, and Skills
-- Voice conversation and backend tasks run in parallel, with progress queries
-  and cancellation available at any time
-- Task results return automatically to the current context for follow-up and
-  revision
+- Choose your preferred Agent with one click, reusing its existing tools, MCP
+  servers, and Skills
+- Foreground conversation and background tasks move forward in parallel, with
+  progress checks and cancellation available at any time
+- Create multiple independent tasks for asynchronous execution by backend
+  Agents, with continuous status tracking
+- Task results return automatically to the current conversation for follow-up
+  and revision
 - WebUI, terminal TUI, and a macOS desktop orb
 - Local user profile and personal memory across sessions
 

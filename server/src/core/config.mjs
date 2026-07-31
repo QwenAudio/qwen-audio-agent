@@ -12,11 +12,14 @@ const sourceRoot = resolve(here, '../../..')
 const root = process.env.QWEN_AUDIO_AGENT_RUNTIME_ROOT || sourceRoot
 const runtimeEnvironment = loadRuntimeEnvironment({ root })
 
-function numberSetting(value, fallback, {
+export function numberSetting(value, fallback, {
   min = Number.NEGATIVE_INFINITY,
   max = Number.POSITIVE_INFINITY,
 } = {}) {
-  const parsed = Number(value)
+  if (value === null || value === undefined) return fallback
+  const source = typeof value === 'string' ? value.trim() : value
+  if (source === '') return fallback
+  const parsed = Number(source)
   if (!Number.isFinite(parsed)) return fallback
   return Math.min(max, Math.max(min, parsed))
 }

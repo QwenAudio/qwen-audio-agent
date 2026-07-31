@@ -3,6 +3,7 @@ import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
+  numberSetting,
   resolveCodeBuddyWorkspace,
   resolveCodexWorkspace,
   resolveBackendModels,
@@ -13,6 +14,17 @@ import {
 } from '../src/core/config.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+
+test('treats missing and blank numeric settings as unset', () => {
+  for (const value of [null, undefined, '', '   ', '\t\n']) {
+    assert.equal(numberSetting(value, 120, { min: 0, max: 1000 }), 120)
+  }
+})
+
+test('preserves explicit zero numeric settings', () => {
+  assert.equal(numberSetting('0', 120, { min: 0, max: 1000 }), 0)
+  assert.equal(numberSetting(0, 120, { min: 0, max: 1000 }), 0)
+})
 
 test('uses the user data directory for the default OpenCode workspace', () => {
   const directory = resolve('/home/user/.config/qwaudio')

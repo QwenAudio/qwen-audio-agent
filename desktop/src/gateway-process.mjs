@@ -123,8 +123,11 @@ export class EmbeddedGateway {
     this.startupTimeoutMs = startupTimeoutMs
     this.stopTimeoutMs = stopTimeoutMs
     this.child = null
+    this.childState = null
     this.origin = null
-    this.stopping = false
+    this.startOperation = null
+    this.startPromise = null
+    this.stopPromise = null
     this.onUnexpectedExit = null
   }
 
@@ -132,15 +135,45 @@ export class EmbeddedGateway {
     return Boolean(this.child && this.origin)
   }
 
-  async start({ preferredPort = this.preferredPort } = {}) {
-    if (this.running) return this.origin
+  start({ preferredPort = this.preferredPort } = {}) {
+    if (this.running) return Promise.resolve(this.origin)
+    if (this.startPromise) return this.startPromise
+
+    const operation = {
+      cancelled: false,
+      cancel: null,
+      childState: null,
+    }
+    const pendingStop = this.stopPromise
+    this.startOperation = operation
+    const startPromise = (async () => {
+      if (pendingStop) await pendingStop
+      this.assertActiveStart(operation)
+      return this.startOnce(preferredPort, operation)
+    })().finally(() => {
+      if (this.startOperation === operation) this.startOperation = null
+      if (this.startPromise === startPromise) this.startPromise = null
+    })
+    this.startPromise = startPromise
+    return startPromise
+  }
+
+  assertActiveStart(operation) {
+    if (operation.cancelled || this.startOperation !== operation) {
+      throw new Error('内嵌 Gateway 启动已取消')
+    }
+  }
+
+  async startOnce(preferredPort, operation) {
     this.preferredPort = preferredPort
     const busy = await this.probeImpl(this.host, preferredPort)
+    this.assertActiveStart(operation)
     // PORT=0 tells the gateway to bind a random loopback port; the actual
     // origin arrives with the ready message.
     const port = busy ? 0 : preferredPort
     // Imported lazily so this module also loads outside Electron (tests).
     const fork = this.forkImpl || (await import('electron')).utilityProcess.fork
+    this.assertActiveStart(operation)
     const environment = this.envFactory ? this.envFactory() : this.env
     const child = fork(this.entry, [], {
       env: {
@@ -150,48 +183,94 @@ export class EmbeddedGateway {
       },
       stdio: 'inherit',
     })
+    const childState = {
+      child,
+      exited: false,
+      killIssued: false,
+      planned: false,
+      ready: false,
+    }
+    operation.childState = childState
     this.child = child
-    this.origin = await new Promise((resolvePromise, rejectPromise) => {
+    this.childState = childState
+    child.once('exit', (code, signal) => {
+      childState.exited = true
+      if (this.childState === childState) {
+        this.child = null
+        this.childState = null
+        this.origin = null
+      }
+      if (childState.ready && !childState.planned) {
+        this.onUnexpectedExit?.(code, signal)
+      }
+    })
+
+    try {
+      const origin = await this.waitUntilReady(operation, childState)
+      this.assertActiveStart(operation)
+      if (childState.exited || this.childState !== childState) {
+        throw new Error('内嵌 Gateway 提前退出（unknown）')
+      }
+      childState.ready = true
+      this.origin = origin
+      return origin
+    } catch (error) {
+      if (this.childState === childState) {
+        this.child = null
+        this.childState = null
+        this.origin = null
+      }
+      if (!childState.planned) childState.planned = true
+      if (!childState.killIssued) {
+        childState.killIssued = true
+        child.kill()
+      }
+      throw error
+    }
+  }
+
+  waitUntilReady(operation, childState) {
+    const { child } = childState
+    return new Promise((resolvePromise, rejectPromise) => {
+      let settled = false
+      let timer
+      const finish = (callback, value) => {
+        if (settled) return
+        settled = true
+        cleanup()
+        callback(value)
+      }
       const onMessage = message => {
         if (message?.type !== GATEWAY_READY_MESSAGE || !message.origin) return
-        cleanup()
         try {
-          resolvePromise(validateAppUrl(message.origin))
+          finish(resolvePromise, validateAppUrl(message.origin))
         } catch (error) {
-          rejectPromise(error)
+          finish(rejectPromise, error)
         }
       }
       const onExit = code => {
-        cleanup()
-        rejectPromise(new Error(`内嵌 Gateway 提前退出（${code ?? 'unknown'}）`))
+        finish(
+          rejectPromise,
+          new Error(`内嵌 Gateway 提前退出（${code ?? 'unknown'}）`),
+        )
       }
-      const timer = setTimeout(() => {
-        cleanup()
-        rejectPromise(new Error('内嵌 Gateway 启动超时'))
+      const cancel = () => {
+        finish(rejectPromise, new Error('内嵌 Gateway 启动已取消'))
+      }
+      timer = setTimeout(() => {
+        finish(rejectPromise, new Error('内嵌 Gateway 启动超时'))
       }, this.startupTimeoutMs)
       const cleanup = () => {
         clearTimeout(timer)
         child.off('message', onMessage)
         child.off('exit', onExit)
+        if (operation.cancel === cancel) operation.cancel = null
       }
+      operation.cancel = cancel
       child.on('message', onMessage)
       child.once('exit', onExit)
-    }).catch(error => {
-      if (this.child === child) {
-        this.child = null
-        this.origin = null
-      }
-      child.kill()
-      throw error
+      if (operation.cancelled || this.startOperation !== operation) cancel()
     })
-    child.once('exit', (code, signal) => {
-      if (this.child === child) {
-        this.child = null
-        this.origin = null
-      }
-      if (!this.stopping) this.onUnexpectedExit?.(code, signal)
-    })
-    return this.origin
   }
 
   async restart(options = {}) {
@@ -199,26 +278,40 @@ export class EmbeddedGateway {
     return this.start(options)
   }
 
-  async stop() {
-    const child = this.child
-    this.child = null
-    this.origin = null
-    if (!child) return
-    this.stopping = true
-    try {
-      await new Promise(resolvePromise => {
-        const timer = setTimeout(() => {
-          child.kill()
-          resolvePromise()
-        }, this.stopTimeoutMs)
-        child.once('exit', () => {
-          clearTimeout(timer)
-          resolvePromise()
-        })
-        child.kill()
-      })
-    } finally {
-      this.stopping = false
+  stop() {
+    const operation = this.startOperation
+    if (operation) {
+      operation.cancelled = true
+      operation.cancel?.()
     }
+    if (this.startOperation === operation) this.startOperation = null
+    this.startPromise = null
+
+    const childState = this.childState || operation?.childState || null
+    if (childState) childState.planned = true
+    this.child = null
+    this.childState = null
+    this.origin = null
+    if (this.stopPromise) return this.stopPromise
+    if (!childState || childState.exited) return Promise.resolve()
+
+    const stopPromise = new Promise(resolvePromise => {
+      const timer = setTimeout(() => {
+        childState.child.kill()
+        resolvePromise()
+      }, this.stopTimeoutMs)
+      childState.child.once('exit', () => {
+        clearTimeout(timer)
+        resolvePromise()
+      })
+      if (!childState.killIssued) {
+        childState.killIssued = true
+        childState.child.kill()
+      }
+    }).finally(() => {
+      if (this.stopPromise === stopPromise) this.stopPromise = null
+    })
+    this.stopPromise = stopPromise
+    return stopPromise
   }
 }

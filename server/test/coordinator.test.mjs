@@ -74,11 +74,24 @@ test('uses only runCoordinator and forwards tool activity', async () => {
       runCoordinator: async (_prompt, options) => {
         options.onEvent({ type: 'backend.activity', activity: { tool: 'read' } })
         return {
+          metadata: {
+            backendRef: {
+              sessionId: 'backend-session',
+              directory: '/private/project',
+            },
+          },
           content: JSON.stringify({
             work_id: 'work-one',
             state: 'completed',
             mode: 'respond',
-            presentation: { speech: '完成', inline: null },
+            presentation: {
+              speech: '完成',
+              inline: {
+                title: '结果',
+                format: 'markdown',
+                content: '## 完成',
+              },
+            },
           }),
         }
       },
@@ -93,5 +106,15 @@ test('uses only runCoordinator and forwards tool activity', async () => {
     onEvent: event => events.push(event),
   })
   assert.equal(result.content, '完成')
+  assert.deepEqual(result.metadata, {
+    presentation: {
+      speech: '完成',
+      inline: {
+        title: '结果',
+        format: 'markdown',
+        content: '## 完成',
+      },
+    },
+  })
   assert.equal(events[0].activity.tool, 'read')
 })

@@ -451,3 +451,99 @@ test('listing tasks does not rewrite unchanged persistent state', async () => {
   manager.list({ ownerId: 'owner' })
   assert.equal(saves, before)
 })
+
+test('publishes only presentation metadata from a completed result', async () => {
+  const events = []
+  const manager = new TaskManager()
+  manager.subscribe(event => events.push(event))
+  const task = manager.create({
+    objective: '生成报告',
+    ownerId: 'owner',
+    sessionId: 'voice',
+    runner: async () => ({
+      content: '报告已经生成',
+      metadata: {
+        presentation: {
+          speech: '报告已经生成。',
+          inline: {
+            title: '报告',
+            format: 'markdown',
+            content: '# 完成',
+          },
+        },
+        backendRef: {
+          sessionId: 'backend-session',
+          directory: '/private/project',
+        },
+        delegation: {
+          id: 'delegation-id',
+          sessionId: 'target-session',
+        },
+      },
+    }),
+  })
+
+  const completed = await manager.wait(task.id)
+  assert.deepEqual(completed.resultMetadata, {
+    presentation: {
+      speech: '报告已经生成。',
+      inline: {
+        title: '报告',
+        format: 'markdown',
+        content: '# 完成',
+      },
+    },
+  })
+  assert.deepEqual(
+    events.find(event => event.type === 'task.completed')
+      ?.task.resultMetadata,
+    completed.resultMetadata,
+  )
+})
+
+test('projects legacy decision presentation when restoring a task', () => {
+  let saved = []
+  const manager = new TaskManager({
+    store: {
+      load: () => [{
+        id: 'legacy-work',
+        status: 'completed',
+        objective: '旧任务',
+        ownerId: 'owner',
+        sessionId: 'voice',
+        result: '旧结果',
+        resultMetadata: {
+          decision: {
+            presentation: {
+              speech: '旧任务已经完成。',
+              inline: {
+                title: '旧结果',
+                format: 'code',
+                content: 'const done = true',
+              },
+            },
+          },
+          backendRef: {
+            sessionId: 'legacy-session',
+            directory: '/private/legacy',
+          },
+        },
+      }],
+      save: tasks => { saved = structuredClone(tasks) },
+    },
+  })
+
+  const restored = manager.get('legacy-work')
+  assert.deepEqual(restored.resultMetadata, {
+    presentation: {
+      speech: '旧任务已经完成。',
+      inline: {
+        title: '旧结果',
+        format: 'code',
+        content: 'const done = true',
+      },
+    },
+  })
+  manager.persist()
+  assert.deepEqual(saved[0].resultMetadata, restored.resultMetadata)
+})

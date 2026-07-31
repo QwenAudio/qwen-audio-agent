@@ -23,14 +23,52 @@ export function parsePackOutput(stdout) {
   if (!trimmed) {
     throw new Error('npm pack 输出为空')
   }
+  const jsonText = extractLastJsonBlock(trimmed)
+  if (!jsonText) {
+    throw new Error('无法解析 npm pack 输出的 JSON：未找到 JSON 块')
+  }
   let parsed
   try {
-    parsed = JSON.parse(trimmed)
+    parsed = JSON.parse(jsonText)
   } catch (error) {
     throw new Error(`无法解析 npm pack 输出的 JSON：${error.message}`)
   }
   const entries = Array.isArray(parsed) ? parsed : Object.values(parsed)
   return entries.filter(Boolean)
+}
+
+// npm 10 在 `npm pack` 时会触发 `prepare` 生命周期脚本,构建工具(vite 等)的
+// 日志会混入 stdout,污染 pack 的 JSON 输出(`--ignore-scripts` 不阻止 prepare)。
+// 这里从 stdout 末尾按括号配对提取最后一个 JSON 块,以兼容前导/尾部噪声,同时
+// 兼容 npm <=10 的数组与 npm >=11 的对象两种结构。
+function extractLastJsonBlock(text) {
+  let end = -1
+  let endChar = ''
+  for (let i = text.length - 1; i >= 0; i--) {
+    const char = text[i]
+    if (char === '}' || char === ']') {
+      end = i
+      endChar = char
+      break
+    }
+  }
+  if (end === -1) return null
+  const startChar = endChar === '}' ? '{' : '['
+  let depth = 1
+  let start = -1
+  for (let i = end - 1; i >= 0; i--) {
+    const char = text[i]
+    if (char === endChar) depth++
+    else if (char === startChar) {
+      depth--
+      if (depth === 0) {
+        start = i
+        break
+      }
+    }
+  }
+  if (start === -1) return null
+  return text.slice(start, end + 1)
 }
 
 const isMain = process.argv[1]

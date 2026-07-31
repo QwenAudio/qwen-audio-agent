@@ -25,7 +25,6 @@ import {
   ActiveVoiceClients,
   clientVoiceCapabilities,
 } from './active-voice-clients.mjs'
-import { isRecoverableRealtimeInactivityError } from './realtime-errors.mjs'
 import { ReconnectBackoff } from './reconnect-backoff.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
@@ -854,8 +853,8 @@ export function attachRealtimeGateway(server, {
               ?? (committedTurnId ? committedTurnGeneration : turnGeneration),
         })
         if (automaticTurn) {
-          // Qwen may begin inference and emit a function call before its final
-          // ASR event. response.created proves Smart Turn accepted this turn.
+          // A provider may begin inference and emit a function call before its
+          // final ASR event. response.created proves turn detection accepted it.
           commitTurn(automaticTurn)
           clearResponseCandidate()
         }
@@ -906,7 +905,8 @@ export function attachRealtimeGateway(server, {
         send(ws, {
           type: 'audio.delta',
           audio: event.delta,
-          sampleRate: 24000,
+          sampleRate: Number(event.sampleRate)
+            || frontend.provider.outputSampleRate,
           responseId: id,
           turnId: responseTurnId,
         })
@@ -1066,14 +1066,11 @@ export function attachRealtimeGateway(server, {
         const errorMessage = event.error?.message
           || event.message
           || '实时语音服务错误'
-        const recoverableInactivity = isRecoverableRealtimeInactivityError(
-          errorMessage,
-        )
+        const providerError = frontend.provider.classifyError(errorMessage)
+        const recoverableInactivity = providerError === 'inactivity'
         const permissionSpeechCollision = (
           event.__voiceOrigin === 'permission'
-          && /user is speaking/i.test(
-            errorMessage,
-          )
+          && providerError === 'input_busy'
         )
         if (permissionSpeechCollision) {
           schedulePermissionRetry()
@@ -1081,9 +1078,7 @@ export function attachRealtimeGateway(server, {
         }
         // 取消撞上已完成响应的良性竞态:提供方回"无进行中响应",对用户无意义,
         // 也不应触发失败簿记(此时本就没有响应在跑)。
-        const benignCancelRace = /no active response/i.test(
-          errorMessage,
-        )
+        const benignCancelRace = providerError === 'no_active_response'
         if (benignCancelRace) return
         const id = responseId(event)
         const context = responseContexts.get(id)
@@ -1120,10 +1115,10 @@ export function attachRealtimeGateway(server, {
           config.announcementQuietMs,
         )
         timer.unref?.()
-        // Qwen may close an inactive response scope after 180 seconds while a
-        // delegated backend task is still running. The task remains healthy,
-        // and any pending announcement has already been returned to the retry
-        // queue above, so this provider housekeeping event is not user-facing.
+        // A provider may close an inactive response scope while a delegated
+        // backend task is still running. The task remains healthy, and any
+        // pending announcement has already returned to the retry queue, so this
+        // provider housekeeping event is not user-facing.
         if (!recoverableInactivity) {
           send(ws, { type: 'error', message: errorMessage })
         }
@@ -1146,7 +1141,10 @@ export function attachRealtimeGateway(server, {
         },
         onEvent: handleEvent,
         onError: error => {
-          if (!isRecoverableRealtimeInactivityError(error.message)) {
+          if (
+            createdFrontend.provider.classifyError(error.message)
+            !== 'inactivity'
+          ) {
             send(ws, { type: 'error', message: error.message })
           }
         },

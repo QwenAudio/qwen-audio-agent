@@ -240,6 +240,83 @@ test('adds an event id to realtime client events', () => {
   assert.equal(sent.audio, 'pcm')
 })
 
+test('isolates a provider with a different wire message shape', () => {
+  const events = []
+  let sent
+  const base = REALTIME_PROVIDERS.qwen
+  const provider = {
+    ...base,
+    key: 'custom',
+    label: 'Custom Realtime',
+    protocol: {
+      ...base.protocol,
+      encodeOutgoing: payload => ({ frame: payload }),
+      audioAppend: audio => ({ op: 'push-audio', chunk: audio }),
+      normalizeIncoming: event => {
+        if (event.kind === 'started') {
+          return {
+            type: 'response.created',
+            response: { id: event.responseId },
+          }
+        }
+        if (event.kind === 'finished') {
+          return {
+            type: 'response.done',
+            response: {
+              id: event.responseId,
+              status: event.outcome,
+            },
+          }
+        }
+        return null
+      },
+    },
+  }
+  const frontend = new RealtimeFrontend({
+    provider,
+    onEvent: event => events.push(event),
+  })
+  frontend.ws = {
+    readyState: 1,
+    send: value => {
+      sent = JSON.parse(value)
+    },
+  }
+  frontend.pendingResponses.push({
+    origin: 'agent',
+    context: { turnId: 'turn-custom' },
+    resolve: () => {},
+    settled: false,
+    timer: null,
+  })
+
+  frontend.appendAudio('custom-pcm')
+  assert.deepEqual(sent, {
+    frame: {
+      op: 'push-audio',
+      chunk: 'custom-pcm',
+    },
+  })
+
+  frontend.handleProviderEvent({
+    kind: 'started',
+    responseId: 'custom-response',
+  })
+  assert.equal(frontend.activeResponses.has('custom-response'), true)
+  assert.equal(events[0].type, 'response.created')
+  assert.deepEqual(events[0].__voiceContext, {
+    turnId: 'turn-custom',
+  })
+
+  frontend.handleProviderEvent({
+    kind: 'finished',
+    responseId: 'custom-response',
+    outcome: 'completed',
+  })
+  assert.equal(frontend.activeResponses.size, 0)
+  assert.equal(events[1].type, 'response.done')
+})
+
 test('builds frontend identity, time, memory and reconnect context', () => {
   const prompt = buildFrontendInstructions({
     client: { timeZone: 'Asia/Shanghai', locale: 'zh-CN' },

@@ -42,6 +42,15 @@ export function resolveQoderWorkspace(
     : resolve(configDirectory, 'workspaces/qoder')
 }
 
+export function resolveKimiWorkspace(
+  env = process.env,
+  configDirectory = runtimeEnvironment.configDirectory,
+) {
+  return env.KIMI_WORKSPACE
+    ? resolve(root, env.KIMI_WORKSPACE)
+    : resolve(configDirectory, 'workspaces/kimi')
+}
+
 export function resolveHermesWorkspace(
   env = process.env,
   configDirectory = runtimeEnvironment.configDirectory,
@@ -131,6 +140,7 @@ export function resolveBackendModels(env = process.env) {
     openCode: common ? `alibaba-cn/${name}` : '',
     openClaw: common ? `bailian/${name}` : '',
     qoder: name,
+    kimi: common,
     hermes: common,
     codeBuddy: name,
     codex: name,
@@ -267,6 +277,11 @@ export const config = {
   ).trim(),
   qoderModel: String(
     backendModels.qoder,
+  ).trim(),
+  kimiDirectory: resolveKimiWorkspace(),
+  kimiCliPath: String(process.env.KIMI_CODE_BIN || '').trim(),
+  kimiModel: String(
+    backendModels.kimi,
   ).trim(),
   hermesDirectory: resolveHermesWorkspace(),
   hermesCliPath: String(process.env.HERMES_BIN || '').trim(),

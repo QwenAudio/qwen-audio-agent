@@ -65,7 +65,7 @@ test('generic ACP and process cores do not bind to named backends', () => {
     resolve(projectRoot, 'cli/src/runtime.mjs'),
     resolve(projectRoot, 'cli/src/launcher.mjs'),
   ]
-  const namedBackend = /\b(?:openclaw|opencode|qoder|hermes|codebuddy|codex|claude)\b/i
+  const namedBackend = /\b(?:openclaw|opencode|qoder|kimi|hermes|codebuddy|codex|claude)\b/i
   const violations = genericCoreFiles
     .filter(file => namedBackend.test(readFileSync(file, 'utf8')))
     .map(file => relative(projectRoot, file))

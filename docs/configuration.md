@@ -156,6 +156,53 @@ QODER_CONFIG_DIR=
 
 Gateway 管理 Qoder ACP 子进程；Qoder 不接受 `--backend-url`。
 
+### Kimi Code
+
+Kimi Code（[MoonshotAI/kimi-code](https://github.com/MoonshotAI/kimi-code)）
+通过官方原生 ACP 入口 `kimi acp` 接入。当前集成验证并要求 Kimi Code `0.31.0`
+或更高版本；`qwenaudio setup --backend kimi` 会同时检查可执行文件和版本，并拒绝
+低于兼容基线的旧实现。
+
+可使用官方安装脚本安装经过验证的版本：
+
+```bash
+curl -fsSL https://code.kimi.com/kimi-code/install.sh | \
+  KIMI_VERSION=0.31.0 KIMI_INSTALL_DIR="$HOME/.local" \
+  KIMI_NO_MODIFY_PATH=1 bash
+```
+
+已经通过 Kimi Code 自身完成登录时，只需选择后台：
+
+```dotenv
+AGENT_PROTOCOL=kimi
+QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
+```
+
+也可以使用 Kimi Code 官方的临时模型环境变量，在不改写
+`~/.kimi-code/config.toml` 的情况下提供 Kimi Code API Key：
+
+```dotenv
+AGENT_PROTOCOL=kimi
+KIMI_MODEL_NAME=kimi-for-coding
+KIMI_MODEL_API_KEY=your-kimi-code-key
+KIMI_MODEL_BASE_URL=https://api.kimi.com/coding/v1
+```
+
+`config.env` 由 qwen-audio-agent 创建为仅当前用户可读写的 `0600` 文件，禁止将
+实际 API Key 写入仓库。Kimi Code 的原生配置、OAuth 凭据和 Session 存储默认仍
+由 Kimi 自己管理；qwen-audio-agent 不修改这些文件。设置 `KIMI_CODE_HOME` 可以
+显式选择另一套 Kimi 数据目录，设置 `KIMI_WORKSPACE` 可以覆盖协调工作区。
+
+显式设置 `QWEN_AUDIO_AGENT_BACKEND_MODEL` 时，Gateway 会通过 ACP
+`session/set_config_option` 覆盖 Kimi Session 模型并确认生效；留空则由 Kimi
+选择自身默认模型。高级配置：
+
+```dotenv
+KIMI_CODE_BIN=
+KIMI_WORKSPACE=
+KIMI_CODE_HOME=
+```
+
 其他支持 ACP stdio 的 Agent 可使用通用入口：
 
 ```dotenv
@@ -271,8 +318,8 @@ CLAUDE_CONFIG_DIR=
 设置 `CLAUDE_CONFIG_DIR` 会改用独立配置目录，需要在该目录中单独完成认证。
 `CLAUDE_CODE_EXECUTABLE` 只用于覆盖适配器默认使用的 Claude Code 可执行文件。
 
-Hermes、CodeBuddy、Codex 和 Claude Code 均由 Gateway 直接管理 ACP 子进程，不接受
-`--backend-url`。
+Kimi Code、Hermes、CodeBuddy、Codex 和 Claude Code 均由 Gateway 直接管理 ACP
+子进程，不接受 `--backend-url`。
 
 ## 后台权限模式
 
@@ -281,11 +328,13 @@ Hermes、CodeBuddy、Codex 和 Claude Code 均由 Gateway 直接管理 ACP 子�
 - `native`（默认）：权限由后台 Agent 自己判断和询问，Gateway 只负责原样转发。
 - `full`：启动时明确授予最高权限，后台可直接执行命令、读写文件，不再逐次确认。
 
-`full` 当前支持 OpenCode、Qoder、Hermes、CodeBuddy、Codex 和
-Claude Code。Gateway 会自动批准这些 ACP 后台发起的权限请求；此外 Qoder 和 CodeBuddy
-CLI 会使用 `--dangerously-skip-permissions`，OpenCode 会在受管进程的内联配置中为
-协调 Agent 和任务 Agent 设置 `permission: "allow"`，Codex 会使用
-`agent-full-access` 模式。
+`full` 当前支持 OpenCode、Qoder、Kimi Code、Hermes、CodeBuddy、Codex 和
+Claude Code。Gateway 会自动批准这些 ACP 后台发起的权限请求；此外 Kimi Code
+会通过 ACP Session 配置切换到不会再提问的 Auto 模式，Qoder 和 CodeBuddy CLI
+会使用 `--dangerously-skip-permissions`，OpenCode 会在受管进程的内联配置中为协调
+Agent 和任务 Agent 设置 `permission: "allow"`，Codex 会使用
+`agent-full-access` 模式。Kimi Code 的 YOLO 模式仍可能向用户提问，因此这里不会
+用它映射 `full`。
 
 OpenClaw 的执行授权同时受 exec approvals、elevated 和执行 host 等配置约束，
 无法由一个统一开关安全、完整地表达；选择 `full` 时 Gateway 会明确拒绝启动，

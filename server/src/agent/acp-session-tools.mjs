@@ -182,6 +182,7 @@ export class AcpSessionToolServer {
     await this.start()
     const token = randomUUID()
     this.contexts.set(token, context)
+    let released = false
     return {
       descriptor: {
         type: 'http',
@@ -192,7 +193,15 @@ export class AcpSessionToolServer {
           value: `Bearer ${token}`,
         }],
       },
-      release: () => this.contexts.delete(token),
+      update: nextContext => {
+        if (released || !this.contexts.has(token)) return false
+        this.contexts.set(token, nextContext)
+        return true
+      },
+      release: () => {
+        released = true
+        return this.contexts.delete(token)
+      },
     }
   }
 

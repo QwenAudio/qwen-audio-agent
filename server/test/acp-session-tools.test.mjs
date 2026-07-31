@@ -53,8 +53,27 @@ test('serves the shared Session tools over authenticated stateless MCP', async (
     JSON.parse(result.content[0].text).sessions[0].session_id,
     'one',
   )
+  assert.equal(registration.update({
+    listSessions: async input => {
+      calls.push(['updated-list', input])
+      return { sessions: [{ session_id: 'two' }] }
+    },
+  }), true)
+  const updated = await client.callTool({
+    name: 'qwen_audio_agent_sessions_list',
+    arguments: { query: 'updated-project' },
+  })
+  assert.deepEqual(calls.at(-1), [
+    'updated-list',
+    { query: 'updated-project' },
+  ])
+  assert.equal(
+    JSON.parse(updated.content[0].text).sessions[0].session_id,
+    'two',
+  )
   await client.close()
   registration.release()
+  assert.equal(registration.update({}), false)
   await server.close()
 })
 

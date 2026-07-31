@@ -78,6 +78,7 @@ test('opens the active OpenCode ACP coordinator Session directly', async () => {
 for (const protocol of [
   'openclaw',
   'qoder',
+  'kimi',
   'hermes',
   'codebuddy',
   'codex',
@@ -88,6 +89,7 @@ for (const protocol of [
     const client = new AgentClient({
       protocol,
       qoderDirectory: '/qoder',
+      kimiDirectory: '/kimi',
       openClawDirectory: '/openclaw',
       openClawBaseUrl: 'http://openclaw.test:18789',
       acpCommand: 'example-agent',

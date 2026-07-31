@@ -56,6 +56,25 @@ test('reports an incompatible installed OpenCode version', () => {
   assert.match(report.backends[0].issues[0], /最低版本 1\.18\.0/)
 })
 
+test('requires a compatible Kimi Code version', () => {
+  const ready = inspector({
+    backend: 'kimi',
+    commands: { kimi: '/bin/kimi' },
+    versions: { '/bin/kimi': '0.31.0' },
+  }).backends[0]
+  assert.equal(ready.ready, true)
+  assert.equal(ready.backend.version, '0.31.0')
+  assert.equal(ready.integration, 'native')
+
+  const legacy = inspector({
+    backend: 'kimi',
+    commands: { kimi: '/bin/kimi' },
+    versions: { '/bin/kimi': 'kimi-cli 0.30.9' },
+  }).backends[0]
+  assert.equal(legacy.ready, false)
+  assert.match(legacy.issues[0], /最低版本 0\.31\.0/)
+})
+
 test('reports automatic OpenCode and OpenClaw package setup', () => {
   const openCode = inspector({
     backend: 'opencode',

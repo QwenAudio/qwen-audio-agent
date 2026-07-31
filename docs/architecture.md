@@ -14,7 +14,8 @@ layers:
    requiring tools, current information, files, applications, code, or
    multi-step work.
 
-The backend may be OpenCode, OpenClaw, Qoder, or another ACP-compatible Agent.
+The backend may be OpenCode, OpenClaw, Qoder, Kimi Code, or another
+ACP-compatible Agent.
 It may internally use tools, skills, agents, or other Sessions. Those are
 backend-private implementation details and do not create additional
 qwen-audio-agent layers. All backends connect through one ACP client and one
@@ -249,14 +250,14 @@ after the asynchronous Session tool has already succeeded.
 
 ## 8. Backend-internal capabilities
 
-For OpenCode and Qoder, the Gateway injects the same five MCP tools into the
-coordinator through ACP: Session list, start, send, status, and cancel. OpenClaw
-ACP does not accept client-supplied MCP servers, so the same coordination
-contract maps to OpenClaw's native Session tools. `session_start` and
-`session_send` return an opaque delegation ID. After either succeeds, the
-backend Agent must not poll, repeat the work, or answer from its own context;
-the adapter owns waiting, cancellation, permission routing, and result
-correlation.
+For ACP backends that accept client-supplied MCP servers, including OpenCode,
+Qoder, and Kimi Code, the Gateway injects the same five tools into the
+coordinator: Session list, start, send, status, and cancel. OpenClaw ACP does
+not accept client-supplied MCP servers, so the same coordination contract maps
+to OpenClaw's native Session tools. `session_start` and `session_send` return an
+opaque delegation ID. After either succeeds, the backend Agent must not poll,
+repeat the work, or answer from its own context; the adapter owns waiting,
+cancellation, permission routing, and result correlation.
 
 `session_status` is observational only. If the query fails, the backend Agent
 must report the failure; it must not inspect the target directory with native
@@ -279,7 +280,8 @@ backend Agent envelope
    ↓
 Shared ACP adapter
    ↓
-OpenCode ACP, OpenClaw ACP bridge, or Qoder ACP
+OpenCode ACP, OpenClaw ACP bridge, Qoder ACP,
+Kimi Code ACP, or another ACP Agent
 ```
 
 Backend-specific API details belong only in `server/src/agent`. Realtime tools
@@ -297,8 +299,9 @@ own labels and interaction patterns.
 ## 10. Process ownership
 
 The Gateway is the only core product service. The shared adapter owns one ACP
-stdio child and stops it with the Gateway. OpenCode and Qoder run directly as
-ACP agents; OpenCode may additionally expose its native local Session UI.
+stdio child and stops it with the Gateway. OpenCode, Qoder, and Kimi Code run
+directly as ACP agents; OpenCode may additionally expose its native local
+Session UI.
 OpenClaw uses a small ACP bridge. Its adapter always starts and owns a dedicated
 OpenClaw Gateway with isolated runtime and Session state. It may reuse the
 user's model and capability configuration, but it never attaches to or shares

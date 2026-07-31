@@ -30,18 +30,43 @@ function fakeToolServer() {
   return {
     context: null,
     registerCalls: 0,
+    updateCalls: 0,
+    releaseCalls: 0,
+    registrations: [],
     async register(context) {
       this.context = context
       this.registerCalls += 1
-      return {
+      const registration = {
+        context,
+        released: false,
         descriptor: {
           type: 'http',
           name: 'test',
           url: `http://127.0.0.1/mcp/${this.registerCalls}`,
           headers: [],
         },
-        release() {},
+        update: nextContext => {
+          if (registration.released) return false
+          registration.context = nextContext
+          this.context = nextContext
+          this.updateCalls += 1
+          return true
+        },
+        release: () => {
+          if (registration.released) return false
+          registration.released = true
+          this.releaseCalls += 1
+          return true
+        },
+        call: (name, input) => {
+          if (registration.released) {
+            throw new Error('Session MCP interface unavailable')
+          }
+          return registration.context[name](input)
+        },
       }
+      this.registrations.push(registration)
+      return registration
     },
     async close() {},
   }
@@ -492,6 +517,18 @@ test('uses one ACP profile family while preserving backend differences', () => {
   })
   assert.equal(hermes.command, '/opt/hermes')
   assert.deepEqual(hermes.args, ['acp', '--accept-hooks'])
+  const kimi = acpBackendProfile({
+    protocol: 'kimi',
+    root,
+    directory: '/work',
+    cliPath: '/opt/kimi',
+    permissionMode: 'full',
+  })
+  assert.equal(kimi.command, '/opt/kimi')
+  assert.deepEqual(kimi.args, ['acp'])
+  assert.deepEqual(kimi.sessionConfigOptions, [
+    { id: 'mode', value: 'auto' },
+  ])
   const codeBuddy = acpBackendProfile({
     protocol: 'codebuddy',
     root,
@@ -560,6 +597,256 @@ test('uses one ACP profile family while preserving backend differences', () => {
   assert.equal(claude.env.CLAUDE_CODE_EXECUTABLE, '/opt/claude')
   assert.equal(claude.env.CLAUDE_CONFIG_DIR, '/config/claude')
   assert.equal(claude.externalMcp, true)
+})
+
+test('Kimi full permission mode configures coordinator and project Sessions', async () => {
+  const calls = []
+  const client = {
+    async start() {
+      return { agentCapabilities: { mcpCapabilities: { http: true } } }
+    },
+    async newSession(options) {
+      return {
+        sessionId: 'kimi-coordinator',
+        cwd: options.cwd,
+        response: {
+          configOptions: [{
+            type: 'select',
+            id: 'mode',
+            currentValue: 'default',
+            options: [
+              { value: 'default', name: 'Default' },
+              { value: 'auto', name: 'Auto' },
+            ],
+          }],
+        },
+      }
+    },
+    async setSessionConfigOption(sessionId, configId, value) {
+      calls.push([sessionId, configId, value])
+      return {
+        configOptions: [{
+          type: 'select',
+          id: 'mode',
+          currentValue: value,
+          options: [{ value: 'auto', name: 'Auto' }],
+        }],
+      }
+    },
+    async prompt() {
+      return {
+        content: completed('Kimi ready'),
+        response: { stopReason: 'end_turn' },
+      }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'kimi',
+    root: '/repo',
+    directory: '/kimi',
+    permissionMode: 'full',
+    client,
+    sessionToolServer: fakeToolServer(),
+  })
+
+  await adapter.runCoordinator('plain request', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+  await adapter.configureSession({
+    sessionId: 'kimi-project',
+    response: {
+      configOptions: [{
+        type: 'select',
+        id: 'mode',
+        currentValue: 'default',
+        options: [{ value: 'auto', name: 'Auto' }],
+      }],
+    },
+  }, 'project')
+
+  assert.deepEqual(calls, [
+    ['kimi-coordinator', 'mode', 'auto'],
+    ['kimi-project', 'mode', 'auto'],
+  ])
+  await adapter.close()
+})
+
+test('Kimi full permission mode rejects an ACP server without Auto mode', async () => {
+  const client = {
+    async start() {
+      return { agentCapabilities: { mcpCapabilities: { http: true } } }
+    },
+    async newSession(options) {
+      return {
+        sessionId: 'old-kimi',
+        cwd: options.cwd,
+        response: { configOptions: [] },
+      }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'kimi',
+    root: '/repo',
+    directory: '/kimi',
+    permissionMode: 'full',
+    client,
+    sessionToolServer: fakeToolServer(),
+  })
+
+  await assert.rejects(
+    adapter.runCoordinator('plain request', {
+      ownerId: 'owner-one',
+      coordinationRunId: 'work-one',
+    }),
+    /必要的 Session 配置 mode=auto/,
+  )
+  await adapter.close()
+})
+
+test('keeps a cached coordinator MCP connection valid across turns', async () => {
+  const tools = fakeToolServer()
+  let cachedDescriptor
+  let coordinatorPrompts = 0
+  const resumedDescriptors = []
+  const client = {
+    async newSession(options) {
+      if (options.role === 'coordinator') {
+        cachedDescriptor = options.mcpServers[0]
+        return {
+          sessionId: 'coordinator-session',
+          cwd: options.cwd,
+          response: {},
+        }
+      }
+      return {
+        sessionId: 'project-session',
+        cwd: options.cwd,
+        response: {},
+      }
+    },
+    async resumeSession(sessionId, options) {
+      resumedDescriptors.push(options.mcpServers[0])
+      return { sessionId, cwd: options.cwd, response: {} }
+    },
+    async prompt(sessionId) {
+      if (sessionId === 'project-session') {
+        return {
+          content: 'project complete',
+          response: { stopReason: 'end_turn' },
+        }
+      }
+      coordinatorPrompts += 1
+      if (coordinatorPrompts === 2) {
+        const cached = tools.registrations.find(registration => (
+          registration.descriptor.url === cachedDescriptor.url
+        ))
+        await cached.call('startSession', {
+          prompt: 'inspect the project',
+          directory: '/project',
+        })
+      }
+      return {
+        content: completed(`coordinator turn ${coordinatorPrompts}`),
+        response: { stopReason: 'end_turn' },
+      }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qoder',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+  })
+
+  await adapter.coordinatorTurn('first turn', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+  const second = await adapter.coordinatorTurn('second turn', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-two',
+  })
+
+  assert.equal(tools.registerCalls, 1)
+  assert.equal(tools.updateCalls, 1)
+  assert.equal(tools.releaseCalls, 0)
+  assert.equal(resumedDescriptors[0].url, cachedDescriptor.url)
+  assert.equal(second.run.delegation.workId, 'work-two')
+  assert.equal(second.run.delegation.ownerId, 'owner-one')
+  await second.run.delegation.promise
+  await adapter.close()
+  assert.equal(tools.releaseCalls, 1)
+})
+
+test('isolates coordinator MCP registrations by owner and releases them', async () => {
+  const tools = fakeToolServer()
+  let projectId = 0
+  const client = {
+    async newSession(options) {
+      return {
+        sessionId: options.role === 'coordinator'
+          ? `coordinator-${options.ownerId}`
+          : `project-${++projectId}`,
+        cwd: options.cwd,
+        response: {},
+      }
+    },
+    async prompt() {
+      return {
+        content: completed(),
+        response: { stopReason: 'end_turn' },
+      }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qoder',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+  })
+
+  await adapter.coordinatorTurn('owner one turn', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-owner-one',
+  })
+  await adapter.coordinatorTurn('owner two turn', {
+    ownerId: 'owner-two',
+    coordinationRunId: 'work-owner-two',
+  })
+  await tools.registrations[0].call('startSession', {
+    prompt: 'owner one project',
+    directory: '/project-one',
+  })
+  await tools.registrations[1].call('startSession', {
+    prompt: 'owner two project',
+    directory: '/project-two',
+  })
+
+  assert.equal(tools.registerCalls, 2)
+  assert.notEqual(
+    tools.registrations[0].descriptor.url,
+    tools.registrations[1].descriptor.url,
+  )
+  assert.equal(
+    adapter.delegatedWorkRuns.get('work-owner-one').delegation.ownerId,
+    'owner-one',
+  )
+  assert.equal(
+    adapter.delegatedWorkRuns.get('work-owner-two').delegation.ownerId,
+    'owner-two',
+  )
+  await Promise.all([
+    adapter.delegatedWorkRuns.get('work-owner-one').delegation.promise,
+    adapter.delegatedWorkRuns.get('work-owner-two').delegation.promise,
+  ])
+  await adapter.close()
+  assert.equal(tools.releaseCalls, 2)
+  assert.equal(tools.registrations.every(item => item.released), true)
 })
 
 for (const action of ['start', 'send']) {

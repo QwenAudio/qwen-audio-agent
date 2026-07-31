@@ -314,11 +314,12 @@ test('releases a poison batch after bounded retries so later results can proceed
     onRelease: taskIds => released.push(...taskIds),
   })
   manager.completed({ id: 'poison', objective: '坏任务', result: '坏结果' })
-  await new Promise(resolve => setTimeout(resolve, 2))
+  await waitFor(() => inputs.some(input => input.includes('坏结果')))
   manager.completed({ id: 'healthy', objective: '好任务', result: '好结果' })
-  await new Promise(resolve => setTimeout(resolve, 20))
-  assert.ok(released.includes('poison'))
-  assert.ok(inputs.some(input => input.includes('好结果')))
+  await waitFor(() => (
+    released.includes('poison')
+    && inputs.some(input => input.includes('好结果'))
+  ))
   manager.confirmMany(['healthy'])
   manager.close()
 })

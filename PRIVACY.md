@@ -9,9 +9,9 @@ qwen-audio-agent 是本地运行的语音前台，不包含内置遥测、广告
   DashScope 的 Qwen Audio Realtime 服务。若用户配置其他兼容服务，则数据发送到
   该服务。
 - 委派任务、必要的对话上下文和任务结果会发送给用户选择的后台 Agent，例如
-  OpenCode、OpenClaw、Qoder、Hermes、CodeBuddy、Codex、Claude Code 或用户配置的
-  其他 ACP Agent。后台 Agent 还可能按照用户配置调用模型、工具、MCP 服务或访问
-  项目文件；这些服务各自的隐私政策同样适用。
+  OpenCode、OpenClaw、Qoder、Kimi Code、Hermes、CodeBuddy、Codex、Claude Code
+  或用户配置的其他 ACP Agent。后台 Agent 还可能按照用户配置调用模型、工具、
+  MCP 服务或访问项目文件；这些服务各自的隐私政策同样适用。
 - Markdown 中的远程图片、音频和视频默认不会自动加载。用户点击加载或打开链接
   后，目标站点可能获知用户的 IP 地址和浏览器信息。
 

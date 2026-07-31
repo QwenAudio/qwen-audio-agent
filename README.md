@@ -63,6 +63,7 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 | OpenCode | 原生 ACP | 支持自动安装和百炼配置 | ★★★★★ |
 | OpenClaw | 内置 ACP 桥接 | 支持自动安装和百炼配置 | ★★★★★ |
 | Qoder | 原生 ACP | 用户自行安装和配置 | ★★★★★ |
+| Kimi Code | 原生 ACP | 用户自行安装和配置 | ★★★★★ |
 | Hermes | 原生 ACP | 用户自行安装和配置 | ★★★★☆ |
 | CodeBuddy | 原生 ACP | 用户自行安装和配置 | ★★★★☆ |
 | Codex | 外部 ACP 适配 | 用户自行安装和配置 | ★★★★☆ |
@@ -249,11 +250,11 @@ AGENT_PROTOCOL=opencode
 AGENT_PROTOCOL=qoder
 ```
 
-Hermes、CodeBuddy、Codex 和 Claude Code 也可直接选择：
+Kimi Code、Hermes、CodeBuddy、Codex 和 Claude Code 也可直接选择：
 
 ```dotenv
-AGENT_PROTOCOL=hermes
-# 或 codebuddy、codex、claude
+AGENT_PROTOCOL=kimi
+# 或 hermes、codebuddy、codex、claude
 ```
 
 以上其他后台暂时需要用户自行安装并完成原生配置；qwen-audio-agent 会复用其

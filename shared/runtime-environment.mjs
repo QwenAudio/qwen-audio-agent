@@ -21,13 +21,14 @@ const USER_CONFIG_TEMPLATE = [
   'QWEN_AUDIO_REALTIME_PROVIDER=dashscope',
   '',
   '# 可选：选择后台 Agent；留空时仅使用前台实时语音聊天',
-  '# 可选 openclaw、opencode、qoder、hermes、codebuddy、codex、claude、acp 或 none',
+  '# 可选 openclaw、opencode、qoder、kimi、hermes、codebuddy、codex、claude、acp 或 none',
   'AGENT_PROTOCOL=',
   '# 权限模式：native（后台自行询问）或 full（最高权限；仅支持安全映射的后端）',
   '# QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native',
   '# 可选：显式覆盖后台模型；留空时使用 Agent 原有模型',
   '# QWEN_AUDIO_AGENT_BACKEND_MODEL=',
   '# 可选：QWEN_AUDIO_AGENT_BACKEND_AGENT=协调 Agent ID',
+  '# Kimi Code 可复用原生登录，或设置官方 KIMI_MODEL_* 临时模型变量',
   '# 通用 ACP：ACP_COMMAND=your-agent，ACP_ARGS=["--acp"]',
   '',
 ].join('\n')
@@ -329,6 +330,10 @@ export function loadRuntimeEnvironment({
   const qoderWorkspace = env.QODER_WORKSPACE
     ? resolve(root, env.QODER_WORKSPACE)
     : resolve(configDirectory, 'workspaces/qoder')
+  const defaultKimiWorkspace = !env.KIMI_WORKSPACE
+  const kimiWorkspace = env.KIMI_WORKSPACE
+    ? resolve(root, env.KIMI_WORKSPACE)
+    : resolve(configDirectory, 'workspaces/kimi')
   const defaultHermesWorkspace = !env.HERMES_WORKSPACE
   const hermesWorkspace = env.HERMES_WORKSPACE
     ? resolve(root, env.HERMES_WORKSPACE)
@@ -367,6 +372,12 @@ export function loadRuntimeEnvironment({
       ensureManagedWorkspace(
         qoderWorkspace,
         resolve(root, 'config/qoder/workspace/AGENTS.md'),
+      )
+    }
+    if (defaultKimiWorkspace) {
+      ensureManagedWorkspace(
+        kimiWorkspace,
+        resolve(root, 'config/kimi/workspace/AGENTS.md'),
       )
     }
     if (defaultHermesWorkspace) {
@@ -409,6 +420,7 @@ export function loadRuntimeEnvironment({
     env.QWEN_AUDIO_AGENT_OPENCLAW_WORKSPACE = openClawWorkspace
     env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR = openClawStateDirectory
     env.QODER_WORKSPACE = qoderWorkspace
+    env.KIMI_WORKSPACE = kimiWorkspace
     env.HERMES_WORKSPACE = hermesWorkspace
     env.CODEBUDDY_WORKSPACE = codeBuddyWorkspace
     env.CODEX_WORKSPACE = codexWorkspace
@@ -433,6 +445,7 @@ export function loadRuntimeEnvironment({
     openCodeWorkspace,
     openClawWorkspace,
     qoderWorkspace,
+    kimiWorkspace,
     hermesWorkspace,
     codeBuddyWorkspace,
     codexWorkspace,

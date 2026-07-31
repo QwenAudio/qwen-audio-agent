@@ -18,6 +18,11 @@ const definitions = new Map([
     label: 'Qoder',
     supportsFullPermission: true,
   }],
+  ['kimi', {
+    id: 'kimi',
+    label: 'Kimi Code',
+    supportsFullPermission: true,
+  }],
   ['hermes', {
     id: 'hermes',
     label: 'Hermes',

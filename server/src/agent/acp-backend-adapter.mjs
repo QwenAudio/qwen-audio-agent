@@ -177,6 +177,10 @@ export class AcpBackendAdapter {
     this.resolvedPermissions = new Map()
     this.coordinatorSessions = new Map()
     this.coordinatorSessionPromises = new Map()
+    // ACP agents may cache the first MCP connection for a Session. Keep its
+    // descriptor stable while serialized owner turns replace the run context.
+    this.coordinatorToolRegistrations = new Map()
+    this.coordinatorToolRegistrationPromises = new Map()
     this.sessionQueues = new Map()
     this.activeCoordinatorTurns = new Set()
     this.delegatedWorkRuns = new Map()
@@ -328,12 +332,38 @@ export class AcpBackendAdapter {
     return pending
   }
 
+  async ensureCoordinatorToolRegistration(ownerId, context) {
+    if (!this.profile.externalMcp) return null
+    const key = coordinatorKey(ownerId, this.protocol)
+    const current = this.coordinatorToolRegistrations.get(key)
+    if (current) {
+      current.update(context)
+      return current
+    }
+    const existingPromise = this.coordinatorToolRegistrationPromises.get(key)
+    if (existingPromise) {
+      const registration = await existingPromise
+      registration.update(context)
+      return registration
+    }
+    const pending = this.sessionToolServer.register(context).then(
+      registration => {
+        this.coordinatorToolRegistrations.set(key, registration)
+        return registration
+      },
+    ).finally(() => {
+      this.coordinatorToolRegistrationPromises.delete(key)
+    })
+    this.coordinatorToolRegistrationPromises.set(key, pending)
+    return pending
+  }
+
   coordinatorMeta(ownerId) {
     return this.profile.coordinatorMeta?.(ownerId) || null
   }
 
   async configureSession(session, role) {
-    const options = Array.isArray(session?.response?.configOptions)
+    let options = Array.isArray(session?.response?.configOptions)
       ? session.response.configOptions
       : []
     if (role === 'coordinator' && this.coordinatorAgent) {
@@ -351,9 +381,62 @@ export class AcpBackendAdapter {
         option.currentValue = value
       }
     }
+    options = await this.applyProfileSessionConfig(session, options)
     if (this.model) {
       await this.forceSessionModel(session, options)
     }
+  }
+
+  async applyProfileSessionConfig(session, initialOptions) {
+    let options = initialOptions
+    for (const setting of this.profile.sessionConfigOptions || []) {
+      const id = clean(setting?.id)
+      const desired = clean(setting?.value)
+      const option = options.find(item => clean(item?.id) === id)
+      const selected = option?.type === 'select'
+        ? matchingOptionValue(option.options, desired)
+        : desired
+      if (!option || !selected) {
+        throw new AgentError(
+          `${this.label} 没有通过 ACP 提供必要的 Session 配置 ${id}=${desired}`,
+          { status: 422, protocol: 'acp' },
+        )
+      }
+      if (modelKey(option.currentValue) === modelKey(selected)) continue
+      let response
+      try {
+        response = await this.client.setSessionConfigOption(
+          session.sessionId,
+          id,
+          selected,
+        )
+      } catch (error) {
+        throw new AgentError(
+          `${this.label} 无法设置 Session 配置 ${id}=${desired}：${
+            clean(error?.message) || '未知错误'
+          }`,
+          { status: error.status || 502, protocol: 'acp' },
+        )
+      }
+      const updatedOptions = Array.isArray(response?.configOptions)
+        ? response.configOptions
+        : null
+      const updated = updatedOptions?.find(item => clean(item?.id) === id)
+      if (modelKey(updated?.currentValue) !== modelKey(selected)) {
+        throw new AgentError(
+          `${this.label} 未确认 Session 配置生效：要求 ${id}=${desired}，实际 ${
+            clean(updated?.currentValue) || '未知'
+          }`,
+          { status: 502, protocol: 'acp' },
+        )
+      }
+      options = updatedOptions
+      session.response = {
+        ...(session.response || {}),
+        configOptions: options,
+      }
+    }
+    return options
   }
 
   async forceSessionModel(session, options) {
@@ -975,12 +1058,10 @@ export class AcpBackendAdapter {
           message,
         ].join('\n')
       : message
-    let registration = null
-    if (this.profile.externalMcp) {
-      registration = await this.sessionToolServer.register(
-        this.toolContext(run),
-      )
-    }
+    const registration = await this.ensureCoordinatorToolRegistration(
+      ownerId,
+      this.toolContext(run),
+    )
     const mcpServers = registration ? [registration.descriptor] : []
     const session = await this.ensureCoordinatorSession(ownerId, mcpServers)
     const permissionScopeId = `prompt_${randomUUID()}`
@@ -1034,7 +1115,6 @@ export class AcpBackendAdapter {
       }
     } finally {
       this.activeCoordinatorTurns.delete(session.sessionId)
-      registration?.release()
       this.cancelPermissionsForScope(permissionScopeId)
       if (session.permissionScopeId === permissionScopeId) {
         session.permissionScopeId = null
@@ -1410,6 +1490,14 @@ export class AcpBackendAdapter {
       record.pending.resolve({ outcome: { outcome: 'cancelled' } })
     }
     this.pendingPermissions.clear()
+    await Promise.allSettled(
+      [...this.coordinatorToolRegistrationPromises.values()],
+    )
+    const registrations = [...this.coordinatorToolRegistrations.values()]
+    this.coordinatorToolRegistrations.clear()
+    await Promise.allSettled(registrations.map(registration => (
+      Promise.resolve().then(() => registration.release())
+    )))
     await Promise.allSettled([
       this.sessionToolServer.close(),
       this.client.close(),

@@ -162,6 +162,7 @@ test('desktop settings expose the embedded voice service without editing backend
   assert.match(html, /id="agent-protocol"/)
   assert.match(html, /id="realtime-model"/)
   assert.match(html, /id="backend-model"/)
+  assert.match(html, /<option value="kimi">Kimi Code<\/option>/)
   for (const id of [
     'api-key',
     'realtime-voice',

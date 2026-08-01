@@ -261,6 +261,9 @@ export function attachRealtimeGateway(server, {
     const voiceClient = {
       ws,
       descriptor,
+      // Lets the arbitration evict this owner once its socket has died without
+      // a clean close, so a stale holder never blocks a new voice claim.
+      isAlive: () => ws.readyState === WebSocket.OPEN,
       deactivate: replacement => {
         inputEnabled = false
         outputEnabled = false

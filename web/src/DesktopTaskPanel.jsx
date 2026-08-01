@@ -20,6 +20,7 @@ export default function DesktopTaskPanel({
   onOpenDetails,
 }) {
   const phase = task.phase || task.status
+  const normalizedTask = { ...task, phase }
   const isRunning = ['queued', 'running', 'delegated', 'finalizing'].includes(phase)
   const isFailed = phase === 'failed'
   const isCompleted = phase === 'completed'
@@ -39,7 +40,7 @@ export default function DesktopTaskPanel({
     >
       <div className="desktop-task-panel-header">
         <span className="desktop-task-panel-agent">
-          {backendLabel || 'Agent'} {isRunning ? '正在执行' : taskLabel(task)}
+          {backendLabel || 'Agent'} {isRunning ? '正在执行' : taskLabel(normalizedTask)}
         </span>
         <span className="desktop-task-panel-time">{formatElapsed(task.elapsedMs)}</span>
       </div>
@@ -47,7 +48,7 @@ export default function DesktopTaskPanel({
         {truncateObjective(task.objective)}
       </div>
       <div className="desktop-task-panel-detail">
-        {taskDetail(task)}
+        {taskDetail(normalizedTask)}
       </div>
       <div className="desktop-task-panel-footer">
         <div className="desktop-task-panel-progress">

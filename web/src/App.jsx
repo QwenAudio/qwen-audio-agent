@@ -26,6 +26,7 @@ import {
   taskView,
 } from './task-view.js'
 import useRealtimeVoice, {
+  retainedRealtimeProvider,
   shouldClaimReleasedVoice,
 } from './useRealtimeVoice.js'
 import { requestedSessionId } from './session.js'
@@ -203,6 +204,20 @@ export default function App() {
           label: payload.realtimeLabel || payload.realtimeProvider || 'Realtime Agent',
         })
         setRealtimeProviders(payload.realtimeProviders || [])
+        // A front end persisted by an earlier visit may no longer exist on this
+        // server (removed provider, different deployment). Sending it would be
+        // refused on every connect, so the stale selection is dropped in favour
+        // of the server default instead of leaving the client stuck.
+        setRealtimeProvider(current => {
+          const retained = retainedRealtimeProvider(
+            current,
+            payload.realtimeProviders,
+          )
+          if (retained !== current) {
+            localStorage.removeItem('qwen-audio-agent.realtimeProvider')
+          }
+          return retained
+        })
         setBackend({
           label,
           ready: response.ok && payload.backend?.ok,
@@ -621,6 +636,9 @@ export default function App() {
     ? frontendLabel(voice.ownership.holder)
     : ''
 
+  // Switching the front end reconnects on its own: realtimeProvider is part of
+  // the realtime effect's dependencies, so changing it tears the current socket
+  // down and connects again with the newly selected provider.
   const selectRealtimeProvider = value => {
     setRealtimeProvider(value)
     if (value) {

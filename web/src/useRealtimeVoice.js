@@ -40,6 +40,15 @@ export function shouldAdvertiseVoice(enabled, inputReady) {
   return enabled === true && inputReady === true
 }
 
+// Keeps a persisted front end selection only while the server still offers it.
+// A stale key would be refused on every connect, so it degrades to the empty
+// value that means "use the server default".
+export function retainedRealtimeProvider(selected, providers) {
+  if (!selected) return ''
+  const offered = (providers || []).some(provider => provider.key === selected)
+  return offered ? selected : ''
+}
+
 export function microphoneControlEvent({
   enabled,
   inputOnlyMute = false,

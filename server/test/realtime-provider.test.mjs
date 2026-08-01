@@ -835,6 +835,27 @@ test('synthesizes the session acknowledgement a GA provider never sends', () => 
   assert.equal(frontend.ready, true)
 })
 
+test('reports the leaked response ids when forcing the idle gate open', () => {
+  const frontend = createS2sFrontend()
+  const warnings = []
+  const originalWarn = console.warn
+  console.warn = message => warnings.push(String(message))
+
+  try {
+    frontend.activeResponses.add('resp_leaked')
+    frontend.forceReleaseIdleGate()
+  } finally {
+    console.warn = originalWarn
+  }
+
+  // The compensation must stay visible: releasing the gate silently would hide
+  // the provider lifecycle bug it works around.
+  assert.equal(frontend.activeResponses.size, 0)
+  assert.equal(warnings.length, 1)
+  assert.match(warnings[0], /idle gate force-released/)
+  assert.match(warnings[0], /resp_leaked/)
+})
+
 test('namespaces GA conversation item ids by item type', async () => {
   const frontend = createS2sFrontend()
   const sent = []

@@ -629,6 +629,15 @@ export class RealtimeFrontend {
 
   forceReleaseIdleGate() {
     if (!this.activeResponses.size) return
+    // Reaching this point always means a provider lifecycle event was lost or
+    // mismatched. The gate is released so queued work is merely delayed, but
+    // the leaked ids are reported: without that trace the compensation would
+    // silently hide the very provider bugs it works around.
+    console.warn(
+      `[voice] ${this.provider.key}: idle gate force-released after `
+      + `${this.provider.idleGateTimeoutMs}ms, leaked response ids: `
+      + `${[...this.activeResponses].join(', ')}`,
+    )
     for (const id of [...this.activeResponses]) {
       const pending = this.responseWaiters.get(id)
       this.responseWaiters.delete(id)

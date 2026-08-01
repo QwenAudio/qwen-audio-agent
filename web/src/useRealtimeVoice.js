@@ -63,6 +63,7 @@ export default function useRealtimeVoice({
   clientType = 'web',
   clientLabel = 'WebUI',
   takeover = false,
+  realtimeProvider = '',
   onEvent,
   onInputError,
 }) {
@@ -282,6 +283,8 @@ export default function useRealtimeVoice({
           clientLabel,
           clientInstanceId: clientInstanceId.current,
           takeover,
+          // Empty means "keep the server default front end".
+          ...(realtimeProvider ? { provider: realtimeProvider } : {}),
         }))
       }
       socket.onmessage = message => {
@@ -367,7 +370,7 @@ export default function useRealtimeVoice({
       stopPlayback()
       mutedPlaybackResponses.current.clear()
     }
-  }, [clientLabel, clientType, inputOnlyMute, sessionId, takeover])
+  }, [clientLabel, clientType, inputOnlyMute, realtimeProvider, sessionId, takeover])
 
   useEffect(() => {
     if (outputMuted) stopPlayback()

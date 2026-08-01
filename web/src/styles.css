@@ -720,3 +720,18 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
     transition: none;
   }
 }
+
+/* frontend provider selector */
+header select.frontend-provider {
+  background: transparent;
+  color: inherit;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+header select.frontend-provider option {
+  color: #111;
+}

@@ -110,6 +110,10 @@ export default function App() {
   const [messages, setMessages] = useState([])
   const [activity, setActivity] = useState('正在检查后台 Agent')
   const [frontend, setFrontend] = useState({ label: 'Realtime Agent' })
+  const [realtimeProviders, setRealtimeProviders] = useState([])
+  const [realtimeProvider, setRealtimeProvider] = useState(
+    () => localStorage.getItem('qwen-audio-agent.realtimeProvider') || '',
+  )
   const [backend, setBackend] = useState({ label: 'Agent', ready: false })
   const [agentTasks, setAgentTasks] = useState([])
   const [orbDragging, setOrbDragging] = useState(false)
@@ -198,6 +202,7 @@ export default function App() {
         setFrontend({
           label: payload.realtimeLabel || payload.realtimeProvider || 'Realtime Agent',
         })
+        setRealtimeProviders(payload.realtimeProviders || [])
         setBackend({
           label,
           ready: response.ok && payload.backend?.ok,
@@ -601,6 +606,7 @@ export default function App() {
     clientType: desktopOrbMode ? 'desktop' : 'web',
     clientLabel: desktopOrbMode ? '桌面端' : 'WebUI',
     takeover: takeoverRequested,
+    realtimeProvider,
     onEvent: onRealtimeEvent,
     onInputError: message => {
       setVoiceEnabled(false)
@@ -614,6 +620,15 @@ export default function App() {
   const ownershipLabel = voice.ownership.holder
     ? frontendLabel(voice.ownership.holder)
     : ''
+
+  const selectRealtimeProvider = value => {
+    setRealtimeProvider(value)
+    if (value) {
+      localStorage.setItem('qwen-audio-agent.realtimeProvider', value)
+    } else {
+      localStorage.removeItem('qwen-audio-agent.realtimeProvider')
+    }
+  }
 
   const resetSession = () => {
     taskDismissTimers.current.forEach(timer => clearTimeout(timer))
@@ -850,6 +865,18 @@ export default function App() {
         <i className={backend.ready ? 'ready' : ''} />
         {backend.label}
       </a>
+      {realtimeProviders.length > 1 && <select
+        className="ghost frontend-provider"
+        value={realtimeProvider}
+        onChange={event => selectRealtimeProvider(event.target.value)}
+        title="选择前台语音引擎"
+        aria-label="选择前台语音引擎"
+      >
+        <option value="">前台：默认（{frontend.label}）</option>
+        {realtimeProviders.map(item => <option key={item.key} value={item.key}>
+          前台：{item.label}
+        </option>)}
+      </select>}
       <div className="status"><i className={visualVoiceState} />{labelFor(visualVoiceState)}</div>
       <button className="ghost" onClick={resetSession}>新会话</button>
       <button

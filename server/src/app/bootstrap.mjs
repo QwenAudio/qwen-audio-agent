@@ -80,6 +80,9 @@ app.get('/api/health', async (req, res) => {
     realtimeLabel: realtime.label,
     realtimeModel: realtime.model,
     realtimeInputSampleRate: realtime.inputSampleRate,
+    // Front ends a client may select for its session through the realtime
+    // connect event.
+    realtimeProviders: realtime.providers,
     announceIntoContext: config.announceIntoContext,
     resultContextMaxChars: config.resultContextMaxChars,
     announcementBatchMs: config.announcementBatchMs,

@@ -163,10 +163,9 @@ export default function App() {
   useEffect(() => {
     if (!desktopOrbMode) return
     const hasPanel = activePanelTask !== null
-    const targetHeight = hasPanel ? 380 : 170
     window.qwenAudioAgentDesktop?.resizeOrb?.({
-      width: 172,
-      height: targetHeight,
+      width: 280,
+      height: hasPanel ? 380 : 170,
       animate: true,
     })
   }, [activePanelTask])

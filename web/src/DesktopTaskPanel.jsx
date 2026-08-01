@@ -8,9 +8,8 @@ function formatElapsed(ms = 0) {
   return `${minutes}m ${remainder}s`
 }
 
-function truncateObjective(text = '', max = 40) {
-  if (text.length <= max) return text
-  return `${text.slice(0, max)}…`
+function normalizeText(text = '') {
+  return String(text).trim().replace(/[\s。，！？\.\,\!\?]+$/g, '')
 }
 
 export default function DesktopTaskPanel({
@@ -33,6 +32,10 @@ export default function DesktopTaskPanel({
   if (isFailed) statusClass = 'failed'
   if (task.authorization?.status === 'pending') statusClass = 'pending'
 
+  const detail = taskDetail(normalizedTask)
+  const objective = task.objective || ''
+  const showDetail = normalizeText(detail) !== normalizeText(objective)
+
   return (
     <aside
       className={`desktop-task-panel ${statusClass}`}
@@ -53,11 +56,13 @@ export default function DesktopTaskPanel({
           onOpenDetails?.()
         }}
       >
-        {truncateObjective(task.objective)}
+        {objective}
       </button>
-      <div className="desktop-task-panel-detail">
-        {taskDetail(normalizedTask)}
-      </div>
+      {showDetail && (
+        <div className="desktop-task-panel-detail">
+          {detail}
+        </div>
+      )}
       <div className="desktop-task-panel-footer">
         <div className="desktop-task-panel-progress">
           <div className="desktop-task-panel-progress-bar" />

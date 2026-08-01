@@ -749,7 +749,7 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
   top: 166px;
   left: 50%;
   transform: translateX(-50%);
-  width: 220px;
+  width: 240px;
   background: rgba(30, 41, 59, 0.95);
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 12px;
@@ -783,9 +783,22 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 6px;
   font-size: 11px;
   color: #94a3b8;
+}
+
+.desktop-task-panel-agent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-task-panel-time {
+  flex-shrink: 0;
 }
 
 .desktop-task-panel-detail {

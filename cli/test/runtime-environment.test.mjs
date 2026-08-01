@@ -130,6 +130,26 @@ test('generates and reuses a private stable local identity secret', () => {
   assertPrivateMode(result.userProfilePath)
 })
 
+test('reuses the persisted secret when the environment provides an empty value', () => {
+  const target = fixture()
+  const first = {}
+  loadRuntimeEnvironment({
+    root: target.root,
+    homeDirectory: target.homeDirectory,
+    env: first,
+  })
+
+  const second = { QWEN_AUDIO_AGENT_AUTH_SECRET: '' }
+  const result = loadRuntimeEnvironment({
+    root: target.root,
+    homeDirectory: target.homeDirectory,
+    env: second,
+  })
+
+  assert.equal(second.QWEN_AUDIO_AGENT_AUTH_SECRET, first.QWEN_AUDIO_AGENT_AUTH_SECRET)
+  assert.equal(result.generatedSecret, false)
+})
+
 test('does not overwrite an existing user profile', () => {
   const target = fixture()
   const configDirectory = resolve(target.homeDirectory, '.config/qwaudio')

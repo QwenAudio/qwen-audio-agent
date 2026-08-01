@@ -83,6 +83,8 @@ export function userConfigDirectory(
 function ensureGeneratedSecret(env, configDirectory) {
   if (env[SECRET_KEY]) return { generated: false, statePath: null }
   const statePath = resolve(configDirectory, 'state.env')
+  // An empty shell assignment must not mask the persisted local identity.
+  delete env[SECRET_KEY]
   loadFile(statePath, env)
   if (env[SECRET_KEY]) {
     try {

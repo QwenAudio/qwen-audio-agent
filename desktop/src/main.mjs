@@ -124,8 +124,14 @@ const DEFAULT_ORB_WIDTH = 172
 const DEFAULT_ORB_HEIGHT = 170
 const EXPANDED_ORB_HEIGHT = 380
 
+let orbResizeAnimation = null
+
 function animateWindowResize(window, targetWidth, targetHeight, duration = 200) {
   if (!window || window.isDestroyed()) return
+  if (orbResizeAnimation) {
+    clearTimeout(orbResizeAnimation.timer)
+    orbResizeAnimation = null
+  }
   const [currentWidth, currentHeight] = window.getSize()
   const [currentX, currentY] = window.getPosition()
   const startWidth = currentWidth
@@ -135,6 +141,10 @@ function animateWindowResize(window, targetWidth, targetHeight, duration = 200) 
   const startTime = performance.now()
 
   function frame() {
+    if (!window || window.isDestroyed()) {
+      orbResizeAnimation = null
+      return
+    }
     const now = performance.now()
     const elapsed = now - startTime
     const progress = Math.min(1, elapsed / duration)
@@ -143,12 +153,14 @@ function animateWindowResize(window, targetWidth, targetHeight, duration = 200) 
     const nextHeight = Math.round(startHeight + deltaHeight * ease)
     const nextX = Math.round(currentX - (deltaWidth * ease) / 2)
     const nextY = Math.round(currentY - (deltaHeight * ease) / 2)
-    if (!window.isDestroyed()) {
-      window.setBounds({ x: nextX, y: nextY, width: nextWidth, height: nextHeight })
-      if (progress < 1) setImmediate(frame)
+    window.setBounds({ x: nextX, y: nextY, width: nextWidth, height: nextHeight })
+    if (progress < 1) {
+      orbResizeAnimation = { timer: setTimeout(frame, 16) }
+    } else {
+      orbResizeAnimation = null
     }
   }
-  setImmediate(frame)
+  orbResizeAnimation = { timer: setTimeout(frame, 0) }
 }
 
 function ensureWindowWithinBounds(window) {

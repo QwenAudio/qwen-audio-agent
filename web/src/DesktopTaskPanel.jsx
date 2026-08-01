@@ -48,8 +48,10 @@ export default function DesktopTaskPanel({
       <button
         type="button"
         className="desktop-task-panel-title-button"
-        onClick={onOpenDetails}
-        aria-label="打开任务详情"
+        onClick={event => {
+          event.stopPropagation()
+          onOpenDetails?.(event)
+        }}
       >
         {truncateObjective(task.objective)}
       </button>

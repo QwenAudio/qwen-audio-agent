@@ -15,6 +15,7 @@ import {
 } from './message-order.js'
 import MessageContent from './MessageContent.jsx'
 import DesktopFluidOrb from './DesktopFluidOrb.jsx'
+import DesktopTaskPanel from './DesktopTaskPanel.jsx'
 import { desktopOrbClassName } from './orb-presentation.js'
 import { resultLabel } from './presentation.js'
 import {
@@ -144,6 +145,45 @@ export default function App() {
 
   const noteInteraction = useCallback(() => {
     setLastInteractionAt(Date.now())
+  }, [])
+
+  const activePanelTask = useMemo(() => {
+    const active = agentTasks.filter(task => (
+      ['queued', 'running', 'delegated', 'finalizing', 'cancelling'].includes(task.phase)
+      || task.authorization?.status === 'pending'
+    ))
+    if (active.length === 0) return null
+    return active.reduce((latest, task) => (
+      (task.startedAt || task.createdAt || 0) > (latest.startedAt || latest.createdAt || 0)
+        ? task
+        : latest
+    ), active[0])
+  }, [agentTasks])
+
+  useEffect(() => {
+    if (!desktopOrbMode) return
+    const hasPanel = activePanelTask !== null
+    const targetHeight = hasPanel ? 380 : 170
+    window.qwenAudioAgentDesktop?.resizeOrb?.({
+      width: 172,
+      height: targetHeight,
+      animate: true,
+    })
+  }, [activePanelTask])
+
+  const cancelTask = useCallback(async taskId => {
+    try {
+      await fetch(`api/tasks/${encodeURIComponent(taskId)}`, { method: 'DELETE' })
+    } catch (error) {
+      console.error('Failed to cancel task:', error)
+    }
+  }, [])
+
+  const openTaskDetails = useCallback(() => {
+    const url = new URL(window.location.href)
+    url.searchParams.delete('desktop')
+    url.searchParams.delete('orbStyle')
+    window.qwenAudioAgentDesktop?.openWebUI?.(url.toString())
   }, [])
 
   const respondToPermission = useCallback(async (taskId, permission, decision) => {
@@ -893,6 +933,9 @@ export default function App() {
         onPointerUp={endOrbDrag}
         onPointerCancel={endOrbDrag}
       >
+        {activePanelTask && (
+          <div className="desktop-orb-running-ring" aria-hidden="true" />
+        )}
         <DesktopFluidOrb style={orbStyle} />
         <nav
           className="desktop-orb-controls"
@@ -945,6 +988,14 @@ export default function App() {
           </button>
         </nav>
       </section>
+      {activePanelTask && (
+        <DesktopTaskPanel
+          task={activePanelTask}
+          backendLabel={backend.label}
+          onCancel={cancelTask}
+          onOpenDetails={openTaskDetails}
+        />
+      )}
     </main>
   }
 

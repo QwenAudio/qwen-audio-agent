@@ -9,6 +9,14 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
   dragStart: (x, y) => sendPoint('qwen-audio-agent:drag-start', x, y),
   dragMove: (x, y) => sendPoint('qwen-audio-agent:drag-move', x, y),
   dragEnd: () => ipcRenderer.send('qwen-audio-agent:drag-end'),
+  resizeOrb: ({ width, height, animate }) => {
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return
+    ipcRenderer.send('qwen-audio-agent:resize-orb', { width, height, animate })
+  },
+  openWebUI: url => {
+    if (typeof url !== 'string') return
+    ipcRenderer.send('qwen-audio-agent:open-webui', url)
+  },
   openSettings: () => ipcRenderer.send('qwen-audio-agent:open-settings'),
   enterHide: () => ipcRenderer.invoke('qwen-audio-agent:enter-hide'),
   wake: () => ipcRenderer.send('qwen-audio-agent:wake'),

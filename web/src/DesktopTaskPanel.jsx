@@ -28,7 +28,7 @@ export default function DesktopTaskPanel({
   const isCompleted = phase === 'completed'
 
   let statusClass = ''
-  if (isRunning || phase === 'running') statusClass = 'running'
+  if (isRunning) statusClass = 'running'
   if (isCompleted) statusClass = 'completed'
   if (isFailed) statusClass = 'failed'
   if (task.authorization?.status === 'pending') statusClass = 'pending'
@@ -50,7 +50,7 @@ export default function DesktopTaskPanel({
         className="desktop-task-panel-title-button"
         onClick={event => {
           event.stopPropagation()
-          onOpenDetails?.(event)
+          onOpenDetails?.()
         }}
       >
         {truncateObjective(task.objective)}

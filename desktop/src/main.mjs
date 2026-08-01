@@ -45,7 +45,11 @@ import {
 } from './renderer-server.mjs'
 import {
   expandProcessPath,
+  refreshProcessPath,
 } from './process-path.mjs'
+import {
+  createDesktopUpdater,
+} from './updater.mjs'
 
 // macOS / Linux 图形界面应用的 PATH 只包含系统目录。在启动最早阶段
 // 将其扩充为用户登录 shell 的 PATH，让 Gateway 子进程与后台可用性
@@ -94,6 +98,7 @@ let reconnectTimer = null
 let embeddedGateway = null
 let gatewayCrashCount = 0
 let lastRuntimeError = ''
+let desktopUpdater = null
 
 const MAX_GATEWAY_CRASH_RESTARTS = 3
 
@@ -466,10 +471,25 @@ ipcMain.handle('qwen-audio-agent:settings-runtime-status', async event => {
 // AGENT_PROTOCOL / DASHSCOPE_API_KEY / ACP_COMMAND 等配置。
 // INSTALLED_ONLY 与 gateway-process.mjs 保持一致：桌面版运行时禁止
 // npx 按需回退，检测口径必须与运行时一致，只认已安装的组件。
-ipcMain.handle('qwen-audio-agent:settings-detect-backends', async event => {
+// 检测结果按会话缓存：重复打开设置页直接复用；“刷新”按钮（force）
+// 或缓存过期才真正重跑。真正检测前同步刷新登录 shell PATH，
+// 保证刚安装的命令立即可见。
+const BACKEND_REPORT_TTL_MS = 10 * 60 * 1000
+let backendReportCache = null
+
+ipcMain.handle('qwen-audio-agent:settings-detect-backends', async (event, options) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权检测后台 Agent')
   }
+  const now = Date.now()
+  if (
+    options?.force !== true
+    && backendReportCache
+    && now - backendReportCache.time < BACKEND_REPORT_TTL_MS
+  ) {
+    return backendReportCache.report
+  }
+  refreshProcessPath()
   const configured = existsSync(runtimeEnvironment.configPath)
     ? parseEnv(readFileSync(runtimeEnvironment.configPath, 'utf8'))
     : {}
@@ -480,7 +500,7 @@ ipcMain.handle('qwen-audio-agent:settings-detect-backends', async event => {
       QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY: '1',
     },
   })
-  return {
+  const result = {
     selected: report.selected,
     backends: report.backends.map(item => ({
       id: item.id,
@@ -489,6 +509,32 @@ ipcMain.handle('qwen-audio-agent:settings-detect-backends', async event => {
       selected: item.selected,
       issues: item.issues,
     })),
+  }
+  backendReportCache = { report: result, time: now }
+  return result
+})
+
+ipcMain.handle('qwen-audio-agent:updater-status', event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权读取更新状态')
+  }
+  return desktopUpdater?.state() || null
+})
+
+ipcMain.handle('qwen-audio-agent:updater-check', async event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权检查更新')
+  }
+  return desktopUpdater ? desktopUpdater.check() : null
+})
+
+// 仅在安装包已下载完成时允许触发安装，避免误重启。
+ipcMain.handle('qwen-audio-agent:updater-install', event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权安装更新')
+  }
+  if (desktopUpdater?.state().phase === 'downloaded') {
+    desktopUpdater.install()
   }
 })
 
@@ -590,6 +636,18 @@ if (!app.requestSingleInstanceLock()) {
       app.setActivationPolicy('accessory')
       app.dock?.hide()
     }
+    desktopUpdater = createDesktopUpdater({
+      currentVersion: app.getVersion(),
+      enabled: app.isPackaged,
+      notify: status => {
+        if (settingsWindow && !settingsWindow.isDestroyed()) {
+          settingsWindow.webContents.send(
+            'qwen-audio-agent:updater-status',
+            status,
+          )
+        }
+      },
+    })
     if (setupRequired) {
       showSettings()
     } else {

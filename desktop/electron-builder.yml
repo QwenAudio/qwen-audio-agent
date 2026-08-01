@@ -9,6 +9,13 @@ extraMetadata:
 directories:
   output: dist/desktop
 
+# 更新元数据（latest-mac.yml）指向 GitHub Releases，由 electron-updater
+# 在运行时发现新版本；CI 发布时随 dmg 与 blockmap 一并上传。
+publish:
+  - provider: github
+    owner: QwenAudio
+    repo: qwen-audio-agent
+
 files:
   - desktop/src/**/*
   - server/src/**/*

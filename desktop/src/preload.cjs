@@ -14,9 +14,24 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
   loadRuntimeStatus: () => ipcRenderer.invoke(
     'qwen-audio-agent:settings-runtime-status',
   ),
-  detectBackends: () => ipcRenderer.invoke(
+  detectBackends: options => ipcRenderer.invoke(
     'qwen-audio-agent:settings-detect-backends',
+    { force: options?.force === true },
   ),
+  loadUpdaterStatus: () => ipcRenderer.invoke(
+    'qwen-audio-agent:updater-status',
+  ),
+  checkUpdates: () => ipcRenderer.invoke('qwen-audio-agent:updater-check'),
+  installUpdate: () => ipcRenderer.invoke('qwen-audio-agent:updater-install'),
+  onUpdaterStatus: callback => {
+    if (typeof callback !== 'function') return () => {}
+    const listener = (_event, status) => callback(status)
+    ipcRenderer.on('qwen-audio-agent:updater-status', listener)
+    return () => ipcRenderer.removeListener(
+      'qwen-audio-agent:updater-status',
+      listener,
+    )
+  },
   saveSettings: settings => ipcRenderer.invoke(
     'qwen-audio-agent:settings-save',
     settings,

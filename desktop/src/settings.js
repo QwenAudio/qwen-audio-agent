@@ -1,4 +1,5 @@
 import { backendOptionStates } from './backend-options.mjs'
+import { updaterButtonState, updaterStatusText } from './update-status.mjs'
 
 const form = document.querySelector('#settings-form')
 const gatewayUrl = document.querySelector('#gateway-url')
@@ -13,6 +14,8 @@ const message = document.querySelector('#message')
 const currentRealtime = document.querySelector('#current-realtime')
 const currentGateway = document.querySelector('#current-gateway')
 const currentBackend = document.querySelector('#current-backend')
+const updaterStatus = document.querySelector('#updater-status')
+const checkUpdates = document.querySelector('#check-updates')
 const submit = form.querySelector('button[type="submit"]')
 
 let settings
@@ -21,6 +24,38 @@ let backendReport = null
 let appliedFingerprint = ''
 let applying = false
 let refreshingRuntime = false
+let updaterState = null
+let startupError = null
+
+// 更新状态由主进程推送（onUpdaterStatus）与打开时拉取（loadUpdaterStatus）
+// 共同驱动；下载完成前按钮禁用，完成后变为“重启更新”。
+function renderUpdater(status) {
+  if (!status) return
+  updaterState = status
+  updaterStatus.textContent = updaterStatusText(status)
+  updaterStatus.title = status.phase === 'error' ? status.message : ''
+  const button = updaterButtonState(status)
+  checkUpdates.textContent = button.label
+  checkUpdates.disabled = button.disabled
+}
+
+checkUpdates.addEventListener('click', () => {
+  if (updaterState?.phase === 'downloaded') {
+    void window.qwenAudioAgentDesktop.installUpdate()
+    return
+  }
+  checkUpdates.disabled = true
+  window.qwenAudioAgentDesktop.checkUpdates()
+    .then(renderUpdater)
+    .catch(() => {
+      checkUpdates.disabled = false
+    })
+})
+
+window.qwenAudioAgentDesktop.onUpdaterStatus(renderUpdater)
+window.qwenAudioAgentDesktop.loadUpdaterStatus()
+  .then(renderUpdater)
+  .catch(() => {})
 
 function showMessage(text, kind = '') {
   message.textContent = text
@@ -149,6 +184,15 @@ async function refreshRuntime() {
     runtime = await window.qwenAudioAgentDesktop.loadRuntimeStatus()
     renderRuntime()
     if (
+      startupError
+      && runtime.gatewayConnected
+      && (!runtime.backend || runtime.backend.connected)
+    ) {
+      // 启动失败已被自动重启等机制恢复，清掉残留的错误提示，
+      // 避免“显示报错”与“实际已连接”并存。
+      startupError = null
+      showMessage('服务已自动恢复连接。', 'success')
+    } else if (
       runtime.gatewayConnected
       && (!runtime.backend || runtime.backend.connected)
       && message.className === 'notice'
@@ -163,10 +207,12 @@ async function refreshRuntime() {
   }
 }
 
-async function detectBackendOptions() {
+async function detectBackendOptions(force = false) {
   refreshBackends.disabled = true
   try {
-    backendReport = await window.qwenAudioAgentDesktop.detectBackends()
+    backendReport = await window.qwenAudioAgentDesktop.detectBackends(
+      force ? { force: true } : undefined,
+    )
     renderBackendOptions(agentProtocol.value || settings?.agentProtocol)
     updateApplyState()
   } catch (error) {
@@ -177,7 +223,7 @@ async function detectBackendOptions() {
 }
 
 refreshBackends.addEventListener('click', () => {
-  void detectBackendOptions()
+  void detectBackendOptions(true)
 })
 
 function render() {
@@ -249,6 +295,7 @@ window.qwenAudioAgentDesktop.loadSettings().then(value => {
   render()
   void detectBackendOptions()
   if (value.runtimeError) {
+    startupError = value.runtimeError
     showMessage(`当前配置启动失败：${value.runtimeError}`, 'error')
   } else if (value.setupRequired) {
     showMessage('首次使用，请填写 API Key 并选择后台 Agent。', 'notice')

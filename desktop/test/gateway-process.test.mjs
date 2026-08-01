@@ -278,22 +278,23 @@ test('desktop gateway environment applies saved settings and packaged roots', ()
   )
 })
 
-test('macOS desktop PATH includes login-shell and common binary locations', () => {
+test('macOS desktop PATH inherits the expanded process PATH plus common locations', () => {
+  // 主进程入口的 expandProcessPath 已把登录 shell PATH 合入 process.env
+  // （此处用 /custom/bin 模拟），这里只叠加常见安装目录，不再调用 shell。
   const path = desktopExecutablePath({
     env: {
-      PATH: '/usr/bin',
+      PATH: '/custom/bin:/usr/bin',
       HOME: '/Users/tester',
       SHELL: '/bin/zsh',
     },
     platform: 'darwin',
-    execFileSyncImpl: () => 'noise\n__QWAUDIO_PATH__/custom/bin:/usr/bin',
   })
   assert.deepEqual(path.split(':'), [
-    '/custom/bin',
-    '/usr/bin',
     '/Users/tester/.local/bin',
     '/Users/tester/.npm-global/bin',
     '/opt/homebrew/bin',
     '/usr/local/bin',
+    '/custom/bin',
+    '/usr/bin',
   ])
 })

@@ -218,6 +218,7 @@ jobs:
           path: |
             dist/desktop/*.dmg
             dist/desktop/*.blockmap
+            dist/desktop/latest-mac.yml
           if-no-files-found: error
 
   github-release:

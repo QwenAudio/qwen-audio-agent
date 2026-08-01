@@ -1,5 +1,4 @@
 import { createConnection } from 'node:net'
-import { execFileSync } from 'node:child_process'
 import { dirname, posix, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { validateAppUrl } from './security.mjs'
@@ -13,39 +12,18 @@ function uniquePath(entries, separator = ':') {
   return [...new Set(entries.filter(Boolean))].join(separator)
 }
 
+// Gateway 子进程的 PATH 直接继承主进程：主进程入口的 expandProcessPath
+// 已把登录 shell 的 PATH（含磁盘缓存，零阻塞）合入 process.env，这里只
+// 叠加常见安装目录兜底。不要再在这里同步调用登录 shell——主进程事件
+// 循环会被阻塞数秒，直接拖慢桌面启动。
 export function desktopExecutablePath({
   env = process.env,
   platform = process.platform,
-  execFileSyncImpl = execFileSync,
 } = {}) {
   const separator = platform === 'win32' ? ';' : ':'
   const configured = String(env.PATH || '').split(separator)
   if (platform !== 'darwin') return uniquePath(configured, separator)
-  let loginPath = []
-  try {
-    const shell = env.SHELL || '/bin/zsh'
-    const output = execFileSyncImpl(
-      shell,
-      ['-ilc', 'printf "__QWAUDIO_PATH__%s" "$PATH"'],
-      {
-        encoding: 'utf8',
-        env,
-        timeout: 3000,
-        stdio: ['ignore', 'pipe', 'ignore'],
-      },
-    )
-    const marker = String(output).lastIndexOf('__QWAUDIO_PATH__')
-    if (marker >= 0) {
-      loginPath = String(output)
-        .slice(marker + '__QWAUDIO_PATH__'.length)
-        .trim()
-        .split(':')
-    }
-  } catch {
-    // Fall back to common macOS installation paths below.
-  }
   return uniquePath([
-    ...loginPath,
     env.HOME ? posix.join(env.HOME, '.local/bin') : '',
     env.HOME ? posix.join(env.HOME, '.npm-global/bin') : '',
     '/opt/homebrew/bin',
@@ -60,7 +38,6 @@ export function desktopGatewayEnvironment({
   runtimeRoot = '',
   sourceRoot = '',
   platform = process.platform,
-  execFileSyncImpl = execFileSync,
 } = {}) {
   const merged = {
     ...env,
@@ -74,7 +51,6 @@ export function desktopGatewayEnvironment({
     PATH: desktopExecutablePath({
       env: merged,
       platform,
-      execFileSyncImpl,
     }),
     QWEN_AUDIO_AGENT_DESKTOP: '1',
     QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY: '1',

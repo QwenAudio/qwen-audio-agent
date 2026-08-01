@@ -798,3 +798,161 @@ test('identifies a permission response rejected while the user is speaking', asy
   })
   assert.equal((await outcome).failed, true)
 })
+
+function createS2sFrontend(options = {}) {
+  return new RealtimeFrontend({
+    provider: REALTIME_PROVIDERS.s2s,
+    ...options,
+  })
+}
+
+test('rewrites response modalities into the GA output_modalities field', () => {
+  const frontend = createS2sFrontend()
+  const payload = frontend.protocol.responseCreate({
+    modalities: ['text', 'audio'],
+    tool_choice: 'none',
+  })
+
+  assert.deepEqual(payload.response, {
+    tool_choice: 'none',
+    output_modalities: ['text', 'audio'],
+  })
+  assert.equal('modalities' in payload.response, false)
+})
+
+test('synthesizes the session acknowledgement a GA provider never sends', () => {
+  const frontend = createS2sFrontend()
+  const sent = []
+  frontend.send = event => sent.push(event)
+
+  const events = frontend.handleProviderEvent({ type: 'session.created' })
+
+  assert.deepEqual(events.map(event => event.type), [
+    'session.created',
+    'session.updated',
+  ])
+  assert.equal(sent[0].type, 'session.update')
+  assert.equal(frontend.ready, true)
+})
+
+test('normalizes GA text events into the shared transcript event names', () => {
+  const frontend = createS2sFrontend()
+  const [delta] = frontend.handleProviderEvent({
+    type: 'response.output_text.delta',
+    delta: '你好',
+  })
+
+  assert.equal(delta.type, 'response.text.delta')
+  assert.equal(delta.delta, '你好')
+})
+
+test('injects context without waiting for an unsupported item receipt', async () => {
+  const frontend = createS2sFrontend()
+  const sent = []
+  frontend.ready = true
+  frontend.send = event => sent.push(event)
+
+  frontend.injectResult('任务完成', 'announcement', { turnId: 'turn-1' })
+  await new Promise(resolve => setImmediate(resolve))
+
+  // No conversation.item.created is echoed by the provider, yet the response
+  // request still goes out instead of timing out on a confirmation.
+  assert.deepEqual(sent.map(event => event.type), [
+    'conversation.item.create',
+    'response.create',
+  ])
+  assert.equal(frontend.conversationItemWaiters.size, 0)
+})
+
+test('releases the idle gate when new speech cancels a silent response', () => {
+  const frontend = createS2sFrontend()
+  frontend.ready = true
+  frontend.send = () => {}
+  // A VAD driven response the provider will cancel without a terminal event.
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'resp_vad' },
+  })
+  assert.equal(frontend.activeResponses.size, 1)
+
+  let released = false
+  frontend.whenIdle().then(() => {
+    released = true
+  })
+  frontend.handleLifecycle({ type: 'input_audio_buffer.speech_started' })
+
+  assert.equal(frontend.activeResponses.size, 0)
+  return new Promise(resolve => setImmediate(() => {
+    assert.equal(released, true)
+    resolve()
+  }))
+})
+
+test('retries a response refused by an occupied single response slot', async () => {
+  const frontend = createS2sFrontend()
+  const sent = []
+  const retried = []
+  frontend.ready = true
+  frontend.send = payload => {
+    if (
+      payload.type === 'response.create'
+      && frontend.pendingResponses.length
+    ) {
+      frontend.pendingResponses[frontend.pendingResponses.length - 1]
+        .responsePayload = payload
+    }
+    sent.push(payload)
+  }
+  // The retry itself waits out the in-flight generation, so only the decision
+  // to retry is asserted here instead of the delayed replay.
+  frontend.retryRefusedResponse = pending => retried.push(pending)
+
+  frontend.speak('结果来了', 'agent', { turnId: 'turn-1' })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(sent.filter(e => e.type === 'response.create').length, 1)
+
+  const refusal = {
+    type: 'error',
+    error: { message: 'Cannot create response while another response is in progress.' },
+  }
+  frontend.handleLifecycle(refusal)
+
+  // The refusal is handled internally: the gateway must not surface it, and
+  // the response is queued for a replay instead of being dropped.
+  assert.equal(refusal.__voiceRetried, true)
+  assert.equal(retried.length, 1)
+  assert.equal(retried[0].busyRetries, 1)
+  assert.equal(retried[0].settled, false)
+  assert.equal(retried[0].responsePayload.type, 'response.create')
+})
+
+test('surfaces a refusal a compliant provider cannot retry', async () => {
+  const frontend = createQwenFrontend()
+  frontend.ready = true
+  frontend.send = () => {}
+
+  const outcome = frontend.speak('结果来了', 'agent', { turnId: 'turn-1' })
+  await new Promise(resolve => setImmediate(resolve))
+  const refusal = {
+    type: 'error',
+    error: { message: 'Cannot create response while another response is in progress.' },
+  }
+  frontend.handleLifecycle(refusal)
+
+  // Without the singleResponseSlot capability the error stays user-facing.
+  assert.equal(refusal.__voiceRetried, undefined)
+  assert.equal((await outcome).failed, true)
+})
+
+test('a compliant provider keeps every default capability', () => {
+  const qwen = createQwenFrontend()
+
+  assert.deepEqual(qwen.capabilities, {
+    confirmsConversationItems: true,
+    emitsTerminalEventOnInterrupt: true,
+    emitsResponseCreatedForServerTurns: true,
+    singleResponseSlot: false,
+  })
+  // Compliant providers must not gain the compensations either.
+  assert.equal(qwen.provider.idleGateTimeoutMs, undefined)
+})

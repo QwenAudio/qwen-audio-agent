@@ -23,6 +23,7 @@ export {
 export {
   REALTIME_PROVIDERS,
   resolveRealtimeProvider,
+  listRealtimeProviders,
   describeActiveRealtime,
 } from './providers/registry.mjs'
 
@@ -34,6 +35,22 @@ function normalizedEvents(value) {
   if (!value) return []
   return Array.isArray(value) ? value.filter(Boolean) : [value]
 }
+
+// Behavioural capabilities of a provider's Realtime implementation. Every
+// default describes the fully specification-compliant behaviour, so providers
+// only declare the guarantees they do NOT uphold and the frontend compensates
+// without ever branching on a provider name.
+const DEFAULT_CAPABILITIES = Object.freeze({
+  // Echoes conversation.item.created for client-injected items.
+  confirmsConversationItems: true,
+  // Emits a terminal response.done (status=cancelled) when an in-flight
+  // response is cancelled by an interruption.
+  emitsTerminalEventOnInterrupt: true,
+  // Emits response.created for server-initiated (VAD) turns.
+  emitsResponseCreatedForServerTurns: true,
+  // Accepts concurrent response.create requests (queues instead of refusing).
+  singleResponseSlot: false,
+})
 
 export class RealtimeFrontend {
   constructor({
@@ -50,6 +67,7 @@ export class RealtimeFrontend {
     if (!this.protocol) {
       throw new Error(`Realtime Provider ${provider.key || provider.label} 缺少 protocol`)
     }
+    this.capabilities = { ...DEFAULT_CAPABILITIES, ...provider.capabilities }
     this.onEvent = onEvent
     this.onError = onError
     this.onClose = onClose
@@ -60,6 +78,7 @@ export class RealtimeFrontend {
     this.activeResponses = new Set()
     this.pendingResponses = []
     this.responseWaiters = new Map()
+    this.orphanResponseTimers = new Map()
     this.conversationItemWaiters = new Map()
     this.idleWaiters = []
     this.outputQueue = Promise.resolve()
@@ -193,6 +212,13 @@ export class RealtimeFrontend {
 
   createConversationItem(item) {
     const id = item.id || `item_${randomUUID().replaceAll('-', '')}`
+    // Providers that never echo conversation.item.created would time every
+    // waiter out; sending without awaiting confirmation matches their actual
+    // contract (items are applied silently).
+    if (!this.capabilities.confirmsConversationItems) {
+      this.send(this.protocol.conversationItemCreate({ id, ...item }))
+      return Promise.resolve({ id, ...item })
+    }
     return new Promise((resolve, reject) => {
       const waiter = {
         id,
@@ -429,8 +455,42 @@ export class RealtimeFrontend {
             recoveryTimer.unref?.()
           }, this.responseCompletionTimeoutMs)
           this.responseWaiters.set(id, pending)
+        } else if (!this.capabilities.emitsTerminalEventOnInterrupt) {
+          // Server-initiated response without a pending marker: no completion
+          // timer guards it. If its terminal event is lost the id would hold
+          // the idle gate forever, so give it a fallback expiry.
+          const orphanTimer = setTimeout(() => {
+            this.orphanResponseTimers.delete(id)
+            if (!this.activeResponses.has(id)) return
+            this.activeResponses.delete(id)
+            this.resolveIdle()
+          }, this.responseCompletionTimeoutMs)
+          orphanTimer.unref?.()
+          this.orphanResponseTimers.set(id, orphanTimer)
         }
       }
+    }
+    // Providers that cancel the in-flight response on new speech without
+    // emitting a terminal event leave the response bookkeeping dangling.
+    // speech_started is then the authoritative signal that anything active is
+    // dead, so retire it and release the idle gate.
+    if (
+      event.type === 'input_audio_buffer.speech_started'
+      && !this.capabilities.emitsTerminalEventOnInterrupt
+      && this.activeResponses.size
+    ) {
+      for (const id of [...this.activeResponses]) {
+        const pending = this.responseWaiters.get(id)
+        this.responseWaiters.delete(id)
+        this.activeResponses.delete(id)
+        this.clearOrphanTimer(id)
+        this.settlePending(pending, {
+          cancelled: true,
+          phase: 'interrupted',
+          responseId: id,
+        })
+      }
+      this.resolveIdle()
     }
     if (
       event.type === 'response.done'
@@ -452,11 +512,40 @@ export class RealtimeFrontend {
         id = first[0]
         pending = first[1]
       }
+      // A single-slot provider refuses a response.create that races a
+      // server-side turn. Retry the refused payload once the slot frees up
+      // instead of dropping the injection on the floor.
+      const slotBusy = event.type === 'error'
+        && this.capabilities.singleResponseSlot
+        && this.provider.classifyError(
+          event.error?.message || event.message || '',
+        ) === 'response_slot_busy'
+      if (
+        slotBusy
+        && pending
+        && pending.responsePayload
+        && (pending.busyRetries || 0) < 3
+      ) {
+        pending.busyRetries = (pending.busyRetries || 0) + 1
+        // Marks the event as internally handled: the gateway must not surface
+        // a transparently retried refusal to the user.
+        event.__voiceRetried = true
+        clearTimeout(pending.timer)
+        // The correlated id belongs to the server's own response (the refusal
+        // proves ours never started), so unbind the mismatched mapping. The
+        // real response still retires the id through activeResponses.
+        if (id && this.responseWaiters.get(id) === pending) {
+          this.responseWaiters.delete(id)
+        }
+        this.retryRefusedResponse(pending)
+        return
+      }
       event.__voiceOrigin = pending?.origin || event.__voiceOrigin
       event.__voiceContext = pending?.context || event.__voiceContext || {}
       if (id) {
         this.activeResponses.delete(id)
         this.responseWaiters.delete(id)
+        this.clearOrphanTimer(id)
       }
       const status = event.response?.status
       const completed = event.type === 'response.done'
@@ -475,9 +564,82 @@ export class RealtimeFrontend {
     pending.resolve(outcome)
   }
 
+  clearOrphanTimer(id) {
+    const timer = this.orphanResponseTimers.get(id)
+    if (timer) {
+      clearTimeout(timer)
+      this.orphanResponseTimers.delete(id)
+    }
+  }
+
+  // Re-issues a response.create refused by an occupied single response slot.
+  // Two constraints shape this implementation:
+  // 1. It must NOT be scheduled through outputQueue: the refused response's
+  //    outcome promise is what the queue tail awaits, so queueing the retry
+  //    behind it deadlocks the whole pipeline.
+  // 2. Server-initiated responses may be invisible to activeResponses, so the
+  //    slot cannot be observed directly. Escalating delays ride out the
+  //    in-flight generation instead.
+  retryRefusedResponse(pending) {
+    const generation = this.responseQueueGeneration
+    const delays = [1200, 2600, 5000]
+    const delay = delays[Math.min(pending.busyRetries - 1, delays.length - 1)]
+    const attempt = async () => {
+      await new Promise(resolve => setTimeout(resolve, delay))
+      await this.whenIdle()
+      if (!this.ready || generation !== this.responseQueueGeneration) {
+        this.settlePending(pending, { cancelled: true, phase: 'start' })
+        return
+      }
+      if (this.pendingResponses.length) {
+        this.settlePending(pending, { failed: true, phase: 'correlation' })
+        return
+      }
+      this.pendingResponses.push(pending)
+      this.send(pending.responsePayload)
+      if (!pending.settled) {
+        pending.timer = setTimeout(() => {
+          const index = this.pendingResponses.indexOf(pending)
+          if (index >= 0) this.pendingResponses.splice(index, 1)
+          this.settlePending(pending, { timedOut: true, phase: 'start' })
+        }, this.responseStartTimeoutMs)
+      }
+    }
+    attempt().catch(() => {
+      this.settlePending(pending, { failed: true, phase: 'start' })
+    })
+  }
+
   whenIdle() {
     if (!this.activeResponses.size) return Promise.resolve()
-    return new Promise(resolve => this.idleWaiters.push(resolve))
+    const promise = new Promise(resolve => this.idleWaiters.push(resolve))
+    // Defensive hard timeout for providers that declare a bounded response
+    // duration: an idle gate stuck longer than that means a lifecycle event
+    // was lost or mismatched, so force-release it. Queued work is then merely
+    // delayed instead of blocked forever.
+    const timeoutMs = this.provider.idleGateTimeoutMs
+    if (timeoutMs) {
+      const guard = setTimeout(() => this.forceReleaseIdleGate(), timeoutMs)
+      guard.unref?.()
+      promise.finally(() => clearTimeout(guard))
+    }
+    return promise
+  }
+
+  forceReleaseIdleGate() {
+    if (!this.activeResponses.size) return
+    for (const id of [...this.activeResponses]) {
+      const pending = this.responseWaiters.get(id)
+      this.responseWaiters.delete(id)
+      this.activeResponses.delete(id)
+      this.clearOrphanTimer(id)
+      this.settlePending(pending, {
+        failed: true,
+        phase: 'idle-gate-timeout',
+        responseId: id,
+      })
+    }
+    this.resolveIdle()
   }
 
   resolveIdle() {
@@ -488,6 +650,8 @@ export class RealtimeFrontend {
   resetResponses() {
     this.responseQueueGeneration += 1
     this.activeResponses.clear()
+    this.orphanResponseTimers.forEach(timer => clearTimeout(timer))
+    this.orphanResponseTimers.clear()
     this.rejectConversationItemWaiters(new Error('Realtime 会话已重置'))
     this.pendingResponses.forEach(item => this.settlePending(item, { cancelled: true }))
     this.responseWaiters.forEach(item => this.settlePending(item, { cancelled: true }))
@@ -513,11 +677,27 @@ export class RealtimeFrontend {
 
   send(payload) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(this.protocol.encodeOutgoing(payload)))
+      const body = this.protocol.encodeOutgoing(payload)
+      if (
+        this.capabilities.singleResponseSlot
+        && payload.type === 'response.create'
+        && this.pendingResponses.length
+      ) {
+        // Remember the exact payload on the pending marker so a refused
+        // response (occupied slot) can be replayed verbatim; the conversation
+        // items were already created during the first attempt.
+        this.pendingResponses[this.pendingResponses.length - 1]
+          .responsePayload = payload
+      }
+      this.ws.send(JSON.stringify(body))
     }
   }
 }
 
 export function createRealtimeFrontend(options = {}) {
-  return new RealtimeFrontend({ ...options, provider: resolveRealtimeProvider() })
+  const { providerName, ...rest } = options
+  return new RealtimeFrontend({
+    ...rest,
+    provider: resolveRealtimeProvider(providerName),
+  })
 }

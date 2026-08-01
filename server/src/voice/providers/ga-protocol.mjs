@@ -1,0 +1,90 @@
+import { randomUUID } from 'node:crypto'
+
+function eventId() {
+  return `event_${randomUUID().replaceAll('-', '')}`
+}
+
+// The GA dialect names response payload modalities output_modalities. Shared
+// frontend call sites still pass the beta modalities field, so the rewrite
+// happens here once instead of leaking into every caller.
+function gaResponse(response) {
+  if (!response) return response
+  const { modalities, ...rest } = response
+  return modalities ? { ...rest, output_modalities: modalities } : rest
+}
+
+/**
+ * Wire adapter for providers that speak the GA (2025+) dialect of the OpenAI
+ * Realtime protocol, e.g. huggingface/speech-to-speech. Differences from the
+ * beta dialect are confined to this file:
+ *
+ * - response payloads use output_modalities instead of modalities;
+ * - text deltas arrive as response.output_text.* instead of response.text.*;
+ * - session.updated is never emitted, so it is synthesized right after
+ *   session.created: the frontend sends session.update in response to
+ *   session.created, and treating the session as live once that update has
+ *   been written matches the server's actual behaviour.
+ */
+export const gaRealtimeProtocol = Object.freeze({
+  encodeOutgoing: payload => ({
+    event_id: eventId(),
+    ...payload,
+  }),
+
+  normalizeIncoming: event => {
+    switch (event?.type) {
+      case 'session.created':
+        // GA servers acknowledge session.update silently. Synthesize the
+        // session.updated acknowledgement so the provider-agnostic frontend
+        // can keep a single readiness path: it first reacts to
+        // session.created (sending session.update), then marks the session
+        // ready when it processes the synthetic event.
+        return [event, { type: 'session.updated', synthetic: true }]
+      case 'response.output_text.delta':
+        return { ...event, type: 'response.text.delta' }
+      case 'response.output_text.done':
+        return { ...event, type: 'response.text.done' }
+      default:
+        return event
+    }
+  },
+
+  sessionUpdate: session => ({
+    type: 'session.update',
+    session,
+  }),
+
+  audioAppend: audio => ({
+    type: 'input_audio_buffer.append',
+    audio,
+  }),
+
+  conversationItemCreate: item => ({
+    type: 'conversation.item.create',
+    item,
+  }),
+
+  responseCreate: response => {
+    const body = gaResponse(response)
+    return {
+      type: 'response.create',
+      ...(body ? { response: body } : {}),
+    }
+  },
+
+  responseCancel: () => ({
+    type: 'response.cancel',
+  }),
+
+  userTextItem: text => ({
+    type: 'message',
+    role: 'user',
+    content: [{ type: 'input_text', text }],
+  }),
+
+  functionOutputItem: (callId, output) => ({
+    type: 'function_call_output',
+    call_id: callId,
+    output: JSON.stringify(output),
+  }),
+})

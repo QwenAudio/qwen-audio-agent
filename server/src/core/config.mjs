@@ -223,6 +223,31 @@ export const config = {
         : 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
     )
   ).replace(/\?+$/, ''),
+  // speech-to-speech front end. The cascaded pipeline (VAD -> STT -> LLM -> TTS)
+  // exposes an OpenAI Realtime compatible endpoint, so it plugs into the same
+  // provider abstraction as the DashScope realtime model. Both the short S2S_*
+  // names and the longer SPEECH_TO_SPEECH_* names are accepted.
+  s2sRealtimeUrl: (
+    process.env.S2S_REALTIME_URL
+    || process.env.SPEECH_TO_SPEECH_REALTIME_URL
+    || 'ws://127.0.0.1:8765/v1/realtime'
+  ).replace(/\/+$/, ''),
+  // speech-to-speech does not authenticate. A placeholder keeps the shared
+  // "provider configured" check satisfied without inventing a credential.
+  s2sApiKey: process.env.S2S_API_KEY || 'unused',
+  // The pipeline composes its own speech models, so the interesting name to
+  // report is the language model behind the voice.
+  s2sModel: (
+    process.env.S2S_MODEL
+    || process.env.SPEECH_TO_SPEECH_MODEL_LABEL
+    || 'qwen-plus'
+  ),
+  s2sVoice: process.env.S2S_VOICE || process.env.SPEECH_TO_SPEECH_VOICE || '',
+  s2sOutputSampleRate: numberSetting(
+    process.env.S2S_OUTPUT_SAMPLE_RATE,
+    24000,
+    { min: 8000, max: 48000 },
+  ),
   audioModel: process.env.QWEN_AUDIO_REALTIME_MODEL || 'qwen-audio-3.0-realtime-plus',
   audioVoice: process.env.QWEN_AUDIO_REALTIME_VOICE || 'longanqian',
   allowedOrigins: String(process.env.QWEN_AUDIO_AGENT_ALLOWED_ORIGINS || '')

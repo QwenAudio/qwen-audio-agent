@@ -9,7 +9,7 @@ import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import { config } from '../core/config.mjs'
 import { conversationSync } from '../conversation/conversation-sync.mjs'
 import { normalizeClientContext } from '../conversation/frontend-agent-context.mjs'
-import { createRealtimeFrontend } from './realtime-provider.mjs'
+import { createRealtimeFrontend, resolveRealtimeProvider } from './realtime-provider.mjs'
 import { isAllowedOrigin } from '../core/request-security.mjs'
 import { taskManager } from '../task/task-manager.mjs'
 import { recordTaskResult } from '../conversation/task-result-projector.mjs'
@@ -139,6 +139,9 @@ export function attachRealtimeGateway(server, {
     let inputEnabled = false
     let outputEnabled = false
     let textOnlySession = false
+    // Realtime front end for this session. Defaults to the configured provider
+    // and can be switched by the client through the connect event.
+    let sessionProvider = config.audioProvider
     let descriptor = clientDescriptor()
     let responseTurnCandidate = null
     let responseStartWatchdog = null
@@ -396,7 +399,8 @@ export function attachRealtimeGateway(server, {
           type: 'error',
           message: error.message,
         }))
-      }, RESPONSE_START_WATCHDOG_MS)
+      }, frontend?.provider?.responseStartWatchdogMs
+        || RESPONSE_START_WATCHDOG_MS)
       responseStartWatchdog.unref?.()
     }
 
@@ -717,6 +721,20 @@ export function attachRealtimeGateway(server, {
     })
 
     const handleEvent = event => {
+      // Providers whose turns are driven by their own VAD may never emit
+      // response.created, so any other response.* event has to count as proof
+      // that generation started; otherwise the watchdog would tear down a
+      // perfectly healthy connection.
+      if (
+        frontend?.capabilities?.emitsResponseCreatedForServerTurns === false
+        && responseTurnCandidate
+        && typeof event.type === 'string'
+        && event.type.startsWith('response.')
+        && event.type !== 'response.created'
+      ) {
+        commitTurn(responseTurnCandidate)
+        clearResponseCandidate()
+      }
       if (event.type === 'input_audio_buffer.speech_started') {
         userSpeaking = true
         clearResponseCandidate()
@@ -1063,6 +1081,9 @@ export function attachRealtimeGateway(server, {
         )
         timer.unref?.()
       } else if (event.type === 'error') {
+        // A response refused by a busy single-slot provider is retried by the
+        // frontend transparently; nothing user-facing happened.
+        if (event.__voiceRetried) return
         const errorMessage = event.error?.message
           || event.message
           || '实时语音服务错误'
@@ -1132,6 +1153,7 @@ export function attachRealtimeGateway(server, {
       lastActiveTaskSignature = activeTaskSignature(activeTasks)
       let createdFrontend
       createdFrontend = createRealtimeFrontend({
+        providerName: sessionProvider,
         agentContext: {
           client: clientContext,
           textOnly: textOnlySession,
@@ -1187,6 +1209,8 @@ export function attachRealtimeGateway(server, {
           send(ws, {
             type: 'voice.ready',
             inputSampleRate: createdFrontend.provider.inputSampleRate,
+            provider: createdFrontend.provider.key,
+            providerLabel: createdFrontend.provider.label,
           })
         })
         .finally(() => {
@@ -1208,6 +1232,21 @@ export function attachRealtimeGateway(server, {
         descriptor = clientDescriptor(event)
         voiceClient.descriptor = descriptor
         textOnlySession = event.textOnly === true
+        // The client may pick a realtime front end per session. An unknown
+        // name is reported instead of silently falling back, so a typo does
+        // not look like a working session on the wrong provider.
+        if (event.provider && event.provider !== sessionProvider) {
+          try {
+            const requested = resolveRealtimeProvider(event.provider)
+            sessionProvider = requested.key
+            const staleFrontend = frontend
+            frontend = null
+            connectPromise = null
+            staleFrontend?.close()
+          } catch (error) {
+            send(ws, { type: 'error', message: error.message })
+          }
+        }
         const capabilities = clientVoiceCapabilities({
           voiceEnabled: event.voiceEnabled,
           inputEnabled: event.inputEnabled,

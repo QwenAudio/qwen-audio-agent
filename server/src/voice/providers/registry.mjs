@@ -1,5 +1,6 @@
 import { config } from '../../core/config.mjs'
 import { dashscopeProvider } from './dashscope.mjs'
+import { s2sProvider } from './s2s.mjs'
 
 const PROVIDER_METHODS = [
   'model',
@@ -26,6 +27,17 @@ const PROTOCOL_METHODS = [
   'functionOutputItem',
 ]
 
+// Optional behavioural declarations. A provider only lists the guarantees of
+// the Realtime specification it does not uphold; omitting the block means the
+// implementation is fully compliant. See DEFAULT_CAPABILITIES in
+// realtime-provider.mjs for the compensations each flag enables.
+const CAPABILITY_FLAGS = [
+  'confirmsConversationItems',
+  'emitsTerminalEventOnInterrupt',
+  'emitsResponseCreatedForServerTurns',
+  'singleResponseSlot',
+]
+
 export function validateRealtimeProvider(provider) {
   if (!provider?.key || !provider.label) {
     throw new Error('Realtime Provider 必须定义 key 和 label')
@@ -48,28 +60,62 @@ export function validateRealtimeProvider(provider) {
       )
     }
   }
+  for (const flag of Object.keys(provider.capabilities || {})) {
+    if (!CAPABILITY_FLAGS.includes(flag)) {
+      throw new Error(
+        `Realtime Provider ${provider.key} 声明了未知能力：${flag}`,
+      )
+    }
+    if (typeof provider.capabilities[flag] !== 'boolean') {
+      throw new Error(
+        `Realtime Provider ${provider.key} 的能力 ${flag} 必须是布尔值`,
+      )
+    }
+  }
   return provider
 }
 
 validateRealtimeProvider(dashscopeProvider)
+validateRealtimeProvider(s2sProvider)
 
 const providers = new Map([
   ['dashscope', dashscopeProvider],
   // Compatibility alias for internal callers while provider selection moves
   // to stable external names.
   ['qwen', dashscopeProvider],
+  ['s2s', s2sProvider],
+  ['speech-to-speech', s2sProvider],
 ])
 
-export function resolveRealtimeProvider() {
-  const provider = providers.get(config.audioProvider)
+export function resolveRealtimeProvider(requested) {
+  const key = String(requested || config.audioProvider || '')
+    .trim()
+    .toLowerCase()
+  const provider = providers.get(key)
   if (!provider) {
-    throw new Error(`不支持的 Realtime 供应商：${config.audioProvider}`)
+    throw new Error(`不支持的 Realtime 供应商：${requested || config.audioProvider}`)
   }
   return provider
 }
 
-export function describeActiveRealtime() {
-  const provider = resolveRealtimeProvider()
+export function listRealtimeProviders() {
+  const seen = new Set()
+  return [...providers.values()]
+    .filter(provider => {
+      if (seen.has(provider.key)) return false
+      seen.add(provider.key)
+      return true
+    })
+    .map(provider => ({
+      key: provider.key,
+      label: provider.label,
+      model: provider.model(),
+      configured: Boolean(provider.apiKey()),
+    }))
+}
+
+export function describeActiveRealtime(requested) {
+  const provider = resolveRealtimeProvider(requested)
   return {
     provider: provider.key,
     label: provider.label,
@@ -77,6 +123,7 @@ export function describeActiveRealtime() {
     voice: provider.voice(),
     inputSampleRate: provider.inputSampleRate,
     configured: Boolean(provider.apiKey()),
+    providers: listRealtimeProviders(),
   }
 }
 

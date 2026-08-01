@@ -102,6 +102,7 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 }
 
 .desktop-gallery-shell {
+  position: relative;
   width: 100%;
   height: 100%;
   display: grid;
@@ -742,75 +743,6 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
   from { opacity: 0; transform: translateY(4px) scale(.995); }
 }
 
-@media (max-width: 600px) {
-  header { padding: 0 14px; }
-  .brand small, header .ghost, .backend { display: none; }
-  .workspace { padding: 24px 0 14px; }
-  .orb:not(.desktop-orb) { width: 92px; height: 92px; }
-  .hero p { margin-top: 14px; }
-  .hero small { margin-top: 8px; }
-  .messages { margin-top: 16px; }
-  article { max-width: 90%; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .orb,
-  .orb::before,
-  .orb::after,
-  .fluid-orb::before,
-  .fluid-orb::after,
-  .fluid,
-  .fluid .blob,
-  .goo,
-  .goo .fill,
-  .conversation-turn,
-  .agent-task,
-  .task-spinner {
-    animation: none;
-    transition: none;
-  }
-}
-
-/* frontend provider selector */
-header select.frontend-provider {
-  background: transparent;
-  color: inherit;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-header select.frontend-provider option {
-  color: #111;
-}
-
-.desktop-task-panel-title-button {
-  display: block;
-  width: 100%;
-  padding: 0;
-  margin: 0 0 4px;
-  border: none;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-weight: 500;
-  line-height: 1.4;
-  text-align: left;
-  cursor: pointer;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.desktop-task-panel-title-button:focus-visible {
-  outline: 2px solid rgba(59, 130, 246, 0.6);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
 /* Desktop task progress panel */
 .desktop-task-panel {
   position: absolute;
@@ -825,7 +757,6 @@ header select.frontend-provider option {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   color: #f1f5f9;
   font-size: 13px;
-  cursor: pointer;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   transition: opacity 200ms ease, transform 200ms ease;
@@ -912,12 +843,85 @@ header select.frontend-provider option {
   flex-shrink: 0;
 }
 
-.desktop-task-panel-cancel:hover {
+.desktop-task-panel-cancel:hover,
+.desktop-task-panel-cancel:focus-visible {
   background: #475569;
+  outline: 2px solid rgba(59, 130, 246, 0.6);
+  outline-offset: 2px;
 }
 
 @keyframes task-progress-pulse {
   0% { opacity: 1; }
   50% { opacity: 0.4; }
   100% { opacity: 1; }
+}
+
+.desktop-task-panel-title-button {
+  width: 100%;
+  padding: 0;
+  margin: 0 0 4px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.desktop-task-panel-title-button:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.6);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (max-width: 600px) {
+  header { padding: 0 14px; }
+  .brand small, header .ghost, .backend { display: none; }
+  .workspace { padding: 24px 0 14px; }
+  .orb:not(.desktop-orb) { width: 92px; height: 92px; }
+  .hero p { margin-top: 14px; }
+  .hero small { margin-top: 8px; }
+  .messages { margin-top: 16px; }
+  article { max-width: 90%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orb,
+  .orb::before,
+  .orb::after,
+  .fluid-orb::before,
+  .fluid-orb::after,
+  .fluid,
+  .fluid .blob,
+  .goo,
+  .goo .fill,
+  .conversation-turn,
+  .agent-task,
+  .task-spinner,
+  .desktop-orb-running-ring,
+  .desktop-task-panel.running .desktop-task-panel-progress-bar {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* frontend provider selector */
+header select.frontend-provider {
+  background: transparent;
+  color: inherit;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+header select.frontend-provider option {
+  color: #111;
 }

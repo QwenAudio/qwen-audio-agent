@@ -33,20 +33,10 @@ export default function DesktopTaskPanel({
   if (isFailed) statusClass = 'failed'
   if (task.authorization?.status === 'pending') statusClass = 'pending'
 
-  const handleKeyDown = event => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault()
-      onOpenDetails?.()
-    }
-  }
-
   return (
     <aside
       className={`desktop-task-panel ${statusClass}`}
       onClick={onOpenDetails}
-      onKeyDown={handleKeyDown}
-      role="button"
-      tabIndex={0}
       title="点击打开任务详情"
     >
       <div className="desktop-task-panel-header">
@@ -55,9 +45,14 @@ export default function DesktopTaskPanel({
         </span>
         <span className="desktop-task-panel-time">{formatElapsed(task.elapsedMs)}</span>
       </div>
-      <div className="desktop-task-panel-title">
+      <button
+        type="button"
+        className="desktop-task-panel-title-button"
+        onClick={onOpenDetails}
+        aria-label="打开任务详情"
+      >
         {truncateObjective(task.objective)}
-      </div>
+      </button>
       <div className="desktop-task-panel-detail">
         {taskDetail(normalizedTask)}
       </div>
@@ -67,6 +62,7 @@ export default function DesktopTaskPanel({
         </div>
         {isRunning && (
           <button
+            type="button"
             className="desktop-task-panel-cancel"
             onClick={event => {
               event.stopPropagation()

@@ -19,21 +19,32 @@ export default function DesktopTaskPanel({
   onCancel,
   onOpenDetails,
 }) {
+  if (!task) return null
+
   const phase = task.phase || task.status
   const normalizedTask = { ...task, phase }
   const isRunning = ['queued', 'running', 'delegated', 'finalizing'].includes(phase)
   const isFailed = phase === 'failed'
   const isCompleted = phase === 'completed'
 
-  let statusClass = 'running'
+  let statusClass = ''
+  if (isRunning || phase === 'running') statusClass = 'running'
   if (isCompleted) statusClass = 'completed'
   if (isFailed) statusClass = 'failed'
   if (task.authorization?.status === 'pending') statusClass = 'pending'
+
+  const handleKeyDown = event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      onOpenDetails?.()
+    }
+  }
 
   return (
     <aside
       className={`desktop-task-panel ${statusClass}`}
       onClick={onOpenDetails}
+      onKeyDown={handleKeyDown}
       role="button"
       tabIndex={0}
       title="点击打开任务详情"

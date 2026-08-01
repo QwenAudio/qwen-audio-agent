@@ -127,8 +127,11 @@ const EXPANDED_ORB_HEIGHT = 380
 function animateWindowResize(window, targetWidth, targetHeight, duration = 200) {
   if (!window || window.isDestroyed()) return
   const [currentWidth, currentHeight] = window.getSize()
+  const [currentX, currentY] = window.getPosition()
   const startWidth = currentWidth
   const startHeight = currentHeight
+  const deltaWidth = targetWidth - startWidth
+  const deltaHeight = targetHeight - startHeight
   const startTime = performance.now()
 
   function frame() {
@@ -136,10 +139,12 @@ function animateWindowResize(window, targetWidth, targetHeight, duration = 200) 
     const elapsed = now - startTime
     const progress = Math.min(1, elapsed / duration)
     const ease = progress * (2 - progress)
-    const nextWidth = Math.round(startWidth + (targetWidth - startWidth) * ease)
-    const nextHeight = Math.round(startHeight + (targetHeight - startHeight) * ease)
+    const nextWidth = Math.round(startWidth + deltaWidth * ease)
+    const nextHeight = Math.round(startHeight + deltaHeight * ease)
+    const nextX = Math.round(currentX - (deltaWidth * ease) / 2)
+    const nextY = Math.round(currentY - (deltaHeight * ease) / 2)
     if (!window.isDestroyed()) {
-      window.setSize(nextWidth, nextHeight)
+      window.setBounds({ x: nextX, y: nextY, width: nextWidth, height: nextHeight })
       if (progress < 1) setImmediate(frame)
     }
   }
@@ -479,7 +484,7 @@ function createWindow() {
     height,
     minWidth: width,
     minHeight: height,
-    maxWidth: width,
+    maxWidth: 400,
     maxHeight: EXPANDED_ORB_HEIGHT,
     x: workArea.x + workArea.width - width - 24,
     y: workArea.y + 24,

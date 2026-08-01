@@ -70,18 +70,16 @@
 
           <div class="setting-row">
             <label for="agent-protocol">后台 Agent</label>
-            <select id="agent-protocol">
-              <option value="none">不使用后台 Agent</option>
-              <option value="opencode">OpenCode</option>
-              <option value="openclaw">OpenClaw</option>
-              <option value="qoder">Qoder</option>
-              <option value="kimi">Kimi Code</option>
-              <option value="hermes">Hermes</option>
-              <option value="codebuddy">CodeBuddy</option>
-              <option value="codex">Codex</option>
-              <option value="claude">Claude Code</option>
-              <option value="acp">通用 ACP Agent</option>
-            </select>
+            <div class="field-with-action">
+              <!-- 选项由 settings.js 按本机检测结果动态渲染 -->
+              <select id="agent-protocol"></select>
+              <button
+                id="refresh-backends"
+                class="link-button"
+                type="button"
+                title="重新检测本机已安装的后台 Agent"
+              >刷新</button>
+            </div>
           </div>
 
           <div class="setting-row">
@@ -115,6 +113,6 @@
         </footer>
       </form>
     </main>
-    <script src="./settings.js"></script>
+    <script src="./settings.js" type="module"></script>
   </body>
 </html>

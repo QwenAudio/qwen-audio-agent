@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
   loadRuntimeStatus: () => ipcRenderer.invoke(
     'qwen-audio-agent:settings-runtime-status',
   ),
+  detectBackends: () => ipcRenderer.invoke(
+    'qwen-audio-agent:settings-detect-backends',
+  ),
   saveSettings: settings => ipcRenderer.invoke(
     'qwen-audio-agent:settings-save',
     settings,

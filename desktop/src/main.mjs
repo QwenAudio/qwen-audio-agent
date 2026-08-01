@@ -30,6 +30,9 @@ import {
   readGatewayHealth,
 } from '../../shared/gateway-client.mjs'
 import {
+  inspectBackendSetups,
+} from '../../shared/backend-setup.mjs'
+import {
   desktopGatewayEnvironment,
   EmbeddedGateway,
 } from './gateway-process.mjs'
@@ -40,6 +43,14 @@ import {
 import {
   startDesktopRendererServer,
 } from './renderer-server.mjs'
+import {
+  expandProcessPath,
+} from './process-path.mjs'
+
+// macOS / Linux 图形界面应用的 PATH 只包含系统目录。在启动最早阶段
+// 将其扩充为用户登录 shell 的 PATH，让 Gateway 子进程与后台可用性
+// 检测能找到通过 Homebrew、nvm 或官方脚本安装的 Agent 命令。
+expandProcessPath()
 
 const here = dirname(fileURLToPath(import.meta.url))
 const sourceRoot = resolve(here, '../..')
@@ -448,6 +459,37 @@ ipcMain.handle('qwen-audio-agent:settings-runtime-status', async event => {
     throw new Error('无权读取运行状态')
   }
   return runtimeStatus()
+})
+
+// 与 `qwenaudio setup --json` 同款的只读检测，供设置页标注各后台
+// Agent 在本机的可用状态。合并 config.env 是因为检测需要其中的
+// AGENT_PROTOCOL / DASHSCOPE_API_KEY / ACP_COMMAND 等配置。
+// INSTALLED_ONLY 与 gateway-process.mjs 保持一致：桌面版运行时禁止
+// npx 按需回退，检测口径必须与运行时一致，只认已安装的组件。
+ipcMain.handle('qwen-audio-agent:settings-detect-backends', async event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权检测后台 Agent')
+  }
+  const configured = existsSync(runtimeEnvironment.configPath)
+    ? parseEnv(readFileSync(runtimeEnvironment.configPath, 'utf8'))
+    : {}
+  const report = inspectBackendSetups({
+    env: {
+      ...process.env,
+      ...configured,
+      QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY: '1',
+    },
+  })
+  return {
+    selected: report.selected,
+    backends: report.backends.map(item => ({
+      id: item.id,
+      label: item.label,
+      ready: item.ready,
+      selected: item.selected,
+      issues: item.issues,
+    })),
+  }
 })
 
 ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {

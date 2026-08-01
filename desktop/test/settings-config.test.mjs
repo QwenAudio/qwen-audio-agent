@@ -162,7 +162,11 @@ test('desktop settings expose the embedded voice service without editing backend
   assert.match(html, /id="agent-protocol"/)
   assert.match(html, /id="realtime-model"/)
   assert.match(html, /id="backend-model"/)
-  assert.match(html, /<option value="kimi">Kimi Code<\/option>/)
+  // 后台 Agent 选项按本机可用性检测结果动态渲染，HTML 里只保留空容器
+  assert.match(html, /<select id="agent-protocol"><\/select>/)
+  assert.match(html, /id="refresh-backends"/)
+  assert.match(html, /<script src="\.\/settings\.js" type="module"><\/script>/)
+  assert.doesNotMatch(html, /<option value="kimi">/)
   for (const id of [
     'api-key',
     'realtime-voice',

@@ -238,6 +238,13 @@ button {
   transform: translateY(-1px);
 }
 
+.link-button:disabled {
+  opacity: .55;
+  box-shadow: none;
+  cursor: default;
+  transform: none;
+}
+
 footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

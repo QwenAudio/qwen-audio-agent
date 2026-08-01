@@ -1,8 +1,11 @@
+import { backendOptionStates } from './backend-options.mjs'
+
 const form = document.querySelector('#settings-form')
 const gatewayUrl = document.querySelector('#gateway-url')
 const orbStyle = document.querySelector('#orb-style')
 const dashscopeApiKey = document.querySelector('#dashscope-api-key')
 const agentProtocol = document.querySelector('#agent-protocol')
+const refreshBackends = document.querySelector('#refresh-backends')
 const realtimeModel = document.querySelector('#realtime-model')
 const backendModel = document.querySelector('#backend-model')
 const getApiKey = document.querySelector('#get-api-key')
@@ -14,6 +17,7 @@ const submit = form.querySelector('button[type="submit"]')
 
 let settings
 let runtime
+let backendReport = null
 let appliedFingerprint = ''
 let applying = false
 let refreshingRuntime = false
@@ -28,6 +32,34 @@ function friendlyError(error, fallback) {
     /^Error invoking remote method '[^']+': Error:\s*/,
     '',
   )
+}
+
+function truncate(text, max = 80) {
+  const value = String(text || '').trim()
+  return value.length > max ? `${value.slice(0, max)}…` : value
+}
+
+// 按本机检测结果重建后台 Agent 下拉列表：可用的正常显示，不可用的
+// 置灰并标注原因；当前生效的值即使不可用也保留，避免下拉框丢值。
+function renderBackendOptions(currentValue) {
+  const states = backendOptionStates(backendReport)
+  if (currentValue && !states.some(state => state.id === currentValue)) {
+    states.push({
+      id: currentValue,
+      label: backendLabel(currentValue),
+      disabled: false,
+      title: '',
+    })
+  }
+  agentProtocol.replaceChildren(...states.map(state => {
+    const option = document.createElement('option')
+    option.value = state.id
+    option.textContent = state.label
+    option.disabled = state.disabled
+    if (state.title) option.title = state.title
+    return option
+  }))
+  agentProtocol.value = currentValue || 'none'
 }
 
 function backendLabel(value) {
@@ -97,6 +129,13 @@ function renderRuntime() {
   }
   const label = runtime.backend.label
     || backendLabel(runtime.backend.protocol)
+  if (!runtime.backend.connected && runtime.backend.error) {
+    const reason = String(runtime.backend.error).trim()
+    setBackendStatus(`${label} 未连接：${truncate(reason)}`, false)
+    currentBackend.title = reason
+    return
+  }
+  currentBackend.title = ''
   const details = runtime.backend.baseUrl
     ? `${label} · ${runtime.backend.baseUrl}`
     : label
@@ -124,11 +163,28 @@ async function refreshRuntime() {
   }
 }
 
+async function detectBackendOptions() {
+  refreshBackends.disabled = true
+  try {
+    backendReport = await window.qwenAudioAgentDesktop.detectBackends()
+    renderBackendOptions(agentProtocol.value || settings?.agentProtocol)
+    updateApplyState()
+  } catch (error) {
+    showMessage(friendlyError(error, '检测后台 Agent 失败'), 'error')
+  } finally {
+    refreshBackends.disabled = false
+  }
+}
+
+refreshBackends.addEventListener('click', () => {
+  void detectBackendOptions()
+})
+
 function render() {
   gatewayUrl.value = settings.gatewayUrl
   orbStyle.value = settings.orbStyle
   dashscopeApiKey.value = settings.dashscopeApiKey || ''
-  agentProtocol.value = settings.agentProtocol || 'none'
+  renderBackendOptions(settings.agentProtocol || 'none')
   realtimeModel.value = settings.realtimeModel
     || 'qwen-audio-3.0-realtime-plus'
   backendModel.value = settings.backendModel || ''
@@ -191,6 +247,7 @@ window.qwenAudioAgentDesktop.loadSettings().then(value => {
   settings = value.settings
   runtime = value.runtime
   render()
+  void detectBackendOptions()
   if (value.runtimeError) {
     showMessage(`当前配置启动失败：${value.runtimeError}`, 'error')
   } else if (value.setupRequired) {

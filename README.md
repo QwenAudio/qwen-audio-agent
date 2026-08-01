@@ -251,15 +251,18 @@ AGENT_PROTOCOL=opencode
 AGENT_PROTOCOL=qoder
 ```
 
-Kimi Code、Hermes、CodeBuddy、Codex 和 Claude Code 也可直接选择：
+后台 Agent 需要用户自行安装并完成原生配置；qwen-audio-agent 会复用其
+用户级模型、工具、MCP、Skill 和认证。
 
-```dotenv
-AGENT_PROTOCOL=kimi
-# 或 hermes、codebuddy、codex、claude
+其中部分 Agent 通过外部 ACP 适配器接入，除本体外，还需要全局安装对应的适配器。
+以 Codex 为例：
+
+```bash
+npm install -g @agentclientprotocol/codex-acp
 ```
 
-以上其他后台暂时需要用户自行安装并完成原生配置；qwen-audio-agent 会复用其
-用户级模型、工具、MCP、Skill 和认证。
+CLI 模式缺少适配器时会尝试通过 npx 按需启动；桌面版为保证启动可靠，仅使用已安装的
+组件，请提前安装。
 
 使用其他支持 ACP stdio 的 Agent：
 
@@ -321,6 +324,7 @@ npm run desktop   # macOS 桌面悬浮球
 ## 交流与分享
 
 你可以直接在 [GitHub Issues](https://github.com/QwenAudio/qwen-audio-agent/issues) 发起讨论。
+
 对中国用户，也可以扫描左侧二维码加入微信交流群；如果群二维码已满或过期，
 扫描右侧任一维护者的个人二维码，维护者会邀请你进群。
 

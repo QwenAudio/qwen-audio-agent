@@ -161,6 +161,63 @@ test('honors explicit package and binary runtime requirements', () => {
   assert.match(missingAdapter.issues[0], /codex-acp/)
 })
 
+test('desktop installed-only mode disables every npx fallback', () => {
+  const env = {
+    QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY: '1',
+    DASHSCOPE_API_KEY: 'test-key',
+    QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen3.7-max',
+  }
+
+  // 未安装时不再走百炼自动部署，直接报告未安装
+  const missingOpenCode = inspector({
+    backend: 'opencode',
+    env,
+    commands: { npx: '/bin/npx' },
+  }).backends[0]
+  assert.equal(missingOpenCode.ready, false)
+  assert.match(missingOpenCode.issues[0], /未找到 OpenCode/)
+  assert.doesNotMatch(missingOpenCode.issues[0], /自动部署/)
+
+  // 版本过低时不再 npx 回退，报告版本不兼容
+  const legacyOpenCode = inspector({
+    backend: 'opencode',
+    env,
+    commands: { opencode: '/bin/opencode', npx: '/bin/npx' },
+    versions: { '/bin/opencode': '1.17.9' },
+  }).backends[0]
+  assert.equal(legacyOpenCode.ready, false)
+  assert.match(legacyOpenCode.issues[0], /低于最低版本/)
+
+  // 缺少 ACP Adapter 时不再 npx 回退，提示手动安装
+  const claude = inspector({
+    backend: 'claude',
+    env,
+    commands: { claude: '/bin/claude', npx: '/bin/npx' },
+  }).backends[0]
+  assert.equal(claude.ready, false)
+  assert.match(claude.issues[0], /桌面版需先手动安装/)
+
+  // package 模式同样被拒绝
+  const packageMode = inspector({
+    backend: 'claude',
+    env: { ...env, CLAUDE_CODE_ACP_RUNTIME: 'package' },
+    commands: { claude: '/bin/claude', npx: '/bin/npx' },
+  }).backends[0]
+  assert.equal(packageMode.ready, false)
+  assert.match(packageMode.issues[0], /桌面版需先安装 ACP Adapter/)
+
+  // 已安装的组件不受影响
+  const installed = inspector({
+    backend: 'claude',
+    env,
+    commands: {
+      claude: '/bin/claude',
+      'claude-code-acp': '/bin/claude-code-acp',
+    },
+  }).backends[0]
+  assert.equal(installed.ready, true)
+})
+
 test('formats a concise read-only setup report', () => {
   const report = inspector({
     backend: 'codex',

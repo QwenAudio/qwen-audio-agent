@@ -283,17 +283,20 @@ Use Qoder:
 AGENT_PROTOCOL=qoder
 ```
 
-Kimi Code, Hermes, CodeBuddy, Codex, and Claude Code can also be selected
-directly:
+Backend Agents require the user to install and configure the native Agent
+first. qwen-audio-agent reuses its user-level model, tools, MCP servers,
+Skills, and authentication.
 
-```dotenv
-AGENT_PROTOCOL=kimi
-# Or hermes, codebuddy, codex, or claude
+Some Agents connect through external ACP adapters. Besides the Agent itself,
+install the matching adapter globally. For example, for Codex:
+
+```bash
+npm install -g @agentclientprotocol/codex-acp
 ```
 
-These other backends currently require the user to install and configure the
-native Agent first. qwen-audio-agent reuses its user-level model, tools, MCP
-servers, Skills, and authentication.
+The CLI falls back to starting a missing adapter on demand with npx; the
+desktop app only uses installed components for reliable startup, so install
+the adapter up front.
 
 Use another Agent that supports ACP over stdio:
 
@@ -369,6 +372,7 @@ releasing.
 
 You can start a discussion directly in
 [GitHub Issues](https://github.com/QwenAudio/qwen-audio-agent/issues).
+
 For users in China, you can also scan the QR code on the left to join our
 WeChat group. If the group code is full or expired, scan either maintainer's
 personal QR code on the right and they will invite you to the group.

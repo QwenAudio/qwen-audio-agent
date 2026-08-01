@@ -256,6 +256,9 @@ function inspectAdapter(spec, env, find) {
   if (!spec.adapterCommand) {
     return { ready: true, source: spec.integration }
   }
+  // 桌面版（QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY）运行时禁止 npx
+  // 按需回退，检测口径必须与之一致，只认已安装的 Adapter。
+  const installedOnly = clean(env.QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY) === '1'
   const runtime = clean(
     env[spec.adapterRuntimeEnvironment] || 'auto',
   ).toLowerCase()
@@ -267,6 +270,12 @@ function inspectAdapter(spec, env, find) {
     }
   }
   if (runtime === 'package') {
+    if (installedOnly) {
+      return {
+        ready: false,
+        issue: `桌面版需先安装 ACP Adapter ${spec.adapterCommand}`,
+      }
+    }
     const npx = find('npx')
     return npx
       ? { ready: true, source: 'managed', path: npx }
@@ -291,11 +300,13 @@ function inspectAdapter(spec, env, find) {
       issue: `${spec.adapterCommand} 不可用`,
     }
   }
-  const npx = find('npx')
+  const npx = installedOnly ? '' : find('npx')
   if (npx) return { ready: true, source: 'managed', path: npx }
   return {
     ready: false,
-    issue: `缺少 ${spec.adapterCommand}，并且 npx 不可用`,
+    issue: installedOnly
+      ? `缺少 ACP Adapter ${spec.adapterCommand}，桌面版需先手动安装`
+      : `缺少 ${spec.adapterCommand}，并且 npx 不可用`,
   }
 }
 
@@ -324,6 +335,8 @@ function inspectBackend(id, {
     && Boolean(clean(env.QWEN_AUDIO_AGENT_BACKEND_MODEL))
     && clean(env.QWEN_AUDIO_AGENT_BACKEND_MODEL).toLowerCase() !== 'auto'
   )
+  // 桌面版运行时不做 npx 自动部署，检测同样关闭 managed 回退分支。
+  const installedOnly = clean(env.QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY) === '1'
   let backend = explicitRuntime(id, env, find)
   if (!backend) {
     const path = find(command)
@@ -343,6 +356,7 @@ function inspectBackend(id, {
         }
     if (
       !backend.ready
+      && !installedOnly
       && ['opencode', 'openclaw'].includes(id)
       && runtime === 'auto'
     ) {
@@ -368,7 +382,7 @@ function inspectBackend(id, {
     const version = readVersion(backend.path)
     backend.version = version
     if (!versionAtLeast(version, spec.minimumVersion)) {
-      const npx = runtime === 'auto' ? find('npx') : ''
+      const npx = !installedOnly && runtime === 'auto' ? find('npx') : ''
       if (npx && automaticBailian) {
         backend = {
           ready: true,

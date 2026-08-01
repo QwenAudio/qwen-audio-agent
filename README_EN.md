@@ -373,7 +373,7 @@ For users in China, you can also scan the QR code on the left to join our
 WeChat group. If the group code is full or expired, scan either maintainer's
 personal QR code on the right and they will invite you to the group.
 
-| WeChat Group | Li Xu | Pigeon.Dan |
+| WeChat Group | Personal WeChat | Personal WeChat |
 | :---: | :---: | :---: |
 | <img src="docs/wechat-group-qr.png" width="240" alt="WeChat group QR code"> | <img src="docs/wechat-contact-qr.png" width="240" alt="Li Xu's personal WeChat QR code"> | <img src="docs/wechat-pigeon-dan-qr.png" width="240" alt="Pigeon.Dan's personal WeChat QR code"> |
 

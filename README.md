@@ -6,7 +6,6 @@
 [![npm](https://img.shields.io/npm/v/qwen-audio-agent)](https://www.npmjs.com/package/qwen-audio-agent)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.22.2-brightgreen)](https://nodejs.org/)
 [![license](https://img.shields.io/github/license/QwenAudio/qwen-audio-agent)](LICENSE)
-[![WeChat](https://img.shields.io/badge/WeChat-%E4%BA%A4%E6%B5%81%E4%B8%8E%E5%88%86%E4%BA%AB-07C160?logo=wechat&logoColor=white)](#交流与分享)
 
 ## Agent，始终在场
 
@@ -325,7 +324,7 @@ npm run desktop   # macOS 桌面悬浮球
 对中国用户，也可以扫描左侧二维码加入微信交流群；如果群二维码已满或过期，
 扫描右侧任一维护者的个人二维码，维护者会邀请你进群。
 
-| 微信交流群 | 李旭 | Pigeon.Dan |
+| 微信交流群 | 个人微信 | 个人微信 |
 | :---: | :---: | :---: |
 | <img src="docs/wechat-group-qr.png" width="240" alt="微信交流群二维码"> | <img src="docs/wechat-contact-qr.png" width="240" alt="李旭个人微信二维码"> | <img src="docs/wechat-pigeon-dan-qr.png" width="240" alt="Pigeon.Dan 个人微信二维码"> |
 

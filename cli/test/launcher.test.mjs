@@ -239,6 +239,45 @@ test('installs, stops and reports the background Gateway service', async () => {
   ])
 })
 
+test('passes the configured local Gateway host and port to its service', async () => {
+  const target = harness()
+  target.dependencies.env.QWEN_AUDIO_AGENT_URL = 'http://127.0.0.1:3200'
+  target.dependencies.manageService = async (action, options) => {
+    target.calls.push(['service', action, options])
+    return {
+      installed: true,
+      running: true,
+      logPath: null,
+    }
+  }
+
+  assert.equal(
+    await main(['gateway', 'install'], target.dependencies),
+    0,
+  )
+  const install = target.calls.find(call => (
+    call[0] === 'service' && call[1] === 'install'
+  ))
+  assert.deepEqual(install[2].serviceEnvironment, {
+    HOST: '127.0.0.1',
+    PORT: '3200',
+  })
+})
+
+test('rejects a remote Gateway URL for the local background service', async () => {
+  const target = harness()
+  target.dependencies.env.QWEN_AUDIO_AGENT_URL = 'https://voice.example.com'
+
+  await assert.rejects(
+    main(['gateway', 'install'], target.dependencies),
+    /只支持本机 HTTP 地址/,
+  )
+  assert.equal(
+    target.calls.some(call => call[0] === 'service'),
+    false,
+  )
+})
+
 test('does not confuse a foreground Gateway with the background service', async () => {
   const restart = harness()
   restart.dependencies.manageService = async action => {

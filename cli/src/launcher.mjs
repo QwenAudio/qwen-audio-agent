@@ -9,6 +9,7 @@ import {
 import { helpText, parseArguments } from './arguments.mjs'
 import {
   ensureRuntime,
+  isLocalGateway,
   readGatewayHealth,
   waitForGateway,
 } from './runtime.mjs'
@@ -60,6 +61,17 @@ function gatewaySummary(health) {
     || '后台 Agent'
   const state = health?.backend?.ok ? '已连接' : '未连接'
   return `${label} ${state}`
+}
+
+function gatewayServiceEnvironment(url) {
+  const target = new URL(url)
+  if (target.protocol !== 'http:' || !isLocalGateway(url)) {
+    throw new Error('Gateway 后台服务只支持本机 HTTP 地址')
+  }
+  return {
+    HOST: target.hostname.replace(/^\[(.*)\]$/, '$1'),
+    PORT: target.port || '80',
+  }
 }
 
 async function waitForGatewayStop(url, {
@@ -124,9 +136,17 @@ export async function main(argv, {
     (options.command === 'gateway' && options.gatewayAction !== 'run')
     || options.command === 'status'
   ) {
+    const serviceEnvironment = [
+      'install',
+      'start',
+      'restart',
+    ].includes(options.gatewayAction)
+      ? gatewayServiceEnvironment(options.url)
+      : {}
     const serviceOptions = {
       configDirectory: environment.configDirectory,
       gatewayPath,
+      serviceEnvironment,
       serviceMetadata: {
         url: options.url,
       },

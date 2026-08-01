@@ -20,6 +20,7 @@ const PROTOCOL_METHODS = [
   'normalizeIncoming',
   'sessionUpdate',
   'audioAppend',
+  'conversationItemId',
   'conversationItemCreate',
   'responseCreate',
   'responseCancel',

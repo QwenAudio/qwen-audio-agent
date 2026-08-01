@@ -1,5 +1,4 @@
 import WebSocket from 'ws'
-import { randomUUID } from 'crypto'
 import {
   resolveRealtimeProvider,
   validateRealtimeProvider,
@@ -211,7 +210,9 @@ export class RealtimeFrontend {
   }
 
   createConversationItem(item) {
-    const id = item.id || `item_${randomUUID().replaceAll('-', '')}`
+    // Id namespaces are dialect-specific (the GA dialect derives them from the
+    // item type), so the protocol adapter mints the id.
+    const id = item.id || this.protocol.conversationItemId(item)
     // Providers that never echo conversation.item.created would time every
     // waiter out; sending without awaiting confirmation matches their actual
     // contract (items are applied silently).

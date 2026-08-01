@@ -13,6 +13,15 @@ function gaResponse(response) {
   return modalities ? { ...rest, output_modalities: modalities } : rest
 }
 
+// The GA dialect derives a conversation item's id namespace from its type and
+// rejects ids from the wrong namespace outright ("ID must start with 'fco_'").
+// Items of an unlisted type keep the generic namespace.
+const ID_PREFIXES = Object.freeze({
+  message: 'msg',
+  function_call: 'fc',
+  function_call_output: 'fco',
+})
+
 /**
  * Wire adapter for providers that speak the GA (2025+) dialect of the OpenAI
  * Realtime protocol, e.g. huggingface/speech-to-speech. Differences from the
@@ -20,6 +29,7 @@ function gaResponse(response) {
  *
  * - response payloads use output_modalities instead of modalities;
  * - text deltas arrive as response.output_text.* instead of response.text.*;
+ * - conversation item ids are namespaced per item type;
  * - session.updated is never emitted, so it is synthesized right after
  *   session.created: the frontend sends session.update in response to
  *   session.created, and treating the session as live once that update has
@@ -58,6 +68,11 @@ export const gaRealtimeProtocol = Object.freeze({
     type: 'input_audio_buffer.append',
     audio,
   }),
+
+  conversationItemId: item => {
+    const prefix = ID_PREFIXES[item?.type] || 'item'
+    return `${prefix}_${randomUUID().replaceAll('-', '')}`
+  },
 
   conversationItemCreate: item => ({
     type: 'conversation.item.create',

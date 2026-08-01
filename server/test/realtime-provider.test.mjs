@@ -835,6 +835,50 @@ test('synthesizes the session acknowledgement a GA provider never sends', () => 
   assert.equal(frontend.ready, true)
 })
 
+test('namespaces GA conversation item ids by item type', async () => {
+  const frontend = createS2sFrontend()
+  const sent = []
+  frontend.ready = true
+  frontend.send = event => sent.push(event)
+
+  await frontend.createConversationItem({
+    type: 'function_call_output',
+    call_id: 'call-1',
+    output: '{}',
+  })
+  await frontend.createConversationItem({
+    type: 'message',
+    role: 'user',
+    content: [{ type: 'input_text', text: 'hi' }],
+  })
+
+  // The GA schema rejects an id from the wrong namespace outright, so the
+  // prefix has to match the item type rather than a generic "item_".
+  assert.match(sent[0].item.id, /^fco_[0-9a-f]{32}$/)
+  assert.match(sent[1].item.id, /^msg_[0-9a-f]{32}$/)
+})
+
+test('keeps the beta dialect on a single conversation item id namespace', async () => {
+  const frontend = createQwenFrontend()
+  const sent = []
+  frontend.ready = true
+  frontend.send = event => sent.push(event)
+
+  const created = frontend.createConversationItem({
+    type: 'function_call_output',
+    call_id: 'call-1',
+    output: '{}',
+  })
+  const { id } = sent[0].item
+  assert.match(id, /^item_[0-9a-f]{32}$/)
+
+  frontend.handleProviderEvent({
+    type: 'conversation.item.created',
+    item: { id },
+  })
+  await created
+})
+
 test('normalizes GA text events into the shared transcript event names', () => {
   const frontend = createS2sFrontend()
   const [delta] = frontend.handleProviderEvent({

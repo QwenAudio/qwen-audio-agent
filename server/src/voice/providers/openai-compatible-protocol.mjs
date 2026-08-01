@@ -28,6 +28,10 @@ export const openAiCompatibleProtocol = Object.freeze({
     audio,
   }),
 
+  // Client-assigned id for a conversation item. The beta dialect accepts one
+  // opaque namespace for every item type.
+  conversationItemId: () => `item_${randomUUID().replaceAll('-', '')}`,
+
   conversationItemCreate: item => ({
     type: 'conversation.item.create',
     item,

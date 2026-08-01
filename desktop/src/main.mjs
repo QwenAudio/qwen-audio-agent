@@ -131,7 +131,8 @@ function animateWindowResize(window, targetWidth, targetHeight, duration = 200) 
   const startHeight = currentHeight
   const startTime = performance.now()
 
-  function frame(now) {
+  function frame() {
+    const now = performance.now()
     const elapsed = now - startTime
     const progress = Math.min(1, elapsed / duration)
     const ease = progress * (2 - progress)
@@ -139,10 +140,10 @@ function animateWindowResize(window, targetWidth, targetHeight, duration = 200) 
     const nextHeight = Math.round(startHeight + (targetHeight - startHeight) * ease)
     if (!window.isDestroyed()) {
       window.setSize(nextWidth, nextHeight)
-      if (progress < 1) requestAnimationFrame(frame)
+      if (progress < 1) setImmediate(frame)
     }
   }
-  requestAnimationFrame(frame)
+  setImmediate(frame)
 }
 
 function ensureWindowWithinBounds(window) {

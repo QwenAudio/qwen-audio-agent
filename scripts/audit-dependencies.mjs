@@ -2,16 +2,10 @@
 
 import { spawnSync } from 'node:child_process'
 
-const TEMPORARY_BUILD_ADVISORIES = new Map([
-  [
-    1124334,
-    {
-      id: 'GHSA-mh99-v99m-4gvg',
-      expires: '2026-08-15',
-      reason: 'electron-builder 的间接 glob 构建链尚无兼容的稳定版修复',
-    },
-  ],
-])
+// 无当前生效的临时例外；新增例外时按 1124334（GHSA-mh99-v99m-4gvg）的
+// 格式加入：source id -> { id, expires, reason }。已修复或不再出现的例外
+// 必须及时删除，脚本会在例外失效时强制报错提醒。
+const TEMPORARY_BUILD_ADVISORIES = new Map([])
 
 function runAudit(args) {
   const npmExecutable = process.env.npm_execpath

@@ -365,7 +365,7 @@ npm run desktop   # macOS desktop orb
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more about building, testing, and
 releasing.
 
-## Discussion & Community
+## Discussion & Sharing
 
 You can start a discussion directly in
 [GitHub Issues](https://github.com/QwenAudio/qwen-audio-agent/issues).

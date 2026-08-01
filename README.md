@@ -318,7 +318,7 @@ npm run desktop   # macOS 桌面悬浮球
 
 更多构建、测试和发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-## 讨论 & 交流
+## 交流与分享
 
 你可以直接在 [GitHub Issues](https://github.com/QwenAudio/qwen-audio-agent/issues) 发起讨论。
 对中国用户，也可以扫描左侧二维码加入微信交流群；如果群二维码已满或过期，

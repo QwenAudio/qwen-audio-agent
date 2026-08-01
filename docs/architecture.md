@@ -150,7 +150,7 @@ Queue position is an internal scheduling detail and does not change the user's
 duplex conversation.
 
 Active Work cannot be safely resumed after a Gateway restart, so
-they become failed with an explicit restart reason. Completed results and
+it becomes failed with an explicit restart reason. Completed results and
 notification delivery state are persisted.
 
 ## 6. Progress animation

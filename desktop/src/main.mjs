@@ -120,6 +120,52 @@ let setupRequired = (
 )
 const preloadPath = resolve(here, 'preload.cjs')
 
+const DEFAULT_ORB_WIDTH = 172
+const DEFAULT_ORB_HEIGHT = 170
+const EXPANDED_ORB_HEIGHT = 380
+
+function animateWindowResize(window, targetWidth, targetHeight, duration = 200) {
+  if (!window || window.isDestroyed()) return
+  const [currentWidth, currentHeight] = window.getSize()
+  const startWidth = currentWidth
+  const startHeight = currentHeight
+  const startTime = performance.now()
+
+  function frame(now) {
+    const elapsed = now - startTime
+    const progress = Math.min(1, elapsed / duration)
+    const ease = progress * (2 - progress)
+    const nextWidth = Math.round(startWidth + (targetWidth - startWidth) * ease)
+    const nextHeight = Math.round(startHeight + (targetHeight - startHeight) * ease)
+    if (!window.isDestroyed()) {
+      window.setSize(nextWidth, nextHeight)
+      if (progress < 1) requestAnimationFrame(frame)
+    }
+  }
+  requestAnimationFrame(frame)
+}
+
+function ensureWindowWithinBounds(window) {
+  if (!window || window.isDestroyed()) return
+  const [x, y] = window.getPosition()
+  const [width, height] = window.getSize()
+  const display = screen.getDisplayNearestPoint({ x: x + width / 2, y: y + height / 2 })
+  const workArea = display.workArea
+  let nextX = x
+  let nextY = y
+  if (x + width > workArea.x + workArea.width) {
+    nextX = workArea.x + workArea.width - width - 8
+  }
+  if (y + height > workArea.y + workArea.height) {
+    nextY = workArea.y + workArea.height - height - 8
+  }
+  if (x < workArea.x) nextX = workArea.x + 8
+  if (y < workArea.y) nextY = workArea.y + 8
+  if (nextX !== x || nextY !== y) {
+    window.setPosition(nextX, nextY)
+  }
+}
+
 let mainWindow = null
 let settingsWindow = null
 let rendererServer = null
@@ -425,15 +471,15 @@ function createTray() {
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay()
-  const width = 172
-  const height = 170
+  const width = DEFAULT_ORB_WIDTH
+  const height = DEFAULT_ORB_HEIGHT
   const window = new BrowserWindow({
     width,
     height,
     minWidth: width,
     minHeight: height,
     maxWidth: width,
-    maxHeight: height,
+    maxHeight: EXPANDED_ORB_HEIGHT,
     x: workArea.x + workArea.width - width - 24,
     y: workArea.y + 24,
     frame: false,
@@ -561,6 +607,23 @@ ipcMain.on('qwen-audio-agent:drag-move', (event, point) => {
 
 ipcMain.on('qwen-audio-agent:drag-end', event => {
   if (mainWindow && event.sender === mainWindow.webContents) dragState = null
+})
+
+ipcMain.on('qwen-audio-agent:resize-orb', (event, { width, height, animate }) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return
+  if (animate) {
+    animateWindowResize(mainWindow, width, height, 200)
+  } else {
+    mainWindow.setSize(width, height)
+  }
+  ensureWindowWithinBounds(mainWindow)
+})
+
+ipcMain.on('qwen-audio-agent:open-webui', (event, url) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return
+  if (typeof url !== 'string') return
+  void shell.openExternal(url)
 })
 
 ipcMain.on('qwen-audio-agent:open-settings', event => {

@@ -365,6 +365,18 @@ npm run desktop   # macOS desktop orb
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more about building, testing, and
 releasing.
 
+## Discussion & Community
+
+You can start a discussion directly in
+[GitHub Issues](https://github.com/QwenAudio/qwen-audio-agent/issues).
+For users in China, you can also scan the QR code on the left to join our
+WeChat group. If the group code is full or expired, scan the personal QR code
+on the right and the maintainer will invite you to the group.
+
+| WeChat Group | Personal WeChat |
+| :---: | :---: |
+| <img src="docs/wechat-group-qr.png" width="240" alt="WeChat group QR code"> | <img src="docs/wechat-contact-qr.png" width="240" alt="Personal WeChat QR code"> |
+
 ## Contributing and Security
 
 - Development and contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)

@@ -318,6 +318,16 @@ npm run desktop   # macOS 桌面悬浮球
 
 更多构建、测试和发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## 讨论 & 交流
+
+你可以直接在 [GitHub Issues](https://github.com/QwenAudio/qwen-audio-agent/issues) 发起讨论。
+对中国用户，也可以扫描左侧二维码加入微信交流群；如果群二维码已满或过期，
+扫描右侧的个人二维码，维护者会邀请你进群。
+
+| 微信交流群 | 个人微信 |
+| :---: | :---: |
+| <img src="docs/wechat-group-qr.png" width="240" alt="微信交流群二维码"> | <img src="docs/wechat-contact-qr.png" width="240" alt="个人微信二维码"> |
+
 ## 参与贡献与安全
 
 - 开发与提交说明：[CONTRIBUTING.md](CONTRIBUTING.md)

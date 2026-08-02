@@ -1174,10 +1174,7 @@ test('negotiates client audio rates without overriding speech-to-speech models',
   assert.equal(createS2sFrontend().responseStartTimeoutMs, 60_000)
   assert.equal(provider.model(), null)
   assert.equal(provider.voice(), null)
-  assert.deepEqual(session.audio.input.format, {
-    type: 'audio/pcm',
-    rate: 16000,
-  })
+  assert.equal(session.audio.input.format, undefined)
   assert.deepEqual(session.audio.output.format, {
     type: 'audio/pcm',
     rate: 24000,
@@ -1240,10 +1237,7 @@ test('connects to an OpenAI Realtime-compatible speech-to-speech server', async 
   assert.equal(requestHeaders.authorization, undefined)
   assert.equal(update.type, 'session.update')
   assert.equal(update.session.type, 'realtime')
-  assert.deepEqual(update.session.audio.input.format, {
-    type: 'audio/pcm',
-    rate: 16000,
-  })
+  assert.equal(update.session.audio.input.format, undefined)
   assert.deepEqual(update.session.audio.output.format, {
     type: 'audio/pcm',
     rate: 24000,

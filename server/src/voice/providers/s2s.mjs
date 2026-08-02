@@ -77,10 +77,10 @@ export const s2sProvider = {
       output_modalities: textOnly ? ['text'] : ['audio'],
       audio: {
         input: {
-          format: {
-            type: 'audio/pcm',
-            rate: INPUT_SAMPLE_RATE,
-          },
+          // speech-to-speech treats an omitted input format as its native
+          // 16 kHz PCM pipeline rate. OpenAI's GA AudioPCM schema only accepts
+          // 24 kHz when the format is explicit, so declaring 16 kHz here would
+          // make the entire session.update invalid.
           turn_detection: textOnly
             ? null
             : { type: 'server_vad', interrupt_response: true },

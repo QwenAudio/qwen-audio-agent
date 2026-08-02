@@ -8,6 +8,9 @@ import {
 } from '../frontend-tools.mjs'
 import { gaRealtimeProtocol } from './ga-protocol.mjs'
 
+const INPUT_SAMPLE_RATE = 16000
+const OUTPUT_SAMPLE_RATE = 24000
+
 function classifyError(message) {
   if (/session_limit_reached|session slots? (?:are|is) in use/i.test(message)) {
     return 'capacity_busy'
@@ -27,10 +30,8 @@ function classifyError(message) {
 export const s2sProvider = {
   key: 'speech-to-speech',
   label: 'Hugging Face Speech-to-Speech',
-  // The upstream pipeline defaults to PCM16 at 16 kHz when the GA audio format
-  // is omitted. Its own reference client uses the same path.
-  inputSampleRate: 16000,
-  outputSampleRate: 16000,
+  inputSampleRate: INPUT_SAMPLE_RATE,
+  outputSampleRate: OUTPUT_SAMPLE_RATE,
   // Fully local ASR -> LLM -> TTS can take substantially longer than a cloud
   // model before producing its first response event.
   responseStartTimeoutMs: 60_000,
@@ -76,11 +77,22 @@ export const s2sProvider = {
       output_modalities: textOnly ? ['text'] : ['audio'],
       audio: {
         input: {
+          format: {
+            type: 'audio/pcm',
+            rate: INPUT_SAMPLE_RATE,
+          },
           turn_detection: textOnly
             ? null
             : { type: 'server_vad', interrupt_response: true },
         },
-        output: {},
+        output: {
+          // Negotiate the common client playback rate explicitly. The
+          // upstream service resamples its internal 16 kHz pipeline output.
+          format: {
+            type: 'audio/pcm',
+            rate: OUTPUT_SAMPLE_RATE,
+          },
+        },
       },
     }
   },

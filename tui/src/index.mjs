@@ -6,6 +6,7 @@ import {
   GatewayServerEvent,
 } from '../../shared/realtime-events.mjs'
 import { startMacVoiceIO } from './macos-voice-io.mjs'
+import { resamplePcm16 } from './pcm-audio.mjs'
 import { startPortAudioVoiceIO } from './portaudio-voice-io.mjs'
 
 const OUTPUT_SAMPLE_RATE = 24000
@@ -649,9 +650,19 @@ export function createPlayback({
   return {
     write(base64, rate = OUTPUT_SAMPLE_RATE, responseId = '') {
       if (responseId && cancelledResponses.has(responseId)) return false
-      const buffer = Buffer.from(base64, 'base64')
+      let buffer = Buffer.from(base64, 'base64')
       if (!buffer.length) return true
-      if (!audioSink.write(buffer, rate, responseId)) {
+      try {
+        buffer = resamplePcm16(buffer, rate, OUTPUT_SAMPLE_RATE)
+      } catch (error) {
+        onError?.(error.message)
+        if (responseId) {
+          rememberCancelled(responseId)
+          onCancelled?.(responseId)
+        }
+        return false
+      }
+      if (!audioSink.write(buffer, OUTPUT_SAMPLE_RATE, responseId)) {
         onError?.('音频设备未接受播放数据')
         if (responseId) {
           rememberCancelled(responseId)

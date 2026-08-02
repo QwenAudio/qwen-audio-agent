@@ -1160,7 +1160,7 @@ test('retries immediately after a known automatic response becomes idle', async 
   frontend.settlePending(pending, { cancelled: true })
 })
 
-test('uses the speech-to-speech native 16 kHz defaults without overriding its models', () => {
+test('negotiates client audio rates without overriding speech-to-speech models', () => {
   const provider = REALTIME_PROVIDERS['speech-to-speech']
   const session = provider.buildSession({
     agentContext: {},
@@ -1169,13 +1169,19 @@ test('uses the speech-to-speech native 16 kHz defaults without overriding its mo
   assert.equal(provider.key, 'speech-to-speech')
   assert.equal(REALTIME_PROVIDERS.s2s, provider)
   assert.equal(provider.inputSampleRate, 16000)
-  assert.equal(provider.outputSampleRate, 16000)
+  assert.equal(provider.outputSampleRate, 24000)
   assert.equal(provider.responseStartTimeoutMs, 60_000)
   assert.equal(createS2sFrontend().responseStartTimeoutMs, 60_000)
   assert.equal(provider.model(), null)
   assert.equal(provider.voice(), null)
-  assert.equal(session.audio.input.format, undefined)
-  assert.equal(session.audio.output.format, undefined)
+  assert.deepEqual(session.audio.input.format, {
+    type: 'audio/pcm',
+    rate: 16000,
+  })
+  assert.deepEqual(session.audio.output.format, {
+    type: 'audio/pcm',
+    rate: 24000,
+  })
   assert.equal(session.audio.output.voice, undefined)
   assert.equal(session.audio.input.turn_detection.type, 'server_vad')
 })
@@ -1234,6 +1240,12 @@ test('connects to an OpenAI Realtime-compatible speech-to-speech server', async 
   assert.equal(requestHeaders.authorization, undefined)
   assert.equal(update.type, 'session.update')
   assert.equal(update.session.type, 'realtime')
-  assert.equal(update.session.audio.input.format, undefined)
-  assert.equal(update.session.audio.output.format, undefined)
+  assert.deepEqual(update.session.audio.input.format, {
+    type: 'audio/pcm',
+    rate: 16000,
+  })
+  assert.deepEqual(update.session.audio.output.format, {
+    type: 'audio/pcm',
+    rate: 24000,
+  })
 })

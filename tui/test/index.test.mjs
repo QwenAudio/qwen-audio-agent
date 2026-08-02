@@ -292,6 +292,31 @@ test('ignores late audio from a response after manual interruption', () => {
   assert.equal(writes.length, 1)
 })
 
+test('normalizes provider audio to the TUI device playback rate', () => {
+  const writes = []
+  const playback = createPlayback({
+    audioSink: {
+      write(buffer, rate, responseId) {
+        writes.push({ buffer, rate, responseId })
+        return true
+      },
+      clear() {},
+    },
+  })
+  const source = Buffer.alloc(4)
+  source.writeInt16LE(0, 0)
+  source.writeInt16LE(1000, 2)
+
+  assert.equal(
+    playback.write(source.toString('base64'), 16000, 'response-1'),
+    true,
+  )
+  assert.equal(writes.length, 1)
+  assert.equal(writes[0].rate, 24000)
+  assert.equal(writes[0].responseId, 'response-1')
+  assert.equal(writes[0].buffer.length, 6)
+})
+
 test('uses native playback drain events instead of a wall-clock estimate', () => {
   const commands = []
   const events = []

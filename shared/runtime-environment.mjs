@@ -13,6 +13,7 @@ import {
 import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { parseEnv } from 'node:util'
+import { resolveRealtimeFrontendConfiguration } from './realtime-provider-catalog.mjs'
 
 const SECRET_KEY = 'QWEN_AUDIO_AGENT_AUTH_SECRET'
 const USER_CONFIG_TEMPLATE = [
@@ -478,9 +479,7 @@ export function requireDashScopeCredential(env = process.env) {
 }
 
 export function requireRealtimeFrontendConfiguration(env = process.env) {
-  const provider = String(
-    env.QWEN_AUDIO_REALTIME_PROVIDER || 'dashscope',
-  ).trim().toLowerCase()
-  if (['s2s', 'speech-to-speech'].includes(provider)) return
-  requireDashScopeCredential(env)
+  const frontend = resolveRealtimeFrontendConfiguration(env)
+  if (frontend.configured) return
+  throw new Error(frontend.missingConfigurationMessage)
 }

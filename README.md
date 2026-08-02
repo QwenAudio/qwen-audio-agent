@@ -165,21 +165,57 @@ qwenaudio tui
 qwenaudio webui
 ```
 
-### 接入 speech-to-speech 前台
+### 使用 Hugging Face speech-to-speech 前台
 
-qwen-audio-agent 可以连接用户自行运行的
-[Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)
-OpenAI Realtime 兼容服务。请先按其文档安装、选择 STT / LLM / TTS 和音色并启动服务，
-然后在 `config.env` 中设置：
+qwen-audio-agent 也可以连接用户自行运行的
+[Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)。
+它将 VAD、STT、LLM 和 TTS 组合成 OpenAI Realtime 兼容服务，整条语音链路既可以
+完全运行在本地，也可以按需替换其中的模型或服务。
+Linux / Windows 可通过 `transformers` 在 CUDA 或 CPU 上运行本地 LLM，Apple Silicon
+则可以使用 `mlx-lm`。使用前需准备 Python 3.10 或更高版本。
+
+1. 安装 speech-to-speech：
+
+```bash
+pip install "speech-to-speech[paraformer]"
+```
+
+2. 启动全本地服务：
+
+Linux / Windows（NVIDIA GPU）：
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend transformers \
+  --device cuda
+```
+
+Apple Silicon：
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend mlx-lm \
+  --device mps
+```
+
+没有 NVIDIA GPU 时，也可以选择适合 CPU 的更小本地模型；还可以
+将 LLM 指向本机运行的 vLLM / llama.cpp。服务默认运行在
+`ws://127.0.0.1:8765/v1/realtime`。
+
+3. 在 qwen-audio-agent 的 `config.env` 中设置：
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
 SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
 ```
 
-此模式不需要 DashScope API Key。Gateway 只连接 Realtime 接口，不会修改
-speech-to-speech 的模型或语音配置。如果接口位于需要 Bearer 认证的代理后方，可在
-高级配置中设置 `SPEECH_TO_SPEECH_AUTH_TOKEN`。
+然后正常启动 `qwenaudio`。在全本地模式下无需云端 API Key。Gateway 只连接 Realtime
+接口，不会修改 speech-to-speech 的 STT、LLM、TTS 或音色配置。你也可以自行将其中的
+LLM 换成 DashScope、OpenAI 等兼容服务；相关模型和认证仍由 speech-to-speech 管理。
+如果 Realtime 接口位于需要 Bearer 认证的代理后方，可设置
+`SPEECH_TO_SPEECH_AUTH_TOKEN`。
 
 ### TUI 使用注意
 

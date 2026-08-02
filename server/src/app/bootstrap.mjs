@@ -80,6 +80,7 @@ app.get('/api/health', async (req, res) => {
     realtimeLabel: realtime.label,
     realtimeModel: realtime.model,
     realtimeInputSampleRate: realtime.inputSampleRate,
+    realtimeConfigurationSignature: realtime.configurationSignature,
     // Front ends a client may select for its session through the realtime
     // connect event.
     realtimeProviders: realtime.providers,

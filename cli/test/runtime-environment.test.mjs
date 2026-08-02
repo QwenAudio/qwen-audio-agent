@@ -455,4 +455,10 @@ test('does not require a DashScope credential for speech-to-speech', () => {
     () => requireRealtimeFrontendConfiguration({}),
     /DASHSCOPE_API_KEY/,
   )
+  assert.throws(
+    () => requireRealtimeFrontendConfiguration({
+      QWEN_AUDIO_REALTIME_PROVIDER: 'speech2speech',
+    }),
+    /不支持的 Realtime 前台/,
+  )
 })

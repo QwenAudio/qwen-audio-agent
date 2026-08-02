@@ -1,8 +1,13 @@
 import WebSocket from 'ws'
+import { randomUUID } from 'node:crypto'
 import {
   resolveRealtimeProvider,
   validateRealtimeProvider,
 } from './providers/registry.mjs'
+import {
+  isResponseActivityEvent,
+  realtimeResponseId,
+} from './response-lifecycle.mjs'
 
 // Re-export provider-agnostic tools and instructions so existing callers
 // (tests, tool-call-handler, bootstrap) continue to work without changes.
@@ -26,10 +31,6 @@ export {
   describeActiveRealtime,
 } from './providers/registry.mjs'
 
-function responseId(event) {
-  return event.response_id || event.response?.id || ''
-}
-
 function normalizedEvents(value) {
   if (!value) return []
   return Array.isArray(value) ? value.filter(Boolean) : [value]
@@ -44,6 +45,9 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   acknowledgesSessionUpdate: true,
   // Accepts concurrent response.create requests (queues instead of refusing).
   singleResponseSlot: false,
+  // Echoes response metadata so client-created responses can be correlated
+  // without confusing them with automatic server-side responses.
+  responseMetadataCorrelation: false,
 })
 
 export class RealtimeFrontend {
@@ -53,7 +57,7 @@ export class RealtimeFrontend {
     onError,
     onClose,
     agentContext = {},
-    responseStartTimeoutMs = 30000,
+    responseStartTimeoutMs,
     responseCompletionTimeoutMs = 120000,
   } = {}) {
     this.provider = validateRealtimeProvider(provider)
@@ -77,6 +81,8 @@ export class RealtimeFrontend {
     this.outputQueue = Promise.resolve()
     this.responseQueueGeneration = 0
     this.responseStartTimeoutMs = responseStartTimeoutMs
+      ?? this.provider.responseStartTimeoutMs
+      ?? 30000
     this.responseCompletionTimeoutMs = responseCompletionTimeoutMs
   }
 
@@ -352,6 +358,7 @@ export class RealtimeFrontend {
       const pending = {
         origin,
         context,
+        requestId: randomUUID(),
         resolve: resolveOutcome,
         settled: false,
         timer: null,
@@ -425,9 +432,23 @@ export class RealtimeFrontend {
       waiter.reject(error)
       return
     }
+    if (isResponseActivityEvent(event)) {
+      this.activeResponses.add(realtimeResponseId(event))
+    }
     if (event.type === 'response.created') {
-      const id = responseId(event)
-      const pending = this.pendingResponses.shift()
+      const id = realtimeResponseId(event)
+      let pending
+      if (this.capabilities.responseMetadataCorrelation) {
+        const requestId = this.protocol.responseCorrelationId(event)
+        const index = requestId
+          ? this.pendingResponses.findIndex(item => item.requestId === requestId)
+          : -1
+        if (index >= 0) {
+          pending = this.pendingResponses.splice(index, 1)[0]
+        }
+      } else {
+        pending = this.pendingResponses.shift()
+      }
       clearTimeout(pending?.timer)
       event.__voiceOrigin = pending?.origin || 'model'
       event.__voiceContext = pending?.context || {}
@@ -458,7 +479,7 @@ export class RealtimeFrontend {
       event.type === 'response.done'
       || event.type === 'error'
     ) {
-      let id = responseId(event)
+      let id = realtimeResponseId(event)
       let pending = this.responseWaiters.get(id)
       if (
         event.type === 'error'
@@ -530,16 +551,20 @@ export class RealtimeFrontend {
   // 1. It must NOT be scheduled through outputQueue: the refused response's
   //    outcome promise is what the queue tail awaits, so queueing the retry
   //    behind it deadlocks the whole pipeline.
-  // 2. Server-initiated responses may be invisible to activeResponses, so the
-  //    slot cannot be observed directly. Escalating delays ride out the
-  //    in-flight generation instead.
+  // 2. A known active response provides the real release signal. A bounded
+  //    delay is used only when the busy error arrives before response.created,
+  //    so the server-side response is not visible yet.
   retryRefusedResponse(pending) {
     const generation = this.responseQueueGeneration
     const delays = [1200, 2600, 5000]
     const delay = delays[Math.min(pending.busyRetries - 1, delays.length - 1)]
     const attempt = async () => {
-      await new Promise(resolve => setTimeout(resolve, delay))
-      await this.whenIdle()
+      if (this.activeResponses.size) {
+        await this.whenIdle()
+      } else {
+        await new Promise(resolve => setTimeout(resolve, delay))
+        await this.whenIdle()
+      }
       if (!this.ready || generation !== this.responseQueueGeneration) {
         this.settlePending(pending, { cancelled: true, phase: 'start' })
         return
@@ -601,18 +626,20 @@ export class RealtimeFrontend {
 
   send(payload) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      const body = this.protocol.encodeOutgoing(payload)
-      if (
-        this.capabilities.singleResponseSlot
-        && payload.type === 'response.create'
-        && this.pendingResponses.length
-      ) {
-        // Remember the exact payload on the pending marker so a refused
-        // response (occupied slot) can be replayed verbatim; the conversation
-        // items were already created during the first attempt.
-        this.pendingResponses[this.pendingResponses.length - 1]
-          .responsePayload = payload
+      let outgoing = payload
+      if (payload.type === 'response.create' && this.pendingResponses.length) {
+        const pending = this.pendingResponses[this.pendingResponses.length - 1]
+        outgoing = this.protocol.correlateResponseCreate(
+          payload,
+          pending.requestId,
+        )
+        if (this.capabilities.singleResponseSlot) {
+          // Remember the exact payload on the pending marker so a refused
+          // response can be replayed after the occupied slot becomes idle.
+          pending.responsePayload = outgoing
+        }
       }
+      const body = this.protocol.encodeOutgoing(outgoing)
       this.ws.send(JSON.stringify(body))
     }
   }

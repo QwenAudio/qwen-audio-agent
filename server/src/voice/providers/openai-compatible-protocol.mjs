@@ -42,6 +42,12 @@ export const openAiCompatibleProtocol = Object.freeze({
     ...(response ? { response } : {}),
   }),
 
+  // The DashScope beta dialect does not provide a portable response metadata
+  // correlation contract. RealtimeFrontend keeps its established FIFO
+  // correlation for providers with this protocol.
+  correlateResponseCreate: payload => payload,
+  responseCorrelationId: () => '',
+
   responseCancel: () => ({
     type: 'response.cancel',
   }),

@@ -186,23 +186,60 @@ You can use the browser interface instead:
 qwenaudio webui
 ```
 
-### Use a speech-to-speech frontend
+### Use a Hugging Face speech-to-speech frontend
 
-qwen-audio-agent can connect to a user-managed
+qwen-audio-agent can also connect to a user-managed
 [Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)
-OpenAI Realtime-compatible server. Install it, choose and configure its STT,
-LLM, TTS, and voice, and start the service according to its documentation. Then
-set the following in `config.env`:
+server. It combines VAD, STT, LLM, and TTS behind an OpenAI Realtime-compatible
+API. The entire voice pipeline can run locally, or you can replace individual
+models and services as needed. Fully local operation is not limited to macOS:
+Linux and Windows can run a local LLM through `transformers` on CUDA or CPU,
+while Apple Silicon can use `mlx-lm`. Python 3.10 or later is required.
+
+1. Install speech-to-speech:
+
+```bash
+pip install speech-to-speech
+```
+
+2. Start a fully local service. STT and TTS use local models by default; select
+   the LLM backend for your hardware:
+
+Linux / Windows with an NVIDIA GPU:
+
+```bash
+speech-to-speech \
+  --llm_backend transformers \
+  --device cuda
+```
+
+Apple Silicon:
+
+```bash
+speech-to-speech \
+  --llm_backend mlx-lm \
+  --device mps
+```
+
+Both commands use Qwen3-4B by default. Specify `--model_name` only when you want
+to use another model or a quantized variant. Without an NVIDIA GPU, you can
+choose a smaller local model suitable for CPU inference, or point the LLM
+backend at a local vLLM / llama.cpp server. The service listens on
+`ws://127.0.0.1:8765/v1/realtime` by default.
+
+3. Add the following to the qwen-audio-agent `config.env` file:
 
 ```dotenv
 QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
 SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
 ```
 
-This mode does not require a DashScope API Key. The Gateway only connects to
-the Realtime endpoint and does not alter the speech-to-speech model or voice
-configuration. Set `SPEECH_TO_SPEECH_AUTH_TOKEN` as an advanced option only
-when the endpoint is behind a proxy that requires Bearer authentication.
+Then start `qwenaudio` as usual. Fully local mode requires no cloud API Key. The
+Gateway only connects to the Realtime endpoint and does not alter the STT, LLM,
+TTS, or voice configured in speech-to-speech. You can still replace its LLM with
+DashScope, OpenAI, or another compatible service; speech-to-speech continues to
+own that model and its authentication. Set `SPEECH_TO_SPEECH_AUTH_TOKEN` only
+when the Realtime endpoint is behind a proxy that requires Bearer authentication.
 
 ### TUI Notes
 

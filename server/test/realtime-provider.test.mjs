@@ -833,6 +833,21 @@ test('becomes ready after writing session.update when no acknowledgement is expe
   assert.equal(frontend.ready, true)
 })
 
+test('preserves standard input item correlation across DashScope and GA providers', () => {
+  const event = {
+    type: 'input_audio_buffer.speech_started',
+    event_id: 'event-input-1',
+    item_id: 'item-input-1',
+  }
+
+  for (const frontend of [createQwenFrontend(), createS2sFrontend()]) {
+    assert.equal(
+      frontend.protocol.normalizeIncoming({ ...event }).item_id,
+      'item-input-1',
+    )
+  }
+})
+
 test('namespaces GA conversation item ids by item type', async () => {
   const frontend = createS2sFrontend()
   const sent = []
@@ -923,7 +938,12 @@ test('waits for the GA conversation item receipt before creating a response', as
   ])
   frontend.handleProviderEvent({
     type: 'response.created',
-    response: { id: 'resp-result' },
+    response: {
+      id: 'resp-result',
+      metadata: {
+        qwen_audio_request_id: frontend.pendingResponses[0].requestId,
+      },
+    },
   })
   frontend.handleProviderEvent({
     type: 'response.done',
@@ -994,7 +1014,150 @@ test('a compliant provider keeps every default capability', () => {
   assert.deepEqual(qwen.capabilities, {
     acknowledgesSessionUpdate: true,
     singleResponseSlot: false,
+    responseMetadataCorrelation: false,
   })
+})
+
+test('does not correlate an automatic VAD response with a pending GA response', async () => {
+  const frontend = createS2sFrontend()
+  const sent = []
+  const retried = []
+  frontend.ready = true
+  frontend.ws = {
+    readyState: 1,
+    send: raw => sent.push(JSON.parse(raw)),
+  }
+  frontend.retryRefusedResponse = pending => retried.push(pending)
+
+  const outcome = frontend.speak(
+    '后台任务完成',
+    'announcement',
+    { turnId: 'turn-announcement' },
+  )
+  await new Promise(resolve => setImmediate(resolve))
+
+  const requested = sent.find(event => event.type === 'response.create')
+  assert.ok(requested.response.metadata.qwen_audio_request_id)
+  assert.equal(frontend.pendingResponses.length, 1)
+
+  const automatic = {
+    type: 'response.created',
+    response: { id: 'resp-automatic' },
+  }
+  frontend.handleLifecycle(automatic)
+
+  assert.equal(automatic.__voiceOrigin, 'model')
+  assert.deepEqual(automatic.__voiceContext, {})
+  assert.equal(frontend.pendingResponses.length, 1)
+  assert.equal(frontend.activeResponses.has('resp-automatic'), true)
+
+  const refusal = {
+    type: 'error',
+    error: {
+      message: 'Cannot create response while another response is in progress.',
+    },
+  }
+  frontend.handleLifecycle(refusal)
+
+  assert.equal(refusal.__voiceRetried, true)
+  assert.equal(retried.length, 1)
+  assert.equal(retried[0].origin, 'announcement')
+  frontend.settlePending(retried[0], { cancelled: true })
+  assert.equal((await outcome).cancelled, true)
+})
+
+test('tracks an implicit response from output activity when response.created is omitted', async () => {
+  const frontend = createS2sFrontend()
+  frontend.handleLifecycle({
+    type: 'response.output_audio_transcript.done',
+    response_id: 'resp-implicit',
+    transcript: '你好',
+  })
+
+  assert.equal(frontend.activeResponses.has('resp-implicit'), true)
+  let becameIdle = false
+  const idle = frontend.whenIdle().then(() => {
+    becameIdle = true
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(becameIdle, false)
+
+  frontend.handleLifecycle({
+    type: 'response.done',
+    response: { id: 'resp-implicit', status: 'completed' },
+  })
+  await idle
+  assert.equal(frontend.activeResponses.size, 0)
+  assert.equal(becameIdle, true)
+})
+
+test('correlates an accepted GA response through echoed metadata', async () => {
+  const frontend = createS2sFrontend()
+  const sent = []
+  frontend.ready = true
+  frontend.ws = {
+    readyState: 1,
+    send: raw => sent.push(JSON.parse(raw)),
+  }
+
+  const outcome = frontend.speak(
+    '后台任务完成',
+    'announcement',
+    { turnId: 'turn-announcement' },
+  )
+  await new Promise(resolve => setImmediate(resolve))
+  const requestId = sent[0].response.metadata.qwen_audio_request_id
+  const created = {
+    type: 'response.created',
+    response: {
+      id: 'resp-announcement',
+      metadata: { qwen_audio_request_id: requestId },
+    },
+  }
+  frontend.handleLifecycle(created)
+
+  assert.equal(created.__voiceOrigin, 'announcement')
+  assert.equal(created.__voiceContext.turnId, 'turn-announcement')
+  assert.equal(frontend.pendingResponses.length, 0)
+
+  frontend.handleLifecycle({
+    type: 'response.done',
+    response: { id: 'resp-announcement', status: 'completed' },
+  })
+  assert.equal((await outcome).completed, true)
+})
+
+test('retries immediately after a known automatic response becomes idle', async () => {
+  const frontend = createS2sFrontend()
+  const sent = []
+  frontend.ready = true
+  frontend.ws = {
+    readyState: 1,
+    send: raw => sent.push(JSON.parse(raw)),
+  }
+  frontend.activeResponses.add('resp-automatic')
+  frontend.whenIdle = async () => {
+    frontend.activeResponses.clear()
+  }
+  const pending = {
+    requestId: 'request-retry',
+    responsePayload: frontend.protocol.responseCreate(),
+    busyRetries: 1,
+    settled: false,
+    timer: null,
+    resolve: () => {},
+  }
+
+  frontend.retryRefusedResponse(pending)
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.equal(sent.length, 1)
+  assert.equal(sent[0].type, 'response.create')
+  assert.equal(
+    sent[0].response.metadata.qwen_audio_request_id,
+    pending.requestId,
+  )
+  frontend.settlePending(pending, { cancelled: true })
 })
 
 test('uses the speech-to-speech native 16 kHz defaults without overriding its models', () => {
@@ -1007,12 +1170,27 @@ test('uses the speech-to-speech native 16 kHz defaults without overriding its mo
   assert.equal(REALTIME_PROVIDERS.s2s, provider)
   assert.equal(provider.inputSampleRate, 16000)
   assert.equal(provider.outputSampleRate, 16000)
+  assert.equal(provider.responseStartTimeoutMs, 60_000)
+  assert.equal(createS2sFrontend().responseStartTimeoutMs, 60_000)
   assert.equal(provider.model(), null)
   assert.equal(provider.voice(), null)
   assert.equal(session.audio.input.format, undefined)
   assert.equal(session.audio.output.format, undefined)
   assert.equal(session.audio.output.voice, undefined)
   assert.equal(session.audio.input.turn_detection.type, 'server_vad')
+})
+
+test('classifies a busy speech-to-speech pipeline as retryable capacity', () => {
+  const provider = REALTIME_PROVIDERS['speech-to-speech']
+
+  assert.equal(
+    provider.classifyError('All 1 session slots are in use. Disconnect an existing client first.'),
+    'capacity_busy',
+  )
+  assert.equal(
+    provider.classifyError('session_limit_reached'),
+    'capacity_busy',
+  )
 })
 
 test('creates out-of-band speech responses for speech-to-speech', () => {

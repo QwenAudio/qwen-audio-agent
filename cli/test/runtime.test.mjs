@@ -4,11 +4,20 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import {
   assertGatewayCompatibility,
+  assertRealtimeGatewayCompatibility,
   ensureRuntime,
   ManagedRuntime,
   resolveBackend,
   waitForGateway,
 } from '../src/runtime.mjs'
+import {
+  resolveRealtimeFrontendConfiguration,
+} from '../../shared/realtime-provider-catalog.mjs'
+
+const DEFAULT_FRONTEND_ENV = { DASHSCOPE_API_KEY: 'key' }
+const DEFAULT_FRONTEND = resolveRealtimeFrontendConfiguration(
+  DEFAULT_FRONTEND_ENV,
+)
 
 function childProcess() {
   const child = new EventEmitter()
@@ -20,10 +29,13 @@ function childProcess() {
   return child
 }
 
-function health(overrides = {}) {
+function health(overrides = {}, frontendOverrides = {}) {
   return {
     ok: true,
     voiceConfigured: true,
+    realtimeProvider: DEFAULT_FRONTEND.provider,
+    realtimeConfigurationSignature: DEFAULT_FRONTEND.signature,
+    ...frontendOverrides,
     backend: {
       kind: 'opencode',
       ownership: 'owned',
@@ -45,7 +57,7 @@ const root = resolve('/repo')
 function dependencies(overrides = {}) {
   return {
     root,
-    env: { DASHSCOPE_API_KEY: 'key' },
+    env: { ...DEFAULT_FRONTEND_ENV },
     loadEnvironment: () => {},
     requireCredential: () => {},
     ...overrides,
@@ -64,6 +76,76 @@ test('reuses one healthy Gateway without starting processes', async () => {
   })
   assert.equal(runtime.ownsProcesses, false)
   assert.deepEqual(calls, [])
+})
+
+test('rejects an existing Gateway using a different realtime frontend', async () => {
+  await assert.rejects(
+    ensureRuntime(options, {
+      ...dependencies({
+        env: {
+          QWEN_AUDIO_REALTIME_PROVIDER: 'speech-to-speech',
+        },
+      }),
+      fetchImpl: async () => ({ json: async () => health() }),
+    }),
+    /Realtime 前台.*不一致/,
+  )
+})
+
+test('reuses an existing Gateway with the same speech-to-speech endpoint', async () => {
+  const env = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'speech-to-speech',
+    SPEECH_TO_SPEECH_REALTIME_URL: 'ws://127.0.0.1:8765/v1/realtime',
+  }
+  const frontend = resolveRealtimeFrontendConfiguration(env)
+  const runtime = await ensureRuntime(options, {
+    ...dependencies({ env }),
+    fetchImpl: async () => ({
+      json: async () => health({}, {
+        realtimeProvider: frontend.provider,
+        realtimeConfigurationSignature: frontend.signature,
+      }),
+    }),
+  })
+  assert.equal(runtime.ownsProcesses, false)
+  assert.doesNotThrow(() => assertRealtimeGatewayCompatibility({
+    realtimeProvider: frontend.provider,
+    realtimeConfigurationSignature: frontend.signature,
+  }, env))
+})
+
+test('rejects an existing Gateway using a stale speech-to-speech endpoint', () => {
+  const runningEnv = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'speech-to-speech',
+    SPEECH_TO_SPEECH_REALTIME_URL: 'ws://127.0.0.1:8765/v1/realtime',
+  }
+  const requestedEnv = {
+    ...runningEnv,
+    SPEECH_TO_SPEECH_REALTIME_URL: 'ws://127.0.0.1:9876/v1/realtime',
+  }
+  const running = resolveRealtimeFrontendConfiguration(runningEnv)
+
+  assert.throws(() => assertRealtimeGatewayCompatibility({
+    realtimeProvider: running.provider,
+    realtimeConfigurationSignature: running.signature,
+  }, requestedEnv), /前台参数.*不一致/)
+})
+
+test('does not reuse an older Gateway without a realtime configuration signature', () => {
+  assert.throws(() => assertRealtimeGatewayCompatibility({
+    realtimeProvider: 'dashscope',
+  }, DEFAULT_FRONTEND_ENV), /未报告完整/)
+})
+
+test('realtime configuration signature changes with Gateway-owned credentials', () => {
+  const first = resolveRealtimeFrontendConfiguration({
+    DASHSCOPE_API_KEY: 'first-key',
+  })
+  const second = resolveRealtimeFrontendConfiguration({
+    DASHSCOPE_API_KEY: 'second-key',
+  })
+
+  assert.notEqual(first.signature, second.signature)
 })
 
 test('reuses a managed Gateway after it selected a private free backend port', async () => {
@@ -180,6 +262,8 @@ test('starts and reuses a frontend-only Gateway without a backend', async () => 
   const frontendOnlyHealth = {
     ok: true,
     voiceConfigured: true,
+    realtimeProvider: DEFAULT_FRONTEND.provider,
+    realtimeConfigurationSignature: DEFAULT_FRONTEND.signature,
     backend: {
       enabled: false,
       ok: true,
@@ -220,6 +304,8 @@ test('keeps frontend-only mode explicit when spawning the Gateway', async () => 
         json: async () => ({
           ok: true,
           voiceConfigured: true,
+          realtimeProvider: DEFAULT_FRONTEND.provider,
+          realtimeConfigurationSignature: DEFAULT_FRONTEND.signature,
           backend: {
             enabled: false,
             ok: true,

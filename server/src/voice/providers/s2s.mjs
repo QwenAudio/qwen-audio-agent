@@ -9,6 +9,9 @@ import {
 import { gaRealtimeProtocol } from './ga-protocol.mjs'
 
 function classifyError(message) {
+  if (/session_limit_reached|session slots? (?:are|is) in use/i.test(message)) {
+    return 'capacity_busy'
+  }
   // The single per-session response slot refuses concurrent response.create
   // requests. The frontend retries these transparently (singleResponseSlot).
   if (/another response is in progress/i.test(message)) return 'response_slot_busy'
@@ -28,6 +31,9 @@ export const s2sProvider = {
   // is omitted. Its own reference client uses the same path.
   inputSampleRate: 16000,
   outputSampleRate: 16000,
+  // Fully local ASR -> LLM -> TTS can take substantially longer than a cloud
+  // model before producing its first response event.
+  responseStartTimeoutMs: 60_000,
   protocol: gaRealtimeProtocol,
 
   capabilities: {
@@ -36,6 +42,10 @@ export const s2sProvider = {
     // One response slot per session: a gateway response.create can race a
     // server-side VAD turn and gets refused instead of queued.
     singleResponseSlot: true,
+    // The service echoes response metadata, so Gateway-created responses can
+    // be distinguished from automatic server-VAD responses without relying on
+    // event arrival order.
+    responseMetadataCorrelation: true,
   },
 
   model: () => null,

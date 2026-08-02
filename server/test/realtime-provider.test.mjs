@@ -1023,7 +1023,6 @@ test('creates out-of-band speech responses for speech-to-speech', () => {
 test('connects to an OpenAI Realtime-compatible speech-to-speech server', async t => {
   const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
   await new Promise(resolve => server.once('listening', resolve))
-  t.after(() => new Promise(resolve => server.close(resolve)))
 
   let requestHeaders
   const sessionUpdate = new Promise(resolve => {
@@ -1040,7 +1039,10 @@ test('connects to an OpenAI Realtime-compatible speech-to-speech server', async 
       url: () => `ws://127.0.0.1:${address.port}/v1/realtime`,
     },
   })
-  t.after(() => frontend.close())
+  t.after(async () => {
+    frontend.close()
+    await new Promise(resolve => server.close(resolve))
+  })
 
   await frontend.connect()
   const update = await sessionUpdate

@@ -3,16 +3,24 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import {
   parseSettings,
+  realtimeSettingsConfigured,
   updateSettingsContent,
 } from '../src/settings-config.mjs'
+
+const REALTIME_DEFAULTS = {
+  realtimeProvider: 'dashscope',
+  realtimeModel: 'qwen-audio-3.0-realtime-plus',
+  speechToSpeechRealtimeUrl: '',
+  speechToSpeechAuthToken: '',
+}
 
 test('reads desktop-owned settings with friendly defaults', () => {
   assert.deepEqual(parseSettings(''), {
     gatewayUrl: 'http://127.0.0.1:3101',
     orbStyle: 'fluid',
     dashscopeApiKey: '',
+    ...REALTIME_DEFAULTS,
     agentProtocol: 'none',
-    realtimeModel: 'qwen-audio-3.0-realtime-plus',
     backendModel: '',
   })
 })
@@ -26,8 +34,8 @@ test('shows effective client settings when user config is empty', () => {
     gatewayUrl: 'http://127.0.0.1:3200',
     orbStyle: 'goo',
     dashscopeApiKey: 'sk-from-env',
+    ...REALTIME_DEFAULTS,
     agentProtocol: 'none',
-    realtimeModel: 'qwen-audio-3.0-realtime-plus',
     backendModel: '',
   })
 })
@@ -57,6 +65,7 @@ test('updates client settings without changing Gateway-owned configuration', () 
     gatewayUrl: 'http://127.0.0.1:3200',
     orbStyle: 'goo',
     dashscopeApiKey: 'secret',
+    ...REALTIME_DEFAULTS,
     agentProtocol: 'qoder',
     realtimeModel: 'realtime-model',
     backendModel: '',
@@ -107,8 +116,8 @@ test('an explicitly empty key and backend override stale process values', () => 
     gatewayUrl: 'http://127.0.0.1:3101',
     orbStyle: 'fluid',
     dashscopeApiKey: '',
+    ...REALTIME_DEFAULTS,
     agentProtocol: 'none',
-    realtimeModel: 'qwen-audio-3.0-realtime-plus',
     backendModel: '',
   })
 })
@@ -143,6 +152,84 @@ test('updates the realtime model and clears an explicit backend model', () => {
   assert.match(content, /QWEN_AUDIO_AGENT_BACKEND_MODEL=\n?/)
 })
 
+test('reads and updates the Speech-to-Speech desktop configuration', () => {
+  const settings = parseSettings([
+    'QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech',
+    'SPEECH_TO_SPEECH_REALTIME_URL=wss://voice.example.test/v1/realtime',
+    'SPEECH_TO_SPEECH_AUTH_TOKEN=private-token',
+    '',
+  ].join('\n'))
+
+  assert.equal(settings.realtimeProvider, 'speech-to-speech')
+  assert.equal(
+    settings.speechToSpeechRealtimeUrl,
+    'wss://voice.example.test/v1/realtime',
+  )
+  assert.equal(settings.speechToSpeechAuthToken, 'private-token')
+  assert.equal(realtimeSettingsConfigured(settings), true)
+
+  const content = updateSettingsContent('', settings)
+  assert.match(content, /QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech/)
+  assert.match(
+    content,
+    /SPEECH_TO_SPEECH_REALTIME_URL=wss:\/\/voice\.example\.test\/v1\/realtime/,
+  )
+  assert.match(content, /SPEECH_TO_SPEECH_AUTH_TOKEN=private-token/)
+})
+
+test('supports the compact S2S aliases when reading existing configuration', () => {
+  const settings = parseSettings([
+    'QWEN_AUDIO_REALTIME_PROVIDER=s2s',
+    'S2S_REALTIME_URL=ws://127.0.0.1:9000/realtime',
+    'S2S_API_KEY=alias-token',
+    '',
+  ].join('\n'))
+
+  assert.equal(settings.realtimeProvider, 'speech-to-speech')
+  assert.equal(
+    settings.speechToSpeechRealtimeUrl,
+    'ws://127.0.0.1:9000/realtime',
+  )
+  assert.equal(settings.speechToSpeechAuthToken, 'alias-token')
+})
+
+test('requires the selected realtime provider configuration', () => {
+  assert.equal(realtimeSettingsConfigured({
+    realtimeProvider: 'dashscope',
+    dashscopeApiKey: '',
+  }), false)
+  assert.equal(realtimeSettingsConfigured({
+    realtimeProvider: 'dashscope',
+    dashscopeApiKey: 'sk-valid',
+  }), true)
+  assert.equal(realtimeSettingsConfigured({
+    realtimeProvider: 'speech-to-speech',
+    speechToSpeechRealtimeUrl: 'not-a-websocket-url',
+  }), false)
+})
+
+test('does not configure Speech-to-Speech while DashScope is selected', () => {
+  const content = updateSettingsContent('', {
+    realtimeProvider: 'dashscope',
+    dashscopeApiKey: 'sk-valid',
+    speechToSpeechRealtimeUrl: '',
+  })
+
+  assert.match(content, /QWEN_AUDIO_REALTIME_PROVIDER=dashscope/)
+  assert.match(content, /SPEECH_TO_SPEECH_REALTIME_URL=\n?/)
+  assert.doesNotMatch(
+    content,
+    /SPEECH_TO_SPEECH_REALTIME_URL=ws:\/\/127\.0\.0\.1:8765/,
+  )
+})
+
+test('rejects invalid Speech-to-Speech service URLs', () => {
+  assert.throws(() => updateSettingsContent('', {
+    realtimeProvider: 'speech-to-speech',
+    speechToSpeechRealtimeUrl: 'https://voice.example.test/realtime',
+  }), /只支持 WS 或 WSS/)
+})
+
 test('rejects invalid Gateway URLs', () => {
   assert.throws(() => updateSettingsContent('', {
     gatewayUrl: 'file:///tmp/gateway',
@@ -158,6 +245,17 @@ test('desktop settings expose the embedded voice service without editing backend
   assert.match(html, /id="current-realtime"/)
   assert.match(html, /id="current-backend"/)
   assert.match(html, /id="dashscope-api-key"/)
+  assert.match(html, /id="realtime-provider"/)
+  assert.match(html, /value="speech-to-speech"/)
+  assert.match(html, /id="speech-to-speech-url"/)
+  assert.match(html, /id="speech-to-speech-token"/)
+  assert.match(html, />语音前台</)
+  assert.match(html, />后台 Agent</)
+  assert.match(html, />应用</)
+  assert.match(html, /Qwen-Audio-Realtime/)
+  assert.match(html, /DashScope/)
+  assert.match(html, /Speech-to-Speech/)
+  assert.match(html, /Hugging Face/)
   assert.match(html, /id="get-api-key"/)
   assert.match(html, /id="agent-protocol"/)
   assert.match(html, /id="realtime-model"/)

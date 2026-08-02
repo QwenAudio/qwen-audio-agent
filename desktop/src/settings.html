@@ -42,74 +42,153 @@
       </section>
 
       <form id="settings-form">
-        <section class="settings-card">
-          <div class="setting-row api-key-row">
-            <label for="dashscope-api-key">API Key</label>
-            <div class="field-with-action">
-              <input
-                id="dashscope-api-key"
-                type="password"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="sk-…"
-              />
-              <button id="get-api-key" class="link-button" type="button">
-                获取 API Key
-                <span aria-hidden="true">↗</span>
-              </button>
+        <div class="settings-groups">
+          <section class="settings-group" aria-labelledby="voice-settings-title">
+            <div class="settings-group-heading">
+              <h2 id="voice-settings-title">语音前台</h2>
+              <fieldset
+                id="realtime-provider"
+                class="provider-segmented"
+                aria-label="选择实时语音引擎"
+              >
+                <legend>选择实时语音引擎</legend>
+                <label class="provider-segment">
+                  <input
+                    type="radio"
+                    name="realtime-provider"
+                    value="dashscope"
+                    checked
+                  />
+                  <span>Qwen Audio</span>
+                </label>
+                <label class="provider-segment">
+                  <input
+                    type="radio"
+                    name="realtime-provider"
+                    value="speech-to-speech"
+                  />
+                  <span>Speech-to-Speech</span>
+                </label>
+              </fieldset>
             </div>
-          </div>
+            <div class="settings-card">
+              <div class="provider-panel" data-provider-panel="dashscope">
+                <div class="setting-row api-key-row">
+                  <label for="dashscope-api-key">API Key</label>
+                  <div class="field-with-action">
+                    <input
+                      id="dashscope-api-key"
+                      type="password"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="sk-…"
+                    />
+                    <button id="get-api-key" class="link-button" type="button">
+                      获取 API Key
+                      <span aria-hidden="true">↗</span>
+                    </button>
+                  </div>
+                </div>
 
-          <div class="setting-row">
-            <label for="realtime-model">前台模型</label>
-            <select id="realtime-model">
-              <option value="qwen-audio-3.0-realtime-plus">
-                qwen-audio-3.0-realtime-plus
-              </option>
-              <option value="qwen-audio-3.0-realtime-flash">
-                qwen-audio-3.0-realtime-flash
-              </option>
-            </select>
-          </div>
+                <div class="setting-row">
+                  <label for="realtime-model">前台模型</label>
+                  <select id="realtime-model">
+                    <option value="qwen-audio-3.0-realtime-plus">
+                      qwen-audio-3.0-realtime-plus
+                    </option>
+                    <option value="qwen-audio-3.0-realtime-flash">
+                      qwen-audio-3.0-realtime-flash
+                    </option>
+                  </select>
+                </div>
+                <p class="provider-attribution">Qwen-Audio-Realtime · DashScope</p>
+              </div>
 
-          <div class="setting-row">
-            <label for="agent-protocol">后台 Agent</label>
-            <div class="field-with-action">
-              <!-- 选项由 settings.js 按本机检测结果动态渲染 -->
-              <select id="agent-protocol"></select>
-              <button
-                id="refresh-backends"
-                class="link-button"
-                type="button"
-                title="重新检测本机已安装的后台 Agent"
-              >刷新</button>
+              <div
+                class="provider-panel"
+                data-provider-panel="speech-to-speech"
+                hidden
+              >
+                <div class="setting-row service-url-row">
+                  <label for="speech-to-speech-url">服务地址</label>
+                  <input
+                    id="speech-to-speech-url"
+                    type="url"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="ws://127.0.0.1:8765/v1/realtime"
+                  />
+                </div>
+
+                <div class="setting-row">
+                  <label for="speech-to-speech-token">访问令牌</label>
+                  <input
+                    id="speech-to-speech-token"
+                    type="password"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="可选，用于 Bearer 认证"
+                  />
+                </div>
+                <p class="provider-attribution">
+                  Speech-to-Speech · Hugging Face · 需单独启动本地服务
+                </p>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div class="setting-row">
-            <label for="backend-model">后台模型</label>
-            <input
-              id="backend-model"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="留空使用默认模型"
-            />
-          </div>
+          <section class="settings-group" aria-labelledby="backend-settings-title">
+            <div class="settings-group-heading">
+              <h2 id="backend-settings-title">后台 Agent</h2>
+            </div>
+            <div class="settings-card">
+              <div class="setting-row">
+                <label for="agent-protocol">后台 Agent</label>
+                <div class="field-with-action">
+                  <!-- 选项由 settings.js 按本机检测结果动态渲染 -->
+                  <select id="agent-protocol"></select>
+                  <button
+                    id="refresh-backends"
+                    class="link-button"
+                    type="button"
+                    title="重新检测本机已安装的后台 Agent"
+                  >刷新</button>
+                </div>
+              </div>
 
-          <div class="setting-row">
-            <label for="gateway-url">Gateway</label>
-            <input id="gateway-url" type="url" spellcheck="false" required />
-          </div>
+              <div class="setting-row">
+                <label for="backend-model">后台模型</label>
+                <input
+                  id="backend-model"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="留空使用默认模型"
+                />
+              </div>
+            </div>
+          </section>
 
-          <div class="setting-row">
-            <label for="orb-style">外观</label>
-            <select id="orb-style">
-              <option value="fluid">流光声波球</option>
-              <option value="goo">液态渐变球</option>
-            </select>
-          </div>
-        </section>
+          <section class="settings-group" aria-labelledby="app-settings-title">
+            <div class="settings-group-heading">
+              <h2 id="app-settings-title">应用</h2>
+            </div>
+            <div class="settings-card">
+              <div class="setting-row">
+                <label for="gateway-url">Gateway</label>
+                <input id="gateway-url" type="url" spellcheck="false" required />
+              </div>
+
+              <div class="setting-row">
+                <label for="orb-style">外观</label>
+                <select id="orb-style">
+                  <option value="fluid">流光声波球</option>
+                  <option value="goo">液态渐变球</option>
+                </select>
+              </div>
+            </div>
+          </section>
+        </div>
 
         <footer>
           <p id="message" role="status"></p>

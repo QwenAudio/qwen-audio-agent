@@ -38,6 +38,7 @@ import {
 } from './gateway-process.mjs'
 import {
   parseSettings,
+  realtimeSettingsConfigured,
   updateSettingsContent,
 } from './settings-config.mjs'
 import {
@@ -85,7 +86,7 @@ let setupRequired = (
   !configExistedAtLaunch
   || (
     isLoopbackUrl(configuredGatewayOrigin)
-    && !initialSettings.dashscopeApiKey
+    && !realtimeSettingsConfigured(initialSettings)
   )
 )
 const preloadPath = resolve(here, 'preload.cjs')
@@ -197,8 +198,10 @@ async function runtimeStatus(target = appOrigin) {
   return {
     gatewayConnected: Boolean(health),
     realtimeProvider: health?.realtimeProvider || null,
+    realtimeLabel: health?.realtimeLabel || null,
     realtimeModel: health?.realtimeModel || null,
     voiceConfigured: health?.voiceConfigured === true,
+    realtimeConnection: health?.voiceClients?.realtime || null,
     backend: health?.backend
       ? {
           protocol: health.backend.kind || health.backend.protocol || null,
@@ -309,6 +312,9 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // The floating window is normally unfocused. Keep its renderer timers
+      // aligned with Web Audio so playback receipts are not delayed and retried.
+      backgroundThrottling: false,
       preload: preloadPath,
     },
   })
@@ -344,7 +350,7 @@ function createWindow() {
 function createSettingsWindow() {
   const window = new BrowserWindow({
     width: 540,
-    height: 730,
+    height: 860,
     minWidth: 460,
     minHeight: 640,
     title: '设置',
@@ -448,8 +454,10 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
       ? {
           gatewayConnected: false,
           realtimeProvider: null,
+          realtimeLabel: null,
           realtimeModel: null,
           voiceConfigured: false,
+          realtimeConnection: null,
           backend: null,
         }
       : await runtimeStatus(),
@@ -548,8 +556,10 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   const normalized = parseSettings(content)
   const nextOrigin = validateAppUrl(normalized.gatewayUrl)
   const remote = !isLoopbackUrl(nextOrigin)
-  if (!remote && !normalized.dashscopeApiKey) {
-    throw new Error('请先填写 DashScope API Key')
+  if (!remote && !realtimeSettingsConfigured(normalized)) {
+    throw new Error(normalized.realtimeProvider === 'dashscope'
+      ? '请先填写 DashScope API Key'
+      : '请先填写 Speech-to-Speech 服务地址')
   }
   if (remote) {
     const remoteRuntime = await runtimeStatus(nextOrigin)
@@ -564,8 +574,17 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   chmodSync(runtimeEnvironment.configPath, 0o600)
   const gatewayChanged = nextOrigin !== configuredGatewayOrigin
   const apiKeyChanged = previous.dashscopeApiKey !== normalized.dashscopeApiKey
+  const realtimeProviderChanged = (
+    previous.realtimeProvider !== normalized.realtimeProvider
+  )
   const backendChanged = previous.agentProtocol !== normalized.agentProtocol
   const realtimeModelChanged = previous.realtimeModel !== normalized.realtimeModel
+  const speechToSpeechChanged = (
+    previous.speechToSpeechRealtimeUrl
+      !== normalized.speechToSpeechRealtimeUrl
+    || previous.speechToSpeechAuthToken
+      !== normalized.speechToSpeechAuthToken
+  )
   const backendModelChanged = previous.backendModel !== normalized.backendModel
   const orbStyleChanged = previous.orbStyle !== normalized.orbStyle
   let restarted = false
@@ -581,8 +600,10 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     && (
       gatewayChanged
       || apiKeyChanged
+      || realtimeProviderChanged
       || backendChanged
       || realtimeModelChanged
+      || speechToSpeechChanged
       || backendModelChanged
     )
   ) {

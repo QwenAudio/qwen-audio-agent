@@ -20,6 +20,8 @@
 
 ## News
 
+- **v1.3.0 · 测试中**
+  🧪 新增 [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) 前台接入，支持本地部署 VAD、STT、LLM 与 TTS 全链路。当前可从源码体验，正式 Release 将在完成测试后发布。
 - **2026-07-30 · [v1.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.0.0)**
   🚀 正式版发布，推出内置 Gateway 的 macOS 桌面版。
 - **2026-07-28 · [v0.9.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v0.9.0)**
@@ -167,12 +169,13 @@ qwenaudio webui
 
 ### 使用 Hugging Face speech-to-speech 前台
 
+> [!NOTE]
+> 此功能计划随 v1.3.0 正式发布，目前仅在源码版本中提供，仍在测试中。
+
 qwen-audio-agent 也可以连接用户自行运行的
 [Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)。
 它将 VAD、STT、LLM 和 TTS 组合成 OpenAI Realtime 兼容服务，整条语音链路既可以
 完全运行在本地，也可以按需替换其中的模型或服务。
-Linux / Windows 可通过 `transformers` 在 CUDA 或 CPU 上运行本地 LLM，Apple Silicon
-则可以使用 `mlx-lm`。使用前需准备 Python 3.10 或更高版本。
 
 1. 安装 speech-to-speech：
 
@@ -212,8 +215,7 @@ SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
 ```
 
 然后正常启动 `qwenaudio`。在全本地模式下无需云端 API Key。Gateway 只连接 Realtime
-接口，不会修改 speech-to-speech 的 STT、LLM、TTS 或音色配置。你也可以自行将其中的
-LLM 换成 DashScope、OpenAI 等兼容服务；相关模型和认证仍由 speech-to-speech 管理。
+接口，不会修改 speech-to-speech 的 STT、LLM、TTS 或音色配置。
 如果 Realtime 接口位于需要 Bearer 认证的代理后方，可设置
 `SPEECH_TO_SPEECH_AUTH_TOKEN`。
 

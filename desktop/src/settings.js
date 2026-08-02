@@ -1,10 +1,26 @@
 import { backendOptionStates } from './backend-options.mjs'
+import {
+  realtimeModelStatusLabel,
+  realtimeStatusLabel,
+} from './realtime-status.mjs'
 import { updaterButtonState, updaterStatusText } from './update-status.mjs'
 
 const form = document.querySelector('#settings-form')
 const gatewayUrl = document.querySelector('#gateway-url')
 const orbStyle = document.querySelector('#orb-style')
 const dashscopeApiKey = document.querySelector('#dashscope-api-key')
+const realtimeProviderInputs = [
+  ...document.querySelectorAll('input[name="realtime-provider"]'),
+]
+const providerPanels = [
+  ...document.querySelectorAll('[data-provider-panel]'),
+]
+const speechToSpeechRealtimeUrl = document.querySelector(
+  '#speech-to-speech-url',
+)
+const speechToSpeechAuthToken = document.querySelector(
+  '#speech-to-speech-token',
+)
 const agentProtocol = document.querySelector('#agent-protocol')
 const refreshBackends = document.querySelector('#refresh-backends')
 const realtimeModel = document.querySelector('#realtime-model')
@@ -111,6 +127,30 @@ function backendLabel(value) {
   return value
 }
 
+function selectedRealtimeProvider() {
+  return realtimeProviderInputs.find(input => input.checked)?.value
+    || 'dashscope'
+}
+
+function renderRealtimeProvider(value, { populateDefault = false } = {}) {
+  const provider = value === 'speech-to-speech'
+    ? 'speech-to-speech'
+    : 'dashscope'
+  for (const input of realtimeProviderInputs) {
+    input.checked = input.value === provider
+  }
+  for (const panel of providerPanels) {
+    panel.hidden = panel.dataset.providerPanel !== provider
+  }
+  if (
+    populateDefault
+    && provider === 'speech-to-speech'
+    && !speechToSpeechRealtimeUrl.value.trim()
+  ) {
+    speechToSpeechRealtimeUrl.value = 'ws://127.0.0.1:8765/v1/realtime'
+  }
+}
+
 const BAILIAN_API_KEY_URL = 'https://bailian.console.aliyun.com/?tab=model#/api-key'
 
 function formSettings() {
@@ -118,8 +158,11 @@ function formSettings() {
     gatewayUrl: gatewayUrl.value,
     orbStyle: orbStyle.value,
     dashscopeApiKey: dashscopeApiKey.value,
+    realtimeProvider: selectedRealtimeProvider(),
     agentProtocol: agentProtocol.value,
     realtimeModel: realtimeModel.value,
+    speechToSpeechRealtimeUrl: speechToSpeechRealtimeUrl.value,
+    speechToSpeechAuthToken: speechToSpeechAuthToken.value,
     backendModel: backendModel.value,
   }
 }
@@ -129,8 +172,11 @@ function fingerprint(value) {
     gatewayUrl: value.gatewayUrl,
     orbStyle: value.orbStyle,
     dashscopeApiKey: value.dashscopeApiKey,
+    realtimeProvider: value.realtimeProvider,
     agentProtocol: value.agentProtocol,
     realtimeModel: value.realtimeModel,
+    speechToSpeechRealtimeUrl: value.speechToSpeechRealtimeUrl,
+    speechToSpeechAuthToken: value.speechToSpeechAuthToken,
     backendModel: value.backendModel,
   })
 }
@@ -144,20 +190,51 @@ function setBackendStatus(text, connected) {
   currentBackend.className = `connection-status ${connected ? 'connected' : 'disconnected'}`
 }
 
+function realtimeConnectionState(provider) {
+  const status = runtime?.realtimeConnection?.byProvider?.[provider]
+  if (!status) return 'configured'
+  if (status.connected > 0) return 'connected'
+  if (status.connecting > 0) return 'connecting'
+  return 'disconnected'
+}
+
+function setRealtimeStatus(text, state) {
+  currentRealtime.textContent = text
+  currentRealtime.className = state === 'configured'
+    ? ''
+    : `connection-status ${state === 'connected' ? 'connected' : state === 'connecting' ? 'checking' : 'unavailable'}`
+}
+
 function renderRuntime() {
   if (!runtime?.gatewayConnected) {
     currentGateway.textContent = '未连接'
     currentGateway.className = 'connection-status disconnected'
-    currentRealtime.textContent = 'Gateway 未连接'
+    setRealtimeStatus('Gateway 未连接', 'disconnected')
     setBackendStatus('未连接', false)
     return
   }
 
   currentGateway.textContent = '已连接'
   currentGateway.className = 'connection-status connected'
-  currentRealtime.textContent = runtime.voiceConfigured
-    ? runtime.realtimeModel || '默认模型'
-    : '缺少凭据'
+  const realtimeLabel = realtimeStatusLabel(runtime.realtimeProvider)
+  const realtimeModelLabel = realtimeModelStatusLabel(runtime.realtimeModel)
+  if (!runtime.voiceConfigured) {
+    setRealtimeStatus(`${realtimeLabel} · 配置不完整`, 'disconnected')
+  } else {
+    const state = realtimeConnectionState(runtime.realtimeProvider)
+    const stateLabel = {
+      connected: '已连接',
+      connecting: '正在连接',
+      disconnected: '连接异常',
+      configured: '已配置',
+    }[state]
+    setRealtimeStatus(
+      [realtimeLabel, realtimeModelLabel, stateLabel]
+        .filter(Boolean)
+        .join(' · '),
+      state,
+    )
+  }
   if (!runtime.backend) {
     setBackendStatus('未配置', false)
     return
@@ -191,13 +268,13 @@ async function refreshRuntime() {
       // 启动失败已被自动重启等机制恢复，清掉残留的错误提示，
       // 避免“显示报错”与“实际已连接”并存。
       startupError = null
-      showMessage('服务已自动恢复连接。', 'success')
+      showMessage('Gateway 已自动恢复。', 'success')
     } else if (
       runtime.gatewayConnected
       && (!runtime.backend || runtime.backend.connected)
       && message.className === 'notice'
     ) {
-      showMessage('服务已连接，可以开始使用。', 'success')
+      showMessage('配置已应用，Gateway 已启动。', 'success')
     }
   } catch {
     // A Gateway restart can briefly invalidate one poll. The next poll
@@ -233,6 +310,9 @@ function render() {
   renderBackendOptions(settings.agentProtocol || 'none')
   realtimeModel.value = settings.realtimeModel
     || 'qwen-audio-3.0-realtime-plus'
+  speechToSpeechRealtimeUrl.value = settings.speechToSpeechRealtimeUrl || ''
+  speechToSpeechAuthToken.value = settings.speechToSpeechAuthToken || ''
+  renderRealtimeProvider(settings.realtimeProvider)
   backendModel.value = settings.backendModel || ''
   renderRuntime()
   appliedFingerprint = fingerprint(formSettings())
@@ -243,9 +323,12 @@ for (const control of [
   gatewayUrl,
   orbStyle,
   dashscopeApiKey,
+  speechToSpeechRealtimeUrl,
+  speechToSpeechAuthToken,
   agentProtocol,
   realtimeModel,
   backendModel,
+  ...realtimeProviderInputs,
 ]) {
   control.addEventListener('input', () => {
     showMessage('')
@@ -253,6 +336,9 @@ for (const control of [
   })
   control.addEventListener('change', () => {
     showMessage('')
+    if (realtimeProviderInputs.includes(control)) {
+      renderRealtimeProvider(control.value, { populateDefault: true })
+    }
     updateApplyState()
   })
 }
@@ -277,7 +363,7 @@ form.addEventListener('submit', async event => {
       showMessage('Gateway 已启动，后台 Agent 正在连接…', 'notice')
     } else {
       showMessage(
-        result.restarted ? '已应用，服务已连接。' : '已应用。',
+        result.restarted ? '已应用，Gateway 已启动。' : '已应用。',
         'success',
       )
     }
@@ -298,7 +384,7 @@ window.qwenAudioAgentDesktop.loadSettings().then(value => {
     startupError = value.runtimeError
     showMessage(`当前配置启动失败：${value.runtimeError}`, 'error')
   } else if (value.setupRequired) {
-    showMessage('首次使用，请填写 API Key 并选择后台 Agent。', 'notice')
+    showMessage('首次使用，请配置语音引擎并选择后台 Agent。', 'notice')
   }
 }).catch(error => {
   showMessage(friendlyError(error, '读取设置失败'), 'error')

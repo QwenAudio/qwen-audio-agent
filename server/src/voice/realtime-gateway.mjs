@@ -20,6 +20,7 @@ import { streamingInputTranscript } from './input-transcript.mjs'
 import {
   ensureResponseContext,
   mergeResponseContext,
+  responseActivityContextPatch,
 } from './response-context.mjs'
 import {
   ActiveVoiceClients,
@@ -262,6 +263,14 @@ export function attachRealtimeGateway(server, {
     const voiceClient = {
       ws,
       descriptor,
+      realtimeStatus: () => ({
+        provider: sessionProvider,
+        state: frontend?.ready
+          ? 'connected'
+          : connectPromise
+            ? 'connecting'
+            : 'disconnected',
+      }),
       // Lets the arbitration evict this owner once its socket has died without
       // a clean close, so a stale holder never blocks a new voice claim.
       isAlive: () => ws.readyState === WebSocket.OPEN,
@@ -611,14 +620,16 @@ export function attachRealtimeGateway(server, {
     const beginResponseLifecycle = event => {
       const id = realtimeResponseId(event)
       if (!id) return null
+      const existing = responseContexts.get(id)
       const automaticResponse = (
-        (event.__voiceOrigin || 'model') === 'model'
+        !existing
+        && (event.__voiceOrigin || 'model') === 'model'
         && !event.__voiceContext?.turnId
       )
       const automaticTurn = automaticResponse
         ? responseTurnCandidate
         : null
-      const context = mergeResponseContext(responseContexts, id, {
+      const fallback = {
         turnId: event.__voiceContext?.turnId
           || automaticTurn?.turnId
           || committedTurnId
@@ -630,22 +641,27 @@ export function attachRealtimeGateway(server, {
           ? event.__voiceContext.turnGeneration
           : automaticTurn?.turnGeneration
             ?? (committedTurnId ? committedTurnGeneration : turnGeneration),
-      })
+      }
+      const context = mergeResponseContext(
+        responseContexts,
+        id,
+        responseActivityContextPatch({ existing, event, fallback }),
+      )
+      // Compatible Realtime servers may omit response.created and reveal the
+      // correlation only on response.done. If audio already reached the
+      // client, confirm the newly identified task notification immediately.
+      if (
+        context.playbackStarted
+        && confirmsTaskNotificationOnPlaybackStart(context)
+      ) {
+        announcements.confirmMany(contextTaskIds(context))
+      }
       if (automaticTurn) {
         // Some OpenAI-compatible servers start an implicit server-VAD response
         // with transcript or audio output and omit response.created. Any valid
         // response output proves that turn detection accepted this turn.
         commitTurn(automaticTurn)
         clearResponseCandidate()
-      }
-      if (Array.isArray(event.__voiceContext?.taskIds)) {
-        context.taskIds = event.__voiceContext.taskIds
-      }
-      if (Array.isArray(event.__voiceContext?.turnIds)) {
-        context.turnIds = event.__voiceContext.turnIds
-      }
-      if (event.__voiceContext?.deliverySequence) {
-        context.deliverySequence = event.__voiceContext.deliverySequence
       }
       if (!context.responseStarted) {
         context.responseStarted = true
@@ -1205,6 +1221,11 @@ export function attachRealtimeGateway(server, {
     const connectFrontendNow = () => {
       if (frontend?.ready) return Promise.resolve()
       if (connectPromise) return connectPromise
+      send(ws, {
+        type: GatewayServerEvent.VOICE_CONNECTION,
+        state: 'connecting',
+        provider: sessionProvider,
+      })
       const activeTasks = activeTaskContext()
       lastActiveTaskSignature = activeTaskSignature(activeTasks)
       let createdFrontend
@@ -1231,6 +1252,11 @@ export function attachRealtimeGateway(server, {
           if (frontend !== createdFrontend) return
           frontend = null
           if (!inputEnabled && !outputEnabled) return
+          send(ws, {
+            type: GatewayServerEvent.VOICE_CONNECTION,
+            state: 'unavailable',
+            provider: sessionProvider,
+          })
           if (
             realtimeConnectedAt
             && Date.now() - realtimeConnectedAt >= REALTIME_STABLE_CONNECTION_MS
@@ -1252,6 +1278,11 @@ export function attachRealtimeGateway(server, {
         .then(() => {
           if (frontend !== createdFrontend) return
           realtimeConnectedAt = Date.now()
+          send(ws, {
+            type: GatewayServerEvent.VOICE_CONNECTION,
+            state: 'connected',
+            provider: createdFrontend.provider.key,
+          })
           refreshActiveTaskContext()
           announcePendingPermissions()
           pendingAudio.forEach(audio => createdFrontend.appendAudio(audio))
@@ -1263,6 +1294,17 @@ export function attachRealtimeGateway(server, {
             provider: createdFrontend.provider.key,
             providerLabel: createdFrontend.provider.label,
           })
+        })
+        .catch(error => {
+          if (frontend === createdFrontend) {
+            send(ws, {
+              type: GatewayServerEvent.VOICE_CONNECTION,
+              state: 'unavailable',
+              provider: createdFrontend.provider.key,
+              message: error.message,
+            })
+          }
+          throw error
         })
         .finally(() => {
           if (connectPromise === createdConnectPromise) connectPromise = null
@@ -1487,18 +1529,37 @@ export function attachRealtimeGateway(server, {
   return {
     status() {
       const byType = { desktop: 0, cli: 0, web: 0 }
+      const realtime = {
+        connected: 0,
+        connecting: 0,
+        disconnected: 0,
+        byProvider: {},
+      }
       let connected = 0
       for (const clients of voiceConnections.values()) {
         for (const client of clients) {
           connected += 1
           const type = client.descriptor?.type || 'web'
           byType[type] = (byType[type] || 0) + 1
+          const status = client.realtimeStatus?.()
+          if (!status) continue
+          realtime[status.state] = (realtime[status.state] || 0) + 1
+          if (!realtime.byProvider[status.provider]) {
+            realtime.byProvider[status.provider] = {
+              connected: 0,
+              connecting: 0,
+              disconnected: 0,
+            }
+          }
+          const provider = realtime.byProvider[status.provider]
+          provider[status.state] = (provider[status.state] || 0) + 1
         }
       }
       return {
         connected,
         activeOwners: activeVoiceClients.size,
         byType,
+        realtime,
       }
     },
   }

@@ -29,6 +29,25 @@ test('formats only final work results for realtime presentation', () => {
   assert.doesNotMatch(text, /permission|lifecycle|session/i)
 })
 
+test('passes backend-provided error content through for realtime interpretation', () => {
+  const backendResult = JSON.stringify({
+    code: 'Provider.InternalError',
+    message: 'backend supplied detail',
+  })
+  const text = formatWorkResults([{
+    event: 'task.completed',
+    taskId: 'work-provider-error',
+    objective: '执行后台任务',
+    status: 'completed',
+    result: backendResult,
+  }])
+
+  assert.match(text, /^\[COMPLETE\]/)
+  assert.match(text, /type: task\.completed/)
+  assert.match(text, /Provider\.InternalError/)
+  assert.match(text, /backend supplied detail/)
+})
+
 test('waits while duplex speech blocks delivery', async () => {
   let blocked = true
   let spoken = 0

@@ -25,6 +25,8 @@ tells you:
 
 ## News
 
+- **v1.3.0 · In testing**
+  🧪 Adds a [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) frontend for a locally deployed VAD–STT–LLM–TTS pipeline. Available from source; the formal Release will follow after testing.
 - **2026-07-30 · [v1.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.0.0)**
   🚀 First stable release with a macOS desktop app and integrated Gateway.
 - **2026-07-28 · [v0.9.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v0.9.0)**
@@ -188,27 +190,28 @@ qwenaudio webui
 
 ### Use a Hugging Face speech-to-speech frontend
 
+> [!NOTE]
+> This feature is planned for v1.3.0. It is currently available from source and remains under testing; it is not yet included in a stable Release.
+
 qwen-audio-agent can also connect to a user-managed
 [Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)
 server. It combines VAD, STT, LLM, and TTS behind an OpenAI Realtime-compatible
 API. The entire voice pipeline can run locally, or you can replace individual
-models and services as needed. Fully local operation is not limited to macOS:
-Linux and Windows can run a local LLM through `transformers` on CUDA or CPU,
-while Apple Silicon can use `mlx-lm`. Python 3.10 or later is required.
+models and services as needed.
 
 1. Install speech-to-speech:
 
 ```bash
-pip install speech-to-speech
+pip install "speech-to-speech[paraformer]"
 ```
 
-2. Start a fully local service. STT and TTS use local models by default; select
-   the LLM backend for your hardware:
+2. Start a fully local service:
 
 Linux / Windows with an NVIDIA GPU:
 
 ```bash
 speech-to-speech \
+  --stt paraformer \
   --llm_backend transformers \
   --device cuda
 ```
@@ -217,14 +220,13 @@ Apple Silicon:
 
 ```bash
 speech-to-speech \
+  --stt paraformer \
   --llm_backend mlx-lm \
   --device mps
 ```
 
-Both commands use Qwen3-4B by default. Specify `--model_name` only when you want
-to use another model or a quantized variant. Without an NVIDIA GPU, you can
-choose a smaller local model suitable for CPU inference, or point the LLM
-backend at a local vLLM / llama.cpp server. The service listens on
+Without an NVIDIA GPU, you can choose a smaller local model suitable for CPU
+inference, or point the LLM backend at a local vLLM / llama.cpp server. The service listens on
 `ws://127.0.0.1:8765/v1/realtime` by default.
 
 3. Add the following to the qwen-audio-agent `config.env` file:
@@ -236,10 +238,9 @@ SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
 
 Then start `qwenaudio` as usual. Fully local mode requires no cloud API Key. The
 Gateway only connects to the Realtime endpoint and does not alter the STT, LLM,
-TTS, or voice configured in speech-to-speech. You can still replace its LLM with
-DashScope, OpenAI, or another compatible service; speech-to-speech continues to
-own that model and its authentication. Set `SPEECH_TO_SPEECH_AUTH_TOKEN` only
-when the Realtime endpoint is behind a proxy that requires Bearer authentication.
+TTS, or voice configured in speech-to-speech. Set
+`SPEECH_TO_SPEECH_AUTH_TOKEN` only when the Realtime endpoint is behind a proxy
+that requires Bearer authentication.
 
 ### TUI Notes
 

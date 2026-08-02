@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   ensureResponseContext,
   mergeResponseContext,
+  responseActivityContextPatch,
 } from '../src/voice/response-context.mjs'
 
 test('creates a complete fallback context for out-of-order transcript events', () => {
@@ -77,4 +78,52 @@ test('preserves a cancelled response tombstone when metadata arrives late', () =
   assert.equal(merged.suppressed, true)
   assert.equal(merged.playbackEnded, true)
   assert.deepEqual(merged.taskIds, ['work-1'])
+})
+
+test('an uncorrelated audio delta preserves an announcement context', () => {
+  const existing = {
+    origin: 'announcement',
+    taskIds: ['work-1'],
+    turnId: 'turn-1',
+  }
+
+  assert.deepEqual(responseActivityContextPatch({
+    existing,
+    event: {
+      type: 'response.audio.delta',
+      // Some compatible implementations normalize absent correlation into
+      // explicit undefined/empty fields on later lifecycle events.
+      __voiceOrigin: undefined,
+      __voiceContext: {},
+    },
+    fallback: {
+      origin: 'model',
+      taskId: null,
+      turnId: 'fallback-turn',
+    },
+  }), {})
+})
+
+test('late provider correlation replaces only explicitly supplied fields', () => {
+  const existing = {
+    origin: 'model',
+    turnId: 'fallback-turn',
+  }
+
+  assert.deepEqual(responseActivityContextPatch({
+    existing,
+    event: {
+      type: 'response.done',
+      __voiceOrigin: 'announcement',
+      __voiceContext: {
+        taskIds: ['work-1'],
+        consumesTaskNotification: true,
+      },
+    },
+    fallback: { taskId: null },
+  }), {
+    origin: 'announcement',
+    taskIds: ['work-1'],
+    consumesTaskNotification: true,
+  })
 })

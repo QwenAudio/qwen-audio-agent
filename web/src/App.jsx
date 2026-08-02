@@ -63,6 +63,7 @@ function labelFor(state) {
     listening: '正在听',
     thinking: '思考中',
     speaking: '正在说',
+    connecting: '正在连接语音前台',
     occupied: '其他入口正在使用',
   }[state] || state
 }
@@ -223,7 +224,7 @@ export default function App() {
           ready: response.ok && payload.backend?.ok,
           url: payload.backend?.uiPath || payload.backend?.baseUrl || '',
         })
-        setActivity(response.ok ? '已连接' : '能力服务尚未连接')
+        setActivity(response.ok ? 'Gateway 已连接' : '能力服务尚未连接')
       })
       .catch(() => {
         if (!cancelled) setActivity('qwen-audio-agent Gateway 尚未连接')
@@ -629,9 +630,12 @@ export default function App() {
       setActivity(message)
     },
   })
+  const voiceConnectionError = voice.connectionState === 'unavailable'
   const visualVoiceState = voice.ownership.state === 'busy'
     ? 'occupied'
-    : voice.visualState || voice.state
+    : voiceEnabled && voice.connectionState === 'connecting'
+      ? 'connecting'
+      : voice.visualState || voice.state
   const ownershipLabel = voice.ownership.holder
     ? frontendLabel(voice.ownership.holder)
     : ''
@@ -743,10 +747,10 @@ export default function App() {
         className={desktopOrbClassName({
           state: visualVoiceState,
           enabled: voiceEnabled,
-          error: voice.visualError,
+          error: voice.visualError || voiceConnectionError,
           dragging: orbDragging,
         })}
-        aria-label={`qwen-audio · ${voice.visualError ? '连接异常' : labelFor(visualVoiceState)}`}
+        aria-label={`qwen-audio · ${voice.visualError || voiceConnectionError ? '连接异常' : labelFor(visualVoiceState)}`}
         title={
           voice.error
           || (visualVoiceState === 'occupied' && ownershipLabel

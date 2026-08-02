@@ -230,15 +230,26 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 .desktop-orb-stage.speaking .fluid {
   animation: desktop-fluid-speaking .52s ease-in-out infinite alternate;
 }
+.desktop-orb-stage.connecting .fluid-orb {
+  --orb-halo: #87919630;
+  --orb-ring: #a8b0b45c;
+}
+.desktop-orb-stage.connecting .fluid {
+  filter: grayscale(.62) saturate(.45) brightness(.9);
+  animation-duration: 8s;
+}
+.desktop-orb-stage.connecting .fluid-orb::before {
+  animation: desktop-orb-error 2.8s ease-in-out infinite;
+}
 .desktop-orb-stage.error .fluid-orb {
-  --orb-halo: #b96e7952;
-  --orb-ring: #dca0a992;
+  --orb-halo: #727d8233;
+  --orb-ring: #929da267;
 }
 .desktop-orb-stage.error .fluid {
-  filter: grayscale(.35) sepia(.42) hue-rotate(305deg) saturate(.72) brightness(.76);
+  filter: grayscale(.92) saturate(.18) brightness(.72);
 }
 .desktop-orb-stage.error .fluid-orb::before {
-  animation: desktop-orb-error 1.55s ease-in-out infinite;
+  animation: desktop-orb-error 2.2s ease-in-out infinite;
 }
 .goo {
   position: relative; width: 176px; height: 176px; overflow: hidden;
@@ -260,6 +271,19 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 }
 .desktop-orb-stage.input-muted:not(.speaking) .goo,
 .desktop-orb-stage.input-muted:not(.speaking) .goo .fill {
+  animation-play-state: paused;
+}
+.desktop-orb-stage.connecting .goo {
+  box-shadow: 0 12px 30px #6f7b8038, 0 0 22px #7f898e3d;
+  filter: blur(1.2px) grayscale(.66) saturate(.4) brightness(.86);
+  animation-duration: 13s;
+}
+.desktop-orb-stage.error .goo {
+  box-shadow: 0 10px 26px #5f696e38, 0 0 18px #737e8335;
+  filter: blur(1.2px) grayscale(.95) saturate(.12) brightness(.68);
+}
+.desktop-orb-stage.error .goo,
+.desktop-orb-stage.error .goo .fill {
   animation-play-state: paused;
 }
 

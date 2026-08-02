@@ -802,7 +802,7 @@ test('identifies a permission response rejected while the user is speaking', asy
 
 function createS2sFrontend(options = {}) {
   return new RealtimeFrontend({
-    provider: REALTIME_PROVIDERS.s2s,
+    provider: REALTIME_PROVIDERS['speech-to-speech'],
     ...options,
   })
 }
@@ -998,14 +998,17 @@ test('a compliant provider keeps every default capability', () => {
 })
 
 test('uses the speech-to-speech native 16 kHz defaults without overriding its models', () => {
-  const session = REALTIME_PROVIDERS.s2s.buildSession({
+  const provider = REALTIME_PROVIDERS['speech-to-speech']
+  const session = provider.buildSession({
     agentContext: {},
   })
 
-  assert.equal(REALTIME_PROVIDERS.s2s.inputSampleRate, 16000)
-  assert.equal(REALTIME_PROVIDERS.s2s.outputSampleRate, 16000)
-  assert.equal(REALTIME_PROVIDERS.s2s.model(), null)
-  assert.equal(REALTIME_PROVIDERS.s2s.voice(), null)
+  assert.equal(provider.key, 'speech-to-speech')
+  assert.equal(REALTIME_PROVIDERS.s2s, provider)
+  assert.equal(provider.inputSampleRate, 16000)
+  assert.equal(provider.outputSampleRate, 16000)
+  assert.equal(provider.model(), null)
+  assert.equal(provider.voice(), null)
   assert.equal(session.audio.input.format, undefined)
   assert.equal(session.audio.output.format, undefined)
   assert.equal(session.audio.output.voice, undefined)
@@ -1013,7 +1016,8 @@ test('uses the speech-to-speech native 16 kHz defaults without overriding its mo
 })
 
 test('creates out-of-band speech responses for speech-to-speech', () => {
-  const response = REALTIME_PROVIDERS.s2s.buildSpeakResponse('任务完成')
+  const response = REALTIME_PROVIDERS['speech-to-speech']
+    .buildSpeakResponse('任务完成')
 
   assert.equal(response.conversation, 'none')
   assert.deepEqual(response.modalities, ['audio'])
@@ -1035,7 +1039,8 @@ test('connects to an OpenAI Realtime-compatible speech-to-speech server', async 
   const address = server.address()
   const frontend = new RealtimeFrontend({
     provider: {
-      ...REALTIME_PROVIDERS.s2s,
+      ...REALTIME_PROVIDERS['speech-to-speech'],
+      isConfigured: () => true,
       url: () => `ws://127.0.0.1:${address.port}/v1/realtime`,
     },
   })

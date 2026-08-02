@@ -125,7 +125,17 @@ test('generates and reuses a private stable local identity secret', () => {
     first.QWEN_AUDIO_AGENT_AUTH_SECRET,
   )
   assert.match(readFileSync(result.statePath, 'utf8'), /AUTH_SECRET=/)
-  assert.match(readFileSync(result.configPath, 'utf8'), /DASHSCOPE_API_KEY=/)
+  const configContent = readFileSync(result.configPath, 'utf8')
+  assert.match(configContent, /DASHSCOPE_API_KEY=/)
+  assert.match(
+    configContent,
+    /QWEN_AUDIO_REALTIME_PROVIDER=dashscope/,
+  )
+  assert.match(
+    configContent,
+    /SPEECH_TO_SPEECH_REALTIME_URL=ws:\/\/127\.0\.0\.1:8765\/v1\/realtime/,
+  )
+  assert.doesNotMatch(configContent, /S2S_REALTIME_URL=/)
   assertPrivateMode(result.configPath)
   assert.match(readFileSync(result.userProfilePath, 'utf8'), /^# USER/m)
   assertPrivateMode(result.userProfilePath)

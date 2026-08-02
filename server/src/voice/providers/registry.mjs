@@ -82,8 +82,10 @@ const providers = new Map([
   // Compatibility alias for internal callers while provider selection moves
   // to stable external names.
   ['qwen', dashscopeProvider],
-  ['s2s', s2sProvider],
   ['speech-to-speech', s2sProvider],
+  // Compatibility alias. Public configuration and UI use the full project
+  // name so it cannot be confused with the generic speech-to-speech concept.
+  ['s2s', s2sProvider],
 ])
 
 export function resolveRealtimeProvider(requested) {
@@ -105,6 +107,7 @@ export function listRealtimeProviders() {
       seen.add(provider.key)
       return true
     })
+    .filter(provider => provider.isConfigured())
     .map(provider => ({
       key: provider.key,
       label: provider.label,

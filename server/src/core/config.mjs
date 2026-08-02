@@ -198,6 +198,15 @@ export function resolveOpenCodeCoordinatorAgent(env = process.env) {
   ].includes(selected) ? '' : selected
 }
 
+const audioProvider = String(
+  process.env.QWEN_AUDIO_REALTIME_PROVIDER || 'dashscope',
+).trim().toLowerCase()
+const speechToSpeechRealtimeUrl = (
+  process.env.SPEECH_TO_SPEECH_REALTIME_URL
+  || process.env.S2S_REALTIME_URL
+  || 'ws://127.0.0.1:8765/v1/realtime'
+).replace(/\/+$/, '')
+
 export const config = {
   root,
   host: process.env.HOST || '127.0.0.1',
@@ -206,9 +215,7 @@ export const config = {
   port: String(process.env.PORT || '').trim() === '0'
     ? 0
     : numberSetting(process.env.PORT, 3101, { min: 1, max: 65535 }),
-  audioProvider: String(
-    process.env.QWEN_AUDIO_REALTIME_PROVIDER || 'dashscope',
-  ).trim().toLowerCase(),
+  audioProvider,
   dashscopeApiKey: (
     process.env.QWEN_AUDIO_REALTIME_API_KEY
     || process.env.DASHSCOPE_API_KEY
@@ -227,14 +234,22 @@ export const config = {
   // pipeline owns its STT, LLM, TTS and voice configuration; Gateway only
   // connects to the endpoint and supplies the shared frontend instructions and
   // tools for each realtime Session.
-  s2sRealtimeUrl: (
-    process.env.S2S_REALTIME_URL
-    || process.env.SPEECH_TO_SPEECH_REALTIME_URL
-    || 'ws://127.0.0.1:8765/v1/realtime'
-  ).replace(/\/+$/, ''),
+  speechToSpeechRealtimeUrl,
+  // Do not advertise a local service merely because a default endpoint
+  // exists. It becomes selectable when the user explicitly configures it or
+  // chooses it as the active frontend.
+  speechToSpeechConfigured: Boolean(
+    process.env.SPEECH_TO_SPEECH_REALTIME_URL
+    || process.env.S2S_REALTIME_URL
+    || ['speech-to-speech', 's2s'].includes(audioProvider)
+  ),
   // The upstream WebSocket does not require authentication. This optional
   // credential is useful only when users put it behind an authenticated proxy.
-  s2sApiKey: process.env.S2S_API_KEY || '',
+  speechToSpeechAuthToken: (
+    process.env.SPEECH_TO_SPEECH_AUTH_TOKEN
+    || process.env.S2S_API_KEY
+    || ''
+  ),
   audioModel: process.env.QWEN_AUDIO_REALTIME_MODEL || 'qwen-audio-3.0-realtime-plus',
   audioVoice: process.env.QWEN_AUDIO_REALTIME_VOICE || 'longanqian',
   allowedOrigins: String(process.env.QWEN_AUDIO_AGENT_ALLOWED_ORIGINS || '')

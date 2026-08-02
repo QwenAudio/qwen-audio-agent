@@ -77,7 +77,8 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
 ## 安装
 
-需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+ 和 DashScope API Key。
+需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+。使用默认的 DashScope
+实时语音前台时，还需要 DashScope API Key。
 仓库提供 `.nvmrc` 和 `.node-version`；使用 nvm 时可直接运行 `nvm use`。
 
 一键安装（推荐，从 npm 安装）：
@@ -172,13 +173,13 @@ OpenAI Realtime 兼容服务。请先按其文档安装、选择 STT / LLM / TTS
 然后在 `config.env` 中设置：
 
 ```dotenv
-QWEN_AUDIO_REALTIME_PROVIDER=s2s
-S2S_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
+SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
 ```
 
 此模式不需要 DashScope API Key。Gateway 只连接 Realtime 接口，不会修改
-speech-to-speech 的模型或语音配置；如果接口位于需要 Bearer 认证的代理后方，可额外
-设置 `S2S_API_KEY`。
+speech-to-speech 的模型或语音配置。如果接口位于需要 Bearer 认证的代理后方，可在
+高级配置中设置 `SPEECH_TO_SPEECH_AUTH_TOKEN`。
 
 ### TUI 使用注意
 

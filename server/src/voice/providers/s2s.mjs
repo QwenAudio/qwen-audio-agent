@@ -22,8 +22,8 @@ function classifyError(message) {
  * only describes its OpenAI Realtime wire contract.
  */
 export const s2sProvider = {
-  key: 's2s',
-  label: 'Speech-To-Speech',
+  key: 'speech-to-speech',
+  label: 'Hugging Face Speech-to-Speech',
   // The upstream pipeline defaults to PCM16 at 16 kHz when the GA audio format
   // is omitted. Its own reference client uses the same path.
   inputSampleRate: 16000,
@@ -40,13 +40,13 @@ export const s2sProvider = {
 
   model: () => null,
   voice: () => null,
-  isConfigured: () => Boolean(config.s2sRealtimeUrl),
-  missingConfigurationMessage: '请先配置 S2S_REALTIME_URL',
-  connectTimeoutMessage: `连接 speech-to-speech 服务超时（${config.s2sRealtimeUrl}），请确认 s2s 已以 --mode realtime 启动`,
+  isConfigured: () => config.speechToSpeechConfigured,
+  missingConfigurationMessage: '请先配置 SPEECH_TO_SPEECH_REALTIME_URL',
+  connectTimeoutMessage: `连接 Hugging Face speech-to-speech 服务超时（${config.speechToSpeechRealtimeUrl}），请确认 speech-to-speech 服务已启动`,
 
-  url: () => config.s2sRealtimeUrl,
-  headers: () => config.s2sApiKey
-    ? { Authorization: `Bearer ${config.s2sApiKey}` }
+  url: () => config.speechToSpeechRealtimeUrl,
+  headers: () => config.speechToSpeechAuthToken
+    ? { Authorization: `Bearer ${config.speechToSpeechAuthToken}` }
     : {},
   classifyError,
 

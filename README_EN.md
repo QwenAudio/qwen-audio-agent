@@ -95,7 +95,8 @@ boundaries.
 ## Installation
 
 You need Node.js 22.22.2+ or 24.15.0+, npm 10+, and a
-DashScope API Key. The repository includes `.nvmrc` and `.node-version`; if you
+DashScope API Key when using the default DashScope realtime frontend. The
+repository includes `.nvmrc` and `.node-version`; if you
 use nvm, run `nvm use`.
 
 One-line install (recommended, from npm):
@@ -194,14 +195,14 @@ LLM, TTS, and voice, and start the service according to its documentation. Then
 set the following in `config.env`:
 
 ```dotenv
-QWEN_AUDIO_REALTIME_PROVIDER=s2s
-S2S_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
+SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
 ```
 
 This mode does not require a DashScope API Key. The Gateway only connects to
 the Realtime endpoint and does not alter the speech-to-speech model or voice
-configuration. Set `S2S_API_KEY` only when the endpoint is behind a proxy that
-requires Bearer authentication.
+configuration. Set `SPEECH_TO_SPEECH_AUTH_TOKEN` as an advanced option only
+when the endpoint is behind a proxy that requires Bearer authentication.
 
 ### TUI Notes
 

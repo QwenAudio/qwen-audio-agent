@@ -40,13 +40,8 @@ function normalizedEvents(value) {
 // only declare the guarantees they do NOT uphold and the frontend compensates
 // without ever branching on a provider name.
 const DEFAULT_CAPABILITIES = Object.freeze({
-  // Echoes conversation.item.created for client-injected items.
-  confirmsConversationItems: true,
-  // Emits a terminal response.done (status=cancelled) when an in-flight
-  // response is cancelled by an interruption.
-  emitsTerminalEventOnInterrupt: true,
-  // Emits response.created for server-initiated (VAD) turns.
-  emitsResponseCreatedForServerTurns: true,
+  // Acknowledges session.update with session.updated.
+  acknowledgesSessionUpdate: true,
   // Accepts concurrent response.create requests (queues instead of refusing).
   singleResponseSlot: false,
 })
@@ -77,7 +72,6 @@ export class RealtimeFrontend {
     this.activeResponses = new Set()
     this.pendingResponses = []
     this.responseWaiters = new Map()
-    this.orphanResponseTimers = new Map()
     this.conversationItemWaiters = new Map()
     this.idleWaiters = []
     this.outputQueue = Promise.resolve()
@@ -87,11 +81,12 @@ export class RealtimeFrontend {
   }
 
   connect() {
-    const apiKey = this.provider.apiKey()
-    if (!apiKey) return Promise.reject(new Error(this.provider.missingKeyMessage))
+    if (!this.provider.isConfigured()) {
+      return Promise.reject(new Error(this.provider.missingConfigurationMessage))
+    }
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.provider.url(), {
-        headers: this.provider.headers(apiKey),
+        headers: this.provider.headers(),
       })
       this.ws = ws
       let settled = false
@@ -143,7 +138,14 @@ export class RealtimeFrontend {
       this.protocol.normalizeIncoming(providerEvent),
     )
     for (const event of events) {
-      if (event.type === 'session.created') this.updateSession()
+      if (event.type === 'session.created') {
+        this.updateSession()
+        if (!this.capabilities.acknowledgesSessionUpdate) {
+          this.ready = true
+          this.sessionConfigured = true
+          onSessionReady?.()
+        }
+      }
       if (event.type === 'session.updated') {
         this.ready = true
         this.sessionConfigured = true
@@ -213,13 +215,6 @@ export class RealtimeFrontend {
     // Id namespaces are dialect-specific (the GA dialect derives them from the
     // item type), so the protocol adapter mints the id.
     const id = item.id || this.protocol.conversationItemId(item)
-    // Providers that never echo conversation.item.created would time every
-    // waiter out; sending without awaiting confirmation matches their actual
-    // contract (items are applied silently).
-    if (!this.capabilities.confirmsConversationItems) {
-      this.send(this.protocol.conversationItemCreate({ id, ...item }))
-      return Promise.resolve({ id, ...item })
-    }
     return new Promise((resolve, reject) => {
       const waiter = {
         id,
@@ -456,42 +451,8 @@ export class RealtimeFrontend {
             recoveryTimer.unref?.()
           }, this.responseCompletionTimeoutMs)
           this.responseWaiters.set(id, pending)
-        } else if (!this.capabilities.emitsTerminalEventOnInterrupt) {
-          // Server-initiated response without a pending marker: no completion
-          // timer guards it. If its terminal event is lost the id would hold
-          // the idle gate forever, so give it a fallback expiry.
-          const orphanTimer = setTimeout(() => {
-            this.orphanResponseTimers.delete(id)
-            if (!this.activeResponses.has(id)) return
-            this.activeResponses.delete(id)
-            this.resolveIdle()
-          }, this.responseCompletionTimeoutMs)
-          orphanTimer.unref?.()
-          this.orphanResponseTimers.set(id, orphanTimer)
         }
       }
-    }
-    // Providers that cancel the in-flight response on new speech without
-    // emitting a terminal event leave the response bookkeeping dangling.
-    // speech_started is then the authoritative signal that anything active is
-    // dead, so retire it and release the idle gate.
-    if (
-      event.type === 'input_audio_buffer.speech_started'
-      && !this.capabilities.emitsTerminalEventOnInterrupt
-      && this.activeResponses.size
-    ) {
-      for (const id of [...this.activeResponses]) {
-        const pending = this.responseWaiters.get(id)
-        this.responseWaiters.delete(id)
-        this.activeResponses.delete(id)
-        this.clearOrphanTimer(id)
-        this.settlePending(pending, {
-          cancelled: true,
-          phase: 'interrupted',
-          responseId: id,
-        })
-      }
-      this.resolveIdle()
     }
     if (
       event.type === 'response.done'
@@ -546,7 +507,6 @@ export class RealtimeFrontend {
       if (id) {
         this.activeResponses.delete(id)
         this.responseWaiters.delete(id)
-        this.clearOrphanTimer(id)
       }
       const status = event.response?.status
       const completed = event.type === 'response.done'
@@ -563,14 +523,6 @@ export class RealtimeFrontend {
     pending.settled = true
     clearTimeout(pending.timer)
     pending.resolve(outcome)
-  }
-
-  clearOrphanTimer(id) {
-    const timer = this.orphanResponseTimers.get(id)
-    if (timer) {
-      clearTimeout(timer)
-      this.orphanResponseTimers.delete(id)
-    }
   }
 
   // Re-issues a response.create refused by an occupied single response slot.
@@ -613,43 +565,7 @@ export class RealtimeFrontend {
 
   whenIdle() {
     if (!this.activeResponses.size) return Promise.resolve()
-    const promise = new Promise(resolve => this.idleWaiters.push(resolve))
-    // Defensive hard timeout for providers that declare a bounded response
-    // duration: an idle gate stuck longer than that means a lifecycle event
-    // was lost or mismatched, so force-release it. Queued work is then merely
-    // delayed instead of blocked forever.
-    const timeoutMs = this.provider.idleGateTimeoutMs
-    if (timeoutMs) {
-      const guard = setTimeout(() => this.forceReleaseIdleGate(), timeoutMs)
-      guard.unref?.()
-      promise.finally(() => clearTimeout(guard))
-    }
-    return promise
-  }
-
-  forceReleaseIdleGate() {
-    if (!this.activeResponses.size) return
-    // Reaching this point always means a provider lifecycle event was lost or
-    // mismatched. The gate is released so queued work is merely delayed, but
-    // the leaked ids are reported: without that trace the compensation would
-    // silently hide the very provider bugs it works around.
-    console.warn(
-      `[voice] ${this.provider.key}: idle gate force-released after `
-      + `${this.provider.idleGateTimeoutMs}ms, leaked response ids: `
-      + `${[...this.activeResponses].join(', ')}`,
-    )
-    for (const id of [...this.activeResponses]) {
-      const pending = this.responseWaiters.get(id)
-      this.responseWaiters.delete(id)
-      this.activeResponses.delete(id)
-      this.clearOrphanTimer(id)
-      this.settlePending(pending, {
-        failed: true,
-        phase: 'idle-gate-timeout',
-        responseId: id,
-      })
-    }
-    this.resolveIdle()
+    return new Promise(resolve => this.idleWaiters.push(resolve))
   }
 
   resolveIdle() {
@@ -660,8 +576,6 @@ export class RealtimeFrontend {
   resetResponses() {
     this.responseQueueGeneration += 1
     this.activeResponses.clear()
-    this.orphanResponseTimers.forEach(timer => clearTimeout(timer))
-    this.orphanResponseTimers.clear()
     this.rejectConversationItemWaiters(new Error('Realtime 会话已重置'))
     this.pendingResponses.forEach(item => this.settlePending(item, { cancelled: true }))
     this.responseWaiters.forEach(item => this.settlePending(item, { cancelled: true }))

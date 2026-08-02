@@ -29,11 +29,7 @@ const ID_PREFIXES = Object.freeze({
  *
  * - response payloads use output_modalities instead of modalities;
  * - text deltas arrive as response.output_text.* instead of response.text.*;
- * - conversation item ids are namespaced per item type;
- * - session.updated is never emitted, so it is synthesized right after
- *   session.created: the frontend sends session.update in response to
- *   session.created, and treating the session as live once that update has
- *   been written matches the server's actual behaviour.
+ * - conversation item ids are namespaced per item type.
  */
 export const gaRealtimeProtocol = Object.freeze({
   encodeOutgoing: payload => ({
@@ -43,13 +39,6 @@ export const gaRealtimeProtocol = Object.freeze({
 
   normalizeIncoming: event => {
     switch (event?.type) {
-      case 'session.created':
-        // GA servers acknowledge session.update silently. Synthesize the
-        // session.updated acknowledgement so the provider-agnostic frontend
-        // can keep a single readiness path: it first reacts to
-        // session.created (sending session.update), then marks the session
-        // ready when it processes the synthetic event.
-        return [event, { type: 'session.updated', synthetic: true }]
       case 'response.output_text.delta':
         return { ...event, type: 'response.text.delta' }
       case 'response.output_text.done':

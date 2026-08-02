@@ -5,7 +5,7 @@ import { s2sProvider } from './s2s.mjs'
 const PROVIDER_METHODS = [
   'model',
   'voice',
-  'apiKey',
+  'isConfigured',
   'url',
   'headers',
   'classifyError',
@@ -33,9 +33,7 @@ const PROTOCOL_METHODS = [
 // implementation is fully compliant. See DEFAULT_CAPABILITIES in
 // realtime-provider.mjs for the compensations each flag enables.
 const CAPABILITY_FLAGS = [
-  'confirmsConversationItems',
-  'emitsTerminalEventOnInterrupt',
-  'emitsResponseCreatedForServerTurns',
+  'acknowledgesSessionUpdate',
   'singleResponseSlot',
 ]
 
@@ -111,7 +109,7 @@ export function listRealtimeProviders() {
       key: provider.key,
       label: provider.label,
       model: provider.model(),
-      configured: Boolean(provider.apiKey()),
+      configured: provider.isConfigured(),
     }))
 }
 
@@ -123,7 +121,7 @@ export function describeActiveRealtime(requested) {
     model: provider.model(),
     voice: provider.voice(),
     inputSampleRate: provider.inputSampleRate,
-    configured: Boolean(provider.apiKey()),
+    configured: provider.isConfigured(),
     providers: listRealtimeProviders(),
   }
 }

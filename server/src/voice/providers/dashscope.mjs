@@ -25,12 +25,12 @@ export const dashscopeProvider = {
 
   model: () => config.audioModel,
   voice: () => config.audioVoice,
-  apiKey: () => config.dashscopeApiKey,
-  missingKeyMessage: '请先配置 DASHSCOPE_API_KEY',
+  isConfigured: () => Boolean(config.dashscopeApiKey),
+  missingConfigurationMessage: '请先配置 DASHSCOPE_API_KEY',
   connectTimeoutMessage: '连接 Qwen Audio Realtime 超时',
 
   url: () => realtimeUrl(config.audioRealtimeBaseUrl, config.audioModel),
-  headers: apiKey => ({ Authorization: `Bearer ${apiKey}` }),
+  headers: () => ({ Authorization: `Bearer ${config.dashscopeApiKey}` }),
   classifyError,
 
   buildSession: ({ configured, agentContext }) => {

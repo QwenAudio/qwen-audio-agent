@@ -19,6 +19,8 @@ const USER_CONFIG_TEMPLATE = [
   '# qwen-audio-agent 用户配置',
   'DASHSCOPE_API_KEY=',
   'QWEN_AUDIO_REALTIME_PROVIDER=dashscope',
+  '# speech-to-speech：将上一行改为 s2s，并设置用户自行启动的 Realtime 地址',
+  '# S2S_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime',
   '',
   '# 可选：选择后台 Agent；留空时仅使用前台实时语音聊天',
   '# 可选 openclaw、opencode、qoder、kimi、hermes、codebuddy、codex、claude、acp 或 none',
@@ -473,4 +475,12 @@ export function requireDashScopeCredential(env = process.env) {
   throw new Error(
     '缺少 DASHSCOPE_API_KEY。请运行 qwenaudio config 查看配置文件位置。',
   )
+}
+
+export function requireRealtimeFrontendConfiguration(env = process.env) {
+  const provider = String(
+    env.QWEN_AUDIO_REALTIME_PROVIDER || 'dashscope',
+  ).trim().toLowerCase()
+  if (['s2s', 'speech-to-speech'].includes(provider)) return
+  requireDashScopeCredential(env)
 }

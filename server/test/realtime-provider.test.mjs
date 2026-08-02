@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { WebSocketServer } from 'ws'
 import {
   buildFrontendInstructions,
   REALTIME_PROVIDERS,
@@ -820,40 +821,16 @@ test('rewrites response modalities into the GA output_modalities field', () => {
   assert.equal('modalities' in payload.response, false)
 })
 
-test('synthesizes the session acknowledgement a GA provider never sends', () => {
+test('becomes ready after writing session.update when no acknowledgement is expected', () => {
   const frontend = createS2sFrontend()
   const sent = []
   frontend.send = event => sent.push(event)
 
   const events = frontend.handleProviderEvent({ type: 'session.created' })
 
-  assert.deepEqual(events.map(event => event.type), [
-    'session.created',
-    'session.updated',
-  ])
+  assert.deepEqual(events.map(event => event.type), ['session.created'])
   assert.equal(sent[0].type, 'session.update')
   assert.equal(frontend.ready, true)
-})
-
-test('reports the leaked response ids when forcing the idle gate open', () => {
-  const frontend = createS2sFrontend()
-  const warnings = []
-  const originalWarn = console.warn
-  console.warn = message => warnings.push(String(message))
-
-  try {
-    frontend.activeResponses.add('resp_leaked')
-    frontend.forceReleaseIdleGate()
-  } finally {
-    console.warn = originalWarn
-  }
-
-  // The compensation must stay visible: releasing the gate silently would hide
-  // the provider lifecycle bug it works around.
-  assert.equal(frontend.activeResponses.size, 0)
-  assert.equal(warnings.length, 1)
-  assert.match(warnings[0], /idle gate force-released/)
-  assert.match(warnings[0], /resp_leaked/)
 })
 
 test('namespaces GA conversation item ids by item type', async () => {
@@ -862,16 +839,26 @@ test('namespaces GA conversation item ids by item type', async () => {
   frontend.ready = true
   frontend.send = event => sent.push(event)
 
-  await frontend.createConversationItem({
+  const first = frontend.createConversationItem({
     type: 'function_call_output',
     call_id: 'call-1',
     output: '{}',
   })
-  await frontend.createConversationItem({
+  frontend.handleProviderEvent({
+    type: 'conversation.item.created',
+    item: { id: sent[0].item.id },
+  })
+  await first
+  const second = frontend.createConversationItem({
     type: 'message',
     role: 'user',
     content: [{ type: 'input_text', text: 'hi' }],
   })
+  frontend.handleProviderEvent({
+    type: 'conversation.item.created',
+    item: { id: sent[1].item.id },
+  })
+  await second
 
   // The GA schema rejects an id from the wrong namespace outright, so the
   // prefix has to match the item type rather than a generic "item_".
@@ -911,46 +898,38 @@ test('normalizes GA text events into the shared transcript event names', () => {
   assert.equal(delta.delta, '你好')
 })
 
-test('injects context without waiting for an unsupported item receipt', async () => {
+test('waits for the GA conversation item receipt before creating a response', async () => {
   const frontend = createS2sFrontend()
   const sent = []
   frontend.ready = true
   frontend.send = event => sent.push(event)
 
-  frontend.injectResult('任务完成', 'announcement', { turnId: 'turn-1' })
+  const outcome = frontend.injectResult(
+    '任务完成',
+    'announcement',
+    { turnId: 'turn-1' },
+  )
   await new Promise(resolve => setImmediate(resolve))
 
-  // No conversation.item.created is echoed by the provider, yet the response
-  // request still goes out instead of timing out on a confirmation.
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+  frontend.handleProviderEvent({
+    type: 'conversation.item.created',
+    item: { id: sent[0].item.id },
+  })
+  await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(sent.map(event => event.type), [
     'conversation.item.create',
     'response.create',
   ])
-  assert.equal(frontend.conversationItemWaiters.size, 0)
-})
-
-test('releases the idle gate when new speech cancels a silent response', () => {
-  const frontend = createS2sFrontend()
-  frontend.ready = true
-  frontend.send = () => {}
-  // A VAD driven response the provider will cancel without a terminal event.
-  frontend.handleLifecycle({
+  frontend.handleProviderEvent({
     type: 'response.created',
-    response: { id: 'resp_vad' },
+    response: { id: 'resp-result' },
   })
-  assert.equal(frontend.activeResponses.size, 1)
-
-  let released = false
-  frontend.whenIdle().then(() => {
-    released = true
+  frontend.handleProviderEvent({
+    type: 'response.done',
+    response: { id: 'resp-result', status: 'completed' },
   })
-  frontend.handleLifecycle({ type: 'input_audio_buffer.speech_started' })
-
-  assert.equal(frontend.activeResponses.size, 0)
-  return new Promise(resolve => setImmediate(() => {
-    assert.equal(released, true)
-    resolve()
-  }))
+  assert.equal((await outcome).completed, true)
 })
 
 test('retries a response refused by an occupied single response slot', async () => {
@@ -1013,11 +992,63 @@ test('a compliant provider keeps every default capability', () => {
   const qwen = createQwenFrontend()
 
   assert.deepEqual(qwen.capabilities, {
-    confirmsConversationItems: true,
-    emitsTerminalEventOnInterrupt: true,
-    emitsResponseCreatedForServerTurns: true,
+    acknowledgesSessionUpdate: true,
     singleResponseSlot: false,
   })
-  // Compliant providers must not gain the compensations either.
-  assert.equal(qwen.provider.idleGateTimeoutMs, undefined)
+})
+
+test('uses the speech-to-speech native 16 kHz defaults without overriding its models', () => {
+  const session = REALTIME_PROVIDERS.s2s.buildSession({
+    agentContext: {},
+  })
+
+  assert.equal(REALTIME_PROVIDERS.s2s.inputSampleRate, 16000)
+  assert.equal(REALTIME_PROVIDERS.s2s.outputSampleRate, 16000)
+  assert.equal(REALTIME_PROVIDERS.s2s.model(), null)
+  assert.equal(REALTIME_PROVIDERS.s2s.voice(), null)
+  assert.equal(session.audio.input.format, undefined)
+  assert.equal(session.audio.output.format, undefined)
+  assert.equal(session.audio.output.voice, undefined)
+  assert.equal(session.audio.input.turn_detection.type, 'server_vad')
+})
+
+test('creates out-of-band speech responses for speech-to-speech', () => {
+  const response = REALTIME_PROVIDERS.s2s.buildSpeakResponse('任务完成')
+
+  assert.equal(response.conversation, 'none')
+  assert.deepEqual(response.modalities, ['audio'])
+  assert.equal(response.tool_choice, 'none')
+})
+
+test('connects to an OpenAI Realtime-compatible speech-to-speech server', async t => {
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+  await new Promise(resolve => server.once('listening', resolve))
+  t.after(() => new Promise(resolve => server.close(resolve)))
+
+  let requestHeaders
+  const sessionUpdate = new Promise(resolve => {
+    server.once('connection', (socket, request) => {
+      requestHeaders = request.headers
+      socket.on('message', raw => resolve(JSON.parse(raw.toString())))
+      socket.send(JSON.stringify({ type: 'session.created' }))
+    })
+  })
+  const address = server.address()
+  const frontend = new RealtimeFrontend({
+    provider: {
+      ...REALTIME_PROVIDERS.s2s,
+      url: () => `ws://127.0.0.1:${address.port}/v1/realtime`,
+    },
+  })
+  t.after(() => frontend.close())
+
+  await frontend.connect()
+  const update = await sessionUpdate
+
+  assert.equal(frontend.ready, true)
+  assert.equal(requestHeaders.authorization, undefined)
+  assert.equal(update.type, 'session.update')
+  assert.equal(update.session.type, 'realtime')
+  assert.equal(update.session.audio.input.format, undefined)
+  assert.equal(update.session.audio.output.format, undefined)
 })

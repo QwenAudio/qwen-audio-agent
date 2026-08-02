@@ -185,6 +185,24 @@ You can use the browser interface instead:
 qwenaudio webui
 ```
 
+### Use a speech-to-speech frontend
+
+qwen-audio-agent can connect to a user-managed
+[Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)
+OpenAI Realtime-compatible server. Install it, choose and configure its STT,
+LLM, TTS, and voice, and start the service according to its documentation. Then
+set the following in `config.env`:
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=s2s
+S2S_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+```
+
+This mode does not require a DashScope API Key. The Gateway only connects to
+the Realtime endpoint and does not alter the speech-to-speech model or voice
+configuration. Set `S2S_API_KEY` only when the endpoint is behind a proxy that
+requires Bearer authentication.
+
 ### TUI Notes
 
 | Platform | Default mode | How to interrupt |
@@ -337,8 +355,8 @@ forget information during a conversation.
 
 - Do not store passwords, API Keys, verification codes, or access tokens in
   your user profile or conversations.
-- Microphone audio and realtime conversations are sent to the configured Qwen
-  Audio Realtime service.
+- Microphone audio and realtime conversations are sent to the configured
+  Realtime frontend (DashScope or speech-to-speech).
 - Backend tasks may call models, tools, MCP servers, and external services
   configured for the selected Agent.
 - `full` permission allows command execution and file changes. Use it only in

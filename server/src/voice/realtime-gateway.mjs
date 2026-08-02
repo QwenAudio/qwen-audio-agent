@@ -402,8 +402,7 @@ export function attachRealtimeGateway(server, {
           type: 'error',
           message: error.message,
         }))
-      }, frontend?.provider?.responseStartWatchdogMs
-        || RESPONSE_START_WATCHDOG_MS)
+      }, RESPONSE_START_WATCHDOG_MS)
       responseStartWatchdog.unref?.()
     }
 
@@ -724,20 +723,6 @@ export function attachRealtimeGateway(server, {
     })
 
     const handleEvent = event => {
-      // Providers whose turns are driven by their own VAD may never emit
-      // response.created, so any other response.* event has to count as proof
-      // that generation started; otherwise the watchdog would tear down a
-      // perfectly healthy connection.
-      if (
-        frontend?.capabilities?.emitsResponseCreatedForServerTurns === false
-        && responseTurnCandidate
-        && typeof event.type === 'string'
-        && event.type.startsWith('response.')
-        && event.type !== 'response.created'
-      ) {
-        commitTurn(responseTurnCandidate)
-        clearResponseCandidate()
-      }
       if (event.type === 'input_audio_buffer.speech_started') {
         userSpeaking = true
         clearResponseCandidate()

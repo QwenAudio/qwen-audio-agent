@@ -7,7 +7,7 @@ import {
 } from '../../shared/backend-catalog.mjs'
 import {
   loadRuntimeEnvironment,
-  requireDashScopeCredential,
+  requireRealtimeFrontendConfiguration,
 } from '../../shared/runtime-environment.mjs'
 import {
   readGatewayHealth,
@@ -306,7 +306,7 @@ export async function ensureRuntime(options, {
   spawnImpl = spawn,
   platform = process.platform,
   loadEnvironment = () => loadRuntimeEnvironment({ root, env }),
-  requireCredential = () => requireDashScopeCredential(env),
+  requireCredential = () => requireRealtimeFrontendConfiguration(env),
 } = {}) {
   loadEnvironment()
   const runtime = new ManagedRuntime([], { platform })

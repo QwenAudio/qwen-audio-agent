@@ -13,6 +13,7 @@ import test from 'node:test'
 import {
   loadRuntimeEnvironment,
   requireDashScopeCredential,
+  requireRealtimeFrontendConfiguration,
   userConfigDirectory,
 } from '../../shared/runtime-environment.mjs'
 
@@ -431,4 +432,17 @@ test('requires only a DashScope credential from the user', () => {
     DASHSCOPE_API_KEY: 'key',
   }))
   assert.throws(() => requireDashScopeCredential({}), /DASHSCOPE_API_KEY/)
+})
+
+test('does not require a DashScope credential for speech-to-speech', () => {
+  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'speech-to-speech',
+  }))
+  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 's2s',
+  }))
+  assert.throws(
+    () => requireRealtimeFrontendConfiguration({}),
+    /DASHSCOPE_API_KEY/,
+  )
 })

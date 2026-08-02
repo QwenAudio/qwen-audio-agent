@@ -164,6 +164,22 @@ qwenaudio tui
 qwenaudio webui
 ```
 
+### 接入 speech-to-speech 前台
+
+qwen-audio-agent 可以连接用户自行运行的
+[Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)
+OpenAI Realtime 兼容服务。请先按其文档安装、选择 STT / LLM / TTS 和音色并启动服务，
+然后在 `config.env` 中设置：
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=s2s
+S2S_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+```
+
+此模式不需要 DashScope API Key。Gateway 只连接 Realtime 接口，不会修改
+speech-to-speech 的模型或语音配置；如果接口位于需要 Bearer 认证的代理后方，可额外
+设置 `S2S_API_KEY`。
+
 ### TUI 使用注意
 
 | 平台 | 默认模式 | 打断方式 |
@@ -298,7 +314,8 @@ QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full
 ## 使用注意事项
 
 - 不要在用户档案或对话中保存密码、API Key、验证码和访问令牌。
-- 麦克风音频与实时对话会发送到配置的 Qwen Audio Realtime 服务。
+- 麦克风音频与实时对话会发送到配置的 Realtime 前台服务（DashScope 或
+  speech-to-speech）。
 - 后台任务可能调用所选 Agent 的模型、工具、MCP 和外部服务。
 - `full` 权限允许后台执行命令和修改文件，只应在可信项目中使用。
 - Gateway 默认仅供本机访问；不要直接暴露到局域网或公网。

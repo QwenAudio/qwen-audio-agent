@@ -61,6 +61,8 @@ export function gatewayServiceDefinition({
   const workingDirectory = dirname(gatewayPath)
   const environment = {
     QWAUDIO_CONFIG_DIR: configDirectory,
+    QWEN_AUDIO_GATEWAY_OWNER: 'service',
+    QWEN_AUDIO_LOG_CONSOLE: '0',
     PATH: pathEnvironment,
     ...serviceEnvironment,
   }
@@ -98,9 +100,9 @@ ${Object.entries(environment).map(([key, value]) => (
   <key>ProcessType</key>
   <string>Background</string>
   <key>StandardOutPath</key>
-  <string>${xml(resolve(logsDirectory, 'gateway.log'))}</string>
+  <string>${xml(resolve(logsDirectory, 'gateway-console.log'))}</string>
   <key>StandardErrorPath</key>
-  <string>${xml(resolve(logsDirectory, 'gateway.log'))}</string>
+  <string>${xml(resolve(logsDirectory, 'gateway-console.log'))}</string>
 </dict>
 </plist>
 `

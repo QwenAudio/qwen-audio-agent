@@ -368,6 +368,12 @@ select:focus {
   box-shadow: 0 0 0 3px #5d929a1c;
 }
 
+.setting-label {
+  color: #58666d;
+  font-size: 12px;
+  font-weight: 620;
+}
+
 .field-with-action {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -414,6 +420,43 @@ button {
   box-shadow: none;
   cursor: default;
   transform: none;
+}
+
+.row-link {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 6px;
+  padding: 7px 2px 7px 10px;
+  color: #64747a;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 560;
+  white-space: nowrap;
+  transition: color .15s ease;
+}
+
+.row-link span {
+  color: #9aa5a9;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  transition: color .15s ease, transform .15s ease;
+}
+
+.row-link:hover {
+  color: #315f68;
+}
+
+.row-link:hover span {
+  color: #5d858b;
+  transform: translateX(1px);
+}
+
+.row-link:focus-visible {
+  border-radius: 6px;
+  outline: 2px solid #6d9fa5;
+  outline-offset: 2px;
 }
 
 footer {

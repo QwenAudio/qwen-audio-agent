@@ -22,6 +22,10 @@
 
 - **测试中 · v1.3.0**
   🧪 新增 [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) 前台接入，支持本地部署 VAD、STT、LLM 与 TTS 全链路。当前可从源码体验，正式 Release 将在完成测试后发布。
+- **2026-08-01 · [v1.2.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.2.0)**
+  ⚡ 桌面版新增自动更新，优化启动速度与后台 Agent 检测。
+- **2026-07-31 · [v1.1.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.1.0)**
+  🤝 新增 Kimi Code CLI 后台，原生 ACP 接入。
 - **2026-07-30 · [v1.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.0.0)**
   🚀 正式版发布，推出内置 Gateway 的 macOS 桌面版。
 - **2026-07-28 · [v0.9.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v0.9.0)**
@@ -235,9 +239,10 @@ qwenaudio tui --audio-mode full
 
 ## macOS 桌面版
 
-桌面版提供常驻桌面的语音悬浮球，并内置和自动管理 Gateway，无需事先启动服务。
-首次运行时，应用会创建配置文件，并引导你在设置页填写 DashScope API Key、选择
-后台 Agent（也可以使用仅前台模式）。
+桌面版提供常驻桌面的语音悬浮球，并内置 Gateway，无需事先启动服务。同一用户配置
+目录已有兼容的本地 Gateway 时会直接复用，否则由桌面版自动启动和管理。首次运行时，
+应用会创建配置文件，并引导你在设置页填写 DashScope API Key、选择后台 Agent
+（也可以使用仅前台模式）。
 
 桌面版支持流光声波球和液态渐变球两种外观。下面分别展示它们在思考 / 呼吸状态
 下的原始动态效果：
@@ -346,6 +351,7 @@ QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full
 - `USER.md`：称呼、所在地、偏好和常用项目
 - `frontend-memory.json`：用户明确要求长期记住的信息
 - `tasks.json`：任务结果和待通知状态
+- `logs/`：经过凭据脱敏并自动轮转的本地运行日志
 
 这些文件只保存在本机，不会写入源码仓库。可以直接编辑 `USER.md`，也可以在对话中
 要求助理记住或忘记信息。

@@ -4,6 +4,7 @@ import { stripVTControlCharacters } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk'
 import { PACKAGE_VERSION } from '../core/package-version.mjs'
 import { AgentError, requestSignal } from './backend-adapter.mjs'
+import { logger } from '../core/logger.mjs'
 
 const MAX_STDERR_CHARS = 12_000
 
@@ -123,6 +124,11 @@ export class AcpProcessClient {
       env: this.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
+    const processLogger = logger.child({ subsystem: 'acp', backend: this.label })
+    processLogger.info('acp.process_started', {
+      pid: child.pid,
+      command: this.command,
+    })
     this.child = child
     child.stderr?.on('data', chunk => this.appendStderr(chunk))
     const stream = acp.ndJsonStream(
@@ -142,15 +148,21 @@ export class AcpProcessClient {
     this.connection = connection
     this.context = connection.agent
     const exited = new Promise((_, reject) => {
-      child.once('error', error => reject(processError(
-        this.label,
-        `进程启动失败（${error.message}）`,
-      )))
-      child.once('exit', (code, signal) => reject(processError(
-        this.label,
-        `进程意外退出（${signal || code || 'unknown'}）`,
-        clean(this.stderr),
-      )))
+      child.once('error', error => {
+        processLogger.error('acp.process_start_failed', { error })
+        reject(processError(
+          this.label,
+          `进程启动失败（${error.message}）`,
+        ))
+      })
+      child.once('exit', (code, signal) => {
+        processLogger.warn('acp.process_exited', { code, signal })
+        reject(processError(
+          this.label,
+          `进程意外退出（${signal || code || 'unknown'}）`,
+          clean(this.stderr),
+        ))
+      })
     })
     // Promise.race stops observing the loser after initialization succeeds.
     // Keep the process lifecycle rejection handled for the rest of the client.
@@ -172,6 +184,11 @@ export class AcpProcessClient {
         ),
         exited,
       ])
+      processLogger.info('acp.initialized', {
+        protocolVersion: this.initializeResult?.protocolVersion,
+        agentName: this.initializeResult?.agentInfo?.name,
+        agentVersion: this.initializeResult?.agentInfo?.version,
+      })
       if (
         this.initializeResult?.protocolVersion !== acp.PROTOCOL_VERSION
       ) {
@@ -190,6 +207,7 @@ export class AcpProcessClient {
       }).catch(() => {})
       return this.initializeResult
     } catch (error) {
+      processLogger.error('acp.initialization_failed', { error })
       connection.close(error)
       if (child.exitCode == null) child.kill('SIGTERM')
       this.connection = null

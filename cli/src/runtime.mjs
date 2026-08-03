@@ -16,6 +16,9 @@ import {
 import {
   readGatewayHealth,
 } from '../../shared/gateway-client.mjs'
+import {
+  findRunningGateway,
+} from '../../shared/gateway-instance-lock.mjs'
 
 export {
   readGatewayHealth,
@@ -347,7 +350,7 @@ export async function ensureRuntime(options, {
   loadEnvironment = () => loadRuntimeEnvironment({ root, env }),
   requireCredential = () => requireRealtimeFrontendConfiguration(env),
 } = {}) {
-  loadEnvironment()
+  const runtimeEnvironment = loadEnvironment()
   const runtime = new ManagedRuntime([], { platform })
   const local = isLocalGateway(options.url)
   const backend = resolveBackend(options, env)
@@ -355,7 +358,19 @@ export async function ensureRuntime(options, {
     ? backendDefinition(backend.protocol)?.label || backend.protocol
     : '后台 Agent'
   let health = await readGatewayHealth(options.url, fetchImpl)
-  const existingGateway = Boolean(health)
+  if (!health && local && runtimeEnvironment?.configDirectory) {
+    const active = await findRunningGateway(
+      runtimeEnvironment.configDirectory,
+      {
+        readHealth: origin => readGatewayHealth(origin, fetchImpl),
+      },
+    )
+    if (active) {
+      options.url = active.origin
+      health = active.health
+    }
+  }
+  let existingGateway = Boolean(health)
 
   try {
     if (!health) {
@@ -375,16 +390,30 @@ export async function ensureRuntime(options, {
       )
       const gateway = spawnImpl(spec.command, spec.args, spec.options)
       runtime.children.push(gateway)
-      health = await waitForReadiness(
-        gateway,
-        waitForGateway(options.url, {
-          fetchImpl,
-          requireBackend: Boolean(
-            backend.protocol && options.waitForBackend !== false
-          ),
-        }),
-        'Gateway',
-      )
+      try {
+        health = await waitForReadiness(
+          gateway,
+          waitForGateway(options.url, {
+            fetchImpl,
+            requireBackend: Boolean(
+              backend.protocol && options.waitForBackend !== false
+            ),
+          }),
+          'Gateway',
+        )
+      } catch (startupError) {
+        const winner = runtimeEnvironment?.configDirectory
+          ? await findRunningGateway(runtimeEnvironment.configDirectory, {
+              readHealth: origin => readGatewayHealth(origin, fetchImpl),
+              timeoutMs: 3000,
+            })
+          : null
+        if (!winner) throw startupError
+        runtime.children = runtime.children.filter(child => child !== gateway)
+        options.url = winner.origin
+        health = winner.health
+        existingGateway = true
+      }
     }
 
     // An owned Gateway may move its private backend to a free local port.

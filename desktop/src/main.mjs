@@ -19,6 +19,7 @@ import {
   loadRuntimeEnvironment,
   userConfigDirectory,
 } from '../../shared/runtime-environment.mjs'
+import { createLogger } from '../../shared/logger.mjs'
 import {
   desktopOrbUrl,
   isLoopbackUrl,
@@ -30,9 +31,13 @@ import {
   readGatewayHealth,
 } from '../../shared/gateway-client.mjs'
 import {
+  findRunningGateway,
+} from '../../shared/gateway-instance-lock.mjs'
+import {
   inspectBackendSetups,
 } from '../../shared/backend-setup.mjs'
 import {
+  assertDesktopGatewayCompatibility,
   desktopGatewayEnvironment,
   EmbeddedGateway,
 } from './gateway-process.mjs'
@@ -72,6 +77,16 @@ const runtimeEnvironment = loadRuntimeEnvironment({
   prepareBackendRuntime: false,
   generateSecret: false,
 })
+const logger = createLogger({
+  component: 'desktop',
+  fileName: 'desktop.log',
+})
+logger.info('desktop.starting', {
+  version: app.getVersion(),
+  packaged: app.isPackaged,
+  platform: process.platform,
+  arch: process.arch,
+})
 const fallbackPage = resolve(here, 'orb-unavailable.html')
 const fallbackUrl = pathToFileURL(fallbackPage).href
 const settingsPage = resolve(here, 'settings.html')
@@ -97,6 +112,7 @@ let rendererServer = null
 let dragState = null
 let reconnectTimer = null
 let embeddedGateway = null
+let borrowedGatewayOrigin = ''
 let gatewayCrashCount = 0
 let lastRuntimeError = ''
 let desktopUpdater = null
@@ -131,15 +147,29 @@ function gatewayPort(origin) {
   return Number.isInteger(port) && port > 0 ? port : 3101
 }
 
-// The desktop always owns its loopback Gateway. If the configured port is
-// already occupied, EmbeddedGateway selects another loopback port instead of
-// adopting a process that the desktop cannot safely manage.
 async function startLocalGateway(origin) {
   if (!isLoopbackUrl(origin)) return origin
+  if (embeddedGateway?.running) return embeddedGateway.start()
+  const environment = configuredGatewayEnvironment()
+  const active = await findRunningGateway(runtimeEnvironment.configDirectory, {
+    readHealth: readGatewayHealth,
+  })
+  if (active) {
+    assertDesktopGatewayCompatibility(active.health, environment)
+    borrowedGatewayOrigin = active.origin
+    logger.info('gateway.reused', {
+      origin: active.origin,
+      instanceId: active.lease.instanceId,
+      owner: active.lease.owner,
+    })
+    return active.origin
+  }
+  borrowedGatewayOrigin = ''
   if (!embeddedGateway) {
     embeddedGateway = new EmbeddedGateway({
       preferredPort: gatewayPort(origin),
       envFactory: configuredGatewayEnvironment,
+      logger: logger.child({ subsystem: 'embedded_gateway' }),
     })
     embeddedGateway.onUnexpectedExit = () => {
       lastRuntimeError = '内置 Gateway 意外退出'
@@ -157,14 +187,36 @@ async function startLocalGateway(origin) {
           }
         }).catch(error => {
           lastRuntimeError = error?.message || String(error)
-          console.error('Failed to restart embedded gateway:', error)
+          logger.error('gateway.restart_failed', { error })
         })
       }, 1000)
     }
   }
-  const started = await embeddedGateway.start({
-    preferredPort: gatewayPort(origin),
-  })
+  let started
+  try {
+    started = await embeddedGateway.start({
+      preferredPort: gatewayPort(origin),
+    })
+  } catch (error) {
+    const winner = await findRunningGateway(
+      runtimeEnvironment.configDirectory,
+      {
+        readHealth: readGatewayHealth,
+        timeoutMs: 3000,
+      },
+    )
+    if (!winner) throw error
+    assertDesktopGatewayCompatibility(winner.health, environment)
+    embeddedGateway = null
+    borrowedGatewayOrigin = winner.origin
+    logger.info('gateway.reused_after_race', {
+      origin: winner.origin,
+      instanceId: winner.lease.instanceId,
+      owner: winner.lease.owner,
+    })
+    return winner.origin
+  }
+  borrowedGatewayOrigin = ''
   gatewayCrashCount = 0
   return started
 }
@@ -474,6 +526,16 @@ ipcMain.handle('qwen-audio-agent:settings-runtime-status', async event => {
   return runtimeStatus()
 })
 
+ipcMain.handle('qwen-audio-agent:open-logs', async event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权打开日志目录')
+  }
+  logger.info('logs.opened', { directory: logger.directory })
+  const failure = await shell.openPath(logger.directory)
+  if (failure) throw new Error(`无法打开日志目录：${failure}`)
+  return logger.directory
+})
+
 // 与 `qwenaudio setup --json` 同款的只读检测，供设置页标注各后台
 // Agent 在本机的可用状态。合并 config.env 是因为检测需要其中的
 // AGENT_PROTOCOL / DASHSCOPE_API_KEY / ACP_COMMAND 等配置。
@@ -567,11 +629,6 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
       throw new Error(`无法连接 Gateway：${nextOrigin}`)
     }
   }
-  writeFileSync(runtimeEnvironment.configPath, content, {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
-  chmodSync(runtimeEnvironment.configPath, 0o600)
   const gatewayChanged = nextOrigin !== configuredGatewayOrigin
   const apiKeyChanged = previous.dashscopeApiKey !== normalized.dashscopeApiKey
   const realtimeProviderChanged = (
@@ -587,6 +644,44 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   )
   const backendModelChanged = previous.backendModel !== normalized.backendModel
   const orbStyleChanged = previous.orbStyle !== normalized.orbStyle
+  const gatewayRuntimeChanged = (
+    gatewayChanged
+    || apiKeyChanged
+    || realtimeProviderChanged
+    || backendChanged
+    || realtimeModelChanged
+    || speechToSpeechChanged
+    || backendModelChanged
+  )
+  if (!remote && borrowedGatewayOrigin && gatewayRuntimeChanged) {
+    const borrowedHealth = await readGatewayHealth(borrowedGatewayOrigin)
+    if (borrowedHealth) {
+      throw new Error(
+        '当前正在复用由其他进程启动的 Gateway，请先停止该 Gateway 后再修改运行配置',
+      )
+    }
+    borrowedGatewayOrigin = ''
+  }
+  writeFileSync(runtimeEnvironment.configPath, content, {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
+  chmodSync(runtimeEnvironment.configPath, 0o600)
+  logger.info('settings.applied', {
+    realtimeProvider: normalized.realtimeProvider,
+    backend: normalized.agentProtocol,
+    remoteGateway: remote,
+    changes: {
+      gateway: gatewayChanged,
+      apiKey: apiKeyChanged,
+      realtimeProvider: realtimeProviderChanged,
+      backend: backendChanged,
+      realtimeModel: realtimeModelChanged,
+      speechToSpeech: speechToSpeechChanged,
+      backendModel: backendModelChanged,
+      orbStyle: orbStyleChanged,
+    },
+  })
   let restarted = false
   configuredGatewayOrigin = nextOrigin
   if (remote) {
@@ -594,18 +689,11 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
       await embeddedGateway.stop()
       embeddedGateway = null
     }
+    borrowedGatewayOrigin = ''
     appOrigin = nextOrigin
   } else if (
     embeddedGateway?.running
-    && (
-      gatewayChanged
-      || apiKeyChanged
-      || realtimeProviderChanged
-      || backendChanged
-      || realtimeModelChanged
-      || speechToSpeechChanged
-      || backendModelChanged
-    )
+    && gatewayRuntimeChanged
   ) {
     appOrigin = await embeddedGateway.restart({
       preferredPort: gatewayPort(nextOrigin),
@@ -613,7 +701,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     restarted = true
   } else if (!embeddedGateway?.running) {
     appOrigin = await startLocalGateway(nextOrigin)
-    restarted = true
+    restarted = !borrowedGatewayOrigin
   }
   setupRequired = false
   lastRuntimeError = ''
@@ -677,7 +765,7 @@ if (!app.requestSingleInstanceLock()) {
       } catch (error) {
         lastRuntimeError = error?.message || String(error)
         setupRequired = true
-        console.error('Failed to start configured desktop runtime:', error)
+        logger.error('runtime.start_failed', { error })
         showSettings()
       }
     }
@@ -692,7 +780,7 @@ if (!app.requestSingleInstanceLock()) {
     })
   }).catch(error => {
     const message = error?.stack || error?.message || String(error)
-    console.error('Failed to start Qwen Audio Agent:', message)
+    logger.fatal('desktop.start_failed', { error, message })
     dialog.showErrorBox('Qwen Audio Agent 无法启动', message)
     app.quit()
   })
@@ -702,6 +790,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on('before-quit', () => {
+    logger.info('desktop.stopping')
     void rendererServer?.close()
     rendererServer = null
     const gateway = embeddedGateway

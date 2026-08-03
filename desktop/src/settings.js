@@ -33,6 +33,7 @@ const currentGateway = document.querySelector('#current-gateway')
 const currentBackend = document.querySelector('#current-backend')
 const updaterStatus = document.querySelector('#updater-status')
 const checkUpdates = document.querySelector('#check-updates')
+const openLogs = document.querySelector('#open-logs')
 const submit = form.querySelector('button[type="submit"]')
 
 let settings
@@ -67,6 +68,12 @@ checkUpdates.addEventListener('click', () => {
     .catch(() => {
       checkUpdates.disabled = false
     })
+})
+
+openLogs.addEventListener('click', () => {
+  window.qwenAudioAgentDesktop.openLogs().catch(error => {
+    showMessage(friendlyError(error, '无法打开日志目录'), 'error')
+  })
 })
 
 window.qwenAudioAgentDesktop.onUpdaterStatus(renderUpdater)

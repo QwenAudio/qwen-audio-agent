@@ -27,6 +27,10 @@ tells you:
 
 - **In testing · v1.3.0**
   🧪 Adds a [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) frontend for a locally deployed VAD–STT–LLM–TTS pipeline. Available from source; the formal Release will follow after testing.
+- **2026-08-01 · [v1.2.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.2.0)**
+  ⚡ Desktop auto-update, faster startup, and smarter backend Agent detection.
+- **2026-07-31 · [v1.1.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.1.0)**
+  🤝 Adds Kimi Code CLI backend with native ACP support.
 - **2026-07-30 · [v1.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.0.0)**
   🚀 First stable release with a macOS desktop app and integrated Gateway.
 - **2026-07-28 · [v0.9.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v0.9.0)**
@@ -260,10 +264,12 @@ qwenaudio tui --audio-mode full
 
 ## macOS Desktop App
 
-The desktop app provides a persistent voice orb and embeds and manages its own
-Gateway, so no service needs to be started in advance. On first launch, the app
-creates its configuration file and guides you to enter a DashScope API Key and
-choose a backend Agent (or frontend-only mode) in Settings.
+The desktop app provides a persistent voice orb and includes the Gateway, so no
+service needs to be started in advance. It reuses a compatible local Gateway
+already running for the same user configuration directory; otherwise, it
+starts and manages one automatically. On first launch, the app creates its
+configuration file and guides you to enter a DashScope API Key and choose a
+backend Agent (or frontend-only mode) in Settings.
 
 The desktop app includes a streaming wave orb and a liquid gradient orb. Their
 original animated thinking / breathing states are shown below:
@@ -385,6 +391,7 @@ User data is stored in `~/.config/qwaudio/`:
 - `frontend-memory.json`: information you explicitly ask the assistant to
   remember long term
 - `tasks.json`: task results and pending notification state
+- `logs/`: credential-redacted, automatically rotated local runtime logs
 
 These files remain on your computer and are never written to the source
 repository. You can edit `USER.md` directly or ask the assistant to remember or

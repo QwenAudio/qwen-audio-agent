@@ -4,6 +4,7 @@ import {
   renameSync,
   writeFileSync,
 } from 'node:fs'
+import { logger } from '../core/logger.mjs'
 import { dirname } from 'node:path'
 
 const VERSION = 1
@@ -34,7 +35,7 @@ export class AcpSessionRegistry {
       }
     } catch (error) {
       if (error.code !== 'ENOENT') {
-        console.warn(`无法读取 ACP Session 索引：${error.message}`)
+        logger.warn('acp.session_index_read_failed', { error })
       }
     }
   }

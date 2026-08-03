@@ -34,6 +34,11 @@ const USER_CONFIG_TEMPLATE = [
   '# Kimi Code 可复用原生登录，或设置官方 KIMI_MODEL_* 临时模型变量',
   '# 通用 ACP：ACP_COMMAND=your-agent，ACP_ARGS=["--acp"]',
   '',
+  '# 可选日志设置：默认 info、单文件 10 MiB、保留 5 份',
+  '# QWEN_AUDIO_LOG_LEVEL=info',
+  '# QWEN_AUDIO_LOG_MAX_BYTES=10485760',
+  '# QWEN_AUDIO_LOG_MAX_FILES=5',
+  '',
 ].join('\n')
 const USER_PROFILE_TEMPLATE = [
   '# USER',

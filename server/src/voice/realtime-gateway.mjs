@@ -7,6 +7,7 @@ import {
 import { AnnouncementManager } from './announcement/announcement-manager.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import { config } from '../core/config.mjs'
+import { logger } from '../core/logger.mjs'
 import { conversationSync } from '../conversation/conversation-sync.mjs'
 import { normalizeClientContext } from '../conversation/frontend-agent-context.mjs'
 import {
@@ -133,6 +134,12 @@ export function attachRealtimeGateway(server, {
   wss.on('connection', (ws, url, identity) => {
     const ownerId = identity.ownerId
     const sessionId = url.searchParams.get('sessionId') || 'main'
+    const connectionLogger = logger.child({
+      subsystem: 'realtime',
+      ownerId,
+      sessionId,
+    })
+    connectionLogger.info('voice_client.connected')
     let frontend
     let connectPromise
     let pendingAudio = []
@@ -1186,6 +1193,11 @@ export function attachRealtimeGateway(server, {
         const benignCancelRace = providerError === 'no_active_response'
         if (benignCancelRace) return
         if (providerError === 'fatal') {
+          connectionLogger.error('realtime.blocked', {
+            provider: sessionProvider,
+            classification: providerError,
+            errorMessage,
+          })
           realtimeBlockedError = errorMessage
           pendingAudio = []
           cancelScheduledRealtimeReconnect()
@@ -1252,6 +1264,10 @@ export function attachRealtimeGateway(server, {
         state: 'connecting',
         provider: sessionProvider,
       })
+      const connectStartedAt = Date.now()
+      connectionLogger.info('realtime.connecting', {
+        provider: sessionProvider,
+      })
       const activeTasks = activeTaskContext()
       lastActiveTaskSignature = activeTaskSignature(activeTasks)
       let createdFrontend
@@ -1267,6 +1283,13 @@ export function attachRealtimeGateway(server, {
         onEvent: handleEvent,
         onError: error => {
           const classification = createdFrontend.provider.classifyError(error.message)
+          if (classification !== 'inactivity') {
+            connectionLogger.warn('realtime.provider_error', {
+              provider: createdFrontend.provider.key,
+              classification,
+              error,
+            })
+          }
           if (classification === 'fatal') {
             realtimeBlockedError = error.message
             pendingAudio = []
@@ -1277,6 +1300,13 @@ export function attachRealtimeGateway(server, {
           }
         },
         onClose: () => {
+          connectionLogger.warn('realtime.closed', {
+            provider: createdFrontend.provider.key,
+            connectedMs: realtimeConnectedAt
+              ? Date.now() - realtimeConnectedAt
+              : 0,
+            blocked: Boolean(realtimeBlockedError),
+          })
           send(ws, { type: 'voice.state', state: 'idle' })
           if (frontend !== createdFrontend) return
           frontend = null
@@ -1310,6 +1340,10 @@ export function attachRealtimeGateway(server, {
           if (frontend !== createdFrontend) return
           realtimeBlockedError = ''
           realtimeConnectedAt = Date.now()
+          connectionLogger.info('realtime.connected', {
+            provider: createdFrontend.provider.key,
+            durationMs: realtimeConnectedAt - connectStartedAt,
+          })
           send(ws, {
             type: GatewayServerEvent.VOICE_CONNECTION,
             state: 'connected',
@@ -1328,6 +1362,11 @@ export function attachRealtimeGateway(server, {
           })
         })
         .catch(error => {
+          connectionLogger.error('realtime.connect_failed', {
+            provider: createdFrontend.provider.key,
+            durationMs: Date.now() - connectStartedAt,
+            error,
+          })
           if (createdFrontend.provider.classifyError(error.message) === 'fatal') {
             realtimeBlockedError = error.message
             pendingAudio = []
@@ -1372,6 +1411,14 @@ export function attachRealtimeGateway(server, {
       if (event.type === GatewayClientEvent.CONNECT) {
         descriptor = clientDescriptor(event)
         voiceClient.descriptor = descriptor
+        connectionLogger.info('voice_client.configured', {
+          clientType: descriptor.type,
+          clientLabel: descriptor.label,
+          requestedProvider: event.provider || sessionProvider,
+          inputEnabled: event.inputEnabled === true,
+          outputEnabled: event.outputEnabled === true,
+          textOnly: event.textOnly === true,
+        })
         textOnlySession = event.textOnly === true
         // The client may pick a realtime front end per session. An unknown
         // name is reported instead of silently falling back, so a typo does
@@ -1540,6 +1587,9 @@ export function attachRealtimeGateway(server, {
     })
 
     ws.on('close', () => {
+      connectionLogger.info('voice_client.disconnected', {
+        clientType: descriptor.type,
+      })
       releaseVoiceClient()
       const connections = voiceConnections.get(ownerId)
       connections?.delete(voiceClient)

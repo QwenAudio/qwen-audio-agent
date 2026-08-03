@@ -5,6 +5,7 @@ import {
   GatewayClientEvent,
   GatewayServerEvent,
 } from '../../shared/realtime-events.mjs'
+import { createLogger } from '../../shared/logger.mjs'
 import { startMacVoiceIO } from './macos-voice-io.mjs'
 import { resamplePcm16 } from './pcm-audio.mjs'
 import { startPortAudioVoiceIO } from './portaudio-voice-io.mjs'
@@ -1229,8 +1230,17 @@ const isMain = process.argv[1]
   && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (isMain) {
-  runTui().catch(error => {
-    process.stderr.write(`qwen-audio-agent TUI 启动失败：${error.message}\n`)
-    process.exitCode = 1
+  const logger = createLogger({
+    component: 'tui',
+    fileName: 'tui.log',
+    consoleEnabled: false,
   })
+  logger.info('tui.started')
+  runTui()
+    .then(() => logger.info('tui.stopped'))
+    .catch(error => {
+      logger.error('tui.failed', { error })
+      process.stderr.write(`qwen-audio-agent TUI 启动失败：${error.message}\n`)
+      process.exitCode = 1
+    })
 }

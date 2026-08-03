@@ -53,7 +53,9 @@ test('writes standard structured JSONL with inherited correlation context', t =>
   assert.equal(entry.durationMs, 42)
   assert.equal(entry.message, 'Realtime ready')
   assert.match(entry.time, /^\d{4}-\d{2}-\d{2}T/)
-  assert.equal(statSync(resolve(directory, 'gateway.log')).mode & 0o777, 0o600)
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(resolve(directory, 'gateway.log')).mode & 0o777, 0o600)
+  }
 })
 
 test('redacts secrets recursively from fields, errors and free text', t => {

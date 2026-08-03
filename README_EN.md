@@ -242,6 +242,25 @@ TTS, or voice configured in speech-to-speech. Set
 `SPEECH_TO_SPEECH_AUTH_TOKEN` only when the Realtime endpoint is behind a proxy
 that requires Bearer authentication.
 
+### Sleep and wake (optional)
+
+Set an idle timeout to let the Gateway disconnect its Realtime session when no
+interaction is taking place:
+
+```dotenv
+QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS=120
+```
+
+While asleep, microphone audio is used only for local wake-word detection and
+is never sent to the Realtime service. Say “你好千问”, wait for the “Awake,
+please speak” cue, and then give your command. The backend Agent and submitted
+work keep running while the voice frontend sleeps; completed results are spoken
+after wake-up.
+
+This feature is disabled by default. On first use, qwen-audio-agent automatically
+downloads and verifies the roughly 33 MB bilingual KWS model from
+[`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx), then reuses its local cache.
+
 ### TUI Notes
 
 | Platform | Default mode | How to interrupt |

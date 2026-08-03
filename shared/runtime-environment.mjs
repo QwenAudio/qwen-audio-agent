@@ -22,6 +22,8 @@ const USER_CONFIG_TEMPLATE = [
   'QWEN_AUDIO_REALTIME_PROVIDER=dashscope',
   '# Hugging Face speech-to-speech：将上一行改为 speech-to-speech，并设置服务地址',
   '# SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime',
+  '# 可选：空闲后断开实时语音；设为正整数秒启用，0 表示关闭',
+  '# QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS=0',
   '',
   '# 可选：选择后台 Agent；留空时仅使用前台实时语音聊天',
   '# 可选 openclaw、opencode、qoder、kimi、hermes、codebuddy、codex、claude、acp 或 none',

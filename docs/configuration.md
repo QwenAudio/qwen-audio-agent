@@ -104,6 +104,19 @@ tasks.json            # 后台任务、结果和待播报通知的恢复状态
 `QWEN_AUDIO_AGENT_FRONTEND_MEMORY_PATH` 和 `QWEN_AUDIO_AGENT_TASK_STATE_PATH`
 覆盖位置。
 
+## 休眠与本地唤醒
+
+默认不启用自动休眠。设置正整数秒数后，Gateway 会在无语音交互时断开
+Realtime 连接，以减少长时间占用和误触发：
+
+```dotenv
+QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS=120
+```
+
+休眠时 Gateway 仍保持 UI 和后台 Agent 连接，但麦克风音频只进入本地
+sherpa-onnx KWS。固定唤醒词为“你好千问”。唤醒后等待连接就绪提示，再说命令。
+设为 `0` 或留空表示关闭。
+
 ## 选择后台
 
 `AGENT_PROTOCOL` 没有默认值，也是可选配置。留空时 Gateway 仅提供前台实时语音

@@ -64,8 +64,29 @@ function labelFor(state) {
     thinking: '思考中',
     speaking: '正在说',
     connecting: '正在连接语音前台',
+    sleeping: '已休眠',
     occupied: '其他入口正在使用',
   }[state] || state
+}
+
+function playWakeChime() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext
+  if (!AudioContext) return
+  try {
+    const context = new AudioContext()
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.frequency.value = 660
+    gain.gain.setValueAtTime(0.0001, context.currentTime)
+    gain.gain.exponentialRampToValueAtTime(0.08, context.currentTime + 0.01)
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.14)
+    oscillator.connect(gain).connect(context.destination)
+    oscillator.start()
+    oscillator.stop(context.currentTime + 0.15)
+    oscillator.addEventListener('ended', () => context.close())
+  } catch {
+    // The visible wake state remains available when a browser blocks audio.
+  }
 }
 
 function frontendLabel(holder) {
@@ -305,6 +326,19 @@ export default function App() {
   }, [])
 
   const onRealtimeEvent = useCallback(event => {
+    if (event.type === 'voice.sleep') {
+      if (event.state === 'sleeping') {
+        setActivity(`已休眠 · 说“${event.wakeWord || '你好千问'}”唤醒`)
+      }
+      if (event.state === 'detected') setActivity('正在唤醒')
+      if (event.state === 'awake') {
+        setActivity('已唤醒，请说')
+        playWakeChime()
+      }
+      if (event.state === 'disabled' && event.message) {
+        setActivity(event.message)
+      }
+    }
     if (event.type === 'turn.started') {
       currentTurnId.current = event.turnId || ''
       activeVoiceResponse.current = ''
@@ -633,9 +667,11 @@ export default function App() {
   const voiceConnectionError = voice.connectionState === 'unavailable'
   const visualVoiceState = voice.ownership.state === 'busy'
     ? 'occupied'
-    : voiceEnabled && voice.connectionState === 'connecting'
-      ? 'connecting'
-      : voice.visualState || voice.state
+    : voiceEnabled && voice.connectionState === 'sleeping'
+      ? 'sleeping'
+      : voiceEnabled && voice.connectionState === 'connecting'
+        ? 'connecting'
+        : voice.visualState || voice.state
   const ownershipLabel = voice.ownership.holder
     ? frontendLabel(voice.ownership.holder)
     : ''

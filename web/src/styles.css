@@ -58,6 +58,7 @@ header {
 .status i.listening { background: #50dfab; box-shadow: 0 0 12px #50dfab; }
 .status i.thinking { background: #f1c665; box-shadow: 0 0 12px #f1c665; }
 .status i.speaking { background: #9a7dff; box-shadow: 0 0 12px #9a7dff; }
+.status i.sleeping { background: #70809a; box-shadow: 0 0 8px #70809a; }
 header button { padding: 9px 13px; border-radius: 10px; color: #ddd; border: 1px solid #ffffff18; background: #ffffff08; }
 header .voice.active { color: white; border-color: #785cf4; background: #785cf4; }
 header .voice.waiting { color: #ded5ff; border-color: #927cf480; }

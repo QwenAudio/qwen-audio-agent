@@ -219,6 +219,21 @@ SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
 如果 Realtime 接口位于需要 Bearer 认证的代理后方，可设置
 `SPEECH_TO_SPEECH_AUTH_TOKEN`。
 
+### 休眠与唤醒（可选）
+
+可设置空闲时间，让 Gateway 在无交互时断开 Realtime 连接：
+
+```dotenv
+QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS=120
+```
+
+休眠后，麦克风音频只在本地用于唤醒词检测，不会发送给 Realtime 服务。
+说“你好千问”后，等待界面提示“已唤醒，请说”，再说出指令。后台 Agent
+和已提交任务不会因休眠停止，任务结果会在唤醒后播报。
+
+该功能默认关闭。首次启用时会自动下载并校验约 33 MB 的
+[`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx) 中英文 KWS 模型，之后直接使用本地缓存。
+
 ### TUI 使用注意
 
 | 平台 | 默认模式 | 打断方式 |

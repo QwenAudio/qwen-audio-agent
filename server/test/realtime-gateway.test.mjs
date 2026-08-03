@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   acceptsPlaybackReceipt,
   confirmsTaskNotificationOnPlaybackStart,
+  isSleepActivityEvent,
   rejectUnsupportedRealtimeUpgrade,
 } from '../src/voice/realtime-gateway.mjs'
 import { isResponseActivityEvent } from '../src/voice/response-lifecycle.mjs'
@@ -86,4 +87,16 @@ test('recognizes response activity when response.created is omitted', () => {
   }
   assert.equal(isResponseActivityEvent({ type: 'response.text.delta' }), false)
   assert.equal(isResponseActivityEvent({ type: 'session.updated' }), false)
+})
+
+test('counts speech and response lifecycle events as sleep activity', () => {
+  for (const event of [
+    { type: 'input_audio_buffer.speech_started' },
+    { type: 'conversation.item.input_audio_transcription.completed' },
+    { type: 'response.output_audio.delta', response_id: 'response-1' },
+    { type: 'response.done', response: { id: 'response-1' } },
+  ]) assert.equal(isSleepActivityEvent(event), true, event.type)
+
+  assert.equal(isSleepActivityEvent({ type: 'session.updated' }), false)
+  assert.equal(isSleepActivityEvent({ type: 'rate_limits.updated' }), false)
 })

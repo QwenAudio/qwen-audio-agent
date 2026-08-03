@@ -967,6 +967,21 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       }
       if (ownsVoice) startMicrophone()
     }
+    if (event.type === GatewayServerEvent.VOICE_SLEEP) {
+      if (event.state === 'sleeping') {
+        print(style(
+          `[已休眠 · 说“${event.wakeWord || '你好千问'}”唤醒]`,
+          'yellow',
+        ))
+      } else if (event.state === 'detected') {
+        print(style('[已识别唤醒词，正在重连语音前台]', 'cyan'))
+      } else if (event.state === 'awake') {
+        process.stdout.write('\u0007')
+        print(style('[已唤醒，请说]', 'green'))
+      } else if (event.state === 'disabled' && event.message) {
+        print(style(`[${event.message}]`, 'yellow'))
+      }
+    }
     if (event.type === GatewayServerEvent.VOICE_OWNERSHIP) {
       if (event.state === 'active') {
         ownsVoice = true

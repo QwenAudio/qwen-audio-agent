@@ -229,6 +229,15 @@ export const config = {
   speechToSpeechAuthToken: realtimeFrontend.speechToSpeechAuthToken,
   audioModel: realtimeFrontend.dashscopeModel,
   audioVoice: realtimeFrontend.dashscopeVoice,
+  sleepTimeoutMs: numberSetting(
+    process.env.QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS,
+    0,
+    { min: 0, max: 86_400 },
+  ) * 1000,
+  wakeWord: '你好千问',
+  wakeWordModelDirectory: process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR
+    ? resolve(process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR)
+    : resolve(runtimeEnvironment.configDirectory, 'models/wake-word'),
   allowedOrigins: String(process.env.QWEN_AUDIO_AGENT_ALLOWED_ORIGINS || '')
     .split(',')
     .map(value => value.trim())

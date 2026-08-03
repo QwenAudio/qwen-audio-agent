@@ -16,6 +16,7 @@ export const GatewayServerEvent = Object.freeze({
   GATEWAY_CONNECTED: 'gateway.connected',
   GATEWAY_DISCONNECTED: 'gateway.disconnected',
   VOICE_CONNECTION: 'voice.connection',
+  VOICE_SLEEP: 'voice.sleep',
   VOICE_READY: 'voice.ready',
   VOICE_STATE: 'voice.state',
   VOICE_OWNERSHIP: 'voice.ownership',

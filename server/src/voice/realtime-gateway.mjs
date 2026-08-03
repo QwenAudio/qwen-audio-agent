@@ -27,6 +27,8 @@ import {
   clientVoiceCapabilities,
 } from './active-voice-clients.mjs'
 import { ReconnectBackoff } from './reconnect-backoff.mjs'
+import { SleepController } from './sleep-controller.mjs'
+import { createSherpaWakeWordDetector } from './wake-word/sherpa-detector.mjs'
 import {
   isResponseActivityEvent,
   realtimeResponseId,
@@ -69,6 +71,15 @@ export function acceptsPlaybackReceipt({
   responseKnown,
 }) {
   return outputEnabled === true && active === true && responseKnown === true
+}
+
+export function isSleepActivityEvent(event = {}) {
+  return isResponseActivityEvent(event) || [
+    'input_audio_buffer.speech_started',
+    'input_audio_buffer.speech_stopped',
+    'conversation.item.input_audio_transcription.delta',
+    'conversation.item.input_audio_transcription.completed',
+  ].includes(event.type)
 }
 
 function clientDescriptor(event = {}) {
@@ -141,6 +152,11 @@ export function attachRealtimeGateway(server, {
     let inputEnabled = false
     let outputEnabled = false
     let textOnlySession = false
+    let sleeping = false
+    let waking = false
+    let wakeDetector = null
+    let wakeDetectorPromise = null
+    let sleepController
     // Realtime front end for this session. Defaults to the configured provider
     // and can be switched by the client through the connect event.
     let sessionProvider = config.audioProvider
@@ -235,7 +251,9 @@ export function attachRealtimeGateway(server, {
     }
     const announcements = new AnnouncementManager({
       getFrontend: () => frontend,
-      isDeliveryBlocked: () => !outputEnabled || announcementWindow.isBlocked(),
+      isDeliveryBlocked: () => (
+        sleeping || waking || !outputEnabled || announcementWindow.isBlocked()
+      ),
       announceIntoContext: config.announceIntoContext,
       resultContextMaxChars: config.resultContextMaxChars,
       maxBatchItems: config.announcementMaxBatchItems,
@@ -265,7 +283,11 @@ export function attachRealtimeGateway(server, {
       descriptor,
       realtimeStatus: () => ({
         provider: sessionProvider,
-        state: frontend?.ready
+        state: sleeping
+          ? 'sleeping'
+          : waking
+            ? 'waking'
+            : frontend?.ready
           ? 'connected'
           : connectPromise
             ? 'connecting'
@@ -275,6 +297,9 @@ export function attachRealtimeGateway(server, {
       // a clean close, so a stale holder never blocks a new voice claim.
       isAlive: () => ws.readyState === WebSocket.OPEN,
       deactivate: replacement => {
+        sleeping = false
+        waking = false
+        sleepController?.disable()
         inputEnabled = false
         outputEnabled = false
         pendingAudio = []
@@ -832,6 +857,7 @@ export function attachRealtimeGateway(server, {
     })
 
     const handleEvent = event => {
+      if (isSleepActivityEvent(event)) sleepController?.recordActivity()
       if (isResponseActivityEvent(event)) beginResponseLifecycle(event)
       if (event.type === 'input_audio_buffer.speech_started') {
         userSpeaking = true
@@ -1218,6 +1244,131 @@ export function attachRealtimeGateway(server, {
       }
     }
 
+    const enterSleep = () => {
+      if (sleeping || !frontend?.ready) return
+      sleeping = true
+      waking = false
+      pendingAudio = []
+      wakeDetector?.reset()
+      cancelScheduledRealtimeReconnect()
+      const staleFrontend = frontend
+      frontend = null
+      staleFrontend?.close()
+      send(ws, {
+        type: GatewayServerEvent.VOICE_CONNECTION,
+        state: 'sleeping',
+        provider: sessionProvider,
+      })
+      send(ws, {
+        type: GatewayServerEvent.VOICE_SLEEP,
+        state: 'sleeping',
+        wakeWord: config.wakeWord,
+      })
+    }
+
+    const prepareSleepMode = () => {
+      if (
+        !config.sleepTimeoutMs
+        || textOnlySession
+        || !inputEnabled
+        || wakeDetectorPromise
+      ) return
+      if (wakeDetector) {
+        sleepController.enable()
+        if (sleeping) sleepController.holdSleeping()
+        return
+      }
+      send(ws, {
+        type: GatewayServerEvent.VOICE_SLEEP,
+        state: 'preparing',
+        wakeWord: config.wakeWord,
+      })
+      wakeDetectorPromise = createSherpaWakeWordDetector({
+        modelRoot: config.wakeWordModelDirectory,
+      }).then(detector => {
+        wakeDetector = detector
+        if (ws.readyState === WebSocket.OPEN && inputEnabled) {
+          sleepController.enable()
+          send(ws, {
+            type: GatewayServerEvent.VOICE_SLEEP,
+            state: 'enabled',
+            timeoutMs: config.sleepTimeoutMs,
+            wakeWord: config.wakeWord,
+          })
+        }
+      }).catch(error => {
+        sleepController.disable()
+        send(ws, {
+          type: GatewayServerEvent.VOICE_SLEEP,
+          state: 'disabled',
+          message: `休眠功能未启用：${error.message}`,
+        })
+      }).finally(() => {
+        wakeDetectorPromise = null
+      })
+    }
+
+    const wakeFromSleep = () => {
+      if (!sleeping || waking) return
+      sleeping = false
+      waking = true
+      sleepController.wake()
+      send(ws, {
+        type: GatewayServerEvent.VOICE_SLEEP,
+        state: 'detected',
+        wakeWord: config.wakeWord,
+      })
+      ensureFrontend().catch(error => {
+        waking = false
+        sleeping = true
+        sleepController.holdSleeping()
+        cancelScheduledRealtimeReconnect()
+        const failedFrontend = frontend
+        frontend = null
+        failedFrontend?.close()
+        send(ws, {
+          type: GatewayServerEvent.VOICE_CONNECTION,
+          state: 'sleeping',
+          provider: sessionProvider,
+          message: error.message,
+        })
+      })
+    }
+
+    const acceptSleepingAudio = audio => {
+      try {
+        const sampleRate = resolveRealtimeProvider(sessionProvider).inputSampleRate
+        if (wakeDetector?.accept(audio, sampleRate)) wakeFromSleep()
+      } catch (error) {
+        sleeping = false
+        waking = false
+        sleepController.disable()
+        send(ws, {
+          type: GatewayServerEvent.VOICE_SLEEP,
+          state: 'disabled',
+          message: `唤醒词检测已停止：${error.message}`,
+        })
+        ensureFrontend().catch(connectionError => send(ws, {
+          type: 'error',
+          message: connectionError.message,
+        }))
+      }
+    }
+
+    sleepController = new SleepController({
+      timeoutMs: config.sleepTimeoutMs,
+      canSleep: () => (
+        inputEnabled
+        && activeVoiceClients.isActive(ownerId, voiceClient)
+        && frontend?.ready
+        && !userSpeaking
+        && !announcementWindow.isBlocked()
+        && !connectPromise
+        && !waking
+      ),
+      onSleep: enterSleep,
+    })
+
     const connectFrontendNow = () => {
       if (frontend?.ready) return Promise.resolve()
       if (connectPromise) return connectPromise
@@ -1278,6 +1429,8 @@ export function attachRealtimeGateway(server, {
         .then(() => {
           if (frontend !== createdFrontend) return
           realtimeConnectedAt = Date.now()
+          const resumedFromSleep = waking
+          waking = false
           send(ws, {
             type: GatewayServerEvent.VOICE_CONNECTION,
             state: 'connected',
@@ -1294,6 +1447,18 @@ export function attachRealtimeGateway(server, {
             provider: createdFrontend.provider.key,
             providerLabel: createdFrontend.provider.label,
           })
+          prepareSleepMode()
+          sleepController.recordActivity()
+          if (resumedFromSleep) {
+            send(ws, {
+              type: GatewayServerEvent.VOICE_SLEEP,
+              state: 'awake',
+              wakeWord: config.wakeWord,
+            })
+            announcePendingPermissions()
+            claimPendingNotifications()
+            announcements.flush()
+          }
         })
         .catch(error => {
           if (frontend === createdFrontend) {
@@ -1384,6 +1549,7 @@ export function attachRealtimeGateway(server, {
             message: error.message,
           }))
         }
+        prepareSleepMode()
       } else if (event.type === GatewayClientEvent.UNMUTE) {
         if (textOnlySession) {
           inputEnabled = false
@@ -1394,6 +1560,7 @@ export function attachRealtimeGateway(server, {
         }
         ensureFrontend()
           .then(() => {
+            prepareSleepMode()
             announcePendingPermissions()
             claimPendingNotifications()
             announcements.flush()
@@ -1408,8 +1575,13 @@ export function attachRealtimeGateway(server, {
         } else {
           activateVoiceClient({ takeover: event.takeover === true })
         }
+        if (sleeping) {
+          prepareSleepMode()
+          return
+        }
         ensureFrontend()
           .then(() => {
+            prepareSleepMode()
             announcePendingPermissions()
             claimPendingNotifications()
             announcements.flush()
@@ -1417,6 +1589,10 @@ export function attachRealtimeGateway(server, {
           .catch(error => send(ws, { type: 'error', message: error.message }))
       } else if (event.type === GatewayClientEvent.AUDIO_APPEND) {
         if (!inputEnabled || !activeVoiceClients.isActive(ownerId, voiceClient)) {
+          return
+        }
+        if (sleeping) {
+          acceptSleepingAudio(event.audio)
           return
         }
         if (frontend?.ready) frontend.appendAudio(event.audio)
@@ -1438,6 +1614,14 @@ export function attachRealtimeGateway(server, {
       } else if (event.type === GatewayClientEvent.TEXT_MESSAGE) {
         const text = String(event.text || '').trim()
         if (!text) return
+        if (sleeping || waking) {
+          send(ws, {
+            type: 'error',
+            message: `已休眠，请先说“${config.wakeWord}”唤醒。`,
+          })
+          return
+        }
+        sleepController.recordActivity()
         const turnId = `text_${randomUUID().replaceAll('-', '')}`
         conversationSync.record({
           ownerId,
@@ -1461,6 +1645,7 @@ export function attachRealtimeGateway(server, {
           ))
           .catch(error => send(ws, { type: 'error', message: error.message }))
       } else if (event.type === GatewayClientEvent.INTERRUPT) {
+        sleepController.recordActivity()
         turnGeneration = ++turnSequence
         committedTurnGeneration = turnGeneration
         announcementWindow.interrupt()
@@ -1492,6 +1677,9 @@ export function attachRealtimeGateway(server, {
           })
         }
       } else if (event.type === GatewayClientEvent.MUTE) {
+        sleeping = false
+        waking = false
+        sleepController.disable()
         releaseVoiceClient()
         turnGeneration = ++turnSequence
         committedTurnGeneration = turnGeneration
@@ -1501,6 +1689,7 @@ export function attachRealtimeGateway(server, {
         frontend?.close()
       } else if (event.type === GatewayClientEvent.INPUT_MUTE) {
         inputEnabled = false
+        sleepController.disable()
         pendingAudio = []
       }
     })
@@ -1519,6 +1708,7 @@ export function attachRealtimeGateway(server, {
       playbackTurns.clear()
       inputTurns.clear()
       announcements.close()
+      sleepController.close()
       clearTimeout(permissionRetryTimer)
       permissionRetryTimer = null
       cancelScheduledRealtimeReconnect()

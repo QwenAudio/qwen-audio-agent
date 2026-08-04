@@ -13,6 +13,16 @@ import { isToolScope } from '../../core/memory-scopes.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
 
+// Cancelling is often only half of a replacement request ("算了，帮我做另一个").
+// The execution lane is already free once cancel resolves, so the replacement can
+// be submitted right away. Without this reminder the frontend tends to confirm
+// the cancellation and silently drop the work the user actually asked for.
+const CANCELLATION_FOLLOW_UP = [
+  '这项工作已经取消。',
+  '如果用户在同一轮里还提出了新的执行或调查要求，现在立即调用 spawn_thinking 提交它，不要只确认取消就结束这一轮。',
+  '如果用户只是要求停止，就用一句简短自然口语确认已经停下，不要再调用工具。',
+].join(' ')
+
 function failure(errorCode, userMessage, {
   retryable = false,
   status = 'failed',
@@ -602,14 +612,17 @@ export class ToolCallHandler {
       }, turnId)
       return
     }
-    await this.sendOutput(callId, task.status === 'cancelled' ? {
+    const cancelled = task.status === 'cancelled'
+    await this.sendOutput(callId, cancelled ? {
       status: task.status,
       work_id: task.id,
       message: '已取消这项工作。',
     } : failure(
       'work_cancellation_failed',
       task.error || '没有成功取消这项工作。',
-    ), turnId, task.id)
+    ), turnId, task.id, cancelled
+      ? { response: { instructions: CANCELLATION_FOLLOW_UP } }
+      : undefined)
   }
 
   async getAgentTaskStatus(callId, turnId, args) {

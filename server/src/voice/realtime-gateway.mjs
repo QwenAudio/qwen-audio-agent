@@ -33,6 +33,10 @@ import {
 } from './active-voice-clients.mjs'
 import { ReconnectBackoff } from './reconnect-backoff.mjs'
 import {
+  ACTION_PROMISE_CORRECTION,
+  shouldCorrectActionPromise,
+} from './action-promise.mjs'
+import {
   isResponseActivityEvent,
   realtimeResponseId,
 } from './response-lifecycle.mjs'
@@ -150,6 +154,7 @@ export function attachRealtimeGateway(server, {
     let committedTurnId = ''
     let committedTurnGeneration = 0
     let userSpeaking = false
+    let correctedActionTurnId = ''
     let inputEnabled = false
     let outputEnabled = false
     let textOnlySession = false
@@ -1061,6 +1066,7 @@ export function attachRealtimeGateway(server, {
         )
         if (context.suppressed) return
         context.transcriptDone = true
+        context.assistantTranscript = event.transcript || ''
         if (!context.playbackStarted) {
           context.pendingTranscripts.push({
             content: event.transcript || '',
@@ -1098,6 +1104,7 @@ export function attachRealtimeGateway(server, {
         )
         if (context.suppressed) return
         context.transcriptDone = true
+        context.assistantTranscript = event.text || ''
         emitAssistantTranscript({
           id,
           context,
@@ -1112,6 +1119,16 @@ export function attachRealtimeGateway(server, {
         const responseFailed = ['failed', 'cancelled', 'incomplete'].includes(
           responseStatus,
         )
+        // Evaluated before the context is retired below, which drops the
+        // transcript this check relies on.
+        const promisedUnsubmittedAction = shouldCorrectActionPromise({
+          origin: responseContext?.origin || 'model',
+          hasFunctionCall: Boolean(responseContext?.hasFunctionCall),
+          failed: responseFailed,
+          suppressed: Boolean(responseContext?.suppressed),
+          transcript: responseContext?.assistantTranscript || '',
+          alreadyCorrected: correctedActionTurnId === responseTurnId,
+        })
         if (!responseContext?.suppressed) {
           send(ws, { type: 'audio.done', responseId: id, turnId: responseTurnId })
           if (!responseContext?.hasAudio) {
@@ -1172,6 +1189,17 @@ export function attachRealtimeGateway(server, {
           suppressed: Boolean(responseContext?.suppressed),
           failed: responseFailed,
         })
+        // Work was announced but never submitted. Ask the frontend to submit it
+        // or stay silent, so the user is not left waiting for something that
+        // never started.
+        if (promisedUnsubmittedAction && outputEnabled && frontend?.ready) {
+          correctedActionTurnId = responseTurnId
+          frontend.sendUserText(
+            ACTION_PROMISE_CORRECTION,
+            { turnId: responseTurnId },
+            { modalities: textOnlySession ? ['text'] : undefined },
+          ).catch(error => send(ws, { type: 'error', message: error.message }))
+        }
         const timer = setTimeout(
           () => announcements.flush(),
           config.announcementQuietMs,

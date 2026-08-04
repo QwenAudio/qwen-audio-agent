@@ -123,3 +123,29 @@ for (const protocol of [
     assert.equal(client.describe().capabilities.nativeSessionHistory, true)
   })
 }
+
+test('does not leak opencode coordinatorAgent to drivers without a coordinatorAgent', () => {
+  const client = new AgentClient({
+    protocol: 'qoder',
+    backends: {
+      opencode: { coordinatorAgent: 'opencode-coordinator' },
+      qoder: { directory: '/qoder' },
+    },
+    sessionStatePath: null,
+    acpClient: fakeAcpClient(),
+    sessionToolServer: fakeToolServer(),
+  })
+  assert.equal(client.adapter.coordinatorAgent, '')
+})
+
+test('handles null backends option gracefully', () => {
+  const client = new AgentClient({
+    protocol: 'opencode',
+    backends: null,
+    sessionStatePath: null,
+    acpClient: fakeAcpClient(),
+    sessionToolServer: fakeToolServer(),
+  })
+  assert.equal(client.protocol, 'opencode')
+})
+

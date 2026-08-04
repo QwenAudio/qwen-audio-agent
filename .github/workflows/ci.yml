@@ -49,3 +49,43 @@ jobs:
       - run: npm ci
       - run: npm run audit:release
       - run: npm run release:check
+
+  windows-installer:
+    name: Windows x64 NSIS installer
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          registry-url: https://registry.npmjs.org/
+      - run: npm ci
+      - name: Build unsigned Windows installer
+        run: npm run desktop:build:win:local
+      - name: Verify Windows installer output
+        shell: pwsh
+        run: |
+          $installers = @(Get-ChildItem 'dist/desktop/*windows-x64.exe')
+          if ($installers.Count -ne 1) {
+            throw "Expected exactly one Windows x64 installer."
+          }
+          if (-not (Test-Path 'dist/desktop/latest.yml')) {
+            throw "Missing Windows update metadata."
+          }
+          $updatePath = (Get-Content 'dist/desktop/latest.yml' |
+            Where-Object { $_ -match '^path: ' }).Substring(6)
+          if (-not (Test-Path (Join-Path 'dist/desktop' $updatePath))) {
+            throw "Windows update metadata references a missing installer."
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-nsis-unsigned
+          path: |
+            dist/desktop/*windows-x64.exe
+            dist/desktop/*.blockmap
+            dist/desktop/latest.yml
+          if-no-files-found: error

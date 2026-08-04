@@ -109,6 +109,17 @@ if (
 ) {
   throw new Error('signed and local-only desktop build commands are not separated')
 }
+const windowsFormal = manifest.scripts['desktop:build:win'] || ''
+const windowsLocal = manifest.scripts['desktop:build:win:local'] || ''
+if (
+  !windowsFormal.includes('build:wsl-runtime-payload')
+  || !windowsFormal.includes('build-windows-desktop.mjs')
+  || windowsFormal.includes('--local')
+  || !windowsLocal.includes('build:wsl-runtime-payload')
+  || !windowsLocal.includes('build-windows-desktop.mjs --local')
+) {
+  throw new Error('signed and local-only Windows build commands are not separated')
+}
 const desktopBuildConfig = readFileSync('desktop/electron-builder.yml', 'utf8')
 const appEntitlements = readFileSync(
   'desktop/build/entitlements.mac.plist',
@@ -126,6 +137,35 @@ if (
   || !inheritedEntitlements.includes('com.apple.security.cs.allow-jit')
 ) {
   throw new Error('signed Electron builds do not include the required JIT entitlements')
+}
+for (const fragment of [
+  'target: nsis',
+  '- x64',
+  'forceCodeSigning: true',
+  'signingHashAlgorithms:',
+  '- sha256',
+  'rfc3161TimeStampServer: https://timestamp.digicert.com',
+  'from: dist/wsl-runtime',
+  'to: wsl-runtime',
+  'perMachine: false',
+  'deleteAppDataOnUninstall: false',
+]) {
+  if (!desktopBuildConfig.includes(fragment)) {
+    throw new Error(`Windows desktop build contract is missing ${fragment}`)
+  }
+}
+if (/\n\s+- arm64\s*(?:\n|$)/.test(desktopBuildConfig.split('\nmac:')[0])) {
+  throw new Error('Windows desktop build must remain x64-only')
+}
+const ciWorkflow = readFileSync('.github/workflows/ci.yml', 'utf8')
+const releaseWorkflow = readFileSync('.github/workflows/release.yml', 'utf8')
+if (
+  !ciWorkflow.includes('windows-installer:')
+  || !ciWorkflow.includes('desktop:build:win:local')
+  || !releaseWorkflow.includes('Get-AuthenticodeSignature')
+  || !releaseWorkflow.includes('needs: [plan, tag, npm, macos, windows]')
+) {
+  throw new Error('Windows CI and signed release gates are incomplete')
 }
 if (
   !readFileSync('.github/workflows/release.yml', 'utf8')
@@ -179,6 +219,7 @@ git diff --check
 npm run audit:release
 npm test
 npm run build
+npm run build:wsl-runtime-payload
 node scripts/verify-package.mjs
 
 QWEN_AUDIO_AGENT_RELEASE_VERSION=$(

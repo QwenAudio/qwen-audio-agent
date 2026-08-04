@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parsePackOutput } from '../scripts/verify-package.mjs'
+import {
+  findForbiddenPackageFiles,
+  findMissingRuntimeFiles,
+  parsePackOutput,
+} from '../scripts/verify-package.mjs'
 
 // npm <=10 emits `npm pack --json` as an array of package entries.
 const ARRAY_FORMAT = JSON.stringify([
@@ -92,4 +96,34 @@ test('throws on empty output', () => {
 
 test('throws on non-JSON output', () => {
   assert.throws(() => parsePackOutput('this is not json'), /JSON/)
+})
+
+test('requires every CLI and shared runtime source in the package', () => {
+  const packaged = new Set([
+    'cli/src/desktop-host.mjs',
+    'shared/desktop-host-protocol.mjs',
+  ])
+  const sourceFiles = [
+    'cli/src/desktop-host.mjs',
+    'cli/src/new-runtime-module.mjs',
+    'shared/desktop-host-protocol.mjs',
+  ]
+  assert.deepEqual(findMissingRuntimeFiles(packaged, sourceFiles), [
+    'cli/src/new-runtime-module.mjs',
+  ])
+})
+
+test('rejects desktop sources, tests, and documentation from npm output', () => {
+  assert.deepEqual(findForbiddenPackageFiles(new Set([
+    'cli/src/desktop-host.mjs',
+    'desktop/src/windows-preferences.mjs',
+    'desktop/test/windows-preferences.test.mjs',
+    'test/verify-package.test.mjs',
+    'docs/architecture.md',
+  ])), [
+    'desktop/src/windows-preferences.mjs',
+    'desktop/test/windows-preferences.test.mjs',
+    'test/verify-package.test.mjs',
+    'docs/architecture.md',
+  ])
 })

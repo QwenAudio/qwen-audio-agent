@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process'
-import { dirname, posix, resolve } from 'node:path'
+import { dirname, posix, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -35,6 +35,34 @@ export function parsePackOutput(stdout) {
   }
   const entries = Array.isArray(parsed) ? parsed : Object.values(parsed)
   return entries.filter(Boolean)
+}
+
+function listFilesRecursively(directory, rootDirectory) {
+  const files = []
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = resolve(directory, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...listFilesRecursively(path, rootDirectory))
+    } else if (entry.isFile()) {
+      files.push(relative(rootDirectory, path).split(sep).join('/'))
+    }
+  }
+  return files.sort()
+}
+
+export function findMissingRuntimeFiles(packagedFiles, runtimeSourceFiles) {
+  return runtimeSourceFiles.filter(file => !packagedFiles.has(file)).sort()
+}
+
+export function findForbiddenPackageFiles(files) {
+  return [...files].filter(file => (
+    file.includes('/__pycache__/')
+    || file.endsWith('.pyc')
+    || file.includes('/node_modules/')
+    || file.startsWith('desktop/')
+    || file.startsWith('docs/')
+    || /(^|\/)test\//.test(file)
+  ))
 }
 
 // npm 10 在 `npm pack` 时会触发 `prepare` 生命周期脚本,构建工具(vite 等)的
@@ -109,6 +137,8 @@ if (isMain) {
   const files = new Set(packages[0].files.map(file => file.path))
   const required = [
     'cli/bin/qwenaudio.mjs',
+    'cli/src/desktop-host-gateway.mjs',
+    'cli/src/desktop-host.mjs',
     'config/openclaw/workspace/AGENTS.md',
     'config/hermes/workspace/AGENTS.md',
     'config/codebuddy/workspace/AGENTS.md',
@@ -120,8 +150,6 @@ if (isMain) {
     'config/qoder/workspace/AGENTS.md',
     'config/kimi/workspace/AGENTS.md',
     'CONTRIBUTING.md',
-    'docs/architecture.md',
-    'docs/architecture-overview.png',
     'NOTICE',
     'PRIVACY.md',
     'SECURITY.md',
@@ -140,19 +168,24 @@ if (isMain) {
     'server/src/core/package-version.mjs',
     'server/src/index.mjs',
     'shared/runtime-environment.mjs',
+    'shared/atomic-file.mjs',
+    'shared/desktop-host-protocol.mjs',
+    'shared/desktop-settings.mjs',
     'tui/src/index.mjs',
     'web/dist/index.html',
   ]
   const missing = required.filter(file => !files.has(file))
-  if (missing.length) {
-    throw new Error(`npm 成品缺少必要文件：${missing.join(', ')}`)
+  const runtimeSourceFiles = [
+    ...listFilesRecursively(resolve(root, 'cli/src'), root),
+    ...listFilesRecursively(resolve(root, 'shared'), root),
+  ]
+  const missingRuntime = findMissingRuntimeFiles(files, runtimeSourceFiles)
+  if (missing.length || missingRuntime.length) {
+    throw new Error(
+      `npm 成品缺少必要文件：${[...missing, ...missingRuntime].join(', ')}`,
+    )
   }
-  const forbidden = [...files].filter(file => (
-    file.includes('/__pycache__/')
-    || file.endsWith('.pyc')
-    || file.includes('/node_modules/')
-    || file.startsWith('desktop/src/')
-  ))
+  const forbidden = findForbiddenPackageFiles(files)
   if (forbidden.length) {
     throw new Error(`npm 成品包含不应发布的文件：${forbidden.join(', ')}`)
   }
@@ -164,7 +197,9 @@ if (isMain) {
       const target = match[1].trim().replace(/^<|>$/g, '').split('#')[0]
       if (!target || /^[a-z][a-z\d+.-]*:/i.test(target)) continue
       const packagedTarget = posix.normalize(posix.join(posix.dirname(file), target))
-      if (!files.has(packagedTarget)) {
+      const repositoryReadmeLink = ['README.md', 'README_EN.md'].includes(file)
+        && existsSync(resolve(root, packagedTarget))
+      if (!files.has(packagedTarget) && !repositoryReadmeLink) {
         brokenMarkdownLinks.push(`${file} -> ${packagedTarget}`)
       }
     }

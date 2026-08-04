@@ -9,8 +9,8 @@ extraMetadata:
 directories:
   output: dist/desktop
 
-# 更新元数据（latest-mac.yml）指向 GitHub Releases，由 electron-updater
-# 在运行时发现新版本；CI 发布时随 dmg 与 blockmap 一并上传。
+# 更新元数据（latest-mac.yml / latest.yml）指向 GitHub Releases，由
+# electron-updater 在运行时发现新版本；CI 发布时随安装包和 blockmap 一并上传。
 publish:
   - provider: github
     owner: QwenAudio
@@ -27,6 +27,8 @@ files:
   - THIRD_PARTY_NOTICES.md
 
 extraResources:
+  - from: desktop/build/icon.png
+    to: desktop/icon.png
   - from: scripts
     to: runtime/scripts
     filter:
@@ -35,6 +37,36 @@ extraResources:
     to: runtime/config
     filter:
       - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: desktop/build/icon.png
+  forceCodeSigning: true
+  artifactName: qwen-audio-agent-${version}-windows-${arch}.${ext}
+  signtoolOptions:
+    signingHashAlgorithms:
+      - sha256
+    rfc3161TimeStampServer: https://timestamp.digicert.com
+  extraResources:
+    - from: dist/wsl-runtime
+      to: wsl-runtime
+      filter:
+        - "**/*"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createStartMenuShortcut: true
+  createDesktopShortcut: true
+  shortcutName: Qwen Audio Agent
+  uninstallDisplayName: Qwen Audio Agent
+  deleteAppDataOnUninstall: false
+  include: desktop/build/installer.nsh
 
 mac:
   category: public.app-category.productivity

@@ -1,6 +1,7 @@
 node_modules/
 web/dist/
-dist/
+dist/desktop/
+dist/wsl-runtime/
 .venv/
 __pycache__/
 *.py[cod]
@@ -11,6 +12,8 @@ runtime/
 *.log
 .DS_Store
 Thumbs.db
+.superpowers/
+.worktrees/
 *.pem
 *.p12
 *.key

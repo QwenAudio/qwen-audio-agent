@@ -13,6 +13,7 @@ const FRONTEND_TOOL_NAMES = [
   'cancel_agent_task',
   'get_agent_task_status',
   'get_current_time',
+  'show_inline',
   'user_memory',
   'notes',
   'respond_agent_permission',

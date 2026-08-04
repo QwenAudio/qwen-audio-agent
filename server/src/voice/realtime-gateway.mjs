@@ -353,6 +353,10 @@ export function attachRealtimeGateway(server, {
       onMemoryChanged: () => frontend?.updateAgentContext({
         memories: memoryStore?.list(ownerId, { limit: 64 }) || [],
       }),
+      // The front end has no way to say less than it writes: one Realtime
+      // response carries one transcript. Content it must show rather than read
+      // therefore travels on the same timeline channel a backend result uses.
+      onInlineItem: item => send(ws, { type: 'timeline.inline', item }),
       coordinator,
       coordinatorAvailable,
       respondPermission,

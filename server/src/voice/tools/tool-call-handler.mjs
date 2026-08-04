@@ -5,10 +5,12 @@ import {
   GET_CURRENT_TIME_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
   NOTES_TOOL_NAME,
+  SHOW_INLINE_TOOL_NAME,
   USER_MEMORY_TOOL_NAME,
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
 } from '../realtime-provider.mjs'
 import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
+import { normalizeInlinePresentation } from '../../core/inline-presentation.mjs'
 import { isToolScope } from '../../core/memory-scopes.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
@@ -21,6 +23,18 @@ const CANCELLATION_FOLLOW_UP = [
   '这项工作已经取消。',
   '如果用户在同一轮里还提出了新的执行或调查要求，现在立即调用 spawn_thinking 提交它，不要只确认取消就结束这一轮。',
   '如果用户只是要求停止，就用一句简短自然口语确认已经停下，不要再调用工具。',
+].join(' ')
+
+// A Realtime response carries a single transcript, so audio and text cannot
+// diverge: whatever the model writes is also what it reads out. Long content
+// therefore reaches the screen through this separate channel while speech stays
+// to one sentence. The bound only guards the socket payload; it sits far above
+// any snippet a user would actually read.
+const SHOW_INLINE_MAX_CONTENT_CHARS = 20000
+
+const SHOW_INLINE_FOLLOW_UP = [
+  '内容已经显示在用户屏幕上。',
+  '只用一句自然口语说明这是什么以及去哪里看，不要朗读刚才显示的内容，也不要复述代码、命令或清单条目。',
 ].join(' ')
 
 function failure(errorCode, userMessage, {
@@ -52,6 +66,7 @@ export class ToolCallHandler {
     getClientContext = () => ({}),
     getConversationContext = () => [],
     onMemoryChanged = () => {},
+    onInlineItem = () => {},
     respondPermission,
     permissionPolicy,
     requestClientState = () => {},
@@ -70,6 +85,7 @@ export class ToolCallHandler {
     this.getClientContext = getClientContext
     this.getConversationContext = getConversationContext
     this.onMemoryChanged = onMemoryChanged
+    this.onInlineItem = onInlineItem
     this.respondPermission = respondPermission
     this.permissionPolicy = permissionPolicy
     this.requestClientState = requestClientState
@@ -233,6 +249,10 @@ export class ToolCallHandler {
 
     if (toolName === GET_CURRENT_TIME_TOOL_NAME) {
       await this.getCurrentTime(callId, turnId)
+      return
+    }
+    if (toolName === SHOW_INLINE_TOOL_NAME) {
+      await this.showInline(callId, turnId, args)
       return
     }
     if (toolName === USER_MEMORY_TOOL_NAME) {
@@ -574,6 +594,29 @@ export class ToolCallHandler {
         turnId,
       )
     }
+  }
+
+  async showInline(callId, turnId, args) {
+    const inline = normalizeInlinePresentation(args, {
+      maxContentChars: SHOW_INLINE_MAX_CONTENT_CHARS,
+    })
+    if (!inline) {
+      await this.sendOutput(callId, failure(
+        'missing_inline_content',
+        '需要明确要显示的内容。',
+      ), turnId)
+      return
+    }
+    // The call id keeps the item stable, so a repeated call for the same tool
+    // call updates one timeline entry instead of stacking duplicates.
+    this.onInlineItem({ id: `inline_${callId}`, turnId, ...inline })
+    await this.sendOutput(callId, {
+      status: 'shown',
+      title: inline.title,
+      format: inline.format,
+    }, turnId, null, {
+      response: { instructions: SHOW_INLINE_FOLLOW_UP },
+    })
   }
 
   async cancelAgentTask(callId, turnId, args) {

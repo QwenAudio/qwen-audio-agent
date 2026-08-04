@@ -351,6 +351,83 @@ qwenaudio tui --takeover
 同一用户只能运行一个 TUI。Gateway、桌面应用和 WebUI 可以同时驻留；桌面球会在
 TUI 接管语音期间显示占用状态。
 
+## Windows + WSL2 桌面版
+
+Windows 桌面版当前支持 Windows 10/11 x64 和 WSL2，不支持 Windows ARM64、
+WSL1 或在 Windows 原生运行 Gateway。首次启动前应确认：
+
+| 前置条件 | 检查方式 |
+| --- | --- |
+| Windows x64 | “设置 → 系统 → 系统信息”显示 x64 系统类型 |
+| WSL2 | 在 PowerShell 运行 `wsl.exe --status` |
+| 至少一个 Linux 发行版 | 运行 `wsl.exe --list --verbose`，目标行的 VERSION 为 `2` |
+| 发行版内 Node.js | `wsl.exe -d <发行版> -- node --version`，要求 22.22.2+（22.x）、24.15.0+（24.x）或 26+ |
+| 发行版内 npm | `wsl.exe -d <发行版> -- npm --version`，要求 10+ |
+
+应用不会静默启用 Windows 可选功能、安装发行版或安装 Node.js。缺少前置条件时，
+运行环境窗口会给出检测结果和官方说明入口。WSL 发行版处于 Stopped 状态不等于
+故障；应用执行首次探测时会由 `wsl.exe` 按需启动它。
+
+### 连接模式
+
+| 模式 | 行为 | 进程归属 |
+| --- | --- | --- |
+| 托管 WSL（默认） | 自动选择 Windows 默认发行版，也可固定选择一个 WSL2 发行版；安装版本匹配的私有运行时并启动动态端口 Gateway | 桌面会话只停止自己启动的 `desktop-host`、Gateway 进程组和后台 Agent |
+| 外部 Gateway（高级） | 只连接已经运行的 `http://127.0.0.1:<port>` 或 `http://localhost:<port>` | 不安装运行时，不接管、重启或停止外部 Gateway |
+
+发行版选择、连接模式、外部地址、开机启动和窗口位置属于 Windows 客户端偏好；
+API Key、Agent 配置和用户内容不写入这些偏好。外部地址只接受带端口的 loopback
+HTTP URL，不接受局域网地址、HTTPS 远端或内嵌凭据。
+
+### 私有运行时与用户数据
+
+安装包携带与桌面版本一致的 npm 载荷和 SHA-256 清单。应用先在 Windows 校验载荷，
+然后显示将要在所选发行版执行的安装命令；只有用户确认后才安装到：
+
+```text
+~/.local/share/qwaudio/windows-client/runtime/<desktop-version>/
+```
+
+桥接协议握手和 Gateway 健康检查均成功后，新运行时才会被标记为当前版本；失败时
+不会把半成品提升为可用版本。Windows 桌面版继续直接使用发行版中的：
+
+```text
+~/.config/qwaudio/config.env
+~/.config/qwaudio/USER.md
+~/.config/qwaudio/frontend-memory.json
+~/.config/qwaudio/tasks.json
+```
+
+因此现有 CLI/WebUI 配置、Agent 登录、记忆和任务可以复用，无需复制到 Windows。
+Windows 应用卸载器不会删除这些用户数据，也不会自动进入 WSL 删除私有运行时。
+需要清理时，在“管理 WSL 运行时”中选择“移除专用运行环境”，核对显示的固定
+qwaudio 私有目录并再次确认；该操作不会删除 `~/.config/qwaudio` 或全局 Agent。
+
+### 日常操作
+
+- 关闭悬浮球、设置或运行环境窗口只会隐藏窗口；从托盘选择“退出”才会结束应用，
+  并停止当前桌面会话拥有的托管进程。
+- 托盘可显示/隐藏悬浮球、打开设置或运行环境、重启托管运行时、检查更新和退出。
+- “随 Windows 启动”默认关闭。启用后应用以隐藏启动参数运行；需要设置或修复时，
+  对应窗口仍会显示。
+- 桌面更新先更新 Windows 应用。若新版本携带不同 WSL 载荷，下次启动会重新校验并
+  要求确认安装；旧的健康运行时不会在新版本验证成功前被替换。
+- Gateway 或桥接意外退出时会在 1、2、4 秒后进行最多三次恢复。恢复耗尽后进入
+  错误状态，避免无限重启；可从托盘或运行环境窗口手动重新启动并复制脱敏诊断。
+
+### 故障排查
+
+| 现象 | 处理方式 |
+| --- | --- |
+| 未安装/未启用 WSL，或没有发行版 | 在运行环境窗口打开 Microsoft WSL 安装说明，完成后选择“重新检查”；应用不会自行修改 Windows 功能 |
+| 发行版显示 Stopped | 先选择“重新检查”，正常情况下探测会自动启动发行版；若仍失败，运行 `wsl.exe --list --verbose` 并重新选择可用的 WSL2 发行版 |
+| 发行版内缺少 Node.js/npm | 在所选发行版内安装受支持版本，再重新检查；安装 Windows 版 Node.js 不能满足此条件 |
+| “安装包完整性校验失败” | 不要继续使用该载荷；重新下载安装当前 Windows 客户端，确认安装包来源后再试 |
+| Gateway/WSL 连接恢复三次后仍失败 | 打开“管理 WSL 运行时”，复制诊断，确认发行版可用后选择“重新启动”；只在接受会停止其他 WSL 工作负载时才手动执行 `wsl.exe --shutdown` |
+| Windows 麦克风权限被拒绝 | 选择“麦克风设置”，在 Windows 隐私设置中允许桌面应用访问麦克风，然后回到应用重试 |
+| Windows 无法访问 WSL Gateway | 检查 VPN/安全软件和 WSL localhost 转发，按运行环境窗口中的 Microsoft WSL 网络说明修复；应用不会改绑 `0.0.0.0`、添加防火墙或 `portproxy` 规则 |
+| 外部 Gateway 不可用 | 确认该 Gateway 已在 loopback 地址启动并手动重连；客户端不会为外部模式启动或停止服务 |
+
 ## 远程访问安全
 
 Gateway 默认只信任字面量 loopback Host/Origin，避免恶意网页通过 DNS rebinding
@@ -426,6 +503,9 @@ Authorization、Cookie、密码和 Secret 字段会在写入前脱敏；默认�
 桌面版可在“设置 → 应用 → 日志”中打开日志目录。默认日志级别为 `info`，单个文件
 达到 10 MiB 后轮转，总共保留 5 份。可通过以下环境变量调整：
 
+Windows 客户端的 `desktop.log` 保存在 Windows 当前用户的应用数据目录；Gateway、
+Realtime 和后台 Agent 日志仍保存在所选 WSL 发行版的 `~/.config/qwaudio/logs/`。
+
 | 设置 | 默认值 | 说明 |
 | --- | --- | --- |
 | `QWEN_AUDIO_LOG_LEVEL` | `info` | `trace`、`debug`、`info`、`warn`、`error`、`fatal` 或 `silent` |
@@ -438,9 +518,10 @@ Authorization、Cookie、密码和 Secret 字段会在写入前脱敏；默认�
 日志仅保存在本机，不会自动上传。反馈问题前可按需检查并分享相关片段；即使系统会
 自动脱敏，也应在发送前再次确认其中没有不希望公开的本机路径或业务信息。
 
-TUI、WebUI 和桌面版只连接 Gateway，不直接连接、启动或停止任何后台 Agent。
-桌面设置中的核心配置会保存到用户配置文件，在下次启动 Gateway 时生效；
-Gateway 地址会立即验证并切换。
+TUI 和 WebUI 只连接 Gateway，不直接连接、启动或停止任何后台 Agent。桌面版在
+托管模式下通过平台运行时控制器管理自己拥有的 Gateway；Windows 上由 WSL 内的
+`desktop-host` 启停完整进程树。桌面设置中的核心配置会保存到用户配置文件并在
+托管 Gateway 重启后生效；外部 Gateway 地址会立即验证并切换。
 
 OpenCode 和 OpenClaw 使用一致的用户环境优先顺序：
 

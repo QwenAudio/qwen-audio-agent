@@ -25,6 +25,8 @@ tells you:
 
 ## News
 
+- **In testing · Windows + WSL2 Desktop App**
+  🧪 Adds a Windows 10/11 x64 + WSL2 desktop client. It is available from source; the formal Release will follow after testing.
 - **2026-08-03 · [v1.3.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.3.0)**
   🎙️ Adds a [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) frontend for a locally deployed VAD–STT–LLM–TTS pipeline.
 - **2026-08-01 · [v1.2.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.2.0)**
@@ -55,7 +57,7 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
   Agents, with continuous status tracking
 - Task results return automatically to the current conversation for follow-up
   and revision
-- WebUI, terminal TUI, and a macOS desktop orb
+- WebUI, terminal TUI, and desktop orbs for macOS and Windows
 - Local user profile and personal memory across sessions
 
 ## Reference Architecture
@@ -100,7 +102,8 @@ boundaries.
 
 ## Installation
 
-You need Node.js 22.22.2+ or 24.15.0+, npm 10+, and a
+You need Node.js 22.22.2+ on the 22.x line, 24.15.0+ on the 24.x line, or
+Node.js 26+, together with npm 10+ and a
 DashScope API Key when using the default DashScope realtime frontend. The
 repository includes `.nvmrc` and `.node-version`; if you
 use nvm, run `nvm use`.
@@ -284,6 +287,56 @@ Build a local test package from source:
 npm run desktop:build:local
 ```
 
+## Windows + WSL2 Desktop App
+
+The Windows app matches the macOS orb, settings, tray, mute, drag, update, and
+runtime-status experience. Windows owns the microphone, speakers, and UI;
+the Gateway, backend Agents, configuration, memory, and task data continue to
+run and remain inside WSL2. You do not need to start `qwenaudio webui` first.
+
+The current build supports Windows 10/11 x64, WSL2, and at least one Linux
+distribution. Windows ARM64, WSL1, and a native Windows Gateway are not
+supported. The selected distribution needs Node.js 22.22.2+ on the 22.x line,
+24.15.0+ on the 24.x line, or Node.js 26+, together with npm 10+. Download and
+run `qwen-audio-agent-<version>-windows-x64.exe` from the releases page. It
+installs only for the current Windows user without administrator access, lets
+you choose the destination, and creates Desktop and Start menu shortcuts on a
+fresh install. First launch checks the prerequisites and shows the exact
+command for confirmation before installing the version-matched private WSL
+runtime.
+
+Managed mode is the default: it selects the default WSL2 distribution and
+starts and recovers a private Gateway automatically. Advanced external mode
+only connects to an existing `http://127.0.0.1:<port>` or
+`http://localhost:<port>` Gateway; it never starts, restarts, or stops that
+process. Use **Manage WSL runtime** to select a distribution or switch modes.
+Start with Windows is off by default and can be enabled in Settings or the
+system tray.
+
+The connection path is: Windows app -> private WSL2 runtime -> Gateway ->
+backend Agent.
+
+The private runtime is installed at
+`~/.local/share/qwaudio/windows-client/runtime/<desktop-version>/`. Existing
+user state remains in `~/.config/qwaudio/`. Uninstalling the Windows app does
+not remove user configuration or the private WSL runtime. Uninstall from
+**Settings > Apps > Installed apps**, or right-click **Qwen Audio Agent** in
+the Start menu and select **Uninstall**. This removes the Windows app and its
+shortcuts. Remove the private runtime separately from **Manage WSL runtime**
+before uninstalling the app if it is no longer needed. See the
+[configuration guide](docs/configuration.md#windows--wsl2-桌面版) for the
+complete operating model and troubleshooting table.
+
+Build a local unsigned test installer with Windows Node.js:
+
+```bash
+npm run desktop:build:win:local
+```
+
+Windows warns before running this unsigned local artifact. Formal release
+artifacts are blocked unless the release pipeline verifies a valid
+Authenticode signature.
+
 ## Run the Gateway in the Background
 
 To keep your personal assistant available, install the Gateway as a user
@@ -423,7 +476,7 @@ npm test
 
 ```bash
 npm run dev       # Gateway and WebUI with hot reload
-npm run desktop   # macOS desktop orb
+npm run desktop   # desktop orb for the current platform
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for more about building, testing, and

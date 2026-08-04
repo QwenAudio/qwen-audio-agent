@@ -20,6 +20,8 @@
 
 ## News
 
+- **测试中 · Windows + WSL2 桌面版**
+  🧪 新增 Windows 10/11 x64 + WSL2 桌面客户端，当前可从源码体验，正式 Release 将在完成测试后发布。
 - **2026-08-03 · [v1.3.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.3.0)**
   🎙️ 新增 [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) 前台接入，支持本地部署 VAD、STT、LLM 与 TTS 全链路。
 - **2026-08-01 · [v1.2.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.2.0)**
@@ -44,7 +46,7 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 - 前台对话与后台任务并驾齐驱，可随时追问任务进度或取消任务
 - 支持创建多个独立任务，由后台 Agent 异步执行，并持续追踪任务状态
 - 任务结果自动回到当前对话，支持继续追问和修改
-- 支持 WebUI、终端 TUI 和 macOS 桌面悬浮球
+- 支持 WebUI、终端 TUI，以及 macOS 和 Windows 桌面悬浮球
 - 支持本地用户档案与跨会话个人记忆
 
 ## 参考架构
@@ -83,7 +85,7 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
 ## 安装
 
-需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+。使用默认的 DashScope
+需要 Node.js 22.22.2+（22.x）、24.15.0+（24.x）或 26+，以及 npm 10+。使用默认的 DashScope
 实时语音前台时，还需要 DashScope API Key。
 仓库提供 `.nvmrc` 和 `.node-version`；使用 nvm 时可直接运行 `nvm use`。
 
@@ -256,6 +258,44 @@ qwenaudio tui --audio-mode full
 npm run desktop:build:local
 ```
 
+## Windows + WSL2 桌面版
+
+Windows 桌面版提供与 macOS 对齐的悬浮球、设置、托盘、静音、拖动、自动更新和
+运行状态体验。Windows 负责麦克风、扬声器和界面；Gateway、后台 Agent、配置、
+记忆和任务数据继续运行并保存在 WSL2 中，无需手动启动 `qwenaudio webui`。
+
+首次安装请直接阅读 [Windows + WSL2 客户端安装指南](docs/windows-wsl-install.md)。
+
+当前支持 Windows 10/11 x64、WSL2 和至少一个 Linux 发行版，不支持 Windows
+ARM64、WSL1 或原生 Windows Gateway。所选发行版内需要 Node.js 22.22.2+（22.x）、
+24.15.0+（24.x）或 26+，以及 npm 10+。从发布页下载
+`qwen-audio-agent-<version>-windows-x64.exe` 后运行安装器。安装仅作用于当前 Windows
+用户，无需管理员权限；可以选择安装目录，首次安装会创建桌面和开始菜单快捷方式。
+首次启动会检测上述前置条件，并在安装版本匹配的私有 WSL 运行时前显示待执行命令和确认按钮。
+
+默认的托管模式会自动选择默认 WSL2 发行版、启动和恢复私有 Gateway；高级外部
+模式只连接已经运行的 `http://127.0.0.1:<port>` 或
+`http://localhost:<port>` Gateway，不会启动、重启或停止它。可以在“管理 WSL
+运行时”中切换发行版或模式。开机启动默认关闭，也可以从设置或系统托盘开启。
+连接链路为：Windows 客户端 -> WSL2 私有运行时 -> Gateway -> 后台 Agent。
+
+私有运行时位于
+`~/.local/share/qwaudio/windows-client/runtime/<desktop-version>/`，用户配置仍复用
+`~/.config/qwaudio/`。可以从“设置 -> 应用 -> 已安装的应用”卸载，也可以在开始
+菜单中右键 **Qwen Audio Agent** 后选择“卸载”。卸载会移除 Windows 应用及其快捷方式，
+但不会删除用户配置或 WSL 私有运行时；后者可在卸载前通过“管理 WSL 运行时”确认目标后
+单独移除。完整的模式说明和故障排查见
+[配置说明](docs/configuration.md#windows--wsl2-桌面版)。
+
+从 Windows Node.js 生成本地未签名测试版：
+
+```bash
+npm run desktop:build:win:local
+```
+
+本地安装包会触发 Windows 的未签名应用警告；正式发布包由发布流水线强制执行
+Authenticode 签名校验。
+
 ## 后台常驻
 
 希望个人助理长期在线时，可以安装为用户后台服务：
@@ -376,7 +416,7 @@ npm test
 
 ```bash
 npm run dev       # Gateway 与 WebUI 热更新
-npm run desktop   # macOS 桌面悬浮球
+npm run desktop   # 当前平台桌面悬浮球
 ```
 
 更多构建、测试和发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。

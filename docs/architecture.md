@@ -308,17 +308,47 @@ user's model and capability configuration, but it never attaches to or shares
 Session storage with a user-running OpenClaw Gateway, and it does not activate
 the user's external message channels.
 
-Desktop, TUI and WebUI are replaceable Gateway clients. They must never spawn,
-restart or stop the Gateway or a backend. Closing a UI therefore cannot affect
-queued work or the fixed backend Agent Session. Configuration that changes
-Realtime or backend behavior takes effect on the next Gateway start; changing a
-UI's Gateway URL only reconnects that UI.
+TUI and WebUI are replaceable Gateway clients and never manage Gateway or
+backend processes. The desktop application also remains a protocol client, but
+its platform runtime adapter may own a private Gateway for the lifetime of the
+desktop session. On macOS the native adapter starts the packaged Gateway
+directly. On Windows x64 the Electron process starts a version-matched
+`desktop-host` in one selected WSL2 distribution; that host is the sole owner of
+its Gateway process group and backend children. Closing an ordinary desktop
+window hides it. Explicit application quit stops only the runtime carrying the
+current launch's ownership token.
 
-The macOS desktop renderer is packaged inside the application. Electron serves
-those immutable assets from a private, random loopback path and proxies only
-Gateway HTTP API and Realtime WebSocket traffic. Desktop UI assets must not be
-loaded from the Gateway: rebuilding the desktop application must be sufficient
-to update its appearance without upgrading the running Gateway frontend.
+Windows managed mode has this control and data path:
+
+```text
+Windows Electron (audio, orb, settings, tray)
+   ↓ structured wsl.exe arguments + private JSONL stdio control
+WSL desktop-host (settings transaction and process ownership)
+   ↓ fork, loopback-only dynamic port
+Realtime Gateway → backend Agent processes
+   ↑ HTTP/WebSocket through Windows localhost forwarding
+Windows private renderer proxy
+```
+
+The packaged WSL payload is SHA-256 checked before it can be installed under
+`~/.local/share/qwaudio/windows-client/runtime/<desktop-version>/`. Installation
+requires an expiring, exact-command confirmation. It reuses
+`~/.config/qwaudio` inside the distribution, so secrets, profile, memory, task
+state, and Agent authentication are not copied into Windows preferences. The
+host restarts an unexpectedly exited owned Gateway with bounded backoff and
+never targets unrelated WSL processes.
+
+Windows external mode is deliberately different: Electron validates and
+connects to an existing loopback Gateway, but never starts, restarts, adopts,
+or stops it. Neither mode binds to a LAN address, creates firewall exceptions,
+or installs `portproxy` rules.
+
+The desktop renderer is packaged inside the application on both platforms.
+Electron serves those immutable assets from a private, random loopback path and
+proxies only Gateway HTTP API and Realtime WebSocket traffic. Desktop UI assets
+must not be loaded from the Gateway: rebuilding the desktop application must be
+sufficient to update its appearance without upgrading the running Gateway
+frontend.
 
 ## 11. Review checklist
 
@@ -331,7 +361,11 @@ Before merging a change, verify:
    execution mode?
 4. Are tool events used only for generic UI progress?
 5. Is completion spoken only from a final backend Agent result?
-6. Did any UI begin managing a Gateway or backend process?
+6. If desktop process ownership changed, is it isolated behind the platform
+   runtime adapter and limited to processes carrying the current ownership
+   token?
 7. Can interruption postpone speech without cancelling submitted Work?
 8. Do tests cover FIFO serialization, fixed Session reuse, tool animation, and
    delivery retry?
+9. Does Windows external mode remain connection-only, and do diagnostics avoid
+   copying WSL secrets into Windows logs or preferences?

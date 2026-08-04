@@ -13,14 +13,15 @@ logger.info('cli.started', {
   command: process.argv[2] || 'gateway',
 })
 
-main(process.argv.slice(2)).then(code => {
+try {
+  const code = await main(process.argv.slice(2))
   if (Number.isInteger(code)) process.exitCode = code
   logger.info('cli.completed', {
     command: process.argv[2] || 'gateway',
     exitCode: Number.isInteger(code) ? code : 0,
     durationMs: Date.now() - startedAt,
   })
-}).catch(error => {
+} catch (error) {
   logger.error('cli.failed', {
     command: process.argv[2] || 'gateway',
     durationMs: Date.now() - startedAt,
@@ -28,4 +29,4 @@ main(process.argv.slice(2)).then(code => {
   })
   process.stderr.write(`qwenaudio: ${error.message}\n`)
   process.exitCode = 1
-})
+}

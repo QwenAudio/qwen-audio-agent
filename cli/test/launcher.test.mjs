@@ -15,6 +15,8 @@ function harness({ ownsProcesses = false } = {}) {
     dependencies: {
       env: { AGENT_PROTOCOL: 'opencode' },
       stdout: { write: value => calls.push(['stdout', value]) },
+      stdin: { name: 'stdin' },
+      stderr: { name: 'stderr' },
       signalSource: new EventEmitter(),
       prepareEnvironment: () => ({
         configDirectory: '/home/user/.config/qwaudio',
@@ -46,6 +48,10 @@ function harness({ ownsProcesses = false } = {}) {
       acquireInstance: () => ({
         release: () => calls.push(['instance.release']),
       }),
+      runDesktopHost: async options => {
+        calls.push(['desktop-host', options])
+        return 0
+      },
       prepareRuntime: async options => {
         calls.push(['runtime', options])
         return runtime
@@ -79,6 +85,28 @@ function harness({ ownsProcesses = false } = {}) {
     },
   }
 }
+
+test('lazily launches the internal desktop host without normal setup', async () => {
+  const target = harness()
+  target.dependencies.prepareEnvironment = () => {
+    throw new Error('normal environment setup must not run')
+  }
+
+  assert.equal(
+    await main(['desktop-host'], target.dependencies),
+    0,
+  )
+  assert.deepEqual(target.calls.map(call => call[0]), ['desktop-host'])
+  const invocation = target.calls[0][1]
+  assert.equal(invocation.input, target.dependencies.stdin)
+  assert.equal(invocation.output, target.dependencies.stdout)
+  assert.equal(invocation.errorOutput, target.dependencies.stderr)
+  assert.equal(invocation.dependencies.env, target.dependencies.env)
+  assert.equal(
+    invocation.dependencies.signalSource,
+    target.dependencies.signalSource,
+  )
+})
 
 test('starts the Gateway by default without acquiring a UI lock', async () => {
   const target = harness()

@@ -17,6 +17,7 @@ import { describeActiveRealtime } from '../voice/realtime-provider.mjs'
 import { SessionPermissionPolicy } from '../voice/session-permission-policy.mjs'
 import { taskManager, taskStore } from '../task/task-manager.mjs'
 import { webDistributionPath } from '../core/install-paths.mjs'
+import { notifyGatewayReady } from './gateway-ready-notification.mjs'
 
 const identityManager = new IdentityManager({
   secret: config.authSecret,
@@ -288,13 +289,10 @@ server.listen(config.port, config.host, () => {
   const address = server.address()
   const port = address && typeof address === 'object' ? address.port : config.port
   const origin = `http://${config.host}:${port}`
-  if (process.parentPort) {
-    process.parentPort.postMessage({
-      type: 'qwen-audio-agent:gateway-ready',
-      origin,
-      instanceId: process.env.QWEN_AUDIO_GATEWAY_INSTANCE_ID || null,
-    })
-  }
+  notifyGatewayReady({
+    origin,
+    instanceId: process.env.QWEN_AUDIO_GATEWAY_INSTANCE_ID || null,
+  })
   logger.info('gateway.ready', {
     origin,
     backend: config.agentProtocol || 'none',

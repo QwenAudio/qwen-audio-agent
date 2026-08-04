@@ -12,6 +12,7 @@ const COMMANDS = new Set([
   'status',
   'config',
   'setup',
+  'desktop-host',
 ])
 const GATEWAY_ACTIONS = new Set([
   'run',
@@ -53,6 +54,10 @@ export function parseArguments(argv, env = process.env) {
   const first = args[0]
   const command = first && !first.startsWith('-') ? args.shift() : 'gateway'
   if (!COMMANDS.has(command)) throw new Error(`未知命令：${command}`)
+  if (command === 'desktop-host') {
+    if (args.length) throw new Error('内部命令 desktop-host 不接受参数')
+    return { command, internal: true }
+  }
   const gatewayAction = command === 'gateway'
     && args[0]
     && !args[0].startsWith('-')

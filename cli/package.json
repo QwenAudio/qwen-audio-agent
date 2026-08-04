@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "node bin/qwenaudio.mjs",
-    "test": "node --test"
+    "test": "node --test test/*.test.mjs",
+    "test:desktop-host-integration": "node --test test/desktop-host-process.integration.mjs"
   }
 }

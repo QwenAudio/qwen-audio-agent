@@ -89,8 +89,11 @@ async function waitForGatewayStop(url, {
 
 export async function main(argv, {
   env = process.env,
+  stdin = process.stdin,
   stdout = process.stdout,
+  stderr = process.stderr,
   signalSource = process,
+  runDesktopHost = null,
   prepareEnvironment = ({ readOnly = false } = {}) => loadRuntimeEnvironment({
     root,
     env,
@@ -110,6 +113,17 @@ export async function main(argv, {
   runWebUi = options => launchWebUi(options),
   acquireInstance = directory => acquireCliInstance(directory),
 } = {}) {
+  if (argv[0] === 'desktop-host') {
+    parseArguments(argv, env)
+    const runner = runDesktopHost || (await import('./desktop-host.mjs'))
+      .runDesktopHost
+    return runner({
+      input: stdin,
+      output: stdout,
+      errorOutput: stderr,
+      dependencies: { env, root, signalSource },
+    })
+  }
   const setupCommand = argv[0] === 'setup'
   const environment = prepareEnvironment({ readOnly: setupCommand })
   const options = parseArguments(argv, env)

@@ -145,6 +145,22 @@ test('parses foreground and service Gateway commands', () => {
   assert.equal(parseArguments(['status'], {}).gatewayAction, 'status')
 })
 
+test('parses the hidden desktop host command without user-facing options', () => {
+  assert.deepEqual(parseArguments(['desktop-host'], {}), {
+    command: 'desktop-host',
+    internal: true,
+  })
+  assert.throws(
+    () => parseArguments(['desktop-host', 'unexpected'], {}),
+    /desktop-host.*不接受参数/,
+  )
+  assert.throws(
+    () => parseArguments(['desktop-host', '--help'], {}),
+    /desktop-host.*不接受参数/,
+  )
+  assert.doesNotMatch(helpText(), /desktop-host/)
+})
+
 test('rejects client-only flags on unrelated commands', () => {
   assert.throws(
     () => parseArguments(['tui', '--audio-mode', 'invalid'], {}),

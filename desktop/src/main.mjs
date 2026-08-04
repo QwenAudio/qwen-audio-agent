@@ -1,85 +1,63 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
+  Menu,
   screen,
   shell,
+  systemPreferences,
+  Tray,
 } from 'electron'
-import {
-  chmodSync,
-  existsSync,
-  readFileSync,
-  writeFileSync,
-} from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { parseEnv } from 'node:util'
-import {
-  loadRuntimeEnvironment,
-  userConfigDirectory,
-} from '../../shared/runtime-environment.mjs'
 import { createLogger } from '../../shared/logger.mjs'
 import {
+  BAILIAN_API_KEY_URL,
   desktopOrbUrl,
-  isLoopbackUrl,
   isSafeExternalUrl,
   isSameOrigin,
-  validateAppUrl,
 } from './security.mjs'
-import {
-  readGatewayHealth,
-} from '../../shared/gateway-client.mjs'
-import {
-  findRunningGateway,
-} from '../../shared/gateway-instance-lock.mjs'
-import {
-  inspectBackendSetups,
-} from '../../shared/backend-setup.mjs'
-import {
-  assertDesktopGatewayCompatibility,
-  desktopGatewayEnvironment,
-  EmbeddedGateway,
-} from './gateway-process.mjs'
-import {
-  parseSettings,
-  realtimeSettingsConfigured,
-  updateSettingsContent,
-} from './settings-config.mjs'
 import {
   startDesktopRendererServer,
 } from './renderer-server.mjs'
 import {
   expandProcessPath,
-  refreshProcessPath,
 } from './process-path.mjs'
 import {
   createDesktopUpdater,
 } from './updater.mjs'
+import { createDesktopRuntime } from './runtime-adapter.mjs'
+import {
+  parseWindowsStartupArguments,
+  registerWindowsIntegrationIpc,
+  WindowsDesktopIntegration,
+} from './windows-integration.mjs'
+import {
+  applyOpenAtLogin,
+  readOpenAtLogin,
+  WindowsPreferencesStore,
+} from './windows-preferences.mjs'
+import { clampWindowBounds } from './window-placement.mjs'
+import { readBundledWslRuntimeManifest } from './wsl-runtime-manifest.mjs'
 
 // macOS / Linux 图形界面应用的 PATH 只包含系统目录。在启动最早阶段
 // 将其扩充为用户登录 shell 的 PATH，让 Gateway 子进程与后台可用性
 // 检测能找到通过 Homebrew、nvm 或官方脚本安装的 Agent 命令。
-expandProcessPath()
+if (process.platform !== 'win32') expandProcessPath()
 
 const here = dirname(fileURLToPath(import.meta.url))
 const sourceRoot = resolve(here, '../..')
 const runtimeRoot = app.isPackaged
   ? resolve(process.resourcesPath, 'runtime')
   : sourceRoot
-const expectedConfigPath = resolve(
-  userConfigDirectory(process.env),
-  'config.env',
-)
-const configExistedAtLaunch = existsSync(expectedConfigPath)
-const runtimeEnvironment = loadRuntimeEnvironment({
-  root: runtimeRoot,
-  prepareBackendRuntime: false,
-  generateSecret: false,
-})
 const logger = createLogger({
   component: 'desktop',
   fileName: 'desktop.log',
+  ...(process.platform === 'win32'
+    ? { directory: resolve(app.getPath('userData'), 'logs') }
+    : {}),
 })
 logger.info('desktop.starting', {
   version: app.getVersion(),
@@ -90,136 +68,81 @@ logger.info('desktop.starting', {
 const fallbackPage = resolve(here, 'orb-unavailable.html')
 const fallbackUrl = pathToFileURL(fallbackPage).href
 const settingsPage = resolve(here, 'settings.html')
+const repairPage = resolve(here, 'repair.html')
 const webRoot = resolve(sourceRoot, 'web/dist')
-const initialSettings = parseSettings(
-  readFileSync(runtimeEnvironment.configPath, 'utf8'),
-  process.env,
-)
-let configuredGatewayOrigin = validateAppUrl(initialSettings.gatewayUrl)
-let appOrigin = configuredGatewayOrigin
-let setupRequired = (
-  !configExistedAtLaunch
-  || (
-    isLoopbackUrl(configuredGatewayOrigin)
-    && !realtimeSettingsConfigured(initialSettings)
-  )
-)
 const preloadPath = resolve(here, 'preload.cjs')
+const windowsStartup = parseWindowsStartupArguments(process.argv)
+const windowsPreferencesStore = process.platform === 'win32'
+  ? new WindowsPreferencesStore({ app })
+  : null
+const windowsPayloadDirectory = app.isPackaged
+  ? resolve(process.resourcesPath, 'wsl-runtime')
+  : resolve(sourceRoot, 'dist/wsl-runtime')
+let windowsPayload = {
+  packageVersion: app.getVersion(),
+  runtimeSha256: '',
+  bundledTarballPath: resolve(
+    windowsPayloadDirectory,
+    `qwen-audio-agent-${app.getVersion()}.tgz`,
+  ),
+}
+if (process.platform === 'win32') {
+  try {
+    windowsPayload = readBundledWslRuntimeManifest({
+      directory: windowsPayloadDirectory,
+      desktopVersion: app.getVersion(),
+    })
+  } catch {
+    // The controller presents a fixed integrity failure without exposing paths.
+  }
+}
+
+const desktopRuntime = createDesktopRuntime({
+  platform: process.platform,
+  architecture: process.arch,
+  dependencies: {
+    native: { runtimeRoot, sourceRoot, logger },
+    windows: {
+      desktopVersion: app.getVersion(),
+      ...windowsPayload,
+      preferences: windowsPreferencesStore,
+    },
+  },
+})
+let appOrigin = desktopRuntime.origin
+let setupRequired = desktopRuntime.status.state === 'setup-required'
 
 let mainWindow = null
 let settingsWindow = null
+let repairWindow = null
 let rendererServer = null
 let dragState = null
 let reconnectTimer = null
-let embeddedGateway = null
-let borrowedGatewayOrigin = ''
-let gatewayCrashCount = 0
 let lastRuntimeError = ''
 let desktopUpdater = null
+let windowsIntegration = null
+let runtimeWasRecovering = false
+let desktopResourcesStopped = false
 
-const MAX_GATEWAY_CRASH_RESTARTS = 3
-
-function configuredOrigin() {
-  const settings = parseSettings(
-    readFileSync(runtimeEnvironment.configPath, 'utf8'),
-    process.env,
-  )
-  return {
-    origin: validateAppUrl(settings.gatewayUrl),
-    settings,
+const unsubscribeRuntimeStatus = desktopRuntime.subscribeStatus(status => {
+  const previousOrigin = appOrigin
+  appOrigin = desktopRuntime.origin
+  setupRequired = status.state === 'setup-required'
+  lastRuntimeError = ['error', 'recovering'].includes(status.state)
+    ? status.reason || 'desktop runtime is unavailable'
+    : ''
+  const recovered = status.state === 'ready' && runtimeWasRecovering
+  runtimeWasRecovering = status.state === 'recovering'
+  if (
+    recovered
+    && appOrigin
+    && appOrigin !== previousOrigin
+    && mainWindow
+    && !mainWindow.isDestroyed()
+  ) {
+    void loadQwenAudioAgent(mainWindow)
   }
-}
-
-function configuredGatewayEnvironment() {
-  const configured = parseEnv(
-    readFileSync(runtimeEnvironment.configPath, 'utf8'),
-  )
-  return desktopGatewayEnvironment({
-    env: process.env,
-    configured,
-    runtimeRoot,
-    sourceRoot,
-  })
-}
-
-function gatewayPort(origin) {
-  const port = Number(new URL(origin).port)
-  return Number.isInteger(port) && port > 0 ? port : 3101
-}
-
-async function startLocalGateway(origin) {
-  if (!isLoopbackUrl(origin)) return origin
-  if (embeddedGateway?.running) return embeddedGateway.start()
-  const environment = configuredGatewayEnvironment()
-  const active = await findRunningGateway(runtimeEnvironment.configDirectory, {
-    readHealth: readGatewayHealth,
-  })
-  if (active) {
-    assertDesktopGatewayCompatibility(active.health, environment)
-    borrowedGatewayOrigin = active.origin
-    logger.info('gateway.reused', {
-      origin: active.origin,
-      instanceId: active.lease.instanceId,
-      owner: active.lease.owner,
-    })
-    return active.origin
-  }
-  borrowedGatewayOrigin = ''
-  if (!embeddedGateway) {
-    embeddedGateway = new EmbeddedGateway({
-      preferredPort: gatewayPort(origin),
-      envFactory: configuredGatewayEnvironment,
-      logger: logger.child({ subsystem: 'embedded_gateway' }),
-    })
-    embeddedGateway.onUnexpectedExit = () => {
-      lastRuntimeError = '内置 Gateway 意外退出'
-      if (gatewayCrashCount >= MAX_GATEWAY_CRASH_RESTARTS) return
-      gatewayCrashCount += 1
-      const gateway = embeddedGateway
-      setTimeout(() => {
-        if (embeddedGateway !== gateway || gateway.running) return
-        gateway.start().then(restarted => {
-          lastRuntimeError = ''
-          appOrigin = restarted
-          process.env.QWEN_AUDIO_AGENT_URL = restarted
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            void loadQwenAudioAgent(mainWindow)
-          }
-        }).catch(error => {
-          lastRuntimeError = error?.message || String(error)
-          logger.error('gateway.restart_failed', { error })
-        })
-      }, 1000)
-    }
-  }
-  let started
-  try {
-    started = await embeddedGateway.start({
-      preferredPort: gatewayPort(origin),
-    })
-  } catch (error) {
-    const winner = await findRunningGateway(
-      runtimeEnvironment.configDirectory,
-      {
-        readHealth: readGatewayHealth,
-        timeoutMs: 3000,
-      },
-    )
-    if (!winner) throw error
-    assertDesktopGatewayCompatibility(winner.health, environment)
-    embeddedGateway = null
-    borrowedGatewayOrigin = winner.origin
-    logger.info('gateway.reused_after_race', {
-      origin: winner.origin,
-      instanceId: winner.lease.instanceId,
-      owner: winner.lease.owner,
-    })
-    return winner.origin
-  }
-  borrowedGatewayOrigin = ''
-  gatewayCrashCount = 0
-  return started
-}
+})
 
 async function ensureDesktopUi() {
   if (!rendererServer) {
@@ -233,38 +156,38 @@ async function ensureDesktopUi() {
   }
 }
 
-async function startConfiguredRuntime(settings = configuredOrigin().settings) {
-  configuredGatewayOrigin = validateAppUrl(settings.gatewayUrl)
-  appOrigin = isLoopbackUrl(configuredGatewayOrigin)
-    ? await startLocalGateway(configuredGatewayOrigin)
-    : configuredGatewayOrigin
-  process.env.QWEN_AUDIO_AGENT_URL = appOrigin
-  process.env.QWEN_AUDIO_ORB_STYLE = settings.orbStyle
+async function startConfiguredRuntime() {
+  const status = await desktopRuntime.initialize()
+  appOrigin = desktopRuntime.origin
+  setupRequired = status.state === 'setup-required'
+  if (setupRequired) return null
+  if (!['ready', 'external'].includes(status.state) || !appOrigin) {
+    throw new Error(status.reason || 'desktop runtime is unavailable')
+  }
   await ensureDesktopUi()
   lastRuntimeError = ''
   return appOrigin
 }
 
-async function runtimeStatus(target = appOrigin) {
-  const health = await readGatewayHealth(target)
-  return {
-    gatewayConnected: Boolean(health),
-    realtimeProvider: health?.realtimeProvider || null,
-    realtimeLabel: health?.realtimeLabel || null,
-    realtimeModel: health?.realtimeModel || null,
-    voiceConfigured: health?.voiceConfigured === true,
-    realtimeConnection: health?.voiceClients?.realtime || null,
-    backend: health?.backend
-      ? {
-          protocol: health.backend.kind || health.backend.protocol || null,
-          label: health.backend.label || null,
-          baseUrl: health.backend.baseUrl || null,
-          model: health.backend.model || null,
-          connected: health.backend.ok === true,
-          error: health.backend.error || null,
-        }
-      : null,
-  }
+async function runtimeStatus() {
+  return desktopRuntime.getRuntimeStatus()
+}
+
+function windowsWindowBounds(kind) {
+  return clampWindowBounds({
+    kind,
+    bounds: windowsIntegration?.preferences?.windowBounds?.[kind] || null,
+    displays: screen.getAllDisplays(),
+  })
+}
+
+async function stopDesktopResources() {
+  if (desktopResourcesStopped) return
+  desktopResourcesStopped = true
+  unsubscribeRuntimeStatus()
+  const server = rendererServer
+  rendererServer = null
+  await server?.close()
 }
 
 function isDesktopRendererUrl(value) {
@@ -321,10 +244,7 @@ async function showUnavailable(window) {
 async function loadQwenAudioAgent(window) {
   try {
     if (!rendererServer) throw new Error('desktop renderer is unavailable')
-    const settings = parseSettings(
-      readFileSync(runtimeEnvironment.configPath, 'utf8'),
-      process.env,
-    )
+    const settings = await desktopRuntime.readSettings()
     await window.loadURL(desktopOrbUrl(rendererServer.baseUrl, {
       orbStyle: settings.orbStyle,
     }))
@@ -336,18 +256,23 @@ async function loadQwenAudioAgent(window) {
 }
 
 function createWindow() {
-  const { workArea } = screen.getPrimaryDisplay()
   const width = 172
   const height = 170
+  const bounds = process.platform === 'win32'
+    ? windowsWindowBounds('orb')
+    : {
+        x: screen.getPrimaryDisplay().workArea.x
+          + screen.getPrimaryDisplay().workArea.width - width - 24,
+        y: screen.getPrimaryDisplay().workArea.y + 24,
+        width,
+        height,
+      }
   const window = new BrowserWindow({
-    width,
-    height,
+    ...bounds,
     minWidth: width,
     minHeight: height,
     maxWidth: width,
     maxHeight: height,
-    x: workArea.x + workArea.width - width - 24,
-    y: workArea.y + 24,
     frame: false,
     transparent: true,
     resizable: false,
@@ -383,7 +308,9 @@ function createWindow() {
     event.preventDefault()
     if (isSafeExternalUrl(url)) void shell.openExternal(url)
   })
-  window.once('ready-to-show', () => window.show())
+  if (process.platform !== 'win32') {
+    window.once('ready-to-show', () => window.show())
+  }
   window.on('blur', () => {
     dragState = null
   })
@@ -394,15 +321,20 @@ function createWindow() {
       mainWindow = null
     }
   })
+  if (process.platform === 'win32') {
+    windowsIntegration?.attachWindow('orb', window)
+  }
 
   loadQwenAudioAgent(window)
   return window
 }
 
 function createSettingsWindow() {
+  const bounds = process.platform === 'win32'
+    ? windowsWindowBounds('settings')
+    : { width: 540, height: 860 }
   const window = new BrowserWindow({
-    width: 540,
-    height: 860,
+    ...bounds,
     minWidth: 460,
     minHeight: 640,
     title: '设置',
@@ -419,11 +351,44 @@ function createSettingsWindow() {
   window.setMenuBarVisibility(false)
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   window.webContents.on('will-navigate', event => event.preventDefault())
-  window.once('ready-to-show', () => window.show())
+  if (process.platform !== 'win32') {
+    window.once('ready-to-show', () => window.show())
+  }
   window.on('closed', () => {
     if (settingsWindow === window) settingsWindow = null
   })
+  if (process.platform === 'win32') {
+    windowsIntegration?.attachWindow('settings', window)
+  }
   void window.loadFile(settingsPage)
+  return window
+}
+
+function createRepairWindow() {
+  const bounds = windowsWindowBounds('repair')
+  const window = new BrowserWindow({
+    ...bounds,
+    minWidth: 520,
+    minHeight: 600,
+    title: '运行环境',
+    backgroundColor: '#f3f5f6',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: preloadPath,
+    },
+  })
+  window.setMenuBarVisibility(false)
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.on('will-navigate', event => event.preventDefault())
+  window.on('closed', () => {
+    if (repairWindow === window) repairWindow = null
+  })
+  windowsIntegration?.attachWindow('repair', window)
+  void window.loadFile(repairPage)
   return window
 }
 
@@ -432,9 +397,51 @@ function showSettings() {
     if (settingsWindow.isMinimized()) settingsWindow.restore()
     settingsWindow.show()
     settingsWindow.focus()
-    return
+    return settingsWindow
   }
   settingsWindow = createSettingsWindow()
+  if (process.platform === 'win32') {
+    settingsWindow.show()
+    settingsWindow.focus()
+  }
+  return settingsWindow
+}
+
+function showRepair() {
+  if (repairWindow && !repairWindow.isDestroyed()) {
+    if (repairWindow.isMinimized()) repairWindow.restore()
+    repairWindow.show()
+    repairWindow.focus()
+    return repairWindow
+  }
+  repairWindow = createRepairWindow()
+  repairWindow.show()
+  repairWindow.focus()
+  return repairWindow
+}
+
+async function showWindowsSurface(kind) {
+  if (kind === 'settings') {
+    showSettings()
+    return
+  }
+  if (kind === 'repair') {
+    showRepair()
+    return
+  }
+  if (kind !== 'orb') throw new Error(`Unsupported Windows surface: ${kind}`)
+  await ensureDesktopUi()
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function windowsSurface(kind) {
+  if (kind === 'orb') return mainWindow
+  if (kind === 'settings') return settingsWindow
+  if (kind === 'repair') return repairWindow
+  return null
 }
 
 function validPoint(point) {
@@ -476,30 +483,16 @@ ipcMain.on('qwen-audio-agent:open-settings', event => {
   if (mainWindow && event.sender === mainWindow.webContents) showSettings()
 })
 
-const ALLOWED_EXTERNAL_HOSTS = new Set(['bailian.console.aliyun.com'])
-
-ipcMain.on('qwen-audio-agent:open-external', (event, value) => {
+ipcMain.on('qwen-audio-agent:open-bailian-api-key-page', event => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) return
-  let target
-  try {
-    target = new URL(String(value))
-  } catch {
-    return
-  }
-  if (target.protocol !== 'https:' || !ALLOWED_EXTERNAL_HOSTS.has(target.hostname)) {
-    return
-  }
-  void shell.openExternal(target.href)
+  void shell.openExternal(BAILIAN_API_KEY_URL)
 })
 
 ipcMain.handle('qwen-audio-agent:settings-load', async event => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权读取设置')
   }
-  const settings = parseSettings(
-    readFileSync(runtimeEnvironment.configPath, 'utf8'),
-    process.env,
-  )
+  const settings = await desktopRuntime.readSettings()
   return {
     settings,
     runtime: setupRequired
@@ -536,52 +529,11 @@ ipcMain.handle('qwen-audio-agent:open-logs', async event => {
   return logger.directory
 })
 
-// 与 `qwenaudio setup --json` 同款的只读检测，供设置页标注各后台
-// Agent 在本机的可用状态。合并 config.env 是因为检测需要其中的
-// AGENT_PROTOCOL / DASHSCOPE_API_KEY / ACP_COMMAND 等配置。
-// INSTALLED_ONLY 与 gateway-process.mjs 保持一致：桌面版运行时禁止
-// npx 按需回退，检测口径必须与运行时一致，只认已安装的组件。
-// 检测结果按会话缓存：重复打开设置页直接复用；“刷新”按钮（force）
-// 或缓存过期才真正重跑。真正检测前同步刷新登录 shell PATH，
-// 保证刚安装的命令立即可见。
-const BACKEND_REPORT_TTL_MS = 10 * 60 * 1000
-let backendReportCache = null
-
 ipcMain.handle('qwen-audio-agent:settings-detect-backends', async (event, options) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权检测后台 Agent')
   }
-  const now = Date.now()
-  if (
-    options?.force !== true
-    && backendReportCache
-    && now - backendReportCache.time < BACKEND_REPORT_TTL_MS
-  ) {
-    return backendReportCache.report
-  }
-  refreshProcessPath()
-  const configured = existsSync(runtimeEnvironment.configPath)
-    ? parseEnv(readFileSync(runtimeEnvironment.configPath, 'utf8'))
-    : {}
-  const report = inspectBackendSetups({
-    env: {
-      ...process.env,
-      ...configured,
-      QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY: '1',
-    },
-  })
-  const result = {
-    selected: report.selected,
-    backends: report.backends.map(item => ({
-      id: item.id,
-      label: item.label,
-      ready: item.ready,
-      selected: item.selected,
-      issues: item.issues,
-    })),
-  }
-  backendReportCache = { report: result, time: now }
-  return result
+  return desktopRuntime.inspectBackends({ force: options?.force === true })
 })
 
 ipcMain.handle('qwen-audio-agent:updater-status', event => {
@@ -599,12 +551,16 @@ ipcMain.handle('qwen-audio-agent:updater-check', async event => {
 })
 
 // 仅在安装包已下载完成时允许触发安装，避免误重启。
-ipcMain.handle('qwen-audio-agent:updater-install', event => {
+ipcMain.handle('qwen-audio-agent:updater-install', async event => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权安装更新')
   }
   if (desktopUpdater?.state().phase === 'downloaded') {
-    desktopUpdater.install()
+    if (process.platform === 'win32' && windowsIntegration) {
+      await windowsIntegration.installUpdate(() => desktopUpdater.install())
+    } else {
+      desktopUpdater.install()
+    }
   }
 })
 
@@ -612,126 +568,38 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权保存设置')
   }
-  const current = readFileSync(runtimeEnvironment.configPath, 'utf8')
-  const previous = parseSettings(current, process.env)
-  const content = updateSettingsContent(current, settings)
-  const normalized = parseSettings(content)
-  const nextOrigin = validateAppUrl(normalized.gatewayUrl)
-  const remote = !isLoopbackUrl(nextOrigin)
-  if (!remote && !realtimeSettingsConfigured(normalized)) {
-    throw new Error(normalized.realtimeProvider === 'dashscope'
-      ? '请先填写 DashScope API Key'
-      : '请先填写 Speech-to-Speech 服务地址')
-  }
-  if (remote) {
-    const remoteRuntime = await runtimeStatus(nextOrigin)
-    if (!remoteRuntime.gatewayConnected) {
-      throw new Error(`无法连接 Gateway：${nextOrigin}`)
-    }
-  }
-  const gatewayChanged = nextOrigin !== configuredGatewayOrigin
-  const apiKeyChanged = previous.dashscopeApiKey !== normalized.dashscopeApiKey
-  const realtimeProviderChanged = (
-    previous.realtimeProvider !== normalized.realtimeProvider
-  )
-  const backendChanged = previous.agentProtocol !== normalized.agentProtocol
-  const realtimeModelChanged = previous.realtimeModel !== normalized.realtimeModel
-  const speechToSpeechChanged = (
-    previous.speechToSpeechRealtimeUrl
-      !== normalized.speechToSpeechRealtimeUrl
-    || previous.speechToSpeechAuthToken
-      !== normalized.speechToSpeechAuthToken
-  )
-  const backendModelChanged = previous.backendModel !== normalized.backendModel
-  const orbStyleChanged = previous.orbStyle !== normalized.orbStyle
-  const gatewayRuntimeChanged = (
-    gatewayChanged
-    || apiKeyChanged
-    || realtimeProviderChanged
-    || backendChanged
-    || realtimeModelChanged
-    || speechToSpeechChanged
-    || backendModelChanged
-  )
-  if (!remote && borrowedGatewayOrigin && gatewayRuntimeChanged) {
-    const borrowedHealth = await readGatewayHealth(borrowedGatewayOrigin)
-    if (borrowedHealth) {
-      throw new Error(
-        '当前正在复用由其他进程启动的 Gateway，请先停止该 Gateway 后再修改运行配置',
-      )
-    }
-    borrowedGatewayOrigin = ''
-  }
-  writeFileSync(runtimeEnvironment.configPath, content, {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
-  chmodSync(runtimeEnvironment.configPath, 0o600)
-  logger.info('settings.applied', {
-    realtimeProvider: normalized.realtimeProvider,
-    backend: normalized.agentProtocol,
-    remoteGateway: remote,
-    changes: {
-      gateway: gatewayChanged,
-      apiKey: apiKeyChanged,
-      realtimeProvider: realtimeProviderChanged,
-      backend: backendChanged,
-      realtimeModel: realtimeModelChanged,
-      speechToSpeech: speechToSpeechChanged,
-      backendModel: backendModelChanged,
-      orbStyle: orbStyleChanged,
-    },
-  })
-  let restarted = false
-  configuredGatewayOrigin = nextOrigin
-  if (remote) {
-    if (embeddedGateway) {
-      await embeddedGateway.stop()
-      embeddedGateway = null
-    }
-    borrowedGatewayOrigin = ''
-    appOrigin = nextOrigin
-  } else if (
-    embeddedGateway?.running
-    && gatewayRuntimeChanged
-  ) {
-    appOrigin = await embeddedGateway.restart({
-      preferredPort: gatewayPort(nextOrigin),
-    })
-    restarted = true
-  } else if (!embeddedGateway?.running) {
-    appOrigin = await startLocalGateway(nextOrigin)
-    restarted = !borrowedGatewayOrigin
-  }
+  const result = await desktopRuntime.writeSettings(settings)
+  appOrigin = desktopRuntime.origin
   setupRequired = false
   lastRuntimeError = ''
-  process.env.QWEN_AUDIO_AGENT_URL = appOrigin
-  process.env.QWEN_AUDIO_ORB_STYLE = normalized.orbStyle
   await ensureDesktopUi()
-  const runtime = await runtimeStatus(appOrigin)
   if (
-    (restarted || gatewayChanged || orbStyleChanged)
+    (result.restarted || result.orbStyleChanged)
     && mainWindow
     && !mainWindow.isDestroyed()
   ) {
     void loadQwenAudioAgent(mainWindow)
   }
-  return {
-    settings: normalized,
-    restarted,
-    restartRequired: false,
-    runtime,
-  }
+  return result
 })
 
 ipcMain.on('qwen-audio-agent:quit', event => {
-  if (mainWindow && event.sender === mainWindow.webContents) app.quit()
+  if (!mainWindow || event.sender !== mainWindow.webContents) return
+  if (process.platform === 'win32' && windowsIntegration) {
+    void windowsIntegration.quit()
+  } else {
+    app.quit()
+  }
 })
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
+    if (process.platform === 'win32' && windowsIntegration) {
+      void windowsIntegration.handleSecondInstance()
+      return
+    }
     if (setupRequired || !mainWindow) {
       showSettings()
       return
@@ -749,6 +617,7 @@ if (!app.requestSingleInstanceLock()) {
       currentVersion: app.getVersion(),
       enabled: app.isPackaged,
       notify: status => {
+        windowsIntegration?.refreshUpdaterStatus()
         if (settingsWindow && !settingsWindow.isDestroyed()) {
           settingsWindow.webContents.send(
             'qwen-audio-agent:updater-status',
@@ -757,19 +626,59 @@ if (!app.requestSingleInstanceLock()) {
         }
       },
     })
-    if (setupRequired) {
-      showSettings()
-    } else {
-      try {
-        await startConfiguredRuntime(initialSettings)
-      } catch (error) {
-        lastRuntimeError = error?.message || String(error)
-        setupRequired = true
-        logger.error('runtime.start_failed', { error })
+    if (process.platform === 'win32') {
+      windowsIntegration = new WindowsDesktopIntegration({
+        app,
+        runtime: desktopRuntime,
+        preferencesStore: windowsPreferencesStore,
+        Tray,
+        Menu,
+        trayIcon: app.isPackaged
+          ? resolve(process.resourcesPath, 'desktop', 'icon.png')
+          : resolve(here, '../build/icon.png'),
+        windows: {
+          get: windowsSurface,
+          show: showWindowsSurface,
+        },
+        updater: desktopUpdater,
+        readOpenAtLogin,
+        applyOpenAtLogin,
+        getMicrophoneAccess: () => (
+          systemPreferences.getMediaAccessStatus('microphone')
+        ),
+        beforeQuit: stopDesktopResources,
+      })
+      await windowsIntegration.initialize()
+      registerWindowsIntegrationIpc({
+        ipcMain,
+        integration: windowsIntegration,
+        runtime: desktopRuntime,
+        clipboard,
+        shell,
+      })
+    }
+    try {
+      await startConfiguredRuntime()
+      if (windowsIntegration) {
+        await windowsIntegration.presentInitialState(windowsStartup)
+      } else if (setupRequired) {
+        showSettings()
+      }
+    } catch (error) {
+      lastRuntimeError = error?.message || String(error)
+      setupRequired = true
+      logger.error('runtime.start_failed', { error })
+      if (windowsIntegration) {
+        await windowsIntegration.presentInitialState(windowsStartup)
+      } else {
         showSettings()
       }
     }
     app.on('activate', () => {
+      if (windowsIntegration) {
+        void windowsIntegration.handleSecondInstance()
+        return
+      }
       if (setupRequired) {
         showSettings()
         return
@@ -786,15 +695,24 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.on('window-all-closed', () => {
+    if (process.platform === 'win32') {
+      windowsIntegration?.handleWindowAllClosed()
+      return
+    }
     if (process.platform !== 'darwin') app.quit()
   })
 
-  app.on('before-quit', () => {
+  app.on('before-quit', event => {
+    if (process.platform === 'win32') {
+      if (windowsIntegration && !windowsIntegration.exiting) {
+        logger.info('desktop.stopping')
+        event.preventDefault()
+        void windowsIntegration.quit()
+      }
+      return
+    }
     logger.info('desktop.stopping')
-    void rendererServer?.close()
-    rendererServer = null
-    const gateway = embeddedGateway
-    embeddedGateway = null
-    void gateway?.stop()
+    void stopDesktopResources()
+    void desktopRuntime.stop()
   })
 }

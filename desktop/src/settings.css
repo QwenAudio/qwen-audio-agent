@@ -248,6 +248,89 @@ h2 {
   font-weight: 580;
 }
 
+.setting-label {
+  color: #3e484f;
+  font-size: 13px;
+  font-weight: 580;
+}
+
+.windows-status-suffix {
+  margin-left: 5px;
+  color: #78858b;
+  font-size: 11px;
+  font-weight: 520;
+}
+
+.runtime-value-with-action {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+#windows-runtime-value {
+  min-width: 0;
+  overflow: hidden;
+  color: #5e6a70;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.switch-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  color: #68747a;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.switch-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.switch-track {
+  display: flex;
+  width: 34px;
+  height: 20px;
+  align-items: center;
+  padding: 2px;
+  border-radius: 10px;
+  background: #c9d0d3;
+  transition: background .15s ease;
+}
+
+.switch-track span {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px #26363e35;
+  transition: transform .15s ease;
+}
+
+.switch-control input:checked + .switch-track {
+  background: #43847d;
+}
+
+.switch-control input:checked + .switch-track span {
+  transform: translateX(14px);
+}
+
+.switch-control input:focus-visible + .switch-track {
+  outline: 2px solid #5d929a;
+  outline-offset: 2px;
+}
+
+.switch-control input:disabled + .switch-track {
+  opacity: .55;
+}
+
 .provider-panel {
   display: contents;
 }

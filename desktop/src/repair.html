@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>运行环境</title>
+    <link rel="stylesheet" href="./repair.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="brand-mark" aria-hidden="true"><span></span></div>
+        <div>
+          <h1>运行环境</h1>
+          <p id="distribution-summary">正在检查 WSL</p>
+        </div>
+      </header>
+
+      <section id="runtime-summary" class="summary working" aria-live="polite">
+        <span class="status-indicator" aria-hidden="true"></span>
+        <div>
+          <h2 id="runtime-title">正在检查 WSL</h2>
+          <p id="runtime-action-text">正在读取运行状态。</p>
+        </div>
+      </section>
+
+      <section class="runtime-controls" aria-labelledby="runtime-controls-title">
+        <h2 id="runtime-controls-title">连接方式</h2>
+        <fieldset id="runtime-mode" class="segmented">
+          <legend>运行模式</legend>
+          <label>
+            <input type="radio" name="runtime-mode" value="managed" checked />
+            <span>托管 WSL</span>
+          </label>
+          <label>
+            <input type="radio" name="runtime-mode" value="external" />
+            <span>外部 Gateway</span>
+          </label>
+        </fieldset>
+        <div class="control-row" id="distribution-row">
+          <label for="wsl-distribution">WSL 发行版</label>
+          <select id="wsl-distribution"></select>
+        </div>
+        <div class="control-row" id="external-origin-row" hidden>
+          <label for="external-gateway-origin">Gateway 地址</label>
+          <div class="inline-control">
+            <input
+              id="external-gateway-origin"
+              type="url"
+              inputmode="url"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="http://127.0.0.1:3101"
+            />
+            <button id="connect-external" type="button">连接</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="checks-section" aria-labelledby="checks-title">
+        <div class="section-heading">
+          <h2 id="checks-title">诊断</h2>
+          <button id="copy-diagnostics" class="quiet-button" type="button">
+            复制日志
+          </button>
+        </div>
+        <ul id="runtime-checks"></ul>
+      </section>
+
+      <section id="progress-section" class="progress-section" hidden aria-live="polite">
+        <div class="progress-heading">
+          <span id="progress-label">正在准备安装</span>
+          <span id="progress-value">0%</span>
+        </div>
+        <progress id="runtime-progress" max="100" value="0"></progress>
+      </section>
+
+      <section id="install-confirmation" class="confirmation" hidden>
+        <h2>确认安装命令</h2>
+        <code id="install-command"></code>
+        <button id="confirm-install" class="primary-button" type="button">
+          确认安装
+        </button>
+      </section>
+
+      <section class="maintenance" aria-labelledby="maintenance-title">
+        <h2 id="maintenance-title">维护</h2>
+        <div class="maintenance-actions">
+          <button id="restart-runtime" type="button">重新启动</button>
+          <button id="prepare-removal" class="danger-button" type="button">
+            移除专用运行环境
+          </button>
+        </div>
+        <div id="removal-confirmation" class="removal-confirmation" hidden>
+          <p>仅移除专用运行环境；qwaudio 配置和全局 Agents 会保留。</p>
+          <code id="removal-target"></code>
+          <button id="confirm-removal" class="danger-button" type="button">
+            确认移除
+          </button>
+        </div>
+      </section>
+
+      <footer>
+        <p id="operation-message" role="status" aria-live="polite"></p>
+        <div class="footer-actions">
+          <button id="microphone-settings" type="button" hidden>
+            麦克风设置
+          </button>
+          <button id="primary-action" class="primary-button" type="button">
+            重新检查
+          </button>
+        </div>
+      </footer>
+    </main>
+    <script src="./repair.js" type="module"></script>
+  </body>
+</html>

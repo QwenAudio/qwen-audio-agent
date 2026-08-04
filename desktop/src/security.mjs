@@ -1,5 +1,21 @@
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
+export const BAILIAN_API_KEY_URL = 'https://bailian.console.aliyun.com/?tab=model#/api-key'
+export const WINDOWS_MICROPHONE_SETTINGS_URL = 'ms-settings:privacy-microphone'
+
+const WINDOWS_SUPPORT_URLS = Object.freeze({
+  'wsl-install': 'https://learn.microsoft.com/windows/wsl/install',
+  'wsl-networking': 'https://learn.microsoft.com/windows/wsl/networking',
+  'node-download': 'https://nodejs.org/en/download',
+})
+
+export function getWindowsSupportUrl(id) {
+  if (typeof id !== 'string') return null
+  return Object.hasOwn(WINDOWS_SUPPORT_URLS, id)
+    ? WINDOWS_SUPPORT_URLS[id]
+    : null
+}
+
 export function validateAppUrl(value) {
   const url = new URL(value)
   const localHttp = url.protocol === 'http:' && LOOPBACK_HOSTS.has(url.hostname)

@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import * as desktopSettings from '../src/settings-config.mjs'
 import {
   parseSettings,
   realtimeSettingsConfigured,
   updateSettingsContent,
-} from '../src/settings-config.mjs'
+} from '../../shared/desktop-settings.mjs'
 
 const REALTIME_DEFAULTS = {
   realtimeProvider: 'dashscope',
@@ -13,6 +14,15 @@ const REALTIME_DEFAULTS = {
   speechToSpeechRealtimeUrl: '',
   speechToSpeechAuthToken: '',
 }
+
+test('keeps the desktop settings import as a shared compatibility export', () => {
+  assert.equal(desktopSettings.parseSettings, parseSettings)
+  assert.equal(
+    desktopSettings.realtimeSettingsConfigured,
+    realtimeSettingsConfigured,
+  )
+  assert.equal(desktopSettings.updateSettingsContent, updateSettingsContent)
+})
 
 test('reads desktop-owned settings with friendly defaults', () => {
   assert.deepEqual(parseSettings(''), {
@@ -266,6 +276,11 @@ test('desktop settings expose the embedded voice service without editing backend
   // 版本与自动更新状态由主进程推送渲染
   assert.match(html, /id="updater-status"/)
   assert.match(html, /id="check-updates"/)
+  assert.match(html, /id="windows-gateway-suffix"[^>]*hidden/)
+  assert.match(html, /id="windows-runtime-row"[^>]*hidden/)
+  assert.match(html, /id="manage-runtime"/)
+  assert.match(html, /id="windows-startup-row"[^>]*hidden/)
+  assert.match(html, /id="windows-open-at-login"[^>]*type="checkbox"/)
   assert.match(html, /<script src="\.\/settings\.js" type="module"><\/script>/)
   assert.doesNotMatch(html, /<option value="kimi">/)
   for (const id of [

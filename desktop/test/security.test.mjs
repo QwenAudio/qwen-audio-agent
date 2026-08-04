@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  BAILIAN_API_KEY_URL,
   desktopOrbUrl,
+  getWindowsSupportUrl,
   isLoopbackUrl,
   isSafeExternalUrl,
   isSameOrigin,
+  WINDOWS_MICROPHONE_SETTINGS_URL,
   validateAppUrl,
 } from '../src/security.mjs'
 
@@ -46,5 +49,30 @@ test('builds a dedicated desktop orb URL without losing existing parameters', ()
       orbStyle: 'goo',
     }),
     'http://127.0.0.1:3101/?channel=desktop&desktop=orb&orbStyle=goo',
+  )
+})
+
+test('maps only fixed desktop support targets', () => {
+  assert.equal(
+    getWindowsSupportUrl('wsl-install'),
+    'https://learn.microsoft.com/windows/wsl/install',
+  )
+  assert.equal(
+    getWindowsSupportUrl('wsl-networking'),
+    'https://learn.microsoft.com/windows/wsl/networking',
+  )
+  assert.equal(
+    getWindowsSupportUrl('node-download'),
+    'https://nodejs.org/en/download',
+  )
+  assert.equal(getWindowsSupportUrl('https://attacker.example'), null)
+  assert.equal(getWindowsSupportUrl('__proto__'), null)
+  assert.equal(
+    WINDOWS_MICROPHONE_SETTINGS_URL,
+    'ms-settings:privacy-microphone',
+  )
+  assert.equal(
+    BAILIAN_API_KEY_URL,
+    'https://bailian.console.aliyun.com/?tab=model#/api-key',
   )
 })

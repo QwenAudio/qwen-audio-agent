@@ -5,6 +5,11 @@ import {
   realtimeStatusLabel,
 } from './realtime-status.mjs'
 import { updaterButtonState, updaterStatusText } from './update-status.mjs'
+import {
+  runtimePresentation,
+  secretFieldDisplayValue,
+  secretSettingUpdateValue,
+} from './runtime-presentation.mjs'
 
 const form = document.querySelector('#settings-form')
 const gatewayUrl = document.querySelector('#gateway-url')
@@ -35,6 +40,15 @@ const updaterStatus = document.querySelector('#updater-status')
 const checkUpdates = document.querySelector('#check-updates')
 const openLogs = document.querySelector('#open-logs')
 const submit = form.querySelector('button[type="submit"]')
+const windowsGatewaySuffix = document.querySelector('#windows-gateway-suffix')
+const windowsRuntimeRow = document.querySelector('#windows-runtime-row')
+const windowsRuntimeValue = document.querySelector('#windows-runtime-value')
+const manageRuntime = document.querySelector('#manage-runtime')
+const windowsStartupRow = document.querySelector('#windows-startup-row')
+const windowsOpenAtLogin = document.querySelector('#windows-open-at-login')
+const windowsOpenAtLoginState = document.querySelector(
+  '#windows-open-at-login-state',
+)
 
 let settings
 let runtime
@@ -44,6 +58,8 @@ let applying = false
 let refreshingRuntime = false
 let updaterState = null
 let startupError = null
+let desktopContext = null
+let windowsRuntimeStatus = null
 
 // 更新状态由主进程推送（onUpdaterStatus）与打开时拉取（loadUpdaterStatus）
 // 共同驱动；下载完成前按钮禁用，完成后变为“重启更新”。
@@ -159,18 +175,22 @@ function renderRealtimeProvider(value, { populateDefault = false } = {}) {
   }
 }
 
-const BAILIAN_API_KEY_URL = 'https://bailian.console.aliyun.com/?tab=model#/api-key'
-
 function formSettings() {
   return {
     gatewayUrl: gatewayUrl.value,
     orbStyle: orbStyle.value,
-    dashscopeApiKey: dashscopeApiKey.value,
+    dashscopeApiKey: secretSettingUpdateValue(
+      settings?.dashscopeApiKey,
+      dashscopeApiKey.value,
+    ),
     realtimeProvider: selectedRealtimeProvider(),
     agentProtocol: agentProtocol.value,
     realtimeModel: realtimeModel.value,
     speechToSpeechRealtimeUrl: speechToSpeechRealtimeUrl.value,
-    speechToSpeechAuthToken: speechToSpeechAuthToken.value,
+    speechToSpeechAuthToken: secretSettingUpdateValue(
+      settings?.speechToSpeechAuthToken,
+      speechToSpeechAuthToken.value,
+    ),
     backendModel: backendModel.value,
   }
 }
@@ -266,6 +286,30 @@ function renderRuntime() {
   setBackendStatus(details, runtime.backend.connected)
 }
 
+function windowsRuntimeLabel(status) {
+  const version = status?.environment?.runtimeVersion
+  const base = runtimePresentation({
+    status: status || { state: 'checking' },
+    environment: status?.environment || {},
+  }).title
+  return version ? `${base} · v${version}` : base
+}
+
+function renderWindowsContext() {
+  if (!desktopContext) return
+  windowsRuntimeRow.hidden = false
+  windowsStartupRow.hidden = false
+  windowsGatewaySuffix.hidden = false
+  const distribution = windowsRuntimeStatus?.environment?.distribution
+    || desktopContext.distribution
+  windowsGatewaySuffix.textContent = distribution
+    ? `· WSL - ${distribution}`
+    : '· WSL'
+  windowsRuntimeValue.textContent = windowsRuntimeLabel(windowsRuntimeStatus)
+  windowsOpenAtLogin.checked = desktopContext.openAtLogin
+  windowsOpenAtLoginState.textContent = desktopContext.openAtLogin ? '开启' : '关闭'
+}
+
 async function refreshRuntime() {
   if (refreshingRuntime || applying) return
   refreshingRuntime = true
@@ -318,12 +362,14 @@ refreshBackends.addEventListener('click', () => {
 function render() {
   gatewayUrl.value = settings.gatewayUrl
   orbStyle.value = settings.orbStyle
-  dashscopeApiKey.value = settings.dashscopeApiKey || ''
+  dashscopeApiKey.value = secretFieldDisplayValue(settings.dashscopeApiKey)
   renderBackendOptions(settings.agentProtocol || 'none')
   realtimeModel.value = settings.realtimeModel
     || 'qwen-audio-3.0-realtime-plus'
   speechToSpeechRealtimeUrl.value = settings.speechToSpeechRealtimeUrl || ''
-  speechToSpeechAuthToken.value = settings.speechToSpeechAuthToken || ''
+  speechToSpeechAuthToken.value = secretFieldDisplayValue(
+    settings.speechToSpeechAuthToken,
+  )
   renderRealtimeProvider(settings.realtimeProvider)
   backendModel.value = settings.backendModel || ''
   renderRuntime()
@@ -356,7 +402,25 @@ for (const control of [
 }
 
 getApiKey.addEventListener('click', () => {
-  window.qwenAudioAgentDesktop.openExternal(BAILIAN_API_KEY_URL)
+  window.qwenAudioAgentDesktop.openBailianApiKeyPage()
+})
+
+manageRuntime.addEventListener('click', () => {
+  void window.qwenAudioAgentDesktop.openWindowsRuntimeManager()
+})
+
+windowsOpenAtLogin.addEventListener('change', () => {
+  const requested = windowsOpenAtLogin.checked
+  windowsOpenAtLogin.disabled = true
+  window.qwenAudioAgentDesktop.setOpenAtLogin(requested).then(actual => {
+    desktopContext.openAtLogin = actual
+    renderWindowsContext()
+  }).catch(() => {
+    windowsOpenAtLogin.checked = desktopContext.openAtLogin
+    showMessage('无法更新 Windows 启动设置。', 'error')
+  }).finally(() => {
+    windowsOpenAtLogin.disabled = false
+  })
 })
 
 form.addEventListener('submit', async event => {
@@ -402,6 +466,29 @@ window.qwenAudioAgentDesktop.loadSettings().then(value => {
   showMessage(friendlyError(error, '读取设置失败'), 'error')
   submit.disabled = true
 })
+
+if (typeof window.qwenAudioAgentDesktop.getDesktopContext === 'function') {
+  Promise.all([
+    window.qwenAudioAgentDesktop.getDesktopContext(),
+    window.qwenAudioAgentDesktop.getRuntimeStatus(),
+  ]).then(([nextContext, nextStatus]) => {
+    desktopContext = nextContext
+    windowsRuntimeStatus = nextStatus
+    renderWindowsContext()
+  }).catch(() => {})
+  window.qwenAudioAgentDesktop.subscribeRuntimeStatus(nextStatus => {
+    windowsRuntimeStatus = {
+      ...windowsRuntimeStatus,
+      ...nextStatus,
+      environment: nextStatus.environment
+        || windowsRuntimeStatus?.environment,
+    }
+    if (desktopContext && nextStatus.environment?.distribution) {
+      desktopContext.distribution = nextStatus.environment.distribution
+    }
+    renderWindowsContext()
+  })
+}
 
 setInterval(() => {
   void refreshRuntime()

@@ -17,6 +17,7 @@ import { attachRealtimeGateway } from '../voice/realtime-gateway.mjs'
 import { describeActiveRealtime } from '../voice/realtime-provider.mjs'
 import { SessionPermissionPolicy } from '../voice/session-permission-policy.mjs'
 import { taskManager, taskStore } from '../task/task-manager.mjs'
+import { ReminderScheduler } from '../task/reminder-scheduler.mjs'
 import { webDistributionPath } from '../core/install-paths.mjs'
 
 const identityManager = new IdentityManager({
@@ -40,6 +41,72 @@ taskManager.recoverDelegated({
     abort()
     return result
   },
+})
+// Provide a fallback runner for restored scheduled_task entries whose
+// runner (a closure) was lost during serialisation. Uses the shared
+// coordinator singleton — same path as handleScheduleReminder.
+taskManager.configureScheduledTaskRunner(
+  async (objective, { onEvent, signal }) => coordinator.run({
+    originalRequest: objective,
+    objective,
+    conversationContext: [],
+    userMemories: [],
+  }, { signal, onEvent }),
+)
+taskManager.configureCoordinatorQuery(
+  (workId, question, options) => coordinator.queryDelegatedWork(workId, question, options),
+)
+// ReminderScheduler: setTimeout-driven, no polling. Handles overdue
+// stagger on restart and re-arming after each fire.
+if (config.reminderSchedulerEnabled) {
+  const reminderScheduler = new ReminderScheduler({
+    taskManager,
+    staggerMs: config.reminderStaggerMs,
+    logger,
+  })
+  reminderScheduler.start()
+}
+// Offline notification subscriber: if a voice session does not claim a
+// pending notification within the delay window, deliver via desktop
+// notification (Electron) and WebSocket push.
+taskManager.subscribe(event => {
+  if (event.type === 'task.progress.check') {
+    const timer = setTimeout(() => {
+      if (process.parentPort) {
+        process.parentPort.postMessage({
+          type: 'qwen-audio-agent:offline-notification',
+          task: {
+            id: event.task.id,
+            objective: event.task.objective,
+            result: event.message,
+            status: 'progress',
+          },
+        })
+      }
+    }, config.offlineNotificationDelayMs)
+    timer.unref?.()
+    return
+  }
+  if (event.type !== 'task.notification.pending') return
+  const task = event.task
+  const timer = setTimeout(() => {
+    const current = taskManager.get(task.id, { ownerId: event.ownerId })
+    if (current && current.notificationStatus === 'pending') {
+      if (process.parentPort) {
+        process.parentPort.postMessage({
+          type: 'qwen-audio-agent:offline-notification',
+          task: {
+            id: current.id,
+            objective: current.objective,
+            result: current.result,
+            error: current.error,
+            status: current.status,
+          },
+        })
+      }
+    }
+  }, config.offlineNotificationDelayMs)
+  timer.unref?.()
 })
 conversationSync.configureRetention({
   sessionTtlMs: config.conversationSessionTtlMs,

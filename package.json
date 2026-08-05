@@ -1,5 +1,6 @@
 {
   "name": "qwen-audio-agent",
+  "desktopName": "qwen-audio-agent.desktop",
   "version": "1.4.2",
   "description": "A realtime voice frontend for mainstream AI agents.",
   "author": "qwen-audio-agent contributors",
@@ -98,6 +99,7 @@
     "test:desktop-smoke": "node scripts/electron-smoke.mjs",
     "desktop:build": "node scripts/check-desktop-release-env.mjs && npm run build && electron-builder --config desktop/electron-builder.yml --mac dmg zip",
     "desktop:build:local": "npm run build && electron-builder --config desktop/electron-builder.yml --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --mac dmg",
+    "desktop:build:linux": "npm run build && electron-builder --config desktop/electron-builder.yml --linux AppImage deb",
     "cli": "npm run start --workspace @qwen-audio-agent/cli --",
     "tui": "npm run start --workspace tui --",
     "backend": "node scripts/start.mjs",

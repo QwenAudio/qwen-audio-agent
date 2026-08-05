@@ -25,6 +25,8 @@ tells you:
 
 ## News
 
+- **2026-08-05 · Unreleased**
+  ⏰ Adds scheduled reminders and progress reporting; desktop build support for Linux (AppImage + deb); the desktop app now uses a data directory isolated from the CLI, so both can run side by side without interfering; adds voice wake word (“你好千问”) — the microphone stays on during sleep and speaking the wake word activates the assistant.
 - **2026-08-05 · [v1.4.2](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.2)**
   🔧 Refines desktop backend Agent installation, login, and status detection, with more reliable long-term memory behavior.
 - **2026-08-04 · [v1.4.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.1)**
@@ -295,6 +297,16 @@ Build a local test package from source:
 ```bash
 npm run desktop:build:local
 ```
+
+Official releases ship macOS installers only. To build for Linux, run on a
+Linux machine:
+
+```bash
+npm run desktop:build:linux
+```
+
+Artifacts land in `dist/desktop/` (AppImage and deb). No signing certificate
+is required.
 
 ## Run the Gateway in the Background
 

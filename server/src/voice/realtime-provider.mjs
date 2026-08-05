@@ -13,6 +13,7 @@ import {
 // (tests, tool-call-handler, bootstrap) continue to work without changes.
 export {
   SPAWN_THINKING_TOOL_NAME,
+  SCHEDULE_REMINDER_TOOL_NAME,
   DELEGATE_TOOL_NAME,
   CANCEL_AGENT_TASK_TOOL_NAME,
   GET_AGENT_TASK_STATUS_TOOL_NAME,

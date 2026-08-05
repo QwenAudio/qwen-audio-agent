@@ -1,5 +1,6 @@
 import {
   CANCEL_AGENT_TASK_TOOL_NAME,
+  SCHEDULE_REMINDER_TOOL_NAME,
   DELEGATE_TOOL_NAME,
   GET_AGENT_TASK_STATUS_TOOL_NAME,
   GET_CURRENT_TIME_TOOL_NAME,
@@ -191,6 +192,65 @@ export class ToolCallHandler {
     return task
   }
 
+  async handleScheduleReminder(callId, turnId, args) {
+    const executeAt = Date.parse(args.execute_at)
+    if (!executeAt || executeAt <= Date.now()) {
+      await this.sendOutput(callId, {
+        status: 'error',
+        error: true,
+        error_code: 'invalid_time',
+        user_message: '触发时间无效或已过期，请提供一个未来的时间。',
+      }, turnId)
+      return
+    }
+
+    const type = args.type === 'task' ? 'task' : 'reminder'
+    const recurrence = args.recurrence || 'once'
+
+    // For type='task', build a coordinator runner that will execute the
+    // objective when the scheduled task fires. The coordinator singleton
+    // and ownerId are safe to capture — they outlive the voice session.
+    const coordinator = this.coordinator
+    const ownerId = this.ownerId
+    const runner = type === 'task'
+      ? async (objective, { onEvent, signal }) => coordinator.run({
+          originalRequest: objective,
+          objective,
+          conversationContext: [],
+          userMemories: [],
+        }, {
+          ownerId,
+          signal,
+          onEvent,
+        })
+      : null
+
+    const task = this.taskManager.createScheduled({
+      objective: args.reminder,
+      ownerId: this.ownerId,
+      sessionId: this.sessionId,
+      turnId,
+      schedule: { at: executeAt, recurrence },
+      type,
+      runner,
+    })
+
+    await this.sendOutput(callId, {
+      status: 'scheduled',
+      reminder_id: task.id,
+      execute_at: args.execute_at,
+      type,
+      recurrence,
+    }, turnId, task.id, {
+      response: {
+        instructions: [
+          '用一句自然的话确认已设好提醒，包含具体时间和内容。',
+          '不要调用工具，不要重复确认。',
+        ].join(' '),
+      },
+    })
+  }
+
   async handle(event, callContext = {}) {
     const callId = event.call_id || event.item?.call_id || ''
     const toolName = event.name || event.item?.name || ''
@@ -231,6 +291,10 @@ export class ToolCallHandler {
     }
     if (toolName === NOTES_TOOL_NAME) {
       await this.notes(callId, turnId, args)
+      return
+    }
+    if (toolName === SCHEDULE_REMINDER_TOOL_NAME) {
+      await this.handleScheduleReminder(callId, turnId, args)
       return
     }
     if (toolName === CANCEL_AGENT_TASK_TOOL_NAME) {

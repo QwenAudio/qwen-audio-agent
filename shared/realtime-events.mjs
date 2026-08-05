@@ -20,6 +20,7 @@ export const GatewayServerEvent = Object.freeze({
   VOICE_STATE: 'voice.state',
   VOICE_OWNERSHIP: 'voice.ownership',
   VOICE_DEACTIVATED: 'voice.deactivated',
+  VOICE_SLEEP: 'voice.sleep',
   TURN_STARTED: 'turn.started',
   PLAYBACK_CLEAR: 'playback.clear',
   AUDIO_DELTA: 'audio.delta',
@@ -35,16 +36,20 @@ export const GatewayServerEvent = Object.freeze({
 })
 
 export const GatewayTaskEvent = Object.freeze({
+  SCHEDULED: 'task.scheduled',
+  SCHEDULED_FIRED: 'task.scheduled.fired',
   RUNNING: 'task.running',
   DELEGATED: 'task.delegated',
   FINALIZING: 'task.finalizing',
   CANCELLING: 'task.cancelling',
   PROGRESS: 'task.progress',
+  PROGRESS_CHECK: 'task.progress.check',
   COMPLETED: 'task.completed',
   FAILED: 'task.failed',
   CANCELLED: 'task.cancelled',
   PERMISSION_REQUESTED: 'task.permission.requested',
   PERMISSION_RESOLVED: 'task.permission.resolved',
+  NOTIFICATION_OFFLINE: 'task.notification.offline',
 })
 
 export const GATEWAY_CLIENT_EVENT_TYPES = new Set(

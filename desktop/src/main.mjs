@@ -6,6 +6,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  Notification,
   screen,
   shell,
   Tray,
@@ -67,6 +68,10 @@ import {
   expandProcessPath,
 } from './process-path.mjs'
 import {
+  migrateLegacyConfig,
+  resolveDesktopConfigDirectory,
+} from './config-migration.mjs'
+import {
   createDesktopUpdater,
 } from './updater.mjs'
 import { createGracefulShutdown } from './graceful-shutdown.mjs'
@@ -76,6 +81,22 @@ import { DesktopPresence } from './desktop-presence.mjs'
 // 将其扩充为用户登录 shell 的 PATH，让 Gateway 子进程与后台可用性
 // 检测能找到通过 Homebrew、nvm 或官方脚本安装的 Agent 命令。
 expandProcessPath()
+
+// 桌面版与 CLI（~/.config/qwaudio）使用相互独立的数据目录：桌面版默认走
+// Electron 应用数据目录，两者的 Gateway、锁、日志与设置互不干扰；
+// QWAUDIO_CONFIG_DIR 仍优先（高级用户 / Profile 场景）。
+// 统一应用名，让开发模式与打包版共用同一个 userData 目录（打包版
+// 的 productName 与单实例锁都基于它；开发模式默认会落到包名目录）。
+app.setName('Qwen Audio Agent')
+const legacyConfigDirectory = userConfigDirectory(process.env)
+process.env.QWAUDIO_CONFIG_DIR = resolveDesktopConfigDirectory({
+  env: process.env,
+  userDataDirectory: app.getPath('userData'),
+})
+const configMigration = migrateLegacyConfig({
+  legacyDir: legacyConfigDirectory,
+  targetDir: process.env.QWAUDIO_CONFIG_DIR,
+})
 
 const here = dirname(fileURLToPath(import.meta.url))
 const sourceRoot = resolve(here, '../..')
@@ -102,6 +123,12 @@ logger.info('desktop.starting', {
   platform: process.platform,
   arch: process.arch,
 })
+if (configMigration.migrated) {
+  logger.info('desktop.config_migrated', {
+    legacyDir: configMigration.legacyDir,
+    files: configMigration.copied,
+  })
+}
 const fallbackPage = resolve(here, 'orb-unavailable.html')
 const fallbackUrl = pathToFileURL(fallbackPage).href
 const settingsPage = resolve(here, 'settings.html')
@@ -207,6 +234,14 @@ async function startLocalGateway(origin) {
       envFactory: configuredGatewayEnvironment,
       logger: logger.child({ subsystem: 'embedded_gateway' }),
     })
+    embeddedGateway.onGatewayMessage = message => {
+      if (message?.type !== 'qwen-audio-agent:offline-notification') return
+      const task = message.task || {}
+      new Notification({
+        title: '千问 Audio 提醒',
+        body: String(task.result || task.objective || ''),
+      }).show()
+    }
     embeddedGateway.onUnexpectedExit = () => {
       lastRuntimeError = '内置 Gateway 意外退出'
       if (gatewayCrashCount >= MAX_GATEWAY_CRASH_RESTARTS) return
@@ -872,6 +907,10 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     previous.autoHideSeconds !== normalized.autoHideSeconds
   )
   const wakeShortcutChanged = previous.wakeShortcut !== normalized.wakeShortcut
+  const wakeWordChanged = (
+    previous.wakeWordEnabled !== normalized.wakeWordEnabled
+    || previous.sleepTimeoutSeconds !== normalized.sleepTimeoutSeconds
+  )
   const gatewayRuntimeChanged = (
     gatewayChanged
     || apiKeyChanged
@@ -880,6 +919,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     || realtimeModelChanged
     || speechToSpeechChanged
     || backendModelChanged
+    || wakeWordChanged
   )
   if (!remote && borrowedGatewayOrigin && gatewayRuntimeChanged) {
     const borrowedHealth = await readGatewayHealth(borrowedGatewayOrigin)
@@ -933,6 +973,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
       orbStyle: orbStyleChanged,
       autoHide: autoHideChanged,
       wakeShortcut: wakeShortcutChanged,
+      wakeWord: wakeWordChanged,
     },
   })
   let restarted = false

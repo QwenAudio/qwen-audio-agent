@@ -5,6 +5,7 @@ import {
 import { TOOL_SCOPES } from '../core/memory-scopes.mjs'
 
 export const SPAWN_THINKING_TOOL_NAME = 'spawn_thinking'
+export const SCHEDULE_REMINDER_TOOL_NAME = 'schedule_reminder'
 export const DELEGATE_TOOL_NAME = SPAWN_THINKING_TOOL_NAME
 export const CANCEL_AGENT_TASK_TOOL_NAME = 'cancel_agent_task'
 export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
@@ -77,7 +78,7 @@ const getCurrentTimeTool = {
   type: 'function',
   function: {
     name: GET_CURRENT_TIME_TOOL_NAME,
-    description: '获取用户本地时区中的准确当前日期、时间和星期。用户询问当前时间、今天日期、星期或相对日期判断时调用；不用于创建提醒。',
+    description: '获取用户本地时区中的准确当前日期、时间和星期。用户询问当前时间、今天日期、星期或相对日期判断，以及需要为 schedule_reminder 计算触发时间时调用。',
     parameters: {
       type: 'object',
       properties: {},
@@ -196,8 +197,42 @@ const enterSleepTool = {
   },
 }
 
+const scheduleReminderTool = {
+  type: 'function',
+  function: {
+    name: SCHEDULE_REMINDER_TOOL_NAME,
+    description: '创建定时提醒或定时任务。用户说"X点提醒我""明天三点帮我查某事然后告诉我"等时间驱动的提醒或任务时调用。先调用 get_current_time 获取当前时间，计算目标时间后传入 execute_at。type=reminder 时到点直接播报 reminder 内容；type=task 时到点执行 reminder 描述的任务，执行完播报结果。',
+    parameters: {
+      type: 'object',
+      properties: {
+        execute_at: {
+          type: 'string',
+          description: 'ISO 8601 时间戳，触发时间。基于 get_current_time 返回的时区计算。',
+        },
+        reminder: {
+          type: 'string',
+          description: '提醒内容或任务描述。忠实保留用户要提醒或执行的事项。',
+        },
+        type: {
+          type: 'string',
+          enum: ['reminder', 'task'],
+          description: 'reminder=到点播报内容；task=到点执行任务后播报结果。用户只要求提醒用 reminder；要求执行某事再告知用 task。',
+        },
+        recurrence: {
+          type: 'string',
+          enum: ['once', 'daily', 'weekly', 'weekdays'],
+          description: '重复模式，默认 once。',
+        },
+      },
+      required: ['execute_at', 'reminder'],
+      additionalProperties: false,
+    },
+  },
+}
+
 export const TOOLS = [
   delegateTool,
+  scheduleReminderTool,
   cancelAgentTaskTool,
   getAgentTaskStatusTool,
   getCurrentTimeTool,

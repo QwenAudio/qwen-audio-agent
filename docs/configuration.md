@@ -9,6 +9,13 @@
 设置 `QWAUDIO_CONFIG_DIR` 或 `XDG_CONFIG_HOME` 可以更改配置目录。开发仓库中的
 `.env.local` 和 `.env` 仍然支持，并优先于用户配置文件。
 
+桌面版与 CLI 使用相互独立的数据目录：CLI 使用 `~/.config/qwaudio`，桌面版使用
+系统标准应用数据目录（macOS 为 `~/Library/Application Support/Qwen Audio Agent`，
+Linux 为 `~/.config/Qwen Audio Agent`，Windows 为 `%APPDATA%\Qwen Audio Agent`）。
+两者的 Gateway、锁、日志与设置互不干扰，可以同时运行。桌面版首次启动时会从 CLI
+目录复制 `config.env` 等用户配置（CLI 保留原件）；`gateway.lock` 等运行时状态各自
+重建。显式设置 `QWAUDIO_CONFIG_DIR` 时桌面版也遵循该覆盖。
+
 配置优先级固定为：
 
 ```text
@@ -395,8 +402,10 @@ QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com
 
 ## Gateway 运行方式
 
-同一用户配置目录在任意时刻只允许一个本地 Gateway。CLI、TUI、WebUI 和桌面版会
-优先复用这个实例；它们可以同时连接，但不会各自启动一套后台 Agent。实例身份记录在
+同一数据目录在任意时刻只允许一个本地 Gateway。CLI、TUI 和 WebUI 共用
+`~/.config/qwaudio`，会优先复用同一个实例；桌面版使用独立目录，只复用或管理
+自己目录下的 Gateway。同一目录内的多个客户端可以同时连接，但不会各自启动一套
+后台 Agent。实例身份记录在
 用户配置目录下的临时 `gateway.lock` 中，Gateway 正常退出时会删除，异常退出留下的
 锁会在确认原进程已经结束后自动回收。若现有 Gateway 的 Realtime、后台 Agent 或
 权限配置与当前请求不一致，启动会明确报错，而不会静默另开随机端口。远程 Gateway

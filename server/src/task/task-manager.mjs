@@ -11,7 +11,7 @@ const ACTIVE = new Set([
   'finalizing',
   'cancelling',
 ])
-const CANCELLABLE = new Set(['queued', 'running', 'delegated', 'finalizing'])
+const CANCELLABLE = new Set(['scheduled', 'queued', 'running', 'delegated', 'finalizing'])
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 
 function publicResultMetadata(metadata) {
@@ -78,6 +78,9 @@ function publicTask(task) {
       : null,
     notificationStatus: task.notificationStatus,
     notificationDeliveredAt: task.notificationDeliveredAt,
+    schedule: task.schedule || null,
+    timeoutMs: task.timeoutMs || null,
+    progressCheckMs: task.progressCheckMs || null,
   }
 }
 
@@ -107,6 +110,8 @@ export class TaskManager {
     this.tasks = new Map()
     this.listeners = new Set()
     this.recoveryCandidates = []
+    this.scheduledTaskRunner = null
+    this.coordinatorQueryDelegatedWork = null
     this.restore()
   }
 
@@ -115,8 +120,38 @@ export class TaskManager {
     this.prune()
   }
 
+  configureScheduledTaskRunner(runner) {
+    this.scheduledTaskRunner = runner
+  }
+
+  configureCoordinatorQuery(callback) {
+    this.coordinatorQueryDelegatedWork = callback
+  }
+
   restore() {
     for (const saved of this.store?.load() || []) {
+      // Scheduled tasks survive restarts intact. ReminderScheduler.start()
+      // handles overdue vs future dispatch.
+      if (saved.status === 'scheduled') {
+        const task = {
+          ...saved,
+          runner: saved.kind === 'reminder'
+            ? async (obj) => ({
+                content: obj,
+                metadata: { presentation: { speech: obj } },
+              })
+            : null, // scheduled_task runner set from scheduledTaskRunner in start()
+          resolve: null,
+          promise: Promise.resolve(publicTask(saved)),
+          activity: Array.isArray(saved.activity) ? saved.activity : [],
+          abortController: null,
+          schedulerHeld: false,
+          timeoutTimer: null,
+          progressCheckTimer: null,
+        }
+        this.tasks.set(task.id, task)
+        continue
+      }
       const wasActive = ACTIVE.has(saved.status)
       const canRecoverDelegation = (
         ['delegated', 'finalizing'].includes(saved.status)
@@ -152,6 +187,8 @@ export class TaskManager {
         resolve: null,
         promise: null,
         runner: null,
+        timeoutTimer: null,
+        progressCheckTimer: null,
       }
       if (canRecoverDelegation) {
         task.promise = new Promise(resolve => {
@@ -238,6 +275,7 @@ export class TaskManager {
       ...details,
     }
     const log = [
+      'task.scheduled',
       'task.created',
       'task.running',
       'task.delegated',
@@ -333,6 +371,70 @@ export class TaskManager {
     return { ...publicTask(task), reused: false }
   }
 
+  createScheduled({
+    objective,
+    ownerId,
+    sessionId,
+    turnId,
+    schedule: { at, recurrence = 'once' } = {},
+    type = 'reminder',
+    timeoutMs = null,
+    progressCheckMs = null,
+    runner = null,
+  }) {
+    const kind = type === 'task' ? 'scheduled_task' : 'reminder'
+    const task = {
+      id: `work_${randomUUID()}`,
+      status: 'scheduled',
+      kind,
+      objective: String(objective || '').trim(),
+      ownerId: String(ownerId || ''),
+      sessionId: String(sessionId || 'main'),
+      turnId: turnId || null,
+      priority: 0,
+      parentWorkId: null,
+      schedule: { type: 'at', at: Number(at), recurrence },
+      timeoutMs: type === 'task'
+        ? Number(timeoutMs) || config.scheduledTaskTimeoutMs
+        : null,
+      progressCheckMs: type === 'task'
+        ? Number(progressCheckMs) || config.scheduledTaskProgressCheckMs
+        : null,
+      createdAt: Date.now(),
+      startedAt: null,
+      completedAt: null,
+      elapsedMs: 0,
+      result: null,
+      error: null,
+      resultMetadata: null,
+      activity: [],
+      delegation: null,
+      cancellation: null,
+      authorization: null,
+      notificationStatus: 'none',
+      notificationClaimantId: null,
+      notificationClaimedAt: null,
+      runner: runner || (async (obj) => ({
+        content: obj,
+        metadata: { presentation: { speech: obj } },
+      })),
+      canceler: null,
+      cancelPromise: null,
+      terminalHandled: false,
+      abortController: null,
+      schedulerHeld: false,
+      timeoutTimer: null,
+      progressCheckTimer: null,
+    }
+    task.promise = new Promise(resolve => {
+      task.resolve = resolve
+    })
+    this.tasks.set(task.id, task)
+    this.emit('task.scheduled', task)
+    // Do not call drain() — scheduled tasks wait for their timer.
+    return { ...publicTask(task), reused: false }
+  }
+
   drain() {
     const queued = [...this.tasks.values()]
       .filter(task => task.status === 'queued')
@@ -406,6 +508,110 @@ export class TaskManager {
       this.emit('task.progress', task, { persist: false })
       this.persistDeferred()
     }
+    // Fallback runner for restored scheduled tasks whose runner was lost
+    // during serialisation.
+    if (typeof task.runner !== 'function'
+      && task.kind === 'scheduled_task'
+      && typeof this.scheduledTaskRunner === 'function'
+    ) {
+      task.runner = this.scheduledTaskRunner
+    }
+    // Hard timeout watchdog for scheduled tasks (borrowed from OpenClaw's
+    // per-run wall-clock budget). Aborts the runner, then gives a 5-second
+    // cleanup window before force-failing.
+    if (task.kind === 'scheduled_task' && task.timeoutMs) {
+      task.timeoutTimer = setTimeout(() => {
+        if (!ACTIVE.has(task.status)) return
+        task.abortController?.abort(
+          new Error('定时任务执行超时，正在终止'),
+        )
+        const cleanup = setTimeout(() => {
+          if (!ACTIVE.has(task.status)) return
+          task.terminalHandled = true
+          task.status = 'failed'
+          task.error = `定时任务执行超时（${Math.round(task.timeoutMs / 60000)} 分钟）`
+          task.completedAt = Date.now()
+          task.elapsedMs = task.startedAt
+            ? task.completedAt - task.startedAt : 0
+          task.notificationStatus = 'pending'
+          clearInterval(task.progressTimer)
+          task.progressTimer = null
+          clearInterval(task.progressCheckTimer)
+          task.progressCheckTimer = null
+          if (task.schedulerHeld) {
+            this.scheduler.release(task)
+            task.schedulerHeld = false
+          }
+          this.emit('task.failed', task)
+          this.emit('task.notification.pending', task)
+          this.persistDeferred()
+          this.drain()
+        }, 5000)
+        cleanup.unref?.()
+      }, task.timeoutMs)
+      task.timeoutTimer.unref?.()
+    }
+    // Progress check timer: periodically read real ACP activity data and
+    // emit task.progress.check so the voice gateway can announce it.
+    if (task.kind === 'scheduled_task' && task.progressCheckMs) {
+      task.progressCheckTimer = setInterval(() => {
+        if (!ACTIVE.has(task.status)) {
+          clearInterval(task.progressCheckTimer)
+          task.progressCheckTimer = null
+          return
+        }
+        const lastActivity = task.activity.at(-1)
+        const elapsedMin = Math.round(
+          (Date.now() - (task.startedAt || Date.now())) / 60000,
+        )
+        let message
+        if (lastActivity) {
+          const verb = {
+            run: '执行',
+            read: '读取',
+            write: '修改',
+            search: '搜索',
+            image: '生成图片',
+          }[lastActivity.category] || '处理'
+          const detail = lastActivity.detail
+            ? ` ${lastActivity.detail}` : ''
+          message = `任务"${task.objective.slice(0, 80)}"`
+            + `已运行 ${elapsedMin} 分钟，正在${verb}${detail}`
+            + `（${lastActivity.status}）`
+        } else {
+          message = `任务"${task.objective.slice(0, 80)}"`
+            + `已运行 ${elapsedMin} 分钟，正在处理中`
+        }
+        if (task.status === 'delegated' && task.delegation
+          && typeof this.coordinatorQueryDelegatedWork === 'function'
+        ) {
+          this.coordinatorQueryDelegatedWork(
+            task.id, message, { ownerId: task.ownerId },
+          ).then(result => {
+            if (!ACTIVE.has(task.status)) return
+            this.emit('task.progress.check', task, {
+              persist: false,
+              message: result?.content || message,
+              delegated: true,
+            })
+          }).catch(() => {
+            if (!ACTIVE.has(task.status)) return
+            this.emit('task.progress.check', task, {
+              persist: false,
+              message,
+              delegated: false,
+            })
+          })
+        } else {
+          this.emit('task.progress.check', task, {
+            persist: false,
+            message,
+            delegated: false,
+          })
+        }
+      }, task.progressCheckMs)
+      task.progressCheckTimer.unref?.()
+    }
     Promise.resolve()
       .then(() => {
         if (typeof task.runner !== 'function') {
@@ -437,6 +643,8 @@ export class TaskManager {
         if (task.terminalHandled) return
         clearInterval(task.progressTimer)
         task.progressTimer = null
+        if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
+        if (task.progressCheckTimer) { clearInterval(task.progressCheckTimer); task.progressCheckTimer = null }
         task.abortController = null
         task.authorization = null
         if (task.status === 'cancelling') return
@@ -480,7 +688,7 @@ export class TaskManager {
     }
     if (task.cancelPromise) return task.cancelPromise
     const previousStatus = task.status
-    if (previousStatus === 'queued') {
+    if (previousStatus === 'queued' || previousStatus === 'scheduled') {
       return this.finishCancellation(task)
     }
     task.status = 'cancelling'
@@ -510,6 +718,8 @@ export class TaskManager {
         )
         clearInterval(task.progressTimer)
         task.progressTimer = null
+        if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
+        if (task.progressCheckTimer) { clearInterval(task.progressCheckTimer); task.progressCheckTimer = null }
         task.abortController = null
         task.authorization = null
         task.status = 'failed'
@@ -546,6 +756,8 @@ export class TaskManager {
     task.terminalHandled = true
     clearInterval(task.progressTimer)
     task.progressTimer = null
+    if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
+    if (task.progressCheckTimer) { clearInterval(task.progressCheckTimer); task.progressCheckTimer = null }
     task.abortController = null
     if (task.schedulerHeld) {
       this.scheduler.release(task)

@@ -10,6 +10,7 @@ import {
 
 const FRONTEND_TOOL_NAMES = [
   'spawn_thinking',
+  'schedule_reminder',
   'cancel_agent_task',
   'get_agent_task_status',
   'get_current_time',

@@ -25,17 +25,13 @@ export class AgentClient {
     // backends only need a config.backends entry; nothing to thread here.
     const backend = {
       ...(config.backends?.[driver.id] || {}),
-      ...(backends[driver.id] || {}),
+      ...(backends?.[driver.id] || {}),
     }
     const options = {
       baseUrl: '',
       ...backend,
       model: model ?? backend.model,
-      coordinatorAgent: (
-        coordinatorAgent
-        ?? backend.coordinatorAgent
-        ?? config.backends?.opencode?.coordinatorAgent
-      ),
+      coordinatorAgent: coordinatorAgent ?? backend.coordinatorAgent,
     }
     const profile = driver.createProfile({
       protocol,

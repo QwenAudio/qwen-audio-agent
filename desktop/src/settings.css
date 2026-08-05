@@ -423,6 +423,17 @@ select:focus {
   min-width: 0;
 }
 
+.toggle-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle-hint {
+  font-size: 11px;
+  color: #8e8e93;
+}
+
 .shortcut-recorder {
   min-width: 132px;
   height: 32px;

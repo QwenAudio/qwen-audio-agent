@@ -20,6 +20,7 @@ export const GatewayServerEvent = Object.freeze({
   VOICE_STATE: 'voice.state',
   VOICE_OWNERSHIP: 'voice.ownership',
   VOICE_DEACTIVATED: 'voice.deactivated',
+  VOICE_SLEEP: 'voice.sleep',
   TURN_STARTED: 'turn.started',
   PLAYBACK_CLEAR: 'playback.clear',
   AUDIO_DELTA: 'audio.delta',

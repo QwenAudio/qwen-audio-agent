@@ -214,16 +214,21 @@ export class EmbeddedGateway {
     this.preferredPort = preferredPort
     const busy = await this.probeImpl(this.host, preferredPort)
     this.assertActiveStart(operation)
+    // 首选端口可能被另一套独立数据目录的产品实例（如 CLI 或另一份
+    // 桌面版）或外部程序占用；回退随机端口让它们并行运行。若因此与
+    // 同目录实例产生租约竞争，启动失败后由 main 的 findRunningGateway
+    // 兜底复用。
+    const port = busy ? 0 : preferredPort
     if (busy) {
-      throw new Error(
-        `Gateway 端口已被其他程序占用：http://${this.host}:${preferredPort}`,
-      )
+      this.logger?.warn('gateway.port_busy_fallback', {
+        preferredPort,
+        selectedPort: 'random',
+      })
     }
-    const port = preferredPort
     this.logger?.info('gateway.starting', {
       preferredPort,
-      selectedPort: port,
-      portReallocated: false,
+      selectedPort: busy ? 'random' : port,
+      portReallocated: busy,
     })
     // Imported lazily so this module also loads outside Electron (tests).
     const fork = this.forkImpl || (await import('electron')).utilityProcess.fork

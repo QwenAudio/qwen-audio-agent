@@ -21,7 +21,7 @@
 ## News
 
 - **2026-08-05 · 未发布**
-  ⏰ 新增定时提醒与进度查询；桌面版支持 Linux 打包（AppImage + deb）。
+  ⏰ 新增定时提醒与进度查询；桌面版支持 Linux 打包（AppImage + deb）；桌面版数据目录与 CLI 隔离，两者可同时使用互不干扰。
 - **2026-08-05 · [v1.4.2](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.2)**
   🔧 优化桌面端后台 Agent 的安装、登录与状态检测，完善长期记忆行为。
 - **2026-08-04 · [v1.4.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.1)**

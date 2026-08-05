@@ -16,6 +16,9 @@ const autoHideSeconds = document.querySelector('#auto-hide-seconds')
 const wakeShortcut = document.querySelector('#wake-shortcut')
 const recordWakeShortcut = document.querySelector('#record-wake-shortcut')
 const resetWakeShortcut = document.querySelector('#reset-wake-shortcut')
+const wakeWordEnabled = document.querySelector('#wake-word-enabled')
+const sleepTimeoutSeconds = document.querySelector('#sleep-timeout-seconds')
+const sleepTimeoutRow = document.querySelector('#sleep-timeout-row')
 const dashscopeApiKey = document.querySelector('#dashscope-api-key')
 const realtimeProviderInputs = [
   ...document.querySelectorAll('input[name="realtime-provider"]'),
@@ -526,6 +529,10 @@ function formSettings() {
     orbStyle: orbStyle.value,
     autoHideSeconds: Number(autoHideSeconds.value),
     wakeShortcut: wakeShortcut.value,
+    wakeWordEnabled: wakeWordEnabled.checked,
+    sleepTimeoutSeconds: wakeWordEnabled.checked
+      ? Number(sleepTimeoutSeconds.value)
+      : 0,
     dashscopeApiKey: dashscopeApiKey.value,
     realtimeProvider: selectedRealtimeProvider(),
     agentProtocol: selectedBackend(),
@@ -542,6 +549,8 @@ function fingerprint(value) {
     orbStyle: value.orbStyle,
     autoHideSeconds: value.autoHideSeconds,
     wakeShortcut: value.wakeShortcut,
+    wakeWordEnabled: value.wakeWordEnabled,
+    sleepTimeoutSeconds: value.sleepTimeoutSeconds,
     dashscopeApiKey: value.dashscopeApiKey,
     realtimeProvider: value.realtimeProvider,
     agentProtocol: value.agentProtocol,
@@ -699,6 +708,18 @@ function render() {
   }
   autoHideSeconds.value = hideValue
   wakeShortcut.value = settings.wakeShortcut
+  wakeWordEnabled.checked = settings.wakeWordEnabled || false
+  sleepTimeoutRow.hidden = !wakeWordEnabled.checked
+  const timeoutValue = String(settings.sleepTimeoutSeconds ?? 300)
+  sleepTimeoutSeconds.querySelector('[data-custom]')?.remove()
+  if (![...sleepTimeoutSeconds.options].some(option => option.value === timeoutValue)) {
+    const custom = document.createElement('option')
+    custom.value = timeoutValue
+    custom.dataset.custom = 'true'
+    custom.textContent = `自定义 · ${timeoutValue} 秒`
+    sleepTimeoutSeconds.append(custom)
+  }
+  sleepTimeoutSeconds.value = timeoutValue
   recordingWakeShortcut = false
   renderWakeShortcut()
   dashscopeApiKey.value = settings.dashscopeApiKey || ''
@@ -724,6 +745,8 @@ for (const control of [
   realtimeModel,
   backendModel,
   ...realtimeProviderInputs,
+  wakeWordEnabled,
+  sleepTimeoutSeconds,
 ]) {
   control.addEventListener('input', () => {
     showMessage('')
@@ -733,6 +756,9 @@ for (const control of [
     showMessage('')
     if (realtimeProviderInputs.includes(control)) {
       renderRealtimeProvider(control.value, { populateDefault: true })
+    }
+    if (control === wakeWordEnabled) {
+      sleepTimeoutRow.hidden = !wakeWordEnabled.checked
     }
     updateApplyState()
   })

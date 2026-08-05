@@ -480,6 +480,15 @@ export const config = {
     30_000,
     { min: 0, max: 300_000 },
   ),
+  sleepTimeoutMs: numberSetting(
+    process.env.QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS,
+    0,
+    { min: 0, max: 86_400 },
+  ) * 1000,
+  wakeWord: '你好千问',
+  wakeWordModelDirectory: process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR
+    ? resolve(process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR)
+    : resolve(runtimeEnvironment.configDirectory, 'models/wake-word'),
 }
 
 export function realtimeUrl(baseUrl, model) {

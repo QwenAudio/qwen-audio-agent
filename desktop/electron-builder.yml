@@ -58,7 +58,6 @@ linux:
   # 自行打包。AppImage/deb 无需代码签名证书即可本地安装运行。
   icon: desktop/build/icon.png
   category: Utility
-  maintainer: QwenAudio <lx513821@alibaba-inc.com>
   syncDesktopName: true
   target:
     - AppImage

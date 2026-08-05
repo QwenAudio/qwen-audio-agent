@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
 } from '../../shared/realtime-events.mjs'
 import { decodePcm, pcmBase64, resample } from './audio.js'
+import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
 
 const DEFAULT_INPUT_RATE = 16000
 const OUTPUT_RATE = 24000
@@ -40,6 +41,15 @@ export function shouldAdvertiseVoice(enabled, inputReady) {
   return enabled === true && inputReady === true
 }
 
+// Keeps a persisted front end selection only while the server still offers it.
+// A stale key would be refused on every connect, so it degrades to the empty
+// value that means "use the server default".
+export function retainedRealtimeProvider(selected, providers) {
+  if (!selected) return ''
+  const offered = (providers || []).some(provider => provider.key === selected)
+  return offered ? selected : ''
+}
+
 export function microphoneControlEvent({
   enabled,
   inputOnlyMute = false,
@@ -58,18 +68,23 @@ export function microphoneControlEvent({
 export default function useRealtimeVoice({
   sessionId,
   enabled,
+  suspended = false,
   outputMuted = false,
   inputOnlyMute = false,
   clientType = 'web',
   clientLabel = 'WebUI',
+  clientStates = [],
   takeover = false,
+  realtimeProvider = '',
   onEvent,
   onInputError,
 }) {
   const [state, setState] = useState('idle')
   const [inputActive, setInputActive] = useState(false)
+  const [inputReady, setInputReady] = useState(false)
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState(false)
+  const [connectionState, setConnectionState] = useState('connecting')
   const [ownership, setOwnership] = useState({
     state: 'available',
     holder: null,
@@ -82,6 +97,10 @@ export default function useRealtimeVoice({
   const currentTurnId = useRef('')
   const clientInstanceId = useRef(crypto.randomUUID())
   const inputSampleRate = useRef(DEFAULT_INPUT_RATE)
+  const clientStatesSignature = [...new Set(
+    (Array.isArray(clientStates) ? clientStates : [])
+      .filter(state => typeof state === 'string' && state),
+  )].sort().join(',')
   const enabledRef = useRef(enabled)
   const inputReadyRef = useRef(false)
   const outputMutedRef = useRef(outputMuted)
@@ -93,17 +112,18 @@ export default function useRealtimeVoice({
     startedResponses: new Set(),
     sourceCounts: new Map(),
     doneResponses: new Set(),
+    failedResponses: new Set(),
   })
   eventRef.current = onEvent
   inputErrorRef.current = onInputError
   enabledRef.current = enabled
   outputMutedRef.current = outputMuted
 
-  const setAudioLevel = value => {
+  const setAudioLevel = useCallback(value => {
     levelElementRef.current?.style.setProperty('--level', String(value))
-  }
+  }, [])
 
-  const activateAudio = () => {
+  const activateAudio = useCallback(() => {
     const AudioContext = window.AudioContext || window.webkitAudioContext
     if (!AudioContext) {
       setError('当前浏览器不支持实时语音播放')
@@ -118,16 +138,16 @@ export default function useRealtimeVoice({
       setVisualError(true)
     })
     return true
-  }
+  }, [])
 
-  const sendSocketEvent = event => {
+  const sendSocketEvent = useCallback(event => {
     const socket = socketRef.current
     if (socket?.readyState !== WebSocket.OPEN) return false
     socket.send(JSON.stringify(event))
     return true
-  }
+  }, [])
 
-  const sendPlaybackEvent = (type, responseId, reason = '') => {
+  const sendPlaybackEvent = useCallback((type, responseId, reason = '') => {
     if (responseId) {
       sendSocketEvent({
         type,
@@ -135,16 +155,16 @@ export default function useRealtimeVoice({
         ...(reason ? { reason } : {}),
       })
     }
-  }
+  }, [sendSocketEvent])
 
-  const stopPlayback = (reason = '') => {
+  const stopPlayback = useCallback((reason = '') => {
     const playback = playbackRef.current
     const activeResponseIds = new Set([
       ...playback.startTimers.keys(),
       ...playback.startedResponses,
       ...playback.sourceCounts.keys(),
     ])
-    for (const [responseId, timer] of playback.startTimers) {
+    for (const timer of playback.startTimers.values()) {
       clearTimeout(timer)
     }
     for (const responseId of activeResponseIds) {
@@ -164,10 +184,11 @@ export default function useRealtimeVoice({
       startedResponses: new Set(),
       sourceCounts: new Map(),
       doneResponses: new Set(),
+      failedResponses: new Set(),
     }
-  }
+  }, [sendPlaybackEvent])
 
-  const finishPlaybackIfReady = responseId => {
+  const finishPlaybackIfReady = useCallback(responseId => {
     if (!responseId) return
     const playback = playbackRef.current
     if (
@@ -179,84 +200,146 @@ export default function useRealtimeVoice({
     playback.startedResponses.delete(responseId)
     playback.sourceCounts.delete(responseId)
     playback.doneResponses.delete(responseId)
-  }
+  }, [sendPlaybackEvent])
 
-  const markAudioDone = responseId => {
+  const markAudioDone = useCallback(responseId => {
     if (!responseId) return
-    playbackRef.current.doneResponses.add(responseId)
+    const playback = playbackRef.current
+    if (playback.failedResponses.delete(responseId)) return
+    playback.doneResponses.add(responseId)
     finishPlaybackIfReady(responseId)
-  }
+  }, [finishPlaybackIfReady])
 
-  const consumeMutedAudio = responseId => {
+  const failPlayback = useCallback((responseId, reason) => {
+    const playback = playbackRef.current
+    if (responseId && !playback.failedResponses.has(responseId)) {
+      playback.failedResponses.add(responseId)
+      const timer = playback.startTimers.get(responseId)
+      if (timer !== undefined) clearTimeout(timer)
+      playback.startTimers.delete(responseId)
+      playback.startedResponses.delete(responseId)
+      playback.sourceCounts.delete(responseId)
+      playback.doneResponses.delete(responseId)
+      sendPlaybackEvent(
+        GatewayClientEvent.PLAYBACK_CANCELLED,
+        responseId,
+        'playback_error',
+      )
+    }
+    setError(reason?.message || String(reason || '语音播放失败'))
+    setVisualError(true)
+  }, [sendPlaybackEvent])
+
+  const consumeMutedAudio = useCallback(responseId => {
     if (!responseId || mutedPlaybackResponses.current.has(responseId)) return
     mutedPlaybackResponses.current.add(responseId)
     sendPlaybackEvent(GatewayClientEvent.PLAYBACK_STARTED, responseId)
-  }
+  }, [sendPlaybackEvent])
 
-  const finishMutedAudio = responseId => {
+  const finishMutedAudio = useCallback(responseId => {
     if (!responseId || !mutedPlaybackResponses.current.has(responseId)) return
     mutedPlaybackResponses.current.delete(responseId)
     sendPlaybackEvent(GatewayClientEvent.PLAYBACK_ENDED, responseId)
-  }
+  }, [sendPlaybackEvent])
 
-  const play = (base64, sampleRate = OUTPUT_RATE, responseId = '') => {
+  const play = useCallback((base64, sampleRate = OUTPUT_RATE, responseId = '') => {
     const context = audioRef.current
-    if (!context) return
-    if (context.state === 'suspended') context.resume().catch(() => {})
-    const samples = decodePcm(base64)
-    const buffer = context.createBuffer(1, samples.length, sampleRate)
-    buffer.copyToChannel(samples, 0)
-    const source = context.createBufferSource()
-    source.buffer = buffer
-    source.connect(context.destination)
-    const start = Math.max(context.currentTime + 0.02, playbackRef.current.cursor)
-    playbackRef.current.cursor = start + buffer.duration
-    playbackRef.current.sources.push(source)
-    if (responseId) {
-      playbackRef.current.sourceCounts.set(
-        responseId,
-        (playbackRef.current.sourceCounts.get(responseId) || 0) + 1,
-      )
+    if (!context) {
+      failPlayback(responseId, '语音播放尚未启用')
+      return
+    }
+    const playback = playbackRef.current
+    if (responseId && playback.failedResponses.has(responseId)) return
+    if (context.state === 'suspended') {
+      context.resume().catch(reason => failPlayback(responseId, reason))
+    }
+    let source
+    let start
+    try {
+      const samples = decodePcm(base64)
+      const buffer = context.createBuffer(1, samples.length, sampleRate)
+      buffer.copyToChannel(samples, 0)
+      source = context.createBufferSource()
+      source.buffer = buffer
+      source.connect(context.destination)
+      start = Math.max(context.currentTime + 0.02, playback.cursor)
+      playback.cursor = start + buffer.duration
+      playback.sources.push(source)
+      if (responseId) {
+        playback.sourceCounts.set(
+          responseId,
+          (playback.sourceCounts.get(responseId) || 0) + 1,
+        )
+      }
+    } catch (reason) {
+      failPlayback(responseId, reason)
+      return
     }
     if (
       responseId
-      && !playbackRef.current.startedResponses.has(responseId)
-      && !playbackRef.current.startTimers.has(responseId)
+      && !playback.startedResponses.has(responseId)
+      && !playback.startTimers.has(responseId)
     ) {
       const checkStarted = () => {
-        const playback = playbackRef.current
-        if (!playback.startTimers.has(responseId)) return
+        const current = playbackRef.current
+        if (!current.startTimers.has(responseId)) return
         if (context.state !== 'running' || context.currentTime + 0.005 < start) {
           const timer = setTimeout(checkStarted, 20)
-          playback.startTimers.set(responseId, timer)
+          current.startTimers.set(responseId, timer)
           return
         }
-        playback.startTimers.delete(responseId)
-        playback.startedResponses.add(responseId)
-        sendPlaybackEvent(GatewayClientEvent.PLAYBACK_STARTED, responseId)
+        confirmTrackedPlaybackStart(
+          current,
+          responseId,
+          id => sendPlaybackEvent(GatewayClientEvent.PLAYBACK_STARTED, id),
+        )
       }
       const delay = Math.max(0, (start - context.currentTime) * 1000)
       const timer = setTimeout(checkStarted, delay)
-      playbackRef.current.startTimers.set(responseId, timer)
+      playback.startTimers.set(responseId, timer)
     }
     source.onended = () => {
-      const playback = playbackRef.current
-      playback.sources = playback.sources.filter(item => item !== source)
-      if (responseId && playback.sourceCounts.has(responseId)) {
-        playback.sourceCounts.set(
+      const current = playbackRef.current
+      current.sources = current.sources.filter(item => item !== source)
+      if (responseId && current.sourceCounts.has(responseId)) {
+        // Web Audio can keep rendering while Electron throttles renderer
+        // timers. Reaching onended proves that this tracked source traversed
+        // the playback timeline, so it is a safe fallback acknowledgement.
+        confirmTrackedPlaybackStart(
+          current,
           responseId,
-          Math.max(0, (playback.sourceCounts.get(responseId) || 0) - 1),
+          id => sendPlaybackEvent(GatewayClientEvent.PLAYBACK_STARTED, id),
+        )
+        current.sourceCounts.set(
+          responseId,
+          Math.max(0, (current.sourceCounts.get(responseId) || 0) - 1),
         )
         finishPlaybackIfReady(responseId)
       }
     }
-    source.start(start)
-  }
+    try {
+      source.start(start)
+    } catch (reason) {
+      playback.sources = playback.sources.filter(item => item !== source)
+      failPlayback(responseId, reason)
+    }
+  }, [failPlayback, finishPlaybackIfReady, sendPlaybackEvent])
 
   useEffect(() => {
+    if (suspended) {
+      setState('idle')
+      setInputActive(false)
+      setInputReady(false)
+      setAudioLevel(0)
+      setError('')
+      setVisualError(false)
+      setConnectionState('hidden')
+      return undefined
+    }
     let disposed = false
     let reconnectTimer
     let reconnectDelay = 500
+    const mutedResponses = mutedPlaybackResponses.current
     const connect = () => {
       if (disposed) return
       const socket = new WebSocket(socketUrl(sessionId))
@@ -265,6 +348,7 @@ export default function useRealtimeVoice({
         reconnectDelay = 500
         setError('')
         setVisualError(false)
+        setConnectionState('connecting')
         eventRef.current?.({ type: GatewayServerEvent.GATEWAY_CONNECTED })
         const inputEnabled = shouldAdvertiseVoice(
           enabledRef.current,
@@ -280,8 +364,13 @@ export default function useRealtimeVoice({
           outputEnabled,
           clientType,
           clientLabel,
+          clientStates: clientStatesSignature
+            ? clientStatesSignature.split(',')
+            : [],
           clientInstanceId: clientInstanceId.current,
           takeover,
+          // Empty means "keep the server default front end".
+          ...(realtimeProvider ? { provider: realtimeProvider } : {}),
         }))
       }
       socket.onmessage = message => {
@@ -293,7 +382,19 @@ export default function useRealtimeVoice({
         }
         if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
           inputSampleRate.current = event.inputSampleRate
+          setConnectionState('connected')
+          setError('')
           setVisualError(false)
+        }
+        if (event.type === GatewayServerEvent.VOICE_CONNECTION) {
+          setConnectionState(event.state || 'connecting')
+          if (event.state === 'connected') {
+            setError('')
+            setVisualError(false)
+          } else if (event.state === 'unavailable') {
+            setError(event.message || '语音前台连接异常，正在重试')
+            setVisualError(true)
+          }
         }
         if (event.type === GatewayServerEvent.VOICE_OWNERSHIP) {
           setOwnership({
@@ -340,6 +441,7 @@ export default function useRealtimeVoice({
       }
       socket.onerror = () => {
         if (!disposed) {
+          setConnectionState('unavailable')
           setError('实时语音连接中断，正在重连')
           setVisualError(true)
         }
@@ -349,6 +451,7 @@ export default function useRealtimeVoice({
         if (disposed) return
         stopPlayback()
         setState('idle')
+        setConnectionState('unavailable')
         setError('实时语音连接中断，正在重连')
         setVisualError(true)
         eventRef.current?.({ type: GatewayServerEvent.GATEWAY_DISCONNECTED })
@@ -357,25 +460,42 @@ export default function useRealtimeVoice({
       }
     }
     setError('')
+    setConnectionState('connecting')
     connect()
 
     return () => {
       disposed = true
       clearTimeout(reconnectTimer)
+      stopPlayback(suspended ? 'desktop_hidden' : 'connection_closed')
       socketRef.current?.close()
       socketRef.current = null
-      stopPlayback()
-      mutedPlaybackResponses.current.clear()
+      mutedResponses.clear()
     }
-  }, [clientLabel, clientType, inputOnlyMute, sessionId, takeover])
+  }, [
+    clientLabel,
+    clientStatesSignature,
+    clientType,
+    consumeMutedAudio,
+    finishMutedAudio,
+    inputOnlyMute,
+    markAudioDone,
+    play,
+    realtimeProvider,
+    sessionId,
+    setAudioLevel,
+    stopPlayback,
+    suspended,
+    takeover,
+  ])
 
   useEffect(() => {
     if (outputMuted) stopPlayback()
-  }, [outputMuted])
+  }, [outputMuted, stopPlayback])
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || suspended) {
       inputReadyRef.current = false
+      setInputReady(false)
       sendSocketEvent(microphoneControlEvent({
         enabled: false,
         inputOnlyMute,
@@ -397,6 +517,7 @@ export default function useRealtimeVoice({
     const failInput = reason => {
       const message = reason?.message || String(reason || '无法打开麦克风')
       inputReadyRef.current = false
+      setInputReady(false)
       sendSocketEvent(microphoneControlEvent({
         enabled: false,
         inputOnlyMute,
@@ -449,6 +570,7 @@ export default function useRealtimeVoice({
         source.connect(processor)
         processor.connect(context.destination)
         inputReadyRef.current = true
+        setInputReady(true)
         sendSocketEvent(microphoneControlEvent({
           enabled: true,
           inputOnlyMute,
@@ -483,6 +605,7 @@ export default function useRealtimeVoice({
     return () => {
       disposed = true
       inputReadyRef.current = false
+      setInputReady(false)
       cancelAnimationFrame(animation)
       setInputActive(false)
       media?.getTracks().forEach(track => track.stop())
@@ -490,7 +613,23 @@ export default function useRealtimeVoice({
       source?.disconnect()
       analyser?.disconnect()
     }
-  }, [enabled, inputOnlyMute, sessionId, takeover])
+  }, [
+    activateAudio,
+    enabled,
+    inputOnlyMute,
+    sendSocketEvent,
+    sessionId,
+    setAudioLevel,
+    suspended,
+    takeover,
+  ])
+
+  useEffect(() => {
+    if (!suspended) return
+    const audio = audioRef.current
+    audioRef.current = null
+    audio?.close()
+  }, [suspended])
 
   useEffect(() => () => {
     audioRef.current?.close()
@@ -504,9 +643,11 @@ export default function useRealtimeVoice({
 
   return {
     state,
-    visualState: visualVoiceState(state, inputActive, enabled),
+    visualState: visualVoiceState(state, inputActive, enabled && !suspended),
+    inputReady,
     error,
     visualError,
+    connectionState,
     ownership,
     levelElementRef,
     activateAudio,

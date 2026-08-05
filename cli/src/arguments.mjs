@@ -12,6 +12,7 @@ const COMMANDS = new Set([
   'status',
   'config',
   'setup',
+  'install',
 ])
 const GATEWAY_ACTIONS = new Set([
   'run',
@@ -61,6 +62,11 @@ export function parseArguments(argv, env = process.env) {
   if (command === 'gateway' && !GATEWAY_ACTIONS.has(gatewayAction)) {
     throw new Error(`未知 Gateway 命令：${gatewayAction}`)
   }
+  const installTarget = command === 'install'
+    && args[0]
+    && !args[0].startsWith('-')
+    ? args.shift()
+    : ''
 
   const options = {
     command,
@@ -78,9 +84,11 @@ export function parseArguments(argv, env = process.env) {
       env.QWEN_AUDIO_AGENT_BACKEND_AGENT || '',
     ).trim(),
     backendUrl: '',
+    installTarget: '',
     openBrowser: true,
     takeover: false,
     json: false,
+    yes: false,
     backendSpecified: false,
     gatewayConfigurationSpecified: false,
   }
@@ -118,8 +126,33 @@ export function parseArguments(argv, env = process.env) {
     } else if (argument === '--no-open') options.openBrowser = false
     else if (argument === '--takeover') options.takeover = true
     else if (argument === '--json') options.json = true
+    else if (argument === '--yes' || argument === '-y') options.yes = true
     else if (argument === '--help' || argument === '-h') options.help = true
     else throw new Error(`未知参数：${argument}`)
+  }
+
+  if (
+    command === 'install'
+    && !normalizeBackendProtocol(installTarget)
+  ) {
+    throw new Error(
+      `install 缺少后台名称（可选：${backendNames().join('、')}）`,
+    )
+  }
+  options.installTarget = normalizeBackendProtocol(installTarget)
+  if (
+    options.installTarget
+    && !backendDefinition(options.installTarget)
+  ) {
+    throw new Error(
+      `不支持的后台：${options.installTarget}（可选 ${backendNames().join('、')}）`,
+    )
+  }
+  if (options.installTarget === 'acp') {
+    throw new Error('通用 ACP 后台请自行安装，并通过 ACP_COMMAND 配置')
+  }
+  if (command !== 'install' && options.yes) {
+    throw new Error('--yes 只适用于 install')
   }
 
   const definition = options.backend
@@ -174,7 +207,7 @@ export function parseArguments(argv, env = process.env) {
     ? cleanOrigin(options.backendUrl || configuredBackendUrl, '后台地址')
     : ''
   if (
-    command !== 'setup'
+    !['setup', 'install'].includes(command)
     && definition
     && options.backendPermissionMode === 'full'
     && !definition.supportsFullPermission
@@ -205,6 +238,7 @@ export function helpText() {
     '  qwenaudio status [选项]      gateway status 的兼容别名',
     '  qwenaudio config             显示用户配置文件位置',
     '  qwenaudio setup [选项]       只读检查后台 Agent 接入准备情况',
+    '  qwenaudio install NAME        一键安装后台 Agent（含所需 ACP 适配器）',
     '',
     'Gateway 选项：',
     '  --url URL              Gateway 地址（默认 http://127.0.0.1:3101）',
@@ -216,6 +250,10 @@ export function helpText() {
     'Setup 选项：',
     '  --backend NAME         只检查指定后台；默认检查全部后台',
     '  --json                 输出供桌面版或脚本使用的 JSON',
+    '',
+    'Install 选项：',
+    `  NAME                   可选：${backendNames().filter(name => name !== 'acp').join('、')}；不含通用 acp（需自行安装）`,
+    '  --yes, -y              脚本类安装步骤不再逐个确认（谨慎使用）',
     '',
     '界面选项：',
     '  --session ID           复用指定语音会话',

@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   formatBackendSetup,
   inspectBackendSetups,
+  inspectBackendSetupsAsync,
 } from '../../shared/backend-setup.mjs'
 
 function inspector({
@@ -73,6 +74,31 @@ test('requires a compatible Kimi Code version', () => {
   }).backends[0]
   assert.equal(legacy.ready, false)
   assert.match(legacy.issues[0], /最低版本 0\.31\.0/)
+})
+
+test('checks independent backend versions concurrently', async () => {
+  const pending = []
+  const reportPromise = inspectBackendSetupsAsync({
+    env: {},
+    platform: 'linux',
+    find: command => ({
+      opencode: '/bin/opencode',
+      kimi: '/bin/kimi',
+    })[command] || '',
+    readVersion: command => new Promise(resolve => {
+      pending.push({ command, resolve })
+    }),
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(
+    pending.map(item => item.command).sort(),
+    ['/bin/kimi', '/bin/opencode'],
+  )
+  pending.find(item => item.command === '/bin/opencode').resolve('1.18.6')
+  pending.find(item => item.command === '/bin/kimi').resolve('0.31.0')
+  const report = await reportPromise
+  assert.equal(report.backends.find(item => item.id === 'opencode').ready, true)
+  assert.equal(report.backends.find(item => item.id === 'kimi').ready, true)
 })
 
 test('reports automatic OpenCode and OpenClaw package setup', () => {

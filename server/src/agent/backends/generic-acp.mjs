@@ -6,17 +6,6 @@ import {
 export const genericAcpBackendDriver = {
   id: 'acp',
   label: 'ACP Agent',
-  resolveOptions(options) {
-    return {
-      baseUrl: '',
-      model: options.acpModel,
-      directory: options.acpDirectory,
-      cliPath: options.acpCommand,
-      args: options.acpArgs,
-      label: options.acpLabel,
-      coordinatorAgent: options.acpCoordinatorAgent,
-    }
-  },
 
   createProfile({
     directory,

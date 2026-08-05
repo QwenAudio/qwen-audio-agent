@@ -3,6 +3,7 @@ export function desktopOrbClassName({
   enabled,
   error = false,
   dragging = false,
+  lifecycle = 'active',
 }) {
   return [
     'desktop-orb-stage',
@@ -10,5 +11,6 @@ export function desktopOrbClassName({
     enabled ? 'enabled' : 'input-muted',
     error ? 'error' : '',
     dragging ? 'dragging' : '',
+    lifecycle !== 'active' ? lifecycle : '',
   ].filter(Boolean).join(' ')
 }

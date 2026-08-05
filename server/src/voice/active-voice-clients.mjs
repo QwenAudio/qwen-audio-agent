@@ -9,7 +9,13 @@ export class ActiveVoiceClients {
     if (previous === client) {
       return { granted: true, previous: null }
     }
-    if (previous && !takeover) {
+    // A previous owner whose socket already died (e.g. an unclean disconnect
+    // after a network drop that never fired ws close) must not hold the slot
+    // forever. Only a still-live owner can refuse a non-takeover claim; a dead
+    // one is treated as absent. isAlive() is optional, so callers/tests that
+    // omit it keep the original "previous always blocks" behaviour.
+    const previousAlive = previous ? previous.isAlive?.() !== false : false
+    if (previous && previousAlive && !takeover) {
       return { granted: false, previous }
     }
     previous?.deactivate?.(client)

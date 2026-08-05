@@ -13,12 +13,15 @@ import {
 import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { parseEnv } from 'node:util'
+import { resolveRealtimeFrontendConfiguration } from './realtime-provider-catalog.mjs'
 
 const SECRET_KEY = 'QWEN_AUDIO_AGENT_AUTH_SECRET'
 const USER_CONFIG_TEMPLATE = [
   '# qwen-audio-agent 用户配置',
   'DASHSCOPE_API_KEY=',
   'QWEN_AUDIO_REALTIME_PROVIDER=dashscope',
+  '# Hugging Face speech-to-speech：将上一行改为 speech-to-speech，并设置服务地址',
+  '# SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime',
   '',
   '# 可选：选择后台 Agent；留空时仅使用前台实时语音聊天',
   '# 可选 openclaw、opencode、qoder、kimi、hermes、codebuddy、codex、claude、acp 或 none',
@@ -30,6 +33,11 @@ const USER_CONFIG_TEMPLATE = [
   '# 可选：QWEN_AUDIO_AGENT_BACKEND_AGENT=协调 Agent ID',
   '# Kimi Code 可复用原生登录，或设置官方 KIMI_MODEL_* 临时模型变量',
   '# 通用 ACP：ACP_COMMAND=your-agent，ACP_ARGS=["--acp"]',
+  '',
+  '# 可选日志设置：默认 info、单文件 10 MiB、保留 5 份',
+  '# QWEN_AUDIO_LOG_LEVEL=info',
+  '# QWEN_AUDIO_LOG_MAX_BYTES=10485760',
+  '# QWEN_AUDIO_LOG_MAX_FILES=5',
   '',
 ].join('\n')
 const USER_PROFILE_TEMPLATE = [
@@ -83,6 +91,8 @@ export function userConfigDirectory(
 function ensureGeneratedSecret(env, configDirectory) {
   if (env[SECRET_KEY]) return { generated: false, statePath: null }
   const statePath = resolve(configDirectory, 'state.env')
+  // An empty shell assignment must not mask the persisted local identity.
+  delete env[SECRET_KEY]
   loadFile(statePath, env)
   if (env[SECRET_KEY]) {
     try {
@@ -314,6 +324,7 @@ export function loadRuntimeEnvironment({
     ? resolve(configDirectory, 'USER.md')
     : ensureUserProfile(configDirectory)
   const frontendMemoryPath = resolve(configDirectory, 'frontend-memory.json')
+  const frontendNotesPath = resolve(configDirectory, 'frontend-notes.json')
   const taskStatePath = resolve(configDirectory, 'tasks.json')
   const defaultOpenCodeWorkspace = !env.OPENCODE_WORKSPACE
   const openCodeWorkspace = env.OPENCODE_WORKSPACE
@@ -441,6 +452,7 @@ export function loadRuntimeEnvironment({
     configPath,
     userProfilePath,
     frontendMemoryPath,
+    frontendNotesPath,
     taskStatePath,
     openCodeWorkspace,
     openClawWorkspace,
@@ -471,4 +483,10 @@ export function requireDashScopeCredential(env = process.env) {
   throw new Error(
     '缺少 DASHSCOPE_API_KEY。请运行 qwenaudio config 查看配置文件位置。',
   )
+}
+
+export function requireRealtimeFrontendConfiguration(env = process.env) {
+  const frontend = resolveRealtimeFrontendConfiguration(env)
+  if (frontend.configured) return
+  throw new Error(frontend.missingConfigurationMessage)
 }

@@ -25,6 +25,18 @@ tells you:
 
 ## News
 
+- **2026-08-05 · [v1.4.2](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.2)**
+  🔧 Refines desktop backend Agent installation, login, and status detection, with more reliable long-term memory behavior.
+- **2026-08-04 · [v1.4.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.1)**
+  🧰 Adds one-click backend Agent installation; the desktop orb now supports automatic hiding and shortcut recall.
+- **2026-08-04 · [v1.4.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.0)**
+  🧠 Adds custom behavior rules and list management; desktop adds automatic sleep and shortcut wake-up.
+- **2026-08-03 · [v1.3.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.3.0)**
+  🎙️ Adds a [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) frontend for a locally deployed VAD–STT–LLM–TTS pipeline.
+- **2026-08-01 · [v1.2.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.2.0)**
+  ⚡ Desktop auto-update, faster startup, and smarter backend Agent detection.
+- **2026-07-31 · [v1.1.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.1.0)**
+  🤝 Adds Kimi Code CLI backend with native ACP support.
 - **2026-07-30 · [v1.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.0.0)**
   🚀 First stable release with a macOS desktop app and integrated Gateway.
 - **2026-07-28 · [v0.9.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v0.9.0)**
@@ -76,14 +88,14 @@ module walkthrough.
 | Backend Agent | Integration | Setup | Rating |
 | --- | --- | --- | --- |
 | None | N/A | Frontend-only, no setup required | ★★★★★ |
-| OpenCode | Native ACP | Automatic installation and Bailian setup supported | ★★★★★ |
-| OpenClaw | Built-in ACP Bridge | Automatic installation and Bailian setup supported | ★★★★★ |
-| Qoder | Native ACP | User installation and configuration required | ★★★★★ |
-| Kimi Code | Native ACP | User installation and configuration required | ★★★★★ |
-| Hermes | Native ACP | User installation and configuration required | ★★★★☆ |
-| CodeBuddy | Native ACP | User installation and configuration required | ★★★★☆ |
-| Codex | External ACP Adapter | User installation and configuration required | ★★★★☆ |
-| Claude Code | External ACP Adapter | User installation and configuration required | ★★★★☆ |
+| OpenCode | Native ACP | One-click installation and Bailian setup supported | ★★★★★ |
+| OpenClaw | Built-in ACP Bridge | One-click installation and Bailian setup supported | ★★★★★ |
+| Qoder | Native ACP | One-click installation; user configuration required | ★★★★★ |
+| Kimi Code | Native ACP | One-click installation; user configuration required | ★★★★★ |
+| Hermes | Native ACP | One-click installation on macOS / Linux; user configuration required | ★★★★☆ |
+| CodeBuddy | Native ACP | One-click installation; user configuration required | ★★★★☆ |
+| Codex | External ACP Adapter | One-click Agent and adapter installation; user configuration required | ★★★★☆ |
+| Claude Code | External ACP Adapter | One-click Agent and adapter installation; user configuration required | ★★★★☆ |
 
 Ratings reflect the current integration completeness, compatibility, and
 extent of real-world validation. Five stars identify recommended integrations
@@ -95,7 +107,8 @@ boundaries.
 ## Installation
 
 You need Node.js 22.22.2+ or 24.15.0+, npm 10+, and a
-DashScope API Key. The repository includes `.nvmrc` and `.node-version`; if you
+DashScope API Key when using the default DashScope realtime frontend. The
+repository includes `.nvmrc` and `.node-version`; if you
 use nvm, run `nvm use`.
 
 One-line install (recommended, from npm):
@@ -185,6 +198,57 @@ You can use the browser interface instead:
 qwenaudio webui
 ```
 
+### Use a Hugging Face speech-to-speech frontend
+
+qwen-audio-agent can also connect to a user-managed
+[Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)
+server. It combines VAD, STT, LLM, and TTS behind an OpenAI Realtime-compatible
+API. The entire voice pipeline can run locally, or you can replace individual
+models and services as needed.
+
+1. Install speech-to-speech:
+
+```bash
+pip install "speech-to-speech[paraformer]"
+```
+
+2. Start a fully local service:
+
+Linux / Windows with an NVIDIA GPU:
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend transformers \
+  --device cuda
+```
+
+Apple Silicon:
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend mlx-lm \
+  --device mps
+```
+
+Without an NVIDIA GPU, you can choose a smaller local model suitable for CPU
+inference, or point the LLM backend at a local vLLM / llama.cpp server. The service listens on
+`ws://127.0.0.1:8765/v1/realtime` by default.
+
+3. Add the following to the qwen-audio-agent `config.env` file:
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
+SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+```
+
+Then start `qwenaudio` as usual. Fully local mode requires no cloud API Key. The
+Gateway only connects to the Realtime endpoint and does not alter the STT, LLM,
+TTS, or voice configured in speech-to-speech. Set
+`SPEECH_TO_SPEECH_AUTH_TOKEN` only when the Realtime endpoint is behind a proxy
+that requires Bearer authentication.
+
 ### TUI Notes
 
 | Platform | Default mode | How to interrupt |
@@ -203,10 +267,18 @@ qwenaudio tui --audio-mode full
 
 ## macOS Desktop App
 
-The desktop app provides a persistent voice orb and embeds and manages its own
-Gateway, so no service needs to be started in advance. On first launch, the app
-creates its configuration file and guides you to enter a DashScope API Key and
-choose a backend Agent (or frontend-only mode) in Settings.
+The desktop app provides a persistent voice orb and includes the Gateway, so no
+service needs to be started in advance. If a local Gateway is already running
+for the same user configuration directory, the desktop app attaches to its
+current runtime configuration; otherwise, it starts and manages one
+automatically. On first launch, the app creates its
+configuration file and guides you to enter a DashScope API Key and choose a
+backend Agent (or frontend-only mode) in Settings.
+
+When idle, the orb hides and disconnects realtime voice; you can also say
+“you can go now” to hide it. The app remains available from the menu bar. Show
+it again from the menu bar or with the default `⇧⌘ Space` shortcut, or choose
+another shortcut in the app.
 
 The desktop app includes a streaming wave orb and a liquid gradient orb. Their
 original animated thinking / breathing states are shown below:
@@ -283,20 +355,8 @@ Use Qoder:
 AGENT_PROTOCOL=qoder
 ```
 
-Backend Agents require the user to install and configure the native Agent
-first. qwen-audio-agent reuses its user-level model, tools, MCP servers,
-Skills, and authentication.
-
-Some Agents connect through external ACP adapters. Besides the Agent itself,
-install the matching adapter globally. For example, for Codex:
-
-```bash
-npm install -g @agentclientprotocol/codex-acp
-```
-
-The CLI falls back to starting a missing adapter on demand with npx; the
-desktop app only uses installed components for reliable startup, so install
-the adapter up front.
+For an installed and natively configured backend Agent, qwen-audio-agent reuses
+its user-level model, tools, MCP servers, Skills, and authentication.
 
 Use another Agent that supports ACP over stdio:
 
@@ -328,6 +388,7 @@ User data is stored in `~/.config/qwaudio/`:
 - `frontend-memory.json`: information you explicitly ask the assistant to
   remember long term
 - `tasks.json`: task results and pending notification state
+- `logs/`: credential-redacted, automatically rotated local runtime logs
 
 These files remain on your computer and are never written to the source
 repository. You can edit `USER.md` directly or ask the assistant to remember or
@@ -337,8 +398,8 @@ forget information during a conversation.
 
 - Do not store passwords, API Keys, verification codes, or access tokens in
   your user profile or conversations.
-- Microphone audio and realtime conversations are sent to the configured Qwen
-  Audio Realtime service.
+- Microphone audio and realtime conversations are sent to the configured
+  Realtime frontend (DashScope or speech-to-speech).
 - Backend tasks may call models, tools, MCP servers, and external services
   configured for the selected Agent.
 - `full` permission allows command execution and file changes. Use it only in

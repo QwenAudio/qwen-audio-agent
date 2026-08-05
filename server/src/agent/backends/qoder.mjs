@@ -3,16 +3,6 @@ import { baseEnvironment } from './shared.mjs'
 export const qoderBackendDriver = {
   id: 'qoder',
   label: 'Qoder',
-  resolveOptions(options) {
-    return {
-      baseUrl: '',
-      model: options.qoderModel,
-      directory: options.qoderDirectory,
-      configDirectory: options.qoderConfigDirectory,
-      cliPath: options.qoderCliPath,
-      coordinatorAgent: options.coordinatorAgent,
-    }
-  },
 
   createProfile({
     directory,

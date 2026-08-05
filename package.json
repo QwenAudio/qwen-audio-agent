@@ -1,6 +1,6 @@
 {
   "name": "qwen-audio-agent",
-  "version": "1.2.0",
+  "version": "1.4.2",
   "description": "A realtime voice frontend for mainstream AI agents.",
   "author": "qwen-audio-agent contributors",
   "license": "Apache-2.0",
@@ -95,13 +95,15 @@
     "pregateway": "npm run build",
     "gateway": "npm run start --workspace server",
     "desktop": "npm run start --workspace desktop",
-    "desktop:build": "node scripts/check-desktop-release-env.mjs && npm run build && electron-builder --config desktop/electron-builder.yml --mac dmg",
+    "test:desktop-smoke": "node scripts/electron-smoke.mjs",
+    "desktop:build": "node scripts/check-desktop-release-env.mjs && npm run build && electron-builder --config desktop/electron-builder.yml --mac dmg zip",
     "desktop:build:local": "npm run build && electron-builder --config desktop/electron-builder.yml --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --mac dmg",
     "cli": "npm run start --workspace @qwen-audio-agent/cli --",
     "tui": "npm run start --workspace tui --",
     "backend": "node scripts/start.mjs",
     "openclaw": "./scripts/openclaw-gateway",
     "opencode": "./scripts/opencode-server",
+    "lint": "eslint .",
     "test": "node --test test/*.test.mjs && npm run test --workspace server && npm run test --workspace web && npm run test --workspace tui && npm run test --workspace desktop && npm run test --workspace @qwen-audio-agent/cli",
     "audit:release": "node scripts/audit-dependencies.mjs",
     "version:set": "node scripts/set-version.mjs",
@@ -112,7 +114,7 @@
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.3.0",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.30.0",
     "electron-updater": "6.8.9",
     "express": "^4.22.2",
     "ws": "^8.21.1",
@@ -120,7 +122,10 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
-    "electron-builder": "26.15.7"
+    "electron-builder": "26.15.7",
+    "eslint": "10.8.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.9.0"
   },
   "overrides": {
     "@hono/node-server": "2.0.12",

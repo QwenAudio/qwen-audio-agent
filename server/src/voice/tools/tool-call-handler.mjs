@@ -3,10 +3,13 @@ import {
   DELEGATE_TOOL_NAME,
   GET_AGENT_TASK_STATUS_TOOL_NAME,
   GET_CURRENT_TIME_TOOL_NAME,
+  ENTER_SLEEP_TOOL_NAME,
+  NOTES_TOOL_NAME,
   USER_MEMORY_TOOL_NAME,
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
 } from '../realtime-provider.mjs'
 import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
+import { isToolScope } from '../../core/memory-scopes.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
 
@@ -35,11 +38,13 @@ export class ToolCallHandler {
     coordinator,
     coordinatorAvailable = async () => true,
     memoryStore,
+    notesStore,
     getClientContext = () => ({}),
     getConversationContext = () => [],
     onMemoryChanged = () => {},
     respondPermission,
     permissionPolicy,
+    requestClientState = () => {},
   }) {
     this.taskManager = taskManager
     this.ownerId = ownerId
@@ -51,11 +56,13 @@ export class ToolCallHandler {
     this.coordinator = coordinator
     this.coordinatorAvailable = coordinatorAvailable
     this.memoryStore = memoryStore
+    this.notesStore = notesStore
     this.getClientContext = getClientContext
     this.getConversationContext = getConversationContext
     this.onMemoryChanged = onMemoryChanged
     this.respondPermission = respondPermission
     this.permissionPolicy = permissionPolicy
+    this.requestClientState = requestClientState
     this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
     this.turnTasks = new Map()
@@ -149,7 +156,7 @@ export class ToolCallHandler {
         originalRequest,
         objective,
         conversationContext: this.getConversationContext(),
-        userMemories: this.memoryStore?.list(this.ownerId) || [],
+        userMemories: this.memoryStore?.list(this.ownerId, { limit: 64 }) || [],
         timeZone: this.getClientContext()?.timeZone,
         workingDirectory: this.getClientContext()?.workingDirectory,
       }, {
@@ -219,7 +226,11 @@ export class ToolCallHandler {
       return
     }
     if (toolName === USER_MEMORY_TOOL_NAME) {
-      await this.userMemory(callId, turnId, generation, args)
+      await this.userMemory(callId, turnId, args)
+      return
+    }
+    if (toolName === NOTES_TOOL_NAME) {
+      await this.notes(callId, turnId, args)
       return
     }
     if (toolName === CANCEL_AGENT_TASK_TOOL_NAME) {
@@ -232,6 +243,10 @@ export class ToolCallHandler {
     }
     if (toolName === RESPOND_AGENT_PERMISSION_TOOL_NAME) {
       await this.respondAgentPermission(callId, turnId, args)
+      return
+    }
+    if (toolName === ENTER_SLEEP_TOOL_NAME) {
+      await this.enterSleep(callId, turnId)
       return
     }
     if (toolName !== DELEGATE_TOOL_NAME) {
@@ -427,6 +442,26 @@ export class ToolCallHandler {
         },
       },
     )
+  }
+
+  async enterSleep(callId, turnId) {
+    const supported = this.getClientContext()?.states?.includes('sleeping')
+    if (!supported) {
+      await this.sendOutput(
+        callId,
+        failure('unsupported_client_state', '当前入口不支持休眠。'),
+        turnId,
+      )
+      return
+    }
+    await this.sendOutput(
+      callId,
+      { status: 'sleeping' },
+      turnId,
+      null,
+      { createResponse: false },
+    )
+    this.requestClientState('sleeping')
   }
 
   notifyMemoryChanged() {
@@ -718,7 +753,7 @@ export class ToolCallHandler {
     }, turnId)
   }
 
-  async userMemory(callId, turnId, generation, args) {
+  async userMemory(callId, turnId, args) {
     const action = String(args.action || '').trim().toLowerCase()
     const scope = String(args.scope || '').trim().toLowerCase()
     const content = String(args.content || '').trim()
@@ -732,7 +767,7 @@ export class ToolCallHandler {
       output = failure('memory_unavailable', '前台记忆功能当前不可用。')
     } else if (!['recall', 'remember', 'replace', 'forget'].includes(action)) {
       output = failure('invalid_memory_action', '没有识别出要执行的记忆操作。')
-    } else if (!['profile', 'long_term', 'all'].includes(scope)) {
+    } else if (!isToolScope(scope)) {
       output = failure('invalid_memory_scope', '没有识别出记忆范围。')
     } else if (action === 'recall') {
       const memories = this.memoryStore.list(this.ownerId, { scope, query })
@@ -785,28 +820,7 @@ export class ToolCallHandler {
         }
       }
     } else {
-      const transcript = await this.transcripts.transcript(turnId)
-      if (this.isStale(turnId, generation)) {
-        await this.closeStaleCall(callId, turnId)
-        return
-      }
-      const explicit = /(?:忘|删除|清空|别再记|不要记|\bforget\b|\bdelete\b|\bclear\b)/i
-        .test(transcript)
-      const explicitAll = /(?:清空|全部.*(?:忘|删除)|(?:忘|删除).*全部|所有.*记忆|\bforget\s+all\b|\bclear\s+all\b)/i
-        .test(transcript)
-      if (!explicit) {
-        output = failure(
-          'explicit_consent_required',
-          '没有听到明确的遗忘请求，因此没有删除记忆。',
-          { status: 'rejected' },
-        )
-      } else if (all && !explicitAll) {
-        output = failure(
-          'clear_all_consent_required',
-          '用户没有明确要求清空全部记忆，因此没有删除。',
-          { status: 'rejected' },
-        )
-      } else if (!all && !query) {
+      if (!all && !query) {
         output = failure('missing_memory_query', '需要明确要遗忘的内容。')
       } else {
         try {
@@ -824,6 +838,61 @@ export class ToolCallHandler {
             { retryable: true },
           )
         }
+      }
+    }
+    await this.sendOutput(callId, output, turnId)
+  }
+
+  async notes(callId, turnId, args) {
+    const action = String(args.action || '').trim().toLowerCase()
+    const listName = String(args.list || '').trim()
+    const items = Array.isArray(args.items)
+      ? args.items.map(item => String(item || '').trim()).filter(Boolean).slice(0, 20)
+      : []
+    let output
+    if (!this.notesStore) {
+      output = failure('notes_unavailable', '清单功能当前不可用。')
+    } else if (!['lists', 'show', 'add', 'remove', 'clear', 'drop'].includes(action)) {
+      output = failure('invalid_notes_action', '没有识别出要执行的清单操作。')
+    } else if (action === 'lists') {
+      const lists = this.notesStore.lists(this.ownerId)
+      output = {
+        status: lists.length ? 'ok' : 'empty',
+        lists,
+      }
+    } else if (!listName) {
+      output = failure('missing_notes_target', '需要明确要操作的清单名称。')
+    } else if (action === 'show') {
+      output = this.notesStore.show(this.ownerId, listName)
+    } else if (action === 'add' || action === 'remove') {
+      if (!items.length) {
+        output = failure('missing_notes_items', '需要明确要添加或划掉的内容。')
+      } else if (items.some(item => SENSITIVE_MEMORY.test(item))) {
+        output = failure(
+          'sensitive_notes',
+          '为了安全，不会保存密码、密钥、验证码或令牌。',
+          { status: 'rejected' },
+        )
+      } else {
+        try {
+          output = this.notesStore[action](this.ownerId, { list: listName, items })
+        } catch {
+          output = failure(
+            'notes_write_failed',
+            '暂时无法更新这条清单，请稍后再试。',
+            { retryable: true },
+          )
+        }
+      }
+    } else {
+      try {
+        output = this.notesStore[action](this.ownerId, listName)
+      } catch {
+        output = failure(
+          'notes_write_failed',
+          '暂时无法更新这条清单，请稍后再试。',
+          { retryable: true },
+        )
       }
     }
     await this.sendOutput(callId, output, turnId)

@@ -5,18 +5,6 @@ export const claudeBackendDriver = {
   id: 'claude',
   label: 'Claude Code',
 
-  resolveOptions(options) {
-    return {
-      baseUrl: '',
-      model: options.claudeModel,
-      directory: options.claudeDirectory,
-      cliPath: options.claudeCliPath,
-      claudeExecutable: options.claudeExecutable,
-      configDirectory: options.claudeConfigDirectory,
-      coordinatorAgent: options.coordinatorAgent,
-    }
-  },
-
   createProfile({
     root,
     directory,

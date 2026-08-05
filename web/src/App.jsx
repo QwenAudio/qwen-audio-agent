@@ -11,7 +11,6 @@ import {
   discardUserTranscript,
   finalAssistantContent,
   insertByTurn,
-  normalizeTranscript,
   upsertUserTranscript,
 } from './message-order.js'
 import MessageContent from './MessageContent.jsx'
@@ -26,10 +25,18 @@ import {
   taskView,
 } from './task-view.js'
 import useRealtimeVoice, {
+  retainedRealtimeProvider,
   shouldClaimReleasedVoice,
 } from './useRealtimeVoice.js'
 import { requestedSessionId } from './session.js'
 import { initialVoiceEnabled } from './voice-defaults.js'
+import {
+  applyDesktopClientState,
+  desktopAutoHideSeconds,
+  desktopCanHide,
+  desktopHideDeadline,
+  desktopWorkSettled,
+} from './desktop-hide.js'
 
 const desktopOrbMode = (
   new URLSearchParams(window.location.search).get('desktop') === 'orb'
@@ -42,6 +49,7 @@ const orbStyle = (
     ? 'goo'
     : 'fluid'
 )
+const autoHideSeconds = desktopAutoHideSeconds(window.location.search)
 
 function getSessionId() {
   const requested = requestedSessionId(window.location.search)
@@ -62,7 +70,10 @@ function labelFor(state) {
     listening: '正在听',
     thinking: '思考中',
     speaking: '正在说',
+    connecting: '正在连接语音前台',
     occupied: '其他入口正在使用',
+    hidden: '已隐藏',
+    waking: '正在显示',
   }[state] || state
 }
 
@@ -110,9 +121,16 @@ export default function App() {
   const [messages, setMessages] = useState([])
   const [activity, setActivity] = useState('正在检查后台 Agent')
   const [frontend, setFrontend] = useState({ label: 'Realtime Agent' })
+  const [realtimeProviders, setRealtimeProviders] = useState([])
+  const [realtimeProvider, setRealtimeProvider] = useState(
+    () => localStorage.getItem('qwen-audio-agent.realtimeProvider') || '',
+  )
   const [backend, setBackend] = useState({ label: 'Agent', ready: false })
   const [agentTasks, setAgentTasks] = useState([])
   const [orbDragging, setOrbDragging] = useState(false)
+  const [desktopLifecycle, setDesktopLifecycle] = useState('active')
+  const [lastInteractionAt, setLastInteractionAt] = useState(Date.now)
+  const [workSettledAt, setWorkSettledAt] = useState(Date.now)
   const activeVoiceResponse = useRef('')
   const currentTurnId = useRef('')
   const responseTurnMap = useRef(new Map())
@@ -122,6 +140,12 @@ export default function App() {
   const stickToBottom = useRef(true)
   const orbDrag = useRef(null)
   const suppressOrbClick = useRef(false)
+  const previousWorkSettled = useRef(true)
+  const workSettledAtRef = useRef(workSettledAt)
+
+  const noteInteraction = useCallback(() => {
+    setLastInteractionAt(Date.now())
+  }, [])
 
   const respondToPermission = useCallback(async (taskId, permission, decision) => {
     if (!permission?.id || permission.submitting) return
@@ -198,12 +222,27 @@ export default function App() {
         setFrontend({
           label: payload.realtimeLabel || payload.realtimeProvider || 'Realtime Agent',
         })
+        setRealtimeProviders(payload.realtimeProviders || [])
+        // A front end persisted by an earlier visit may no longer exist on this
+        // server (removed provider, different deployment). Sending it would be
+        // refused on every connect, so the stale selection is dropped in favour
+        // of the server default instead of leaving the client stuck.
+        setRealtimeProvider(current => {
+          const retained = retainedRealtimeProvider(
+            current,
+            payload.realtimeProviders,
+          )
+          if (retained !== current) {
+            localStorage.removeItem('qwen-audio-agent.realtimeProvider')
+          }
+          return retained
+        })
         setBackend({
           label,
           ready: response.ok && payload.backend?.ok,
           url: payload.backend?.uiPath || payload.backend?.baseUrl || '',
         })
-        setActivity(response.ok ? '已连接' : '能力服务尚未连接')
+        setActivity(response.ok ? 'Gateway 已连接' : '能力服务尚未连接')
       })
       .catch(() => {
         if (!cancelled) setActivity('qwen-audio-agent Gateway 尚未连接')
@@ -285,6 +324,7 @@ export default function App() {
 
   const onRealtimeEvent = useCallback(event => {
     if (event.type === 'turn.started') {
+      noteInteraction()
       currentTurnId.current = event.turnId || ''
       activeVoiceResponse.current = ''
       stickToBottom.current = true
@@ -305,6 +345,11 @@ export default function App() {
           : task
       )))
     }
+    void applyDesktopClientState(event, {
+      desktop: desktopOrbMode,
+      bridge: window.qwenAudioAgentDesktop,
+      onLifecycle: setDesktopLifecycle,
+    }).catch(() => {})
     if (event.type === 'gateway.connected') {
       fetch(`api/tasks?sessionId=${encodeURIComponent(sessionId)}`)
         .then(response => response.ok ? response.json() : Promise.reject())
@@ -584,11 +629,11 @@ export default function App() {
       )))
     }
   }, [
-    backend.label,
     sessionId,
     updateTimelineItem,
     updateUserTranscript,
     updateVoiceMessage,
+    noteInteraction,
     voiceEnabled,
     waitingForVoice,
   ])
@@ -596,11 +641,14 @@ export default function App() {
   const voice = useRealtimeVoice({
     sessionId,
     enabled: voiceEnabled,
+    suspended: desktopOrbMode && desktopLifecycle === 'hidden',
     outputMuted: false,
     inputOnlyMute: desktopOrbMode,
     clientType: desktopOrbMode ? 'desktop' : 'web',
     clientLabel: desktopOrbMode ? '桌面端' : 'WebUI',
+    clientStates: desktopOrbMode ? ['sleeping'] : [],
     takeover: takeoverRequested,
+    realtimeProvider,
     onEvent: onRealtimeEvent,
     onInputError: message => {
       setVoiceEnabled(false)
@@ -608,12 +656,125 @@ export default function App() {
       setActivity(message)
     },
   })
-  const visualVoiceState = voice.ownership.state === 'busy'
+  const lifecycleTransition = (
+    desktopOrbMode && desktopLifecycle !== 'active'
+  )
+  const voiceConnectionError = (
+    !lifecycleTransition && voice.connectionState === 'unavailable'
+  )
+  const visualVoiceState = desktopLifecycle === 'hidden'
+    ? 'hidden'
+    : desktopLifecycle === 'waking'
+      ? 'waking'
+      : voice.ownership.state === 'busy'
     ? 'occupied'
-    : voice.visualState || voice.state
+    : voiceConnectionError
+      ? 'error'
+      : voiceEnabled && voice.connectionState === 'connecting'
+      ? 'connecting'
+      : voice.visualState || voice.state
   const ownershipLabel = voice.ownership.holder
     ? frontendLabel(voice.ownership.holder)
     : ''
+
+  const workSettled = desktopWorkSettled({
+    tasks: agentTasks,
+    messages,
+    voiceState: voice.visualState || voice.state,
+  })
+
+  useEffect(() => {
+    if (!desktopOrbMode) return
+    if (workSettled && !previousWorkSettled.current) {
+      const settledAt = Date.now()
+      workSettledAtRef.current = settledAt
+      setWorkSettledAt(settledAt)
+    }
+    previousWorkSettled.current = workSettled
+  }, [workSettled])
+
+  useEffect(() => {
+    if (!desktopOrbMode) return undefined
+    const bridge = window.qwenAudioAgentDesktop
+    if (!bridge) return undefined
+    const applyLifecycle = lifecycle => {
+      if (!lifecycle?.state) return
+      setDesktopLifecycle(lifecycle.state)
+      if (lifecycle.reason === 'activity') noteInteraction()
+      if (lifecycle.state === 'hidden') setActivity('已隐藏')
+      if (lifecycle.state === 'waking') setActivity('正在显示悬浮球')
+      if (lifecycle.state === 'active' && lifecycle.reason === 'ready') {
+        setActivity('待命')
+        noteInteraction()
+      }
+    }
+    const dispose = bridge.onLifecycle(applyLifecycle)
+    bridge.loadLifecycle().then(applyLifecycle).catch(() => {})
+    const onInteraction = () => noteInteraction()
+    window.addEventListener('pointerdown', onInteraction)
+    window.addEventListener('keydown', onInteraction)
+    return () => {
+      dispose()
+      window.removeEventListener('pointerdown', onInteraction)
+      window.removeEventListener('keydown', onInteraction)
+    }
+  }, [noteInteraction])
+
+  useEffect(() => {
+    if (!desktopOrbMode || desktopLifecycle !== 'waking') return
+    const ready = (
+      voice.connectionState === 'connected'
+      && (!voiceEnabled || voice.inputReady)
+    )
+    if (ready || voice.connectionState === 'unavailable') {
+      window.qwenAudioAgentDesktop?.lifecycleReady()
+    }
+  }, [
+    desktopLifecycle,
+    voice.connectionState,
+    voice.inputReady,
+    voiceEnabled,
+  ])
+
+  useEffect(() => {
+    if (!desktopOrbMode || autoHideSeconds === 0) return undefined
+    if (!desktopCanHide({
+      settled: workSettled,
+      connectionState: voice.connectionState,
+      visualError: voice.visualError,
+      lifecycle: desktopLifecycle,
+    })) return undefined
+    const deadline = desktopHideDeadline({
+      lastInteractionAt,
+      workSettledAt: workSettledAtRef.current,
+      timeoutSeconds: autoHideSeconds,
+    })
+    const timer = setTimeout(() => {
+      window.qwenAudioAgentDesktop?.enterHide()
+        .then(lifecycle => setDesktopLifecycle(lifecycle.state))
+        .catch(() => {})
+    }, Math.max(0, deadline - Date.now()))
+    return () => clearTimeout(timer)
+  }, [
+    desktopLifecycle,
+    lastInteractionAt,
+    voice.connectionState,
+    voice.visualError,
+    workSettled,
+    workSettledAt,
+  ])
+
+  // Switching the front end reconnects on its own: realtimeProvider is part of
+  // the realtime effect's dependencies, so changing it tears the current socket
+  // down and connects again with the newly selected provider.
+  const selectRealtimeProvider = value => {
+    setRealtimeProvider(value)
+    if (value) {
+      localStorage.setItem('qwen-audio-agent.realtimeProvider', value)
+    } else {
+      localStorage.removeItem('qwen-audio-agent.realtimeProvider')
+    }
+  }
 
   const resetSession = () => {
     taskDismissTimers.current.forEach(timer => clearTimeout(timer))
@@ -710,12 +871,15 @@ export default function App() {
         className={desktopOrbClassName({
           state: visualVoiceState,
           enabled: voiceEnabled,
-          error: voice.visualError,
+          error: voice.visualError || voiceConnectionError,
           dragging: orbDragging,
+          lifecycle: desktopLifecycle,
         })}
-        aria-label={`qwen-audio · ${voice.visualError ? '连接异常' : labelFor(visualVoiceState)}`}
+        aria-label={`qwen-audio · ${voice.visualError || voiceConnectionError ? '连接异常' : labelFor(visualVoiceState)}`}
         title={
-          voice.error
+          desktopLifecycle === 'waking'
+            ? '正在显示悬浮球'
+            : voice.error
           || (visualVoiceState === 'occupied' && ownershipLabel
             ? `${ownershipLabel}正在使用语音`
             : labelFor(visualVoiceState))
@@ -850,6 +1014,18 @@ export default function App() {
         <i className={backend.ready ? 'ready' : ''} />
         {backend.label}
       </a>
+      {realtimeProviders.length > 1 && <select
+        className="ghost frontend-provider"
+        value={realtimeProvider}
+        onChange={event => selectRealtimeProvider(event.target.value)}
+        title="选择前台语音引擎"
+        aria-label="选择前台语音引擎"
+      >
+        <option value="">前台：默认（{frontend.label}）</option>
+        {realtimeProviders.map(item => <option key={item.key} value={item.key}>
+          前台：{item.label}
+        </option>)}
+      </select>}
       <div className="status"><i className={visualVoiceState} />{labelFor(visualVoiceState)}</div>
       <button className="ghost" onClick={resetSession}>新会话</button>
       <button

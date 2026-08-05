@@ -28,6 +28,10 @@ export const openAiCompatibleProtocol = Object.freeze({
     audio,
   }),
 
+  // Client-assigned id for a conversation item. The beta dialect accepts one
+  // opaque namespace for every item type.
+  conversationItemId: () => `item_${randomUUID().replaceAll('-', '')}`,
+
   conversationItemCreate: item => ({
     type: 'conversation.item.create',
     item,
@@ -37,6 +41,12 @@ export const openAiCompatibleProtocol = Object.freeze({
     type: 'response.create',
     ...(response ? { response } : {}),
   }),
+
+  // The DashScope beta dialect does not provide a portable response metadata
+  // correlation contract. RealtimeFrontend keeps its established FIFO
+  // correlation for providers with this protocol.
+  correlateResponseCreate: payload => payload,
+  responseCorrelationId: () => '',
 
   responseCancel: () => ({
     type: 'response.cancel',

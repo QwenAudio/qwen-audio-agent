@@ -174,6 +174,7 @@ export async function startManagedBackend({
   spawnImpl = spawn,
   isAddressInUse = backendAddressInUse,
   findFreeAddress = allocateBackendAddress,
+  logger,
 } = {}) {
   const backend = resolveManagedBackend(env)
   if (!backend) return new ManagedBackendRuntime(null, { platform })
@@ -192,13 +193,26 @@ export async function startManagedBackend({
     throw new Error(`Gateway 只能启动本机后台 Agent：${backend.baseUrl}`)
   }
   if (await isAddressInUse(backend.baseUrl)) {
+    logger?.info('backend.address_reallocated', {
+      backend: backend.protocol,
+      requestedBaseUrl: backend.baseUrl,
+    })
     backend.baseUrl = await findFreeAddress(backend.baseUrl)
   }
   applyBackendAddress(env, backend)
   const spec = spawnSpec(root, platform, env, driver)
   const child = spawnImpl(spec.command, spec.args, spec.options)
+  logger?.info('backend.process_started', {
+    backend: backend.protocol,
+    pid: child.pid,
+    baseUrl: backend.baseUrl,
+    ownership: backend.ownership,
+  })
   child.once?.('error', error => {
-    process.stderr.write(`后台 Agent 进程启动失败：${error.message}\n`)
+    logger?.error('backend.process_start_failed', {
+      backend: backend.protocol,
+      error,
+    })
   })
   return new ManagedBackendRuntime(child, { platform })
 }

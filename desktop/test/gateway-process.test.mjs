@@ -2,11 +2,16 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
 import {
+  assertDesktopGatewayCompatibility,
+  desktopGatewayCompatibility,
   desktopExecutablePath,
   desktopGatewayEnvironment,
   EmbeddedGateway,
   GATEWAY_READY_MESSAGE,
 } from '../src/gateway-process.mjs'
+import {
+  resolveRealtimeFrontendConfiguration,
+} from '../../shared/realtime-provider-catalog.mjs'
 
 function fakeChild({
   readyOrigin = 'http://127.0.0.1:3101',
@@ -61,6 +66,57 @@ function harness({
   return { forks, gateway }
 }
 
+function compatibleHealth(env) {
+  const realtime = resolveRealtimeFrontendConfiguration(env)
+  return {
+    realtimeProvider: realtime.provider,
+    realtimeConfigurationSignature: realtime.signature,
+    backend: {
+      enabled: true,
+      kind: 'opencode',
+      permissionMode: 'native',
+      model: null,
+    },
+  }
+}
+
+test('strict compatibility validation rejects mismatched runtime settings', () => {
+  const env = {
+    DASHSCOPE_API_KEY: 'desktop-key',
+    AGENT_PROTOCOL: 'opencode',
+  }
+  assert.doesNotThrow(() => {
+    assertDesktopGatewayCompatibility(compatibleHealth(env), env)
+  })
+  assert.throws(
+    () => assertDesktopGatewayCompatibility(compatibleHealth(env), {
+      ...env,
+      AGENT_PROTOCOL: 'qoder',
+    }),
+    /后台 Agent.*不一致/,
+  )
+  assert.throws(
+    () => assertDesktopGatewayCompatibility(compatibleHealth(env), {
+      ...env,
+      DASHSCOPE_API_KEY: 'another-key',
+    }),
+    /语音前台配置.*不一致/,
+  )
+})
+
+test('reports a runtime mismatch without preventing a frontend attachment', () => {
+  const env = {
+    DASHSCOPE_API_KEY: 'desktop-key',
+    AGENT_PROTOCOL: 'qoder',
+  }
+  const result = desktopGatewayCompatibility(compatibleHealth(env), env)
+  assert.deepEqual(result, {
+    compatible: false,
+    code: 'backend',
+    reason: '已有 Gateway 的后台 Agent 与桌面设置不一致',
+  })
+})
+
 test('starts the embedded gateway on the preferred port and adopts the reported origin', async () => {
   const { forks, gateway } = harness()
   const origin = await gateway.start()
@@ -72,15 +128,15 @@ test('starts the embedded gateway on the preferred port and adopts the reported 
   await gateway.stop()
 })
 
-test('falls back to a random port when the preferred port is busy', async () => {
+test('refuses to start a second embedded Gateway when the port is busy', async () => {
   const { forks, gateway } = harness({
     busy: true,
-    readyOrigin: 'http://127.0.0.1:53123',
   })
-  const origin = await gateway.start({ preferredPort: 3101 })
-  assert.equal(forks[0].options.env.PORT, '0')
-  assert.equal(origin, 'http://127.0.0.1:53123')
-  await gateway.stop()
+  await assert.rejects(
+    gateway.start({ preferredPort: 3101 }),
+    /端口已被其他程序占用/,
+  )
+  assert.equal(forks.length, 0)
 })
 
 test('shares one in-flight start promise and forks only one child', async () => {

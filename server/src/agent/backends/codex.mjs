@@ -7,17 +7,6 @@ export const codexBackendDriver = {
   id: 'codex',
   label: 'Codex',
 
-  resolveOptions(options) {
-    return {
-      baseUrl: '',
-      model: options.codexModel,
-      modelUrl: options.codexModelUrl,
-      directory: options.codexDirectory,
-      cliPath: options.codexCliPath,
-      coordinatorAgent: options.coordinatorAgent,
-    }
-  },
-
   createProfile({
     root,
     directory,

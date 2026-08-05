@@ -1,14 +1,17 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import readline from 'node:readline'
 import { loadRuntimeEnvironment } from '../../shared/runtime-environment.mjs'
 import { backendDefinition } from '../../shared/backend-catalog.mjs'
 import {
   formatBackendSetup,
   inspectBackendSetups,
 } from '../../shared/backend-setup.mjs'
+import { installBackend } from '../../shared/backend-install.mjs'
 import { helpText, parseArguments } from './arguments.mjs'
 import {
   ensureRuntime,
+  isLocalGateway,
   readGatewayHealth,
   waitForGateway,
 } from './runtime.mjs'
@@ -62,6 +65,17 @@ function gatewaySummary(health) {
   return `${label} ${state}`
 }
 
+function gatewayServiceEnvironment(url) {
+  const target = new URL(url)
+  if (target.protocol !== 'http:' || !isLocalGateway(url)) {
+    throw new Error('Gateway 后台服务只支持本机 HTTP 地址')
+  }
+  return {
+    HOST: target.hostname.replace(/^\[(.*)\]$/, '$1'),
+    PORT: target.port || '80',
+  }
+}
+
 async function waitForGatewayStop(url, {
   inspectGateway = readGatewayHealth,
   timeoutMs = 15_000,
@@ -75,8 +89,19 @@ async function waitForGatewayStop(url, {
   throw new Error(`Gateway 停止超时：${url}`)
 }
 
+function askConfirmation(question, { stdin, stdout }) {
+  return new Promise(resolvePromise => {
+    const rl = readline.createInterface({ input: stdin, output: stdout })
+    rl.question(question, answer => {
+      rl.close()
+      resolvePromise(answer)
+    })
+  })
+}
+
 export async function main(argv, {
   env = process.env,
+  stdin = process.stdin,
   stdout = process.stdout,
   signalSource = process,
   prepareEnvironment = ({ readOnly = false } = {}) => loadRuntimeEnvironment({
@@ -88,6 +113,10 @@ export async function main(argv, {
     env,
     backend: options.backendSpecified ? options.backend : '',
   }),
+  runInstaller = (id, installerOptions) => installBackend(id, {
+    env,
+    ...installerOptions,
+  }),
   runMinimalTui = runMinimal,
   prepareRuntime = options => ensureRuntime(options, { root, env }),
   inspectGateway = url => readGatewayHealth(url),
@@ -98,8 +127,8 @@ export async function main(argv, {
   runWebUi = options => launchWebUi(options),
   acquireInstance = directory => acquireCliInstance(directory),
 } = {}) {
-  const setupCommand = argv[0] === 'setup'
-  const environment = prepareEnvironment({ readOnly: setupCommand })
+  const readOnlyCommand = ['setup', 'install'].includes(argv[0])
+  const environment = prepareEnvironment({ readOnly: readOnlyCommand })
   const options = parseArguments(argv, env)
   if (options.help) {
     stdout.write(`${helpText()}\n`)
@@ -119,14 +148,66 @@ export async function main(argv, {
       || (options.backendSpecified ? report.backends[0] : null)
     return selected && !selected.ready ? 1 : 0
   }
+  if (options.command === 'install') {
+    const label = backendDefinition(options.installTarget)?.label
+      || options.installTarget
+    const confirmStep = options.yes
+      ? async () => true
+      : async step => {
+          stdout.write(`即将执行官方安装脚本：\n  ${step.display}\n`)
+          const answer = await askConfirmation('确认执行？[y/N] ', {
+            stdin,
+            stdout,
+          })
+          return /^y(?:es)?$/i.test(answer.trim())
+        }
+    const result = await runInstaller(options.installTarget, {
+      confirmStep,
+      onProgress: event => {
+        if (event.phase === 'start') {
+          stdout.write(`${event.title}：${event.display}\n`)
+        } else if (event.phase === 'skip') {
+          stdout.write(`${event.title}：组件已就绪，跳过\n`)
+        } else if (event.phase === 'output') {
+          stdout.write(event.chunk)
+        }
+      },
+    })
+    if (!result.ok) {
+      stdout.write(
+        `✗ ${label} 安装未完成：${result.error?.message || '未知错误'}\n`,
+      )
+      return 1
+    }
+    stdout.write(
+      result.alreadyInstalled
+        ? `✓ ${label} 已安装\n`
+        : `✓ ${label} 安装完成\n`,
+    )
+    if (
+      result.loginHint
+      && result.authentication?.status !== 'authenticated'
+    ) {
+      stdout.write(`${result.loginHint}\n`)
+    }
+    return 0
+  }
 
   if (
     (options.command === 'gateway' && options.gatewayAction !== 'run')
     || options.command === 'status'
   ) {
+    const serviceEnvironment = [
+      'install',
+      'start',
+      'restart',
+    ].includes(options.gatewayAction)
+      ? gatewayServiceEnvironment(options.url)
+      : {}
     const serviceOptions = {
       configDirectory: environment.configDirectory,
       gatewayPath,
+      serviceEnvironment,
       serviceMetadata: {
         url: options.url,
       },

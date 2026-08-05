@@ -42,74 +42,241 @@
       </section>
 
       <form id="settings-form">
-        <section class="settings-card">
-          <div class="setting-row api-key-row">
-            <label for="dashscope-api-key">API Key</label>
-            <div class="field-with-action">
-              <input
-                id="dashscope-api-key"
-                type="password"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="sk-…"
-              />
-              <button id="get-api-key" class="link-button" type="button">
-                获取 API Key
-                <span aria-hidden="true">↗</span>
-              </button>
+        <nav class="settings-tabs" role="tablist" aria-label="设置分类">
+          <button
+            id="voice-tab"
+            class="settings-tab active"
+            type="button"
+            role="tab"
+            aria-selected="true"
+            aria-controls="voice-settings"
+            data-settings-tab="voice"
+          >语音前台</button>
+          <button
+            id="backend-tab"
+            class="settings-tab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="backend-settings"
+            data-settings-tab="backend"
+          >后台 Agent</button>
+          <button
+            id="app-tab"
+            class="settings-tab"
+            type="button"
+            role="tab"
+            aria-selected="false"
+            aria-controls="app-settings"
+            data-settings-tab="app"
+          >应用</button>
+        </nav>
+        <div class="settings-groups">
+          <section
+            id="voice-settings"
+            class="settings-group"
+            role="tabpanel"
+            aria-labelledby="voice-tab"
+            data-settings-panel="voice"
+          >
+            <div class="settings-group-heading provider-heading">
+              <fieldset
+                id="realtime-provider"
+                class="provider-segmented"
+                aria-label="选择实时语音引擎"
+              >
+                <legend>选择实时语音引擎</legend>
+                <label class="provider-segment">
+                  <input
+                    type="radio"
+                    name="realtime-provider"
+                    value="dashscope"
+                    checked
+                  />
+                  <span>Qwen Audio</span>
+                </label>
+                <label class="provider-segment">
+                  <input
+                    type="radio"
+                    name="realtime-provider"
+                    value="speech-to-speech"
+                  />
+                  <span>Speech-to-Speech</span>
+                </label>
+              </fieldset>
             </div>
-          </div>
+            <div class="settings-card">
+              <div class="provider-panel" data-provider-panel="dashscope">
+                <div class="setting-row api-key-row">
+                  <label for="dashscope-api-key">API Key</label>
+                  <div class="field-with-action">
+                    <input
+                      id="dashscope-api-key"
+                      type="password"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="sk-…"
+                    />
+                    <button id="get-api-key" class="link-button" type="button">
+                      获取 API Key
+                      <span aria-hidden="true">↗</span>
+                    </button>
+                  </div>
+                </div>
 
-          <div class="setting-row">
-            <label for="realtime-model">前台模型</label>
-            <select id="realtime-model">
-              <option value="qwen-audio-3.0-realtime-plus">
-                qwen-audio-3.0-realtime-plus
-              </option>
-              <option value="qwen-audio-3.0-realtime-flash">
-                qwen-audio-3.0-realtime-flash
-              </option>
-            </select>
-          </div>
+                <div class="setting-row">
+                  <label for="realtime-model">前台模型</label>
+                  <select id="realtime-model">
+                    <option value="qwen-audio-3.0-realtime-plus">
+                      qwen-audio-3.0-realtime-plus
+                    </option>
+                    <option value="qwen-audio-3.0-realtime-flash">
+                      qwen-audio-3.0-realtime-flash
+                    </option>
+                  </select>
+                </div>
+                <p class="provider-attribution">Qwen-Audio-Realtime · DashScope</p>
+              </div>
 
-          <div class="setting-row">
-            <label for="agent-protocol">后台 Agent</label>
-            <div class="field-with-action">
-              <!-- 选项由 settings.js 按本机检测结果动态渲染 -->
-              <select id="agent-protocol"></select>
-              <button
-                id="refresh-backends"
-                class="link-button"
-                type="button"
-                title="重新检测本机已安装的后台 Agent"
-              >刷新</button>
+              <div
+                class="provider-panel"
+                data-provider-panel="speech-to-speech"
+                hidden
+              >
+                <div class="setting-row service-url-row">
+                  <label for="speech-to-speech-url">服务地址</label>
+                  <input
+                    id="speech-to-speech-url"
+                    type="url"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="ws://127.0.0.1:8765/v1/realtime"
+                  />
+                </div>
+
+                <div class="setting-row">
+                  <label for="speech-to-speech-token">访问令牌</label>
+                  <input
+                    id="speech-to-speech-token"
+                    type="password"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="可选，用于 Bearer 认证"
+                  />
+                </div>
+                <p class="provider-attribution">
+                  Speech-to-Speech · Hugging Face · 需单独启动本地服务
+                </p>
+              </div>
             </div>
-          </div>
+          </section>
 
-          <div class="setting-row">
-            <label for="backend-model">后台模型</label>
-            <input
-              id="backend-model"
-              type="text"
-              autocomplete="off"
-              spellcheck="false"
-              placeholder="留空使用默认模型"
-            />
-          </div>
+          <section
+            id="backend-settings"
+            class="settings-group"
+            role="tabpanel"
+            aria-labelledby="backend-tab"
+            data-settings-panel="backend"
+            hidden
+          >
+            <div class="settings-card">
+              <div class="setting-row backend-list-row">
+                <span class="setting-label" id="backend-list-label">后台 Agent</span>
+                <div class="field-with-action backend-list-action">
+                  <!-- 行由 settings.js 按本机检测结果动态渲染 -->
+                  <div
+                    id="backend-list"
+                    role="radiogroup"
+                    aria-labelledby="backend-list-label"
+                  ></div>
+                  <button
+                    id="refresh-backends"
+                    class="link-button"
+                    type="button"
+                    title="重新检测本机已安装的后台 Agent"
+                  >刷新</button>
+                </div>
+              </div>
 
-          <div class="setting-row">
-            <label for="gateway-url">Gateway</label>
-            <input id="gateway-url" type="url" spellcheck="false" required />
-          </div>
+              <div class="setting-row">
+                <label for="backend-model">后台模型</label>
+                <input
+                  id="backend-model"
+                  type="text"
+                  autocomplete="off"
+                  spellcheck="false"
+                  placeholder="留空使用默认模型"
+                />
+              </div>
+            </div>
+          </section>
 
-          <div class="setting-row">
-            <label for="orb-style">外观</label>
-            <select id="orb-style">
-              <option value="fluid">流光声波球</option>
-              <option value="goo">液态渐变球</option>
-            </select>
-          </div>
-        </section>
+          <section
+            id="app-settings"
+            class="settings-group"
+            role="tabpanel"
+            aria-labelledby="app-tab"
+            data-settings-panel="app"
+            hidden
+          >
+            <div class="settings-card">
+              <div class="setting-row">
+                <label for="gateway-url">Gateway</label>
+                <input id="gateway-url" type="url" spellcheck="false" required />
+              </div>
+
+              <div class="setting-row">
+                <label for="orb-style">外观</label>
+                <select id="orb-style">
+                  <option value="fluid">流光声波球</option>
+                  <option value="goo">液态渐变球</option>
+                </select>
+              </div>
+
+              <div class="setting-row">
+                <label for="auto-hide-seconds">自动隐藏</label>
+                <select id="auto-hide-seconds">
+                  <option value="60">无交互 1 分钟</option>
+                  <option value="120">无交互 2 分钟</option>
+                  <option value="300">无交互 5 分钟</option>
+                  <option value="0">永不</option>
+                </select>
+              </div>
+
+              <div class="setting-row">
+                <label for="wake-shortcut">显示快捷键</label>
+                <div class="shortcut-field">
+                  <input
+                    id="wake-shortcut"
+                    type="hidden"
+                    value="CommandOrControl+Shift+Space"
+                  />
+                  <button
+                    id="record-wake-shortcut"
+                    class="shortcut-recorder"
+                    type="button"
+                    title="点击后按下新的快捷键"
+                  >⇧ ⌘ Space</button>
+                  <button
+                    id="reset-wake-shortcut"
+                    class="shortcut-reset"
+                    type="button"
+                    aria-label="恢复默认快捷键"
+                    title="恢复默认快捷键"
+                  >↺</button>
+                </div>
+              </div>
+
+              <div class="setting-row">
+                <span class="setting-label">日志</span>
+                <button id="open-logs" class="row-link" type="button">
+                  在 Finder 中显示
+                  <span aria-hidden="true">›</span>
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
 
         <footer>
           <p id="message" role="status"></p>

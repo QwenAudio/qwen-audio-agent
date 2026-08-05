@@ -81,7 +81,7 @@ const mdComponents = {
     )
   },
   pre: ({ children }) => <>{children}</>,
-  code: ({ node, className, children, ...rest }) => {
+  code: ({ node: _node, className, children, ...rest }) => {
     if (className?.startsWith('language-')) {
       return <pre className="code-block"><code className={className}>{children}</code></pre>
     }

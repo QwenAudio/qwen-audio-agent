@@ -1,6 +1,10 @@
 import { createConnection } from 'node:net'
 import { dirname, posix, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { normalizeBackendProtocol } from '../../shared/backend-catalog.mjs'
+import {
+  resolveRealtimeFrontendConfiguration,
+} from '../../shared/realtime-provider-catalog.mjs'
 import { validateAppUrl } from './security.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
@@ -77,6 +81,69 @@ export function portInUse(host, port, timeoutMs = 300) {
   })
 }
 
+export function desktopGatewayCompatibility(health, env = process.env) {
+  const expectedRealtime = resolveRealtimeFrontendConfiguration(env)
+  if (
+    health?.realtimeProvider !== expectedRealtime.provider
+    || health?.realtimeConfigurationSignature !== expectedRealtime.signature
+  ) {
+    return {
+      compatible: false,
+      code: 'realtime',
+      reason: '已有 Gateway 的语音前台配置与桌面设置不一致',
+    }
+  }
+  const expectedProtocol = normalizeBackendProtocol(env.AGENT_PROTOCOL)
+  const actualEnabled = health?.backend?.enabled !== false
+  const actualProtocol = normalizeBackendProtocol(
+    health?.backend?.kind || health?.backend?.protocol,
+  )
+  if (
+    actualEnabled !== Boolean(expectedProtocol)
+    || actualProtocol !== expectedProtocol
+  ) {
+    return {
+      compatible: false,
+      code: 'backend',
+      reason: '已有 Gateway 的后台 Agent 与桌面设置不一致',
+    }
+  }
+  if (expectedProtocol) {
+    const expectedPermission = String(
+      env.QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE || 'native',
+    ).toLowerCase()
+    const actualPermission = String(
+      health?.backend?.permissionMode || 'native',
+    ).toLowerCase()
+    if (expectedPermission !== actualPermission) {
+      return {
+        compatible: false,
+        code: 'permission',
+        reason: '已有 Gateway 的后台权限模式与桌面设置不一致',
+      }
+    }
+    const expectedModel = String(
+      env.QWEN_AUDIO_AGENT_BACKEND_MODEL || '',
+    ).trim().toLowerCase()
+    const actualModel = String(health?.backend?.model || '').trim().toLowerCase()
+    if (expectedModel && expectedModel !== actualModel) {
+      return {
+        compatible: false,
+        code: 'model',
+        reason: '已有 Gateway 的后台模型与桌面设置不一致',
+      }
+    }
+  }
+  return { compatible: true, code: '', reason: '' }
+}
+
+export function assertDesktopGatewayCompatibility(health, env = process.env) {
+  const result = desktopGatewayCompatibility(health, env)
+  if (!result.compatible) {
+    throw new Error(`${result.reason}，请先关闭现有 Gateway`)
+  }
+}
+
 export class EmbeddedGateway {
   constructor({
     entry = DEFAULT_GATEWAY_ENTRY,
@@ -88,6 +155,7 @@ export class EmbeddedGateway {
     probeImpl = portInUse,
     startupTimeoutMs = 15000,
     stopTimeoutMs = 2000,
+    logger = null,
   } = {}) {
     this.entry = entry
     this.host = host
@@ -98,6 +166,7 @@ export class EmbeddedGateway {
     this.probeImpl = probeImpl
     this.startupTimeoutMs = startupTimeoutMs
     this.stopTimeoutMs = stopTimeoutMs
+    this.logger = logger
     this.child = null
     this.childState = null
     this.origin = null
@@ -144,9 +213,17 @@ export class EmbeddedGateway {
     this.preferredPort = preferredPort
     const busy = await this.probeImpl(this.host, preferredPort)
     this.assertActiveStart(operation)
-    // PORT=0 tells the gateway to bind a random loopback port; the actual
-    // origin arrives with the ready message.
-    const port = busy ? 0 : preferredPort
+    if (busy) {
+      throw new Error(
+        `Gateway 端口已被其他程序占用：http://${this.host}:${preferredPort}`,
+      )
+    }
+    const port = preferredPort
+    this.logger?.info('gateway.starting', {
+      preferredPort,
+      selectedPort: port,
+      portReallocated: false,
+    })
     // Imported lazily so this module also loads outside Electron (tests).
     const fork = this.forkImpl || (await import('electron')).utilityProcess.fork
     this.assertActiveStart(operation)
@@ -170,6 +247,11 @@ export class EmbeddedGateway {
     this.child = child
     this.childState = childState
     child.once('exit', (code, signal) => {
+      this.logger?.[childState.planned ? 'info' : 'error']('gateway.exited', {
+        code,
+        signal,
+        planned: childState.planned,
+      })
       childState.exited = true
       if (this.childState === childState) {
         this.child = null
@@ -189,6 +271,7 @@ export class EmbeddedGateway {
       }
       childState.ready = true
       this.origin = origin
+      this.logger?.info('gateway.ready', { origin })
       return origin
     } catch (error) {
       if (this.childState === childState) {
@@ -270,6 +353,7 @@ export class EmbeddedGateway {
     this.origin = null
     if (this.stopPromise) return this.stopPromise
     if (!childState || childState.exited) return Promise.resolve()
+    this.logger?.info('gateway.stopping')
 
     const stopPromise = new Promise(resolvePromise => {
       const timer = setTimeout(() => {

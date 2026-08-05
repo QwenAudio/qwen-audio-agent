@@ -20,6 +20,18 @@
 
 ## News
 
+- **2026-08-05 · [v1.4.2](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.2)**
+  🔧 优化桌面端后台 Agent 的安装、登录与状态检测，完善长期记忆行为。
+- **2026-08-04 · [v1.4.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.1)**
+  🧰 新增后台 Agent 一键安装；桌面悬浮球支持自动隐藏与快捷键唤回。
+- **2026-08-04 · [v1.4.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.0)**
+  🧠 新增个性化规则与清单管理；桌面版支持自动休眠与快捷键唤醒。
+- **2026-08-03 · [v1.3.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.3.0)**
+  🎙️ 新增 [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) 前台接入，支持本地部署 VAD、STT、LLM 与 TTS 全链路。
+- **2026-08-01 · [v1.2.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.2.0)**
+  ⚡ 桌面版新增自动更新，优化启动速度与后台 Agent 检测。
+- **2026-07-31 · [v1.1.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.1.0)**
+  🤝 新增 Kimi Code CLI 后台，原生 ACP 接入。
 - **2026-07-30 · [v1.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.0.0)**
   🚀 正式版发布，推出内置 Gateway 的 macOS 桌面版。
 - **2026-07-28 · [v0.9.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v0.9.0)**
@@ -62,14 +74,14 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 | 后台 Agent | 接入方式 | 接入准备 | 推荐指数 |
 | --- | --- | --- | --- |
 | 无 | N/A | 仅前台模式，无需配置 | ★★★★★ |
-| OpenCode | 原生 ACP | 支持自动安装和百炼配置 | ★★★★★ |
-| OpenClaw | 内置 ACP 桥接 | 支持自动安装和百炼配置 | ★★★★★ |
-| Qoder | 原生 ACP | 用户自行安装和配置 | ★★★★★ |
-| Kimi Code | 原生 ACP | 用户自行安装和配置 | ★★★★★ |
-| Hermes | 原生 ACP | 用户自行安装和配置 | ★★★★☆ |
-| CodeBuddy | 原生 ACP | 用户自行安装和配置 | ★★★★☆ |
-| Codex | 外部 ACP 适配 | 用户自行安装和配置 | ★★★★☆ |
-| Claude Code | 外部 ACP 适配 | 用户自行安装和配置 | ★★★★☆ |
+| OpenCode | 原生 ACP | 支持一键安装和百炼配置 | ★★★★★ |
+| OpenClaw | 内置 ACP 桥接 | 支持一键安装和百炼配置 | ★★★★★ |
+| Qoder | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
+| Kimi Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
+| Hermes | 原生 ACP | macOS / Linux 支持一键安装，需用户配置 | ★★★★☆ |
+| CodeBuddy | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
+| Codex | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
+| Claude Code | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
 
 推荐指数综合反映当前集成完整度、兼容性和实际验证程度：五星表示已经过充分测试的
 推荐集成，四星表示正在开发或尚未完成同等范围验证。
@@ -77,7 +89,8 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
 ## 安装
 
-需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+ 和 DashScope API Key。
+需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+。使用默认的 DashScope
+实时语音前台时，还需要 DashScope API Key。
 仓库提供 `.nvmrc` 和 `.node-version`；使用 nvm 时可直接运行 `nvm use`。
 
 一键安装（推荐，从 npm 安装）：
@@ -164,6 +177,55 @@ qwenaudio tui
 qwenaudio webui
 ```
 
+### 使用 Hugging Face speech-to-speech 前台
+
+qwen-audio-agent 也可以连接用户自行运行的
+[Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)。
+它将 VAD、STT、LLM 和 TTS 组合成 OpenAI Realtime 兼容服务，整条语音链路既可以
+完全运行在本地，也可以按需替换其中的模型或服务。
+
+1. 安装 speech-to-speech：
+
+```bash
+pip install "speech-to-speech[paraformer]"
+```
+
+2. 启动全本地服务：
+
+Linux / Windows（NVIDIA GPU）：
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend transformers \
+  --device cuda
+```
+
+Apple Silicon：
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend mlx-lm \
+  --device mps
+```
+
+没有 NVIDIA GPU 时，也可以选择适合 CPU 的更小本地模型；还可以
+将 LLM 指向本机运行的 vLLM / llama.cpp。服务默认运行在
+`ws://127.0.0.1:8765/v1/realtime`。
+
+3. 在 qwen-audio-agent 的 `config.env` 中设置：
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
+SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+```
+
+然后正常启动 `qwenaudio`。在全本地模式下无需云端 API Key。Gateway 只连接 Realtime
+接口，不会修改 speech-to-speech 的 STT、LLM、TTS 或音色配置。
+如果 Realtime 接口位于需要 Bearer 认证的代理后方，可设置
+`SPEECH_TO_SPEECH_AUTH_TOKEN`。
+
 ### TUI 使用注意
 
 | 平台 | 默认模式 | 打断方式 |
@@ -180,9 +242,14 @@ qwenaudio tui --audio-mode full
 
 ## macOS 桌面版
 
-桌面版提供常驻桌面的语音悬浮球，并内置和自动管理 Gateway，无需事先启动服务。
-首次运行时，应用会创建配置文件，并引导你在设置页填写 DashScope API Key、选择
-后台 Agent（也可以使用仅前台模式）。
+桌面版提供常驻桌面的语音悬浮球，并内置 Gateway，无需事先启动服务。同一用户配置
+目录已有本地 Gateway 时会直接连接并以其当前运行配置为准，否则由桌面版自动启动和管理。首次运行时，
+应用会创建配置文件，并引导你在设置页填写 DashScope API Key、选择后台 Agent
+（也可以使用仅前台模式）。
+
+闲置后悬浮球会自动隐藏并断开实时语音；也可以直接说“可以退下了”让它隐藏。应用仍
+常驻菜单栏，可从菜单栏或显示快捷键重新唤出。默认快捷键为 `⇧⌘ Space`，也可以在
+应用设置中更换。
 
 桌面版支持流光声波球和液态渐变球两种外观。下面分别展示它们在思考 / 呼吸状态
 下的原始动态效果：
@@ -252,18 +319,8 @@ AGENT_PROTOCOL=opencode
 AGENT_PROTOCOL=qoder
 ```
 
-后台 Agent 需要用户自行安装并完成原生配置；qwen-audio-agent 会复用其
+已安装并完成原生配置的后台 Agent，qwen-audio-agent 会复用其
 用户级模型、工具、MCP、Skill 和认证。
-
-其中部分 Agent 通过外部 ACP 适配器接入，除本体外，还需要全局安装对应的适配器。
-以 Codex 为例：
-
-```bash
-npm install -g @agentclientprotocol/codex-acp
-```
-
-CLI 模式缺少适配器时会尝试通过 npx 按需启动；桌面版为保证启动可靠，仅使用已安装的
-组件，请提前安装。
 
 使用其他支持 ACP stdio 的 Agent：
 
@@ -291,6 +348,7 @@ QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full
 - `USER.md`：称呼、所在地、偏好和常用项目
 - `frontend-memory.json`：用户明确要求长期记住的信息
 - `tasks.json`：任务结果和待通知状态
+- `logs/`：经过凭据脱敏并自动轮转的本地运行日志
 
 这些文件只保存在本机，不会写入源码仓库。可以直接编辑 `USER.md`，也可以在对话中
 要求助理记住或忘记信息。
@@ -298,7 +356,8 @@ QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full
 ## 使用注意事项
 
 - 不要在用户档案或对话中保存密码、API Key、验证码和访问令牌。
-- 麦克风音频与实时对话会发送到配置的 Qwen Audio Realtime 服务。
+- 麦克风音频与实时对话会发送到配置的 Realtime 前台服务（DashScope 或
+  speech-to-speech）。
 - 后台任务可能调用所选 Agent 的模型、工具、MCP 和外部服务。
 - `full` 权限允许后台执行命令和修改文件，只应在可信项目中使用。
 - Gateway 默认仅供本机访问；不要直接暴露到局域网或公网。

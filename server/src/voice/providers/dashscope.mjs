@@ -1,7 +1,7 @@
 import { config, realtimeUrl } from '../../core/config.mjs'
 import {
-  TOOLS,
   buildFrontendInstructions,
+  frontendTools,
   resultResponseInstructions,
   speakResponseInstructions,
   permissionResponseInstructions,
@@ -13,6 +13,14 @@ function classifyError(message) {
   if (isRecoverableRealtimeInactivityError(message)) return 'inactivity'
   if (/user is speaking/i.test(message)) return 'input_busy'
   if (/no active response/i.test(message)) return 'no_active_response'
+  if (
+    /invalid[_ -]?api[_ -]?key|incorrect api key|authentication failed|unauthorized|unexpected server response: (?:401|403)/i
+      .test(message)
+    || /\barrearage\b|account is not in good standing/i.test(message)
+    || /allocationquota\.freetieronly|free allocated quota exceeded|free tier .* exhausted/i
+      .test(message)
+    || /model(?:\.|_)?accessdenied|model[_ -]?not[_ -]?found/i.test(message)
+  ) return 'fatal'
   return 'other'
 }
 
@@ -25,19 +33,19 @@ export const dashscopeProvider = {
 
   model: () => config.audioModel,
   voice: () => config.audioVoice,
-  apiKey: () => config.dashscopeApiKey,
-  missingKeyMessage: '请先配置 DASHSCOPE_API_KEY',
+  isConfigured: () => Boolean(config.dashscopeApiKey),
+  missingConfigurationMessage: '请先配置 DASHSCOPE_API_KEY',
   connectTimeoutMessage: '连接 Qwen Audio Realtime 超时',
 
   url: () => realtimeUrl(config.audioRealtimeBaseUrl, config.audioModel),
-  headers: apiKey => ({ Authorization: `Bearer ${apiKey}` }),
+  headers: () => ({ Authorization: `Bearer ${config.dashscopeApiKey}` }),
   classifyError,
 
   buildSession: ({ configured, agentContext }) => {
     const textOnly = agentContext?.textOnly === true
     const session = {
       instructions: buildFrontendInstructions(agentContext),
-      tools: TOOLS,
+      tools: frontendTools(agentContext),
     }
     if (!configured) {
       session.modalities = textOnly ? ['text'] : ['text', 'audio']

@@ -1,9 +1,13 @@
 import WebSocket from 'ws'
-import { randomUUID } from 'crypto'
+import { randomUUID } from 'node:crypto'
 import {
   resolveRealtimeProvider,
   validateRealtimeProvider,
 } from './providers/registry.mjs'
+import {
+  isResponseActivityEvent,
+  realtimeResponseId,
+} from './response-lifecycle.mjs'
 
 // Re-export provider-agnostic tools and instructions so existing callers
 // (tests, tool-call-handler, bootstrap) continue to work without changes.
@@ -14,8 +18,11 @@ export {
   GET_AGENT_TASK_STATUS_TOOL_NAME,
   GET_CURRENT_TIME_TOOL_NAME,
   USER_MEMORY_TOOL_NAME,
+  NOTES_TOOL_NAME,
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
+  ENTER_SLEEP_TOOL_NAME,
   TOOLS,
+  frontendTools,
   buildFrontendInstructions,
 } from './frontend-tools.mjs'
 
@@ -23,17 +30,38 @@ export {
 export {
   REALTIME_PROVIDERS,
   resolveRealtimeProvider,
+  listRealtimeProviders,
   describeActiveRealtime,
 } from './providers/registry.mjs'
-
-function responseId(event) {
-  return event.response_id || event.response?.id || ''
-}
 
 function normalizedEvents(value) {
   if (!value) return []
   return Array.isArray(value) ? value.filter(Boolean) : [value]
 }
+
+export function realtimeEventErrorMessage(event, fallback = '实时语音服务错误') {
+  const details = [
+    event?.error?.code,
+    event?.error?.type,
+    event?.error?.message,
+    event?.message,
+  ].map(value => String(value || '').trim()).filter(Boolean)
+  return [...new Set(details)].join(': ') || fallback
+}
+
+// Behavioural capabilities of a provider's Realtime implementation. Every
+// default describes the fully specification-compliant behaviour, so providers
+// only declare the guarantees they do NOT uphold and the frontend compensates
+// without ever branching on a provider name.
+const DEFAULT_CAPABILITIES = Object.freeze({
+  // Acknowledges session.update with session.updated.
+  acknowledgesSessionUpdate: true,
+  // Accepts concurrent response.create requests (queues instead of refusing).
+  singleResponseSlot: false,
+  // Echoes response metadata so client-created responses can be correlated
+  // without confusing them with automatic server-side responses.
+  responseMetadataCorrelation: false,
+})
 
 export class RealtimeFrontend {
   constructor({
@@ -42,7 +70,7 @@ export class RealtimeFrontend {
     onError,
     onClose,
     agentContext = {},
-    responseStartTimeoutMs = 30000,
+    responseStartTimeoutMs,
     responseCompletionTimeoutMs = 120000,
   } = {}) {
     this.provider = validateRealtimeProvider(provider)
@@ -50,6 +78,7 @@ export class RealtimeFrontend {
     if (!this.protocol) {
       throw new Error(`Realtime Provider ${provider.key || provider.label} 缺少 protocol`)
     }
+    this.capabilities = { ...DEFAULT_CAPABILITIES, ...provider.capabilities }
     this.onEvent = onEvent
     this.onError = onError
     this.onClose = onClose
@@ -65,15 +94,18 @@ export class RealtimeFrontend {
     this.outputQueue = Promise.resolve()
     this.responseQueueGeneration = 0
     this.responseStartTimeoutMs = responseStartTimeoutMs
+      ?? this.provider.responseStartTimeoutMs
+      ?? 30000
     this.responseCompletionTimeoutMs = responseCompletionTimeoutMs
   }
 
   connect() {
-    const apiKey = this.provider.apiKey()
-    if (!apiKey) return Promise.reject(new Error(this.provider.missingKeyMessage))
+    if (!this.provider.isConfigured()) {
+      return Promise.reject(new Error(this.provider.missingConfigurationMessage))
+    }
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.provider.url(), {
-        headers: this.provider.headers(apiKey),
+        headers: this.provider.headers(),
       })
       this.ws = ws
       let settled = false
@@ -125,7 +157,19 @@ export class RealtimeFrontend {
       this.protocol.normalizeIncoming(providerEvent),
     )
     for (const event of events) {
-      if (event.type === 'session.created') this.updateSession()
+      if (event.type === 'error' && !this.ready) {
+        const error = new Error(realtimeEventErrorMessage(event))
+        error.realtimeEvent = true
+        throw error
+      }
+      if (event.type === 'session.created') {
+        this.updateSession()
+        if (!this.capabilities.acknowledgesSessionUpdate) {
+          this.ready = true
+          this.sessionConfigured = true
+          onSessionReady?.()
+        }
+      }
       if (event.type === 'session.updated') {
         this.ready = true
         this.sessionConfigured = true
@@ -192,7 +236,9 @@ export class RealtimeFrontend {
   }
 
   createConversationItem(item) {
-    const id = item.id || `item_${randomUUID().replaceAll('-', '')}`
+    // Id namespaces are dialect-specific (the GA dialect derives them from the
+    // item type), so the protocol adapter mints the id.
+    const id = item.id || this.protocol.conversationItemId(item)
     return new Promise((resolve, reject) => {
       const waiter = {
         id,
@@ -330,6 +376,7 @@ export class RealtimeFrontend {
       const pending = {
         origin,
         context,
+        requestId: randomUUID(),
         resolve: resolveOutcome,
         settled: false,
         timer: null,
@@ -403,9 +450,23 @@ export class RealtimeFrontend {
       waiter.reject(error)
       return
     }
+    if (isResponseActivityEvent(event)) {
+      this.activeResponses.add(realtimeResponseId(event))
+    }
     if (event.type === 'response.created') {
-      const id = responseId(event)
-      const pending = this.pendingResponses.shift()
+      const id = realtimeResponseId(event)
+      let pending
+      if (this.capabilities.responseMetadataCorrelation) {
+        const requestId = this.protocol.responseCorrelationId(event)
+        const index = requestId
+          ? this.pendingResponses.findIndex(item => item.requestId === requestId)
+          : -1
+        if (index >= 0) {
+          pending = this.pendingResponses.splice(index, 1)[0]
+        }
+      } else {
+        pending = this.pendingResponses.shift()
+      }
       clearTimeout(pending?.timer)
       event.__voiceOrigin = pending?.origin || 'model'
       event.__voiceContext = pending?.context || {}
@@ -436,7 +497,7 @@ export class RealtimeFrontend {
       event.type === 'response.done'
       || event.type === 'error'
     ) {
-      let id = responseId(event)
+      let id = realtimeResponseId(event)
       let pending = this.responseWaiters.get(id)
       if (
         event.type === 'error'
@@ -451,6 +512,34 @@ export class RealtimeFrontend {
         const first = this.responseWaiters.entries().next().value
         id = first[0]
         pending = first[1]
+      }
+      // A single-slot provider refuses a response.create that races a
+      // server-side turn. Retry the refused payload once the slot frees up
+      // instead of dropping the injection on the floor.
+      const slotBusy = event.type === 'error'
+        && this.capabilities.singleResponseSlot
+        && this.provider.classifyError(
+          event.error?.message || event.message || '',
+        ) === 'response_slot_busy'
+      if (
+        slotBusy
+        && pending
+        && pending.responsePayload
+        && (pending.busyRetries || 0) < 3
+      ) {
+        pending.busyRetries = (pending.busyRetries || 0) + 1
+        // Marks the event as internally handled: the gateway must not surface
+        // a transparently retried refusal to the user.
+        event.__voiceRetried = true
+        clearTimeout(pending.timer)
+        // The correlated id belongs to the server's own response (the refusal
+        // proves ours never started), so unbind the mismatched mapping. The
+        // real response still retires the id through activeResponses.
+        if (id && this.responseWaiters.get(id) === pending) {
+          this.responseWaiters.delete(id)
+        }
+        this.retryRefusedResponse(pending)
+        return
       }
       event.__voiceOrigin = pending?.origin || event.__voiceOrigin
       event.__voiceContext = pending?.context || event.__voiceContext || {}
@@ -473,6 +562,48 @@ export class RealtimeFrontend {
     pending.settled = true
     clearTimeout(pending.timer)
     pending.resolve(outcome)
+  }
+
+  // Re-issues a response.create refused by an occupied single response slot.
+  // Two constraints shape this implementation:
+  // 1. It must NOT be scheduled through outputQueue: the refused response's
+  //    outcome promise is what the queue tail awaits, so queueing the retry
+  //    behind it deadlocks the whole pipeline.
+  // 2. A known active response provides the real release signal. A bounded
+  //    delay is used only when the busy error arrives before response.created,
+  //    so the server-side response is not visible yet.
+  retryRefusedResponse(pending) {
+    const generation = this.responseQueueGeneration
+    const delays = [1200, 2600, 5000]
+    const delay = delays[Math.min(pending.busyRetries - 1, delays.length - 1)]
+    const attempt = async () => {
+      if (this.activeResponses.size) {
+        await this.whenIdle()
+      } else {
+        await new Promise(resolve => setTimeout(resolve, delay))
+        await this.whenIdle()
+      }
+      if (!this.ready || generation !== this.responseQueueGeneration) {
+        this.settlePending(pending, { cancelled: true, phase: 'start' })
+        return
+      }
+      if (this.pendingResponses.length) {
+        this.settlePending(pending, { failed: true, phase: 'correlation' })
+        return
+      }
+      this.pendingResponses.push(pending)
+      this.send(pending.responsePayload)
+      if (!pending.settled) {
+        pending.timer = setTimeout(() => {
+          const index = this.pendingResponses.indexOf(pending)
+          if (index >= 0) this.pendingResponses.splice(index, 1)
+          this.settlePending(pending, { timedOut: true, phase: 'start' })
+        }, this.responseStartTimeoutMs)
+      }
+    }
+    attempt().catch(() => {
+      this.settlePending(pending, { failed: true, phase: 'start' })
+    })
   }
 
   whenIdle() {
@@ -513,11 +644,29 @@ export class RealtimeFrontend {
 
   send(payload) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(this.protocol.encodeOutgoing(payload)))
+      let outgoing = payload
+      if (payload.type === 'response.create' && this.pendingResponses.length) {
+        const pending = this.pendingResponses[this.pendingResponses.length - 1]
+        outgoing = this.protocol.correlateResponseCreate(
+          payload,
+          pending.requestId,
+        )
+        if (this.capabilities.singleResponseSlot) {
+          // Remember the exact payload on the pending marker so a refused
+          // response can be replayed after the occupied slot becomes idle.
+          pending.responsePayload = outgoing
+        }
+      }
+      const body = this.protocol.encodeOutgoing(outgoing)
+      this.ws.send(JSON.stringify(body))
     }
   }
 }
 
 export function createRealtimeFrontend(options = {}) {
-  return new RealtimeFrontend({ ...options, provider: resolveRealtimeProvider() })
+  const { providerName, ...rest } = options
+  return new RealtimeFrontend({
+    ...rest,
+    provider: resolveRealtimeProvider(providerName),
+  })
 }

@@ -18,6 +18,8 @@ publish:
 
 files:
   - desktop/src/**/*
+  - desktop/build/icon.png
+  - desktop/build/trayTemplate*.png
   - server/src/**/*
   - shared/**/*
   - web/dist/**/*
@@ -48,6 +50,7 @@ mac:
     NSMicrophoneUsageDescription: Qwen Audio Agent 需要使用麦克风进行实时语音对话。
   target:
     - dmg
+    - zip
   artifactName: qwen-audio-agent-${version}-mac-${arch}.${ext}
 
 dmg:

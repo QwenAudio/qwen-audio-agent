@@ -1,8 +1,14 @@
 :root {
   color-scheme: light;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  color: #1d252b;
-  background: #f3f5f6;
+  color: #1d1d1f;
+  background: #f5f5f7;
+  --mac-blue: #007aff;
+  --mac-blue-hover: #0875df;
+  --mac-border: #d2d2d7;
+  --mac-divider: #e5e5ea;
+  --mac-secondary: #6e6e73;
+  --mac-tertiary: #8e8e93;
 }
 
 * { box-sizing: border-box; }
@@ -10,22 +16,20 @@
 body {
   margin: 0;
   min-width: 440px;
-  background:
-    radial-gradient(circle at 12% -8%, #dff3f2 0, transparent 34%),
-    #f3f5f6;
+  background: #f5f5f7;
 }
 
 main {
   width: min(100%, 560px);
   margin: 0 auto;
-  padding: 32px 34px 28px;
+  padding: 26px 34px 22px;
 }
 
 header {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .app-meta {
@@ -35,7 +39,7 @@ header {
   margin-left: auto;
   /* 与下方卡片内容右缘对齐（卡片 padding 19px），避免文本油墨超出卡片边框的视觉突起 */
   margin-right: 19px;
-  color: #9aa3a9;
+  color: var(--mac-tertiary);
   font-size: 11px;
 }
 
@@ -51,16 +55,16 @@ header {
   width: 36px;
   height: 36px;
   overflow: hidden;
-  border-radius: 12px;
-  background: linear-gradient(145deg, #183a43, #315f68);
-  box-shadow: 0 7px 18px #193c4630;
+  border-radius: 9px;
+  background: linear-gradient(145deg, #178cff, #0064d8);
+  box-shadow: 0 3px 8px #007aff38;
 }
 
 .brand-mark::before,
 .brand-mark::after,
 .brand-mark span {
   position: absolute;
-  border: 2px solid #b6f1de;
+  border: 2px solid #fff;
   border-radius: 999px;
   content: "";
   transform: rotate(-38deg);
@@ -78,36 +82,35 @@ header {
 
 .brand-mark span {
   inset: 15px 9px;
-  border-color: #f6ce7d;
+  border-color: #d8edff;
   border-width: 1.5px;
 }
 
 h1 {
   margin: 0;
   font-size: 24px;
-  font-weight: 680;
-  letter-spacing: -.025em;
+  font-weight: 700;
+  letter-spacing: -.03em;
 }
 
 section {
-  border: 1px solid #dce2e4;
-  border-radius: 15px;
-  background: #ffffffd9;
-  box-shadow: 0 8px 28px #26363e0b;
-  backdrop-filter: blur(14px);
+  border: 1px solid var(--mac-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px #0000000d;
 }
 
 .runtime-status {
   padding: 17px 19px 16px;
-  margin-bottom: 15px;
+  margin-bottom: 16px;
 }
 
 h2 {
   margin: 0 0 14px;
-  color: #657078;
+  color: var(--mac-secondary);
   font-size: 12px;
   font-weight: 650;
-  letter-spacing: .04em;
+  letter-spacing: .01em;
 }
 
 .runtime-status dl {
@@ -124,7 +127,7 @@ h2 {
 }
 
 .runtime-status dt {
-  color: #899198;
+  color: var(--mac-tertiary);
   font-size: 11px;
 }
 
@@ -132,7 +135,7 @@ h2 {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  color: #30383e;
+  color: #2c2c2e;
   font-size: 12px;
   font-weight: 560;
   overflow-wrap: anywhere;
@@ -142,7 +145,7 @@ h2 {
   flex: none;
   padding: 0;
   border: 0;
-  color: #4a7f84;
+  color: var(--mac-blue);
   background: none;
   font-size: 11px;
   font-weight: 600;
@@ -176,17 +179,97 @@ h2 {
 }
 
 .connection-status.connected::before {
-  background: #3fa076;
-  box-shadow: 0 0 0 3px #3fa07618;
+  background: #34c759;
+  box-shadow: 0 0 0 3px #34c7591a;
 }
 
 .connection-status.disconnected::before {
-  background: #d16d6d;
-  box-shadow: 0 0 0 3px #d16d6d16;
+  background: #ff3b30;
+  box-shadow: 0 0 0 3px #ff3b3017;
+}
+
+.connection-status.unavailable::before {
+  background: #9ca5aa;
+  box-shadow: 0 0 0 3px #7d898f14;
+}
+
+.settings-groups {
+  display: grid;
+  gap: 19px;
+}
+
+.settings-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  margin: 0 0 14px;
+  border: 1px solid #c8c8cd;
+  border-radius: 8px;
+  background: #e3e3e8;
+  box-shadow: inset 0 1px 2px #0000000d;
+}
+
+.settings-tab {
+  height: 31px;
+  border-radius: 6px;
+  color: #55555a;
+  background: transparent;
+  font-size: 11.5px;
+  font-weight: 620;
+  transition: background .16s ease, box-shadow .16s ease, color .16s ease;
+}
+
+.settings-tab:hover { color: #1d1d1f; }
+
+.settings-tab.active {
+  color: #1d1d1f;
+  background: #fff;
+  box-shadow: 0 1px 3px #00000026, inset 0 0 0 1px #ffffff;
+}
+
+.settings-tab:focus-visible {
+  outline: 3px solid #007aff42;
+  outline-offset: 1px;
+}
+
+.settings-group {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.settings-group-heading {
+  display: flex;
+  min-height: 39px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 0 4px 7px;
+}
+
+.provider-heading {
+  min-height: 35px;
+  justify-content: flex-end;
+}
+
+.settings-group-heading h2 {
+  margin: 0;
+  color: #354047;
+  font-size: 13.5px;
+  font-weight: 690;
+  letter-spacing: .005em;
 }
 
 .settings-card {
   padding: 0 19px;
+  overflow: hidden;
+  border: 1px solid var(--mac-border);
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 1px 2px #0000000d;
 }
 
 .setting-row {
@@ -194,7 +277,7 @@ h2 {
   grid-template-columns: 112px minmax(0, 1fr);
   align-items: center;
   min-height: 58px;
-  border-bottom: 1px solid #e8ecee;
+  border-bottom: 1px solid var(--mac-divider);
 }
 
 .setting-row:last-child {
@@ -202,9 +285,101 @@ h2 {
 }
 
 .setting-row > label {
-  color: #3e484f;
+  color: #2c2c2e;
   font-size: 13px;
   font-weight: 580;
+}
+
+.provider-panel {
+  display: contents;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.provider-segmented {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #c8c8cd;
+  border-radius: 8px;
+  margin: 0;
+  background: #e3e3e8;
+  box-shadow: inset 0 1px 2px #0000000d;
+}
+
+.provider-segmented legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.provider-segment {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.provider-segment input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.provider-segment span {
+  display: flex;
+  height: 27px;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  overflow: hidden;
+  border-radius: 6px;
+  color: #55555a;
+  background: transparent;
+  font-size: 10.5px;
+  font-weight: 590;
+  letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    background .16s ease,
+    box-shadow .16s ease,
+    color .16s ease;
+}
+
+.provider-segment:hover span {
+  color: #1d1d1f;
+}
+
+.provider-segment input:focus-visible + span {
+  outline: 3px solid #007aff42;
+  outline-offset: 1px;
+}
+
+.provider-segment input:checked + span {
+  color: #1d1d1f;
+  background: #fff;
+  box-shadow: 0 1px 3px #00000026, inset 0 0 0 1px #ffffff;
+}
+
+.provider-attribution {
+  margin: 0;
+  padding: 8px 0 10px 112px;
+  color: var(--mac-tertiary);
+  font-size: 9.5px;
+  line-height: 1.3;
+  letter-spacing: .01em;
 }
 
 input,
@@ -212,11 +387,11 @@ select {
   width: 100%;
   height: 38px;
   padding: 0 11px;
-  border: 1px solid #d5dcdf;
-  border-radius: 9px;
+  border: 1px solid #c7c7cc;
+  border-radius: 7px;
   outline: none;
-  color: #222b31;
-  background: #f8f9f9;
+  color: #1d1d1f;
+  background: #fff;
   font: inherit;
   font-size: 13px;
   transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
@@ -224,15 +399,80 @@ select {
 
 input:hover,
 select:hover {
-  border-color: #c3cdd1;
-  background: #fff;
+  border-color: #aeb0b5;
 }
 
 input:focus,
 select:focus {
-  border-color: #5d929a;
+  border-color: var(--mac-blue);
   background: #fff;
-  box-shadow: 0 0 0 3px #5d929a1c;
+  box-shadow: 0 0 0 3px #007aff2b;
+}
+
+.setting-label {
+  color: #2c2c2e;
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.shortcut-field {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  min-width: 0;
+}
+
+.shortcut-recorder {
+  min-width: 132px;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid #c7c7cc;
+  border-radius: 7px;
+  color: #3a3a3c;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .015em;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.shortcut-recorder:hover,
+.shortcut-recorder:focus-visible {
+  border-color: #aeb0b5;
+  outline: none;
+  background: #fff;
+}
+
+.shortcut-recorder.recording {
+  border-color: var(--mac-blue);
+  color: #0066d6;
+  background: #f4f9ff;
+  box-shadow: 0 0 0 3px #007aff2b;
+}
+
+.shortcut-recorder.invalid {
+  border-color: #d3a0a6;
+  color: #95535d;
+  background: #fff8f8;
+}
+
+.shortcut-reset {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  color: #9aa4a9;
+  background: transparent;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.shortcut-reset:hover,
+.shortcut-reset:focus-visible {
+  color: #3a3a3c;
+  outline: none;
+  background: #edf1f2;
 }
 
 .field-with-action {
@@ -240,6 +480,161 @@ select:focus {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
+}
+
+/* 后台 Agent 列表：每行 = 单选钮 + 名称 + 状态徽标 + 安装按钮 */
+.backend-list-row {
+  align-items: start;
+  padding: 13px 0;
+}
+
+.backend-list-row > .setting-label {
+  padding-top: 9px;
+}
+
+.backend-list-action {
+  align-items: start;
+}
+
+.backend-list-action > .link-button {
+  height: 32px;
+}
+
+.backend-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #c7c7cc;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.backend-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) 72px 44px;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 3px 8px 3px 11px;
+  border-bottom: 1px solid var(--mac-divider);
+  cursor: pointer;
+  transition: background .15s ease;
+}
+
+.backend-row:last-child {
+  border-bottom: 0;
+}
+
+.backend-row:hover {
+  background: #f5f5f7;
+}
+
+.backend-row.selected {
+  background: #eef6ff;
+}
+
+.backend-row.unavailable .backend-name {
+  color: #8a9499;
+}
+
+.backend-row input[type="radio"] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  accent-color: var(--mac-blue);
+  cursor: pointer;
+}
+
+.backend-row input[type="radio"]:disabled {
+  cursor: default;
+}
+
+.backend-name {
+  min-width: 0;
+  overflow: hidden;
+  color: #2c2c2e;
+  font-size: 12.5px;
+  font-weight: 560;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backend-status {
+  width: 72px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: #8a6d35;
+  background: #faf3e3;
+  font-size: 10.5px;
+  font-weight: 620;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.backend-status.ready {
+  color: #248a3d;
+  background: #eaf8ee;
+}
+
+.backend-status.installed {
+  color: #315f91;
+  background: #edf5ff;
+}
+
+.backend-status.attention {
+  color: #8a6d35;
+  background: #faf3e3;
+}
+
+.backend-progress {
+  grid-column: 3 / -1;
+  justify-self: end;
+  max-width: 190px;
+  overflow: hidden;
+  color: #566c82;
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.backend-install,
+.backend-authenticate {
+  width: 44px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid #b9d8ff;
+  border-radius: 6px;
+  color: #0066d6;
+  background: #f2f7ff;
+  font-size: 11px;
+  font-weight: 640;
+  white-space: nowrap;
+  transition: border-color .15s ease;
+}
+
+.backend-install:hover:not(:disabled),
+.backend-authenticate:hover:not(:disabled) {
+  border-color: #77b4ff;
+  background: #e9f3ff;
+}
+
+.backend-install:disabled,
+.backend-authenticate:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.message-link {
+  padding: 0;
+  border: 0;
+  color: var(--mac-blue);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 620;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 button {
@@ -255,10 +650,10 @@ button {
   gap: 5px;
   height: 38px;
   padding: 0 13px;
-  border: 1px solid #a9c8c7;
-  border-radius: 9px;
-  color: #285e61;
-  background: linear-gradient(180deg, #f5ffff, #eaf6f4);
+  border: 1px solid #c7c7cc;
+  border-radius: 7px;
+  color: #1d1d1f;
+  background: linear-gradient(180deg, #fff, #f3f3f5);
   font-size: 12px;
   font-weight: 640;
   white-space: nowrap;
@@ -271,9 +666,9 @@ button {
 }
 
 .link-button:hover {
-  border-color: #7fb0ad;
-  box-shadow: 0 4px 12px #356f7020;
-  transform: translateY(-1px);
+  border-color: #aeb0b5;
+  background: #fff;
+  box-shadow: 0 1px 3px #00000017;
 }
 
 .link-button:disabled {
@@ -283,12 +678,49 @@ button {
   transform: none;
 }
 
+.row-link {
+  display: inline-flex;
+  align-items: center;
+  justify-self: end;
+  gap: 6px;
+  padding: 7px 2px 7px 10px;
+  color: var(--mac-blue);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 560;
+  white-space: nowrap;
+  transition: color .15s ease;
+}
+
+.row-link span {
+  color: #9aa5a9;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  transition: color .15s ease, transform .15s ease;
+}
+
+.row-link:hover {
+  color: var(--mac-blue-hover);
+}
+
+.row-link:hover span {
+  color: var(--mac-blue-hover);
+  transform: translateX(1px);
+}
+
+.row-link:focus-visible {
+  border-radius: 6px;
+  outline: 3px solid #007aff42;
+  outline-offset: 2px;
+}
+
 footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 16px;
-  min-height: 62px;
+  min-height: 68px;
 }
 
 #message {
@@ -300,22 +732,30 @@ footer {
 
 #message.error { color: #b84d5a; }
 #message.notice { color: #8a6d35; }
-#message.success { color: #397e68; }
+#message.success { color: #248a3d; }
+
+.settings-tab:active,
+.link-button:active,
+.backend-install:active:not(:disabled),
+.backend-authenticate:active:not(:disabled),
+.apply-button:active:not(:disabled) {
+  transform: scale(.985);
+}
 
 .apply-button {
   min-width: 92px;
   height: 38px;
-  border-radius: 10px;
+  border-radius: 8px;
   color: #fff;
-  background: linear-gradient(135deg, #315f68, #244b56);
-  box-shadow: 0 6px 16px #244b5625;
+  background: var(--mac-blue);
+  box-shadow: 0 1px 2px #0057b832;
   font-weight: 650;
   transition: box-shadow .15s ease, transform .15s ease;
 }
 
 .apply-button:hover:not(:disabled) {
-  box-shadow: 0 8px 20px #244b5638;
-  transform: translateY(-1px);
+  background: var(--mac-blue-hover);
+  box-shadow: 0 1px 3px #0057b83d;
 }
 
 .apply-button:disabled {

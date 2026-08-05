@@ -230,15 +230,34 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 .desktop-orb-stage.speaking .fluid {
   animation: desktop-fluid-speaking .52s ease-in-out infinite alternate;
 }
+.desktop-orb-stage.connecting .fluid-orb {
+  --orb-halo: #87919630;
+  --orb-ring: #a8b0b45c;
+}
+.desktop-orb-stage.connecting .fluid {
+  filter: grayscale(.62) saturate(.45) brightness(.9);
+  animation-duration: 8s;
+}
+.desktop-orb-stage.connecting .fluid-orb::before {
+  animation: desktop-orb-error 2.8s ease-in-out infinite;
+}
 .desktop-orb-stage.error .fluid-orb {
-  --orb-halo: #b96e7952;
-  --orb-ring: #dca0a992;
+  --orb-halo: #727d8233;
+  --orb-ring: #929da267;
 }
 .desktop-orb-stage.error .fluid {
-  filter: grayscale(.35) sepia(.42) hue-rotate(305deg) saturate(.72) brightness(.76);
+  filter: grayscale(.92) saturate(.18) brightness(.72);
 }
 .desktop-orb-stage.error .fluid-orb::before {
-  animation: desktop-orb-error 1.55s ease-in-out infinite;
+  animation: desktop-orb-error 2.2s ease-in-out infinite;
+}
+.desktop-orb-stage.waking .fluid-orb {
+  --orb-halo: #7f9be04d;
+  --orb-ring: #a7bdf071;
+}
+.desktop-orb-stage.waking .fluid {
+  filter: grayscale(.55) saturate(.48) brightness(.84);
+  animation-duration: 3s;
 }
 .goo {
   position: relative; width: 176px; height: 176px; overflow: hidden;
@@ -261,6 +280,23 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 .desktop-orb-stage.input-muted:not(.speaking) .goo,
 .desktop-orb-stage.input-muted:not(.speaking) .goo .fill {
   animation-play-state: paused;
+}
+.desktop-orb-stage.connecting .goo {
+  box-shadow: 0 12px 30px #6f7b8038, 0 0 22px #7f898e3d;
+  filter: blur(1.2px) grayscale(.66) saturate(.4) brightness(.86);
+  animation-duration: 13s;
+}
+.desktop-orb-stage.error .goo {
+  box-shadow: 0 10px 26px #5f696e38, 0 0 18px #737e8335;
+  filter: blur(1.2px) grayscale(.95) saturate(.12) brightness(.68);
+}
+.desktop-orb-stage.error .goo,
+.desktop-orb-stage.error .goo .fill {
+  animation-play-state: paused;
+}
+.desktop-orb-stage.waking .goo {
+  filter: blur(1.2px) grayscale(.58) saturate(.45) brightness(.82);
+  animation-duration: 4s;
 }
 
 .desktop-orb-stage {
@@ -719,4 +755,19 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
     animation: none;
     transition: none;
   }
+}
+
+/* frontend provider selector */
+header select.frontend-provider {
+  background: transparent;
+  color: inherit;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+header select.frontend-provider option {
+  color: #111;
 }

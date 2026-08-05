@@ -177,6 +177,7 @@ node --check shared/runtime-environment.mjs
 node --check cli/src/runtime.mjs
 git diff --check
 npm run audit:release
+npm run lint
 npm test
 npm run build
 node scripts/verify-package.mjs

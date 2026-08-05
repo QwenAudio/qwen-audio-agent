@@ -9,7 +9,7 @@ import {
   isAbsolute,
   resolve,
 } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import {
   backendDefinition,
   backendNames,
@@ -158,6 +158,38 @@ function defaultReadVersion(command) {
   })
   if (result.status !== 0) return ''
   return clean(result.stdout || result.stderr).split(/\r?\n/)[0]
+}
+
+function defaultReadVersionAsync(command, timeoutMs = 5_000) {
+  return new Promise(resolvePromise => {
+    let output = ''
+    let settled = false
+    const finish = value => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      resolvePromise(clean(value).split(/\r?\n/)[0])
+    }
+    let child
+    try {
+      child = spawn(command, ['--version'], {
+        windowsHide: true,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+    } catch {
+      resolvePromise('')
+      return
+    }
+    child.stdout?.on('data', chunk => { output += chunk })
+    child.stderr?.on('data', chunk => { output += chunk })
+    child.once('error', () => finish(''))
+    child.once('close', code => finish(code === 0 ? output : ''))
+    const timer = setTimeout(() => {
+      child.kill()
+      finish('')
+    }, timeoutMs)
+    timer.unref?.()
+  })
 }
 
 function explicitRuntime(id, env, find) {
@@ -454,6 +486,40 @@ export function inspectBackendSetups({
       selected,
     })),
   }
+}
+
+export async function inspectBackendSetupsAsync({
+  env = process.env,
+  platform = process.platform,
+  backend = '',
+  find = command => findExecutable(command, { env, platform }),
+  readVersion = defaultReadVersionAsync,
+} = {}) {
+  const preliminary = inspectBackendSetups({
+    env,
+    platform,
+    backend,
+    find,
+    readVersion: () => '',
+  })
+  const commands = [...new Set(preliminary.backends
+    .filter(item => (
+      (item.id === 'opencode' && item.backend.source === 'installed')
+      || item.id === 'kimi'
+    ))
+    .map(item => item.backend.path)
+    .filter(Boolean))]
+  const versions = new Map(await Promise.all(commands.map(async command => [
+    command,
+    await readVersion(command),
+  ])))
+  return inspectBackendSetups({
+    env,
+    platform,
+    backend,
+    find,
+    readVersion: command => versions.get(command) || '',
+  })
 }
 
 function integrationText(item) {

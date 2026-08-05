@@ -7,11 +7,18 @@ import {
 } from '../../shared/backend-catalog.mjs'
 import {
   loadRuntimeEnvironment,
-  requireDashScopeCredential,
+  requireRealtimeFrontendConfiguration,
 } from '../../shared/runtime-environment.mjs'
+import {
+  normalizeRealtimeProvider,
+  resolveRealtimeFrontendConfiguration,
+} from '../../shared/realtime-provider-catalog.mjs'
 import {
   readGatewayHealth,
 } from '../../shared/gateway-client.mjs'
+import {
+  findRunningGateway,
+} from '../../shared/gateway-instance-lock.mjs'
 
 export {
   readGatewayHealth,
@@ -130,6 +137,41 @@ export function assertGatewayCompatibility(health, backend) {
       + `与当前配置 ${backend.permissionMode} 权限模式不一致`,
     )
   }
+}
+
+export function assertRealtimeGatewayCompatibility(health, env = process.env) {
+  const expected = resolveRealtimeFrontendConfiguration(env)
+  if (!String(health?.realtimeProvider || '').trim()) {
+    throw new Error(
+      '现有 Gateway 未报告完整的 Realtime 前台配置，无法安全复用',
+    )
+  }
+  let actualProvider
+  try {
+    actualProvider = normalizeRealtimeProvider(health?.realtimeProvider)
+  } catch {
+    throw new Error(
+      '现有 Gateway 未报告完整的 Realtime 前台配置，无法安全复用',
+    )
+  }
+  const actualSignature = String(
+    health?.realtimeConfigurationSignature || '',
+  ).trim()
+  if (!actualSignature) {
+    throw new Error(
+      '现有 Gateway 未报告完整的 Realtime 前台配置，无法安全复用',
+    )
+  }
+  if (
+    actualProvider !== expected.provider
+    || actualSignature !== expected.signature
+  ) {
+    const mismatch = actualProvider !== expected.provider
+      ? `现有 Gateway 使用 ${actualProvider} Realtime 前台，与当前配置 ${expected.provider} 不一致`
+      : `现有 Gateway 的 ${expected.provider} Realtime 前台参数与当前配置不一致`
+    throw new Error(`${mismatch}；请关闭旧 Gateway 后重试`)
+  }
+  return expected
 }
 
 export async function waitForGateway(baseUrl, {
@@ -306,9 +348,9 @@ export async function ensureRuntime(options, {
   spawnImpl = spawn,
   platform = process.platform,
   loadEnvironment = () => loadRuntimeEnvironment({ root, env }),
-  requireCredential = () => requireDashScopeCredential(env),
+  requireCredential = () => requireRealtimeFrontendConfiguration(env),
 } = {}) {
-  loadEnvironment()
+  const runtimeEnvironment = loadEnvironment()
   const runtime = new ManagedRuntime([], { platform })
   const local = isLocalGateway(options.url)
   const backend = resolveBackend(options, env)
@@ -316,7 +358,19 @@ export async function ensureRuntime(options, {
     ? backendDefinition(backend.protocol)?.label || backend.protocol
     : '后台 Agent'
   let health = await readGatewayHealth(options.url, fetchImpl)
-  const existingGateway = Boolean(health)
+  if (!health && local && runtimeEnvironment?.configDirectory) {
+    const active = await findRunningGateway(
+      runtimeEnvironment.configDirectory,
+      {
+        readHealth: origin => readGatewayHealth(origin, fetchImpl),
+      },
+    )
+    if (active) {
+      options.url = active.origin
+      health = active.health
+    }
+  }
+  let existingGateway = Boolean(health)
 
   try {
     if (!health) {
@@ -336,16 +390,30 @@ export async function ensureRuntime(options, {
       )
       const gateway = spawnImpl(spec.command, spec.args, spec.options)
       runtime.children.push(gateway)
-      health = await waitForReadiness(
-        gateway,
-        waitForGateway(options.url, {
-          fetchImpl,
-          requireBackend: Boolean(
-            backend.protocol && options.waitForBackend !== false
-          ),
-        }),
-        'Gateway',
-      )
+      try {
+        health = await waitForReadiness(
+          gateway,
+          waitForGateway(options.url, {
+            fetchImpl,
+            requireBackend: Boolean(
+              backend.protocol && options.waitForBackend !== false
+            ),
+          }),
+          'Gateway',
+        )
+      } catch (startupError) {
+        const winner = runtimeEnvironment?.configDirectory
+          ? await findRunningGateway(runtimeEnvironment.configDirectory, {
+              readHealth: origin => readGatewayHealth(origin, fetchImpl),
+              timeoutMs: 3000,
+            })
+          : null
+        if (!winner) throw startupError
+        runtime.children = runtime.children.filter(child => child !== gateway)
+        options.url = winner.origin
+        health = winner.health
+        existingGateway = true
+      }
     }
 
     // An owned Gateway may move its private backend to a free local port.
@@ -367,12 +435,17 @@ export async function ensureRuntime(options, {
         )
       }
     }
+    const realtime = local
+      ? assertRealtimeGatewayCompatibility(health, env)
+      : null
     if (
       health.voiceConfigured === false
       && options.allowMissingCredential !== true
     ) {
       throw new Error(
-        '现有 Gateway 未配置 DashScope 凭据；请修正配置后重启该 Gateway',
+        realtime
+          ? `现有 Gateway 的 ${realtime.label} Realtime 前台未配置完整；请修正配置后重启该 Gateway`
+          : '远程 Gateway 的 Realtime 前台未配置完整',
       )
     }
 

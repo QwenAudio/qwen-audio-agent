@@ -3,10 +3,27 @@ import test from 'node:test'
 import {
   acceptsVoiceState,
   microphoneControlEvent,
+  retainedRealtimeProvider,
   shouldAdvertiseVoice,
   shouldClaimReleasedVoice,
   visualVoiceState,
 } from '../src/useRealtimeVoice.js'
+
+test('keeps a persisted front end only while the server still offers it', () => {
+  const providers = [{ key: 'dashscope' }, { key: 'speech-to-speech' }]
+
+  assert.equal(
+    retainedRealtimeProvider('speech-to-speech', providers),
+    'speech-to-speech',
+  )
+  // Selecting the server default is always valid.
+  assert.equal(retainedRealtimeProvider('', providers), '')
+  // A front end this server does not expose degrades to the default instead of
+  // being sent on every connect and refused.
+  assert.equal(retainedRealtimeProvider('removed', providers), '')
+  assert.equal(retainedRealtimeProvider('speech-to-speech', []), '')
+  assert.equal(retainedRealtimeProvider('speech-to-speech', undefined), '')
+})
 
 test('desktop microphone controls mute only input', () => {
   assert.deepEqual(microphoneControlEvent({

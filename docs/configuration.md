@@ -43,6 +43,27 @@ qwenaudio setup --json
 
 JSON 输出与 CLI 使用同一个共享检测模块，可供桌面版和其他工具直接复用。
 
+## 一键安装后台 Agent
+
+未安装的后台 Agent 可用统一命令安装到本机：
+
+```bash
+qwenaudio install codex
+```
+
+- 安装前先检测，只补齐缺失的组件：原生 ACP 后台装好即可用；本体缺失时装本体；
+  本体已装、仅缺 ACP 适配器时只装适配器；全部就绪时直接提示已可用。
+- 安装规格（官方 npm 包与锁定版本、官方安装脚本）由 CLI 与桌面版共享同一份
+  定义，版本与 `scripts/` 下 managed 启动脚本保持一致；可用对应环境变量覆盖，
+  如 `OPENCODE_PACKAGE`、`CODEX_ACP_PACKAGE`、`CLAUDE_CODE_ACP_PACKAGE`。
+- Codex、Claude Code 的 ACP 适配器随本体一并提供；Hermes 使用官方安装
+  脚本。脚本类步骤执行前会逐个展示完整命令并等待确认，`--yes` 跳过确认
+  （谨慎使用）。
+- 安装完成后自动重新检测该后台的可用状态；需要登录的后台会给出登录提示。
+- 通用 `acp` 后台不提供一键安装，请自行安装后通过 `ACP_COMMAND` 配置。
+- 桌面版设置页的“后台 Agent”列表中，未安装且支持一键安装的后台行尾会显示
+  “安装”按钮，与 CLI 使用同一份安装逻辑；脚本类安装会弹出原生确认框。
+
 ## 最小配置
 
 最小配置只需要填写实时语音凭据：
@@ -374,6 +395,13 @@ QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com
 
 ## Gateway 运行方式
 
+同一用户配置目录在任意时刻只允许一个本地 Gateway。CLI、TUI、WebUI 和桌面版会
+优先复用这个实例；它们可以同时连接，但不会各自启动一套后台 Agent。实例身份记录在
+用户配置目录下的临时 `gateway.lock` 中，Gateway 正常退出时会删除，异常退出留下的
+锁会在确认原进程已经结束后自动回收。若现有 Gateway 的 Realtime、后台 Agent 或
+权限配置与当前请求不一致，启动会明确报错，而不会静默另开随机端口。远程 Gateway
+不参与本地单实例租约。
+
 Gateway 默认启动并管理所选 Agent 的 ACP 进程。若 OpenCode 或 OpenClaw 的本地
 服务端口已被其他进程占用，会选择空闲端口，不会接管或关闭用户进程。OpenClaw
 始终由 qwen-audio-agent 启动独立 Gateway，并使用隔离的运行状态和 Session
@@ -397,6 +425,39 @@ qwenaudio gateway uninstall
 `qwenaudio gateway restart` 即可生效。服务日志位于
 `~/.config/qwaudio/logs/gateway.log`；Linux 也可以通过
 `journalctl --user -u qwen-audio-agent-gateway` 查看。
+
+## 本地日志
+
+qwen-audio-agent 使用统一的本地结构化日志，默认写入：
+
+```text
+~/.config/qwaudio/logs/
+├── gateway.log   # Gateway、Realtime、ACP 与任务生命周期
+├── desktop.log   # 桌面主进程与内嵌 Gateway 生命周期
+├── cli.log       # CLI 命令生命周期
+└── tui.log       # 直接启动 TUI 时的生命周期
+```
+
+日志采用一行一个 JSON 对象的 JSON Lines 格式，包含稳定的 `schema`、`time`、
+`level`、`component`、`event` 和 `pid` 字段，并按需携带 `sessionId`、`turnId`、
+`taskId`、`provider`、`backend`、`durationMs` 等关联信息。API Key、Token、
+Authorization、Cookie、密码和 Secret 字段会在写入前脱敏；默认不记录麦克风音频、
+用户转写正文、模型回复正文、任务目标或任务结果。
+
+桌面版可在“设置 → 应用 → 日志”中打开日志目录。默认日志级别为 `info`，单个文件
+达到 10 MiB 后轮转，总共保留 5 份。可通过以下环境变量调整：
+
+| 设置 | 默认值 | 说明 |
+| --- | --- | --- |
+| `QWEN_AUDIO_LOG_LEVEL` | `info` | `trace`、`debug`、`info`、`warn`、`error`、`fatal` 或 `silent` |
+| `QWEN_AUDIO_LOG_DIR` | 用户配置目录下的 `logs` | 自定义日志目录 |
+| `QWEN_AUDIO_LOG_MAX_BYTES` | `10485760` | 单个日志文件的轮转阈值 |
+| `QWEN_AUDIO_LOG_MAX_FILES` | `5` | 当前文件和轮转文件的总保留数量 |
+| `QWEN_AUDIO_LOG_FILE` | `1` | 设为 `0` 禁用文件日志 |
+| `QWEN_AUDIO_LOG_CONSOLE` | `1` | 设为 `0` 禁用终端日志输出 |
+
+日志仅保存在本机，不会自动上传。反馈问题前可按需检查并分享相关片段；即使系统会
+自动脱敏，也应在发送前再次确认其中没有不希望公开的本机路径或业务信息。
 
 TUI、WebUI 和桌面版只连接 Gateway，不直接连接、启动或停止任何后台 Agent。
 桌面设置中的核心配置会保存到用户配置文件，在下次启动 Gateway 时生效；
@@ -458,6 +519,8 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` |
 | `QWEN_AUDIO_REALTIME_PROVIDER` | `dashscope` |
 | `QWEN_AUDIO_REALTIME_VOICE` | `longanqian` |
+| `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |
+| `SPEECH_TO_SPEECH_AUTH_TOKEN` | 空；仅用于带 Bearer 认证的代理 |
 | `QWEN_AUDIO_AGENT_IDENTITY_MODE` | `personal` |
 | `QWEN_AUDIO_AGENT_TUI_AUDIO_MODE` | `half` |
 | `AGENT_TIMEOUT_MS` | `300000` |

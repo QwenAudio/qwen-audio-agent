@@ -43,8 +43,12 @@ function fakeToolServer() {
 test('selects one shared ACP adapter for OpenCode', () => {
   const client = new AgentClient({
     protocol: 'opencode',
-    baseUrl: 'http://opencode.test',
-    directory: '/workspace',
+    backends: {
+      opencode: {
+        baseUrl: 'http://opencode.test',
+        directory: '/workspace',
+      },
+    },
     coordinatorAgent: 'custom-coordinator',
     sessionStatePath: null,
     acpClient: fakeAcpClient(),
@@ -58,9 +62,13 @@ test('selects one shared ACP adapter for OpenCode', () => {
 test('opens the active OpenCode ACP coordinator Session directly', async () => {
   const client = new AgentClient({
     protocol: 'opencode',
-    baseUrl: 'http://opencode.test:4096',
     model: '',
-    directory: '/workspace',
+    backends: {
+      opencode: {
+        baseUrl: 'http://opencode.test:4096',
+        directory: '/workspace',
+      },
+    },
     sessionStatePath: null,
     acpClient: fakeAcpClient(),
     sessionToolServer: fakeToolServer(),
@@ -88,20 +96,24 @@ for (const protocol of [
   test(`selects ${protocol} through the same ACP adapter`, () => {
     const client = new AgentClient({
       protocol,
-      qoderDirectory: '/qoder',
-      kimiDirectory: '/kimi',
-      openClawDirectory: '/openclaw',
-      openClawBaseUrl: 'http://openclaw.test:18789',
-      acpCommand: 'example-agent',
-      acpArgs: ['--acp'],
-      acpLabel: 'Example Agent',
-      acpDirectory: '/acp',
-      hermesDirectory: '/hermes',
-      codeBuddyDirectory: '/codebuddy',
-      codeBuddyModel: 'qwen3.7-max',
-      codexDirectory: '/codex',
-      codexModel: 'qwen3.7-max',
-      claudeDirectory: '/claude',
+      backends: {
+        openclaw: {
+          directory: '/openclaw',
+          baseUrl: 'http://openclaw.test:18789',
+        },
+        qoder: { directory: '/qoder' },
+        kimi: { directory: '/kimi' },
+        hermes: { directory: '/hermes' },
+        codebuddy: { directory: '/codebuddy', model: 'qwen3.7-max' },
+        codex: { directory: '/codex', model: 'qwen3.7-max' },
+        claude: { directory: '/claude' },
+        acp: {
+          cliPath: 'example-agent',
+          args: ['--acp'],
+          label: 'Example Agent',
+          directory: '/acp',
+        },
+      },
       sessionStatePath: null,
       acpClient: fakeAcpClient(),
       sessionToolServer: fakeToolServer(),

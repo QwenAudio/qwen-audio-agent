@@ -30,16 +30,6 @@ function promptRetryDelay({ error, attempt }) {
 export const openClawBackendDriver = {
   id: 'openclaw',
   label: 'OpenClaw',
-  resolveOptions(options) {
-    return {
-      baseUrl: options.openClawBaseUrl,
-      model: options.model ?? options.openClawModel,
-      directory: options.openClawDirectory,
-      coordinatorAgent: options.openClawCoordinatorAgent,
-      token: options.openClawToken,
-      tokenFile: options.openClawTokenFile,
-    }
-  },
 
   createProfile({
     root,

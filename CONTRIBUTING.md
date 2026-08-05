@@ -15,6 +15,7 @@ npm ci
 运行完整检查：
 
 ```bash
+npm run lint
 npm test
 npm run build
 npm run release:check

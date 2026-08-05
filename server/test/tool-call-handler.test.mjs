@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
 import { ToolCallHandler } from '../src/voice/tools/tool-call-handler.mjs'
+import { FrontendNotesStore } from '../src/conversation/frontend-notes.mjs'
 import { SessionPermissionPolicy } from '../src/voice/session-permission-policy.mjs'
 import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
 
@@ -9,10 +10,13 @@ function harness({
   coordinator,
   manager = new TaskManager(),
   memoryStore = null,
+  notesStore = null,
   onMemoryChanged = () => {},
   coordinatorAvailable = async () => true,
   respondPermission,
   permissionPolicy,
+  clientContext = {},
+  requestClientState,
 } = {}) {
   const outputs = []
   const transcripts = new TurnTranscripts({ waitMs: 5 })
@@ -31,15 +35,48 @@ function harness({
     },
     coordinatorAvailable,
     memoryStore,
+    notesStore,
     onMemoryChanged,
     respondPermission,
     permissionPolicy,
+    getClientContext: () => clientContext,
+    requestClientState,
     getConversationContext: () => [
       { role: 'user', content: '之前在改首页' },
     ],
   })
   return { outputs, manager, transcripts, handler }
 }
+
+test('asks a capable client to enter sleep without creating another response', async () => {
+  const states = []
+  const kit = harness({
+    clientContext: { states: ['sleeping'] },
+    requestClientState: state => states.push(state),
+  })
+
+  await kit.handler.handle({
+    call_id: 'call-hide',
+    name: 'enter_sleep',
+    arguments: '{}',
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.deepEqual(states, ['sleeping'])
+  assert.equal(kit.outputs[0][1].status, 'sleeping')
+  assert.equal(kit.outputs[0][3].createResponse, false)
+})
+
+test('rejects sleep when the client did not advertise that state', async () => {
+  const kit = harness()
+
+  await kit.handler.handle({
+    call_id: 'call-hide-unsupported',
+    name: 'enter_sleep',
+    arguments: '{}',
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(kit.outputs[0][1].error_code, 'unsupported_client_state')
+})
 
 async function permissionHarness({
   answer,
@@ -593,6 +630,43 @@ test('uses one scoped memory tool for recall and remember', async () => {
   assert.equal(changes, 1)
 })
 
+test('routes standing user rules to the rules memory scope', async () => {
+  const calls = []
+  let changes = 0
+  const kit = harness({
+    memoryStore: {
+      remember: (ownerId, input) => {
+        calls.push(['remember', ownerId, input])
+        return {
+          id: 'mem_rule',
+          scope: 'rules',
+          content: input.content,
+          editable: true,
+        }
+      },
+    },
+    onMemoryChanged: () => { changes += 1 },
+  })
+
+  await kit.handler.handle({
+    call_id: 'memory-rule',
+    name: 'user_memory',
+    arguments: JSON.stringify({
+      action: 'remember',
+      scope: 'rules',
+      content: '回复默认先给结论',
+    }),
+  })
+
+  assert.deepEqual(calls[0], ['remember', 'owner', {
+    scope: 'rules',
+    content: '回复默认先给结论',
+  }])
+  assert.equal(kit.outputs.at(-1)[1].status, 'remembered')
+  assert.equal(kit.outputs.at(-1)[1].memory.scope, 'rules')
+  assert.equal(changes, 1)
+})
+
 test('replaces recalled text memories in one storage operation', async () => {
   let replaced
   let changes = 0
@@ -656,26 +730,8 @@ test('requires recalled ids for replacement and never guesses targets', async ()
   assert.equal(kit.outputs.at(-1)[1].error_code, 'missing_memory_ids')
 })
 
-test('requires explicit user language before forgetting memory', async () => {
-  let removed = 0
+test('forgets selected memory without re-parsing user wording', async () => {
   const kit = harness({
-    memoryStore: {
-      forget: () => {
-        removed += 1
-        return 1
-      },
-    },
-  })
-  kit.transcripts.record('turn-one', '你还记得我的称呼吗')
-  await kit.handler.handle({
-    call_id: 'memory-forget-rejected',
-    name: 'user_memory',
-    arguments: '{"action":"forget","scope":"profile","query":"称呼"}',
-  })
-  assert.equal(kit.outputs.at(-1)[1].status, 'rejected')
-  assert.equal(removed, 0)
-
-  const allowed = harness({
     memoryStore: {
       forget: (_ownerId, options) => {
         assert.deepEqual(options, {
@@ -687,16 +743,15 @@ test('requires explicit user language before forgetting memory', async () => {
       },
     },
   })
-  allowed.transcripts.record('turn-one', '忘掉我的称呼')
-  await allowed.handler.handle({
+  await kit.handler.handle({
     call_id: 'memory-forget',
     name: 'user_memory',
     arguments: '{"action":"forget","scope":"profile","query":"称呼"}',
   })
-  assert.equal(allowed.outputs.at(-1)[1].status, 'forgotten')
+  assert.equal(kit.outputs.at(-1)[1].status, 'forgotten')
 })
 
-test('requires an explicit clear-all request before deleting an entire scope', async () => {
+test('clears an entire memory scope through the explicit all parameter', async () => {
   let calls = 0
   const memoryStore = {
     forget: () => {
@@ -704,18 +759,7 @@ test('requires an explicit clear-all request before deleting an entire scope', a
       return 2
     },
   }
-  const rejected = harness({ memoryStore })
-  rejected.transcripts.record('turn-one', '忘掉我的称呼')
-  await rejected.handler.handle({
-    call_id: 'memory-clear-rejected',
-    name: 'user_memory',
-    arguments: '{"action":"forget","scope":"profile","all":true}',
-  })
-  assert.equal(rejected.outputs.at(-1)[1].error_code, 'clear_all_consent_required')
-  assert.equal(calls, 0)
-
   const allowed = harness({ memoryStore })
-  allowed.transcripts.record('turn-one', '清空全部长期记忆')
   await allowed.handler.handle({
     call_id: 'memory-clear',
     name: 'user_memory',
@@ -754,4 +798,106 @@ test('rejects secrets and an ambiguous memory scope', async () => {
     }),
   })
   assert.equal(kit.outputs.at(-1)[1].error_code, 'missing_memory')
+})
+
+test('notes: adds items to a named list and reports ambiguous removals', async () => {
+  const notesStore = new FrontendNotesStore()
+  const kit = harness({ notesStore })
+
+  await kit.handler.handle({
+    call_id: 'notes-add',
+    name: 'notes',
+    arguments: JSON.stringify({
+      action: 'add',
+      list: '购物清单',
+      items: ['牛奶', '面包'],
+    }),
+  })
+  const added = kit.outputs.at(-1)[1]
+  assert.equal(added.status, 'ok')
+  assert.deepEqual(added.added, ['牛奶', '面包'])
+
+  await kit.handler.handle({
+    call_id: 'notes-remove-fuzzy',
+    name: 'notes',
+    arguments: JSON.stringify({
+      action: 'remove',
+      list: '购物清单',
+      items: ['面包'],
+    }),
+  })
+  assert.deepEqual(kit.outputs.at(-1)[1].removed, ['面包'])
+
+  await kit.handler.handle({
+    call_id: 'notes-show',
+    name: 'notes',
+    arguments: JSON.stringify({ action: 'show', list: '购物清单' }),
+  })
+  assert.deepEqual(
+    kit.outputs.at(-1)[1].items.map(item => item.text),
+    ['牛奶'],
+  )
+})
+
+test('notes: clears and drops a named list without re-parsing user wording', async () => {
+  const notesStore = new FrontendNotesStore()
+  const kit = harness({ notesStore })
+  await kit.handler.handle({
+    call_id: 'notes-seed',
+    name: 'notes',
+    arguments: JSON.stringify({ action: 'add', list: '购物清单', items: ['牛奶'] }),
+  })
+
+  await kit.handler.handle({
+    call_id: 'notes-clear-ok',
+    name: 'notes',
+    arguments: JSON.stringify({ action: 'clear', list: '购物清单' }),
+  })
+  assert.equal(kit.outputs.at(-1)[1].status, 'ok')
+  assert.equal(kit.outputs.at(-1)[1].removed, 1)
+  assert.equal(notesStore.show('owner', '购物清单').items.length, 0)
+
+  await kit.handler.handle({
+    call_id: 'notes-drop-ok',
+    name: 'notes',
+    arguments: JSON.stringify({ action: 'drop', list: '购物清单' }),
+  })
+  assert.equal(kit.outputs.at(-1)[1].status, 'ok')
+  assert.deepEqual(notesStore.lists('owner'), [])
+})
+
+test('notes: rejects secrets and missing arguments', async () => {
+  const notesStore = new FrontendNotesStore()
+  const kit = harness({ notesStore })
+
+  await kit.handler.handle({
+    call_id: 'notes-secret',
+    name: 'notes',
+    arguments: JSON.stringify({ action: 'add', list: '购物清单', items: ['我的密码是 12345'] }),
+  })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'sensitive_notes')
+
+  await kit.handler.handle({
+    call_id: 'notes-no-list',
+    name: 'notes',
+    arguments: JSON.stringify({ action: 'show' }),
+  })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'missing_notes_target')
+
+  await kit.handler.handle({
+    call_id: 'notes-no-items',
+    name: 'notes',
+    arguments: JSON.stringify({ action: 'add', list: '购物清单' }),
+  })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'missing_notes_items')
+})
+
+test('notes: unavailable without a notes store', async () => {
+  const kit = harness({})
+  await kit.handler.handle({
+    call_id: 'notes-unavailable',
+    name: 'notes',
+    arguments: JSON.stringify({ action: 'lists' }),
+  })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'notes_unavailable')
 })

@@ -123,7 +123,7 @@ test('does nothing on Windows or when PATH is already complete', () => {
 })
 
 test('applies the disk cache without running the login shell synchronously', () => {
-  const { dir, file, cleanup } = tempCacheFile()
+  const { file, cleanup } = tempCacheFile()
   try {
     writeFileSync(file, JSON.stringify({ path: '/cached/bin:/usr/bin' }), 'utf8')
     const env = { PATH: '/usr/bin', SHELL: '', HOME: '/Users/x' }
@@ -169,7 +169,7 @@ test('writes the login shell result to the cache on first launch', () => {
 })
 
 test('refreshProcessPath re-reads the shell and updates the cache', () => {
-  const { dir, file, cleanup } = tempCacheFile()
+  const { file, cleanup } = tempCacheFile()
   try {
     writeFileSync(file, JSON.stringify({ path: '/old/bin' }), 'utf8')
     const env = { PATH: '/usr/bin', SHELL: '/bin/zsh', HOME: '/Users/x' }
@@ -193,7 +193,7 @@ test('refreshProcessPath re-reads the shell and updates the cache', () => {
 })
 
 test('refreshProcessPath falls back to the cache when the shell fails', () => {
-  const { dir, file, cleanup } = tempCacheFile()
+  const { file, cleanup } = tempCacheFile()
   try {
     writeFileSync(file, JSON.stringify({ path: '/cached/bin' }), 'utf8')
     const env = { PATH: '/usr/bin', SHELL: '/bin/zsh', HOME: '/Users/x' }

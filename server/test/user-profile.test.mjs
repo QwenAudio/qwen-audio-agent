@@ -128,6 +128,7 @@ test('combines profile and owner-scoped long-term memory', () => {
     }),
     {
       ownerId: 'owner-a',
+      scope: 'long_term',
       ids: ['mem_a'],
       content: '喜欢梨',
     },

@@ -4,6 +4,7 @@ import {
   AnnouncementManager,
   formatWorkResults,
 } from '../src/voice/announcement/announcement-manager.mjs'
+import { TaskManager } from '../src/task/task-manager.mjs'
 
 async function waitFor(condition, timeoutMs = 1000) {
   const deadline = Date.now() + timeoutMs
@@ -27,6 +28,25 @@ test('formats only final work results for realtime presentation', () => {
   assert.match(text, /work_id: work-one/)
   assert.match(text, /图片已生成/)
   assert.doesNotMatch(text, /permission|lifecycle|session/i)
+})
+
+test('passes backend-provided error content through for realtime interpretation', () => {
+  const backendResult = JSON.stringify({
+    code: 'Provider.InternalError',
+    message: 'backend supplied detail',
+  })
+  const text = formatWorkResults([{
+    event: 'task.completed',
+    taskId: 'work-provider-error',
+    objective: '执行后台任务',
+    status: 'completed',
+    result: backendResult,
+  }])
+
+  assert.match(text, /^\[COMPLETE\]/)
+  assert.match(text, /type: task\.completed/)
+  assert.match(text, /Provider\.InternalError/)
+  assert.match(text, /backend supplied detail/)
 })
 
 test('waits while duplex speech blocks delivery', async () => {
@@ -241,6 +261,88 @@ test('releases claimed notifications when a voice client is superseded', async (
   assert.equal(manager.activeBatch, null)
   assert.equal(manager.pending.size, 0)
   manager.close()
+})
+
+test('delivers work completed during desktop sleep after the client wakes', async () => {
+  const taskManager = new TaskManager()
+  const task = taskManager.create({
+    objective: '生成一份报告',
+    ownerId: 'owner-one',
+    sessionId: 'voice-one',
+    runner: async () => ({ content: '报告已生成' }),
+  })
+  await taskManager.wait(task.id)
+  assert.equal(taskManager.get(task.id).notificationStatus, 'pending')
+
+  const spoken = []
+  const claimantId = 'desktop-client'
+  const announcements = new AnnouncementManager({
+    getFrontend: () => ({
+      ready: true,
+      injectResult: async input => {
+        spoken.push(input)
+        return { completed: true, contextInjected: true }
+      },
+    }),
+    isDeliveryBlocked: () => false,
+    batchWindowMs: 0,
+    onDelivered: taskIds => taskManager.markNotificationsDelivered(taskIds, {
+      claimantId,
+    }),
+    onRelease: taskIds => taskManager.releaseNotificationClaims(taskIds, {
+      claimantId,
+    }),
+  })
+
+  // No voice client claims or speaks the result while the desktop is asleep.
+  assert.equal(spoken.length, 0)
+  const claimed = taskManager.claimNotifications({
+    ownerId: 'owner-one',
+    sessionId: 'voice-one',
+    claimantId,
+  })
+  claimed.forEach(item => announcements.completed(item))
+  await waitFor(() => spoken.length === 1)
+  assert.match(spoken[0], /报告已生成/)
+
+  announcements.confirmMany([task.id])
+  assert.equal(taskManager.get(task.id).notificationStatus, 'delivered')
+  announcements.close()
+})
+
+test('returns an in-flight result to pending when desktop sleep starts', async () => {
+  const taskManager = new TaskManager()
+  const task = taskManager.create({
+    objective: '整理资料',
+    ownerId: 'owner-one',
+    sessionId: 'voice-one',
+    runner: async () => ({ content: '资料已整理' }),
+  })
+  await taskManager.wait(task.id)
+  const claimantId = 'desktop-client'
+  const claimed = taskManager.claimNotifications({
+    ownerId: 'owner-one',
+    sessionId: 'voice-one',
+    claimantId,
+  })
+  const announcements = new AnnouncementManager({
+    getFrontend: () => ({
+      ready: true,
+      injectResult: async () => ({ completed: true, contextInjected: true }),
+    }),
+    isDeliveryBlocked: () => false,
+    batchWindowMs: 0,
+    onRelease: taskIds => taskManager.releaseNotificationClaims(taskIds, {
+      claimantId,
+    }),
+  })
+  claimed.forEach(item => announcements.completed(item))
+  await waitFor(() => announcements.activeBatch !== null)
+
+  announcements.pause()
+
+  assert.equal(taskManager.get(task.id).notificationStatus, 'pending')
+  announcements.close()
 })
 
 test('ignores a late generation completion after the voice client is paused', async () => {

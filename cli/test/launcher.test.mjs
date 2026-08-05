@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { PassThrough } from 'node:stream'
 import test from 'node:test'
 import { main } from '../src/launcher.mjs'
 
@@ -239,6 +240,45 @@ test('installs, stops and reports the background Gateway service', async () => {
   ])
 })
 
+test('passes the configured local Gateway host and port to its service', async () => {
+  const target = harness()
+  target.dependencies.env.QWEN_AUDIO_AGENT_URL = 'http://127.0.0.1:3200'
+  target.dependencies.manageService = async (action, options) => {
+    target.calls.push(['service', action, options])
+    return {
+      installed: true,
+      running: true,
+      logPath: null,
+    }
+  }
+
+  assert.equal(
+    await main(['gateway', 'install'], target.dependencies),
+    0,
+  )
+  const install = target.calls.find(call => (
+    call[0] === 'service' && call[1] === 'install'
+  ))
+  assert.deepEqual(install[2].serviceEnvironment, {
+    HOST: '127.0.0.1',
+    PORT: '3200',
+  })
+})
+
+test('rejects a remote Gateway URL for the local background service', async () => {
+  const target = harness()
+  target.dependencies.env.QWEN_AUDIO_AGENT_URL = 'https://voice.example.com'
+
+  await assert.rejects(
+    main(['gateway', 'install'], target.dependencies),
+    /只支持本机 HTTP 地址/,
+  )
+  assert.equal(
+    target.calls.some(call => call[0] === 'service'),
+    false,
+  )
+})
+
 test('does not confuse a foreground Gateway with the background service', async () => {
   const restart = harness()
   restart.dependencies.manageService = async action => {
@@ -304,6 +344,107 @@ test('prints status and configuration without starting a service', async () => {
     'stdout',
     '/home/user/.config/qwaudio/config.env\n',
   ]])
+})
+
+test('installs a backend through the injected installer', async () => {
+  const target = harness()
+  let preparation
+  target.dependencies.prepareEnvironment = options => {
+    preparation = options
+    return {
+      configDirectory: '/home/user/.config/qwaudio',
+      configPath: '/home/user/.config/qwaudio/config.env',
+    }
+  }
+  target.dependencies.runInstaller = async (id, options) => {
+    target.calls.push(['install', id])
+    options.onProgress({ phase: 'start', title: '步骤 1', display: 'npm i -g x' })
+    options.onProgress({ phase: 'output', chunk: 'added 1 package\n' })
+    return { ok: true, loginHint: '请在终端登录' }
+  }
+  assert.equal(await main(['install', 'codex'], target.dependencies), 0)
+  assert.deepEqual(preparation, { readOnly: true })
+  assert.deepEqual(target.calls.map(call => call[0]), [
+    'install',
+    'stdout',
+    'stdout',
+    'stdout',
+    'stdout',
+  ])
+  const output = target.calls
+    .filter(call => call[0] === 'stdout')
+    .map(call => call[1])
+    .join('')
+  assert.match(output, /步骤 1：npm i -g x/)
+  assert.match(output, /added 1 package/)
+  assert.match(output, /✓ Codex 安装完成/)
+  assert.match(output, /请在终端登录/)
+})
+
+test('asks before running script install steps unless --yes is given', async () => {
+  const declined = harness()
+  const decliningInput = new PassThrough()
+  decliningInput.end('n\n')
+  declined.dependencies.stdin = decliningInput
+  declined.dependencies.runInstaller = async (id, options) => {
+    const confirmed = await options.confirmStep({
+      display: 'curl -fsSL https://example.com/install.sh | bash',
+    })
+    return confirmed
+      ? { ok: true }
+      : { ok: false, error: { code: 'DECLINED', message: '已取消安装' } }
+  }
+  assert.equal(await main(['install', 'hermes'], declined.dependencies), 1)
+  const declinedOutput = declined.calls
+    .filter(call => call[0] === 'stdout')
+    .map(call => call[1])
+    .join('')
+  assert.match(declinedOutput, /即将执行官方安装脚本/)
+  assert.match(declinedOutput, /✗ Hermes 安装未完成：已取消安装/)
+
+  const assumed = harness()
+  assumed.dependencies.runInstaller = async (id, options) => {
+    assumed.calls.push(['confirmed', await options.confirmStep({ display: 'x' })])
+    return { ok: true }
+  }
+  assert.equal(
+    await main(['install', 'hermes', '--yes'], assumed.dependencies),
+    0,
+  )
+  assert.deepEqual(assumed.calls.filter(call => call[0] === 'confirmed'), [[
+    'confirmed',
+    true,
+  ]])
+})
+
+test('reports an already installed backend without rerunning steps', async () => {
+  const target = harness()
+  target.dependencies.runInstaller = async () => ({
+    ok: true,
+    alreadyInstalled: true,
+    loginHint: '请在终端登录',
+  })
+  assert.equal(await main(['install', 'codex'], target.dependencies), 0)
+  const output = target.calls
+    .filter(call => call[0] === 'stdout')
+    .map(call => call[1])
+    .join('')
+  assert.match(output, /✓ Codex 已安装/)
+  assert.doesNotMatch(output, /步骤/)
+})
+
+test('reports installer failures with a non-zero exit code', async () => {
+  const target = harness()
+  target.dependencies.runInstaller = async () => ({
+    ok: false,
+    error: { code: 'NPM_MISSING', message: '未找到 npm' },
+  })
+  assert.equal(await main(['install', 'qoder'], target.dependencies), 1)
+  const output = target.calls
+    .filter(call => call[0] === 'stdout')
+    .map(call => call[1])
+    .join('')
+  assert.match(output, /✗ Qoder 安装未完成：未找到 npm/)
 })
 
 test('prints a reusable read-only backend setup report', async () => {

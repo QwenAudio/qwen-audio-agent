@@ -330,14 +330,15 @@ export class AnnouncementManager {
         && this.activeBatch === batch
       ) this.scheduleRetry()
     } finally {
-      if (this.deliveryGeneration !== deliveryGeneration) return
-      this.delivering = false
-      this.finishAcknowledgedBatch()
-      if (this.activeBatch?.retryRequested) {
-        this.activeBatch.retryRequested = false
-        this.scheduleRetry()
+      if (this.deliveryGeneration === deliveryGeneration) {
+        this.delivering = false
+        this.finishAcknowledgedBatch()
+        if (this.activeBatch?.retryRequested) {
+          this.activeBatch.retryRequested = false
+          this.scheduleRetry()
+        }
+        if (!this.activeBatch && this.pending.size) this.scheduleDelivery(0)
       }
-      if (!this.activeBatch && this.pending.size) this.scheduleDelivery(0)
     }
   }
 

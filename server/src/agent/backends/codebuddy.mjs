@@ -4,17 +4,6 @@ export const codeBuddyBackendDriver = {
   id: 'codebuddy',
   label: 'CodeBuddy',
 
-  resolveOptions(options) {
-    return {
-      baseUrl: '',
-      model: options.codeBuddyModel,
-      modelUrl: options.codeBuddyModelUrl,
-      directory: options.codeBuddyDirectory,
-      cliPath: options.codeBuddyCliPath,
-      coordinatorAgent: options.coordinatorAgent,
-    }
-  },
-
   createProfile({
     directory,
     cliPath,

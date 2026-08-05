@@ -53,7 +53,7 @@ item is sent into the Backend Agent Session at a time.
 
 ## 3. Realtime boundary
 
-Realtime has exactly six tools:
+Realtime has exactly seven tools:
 
 ```text
 spawn_thinking
@@ -61,6 +61,7 @@ cancel_agent_task
 get_agent_task_status
 get_current_time
 user_memory
+notes
 respond_agent_permission
 ```
 
@@ -70,6 +71,29 @@ respond_agent_permission
 - `remember` adds a new durable fact;
 - `replace` atomically replaces recalled IDs when the user corrects a fact;
 - `forget` removes explicitly requested records.
+
+Records live in three scopes: `profile` (name, timezone, locale, stable
+interaction preferences), `long_term` (durable personal facts), and `rules`
+(user-authored standing instructions: speaking style, forms of address, default
+ways of doing things). `rules` are user-authorized directives, not memory data:
+they are always injected into the Realtime context as `User Directives`, take
+precedence over the assistant's default style, and yield to the user's current
+utterance. They never authorize leaking internal structure, skipping
+permission checks, or changing the assistant's identity; entries that demand
+those are void. Rules are bounded to 16 short entries so they can be injected
+in full on every turn, and they are attached to the backend Agent envelope as
+user-authored preference material. `profile` and `long_term` remain
+read-on-demand data.
+
+`notes` manages user-named lists (shopping lists, todos, reading lists) as
+frontend-owned volatile collections: single-call add, show, match-remove,
+clear, and drop with no backend involvement. Lists are item data, not memory;
+stable facts remain in `user_memory`, and list items are never written into
+memory or rules. Item and list resolution matches exact text first, then a
+unique case-insensitive substring, and otherwise reports ambiguity with the
+candidate names back to the model for clarification. `clear` and `drop`
+additionally require an explicit current-turn user utterance before executing,
+like `user_memory` forget.
 
 Only the marked managed section of `USER.md` is editable. User-maintained profile
 text outside that section is returned as read-only data and cannot be replaced.
@@ -150,7 +174,7 @@ Queue position is an internal scheduling detail and does not change the user's
 duplex conversation.
 
 Active Work cannot be safely resumed after a Gateway restart, so
-they become failed with an explicit restart reason. Completed results and
+it becomes failed with an explicit restart reason. Completed results and
 notification delivery state are persisted.
 
 ## 6. Progress animation

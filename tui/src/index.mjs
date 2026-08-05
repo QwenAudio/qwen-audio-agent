@@ -5,7 +5,9 @@ import {
   GatewayClientEvent,
   GatewayServerEvent,
 } from '../../shared/realtime-events.mjs'
+import { createLogger } from '../../shared/logger.mjs'
 import { startMacVoiceIO } from './macos-voice-io.mjs'
+import { resamplePcm16 } from './pcm-audio.mjs'
 import { startPortAudioVoiceIO } from './portaudio-voice-io.mjs'
 
 const OUTPUT_SAMPLE_RATE = 24000
@@ -649,9 +651,19 @@ export function createPlayback({
   return {
     write(base64, rate = OUTPUT_SAMPLE_RATE, responseId = '') {
       if (responseId && cancelledResponses.has(responseId)) return false
-      const buffer = Buffer.from(base64, 'base64')
+      let buffer = Buffer.from(base64, 'base64')
       if (!buffer.length) return true
-      if (!audioSink.write(buffer, rate, responseId)) {
+      try {
+        buffer = resamplePcm16(buffer, rate, OUTPUT_SAMPLE_RATE)
+      } catch (error) {
+        onError?.(error.message)
+        if (responseId) {
+          rememberCancelled(responseId)
+          onCancelled?.(responseId)
+        }
+        return false
+      }
+      if (!audioSink.write(buffer, OUTPUT_SAMPLE_RATE, responseId)) {
         onError?.('音频设备未接受播放数据')
         if (responseId) {
           rememberCancelled(responseId)
@@ -956,6 +968,14 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       }
       if (ownsVoice) startMicrophone()
     }
+    if (
+      event.type === GatewayServerEvent.VOICE_CONNECTION
+      && event.state === 'unavailable'
+    ) {
+      frontendReady = false
+      setCaptureEnabled(false)
+      print(`${style('[语音前台连接失败]', 'red')} ${event.message || '请检查前台服务配置'}`)
+    }
     if (event.type === GatewayServerEvent.VOICE_OWNERSHIP) {
       if (event.state === 'active') {
         ownsVoice = true
@@ -1210,8 +1230,17 @@ const isMain = process.argv[1]
   && import.meta.url === pathToFileURL(process.argv[1]).href
 
 if (isMain) {
-  runTui().catch(error => {
-    process.stderr.write(`qwen-audio-agent TUI 启动失败：${error.message}\n`)
-    process.exitCode = 1
+  const logger = createLogger({
+    component: 'tui',
+    fileName: 'tui.log',
+    consoleEnabled: false,
   })
+  logger.info('tui.started')
+  runTui()
+    .then(() => logger.info('tui.stopped'))
+    .catch(error => {
+      logger.error('tui.failed', { error })
+      process.stderr.write(`qwen-audio-agent TUI 启动失败：${error.message}\n`)
+      process.exitCode = 1
+    })
 }

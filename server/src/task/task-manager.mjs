@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { config } from '../core/config.mjs'
 import { TaskScheduler } from './task-scheduler.mjs'
 import { TaskStore } from './task-store.mjs'
+import { logger } from '../core/logger.mjs'
 
 const ACTIVE = new Set([
   'queued',
@@ -90,6 +91,7 @@ export class TaskManager {
     pendingNotificationTtlMs = 604_800_000,
     notificationClaimTtlMs = 60_000,
     maxTerminalTasksPerOwner = 100,
+    logger: taskLogger = null,
   } = {}) {
     this.runner = runner
     this.store = store
@@ -101,6 +103,7 @@ export class TaskManager {
     this.pendingNotificationTtlMs = pendingNotificationTtlMs
     this.notificationClaimTtlMs = notificationClaimTtlMs
     this.maxTerminalTasksPerOwner = maxTerminalTasksPerOwner
+    this.logger = taskLogger
     this.tasks = new Map()
     this.listeners = new Set()
     this.recoveryCandidates = []
@@ -234,6 +237,26 @@ export class TaskManager {
       task: snapshot,
       ...details,
     }
+    const log = [
+      'task.created',
+      'task.running',
+      'task.delegated',
+      'task.permission.requested',
+      'task.permission.resolved',
+      'task.completed',
+      'task.failed',
+      'task.cancelled',
+    ].includes(type) ? this.logger?.info : this.logger?.debug
+    log?.(type, {
+      taskId: task.id,
+      ownerId: task.ownerId,
+      sessionId: task.sessionId,
+      turnId: task.turnId,
+      kind: task.kind || 'work',
+      status: task.status,
+      elapsedMs: task.elapsedMs,
+      hasError: Boolean(task.error),
+    })
     for (const listener of this.listeners) {
       try {
         listener(event)
@@ -714,10 +737,12 @@ export class TaskManager {
 
 export const taskStore = new TaskStore({
   filePath: config.taskStatePath,
+  onWarning: warning => logger.warn('task.persistence_warning', { warning }),
 })
 
 export const taskManager = new TaskManager({
   store: taskStore,
+  logger,
   maxConcurrent: config.taskMaxConcurrent,
   maxConcurrentPerOwner: config.taskMaxConcurrentPerOwner,
   terminalTtlMs: config.taskTerminalTtlMs,

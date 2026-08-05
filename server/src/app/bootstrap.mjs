@@ -1,12 +1,15 @@
 import express from 'express'
 import { createServer } from 'http'
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'path'
 import { agent } from '../agent/agent-client.mjs'
 import { coordinator } from '../agent/coordinator.mjs'
 import { config } from '../core/config.mjs'
+import { logger, runWithLogContext } from '../core/logger.mjs'
 import { conversationSync } from '../conversation/conversation-sync.mjs'
 import { IdentityManager } from '../core/identity.mjs'
 import { FrontendMemoryStore } from '../conversation/frontend-memory.mjs'
+import { FrontendNotesStore } from '../conversation/frontend-notes.mjs'
 import { ProfiledMemoryStore } from '../conversation/profiled-memory-store.mjs'
 import { UserProfile } from '../conversation/user-profile.mjs'
 import { enforceSameOrigin } from '../core/request-security.mjs'
@@ -46,12 +49,24 @@ const dynamicMemory = new FrontendMemoryStore({
   filePath: config.frontendMemoryPath,
   maxOwners: config.maxFrontendMemoryOwners,
   ownerTtlMs: config.frontendMemoryOwnerTtlMs,
+  onWarning: warning => logger.warn('memory.persistence_warning', { warning }),
 })
 const frontendMemory = new ProfiledMemoryStore({
   memoryStore: dynamicMemory,
   userProfile: config.identityMode === 'personal'
-    ? new UserProfile({ filePath: config.userProfilePath })
+    ? new UserProfile({
+        filePath: config.userProfilePath,
+        onWarning: warning => logger.warn('profile.persistence_warning', {
+          warning,
+        }),
+      })
     : null,
+})
+const notesStore = new FrontendNotesStore({
+  filePath: config.frontendNotesPath,
+  maxOwners: config.maxFrontendMemoryOwners,
+  ownerTtlMs: config.frontendMemoryOwnerTtlMs,
+  onWarning: warning => logger.warn('notes.persistence_warning', { warning }),
 })
 const app = express()
 const permissionPolicy = new SessionPermissionPolicy({
@@ -63,6 +78,25 @@ app.disable('x-powered-by')
 app.use(enforceSameOrigin)
 app.use((req, res, next) => {
   req.identity = identityManager.resolveHttp(req, res)
+  const requestId = randomUUID()
+  res.setHeader('X-Request-Id', requestId)
+  runWithLogContext({
+    requestId,
+    ownerId: req.identity?.ownerId,
+  }, next)
+})
+app.use((req, res, next) => {
+  const startedAt = Date.now()
+  res.once('finish', () => {
+    const fields = {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+    }
+    if (res.statusCode >= 500) logger.warn('http.request_failed', fields)
+    else logger.debug('http.request_completed', fields)
+  })
   next()
 })
 app.use(express.json({ limit: '1mb' }))
@@ -75,16 +109,23 @@ app.get('/api/health', async (req, res) => {
   const realtime = describeActiveRealtime()
   res.status(backend.ok ? 200 : 503).json({
     ok: backend.ok,
+    gatewayInstanceId: process.env.QWEN_AUDIO_GATEWAY_INSTANCE_ID || null,
+    gatewayStartedAt: process.env.QWEN_AUDIO_GATEWAY_STARTED_AT || null,
     voiceConfigured: realtime.configured,
     realtimeProvider: realtime.provider,
     realtimeLabel: realtime.label,
     realtimeModel: realtime.model,
     realtimeInputSampleRate: realtime.inputSampleRate,
+    realtimeConfigurationSignature: realtime.configurationSignature,
+    // Front ends a client may select for its session through the realtime
+    // connect event.
+    realtimeProviders: realtime.providers,
     announceIntoContext: config.announceIntoContext,
     resultContextMaxChars: config.resultContextMaxChars,
     announcementBatchMs: config.announcementBatchMs,
     announcementQuietMs: config.announcementQuietMs,
     frontendMemory: frontendMemory.health(),
+    notes: notesStore.health(),
     taskStore: taskStore.health(),
     identityMode: config.identityMode,
     voiceClients: realtimeGateway?.status() || {
@@ -227,12 +268,21 @@ app.get('/api/tasks/:id/events', (req, res) => {
 const webDist = webDistributionPath()
 app.use(express.static(webDist))
 app.get('*', (req, res) => res.sendFile(resolve(webDist, 'index.html')))
+app.use((error, req, res, next) => {
+  logger.error('http.unhandled_error', {
+    method: req.method,
+    path: req.path,
+    error,
+  })
+  next(error)
+})
 
 const server = createServer(app)
 export { server }
 realtimeGateway = attachRealtimeGateway(server, {
   identityManager,
   memoryStore: frontendMemory,
+  notesStore,
   coordinator,
   coordinatorAvailable: async () => ({
     enabled: agent.enabled,
@@ -251,7 +301,12 @@ server.listen(config.port, config.host, () => {
     process.parentPort.postMessage({
       type: 'qwen-audio-agent:gateway-ready',
       origin,
+      instanceId: process.env.QWEN_AUDIO_GATEWAY_INSTANCE_ID || null,
     })
   }
-  console.log(`qwen-audio-agent running at ${origin}`)
+  logger.info('gateway.ready', {
+    origin,
+    backend: config.agentProtocol || 'none',
+    realtimeProvider: config.audioProvider,
+  }, `qwen-audio-agent running at ${origin}`)
 })

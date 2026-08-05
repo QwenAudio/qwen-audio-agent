@@ -7,7 +7,6 @@ import WebSocket from 'ws'
 const ESC = ''
 const DIM = `${ESC}[90m`
 const CYAN = `${ESC}[36m`
-const GREEN = `${ESC}[32m`
 const YELLOW = `${ESC}[33m`
 const RED = `${ESC}[31m`
 const BOLD = `${ESC}[1m`

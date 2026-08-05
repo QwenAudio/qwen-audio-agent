@@ -102,6 +102,34 @@ test('accepts named local ACP backends without an HTTP URL', () => {
   }
 })
 
+test('parses the install command with an optional confirmation skip', () => {
+  const install = parseArguments(['install', 'codex'], {})
+  assert.equal(install.command, 'install')
+  assert.equal(install.installTarget, 'codex')
+  assert.equal(install.yes, false)
+
+  const skip = parseArguments(['install', 'kimi', '--yes'], {})
+  assert.equal(skip.installTarget, 'kimi')
+  assert.equal(skip.yes, true)
+  assert.equal(parseArguments(['install', 'kimi', '-y'], {}).yes, true)
+  assert.equal(
+    parseArguments(['install', 'OPENCODE'], {}).installTarget,
+    'opencode',
+  )
+})
+
+test('rejects invalid install targets and misplaced flags', () => {
+  assert.throws(() => parseArguments(['install'], {}), /缺少后台名称/)
+  assert.throws(() => parseArguments(['install', '--yes'], {}), /缺少后台名称/)
+  assert.throws(() => parseArguments(['install', 'none'], {}), /缺少后台名称/)
+  assert.throws(() => parseArguments(['install', 'unknown'], {}), /不支持的后台/)
+  assert.throws(() => parseArguments(['install', 'acp'], {}), /ACP_COMMAND/)
+  assert.throws(
+    () => parseArguments(['setup', '--yes'], {}),
+    /--yes 只适用于 install/,
+  )
+})
+
 test('rejects the removed backend mode option', () => {
   assert.throws(() => parseArguments([
     'gateway',
@@ -180,6 +208,8 @@ test('documents the service and client commands', () => {
   assert.match(text, /qwenaudio config/)
   assert.match(text, /qwenaudio setup/)
   assert.match(text, /--json/)
+  assert.match(text, /qwenaudio install NAME/)
+  assert.match(text, /--yes, -y/)
   assert.doesNotMatch(text, /--attach-openclaw/)
   assert.doesNotMatch(text, /--backend-mode/)
   assert.match(text, /--backend-permission-mode MODE/)

@@ -13,6 +13,7 @@ import test from 'node:test'
 import {
   loadRuntimeEnvironment,
   requireDashScopeCredential,
+  requireRealtimeFrontendConfiguration,
   userConfigDirectory,
 } from '../../shared/runtime-environment.mjs'
 
@@ -124,10 +125,40 @@ test('generates and reuses a private stable local identity secret', () => {
     first.QWEN_AUDIO_AGENT_AUTH_SECRET,
   )
   assert.match(readFileSync(result.statePath, 'utf8'), /AUTH_SECRET=/)
-  assert.match(readFileSync(result.configPath, 'utf8'), /DASHSCOPE_API_KEY=/)
+  const configContent = readFileSync(result.configPath, 'utf8')
+  assert.match(configContent, /DASHSCOPE_API_KEY=/)
+  assert.match(
+    configContent,
+    /QWEN_AUDIO_REALTIME_PROVIDER=dashscope/,
+  )
+  assert.match(
+    configContent,
+    /SPEECH_TO_SPEECH_REALTIME_URL=ws:\/\/127\.0\.0\.1:8765\/v1\/realtime/,
+  )
+  assert.doesNotMatch(configContent, /S2S_REALTIME_URL=/)
   assertPrivateMode(result.configPath)
   assert.match(readFileSync(result.userProfilePath, 'utf8'), /^# USER/m)
   assertPrivateMode(result.userProfilePath)
+})
+
+test('reuses the persisted secret when the environment provides an empty value', () => {
+  const target = fixture()
+  const first = {}
+  loadRuntimeEnvironment({
+    root: target.root,
+    homeDirectory: target.homeDirectory,
+    env: first,
+  })
+
+  const second = { QWEN_AUDIO_AGENT_AUTH_SECRET: '' }
+  const result = loadRuntimeEnvironment({
+    root: target.root,
+    homeDirectory: target.homeDirectory,
+    env: second,
+  })
+
+  assert.equal(second.QWEN_AUDIO_AGENT_AUTH_SECRET, first.QWEN_AUDIO_AGENT_AUTH_SECRET)
+  assert.equal(result.generatedSecret, false)
 })
 
 test('does not overwrite an existing user profile', () => {
@@ -411,4 +442,23 @@ test('requires only a DashScope credential from the user', () => {
     DASHSCOPE_API_KEY: 'key',
   }))
   assert.throws(() => requireDashScopeCredential({}), /DASHSCOPE_API_KEY/)
+})
+
+test('does not require a DashScope credential for speech-to-speech', () => {
+  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'speech-to-speech',
+  }))
+  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 's2s',
+  }))
+  assert.throws(
+    () => requireRealtimeFrontendConfiguration({}),
+    /DASHSCOPE_API_KEY/,
+  )
+  assert.throws(
+    () => requireRealtimeFrontendConfiguration({
+      QWEN_AUDIO_REALTIME_PROVIDER: 'speech2speech',
+    }),
+    /不支持的 Realtime 前台/,
+  )
 })

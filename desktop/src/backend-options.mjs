@@ -1,12 +1,12 @@
-// 设置页"后台 Agent"下拉列表的展示状态计算。
-// 输入是 shared/backend-setup.mjs 的 inspectBackendSetups() 报告，
-// 保持纯函数，浏览器渲染层与 Node 测试共用同一份逻辑。
+// 设置页"后台 Agent"列表的行状态计算。
+// 输入是主进程附加生命周期后的检测报告，保持纯函数，浏览器渲染层与
+// Node 测试共用同一份逻辑。
 
 export const NONE_OPTION_ID = 'none'
 
 export const NONE_OPTION_LABEL = '不使用后台 Agent'
 
-// 列表空间有限，把 issue 文案归并为短标签；完整原因放进 option 的 title。
+// 列表空间有限，把 issue 文案归并为短徽标；完整原因放进一行的 title。
 function shortReason(issues) {
   const text = String(issues?.[0] || '').trim()
   if (!text) return '当前不可用'
@@ -22,25 +22,71 @@ function shortReason(issues) {
   return '当前不可用'
 }
 
+// 行状态：{ id, label, ready, selectable, installable, requiresConfirmation,
+// reason, title }。installable 为 true 时渲染层在行尾显示"安装"按钮。
 export function backendOptionStates(report) {
   const states = [{
     id: NONE_OPTION_ID,
     label: NONE_OPTION_LABEL,
-    disabled: false,
+    ready: true,
+    selectable: true,
+    installable: false,
+    requiresConfirmation: false,
+    authenticationRequired: false,
+    authenticatable: false,
+    reason: '',
     title: '',
   }]
   for (const item of report?.backends || []) {
+    if (item.id === 'acp') continue
     const ready = item.ready === true
+    const install = item.install || {}
+    const authentication = item.authentication || install.authentication || {}
+    const authenticationRequired = authentication.required === true
     states.push({
       id: item.id,
-      label: ready
-        ? item.label || item.id
-        : `${item.label || item.id}（${shortReason(item.issues)}）`,
-      // 当前生效的配置项即使不可用也保持可选，否则下拉框无法显示
-      // 当前值，用户也无法通过它改回其他选项。
-      disabled: !ready && item.selected !== true,
-      title: ready ? '' : String(item.issues?.[0] || '').trim(),
+      label: item.label || item.id,
+      ready,
+      // 当前生效的配置项即使不可用也保持可选，否则列表无法呈现当前值，
+      // 用户也无法通过它改回其他选项。
+      selectable: ready || item.selected === true,
+      // 仅"不可用且支持一键安装"时显示安装按钮；acp 等无安装规格的
+      // 后台由 installSupport 标记 supported:false，自然不显示按钮。
+      installable: !ready && install.supported === true,
+      requiresConfirmation: install.requiresConfirmation === true,
+      authenticationRequired,
+      authenticatable: (
+        ready
+        && authentication.supported === true
+        && authentication.actionAvailable !== false
+        && authentication.status !== 'authenticated'
+      ),
+      authenticationLabel: '登录',
+      lifecycleState: item.lifecycle?.state || (
+        authenticationRequired ? 'authentication-required' : (
+          ready ? 'installed' : 'not-installed'
+        )
+      ),
+      statusLabel: authenticationRequired
+        ? '待登录'
+        : ready ? '已安装' : shortReason(item.issues),
+      reason: ready ? '' : shortReason(item.issues),
+      title: ready
+        ? ''
+        : String(item.issues?.[0] || install.reason || '').trim(),
     })
   }
   return states
+}
+
+export function backendRuntimeReady(state, {
+  selectedBackend,
+  runtimeBackend,
+} = {}) {
+  return Boolean(
+    state?.ready === true
+    && state.authenticationRequired !== true
+    && state.id === selectedBackend
+    && runtimeBackend?.connected === true,
+  )
 }

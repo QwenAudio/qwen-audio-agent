@@ -85,6 +85,124 @@ test('does not add replacement text when target ids are stale', () => {
   )
 })
 
+test('stores user rules in their own bounded scope', () => {
+  const store = new FrontendMemoryStore()
+  const rule = store.remember('user-one', '回复默认先给结论', { scope: 'rules' })
+  store.remember('user-one', '用户喜欢苹果')
+
+  assert.equal(rule.scope, 'rules')
+  assert.deepEqual(
+    store.list('user-one', { scope: 'rules' }).map(entry => entry.content),
+    ['回复默认先给结论'],
+  )
+  assert.deepEqual(
+    store.list('user-one', { scope: 'long_term' }).map(entry => entry.content),
+    ['用户喜欢苹果'],
+  )
+  assert.equal(store.list('user-one').length, 2)
+})
+
+test('bounds rules to sixteen short entries separately from long-term memory', () => {
+  const store = new FrontendMemoryStore()
+  const rule = store.remember('user-one', 'r'.repeat(300), { scope: 'rules' })
+  assert.equal([...rule.content].length, 200)
+
+  for (let index = 1; index < 16; index += 1) {
+    store.remember('user-one', `rule-${index}`, { scope: 'rules' })
+  }
+  assert.throws(
+    () => store.remember('user-one', 'one rule too many', { scope: 'rules' }),
+    /最多保存 16 条长期约定/,
+  )
+  // The rules cap does not consume the long-term allowance.
+  assert.doesNotThrow(() => store.remember('user-one', '普通记忆'))
+})
+
+test('moves a memory between scopes through replace', () => {
+  const store = new FrontendMemoryStore()
+  const old = store.remember('user-one', '回复要简短')
+
+  const result = store.replace('user-one', {
+    ids: [old.id],
+    content: '回复默认先给结论，再展开细节',
+    scope: 'rules',
+  })
+
+  assert.equal(result.replaced, 1)
+  assert.equal(result.memory.scope, 'rules')
+  assert.deepEqual(store.list('user-one', { scope: 'long_term' }), [])
+  assert.equal(store.list('user-one', { scope: 'rules' })[0].id, result.memory.id)
+})
+
+test('enforces the rules cap when content collides with another scope', () => {
+  const store = new FrontendMemoryStore()
+  for (let index = 0; index < 16; index += 1) {
+    store.remember('user-one', `rule-${index}`, { scope: 'rules' })
+  }
+  const longTerm = store.remember('user-one', '跨作用域的同款内容')
+
+  // remember: identical content already lives in long_term, so the write
+  // would migrate that entry into the already full rules scope.
+  assert.throws(
+    () => store.remember('user-one', '跨作用域的同款内容', { scope: 'rules' }),
+    /最多保存 16 条长期约定/,
+  )
+  assert.equal(store.list('user-one', { scope: 'rules' }).length, 16)
+  assert.equal(store.list('user-one', { scope: 'long_term' })[0].id, longTerm.id)
+
+  // replace: the surviving collision entry would be migrated into the full
+  // rules scope; the store must reject the write and roll back.
+  const other = store.remember('user-one', '另一条普通记忆')
+  assert.throws(
+    () => store.replace('user-one', {
+      ids: [other.id],
+      content: '跨作用域的同款内容',
+      scope: 'rules',
+    }),
+    /最多保存 16 条长期约定/,
+  )
+  assert.equal(store.list('user-one', { scope: 'rules' }).length, 16)
+  assert.equal(store.list('user-one', { scope: 'long_term' }).length, 2)
+
+  // An in-place update of an existing rule stays allowed at the cap.
+  const existingRule = store.list('user-one', { scope: 'rules' })[0]
+  assert.doesNotThrow(() => store.replace('user-one', {
+    ids: [existingRule.id],
+    content: '改写后的规则措辞',
+    scope: 'rules',
+  }))
+  assert.equal(store.list('user-one', { scope: 'rules' }).length, 16)
+})
+
+test('forgets by scope without touching the other scopes', () => {
+  const store = new FrontendMemoryStore()
+  store.remember('user-one', '叫我阿豪', { scope: 'rules' })
+  store.remember('user-one', '用户喜欢苹果')
+
+  assert.equal(store.forget('user-one', { all: true, scope: 'rules' }), 1)
+  assert.deepEqual(
+    store.list('user-one').map(entry => entry.content),
+    ['用户喜欢苹果'],
+  )
+  assert.equal(store.forget('user-one', { query: '苹果', scope: 'rules' }), 0)
+  assert.equal(store.forget('user-one', { query: '苹果', scope: 'long_term' }), 1)
+  assert.deepEqual(store.list('user-one'), [])
+})
+
+test('keeps rule scopes across a persistence reload', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-agent-rules-'))
+  t.after(() => rmSync(directory, { recursive: true }))
+  const filePath = join(directory, 'frontend-memory.json')
+  const first = new FrontendMemoryStore({ filePath })
+  first.remember('user-one', '回复默认先给结论', { scope: 'rules' })
+
+  const second = new FrontendMemoryStore({ filePath })
+  assert.deepEqual(
+    second.list('user-one', { scope: 'rules' }).map(entry => entry.scope),
+    ['rules'],
+  )
+})
+
 test('persists memory atomically with private permissions', t => {
   const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-agent-memory-'))
   t.after(() => rmSync(directory, { recursive: true }))

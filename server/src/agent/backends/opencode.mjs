@@ -28,14 +28,6 @@ function acceptsResumedSession({ session, role, coordinatorAgent }) {
 export const openCodeBackendDriver = {
   id: 'opencode',
   label: 'OpenCode',
-  resolveOptions(options) {
-    return {
-      baseUrl: options.baseUrl,
-      model: options.model ?? options.openCodeModel,
-      directory: options.directory,
-      coordinatorAgent: options.coordinatorAgent,
-    }
-  },
 
   createProfile({ root, directory }) {
     return {

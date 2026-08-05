@@ -19,6 +19,7 @@ function harness({
   requestClientState,
 } = {}) {
   const outputs = []
+  const inlineItems = []
   const transcripts = new TurnTranscripts({ waitMs: 5 })
   const handler = new ToolCallHandler({
     taskManager: manager,
@@ -37,6 +38,7 @@ function harness({
     memoryStore,
     notesStore,
     onMemoryChanged,
+    onInlineItem: item => inlineItems.push(item),
     respondPermission,
     permissionPolicy,
     getClientContext: () => clientContext,
@@ -45,7 +47,7 @@ function harness({
       { role: 'user', content: '之前在改首页' },
     ],
   })
-  return { outputs, manager, transcripts, handler }
+  return { outputs, inlineItems, manager, transcripts, handler }
 }
 
 test('asks a capable client to enter sleep without creating another response', async () => {
@@ -900,4 +902,44 @@ test('notes: unavailable without a notes store', async () => {
     arguments: JSON.stringify({ action: 'lists' }),
   })
   assert.equal(kit.outputs.at(-1)[1].error_code, 'notes_unavailable')
+})
+
+test('shows content on screen and keeps the spoken half to one sentence', async () => {
+  const kit = harness()
+  const code = 'def quick_sort(arr):\n    return arr'
+  await kit.handler.handle({
+    call_id: 'call-inline',
+    name: 'show_inline',
+    arguments: JSON.stringify({
+      title: '快速排序实现',
+      format: 'code',
+      content: code,
+    }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.deepEqual(kit.inlineItems, [{
+    id: 'inline_call-inline',
+    turnId: 'turn-one',
+    title: '快速排序实现',
+    format: 'code',
+    content: code,
+  }])
+  assert.equal(kit.outputs.at(-1)[1].status, 'shown')
+  assert.equal(kit.outputs.at(-1)[1].format, 'code')
+  assert.match(
+    kit.outputs.at(-1)[3].response.instructions,
+    /不要朗读刚才显示的内容/,
+  )
+})
+
+test('refuses an inline item without content', async () => {
+  const kit = harness()
+  await kit.handler.handle({
+    call_id: 'call-inline-empty',
+    name: 'show_inline',
+    arguments: JSON.stringify({ title: '空', format: 'code', content: '   ' }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(kit.inlineItems.length, 0)
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'missing_inline_content')
 })

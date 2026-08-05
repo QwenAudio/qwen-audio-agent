@@ -1,5 +1,9 @@
 import { agent } from './agent-client.mjs'
 import { parseCoordinatorPayload } from './acp-backend-session-utils.mjs'
+import {
+  INLINE_FORMATS,
+  normalizeInlinePresentation,
+} from '../core/inline-presentation.mjs'
 import { isDirectiveScope } from '../core/memory-scopes.mjs'
 
 const INLINE_SCHEMA = {
@@ -9,7 +13,7 @@ const INLINE_SCHEMA = {
       type: 'object',
       properties: {
         title: { type: 'string' },
-        format: { type: 'string', enum: ['markdown', 'code', 'link'] },
+        format: { type: 'string', enum: [...INLINE_FORMATS] },
         content: { type: 'string' },
       },
       required: ['title', 'format', 'content'],
@@ -79,24 +83,11 @@ export function coordinatorResponseState(content) {
   return clean(coordinatorPayload(content)?.state).toLowerCase()
 }
 
-function normalizeInline(value) {
-  if (!value || typeof value !== 'object') return null
-  const content = clean(value.content)
-  if (!content) return null
-  return {
-    title: clean(value.title).slice(0, 120),
-    format: ['markdown', 'code', 'link'].includes(value.format)
-      ? value.format
-      : 'markdown',
-    content,
-  }
-}
-
 function normalizePresentation(value, fallback = '') {
   const presentation = value && typeof value === 'object' ? value : {}
   return {
     speech: clean(presentation.speech) || clean(fallback),
-    inline: normalizeInline(presentation.inline),
+    inline: normalizeInlinePresentation(presentation.inline),
   }
 }
 
@@ -219,7 +210,9 @@ export function buildCoordinatorPrompt({
       : '',
     '返回一个 JSON 对象：',
     '{"work_id":"request_id","state":"completed","mode":"respond","presentation":{"speech":"适合语音表达的最终结果","inline":null}}',
-    'work_id 对应 request_id。presentation 是本轮用户要求的最终结果；inline 可承载适合屏幕查看的 Markdown、代码或链接。',
+    'work_id 对应 request_id。presentation 是本轮用户要求的最终结果：speech 用于口播，inline 用于屏幕。',
+    '代码、命令行、URL、长清单、表格以及需要用户逐条核对的内容必须放进 inline，format 相应使用 code、link 或 markdown；speech 只说结果和查看方向，不要把代码、命令、路径或长内容写进 speech。',
+    '结果本身简短且适合听觉时 inline 给 null，不要为一句话的结果制造多余的屏幕卡片。',
     '用户明确要求“独立任务”或“后台处理”时，必须使用当前后端提供的第三层 Session 委派工具，不得在协调 Session 中直接执行该任务。',
     '调用 session_start 或 session_send 并得到 started 后，可以根据用户原话、目标项目和工具返回，自行组织一次自然、有信息量的创建或提交成功说明，然后返回 state=delegated、mode=delegate、准确的 delegation_id、target_session_id 和 presentation。presentation.speech 就是要立刻告诉用户的说明；可以解释已经开始推进什么以及准备怎么做，但不要把尚未完成的工作说成已经完成。此后结束本轮，不要查询状态或自行重复执行；系统会等待目标 Session 完成。',
     'session_status 只用于查询既有第三层任务状态。如果它调用失败，只能如实说明暂时无法取得状态；禁止改用 bash、read、glob、grep 或其他工具扫描目标项目，也禁止凭协调会话记忆代替目标 Session 回答原任务。',

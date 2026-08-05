@@ -2,6 +2,7 @@ import {
   buildFrontendContext,
   loadFrontendPrompt,
 } from '../conversation/frontend-agent-context.mjs'
+import { INLINE_FORMATS } from '../core/inline-presentation.mjs'
 import { TOOL_SCOPES } from '../core/memory-scopes.mjs'
 
 export const SPAWN_THINKING_TOOL_NAME = 'spawn_thinking'
@@ -9,6 +10,7 @@ export const DELEGATE_TOOL_NAME = SPAWN_THINKING_TOOL_NAME
 export const CANCEL_AGENT_TASK_TOOL_NAME = 'cancel_agent_task'
 export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
 export const GET_CURRENT_TIME_TOOL_NAME = 'get_current_time'
+export const SHOW_INLINE_TOOL_NAME = 'show_inline'
 export const USER_MEMORY_TOOL_NAME = 'user_memory'
 export const NOTES_TOOL_NAME = 'notes'
 export const RESPOND_AGENT_PERMISSION_TOOL_NAME = 'respond_agent_permission'
@@ -81,6 +83,34 @@ const getCurrentTimeTool = {
     parameters: {
       type: 'object',
       properties: {},
+      additionalProperties: false,
+    },
+  },
+}
+
+const showInlineTool = {
+  type: 'function',
+  function: {
+    name: SHOW_INLINE_TOOL_NAME,
+    description: '把不适合朗读的完整内容送到用户屏幕上。代码、命令行、URL、长清单、表格，以及需要用户逐条核对或照抄的内容都用它；这些内容念出来既慢又记不住。调用后只用一句话说结果和查看方向，不要再把 content 念一遍。内容简短且适合听觉时不要调用，直接说出来即可。需要执行、检查、搜索或读取文件才能得到的内容仍然交给 spawn_thinking，不要用这个工具展示尚未取得或靠推测的内容。',
+    parameters: {
+      type: 'object',
+      properties: {
+        title: {
+          type: 'string',
+          description: '一行标题，说明这段内容是什么，例如“快速排序实现”或“清理命令”。',
+        },
+        format: {
+          type: 'string',
+          enum: [...INLINE_FORMATS],
+          description: 'code 用于单一代码或命令片段，link 用于链接，markdown 用于带说明的混合内容、清单或表格。',
+        },
+        content: {
+          type: 'string',
+          description: '要显示在屏幕上的完整内容，保持可以直接复制使用的原样格式。代码使用 Markdown 代码块并标注语言。',
+        },
+      },
+      required: ['title', 'format', 'content'],
       additionalProperties: false,
     },
   },
@@ -201,6 +231,7 @@ export const TOOLS = [
   cancelAgentTaskTool,
   getAgentTaskStatusTool,
   getCurrentTimeTool,
+  showInlineTool,
   userMemoryTool,
   notesTool,
   respondAgentPermissionTool,

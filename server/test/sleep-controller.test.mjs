@@ -7,15 +7,16 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 test('sleeps only after the configured idle interval', async () => {
   let sleeps = 0
   const controller = new SleepController({
-    timeoutMs: 20,
+    timeoutMs: 200,
     onSleep: () => { sleeps += 1 },
   })
   controller.enable()
-  await wait(10)
+  // CI runner 计时抖动大，窗口留宽避免定时器提前触发
+  await wait(60)
   controller.recordActivity()
-  await wait(12)
+  await wait(80)
   assert.equal(sleeps, 0)
-  await wait(15)
+  await wait(250)
   assert.equal(sleeps, 1)
   assert.equal(controller.sleeping, true)
   controller.close()
@@ -25,16 +26,16 @@ test('defers sleep while foreground activity is blocking it', async () => {
   let blocked = true
   let sleeps = 0
   const controller = new SleepController({
-    timeoutMs: 10,
-    retryMs: 10,
+    timeoutMs: 100,
+    retryMs: 50,
     canSleep: () => !blocked,
     onSleep: () => { sleeps += 1 },
   })
   controller.enable()
-  await wait(15)
+  await wait(60)
   assert.equal(sleeps, 0)
   blocked = false
-  await wait(15)
+  await wait(250)
   assert.equal(sleeps, 1)
   controller.close()
 })

@@ -14,6 +14,7 @@ export class AnnouncementManager {
     onDelivered = () => {},
     onLeaseRenew = () => {},
     onRelease = () => {},
+    onSpoken = () => {},
     onError = () => {},
   }) {
     this.getFrontend = getFrontend
@@ -30,6 +31,7 @@ export class AnnouncementManager {
     this.onDelivered = onDelivered
     this.onLeaseRenew = onLeaseRenew
     this.onRelease = onRelease
+    this.onSpoken = onSpoken
     this.onError = onError
     this.pending = new Map()
     this.activeBatch = null
@@ -315,6 +317,7 @@ export class AnnouncementManager {
         // queued behind earlier audio. Delivery is confirmed only when the
         // client reports that playback has actually started.
         batch.responseCompleted = true
+        this.onSpoken(eventText, batch.taskIds)
         this.scheduleAcknowledgementTimeout()
       } else if (this.activeBatch) {
         this.scheduleRetry()

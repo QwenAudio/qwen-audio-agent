@@ -6,6 +6,7 @@ import {
   GET_CURRENT_TIME_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
   NOTES_TOOL_NAME,
+  REPLAY_LAST_ANNOUNCEMENT_TOOL_NAME,
   USER_MEMORY_TOOL_NAME,
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
 } from '../realtime-provider.mjs'
@@ -40,6 +41,7 @@ export class ToolCallHandler {
     coordinatorAvailable = async () => true,
     memoryStore,
     notesStore,
+    getLastAnnouncement = () => null,
     getClientContext = () => ({}),
     getConversationContext = () => [],
     onMemoryChanged = () => {},
@@ -58,6 +60,7 @@ export class ToolCallHandler {
     this.coordinatorAvailable = coordinatorAvailable
     this.memoryStore = memoryStore
     this.notesStore = notesStore
+    this.getLastAnnouncement = getLastAnnouncement
     this.getClientContext = getClientContext
     this.getConversationContext = getConversationContext
     this.onMemoryChanged = onMemoryChanged
@@ -291,6 +294,10 @@ export class ToolCallHandler {
     }
     if (toolName === NOTES_TOOL_NAME) {
       await this.notes(callId, turnId, args)
+      return
+    }
+    if (toolName === REPLAY_LAST_ANNOUNCEMENT_TOOL_NAME) {
+      await this.replayLastAnnouncement(callId, turnId)
       return
     }
     if (toolName === SCHEDULE_REMINDER_TOOL_NAME) {
@@ -959,6 +966,17 @@ export class ToolCallHandler {
         )
       }
     }
+    await this.sendOutput(callId, output, turnId)
+  }
+
+  async replayLastAnnouncement(callId, turnId) {
+    const last = this.getLastAnnouncement() || null
+    const output = last?.text
+      ? { status: 'ok', content: last.text, spoken_at: last.at }
+      : {
+          status: 'empty',
+          user_message: '最近没有播报过工作结果。',
+        }
     await this.sendOutput(callId, output, turnId)
   }
 }

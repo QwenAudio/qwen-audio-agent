@@ -16,6 +16,7 @@ const FRONTEND_TOOL_NAMES = [
   'get_current_time',
   'user_memory',
   'notes',
+  'replay_last_announcement',
   'respond_agent_permission',
 ]
 

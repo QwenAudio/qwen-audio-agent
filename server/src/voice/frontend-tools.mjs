@@ -12,6 +12,7 @@ export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
 export const GET_CURRENT_TIME_TOOL_NAME = 'get_current_time'
 export const USER_MEMORY_TOOL_NAME = 'user_memory'
 export const NOTES_TOOL_NAME = 'notes'
+export const REPLAY_LAST_ANNOUNCEMENT_TOOL_NAME = 'replay_last_announcement'
 export const RESPOND_AGENT_PERMISSION_TOOL_NAME = 'respond_agent_permission'
 export const ENTER_SLEEP_TOOL_NAME = 'enter_sleep'
 
@@ -160,6 +161,19 @@ const notesTool = {
   },
 }
 
+const replayLastAnnouncementTool = {
+  type: 'function',
+  function: {
+    name: REPLAY_LAST_ANNOUNCEMENT_TOOL_NAME,
+    description: '取回最近一次已播报的工作结果内容，用于用户要求重复上一条播报时重新口述。用户说“你刚才说什么”“再说一遍”“没听清”且指向刚才的播报内容时调用；用户指的是你上一句普通回答时直接依据当前对话重复，不要调用。只读操作，不改变任何工作状态，也不会重新执行任务。',
+    parameters: {
+      type: 'object',
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+}
+
 const respondAgentPermissionTool = {
   type: 'function',
   function: {
@@ -238,6 +252,7 @@ export const TOOLS = [
   getCurrentTimeTool,
   userMemoryTool,
   notesTool,
+  replayLastAnnouncementTool,
   respondAgentPermissionTool,
 ]
 

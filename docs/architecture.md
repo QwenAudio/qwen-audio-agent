@@ -53,15 +53,17 @@ item is sent into the Backend Agent Session at a time.
 
 ## 3. Realtime boundary
 
-Realtime has exactly seven tools:
+Realtime has exactly nine tools:
 
 ```text
 spawn_thinking
+schedule_reminder
 cancel_agent_task
 get_agent_task_status
 get_current_time
 user_memory
 notes
+replay_last_announcement
 respond_agent_permission
 ```
 
@@ -94,6 +96,12 @@ unique case-insensitive substring, and otherwise reports ambiguity with the
 candidate names back to the model for clarification. `clear` and `drop`
 additionally require an explicit current-turn user utterance before executing,
 like `user_memory` forget.
+
+`replay_last_announcement` returns the text of the most recent announcement
+spoken on this connection so Realtime can restate it when the user asks to
+hear it again. It is read-only frontend playback state: it never changes Work
+state, never re-executes anything, and returns empty when nothing has been
+announced yet.
 
 Only the marked managed section of `USER.md` is editable. User-maintained profile
 text outside that section is returned as read-only data and cannot be replaced.

@@ -262,6 +262,9 @@ export function attachRealtimeGateway(server, {
       }
       activeTasks.forEach(announcePermission)
     }
+    // Y1: the playback queue belongs to the frontend, so the last spoken
+    // announcement is tracked per connection for replay requests.
+    let lastAnnouncement = null
     const announcements = new AnnouncementManager({
       getFrontend: () => frontend,
       isDeliveryBlocked: () => sleeping || waking || !outputEnabled || announcementWindow.isBlocked(),
@@ -284,6 +287,9 @@ export function attachRealtimeGateway(server, {
       onRelease: taskIds => taskManager.releaseNotificationClaims(taskIds, {
         claimantId: notificationClaimantId,
       }),
+      onSpoken: text => {
+        lastAnnouncement = { text, at: Date.now() }
+      },
       onError: error => send(ws, {
         type: 'error',
         message: `后台结果暂时无法播报，正在自动重试：${error.message}`,
@@ -363,6 +369,7 @@ export function attachRealtimeGateway(server, {
       getTurnGeneration: () => committedTurnGeneration,
       memoryStore,
       notesStore,
+      getLastAnnouncement: () => lastAnnouncement,
       getClientContext: () => clientContext,
       getConversationContext: () => conversationSync.frontendContext({
         ownerId,

@@ -34,6 +34,14 @@ function entryScope(entry) {
   return MEMORY_STORE_SCOPE_SET.has(entry?.scope) ? entry.scope : 'long_term'
 }
 
+// Provenance of a memory entry. 'explicit' entries come from the user_memory
+// tool (user-driven); 'inferred' entries come from the automatic session-end
+// extractor. Legacy entries without the field are explicit by definition, so
+// bulk cleanup of inferred memories can never touch them.
+function normalizeSource(value) {
+  return value === 'inferred' ? 'inferred' : 'explicit'
+}
+
 function scopeLimits(scope) {
   const meta = scopeMeta(scope)
   return {
@@ -67,6 +75,7 @@ function publicEntry(entry) {
   return {
     id: memoryId(entry.value),
     scope: entryScope(entry),
+    source: normalizeSource(entry.source),
     content: entry.value,
     updated_at: entry.updatedAt,
     editable: true,
@@ -129,6 +138,7 @@ export class FrontendMemoryStore {
           normalized.set(safeKey, {
             value,
             scope,
+            source: normalizeSource(entry?.source),
             updatedAt: Number(entry?.updatedAt) || Date.now(),
           })
         })
@@ -253,7 +263,7 @@ export class FrontendMemoryStore {
       .map(([, entry]) => publicEntry(entry))
   }
 
-  remember(ownerId, content, { scope } = {}) {
+  remember(ownerId, content, { scope, source } = {}) {
     this.pruneOwners()
     const safeOwnerId = String(ownerId)
     const targetScope = normalizeScope(scope)
@@ -272,7 +282,15 @@ export class FrontendMemoryStore {
     assertScopeCapacity(entries, safeKey, targetScope, limits)
     const previousEntry = entries.get(safeKey)
     const previousAccess = this.ownerAccess.get(safeOwnerId)
-    const entry = { value: safeValue, scope: targetScope, updatedAt: this.now() }
+    // Re-remembering existing content keeps the stronger explicit provenance.
+    const entry = {
+      value: safeValue,
+      scope: targetScope,
+      source: previousEntry?.source === 'explicit'
+        ? 'explicit'
+        : normalizeSource(source),
+      updatedAt: this.now(),
+    }
     entries.set(safeKey, entry)
     this.ownerAccess.set(safeOwnerId, this.now())
     this.pruneOwners({ persist: false })
@@ -323,7 +341,13 @@ export class FrontendMemoryStore {
       else this.ownerAccess.set(safeOwnerId, previousAccess)
       throw error
     }
-    const entry = { value: safeValue, scope: targetScope, updatedAt: this.now() }
+    const entry = {
+      value: safeValue,
+      scope: targetScope,
+      // Replacement is a user-driven tool action, so the result is explicit.
+      source: 'explicit',
+      updatedAt: this.now(),
+    }
     entries.set(safeKey, entry)
     this.ownerAccess.set(safeOwnerId, this.now())
     if (!this.persist()) {

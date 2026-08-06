@@ -123,7 +123,8 @@ QWEN_AUDIO_AGENT_USER_PROFILE_PATH=/absolute/path/to/USER.md
 同一用户目录还保存：
 
 ```text
-frontend-memory.json  # 用户明确要求跨会话记住的长期信息
+frontend-memory.json  # 跨会话记住的长期信息（明确要求 + 会话后自动沉淀）
+memory-audit.jsonl    # 自动记忆的审计日志（逐条追加，仅供事后查阅）
 tasks.json            # 后台任务、结果和待播报通知的恢复状态
 ```
 
@@ -131,6 +132,22 @@ tasks.json            # 后台任务、结果和待播报通知的恢复状态
 旧版仓库 `runtime/` 目录中的对应文件会在首次启动时自动迁移。高级用户仍可通过
 `QWEN_AUDIO_AGENT_FRONTEND_MEMORY_PATH` 和 `QWEN_AUDIO_AGENT_TASK_STATE_PATH`
 覆盖位置。
+
+### 自动记忆沉淀
+
+会话结束后，Gateway 会用一个轻量文本模型从对话中提取稳定的个人事实，
+静默写入长期记忆（详见[用户档案与记忆](reference/memory.md)）。相关可选配置：
+
+```bash
+QWEN_AUDIO_MEMORY_AUTO=on         # off 全局关闭自动沉淀（默认 on）
+QWEN_AUDIO_MEMORY_MODEL=qwen-flash  # 提取模型（默认 qwen-flash）
+QWEN_AUDIO_MEMORY_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+                                  # 任意 OpenAI 兼容端点，含本地 Ollama
+QWEN_AUDIO_MEMORY_API_KEY=        # 默认复用 DASHSCOPE_API_KEY
+```
+
+两个 Key 都未配置时（如纯本地 speech-to-speech 前台），自动沉淀静默关闭，
+明确要求的记忆不受影响。
 
 ## 选择后台
 

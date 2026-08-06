@@ -102,6 +102,7 @@ function clientDescriptor(event = {}) {
 export function attachRealtimeGateway(server, {
   identityManager,
   memoryStore,
+  memoryExtractor = null,
   notesStore,
   coordinator,
   coordinatorAvailable = async () => true,
@@ -1858,6 +1859,10 @@ export function attachRealtimeGateway(server, {
       cancelScheduledRealtimeReconnect()
       sleepController?.close()
       frontend?.close()
+      // Invisible memory: distil durable personal facts from this session in
+      // the background. All gating (debounce, minimum turns, disabled state)
+      // lives inside the extractor; it never blocks or breaks the close path.
+      memoryExtractor?.maybeRun({ ownerId, sessionId })
     })
   })
 

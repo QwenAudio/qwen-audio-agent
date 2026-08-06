@@ -235,10 +235,58 @@ test('loads legacy key-value memory as scoped content', t => {
   assert.deepEqual(store.list('owner'), [{
     id: store.list('owner')[0].id,
     scope: 'long_term',
+    source: 'explicit',
     content: '老大',
     updated_at: 10,
     editable: true,
   }])
+})
+
+test('tags automatic writes as inferred and keeps legacy entries explicit', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-agent-memory-source-'))
+  t.after(() => rmSync(directory, { recursive: true }))
+  const filePath = join(directory, 'frontend-memory.json')
+  const store = new FrontendMemoryStore({ filePath })
+  const inferred = store.remember('owner', '用户最近在学日语', { source: 'inferred' })
+  const explicit = store.remember('owner', '用户喜欢美式咖啡')
+  const bogus = store.remember('owner', '用户养了一只猫', { source: 'made-up' })
+
+  assert.equal(inferred.source, 'inferred')
+  assert.equal(explicit.source, 'explicit')
+  // Unknown provenance never grants the automatic tag.
+  assert.equal(bogus.source, 'explicit')
+
+  // The provenance survives a persistence round-trip.
+  const reloaded = new FrontendMemoryStore({ filePath })
+  const bySource = Object.fromEntries(
+    reloaded.list('owner').map(entry => [entry.content, entry.source]),
+  )
+  assert.deepEqual(bySource, {
+    '用户最近在学日语': 'inferred',
+    '用户喜欢美式咖啡': 'explicit',
+    '用户养了一只猫': 'explicit',
+  })
+})
+
+test('explicit provenance wins when the same content is remembered again', () => {
+  const store = new FrontendMemoryStore()
+  store.remember('owner', '用户喜欢爬山')
+  const downgraded = store.remember('owner', '用户喜欢爬山', { source: 'inferred' })
+  assert.equal(downgraded.source, 'explicit')
+
+  const upgraded = new FrontendMemoryStore()
+  upgraded.remember('owner', '用户喜欢潜水', { source: 'inferred' })
+  assert.equal(upgraded.remember('owner', '用户喜欢潜水').source, 'explicit')
+})
+
+test('replace produces an explicit entry regardless of the old provenance', () => {
+  const store = new FrontendMemoryStore()
+  const old = store.remember('owner', '用户喜欢咖啡', { source: 'inferred' })
+  const result = store.replace('owner', {
+    ids: [old.id],
+    content: '用户不再喝咖啡',
+  })
+  assert.equal(result.memory.source, 'explicit')
 })
 
 test('quarantines corrupt memory and continues with an empty writable store', t => {

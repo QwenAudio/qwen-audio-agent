@@ -7,7 +7,6 @@ export const qoderBackendDriver = {
   createProfile({
     directory,
     cliPath,
-    configDirectory,
     permissionMode,
   }) {
     return {
@@ -20,7 +19,7 @@ export const qoderBackendDriver = {
           : []),
       ],
       cwd: directory,
-      env: baseEnvironment(configDirectory),
+      env: baseEnvironment(),
       externalMcp: true,
       nativeDelegation: false,
       backendUi: false,

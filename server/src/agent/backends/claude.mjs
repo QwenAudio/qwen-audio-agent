@@ -10,7 +10,6 @@ export const claudeBackendDriver = {
     directory,
     cliPath,
     claudeExecutable,
-    configDirectory,
   }) {
     return {
       label: this.label,
@@ -25,9 +24,6 @@ export const claudeBackendDriver = {
           : {}),
         ...(clean(claudeExecutable)
           ? { CLAUDE_CODE_EXECUTABLE: clean(claudeExecutable) }
-          : {}),
-        ...(clean(configDirectory)
-          ? { CLAUDE_CONFIG_DIR: clean(configDirectory) }
           : {}),
       },
       externalMcp: true,

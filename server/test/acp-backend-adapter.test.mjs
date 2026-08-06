@@ -591,7 +591,6 @@ test('uses one ACP profile family while preserving backend differences', () => {
     directory: '/work',
     cliPath: '/opt/claude-code-acp',
     claudeExecutable: '/opt/claude',
-    configDirectory: '/config/claude',
     permissionMode: 'full',
   })
   assert.equal(claude.command, process.execPath)
@@ -599,7 +598,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
   assert.equal(claude.cwd, '/work')
   assert.equal(claude.env.CLAUDE_CODE_ACP_BIN, '/opt/claude-code-acp')
   assert.equal(claude.env.CLAUDE_CODE_EXECUTABLE, '/opt/claude')
-  assert.equal(claude.env.CLAUDE_CONFIG_DIR, '/config/claude')
+  assert.equal(claude.env.CLAUDE_CONFIG_DIR, undefined)
   assert.equal(claude.externalMcp, true)
 })
 

@@ -10,6 +10,11 @@ import { conversationSync } from '../conversation/conversation-sync.mjs'
 import { IdentityManager } from '../core/identity.mjs'
 import { FrontendMemoryStore } from '../conversation/frontend-memory.mjs'
 import { FrontendNotesStore } from '../conversation/frontend-notes.mjs'
+import { MemoryAudit } from '../conversation/memory-audit.mjs'
+import {
+  MemoryExtractor,
+  createExtractorLlmCall,
+} from '../conversation/memory-extractor.mjs'
 import { ProfiledMemoryStore } from '../conversation/profiled-memory-store.mjs'
 import { UserProfile } from '../conversation/user-profile.mjs'
 import { enforceSameOrigin } from '../core/request-security.mjs'
@@ -134,6 +139,28 @@ const notesStore = new FrontendNotesStore({
   maxOwners: config.maxFrontendMemoryOwners,
   ownerTtlMs: config.frontendMemoryOwnerTtlMs,
   onWarning: warning => logger.warn('notes.persistence_warning', { warning }),
+})
+// Invisible memory (issue #92): after a voice session closes, a lightweight
+// text model distils durable personal facts into facts entries tagged
+// source: 'inferred'. Without an API key createExtractorLlmCall returns null
+// and the extractor stays silently disabled; explicit memories are
+// unaffected. Writes deliberately target the raw FrontendMemoryStore, never
+// ProfiledMemoryStore, so the automatic path cannot reach rules or profile.
+const memoryExtractor = new MemoryExtractor({
+  memoryStore: dynamicMemory,
+  conversationSync,
+  audit: new MemoryAudit({
+    filePath: config.memoryAuditPath,
+    onWarning: warning => logger.warn('memory.audit_warning', { warning }),
+  }),
+  llmCall: config.memoryAutoEnabled
+    ? createExtractorLlmCall({
+        baseUrl: config.memoryBaseUrl,
+        apiKey: config.memoryApiKey,
+        model: config.memoryModel,
+      })
+    : null,
+  logger,
 })
 const app = express()
 const permissionPolicy = new SessionPermissionPolicy({
@@ -349,6 +376,7 @@ export { server }
 realtimeGateway = attachRealtimeGateway(server, {
   identityManager,
   memoryStore: frontendMemory,
+  memoryExtractor,
   notesStore,
   coordinator,
   coordinatorAvailable: async () => ({

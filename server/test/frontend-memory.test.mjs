@@ -24,7 +24,7 @@ test('stores, searches, deduplicates and isolates long-term memories', () => {
   const matches = store.list('user-one', { query: '老明' })
   assert.equal(matches.length, 1)
   assert.match(matches[0].id, /^mem_[a-f0-9]{16}$/)
-  assert.equal(matches[0].scope, 'long_term')
+  assert.equal(matches[0].scope, 'facts')
   assert.equal(matches[0].content, '用户希望被称为老明')
   assert.equal(matches[0].editable, true)
   assert.equal(store.list('user-one').length, 2)
@@ -96,7 +96,7 @@ test('stores user rules in their own bounded scope', () => {
     ['回复默认先给结论'],
   )
   assert.deepEqual(
-    store.list('user-one', { scope: 'long_term' }).map(entry => entry.content),
+    store.list('user-one', { scope: 'facts' }).map(entry => entry.content),
     ['用户喜欢苹果'],
   )
   assert.equal(store.list('user-one').length, 2)
@@ -130,7 +130,7 @@ test('moves a memory between scopes through replace', () => {
 
   assert.equal(result.replaced, 1)
   assert.equal(result.memory.scope, 'rules')
-  assert.deepEqual(store.list('user-one', { scope: 'long_term' }), [])
+  assert.deepEqual(store.list('user-one', { scope: 'facts' }), [])
   assert.equal(store.list('user-one', { scope: 'rules' })[0].id, result.memory.id)
 })
 
@@ -141,14 +141,14 @@ test('enforces the rules cap when content collides with another scope', () => {
   }
   const longTerm = store.remember('user-one', '跨作用域的同款内容')
 
-  // remember: identical content already lives in long_term, so the write
+  // remember: identical content already lives in facts, so the write
   // would migrate that entry into the already full rules scope.
   assert.throws(
     () => store.remember('user-one', '跨作用域的同款内容', { scope: 'rules' }),
     /最多保存 16 条长期约定/,
   )
   assert.equal(store.list('user-one', { scope: 'rules' }).length, 16)
-  assert.equal(store.list('user-one', { scope: 'long_term' })[0].id, longTerm.id)
+  assert.equal(store.list('user-one', { scope: 'facts' })[0].id, longTerm.id)
 
   // replace: the surviving collision entry would be migrated into the full
   // rules scope; the store must reject the write and roll back.
@@ -162,7 +162,7 @@ test('enforces the rules cap when content collides with another scope', () => {
     /最多保存 16 条长期约定/,
   )
   assert.equal(store.list('user-one', { scope: 'rules' }).length, 16)
-  assert.equal(store.list('user-one', { scope: 'long_term' }).length, 2)
+  assert.equal(store.list('user-one', { scope: 'facts' }).length, 2)
 
   // An in-place update of an existing rule stays allowed at the cap.
   const existingRule = store.list('user-one', { scope: 'rules' })[0]
@@ -185,7 +185,7 @@ test('forgets by scope without touching the other scopes', () => {
     ['用户喜欢苹果'],
   )
   assert.equal(store.forget('user-one', { query: '苹果', scope: 'rules' }), 0)
-  assert.equal(store.forget('user-one', { query: '苹果', scope: 'long_term' }), 1)
+  assert.equal(store.forget('user-one', { query: '苹果', scope: 'facts' }), 1)
   assert.deepEqual(store.list('user-one'), [])
 })
 
@@ -234,11 +234,79 @@ test('loads legacy key-value memory as scoped content', t => {
   const store = new FrontendMemoryStore({ filePath })
   assert.deepEqual(store.list('owner'), [{
     id: store.list('owner')[0].id,
-    scope: 'long_term',
+    scope: 'facts',
+    source: 'explicit',
     content: '老大',
     updated_at: 10,
     editable: true,
   }])
+})
+
+test('canonicalizes the legacy long_term scope to facts on load and input', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-agent-memory-alias-'))
+  t.after(() => rmSync(directory, { recursive: true }))
+  const filePath = join(directory, 'frontend-memory.json')
+  writeFileSync(filePath, JSON.stringify({
+    version: 1,
+    users: {
+      owner: {
+        mem_legacy: { value: '用户喜欢美式咖啡', scope: 'long_term', updatedAt: 10 },
+      },
+    },
+  }))
+
+  const store = new FrontendMemoryStore({ filePath })
+  assert.equal(store.list('owner')[0].scope, 'facts')
+  // The alias also works as a query filter and a write target.
+  assert.equal(store.list('owner', { scope: 'long_term' })[0].content, '用户喜欢美式咖啡')
+  assert.equal(store.remember('owner', '用户喜欢爬山', { scope: 'long_term' }).scope, 'facts')
+})
+
+test('tags automatic writes as inferred and keeps legacy entries explicit', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-agent-memory-source-'))
+  t.after(() => rmSync(directory, { recursive: true }))
+  const filePath = join(directory, 'frontend-memory.json')
+  const store = new FrontendMemoryStore({ filePath })
+  const inferred = store.remember('owner', '用户最近在学日语', { source: 'inferred' })
+  const explicit = store.remember('owner', '用户喜欢美式咖啡')
+  const bogus = store.remember('owner', '用户养了一只猫', { source: 'made-up' })
+
+  assert.equal(inferred.source, 'inferred')
+  assert.equal(explicit.source, 'explicit')
+  // Unknown provenance never grants the automatic tag.
+  assert.equal(bogus.source, 'explicit')
+
+  // The provenance survives a persistence round-trip.
+  const reloaded = new FrontendMemoryStore({ filePath })
+  const bySource = Object.fromEntries(
+    reloaded.list('owner').map(entry => [entry.content, entry.source]),
+  )
+  assert.deepEqual(bySource, {
+    '用户最近在学日语': 'inferred',
+    '用户喜欢美式咖啡': 'explicit',
+    '用户养了一只猫': 'explicit',
+  })
+})
+
+test('explicit provenance wins when the same content is remembered again', () => {
+  const store = new FrontendMemoryStore()
+  store.remember('owner', '用户喜欢爬山')
+  const downgraded = store.remember('owner', '用户喜欢爬山', { source: 'inferred' })
+  assert.equal(downgraded.source, 'explicit')
+
+  const upgraded = new FrontendMemoryStore()
+  upgraded.remember('owner', '用户喜欢潜水', { source: 'inferred' })
+  assert.equal(upgraded.remember('owner', '用户喜欢潜水').source, 'explicit')
+})
+
+test('replace produces an explicit entry regardless of the old provenance', () => {
+  const store = new FrontendMemoryStore()
+  const old = store.remember('owner', '用户喜欢咖啡', { source: 'inferred' })
+  const result = store.replace('owner', {
+    ids: [old.id],
+    content: '用户不再喝咖啡',
+  })
+  assert.equal(result.memory.source, 'explicit')
 })
 
 test('quarantines corrupt memory and continues with an empty writable store', t => {

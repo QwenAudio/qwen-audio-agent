@@ -452,6 +452,26 @@ export const config = {
     1000,
     { min: 10 },
   ),
+  // Session-end automatic memory extraction (invisible memory, issue #92).
+  // Runs one stateless request against a lightweight OpenAI-compatible text
+  // model after a voice session closes; silently disabled without an API key
+  // so local speech-to-speech setups degrade without a sound.
+  memoryAutoEnabled: String(
+    process.env.QWEN_AUDIO_MEMORY_AUTO || 'on',
+  ).toLowerCase() !== 'off',
+  memoryModel: String(process.env.QWEN_AUDIO_MEMORY_MODEL || '').trim()
+    || 'qwen-flash',
+  memoryBaseUrl: (
+    process.env.QWEN_AUDIO_MEMORY_BASE_URL
+    || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  ).replace(/\/+$/, ''),
+  memoryApiKey: process.env.QWEN_AUDIO_MEMORY_API_KEY
+    || process.env.DASHSCOPE_API_KEY
+    || '',
+  memoryAuditPath: resolve(
+    runtimeEnvironment.configDirectory,
+    'memory-audit.jsonl',
+  ),
   reminderSchedulerEnabled: String(
     process.env.QWEN_AUDIO_AGENT_REMINDER_SCHEDULER || 'true'
   ).toLowerCase() === 'true',

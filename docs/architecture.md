@@ -53,27 +53,29 @@ item is sent into the Backend Agent Session at a time.
 
 ## 3. Realtime boundary
 
-Realtime has exactly seven tools:
+Realtime keeps a deliberately small tool set — few tools, low latency, no
+multi-step orchestration. The base tools are:
 
 ```text
 spawn_thinking
+schedule_reminder
 cancel_agent_task
 get_agent_task_status
 get_current_time
-user_memory
+memory
 notes
 respond_agent_permission
 ```
 
-`user_memory` keeps one small protocol for frontend-owned memory:
+`memory` keeps one small protocol for frontend-owned memory:
 
-- `recall` reads profile or long-term text records and returns stable IDs;
+- `recall` reads profile or fact records and returns stable IDs;
 - `remember` adds a new durable fact;
 - `replace` atomically replaces recalled IDs when the user corrects a fact;
 - `forget` removes explicitly requested records.
 
 Records live in three scopes: `profile` (name, timezone, locale, stable
-interaction preferences), `long_term` (durable personal facts), and `rules`
+interaction preferences), `facts` (durable personal facts), and `rules`
 (user-authored standing instructions: speaking style, forms of address, default
 ways of doing things). `rules` are user-authorized directives, not memory data:
 they are always injected into the Realtime context as `User Directives`, take
@@ -82,18 +84,24 @@ utterance. They never authorize leaking internal structure, skipping
 permission checks, or changing the assistant's identity; entries that demand
 those are void. Rules are bounded to 16 short entries so they can be injected
 in full on every turn, and they are attached to the backend Agent envelope as
-user-authored preference material. `profile` and `long_term` remain
+user-authored preference material. `profile` and `facts` remain
 read-on-demand data.
+
+Besides explicit tool writes, a session-end extractor distils durable personal
+facts from the transcript into `facts` entries tagged `source: 'inferred'`.
+The automatic path can never write `rules` or `profile`, filters sensitive
+content, records every operation in a local audit file, and disables itself
+silently when no text-model API key is configured.
 
 `notes` manages user-named lists (shopping lists, todos, reading lists) as
 frontend-owned volatile collections: single-call add, show, match-remove,
 clear, and drop with no backend involvement. Lists are item data, not memory;
-stable facts remain in `user_memory`, and list items are never written into
+stable facts remain in `memory`, and list items are never written into
 memory or rules. Item and list resolution matches exact text first, then a
 unique case-insensitive substring, and otherwise reports ambiguity with the
 candidate names back to the model for clarification. `clear` and `drop`
 additionally require an explicit current-turn user utterance before executing,
-like `user_memory` forget.
+like `memory` forget.
 
 Only the marked managed section of `USER.md` is editable. User-maintained profile
 text outside that section is returned as read-only data and cannot be replaced.

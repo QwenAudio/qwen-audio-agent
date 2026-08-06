@@ -10,7 +10,7 @@ export const DELEGATE_TOOL_NAME = SPAWN_THINKING_TOOL_NAME
 export const CANCEL_AGENT_TASK_TOOL_NAME = 'cancel_agent_task'
 export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
 export const GET_CURRENT_TIME_TOOL_NAME = 'get_current_time'
-export const USER_MEMORY_TOOL_NAME = 'user_memory'
+export const MEMORY_TOOL_NAME = 'memory'
 export const NOTES_TOOL_NAME = 'notes'
 export const RESPOND_AGENT_PERMISSION_TOOL_NAME = 'respond_agent_permission'
 export const ENTER_SLEEP_TOOL_NAME = 'enter_sleep'
@@ -87,11 +87,11 @@ const getCurrentTimeTool = {
   },
 }
 
-const userMemoryTool = {
+const memoryTool = {
   type: 'function',
   function: {
-    name: USER_MEMORY_TOOL_NAME,
-    description: '管理千问Audio前台持有的用户记忆与长期约定。用户明确要求记住、修改、遗忘某项信息，或询问你记得什么时必须调用，不要只口头回应。profile 用于称呼、时区、语言和稳定交互偏好；long_term 用于用户明确希望跨会话保留的个人事实、喜好、目标和约定；rules 用于用户亲自设定的长期约定——说话方式、称呼习惯、默认做法等“以后都……”类要求，设定后长期生效并优先于默认风格；不要保存项目执行历史或后台工作细节，也不要保存密码、密钥、验证码或令牌。使用 recall 回忆，remember 新增，replace 用新内容替换明确相关的旧记录，forget 遗忘。',
+    name: MEMORY_TOOL_NAME,
+    description: '管理千问Audio的长期记忆。用户明确要求记住、修改、遗忘某项信息，或询问你记得什么时必须调用，不要只口头回应。profile 用于称呼、时区、语言和稳定交互偏好；facts 用于需要跨会话保留的个人事实、喜好、目标和约定；rules 用于用户亲自设定的长期约定——说话方式、称呼习惯、默认做法等“以后都……”类要求，设定后长期生效并优先于默认风格；不要保存项目执行历史或后台工作细节，也不要保存密码、密钥、验证码或令牌。使用 recall 回忆，remember 新增，replace 用新内容替换明确相关的旧记录，forget 遗忘。',
     parameters: {
       type: 'object',
       properties: {
@@ -103,7 +103,7 @@ const userMemoryTool = {
         scope: {
           type: 'string',
           enum: TOOL_SCOPES,
-          description: '记忆范围。remember 和 replace 必须使用 profile、long_term 或 rules；recall 和 forget 可以使用 all。',
+          description: '记忆范围。remember 和 replace 必填；recall 和 forget 省略时作用于全部范围。',
         },
         content: {
           type: 'string',
@@ -124,7 +124,7 @@ const userMemoryTool = {
           description: '仅用于 forget；用户明确要求清空所选范围时设为 true。',
         },
       },
-      required: ['action', 'scope'],
+      required: ['action'],
       additionalProperties: false,
     },
   },
@@ -236,7 +236,7 @@ export const TOOLS = [
   cancelAgentTaskTool,
   getAgentTaskStatusTool,
   getCurrentTimeTool,
-  userMemoryTool,
+  memoryTool,
   notesTool,
   respondAgentPermissionTool,
 ]

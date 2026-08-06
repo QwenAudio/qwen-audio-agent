@@ -66,7 +66,7 @@ test('writes stated facts as inferred long-term memories', async () => {
   const memories = memoryStore.list(OWNER)
   assert.equal(memories.length, 1)
   assert.equal(memories[0].content, '用户每天早上跑步')
-  assert.equal(memories[0].scope, 'long_term')
+  assert.equal(memories[0].scope, 'facts')
   assert.equal(memories[0].source, 'inferred')
 })
 

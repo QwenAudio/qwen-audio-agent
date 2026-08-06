@@ -83,14 +83,14 @@ test('combines profile and owner-scoped long-term memory', () => {
   const entries = new Map([
     ['owner-a', [{
       id: 'mem_a',
-      scope: 'long_term',
+      scope: 'facts',
       content: '喜欢苹果',
       updated_at: 1,
       editable: true,
     }]],
     ['owner-b', [{
       id: 'mem_b',
-      scope: 'long_term',
+      scope: 'facts',
       content: '喜欢香蕉',
       updated_at: 1,
       editable: true,
@@ -117,24 +117,24 @@ test('combines profile and owner-scoped long-term memory', () => {
   assert.equal(memories[1].content, '喜欢苹果')
   assert.equal(store.list('owner-a', { scope: 'profile' }).length, 1)
   assert.deepEqual(
-    store.remember('owner-a', { scope: 'long_term', content: '喜欢梨' }),
+    store.remember('owner-a', { scope: 'facts', content: '喜欢梨' }),
     { ownerId: 'owner-a', content: '喜欢梨' },
   )
   assert.deepEqual(
     store.replace('owner-a', {
-      scope: 'long_term',
+      scope: 'facts',
       ids: ['mem_a'],
       content: '喜欢梨',
     }),
     {
       ownerId: 'owner-a',
-      scope: 'long_term',
+      scope: 'facts',
       ids: ['mem_a'],
       content: '喜欢梨',
     },
   )
   assert.equal(store.forget('owner-a', {
-    scope: 'long_term',
+    scope: 'facts',
     query: '喜欢苹果',
   }), 1)
 })

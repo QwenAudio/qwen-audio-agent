@@ -102,6 +102,7 @@ function clientDescriptor(event = {}) {
 export function attachRealtimeGateway(server, {
   identityManager,
   memoryStore,
+  memoryExtractor = null,
   notesStore,
   coordinator,
   coordinatorAvailable = async () => true,
@@ -1367,7 +1368,9 @@ export function attachRealtimeGateway(server, {
             pendingAudio = []
             error.realtimeConnectionReported = true
           }
-          if (classification !== 'inactivity') {
+          // capacity_busy 是瞬时可恢复错误（如 s2s 单 session 槽异步未释放），
+          // 由上层 wakeFromSleep 带退避重试，不向客户端报错以保持唤醒流程静默。
+          if (classification !== 'inactivity' && classification !== 'capacity_busy') {
             reportFrontendError(error)
           }
         },
@@ -1453,11 +1456,14 @@ export function attachRealtimeGateway(server, {
             durationMs: Date.now() - connectStartedAt,
             error,
           })
-          if (createdFrontend.provider.classifyError(error.message) === 'fatal') {
+          const classification = createdFrontend.provider.classifyError(error.message)
+          if (classification === 'fatal') {
             realtimeBlockedError = error.message
             pendingAudio = []
           }
-          if (frontend === createdFrontend) {
+          // capacity_busy 是瞬时可恢复错误（如 s2s 单 session 槽尚未释放），
+          // 由上层带退避重试，不向客户端报 unavailable 以避免唤醒流程闪烁。
+          if (frontend === createdFrontend && classification !== 'capacity_busy') {
             send(ws, {
               type: GatewayServerEvent.VOICE_CONNECTION,
               state: 'unavailable',
@@ -1556,17 +1562,34 @@ export function attachRealtimeGateway(server, {
       })
     }
 
-    const wakeFromSleep = () => {
-      if (!sleeping || waking) return
-      sleeping = false
-      waking = true
-      sleepController.wake()
-      send(ws, {
-        type: GatewayServerEvent.VOICE_SLEEP,
-        state: 'detected',
-        wakeWord: config.wakeWord,
-      })
+    const WAKE_CONNECT_MAX_ATTEMPTS = 3
+    const WAKE_CONNECT_RETRY_BACKOFF_MS = 350
+
+    const attemptWakeConnect = attempt => {
       ensureFrontend().catch(error => {
+        const provider =
+          frontend?.provider ?? resolveRealtimeProvider(sessionProvider)
+        const classification =
+          provider.classifyError?.(error.message) ?? 'other'
+        if (
+          classification === 'capacity_busy'
+          && attempt < WAKE_CONNECT_MAX_ATTEMPTS
+        ) {
+          connectionLogger.info('realtime.wake_connect_retry', {
+            attempt: attempt + 1,
+            provider: provider.key,
+            error: error.message,
+          })
+          // 先放弃失败的前端，避免其异步 onClose 干扰下一次重试。
+          const failedFrontend = frontend
+          frontend = null
+          failedFrontend?.close()
+          setTimeout(
+            () => attemptWakeConnect(attempt + 1),
+            WAKE_CONNECT_RETRY_BACKOFF_MS,
+          )
+          return
+        }
         waking = false
         sleeping = true
         sleepController.holdSleeping()
@@ -1581,6 +1604,19 @@ export function attachRealtimeGateway(server, {
           message: error.message,
         })
       })
+    }
+
+    const wakeFromSleep = () => {
+      if (!sleeping || waking) return
+      sleeping = false
+      waking = true
+      sleepController.wake()
+      send(ws, {
+        type: GatewayServerEvent.VOICE_SLEEP,
+        state: 'detected',
+        wakeWord: config.wakeWord,
+      })
+      attemptWakeConnect(0)
     }
 
     const acceptSleepingAudio = audio => {
@@ -1858,6 +1894,17 @@ export function attachRealtimeGateway(server, {
       cancelScheduledRealtimeReconnect()
       sleepController?.close()
       frontend?.close()
+      // Invisible memory: distil durable personal facts from this session in
+      // the background. All gating (debounce, minimum turns, disabled state)
+      // lives inside the extractor; it never blocks or breaks the close path,
+      // and even a misbehaving extractor must not disturb the disconnect.
+      try {
+        memoryExtractor?.maybeRun({ ownerId, sessionId })
+      } catch (error) {
+        connectionLogger.warn('memory.extract_hook_failed', {
+          error: String(error?.message || error),
+        })
+      }
     })
   })
 

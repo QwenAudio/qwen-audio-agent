@@ -1,8 +1,17 @@
-import { ALL_SCOPE, TOOL_SCOPES, storeForScope } from '../core/memory-scopes.mjs'
+import {
+  ALL_SCOPE,
+  TOOL_SCOPES,
+  canonicalScope,
+  storeForScope,
+} from '../core/memory-scopes.mjs'
 
+// Omitted scope means "no filter". ALL_SCOPE remains accepted as an internal
+// sentinel for the same meaning.
 function normalizeScope(value, fallback = ALL_SCOPE) {
-  const scope = String(value || fallback).trim().toLowerCase()
-  if (!TOOL_SCOPES.includes(scope)) throw new Error(`unsupported memory scope: ${scope}`)
+  const scope = canonicalScope(String(value || fallback))
+  if (scope !== ALL_SCOPE && !TOOL_SCOPES.includes(scope)) {
+    throw new Error(`unsupported memory scope: ${scope}`)
+  }
   return scope
 }
 
@@ -33,7 +42,7 @@ export class ProfiledMemoryStore {
   }
 
   remember(ownerId, { scope, content } = {}) {
-    const target = normalizeScope(scope, 'long_term')
+    const target = normalizeScope(scope, 'facts')
     if (target === ALL_SCOPE) throw new Error('remember requires a concrete memory scope')
     if (storeForScope(target) === 'profile') {
       if (!this.userProfile) throw new Error('user profile is unavailable')

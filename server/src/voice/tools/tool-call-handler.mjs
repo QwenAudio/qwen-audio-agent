@@ -6,11 +6,11 @@ import {
   GET_CURRENT_TIME_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
   NOTES_TOOL_NAME,
-  USER_MEMORY_TOOL_NAME,
+  MEMORY_TOOL_NAME,
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
 } from '../realtime-provider.mjs'
 import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
-import { isToolScope } from '../../core/memory-scopes.mjs'
+import { canonicalScope, isToolScope } from '../../core/memory-scopes.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
 
@@ -285,8 +285,8 @@ export class ToolCallHandler {
       await this.getCurrentTime(callId, turnId)
       return
     }
-    if (toolName === USER_MEMORY_TOOL_NAME) {
-      await this.userMemory(callId, turnId, args)
+    if (toolName === MEMORY_TOOL_NAME) {
+      await this.memory(callId, turnId, args)
       return
     }
     if (toolName === NOTES_TOOL_NAME) {
@@ -817,9 +817,12 @@ export class ToolCallHandler {
     }, turnId)
   }
 
-  async userMemory(callId, turnId, args) {
+  async memory(callId, turnId, args) {
     const action = String(args.action || '').trim().toLowerCase()
-    const scope = String(args.scope || '').trim().toLowerCase()
+    // Omitted scope (or the legacy 'all' spelling) means every scope for the
+    // read-side actions; remember/replace still require a concrete scope.
+    const requestedScope = String(args.scope || '').trim().toLowerCase()
+    const scope = requestedScope === 'all' ? '' : canonicalScope(requestedScope)
     const content = String(args.content || '').trim()
     const query = String(args.query || '').trim()
     const memoryIds = Array.isArray(args.memory_ids)
@@ -831,17 +834,20 @@ export class ToolCallHandler {
       output = failure('memory_unavailable', '前台记忆功能当前不可用。')
     } else if (!['recall', 'remember', 'replace', 'forget'].includes(action)) {
       output = failure('invalid_memory_action', '没有识别出要执行的记忆操作。')
-    } else if (!isToolScope(scope)) {
+    } else if (scope && !isToolScope(scope)) {
       output = failure('invalid_memory_scope', '没有识别出记忆范围。')
     } else if (action === 'recall') {
-      const memories = this.memoryStore.list(this.ownerId, { scope, query })
+      const memories = this.memoryStore.list(this.ownerId, {
+        scope: scope || null,
+        query,
+      })
       output = {
         status: memories.length ? 'ok' : 'not_found',
         count: memories.length,
         memories,
       }
     } else if (action === 'remember' || action === 'replace') {
-      if (scope === 'all' || !content) {
+      if (!scope || !content) {
         output = failure('missing_memory', '需要明确记忆类型和要记住的内容。')
       } else if (action === 'replace' && !memoryIds.length) {
         output = failure(
@@ -889,7 +895,7 @@ export class ToolCallHandler {
       } else {
         try {
           const removed = this.memoryStore.forget(this.ownerId, {
-            scope,
+            scope: scope || null,
             query,
             all,
           })

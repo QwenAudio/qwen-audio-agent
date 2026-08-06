@@ -163,3 +163,20 @@ test('omits the directives section when the user has no rules', () => {
   assert.doesNotMatch(context, /## User Directives/)
   assert.match(context, /## User Memory/)
 })
+
+test('capability section reflects a connected backend without naming it to the user', () => {
+  const context = buildFrontendContext({
+    backend: { id: 'opencode', label: 'OpenCode' },
+  })
+  assert.match(context, /## Capabilities/)
+  assert.match(context, /backend agent is connected/)
+  assert.match(context, /never name the backend/)
+})
+
+test('capability section states frontend-only limits when no backend is configured', () => {
+  const context = buildFrontendContext()
+  assert.match(context, /## Capabilities/)
+  assert.match(context, /No backend agent is configured/)
+  assert.match(context, /enabled in the settings/)
+  assert.doesNotMatch(context, /backend agent is connected/)
+})

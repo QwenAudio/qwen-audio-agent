@@ -5,6 +5,7 @@ import { spawnAndProxy, commandAvailable, findExecutable } from './lib/launcher.
 const RUNTIME = process.env.CODEX_ACP_RUNTIME || 'auto'
 const PKG = process.env.CODEX_ACP_PACKAGE || '@agentclientprotocol/codex-acp@1.1.7'
 const DESKTOP_INSTALLED_ONLY = process.env.QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY
+const ARGS = process.argv.slice(2)
 
 function fatal(msg) { console.error(msg); process.exit(1) }
 
@@ -22,7 +23,7 @@ if (!process.env.CODEX_PATH) {
 
 async function runBinary() {
   const bin = process.env.CODEX_ACP_BIN || 'codex-acp'
-  await spawnAndProxy(bin, [])
+  await spawnAndProxy(bin, ARGS)
 }
 
 async function runPackage() {
@@ -30,7 +31,7 @@ async function runPackage() {
     fatal('codex-acp is not installed. Install it before selecting Codex.')
   }
   if (!commandAvailable('npx')) fatal('Codex ACP package mode requires npx.')
-  await spawnAndProxy('npx', ['-y', PKG])
+  await spawnAndProxy('npx', ['-y', PKG, ...ARGS])
 }
 
 switch (RUNTIME) {
@@ -40,7 +41,7 @@ switch (RUNTIME) {
     if (process.env.CODEX_ACP_BIN) {
       await runBinary()
     } else if (commandAvailable('codex-acp')) {
-      await spawnAndProxy('codex-acp', [])
+      await spawnAndProxy('codex-acp', ARGS)
     } else {
       await runPackage()
     }

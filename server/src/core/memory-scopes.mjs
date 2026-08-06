@@ -13,7 +13,7 @@ export const MEMORY_SCOPES = {
     kind: 'profile',
     store: 'profile',
   },
-  long_term: {
+  facts: {
     kind: 'data',
     store: 'memory',
     label: '前台记忆',
@@ -29,11 +29,25 @@ export const MEMORY_SCOPES = {
   },
 }
 
+// Legacy persisted scope values map onto the current taxonomy. 'long_term'
+// named the retention period instead of the content kind and predates the
+// content-axis naming (profile/facts/rules/...).
+const SCOPE_ALIASES = {
+  long_term: 'facts',
+}
+
+export function canonicalScope(value) {
+  const scope = String(value || '').trim().toLowerCase()
+  return SCOPE_ALIASES[scope] || scope
+}
+
+// Internal sentinel meaning "no scope filter". Not part of the tool enum:
+// the tool schema expresses "all" by omitting the scope argument.
 export const ALL_SCOPE = 'all'
 export const MEMORY_STORE_SCOPES = Object.keys(MEMORY_SCOPES).filter(
   scope => MEMORY_SCOPES[scope].store === 'memory',
 )
-export const TOOL_SCOPES = [...Object.keys(MEMORY_SCOPES), ALL_SCOPE]
+export const TOOL_SCOPES = Object.keys(MEMORY_SCOPES)
 
 export function scopeMeta(scope) {
   return MEMORY_SCOPES[scope] || null

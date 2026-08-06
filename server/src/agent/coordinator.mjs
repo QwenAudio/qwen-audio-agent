@@ -160,7 +160,7 @@ export function buildCoordinatorPrompt({
     .slice(0, 20)
   const memories = preferences.length
     ? preferences.map(memory => (
-        `- [${clean(memory.scope) || 'long_term'}] ${clean(memory.content)}`
+        `- [${clean(memory.scope) || 'facts'}] ${clean(memory.content)}`
       )).join('\n')
     : '- 无'
   const trustedBackendEvent = backendEvent && typeof backendEvent === 'object'

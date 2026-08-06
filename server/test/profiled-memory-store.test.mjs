@@ -37,11 +37,12 @@ function harness({ withProfile = true } = {}) {
 test('routes each scope to its own backing store', () => {
   const { store } = harness()
   const profile = store.remember('owner', { scope: 'profile', content: '称呼：老大' })
+  // The legacy long_term spelling canonicalizes to facts.
   const fact = store.remember('owner', { scope: 'long_term', content: '用户喜欢苹果' })
   const rule = store.remember('owner', { scope: 'rules', content: '回复默认先给结论' })
 
   assert.equal(profile.scope, 'profile')
-  assert.equal(fact.scope, 'long_term')
+  assert.equal(fact.scope, 'facts')
   assert.equal(rule.scope, 'rules')
 
   assert.deepEqual(
@@ -49,12 +50,13 @@ test('routes each scope to its own backing store', () => {
     ['回复默认先给结论'],
   )
   assert.deepEqual(
-    store.list('owner', { scope: 'long_term' }).map(entry => entry.content),
+    store.list('owner', { scope: 'facts' }).map(entry => entry.content),
     ['用户喜欢苹果'],
   )
+  // Omitted scope lists every store, same as the internal 'all' sentinel.
   assert.deepEqual(
-    store.list('owner', { scope: 'all' }).map(entry => entry.scope).sort(),
-    ['long_term', 'profile', 'rules'].sort(),
+    store.list('owner').map(entry => entry.scope).sort(),
+    ['facts', 'profile', 'rules'].sort(),
   )
 })
 
@@ -64,7 +66,7 @@ test('keeps every stored rule inside a full combined listing', () => {
     store.remember('owner', { scope: 'rules', content: `约定-${index}` })
   }
   for (let index = 0; index < 32; index += 1) {
-    store.remember('owner', { scope: 'long_term', content: `事实-${index}` })
+    store.remember('owner', { scope: 'facts', content: `事实-${index}` })
   }
 
   const all = store.list('owner', { limit: 64 })
@@ -74,7 +76,7 @@ test('keeps every stored rule inside a full combined listing', () => {
 test('forgets one scope without touching the others', () => {
   const { store } = harness({ withProfile: false })
   store.remember('owner', { scope: 'rules', content: '叫我阿豪' })
-  store.remember('owner', { scope: 'long_term', content: '用户喜欢苹果' })
+  store.remember('owner', { scope: 'facts', content: '用户喜欢苹果' })
 
   assert.equal(store.forget('owner', { scope: 'rules', all: true }), 1)
   assert.deepEqual(

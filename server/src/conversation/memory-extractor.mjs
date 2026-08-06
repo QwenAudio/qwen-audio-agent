@@ -6,14 +6,14 @@
 // correction, and the audit trail, never from asking the user.
 //
 // Code-level safety invariants (do not weaken):
-// - Writes go to the long_term data scope only. rules (directives) and
-//   profile accept explicit user_memory tool writes exclusively.
+// - Writes go to the facts data scope only. rules (directives) and profile
+//   accept explicit memory tool writes exclusively.
 // - Every automatic write is tagged source: 'inferred' so it can be bulk
 //   reverted without touching explicit memories.
 // - Failures are silent: extraction must never delay or break session close,
 //   and must never produce speech.
 
-const LONG_TERM_SCOPE = 'long_term'
+const FACTS_SCOPE = 'facts'
 const MAX_OPS_PER_RUN = 5
 const MAX_FACT_CHARS = 100
 
@@ -186,7 +186,7 @@ export class MemoryExtractor {
     if (!lines.length) return
     const existing = this.memoryStore.list(ownerId, {
       limit: 64,
-      scope: LONG_TERM_SCOPE,
+      scope: FACTS_SCOPE,
     })
     const user = [
       '## 已有记忆',
@@ -227,7 +227,7 @@ export class MemoryExtractor {
       }
       try {
         const memory = this.memoryStore.remember(ownerId, content, {
-          scope: LONG_TERM_SCOPE,
+          scope: FACTS_SCOPE,
           source: 'inferred',
         })
         existingValues.add(memory.content.toLocaleLowerCase())

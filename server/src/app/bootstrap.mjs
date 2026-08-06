@@ -141,7 +141,7 @@ const notesStore = new FrontendNotesStore({
   onWarning: warning => logger.warn('notes.persistence_warning', { warning }),
 })
 // Invisible memory (issue #92): after a voice session closes, a lightweight
-// text model distils durable personal facts into long_term entries tagged
+// text model distils durable personal facts into facts entries tagged
 // source: 'inferred'. Without an API key createExtractorLlmCall returns null
 // and the extractor stays silently disabled; explicit memories are
 // unaffected. Writes deliberately target the raw FrontendMemoryStore, never

@@ -50,7 +50,7 @@ test('passes user rules to the backend as directive material', () => {
       },
       {
         id: 'mem_fact',
-        scope: 'long_term',
+        scope: 'facts',
         content: '用户喜欢苹果',
         editable: true,
       },

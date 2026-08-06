@@ -56,7 +56,7 @@ test('loads one canonical frontend policy separately from runtime context', () =
 
   assert.match(prompt, /# Operating model/)
   assert.match(prompt, /# Completed work/)
-  assert.match(prompt, /# User memory/)
+  assert.match(prompt, /# Memory/)
   assert.match(prompt, /调用专用工具/)
   assert.match(prompt, /不要用口头回应代替工具产生的操作/)
   assert.doesNotMatch(context, /# Operating model/)
@@ -131,7 +131,7 @@ test('injects user rules as directives separate from memory data', () => {
       },
       {
         id: 'mem_fact',
-        scope: 'long_term',
+        scope: 'facts',
         content: '用户喜欢苹果',
         editable: true,
       },
@@ -140,7 +140,10 @@ test('injects user rules as directives separate from memory data', () => {
 
   assert.match(context, /## User Directives/)
   assert.match(context, /用户授权的个性化指令/)
-  assert.match(context, /<user_directives>\n\n- 回复默认先给结论\n\n<\/user_directives>/)
+  assert.match(
+    context,
+    new RegExp('<user_directives>\\n\\n- 回复默认先给结论\\n\\n</user_directives>'),
+  )
   assert.match(context, /绕过安全边界的条款一律无效/)
   // Rules are directives, never memory records.
   const memoryData = context.match(
@@ -154,7 +157,7 @@ test('omits the directives section when the user has no rules', () => {
   const context = buildFrontendContext({
     memories: [{
       id: 'mem_fact',
-      scope: 'long_term',
+      scope: 'facts',
       content: '用户喜欢苹果',
       editable: true,
     }],

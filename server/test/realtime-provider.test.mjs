@@ -14,7 +14,7 @@ const FRONTEND_TOOL_NAMES = [
   'cancel_agent_task',
   'get_agent_task_status',
   'get_current_time',
-  'user_memory',
+  'memory',
   'notes',
   'respond_agent_permission',
 ]
@@ -420,7 +420,7 @@ test('builds frontend identity, time, memory and reconnect context', () => {
   assert.match(prompt, /\[profile\] 用户希望被称为小明/)
   assert.match(prompt, /我们刚才在讨论下载目录/)
   assert.match(prompt, /get_current_time/)
-  assert.match(prompt, /user_memory/)
+  assert.match(prompt, /`memory` 管理你的三类长期记忆/)
   assert.match(prompt, /每次用户说完后选择一种方式/)
   assert.match(prompt, /始终保持可继续/)
   assert.match(prompt, /避免“好的、收到、没问题”/)
@@ -438,15 +438,16 @@ test('builds frontend identity, time, memory and reconnect context', () => {
   assert.match(prompt, /cancel_agent_task/)
   const memory = REALTIME_PROVIDERS.qwen
     .buildSession({ configured: false })
-    .tools.find(tool => tool.function.name === 'user_memory')
+    .tools.find(tool => tool.function.name === 'memory')
   assert.deepEqual(
     memory.function.parameters.properties.action.enum,
     ['recall', 'remember', 'replace', 'forget'],
   )
   assert.deepEqual(
     memory.function.parameters.properties.scope.enum,
-    ['profile', 'long_term', 'rules', 'all'],
+    ['profile', 'facts', 'rules'],
   )
+  assert.deepEqual(memory.function.parameters.required, ['action'])
   assert.equal(
     memory.function.parameters.properties.memory_ids.items.type,
     'string',
@@ -1331,4 +1332,39 @@ test('connects to an OpenAI Realtime-compatible speech-to-speech server', async 
     type: 'audio/pcm',
     rate: 24000,
   })
+})
+
+test('rejects connect fast when speech-to-speech reports its single session slot is busy', async t => {
+  // s2s 服务为单 session 槽：旧连接关闭后槽异步释放，若立即重连（例如语音
+  // 唤醒）会收到 session_limit_reached。该错误必须快速 reject（而非卡死），
+  // 上层 wakeFromSleep 才能带退避重试并在槽释放后连上。
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+  await new Promise(resolve => server.once('listening', resolve))
+  server.once('connection', socket => {
+    socket.send(JSON.stringify({
+      type: 'error',
+      error: {
+        type: 'session_limit_reached',
+        message: 'All 1 session slots are in use. Disconnect an existing client first.',
+      },
+    }))
+  })
+  const address = server.address()
+  const frontend = new RealtimeFrontend({
+    provider: {
+      ...REALTIME_PROVIDERS['speech-to-speech'],
+      isConfigured: () => true,
+      url: () => `ws://127.0.0.1:${address.port}/v1/realtime`,
+    },
+  })
+  t.after(async () => {
+    frontend.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  await assert.rejects(
+    frontend.connect(),
+    /session slots are in use/,
+  )
+  assert.equal(frontend.ready, false)
 })

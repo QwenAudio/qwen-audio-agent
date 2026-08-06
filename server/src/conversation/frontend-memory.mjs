@@ -6,7 +6,11 @@ import {
 } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { dirname } from 'node:path'
-import { MEMORY_STORE_SCOPES, scopeMeta } from '../core/memory-scopes.mjs'
+import {
+  MEMORY_STORE_SCOPES,
+  canonicalScope,
+  scopeMeta,
+} from '../core/memory-scopes.mjs'
 
 const MAX_KEY_CHARS = 64
 const MEMORY_STORE_SCOPE_SET = new Set(MEMORY_STORE_SCOPES)
@@ -24,17 +28,18 @@ function clean(value, maxChars) {
     .join('')
 }
 
-function normalizeScope(value, fallback = 'long_term') {
-  const scope = String(value || fallback).trim().toLowerCase()
+function normalizeScope(value, fallback = 'facts') {
+  const scope = canonicalScope(String(value || fallback))
   if (!MEMORY_STORE_SCOPE_SET.has(scope)) throw new Error(`unsupported memory scope: ${scope}`)
   return scope
 }
 
 function entryScope(entry) {
-  return MEMORY_STORE_SCOPE_SET.has(entry?.scope) ? entry.scope : 'long_term'
+  const scope = canonicalScope(entry?.scope)
+  return MEMORY_STORE_SCOPE_SET.has(scope) ? scope : 'facts'
 }
 
-// Provenance of a memory entry. 'explicit' entries come from the user_memory
+// Provenance of a memory entry. 'explicit' entries come from the memory
 // tool (user-driven); 'inferred' entries come from the automatic session-end
 // extractor. Legacy entries without the field are explicit by definition, so
 // bulk cleanup of inferred memories can never touch them.

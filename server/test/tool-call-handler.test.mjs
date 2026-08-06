@@ -604,27 +604,28 @@ test('uses one scoped memory tool for recall and remember', async () => {
 
   await kit.handler.handle({
     call_id: 'memory-recall',
-    name: 'user_memory',
+    name: 'memory',
+    // The legacy 'all' spelling and an omitted scope both mean every scope.
     arguments: '{"action":"recall","scope":"all","query":"称呼"}',
   })
   assert.equal(kit.outputs.at(-1)[1].status, 'ok')
   assert.deepEqual(calls[0], ['list', 'owner', {
-    scope: 'all',
+    scope: null,
     query: '称呼',
   }])
 
   await kit.handler.handle({
     call_id: 'memory-remember',
-    name: 'user_memory',
+    name: 'memory',
     arguments: JSON.stringify({
       action: 'remember',
-      scope: 'long_term',
+      scope: 'facts',
       content: '用户喜欢苹果',
     }),
   })
   assert.equal(kit.outputs.at(-1)[1].status, 'remembered')
   assert.deepEqual(calls[1], ['remember', 'owner', {
-    scope: 'long_term',
+    scope: 'facts',
     content: '用户喜欢苹果',
   }])
   assert.equal(changes, 1)
@@ -650,7 +651,7 @@ test('routes standing user rules to the rules memory scope', async () => {
 
   await kit.handler.handle({
     call_id: 'memory-rule',
-    name: 'user_memory',
+    name: 'memory',
     arguments: JSON.stringify({
       action: 'remember',
       scope: 'rules',
@@ -678,7 +679,7 @@ test('replaces recalled text memories in one storage operation', async () => {
           replaced: 2,
           memory: {
             id: 'mem_banana',
-            scope: 'long_term',
+            scope: 'facts',
             content: input.content,
             editable: true,
           },
@@ -690,10 +691,10 @@ test('replaces recalled text memories in one storage operation', async () => {
 
   await kit.handler.handle({
     call_id: 'memory-replace',
-    name: 'user_memory',
+    name: 'memory',
     arguments: JSON.stringify({
       action: 'replace',
-      scope: 'long_term',
+      scope: 'facts',
       memory_ids: ['mem_apple', 'mem_likes_apple'],
       content: '用户最喜欢的水果是香蕉',
     }),
@@ -701,7 +702,7 @@ test('replaces recalled text memories in one storage operation', async () => {
 
   assert.deepEqual(replaced, {
     ownerId: 'owner',
-    scope: 'long_term',
+    scope: 'facts',
     ids: ['mem_apple', 'mem_likes_apple'],
     content: '用户最喜欢的水果是香蕉',
   })
@@ -720,10 +721,10 @@ test('requires recalled ids for replacement and never guesses targets', async ()
   })
   await kit.handler.handle({
     call_id: 'memory-replace-without-id',
-    name: 'user_memory',
+    name: 'memory',
     arguments: JSON.stringify({
       action: 'replace',
-      scope: 'long_term',
+      scope: 'facts',
       content: '用户最喜欢的水果是香蕉',
     }),
   })
@@ -745,7 +746,7 @@ test('forgets selected memory without re-parsing user wording', async () => {
   })
   await kit.handler.handle({
     call_id: 'memory-forget',
-    name: 'user_memory',
+    name: 'memory',
     arguments: '{"action":"forget","scope":"profile","query":"称呼"}',
   })
   assert.equal(kit.outputs.at(-1)[1].status, 'forgotten')
@@ -762,8 +763,8 @@ test('clears an entire memory scope through the explicit all parameter', async (
   const allowed = harness({ memoryStore })
   await allowed.handler.handle({
     call_id: 'memory-clear',
-    name: 'user_memory',
-    arguments: '{"action":"forget","scope":"long_term","all":true}',
+    name: 'memory',
+    arguments: '{"action":"forget","scope":"facts","all":true}',
   })
   assert.equal(allowed.outputs.at(-1)[1].status, 'forgotten')
   assert.equal(calls, 1)
@@ -779,10 +780,10 @@ test('rejects secrets and an ambiguous memory scope', async () => {
   })
   await kit.handler.handle({
     call_id: 'memory-secret',
-    name: 'user_memory',
+    name: 'memory',
     arguments: JSON.stringify({
       action: 'remember',
-      scope: 'long_term',
+      scope: 'facts',
       content: '我的 API Key 是 sk-secret',
     }),
   })
@@ -790,7 +791,7 @@ test('rejects secrets and an ambiguous memory scope', async () => {
 
   await kit.handler.handle({
     call_id: 'memory-all',
-    name: 'user_memory',
+    name: 'memory',
     arguments: JSON.stringify({
       action: 'remember',
       scope: 'all',

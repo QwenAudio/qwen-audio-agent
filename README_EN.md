@@ -94,7 +94,7 @@ module walkthrough.
 | OpenClaw | Built-in ACP Bridge | One-click installation and Bailian setup supported | ★★★★★ |
 | Qoder | Native ACP | One-click installation; user configuration required | ★★★★★ |
 | Kimi Code | Native ACP | One-click installation; user configuration required | ★★★★★ |
-| Hermes | Native ACP | One-click installation on macOS / Linux; user configuration required | ★★★★☆ |
+| Hermes | Native ACP | One-click installation; user configuration required | ★★★★☆ |
 | CodeBuddy | Native ACP | One-click installation; user configuration required | ★★★★☆ |
 | Codex | External ACP Adapter | One-click Agent and adapter installation; user configuration required | ★★★★☆ |
 | Claude Code | External ACP Adapter | One-click Agent and adapter installation; user configuration required | ★★★★☆ |
@@ -267,7 +267,7 @@ false transcription:
 qwenaudio tui --audio-mode full
 ```
 
-## macOS Desktop App
+## Desktop App
 
 The desktop app provides a persistent voice orb and includes the Gateway, so no
 service needs to be started in advance. If a local Gateway is already running

@@ -1861,8 +1861,15 @@ export function attachRealtimeGateway(server, {
       frontend?.close()
       // Invisible memory: distil durable personal facts from this session in
       // the background. All gating (debounce, minimum turns, disabled state)
-      // lives inside the extractor; it never blocks or breaks the close path.
-      memoryExtractor?.maybeRun({ ownerId, sessionId })
+      // lives inside the extractor; it never blocks or breaks the close path,
+      // and even a misbehaving extractor must not disturb the disconnect.
+      try {
+        memoryExtractor?.maybeRun({ ownerId, sessionId })
+      } catch (error) {
+        connectionLogger.warn('memory.extract_hook_failed', {
+          error: String(error?.message || error),
+        })
+      }
     })
   })
 

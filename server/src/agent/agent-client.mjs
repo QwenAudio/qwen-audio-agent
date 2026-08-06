@@ -2,12 +2,6 @@ import { config } from '../core/config.mjs'
 import { AgentError } from './backend-adapter.mjs'
 import { AcpBackendAdapter } from './acp-backend-adapter.mjs'
 import { backendDriver } from './backends/registry.mjs'
-import {
-  captureScreen,
-  loadImageFile,
-  screenCaptureSupported,
-} from './screen-capture.mjs'
-import { describeImage, visionDescriberAvailable } from './vision-describer.mjs'
 
 export { AgentError }
 
@@ -24,12 +18,6 @@ export class AgentClient {
     acpClient,
     acpClientFactory,
     sessionToolServer,
-    screenCapture = config.screenCapture,
-    imageMaxDimension = config.imageMaxDimension,
-    configDirectory = config.configDirectory,
-    visionModel = config.visionModel,
-    visionModelUrl = config.visionModelUrl,
-    visionApiKey = process.env.DASHSCOPE_API_KEY || '',
   } = {}) {
     const driver = backendDriver(protocol)
     // The selected backend's option namespace (config defaults merged with
@@ -62,40 +50,6 @@ export class AgentClient {
       nativeDelegationAdapter:
         driver.createNativeDelegationAdapter?.(options) || null,
       sessionStatePath,
-      // Only wired when the user enabled the capability and the platform can
-      // deliver it. Without this, the image tool is never registered.
-      ...(screenCapture && screenCaptureSupported()
-        ? {
-          viewImage: async input => {
-            const image = String(input?.path || '').trim()
-              ? await loadImageFile(input.path, {
-                configDirectory,
-                maxDimension: imageMaxDimension,
-              })
-              : await captureScreen({
-                configDirectory,
-                maxDimension: imageMaxDimension,
-              })
-            // With a vision model configured, the Agent receives a description
-            // instead of pixels. ACP cannot switch models inside a Session, so
-            // this is what lets the Agent itself stay on a text model.
-            if (!visionDescriberAvailable({ visionModel, apiKey: visionApiKey })) {
-              return image
-            }
-            const described = await describeImage(image, {
-              visionModel,
-              visionModelUrl,
-              apiKey: visionApiKey,
-              question: input?.reason,
-            })
-            return {
-              ...image,
-              description: described.text,
-              describedBy: described.model,
-            }
-          },
-        }
-        : {}),
       ...(acpClient ? { client: acpClient } : {}),
       ...(acpClientFactory ? { clientFactory: acpClientFactory } : {}),
       ...(sessionToolServer ? { sessionToolServer } : {}),

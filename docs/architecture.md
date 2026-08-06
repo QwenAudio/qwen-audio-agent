@@ -296,26 +296,6 @@ must report the failure; it must not inspect the target directory with native
 tools or duplicate the delegated work.
 
 Frontend code must not depend on which internal capability was chosen.
-
-When screen capture is enabled, the Gateway injects one further tool that lets
-the backend Agent look at the user's screen or at an image file. Realtime keeps
-its seven tools: it declares only text and audio modalities and cannot receive
-an image at all, so a request about something visible reaches the backend
-through ordinary delegation and the Agent decides whether it needs to look.
-
-What the Agent receives depends on configuration. By default it gets the image
-itself, as an ACP prompt image content block, gated on the
-`promptCapabilities.image` it declared during initialize. With a vision model
-configured, the Gateway asks that model instead and hands the Agent a
-description. ACP has no notion of a model and no way to change one inside a
-Session, so the second form is what allows an Agent running on a text model to
-still answer questions about something visible.
-
-Unlike the five Session tools, the image tool is not Gateway-owned for
-permission purposes. It stays outside the auto-approved set, so every call
-surfaces to the user as a normal permission request. A screen may hold
-passwords, private messages, or financial detail, and consent for one look is
-not consent for the next.
 Frontend task snapshots may expose only a bounded title and generic delegated
 state, never delegation IDs, target Session IDs, directories, or raw events.
 

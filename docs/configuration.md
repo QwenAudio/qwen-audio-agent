@@ -366,33 +366,6 @@ CLAUDE_CONFIG_DIR=
 Kimi Code、Hermes、CodeBuddy、Codex 和 Claude Code 均由 Gateway 直接管理 ACP
 子进程，不接受 `--backend-url`。
 
-## 看屏幕与看图片
-
-让后台 Agent 看用户的屏幕，或看一张已有的图片。默认关闭。
-
-```dotenv
-QWEN_AUDIO_AGENT_SCREEN_CAPTURE=on
-# 图像长边上限，超过则等比缩小；默认 1568
-QWEN_AUDIO_AGENT_IMAGE_MAX_DIMENSION=1568
-# 可选。设置后由这个模型看图并把文字描述交给后台 Agent，
-# 后台自身因此可以使用纯文本模型；留空则图像直接交给后台模型
-QWEN_AUDIO_AGENT_VISION_MODEL=
-# 可选，默认与后台共用同一个百炼端点
-QWEN_AUDIO_AGENT_VISION_BASE_URL=
-```
-
-前台 Realtime 只声明文字和音频两种模态，无法接收图像，所以这类请求走普通的后台
-委派，前台工具集不因此增加。
-
-两种模式：留空 `VISION_MODEL` 时图像直接交给后台模型，要求它本身具备视觉能力；
-设置后由该模型看图、后台收到文字描述，此时后台可以使用纯文本模型，对后端的兼容
-范围也更宽。
-
-首次截屏需要 macOS「屏幕录制」权限，且要授权给运行 Gateway 的应用并重启它。截屏
-目前仅支持 macOS，指定已有图片的路径不受此限制。
-
-工作原理、模式取舍与权限边界见[看屏幕与看图片](vision.md)。
-
 ## 后台权限模式
 
 `QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE` 可设为：

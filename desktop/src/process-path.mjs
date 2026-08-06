@@ -175,7 +175,7 @@ function getWindowsRegistryPath(spawnImpl, env = process.env) {
     try {
       const result = spawnImpl('reg', [
         'query', key, '/v', 'Path',
-      ], { encoding: 'utf8', windowsHide: true })
+      ], { encoding: 'utf8', windowsHide: true, timeout: 5000 })
       const match = (result.stdout || '').match(
         /Path\s+REG(?:_EXPAND)?_SZ\s+(.+)/,
       )
@@ -198,16 +198,16 @@ function getWindowsRegistryPath(spawnImpl, env = process.env) {
 }
 
 // 在指定的 PATH 中搜索命令，返回第一个匹配的完整路径。
+// 使用 cmd.exe /c where 而非 shell: true，彻底规避 Node.js 22 的
+// DEP0190 警告（shell: true 时传参存在安全风险）。
 function resolveWindowsCommand(command, pathDirs, spawnImpl) {
   const pathEnv = pathDirs.join(win32.delimiter)
   try {
-    // 用 shell 执行 where（CMD 内置命令），打包后 where.exe 可能不在受限 PATH 中。
-    // 传字符串而非数组以规避 Node.js 22 的 DEP0190 警告。
-    const result = spawnImpl(`where ${command}`, [], {
+    const result = spawnImpl('cmd.exe', ['/c', 'where', command], {
       env: { ...process.env, PATH: pathEnv },
       encoding: 'utf8',
       windowsHide: true,
-      shell: true,
+      timeout: 5000,
     })
     if (result.status === 0 && result.stdout) {
       return result.stdout.trim().split(/\r?\n/)[0]

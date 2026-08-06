@@ -236,18 +236,18 @@ test('Windows PATH uses where result when registry and where succeed', () => {
     PATH: 'C:\\Windows',
     ProgramFiles: 'C:\\Program Files',
   }
-  const spawnImpl = (cmd, _args) => {
+  const spawnImpl = (cmd, args) => {
     if (cmd === 'reg') {
       // 模拟注册表中有 Scoop 安装的路径
-      if (String(_args).includes('HKLM')) {
+      if (String(args).includes('HKLM')) {
         return { status: 0, stdout: '    Path    REG_EXPAND_SZ    %SystemRoot%\\system32;%SystemRoot%' }
       }
       return { status: 0, stdout: '    Path    REG_SZ    C:\\Users\\x\\scoop\\shims' }
     }
-    if (cmd === 'where node') {
+    if (cmd === 'cmd.exe' && Array.isArray(args) && args[2] === 'node') {
       return { status: 0, stdout: 'C:\\Users\\x\\scoop\\apps\\nodejs\\current\\node.exe' }
     }
-    if (cmd === 'where npm') {
+    if (cmd === 'cmd.exe' && Array.isArray(args) && args[2] === 'npm') {
       return { status: 0, stdout: 'C:\\Users\\x\\scoop\\apps\\nodejs\\current\\npm.cmd' }
     }
     return { status: 1, stdout: '' }
@@ -267,12 +267,12 @@ test('Windows PATH uses where result when registry and where succeed', () => {
 // where 找到 node 但 npm 和 node 不同目录时，两个目录都加入
 test('Windows PATH adds both node and npm dirs when they differ', () => {
   const env = { PATH: 'C:\\Windows' }
-  const spawnImpl = (cmd, _args) => {
+  const spawnImpl = (cmd, args) => {
     if (cmd === 'reg') return { status: 1, stdout: '' }
-    if (cmd === 'where node') {
+    if (cmd === 'cmd.exe' && Array.isArray(args) && args[2] === 'node') {
       return { status: 0, stdout: 'D:\\tools\\node\\node.exe' }
     }
-    if (cmd === 'where npm') {
+    if (cmd === 'cmd.exe' && Array.isArray(args) && args[2] === 'npm') {
       // npm 可能装在全局 npm 目录
       return { status: 0, stdout: 'C:\\Users\\x\\AppData\\Roaming\\npm\\npm.cmd' }
     }

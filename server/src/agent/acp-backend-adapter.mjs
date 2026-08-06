@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { AgentError } from './backend-adapter.mjs'
+import { flowRecorder } from '../observability/flow-trace.mjs'
 import { BACKEND_AGENT_INSTRUCTIONS } from './backend-agent-instructions.mjs'
 import {
   acpBackendProfile,
@@ -119,6 +120,84 @@ function waitForRetry(delayMs, signal) {
     }
     signal?.addEventListener('abort', abort, { once: true })
   })
+}
+
+// The reply inside a coordination envelope. The backend answers with protocol
+// JSON, and a reader looking for what the user was told should not have to find
+// it inside that.
+function answerSummary(content) {
+  const text = clean(content)
+  if (!text) return {}
+  try {
+    const parsed = JSON.parse(text)
+    const speech = clean(parsed?.presentation?.speech)
+    return {
+      ...(speech ? { 回复内容: speech } : {}),
+      ...(clean(parsed?.state) ? { 结果: clean(parsed.state) } : {}),
+    }
+  } catch {
+    // Not an envelope: then the content itself is the reply.
+    return { 回复内容: text }
+  }
+}
+
+// What a tool gave back. ACP reports it either as content blocks or as raw
+// output, so both are tried; objects are stringified because a tool result is
+// read, not computed on.
+function toolResult(update) {
+  const blocks = Array.isArray(update?.content) ? update.content : []
+  const text = blocks
+    .map(block => {
+      const inner = block?.content || block
+      if (typeof inner === 'string') return inner
+      if (inner?.type === 'text') return String(inner.text || '')
+      return ''
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+  if (text) return text
+  const raw = update?.rawOutput
+  if (!raw) return ''
+  return typeof raw === 'string' ? raw.trim() : JSON.stringify(raw)
+}
+
+// Who actually ran the tool. The model only decides; something else executes,
+// and which one matters when a call misbehaves. Tools served by the Gateway's
+// own MCP server run inside the Gateway, everything else runs inside the
+// backend agent process. Mixed on one timeline these are indistinguishable
+// without saying so.
+function toolExecutor(name, label) {
+  return /qwen_audio_agent/.test(String(name || '')) ? 'Gateway' : label
+}
+
+// A streamed chunk's words. ACP wraps them in a content block, and a chunk
+// without text is a keepalive rather than something to accumulate.
+function chunkText(update) {
+  const content = update?.content
+  if (!content) return ''
+  if (typeof content === 'string') return content
+  if (content.type === 'text') return String(content.text || '')
+  return ''
+}
+
+// The readable subject of a tool call: the file it touched or the command it
+// ran. ACP puts this in different places depending on the tool, and a row that
+// says only "read" is barely more useful than no row at all.
+function toolCallTarget(update) {
+  const locations = Array.isArray(update?.locations) ? update.locations : []
+  const path = clean(locations[0]?.path)
+  if (path) return path
+  const input = update?.rawInput
+  if (!input || typeof input !== 'object') return ''
+  return clean(
+    input.command
+    || input.filePath
+    || input.file_path
+    || input.path
+    || input.pattern
+    || input.query,
+  )
 }
 
 export class AcpBackendAdapter {
@@ -595,12 +674,40 @@ export class AcpBackendAdapter {
       || internal
     ) {
       const option = this.optionFor(params, 'always')
+      flowRecorder.record({
+        flowId: session?.flowId,
+        layer: 'backend',
+        type: 'acp.permission.auto',
+        sessionId: session?.sessionId,
+        detail: {
+          tool: bounded(name, 80) || 'unknown',
+          reason: internal ? 'gateway-owned tool' : 'permission mode full',
+          granted: Boolean(option),
+        },
+      })
       return option
         ? { outcome: { outcome: 'selected', optionId: option.optionId } }
         : { outcome: { outcome: 'cancelled' } }
     }
     const id = `auth_${randomUUID().replaceAll('-', '')}`
     const pending = deferred()
+    // Which run this permission will be attributed to is the crux of a failure
+    // that is otherwise invisible: if the run has already finished, the
+    // frontstage raises no prompt and the backend waits forever, which reaches
+    // the user as the model claiming it lacks permission. Recording the
+    // attribution is what lets the timeline say so.
+    flowRecorder.record({
+      flowId: session?.flowId,
+      layer: 'backend',
+      type: 'acp.permission.requested',
+      sessionId: session?.sessionId,
+      detail: {
+        permissionId: id,
+        tool: bounded(name, 80) || 'unknown',
+        attributedToRun: session?.coordinationRunId || null,
+        hasListener: Boolean(session?.onEvent),
+      },
+    })
     const permission = {
       id,
       workId: session?.coordinationRunId || null,
@@ -697,9 +804,106 @@ export class AcpBackendAdapter {
     }
   }
 
+  // Emit what the model has said since the last flush, as one segment. Called
+  // just before a tool call and again before the answer, so the timeline reads
+  // as intent, action, result, conclusion rather than a request followed by a
+  // silent gap.
+  flushModelOutput(run, base) {
+    for (const [bucket, type] of [
+      ['flowReasoning', 'backend.reasoning'],
+      ['flowOutput', 'backend.output'],
+    ]) {
+      const text = clean(run[bucket])
+      if (!text) continue
+      run[bucket] = ''
+      flowRecorder.record({
+        ...base,
+        type,
+        detail: { model: this.model || this.label, content: text },
+      })
+    }
+  }
+
+  // What the backend did between being asked and answering: which files it
+  // read, which commands it ran, what it was thinking. Without this the
+  // timeline shows a nine-second gap and no way to tell a slow model from an
+  // Agent stuck in a loop.
+  //
+  // Tool calls and plans only. Streamed text is left out: see below.
+  recordSessionUpdate(run, update) {
+    const kind = clean(update?.sessionUpdate)
+    if (!kind) return
+    const base = {
+      flowId: run.flowId || null,
+      layer: 'backend',
+      sessionId: run.sessionId,
+    }
+
+    if (kind === 'tool_call' || kind === 'tool_call_update') {
+      const id = clean(update.toolCallId)
+      const status = clean(update.status)
+      // The two halves of one call. ACP announces a tool with its name and
+      // reports completion separately, and in the update the title is often the
+      // path rather than the tool, so recording each half produced two rows
+      // where the second was named after a file. Remember the name from the
+      // announcement and emit one row when the call actually ends.
+      run.flowTools ||= new Map()
+      const known = run.flowTools.get(id) || {}
+      const name = kind === 'tool_call'
+        ? clean(update.title || update.name)
+        : known.name
+      const target = toolCallTarget(update) || known.target || ''
+      const toolKind = clean(update.kind) || known.kind || ''
+      run.flowTools.set(id, { name, target, kind: toolKind })
+      if (status !== 'completed' && status !== 'failed') return
+      // Whatever the model said before deciding on this call, flushed first so
+      // the reason appears above the action it caused.
+      this.flushModelOutput(run, base)
+      flowRecorder.record({
+        ...base,
+        type: status === 'failed' ? 'backend.tool.failed' : 'backend.tool',
+        detail: {
+          // Who decided, and who ran it. A tool row without both leaves the
+          // reader to assume, and the two are genuinely different parties.
+          发起者: this.model || this.label,
+          执行者: toolExecutor(name, this.label),
+          tool: name || '(未命名)',
+          ...(target ? { target } : {}),
+          ...(toolKind ? { kind: toolKind } : {}),
+          // What the tool gave back. Seeing that a write ran is not the same as
+          // seeing that it worked, and the difference is the whole question when
+          // an Agent reports success for something that did not happen.
+          ...(toolResult(update) ? { content: toolResult(update) } : {}),
+        },
+      })
+      return
+    }
+
+    // Streamed text is accumulated rather than recorded per chunk: a row per
+    // token would bury the tool calls. It is flushed as one segment whenever a
+    // tool call or the answer follows, which is what makes the sequence read as
+    // a chain -- the model says what it intends, acts, sees the result, and
+    // says what it concluded.
+    if (kind === 'agent_message_chunk' || kind === 'agent_thought_chunk') {
+      const bucket = kind === 'agent_thought_chunk' ? 'flowReasoning' : 'flowOutput'
+      const text = chunkText(update)
+      if (text) run[bucket] = (run[bucket] || '') + text
+      return
+    }
+
+    if (kind === 'plan') {
+      flowRecorder.record({
+        ...base,
+        type: 'backend.plan',
+        detail: { steps: Array.isArray(update.entries) ? update.entries.length : 0 },
+      })
+    }
+  }
+
   onSessionUpdate(run, update) {
     run.receivedUpdate = true
     run.toolCalls ||= new Map()
+    this.recordSessionUpdate(run, update)
     const activity = activityFromUpdate(update, run.toolCalls)
     if (activity) run.onEvent?.({ type: 'backend.activity', activity })
     if (!this.profile.nativeDelegation) return
@@ -1086,6 +1290,33 @@ export class AcpBackendAdapter {
     session.coordinationRunId = clean(coordinationRunId)
     session.onEvent = onEvent
     session.permissionScopeId = permissionScopeId
+    // Tag the session and the client so backend traffic and permission requests
+    // land in the timeline of the interaction that caused them. A coordinator
+    // run id is what the frontstage knows this turn as.
+    session.flowId = clean(coordinationRunId)
+    run.flowId = session.flowId
+    if (this.client) {
+      this.client.flowId = session.flowId
+      this.client.flowModel = this.model || ''
+    }
+    flowRecorder.record({
+      flowId: session.flowId,
+      layer: 'backend',
+      type: 'coordinator.turn.start',
+      sessionId: session.sessionId,
+      // The model is what a reader needs to know before judging anything else
+      // in the turn: half of the surprises come from it not being the one they
+      // thought was configured.
+      detail: {
+        model: this.model || '(后端默认)',
+        后端: this.label,
+        会话复用: session.isNew ? '新建' : '续接',
+        // The scope is what ties a permission request to the turn that caused
+        // it, and what gets cancelled when the turn ends. The full uuid is
+        // noise; the prefix is enough to match one against another.
+        授权作用域: permissionScopeId.slice(0, 15),
+      },
+    })
     this.activeCoordinatorTurns.add(session.sessionId)
     try {
       // Re-supply MCP definitions on resume: ACP Sessions do not require the
@@ -1102,6 +1333,32 @@ export class AcpBackendAdapter {
       const result = await this.promptCoordinator(session, prompt, run, {
         signal,
         onUpdate: update => this.onSessionUpdate(run, update),
+      })
+      // Anything the model said after its last tool call, so the conclusion it
+      // drew is visible above the answer it produced.
+      this.flushModelOutput(run, {
+        flowId: session.flowId,
+        layer: 'backend',
+        sessionId: session.sessionId,
+      })
+      // What the backend actually said. A timeline that shows a call returning
+      // in nine seconds but not what came back leaves the reader to guess
+      // whether the answer was any good.
+      flowRecorder.record({
+        flowId: session.flowId,
+        layer: 'backend',
+        type: 'coordinator.answered',
+        sessionId: session.sessionId,
+        detail: {
+          model: this.model || this.label,
+          // The reply the user will actually hear. What the backend returns is
+          // a coordination envelope, so showing only that buried the one line
+          // anyone wants to read inside a protocol blob.
+          ...answerSummary(result?.content),
+          toolCalls: run.nativeToolCalls.size + run.toolCalls.size,
+          delegated: Boolean(run.delegation),
+          content: clean(result?.content),
+        },
       })
       if (!clean(result?.content)) {
         const error = new AgentError(
@@ -1135,6 +1392,21 @@ export class AcpBackendAdapter {
       if (session.permissionScopeId === permissionScopeId) {
         session.permissionScopeId = null
       }
+      // Recorded last so anything the backend says after this point appears in
+      // the timeline after a turn that has visibly ended. Note that onEvent and
+      // coordinationRunId deliberately stay as they are here: this branch only
+      // observes the existing behaviour, it does not change it.
+      flowRecorder.record({
+        flowId: session.flowId,
+        layer: 'backend',
+        type: 'coordinator.turn.end',
+        sessionId: session.sessionId,
+        detail: {
+          授权作用域: permissionScopeId.slice(0, 15),
+          listenerStillAttached: Boolean(session.onEvent),
+          runStillAttributed: session.coordinationRunId || null,
+        },
+      })
     }
   }
 

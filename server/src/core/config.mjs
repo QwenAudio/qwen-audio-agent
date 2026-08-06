@@ -265,6 +265,24 @@ export const config = {
   ).replace(/\/+$/, ''),
   configDirectory: runtimeEnvironment.configDirectory,
   agentTimeoutMs: numberSetting(process.env.AGENT_TIMEOUT_MS, 300000, { min: 10000 }),
+  // Off by default. A flow trace holds what was said and what the backend was
+  // asked to do, which is not something to start collecting because a debug
+  // page might be opened later.
+  flowTrace: String(
+    process.env.QWEN_AUDIO_AGENT_FLOW_TRACE || 'off',
+  ).trim().toLowerCase() === 'on',
+  // A second switch, deliberately separate. Keeping traces in memory only and
+  // clearing them on restart is a privacy property of the default; a trace holds
+  // what was said, what the backend was asked and what it answered, so turning
+  // on analysis must not silently start writing that to disk.
+  flowTraceFile: String(
+    process.env.QWEN_AUDIO_AGENT_FLOW_TRACE_FILE || 'off',
+  ).trim().toLowerCase() === 'on',
+  flowTraceRetentionDays: numberSetting(
+    process.env.QWEN_AUDIO_AGENT_FLOW_TRACE_DAYS,
+    7,
+    { min: 1 },
+  ),
   // Per-backend option namespaces keyed by driver id. AgentClient merges the
   // selected namespace with optional overrides, so adding a backend only
   // requires appending one entry here.

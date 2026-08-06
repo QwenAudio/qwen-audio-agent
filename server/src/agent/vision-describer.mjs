@@ -8,6 +8,8 @@
 //
 // This is optional. Without QWEN_AUDIO_AGENT_VISION_MODEL the Agent's own model
 // receives the image, which is simpler and lets it act on what it sees.
+import { flowRecorder } from '../observability/flow-trace.mjs'
+
 const DEFAULT_PROMPT = [
   '请客观描述这张图片的内容。如果图中有文字、错误信息、代码或界面元素，',
   '请准确转述，不要推测或补充图中没有的信息。',
@@ -24,6 +26,7 @@ export async function describeImage(image, {
   question = '',
   timeoutMs = 120_000,
   fetchImpl = fetch,
+  flowId = '',
 } = {}) {
   const model = String(visionModel || '').trim()
   if (!model) throw new Error('未配置视觉模型。')
@@ -33,6 +36,10 @@ export async function describeImage(image, {
   if (!image?.base64 || !image?.mimeType) {
     throw new Error('图片数据不完整。')
   }
+  const startedAt = Date.now()
+  // Which endpoint was actually used. Pointing at the wrong one is a real and
+  // easily-missed cause of failure.
+  const base = String(visionModelUrl || '').replace(/\/+$/, '')
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -40,7 +47,7 @@ export async function describeImage(image, {
     // model is served only on the former, and answers "Unsupported model" on
     // the latter.
     const response = await fetchImpl(
-      `${String(visionModelUrl || '').replace(/\/+$/, '')}/chat/completions`,
+      `${base}/chat/completions`,
       {
         method: 'POST',
         signal: controller.signal,
@@ -68,12 +75,26 @@ export async function describeImage(image, {
       },
     )
     const payload = await response.json().catch(() => null)
+    // Failures leave a trace too. A model call that only records success is
+    // silent at exactly the moment someone opens the debug page.
+    const recordFailure = reason => flowRecorder.record({
+      flowId,
+      layer: 'backend',
+      type: 'vision.failed',
+      detail: {
+        model,
+        endpoint: base,
+        elapsedMs: Date.now() - startedAt,
+        error: reason,
+      },
+    })
     if (payload?.error) {
-      throw new Error(
-        `视觉模型 ${model} 调用失败：${payload.error.message || payload.error}`,
-      )
+      const reason = `${payload.error.message || payload.error}`
+      recordFailure(reason)
+      throw new Error(`视觉模型 ${model} 调用失败：${reason}`)
     }
     if (!response.ok) {
+      recordFailure(`HTTP ${response.status}`)
       throw new Error(`视觉模型 ${model} 返回 HTTP ${response.status}`)
     }
     const message = payload?.choices?.[0]?.message || {}
@@ -81,7 +102,25 @@ export async function describeImage(image, {
     // reasoning_content. Falling back to the latter keeps a useful answer
     // rather than an empty string when a model only fills the thinking field.
     const text = String(message.content || message.reasoning_content || '').trim()
-    if (!text) throw new Error(`视觉模型 ${model} 未返回描述。`)
+    if (!text) {
+      recordFailure('未返回描述')
+      throw new Error(`视觉模型 ${model} 未返回描述。`)
+    }
+    // When a picture is involved this is the model that actually did the
+    // looking, and until now it was the one call in the whole interaction that
+    // left no trace at all.
+    flowRecorder.record({
+      flowId,
+      layer: 'backend',
+      type: 'vision.described',
+      detail: {
+        model,
+        endpoint: base,
+        elapsedMs: Date.now() - startedAt,
+        提问: String(question || '').trim() || '(默认描述提示)',
+        content: text,
+      },
+    })
     return { text, model }
   } finally {
     clearTimeout(timer)

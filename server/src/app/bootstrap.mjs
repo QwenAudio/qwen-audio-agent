@@ -22,6 +22,13 @@ import { attachRealtimeGateway } from '../voice/realtime-gateway.mjs'
 import { describeActiveRealtime } from '../voice/realtime-provider.mjs'
 import { SessionPermissionPolicy } from '../voice/session-permission-policy.mjs'
 import { taskManager, taskStore } from '../task/task-manager.mjs'
+import {
+  flowRecorder,
+  flowTraceEnabled,
+  startFlowPersistence,
+} from '../observability/flow-trace.mjs'
+import { taskEventToFlowEvent } from '../observability/flow-recorder.mjs'
+import { detectFlowAnomalies } from '../observability/flow-anomalies.mjs'
 import { ReminderScheduler } from '../task/reminder-scheduler.mjs'
 import { webDistributionPath } from '../core/install-paths.mjs'
 
@@ -357,6 +364,97 @@ app.get('/api/tasks/:id/events', (req, res) => {
     }
   })
   res.on('close', unsubscribe)
+})
+
+// Message flow analysis. These routes and the subscription below only do
+// anything when QWEN_AUDIO_AGENT_FLOW_TRACE=on; otherwise the recorder is the
+// null one and every route reports the feature as disabled.
+if (flowTraceEnabled) {
+  // Optional persistence, so a restart does not erase the interaction someone
+  // was about to look at. Failing to read history back must not stop the
+  // Gateway from starting: analysis is an aid, not a dependency.
+  startFlowPersistence().catch(error => {
+    logger.warn('flow.persistence_failed', { error: String(error?.message || error) })
+  })
+  // Task events already carry everything a timeline needs, and TaskManager
+  // already supports extra listeners, so the task layer itself is untouched.
+  taskManager.subscribe(event => {
+    const flowEvent = taskEventToFlowEvent(event)
+    if (!flowEvent) return
+    // A task event is the only place the turn and the task id appear together,
+    // so this is where the backend's view of the interaction gets tied to the
+    // frontstage's. Without it the timeline would come out in two halves.
+    if (flowEvent.taskId) flowRecorder.alias(flowEvent.taskId, flowEvent.flowId)
+    flowRecorder.record(flowEvent)
+  })
+}
+
+function flowTraceUnavailable(res) {
+  return res.status(404).json({
+    error: 'message flow analysis disabled',
+    hint: 'set QWEN_AUDIO_AGENT_FLOW_TRACE=on and restart the Gateway',
+  })
+}
+
+app.get('/api/flows', (req, res) => {
+  if (!flowTraceEnabled) return flowTraceUnavailable(res)
+  const flows = flowRecorder.list().map(flow => ({
+    ...flow,
+    anomalyCount: detectFlowAnomalies(flowRecorder.get(flow.flowId)).length,
+  }))
+  return res.json({ enabled: true, flows })
+})
+
+app.get('/api/flows/:flowId', (req, res) => {
+  if (!flowTraceEnabled) return flowTraceUnavailable(res)
+  const flow = flowRecorder.get(req.params.flowId)
+  if (!flow) return res.status(404).json({ error: 'flow not found' })
+  return res.json({ ...flow, anomalies: detectFlowAnomalies(flow) })
+})
+
+app.get('/api/flows/:flowId/stream', (req, res) => {
+  if (!flowTraceEnabled) return flowTraceUnavailable(res)
+  const flowId = req.params.flowId
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+  const write = payload => res.write(`data: ${JSON.stringify(payload)}\n\n`)
+  const existing = flowRecorder.get(flowId)
+  // Send what already happened before streaming, so a page opened mid-flow is
+  // not missing the beginning, which is usually where the cause is.
+  write({
+    type: 'flow.snapshot',
+    flow: existing || { flowId, events: [] },
+    anomalies: existing ? detectFlowAnomalies(existing) : [],
+  })
+  const unsubscribe = flowRecorder.subscribe(event => {
+    if (event.flowId !== flowId) return
+    write({ type: 'flow.event', event })
+  })
+  res.on('close', unsubscribe)
+})
+
+app.get('/api/sessions/flows', (req, res) => {
+  if (!flowTraceEnabled) return flowTraceUnavailable(res)
+  const sessions = flowRecorder.sessions().map(session => ({
+    ...session,
+    anomalyCount: detectFlowAnomalies(
+      flowRecorder.getSession(session.sessionId),
+    ).length,
+  }))
+  return res.json({ enabled: true, sessions })
+})
+
+// A conversation as one timeline. Anomaly rules run over the merged events,
+// which is the only way a permission raised in one turn and answered against
+// another can be caught: read per turn, the cause and the effect sit in
+// different lists.
+app.get('/api/sessions/:sessionId/flow', (req, res) => {
+  if (!flowTraceEnabled) return flowTraceUnavailable(res)
+  const session = flowRecorder.getSession(req.params.sessionId)
+  if (!session) return res.status(404).json({ error: 'session not found' })
+  return res.json({ ...session, anomalies: detectFlowAnomalies(session) })
 })
 
 const webDist = webDistributionPath()

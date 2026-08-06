@@ -87,6 +87,9 @@ export class AgentClient {
               visionModelUrl,
               apiKey: visionApiKey,
               question: input?.reason,
+              // So the vision call lands in the timeline of the interaction
+              // that asked for it rather than nowhere.
+              flowId: this.adapter?.client?.flowId || '',
             })
             return {
               ...image,

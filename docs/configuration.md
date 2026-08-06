@@ -444,6 +444,33 @@ QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com
 `QWEN_AUDIO_AGENT_AUTH_SECRET` 只用于签署本地身份，不是远程访问密码。不得用它
 替代反向代理认证。多个可信 Origin 可使用英文逗号分隔。
 
+## 消息流分析
+
+分析一次会话在各层之间的消息传递，用于定位问题与改进行为。默认关闭。
+
+```dotenv
+QWEN_AUDIO_AGENT_FLOW_TRACE=on
+```
+
+开启后访问 `/?analysis=flow`，可以看到一次会话在前台、协调层、后台之间的完整时间线：
+用户说了什么、前台派了什么活、后台用哪个模型、收到什么 prompt、执行了哪些工具、返回
+了什么，并自动标出可疑之处（例如授权请求归属到已结束的任务）。
+
+默认只记内存、不落盘、重启清空。链路含交互内容，因此默认关闭。
+
+想让记录活过重启，再开一个独立开关：
+
+```dotenv
+QWEN_AUDIO_AGENT_FLOW_TRACE_FILE=on
+# 保留天数，默认 7
+QWEN_AUDIO_AGENT_FLOW_TRACE_DAYS=7
+```
+
+事件写入配置目录下的 `flow/`，权限 `0600`，按天分文件并自动清理过期文件。它是独立
+开关，因为落盘会把交互内容留在磁盘上。
+
+详见[消息流分析](message-flow-analysis.md)。
+
 ## Gateway 运行方式
 
 同一数据目录在任意时刻只允许一个本地 Gateway。CLI、TUI 和 WebUI 共用

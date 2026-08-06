@@ -69,6 +69,9 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
 更完整的设计与模块说明见[架构文档](docs/architecture.md)。
 
+想了解或改进它的行为，可开启[消息流分析](docs/message-flow-analysis.md)：一次会话在前台、
+协调层、后台之间传了什么，按时间顺序展开，并自动标出可疑之处。
+
 </details>
 
 ## Agent 支持

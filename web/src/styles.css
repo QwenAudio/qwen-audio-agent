@@ -771,3 +771,378 @@ header select.frontend-provider {
 header select.frontend-provider option {
   color: #111;
 }
+
+/* Message flow analysis page, reached with ?analysis=flow. Deliberately plain:
+   it is a tool for reading, and decoration would compete with the content. Rows are
+   chronological rather than a swimlane, because real events cluster into the
+   first seconds and then pause, which piles absolute-positioned blocks on top
+   of one another. */
+/* The voice UI is a fixed full-screen layout, so body has overflow hidden.
+   A page meant for reading has to restore scrolling for itself, otherwise a
+   long conversation is simply cut off with no way to reach the rest. */
+.flow-analysis {
+  height: 100%;
+  overflow-y: auto;
+  box-sizing: border-box;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 20px 60px;
+  color: #e8e8ea;
+  font-size: 14px;
+}
+.flow-analysis h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+.flow-analysis h2 {
+  font-size: 15px;
+  margin: 28px 0 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.flow-analysis-header p {
+  margin: 0;
+  color: #9a9aa2;
+}
+.flow-analysis code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.flow-error {
+  background: rgba(220, 80, 80, 0.14);
+  border: 1px solid rgba(220, 80, 80, 0.4);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.flow-empty {
+  color: #8a8a92;
+}
+.flow-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.flow-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+.flow-pick-on {
+  border-color: rgba(120, 170, 255, 0.7);
+  background: rgba(120, 170, 255, 0.12);
+}
+.flow-pick-request {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.flow-pick-meta,
+.flow-steps-span {
+  color: #9a9aa2;
+  font-size: 12px;
+  font-weight: 400;
+}
+.flow-pick-bad {
+  color: #ff9b9b;
+  font-size: 12px;
+}
+.flow-anomalies ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.flow-anomalies li {
+  border-radius: 6px;
+  padding: 10px 12px;
+  border-left: 3px solid;
+}
+.flow-anomaly-error {
+  background: rgba(220, 80, 80, 0.12);
+  border-left-color: #d9534f;
+}
+.flow-anomaly-warn {
+  background: rgba(220, 170, 60, 0.12);
+  border-left-color: #d9a13f;
+}
+.flow-anomalies p {
+  margin: 4px 0 0;
+  color: #b8b8c0;
+  line-height: 1.5;
+}
+.flow-anomaly-jump {
+  background: none;
+  border: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline dotted;
+}
+.flow-filters {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.flow-filter {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #b8b8c0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 12px;
+}
+.flow-filter-on {
+  background: rgba(120, 170, 255, 0.16);
+  border-color: rgba(120, 170, 255, 0.55);
+  color: #e8e8ea;
+}
+.flow-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.flow-gap {
+  color: #7a7a82;
+  font-size: 11px;
+  padding: 3px 0 3px 92px;
+}
+.flow-row {
+  display: grid;
+  grid-template-columns: 62px 60px minmax(150px, auto) 1fr;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-left: 3px solid rgba(255, 255, 255, 0.14);
+  border-radius: 0 4px 4px 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 5px 8px;
+  text-align: left;
+}
+.flow-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.flow-row-frontstage {
+  border-left-color: #7bb0ff;
+}
+.flow-row-gateway {
+  border-left-color: #7ad0a8;
+}
+.flow-row-backend {
+  border-left-color: #c99bf0;
+}
+.flow-row-delegated {
+  border-left-color: #f0c98a;
+}
+.flow-row-error {
+  background: rgba(220, 80, 80, 0.16);
+  border-left-color: #d9534f;
+}
+.flow-row-warn {
+  background: rgba(220, 170, 60, 0.14);
+  border-left-color: #d9a13f;
+}
+.flow-row-time {
+  color: #7a7a82;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+.flow-row-layer {
+  color: #9a9aa2;
+  font-size: 12px;
+}
+.flow-row-label em {
+  color: #9a9aa2;
+  font-style: normal;
+  font-size: 12px;
+}
+.flow-row-summary {
+  color: #8f8f98;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flow-detail {
+  margin-top: 24px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.flow-detail p {
+  margin: 0 0 8px;
+  color: #9a9aa2;
+  font-size: 12px;
+}
+.flow-detail pre {
+  margin: 0 0 10px;
+  overflow-x: auto;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.flow-detail button {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 5px;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  padding: 5px 12px;
+}
+.flow-turn {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 16px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #cfcfd6;
+  font-size: 12px;
+  font-weight: 600;
+}
+.flow-turn span {
+  color: #8f8f98;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flow-pick-said {
+  color: #8f8f98;
+  font-size: 12px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.flow-fields {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 14px;
+  margin: 0 0 12px;
+  font-size: 12px;
+}
+.flow-fields > div {
+  display: contents;
+}
+.flow-fields dt {
+  color: #8f8f98;
+  font-family: ui-monospace, monospace;
+}
+.flow-fields dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.flow-text {
+  margin-bottom: 12px;
+}
+.flow-text h3 {
+  margin: 0 0 4px;
+  color: #8f8f98;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 400;
+}
+.flow-text pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.24);
+  border-radius: 6px;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+/* Timeline on the left, detail on the right. The detail used to sit below the
+   timeline, so inspecting a row meant scrolling past every other row to read it
+   and scrolling back to pick the next one. */
+.flow-split {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+  align-items: start;
+}
+.flow-split-open {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 42%);
+}
+.flow-split .flow-detail {
+  /* Sticky rather than fixed: it follows while the timeline scrolls, and its
+     own overflow keeps a long prompt inside the panel instead of stretching
+     the page. */
+  position: sticky;
+  top: 16px;
+  margin-top: 28px;
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
+}
+.flow-split .flow-text pre {
+  max-height: none;
+}
+@media (max-width: 900px) {
+  .flow-split-open {
+    grid-template-columns: 1fr;
+  }
+  .flow-split .flow-detail {
+    position: static;
+    max-height: none;
+  }
+}
+.flow-text > summary {
+  cursor: pointer;
+  color: #8f8f98;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  margin-bottom: 4px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.flow-text > summary em {
+  color: #6f6f78;
+  font-style: normal;
+}
+.flow-text > summary::marker {
+  color: #6f6f78;
+}
+.flow-row-on {
+  background: rgba(120, 170, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(120, 170, 255, 0.45);
+}
+.flow-row-on.flow-row-error {
+  background: rgba(220, 80, 80, 0.26);
+}
+.flow-row-on.flow-row-warn {
+  background: rgba(220, 170, 60, 0.24);
+}

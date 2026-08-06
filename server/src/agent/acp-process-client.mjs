@@ -5,8 +5,63 @@ import * as acp from '@agentclientprotocol/sdk'
 import { PACKAGE_VERSION } from '../core/package-version.mjs'
 import { AgentError, requestSignal } from './backend-adapter.mjs'
 import { logger } from '../core/logger.mjs'
+import { flowRecorder } from '../observability/flow-trace.mjs'
 
 const MAX_STDERR_CHARS = 12_000
+
+// What is worth putting on a flow timeline for each kind of ACP call. Only the
+// readable parts: image blocks would be megabytes of base64 and tell a reader
+// nothing they cannot see by opening the file, so they are counted instead.
+//
+// Most of a coordinator prompt is the same instructions and response contract
+// every turn. Dumping all of it buried the two lines that differ, so the parts
+// that actually change are pulled out and the whole thing is kept alongside for
+// when it is the instructions themselves that are in question.
+function requestEnvelope(text) {
+  const match = text.match(
+    /<qwen_audio_agent_request>\s*([\s\S]*?)\s*<\/qwen_audio_agent_request>/,
+  )
+  if (!match) return {}
+  try {
+    const envelope = JSON.parse(match[1])
+    const input = envelope?.input || {}
+    return {
+      ...(clean(input.final_asr) ? { 用户原话: clean(input.final_asr) } : {}),
+      ...(clean(input.objective) ? { 前台整理的目标: clean(input.objective) } : {}),
+    }
+  } catch {
+    // A prompt whose envelope will not parse is itself worth noticing, and the
+    // raw text below still carries everything.
+    return {}
+  }
+}
+
+function flowRequestPayload(method, params, model) {
+  if (method !== 'session/prompt') return {}
+  const blocks = Array.isArray(params?.prompt) ? params.prompt : []
+  const text = blocks
+    .filter(block => block?.type === 'text')
+    .map(block => String(block.text || ''))
+    .join('\n')
+  const images = blocks.filter(block => block?.type === 'image').length
+  return {
+    // The model belongs on the row that carries the prompt. Reading it off a
+    // separate earlier row means the one question people actually ask -- what
+    // was this model asked -- takes two clicks and a guess.
+    ...(model ? { model } : {}),
+    ...requestEnvelope(text),
+    promptChars: text.length,
+    ...(images ? { images } : {}),
+    prompt: text,
+  }
+}
+
+function flowResponsePayload(result) {
+  if (!result || typeof result !== 'object') return {}
+  // ACP returns a stop reason here; the model's words arrive separately through
+  // session/update, so this is the honest thing to show for a response.
+  return result.stopReason ? { stopReason: result.stopReason } : {}
+}
 
 function clean(value) {
   return String(value || '').trim()
@@ -89,6 +144,11 @@ export class AcpProcessClient {
     this.onUpdate = onUpdate
     this.sanitizeProcessOutput = sanitizeProcessOutput
     this.formatRequestError = formatRequestError
+    // Flow tracing only. The id is set per coordinator turn so backend traffic
+    // lands in the right timeline; the sequence matches a call to its answer.
+    this.flowId = ''
+    this.flowSequence = 0
+    this.flowModel = ''
     this.child = null
     this.connection = null
     this.context = null
@@ -271,13 +331,61 @@ export class AcpProcessClient {
   async request(method, params, {
     signal,
     timeoutMs = this.timeoutMs,
+    flowId = this.flowId,
   } = {}) {
+    // Every JSON-RPC call the Gateway makes passes through here, so one pair of
+    // records covers the whole backend conversation. The sequence number is
+    // what lets a call be matched with its answer, which is how a hung backend
+    // becomes visible rather than merely slow.
+    const rpcId = ++this.flowSequence
+    const startedAt = Date.now()
+    const sessionId = params?.sessionId
+    flowRecorder.record({
+      flowId,
+      layer: 'backend',
+      type: 'acp.request',
+      sessionId,
+      // The prompt is the payload of the whole interaction. Recording only that
+      // a call happened tells a reader nothing about what the backend was
+      // asked, which is usually the first thing worth checking.
+      detail: {
+        rpcId,
+        method,
+        direction: 'out',
+        ...flowRequestPayload(method, params, this.flowModel),
+      },
+    })
     try {
       await this.start()
-      return await this.context.request(method, params, {
+      const result = await this.context.request(method, params, {
         signal: this.requestSignal(signal, timeoutMs),
       })
+      flowRecorder.record({
+        flowId,
+        layer: 'backend',
+        type: 'acp.response',
+        sessionId,
+        detail: {
+          rpcId,
+          method,
+          elapsedMs: Date.now() - startedAt,
+          ...flowResponsePayload(result),
+        },
+      })
+      return result
     } catch (error) {
+      flowRecorder.record({
+        flowId,
+        layer: 'backend',
+        type: 'acp.error',
+        sessionId,
+        detail: {
+          rpcId,
+          method,
+          elapsedMs: Date.now() - startedAt,
+          error: error?.message || String(error),
+        },
+      })
       if (signal?.aborted) throw signal.reason
       const isRequestError = error?.name === 'RequestError'
       const stderr = isRequestError

@@ -8,13 +8,17 @@ const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../src')
 const projectRoot = resolve(sourceRoot, '../..')
 const sharedRoot = resolve(sourceRoot, '../../shared')
 const allowedDependencies = {
-  app: new Set(['agent', 'app', 'conversation', 'core', 'task', 'voice']),
+  app: new Set(['agent', 'app', 'conversation', 'core', 'observability', 'task', 'voice']),
   process: new Set(['process']),
   core: new Set(['core', 'shared']),
-  agent: new Set(['agent', 'core']),
+  agent: new Set(['agent', 'core', 'observability']),
   conversation: new Set(['conversation', 'core']),
+  // Observability is a leaf on purpose: it may read configuration and the
+  // shared logger, and nothing else. That keeps the flow trace a bystander
+  // rather than something the business layers can come to depend on.
+  observability: new Set(['core', 'observability', 'shared']),
   task: new Set(['agent', 'core', 'task']),
-  voice: new Set(['conversation', 'core', 'shared', 'task', 'voice']),
+  voice: new Set(['conversation', 'core', 'observability', 'shared', 'task', 'voice']),
 }
 
 function sourceFiles(directory) {

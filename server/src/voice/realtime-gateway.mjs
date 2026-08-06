@@ -19,6 +19,7 @@ import { isAllowedOrigin } from '../core/request-security.mjs'
 import { taskManager } from '../task/task-manager.mjs'
 import { recordTaskResult } from '../conversation/task-result-projector.mjs'
 import { ToolCallHandler } from './tools/tool-call-handler.mjs'
+import { flowIdForTurn, flowRecorder } from '../observability/flow-trace.mjs'
 import { TurnTranscripts } from './tools/turn-transcripts.mjs'
 import { TurnCorrelation } from './turn-correlation.mjs'
 import { streamingInputTranscript } from './input-transcript.mjs'
@@ -574,6 +575,24 @@ export function attachRealtimeGateway(server, {
         responseId: id,
         ...publicResponseContext(context),
       })
+      // What the user was actually told, which closes the loop. Only the final
+      // transcript: deltas are the same sentence arriving in pieces. Recording
+      // this is what makes it possible to see that the backend answered
+      // correctly and the frontstage then said something else, a discrepancy
+      // that is otherwise invisible from either side alone.
+      if (final && String(content || '').trim()) {
+        flowRecorder.record({
+          flowId: flowIdForTurn(context?.turnId, sessionId),
+          layer: 'frontstage',
+          type: 'assistant.said',
+          sessionId,
+          detail: {
+            model: config.audioModel,
+            origin: context?.origin === 'model' ? '前台直接回答' : '播报后台结果',
+            content: String(content).trim(),
+          },
+        })
+      }
     }
 
     const flushPendingTranscripts = (id, context) => {
@@ -941,6 +960,15 @@ export function attachRealtimeGateway(server, {
           turnId = `voice-${Date.now()}-${turnGeneration}`
           rememberInputTurn(event.item_id, currentTurn())
         }
+        flowRecorder.record({
+          flowId: flowIdForTurn(turnId, sessionId),
+          layer: 'frontstage',
+          type: 'turn.started',
+          sessionId,
+          // Which model is listening. One interaction involves several models,
+          // and a reader tracing a decision needs to know which one made it.
+          detail: { source: 'voice', model: config.audioModel },
+        })
         announcementWindow.beginTurn(turnId)
         announcements.dismissActive()
         send(ws, {
@@ -1041,6 +1069,16 @@ export function attachRealtimeGateway(server, {
           content: transcript,
           turnId: transcriptTurn.turnId,
         })
+        // What the user actually said, so the debug page can name a flow by the
+        // request instead of by an opaque turn id. Truncated and redacted by
+        // the recorder, like every other text field.
+        flowRecorder.record({
+          flowId: flowIdForTurn(transcriptTurn.turnId, sessionId),
+          layer: 'frontstage',
+          type: 'user.said',
+          sessionId,
+          detail: { text: transcript },
+        })
       } else if (event.type === 'conversation.item.input_audio_transcription.failed') {
         const failedInput = inputTurns.complete(event.item_id, currentTurn())
         send(ws, {
@@ -1058,6 +1096,20 @@ export function attachRealtimeGateway(server, {
         if (responseContexts.has(id)) {
           responseContexts.get(id).hasFunctionCall = true
         }
+        // Which frontstage tool fired, under which turn, and with what. The
+        // arguments are the point: they are what the frontstage decided to
+        // delegate, and without them the row says a tool ran but not why.
+        flowRecorder.record({
+          flowId: flowIdForTurn(callContext.turnId, sessionId),
+          layer: 'frontstage',
+          type: 'frontstage.tool',
+          sessionId,
+          detail: {
+            name: event.name || event.tool_name || 'unknown',
+            model: config.audioModel,
+            arguments: event.arguments || '',
+          },
+        })
         toolCalls.handle(event, callContext).catch(error => {
           send(ws, { type: 'error', message: error.message })
         })
@@ -1802,6 +1854,20 @@ export function attachRealtimeGateway(server, {
         }
         sleepController.recordActivity()
         const turnId = `text_${randomUUID().replaceAll('-', '')}`
+        flowRecorder.record({
+          flowId: flowIdForTurn(turnId, sessionId),
+          layer: 'frontstage',
+          type: 'turn.started',
+          sessionId,
+          detail: { source: 'text', model: config.audioModel },
+        })
+        flowRecorder.record({
+          flowId: flowIdForTurn(turnId, sessionId),
+          layer: 'frontstage',
+          type: 'user.said',
+          sessionId,
+          detail: { text },
+        })
         conversationSync.record({
           ownerId,
           sessionId,

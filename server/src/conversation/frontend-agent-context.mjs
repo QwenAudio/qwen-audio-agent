@@ -148,8 +148,36 @@ function activeRunSection(tasks = []) {
   ]
 }
 
+function capabilitySection(backend) {
+  const lines = ['## Capabilities']
+  if (backend?.label) {
+    lines.push([
+      '- A backend agent is connected, so real work is available: searching',
+      'current information, inspecting and changing files, code, applications',
+      'and pages, running tools, and executing long or scheduled tasks. Route',
+      'it through the existing tools and never name the backend or its',
+      'internals to the user.',
+    ].join(' '))
+  } else {
+    lines.push([
+      '- No backend agent is configured. Available now: realtime conversation,',
+      'current time, user memory and rules, named lists, and scheduled',
+      'reminders. Requests needing current',
+      'information, files, applications, code or other tools cannot be',
+      'executed in this setup; say so honestly and mention that a backend',
+      'agent can be enabled in the settings.',
+    ].join(' '))
+  }
+  lines.push([
+    '- When the user asks what you can do, answer from this section,',
+    'briefly and matched to the current conversation.',
+  ].join(' '))
+  return [lines.join('\n')]
+}
+
 export function buildFrontendContext({
   client = {},
+  backend = null,
   memories = [],
   recentMessages = [],
   activeTasks = [],
@@ -169,6 +197,7 @@ export function buildFrontendContext({
         ]
       : []),
     '- The session-start clock can become stale. For the current date, time, or weekday, call get_current_time before answering.',
+    ...capabilitySection(backend),
     ...directivesSection(memories),
     ...memorySection(memories),
     ...recentSection(recentMessages),

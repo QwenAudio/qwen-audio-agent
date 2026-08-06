@@ -5,6 +5,7 @@ import {
   GatewayServerEvent,
 } from '../../../shared/realtime-events.mjs'
 import { AnnouncementManager } from './announcement/announcement-manager.mjs'
+import { backendDefinition } from '../../../shared/backend-catalog.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import { config } from '../core/config.mjs'
 import { logger } from '../core/logger.mjs'
@@ -108,6 +109,12 @@ export function attachRealtimeGateway(server, {
   respondPermission,
   permissionPolicy,
 }) {
+  const backendCapability = config.agentProtocol
+    ? {
+        id: config.agentProtocol,
+        label: backendDefinition(config.agentProtocol)?.label || config.agentProtocol,
+      }
+    : null
   const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 })
   const activeVoiceClients = new ActiveVoiceClients()
   const voiceConnections = new Map()
@@ -1347,6 +1354,7 @@ export function attachRealtimeGateway(server, {
         providerName: sessionProvider,
         agentContext: {
           client: clientContext,
+          backend: backendCapability,
           textOnly: textOnlySession,
           memories: memoryStore?.list(ownerId, { limit: 64 }) || [],
           recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),

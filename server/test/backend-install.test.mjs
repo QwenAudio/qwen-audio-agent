@@ -90,8 +90,8 @@ test('script steps require confirmation and follow platform availability', () =>
   assert.match(darwin.steps[0].display, /^curl -fsSL /)
 
   const win32 = installSupport('hermes', { env: {}, platform: 'win32' })
-  assert.equal(win32.supported, false)
-  assert.match(win32.reason, /PowerShell/)
+  assert.equal(win32.supported, true)
+  assert.match(win32.steps[0].display, /iex \(irm /)
 })
 
 test('withInstallSupport annotates every reported backend', () => {

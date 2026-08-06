@@ -4,23 +4,22 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 
 const launcher = readFileSync(
-  resolve(import.meta.dirname, '../../scripts/opencode-server'),
+  resolve(import.meta.dirname, '../../scripts/opencode.mjs'),
+  'utf8',
+)
+const serverWrapper = readFileSync(
+  resolve(import.meta.dirname, '../../scripts/opencode-server.mjs'),
   'utf8',
 )
 
-test('inherits the user OpenCode config unless isolation is explicitly enabled', () => {
-  assert.doesNotMatch(launcher, /OPENCODE_CONFIG_DIR=/)
-  assert.match(
-    launcher,
-    /QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG:-false/,
-  )
-  assert.match(
-    launcher,
-    /QWEN_AUDIO_AGENT_OPENCODE_XDG_CONFIG_HOME/,
-  )
+test('isolates XDG_CONFIG_HOME when explicitly enabled or auto-managed', () => {
+  assert.match(launcher, /QWEN_AUDIO_AGENT_OPENCODE_XDG_CONFIG_HOME/)
   assert.match(launcher, /runtime\/opencode-xdg/)
-  assert.doesNotMatch(
-    launcher,
-    /export XDG_CONFIG_HOME=\$\{QWEN_AUDIO_AGENT_OPENCODE_XDG_CONFIG_HOME:-/,
-  )
+  assert.match(launcher, /QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG/)
+})
+
+test('managed-backend wrapper delegates to opencode.mjs serve via process.execPath', () => {
+  assert.match(serverWrapper, /scripts\/opencode\.mjs/)
+  assert.match(serverWrapper, /process\.execPath/)
+  assert.match(serverWrapper, /'serve'/)
 })

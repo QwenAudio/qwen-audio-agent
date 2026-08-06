@@ -111,6 +111,7 @@ function runStatus(command, args, {
         env,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
+        shell: process.platform === 'win32',
       })
     } catch (error) {
       resolve({ ok: false, output: '', error })

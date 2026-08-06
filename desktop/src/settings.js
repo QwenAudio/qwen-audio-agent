@@ -34,6 +34,9 @@ const backendList = document.querySelector('#backend-list')
 const refreshBackends = document.querySelector('#refresh-backends')
 const realtimeModel = document.querySelector('#realtime-model')
 const backendModel = document.querySelector('#backend-model')
+const nodePathInput = document.querySelector('#node-path')
+const applyNodePath = document.querySelector('#apply-node-path')
+const nodePathRow = document.querySelector('.node-path-row')
 const getApiKey = document.querySelector('#get-api-key')
 const message = document.querySelector('#message')
 const currentRealtime = document.querySelector('#current-realtime')
@@ -266,6 +269,7 @@ function truncate(text, max = 80) {
 }
 
 let installingBackend = ''
+let pendingNodePathBackend = ''
 let installProgressText = ''
 
 function selectedBackend() {
@@ -369,12 +373,27 @@ function renderBackendOptions(currentValue) {
   }))
 }
 
-// npm 缺失时的引导：错误文案 + Node.js 下载链接（经主进程 openExternal）。
-function showNodejsInstallGuidance(text) {
+// npm 缺失时的引导：错误文案 + 指定路径入口 + Node.js 下载链接。
+function showNodejsInstallGuidance(text, backendId) {
   showMessage(
     text || '未找到 npm，请先安装 Node.js（自带 npm）后重试。',
     'error',
   )
+  // 记住是哪个后台 Agent 需要安装，路径确认后自动重试
+  pendingNodePathBackend = backendId || ''
+  // 指定路径入口
+  if (nodePathRow && nodePathRow.hidden) {
+    const specifyBtn = document.createElement('button')
+    specifyBtn.type = 'button'
+    specifyBtn.className = 'message-link'
+    specifyBtn.textContent = '指定 Node.js 路径'
+    specifyBtn.addEventListener('click', () => {
+      nodePathRow.hidden = false
+      nodePathInput.focus()
+    })
+    message.append(' ', specifyBtn)
+  }
+  // 下载链接
   const link = document.createElement('button')
   link.type = 'button'
   link.className = 'message-link'
@@ -397,7 +416,7 @@ async function installBackendRow(id) {
     if (!result?.ok) {
       // 用户在确认框取消属于正常操作，不提示；其余失败行内 + 消息条。
       if (result?.error?.code === 'NPM_MISSING') {
-        showNodejsInstallGuidance(result.error.message)
+        showNodejsInstallGuidance(result.error.message, id)
       } else if (result?.error?.code !== 'DECLINED') {
         showMessage(result?.error?.message || '安装失败', 'error')
       }
@@ -535,6 +554,7 @@ function formSettings() {
     speechToSpeechRealtimeUrl: speechToSpeechRealtimeUrl.value,
     speechToSpeechAuthToken: speechToSpeechAuthToken.value,
     backendModel: backendModel.value,
+    nodePath: nodePathInput.value.trim(),
   }
 }
 
@@ -552,6 +572,7 @@ function fingerprint(value) {
     speechToSpeechRealtimeUrl: value.speechToSpeechRealtimeUrl,
     speechToSpeechAuthToken: value.speechToSpeechAuthToken,
     backendModel: value.backendModel,
+    nodePath: value.nodePath,
   })
 }
 
@@ -713,6 +734,7 @@ function render() {
   speechToSpeechAuthToken.value = settings.speechToSpeechAuthToken || ''
   renderRealtimeProvider(settings.realtimeProvider)
   backendModel.value = settings.backendModel || ''
+  nodePathInput.value = settings.nodePath || ''
   renderRuntime()
   appliedFingerprint = fingerprint(formSettings())
   updateApplyState()
@@ -727,6 +749,7 @@ for (const control of [
   speechToSpeechAuthToken,
   realtimeModel,
   backendModel,
+  nodePathInput,
   ...realtimeProviderInputs,
   wakeWordEnabled,
 ]) {
@@ -745,6 +768,37 @@ for (const control of [
 
 getApiKey.addEventListener('click', () => {
   window.qwenAudioAgentDesktop.openExternal(BAILIAN_API_KEY_URL)
+})
+
+// "确认"按钮：保存自定义 Node.js 路径后立即重检并重试安装
+applyNodePath.addEventListener('click', async () => {
+  const path = nodePathInput.value.trim()
+  if (!path) {
+    showMessage('请填写 Node.js 安装目录', 'error')
+    return
+  }
+  applyNodePath.disabled = true
+  showMessage('正在保存路径…')
+  const retryId = pendingNodePathBackend
+  pendingNodePathBackend = ''
+  try {
+    await window.qwenAudioAgentDesktop.setNodePath(path)
+    nodePathRow.hidden = true
+    showMessage('路径已保存，正在重新检测…')
+    await detectBackendOptions(true)
+    // 自动重试之前失败的安装
+    if (retryId) {
+      showMessage(`正在重新安装 ${backendLabel(retryId)}…`)
+      await installBackendRow(retryId)
+    }
+  } catch (err) {
+    showMessage(
+      err?.message || '保存失败，请重试',
+      'error',
+    )
+  } finally {
+    applyNodePath.disabled = false
+  }
 })
 
 form.addEventListener('submit', async event => {

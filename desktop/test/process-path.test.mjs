@@ -10,6 +10,7 @@ import {
   loginShellPath,
   readPathCache,
   refreshProcessPath,
+  windowsPathDirectories,
 } from '../src/process-path.mjs'
 
 function tempCacheFile() {
@@ -104,11 +105,192 @@ test('falls back to well-known directories without a login shell', () => {
   ])
 })
 
-test('does nothing on Windows or when PATH is already complete', () => {
-  const env = { PATH: 'C:\\Windows' }
-  assert.equal(expandProcessPath({ env, platform: 'win32' }), false)
-  assert.equal(env.PATH, 'C:\\Windows')
+// 当注册表和 where 都失败时，回退到预设目录
+test('expands Windows PATH with preset directories when where fails', () => {
+  const env = {
+    PATH: 'C:\\Windows;C:\\Tools',
+    ProgramFiles: 'D:\\Program Files',
+    'ProgramFiles(x86)': 'D:\\Program Files (x86)',
+    LOCALAPPDATA: 'C:\\Users\\x\\AppData\\Local',
+    APPDATA: 'C:\\Users\\x\\AppData\\Roaming',
+    USERPROFILE: 'C:\\Users\\x',
+    NVM_HOME: 'D:\\nvm',
+    NVM_SYMLINK: 'C:\\nodejs',
+  }
+  const existing = new Set([
+    'D:\\Program Files\\nodejs',
+    'D:\\Program Files (x86)\\nodejs',
+    'C:\\Users\\x\\AppData\\Local\\Programs\\nodejs',
+    'C:\\Users\\x\\AppData\\Roaming\\npm',
+    'C:\\Users\\x\\.nvm',
+    'D:\\nvm',
+    'C:\\nodejs',
+  ])
+  assert.equal(
+    expandProcessPath({
+      env,
+      platform: 'win32',
+      spawnImpl: () => ({ status: 1, stdout: '' }),
+      existsImpl: dir => existing.has(dir),
+    }),
+    true,
+  )
+  assert.equal(
+    env.PATH,
+    [
+      'C:\\Windows',
+      'C:\\Tools',
+      'D:\\Program Files\\nodejs',
+      'D:\\Program Files (x86)\\nodejs',
+      'C:\\Users\\x\\AppData\\Local\\Programs\\nodejs',
+      'C:\\Users\\x\\AppData\\Roaming\\npm',
+      'C:\\Users\\x\\.nvm',
+      'D:\\nvm',
+      'C:\\nodejs',
+    ].join(';'),
+  )
+})
 
+test('Windows PATH expansion handles missing PATH and case-insensitive duplicates', () => {
+  const env = {
+    ProgramFiles: 'C:\\Program Files',
+    APPDATA: 'C:\\Users\\x\\AppData\\Roaming',
+  }
+  expandProcessPath({
+    env,
+    platform: 'win32',
+    spawnImpl: () => ({ status: 1, stdout: '' }),
+    existsImpl: dir => dir === 'C:\\Program Files\\nodejs',
+  })
+  assert.equal(env.PATH, 'C:\\Program Files\\nodejs')
+
+  env.PATH = 'c:\\program files\\NODEJS'
+  assert.equal(
+    expandProcessPath({
+      env,
+      platform: 'win32',
+      spawnImpl: () => ({ status: 1, stdout: '' }),
+      existsImpl: dir => dir.toLowerCase() === 'c:\\program files\\nodejs',
+    }),
+    false,
+  )
+  assert.equal(env.PATH, 'c:\\program files\\NODEJS')
+})
+
+test('refreshProcessPath on Windows falls back to preset when where fails', () => {
+  const env = {
+    PATH: 'C:\\Windows',
+    LOCALAPPDATA: 'C:\\Users\\x\\AppData\\Local',
+  }
+  let installed = false
+  const existsImpl = dir => installed
+    && dir === 'C:\\Users\\x\\AppData\\Local\\Programs\\nodejs'
+
+  assert.equal(
+    refreshProcessPath({
+      env, platform: 'win32',
+      spawnImpl: () => ({ status: 1, stdout: '' }),
+      existsImpl,
+    }),
+    false,
+  )
+  installed = true
+  assert.equal(
+    refreshProcessPath({
+      env, platform: 'win32',
+      spawnImpl: () => ({ status: 1, stdout: '' }),
+      existsImpl,
+    }),
+    true,
+  )
+  assert.equal(
+    env.PATH,
+    'C:\\Windows;C:\\Users\\x\\AppData\\Local\\Programs\\nodejs',
+  )
+})
+
+test('lists Windows paths with win32 semantics on any host', () => {
+  assert.deepEqual(
+    windowsPathDirectories({
+      ProgramFiles: 'C:\\Program Files',
+      'ProgramFiles(x86)': 'C:\\Program Files (x86)',
+      LOCALAPPDATA: 'C:\\Users\\x\\AppData\\Local',
+      APPDATA: 'C:\\Users\\x\\AppData\\Roaming',
+      USERPROFILE: 'C:\\Users\\x',
+    }),
+    [
+      'C:\\Program Files\\nodejs',
+      'C:\\Program Files (x86)\\nodejs',
+      'C:\\Users\\x\\AppData\\Local\\Programs\\nodejs',
+      'C:\\Users\\x\\AppData\\Local\\nvm',
+      'C:\\Users\\x\\AppData\\Roaming\\npm',
+      'C:\\Users\\x\\AppData\\Roaming\\nvm',
+      'C:\\Users\\x\\.nvm',
+    ],
+  )
+})
+
+// where 找到 node 和 npm 时，优先使用 where 结果而非预设目录
+test('Windows PATH uses where result when registry and where succeed', () => {
+  const env = {
+    PATH: 'C:\\Windows',
+    ProgramFiles: 'C:\\Program Files',
+  }
+  const spawnImpl = (cmd, _args) => {
+    if (cmd === 'reg') {
+      // 模拟注册表中有 Scoop 安装的路径
+      if (String(_args).includes('HKLM')) {
+        return { status: 0, stdout: '    Path    REG_EXPAND_SZ    %SystemRoot%\\system32;%SystemRoot%' }
+      }
+      return { status: 0, stdout: '    Path    REG_SZ    C:\\Users\\x\\scoop\\shims' }
+    }
+    if (cmd === 'where node') {
+      return { status: 0, stdout: 'C:\\Users\\x\\scoop\\apps\\nodejs\\current\\node.exe' }
+    }
+    if (cmd === 'where npm') {
+      return { status: 0, stdout: 'C:\\Users\\x\\scoop\\apps\\nodejs\\current\\npm.cmd' }
+    }
+    return { status: 1, stdout: '' }
+  }
+  expandProcessPath({
+    env,
+    platform: 'win32',
+    spawnImpl,
+    existsImpl: () => true,
+  })
+  assert.equal(
+    env.PATH,
+    'C:\\Windows;C:\\Users\\x\\scoop\\apps\\nodejs\\current',
+  )
+})
+
+// where 找到 node 但 npm 和 node 不同目录时，两个目录都加入
+test('Windows PATH adds both node and npm dirs when they differ', () => {
+  const env = { PATH: 'C:\\Windows' }
+  const spawnImpl = (cmd, _args) => {
+    if (cmd === 'reg') return { status: 1, stdout: '' }
+    if (cmd === 'where node') {
+      return { status: 0, stdout: 'D:\\tools\\node\\node.exe' }
+    }
+    if (cmd === 'where npm') {
+      // npm 可能装在全局 npm 目录
+      return { status: 0, stdout: 'C:\\Users\\x\\AppData\\Roaming\\npm\\npm.cmd' }
+    }
+    return { status: 1, stdout: '' }
+  }
+  expandProcessPath({
+    env,
+    platform: 'win32',
+    spawnImpl,
+    existsImpl: () => true,
+  })
+  assert.equal(
+    env.PATH,
+    'C:\\Windows;D:\\tools\\node;C:\\Users\\x\\AppData\\Roaming\\npm',
+  )
+})
+
+test('does nothing when PATH is already complete', () => {
   const complete = { PATH: '/usr/bin', SHELL: '/bin/zsh' }
   assert.equal(
     expandProcessPath({

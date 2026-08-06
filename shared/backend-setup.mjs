@@ -8,6 +8,7 @@ import {
   extname,
   isAbsolute,
   resolve,
+  win32,
 } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import {
@@ -130,6 +131,15 @@ export function findExecutable(command, {
         : resolve(`${value}${suffix}`)
       if (executableFile(candidate, platform)) return candidate
     }
+    // PATH 条目本身可能就是目标文件（如 C:\tools\nodejs\npm.cmd），
+    // 此时不需要再拼接命令名。
+    if (directory && !hasPath) {
+      const base = win32.basename(directory).toLowerCase()
+      const sought = value.toLowerCase()
+      if (base === sought && executableFile(directory, platform)) {
+        return directory
+      }
+    }
   }
   return ''
 }
@@ -152,8 +162,9 @@ function versionAtLeast(actual, minimum) {
 
 function defaultReadVersion(command) {
   const result = spawnSync(command, ['--version'], {
-    encoding: 'utf8',
-    timeout: 5_000,
+      encoding: 'utf8',
+      timeout: 5000,
+      shell: process.platform === 'win32',
     windowsHide: true,
   })
   if (result.status !== 0) return ''
@@ -174,6 +185,7 @@ function defaultReadVersionAsync(command, timeoutMs = 5_000) {
     try {
       child = spawn(command, ['--version'], {
         windowsHide: true,
+        shell: process.platform === 'win32',
         stdio: ['ignore', 'pipe', 'pipe'],
       })
     } catch {

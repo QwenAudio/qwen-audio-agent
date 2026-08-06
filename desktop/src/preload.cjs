@@ -73,6 +73,10 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
     'qwen-audio-agent:settings-save',
     settings,
   ),
+  setNodePath: nodePath => ipcRenderer.invoke(
+    'qwen-audio-agent:set-node-path',
+    nodePath,
+  ),
   openExternal: url => {
     if (typeof url !== 'string') return
     ipcRenderer.send('qwen-audio-agent:open-external', url)

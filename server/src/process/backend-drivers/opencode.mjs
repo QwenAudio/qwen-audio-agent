@@ -32,7 +32,7 @@ function configuredAgent(env) {
 export const openCodeRuntimeDriver = {
   id: 'opencode',
   separateManagedProcess: true,
-  managedScript: 'opencode-server',
+  managedScript: 'opencode-server.mjs',
   managedNpmScript: 'opencode',
 
   resolve({ env, ownership, permissionMode }) {

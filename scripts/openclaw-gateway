@@ -1,8 +1,0 @@
-#!/bin/sh
-set -eu
-
-QWEN_AUDIO_AGENT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-exec "$QWEN_AUDIO_AGENT_ROOT/scripts/openclaw" gateway run \
-  --port "${OPENCLAW_PORT:-18789}" \
-  --bind loopback \
-  "$@"

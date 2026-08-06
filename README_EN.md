@@ -26,7 +26,7 @@ tells you:
 ## News
 
 - **2026-08-06 · [v1.6.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.6.0)**
-  🪟 Desktop app now officially supports Windows; 👀 the backend Agent can look at your screen or an image; 🧠 adds invisible memory with automatic extraction after each session.
+  🪟 Desktop app now officially supports Windows; 🧠 adds invisible memory with automatic extraction after each session.
 - **2026-08-05 · [v1.5.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.5.0)**
   ⏰ Adds scheduled reminders and progress reporting; 🗣️ adds the voice wake word (“你好千问”); 🐧 desktop build support for Linux; the desktop app now uses a data directory isolated from the CLI.
 - **2026-08-05 · [v1.4.2](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.2)**

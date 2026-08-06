@@ -241,6 +241,29 @@ export const config = {
   agentProtocol: requestedAgentProtocol,
   backendOwnership,
   backendPermissionMode,
+  // Off by default: a voice assistant that can look at the screen without the
+  // user having asked for that capability is a surprise, not a feature.
+  screenCapture: String(
+    process.env.QWEN_AUDIO_AGENT_SCREEN_CAPTURE || 'off',
+  ).toLowerCase() === 'on',
+  imageMaxDimension: numberSetting(
+    process.env.QWEN_AUDIO_AGENT_IMAGE_MAX_DIMENSION,
+    1568,
+    { min: 256 },
+  ),
+  // Optional. Set this when the backend Agent's own model cannot see images,
+  // or when you would rather run the Agent on a strong text model and keep a
+  // vision model only for looking. ACP has no way to switch models inside a
+  // Session, so the alternative to this is running the whole Agent on a vision
+  // model. Left empty, the Agent's own model does the looking.
+  visionModel: String(process.env.QWEN_AUDIO_AGENT_VISION_MODEL || '').trim(),
+  visionModelUrl: (
+    process.env.QWEN_AUDIO_AGENT_VISION_BASE_URL
+    || (process.env.DASHSCOPE_WORKSPACE_ID
+      ? `https://${process.env.DASHSCOPE_WORKSPACE_ID}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`
+      : 'https://dashscope.aliyuncs.com/compatible-mode/v1')
+  ).replace(/\/+$/, ''),
+  configDirectory: runtimeEnvironment.configDirectory,
   agentTimeoutMs: numberSetting(process.env.AGENT_TIMEOUT_MS, 300000, { min: 10000 }),
   // Per-backend option namespaces keyed by driver id. AgentClient merges the
   // selected namespace with optional overrides, so adding a backend only

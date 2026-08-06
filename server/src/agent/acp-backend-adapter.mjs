@@ -144,9 +144,11 @@ export class AcpBackendAdapter {
     backendAvailable = endpointAvailable,
     sessionToolServer,
     nativeDelegationAdapter,
+    viewImage = null,
   } = {}) {
     this.protocol = protocol
     this.root = root
+    this.viewImage = viewImage
     this.ownership = ownership === 'external' ? 'external' : 'owned'
     this.permissionMode = permissionMode === 'full' ? 'full' : 'native'
     // An empty model means the Agent owns model selection for both new and
@@ -978,6 +980,20 @@ export class AcpBackendAdapter {
       sendSession: input => this.continueProjectSession(run, input),
       sessionStatus: input => this.statusForDelegation(input),
       cancelSession: input => this.cancelDelegation(input),
+      // Absent unless screen capture is enabled. acp-session-tools.mjs skips
+      // registering the image tool when this is missing, so a backend cannot
+      // see a capability the user has not turned on.
+      ...(this.viewImage
+        ? {
+          viewImage: async input => ({
+            ...(await this.viewImage(input)),
+            // Taken from the Agent's own initialize response rather than
+            // assumed, so the tool can be honest about whether the model
+            // will actually receive the image.
+            backendSeesImages: this.client?.supportsImages?.() !== false,
+          }),
+        }
+        : {}),
     }
   }
 

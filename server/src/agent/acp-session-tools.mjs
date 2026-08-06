@@ -7,6 +7,10 @@ import {
 import { z } from 'zod'
 
 export const ACP_SESSION_TOOL_SERVER = 'qwen_audio_agent'
+// Tools the Gateway owns and therefore auto-approves. handlePermission() in
+// acp-backend-adapter.mjs matches against this list, so anything added here
+// stops asking the user. Session bookkeeping belongs here; looking at the
+// user's screen deliberately does not.
 export const ACP_SESSION_TOOL_NAMES = [
   'qwen_audio_agent_sessions_list',
   'qwen_audio_agent_session_start',
@@ -14,6 +18,7 @@ export const ACP_SESSION_TOOL_NAMES = [
   'qwen_audio_agent_session_status',
   'qwen_audio_agent_session_cancel',
 ]
+export const ACP_IMAGE_TOOL_NAME = 'qwen_audio_agent_view_image'
 
 function jsonResult(value, isError = false) {
   return {
@@ -126,6 +131,66 @@ function registerTools(server, context) {
     async input => {
       try {
         return jsonResult(await context.cancelSession(input))
+      } catch (error) {
+        return errorResult(error)
+      }
+    },
+  )
+  if (!context.viewImage) return
+  server.registerTool(
+    ACP_IMAGE_TOOL_NAME,
+    {
+      title: 'View Screen Or Image',
+      description: 'Look at the user\'s screen, or at an image file, when the request refers to something visible rather than described. Omit path to capture the current screen; pass path to read an existing image. The user is asked to approve every call.',
+      inputSchema: {
+        path: z.string().optional(),
+        reason: z.string(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: false,
+      },
+    },
+    async input => {
+      try {
+        const image = await context.viewImage(input)
+        // Three shapes, in order of preference. A dedicated vision model
+        // returns words, which any Agent can use. Otherwise the Agent's own
+        // model gets the pixels, if it declared that it can see them. If
+        // neither holds, say so rather than let the Agent guess.
+        if (image.description) {
+          return jsonResult({
+            status: 'ok',
+            path: image.path,
+            ...(image.source ? { source: image.source } : {}),
+            described_by: image.describedBy,
+            description: image.description,
+          })
+        }
+        const visible = image.backendSeesImages !== false
+        return {
+          content: [
+            ...(visible
+              ? [{ type: 'image', data: image.base64, mimeType: image.mimeType }]
+              : []),
+            {
+              type: 'text',
+              text: JSON.stringify({
+                status: 'ok',
+                path: image.path,
+                ...(image.source ? { source: image.source } : {}),
+                bytes: image.bytes,
+                // Being explicit beats letting the Agent guess. When the model
+                // cannot receive images, saying so lets it tell the user
+                // instead of inventing a description or hunting for an OCR
+                // tool it does not have.
+                note: visible
+                  ? 'Image content is attached. If you cannot see it, read the file at "path".'
+                  : 'This backend model cannot receive images. Tell the user that the configured backend model has no vision support, and do not guess what the image contains.',
+              }),
+            },
+          ],
+        }
       } catch (error) {
         return errorResult(error)
       }

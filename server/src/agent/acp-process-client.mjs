@@ -12,6 +12,19 @@ function clean(value) {
   return String(value || '').trim()
 }
 
+// Normalises whatever the caller hands us into ACP image content blocks and
+// drops anything incomplete, so a malformed entry cannot turn a prompt into a
+// protocol error.
+function asImageBlocks(images) {
+  return (Array.isArray(images) ? images : [images])
+    .filter(image => clean(image?.base64) && clean(image?.mimeType))
+    .map(image => ({
+      type: 'image',
+      data: clean(image.base64),
+      mimeType: clean(image.mimeType),
+    }))
+}
+
 function cleanProcessOutput(value, sanitizeProcessOutput) {
   const stripped = stripVTControlCharacters(String(value || '')).trim()
   return clean(sanitizeProcessOutput?.(stripped) ?? stripped)
@@ -380,10 +393,17 @@ export class AcpProcessClient {
     return sessions.slice(0, limit)
   }
 
+  // Whether this Agent accepts images in a prompt. Declared during
+  // initialize, so it is known before anything tries to send one.
+  supportsImages() {
+    return Boolean(this.capabilities?.promptCapabilities?.image)
+  }
+
   async prompt(sessionId, prompt, {
     signal,
     timeoutMs = this.timeoutMs,
     onUpdate,
+    images = [],
   } = {}) {
     const id = String(sessionId)
     if (this.activePrompts.has(id)) {
@@ -437,7 +457,15 @@ export class AcpProcessClient {
         acp.methods.agent.session.prompt,
         {
           sessionId: id,
-          prompt: [{ type: 'text', text: String(prompt || '') }],
+          prompt: [
+            { type: 'text', text: String(prompt || '') },
+            // ACP carries images as prompt content blocks, which is the only
+            // channel an Agent is required to understand. Sending them any
+            // other way, for example inside an MCP tool result, depends on
+            // whether that Agent's MCP client forwards image content to its
+            // model, and several do not.
+            ...(this.supportsImages() ? asImageBlocks(images) : []),
+          ],
         },
         { signal: combined, timeoutMs: 0 },
       )

@@ -1723,3 +1723,111 @@ test('releases completed ACP tool-call state instead of retaining it globally', 
   assert.equal(run.toolCalls.size, 0)
   assert.equal(Object.hasOwn(adapter, 'toolCalls'), false)
 })
+
+test('injects builtin MCP servers into coordinator and project sessions', async () => {
+  const builtin = {
+    name: 'open-computer-use',
+    command: process.execPath,
+    args: ['/repo/node_modules/open-computer-use/bin', 'mcp'],
+    env: [{ name: 'ELECTRON_RUN_AS_NODE', value: '1' }],
+  }
+  const tools = fakeToolServer()
+  const sessionMcp = new Map()
+  let prompted = false
+  const client = {
+    async newSession(options) {
+      const sessionId = options.role === 'coordinator'
+        ? 'coordinator-session'
+        : 'project-session'
+      sessionMcp.set(sessionId, options.mcpServers)
+      return { sessionId, cwd: options.cwd, response: {} }
+    },
+    async resumeSession(sessionId, options) {
+      sessionMcp.set(`resume:${sessionId}`, options.mcpServers)
+      return { sessionId, cwd: options.cwd, response: {} }
+    },
+    async prompt(sessionId) {
+      if (sessionId === 'project-session') {
+        return {
+          content: 'project complete',
+          response: { stopReason: 'end_turn' },
+        }
+      }
+      if (!prompted) {
+        prompted = true
+        await tools.registrations[0].call('startSession', {
+          prompt: 'inspect the project',
+          directory: '/project',
+        })
+      }
+      return {
+        content: completed('coordinator done'),
+        response: { stopReason: 'end_turn' },
+      }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qoder',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+    builtinMcp: [builtin],
+  })
+
+  const result = await adapter.coordinatorTurn('first turn', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+  await result.run.delegation?.promise
+
+  const coordinator = sessionMcp.get('coordinator-session')
+  assert.equal(coordinator.length, 2)
+  assert.equal(coordinator[0].type, 'http')
+  assert.equal(coordinator[1], builtin)
+
+  const project = sessionMcp.get('project-session')
+  assert.deepEqual(project, [builtin])
+  await adapter.close()
+})
+
+test('builtinMcp defaults keep sessions working when disabled', async () => {
+  const tools = fakeToolServer()
+  const sessionMcp = new Map()
+  const client = {
+    async newSession(options) {
+      sessionMcp.set('coordinator-session', options.mcpServers)
+      return {
+        sessionId: 'coordinator-session',
+        cwd: options.cwd,
+        response: {},
+      }
+    },
+    async resumeSession(sessionId, options) {
+      return { sessionId, cwd: options.cwd, response: {} }
+    },
+    async prompt() {
+      return {
+        content: completed('done'),
+        response: { stopReason: 'end_turn' },
+      }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qoder',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+    builtinMcp: [],
+  })
+
+  await adapter.coordinatorTurn('turn', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+  const coordinator = sessionMcp.get('coordinator-session')
+  assert.equal(coordinator.length, 1)
+  assert.equal(coordinator[0].type, 'http')
+  await adapter.close()
+})

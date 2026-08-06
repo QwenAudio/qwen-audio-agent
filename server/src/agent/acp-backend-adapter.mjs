@@ -20,6 +20,7 @@ import {
   ACP_SESSION_TOOL_NAMES,
   AcpSessionToolServer,
 } from './acp-session-tools.mjs'
+import { builtinMcpServers } from './builtin-mcp.mjs'
 
 const MAX_SESSION_RESULTS = 100
 const MAX_DELEGATION_RESULT_CHARS = 12_000
@@ -144,6 +145,7 @@ export class AcpBackendAdapter {
     backendAvailable = endpointAvailable,
     sessionToolServer,
     nativeDelegationAdapter,
+    builtinMcp = builtinMcpServers(),
   } = {}) {
     this.protocol = protocol
     this.root = root
@@ -173,6 +175,9 @@ export class AcpBackendAdapter {
     })
     this.registry = new AcpSessionRegistry({ filePath: sessionStatePath })
     this.sessionToolServer = sessionToolServer || new AcpSessionToolServer()
+    // Baseline stdio MCP servers (e.g. open-computer-use) injected into every
+    // Session; backends spawn and connect to them on their own.
+    this.builtinMcp = Array.isArray(builtinMcp) ? builtinMcp : []
     this.pendingPermissions = new Map()
     this.resolvedPermissions = new Map()
     this.coordinatorSessions = new Map()
@@ -849,6 +854,7 @@ export class AcpBackendAdapter {
     const cwd = clean(directory)
     const session = await this.client.newSession({
       cwd,
+      mcpServers: this.builtinMcp,
       ownerId: run.ownerId,
       role: 'project',
     })
@@ -905,6 +911,7 @@ export class AcpBackendAdapter {
     }
     const session = await this.client.resumeSession(clean(sessionId), {
       cwd,
+      mcpServers: this.builtinMcp,
       ownerId: run.ownerId,
       role: 'project',
     })
@@ -1062,7 +1069,10 @@ export class AcpBackendAdapter {
       ownerId,
       this.toolContext(run),
     )
-    const mcpServers = registration ? [registration.descriptor] : []
+    const mcpServers = [
+      ...(registration ? [registration.descriptor] : []),
+      ...this.builtinMcp,
+    ]
     const session = await this.ensureCoordinatorSession(ownerId, mcpServers)
     const permissionScopeId = `prompt_${randomUUID()}`
     run.sessionId = session.sessionId
@@ -1074,7 +1084,7 @@ export class AcpBackendAdapter {
     try {
       // Re-supply MCP definitions on resume: ACP Sessions do not require the
       // agent to persist client-provided MCP connections across processes.
-      if (registration && !session.isNew) {
+      if (mcpServers.length && !session.isNew) {
         await this.client.resumeSession(session.sessionId, {
           cwd: session.cwd || this.directory,
           mcpServers,

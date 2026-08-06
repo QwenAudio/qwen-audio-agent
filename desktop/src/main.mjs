@@ -180,12 +180,18 @@ function configuredOrigin() {
 }
 
 function configuredGatewayEnvironment() {
-  const configured = parseEnv(
-    readFileSync(runtimeEnvironment.configPath, 'utf8'),
-  )
+  const raw = readFileSync(runtimeEnvironment.configPath, 'utf8')
+  const configured = parseEnv(raw)
+  // 自动休眠超时必须与 orb 前端一致：config.env 可能缺省（首次安装），
+  // 这里总是注入经 parseSettings 归一化后的有效值，避免前端 60 秒隐藏
+  // 而网关 sleepTimeoutMs=0 永不休眠的分歧。
+  const settings = parseSettings(raw, process.env)
   return desktopGatewayEnvironment({
     env: process.env,
-    configured,
+    configured: {
+      ...configured,
+      QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS: String(settings.autoHideSeconds),
+    },
     runtimeRoot,
     sourceRoot,
   })
@@ -400,6 +406,7 @@ async function loadQwenAudioAgent(window) {
     await window.loadURL(desktopOrbUrl(rendererServer.baseUrl, {
       orbStyle: settings.orbStyle,
       autoHideSeconds: settings.autoHideSeconds,
+      wakeWordEnabled: settings.wakeWordEnabled,
     }))
     clearTimeout(reconnectTimer)
     reconnectTimer = null
@@ -525,10 +532,10 @@ function createWindow() {
 
 function createSettingsWindow() {
   const window = new BrowserWindow({
-    width: 540,
-    height: 760,
+    width: 520,
+    height: 720,
     minWidth: 460,
-    minHeight: 620,
+    minHeight: 600,
     title: '设置',
     backgroundColor: '#f5f6f7',
     autoHideMenuBar: true,
@@ -909,7 +916,6 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   const wakeShortcutChanged = previous.wakeShortcut !== normalized.wakeShortcut
   const wakeWordChanged = (
     previous.wakeWordEnabled !== normalized.wakeWordEnabled
-    || previous.sleepTimeoutSeconds !== normalized.sleepTimeoutSeconds
   )
   const gatewayRuntimeChanged = (
     gatewayChanged

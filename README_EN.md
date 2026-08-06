@@ -25,8 +25,8 @@ tells you:
 
 ## News
 
-- **2026-08-05 · Unreleased**
-  ⏰ Adds scheduled reminders and progress reporting; desktop build support for Linux (AppImage + deb); the desktop app now uses a data directory isolated from the CLI, so both can run side by side without interfering; adds voice wake word (“你好千问”) — the microphone stays on during sleep and speaking the wake word activates the assistant.
+- **2026-08-05 · [v1.5.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.5.0)**
+  ⏰ Adds scheduled reminders and progress reporting; 🗣️ adds the voice wake word (“你好千问”); 🐧 desktop build support for Linux; the desktop app now uses a data directory isolated from the CLI.
 - **2026-08-05 · [v1.4.2](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.2)**
   🔧 Refines desktop backend Agent installation, login, and status detection, with more reliable long-term memory behavior.
 - **2026-08-04 · [v1.4.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.1)**
@@ -94,7 +94,7 @@ module walkthrough.
 | OpenClaw | Built-in ACP Bridge | One-click installation and Bailian setup supported | ★★★★★ |
 | Qoder | Native ACP | One-click installation; user configuration required | ★★★★★ |
 | Kimi Code | Native ACP | One-click installation; user configuration required | ★★★★★ |
-| Hermes | Native ACP | One-click installation on macOS / Linux; user configuration required | ★★★★☆ |
+| Hermes | Native ACP | One-click installation; user configuration required | ★★★★☆ |
 | CodeBuddy | Native ACP | One-click installation; user configuration required | ★★★★☆ |
 | Codex | External ACP Adapter | One-click Agent and adapter installation; user configuration required | ★★★★☆ |
 | Claude Code | External ACP Adapter | One-click Agent and adapter installation; user configuration required | ★★★★☆ |
@@ -267,7 +267,7 @@ false transcription:
 qwenaudio tui --audio-mode full
 ```
 
-## macOS Desktop App
+## Desktop App
 
 The desktop app provides a persistent voice orb and includes the Gateway, so no
 service needs to be started in advance. If a local Gateway is already running

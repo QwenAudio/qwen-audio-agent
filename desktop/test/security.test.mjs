@@ -45,7 +45,8 @@ test('builds a dedicated desktop orb URL without losing existing parameters', ()
     desktopOrbUrl('http://127.0.0.1:3101/?channel=desktop', {
       orbStyle: 'goo',
       autoHideSeconds: 120,
+      wakeWordEnabled: true,
     }),
-    'http://127.0.0.1:3101/?channel=desktop&desktop=orb&orbStyle=goo&autoHideSeconds=120',
+    'http://127.0.0.1:3101/?channel=desktop&desktop=orb&orbStyle=goo&autoHideSeconds=120&wakeWordEnabled=true',
   )
 })

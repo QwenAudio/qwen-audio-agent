@@ -3,6 +3,8 @@ productName: Qwen Audio Agent
 electronVersion: 43.2.0
 asar: true
 npmRebuild: false
+asarUnpack:
+  - node_modules/sherpa-onnx/**/*.wasm
 extraMetadata:
   main: desktop/src/main.mjs
 

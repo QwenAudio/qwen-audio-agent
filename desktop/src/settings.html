@@ -234,13 +234,24 @@
               </div>
 
               <div class="setting-row">
-                <label for="auto-hide-seconds">自动隐藏</label>
+                <label for="auto-hide-seconds">自动休眠</label>
                 <select id="auto-hide-seconds">
-                  <option value="60">无交互 1 分钟</option>
-                  <option value="120">无交互 2 分钟</option>
-                  <option value="300">无交互 5 分钟</option>
                   <option value="0">永不</option>
+                  <option value="60">1 分钟</option>
+                  <option value="300">5 分钟</option>
+                  <option value="600">10 分钟</option>
                 </select>
+              </div>
+
+              <div class="setting-row">
+                <label for="wake-word-enabled">语音唤醒</label>
+                <div class="toggle-field">
+                  <label class="toggle-switch">
+                    <input id="wake-word-enabled" type="checkbox" />
+                    <span class="toggle-track"></span>
+                  </label>
+                  <span class="toggle-hint">休眠后说出"你好千问"即可唤醒</span>
+                </div>
               </div>
 
               <div class="setting-row">
@@ -265,27 +276,6 @@
                     title="恢复默认快捷键"
                   >↺</button>
                 </div>
-              </div>
-
-              <div class="setting-row">
-                <label for="wake-word-enabled">语音唤醒</label>
-                <div class="toggle-field">
-                  <input
-                    id="wake-word-enabled"
-                    type="checkbox"
-                  />
-                  <span class="toggle-hint">休眠后说出“你好千问”即可唤醒</span>
-                </div>
-              </div>
-
-              <div class="setting-row" id="sleep-timeout-row" hidden>
-                <label for="sleep-timeout-seconds">空闲休眠</label>
-                <select id="sleep-timeout-seconds">
-                  <option value="60">无交互 1 分钟</option>
-                  <option value="180">无交互 3 分钟</option>
-                  <option value="300">无交互 5 分钟</option>
-                  <option value="600">无交互 10 分钟</option>
-                </select>
               </div>
 
               <div class="setting-row">

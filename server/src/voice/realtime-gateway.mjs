@@ -811,6 +811,10 @@ export function attachRealtimeGateway(server, {
         return
       }
       if (event.type === 'task.notification.pending') {
+        if (sleeping) {
+          wakeFromSleep()
+          return
+        }
         if (task.sessionId === sessionId) {
           claimPendingNotifications([task.id])
         }
@@ -825,6 +829,10 @@ export function attachRealtimeGateway(server, {
       })
       if (event.type === 'task.permission.requested') {
         refreshActiveTaskContext()
+        if (sleeping) {
+          wakeFromSleep()
+          return
+        }
         announcePermission(task)
       }
       if (event.type === 'task.permission.resolved') {
@@ -1483,11 +1491,18 @@ export function attachRealtimeGateway(server, {
       sleeping = true
       waking = false
       pendingAudio = []
+      announcementWindow.reset()
       wakeDetector?.reset()
       cancelScheduledRealtimeReconnect()
       const staleFrontend = frontend
       frontend = null
       staleFrontend?.close()
+      if (clientContext.states?.includes('sleeping')) {
+        send(ws, {
+          type: GatewayServerEvent.CLIENT_STATE,
+          state: 'sleeping',
+        })
+      }
       send(ws, {
         type: GatewayServerEvent.VOICE_CONNECTION,
         state: 'sleeping',
@@ -1502,9 +1517,8 @@ export function attachRealtimeGateway(server, {
 
     const prepareSleepMode = () => {
       if (
-        !config.sleepTimeoutMs
+        !config.wakeWordEnabled
         || textOnlySession
-        || !inputEnabled
         || wakeDetectorPromise
       ) return
       if (wakeDetector) {

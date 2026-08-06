@@ -35,12 +35,17 @@ export function isSafeExternalUrl(value) {
   }
 }
 
-export function desktopOrbUrl(value, { orbStyle, autoHideSeconds } = {}) {
+export function desktopOrbUrl(value, {
+  orbStyle,
+  autoHideSeconds,
+  wakeWordEnabled = false,
+} = {}) {
   const url = new URL(value)
   url.searchParams.set('desktop', 'orb')
   if (orbStyle) url.searchParams.set('orbStyle', orbStyle)
   if (Number.isFinite(autoHideSeconds)) {
     url.searchParams.set('autoHideSeconds', String(autoHideSeconds))
   }
+  if (wakeWordEnabled) url.searchParams.set('wakeWordEnabled', 'true')
   return url.href
 }

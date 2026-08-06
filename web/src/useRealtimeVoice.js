@@ -85,6 +85,7 @@ export default function useRealtimeVoice({
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState(false)
   const [connectionState, setConnectionState] = useState('connecting')
+  const [wakeWordActive, setWakeWordActive] = useState(false)
   const [ownership, setOwnership] = useState({
     state: 'available',
     holder: null,
@@ -396,6 +397,13 @@ export default function useRealtimeVoice({
             setVisualError(true)
           }
         }
+        if (event.type === GatewayServerEvent.VOICE_SLEEP) {
+          if (event.state === 'enabled') {
+            setWakeWordActive(true)
+          } else if (event.state === 'disabled') {
+            setWakeWordActive(false)
+          }
+        }
         if (event.type === GatewayServerEvent.VOICE_OWNERSHIP) {
           setOwnership({
             state: event.state || 'available',
@@ -648,6 +656,7 @@ export default function useRealtimeVoice({
     error,
     visualError,
     connectionState,
+    wakeWordActive,
     ownership,
     levelElementRef,
     activateAudio,

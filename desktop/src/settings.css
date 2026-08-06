@@ -9,6 +9,8 @@
   --mac-divider: #e5e5ea;
   --mac-secondary: #6e6e73;
   --mac-tertiary: #8e8e93;
+  --row-height: 42px;
+  --label-width: 104px;
 }
 
 * { box-sizing: border-box; }
@@ -20,16 +22,16 @@ body {
 }
 
 main {
-  width: min(100%, 560px);
+  width: min(100%, 540px);
   margin: 0 auto;
-  padding: 26px 34px 22px;
+  padding: 20px 28px 14px;
 }
 
 header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .app-meta {
@@ -37,8 +39,7 @@ header {
   align-items: center;
   gap: 8px;
   margin-left: auto;
-  /* 与下方卡片内容右缘对齐（卡片 padding 19px），避免文本油墨超出卡片边框的视觉突起 */
-  margin-right: 19px;
+  margin-right: 18px;
   color: var(--mac-tertiary);
   font-size: 11px;
 }
@@ -52,12 +53,12 @@ header {
 
 .brand-mark {
   position: relative;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   overflow: hidden;
-  border-radius: 9px;
+  border-radius: 8px;
   background: linear-gradient(145deg, #178cff, #0064d8);
-  box-shadow: 0 3px 8px #007aff38;
+  box-shadow: 0 2px 6px #007aff38;
 }
 
 .brand-mark::before,
@@ -71,57 +72,57 @@ header {
 }
 
 .brand-mark::before {
-  inset: 10px 7px 10px 13px;
+  inset: 9px 6px 9px 12px;
   border-left-color: transparent;
 }
 
 .brand-mark::after {
-  inset: 10px 13px 10px 7px;
+  inset: 9px 12px 9px 6px;
   border-right-color: transparent;
 }
 
 .brand-mark span {
-  inset: 15px 9px;
+  inset: 13px 8px;
   border-color: #d8edff;
   border-width: 1.5px;
 }
 
 h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -.03em;
 }
 
 section {
   border: 1px solid var(--mac-border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
   box-shadow: 0 1px 2px #0000000d;
 }
 
 .runtime-status {
-  padding: 17px 19px 16px;
-  margin-bottom: 16px;
+  padding: 12px 18px 11px;
+  margin-bottom: 12px;
 }
 
 h2 {
-  margin: 0 0 14px;
+  margin: 0 0 10px;
   color: var(--mac-secondary);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 650;
   letter-spacing: .01em;
 }
 
 .runtime-status dl {
   display: grid;
-  gap: 9px;
+  gap: 5px;
   margin: 0;
 }
 
 .runtime-status dl div {
   display: grid;
-  grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-columns: 88px minmax(0, 1fr);
   align-items: center;
   min-width: 0;
 }
@@ -195,7 +196,7 @@ h2 {
 
 .settings-groups {
   display: grid;
-  gap: 19px;
+  gap: 14px;
 }
 
 .settings-tabs {
@@ -203,15 +204,15 @@ h2 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 3px;
   padding: 3px;
-  margin: 0 0 14px;
+  margin: 0 0 12px;
   border: 1px solid #c8c8cd;
   border-radius: 8px;
-  background: #e3e3e8;
+  background: #e8e8ed;
   box-shadow: inset 0 1px 2px #0000000d;
 }
 
 .settings-tab {
-  height: 31px;
+  height: 28px;
   border-radius: 6px;
   color: #55555a;
   background: transparent;
@@ -243,40 +244,40 @@ h2 {
 
 .settings-group-heading {
   display: flex;
-  min-height: 39px;
+  min-height: 35px;
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 0 4px 7px;
+  padding: 0 4px 6px;
 }
 
 .provider-heading {
-  min-height: 35px;
+  min-height: 32px;
   justify-content: flex-end;
 }
 
 .settings-group-heading h2 {
   margin: 0;
   color: #354047;
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 690;
   letter-spacing: .005em;
 }
 
 .settings-card {
-  padding: 0 19px;
+  padding: 0 18px;
   overflow: hidden;
   border: 1px solid var(--mac-border);
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
   box-shadow: 0 1px 2px #0000000d;
 }
 
 .setting-row {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr);
+  grid-template-columns: var(--label-width) minmax(0, 1fr);
   align-items: center;
-  min-height: 58px;
+  min-height: var(--row-height);
   border-bottom: 1px solid var(--mac-divider);
 }
 
@@ -287,7 +288,7 @@ h2 {
 .setting-row > label {
   color: #2c2c2e;
   font-size: 13px;
-  font-weight: 580;
+  font-weight: 540;
 }
 
 .provider-panel {
@@ -307,7 +308,7 @@ h2 {
   border: 1px solid #c8c8cd;
   border-radius: 8px;
   margin: 0;
-  background: #e3e3e8;
+  background: #e8e8ed;
   box-shadow: inset 0 1px 2px #0000000d;
 }
 
@@ -338,7 +339,7 @@ h2 {
 
 .provider-segment span {
   display: flex;
-  height: 27px;
+  height: 24px;
   min-width: 0;
   align-items: center;
   justify-content: center;
@@ -375,7 +376,7 @@ h2 {
 
 .provider-attribution {
   margin: 0;
-  padding: 8px 0 10px 112px;
+  padding: 6px 0 8px var(--label-width);
   color: var(--mac-tertiary);
   font-size: 9.5px;
   line-height: 1.3;
@@ -385,10 +386,10 @@ h2 {
 input,
 select {
   width: 100%;
-  height: 38px;
-  padding: 0 11px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid #c7c7cc;
-  border-radius: 7px;
+  border-radius: 6px;
   outline: none;
   color: #1d1d1f;
   background: #fff;
@@ -411,8 +412,8 @@ select:focus {
 
 .setting-label {
   color: #2c2c2e;
-  font-size: 12px;
-  font-weight: 620;
+  font-size: 13px;
+  font-weight: 540;
 }
 
 .shortcut-field {
@@ -426,7 +427,7 @@ select:focus {
 .toggle-field {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .toggle-hint {
@@ -434,12 +435,64 @@ select:focus {
   color: #8e8e93;
 }
 
+/* macOS-style toggle switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: #e5e5ea;
+  transition: background .2s ease;
+}
+
+.toggle-track::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: transform .2s ease;
+}
+
+.toggle-switch input:checked + .toggle-track {
+  background: #34c759;
+}
+
+.toggle-switch input:checked + .toggle-track::before {
+  transform: translateX(14px);
+}
+
+.toggle-switch input:focus-visible + .toggle-track {
+  box-shadow: 0 0 0 3px #007aff2b;
+}
+
 .shortcut-recorder {
-  min-width: 132px;
-  height: 32px;
-  padding: 0 11px;
+  min-width: 124px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid #c7c7cc;
-  border-radius: 7px;
+  border-radius: 6px;
   color: #3a3a3c;
   background: #fff;
   font-size: 11px;
@@ -469,10 +522,10 @@ select:focus {
 }
 
 .shortcut-reset {
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   color: #9aa4a9;
   background: transparent;
   font-size: 15px;
@@ -493,14 +546,14 @@ select:focus {
   gap: 8px;
 }
 
-/* 后台 Agent 列表：每行 = 单选钮 + 名称 + 状态徽标 + 安装按钮 */
+/* 后台 Agent 列表 */
 .backend-list-row {
   align-items: start;
-  padding: 13px 0;
+  padding: 10px 0;
 }
 
 .backend-list-row > .setting-label {
-  padding-top: 9px;
+  padding-top: 6px;
 }
 
 .backend-list-action {
@@ -508,7 +561,7 @@ select:focus {
 }
 
 .backend-list-action > .link-button {
-  height: 32px;
+  height: 30px;
 }
 
 .backend-list {
@@ -522,12 +575,11 @@ select:focus {
 }
 
 .backend-row {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) 72px 44px;
+  display: flex;
   align-items: center;
-  gap: 7px;
-  min-height: 38px;
-  padding: 3px 8px 3px 11px;
+  gap: 8px;
+  min-height: 34px;
+  padding: 2px 8px 2px 10px;
   border-bottom: 1px solid var(--mac-divider);
   cursor: pointer;
   transition: background .15s ease;
@@ -550,6 +602,7 @@ select:focus {
 }
 
 .backend-row input[type="radio"] {
+  flex: none;
   width: 14px;
   height: 14px;
   padding: 0;
@@ -563,17 +616,18 @@ select:focus {
 }
 
 .backend-name {
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   color: #2c2c2e;
   font-size: 12.5px;
-  font-weight: 560;
+  font-weight: 540;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .backend-status {
-  width: 72px;
+  flex: none;
   padding: 2px 7px;
   border-radius: 999px;
   color: #8a6d35;
@@ -600,9 +654,8 @@ select:focus {
 }
 
 .backend-progress {
-  grid-column: 3 / -1;
-  justify-self: end;
-  max-width: 190px;
+  flex: none;
+  max-width: 160px;
   overflow: hidden;
   color: #566c82;
   font-size: 10.5px;
@@ -612,9 +665,9 @@ select:focus {
 
 .backend-install,
 .backend-authenticate {
-  width: 44px;
-  height: 24px;
-  padding: 0;
+  flex: none;
+  height: 22px;
+  padding: 0 10px;
   border: 1px solid #b9d8ff;
   border-radius: 6px;
   color: #0066d6;
@@ -659,10 +712,10 @@ button {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 38px;
-  padding: 0 13px;
+  height: 30px;
+  padding: 0 12px;
   border: 1px solid #c7c7cc;
-  border-radius: 7px;
+  border-radius: 6px;
   color: #1d1d1f;
   background: linear-gradient(180deg, #fff, #f3f3f5);
   font-size: 12px;
@@ -694,7 +747,7 @@ button {
   align-items: center;
   justify-self: end;
   gap: 6px;
-  padding: 7px 2px 7px 10px;
+  padding: 5px 2px 5px 10px;
   color: var(--mac-blue);
   background: transparent;
   font-size: 12px;
@@ -730,8 +783,9 @@ footer {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 16px;
-  min-height: 68px;
+  gap: 14px;
+  min-height: 48px;
+  margin-top: 8px;
 }
 
 #message {
@@ -754,13 +808,14 @@ footer {
 }
 
 .apply-button {
-  min-width: 92px;
-  height: 38px;
-  border-radius: 8px;
+  min-width: 84px;
+  height: 32px;
+  border-radius: 7px;
   color: #fff;
   background: var(--mac-blue);
   box-shadow: 0 1px 2px #0057b832;
   font-weight: 650;
+  font-size: 13px;
   transition: box-shadow .15s ease, transform .15s ease;
 }
 

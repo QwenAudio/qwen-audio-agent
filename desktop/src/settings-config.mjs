@@ -13,10 +13,9 @@ import {
 const DEFAULTS = {
   gatewayUrl: 'http://127.0.0.1:3101',
   orbStyle: 'fluid',
-  autoHideSeconds: 120,
+  autoHideSeconds: 60,
   wakeShortcut: 'CommandOrControl+Shift+Space',
   wakeWordEnabled: false,
-  sleepTimeoutSeconds: 300,
   dashscopeApiKey: '',
   realtimeProvider: DEFAULT_REALTIME_PROVIDER,
   agentProtocol: 'none',
@@ -32,7 +31,6 @@ const SETTING_KEYS = {
   autoHideSeconds: 'QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS',
   wakeShortcut: 'QWEN_AUDIO_DESKTOP_WAKE_SHORTCUT',
   wakeWordEnabled: 'QWEN_AUDIO_WAKE_WORD_ENABLED',
-  sleepTimeoutSeconds: 'QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS',
   dashscopeApiKey: 'DASHSCOPE_API_KEY',
   realtimeProvider: 'QWEN_AUDIO_REALTIME_PROVIDER',
   agentProtocol: 'AGENT_PROTOCOL',
@@ -120,15 +118,6 @@ function encoded(value) {
   return `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }
 
-function cleanSleepTimeoutSeconds(value) {
-  const seconds = Number(value)
-  if (seconds === 0) return 0
-  if (!Number.isInteger(seconds) || seconds < 30 || seconds > 3600) {
-    return DEFAULTS.sleepTimeoutSeconds
-  }
-  return seconds
-}
-
 export function parseSettings(content = '', fallback = {}) {
   const values = parseEnv(content)
   const realtimeProvider = normalizeRealtimeProvider(configured(
@@ -204,15 +193,8 @@ export function parseSettings(content = '', fallback = {}) {
         values,
         'QWEN_AUDIO_WAKE_WORD_ENABLED',
         fallback.QWEN_AUDIO_WAKE_WORD_ENABLED || '',
-      )
+      ),
     ).toLowerCase() === 'true',
-    sleepTimeoutSeconds: cleanSleepTimeoutSeconds(configured(
-      values,
-      'QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS',
-      fallback.QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS
-        ?? (fallback.QWEN_AUDIO_WAKE_WORD_ENABLED === 'true'
-          ? DEFAULTS.sleepTimeoutSeconds : 0),
-    )),
     dashscopeApiKey: String(configuredApiKey || '').trim(),
     realtimeProvider,
     agentProtocol: cleanAgentProtocol(configured(
@@ -266,9 +248,6 @@ export function normalizeSettings(settings = {}) {
       settings.wakeShortcut ?? DEFAULTS.wakeShortcut,
     ),
     wakeWordEnabled: Boolean(settings.wakeWordEnabled),
-    sleepTimeoutSeconds: cleanSleepTimeoutSeconds(
-      settings.sleepTimeoutSeconds ?? DEFAULTS.sleepTimeoutSeconds,
-    ),
     dashscopeApiKey: String(
       settings.dashscopeApiKey ?? DEFAULTS.dashscopeApiKey,
     ).trim(),
@@ -324,14 +303,21 @@ export function updateSettingsContent(content = '', settings = {}) {
         encoded(normalized[field]),
       ]),
   )
+  // Legacy keys that were merged into auto-hide. Drop them so the saved
+  // config no longer carries a divergent sleep timeout.
+  const legacy = new Set([
+    'QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS',
+    'QWEN_AUDIO_DESKTOP_AUTO_SLEEP_SECONDS',
+  ])
   const seen = new Set()
   const lines = content.split(/\r?\n/).map(line => {
     const match = line.match(/^([A-Z][A-Z0-9_]*)\s*=/)
     const key = match?.[1]
+    if (key && legacy.has(key)) return null
     if (!key || !(key in values) || seen.has(key)) return line
     seen.add(key)
     return `${key}=${values[key]}`
-  })
+  }).filter(line => line !== null)
   for (const key of Object.keys(values)) {
     if (!seen.has(key)) lines.push(`${key}=${values[key]}`)
   }

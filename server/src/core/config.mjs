@@ -480,11 +480,17 @@ export const config = {
     30_000,
     { min: 0, max: 300_000 },
   ),
+  // The sleep timeout mirrors the desktop auto-hide timeout: the orb hides
+  // and the gateway enters sleep mode at the same threshold. The legacy
+  // QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS is ignored to avoid divergence.
   sleepTimeoutMs: numberSetting(
-    process.env.QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS,
+    process.env.QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS,
     0,
     { min: 0, max: 86_400 },
   ) * 1000,
+  wakeWordEnabled: String(
+    process.env.QWEN_AUDIO_WAKE_WORD_ENABLED || '',
+  ).toLowerCase() === 'true',
   wakeWord: '你好千问',
   wakeWordModelDirectory: process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR
     ? resolve(process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR)

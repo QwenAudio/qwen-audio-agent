@@ -35,6 +35,7 @@ import {
   desktopAutoHideSeconds,
   desktopCanHide,
   desktopHideDeadline,
+  desktopWakeWordEnabled,
   desktopWorkSettled,
 } from './desktop-hide.js'
 
@@ -50,6 +51,7 @@ const orbStyle = (
     : 'fluid'
 )
 const autoHideSeconds = desktopAutoHideSeconds(window.location.search)
+const wakeWordEnabled = desktopWakeWordEnabled(window.location.search)
 
 function getSessionId() {
   const requested = requestedSessionId(window.location.search)
@@ -350,6 +352,13 @@ export default function App() {
       bridge: window.qwenAudioAgentDesktop,
       onLifecycle: setDesktopLifecycle,
     }).catch(() => {})
+    if (
+      event.type === 'voice.sleep'
+      && event.state === 'detected'
+      && desktopOrbMode
+    ) {
+      window.qwenAudioAgentDesktop?.wake()
+    }
     if (event.type === 'gateway.connected') {
       fetch(`api/tasks?sessionId=${encodeURIComponent(sessionId)}`)
         .then(response => response.ok ? response.json() : Promise.reject())
@@ -641,7 +650,7 @@ export default function App() {
   const voice = useRealtimeVoice({
     sessionId,
     enabled: voiceEnabled,
-    suspended: desktopOrbMode && desktopLifecycle === 'hidden',
+    suspended: desktopOrbMode && desktopLifecycle === 'hidden' && !wakeWordEnabled,
     outputMuted: false,
     inputOnlyMute: desktopOrbMode,
     clientType: desktopOrbMode ? 'desktop' : 'web',

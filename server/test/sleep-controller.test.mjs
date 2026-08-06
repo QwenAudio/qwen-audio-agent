@@ -51,13 +51,14 @@ test('can return to a sleeping state when realtime reconnection fails', () => {
   controller.close()
 })
 
-test('never arms when the feature is disabled', async () => {
+test('enables without auto-sleeping when timeoutMs is 0', async () => {
   let sleeps = 0
   const controller = new SleepController({
     timeoutMs: 0,
     onSleep: () => { sleeps += 1 },
   })
-  assert.equal(controller.enable(), false)
+  assert.equal(controller.enable(), true)
   await wait(15)
   assert.equal(sleeps, 0)
+  controller.close()
 })

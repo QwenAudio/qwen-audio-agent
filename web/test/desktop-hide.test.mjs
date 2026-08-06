@@ -5,6 +5,7 @@ import {
   desktopAutoHideSeconds,
   desktopCanHide,
   desktopHideDeadline,
+  desktopWakeWordEnabled,
   desktopWorkSettled,
 } from '../src/desktop-hide.js'
 
@@ -27,11 +28,11 @@ test('maps a supported sleeping client state to the desktop bridge', async () =>
   }), false)
 })
 
-test('uses a 120 second desktop hide default and supports never', () => {
-  assert.equal(desktopAutoHideSeconds(''), 120)
+test('uses a 60 second desktop hide default and supports never', () => {
+  assert.equal(desktopAutoHideSeconds(''), 60)
   assert.equal(desktopAutoHideSeconds('?autoHideSeconds=300'), 300)
   assert.equal(desktopAutoHideSeconds('?autoHideSeconds=0'), 0)
-  assert.equal(desktopAutoHideSeconds('?autoHideSeconds=5'), 120)
+  assert.equal(desktopAutoHideSeconds('?autoHideSeconds=5'), 60)
   assert.equal(desktopAutoHideSeconds('?autoSleepSeconds=300'), 300)
 })
 
@@ -68,4 +69,10 @@ test('starts the timeout after both interaction and work have ended', () => {
     workSettledAt: 10_000,
     timeoutSeconds: 120,
   }), 130_000)
+})
+
+test('reads the wake word enabled flag from the URL', () => {
+  assert.equal(desktopWakeWordEnabled(''), false)
+  assert.equal(desktopWakeWordEnabled('?wakeWordEnabled=true'), true)
+  assert.equal(desktopWakeWordEnabled('?wakeWordEnabled=false'), false)
 })

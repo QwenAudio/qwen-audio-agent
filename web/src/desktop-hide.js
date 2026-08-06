@@ -20,12 +20,16 @@ export function desktopAutoHideSeconds(search = '') {
   const configured = params.has('autoHideSeconds')
     ? params.get('autoHideSeconds')
     : params.get('autoSleepSeconds')
-  if (configured === null) return 120
+  if (configured === null) return 60
   const value = Number(configured)
   if (value === 0) return 0
   return Number.isInteger(value) && value >= 30 && value <= 3600
     ? value
-    : 120
+    : 60
+}
+
+export function desktopWakeWordEnabled(search = '') {
+  return new URLSearchParams(search).get('wakeWordEnabled') === 'true'
 }
 
 export function desktopWorkSettled({

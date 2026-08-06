@@ -16,9 +16,9 @@ export class SleepController {
   }
 
   enable() {
-    if (this.closed || !this.timeoutMs) return false
+    if (this.closed) return false
     this.enabled = true
-    this.recordActivity()
+    if (this.timeoutMs) this.recordActivity()
     return true
   }
 

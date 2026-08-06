@@ -453,7 +453,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
       directory: '/work',
       permissionMode: 'native',
     }).args,
-    [],
+    [resolve(root, 'scripts/opencode.mjs'), 'acp'],
   )
   assert.deepEqual(
     acpBackendProfile({
@@ -477,6 +477,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
   })
   assert.equal(openClaw.externalMcp, false)
   assert.deepEqual(openClaw.args, [
+    resolve(root, 'scripts/openclaw.mjs'),
     'acp',
     '--url',
     'ws://127.0.0.1:18789',
@@ -563,7 +564,8 @@ test('uses one ACP profile family while preserving backend differences', () => {
     modelUrl: 'https://example.com/compatible-mode/v1',
     permissionMode: 'full',
   })
-  assert.equal(codex.command, resolve(root, 'scripts/codex-acp'))
+  assert.equal(codex.command, process.execPath)
+  assert.equal(codex.args[0], resolve(root, 'scripts/codex-acp.mjs'))
   assert.equal(codex.env.INITIAL_AGENT_MODE, 'agent-full-access')
   const codexConfig = JSON.parse(codex.env.CODEX_CONFIG)
   assert.equal(codexConfig.model, 'qwen3.7-max')
@@ -578,7 +580,8 @@ test('uses one ACP profile family while preserving backend differences', () => {
     cliPath: '/opt/codex-acp',
     permissionMode: 'native',
   })
-  assert.equal(nativeCodex.command, resolve(root, 'scripts/codex-acp'))
+  assert.equal(nativeCodex.command, process.execPath)
+  assert.equal(nativeCodex.args[0], resolve(root, 'scripts/codex-acp.mjs'))
   assert.equal(nativeCodex.env.CODEX_ACP_BIN, '/opt/codex-acp')
   assert.equal(nativeCodex.env.CODEX_CONFIG, undefined)
   assert.equal(nativeCodex.env.MODEL_PROVIDER, undefined)
@@ -591,7 +594,8 @@ test('uses one ACP profile family while preserving backend differences', () => {
     configDirectory: '/config/claude',
     permissionMode: 'full',
   })
-  assert.equal(claude.command, resolve(root, 'scripts/claude-code-acp'))
+  assert.equal(claude.command, process.execPath)
+  assert.equal(claude.args[0], resolve(root, 'scripts/claude-code-acp.mjs'))
   assert.equal(claude.cwd, '/work')
   assert.equal(claude.env.CLAUDE_CODE_ACP_BIN, '/opt/claude-code-acp')
   assert.equal(claude.env.CLAUDE_CODE_EXECUTABLE, '/opt/claude')

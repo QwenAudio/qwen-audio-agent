@@ -66,6 +66,17 @@ linux:
     - deb
   artifactName: qwen-audio-agent-${version}-linux-${arch}.${ext}
 
+win:
+  icon: desktop/build/icon.png
+  target:
+    - nsis
+  artifactName: qwen-audio-agent-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+
 dmg:
   title: Qwen Audio Agent
   backgroundColor: "#f5f6f7"

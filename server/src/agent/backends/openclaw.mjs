@@ -41,8 +41,9 @@ export const openClawBackendDriver = {
   }) {
     return {
       label: this.label,
-      command: resolve(root, 'scripts/openclaw'),
+      command: process.execPath,
       args: [
+        resolve(root, 'scripts/openclaw.mjs'),
         'acp',
         '--url',
         websocketUrl(baseUrl),
@@ -54,6 +55,7 @@ export const openClawBackendDriver = {
       cwd: directory,
       env: {
         ...baseEnvironment(),
+        ELECTRON_RUN_AS_NODE: '1',
         ...(token ? { OPENCLAW_GATEWAY_TOKEN: token } : {}),
         // Keep the ACP bridge's device identity separate from the user's
         // normal OpenClaw CLI identity. A loopback bridge presenting the

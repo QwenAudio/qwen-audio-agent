@@ -23,6 +23,7 @@ const DEFAULTS = {
   speechToSpeechRealtimeUrl: '',
   speechToSpeechAuthToken: '',
   backendModel: '',
+  nodePath: '',
 }
 
 const SETTING_KEYS = {
@@ -38,6 +39,7 @@ const SETTING_KEYS = {
   speechToSpeechRealtimeUrl: 'SPEECH_TO_SPEECH_REALTIME_URL',
   speechToSpeechAuthToken: 'SPEECH_TO_SPEECH_AUTH_TOKEN',
   backendModel: 'QWEN_AUDIO_AGENT_BACKEND_MODEL',
+  nodePath: 'QWEN_AUDIO_AGENT_NODE_PATH',
 }
 
 function configured(values, key, fallback) {
@@ -219,6 +221,11 @@ export function parseSettings(content = '', fallback = {}) {
       'QWEN_AUDIO_AGENT_BACKEND_MODEL',
       fallback.QWEN_AUDIO_AGENT_BACKEND_MODEL || DEFAULTS.backendModel,
     ) || '').trim(),
+    nodePath: String(configured(
+      values,
+      'QWEN_AUDIO_AGENT_NODE_PATH',
+      fallback.QWEN_AUDIO_AGENT_NODE_PATH || DEFAULTS.nodePath,
+    ) || '').trim(),
   }
 }
 
@@ -272,6 +279,9 @@ export function normalizeSettings(settings = {}) {
     ).trim(),
     backendModel: String(
       settings.backendModel ?? DEFAULTS.backendModel,
+    ).trim(),
+    nodePath: String(
+      settings.nodePath ?? DEFAULTS.nodePath,
     ).trim(),
   }
 }

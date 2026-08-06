@@ -92,26 +92,15 @@ function spawnSpec(root, platform, env, driver) {
     ...env,
     QWEN_AUDIO_AGENT_ENV_LOADED: '1',
     QWEN_AUDIO_AGENT_NODE: process.execPath,
-  }
-  if (platform === 'win32') {
-    return {
-      command: 'npm.cmd',
-      args: ['run', driver.managedNpmScript],
-      options: {
-        cwd: root,
-        env: childEnvironment,
-        detached: false,
-        stdio: 'inherit',
-      },
-    }
+    ELECTRON_RUN_AS_NODE: '1',
   }
   return {
-    command: resolve(root, `scripts/${driver.managedScript}`),
-    args: [],
+    command: process.execPath,
+    args: [resolve(root, `scripts/${driver.managedScript}`)],
     options: {
       cwd: root,
       env: childEnvironment,
-      detached: true,
+      detached: platform !== 'win32',
       stdio: 'inherit',
     },
   }

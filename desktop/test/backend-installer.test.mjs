@@ -11,7 +11,7 @@ test('delegates support queries to the shared install specs', () => {
     true,
   )
   const win32 = createBackendInstaller({ env: {}, platform: 'win32' })
-  assert.equal(win32.support('hermes').supported, false)
+  assert.equal(win32.support('hermes').supported, true)
 })
 
 test('wires progress, inspection and script confirmation through', async () => {

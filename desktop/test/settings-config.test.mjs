@@ -25,6 +25,7 @@ test('reads desktop-owned settings with friendly defaults', () => {
     ...REALTIME_DEFAULTS,
     agentProtocol: 'none',
     backendModel: '',
+    nodePath: '',
   })
 })
 
@@ -41,6 +42,7 @@ test('shows effective client settings when user config is empty', () => {
     ...REALTIME_DEFAULTS,
     agentProtocol: 'none',
     backendModel: '',
+    nodePath: '',
   })
 })
 
@@ -75,6 +77,7 @@ test('updates client settings without changing Gateway-owned configuration', () 
     agentProtocol: 'qoder',
     realtimeModel: 'realtime-model',
     backendModel: '',
+    nodePath: '',
   })
 })
 
@@ -127,6 +130,7 @@ test('an explicitly empty key and backend override stale process values', () => 
     ...REALTIME_DEFAULTS,
     agentProtocol: 'none',
     backendModel: '',
+    nodePath: '',
   })
 })
 

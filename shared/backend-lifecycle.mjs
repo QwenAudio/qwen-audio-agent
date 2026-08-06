@@ -27,8 +27,10 @@ const LIFECYCLE_SPECS = {
   },
   hermes: {
     installation: {
-      steps: [{ kind: 'script', command: HERMES_INSTALL_COMMAND, platforms: ['darwin', 'linux'] }],
-      manualHints: { win32: '请在 PowerShell 中执行官方安装命令：iex (irm https://hermes-agent.nousresearch.com/install.ps1)' },
+      steps: [
+        { kind: 'script', command: HERMES_INSTALL_COMMAND, platforms: ['darwin', 'linux'] },
+        { kind: 'script', command: 'iex (irm https://hermes-agent.nousresearch.com/install.ps1)', platforms: ['win32'] },
+      ],
     },
     configuration: { mode: 'backend-owned' },
     authentication: { command: 'hermes setup --portal', hint: '首次使用请完成 Hermes 官方认证。' },

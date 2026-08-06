@@ -133,10 +133,11 @@ export class AcpProcessClient {
   async startProcess() {
     this.stderr = ''
     const child = this.spawn(this.command, this.args, {
-      cwd: this.cwd,
-      env: this.env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    })
+        cwd: this.cwd,
+        env: this.env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        shell: process.platform === 'win32',
+      })
     const processLogger = logger.child({ subsystem: 'acp', backend: this.label })
     processLogger.info('acp.process_started', {
       pid: child.pid,

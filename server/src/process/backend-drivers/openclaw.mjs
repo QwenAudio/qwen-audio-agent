@@ -6,7 +6,7 @@ import {
 export const openClawRuntimeDriver = {
   id: 'openclaw',
   separateManagedProcess: true,
-  managedScript: 'openclaw-gateway',
+  managedScript: 'openclaw-gateway.mjs',
   managedNpmScript: 'openclaw',
 
   resolve({ env, ownership, permissionMode }) {

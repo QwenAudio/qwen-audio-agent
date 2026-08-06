@@ -208,6 +208,27 @@
                   placeholder="留空使用默认模型"
                 />
               </div>
+
+              <div class="setting-row node-path-row" hidden>
+                <label for="node-path">Node.js 路径</label>
+                <div class="field-with-action">
+                  <input
+                    id="node-path"
+                    type="text"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="例如 C:\tools\nodejs"
+                  />
+                  <button
+                    id="apply-node-path"
+                    class="link-button"
+                    type="button"
+                  >确认</button>
+                </div>
+                <p class="setting-hint">
+                  如果自动检测不到 npm，请在这里填写 Node.js 安装目录（包含 node.exe 的文件夹路径）。
+                </p>
+              </div>
             </div>
           </section>
 

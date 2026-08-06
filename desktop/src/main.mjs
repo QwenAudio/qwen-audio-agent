@@ -17,7 +17,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { dirname, resolve, win32 } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseEnv } from 'node:util'
 import {
@@ -182,6 +182,12 @@ function configuredOrigin() {
 function configuredGatewayEnvironment() {
   const raw = readFileSync(runtimeEnvironment.configPath, 'utf8')
   const configured = parseEnv(raw)
+  // 滤掉空值：config 文件中 KEY=（无值）会解析出 KEY: ''，
+  // 展开为 desktopGatewayEnvironment.merged 时会覆盖 process.env 的同名变量。
+  const configuredNonEmpty = {}
+  for (const [key, value] of Object.entries(configured)) {
+    if (value !== '') configuredNonEmpty[key] = value
+  }
   // 自动休眠超时必须与 orb 前端一致：config.env 可能缺省（首次安装），
   // 这里总是注入经 parseSettings 归一化后的有效值，避免前端 60 秒隐藏
   // 而网关 sleepTimeoutMs=0 永不休眠的分歧。
@@ -189,7 +195,7 @@ function configuredGatewayEnvironment() {
   return desktopGatewayEnvironment({
     env: process.env,
     configured: {
-      ...configured,
+      ...configuredNonEmpty,
       QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS: String(settings.autoHideSeconds),
     },
     runtimeRoot,
@@ -655,9 +661,7 @@ ipcMain.on('qwen-audio-agent:lifecycle-ready', event => {
   }
 })
 
-const ALLOWED_EXTERNAL_HOSTS = new Set(['bailian.console.aliyun.com'])
-
-ipcMain.on('qwen-audio-agent:open-external', (event, value) => {
+ipcMain.on('qwen-audio-agent:open-external', async (event, value) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) return
   let target
   try {
@@ -665,10 +669,16 @@ ipcMain.on('qwen-audio-agent:open-external', (event, value) => {
   } catch {
     return
   }
-  if (target.protocol !== 'https:' || !ALLOWED_EXTERNAL_HOSTS.has(target.hostname)) {
-    return
-  }
-  void shell.openExternal(target.href)
+  if (target.protocol !== 'https:') return
+  const { response } = await dialog.showMessageBox(settingsWindow, {
+    type: 'question',
+    buttons: ['打开', '取消'],
+    defaultId: 0,
+    cancelId: 1,
+    title: '打开外部链接',
+    message: `即将在浏览器中打开：${target.href}`,
+  })
+  if (response === 0) void shell.openExternal(target.href)
 })
 
 ipcMain.handle('qwen-audio-agent:settings-load', async event => {
@@ -697,6 +707,63 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
     wakeShortcutRegistered: desktopPresence.shortcutRegistered,
     restartRequired: false,
   }
+})
+
+ipcMain.handle('qwen-audio-agent:set-node-path', async (event, nodePath) => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权设置 Node.js 路径')
+  }
+  const trimmed = String(nodePath || '').trim()
+  if (!trimmed) throw new Error('路径不能为空')
+
+  if (!existsSync(trimmed)) {
+    throw new Error(`目录不存在：${trimmed}`)
+  }
+
+  // 写入配置文件
+  const current = readFileSync(runtimeEnvironment.configPath, 'utf8')
+  const lines = current.split(/\r?\n/)
+  const key = 'QWEN_AUDIO_AGENT_NODE_PATH'
+  let found = false
+  const updated = lines.map(line => {
+    if (line.startsWith(`${key}=`)) {
+      found = true
+      return `${key}=${trimmed}`
+    }
+    return line
+  })
+  if (!found) updated.push(`${key}=${trimmed}`)
+  const content = updated.join('\n').replace(/\n+$/, '') + '\n'
+  writeFileSync(runtimeEnvironment.configPath, content, {
+    encoding: 'utf8',
+    mode: 0o600,
+  })
+  // Windows 上 chmodSync 基本是 no-op，但保留兼容性
+  try {
+    chmodSync(runtimeEnvironment.configPath, 0o600)
+  } catch {
+    // Windows 上忽略
+  }
+
+  // 立即生效：直接操作 PATH，不依赖 spawnSync（打包后可能不可用）
+  process.env.QWEN_AUDIO_AGENT_NODE_PATH = trimmed
+  const { delimiter } = win32
+  const existing = (process.env.PATH || '').split(delimiter).filter(Boolean)
+  const normalized = existing.map(d => win32.normalize(d).toLowerCase())
+  const newNormalized = win32.normalize(trimmed).toLowerCase()
+  if (!normalized.includes(newNormalized)) {
+    process.env.PATH = [...existing, trimmed].join(delimiter)
+  }
+
+  // 再跑 expandProcessPath 利用 where/reg 补充其他路径（失败不影响已设置的路径）
+  try {
+    expandProcessPath()
+  } catch {
+    logger.warn('node-path.expand-failed', { path: trimmed })
+  }
+
+  logger.info('node-path.set', { path: trimmed })
+  return { ok: true }
 })
 
 ipcMain.handle('qwen-audio-agent:settings-runtime-status', async event => {
@@ -733,11 +800,26 @@ function backendDetectionEnvironment() {
   const configured = existsSync(runtimeEnvironment.configPath)
     ? parseEnv(readFileSync(runtimeEnvironment.configPath, 'utf8'))
     : {}
-  return {
+  // 滤掉空值：config 文件中 KEY=（无值）会解析出 KEY: ''，
+  // 展开时会覆盖 process.env 的同名变量（如 PATH）。
+  const filtered = {}
+  for (const [key, value] of Object.entries(configured)) {
+    if (value !== '') filtered[key] = value
+  }
+  // Windows 上 npm 设置的是 Path（首字母大写）而非 PATH，
+  // { ...process.env } 展开会保留原始键名，导致 result.PATH 为 undefined。
+  // 归一化：将 Path 转为 PATH。
+  const result = {
     ...process.env,
-    ...configured,
+    ...filtered,
     QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY: '1',
   }
+  if (result.Path && !result.PATH) {
+    result.PATH = result.Path
+  }
+  delete result.Path
+  console.error('[backendDetection] result.PATH:', String(result.PATH || '(empty)').substring(0, 80))
+  return result
 }
 
 // 执行一次完整检测：主进程沿用 Worker 读取到的登录 shell PATH（只赋值，
@@ -746,7 +828,27 @@ function backendDetectionEnvironment() {
 function runBackendDetection() {
   return detectBackendSetups({ env: backendDetectionEnvironment() })
     .then(result => {
-      if (result.path) process.env.PATH = result.path
+      if (result.path) {
+        // 合并 Worker 检测到的 PATH 到进程环境，只添加新目录，
+        // 不替换已有目录（保留 System32 等系统路径）。
+        const current = new Set(String(process.env.PATH || '')
+          .split(';')
+          .map(p => p.trim().toLowerCase())
+          .filter(Boolean))
+        const additions = []
+        for (const entry of result.path.split(';')) {
+          const trimmed = entry.trim()
+          if (trimmed && !current.has(trimmed.toLowerCase())) {
+            current.add(trimmed.toLowerCase())
+            additions.push(trimmed)
+          }
+        }
+        if (additions.length > 0) {
+          process.env.PATH = [...additions, String(process.env.PATH || '')]
+            .filter(Boolean)
+            .join(';')
+        }
+      }
       return withBackendLifecycle(result.report, {
         env: backendDetectionEnvironment(),
       })

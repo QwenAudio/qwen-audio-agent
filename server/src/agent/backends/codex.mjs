@@ -17,11 +17,12 @@ export const codexBackendDriver = {
   }) {
     return {
       label: this.label,
-      command: resolve(root, 'scripts/codex-acp'),
-      args: [],
+      command: process.execPath,
+      args: [resolve(root, 'scripts/codex-acp.mjs')],
       cwd: directory,
       env: {
         ...baseEnvironment(),
+        ELECTRON_RUN_AS_NODE: '1',
         ...(clean(cliPath) ? { CODEX_ACP_BIN: clean(cliPath) } : {}),
         ...(clean(modelUrl)
           ? {

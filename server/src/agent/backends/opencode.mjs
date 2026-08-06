@@ -32,10 +32,10 @@ export const openCodeBackendDriver = {
   createProfile({ root, directory }) {
     return {
       label: this.label,
-      command: resolve(root, 'scripts/opencode-acp'),
-      args: [],
+      command: process.execPath,
+      args: [resolve(root, 'scripts/opencode.mjs'), 'acp'],
       cwd: directory,
-      env: baseEnvironment(),
+      env: { ...baseEnvironment(), ELECTRON_RUN_AS_NODE: '1' },
       externalMcp: true,
       nativeDelegation: false,
       backendUi: true,

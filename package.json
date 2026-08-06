@@ -52,6 +52,7 @@
     "docs/qwen-audio-agent-three-layer-architecture.png",
     "docs/qwen-audio-agent-three-layer-architecture-en.png",
     "docs/configuration.md",
+    "docs/vision.md",
     "docs/backends/overview.md",
     "docs/desktop/overview.md",
     "docs/getting-started/install.md",

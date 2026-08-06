@@ -80,7 +80,7 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 | OpenClaw | 内置 ACP 桥接 | 支持一键安装和百炼配置 | ★★★★★ |
 | Qoder | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
 | Kimi Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
-| Hermes | 原生 ACP | macOS / Linux 支持一键安装，需用户配置 | ★★★★☆ |
+| Hermes | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
 | CodeBuddy | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
 | Codex | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
 | Claude Code | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
@@ -91,65 +91,22 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
 ## 安装
 
-需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+。使用默认的 DashScope
-实时语音前台时，还需要 DashScope API Key。
-仓库提供 `.nvmrc` 和 `.node-version`；使用 nvm 时可直接运行 `nvm use`。
-
-一键安装（推荐，从 npm 安装）：
+需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+。一键安装（推荐）：
 
 ```bash
 npm install -g qwen-audio-agent
 ```
 
-也可以直接从 GitHub 安装最新代码：
-
-```bash
-npm install -g git+https://github.com/QwenAudio/qwen-audio-agent.git
-```
-
-从源码安装：
-
-```bash
-git clone https://github.com/QwenAudio/qwen-audio-agent.git
-cd qwen-audio-agent
-npm install
-npm run install:global
-```
-
-升级到最新 npm 版本：
-
-```bash
-npm install -g qwen-audio-agent@latest
-```
-
-升级到 GitHub 最新代码：
-
-```bash
-npm install -g git+https://github.com/QwenAudio/qwen-audio-agent.git
-```
-
-## 获取 DashScope API Key
-
-阿里云百炼为 Qwen Audio 3.0 Realtime 提供
-[新人免费额度](https://help.aliyun.com/zh/model-studio/new-free-quota)，创建 API Key 后
-即可免费开始使用 qwen-audio-agent。
-
-1. 打开百炼控制台的 [API Key 页面](https://bailian.console.aliyun.com/?tab=model#/api-key)，
-   登录账号，单击**创建 API Key**。
-2. 复制生成的 Key，稍后填入 `config.env`。请勿公开或提交 API Key。
-
-详细说明见[百炼官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。
+从源码安装、从 GitHub 安装最新代码以及获取 DashScope API Key 的详细步骤见
+[安装指南](docs/getting-started/install.md)。
 
 ## 快速开始
 
-1. 创建配置：
+1. 创建配置并填入 API Key：
 
 ```bash
 qwenaudio config
 ```
-
-2. 打开命令显示的 `config.env`，填写 DashScope API Key。需要执行后台任务时，
-   再选择 OpenClaw 或其他后台 Agent：
 
 ```dotenv
 DASHSCOPE_API_KEY=your-key
@@ -161,207 +118,49 @@ AGENT_PROTOCOL=openclaw
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
-3. 在一个终端中启动 Gateway：
+> 默认使用 DashScope 实时语音前台；也可切换为本地 [speech-to-speech 前台](docs/voice-frontends/speech-to-speech.md)，无需云端 API Key。
+
+2. 启动 Gateway，另开终端启动 TUI（也可用 `qwenaudio webui` 启动浏览器界面）：
 
 ```bash
-qwenaudio
+qwenaudio        # 终端 1：Gateway
+qwenaudio tui    # 终端 2：TUI
 ```
 
-4. 另开一个终端，启动 TUI：
+完整配置项、speech-to-speech 前台接入和 TUI 平台注意事项见
+[快速开始](docs/getting-started/quickstart.md)、
+[语音前台](docs/voice-frontends/speech-to-speech.md)与
+[TUI 注意](docs/getting-started/tui.md)。
+
+## 桌面版
+
+桌面版提供常驻桌面的语音悬浮球，内置 Gateway，支持自动隐藏、快捷键唤回和语音
+唤醒。从发布页下载 `.dmg`，或从源码构建：
 
 ```bash
-qwenaudio tui
+npm run desktop:build:local      # macOS
+npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 ```
 
-也可以使用浏览器界面：
+外观效果、悬浮球行为和构建说明见[桌面版文档](docs/desktop/overview.md)。
+
+## 后台 Agent
+
+`AGENT_PROTOCOL` 可选。留空即仅前台模式；选择后可复用已安装 Agent 的用户级
+模型、工具、MCP、Skill 和认证。OpenCode 和 OpenClaw 支持一键安装与百炼配置。
 
 ```bash
-qwenaudio webui
+qwenaudio setup   # 查看当前可用的后台 Agent
 ```
 
-### 使用 Hugging Face speech-to-speech 前台
-
-qwen-audio-agent 也可以连接用户自行运行的
-[Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)。
-它将 VAD、STT、LLM 和 TTS 组合成 OpenAI Realtime 兼容服务，整条语音链路既可以
-完全运行在本地，也可以按需替换其中的模型或服务。
-
-1. 安装 speech-to-speech：
-
-```bash
-pip install "speech-to-speech[paraformer]"
-```
-
-2. 启动全本地服务：
-
-Linux / Windows（NVIDIA GPU）：
-
-```bash
-speech-to-speech \
-  --stt paraformer \
-  --llm_backend transformers \
-  --device cuda
-```
-
-Apple Silicon：
-
-```bash
-speech-to-speech \
-  --stt paraformer \
-  --llm_backend mlx-lm \
-  --device mps
-```
-
-没有 NVIDIA GPU 时，也可以选择适合 CPU 的更小本地模型；还可以
-将 LLM 指向本机运行的 vLLM / llama.cpp。服务默认运行在
-`ws://127.0.0.1:8765/v1/realtime`。
-
-3. 在 qwen-audio-agent 的 `config.env` 中设置：
-
-```dotenv
-QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
-SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
-```
-
-然后正常启动 `qwenaudio`。在全本地模式下无需云端 API Key。Gateway 只连接 Realtime
-接口，不会修改 speech-to-speech 的 STT、LLM、TTS 或音色配置。
-如果 Realtime 接口位于需要 Bearer 认证的代理后方，可设置
-`SPEECH_TO_SPEECH_AUTH_TOKEN`。
-
-### TUI 使用注意
-
-| 平台 | 默认模式 | 打断方式 |
-| --- | --- | --- |
-| macOS | 带回声消除的全双工 | 直接说话 |
-| Linux / Windows | 半双工 | 播报时按 `x` |
-
-Linux 和 Windows 首次使用前需安装 `sounddevice` 和系统 PortAudio。也可以开启
-无回声消除的全双工模式；此时请佩戴耳机，避免扬声器声音造成误识别：
-
-```bash
-qwenaudio tui --audio-mode full
-```
-
-## macOS 桌面版
-
-桌面版提供常驻桌面的语音悬浮球，并内置 Gateway，无需事先启动服务。同一用户配置
-目录已有本地 Gateway 时会直接连接并以其当前运行配置为准，否则由桌面版自动启动和管理。首次运行时，
-应用会创建配置文件，并引导你在设置页填写 DashScope API Key、选择后台 Agent
-（也可以使用仅前台模式）。
-
-闲置后悬浮球会自动隐藏并断开实时语音；也可以直接说“可以退下了”让它隐藏。应用仍
-常驻菜单栏，可从菜单栏或显示快捷键重新唤出。默认快捷键为 `⇧⌘ Space`，也可以在
-应用设置中更换。
-
-桌面版支持流光声波球和液态渐变球两种外观。下面分别展示它们在思考 / 呼吸状态
-下的原始动态效果：
-
-| 流光声波球 | 液态渐变球 |
-| --- | --- |
-| ![流光声波球思考动画](docs/desktop-fluid-orb-thinking.gif) | ![液态渐变球思考动画](docs/desktop-goo-orb-thinking.gif) |
-
-从发布页下载 `.dmg`，打开后将 **Qwen Audio Agent** 拖入“应用程序”即可。
-
-从源码生成本机测试版：
-
-```bash
-npm run desktop:build:local
-```
-
-官方 Release 只发布 macOS 安装包。需要 Linux 版时，请在 Linux 机器上自行打包：
-
-```bash
-npm run desktop:build:linux
-```
-
-产物位于 `dist/desktop/`（AppImage 与 deb），无需代码签名证书。
-
-## 后台常驻
-
-希望个人助理长期在线时，可以安装为用户后台服务：
-
-```bash
-qwenaudio gateway install
-```
-
-常用管理命令：
-
-```bash
-qwenaudio gateway status
-qwenaudio gateway restart
-qwenaudio gateway stop
-qwenaudio gateway start
-qwenaudio gateway uninstall
-```
-
-## 选择后台 Agent
-
-`AGENT_PROTOCOL` 是可选配置。留空时，Gateway 以仅前台模式运行，实时语音聊天
-保持可用；如果请求需要后台执行，前台会明确说明当前没有可用的后台 Agent。
-也可以在命令行中使用 `qwenaudio --backend none`，明确要求仅启动前台模式。
-
-通过 `AGENT_PROTOCOL` 环境变量或 `--backend` 参数选择后台 Agent。选择后，
-OpenCode 和 OpenClaw 支持自动下载安装；配置
-`DASHSCOPE_API_KEY` 和 `QWEN_AUDIO_AGENT_BACKEND_MODEL` 后即可自动接入百炼
-模型。未指定后台模型且用户已经安装并配置对应 Agent 时，则完整复用用户环境。
-
-查看当前可用的后台 Agent：
-
-```bash
-qwenaudio setup
-```
-
-使用 OpenClaw：
-
-```dotenv
-AGENT_PROTOCOL=openclaw
-```
-
-使用 OpenCode：
-
-```dotenv
-AGENT_PROTOCOL=opencode
-```
-
-使用 Qoder：
-
-```dotenv
-AGENT_PROTOCOL=qoder
-```
-
-已安装并完成原生配置的后台 Agent，qwen-audio-agent 会复用其
-用户级模型、工具、MCP、Skill 和认证。
-
-使用其他支持 ACP stdio 的 Agent：
-
-```dotenv
-AGENT_PROTOCOL=acp
-ACP_COMMAND=your-agent
-ACP_ARGS=["--acp"]
-```
-
-通用 ACP 入口不需要修改 Gateway 代码。命令、参数、显示名称和工作目录可分别通过 `ACP_COMMAND`、`ACP_ARGS`、`ACP_LABEL` 和 `ACP_WORKSPACE` 配置。
-
-后台权限默认使用 `native`，由后台 Agent 在需要时询问。只有在可信项目中，并且
-明确接受自动执行命令和修改文件时，才应启用：
-
-```dotenv
-QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full
-```
-
-详细选项见 [配置说明](docs/configuration.md)。
+Agent 选择、后台常驻服务、通用 ACP 入口和权限模式见
+[后台 Agent 文档](docs/backends/overview.md)。
 
 ## 用户档案与记忆
 
-用户数据保存在 `~/.config/qwaudio/`：
-
-- `USER.md`：称呼、所在地、偏好和常用项目
-- `frontend-memory.json`：用户明确要求长期记住的信息
-- `tasks.json`：任务结果和待通知状态
-- `logs/`：经过凭据脱敏并自动轮转的本地运行日志
-
-这些文件只保存在本机，不会写入源码仓库。可以直接编辑 `USER.md`，也可以在对话中
-要求助理记住或忘记信息。
+用户数据保存在 `~/.config/qwaudio/`（`USER.md`、`frontend-memory.json`、
+`tasks.json`、`logs/`），只存本机、不进仓库。详见
+[用户档案与记忆](docs/reference/memory.md)。
 
 ## 使用注意事项
 

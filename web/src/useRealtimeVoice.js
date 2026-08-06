@@ -649,6 +649,12 @@ export default function useRealtimeVoice({
     sendSocketEvent({ type: 'interrupt' })
   }
 
+  // 桌面唤起（快捷键/托盘）时显式唤醒 Gateway：唤醒词开启时 socket 在休眠
+  // 期间保持连接，不会重发 connect，需要专门的事件恢复前台语音连接。
+  const wake = useCallback(() => (
+    sendSocketEvent({ type: GatewayClientEvent.WAKE })
+  ), [sendSocketEvent])
+
   return {
     state,
     visualState: visualVoiceState(state, inputActive, enabled && !suspended),
@@ -661,5 +667,6 @@ export default function useRealtimeVoice({
     levelElementRef,
     activateAudio,
     interrupt,
+    wake,
   }
 }

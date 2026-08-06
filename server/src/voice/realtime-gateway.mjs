@@ -1869,6 +1869,11 @@ export function attachRealtimeGateway(server, {
       } else if (event.type === GatewayClientEvent.INPUT_MUTE) {
         inputEnabled = false
         pendingAudio = []
+      } else if (event.type === GatewayClientEvent.WAKE) {
+        // 桌面快捷键/托盘唤起只恢复窗口可见性，休眠中的前台连接靠这个事件
+        // 恢复，复用唤醒词检测之后同一套重连与退避路径。
+        if (sleeping) wakeFromSleep()
+        else sleepController.recordActivity()
       }
     })
 

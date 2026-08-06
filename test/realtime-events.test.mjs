@@ -35,3 +35,15 @@ test('defines the shared playback acknowledgement lifecycle', () => {
     'playback.cancelled',
   ])
 })
+
+// 桌面快捷键/托盘唤起靠 wake 事件恢复休眠中的前台连接，
+// 服务端用 voice.sleep 回报唤醒进展。
+test('defines the shared sleep wake lifecycle', () => {
+  assert.deepEqual([
+    GatewayClientEvent.WAKE,
+    GatewayServerEvent.VOICE_SLEEP,
+  ], [
+    'wake',
+    'voice.sleep',
+  ])
+})

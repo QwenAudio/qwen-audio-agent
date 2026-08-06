@@ -7,6 +7,7 @@ export const GatewayClientEvent = Object.freeze({
   AUDIO_APPEND: 'audio.append',
   TEXT_MESSAGE: 'text.message',
   INTERRUPT: 'interrupt',
+  WAKE: 'wake',
   PLAYBACK_STARTED: 'playback.started',
   PLAYBACK_ENDED: 'playback.ended',
   PLAYBACK_CANCELLED: 'playback.cancelled',

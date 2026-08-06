@@ -745,6 +745,14 @@ export default function App() {
     voiceEnabled,
   ])
 
+  // 快捷键/托盘唤起只恢复窗口；Gateway 若在休眠，前台连接会停在 sleeping，
+  // 需要显式唤醒才能走到 connected，否则悬浮球永远无法就绪。
+  const wakeGateway = voice.wake
+  useEffect(() => {
+    if (!desktopOrbMode || desktopLifecycle !== 'waking') return
+    wakeGateway()
+  }, [desktopLifecycle, wakeGateway])
+
   useEffect(() => {
     if (!desktopOrbMode || autoHideSeconds === 0) return undefined
     if (!desktopCanHide({

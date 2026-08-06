@@ -8,7 +8,7 @@
 // hermes-agent 等同名包均为第三方或占位包，严禁写入规格。
 
 import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, accessSync, constants } from 'node:fs'
+import { accessSync, constants } from 'node:fs'
 import { resolve, win32 } from 'node:path'
 import { homedir } from 'node:os'
 import { inspectBackendAuthentication } from './backend-auth-status.mjs'
@@ -331,10 +331,8 @@ export async function installBackend(id, {
   inspect = async options => inspectBackendSetups(options),
   inspectAuthentication = inspectBackendAuthentication,
 } = {}) {
-  console.error('[backend-install] installBackend called for:', id)
   const support = installSupport(id, { env, platform })
   if (!support.supported) {
-    console.error('[backend-install] UNSUPPORTED:', support.reason)
     return {
       ok: false,
       error: { code: 'UNSUPPORTED', message: support.reason },
@@ -347,7 +345,6 @@ export async function installBackend(id, {
   const resolvedEnv = env.PATH
     ? env
     : { ...env, PATH: process.env.PATH || env.Path || '' }
-  console.error('[backend-install] env.PATH empty?', !env.PATH, '| npmCommand needed?', steps.some(step => step.kind === 'npm'))
 
   const before = await inspect({ env: resolvedEnv, platform, backend: definition.id })
   const beforeItem = reportItem(before, definition.id)
@@ -372,28 +369,17 @@ export async function installBackend(id, {
     }
   }
 
-  // 如果 injected env 的 PATH 为空（可能被 config 覆盖），已在上方归一化
+  // 通过注入的 find 定位 npm（默认 findExecutable，测试可替换）。
+  // Windows 上 PATH 条目格式异常时 findExecutable 可能找不到，追加兜底。
   let npmCommand = ''
   if (pending.some(step => step.kind === 'npm')) {
-    const searchPath = resolvedEnv.PATH || ''
+    npmCommand = find(platform === 'win32' ? 'npm.cmd' : 'npm') || find('npm')
 
-    // 1. 标准 PATH 搜索
-    const fallbackFind = command => {
-      const result = findExecutable(command, { env: resolvedEnv, platform })
-      if (result) return result
-      // 如果 findExecutable 也找不到（PATH 条目本身就是目标文件等情况），直接搜
-      return findNpmDirectly(searchPath)
-    }
-    npmCommand = fallbackFind(platform === 'win32' ? 'npm.cmd' : 'npm') || fallbackFind('npm')
-
-    // 2. 兜底：PowerShell Get-Command
     if (!npmCommand && platform === 'win32') {
-      npmCommand = findNpmWithPowerShell(searchPath)
-    }
-
-    // 3. 终极兜底：直接扫描所有可能目录
-    if (!npmCommand && platform === 'win32') {
-      npmCommand = findNpmByScanningDirectories(searchPath)
+      const searchPath = resolvedEnv.PATH || ''
+      npmCommand = findNpmDirectly(searchPath)
+        || findNpmWithPowerShell(searchPath)
+        || findNpmByScanningDirectories(searchPath)
     }
 
     if (!npmCommand) {
@@ -471,8 +457,6 @@ export async function installBackend(id, {
         })
     if (result.code !== 0) {
       const outputTail = (result.output || '').trimEnd()
-      console.error('[backend-install] STEP_FAILED:', display, '| exitCode:', result.code)
-      if (outputTail) console.error('[backend-install] output:', outputTail)
       return {
         ok: false,
         error: {
@@ -500,14 +484,12 @@ export async function installBackend(id, {
           : '/usr/local/bin'
       const sep = platform === 'win32' ? ';' : ':'
       resolvedEnv.PATH = [npmGlobalBin, resolvedEnv.PATH].filter(Boolean).join(sep)
-      console.error('[backend-install] npm global bin added to PATH:', npmGlobalBin)
     }
     onProgress({ step: index, phase: 'done', title: stepTitle(step, index) })
   }
 
   const report = await inspect({ env: resolvedEnv, platform, backend: definition.id })
   const item = reportItem(report, definition.id)
-  console.error('[backend-install] inspect complete | item:', item ? { ready: item.ready, issues: item.issues, id: item.id } : 'null')
   if (!item || item.ready !== true) {
     return {
       ok: false,

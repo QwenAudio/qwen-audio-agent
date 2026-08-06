@@ -1,9 +1,8 @@
 // Tests for scripts/lib/launcher.mjs — cross-platform launcher utilities.
 // Run with: node --test scripts/lib/launcher.test.mjs
 import assert from 'node:assert/strict'
-import { EventEmitter } from 'node:events'
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
-import { delimiter, join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import test from 'node:test'
 import {

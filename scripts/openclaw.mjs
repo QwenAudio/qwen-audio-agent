@@ -33,13 +33,16 @@ function userConfigDir() {
 const SOURCE_ROOT = process.env.QWEN_AUDIO_AGENT_SOURCE_ROOT || ROOT
 
 function runHelper(op, ...args) {
-  const script = SOURCE_ROOT !== ROOT
+  const isDesktopHelper = SOURCE_ROOT !== ROOT
+  const script = isDesktopHelper
     ? resolve(SOURCE_ROOT, 'server/src/process/openclaw-desktop-helper.mjs')
     : (op === 'prepare'
         ? resolve(ROOT, 'scripts/prepare-openclaw-config.mjs')
         : resolve(ROOT, 'scripts/sync-openclaw-gateway-token.mjs'))
   const env = IS_DESKTOP ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env
-  return spawnSync(process.execPath, [script, op, ...args], { env, stdio: 'inherit' })
+  // Desktop helper 接受 op 作为首参数；独立脚本（prepare/sync-token）不接受。
+  const scriptArgs = isDesktopHelper ? [op, ...args] : args
+  return spawnSync(process.execPath, [script, ...scriptArgs], { env, stdio: 'inherit' })
 }
 
 // ── directory setup ──────────────────────────────────────────────────────────
@@ -141,10 +144,22 @@ async function runSource() {
   if (!commandAvailable('corepack')) fatal('OpenClaw source mode requires corepack.')
   await spawnAndProxy('corepack', ['pnpm', 'openclaw', ...CLI_ARGS], { cwd: dir })
 }
+async function resolvePackageBinary(pkg, binaryName) {
+  let stdout = ''
+  const code = await spawnAndProxy('npx', ['--yes', '--package', pkg, '--', 'which', binaryName], {
+    inheritStdio: false,
+    onStdout: chunk => { stdout += chunk },
+  })
+  if (code !== 0) return ''
+  return stdout.trim().split(/\r?\n/)[0] || ''
+}
+
 async function runPackage() {
   if (DESKTOP_INSTALLED_ONLY === '1') fatal('OpenClaw is not installed. Install OpenClaw first.')
   if (!commandAvailable('npx')) fatal('OpenClaw package mode requires npx.')
-  await spawnAndProxy('npx', ['--yes', '--package', PKG, 'openclaw', ...CLI_ARGS])
+  const binary = await resolvePackageBinary(PKG, 'openclaw')
+  if (!binary) fatal(`Failed to resolve ${PKG}.`)
+  await spawnAndProxy(binary, CLI_ARGS)
 }
 async function runManaged() {
   if (!process.env.DASHSCOPE_API_KEY) fatal('Automatic OpenClaw setup requires DASHSCOPE_API_KEY.')

@@ -5,6 +5,7 @@ import { spawnAndProxy, commandAvailable, findExecutable } from './lib/launcher.
 const RUNTIME = process.env.CLAUDE_CODE_ACP_RUNTIME || 'auto'
 const PKG = process.env.CLAUDE_CODE_ACP_PACKAGE || '@zed-industries/claude-code-acp@0.16.2'
 const DESKTOP_INSTALLED_ONLY = process.env.QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY
+const ARGS = process.argv.slice(2)
 
 function fatal(msg) { console.error(msg); process.exit(1) }
 
@@ -24,7 +25,7 @@ if (!process.env.CLAUDE_CODE_EXECUTABLE) {
 
 async function runBinary() {
   const bin = process.env.CLAUDE_CODE_ACP_BIN || 'claude-code-acp'
-  await spawnAndProxy(bin, [])
+  await spawnAndProxy(bin, ARGS)
 }
 
 async function runPackage() {
@@ -32,7 +33,7 @@ async function runPackage() {
     fatal('claude-code-acp is not installed. Install it before selecting Claude Code.')
   }
   if (!commandAvailable('npx')) fatal('Claude Code ACP package mode requires npx.')
-  await spawnAndProxy('npx', ['-y', PKG])
+  await spawnAndProxy('npx', ['-y', PKG, ...ARGS])
 }
 
 switch (RUNTIME) {
@@ -42,7 +43,7 @@ switch (RUNTIME) {
     if (process.env.CLAUDE_CODE_ACP_BIN) {
       await runBinary()
     } else if (commandAvailable('claude-code-acp')) {
-      await spawnAndProxy('claude-code-acp', [])
+      await spawnAndProxy('claude-code-acp', ARGS)
     } else {
       await runPackage()
     }

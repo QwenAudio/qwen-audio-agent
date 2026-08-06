@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -19,7 +19,10 @@ test('appends one JSON line per event with private permissions', t => {
   assert.equal(lines[0].op, 'write')
   assert.equal(lines[0].at, new Date(1000).toISOString())
   assert.equal(lines[1].reason, 'duplicate')
-  assert.equal(statSync(filePath).mode & 0o777, 0o600)
+  // POSIX file modes do not apply on Windows.
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(filePath).mode & 0o777, 0o600)
+  }
   assert.deepEqual(audit.health(), {
     ok: true,
     configured: true,
@@ -34,11 +37,16 @@ test('stays silent without a file path', () => {
   assert.equal(audit.health().configured, false)
 })
 
-test('disables itself after a write failure instead of throwing', () => {
+test('disables itself after a write failure instead of throwing', t => {
   const warnings = []
+  // A regular file used as a directory segment fails mkdirSync on every
+  // platform (unlike /dev/null, which only exists on POSIX systems).
+  const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-agent-audit-fail-'))
+  t.after(() => rmSync(directory, { recursive: true }))
+  const blocker = join(directory, 'blocker')
+  writeFileSync(blocker, 'not a directory')
   const audit = new MemoryAudit({
-    // Writing under a path that cannot be created forces the failure branch.
-    filePath: '/dev/null/impossible/memory-audit.jsonl',
+    filePath: join(blocker, 'nested/memory-audit.jsonl'),
     onWarning: warning => warnings.push(warning),
   })
   assert.equal(audit.record({ op: 'write' }), false)

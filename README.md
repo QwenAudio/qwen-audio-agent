@@ -52,7 +52,7 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 - 前台对话与后台任务并驾齐驱，可随时追问任务进度或取消任务
 - 支持创建多个独立任务，由后台 Agent 异步执行，并持续追踪任务状态
 - 任务结果自动回到当前对话，支持继续追问和修改
-- 支持 WebUI、终端 TUI 和 macOS 桌面悬浮球
+- 支持 WebUI、终端 TUI 和桌面悬浮球（macOS / Windows / Linux）
 - 支持本地用户档案与跨会话个人记忆
 
 ## 参考架构
@@ -138,10 +138,11 @@ qwenaudio tui    # 终端 2：TUI
 ## 桌面版
 
 桌面版提供常驻桌面的语音悬浮球，内置 Gateway，支持自动隐藏、快捷键唤回和语音
-唤醒。从发布页下载 `.dmg`，或从源码构建：
+唤醒。从发布页下载对应平台安装包，或从源码构建：
 
 ```bash
 npm run desktop:build:local      # macOS
+npm run desktop:build:win        # Windows
 npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 ```
 
@@ -188,7 +189,7 @@ npm test
 
 ```bash
 npm run dev       # Gateway 与 WebUI 热更新
-npm run desktop   # macOS 桌面悬浮球
+npm run desktop   # 桌面悬浮球（macOS / Windows）
 ```
 
 更多构建、测试和发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。

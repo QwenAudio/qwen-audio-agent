@@ -27,26 +27,26 @@
 
 ## 安装
 
-从发布页下载 `.dmg`，打开后将 **Qwen Audio Agent** 拖入“应用程序”即可。
+从发布页下载对应平台的安装包：
+
+- **macOS**：下载 `.dmg`，打开后将 **Qwen Audio Agent** 拖入"应用程序"。
+- **Windows**：下载 `.exe` 安装程序，双击运行并按向导完成安装。
 
 从源码生成本机测试版：
 
 ```bash
-npm run desktop:build:local
+npm run desktop:build:local      # macOS
+npm run desktop:build:win        # Windows
+npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 ```
 
-官方 Release 只发布 macOS 安装包。需要 Linux 版时，请在 Linux 机器上自行打包：
-
-```bash
-npm run desktop:build:linux
-```
-
-产物位于 `dist/desktop/`（AppImage 与 deb），无需代码签名证书。
+产物位于 `dist/desktop/`。
 
 ## 数据目录与隔离
 
 桌面版使用系统标准应用数据目录（macOS 为
-`~/Library/Application Support/Qwen Audio Agent`，Linux 为
+`~/Library/Application Support/Qwen Audio Agent`，Windows 为
+`%APPDATA%/Qwen Audio Agent`，Linux 为
 `~/.config/Qwen Audio Agent`），与 CLI 的 `~/.config/qwaudio` 完全隔离。
 两者的 Gateway、锁、日志与设置互不干扰，可以同时运行。桌面版首次启动时会从
 CLI 目录复制 `config.env` 等用户配置（CLI 保留原件）。

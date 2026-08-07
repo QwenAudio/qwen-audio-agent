@@ -13,6 +13,14 @@ STT, LLM, TTS, or voice configuration of speech-to-speech.
 pip install "speech-to-speech[paraformer]"
 ```
 
+The Chinese profile below relies on CJK punctuation and Qwen3-TTS long-utterance budgeting
+fixes merged after v0.2.12. Until a release containing them is available, install the merged
+revision directly:
+
+```bash
+pip install "speech-to-speech[paraformer] @ git+https://github.com/huggingface/speech-to-speech.git@f75d6b435d89b8dff911f639672c172166595409"
+```
+
 ## Starting the Service
 
 Linux / Windows (NVIDIA GPU):
@@ -23,6 +31,27 @@ speech-to-speech \
   --llm_backend transformers \
   --device cuda
 ```
+
+For the tested Chinese Qwen3-TTS profile, use explicit model, language, speaker, and delivery
+settings while keeping the backend sampling defaults:
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend transformers \
+  --model_name Qwen/Qwen3-4B-Instruct-2507 \
+  --tts qwen3 \
+  --qwen3_tts_backend torch \
+  --qwen3_tts_model_name Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
+  --qwen3_tts_speaker Vivian \
+  --qwen3_tts_language chinese \
+  --qwen3_tts_instruct "请用平稳、自然、克制的语气说话，保持均匀语速，避免夸张的音高变化，句末自然收束。" \
+  --device cuda
+```
+
+The merged speech-to-speech fix preserves Chinese punctuation and scales the Qwen3-TTS codec
+token budget for CJK text automatically. No sampling override or larger fixed token limit is
+needed.
 
 Apple Silicon:
 

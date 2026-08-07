@@ -20,6 +20,8 @@
 
 ## News
 
+- **2026-08-07 · [v1.7.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.7.0)**
+  🎨 悬浮球支持换肤，可导入自定义外观；🪟 优化 Windows 后台 Agent 启动。
 - **2026-08-07 · [v1.6.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.6.1)**
   ⚡ 委派任务与权限确认即说即回；🖥️ 内置 computer-use，后台 Agent 开箱可操作电脑；🎙️ 唤醒更可靠；📚 文档全面双语化。
 - **2026-08-06 · [v1.6.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.6.0)**

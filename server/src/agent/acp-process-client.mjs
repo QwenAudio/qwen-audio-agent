@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { extname } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { stripVTControlCharacters } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk'
@@ -119,11 +120,16 @@ export class AcpProcessClient {
 
   async startProcess() {
     this.stderr = ''
+    const isWindows = process.platform === 'win32'
+    // .exe 文件不需要 cmd.exe 包装；直接 spawn 避免路径含空格时
+    // cmd.exe 将第一个空格前的内容误解析为命令名。
+    const commandExt = isWindows ? extname(String(this.command)).toLowerCase() : ''
+    const useShell = isWindows && commandExt !== '.exe'
     const child = this.spawn(this.command, this.args, {
         cwd: this.cwd,
         env: this.env,
         stdio: ['pipe', 'pipe', 'pipe'],
-        shell: process.platform === 'win32',
+        shell: useShell,
       })
     const processLogger = logger.child({ subsystem: 'acp', backend: this.label })
     processLogger.info('acp.process_started', {

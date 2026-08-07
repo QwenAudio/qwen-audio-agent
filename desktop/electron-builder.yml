@@ -5,6 +5,9 @@ asar: true
 npmRebuild: false
 asarUnpack:
   - node_modules/sherpa-onnx/**/*.wasm
+  # open-computer-use is spawned by external backend Agent processes (plain
+  # node + native runtimes), which cannot read files inside the asar archive.
+  - node_modules/@qwen-code/open-computer-use/**/*
 extraMetadata:
   main: desktop/src/main.mjs
 

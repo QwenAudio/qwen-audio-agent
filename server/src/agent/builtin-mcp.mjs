@@ -9,7 +9,7 @@
 // provides click/type/screenshot-style tools, giving every backend a
 // computer-use baseline even when the user has not configured one.
 import { createRequire } from 'node:module'
-import { dirname, join } from 'node:path'
+import { dirname, join, sep } from 'node:path'
 import { existsSync } from 'node:fs'
 
 const require = createRequire(import.meta.url)
@@ -20,6 +20,16 @@ function settingEnabled(value, fallback = true) {
   return !['false', 'off', '0', 'no', 'disabled'].includes(normalized)
 }
 
+// Inside Electron, require.resolve returns paths within the asar archive.
+// Backend Agents are external processes that cannot read archived files, so
+// point them at the asarUnpack mirror instead.
+function externallyReadable(path) {
+  return path.replace(
+    `${sep}app.asar${sep}`,
+    `${sep}app.asar.unpacked${sep}`,
+  )
+}
+
 function resolvePackageBin(specifier, binName) {
   try {
     const packagePath = require.resolve(`${specifier}/package.json`)
@@ -28,7 +38,7 @@ function resolvePackageBin(specifier, binName) {
       ? manifest.bin
       : manifest.bin?.[binName]
     if (!relative) return null
-    const binPath = join(dirname(packagePath), relative)
+    const binPath = externallyReadable(join(dirname(packagePath), relative))
     return existsSync(binPath) ? binPath : null
   } catch {
     return null

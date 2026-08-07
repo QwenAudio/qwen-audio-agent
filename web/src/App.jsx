@@ -647,9 +647,18 @@ export default function App() {
     waitingForVoice,
   ])
 
+  // Keep the microphone alive while the desktop orb is hidden and the wake
+  // word is enabled, even if the user has muted the realtime conversation.
+  // Muting only suppresses input/output processing; wake-word detection still
+  // needs a live audio stream to resume on "你好千问".
+  const voiceEnabledForWakeWord = (
+    desktopOrbMode
+    && desktopLifecycle === 'hidden'
+    && wakeWordEnabled
+  )
   const voice = useRealtimeVoice({
     sessionId,
-    enabled: voiceEnabled,
+    enabled: voiceEnabled || voiceEnabledForWakeWord,
     suspended: desktopOrbMode && desktopLifecycle === 'hidden' && !wakeWordEnabled,
     outputMuted: false,
     inputOnlyMute: desktopOrbMode,

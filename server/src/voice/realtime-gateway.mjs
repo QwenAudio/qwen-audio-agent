@@ -1541,7 +1541,7 @@ export function attachRealtimeGateway(server, {
         modelRoot: config.wakeWordModelDirectory,
       }).then(detector => {
         wakeDetector = detector
-        if (ws.readyState === WebSocket.OPEN && inputEnabled) {
+        if (ws.readyState === WebSocket.OPEN) {
           sleepController.enable()
           send(ws, {
             type: GatewayServerEvent.VOICE_SLEEP,
@@ -1642,7 +1642,7 @@ export function attachRealtimeGateway(server, {
     sleepController = new SleepController({
       timeoutMs: config.sleepTimeoutMs,
       canSleep: () => (
-        inputEnabled
+        (inputEnabled || config.wakeWordEnabled)
         && activeVoiceClients.isActive(ownerId, voiceClient)
         && frontend?.ready
         && !userSpeaking
@@ -1770,11 +1770,11 @@ export function attachRealtimeGateway(server, {
           })
           .catch(reportFrontendError)
       } else if (event.type === GatewayClientEvent.AUDIO_APPEND) {
-        if (!inputEnabled || !activeVoiceClients.isActive(ownerId, voiceClient)) {
+        if (sleeping) {
+          if (wakeDetector) acceptSleepingAudio(event.audio)
           return
         }
-        if (sleeping) {
-          acceptSleepingAudio(event.audio)
+        if (!inputEnabled || !activeVoiceClients.isActive(ownerId, voiceClient)) {
           return
         }
         if (frontend?.ready) frontend.appendAudio(event.audio)

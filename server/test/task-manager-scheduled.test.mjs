@@ -107,6 +107,49 @@ test('scheduled task appears in list output', () => {
   assert.equal(tasks[0].kind, 'reminder')
 })
 
+test('restore re-schedules a fired reminder (queued) instead of failing it', () => {
+  const now = Date.now()
+  const saved = [{
+    id: 'work_fired_reminder',
+    status: 'queued',
+    kind: 'reminder',
+    objective: '已到点的提醒',
+    ownerId: 'owner',
+    sessionId: 'voice',
+    turnId: 'turn-1',
+    priority: 0,
+    parentWorkId: null,
+    schedule: { type: 'at', at: now - 60_000, recurrence: 'once' },
+    timeoutMs: null,
+    progressCheckMs: null,
+    createdAt: now - 60_000,
+    startedAt: now - 30_000,
+    completedAt: null,
+    elapsedMs: 0,
+    result: null,
+    error: null,
+    resultMetadata: null,
+    activity: [],
+    delegation: null,
+    cancellation: null,
+    authorization: null,
+    notificationStatus: 'none',
+    notificationClaimantId: null,
+    notificationClaimedAt: null,
+    submissionKey: null,
+  }]
+
+  const store = { load: () => saved, save: () => {} }
+  const manager = new TaskManager({ store })
+
+  const task = manager.get('work_fired_reminder')
+  assert.equal(task.status, 'scheduled')
+  assert.equal(task.error, null)
+  // Runner rebuilt so ReminderScheduler can fire it as overdue catch-up.
+  const internal = manager.tasks.get('work_fired_reminder')
+  assert.equal(typeof internal.runner, 'function')
+})
+
 test('restore recovers scheduled tasks with reminder runner rebuilt', () => {
   const future = Date.now() + 60_000
   const saved = [{

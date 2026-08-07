@@ -131,10 +131,18 @@ export class TaskManager {
   restore() {
     for (const saved of this.store?.load() || []) {
       // Scheduled tasks survive restarts intact. ReminderScheduler.start()
-      // handles overdue vs future dispatch.
-      if (saved.status === 'scheduled') {
+      // handles overdue vs future dispatch. Reminders that had already fired
+      // (queued/running) when the Gateway stopped are also restored as
+      // scheduled: their runner only speaks the stored text, so re-firing
+      // them as overdue catch-up is safe and they are never silently lost.
+      const restartAsScheduled = (
+        saved.kind === 'reminder'
+        && ACTIVE.has(saved.status)
+      )
+      if (saved.status === 'scheduled' || restartAsScheduled) {
         const task = {
           ...saved,
+          status: 'scheduled',
           runner: saved.kind === 'reminder'
             ? async (obj) => ({
                 content: obj,

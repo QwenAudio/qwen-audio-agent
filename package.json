@@ -69,7 +69,7 @@
     "tui/src/portaudio-voice-io.mjs",
     "tui/package.json",
     "web/dist/",
-    "README_EN.md",
+    "README_ZH.md",
     "LICENSE",
     "NOTICE",
     "CONTRIBUTING.md",

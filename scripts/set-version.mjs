@@ -93,7 +93,7 @@ export function updateVersions(root, requested) {
   }
   updates.push({ path: lockPath, content: serializeJson(lock) })
 
-  for (const relativePath of ['README.md', 'README_EN.md']) {
+  for (const relativePath of ['README.md', 'README_ZH.md']) {
     const path = resolve(root, relativePath)
     if (!existsSync(path)) continue
     const content = readFileSync(path, 'utf8')

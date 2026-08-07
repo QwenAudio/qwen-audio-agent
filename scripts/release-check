@@ -28,7 +28,7 @@ for (const file of manifests) {
     throw new Error(`${file} has version ${manifest.version}; expected ${expected}`)
   }
 }
-for (const file of ['README.md', 'README_EN.md']) {
+for (const file of ['README.md', 'README_ZH.md']) {
   const npmBadge = `img.shields.io/npm/v/${rootManifest.name}`
   if (!readFileSync(file, 'utf8').includes(
     npmBadge,

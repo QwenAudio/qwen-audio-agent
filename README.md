@@ -1,184 +1,433 @@
 # Qwen Audio Agent
 
-[中文](README.md) | [English](README_EN.md)
+[中文](README_ZH.md) | [English](README.md)
 
 [![CI](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/qwen-audio-agent)](https://www.npmjs.com/package/qwen-audio-agent)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.22.2-brightgreen)](https://nodejs.org/)
 [![license](https://img.shields.io/github/license/QwenAudio/qwen-audio-agent)](LICENSE)
-[![WeChat](https://img.shields.io/badge/WeChat-%E5%8A%A0%E5%85%A5%E8%AE%A8%E8%AE%BA-07C160?logo=wechat&logoColor=white)](#交流与分享)
 
-## Agent，始终在场
+## Agent Presence
 
-真正的交流，不该在说完一句话后，就陷入漫长的等待。也不该因为 Agent 正在查资料、调用工具或处理任务，整场对话就此暂停。
+Real conversation should not leave you waiting after a single sentence, nor
+should it grind to a halt just because the Agent is looking something up,
+calling a tool, or working on a task.
 
-交流应该是连续的，Agent 也应该始终在场。
+Conversation should keep flowing, and the Agent should always be present.
 
-所以，我们做了 **qwen-audio-agent**——让 Agent 持续交流、持续工作、持续在场的实时语音运行时。无论是聊天、思考，还是处理任务，Agent 都始终在这场对话里。它会倾听，会回应，也会在任务完成时自然地告诉你：
+That is why we built **qwen-audio-agent**—a realtime voice runtime that keeps
+Agents talking, working, and present. Whether chatting with you, thinking
+through a problem, or working on a task, your Agent remains in the
+conversation. It listens, responds, and when the task is complete, naturally
+tells you:
 
-“已经好了。”
+“It’s ready.”
 
 ## News
 
 - **2026-08-06 · [v1.6.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.6.0)**
-  🪟 桌面版正式支持 Windows；🧠 新增无感记忆，会话结束后自动提取。
+  🪟 Desktop app now officially supports Windows; 🧠 adds invisible memory with automatic extraction after each session.
 - **2026-08-05 · [v1.5.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.5.0)**
-  ⏰ 新增定时提醒与进度查询；🗣️ 新增语音唤醒词“你好千问”；🐧 桌面版支持 Linux 打包；桌面版数据目录与 CLI 隔离。
+  ⏰ Adds scheduled reminders and progress reporting; 🗣️ adds the voice wake word (“你好千问”); 🐧 desktop build support for Linux; the desktop app now uses a data directory isolated from the CLI.
 - **2026-08-05 · [v1.4.2](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.2)**
-  🔧 优化桌面端后台 Agent 的安装、登录与状态检测，完善长期记忆行为。
+  🔧 Refines desktop backend Agent installation, login, and status detection, with more reliable long-term memory behavior.
 - **2026-08-04 · [v1.4.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.1)**
-  🧰 新增后台 Agent 一键安装；桌面悬浮球支持自动隐藏与快捷键唤回。
+  🧰 Adds one-click backend Agent installation; the desktop orb now supports automatic hiding and shortcut recall.
 - **2026-08-04 · [v1.4.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.4.0)**
-  🧠 新增个性化规则与清单管理；桌面版支持自动休眠与快捷键唤醒。
+  🧠 Adds custom behavior rules and list management; desktop adds automatic sleep and shortcut wake-up.
 - **2026-08-03 · [v1.3.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.3.0)**
-  🎙️ 新增 [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) 前台接入，支持本地部署 VAD、STT、LLM 与 TTS 全链路。
+  🎙️ Adds a [🤗 speech-to-speech](https://github.com/huggingface/speech-to-speech) frontend for a locally deployed VAD–STT–LLM–TTS pipeline.
 - **2026-08-01 · [v1.2.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.2.0)**
-  ⚡ 桌面版新增自动更新，优化启动速度与后台 Agent 检测。
+  ⚡ Desktop auto-update, faster startup, and smarter backend Agent detection.
 - **2026-07-31 · [v1.1.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.1.0)**
-  🤝 新增 Kimi Code CLI 后台，原生 ACP 接入。
+  🤝 Adds Kimi Code CLI backend with native ACP support.
 - **2026-07-30 · [v1.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.0.0)**
-  🚀 正式版发布，推出内置 Gateway 的 macOS 桌面版。
+  🚀 First stable release with a macOS desktop app and integrated Gateway.
 - **2026-07-28 · [v0.9.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v0.9.0)**
-  🌍 项目正式开源，后台 Agent 统一接入 ACP 架构。
+  🌍 The project became open source with a unified ACP backend architecture.
 
-## 对话继续，任务也在继续
+## Keep Talking While Tasks Keep Running
 
-对话不会因为后台任务而停下；任务完成后，结果会自然回到当前对话：
+Conversation continues while the Agent works in the background. When the task
+is done, the result returns naturally to the conversation:
 
 https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
-### 核心特色
+### Core Features
 
-- 全双工实时语音交互、自然打断和持续多轮对话
-- 一键选择你喜欢的办事 Agent，复用已有的工具、MCP、Skill
-- 前台对话与后台任务并驾齐驱，可随时追问任务进度或取消任务
-- 支持创建多个独立任务，由后台 Agent 异步执行，并持续追踪任务状态
-- 任务结果自动回到当前对话，支持继续追问和修改
-- 支持 WebUI、终端 TUI 和桌面悬浮球（macOS / Windows / Linux）
-- 支持本地用户档案与跨会话个人记忆
+- Full-duplex realtime voice interaction, natural interruption, and continuous
+  multi-turn conversation
+- Choose your preferred Agent with one click, reusing its existing tools, MCP
+  servers, and Skills
+- Foreground conversation and background tasks move forward in parallel, with
+  progress checks and cancellation available at any time
+- Create multiple independent tasks for asynchronous execution by backend
+  Agents, with continuous status tracking
+- Task results return automatically to the current conversation for follow-up
+  and revision
+- WebUI, terminal TUI, and a macOS desktop orb
+- Local user profile and personal memory across sessions
 
-## 参考架构
+## Reference Architecture
 
-![qwen-audio-agent 原理图](docs/architecture-overview.png)
+![qwen-audio-agent architecture](docs/architecture-overview-en.png)
 
-能直接回答的问题会立即回答；需要工具或持续处理时，任务会交给后台 Agent。
-整个过程中，用户面对的始终是同一个助理。
+Questions that can be answered directly receive an immediate response. Work
+that needs tools or sustained processing is delegated to a backend Agent.
+Throughout the entire interaction, you are always talking to the same
+assistant.
 
 <details open>
-<summary>查看详细架构</summary>
+<summary>View the detailed architecture</summary>
 
-![qwen-audio-agent 接入参考架构](docs/qwen-audio-agent-three-layer-architecture.png)
+![qwen-audio-agent integration reference architecture](docs/qwen-audio-agent-three-layer-architecture-en.png)
 
-更完整的设计与模块说明见[架构文档](docs/architecture.md)。
+See the [architecture document](docs/architecture.md) for the full design and
+module walkthrough.
 
 </details>
 
-## Agent 支持
+## Agent Support
 
-| 后台 Agent | 接入方式 | 接入准备 | 推荐指数 |
+| Backend Agent | Integration | Setup | Rating |
 | --- | --- | --- | --- |
-| 无 | N/A | 仅前台模式，无需配置 | ★★★★★ |
-| OpenCode | 原生 ACP | 支持一键安装和百炼配置 | ★★★★★ |
-| OpenClaw | 内置 ACP 桥接 | 支持一键安装和百炼配置 | ★★★★★ |
-| Qoder | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
-| Kimi Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
-| Hermes | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
-| CodeBuddy | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
-| Codex | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
-| Claude Code | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
+| None | N/A | Frontend-only, no setup required | ★★★★★ |
+| OpenCode | Native ACP | One-click installation and Bailian setup supported | ★★★★★ |
+| OpenClaw | Built-in ACP Bridge | One-click installation and Bailian setup supported | ★★★★★ |
+| Qoder | Native ACP | One-click installation; user configuration required | ★★★★★ |
+| Kimi Code | Native ACP | One-click installation; user configuration required | ★★★★★ |
+| Hermes | Native ACP | One-click installation; user configuration required | ★★★★☆ |
+| CodeBuddy | Native ACP | One-click installation; user configuration required | ★★★★☆ |
+| Codex | External ACP Adapter | One-click Agent and adapter installation; user configuration required | ★★★★☆ |
+| Claude Code | External ACP Adapter | One-click Agent and adapter installation; user configuration required | ★★★★☆ |
 
-推荐指数综合反映当前集成完整度、兼容性和实际验证程度：五星表示已经过充分测试的
-推荐集成，四星表示正在开发或尚未完成同等范围验证。
-详细配置和能力边界见[配置说明](docs/configuration.md)。
+Ratings reflect the current integration completeness, compatibility, and
+extent of real-world validation. Five stars identify recommended integrations
+that have been thoroughly tested; four stars identify integrations still in
+development or not yet validated to the same extent. See the
+[configuration guide](docs/configuration.md) for detailed setup and capability
+boundaries.
 
-## 安装
+## Installation
 
-需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+。一键安装（推荐）：
+You need Node.js 22.22.2+ or 24.15.0+, npm 10+, and a
+DashScope API Key when using the default DashScope realtime frontend. The
+repository includes `.nvmrc` and `.node-version`; if you
+use nvm, run `nvm use`.
+
+One-line install (recommended, from npm):
 
 ```bash
 npm install -g qwen-audio-agent
 ```
 
-从源码安装、从 GitHub 安装最新代码以及获取 DashScope API Key 的详细步骤见
-[安装指南](docs/getting-started/install.md)。
+You can also install the latest code directly from GitHub:
 
-## 快速开始
+```bash
+npm install -g git+https://github.com/QwenAudio/qwen-audio-agent.git
+```
 
-1. 创建配置并填入 API Key：
+Install from source:
+
+```bash
+git clone https://github.com/QwenAudio/qwen-audio-agent.git
+cd qwen-audio-agent
+npm install
+npm run install:global
+```
+
+Upgrade to the latest npm release:
+
+```bash
+npm install -g qwen-audio-agent@latest
+```
+
+Upgrade to the latest code from GitHub:
+
+```bash
+npm install -g git+https://github.com/QwenAudio/qwen-audio-agent.git
+```
+
+## Get a DashScope API Key
+
+Alibaba Cloud Model Studio includes Qwen Audio 3.0 Realtime in its
+[free quota for new users](https://help.aliyun.com/en/model-studio/new-free-quota).
+Create an API Key to start using qwen-audio-agent for free.
+
+1. Open the Model Studio
+   [API Key page](https://bailian.console.aliyun.com/?tab=model#/api-key), sign
+   in, and click **Create API Key**.
+2. Copy the generated Key and add it to `config.env` later. Never publish or
+   commit your API Key.
+
+See the [official API Key guide](https://help.aliyun.com/en/model-studio/get-api-key)
+for details.
+
+## Quick Start
+
+1. Create your configuration:
 
 ```bash
 qwenaudio config
 ```
 
+2. Open the displayed `config.env` file and add your DashScope API Key. Select
+   OpenClaw or another backend Agent only when you need background tasks:
+
 ```dotenv
 DASHSCOPE_API_KEY=your-key
-# 语音前台模型：qwen-audio-3.0-realtime-flash 或 qwen-audio-3.0-realtime-plus（默认）
+# Voice model: qwen-audio-3.0-realtime-flash or qwen-audio-3.0-realtime-plus (default)
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
-# 后台Agent：可选，不设置或设置为 none 时，启动仅前台模式
+# Optional; uncomment when background tasks are needed
+# AGENT_PROTOCOL=openclaw
+# Backend model: can be left empty; the Agent uses its own user configuration
+# QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
+```
+
+3. Start the Gateway in one terminal:
+
+```bash
+qwenaudio
+```
+
+4. Open another terminal and start the TUI:
+
+```bash
+qwenaudio tui
+```
+
+You can use the browser interface instead:
+
+```bash
+qwenaudio webui
+```
+
+### Use a Hugging Face speech-to-speech frontend
+
+qwen-audio-agent can also connect to a user-managed
+[Hugging Face speech-to-speech](https://github.com/huggingface/speech-to-speech)
+server. It combines VAD, STT, LLM, and TTS behind an OpenAI Realtime-compatible
+API. The entire voice pipeline can run locally, or you can replace individual
+models and services as needed.
+
+1. Install speech-to-speech:
+
+```bash
+pip install "speech-to-speech[paraformer]"
+```
+
+2. Start a fully local service:
+
+Linux / Windows with an NVIDIA GPU:
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend transformers \
+  --device cuda
+```
+
+Apple Silicon:
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend mlx-lm \
+  --device mps
+```
+
+Without an NVIDIA GPU, you can choose a smaller local model suitable for CPU
+inference, or point the LLM backend at a local vLLM / llama.cpp server. The service listens on
+`ws://127.0.0.1:8765/v1/realtime` by default.
+
+3. Add the following to the qwen-audio-agent `config.env` file:
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech
+SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime
+```
+
+Then start `qwenaudio` as usual. Fully local mode requires no cloud API Key. The
+Gateway only connects to the Realtime endpoint and does not alter the STT, LLM,
+TTS, or voice configured in speech-to-speech. Set
+`SPEECH_TO_SPEECH_AUTH_TOKEN` only when the Realtime endpoint is behind a proxy
+that requires Bearer authentication.
+
+### TUI Notes
+
+| Platform | Default mode | How to interrupt |
+| --- | --- | --- |
+| macOS | Full duplex with echo cancellation | Start speaking |
+| Linux / Windows | Half duplex | Press `x` during playback |
+
+Before first use on Linux or Windows, install `sounddevice` and ensure system
+PortAudio is available. You can also enable full-duplex mode without echo
+cancellation. Wear headphones in this mode to avoid speaker output causing
+false transcription:
+
+```bash
+qwenaudio tui --audio-mode full
+```
+
+## Desktop App
+
+The desktop app provides a persistent voice orb and includes the Gateway, so no
+service needs to be started in advance. If a local Gateway is already running
+for the same user configuration directory, the desktop app attaches to its
+current runtime configuration; otherwise, it starts and manages one
+automatically. On first launch, the app creates its
+configuration file and guides you to enter a DashScope API Key and choose a
+backend Agent (or frontend-only mode) in Settings.
+
+When idle, the orb hides and disconnects realtime voice; you can also say
+“you can go now” to hide it. The app remains available from the menu bar. Show
+it again from the menu bar or with the default `⇧⌘ Space` shortcut, or choose
+another shortcut in the app.
+
+The desktop app includes a streaming wave orb and a liquid gradient orb. Their
+original animated thinking / breathing states are shown below:
+
+| Streaming Wave Orb | Liquid Gradient Orb |
+| --- | --- |
+| ![Streaming wave orb thinking animation](docs/desktop-fluid-orb-thinking.gif) | ![Liquid gradient orb thinking animation](docs/desktop-goo-orb-thinking.gif) |
+
+Download the `.dmg` from the releases page, open it, and drag
+**Qwen Audio Agent** into Applications.
+
+Build a local test package from source:
+
+```bash
+npm run desktop:build:local
+```
+
+Official releases ship macOS installers only. To build for Linux, run on a
+Linux machine:
+
+```bash
+npm run desktop:build:linux
+```
+
+Artifacts land in `dist/desktop/` (AppImage and deb). No signing certificate
+is required.
+
+## Run the Gateway in the Background
+
+To keep your personal assistant available, install the Gateway as a user
+service:
+
+```bash
+qwenaudio gateway install
+```
+
+Common management commands:
+
+```bash
+qwenaudio gateway status
+qwenaudio gateway restart
+qwenaudio gateway stop
+qwenaudio gateway start
+qwenaudio gateway uninstall
+```
+
+## Choose a Backend Agent
+
+`AGENT_PROTOCOL` is optional. When it is empty, the Gateway runs in
+frontend-only mode and realtime voice chat remains available. If a request
+requires background execution, the frontend clearly explains that no backend
+Agent is available. You can also run `qwenaudio --backend none` to explicitly
+start in frontend-only mode.
+
+Select the backend Agent with `AGENT_PROTOCOL` or `--backend`. After selecting
+one, OpenCode and OpenClaw can be downloaded automatically. Configure
+`DASHSCOPE_API_KEY` and
+`QWEN_AUDIO_AGENT_BACKEND_MODEL` to connect them to a Bailian model
+automatically. When no backend model is specified and the Agent is already
+installed and configured, qwen-audio-agent fully reuses the user's existing
+environment.
+
+Check which backends are available:
+
+```bash
+qwenaudio setup
+```
+
+Use OpenClaw:
+
+```dotenv
 AGENT_PROTOCOL=openclaw
-# 后台模型：可为空，留空则沿用 Agent 自身的用户配置
-QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
-> 默认使用 DashScope 实时语音前台；也可切换为本地 [speech-to-speech 前台](docs/voice-frontends/speech-to-speech.md)，无需云端 API Key。
+Use OpenCode:
 
-2. 启动 Gateway，另开终端启动 TUI（也可用 `qwenaudio webui` 启动浏览器界面）：
-
-```bash
-qwenaudio        # 终端 1：Gateway
-qwenaudio tui    # 终端 2：TUI
+```dotenv
+AGENT_PROTOCOL=opencode
 ```
 
-完整配置项、speech-to-speech 前台接入和 TUI 平台注意事项见
-[快速开始](docs/getting-started/quickstart.md)、
-[语音前台](docs/voice-frontends/speech-to-speech.md)与
-[TUI 注意](docs/getting-started/tui.md)。
+Use Qoder:
 
-## 桌面版
-
-桌面版提供常驻桌面的语音悬浮球，内置 Gateway，支持自动隐藏、快捷键唤回和语音
-唤醒。从发布页下载对应平台安装包，或从源码构建：
-
-```bash
-npm run desktop:build:local      # macOS
-npm run desktop:build:win        # Windows
-npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
+```dotenv
+AGENT_PROTOCOL=qoder
 ```
 
-外观效果、悬浮球行为和构建说明见[桌面版文档](docs/desktop/overview.md)。
+For an installed and natively configured backend Agent, qwen-audio-agent reuses
+its user-level model, tools, MCP servers, Skills, and authentication.
 
-## 后台 Agent
+Use another Agent that supports ACP over stdio:
 
-`AGENT_PROTOCOL` 可选。留空即仅前台模式；选择后可复用已安装 Agent 的用户级
-模型、工具、MCP、Skill 和认证。OpenCode 和 OpenClaw 支持一键安装与百炼配置。
-
-```bash
-qwenaudio setup   # 查看当前可用的后台 Agent
+```dotenv
+AGENT_PROTOCOL=acp
+ACP_COMMAND=your-agent
+ACP_ARGS=["--acp"]
 ```
 
-Agent 选择、后台常驻服务、通用 ACP 入口和权限模式见
-[后台 Agent 文档](docs/backends/overview.md)。
+The generic ACP entry point requires no Gateway code changes. Configure its command, arguments, display label, and workspace with `ACP_COMMAND`, `ACP_ARGS`, `ACP_LABEL`, and `ACP_WORKSPACE`.
 
-## 用户档案与记忆
+Backend permissions default to `native`, so the backend Agent asks when
+permission is required. Enable the following option only in trusted projects
+and only if you explicitly accept automatic command execution and file
+changes:
 
-用户数据保存在 `~/.config/qwaudio/`（`USER.md`、`frontend-memory.json`、
-`tasks.json`、`logs/`），只存本机、不进仓库。详见
-[用户档案与记忆](docs/reference/memory.md)。
+```dotenv
+QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=full
+```
 
-## 使用注意事项
+See the [configuration guide](docs/configuration.md) for all options.
 
-- 不要在用户档案或对话中保存密码、API Key、验证码和访问令牌。
-- 麦克风音频与实时对话会发送到配置的 Realtime 前台服务（DashScope 或
-  speech-to-speech）。
-- 后台任务可能调用所选 Agent 的模型、工具、MCP 和外部服务。
-- `full` 权限允许后台执行命令和修改文件，只应在可信项目中使用。
-- Gateway 默认仅供本机访问；不要直接暴露到局域网或公网。
-- Linux / Windows 使用无回声消除全双工时，请佩戴耳机。
+## User Profile and Memory
 
-详细数据边界见[隐私说明](PRIVACY.md)，网络与权限配置见
-[配置说明](docs/configuration.md)。
+User data is stored in `~/.config/qwaudio/`:
 
-## 源码开发
+- `USER.md`: your preferred name, location, preferences, and frequently used
+  projects
+- `frontend-memory.json`: information you explicitly ask the assistant to
+  remember long term
+- `tasks.json`: task results and pending notification state
+- `logs/`: credential-redacted, automatically rotated local runtime logs
+
+These files remain on your computer and are never written to the source
+repository. You can edit `USER.md` directly or ask the assistant to remember or
+forget information during a conversation.
+
+## Usage Notes
+
+- Do not store passwords, API Keys, verification codes, or access tokens in
+  your user profile or conversations.
+- Microphone audio and realtime conversations are sent to the configured
+  Realtime frontend (DashScope or speech-to-speech).
+- Backend tasks may call models, tools, MCP servers, and external services
+  configured for the selected Agent.
+- `full` permission allows command execution and file changes. Use it only in
+  trusted projects.
+- The Gateway is local-only by default. Do not expose it directly to a LAN or
+  the public internet.
+- Wear headphones when using full duplex without echo cancellation on Linux or
+  Windows.
+
+See the [privacy notice](PRIVACY.md) for data boundaries and the
+[configuration guide](docs/configuration.md) for network and permission
+settings.
+
+## Development
 
 ```bash
 npm install
@@ -187,30 +436,33 @@ npm test
 ```
 
 ```bash
-npm run dev       # Gateway 与 WebUI 热更新
-npm run desktop   # 桌面悬浮球（macOS / Windows）
+npm run dev       # Gateway and WebUI with hot reload
+npm run desktop   # macOS desktop orb
 ```
 
-更多构建、测试和发布说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more about building, testing, and
+releasing.
 
-## 交流与分享
+## Discussion & Sharing
 
-你可以直接在 [GitHub Issues](https://github.com/QwenAudio/qwen-audio-agent/issues) 发起讨论。
+You can start a discussion directly in
+[GitHub Issues](https://github.com/QwenAudio/qwen-audio-agent/issues).
 
-对中国用户，也可以扫描左侧二维码加入微信交流群；如果群二维码已满或过期，
-扫描右侧任一维护者的个人二维码，维护者会邀请你进群。
+For users in China, you can also scan the QR code on the left to join our
+WeChat group. If the group code is full or expired, scan either maintainer's
+personal QR code on the right and they will invite you to the group.
 
-| 微信交流群 | 个人微信 | 个人微信 |
+| WeChat Group | Personal WeChat | Personal WeChat |
 | :---: | :---: | :---: |
-| <img src="docs/wechat-group-qr.png" width="240" alt="微信交流群二维码"> | <img src="docs/wechat-contact-qr.png" width="240" alt="李旭个人微信二维码"> | <img src="docs/wechat-pigeon-dan-qr.png" width="240" alt="Pigeon.Dan 个人微信二维码"> |
+| <img src="docs/wechat-group-qr.png" width="240" alt="WeChat group QR code"> | <img src="docs/wechat-contact-qr.png" width="240" alt="Li Xu's personal WeChat QR code"> | <img src="docs/wechat-pigeon-dan-qr.png" width="240" alt="Pigeon.Dan's personal WeChat QR code"> |
 
-## 参与贡献与安全
+## Contributing and Security
 
-- 开发与提交说明：[CONTRIBUTING.md](CONTRIBUTING.md)
-- 安全问题报告：[SECURITY.md](SECURITY.md)
-- 数据流向说明：[PRIVACY.md](PRIVACY.md)
-- 第三方组件声明：[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- Development and contribution guide: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security reports: [SECURITY.md](SECURITY.md)
+- Data flow and privacy: [PRIVACY.md](PRIVACY.md)
+- Third-party notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
 
-## 许可证
+## License
 
 [Apache License 2.0](LICENSE)

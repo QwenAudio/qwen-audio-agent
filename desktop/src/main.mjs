@@ -148,6 +148,70 @@ let setupRequired = (
 )
 const preloadPath = resolve(here, 'preload.cjs')
 
+const DEFAULT_ORB_WIDTH = 172
+const DEFAULT_ORB_HEIGHT = 170
+const EXPANDED_ORB_HEIGHT = 380
+
+let orbResizeAnimation = null
+
+function animateWindowResize(window, targetWidth, targetHeight, duration = 200) {
+  if (!window || window.isDestroyed()) return
+  if (orbResizeAnimation) {
+    clearTimeout(orbResizeAnimation.timer)
+    orbResizeAnimation = null
+  }
+  const [currentWidth, currentHeight] = window.getSize()
+  const [currentX, currentY] = window.getPosition()
+  const startWidth = currentWidth
+  const startHeight = currentHeight
+  const deltaWidth = targetWidth - startWidth
+  const deltaHeight = targetHeight - startHeight
+  const startTime = performance.now()
+
+  function frame() {
+    if (!window || window.isDestroyed()) {
+      orbResizeAnimation = null
+      return
+    }
+    const now = performance.now()
+    const elapsed = now - startTime
+    const progress = Math.min(1, elapsed / duration)
+    const ease = progress * (2 - progress)
+    const nextWidth = Math.round(startWidth + deltaWidth * ease)
+    const nextHeight = Math.round(startHeight + deltaHeight * ease)
+    const nextX = Math.round(currentX - (deltaWidth * ease) / 2)
+    const nextY = Math.round(currentY - (deltaHeight * ease) / 2)
+    window.setBounds({ x: nextX, y: nextY, width: nextWidth, height: nextHeight })
+    if (progress < 1) {
+      orbResizeAnimation = { timer: setTimeout(frame, 16) }
+    } else {
+      orbResizeAnimation = null
+    }
+  }
+  orbResizeAnimation = { timer: setTimeout(frame, 0) }
+}
+
+function ensureWindowWithinBounds(window) {
+  if (!window || window.isDestroyed()) return
+  const [x, y] = window.getPosition()
+  const [width, height] = window.getSize()
+  const display = screen.getDisplayNearestPoint({ x: x + width / 2, y: y + height / 2 })
+  const workArea = display.workArea
+  let nextX = x
+  let nextY = y
+  if (x + width > workArea.x + workArea.width) {
+    nextX = workArea.x + workArea.width - width - 8
+  }
+  if (y + height > workArea.y + workArea.height) {
+    nextY = workArea.y + workArea.height - height - 8
+  }
+  if (x < workArea.x) nextX = workArea.x + 8
+  if (y < workArea.y) nextY = workArea.y + 8
+  if (nextX !== x || nextY !== y) {
+    window.setPosition(nextX, nextY)
+  }
+}
+
 let mainWindow = null
 let settingsWindow = null
 let rendererServer = null
@@ -474,15 +538,15 @@ function createTray() {
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay()
-  const width = 172
-  const height = 170
+  const width = DEFAULT_ORB_WIDTH
+  const height = DEFAULT_ORB_HEIGHT
   const window = new BrowserWindow({
     width,
     height,
     minWidth: width,
     minHeight: height,
-    maxWidth: width,
-    maxHeight: height,
+    maxWidth: 400,
+    maxHeight: EXPANDED_ORB_HEIGHT,
     x: workArea.x + workArea.width - width - 24,
     y: workArea.y + 24,
     frame: false,
@@ -610,6 +674,23 @@ ipcMain.on('qwen-audio-agent:drag-move', (event, point) => {
 
 ipcMain.on('qwen-audio-agent:drag-end', event => {
   if (mainWindow && event.sender === mainWindow.webContents) dragState = null
+})
+
+ipcMain.on('qwen-audio-agent:resize-orb', (event, { width, height, animate }) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return
+  if (animate) {
+    animateWindowResize(mainWindow, width, height, 200)
+  } else {
+    mainWindow.setSize(width, height)
+  }
+  ensureWindowWithinBounds(mainWindow)
+})
+
+ipcMain.on('qwen-audio-agent:open-webui', (event, url) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) return
+  if (typeof url !== 'string') return
+  void shell.openExternal(url)
 })
 
 ipcMain.on('qwen-audio-agent:open-settings', event => {

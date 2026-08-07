@@ -102,6 +102,7 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 }
 
 .desktop-gallery-shell {
+  position: relative;
   width: 100%;
   height: 100%;
   display: grid;
@@ -312,6 +313,20 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 }
 .desktop-orb-stage.dragging {
   cursor: grabbing;
+}
+
+.desktop-orb-running-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid rgba(59, 130, 246, 0.4);
+  animation: orb-running-pulse 1.5s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes orb-running-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.25); opacity: 0; }
 }
 
 .desktop-orb-controls {
@@ -728,6 +743,156 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
   from { opacity: 0; transform: translateY(4px) scale(.995); }
 }
 
+/* Desktop task progress panel */
+.desktop-task-panel {
+  position: absolute;
+  top: 166px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 240px;
+  background: rgba(30, 41, 59, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  color: #f1f5f9;
+  font-size: 13px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: opacity 200ms ease, transform 200ms ease;
+  z-index: 10;
+}
+
+.desktop-task-panel.running {
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.desktop-task-panel.completed {
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.desktop-task-panel.failed {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.desktop-task-panel.pending {
+  border-color: rgba(245, 158, 11, 0.4);
+}
+
+.desktop-task-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.desktop-task-panel-agent {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-task-panel-time {
+  flex-shrink: 0;
+}
+
+.desktop-task-panel-detail {
+  font-size: 11px;
+  color: #94a3b8;
+  margin-bottom: 10px;
+  line-height: 1.4;
+  min-height: 1.4em;
+}
+
+.desktop-task-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.desktop-task-panel-progress {
+  flex: 1;
+  height: 3px;
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.desktop-task-panel.running .desktop-task-panel-progress-bar {
+  width: 60%;
+  height: 100%;
+  background: #3b82f6;
+  border-radius: 2px;
+  animation: task-progress-pulse 1.5s ease-in-out infinite;
+}
+
+.desktop-task-panel.completed .desktop-task-panel-progress-bar {
+  width: 100%;
+  height: 100%;
+  background: #22c55e;
+  border-radius: 2px;
+}
+
+.desktop-task-panel.failed .desktop-task-panel-progress-bar {
+  width: 100%;
+  height: 100%;
+  background: #ef4444;
+  border-radius: 2px;
+}
+
+.desktop-task-panel-cancel {
+  padding: 3px 8px;
+  font-size: 11px;
+  background: #334155;
+  border: none;
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.desktop-task-panel-cancel:hover,
+.desktop-task-panel-cancel:focus-visible {
+  background: #475569;
+  outline: 2px solid rgba(59, 130, 246, 0.6);
+  outline-offset: 2px;
+}
+
+@keyframes task-progress-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+.desktop-task-panel-title-button {
+  width: 100%;
+  padding: 0;
+  margin: 0 0 4px;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.desktop-task-panel-title-button:focus-visible {
+  outline: 2px solid rgba(59, 130, 246, 0.6);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
 @media (max-width: 600px) {
   header { padding: 0 14px; }
   .brand small, header .ghost, .backend { display: none; }
@@ -751,7 +916,9 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
   .goo .fill,
   .conversation-turn,
   .agent-task,
-  .task-spinner {
+  .task-spinner,
+  .desktop-orb-running-ring,
+  .desktop-task-panel.running .desktop-task-panel-progress-bar {
     animation: none;
     transition: none;
   }

@@ -22,6 +22,7 @@ import {
   resolveOrbSkinId,
 } from '../../shared/orb-skin-catalog.mjs'
 import { resultLabel } from './presentation.js'
+import { t } from './i18n.js'
 import {
   removeDeliveredTask,
   removeTaskInPhase,
@@ -74,25 +75,25 @@ function getSessionId() {
 
 function labelFor(state) {
   return {
-    idle: '待命',
-    listening: '正在听',
-    thinking: '思考中',
-    speaking: '正在说',
-    working: '正在处理任务',
-    attention: '等待你的确认',
-    connecting: '正在连接语音前台',
-    occupied: '其他入口正在使用',
-    hidden: '已隐藏',
-    waking: '正在显示',
+    idle: t('待命'),
+    listening: t('正在听'),
+    thinking: t('思考中'),
+    speaking: t('正在说'),
+    working: t('正在处理任务'),
+    attention: t('等待你的确认'),
+    connecting: t('正在连接语音前台'),
+    occupied: t('其他入口正在使用'),
+    hidden: t('已隐藏'),
+    waking: t('正在显示'),
   }[state] || state
 }
 
 function frontendLabel(holder) {
   return holder?.label || {
-    desktop: '桌面端',
-    cli: '终端',
+    desktop: t('桌面端'),
+    cli: t('终端'),
     web: 'WebUI',
-  }[holder?.type] || '其他入口'
+  }[holder?.type] || t('其他入口')
 }
 
 function OrbControlIcon({ type, muted = false }) {
@@ -129,7 +130,7 @@ export default function App() {
   }))
   const [waitingForVoice, setWaitingForVoice] = useState(false)
   const [messages, setMessages] = useState([])
-  const [activity, setActivity] = useState('正在检查后台 Agent')
+  const [activity, setActivity] = useState(t('正在检查后台 Agent'))
   const [frontend, setFrontend] = useState({ label: 'Realtime Agent' })
   const [realtimeProviders, setRealtimeProviders] = useState([])
   const [realtimeProvider, setRealtimeProvider] = useState(
@@ -192,7 +193,7 @@ export default function App() {
       }
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}))
-        throw new Error(payload.error || `请求失败（${response.status}）`)
+        throw new Error(payload.error || t('请求失败（{status}）', { status: response.status }))
       }
     } catch (error) {
       setAgentTasks(items => upsertTask(
@@ -204,7 +205,7 @@ export default function App() {
             ? {
                 ...task.authorization,
                 submitting: false,
-                error: `没有提交成功：${error.message}`,
+                error: t('没有提交成功：{message}', { message: error.message }),
               }
             : null,
         }),
@@ -254,10 +255,10 @@ export default function App() {
           ready: response.ok && payload.backend?.ok,
           url: payload.backend?.uiPath || payload.backend?.baseUrl || '',
         })
-        setActivity(response.ok ? 'Gateway 已连接' : '能力服务尚未连接')
+        setActivity(response.ok ? t('Gateway 已连接') : t('能力服务尚未连接'))
       })
       .catch(() => {
-        if (!cancelled) setActivity('qwen-audio-agent Gateway 尚未连接')
+        if (!cancelled) setActivity(t('qwen-audio-agent Gateway 尚未连接'))
       })
     return () => {
       cancelled = true
@@ -340,10 +341,10 @@ export default function App() {
       currentTurnId.current = event.turnId || ''
       activeVoiceResponse.current = ''
       stickToBottom.current = true
-      setActivity('正在听你说')
+      setActivity(t('正在听你说'))
     }
     if (event.type === 'gateway.disconnected') {
-      setActivity('qwen-audio-agent Gateway 已断开，正在重连')
+      setActivity(t('qwen-audio-agent Gateway 已断开，正在重连'))
       setAgentTasks(items => items.map(task => (
         [
           'queued',
@@ -385,7 +386,7 @@ export default function App() {
               return {
                 ...task,
                 phase: 'failed',
-                error: '网关重连后未找到这次后台执行，请重新提交。',
+                error: t('网关重连后未找到这次后台执行，请重新提交。'),
               }
             })
             serverTasks
@@ -409,7 +410,7 @@ export default function App() {
     if (event.type === 'voice.deactivated') {
       setVoiceEnabled(false)
       setWaitingForVoice(false)
-      setActivity(`${frontendLabel(event.holder)}正在使用语音`)
+      setActivity(t('{holder}正在使用语音', { holder: frontendLabel(event.holder) }))
     }
     if (
       event.type === 'voice.ownership'
@@ -418,15 +419,15 @@ export default function App() {
     ) {
       setVoiceEnabled(false)
       setWaitingForVoice(false)
-      setActivity(`${frontendLabel(event.holder)}正在使用语音`)
+      setActivity(t('{holder}正在使用语音', { holder: frontendLabel(event.holder) }))
     }
     if (event.type === 'voice.ownership' && event.state === 'available') {
       if (shouldClaimReleasedVoice(event, waitingForVoice)) {
         setWaitingForVoice(false)
         setVoiceEnabled(true)
-        setActivity('正在接入语音')
+        setActivity(t('正在接入语音'))
       } else if (!voiceEnabled) {
-        setActivity('待命')
+        setActivity(t('待命'))
       }
     }
     if (event.type === 'voice.state') {
@@ -435,12 +436,12 @@ export default function App() {
         && event.turnId !== currentTurnId.current
         && event.origin === 'model'
       ) return
-      if (event.state === 'listening') setActivity('正在听你说')
+      if (event.state === 'listening') setActivity(t('正在听你说'))
       if (event.state === 'thinking' && !agentTurnIds.current.has(currentTurnId.current)) {
-        setActivity('正在理解')
+        setActivity(t('正在理解'))
       }
       if (event.state === 'idle' && !agentTurnIds.current.has(currentTurnId.current)) {
-        setActivity('待命')
+        setActivity(t('待命'))
       }
     }
     if (event.type === 'transcript.delta' && event.role === 'user') {
@@ -467,7 +468,7 @@ export default function App() {
         event.turnId === currentTurnId.current
         && !agentTurnIds.current.has(event.turnId)
       ) {
-        setActivity('正在回复')
+        setActivity(t('正在回复'))
       }
     }
     if (event.type === 'transcript.delta' && event.role === 'assistant') updateVoiceMessage(event)
@@ -484,7 +485,7 @@ export default function App() {
       const task = event.task
       if (task.turnId) agentTurnIds.current.add(task.turnId)
       if (!task.turnId || task.turnId === currentTurnId.current) {
-        setActivity('正在处理')
+        setActivity(t('正在处理'))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -497,7 +498,7 @@ export default function App() {
       const task = event.task
       if (task.turnId) agentTurnIds.current.add(task.turnId)
       if (!task.turnId || task.turnId === currentTurnId.current) {
-        setActivity('正在处理')
+        setActivity(t('正在处理'))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -519,7 +520,7 @@ export default function App() {
     if (event.type === 'task.progress') {
       const progress = event.task
       if (!progress.turnId || progress.turnId === currentTurnId.current) {
-        setActivity(`正在处理 · ${Math.round(progress.elapsedMs / 1000)} 秒`)
+        setActivity(t('正在处理 · {seconds} 秒', { seconds: Math.round(progress.elapsedMs / 1000) }))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -531,7 +532,7 @@ export default function App() {
     if (event.type === 'task.delegated') {
       const task = event.task
       if (!task.turnId || task.turnId === currentTurnId.current) {
-        setActivity('项目正在执行')
+        setActivity(t('项目正在执行'))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -547,8 +548,8 @@ export default function App() {
       const task = event.task
       if (!task.turnId || task.turnId === currentTurnId.current) {
         setActivity(event.type === 'task.finalizing'
-          ? '正在整理项目结果'
-          : '正在取消')
+          ? t('正在整理项目结果')
+          : t('正在取消'))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -563,9 +564,9 @@ export default function App() {
     ) {
       const task = event.task
       if (event.type === 'task.permission.requested') {
-        setActivity('等待你的确认')
+        setActivity(t('等待你的确认'))
       } else {
-        setActivity('正在继续处理')
+        setActivity(t('正在继续处理'))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -578,7 +579,7 @@ export default function App() {
       const completed = event.task
       if (completed.turnId) agentTurnIds.current.delete(completed.turnId)
       if (!completed.turnId || completed.turnId === currentTurnId.current) {
-        setActivity(voiceEnabled ? '正在准备回复' : '处理完成')
+        setActivity(voiceEnabled ? t('正在准备回复') : t('处理完成'))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -607,7 +608,7 @@ export default function App() {
       const failed = event.task
       if (failed.turnId) agentTurnIds.current.delete(failed.turnId)
       if (!failed.turnId || failed.turnId === currentTurnId.current) {
-        setActivity(`后台失败：${failed.error}`)
+        setActivity(t('后台失败：{error}', { error: failed.error }))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -619,7 +620,7 @@ export default function App() {
       const cancelled = event.task
       if (cancelled.turnId) agentTurnIds.current.delete(cancelled.turnId)
       if (!cancelled.turnId || cancelled.turnId === currentTurnId.current) {
-        setActivity('已取消')
+        setActivity(t('已取消'))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -634,12 +635,12 @@ export default function App() {
           cancelled.id,
           'cancelled',
         ))
-        setActivity(current => current === '已取消' ? '待命' : current)
+        setActivity(current => current === t('已取消') ? t('待命') : current)
         taskDismissTimers.current.delete(cancelled.id)
       }, 3000))
     }
     if (event.type === 'transcript.final' && event.role === 'assistant') {
-      if (event.turnId === currentTurnId.current) setActivity('待命')
+      if (event.turnId === currentTurnId.current) setActivity(t('待命'))
       const presentedTaskIds = new Set(
         event.taskIds?.length ? event.taskIds : [event.taskId].filter(Boolean),
       )
@@ -674,7 +675,7 @@ export default function App() {
     outputMuted: false,
     inputOnlyMute: desktopOrbMode,
     clientType: desktopOrbMode ? 'desktop' : 'web',
-    clientLabel: desktopOrbMode ? '桌面端' : 'WebUI',
+    clientLabel: desktopOrbMode ? t('桌面端') : 'WebUI',
     clientStates: desktopOrbMode ? ['sleeping'] : [],
     takeover: takeoverRequested,
     realtimeProvider,
@@ -735,10 +736,10 @@ export default function App() {
       setDesktopLifecycle(lifecycle.state)
       if (lifecycle.state === 'waking') lastWakeAtRef.current = Date.now()
       if (lifecycle.reason === 'activity') noteInteraction()
-      if (lifecycle.state === 'hidden') setActivity('已隐藏')
-      if (lifecycle.state === 'waking') setActivity('正在显示悬浮球')
+      if (lifecycle.state === 'hidden') setActivity(t('已隐藏'))
+      if (lifecycle.state === 'waking') setActivity(t('正在显示悬浮球'))
       if (lifecycle.state === 'active' && lifecycle.reason === 'ready') {
-        setActivity('待命')
+        setActivity(t('待命'))
         noteInteraction()
       }
     }
@@ -830,14 +831,14 @@ export default function App() {
     activeVoiceResponse.current = ''
     responseTurnMap.current.clear()
     agentTurnIds.current.clear()
-    setActivity('已创建新会话')
+    setActivity(t('已创建新会话'))
   }
 
   const enableVoice = () => {
     if (!voice.activateAudio()) return
     if (voice.ownership.state === 'busy' && !takeoverRequested) {
       setWaitingForVoice(true)
-      setActivity(`等待${ownershipLabel || '其他入口'}释放语音`)
+      setActivity(t('等待{holder}释放语音', { holder: ownershipLabel || t('其他入口') }))
       return
     }
     setWaitingForVoice(false)
@@ -847,7 +848,7 @@ export default function App() {
   const disableVoice = () => {
     setWaitingForVoice(false)
     setVoiceEnabled(false)
-    setActivity('待命')
+    setActivity(t('待命'))
   }
 
   const turns = useMemo(
@@ -917,15 +918,15 @@ export default function App() {
           dragging: orbDragging,
           lifecycle: desktopLifecycle,
         })}
-        aria-label={`qwen-audio · ${voice.visualError || voiceConnectionError ? '连接异常' : labelFor(orbVisualState)}`}
+        aria-label={`qwen-audio · ${voice.visualError || voiceConnectionError ? t('连接异常') : labelFor(orbVisualState)}`}
         title={
           desktopLifecycle === 'waking'
-            ? '正在显示悬浮球'
+            ? t('正在显示悬浮球')
             : voice.error
           || (orbVisualState === 'attention' && attentionTask
             ? taskDetail(attentionTask)
             : orbVisualState === 'occupied' && ownershipLabel
-              ? `${ownershipLabel}正在使用语音`
+              ? t('{holder}正在使用语音', { holder: ownershipLabel })
               : labelFor(orbVisualState))
         }
         onClick={handleOrbClick}
@@ -950,7 +951,7 @@ export default function App() {
             )}
         <nav
           className="desktop-orb-controls"
-          aria-label="语音控制"
+          aria-label={t('语音控制')}
           onPointerDown={event => event.stopPropagation()}
         >
           <button
@@ -965,13 +966,13 @@ export default function App() {
             }}
             aria-label={
               voiceEnabled
-                ? '麦克风静音'
-                : waitingForVoice ? '取消等待语音' : '开启麦克风'
+                ? t('麦克风静音')
+                : waitingForVoice ? t('取消等待语音') : t('开启麦克风')
             }
             title={
               voiceEnabled
-                ? '麦克风静音'
-                : waitingForVoice ? '取消等待语音' : '开启麦克风'
+                ? t('麦克风静音')
+                : waitingForVoice ? t('取消等待语音') : t('开启麦克风')
             }
           >
             <OrbControlIcon type="microphone" muted={!voiceEnabled} />
@@ -981,8 +982,8 @@ export default function App() {
               event.stopPropagation()
               window.qwenAudioAgentDesktop?.openSettings()
             }}
-            aria-label="设置"
-            title="设置"
+            aria-label={t('设置')}
+            title={t('设置')}
           >
             <OrbControlIcon type="settings" />
           </button>
@@ -992,8 +993,8 @@ export default function App() {
               event.stopPropagation()
               window.qwenAudioAgentDesktop?.quit()
             }}
-            aria-label="退出"
-            title="退出"
+            aria-label={t('退出')}
+            title={t('退出')}
           >
             <OrbControlIcon type="close" />
           </button>
@@ -1022,7 +1023,7 @@ export default function App() {
             'always',
           )}
         >
-          {agentTask.authorization.submitting ? '正在提交' : '始终允许'}
+          {agentTask.authorization.submitting ? t('正在提交') : t('始终允许')}
         </button>
         <button
           className="permission-deny"
@@ -1033,7 +1034,7 @@ export default function App() {
             'reject',
           )}
         >
-          拒绝
+          {t('拒绝')}
         </button>
         {agentTask.authorization.error && <small className="permission-error">
           {agentTask.authorization.error}
@@ -1048,14 +1049,14 @@ export default function App() {
     className={`${message.role}${message.companion ? ' companion' : ''}`}
   >
     <label>{message.role === 'user'
-      ? '你'
+      ? t('你')
       : message.companion ? resultLabel(message) : 'qwen-audio'}</label>
     <MessageContent
       role={message.role}
       content={message.content}
       live={message.live}
     />
-    {message.interrupted && <small className="interrupted">已打断</small>}
+    {message.interrupted && <small className="interrupted">{t('已打断')}</small>}
   </article>
 
   return <main className="app">
@@ -1066,7 +1067,7 @@ export default function App() {
         href={backend.url || undefined}
         target="_blank"
         rel="noreferrer"
-        title={backend.url ? `打开 ${backend.label}` : backend.label}
+        title={backend.url ? t('打开 {label}', { label: backend.label }) : backend.label}
       >
         <i className={backend.ready ? 'ready' : ''} />
         {backend.label}
@@ -1075,16 +1076,16 @@ export default function App() {
         className="ghost frontend-provider"
         value={realtimeProvider}
         onChange={event => selectRealtimeProvider(event.target.value)}
-        title="选择前台语音引擎"
-        aria-label="选择前台语音引擎"
+        title={t('选择前台语音引擎')}
+        aria-label={t('选择前台语音引擎')}
       >
-        <option value="">前台：默认（{frontend.label}）</option>
+        <option value="">{t('前台：默认（{label}）', { label: frontend.label })}</option>
         {realtimeProviders.map(item => <option key={item.key} value={item.key}>
-          前台：{item.label}
+          {t('前台：{label}', { label: item.label })}
         </option>)}
       </select>}
       <div className="status"><i className={orbVisualState} />{labelFor(orbVisualState)}</div>
-      <button className="ghost" onClick={resetSession}>新会话</button>
+      <button className="ghost" onClick={resetSession}>{t('新会话')}</button>
       <button
         className={[
           'voice',
@@ -1100,8 +1101,8 @@ export default function App() {
         }}
       >
         {voiceEnabled
-          ? '关闭语音'
-          : waitingForVoice ? '取消等待' : '开启语音'}
+          ? t('关闭语音')
+          : waitingForVoice ? t('取消等待') : t('开启语音')}
       </button>
     </header>
 
@@ -1111,12 +1112,12 @@ export default function App() {
           ref={voice.levelElementRef}
           className={`orb ${orbVisualState}`}
           onClick={handleOrbClick}
-          aria-label="语音交互"
+          aria-label={t('语音交互')}
         >
           <span />
         </button>
         <p>VOICE FRONTEND</p>
-        <h1>你说，我来调度。</h1>
+        <h1>{t('你说，我来调度。')}</h1>
         <small>{voice.error || activity}</small>
       </div>
 
@@ -1133,8 +1134,8 @@ export default function App() {
         }}
       >
         {!turns.length && <div className="empty">
-          <b>试着说</b>
-          <span>“帮我查一下今天的 AI 新闻，并整理成三点摘要。”</span>
+          <b>{t('试着说')}</b>
+          <span>{t('“帮我查一下今天的 AI 新闻，并整理成三点摘要。”')}</span>
         </div>}
         {turns.map(turn => <section
           key={turn.id}

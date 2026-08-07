@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { t } from './i18n.js'
 
 const MEDIA_IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif)(\?.*)?$/i
 const MEDIA_AUDIO = /\.(mp3|wav|ogg|m4a|aac|flac|opus)(\?.*)?$/i
@@ -22,9 +23,9 @@ function MediaEmbed({ src, alt, type }) {
     return (
       <span className="media-consent">
         <button type="button" onClick={() => setApproved(true)}>
-          加载远程{type === 'image' ? '图片' : type === 'audio' ? '音频' : '视频'}
+          {type === 'image' ? t('加载远程图片') : type === 'audio' ? t('加载远程音频') : t('加载远程视频')}
         </button>
-        <a href={src} target="_blank" rel="noopener noreferrer">打开链接</a>
+        <a href={src} target="_blank" rel="noopener noreferrer">{t('打开链接')}</a>
       </span>
     )
   }

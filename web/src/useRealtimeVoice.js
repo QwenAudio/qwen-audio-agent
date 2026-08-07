@@ -5,6 +5,7 @@ import {
 } from '../../shared/realtime-events.mjs'
 import { decodePcm, pcmBase64, resample } from './audio.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
+import { t } from './i18n.js'
 
 const DEFAULT_INPUT_RATE = 16000
 const OUTPUT_RATE = 24000
@@ -127,7 +128,7 @@ export default function useRealtimeVoice({
   const activateAudio = useCallback(() => {
     const AudioContext = window.AudioContext || window.webkitAudioContext
     if (!AudioContext) {
-      setError('当前浏览器不支持实时语音播放')
+      setError(t('当前浏览器不支持实时语音播放'))
       setVisualError(true)
       return false
     }
@@ -135,7 +136,7 @@ export default function useRealtimeVoice({
       audioRef.current = new AudioContext()
     }
     audioRef.current.resume().catch(reason => {
-      setError(reason?.message || '语音播放没有成功启用，请再点一次开启语音')
+      setError(reason?.message || t('语音播放没有成功启用，请再点一次开启语音'))
       setVisualError(true)
     })
     return true
@@ -227,7 +228,7 @@ export default function useRealtimeVoice({
         'playback_error',
       )
     }
-    setError(reason?.message || String(reason || '语音播放失败'))
+    setError(reason?.message || String(reason || t('语音播放失败')))
     setVisualError(true)
   }, [sendPlaybackEvent])
 
@@ -246,7 +247,7 @@ export default function useRealtimeVoice({
   const play = useCallback((base64, sampleRate = OUTPUT_RATE, responseId = '') => {
     const context = audioRef.current
     if (!context) {
-      failPlayback(responseId, '语音播放尚未启用')
+      failPlayback(responseId, t('语音播放尚未启用'))
       return
     }
     const playback = playbackRef.current
@@ -393,7 +394,7 @@ export default function useRealtimeVoice({
             setError('')
             setVisualError(false)
           } else if (event.state === 'unavailable') {
-            setError(event.message || '语音前台连接异常，正在重试')
+            setError(event.message || t('语音前台连接异常，正在重试'))
             setVisualError(true)
           }
         }
@@ -450,7 +451,7 @@ export default function useRealtimeVoice({
       socket.onerror = () => {
         if (!disposed) {
           setConnectionState('unavailable')
-          setError('实时语音连接中断，正在重连')
+          setError(t('实时语音连接中断，正在重连'))
           setVisualError(true)
         }
       }
@@ -460,7 +461,7 @@ export default function useRealtimeVoice({
         stopPlayback()
         setState('idle')
         setConnectionState('unavailable')
-        setError('实时语音连接中断，正在重连')
+        setError(t('实时语音连接中断，正在重连'))
         setVisualError(true)
         eventRef.current?.({ type: GatewayServerEvent.GATEWAY_DISCONNECTED })
         reconnectTimer = setTimeout(connect, reconnectDelay)
@@ -523,7 +524,7 @@ export default function useRealtimeVoice({
     let lastVoiceAt = 0
     inputReadyRef.current = false
     const failInput = reason => {
-      const message = reason?.message || String(reason || '无法打开麦克风')
+      const message = reason?.message || String(reason || t('无法打开麦克风'))
       inputReadyRef.current = false
       setInputReady(false)
       sendSocketEvent(microphoneControlEvent({
@@ -543,12 +544,12 @@ export default function useRealtimeVoice({
     const startAudio = async () => {
       try {
         if (!activateAudio()) {
-          failInput('当前浏览器不支持实时语音播放')
+          failInput(t('当前浏览器不支持实时语音播放'))
           return
         }
         const context = audioRef.current
         if (!context) {
-          failInput('无法初始化实时语音播放')
+          failInput(t('无法初始化实时语音播放'))
           return
         }
         if (context.state === 'suspended') await context.resume()

@@ -69,7 +69,7 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
 ![qwen-audio-agent 接入参考架构](docs/qwen-audio-agent-three-layer-architecture.png)
 
-更完整的设计与模块说明见[架构文档](docs/architecture.md)。
+更完整的设计与模块说明见[架构文档](docs/architecture.zh.md)。
 
 </details>
 
@@ -89,7 +89,7 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
 推荐指数综合反映当前集成完整度、兼容性和实际验证程度：五星表示已经过充分测试的
 推荐集成，四星表示正在开发或尚未完成同等范围验证。
-详细配置和能力边界见[配置说明](docs/configuration.md)。
+详细配置和能力边界见[配置说明](docs/configuration.zh.md)。
 
 ## 安装
 
@@ -100,7 +100,7 @@ npm install -g qwen-audio-agent
 ```
 
 从源码安装、从 GitHub 安装最新代码以及获取 DashScope API Key 的详细步骤见
-[安装指南](docs/getting-started/install.md)。
+[安装指南](docs/getting-started/install.zh.md)。
 
 ## 快速开始
 
@@ -120,7 +120,7 @@ AGENT_PROTOCOL=openclaw
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
-> 默认使用 DashScope 实时语音前台；也可切换为本地 [speech-to-speech 前台](docs/voice-frontends/speech-to-speech.md)，无需云端 API Key。
+> 默认使用 DashScope 实时语音前台；也可切换为本地 [speech-to-speech 前台](docs/voice-frontends/speech-to-speech.zh.md)，无需云端 API Key。
 
 2. 启动 Gateway，另开终端启动 TUI（也可用 `qwenaudio webui` 启动浏览器界面）：
 
@@ -130,9 +130,9 @@ qwenaudio tui    # 终端 2：TUI
 ```
 
 完整配置项、speech-to-speech 前台接入和 TUI 平台注意事项见
-[快速开始](docs/getting-started/quickstart.md)、
-[语音前台](docs/voice-frontends/speech-to-speech.md)与
-[TUI 注意](docs/getting-started/tui.md)。
+[快速开始](docs/getting-started/quickstart.zh.md)、
+[语音前台](docs/voice-frontends/speech-to-speech.zh.md)与
+[TUI 注意](docs/getting-started/tui.zh.md)。
 
 ## 桌面版
 
@@ -145,7 +145,7 @@ npm run desktop:build:win        # Windows
 npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 ```
 
-外观效果、悬浮球行为和构建说明见[桌面版文档](docs/desktop/overview.md)。
+外观效果、悬浮球行为和构建说明见[桌面版文档](docs/desktop/overview.zh.md)。
 
 ## 后台 Agent
 
@@ -157,13 +157,13 @@ qwenaudio setup   # 查看当前可用的后台 Agent
 ```
 
 Agent 选择、后台常驻服务、通用 ACP 入口和权限模式见
-[后台 Agent 文档](docs/backends/overview.md)。
+[后台 Agent 文档](docs/backends/overview.zh.md)。
 
 ## 用户档案与记忆
 
 用户数据保存在 `~/.config/qwaudio/`（`USER.md`、`frontend-memory.json`、
 `tasks.json`、`logs/`），只存本机、不进仓库。详见
-[用户档案与记忆](docs/reference/memory.md)。
+[用户档案与记忆](docs/reference/memory.zh.md)。
 
 ## 使用注意事项
 
@@ -176,7 +176,7 @@ Agent 选择、后台常驻服务、通用 ACP 入口和权限模式见
 - Linux / Windows 使用无回声消除全双工时，请佩戴耳机。
 
 详细数据边界见[隐私说明](PRIVACY.md)，网络与权限配置见
-[配置说明](docs/configuration.md)。
+[配置说明](docs/configuration.zh.md)。
 
 ## 源码开发
 

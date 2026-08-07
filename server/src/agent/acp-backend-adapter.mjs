@@ -177,7 +177,9 @@ export class AcpBackendAdapter {
     this.sessionToolServer = sessionToolServer || new AcpSessionToolServer()
     // Baseline stdio MCP servers (e.g. open-computer-use) injected into every
     // Session; backends spawn and connect to them on their own.
-    this.builtinMcp = Array.isArray(builtinMcp) ? builtinMcp : []
+    this.builtinMcp = this.profile.sessionMcp === false
+      ? []
+      : (Array.isArray(builtinMcp) ? builtinMcp : [])
     this.pendingPermissions = new Map()
     this.resolvedPermissions = new Map()
     this.coordinatorSessions = new Map()

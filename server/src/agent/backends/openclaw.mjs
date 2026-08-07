@@ -66,6 +66,7 @@ export const openClawBackendDriver = {
           : {}),
       },
       externalMcp: false,
+      sessionMcp: false,
       nativeDelegation: true,
       backendUi: true,
       sanitizeProcessOutput,

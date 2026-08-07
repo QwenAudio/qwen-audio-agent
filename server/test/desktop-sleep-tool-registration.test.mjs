@@ -74,7 +74,9 @@ async function startGateway() {
     memoryStore: fakeMemoryStore(),
     notesStore: fakeNotesStore(),
     coordinator: null,
-    coordinatorAvailable: async () => false,
+    backendAvailability: {
+      snapshot: () => ({ configured: true, ok: false, known: true }),
+    },
     respondPermission: async () => ({}),
     permissionPolicy: {
       resolveDecision: () => null,

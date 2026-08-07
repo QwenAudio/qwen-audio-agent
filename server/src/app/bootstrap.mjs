@@ -3,6 +3,7 @@ import { createServer } from 'http'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'path'
 import { agent } from '../agent/agent-client.mjs'
+import { BackendAvailability } from '../agent/backend-availability.mjs'
 import { coordinator } from '../agent/coordinator.mjs'
 import { config } from '../core/config.mjs'
 import { logger, runWithLogContext } from '../core/logger.mjs'
@@ -373,16 +374,23 @@ app.use((error, req, res, next) => {
 
 const server = createServer(app)
 export { server }
+// Receipt-based tool acceptance reads backend availability from this cache
+// instead of probing per spawn_thinking call; the snapshot answers
+// synchronously and refreshes itself in the background.
+const backendAvailability = new BackendAvailability({
+  probe: async () => ({
+    configured: agent.enabled,
+    ok: agent.enabled && (await agent.health()).ok === true,
+  }),
+})
+backendAvailability.refresh()
 realtimeGateway = attachRealtimeGateway(server, {
   identityManager,
   memoryStore: frontendMemory,
   memoryExtractor,
   notesStore,
   coordinator,
-  coordinatorAvailable: async () => ({
-    enabled: agent.enabled,
-    ok: agent.enabled && (await agent.health()).ok === true,
-  }),
+  backendAvailability,
   respondPermission: (id, decision, options) => (
     agent.respondPermission(id, decision, options)
   ),

@@ -12,9 +12,10 @@ function harness({
   memoryStore = null,
   notesStore = null,
   onMemoryChanged = () => {},
-  coordinatorAvailable = async () => true,
+  backendAvailability = null,
   respondPermission,
   permissionPolicy,
+  onPermissionDeliveryFailed,
   clientContext = {},
   requestClientState,
 } = {}) {
@@ -33,12 +34,13 @@ function harness({
     coordinator: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
     },
-    coordinatorAvailable,
+    backendAvailability,
     memoryStore,
     notesStore,
     onMemoryChanged,
     respondPermission,
     permissionPolicy,
+    onPermissionDeliveryFailed,
     getClientContext: () => clientContext,
     requestClientState,
     getConversationContext: () => [
@@ -83,6 +85,7 @@ async function permissionHarness({
   authorizationId = 'auth-one',
   respondPermission,
   permissionPolicy,
+  onPermissionDeliveryFailed,
 }) {
   const manager = new TaskManager()
   let release
@@ -104,7 +107,12 @@ async function permissionHarness({
     },
   })
   await new Promise(resolve => setImmediate(resolve))
-  const kit = harness({ manager, respondPermission, permissionPolicy })
+  const kit = harness({
+    manager,
+    respondPermission,
+    permissionPolicy,
+    onPermissionDeliveryFailed,
+  })
   kit.transcripts.record('turn-one', answer)
   return {
     ...kit,
@@ -193,9 +201,11 @@ test('deduplicates repeated tool calls from one realtime turn', async () => {
   )
 })
 
-test('rejects delegated work immediately when the backend Agent is disconnected', async () => {
+test('rejects delegated work immediately when the backend is known to be down', async () => {
   const kit = harness({
-    coordinatorAvailable: async () => false,
+    backendAvailability: {
+      snapshot: () => ({ configured: true, ok: false, known: true }),
+    },
   })
   kit.transcripts.record('turn-one', '帮我修改项目')
   await kit.handler.handle({
@@ -210,9 +220,65 @@ test('rejects delegated work immediately when the backend Agent is disconnected'
   assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 0)
 })
 
+test('accepts optimistically before the first health probe and fails via the task', async () => {
+  let probed = 0
+  const kit = harness({
+    backendAvailability: {
+      snapshot: () => {
+        probed += 1
+        return { configured: true, ok: true, known: false }
+      },
+    },
+    coordinator: {
+      run: async () => {
+        throw new Error('后台 Agent 未连接')
+      },
+    },
+  })
+  kit.transcripts.record('turn-one', '帮我修改项目')
+  await kit.handler.handle({
+    call_id: 'call-optimistic',
+    name: 'spawn_thinking',
+    arguments: '{"objective":"修改项目"}',
+  })
+
+  // The receipt is optimistic; the dispatch failure surfaces on the task,
+  // which the announcement path reports asynchronously.
+  assert.equal(probed, 1)
+  assert.equal(kit.outputs[0][1].status, 'accepted')
+  await kit.manager.wait(kit.outputs[0][1].work_id)
+  assert.equal(kit.manager.get(kit.outputs[0][1].work_id).status, 'failed')
+})
+
+test('hands out the acceptance receipt without waiting for the turn transcript', async () => {
+  let received
+  const kit = harness({
+    coordinator: {
+      run: async input => {
+        received = input
+        return { content: '完成', metadata: {} }
+      },
+    },
+  })
+  // No transcript is ever recorded: acceptance must not block on ASR and the
+  // dispatch-time resolution falls back to the model-provided objective.
+  await kit.handler.handle({
+    call_id: 'call-no-transcript',
+    name: 'spawn_thinking',
+    arguments: '{"objective":"整理会议纪要"}',
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(kit.outputs[0][1].status, 'accepted')
+  await kit.manager.wait(kit.outputs[0][1].work_id)
+  assert.equal(received.originalRequest, '整理会议纪要')
+  assert.equal(received.objective, '整理会议纪要')
+})
+
 test('explains that background work is unavailable without a configured backend', async () => {
   const kit = harness({
-    coordinatorAvailable: async () => ({ enabled: false, ok: false }),
+    backendAvailability: {
+      snapshot: () => ({ configured: false, ok: false, known: true }),
+    },
   })
   kit.transcripts.record('turn-one', '帮我修改项目')
   await kit.handler.handle({
@@ -442,12 +508,14 @@ test('relays a realtime semantic permission decision without evidence matching',
     }),
   })
 
+  // The receipt is issued before the fire-and-forget backend delivery lands.
+  assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
+  await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(calls, [{
     id: 'auth-one',
     decision: 'always',
     options: { ownerId: 'owner' },
   }])
-  assert.equal(kit.outputs.at(-1)[1].status, 'approved')
   assert.match(
     kit.outputs.at(-1)[3].response.instructions,
     /已允许，后台继续执行/,
@@ -478,12 +546,45 @@ test('confirms a rejected realtime permission exactly once', async () => {
     }),
   })
 
-  assert.equal(kit.outputs.at(-1)[1].status, 'rejected')
+  assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
   assert.match(
     kit.outputs.at(-1)[3].response.instructions,
     /已拒绝/,
   )
   assert.equal(permissionPolicy.mode('owner', 'voice'), 'ask')
+  await kit.finish()
+})
+
+test('rolls back the session policy when the permission delivery fails', async () => {
+  const failures = []
+  const permissionPolicy = new SessionPermissionPolicy()
+  const kit = await permissionHarness({
+    answer: '可以',
+    permissionPolicy,
+    respondPermission: async () => {
+      throw new Error('backend unreachable')
+    },
+    onPermissionDeliveryFailed: event => failures.push(event),
+  })
+  await kit.handler.handle({
+    call_id: 'permission-delivery-failed',
+    name: 'respond_agent_permission',
+    arguments: JSON.stringify({
+      authorization_id: 'auth-one',
+      decision: 'always',
+    }),
+  })
+
+  // The spoken confirmation is receipt-based and always issued.
+  assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
+  await new Promise(resolve => setImmediate(resolve))
+  // Delivery failed: the local auto-allow rolls back and the gateway is told
+  // so the pending permission can be re-announced.
+  assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), false)
+  assert.equal(failures.length, 1)
+  assert.equal(failures[0].authorizationId, 'auth-one')
+  assert.equal(failures[0].decision, 'always')
+  assert.match(failures[0].error, /backend unreachable/)
   await kit.finish()
 })
 
@@ -551,8 +652,10 @@ test('accepts a semantic permission decision without an evidence field', async (
     }),
   })
 
+  // The verbatim delivery lands asynchronously behind the receipt.
+  assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
+  await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(calls, [{ id: 'auth-one', decision: 'always' }])
-  assert.equal(kit.outputs.at(-1)[1].status, 'approved')
   await kit.finish()
 })
 

@@ -23,7 +23,6 @@ function harness({
     coordinator: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
     },
-    coordinatorAvailable: async () => true,
     memoryStore: null,
     notesStore: null,
     onMemoryChanged: () => {},

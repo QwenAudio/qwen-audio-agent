@@ -105,7 +105,7 @@ export function attachRealtimeGateway(server, {
   memoryExtractor = null,
   notesStore,
   coordinator,
-  coordinatorAvailable = async () => true,
+  backendAvailability = null,
   respondPermission,
   permissionPolicy,
 }) {
@@ -373,9 +373,20 @@ export function attachRealtimeGateway(server, {
         memories: memoryStore?.list(ownerId, { limit: 64 }) || [],
       }),
       coordinator,
-      coordinatorAvailable,
+      backendAvailability,
       respondPermission,
       permissionPolicy,
+      // The permission decision was accepted locally but never reached the
+      // backend: the authorization is still pending there, so clear the
+      // announced mark and let the standard re-announce path ask again.
+      onPermissionDeliveryFailed: ({ authorizationId, error }) => {
+        connectionLogger.warn('permission.delivery_failed', {
+          authorizationId,
+          error,
+        })
+        announcedPermissions.delete(authorizationId)
+        announcePendingPermissions()
+      },
       requestClientState: state => {
         if (!clientContext.states?.includes(state)) return
         send(ws, {

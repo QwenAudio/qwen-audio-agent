@@ -37,7 +37,7 @@ export class ToolCallHandler {
     getTurnId,
     getTurnGeneration,
     coordinator,
-    coordinatorAvailable = async () => true,
+    backendAvailability = null,
     memoryStore,
     notesStore,
     getClientContext = () => ({}),
@@ -45,6 +45,7 @@ export class ToolCallHandler {
     onMemoryChanged = () => {},
     respondPermission,
     permissionPolicy,
+    onPermissionDeliveryFailed = () => {},
     requestClientState = () => {},
   }) {
     this.taskManager = taskManager
@@ -55,7 +56,7 @@ export class ToolCallHandler {
     this.getTurnId = getTurnId
     this.getTurnGeneration = getTurnGeneration
     this.coordinator = coordinator
-    this.coordinatorAvailable = coordinatorAvailable
+    this.backendAvailability = backendAvailability
     this.memoryStore = memoryStore
     this.notesStore = notesStore
     this.getClientContext = getClientContext
@@ -63,6 +64,7 @@ export class ToolCallHandler {
     this.onMemoryChanged = onMemoryChanged
     this.respondPermission = respondPermission
     this.permissionPolicy = permissionPolicy
+    this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
     this.requestClientState = requestClientState
     this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
@@ -143,31 +145,41 @@ export class ToolCallHandler {
       })
   }
 
-  createWork({ turnId, originalRequest, objective, submissionKey }) {
+  createWork({ turnId, objective, submissionKey }) {
     let workId = ''
     const task = this.taskManager.create({
-      objective: originalRequest,
+      objective,
       ownerId: this.ownerId,
       sessionId: this.sessionId,
       turnId,
       submissionKey,
       laneKey: `coordinator:${this.ownerId}`,
       laneLimit: 1,
-      runner: async (_ignored, { onEvent, signal }) => this.coordinator.run({
-        originalRequest,
-        objective,
-        conversationContext: this.getConversationContext(),
-        userMemories: this.memoryStore?.list(this.ownerId, { limit: 64 }) || [],
-        timeZone: this.getClientContext()?.timeZone,
-        workingDirectory: this.getClientContext()?.workingDirectory,
-      }, {
-        ownerId: this.ownerId,
-        sessionId: this.sessionId,
-        turnId,
-        coordinationRunId: workId,
-        signal,
-        onEvent: event => this.forwardCoordinatorEvent(event, onEvent),
-      }),
+      runner: async (_ignored, { onEvent, signal }) => {
+        // The owner FIFO wait has already covered ASR latency, so the
+        // verbatim user request is resolved here at dispatch instead of
+        // blocking the acceptance receipt. A closed session resolves to ''
+        // and falls back to the model-provided objective.
+        const resolved = await this.transcripts.resolveDelegation(
+          turnId,
+          objective,
+        )
+        return this.coordinator.run({
+          originalRequest: resolved.originalRequest || objective,
+          objective,
+          conversationContext: this.getConversationContext(),
+          userMemories: this.memoryStore?.list(this.ownerId, { limit: 64 }) || [],
+          timeZone: this.getClientContext()?.timeZone,
+          workingDirectory: this.getClientContext()?.workingDirectory,
+        }, {
+          ownerId: this.ownerId,
+          sessionId: this.sessionId,
+          turnId,
+          coordinationRunId: workId,
+          signal,
+          onEvent: event => this.forwardCoordinatorEvent(event, onEvent),
+        })
+      },
       canceler: async ({ previousStatus, abort }) => {
         if (previousStatus === 'delegated') {
           const result = await this.coordinator.cancelDelegatedWork(
@@ -356,20 +368,67 @@ export class ToolCallHandler {
       return
     }
 
-    const resolved = await this.transcripts.resolveDelegation(
-      turnId,
-      args.objective,
-    )
-    if (this.isStale(turnId, generation)) {
-      await this.closeStaleCall(callId, turnId)
+    // Receipt-based acceptance: this receipt only acknowledges intake, so it
+    // must not wait on ASR timing or a live backend round trip. Availability
+    // comes from the cached snapshot; a backend that looks healthy here but
+    // fails at dispatch surfaces through the failed-task announcement path.
+    const availability = this.backendAvailability?.snapshot()
+      || { configured: true, ok: true, known: false }
+    if (availability.configured === false) {
+      await this.sendOutput(
+        callId,
+        failure(
+          'backend_unavailable',
+          '当前未配置后台 Agent，无法执行需要后台处理的任务。你仍然可以继续普通聊天。',
+          { retryable: false },
+        ),
+        turnId,
+        null,
+        {
+          response: {
+            instructions: [
+              '直接向用户说明当前未配置后台 Agent，无法执行这项后台任务。',
+              '不要再次调用后台工具，也不要声称任务已经创建或正在执行。',
+              '可以继续完成不需要后台 Agent 的聊天和回答。',
+            ].join('\n'),
+          },
+        },
+      )
       return
     }
-    const originalRequest = String(
-      resolved.originalRequest || resolved.objective || '',
-    ).trim()
-    const objective = String(
-      resolved.objective || resolved.originalRequest || '',
-    ).trim()
+    if (availability.known && availability.ok === false) {
+      await this.sendOutput(
+        callId,
+        failure(
+          'backend_unavailable',
+          '后台 Agent 当前未连接。你仍然可以继续普通聊天，后台恢复后再执行这项工作。',
+          { retryable: true },
+        ),
+        turnId,
+        null,
+        {
+          response: {
+            instructions: [
+              '直接向用户说明后台 Agent 当前未连接，暂时无法执行这项后台任务。',
+              '不要再次调用后台工具，也不要声称任务已经创建或正在执行。',
+              '可以继续完成不需要后台 Agent 的聊天和回答。',
+            ].join('\n'),
+          },
+        },
+      )
+      return
+    }
+
+    let objective = String(args.objective || '').replace(/\s+/g, ' ').trim()
+    if (!objective) {
+      // Rare model slip: only this fallback path waits for the transcript.
+      const resolved = await this.transcripts.resolveDelegation(turnId, '')
+      if (this.isStale(turnId, generation)) {
+        await this.closeStaleCall(callId, turnId)
+        return
+      }
+      objective = String(resolved.originalRequest || '').trim()
+    }
     if (!objective) {
       await this.sendOutput(
         callId,
@@ -379,49 +438,6 @@ export class ToolCallHandler {
           { retryable: true },
         ),
         turnId,
-      )
-      return
-    }
-
-    let coordinatorReady = false
-    let coordinatorConfigured = true
-    try {
-      const availability = await this.coordinatorAvailable()
-      if (availability && typeof availability === 'object') {
-        coordinatorConfigured = availability.enabled !== false
-        coordinatorReady = (
-          coordinatorConfigured && availability.ok === true
-        )
-      } else {
-        coordinatorReady = availability === true
-      }
-    } catch {
-      coordinatorReady = false
-    }
-    if (!coordinatorReady) {
-      const userMessage = coordinatorConfigured
-        ? '后台 Agent 当前未连接。你仍然可以继续普通聊天，后台恢复后再执行这项工作。'
-        : '当前未配置后台 Agent，无法执行需要后台处理的任务。你仍然可以继续普通聊天。'
-      await this.sendOutput(
-        callId,
-        failure(
-          'backend_unavailable',
-          userMessage,
-          { retryable: coordinatorConfigured },
-        ),
-        turnId,
-        null,
-        {
-          response: {
-            instructions: [
-              coordinatorConfigured
-                ? '直接向用户说明后台 Agent 当前未连接，暂时无法执行这项后台任务。'
-                : '直接向用户说明当前未配置后台 Agent，无法执行这项后台任务。',
-              '不要再次调用后台工具，也不要声称任务已经创建或正在执行。',
-              '可以继续完成不需要后台 Agent 的聊天和回答。',
-            ].join('\n'),
-          },
-        },
       )
       return
     }
@@ -461,7 +477,6 @@ export class ToolCallHandler {
       ].join(':')
       task = this.createWork({
         turnId,
-        originalRequest,
         objective,
         submissionKey,
       })
@@ -586,48 +601,54 @@ export class ToolCallHandler {
       this.sessionId,
       decision,
     )
-    try {
-      const permission = await this.respondPermission(
+    // Receipt-based: the local policy takes effect immediately and the ACP
+    // round trip must not delay the spoken confirmation. On delivery failure
+    // the policy rolls back and the authorization is still pending on the
+    // backend, so the gateway can re-announce it through the existing
+    // pending-permission retry path.
+    Promise.resolve()
+      .then(() => this.respondPermission(
         authorizationId,
         decision,
         { ownerId: this.ownerId },
-      )
-      await this.sendOutput(callId, {
-        status: permission.status,
-        authorization_id: permission.id,
-      }, turnId, permission.workId, {
-        response: {
-          instructions: decision === 'always'
-            ? [
-                '权限已经成功生效。',
-                '只用一句简短自然口语确认“已允许，后台继续执行”。',
-                '不要重述操作，不要再次询问或调用工具。',
-              ].join(' ')
-            : [
-                '权限已经成功拒绝。',
-                '只用一句简短自然口语确认“已拒绝，后台不会执行这项操作”。',
-                '不要重述操作，不要再次询问或调用工具。',
-              ].join(' '),
-        },
+      ))
+      .catch(error => {
+        if (previousPermissionMode) {
+          this.permissionPolicy?.setMode(
+            this.ownerId,
+            this.sessionId,
+            previousPermissionMode,
+          )
+        }
+        try {
+          this.onPermissionDeliveryFailed({
+            authorizationId,
+            decision,
+            taskId: pendingTask.id,
+            error: String(error?.message || error),
+          })
+        } catch {
+          // Delivery diagnostics must not break the voice session.
+        }
       })
-    } catch (error) {
-      if (previousPermissionMode) {
-        this.permissionPolicy?.setMode(
-          this.ownerId,
-          this.sessionId,
-          previousPermissionMode,
-        )
-      }
-      await this.sendOutput(
-        callId,
-        failure(
-          'permission_response_failed',
-          error?.message || '没有成功提交权限决定。',
-          { retryable: false },
-        ),
-        turnId,
-      )
-    }
+    await this.sendOutput(callId, {
+      status: 'submitted',
+      authorization_id: authorizationId,
+    }, turnId, pendingTask.id, {
+      response: {
+        instructions: decision === 'always'
+          ? [
+              '权限决定已提交，并在本会话立即生效。',
+              '只用一句简短自然口语确认“已允许，后台继续执行”。',
+              '不要重述操作，不要再次询问或调用工具。',
+            ].join(' ')
+          : [
+              '权限决定已提交。',
+              '只用一句简短自然口语确认“已拒绝，后台不会执行这项操作”。',
+              '不要重述操作，不要再次询问或调用工具。',
+            ].join(' '),
+      },
+    })
   }
 
   async cancelAgentTask(callId, turnId, args) {

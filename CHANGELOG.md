@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.1
+
+- 后台委托类工具受理即回：提交任务与回复权限决定不再等待转写就绪、后台健康检查
+  或 ACP 往返，语音确认从最差 1–2 秒降到即时；失败由既有播报路径异步纠正。
+- 修复快捷键唤醒后前台语音连接无法恢复的问题；修复静音期间唤醒词监听失效。
+- 内置 computer-use：每个后台 Agent Session 自动注入 open-computer-use 内置 MCP
+  （点击/输入/截屏类工具），后台 Agent 未配置 computer-use 能力时开箱可用；
+  CLI 与桌面版均支持，可用 QWEN_AUDIO_AGENT_COMPUTER_USE=off 关闭。
+- 文档双语化：README 英文优先展示（中文版移至 README_ZH），主题文档中英文
+  平行并存；新增 Qwen3-TTS 中文稳定配置指南；修复 CI 依赖漏洞。
+
 ## 1.6.0
 
 - 桌面版正式支持 Windows：启动脚本全面迁移到跨平台 .mjs，修复 Windows 下的

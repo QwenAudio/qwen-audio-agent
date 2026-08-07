@@ -26,6 +26,8 @@ tells you:
 
 ## News
 
+- **2026-08-07 · [v1.6.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.6.1)**
+  ⚡ Task delegation and permission decisions confirm instantly; 🖥️ built-in computer-use lets backend Agents operate the computer out of the box; 🎙️ more reliable wake; 📚 fully bilingual docs.
 - **2026-08-06 · [v1.6.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.6.0)**
   🪟 Desktop app now officially supports Windows; 🧠 adds invisible memory with automatic extraction after each session.
 - **2026-08-05 · [v1.5.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.5.0)**

@@ -20,6 +20,8 @@
 
 ## News
 
+- **2026-08-07 · [v1.6.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.6.1)**
+  ⚡ 委派任务与权限确认即说即回；🖥️ 内置 computer-use，后台 Agent 开箱可操作电脑；🎙️ 唤醒更可靠；📚 文档全面双语化。
 - **2026-08-06 · [v1.6.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.6.0)**
   🪟 桌面版正式支持 Windows；🧠 新增无感记忆，会话结束后自动提取。
 - **2026-08-05 · [v1.5.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.5.0)**

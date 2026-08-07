@@ -1,41 +1,41 @@
-# TUI 使用注意
+# TUI Usage Notes
 
-## 平台差异
+## Platform Differences
 
-| 平台 | 默认模式 | 打断方式 |
+| Platform | Default Mode | Interruption Method |
 | --- | --- | --- |
-| macOS | 带回声消除的全双工 | 直接说话 |
-| Linux / Windows | 半双工 | 播报时按 `x` |
+| macOS | Full-duplex with echo cancellation | Speak directly |
+| Linux / Windows | Half-duplex | Press `x` during playback |
 
 ## macOS
 
-macOS 始终使用 CoreAudio AEC 全双工：播报期间持续收音，支持直接说话打断，
-无需额外配置。CoreAudio 辅助程序默认编译到
-`~/Library/Caches/qwaudio/tui/macos-voice-io`，首次启动时自动构建。
+macOS always uses CoreAudio AEC full-duplex: audio is continuously captured during playback, supporting direct-speech interruption,
+without additional configuration. The CoreAudio helper program is compiled by default to
+`~/Library/Caches/qwaudio/tui/macos-voice-io` and is automatically built on first launch.
 
 ## Linux / Windows
 
-默认通过随包提供的 Python 音频桥接使用 `sounddevice` / PortAudio 半双工：
-播放回复时麦克风会暂停，只支持 `x` 键手动打断，播放结束或打断后恢复。
-首次使用前需安装 `sounddevice` 和系统 PortAudio。
+By default, half-duplex mode is used via the bundled Python audio bridge using `sounddevice` / PortAudio:
+the microphone is paused during reply playback, only supporting manual interruption with the `x` key, and resumes after playback ends or is interrupted.
+Before first use, install `sounddevice` and the system PortAudio.
 
-也可以开启无回声消除的全双工模式：
+You can also enable full-duplex mode without echo cancellation:
 
 ```bash
 qwenaudio tui --audio-mode full
 ```
 
-此模式没有回声消除，请佩戴耳机，避免扬声器声音造成误识别或误打断。
-不同声卡和蓝牙耳机对同时使用不同采样率的输入、输出流支持程度不同；如果持续
-报告输入溢出、输出欠载或设备错误，请退出并改用 `--audio-mode half` 兜底。
+This mode has no echo cancellation; please wear headphones to avoid misrecognition or false interruptions caused by speaker audio.
+Different sound cards and Bluetooth headsets have varying levels of support for simultaneous input and output streams at different sample rates; if you continuously
+experience input overflow, output underflow, or device errors, please exit and fall back to `--audio-mode half`.
 
-## 配置
+## Configuration
 
-默认音频模式也可通过环境变量持久设置：
+The default audio mode can also be set persistently via an environment variable:
 
 ```dotenv
 QWEN_AUDIO_AGENT_TUI_AUDIO_MODE=half
 ```
 
-设为 `full` 等效于 `--audio-mode full`。完整参数见
-[配置说明](../configuration.md)。
+Setting it to `full` is equivalent to `--audio-mode full`. For full parameter details, see
+[Configuration](../configuration.md).

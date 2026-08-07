@@ -1,60 +1,45 @@
-# 桌面版
+# Desktop
 
-桌面版提供常驻桌面的语音悬浮球，并内置 Gateway，无需事先启动服务。同一用户配置
-目录已有本地 Gateway 时会直接连接并以其当前运行配置为准，否则由桌面版自动启动和管理。首次运行时，
-应用会创建配置文件，并引导你在设置页填写 DashScope API Key、选择后台 Agent
-（也可以使用仅前台模式）。
+The desktop app provides a persistent on-screen voice orb and includes a built-in Gateway, eliminating the need to start a service beforehand. If a local Gateway already exists in the same user configuration directory, it will connect directly and use the Gateway's current runtime configuration; otherwise, the desktop app will start and manage it automatically. On first run, the app creates a configuration file and guides you to fill in the DashScope API Key on the settings page and select a backend agent (frontend-only mode is also available).
 
-## 悬浮球与自动休眠
+## Orb and Auto Sleep
 
-闲置后悬浮球会自动隐藏并断开实时语音；也可以直接说“可以退下了”让它隐藏。应用仍
-常驻菜单栏，可从菜单栏或显示快捷键重新唤出。默认快捷键为 `⇧⌘ Space`，也可以在
-应用设置中更换。
+When idle, the orb automatically hides and disconnects real-time voice; you can also say "可以退下了" (you may step down) to hide it. The app remains in the menu bar and can be re-summoned from the menu bar or via a show shortcut. The default shortcut is `⇧⌘ Space` and can be changed in app settings.
 
-休眠超时与自动隐藏合并为统一的“自动休眠”设置：休眠期间麦克风保持本地监听，说出
-唤醒词“你好千问”即可恢复对话。后台 Agent 和已提交任务不会因休眠停止，任务结果
-会在唤醒后播报。首次启用唤醒词时会自动下载并校验约 33 MB 的
-[`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx) 中英文 KWS 模型，之后直接使用本地缓存。
+The sleep timeout and auto-hide are unified into a single "Auto Sleep" setting: during sleep, the microphone continues local listening, and saying the wake word "你好千问" (hello Qianwen) will resume the conversation. Backend agents and submitted tasks are not stopped by sleep; task results will be announced after wake-up. When the wake word is enabled for the first time, it automatically downloads and validates approximately 33 MB of the [`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx) Chinese-English KWS model, and uses the local cache thereafter.
 
-## 外观
+## Appearance
 
-桌面版支持流光声波球和液态渐变球两种外观。下面分别展示它们在思考 / 呼吸状态
-下的原始动态效果：
+The desktop app supports two appearance styles: the Aurora Soundwave Orb and the Liquid Gradient Orb. The following shows their raw animations in the thinking / breathing state:
 
-| 流光声波球 | 液态渐变球 |
+| Aurora Soundwave Orb | Liquid Gradient Orb |
 | --- | --- |
-| ![流光声波球思考动画](../desktop-fluid-orb-thinking.gif) | ![液态渐变球思考动画](../desktop-goo-orb-thinking.gif) |
+| ![Aurora Soundwave Orb thinking animation](../desktop-fluid-orb-thinking.gif) | ![Liquid Gradient Orb thinking animation](../desktop-goo-orb-thinking.gif) |
 
-## 安装
+## Installation
 
-从发布页下载对应平台的安装包：
+Download the installer for your platform from the releases page:
 
-- **macOS**：下载 `.dmg`，打开后将 **Qwen Audio Agent** 拖入"应用程序"。
-- **Windows**：下载 `.exe` 安装程序，双击运行并按向导完成安装。
+- **macOS**: Download the `.dmg`, open it, and drag **Qwen Audio Agent** into "Applications".
+- **Windows**: Download the `.exe` installer, double-click to run, and follow the wizard to complete installation.
 
-从源码生成本机测试版：
+To build a local test version from source:
 
 ```bash
 npm run desktop:build:local      # macOS
 npm run desktop:build:win        # Windows
-npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
+npm run desktop:build:linux      # Linux (AppImage + deb, no signing required)
 ```
 
-产物位于 `dist/desktop/`。
+The output is located in `dist/desktop/`.
 
-## 数据目录与隔离
+## Data Directory and Isolation
 
-桌面版使用系统标准应用数据目录（macOS 为
-`~/Library/Application Support/Qwen Audio Agent`，Windows 为
-`%APPDATA%/Qwen Audio Agent`，Linux 为
-`~/.config/Qwen Audio Agent`），与 CLI 的 `~/.config/qwaudio` 完全隔离。
-两者的 Gateway、锁、日志与设置互不干扰，可以同时运行。桌面版首次启动时会从
-CLI 目录复制 `config.env` 等用户配置（CLI 保留原件）。
+The desktop app uses the standard system application data directory (`~/Library/Application Support/Qwen Audio Agent` on macOS, `%APPDATA%/Qwen Audio Agent` on Windows, and `~/.config/Qwen Audio Agent` on Linux), which is completely isolated from the CLI's `~/.config/qwaudio`. The Gateway, locks, logs, and settings of the two do not interfere with each other and can run simultaneously. On first launch, the desktop app copies `config.env` and other user configurations from the CLI directory (the CLI retains the originals).
 
-## 自动更新与日志
+## Auto Update and Logs
 
-设置页显示当前版本并可手动检查更新，发现新版本后台差量下载，完成后一键重启安装。
+The settings page displays the current version and allows manual update checks. When a new version is found, the background downloads a delta update, and once complete, a one-click restart installs it.
 
-桌面版可在“设置 → 应用 → 日志”中打开日志目录，与 Gateway 一起记录结构化
-JSONL 日志，凭据自动脱敏并自动轮转。日志配置详见
-[配置说明](../configuration.md#本地日志)。
+The desktop app can open the log directory from "Settings → Application → Logs". Along with the Gateway, it records structured JSONL logs with automatic credential redaction and log rotation. For log configuration details, see
+[Configuration Guide](../configuration.md#本地日志).

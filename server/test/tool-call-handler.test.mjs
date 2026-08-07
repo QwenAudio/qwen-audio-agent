@@ -18,6 +18,7 @@ function harness({
   onPermissionDeliveryFailed,
   clientContext = {},
   requestClientState,
+  getTurnId = () => 'turn-one',
 } = {}) {
   const outputs = []
   const transcripts = new TurnTranscripts({ waitMs: 5 })
@@ -29,7 +30,7 @@ function harness({
     getFrontend: () => ({
       sendFunctionOutput: async (...args) => outputs.push(args),
     }),
-    getTurnId: () => 'turn-one',
+    getTurnId,
     getTurnGeneration: () => 1,
     coordinator: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
@@ -272,6 +273,53 @@ test('hands out the acceptance receipt without waiting for the turn transcript',
   await kit.manager.wait(kit.outputs[0][1].work_id)
   assert.equal(received.originalRequest, '整理会议纪要')
   assert.equal(received.objective, '整理会议纪要')
+})
+
+test('keeps the verbatim request even when later turns evict the transcript', async () => {
+  const requests = []
+  let releaseFirst
+  let currentTurn = 'turn-one'
+  const kit = harness({
+    getTurnId: () => currentTurn,
+    coordinator: {
+      run: async input => {
+        requests.push(input.originalRequest)
+        if (input.objective === '堆积任务') {
+          return new Promise(resolve => {
+            releaseFirst = () => resolve({ content: '完成', metadata: {} })
+          })
+        }
+        return { content: '完成', metadata: {} }
+      },
+    },
+  })
+  // The first work blocks the owner FIFO lane so the second one queues.
+  kit.transcripts.record('turn-one', '堆积任务')
+  await kit.handler.handle({
+    call_id: 'call-blocking',
+    name: 'spawn_thinking',
+    arguments: '{"objective":"堆积任务"}',
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  kit.transcripts.record('turn-two', '把上周的周报发给老板')
+  currentTurn = 'turn-two'
+  await kit.handler.handle({
+    call_id: 'call-queued',
+    name: 'spawn_thinking',
+    arguments: '{"objective":"发送上周周报"}',
+  }, { turnId: 'turn-two', turnGeneration: 1 })
+  const queuedId = kit.outputs.at(-1)[1].work_id
+
+  // While the lane is blocked, twenty-plus newer turns evict turn-two from
+  // the transcript ring buffer. The pinned promise must retain the verbatim
+  // request regardless.
+  for (let index = 0; index < 25; index += 1) {
+    kit.transcripts.record(`turn-filler-${index}`, `闲聊第 ${index} 句`)
+  }
+  releaseFirst()
+  await kit.manager.wait(queuedId)
+
+  assert.deepEqual(requests, ['堆积任务', '把上周的周报发给老板'])
 })
 
 test('explains that background work is unavailable without a configured backend', async () => {

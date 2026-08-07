@@ -145,7 +145,7 @@ export class ToolCallHandler {
       })
   }
 
-  createWork({ turnId, objective, submissionKey }) {
+  createWork({ turnId, objective, verbatimRequest, submissionKey }) {
     let workId = ''
     const task = this.taskManager.create({
       objective,
@@ -156,14 +156,9 @@ export class ToolCallHandler {
       laneKey: `coordinator:${this.ownerId}`,
       laneLimit: 1,
       runner: async (_ignored, { onEvent, signal }) => {
-        // The owner FIFO wait has already covered ASR latency, so the
-        // verbatim user request is resolved here at dispatch instead of
-        // blocking the acceptance receipt. A closed session resolves to ''
-        // and falls back to the model-provided objective.
-        const resolved = await this.transcripts.resolveDelegation(
-          turnId,
-          objective,
-        )
+        // The verbatim request was pinned at acceptance and is almost
+        // certainly settled by now; awaiting it never blocks the receipt.
+        const resolved = (await verbatimRequest) || {}
         return this.coordinator.run({
           originalRequest: resolved.originalRequest || objective,
           objective,
@@ -475,9 +470,19 @@ export class ToolCallHandler {
         this.sessionId,
         turnId || callId,
       ].join(':')
+      // Pin the verbatim user request without blocking the receipt: the
+      // transcript waiter registers now, so the ASR result is captured even
+      // if the per-connection ring buffer evicts that turn before the FIFO
+      // lane dispatches this work. resolveDelegation never rejects and a
+      // closed session resolves to the model-provided objective.
+      const verbatimRequest = this.transcripts.resolveDelegation(
+        turnId,
+        objective,
+      )
       task = this.createWork({
         turnId,
         objective,
+        verbatimRequest,
         submissionKey,
       })
     } catch {

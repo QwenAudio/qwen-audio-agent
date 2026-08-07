@@ -291,6 +291,56 @@ h2 {
   font-weight: 540;
 }
 
+.setting-inline {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.setting-inline > select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* macOS 可编辑列表的 +/- 迷你按钮组（网络位置、登录项同款范式）。 */
+.manage-buttons {
+  display: flex;
+  flex: none;
+  border: 1px solid #c8c8cd;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 1px 1px #0000000a;
+}
+
+.manage-buttons button {
+  width: 26px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #3a3a3c;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.manage-buttons button + button {
+  border-left: 1px solid #d9d9de;
+}
+
+.manage-buttons button:hover:not(:disabled) {
+  background: #f0f0f3;
+}
+
+.manage-buttons button:active:not(:disabled) {
+  background: #e4e4e9;
+}
+
+.manage-buttons button:disabled {
+  color: #c0c2c8;
+}
+
 .provider-panel {
   display: contents;
 }

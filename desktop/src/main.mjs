@@ -17,7 +17,7 @@ import {
   readFileSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, resolve, win32 } from 'node:path'
+import { dirname, join, resolve, win32 } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseEnv } from 'node:util'
 import {
@@ -61,6 +61,16 @@ import {
   realtimeSettingsConfigured,
   updateSettingsContent,
 } from './settings-config.mjs'
+import {
+  importSkin,
+  listSkins,
+  removeSkin,
+  skinsDirectory,
+} from './skin-store.mjs'
+import {
+  BUILTIN_ORB_SKINS,
+  isBuiltinOrbSkin,
+} from '../../shared/orb-skin-catalog.mjs'
 import {
   startDesktopRendererServer,
 } from './renderer-server.mjs'
@@ -117,6 +127,14 @@ const logger = createLogger({
   component: 'desktop',
   fileName: 'desktop.log',
 })
+const skinsRoot = skinsDirectory(runtimeEnvironment.configDirectory)
+
+// 生效皮肤：内置 id 直接用；导入皮肤需皮肤包仍在，缺失回退 fluid。
+function effectiveOrbSkin(orbSkin) {
+  if (isBuiltinOrbSkin(orbSkin)) return orbSkin
+  if (existsSync(join(skinsRoot, orbSkin, 'pet.json'))) return orbSkin
+  return 'fluid'
+}
 logger.info('desktop.starting', {
   version: app.getVersion(),
   packaged: app.isPackaged,
@@ -310,6 +328,7 @@ async function ensureDesktopUi() {
     rendererServer = await startDesktopRendererServer({
       webRoot,
       target: () => appOrigin,
+      skinsRoot,
     })
   }
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -324,6 +343,7 @@ async function startConfiguredRuntime(settings = configuredOrigin().settings) {
     : configuredGatewayOrigin
   process.env.QWEN_AUDIO_AGENT_URL = appOrigin
   process.env.QWEN_AUDIO_ORB_STYLE = settings.orbStyle
+  process.env.QWEN_AUDIO_ORB_SKIN = settings.orbSkin
   await ensureDesktopUi()
   lastRuntimeError = ''
   return appOrigin
@@ -410,7 +430,7 @@ async function loadQwenAudioAgent(window) {
       process.env,
     )
     await window.loadURL(desktopOrbUrl(rendererServer.baseUrl, {
-      orbStyle: settings.orbStyle,
+      orbSkin: effectiveOrbSkin(settings.orbSkin),
       autoHideSeconds: settings.autoHideSeconds,
       wakeWordEnabled: settings.wakeWordEnabled,
     }))
@@ -691,6 +711,7 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
   )
   return {
     settings,
+    skins: [...BUILTIN_ORB_SKINS, ...listSkins(skinsRoot)],
     runtime: setupRequired
       ? {
           gatewayConnected: false,
@@ -1011,7 +1032,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
       !== normalized.speechToSpeechAuthToken
   )
   const backendModelChanged = previous.backendModel !== normalized.backendModel
-  const orbStyleChanged = previous.orbStyle !== normalized.orbStyle
+  const orbSkinChanged = previous.orbSkin !== normalized.orbSkin
   const autoHideChanged = (
     previous.autoHideSeconds !== normalized.autoHideSeconds
   )
@@ -1078,7 +1099,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
       realtimeModel: realtimeModelChanged,
       speechToSpeech: speechToSpeechChanged,
       backendModel: backendModelChanged,
-      orbStyle: orbStyleChanged,
+      orbSkin: orbSkinChanged,
       autoHide: autoHideChanged,
       wakeShortcut: wakeShortcutChanged,
       wakeWord: wakeWordChanged,
@@ -1109,10 +1130,11 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   lastRuntimeError = ''
   process.env.QWEN_AUDIO_AGENT_URL = appOrigin
   process.env.QWEN_AUDIO_ORB_STYLE = normalized.orbStyle
+  process.env.QWEN_AUDIO_ORB_SKIN = normalized.orbSkin
   await ensureDesktopUi()
   const runtime = await runtimeStatus(appOrigin)
   if (
-    (restarted || gatewayChanged || orbStyleChanged || autoHideChanged)
+    (restarted || gatewayChanged || orbSkinChanged || autoHideChanged)
     && mainWindow
     && !mainWindow.isDestroyed()
   ) {
@@ -1125,6 +1147,36 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     runtime,
     wakeShortcutRegistered: desktopPresence.shortcutRegistered,
   }
+})
+
+ipcMain.handle('qwen-audio-agent:skin-import', async event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权导入皮肤')
+  }
+  const selection = await dialog.showOpenDialog(settingsWindow, {
+    title: '导入皮肤',
+    // macOS 支持同时选文件与文件夹；其余平台选 zip 或皮肤包里的 pet.json。
+    properties: process.platform === 'darwin'
+      ? ['openFile', 'openDirectory']
+      : ['openFile'],
+    filters: [{ name: '皮肤包', extensions: ['zip', 'json'] }],
+  })
+  if (selection.canceled || !selection.filePaths.length) return null
+  const imported = await importSkin({
+    source: selection.filePaths[0],
+    skinsRoot,
+  })
+  logger.info('skin.imported', { id: imported.id })
+  return imported
+})
+
+ipcMain.handle('qwen-audio-agent:skin-remove', async (event, id) => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权删除皮肤')
+  }
+  const removed = removeSkin({ id, skinsRoot })
+  if (removed) logger.info('skin.removed', { id: String(id) })
+  return { removed }
 })
 
 ipcMain.on('qwen-audio-agent:quit', event => {

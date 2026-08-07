@@ -1,24 +1,24 @@
-# Installation
+# 安装
 
-Requires Node.js 22.22.2+ or 24.15.0+ and npm 10+. When using the default DashScope
-real-time voice frontend, a DashScope API Key is also required.
-The repository provides `.nvmrc` and `.node-version`; when using nvm, you can simply run `nvm use`.
+需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+。使用默认的 DashScope
+实时语音前台时，还需要 DashScope API Key。
+仓库提供 `.nvmrc` 和 `.node-version`；使用 nvm 时可直接运行 `nvm use`。
 
-## One-line Install
+## 一键安装
 
-Install from npm (recommended):
+推荐从 npm 安装：
 
 ```bash
 npm install -g qwen-audio-agent
 ```
 
-You can also install the latest code directly from GitHub:
+也可以直接从 GitHub 安装最新代码：
 
 ```bash
 npm install -g git+https://github.com/QwenAudio/qwen-audio-agent.git
 ```
 
-## Install from Source
+## 从源码安装
 
 ```bash
 git clone https://github.com/QwenAudio/qwen-audio-agent.git
@@ -27,51 +27,51 @@ npm install
 npm run install:global
 ```
 
-## Upgrade
+## 升级
 
-Upgrade to the latest npm version:
+升级到最新 npm 版本：
 
 ```bash
 npm install -g qwen-audio-agent@latest
 ```
 
-Upgrade to the latest GitHub code:
+升级到 GitHub 最新代码：
 
 ```bash
 npm install -g git+https://github.com/QwenAudio/qwen-audio-agent.git
 ```
 
-After upgrading, if the Gateway is running as a background service, run `qwenaudio gateway restart` for the new version to take effect.
+升级后如果以后台服务方式运行 Gateway，需执行 `qwenaudio gateway restart` 让新版本生效。
 
-## Verify Installation
+## 验证安装
 
-View the exact location of the configuration file and confirm the installation is ready:
+查看配置文件的准确位置并确认安装就绪：
 
 ```bash
 qwenaudio config
 ```
 
-After configuring the backend agent, you can run a read-only check to confirm whether the backend executable, ACP integration, and adapter are ready:
+配置后台 Agent 后，可运行只读检查确认后台可执行文件、ACP 接入和适配器是否就绪：
 
 ```bash
 qwenaudio setup
 ```
 
-## Configuration File Location
+## 配置文件位置
 
-The CLI uses `~/.config/qwaudio/config.env`; the desktop version uses the system's standard application data directory
-(`~/Library/Application Support/Qwen Audio Agent` on macOS). The two have separate Gateways,
-locks, logs, and settings, and can run simultaneously. Set `QWAUDIO_CONFIG_DIR` or
-`XDG_CONFIG_HOME` to change the configuration directory. See [Configuration](../configuration.md) for details.
+CLI 使用 `~/.config/qwaudio/config.env`；桌面版使用系统标准应用数据目录
+（macOS 为 `~/Library/Application Support/Qwen Audio Agent`），两者的 Gateway、
+锁、日志与设置互不干扰，可以同时运行。设置 `QWAUDIO_CONFIG_DIR` 或
+`XDG_CONFIG_HOME` 可以更改配置目录。详见[配置说明](../configuration.zh.md)。
 
-## Obtain a DashScope API Key
+## 获取 DashScope API Key
 
-Alibaba Cloud Model Studio (Bailian) provides a
-[free trial quota](https://help.aliyun.com/zh/model-studio/new-free-quota) for Qwen Audio 3.0 Realtime. After creating an API Key,
-you can start using qwen-audio-agent for free.
+阿里云百炼为 Qwen Audio 3.0 Realtime 提供
+[新人免费额度](https://help.aliyun.com/zh/model-studio/new-free-quota)，创建 API Key 后
+即可免费开始使用 qwen-audio-agent。
 
-1. Open the [API Key page](https://bailian.console.aliyun.com/?tab=model#/api-key) in the Bailian console,
-   log in to your account, and click **Create API Key**.
-2. Copy the generated Key and fill it into `config.env` later. Do not publicly share or commit your API Key.
+1. 打开百炼控制台的 [API Key 页面](https://bailian.console.aliyun.com/?tab=model#/api-key)，
+   登录账号，单击**创建 API Key**。
+2. 复制生成的 Key，稍后填入 `config.env`。请勿公开或提交 API Key。
 
-For detailed instructions, see the [official Bailian documentation](https://help.aliyun.com/zh/model-studio/get-api-key).
+详细说明见[百炼官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。

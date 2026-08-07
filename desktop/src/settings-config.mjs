@@ -4,6 +4,10 @@ import {
   normalizeBackendProtocol,
 } from '../../shared/backend-catalog.mjs'
 import {
+  normalizeOrbSkinId,
+  resolveOrbSkinId,
+} from '../../shared/orb-skin-catalog.mjs'
+import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   DEFAULT_REALTIME_PROVIDER,
   DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL,
@@ -13,6 +17,7 @@ import {
 const DEFAULTS = {
   gatewayUrl: 'http://127.0.0.1:3101',
   orbStyle: 'fluid',
+  orbSkin: 'fluid',
   autoHideSeconds: 60,
   wakeShortcut: 'CommandOrControl+Shift+Space',
   wakeWordEnabled: false,
@@ -29,6 +34,7 @@ const DEFAULTS = {
 const SETTING_KEYS = {
   gatewayUrl: 'QWEN_AUDIO_AGENT_URL',
   orbStyle: 'QWEN_AUDIO_ORB_STYLE',
+  orbSkin: 'QWEN_AUDIO_ORB_SKIN',
   autoHideSeconds: 'QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS',
   wakeShortcut: 'QWEN_AUDIO_DESKTOP_WAKE_SHORTCUT',
   wakeWordEnabled: 'QWEN_AUDIO_WAKE_WORD_ENABLED',
@@ -143,6 +149,11 @@ export function parseSettings(content = '', fallback = {}) {
     'QWEN_AUDIO_ORB_STYLE',
     fallback.QWEN_AUDIO_ORB_STYLE || '',
   )
+  const configuredOrbSkin = configured(
+    values,
+    'QWEN_AUDIO_ORB_SKIN',
+    fallback.QWEN_AUDIO_ORB_SKIN || '',
+  )
   const configuredS2sUrl = configured(
     values,
     'SPEECH_TO_SPEECH_REALTIME_URL',
@@ -174,6 +185,11 @@ export function parseSettings(content = '', fallback = {}) {
     orbStyle: ['fluid', 'goo'].includes(
       String(configuredOrbStyle).toLowerCase(),
     ) ? String(configuredOrbStyle).toLowerCase() : DEFAULTS.orbStyle,
+    // 旧配置只有 QWEN_AUDIO_ORB_STYLE 时自动收敛为 orbSkin。
+    orbSkin: resolveOrbSkinId({
+      orbSkin: configuredOrbSkin,
+      orbStyle: configuredOrbStyle,
+    }),
     autoHideSeconds: cleanAutoHideSeconds(configured(
       values,
       'QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS',
@@ -248,6 +264,7 @@ export function normalizeSettings(settings = {}) {
     )
       ? String(settings.orbStyle || DEFAULTS.orbStyle).toLowerCase()
       : DEFAULTS.orbStyle,
+    orbSkin: normalizeOrbSkinId(settings.orbSkin) || DEFAULTS.orbSkin,
     autoHideSeconds: cleanAutoHideSeconds(
       settings.autoHideSeconds ?? DEFAULTS.autoHideSeconds,
     ),

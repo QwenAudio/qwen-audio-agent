@@ -20,6 +20,7 @@ test('reads desktop-owned settings with friendly defaults', () => {
   assert.deepEqual(parseSettings(''), {
     gatewayUrl: 'http://127.0.0.1:3101',
     orbStyle: 'fluid',
+    orbSkin: 'fluid',
     autoHideSeconds: 60,
     dashscopeApiKey: '',
     ...REALTIME_DEFAULTS,
@@ -37,6 +38,7 @@ test('shows effective client settings when user config is empty', () => {
   }), {
     gatewayUrl: 'http://127.0.0.1:3200',
     orbStyle: 'goo',
+    orbSkin: 'goo',
     autoHideSeconds: 60,
     dashscopeApiKey: 'sk-from-env',
     ...REALTIME_DEFAULTS,
@@ -71,6 +73,7 @@ test('updates client settings without changing Gateway-owned configuration', () 
   assert.deepEqual(parseSettings(content), {
     gatewayUrl: 'http://127.0.0.1:3200',
     orbStyle: 'goo',
+    orbSkin: 'goo',
     autoHideSeconds: 120,
     dashscopeApiKey: 'secret',
     ...REALTIME_DEFAULTS,
@@ -125,6 +128,7 @@ test('an explicitly empty key and backend override stale process values', () => 
   }), {
     gatewayUrl: 'http://127.0.0.1:3101',
     orbStyle: 'fluid',
+    orbSkin: 'fluid',
     autoHideSeconds: 60,
     dashscopeApiKey: '',
     ...REALTIME_DEFAULTS,
@@ -160,6 +164,35 @@ test('reads, updates, and disables desktop auto hide', () => {
   assert.equal(parseSettings(
     'QWEN_AUDIO_DESKTOP_AUTO_SLEEP_SECONDS=300\n',
   ).autoHideSeconds, 300)
+})
+
+test('reads, updates, and falls back the orb skin selection', () => {
+  // 新配置：QWEN_AUDIO_ORB_SKIN 直接生效，写回不碰旧 orbStyle 行。
+  const content = updateSettingsContent(
+    'QWEN_AUDIO_ORB_STYLE=goo\n',
+    { orbSkin: 'firefly--lingxiaotian' },
+  )
+  assert.match(content, /QWEN_AUDIO_ORB_SKIN=firefly--lingxiaotian/)
+  assert.match(content, /QWEN_AUDIO_ORB_STYLE=goo/)
+  assert.equal(parseSettings(content).orbSkin, 'firefly--lingxiaotian')
+
+  // 旧配置只有 orbStyle 时收敛为 orbSkin。
+  assert.equal(parseSettings('QWEN_AUDIO_ORB_STYLE=goo\n').orbSkin, 'goo')
+
+  // 非法 id 回退 fluid；空值回退 orbStyle。
+  assert.equal(
+    parseSettings('QWEN_AUDIO_ORB_SKIN=../escape\n').orbSkin,
+    'fluid',
+  )
+  assert.equal(parseSettings([
+    'QWEN_AUDIO_ORB_SKIN=',
+    'QWEN_AUDIO_ORB_STYLE=goo',
+    '',
+  ].join('\n')).orbSkin, 'goo')
+  assert.match(
+    updateSettingsContent('', { orbSkin: 'bad id!' }),
+    /QWEN_AUDIO_ORB_SKIN=fluid\n$/,
+  )
 })
 
 test('reads and updates a supported desktop wake shortcut', () => {

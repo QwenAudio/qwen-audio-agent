@@ -11,7 +11,9 @@ import { updaterButtonState, updaterStatusText } from './update-status.mjs'
 
 const form = document.querySelector('#settings-form')
 const gatewayUrl = document.querySelector('#gateway-url')
-const orbStyle = document.querySelector('#orb-style')
+const orbSkinSelect = document.querySelector('#orb-style')
+const importSkinButton = document.querySelector('#import-skin')
+const removeSkinButton = document.querySelector('#remove-skin')
 const autoHideSeconds = document.querySelector('#auto-hide-seconds')
 const wakeShortcut = document.querySelector('#wake-shortcut')
 const recordWakeShortcut = document.querySelector('#record-wake-shortcut')
@@ -50,6 +52,7 @@ const settingsTabs = [...document.querySelectorAll('[data-settings-tab]')]
 const settingsPanels = [...document.querySelectorAll('[data-settings-panel]')]
 
 let settings
+let skins = []
 let runtime
 let backendReport = null
 let appliedFingerprint = ''
@@ -543,7 +546,7 @@ const BAILIAN_API_KEY_URL = 'https://bailian.console.aliyun.com/?tab=model#/api-
 function formSettings() {
   return {
     gatewayUrl: gatewayUrl.value,
-    orbStyle: orbStyle.value,
+    orbSkin: orbSkinSelect.value,
     autoHideSeconds: Number(autoHideSeconds.value),
     wakeShortcut: wakeShortcut.value,
     wakeWordEnabled: wakeWordEnabled.checked,
@@ -561,7 +564,7 @@ function formSettings() {
 function fingerprint(value) {
   return JSON.stringify({
     gatewayUrl: value.gatewayUrl,
-    orbStyle: value.orbStyle,
+    orbSkin: value.orbSkin,
     autoHideSeconds: value.autoHideSeconds,
     wakeShortcut: value.wakeShortcut,
     wakeWordEnabled: value.wakeWordEnabled,
@@ -709,9 +712,46 @@ refreshBackends.addEventListener('click', () => {
   void detectBackendOptions(true)
 })
 
+function updateRemoveSkinState() {
+  // 只有选中已导入的 sprite 皮肤时才可删除；内置外观不可。
+  removeSkinButton.disabled = !skins.some(skin => (
+    skin.type === 'sprite' && skin.id === orbSkinSelect.value
+  ))
+}
+
+function renderSkinOptions(selected) {
+  orbSkinSelect.textContent = ''
+  const groups = [
+    { label: '内置', type: 'theme' },
+    { label: '已导入皮肤', type: 'sprite' },
+  ]
+  for (const group of groups) {
+    const items = skins.filter(skin => skin.type === group.type)
+    if (!items.length) continue
+    const optgroup = document.createElement('optgroup')
+    optgroup.label = group.label
+    for (const skin of items) {
+      const option = document.createElement('option')
+      option.value = skin.id
+      option.textContent = skin.displayName || skin.id
+      optgroup.append(option)
+    }
+    orbSkinSelect.append(optgroup)
+  }
+  // 皮肤包被手动删除后配置仍可能指向它：保留选项让用户看到现状。
+  if (selected && !skins.some(skin => skin.id === selected)) {
+    const missing = document.createElement('option')
+    missing.value = selected
+    missing.textContent = `${selected}（缺失）`
+    orbSkinSelect.append(missing)
+  }
+  orbSkinSelect.value = selected || 'fluid'
+  updateRemoveSkinState()
+}
+
 function render() {
   gatewayUrl.value = settings.gatewayUrl
-  orbStyle.value = settings.orbStyle
+  renderSkinOptions(settings.orbSkin)
   const hideValue = String(settings.autoHideSeconds ?? 120)
   autoHideSeconds.querySelector('[data-custom]')?.remove()
   if (![...autoHideSeconds.options].some(option => option.value === hideValue)) {
@@ -742,7 +782,7 @@ function render() {
 
 for (const control of [
   gatewayUrl,
-  orbStyle,
+  orbSkinSelect,
   autoHideSeconds,
   dashscopeApiKey,
   speechToSpeechRealtimeUrl,
@@ -768,6 +808,47 @@ for (const control of [
 
 getApiKey.addEventListener('click', () => {
   window.qwenAudioAgentDesktop.openExternal(BAILIAN_API_KEY_URL)
+})
+
+orbSkinSelect.addEventListener('change', updateRemoveSkinState)
+
+importSkinButton.addEventListener('click', async () => {
+  importSkinButton.disabled = true
+  try {
+    const imported = await window.qwenAudioAgentDesktop.importSkin()
+    if (!imported) return
+    skins = [
+      ...skins.filter(skin => skin.id !== imported.id),
+      { id: imported.id, type: 'sprite', displayName: imported.displayName },
+    ]
+    renderSkinOptions(imported.id)
+    showMessage(`已导入皮肤 ${imported.displayName}，点击应用后生效。`, 'notice')
+    updateApplyState()
+  } catch (error) {
+    showMessage(friendlyError(error, '导入皮肤失败'), 'error')
+  } finally {
+    importSkinButton.disabled = false
+    updateRemoveSkinState()
+  }
+})
+
+removeSkinButton.addEventListener('click', async () => {
+  const id = orbSkinSelect.value
+  const skin = skins.find(item => item.type === 'sprite' && item.id === id)
+  if (!skin) return
+  removeSkinButton.disabled = true
+  try {
+    await window.qwenAudioAgentDesktop.removeSkin(id)
+    skins = skins.filter(item => item.id !== id)
+    // 删掉的可能正是当前皮肤：回到内置外观，由用户点应用持久化。
+    renderSkinOptions('fluid')
+    showMessage(`已删除皮肤 ${skin.displayName}，点击应用后生效。`, 'notice')
+    updateApplyState()
+  } catch (error) {
+    showMessage(friendlyError(error, '删除皮肤失败'), 'error')
+  } finally {
+    updateRemoveSkinState()
+  }
 })
 
 // "确认"按钮：保存自定义 Node.js 路径后立即重检并重试安装
@@ -838,6 +919,7 @@ form.addEventListener('submit', async event => {
 
 window.qwenAudioAgentDesktop.loadSettings().then(value => {
   settings = value.settings
+  skins = value.skins || []
   runtime = value.runtime
   renderWakeShortcutStatus(value.wakeShortcutRegistered)
   render()

@@ -3,6 +3,28 @@ import test from 'node:test'
 import { AcpProcessClient } from '../src/agent/acp-process-client.mjs'
 import { openClawBackendDriver } from '../src/agent/backends/openclaw.mjs'
 
+test('keeps session object identity stable across re-registration', () => {
+  const client = new AcpProcessClient({
+    label: 'Test Agent',
+    command: 'unused',
+  })
+  const first = client.rememberSession('sess-1', { role: 'coordinator' })
+  // adapter 在同一引用上维护运行时路由字段（如权限事件回调）。
+  const onEvent = () => {}
+  first.onEvent = onEvent
+  first.coordinationRunId = 'work_current'
+
+  // resume 重新注册后必须仍是同一对象，否则权限请求会拿到
+  // 旧闭包快照，被路由到已完成的旧任务上。
+  const second = client.rememberSession('sess-1', { cwd: '/next' })
+  assert.equal(second, first)
+  assert.equal(client.sessions.get('sess-1'), first)
+  assert.equal(second.onEvent, onEvent)
+  assert.equal(second.coordinationRunId, 'work_current')
+  assert.equal(second.cwd, '/next')
+  assert.equal(second.role, 'coordinator')
+})
+
 test('shares an in-flight ACP initialization across concurrent callers', async () => {
   const client = new AcpProcessClient({
     label: 'Test Agent',

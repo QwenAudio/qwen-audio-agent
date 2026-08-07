@@ -299,11 +299,11 @@ export class AcpProcessClient {
   rememberSession(sessionId, details = {}) {
     const id = String(sessionId || '')
     if (!id) return null
-    const session = {
-      ...(this.sessions.get(id) || {}),
-      ...details,
-      sessionId: id,
-    }
+    // 原地合并，保持对象身份稳定：adapter 会在同一引用上维护运行时路由字段
+    // （onEvent/ownerId/coordinationRunId 等）。若每次 resume 都替换对象，
+    // 权限请求会拿到旧闭包快照，被路由到已完成的旧任务上。
+    const session = this.sessions.get(id) || {}
+    Object.assign(session, details, { sessionId: id })
     this.sessions.set(id, session)
     return session
   }

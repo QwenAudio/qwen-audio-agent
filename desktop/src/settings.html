@@ -248,10 +248,13 @@
 
               <div class="setting-row">
                 <label for="orb-style">外观</label>
-                <select id="orb-style">
-                  <option value="fluid">流光声波球</option>
-                  <option value="goo">液态渐变球</option>
-                </select>
+                <div class="setting-inline">
+                  <select id="orb-style"></select>
+                  <div class="manage-buttons" role="group" aria-label="管理皮肤">
+                    <button type="button" id="import-skin" title="导入皮肤…" aria-label="导入皮肤">＋</button>
+                    <button type="button" id="remove-skin" title="删除所选皮肤" aria-label="删除所选皮肤" disabled>－</button>
+                  </div>
+                </div>
               </div>
 
               <div class="setting-row">

@@ -216,9 +216,43 @@ async function serveStatic(response, request, webRoot, pathname) {
   createReadStream(filePath).pipe(response)
 }
 
+async function serveSkinStatic(response, request, skinsRoot, pathname) {
+  if (!['GET', 'HEAD'].includes(request.method || 'GET')) {
+    sendError(response, 405, 'method not allowed')
+    return
+  }
+  const filePath = skinsRoot ? safeStaticPath(skinsRoot, pathname) : null
+  if (!filePath) {
+    sendError(response, 404, 'not found')
+    return
+  }
+  try {
+    if (!(await stat(filePath)).isFile()) throw new Error('not a file')
+  } catch {
+    // 皮肤资源缺失直接 404，不回退 index.html。
+    sendError(response, 404, 'not found')
+    return
+  }
+  const extension = extname(filePath).toLowerCase()
+  response.writeHead(200, {
+    'cache-control': 'no-store',
+    'content-security-policy': CSP,
+    'content-type': CONTENT_TYPES.get(extension) || 'application/octet-stream',
+    'cross-origin-resource-policy': 'same-origin',
+    'x-content-type-options': 'nosniff',
+    'x-frame-options': 'DENY',
+  })
+  if (request.method === 'HEAD') {
+    response.end()
+    return
+  }
+  createReadStream(filePath).pipe(response)
+}
+
 export async function startDesktopRendererServer({
   webRoot,
   target,
+  skinsRoot = '',
   token = randomBytes(24).toString('hex'),
 } = {}) {
   if (!webRoot) throw new Error('desktop renderer web root is required')
@@ -243,6 +277,15 @@ export async function startDesktopRendererServer({
       }
       request.url = `/${pathname}${url.search}`
       proxyHttp(request, response, target)
+      return
+    }
+    if (pathname.startsWith('skins/')) {
+      void serveSkinStatic(
+        response,
+        request,
+        skinsRoot,
+        pathname.slice('skins/'.length),
+      )
       return
     }
     void serveStatic(response, request, webRoot, pathname)

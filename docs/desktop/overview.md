@@ -16,6 +16,32 @@ The desktop app supports two appearance styles: the Aurora Soundwave Orb and the
 | --- | --- |
 | ![Aurora Soundwave Orb thinking animation](../desktop-fluid-orb-thinking.gif) | ![Liquid Gradient Orb thinking animation](../desktop-goo-orb-thinking.gif) |
 
+## Skins
+
+Beyond the built-in appearances, the orb supports sprite skins in the
+[Codex pet](https://github.com/legeling/awesome-codex-pet) package format:
+a directory containing `pet.json` and `spritesheet.webp` (8-column grid,
+v1 is 1536x1872 with 9 rows, v2 is 1536x2288 with 11 rows). Assets from the
+Codex pet ecosystem work without any conversion, and no Codex installation
+is required.
+
+To import a skin you already downloaded, open "Settings → Application →
+Appearance", click "Import Skin…", and select the skin folder, its
+`pet.json`, or a zip archive. Imported skins are stored under `skins/` in
+the desktop data directory and appear in the appearance dropdown alongside
+the built-in styles. Selecting an imported skin enables the "Delete"
+button next to it; built-in appearances cannot be deleted.
+
+The orb maps voice and task states to pet animations: waiting while
+listening, reviewing while thinking, waving while speaking or greeting you
+on wake, running left continuously while background tasks are executing,
+jumping continuously while a task waits for your confirmation, running
+while another frontend holds the voice channel, and the failed pose on
+errors. Conversation states always take priority over background states.
+Skin packages are static assets only (JSON + WebP) and are validated on
+import; if a selected skin package is removed, the orb falls back to the
+built-in appearance.
+
 ## Installation
 
 Download the installer for your platform from the releases page:

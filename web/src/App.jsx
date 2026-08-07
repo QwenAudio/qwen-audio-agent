@@ -15,7 +15,12 @@ import {
 } from './message-order.js'
 import MessageContent from './MessageContent.jsx'
 import DesktopFluidOrb from './DesktopFluidOrb.jsx'
-import { desktopOrbClassName } from './orb-presentation.js'
+import DesktopSpriteOrb from './DesktopSpriteOrb.jsx'
+import { desktopOrbClassName, resolveOrbVisualState } from './orb-presentation.js'
+import {
+  isBuiltinOrbSkin,
+  resolveOrbSkinId,
+} from '../../shared/orb-skin-catalog.mjs'
 import { resultLabel } from './presentation.js'
 import {
   removeDeliveredTask,
@@ -37,6 +42,8 @@ import {
   desktopHideDeadline,
   desktopWakeWordEnabled,
   desktopWorkSettled,
+  desktopTasksActive,
+  desktopTasksAttention,
 } from './desktop-hide.js'
 
 const desktopOrbMode = (
@@ -45,11 +52,10 @@ const desktopOrbMode = (
 const takeoverRequested = (
   new URLSearchParams(window.location.search).get('takeover') === '1'
 )
-const orbStyle = (
-  new URLSearchParams(window.location.search).get('orbStyle') === 'goo'
-    ? 'goo'
-    : 'fluid'
-)
+const orbSkinId = resolveOrbSkinId({
+  orbSkin: new URLSearchParams(window.location.search).get('orbSkin'),
+  orbStyle: new URLSearchParams(window.location.search).get('orbStyle'),
+})
 const autoHideSeconds = desktopAutoHideSeconds(window.location.search)
 const wakeWordEnabled = desktopWakeWordEnabled(window.location.search)
 
@@ -72,6 +78,8 @@ function labelFor(state) {
     listening: '正在听',
     thinking: '思考中',
     speaking: '正在说',
+    working: '正在处理任务',
+    attention: '等待你的确认',
     connecting: '正在连接语音前台',
     occupied: '其他入口正在使用',
     hidden: '已隐藏',
@@ -130,6 +138,7 @@ export default function App() {
   const [backend, setBackend] = useState({ label: 'Agent', ready: false })
   const [agentTasks, setAgentTasks] = useState([])
   const [orbDragging, setOrbDragging] = useState(false)
+  const [spriteOrbFailed, setSpriteOrbFailed] = useState(false)
   const [desktopLifecycle, setDesktopLifecycle] = useState('active')
   const [lastInteractionAt, setLastInteractionAt] = useState(Date.now)
   const [workSettledAt, setWorkSettledAt] = useState(Date.now)
@@ -144,6 +153,7 @@ export default function App() {
   const suppressOrbClick = useRef(false)
   const previousWorkSettled = useRef(true)
   const workSettledAtRef = useRef(workSettledAt)
+  const lastWakeAtRef = useRef(0)
 
   const noteInteraction = useCallback(() => {
     setLastInteractionAt(Date.now())
@@ -351,6 +361,7 @@ export default function App() {
       desktop: desktopOrbMode,
       bridge: window.qwenAudioAgentDesktop,
       onLifecycle: setDesktopLifecycle,
+      lastWakeAt: lastWakeAtRef.current,
     }).catch(() => {})
     if (
       event.type === 'voice.sleep'
@@ -680,17 +691,21 @@ export default function App() {
   const voiceConnectionError = (
     !lifecycleTransition && voice.connectionState === 'unavailable'
   )
-  const visualVoiceState = desktopLifecycle === 'hidden'
-    ? 'hidden'
-    : desktopLifecycle === 'waking'
-      ? 'waking'
-      : voice.ownership.state === 'busy'
-    ? 'occupied'
-    : voiceConnectionError
-      ? 'error'
-      : voiceEnabled && voice.connectionState === 'connecting'
-      ? 'connecting'
-      : voice.visualState || voice.state
+  // 统一视觉状态仲裁：生命周期 → 异常 → 对话态 → 后台态。
+  // 后台任务态（attention/working）仅在桌面悬浮球展示，
+  // WebUI 由任务卡片承载同类信息。
+  const orbVisualState = resolveOrbVisualState({
+    lifecycle: desktopLifecycle,
+    connectionError: voiceConnectionError,
+    connecting: voiceEnabled && voice.connectionState === 'connecting',
+    ownershipBusy: voice.ownership.state === 'busy',
+    voiceState: voice.visualState || voice.state,
+    tasksActive: desktopOrbMode && desktopTasksActive(agentTasks),
+    attentionPending: desktopOrbMode && desktopTasksAttention(agentTasks),
+  })
+  const attentionTask = agentTasks.find(
+    task => task.authorization?.status === 'pending',
+  )
   const ownershipLabel = voice.ownership.holder
     ? frontendLabel(voice.ownership.holder)
     : ''
@@ -718,6 +733,7 @@ export default function App() {
     const applyLifecycle = lifecycle => {
       if (!lifecycle?.state) return
       setDesktopLifecycle(lifecycle.state)
+      if (lifecycle.state === 'waking') lastWakeAtRef.current = Date.now()
       if (lifecycle.reason === 'activity') noteInteraction()
       if (lifecycle.state === 'hidden') setActivity('已隐藏')
       if (lifecycle.state === 'waking') setActivity('正在显示悬浮球')
@@ -895,20 +911,22 @@ export default function App() {
       <section
         ref={voice.levelElementRef}
         className={desktopOrbClassName({
-          state: visualVoiceState,
+          state: orbVisualState,
           enabled: voiceEnabled,
           error: voice.visualError || voiceConnectionError,
           dragging: orbDragging,
           lifecycle: desktopLifecycle,
         })}
-        aria-label={`qwen-audio · ${voice.visualError || voiceConnectionError ? '连接异常' : labelFor(visualVoiceState)}`}
+        aria-label={`qwen-audio · ${voice.visualError || voiceConnectionError ? '连接异常' : labelFor(orbVisualState)}`}
         title={
           desktopLifecycle === 'waking'
             ? '正在显示悬浮球'
             : voice.error
-          || (visualVoiceState === 'occupied' && ownershipLabel
-            ? `${ownershipLabel}正在使用语音`
-            : labelFor(visualVoiceState))
+          || (orbVisualState === 'attention' && attentionTask
+            ? taskDetail(attentionTask)
+            : orbVisualState === 'occupied' && ownershipLabel
+              ? `${ownershipLabel}正在使用语音`
+              : labelFor(orbVisualState))
         }
         onClick={handleOrbClick}
         onPointerDown={beginOrbDrag}
@@ -916,7 +934,20 @@ export default function App() {
         onPointerUp={endOrbDrag}
         onPointerCancel={endOrbDrag}
       >
-        <DesktopFluidOrb style={orbStyle} />
+        {isBuiltinOrbSkin(orbSkinId) || spriteOrbFailed
+          ? (
+              <DesktopFluidOrb
+                style={isBuiltinOrbSkin(orbSkinId) ? orbSkinId : 'fluid'}
+              />
+            )
+          : (
+              <DesktopSpriteOrb
+                skin={orbSkinId}
+                state={orbVisualState}
+                dragging={orbDragging}
+                onError={() => setSpriteOrbFailed(true)}
+              />
+            )}
         <nav
           className="desktop-orb-controls"
           aria-label="语音控制"
@@ -1052,7 +1083,7 @@ export default function App() {
           前台：{item.label}
         </option>)}
       </select>}
-      <div className="status"><i className={visualVoiceState} />{labelFor(visualVoiceState)}</div>
+      <div className="status"><i className={orbVisualState} />{labelFor(orbVisualState)}</div>
       <button className="ghost" onClick={resetSession}>新会话</button>
       <button
         className={[
@@ -1078,7 +1109,7 @@ export default function App() {
       <div className="hero">
         <button
           ref={voice.levelElementRef}
-          className={`orb ${visualVoiceState}`}
+          className={`orb ${orbVisualState}`}
           onClick={handleOrbClick}
           aria-label="语音交互"
         >

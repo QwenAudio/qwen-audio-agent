@@ -1,64 +1,64 @@
-# Quick Start
+# 快速开始
 
-If you haven't installed yet, see [Installation](install.md) first.
+如果还没安装，先看[安装](install.zh.md)。
 
-## 1. Create Configuration
+## 1. 创建配置
 
 ```bash
 qwenaudio config
 ```
 
-The command will display the configuration file path and create a `config.env` template with comments.
+命令会显示配置文件路径，并创建带注释的 `config.env` 模板。
 
-## 2. Fill in Configuration
+## 2. 填写配置
 
-The minimal configuration only requires a DashScope API Key:
+最小配置只需要 DashScope API Key：
 
 ```dotenv
 DASHSCOPE_API_KEY=your-key
 ```
 
-When you need to execute backend tasks, select a backend agent and specify the backend model:
+需要执行后台任务时，再选择后台 Agent 并指定后台模型：
 
 ```dotenv
 DASHSCOPE_API_KEY=your-key
-# Voice frontend model: flash for lower latency and cost savings, plus (default) for better quality
+# 语音前台模型：flash 低延迟更省，plus（默认）质量更好
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
-# Backend agent: leave empty or set to none to start in frontend-only mode
+# 后台 Agent：留空或不设为 none 时启动仅前台模式
 AGENT_PROTOCOL=openclaw
-# Backend model: leave empty to use the agent's own user configuration; if not reused, the agent selects one
+# 后台模型：留空则沿用 Agent 自身的用户配置，不复用则由 Agent 自选
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
-> The default uses the DashScope real-time voice frontend; you can also switch to a local [speech-to-speech frontend](../voice-frontends/speech-to-speech.md), which does not require a cloud API Key.
+> 默认使用 DashScope 实时语音前台；也可切换为本地 [speech-to-speech 前台](../voice-frontends/speech-to-speech.zh.md)，无需云端 API Key。
 
-## 3. Start
+## 3. 启动
 
-Start the Gateway in one terminal:
+在一个终端中启动 Gateway：
 
 ```bash
 qwenaudio
 ```
 
-Open another terminal and start the TUI:
+另开一个终端，启动 TUI：
 
 ```bash
 qwenaudio tui
 ```
 
-You can also use the browser interface (default `http://127.0.0.1:3101`):
+也可以使用浏览器界面（默认 `http://127.0.0.1:3101`）：
 
 ```bash
 qwenaudio webui
 ```
 
-## Frontend-Only Mode
+## 仅前台模式
 
-When `AGENT_PROTOCOL` is not set (or set to `none`), the Gateway only provides real-time voice chat.
-Requests that require backend execution will return a clear explanation and will not create tasks or guess execution results. You can also
-explicitly start in frontend-only mode with `qwenaudio --backend none`.
+不设置 `AGENT_PROTOCOL`（或设为 `none`）时，Gateway 只提供实时语音聊天。
+需要后台执行的请求会返回明确说明，不会创建任务或猜测执行结果。也可以用
+`qwenaudio --backend none` 显式启动仅前台模式。
 
-For selecting, one-click installing, permission modes, and persistent service of backend agents, see
-[Backend Agents](../backends/overview.md). For a complete list of environment variables, see
-[Configuration](../configuration.md). For TUI platform differences, see
-[TUI Notes](tui.md).
+后台 Agent 的选择、一键安装、权限模式和常驻服务见
+[后台 Agent](../backends/overview.zh.md)，完整环境变量见
+[配置说明](../configuration.zh.md)，TUI 平台差异见
+[TUI 注意](tui.zh.md)。

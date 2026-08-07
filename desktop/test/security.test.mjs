@@ -43,10 +43,28 @@ test('distinguishes loopback gateway targets from remote ones', () => {
 test('builds a dedicated desktop orb URL without losing existing parameters', () => {
   assert.equal(
     desktopOrbUrl('http://127.0.0.1:3101/?channel=desktop', {
-      orbStyle: 'goo',
+      orbSkin: 'goo',
       autoHideSeconds: 120,
       wakeWordEnabled: true,
     }),
-    'http://127.0.0.1:3101/?channel=desktop&desktop=orb&orbStyle=goo&autoHideSeconds=120&wakeWordEnabled=true',
+    'http://127.0.0.1:3101/?channel=desktop&desktop=orb&orbSkin=goo&orbStyle=goo&autoHideSeconds=120&wakeWordEnabled=true',
+  )
+})
+
+test('passes sprite skins through and drops invalid skin ids', () => {
+  // 导入皮肤只写 orbSkin，不带内置兼容参数 orbStyle。
+  assert.equal(
+    desktopOrbUrl('http://127.0.0.1:3101/', {
+      orbSkin: 'firefly--lingxiaotian',
+    }),
+    'http://127.0.0.1:3101/?desktop=orb&orbSkin=firefly--lingxiaotian',
+  )
+  assert.equal(
+    desktopOrbUrl('http://127.0.0.1:3101/', { orbSkin: '../escape' }),
+    'http://127.0.0.1:3101/?desktop=orb',
+  )
+  assert.equal(
+    desktopOrbUrl('http://127.0.0.1:3101/', {}),
+    'http://127.0.0.1:3101/?desktop=orb',
   )
 })

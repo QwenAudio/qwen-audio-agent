@@ -66,7 +66,7 @@ https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
 
 ## Architecture
 
-![qwen-audio-agent architecture](docs/architecture-overview.png)
+![qwen-audio-agent architecture](docs/architecture-overview-en.png)
 
 Questions that can be answered directly are answered immediately; when tools
 or sustained processing are needed, the task is delegated to the backend Agent.
@@ -75,7 +75,7 @@ Throughout, the user always faces the same assistant.
 <details open>
 <summary>View detailed architecture</summary>
 
-![qwen-audio-agent reference architecture](docs/qwen-audio-agent-three-layer-architecture.png)
+![qwen-audio-agent reference architecture](docs/qwen-audio-agent-three-layer-architecture-en.png)
 
 For the full design and module breakdown, see the [architecture document](docs/architecture.md).
 

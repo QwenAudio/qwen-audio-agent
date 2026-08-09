@@ -129,7 +129,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=${systemd(workingDirectory)}
+WorkingDirectory=${workingDirectory}
 ExecStart=${command.map(systemd).join(' ')}
 ${Object.entries(environment).map(([key, value]) => (
     `Environment=${systemd(`${key}=${value}`)}`

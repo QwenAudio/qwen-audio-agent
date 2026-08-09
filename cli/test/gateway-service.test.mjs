@@ -101,7 +101,7 @@ test('installs a systemd user service with restart protection', async () => {
     const unit = readFileSync(installed.servicePath, 'utf8')
     assert.match(unit, /ExecStart="\/usr\/bin\/node"/)
     assert.match(unit, /"\/opt\/server\/index.mjs"/)
-    assert.match(unit, /WorkingDirectory="\/opt\/server"/)
+    assert.match(unit, /WorkingDirectory=\/opt\/server/)
     assert.match(unit, /Restart=on-failure/)
     assert.deepEqual(calls.at(-1), [
       'systemctl',

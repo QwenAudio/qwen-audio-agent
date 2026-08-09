@@ -61,6 +61,16 @@ header {
 header button { padding: 9px 13px; border-radius: 10px; color: #ddd; border: 1px solid #ffffff18; background: #ffffff08; }
 header .voice.active { color: white; border-color: #785cf4; background: #785cf4; }
 header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
+header select.voice-mode {
+  max-width: 172px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  color: #d8d4e2;
+  border: 1px solid #ffffff18;
+  background: #ffffff08;
+}
+header select.voice-mode:focus { outline: 1px solid #8e7ed0; }
+header select.tts-mode { max-width: 168px; }
 
 .workspace {
   width: min(760px, calc(100% - 32px));
@@ -780,6 +790,13 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
 @media (max-width: 600px) {
   header { padding: 0 14px; }
   .brand small, header .ghost, .backend { display: none; }
+  header select.voice-mode {
+    display: block;
+    max-width: 145px;
+    padding: 7px 8px;
+    font-size: 11px;
+  }
+  header select.tts-mode { max-width: 125px; }
   .workspace { padding: 24px 0 14px; }
   .orb:not(.desktop-orb) { width: 92px; height: 92px; }
   .hero p { margin-top: 14px; }

@@ -117,6 +117,8 @@ export function attachRealtimeGateway(server, {
 
   server.on('upgrade', (request, socket, head) => {
     const url = new URL(request.url, 'http://localhost')
+    // The modular speech-to-speech bridge owns this separate WebSocket path.
+    if (url.pathname === '/api/speech-to-speech') return
     if (rejectUnsupportedRealtimeUpgrade(socket, url.pathname)) return
     if (!isAllowedOrigin(request)) {
       rejectUpgrade(socket, '403 Forbidden', 'origin not allowed')

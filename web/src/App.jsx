@@ -29,6 +29,8 @@ import useRealtimeVoice, {
   retainedRealtimeProvider,
   shouldClaimReleasedVoice,
 } from './useRealtimeVoice.js'
+import useSpeechToSpeech from './useSpeechToSpeech.js'
+import { browserTtsSupported } from './browserTts.js'
 import { requestedSessionId } from './session.js'
 import { initialVoiceEnabled } from './voice-defaults.js'
 import {
@@ -125,6 +127,14 @@ export default function App() {
   const [realtimeProvider, setRealtimeProvider] = useState(
     () => localStorage.getItem('qwen-audio-agent.realtimeProvider') || '',
   )
+  const [voiceMode, setVoiceMode] = useState(
+    () => localStorage.getItem('qwen-audio-agent.voiceMode') || 'qwen',
+  )
+  const [speechTtsMode, setSpeechTtsMode] = useState(() => {
+    const saved = localStorage.getItem('qwen-audio-agent.speechTtsMode')
+    if (saved === 'server') return 'server'
+    return browserTtsSupported(window) ? 'browser' : 'server'
+  })
   const [backend, setBackend] = useState({ label: 'Agent', ready: false })
   const [agentTasks, setAgentTasks] = useState([])
   const [orbDragging, setOrbDragging] = useState(false)
@@ -133,6 +143,7 @@ export default function App() {
   const [workSettledAt, setWorkSettledAt] = useState(Date.now)
   const activeVoiceResponse = useRef('')
   const currentTurnId = useRef('')
+  const speechTurnId = useRef('')
   const responseTurnMap = useRef(new Map())
   const agentTurnIds = useRef(new Set())
   const taskDismissTimers = useRef(new Map())
@@ -634,9 +645,61 @@ export default function App() {
     waitingForVoice,
   ])
 
+  const onSpeechToSpeechEvent = useCallback(event => {
+    if (event.type === 'session.ready') {
+      const asrLabel = event.asr_provider === 'mimo'
+        ? 'MiMo ASR'
+        : event.asr_streaming ? 'Qwen 流式 ASR' : 'ASR'
+      setActivity(`本地 VAD + ${asrLabel} 已连接`)
+    }
+    if (event.type === 'vad.speech_started') {
+      setActivity('正在听你说')
+    }
+    if (event.type === 'asr.partial') {
+      const content = normalizeTranscript(event.text)
+      if (content) setActivity(`正在识别：${content}`)
+    }
+    if (event.type === 'asr.completed') {
+      const content = normalizeTranscript(event.text)
+      if (!content) return
+      const turnId = `speech-${Date.now()}-${crypto.randomUUID()}`
+      speechTurnId.current = turnId
+      setMessages(items => [...items, {
+        id: `speech:user:${turnId}`,
+        role: 'user',
+        content,
+        turnId,
+        voice: true,
+        origin: 'speech-to-speech',
+        final: true,
+      }])
+      setActivity('正在理解')
+    }
+    if (event.type === 'llm.completed') {
+      const content = normalizeTranscript(event.text)
+      if (!content) return
+      const turnId = speechTurnId.current || `speech-${Date.now()}-${crypto.randomUUID()}`
+      speechTurnId.current = turnId
+      setMessages(items => [...items, {
+        id: `speech:assistant:${turnId}`,
+        role: 'assistant',
+        content,
+        turnId,
+        origin: 'speech-to-speech',
+        final: true,
+      }])
+      setActivity('正在播放回复')
+    }
+    if (event.type === 'pipeline.error') {
+      setActivity('云端语音链路暂时不可用')
+    }
+  }, [])
+
+  const qwenVoiceEnabled = voiceMode === 'qwen' && voiceEnabled
+  const speechToSpeechEnabled = voiceMode === 'speech-to-speech' && voiceEnabled
   const voice = useRealtimeVoice({
     sessionId,
-    enabled: voiceEnabled,
+    enabled: desktopOrbMode ? voiceEnabled : qwenVoiceEnabled,
     suspended: desktopOrbMode && desktopLifecycle === 'sleeping',
     outputMuted: false,
     inputOnlyMute: desktopOrbMode,
@@ -651,23 +714,37 @@ export default function App() {
       setActivity(message)
     },
   })
+  const speechToSpeechVoice = useSpeechToSpeech({
+    sessionId,
+    enabled: speechToSpeechEnabled,
+    ttsMode: speechTtsMode,
+    onEvent: onSpeechToSpeechEvent,
+    onInputError: message => {
+      setVoiceEnabled(false)
+      setWaitingForVoice(false)
+      setActivity(message)
+    },
+  })
+  const activeVoice = voiceMode === 'speech-to-speech'
+    ? speechToSpeechVoice
+    : voice
   const lifecycleTransition = (
     desktopOrbMode && desktopLifecycle !== 'active'
   )
   const voiceConnectionError = (
-    !lifecycleTransition && voice.connectionState === 'unavailable'
+    !lifecycleTransition && activeVoice.connectionState === 'unavailable'
   )
   const visualVoiceState = desktopLifecycle === 'sleeping'
     ? 'sleeping'
     : desktopLifecycle === 'waking'
       ? 'waking'
-      : voice.ownership.state === 'busy'
+      : voiceMode === 'qwen' && voice.ownership.state === 'busy'
     ? 'occupied'
     : voiceConnectionError
       ? 'error'
-      : voiceEnabled && voice.connectionState === 'connecting'
+      : voiceEnabled && activeVoice.connectionState === 'connecting'
       ? 'connecting'
-      : voice.visualState || voice.state
+      : activeVoice.visualState || activeVoice.state
   const ownershipLabel = voice.ownership.holder
     ? frontendLabel(voice.ownership.holder)
     : ''
@@ -758,6 +835,18 @@ export default function App() {
     workSettled,
     workSettledAt,
   ])
+  const selectVoiceMode = value => {
+    if (!['qwen', 'speech-to-speech'].includes(value)) return
+    if (voiceEnabled) {
+      setVoiceEnabled(false)
+      setWaitingForVoice(false)
+    }
+    setVoiceMode(value)
+    localStorage.setItem('qwen-audio-agent.voiceMode', value)
+    setActivity(value === 'speech-to-speech'
+      ? '已切换到本地 VAD + 语音流水线'
+      : '已切换到 Qwen 实时模式')
+  }
 
   // Switching the front end reconnects on its own: realtimeProvider is part of
   // the realtime effect's dependencies, so changing it tears the current socket
@@ -769,6 +858,19 @@ export default function App() {
     } else {
       localStorage.removeItem('qwen-audio-agent.realtimeProvider')
     }
+  }
+
+  const selectSpeechTtsMode = value => {
+    if (!['browser', 'server'].includes(value)) return
+    if (value === 'browser' && !browserTtsSupported(window)) {
+      setActivity('当前浏览器不支持内置 TTS，请继续使用 MiMo TTS')
+      return
+    }
+    setSpeechTtsMode(value)
+    localStorage.setItem('qwen-audio-agent.speechTtsMode', value)
+    setActivity(value === 'browser'
+      ? '已切换到浏览器 TTS，回复将更快开始播放'
+      : '已切换到 MiMo TTS')
   }
 
   const resetSession = () => {
@@ -783,12 +885,17 @@ export default function App() {
     activeVoiceResponse.current = ''
     responseTurnMap.current.clear()
     agentTurnIds.current.clear()
+    speechTurnId.current = ''
     setActivity('已创建新会话')
   }
 
   const enableVoice = () => {
-    if (!voice.activateAudio()) return
-    if (voice.ownership.state === 'busy' && !takeoverRequested) {
+    if (!activeVoice.activateAudio()) return
+    if (
+      voiceMode === 'qwen'
+      && voice.ownership.state === 'busy'
+      && !takeoverRequested
+    ) {
       setWaitingForVoice(true)
       setActivity(`等待${ownershipLabel || '其他入口'}释放语音`)
       return
@@ -852,8 +959,8 @@ export default function App() {
       window.qwenAudioAgentDesktop?.wake()
       return
     }
-    if (voice.state === 'speaking') {
-      voice.interrupt()
+    if (activeVoice.state === 'speaking') {
+      activeVoice.interrupt()
       return
     }
     if (desktopOrbMode && (voiceEnabled || waitingForVoice)) {
@@ -1002,7 +1109,9 @@ export default function App() {
   >
     <label>{message.role === 'user'
       ? '你'
-      : message.companion ? resultLabel(message) : 'qwen-audio'}</label>
+      : message.origin === 'speech-to-speech'
+        ? 'MiMo 语音'
+        : message.companion ? resultLabel(message) : 'qwen-audio'}</label>
     <MessageContent
       role={message.role}
       content={message.content}
@@ -1024,7 +1133,27 @@ export default function App() {
         <i className={backend.ready ? 'ready' : ''} />
         {backend.label}
       </a>
-      {realtimeProviders.length > 1 && <select
+      <select
+        className="ghost voice-mode"
+        value={voiceMode}
+        onChange={event => selectVoiceMode(event.target.value)}
+        title="选择语音对话模式"
+        aria-label="选择语音对话模式"
+      >
+        <option value="qwen">模式：Qwen 实时</option>
+        <option value="speech-to-speech">模式：本地 VAD + 语音流水线</option>
+      </select>
+      {voiceMode === 'speech-to-speech' && <select
+        className="ghost voice-mode tts-mode"
+        value={speechTtsMode}
+        onChange={event => selectSpeechTtsMode(event.target.value)}
+        title="选择文字转语音引擎"
+        aria-label="选择文字转语音引擎"
+      >
+        <option value="browser">TTS：浏览器（更快）</option>
+        <option value="server">TTS：MiMo（音质更稳）</option>
+      </select>}
+      {voiceMode === 'qwen' && realtimeProviders.length > 1 && <select
         className="ghost frontend-provider"
         value={realtimeProvider}
         onChange={event => selectRealtimeProvider(event.target.value)}
@@ -1061,7 +1190,7 @@ export default function App() {
     <section className="workspace">
       <div className="hero">
         <button
-          ref={voice.levelElementRef}
+          ref={activeVoice.levelElementRef}
           className={`orb ${visualVoiceState}`}
           onClick={handleOrbClick}
           aria-label="语音交互"
@@ -1070,7 +1199,7 @@ export default function App() {
         </button>
         <p>VOICE FRONTEND</p>
         <h1>你说，我来调度。</h1>
-        <small>{voice.error || activity}</small>
+        <small>{activeVoice.error || activity}</small>
       </div>
 
       <div

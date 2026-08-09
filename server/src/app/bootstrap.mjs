@@ -14,6 +14,7 @@ import { ProfiledMemoryStore } from '../conversation/profiled-memory-store.mjs'
 import { UserProfile } from '../conversation/user-profile.mjs'
 import { enforceSameOrigin } from '../core/request-security.mjs'
 import { attachRealtimeGateway } from '../voice/realtime-gateway.mjs'
+import { attachSpeechToSpeechGateway } from '../voice/speech-to-speech-gateway.mjs'
 import { describeActiveRealtime } from '../voice/realtime-provider.mjs'
 import { SessionPermissionPolicy } from '../voice/session-permission-policy.mjs'
 import { taskManager, taskStore } from '../task/task-manager.mjs'
@@ -279,6 +280,7 @@ app.use((error, req, res, next) => {
 
 const server = createServer(app)
 export { server }
+attachSpeechToSpeechGateway(server, { identityManager })
 realtimeGateway = attachRealtimeGateway(server, {
   identityManager,
   memoryStore: frontendMemory,

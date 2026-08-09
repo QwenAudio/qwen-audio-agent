@@ -220,6 +220,11 @@ export const config = {
   // connects to the endpoint and supplies the shared frontend instructions and
   // tools for each realtime Session.
   speechToSpeechRealtimeUrl: realtimeFrontend.speechToSpeechRealtimeUrl,
+  // Local modular VAD service used by the WebUI's alternate speech pipeline.
+  speechToSpeechVadWebSocketUrl: (
+    process.env.SPEECH_TO_SPEECH_VAD_WS_URL
+    || 'ws://127.0.0.1:8765/v1/vad'
+  ),
   // Do not advertise a local service merely because a default endpoint
   // exists. It becomes selectable when the user explicitly configures it or
   // chooses it as the active frontend.

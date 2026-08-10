@@ -14,7 +14,7 @@
     "@qwen-code/open-computer-use": "^0.2.3",
     "express": "^4.22.2",
     "sherpa-onnx": "1.13.4",
-    "tar-stream": "3.1.7",
+    "tar-stream": "3.2.0",
     "unbzip2-stream": "1.4.3",
     "ws": "^8.21.1",
     "zod": "^4.4.3"

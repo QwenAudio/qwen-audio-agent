@@ -180,6 +180,32 @@ const definitions = new Map([
     },
     supportsFullPermission: true,
   }],
+  ['pi', {
+    id: 'pi',
+    label: 'Pi',
+    workspaceEnvironment: 'PI_WORKSPACE',
+    setup: {
+      command: 'pi',
+      executableEnvironment: 'PI_BIN',
+      integration: 'adapter',
+      adapterCommand: 'pi-acp',
+      adapterEnvironment: 'PI_ACP_BIN',
+      adapterRuntimeEnvironment: 'PI_ACP_RUNTIME',
+      minimumVersion: '0.80.4',
+    },
+    lifecycle: {
+      installation: {
+        steps: [
+          { kind: 'npm', package: '@earendil-works/pi-coding-agent@0.84.1', packageEnv: 'PI_PACKAGE' },
+          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: 'pi-acp@0.0.33', packageEnv: 'PI_ACP_PACKAGE' },
+        ],
+      },
+      configuration: { mode: 'backend-owned' },
+      authentication: { command: 'pi', hint: '首次使用请启动 Pi 并通过 /login 完成认证，或配置 ANTHROPIC_API_KEY 等官方模型变量。' },
+    },
+    // pi 没有权限审批机制，任何模式下都等效 full 权限。
+    supportsFullPermission: true,
+  }],
   ['acp', {
     id: 'acp',
     label: 'ACP Agent',

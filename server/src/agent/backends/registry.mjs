@@ -5,6 +5,7 @@ import { genericAcpBackendDriver } from './generic-acp.mjs'
 import { localAcpBackendDrivers } from './local-acp.mjs'
 import { openClawBackendDriver } from './openclaw.mjs'
 import { openCodeBackendDriver } from './opencode.mjs'
+import { piBackendDriver } from './pi.mjs'
 
 const drivers = new Map([
   openCodeBackendDriver,
@@ -13,6 +14,7 @@ const drivers = new Map([
   codeBuddyBackendDriver,
   codexBackendDriver,
   claudeBackendDriver,
+  piBackendDriver,
   genericAcpBackendDriver,
 ].map(driver => [driver.id, driver]))
 

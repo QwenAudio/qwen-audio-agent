@@ -25,7 +25,7 @@ const USER_CONFIG_TEMPLATE = [
   '# SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime',
   '',
   '# 可选：选择后台 Agent；留空时仅使用前台实时语音聊天',
-  '# 可选 openclaw、opencode、qoder、qwen、kimi、hermes、codebuddy、codex、claude、acp 或 none',
+  '# 可选 openclaw、opencode、qoder、qwen、kimi、hermes、codebuddy、codex、claude、pi、acp 或 none',
   'AGENT_PROTOCOL=',
   '# 权限模式：native（后台自行询问）或 full（最高权限；仅支持安全映射的后端）',
   '# QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native',
@@ -456,6 +456,7 @@ export function loadRuntimeEnvironment({
   const codeBuddyWorkspace = workspace('codebuddy')
   const codexWorkspace = workspace('codex')
   const claudeWorkspace = workspace('claude')
+  const piWorkspace = workspace('pi')
   const acpWorkspace = workspace('acp')
   const openClawStateDirectory = env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR
     ? resolve(root, env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR)
@@ -516,6 +517,7 @@ export function loadRuntimeEnvironment({
     codeBuddyWorkspace,
     codexWorkspace,
     claudeWorkspace,
+    piWorkspace,
     acpWorkspace,
     openClawStateDirectory,
     migratedFiles,

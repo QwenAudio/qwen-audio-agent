@@ -84,6 +84,7 @@ export function resolveBackendModels(env = process.env) {
     codeBuddy: name,
     codex: name,
     claude: common,
+    pi: common,
     acp: common,
   }
 }
@@ -292,6 +293,11 @@ export const config = {
       configDirectory: process.env.CLAUDE_CONFIG_DIR
         ? resolve(process.env.CLAUDE_CONFIG_DIR)
         : '',
+    },
+    pi: {
+      model: String(backendModels.pi).trim(),
+      directory: resolveBackendWorkspace('pi'),
+      cliPath: String(process.env.PI_ACP_BIN || '').trim(),
     },
     acp: {
       model: String(backendModels.acp).trim(),

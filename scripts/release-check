@@ -90,6 +90,11 @@ if (!readFileSync('scripts/claude-code-acp.mjs', 'utf8').includes(
 )) {
   throw new Error('Claude Code ACP fallback package is not pinned')
 }
+if (!readFileSync('scripts/pi-acp.mjs', 'utf8').includes(
+  'pi-acp@0.0.33',
+)) {
+  throw new Error('Pi ACP fallback package is not pinned')
+}
 if (
   manifest.devDependencies?.['electron-builder'] !== '26.15.7'
   || manifest.overrides?.['@electron/asar'] !== '4.2.1'
@@ -176,6 +181,7 @@ node --check scripts/opencode-server.mjs
 node --check scripts/openclaw-gateway.mjs
 node --check scripts/codex-acp.mjs
 node --check scripts/claude-code-acp.mjs
+node --check scripts/pi-acp.mjs
 node --check shared/runtime-environment.mjs
 node --check cli/src/runtime.mjs
 git diff --check

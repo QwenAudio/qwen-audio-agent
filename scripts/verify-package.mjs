@@ -121,6 +121,7 @@ if (isMain) {
     'scripts/check-desktop-release-env.mjs',
     'scripts/codex-acp.mjs',
     'scripts/claude-code-acp.mjs',
+    'scripts/pi-acp.mjs',
     'scripts/install-global.mjs',
     'scripts/opencode.mjs',
     'scripts/prepare-build.mjs',

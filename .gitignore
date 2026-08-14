@@ -33,3 +33,6 @@ config/opencode/.gitignore
 config/opencode/package.json
 config/opencode/package-lock.json
 bun.lock
+
+AGENTS.md
+**/tmp

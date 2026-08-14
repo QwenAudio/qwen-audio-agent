@@ -289,12 +289,16 @@ function inspectAdapter(spec, env, find) {
       issue: `${spec.adapterCommand} 不可用`,
     }
   }
-  const npx = installedOnly ? '' : find('npx')
+  const npx = installedOnly || spec.managedAdapterFallback === false
+    ? ''
+    : find('npx')
   if (npx) return { ready: true, source: 'managed', path: npx }
   return {
     ready: false,
     issue: installedOnly
       ? `缺少 ACP Adapter ${spec.adapterCommand}，桌面版需先手动安装`
+      : spec.managedAdapterFallback === false
+        ? `缺少 ACP Adapter ${spec.adapterCommand}`
       : `缺少 ${spec.adapterCommand}，并且 npx 不可用`,
   }
 }
@@ -403,7 +407,7 @@ function inspectBackend(id, {
     }
   }
 
-  const adapter = backend.ready
+  const adapter = backend.ready || spec.inspectAdapterIndependently
     ? inspectAdapter(spec, env, find)
     : { ready: spec.integration !== 'adapter', source: spec.integration }
   const issues = [backend.issue, adapter.issue].filter(Boolean)

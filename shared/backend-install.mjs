@@ -44,7 +44,20 @@ function stepPackage(step, env) {
 
 function stepDisplay(step, env) {
   if (step.kind === 'script') return step.command
-  return `npm install -g ${stepPackage(step, env)}`
+  const registry = clean(step.registry)
+  return `npm install -g${registry ? ` --registry=${registry}` : ''} ${
+    stepPackage(step, env)
+  }`
+}
+
+function npmStepArgs(step, env) {
+  const registry = clean(step.registry)
+  return [
+    'install',
+    '-g',
+    ...(registry ? [`--registry=${registry}`] : []),
+    stepPackage(step, env),
+  ]
 }
 
 function stepTitle(step, index) {
@@ -436,7 +449,7 @@ export async function installBackend(id, {
       }
     }
     const result = step.kind === 'npm'
-      ? await runStep(npmCommand, ['install', '-g', stepPackage(step, env)], {
+      ? await runStep(npmCommand, npmStepArgs(step, env), {
         env: npmRunEnv(resolvedEnv, npmCommand),
         spawnImpl,
         onOutput: (stream, chunk) => onProgress({

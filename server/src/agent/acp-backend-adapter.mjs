@@ -238,10 +238,10 @@ export class AcpBackendAdapter {
       backendAgent: this.coordinatorAgent || null,
       sessionModel: 'one-persistent-backend-agent',
       capabilities: {
-        delegation: true,
+        delegation: this.profile.delegation !== false,
         permissions: true,
         backendUi: Boolean(this.profile.backendUi),
-        nativeSessionHistory: true,
+        nativeSessionHistory: this.profile.nativeSessionHistory !== false,
         externalMcp: this.profile.externalMcp,
       },
     }
@@ -416,7 +416,7 @@ export class AcpBackendAdapter {
       }
     }
     options = await this.applyProfileSessionConfig(session, options)
-    if (this.model) {
+    if (this.model && this.profile.processModelConfiguration !== true) {
       await this.forceSessionModel(session, options)
     }
   }

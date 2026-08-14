@@ -18,6 +18,7 @@
 | Codex | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
 | Claude Code | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
 | Pi | 外部 ACP 适配（社区 pi-acp） | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
+| DeepSeek | 原生 ACP（实验性） | 支持一键安装，需 DeepSeek API Key | ★★★★☆ |
 
 推荐指数综合反映当前集成完整度、兼容性和实际验证程度：五星表示已经过充分测试的
 推荐集成，四星表示正在开发或尚未完成同等范围验证。
@@ -28,12 +29,19 @@
 
 ```bash
 qwenaudio install codex
+qwenaudio install deepseek
 ```
 
 安装前先检测，**只补齐缺失的组件**：原生 ACP 后台装好即可用；本体缺失时装本体；
 本体已装、仅缺 ACP 适配器时只装适配器；全部就绪时直接提示已可用。桌面版设置页
 的“后台 Agent”列表中，未安装且支持一键安装的后台行尾会显示“安装”按钮，与 CLI
 使用同一份安装逻辑。
+
+DeepSeek Harness 当前处于 Developer Preview。初步接入支持语音发起任务、权限确认、
+取消当前执行和最终结果回传；其 ACP 暂不支持历史 Session 续接、Gateway MCP 注入与
+细粒度工具进度。安装后运行 `dsh web`，在 DeepSeek 的模型设置中配置 API Key；
+`DEEPSEEK_API_KEY` 仍可作为单次运行覆盖。可用
+`DEEPSEEK_HARNESS_MODEL` 选择 `deepseek-v4-pro`（默认）或 `deepseek-v4-flash`。
 
 查看当前可用的后台 Agent：
 

@@ -1,6 +1,7 @@
 import { codeBuddyBackendDriver } from './codebuddy.mjs'
 import { claudeBackendDriver } from './claude.mjs'
 import { codexBackendDriver } from './codex.mjs'
+import { deepSeekHarnessBackendDriver } from './deepseek-harness.mjs'
 import { genericAcpBackendDriver } from './generic-acp.mjs'
 import { localAcpBackendDrivers } from './local-acp.mjs'
 import { openClawBackendDriver } from './openclaw.mjs'
@@ -15,6 +16,7 @@ const drivers = new Map([
   codexBackendDriver,
   claudeBackendDriver,
   piBackendDriver,
+  deepSeekHarnessBackendDriver,
   genericAcpBackendDriver,
 ].map(driver => [driver.id, driver]))
 

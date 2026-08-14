@@ -206,6 +206,61 @@ const definitions = new Map([
     // pi 没有权限审批机制，任何模式下都等效 full 权限。
     supportsFullPermission: true,
   }],
+  ['deepseek', {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    workspaceEnvironment: 'DEEPSEEK_HARNESS_WORKSPACE',
+    setup: {
+      command: 'dsh',
+      executableEnvironment: 'DEEPSEEK_HARNESS_BIN',
+      integration: 'native',
+      adapterCommand: 'dsh-acp-demo',
+      adapterEnvironment: 'DEEPSEEK_HARNESS_ACP_BIN',
+      adapterRuntimeEnvironment: 'DEEPSEEK_HARNESS_ACP_RUNTIME',
+      managedAdapterFallback: false,
+      inspectAdapterIndependently: true,
+    },
+    lifecycle: {
+      installation: {
+        // Keep the ACP executable package last. If an earlier Developer
+        // Preview component fails, setup remains visibly incomplete and a
+        // retry fills the whole composition instead of skipping it.
+        steps: [
+          {
+            kind: 'npm',
+            label: 'DeepSeek CLI',
+            component: 'backend',
+            package: '@deepseek-ai/dsh@0.1.0-rc.6',
+            registry: 'https://registry.npmjs.org/',
+          },
+          ...[
+          '@deepseek-ai/dsh-llm-deepseek@0.1.0-rc.6',
+          '@deepseek-ai/dsh-sandbox-local@0.1.0-rc.6',
+          '@deepseek-ai/dsh-subprocess-local@0.1.0-rc.6',
+          '@deepseek-ai/dsh-bash-sandbox@0.1.0-rc.6',
+          '@deepseek-ai/dsh-token-meter@0.1.0-rc.6',
+          '@deepseek-ai/dsh-compaction-basic@0.1.0-rc.6',
+          '@deepseek-ai/dsh-fs-sandbox@0.1.0-rc.6',
+          '@deepseek-ai/dsh-fs-observation-policy@0.1.0-rc.6',
+          '@deepseek-ai/dsh-tool-fs@0.1.0-rc.6',
+          '@deepseek-ai/dsh-acp-demo@0.1.0-rc.6',
+          ].map((packageName, index, packages) => ({
+          kind: 'npm',
+          label: index === packages.length - 1 ? 'ACP Runtime' : '运行组件',
+          component: 'adapter',
+          package: packageName,
+          registry: 'https://registry.npmjs.org/',
+          })),
+        ],
+      },
+      configuration: { mode: 'backend-owned' },
+      authentication: {
+        command: 'dsh web',
+        hint: '首次使用请启动 DeepSeek，并在模型设置中配置 API Key。',
+      },
+    },
+    supportsFullPermission: true,
+  }],
   ['acp', {
     id: 'acp',
     label: 'ACP Agent',

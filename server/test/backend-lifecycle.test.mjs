@@ -43,3 +43,14 @@ test('does not equate installation with authentication or runtime readiness', ()
   assert.equal(lifecycle.installation.status, 'installed')
   assert.equal(lifecycle.readiness.status, 'not-connected')
 })
+
+test('uses the DeepSeek product setup as its authentication entry', () => {
+  assert.deepEqual(backendAuthenticationSupport('deepseek', {
+    env: {},
+    platform: 'darwin',
+  }), {
+    required: true,
+    supported: true,
+    command: 'dsh web',
+  })
+})

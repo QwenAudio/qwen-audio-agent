@@ -87,6 +87,16 @@ test('npm steps report locked packages and honor package overrides', () => {
     qwen.steps.map(step => step.display),
     ['npm install -g @qwen-code/qwen-code@0.21.6'],
   )
+
+  const harness = installSupport('deepseek', {
+    env: {},
+    platform: 'linux',
+  })
+  assert.equal(harness.steps.length, 11)
+  assert.match(harness.steps[0].display, /--registry=https:\/\/registry\.npmjs\.org\//)
+  assert.match(harness.steps[0].display, /@deepseek-ai\/dsh@0\.1\.0-rc\.6/)
+  assert.match(harness.steps[1].display, /@deepseek-ai\/dsh-llm-deepseek@0\.1\.0-rc\.6/)
+  assert.match(harness.steps.at(-1).display, /@deepseek-ai\/dsh-acp-demo@0\.1\.0-rc\.6/)
 })
 
 test('Qwen Code authentication launches the CLI without a removed auth subcommand', () => {
@@ -183,6 +193,66 @@ test('describes backend-owned authentication actions', () => {
     },
     platform: 'darwin',
   }).required, false)
+  assert.deepEqual(authenticationSupport('deepseek', {
+    env: {},
+    platform: 'darwin',
+  }), {
+    required: true,
+    supported: true,
+    command: 'dsh web',
+  })
+})
+
+test('installs the DeepSeek Harness CLI and ACP components', async () => {
+  const calls = []
+  const result = await installBackend('deepseek', {
+    env: { DEEPSEEK_API_KEY: 'test-key' },
+    platform: 'darwin',
+    spawnImpl: fakeSpawn(calls),
+    find: () => '/usr/local/bin/npm',
+    inspect: async () => readyReport('deepseek'),
+  })
+  assert.equal(result.ok, true)
+  assert.equal(calls.length, 11)
+  assert.deepEqual(calls[0][1], [
+    'install', '-g', '--registry=https://registry.npmjs.org/',
+    '@deepseek-ai/dsh@0.1.0-rc.6',
+  ])
+  assert.deepEqual(calls.at(-1)[1], [
+    'install', '-g', '--registry=https://registry.npmjs.org/',
+    '@deepseek-ai/dsh-acp-demo@0.1.0-rc.6',
+  ])
+})
+
+test('adds only the missing DeepSeek Harness CLI after an ACP-only install', async () => {
+  const calls = []
+  let inspection = 0
+  const result = await installBackend('deepseek', {
+    env: { DEEPSEEK_API_KEY: 'test-key' },
+    platform: 'darwin',
+    spawnImpl: fakeSpawn(calls),
+    find: () => '/usr/local/bin/npm',
+    inspect: async () => {
+      inspection += 1
+      return {
+        backends: [{
+          id: 'deepseek',
+          ready: inspection > 1,
+          backend: { ready: inspection > 1 },
+          adapter: { ready: true },
+          issues: [],
+        }],
+      }
+    },
+  })
+  assert.equal(result.ok, true)
+  assert.deepEqual(calls, [[
+    '/usr/local/bin/npm',
+    [
+      'install', '-g', '--registry=https://registry.npmjs.org/',
+      '@deepseek-ai/dsh@0.1.0-rc.6',
+    ],
+  ]])
 })
 
 test('runs multi-step installs in order and stops on failure', async () => {

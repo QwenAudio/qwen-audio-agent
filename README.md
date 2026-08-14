@@ -26,6 +26,8 @@ tells you:
 
 ## News
 
+- **2026-08-13 · [v1.10.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.10.0)**
+  🐋 Added experimental DeepSeek Harness backend support with one-click installation.
 - **2026-08-13 · [v1.9.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.9.1)**
   🖥️ Improved desktop task card presentation and fixed several known issues.
 - **2026-08-13 · [v1.9.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.9.0)**
@@ -112,6 +114,7 @@ For the full design and module breakdown, see the [architecture document](docs/a
 | Codex | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
 | Claude Code | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
 | Pi | External ACP adapter (community pi-acp) | One-click install (base + adapter), user config required | ★★★★☆ |
+| DeepSeek | Native ACP (experimental) | One-click install, DeepSeek API key required | ★★★★☆ |
 
 Ratings reflect current integration completeness, compatibility, and
 verification level: five stars indicate a thoroughly tested recommended

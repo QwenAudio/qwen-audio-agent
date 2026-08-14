@@ -639,6 +639,7 @@ function backendLabel(value) {
   if (value === 'codex') return 'Codex'
   if (value === 'claude') return 'Claude Code'
   if (value === 'pi') return 'Pi'
+  if (value === 'deepseek') return 'DeepSeek'
   if (value === 'acp') return 'ACP Agent'
   return value
 }

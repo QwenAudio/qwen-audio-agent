@@ -17,6 +17,7 @@ The Backend Agent handles tasks that require tools, file operations, or sustaine
 | Codex | External ACP adapter | Supports one-click install of both the core and adapter, requires user configuration | ★★★★☆ |
 | Claude Code | External ACP adapter | Supports one-click install of both the core and adapter, requires user configuration | ★★★★☆ |
 | Pi | External ACP adapter (community pi-acp) | Supports one-click install of both the core and adapter, requires user configuration | ★★★★☆ |
+| DeepSeek | Native ACP (experimental) | Supports one-click install, requires a DeepSeek API key | ★★★★☆ |
 
 The recommendation rating reflects the current integration completeness, compatibility, and extent of real-world verification: five stars indicates a fully tested and recommended integration, while four stars indicates ongoing development or incomplete verification of the same scope.
 
@@ -26,9 +27,19 @@ Uninstalled backend agents can be installed locally with a unified command:
 
 ```bash
 qwenaudio install codex
+qwenaudio install deepseek
 ```
 
 Before installation, a detection step runs to **only fill in missing components**: native ACP backends are ready to use once installed; if the core is missing, the core is installed; if the core is already installed and only the ACP adapter is missing, only the adapter is installed; if everything is ready, a prompt confirms availability. In the desktop settings page's "Backend Agent" list, an "Install" button appears at the end of rows for uninstalled backends that support one-click install, using the same installation logic as the CLI.
+
+DeepSeek Harness is currently a Developer Preview. This initial integration
+supports voice-triggered tasks, permission decisions, cancellation of the current
+run, and final-result delivery. Its ACP endpoint does not yet expose historical
+Session resume, Gateway MCP injection, or fine-grained tool progress. After
+installation, run `dsh web` and configure the API key in DeepSeek's model
+settings; `DEEPSEEK_API_KEY` remains available as a per-run override. Optionally
+set `DEEPSEEK_HARNESS_MODEL` to
+`deepseek-v4-pro` (default) or `deepseek-v4-flash`.
 
 View currently available backend agents:
 

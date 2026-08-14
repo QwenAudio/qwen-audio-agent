@@ -56,6 +56,7 @@ JSON 输出与 CLI 使用同一个共享检测模块，可供桌面版和其他�
 
 ```bash
 qwenaudio install codex
+qwenaudio install deepseek
 ```
 
 - 安装前先检测，只补齐缺失的组件：原生 ACP 后台装好即可用；本体缺失时装本体；
@@ -70,6 +71,18 @@ qwenaudio install codex
 - 通用 `acp` 后台不提供一键安装，请自行安装后通过 `ACP_COMMAND` 配置。
 - 桌面版设置页的“后台 Agent”列表中，未安装且支持一键安装的后台行尾会显示
   “安装”按钮，与 CLI 使用同一份安装逻辑；脚本类安装会弹出原生确认框。
+
+DeepSeek Harness 当前为实验性接入。安装后运行 `dsh web`，在模型设置中配置官方
+API Key，ACP 接入会直接复用该凭据。它的模型配置独立于其他后台，避免把 Qwen 等
+模型名称误传给 DeepSeek：
+
+```dotenv
+AGENT_PROTOCOL=deepseek
+# 可选：deepseek-v4-pro（默认）或 deepseek-v4-flash
+DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
+```
+
+仍可通过 `DEEPSEEK_API_KEY` 为单次运行显式覆盖凭据。
 
 ## 最小配置
 

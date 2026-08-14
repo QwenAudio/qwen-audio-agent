@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
@@ -90,6 +91,23 @@ function openClawInitializationStatus({ env, pathExists = existsSync }) {
   return 'unknown'
 }
 
+async function deepSeekCredentialStatus({ env, readFileImpl = readFile }) {
+  if (String(env.DEEPSEEK_API_KEY || '').trim()) return 'authenticated'
+  const home = String(env.DSH_HOME || env.HOME || env.USERPROFILE || '').trim()
+  if (!home) return 'unauthenticated'
+  const path = env.DSH_HOME
+    ? join(home, '.credentials.yaml')
+    : join(home, '.dsh', '.credentials.yaml')
+  try {
+    const content = await readFileImpl(path, 'utf8')
+    return /^\s*DEEPSEEK_API_KEY\s*:\s*(?!(?:["']{2})\s*$)\S+/m.test(content)
+      ? 'authenticated'
+      : 'unauthenticated'
+  } catch {
+    return 'unauthenticated'
+  }
+}
+
 function runStatus(command, args, {
   env,
   spawnImpl = spawn,
@@ -141,7 +159,16 @@ export async function inspectBackendAuthentication(id, {
   run = runStatus,
   listCodeBuddyCredentials = codeBuddyCredentialFiles,
   pathExists = existsSync,
+  readCredentialFile = readFile,
 } = {}) {
+  if (id === 'deepseek') {
+    return {
+      status: await deepSeekCredentialStatus({
+        env,
+        readFileImpl: readCredentialFile,
+      }),
+    }
+  }
   if (id === 'codebuddy') {
     const files = await listCodeBuddyCredentials({ env, platform })
     // CodeBuddy 没有只读的 login status 命令。凭证目录为空可以确认未登录，

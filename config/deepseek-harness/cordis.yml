@@ -1,0 +1,59 @@
+# Minimal automation composition for qwen-audio-agent. DeepSeek Harness is a
+# Developer Preview; keep vendor-specific runtime details inside this adapter.
+- id: llm-deepseek
+  name: '@deepseek-ai/dsh-llm-deepseek'
+  config:
+    thinking: enabled
+    reasoningEffort: max
+    models:
+      - id: deepseek-v4-flash
+      - id: deepseek-v4-pro
+
+- id: sandbox
+  name: '@deepseek-ai/dsh-sandbox-local'
+- id: sandbox-policy
+  name: '@deepseek-ai/dsh-sandbox-policy'
+  config:
+    mode: !!js "process.env.DSH_PERMISSION_MODE ?? 'workspace-write'"
+    workspaceRoot: !!js process.cwd()
+- id: subprocess
+  name: '@deepseek-ai/dsh-subprocess-local'
+- id: bash
+  name: '@deepseek-ai/dsh-bash-sandbox'
+  config:
+    timeoutMs: 60000
+- id: approval
+  name: '@deepseek-ai/dsh-user-approval'
+  config:
+    policy: !!js "process.env.DSH_PERMISSION_MODE === 'danger-full-access' ? 'never' : 'ask'"
+
+- id: acp-agent
+  name: '@deepseek-ai/dsh-acp-demo'
+  config:
+    provider: deepseek-official
+    model: !!js "process.env.DSH_MODEL ?? 'deepseek-v4-pro'"
+    persistenceRoot: !!js "process.env.DEEPSEEK_HARNESS_SESSION_ROOT ?? './.sessions'"
+    workspaceContext:
+      maxBytes: 65536
+    persona: |
+      You are a capable coding and task assistant. Your working directory is {{cwd}}.
+      Use the available tools to complete the user's request. Verify changes when practical.
+      Keep the final answer concise and factual.
+
+- id: token-meter
+  name: '@deepseek-ai/dsh-token-meter'
+- id: compaction-basic
+  name: '@deepseek-ai/dsh-compaction-basic'
+  config:
+    thresholdRatio: 0.8
+    retainRatio: 0.08
+    maxTokens: 8192
+    compactionRetries: 1
+- id: fs-sandbox
+  name: '@deepseek-ai/dsh-fs-sandbox'
+  config:
+    cwd: !!js process.cwd()
+- id: fs-observation-policy
+  name: '@deepseek-ai/dsh-fs-observation-policy'
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'

@@ -108,6 +108,7 @@ test('maps one backend model name to each managed backend provider', () => {
     codex: 'qwen3.7-plus',
     claude: 'qwen3.7-plus',
     pi: 'qwen3.7-plus',
+    deepSeekHarness: '',
     acp: 'qwen3.7-plus',
   })
 })
@@ -128,6 +129,7 @@ test('ignores backend-native model variables as Gateway overrides', () => {
     codex: '',
     claude: '',
     pi: '',
+    deepSeekHarness: '',
     acp: '',
   })
 })
@@ -147,6 +149,7 @@ test('treats legacy auto as no backend model override', () => {
     codex: '',
     claude: '',
     pi: '',
+    deepSeekHarness: '',
     acp: '',
   })
 })
@@ -167,8 +170,19 @@ test('uses only the unified backend model override', () => {
     codex: 'qwen3.7-max',
     claude: 'qwen3.7-max',
     pi: 'qwen3.7-max',
+    deepSeekHarness: '',
     acp: 'qwen3.7-max',
   })
+})
+
+test('uses a DeepSeek-specific model without leaking unrelated overrides', () => {
+  assert.equal(resolveBackendModels({
+    DEEPSEEK_HARNESS_MODEL: 'deepseek-v4-flash',
+    QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen3.7-max',
+  }).deepSeekHarness, 'deepseek-v4-flash')
+  assert.equal(resolveBackendModels({
+    QWEN_AUDIO_AGENT_BACKEND_MODEL: 'deepseek-v4-pro',
+  }).deepSeekHarness, 'deepseek-v4-pro')
 })
 
 test('changes the realtime configuration signature when only the model changes', () => {

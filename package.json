@@ -1,7 +1,7 @@
 {
   "name": "qwen-audio-agent",
   "desktopName": "qwen-audio-agent.desktop",
-  "version": "1.9.1",
+  "version": "1.10.0",
   "description": "A realtime voice frontend for mainstream AI agents.",
   "author": "qwen-audio-agent contributors",
   "license": "Apache-2.0",
@@ -22,7 +22,8 @@
     "openclaw",
     "qoder",
     "kimi-code",
-    "claude-code"
+    "claude-code",
+    "deepseek"
   ],
   "type": "module",
   "bin": {
@@ -34,6 +35,7 @@
     "cli/package.json",
     "config/frontend-agent/",
     "config/openclaw/openclaw.json5",
+    "config/deepseek-harness/cordis.yml",
     "config/codebuddy/workspace/.codebuddy/models.json",
     "docs/architecture.md",
     "docs/architecture.zh.md",

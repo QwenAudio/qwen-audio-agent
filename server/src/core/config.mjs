@@ -85,6 +85,10 @@ export function resolveBackendModels(env = process.env) {
     codex: name,
     claude: common,
     pi: common,
+    deepSeekHarness: String(
+      env.DEEPSEEK_HARNESS_MODEL
+      || (name.startsWith('deepseek-') ? name : ''),
+    ).trim(),
     acp: common,
   }
 }
@@ -298,6 +302,15 @@ export const config = {
       model: String(backendModels.pi).trim(),
       directory: resolveBackendWorkspace('pi'),
       cliPath: String(process.env.PI_ACP_BIN || '').trim(),
+    },
+    deepseek: {
+      model: backendModels.deepSeekHarness,
+      directory: resolveBackendWorkspace('deepseek'),
+      cliPath: String(process.env.DEEPSEEK_HARNESS_ACP_BIN || '').trim(),
+      sessionRoot: resolve(
+        runtimeEnvironment.configDirectory,
+        'backends/deepseek-harness/sessions',
+      ),
     },
     acp: {
       model: String(backendModels.acp).trim(),

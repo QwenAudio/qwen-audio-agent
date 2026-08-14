@@ -63,6 +63,7 @@ command:
 
 ```bash
 qwenaudio install codex
+qwenaudio install deepseek
 ```
 
 - Before installation, it detects and only fills in missing components: a native ACP backend is
@@ -85,6 +86,19 @@ qwenaudio install codex
   installed and support one-click installation will display an "Install" button at the end of
   the row, using the same installation logic as the CLI; script-type installations will pop up
   a native confirmation dialog.
+
+DeepSeek Harness is currently an experimental integration. After installation,
+run `dsh web` and configure the official API key in its model settings. The ACP
+integration reuses that credential. Its model setting is intentionally separate
+from other backends so Qwen or other provider model names are not forwarded to DeepSeek:
+
+```dotenv
+AGENT_PROTOCOL=deepseek
+# Optional: deepseek-v4-pro (default) or deepseek-v4-flash
+DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
+```
+
+`DEEPSEEK_API_KEY` may still be set as an explicit per-run override.
 
 ## Minimal Configuration
 

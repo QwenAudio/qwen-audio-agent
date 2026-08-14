@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- 新增 Pi 后台支持：earendil-works 的 pi coding agent（pi.dev）经社区适配器
+  pi-acp 接入，`qwenaudio install pi` 一键安装本体与适配器，支持通过
+  `session/load` 恢复历史 pi Session。注意：Pi 无内置沙箱与权限审批机制，
+  任何权限模式下都始终等效 `full` 权限，只在可信项目和可信提示词环境中使用，
+  详见配置说明中的安全警告。
+
 ## 1.9.1
 
 - 优化桌面端任务卡片展示，并修复若干已知问题。

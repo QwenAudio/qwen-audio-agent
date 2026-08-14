@@ -9,7 +9,7 @@
 1. **实时前端** — 全双工语音、简单直接回答，以及基本的本地时间/记忆工具。
 2. **后端 Agent** — 一个持久 Agent Session，负责处理所有需要工具、当前信息、文件、应用程序、代码或多步工作的请求。
 
-后端可以是 OpenCode、OpenClaw、Qoder、Qwen Code、Kimi Code 或其他 ACP 兼容 Agent。
+后端可以是 OpenCode、OpenClaw、Qoder、Qwen Code、Kimi Code、Pi 或其他 ACP 兼容 Agent。
 它内部可以使用工具、技能、Agent 或其他 Session。这些都是后端私有实现细节，
 不会创建额外的 qwen-audio-agent 层。所有后端通过一个 ACP 客户端和一个
 共享协调适配器连接；后端特定的启动和能力行为位于已注册的驱动程序中。

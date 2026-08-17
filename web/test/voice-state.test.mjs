@@ -3,9 +3,14 @@ import test from 'node:test'
 import {
   acceptsVoiceState,
   microphoneControlEvent,
+  queuedTextOwnershipAction,
   retainedRealtimeProvider,
   shouldAdvertiseVoice,
+  shouldCleanupTextReplyOnError,
   shouldClaimReleasedVoice,
+  textSendResultAction,
+  textOutputConnectionCapabilities,
+  textOutputReleaseAction,
   visualVoiceState,
 } from '../src/useRealtimeVoice.js'
 
@@ -93,6 +98,72 @@ test('advertises voice only after microphone input is ready', () => {
   assert.equal(shouldAdvertiseVoice(true, false), false)
   assert.equal(shouldAdvertiseVoice(false, true), false)
   assert.equal(shouldAdvertiseVoice(true, true), true)
+})
+
+test('requests output-only ownership for text when the microphone is disabled', () => {
+  assert.deepEqual(textOutputConnectionCapabilities({
+    enabled: false,
+    inputReady: false,
+  }), {
+    inputEnabled: false,
+    outputEnabled: true,
+  })
+  assert.deepEqual(textOutputConnectionCapabilities({
+    enabled: true,
+    inputReady: true,
+  }), {
+    inputEnabled: true,
+    outputEnabled: true,
+  })
+})
+
+test('sends queued text only after output ownership is granted', () => {
+  assert.equal(queuedTextOwnershipAction({
+    type: 'voice.ownership',
+    state: 'active',
+  }, true), 'send')
+  assert.equal(queuedTextOwnershipAction({
+    type: 'voice.ownership',
+    state: 'busy',
+  }, true), 'fail')
+  assert.equal(queuedTextOwnershipAction({
+    type: 'voice.ownership',
+    state: 'available',
+  }, true), 'wait')
+  assert.equal(queuedTextOwnershipAction({
+    type: 'voice.ownership',
+    state: 'active',
+  }, false), 'none')
+})
+
+test('waits for ownership acknowledgement only when releasing temporary output', () => {
+  assert.equal(textOutputReleaseAction({
+    temporaryLease: true,
+    enabled: false,
+  }), 'mute-and-wait-for-ownership')
+  assert.equal(textOutputReleaseAction({
+    temporaryLease: false,
+    enabled: true,
+  }), 'clear')
+  assert.equal(textOutputReleaseAction({
+    temporaryLease: true,
+    enabled: true,
+  }), 'clear')
+})
+
+test('cleans text reply state on provider and direct-send failures', () => {
+  assert.equal(shouldCleanupTextReplyOnError({
+    pending: false,
+    temporaryLease: false,
+    replyActive: true,
+  }), true)
+  assert.equal(shouldCleanupTextReplyOnError({
+    pending: false,
+    temporaryLease: false,
+    replyActive: false,
+  }), false)
+  assert.equal(textSendResultAction(false), 'cleanup')
+  assert.equal(textSendResultAction(true), 'wait-for-reply')
 })
 
 test('shows agent and announcement playback even when it belongs to an older turn', () => {

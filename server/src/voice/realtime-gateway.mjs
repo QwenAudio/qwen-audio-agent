@@ -334,9 +334,10 @@ export function attachRealtimeGateway(server, {
     const releaseVoiceClient = () => {
       inputEnabled = false
       outputEnabled = false
-      if (activeVoiceClients.release(ownerId, voiceClient)) {
-        broadcastVoiceOwnership(ownerId)
-      }
+      activeVoiceClients.release(ownerId, voiceClient)
+      // MUTE is also the acknowledgement for a short-lived output-only claim.
+      // Always rebroadcast so the releasing client knows it can submit again.
+      broadcastVoiceOwnership(ownerId)
     }
     const toolCalls = new ToolCallHandler({
       taskManager,

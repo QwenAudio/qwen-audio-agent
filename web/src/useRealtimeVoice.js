@@ -6,6 +6,7 @@ import {
 import { decodePcm, pcmBase64, resample } from './audio.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
 import { t } from './i18n.js'
+import { textMessageEvent } from './text-input.js'
 
 const DEFAULT_INPUT_RATE = 16000
 const OUTPUT_RATE = 24000
@@ -40,6 +41,45 @@ export function shouldClaimReleasedVoice(event, waitingForVoice) {
 
 export function shouldAdvertiseVoice(enabled, inputReady) {
   return enabled === true && inputReady === true
+}
+
+export function textOutputConnectionCapabilities({
+  enabled,
+  inputReady,
+  wakeWordOnly = false,
+} = {}) {
+  return {
+    inputEnabled: shouldAdvertiseVoice(enabled, inputReady) && !wakeWordOnly,
+    outputEnabled: true,
+  }
+}
+
+export function queuedTextOwnershipAction(event, hasPendingText) {
+  if (
+    !hasPendingText
+    || event?.type !== GatewayServerEvent.VOICE_OWNERSHIP
+  ) return 'none'
+  if (event.state === 'active') return 'send'
+  if (event.state === 'busy') return 'fail'
+  return 'wait'
+}
+
+export function textOutputReleaseAction({ temporaryLease, enabled }) {
+  return temporaryLease && enabled !== true
+    ? 'mute-and-wait-for-ownership'
+    : 'clear'
+}
+
+export function textSendResultAction(sent) {
+  return sent === true ? 'wait-for-reply' : 'cleanup'
+}
+
+export function shouldCleanupTextReplyOnError({
+  pending,
+  temporaryLease,
+  replyActive,
+} = {}) {
+  return Boolean(pending || temporaryLease || replyActive)
 }
 
 // Keeps a persisted front end selection only while the server still offers it.
@@ -180,6 +220,8 @@ export default function useRealtimeVoice({
   const [inputReady, setInputReady] = useState(false)
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState(false)
+  const [gatewayConnected, setGatewayConnected] = useState(false)
+  const [textOutputActive, setTextOutputActive] = useState(false)
   const [connectionState, setConnectionState] = useState('connecting')
   const [wakeWordActive, setWakeWordActive] = useState(false)
   const [ownership, setOwnership] = useState({
@@ -202,6 +244,15 @@ export default function useRealtimeVoice({
   const enabledRef = useRef(enabled)
   const inputReadyRef = useRef(false)
   const outputMutedRef = useRef(outputMuted)
+  const ownershipRef = useRef(ownership)
+  const pendingTextEventRef = useRef(null)
+  const pendingTextClaimTimerRef = useRef(null)
+  const sentTextRef = useRef('')
+  const textReplyActiveRef = useRef(false)
+  const textOutputLeaseRef = useRef(false)
+  const textOutputReleasingRef = useRef(false)
+  const textOutputTurnRef = useRef('')
+  const textOutputResponseRef = useRef('')
   const mutedPlaybackResponses = useRef(new Set())
   const playbackRef = useRef({
     cursor: 0,
@@ -217,6 +268,7 @@ export default function useRealtimeVoice({
   wakeWordOnlyRef.current = wakeWordOnly
   enabledRef.current = enabled
   outputMutedRef.current = outputMuted
+  ownershipRef.current = ownership
 
   const setAudioLevel = useCallback(value => {
     levelElementRef.current?.style.setProperty('--level', String(value))
@@ -245,6 +297,116 @@ export default function useRealtimeVoice({
     socket.send(JSON.stringify(event))
     return true
   }, [])
+
+  const clearTextOutputState = useCallback(() => {
+    clearTimeout(pendingTextClaimTimerRef.current)
+    pendingTextClaimTimerRef.current = null
+    pendingTextEventRef.current = null
+    sentTextRef.current = ''
+    textReplyActiveRef.current = false
+    textOutputLeaseRef.current = false
+    textOutputReleasingRef.current = false
+    textOutputTurnRef.current = ''
+    textOutputResponseRef.current = ''
+    setTextOutputActive(false)
+  }, [])
+
+  const releaseTextOutput = useCallback(() => {
+    const releaseAction = textOutputReleaseAction({
+      temporaryLease: Boolean(
+        textOutputLeaseRef.current || pendingTextEventRef.current,
+      ),
+      enabled: enabledRef.current,
+    })
+    clearTimeout(pendingTextClaimTimerRef.current)
+    pendingTextClaimTimerRef.current = null
+    pendingTextEventRef.current = null
+    sentTextRef.current = ''
+    textReplyActiveRef.current = false
+    textOutputLeaseRef.current = false
+    textOutputTurnRef.current = ''
+    textOutputResponseRef.current = ''
+    if (releaseAction === 'mute-and-wait-for-ownership') {
+      textOutputReleasingRef.current = true
+      ownershipRef.current = {
+        ...ownershipRef.current,
+        state: 'releasing',
+      }
+      setTextOutputActive(true)
+      if (sendSocketEvent({ type: GatewayClientEvent.MUTE })) return
+    }
+    textOutputReleasingRef.current = false
+    setTextOutputActive(false)
+  }, [sendSocketEvent])
+
+  const connectionEvent = useCallback(({ inputEnabled, outputEnabled }) => ({
+    type: GatewayClientEvent.CONNECT,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    locale: navigator.language,
+    voiceEnabled: outputEnabled,
+    inputEnabled,
+    outputEnabled,
+    wakeWordOnly: wakeWordOnlyRef.current,
+    clientType,
+    clientLabel,
+    clientStates: clientStatesSignature
+      ? clientStatesSignature.split(',')
+      : [],
+    clientInstanceId: clientInstanceId.current,
+    takeover,
+    // Empty means "keep the server default front end".
+    ...(realtimeProvider ? { provider: realtimeProvider } : {}),
+  }), [
+    clientLabel,
+    clientStatesSignature,
+    clientType,
+    realtimeProvider,
+    takeover,
+  ])
+
+  const sendText = useCallback(text => {
+    const event = textMessageEvent(text)
+    if (!event || !activateAudio()) return false
+    if (ownershipRef.current.state === 'busy') return false
+    const capabilities = textOutputConnectionCapabilities({
+      enabled: enabledRef.current,
+      inputReady: inputReadyRef.current,
+      wakeWordOnly: wakeWordOnlyRef.current,
+    })
+    if (ownershipRef.current.state === 'active') {
+      sentTextRef.current = event.text
+      textReplyActiveRef.current = true
+      textOutputLeaseRef.current = !capabilities.inputEnabled
+      setTextOutputActive(true)
+      const sent = sendSocketEvent(event)
+      if (textSendResultAction(sent) === 'wait-for-reply') return true
+      releaseTextOutput()
+      return false
+    }
+    pendingTextEventRef.current = event
+    textReplyActiveRef.current = true
+    setTextOutputActive(true)
+    clearTimeout(pendingTextClaimTimerRef.current)
+    pendingTextClaimTimerRef.current = setTimeout(() => {
+      if (pendingTextEventRef.current !== event) return
+      releaseTextOutput()
+      eventRef.current?.({
+        type: 'text.send.failed',
+        message: t('无法获取语音输出，请重试'),
+      })
+    }, 5000)
+    if (sendSocketEvent(connectionEvent({
+      ...capabilities,
+    }))) return true
+    clearTextOutputState()
+    return false
+  }, [
+    activateAudio,
+    clearTextOutputState,
+    connectionEvent,
+    releaseTextOutput,
+    sendSocketEvent,
+  ])
 
   const sendPlaybackEvent = useCallback((type, responseId, reason = '') => {
     if (responseId) {
@@ -285,7 +447,10 @@ export default function useRealtimeVoice({
       doneResponses: new Set(),
       failedResponses: new Set(),
     }
-  }, [sendPlaybackEvent])
+    if (textReplyActiveRef.current || textOutputLeaseRef.current) {
+      releaseTextOutput()
+    }
+  }, [releaseTextOutput, sendPlaybackEvent])
 
   const finishPlaybackIfReady = useCallback(responseId => {
     if (!responseId) return
@@ -299,7 +464,8 @@ export default function useRealtimeVoice({
     playback.startedResponses.delete(responseId)
     playback.sourceCounts.delete(responseId)
     playback.doneResponses.delete(responseId)
-  }, [sendPlaybackEvent])
+    if (textOutputResponseRef.current === responseId) releaseTextOutput()
+  }, [releaseTextOutput, sendPlaybackEvent])
 
   const markAudioDone = useCallback(responseId => {
     if (!responseId) return
@@ -307,7 +473,13 @@ export default function useRealtimeVoice({
     if (playback.failedResponses.delete(responseId)) return
     playback.doneResponses.add(responseId)
     finishPlaybackIfReady(responseId)
-  }, [finishPlaybackIfReady])
+    if (
+      textOutputResponseRef.current === responseId
+      && !playback.startTimers.has(responseId)
+      && !playback.startedResponses.has(responseId)
+      && (playback.sourceCounts.get(responseId) || 0) === 0
+    ) releaseTextOutput()
+  }, [finishPlaybackIfReady, releaseTextOutput])
 
   const failPlayback = useCallback((responseId, reason) => {
     const playback = playbackRef.current
@@ -324,10 +496,11 @@ export default function useRealtimeVoice({
         responseId,
         'playback_error',
       )
+      if (textOutputResponseRef.current === responseId) releaseTextOutput()
     }
     setError(reason?.message || String(reason || t('语音播放失败')))
     setVisualError(true)
-  }, [sendPlaybackEvent])
+  }, [releaseTextOutput, sendPlaybackEvent])
 
   const consumeMutedAudio = useCallback(responseId => {
     if (!responseId || mutedPlaybackResponses.current.has(responseId)) return
@@ -432,6 +605,7 @@ export default function useRealtimeVoice({
       setAudioLevel(0)
       setError('')
       setVisualError(false)
+      setGatewayConnected(false)
       setConnectionState('hidden')
       return undefined
     }
@@ -447,6 +621,7 @@ export default function useRealtimeVoice({
         reconnectDelay = 500
         setError('')
         setVisualError(false)
+        setGatewayConnected(true)
         setConnectionState('connecting')
         eventRef.current?.({ type: GatewayServerEvent.GATEWAY_CONNECTED })
         const inputEnabled = shouldAdvertiseVoice(
@@ -454,24 +629,10 @@ export default function useRealtimeVoice({
           inputReadyRef.current,
         ) && !wakeWordOnlyRef.current
         const outputEnabled = inputOnlyMute || inputEnabled
-        socket.send(JSON.stringify({
-          type: GatewayClientEvent.CONNECT,
-          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-          locale: navigator.language,
-          voiceEnabled: outputEnabled,
+        socket.send(JSON.stringify(connectionEvent({
           inputEnabled,
           outputEnabled,
-          wakeWordOnly: wakeWordOnlyRef.current,
-          clientType,
-          clientLabel,
-          clientStates: clientStatesSignature
-            ? clientStatesSignature.split(',')
-            : [],
-          clientInstanceId: clientInstanceId.current,
-          takeover,
-          // Empty means "keep the server default front end".
-          ...(realtimeProvider ? { provider: realtimeProvider } : {}),
-        }))
+        })))
       }
       socket.onmessage = message => {
         let event
@@ -504,20 +665,57 @@ export default function useRealtimeVoice({
           }
         }
         if (event.type === GatewayServerEvent.VOICE_OWNERSHIP) {
-          setOwnership({
+          const nextOwnership = {
             state: event.state || 'available',
             holder: event.holder || null,
-          })
+          }
+          ownershipRef.current = nextOwnership
+          setOwnership(nextOwnership)
+          if (
+            textOutputReleasingRef.current
+            && event.state !== 'active'
+          ) clearTextOutputState()
+          const textOwnershipAction = queuedTextOwnershipAction(
+            event,
+            Boolean(pendingTextEventRef.current),
+          )
+          if (textOwnershipAction === 'send') {
+            const pending = pendingTextEventRef.current
+            clearTimeout(pendingTextClaimTimerRef.current)
+            pendingTextClaimTimerRef.current = null
+            pendingTextEventRef.current = null
+            sentTextRef.current = pending.text
+            textOutputLeaseRef.current = !shouldAdvertiseVoice(
+              enabledRef.current,
+              inputReadyRef.current,
+            )
+            socket.send(JSON.stringify(pending))
+          } else if (textOwnershipAction === 'fail') {
+            clearTextOutputState()
+            eventRef.current?.({
+              type: 'text.send.failed',
+              message: t('其他入口正在使用语音，请稍后重试'),
+            })
+          }
         }
         if (event.type === GatewayServerEvent.VOICE_DEACTIVATED) {
-          setOwnership({
+          const nextOwnership = {
             state: 'busy',
             holder: event.holder || null,
-          })
+          }
+          ownershipRef.current = nextOwnership
+          setOwnership(nextOwnership)
+          clearTextOutputState()
         }
         if (event.type === GatewayServerEvent.TURN_STARTED) {
           currentTurnId.current = event.turnId || ''
         }
+        if (
+          event.type === GatewayServerEvent.RESPONSE_STARTED
+          && textReplyActiveRef.current
+          && event.turnId
+          && event.turnId === textOutputTurnRef.current
+        ) textOutputResponseRef.current = event.responseId || ''
         if (event.type === GatewayServerEvent.VOICE_STATE) {
           if (acceptsVoiceState(event, currentTurnId.current)) {
             setState(event.state)
@@ -537,17 +735,39 @@ export default function useRealtimeVoice({
           }
         }
         if (event.type === GatewayServerEvent.AUDIO_DONE) {
+          if (
+            textReplyActiveRef.current
+            && event.turnId
+            && event.turnId === textOutputTurnRef.current
+          ) textOutputResponseRef.current = event.responseId || ''
           if (mutedPlaybackResponses.current.has(event.responseId)) {
             finishMutedAudio(event.responseId)
           } else {
             markAudioDone(event.responseId)
           }
         }
-        if (event.type === GatewayServerEvent.ERROR) setError(event.message)
+        if (
+          event.type === GatewayServerEvent.TRANSCRIPT_FINAL
+          && event.role === 'user'
+          && sentTextRef.current
+          && String(event.content || '').trim() === sentTextRef.current
+        ) textOutputTurnRef.current = event.turnId || ''
+        if (event.type === GatewayServerEvent.ERROR) {
+          setError(event.message)
+          if (shouldCleanupTextReplyOnError({
+            pending: pendingTextEventRef.current,
+            temporaryLease: textOutputLeaseRef.current,
+            replyActive: textReplyActiveRef.current,
+          })) {
+            releaseTextOutput()
+          }
+        }
         eventRef.current?.(event)
       }
       socket.onerror = () => {
         if (!disposed) {
+          clearTextOutputState()
+          setGatewayConnected(false)
           setConnectionState('unavailable')
           setError(t('实时语音连接中断，正在重连'))
           setVisualError(true)
@@ -556,6 +776,8 @@ export default function useRealtimeVoice({
       socket.onclose = () => {
         if (socketRef.current === socket) socketRef.current = null
         if (disposed) return
+        clearTextOutputState()
+        setGatewayConnected(false)
         stopPlayback()
         setState('idle')
         setConnectionState('unavailable')
@@ -567,6 +789,7 @@ export default function useRealtimeVoice({
       }
     }
     setError('')
+    setGatewayConnected(false)
     setConnectionState('connecting')
     connect()
 
@@ -576,23 +799,23 @@ export default function useRealtimeVoice({
       stopPlayback(suspended ? 'desktop_hidden' : 'connection_closed')
       socketRef.current?.close()
       socketRef.current = null
+      clearTextOutputState()
+      setGatewayConnected(false)
       mutedResponses.clear()
     }
   }, [
-    clientLabel,
-    clientStatesSignature,
-    clientType,
+    clearTextOutputState,
+    connectionEvent,
     consumeMutedAudio,
     finishMutedAudio,
     inputOnlyMute,
     markAudioDone,
     play,
-    realtimeProvider,
+    releaseTextOutput,
     sessionId,
     setAudioLevel,
     stopPlayback,
     suspended,
-    takeover,
   ])
 
   useEffect(() => {
@@ -764,11 +987,14 @@ export default function useRealtimeVoice({
     inputReady,
     error,
     visualError,
+    gatewayConnected,
+    textOutputActive,
     connectionState,
     wakeWordActive,
     ownership,
     levelElementRef,
     activateAudio,
+    sendText,
     interrupt,
     wake,
   }

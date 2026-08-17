@@ -51,6 +51,11 @@ import {
 import {
   desktopTaskCards,
 } from './desktop-task-cards.js'
+import {
+  canSubmitText,
+  draftAfterTextAcknowledgement,
+  matchesTextAcknowledgement,
+} from './text-input.js'
 
 const desktopOrbMode = (
   new URLSearchParams(window.location.search).get('desktop') === 'orb'
@@ -140,6 +145,8 @@ export default function App() {
   }))
   const [waitingForVoice, setWaitingForVoice] = useState(false)
   const [messages, setMessages] = useState([])
+  const [textDraft, setTextDraft] = useState('')
+  const [textSubmitting, setTextSubmitting] = useState(false)
   const [activity, setActivity] = useState(t('正在检查后台 Agent'))
   const [frontend, setFrontend] = useState({ label: 'Realtime Agent' })
   const [realtimeProviders, setRealtimeProviders] = useState([])
@@ -173,6 +180,10 @@ export default function App() {
   const previousWorkSettled = useRef(true)
   const workSettledAtRef = useRef(workSettledAt)
   const lastWakeAtRef = useRef(0)
+  const textSubmitLock = useRef(false)
+  const pendingTextRef = useRef('')
+  const textComposingRef = useRef(false)
+  const ignoreNextTextSubmit = useRef(false)
 
   const noteInteraction = useCallback(() => {
     setLastInteractionAt(Date.now())
@@ -354,6 +365,23 @@ export default function App() {
   }, [])
 
   const onRealtimeEvent = useCallback(event => {
+    if (matchesTextAcknowledgement(event, pendingTextRef.current)) {
+      const acknowledged = pendingTextRef.current
+      pendingTextRef.current = ''
+      textSubmitLock.current = false
+      setTextSubmitting(false)
+      setTextDraft(draft => draftAfterTextAcknowledgement(draft, acknowledged))
+    }
+    if (
+      event.type === 'gateway.disconnected'
+      || event.type === 'error'
+      || event.type === 'text.send.failed'
+      || event.type === 'voice.deactivated'
+    ) {
+      pendingTextRef.current = ''
+      textSubmitLock.current = false
+      setTextSubmitting(false)
+    }
     if (event.type === 'turn.started') {
       noteInteraction()
       currentTurnId.current = event.turnId || ''
@@ -712,6 +740,41 @@ export default function App() {
       setActivity(message)
     },
   })
+  const textCanSubmit = canSubmitText({
+    text: textDraft,
+    gatewayConnected: voice.gatewayConnected,
+    ownershipBusy: voice.ownership.state === 'busy',
+    outputActive: voice.textOutputActive,
+    submitting: textSubmitting,
+  })
+  const textComposerHint = !voice.gatewayConnected
+    ? t('正在连接，连接后可发送文字')
+    : voice.ownership.state === 'busy'
+      ? t('{holder}正在使用语音', {
+          holder: frontendLabel(voice.ownership.holder),
+        })
+      : textSubmitting
+        ? t('正在发送文字')
+        : voice.textOutputActive
+          ? t('正在等待回复')
+          : ''
+
+  const submitText = event => {
+    event.preventDefault()
+    if (textComposingRef.current || ignoreNextTextSubmit.current) {
+      ignoreNextTextSubmit.current = false
+      return
+    }
+    if (textSubmitLock.current || !textCanSubmit) return
+    const pendingText = textDraft.trim()
+    textSubmitLock.current = true
+    pendingTextRef.current = pendingText
+    setTextSubmitting(true)
+    if (voice.sendText(pendingText)) return
+    pendingTextRef.current = ''
+    textSubmitLock.current = false
+    setTextSubmitting(false)
+  }
   const lifecycleTransition = (
     desktopOrbMode && desktopLifecycle !== 'active'
   )
@@ -899,6 +962,10 @@ export default function App() {
     setSessionId(next)
     setMessages([])
     setAgentTasks([])
+    setTextDraft('')
+    pendingTextRef.current = ''
+    textSubmitLock.current = false
+    setTextSubmitting(false)
     currentTurnId.current = ''
     activeVoiceResponse.current = ''
     responseTurnMap.current.clear()
@@ -1284,6 +1351,45 @@ export default function App() {
           {turn.afterActivities.map(renderMessage)}
         </section>)}
       </div>
+
+      <form className="text-composer" onSubmit={submitText}>
+        <input
+          type="text"
+          value={textDraft}
+          disabled={textSubmitting || voice.textOutputActive}
+          onChange={event => setTextDraft(event.target.value)}
+          onCompositionStart={() => {
+            textComposingRef.current = true
+          }}
+          onCompositionEnd={() => {
+            textComposingRef.current = false
+            setTimeout(() => {
+              ignoreNextTextSubmit.current = false
+            }, 0)
+          }}
+          onKeyDown={event => {
+            if (
+              event.key === 'Enter'
+              && (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)
+            ) {
+              ignoreNextTextSubmit.current = true
+            }
+          }}
+          placeholder={t('输入消息…')}
+          aria-label={t('输入文字消息')}
+          aria-describedby={textComposerHint ? 'text-composer-status' : undefined}
+        />
+        <button
+          type="submit"
+          disabled={!textCanSubmit}
+          aria-busy={textSubmitting}
+        >
+          {t('发送')}
+        </button>
+        {textComposerHint && <small id="text-composer-status" role="status">
+          {textComposerHint}
+        </small>}
+      </form>
 
     </section>
   </main>

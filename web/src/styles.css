@@ -613,6 +613,56 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 .empty { flex: 1; display: grid; place-content: center; text-align: center; color: #74717c; gap: 8px; }
 .empty b { color: #a49fae; font-size: 12px; }
 .empty span { font-size: 14px; }
+.text-composer {
+  flex: 0 0 auto;
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px;
+  padding: 7px 8px 7px 15px;
+  border: 1px solid #ffffff18;
+  border-radius: 15px;
+  background: #11121ae8;
+  box-shadow: 0 16px 42px #00000038;
+  transition: border-color .18s, box-shadow .18s;
+}
+.text-composer:focus-within {
+  border-color: #8069efaa;
+  box-shadow: 0 16px 42px #00000038, 0 0 0 3px #8069ef18;
+}
+.text-composer input {
+  min-width: 0;
+  padding: 9px 0;
+  border: 0;
+  outline: 0;
+  color: #f5f5f7;
+  background: transparent;
+  font: inherit;
+}
+.text-composer input::placeholder { color: #777582; }
+.text-composer button {
+  min-width: 68px;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 10px;
+  color: white;
+  background: #7358e8;
+  font: inherit;
+  font-weight: 650;
+  transition: background-color .18s, transform .18s, opacity .18s;
+}
+.text-composer button:not(:disabled):hover { background: #8268ef; }
+.text-composer button:not(:disabled):active { transform: translateY(1px); }
+.text-composer button:disabled { cursor: not-allowed; opacity: .38; }
+.text-composer small {
+  grid-column: 1 / -1;
+  padding: 0 2px 2px;
+  color: #aaa6b4;
+  font-size: 10px;
+}
 .agent-task {
   flex: 0 0 auto;
   min-height: 58px;
@@ -971,6 +1021,9 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
   .hero p { margin-top: 14px; }
   .hero small { margin-top: 8px; }
   .messages { margin-top: 16px; }
+  .text-composer { margin: 0; }
+  .text-composer input { font-size: 16px; }
+  .text-composer button { min-width: 64px; padding-inline: 14px; }
   article { max-width: 90%; }
 }
 

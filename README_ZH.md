@@ -65,7 +65,7 @@
 
 对话不会因为后台任务而停下；任务完成后，结果会自然回到当前对话：
 
-https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
+https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 
 ### 核心特色
 

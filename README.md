@@ -72,7 +72,7 @@ tells you:
 Conversation doesn't stop for background tasks; when a task completes, the
 result naturally returns to the current conversation:
 
-https://github.com/user-attachments/assets/42022655-36d1-46b2-9c26-ff0765284000
+https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 
 ### Core Features
 

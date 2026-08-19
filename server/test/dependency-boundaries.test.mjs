@@ -13,8 +13,9 @@ const allowedDependencies = {
   core: new Set(['core', 'shared']),
   agent: new Set(['agent', 'core', 'shared']),
   conversation: new Set(['conversation', 'core']),
+  dictation: new Set(['dictation', 'shared']),
   task: new Set(['agent', 'core', 'task']),
-  voice: new Set(['conversation', 'core', 'shared', 'task', 'voice']),
+  voice: new Set(['conversation', 'core', 'dictation', 'shared', 'task', 'voice']),
 }
 
 function sourceFiles(directory) {

@@ -11,6 +11,7 @@ import {
   resolveBackendOwnership,
 } from '../../../shared/backend-catalog.mjs'
 import {
+  DEFAULT_DASHSCOPE_REALTIME_URL,
   resolveRealtimeFrontendConfiguration,
 } from '../../../shared/realtime-provider-catalog.mjs'
 
@@ -155,7 +156,38 @@ export function resolveOpenCodeCoordinatorAgent(env = process.env) {
   ].includes(selected) ? '' : selected
 }
 
+export function resolveDictationConfig(env = process.env) {
+  const workspaceUrl = env.DASHSCOPE_WORKSPACE_ID
+    ? `wss://${env.DASHSCOPE_WORKSPACE_ID}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime`
+    : DEFAULT_DASHSCOPE_REALTIME_URL
+  return {
+    enabled: String(env.QWEN_AUDIO_DICTATION_ENABLED || '').toLowerCase() === 'true',
+    apiKey: String(
+      env.QWEN_AUDIO_DICTATION_API_KEY || env.DASHSCOPE_API_KEY || '',
+    ).trim(),
+    baseUrl: String(
+      env.QWEN_AUDIO_DICTATION_BASE_URL || workspaceUrl,
+    ).trim().replace(/\/+$/, ''),
+    model: String(
+      env.QWEN_AUDIO_DICTATION_MODEL || 'qwen3-asr-flash-realtime',
+    ).trim(),
+    timeoutMs: numberSetting(
+      env.QWEN_AUDIO_DICTATION_TIMEOUT_MS,
+      45_000,
+      { min: 5_000, max: 300_000 },
+    ),
+    rewriteBaseUrl: String(
+      env.QWEN_AUDIO_DICTATION_REWRITE_BASE_URL
+      || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    ).trim().replace(/\/+$/, ''),
+    rewriteModel: String(
+      env.QWEN_AUDIO_DICTATION_REWRITE_MODEL || 'qwen-flash',
+    ).trim(),
+  }
+}
+
 const realtimeFrontend = resolveRealtimeFrontendConfiguration(process.env)
+const dictation = resolveDictationConfig(process.env)
 
 export const config = {
   root,
@@ -184,6 +216,13 @@ export const config = {
   speechToSpeechAuthToken: realtimeFrontend.speechToSpeechAuthToken,
   audioModel: realtimeFrontend.dashscopeModel,
   audioVoice: realtimeFrontend.dashscopeVoice,
+  dictationEnabled: dictation.enabled,
+  dictationApiKey: dictation.apiKey,
+  dictationBaseUrl: dictation.baseUrl,
+  dictationModel: dictation.model,
+  dictationTimeoutMs: dictation.timeoutMs,
+  dictationRewriteBaseUrl: dictation.rewriteBaseUrl,
+  dictationRewriteModel: dictation.rewriteModel,
   allowedOrigins: String(process.env.QWEN_AUDIO_AGENT_ALLOWED_ORIGINS || '')
     .split(',')
     .map(value => value.trim())

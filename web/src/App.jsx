@@ -15,6 +15,8 @@ import {
 } from './message-order.js'
 import MessageContent from './MessageContent.jsx'
 import MultimodalComposer from './MultimodalComposer.jsx'
+import useDictation from './useDictation.js'
+import { requiresKeyboardFallback } from './dictation-view.js'
 import DesktopFluidOrb from './DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './DesktopSpriteOrb.jsx'
 import { desktopOrbClassName, resolveOrbVisualState } from './orb-presentation.js'
@@ -23,6 +25,10 @@ import {
   resolveOrbSkinId,
 } from '../../shared/orb-skin-catalog.mjs'
 import { supportsComposerInput } from '../../shared/client-input-capabilities.mjs'
+import {
+  DICTATION_CAPABILITIES,
+  isDictationServerEvent,
+} from '../../shared/dictation-protocol.mjs'
 import { resultLabel } from './presentation.js'
 import { t } from './i18n.js'
 import {
@@ -153,6 +159,7 @@ export default function App() {
   const [modelStatus, setModelStatus] = useState(() => realtimeModelStatus())
   const [providerNotice, setProviderNotice] = useState('')
   const [healthValidated, setHealthValidated] = useState(false)
+  const [dictationAvailable, setDictationAvailable] = useState(false)
   const [backend, setBackend] = useState({ label: 'Agent', ready: false })
   const [agentTasks, setAgentTasks] = useState([])
   const [desktopTasksCollapsed, setDesktopTasksCollapsed] = useState(false)
@@ -177,6 +184,21 @@ export default function App() {
   const previousWorkSettled = useRef(true)
   const workSettledAtRef = useRef(workSettledAt)
   const lastWakeAtRef = useRef(0)
+  const composerRef = useRef(null)
+  const voiceSendRef = useRef(null)
+
+  const sendDictationEvent = useCallback(event => (
+    voiceSendRef.current?.(event) === true
+  ), [])
+  const dictation = useDictation({
+    enabled: composerEnabled && dictationAvailable,
+    send: sendDictationEvent,
+    composerRef,
+    locale: navigator.language,
+    resetKey: sessionId,
+  })
+  const handleDictationEvent = dictation.handleEvent
+  const cancelDictation = dictation.cancel
 
   const noteInteraction = useCallback(() => {
     setLastInteractionAt(Date.now())
@@ -259,6 +281,9 @@ export default function App() {
         })
         setRealtimeProviders(payload.realtimeProviders || [])
         setModelStatus(realtimeModelStatus(payload))
+        setDictationAvailable(DICTATION_CAPABILITIES.every(capability => (
+          payload.capabilities?.includes(capability)
+        )))
         // A front end persisted by an earlier visit may no longer exist on this
         // server (removed provider, different deployment). Sending it would be
         // refused on every connect, so the stale selection is dropped in favour
@@ -358,6 +383,15 @@ export default function App() {
   }, [])
 
   const onRealtimeEvent = useCallback(event => {
+    if (isDictationServerEvent(event)) {
+      handleDictationEvent(event)
+      if (requiresKeyboardFallback(event)) {
+        setVoiceEnabled(false)
+        setWaitingForVoice(false)
+        setActivity(t('听写不可用，请使用键盘输入'))
+      }
+      return
+    }
     if (event.type === 'turn.started') {
       noteInteraction()
       currentTurnId.current = event.turnId || ''
@@ -366,6 +400,7 @@ export default function App() {
       setActivity(t('正在听你说'))
     }
     if (event.type === 'gateway.disconnected') {
+      cancelDictation()
       setActivity(t('qwen-audio-agent Gateway 已断开，正在重连'))
       setAgentTasks(items => items.map(task => (
         [
@@ -672,6 +707,8 @@ export default function App() {
     updateUserTranscript,
     updateVoiceMessage,
     noteInteraction,
+    handleDictationEvent,
+    cancelDictation,
     voiceEnabled,
     waitingForVoice,
   ])
@@ -688,6 +725,7 @@ export default function App() {
   const voice = useRealtimeVoice({
     sessionId,
     enabled: voiceEnabled || voiceEnabledForWakeWord,
+    captureOverride: dictation.capturing,
     suspended: desktopOrbMode && desktopLifecycle === 'hidden' && !wakeWordEnabled,
     outputMuted: false,
     // WebUI and desktop share one control contract: the toggle only changes
@@ -703,12 +741,15 @@ export default function App() {
       healthValidated,
     ),
     onEvent: onRealtimeEvent,
+    onCapturedAudio: dictation.appendAudio,
     onInputError: message => {
+      if (dictation.capturing) dictation.cancel()
       setVoiceEnabled(false)
       setWaitingForVoice(false)
       setActivity(message)
     },
   })
+  voiceSendRef.current = voice.sendEvent
   const lifecycleTransition = (
     desktopOrbMode && desktopLifecycle !== 'active'
   )
@@ -1290,8 +1331,22 @@ export default function App() {
       </div>
 
       {composerEnabled && <MultimodalComposer
+        ref={composerRef}
         onSend={sendComposerInput}
         onStage={voice.stageInputParts}
+        dictation={{
+          ...dictation,
+          start: () => {
+            voice.activateAudio()
+            return dictation.start()
+          },
+          toggle: () => {
+            if (!dictation.capturing && dictation.state !== 'paused') {
+              voice.activateAudio()
+            }
+            return dictation.toggle()
+          },
+        }}
       />}
 
     </section>

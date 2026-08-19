@@ -185,6 +185,7 @@ export function microphoneControlEvent({
 export default function useRealtimeVoice({
   sessionId,
   enabled,
+  captureOverride = false,
   suspended = false,
   outputMuted = false,
   inputOnlyMute = false,
@@ -195,6 +196,7 @@ export default function useRealtimeVoice({
   takeover = false,
   realtimeProvider = '',
   onEvent,
+  onCapturedAudio,
   onInputError,
 }) {
   const [state, setState] = useState('idle')
@@ -209,6 +211,7 @@ export default function useRealtimeVoice({
     holder: null,
   })
   const eventRef = useRef(onEvent)
+  const capturedAudioRef = useRef(onCapturedAudio)
   const inputErrorRef = useRef(onInputError)
   const wakeWordOnlyRef = useRef(wakeWordOnly)
   const socketRef = useRef(null)
@@ -222,6 +225,7 @@ export default function useRealtimeVoice({
       .filter(state => typeof state === 'string' && state),
   )].sort().join(',')
   const enabledRef = useRef(enabled)
+  const captureOverrideRef = useRef(captureOverride)
   const inputReadyRef = useRef(false)
   const outputMutedRef = useRef(outputMuted)
   const mutedPlaybackResponses = useRef(new Set())
@@ -235,9 +239,11 @@ export default function useRealtimeVoice({
     failedResponses: new Set(),
   })
   eventRef.current = onEvent
+  capturedAudioRef.current = onCapturedAudio
   inputErrorRef.current = onInputError
   wakeWordOnlyRef.current = wakeWordOnly
   enabledRef.current = enabled
+  captureOverrideRef.current = captureOverride
   outputMutedRef.current = outputMuted
 
   const setAudioLevel = useCallback(value => {
@@ -625,7 +631,7 @@ export default function useRealtimeVoice({
   }, [outputMuted, stopPlayback])
 
   useEffect(() => {
-    if (!enabled || suspended) {
+    if ((!enabled && !captureOverride) || suspended) {
       inputReadyRef.current = false
       setInputReady(false)
       sendSocketEvent(microphoneControlEvent({
@@ -691,26 +697,36 @@ export default function useRealtimeVoice({
         processor.onaudioprocess = event => {
           const socket = socketRef.current
           if (socket?.readyState !== WebSocket.OPEN) return
+          const targetSampleRate = captureOverrideRef.current
+            ? 16000
+            : inputSampleRate.current
           const audio = resample(
             event.inputBuffer.getChannelData(0),
             context.sampleRate,
-            inputSampleRate.current,
+            targetSampleRate,
           )
-          socket.send(JSON.stringify({
-            type: GatewayClientEvent.AUDIO_APPEND,
-            audio: pcmBase64(audio),
-          }))
+          const encoded = pcmBase64(audio)
+          if (captureOverrideRef.current) {
+            capturedAudioRef.current?.(encoded)
+          } else {
+            socket.send(JSON.stringify({
+              type: GatewayClientEvent.AUDIO_APPEND,
+              audio: encoded,
+            }))
+          }
         }
         source.connect(processor)
         processor.connect(context.destination)
         inputReadyRef.current = true
         setInputReady(true)
-        sendSocketEvent(microphoneControlEvent({
-          enabled: true,
-          inputOnlyMute,
-          wakeWordOnly,
-          takeover,
-        }))
+        if (enabledRef.current) {
+          sendSocketEvent(microphoneControlEvent({
+            enabled: true,
+            inputOnlyMute,
+            wakeWordOnly,
+            takeover,
+          }))
+        }
         const samples = new Float32Array(analyser.fftSize)
         const tick = () => {
           analyser.getFloatTimeDomainData(samples)
@@ -750,6 +766,7 @@ export default function useRealtimeVoice({
     }
   }, [
     activateAudio,
+    captureOverride,
     enabled,
     inputOnlyMute,
     wakeWordOnly,
@@ -806,6 +823,7 @@ export default function useRealtimeVoice({
     activateAudio,
     interrupt,
     wake,
+    sendEvent: sendSocketEvent,
     sendInput,
     stageInputParts,
   }

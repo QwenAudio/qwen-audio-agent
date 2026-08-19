@@ -14,7 +14,8 @@
 版本号遵循 SemVer：新增能力升 minor；下文点名的任一端点或事件发生破坏性
 变更升 major。
 
-当前版本为 `2.0.0`，接替 `feat/embedded-gateway-host-contract` 分支的 `1.x`
+当前版本为 `2.1.0`，在 `2.0.0` 上新增默认关闭的 composer 听写事件与能力。
+`2.0.0` 接替 `feat/embedded-gateway-host-contract` 分支的 `1.x`
 版本线（止于 `1.7.0`）：升 major 记录的事实是——那条线宣告过的部分能力位
 （如 `gateway.embedded-lifecycle`、`desktop.settings-window`）不在本契约中。
 从该分支迁移的宿主应重新核对下方能力位表，而不是假设旧清单仍然成立。
@@ -37,6 +38,9 @@
 | `desktop.orb-placement` | `createOrbPlacement` 覆盖默认锚点、显示器夹取与拖放持久化 | `desktop/test/orb-placement.test.mjs` |
 | `desktop.orb-position-store` | 悬浮球位置由本包记忆（settings store 的 ui-state） | `desktop/test/settings-store.test.mjs` |
 | `desktop.skin-store` | 皮肤的导入、列表、删除与生效决策是发布的库接口 | `desktop/test/skin-store.test.mjs` |
+| `dictation.session-v1` | 默认关闭、限存活进程的听写会话把 composer 音频送到独立 ASR，并提供可见生命周期状态 | `server/test/dictation-session.test.mjs` |
+| `dictation.draft-ops-v1` | 草稿修改基于客户端权威快照和 revision 守卫的插入、替换、删除、改写操作 | `test/dictation-protocol.test.mjs` |
+| `dictation.commit-idempotency-v1` | 存活客户端会话按 `commitId` 去重，并至多一次调用现有 composer 提交路径 | `server/test/dictation-session.test.mjs`、`web/test/dictation-client.test.mjs`、`tui/test/dictation.test.mjs` |
 
 能力位清单本体是 `server/src/core/gateway-protocol.mjs` 的
 `GATEWAY_CAPABILITIES`；`test/gateway-contract.test.mjs` 会在能力位与本文档
@@ -135,6 +139,19 @@ await orb.load()
 | 服务端 → 客户端 | `input.suspend` | 立即停止采集（比用户级静音更强：不采集、不做唤醒词检测）；携带 `owner`、`reason`、`expiresAt` |
 | 服务端 → 客户端 | `input.resume` | 可以恢复采集 |
 | 客户端 → 服务端 | `input.suspend.ack` | 确认抢占已在本客户端生效 |
+| 客户端 → 服务端 | `dictation.start`、`dictation.pause`、`dictation.resume`、`dictation.cancel`、`dictation.stop` | 控制一个可见、显式启用的 composer 听写会话 |
+| 客户端 → 服务端 | `dictation.audio.append` | 仅向独立 ASR 会话流式发送 Base64 PCM16 音频 |
+| 客户端 → 服务端 | `dictation.context`、`dictation.operation.ack`、`dictation.commit.ack` | 交换一次性 revision 草稿快照并确认草稿/提交结果 |
+| 服务端 → 客户端 | `dictation.state`、`dictation.transcript.delta`、`dictation.transcript.final` | 展示听写状态和不会提交的 ASR 预览 |
+| 服务端 → 客户端 | `dictation.context.request`、`dictation.operation` | 请求一次客户端权威草稿快照并返回 revision 守卫操作 |
+| 服务端 → 客户端 | `dictation.commit.request` | 要求客户端针对唯一的会话内 `commitId` 调用一次普通 composer 提交 |
+| 服务端 → 客户端 | `dictation.error` | 展示 ASR/协议失败，绝不回退主 Realtime 前台 |
+
+听写事件带每方向单调递增的 `seq` 与 `sessionId`。操作带
+`operationId`/`baseRevision`，提交带 `commitId`/`revision`/`payloadHash`。
+运行时关闭时 `/api/health` 不广告听写能力。音频、预览、未提交或已取消文本、
+草稿快照均不是 conversation turn，也不会持久化。提交去重明确只保证存活进程与
+会话，不承诺跨崩溃的 exactly-once。
 
 ## 实例租约
 

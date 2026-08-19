@@ -191,6 +191,29 @@ The minimal configuration only requires real-time voice credentials:
 DASHSCOPE_API_KEY=your-key
 ```
 
+### Opt-in Web/TUI composer dictation
+
+Composer dictation is disabled by default and is exposed only when the Gateway
+advertises all `dictation.*` capabilities. Enable it explicitly:
+
+```dotenv
+QWEN_AUDIO_DICTATION_ENABLED=true
+# Optional; defaults to DASHSCOPE_API_KEY
+QWEN_AUDIO_DICTATION_API_KEY=
+# Optional dedicated ASR overrides
+QWEN_AUDIO_DICTATION_BASE_URL=wss://dashscope.aliyuncs.com/api-ws/v1/realtime
+QWEN_AUDIO_DICTATION_MODEL=qwen3-asr-flash-realtime
+QWEN_AUDIO_DICTATION_TIMEOUT_MS=45000
+# Optional one-shot text rewrite overrides
+QWEN_AUDIO_DICTATION_REWRITE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_AUDIO_DICTATION_REWRITE_MODEL=qwen-flash
+```
+
+This feature uses a dedicated Qwen ASR connection and never falls back to the
+primary Realtime model. It adds no persistent history or operating-system input
+permission. See [Composer dictation P0](dictation-p0.md) for the command,
+retention, and commit boundaries.
+
 When you need to execute backend tasks, select a backend Agent (using OpenClaw as an example):
 
 ```dotenv

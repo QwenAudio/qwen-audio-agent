@@ -20,8 +20,8 @@ import { FrontendMemoryService } from '../conversation/frontend-memory-service.m
 import { MarkdownContextStore } from '../conversation/markdown-context-store.mjs'
 import { enforceSameOrigin } from '../core/request-security.mjs'
 import {
-  GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
+  runtimeGatewayCapabilities,
 } from '../core/gateway-protocol.mjs'
 import { attachRealtimeGateway } from '../voice/realtime-gateway.mjs'
 import { describeActiveRealtime } from '../voice/realtime-provider.mjs'
@@ -226,11 +226,18 @@ app.get('/api/health', (req, res) => {
     status: 'ready',
     // Contract surface: clients branch on a capability, not a product version.
     protocolVersion: GATEWAY_PROTOCOL_VERSION,
-    capabilities: GATEWAY_CAPABILITIES,
+    capabilities: runtimeGatewayCapabilities({
+      dictationEnabled: config.dictationEnabled,
+    }),
     gatewayInstanceId: process.env.QWEN_AUDIO_GATEWAY_INSTANCE_ID || null,
     gatewayStartedAt: process.env.QWEN_AUDIO_GATEWAY_STARTED_AT || null,
     inputSuspension: inputArbitration.status(),
     voiceConfigured: realtime.configured,
+    dictation: {
+      enabled: config.dictationEnabled === true,
+      model: config.dictationEnabled ? config.dictationModel : null,
+      timeoutMs: config.dictationTimeoutMs,
+    },
     realtimeProvider: realtime.provider,
     realtimeLabel: realtime.label,
     realtimeModel: realtime.model,

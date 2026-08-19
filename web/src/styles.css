@@ -22,6 +22,46 @@
   gap: 8px;
 }
 
+.dictation-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 0 2px 8px;
+}
+
+.composer-dictation,
+.dictation-cancel {
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  color: inherit;
+  background: rgba(109, 93, 252, 0.24);
+}
+
+.dictation-cancel {
+  margin-left: auto;
+  background: rgba(255, 110, 110, 0.18);
+}
+
+.dictation-state {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(245, 245, 247, 0.74);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dictation-state.is-listening,
+.dictation-state.is-transcribing {
+  color: #9ed7ff;
+}
+
+.dictation-state.is-error {
+  color: #ff8c8c;
+}
+
 .composer-row textarea {
   flex: 1;
   min-height: 42px;

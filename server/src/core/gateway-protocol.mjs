@@ -16,7 +16,9 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '2.0.0'
+import { DICTATION_CAPABILITIES } from '../../../shared/dictation-protocol.mjs'
+
+export const GATEWAY_PROTOCOL_VERSION = '2.1.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -71,4 +73,11 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // qwen-audio-agent/skin-store: importing, listing, removing and resolving
   // orb skins is a published library surface.
   'desktop.skin-store',
+  ...DICTATION_CAPABILITIES,
 ])
+
+export function runtimeGatewayCapabilities({ dictationEnabled = false } = {}) {
+  return Object.freeze(GATEWAY_CAPABILITIES.filter(capability => (
+    dictationEnabled || !DICTATION_CAPABILITIES.includes(capability)
+  )))
+}

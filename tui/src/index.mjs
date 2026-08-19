@@ -19,6 +19,12 @@ import {
   inputPartsFromText,
 } from './input-parts.mjs'
 import { isExitCommand } from './terminal-commands.mjs'
+import { applyDraftOperation } from '../../shared/dictation-draft.mjs'
+import { createDictationClient } from '../../shared/dictation-client.mjs'
+import {
+  DICTATION_CAPABILITIES,
+  isDictationServerEvent,
+} from '../../shared/dictation-protocol.mjs'
 
 const OUTPUT_SAMPLE_RATE = 24000
 const AUDIO_MODES = new Set(['half', 'full'])
@@ -191,6 +197,19 @@ export function realtimeModelStatusText(health = {}) {
     ? '已支持图片输入'
     : '视觉输入：未支持'
   return `Realtime：${label} · ${visual}`
+}
+
+export function dictationStatusText(state) {
+  return ({
+    starting: '正在连接',
+    listening: '正在听写',
+    transcribing: '正在转写',
+    editing: '正在编辑草稿',
+    'ready-to-send': '等待发送确认',
+    paused: '已暂停',
+    cancelled: '已取消',
+    error: '失败，请使用键盘',
+  })[state] || '待命'
 }
 
 export function audioModeForPlatform(
@@ -647,11 +666,15 @@ export function createPersistentTerminalRenderer({
   onPaste = async value => value,
   onChange = () => {},
   onClose = () => {},
+  dictationEnabled = false,
+  onDictationToggle = () => {},
+  onDictationCancel = () => {},
 } = {}) {
   const entries = []
   let activePreview = ''
   let draft = []
   let cursor = 0
+  let revision = 0
   let scrollOffset = 0
   let pasteBuffer = null
   let pasteQueue = Promise.resolve()
@@ -760,7 +783,9 @@ export function createPersistentTerminalRenderer({
       truncate(visibleStatus, contentWidth),
       `${prompt}${input.content}`,
       truncate(
-        'Enter 发送 · /help 命令 · PgUp/PgDn 滚动 · Ctrl-C 退出',
+        dictationEnabled
+          ? 'Enter 发送 · Ctrl-D 听写 · Esc 取消 · /help 命令 · Ctrl-C 退出'
+          : 'Enter 发送 · /help 命令 · PgUp/PgDn 滚动 · Ctrl-C 退出',
         contentWidth,
       ),
     ]
@@ -808,6 +833,33 @@ export function createPersistentTerminalRenderer({
       status = String(value || '')
       redraw()
     },
+    snapshot() {
+      const selection = draft.slice(0, cursor).join('').length
+      return {
+        text: draft.join(''),
+        selectionStart: selection,
+        selectionEnd: selection,
+        revision,
+      }
+    },
+    applyOperation(operation) {
+      const result = applyDraftOperation({
+        text: draft.join(''),
+        selectionStart: cursor,
+        selectionEnd: cursor,
+        revision,
+      }, operation)
+      if (!result.applied) return result
+      draft = Array.from(result.text)
+      cursor = Array.from(result.text.slice(0, result.selectionStart)).length
+      revision = result.revision
+      onChange(result.text)
+      redraw()
+      return result
+    },
+    commitDraft() {
+      return submitDraft()
+    },
     discardPreview() {
       if (!activePreview) return
       activePreview = ''
@@ -834,6 +886,17 @@ export function createPersistentTerminalRenderer({
       .then(() => onLine(value))
       .catch(error => renderer.print(`[错误] ${error.message}`))
       .finally(redraw)
+  }
+  const submitDraft = () => {
+    const submitted = draft.join('')
+    if (!submitted.trim()) return false
+    draft = []
+    cursor = 0
+    revision += 1
+    scrollOffset = 0
+    redraw()
+    submit(submitted)
+    return true
   }
   const requestClose = () => {
     if (closed || closeRequested) return
@@ -870,6 +933,7 @@ export function createPersistentTerminalRenderer({
         }
         if (cursor >= insertion.start + insertion.length) cursor += delta
         else if (cursor > insertion.start) cursor = insertion.start + characters.length
+        revision += 1
         result?.apply?.()
         onChange(draft.join(''))
         redraw()
@@ -891,6 +955,7 @@ export function createPersistentTerminalRenderer({
       pasteBuffer = null
       if (!pasted) return
       const insertion = insert(pasted)
+      revision += 1
       redraw()
       resolvePaste(pasted, insertion)
       return
@@ -903,13 +968,16 @@ export function createPersistentTerminalRenderer({
       requestClose()
       return
     }
+    if (dictationEnabled && key.ctrl && key.name === 'd') {
+      onDictationToggle()
+      return
+    }
+    if (dictationEnabled && key.name === 'escape') {
+      onDictationCancel()
+      return
+    }
     if (key.name === 'return' || key.name === 'enter') {
-      const submitted = draft.join('')
-      draft = []
-      cursor = 0
-      scrollOffset = 0
-      redraw()
-      submit(submitted)
+      submitDraft()
       return
     }
     let changed = false
@@ -944,7 +1012,10 @@ export function createPersistentTerminalRenderer({
       insert(value)
       changed = true
     } else return
-    if (changed) onChange(draft.join(''))
+    if (changed) {
+      revision += 1
+      onChange(draft.join(''))
+    }
     redraw()
   }
   emitKeypressEvents(stdin)
@@ -1074,6 +1145,9 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
 
   assertInteractiveTerminal()
   const { cookie, health } = await readTuiHealth(options.url)
+  const dictationEnabled = DICTATION_CAPABILITIES.every(capability => (
+    health.capabilities?.includes(capability)
+  ))
 
   let headers = cookie ? { Cookie: cookie } : {}
   let inputSampleRate = health.realtimeInputSampleRate || 16000
@@ -1097,6 +1171,10 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
   const typedTranscripts = []
   const pendingPermissionTasks = new Set()
   let close = () => {}
+  let dictationClient = null
+  let unsubscribeDictation = () => {}
+  let toggleDictation = () => false
+  let cancelDictation = () => false
   let resolveClosed
   const closedPromise = new Promise(resolvePromise => {
     resolveClosed = resolvePromise
@@ -1120,6 +1198,9 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     },
     onChange: value => reconcileStagedInputParts(value),
     onClose: () => close(),
+    dictationEnabled,
+    onDictationToggle: () => toggleDictation(),
+    onDictationCancel: () => cancelDictation(),
   })
   const print = text => transcriptRenderer.print(text)
   const setStatus = text => transcriptRenderer.setStatus(text)
@@ -1160,6 +1241,8 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     if (closed) return
     closed = true
     clearTimeout(reconnectTimer)
+    unsubscribeDictation()
+    if (dictationClient?.snapshot().capturing) dictationClient.cancel()
     playback?.close()
     audioBridge?.close()
     transcriptRenderer.close()
@@ -1172,6 +1255,15 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     if (socket?.readyState < WebSocket.CLOSING) socket.close()
   }
   const sendMicrophoneAudio = chunk => {
+    if (
+      socket?.readyState === WebSocket.OPEN
+      && captureEnabled
+      && dictationClient?.snapshot().capturing
+    ) {
+      const dictationAudio = resamplePcm16(chunk, inputSampleRate, 16000)
+      dictationClient.appendAudio(dictationAudio.toString('base64'))
+      return
+    }
     if (canSendMicrophoneAudio({
       connected: socket?.readyState === WebSocket.OPEN,
       muted,
@@ -1323,6 +1415,39 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     transcriptRenderer.finish(userPrefix, transcript)
   }
 
+  const resetDictationClient = () => {
+    unsubscribeDictation()
+    dictationClient = createDictationClient({
+      enabled: dictationEnabled,
+      locale: Intl.DateTimeFormat().resolvedOptions().locale,
+      send: event => {
+        if (socket?.readyState !== WebSocket.OPEN) return false
+        socket.send(JSON.stringify(event))
+        return true
+      },
+      composer: {
+        snapshot: () => transcriptRenderer.snapshot(),
+        applyOperation: operation => transcriptRenderer.applyOperation(operation),
+        commitDictation: () => transcriptRenderer.commitDraft(),
+      },
+    })
+    unsubscribeDictation = dictationClient.subscribe(value => {
+      if (value.capturing) setCaptureEnabled(true)
+      else if (['paused', 'cancelled', 'error'].includes(value.state)) {
+        setCaptureEnabled(false)
+      }
+      setStatus(`听写 · ${dictationStatusText(value.state)}`)
+    })
+  }
+  toggleDictation = () => {
+    if (!dictationClient) return false
+    const current = dictationClient.snapshot()
+    if (current.state === 'paused') return dictationClient.resume()
+    if (current.capturing) return dictationClient.pause()
+    return dictationClient.start()
+  }
+  cancelDictation = () => dictationClient?.cancel() === true
+
   const setMuted = value => {
     muted = value
     if (muted) {
@@ -1353,6 +1478,13 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     try {
       event = JSON.parse(raw.toString())
     } catch {
+      return
+    }
+    if (isDictationServerEvent(event)) {
+      dictationClient?.handle(event)
+      if (event.type === 'dictation.error') {
+        print(`${style('[听写错误]', 'red')} ${event.message || event.code}`)
+      }
       return
     }
     if (event.type === GatewayServerEvent.VOICE_READY) {
@@ -1516,6 +1648,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     nextSocket.on('open', () => {
       if (socket !== nextSocket || closed) return
       reconnectDelay = 500
+      resetDictationClient()
       setStatus('Gateway 已连接 · 语音服务准备中')
       nextSocket.send(JSON.stringify(connectMessage({
         voiceEnabled: true,
@@ -1547,6 +1680,9 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     nextSocket.on('close', () => {
       if (socket !== nextSocket) return
       socket = null
+      unsubscribeDictation()
+      unsubscribeDictation = () => {}
+      dictationClient = null
       frontendReady = false
       ownsVoice = false
       setCaptureEnabled(false)

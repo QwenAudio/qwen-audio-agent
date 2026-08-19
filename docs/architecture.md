@@ -306,6 +306,7 @@ state, never delegation IDs, target Session IDs, directories, or raw events.
 WebUI / TUI / Desktop
    ↓ WebSocket and HTTP
 Realtime Gateway
+   ├─ opt-in dictation ──► isolated Qwen ASR (no tools/memory/history)
    ↓ spawn_thinking
 Work queue
    ↓
@@ -322,6 +323,12 @@ must not import backend adapters. The UI consumes only public Work events and
 final timeline content. Package-level `shared` modules are foundational runtime
 utilities; server `core` and `process` may depend on them, but they must not
 depend on server layers.
+
+The `server/src/dictation` layer depends only on itself and package-level
+`shared` modules. The Realtime Gateway may route its additive protocol, but
+dictation must not import conversation, memory, task, agent, or primary
+Realtime provider layers. This keeps all uncommitted audio and text outside
+the normal session path.
 
 Gateway may serve the immutable `web/dist` artifact as a deployment
 convenience, but this is static hosting only. Gateway source must not import UI

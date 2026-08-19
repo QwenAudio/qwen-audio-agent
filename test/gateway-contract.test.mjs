@@ -12,7 +12,9 @@ import { fileURLToPath } from 'node:url'
 import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
+  runtimeGatewayCapabilities,
 } from '../server/src/core/gateway-protocol.mjs'
+import { DICTATION_CAPABILITIES } from '../shared/dictation-protocol.mjs'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
@@ -31,6 +33,15 @@ test('the protocol version is SemVer and the capability list is frozen', () => {
     assert.match(capability, /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/)
   }
   assert.equal(new Set(GATEWAY_CAPABILITIES).size, GATEWAY_CAPABILITIES.length)
+})
+
+test('runtime capabilities hide default-off dictation until explicitly enabled', () => {
+  const disabled = runtimeGatewayCapabilities()
+  const enabled = runtimeGatewayCapabilities({ dictationEnabled: true })
+  for (const capability of DICTATION_CAPABILITIES) {
+    assert.equal(disabled.includes(capability), false)
+    assert.equal(enabled.includes(capability), true)
+  }
 })
 
 test('every advertised capability is documented in both contract documents', () => {

@@ -252,6 +252,7 @@ send、status 和 cancel。OpenClaw ACP 不接受客户端提供的 MCP 服务�
 WebUI / TUI / Desktop
    ↓ WebSocket and HTTP
 Realtime Gateway
+   ├─ 可选听写 ──► 独立 Qwen ASR（无 tools/memory/history）
    ↓ spawn_thinking
 Work queue
    ↓
@@ -266,6 +267,10 @@ Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 后端特定的 API 细节仅属于 `server/src/agent`。实时工具不得导入后端适配器。
 UI 仅消费公共 Work 事件和最终时间线内容。包级别的 `shared` 模块是基础运行时
 工具；server `core` 和 `process` 可以依赖它们，但它们不得依赖 server 层。
+
+`server/src/dictation` 层只能依赖自身和包级 `shared` 模块。Realtime Gateway
+可以路由其 additive 协议，但听写层不得导入 conversation、memory、task、agent
+或主 Realtime provider 层，从而保证所有未提交音频与文本位于正常会话路径之外。
 
 Gateway 可以将不可变的 `web/dist` 产物作为部署便利来提供，但这仅是静态托管。
 Gateway 源码不得导入 UI 组件、呈现文本、样式、终端行为或桌面行为。

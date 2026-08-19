@@ -18,7 +18,8 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
-The current version is `2.0.0`. It succeeds the `1.x` line of the
+The current version is `2.1.0`. It adds opt-in composer dictation events and
+capabilities to `2.0.0`, which succeeded the `1.x` line of the
 `feat/embedded-gateway-host-contract` fork (which ended at `1.7.0`): the major
 bump records that capabilities that line advertised — such as
 `gateway.embedded-lifecycle` and `desktop.settings-window` — are not part of
@@ -43,6 +44,9 @@ below instead of assuming the old list.
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |
 | `desktop.orb-position-store` | The orb's position is remembered by this package (settings store ui-state) | `desktop/test/settings-store.test.mjs` |
 | `desktop.skin-store` | Importing, listing, removing and resolving orb skins is a published library surface | `desktop/test/skin-store.test.mjs` |
+| `dictation.session-v1` | A default-off, live-process dictation session can stream composer audio to an independent ASR provider and expose visible lifecycle states | `server/test/dictation-session.test.mjs` |
+| `dictation.draft-ops-v1` | Draft changes use client-owned snapshots and revision-guarded insert/replace/delete/rewrite operations | `test/dictation-protocol.test.mjs` |
+| `dictation.commit-idempotency-v1` | A live client session de-duplicates `commitId` and invokes its existing composer submit path at most once | `server/test/dictation-session.test.mjs`, `web/test/dictation-client.test.mjs`, `tui/test/dictation.test.mjs` |
 
 The list itself is `GATEWAY_CAPABILITIES` in
 `server/src/core/gateway-protocol.mjs`; `test/gateway-contract.test.mjs` fails
@@ -145,6 +149,21 @@ spells them by hand is on its own.
 | server → client | `input.suspend` | Stop capturing outright (stronger than user-level mute: no capture, no wake word); carries `owner`, `reason`, `expiresAt` |
 | server → client | `input.resume` | Capture may resume |
 | client → server | `input.suspend.ack` | Confirms the suspension took effect on this client |
+| client → server | `dictation.start`, `dictation.pause`, `dictation.resume`, `dictation.cancel`, `dictation.stop` | Control one visible, opt-in composer dictation session |
+| client → server | `dictation.audio.append` | Stream Base64 PCM16 audio only to the independent ASR session |
+| client → server | `dictation.context`, `dictation.operation.ack`, `dictation.commit.ack` | Exchange an ephemeral revisioned composer snapshot and acknowledge draft/submit results |
+| server → client | `dictation.state`, `dictation.transcript.delta`, `dictation.transcript.final` | Expose dictation state and non-committing ASR previews |
+| server → client | `dictation.context.request`, `dictation.operation` | Request one client-owned draft snapshot and return a revision-guarded operation |
+| server → client | `dictation.commit.request` | Ask the client to invoke its ordinary composer submit once for a unique live-session `commitId` |
+| server → client | `dictation.error` | Report an ASR or protocol failure without falling back to the primary Realtime frontend |
+
+Dictation events carry a per-direction monotonic `seq` and `sessionId`.
+Operations carry `operationId` and `baseRevision`; commits carry `commitId`,
+`revision`, and `payloadHash`. The feature is runtime-gated and is not
+advertised by `/api/health` while disabled. Audio, previews, uncommitted text,
+cancelled text, and draft snapshots are not conversation turns and are not
+persisted. Commit idempotency is deliberately limited to the live process and
+session; the protocol does not claim crash-durable exactly-once delivery.
 
 ## Instance lease
 

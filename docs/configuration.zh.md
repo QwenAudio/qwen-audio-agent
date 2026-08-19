@@ -98,6 +98,28 @@ DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
 DASHSCOPE_API_KEY=your-key
 ```
 
+### 可选启用 Web/TUI composer 听写
+
+Composer 听写默认关闭；只有 Gateway 广告全部 `dictation.*` capability 时，
+Web/TUI 才显示入口。显式启用方式如下：
+
+```dotenv
+QWEN_AUDIO_DICTATION_ENABLED=true
+# 可选；默认复用 DASHSCOPE_API_KEY
+QWEN_AUDIO_DICTATION_API_KEY=
+# 可选的独立 ASR 覆盖项
+QWEN_AUDIO_DICTATION_BASE_URL=wss://dashscope.aliyuncs.com/api-ws/v1/realtime
+QWEN_AUDIO_DICTATION_MODEL=qwen3-asr-flash-realtime
+QWEN_AUDIO_DICTATION_TIMEOUT_MS=45000
+# 可选的一次性文本改写覆盖项
+QWEN_AUDIO_DICTATION_REWRITE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+QWEN_AUDIO_DICTATION_REWRITE_MODEL=qwen-flash
+```
+
+该功能使用独立 Qwen ASR 连接，绝不回退主 Realtime 模型；不新增持久历史或
+操作系统级输入权限。命令、保留与提交边界见
+[Composer 听写 P0 设计](dictation-p0.md)。
+
 需要执行后台任务时，再选择后台 Agent（以 OpenClaw 为例）：
 
 ```dotenv

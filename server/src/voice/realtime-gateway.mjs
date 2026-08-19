@@ -4,6 +4,14 @@ import {
   GatewayClientEvent,
   GatewayServerEvent,
 } from '../../../shared/realtime-events.mjs'
+import {
+  DictationClientEvent,
+  DictationServerEvent,
+  isDictationClientEvent,
+} from '../../../shared/dictation-protocol.mjs'
+import { DictationSession } from '../dictation/dictation-session.mjs'
+import { createQwenAsrTranscriber } from '../dictation/qwen-asr-transcriber.mjs'
+import { createStatelessRewriter } from '../dictation/stateless-rewriter.mjs'
 import { AnnouncementManager } from './announcement/announcement-manager.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import { config } from '../core/config.mjs'
@@ -123,6 +131,23 @@ export function attachRealtimeGateway(server, {
   permissionPolicy,
   inputAssets = new InputAssetRegistry(),
   inputArbitration = null,
+  conversation = conversationSync,
+  dictationEnabled = config.dictationEnabled,
+  createDictationSession = ({ send: sendEvent }) => new DictationSession({
+    send: sendEvent,
+    timeoutMs: config.dictationTimeoutMs,
+    createTranscriber: callbacks => createQwenAsrTranscriber({
+      baseUrl: config.dictationBaseUrl,
+      model: config.dictationModel,
+      apiKey: config.dictationApiKey,
+      ...callbacks,
+    }),
+    rewriteText: createStatelessRewriter({
+      baseUrl: config.dictationRewriteBaseUrl,
+      model: config.dictationRewriteModel,
+      apiKey: config.dictationApiKey,
+    }),
+  }),
 }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 20 * 1024 * 1024 })
   const activeVoiceClients = new ActiveVoiceClients()
@@ -222,6 +247,69 @@ export function attachRealtimeGateway(server, {
     const transcripts = new TurnTranscripts()
     const announcedPermissions = new Set()
     let permissionRetryTimer = null
+    let dictationSession = null
+    let dictationQueue = Promise.resolve()
+    const createConnectionDictationSession = () => createDictationSession({
+      ownerId,
+      sessionId,
+      send: dictationEvent => send(ws, dictationEvent),
+    })
+    const handleDictationEvent = event => {
+      if (!isDictationClientEvent(event)) return false
+      if (!dictationEnabled) {
+        if (event.type === DictationClientEvent.START) {
+          send(ws, {
+            type: DictationServerEvent.ERROR,
+            sessionId: String(event.sessionId || ''),
+            seq: 1,
+            code: 'feature_disabled',
+            message: 'Composer dictation is disabled.',
+          })
+        }
+        return true
+      }
+      dictationQueue = dictationQueue
+        .then(() => {
+          if (
+            event.type === DictationClientEvent.START
+            && ['cancelled', 'error'].includes(dictationSession?.state)
+          ) {
+            dictationSession.close?.()
+            dictationSession = null
+          }
+          if (!dictationSession) {
+            if (event.type !== DictationClientEvent.START) {
+              send(ws, {
+                type: DictationServerEvent.ERROR,
+                sessionId: String(event.sessionId || ''),
+                seq: 1,
+                code: 'unknown_session',
+                message: 'Unknown dictation session.',
+              })
+              return false
+            }
+            dictationSession = createConnectionDictationSession()
+          }
+          return dictationSession.handle(event)
+        })
+        .catch(() => {
+          if (typeof dictationSession?.fail === 'function') {
+            dictationSession.fail(
+              'dictation_internal_error',
+              'Composer dictation failed.',
+            )
+          } else {
+            send(ws, {
+              type: DictationServerEvent.ERROR,
+              sessionId: String(event.sessionId || ''),
+              seq: 1,
+              code: 'dictation_internal_error',
+              message: 'Composer dictation failed.',
+            })
+          }
+        })
+      return true
+    }
     const activeSessionTasks = () => taskManager.list({
       ownerId,
       sessionId,
@@ -399,7 +487,7 @@ export function attachRealtimeGateway(server, {
       memoryService,
       notesStore,
       getClientContext: () => clientContext,
-      getConversationContext: () => conversationSync.frontendContext({
+      getConversationContext: () => conversation.frontendContext({
         ownerId,
         sessionId,
       }),
@@ -603,7 +691,7 @@ export function attachRealtimeGateway(server, {
       final,
     }) => {
       if (final) {
-        conversationSync.record({
+        conversation.record({
           ownerId,
           sessionId,
           id: `voice:assistant:${id}`,
@@ -934,7 +1022,7 @@ export function attachRealtimeGateway(server, {
             // coordinator can delegate. Evaluate this only when the delegated
             // confirmation reaches the front of the response queue, after the
             // earlier acknowledgement transcript has been recorded.
-            shouldSpeak: () => !conversationSync.hasEquivalentAssistantSpeech({
+            shouldSpeak: () => !conversation.hasEquivalentAssistantSpeech({
               ownerId,
               sessionId,
               turnId: task.turnId,
@@ -1084,7 +1172,7 @@ export function attachRealtimeGateway(server, {
         if (responseTurnCandidate === transcriptTurn) {
           ensurePermissionResponseFor(transcriptTurn)
         }
-        conversationSync.record({
+        conversation.record({
           ownerId,
           sessionId,
           id: `voice:user:${transcriptTurn.turnId}`,
@@ -1454,7 +1542,7 @@ export function attachRealtimeGateway(server, {
         agentContext: {
           client: clientContext,
           memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-          recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),
+          recentMessages: conversation.frontendContext({ ownerId, sessionId }),
         },
         onEvent: handleEvent,
         onDiagnostic: diagnostic => {
@@ -1801,7 +1889,7 @@ export function attachRealtimeGateway(server, {
       pendingInputParts = []
       transcripts.record(inputTurnId, text || display)
       transcripts.recordParts(inputTurnId, inputFileParts(parts))
-      conversationSync.record({
+      conversation.record({
         ownerId,
         sessionId,
         id: `voice:user:${inputTurnId}`,
@@ -1878,6 +1966,7 @@ export function attachRealtimeGateway(server, {
       } catch {
         return
       }
+      if (handleDictationEvent(event)) return
       if (event.type === GatewayClientEvent.CONNECT) {
         descriptor = clientDescriptor(event)
         voiceClient.descriptor = descriptor
@@ -2140,6 +2229,7 @@ export function attachRealtimeGateway(server, {
       cancelScheduledRealtimeReconnect()
       sleepController?.close()
       frontend?.close()
+      dictationSession?.close?.()
       // Invisible memory: distil durable personal facts from this session in
       // the background. All gating (debounce, minimum turns, disabled state)
       // lives inside the extractor; it never blocks or breaks the close path,

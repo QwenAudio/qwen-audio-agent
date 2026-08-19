@@ -4,6 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
   numberSetting,
+  resolveDictationConfig,
   resolveBackendModels,
   resolveBackendWorkspace,
   resolveOpenCodeCoordinatorAgent,
@@ -23,6 +24,35 @@ test('treats missing and blank numeric settings as unset', () => {
 test('preserves explicit zero numeric settings', () => {
   assert.equal(numberSetting('0', 120, { min: 0, max: 1000 }), 0)
   assert.equal(numberSetting(0, 120, { min: 0, max: 1000 }), 0)
+})
+
+test('keeps dictation disabled by default with an independent ASR configuration', () => {
+  assert.deepEqual(resolveDictationConfig({}), {
+    enabled: false,
+    apiKey: '',
+    baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
+    model: 'qwen3-asr-flash-realtime',
+    timeoutMs: 45_000,
+    rewriteBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    rewriteModel: 'qwen-flash',
+  })
+  assert.deepEqual(resolveDictationConfig({
+    QWEN_AUDIO_DICTATION_ENABLED: 'true',
+    QWEN_AUDIO_DICTATION_API_KEY: 'dictation-key',
+    QWEN_AUDIO_DICTATION_BASE_URL: 'wss://asr.example/realtime/',
+    QWEN_AUDIO_DICTATION_MODEL: 'custom-asr',
+    QWEN_AUDIO_DICTATION_TIMEOUT_MS: '90000',
+    QWEN_AUDIO_DICTATION_REWRITE_BASE_URL: 'https://rewrite.example/v1/',
+    QWEN_AUDIO_DICTATION_REWRITE_MODEL: 'custom-rewriter',
+  }), {
+    enabled: true,
+    apiKey: 'dictation-key',
+    baseUrl: 'wss://asr.example/realtime',
+    model: 'custom-asr',
+    timeoutMs: 90_000,
+    rewriteBaseUrl: 'https://rewrite.example/v1',
+    rewriteModel: 'custom-rewriter',
+  })
 })
 
 test('uses the shared user data workspace for the default OpenCode workspace', () => {

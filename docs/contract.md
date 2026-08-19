@@ -164,6 +164,10 @@ advertised by `/api/health` while disabled. Audio, previews, uncommitted text,
 cancelled text, and draft snapshots are not conversation turns and are not
 persisted. Commit idempotency is deliberately limited to the live process and
 session; the protocol does not claim crash-durable exactly-once delivery.
+`stopped` is terminal for a live transcriber and requires a fresh
+`dictation.start`. Paused, stopped, cancelled, and error sessions reject late
+context, operation, and commit work; all capture-bearing states have a bounded
+timeout.
 
 ## Instance lease
 

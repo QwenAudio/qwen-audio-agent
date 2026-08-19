@@ -384,8 +384,8 @@ export default function App() {
 
   const onRealtimeEvent = useCallback(event => {
     if (isDictationServerEvent(event)) {
-      handleDictationEvent(event)
-      if (requiresKeyboardFallback(event)) {
+      const accepted = handleDictationEvent(event)
+      if (requiresKeyboardFallback(event, accepted)) {
         setVoiceEnabled(false)
         setWaitingForVoice(false)
         setActivity(t('听写不可用，请使用键盘输入'))

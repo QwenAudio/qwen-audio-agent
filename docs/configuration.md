@@ -207,7 +207,16 @@ QWEN_AUDIO_DICTATION_TIMEOUT_MS=45000
 # Optional one-shot text rewrite overrides
 QWEN_AUDIO_DICTATION_REWRITE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 QWEN_AUDIO_DICTATION_REWRITE_MODEL=qwen-flash
+QWEN_AUDIO_DICTATION_REWRITE_API_KEY=
+# Explicitly reuse the ASR key only when both endpoints have the same provider origin
+QWEN_AUDIO_DICTATION_REWRITE_REUSE_ASR_KEY=false
 ```
+
+Rewrite credentials are independent by default. If no rewrite key is present,
+open-ended rewrite commands fail visibly and leave the draft unchanged. The
+ASR key can be reused only with the explicit opt-in above and only when the
+WebSocket/HTTP endpoints resolve to the same transport-equivalent origin;
+cross-origin reuse is rejected.
 
 This feature uses a dedicated Qwen ASR connection and never falls back to the
 primary Realtime model. It adds no persistent history or operating-system input

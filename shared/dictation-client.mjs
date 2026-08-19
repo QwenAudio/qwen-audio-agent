@@ -16,7 +16,7 @@ const CAPTURING_STATES = new Set([
   'editing',
   'ready-to-send',
 ])
-const RESTARTABLE_STATES = new Set(['cancelled', 'error'])
+const RESTARTABLE_STATES = new Set(['stopped', 'cancelled', 'error'])
 
 export function createDictationClient({
   enabled = false,
@@ -30,6 +30,7 @@ export function createDictationClient({
   let clientSeq = 0
   let serverSeq = 0
   let preview = ''
+  let resumeRequested = false
   const submittedCommits = new Map()
   const listeners = new Set()
 
@@ -76,6 +77,7 @@ export function createDictationClient({
       clientSeq = 0
       serverSeq = 0
       preview = ''
+      resumeRequested = false
       setState('starting')
       return sendEvent({
         type: DictationClientEvent.START,
@@ -85,22 +87,32 @@ export function createDictationClient({
     },
 
     pause() {
+      if (!CAPTURING_STATES.has(state)) return false
+      resumeRequested = false
       return sendEvent({ type: DictationClientEvent.PAUSE })
     },
 
     resume() {
-      return sendEvent({ type: DictationClientEvent.RESUME })
+      if (state !== 'paused') return false
+      const sent = sendEvent({ type: DictationClientEvent.RESUME })
+      resumeRequested = sent
+      return sent
     },
 
     cancel() {
       if (!sessionId) return false
       const sent = sendEvent({ type: DictationClientEvent.CANCEL })
+      resumeRequested = false
       setState('cancelled')
       return sent
     },
 
     stop() {
-      return sendEvent({ type: DictationClientEvent.STOP })
+      if (!CAPTURING_STATES.has(state)) return false
+      const sent = sendEvent({ type: DictationClientEvent.STOP })
+      resumeRequested = false
+      setState('stopped')
+      return sent
     },
 
     appendAudio(audio) {
@@ -114,8 +126,22 @@ export function createDictationClient({
     handle(event) {
       if (!accepts(event)) return false
       if (event.type === DictationServerEvent.STATE) {
-        if (event.state === 'cancelled') preview = ''
-        setState(String(event.state || 'error'))
+        const next = String(event.state || 'error')
+        if (CAPTURING_STATES.has(next)) {
+          if (RESTARTABLE_STATES.has(state)) return false
+          if (
+            state === 'paused'
+            && (!resumeRequested || next !== 'listening')
+          ) return false
+        }
+        if (state === 'paused' && CAPTURING_STATES.has(next)) {
+          resumeRequested = false
+        }
+        if (['paused', 'stopped', 'cancelled', 'error'].includes(next)) {
+          resumeRequested = false
+        }
+        if (['stopped', 'cancelled'].includes(next)) preview = ''
+        setState(next)
         return true
       }
       if (event.type === DictationServerEvent.TRANSCRIPT_DELTA) {
@@ -129,11 +155,14 @@ export function createDictationClient({
         return true
       }
       if (event.type === DictationServerEvent.ERROR) {
+        if (state === 'paused' || RESTARTABLE_STATES.has(state)) return false
         preview = ''
+        resumeRequested = false
         setState('error')
         return true
       }
       if (event.type === DictationServerEvent.CONTEXT_REQUEST) {
+        if (state !== 'editing') return false
         const current = composer.snapshot()
         return sendEvent({
           type: DictationClientEvent.CONTEXT,
@@ -145,6 +174,7 @@ export function createDictationClient({
         })
       }
       if (event.type === DictationServerEvent.OPERATION) {
+        if (state !== 'editing') return false
         const current = composer.snapshot()
         let result = {
           applied: false,
@@ -163,6 +193,7 @@ export function createDictationClient({
         })
       }
       if (event.type === DictationServerEvent.COMMIT_REQUEST) {
+        if (state !== 'ready-to-send') return false
         const current = composer.snapshot()
         const valid = current.revision === Number(event.revision)
           && draftPayloadHash(current.text) === event.payloadHash

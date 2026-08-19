@@ -19,6 +19,7 @@ test('hides disabled dictation and exposes a labelled action for every visible s
     ['editing', 'pause', '正在编辑草稿'],
     ['ready-to-send', 'pause', '准备发送'],
     ['paused', 'resume', '听写已暂停'],
+    ['stopped', 'start', '听写已停止'],
     ['cancelled', 'start', '听写已取消'],
     ['error', 'start', '听写不可用，请使用键盘输入'],
   ]
@@ -33,5 +34,6 @@ test('hides disabled dictation and exposes a labelled action for every visible s
 
 test('provider errors require keyboard fallback instead of primary Realtime', () => {
   assert.equal(requiresKeyboardFallback({ type: 'dictation.error' }), true)
+  assert.equal(requiresKeyboardFallback({ type: 'dictation.error' }, false), false)
   assert.equal(requiresKeyboardFallback({ type: 'error' }), false)
 })

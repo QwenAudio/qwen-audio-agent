@@ -65,6 +65,11 @@ const RESPONSE_START_WATCHDOG_MS = 12000
 const PERMISSION_RESPONSE_GRACE_MS = 800
 const RESPONSE_CONTEXT_CLEANUP_MS = 30000
 const REALTIME_STABLE_CONNECTION_MS = 10000
+const DICTATION_INTERRUPT_EVENTS = new Set([
+  DictationClientEvent.PAUSE,
+  DictationClientEvent.CANCEL,
+  DictationClientEvent.STOP,
+])
 
 function send(ws, event) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event))
@@ -145,7 +150,7 @@ export function attachRealtimeGateway(server, {
     rewriteText: createStatelessRewriter({
       baseUrl: config.dictationRewriteBaseUrl,
       model: config.dictationRewriteModel,
-      apiKey: config.dictationApiKey,
+      apiKey: config.dictationRewriteApiKey,
     }),
   }),
 }) {
@@ -248,6 +253,7 @@ export function attachRealtimeGateway(server, {
     const announcedPermissions = new Set()
     let permissionRetryTimer = null
     let dictationSession = null
+    let dictationSessionId = ''
     let dictationQueue = Promise.resolve()
     const createConnectionDictationSession = () => createDictationSession({
       ownerId,
@@ -268,46 +274,77 @@ export function attachRealtimeGateway(server, {
         }
         return true
       }
+      const failDictation = target => {
+        if (typeof target?.fail === 'function') {
+          target.fail(
+            'dictation_internal_error',
+            'Composer dictation failed.',
+          )
+        } else {
+          send(ws, {
+            type: DictationServerEvent.ERROR,
+            sessionId: String(event.sessionId || ''),
+            seq: 1,
+            code: 'dictation_internal_error',
+            message: 'Composer dictation failed.',
+          })
+        }
+      }
+      if (
+        event.type === DictationClientEvent.START
+        && (
+          !dictationSession
+          || ['stopped', 'cancelled', 'error'].includes(dictationSession.state)
+        )
+      ) {
+        if (['stopped', 'cancelled', 'error'].includes(dictationSession?.state)) {
+          dictationSession.close?.()
+          dictationSession = null
+        }
+        if (!dictationSession) {
+          dictationSession = createConnectionDictationSession()
+          dictationSessionId = String(event.sessionId || '')
+          // Retired work may still settle, but it remains bound to the retired
+          // session captured below and cannot delay or enter this generation.
+          dictationQueue = Promise.resolve()
+        }
+        const startedSession = dictationSession
+        Promise.resolve(startedSession.handle(event)).catch(() => {
+          failDictation(startedSession)
+        })
+        return true
+      }
+      if (
+        dictationSession
+        && DICTATION_INTERRUPT_EVENTS.has(event.type)
+        && String(event.sessionId || '') === dictationSessionId
+      ) {
+        const interruptedSession = dictationSession
+        Promise.resolve(interruptedSession.handle(event)).catch(() => {
+          failDictation(interruptedSession)
+        })
+        return true
+      }
+      const queuedSession = dictationSession
+      const queuedSessionId = dictationSessionId
       dictationQueue = dictationQueue
         .then(() => {
           if (
-            event.type === DictationClientEvent.START
-            && ['cancelled', 'error'].includes(dictationSession?.state)
+            !queuedSession
+            || String(event.sessionId || '') !== queuedSessionId
           ) {
-            dictationSession.close?.()
-            dictationSession = null
-          }
-          if (!dictationSession) {
-            if (event.type !== DictationClientEvent.START) {
-              send(ws, {
-                type: DictationServerEvent.ERROR,
-                sessionId: String(event.sessionId || ''),
-                seq: 1,
-                code: 'unknown_session',
-                message: 'Unknown dictation session.',
-              })
-              return false
-            }
-            dictationSession = createConnectionDictationSession()
-          }
-          return dictationSession.handle(event)
-        })
-        .catch(() => {
-          if (typeof dictationSession?.fail === 'function') {
-            dictationSession.fail(
-              'dictation_internal_error',
-              'Composer dictation failed.',
-            )
-          } else {
             send(ws, {
               type: DictationServerEvent.ERROR,
               sessionId: String(event.sessionId || ''),
               seq: 1,
-              code: 'dictation_internal_error',
-              message: 'Composer dictation failed.',
+              code: 'unknown_session',
+              message: 'Unknown dictation session.',
             })
+            return false
           }
+          return queuedSession.handle(event)
         })
+        .catch(() => failDictation(queuedSession))
       return true
     }
     const activeSessionTasks = () => taskManager.list({

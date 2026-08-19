@@ -6,6 +6,7 @@ const LABELS = Object.freeze({
   editing: '正在编辑草稿',
   'ready-to-send': '准备发送',
   paused: '听写已暂停',
+  stopped: '听写已停止',
   cancelled: '听写已取消',
   error: '听写不可用，请使用键盘输入',
 })
@@ -25,6 +26,6 @@ export function dictationControlView({ enabled, state = 'idle' } = {}) {
   }
 }
 
-export function requiresKeyboardFallback(event) {
-  return event?.type === 'dictation.error'
+export function requiresKeyboardFallback(event, accepted = true) {
+  return accepted && event?.type === 'dictation.error'
 }

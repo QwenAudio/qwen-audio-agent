@@ -62,7 +62,9 @@ Client to Gateway:
   to `true`, locale defaults to the client locale.
 - `dictation.audio.append`: append Base64 PCM16 audio to the dedicated ASR.
 - `dictation.pause`, `dictation.resume`, `dictation.cancel`, `dictation.stop`:
-  explicit lifecycle controls. Cancel discards every uncommitted value.
+  explicit lifecycle controls. Cancel discards every uncommitted value. Stop
+  closes the live transcriber and enters `stopped`; resume is rejected until a
+  new start creates a fresh session.
 - `dictation.context`: one response to `dictation.context.request` containing
   the current text, selection, and revision.
 - `dictation.operation.ack`: applied/conflict/rejected result.
@@ -72,7 +74,7 @@ Client to Gateway:
 Gateway to client:
 
 - `dictation.state`: one of `starting`, `listening`, `transcribing`, `editing`,
-  `ready-to-send`, `paused`, `cancelled`, or `error`.
+  `ready-to-send`, `paused`, `stopped`, `cancelled`, or `error`.
 - `dictation.transcript.delta` and `dictation.transcript.final`: visible ASR
   preview only; neither event changes the conversation.
 - `dictation.context.request`: requests one composer snapshot.
@@ -85,9 +87,11 @@ Gateway to client:
 
 An isolated final command at the end of an ASR-final utterance triggers submit:
 Chinese `发送` or `提交`, and English `send` or `submit`, with optional terminal
-punctuation and whitespace. A command appearing mid-sentence, followed by an
-object/preposition/content, remains ordinary dictated text. The command token
-is removed before insertion and submission.
+punctuation and whitespace. A Chinese command after dictated text requires a
+whitespace or explicit punctuation boundary; for example, `明天见。发送`
+commits, while `把文件发送` remains ordinary text. A command appearing
+mid-sentence, followed by an object/preposition/content, also remains ordinary
+dictated text. The command token is removed before insertion and submission.
 
 Exact edit forms are deterministic and local to the draft:
 
@@ -97,7 +101,9 @@ Exact edit forms are deterministic and local to the draft:
 Open requests such as “改得更简洁” may use one stateless text request. That
 request contains only the current draft and instruction, sets no tools, and
 receives no memory or conversation context. Failure leaves the draft unchanged
-and enters the visible error state.
+and enters the visible error state. Rewrite uses an independent key by default;
+explicit ASR-key reuse is allowed only for a transport-equivalent provider
+origin and is rejected across origins.
 
 ## Lifecycle and timeout
 
@@ -112,12 +118,17 @@ idle -> starting -> listening <-> paused
                                       |
                          continuous --+--> listening
                          one-shot --------> paused
+start/listen/transcribe/edit/ready -- stop --> stopped -- new start --> starting
 ```
 
-Cancel or connection close clears ASR audio, partial/final text, pending
-context, operations, commits, timers, and in-memory receipts. Continuous mode
-is on by default. Forty-five seconds without audio or interaction moves the
-session to `paused` and stops capture.
+Pause or timeout clears pending in-process intent, context, operation, commit,
+and timer state; cancel, error, stop, or connection close additionally closes
+the dedicated ASR session. Continuous mode is on by default. Every
+capture-bearing state —
+`starting`, `listening`, `transcribing`, `editing`, and `ready-to-send` — has a
+45-second timeout that moves the session to `paused` and stops dictation
+capture. In `paused`, `stopped`, `cancelled`, or `error`, late context,
+operation, and commit messages are ignored and cannot resume capture or submit.
 
 ## Privacy and observability invariants
 
@@ -129,6 +140,9 @@ session to `paused` and stops capture.
 - No new persistent file or directory is introduced by this feature.
 - A client cannot capture unless it can render a dictation state. Hiding or
   unmounting the control cancels capture.
+- TUI capture also requires the live client to be unmuted and own voice input.
+  Leaving dictation restores its prior capture state only when those gates still
+  hold; a provider error always returns to keyboard input instead of Realtime.
 - Disabling the flag or losing the ASR provider returns the composer to normal
   keyboard behavior. The primary Realtime provider is never an ASR fallback.
 

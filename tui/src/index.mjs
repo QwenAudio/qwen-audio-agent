@@ -207,6 +207,7 @@ export function dictationStatusText(state) {
     editing: '正在编辑草稿',
     'ready-to-send': '等待发送确认',
     paused: '已暂停',
+    stopped: '已停止',
     cancelled: '已取消',
     error: '失败，请使用键盘',
   })[state] || '待命'
@@ -286,8 +287,50 @@ export function canSendMicrophoneAudio({
   connected,
   muted,
   captureEnabled,
+  frontendReady = true,
+  ownsVoice = true,
 }) {
-  return Boolean(connected && !muted && captureEnabled)
+  return Boolean(
+    connected && !muted && captureEnabled && frontendReady && ownsVoice,
+  )
+}
+
+export function isTuiCaptureAvailable({
+  connected,
+  muted,
+  frontendReady,
+  ownsVoice,
+  closed,
+  bridgeExited,
+}) {
+  return Boolean(
+    connected
+    && !muted
+    && frontendReady
+    && ownsVoice
+    && !closed
+    && !bridgeExited,
+  )
+}
+
+export function dictationCaptureTarget({
+  dictationState,
+  previousCaptureEnabled,
+  ...availability
+}) {
+  const available = isTuiCaptureAvailable(availability)
+  if (['starting', 'listening', 'transcribing', 'editing', 'ready-to-send'].includes(
+    dictationState,
+  )) return available
+  if (dictationState === 'error') return false
+  if (['paused', 'stopped', 'cancelled'].includes(dictationState)) {
+    return Boolean(previousCaptureEnabled && available)
+  }
+  return false
+}
+
+export function requiresTuiKeyboardFallback(event, accepted = true) {
+  return accepted && event?.type === 'dictation.error'
 }
 
 export function performManualInterrupt({
@@ -1172,6 +1215,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
   const pendingPermissionTasks = new Set()
   let close = () => {}
   let dictationClient = null
+  let captureBeforeDictation = null
   let unsubscribeDictation = () => {}
   let toggleDictation = () => false
   let cancelDictation = () => false
@@ -1255,19 +1299,26 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     if (socket?.readyState < WebSocket.CLOSING) socket.close()
   }
   const sendMicrophoneAudio = chunk => {
-    if (
-      socket?.readyState === WebSocket.OPEN
-      && captureEnabled
-      && dictationClient?.snapshot().capturing
-    ) {
-      const dictationAudio = resamplePcm16(chunk, inputSampleRate, 16000)
-      dictationClient.appendAudio(dictationAudio.toString('base64'))
+    if (dictationClient?.snapshot().capturing) {
+      if (captureEnabled && isTuiCaptureAvailable({
+        connected: socket?.readyState === WebSocket.OPEN,
+        muted,
+        frontendReady,
+        ownsVoice,
+        closed,
+        bridgeExited,
+      })) {
+        const dictationAudio = resamplePcm16(chunk, inputSampleRate, 16000)
+        dictationClient.appendAudio(dictationAudio.toString('base64'))
+      }
       return
     }
     if (canSendMicrophoneAudio({
       connected: socket?.readyState === WebSocket.OPEN,
       muted,
       captureEnabled,
+      frontendReady,
+      ownsVoice,
     })) {
       socket.send(JSON.stringify({
         type: 'audio.append',
@@ -1381,14 +1432,14 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
   })
 
   const startMicrophone = () => {
-    if (
-      muted
-      || !frontendReady
-      || !ownsVoice
-      || closed
-      || bridgeExited
-      || socket?.readyState !== WebSocket.OPEN
-    ) return
+    if (!isTuiCaptureAvailable({
+      connected: socket?.readyState === WebSocket.OPEN,
+      muted,
+      frontendReady,
+      ownsVoice,
+      closed,
+      bridgeExited,
+    })) return
     if (setCaptureEnabled(true)) {
       setStatus(`已连接 · 麦克风已开启 · ${audioMode.shortLabel}`)
       print(`[麦克风已开启 · ${inputSampleRate} Hz · ${audioMode.shortLabel}]`)
@@ -1432,9 +1483,18 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       },
     })
     unsubscribeDictation = dictationClient.subscribe(value => {
-      if (value.capturing) setCaptureEnabled(true)
-      else if (['paused', 'cancelled', 'error'].includes(value.state)) {
-        setCaptureEnabled(false)
+      setCaptureEnabled(dictationCaptureTarget({
+        connected: socket?.readyState === WebSocket.OPEN,
+        muted,
+        frontendReady,
+        ownsVoice,
+        closed,
+        bridgeExited,
+        dictationState: value.state,
+        previousCaptureEnabled: captureBeforeDictation,
+      }))
+      if (['paused', 'stopped', 'cancelled', 'error'].includes(value.state)) {
+        captureBeforeDictation = null
       }
       setStatus(`听写 · ${dictationStatusText(value.state)}`)
     })
@@ -1442,15 +1502,28 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
   toggleDictation = () => {
     if (!dictationClient) return false
     const current = dictationClient.snapshot()
-    if (current.state === 'paused') return dictationClient.resume()
     if (current.capturing) return dictationClient.pause()
-    return dictationClient.start()
+    if (!isTuiCaptureAvailable({
+      connected: socket?.readyState === WebSocket.OPEN,
+      muted,
+      frontendReady,
+      ownsVoice,
+      closed,
+      bridgeExited,
+    })) return false
+    captureBeforeDictation = captureEnabled
+    const started = current.state === 'paused'
+      ? dictationClient.resume()
+      : dictationClient.start()
+    if (!started) captureBeforeDictation = null
+    return started
   }
   cancelDictation = () => dictationClient?.cancel() === true
 
   const setMuted = value => {
     muted = value
     if (muted) {
+      if (dictationClient?.snapshot().capturing) dictationClient.cancel()
       setCaptureEnabled(false)
       setStatus('麦克风已静音 · 语音回复保持开启')
       if (socket?.readyState === WebSocket.OPEN) {
@@ -1481,8 +1554,13 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       return
     }
     if (isDictationServerEvent(event)) {
-      dictationClient?.handle(event)
-      if (event.type === 'dictation.error') {
+      const accepted = dictationClient?.handle(event) === true
+      if (requiresTuiKeyboardFallback(event, accepted)) {
+        muted = true
+        setCaptureEnabled(false)
+        if (socket?.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(microphoneControlEvent(true)))
+        }
         print(`${style('[听写错误]', 'red')} ${event.message || event.code}`)
       }
       return
@@ -1503,6 +1581,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       && event.state === 'unavailable'
     ) {
       frontendReady = false
+      if (dictationClient?.snapshot().capturing) dictationClient.cancel()
       setCaptureEnabled(false)
       print(`${style('[语音前台连接失败]', 'red')} ${event.message || '请检查前台服务配置'}`)
     }
@@ -1513,6 +1592,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
         startMicrophone()
       } else if (event.state === 'busy') {
         ownsVoice = false
+        if (dictationClient?.snapshot().capturing) dictationClient.cancel()
         setCaptureEnabled(false)
         playback.clear()
         const holder = frontendLabel(event.holder)
@@ -1531,6 +1611,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     if (event.type === GatewayServerEvent.VOICE_DEACTIVATED) {
       ownsVoice = false
       muted = true
+      if (dictationClient?.snapshot().capturing) dictationClient.cancel()
       setCaptureEnabled(false)
       playback.clear()
       transcriptRenderer.cancel()

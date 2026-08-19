@@ -24,12 +24,15 @@ const SHA256_ROUND = Object.freeze([
 
 function terminalCommand(source) {
   const chinese = source.match(
-    new RegExp(`^(.*?)(发送|提交)${TERMINAL_PUNCTUATION}\\s*$`, 'u'),
+    new RegExp(
+      `^(?:(.*[\\s,，;；.!?。！？:：]))?(发送|提交)${TERMINAL_PUNCTUATION}\\s*$`,
+      'u',
+    ),
   )
   if (chinese) {
     return {
       kind: 'commit',
-      text: chinese[1].trim(),
+      text: (chinese[1] || '').trim(),
       command: chinese[2],
     }
   }

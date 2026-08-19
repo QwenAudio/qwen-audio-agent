@@ -33,6 +33,7 @@ test('keeps dictation disabled by default with an independent ASR configuration'
     baseUrl: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
     model: 'qwen3-asr-flash-realtime',
     timeoutMs: 45_000,
+    rewriteApiKey: '',
     rewriteBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     rewriteModel: 'qwen-flash',
   })
@@ -42,6 +43,7 @@ test('keeps dictation disabled by default with an independent ASR configuration'
     QWEN_AUDIO_DICTATION_BASE_URL: 'wss://asr.example/realtime/',
     QWEN_AUDIO_DICTATION_MODEL: 'custom-asr',
     QWEN_AUDIO_DICTATION_TIMEOUT_MS: '90000',
+    QWEN_AUDIO_DICTATION_REWRITE_API_KEY: 'rewrite-key',
     QWEN_AUDIO_DICTATION_REWRITE_BASE_URL: 'https://rewrite.example/v1/',
     QWEN_AUDIO_DICTATION_REWRITE_MODEL: 'custom-rewriter',
   }), {
@@ -50,9 +52,28 @@ test('keeps dictation disabled by default with an independent ASR configuration'
     baseUrl: 'wss://asr.example/realtime',
     model: 'custom-asr',
     timeoutMs: 90_000,
+    rewriteApiKey: 'rewrite-key',
     rewriteBaseUrl: 'https://rewrite.example/v1',
     rewriteModel: 'custom-rewriter',
   })
+})
+
+test('reuses the ASR key for rewrite only when explicitly enabled on one credential origin', () => {
+  const sameOrigin = resolveDictationConfig({
+    QWEN_AUDIO_DICTATION_API_KEY: 'asr-key',
+    QWEN_AUDIO_DICTATION_BASE_URL: 'wss://provider.example/realtime',
+    QWEN_AUDIO_DICTATION_REWRITE_BASE_URL: 'https://provider.example/v1',
+    QWEN_AUDIO_DICTATION_REWRITE_REUSE_ASR_KEY: 'true',
+  })
+  assert.equal(sameOrigin.rewriteApiKey, 'asr-key')
+
+  const crossOrigin = resolveDictationConfig({
+    QWEN_AUDIO_DICTATION_API_KEY: 'private-asr-key',
+    QWEN_AUDIO_DICTATION_BASE_URL: 'wss://private-asr.example/realtime',
+    QWEN_AUDIO_DICTATION_REWRITE_BASE_URL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    QWEN_AUDIO_DICTATION_REWRITE_REUSE_ASR_KEY: 'true',
+  })
+  assert.equal(crossOrigin.rewriteApiKey, '')
 })
 
 test('uses the shared user data workspace for the default OpenCode workspace', () => {

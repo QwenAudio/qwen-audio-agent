@@ -38,6 +38,7 @@ test('recognizes only isolated Chinese and English terminal send commands', () =
     ['把总结写短一点，提交。', { kind: 'commit', text: '把总结写短一点，', command: '提交' }],
     ['Please send!', { kind: 'commit', text: 'Please', command: 'send' }],
     ['submit', { kind: 'commit', text: '', command: 'submit' }],
+    ['把文件发送', { kind: 'insert', text: '把文件发送' }],
     ['把文件发送给小王', { kind: 'insert', text: '把文件发送给小王' }],
     ['请提交给财务审核', { kind: 'insert', text: '请提交给财务审核' }],
     ['please send it to Alice', { kind: 'insert', text: 'please send it to Alice' }],

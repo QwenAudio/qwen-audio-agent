@@ -35,6 +35,7 @@ export const DICTATION_STATES = Object.freeze([
   'editing',
   'ready-to-send',
   'paused',
+  'stopped',
   'cancelled',
   'error',
 ])

@@ -151,7 +151,9 @@ await orb.load()
 `operationId`/`baseRevision`，提交带 `commitId`/`revision`/`payloadHash`。
 运行时关闭时 `/api/health` 不广告听写能力。音频、预览、未提交或已取消文本、
 草稿快照均不是 conversation turn，也不会持久化。提交去重明确只保证存活进程与
-会话，不承诺跨崩溃的 exactly-once。
+会话，不承诺跨崩溃的 exactly-once。`stopped` 是 live transcriber 的终态，
+必须重新发送 `dictation.start`。`paused`、`stopped`、`cancelled`、`error`
+会拒绝迟到的 context、operation、commit；所有采音状态都有有界超时。
 
 ## 实例租约
 

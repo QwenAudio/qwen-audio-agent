@@ -11,6 +11,14 @@ import {
 } from '../../../shared/dictation-draft.mjs'
 import { CommitRegistry } from './commit-registry.mjs'
 
+const TIMED_STATES = new Set([
+  'starting',
+  'listening',
+  'transcribing',
+  'editing',
+  'ready-to-send',
+])
+
 function defaultId(prefix) {
   return `${prefix}_${randomUUID().replaceAll('-', '')}`
 }
@@ -96,7 +104,7 @@ export class DictationSession {
   resetTimeout() {
     this.clearTimer(this.timer)
     this.timer = null
-    if (this.closed || !['listening', 'transcribing', 'editing'].includes(this.state)) {
+    if (this.closed || !TIMED_STATES.has(this.state)) {
       return
     }
     this.timer = this.setTimer(() => this.pauseForTimeout(), this.timeoutMs)
@@ -104,13 +112,12 @@ export class DictationSession {
   }
 
   pauseForTimeout() {
-    if (this.closed || !['listening', 'transcribing', 'editing'].includes(this.state)) {
+    if (this.closed || !TIMED_STATES.has(this.state)) {
       return
     }
-    this.transcriber?.pause?.()
+    this.clearEphemeral()
     this.setState('paused')
-    this.clearTimer(this.timer)
-    this.timer = null
+    this.transcriber?.pause?.()
   }
 
   async handle(event = {}) {
@@ -133,7 +140,6 @@ export class DictationSession {
       return false
     }
     if (!this.acceptSequence(event)) return false
-    this.resetTimeout()
 
     if (event.type === DictationClientEvent.AUDIO_APPEND) {
       if (!['listening', 'transcribing', 'editing'].includes(this.state)) return false
@@ -142,8 +148,12 @@ export class DictationSession {
       return true
     }
     if (event.type === DictationClientEvent.PAUSE) {
-      this.transcriber?.pause?.()
+      if (!TIMED_STATES.has(this.state)) {
+        return false
+      }
+      this.clearEphemeral()
       this.setState('paused')
+      this.transcriber?.pause?.()
       return true
     }
     if (event.type === DictationClientEvent.RESUME) {
@@ -158,18 +168,24 @@ export class DictationSession {
       return true
     }
     if (event.type === DictationClientEvent.STOP) {
-      this.transcriber?.close?.({ finish: true })
       this.clearEphemeral()
-      this.setState('paused')
+      this.setState('stopped')
+      this.transcriber?.close?.({ finish: true })
       return true
     }
     if (event.type === DictationClientEvent.CONTEXT) {
+      if (this.state !== 'editing') return false
+      this.resetTimeout()
       return this.acceptContext(event)
     }
     if (event.type === DictationClientEvent.OPERATION_ACK) {
+      if (this.state !== 'editing') return false
+      this.resetTimeout()
       return this.acceptOperationAck(event)
     }
     if (event.type === DictationClientEvent.COMMIT_ACK) {
+      if (this.state !== 'ready-to-send') return false
+      this.resetTimeout()
       return this.acceptCommitAck(event)
     }
     return false
@@ -179,6 +195,7 @@ export class DictationSession {
     if (this.state !== 'idle') return false
     this.continuous = event.continuous !== false
     this.setState('starting')
+    this.resetTimeout()
     try {
       this.transcriber = this.createTranscriber({
         onDelta: text => this.onDelta(text),
@@ -193,7 +210,7 @@ export class DictationSession {
         this.setState('listening')
         this.resetTimeout()
       }).catch(error => {
-        if (this.closed || this.state === 'cancelled') return
+        if (this.closed || this.state !== 'starting') return
         this.onProviderError(error)
       })
       return true
@@ -226,6 +243,7 @@ export class DictationSession {
     this.pendingIntent = parseDictationIntent(text)
     this.conflictRetries = 0
     this.setState('editing')
+    this.resetTimeout()
     this.requestContext()
   }
 
@@ -236,6 +254,7 @@ export class DictationSession {
   }
 
   async acceptContext(event) {
+    if (this.state !== 'editing') return false
     if (!this.pendingContext || event.requestId !== this.pendingContext.requestId) {
       this.error('context_mismatch', 'Dictation context request does not match.')
       return false
@@ -262,8 +281,7 @@ export class DictationSession {
       operation = { kind: 'delete', target: intent.target }
     } else if (intent.kind === 'rewrite') {
       if (!this.rewriteText) {
-        this.error('rewrite_unavailable', 'Stateless rewrite is not configured.')
-        this.setState('error')
+        this.fail('rewrite_unavailable', 'Stateless rewrite is not configured.')
         return false
       }
       try {
@@ -272,11 +290,12 @@ export class DictationSession {
           text: await this.rewriteText(snapshot.text, intent.instruction),
         }
       } catch (error) {
-        this.error('rewrite_failed', error?.message || 'Rewrite failed.')
-        this.setState('error')
+        if (this.state !== 'editing') return false
+        this.fail('rewrite_failed', error?.message || 'Rewrite failed.')
         return false
       }
     }
+    if (this.state !== 'editing') return false
     const operationId = this.createId('operation')
     const wireOperation = {
       type: DictationServerEvent.OPERATION,
@@ -286,8 +305,7 @@ export class DictationSession {
     }
     const expected = applyDraftOperation(snapshot, wireOperation)
     if (!expected.applied) {
-      this.error(expected.reason, 'Dictation operation could not be applied.')
-      this.setState('error')
+      this.fail(expected.reason, 'Dictation operation could not be applied.')
       return false
     }
     this.pendingOperation = {
@@ -300,6 +318,7 @@ export class DictationSession {
   }
 
   async acceptOperationAck(event) {
+    if (this.state !== 'editing') return false
     const pending = this.pendingOperation
     if (!pending || event.operationId !== pending.operationId) {
       this.error('operation_mismatch', 'Dictation operation acknowledgement does not match.')
@@ -314,8 +333,7 @@ export class DictationSession {
         this.requestContext()
         return false
       }
-      this.error('revision_conflict', 'Composer changed before dictation could apply.')
-      this.setState('error')
+      this.fail('revision_conflict', 'Composer changed before dictation could apply.')
       return false
     }
     this.pendingOperation = null
@@ -334,6 +352,7 @@ export class DictationSession {
   }
 
   issueCommit(snapshot) {
+    if (this.state !== 'editing') return false
     const commit = {
       commitId: this.createId('commit'),
       revision: snapshot.revision,
@@ -344,18 +363,19 @@ export class DictationSession {
     this.pendingCommit = commit
     this.pendingIntent = null
     this.setState('ready-to-send')
+    this.resetTimeout()
     this.send({ type: DictationServerEvent.COMMIT_REQUEST, ...commit })
     return true
   }
 
   acceptCommitAck(event) {
+    if (this.state !== 'ready-to-send') return false
     if (!this.pendingCommit || event.commitId !== this.pendingCommit.commitId) {
       // Replayed acknowledgements are harmless and never request another submit.
       return false
     }
     if (event.status !== 'submitted') {
-      this.error('commit_rejected', 'Composer did not submit the dictation draft.')
-      this.setState('error')
+      this.fail('commit_rejected', 'Composer did not submit the dictation draft.')
       return false
     }
     this.pendingCommit = null
@@ -364,23 +384,25 @@ export class DictationSession {
       this.setState('listening')
       this.resetTimeout()
     } else {
-      this.transcriber?.close?.({ finish: true })
+      this.clearEphemeral()
       this.setState('paused')
+      this.transcriber?.close?.({ finish: true })
     }
     return true
   }
 
   onProviderError(error) {
-    if (this.closed) return
+    if (this.closed || !TIMED_STATES.has(this.state)) return
     this.fail('provider_error', error?.message || 'Dictation provider failed.')
   }
 
   fail(code, message) {
-    if (this.closed) return
+    if (this.closed || !TIMED_STATES.has(this.state)) return false
     this.error(code, message)
-    this.transcriber?.close?.({ finish: false })
     this.clearEphemeral()
     this.setState('error')
+    this.transcriber?.close?.({ finish: false })
+    return true
   }
 
   clearEphemeral() {
@@ -394,9 +416,9 @@ export class DictationSession {
 
   cancel() {
     if (this.closed) return
-    this.transcriber?.close?.({ finish: false })
     this.clearEphemeral()
     this.setState('cancelled')
+    this.transcriber?.close?.({ finish: false })
   }
 
   close() {

@@ -114,7 +114,14 @@ QWEN_AUDIO_DICTATION_TIMEOUT_MS=45000
 # 可选的一次性文本改写覆盖项
 QWEN_AUDIO_DICTATION_REWRITE_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 QWEN_AUDIO_DICTATION_REWRITE_MODEL=qwen-flash
+QWEN_AUDIO_DICTATION_REWRITE_API_KEY=
+# 仅当 ASR 与 rewrite 为同一供应商 origin 时显式复用 ASR key
+QWEN_AUDIO_DICTATION_REWRITE_REUSE_ASR_KEY=false
 ```
+
+Rewrite 凭据默认独立。未配置 rewrite key 时，开放式改写会显示失败且保持草稿
+不变。只有显式开启上述复用项，并且 WebSocket/HTTP 端点属于同一传输等价
+origin 时才会复用 ASR key；跨 origin 复用会被拒绝。
 
 该功能使用独立 Qwen ASR 连接，绝不回退主 Realtime 模型；不新增持久历史或
 操作系统级输入权限。命令、保留与提交边界见

@@ -180,16 +180,16 @@
     "express": "^4.22.2",
     "ws": "^8.21.1",
     "zod": "^4.4.3",
-    "sherpa-onnx": "1.13.4",
-    "tar-stream": "3.1.7",
+    "sherpa-onnx": "1.13.5",
+    "tar-stream": "3.2.0",
     "unbzip2-stream": "1.4.3"
   },
   "devDependencies": {
     "concurrently": "^9.2.0",
     "electron-builder": "26.15.7",
-    "eslint": "10.8.0",
+    "eslint": "10.8.1",
     "eslint-plugin-react-hooks": "7.1.1",
-    "globals": "17.9.0"
+    "globals": "17.11.0"
   },
   "overrides": {
     "@hono/node-server": "2.0.12",

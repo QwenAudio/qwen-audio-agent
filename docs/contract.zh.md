@@ -139,14 +139,16 @@ await orb.load()
 | 服务端 → 客户端 | `input.resume` | 可以恢复采集 |
 | 客户端 → 服务端 | `input.suspend.ack` | 确认抢占已在本客户端生效 |
 | 客户端 → 服务端 | `dictation.start`、`dictation.audio.append`、`dictation.pause`、`dictation.resume`、`dictation.cancel`、`dictation.stop` | 控制进程内 composer 听写会话与独立音频流 |
-| 客户端 → 服务端 | `dictation.context` | 仅在 `expectedRevision` 匹配时更新临时 composer 上下文 |
+| 客户端 → 服务端 | `dictation.reset` | 手动提交后清空 composer，同时让 continuous 听写保留原 provider 与麦克风租约 |
+| 客户端 → 服务端 | `dictation.context` | 仅在 `expectedRevision` 匹配时更新临时 composer 文本与最近口述范围 |
 | 服务端 → 客户端 | `dictation.state`、`dictation.partial`、`dictation.final`、`dictation.operation` | 可见状态及 revision/sequence 校验后的预览、锁定和确定性编辑 |
-| 服务端 → 客户端 | `dictation.commit.request` | 对匹配 revision/fingerprint 的内容请求一次普通 composer 提交 |
-| 客户端 → 服务端 | `dictation.commit.ack` | 报告普通提交是否成功；重复回执会被拒绝 |
+| 服务端 → 客户端 | `dictation.commit.request` | 对匹配 revision/fingerprint 的内容请求一次普通 composer 提交，或请求确认 `memory-correction` 控制意图 |
+| 客户端 → 服务端 | `dictation.commit.ack` | 报告普通提交或 Memory-only 控制是否被接受；重复回执会被拒绝 |
 
 听写默认关闭。所有活跃状态 45 秒超时；partial 只供预览。取消、失败、超时、
 外部 `input.suspend` 和断线都会清除临时态；STOP 后不能 RESUME，必须重新 START。
-中英文发送词只有作为独立 final segment 或位于明确句末标点后才是命令。
+中英文发送词只有作为独立 final segment 或位于明确句末标点后才是命令；命令自身
+携带的 ASR 尾标点会被忽略。`memory-correction` 意图不进入普通会话或会话 Memory extractor。
 
 ## 实例租约
 

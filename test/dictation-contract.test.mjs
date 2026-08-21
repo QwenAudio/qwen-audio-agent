@@ -62,8 +62,11 @@ test('recent-range operations reject a replayed provider sequence', () => {
 test('send command requires a standalone segment or terminal punctuation boundary', () => {
   assert.deepEqual(parseFinalSegment('send'), { text: '', send: true })
   assert.deepEqual(parseFinalSegment('发送'), { text: '', send: true })
+  assert.deepEqual(parseFinalSegment('发送。'), { text: '', send: true })
+  assert.deepEqual(parseFinalSegment('Send.'), { text: '', send: true })
   assert.deepEqual(parseFinalSegment('hello. send'), { text: 'hello.', send: true })
   assert.deepEqual(parseFinalSegment('你好。发送'), { text: '你好。', send: true })
+  assert.deepEqual(parseFinalSegment('你好。发送。'), { text: '你好。', send: true })
   assert.deepEqual(parseFinalSegment('please send the file'), {
     text: 'please send the file', send: false,
   })

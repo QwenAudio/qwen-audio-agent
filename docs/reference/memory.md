@@ -67,10 +67,11 @@ Legacy `profile`, `rules`, and `user` records from `frontend-memory.json` are mi
 ## Long-Term Memory
 
 Composer dictation does not create transcript or episodic history. Partial,
-cancelled, failed, timed-out, and otherwise unsubmitted text never reaches this
-service. Only a successfully submitted, explicit `correct long-term fact:`
-instruction may perform an exact replacement in `memory`; it uses the same
-sensitive-content policy and metadata-only audit as existing Memory writes.
+cancelled, failed, timed-out, and otherwise unconfirmed text never reaches this
+service. An explicitly confirmed `correct long-term fact:` control may perform
+an exact replacement in `memory`; it is Memory-only, never becomes an ordinary
+conversation message, and uses the same sensitive-content policy and
+metadata-only audit as existing Memory writes.
 
 `MEMORY.md` stores durable facts and decisions about the user—such as location, habits,
 interests, relationships, projects, goals, and plans—in ordinary Markdown. It informs

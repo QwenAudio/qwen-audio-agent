@@ -41,6 +41,34 @@ test('disabled session is a no-op and never creates a provider', () => {
   assert.equal(created, 0)
 })
 
+test('provider start rejection does not accept a dictation session', () => {
+  const h = harness({
+    createTranscriber: () => ({ start: () => false, close: () => {} }),
+  })
+  assert.equal(h.session.handle({
+    type: 'dictation.start', revision: 0, text: '',
+  }), false)
+  assert.equal(h.session.snapshot().state, 'error')
+})
+
+test('synchronous provider failure cannot accept or revive START', () => {
+  let callbacks
+  const h = harness({
+    createTranscriber: () => ({
+      start(next) {
+        callbacks = next
+        next.error(new Error('failed while opening'))
+      },
+      close: () => {},
+    }),
+  })
+  assert.equal(h.session.handle({
+    type: 'dictation.start', revision: 0, text: 'draft',
+  }), false)
+  assert.equal(h.session.snapshot().state, 'error')
+  assert.equal(callbacks.ready(), false)
+})
+
 test('start, partial, final and pause are stateful and clear transient data', () => {
   const h = harness()
   assert.equal(h.session.handle({
@@ -56,12 +84,15 @@ test('start, partial, final and pause are stateful and clear transient data', ()
 })
 
 test('all capture states time out and reject late provider messages', () => {
-  for (const state of ['starting', 'listening', 'transcribing', 'editing', 'ready-to-send']) {
+  for (const state of [
+    'starting', 'listening', 'transcribing', 'editing', 'ready-to-send', 'paused',
+  ]) {
     const h = harness()
     h.session.handle({ type: 'dictation.start', revision: 0, text: '' })
     h.session._transition(state)
     h.timers.at(-1)()
     assert.equal(h.session.snapshot().state, 'error')
+    assert.equal(h.providerCalls.includes('close'), true)
     assert.equal(h.transcriber.callbacks.partial('late'), false)
   }
 })
@@ -73,11 +104,28 @@ test('cancel, error, stop, and external suspend reject late operations', () => {
     if (terminal === 'error') h.transcriber.callbacks.error(new Error('failed'))
     else if (terminal === 'suspend') h.session.suspend('desktop')
     else h.session.handle({ type: `dictation.${terminal}` })
+    const terminalState = h.session.snapshot().state
+    assert.equal(h.transcriber.callbacks.error(new Error('late error')), false)
+    assert.equal(h.session.snapshot().state, terminalState)
     assert.equal(h.transcriber.callbacks.final('late'), false)
     assert.equal(h.session.handle({
       type: 'dictation.context', revision: 0, text: 'late', seq: 1,
     }), false)
   }
+})
+
+test('commit timeout clears server text before a late acknowledgement', () => {
+  const h = harness()
+  h.session.handle({ type: 'dictation.start', revision: 0, text: 'draft' })
+  h.transcriber.callbacks.final('发送')
+  const request = h.events.find(event => event.type === 'dictation.commit.request')
+  h.timers.at(-1)()
+  assert.equal(h.session.snapshot().state, 'error')
+  assert.equal(h.session.text, '')
+  assert.equal(h.session.handle({
+    type: 'dictation.commit.ack', commitId: request.commitId,
+    revision: request.revision, fingerprint: request.fingerprint, submitted: true,
+  }), false)
 })
 
 test('STOP cannot resume and requires a fresh START', () => {
@@ -86,6 +134,19 @@ test('STOP cannot resume and requires a fresh START', () => {
   h.session.handle({ type: 'dictation.stop' })
   assert.equal(h.session.handle({ type: 'dictation.resume' }), false)
   assert.equal(h.session.handle({ type: 'dictation.start', revision: 1, text: 'new' }), true)
+})
+
+test('continuous composer reset clears text without closing the live provider', () => {
+  const h = harness()
+  h.session.handle({ type: 'dictation.start', revision: 0, text: 'draft' })
+  h.transcriber.callbacks.final(' more')
+  const expectedRevision = h.session.revision
+  assert.equal(h.session.handle({
+    type: 'dictation.reset', expectedRevision, revision: expectedRevision + 1,
+  }), true)
+  assert.equal(h.session.text, '')
+  assert.equal(h.session.snapshot().state, 'listening')
+  assert.equal(h.providerCalls.includes('close'), false)
 })
 
 test('deterministic edit commands only change one match in the latest dictated range', () => {
@@ -101,8 +162,13 @@ test('deterministic edit commands only change one match in the latest dictated r
   assert.equal(h.session.text, 'prefix green blue')
 
   h.transcriber.callbacks.final('删除 prefix')
-  assert.equal(h.session.text, 'prefix green blue')
-  assert.match(h.events.at(-1).message, /最近口述范围/)
+  assert.equal(h.session.text, 'prefix green blue删除 prefix')
+  assert.equal(h.events.some(event => (
+    event.type === 'dictation.state' && /最近口述范围/.test(event.notice || '')
+  )), true)
+  assert.equal(h.events.some(event => (
+    event.type === 'dictation.state' && event.state === 'editing'
+  )), true)
 })
 
 test('commit requires matching receipt, deduplicates, and only then updates memory', () => {
@@ -110,15 +176,17 @@ test('commit requires matching receipt, deduplicates, and only then updates memo
   h.session.handle({
     type: 'dictation.start',
     revision: 4,
-    text: '纠正长期事实：上海 改为 杭州。',
+    text: '纠正长期事实：上海改为杭州。',
   })
   h.transcriber.callbacks.final('发送')
   const request = h.events.find(event => event.type === 'dictation.commit.request')
   assert.ok(request)
+  assert.equal(request.intent, 'memory-correction')
   assert.equal(h.memoryCalls.length, 0)
   assert.equal(h.session.handle({
     type: 'dictation.commit.ack', commitId: request.commitId,
-    revision: request.revision, fingerprint: request.fingerprint, submitted: true,
+    revision: request.revision, fingerprint: request.fingerprint,
+    submitted: false, accepted: true, intent: 'memory-correction',
   }), true)
   assert.equal(h.memoryCalls.length, 1)
   assert.deepEqual(h.memoryCalls[0][1], [{
@@ -131,6 +199,22 @@ test('commit requires matching receipt, deduplicates, and only then updates memo
     revision: request.revision, fingerprint: request.fingerprint, submitted: true,
   }), false)
   assert.equal(h.memoryCalls.length, 1)
+})
+
+test('mixed conversation text is never reclassified as a Memory-only control', () => {
+  const h = harness()
+  h.session.handle({
+    type: 'dictation.start', revision: 0,
+    text: '请回答这个问题。纠正长期事实：上海改为杭州。',
+  })
+  h.transcriber.callbacks.final('发送')
+  const request = h.events.find(event => event.type === 'dictation.commit.request')
+  assert.equal(request.intent, 'conversation')
+  assert.equal(h.session.handle({
+    type: 'dictation.commit.ack', commitId: request.commitId,
+    revision: request.revision, fingerprint: request.fingerprint, submitted: true,
+  }), true)
+  assert.equal(h.memoryCalls.length, 0)
 })
 
 test('cancel, failed or stale commit causes zero Memory calls', () => {
@@ -158,7 +242,8 @@ test('sensitive explicit correction fails visibly without Memory or audit', () =
   const request = h.events.find(event => event.type === 'dictation.commit.request')
   h.session.handle({
     type: 'dictation.commit.ack', commitId: request.commitId,
-    revision: request.revision, fingerprint: request.fingerprint, submitted: true,
+    revision: request.revision, fingerprint: request.fingerprint,
+    submitted: false, accepted: true, intent: 'memory-correction',
   })
   assert.equal(h.memoryCalls.length, 0)
   assert.equal(h.auditCalls.length, 0)

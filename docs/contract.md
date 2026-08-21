@@ -150,16 +150,19 @@ spells them by hand is on its own.
 | server → client | `input.resume` | Capture may resume |
 | client → server | `input.suspend.ack` | Confirms the suspension took effect on this client |
 | client → server | `dictation.start`, `dictation.audio.append`, `dictation.pause`, `dictation.resume`, `dictation.cancel`, `dictation.stop` | Controls the process-local composer dictation session and dedicated audio stream |
-| client → server | `dictation.context` | Replaces transient composer context only when `expectedRevision` matches |
+| client → server | `dictation.reset` | Clears a manually submitted composer while continuous dictation keeps the same provider and microphone lease |
+| client → server | `dictation.context` | Replaces transient composer text/range only when `expectedRevision` matches |
 | server → client | `dictation.state`, `dictation.partial`, `dictation.final`, `dictation.operation` | Visible state plus revision/sequence-checked preview and deterministic edits |
-| server → client | `dictation.commit.request` | Requests one ordinary composer submission for a matching revision and fingerprint |
-| client → server | `dictation.commit.ack` | Reports whether that ordinary submission succeeded; duplicate receipts are rejected |
+| server → client | `dictation.commit.request` | Requests either one ordinary composer submission or a `memory-correction` control acknowledgement for a matching revision and fingerprint |
+| client → server | `dictation.commit.ack` | Reports ordinary submission or Memory-only control acceptance; duplicate receipts are rejected |
 
 Dictation defaults off. Active states expire after 45 seconds. Partials remain
 preview-only; cancel, failure, timeout, external suspension, and socket close
 clear transient state. STOP cannot RESUME and requires a new START. Chinese and
 English send words are commands only as standalone final segments or after
-explicit terminal punctuation.
+explicit terminal punctuation; trailing ASR punctuation on the command itself
+is ignored. A `memory-correction` intent never enters ordinary conversation or
+the conversation Memory extractor.
 
 ## Instance lease
 

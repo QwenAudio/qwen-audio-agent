@@ -20,6 +20,7 @@ import {
 } from './input-parts.mjs'
 import { isExitCommand } from './terminal-commands.mjs'
 import { TuiComposerDictation } from './composer-dictation.mjs'
+import { dictationStateLabel } from '../../shared/dictation-contract.mjs'
 
 const OUTPUT_SAMPLE_RATE = 24000
 const AUDIO_MODES = new Set(['half', 'full'])
@@ -1019,6 +1020,10 @@ export function createPersistentTerminalRenderer({
   return renderer
 }
 
+export function isDictationShortcut(key = {}) {
+  return key.name === 'd' && key.meta === true && key.ctrl !== true
+}
+
 export function createPlayback({
   audioSink,
   onError,
@@ -1189,7 +1194,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     },
     onBeforeEdit: () => dictationClient?.settleForKeyboard() ?? null,
     onShortcut: (_value, key) => {
-      if (!dictationClient || key.name !== 'd' || !key.ctrl || !key.shift) return false
+      if (!dictationClient || !isDictationShortcut(key)) return false
       if (dictationClient.active) dictationClient.stop()
       else dictationClient.start(transcriptRenderer.draftText())
       return true
@@ -1432,7 +1437,10 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       }
       transcriptRenderer.setDictationPreview(view.partial)
       if (view.error) setStatus(`听写失败 · ${view.error}`)
-      else if (view.state !== 'idle') setStatus(`听写 · ${view.state}`)
+      else if (view.state !== 'idle') {
+        const notice = view.notice ? ` · ${view.notice}` : ''
+        setStatus(`听写 · ${dictationStateLabel(view.state)}${notice}`)
+      }
     },
   })
 

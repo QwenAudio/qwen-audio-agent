@@ -217,6 +217,7 @@ export function attachRealtimeGateway(server, {
     let wakeDetector = null
     let wakeDetectorPromise = null
     let dictationPreviousInputEnabled = false
+    let dictationOwnsInput = false
     let dictationAdapter = null
     if (dictation.enabled) {
       try {
@@ -239,11 +240,14 @@ export function attachRealtimeGateway(server, {
         : null,
       send: event => {
         if (
-          event.state === 'stopped'
-          && event.reason !== 'input.suspend'
+          ['cancelled', 'error', 'stopped'].includes(event.state)
+          && dictationOwnsInput
           && !inputSuspended
           && activeVoiceClients.isActive(ownerId, voiceClient)
-        ) inputEnabled = dictationPreviousInputEnabled
+        ) {
+          inputEnabled = dictationPreviousInputEnabled
+          dictationOwnsInput = false
+        }
         send(ws, event)
       },
     })
@@ -369,6 +373,13 @@ export function attachRealtimeGateway(server, {
           return
         }
         dictationSession.resumeInput()
+        if (
+          dictationOwnsInput
+          && activeVoiceClients.isActive(ownerId, voiceClient)
+        ) {
+          inputEnabled = dictationPreviousInputEnabled
+          dictationOwnsInput = false
+        }
         send(ws, { type: GatewayServerEvent.INPUT_RESUME })
         prepareSleepMode()
       },
@@ -1920,20 +1931,44 @@ export function attachRealtimeGateway(server, {
       }
       if (String(event.type || '').startsWith('dictation.')) {
         if (event.type === GatewayClientEvent.DICTATION_START) {
-          if (inputSuspended) return
-          dictationPreviousInputEnabled = inputEnabled
+          if (inputSuspended) {
+            send(ws, {
+              type: GatewayServerEvent.DICTATION_STATE,
+              state: 'error',
+              message: '当前输入已由外部应用暂停，无法开始听写',
+            })
+            return
+          }
+          if (
+            !inputEnabled
+            || !activeVoiceClients.isActive(ownerId, voiceClient)
+          ) {
+            send(ws, {
+              type: GatewayServerEvent.DICTATION_STATE,
+              state: 'error',
+              message: '当前客户端未持有可用的麦克风归属，无法开始听写',
+            })
+            return
+          }
+        }
+        const previousInputEnabled = inputEnabled
+        const accepted = dictationSession.handle(event)
+        if (accepted && event.type === GatewayClientEvent.DICTATION_START) {
+          dictationPreviousInputEnabled = previousInputEnabled
+          dictationOwnsInput = true
           inputEnabled = false
           pendingAudio = []
         }
-        const accepted = dictationSession.handle(event)
         if (!accepted && event.type === GatewayClientEvent.DICTATION_START) {
-          send(ws, {
-            type: GatewayServerEvent.DICTATION_STATE,
-            state: 'error',
-            message: dictationAdapter
-              ? '听写凭据未配置或当前输入已暂停'
-              : '当前 Realtime Provider 不支持听写',
-          })
+          if (dictationSession.snapshot().state !== 'error') {
+            send(ws, {
+              type: GatewayServerEvent.DICTATION_STATE,
+              state: 'error',
+              message: dictationAdapter
+                ? '听写凭据未配置或当前输入已暂停'
+                : '当前 Realtime Provider 不支持听写',
+            })
+          }
         }
       } else if (event.type === GatewayClientEvent.CONNECT) {
         descriptor = clientDescriptor(event)

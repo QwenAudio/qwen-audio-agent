@@ -1,10 +1,29 @@
 const TERMINAL_PUNCTUATION = /[.!?。！？；;]\s*$/u
 
+export function dictationStateLabel(state) {
+  return ({
+    idle: '待命',
+    starting: '启动中',
+    listening: '监听中',
+    transcribing: '转写中',
+    editing: '编辑中',
+    'ready-to-send': '待发送',
+    paused: '已暂停',
+    cancelled: '已取消',
+    error: '失败',
+    stopped: '已停止',
+  })[state] || '未知状态'
+}
+
 export function parseFinalSegment(value) {
   const source = String(value || '').trim()
+  const withoutTrailingPunctuation = source
+    .replace(/[.!?。！？；;]+\s*$/u, '')
+    .trim()
   const command = /^(?:send|发送)$/iu
-  if (command.test(source)) return { text: '', send: true }
-  const match = source.match(/^(.*?[.!?。！？；;])\s*(?:send|发送)$/iu)
+  if (command.test(withoutTrailingPunctuation)) return { text: '', send: true }
+  const match = withoutTrailingPunctuation
+    .match(/^(.*?[.!?。！？；;])\s*(?:send|发送)$/iu)
   if (match && TERMINAL_PUNCTUATION.test(match[1])) {
     return { text: match[1].trim(), send: true }
   }

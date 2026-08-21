@@ -35,20 +35,21 @@ send a fresh `START`.
 Starting dictation transfers microphone routing from main Realtime to the ASR
 adapter. The client remembers whether main capture was active and restores that
 exact state only after a normal stop/cancel. External `input.suspend` is
-terminal and fail-closed: capture stays off until the external owner explicitly
-resumes and the user starts a new dictation session.
+terminal and fail-closed: dictation cannot resume, while the prior main-capture
+state is restored only after the external owner explicitly resumes.
 
 ## Commit and command rules
 
 English `send` and Chinese `发送` are commands only when they are a standalone
 final segment or follow an explicit sentence-ending punctuation boundary.
-Occurrences such as `please send the file` and `把文件发送` remain text.
+Trailing ASR punctuation on a standalone command is ignored. Occurrences such
+as `please send the file` and `把文件发送` remain text.
 
 A voice commit is a receipt-based handshake: the Gateway names a commit id,
 revision, and text hash; the client verifies all three and calls the existing
 composer submit function once. A live-session receipt set deduplicates retries.
-No Enter key is synthesized. Manual and voice submission both notify the same
-controller, so continuous mode (default on) returns to listening after success;
+No Enter key is synthesized. Manual submission uses a revision-checked reset so
+continuous mode (default on) keeps the provider and microphone lease;
 non-continuous mode stops. Failed or stale submissions remain visible and never
 start a conversation turn.
 
@@ -58,11 +59,13 @@ Partial, unsubmitted, cancelled, failed, and timed-out dictation exists only in
 memory for the current process/session. It is never written to conversation,
 Memory, disk, or logs. No transcript history is introduced.
 
-Only an explicit correction of a durable fact in text that has already been
-successfully submitted may call the existing `FrontendMemoryService`. The
-correction reuses the existing sensitive-content policy and metadata-only
-`MemoryAudit`. It performs an exact replace in the existing memory document;
-missing or ambiguous facts fail visibly and never create episodic history.
+Only an explicitly confirmed durable-fact correction may call the existing
+`FrontendMemoryService`. This is a Memory-only control intent: it never becomes
+an ordinary conversation message and never reaches the conversation Memory
+extractor. The correction reuses the existing sensitive-content policy and
+metadata-only `MemoryAudit`. It performs an exact replace in the existing
+memory document; missing or ambiguous facts fail visibly and never create
+episodic history.
 
 ## Out of scope
 

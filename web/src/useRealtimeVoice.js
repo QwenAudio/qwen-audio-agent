@@ -182,6 +182,27 @@ export function microphoneControlEvent({
     : { type: GatewayClientEvent.MUTE }
 }
 
+export function shouldCaptureMicrophone({
+  enabled,
+  dictationCapture,
+  suspended,
+  hostInputSuspended,
+} = {}) {
+  return (enabled === true || dictationCapture === true)
+    && suspended !== true
+    && hostInputSuspended !== true
+}
+
+export function canStartComposerDictation({
+  enabled,
+  ownership,
+  hostInputSuspended,
+} = {}) {
+  return enabled === true
+    && ownership?.state === 'active'
+    && hostInputSuspended !== true
+}
+
 export default function useRealtimeVoice({
   sessionId,
   enabled,
@@ -209,7 +230,6 @@ export default function useRealtimeVoice({
   })
   const [dictationCapture, setDictationCaptureState] = useState(false)
   const [hostInputSuspended, setHostInputSuspended] = useState(false)
-  const [dictationCaptureBlocked, setDictationCaptureBlocked] = useState(false)
   const eventRef = useRef(onEvent)
   const inputErrorRef = useRef(onInputError)
   const wakeWordOnlyRef = useRef(wakeWordOnly)
@@ -633,12 +653,12 @@ export default function useRealtimeVoice({
   }, [outputMuted, stopPlayback])
 
   useEffect(() => {
-    if (
-      (!enabled && !dictationCapture)
-      || suspended
-      || hostInputSuspended
-      || dictationCaptureBlocked
-    ) {
+    if (!shouldCaptureMicrophone({
+      enabled,
+      dictationCapture,
+      suspended,
+      hostInputSuspended,
+    })) {
       inputReadyRef.current = false
       setInputReady(false)
       sendSocketEvent(microphoneControlEvent({
@@ -733,7 +753,6 @@ export default function useRealtimeVoice({
   }, [
     activateAudio,
     dictationCapture,
-    dictationCaptureBlocked,
     enabled,
     hostInputSuspended,
     inputOnlyMute,
@@ -777,11 +796,10 @@ export default function useRealtimeVoice({
     parts,
   }), [sendSocketEvent])
 
-  const setDictationCapture = useCallback((active, { restore = false } = {}) => {
+  const setDictationCapture = useCallback(active => {
     const next = Boolean(active)
     dictationCaptureRef.current = next
     setDictationCaptureState(next)
-    setDictationCaptureBlocked(!next && !restore)
     if (next) activateAudio()
   }, [activateAudio])
 
@@ -794,6 +812,7 @@ export default function useRealtimeVoice({
     connectionState,
     wakeWordActive,
     ownership,
+    hostInputSuspended,
     activateAudio,
     interrupt,
     wake,

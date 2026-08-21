@@ -8,16 +8,16 @@ import {
 import { containsSensitiveMemory } from '../conversation/memory-policy.mjs'
 
 const ACTIVE_STATES = new Set([
-  'starting', 'listening', 'transcribing', 'editing', 'ready-to-send',
+  'starting', 'listening', 'transcribing', 'editing', 'ready-to-send', 'paused',
 ])
 const ACCEPTING_STATES = new Set(['listening', 'transcribing', 'editing', 'ready-to-send'])
 const TERMINAL_STATES = new Set(['cancelled', 'error', 'stopped'])
 
 function explicitCorrection(text) {
   const source = String(text || '').trim()
-  const chinese = source.match(/(?:^|[。！？.!?]\s*)纠正长期事实\s*[：:]\s*(.+?)\s+改为\s+(.+?)[。.!]?$/u)
+  const chinese = source.match(/^纠正长期事实\s*[：:]\s*(.+?)\s*改为\s*(.+?)[。.!]?$/u)
   if (chinese) return { oldText: chinese[1].trim(), newText: chinese[2].trim() }
-  const english = source.match(/(?:^|[.!?]\s*)correct long-term fact\s*:\s*(.+?)\s+to\s+(.+?)[.]?$/iu)
+  const english = source.match(/^correct long-term fact\s*:\s*(.+?)\s+to\s+(.+?)[.]?$/iu)
   if (english) return { oldText: english[1].trim(), newText: english[2].trim() }
   return null
 }
@@ -98,17 +98,21 @@ export class DictationSession {
     this.send({ type: 'dictation.state', state, ...details })
   }
 
-  _clearTransient({ close = false } = {}) {
+  _clearTransient({ close = false, clearText = false } = {}) {
     this.partial = ''
     this.pendingCommit = null
     this.lastRange = null
+    if (clearText) {
+      this.text = ''
+      this.revision += 1
+    }
     if (this.timer) this.clearTimer(this.timer)
     this.timer = null
     if (close) this.transcriber?.close?.()
   }
 
   _fail(message) {
-    this._clearTransient({ close: true })
+    this._clearTransient({ close: true, clearText: true })
     this._transition('error', { message: String(message || '听写失败') })
     return false
   }
@@ -132,14 +136,19 @@ export class DictationSession {
         return true
       },
       final: text => this._acceptFinal(text),
-      error: error => this._fail(error?.message || error),
+      error: error => {
+        if (TERMINAL_STATES.has(this.state)) return false
+        return this._fail(error?.message || error)
+      },
     }
   }
 
   _acceptFinal(value) {
     if (!ACCEPTING_STATES.has(this.state)) return false
     const edit = deterministicEdit(value)
+    let editWarning = ''
     if (edit) {
+      this._transition('editing')
       const recent = this.lastRange
         ? this.text.slice(this.lastRange.start, this.lastRange.end)
         : ''
@@ -148,24 +157,22 @@ export class DictationSession {
         !edit.from || first < 0
         || recent.indexOf(edit.from, first + edit.from.length) >= 0
       ) {
-        this._transition('listening', {
-          message: '编辑目标不在最近口述范围内，或匹配不唯一',
+        editWarning = '编辑目标不在最近口述范围内，或匹配不唯一；已保留为普通草稿'
+      } else {
+        const revision = this.revision
+        const absolute = this.lastRange.start + first
+        this.text = this.text.slice(0, absolute) + edit.to
+          + this.text.slice(absolute + edit.from.length)
+        this.lastRange.end += edit.to.length - edit.from.length
+        this.revision += 1
+        this.sequence += 1
+        this.send({
+          type: 'dictation.operation', operation: 'replace',
+          from: edit.from, to: edit.to, revision, seq: this.sequence,
         })
-        return false
+        this._transition('listening')
+        return true
       }
-      const revision = this.revision
-      const absolute = this.lastRange.start + first
-      this.text = this.text.slice(0, absolute) + edit.to
-        + this.text.slice(absolute + edit.from.length)
-      this.lastRange.end += edit.to.length - edit.from.length
-      this.revision += 1
-      this.sequence += 1
-      this.send({
-        type: 'dictation.operation', operation: 'replace',
-        from: edit.from, to: edit.to, revision, seq: this.sequence,
-      })
-      this._transition('listening')
-      return true
     }
     const parsed = parseFinalSegment(value)
     this.partial = ''
@@ -181,15 +188,17 @@ export class DictationSession {
       this.revision += 1
     }
     if (!parsed.send) {
-      this._transition('listening')
+      this._transition('listening', editWarning ? { notice: editWarning } : {})
       return true
     }
     const commitId = this.id()
+    const correction = explicitCorrection(this.text)
     this.pendingCommit = {
       commitId,
       revision: this.revision,
       fingerprint: textFingerprint(this.text),
       text: this.text,
+      intent: correction ? 'memory-correction' : 'conversation',
     }
     this._transition('ready-to-send')
     this.send({
@@ -197,6 +206,7 @@ export class DictationSession {
       commitId,
       revision: this.pendingCommit.revision,
       fingerprint: this.pendingCommit.fingerprint,
+      intent: this.pendingCommit.intent,
     })
     return true
   }
@@ -214,7 +224,12 @@ export class DictationSession {
     this.transcriber = this.createTranscriber()
     if (!this.transcriber) return this._fail('听写供应商不可用')
     this._transition('starting')
-    this.transcriber.start?.(this._providerCallbacks())
+    const started = this.transcriber.start?.(this._providerCallbacks())
+    if (started === false) {
+      if (!TERMINAL_STATES.has(this.state)) this._fail('听写供应商启动失败')
+      return false
+    }
+    if (TERMINAL_STATES.has(this.state)) return false
     // Adapters may be synchronous and omit a ready callback.
     if (this.state === 'starting') this._transition('listening')
     return true
@@ -222,10 +237,15 @@ export class DictationSession {
 
   _commit(event) {
     const pending = this.pendingCommit
+    const memoryOnly = pending?.intent === 'memory-correction'
     if (
       this.state !== 'ready-to-send'
       || !pending
-      || event.submitted !== true
+      || (memoryOnly
+        ? event.accepted !== true
+          || event.submitted === true
+          || event.intent !== 'memory-correction'
+        : event.submitted !== true)
       || event.commitId !== pending.commitId
       || Number(event.revision) !== pending.revision
       || event.fingerprint !== pending.fingerprint
@@ -233,7 +253,8 @@ export class DictationSession {
     ) return false
 
     this.pendingCommit = null
-    const correction = explicitCorrection(pending.text)
+    const correction = memoryOnly ? explicitCorrection(pending.text) : null
+    if (memoryOnly && !correction) return this._fail('长期事实纠正格式无效')
     if (correction) {
       if (containsSensitiveMemory(correction.newText)) {
         this._fail('长期事实纠正包含敏感内容，未写入 Memory')
@@ -289,15 +310,27 @@ export class DictationSession {
         return true
       case 'dictation.cancel':
         if (TERMINAL_STATES.has(this.state) || this.state === 'idle') return false
-        this._clearTransient({ close: true })
+        this._clearTransient({ close: true, clearText: true })
         this._transition('cancelled')
         return true
       case 'dictation.stop':
         if (TERMINAL_STATES.has(this.state) || this.state === 'idle') return false
-        this._clearTransient({ close: true })
+        this._clearTransient({ close: true, clearText: true })
         this._transition('stopped')
         return true
       case 'dictation.commit.ack': return this._commit(event)
+      case 'dictation.reset':
+        if (!ACCEPTING_STATES.has(this.state)) return false
+        if (
+          Number(event.expectedRevision) !== this.revision
+          || !Number.isInteger(event.revision)
+          || event.revision !== this.revision + 1
+        ) return false
+        this._clearTransient()
+        this.text = ''
+        this.revision = event.revision
+        this._transition('listening')
+        return true
       case 'dictation.context':
         if (!ACCEPTING_STATES.has(this.state)) return false
         if (
@@ -307,7 +340,14 @@ export class DictationSession {
         ) return false
         this.text = String(event.text || '')
         this.revision = event.revision
-        this.lastRange = null
+        const range = event.range
+        this.lastRange = (
+          Number.isInteger(range?.start)
+          && Number.isInteger(range?.end)
+          && range.start >= 0
+          && range.end >= range.start
+          && range.end <= this.text.length
+        ) ? { start: range.start, end: range.end } : null
         return true
       default: return false
     }
@@ -316,7 +356,7 @@ export class DictationSession {
   suspend(owner = '') {
     this.inputSuspended = true
     if (this.state !== 'idle') {
-      this._clearTransient({ close: true })
+      this._clearTransient({ close: true, clearText: true })
       this._transition('stopped', { reason: 'input.suspend', owner })
     }
   }

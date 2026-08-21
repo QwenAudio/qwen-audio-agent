@@ -57,3 +57,17 @@ test('pause gates audio without reconnecting the provider session', () => {
   assert.equal(socket.readyState, 1)
   assert.equal(transcriber.resume(), true)
 })
+
+test('buffers bounded startup audio until the provider socket opens', () => {
+  let socket
+  const transcriber = createQwenAsrTranscriber({
+    apiKey: 'key', baseUrl: 'wss://example.test/realtime',
+    WebSocketClass: class extends FakeSocket { constructor(...args) { super(...args); socket = this } },
+  })
+  transcriber.start({ error: () => {} })
+  assert.equal(transcriber.append('first'), true)
+  assert.equal(socket.sent.length, 0)
+  socket.open()
+  assert.equal(socket.sent[1].type, 'input_audio_buffer.append')
+  assert.equal(socket.sent[1].audio, 'first')
+})

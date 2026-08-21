@@ -697,5 +697,5 @@ Composer 听写默认关闭；关闭时不注册 UI/快捷键，也不连接 ASR
 | `QWEN_AUDIO_DICTATION_TIMEOUT_MS` | `45000` | 活跃状态无活动超时 |
 | `QWEN_AUDIO_DICTATION_REUSE_REALTIME_CREDENTIALS` | 空 / 关闭 | 仅在两端点同 origin 时显式复用主语音凭据 |
 
-Web 使用 Ctrl/Command+Shift+D，TUI 使用 Ctrl+Shift+D，均为应用内快捷键；
+Web 使用 Ctrl/Command+Shift+D，TUI 使用 Alt/Option+D，均为应用内快捷键；
 不新增全局快捷键或 OS 级权限。

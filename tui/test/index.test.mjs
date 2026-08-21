@@ -14,6 +14,7 @@ import {
   createTurnStatusDisplay,
   fullDuplexFallbackHint,
   helpText,
+  isDictationShortcut,
   microphoneControlEvent,
   parseArguments,
   permissionStatusText,
@@ -324,6 +325,33 @@ test('keeps a fixed composer active while asynchronous output arrives', async ()
   assert.match(output, /\u001b\[4m正在口述\u001b\[0m/)
   assert.match(output, /你 > 你好/)
   assert.match(output, /\u001b\[\?1049l/)
+})
+
+test('Alt/Option+D reaches the TUI shortcut through a real stdin sequence', async () => {
+  const stdin = new PassThrough()
+  const stdout = new PassThrough()
+  stdin.isTTY = true
+  stdin.setRawMode = () => {}
+  stdout.isTTY = true
+  stdout.columns = 80
+  stdout.rows = 12
+  let starts = 0
+  const renderer = createPersistentTerminalRenderer({
+    stdin,
+    stdout,
+    onShortcut: (_value, key) => {
+      if (!isDictationShortcut(key)) return false
+      starts += 1
+      return true
+    },
+  })
+
+  stdin.write('\u001bd')
+  await new Promise(resolve => setImmediate(resolve))
+  renderer.close()
+
+  assert.equal(starts, 1)
+  assert.equal(isDictationShortcut({ name: 'd', ctrl: true, shift: false }), false)
 })
 
 test('replaces a bracketed pasted path with an attachment anchor', async () => {

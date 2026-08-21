@@ -7,6 +7,7 @@ import {
 } from '../../shared/input-parts.mjs'
 import { t } from './i18n.js'
 import { ComposerDictationClient } from './composer-dictation.js'
+import { dictationStateLabel } from '../../shared/dictation-contract.mjs'
 
 function filePart(file, index, sourceType = 'file') {
   return new Promise((resolve, reject) => {
@@ -39,8 +40,9 @@ export default function MultimodalComposer({ onSend, onStage, dictation = {} }) 
   const textRef = useRef(text)
   textRef.current = text
   const dictationClient = useRef(null)
+  const handledDictationEvent = useRef(0)
   const [dictationView, setDictationView] = useState({
-    state: 'idle', partial: '', error: '',
+    state: 'idle', partial: '', error: '', notice: '',
   })
 
   const updateAttachments = useCallback(next => {
@@ -78,6 +80,8 @@ export default function MultimodalComposer({ onSend, onStage, dictation = {} }) 
     setError('')
     return true
   }, [attachments, onSend, updateAttachments])
+  const submitContentRef = useRef(submitContent)
+  submitContentRef.current = submitContent
 
   const submit = event => {
     event.preventDefault()
@@ -93,8 +97,9 @@ export default function MultimodalComposer({ onSend, onStage, dictation = {} }) 
     }
     const client = new ComposerDictationClient({
       enabled: true,
+      canStart: () => dictation.canStart === true,
       send: dictation.send,
-      submit: submitContent,
+      submit: content => submitContentRef.current(content),
       setCapture: dictation.setCapture,
       onView: view => {
         setText(view.text)
@@ -109,11 +114,26 @@ export default function MultimodalComposer({ onSend, onStage, dictation = {} }) 
       client.stop('dictation.cancel')
       if (dictationClient.current === client) dictationClient.current = null
     }
-  }, [dictation.enabled, dictation.send, dictation.setCapture, submitContent])
+  }, [
+    dictation.canStart,
+    dictation.enabled,
+    dictation.send,
+    dictation.setCapture,
+  ])
 
   useEffect(() => {
-    if (dictation.event) dictationClient.current?.handle(dictation.event)
-  }, [dictation.event])
+    if (dictation.canStart !== true && dictationClient.current?.active) {
+      dictationClient.current.stop('dictation.cancel')
+    }
+  }, [dictation.canStart])
+
+  useEffect(() => {
+    for (const item of dictation.events || []) {
+      if (!Number.isInteger(item?.id) || item.id <= handledDictationEvent.current) continue
+      handledDictationEvent.current = item.id
+      dictationClient.current?.handle(item.event)
+    }
+  }, [dictation.events])
 
   return <form
     className="multimodal-composer"
@@ -129,11 +149,15 @@ export default function MultimodalComposer({ onSend, onStage, dictation = {} }) 
         type="button"
         aria-label={t('切换听写')}
         title={t('听写（Ctrl/⌘+Shift+D）')}
+        disabled={!dictationClient.current?.active && dictation.canStart !== true}
         onClick={() => dictationClient.current?.active
           ? dictationClient.current.stop()
           : dictationClient.current?.start(text)}
       >🎙</button>
-      <span>{dictationView.state}</span>
+      <span>
+        {t(dictationStateLabel(dictationView.state))}
+        {dictationView.notice ? ` · ${dictationView.notice}` : ''}
+      </span>
       {dictationView.partial && <span className="composer-dictation-partial">
         {dictationView.partial}
       </span>}

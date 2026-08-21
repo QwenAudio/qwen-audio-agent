@@ -856,5 +856,5 @@ connects to ASR while disabled.
 | `QWEN_AUDIO_DICTATION_TIMEOUT_MS` | `45000` | Active-state inactivity deadline |
 | `QWEN_AUDIO_DICTATION_REUSE_REALTIME_CREDENTIALS` | empty / off | Explicitly reuse the main credential only when both endpoints have the same origin |
 
-The Web shortcut is Ctrl/Command+Shift+D; the TUI shortcut is Ctrl+Shift+D.
+The Web shortcut is Ctrl/Command+Shift+D; the TUI shortcut is Alt/Option+D.
 Both are application-local. No global shortcut or OS-level permission is added.

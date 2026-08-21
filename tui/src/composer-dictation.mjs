@@ -25,11 +25,17 @@ export class TuiComposerDictation {
     this.continuous = true
     this.state = 'idle'
     this.error = ''
+    this.notice = ''
     this.contextBaseRevision = null
   }
 
   view() {
-    return { ...this.model.snapshot(), state: this.state, error: this.error }
+    return {
+      ...this.model.snapshot(),
+      state: this.state,
+      error: this.error,
+      notice: this.notice,
+    }
   }
 
   publish() { this.onView(this.view()) }
@@ -41,6 +47,7 @@ export class TuiComposerDictation {
     this.active = true
     this.state = 'starting'
     this.error = ''
+    this.notice = ''
     this.setCapture(true)
     const sent = this.send({
       type: 'dictation.start', text: this.model.text,
@@ -48,7 +55,7 @@ export class TuiComposerDictation {
     })
     if (!sent) {
       this.active = false
-      this.setCapture(false)
+      this.setCapture(false, { restore: true })
       this.state = 'error'
       this.error = 'Gateway 尚未连接'
     }
@@ -60,8 +67,9 @@ export class TuiComposerDictation {
     if (!this.active) return false
     this.send({ type })
     this.active = false
-    this.setCapture(false, { restore: type === 'dictation.stop' })
+    this.setCapture(false, { restore: true })
     this.state = type === 'dictation.cancel' ? 'cancelled' : 'stopped'
+    this.notice = ''
     this.publish()
     return true
   }
@@ -82,6 +90,7 @@ export class TuiComposerDictation {
     this.send({
       type: 'dictation.context', expectedRevision,
       revision: this.model.revision, text: this.model.text,
+      range: this.model.snapshot().range,
     })
     this.publish()
     return true
@@ -89,15 +98,16 @@ export class TuiComposerDictation {
 
   async manualCommitted() {
     if (!this.active) return false
-    this.send({ type: 'dictation.stop' })
+    const expectedRevision = this.model.revision
     this.model.reset('')
     if (this.continuous && this.canStart()) {
       this.send({
-        type: 'dictation.start', text: '', revision: this.model.revision,
-        continuous: true,
+        type: 'dictation.reset', expectedRevision,
+        revision: this.model.revision,
       })
-      this.state = 'starting'
+      this.state = 'listening'
     } else {
+      this.send({ type: 'dictation.stop' })
       this.active = false
       this.setCapture(false, { restore: true })
       this.state = 'stopped'
@@ -111,20 +121,22 @@ export class TuiComposerDictation {
     if (event.type === 'input.suspend') {
       if (this.active) this.send({ type: 'input.suspend.ack', owner: event.owner })
       this.active = false
-      this.setCapture(false, { restore: false })
+      this.setCapture(false, { restore: true })
       this.state = 'stopped'
       this.error = '外部输入占用麦克风；恢复后请重新开始听写'
+      this.notice = ''
       this.publish()
       return true
     }
     if (event.type === 'dictation.state') {
       const wasActive = this.active
       this.state = String(event.state || 'idle')
-      this.error = String(event.message || '')
+      this.error = this.state === 'error' ? String(event.message || '') : ''
+      this.notice = String(event.notice || '')
       if (['cancelled', 'error', 'stopped'].includes(this.state)) {
         this.active = false
         if (wasActive) this.setCapture(false, {
-          restore: this.state === 'stopped' && event.reason !== 'input.suspend',
+          restore: true,
         })
       }
       this.publish()
@@ -153,15 +165,20 @@ export class TuiComposerDictation {
         || event.fingerprint !== textFingerprint(this.model.text)
         || !this.receipts.accept(event.commitId)
       ) return false
-      const submitted = await this.submit(this.model.text) === true
+      const memoryOnly = event.intent === 'memory-correction'
+      const submitted = memoryOnly
+        ? false
+        : await this.submit(this.model.text) === true
+      const accepted = memoryOnly || submitted
       this.send({
         type: 'dictation.commit.ack', commitId: event.commitId,
         revision: event.revision, fingerprint: event.fingerprint, submitted,
+        ...(memoryOnly ? { accepted: true, intent: event.intent } : {}),
       })
-      if (submitted) this.model.reset('')
+      if (accepted) this.model.reset('')
       else this.error = '内容未提交，请检查 Gateway 连接'
       this.publish()
-      return submitted
+      return accepted
     }
     return false
   }

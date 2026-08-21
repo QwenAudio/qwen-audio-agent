@@ -51,6 +51,39 @@ test('voice commit awaits the ordinary TUI submit exactly once', async () => {
   assert.equal(sent.filter(event => event.type === 'dictation.commit.ack').length, 1)
 })
 
+test('Memory-only correction never enters ordinary TUI submission', async () => {
+  const submissions = []
+  const sent = []
+  const client = new TuiComposerDictation({
+    enabled: true, canStart: () => true,
+    send: event => { sent.push(event); return true },
+    submit: async text => { submissions.push(text); return true },
+  })
+  client.start('纠正长期事实：上海改为杭州。')
+  const request = {
+    type: 'dictation.commit.request', intent: 'memory-correction',
+    commitId: 'memory-1', revision: 0,
+    fingerprint: textFingerprint('纠正长期事实：上海改为杭州。'),
+  }
+  assert.equal(await client.handle(request), true)
+  assert.deepEqual(submissions, [])
+  assert.equal(sent.at(-1).accepted, true)
+  assert.equal(sent.at(-1).submitted, false)
+})
+
+test('edit miss remains a non-blocking TUI notice', async () => {
+  const client = new TuiComposerDictation({
+    enabled: true, canStart: () => true, send: () => true,
+  })
+  client.start('draft')
+  await client.handle({
+    type: 'dictation.state', state: 'listening',
+    notice: '编辑目标不存在；已保留为普通草稿',
+  })
+  assert.equal(client.view().error, '')
+  assert.match(client.view().notice, /已保留/)
+})
+
 test('suspend and error stop capture and refuse late commits', async () => {
   for (const event of [
     { type: 'input.suspend', owner: 'host' },
@@ -72,4 +105,20 @@ test('suspend and error stop capture and refuse late commits', async () => {
     assert.equal(submissions, 0)
     assert.equal(captures.at(-1), false)
   }
+})
+
+test('continuous manual commit resets the live session without stop-start echoes', async () => {
+  const sent = []
+  const captures = []
+  const client = new TuiComposerDictation({
+    enabled: true,
+    canStart: () => true,
+    send: event => { sent.push(event); return true },
+    setCapture: (active, options) => captures.push({ active, options }),
+  })
+  client.start('draft', { continuous: true })
+  await client.manualCommitted()
+  assert.equal(sent.at(-1).type, 'dictation.reset')
+  assert.equal(client.active, true)
+  assert.equal(captures.length, 1)
 })

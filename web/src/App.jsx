@@ -15,6 +15,7 @@ import {
 } from './message-order.js'
 import MessageContent from './MessageContent.jsx'
 import MultimodalComposer from './MultimodalComposer.jsx'
+import { enqueueDictationEvent } from './composer-dictation.js'
 import DesktopFluidOrb from './DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './DesktopSpriteOrb.jsx'
 import { desktopOrbClassName, resolveOrbVisualState } from './orb-presentation.js'
@@ -34,6 +35,7 @@ import {
   taskView,
 } from './task-view.js'
 import useRealtimeVoice, {
+  canStartComposerDictation,
   realtimeModelStatus,
   realtimeProviderForConnection,
   realtimeProviderSelection,
@@ -161,7 +163,7 @@ export default function App() {
   const [providerNotice, setProviderNotice] = useState('')
   const [healthValidated, setHealthValidated] = useState(false)
   const [gatewayCapabilities, setGatewayCapabilities] = useState([])
-  const [dictationEvent, setDictationEvent] = useState(null)
+  const [dictationEvents, setDictationEvents] = useState([])
   const [gatewayRuntime, setGatewayRuntime] = useState('connecting')
   const [backend, setBackend] = useState({
     label: 'Agent',
@@ -198,6 +200,7 @@ export default function App() {
   const previousWorkSettled = useRef(true)
   const workSettledAtRef = useRef(workSettledAt)
   const lastWakeAtRef = useRef(0)
+  const dictationEventId = useRef(0)
 
   const noteInteraction = useCallback(() => {
     setLastInteractionAt(Date.now())
@@ -421,7 +424,13 @@ export default function App() {
     if (
       String(event.type || '').startsWith('dictation.')
       || event.type === 'input.suspend'
-    ) setDictationEvent({ ...event, receivedAt: Date.now() })
+    ) {
+      dictationEventId.current += 1
+      setDictationEvents(queue => enqueueDictationEvent(queue, {
+        id: dictationEventId.current,
+        event: { ...event, receivedAt: Date.now() },
+      }))
+    }
     if (event.type === 'turn.started') {
       noteInteraction()
       currentTurnId.current = event.turnId || ''
@@ -1394,7 +1403,12 @@ export default function App() {
         onStage={voice.stageInputParts}
         dictation={{
           enabled: gatewayCapabilities.includes('composer.dictation'),
-          event: dictationEvent,
+          canStart: canStartComposerDictation({
+            enabled: voiceEnabled,
+            ownership: voice.ownership,
+            hostInputSuspended: voice.hostInputSuspended,
+          }),
+          events: dictationEvents,
           send: voice.sendGatewayEvent,
           setCapture: voice.setDictationCapture,
         }}

@@ -17,6 +17,9 @@ export function createQwenAsrTranscriber({
   let socket = null
   let callbacks = {}
   let intentionallyClosed = false
+  let pendingAudio = []
+  let pendingAudioCharacters = 0
+  const maxPendingAudioCharacters = 1024 * 1024
   const send = event => {
     if (socket?.readyState !== WebSocketClass.OPEN) return false
     socket.send(JSON.stringify({ event_id: `event_${id()}`, ...event }))
@@ -24,6 +27,8 @@ export function createQwenAsrTranscriber({
   }
   const close = () => {
     intentionallyClosed = true
+    pendingAudio = []
+    pendingAudioCharacters = 0
     if (socket?.readyState === WebSocketClass.OPEN) {
       send({ type: 'session.finish' })
     }
@@ -57,6 +62,11 @@ export function createQwenAsrTranscriber({
             },
           },
         })
+        for (const audio of pendingAudio) {
+          send({ type: 'input_audio_buffer.append', audio })
+        }
+        pendingAudio = []
+        pendingAudioCharacters = 0
         callbacks.ready?.()
       })
       socket.on('message', raw => {
@@ -75,14 +85,26 @@ export function createQwenAsrTranscriber({
           ))
         }
       })
-      socket.on('error', error => callbacks.error?.(error))
+      socket.on('error', error => {
+        if (!intentionallyClosed) callbacks.error?.(error)
+      })
       socket.on('close', () => {
         if (!intentionallyClosed) callbacks.error?.(new Error('Qwen ASR 连接已关闭'))
       })
       return true
     },
     append(audio) {
-      return send({ type: 'input_audio_buffer.append', audio: String(audio || '') })
+      const value = String(audio || '')
+      if (socket?.readyState === WebSocketClass.OPEN) {
+        return send({ type: 'input_audio_buffer.append', audio: value })
+      }
+      if (!socket || intentionallyClosed) return false
+      if (pendingAudioCharacters + value.length > maxPendingAudioCharacters) {
+        return false
+      }
+      pendingAudio.push(value)
+      pendingAudioCharacters += value.length
+      return true
     },
     // Pause is local audio gating. Keeping the ASR socket open avoids silently
     // creating a second provider session when the user resumes.

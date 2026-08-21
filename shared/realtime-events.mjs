@@ -24,6 +24,7 @@ export const GatewayClientEvent = Object.freeze({
   DICTATION_RESUME: 'dictation.resume',
   DICTATION_CANCEL: 'dictation.cancel',
   DICTATION_STOP: 'dictation.stop',
+  DICTATION_RESET: 'dictation.reset',
   DICTATION_CONTEXT: 'dictation.context',
   DICTATION_COMMIT_ACK: 'dictation.commit.ack',
 })

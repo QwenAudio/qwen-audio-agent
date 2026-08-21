@@ -1,19 +1,26 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { ComposerDictationClient } from '../src/composer-dictation.js'
-import { textFingerprint } from '../../shared/dictation-contract.mjs'
+import {
+  ComposerDictationClient,
+  enqueueDictationEvent,
+} from '../src/composer-dictation.js'
+import {
+  dictationStateLabel,
+  textFingerprint,
+} from '../../shared/dictation-contract.mjs'
 
-function harness({ enabled = true, submit = () => true } = {}) {
+function harness({ enabled = true, canStart = () => true, submit = () => true } = {}) {
   const sent = []
   const views = []
   const routes = []
   const client = new ComposerDictationClient({
     enabled,
+    canStart,
     send: event => { sent.push(event); return true },
     submit,
     onView: view => views.push(view),
-    setCapture: active => routes.push(active),
+    setCapture: (active, options) => routes.push({ active, options }),
   })
   return { client, sent, views, routes }
 }
@@ -26,11 +33,30 @@ test('disabled client does not register or send anything', () => {
   assert.deepEqual(h.routes, [])
 })
 
+test('Web event queue preserves every event in one React batch', () => {
+  const first = { id: 1, event: { type: 'dictation.commit.request' } }
+  const second = { id: 2, event: { type: 'dictation.state', state: 'stopped' } }
+  const queued = enqueueDictationEvent(enqueueDictationEvent([], first), second)
+  assert.deepEqual(queued, [first, second])
+})
+
+test('dictation state labels are localized instead of exposing protocol tokens', () => {
+  assert.equal(dictationStateLabel('ready-to-send'), '待发送')
+  assert.equal(dictationStateLabel('transcribing'), '转写中')
+})
+
+test('mute, ownership, or suspension gate prevents Web dictation start', () => {
+  const h = harness({ canStart: () => false })
+  assert.equal(h.client.start('draft'), false)
+  assert.deepEqual(h.sent, [])
+  assert.deepEqual(h.routes, [])
+})
+
 test('shortcut starts capture and renders partial separately before final locks it', () => {
   const h = harness()
   assert.equal(h.client.shortcut({ ctrlKey: true, shiftKey: true, key: 'd' }, 'draft'), true)
   assert.equal(h.sent[0].type, 'dictation.start')
-  assert.deepEqual(h.routes, [true])
+  assert.deepEqual(h.routes, [{ active: true, options: undefined }])
   h.client.handle({ type: 'dictation.partial', text: ' one', revision: 0, seq: 1 })
   assert.equal(h.client.view().text, 'draft')
   assert.equal(h.client.view().partial, ' one')
@@ -43,9 +69,45 @@ test('keyboard editing settles partial and publishes the new revision', () => {
   const h = harness()
   h.client.start('a')
   h.client.handle({ type: 'dictation.partial', text: 'b', revision: 0, seq: 1 })
-  h.client.keyboard('ab!')
+  h.client.keyboard('a!')
   assert.equal(h.client.view().text, 'ab!')
   assert.equal(h.sent.at(-1).type, 'dictation.context')
+  assert.deepEqual(h.sent.at(-1).range, { start: 1, end: 2 })
+})
+
+test('Memory-only correction acknowledges without ordinary composer submission', () => {
+  const submissions = []
+  const h = harness({ submit: text => { submissions.push(text); return true } })
+  h.client.start('纠正长期事实：上海改为杭州。')
+  const request = {
+    type: 'dictation.commit.request',
+    intent: 'memory-correction',
+    commitId: 'memory-1',
+    revision: 0,
+    fingerprint: textFingerprint('纠正长期事实：上海改为杭州。'),
+  }
+  assert.equal(h.client.handle(request), true)
+  assert.deepEqual(submissions, [])
+  assert.deepEqual(h.sent.at(-1), {
+    type: 'dictation.commit.ack',
+    commitId: 'memory-1',
+    revision: 0,
+    fingerprint: request.fingerprint,
+    submitted: false,
+    accepted: true,
+    intent: 'memory-correction',
+  })
+})
+
+test('edit miss is a non-blocking notice instead of an error', () => {
+  const h = harness()
+  h.client.start('draft')
+  h.client.handle({
+    type: 'dictation.state', state: 'listening',
+    notice: '编辑目标不存在；已保留为普通草稿',
+  })
+  assert.equal(h.client.view().error, '')
+  assert.match(h.client.view().notice, /已保留/)
 })
 
 test('matching commit calls the existing submit once and a retry is rejected', () => {
@@ -74,7 +136,9 @@ test('stale commit, suspend, cancel, and error never submit or restore capture',
     h.client.start('draft')
     h.client.handle(event)
     assert.equal(submits, 0)
-    if (event.type !== 'dictation.commit.request') assert.equal(h.routes.at(-1), false)
+    if (event.type !== 'dictation.commit.request') {
+      assert.equal(h.routes.at(-1).active, false)
+    }
   }
 })
 
@@ -82,13 +146,31 @@ test('manual and voice commits both restart only in continuous mode', () => {
   const h = harness()
   h.client.start('draft', { continuous: true })
   h.client.manualCommitted()
-  assert.deepEqual(h.sent.slice(-2).map(event => event.type), [
-    'dictation.stop', 'dictation.start',
-  ])
+  assert.equal(h.sent.at(-1).type, 'dictation.reset')
+  assert.equal(h.client.active, true)
+  assert.equal(h.routes.length, 1)
 
   const stopped = harness()
   stopped.client.start('draft', { continuous: false })
   stopped.client.manualCommitted()
   assert.equal(stopped.sent.at(-1).type, 'dictation.stop')
-  assert.deepEqual(stopped.routes, [true, false])
+  assert.deepEqual(stopped.routes, [
+    { active: true, options: undefined },
+    { active: false, options: { restore: true } },
+  ])
+})
+
+test('cancel and provider error release dictation capture without latching main audio off', () => {
+  for (const event of [
+    { type: 'dictation.state', state: 'cancelled' },
+    { type: 'dictation.state', state: 'error', message: 'failed' },
+  ]) {
+    const h = harness()
+    h.client.start('draft')
+    h.client.handle(event)
+    assert.deepEqual(h.routes.at(-1), {
+      active: false,
+      options: { restore: true },
+    })
+  }
 })

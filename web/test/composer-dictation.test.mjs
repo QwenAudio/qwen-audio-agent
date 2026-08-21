@@ -75,6 +75,39 @@ test('keyboard editing settles partial and publishes the new revision', () => {
   assert.deepEqual(h.sent.at(-1).range, { start: 1, end: 2 })
 })
 
+function editedDictation({ initial = 'typed ', spoken = 'spoken', edited }) {
+  const h = harness()
+  h.client.start(initial)
+  h.client.handle({
+    type: 'dictation.final', text: spoken, revision: 0, seq: 1,
+  })
+  h.client.keyboard(edited)
+  assert.equal(h.client.view().text, edited)
+  return h.sent.at(-1).range
+}
+
+test('keyboard insertion before dictation shifts the recent range', () => {
+  assert.deepEqual(editedDictation({
+    initial: 'typed prefix ',
+    edited: 'typed inserted prefix spoken',
+  }), { start: 22, end: 28 })
+})
+
+test('keyboard deletion before dictation shifts the recent range', () => {
+  assert.deepEqual(editedDictation({
+    initial: 'remove prefix ',
+    edited: 'prefix spoken',
+  }), { start: 7, end: 13 })
+})
+
+test('keyboard insertion inside dictation clears the unreliable range', () => {
+  assert.equal(editedDictation({ edited: 'typed spXoken' }), null)
+})
+
+test('keyboard clearing the composer clears the recent range', () => {
+  assert.equal(editedDictation({ edited: '' }), null)
+})
+
 test('Memory-only correction acknowledges without ordinary composer submission', () => {
   const submissions = []
   const h = harness({ submit: text => { submissions.push(text); return true } })

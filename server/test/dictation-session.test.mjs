@@ -171,6 +171,22 @@ test('deterministic edit commands only change one match in the latest dictated r
   )), true)
 })
 
+test('an unmappable keyboard range never edits typed text', () => {
+  const h = harness()
+  h.session.handle({ type: 'dictation.start', revision: 0, text: 'typed b ' })
+  h.transcriber.callbacks.final('spoken')
+  assert.equal(h.session.handle({
+    type: 'dictation.context', expectedRevision: 1,
+    revision: 2, text: 'typed b changed', range: null,
+  }), true)
+  h.transcriber.callbacks.final('把 b 改成 Q')
+  assert.equal(h.events.some(event => event.type === 'dictation.operation'), false)
+  assert.equal(h.session.text, 'typed b changed把 b 改成 Q')
+  assert.equal(h.events.some(event => (
+    event.type === 'dictation.state' && /已保留为普通草稿/.test(event.notice || '')
+  )), true)
+})
+
 test('commit requires matching receipt, deduplicates, and only then updates memory', () => {
   const h = harness()
   h.session.handle({

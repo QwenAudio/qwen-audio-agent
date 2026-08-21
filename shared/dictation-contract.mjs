@@ -1,5 +1,38 @@
 const TERMINAL_PUNCTUATION = /[.!?。！？；;]\s*$/u
 
+function remapDictatedRange(before, after, range) {
+  if (
+    !range
+    || !Number.isInteger(range.start)
+    || !Number.isInteger(range.end)
+    || range.start < 0
+    || range.end <= range.start
+    || range.end > before.length
+  ) return null
+
+  let prefix = 0
+  while (
+    prefix < before.length
+    && prefix < after.length
+    && before[prefix] === after[prefix]
+  ) prefix += 1
+
+  let suffix = 0
+  while (
+    suffix < before.length - prefix
+    && suffix < after.length - prefix
+    && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+  ) suffix += 1
+
+  const oldEditEnd = before.length - suffix
+  const delta = after.length - before.length
+  if (oldEditEnd <= range.start) {
+    return { start: range.start + delta, end: range.end + delta }
+  }
+  if (prefix >= range.end) return { ...range }
+  return null
+}
+
 export function dictationStateLabel(state) {
   return ({
     idle: '待命',
@@ -111,9 +144,12 @@ export class ComposerDictation {
 
   keyboardEdit(edit) {
     this.settlePartial()
-    const next = String(edit(this.text))
-    if (next === this.text) return false
+    const previous = this.text
+    const previousRange = this.range
+    const next = String(edit(previous))
+    if (next === previous) return false
     this.text = next
+    this.range = remapDictatedRange(previous, next, previousRange)
     this.revision += 1
     return true
   }

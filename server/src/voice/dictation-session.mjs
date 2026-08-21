@@ -15,9 +15,13 @@ const TERMINAL_STATES = new Set(['cancelled', 'error', 'stopped'])
 
 function explicitCorrection(text) {
   const source = String(text || '').trim()
-  const chinese = source.match(/^纠正长期事实\s*[：:]\s*(.+?)\s*改为\s*(.+?)[。.!]?$/u)
+  const chinese = source.match(
+    /^纠正长期事实\s*[：:]\s*([^，,。！？!?；;]+?)\s*改为\s*([^，,。！？!?；;]+?)\s*[。！？.!?]?$/u,
+  )
   if (chinese) return { oldText: chinese[1].trim(), newText: chinese[2].trim() }
-  const english = source.match(/^correct long-term fact\s*:\s*(.+?)\s+to\s+(.+?)[.]?$/iu)
+  const english = source.match(
+    /^correct long-term fact\s*:\s*([^,.!?;]+?)\s+to\s+([^,.!?;]+?)\s*[.!?]?$/iu,
+  )
   if (english) return { oldText: english[1].trim(), newText: english[2].trim() }
   return null
 }

@@ -840,3 +840,21 @@ compatibility fallback.
 Runtime parameters such as task status, notification retry, memory capacity, and retention
 time also use built-in default values. Overriding is only recommended when explicitly
 performing capacity planning or fault diagnosis.
+
+## Composer dictation (Web/TUI)
+
+Composer dictation is disabled by default and never registers UI/shortcuts or
+connects to ASR while disabled.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `QWEN_AUDIO_DICTATION_ENABLED` | empty / off | Enable Web/TUI composer dictation |
+| `QWEN_AUDIO_DICTATION_PROVIDER` | `dashscope` | Provider whose separate dictation adapter is used |
+| `QWEN_AUDIO_DICTATION_API_KEY` | empty | Dedicated Qwen ASR credential |
+| `QWEN_AUDIO_DICTATION_BASE_URL` | DashScope Qwen ASR Realtime URL | ASR WebSocket endpoint |
+| `QWEN_AUDIO_DICTATION_MODEL` | `qwen3-asr-flash-realtime` | ASR model |
+| `QWEN_AUDIO_DICTATION_TIMEOUT_MS` | `45000` | Active-state inactivity deadline |
+| `QWEN_AUDIO_DICTATION_REUSE_REALTIME_CREDENTIALS` | empty / off | Explicitly reuse the main credential only when both endpoints have the same origin |
+
+The Web shortcut is Ctrl/Command+Shift+D; the TUI shortcut is Ctrl+Shift+D.
+Both are application-local. No global shortcut or OS-level permission is added.

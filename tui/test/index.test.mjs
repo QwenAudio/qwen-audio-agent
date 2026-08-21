@@ -24,6 +24,14 @@ import {
 } from '../src/index.mjs'
 import { isExitCommand } from '../src/terminal-commands.mjs'
 
+function readAll(stream) {
+  const chunks = []
+  let chunk
+  while ((chunk = stream.read()) !== null) chunks.push(chunk)
+  return Buffer.concat(chunks.map(value => Buffer.isBuffer(value) ? value : Buffer.from(value)))
+    .toString()
+}
+
 test('supports /exit and keeps existing exit aliases', () => {
   assert.equal(isExitCommand('/exit'), true)
   assert.equal(isExitCommand('/quit'), true)
@@ -298,6 +306,7 @@ test('keeps a fixed composer active while asynchronous output arrives', async ()
   renderer.update('你 >', '语音预览')
   renderer.print('[状态] 后台处理中')
   renderer.setStatus('Gateway 已连接 · 麦克风已开启')
+  renderer.setDictationPreview('正在口述')
   renderer.finish('qwen-audio >', '完成')
   stdin.write('\n')
   await new Promise(resolve => setImmediate(resolve))
@@ -308,10 +317,11 @@ test('keeps a fixed composer active while asynchronous output arrives', async ()
   assert.deepEqual(submitted, ['你好'])
   assert.equal(closeRequests, 1)
   assert.deepEqual(rawModes, [true, false])
-  const output = stdout.read().toString()
+  const output = readAll(stdout)
   assert.match(output, /\u001b\[\?1049h/)
   assert.match(output, /后台处理中/)
   assert.match(output, /Gateway 已连接 · 麦克风已开启/)
+  assert.match(output, /\u001b\[4m正在口述\u001b\[0m/)
   assert.match(output, /你 > 你好/)
   assert.match(output, /\u001b\[\?1049l/)
 })
@@ -350,7 +360,7 @@ test('replaces a bracketed pasted path with an attachment anchor', async () => {
   assert.equal(applied, 2)
   assert.equal(changes.at(-1), '[Image 1] [Image 2]')
   assert.deepEqual(submitted, ['[Image 1] [Image 2]'])
-  const output = stdout.read().toString()
+  const output = readAll(stdout)
   assert.match(output, /你 > \[Image 1\] \[Image 2\]/)
   assert.match(output, /\u001b\[\?2004h/)
   assert.match(output, /\u001b\[\?2004l/)

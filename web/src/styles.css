@@ -22,6 +22,31 @@
   gap: 8px;
 }
 
+.composer-dictation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 0 4px 7px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.composer-dictation button {
+  border: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.composer-dictation-partial {
+  overflow: hidden;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer-row textarea {
   flex: 1;
   min-height: 42px;

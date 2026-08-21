@@ -160,6 +160,8 @@ export default function App() {
   const [modelStatus, setModelStatus] = useState(() => realtimeModelStatus())
   const [providerNotice, setProviderNotice] = useState('')
   const [healthValidated, setHealthValidated] = useState(false)
+  const [gatewayCapabilities, setGatewayCapabilities] = useState([])
+  const [dictationEvent, setDictationEvent] = useState(null)
   const [gatewayRuntime, setGatewayRuntime] = useState('connecting')
   const [backend, setBackend] = useState({
     label: 'Agent',
@@ -293,6 +295,7 @@ export default function App() {
           label: payload.realtimeLabel || payload.realtimeProvider || 'Realtime Agent',
         })
         setRealtimeProviders(payload.realtimeProviders || [])
+        setGatewayCapabilities(payload.capabilities || [])
         setModelStatus(realtimeModelStatus(payload))
         // A front end persisted by an earlier visit may no longer exist on this
         // server (removed provider, different deployment). Sending it would be
@@ -415,6 +418,10 @@ export default function App() {
   }, [])
 
   const onRealtimeEvent = useCallback(event => {
+    if (
+      String(event.type || '').startsWith('dictation.')
+      || event.type === 'input.suspend'
+    ) setDictationEvent({ ...event, receivedAt: Date.now() })
     if (event.type === 'turn.started') {
       noteInteraction()
       currentTurnId.current = event.turnId || ''
@@ -1385,6 +1392,12 @@ export default function App() {
       {composerEnabled && <MultimodalComposer
         onSend={sendComposerInput}
         onStage={voice.stageInputParts}
+        dictation={{
+          enabled: gatewayCapabilities.includes('composer.dictation'),
+          event: dictationEvent,
+          send: voice.sendGatewayEvent,
+          setCapture: voice.setDictationCapture,
+        }}
       />}
 
     </section>

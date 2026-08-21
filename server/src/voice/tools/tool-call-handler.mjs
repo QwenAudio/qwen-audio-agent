@@ -12,8 +12,7 @@ import {
 import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
 import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
-
-const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
+import { containsSensitiveMemory } from '../../conversation/memory-policy.mjs'
 
 function mergeInputParts(...groups) {
   const merged = []
@@ -1022,7 +1021,7 @@ export class ToolCallHandler {
       output = failure('invalid_memory_edit', 'append 需要明确的 content。')
     } else if (action === 'replace' && (!oldText || !hasNewText)) {
       output = failure('invalid_memory_edit', 'replace 需要精确 old_text 和明确的 new_text。')
-    } else if (SENSITIVE_MEMORY.test(proposedContent)) {
+    } else if (containsSensitiveMemory(proposedContent)) {
       output = failure(
         'sensitive_memory',
         '为了安全，不会保存密码、密钥、验证码或令牌。',
@@ -1089,7 +1088,7 @@ export class ToolCallHandler {
     } else if (action === 'add' || action === 'remove') {
       if (!items.length) {
         output = failure('missing_notes_items', '需要明确要添加或划掉的内容。')
-      } else if (items.some(item => SENSITIVE_MEMORY.test(item))) {
+      } else if (items.some(item => containsSensitiveMemory(item))) {
         output = failure(
           'sensitive_notes',
           '为了安全，不会保存密码、密钥、验证码或令牌。',

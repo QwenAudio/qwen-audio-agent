@@ -207,6 +207,9 @@ export default function useRealtimeVoice({
     state: 'available',
     holder: null,
   })
+  const [dictationCapture, setDictationCaptureState] = useState(false)
+  const [hostInputSuspended, setHostInputSuspended] = useState(false)
+  const [dictationCaptureBlocked, setDictationCaptureBlocked] = useState(false)
   const eventRef = useRef(onEvent)
   const inputErrorRef = useRef(onInputError)
   const wakeWordOnlyRef = useRef(wakeWordOnly)
@@ -221,6 +224,7 @@ export default function useRealtimeVoice({
   )].sort().join(',')
   const enabledRef = useRef(enabled)
   const inputReadyRef = useRef(false)
+  const dictationCaptureRef = useRef(false)
   const outputMutedRef = useRef(outputMuted)
   const mutedPlaybackResponses = useRef(new Set())
   const playbackRef = useRef({
@@ -546,6 +550,18 @@ export default function useRealtimeVoice({
         if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
           stopPlayback(event.reason || '')
         }
+        if (event.type === GatewayServerEvent.INPUT_SUSPEND) {
+          setHostInputSuspended(true)
+          setDictationCaptureState(false)
+          dictationCaptureRef.current = false
+          sendSocketEvent({
+            type: GatewayClientEvent.INPUT_SUSPEND_ACK,
+            owner: event.owner,
+          })
+        }
+        if (event.type === GatewayServerEvent.INPUT_RESUME) {
+          setHostInputSuspended(false)
+        }
         if (event.type === GatewayServerEvent.AUDIO_DELTA) {
           if (outputMutedRef.current || !audioRef.current) {
             consumeMutedAudio(event.responseId)
@@ -605,6 +621,7 @@ export default function useRealtimeVoice({
     markAudioDone,
     play,
     realtimeProvider,
+    sendSocketEvent,
     sessionId,
     stopPlayback,
     suspended,
@@ -616,7 +633,12 @@ export default function useRealtimeVoice({
   }, [outputMuted, stopPlayback])
 
   useEffect(() => {
-    if (!enabled || suspended) {
+    if (
+      (!enabled && !dictationCapture)
+      || suspended
+      || hostInputSuspended
+      || dictationCaptureBlocked
+    ) {
       inputReadyRef.current = false
       setInputReady(false)
       sendSocketEvent(microphoneControlEvent({
@@ -676,7 +698,9 @@ export default function useRealtimeVoice({
             inputSampleRate.current,
           )
           socket.send(JSON.stringify({
-            type: GatewayClientEvent.AUDIO_APPEND,
+            type: dictationCaptureRef.current
+              ? GatewayClientEvent.DICTATION_AUDIO_APPEND
+              : GatewayClientEvent.AUDIO_APPEND,
             audio: pcmBase64(audio),
           }))
         }
@@ -684,12 +708,14 @@ export default function useRealtimeVoice({
         processor.connect(context.destination)
         inputReadyRef.current = true
         setInputReady(true)
-        sendSocketEvent(microphoneControlEvent({
-          enabled: true,
-          inputOnlyMute,
-          wakeWordOnly,
-          takeover,
-        }))
+        if (enabledRef.current && !dictationCaptureRef.current) {
+          sendSocketEvent(microphoneControlEvent({
+            enabled: true,
+            inputOnlyMute,
+            wakeWordOnly,
+            takeover,
+          }))
+        }
       } catch (reason) {
         if (!disposed) failInput(reason)
       }
@@ -706,7 +732,10 @@ export default function useRealtimeVoice({
     }
   }, [
     activateAudio,
+    dictationCapture,
+    dictationCaptureBlocked,
     enabled,
+    hostInputSuspended,
     inputOnlyMute,
     wakeWordOnly,
     sendSocketEvent,
@@ -748,6 +777,14 @@ export default function useRealtimeVoice({
     parts,
   }), [sendSocketEvent])
 
+  const setDictationCapture = useCallback((active, { restore = false } = {}) => {
+    const next = Boolean(active)
+    dictationCaptureRef.current = next
+    setDictationCaptureState(next)
+    setDictationCaptureBlocked(!next && !restore)
+    if (next) activateAudio()
+  }, [activateAudio])
+
   return {
     state,
     visualState: visualVoiceState(state),
@@ -762,5 +799,7 @@ export default function useRealtimeVoice({
     wake,
     sendInput,
     stageInputParts,
+    sendGatewayEvent: sendSocketEvent,
+    setDictationCapture,
   }
 }

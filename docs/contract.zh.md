@@ -14,7 +14,7 @@
 版本号遵循 SemVer：新增能力升 minor；下文点名的任一端点或事件发生破坏性
 变更升 major。
 
-当前版本为 `2.0.0`，接替 `feat/embedded-gateway-host-contract` 分支的 `1.x`
+当前版本为 `2.1.0`，接替 `feat/embedded-gateway-host-contract` 分支的 `1.x`
 版本线（止于 `1.7.0`）：升 major 记录的事实是——那条线宣告过的部分能力位
 （如 `gateway.embedded-lifecycle`、`desktop.settings-window`）不在本契约中。
 从该分支迁移的宿主应重新核对下方能力位表，而不是假设旧清单仍然成立。
@@ -37,9 +37,12 @@
 | `desktop.orb-placement` | `createOrbPlacement` 覆盖默认锚点、显示器夹取与拖放持久化 | `desktop/test/orb-placement.test.mjs` |
 | `desktop.orb-position-store` | 悬浮球位置由本包记忆（settings store 的 ui-state） | `desktop/test/settings-store.test.mjs` |
 | `desktop.skin-store` | 皮肤的导入、列表、删除与生效决策是发布的库接口 | `desktop/test/skin-store.test.mjs` |
+| `composer.dictation` | Web/TUI 可把麦克风音频发送给独立 composer 听写 provider；仅在默认关闭的 flag 开启时广告 | `server/test/gateway-application.test.mjs` |
+| `composer.dictation-edit` | 确定性替换/删除只允许作用于最近一次已锁定口述范围 | `server/test/dictation-session.test.mjs` |
+| `composer.dictation-send` | 带回执的语音发送只调用一次现有 composer submit，绝不合成 Enter | `web/test/composer-dictation.test.mjs`、`tui/test/composer-dictation.test.mjs` |
 
-能力位清单本体是 `server/src/core/gateway-protocol.mjs` 的
-`GATEWAY_CAPABILITIES`；`test/gateway-contract.test.mjs` 会在能力位与本文档
+基础能力位是 `server/src/core/gateway-protocol.mjs` 的 `GATEWAY_CAPABILITIES`，
+选择性听写能力位是 `DICTATION_CAPABILITIES`；`test/gateway-contract.test.mjs` 会在能力位与本文档
 不一致时失败。
 
 ## 包入口（package exports）
@@ -135,6 +138,15 @@ await orb.load()
 | 服务端 → 客户端 | `input.suspend` | 立即停止采集（比用户级静音更强：不采集、不做唤醒词检测）；携带 `owner`、`reason`、`expiresAt` |
 | 服务端 → 客户端 | `input.resume` | 可以恢复采集 |
 | 客户端 → 服务端 | `input.suspend.ack` | 确认抢占已在本客户端生效 |
+| 客户端 → 服务端 | `dictation.start`、`dictation.audio.append`、`dictation.pause`、`dictation.resume`、`dictation.cancel`、`dictation.stop` | 控制进程内 composer 听写会话与独立音频流 |
+| 客户端 → 服务端 | `dictation.context` | 仅在 `expectedRevision` 匹配时更新临时 composer 上下文 |
+| 服务端 → 客户端 | `dictation.state`、`dictation.partial`、`dictation.final`、`dictation.operation` | 可见状态及 revision/sequence 校验后的预览、锁定和确定性编辑 |
+| 服务端 → 客户端 | `dictation.commit.request` | 对匹配 revision/fingerprint 的内容请求一次普通 composer 提交 |
+| 客户端 → 服务端 | `dictation.commit.ack` | 报告普通提交是否成功；重复回执会被拒绝 |
+
+听写默认关闭。所有活跃状态 45 秒超时；partial 只供预览。取消、失败、超时、
+外部 `input.suspend` 和断线都会清除临时态；STOP 后不能 RESUME，必须重新 START。
+中英文发送词只有作为独立 final segment 或位于明确句末标点后才是命令。
 
 ## 实例租约
 

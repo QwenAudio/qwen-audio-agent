@@ -18,7 +18,7 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
-The current version is `2.0.0`. It succeeds the `1.x` line of the
+The current version is `2.1.0`. It succeeds the `1.x` line of the
 `feat/embedded-gateway-host-contract` fork (which ended at `1.7.0`): the major
 bump records that capabilities that line advertised — such as
 `gateway.embedded-lifecycle` and `desktop.settings-window` — are not part of
@@ -43,8 +43,12 @@ below instead of assuming the old list.
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |
 | `desktop.orb-position-store` | The orb's position is remembered by this package (settings store ui-state) | `desktop/test/settings-store.test.mjs` |
 | `desktop.skin-store` | Importing, listing, removing and resolving orb skins is a published library surface | `desktop/test/skin-store.test.mjs` |
+| `composer.dictation` | Web/TUI may stream microphone audio to a separate composer-dictation provider; advertised only when the default-off flag is enabled | `server/test/gateway-application.test.mjs` |
+| `composer.dictation-edit` | Deterministic replace/delete is restricted to the most recent finalized dictated range | `server/test/dictation-session.test.mjs` |
+| `composer.dictation-send` | Receipt-based voice submission calls the existing composer submit once and never synthesizes Enter | `web/test/composer-dictation.test.mjs`, `tui/test/composer-dictation.test.mjs` |
 
-The list itself is `GATEWAY_CAPABILITIES` in
+The base list is `GATEWAY_CAPABILITIES`; opt-in entries are
+`DICTATION_CAPABILITIES` in
 `server/src/core/gateway-protocol.mjs`; `test/gateway-contract.test.mjs` fails
 whenever a capability and this document drift apart.
 
@@ -145,6 +149,17 @@ spells them by hand is on its own.
 | server → client | `input.suspend` | Stop capturing outright (stronger than user-level mute: no capture, no wake word); carries `owner`, `reason`, `expiresAt` |
 | server → client | `input.resume` | Capture may resume |
 | client → server | `input.suspend.ack` | Confirms the suspension took effect on this client |
+| client → server | `dictation.start`, `dictation.audio.append`, `dictation.pause`, `dictation.resume`, `dictation.cancel`, `dictation.stop` | Controls the process-local composer dictation session and dedicated audio stream |
+| client → server | `dictation.context` | Replaces transient composer context only when `expectedRevision` matches |
+| server → client | `dictation.state`, `dictation.partial`, `dictation.final`, `dictation.operation` | Visible state plus revision/sequence-checked preview and deterministic edits |
+| server → client | `dictation.commit.request` | Requests one ordinary composer submission for a matching revision and fingerprint |
+| client → server | `dictation.commit.ack` | Reports whether that ordinary submission succeeded; duplicate receipts are rejected |
+
+Dictation defaults off. Active states expire after 45 seconds. Partials remain
+preview-only; cancel, failure, timeout, external suspension, and socket close
+clear transient state. STOP cannot RESUME and requires a new START. Chinese and
+English send words are commands only as standalone final segments or after
+explicit terminal punctuation.
 
 ## Instance lease
 

@@ -1,5 +1,8 @@
 import Foundation
 import QwenInputCore
 
-_ = NativeInputCore.protocolVersion
-
+do {
+    try BridgeRuntime().run()
+} catch {
+    exit(EXIT_FAILURE)
+}

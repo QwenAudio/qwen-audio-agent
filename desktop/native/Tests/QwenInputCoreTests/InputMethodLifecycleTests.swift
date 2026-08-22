@@ -19,6 +19,7 @@ final class InputMethodLifecycleTests: XCTestCase {
         let status = try lifecycle.install()
 
         XCTAssertEqual(fileSystem.installCalls, [[embedded.path, installed.path]])
+        XCTAssertEqual(fileSystem.commitCalls, [installed.path])
         XCTAssertEqual(registration.calls, ["register:\(installed.path)"])
         XCTAssertTrue(status.installed)
         XCTAssertTrue(status.registered)
@@ -65,6 +66,7 @@ final class InputMethodLifecycleTests: XCTestCase {
 
         XCTAssertThrowsError(try lifecycle.install())
         XCTAssertEqual(fileSystem.rollbackCalls, [installed.path])
+        XCTAssertTrue(fileSystem.commitCalls.isEmpty)
     }
 
     func testStatusFailsClosedForUnsafeInstalledBundle() throws {
@@ -131,6 +133,7 @@ final class InputMethodLifecycleTests: XCTestCase {
 private final class FakeInputMethodFileSystem: InputMethodLifecycleFileSystem {
     var inspections: [String: InputMethodArtifactInspection] = [:]
     var installCalls: [[String]] = []
+    var commitCalls: [String] = []
     var rollbackCalls: [String] = []
     var trashCalls: [String] = []
 
@@ -146,6 +149,10 @@ private final class FakeInputMethodFileSystem: InputMethodLifecycleFileSystem {
     func rollbackInstall(at destination: URL) throws {
         rollbackCalls.append(destination.path)
         inspections[destination.path] = nil
+    }
+
+    func commitInstall(at destination: URL) throws {
+        commitCalls.append(destination.path)
     }
 
     func moveToTrash(_ url: URL) throws {

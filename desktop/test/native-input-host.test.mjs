@@ -163,7 +163,10 @@ test('graceful stop sends one typed stop frame then bounds the owned child', asy
   const decoder = new NativeInputFrameDecoder()
   child.stdin.on('data', chunk => frames.push(...decoder.push(chunk)))
 
-  await host.stop('desktop_shutdown')
+  const stopping = host.stop('desktop_shutdown')
+  await new Promise(resolve => setTimeout(resolve, 15))
+  child.emit('exit', 0, null)
+  await stopping
   assert.deepEqual(frames, [{
     type: 'bridge.stop',
     reason: 'desktop_shutdown',
@@ -174,6 +177,40 @@ test('graceful stop sends one typed stop frame then bounds the owned child', asy
     () => host.send({ type: 'session.final', text: 'after stop' }),
     /not ready/i,
   )
+})
+
+test('SIGTERM fallback keeps replacement blocked until the owned child exits', async () => {
+  const { child, host } = harness({ stopTimeoutMs: 10 })
+  const pending = host.start()
+  reportReady(child)
+  await pending
+
+  const stopping = host.stop('lifecycle_reset')
+  await new Promise(resolve => setTimeout(resolve, 15))
+
+  assert.deepEqual(child.killCalls, ['SIGTERM'])
+  assert.equal(host.state, 'stopping')
+  await assert.rejects(host.start(), /cannot start from stopping/i)
+
+  child.emit('exit', 0, null)
+  await stopping
+  assert.equal(host.state, 'idle')
+})
+
+test('an owned child surviving SIGTERM leaves the host fail-closed', async () => {
+  const { child, host } = harness({ stopTimeoutMs: 5 })
+  const pending = host.start()
+  reportReady(child)
+  await pending
+
+  await assert.rejects(
+    host.stop('lifecycle_reset'),
+    /did not exit after SIGTERM/i,
+  )
+  assert.deepEqual(child.killCalls, ['SIGTERM'])
+  assert.equal(host.state, 'error')
+  assert.equal(host.child, child)
+  await assert.rejects(host.start(), /cannot start from error/i)
 })
 
 test('a clean Bridge exit during stop never triggers emergency handling', async () => {

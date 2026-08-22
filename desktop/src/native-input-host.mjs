@@ -219,7 +219,14 @@ export class NativeInputHost extends EventEmitter {
     }
 
     const exited = await waitForExit(this.exitPromise, this.stopTimeoutMs)
-    if (!exited && this.child === child) child.kill('SIGTERM')
+    if (!exited && this.child === child) {
+      child.kill('SIGTERM')
+      const terminated = await waitForExit(this.exitPromise, this.stopTimeoutMs)
+      if (!terminated && this.child === child) {
+        this.state = 'error'
+        throw new Error('Native input Bridge did not exit after SIGTERM')
+      }
+    }
     this.detach(child)
     if (this.child === child) this.child = null
     this.state = 'idle'

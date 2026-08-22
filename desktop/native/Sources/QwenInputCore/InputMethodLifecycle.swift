@@ -51,6 +51,7 @@ public enum InputMethodLifecycleError: Error, Equatable, Sendable {
 public protocol InputMethodLifecycleFileSystem: AnyObject {
     func inspect(at url: URL) -> InputMethodArtifactInspection?
     func installAtomically(from source: URL, to destination: URL) throws
+    func commitInstall(at destination: URL) throws
     func rollbackInstall(at destination: URL) throws
     func moveToTrash(_ url: URL) throws
 }
@@ -123,6 +124,7 @@ public final class InputMethodLifecycle {
             try? fileSystem.rollbackInstall(at: installedBundleURL)
             throw InputMethodLifecycleError.registrationFailed
         }
+        try fileSystem.commitInstall(at: installedBundleURL)
         return try status()
     }
 

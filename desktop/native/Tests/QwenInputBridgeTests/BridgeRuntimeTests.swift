@@ -119,6 +119,7 @@ private final class FakeLifecycleFileSystem: InputMethodLifecycleFileSystem {
     func installAtomically(from source: URL, to destination: URL) throws {
         installCalls.append([source.path, destination.path])
     }
+    func commitInstall(at destination: URL) throws {}
     func rollbackInstall(at destination: URL) throws {}
     func moveToTrash(_ url: URL) throws {}
 }

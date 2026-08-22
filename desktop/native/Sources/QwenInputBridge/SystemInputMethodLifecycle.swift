@@ -69,6 +69,17 @@ final class SystemInputMethodFileSystem: InputMethodLifecycleFileSystem {
         }
     }
 
+    func commitInstall(at destination: URL) throws {
+        let backup = backupURLs.removeValue(forKey: destination.path)
+            ?? destination.deletingLastPathComponent().appendingPathComponent(
+                ".qwen-input-last-known-good",
+                isDirectory: true
+            )
+        if FileManager.default.fileExists(atPath: backup.path) {
+            try FileManager.default.removeItem(at: backup)
+        }
+    }
+
     func moveToTrash(_ url: URL) throws {
         var resultingURL: NSURL?
         try FileManager.default.trashItem(

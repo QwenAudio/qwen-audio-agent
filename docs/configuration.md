@@ -102,7 +102,7 @@ configuration entry and status probe. An adapter may open a terminal today and c
 a browser, form, or instructions action without changing product-specific logic in Settings.
 The renderer submits only a backend ID and can never assemble or execute configuration commands.
 
-DeepSeek Harness is currently an experimental integration. After installation,
+After installing DeepSeek Harness,
 run `dsh web` and configure the official API key in its model settings. The ACP
 integration reuses that credential. Its model setting is intentionally separate
 from other backends so Qwen or other provider model names are not forwarded to DeepSeek:
@@ -576,8 +576,67 @@ Setting `CLAUDE_CONFIG_DIR` switches to a separate configuration directory, requ
 authentication in that directory. `CLAUDE_CODE_EXECUTABLE` is only used to override the Claude
 Code executable used by the adapter by default.
 
-Kimi Code, Hermes, CodeBuddy, Codex, and Claude Code all have their ACP subprocesses directly
-managed by the Gateway, and do not accept `--backend-url`.
+### Pi
+
+Pi (earendil-works' [pi coding agent](https://pi.dev), npm
+`@earendil-works/pi-coding-agent`) has no native ACP entry point; it connects via the
+community adapter [pi-acp](https://github.com/svkozak/pi-acp). The Gateway spawns
+`pi-acp`, which internally launches `pi --mode rpc`; pi-acp requires pi `0.80.4` or
+higher.
+
+One-click install installs both the core and the adapter:
+
+```bash
+qwenaudio install pi
+```
+
+Or install both packages manually:
+
+```bash
+npm install -g @earendil-works/pi-coding-agent pi-acp
+```
+
+For authentication, run `pi` interactively and complete a login via `/login` (OAuth
+with Claude Pro/Max, ChatGPT, or GitHub Copilot subscriptions), or set official API
+key environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+and 30+ other providers); the Gateway passes environment variables through to the
+backend process. Then select the backend:
+
+```dotenv
+AGENT_PROTOCOL=pi
+```
+
+pi-acp supports resuming historical pi Sessions via `session/load`. Advanced
+configuration:
+
+```dotenv
+PI_BIN=
+PI_ACP_BIN=
+PI_WORKSPACE=
+PI_ACP_RUNTIME=auto
+```
+
+- `PI_BIN` / `PI_ACP_BIN` override the pi core and pi-acp adapter executables.
+- `PI_WORKSPACE` overrides the working directory (default
+  `~/.config/qwaudio/workspace`, shared with the other managed backends).
+- `PI_ACP_RUNTIME` (`auto` / `binary` / `package`) controls whether the adapter uses
+  a local binary or starts on demand via `npx`.
+
+> **Warning: Pi has no permission approval mechanism.** Pi officially documents "No
+> Built-in Sandbox" — read, write, and bash execute directly with the current user's
+> privileges — and pi-acp does not implement ACP `session/request_permission`.
+> Therefore Pi is **always equivalent to `full` permission**, regardless of
+> `QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE`, and no permission confirmation ever
+> appears in the voice session. Use it only in trusted projects and trusted prompt
+> environments.
+
+The current community adapter accepts ACP `mcpServers` but does not wire them into
+Pi. Gateway Session tools and independent third-layer delegation are therefore not
+available for this backend; Pi completes work in the current Session with its own
+tools.
+
+Kimi Code, Hermes, CodeBuddy, Codex, Claude Code, and Pi all have their ACP subprocesses
+directly managed by the Gateway, and do not accept `--backend-url`.
 
 ## Backend Permission Modes
 
@@ -595,6 +654,15 @@ Session configuration, Qoder and CodeBuddy CLI use `--dangerously-skip-permissio
 sets `permission: "allow"` in the managed process's inline configuration for both the
 coordination Agent and task Agents, and Codex uses `agent-full-access` mode. Kimi Code's YOLO
 mode may still ask the user, so it is not used to map `full` here.
+
+Pi is a special case: it has no built-in sandbox or permission approval mechanism,
+and its adapter pi-acp does not implement ACP `session/request_permission`. Pi
+therefore always runs with the equivalent of `full` permissions no matter which
+permission mode is configured — this is not "support for `full`" but the absence of
+any approval step. Pi declares this through the `alwaysFullPermission` backend
+capability: configuration resolution and Gateway health both normalize and display
+the effective `full` mode (never the misleading `native`). Use it only in trusted
+projects and trusted prompt environments.
 
 OpenClaw's execution authorization is simultaneously constrained by exec approvals, elevated,
 and execution host configurations, and cannot be safely and completely expressed by a single

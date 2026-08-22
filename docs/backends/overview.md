@@ -16,7 +16,8 @@ The Backend Agent handles tasks that require tools, file operations, or sustaine
 | CodeBuddy | Native ACP | Supports one-click install, requires user configuration | `~/.codebuddy/skills/` | ★★★★☆ |
 | Codex | External ACP adapter | Supports one-click install of both the core and adapter, requires user configuration | `~/.codex/skills/` | ★★★★☆ |
 | Claude Code | External ACP adapter | Supports one-click install of both the core and adapter, requires user configuration | `~/.claude/skills/` | ★★★★☆ |
-| DeepSeek | Native ACP (experimental) | Supports one-click install, requires a DeepSeek API key | `~/.agents/skills/` | ★★★★☆ |
+| DeepSeek | Native ACP | Supports one-click install, requires a DeepSeek API key | `~/.agents/skills/` | ★★★★☆ |
+| Pi | External ACP adapter | Supports one-click install of both the core and adapter, requires user configuration | `~/.pi/agent/skills/` | ★★★★☆ |
 
 Skills install once through `qwenaudio skill install` (a branded entry point
 for the standard skills.sh installer) and land in every backend's user-level
@@ -86,6 +87,12 @@ The command, arguments, display name, and working directory can be configured vi
 - `full`: Grants the highest permissions at startup, allowing the backend to directly execute commands, read and write files without per-action confirmation.
 
 `full` currently supports OpenCode, Qoder, Qwen Code, Kimi Code, Hermes, CodeBuddy, Codex, and Claude Code; the Gateway will automatically approve permission requests from these backends. OpenClaw's execution authorization is constrained by exec approvals, elevated, and other configuration settings, and cannot be expressed via a single toggle — when `full` is selected, the Gateway will explicitly refuse to start. The highest permissions amplify the risk of accidental operations and should only be enabled in trusted projects.
+
+Pi is a special case: it has no built-in sandbox or permission approval mechanism, and its adapter pi-acp does not implement ACP `session/request_permission`. Pi therefore always runs with the equivalent of `full` permissions regardless of the configured mode — there is no approval step at all, and no permission confirmation appears in the voice session. Use it only in trusted projects and trusted prompt environments.
+
+The current community adapter does not wire ACP `mcpServers` into Pi, so Gateway
+Session tools and independent third-layer delegation are unavailable for this backend.
+Pi handles work in the current Session with its own tools.
 
 ## Backend Service
 

@@ -195,6 +195,66 @@ test('checks explicit generic ACP commands and adapter binaries', () => {
   assert.equal(claude.adapter.source, 'installed')
 })
 
+test('requires a compatible Pi version and its ACP adapter', () => {
+  const ready = inspector({
+    backend: 'pi',
+    commands: { pi: '/bin/pi', 'pi-acp': '/bin/pi-acp' },
+    versions: { '/bin/pi': '0.84.1' },
+  }).backends[0]
+  assert.equal(ready.ready, true)
+  assert.equal(ready.backend.version, '0.84.1')
+  assert.equal(ready.integration, 'adapter')
+  assert.equal(ready.adapter.source, 'installed')
+
+  const minimum = inspector({
+    backend: 'pi',
+    commands: { pi: '/bin/pi', 'pi-acp': '/bin/pi-acp' },
+    versions: { '/bin/pi': '0.80.4' },
+  }).backends[0]
+  assert.equal(minimum.ready, true)
+
+  const legacy = inspector({
+    backend: 'pi',
+    commands: { pi: '/bin/pi', 'pi-acp': '/bin/pi-acp' },
+    versions: { '/bin/pi': '0.79.0' },
+  }).backends[0]
+  assert.equal(legacy.ready, false)
+  assert.match(legacy.issues[0], /最低版本 0\.80\.4/)
+
+  const missingBackend = inspector({
+    backend: 'pi',
+    commands: { 'pi-acp': '/bin/pi-acp' },
+  }).backends[0]
+  assert.equal(missingBackend.ready, false)
+  assert.match(missingBackend.issues[0], /未找到 Pi/)
+
+  const missingAdapter = inspector({
+    backend: 'pi',
+    env: { PI_ACP_RUNTIME: 'binary' },
+    commands: { pi: '/bin/pi' },
+    versions: { '/bin/pi': '0.84.1' },
+  }).backends[0]
+  assert.equal(missingAdapter.ready, false)
+  assert.match(missingAdapter.issues[0], /pi-acp 不可用/)
+
+  const npxFallback = inspector({
+    backend: 'pi',
+    commands: { pi: '/bin/pi', npx: '/bin/npx' },
+    versions: { '/bin/pi': '0.84.1' },
+  }).backends[0]
+  assert.equal(npxFallback.ready, true)
+  assert.equal(npxFallback.adapter.source, 'managed')
+
+  const installedOnly = inspector({
+    backend: 'pi',
+    env: { QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY: '1' },
+    commands: { pi: '/bin/pi', npx: '/bin/npx' },
+    versions: { '/bin/pi': '0.84.1' },
+  }).backends[0]
+  assert.equal(installedOnly.ready, false)
+  assert.match(installedOnly.issues[0], /桌面版需先手动安装/)
+})
+
 test('detects the DeepSeek Harness ACP runtime', () => {
   const item = inspector({
     backend: 'deepseek',

@@ -136,6 +136,34 @@ test('reports a backend mismatch in Gateway compatibility details', () => {
   })
 })
 
+test('expects the effective full mode for always-full backends like Pi', () => {
+  const env = {
+    DASHSCOPE_API_KEY: 'desktop-key',
+    AGENT_PROTOCOL: 'pi',
+  }
+  const piHealth = mode => ({
+    ...compatibleHealth(env),
+    backend: {
+      enabled: true,
+      kind: 'pi',
+      permissionMode: mode,
+      model: null,
+    },
+  })
+  // Gateway 与桌面都把 Pi 归一化为真实生效的 full：未显式配置权限模式时
+  // 健康状态上报 full 必须判定兼容，上报 native 反而是异常。
+  assert.deepEqual(desktopGatewayCompatibility(piHealth('full'), env), {
+    compatible: true,
+    code: '',
+    reason: '',
+  })
+  assert.deepEqual(desktopGatewayCompatibility(piHealth('native'), env), {
+    compatible: false,
+    code: 'permission',
+    reason: '已有 Gateway 的后台权限模式与桌面设置不一致',
+  })
+})
+
 test('rejects a model-mismatched borrowed Gateway before attachment', () => {
   const env = {
     DASHSCOPE_API_KEY: 'desktop-key',

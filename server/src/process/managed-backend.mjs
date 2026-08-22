@@ -7,6 +7,7 @@ import {
 } from './backend-drivers/registry.mjs'
 import { serviceEndpointPort } from './backend-drivers/shared.mjs'
 import { backendEnvironment } from '../../../shared/backend-environment.mjs'
+import { effectiveBackendPermissionMode } from '../../../shared/backend-catalog.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 
@@ -42,7 +43,10 @@ export function resolveManagedBackend(env = process.env) {
   const protocol = normalizeBackendRuntimeProtocol(env.AGENT_PROTOCOL)
   if (!protocol) return null
   const driver = backendRuntimeDriver(protocol)
-  const resolvedPermissionMode = permissionMode(env)
+  const resolvedPermissionMode = effectiveBackendPermissionMode(
+    protocol,
+    permissionMode(env),
+  )
   const ownership = backendOwnership(driver, env)
   if (resolvedPermissionMode === 'full' && ownership !== 'owned') {
     throw new Error('最高权限模式只支持由 Gateway 启动的后台 Agent')

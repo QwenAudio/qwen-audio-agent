@@ -16,7 +16,10 @@ const STATUS_PARSERS = {
       : 'unauthenticated'
   },
   'qoder-status'(output) {
-    if (/^(?:Username|Email):\s*\S+/im.test(output)) return 'authenticated'
+    if (
+      /^(?:Username|Email):\s*\S+/im.test(output)
+      || /^Account:\s*(?!Not (?:logged in|authenticated)\b)\S+/im.test(output)
+    ) return 'authenticated'
     return /not (?:logged in|authenticated)|please (?:log in|login|sign in)/i.test(output)
       ? 'unauthenticated'
       : 'unknown'
@@ -29,6 +32,83 @@ const STATUS_PARSERS = {
       ? 'unauthenticated'
       : 'unknown'
   },
+}
+
+const QWEN_CREDENTIAL_KEYS = [
+  'DASHSCOPE_API_KEY',
+  'OPENAI_API_KEY',
+  'QWEN_API_KEY',
+  'QWEN_OAUTH_TOKEN',
+]
+
+async function readJson(path, readFileImpl = readFile) {
+  try {
+    return JSON.parse(await readFileImpl(path, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+async function qwenAuthenticationStatus({ env, readFileImpl = readFile }) {
+  if (QWEN_CREDENTIAL_KEYS.some(name => String(env[name] || '').trim())) {
+    return 'authenticated'
+  }
+  const home = String(env.HOME || env.USERPROFILE || '').trim()
+  if (!home) return 'unknown'
+  const settings = await readJson(
+    join(String(env.QWEN_HOME || join(home, '.qwen')), 'settings.json'),
+    readFileImpl,
+  )
+  if (!settings) return 'unknown'
+  const configuredEnvironment = settings.env || {}
+  if (
+    QWEN_CREDENTIAL_KEYS.some(name => (
+      String(configuredEnvironment[name] || '').trim()
+    ))
+  ) return 'authenticated'
+  // Qwen Code can also use login methods backed by the OS keychain. Their
+  // credentials are intentionally not readable here, so a selected auth type
+  // alone is inconclusive rather than proof that login is missing.
+  return 'unknown'
+}
+
+async function piAuthenticationStatus({
+  command,
+  env,
+  platform,
+  run,
+  readFileImpl = readFile,
+}) {
+  const home = String(env.HOME || env.USERPROFILE || '').trim()
+  if (!command || !home) return 'unknown'
+  const settings = await readJson(
+    join(String(env.PI_CODING_AGENT_DIR || join(home, '.pi', 'agent')), 'settings.json'),
+    readFileImpl,
+  )
+  const provider = String(settings?.defaultProvider || '').trim()
+  const model = String(settings?.defaultModel || '').trim()
+  if (!provider && !model) return 'unauthenticated'
+  const selector = provider
+    ? ['--provider', provider]
+    : ['--model', model]
+  const result = await run(command, [
+    'auth', 'check', ...selector, '--no-refresh', '--json',
+  ], { env, platform })
+  try {
+    const status = JSON.parse(result.output)?.status
+    if (status === 'ready') return 'authenticated'
+    if (['missing', 'unavailable', 'unauthenticated'].includes(status)) {
+      return 'unauthenticated'
+    }
+  } catch {
+    // Older Pi builds may not support JSON output. Fall through to the
+    // conservative text parser rather than treating the probe as logged out.
+  }
+  if (/\bready\b/i.test(result.output)) return 'authenticated'
+  if (/missing|not (?:configured|authenticated)|no (?:credential|api key)/i.test(result.output)) {
+    return 'unauthenticated'
+  }
+  return 'unknown'
 }
 
 function cleanOutput(value) {
@@ -156,6 +236,25 @@ export async function inspectBackendAuthentication(id, {
 } = {}) {
   const probe = backendOnboardingAdapter(id, { env, platform })
     .configuration.probe
+  if (probe?.kind === 'qwen-settings') {
+    return {
+      status: await qwenAuthenticationStatus({
+        env,
+        readFileImpl: readCredentialFile,
+      }),
+    }
+  }
+  if (probe?.kind === 'pi-auth-check') {
+    return {
+      status: await piAuthenticationStatus({
+        command,
+        env,
+        platform,
+        run,
+        readFileImpl: readCredentialFile,
+      }),
+    }
+  }
   if (probe?.kind === 'deepseek-credentials') {
     return {
       status: await deepSeekCredentialStatus({

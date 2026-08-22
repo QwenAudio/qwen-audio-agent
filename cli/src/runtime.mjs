@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import {
   backendDefinition,
   backendNames,
+  effectiveBackendPermissionMode,
   normalizeBackendProtocol,
   resolveBackendOwnership,
 } from '../../shared/backend-catalog.mjs'
@@ -71,14 +72,20 @@ export function resolveBackend(options = {}, env = process.env) {
     baseUrlConfigured: explicitBaseUrl,
     requestedOwnership: env.QWEN_AUDIO_AGENT_BACKEND_OWNERSHIP,
   })
-  const permissionMode = String(
+  const requestedPermissionMode = String(
     options.backendPermissionMode
     || env.QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE
     || 'native',
   ).toLowerCase()
-  if (!['native', 'full'].includes(permissionMode)) {
-    throw new Error(`不支持的后台权限模式：${permissionMode}`)
+  if (!['native', 'full'].includes(requestedPermissionMode)) {
+    throw new Error(`不支持的后台权限模式：${requestedPermissionMode}`)
   }
+  // 无权限审批机制的后台（alwaysFullPermission）始终生效 full，
+  // 与 Gateway 健康状态上报保持一致。
+  const permissionMode = effectiveBackendPermissionMode(
+    protocol,
+    requestedPermissionMode,
+  )
   if (permissionMode === 'full' && ownership !== 'owned') {
     throw new Error('最高权限模式只支持由 Gateway 启动的后台 Agent')
   }

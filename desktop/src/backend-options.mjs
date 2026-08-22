@@ -43,6 +43,7 @@ export function backendOptionStates(report) {
     const install = item.install || {}
     const configuration = item.onboarding?.configuration || {}
     const configurationRequired = configuration.required === true
+    const configurationReady = configuration.status === 'authenticated'
     states.push({
       id: item.id,
       label: item.label || item.id,
@@ -55,6 +56,7 @@ export function backendOptionStates(report) {
       installable: !ready && install.supported === true,
       requiresConfirmation: install.requiresConfirmation === true,
       configurationRequired,
+      configurationReady,
       configurable: (
         ready
         && configuration.action != null
@@ -70,7 +72,9 @@ export function backendOptionStates(report) {
       ),
       statusLabel: configurationRequired
         ? '待配置'
-        : ready ? '已安装' : shortReason(item.issues),
+        : ready
+          ? configurationReady ? '已就绪' : '已安装'
+          : shortReason(item.issues),
       reason: ready ? '' : shortReason(item.issues),
       title: ready
         ? ''

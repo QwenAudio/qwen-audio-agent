@@ -280,13 +280,14 @@ test('generic ACP is managed as a Gateway child without a separate server', asyn
 })
 
 test('additional ACP backends run inside the Gateway without an HTTP server', async () => {
-  for (const protocol of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude']) {
+  for (const protocol of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude', 'pi']) {
     assert.deepEqual(resolveManagedBackend({
       AGENT_PROTOCOL: protocol,
     }), {
       protocol,
       ownership: 'owned',
-      permissionMode: 'native',
+      // Pi 没有权限审批机制，归一化为真实生效的 full。
+      permissionMode: protocol === 'pi' ? 'full' : 'native',
       baseUrl: null,
     })
     const runtime = await startManagedBackend({
@@ -332,4 +333,26 @@ test('full permission mode rejects backends that cannot support it safely', () =
     AGENT_PROTOCOL: 'openclaw',
     QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE: 'full',
   }), /OpenClaw/)
+})
+
+test('always-full backends report the effective full mode regardless of configuration', () => {
+  // Pi 没有权限审批机制：默认 native 配置下也必须按真实生效的 full 上报，
+  // 否则健康状态会让用户误以为存在原生审批保护。
+  assert.deepEqual(resolveManagedBackend({
+    AGENT_PROTOCOL: 'pi',
+  }), {
+    protocol: 'pi',
+    ownership: 'owned',
+    permissionMode: 'full',
+    baseUrl: null,
+  })
+  assert.deepEqual(resolveManagedBackend({
+    AGENT_PROTOCOL: 'pi',
+    QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE: 'native',
+  }), {
+    protocol: 'pi',
+    ownership: 'owned',
+    permissionMode: 'full',
+    baseUrl: null,
+  })
 })

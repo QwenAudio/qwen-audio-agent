@@ -86,7 +86,7 @@ qwenaudio install deepseek
 打开官方终端流程，后续也可扩展为网页、表单或纯说明，而不需要修改设置页的产品逻辑。
 渲染层只提交后台 ID，不能自行拼接或执行配置命令。
 
-DeepSeek Harness 当前为实验性接入。安装后运行 `dsh web`，在模型设置中配置官方
+安装 DeepSeek Harness 后运行 `dsh web`，在模型设置中配置官方
 API Key，ACP 接入会直接复用该凭据。它的模型配置独立于其他后台，避免把 Qwen 等
 模型名称误传给 DeepSeek：
 
@@ -448,7 +448,60 @@ CLAUDE_CONFIG_DIR=
 设置 `CLAUDE_CONFIG_DIR` 会改用独立配置目录，需要在该目录中单独完成认证。
 `CLAUDE_CODE_EXECUTABLE` 只用于覆盖适配器默认使用的 Claude Code 可执行文件。
 
-Kimi Code、Hermes、CodeBuddy、Codex 和 Claude Code 均由 Gateway 直接管理 ACP
+### Pi
+
+Pi（earendil-works 的 [pi coding agent](https://pi.dev)，npm 包
+`@earendil-works/pi-coding-agent`）没有原生 ACP 入口，通过社区适配器
+[pi-acp](https://github.com/svkozak/pi-acp) 接入。Gateway 会启动 `pi-acp`，
+由它内部拉起 `pi --mode rpc`；pi-acp 要求 pi `0.80.4` 或更高版本。
+
+一键安装会同时安装本体与适配器：
+
+```bash
+qwenaudio install pi
+```
+
+也可以手动安装这两个包：
+
+```bash
+npm install -g @earendil-works/pi-coding-agent pi-acp
+```
+
+认证：交互式运行 `pi` 并通过 `/login` 完成登录（支持 Claude Pro/Max、
+ChatGPT、GitHub Copilot 订阅 OAuth），或设置官方 API Key 环境变量
+（`ANTHROPIC_API_KEY`、`OPENAI_API_KEY`、`GEMINI_API_KEY` 等 30+ provider）；
+Gateway 会把环境变量透传给后台进程。然后选择后台：
+
+```dotenv
+AGENT_PROTOCOL=pi
+```
+
+pi-acp 支持通过 `session/load` 恢复历史 pi Session。高级配置：
+
+```dotenv
+PI_BIN=
+PI_ACP_BIN=
+PI_WORKSPACE=
+PI_ACP_RUNTIME=auto
+```
+
+- `PI_BIN` / `PI_ACP_BIN` 分别覆盖 pi 本体与 pi-acp 适配器的可执行文件路径。
+- `PI_WORKSPACE` 覆盖工作目录（默认 `~/.config/qwaudio/workspace`，与其他托管后台共享）。
+- `PI_ACP_RUNTIME`（`auto` / `binary` / `package`）控制适配器使用本地二进制
+  还是通过 `npx` 按需启动。
+
+> **警告：Pi 没有任何权限审批机制。** Pi 官方明确 "No Built-in Sandbox"——
+> read、write、bash 直接以当前用户权限执行；pi-acp 也未实现 ACP
+> `session/request_permission`。因此无论
+> `QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE` 如何配置，Pi 都**始终等效
+> `full` 权限**，语音会话中不会出现任何权限确认环节。只在可信项目和可信
+> 提示词环境中使用。
+
+当前社区适配器虽然接收 ACP `mcpServers`，但尚未把它们接入 Pi。因此该后台
+暂不提供 Gateway Session 工具和第三层独立任务委派；Pi 会使用自身工具在当前
+Session 内完成工作。
+
+Kimi Code、Hermes、CodeBuddy、Codex、Claude Code 和 Pi 均由 Gateway 直接管理 ACP
 子进程，不接受 `--backend-url`。
 
 ## 后台权限模式
@@ -465,6 +518,13 @@ Claude Code。Gateway 会自动批准这些 ACP 后台发起的权限请求；�
 Agent 和任务 Agent 设置 `permission: "allow"`，Codex 会使用
 `agent-full-access` 模式。Kimi Code 的 YOLO 模式仍可能向用户提问，因此这里不会
 用它映射 `full`。
+
+Pi 是特例：它没有任何内置沙箱或权限审批机制，适配器 pi-acp 也未实现 ACP
+`session/request_permission`，因此无论配置哪种权限模式，Pi 都始终等效
+`full` 权限运行——这不是“支持 `full`”，而是根本不存在审批环节。Pi 通过
+`alwaysFullPermission` 后台能力声明这一点：配置解析与 Gateway 健康状态都会
+归一化并展示真实生效的 `full`（而不是具有误导性的 `native`）。只在可信项目和
+可信提示词环境中使用。
 
 OpenClaw 的执行授权同时受 exec approvals、elevated 和执行 host 等配置约束，
 无法由一个统一开关安全、完整地表达；选择 `full` 时 Gateway 会明确拒绝启动，

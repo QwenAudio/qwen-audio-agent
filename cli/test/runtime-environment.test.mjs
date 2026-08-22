@@ -235,6 +235,7 @@ test('keeps managed backend data outside the installation directory', () => {
     result.codeBuddyWorkspace,
     result.codexWorkspace,
     result.claudeWorkspace,
+    result.piWorkspace,
     result.acpWorkspace,
   ]) {
     assert.equal(workspace, result.sharedWorkspace)
@@ -260,6 +261,7 @@ test('keeps managed backend data outside the installation directory', () => {
   assert.equal(env.CODEBUDDY_WORKSPACE, result.codeBuddyWorkspace)
   assert.equal(env.CODEX_WORKSPACE, result.codexWorkspace)
   assert.equal(env.CLAUDE_WORKSPACE, result.claudeWorkspace)
+  assert.equal(env.PI_WORKSPACE, result.piWorkspace)
   assert.equal(env.ACP_WORKSPACE, result.acpWorkspace)
   assert.equal(
     existsSync(resolve(
@@ -417,6 +419,7 @@ test('desktop client setup does not require packaged backend templates', () => {
   assert.equal(existsSync(result.codeBuddyWorkspace), false)
   assert.equal(existsSync(result.codexWorkspace), false)
   assert.equal(existsSync(result.claudeWorkspace), false)
+  assert.equal(existsSync(result.piWorkspace), false)
   assert.equal(existsSync(result.acpWorkspace), false)
   assert.equal(env.OPENCODE_WORKSPACE, undefined)
   assert.equal(env.QWEN_AUDIO_AGENT_OPENCLAW_WORKSPACE, undefined)
@@ -427,6 +430,7 @@ test('desktop client setup does not require packaged backend templates', () => {
   assert.equal(env.CODEBUDDY_WORKSPACE, undefined)
   assert.equal(env.CODEX_WORKSPACE, undefined)
   assert.equal(env.CLAUDE_WORKSPACE, undefined)
+  assert.equal(env.PI_WORKSPACE, undefined)
   assert.equal(env.ACP_WORKSPACE, undefined)
 })
 

@@ -93,6 +93,7 @@ for (const protocol of [
   'codebuddy',
   'codex',
   'claude',
+  'pi',
   'acp',
 ]) {
   test(`selects ${protocol} through the same ACP adapter`, () => {
@@ -110,6 +111,7 @@ for (const protocol of [
         codebuddy: { directory: '/codebuddy', model: 'qwen3.7-max' },
         codex: { directory: '/codex', model: 'qwen3.7-max' },
         claude: { directory: '/claude' },
+        pi: { directory: '/pi' },
         acp: {
           cliPath: 'example-agent',
           args: ['--acp'],

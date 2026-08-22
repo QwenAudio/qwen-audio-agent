@@ -1,6 +1,7 @@
 import { posix } from 'node:path'
 import {
   backendDefinition,
+  effectiveBackendPermissionMode,
   normalizeBackendProtocol,
   resolveBackendOwnership,
 } from '../../shared/backend-catalog.mjs'
@@ -157,9 +158,10 @@ export function desktopGatewayCompatibility(health, env = process.env) {
         }
       }
     }
-    const expectedPermission = String(
-      env.QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE || 'native',
-    ).toLowerCase()
+    const expectedPermission = effectiveBackendPermissionMode(
+      expectedProtocol,
+      env.QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE,
+    )
     const actualPermission = String(
       health?.backend?.permissionMode || 'native',
     ).toLowerCase()
@@ -202,4 +204,3 @@ export function resolveBorrowedGatewayAttachment(active, env = process.env) {
     compatibility,
   }
 }
-

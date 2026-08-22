@@ -617,6 +617,24 @@ test('installs a backend through the injected installer', async () => {
   assert.match(output, /请完成官方配置/)
 })
 
+test('installs Pi through the injected installer', async () => {
+  const target = harness()
+  target.dependencies.runInstaller = async id => {
+    target.calls.push(['install', id])
+    return { ok: true, loginHint: '请启动 Pi 并通过 /login 完成认证' }
+  }
+  assert.equal(await main(['install', 'pi'], target.dependencies), 0)
+  assert.deepEqual(
+    target.calls.find(call => call[0] === 'install'),
+    ['install', 'pi'],
+  )
+  const output = target.calls
+    .filter(call => call[0] === 'stdout')
+    .map(call => call[1])
+    .join('')
+  assert.match(output, /✓ Pi 安装完成/)
+})
+
 test('asks before running script install steps unless --yes is given', async () => {
   const declined = harness()
   const decliningInput = new PassThrough()

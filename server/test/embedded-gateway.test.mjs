@@ -6,7 +6,12 @@ test('PORT=0 binds a random port and reports the origin to the parent host', asy
   const originalApiKey = process.env.DASHSCOPE_API_KEY
   const originalRealtimeUrl = process.env.QWEN_AUDIO_REALTIME_BASE_URL
   const originalModel = process.env.QWEN_AUDIO_REALTIME_MODEL
+  const originalAgentProtocol = process.env.AGENT_PROTOCOL
   process.env.PORT = '0'
+  // 测试导入的是真实配置与引导流程：本地 .env 若配置了后台 Agent，
+  // 引导会拉起常驻后台进程使事件循环无法退出。强制前端独跑模式，
+  // 保持测试与环境无关。
+  process.env.AGENT_PROTOCOL = 'none'
   process.env.DASHSCOPE_API_KEY = 'health-secret-api-key'
   process.env.QWEN_AUDIO_REALTIME_BASE_URL = (
     'wss://gateway.example/realtime?token=health-secret-signed-token'
@@ -79,6 +84,8 @@ test('PORT=0 binds a random port and reports the origin to the parent host', asy
     delete process.parentPort
     if (originalPort === undefined) delete process.env.PORT
     else process.env.PORT = originalPort
+    if (originalAgentProtocol === undefined) delete process.env.AGENT_PROTOCOL
+    else process.env.AGENT_PROTOCOL = originalAgentProtocol
     if (originalApiKey === undefined) delete process.env.DASHSCOPE_API_KEY
     else process.env.DASHSCOPE_API_KEY = originalApiKey
     if (originalRealtimeUrl === undefined) {

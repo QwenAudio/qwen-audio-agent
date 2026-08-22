@@ -80,8 +80,9 @@ test('installs to every backend installer agent explicitly', () => {
   assert.deepEqual(agents.sort(), [...skillsInstallerAgents()].sort())
   assert.ok(agents.includes('hermes-agent'))
   assert.ok(agents.includes('openclaw'))
+  assert.ok(agents.includes('pi'))
   // deepseek 暂无 skills.sh 安装器（经 ~/.agents/skills 被动受益）。
-  assert.equal(agents.length, 9)
+  assert.equal(agents.length, 10)
 
   // 传入 agents 时只装给指定后台（“本机存在 ∪ 当前”名单）。
   const narrowed = fakeSpawn({ stdout: 'installed\n' })
@@ -142,6 +143,7 @@ test('every backend definition declares its skills contract', () => {
   assert.equal(backendSkillsSpec('acp'), null)
   assert.deepEqual(backendSkillsSpec('deepseek'), { installer: null })
   assert.deepEqual(backendSkillsSpec('claude'), { installer: 'claude-code' })
+  assert.deepEqual(backendSkillsSpec('pi'), { installer: 'pi' })
 
   assert.throws(
     () => validateBackendSkillsSpec({ id: 'future' }),
@@ -273,6 +275,17 @@ test('skips backfill when nothing is missing or unsupported', () => {
       homeDirectory: ready,
       spawn: target.spawn,
     }).reason,
+    'up-to-date',
+  )
+  assert.equal(target.calls.length, 0)
+})
+
+test('uses Pi\'s global skill directory for backfill checks', () => {
+  const homeDirectory = lockFixture({ review: { source: 'owner/repo' } })
+  placeSkill(homeDirectory, '.pi/agent/skills', 'review')
+  const target = fakeSpawn()
+  assert.equal(
+    ensureBackendSkills({ protocol: 'pi', homeDirectory, spawn: target.spawn }).reason,
     'up-to-date',
   )
   assert.equal(target.calls.length, 0)

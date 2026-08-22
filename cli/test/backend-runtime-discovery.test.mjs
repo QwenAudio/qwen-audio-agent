@@ -35,6 +35,7 @@ function command(path, {
   version = '',
   captureModels = false,
   captureNativePaths = false,
+  capturePiBin = false,
 } = {}) {
   writeFileSync(path, [
     '#!/bin/sh',
@@ -55,6 +56,10 @@ function command(path, {
     ...(captureNativePaths ? [
       'printf "%s\\n" "CODEX_PATH=${CODEX_PATH:-}" >> "$CAPTURE"',
       'printf "%s\\n" "CLAUDE_CODE_EXECUTABLE=${CLAUDE_CODE_EXECUTABLE:-}" >> "$CAPTURE"',
+    ] : []),
+    ...(capturePiBin ? [
+      'printf "%s\\n" "PI_BIN=${PI_BIN:-}" >> "$CAPTURE"',
+      'printf "%s\\n" "PI_ACP_PI_COMMAND=${PI_ACP_PI_COMMAND:-}" >> "$CAPTURE"',
     ] : []),
     '',
   ].join('\n'))
@@ -454,14 +459,95 @@ test('Claude Code ACP prefers an installed adapter and pins its package fallback
   }
 })
 
+test('Pi ACP prefers an installed adapter and pins its package fallback', {
+  skip: process.platform === 'win32',
+}, () => {
+  const binary = fixture()
+  const packageRuntime = fixture()
+  try {
+    command(resolve(binary.bin, 'pi'))
+    command(resolve(binary.bin, 'pi-acp'), {
+      capturePiBin: true,
+    })
+    command(resolve(packageRuntime.bin, 'pi'))
+    command(resolve(packageRuntime.bin, 'npx'))
+    const installed = run('scripts/pi-acp.mjs', binary, {
+      PI_ACP_RUNTIME: 'auto',
+    }, ['--help'])
+    assert.deepEqual(installed.slice(0, 2), [
+      'pi-acp',
+      '--help',
+    ])
+    // The adapter must receive the resolved pi executable through the
+    // variable pi-acp actually reads (PI_ACP_PI_COMMAND), not only PI_BIN.
+    assert.deepEqual(installed.slice(-2), [
+      `PI_BIN=${resolve(binary.bin, 'pi')}`,
+      `PI_ACP_PI_COMMAND=${resolve(binary.bin, 'pi')}`,
+    ])
+    // An explicit PI_BIN outside PATH is forwarded to the adapter verbatim.
+    const explicit = run('scripts/pi-acp.mjs', binary, {
+      PI_ACP_RUNTIME: 'auto',
+      PI_BIN: '/opt/pi/bin/pi',
+    }, ['--help'])
+    assert.deepEqual(explicit.slice(-2), [
+      'PI_BIN=/opt/pi/bin/pi',
+      'PI_ACP_PI_COMMAND=/opt/pi/bin/pi',
+    ])
+    // A user-provided PI_ACP_PI_COMMAND takes precedence over PI_BIN.
+    const overridden = run('scripts/pi-acp.mjs', binary, {
+      PI_ACP_RUNTIME: 'auto',
+      PI_BIN: '/opt/pi/bin/pi',
+      PI_ACP_PI_COMMAND: '/usr/local/bin/pi',
+    }, ['--help'])
+    assert.equal(
+      overridden.at(-1),
+      'PI_ACP_PI_COMMAND=/usr/local/bin/pi',
+    )
+    assert.deepEqual(run('scripts/pi-acp.mjs', packageRuntime, {
+      PI_ACP_RUNTIME: 'package',
+    }, ['--help']), [
+      'npx',
+      '-y',
+      'pi-acp@0.0.33',
+      '--help',
+    ])
+  } finally {
+    binary.close()
+    packageRuntime.close()
+  }
+})
+
+test('Pi ACP accepts its adapter-native Pi command without PATH discovery', {
+  skip: process.platform === 'win32',
+}, () => {
+  const target = fixture()
+  try {
+    command(resolve(target.bin, 'pi-acp'), { capturePiBin: true })
+    const result = run('scripts/pi-acp.mjs', target, {
+      PI_ACP_RUNTIME: 'auto',
+      PI_ACP_PI_COMMAND: '/opt/custom/pi',
+    }, ['--help'])
+    assert.deepEqual(result, [
+      'pi-acp',
+      '--help',
+      'PI_BIN=/opt/custom/pi',
+      'PI_ACP_PI_COMMAND=/opt/custom/pi',
+    ])
+  } finally {
+    target.close()
+  }
+})
+
 test('external ACP adapters require the user backend to be installed', {
   skip: process.platform === 'win32',
 }, () => {
   const codex = fixture()
   const claude = fixture()
+  const pi = fixture()
   try {
     command(resolve(codex.bin, 'codex-acp'))
     command(resolve(claude.bin, 'claude-code-acp'))
+    command(resolve(pi.bin, 'pi-acp'))
     const codexResult = execute('scripts/codex-acp.mjs', codex, {
       CODEX_ACP_RUNTIME: 'auto',
     })
@@ -472,9 +558,15 @@ test('external ACP adapters require the user backend to be installed', {
     })
     assert.notEqual(claudeResult.status, 0)
     assert.match(claudeResult.stderr, /Claude Code is not installed/)
+    const piResult = execute('scripts/pi-acp.mjs', pi, {
+      PI_ACP_RUNTIME: 'auto',
+    })
+    assert.notEqual(piResult.status, 0)
+    assert.match(piResult.stderr, /Pi is not installed/)
   } finally {
     codex.close()
     claude.close()
+    pi.close()
   }
 })
 

@@ -55,6 +55,7 @@ test('ready backends are selectable and never installable', () => {
     installable: false,
     requiresConfirmation: false,
     configurationRequired: false,
+    configurationReady: false,
     configurable: false,
     configurationLabel: '配置',
     configurationHint: '',
@@ -165,6 +166,27 @@ test('offers configuration when backend-owned status is inconclusive', () => {
   ]))
   assert.equal(states[1].configurable, true)
   assert.equal(states[1].configurationLabel, '配置')
+  assert.equal(states[1].statusLabel, '已安装')
+})
+
+test('reports a positively authenticated installed backend as ready', () => {
+  const states = backendOptionStates(report([
+    backend({
+      id: 'pi',
+      ready: true,
+      onboarding: {
+        configuration: {
+          required: false,
+          actionAvailable: false,
+          status: 'authenticated',
+          action: { kind: 'terminal', label: '配置' },
+        },
+      },
+    }),
+  ]))
+  assert.equal(states[1].configurationReady, true)
+  assert.equal(states[1].configurable, false)
+  assert.equal(states[1].statusLabel, '已就绪')
 })
 
 test('does not expose the generic ACP backend in desktop options', () => {

@@ -115,6 +115,7 @@ const definitions = new Map([
     onboarding: {
       command: 'qwen',
       hint: '首次使用请启动 Qwen Code，并通过 /auth 完成认证。',
+      probe: { kind: 'qwen-settings' },
     },
     supportsFullPermission: true,
     environment: {
@@ -323,6 +324,49 @@ const definitions = new Map([
       prefixes: ['DEEPSEEK_', 'DSH_'],
     },
   }],
+  ['pi', {
+    id: 'pi',
+    label: 'Pi',
+    workspaceEnvironment: 'PI_WORKSPACE',
+    skills: { installer: 'pi' },
+    setup: {
+      command: 'pi',
+      executableEnvironment: 'PI_BIN',
+      integration: 'adapter',
+      adapterCommand: 'pi-acp',
+      adapterEnvironment: 'PI_ACP_BIN',
+      adapterRuntimeEnvironment: 'PI_ACP_RUNTIME',
+      minimumVersion: '0.80.4',
+    },
+    lifecycle: {
+      installation: {
+        steps: [
+          { kind: 'npm', package: '@earendil-works/pi-coding-agent@0.84.1', packageEnv: 'PI_PACKAGE' },
+          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: 'pi-acp@0.0.33', packageEnv: 'PI_ACP_PACKAGE' },
+        ],
+      },
+      configuration: { mode: 'backend-owned' },
+    },
+    onboarding: {
+      command: 'pi',
+      hint: '首次使用请启动 Pi 并通过 /login 完成认证，或配置 ANTHROPIC_API_KEY 等官方模型变量。',
+      probe: { kind: 'pi-auth-check' },
+    },
+    // pi 没有权限审批机制，任何模式下都等效 full 权限。
+    supportsFullPermission: true,
+    alwaysFullPermission: true,
+    environment: {
+      names: [
+        'ANTHROPIC_API_KEY',
+        'ANTHROPIC_BASE_URL',
+        'OPENAI_API_KEY',
+        'OPENAI_BASE_URL',
+        'GEMINI_API_KEY',
+        'GOOGLE_API_KEY',
+      ],
+      prefixes: ['PI_'],
+    },
+  }],
   ['acp', {
     id: 'acp',
     label: 'ACP Agent',
@@ -418,4 +462,15 @@ export function resolveBackendOwnership(protocol, {
 export function normalizeBackendProtocol(value) {
   const protocol = String(value || '').trim().toLowerCase()
   return protocol === 'none' ? '' : protocol
+}
+
+// 部分后台（如 Pi）没有任何权限审批机制，无论用户配置什么都始终运行在
+// 最高权限。此类后台通过 alwaysFullPermission 声明，配置解析、健康状态
+// 与桌面 UI 统一经本函数归一化，展示真实生效的权限模式而不是用户配置的
+// 原始值。本函数不做合法性校验，非法值由各调用方按自身语境报错。
+export function effectiveBackendPermissionMode(protocol, mode) {
+  const normalized = String(mode || '').trim().toLowerCase() || 'native'
+  return backendDefinition(protocol)?.alwaysFullPermission
+    ? 'full'
+    : normalized
 }

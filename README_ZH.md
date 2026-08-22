@@ -96,7 +96,8 @@ https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 | CodeBuddy | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
 | Codex | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
 | Claude Code | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
-| DeepSeek | 原生 ACP（实验性） | 支持一键安装，需 DeepSeek API Key | ★★★★☆ |
+| DeepSeek | 原生 ACP | 支持一键安装，需 DeepSeek API Key | ★★★★☆ |
+| Pi | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
 
 推荐指数综合反映当前集成完整度、兼容性和实际验证程度：五星表示已经过充分测试的
 推荐集成，四星表示正在开发或尚未完成同等范围验证。

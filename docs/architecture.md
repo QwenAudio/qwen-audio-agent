@@ -14,7 +14,7 @@ layers:
    requiring tools, current information, files, applications, code, or
    multi-step work.
 
-The backend may be OpenCode, OpenClaw, Qoder, Qwen Code, Kimi Code, or another
+The backend may be OpenCode, OpenClaw, Qoder, Qwen Code, Kimi Code, Pi, or another
 ACP-compatible Agent.
 It may internally use tools, skills, agents, or other Sessions. Those are
 backend-private implementation details and do not create additional

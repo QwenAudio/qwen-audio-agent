@@ -67,7 +67,7 @@ test('uses the shared user data workspace for the default Qoder workspace', () =
 
 test('shares one default workspace across additional ACP backends', () => {
   const directory = resolve('/home/user/.config/qwaudio')
-  for (const backend of ['hermes', 'kimi', 'codebuddy', 'codex', 'qwen']) {
+  for (const backend of ['hermes', 'kimi', 'codebuddy', 'codex', 'qwen', 'pi']) {
     assert.equal(
       resolveBackendWorkspace(backend, {}, directory),
       resolve(directory, 'workspace'),
@@ -89,6 +89,7 @@ test('maps one backend model name to each managed backend provider', () => {
     codeBuddy: 'qwen3.7-plus',
     codex: 'qwen3.7-plus',
     claude: 'qwen3.7-plus',
+    pi: 'qwen3.7-plus',
     deepSeekHarness: '',
     acp: 'qwen3.7-plus',
   })
@@ -109,6 +110,7 @@ test('ignores backend-native model variables as Gateway overrides', () => {
     codeBuddy: '',
     codex: '',
     claude: '',
+    pi: '',
     deepSeekHarness: '',
     acp: '',
   })
@@ -128,6 +130,7 @@ test('treats legacy auto as no backend model override', () => {
     codeBuddy: '',
     codex: '',
     claude: '',
+    pi: '',
     deepSeekHarness: '',
     acp: '',
   })
@@ -148,6 +151,7 @@ test('uses only the unified backend model override', () => {
     codeBuddy: 'qwen3.7-max',
     codex: 'qwen3.7-max',
     claude: 'qwen3.7-max',
+    pi: 'qwen3.7-max',
     deepSeekHarness: '',
     acp: 'qwen3.7-max',
   })

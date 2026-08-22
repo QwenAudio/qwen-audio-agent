@@ -23,6 +23,10 @@ test('detects authenticated OpenCode, OpenClaw, Qoder, and Codex setups', async 
     command: 'qodercli',
     run: result('Username: user\nEmail: user@example.com'),
   })).status, 'authenticated')
+  assert.equal((await inspectBackendAuthentication('qoder', {
+    command: 'qodercli',
+    run: result('Version: 1.1.24\nAccount: user@example.com'),
+  })).status, 'authenticated')
   assert.equal((await inspectBackendAuthentication('codex', {
     command: 'codex',
     run: result('Logged in using ChatGPT'),
@@ -49,6 +53,52 @@ test('detects explicit unauthenticated results without treating failures as proo
     command: 'codex',
     run: result('Not logged in'),
   })).status, 'unauthenticated')
+  assert.equal((await inspectBackendAuthentication('qoder', {
+    command: 'qodercli',
+    run: result('Version: 1.1.24\nAccount: Not logged in'),
+  })).status, 'unauthenticated')
+})
+
+test('detects Qwen Code credentials without exposing their values', async () => {
+  assert.equal((await inspectBackendAuthentication('qwen', {
+    env: { HOME: '/home/user' },
+    readCredentialFile: async path => {
+      assert.equal(path, join('/home/user', '.qwen', 'settings.json'))
+      return JSON.stringify({ env: { DASHSCOPE_API_KEY: 'test-key' } })
+    },
+  })).status, 'authenticated')
+  assert.equal((await inspectBackendAuthentication('qwen', {
+    env: { HOME: '/home/user' },
+    readCredentialFile: async () => JSON.stringify({
+      security: { auth: { selectedType: 'oauth' } },
+    }),
+  })).status, 'unknown')
+})
+
+test('uses Pi official no-refresh auth check for its configured provider', async () => {
+  let observed
+  assert.equal((await inspectBackendAuthentication('pi', {
+    command: '/usr/local/bin/pi',
+    env: { HOME: '/home/user' },
+    readCredentialFile: async path => {
+      assert.equal(path, join('/home/user', '.pi', 'agent', 'settings.json'))
+      return JSON.stringify({
+        defaultProvider: 'deepseek',
+        defaultModel: 'deepseek-chat',
+      })
+    },
+    run: async (command, args) => {
+      observed = { command, args }
+      return { ok: true, output: '{"status":"ready"}' }
+    },
+  })).status, 'authenticated')
+  assert.deepEqual(observed, {
+    command: '/usr/local/bin/pi',
+    args: [
+      'auth', 'check', '--provider', 'deepseek',
+      '--no-refresh', '--json',
+    ],
+  })
 })
 
 test('detects DeepSeek Harness API-key configuration', async () => {

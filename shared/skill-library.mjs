@@ -111,6 +111,7 @@ const INSTALLER_SKILLS_DIRECTORIES = {
   'kimi-code-cli': '.agents/skills',
   'hermes-agent': '.hermes/skills',
   codebuddy: '.codebuddy/skills',
+  pi: '.pi/agent/skills',
 }
 
 export function readSkillLock({ homeDirectory = homedir() } = {}) {

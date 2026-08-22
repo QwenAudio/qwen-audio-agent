@@ -771,6 +771,22 @@ test('uses one ACP profile family while preserving backend differences', () => {
   assert.equal(connection(claude).env.CLAUDE_CODE_EXECUTABLE, '/opt/claude')
   assert.equal(connection(claude).env.CLAUDE_CONFIG_DIR, undefined)
   assert.equal(claude.externalMcp, true)
+  const pi = acpBackendProfile({
+    protocol: 'pi',
+    root,
+    directory: '/work',
+    cliPath: '/opt/pi-acp',
+    permissionMode: 'full',
+  })
+  assert.equal(connection(pi).command, process.execPath)
+  assert.equal(connection(pi).args[0], resolve(root, 'scripts/pi-acp.mjs'))
+  assert.equal(connection(pi).cwd, '/work')
+  assert.equal(connection(pi).env.PI_ACP_BIN, '/opt/pi-acp')
+  assert.equal(pi.externalMcp, false)
+  assert.equal(pi.sessionMcp, false)
+  assert.equal(pi.delegation, false)
+  assert.equal(pi.permissions, false)
+  assert.match(pi.sessionInstructions, /does not expose Gateway Session tools/)
 })
 
 test('lets the official OpenClaw bridge diagnose external Gateway failures', () => {

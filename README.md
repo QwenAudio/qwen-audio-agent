@@ -103,7 +103,8 @@ For the full design and module breakdown, see the [architecture document](docs/a
 | CodeBuddy | Native ACP | One-click install, user config required | ★★★★☆ |
 | Codex | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
 | Claude Code | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
-| DeepSeek | Native ACP (experimental) | One-click install, DeepSeek API key required | ★★★★☆ |
+| DeepSeek | Native ACP | One-click install, DeepSeek API key required | ★★★★☆ |
+| Pi | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
 
 Ratings reflect current integration completeness, compatibility, and
 verification level: five stars indicate a thoroughly tested recommended

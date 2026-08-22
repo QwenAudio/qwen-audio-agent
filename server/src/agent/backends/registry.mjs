@@ -6,6 +6,7 @@ import { genericAcpBackendDriver } from './generic-acp.mjs'
 import { localAcpBackendDrivers } from './local-acp.mjs'
 import { openClawBackendDriver } from './openclaw.mjs'
 import { openCodeBackendDriver } from './opencode.mjs'
+import { piBackendDriver } from './pi.mjs'
 import { backendDefinition, validateBackendSkillsSpec } from '../../../../shared/backend-catalog.mjs'
 
 const CAPABILITY_FLAGS = [
@@ -51,6 +52,7 @@ const drivers = new Map([
   codexBackendDriver,
   claudeBackendDriver,
   deepSeekHarnessBackendDriver,
+  piBackendDriver,
   genericAcpBackendDriver,
 ].map(validateBackendDriver).map(driver => [driver.id, driver]))
 

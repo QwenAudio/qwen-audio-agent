@@ -15,8 +15,10 @@ import {
 } from './message-order.js'
 import MessageContent from './MessageContent.jsx'
 import MultimodalComposer from './MultimodalComposer.jsx'
+import { enqueueDictationEvent } from './composer-dictation.js'
 import DesktopFluidOrb from './DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './DesktopSpriteOrb.jsx'
+import DesktopNativeInputController from './DesktopNativeInputController.jsx'
 import { desktopOrbClassName, resolveOrbVisualState } from './orb-presentation.js'
 import {
   isBuiltinOrbSkin,
@@ -34,6 +36,7 @@ import {
   taskView,
 } from './task-view.js'
 import useRealtimeVoice, {
+  canStartComposerDictation,
   realtimeModelStatus,
   realtimeProviderForConnection,
   realtimeProviderSelection,
@@ -160,6 +163,8 @@ export default function App() {
   const [modelStatus, setModelStatus] = useState(() => realtimeModelStatus())
   const [providerNotice, setProviderNotice] = useState('')
   const [healthValidated, setHealthValidated] = useState(false)
+  const [gatewayCapabilities, setGatewayCapabilities] = useState([])
+  const [dictationEvents, setDictationEvents] = useState([])
   const [gatewayRuntime, setGatewayRuntime] = useState('connecting')
   const [backend, setBackend] = useState({
     label: 'Agent',
@@ -196,6 +201,7 @@ export default function App() {
   const previousWorkSettled = useRef(true)
   const workSettledAtRef = useRef(workSettledAt)
   const lastWakeAtRef = useRef(0)
+  const dictationEventId = useRef(0)
 
   const noteInteraction = useCallback(() => {
     setLastInteractionAt(Date.now())
@@ -293,6 +299,7 @@ export default function App() {
           label: payload.realtimeLabel || payload.realtimeProvider || 'Realtime Agent',
         })
         setRealtimeProviders(payload.realtimeProviders || [])
+        setGatewayCapabilities(payload.capabilities || [])
         setModelStatus(realtimeModelStatus(payload))
         // A front end persisted by an earlier visit may no longer exist on this
         // server (removed provider, different deployment). Sending it would be
@@ -415,6 +422,16 @@ export default function App() {
   }, [])
 
   const onRealtimeEvent = useCallback(event => {
+    if (
+      String(event.type || '').startsWith('dictation.')
+      || event.type === 'input.suspend'
+    ) {
+      dictationEventId.current += 1
+      setDictationEvents(queue => enqueueDictationEvent(queue, {
+        id: dictationEventId.current,
+        event: { ...event, receivedAt: Date.now() },
+      }))
+    }
     if (event.type === 'turn.started') {
       noteInteraction()
       currentTurnId.current = event.turnId || ''
@@ -1079,6 +1096,12 @@ export default function App() {
       desktopCards.length && !desktopTasksCollapsed ? ' has-task-cards' : ''
     }${desktopTaskLayout.placement === 'above' ? ' tasks-above' : ''}`}
     style={{ '--desktop-orb-offset-x': `${desktopTaskLayout.orbOffsetX}px` }}>
+      <DesktopNativeInputController
+        capability={gatewayCapabilities.includes('composer.dictation')}
+        events={dictationEvents}
+        requestVoice={enableVoice}
+        voice={voice}
+      />
       <div className="desktop-orb-anchor">
         <section
         className={desktopOrbClassName({
@@ -1385,6 +1408,17 @@ export default function App() {
       {composerEnabled && <MultimodalComposer
         onSend={sendComposerInput}
         onStage={voice.stageInputParts}
+        dictation={{
+          enabled: gatewayCapabilities.includes('composer.dictation'),
+          canStart: canStartComposerDictation({
+            enabled: voiceEnabled,
+            ownership: voice.ownership,
+            hostInputSuspended: voice.hostInputSuspended,
+          }),
+          events: dictationEvents,
+          send: voice.sendGatewayEvent,
+          setCapture: voice.setDictationCapture,
+        }}
       />}
 
     </section>

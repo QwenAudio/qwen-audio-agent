@@ -23,6 +23,8 @@ const DEFAULTS = {
   orbSkin: 'fluid',
   autoHideSeconds: 60,
   wakeShortcut: 'CommandOrControl+Shift+Space',
+  nativeInputEnabled: false,
+  nativeInputShortcut: 'CommandOrControl+Shift+D',
   wakeWordEnabled: false,
   dashscopeApiKey: '',
   realtimeBaseUrl: DEFAULT_DASHSCOPE_REALTIME_URL,
@@ -47,6 +49,8 @@ const SETTING_KEYS = {
   orbSkin: 'QWEN_AUDIO_ORB_SKIN',
   autoHideSeconds: 'QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS',
   wakeShortcut: 'QWEN_AUDIO_DESKTOP_WAKE_SHORTCUT',
+  nativeInputEnabled: 'QWEN_AUDIO_NATIVE_INPUT_ENABLED',
+  nativeInputShortcut: 'QWEN_AUDIO_NATIVE_INPUT_SHORTCUT',
   wakeWordEnabled: 'QWEN_AUDIO_WAKE_WORD_ENABLED',
   dashscopeApiKey: 'DASHSCOPE_API_KEY',
   realtimeBaseUrl: 'QWEN_AUDIO_REALTIME_BASE_URL',
@@ -116,11 +120,8 @@ function cleanAutoHideSeconds(value) {
   return seconds
 }
 
-function cleanWakeShortcut(value) {
-  const shortcut = String(value || DEFAULTS.wakeShortcut).trim()
-  if (shortcut === 'CommandOrControl+Space') {
-    return DEFAULTS.wakeShortcut
-  }
+function cleanShortcut(value, fallback) {
+  const shortcut = String(value || fallback).trim()
   const parts = shortcut.split('+')
   const key = parts.pop() || ''
   const modifiers = new Set(parts)
@@ -138,7 +139,7 @@ function cleanWakeShortcut(value) {
     modifiers.has('CommandOrControl') || modifiers.has('Alt')
   )
   if (!validModifiers || !validKey || (!functionKey && !hasCommandModifier)) {
-    return DEFAULTS.wakeShortcut
+    return fallback
   }
   return [
     modifiers.has('CommandOrControl') ? 'CommandOrControl' : '',
@@ -146,6 +147,18 @@ function cleanWakeShortcut(value) {
     modifiers.has('Shift') ? 'Shift' : '',
     key,
   ].filter(Boolean).join('+')
+}
+
+function cleanWakeShortcut(value) {
+  const shortcut = String(value || DEFAULTS.wakeShortcut).trim()
+  if (shortcut === 'CommandOrControl+Space') {
+    return DEFAULTS.wakeShortcut
+  }
+  return cleanShortcut(shortcut, DEFAULTS.wakeShortcut)
+}
+
+function cleanNativeInputShortcut(value) {
+  return cleanShortcut(value, DEFAULTS.nativeInputShortcut)
 }
 
 function encoded(value) {
@@ -293,6 +306,17 @@ export function parseSettings(content = '', fallback = {}) {
       'QWEN_AUDIO_DESKTOP_WAKE_SHORTCUT',
       fallback.QWEN_AUDIO_DESKTOP_WAKE_SHORTCUT ?? DEFAULTS.wakeShortcut,
     )),
+    nativeInputEnabled: String(configured(
+      values,
+      'QWEN_AUDIO_NATIVE_INPUT_ENABLED',
+      fallback.QWEN_AUDIO_NATIVE_INPUT_ENABLED || '',
+    )).toLowerCase() === 'true',
+    nativeInputShortcut: cleanNativeInputShortcut(configured(
+      values,
+      'QWEN_AUDIO_NATIVE_INPUT_SHORTCUT',
+      fallback.QWEN_AUDIO_NATIVE_INPUT_SHORTCUT
+        ?? DEFAULTS.nativeInputShortcut,
+    )),
     wakeWordEnabled: String(
       configured(
         values,
@@ -387,6 +411,10 @@ export function normalizeSettings(settings = {}) {
     ),
     wakeShortcut: cleanWakeShortcut(
       settings.wakeShortcut ?? DEFAULTS.wakeShortcut,
+    ),
+    nativeInputEnabled: Boolean(settings.nativeInputEnabled),
+    nativeInputShortcut: cleanNativeInputShortcut(
+      settings.nativeInputShortcut ?? DEFAULTS.nativeInputShortcut,
     ),
     wakeWordEnabled: Boolean(settings.wakeWordEnabled),
     dashscopeApiKey: String(

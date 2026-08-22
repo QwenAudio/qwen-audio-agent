@@ -127,6 +127,20 @@ function validateModelProfile(provider) {
   }
 }
 
+function validateDictationAdapter(provider) {
+  if (provider.dictation === undefined) return
+  const adapter = provider.dictation
+  if (
+    !adapter
+    || typeof adapter !== 'object'
+    || !Number.isFinite(adapter.inputSampleRate)
+    || typeof adapter.isConfigured !== 'function'
+    || typeof adapter.createTranscriber !== 'function'
+  ) {
+    throw new Error(`Realtime Provider ${provider.key} dictation 适配器不完整`)
+  }
+}
+
 export function validateRealtimeProtocol(protocol, providerKey = 'unknown') {
   if (!protocol || typeof protocol !== 'object') {
     throw new Error(`Realtime Provider ${providerKey} 未创建 protocol`)
@@ -215,6 +229,7 @@ export function validateRealtimeProvider(provider) {
     throw new Error(`Realtime Provider ${provider.key} aliases 无效`)
   }
   validateModelProfile(provider)
+  validateDictationAdapter(provider)
   return provider
 }
 
@@ -253,6 +268,12 @@ export class RealtimeProviderRegistry {
       `不支持的 Realtime 前台：${name || requested}`
       + `（可选 ${[...this.providers.keys()].join('、')}）`,
     )
+  }
+
+  resolveDictation(requested = this.defaultProvider) {
+    const provider = this.resolve(requested)
+    if (provider.dictation) return provider.dictation
+    throw new Error(`Realtime Provider ${provider.key} 不支持 dictation`)
   }
 
   list({ includeGatewayOnly = false, configuredOnly = false } = {}) {

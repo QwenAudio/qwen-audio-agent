@@ -742,3 +742,36 @@ macOS 始终使用 CoreAudio AEC 全双工，不受该选项影响。
 
 任务状态、通知重试、记忆容量与保留时间等运行参数同样使用内置默认值。只有明确
 进行容量规划或故障诊断时才建议覆盖。
+
+## Composer 听写（Web/TUI）
+
+Composer 听写默认关闭；关闭时不注册 UI/快捷键，也不连接 ASR。
+
+| 环境变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `QWEN_AUDIO_DICTATION_ENABLED` | 空 / 关闭 | 启用 Web/TUI composer 听写 |
+| `QWEN_AUDIO_DICTATION_PROVIDER` | `dashscope` | 选择带独立听写适配器的 provider |
+| `QWEN_AUDIO_DICTATION_API_KEY` | 空 | 独立 Qwen ASR 凭据 |
+| `QWEN_AUDIO_DICTATION_BASE_URL` | DashScope Qwen ASR Realtime 地址 | ASR WebSocket 地址 |
+| `QWEN_AUDIO_DICTATION_MODEL` | `qwen3-asr-flash-realtime` | ASR 模型 |
+| `QWEN_AUDIO_DICTATION_TIMEOUT_MS` | `45000` | 活跃状态无活动超时 |
+| `QWEN_AUDIO_DICTATION_REUSE_REALTIME_CREDENTIALS` | 空 / 关闭 | 仅在两端点同 origin 时显式复用主语音凭据 |
+
+Web 使用 Ctrl/Command+Shift+D，TUI 使用 Alt/Option+D，均为应用内快捷键；
+不新增全局快捷键。
+
+## Desktop 原生输入（macOS 13+）
+
+Desktop 所属的 InputMethodKit 输入独立默认关闭，同时要求 composer 听写已配置。
+只有版本匹配的 Qwen Input 已安装、注册，并由用户在系统设置中明确启用后才可用。
+
+| 环境变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `QWEN_AUDIO_NATIVE_INPUT_ENABLED` | 空 / 关闭 | 安装完成后启用 Desktop 原生输入 host |
+| `QWEN_AUDIO_NATIVE_INPUT_SHORTCUT` | `CommandOrControl+Shift+D` | Desktop 全局快捷键 |
+
+设置页提供只读状态以及明确的安装、修复、卸载和打开系统设置操作。安装/修复会校验
+路径、owner、bundle ID、版本与代码签名，再原子替换并注册；不会静默启用或选择
+输入法。基础路径复用现有 Desktop 麦克风权限，不申请 Accessibility、Input
+Monitoring、Full Disk Access 或管理员权限，也不新增 provider 凭据。改变输入源或
+TCC 状态前请先阅读 `docs/desktop/native-input-testing.zh.md`。

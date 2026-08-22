@@ -20,8 +20,8 @@ import { FrontendMemoryService } from '../conversation/frontend-memory-service.m
 import { MarkdownContextStore } from '../conversation/markdown-context-store.mjs'
 import { enforceSameOrigin } from '../core/request-security.mjs'
 import {
-  GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
+  gatewayCapabilities,
 } from '../core/gateway-protocol.mjs'
 import { attachRealtimeGateway } from '../voice/realtime-gateway.mjs'
 import {
@@ -159,13 +159,14 @@ const notesStore = new FrontendNotesStore({
 // Without an API key createExtractorLlmCall returns null
 // and the extractor stays silently disabled; explicit memories are
 // unaffected. ASSISTANT.md is never exposed as a writable document.
+const memoryAudit = new MemoryAudit({
+  filePath: config.memoryAuditPath,
+  onWarning: warning => logger.warn('memory.audit_warning', { warning }),
+})
 const memoryExtractor = new MemoryExtractor({
   memoryService: frontendMemoryService,
   conversationSync,
-  audit: new MemoryAudit({
-    filePath: config.memoryAuditPath,
-    onWarning: warning => logger.warn('memory.audit_warning', { warning }),
-  }),
+  audit: memoryAudit,
   llmCall: config.memoryAutoEnabled
     ? createExtractorLlmCall({
         baseUrl: config.memoryBaseUrl,
@@ -233,7 +234,9 @@ app.get('/api/health', (req, res) => {
     status: 'ready',
     // Contract surface: clients branch on a capability, not a product version.
     protocolVersion: GATEWAY_PROTOCOL_VERSION,
-    capabilities: GATEWAY_CAPABILITIES,
+    capabilities: gatewayCapabilities({
+      dictationEnabled: config.dictationEnabled,
+    }),
     gatewayInstanceId: process.env.QWEN_AUDIO_GATEWAY_INSTANCE_ID || null,
     gatewayStartedAt: process.env.QWEN_AUDIO_GATEWAY_STARTED_AT || null,
     inputSuspension: inputArbitration.status(),
@@ -478,6 +481,12 @@ realtimeGateway = attachRealtimeGateway(server, {
   inputArbitration,
   realtimeProviderRegistry,
   defaultRealtimeProvider: realtimeProvider,
+  dictation: {
+    enabled: config.dictationEnabled,
+    provider: config.dictationProvider,
+    timeoutMs: config.dictationTimeoutMs,
+    memoryAudit,
+  },
 })
 const start = ({ host = config.host, port = config.port } = {}) => {
   if (server.listening) return server

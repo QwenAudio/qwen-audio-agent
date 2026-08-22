@@ -35,6 +35,7 @@ import {
 import { ReconnectBackoff } from './reconnect-backoff.mjs'
 import { realtimeConnectionStatus } from './realtime-connection-status.mjs'
 import { SleepController } from './sleep-controller.mjs'
+import { DictationSession } from './dictation-session.mjs'
 import { createSherpaWakeWordDetector } from './wake-word/sherpa-detector.mjs'
 import {
   evaluateResponseGuards,
@@ -125,6 +126,8 @@ export function attachRealtimeGateway(server, {
   inputArbitration = null,
   realtimeProviderRegistry = defaultRealtimeProviderRegistry,
   defaultRealtimeProvider = config.audioProvider,
+  dictation = { enabled: false },
+  conversationService = conversationSync,
 }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 20 * 1024 * 1024 })
   const activeVoiceClients = new ActiveVoiceClients()
@@ -213,6 +216,41 @@ export function attachRealtimeGateway(server, {
     let explicitSleepRequested = false
     let wakeDetector = null
     let wakeDetectorPromise = null
+    let dictationPreviousInputEnabled = false
+    let dictationOwnsInput = false
+    let dictationAdapter = null
+    if (dictation.enabled) {
+      try {
+        dictationAdapter = realtimeProviderRegistry.resolveDictation(
+          dictation.provider || sessionProvider,
+        )
+      } catch {
+        // Visible failure is emitted on START. Disabled/unsupported adapters
+        // never create a provider connection during socket setup.
+      }
+    }
+    const dictationSession = new DictationSession({
+      enabled: dictation.enabled === true,
+      ownerId,
+      timeoutMs: dictation.timeoutMs,
+      memoryService,
+      memoryAudit: dictation.memoryAudit,
+      createTranscriber: dictationAdapter?.isConfigured?.()
+        ? () => dictationAdapter.createTranscriber()
+        : null,
+      send: event => {
+        if (
+          ['cancelled', 'error', 'stopped'].includes(event.state)
+          && dictationOwnsInput
+          && !inputSuspended
+          && activeVoiceClients.isActive(ownerId, voiceClient)
+        ) {
+          inputEnabled = dictationPreviousInputEnabled
+          dictationOwnsInput = false
+        }
+        send(ws, event)
+      },
+    })
     let sleepController
     const realtimeReconnectBackoff = new ReconnectBackoff()
     const announcementWindow = new AnnouncementWindow()
@@ -320,6 +358,7 @@ export function attachRealtimeGateway(server, {
         if (suspend === inputSuspended) return
         inputSuspended = suspend
         if (suspend) {
+          dictationSession.suspend(status.owner)
           // Buffered audio predates the suspension and is no longer wanted.
           pendingAudio = []
           sleepController?.disable()
@@ -332,6 +371,14 @@ export function attachRealtimeGateway(server, {
             expiresAt: status.expiresAt,
           })
           return
+        }
+        dictationSession.resumeInput()
+        if (
+          dictationOwnsInput
+          && activeVoiceClients.isActive(ownerId, voiceClient)
+        ) {
+          inputEnabled = dictationPreviousInputEnabled
+          dictationOwnsInput = false
         }
         send(ws, { type: GatewayServerEvent.INPUT_RESUME })
         prepareSleepMode()
@@ -401,7 +448,7 @@ export function attachRealtimeGateway(server, {
       memoryService,
       notesStore,
       getClientContext: () => clientContext,
-      getConversationContext: () => conversationSync.frontendContext({
+      getConversationContext: () => conversationService.frontendContext({
         ownerId,
         sessionId,
       }),
@@ -569,7 +616,7 @@ export function attachRealtimeGateway(server, {
     }
 
     const recordResult = task => recordTaskResult({
-      conversationSync,
+      conversationSync: conversationService,
       ownerId,
       sessionId,
       task,
@@ -605,7 +652,7 @@ export function attachRealtimeGateway(server, {
       final,
     }) => {
       if (final) {
-        conversationSync.record({
+        conversationService.record({
           ownerId,
           sessionId,
           id: `voice:assistant:${id}`,
@@ -936,7 +983,7 @@ export function attachRealtimeGateway(server, {
             // coordinator can delegate. Evaluate this only when the delegated
             // confirmation reaches the front of the response queue, after the
             // earlier acknowledgement transcript has been recorded.
-            shouldSpeak: () => !conversationSync.hasEquivalentAssistantSpeech({
+            shouldSpeak: () => !conversationService.hasEquivalentAssistantSpeech({
               ownerId,
               sessionId,
               turnId: task.turnId,
@@ -1086,7 +1133,7 @@ export function attachRealtimeGateway(server, {
         if (responseTurnCandidate === transcriptTurn) {
           ensurePermissionResponseFor(transcriptTurn)
         }
-        conversationSync.record({
+        conversationService.record({
           ownerId,
           sessionId,
           id: `voice:user:${transcriptTurn.turnId}`,
@@ -1457,7 +1504,7 @@ export function attachRealtimeGateway(server, {
         agentContext: {
           client: clientContext,
           memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-          recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),
+          recentMessages: conversationService.frontendContext({ ownerId, sessionId }),
         },
         onEvent: handleEvent,
         onDiagnostic: diagnostic => {
@@ -1804,7 +1851,7 @@ export function attachRealtimeGateway(server, {
       pendingInputParts = []
       transcripts.record(inputTurnId, text || display)
       transcripts.recordParts(inputTurnId, inputFileParts(parts))
-      conversationSync.record({
+      conversationService.record({
         ownerId,
         sessionId,
         id: `voice:user:${inputTurnId}`,
@@ -1882,7 +1929,48 @@ export function attachRealtimeGateway(server, {
       } catch {
         return
       }
-      if (event.type === GatewayClientEvent.CONNECT) {
+      if (String(event.type || '').startsWith('dictation.')) {
+        if (event.type === GatewayClientEvent.DICTATION_START) {
+          if (inputSuspended) {
+            send(ws, {
+              type: GatewayServerEvent.DICTATION_STATE,
+              state: 'error',
+              message: '当前输入已由外部应用暂停，无法开始听写',
+            })
+            return
+          }
+          if (
+            !inputEnabled
+            || !activeVoiceClients.isActive(ownerId, voiceClient)
+          ) {
+            send(ws, {
+              type: GatewayServerEvent.DICTATION_STATE,
+              state: 'error',
+              message: '当前客户端未持有可用的麦克风归属，无法开始听写',
+            })
+            return
+          }
+        }
+        const previousInputEnabled = inputEnabled
+        const accepted = dictationSession.handle(event)
+        if (accepted && event.type === GatewayClientEvent.DICTATION_START) {
+          dictationPreviousInputEnabled = previousInputEnabled
+          dictationOwnsInput = true
+          inputEnabled = false
+          pendingAudio = []
+        }
+        if (!accepted && event.type === GatewayClientEvent.DICTATION_START) {
+          if (dictationSession.snapshot().state !== 'error') {
+            send(ws, {
+              type: GatewayServerEvent.DICTATION_STATE,
+              state: 'error',
+              message: dictationAdapter
+                ? '听写凭据未配置或当前输入已暂停'
+                : '当前 Realtime Provider 不支持听写',
+            })
+          }
+        }
+      } else if (event.type === GatewayClientEvent.CONNECT) {
         descriptor = clientDescriptor(event)
         voiceClient.descriptor = descriptor
         connectionLogger.info('voice_client.configured', {
@@ -2123,6 +2211,7 @@ export function attachRealtimeGateway(server, {
     })
 
     ws.on('close', () => {
+      dictationSession.close()
       connectionLogger.info('voice_client.disconnected', {
         clientType: descriptor.type,
       })

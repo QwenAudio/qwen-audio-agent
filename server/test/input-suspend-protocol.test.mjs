@@ -62,6 +62,7 @@ async function startGateway() {
       rememberDecision: () => {},
     },
     inputArbitration,
+    dictation: { enabled: true, provider: 'dashscope' },
   })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   return { server, inputArbitration }
@@ -160,6 +161,13 @@ test('a client connecting mid-suspension is told before it opens a microphone', 
 
   const suspend = await waitFor(received, 'input.suspend')
   assert.equal(suspend.owner, 'host-app')
+  received.length = 0
+  socket.send(JSON.stringify({
+    type: 'dictation.start', revision: 0, text: '', continuous: true,
+  }))
+  const refused = await waitFor(received, 'dictation.state')
+  assert.equal(refused.state, 'error')
+  assert.match(refused.message, /暂停/)
 })
 
 test('an expired suspension resumes the client without a host request', async t => {

@@ -90,3 +90,23 @@ test('accepts per-connection protocol factories and validates their result', () 
     /encodeOutgoing/,
   )
 })
+
+test('accepts a separate dictation adapter and resolves it explicitly', () => {
+  const provider = testProvider('dictation-provider', {
+    dictation: {
+      inputSampleRate: 16000,
+      isConfigured: () => true,
+      createTranscriber: () => ({ start() {}, append() {}, close() {} }),
+    },
+  })
+  const registry = createRealtimeProviderRegistry({ providers: [provider] })
+  assert.equal(registry.resolveDictation('dictation-provider'), provider.dictation)
+})
+
+test('rejects an incomplete dictation adapter', () => {
+  assert.throws(() => createRealtimeProviderRegistry({
+    providers: [testProvider('bad-dictation', {
+      dictation: { inputSampleRate: 16000 },
+    })],
+  }), /dictation/)
+})

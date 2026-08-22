@@ -12,6 +12,20 @@ import {
 } from '../frontend-tools.mjs'
 import { isRecoverableRealtimeInactivityError } from '../realtime-errors.mjs'
 import { openAiCompatibleProtocol } from './openai-compatible-protocol.mjs'
+import { qwenAsrAdapter } from './qwen-asr-realtime.mjs'
+
+function sameOrigin(left, right) {
+  try { return new URL(left).origin === new URL(right).origin } catch { return false }
+}
+
+function dictationApiKey() {
+  if (config.dictationApiKey) return config.dictationApiKey
+  if (
+    config.dictationReuseRealtimeCredentials
+    && sameOrigin(config.dictationBaseUrl, config.audioRealtimeBaseUrl)
+  ) return config.dashscopeApiKey
+  return ''
+}
 
 function classifyError(message) {
   if (isRecoverableRealtimeInactivityError(message)) return 'inactivity'
@@ -47,6 +61,13 @@ export const dashscopeProvider = {
   inputSampleRate: 16000,
   outputSampleRate: 24000,
   protocol: openAiCompatibleProtocol,
+  get dictation() {
+    return qwenAsrAdapter({
+      apiKey: dictationApiKey(),
+      baseUrl: config.dictationBaseUrl,
+      model: config.dictationModel,
+    })
+  },
 
   get capabilities() {
     return {

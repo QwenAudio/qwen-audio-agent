@@ -193,6 +193,30 @@ export const config = {
   speechToSpeechAuthToken: realtimeFrontend.speechToSpeechAuthToken,
   audioModel: realtimeFrontend.dashscopeModel,
   audioVoice: realtimeFrontend.dashscopeVoice,
+  // Composer dictation is intentionally independent from the main Realtime
+  // credential. Reuse is opt-in and only valid for the same provider origin.
+  dictationEnabled: String(
+    process.env.QWEN_AUDIO_DICTATION_ENABLED || '',
+  ).toLowerCase() === 'true',
+  dictationProvider: String(
+    process.env.QWEN_AUDIO_DICTATION_PROVIDER || 'dashscope',
+  ).trim().toLowerCase(),
+  dictationBaseUrl: (
+    process.env.QWEN_AUDIO_DICTATION_BASE_URL
+    || 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
+  ).replace(/\/+$/, ''),
+  dictationModel: String(
+    process.env.QWEN_AUDIO_DICTATION_MODEL || 'qwen3-asr-flash-realtime',
+  ).trim(),
+  dictationApiKey: process.env.QWEN_AUDIO_DICTATION_API_KEY || '',
+  dictationReuseRealtimeCredentials: String(
+    process.env.QWEN_AUDIO_DICTATION_REUSE_REALTIME_CREDENTIALS || '',
+  ).toLowerCase() === 'true',
+  dictationTimeoutMs: numberSetting(
+    process.env.QWEN_AUDIO_DICTATION_TIMEOUT_MS,
+    45_000,
+    { min: 1_000, max: 300_000 },
+  ),
   allowedOrigins: String(process.env.QWEN_AUDIO_AGENT_ALLOWED_ORIGINS || '')
     .split(',')
     .map(value => value.trim())

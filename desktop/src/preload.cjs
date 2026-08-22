@@ -5,7 +5,7 @@ function sendPoint(channel, x, y) {
   ipcRenderer.send(channel, { x, y })
 }
 
-contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
+const desktopApi = {
   dragStart: (x, y) => sendPoint('qwen-audio-agent:drag-start', x, y),
   dragMove: (x, y) => sendPoint('qwen-audio-agent:drag-move', x, y),
   dragEnd: () => ipcRenderer.send('qwen-audio-agent:drag-end'),
@@ -30,6 +30,29 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
     )
   },
   openSettings: () => ipcRenderer.send('qwen-audio-agent:open-settings'),
+  nativeInputStatus: () => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-status',
+  ),
+  nativeInputOperation: operation => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-operation',
+    operation,
+  ),
+  nativeInputLifecycle: action => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-lifecycle',
+    action,
+  ),
+  openNativeInputSettings: () => ipcRenderer.send(
+    'qwen-audio-agent:native-input-open-settings',
+  ),
+  onNativeInputSessionRequest: callback => {
+    if (typeof callback !== 'function') return () => {}
+    const listener = (_event, request) => callback(request)
+    ipcRenderer.on('qwen-audio-agent:native-input-session-request', listener)
+    return () => ipcRenderer.removeListener(
+      'qwen-audio-agent:native-input-session-request',
+      listener,
+    )
+  },
   enterHide: () => ipcRenderer.invoke('qwen-audio-agent:enter-hide'),
   wake: () => ipcRenderer.send('qwen-audio-agent:wake'),
   lifecycleReady: () => ipcRenderer.send('qwen-audio-agent:lifecycle-ready'),
@@ -104,4 +127,26 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
     ipcRenderer.send('qwen-audio-agent:open-external', url)
   },
   quit: () => ipcRenderer.send('qwen-audio-agent:quit'),
-})
+}
+
+if (
+  process.defaultApp
+  && process.env.QWEN_AUDIO_NATIVE_INPUT_DEVTOOLS === 'true'
+) {
+  desktopApi.nativeInputStart = () => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-start',
+  )
+  desktopApi.nativeInputStop = () => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-stop',
+  )
+  desktopApi.nativeInputFakePartial = text => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-fake-partial',
+    String(text || ''),
+  )
+  desktopApi.nativeInputFakeFinal = text => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-fake-final',
+    String(text || ''),
+  )
+}
+
+contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', desktopApi)

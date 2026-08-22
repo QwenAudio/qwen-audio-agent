@@ -72,3 +72,8 @@ episodic history.
 Desktop UI, global shortcuts, OS permissions, persistent transcript history,
 Realtime fallback after ASR failure, arbitrary LLM rewrites, and P1/P2 follow-up
 work are explicitly excluded.
+
+System-wide macOS input is the next Desktop-owned phase, not a separate
+product. Its packaging, native process boundaries, permissions, lifecycle, and
+acceptance gates are defined in
+`docs/superpowers/specs/2026-08-22-desktop-native-input-design.md`.

@@ -70,7 +70,9 @@ targets:
         PRODUCT_MODULE_NAME: QwenInput
         PRODUCT_NAME: Qwen Input
         CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
         GENERATE_INFOPLIST_FILE: NO
+        REGISTER_WITH_LAUNCH_SERVICES: NO
 
   QwenInputCoreTests:
     type: bundle.unit-test

@@ -72,16 +72,23 @@ function generateProject() {
 }
 
 function buildScheme(scheme, options, derivedData, architectures) {
+  const destination = options.architecture === 'universal'
+    ? 'generic/platform=macOS'
+    : `platform=macOS,arch=${architectures}`
   run('xcodebuild', [
     '-project', project,
     '-scheme', scheme,
     '-configuration', options.configuration,
+    '-destination', destination,
     '-derivedDataPath', derivedData,
     `ARCHS=${architectures}`,
     `ONLY_ACTIVE_ARCH=${options.architecture === 'current' ? 'YES' : 'NO'}`,
     'CODE_SIGN_STYLE=Manual',
     'CODE_SIGN_IDENTITY=-',
+    'CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO',
     'DEVELOPMENT_TEAM=',
+    'REGISTER_WITH_LAUNCH_SERVICES=NO',
+    '-quiet',
     'build',
   ])
 }
@@ -118,4 +125,3 @@ run('codesign', ['--force', '--sign', '-', resolve(options.output, 'QwenInputBri
 run('codesign', [
   '--force', '--deep', '--sign', '-', resolve(options.output, 'Qwen Input.app'),
 ])
-

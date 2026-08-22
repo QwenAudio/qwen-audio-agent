@@ -16,9 +16,13 @@
 		A0D001F40DC9F02D3B69CCDB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD8990507B969791B08FDBCA /* main.swift */; };
 		A239BD22E331C6A4B59E0083 /* ProtocolValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA68E39311CBBE9C9C18B8CA /* ProtocolValidator.swift */; };
 		A2985C9EFE1F9C230C8C6767 /* IPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F787312E23AB5D3B402A713 /* IPCProtocol.swift */; };
+		ADE72E606AE4D99839FA2FBB /* SafetyGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 577591C2BECAA90E94BD1178 /* SafetyGateTests.swift */; };
 		B057FC9C34E050F1E8CA467D /* ProtocolValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD5271BD2BFAEC8B7BC35004 /* ProtocolValidatorTests.swift */; };
+		BE2111D8D04467DE978E632F /* NativeSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B5AE175DEEBBA00594EFDE4 /* NativeSessionState.swift */; };
+		C9B818E178D99654569FC357 /* SecureInputGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C972F27EA1F373474C528542 /* SecureInputGate.swift */; };
 		CE79A680878822DEE5FDCD30 /* SessionLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 321ED6838BE710B2DE2A3A8B /* SessionLedger.swift */; };
 		D353264F02CE93B0069E6D2F /* NativeInputCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */; };
+		F6C0696F1D1921E8C9DA569D /* SafetyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A7E8BF0C7765F1BF4990A8 /* SafetyGate.swift */; };
 		F71918A86E1F924952D10474 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A44832D5271CD80CF763AD7 /* main.swift */; };
 /* End PBXBuildFile section */
 
@@ -49,12 +53,16 @@
 /* Begin PBXFileReference section */
 		296DB8E3E1198D4C21DE6161 /* QwenInputBridge */ = {isa = PBXFileReference; includeInIndex = 0; path = QwenInputBridge; sourceTree = BUILT_PRODUCTS_DIR; };
 		321ED6838BE710B2DE2A3A8B /* SessionLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLedger.swift; sourceTree = "<group>"; };
+		49A7E8BF0C7765F1BF4990A8 /* SafetyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyGate.swift; sourceTree = "<group>"; };
+		577591C2BECAA90E94BD1178 /* SafetyGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyGateTests.swift; sourceTree = "<group>"; };
 		67B581168B33486F29A4694F /* NativeInputCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInputCore.swift; sourceTree = "<group>"; };
 		7A44832D5271CD80CF763AD7 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		7B5AE175DEEBBA00594EFDE4 /* NativeSessionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSessionState.swift; sourceTree = "<group>"; };
 		7F787312E23AB5D3B402A713 /* IPCProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPCProtocol.swift; sourceTree = "<group>"; };
 		8C841D7EA383D4D382E342DA /* libQwenInputCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libQwenInputCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B96A5981D8C078452FF8DBD /* QwenInputCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QwenInputCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6276EBC31F280A4B03E9AFA /* QwenInput.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QwenInput.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C972F27EA1F373474C528542 /* SecureInputGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureInputGate.swift; sourceTree = "<group>"; };
 		CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInputCoreTests.swift; sourceTree = "<group>"; };
 		DBDC51A8D57B58B899C2E787 /* SessionLedgerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLedgerTests.swift; sourceTree = "<group>"; };
 		EA68E39311CBBE9C9C18B8CA /* ProtocolValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolValidator.swift; sourceTree = "<group>"; };
@@ -107,6 +115,7 @@
 			children = (
 				CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */,
 				FD5271BD2BFAEC8B7BC35004 /* ProtocolValidatorTests.swift */,
+				577591C2BECAA90E94BD1178 /* SafetyGateTests.swift */,
 				DBDC51A8D57B58B899C2E787 /* SessionLedgerTests.swift */,
 			);
 			path = QwenInputCoreTests;
@@ -136,7 +145,9 @@
 			children = (
 				7F787312E23AB5D3B402A713 /* IPCProtocol.swift */,
 				67B581168B33486F29A4694F /* NativeInputCore.swift */,
+				7B5AE175DEEBBA00594EFDE4 /* NativeSessionState.swift */,
 				EA68E39311CBBE9C9C18B8CA /* ProtocolValidator.swift */,
+				49A7E8BF0C7765F1BF4990A8 /* SafetyGate.swift */,
 				321ED6838BE710B2DE2A3A8B /* SessionLedger.swift */,
 				ED4C14E869DB7F863B6188D3 /* TextOperation.swift */,
 			);
@@ -147,6 +158,7 @@
 			isa = PBXGroup;
 			children = (
 				7A44832D5271CD80CF763AD7 /* main.swift */,
+				C972F27EA1F373474C528542 /* SecureInputGate.swift */,
 			);
 			path = QwenInput;
 			sourceTree = "<group>";
@@ -320,7 +332,9 @@
 			files = (
 				A2985C9EFE1F9C230C8C6767 /* IPCProtocol.swift in Sources */,
 				4D3A832527594504C522AE85 /* NativeInputCore.swift in Sources */,
+				BE2111D8D04467DE978E632F /* NativeSessionState.swift in Sources */,
 				A239BD22E331C6A4B59E0083 /* ProtocolValidator.swift in Sources */,
+				F6C0696F1D1921E8C9DA569D /* SafetyGate.swift in Sources */,
 				CE79A680878822DEE5FDCD30 /* SessionLedger.swift in Sources */,
 				01A9774F47E97EE161BEE071 /* TextOperation.swift in Sources */,
 			);
@@ -332,6 +346,7 @@
 			files = (
 				D353264F02CE93B0069E6D2F /* NativeInputCoreTests.swift in Sources */,
 				B057FC9C34E050F1E8CA467D /* ProtocolValidatorTests.swift in Sources */,
+				ADE72E606AE4D99839FA2FBB /* SafetyGateTests.swift in Sources */,
 				9FEDB5A0B4CB028965E06007 /* SessionLedgerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -340,6 +355,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C9B818E178D99654569FC357 /* SecureInputGate.swift in Sources */,
 				F71918A86E1F924952D10474 /* main.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -534,6 +550,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Resources/QwenInput-Info.plist";
@@ -548,6 +565,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ai.qwenaudio.agent.inputmethod;
 				PRODUCT_MODULE_NAME = QwenInput;
 				PRODUCT_NAME = "Qwen Input";
+				REGISTER_WITH_LAUNCH_SERVICES = NO;
 				SDKROOT = macosx;
 			};
 			name = Release;
@@ -616,6 +634,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = NO;
 				COMBINE_HIDPI_IMAGES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "Resources/QwenInput-Info.plist";
@@ -630,6 +649,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = ai.qwenaudio.agent.inputmethod;
 				PRODUCT_MODULE_NAME = QwenInput;
 				PRODUCT_NAME = "Qwen Input";
+				REGISTER_WITH_LAUNCH_SERVICES = NO;
 				SDKROOT = macosx;
 			};
 			name = Debug;

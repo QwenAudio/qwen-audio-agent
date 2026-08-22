@@ -6,4 +6,3 @@ final class NativeInputCoreTests: XCTestCase {
         XCTAssertEqual(NativeInputCore.protocolVersion, 1)
     }
 }
-

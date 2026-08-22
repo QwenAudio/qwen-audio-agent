@@ -38,7 +38,6 @@ public struct NativeInputEnvelope<Payload: Codable & Sendable>: Codable, Sendabl
         )
     }
 }
-
 public struct NativeInputMetadata: Codable, Equatable, Sendable {
     public let protocolVersion: UInt16
     public let sessionID: UUID
@@ -63,4 +62,3 @@ public struct NativeInputMetadata: Codable, Equatable, Sendable {
         self.sequence = sequence
     }
 }
-

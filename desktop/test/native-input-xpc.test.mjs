@@ -18,6 +18,7 @@ import {
 const root = resolve(new URL('../..', import.meta.url).pathname)
 
 test('real signed Bridge and IME accept only their exact peer identifiers', {
+  skip: process.platform !== 'darwin',
   timeout: 30_000,
 }, async () => {
   const workspace = mkdtempSync(join(tmpdir(), 'qwen-native-xpc-'))

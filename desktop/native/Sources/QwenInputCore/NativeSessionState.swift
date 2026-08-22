@@ -20,4 +20,3 @@ public enum NativeSessionState: String, Codable, CaseIterable, Sendable {
         }
     }
 }
-

@@ -3,7 +3,6 @@ public enum GateSignal: Equatable, Sendable {
     case unavailable
     case unknown
 }
-
 public struct SafetyContext: Equatable, Sendable {
     public let featureEnabled: Bool
     public let desktopConnected: Bool
@@ -120,4 +119,3 @@ public struct SafetyGate: Sendable {
         return state.capturesInput ? .captureAllowed : .idle
     }
 }
-

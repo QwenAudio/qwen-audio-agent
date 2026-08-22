@@ -17,8 +17,10 @@ const root = resolve(new URL('../..', import.meta.url).pathname)
 let workspace
 let output
 let bridgePath
+const isMacOS = process.platform === 'darwin'
 
 before(() => {
+  if (!isMacOS) return
   workspace = mkdtempSync(join(tmpdir(), 'qwen-native-input-process-'))
   output = join(workspace, 'build')
   const build = spawnSync(process.execPath, [
@@ -32,10 +34,12 @@ before(() => {
 })
 
 after(() => {
+  if (!isMacOS) return
   rmSync(workspace, { recursive: true, force: true })
 })
 
 test('real Bridge handles fake lifecycle frames and exits without residue', {
+  skip: !isMacOS,
   timeout: 15_000,
 }, async () => {
   const beforeFiles = snapshotFiles(workspace)
@@ -87,6 +91,7 @@ test('real Bridge handles fake lifecycle frames and exits without residue', {
 })
 
 test('real Bridge reports a malformed frame and fails closed', {
+  skip: !isMacOS,
   timeout: 15_000,
 }, async () => {
   const child = spawn(bridgePath, [], {
@@ -111,6 +116,7 @@ test('real Bridge reports a malformed frame and fails closed', {
 })
 
 test('real Bridge treats control-pipe EOF as a clean shutdown', {
+  skip: !isMacOS,
   timeout: 15_000,
 }, async () => {
   const child = spawn(bridgePath, [], {

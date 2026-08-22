@@ -38,7 +38,9 @@ function run(command, args, options = {}) {
   })
 }
 
-test('builds an inert current-architecture Bridge and InputMethodKit bundle', () => {
+test('builds an inert current-architecture Bridge and InputMethodKit bundle', {
+  skip: process.platform !== 'darwin',
+}, () => {
   const output = mkdtempSync(join(tmpdir(), 'qwen-native-input-build-'))
   try {
     const build = run(process.execPath, [

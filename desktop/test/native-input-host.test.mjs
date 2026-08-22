@@ -84,7 +84,6 @@ test('starts one owned child with a fixed executable and scrubbed environment', 
   assert.deepEqual(await host.start(), { state: 'ready' })
   assert.equal(spawns.length, 1)
 })
-
 test('malformed bridge output fails closed and rejects later operations', async () => {
   const { child, emergencyStops, host } = harness()
   const pending = host.start()
@@ -151,4 +150,3 @@ test('a clean Bridge exit during stop never triggers emergency handling', async 
   assert.deepEqual(emergencyStops, [])
   assert.deepEqual(child.killCalls, [])
 })
-

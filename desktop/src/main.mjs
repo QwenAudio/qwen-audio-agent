@@ -108,6 +108,7 @@ import {
   nativeInputBridgePath,
 } from './native-input-host.mjs'
 import { NativeInputFeature } from './native-input-feature.mjs'
+import { NativeInputLifecycle } from './native-input-lifecycle.mjs'
 
 // macOS / Linux 图形界面应用的 PATH 只包含系统目录。在启动最早阶段
 // 将其扩充为用户登录 shell 的 PATH，让 Gateway 子进程与后台可用性
@@ -248,7 +249,16 @@ const nativeInputFeature = new NativeInputFeature({
   accelerator: initialSettings.nativeInputShortcut,
   globalShortcut,
   host: nativeInputHost,
+  onSessionRequest: request => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    desktopPresence.wake()
+    mainWindow.webContents.send(
+      'qwen-audio-agent:native-input-session-request',
+      request,
+    )
+  },
 })
+const nativeInputLifecycle = new NativeInputLifecycle({ host: nativeInputHost })
 
 const MAX_GATEWAY_CRASH_RESTARTS = 3
 
@@ -775,8 +785,78 @@ function assertNativeInputDevelopmentSender(event) {
 }
 
 ipcMain.handle('qwen-audio-agent:native-input-status', event => {
-  assertNativeInputDevelopmentSender(event)
-  return nativeInputFeature.snapshot()
+  if (
+    (!mainWindow || event.sender !== mainWindow.webContents)
+    && (!settingsWindow || event.sender !== settingsWindow.webContents)
+  ) throw new Error('Native input status is unavailable')
+  return {
+    ...nativeInputFeature.snapshot(),
+    lifecycle: nativeInputLifecycle.snapshot(),
+  }
+})
+
+ipcMain.handle('qwen-audio-agent:native-input-operation', async (event, value) => {
+  if (!mainWindow || event.sender !== mainWindow.webContents) {
+    throw new Error('Native input operation is unavailable')
+  }
+  const type = String(value?.type || '')
+  if (![
+    'session.arm', 'session.partial', 'session.final', 'session.operation',
+    'session.cancel', 'session.pause', 'session.resume',
+  ].includes(type)) throw new Error('Native input operation is not allowed')
+  return nativeInputHost.request({
+    type,
+    operationId: String(value?.operationId || ''),
+    ...(typeof value?.text === 'string' ? { text: value.text.slice(0, 4096) } : {}),
+    ...(Number.isInteger(value?.revision) ? { revision: value.revision } : {}),
+    ...(Number.isInteger(value?.seq) ? { seq: value.seq } : {}),
+    ...(value?.operation ? { operation: String(value.operation) } : {}),
+    ...(value?.target ? { target: String(value.target) } : {}),
+    ...(value?.replacement ? { replacement: String(value.replacement) } : {}),
+    ...(value?.reason ? { reason: String(value.reason) } : {}),
+    statusVisible: mainWindow.isVisible(),
+  })
+})
+
+ipcMain.handle('qwen-audio-agent:native-input-lifecycle', async (event, value) => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('Native input lifecycle controls are unavailable')
+  }
+  const action = String(value || '')
+  if (!['status', 'install', 'repair', 'uninstall'].includes(action)) {
+    throw new Error('Native input lifecycle action is not allowed')
+  }
+  if (action !== 'status') {
+    const { response } = await dialog.showMessageBox(settingsWindow, {
+      type: action === 'uninstall' ? 'warning' : 'question',
+      buttons: [desktopText('继续'), desktopText('取消')],
+      defaultId: 1,
+      cancelId: 1,
+      title: desktopText('管理 Qwen Input'),
+      message: action === 'uninstall'
+        ? desktopText('将停用并移除当前用户的 Qwen Input。')
+        : desktopText('将为当前用户安装并注册 Qwen Input；系统不会自动启用或切换输入法。'),
+    })
+    if (response !== 0) return { cancelled: true }
+  }
+  const startedTemporarily = nativeInputHost.state === 'idle'
+  if (startedTemporarily || nativeInputHost.state === 'starting') {
+    await nativeInputHost.start()
+  }
+  try {
+    const status = await nativeInputLifecycle[action]()
+    nativeInputFeature.applyLifecycleStatus(status)
+    return status
+  } finally {
+    if (startedTemporarily) await nativeInputHost.stop('lifecycle_complete')
+  }
+})
+
+ipcMain.on('qwen-audio-agent:native-input-open-settings', event => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) return
+  void shell.openExternal(
+    'x-apple.systempreferences:com.apple.Keyboard-Settings.extension',
+  )
 })
 
 ipcMain.handle('qwen-audio-agent:native-input-start', event => {
@@ -1367,6 +1447,9 @@ if (!app.requestSingleInstanceLock()) {
     }
     try {
       await nativeInputFeature.initialize()
+      nativeInputFeature.applyLifecycleStatus(
+        await nativeInputLifecycle.status(),
+      )
     } catch (error) {
       lastRuntimeError = error?.message || String(error)
       logger.error('native_input.start_failed', { error })

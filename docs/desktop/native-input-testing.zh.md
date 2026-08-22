@@ -7,14 +7,17 @@ macOS 输入源状态；未经机器所有者明确授权，不得执行人工�
 ## 当前状态
 
 - Phase 0 自动化基础能力：已实现并在本机验证。
+- Desktop 生命周期与 IME→Bridge→Gateway 自动化链：已使用注入式文件系统/
+  输入源适配器、fake transcript 和真实 ad-hoc 签名 IME/Bridge peer 往返验证。
 - 用户级安装、注册、选择输入源：未运行。
 - 跨应用 InputMethodKit 真实交互：未运行。
 - 物理麦克风与 TCC 授权链路：未运行。
 - 基于 Accessibility 的可选 Voice Send：未实现、未授权。
 - Developer ID 签名、公证与 Release Gatekeeper：未运行。
 
-自动化通过不等于“全局听写已经可供用户使用”。生产 IME→Bridge 操作路由、
-Desktop 安装/设置生命周期、Gateway 音频路由和已安装 App 矩阵仍是后续门禁。
+自动化通过不等于“全局听写已经可供用户使用”。生产路由已经存在，但已安装
+App、物理麦克风与真实目标应用矩阵仍是后续门禁。自动化生命周期测试不会复制、
+注册、启用或选择输入源。
 
 ## Phase 0 自动化门禁
 
@@ -42,6 +45,11 @@ git diff --check
 - Desktop 持有 Bridge、环境变量白名单、紧急停止和有界退出；
 - 用真实构建出的 Bridge 进程验证 fake partial/final/pause/resume/cancel、
   畸形帧拒绝、EOF 清理和零运行文件残留。
+- status/install/repair/uninstall 请求关联，symlink/owner/签名/版本拒绝，原子替换
+  回滚，只注册不启用，以及卸载时先 disable 再移到废纸篓；
+- 真实签名 IME peer 注册目标、轮询一次相关 operation、通过 Bridge 返回结果并清理
+  临时 socket；renderer 测试覆盖 ownership/suspend、空草稿 Gateway 启动、终态迟到
+  消息拒绝与原生失败取消。
 
 打包门禁还要求：
 

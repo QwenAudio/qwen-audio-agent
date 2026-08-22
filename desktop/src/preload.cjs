@@ -30,6 +30,29 @@ const desktopApi = {
     )
   },
   openSettings: () => ipcRenderer.send('qwen-audio-agent:open-settings'),
+  nativeInputStatus: () => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-status',
+  ),
+  nativeInputOperation: operation => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-operation',
+    operation,
+  ),
+  nativeInputLifecycle: action => ipcRenderer.invoke(
+    'qwen-audio-agent:native-input-lifecycle',
+    action,
+  ),
+  openNativeInputSettings: () => ipcRenderer.send(
+    'qwen-audio-agent:native-input-open-settings',
+  ),
+  onNativeInputSessionRequest: callback => {
+    if (typeof callback !== 'function') return () => {}
+    const listener = (_event, request) => callback(request)
+    ipcRenderer.on('qwen-audio-agent:native-input-session-request', listener)
+    return () => ipcRenderer.removeListener(
+      'qwen-audio-agent:native-input-session-request',
+      listener,
+    )
+  },
   enterHide: () => ipcRenderer.invoke('qwen-audio-agent:enter-hide'),
   wake: () => ipcRenderer.send('qwen-audio-agent:wake'),
   lifecycleReady: () => ipcRenderer.send('qwen-audio-agent:lifecycle-ready'),
@@ -110,9 +133,6 @@ if (
   process.defaultApp
   && process.env.QWEN_AUDIO_NATIVE_INPUT_DEVTOOLS === 'true'
 ) {
-  desktopApi.nativeInputStatus = () => ipcRenderer.invoke(
-    'qwen-audio-agent:native-input-status',
-  )
   desktopApi.nativeInputStart = () => ipcRenderer.invoke(
     'qwen-audio-agent:native-input-start',
   )

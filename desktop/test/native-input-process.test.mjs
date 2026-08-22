@@ -11,12 +11,16 @@ import { join, resolve } from 'node:path'
 import { after, before, test } from 'node:test'
 
 import { NativeInputHost } from '../src/native-input-host.mjs'
-import { NativeInputFrameDecoder } from '../src/native-input-protocol.mjs'
+import {
+  NativeInputFrameDecoder,
+  encodeNativeInputFrame,
+} from '../src/native-input-protocol.mjs'
 
 const root = resolve(new URL('../..', import.meta.url).pathname)
 let workspace
 let output
 let bridgePath
+let inputExecutable
 const isMacOS = process.platform === 'darwin'
 
 before(() => {
@@ -31,6 +35,7 @@ before(() => {
   ], { cwd: root, encoding: 'utf8' })
   assert.equal(build.status, 0, build.stderr || build.stdout)
   bridgePath = join(output, 'QwenInputBridge')
+  inputExecutable = join(output, 'Qwen Input.app/Contents/MacOS/Qwen Input')
 })
 
 after(() => {
@@ -133,6 +138,59 @@ test('real Bridge treats control-pipe EOF as a clean shutdown', {
   const [code, signal] = await exited
   assert.equal(code, 0)
   assert.equal(signal, null)
+})
+
+test('signed IME peer completes a correlated Desktop to Bridge operation', {
+  skip: !isMacOS,
+  timeout: 15_000,
+}, async () => {
+  const runtime = join(workspace, 'operation-runtime')
+  const child = spawn(bridgePath, ['--operation-probe-listen', runtime], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  const decoder = new NativeInputFrameDecoder()
+  assert.deepEqual(await nextMessage(child.stdout, decoder), {
+    state: 'ready',
+    type: 'bridge.ready',
+  })
+  const ime = spawn(inputExecutable, [
+    '--operation-probe', join(runtime, 'control.sock'),
+  ], { stdio: ['ignore', 'pipe', 'pipe'] })
+
+  child.stdin.write(encodeNativeInputFrame({
+    type: 'session.arm',
+    operationId: 'arm-1',
+    statusVisible: true,
+  }))
+  assert.deepEqual(await nextMessage(child.stdout, decoder), {
+    accepted: true,
+    generation: 1,
+    operationId: 'arm-1',
+    sessionId: 'probe-session',
+    targetId: 'probe-target',
+    type: 'operation.result',
+  })
+  child.stdin.write(encodeNativeInputFrame({
+    type: 'session.partial',
+    operationId: 'partial-1',
+    revision: 0,
+    seq: 1,
+    statusVisible: true,
+    text: 'fake transcript',
+  }))
+  assert.deepEqual(await nextMessage(child.stdout, decoder), {
+    accepted: true,
+    operationId: 'partial-1',
+    type: 'operation.result',
+  })
+  const [imeCode] = await once(ime, 'exit')
+  assert.equal(imeCode, 0)
+
+  const exited = once(child, 'exit')
+  child.stdin.end(encodeNativeInputFrame({ type: 'bridge.stop' }))
+  const [code] = await exited
+  assert.equal(code, 0)
+  assert.equal(readdirSync(workspace).includes('operation-runtime'), false)
 })
 
 async function sendAndExpect(host, request, state) {

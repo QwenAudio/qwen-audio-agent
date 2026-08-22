@@ -150,3 +150,51 @@ test('a clean Bridge exit during stop never triggers emergency handling', async 
   assert.deepEqual(emergencyStops, [])
   assert.deepEqual(child.killCalls, [])
 })
+
+test('correlates requests and rejects timeout and late responses after stop', async () => {
+  const { child, host } = harness({ requestTimeoutMs: 5 })
+  const pending = host.start()
+  reportReady(child)
+  await pending
+
+  const frames = []
+  const decoder = new NativeInputFrameDecoder()
+  child.stdin.on('data', chunk => frames.push(...decoder.push(chunk)))
+
+  const status = host.request({ type: 'lifecycle.status' })
+  await new Promise(resolve => setImmediate(resolve))
+  const request = frames.at(-1)
+  child.stdout.write(encodeNativeInputFrame({
+    type: 'lifecycle.result',
+    requestId: request.requestId,
+    action: 'status',
+    installed: true,
+    registered: true,
+    enabled: false,
+    version: '1.11.0',
+  }))
+  assert.equal((await status).requestId, request.requestId)
+
+  await assert.rejects(
+    host.request({ type: 'lifecycle.status' }),
+    /timed out/i,
+  )
+
+  const late = host.request({ type: 'lifecycle.status' })
+  await new Promise(resolve => setImmediate(resolve))
+  const lateRequest = frames.at(-1)
+  const stopping = host.stop('test_stop')
+  child.emit('exit', 0, null)
+  await stopping
+  await assert.rejects(late, /stopped/i)
+  child.stdout.write(encodeNativeInputFrame({
+    type: 'lifecycle.result',
+    requestId: lateRequest.requestId,
+    action: 'status',
+    installed: true,
+    registered: true,
+    enabled: true,
+    version: '1.11.0',
+  }))
+  assert.equal(host.state, 'idle')
+})

@@ -18,6 +18,7 @@ import MultimodalComposer from './MultimodalComposer.jsx'
 import { enqueueDictationEvent } from './composer-dictation.js'
 import DesktopFluidOrb from './DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './DesktopSpriteOrb.jsx'
+import DesktopNativeInputController from './DesktopNativeInputController.jsx'
 import { desktopOrbClassName, resolveOrbVisualState } from './orb-presentation.js'
 import {
   isBuiltinOrbSkin,
@@ -1095,6 +1096,12 @@ export default function App() {
       desktopCards.length && !desktopTasksCollapsed ? ' has-task-cards' : ''
     }${desktopTaskLayout.placement === 'above' ? ' tasks-above' : ''}`}
     style={{ '--desktop-orb-offset-x': `${desktopTaskLayout.orbOffsetX}px` }}>
+      <DesktopNativeInputController
+        capability={gatewayCapabilities.includes('composer.dictation')}
+        events={dictationEvents}
+        requestVoice={enableVoice}
+        voice={voice}
+      />
       <div className="desktop-orb-anchor">
         <section
         className={desktopOrbClassName({

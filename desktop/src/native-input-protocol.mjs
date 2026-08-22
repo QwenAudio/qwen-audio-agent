@@ -5,10 +5,17 @@ export const NATIVE_INPUT_MESSAGE_TYPES = Object.freeze([
   'session.arm',
   'session.partial',
   'session.final',
+  'session.operation',
   'session.cancel',
   'session.pause',
   'session.resume',
   'session.state',
+  'operation.result',
+  'lifecycle.status',
+  'lifecycle.install',
+  'lifecycle.repair',
+  'lifecycle.uninstall',
+  'lifecycle.result',
   'bridge.stop',
   'bridge.error',
 ])
@@ -112,6 +119,28 @@ function validateMessage(message) {
   if (!messageTypes.has(message.type)) {
     throw protocolError('unknown_type', 'Unknown native input message type')
   }
+  if (
+    (message.type.startsWith('lifecycle.') && message.type !== 'lifecycle.result')
+    && !validIdentifier(message.requestId)
+  ) {
+    throw protocolError('invalid_correlation', 'Lifecycle requestId is required')
+  }
+  if (
+    message.type === 'lifecycle.result'
+    && (!validIdentifier(message.requestId) || typeof message.action !== 'string')
+  ) {
+    throw protocolError('invalid_correlation', 'Lifecycle result is not correlated')
+  }
+  if (
+    message.type === 'operation.result'
+    && (!validIdentifier(message.operationId) || typeof message.accepted !== 'boolean')
+  ) {
+    throw protocolError('invalid_correlation', 'Operation result is not correlated')
+  }
+}
+
+function validIdentifier(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 128
 }
 
 function protocolError(code, message) {

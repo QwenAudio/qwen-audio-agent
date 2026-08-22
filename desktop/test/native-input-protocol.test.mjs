@@ -63,6 +63,32 @@ test('incremental finish rejects a partial frame', () => {
   assert.throws(() => decoder.finish(), { code: 'truncated' })
 })
 
+test('accepts lifecycle and correlated native operation message types', () => {
+  for (const message of [
+    { type: 'lifecycle.status', requestId: 'status-1' },
+    { type: 'lifecycle.install', requestId: 'install-1' },
+    { type: 'lifecycle.repair', requestId: 'repair-1' },
+    { type: 'lifecycle.uninstall', requestId: 'uninstall-1' },
+    {
+      type: 'lifecycle.result',
+      requestId: 'status-1',
+      action: 'status',
+      installed: false,
+      registered: false,
+      enabled: false,
+      version: '',
+    },
+    {
+      type: 'operation.result',
+      operationId: 'operation-1',
+      accepted: false,
+      reason: 'target_changed',
+    },
+  ]) {
+    assert.deepEqual(decodeNativeInputFrame(encodeNativeInputFrame(message)), message)
+  }
+})
+
 function frame(payload) {
   const header = Buffer.alloc(4)
   header.writeUInt32BE(payload.length)

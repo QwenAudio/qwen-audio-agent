@@ -925,4 +925,25 @@ connects to ASR while disabled.
 | `QWEN_AUDIO_DICTATION_REUSE_REALTIME_CREDENTIALS` | empty / off | Explicitly reuse the main credential only when both endpoints have the same origin |
 
 The Web shortcut is Ctrl/Command+Shift+D; the TUI shortcut is Alt/Option+D.
-Both are application-local. No global shortcut or OS-level permission is added.
+Both are application-local.
+
+## Desktop native input (macOS 13+)
+
+Desktop-owned InputMethodKit input is independently disabled by default and
+also requires composer dictation to be configured. It remains unavailable
+until the version-matched Qwen Input bundle is installed, registered, and the
+user explicitly enables it in System Settings.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `QWEN_AUDIO_NATIVE_INPUT_ENABLED` | empty / off | Enable the Desktop-owned native input host after installation |
+| `QWEN_AUDIO_NATIVE_INPUT_SHORTCUT` | `CommandOrControl+Shift+D` | Desktop global shortcut |
+
+Settings exposes read-only status plus explicit Install, Repair, Uninstall,
+and System Settings actions. Install/repair verifies path, owner, bundle ID,
+version, and code signature, then atomically replaces and registers the bundle;
+it never silently enables or selects it. The base path uses the existing
+Desktop microphone permission and does not request Accessibility, Input
+Monitoring, Full Disk Access, administrator credentials, or a second provider
+credential. See `docs/desktop/native-input-testing.md` before changing input
+source or TCC state.

@@ -8,6 +8,9 @@ manual matrix without explicit authorization from the machine owner.
 ## Current status
 
 - Phase 0 automated substrate: implemented and locally verified.
+- Desktop lifecycle and IME→Bridge→Gateway automated chain: implemented and
+  locally verified with injected filesystem/input-source adapters, fake
+  transcript, and a real ad-hoc-signed IME/Bridge peer exchange.
 - User-level installation, registration, and source selection: not run.
 - Cross-application InputMethodKit interaction: not run.
 - Physical-microphone and TCC interaction: not run.
@@ -15,9 +18,9 @@ manual matrix without explicit authorization from the machine owner.
 - Developer ID signing, notarization, and release Gatekeeper: not run.
 
 The automated result does not mean system-wide dictation is ready for users.
-Production IME-to-Bridge operation routing, the Desktop installer/settings
-lifecycle, Gateway audio routing, and the installed-app matrix remain later
-gates.
+The production routes now exist, but the installed-app, physical microphone,
+and real target-application matrix remain later gates. Automated lifecycle
+tests do not copy, register, enable, or select an input source.
 
 ## Automated Phase 0 gate
 
@@ -47,6 +50,13 @@ The native tests cover:
   bounded shutdown;
 - a real built Bridge process handling fake partial/final/pause/resume/cancel,
   rejecting malformed frames, exiting on EOF, and leaving no runtime files.
+- explicit status/install/repair/uninstall request correlation, symlink/owner/
+  signature/version rejection, atomic replacement rollback, registration
+  without enablement, and disable-before-trash uninstall;
+- a real signed IME peer registering one target, polling one correlated
+  operation through Bridge, returning an operation result, and cleaning the
+  temporary socket; renderer tests prove ownership/suspend gates, empty-draft
+  Gateway start, terminal late-event rejection, and native failure cancellation.
 
 The packaging gate additionally requires:
 

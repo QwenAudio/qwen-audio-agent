@@ -5,30 +5,104 @@ public enum NativeInputMessageType: String, Codable, CaseIterable, Sendable {
     case sessionArm = "session.arm"
     case sessionPartial = "session.partial"
     case sessionFinal = "session.final"
+    case sessionOperation = "session.operation"
     case sessionCancel = "session.cancel"
     case sessionPause = "session.pause"
     case sessionResume = "session.resume"
     case sessionState = "session.state"
+    case operationResult = "operation.result"
+    case lifecycleStatus = "lifecycle.status"
+    case lifecycleInstall = "lifecycle.install"
+    case lifecycleRepair = "lifecycle.repair"
+    case lifecycleUninstall = "lifecycle.uninstall"
+    case lifecycleResult = "lifecycle.result"
+    case imeActivate = "ime.activate"
+    case imeDeactivate = "ime.deactivate"
+    case imePoll = "ime.poll"
+    case imeResult = "ime.result"
+    case imeIdle = "ime.idle"
+    case imeAck = "ime.ack"
     case bridgeStop = "bridge.stop"
     case bridgeError = "bridge.error"
 }
 
 public struct NativeInputMessage: Codable, Equatable, Sendable {
+    enum CodingKeys: String, CodingKey {
+        case type, text, state, reason, action, installed, registered, enabled
+        case version, accepted, revision, generation, operation, target
+        case replacement, statusVisible
+        case requestID = "requestId"
+        case operationID = "operationId"
+        case sequence = "seq"
+        case sessionID = "sessionId"
+        case targetID = "targetId"
+    }
     public let type: NativeInputMessageType
     public let text: String?
     public let state: NativeSessionState?
     public let reason: String?
+    public let requestID: String?
+    public let action: String?
+    public let installed: Bool?
+    public let registered: Bool?
+    public let enabled: Bool?
+    public let version: String?
+    public let operationID: String?
+    public let accepted: Bool?
+    public let revision: UInt64?
+    public let sequence: UInt64?
+    public let operation: String?
+    public let target: String?
+    public let replacement: String?
+    public let statusVisible: Bool?
+    public let sessionID: String?
+    public let generation: UInt64?
+    public let targetID: String?
 
     public init(
         type: NativeInputMessageType,
         text: String? = nil,
         state: NativeSessionState? = nil,
-        reason: String? = nil
+        reason: String? = nil,
+        requestID: String? = nil,
+        action: String? = nil,
+        installed: Bool? = nil,
+        registered: Bool? = nil,
+        enabled: Bool? = nil,
+        version: String? = nil,
+        operationID: String? = nil,
+        accepted: Bool? = nil,
+        revision: UInt64? = nil,
+        sequence: UInt64? = nil,
+        operation: String? = nil,
+        target: String? = nil,
+        replacement: String? = nil,
+        statusVisible: Bool? = nil,
+        sessionID: String? = nil,
+        generation: UInt64? = nil,
+        targetID: String? = nil
     ) {
         self.type = type
         self.text = text
         self.state = state
         self.reason = reason
+        self.requestID = requestID
+        self.action = action
+        self.installed = installed
+        self.registered = registered
+        self.enabled = enabled
+        self.version = version
+        self.operationID = operationID
+        self.accepted = accepted
+        self.revision = revision
+        self.sequence = sequence
+        self.operation = operation
+        self.target = target
+        self.replacement = replacement
+        self.statusVisible = statusVisible
+        self.sessionID = sessionID
+        self.generation = generation
+        self.targetID = targetID
     }
 }
 

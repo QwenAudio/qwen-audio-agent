@@ -251,6 +251,24 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
   place-items: center;
 }
 
+.desktop-native-input-status {
+  position: fixed;
+  z-index: 22;
+  right: 16px;
+  bottom: 16px;
+  max-width: 240px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgb(20 24 33 / 88%);
+  color: #dce8ff;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.desktop-native-input-status.error {
+  color: #ffd6d6;
+}
+
 .desktop-task-stack {
   width: 100%;
   min-height: 0;

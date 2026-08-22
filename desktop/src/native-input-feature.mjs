@@ -4,11 +4,13 @@ export class NativeInputFeature {
     accelerator = 'CommandOrControl+Shift+D',
     globalShortcut,
     host,
+    onSessionRequest = () => {},
   } = {}) {
     this.enabled = enabled === true
     this.accelerator = accelerator
     this.globalShortcut = globalShortcut
     this.host = host
+    this.onSessionRequest = onSessionRequest
     this.state = this.enabled ? 'idle' : 'disabled'
     this.shortcutRegistered = false
     this.initializing = null
@@ -51,7 +53,7 @@ export class NativeInputFeature {
   handleShortcut() {
     if (!this.enabled || this.state !== 'ready') return false
     try {
-      this.host.send({ type: 'session.arm' })
+      this.onSessionRequest({ type: 'toggle' })
       return true
     } catch {
       this.unregisterShortcut()
@@ -67,6 +69,32 @@ export class NativeInputFeature {
     }
     this.host.send(message)
     return true
+  }
+
+  applyLifecycleStatus(status = {}) {
+    if (!this.enabled) return this.snapshot()
+    if (status.state !== 'ready') {
+      this.unregisterShortcut()
+      this.state = String(status.state || 'error')
+      return this.snapshot()
+    }
+    if (this.host.state !== 'ready') {
+      this.state = 'error'
+      return this.snapshot()
+    }
+    if (!this.shortcutRegistered) {
+      const registered = this.globalShortcut.register(
+        this.accelerator,
+        () => this.handleShortcut(),
+      )
+      if (!registered) {
+        this.state = 'error'
+        return this.snapshot()
+      }
+      this.shortcutRegistered = true
+    }
+    this.state = 'ready'
+    return this.snapshot()
   }
 
   rendererLost() {

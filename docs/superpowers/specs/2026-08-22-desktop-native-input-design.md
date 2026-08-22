@@ -410,12 +410,14 @@ gate now passes on macOS arm64:
 - The local Desktop DMG contains strict-verifiable Bridge and InputMethodKit
   identities. The release native build contains both `arm64` and `x86_64`.
 
-This is an automated substrate result, not an installed cross-application
-claim. No input method has been copied, registered, enabled, or selected; no
-TCC permission has been requested; production IME-to-Bridge operation routing,
-Desktop install/settings lifecycle, Gateway microphone integration, optional
-Voice Send, Developer ID signing/notarization, and the manual app matrix remain
-open. The executable matrix and authorization boundary are recorded in
+The next automated stage adds the Desktop install/status/repair/uninstall
+lifecycle, correlated renderer/Gateway/native operations, and a real signed
+IME→Bridge fake-operation process probe. It remains an automated result, not an
+installed cross-application claim. No input method has been copied, registered,
+enabled, or selected and no TCC permission has been requested. Physical
+microphone/target-app interaction, optional Voice Send, Developer ID
+signing/notarization, and the manual app matrix remain open. The executable
+matrix and authorization boundary are recorded in
 `docs/desktop/native-input-testing.md` and
 `docs/desktop/native-input-testing.zh.md`.
 

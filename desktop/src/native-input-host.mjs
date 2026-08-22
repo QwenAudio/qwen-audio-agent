@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
+import { randomUUID } from 'node:crypto'
 import { isAbsolute, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -23,6 +24,10 @@ const HOST_REQUEST_TYPES = new Set([
   'session.cancel',
   'session.pause',
   'session.resume',
+  'lifecycle.status',
+  'lifecycle.install',
+  'lifecycle.repair',
+  'lifecycle.uninstall',
   'bridge.stop',
 ])
 
@@ -55,6 +60,7 @@ export class NativeInputHost extends EventEmitter {
     environment = process.env,
     startupTimeoutMs = 5_000,
     stopTimeoutMs = 1_000,
+    requestTimeoutMs = 5_000,
     onEmergencyStop = () => {},
   } = {}) {
     super()
@@ -63,6 +69,7 @@ export class NativeInputHost extends EventEmitter {
     this.environment = environment
     this.startupTimeoutMs = startupTimeoutMs
     this.stopTimeoutMs = stopTimeoutMs
+    this.requestTimeoutMs = requestTimeoutMs
     this.onEmergencyStop = onEmergencyStop
     this.state = 'idle'
     this.child = null
@@ -74,6 +81,7 @@ export class NativeInputHost extends EventEmitter {
     this.exitPromise = null
     this.resolveExit = null
     this.childListeners = null
+    this.pendingRequests = new Map()
   }
 
   start() {
@@ -150,6 +158,44 @@ export class NativeInputHost extends EventEmitter {
     this.child.stdin.write(encodeNativeInputFrame(message))
   }
 
+  request(message) {
+    if (this.state !== 'ready' || !this.child?.stdin?.writable) {
+      return Promise.reject(new Error('Native input Bridge is not ready'))
+    }
+    const lifecycle = message?.type?.startsWith('lifecycle.')
+    const requestId = String(
+      lifecycle
+        ? message?.requestId || randomUUID()
+        : message?.operationId || randomUUID(),
+    )
+    if (!lifecycle && !message?.type?.startsWith('session.')) {
+      return Promise.reject(new Error('Native input request type is not allowed'))
+    }
+    if (this.pendingRequests.has(requestId)) {
+      return Promise.reject(new Error('Native input requestId is already pending'))
+    }
+    const request = lifecycle
+      ? { ...message, requestId }
+      : { ...message, operationId: requestId }
+    const promise = new Promise((resolveRequest, rejectRequest) => {
+      const timer = setTimeout(() => {
+        this.pendingRequests.delete(requestId)
+        rejectRequest(new Error('Native input Bridge request timed out'))
+      }, this.requestTimeoutMs)
+      this.pendingRequests.set(requestId, {
+        resolve: resolveRequest,
+        reject: rejectRequest,
+        timer,
+      })
+    })
+    try {
+      this.child.stdin.write(encodeNativeInputFrame(request))
+    } catch (error) {
+      this.rejectRequest(requestId, error)
+    }
+    return promise
+  }
+
   async stop(reason = 'requested') {
     const child = this.child
     if (!child) {
@@ -159,6 +205,7 @@ export class NativeInputHost extends EventEmitter {
     }
 
     this.state = 'stopping'
+    this.rejectAllRequests(new Error('Native input Bridge stopped'))
     this.clearStartup(new Error('Native input Bridge stopped before ready'))
     try {
       if (child.stdin?.writable) {
@@ -185,6 +232,7 @@ export class NativeInputHost extends EventEmitter {
     this.state = 'error'
     this.clearStartup(new Error(`Native input stopped: ${reason}`))
     this.onEmergencyStop(reason)
+    this.rejectAllRequests(new Error(`Native input stopped: ${reason}`))
     if (child) {
       this.detach(child)
       child.kill('SIGTERM')
@@ -228,6 +276,20 @@ export class NativeInputHost extends EventEmitter {
         )
         return
       }
+      if (
+        message.type === 'lifecycle.result'
+        || message.type === 'operation.result'
+      ) {
+        const correlation = message.type === 'lifecycle.result'
+          ? message.requestId
+          : message.operationId
+        const pending = this.pendingRequests.get(correlation)
+        if (!pending) continue
+        clearTimeout(pending.timer)
+        this.pendingRequests.delete(correlation)
+        pending.resolve(message)
+        continue
+      }
       this.emit('message', message)
     }
   }
@@ -252,6 +314,7 @@ export class NativeInputHost extends EventEmitter {
     this.state = 'error'
     this.clearStartup(error)
     this.onEmergencyStop(reason)
+    this.rejectAllRequests(error)
     if (child && terminate) {
       this.detach(child)
       child.kill('SIGTERM')
@@ -277,6 +340,20 @@ export class NativeInputHost extends EventEmitter {
     child.off('exit', listeners.onExit)
     child.off('error', listeners.onProcessError)
     this.childListeners = null
+  }
+
+  rejectRequest(requestId, error) {
+    const pending = this.pendingRequests.get(requestId)
+    if (!pending) return
+    clearTimeout(pending.timer)
+    this.pendingRequests.delete(requestId)
+    pending.reject(error)
+  }
+
+  rejectAllRequests(error) {
+    for (const requestId of [...this.pendingRequests.keys()]) {
+      this.rejectRequest(requestId, error)
+    }
   }
 }
 

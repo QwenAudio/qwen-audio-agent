@@ -5,7 +5,31 @@ import QwenInputCore
 /// Thin production adapter around Text Input Source Services. The coordinator
 /// owns all policy; this type only performs exact lookups and requested calls.
 /// It is never invoked by the default-off build or automated tests.
-final class SystemInputSourceAPI: InputSourceAPI {
+final class SystemInputSourceAPI: InputSourceAPI, InputMethodRegistration {
+    private let qwenInputSourceID: String
+
+    init(qwenInputSourceID: String = "ai.qwenaudio.agent.inputmethod") {
+        self.qwenInputSourceID = qwenInputSourceID
+    }
+
+    func containsInputSource() -> Bool {
+        containsInputSource(id: qwenInputSourceID)
+    }
+
+    func isInputSourceEnabled() -> Bool {
+        isInputSourceEnabled(id: qwenInputSourceID)
+    }
+
+    func registerInputSource(at url: URL) -> Bool {
+        TISRegisterInputSource(url as CFURL) == noErr
+    }
+
+    func disableInputSource() -> Bool {
+        guard let source = inputSource(id: qwenInputSourceID) else {
+            return true
+        }
+        return TISDisableInputSource(source) == noErr
+    }
     func currentKeyboardSourceID() -> String? {
         guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue() else {
             return nil
@@ -38,10 +62,6 @@ final class SystemInputSourceAPI: InputSourceAPI {
             return false
         }
         return TISSelectInputSource(source) == noErr
-    }
-
-    func registerInputSource(at url: URL) -> Bool {
-        TISRegisterInputSource(url as CFURL) == noErr
     }
 
     private func inputSource(id: String) -> TISInputSource? {

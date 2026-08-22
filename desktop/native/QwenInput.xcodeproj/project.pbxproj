@@ -15,6 +15,7 @@
 		1986935E02D571BCB9DB3A94 /* TextClientAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85E9FAF73BC1C92B1A6214A0 /* TextClientAdapter.swift */; };
 		25D19EE917B79B6ACF838670 /* libQwenInputCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C841D7EA383D4D382E342DA /* libQwenInputCore.a */; };
 		3617F3A443DEF060839FC708 /* DynamicPeerCodeValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 588E045EF60E101B7495AE25 /* DynamicPeerCodeValidator.swift */; };
+		44032CAC838B4E7095F771A3 /* NativeRuntimePeer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E37FE60BADFDA91DB2566F8 /* NativeRuntimePeer.swift */; };
 		44FDBA8C71F39045891252FF /* FrameCodecTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E83F22A48A735F44D2E5F41B /* FrameCodecTests.swift */; };
 		4A725B4EB4088D8F5EF991B2 /* ControllerRegistryState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 721ADAF0107F5823CDC23546 /* ControllerRegistryState.swift */; };
 		4D3A832527594504C522AE85 /* NativeInputCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67B581168B33486F29A4694F /* NativeInputCore.swift */; };
@@ -23,7 +24,9 @@
 		596309270992A8564D45B925 /* InputSourceCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25024CC498402563F292D906 /* InputSourceCoordinatorTests.swift */; };
 		6BA2BDD788A1082DB4C19F08 /* PeerRequirement.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32F61A4734DEEEE1248DE931 /* PeerRequirement.swift */; };
 		77EC0D1027FE098DCC6B423E /* libQwenInputCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C841D7EA383D4D382E342DA /* libQwenInputCore.a */; };
+		7B70D9062E2A585345F9AC68 /* InputMethodLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C06E5F85A581C0632C52CD1 /* InputMethodLifecycle.swift */; };
 		7D746010C087BF643014EE6F /* BridgeRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3628751C0DC9361470DFD8F8 /* BridgeRuntime.swift */; };
+		80A9FB1F3DDA2669F7F0A974 /* SystemInputMethodLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = F88A81FD5D63F4B15613CC49 /* SystemInputMethodLifecycle.swift */; };
 		8A3AF1B577451BDD8056B6BB /* TextClientAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF2C108DBD8E6995DE407630 /* TextClientAdapter.swift */; };
 		8C08DA1F77D6033BA25BB419 /* InputController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 645E4C8AEC4F0097B8FFD827 /* InputController.swift */; };
 		9FEDB5A0B4CB028965E06007 /* SessionLedgerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDC51A8D57B58B899C2E787 /* SessionLedgerTests.swift */; };
@@ -36,15 +39,20 @@
 		BE2111D8D04467DE978E632F /* NativeSessionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7B5AE175DEEBBA00594EFDE4 /* NativeSessionState.swift */; };
 		C24A42E79CCEDE71BC31847F /* SecureRuntimeDirectoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 383D2DA101927793967A242E /* SecureRuntimeDirectoryTests.swift */; };
 		C367DF4783999443DD93BE73 /* ControllerRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4A47C0A672E8E12E4F66D27 /* ControllerRegistry.swift */; };
+		C5AD6DA5386CB6DB28C4111B /* InputMethodLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A0B5A207FCE84DE3B57C362 /* InputMethodLifecycleTests.swift */; };
+		C92D9B9F6C2A287BA0477009 /* NativeOperationBrokerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9803F3A74B81880860FA4537 /* NativeOperationBrokerTests.swift */; };
 		C9B818E178D99654569FC357 /* SecureInputGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C972F27EA1F373474C528542 /* SecureInputGate.swift */; };
 		C9CB6F55E039E8441EA4A28F /* FrameCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = 496A4E99E19697EFA205C95D /* FrameCodec.swift */; };
+		CB8C3BF85A18E47585A16E1B /* BridgePeerServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2FE16C0440FB1C43ACA124C /* BridgePeerServer.swift */; };
 		CC8469CB45202045943FDF4D /* SecureRuntimeDirectory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AEE3FC51E7D6EB9E4E43BFA /* SecureRuntimeDirectory.swift */; };
 		CE79A680878822DEE5FDCD30 /* SessionLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 321ED6838BE710B2DE2A3A8B /* SessionLedger.swift */; };
 		D353264F02CE93B0069E6D2F /* NativeInputCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */; };
 		DDE9CA0DBEC6EB4950C90DA1 /* TextClientAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA841AB10F259EAAC4341A18 /* TextClientAdapterTests.swift */; };
 		E066990E0CB96B55C6FB9B46 /* InputSourceCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5FA45C153157D72549D744F /* InputSourceCoordinator.swift */; };
+		E19C7652473F0AA3BD91DF5B /* BridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95B61ED850B3EC90E170A007 /* BridgeClient.swift */; };
 		EE2A3B7319DDC37F7E124BC9 /* SystemInputSourceAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = B168E38F4B6CC3264F1B67F9 /* SystemInputSourceAPI.swift */; };
 		F545C667DA4D2773532CEBB3 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 97E529D760644859BC504C77 /* Security.framework */; };
+		F69FF334CA8EE82FA5C9F5BB /* NativeOperationBroker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B45879E2C6C49AB90291B41 /* NativeOperationBroker.swift */; };
 		F6C0696F1D1921E8C9DA569D /* SafetyGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49A7E8BF0C7765F1BF4990A8 /* SafetyGate.swift */; };
 		F71918A86E1F924952D10474 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A44832D5271CD80CF763AD7 /* main.swift */; };
 /* End PBXBuildFile section */
@@ -75,12 +83,16 @@
 
 /* Begin PBXFileReference section */
 		0AEE3FC51E7D6EB9E4E43BFA /* SecureRuntimeDirectory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureRuntimeDirectory.swift; sourceTree = "<group>"; };
+		0E37FE60BADFDA91DB2566F8 /* NativeRuntimePeer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeRuntimePeer.swift; sourceTree = "<group>"; };
+		1A0B5A207FCE84DE3B57C362 /* InputMethodLifecycleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMethodLifecycleTests.swift; sourceTree = "<group>"; };
 		25024CC498402563F292D906 /* InputSourceCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputSourceCoordinatorTests.swift; sourceTree = "<group>"; };
 		296DB8E3E1198D4C21DE6161 /* QwenInputBridge */ = {isa = PBXFileReference; includeInIndex = 0; path = QwenInputBridge; sourceTree = BUILT_PRODUCTS_DIR; };
+		2C06E5F85A581C0632C52CD1 /* InputMethodLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InputMethodLifecycle.swift; sourceTree = "<group>"; };
 		321ED6838BE710B2DE2A3A8B /* SessionLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLedger.swift; sourceTree = "<group>"; };
 		32F61A4734DEEEE1248DE931 /* PeerRequirement.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeerRequirement.swift; sourceTree = "<group>"; };
 		3628751C0DC9361470DFD8F8 /* BridgeRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeRuntime.swift; sourceTree = "<group>"; };
 		383D2DA101927793967A242E /* SecureRuntimeDirectoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecureRuntimeDirectoryTests.swift; sourceTree = "<group>"; };
+		3B45879E2C6C49AB90291B41 /* NativeOperationBroker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOperationBroker.swift; sourceTree = "<group>"; };
 		496A4E99E19697EFA205C95D /* FrameCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameCodec.swift; sourceTree = "<group>"; };
 		49A7E8BF0C7765F1BF4990A8 /* SafetyGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyGate.swift; sourceTree = "<group>"; };
 		577591C2BECAA90E94BD1178 /* SafetyGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafetyGateTests.swift; sourceTree = "<group>"; };
@@ -94,7 +106,9 @@
 		85E9FAF73BC1C92B1A6214A0 /* TextClientAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextClientAdapter.swift; sourceTree = "<group>"; };
 		89A7B83D5C9B5BA9CBE04F9D /* AuthenticatedUnixSocket.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticatedUnixSocket.swift; sourceTree = "<group>"; };
 		8C841D7EA383D4D382E342DA /* libQwenInputCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libQwenInputCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		95B61ED850B3EC90E170A007 /* BridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeClient.swift; sourceTree = "<group>"; };
 		97E529D760644859BC504C77 /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		9803F3A74B81880860FA4537 /* NativeOperationBrokerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeOperationBrokerTests.swift; sourceTree = "<group>"; };
 		9B96A5981D8C078452FF8DBD /* QwenInputCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QwenInputCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A4A47C0A672E8E12E4F66D27 /* ControllerRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRegistry.swift; sourceTree = "<group>"; };
 		A6276EBC31F280A4B03E9AFA /* QwenInput.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QwenInput.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -107,10 +121,12 @@
 		DA841AB10F259EAAC4341A18 /* TextClientAdapterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextClientAdapterTests.swift; sourceTree = "<group>"; };
 		DBDC51A8D57B58B899C2E787 /* SessionLedgerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLedgerTests.swift; sourceTree = "<group>"; };
 		DFB6A421D8ECCD82D397C975 /* ControllerRegistryStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerRegistryStateTests.swift; sourceTree = "<group>"; };
+		E2FE16C0440FB1C43ACA124C /* BridgePeerServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgePeerServer.swift; sourceTree = "<group>"; };
 		E83F22A48A735F44D2E5F41B /* FrameCodecTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameCodecTests.swift; sourceTree = "<group>"; };
 		EA68E39311CBBE9C9C18B8CA /* ProtocolValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolValidator.swift; sourceTree = "<group>"; };
 		ED4C14E869DB7F863B6188D3 /* TextOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextOperation.swift; sourceTree = "<group>"; };
 		EF2C108DBD8E6995DE407630 /* TextClientAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextClientAdapter.swift; sourceTree = "<group>"; };
+		F88A81FD5D63F4B15613CC49 /* SystemInputMethodLifecycle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemInputMethodLifecycle.swift; sourceTree = "<group>"; };
 		FD5271BD2BFAEC8B7BC35004 /* ProtocolValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolValidatorTests.swift; sourceTree = "<group>"; };
 		FD8990507B969791B08FDBCA /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -170,8 +186,10 @@
 			children = (
 				DFB6A421D8ECCD82D397C975 /* ControllerRegistryStateTests.swift */,
 				E83F22A48A735F44D2E5F41B /* FrameCodecTests.swift */,
+				1A0B5A207FCE84DE3B57C362 /* InputMethodLifecycleTests.swift */,
 				25024CC498402563F292D906 /* InputSourceCoordinatorTests.swift */,
 				CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */,
+				9803F3A74B81880860FA4537 /* NativeOperationBrokerTests.swift */,
 				C85A2B7FC49C6B84F6C18218 /* PeerRequirementTests.swift */,
 				FD5271BD2BFAEC8B7BC35004 /* ProtocolValidatorTests.swift */,
 				577591C2BECAA90E94BD1178 /* SafetyGateTests.swift */,
@@ -218,9 +236,12 @@
 				721ADAF0107F5823CDC23546 /* ControllerRegistryState.swift */,
 				588E045EF60E101B7495AE25 /* DynamicPeerCodeValidator.swift */,
 				496A4E99E19697EFA205C95D /* FrameCodec.swift */,
+				2C06E5F85A581C0632C52CD1 /* InputMethodLifecycle.swift */,
 				D5FA45C153157D72549D744F /* InputSourceCoordinator.swift */,
 				7F787312E23AB5D3B402A713 /* IPCProtocol.swift */,
 				67B581168B33486F29A4694F /* NativeInputCore.swift */,
+				3B45879E2C6C49AB90291B41 /* NativeOperationBroker.swift */,
+				0E37FE60BADFDA91DB2566F8 /* NativeRuntimePeer.swift */,
 				7B5AE175DEEBBA00594EFDE4 /* NativeSessionState.swift */,
 				32F61A4734DEEEE1248DE931 /* PeerRequirement.swift */,
 				EA68E39311CBBE9C9C18B8CA /* ProtocolValidator.swift */,
@@ -236,6 +257,7 @@
 		E8BDE45B42A9FC3C7381C629 /* QwenInput */ = {
 			isa = PBXGroup;
 			children = (
+				95B61ED850B3EC90E170A007 /* BridgeClient.swift */,
 				A4A47C0A672E8E12E4F66D27 /* ControllerRegistry.swift */,
 				645E4C8AEC4F0097B8FFD827 /* InputController.swift */,
 				7A44832D5271CD80CF763AD7 /* main.swift */,
@@ -248,8 +270,10 @@
 		EA58AB78B142CDF8154FA3DF /* QwenInputBridge */ = {
 			isa = PBXGroup;
 			children = (
+				E2FE16C0440FB1C43ACA124C /* BridgePeerServer.swift */,
 				3628751C0DC9361470DFD8F8 /* BridgeRuntime.swift */,
 				FD8990507B969791B08FDBCA /* main.swift */,
+				F88A81FD5D63F4B15613CC49 /* SystemInputMethodLifecycle.swift */,
 				B168E38F4B6CC3264F1B67F9 /* SystemInputSourceAPI.swift */,
 			);
 			path = QwenInputBridge;
@@ -420,8 +444,11 @@
 				3617F3A443DEF060839FC708 /* DynamicPeerCodeValidator.swift in Sources */,
 				C9CB6F55E039E8441EA4A28F /* FrameCodec.swift in Sources */,
 				A2985C9EFE1F9C230C8C6767 /* IPCProtocol.swift in Sources */,
+				7B70D9062E2A585345F9AC68 /* InputMethodLifecycle.swift in Sources */,
 				E066990E0CB96B55C6FB9B46 /* InputSourceCoordinator.swift in Sources */,
 				4D3A832527594504C522AE85 /* NativeInputCore.swift in Sources */,
+				F69FF334CA8EE82FA5C9F5BB /* NativeOperationBroker.swift in Sources */,
+				44032CAC838B4E7095F771A3 /* NativeRuntimePeer.swift in Sources */,
 				BE2111D8D04467DE978E632F /* NativeSessionState.swift in Sources */,
 				6BA2BDD788A1082DB4C19F08 /* PeerRequirement.swift in Sources */,
 				A239BD22E331C6A4B59E0083 /* ProtocolValidator.swift in Sources */,
@@ -439,8 +466,10 @@
 			files = (
 				06455682325167D4C9C56AED /* ControllerRegistryStateTests.swift in Sources */,
 				44FDBA8C71F39045891252FF /* FrameCodecTests.swift in Sources */,
+				C5AD6DA5386CB6DB28C4111B /* InputMethodLifecycleTests.swift in Sources */,
 				596309270992A8564D45B925 /* InputSourceCoordinatorTests.swift in Sources */,
 				D353264F02CE93B0069E6D2F /* NativeInputCoreTests.swift in Sources */,
+				C92D9B9F6C2A287BA0477009 /* NativeOperationBrokerTests.swift in Sources */,
 				5679DE36847E054AA1A09324 /* PeerRequirementTests.swift in Sources */,
 				B057FC9C34E050F1E8CA467D /* ProtocolValidatorTests.swift in Sources */,
 				ADE72E606AE4D99839FA2FBB /* SafetyGateTests.swift in Sources */,
@@ -454,6 +483,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E19C7652473F0AA3BD91DF5B /* BridgeClient.swift in Sources */,
 				C367DF4783999443DD93BE73 /* ControllerRegistry.swift in Sources */,
 				8C08DA1F77D6033BA25BB419 /* InputController.swift in Sources */,
 				C9B818E178D99654569FC357 /* SecureInputGate.swift in Sources */,
@@ -466,7 +496,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CB8C3BF85A18E47585A16E1B /* BridgePeerServer.swift in Sources */,
 				7D746010C087BF643014EE6F /* BridgeRuntime.swift in Sources */,
+				80A9FB1F3DDA2669F7F0A974 /* SystemInputMethodLifecycle.swift in Sources */,
 				EE2A3B7319DDC37F7E124BC9 /* SystemInputSourceAPI.swift in Sources */,
 				A0D001F40DC9F02D3B69CCDB /* main.swift in Sources */,
 			);

@@ -103,6 +103,11 @@ import {
 } from './updater.mjs'
 import { createGracefulShutdown } from './graceful-shutdown.mjs'
 import { DesktopPresence } from './desktop-presence.mjs'
+import {
+  NativeInputHost,
+  nativeInputBridgePath,
+} from './native-input-host.mjs'
+import { NativeInputFeature } from './native-input-feature.mjs'
 
 // macOS / Linux 图形界面应用的 PATH 只包含系统目录。在启动最早阶段
 // 将其扩充为用户登录 shell 的 PATH，让 Gateway 子进程与后台可用性
@@ -224,6 +229,25 @@ const desktopPresence = new DesktopPresence({
   getWindow: () => mainWindow,
   globalShortcut,
   logger,
+})
+const nativeInputDevelopmentTools = (
+  process.defaultApp
+  && process.env.QWEN_AUDIO_NATIVE_INPUT_DEVTOOLS === 'true'
+)
+const nativeInputHost = new NativeInputHost({
+  resolveArtifact: () => nativeInputBridgePath({
+    isPackaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+  }),
+  onEmergencyStop: reason => {
+    logger.error('native_input.emergency_stop', { reason })
+  },
+})
+const nativeInputFeature = new NativeInputFeature({
+  enabled: process.platform === 'darwin' && initialSettings.nativeInputEnabled,
+  accelerator: initialSettings.nativeInputShortcut,
+  globalShortcut,
+  host: nativeInputHost,
 })
 
 const MAX_GATEWAY_CRASH_RESTARTS = 3
@@ -589,6 +613,9 @@ function createWindow() {
     event.preventDefault()
     if (isSafeExternalUrl(url)) void shell.openExternal(url)
   })
+  window.webContents.on('render-process-gone', () => {
+    nativeInputFeature.rendererLost()
+  })
   window.once('ready-to-show', () => window.show())
   window.on('blur', () => {
     orbShell.cancelDrag()
@@ -736,6 +763,48 @@ ipcMain.handle('qwen-audio-agent:wake-shortcut-resume', event => {
   }
   return desktopPresence.resumeShortcut()
 })
+
+function assertNativeInputDevelopmentSender(event) {
+  if (
+    !nativeInputDevelopmentTools
+    || !mainWindow
+    || event.sender !== mainWindow.webContents
+  ) {
+    throw new Error('Native input development controls are unavailable')
+  }
+}
+
+ipcMain.handle('qwen-audio-agent:native-input-status', event => {
+  assertNativeInputDevelopmentSender(event)
+  return nativeInputFeature.snapshot()
+})
+
+ipcMain.handle('qwen-audio-agent:native-input-start', event => {
+  assertNativeInputDevelopmentSender(event)
+  nativeInputFeature.sendOperation({ type: 'session.arm' })
+  return true
+})
+
+ipcMain.handle('qwen-audio-agent:native-input-stop', event => {
+  assertNativeInputDevelopmentSender(event)
+  nativeInputFeature.sendOperation({ type: 'session.cancel' })
+  return true
+})
+
+for (const [channel, type] of [
+  ['qwen-audio-agent:native-input-fake-partial', 'session.partial'],
+  ['qwen-audio-agent:native-input-fake-final', 'session.final'],
+]) {
+  ipcMain.handle(channel, (event, value) => {
+    assertNativeInputDevelopmentSender(event)
+    const text = String(value || '')
+    if (!text || text.length > 4_096) {
+      throw new Error('Native input test text must be 1–4096 characters')
+    }
+    nativeInputFeature.sendOperation({ type, text })
+    return true
+  })
+}
 
 ipcMain.on('qwen-audio-agent:open-external', async (event, value) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) return
@@ -1296,6 +1365,12 @@ if (!app.requestSingleInstanceLock()) {
         accelerator: initialSettings.wakeShortcut,
       })
     }
+    try {
+      await nativeInputFeature.initialize()
+    } catch (error) {
+      lastRuntimeError = error?.message || String(error)
+      logger.error('native_input.start_failed', { error })
+    }
     desktopUpdater = createDesktopUpdater({
       currentVersion: app.getVersion(),
       enabled: app.isPackaged,
@@ -1346,6 +1421,7 @@ if (!app.requestSingleInstanceLock()) {
     app,
     cleanup: async () => {
       logger.info('desktop.stopping')
+      await nativeInputFeature.shutdown()
       desktopPresence.destroy()
       tray?.destroy()
       tray = null

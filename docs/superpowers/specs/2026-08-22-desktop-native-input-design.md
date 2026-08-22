@@ -391,6 +391,34 @@ stacked review branches to keep Swift security, Gateway integration, and
 release packaging independently reviewable; every shipped artifact still
 lands in the same Desktop release.
 
+## Phase 0 observed evidence (2026-08-22)
+
+The implementation was reconciled on upstream `main` at
+`7b363f668932e85fafbd2a23b24d60caba7ce4d9`. The automated native substrate
+gate now passes on macOS arm64:
+
+- Swift core and adapter tests cover protocol/replay rules, UTF-16 owned text,
+  secure and visibility gates, InputMethodKit calls, signed peer validation,
+  secure runtime paths, and input-source restoration policy.
+- A real ad-hoc-signed Bridge and deliberately wrong-identifier peer prove the
+  exact local peer boundary. A separate real Bridge process gate covers ready,
+  fake partial/final/pause/resume/cancel, malformed input, control-pipe EOF,
+  clean shutdown, and zero runtime-file residue.
+- Electron main owns one transient Bridge child with a credential-free
+  environment, default-off feature/shortcut, renderer-loss emergency stop, and
+  native-before-Gateway shutdown ordering.
+- The local Desktop DMG contains strict-verifiable Bridge and InputMethodKit
+  identities. The release native build contains both `arm64` and `x86_64`.
+
+This is an automated substrate result, not an installed cross-application
+claim. No input method has been copied, registered, enabled, or selected; no
+TCC permission has been requested; production IME-to-Bridge operation routing,
+Desktop install/settings lifecycle, Gateway microphone integration, optional
+Voice Send, Developer ID signing/notarization, and the manual app matrix remain
+open. The executable matrix and authorization boundary are recorded in
+`docs/desktop/native-input-testing.md` and
+`docs/desktop/native-input-testing.zh.md`.
+
 ### Phase 0: native feasibility spike
 
 With the feature off and fake transcript input, prove:

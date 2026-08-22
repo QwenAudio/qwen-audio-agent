@@ -1,0 +1,686 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0D5F6B51DE79A14DB8F4A387 /* libQwenInputCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C841D7EA383D4D382E342DA /* libQwenInputCore.a */; };
+		25D19EE917B79B6ACF838670 /* libQwenInputCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C841D7EA383D4D382E342DA /* libQwenInputCore.a */; };
+		4D3A832527594504C522AE85 /* NativeInputCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67B581168B33486F29A4694F /* NativeInputCore.swift */; };
+		77EC0D1027FE098DCC6B423E /* libQwenInputCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C841D7EA383D4D382E342DA /* libQwenInputCore.a */; };
+		A0D001F40DC9F02D3B69CCDB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD8990507B969791B08FDBCA /* main.swift */; };
+		D353264F02CE93B0069E6D2F /* NativeInputCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */; };
+		F71918A86E1F924952D10474 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A44832D5271CD80CF763AD7 /* main.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		9C94DAE9E4CF6BD72D25CC29 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A8C0873DA47E910D9B11151 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EB0E395C3966E27EE5FA1A12;
+			remoteInfo = QwenInputCore;
+		};
+		EC659B4B8CA742E475AC67E0 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A8C0873DA47E910D9B11151 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EB0E395C3966E27EE5FA1A12;
+			remoteInfo = QwenInputCore;
+		};
+		F23E422125EE22B03248E1E1 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5A8C0873DA47E910D9B11151 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EB0E395C3966E27EE5FA1A12;
+			remoteInfo = QwenInputCore;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		296DB8E3E1198D4C21DE6161 /* QwenInputBridge */ = {isa = PBXFileReference; includeInIndex = 0; path = QwenInputBridge; sourceTree = BUILT_PRODUCTS_DIR; };
+		67B581168B33486F29A4694F /* NativeInputCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInputCore.swift; sourceTree = "<group>"; };
+		7A44832D5271CD80CF763AD7 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		8C841D7EA383D4D382E342DA /* libQwenInputCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libQwenInputCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		9B96A5981D8C078452FF8DBD /* QwenInputCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QwenInputCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A6276EBC31F280A4B03E9AFA /* QwenInput.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QwenInput.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInputCoreTests.swift; sourceTree = "<group>"; };
+		FD8990507B969791B08FDBCA /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5803A601792697D787B98F6B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0D5F6B51DE79A14DB8F4A387 /* libQwenInputCore.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A70056F32D65B4740F8A1E93 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				77EC0D1027FE098DCC6B423E /* libQwenInputCore.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BF27FB8149F55FEECDAB2312 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				25D19EE917B79B6ACF838670 /* libQwenInputCore.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		1AD00006B1E7BA3D4437FB73 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8C841D7EA383D4D382E342DA /* libQwenInputCore.a */,
+				A6276EBC31F280A4B03E9AFA /* QwenInput.app */,
+				296DB8E3E1198D4C21DE6161 /* QwenInputBridge */,
+				9B96A5981D8C078452FF8DBD /* QwenInputCoreTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		233AEA779F12029941356B0D /* QwenInputCoreTests */ = {
+			isa = PBXGroup;
+			children = (
+				CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */,
+			);
+			path = QwenInputCoreTests;
+			sourceTree = "<group>";
+		};
+		31A4DAF81B88503195DF40FC /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				E8BDE45B42A9FC3C7381C629 /* QwenInput */,
+				EA58AB78B142CDF8154FA3DF /* QwenInputBridge */,
+				8B5757D91B6406EBA8984D6B /* QwenInputCore */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		587D1AEA10426ECECD095EBA = {
+			isa = PBXGroup;
+			children = (
+				31A4DAF81B88503195DF40FC /* Sources */,
+				F0ECBA30EC41AC171541184B /* Tests */,
+				1AD00006B1E7BA3D4437FB73 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8B5757D91B6406EBA8984D6B /* QwenInputCore */ = {
+			isa = PBXGroup;
+			children = (
+				67B581168B33486F29A4694F /* NativeInputCore.swift */,
+			);
+			path = QwenInputCore;
+			sourceTree = "<group>";
+		};
+		E8BDE45B42A9FC3C7381C629 /* QwenInput */ = {
+			isa = PBXGroup;
+			children = (
+				7A44832D5271CD80CF763AD7 /* main.swift */,
+			);
+			path = QwenInput;
+			sourceTree = "<group>";
+		};
+		EA58AB78B142CDF8154FA3DF /* QwenInputBridge */ = {
+			isa = PBXGroup;
+			children = (
+				FD8990507B969791B08FDBCA /* main.swift */,
+			);
+			path = QwenInputBridge;
+			sourceTree = "<group>";
+		};
+		F0ECBA30EC41AC171541184B /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				233AEA779F12029941356B0D /* QwenInputCoreTests */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1C0AD0531C22DCB049394438 /* QwenInput */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D62B6156C3370D097C2F6FE7 /* Build configuration list for PBXNativeTarget "QwenInput" */;
+			buildPhases = (
+				20231296AB1453179BB5C8D5 /* Sources */,
+				A70056F32D65B4740F8A1E93 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C460820A66BE3AB3067A213C /* PBXTargetDependency */,
+			);
+			name = QwenInput;
+			packageProductDependencies = (
+			);
+			productName = QwenInput;
+			productReference = A6276EBC31F280A4B03E9AFA /* QwenInput.app */;
+			productType = "com.apple.product-type.application";
+		};
+		96A006D5F512EF7356CD51C6 /* QwenInputCoreTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 64F2F2624BBA4218C1A93EA2 /* Build configuration list for PBXNativeTarget "QwenInputCoreTests" */;
+			buildPhases = (
+				0ED574C7F3EE14A36B98A2DA /* Sources */,
+				5803A601792697D787B98F6B /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				71D73F7238879EEF7E46818B /* PBXTargetDependency */,
+			);
+			name = QwenInputCoreTests;
+			packageProductDependencies = (
+			);
+			productName = QwenInputCoreTests;
+			productReference = 9B96A5981D8C078452FF8DBD /* QwenInputCoreTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		BF79E8A04E390515CC61D962 /* QwenInputBridge */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DCE82AEFB729903880723222 /* Build configuration list for PBXNativeTarget "QwenInputBridge" */;
+			buildPhases = (
+				8730B3A4F4DAED08DE80F872 /* Sources */,
+				BF27FB8149F55FEECDAB2312 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				3931B84807D195DF4B692472 /* PBXTargetDependency */,
+			);
+			name = QwenInputBridge;
+			packageProductDependencies = (
+			);
+			productName = QwenInputBridge;
+			productReference = 296DB8E3E1198D4C21DE6161 /* QwenInputBridge */;
+			productType = "com.apple.product-type.tool";
+		};
+		EB0E395C3966E27EE5FA1A12 /* QwenInputCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = B1044F718BCBD1CCF625232D /* Build configuration list for PBXNativeTarget "QwenInputCore" */;
+			buildPhases = (
+				021527C79718D429E3271E9E /* Sources */,
+				C5E6A3AA658177DEFB219B0E /* Copy Swift Objective-C Interface Header */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = QwenInputCore;
+			packageProductDependencies = (
+			);
+			productName = QwenInputCore;
+			productReference = 8C841D7EA383D4D382E342DA /* libQwenInputCore.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5A8C0873DA47E910D9B11151 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					1C0AD0531C22DCB049394438 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					96A006D5F512EF7356CD51C6 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					BF79E8A04E390515CC61D962 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+					EB0E395C3966E27EE5FA1A12 = {
+						DevelopmentTeam = "";
+						ProvisioningStyle = Manual;
+					};
+				};
+			};
+			buildConfigurationList = B892B0842940E6FC232D2390 /* Build configuration list for PBXProject "QwenInput" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 587D1AEA10426ECECD095EBA;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 1AD00006B1E7BA3D4437FB73 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				1C0AD0531C22DCB049394438 /* QwenInput */,
+				BF79E8A04E390515CC61D962 /* QwenInputBridge */,
+				EB0E395C3966E27EE5FA1A12 /* QwenInputCore */,
+				96A006D5F512EF7356CD51C6 /* QwenInputCoreTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		C5E6A3AA658177DEFB219B0E /* Copy Swift Objective-C Interface Header */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(DERIVED_SOURCES_DIR)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			name = "Copy Swift Objective-C Interface Header";
+			outputPaths = (
+				"$(BUILT_PRODUCTS_DIR)/include/$(PRODUCT_MODULE_NAME)/$(SWIFT_OBJC_INTERFACE_HEADER_NAME)",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "ditto \"${SCRIPT_INPUT_FILE_0}\" \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		021527C79718D429E3271E9E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D3A832527594504C522AE85 /* NativeInputCore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0ED574C7F3EE14A36B98A2DA /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D353264F02CE93B0069E6D2F /* NativeInputCoreTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		20231296AB1453179BB5C8D5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F71918A86E1F924952D10474 /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8730B3A4F4DAED08DE80F872 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A0D001F40DC9F02D3B69CCDB /* main.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		3931B84807D195DF4B692472 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EB0E395C3966E27EE5FA1A12 /* QwenInputCore */;
+			targetProxy = 9C94DAE9E4CF6BD72D25CC29 /* PBXContainerItemProxy */;
+		};
+		71D73F7238879EEF7E46818B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EB0E395C3966E27EE5FA1A12 /* QwenInputCore */;
+			targetProxy = EC659B4B8CA742E475AC67E0 /* PBXContainerItemProxy */;
+		};
+		C460820A66BE3AB3067A213C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = EB0E395C3966E27EE5FA1A12 /* QwenInputCore */;
+			targetProxy = F23E422125EE22B03248E1E1 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		2B9A9E15AD15C260A1B7F3BD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.qwenaudio.agent.inputcore;
+				PRODUCT_MODULE_NAME = QwenInputCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		4B30B77C6891C4158011B568 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.qwenaudio.agent.inputcore-tests";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		51213AB9C6D56C28718D3A5D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		5B9AEE0388B4E5367F558859 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.qwenaudio.agent.inputbridge;
+				PRODUCT_NAME = QwenInputBridge;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		71A9D4748BE56BC49CC87BDF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.qwenaudio.agent.inputbridge;
+				PRODUCT_NAME = QwenInputBridge;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		74E3269035B8873F08A5E597 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				COMBINE_HIDPI_IMAGES = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.qwenaudio.agent.inputcore;
+				PRODUCT_MODULE_NAME = QwenInputCore;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+		8B7CF041268338914A8C995E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Resources/QwenInput-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.qwenaudio.agent.inputmethod;
+				PRODUCT_MODULE_NAME = QwenInput;
+				PRODUCT_NAME = "Qwen Input";
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		C4F198628DD82E4E274C23D3 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Manual;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		DC6AF0A335B5C92A2E620836 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = "Resources/QwenInput-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ai.qwenaudio.agent.inputmethod;
+				PRODUCT_MODULE_NAME = QwenInput;
+				PRODUCT_NAME = "Qwen Input";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		E75113650E4C9004C6377C11 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "-";
+				COMBINE_HIDPI_IMAGES = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-ObjC",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "ai.qwenaudio.agent.inputcore-tests";
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		64F2F2624BBA4218C1A93EA2 /* Build configuration list for PBXNativeTarget "QwenInputCoreTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E75113650E4C9004C6377C11 /* Debug */,
+				4B30B77C6891C4158011B568 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B1044F718BCBD1CCF625232D /* Build configuration list for PBXNativeTarget "QwenInputCore" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2B9A9E15AD15C260A1B7F3BD /* Debug */,
+				74E3269035B8873F08A5E597 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		B892B0842940E6FC232D2390 /* Build configuration list for PBXProject "QwenInput" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				51213AB9C6D56C28718D3A5D /* Debug */,
+				C4F198628DD82E4E274C23D3 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D62B6156C3370D097C2F6FE7 /* Build configuration list for PBXNativeTarget "QwenInput" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DC6AF0A335B5C92A2E620836 /* Debug */,
+				8B7CF041268338914A8C995E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		DCE82AEFB729903880723222 /* Build configuration list for PBXNativeTarget "QwenInputBridge" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5B9AEE0388B4E5367F558859 /* Debug */,
+				71A9D4748BE56BC49CC87BDF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 5A8C0873DA47E910D9B11151 /* Project object */;
+}

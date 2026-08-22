@@ -12,6 +12,9 @@
 		4D3A832527594504C522AE85 /* NativeInputCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67B581168B33486F29A4694F /* NativeInputCore.swift */; };
 		77EC0D1027FE098DCC6B423E /* libQwenInputCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8C841D7EA383D4D382E342DA /* libQwenInputCore.a */; };
 		A0D001F40DC9F02D3B69CCDB /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD8990507B969791B08FDBCA /* main.swift */; };
+		A239BD22E331C6A4B59E0083 /* ProtocolValidator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA68E39311CBBE9C9C18B8CA /* ProtocolValidator.swift */; };
+		A2985C9EFE1F9C230C8C6767 /* IPCProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F787312E23AB5D3B402A713 /* IPCProtocol.swift */; };
+		B057FC9C34E050F1E8CA467D /* ProtocolValidatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD5271BD2BFAEC8B7BC35004 /* ProtocolValidatorTests.swift */; };
 		D353264F02CE93B0069E6D2F /* NativeInputCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */; };
 		F71918A86E1F924952D10474 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A44832D5271CD80CF763AD7 /* main.swift */; };
 /* End PBXBuildFile section */
@@ -44,10 +47,13 @@
 		296DB8E3E1198D4C21DE6161 /* QwenInputBridge */ = {isa = PBXFileReference; includeInIndex = 0; path = QwenInputBridge; sourceTree = BUILT_PRODUCTS_DIR; };
 		67B581168B33486F29A4694F /* NativeInputCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInputCore.swift; sourceTree = "<group>"; };
 		7A44832D5271CD80CF763AD7 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
+		7F787312E23AB5D3B402A713 /* IPCProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IPCProtocol.swift; sourceTree = "<group>"; };
 		8C841D7EA383D4D382E342DA /* libQwenInputCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libQwenInputCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B96A5981D8C078452FF8DBD /* QwenInputCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = QwenInputCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6276EBC31F280A4B03E9AFA /* QwenInput.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = QwenInput.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeInputCoreTests.swift; sourceTree = "<group>"; };
+		EA68E39311CBBE9C9C18B8CA /* ProtocolValidator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolValidator.swift; sourceTree = "<group>"; };
+		FD5271BD2BFAEC8B7BC35004 /* ProtocolValidatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProtocolValidatorTests.swift; sourceTree = "<group>"; };
 		FD8990507B969791B08FDBCA /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -94,6 +100,7 @@
 			isa = PBXGroup;
 			children = (
 				CD79B4DC4EECEBB14D9CEAC1 /* NativeInputCoreTests.swift */,
+				FD5271BD2BFAEC8B7BC35004 /* ProtocolValidatorTests.swift */,
 			);
 			path = QwenInputCoreTests;
 			sourceTree = "<group>";
@@ -120,7 +127,9 @@
 		8B5757D91B6406EBA8984D6B /* QwenInputCore */ = {
 			isa = PBXGroup;
 			children = (
+				7F787312E23AB5D3B402A713 /* IPCProtocol.swift */,
 				67B581168B33486F29A4694F /* NativeInputCore.swift */,
+				EA68E39311CBBE9C9C18B8CA /* ProtocolValidator.swift */,
 			);
 			path = QwenInputCore;
 			sourceTree = "<group>";
@@ -300,7 +309,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A2985C9EFE1F9C230C8C6767 /* IPCProtocol.swift in Sources */,
 				4D3A832527594504C522AE85 /* NativeInputCore.swift in Sources */,
+				A239BD22E331C6A4B59E0083 /* ProtocolValidator.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -309,6 +320,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D353264F02CE93B0069E6D2F /* NativeInputCoreTests.swift in Sources */,
+				B057FC9C34E050F1E8CA467D /* ProtocolValidatorTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

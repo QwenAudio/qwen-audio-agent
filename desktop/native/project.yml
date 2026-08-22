@@ -43,6 +43,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputbridge
         PRODUCT_NAME: QwenInputBridge
         CODE_SIGN_IDENTITY: "-"
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        GENERATE_INFOPLIST_FILE: YES
 
   QwenInput:
     type: application

@@ -1,11 +1,34 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
 const root = resolve(new URL('../..', import.meta.url).pathname)
+
+test('native build stays permission-minimal and part of the Desktop release', () => {
+  const project = readFileSync(join(root, 'desktop/native/project.yml'), 'utf8')
+  const builder = readFileSync(
+    join(root, 'desktop/electron-builder.yml'),
+    'utf8',
+  )
+  assert.match(project, /QwenInputBridge:/)
+  assert.match(project, /QwenInput:/)
+  assert.match(project, /CREATE_INFOPLIST_SECTION_IN_BINARY: YES/)
+  assert.doesNotMatch(
+    project,
+    /com\.apple\.security\.(?:device\.audio-input|automation\.apple-events)/,
+  )
+  assert.doesNotMatch(project, /Accessibility|Input Monitoring|Full Disk Access/)
+  assert.match(builder, /native-input\/QwenInputBridge/)
+  assert.match(builder, /native-input\/Qwen Input\.app/)
+})
 
 function run(command, args, options = {}) {
   return spawnSync(command, args, {

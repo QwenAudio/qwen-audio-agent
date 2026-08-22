@@ -37,6 +37,7 @@ targets:
     dependencies:
       - target: QwenInputCore
       - sdk: Security.framework
+      - sdk: Carbon.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputbridge

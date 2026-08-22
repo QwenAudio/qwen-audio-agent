@@ -81,7 +81,7 @@ restore or uninstall it.
 ### 1. Desktop-owned InputMethodKit plus transient Bridge — selected
 
 Qwen Input performs marked/final text operations. A signed Bridge inside the
-Desktop release coordinates Text Input Sources and authenticated XPC. Desktop
+Desktop release coordinates Text Input Sources and authenticated local IPC. Desktop
 continues to own microphone capture, Gateway connectivity, state, settings,
 updates, and teardown.
 
@@ -129,9 +129,9 @@ Electron main
 QwenInputBridge (embedded Desktop executable)
   - install/status/uninstall plan
   - TIS select/restore
-  - authenticated anonymous XPC listener
+  - authenticated Unix-domain listener in a 0700 runtime directory
     |
-    | authenticated NSXPCConnection
+    | framed local socket; same euid + exact dynamic code requirement
     v
 Qwen Input (Desktop-managed InputMethodKit bundle)
   - active controller and target token
@@ -172,12 +172,16 @@ The Bridge is a universal Swift executable embedded in Desktop. It never
 captures audio, connects to the Gateway, holds provider credentials, or writes
 user text. It validates and atomically installs the version-matched input
 bundle, queries registration/enablement, selects and restores input sources,
-publishes an anonymous XPC endpoint, and reports typed lifecycle events.
+publishes a transient Unix-domain socket, and reports typed lifecycle events.
 
 Electron main communicates with the Bridge over inherited stdin/stdout. The
-Bridge publishes its temporary `NSXPCListenerEndpoint` under a Desktop-owned
-0700 runtime directory in a 0600 file. The endpoint is a locator, not an
-authentication secret.
+Bridge creates `control.sock` under a Desktop-owned 0700 runtime directory and
+sets the socket mode to 0600. The path is a locator, not an authentication
+secret. Phase 0 proved that `NSXPCListenerEndpoint` cannot be archived with
+`NSKeyedArchiver` (`encodeWithCoder:` requires `NSXPCCoder`), so a file-backed
+anonymous-XPC rendezvous is not a valid implementation. Both socket peers use
+`getpeereid`/`LOCAL_PEERPID` plus Security.framework dynamic-code validation;
+PID alone is never accepted as identity.
 
 ### Qwen Input
 
@@ -258,8 +262,9 @@ Memory, extraction, or audit.
 ## IPC security
 
 IME and Bridge mutually require the expected Team ID and exact bundle
-identifiers, the same effective user, and a valid code signature. On macOS 13+
-the connection uses system code-signing requirements. Each message carries
+identifiers, the same effective user, and a valid code signature. Each side
+reads the connected Unix peer's effective user and PID, resolves its live
+`SecCode`, and checks an exact compiled signing requirement. Each message carries
 `protocolVersion`, `sessionID`, `generation`, `targetID`, `operationID`, and a
 monotonic sequence number. Both peers enforce payload-size limits and a replay
 LRU.
@@ -268,8 +273,8 @@ The IME never connects directly to the loopback Gateway. Existing Gateway
 origin classification is not treated as native process authentication.
 
 Unsigned peers, wrong team/bundle/user, unsupported protocol versions,
-replayed or out-of-order messages, oversized payloads, replaced endpoint
-locators, and stale target generations are rejected without text or capture
+replayed or out-of-order messages, oversized payloads, replaced socket paths,
+and stale target generations are rejected without text or capture
 side effects.
 
 ## Secure input and permissions
@@ -317,7 +322,7 @@ with restart/disable-enable guidance until the matching version is active.
 
 Disabling or uninstalling from Desktop stops capture, restores the previous
 input source, disables/unregisters Qwen Input, moves its bundle to Trash, and
-removes runtime endpoint, manifest, and native-input cache. Existing Gateway
+removes the runtime socket, manifest, and native-input cache. Existing Gateway
 configuration and Memory are retained unless the user separately deletes
 them. TCC records remain under System Settings control.
 
@@ -337,7 +342,7 @@ the previous input source when safe:
 - microphone permission is denied or revoked;
 - Qwen Input is disabled or its version mismatches Desktop;
 - Bridge, renderer, Gateway, or provider disconnects;
-- XPC authentication or sequence validation fails;
+- native peer authentication or sequence validation fails;
 - global shortcut registration conflicts;
 - no approved status surface is visible;
 - emergency stop is invoked.
@@ -394,7 +399,7 @@ With the feature off and fake transcript input, prove:
 - physical typing is never swallowed while idle or paused;
 - previous input-source selection is restored;
 - secure standard controls and Secure Event Input fail closed;
-- signed XPC accepts only the intended peers and rejects wrong/unsigned peers;
+- signed local IPC accepts only the intended peers and rejects wrong/unsigned peers;
 - the caret or Desktop status is visible before capture can start;
 - Bridge crash and Desktop exit remove partial state without committed-text
   rollback.

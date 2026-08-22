@@ -6,7 +6,7 @@
 
 **Architecture:** The Desktop app embeds two universal native artifacts: a palette-style `Qwen Input.app` and a transient `QwenInputBridge` executable. A shared Swift core defines the typed protocol, session ledger, secure-input gate, and client-independent text operation engine. Electron main owns the Bridge process through framed stdin/stdout and a default-off feature gate. The Phase 0 harness uses fake transcript operations only; the input method never connects to the Gateway, captures audio, requests Accessibility, or persists user text.
 
-**Tech Stack:** Swift 6, AppKit, InputMethodKit, Carbon/HIToolbox, Foundation/NSXPCConnection, XCTest, XcodeGen/Xcode 26, Node.js ESM, `node:test`, Electron Builder.
+**Tech Stack:** Swift 6, AppKit, InputMethodKit, Carbon/HIToolbox, Unix-domain sockets, Security.framework, XCTest, XcodeGen/Xcode 26, Node.js ESM, `node:test`, Electron Builder.
 
 **Spec:** `docs/superpowers/specs/2026-08-22-desktop-native-input-design.md`
 
@@ -138,23 +138,23 @@
 
 1. Write Swift and Node conformance fixtures for a 4-byte big-endian length plus UTF-8 JSON frame. Reject zero length, more than 64 KiB, truncated payloads, invalid UTF-8/JSON, unknown message types, and trailing bytes.
 2. Define only these Phase 0 message types: `bridge.ready`, `session.arm`, `session.partial`, `session.final`, `session.cancel`, `session.pause`, `session.resume`, `session.state`, `bridge.stop`, and `bridge.error`.
-3. Implement an async Bridge runtime that reads stdin, validates every envelope, writes one framed response per accepted request, and exits on EOF or `bridge.stop`. It must not create sockets, read environment credentials, or write files.
+3. Implement an async Bridge runtime that reads stdin, validates every envelope, writes one framed response per accepted request, and exits on EOF or `bridge.stop`. This Desktop control channel must not create network sockets, read environment credentials, or write user content; the separate IME peer channel is added in Task 8.
 4. Implement the matching Node encoder/decoder with the same fixtures and an incremental stream parser.
 5. Run both test suites and commit the framed protocol.
 
-### Task 8: Authenticate the IME/Bridge XPC boundary
+### Task 8: Authenticate the IME/Bridge local peer boundary
 
-**Files:** Create `desktop/native/Sources/QwenInputCore/PeerRequirement.swift`, `desktop/native/Sources/QwenInputBridge/XPCService.swift`, `desktop/native/Sources/QwenInput/XPCClient.swift`, `desktop/native/Tests/QwenInputCoreTests/PeerRequirementTests.swift`, `desktop/native/Tests/QwenInputCoreTests/XPCIntegrationTests.swift`.
+**Files:** Create `desktop/native/Sources/QwenInputCore/PeerRequirement.swift`, `DynamicPeerCodeValidator.swift`, `SecureRuntimeDirectory.swift`, `AuthenticatedUnixSocket.swift`, the related Swift tests, and `desktop/test/native-input-xpc.test.mjs` (historical filename; verifies the replacement signed local-peer channel).
 
 1. Write failing policy tests that accept only:
    - Bridge bundle `ai.qwenaudio.agent.inputbridge` when called by IME bundle `ai.qwenaudio.agent.inputmethod`;
    - the configured Team ID in release fixtures or an explicit ad-hoc test requirement in Debug;
    - the current effective user;
    - protocol version `1`.
-2. Add rejection cases for wrong bundle, wrong team, wrong euid, unsigned/non-test peers, stale endpoint generation, replay, and oversized messages.
-3. Implement an anonymous `NSXPCListener`, narrow `@objc` protocol methods with `Data` payloads, and `NSXPCConnection.setCodeSigningRequirement` on macOS 13+. Keep manual audit-token/`SecCode` fallback out of scope.
-4. Publish the archived listener endpoint only through a Bridge-owned runtime directory verified as `0700` and endpoint file `0600`; reject symlinks and wrong ownership. The file contains no user text.
-5. Build ad-hoc-signed Debug fixtures and run the integration test with one accepted and one deliberately wrong-bundle peer.
+2. Add rejection cases for wrong bundle, wrong team, wrong euid, unsigned/non-test peers, stale generations, replay, and oversized messages.
+3. Record the Phase 0 finding that `NSXPCListenerEndpoint` refuses ordinary archival and therefore cannot be used as a file-backed rendezvous. Use an `AF_UNIX` stream socket instead; authenticate both connected peers with `getpeereid`, `LOCAL_PEERPID`, `SecCodeCopyGuestWithAttributes`, and `SecCodeCheckValidity` against exact requirements.
+4. Create the socket only under a Bridge-owned runtime directory verified as `0700`, set the socket to `0600`, reject symlinks/wrong ownership, and remove it on stop. The directory contains no user text.
+5. Build ad-hoc-signed Debug fixtures and run a real two-process integration test with one accepted exact-identifier peer and one deliberately re-signed wrong-bundle peer.
 6. Commit only after both unit and process-level integration tests pass.
 
 ### Task 9: Implement testable input-source selection and restoration
@@ -219,8 +219,7 @@
    ```
 
 2. Run an isolated Bridge process test from the built binary: ready handshake, fake partial/final, cancel, replay rejection, secure-state rejection, malformed frame rejection, EOF cleanup, and zero residual child processes.
-3. Snapshot the repository and isolated runtime directory before/after; assert no audio, transcript, draft, endpoint, credential, LaunchAgent, or cache files remain.
+3. Snapshot the repository and isolated runtime directory before/after; assert no audio, transcript, draft, socket, credential, LaunchAgent, or cache files remain.
 4. Write the manual matrix for TextEdit/Notes, Safari textarea/contenteditable/password, Terminal Secure Keyboard Entry, VS Code/Monaco, Mail/Messages, focus switching, physical typing, caret visibility, Bridge crash, Desktop exit, source restore, install/disable/uninstall, and arm64/x86_64. Clearly mark every row `not run` until separately authorized.
 5. Stop before copying to `~/Library/Input Methods`, registering/selecting a real input source, opening System Settings, launching target apps, or requesting any TCC permission. Ask for explicit approval for that reversible system-state test.
 6. Record the exact upstream/base/head SHAs and automated results, then request an independent cross-model review of the Phase 0 code before manual installation.
-

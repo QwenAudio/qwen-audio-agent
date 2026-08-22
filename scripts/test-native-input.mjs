@@ -12,13 +12,18 @@ function run(command, args) {
   const result = spawnSync(command, args, {
     cwd: root,
     encoding: 'utf8',
-    stdio: 'inherit',
+    stdio: 'pipe',
   })
   if (result.error) {
     process.stderr.write(`${command}: ${result.error.message}\n`)
     process.exit(2)
   }
-  if (result.status !== 0) process.exit(result.status ?? 1)
+  const output = `${result.stdout || ''}${result.stderr || ''}`
+  if (result.status !== 0 || output.includes('** TEST FAILED **')) {
+    process.stderr.write(output)
+    process.exit(result.status || 1)
+  }
+  if (result.stderr) process.stderr.write(result.stderr)
 }
 
 run('xcodegen', [
@@ -38,4 +43,3 @@ run('xcodebuild', [
   '-quiet',
   'test',
 ])
-

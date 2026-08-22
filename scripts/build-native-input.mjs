@@ -58,17 +58,17 @@ function run(command, args, options = {}) {
 }
 
 function generateProject() {
+  if (existsSync(project)) return
   const probe = spawnSync('xcodegen', ['--version'], { encoding: 'utf8' })
-  if (probe.status === 0) {
-    run('xcodegen', [
-      'generate',
-      '--spec', resolve(nativeRoot, 'project.yml'),
-      '--project', nativeRoot,
-      '--quiet',
-    ])
-  } else if (!existsSync(project)) {
+  if (probe.status !== 0) {
     fail('xcodegen is unavailable and the generated Xcode project is missing')
   }
+  run('xcodegen', [
+    'generate',
+    '--spec', resolve(nativeRoot, 'project.yml'),
+    '--project', nativeRoot,
+    '--quiet',
+  ])
 }
 
 function buildScheme(scheme, options, derivedData, architectures) {
@@ -121,7 +121,12 @@ for (const [sourceName, destinationName] of artifacts) {
   cpSync(source, destination, { recursive: true })
 }
 
-run('codesign', ['--force', '--sign', '-', resolve(options.output, 'QwenInputBridge')])
+run('codesign', [
+  '--force',
+  '--sign', '-',
+  '--identifier', 'ai.qwenaudio.agent.inputbridge',
+  resolve(options.output, 'QwenInputBridge'),
+])
 run('codesign', [
   '--force', '--deep', '--sign', '-', resolve(options.output, 'Qwen Input.app'),
 ])

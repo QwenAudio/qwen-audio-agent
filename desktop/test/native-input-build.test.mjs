@@ -50,6 +50,27 @@ test('builds an inert current-architecture Bridge and InputMethodKit bundle', ()
       ? '\\barm64\\b'
       : '\\bx86_64\\b'))
 
+    const bridgeRequirement = run('codesign', [
+      '--verify',
+      '-R=identifier "ai.qwenaudio.agent.inputbridge"',
+      bridge,
+    ])
+    assert.equal(
+      bridgeRequirement.status,
+      0,
+      bridgeRequirement.stderr || bridgeRequirement.stdout,
+    )
+    const inputRequirement = run('codesign', [
+      '--verify',
+      '-R=identifier "ai.qwenaudio.agent.inputmethod"',
+      inputMethod,
+    ])
+    assert.equal(
+      inputRequirement.status,
+      0,
+      inputRequirement.stderr || inputRequirement.stdout,
+    )
+
     const bridgeStrings = run('strings', [bridge])
     assert.equal(bridgeStrings.status, 0, bridgeStrings.stderr)
     assert.doesNotMatch(bridgeStrings.stdout, /QWEN_AUDIO_(?:API_KEY|IDENTITY_SECRET)/)

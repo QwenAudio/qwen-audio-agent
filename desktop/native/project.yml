@@ -26,6 +26,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputcore
         PRODUCT_MODULE_NAME: QwenInputCore
+    dependencies:
+      - sdk: Security.framework
 
   QwenInputBridge:
     type: tool
@@ -34,6 +36,7 @@ targets:
       - path: Sources/QwenInputBridge
     dependencies:
       - target: QwenInputCore
+      - sdk: Security.framework
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputbridge
@@ -47,6 +50,7 @@ targets:
       - path: Sources/QwenInput
     dependencies:
       - target: QwenInputCore
+      - sdk: Security.framework
     info:
       path: Resources/QwenInput-Info.plist
       properties:

@@ -61,6 +61,12 @@ public final class NativeOperationBroker: @unchecked Sendable {
         return target
     }
 
+    public func hasActiveSession() -> Bool {
+        condition.lock()
+        defer { condition.unlock() }
+        return armed
+    }
+
     public func waitForTarget(timeout: TimeInterval) -> NativeOperationTarget? {
         condition.lock()
         defer { condition.unlock() }

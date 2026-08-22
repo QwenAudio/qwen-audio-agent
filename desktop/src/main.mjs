@@ -108,7 +108,10 @@ import {
   nativeInputBridgePath,
 } from './native-input-host.mjs'
 import { NativeInputFeature } from './native-input-feature.mjs'
-import { NativeInputLifecycle } from './native-input-lifecycle.mjs'
+import {
+  NativeInputLifecycle,
+  startNativeInputLifecycleHost,
+} from './native-input-lifecycle.mjs'
 
 // macOS / Linux 图形界面应用的 PATH 只包含系统目录。在启动最早阶段
 // 将其扩充为用户登录 shell 的 PATH，让 Gateway 子进程与后台可用性
@@ -839,10 +842,7 @@ ipcMain.handle('qwen-audio-agent:native-input-lifecycle', async (event, value) =
     })
     if (response !== 0) return { cancelled: true }
   }
-  const startedTemporarily = nativeInputHost.state === 'idle'
-  if (startedTemporarily || nativeInputHost.state === 'starting') {
-    await nativeInputHost.start()
-  }
+  const startedTemporarily = await startNativeInputLifecycleHost(nativeInputHost)
   try {
     const status = await nativeInputLifecycle[action]()
     nativeInputFeature.applyLifecycleStatus(status)

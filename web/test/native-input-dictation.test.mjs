@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { NativeInputDictationClient } from '../src/native-input-dictation.js'
+import * as nativeDictation from '../src/native-input-dictation.js'
+
+const { NativeInputDictationClient } = nativeDictation
 
 function harness(overrides = {}) {
   const gateway = []
@@ -161,4 +163,28 @@ test('input.suspend and terminal Gateway states fail closed before late operatio
     'dictation.start', 'dictation.cancel',
   ])
   assert.equal(client.view().state, 'error')
+})
+
+test('ordered native event consumption handles every unseen event exactly once', () => {
+  assert.equal(typeof nativeDictation.consumeNativeInputEvents, 'function')
+  const handled = []
+  const events = [
+    { id: 1, event: { type: 'dictation.partial' } },
+    { id: 2, event: { type: 'dictation.final' } },
+    { id: 3, event: { type: 'dictation.state', state: 'cancelled' } },
+  ]
+  let cursor = nativeDictation.consumeNativeInputEvents(
+    events,
+    0,
+    event => handled.push(event.type),
+  )
+  cursor = nativeDictation.consumeNativeInputEvents(
+    events,
+    cursor,
+    event => handled.push(event.type),
+  )
+  assert.equal(cursor, 3)
+  assert.deepEqual(handled, [
+    'dictation.partial', 'dictation.final', 'dictation.state',
+  ])
 })

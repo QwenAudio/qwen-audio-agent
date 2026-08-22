@@ -234,9 +234,7 @@ export class NativeInputHost extends EventEmitter {
     this.onEmergencyStop(reason)
     this.rejectAllRequests(new Error(`Native input stopped: ${reason}`))
     if (child) {
-      this.detach(child)
-      child.kill('SIGTERM')
-      if (this.child === child) this.child = null
+      this.requestOwnedStop(child, reason)
     }
     return true
   }
@@ -316,9 +314,7 @@ export class NativeInputHost extends EventEmitter {
     this.onEmergencyStop(reason)
     this.rejectAllRequests(error)
     if (child && terminate) {
-      this.detach(child)
-      child.kill('SIGTERM')
-      if (this.child === child) this.child = null
+      this.requestOwnedStop(child, reason)
     }
     this.emit('failed', { reason, error })
   }
@@ -354,6 +350,21 @@ export class NativeInputHost extends EventEmitter {
     for (const requestId of [...this.pendingRequests.keys()]) {
       this.rejectRequest(requestId, error)
     }
+  }
+
+  requestOwnedStop(child, reason) {
+    try {
+      if (child.stdin?.writable) {
+        child.stdin.write(encodeNativeInputFrame({
+          type: 'bridge.stop',
+          reason,
+        }))
+      }
+    } catch {
+      // The bounded signal below handles a broken control pipe.
+    }
+    const timer = setTimeout(() => child.kill('SIGTERM'), this.stopTimeoutMs)
+    timer.unref?.()
   }
 }
 

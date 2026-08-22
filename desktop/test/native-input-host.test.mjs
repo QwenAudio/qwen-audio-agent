@@ -86,13 +86,20 @@ test('starts one owned child with a fixed executable and scrubbed environment', 
 })
 test('malformed bridge output fails closed and rejects later operations', async () => {
   const { child, emergencyStops, host } = harness()
+  const frames = []
+  const decoder = new NativeInputFrameDecoder()
+  child.stdin.on('data', chunk => frames.push(...decoder.push(chunk)))
   const pending = host.start()
   child.stdout.write(Buffer.from([0, 0, 0, 0]))
 
   await assert.rejects(pending, /zero|frame|payload/i)
   assert.equal(host.state, 'error')
   assert.deepEqual(emergencyStops, ['malformed_output'])
-  assert.equal(child.killCalls.length, 1)
+  assert.deepEqual(frames, [{
+    type: 'bridge.stop',
+    reason: 'malformed_output',
+  }])
+  assert.equal(child.killCalls.length, 0)
   assert.throws(
     () => host.send({ type: 'session.partial', text: 'secret' }),
     /not ready/i,
@@ -112,6 +119,38 @@ test('unexpected child exit and startup timeout invoke emergency stop', async ()
   await assert.rejects(timedOut.host.start(), /timed out/i)
   assert.equal(timedOut.host.state, 'error')
   assert.deepEqual(timedOut.emergencyStops, ['startup_timeout'])
+})
+
+test('error reset waits for the owned child before allowing a replacement', async () => {
+  const first = fakeChild()
+  const second = fakeChild()
+  const children = [first, second]
+  let spawnIndex = 0
+  const { host, spawns } = harness({
+    child: first,
+    spawnImpl: (path, args, options) => {
+      spawns.push({ path, args, options })
+      return children[spawnIndex++]
+    },
+    stopTimeoutMs: 100,
+  })
+  const starting = host.start()
+  reportReady(first)
+  await starting
+  first.stdout.write(Buffer.from([0, 0, 0, 0]))
+  assert.equal(host.state, 'error')
+
+  const resetting = host.stop('lifecycle_reset')
+  assert.equal(host.state, 'stopping')
+  assert.equal(spawnIndex, 1)
+  first.emit('exit', 0, null)
+  await resetting
+
+  const restarted = host.start()
+  assert.equal(spawnIndex, 2)
+  reportReady(second)
+  await restarted
+  assert.equal(host.state, 'ready')
 })
 
 test('graceful stop sends one typed stop frame then bounds the owned child', async () => {

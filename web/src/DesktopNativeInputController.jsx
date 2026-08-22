@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { NativeInputDictationClient } from './native-input-dictation.js'
+import {
+  consumeNativeInputEvents,
+  NativeInputDictationClient,
+} from './native-input-dictation.js'
 
 export default function DesktopNativeInputController({
   capability,
@@ -12,6 +15,7 @@ export default function DesktopNativeInputController({
   const [view, setView] = useState({ state: 'disabled', error: '' })
   const [pendingStart, setPendingStart] = useState(false)
   const gates = useRef({ capability, voice })
+  const handledEvent = useRef(0)
   gates.current = { capability, voice }
   const api = window.qwenAudioAgentDesktop
 
@@ -80,8 +84,11 @@ export default function DesktopNativeInputController({
   }, [capability, client, pendingStart, voice])
 
   useEffect(() => {
-    const item = events.at(-1)
-    if (item) client.handle(item.event)
+    handledEvent.current = consumeNativeInputEvents(
+      events,
+      handledEvent.current,
+      event => client.handle(event),
+    )
   }, [client, events])
 
   useEffect(() => () => {

@@ -93,6 +93,21 @@ final class PeerRequirementTests: XCTestCase {
         ))
     }
 
+    func testArtifactValidatorEnforcesTheInjectedSigningRequirement() throws {
+        let bundle = Bundle(for: Self.self)
+        let matching = try PeerCodeSigningRequirement.debugAdHoc(
+            bundleID: bundle.bundleIdentifier!
+        )
+        let wrong = try PeerCodeSigningRequirement.debugAdHoc(
+            bundleID: "ai.qwenaudio.agent.inputmethod"
+        )
+
+        XCTAssertTrue(CodeSignatureValidator(requirement: matching)
+            .isValid(at: bundle.bundleURL))
+        XCTAssertFalse(CodeSignatureValidator(requirement: wrong)
+            .isValid(at: bundle.bundleURL))
+    }
+
     private func copy(
         _ identity: PeerIdentity,
         bundleID: String? = nil,

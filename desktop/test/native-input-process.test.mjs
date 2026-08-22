@@ -193,6 +193,39 @@ test('signed IME peer completes a correlated Desktop to Bridge operation', {
   assert.equal(readdirSync(workspace).includes('operation-runtime'), false)
 })
 
+test('real Bridge intercepts SIGTERM for owned recovery before exiting', {
+  skip: !isMacOS,
+  timeout: 15_000,
+}, async () => {
+  const runtime = join(workspace, 'signal-runtime')
+  const child = spawn(bridgePath, ['--operation-probe-listen', runtime], {
+    stdio: ['pipe', 'pipe', 'pipe'],
+  })
+  const decoder = new NativeInputFrameDecoder()
+  assert.deepEqual(await nextMessage(child.stdout, decoder), {
+    state: 'ready',
+    type: 'bridge.ready',
+  })
+  const ime = spawn(inputExecutable, [
+    '--operation-probe', join(runtime, 'control.sock'),
+  ], { stdio: ['ignore', 'pipe', 'pipe'] })
+  const imeExited = once(ime, 'exit')
+  child.stdin.write(encodeNativeInputFrame({
+    type: 'session.arm',
+    operationId: 'signal-arm-1',
+    statusVisible: true,
+  }))
+  assert.equal((await nextMessage(child.stdout, decoder)).accepted, true)
+  const exited = once(child, 'exit')
+  child.kill('SIGTERM')
+  const [code, signal] = await exited
+  assert.equal(code, 0)
+  assert.equal(signal, null)
+  assert.equal(readdirSync(workspace).includes('signal-runtime'), false)
+  ime.kill('SIGTERM')
+  await imeExited
+})
+
 async function sendAndExpect(host, request, state) {
   const response = once(host, 'message')
   host.send(request)

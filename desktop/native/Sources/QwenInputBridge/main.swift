@@ -1,5 +1,56 @@
+import Darwin
 import Foundation
 import QwenInputCore
+
+private final class BridgeShutdownCoordinator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stopped = false
+    private var runtime: BridgeRuntime?
+    private var peerServer: AuthenticatedUnixSocketServer?
+    private var productionPeerServer: BridgePeerServer?
+
+    func attach(
+        runtime: BridgeRuntime,
+        peerServer: AuthenticatedUnixSocketServer?,
+        productionPeerServer: BridgePeerServer?
+    ) {
+        lock.lock()
+        self.runtime = runtime
+        self.peerServer = peerServer
+        self.productionPeerServer = productionPeerServer
+        lock.unlock()
+    }
+
+    func stop(reason: String) {
+        lock.lock()
+        guard !stopped else { lock.unlock(); return }
+        stopped = true
+        let runtime = runtime
+        let peerServer = peerServer
+        let productionPeerServer = productionPeerServer
+        lock.unlock()
+        runtime?.emergencyStop(reason: reason)
+        peerServer?.stop()
+        productionPeerServer?.stop()
+    }
+}
+
+private func signalSource(
+    _ signalNumber: Int32,
+    shutdown: BridgeShutdownCoordinator
+) -> DispatchSourceSignal {
+    signal(signalNumber, SIG_IGN)
+    let source = DispatchSource.makeSignalSource(
+        signal: signalNumber,
+        queue: .global(qos: .userInitiated)
+    )
+    source.setEventHandler {
+        shutdown.stop(reason: "signal_\(signalNumber)")
+        exit(EXIT_SUCCESS)
+    }
+    source.resume()
+    return source
+}
 
 var peerServer: AuthenticatedUnixSocketServer?
 var productionPeerServer: BridgePeerServer?
@@ -7,6 +58,7 @@ let broker = NativeOperationBroker()
 var probeMode = false
 var operationProbeMode = false
 var operationProbeDirectory: SecureRuntimeDirectory?
+private let shutdown = BridgeShutdownCoordinator()
 #if DEBUG
 if CommandLine.arguments.count == 3,
    CommandLine.arguments[1] == "--peer-probe-listen" {
@@ -62,13 +114,20 @@ do {
     sourceAPI = SystemInputSourceAPI()
     #endif
     let runtime = BridgeRuntime(broker: broker, inputSourceAPI: sourceAPI)
+    shutdown.attach(
+        runtime: runtime,
+        peerServer: peerServer,
+        productionPeerServer: productionPeerServer
+    )
+    let terminationSignals = [
+        signalSource(SIGTERM, shutdown: shutdown),
+        signalSource(SIGINT, shutdown: shutdown),
+    ]
     try runtime.run()
-    runtime.emergencyStop(reason: "bridge_exit")
-    peerServer?.stop()
-    productionPeerServer?.stop()
+    withExtendedLifetime(terminationSignals) {}
+    shutdown.stop(reason: "bridge_exit")
 } catch {
-    peerServer?.stop()
-    productionPeerServer?.stop()
+    shutdown.stop(reason: "bridge_error")
     exit(EXIT_FAILURE)
 }
 

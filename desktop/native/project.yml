@@ -97,6 +97,25 @@ targets:
         # production library, Bridge and input method remain macOS 13.
         MACOSX_DEPLOYMENT_TARGET: "14.0"
 
+  QwenInputBridgeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/QwenInputBridgeTests
+      - path: Sources/QwenInputBridge/BridgeRuntime.swift
+      - path: Sources/QwenInputBridge/SystemInputMethodLifecycle.swift
+      - path: Sources/QwenInputBridge/SystemInputSourceAPI.swift
+    dependencies:
+      - target: QwenInputCore
+      - sdk: Security.framework
+      - sdk: Carbon.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputbridge-tests
+        CODE_SIGN_IDENTITY: "-"
+        GENERATE_INFOPLIST_FILE: YES
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+
 schemes:
   QwenInputBridge:
     build:
@@ -113,3 +132,10 @@ schemes:
     test:
       targets:
         - QwenInputCoreTests
+  QwenInputBridgeTests:
+    build:
+      targets:
+        QwenInputBridgeTests: all
+    test:
+      targets:
+        - QwenInputBridgeTests

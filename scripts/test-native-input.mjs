@@ -43,3 +43,14 @@ run('xcodebuild', [
   '-quiet',
   'test',
 ])
+run('xcodebuild', [
+  '-project', resolve(nativeRoot, 'QwenInput.xcodeproj'),
+  '-scheme', 'QwenInputBridgeTests',
+  '-configuration', 'Debug',
+  '-destination', `platform=macOS,arch=${arch() === 'arm64' ? 'arm64' : 'x86_64'}`,
+  'CODE_SIGN_STYLE=Manual',
+  'CODE_SIGN_IDENTITY=-',
+  'DEVELOPMENT_TEAM=',
+  '-quiet',
+  'test',
+])

@@ -157,6 +157,16 @@ export class NativeInputDictationClient {
   }
 }
 
+export function consumeNativeInputEvents(events, afterId, handle) {
+  let cursor = Number.isInteger(afterId) ? afterId : 0
+  for (const item of events || []) {
+    if (!Number.isInteger(item?.id) || item.id <= cursor) continue
+    cursor = item.id
+    handle(item.event)
+  }
+  return cursor
+}
+
 function nativeOperation(event) {
   const type = event.type === 'dictation.operation'
     ? 'session.operation'

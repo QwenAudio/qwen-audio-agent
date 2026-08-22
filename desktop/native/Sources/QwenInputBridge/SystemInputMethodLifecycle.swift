@@ -5,6 +5,11 @@ import Security
 
 final class SystemInputMethodFileSystem: InputMethodLifecycleFileSystem {
     private var backupURLs: [String: URL] = [:]
+    private let signatureValidator: CodeSignatureValidator
+
+    init(requirement: PeerCodeSigningRequirement) {
+        signatureValidator = CodeSignatureValidator(requirement: requirement)
+    }
 
     func inspect(at url: URL) -> InputMethodArtifactInspection? {
         var information = stat()
@@ -20,7 +25,7 @@ final class SystemInputMethodFileSystem: InputMethodLifecycleFileSystem {
             ownerUserID: information.st_uid,
             bundleID: bundleID,
             version: version,
-            signatureValid: validSignature(at: url)
+            signatureValid: signatureValidator.isValid(at: url)
         )
     }
 
@@ -89,25 +94,11 @@ final class SystemInputMethodFileSystem: InputMethodLifecycleFileSystem {
         }
     }
 
-    private func validSignature(at url: URL) -> Bool {
-        var code: SecStaticCode?
-        guard SecStaticCodeCreateWithPath(
-            url as CFURL,
-            SecCSFlags(),
-            &code
-        ) == errSecSuccess, let code else { return false }
-        return SecStaticCodeCheckValidity(
-            code,
-            SecCSFlags(rawValue: (
-                kSecCSCheckAllArchitectures | kSecCSStrictValidate
-            )),
-            nil
-        ) == errSecSuccess
-    }
 }
 
 enum SystemInputMethodLifecycleFactory {
     static func make() throws -> InputMethodLifecycle {
+        let inputMethodBundleID = "ai.qwenaudio.agent.inputmethod"
         let executable = URL(fileURLWithPath: CommandLine.arguments[0])
             .standardizedFileURL
         let embedded = executable.deletingLastPathComponent()
@@ -123,10 +114,14 @@ enum SystemInputMethodLifecycleFactory {
         return InputMethodLifecycle(
             embeddedBundleURL: embedded,
             installedBundleURL: installed,
-            expectedBundleID: "ai.qwenaudio.agent.inputmethod",
+            expectedBundleID: inputMethodBundleID,
             expectedVersion: version,
             currentUserID: geteuid(),
-            fileSystem: SystemInputMethodFileSystem(),
+            fileSystem: SystemInputMethodFileSystem(
+                requirement: try NativeRuntimePeer.requirement(
+                    for: inputMethodBundleID
+                )
+            ),
             registration: SystemInputSourceAPI()
         )
     }

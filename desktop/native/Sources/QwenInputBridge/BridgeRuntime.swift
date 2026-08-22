@@ -30,6 +30,7 @@ final class BridgeRuntime {
     }
 
     func run() throws {
+        defer { emergencyStop(reason: "bridge_exit") }
         try write(NativeInputMessage(type: .bridgeReady, state: .ready))
         var decoder = FrameStreamDecoder()
 
@@ -196,19 +197,31 @@ final class BridgeRuntime {
             throw InputMethodLifecycleError.embeddedBundleMissing
         }
         let action: String
+        switch request.type {
+        case .lifecycleStatus: action = "status"
+        case .lifecycleInstall: action = "install"
+        case .lifecycleRepair: action = "repair"
+        case .lifecycleUninstall: action = "uninstall"
+        default: throw BridgeRuntimeError.unsupportedDirection(request.type)
+        }
+        if request.type != .lifecycleStatus, broker.hasActiveSession() {
+            return NativeInputMessage(
+                type: .lifecycleResult,
+                reason: "session_active",
+                requestID: requestID,
+                action: action,
+                accepted: false
+            )
+        }
         let status: InputMethodLifecycleStatus
         switch request.type {
         case .lifecycleStatus:
-            action = "status"
             status = try lifecycle.status()
         case .lifecycleInstall:
-            action = "install"
             status = try lifecycle.install()
         case .lifecycleRepair:
-            action = "repair"
             status = try lifecycle.repair()
         case .lifecycleUninstall:
-            action = "uninstall"
             status = try lifecycle.uninstall()
         default:
             throw BridgeRuntimeError.unsupportedDirection(request.type)
@@ -220,7 +233,8 @@ final class BridgeRuntime {
             installed: status.installed,
             registered: status.registered,
             enabled: status.enabled,
-            version: status.version
+            version: status.version,
+            accepted: true
         )
     }
 

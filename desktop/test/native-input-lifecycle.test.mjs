@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
 
-import { NativeInputLifecycle } from '../src/native-input-lifecycle.mjs'
+import * as lifecycleModule from '../src/native-input-lifecycle.mjs'
+
+const { NativeInputLifecycle } = lifecycleModule
 
 class FakeHost extends EventEmitter {
   constructor() {
@@ -62,4 +64,16 @@ test('lifecycle fails closed on malformed or mismatched Bridge results', async (
   const lifecycle = new NativeInputLifecycle({ host })
   await assert.rejects(lifecycle.status(), /correlation/i)
   assert.equal(lifecycle.snapshot().state, 'error')
+})
+
+test('lifecycle startup resets an errored host before restarting it', async () => {
+  assert.equal(typeof lifecycleModule.startNativeInputLifecycleHost, 'function')
+  const calls = []
+  const host = {
+    state: 'error',
+    async stop(reason) { calls.push(`stop:${reason}`); this.state = 'idle' },
+    async start() { calls.push('start'); this.state = 'ready' },
+  }
+  assert.equal(await lifecycleModule.startNativeInputLifecycleHost(host), false)
+  assert.deepEqual(calls, ['stop:lifecycle_reset', 'start'])
 })

@@ -35,6 +35,9 @@ export class NativeInputLifecycle {
       ) {
         throw new Error('Native input lifecycle correlation mismatch')
       }
+      if (result.accepted === false) {
+        throw new Error(result.reason || 'Native input lifecycle action rejected')
+      }
       this.current = normalizeLifecycleResult(result)
       return this.snapshot()
     } catch (error) {
@@ -42,6 +45,13 @@ export class NativeInputLifecycle {
       throw error
     }
   }
+}
+
+export async function startNativeInputLifecycleHost(host) {
+  const startedTemporarily = host.state === 'idle'
+  if (host.state === 'error') await host.stop('lifecycle_reset')
+  if (host.state === 'idle' || host.state === 'starting') await host.start()
+  return startedTemporarily
 }
 
 export function normalizeLifecycleResult(result = {}) {

@@ -71,5 +71,8 @@ test('returning from input source settings refreshes lifecycle state', {
   skip: process.platform !== 'darwin',
 }, () => {
   assert.ok(probe.callsAfterFocus > probe.callsBeforeFocus)
-  assert.equal(probe.refreshedStatus, 'Installed and enabled')
+  assert.equal(
+    probe.refreshedStatus,
+    'Installed and enabled. Select Qwen Input from the input menu.',
+  )
 })

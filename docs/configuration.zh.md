@@ -763,7 +763,8 @@ Web 使用 Ctrl/Command+Shift+D，TUI 使用 Alt/Option+D，均为应用内快�
 ## Desktop 原生输入（macOS 13+）
 
 Desktop 所属的 InputMethodKit 输入独立默认关闭，同时要求 composer 听写已配置。
-只有版本匹配的 Qwen Input 已安装、注册，并由用户在系统设置中明确启用后才可用。
+只有版本匹配的 Qwen Input 已安装、注册，并由用户在系统设置中明确启用、再从
+macOS 输入菜单明确选择后才可用。
 
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
@@ -775,3 +776,6 @@ Desktop 所属的 InputMethodKit 输入独立默认关闭，同时要求 compose
 输入法。基础路径复用现有 Desktop 麦克风权限，不申请 Accessibility、Input
 Monitoring、Full Disk Access 或管理员权限，也不新增 provider 凭据。改变输入源或
 TCC 状态前请先阅读 `docs/desktop/native-input-testing.zh.md`。
+
+使用全局快捷键期间应保持选择 Qwen Input；普通物理键盘输入仍会透传。从其他输入源
+启动会可见失败，不会替用户切换系统输入源。

@@ -86,6 +86,40 @@ final class SessionLedgerTests: XCTestCase {
         XCTAssertEqual(ledger.ownedMarkedRange, range(2, 2))
     }
 
+    func testPartialAdoptsTheMarkedRangeWhenTheClientHidesItsSelection() throws {
+        var ledger = ledger()
+
+        XCTAssertEqual(
+            try ledger.partial(
+                text: "opaque",
+                selectedRange: range(NSNotFound, 0),
+                clientMarkedRange: range(NSNotFound, 0),
+                generation: 3,
+                targetID: targetID
+            ).get(),
+            .setMarked(
+                text: "opaque",
+                selection: range(6, 0),
+                replacement: range(NSNotFound, 0)
+            )
+        )
+        XCTAssertEqual(ledger.ownedMarkedRange, range(NSNotFound, 6))
+
+        try ledger.confirmMarkedRange(range(12, 6)).get()
+        XCTAssertEqual(ledger.ownedMarkedRange, range(12, 6))
+        XCTAssertEqual(
+            try ledger.final(
+                text: "final",
+                selectedRange: range(NSNotFound, 0),
+                clientMarkedRange: range(12, 6),
+                generation: 3,
+                targetID: targetID
+            ).get(),
+            .insert(text: "final", replacement: range(12, 6))
+        )
+        XCTAssertEqual(ledger.latestOwnedFinalRange, range(12, 5))
+    }
+
     func testReplaceAndDeleteStayInsideOneLatestOwnedFinalMatch() throws {
         var ledger = ledger()
         _ = try ledger.final(

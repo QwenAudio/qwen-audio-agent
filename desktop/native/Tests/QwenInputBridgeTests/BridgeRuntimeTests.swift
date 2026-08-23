@@ -3,7 +3,7 @@ import XCTest
 import QwenInputCore
 
 final class BridgeRuntimeTests: XCTestCase {
-    func testRunRestoresPreviousInputSourceWhenFrameHandlingThrows() throws {
+    func testRunDoesNotChangeTheUserSelectedSourceWhenFrameHandlingThrows() throws {
         let input = Pipe()
         let output = Pipe()
         let source = FakeInputSourceAPI()
@@ -34,11 +34,8 @@ final class BridgeRuntimeTests: XCTestCase {
         }
 
         XCTAssertThrowsError(try runtime.run())
-        XCTAssertEqual(source.current, "probe.previous")
-        XCTAssertEqual(source.selections, [
-            "ai.qwenaudio.agent.inputmethod",
-            "probe.previous",
-        ])
+        XCTAssertEqual(source.current, "ai.qwenaudio.agent.inputmethod")
+        XCTAssertTrue(source.selections.isEmpty)
     }
 
     func testRepairIsRejectedWithoutMutationWhileSessionIsArmed() throws {
@@ -85,12 +82,12 @@ final class BridgeRuntimeTests: XCTestCase {
 
         try runtime.run()
         XCTAssertTrue(fileSystem.installCalls.isEmpty)
-        XCTAssertEqual(source.current, "probe.previous")
+        XCTAssertEqual(source.current, "ai.qwenaudio.agent.inputmethod")
     }
 }
 
 private final class FakeInputSourceAPI: InputSourceAPI, @unchecked Sendable {
-    var current = "probe.previous"
+    var current = "ai.qwenaudio.agent.inputmethod"
     var selections: [String] = []
 
     func currentKeyboardSourceID() -> String? { current }

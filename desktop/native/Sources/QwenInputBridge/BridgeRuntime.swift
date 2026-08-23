@@ -120,6 +120,12 @@ final class BridgeRuntime {
             switch source {
             case .selected, .alreadySelected:
                 break
+            case .selectionRequired:
+                return operationResult(
+                    request,
+                    accepted: false,
+                    reason: "input_source_selection_required"
+                )
             default:
                 return operationResult(
                     request,

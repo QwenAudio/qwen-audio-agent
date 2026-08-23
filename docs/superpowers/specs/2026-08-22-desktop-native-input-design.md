@@ -171,8 +171,10 @@ arbitrary native command or file path crosses preload.
 The Bridge is a universal Swift executable embedded in Desktop. It never
 captures audio, connects to the Gateway, holds provider credentials, or writes
 user text. It validates and atomically installs the version-matched input
-bundle, queries registration/enablement, selects and restores input sources,
-publishes a transient Unix-domain socket, and reports typed lifecycle events.
+bundle, queries registration/enablement, validates that Qwen Input is already
+user-selected for a session, publishes a transient Unix-domain socket, and
+reports typed lifecycle events. Production does not silently select or restore
+an input source.
 
 Electron main communicates with the Bridge over inherited stdin/stdout. The
 Bridge creates `control.sock` under a Desktop-owned 0700 runtime directory and
@@ -215,7 +217,8 @@ The global shortcut performs these steps in order:
 
 1. Verify the feature is enabled, Desktop owns microphone input, no external
    input suspension is active, and Secure Event Input is off.
-2. Record the previous input source and request Qwen Input selection.
+2. Require Qwen Input to be selected explicitly in the macOS input menu. If a
+   different source is active, fail visibly without changing it.
 3. Wait for an active controller, a visible caret or Desktop status, and a
    stable target token `{sessionUUID, generation, controllerUUID,
    uniqueClientID}`.
@@ -225,9 +228,17 @@ The global shortcut performs these steps in order:
 Before every partial, final, edit, commit, or Voice Send operation, Qwen Input
 revalidates the target token, active controller, generation, input source, and
 Secure Event Input. A mismatch removes only the current owned marked partial,
-stops local capture immediately, cancels pending Gateway work, and restores the
-previous input source. Already committed text is never rolled back and no text
-is written to the new focus.
+stops local capture immediately, and cancels pending Gateway work without
+changing the user's input source. Already committed text is never rolled back
+and no text is written to the new focus.
+
+On macOS 26.5.1, `TISSelectInputSource` alone did not activate an
+InputMethodKit controller. The first-release contract therefore follows the
+standard input-method model: Qwen Input stays selected while native dictation
+is in use, and physical keyboard events pass through. If the user explicitly
+switches to another input source while marked text is active, macOS settles
+that composition in the old target; Qwen rejects subsequent native operations
+and never overwrites or writes into the newly selected source.
 
 Keyboard or pointer intervention settles or removes the owned partial and
 pauses the session. The first release does not guess when to resume after a
@@ -306,22 +317,23 @@ Desktop Settings presents one feature, "Input anywhere". Enabling it verifies
 the embedded bundle's hash, Team ID, bundle ID, version, ownership, and path;
 rejects symlinks and non-current-user targets; stages under the user account;
 atomically installs to `~/Library/Input Methods`; and registers the source.
-Desktop then guides the user to enable Qwen Input in System Settings. It never
-silently enables the source and never asks for administrator credentials.
+Desktop then guides the user to enable Qwen Input in System Settings and select
+it from the macOS input menu. It never silently enables or selects the source
+and never asks for administrator credentials.
 
 ### Update
 
 Desktop and Qwen Input versions must match. Before replacement, Desktop ends
-the active session, restores the previous input source, drains and stops the
-Bridge, validates the new nested bundle, then atomically replaces and
+the active session, drains and stops the Bridge, validates the new nested
+bundle, then atomically replaces and
 re-registers it. One last-known-good bundle is retained until the new protocol
 handshake succeeds. A loaded old IME is not killed; new sessions remain blocked
 with restart/disable-enable guidance until the matching version is active.
 
 ### Uninstall and orphan handling
 
-Disabling or uninstalling from Desktop stops capture, restores the previous
-input source, disables/unregisters Qwen Input, moves its bundle to Trash, and
+Disabling or uninstalling from Desktop stops capture, disables/unregisters the
+user-selected Qwen Input, moves its bundle to Trash, and
 removes the runtime socket, manifest, and native-input cache. Existing Gateway
 configuration and Memory are retained unless the user separately deletes
 them. TCC records remain under System Settings control.
@@ -334,8 +346,8 @@ or remove the matching orphan.
 ## Failure behavior
 
 The following conditions synchronously stop local microphone routing, cancel
-pending native/Gateway work, remove only the owned marked partial, and restore
-the previous input source when safe:
+pending native/Gateway work, remove only the owned marked partial when it is
+still under IME ownership, and leave the user's input source unchanged:
 
 - target or focus generation changes;
 - Secure Event Input starts;

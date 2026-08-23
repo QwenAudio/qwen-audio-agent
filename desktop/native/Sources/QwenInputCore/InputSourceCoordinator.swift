@@ -24,6 +24,7 @@ public enum InputSourceBeginResult: Equatable, Sendable {
     case currentSourceUnavailable
     case qwenInputUnavailable
     case qwenInputDisabled
+    case selectionRequired
     case selectionFailed
 }
 
@@ -35,9 +36,9 @@ public enum InputSourceRestoreResult: Equatable, Sendable {
     case restorationFailed
 }
 
-/// Selects Qwen Input for one native-input session and restores the source that
-/// was active before that session. Restoration is intentionally compare-and-set:
-/// a source selected by the user while dictation is active is never overwritten.
+/// Requires Qwen Input to be selected by the user for production sessions.
+/// Diagnostic callers may explicitly request selection and compare-and-set
+/// restoration; a source selected by the user later is never overwritten.
 public struct InputSourceCoordinator {
     public private(set) var recoveryInstruction: InputSourceRecoveryInstruction?
 
@@ -49,7 +50,9 @@ public struct InputSourceCoordinator {
         self.api = api
     }
 
-    public mutating func begin() -> InputSourceBeginResult {
+    public mutating func begin(
+        selectIfNeeded: Bool = false
+    ) -> InputSourceBeginResult {
         if recoveryInstruction != nil {
             return .alreadySelected
         }
@@ -65,6 +68,9 @@ public struct InputSourceCoordinator {
         }
         guard currentSourceID != qwenInputSourceID else {
             return .alreadySelected
+        }
+        guard selectIfNeeded else {
+            return .selectionRequired
         }
         guard api.selectInputSource(id: qwenInputSourceID) else {
             return .selectionFailed

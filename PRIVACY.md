@@ -29,6 +29,9 @@ Desktop 的“随处输入”仍复用同一听写连接与临时内存规则。
 记录操作正文；目标、签名、Secure Event Input、输入源或可见状态无法确认时立即
 拒绝并取消 Gateway 听写。安装状态只保留 bundle 版本/注册/启用布尔值，不新增逐字
 历史。基础输入不申请 Accessibility；可选 Voice Send 仍是单独授权能力。
+用户主动切换到其他输入源时，macOS 可能按系统输入法语义把当前 marked partial
+结算到原目标；Qwen 随即拒绝后续操作，不向新目标写入，也不把该文字送入
+conversation 或 Memory。
 
 用户档案、长期记忆、任务状态、后台工作目录和配置默认保存在
 `~/.config/qwaudio/`。API Key 等凭据不应写入仓库、对话或用户档案。卸载应用不会

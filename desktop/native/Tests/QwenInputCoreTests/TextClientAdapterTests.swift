@@ -57,7 +57,7 @@ final class TextClientAdapterTests: XCTestCase {
         ])
     }
 
-    func testFinalAndRemoveUseInsertTextWithExactRanges() throws {
+    func testFinalUsesOwnedRangeAndCancelRemovesCurrentComposition() throws {
         let marked = NSRange(location: 8, length: 5)
         let client = FakeClient(
             selectedRange: NSRange(location: 13, length: 0),
@@ -76,26 +76,79 @@ final class TextClientAdapterTests: XCTestCase {
 
         XCTAssertEqual(client.calls, [
             .insert("hello", replacement: marked),
-            .insert("", replacement: marked),
+            .setMarked(
+                "",
+                selection: NSRange(location: 0, length: 0),
+                replacement: marked
+            ),
+            .insert(
+                "",
+                replacement: NSRange(location: NSNotFound, length: NSNotFound)
+            ),
         ])
     }
 
-    func testUnknownOrMismatchedClientRangesFailWithoutCallingClient() {
-        let unknown = FakeClient(
+    func testCurrentInsertionPointDoesNotRequireAnExposedSelectedRange() throws {
+        let client = FakeClient(
             selectedRange: NSRange(location: NSNotFound, length: 0)
         )
-        XCTAssertEqual(
-            TextClientAdapter().apply(
-                .setMarked(
-                    text: "unsafe",
-                    selection: NSRange(location: 6, length: 0),
-                    replacement: NSRange(location: NSNotFound, length: 0)
-                ),
-                to: unknown
+        let adapter = TextClientAdapter()
+
+        _ = try adapter.apply(
+            .setMarked(
+                text: "opaque",
+                selection: NSRange(location: 6, length: 0),
+                replacement: NSRange(location: NSNotFound, length: 0)
             ),
-            .failure(.unknownSelectedRange)
+            to: client
+        ).get()
+        _ = try adapter.apply(
+            .insert(
+                text: "final",
+                replacement: NSRange(location: NSNotFound, length: NSNotFound)
+            ),
+            to: client
+        ).get()
+
+        XCTAssertEqual(client.calls, [
+            .setMarked(
+                "opaque",
+                selection: NSRange(location: 6, length: 0),
+                replacement: NSRange(location: NSNotFound, length: 0)
+            ),
+            .insert(
+                "final",
+                replacement: NSRange(location: NSNotFound, length: NSNotFound)
+            ),
+        ])
+    }
+
+    func testPartialReusesAnEmptyCompositionLeftByTheClient() throws {
+        let emptyComposition = NSRange(location: 8, length: 0)
+        let client = FakeClient(
+            selectedRange: NSRange(location: 8, length: 0),
+            markedRange: emptyComposition
         )
-        XCTAssertTrue(unknown.calls.isEmpty)
+
+        _ = try TextClientAdapter().apply(
+            .setMarked(
+                text: "next",
+                selection: NSRange(location: 4, length: 0),
+                replacement: NSRange(location: NSNotFound, length: 0)
+            ),
+            to: client
+        ).get()
+
+        XCTAssertEqual(client.calls, [
+            .setMarked(
+                "next",
+                selection: NSRange(location: 4, length: 0),
+                replacement: emptyComposition
+            ),
+        ])
+    }
+
+    func testMismatchedClientRangesFailWithoutCallingClient() {
 
         let foreignMarked = FakeClient(
             selectedRange: NSRange(location: 9, length: 0),

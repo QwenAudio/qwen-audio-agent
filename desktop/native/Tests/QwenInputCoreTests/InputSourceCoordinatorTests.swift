@@ -49,6 +49,23 @@ final class InputSourceCoordinatorTests: XCTestCase {
     private let qwenID = "ai.qwenaudio.agent.inputmethod"
     private let previousID = "com.apple.keylayout.ABC"
 
+    func testDefaultBeginRequiresExplicitUserSelectionWithoutChangingSource() {
+        let api = FakeAPI(
+            currentID: previousID,
+            available: [previousID, qwenID],
+            enabled: [previousID, qwenID]
+        )
+        var coordinator = InputSourceCoordinator(
+            qwenInputSourceID: qwenID,
+            api: api
+        )
+
+        XCTAssertEqual(coordinator.begin(), .selectionRequired)
+        XCTAssertEqual(api.currentID, previousID)
+        XCTAssertFalse(api.calls.contains("select:\(qwenID)"))
+        XCTAssertNil(coordinator.recoveryInstruction)
+    }
+
     func testRecordsCurrentSourceBeforeSelectingAndRestoresIt() {
         let api = FakeAPI(
             currentID: previousID,
@@ -60,7 +77,10 @@ final class InputSourceCoordinatorTests: XCTestCase {
             api: api
         )
 
-        XCTAssertEqual(coordinator.begin(), .selected(previousSourceID: previousID))
+        XCTAssertEqual(
+            coordinator.begin(selectIfNeeded: true),
+            .selected(previousSourceID: previousID)
+        )
         XCTAssertEqual(
             api.calls,
             ["current", "find:\(qwenID)", "enabled:\(qwenID)", "select:\(qwenID)"]
@@ -102,7 +122,10 @@ final class InputSourceCoordinatorTests: XCTestCase {
             qwenInputSourceID: qwenID,
             api: failing
         )
-        XCTAssertEqual(failingCoordinator.begin(), .selectionFailed)
+        XCTAssertEqual(
+            failingCoordinator.begin(selectIfNeeded: true),
+            .selectionFailed
+        )
         XCTAssertNil(failingCoordinator.recoveryInstruction)
     }
 
@@ -117,7 +140,10 @@ final class InputSourceCoordinatorTests: XCTestCase {
             qwenInputSourceID: qwenID,
             api: api
         )
-        XCTAssertEqual(coordinator.begin(), .selected(previousSourceID: previousID))
+        XCTAssertEqual(
+            coordinator.begin(selectIfNeeded: true),
+            .selected(previousSourceID: previousID)
+        )
         api.currentID = externalID
 
         XCTAssertEqual(
@@ -138,7 +164,10 @@ final class InputSourceCoordinatorTests: XCTestCase {
             qwenInputSourceID: qwenID,
             api: api
         )
-        XCTAssertEqual(coordinator.begin(), .selected(previousSourceID: previousID))
+        XCTAssertEqual(
+            coordinator.begin(selectIfNeeded: true),
+            .selected(previousSourceID: previousID)
+        )
         api.enabled.remove(previousID)
 
         XCTAssertEqual(coordinator.restore(), .previousSourceUnavailable)

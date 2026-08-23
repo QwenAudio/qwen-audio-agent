@@ -1130,7 +1130,7 @@ for (const control of [
 
 function renderNativeInputLifecycle(status) {
   const labels = {
-    ready: t('已安装并启用'),
+    ready: t('已安装并启用；请从输入菜单选择 Qwen Input'),
     'needs-enable': t('已安装，请在系统设置中启用 Qwen Input'),
     'needs-repair': t('安装不完整，需要修复'),
     'not-installed': t('尚未安装'),

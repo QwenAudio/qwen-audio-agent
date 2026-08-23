@@ -60,7 +60,7 @@ const ENGLISH = {
   '随处输入': 'Input anywhere',
   '管理 Qwen Input': 'Manage Qwen Input',
   '正在检查输入法…': 'Checking input method…',
-  '已安装并启用': 'Installed and enabled',
+  '已安装并启用；请从输入菜单选择 Qwen Input': 'Installed and enabled. Select Qwen Input from the input menu.',
   '已安装，请在系统设置中启用 Qwen Input': 'Installed. Enable Qwen Input in System Settings.',
   '安装不完整，需要修复': 'Installation needs repair',
   '尚未安装': 'Not installed',

@@ -112,7 +112,9 @@ app.whenReady().then(async () => {
     const text = await window.webContents.executeJavaScript(
       "document.querySelector('#native-input-status')?.textContent",
     )
-    return text === 'Installed and enabled' ? text : null
+    return text === 'Installed and enabled. Select Qwen Input from the input menu.'
+      ? text
+      : null
   })
 
   process.stdout.write(`NATIVE_INPUT_SETTINGS_PROBE:${JSON.stringify({

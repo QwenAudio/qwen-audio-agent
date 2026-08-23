@@ -13,7 +13,8 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
 
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
-        guard let client = IMKTextClientAdapter(sender),
+        guard let inputClient = client(),
+              let client = IMKTextClientAdapter(inputClient),
               let clientIdentifier = client.uniqueIdentifier,
               !clientIdentifier.isEmpty else {
             sessionState = .blocked
@@ -34,7 +35,7 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
         sessionState = .ready
         bridgeClient.activate(
             controller: self,
-            sender: sender as AnyObject,
+            sender: inputClient,
             target: NativeOperationTarget(
                 sessionID: sessionID.uuidString,
                 generation: token.generation,
@@ -45,7 +46,7 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
 
     override func deactivateServer(_ sender: Any!) {
         bridgeClient.deactivate()
-        removeOwnedPartialIfPossible(from: sender)
+        removeOwnedPartialIfPossible(from: client())
         if let targetToken {
             ControllerRegistry.shared.deactivate(
                 self,
@@ -104,6 +105,13 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
            generation != token.generation { return false }
         if let targetID = message.targetID,
            targetID != token.targetID.uuidString { return false }
+        if ledger.ownedMarkedRange?.location == NSNotFound,
+           client.markedRange.location != NSNotFound {
+            guard case .success = ledger.confirmMarkedRange(client.markedRange) else {
+                return false
+            }
+            self.ledger = ledger
+        }
 
         if message.type == .sessionCancel {
             let result = ledger.cancel(
@@ -190,6 +198,11 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
             ? .transcribing
             : .readyToSend
         return true
+    }
+
+    func bridgeConnectionLost(sender: Any) {
+        removeOwnedPartialIfPossible(from: sender)
+        sessionState = .error
     }
 
     private func apply(

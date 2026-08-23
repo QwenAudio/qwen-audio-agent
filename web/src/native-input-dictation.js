@@ -40,6 +40,9 @@ export class NativeInputDictationClient {
       armed = result?.type === 'operation.result'
         && result.operationId === operationId
         && result.accepted === true
+      if (!armed && typeof result?.reason === 'string') {
+        this.error = nativeInputArmError(result.reason)
+      }
     } catch (error) {
       this.error = error?.message || String(error)
       armed = false
@@ -155,6 +158,13 @@ export class NativeInputDictationClient {
       // Terminal cleanup is best-effort after capture and Gateway stop locally.
     }
   }
+}
+
+function nativeInputArmError(reason) {
+  if (reason === 'input_source_selection_required') {
+    return 'Select Qwen Input from the macOS input menu'
+  }
+  return String(reason || 'Native input target is unavailable')
 }
 
 export function consumeNativeInputEvents(events, afterId, handle) {

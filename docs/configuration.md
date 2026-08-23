@@ -931,8 +931,8 @@ Both are application-local.
 
 Desktop-owned InputMethodKit input is independently disabled by default and
 also requires composer dictation to be configured. It remains unavailable
-until the version-matched Qwen Input bundle is installed, registered, and the
-user explicitly enables it in System Settings.
+until the version-matched Qwen Input bundle is installed, registered, enabled
+in System Settings, and explicitly selected from the macOS input menu.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
@@ -947,3 +947,7 @@ Desktop microphone permission and does not request Accessibility, Input
 Monitoring, Full Disk Access, administrator credentials, or a second provider
 credential. See `docs/desktop/native-input-testing.md` before changing input
 source or TCC state.
+
+Keep Qwen Input selected while using the global shortcut; ordinary physical
+typing still passes through. Starting from another input source fails visibly
+without changing the user's selection.

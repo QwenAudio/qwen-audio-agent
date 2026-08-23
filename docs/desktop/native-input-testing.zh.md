@@ -9,15 +9,22 @@ macOS 输入源状态；未经机器所有者明确授权，不得执行人工�
 - Phase 0 自动化基础能力：已实现并在本机验证。
 - Desktop 生命周期与 IME→Bridge→Gateway 自动化链：已使用注入式文件系统/
   输入源适配器、fake transcript 和真实 ad-hoc 签名 IME/Bridge peer 往返验证。
-- 用户级安装、注册、选择输入源：未运行。
-- 跨应用 InputMethodKit 真实交互：未运行。
+- 用户级安装、注册、启用和选择输入源：已在 macOS 26.5.1 arm64 上使用
+  Debug/ad-hoc 构建验证。
+- 跨应用 InputMethodKit 真实交互：已用 fake transcript 验证 TextEdit 与
+  Safari textarea/contenteditable/password；Terminal 和更广应用矩阵仍未完成。
 - 物理麦克风与 TCC 授权链路：未运行。
 - 基于 Accessibility 的可选 Voice Send：未实现、未授权。
 - Developer ID 签名、公证与 Release Gatekeeper：未运行。
 
-自动化通过不等于“全局听写已经可供用户使用”。生产路由已经存在，但已安装
-App、物理麦克风与真实目标应用矩阵仍是后续门禁。自动化生命周期测试不会复制、
+已安装路径通过仍不等于发布验收。物理麦克风、真实 provider、Terminal、更广
+目标应用、Developer ID 签名和公证仍是后续门禁。自动化生命周期测试不会复制、
 注册、启用或选择输入源。
+
+在本次 macOS 版本上，仅通过 TIS 选择 Qwen Input 不会激活可用的
+InputMethodKit controller。因此首版契约明确为：用户从 macOS 输入菜单启用并
+选择 Qwen Input，使用原生听写期间保持选中；物理键盘始终透传。从其他输入源
+启动会以 `input_source_selection_required` 可见失败，且不会改变系统输入源。
 
 ## Phase 0 自动化门禁
 
@@ -83,34 +90,34 @@ codesign --verify --deep --strict \
 
 ## 已安装 App 人工矩阵
 
-在单独获批之前，下表每一项均保持 **未运行**。每次执行必须记录系统版本、
-CPU 架构、App/IME/Bridge 版本、结果和清理证据。
+下表结果来自 macOS 26.5.1 arm64、版本 1.11.0 Debug/ad-hoc 产物和非敏感
+fake transcript。正式签名与未列为通过的场景仍未验证。
 
 | 范围 | 场景与预期 | 状态 |
 | --- | --- | --- |
-| 安装 | 用户级安装拒绝符号链接、错误属主/签名，且不弹管理员密码 | 未运行 |
-| 启用 | 用户明确启用 Qwen Input，Desktop 不得静默启用 | 未运行 |
-| TextEdit / Notes | partial 有 marked 样式，final 落在光标处，物理打字不被吞 | 未运行 |
-| Safari textarea | partial/final/edit 始终锁定同一目标 | 未运行 |
-| Safari contenteditable | UTF-16 范围和光标移动行为确定 | 未运行 |
-| Safari 密码框 | secure 字段拒绝启动，零写入、零采集 | 未运行 |
+| 安装 | 用户级安装拒绝符号链接、错误属主/签名，且不弹管理员密码 | 通过（Debug/ad-hoc） |
+| 启用 | 用户明确启用并选择 Qwen Input，Desktop 均不得静默代办 | 通过 |
+| TextEdit / Notes | partial 有 marked 样式，final 落在光标处，物理打字不被吞 | TextEdit 通过 |
+| Safari textarea | partial/final/edit 始终锁定同一目标 | 通过 |
+| Safari contenteditable | UTF-16 范围和光标移动行为确定 | 通过 |
+| Safari 密码框 | secure 字段拒绝启动，零写入、零采集 | 通过 |
 | Terminal | 普通提示符可插入，键盘输入始终可用 | 未运行 |
 | Terminal 安全输入 | Secure Keyboard Entry 立即阻止或终止会话 | 未运行 |
 | VS Code / Monaco | marked/final 兼容；不兼容时可见失败且不写错目标 | 未运行 |
 | Mail / Messages | 保留原草稿和选区 | 未运行 |
 | 自绘控件 | 未知/不支持控件 fail closed | 未运行 |
-| 焦点切换 | 目标代次改变，移除 partial，不向新焦点写入 | 未运行 |
+| 焦点切换 | 目标代次改变，移除 partial，不向新焦点写入 | 通过 |
 | 键盘/鼠标打断 | 自有 partial 确定性结算或移除，并暂停采集 | 未运行 |
-| 输入源变化 | 用户外部切换输入源后，恢复逻辑不得覆盖用户选择 | 未运行 |
-| Bridge/Desktop 崩溃 | 停止采集、移除 partial、无孤儿进程/socket | 未运行 |
+| 输入源变化 | 不覆盖用户外部选择；macOS 会把活跃 marked partial 结算在旧目标 | 通过（平台行为已记录） |
+| Bridge/Desktop 崩溃 | 停止采集、移除 partial、无孤儿进程/socket，替代 Bridge 可重连 | Bridge SIGTERM 通过 |
 | 麦克风拒绝/撤权 | 可见失败，provider 音频、conversation、Memory 均零副作用 | 未运行 |
 | 网络/provider 失败 | 回到普通键盘，不回退主 Realtime | 未运行 |
 | continuous/pause/cancel | 暂停期间上行字节为 0，取消无未提交副作用 | 未运行 |
 | Memory 纠正 | 只做精确、非敏感事实替换，审计仅含元数据 | 未运行 |
-| 更新/回滚 | 活跃会话先 drain、恢复输入源、版本匹配、可回滚 | 未运行 |
-| 禁用/卸载 | 禁用输入源、bundle 移入废纸篓、清除运行产物 | 未运行 |
+| 更新/回滚 | 活跃会话先 drain、输入源由用户持有、版本匹配、可回滚 | 安装/修复事务通过；发布更新未运行 |
+| 禁用/卸载 | 禁用输入源、bundle 移入废纸篓、清除运行产物 | Debug/ad-hoc 生命周期通过 |
 | 孤立修复 | 无合格 Desktop/Bridge 时输入法惰性失效，且可修复 | 未运行 |
-| 架构 | arm64 与 x86_64/Rosetta 均验证 | 未运行 |
+| 架构 | arm64 与 x86_64/Rosetta 均验证 | universal 二进制通过；仅 arm64 运行时通过 |
 
 ## 清理证据
 

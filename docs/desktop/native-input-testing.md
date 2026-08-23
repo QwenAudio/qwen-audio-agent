@@ -11,16 +11,26 @@ manual matrix without explicit authorization from the machine owner.
 - Desktop lifecycle and IME→Bridge→Gateway automated chain: implemented and
   locally verified with injected filesystem/input-source adapters, fake
   transcript, and a real ad-hoc-signed IME/Bridge peer exchange.
-- User-level installation, registration, and source selection: not run.
-- Cross-application InputMethodKit interaction: not run.
+- User-level installation, registration, enablement, and source selection:
+  verified on macOS 26.5.1 arm64 with a Debug/ad-hoc build.
+- Cross-application InputMethodKit interaction: verified with fake transcript in
+  TextEdit and Safari textarea/contenteditable/password controls. Terminal and
+  the broader application matrix remain open.
 - Physical-microphone and TCC interaction: not run.
 - Optional Accessibility-based Voice Send: not implemented or authorized.
 - Developer ID signing, notarization, and release Gatekeeper: not run.
 
-The automated result does not mean system-wide dictation is ready for users.
-The production routes now exist, but the installed-app, physical microphone,
-and real target-application matrix remain later gates. Automated lifecycle
-tests do not copy, register, enable, or select an input source.
+The verified installed path is still not release evidence. Physical microphone,
+real provider, Terminal, broader target applications, Developer ID signing,
+and notarization remain later gates. Automated lifecycle tests do not copy,
+register, enable, or select an input source.
+
+On the tested macOS release, selecting Qwen Input only through TIS did not
+activate an InputMethodKit controller. The supported first-release contract is
+therefore explicit: the user enables and selects Qwen Input from the macOS
+input menu, then leaves it selected while using native dictation. Physical
+keyboard events continue to pass through. Starting from another source fails
+visibly with `input_source_selection_required` and does not change the source.
 
 ## Automated Phase 0 gate
 
@@ -91,35 +101,35 @@ Disk Access, or administrator credentials. Use only non-sensitive test phrases.
 
 ## Installed-app manual matrix
 
-Every row remains **NOT RUN** until separately authorized. Record OS version,
-CPU architecture, app version, Desktop/IME/Bridge versions, result, and cleanup
-evidence for each execution.
+Results below were recorded on macOS 26.5.1 arm64 with version 1.11.0
+Debug/ad-hoc artifacts and non-sensitive fake transcript. Release-signing and
+unlisted rows remain unverified.
 
 | Area | Scenario and expected result | Status |
 | --- | --- | --- |
-| Install | User-level install rejects symlinks/wrong owner or signature; no admin prompt | NOT RUN |
-| Enable | User explicitly enables Qwen Input; Desktop does not silently enable it | NOT RUN |
-| TextEdit / Notes | Partial is marked; final is committed at the caret; physical typing is preserved | NOT RUN |
-| Safari textarea | Partial/final/edit remain on one locked target | NOT RUN |
-| Safari contenteditable | UTF-16 range and caret movement behave deterministically | NOT RUN |
-| Safari password | Secure field blocks start and performs no write or capture | NOT RUN |
+| Install | User-level install rejects symlinks/wrong owner or signature; no admin prompt | PASS (Debug/ad-hoc) |
+| Enable | User explicitly enables and selects Qwen Input; Desktop does not do either silently | PASS |
+| TextEdit / Notes | Partial is marked; final is committed at the caret; physical typing is preserved | PASS (TextEdit) |
+| Safari textarea | Partial/final/edit remain on one locked target | PASS |
+| Safari contenteditable | UTF-16 range and caret movement behave deterministically | PASS |
+| Safari password | Secure field blocks start and performs no write or capture | PASS |
 | Terminal | Ordinary prompt accepts text; keyboard input is never swallowed | NOT RUN |
 | Terminal secure input | Secure Keyboard Entry blocks or stops the session immediately | NOT RUN |
 | VS Code / Monaco | Marked/final behavior is compatible or fails visibly without misdirected text | NOT RUN |
 | Mail / Messages | Existing draft and selection are preserved | NOT RUN |
 | Unsupported control | Unknown/custom-drawn control fails closed | NOT RUN |
-| Focus switch | Target generation changes; partial is removed and no text enters the new focus | NOT RUN |
+| Focus switch | Target generation changes; partial is removed and no text enters the new focus | PASS |
 | Keyboard/pointer interruption | Owned partial settles/removes deterministically and capture pauses | NOT RUN |
-| Source change | External user source change is not overwritten during restore | NOT RUN |
-| Bridge/Desktop crash | Capture stops, owned partial is removed, and no orphan process/socket remains | NOT RUN |
+| Source change | External user source change is never overwritten; macOS settles the active marked partial in the old target | PASS with documented platform behavior |
+| Bridge/Desktop crash | Capture stops, owned partial is removed, and no orphan process/socket remains; a replacement Bridge reconnects | PASS (Bridge SIGTERM) |
 | Microphone denied/revoked | Visible failure, zero provider audio, conversation, or Memory side effect | NOT RUN |
 | Network/provider failure | Returns to ordinary typing; never falls back to main Realtime | NOT RUN |
 | Continuous/pause/cancel | Paused bytes remain zero; cancel leaves no uncommitted side effect | NOT RUN |
 | Memory correction | Exact non-sensitive fact replacement only; metadata audit only | NOT RUN |
-| Update/rollback | Active session drains, source restores, versions match, rollback remains usable | NOT RUN |
-| Disable/uninstall | Source is disabled, bundle moved to Trash, runtime artifacts removed | NOT RUN |
+| Update/rollback | Active session drains, source stays user-owned, versions match, rollback remains usable | PASS for install/repair transaction; release update not run |
+| Disable/uninstall | Source is disabled, bundle moved to Trash, runtime artifacts removed | PASS (Debug/ad-hoc lifecycle) |
 | Orphan repair | Input method is inert without authenticated Desktop/Bridge and can be repaired | NOT RUN |
-| Architectures | arm64 and x86_64/Rosetta behavior is verified | NOT RUN |
+| Architectures | arm64 and x86_64/Rosetta behavior is verified | Universal binaries verified; arm64 runtime only |
 
 ## Cleanup evidence
 

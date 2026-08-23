@@ -59,6 +59,21 @@ test('fails closed when native arm does not return an accepted correlated result
     assert.deepEqual(blocked.capture, [])
     assert.equal(blocked.client.view().state, 'error')
   }
+
+  const sourceNotSelected = harness({
+    sendNative: operation => Promise.resolve({
+      type: 'operation.result',
+      operationId: operation.operationId,
+      accepted: false,
+      reason: 'input_source_selection_required',
+    }),
+  })
+  assert.equal(await sourceNotSelected.client.start(), false)
+  assert.equal(
+    sourceNotSelected.client.view().error,
+    'Select Qwen Input from the macOS input menu',
+  )
+  assert.deepEqual(sourceNotSelected.gateway, [])
 })
 
 test('routes partial/final to correlated native operations and never submits conversation', async () => {

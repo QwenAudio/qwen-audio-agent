@@ -32,29 +32,30 @@ public struct TextClientAdapter: Sendable {
             guard isValidSelection(selection, in: text) else {
                 return .failure(.invalidSelectionRange)
             }
+            let effectiveReplacement: NSRange
             if replacement.location == NSNotFound {
-                guard client.selectedRange.location != NSNotFound else {
-                    return .failure(.unknownSelectedRange)
-                }
-                guard client.markedRange.location == NSNotFound else {
+                if client.markedRange.location == NSNotFound {
+                    effectiveReplacement = replacement
+                } else if client.markedRange.length == 0 {
+                    effectiveReplacement = client.markedRange
+                } else {
                     return .failure(.markedRangeMismatch)
                 }
             } else if client.markedRange != replacement {
                 return .failure(.markedRangeMismatch)
+            } else {
+                effectiveReplacement = replacement
             }
             client.setMarkedText(
                 NSAttributedString(string: text),
                 selectionRange: selection,
-                replacementRange: replacement
+                replacementRange: effectiveReplacement
             )
             return .success(true)
 
         case let .insert(text, replacement):
-            if replacement.location == NSNotFound {
-                guard client.selectedRange.location != NSNotFound else {
-                    return .failure(.unknownSelectedRange)
-                }
-            } else if client.markedRange.location != NSNotFound,
+            if replacement.location != NSNotFound,
+               client.markedRange.location != NSNotFound,
                       client.markedRange != replacement {
                 return .failure(.markedRangeMismatch)
             }
@@ -66,7 +67,18 @@ public struct TextClientAdapter: Sendable {
                   client.markedRange == replacement else {
                 return .failure(.markedRangeMismatch)
             }
-            client.insertText("", replacementRange: replacement)
+            client.setMarkedText(
+                NSAttributedString(string: ""),
+                selectionRange: NSRange(location: 0, length: 0),
+                replacementRange: replacement
+            )
+            client.insertText(
+                "",
+                replacementRange: NSRange(
+                    location: NSNotFound,
+                    length: NSNotFound
+                )
+            )
             return .success(true)
 
         case .none:

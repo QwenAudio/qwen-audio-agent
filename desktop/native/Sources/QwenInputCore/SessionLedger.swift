@@ -34,9 +34,6 @@ public struct SessionLedger: Sendable {
             replacement = ownedMarkedRange
             location = ownedMarkedRange.location
         } else {
-            guard selectedRange.location != NSNotFound else {
-                return .failure(.unknownClientRange)
-            }
             replacement = NSRange(location: NSNotFound, length: 0)
             location = selectedRange.location
         }
@@ -73,7 +70,7 @@ public struct SessionLedger: Sendable {
             guard selectedRange.location != NSNotFound else {
                 return .failure(.unknownClientRange)
             }
-            replacement = NSRange(location: NSNotFound, length: 0)
+            replacement = NSRange(location: NSNotFound, length: NSNotFound)
             location = selectedRange.location
         }
 
@@ -84,6 +81,20 @@ public struct SessionLedger: Sendable {
             length: utf16Length(text)
         )
         return .success(.insert(text: text, replacement: replacement))
+    }
+
+    public mutating func confirmMarkedRange(
+        _ clientMarkedRange: NSRange
+    ) -> Result<Void, LedgerError> {
+        guard let ownedMarkedRange,
+              clientMarkedRange.location != NSNotFound,
+              clientMarkedRange.length == ownedMarkedRange.length,
+              ownedMarkedRange.location == NSNotFound
+                || ownedMarkedRange == clientMarkedRange else {
+            return .failure(.markedRangeMismatch)
+        }
+        self.ownedMarkedRange = clientMarkedRange
+        return .success(())
     }
 
     public mutating func edit(

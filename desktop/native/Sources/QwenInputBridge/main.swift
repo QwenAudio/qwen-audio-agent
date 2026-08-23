@@ -133,7 +133,7 @@ do {
 
 #if DEBUG
 private final class ProbeInputSourceAPI: InputSourceAPI {
-    private var current = "probe.previous"
+    private var current = "ai.qwenaudio.agent.inputmethod"
     func currentKeyboardSourceID() -> String? { current }
     func containsInputSource(id: String) -> Bool { true }
     func isInputSourceEnabled(id: String) -> Bool { true }

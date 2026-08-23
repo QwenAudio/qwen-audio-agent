@@ -67,7 +67,7 @@ const ENGLISH = {
   '输入法状态不可用': 'Input method status unavailable',
   '修复': 'Repair',
   '卸载': 'Uninstall',
-  '系统设置': 'System Settings',
+  '打开输入源设置': 'Open Input Source Settings',
   '输入法操作失败': 'Input method operation failed',
   '继续': 'Continue',
   '将停用并移除当前用户的 Qwen Input。': 'Qwen Input will be disabled and removed for the current user.',

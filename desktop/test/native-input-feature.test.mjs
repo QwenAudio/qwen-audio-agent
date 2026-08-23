@@ -11,6 +11,7 @@ import {
 function harness({ enabled = false, registerResult = true } = {}) {
   const calls = []
   const callbacks = new Map()
+  const operationRequests = []
   const sessionRequests = []
   const host = {
     state: 'idle',
@@ -29,6 +30,15 @@ function harness({ enabled = false, registerResult = true } = {}) {
     },
     send(message) {
       calls.push(`host.send:${message.type}`)
+    },
+    async request(message) {
+      calls.push(`host.request:${message.type}`)
+      operationRequests.push(message)
+      return {
+        type: 'operation.result',
+        operationId: 'development-operation',
+        accepted: true,
+      }
     },
   }
   const globalShortcut = {
@@ -49,7 +59,14 @@ function harness({ enabled = false, registerResult = true } = {}) {
     host,
     onSessionRequest: request => sessionRequests.push(request),
   })
-  return { callbacks, calls, feature, host, sessionRequests }
+  return {
+    callbacks,
+    calls,
+    feature,
+    host,
+    operationRequests,
+    sessionRequests,
+  }
 }
 
 test('default-off native input neither spawns nor registers a shortcut', async () => {
@@ -135,6 +152,28 @@ test('lifecycle readiness unregisters and restores the native shortcut', async (
   assert.equal(calls.at(-1), 'shortcut.unregister:CommandOrControl+Shift+D')
   assert.equal(feature.applyLifecycleStatus({ state: 'ready' }).state, 'ready')
   assert.equal(calls.at(-1), 'shortcut.register:CommandOrControl+Shift+D')
+})
+
+test('development operations use correlated Bridge requests and preserve visibility', async () => {
+  const { calls, feature, operationRequests } = harness({ enabled: true })
+  await feature.initialize()
+
+  assert.deepEqual(await feature.sendOperation({
+    type: 'session.partial',
+    text: 'fake transcript',
+    statusVisible: true,
+  }), {
+    type: 'operation.result',
+    operationId: 'development-operation',
+    accepted: true,
+  })
+  assert.deepEqual(operationRequests, [{
+    type: 'session.partial',
+    text: 'fake transcript',
+    statusVisible: true,
+  }])
+  assert.equal(calls.at(-1), 'host.request:session.partial')
+  assert.ok(!calls.includes('host.send:session.partial'))
 })
 
 test('Desktop owns startup, renderer-loss, dev IPC, and shutdown ordering', () => {

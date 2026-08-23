@@ -67,8 +67,7 @@ export class NativeInputFeature {
     if (!this.enabled || this.state !== 'ready') {
       throw new Error('Native input is not ready')
     }
-    this.host.send(message)
-    return true
+    return this.host.request(message)
   }
 
   applyLifecycleStatus(status = {}) {

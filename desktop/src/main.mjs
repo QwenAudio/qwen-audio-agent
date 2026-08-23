@@ -861,14 +861,15 @@ ipcMain.on('qwen-audio-agent:native-input-open-settings', event => {
 
 ipcMain.handle('qwen-audio-agent:native-input-start', event => {
   assertNativeInputDevelopmentSender(event)
-  nativeInputFeature.sendOperation({ type: 'session.arm' })
-  return true
+  return nativeInputFeature.sendOperation({
+    type: 'session.arm',
+    statusVisible: mainWindow.isVisible(),
+  })
 })
 
 ipcMain.handle('qwen-audio-agent:native-input-stop', event => {
   assertNativeInputDevelopmentSender(event)
-  nativeInputFeature.sendOperation({ type: 'session.cancel' })
-  return true
+  return nativeInputFeature.sendOperation({ type: 'session.cancel' })
 })
 
 for (const [channel, type] of [
@@ -881,8 +882,11 @@ for (const [channel, type] of [
     if (!text || text.length > 4_096) {
       throw new Error('Native input test text must be 1–4096 characters')
     }
-    nativeInputFeature.sendOperation({ type, text })
-    return true
+    return nativeInputFeature.sendOperation({
+      type,
+      text,
+      statusVisible: mainWindow.isVisible(),
+    })
   })
 }
 

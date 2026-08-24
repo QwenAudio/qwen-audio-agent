@@ -398,6 +398,7 @@ async function runtimeStatus(target = appOrigin) {
   const health = await readGatewayHealth(target)
   return {
     gatewayConnected: Boolean(health),
+    gatewayUrl: String(target || ''),
     realtimeProvider: health?.realtimeProvider || null,
     realtimeLabel: health?.realtimeLabel || null,
     realtimeModel: health?.realtimeModel || null,
@@ -839,6 +840,7 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
     runtime: setupRequired
       ? {
           gatewayConnected: false,
+          gatewayUrl: String(appOrigin || ''),
           realtimeProvider: null,
           realtimeLabel: null,
           realtimeModel: null,

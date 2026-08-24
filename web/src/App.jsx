@@ -208,7 +208,6 @@ export default function App() {
   const messagesRef = useRef(null)
   const stickToBottom = useRef(true)
   const orbDrag = useRef(null)
-  const suppressOrbClick = useRef(false)
   const spriteAnimationCueId = useRef(0)
   const runtimeReadyAnnounced = useRef(false)
   const previousDesktopRuntime = useRef('starting')
@@ -1069,12 +1068,8 @@ export default function App() {
     event.currentTarget.setPointerCapture?.(event.pointerId)
     orbDrag.current = {
       pointerId: event.pointerId,
-      startX: event.screenX,
-      startY: event.screenY,
       lastX: event.screenX,
-      moved: false,
     }
-    suppressOrbClick.current = false
     setOrbDragging(true)
     setOrbDragDirection('')
     bridge.dragStart(event.screenX, event.screenY)
@@ -1083,11 +1078,6 @@ export default function App() {
   const moveOrb = event => {
     const drag = orbDrag.current
     if (!drag || drag.pointerId !== event.pointerId) return
-    if (
-      Math.hypot(event.screenX - drag.startX, event.screenY - drag.startY) >= 4
-    ) {
-      drag.moved = true
-    }
     const deltaX = event.screenX - drag.lastX
     if (Math.abs(deltaX) >= 2) {
       setOrbDragDirection(deltaX > 0 ? 'right' : 'left')
@@ -1099,24 +1089,15 @@ export default function App() {
   const endOrbDrag = event => {
     const drag = orbDrag.current
     if (!drag || drag.pointerId !== event.pointerId) return
-    suppressOrbClick.current = drag.moved
     orbDrag.current = null
     setOrbDragging(false)
     setOrbDragDirection('')
     window.qwenAudioAgentDesktop?.dragEnd()
   }
 
-  const handleOrbClick = () => {
-    if (suppressOrbClick.current) {
-      suppressOrbClick.current = false
-      return
-    }
+  const handleVoiceOrbClick = () => {
     if (voice.state === 'speaking') {
       voice.interrupt()
-      return
-    }
-    if (desktopOrbMode && (voiceEnabled || waitingForVoice)) {
-      disableVoice()
       return
     }
     enableVoice()
@@ -1147,7 +1128,6 @@ export default function App() {
               ? t('{holder}正在使用语音', { holder: ownershipLabel })
               : labelFor(orbVisualState))
         }
-        onClick={handleOrbClick}
         onPointerEnter={() => triggerSpriteAnimation('jumping')}
         onPointerDown={beginOrbDrag}
         onPointerMove={moveOrb}
@@ -1430,7 +1410,7 @@ export default function App() {
       <div className="hero">
         <button
           className={`orb ${orbVisualState}`}
-          onClick={handleOrbClick}
+          onClick={handleVoiceOrbClick}
           aria-label={t('语音交互')}
         >
           <span />

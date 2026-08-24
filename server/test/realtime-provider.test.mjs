@@ -879,10 +879,13 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     .buildSession({ configured: false })
     .tools.find(tool => tool.function.name === 'cancel_agent_task')
   assert.match(cancel.function.description, /定时任务或提醒/)
-  assert.match(cancel.function.description, /all=true/)
   assert.match(cancel.function.description, /先调用 get_agent_task_status/)
   assert.match(cancel.function.parameters.properties.job_id.description, /job_id/)
   assert.equal(cancel.function.parameters.properties.all.type, 'boolean')
+  assert.match(
+    cancel.function.parameters.properties.all.description,
+    /取消当前会话中的全部工作/,
+  )
   const permission = REALTIME_PROVIDERS.qwen.buildPermissionInjection({
     id: 'permission-one',
     summary: '查看系统内存',

@@ -52,6 +52,42 @@ test('preserves legacy coordinator records while persisting project directories'
   }
 })
 
+test('persists bounded cancellation reconciliation until it is acknowledged', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-acp-reconcile-'))
+  const filePath = join(directory, 'acp-sessions.json')
+  const key = 'qoder:owner:backend'
+  try {
+    const registry = new AcpSessionRegistry({ filePath })
+    for (let index = 1; index <= 21; index += 1) {
+      registry.appendReconciliation(key, {
+        kind: 'coordination_request_terminated',
+        request_id: `work-${index}`,
+        outcome: 'cancelled',
+        confirmed_at: `time-${index}`,
+      })
+    }
+    registry.appendReconciliation(key, {
+      kind: 'coordination_request_terminated',
+      request_id: 'work-21',
+      outcome: 'cancelled',
+      confirmed_at: 'updated-time',
+    })
+
+    const reloaded = new AcpSessionRegistry({ filePath })
+    const facts = reloaded.reconciliationsFor(key)
+    assert.equal(facts.length, 20)
+    assert.equal(facts[0].request_id, 'work-2')
+    assert.equal(facts.at(-1).confirmed_at, 'updated-time')
+
+    reloaded.acknowledgeReconciliations(key, [facts[0]])
+    assert.equal(reloaded.reconciliationsFor(key).length, 19)
+    reloaded.delete(key)
+    assert.deepEqual(reloaded.reconciliationsFor(key), [])
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
 test('quarantines a corrupt Session index before accepting new state', () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-acp-corrupt-'))
   const filePath = join(directory, 'acp-sessions.json')

@@ -36,7 +36,7 @@ const MAX_DELEGATION_RESULT_CHARS = 12_000
 const MAX_DELEGATION_RECENT_UPDATES = 5
 // Persistent coordinator Sessions are valid only for the contract that
 // created them. Project Sessions are user work and remain independent.
-const COORDINATOR_CONTRACT_VERSION = 1
+const COORDINATOR_CONTRACT_VERSION = 2
 
 export { acpBackendProfile } from './acp-backend-profile.mjs'
 
@@ -211,8 +211,9 @@ export class AcpBackendAdapter {
     this.coordinatorToolRegistrationPromises = new Map()
     this.sessionExecutor = new KeyedSerialExecutor()
     this.activeCoordinatorTurns = new Set()
-    this.delegatedWorkRuns = new Map()
-    this.pendingCoordinatorFacts = new Map()
+    // Track every request that reaches the persistent coordinator Session,
+    // whether it stays there or delegates to a project Session.
+    this.coordinationRuns = new Map()
     this.runtimeState = new BackendRuntimeState({
       protocol: this.protocol,
       ownership: this.ownership,
@@ -772,7 +773,7 @@ export class AcpBackendAdapter {
   }
 
   findDelegation({ delegation_id: delegationId, session_id: sessionId }) {
-    return [...this.delegatedWorkRuns.values()]
+    return [...this.coordinationRuns.values()]
       .map(run => run.delegation)
       .find(record => (
         (clean(delegationId) && record?.id === clean(delegationId))
@@ -799,6 +800,7 @@ export class AcpBackendAdapter {
       title: bounded(title || prompt, 160) || `${this.label} 项目任务`,
       ownerId: run.ownerId,
       workId: run.coordinationRunId,
+      jobId: run.coordinationRequestId,
       status: 'running',
       controller,
       recentUpdates: [],
@@ -806,7 +808,6 @@ export class AcpBackendAdapter {
       error: null,
     }
     run.delegation = record
-    this.delegatedWorkRuns.set(run.coordinationRunId, run)
     record.promise = this.serialize(`target:${record.sessionId}`, async () => {
       const permissionScopeId = `prompt_${randomUUID()}`
       try {
@@ -989,17 +990,11 @@ export class AcpBackendAdapter {
   }
 
   coordinatorInstructions(message) {
-    const sessionInstructions = this.profile.sessionInstructions || [
-      'The qwen_audio_agent MCP tools are the only interface for opening,',
-      'continuing, querying, and cancelling third-layer project Sessions.',
-      'session_start and session_send are asynchronous. After either returns',
-      'status=started, return the delegated response required by the request',
-      'envelope and stop this turn. Never poll it in the same turn.',
-    ].join(' ')
+    const sessionInstructions = clean(this.profile.sessionInstructions)
     return transformPromptText(message, content => [
       '<qwen_audio_agent_backend_instructions>',
       BACKEND_AGENT_INSTRUCTIONS,
-      sessionInstructions,
+      ...(sessionInstructions ? [sessionInstructions] : []),
       '</qwen_audio_agent_backend_instructions>',
       '',
       content,
@@ -1040,12 +1035,15 @@ export class AcpBackendAdapter {
   async coordinatorTurn(message, {
     ownerId,
     coordinationRunId,
+    coordinationRequestId,
     signal,
     onEvent,
   }) {
     const run = {
       ownerId: clean(ownerId),
       coordinationRunId: clean(coordinationRunId),
+      coordinationRequestId: clean(coordinationRequestId)
+        || clean(coordinationRunId),
       onEvent,
       delegation: null,
       nativeToolCalls: new Map(),
@@ -1054,14 +1052,17 @@ export class AcpBackendAdapter {
       receivedUpdate: false,
       inputBlocks: nonTextPromptBlocks(message),
     }
-    const ownerKey = clean(ownerId)
-    const pendingFacts = this.pendingCoordinatorFacts.get(ownerKey) || []
+    if (run.coordinationRunId) {
+      this.coordinationRuns.set(run.coordinationRunId, run)
+    }
+    const key = coordinatorKey(ownerId, this.protocol)
+    const pendingFacts = this.registry.reconciliationsFor(key)
     const prompt = pendingFacts.length
       ? transformPromptText(message, content => [
           '<qwen_audio_agent_reconciliation>',
           ...pendingFacts.map(fact => JSON.stringify(fact)),
           '</qwen_audio_agent_reconciliation>',
-          '以上是 Gateway 已执行并验证的控制结果。请更新你的上下文，不要重复执行。',
+          '以上请求已经终止，不再是可执行输入。下方 current request 是本轮唯一需要处理的请求。',
           '',
           content,
         ].join('\n'))
@@ -1112,7 +1113,9 @@ export class AcpBackendAdapter {
       }
       run.initialPromptDone = true
       session.isNew = false
-      if (pendingFacts.length) this.pendingCoordinatorFacts.delete(ownerKey)
+      if (pendingFacts.length) {
+        this.registry.acknowledgeReconciliations(key, pendingFacts)
+      }
       this.registry.set(
         coordinatorKey(ownerId, this.protocol),
         session,
@@ -1148,6 +1151,7 @@ export class AcpBackendAdapter {
       title,
       ownerId: run.ownerId,
       workId: run.coordinationRunId,
+      jobId: run.coordinationRequestId,
       status: 'running',
       controller,
       result: null,
@@ -1155,7 +1159,6 @@ export class AcpBackendAdapter {
       parentSessionId: run.sessionId,
       nativeCompletion: deferred(),
     }
-    this.delegatedWorkRuns.set(run.coordinationRunId, run)
     record.promise = this.waitForNativeDelegation(record, run)
     record.promise.catch(() => {})
     return record
@@ -1253,6 +1256,7 @@ export class AcpBackendAdapter {
   async runCoordinator(message, {
     ownerId,
     coordinationRunId,
+    coordinationRequestId,
     signal,
     onEvent,
   } = {}) {
@@ -1270,29 +1274,31 @@ export class AcpBackendAdapter {
         throw error
       }
     }
+    const runId = clean(coordinationRunId)
     const key = coordinatorKey(ownerId, this.protocol)
-    const initial = await this.serialize(
-      `coordinator:${key}`,
-      () => this.coordinatorTurnWithRecovery(message, {
-        ownerId,
-        coordinationRunId,
-        signal,
-        onEvent,
-      }),
-    )
-    if (!initial.run.delegation) return this.resultEnvelope(initial)
-    const delegation = initial.run.delegation
-    onEvent?.({
-      type: 'backend.delegated',
-      delegation: {
-        id: delegation.id,
-        sessionId: delegation.sessionId,
-        title: delegation.title,
-        directory: delegation.directory,
-        presentation: coordinatorPresentation(initial.result.content),
-      },
-    })
     try {
+      const initial = await this.serialize(
+        `coordinator:${key}`,
+        () => this.coordinatorTurnWithRecovery(message, {
+          ownerId,
+          coordinationRunId,
+          coordinationRequestId,
+          signal,
+          onEvent,
+        }),
+      )
+      if (!initial.run.delegation) return this.resultEnvelope(initial)
+      const delegation = initial.run.delegation
+      onEvent?.({
+        type: 'backend.delegated',
+        delegation: {
+          id: delegation.id,
+          sessionId: delegation.sessionId,
+          title: delegation.title,
+          directory: delegation.directory,
+          presentation: coordinatorPresentation(initial.result.content),
+        },
+      })
       const target = await delegation.promise
       onEvent?.({
         type: 'backend.delegation.completed',
@@ -1306,10 +1312,14 @@ export class AcpBackendAdapter {
       const final = await this.serialize(
         `coordinator:${key}`,
         () => this.coordinatorTurnWithRecovery(
-          this.delegationResultPrompt(target, coordinationRunId),
+          this.delegationResultPrompt(
+            target,
+            clean(coordinationRequestId) || clean(coordinationRunId),
+          ),
           {
             ownerId,
             coordinationRunId,
+            coordinationRequestId,
             signal,
             onEvent,
           },
@@ -1317,7 +1327,7 @@ export class AcpBackendAdapter {
       )
       return this.resultEnvelope(final, target)
     } finally {
-      this.delegatedWorkRuns.delete(clean(coordinationRunId))
+      if (runId) this.coordinationRuns.delete(runId)
     }
   }
 
@@ -1345,6 +1355,7 @@ export class AcpBackendAdapter {
     const run = {
       ownerId,
       coordinationRunId,
+      coordinationRequestId: clean(task.jobId) || coordinationRunId,
       onEvent,
       sessionId: session.sessionId,
       nativeToolCalls: new Map(),
@@ -1361,6 +1372,7 @@ export class AcpBackendAdapter {
         || this.profile.defaultDelegationTitle
         || `${this.label} 项目任务`,
     })
+    if (coordinationRunId) this.coordinationRuns.set(coordinationRunId, run)
     signal?.addEventListener('abort', () => {
       delegation.controller.abort(
         signal.reason || new Error('用户已取消这项项目任务'),
@@ -1390,10 +1402,14 @@ export class AcpBackendAdapter {
       const final = await this.serialize(
         `coordinator:${key}`,
         () => this.coordinatorTurn(
-          this.delegationResultPrompt(target, coordinationRunId),
+          this.delegationResultPrompt(
+            target,
+            clean(task.jobId) || coordinationRunId,
+          ),
           {
             ownerId,
             coordinationRunId,
+            coordinationRequestId: clean(task.jobId) || coordinationRunId,
             signal,
             onEvent,
           },
@@ -1401,39 +1417,55 @@ export class AcpBackendAdapter {
       )
       return this.resultEnvelope(final, target)
     } finally {
-      this.delegatedWorkRuns.delete(coordinationRunId)
+      this.coordinationRuns.delete(coordinationRunId)
     }
   }
 
-  async cancelDelegatedWork(workId, { ownerId } = {}) {
-    const run = this.delegatedWorkRuns.get(clean(workId))
+  async cancelWork(workId, { ownerId } = {}) {
+    const run = this.coordinationRuns.get(clean(workId))
     const record = run?.delegation
-    if (!record || record.ownerId !== clean(ownerId)) {
-      throw new AgentError(`没有找到可取消的 ${this.label} 项目任务`, {
+    if (run && run.ownerId !== clean(ownerId)) {
+      throw new AgentError(`没有找到可取消的 ${this.label} 任务`, {
         protocol: this.protocol,
       })
     }
-    await this.cancelDelegation({ delegation_id: record.id })
-    const ownerKey = clean(ownerId)
-    const facts = this.pendingCoordinatorFacts.get(ownerKey) || []
-    facts.push({
-      kind: 'delegated_session_cancelled',
-      work_id: clean(workId),
-      delegation_id: record.id,
-      target_session_id: record.sessionId,
-      confirmed_at: new Date().toISOString(),
-    })
-    this.pendingCoordinatorFacts.set(ownerKey, facts.slice(-20))
+    if (record) await this.cancelDelegation({ delegation_id: record.id })
+
+    // ACP cancellation interrupts execution but does not let a client rewrite
+    // the backend-owned Session history. Record one terminal boundary only
+    // when the request actually reached that persistent Session; it will be
+    // projected into the next coordinator turn and acknowledged on success.
+    if (run?.sessionId) {
+      this.registry.appendReconciliation(
+        coordinatorKey(ownerId, this.protocol),
+        {
+          kind: 'coordination_request_terminated',
+          request_id: run.coordinationRequestId || clean(workId),
+          outcome: 'cancelled',
+          ...(record
+            ? {
+                delegation_id: record.id,
+                target_session_id: record.sessionId,
+              }
+            : {}),
+          confirmed_at: new Date().toISOString(),
+        },
+      )
+    }
     return {
       route: 'adapter',
-      layer: 'delegated',
-      delegationId: record.id,
-      sessionId: record.sessionId,
+      layer: record ? 'delegated' : 'coordinator',
+      ...(record
+        ? {
+            delegationId: record.id,
+            sessionId: record.sessionId,
+          }
+        : {}),
     }
   }
 
   async queryDelegatedWork(workId, _question, { ownerId } = {}) {
-    const run = this.delegatedWorkRuns.get(clean(workId))
+    const run = this.coordinationRuns.get(clean(workId))
     const record = run?.delegation
     if (!record || record.ownerId !== clean(ownerId)) {
       throw new AgentError(`没有找到对应的 ${this.label} 项目任务`, {
@@ -1457,7 +1489,7 @@ export class AcpBackendAdapter {
             : '这项工作仍在执行中，当前没有新的详细进展。'
     return {
       content: JSON.stringify({
-        work_id: clean(workId),
+        job_id: clean(record.jobId) || clean(workId),
         state: 'completed',
         mode: 'respond',
         presentation: { speech, inline: null },
@@ -1488,7 +1520,7 @@ export class AcpBackendAdapter {
   }
 
   async close() {
-    for (const run of this.delegatedWorkRuns.values()) {
+    for (const run of this.coordinationRuns.values()) {
       run.delegation?.controller.abort(
         new Error(`${this.label} backend is shutting down`),
       )

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { resolve } from 'node:path'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
 import {
   AcpBackendAdapter,
@@ -8,7 +10,7 @@ import {
 
 function completed(speech = '完成') {
   return JSON.stringify({
-    work_id: 'work-one',
+    job_id: 'work-one',
     state: 'completed',
     mode: 'respond',
     presentation: { speech, inline: null },
@@ -17,7 +19,7 @@ function completed(speech = '完成') {
 
 function delegated(result) {
   return JSON.stringify({
-    work_id: 'work-one',
+    job_id: 'work-one',
     state: 'delegated',
     mode: 'delegate',
     delegation_id: result.delegation_id,
@@ -1122,7 +1124,7 @@ test('replaces a persisted coordinator without the current coordinator contract'
   assert.equal(creates, 1)
   assert.equal(deleted.length, 1)
   assert.equal(saved[0][1].sessionId, 'fresh-coordinator')
-  assert.equal(saved[0][1].contractVersion, 1)
+  assert.equal(saved[0][1].contractVersion, 2)
   await adapter.close()
 })
 
@@ -1175,24 +1177,24 @@ test('isolates coordinator MCP registrations by owner and releases them', async 
     tools.registrations[1].descriptor.url,
   )
   assert.equal(
-    adapter.delegatedWorkRuns.get('work-owner-one').delegation.ownerId,
+    adapter.coordinationRuns.get('work-owner-one').delegation.ownerId,
     'owner-one',
   )
   assert.equal(
-    adapter.delegatedWorkRuns.get('work-owner-two').delegation.ownerId,
+    adapter.coordinationRuns.get('work-owner-two').delegation.ownerId,
     'owner-two',
   )
   assert.equal(
-    adapter.delegatedWorkRuns.get('work-owner-one').delegation.directory,
+    adapter.coordinationRuns.get('work-owner-one').delegation.directory,
     '/coordinator',
   )
   assert.equal(
-    adapter.delegatedWorkRuns.get('work-owner-two').delegation.directory,
+    adapter.coordinationRuns.get('work-owner-two').delegation.directory,
     '/coordinator',
   )
   await Promise.all([
-    adapter.delegatedWorkRuns.get('work-owner-one').delegation.promise,
-    adapter.delegatedWorkRuns.get('work-owner-two').delegation.promise,
+    adapter.coordinationRuns.get('work-owner-one').delegation.promise,
+    adapter.coordinationRuns.get('work-owner-two').delegation.promise,
   ])
   await adapter.close()
   assert.equal(tools.releaseCalls, 2)
@@ -1410,7 +1412,7 @@ test('delegated status and cancellation bypass the coordinator', async () => {
     ownerId: 'owner-one',
     coordinationRunId: 'work-one',
   })
-  while (!adapter.delegatedWorkRuns.has('work-one')) {
+  while (!adapter.coordinationRuns.has('work-one')) {
     await new Promise(resolve => setImmediate(resolve))
   }
   const status = await adapter.queryDelegatedWork(
@@ -1421,7 +1423,7 @@ test('delegated status and cancellation bypass the coordinator', async () => {
   assert.equal(JSON.parse(status.content).presentation.speech,
     '这项工作仍在执行中，当前没有新的详细进展。')
   assert.equal(status.metadata.statusSource, 'gateway')
-  const cancelled = await adapter.cancelDelegatedWork('work-one', {
+  const cancelled = await adapter.cancelWork('work-one', {
     ownerId: 'owner-one',
   })
   assert.equal(cancelled.route, 'adapter')
@@ -1447,11 +1449,11 @@ test('busy-coordinator cancellation uses ACP directly and reconciles on the next
     ownerId: 'owner-one',
     coordinationRunId: 'work-one',
   })
-  while (!adapter.delegatedWorkRuns.has('work-one')) {
+  while (!adapter.coordinationRuns.has('work-one')) {
     await new Promise(resolve => setImmediate(resolve))
   }
   adapter.activeCoordinatorTurns.add('coordinator-session')
-  const cancellation = await adapter.cancelDelegatedWork('work-one', {
+  const cancellation = await adapter.cancelWork('work-one', {
     ownerId: 'owner-one',
   })
   adapter.activeCoordinatorTurns.delete('coordinator-session')
@@ -1465,9 +1467,181 @@ test('busy-coordinator cancellation uses ACP directly and reconciles on the next
     call[0] === 'prompt' && call[2].includes('plain follow-up')
   ))
   assert.match(followUp[2], /qwen_audio_agent_reconciliation/)
-  assert.match(followUp[2], /delegated_session_cancelled/)
-  assert.equal(adapter.pendingCoordinatorFacts.has('owner-one'), false)
+  assert.match(followUp[2], /coordination_request_terminated/)
+  assert.equal(
+    adapter.registry.reconciliationsFor('opencode:owner-one:backend').length,
+    0,
+  )
   await adapter.close()
+})
+
+test('ordinary coordinator cancellation terminates the old request before the next turn', async () => {
+  const prompts = []
+  const client = {
+    async newSession(options) {
+      return {
+        sessionId: 'coordinator-session',
+        cwd: options.cwd,
+        response: {},
+      }
+    },
+    async prompt(_sessionId, prompt, options = {}) {
+      prompts.push(prompt)
+      if (prompt.includes('first request')) {
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener(
+            'abort',
+            () => reject(options.signal.reason),
+            { once: true },
+          )
+        })
+      }
+      return {
+        content: completed('第二个请求已完成'),
+        response: { stopReason: 'end_turn' },
+      }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qoder',
+    directory: '/coordinator',
+    client,
+  })
+  const controller = new AbortController()
+  const first = adapter.runCoordinator('first request', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+    coordinationRequestId: 'job_1',
+    signal: controller.signal,
+  })
+  while (!adapter.coordinationRuns.get('work-one')?.sessionId) {
+    await new Promise(resolve => setImmediate(resolve))
+  }
+
+  const cancellation = await adapter.cancelWork('work-one', {
+    ownerId: 'owner-one',
+  })
+  controller.abort(new Error('cancelled by user'))
+  assert.equal(cancellation.layer, 'coordinator')
+  await assert.rejects(first, /cancelled by user/)
+
+  const second = await adapter.runCoordinator('second request', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-two',
+    coordinationRequestId: 'job_2',
+  })
+  assert.equal(JSON.parse(second.content).presentation.speech, '第二个请求已完成')
+  assert.match(prompts[1], /coordination_request_terminated/)
+  assert.match(prompts[1], /"request_id":"job_1"/)
+  assert.doesNotMatch(prompts[1], /"request_id":"work-one"/)
+  assert.match(prompts[1], /current request 是本轮唯一需要处理的请求/)
+  assert.deepEqual(
+    adapter.registry.reconciliationsFor('qoder:owner-one:backend'),
+    [],
+  )
+  assert.equal(adapter.coordinationRuns.has('work-one'), false)
+  assert.equal(adapter.coordinationRuns.has('work-two'), false)
+  await adapter.close()
+})
+
+test('delivers persisted cancellation reconciliation after a Gateway restart', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-acp-restart-'))
+  const sessionStatePath = join(directory, 'acp-sessions.json')
+  try {
+    const firstClient = {
+      async newSession(options) {
+        return {
+          sessionId: 'persisted-coordinator',
+          cwd: options.cwd,
+          response: {},
+        }
+      },
+      async prompt(_sessionId, _prompt, options = {}) {
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener(
+            'abort',
+            () => reject(options.signal.reason),
+            { once: true },
+          )
+        })
+      },
+      async close() {},
+    }
+    const firstAdapter = new AcpBackendAdapter({
+      protocol: 'qoder',
+      directory: '/coordinator',
+      sessionStatePath,
+      client: firstClient,
+      sessionToolServer: fakeToolServer(),
+    })
+    const controller = new AbortController()
+    const first = firstAdapter.runCoordinator('request before restart', {
+      ownerId: 'owner-one',
+      coordinationRunId: 'work-before-restart',
+      coordinationRequestId: 'job_21',
+      signal: controller.signal,
+    })
+    while (!firstAdapter.coordinationRuns.get('work-before-restart')?.sessionId) {
+      await new Promise(resolve => setImmediate(resolve))
+    }
+    await firstAdapter.cancelWork('work-before-restart', {
+      ownerId: 'owner-one',
+    })
+    controller.abort(new Error('cancelled before restart'))
+    await assert.rejects(first, /cancelled before restart/)
+    await firstAdapter.close()
+
+    const prompts = []
+    let resumes = 0
+    const secondClient = {
+      async newSession() {
+        throw new Error('persisted coordinator should be resumed')
+      },
+      async resumeSession(sessionId, options) {
+        resumes += 1
+        return {
+          sessionId,
+          cwd: options.cwd,
+          response: {},
+        }
+      },
+      async prompt(_sessionId, prompt) {
+        prompts.push(prompt)
+        return {
+          content: completed('重启后继续完成'),
+          response: { stopReason: 'end_turn' },
+        }
+      },
+      async close() {},
+    }
+    const secondAdapter = new AcpBackendAdapter({
+      protocol: 'qoder',
+      directory: '/coordinator',
+      sessionStatePath,
+      client: secondClient,
+      sessionToolServer: fakeToolServer(),
+    })
+    await secondAdapter.runCoordinator('request after restart', {
+      ownerId: 'owner-one',
+      coordinationRunId: 'work-after-restart',
+      coordinationRequestId: 'job_22',
+    })
+
+    // Once to restore the persisted Session and once to re-supply its MCP
+    // definitions before the first prompt after restart.
+    assert.equal(resumes, 2)
+    assert.match(prompts[0], /coordination_request_terminated/)
+    assert.match(prompts[0], /"request_id":"job_21"/)
+    assert.doesNotMatch(prompts[0], /"request_id":"work-before-restart"/)
+    assert.deepEqual(
+      secondAdapter.registry.reconciliationsFor('qoder:owner-one:backend'),
+      [],
+    )
+    await secondAdapter.close()
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 test('busy-coordinator status query returns Gateway-known state immediately', async () => {
@@ -1485,7 +1659,7 @@ test('busy-coordinator status query returns Gateway-known state immediately', as
     ownerId: 'owner-one',
     coordinationRunId: 'work-one',
   })
-  while (!adapter.delegatedWorkRuns.has('work-one')) {
+  while (!adapter.coordinationRuns.has('work-one')) {
     await new Promise(resolve => setImmediate(resolve))
   }
   adapter.activeCoordinatorTurns.add('coordinator-session')
@@ -1500,7 +1674,7 @@ test('busy-coordinator status query returns Gateway-known state immediately', as
   assert.equal(JSON.parse(status.content).presentation.speech,
     '这项工作仍在执行中，当前没有新的详细进展。')
   assert.equal(status.metadata.statusSource, 'gateway')
-  await adapter.cancelDelegatedWork('work-one', { ownerId: 'owner-one' })
+  await adapter.cancelWork('work-one', { ownerId: 'owner-one' })
   await assert.rejects(running, /取消/)
   await adapter.close()
 })
@@ -1953,7 +2127,7 @@ test('OpenClaw maps native Session tool updates into the shared delegation lifec
         })
         return {
           content: JSON.stringify({
-            work_id: 'work-one',
+            job_id: 'work-one',
             state: 'delegated',
             mode: 'delegate',
             delegation_id: 'run-one',
@@ -2148,7 +2322,7 @@ test('reports recent project Session updates with Gateway delegation status', as
     ownerId: 'owner-one',
     coordinationRunId: 'work-one',
   })
-  while (!adapter.delegatedWorkRuns.has('work-one')) {
+  while (!adapter.coordinationRuns.has('work-one')) {
     await new Promise(resolve => setImmediate(resolve))
   }
 
@@ -2171,7 +2345,7 @@ test('reports recent project Session updates with Gateway delegation status', as
     },
   ])
 
-  await adapter.cancelDelegatedWork('work-one', { ownerId: 'owner-one' })
+  await adapter.cancelWork('work-one', { ownerId: 'owner-one' })
   await assert.rejects(running, /取消/)
   await adapter.close()
 })

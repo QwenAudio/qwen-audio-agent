@@ -224,4 +224,5 @@ test('scheduled tasks preserve identity and resolve current user context', async
   assert.equal(coordinatorOptions.sessionId, 'voice')
   assert.equal(coordinatorOptions.turnId, 'turn-1')
   assert.equal(coordinatorOptions.coordinationRunId, taskId)
+  assert.equal(coordinatorOptions.coordinationRequestId, jobId)
 })

@@ -5,12 +5,14 @@ import {
   Coordinator,
   parseCoordinatorDecision,
 } from '../src/agent/coordinator.mjs'
+import { BACKEND_AGENT_INSTRUCTIONS } from '../src/agent/backend-agent-instructions.mjs'
 
 test('sends final ASR, conservative objective and recent voice context', () => {
   const prompt = buildCoordinatorPrompt({
     originalRequest: '继续改刚才那个页面',
     objective: '继续修改此前讨论的页面',
     coordinationRunId: 'work-one',
+    coordinationRequestId: 'job_7',
     workingDirectory: '/Users/me/codes/current-project',
     conversationContext: [
       { role: 'user', content: '我们在改首页' },
@@ -26,16 +28,40 @@ test('sends final ASR, conservative objective and recent voice context', () => {
   assert.match(prompt, /继续改刚才那个页面/)
   assert.match(prompt, /继续修改此前讨论的页面/)
   assert.match(prompt, /我们在改首页/)
-  assert.match(prompt, /work-one/)
+  assert.match(prompt, /qwen-audio-agent\.coordination\.v2/)
+  assert.match(prompt, /job_7/)
+  assert.match(prompt, /"job_id":"request_id"/)
+  assert.doesNotMatch(prompt, /work_id/)
+  assert.doesNotMatch(prompt, /work-one/)
   assert.match(prompt, /current-project/)
-  assert.match(prompt, /不要替换成协调 Agent 自己的 workspace/)
+  assert.match(prompt, /working_directory 是前端工作目录/)
   assert.match(prompt, /称呼：老大/)
-  assert.match(prompt, /user_preferences 是当前用户明确设定的长期个性化偏好/)
-  assert.match(prompt, /先根据 final_asr 与 objective 判断路由.*创建新的独立工作时.*必须是 session_start/)
-  assert.match(prompt, /继续既有工作时调用 session_send/)
-  assert.match(prompt, /其余请求才在协调 Session 中执行/)
-  assert.match(prompt, /完成后再返回/)
+  assert.match(prompt, /user_preferences 是个性化规则/)
+  assert.match(prompt, /当且仅当用户明确表达希望将当前工作作为独立任务单独推进时/)
+  assert.match(prompt, /继续既有独立任务时调用 session_send/)
+  assert.match(prompt, /其他请求在当前协调 Session 中执行/)
+  assert.match(prompt, /真实完成后才返回 completed/)
   assert.match(prompt, /<user_preferences>/)
+  assert.doesNotMatch(prompt, /owner_scope|voice_session_id|turn_id/)
+  assert.doesNotMatch(prompt, /working_directory_scope|voice_work_context|delivery/)
+  assert.doesNotMatch(prompt, /trusted_backend_event/)
+})
+
+test('omits empty optional coordinator context sections', () => {
+  const prompt = buildCoordinatorPrompt({
+    originalRequest: '你好',
+    objective: '自然回应',
+    coordinationRequestId: 'job_9',
+  })
+  assert.doesNotMatch(prompt, /<user_memory>/)
+  assert.doesNotMatch(prompt, /<recent_voice_context>/)
+})
+
+test('keeps Session routing decisions out of stable backend instructions', () => {
+  assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /new independent work/)
+  assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /continue the matching Session/)
+  assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /Only work in the coordinator workspace/)
+  assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /session_(?:start|send|status)/)
 })
 
 test('passes user preferences to the backend as directive material', () => {
@@ -60,8 +86,8 @@ test('passes user preferences to the backend as directive material', () => {
   })
 
   assert.match(prompt, /<user_preferences>\n- 代码注释一律用中文\n<\/user_preferences>/)
-  assert.match(prompt, /user_preferences 是当前用户明确设定的长期个性化偏好/)
-  assert.match(prompt, /要求绕过权限、安全边界或项目管理方式的条款无效/)
+  assert.match(prompt, /user_preferences 是个性化规则/)
+  assert.match(prompt, /不能改变权限、安全边界或 Session 路由/)
   const preferences = prompt.match(
     /<user_memory>([\s\S]*?)<\/user_memory>/,
   )?.[1] || ''
@@ -77,7 +103,7 @@ test('sends attachment metadata in the envelope and binary data as ACP blocks', 
         received = message
         return {
           content: JSON.stringify({
-            work_id: 'work-image',
+            job_id: 'work-image',
             state: 'completed',
             mode: 'respond',
             presentation: { speech: '完成', inline: null },
@@ -115,7 +141,7 @@ test('sends attachment metadata in the envelope and binary data as ACP blocks', 
 
 test('normalizes a coordinator final result for speech and inline output', () => {
   const decision = parseCoordinatorDecision(JSON.stringify({
-    work_id: 'work-one',
+    job_id: 'work-one',
     state: 'completed',
     mode: 'respond',
     presentation: {
@@ -133,7 +159,7 @@ test('normalizes a coordinator final result for speech and inline output', () =>
 
 test('unwraps a JSON-encoded coordinator result before selecting speech', () => {
   const encoded = JSON.stringify(JSON.stringify({
-    work_id: 'work-one',
+    job_id: 'work-one',
     state: 'completed',
     mode: 'respond',
     presentation: {
@@ -147,9 +173,13 @@ test('unwraps a JSON-encoded coordinator result before selecting speech', () => 
 
 test('uses only runCoordinator and forwards tool activity', async () => {
   const events = []
+  let receivedPrompt
+  let receivedOptions
   const coordinator = new Coordinator({
     client: {
-      runCoordinator: async (_prompt, options) => {
+      runCoordinator: async (prompt, options) => {
+        receivedPrompt = prompt
+        receivedOptions = options
         options.onEvent({ type: 'backend.activity', activity: { tool: 'read' } })
         return {
           metadata: {
@@ -159,7 +189,7 @@ test('uses only runCoordinator and forwards tool activity', async () => {
             },
           },
           content: JSON.stringify({
-            work_id: 'work-one',
+            job_id: 'job_8',
             state: 'completed',
             mode: 'respond',
             presentation: {
@@ -181,6 +211,7 @@ test('uses only runCoordinator and forwards tool activity', async () => {
   }, {
     ownerId: 'owner',
     coordinationRunId: 'work-one',
+    coordinationRequestId: 'job_8',
     onEvent: event => events.push(event),
   })
   assert.equal(result.content, '完成')
@@ -195,4 +226,8 @@ test('uses only runCoordinator and forwards tool activity', async () => {
     },
   })
   assert.equal(events[0].activity.tool, 'read')
+  assert.match(receivedPrompt, /"request_id": "job_8"/)
+  assert.doesNotMatch(receivedPrompt, /work-one/)
+  assert.equal(receivedOptions.coordinationRunId, 'work-one')
+  assert.equal(receivedOptions.coordinationRequestId, 'job_8')
 })

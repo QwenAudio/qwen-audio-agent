@@ -97,13 +97,13 @@ export class AgentClient {
     return this.adapter.respondPermission(id, decision, options)
   }
 
-  cancelDelegatedWork(workId, options = {}) {
-    if (!this.adapter.cancelDelegatedWork) {
-      throw new AgentError('当前后台 Agent 不支持取消第三层 Session', {
+  cancelWork(workId, options = {}) {
+    if (!this.adapter.cancelWork) {
+      throw new AgentError('当前后台 Agent 不支持取消任务', {
         protocol: this.protocol,
       })
     }
-    return this.adapter.cancelDelegatedWork(workId, options)
+    return this.adapter.cancelWork(workId, options)
   }
 
   queryDelegatedWork(workId, question, options = {}) {
@@ -192,8 +192,8 @@ export const agent = {
     requireAgent().runCoordinator(message, options),
   respondPermission: (id, decision, options = {}) =>
     requireAgent().respondPermission(id, decision, options),
-  cancelDelegatedWork: (workId, options = {}) =>
-    requireAgent().cancelDelegatedWork(workId, options),
+  cancelWork: (workId, options = {}) =>
+    requireAgent().cancelWork(workId, options),
   queryDelegatedWork: (workId, question, options = {}) =>
     requireAgent().queryDelegatedWork(workId, question, options),
   canRecoverDelegatedWork: task => config.agentProtocol

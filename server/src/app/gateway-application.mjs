@@ -74,7 +74,7 @@ taskManager.recoverDelegated({
   canRecover: task => agent.canRecoverDelegatedWork(task),
   runner: (task, context) => agent.recoverDelegatedWork(task, context),
   canceler: async (task, { abort }) => {
-    const result = await agent.cancelDelegatedWork(task.id, {
+    const result = await agent.cancelWork(task.id, {
       ownerId: task.ownerId,
     })
     abort()
@@ -129,6 +129,7 @@ taskManager.configureScheduledTaskRunner(
     sessionId: context.sessionId,
     turnId: context.turnId,
     coordinationRunId: context.taskId,
+    coordinationRequestId: context.jobId,
     signal: context.signal,
     onEvent: context.onEvent,
   }),

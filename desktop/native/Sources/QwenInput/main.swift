@@ -29,6 +29,7 @@ if CommandLine.arguments.count == 3,
             targetID: target.targetID
         ))
         guard activated.accepted == true else { exit(EXIT_FAILURE) }
+        try FileHandle.standardOutput.write(contentsOf: Data("probe.ready\n".utf8))
         let deadline = Date(timeIntervalSinceNow: 5)
         var operation: NativeInputMessage?
         while Date() < deadline, operation == nil {

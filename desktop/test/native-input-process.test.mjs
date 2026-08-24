@@ -157,6 +157,8 @@ test('signed IME peer completes a correlated Desktop to Bridge operation', {
     '--operation-probe', join(runtime, 'control.sock'),
   ], { stdio: ['ignore', 'pipe', 'pipe'] })
 
+  await waitForProbeReady(ime, child)
+
   child.stdin.write(encodeNativeInputFrame({
     type: 'session.arm',
     operationId: 'arm-1',
@@ -209,6 +211,7 @@ test('real Bridge intercepts SIGTERM for owned recovery before exiting', {
   const ime = spawn(inputExecutable, [
     '--operation-probe', join(runtime, 'control.sock'),
   ], { stdio: ['ignore', 'pipe', 'pipe'] })
+  await waitForProbeReady(ime, child)
   const imeExited = once(ime, 'exit')
   child.stdin.write(encodeNativeInputFrame({
     type: 'session.arm',
@@ -259,6 +262,45 @@ function nextMessage(stream, decoder) {
     }
     stream.on('data', onData)
     stream.on('end', onEnd)
+  })
+}
+
+function waitForProbeReady(child, bridge) {
+  return new Promise((resolveReady, reject) => {
+    let output = ''
+    let errorOutput = ''
+    const timeout = setTimeout(() => {
+      cleanup()
+      child.kill('SIGTERM')
+      bridge.kill('SIGTERM')
+      reject(new Error('IME probe did not report activation readiness'))
+    }, 5_000)
+    const onData = chunk => {
+      output += chunk
+      if (!output.includes('probe.ready\n')) return
+      cleanup()
+      resolveReady()
+    }
+    const onErrorData = chunk => { errorOutput += chunk }
+    const onExit = (code, signal) => {
+      cleanup()
+      bridge.kill('SIGTERM')
+      reject(new Error(
+        `IME probe exited before activation readiness (code=${code}, signal=${signal})`
+          + (errorOutput ? `: ${errorOutput.trim()}` : ''),
+      ))
+    }
+    const cleanup = () => {
+      clearTimeout(timeout)
+      child.stdout.off('data', onData)
+      child.stderr.off('data', onErrorData)
+      child.off('exit', onExit)
+    }
+    child.stdout.setEncoding('utf8')
+    child.stderr.setEncoding('utf8')
+    child.stdout.on('data', onData)
+    child.stderr.on('data', onErrorData)
+    child.once('exit', onExit)
   })
 }
 

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   acceptsVoiceState,
+  canStartComposerDictation,
   microphoneSamplesDuringManualInput,
   microphoneControlEvent,
   releasesManualInputGuard,
@@ -9,8 +10,32 @@ import {
   retainedRealtimeProvider,
   shouldAdvertiseVoice,
   shouldClaimReleasedVoice,
+  shouldCaptureMicrophone,
   visualVoiceState,
 } from '../src/useRealtimeVoice.js'
+
+test('ending dictation cannot permanently latch an enabled microphone off', () => {
+  assert.equal(shouldCaptureMicrophone({
+    enabled: true,
+    dictationCapture: false,
+    suspended: false,
+    hostInputSuspended: false,
+    dictationCaptureBlocked: true,
+  }), true)
+})
+
+test('Web dictation requires unmuted active ownership without host suspension', () => {
+  assert.equal(canStartComposerDictation({
+    enabled: true,
+    ownership: { state: 'active' },
+    hostInputSuspended: false,
+  }), true)
+  for (const blocked of [
+    { enabled: false, ownership: { state: 'active' }, hostInputSuspended: false },
+    { enabled: true, ownership: { state: 'busy' }, hostInputSuspended: false },
+    { enabled: true, ownership: { state: 'active' }, hostInputSuspended: true },
+  ]) assert.equal(canStartComposerDictation(blocked), false)
+})
 
 test('keeps a persisted front end only while the server still offers it', () => {
   const providers = [{ key: 'dashscope' }, { key: 'speech-to-speech' }]

@@ -46,6 +46,11 @@ extraResources:
 mac:
   category: public.app-category.productivity
   icon: desktop/build/icon.icns
+  extraResources:
+    - from: dist/native-input/QwenInputBridge
+      to: native-input/QwenInputBridge
+    - from: dist/native-input/Qwen Input.app
+      to: native-input/Qwen Input.app
   hardenedRuntime: true
   entitlements: desktop/build/entitlements.mac.plist
   entitlementsInherit: desktop/build/entitlements.mac.inherit.plist

@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url'
 import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
+  DICTATION_CAPABILITIES,
+  gatewayCapabilities,
 } from '../server/src/core/gateway-protocol.mjs'
 import {
   GatewayClientEvent,
@@ -33,8 +35,16 @@ test('the protocol version is SemVer and the capability list is frozen', () => {
   assert.equal(new Set(GATEWAY_CAPABILITIES).size, GATEWAY_CAPABILITIES.length)
 })
 
+test('dictation capabilities are dynamic and default off', () => {
+  assert.deepEqual(gatewayCapabilities(), GATEWAY_CAPABILITIES)
+  assert.deepEqual(
+    gatewayCapabilities({ dictationEnabled: true }),
+    [...GATEWAY_CAPABILITIES, ...DICTATION_CAPABILITIES],
+  )
+})
+
 test('every advertised capability is documented in both contract documents', () => {
-  for (const capability of GATEWAY_CAPABILITIES) {
+  for (const capability of gatewayCapabilities({ dictationEnabled: true })) {
     assert.ok(
       contractEn.includes(`\`${capability}\``),
       `docs/contract.md must document ${capability}`,
@@ -50,10 +60,11 @@ test('the contract documents no capability the Gateway does not advertise', () =
   // Capability-shaped tokens in the capability tables must all be real.
   const documented = [...contractEn.matchAll(/^\| `([a-z0-9.-]+)` \|/gm)]
     .map(match => match[1])
-  assert.ok(documented.length >= GATEWAY_CAPABILITIES.length)
+  const known = gatewayCapabilities({ dictationEnabled: true })
+  assert.ok(documented.length >= known.length)
   for (const name of documented) {
     assert.ok(
-      GATEWAY_CAPABILITIES.includes(name),
+      known.includes(name),
       `docs/contract.md documents ${name}, which the Gateway does not advertise`,
     )
   }
@@ -63,7 +74,11 @@ test('the contracted realtime events exist as shared constants', () => {
   assert.equal(GatewayServerEvent.INPUT_SUSPEND, 'input.suspend')
   assert.equal(GatewayServerEvent.INPUT_RESUME, 'input.resume')
   assert.equal(GatewayClientEvent.INPUT_SUSPEND_ACK, 'input.suspend.ack')
-  for (const event of ['input.suspend', 'input.resume', 'input.suspend.ack']) {
+  for (const event of [
+    'input.suspend', 'input.resume', 'input.suspend.ack',
+    'dictation.start', 'dictation.partial', 'dictation.final',
+    'dictation.operation', 'dictation.commit.request', 'dictation.commit.ack',
+  ]) {
     assert.ok(
       contractEn.includes(`\`${event}\``),
       `docs/contract.md must document the ${event} event`,

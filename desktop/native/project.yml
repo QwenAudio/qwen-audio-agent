@@ -1,0 +1,141 @@
+name: QwenInput
+
+options:
+  minimumXcodeGenVersion: 2.44.0
+  deploymentTarget:
+    macOS: "13.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    CLANG_ENABLE_MODULES: YES
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  QwenInputCore:
+    type: library.static
+    platform: macOS
+    sources:
+      - path: Sources/QwenInputCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputcore
+        PRODUCT_MODULE_NAME: QwenInputCore
+    dependencies:
+      - sdk: Security.framework
+
+  QwenInputBridge:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/QwenInputBridge
+    dependencies:
+      - target: QwenInputCore
+      - sdk: Security.framework
+      - sdk: Carbon.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputbridge
+        PRODUCT_NAME: QwenInputBridge
+        CODE_SIGN_IDENTITY: "-"
+        CREATE_INFOPLIST_SECTION_IN_BINARY: YES
+        GENERATE_INFOPLIST_FILE: YES
+
+  QwenInput:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/QwenInput
+    dependencies:
+      - target: QwenInputCore
+      - sdk: Security.framework
+    info:
+      path: Resources/QwenInput-Info.plist
+      properties:
+        CFBundleDisplayName: Qwen Input
+        CFBundleName: Qwen Input
+        CFBundleIdentifier: ai.qwenaudio.agent.inputmethod
+        CFBundleExecutable: Qwen Input
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "1.11.0"
+        CFBundleVersion: "1"
+        LSBackgroundOnly: true
+        LSMinimumSystemVersion: "13.0"
+        InputMethodConnectionName: ai.qwenaudio.agent.inputmethod.connection
+        InputMethodServerControllerClass: QwenInputController
+        InputMethodType: Palette
+        TISInputSourceID: ai.qwenaudio.agent.inputmethod
+        TISIntendedLanguage: en
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputmethod
+        PRODUCT_MODULE_NAME: QwenInput
+        PRODUCT_NAME: Qwen Input
+        CODE_SIGN_IDENTITY: "-"
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
+        GENERATE_INFOPLIST_FILE: NO
+        REGISTER_WITH_LAUNCH_SERVICES: NO
+
+  QwenInputCoreTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/QwenInputCoreTests
+    dependencies:
+      - target: QwenInputCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputcore-tests
+        CODE_SIGN_IDENTITY: "-"
+        GENERATE_INFOPLIST_FILE: YES
+        # Xcode 26's bundled XCTest runtime itself has a macOS 14 floor. The
+        # production library, Bridge and input method remain macOS 13.
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+  QwenInputBridgeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/QwenInputBridgeTests
+      - path: Sources/QwenInputBridge/BridgeRuntime.swift
+      - path: Sources/QwenInputBridge/SystemInputMethodLifecycle.swift
+      - path: Sources/QwenInputBridge/SystemInputSourceAPI.swift
+    dependencies:
+      - target: QwenInputCore
+      - sdk: Security.framework
+      - sdk: Carbon.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: ai.qwenaudio.agent.inputbridge-tests
+        CODE_SIGN_IDENTITY: "-"
+        GENERATE_INFOPLIST_FILE: YES
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+
+schemes:
+  QwenInputBridge:
+    build:
+      targets:
+        QwenInputBridge: all
+  QwenInput:
+    build:
+      targets:
+        QwenInput: all
+  QwenInputCoreTests:
+    build:
+      targets:
+        QwenInputCoreTests: all
+    test:
+      targets:
+        - QwenInputCoreTests
+  QwenInputBridgeTests:
+    build:
+      targets:
+        QwenInputBridgeTests: all
+    test:
+      targets:
+        - QwenInputBridgeTests

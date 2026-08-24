@@ -6,7 +6,7 @@
   "main": "src/main.mjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test"
+    "test": "node ../scripts/test-desktop.mjs"
   },
   "devDependencies": {
     "electron": "^43.2.0"

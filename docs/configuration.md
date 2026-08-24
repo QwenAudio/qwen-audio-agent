@@ -908,3 +908,46 @@ compatibility fallback.
 Runtime parameters such as task status, notification retry, memory capacity, and retention
 time also use built-in default values. Overriding is only recommended when explicitly
 performing capacity planning or fault diagnosis.
+
+## Composer dictation (Web/TUI)
+
+Composer dictation is disabled by default and never registers UI/shortcuts or
+connects to ASR while disabled.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `QWEN_AUDIO_DICTATION_ENABLED` | empty / off | Enable Web/TUI composer dictation |
+| `QWEN_AUDIO_DICTATION_PROVIDER` | `dashscope` | Provider whose separate dictation adapter is used |
+| `QWEN_AUDIO_DICTATION_API_KEY` | empty | Dedicated Qwen ASR credential |
+| `QWEN_AUDIO_DICTATION_BASE_URL` | DashScope Qwen ASR Realtime URL | ASR WebSocket endpoint |
+| `QWEN_AUDIO_DICTATION_MODEL` | `qwen3-asr-flash-realtime` | ASR model |
+| `QWEN_AUDIO_DICTATION_TIMEOUT_MS` | `45000` | Active-state inactivity deadline |
+| `QWEN_AUDIO_DICTATION_REUSE_REALTIME_CREDENTIALS` | empty / off | Explicitly reuse the main credential only when both endpoints have the same origin |
+
+The Web shortcut is Ctrl/Command+Shift+D; the TUI shortcut is Alt/Option+D.
+Both are application-local.
+
+## Desktop native input (macOS 13+)
+
+Desktop-owned InputMethodKit input is independently disabled by default and
+also requires composer dictation to be configured. It remains unavailable
+until the version-matched Qwen Input bundle is installed, registered, enabled
+in System Settings, and explicitly selected from the macOS input menu.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `QWEN_AUDIO_NATIVE_INPUT_ENABLED` | empty / off | Enable the Desktop-owned native input host after installation |
+| `QWEN_AUDIO_NATIVE_INPUT_SHORTCUT` | `CommandOrControl+Shift+D` | Desktop global shortcut |
+
+Settings exposes read-only status plus explicit Install, Repair, Uninstall,
+and System Settings actions. Install/repair verifies path, owner, bundle ID,
+version, and code signature, then atomically replaces and registers the bundle;
+it never silently enables or selects it. The base path uses the existing
+Desktop microphone permission and does not request Accessibility, Input
+Monitoring, Full Disk Access, administrator credentials, or a second provider
+credential. See `docs/desktop/native-input-testing.md` before changing input
+source or TCC state.
+
+Keep Qwen Input selected while using the global shortcut; ordinary physical
+typing still passes through. Starting from another input source fails visibly
+without changing the user's selection.

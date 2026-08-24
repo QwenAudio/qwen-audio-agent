@@ -398,6 +398,23 @@
                 </select>
               </div>
 
+              <div class="setting-row native-input-setting">
+                <label for="native-input-enabled">随处输入</label>
+                <div class="toggle-field">
+                  <label class="toggle-switch">
+                    <input id="native-input-enabled" type="checkbox" />
+                    <span class="toggle-track"></span>
+                  </label>
+                  <span id="native-input-status" class="toggle-hint">正在检查输入法…</span>
+                </div>
+                <div class="manage-buttons" role="group" aria-label="管理 Qwen Input">
+                  <button id="native-input-install" type="button">安装</button>
+                  <button id="native-input-repair" type="button">修复</button>
+                  <button id="native-input-uninstall" type="button">卸载</button>
+                  <button id="native-input-system-settings" type="button">打开输入源设置</button>
+                </div>
+              </div>
+
               <div class="setting-row">
                 <span class="setting-label">日志</span>
                 <button id="open-logs" class="row-link" type="button">

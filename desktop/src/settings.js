@@ -35,6 +35,14 @@ const recordWakeShortcut = document.querySelector('#record-wake-shortcut')
 const resetWakeShortcut = document.querySelector('#reset-wake-shortcut')
 const wakeWordEnabled = document.querySelector('#wake-word-enabled')
 const desktopLanguage = document.querySelector('#desktop-language')
+const nativeInputEnabled = document.querySelector('#native-input-enabled')
+const nativeInputStatus = document.querySelector('#native-input-status')
+const nativeInputInstall = document.querySelector('#native-input-install')
+const nativeInputRepair = document.querySelector('#native-input-repair')
+const nativeInputUninstall = document.querySelector('#native-input-uninstall')
+const nativeInputSystemSettings = document.querySelector(
+  '#native-input-system-settings',
+)
 const dashscopeApiKey = document.querySelector('#dashscope-api-key')
 const realtimeBaseUrl = document.querySelector('#realtime-base-url')
 const realtimeVoice = document.querySelector('#realtime-voice')
@@ -793,6 +801,9 @@ function formSettings() {
     backendCredential: backendCredential.value,
     nodePath: nodePathInput.value.trim(),
     language: desktopLanguage.value,
+    nativeInputEnabled: nativeInputEnabled.checked,
+    nativeInputShortcut: settings?.nativeInputShortcut
+      || 'CommandOrControl+Shift+D',
   }
 }
 
@@ -818,6 +829,8 @@ function fingerprint(value) {
     backendCredential: value.backendCredential,
     nodePath: value.nodePath,
     language: value.language,
+    nativeInputEnabled: value.nativeInputEnabled,
+    nativeInputShortcut: value.nativeInputShortcut,
   })
 }
 
@@ -981,6 +994,9 @@ async function detectBackendOptions(force = false) {
 }
 
 window.addEventListener('focus', () => {
+  void window.qwenAudioAgentDesktop.nativeInputLifecycle('status')
+    .then(renderNativeInputLifecycle)
+    .catch(() => renderNativeInputLifecycle({ state: 'error' }))
   if (!pendingBackendConfiguration || installingBackend) return
   const id = pendingBackendConfiguration
   void detectBackendOptions(true).then(report => {
@@ -1050,6 +1066,7 @@ function render() {
   wakeShortcut.value = settings.wakeShortcut
   wakeWordEnabled.checked = settings.wakeWordEnabled || false
   desktopLanguage.value = settings.language || 'auto'
+  nativeInputEnabled.checked = settings.nativeInputEnabled === true
   applyLanguage(desktopLanguage.value)
   recordingWakeShortcut = false
   renderWakeShortcut()
@@ -1092,6 +1109,7 @@ for (const control of [
   ...realtimeProviderInputs,
   wakeWordEnabled,
   desktopLanguage,
+  nativeInputEnabled,
 ]) {
   control.addEventListener('input', () => {
     showMessage('')
@@ -1118,6 +1136,63 @@ for (const control of [
     updateApplyState()
   })
 }
+
+function renderNativeInputLifecycle(status) {
+  const labels = {
+    ready: t('已安装并启用；请从输入菜单选择 Qwen Input'),
+    'needs-enable': t('已安装，请在系统设置中启用 Qwen Input'),
+    'needs-repair': t('安装不完整，需要修复'),
+    'not-installed': t('尚未安装'),
+    error: t('输入法状态不可用'),
+  }
+  nativeInputStatus.textContent = labels[status?.state] || t('正在检查输入法…')
+  nativeInputInstall.hidden = status?.state !== 'not-installed'
+  nativeInputRepair.hidden = !['needs-repair', 'error'].includes(status?.state)
+  nativeInputUninstall.hidden = status?.installed !== true
+  nativeInputSystemSettings.hidden = ![
+    'needs-enable', 'ready',
+  ].includes(status?.state)
+}
+
+async function runNativeInputLifecycle(action) {
+  for (const button of [
+    nativeInputInstall,
+    nativeInputRepair,
+    nativeInputUninstall,
+    nativeInputSystemSettings,
+  ]) button.disabled = true
+  try {
+    const status = await window.qwenAudioAgentDesktop.nativeInputLifecycle(action)
+    if (!status?.cancelled) renderNativeInputLifecycle(status)
+  } catch (error) {
+    renderNativeInputLifecycle({ state: 'error' })
+    showMessage(friendlyError(error, t('输入法操作失败')), 'error')
+  } finally {
+    for (const button of [
+      nativeInputInstall,
+      nativeInputRepair,
+      nativeInputUninstall,
+      nativeInputSystemSettings,
+    ]) button.disabled = false
+  }
+}
+
+nativeInputInstall.addEventListener('click', () => {
+  void runNativeInputLifecycle('install')
+})
+nativeInputRepair.addEventListener('click', () => {
+  void runNativeInputLifecycle('repair')
+})
+nativeInputUninstall.addEventListener('click', () => {
+  void runNativeInputLifecycle('uninstall')
+})
+nativeInputSystemSettings.addEventListener('click', () => {
+  window.qwenAudioAgentDesktop.openNativeInputSettings()
+})
+
+void window.qwenAudioAgentDesktop.nativeInputLifecycle('status')
+  .then(renderNativeInputLifecycle)
+  .catch(() => renderNativeInputLifecycle({ state: 'error' }))
 
 getApiKey.addEventListener('click', () => {
   window.qwenAudioAgentDesktop.openExternal(BAILIAN_API_KEY_URL)

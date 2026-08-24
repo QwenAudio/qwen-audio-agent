@@ -19,6 +19,8 @@ import {
   inputPartsFromText,
 } from './input-parts.mjs'
 import { isExitCommand } from './terminal-commands.mjs'
+import { TuiComposerDictation } from './composer-dictation.mjs'
+import { dictationStateLabel } from '../../shared/dictation-contract.mjs'
 
 const OUTPUT_SAMPLE_RATE = 24000
 const AUDIO_MODES = new Set(['half', 'full'])
@@ -646,6 +648,8 @@ export function createPersistentTerminalRenderer({
   onLine = async () => {},
   onPaste = async value => value,
   onChange = () => {},
+  onBeforeEdit = () => null,
+  onShortcut = () => false,
   onClose = () => {},
 } = {}) {
   const entries = []
@@ -657,6 +661,7 @@ export function createPersistentTerminalRenderer({
   let pasteQueue = Promise.resolve()
   const pendingPastes = []
   let status = 'Gateway 连接中 · 麦克风准备中'
+  let dictationPartial = ''
   let closed = false
   let closeRequested = false
   let lineQueue = Promise.resolve()
@@ -752,12 +757,36 @@ export function createPersistentTerminalRenderer({
       1,
       contentWidth - displayWidth(prompt),
     ))
-    const visibleStatus = scrollOffset > 0
-      ? `${status} · 已上翻 ${scrollOffset} 行`
-      : status
+    const scrollSuffix = scrollOffset > 0
+      ? ` · 已上翻 ${scrollOffset} 行`
+      : ''
+    let visibleStatus
+    if (dictationPartial) {
+      const separatorWidth = displayWidth(' · ')
+      const availableWithoutScroll = Math.max(
+        0,
+        contentWidth - displayWidth(scrollSuffix),
+      )
+      const partialBudget = Math.min(
+        displayWidth(dictationPartial),
+        Math.floor(availableWithoutScroll / 2),
+      )
+      const visibleBase = truncate(
+        status,
+        Math.max(0, availableWithoutScroll - separatorWidth - partialBudget),
+      )
+      const remaining = Math.max(
+        0,
+        availableWithoutScroll - displayWidth(visibleBase) - separatorWidth,
+      )
+      const visiblePartial = truncate(dictationPartial, remaining)
+      visibleStatus = `${visibleBase} · \u001b[4m${visiblePartial}\u001b[0m${scrollSuffix}`
+    } else {
+      visibleStatus = truncate(`${status}${scrollSuffix}`, contentWidth)
+    }
     const footer = [
       separator,
-      truncate(visibleStatus, contentWidth),
+      visibleStatus,
       `${prompt}${input.content}`,
       truncate(
         'Enter 发送 · /help 命令 · PgUp/PgDn 滚动 · Ctrl-C 退出',
@@ -807,6 +836,18 @@ export function createPersistentTerminalRenderer({
     setStatus(value) {
       status = String(value || '')
       redraw()
+    },
+    setDictationPreview(value) {
+      dictationPartial = String(value || '')
+      redraw()
+    },
+    setDraft(value) {
+      draft = Array.from(String(value || ''))
+      cursor = draft.length
+      redraw()
+    },
+    draftText() {
+      return draft.join('')
     },
     discardPreview() {
       if (!activePreview) return
@@ -882,7 +923,13 @@ export function createPersistentTerminalRenderer({
   }
   const handleKeypress = (value, key = {}) => {
     if (closed) return
+    if (onShortcut(value, key) === true) return
     if (key.name === 'paste-start') {
+      const settled = onBeforeEdit()
+      if (typeof settled === 'string') {
+        draft = Array.from(settled)
+        cursor = draft.length
+      }
       pasteBuffer = ''
       return
     }
@@ -904,6 +951,11 @@ export function createPersistentTerminalRenderer({
       return
     }
     if (key.name === 'return' || key.name === 'enter') {
+      const settled = onBeforeEdit()
+      if (typeof settled === 'string') {
+        draft = Array.from(settled)
+        cursor = draft.length
+      }
       const submitted = draft.join('')
       draft = []
       cursor = 0
@@ -913,6 +965,16 @@ export function createPersistentTerminalRenderer({
       return
     }
     let changed = false
+    if (
+      ['backspace', 'delete'].includes(key.name)
+      || (value && !key.ctrl && !key.meta && !/^[\u0000-\u001f\u007f]$/.test(value))
+    ) {
+      const settled = onBeforeEdit()
+      if (typeof settled === 'string') {
+        draft = Array.from(settled)
+        cursor = draft.length
+      }
+    }
     if (key.name === 'backspace') {
       if (cursor > 0) {
         draft.splice(--cursor, 1)
@@ -956,6 +1018,10 @@ export function createPersistentTerminalRenderer({
   stdout.write('\u001b[?1049h\u001b[?2004h')
   redraw()
   return renderer
+}
+
+export function isDictationShortcut(key = {}) {
+  return key.name === 'd' && key.meta === true && key.ctrl !== true
 }
 
 export function createPlayback({
@@ -1088,9 +1154,13 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
   let everOwnedVoice = false
   let captureEnabled = false
   let captureStateSent = false
+  let dictationActive = false
+  let dictationPreviousCapture = false
+  let hostInputSuspended = false
   let audioBridge = null
   let playback = null
   let handleTerminalLine = async () => {}
+  let dictationClient = null
   let stagedInputParts = []
   let reconcileStagedInputParts = () => {}
   const typedTranscripts = []
@@ -1116,7 +1186,17 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
         },
       }
     },
-    onChange: value => reconcileStagedInputParts(value),
+    onChange: value => {
+      reconcileStagedInputParts(value)
+      if (dictationClient?.active) dictationClient.keyboard(value)
+    },
+    onBeforeEdit: () => dictationClient?.settleForKeyboard() ?? null,
+    onShortcut: (_value, key) => {
+      if (!dictationClient || !isDictationShortcut(key)) return false
+      if (dictationClient.active) dictationClient.stop()
+      else dictationClient.start(transcriptRenderer.draftText())
+      return true
+    },
     onClose: () => close(),
   })
   const print = text => transcriptRenderer.print(text)
@@ -1172,11 +1252,13 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
   const sendMicrophoneAudio = chunk => {
     if (canSendMicrophoneAudio({
       connected: socket?.readyState === WebSocket.OPEN,
-      muted,
+      muted: dictationActive ? false : muted,
       captureEnabled,
     })) {
       socket.send(JSON.stringify({
-        type: 'audio.append',
+        type: dictationActive
+          ? GatewayClientEvent.DICTATION_AUDIO_APPEND
+          : GatewayClientEvent.AUDIO_APPEND,
         audio: chunk.toString('base64'),
       }))
     }
@@ -1294,7 +1376,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
   }
 
   const sendTextInput = async text => {
-    if (!text.trim()) return
+    if (!text.trim()) return false
     const referencedParts = stagedInputParts.filter(part => (
       text.includes(String(part?.source?.text?.value || ''))
     ))
@@ -1310,11 +1392,51 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     stagedInputParts = []
     typedTranscripts.push(transcript)
     transcriptRenderer.finish(userPrefix, transcript)
+    return true
   }
+
+  const dictationEnabled = (health.capabilities || []).includes('composer.dictation')
+  dictationClient = new TuiComposerDictation({
+    enabled: dictationEnabled,
+    canStart: () => !muted && ownsVoice && !hostInputSuspended && !closed,
+    send: event => {
+      if (socket?.readyState !== WebSocket.OPEN) return false
+      socket.send(JSON.stringify(event))
+      return true
+    },
+    submit: sendTextInput,
+    setCapture: (active, { restore = false } = {}) => {
+      if (active) {
+        dictationPreviousCapture = captureEnabled
+        dictationActive = true
+        setCaptureEnabled(true)
+        return
+      }
+      dictationActive = false
+      setCaptureEnabled(false)
+      if (
+        restore && dictationPreviousCapture && !muted && ownsVoice
+        && !hostInputSuspended
+      ) setCaptureEnabled(true)
+      dictationPreviousCapture = false
+    },
+    onView: view => {
+      if (transcriptRenderer.draftText() !== view.text) {
+        transcriptRenderer.setDraft(view.text)
+      }
+      transcriptRenderer.setDictationPreview(view.partial)
+      if (view.error) setStatus(`听写失败 · ${view.error}`)
+      else if (view.state !== 'idle') {
+        const notice = view.notice ? ` · ${view.notice}` : ''
+        setStatus(`听写 · ${dictationStateLabel(view.state)}${notice}`)
+      }
+    },
+  })
 
   const setMuted = value => {
     muted = value
     if (muted) {
+      if (dictationClient?.active) dictationClient.stop('dictation.cancel')
       setCaptureEnabled(false)
       setStatus('麦克风已静音 · 语音回复保持开启')
       if (socket?.readyState === WebSocket.OPEN) {
@@ -1344,6 +1466,17 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     } catch {
       return
     }
+    if (
+      String(event.type || '').startsWith('dictation.')
+      || event.type === GatewayServerEvent.INPUT_SUSPEND
+    ) void dictationClient?.handle(event)
+    if (event.type === GatewayServerEvent.INPUT_SUSPEND) {
+      hostInputSuspended = true
+      setCaptureEnabled(false)
+    }
+    if (event.type === GatewayServerEvent.INPUT_RESUME) {
+      hostInputSuspended = false
+    }
     if (event.type === GatewayServerEvent.VOICE_READY) {
       frontendReady = true
       const nextRate = Number(event.inputSampleRate) || inputSampleRate
@@ -1369,6 +1502,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
         everOwnedVoice = true
         startMicrophone()
       } else if (event.state === 'busy') {
+        if (dictationClient?.active) dictationClient.stop('dictation.cancel')
         ownsVoice = false
         setCaptureEnabled(false)
         playback.clear()
@@ -1386,6 +1520,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       }
     }
     if (event.type === GatewayServerEvent.VOICE_DEACTIVATED) {
+      if (dictationClient?.active) dictationClient.stop('dictation.cancel')
       ownsVoice = false
       muted = true
       setCaptureEnabled(false)
@@ -1607,7 +1742,8 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     } else if (command.startsWith('/')) {
       throw new Error(`未知命令：${command}；输入 /help 查看帮助`)
     } else {
-      await sendTextInput(value)
+      const submitted = await sendTextInput(value)
+      if (submitted) await dictationClient?.manualCommitted()
     }
   }
 

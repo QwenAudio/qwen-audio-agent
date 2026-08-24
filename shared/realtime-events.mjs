@@ -17,6 +17,15 @@ export const GatewayClientEvent = Object.freeze({
   // host must not wait for it: pressing a key to record is latency sensitive,
   // so the acknowledgement only feeds status display and timeout healing.
   INPUT_SUSPEND_ACK: 'input.suspend.ack',
+  DICTATION_START: 'dictation.start',
+  DICTATION_AUDIO_APPEND: 'dictation.audio.append',
+  DICTATION_PAUSE: 'dictation.pause',
+  DICTATION_RESUME: 'dictation.resume',
+  DICTATION_CANCEL: 'dictation.cancel',
+  DICTATION_STOP: 'dictation.stop',
+  DICTATION_RESET: 'dictation.reset',
+  DICTATION_CONTEXT: 'dictation.context',
+  DICTATION_COMMIT_ACK: 'dictation.commit.ack',
 })
 
 export const GatewayServerEvent = Object.freeze({
@@ -36,6 +45,11 @@ export const GatewayServerEvent = Object.freeze({
   // INPUT_MUTE: no capture, no wake word detection.
   INPUT_SUSPEND: 'input.suspend',
   INPUT_RESUME: 'input.resume',
+  DICTATION_STATE: 'dictation.state',
+  DICTATION_PARTIAL: 'dictation.partial',
+  DICTATION_FINAL: 'dictation.final',
+  DICTATION_OPERATION: 'dictation.operation',
+  DICTATION_COMMIT_REQUEST: 'dictation.commit.request',
   AUDIO_DELTA: 'audio.delta',
   AUDIO_DONE: 'audio.done',
   RESPONSE_STARTED: 'response.started',

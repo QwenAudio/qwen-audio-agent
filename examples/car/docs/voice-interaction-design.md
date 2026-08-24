@@ -46,7 +46,7 @@
                 ▼                              │
 ┌──────────────────────────────────────────────────────────────┐
 │                    Existing Agent Server                      │
-│  Built-in Skills: vehicle_control / navigation / music        │
+│  Built-in Skills: vehicle_* / navigation_* / music_*          │
 │                   flashbuy / weather / web_search             │
 │  System Tools: memory / skill / time / location / notify      │
 └──────────────────────────────────────────────────────────────┘

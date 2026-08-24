@@ -6,21 +6,26 @@ Qwen Audio Agent Car 是 qwen-audio-agent 的智能座舱语音 Agent 示例。�
 
 ## 核心概念
 
-### Atomic Tools
+### Tools
 
-底层执行原语，是 Agent 的最小确定性能力。每个 Atomic Tool 有固定参数定义和执行逻辑，由开发者编写代码实现。车控、音乐、导航、闪购、天气、联网查询相关 Atomic Tools 不直接暴露给 LLM，而是由 Built-in Skills 调用。
+`server/tools/` 中保留跨领域的系统工具，例如时间、位置、记忆、提醒和自定义技能。车控、音乐、导航、闪购、天气和联网查询的最终 function 定义以 `server/domains/*.json` 为准，对应实现和业务约束放在 `server/domain-executors/*.mjs` 中。
 
 代码位置：`server/tools/` 和 `server/amap-mcp.mjs`。
 
-当前底层实现包括：`car_control`、`get_vehicle_state`、音乐播放控制、导航地点搜索/路线规划、淘宝闪购伪下单、高德天气查询、DashScope/通义联网查询等。
-
 ### Built-in Skills
 
-系统内置的大类能力，对 LLM 暴露为 function calling。它们包装并编排 Atomic Tools，是 LLM 执行座舱任务时优先调用的能力。
+系统内置的领域能力，对 LLM 暴露为 function calling。领域的 function schema 统一配置在 `server/domains/*.json` 中，它们就是各领域的最终原子函数定义；执行逻辑由 `server/domain-executors/*.mjs` 绑定。
 
-代码位置：`server/skills/builtin/`。
+代码位置：`server/domains/`、`server/domain-executors/` 和 `server/skills/builtin/index.mjs`。
 
-当前 Built-in Skills：`vehicle_control`、`navigation`、`music`、`flashbuy`、`weather`、`web_search`。
+当前 Built-in Skills：
+
+- 车控：`vehicle_state_query`、`vehicle_window_control`、`vehicle_sunroof_control`、`vehicle_headlights_control`、`vehicle_climate_control`
+- 导航：`navigation_start`、`navigation_route_query`、`navigation_stop`
+- 音乐：`music_play`、`music_pause`、`music_next`、`music_previous`、`music_search`
+- 闪购：`flashbuy`
+- 天气：`weather`
+- 联网查询：`web_search`
 
 ### Custom Skills
 
@@ -28,7 +33,7 @@ Qwen Audio Agent Car 是 qwen-audio-agent 的智能座舱语音 Agent 示例。�
 
 存储位置：`server/custom-skills/{clientId}/{技能名}/SKILL.md`。
 
-示例：用户创建"下班回家"技能 → 存储指令（导航到家 + 播放音乐 + 关闭车窗 + 查询天气）→ 触发时 LLM 依次调用 `navigation`、`music`、`vehicle_control`、`weather`。
+示例：用户创建"下班回家"技能 → 存储指令（导航到家 + 播放音乐 + 关闭车窗 + 查询天气）→ 触发时 LLM 依次调用 `navigation_start`、`music_play`、`vehicle_window_control`、`weather`。
 
 ### Voice Realtime Provider
 
@@ -44,13 +49,13 @@ Qwen Audio Agent Car 是 qwen-audio-agent 的智能座舱语音 Agent 示例。�
 
 ### 区别
 
-| | Atomic Tools | Built-in Skills | Custom Skills |
+| | Tools | Built-in Skills | Custom Skills |
 |---|---|---|---|
 | 创建者 | 开发者 | 开发者 | 用户 |
-| 实现方式 | JavaScript 代码 | JavaScript 编排 | Markdown 指令 |
-| 存储 | `server/tools/*.mjs` | `server/skills/builtin/*.mjs` | `server/custom-skills/{clientId}/{技能名}/SKILL.md` |
-| 执行 | 被 Skill 或系统内部调用 | LLM 直接 function call | `skill_run` 加载后由 LLM 解释执行 |
-| 粒度 | 原子操作 | 车控/导航/音乐/闪购/天气/联网查询大类能力 | 多能力流程 |
+| 实现方式 | JavaScript 代码 | JSON function schema + JavaScript executor | Markdown 指令 |
+| 存储 | `server/tools/*.mjs` | `server/domains/*.json` + `server/domain-executors/*.mjs` | `server/custom-skills/{clientId}/{技能名}/SKILL.md` |
+| 执行 | LLM 可直接调用的系统基础能力 | LLM 直接 function call，executor 负责业务约束和实现 | `skill_run` 加载后由 LLM 解释执行 |
+| 粒度 | 系统基础能力 | 按领域和意图拆分的最终原子函数 | 多能力流程 |
 
 ## 技术栈
 
@@ -82,7 +87,7 @@ npm run example:car:lint         # ESLint 检查
 ## 项目结构
 
 前端代码在 `react-app/src/` 下，组件在 `components/` 目录。
-后端 Atomic Tools 在 `server/tools/` 下，Built-in Skills 在 `server/skills/builtin/` 下，Custom Skills 在 `server/custom-skills/` 下，Voice Realtime provider 在 `server/voice/providers/` 下。
+后端系统工具在 `server/tools/` 下，Built-in Skill schema 在 `server/domains/` 下，领域 executor 在 `server/domain-executors/` 下，Custom Skills 在 `server/custom-skills/` 下，Voice Realtime provider 在 `server/voice/providers/` 下。
 3D 模型文件在 `react-app/public/`。
 根目录 `index.html` 是旧版原型备份，不要修改。
 

@@ -1,0 +1,152 @@
+{
+  "domain": "vehicle",
+  "label": "车控",
+  "description": "车辆状态查询、车窗、天窗、大灯与空调控制能力。",
+  "enabled": true,
+  "routeRules": [
+    "用户查询车辆状态、车窗状态、天窗状态、大灯状态、空调状态 → 必须调用 vehicle_state_query",
+    "用户表达任何车窗开关相关意图 → 必须调用 vehicle_window_control",
+    "用户表达任何天窗开关相关意图 → 必须调用 vehicle_sunroof_control",
+    "用户表达任何大灯开关相关意图 → 必须调用 vehicle_headlights_control",
+    "用户表达任何空调、温度、风量、制冷/制热相关意图 → 必须调用 vehicle_climate_control",
+    "车控类 function 会在 executor 中完成状态读取、业务校验和车辆动作生成；禁止直接用文字描述车控行为而不调用对应 function"
+  ],
+  "examples": [
+    "用户说“打开车窗” → 调用 vehicle_window_control(action=open, window=windows)",
+    "用户说“空调调到 23 度” → 调用 vehicle_climate_control(action=set_temp, temperature=23)"
+  ],
+  "functions": [
+    {
+      "name": "vehicle_state_query",
+      "label": "车况查询",
+      "description": "查询车窗、天窗、大灯、空调等车辆当前状态。",
+      "executor": "vehicle.state_query",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": "string",
+            "enum": ["windowFL", "windowFR", "windowRL", "windowRR", "windows", "sunroof", "headlights", "ac", "all"],
+            "description": "要查询的车辆部件。windows=全部车窗，all=全部车辆状态"
+          }
+        }
+      }
+    },
+    {
+      "name": "vehicle_window_control",
+      "label": "车窗控制",
+      "description": "打开或关闭一个车窗，或一次打开/关闭全部车窗。",
+      "executor": "vehicle.window_control",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["open", "close"],
+            "description": "open=打开车窗，close=关闭车窗"
+          },
+          "window": {
+            "type": "string",
+            "enum": ["windowFL", "windowFR", "windowRL", "windowRR", "windows"],
+            "description": "要控制的车窗。windows=全部车窗；不指定时默认全部车窗"
+          }
+        },
+        "required": ["action"]
+      }
+    },
+    {
+      "name": "vehicle_sunroof_control",
+      "label": "天窗控制",
+      "description": "打开或关闭车辆天窗。",
+      "executor": "vehicle.sunroof_control",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["open", "close"],
+            "description": "open=打开天窗，close=关闭天窗"
+          }
+        },
+        "required": ["action"]
+      }
+    },
+    {
+      "name": "vehicle_headlights_control",
+      "label": "大灯控制",
+      "description": "打开或关闭车辆大灯。",
+      "executor": "vehicle.headlights_control",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["open", "close"],
+            "description": "open=打开大灯，close=关闭大灯"
+          }
+        },
+        "required": ["action"]
+      }
+    },
+    {
+      "name": "vehicle_climate_control",
+      "label": "空调控制",
+      "description": "打开或关闭空调，并设置温度、制冷/制热模式或风量。",
+      "executor": "vehicle.climate_control",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["open", "close", "set_temp", "set_mode", "set_fan"],
+            "description": "open=打开空调, close=关闭空调, set_temp=设置温度, set_mode=设置模式, set_fan=设置风量"
+          },
+          "temperature": {
+            "type": "number",
+            "description": "空调目标温度，范围 16~32，仅 set_temp 使用"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["cool", "heat"],
+            "description": "空调模式，仅 set_mode 使用"
+          },
+          "fan": {
+            "type": "number",
+            "description": "空调风量档位，范围 1~5，仅 set_fan 使用"
+          }
+        },
+        "required": ["action"]
+      }
+    }
+  ]
+}

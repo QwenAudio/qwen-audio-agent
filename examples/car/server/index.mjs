@@ -5,6 +5,7 @@ import { createServer } from 'http'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { chat, chatStream } from './agent.mjs'
+import { builtinDomainCatalog, builtinSkillCatalog } from './skills/builtin/index.mjs'
 import { clearMemory, readMemory, deleteMemory } from './memory.mjs'
 import { clearHistory, loadHistory } from './context.mjs'
 import { loadCustomSkillCatalog, deleteCustomSkill } from './tools/skill-manage.mjs'
@@ -122,6 +123,13 @@ app.post('/api/chat', async (req, res) => {
 app.get('/api/vehicle-state', (req, res) => {
   const cid = req.query.clientId || 'default'
   res.json(getVehicleState(cid))
+})
+
+app.get('/api/tool-catalog', (req, res) => {
+  res.json({
+    domains: builtinDomainCatalog,
+    tools: builtinSkillCatalog,
+  })
 })
 
 app.get('/api/history', async (req, res) => {

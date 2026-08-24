@@ -3,7 +3,7 @@ import { config } from 'dotenv'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { tools, executors } from './tools/index.mjs'
-import { builtinSkillCatalog } from './skills/builtin/index.mjs'
+import { builtinDomainCatalog, builtinSkillCatalog } from './skills/builtin/index.mjs'
 import { getMemoryForPrompt } from './memory.mjs'
 import { loadHistory, appendToHistory, buildMessages, compactHistory } from './context.mjs'
 import { loadCustomSkillCatalog } from './tools/skill-manage.mjs'
@@ -62,7 +62,7 @@ function toolChoiceFor(skillName) {
 }
 
 function normalizeTriggerText(value) {
-  return String(value || '').replace(/\s+/g, '').replace(/[，,。.!！？?：“”"'「」『』（）()【】\[\]]/g, '').toLowerCase()
+  return String(value || '').replace(/\s+/g, '').replace(/[，,。.!！？?：“”"'「」『』（）()【】[\]]/g, '').toLowerCase()
 }
 
 async function inferRequiredCustomSkillForMessage(userMessage, clientId) {
@@ -86,11 +86,84 @@ function collectResultActions(result) {
   return actions
 }
 
+function compactJson(value, maxLength = 240) {
+  const text = JSON.stringify(value ?? {})
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
+}
+
+function resultContent(result) {
+  return typeof result?.result === 'string' ? result.result : JSON.stringify(result?.result)
+}
+
+function compactResult(value, maxLength = 180) {
+  const text = String(value || '')
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
+}
+
+function formatActionTrace(actions = []) {
+  if (!actions.length) return '无 UI action'
+  return actions.map((action) => {
+    if (action.type === 'car_control') return `car_control(${action.part}=${action.state})`
+    if (action.type === 'music') return `music(${action.action}${action.query ? `:${action.query}` : ''})`
+    if (action.type === 'navigation') return `navigation(${action.action}${action.destination ? `:${action.destination}` : ''})`
+    if (action.type === 'flashbuy') return `flashbuy(${action.action}${action.status ? `:${action.status}` : ''})`
+    return `${action.type || 'action'}`
+  }).join(', ')
+}
+
+function buildToolHistoryMessage(toolRecords) {
+  if (!toolRecords.length) return null
+  const lines = toolRecords.map((record, index) => (
+    `${index + 1}. ${record.name}(${compactJson(record.arguments)}) => ${compactResult(record.result)}；actions: ${formatActionTrace(record.actions)}`
+  ))
+  return {
+    role: 'system',
+    content: `【工具执行记录】上一轮用户请求已通过真实 function call 完成。后续遇到同类车控、导航、音乐、闪购、天气、联网、记忆或提醒请求，仍必须调用对应 function，禁止只用文字声称已完成。\n${lines.join('\n')}`,
+  }
+}
+
+function historyMessagesForTurn(userMessage, assistantContent, toolRecords = []) {
+  const messages = [{ role: 'user', content: userMessage }]
+  const toolHistory = buildToolHistoryMessage(toolRecords)
+  if (toolHistory) messages.push(toolHistory)
+  messages.push({ role: 'assistant', content: assistantContent })
+  return messages
+}
+
+function buildDomainPromptSections() {
+  const sections = builtinDomainCatalog
+    .filter(domain => domain.routeRules?.length || domain.examples?.length)
+    .map((domain) => {
+      const lines = [`${domain.label}的唯一正确流程：`]
+      for (const rule of domain.routeRules || []) {
+        lines.push(`- ${rule}`)
+      }
+      if (domain.examples?.length) {
+        lines.push('', '示例：')
+        for (const example of domain.examples) {
+          lines.push(`- ${example}`)
+        }
+      }
+      return lines.join('\n')
+    })
+
+  return sections.join('\n\n')
+}
+
+function listDomainToolNames(domainName) {
+  const domain = builtinDomainCatalog.find(item => item.domain === domainName)
+  return domain?.functions?.map(fn => fn.name).join('、') || domainName
+}
+
 async function buildSystemPrompt(soul, clientId = 'default') {
   const memoryText = await getMemoryForPrompt(clientId)
   const customSkills = await loadCustomSkillCatalog(clientId)
   const soulPrompt = getSoulPrompt(soul)
   const currentTimePrompt = buildCurrentTimePrompt()
+  const domainPromptSections = buildDomainPromptSections()
+  const navigationTools = listDomainToolNames('navigation')
+  const vehicleTools = listDomainToolNames('vehicle')
+  const musicTools = listDomainToolNames('music')
 
   let prompt = `${soulPrompt}
 
@@ -107,51 +180,12 @@ ${currentTimePrompt}
 
 你是一个执行者，不是描述者。所有操作必须通过调用工具完成，禁止用文字假装完成了操作。
 
-你当前可以直接调用的“内置技能”（Built-in Skills）如下，它们会在内部调用底层 Atomic Tools：
-${builtinSkillCatalog.map((s) => `- ${s.toolName}（${s.name}）：${s.description}${s.atomicTools.length ? `；Atomic Tools: ${s.atomicTools.join(', ')}` : ''}`).join('\n')}
+你当前可以直接调用的“内置技能”（Built-in Skills）如下，领域函数定义以 domains/*.json 为准：
+${builtinSkillCatalog.map((s) => {
+  return `- ${s.toolName}（${s.name}）：${s.description}`
+}).join('\n')}
 
-车控请求的唯一正确流程：
-- 用户表达任何车窗、天窗、大灯、空调、温度、风量、制冷/制热相关意图 → 必须调用 vehicle_control
-- vehicle_control 会在内部先查询车况，再调用车控 Atomic Tools 执行变更
-- 禁止直接用文字描述车控行为而不调用 vehicle_control
-
-错误示例（绝对禁止）：
-- 用户说"打开车窗"→ 你直接回复"已打开车窗" ← 严重错误！没有调用任何工具
-- 用户说"打开车窗"→ 你直接回复"已打开" ← 严重错误！缺少 vehicle_control 调用
-
-正确示例：
-- 用户说"打开车窗"→ 调用 vehicle_control(action=open, part=windows) → 回复"已为您打开所有车窗"
-
-音乐播放的唯一正确流程：
-- 用户说"我要听歌"、"放首歌"、"播放音乐"等任何音乐意图 → 必须调用 music 技能（action=play）
-- 用户说"暂停"、"停止播放" → 必须调用 music 技能（action=pause）
-- 用户说"下一首"、"切歌" → 必须调用 music 技能（action=next）
-- 用户说"上一首" → 必须调用 music 技能（action=prev）
-- 禁止用文字描述播放行为而不调用技能。"正在为您播放..."这种回复如果没有先调用 music 就是严重错误
-
-导航的唯一正确流程：
-- 用户表达任何导航、去某地、找路、路线相关意图 → 必须调用 navigation 技能
-- 导航是最高优先级任务，应立即响应，不要反复确认
-
-淘宝闪购的唯一正确流程：
-- 用户表达任何外卖、奶茶、咖啡、点餐、淘宝闪购、下单相关意图 → 必须调用 flashbuy 技能
-- flashbuy 会在内部处理商品搜索、加购、试算订单、确认下单
-- 禁止用文字描述“已帮你点了/正在下单”而不调用 flashbuy
-- 用户只说“看看/搜一下/有哪些”时，调用 flashbuy(action=search)
-- 用户说“帮我点/来一杯/点杯/想喝/想吃”时，优先调用 flashbuy(action=add_to_cart)，让 Skill 搜索、选择候选、加入购物车并给出订单预览，然后询问是否确认下单
-- 只有已经给用户播报或展示过订单预览后，用户再次明确说“确认”“下单”“买”“就这个”“可以”等确认意图时，才调用 flashbuy(action=confirm_order, confirmed=true)
-- 如果当前还没有订单预览，用户说“确认”“下单吧”时，禁止直接 confirm_order；应先调用 flashbuy(action=add_to_cart 或 preview_order) 生成预览，再询问确认
-- 下单前必须让用户听到或看到商品、价格、送达位置和预计送达时间
-
-天气查询的唯一正确流程：
-- 用户表达任何天气、气温、下雨、带伞、穿衣、冷不冷、热不热、风力相关意图 → 必须调用 weather 技能
-- 用户未指定城市时，默认查询杭州/当前车辆所在城市天气
-- 禁止直接凭常识或静态状态栏内容回答天气
-
-联网查询的唯一正确流程：
-- 用户表达任何联网、网上查、搜索、最新、最近、新闻、政策、公告、活动、价格、股价、汇率、油价、金价、比赛、赛事、限行、实时信息相关意图 → 必须调用 web_search 技能
-- web_search 用于通用实时信息查询；天气优先使用 weather，导航优先使用 navigation，车控优先使用 vehicle_control，闪购优先使用 flashbuy
-- 回答联网查询时要简洁，尽量说明信息来源；禁止凭训练知识回答强时效问题
+${domainPromptSections}
 
 【记忆规则】
 - 当用户透露个人信息（姓名、昵称、喜好、习惯、职业等）时，必须调用 memory_write 工具记录
@@ -169,7 +203,7 @@ ${builtinSkillCatalog.map((s) => `- ${s.toolName}（${s.name}）：${s.descripti
 - 当用户明确说"帮我创建一个技能"或类似表述时，调用 skill_create 创建自定义技能
 - 当用户描述条件触发的任务（如"每天下班后帮我..."、"到家时自动..."、"每次...就..."），主动建议为其创建自定义技能，用户确认后调用 skill_create
 - skill_id 使用简短的中文名称（如"下班回家"、"午睡模式"）
-- instructions 中优先使用内置技能（vehicle_control、navigation、music）编排执行步骤；只有时间、位置、记忆、提醒等基础能力才使用对应系统工具
+- instructions 中优先使用内置技能（车控：${vehicleTools}；导航：${navigationTools}；音乐：${musicTools}）编排执行步骤；只有时间、位置、记忆、提醒等基础能力才使用对应系统工具
 - 当用户命中可用自定义技能的名称或描述里的触发条件时，必须先调用 skill_run 加载完整指令，再根据指令执行或回复，禁止只凭技能摘要直接回答
 
 `
@@ -203,6 +237,7 @@ export async function chat(userMessage, sessionId = 'default', vehicleState = {}
   ]
 
   const actions = []
+  const toolRecords = []
   const requiredSkill = await inferRequiredCustomSkillForMessage(userMessage, clientId)
   const debug = {
     rounds: 0,
@@ -217,7 +252,7 @@ export async function chat(userMessage, sessionId = 'default', vehicleState = {}
     strategy,
     clientId,
     compactHistory: (keepLast) => compactHistory(sessionId, keepLast),
-    onProgress: (event) => {},
+    onProgress: () => {},
   }
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -250,7 +285,7 @@ export async function chat(userMessage, sessionId = 'default', vehicleState = {}
 
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
       const content = msg.content || ''
-      await appendToHistory(sessionId, { role: 'user', content: userMessage }, { role: 'assistant', content })
+      await appendToHistory(sessionId, ...historyMessagesForTurn(userMessage, content, toolRecords))
       debug.duration_ms = Date.now() - startTime
       return { content, actions, debug }
     }
@@ -284,6 +319,7 @@ export async function chat(userMessage, sessionId = 'default', vehicleState = {}
       }
       const callDuration = Date.now() - callStart
 
+      const resultText = resultContent(result)
       if (result.subCalls?.length) {
         for (const sub of result.subCalls) {
           debug.tool_calls.push({
@@ -298,24 +334,30 @@ export async function chat(userMessage, sessionId = 'default', vehicleState = {}
       debug.tool_calls.push({
         name: fnName,
         arguments: fnArgs,
-        result: typeof result.result === 'string' ? result.result : JSON.stringify(result.result),
+        result: resultText,
         duration_ms: callDuration,
       })
 
-      actions.push(...collectResultActions(result))
+      const resultActions = collectResultActions(result)
+      actions.push(...resultActions)
+      toolRecords.push({
+        name: fnName,
+        arguments: fnArgs,
+        result: resultText,
+        actions: resultActions,
+      })
 
       messages.push({
         role: 'tool',
         tool_call_id: toolCall.id,
-        content: typeof result.result === 'string' ? result.result : JSON.stringify(result.result),
+        content: resultText,
       })
     }
   }
 
   await appendToHistory(
     sessionId,
-    { role: 'user', content: userMessage },
-    { role: 'assistant', content: '调用次数过多，请重试' },
+    ...historyMessagesForTurn(userMessage, '调用次数过多，请重试', toolRecords),
   )
   debug.duration_ms = Date.now() - startTime
   return { content: '调用次数过多，请重试', actions, debug }
@@ -340,6 +382,7 @@ export async function chatStream(userMessage, sessionId = 'default', vehicleStat
   ]
 
   const actions = []
+  const toolRecords = []
   const requiredSkill = await inferRequiredCustomSkillForMessage(userMessage, clientId)
   const debug = {
     rounds: 0,
@@ -374,16 +417,12 @@ export async function chatStream(userMessage, sessionId = 'default', vehicleStat
     const llmTimeoutMs = remainingTimeout(deadline, timeouts.llmTimeoutMs)
     const stream = await client.chat.completions.create(streamParams, { timeout: llmTimeoutMs, maxRetries: 0 })
 
-    let finishReason = null
     let contentBuf = ''
     const toolCallBufs = {}
 
     await withTimeout((async () => {
       for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta
-      if (chunk.choices?.[0]?.finish_reason) {
-        finishReason = chunk.choices[0].finish_reason
-      }
       if (chunk.usage) {
         debug.usage.prompt_tokens += chunk.usage.prompt_tokens || 0
         debug.usage.completion_tokens += chunk.usage.completion_tokens || 0
@@ -417,7 +456,7 @@ export async function chatStream(userMessage, sessionId = 'default', vehicleStat
     const toolCalls = Object.values(toolCallBufs)
 
     if (toolCalls.length === 0) {
-      await appendToHistory(sessionId, { role: 'user', content: userMessage }, { role: 'assistant', content: contentBuf })
+      await appendToHistory(sessionId, ...historyMessagesForTurn(userMessage, contentBuf, toolRecords))
       debug.duration_ms = Date.now() - startTime
       emit({ type: 'done', content: contentBuf, actions, debug })
       return
@@ -459,17 +498,24 @@ export async function chatStream(userMessage, sessionId = 'default', vehicleStat
       }
       eventToken += 1
       const callDuration = Date.now() - callStart
+      const resultText = resultContent(result)
 
       emit({
         type: 'tool_call',
         name: fnName,
         arguments: fnArgs,
-        result: typeof result.result === 'string' ? result.result : JSON.stringify(result.result),
+        result: resultText,
         duration_ms: callDuration,
       })
 
       const resultActions = collectResultActions(result)
       actions.push(...resultActions)
+      toolRecords.push({
+        name: fnName,
+        arguments: fnArgs,
+        result: resultText,
+        actions: resultActions,
+      })
       for (const action of resultActions) {
         emit({ type: 'action', action })
       }
@@ -477,7 +523,7 @@ export async function chatStream(userMessage, sessionId = 'default', vehicleStat
       messages.push({
         role: 'tool',
         tool_call_id: tc.id,
-        content: typeof result.result === 'string' ? result.result : JSON.stringify(result.result),
+        content: resultText,
       })
     }
   }

@@ -1,0 +1,112 @@
+{
+  "domain": "music",
+  "label": "音乐",
+  "description": "音乐播放、暂停、切歌和搜索能力。",
+  "enabled": true,
+  "routeRules": [
+    "用户说“我要听歌”、“放首歌”、“播放音乐”、“继续播放”等任何播放意图 → 必须调用 music_play",
+    "用户说“搜一下/找一下某首歌、某个歌手或专辑”且没有要求播放 → 必须调用 music_search",
+    "用户说“暂停”、“停止播放” → 必须调用 music_pause",
+    "用户说“下一首”、“切歌” → 必须调用 music_next",
+    "用户说“上一首” → 必须调用 music_previous",
+    "禁止用文字描述播放行为而不调用技能；“正在为您播放...”这种回复如果没有先调用 music_play 就是严重错误"
+  ],
+  "examples": [
+    "用户说“播放晴天” → 调用 music_play(query=晴天)",
+    "用户说“搜一下周杰伦” → 调用 music_search(query=周杰伦)",
+    "用户说“下一首” → 调用 music_next()"
+  ],
+  "functions": [
+    {
+      "name": "music_play",
+      "label": "音乐播放",
+      "description": "播放或继续播放音乐，可按歌曲名、歌手或专辑点歌。当前歌单：晴天、七里香、稻香、夜曲、简单爱、青花瓷",
+      "executor": "music.play",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "要播放的歌曲名、歌手、专辑或关键词；不填表示继续播放当前歌曲"
+          }
+        }
+      }
+    },
+    {
+      "name": "music_pause",
+      "label": "音乐暂停",
+      "description": "暂停当前音乐播放。",
+      "executor": "music.pause",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "music_next",
+      "label": "下一首",
+      "description": "切换到下一首音乐。",
+      "executor": "music.next",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "music_previous",
+      "label": "上一首",
+      "description": "切换到上一首音乐。",
+      "executor": "music.previous",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "music_search",
+      "label": "音乐搜索",
+      "description": "搜索歌曲、歌手或专辑，不直接开始播放。当前歌单：晴天、七里香、稻香、夜曲、简单爱、青花瓷",
+      "executor": "music.search",
+      "enabled": true,
+      "exposure": {
+        "text": true,
+        "voice": true,
+        "debug": true
+      },
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "要搜索的歌曲名、歌手、专辑或关键词"
+          }
+        },
+        "required": ["query"]
+      }
+    }
+  ]
+}

@@ -92,7 +92,7 @@ function registerTools(server, context) {
     'qwen_audio_agent_session_status',
     {
       title: 'Query Agent Session',
-      description: 'Read the current status and latest known result of a delegated project Session.',
+      description: 'Read the Gateway-managed status, recent ACP activity, and latest known result of a delegated project Session.',
       inputSchema: {
         delegation_id: z.string().optional(),
         session_id: z.string().optional(),

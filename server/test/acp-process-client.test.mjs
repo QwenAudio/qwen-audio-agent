@@ -298,6 +298,30 @@ test('keeps Session metadata and supports the legacy model method', async () => 
   ])
 })
 
+test('rejects an MCP transport the Agent did not advertise', async () => {
+  const client = new AcpProcessClient({
+    label: 'Test Agent',
+    command: 'unused',
+  })
+  client.initializeResult = {
+    agentCapabilities: { mcpCapabilities: { http: false } },
+  }
+  client.start = async () => client.initializeResult
+  client.context = {
+    async request() {
+      assert.fail('session/new must not be sent')
+    },
+  }
+
+  await assert.rejects(
+    client.newSession({
+      cwd: '/workspace',
+      mcpServers: [{ type: 'http', name: 'tools', url: 'http://tools' }],
+    }),
+    /未声明支持 HTTP MCP/,
+  )
+})
+
 test('sends multimodal ContentBlocks unchanged after capability negotiation', async () => {
   const calls = []
   const client = new AcpProcessClient({ label: 'Test Agent', command: 'unused' })

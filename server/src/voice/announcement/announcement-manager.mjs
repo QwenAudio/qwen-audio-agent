@@ -59,6 +59,7 @@ export class AnnouncementManager {
 
   completed(task) {
     this.queue(task.id, {
+      jobId: task.jobId,
       event: 'task.completed',
       status: 'completed',
       objective: task.objective,
@@ -70,6 +71,7 @@ export class AnnouncementManager {
 
   failed(task) {
     this.queue(task.id, {
+      jobId: task.jobId,
       event: 'task.failed',
       status: 'failed',
       objective: task.objective,
@@ -375,8 +377,8 @@ export function formatWorkResults(announcements) {
   const blocks = announcements.map((item, index) => [
     `--- event ${index + 1} ---`,
     `type: ${item.event}`,
-    `work_id: ${item.taskId}`,
-    item.objective ? `original_request: ${item.objective}` : '',
+    `job_id: ${item.jobId}`,
+    item.objective ? `submitted_objective: ${item.objective}` : '',
     item.completedAt ? `completed_at: ${new Date(item.completedAt).toISOString()}` : '',
     item.status === 'completed'
       ? `result:\n${String(item.result || '').trim()}`

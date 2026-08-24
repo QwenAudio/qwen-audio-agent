@@ -124,16 +124,6 @@ export const openClawBackendDriver = {
         'These are third-layer tasks. After spawn/send is accepted, return the',
         'delegated response required by the request envelope and stop this turn.',
       ].join(' '),
-      cancelInstruction(record) {
-        return `请用 OpenClaw 原生 Session 工具立即停止 sessionKey=${
-          record.sessionId
-        } 对应的第三层任务。`
-      },
-      statusInstruction(record) {
-        return `请调用 OpenClaw 原生 sessions_history 查询 sessionKey=${
-          record.sessionId
-        } 的真实状态和阶段结果。`
-      },
       uiUrl({ baseUrl }) {
         if (!baseUrl) return null
         const dashboard = new URL(baseUrl)

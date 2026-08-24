@@ -108,13 +108,8 @@ test('progress check handles no activity gracefully', async () => {
   if (internal.progressTimer) clearInterval(internal.progressTimer)
 })
 
-test('delegated task progress check queries coordinator', async () => {
+test('delegated task progress check uses Gateway-known activity', async () => {
   const manager = new TaskManager({ progressCheckMs: 30 })
-  let queryCalled = false
-  manager.configureCoordinatorQuery((_workId, _question, _options) => {
-    queryCalled = true
-    return Promise.resolve({ content: '第三层正在运行测试' })
-  })
 
   const progressEvents = []
   manager.subscribe(event => {
@@ -144,12 +139,10 @@ test('delegated task progress check queries coordinator', async () => {
 
   await new Promise(resolve => setTimeout(resolve, 60))
 
-  assert.ok(queryCalled, 'coordinatorQueryDelegatedWork should be called for delegated tasks')
-
   assert.ok(progressEvents.length > 0)
   const event = progressEvents[0]
   assert.equal(event.delegated, true)
-  assert.ok(event.message.includes('第三层'))
+  assert.ok(event.message.includes('正在处理中'))
 
   resolveRunner({ content: 'done' })
   if (internal.progressCheckTimer) clearInterval(internal.progressCheckTimer)

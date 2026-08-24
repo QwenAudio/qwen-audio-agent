@@ -925,7 +925,6 @@ export function attachRealtimeGateway(server, {
         return
       }
       if (task.sessionId !== sessionId) return
-      if (task.kind === 'control') return
       send(ws, {
         type: event.type,
         task,
@@ -981,26 +980,6 @@ export function attachRealtimeGateway(server, {
               ...presentation.inline,
             },
           })
-        }
-        if (outputEnabled && frontend?.ready && presentation?.speech) {
-          frontend.speak(presentation.speech, 'agent', {
-            turnId: task.turnId,
-            taskId: task.id,
-          }, {
-            // The accepted spawn_thinking follow-up is queued before the
-            // coordinator can delegate. Evaluate this only when the delegated
-            // confirmation reaches the front of the response queue, after the
-            // earlier acknowledgement transcript has been recorded.
-            shouldSpeak: () => !conversationService.hasEquivalentAssistantSpeech({
-              ownerId,
-              sessionId,
-              turnId: task.turnId,
-              content: presentation.speech,
-            }),
-          }).catch(error => send(ws, {
-            type: 'error',
-            message: `暂时无法播报项目启动说明：${error.message}`,
-          }))
         }
       }
       if (['task.completed', 'task.failed'].includes(event.type)) {
@@ -1180,6 +1159,12 @@ export function attachRealtimeGateway(server, {
         const id = realtimeResponseId(event)
         const callContext = responseContexts.get(id)
           || { turnId: '', turnGeneration: -1 }
+        logger.info('realtime.tool_call.received', {
+          responseId: id,
+          callId: event.call_id || event.item?.call_id || '',
+          toolName: event.name || event.item?.name || '',
+          turnId: callContext.turnId || '',
+        })
         if (responseContexts.has(id)) {
           responseContexts.get(id).hasFunctionCall = true
         }
@@ -1298,6 +1283,7 @@ export function attachRealtimeGateway(server, {
       } else if (event.type === 'response.done') {
         const id = realtimeResponseId(event)
         const responseContext = responseContexts.get(id)
+        const terminalToolResponse = toolCalls.consumeTerminalToolResponse(id)
         const responseTurnId = responseContext?.turnId || turnId
         const responseStatus = event.response?.status
         const responseFailed = ['failed', 'cancelled', 'incomplete'].includes(
@@ -1378,7 +1364,7 @@ export function attachRealtimeGateway(server, {
           origin: responseContext?.origin || 'model',
           hasAudio: Boolean(responseContext?.hasAudio),
           hasFunctionCall: Boolean(responseContext?.hasFunctionCall),
-          suppressed: Boolean(responseContext?.suppressed),
+          suppressed: Boolean(responseContext?.suppressed) || terminalToolResponse,
           failed: responseFailed,
         })
         if (

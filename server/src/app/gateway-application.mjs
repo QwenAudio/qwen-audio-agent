@@ -81,9 +81,6 @@ taskManager.recoverDelegated({
     return result
   },
 })
-taskManager.configureCoordinatorQuery(
-  (workId, question, options) => coordinator.queryDelegatedWork(workId, question, options),
-)
 // Offline notification subscriber: if a voice session does not claim a
 // pending notification within the delay window, deliver via desktop
 // notification (Electron) and WebSocket push.

@@ -44,6 +44,12 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
   assert.deepEqual(spawn.function.parameters.required, ['objective'])
   assert.equal(spawn.function.parameters.properties.input_refs.type, 'array')
   assert.equal(spawn.function.parameters.properties.input_refs.maxItems, 8)
+  assert.match(
+    spawn.function.parameters.properties.objective.description,
+    /忠实转达用户要做什么及其明确约束/,
+  )
+  assert.match(spawn.function.description, /不要重复提交已经覆盖的目标/)
+  assert.match(spawn.function.description, /duplicate 表示同一目标此前已提交/)
 })
 
 function createQwenFrontend(options = {}) {
@@ -854,15 +860,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(spawnThinking.function.description, /get_agent_task_status/)
   assert.match(
     spawnThinking.function.parameters.properties.objective.description,
-    /忠实保留用户要求的结果、约束、执行方式/,
-  )
-  assert.match(
-    spawnThinking.function.parameters.properties.objective.description,
-    /本项工作与既有工作的关系/,
-  )
-  assert.match(
-    spawnThinking.function.parameters.properties.objective.description,
-    /可直接执行的目标/,
+    /忠实转达用户要做什么及其明确约束/,
   )
   assert.match(
     spawnThinking.function.parameters.properties.objective.description,
@@ -882,7 +880,12 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     .tools.find(tool => tool.function.name === 'cancel_agent_task')
   assert.match(cancel.function.description, /定时任务或提醒/)
   assert.match(cancel.function.description, /先调用 get_agent_task_status/)
-  assert.match(cancel.function.parameters.properties.work_id.description, /reminder_id/)
+  assert.match(cancel.function.parameters.properties.job_id.description, /job_id/)
+  assert.equal(cancel.function.parameters.properties.all.type, 'boolean')
+  assert.match(
+    cancel.function.parameters.properties.all.description,
+    /取消当前会话中的全部工作/,
+  )
   const permission = REALTIME_PROVIDERS.qwen.buildPermissionInjection({
     id: 'permission-one',
     summary: '查看系统内存',

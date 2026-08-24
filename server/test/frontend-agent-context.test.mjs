@@ -100,6 +100,7 @@ test('loads one canonical frontend policy separately from runtime context', () =
   assert.match(prompt, /# Personalization and memory/)
   assert.match(prompt, /专用工具/)
   assert.match(prompt, /不要用口头承诺代替工具调用/)
+  assert.match(prompt, /工具尚未返回时取消仍在进行中/)
   assert.ok(prompt.length < 5000)
   assert.match(assistant, /## Identity/)
   assert.match(assistant, /千问Audio/)

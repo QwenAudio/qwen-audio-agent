@@ -29,9 +29,14 @@ import {
   nonTextPromptBlocks,
   transformPromptText,
 } from './acp-content.mjs'
+import { assertMcpServerCapabilities } from './acp-capabilities.mjs'
 
 const MAX_SESSION_RESULTS = 100
 const MAX_DELEGATION_RESULT_CHARS = 12_000
+const MAX_DELEGATION_RECENT_UPDATES = 5
+// Persistent coordinator Sessions are valid only for the contract that
+// created them. Project Sessions are user work and remain independent.
+const COORDINATOR_CONTRACT_VERSION = 1
 
 export { acpBackendProfile } from './acp-backend-profile.mjs'
 
@@ -301,6 +306,13 @@ export class AcpBackendAdapter {
       }
       this.runtimeState.starting()
       const initialized = await this.client.start()
+      if (this.profile.externalMcp) {
+        assertMcpServerCapabilities({
+          label: this.label,
+          capabilities: initialized?.agentCapabilities,
+          mcpServers: [{ type: 'http' }],
+        })
+      }
       this.markRuntimeReady(initialized)
       return this.status()
     } catch (error) {
@@ -351,8 +363,16 @@ export class AcpBackendAdapter {
     }
     const pending = (async () => {
       const stored = this.registry.get(key)
+      const contractVersion = COORDINATOR_CONTRACT_VERSION
       let session
-      if (stored?.sessionId) {
+      const canResumeStored = Boolean(
+        stored?.sessionId
+        && stored.contractVersion === contractVersion,
+      )
+      if (stored?.sessionId && !canResumeStored) {
+        this.registry.delete(key)
+      }
+      if (canResumeStored) {
         try {
           session = await this.client.resumeSession(stored.sessionId, {
             cwd: stored.cwd || this.directory,
@@ -386,6 +406,7 @@ export class AcpBackendAdapter {
         })
         session.isNew = true
       }
+      session.contractVersion = contractVersion
       await this.configureSession(session, 'coordinator')
       this.coordinatorSessions.set(key, session)
       this.registry.set(key, session)
@@ -648,11 +669,35 @@ export class AcpBackendAdapter {
     this.permissionBroker.cancelScope(permissionScopeId)
   }
 
-  onSessionUpdate(run, update) {
+  rememberDelegationUpdate(record, activity) {
+    if (!record || !activity || !['plan', 'tool'].includes(activity.kind)) {
+      return
+    }
+    const key = clean(activity.id)
+      || `${activity.kind}:${clean(activity.tool)}:${clean(activity.detail)}`
+    const summary = Object.fromEntries(Object.entries(activity)
+      .filter(([name, value]) => (
+        name !== 'id'
+        && value !== ''
+        && value !== null
+        && value !== undefined
+      )))
+    record.recentUpdates ||= []
+    record.recentUpdates = record.recentUpdates
+      .filter(item => item.key !== key)
+    record.recentUpdates.push({ key, summary })
+    record.recentUpdates = record.recentUpdates
+      .slice(-MAX_DELEGATION_RECENT_UPDATES)
+  }
+
+  onSessionUpdate(run, update, { delegation = null } = {}) {
     run.receivedUpdate = true
     run.toolCalls ||= new Map()
     const activity = activityFromUpdate(update, run.toolCalls)
     if (activity) run.onEvent?.({ type: 'backend.activity', activity })
+    if (delegation && this.profile.externalMcp) {
+      this.rememberDelegationUpdate(delegation, activity)
+    }
     if (!this.profile.nativeDelegation) return
     if (!['tool_call', 'tool_call_update'].includes(update?.sessionUpdate)) {
       return
@@ -756,6 +801,7 @@ export class AcpBackendAdapter {
       workId: run.coordinationRunId,
       status: 'running',
       controller,
+      recentUpdates: [],
       result: null,
       error: null,
     }
@@ -774,7 +820,9 @@ export class AcpBackendAdapter {
           {
             signal: controller.signal,
             timeoutMs: 0,
-            onUpdate: update => this.onSessionUpdate(run, update),
+            onUpdate: update => this.onSessionUpdate(run, update, {
+              delegation: record,
+            }),
           },
         )
         record.status = 'completed'
@@ -895,6 +943,9 @@ export class AcpBackendAdapter {
       session_id: record.sessionId,
       title: record.title,
       directory: record.directory,
+      ...(Array.isArray(record.recentUpdates)
+        ? { recent_updates: record.recentUpdates.map(item => item.summary) }
+        : {}),
       ...(record.status === 'completed'
         ? { result: clean(record.result?.content).slice(0, 4000) }
         : {}),
@@ -1354,54 +1405,13 @@ export class AcpBackendAdapter {
     }
   }
 
-  async coordinatorControl(workId, prompt, {
-    ownerId,
-    signal,
-  } = {}) {
-    const key = coordinatorKey(ownerId, this.protocol)
-    return this.serialize(
-      `coordinator:${key}`,
-      () => this.coordinatorTurn(prompt, {
-        ownerId,
-        coordinationRunId: workId,
-        signal,
-        onEvent: null,
-      }),
-    )
-  }
-
-  async cancelDelegatedWork(workId, { ownerId, signal } = {}) {
+  async cancelDelegatedWork(workId, { ownerId } = {}) {
     const run = this.delegatedWorkRuns.get(clean(workId))
     const record = run?.delegation
     if (!record || record.ownerId !== clean(ownerId)) {
       throw new AgentError(`没有找到可取消的 ${this.label} 项目任务`, {
         protocol: this.protocol,
       })
-    }
-    const coordinator = this.coordinatorSessions.get(
-      coordinatorKey(ownerId, this.protocol),
-    )
-    const busy = coordinator
-      && this.activeCoordinatorTurns.has(coordinator.sessionId)
-    if (!busy) {
-      try {
-        const instruction = this.profile.cancelInstruction?.(record)
-          || `请调用 qwen_audio_agent_session_cancel 取消 delegation_id=${record.id}。`
-        await this.coordinatorControl(workId, [
-          '<qwen_audio_agent_control kind="cancel">',
-          instruction,
-          '工具返回后只简短确认，不要做其他工作。',
-          '</qwen_audio_agent_control>',
-        ].join('\n'), { ownerId, signal })
-        return {
-          route: 'coordinator',
-          layer: 'delegated',
-          delegationId: record.id,
-          sessionId: record.sessionId,
-        }
-      } catch {
-        // Cancellation is urgent; fall through to the ACP transport.
-      }
     }
     await this.cancelDelegation({ delegation_id: record.id })
     const ownerKey = clean(ownerId)
@@ -1422,7 +1432,7 @@ export class AcpBackendAdapter {
     }
   }
 
-  async queryDelegatedWork(workId, question, { ownerId, signal } = {}) {
+  async queryDelegatedWork(workId, _question, { ownerId } = {}) {
     const run = this.delegatedWorkRuns.get(clean(workId))
     const record = run?.delegation
     if (!record || record.ownerId !== clean(ownerId)) {
@@ -1430,18 +1440,40 @@ export class AcpBackendAdapter {
         protocol: this.protocol,
       })
     }
-    const instruction = this.profile.statusInstruction?.(record)
-      || `请调用 qwen_audio_agent_session_status 查询 delegation_id=${record.id}。`
-    const result = await this.coordinatorControl(workId, [
-      '<qwen_audio_agent_control kind="status">',
-      instruction,
-      clean(question)
-        ? `用户的具体问题：${clean(question)}`
-        : '请自然地说明当前状态。',
-      '只根据工具结果返回 completed/respond JSON，不要扫描项目或执行任务。',
-      '</qwen_audio_agent_control>',
-    ].join('\n'), { ownerId, signal })
-    return this.resultEnvelope(result, record)
+    const status = this.statusForDelegation({ delegation_id: record.id })
+    const latest = status.recent_updates?.at(-1)
+    const latestDetail = bounded(
+      latest?.detail || latest?.tool || latest?.kind,
+      240,
+    )
+    const speech = status.status === 'completed'
+      ? `这项工作已经完成：${clean(status.result)}`
+      : status.status === 'failed'
+        ? `这项工作已经失败：${clean(status.error)}`
+        : status.status === 'cancelled'
+          ? '这项工作已经取消。'
+          : latestDetail
+            ? `这项工作仍在执行中，最近进展：${latestDetail}`
+            : '这项工作仍在执行中，当前没有新的详细进展。'
+    return {
+      content: JSON.stringify({
+        work_id: clean(workId),
+        state: 'completed',
+        mode: 'respond',
+        presentation: { speech, inline: null },
+      }),
+      protocol: this.protocol,
+      metadata: {
+        statusSource: 'gateway',
+        recentUpdates: status.recent_updates || [],
+        delegation: {
+          id: record.id,
+          sessionId: record.sessionId,
+          title: record.title,
+          directory: record.directory,
+        },
+      },
+    }
   }
 
   async uiUrl(ownerId) {

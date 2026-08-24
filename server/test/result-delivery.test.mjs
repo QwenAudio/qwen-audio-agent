@@ -95,13 +95,27 @@ function createDeliveryHarness() {
     }
 
     if (task.sessionId !== sessionId) return
-    if (task.kind === 'control') return
 
     send(ws, {
       type: event.type,
       task,
       ...(event.permission ? { permission: event.permission } : {}),
     })
+
+    if (event.type === 'task.delegated') {
+      const inline = task.delegation?.presentation?.inline
+      if (inline?.content) {
+        send(ws, {
+          type: 'timeline.inline',
+          item: {
+            id: `inline_${task.id}_delegated`,
+            taskId: task.id,
+            turnId: task.turnId || null,
+            ...inline,
+          },
+        })
+      }
+    }
 
     if (['task.completed', 'task.failed'].includes(event.type)) {
       recordResult(task)
@@ -137,6 +151,51 @@ async function flush() {
   // Let the AnnouncementManager's setTimeout(0) delivery fire.
   await new Promise(resolve => setTimeout(resolve, 10))
 }
+
+test('delegation updates the timeline without producing a second voice announcement', async () => {
+  const h = createDeliveryHarness()
+  let release
+  const { id: taskId } = h.taskManager.create({
+    objective: '创建贪吃蛇小游戏',
+    ownerId: h.ownerId,
+    sessionId: h.sessionId,
+    runner: async (_objective, { onEvent }) => {
+      onEvent({
+        type: 'backend.delegated',
+        delegation: {
+          id: 'delegation-one',
+          sessionId: 'project-session-one',
+          title: '贪吃蛇小游戏',
+          presentation: {
+            speech: '贪吃蛇小游戏已经开始开发。',
+            inline: {
+              title: '项目正在执行',
+              format: 'text',
+              content: '正在开发贪吃蛇小游戏',
+            },
+          },
+        },
+      })
+      return new Promise(resolve => { release = resolve })
+    },
+  })
+
+  await new Promise(resolve => setImmediate(resolve))
+
+  const inline = h.wsMessages.find(message => (
+    message.type === 'timeline.inline'
+    && message.item.id === `inline_${taskId}_delegated`
+  ))
+  assert.ok(inline, 'delegation presentation should update the timeline')
+  assert.equal(inline.item.content, '正在开发贪吃蛇小游戏')
+  assert.equal(h.speakCalls.length, 0, 'delegation must not speak again')
+  assert.equal(h.injectCalls.length, 0, 'delegation must not announce as a result')
+
+  release({ content: '完成', metadata: {} })
+  await h.taskManager.wait(taskId)
+  await flush()
+  h.announcements.close()
+})
 
 // ---------------------------------------------------------------------------
 // Test scenarios

@@ -19,13 +19,13 @@ const spawnThinkingTool = {
   type: 'function',
   function: {
     name: SPAWN_THINKING_TOOL_NAME,
-    description: '执行需要当前信息、搜索、检查、工具、文件、屏幕、应用、代码、图片或文件内容理解、图片生成、创作，或继续、修改已有工作的请求。这是你向用户提供的执行能力；请求明确时直接调用，不要先否认能力或说需要转交。本轮图片和文件会自动随任务交给后台，不要声称无法查看；只有用户没有说明希望如何处理附件时，才自然询问。询问此前工作的状态、进度或阶段结果时改用 get_agent_task_status。返回 accepted 只表示已受理，不表示已完成。',
+    description: '将需要当前信息、搜索、检查、工具、文件、屏幕、应用、代码、图片或文件内容理解、图片生成、创作，或继续、修改已有工作的请求转交给后台 Agent。请求明确时直接调用，调用前不要口头回应，也不要先否认能力。用户同时提出多个目标时，可在同一个响应中分别调用；不要重复提交已经覆盖的目标。本轮图片和文件会自动随请求转交，不要声称无法查看；只有用户没有说明希望如何处理附件时，才自然询问。询问此前工作的状态、进度或阶段结果时改用 get_agent_task_status。accepted 表示本次提交成功；duplicate 表示同一目标此前已提交；二者都不表示已完成。收到本次响应中的全部这类回执后，只作一次自然回应，不展示内部 ID，也不再调用任何工具。',
     parameters: {
       type: 'object',
       properties: {
         objective: {
           type: 'string',
-          description: '可直接执行的目标，忠实保留用户要求的结果、约束、执行方式，以及本项工作与既有工作的关系。可以根据当前对话消解明确指代，但不得遗漏、推断或改变这些语义，也不要提交占位目标；近期对话会随工作一并提供。',
+          description: '忠实转达用户要做什么及其明确约束。可以根据当前对话消解明确指代，但不得遗漏、推断或改变用户语义，也不要提交占位目标；近期对话会随工作一并提供。',
         },
         input_refs: {
           type: 'array',
@@ -44,13 +44,17 @@ const cancelAgentTaskTool = {
   type: 'function',
   function: {
     name: CANCEL_AGENT_TASK_TOOL_NAME,
-    description: '取消用户此前创建、目前仍可取消的后台工作、定时任务或提醒。用户明确要求取消或停止时必须调用，不要只口头答应。可以传入已知 ID；明确指向最近一项时可省略。同时存在多项且目标不能可靠确定时，先调用 get_agent_task_status 列出工作，再用返回的准确 work_id 取消。',
+    description: '取消用户此前创建、目前仍可取消的后台工作、定时任务或提醒。用户明确要求取消或停止时必须调用，不要只口头答应。同时存在多项且目标不能可靠确定时，先调用 get_agent_task_status 列出工作。不要重复取消已经处理的工作。',
     parameters: {
       type: 'object',
       properties: {
-        work_id: {
+        job_id: {
           type: 'string',
-          description: '要取消的 work_id；提醒创建结果中的 reminder_id 也是同一种 ID，可原样传入。仅使用系统返回的 ID，不得猜造；省略则取消当前语音会话最近创建且仍可取消的一项。',
+          description: '要取消的 job_id。仅使用系统返回的 ID，不得猜造；省略则取消当前语音会话最近创建且仍可取消的一项。',
+        },
+        all: {
+          type: 'boolean',
+          description: '用户明确要求取消当前会话中的全部工作、定时任务和提醒时设为 true；此时不要填写 job_id。',
         },
       },
       additionalProperties: false,
@@ -62,13 +66,13 @@ const getAgentTaskStatusTool = {
   type: 'function',
   function: {
     name: GET_AGENT_TASK_STATUS_TOOL_NAME,
-    description: '查询此前工作的状态、进度或阶段结果，也可列出当前会话中的工作、定时任务和提醒。用户询问此前工作时统一调用，不要改用 spawn_thinking。查询单项可传入已知 ID；省略时查询最近一项；列出全部时设置 list_all=true。',
+    description: '仅当用户主动询问此前工作的状态、进度、阶段结果或列表时调用；不得因 spawn_thinking 的 accepted 或 duplicate 回执自动查询。用户询问此前工作时不要改用 spawn_thinking。可列出当前会话中的工作、定时任务和提醒。',
     parameters: {
       type: 'object',
       properties: {
-        work_id: {
+        job_id: {
           type: 'string',
-          description: '要查询的 work_id。仅在当前对话或先前工具结果已明确给出时填写，不得猜造；省略时查询当前语音会话最近的工作。',
+          description: '要查询的 job_id。仅在当前对话或先前工具结果已明确给出时填写，不得猜造；省略时查询当前语音会话最近的工作。',
         },
         question: {
           type: 'string',

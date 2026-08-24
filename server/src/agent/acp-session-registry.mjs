@@ -54,6 +54,9 @@ export class AcpSessionRegistry {
     this.coordinators[String(key)] = {
       sessionId: String(session.sessionId),
       cwd: String(session.cwd),
+      ...(Number.isInteger(session.contractVersion)
+        ? { contractVersion: session.contractVersion }
+        : {}),
       updatedAt: Date.now(),
     }
     this.save()

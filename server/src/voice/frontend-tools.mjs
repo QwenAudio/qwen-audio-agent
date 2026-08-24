@@ -19,7 +19,7 @@ const spawnThinkingTool = {
   type: 'function',
   function: {
     name: SPAWN_THINKING_TOOL_NAME,
-    description: '执行需要当前信息、搜索、检查、工具、文件、屏幕、应用、代码、图片生成、创作，或继续、修改已有工作的请求。这是你向用户提供的执行能力；请求明确时直接调用，不要先否认能力或说需要转交。询问此前工作的状态、进度或阶段结果时改用 get_agent_task_status。返回 accepted 只表示已受理，不表示已完成。',
+    description: '执行需要当前信息、搜索、检查、工具、文件、屏幕、应用、代码、图片或文件内容理解、图片生成、创作，或继续、修改已有工作的请求。这是你向用户提供的执行能力；请求明确时直接调用，不要先否认能力或说需要转交。本轮图片和文件会自动随任务交给后台，不要声称无法查看；只有用户没有说明希望如何处理附件时，才自然询问。询问此前工作的状态、进度或阶段结果时改用 get_agent_task_status。返回 accepted 只表示已受理，不表示已完成。',
     parameters: {
       type: 'object',
       properties: {

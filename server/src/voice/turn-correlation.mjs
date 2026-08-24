@@ -26,6 +26,17 @@ export class TurnCorrelation {
     if (itemId) this.invalidItems.add(itemId)
   }
 
+  invalidateBeforeGeneration(generation) {
+    for (const [itemId, context] of this.turns) {
+      if (
+        Number.isInteger(context?.turnGeneration)
+        && context.turnGeneration < generation
+      ) {
+        this.invalidItems.add(itemId)
+      }
+    }
+  }
+
   isInvalid(itemId) {
     return this.invalidItems.has(itemId)
   }

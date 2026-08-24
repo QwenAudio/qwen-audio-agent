@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   acceptsVoiceState,
+  microphoneSamplesDuringManualInput,
   microphoneControlEvent,
+  releasesManualInputGuard,
   realtimeClientMode,
   retainedRealtimeProvider,
   shouldAdvertiseVoice,
@@ -41,6 +43,25 @@ test('desktop microphone controls mute only input', () => {
     type: 'input.unmute',
     takeover: true,
   })
+})
+
+test('briefly holds microphone transport while manual input starts a response', () => {
+  const samples = Float32Array.from([0.25, -0.5])
+  assert.equal(microphoneSamplesDuringManualInput(samples), samples)
+  assert.deepEqual(
+    [...microphoneSamplesDuringManualInput(samples, true)],
+    [0, 0],
+  )
+
+  assert.equal(releasesManualInputGuard({
+    type: 'response.started',
+    turnId: 'text_expected',
+  }, 'text_expected'), true)
+  assert.equal(releasesManualInputGuard({
+    type: 'response.started',
+    turnId: 'voice_other',
+  }, 'text_expected'), false)
+  assert.equal(releasesManualInputGuard({ type: 'error' }, 'text_expected'), true)
 })
 
 test('hidden desktop capture enters wake-word-only sleep instead of unmuting input', () => {

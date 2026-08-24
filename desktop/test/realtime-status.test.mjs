@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  gatewayStatusLabel,
   realtimeConnectionStatus,
   realtimeModelStatusLabel,
   realtimeModelRuntimeStatus,
+  realtimeRuntimeLabel,
   realtimeStatusLabel,
 } from '../src/realtime-status.mjs'
 import * as realtimeStatus from '../src/realtime-status.mjs'
@@ -17,6 +19,21 @@ test('uses compact realtime provider labels in the desktop status card', () => {
   assert.equal(realtimeStatusLabel('dashscope'), 'DashScope')
   assert.equal(
     realtimeStatusLabel('speech-to-speech'),
+    'Speech-to-Speech',
+  )
+})
+
+test('uses compact gateway and realtime runtime identities', () => {
+  assert.equal(
+    gatewayStatusLabel('http://127.0.0.1:3101/health'),
+    '127.0.0.1:3101',
+  )
+  assert.equal(
+    realtimeRuntimeLabel('dashscope', 'qwen-audio-3.0-realtime-plus'),
+    'Qwen Audio 3.0 Plus',
+  )
+  assert.equal(
+    realtimeRuntimeLabel('speech-to-speech', ''),
     'Speech-to-Speech',
   )
 })

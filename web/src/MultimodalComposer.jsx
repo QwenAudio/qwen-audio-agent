@@ -30,16 +30,17 @@ function filePart(file, index, sourceType = 'file') {
   })
 }
 
-export default function MultimodalComposer({ onSend, onStage }) {
+export default function MultimodalComposer({
+  onSend,
+  compact = false,
+}) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
   const picker = useRef(null)
-
   const updateAttachments = useCallback(next => {
     setAttachments(next)
-    onStage(next.map(item => item.part))
-  }, [onStage])
+  }, [])
 
   const addFiles = useCallback(async (fileList, sourceType = 'file') => {
     const files = [...fileList]
@@ -112,7 +113,9 @@ export default function MultimodalComposer({ onSend, onStage }) {
       <textarea
         value={text}
         rows="1"
-        placeholder={t('输入文字，或粘贴、拖入图片和文件')}
+        placeholder={compact
+          ? t('输入文字或图片')
+          : t('输入文字，或粘贴、拖入图片和文件')}
         onChange={event => setText(event.target.value)}
         onPaste={event => {
           const files = event.clipboardData?.files

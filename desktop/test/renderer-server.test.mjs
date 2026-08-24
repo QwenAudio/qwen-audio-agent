@@ -189,6 +189,14 @@ test('relays the protected realtime WebSocket to the Gateway', async t => {
   websocket.send('hello')
   const [message] = await once(websocket, 'message')
   assert.equal(message.toString(), 'echo:hello')
+
+  // Base64-encoded desktop attachments routinely exceed the proxy's former
+  // 2 MB default. Verify an otherwise valid image-sized message survives the
+  // complete renderer → Gateway relay.
+  const attachmentMessage = 'x'.repeat(3 * 1024 * 1024)
+  websocket.send(attachmentMessage)
+  const [attachmentEcho] = await once(websocket, 'message')
+  assert.equal(attachmentEcho.toString(), `echo:${attachmentMessage}`)
   assert.deepEqual(upgradeRequest, {
     origin: gatewayOrigin,
     url: '/api/realtime?sessionId=desktop-test',

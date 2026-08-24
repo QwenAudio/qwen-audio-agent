@@ -1162,7 +1162,6 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
   let handleTerminalLine = async () => {}
   let dictationClient = null
   let stagedInputParts = []
-  let publishStagedInputParts = () => {}
   let reconcileStagedInputParts = () => {}
   const typedTranscripts = []
   const pendingPermissionTasks = new Set()
@@ -1184,7 +1183,6 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
         text: inputText(parts),
         apply() {
           stagedInputParts = [...stagedInputParts, ...files]
-          publishStagedInputParts()
         },
       }
     },
@@ -1265,20 +1263,12 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       }))
     }
   }
-  publishStagedInputParts = () => {
-    if (socket?.readyState !== WebSocket.OPEN) return
-    socket.send(JSON.stringify({
-      type: GatewayClientEvent.INPUT_PARTS,
-      parts: stagedInputParts,
-    }))
-  }
   reconcileStagedInputParts = value => {
     const next = stagedInputParts.filter(part => (
       String(value || '').includes(String(part?.source?.text?.value || ''))
     ))
     if (next.length === stagedInputParts.length) return
     stagedInputParts = next
-    publishStagedInputParts()
   }
 
   const startVoiceIO = audioMode.audioBackend === 'coreaudio'
@@ -1400,7 +1390,6 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     }))
     const transcript = displayInputText(parts)
     stagedInputParts = []
-    publishStagedInputParts()
     typedTranscripts.push(transcript)
     transcriptRenderer.finish(userPrefix, transcript)
     return true
@@ -1658,7 +1647,6 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
         outputEnabled: true,
         takeover: options.takeover === true,
       })))
-      publishStagedInputParts()
       syncActiveTasks().catch(error => {
         print(style(`[任务状态] ${error.message}`, 'yellow'))
       })

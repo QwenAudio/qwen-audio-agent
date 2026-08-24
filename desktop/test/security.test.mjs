@@ -69,3 +69,10 @@ test('passes sprite skins through and drops invalid skin ids', () => {
     'http://127.0.0.1:3101/?desktop=orb',
   )
 })
+
+test('restores the desktop conversation panel without changing the client route', () => {
+  assert.equal(
+    desktopOrbUrl('http://127.0.0.1:3101/', { surfaceMode: 'panel' }),
+    'http://127.0.0.1:3101/?desktop=orb&surface=panel',
+  )
+})

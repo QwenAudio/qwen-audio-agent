@@ -6,6 +6,27 @@ export const NONE_OPTION_ID = 'none'
 
 export const NONE_OPTION_LABEL = '不使用后台 Agent'
 
+// Product-level soft preference: keep frontend-only mode available and never
+// auto-install anything, but lead first-time desktop setup and list ordering
+// with the backend that has the most complete native ACP integration.
+export const PREFERRED_BACKEND_ID = 'qwen'
+
+export function initialBackendSelection({
+  configuredBackend,
+  firstRun = false,
+} = {}) {
+  const configured = String(configuredBackend || NONE_OPTION_ID).trim()
+  return firstRun && configured === NONE_OPTION_ID
+    ? PREFERRED_BACKEND_ID
+    : configured
+}
+
+export function backendSelectionAvailable(report, id) {
+  if (id === NONE_OPTION_ID) return true
+  const state = backendOptionStates(report).find(option => option.id === id)
+  return Boolean(state?.ready && !state.configurationRequired)
+}
+
 // 列表空间有限，把 issue 文案归并为短徽标；完整原因放进一行的 title。
 function shortReason(issues) {
   const text = String(issues?.[0] || '').trim()
@@ -84,7 +105,13 @@ export function backendOptionStates(report) {
         : {}),
     })
   }
-  return states
+  return states.sort((left, right) => {
+    if (left.id === NONE_OPTION_ID) return -1
+    if (right.id === NONE_OPTION_ID) return 1
+    if (left.id === PREFERRED_BACKEND_ID) return -1
+    if (right.id === PREFERRED_BACKEND_ID) return 1
+    return 0
+  })
 }
 
 export function backendRuntimeReady(state, {

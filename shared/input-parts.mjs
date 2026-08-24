@@ -259,7 +259,7 @@ export function frontendInputProjection(parts = [], { accompaniesVoice = false }
   return [
     text || (accompaniesVoice
       ? '本轮语音输入同时包含以下附件。'
-      : '用户提交了附件，但没有附带文字说明。'),
+      : '用户提交了附件，但没有附带文字说明。请自然询问希望如何处理；不要声称没有收到附件。'),
     '',
     '<input_parts>',
     metadata,

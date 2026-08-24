@@ -496,6 +496,7 @@ export function attachVoiceRealtime(server, { getVehicleState, applyAgentActions
       try {
         const vehicleState = getVehicleState?.(clientId) || {}
         const toolCalls = []
+        const forwardedActions = []
         let thinking = ''
         let agentResult = null
 
@@ -524,8 +525,15 @@ export function attachVoiceRealtime(server, { getVehicleState, applyAgentActions
             } else if (agentEvent.type === 'progress') {
               handleAgentProgress(agentEvent, callEpoch)
             } else if (agentEvent.type === 'map_action') {
-              const { type, ...mapAction } = agentEvent
+              const { type: _type, ...mapAction } = agentEvent
               send(ws, { type: 'agent_map_action', mapAction })
+            } else if (agentEvent.type === 'action') {
+              const action = agentEvent.action
+              if (action) {
+                forwardedActions.push(action)
+                applyAgentActions?.(clientId, [action])
+                send(ws, { type: 'agent_actions', actions: [action] })
+              }
             } else if (agentEvent.type === 'done') {
               agentResult = agentEvent
             }
@@ -547,9 +555,10 @@ export function attachVoiceRealtime(server, { getVehicleState, applyAgentActions
           ...(agentResult.debug || {}),
           ...(thinking ? { thinking } : {}),
         }
-        if (agentResult.actions?.length) {
-          applyAgentActions?.(clientId, agentResult.actions)
-          send(ws, { type: 'agent_actions', actions: agentResult.actions })
+        const remainingActions = (agentResult.actions || []).slice(forwardedActions.length)
+        if (remainingActions.length) {
+          applyAgentActions?.(clientId, remainingActions)
+          send(ws, { type: 'agent_actions', actions: remainingActions })
         }
         send(ws, { type: 'agent_debug', debug })
         await progressSpeechQueue.catch(() => {})
@@ -571,12 +580,13 @@ export function attachVoiceRealtime(server, { getVehicleState, applyAgentActions
           realtimeProvider?.sendFunctionOutput(event.call_id, JSON.stringify({ content: `刚才没执行成功：${err.message}` }))
         }
       } finally {
-        if (callEpoch !== sessionEpoch) return
-        routeFunctionPending = Math.max(0, routeFunctionPending - 1)
-        if (routeFunctionPending === 0) {
-          progressStage = ''
-          clearProgressTimers()
-          maybeSetIdle()
+        if (callEpoch === sessionEpoch) {
+          routeFunctionPending = Math.max(0, routeFunctionPending - 1)
+          if (routeFunctionPending === 0) {
+            progressStage = ''
+            clearProgressTimers()
+            maybeSetIdle()
+          }
         }
       }
     }

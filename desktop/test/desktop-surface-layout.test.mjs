@@ -3,7 +3,11 @@ import test from 'node:test'
 import {
   DESKTOP_ORB_HEIGHT,
   DESKTOP_ORB_WIDTH,
+  DESKTOP_PANEL_HEIGHT,
+  DESKTOP_PANEL_WIDTH,
   DESKTOP_TASK_SURFACE_WIDTH,
+  desktopConversationPanelBounds,
+  desktopOrbAnchorFromPanel,
   desktopOrbBounds,
   desktopSurfaceLayout,
   desktopSurfaceSize,
@@ -11,6 +15,44 @@ import {
 } from '../src/desktop-surface-layout.mjs'
 
 const workArea = { x: 0, y: 0, width: 1200, height: 800 }
+
+test('expands a panel from the orb anchor and restores that anchor', () => {
+  const orbBounds = { x: 1000, y: 40, width: 172, height: 204 }
+  const panel = desktopConversationPanelBounds({ orbBounds, workArea })
+  assert.deepEqual(panel, {
+    x: 732,
+    y: 40,
+    width: DESKTOP_PANEL_WIDTH,
+    height: DESKTOP_PANEL_HEIGHT,
+  })
+  assert.deepEqual(desktopOrbAnchorFromPanel({
+    bounds: panel,
+    workArea,
+  }), orbBounds)
+})
+
+test('keeps the conversation panel and restored orb inside a small display', () => {
+  const smallArea = { x: -800, y: 20, width: 360, height: 540 }
+  const panel = desktopConversationPanelBounds({
+    orbBounds: { x: -500, y: 500, width: 172, height: 204 },
+    workArea: smallArea,
+  })
+  assert.deepEqual(panel, {
+    x: -800,
+    y: 20,
+    width: 360,
+    height: 540,
+  })
+  assert.deepEqual(desktopOrbAnchorFromPanel({
+    bounds: panel,
+    workArea: smallArea,
+  }), {
+    x: -612,
+    y: 20,
+    width: DESKTOP_ORB_WIDTH,
+    height: DESKTOP_ORB_HEIGHT,
+  })
+})
 
 test('keeps the compact orb surface without task cards', () => {
   assert.deepEqual(desktopSurfaceSize(0), {

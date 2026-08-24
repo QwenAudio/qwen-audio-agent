@@ -67,6 +67,11 @@ import {
 const desktopOrbMode = (
   new URLSearchParams(window.location.search).get('desktop') === 'orb'
 )
+const initialDesktopSurfaceMode = (
+  new URLSearchParams(window.location.search).get('surface') === 'panel'
+    ? 'panel'
+    : 'orb'
+)
 const takeoverRequested = (
   new URLSearchParams(window.location.search).get('takeover') === '1'
 )
@@ -129,6 +134,17 @@ function OrbControlIcon({ type, muted = false, collapsed = false }) {
       <path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2 2 0 0 1-2.83 2.83l-.04-.04a1.8 1.8 0 0 0-1.98-.36 1.8 1.8 0 0 0-1.08 1.65V21a2 2 0 0 1-4 0v-.06A1.8 1.8 0 0 0 8.8 19.3a1.8 1.8 0 0 0-1.98.36l-.04.04a2 2 0 0 1-2.83-2.83l.04-.04a1.8 1.8 0 0 0 .36-1.98A1.8 1.8 0 0 0 2.7 13.8H2.6a2 2 0 0 1 0-4h.06A1.8 1.8 0 0 0 4.3 8.72a1.8 1.8 0 0 0-.36-1.98l-.04-.04a2 2 0 0 1 2.83-2.83l.04.04a1.8 1.8 0 0 0 1.98.36A1.8 1.8 0 0 0 9.82 2.6V2.5a2 2 0 0 1 4 0v.06A1.8 1.8 0 0 0 14.9 4.2a1.8 1.8 0 0 0 1.98-.36l.04-.04a2 2 0 0 1 2.83 2.83l-.04.04a1.8 1.8 0 0 0-.36 1.98 1.8 1.8 0 0 0 1.65 1.08h.1a2 2 0 0 1 0 4h-.06A1.8 1.8 0 0 0 19.4 15Z" />
     </svg>
   }
+  if (type === 'conversation') {
+    return <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 5.5h14v10H9l-4 3v-13Z" />
+      <path d="M8 9h8m-8 3h5" />
+    </svg>
+  }
+  if (type === 'collapse') {
+    return <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="m8 10 4 4 4-4" />
+    </svg>
+  }
   if (type === 'tasks') {
     return <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d={collapsed ? 'm7 9 5 5 5-5' : 'm7 14 5-5 5 5'} />
@@ -184,6 +200,9 @@ export default function App() {
   const [spriteAnimationCue, setSpriteAnimationCue] = useState(null)
   const [spriteOrbFailed, setSpriteOrbFailed] = useState(false)
   const [desktopLifecycle, setDesktopLifecycle] = useState('active')
+  const [desktopSurfaceMode, setDesktopSurfaceMode] = useState(
+    initialDesktopSurfaceMode,
+  )
   const [lastInteractionAt, setLastInteractionAt] = useState(Date.now)
   const [workSettledAt, setWorkSettledAt] = useState(Date.now)
   const activeVoiceResponse = useRef('')
@@ -194,7 +213,6 @@ export default function App() {
   const messagesRef = useRef(null)
   const stickToBottom = useRef(true)
   const orbDrag = useRef(null)
-  const suppressOrbClick = useRef(false)
   const spriteAnimationCueId = useRef(0)
   const runtimeReadyAnnounced = useRef(false)
   const previousDesktopRuntime = useRef('starting')
@@ -206,6 +224,18 @@ export default function App() {
   const noteInteraction = useCallback(() => {
     setLastInteractionAt(Date.now())
   }, [])
+
+  const changeDesktopSurface = useCallback(async mode => {
+    const bridge = window.qwenAudioAgentDesktop
+    if (!desktopOrbMode || !bridge?.setSurface) return
+    try {
+      const result = await bridge.setSurface(mode)
+      setDesktopSurfaceMode(result?.mode === 'panel' ? 'panel' : 'orb')
+      noteInteraction()
+    } catch {
+      // A rejected host transition leaves the current presentation intact.
+    }
+  }, [noteInteraction])
 
   const triggerSpriteAnimation = useCallback(name => {
     if (!desktopOrbMode || isBuiltinOrbSkin(orbSkinId)) return
@@ -840,6 +870,16 @@ export default function App() {
 
   useEffect(() => {
     if (!desktopOrbMode) return undefined
+    window.qwenAudioAgentDesktop?.loadSurface?.()
+      .then(result => setDesktopSurfaceMode(
+        result?.mode === 'panel' ? 'panel' : 'orb',
+      ))
+      .catch(() => {})
+    return undefined
+  }, [])
+
+  useEffect(() => {
+    if (!desktopOrbMode) return undefined
     return window.qwenAudioAgentDesktop?.onTaskCardPlacement?.(
       setDesktopTaskLayout,
     )
@@ -848,10 +888,12 @@ export default function App() {
   useEffect(() => {
     if (!desktopOrbMode) return undefined
     window.qwenAudioAgentDesktop?.setTaskCardCount(
-      desktopTasksCollapsed ? 0 : desktopCards.length,
+      desktopSurfaceMode === 'panel'
+        ? desktopCards.length
+        : desktopTasksCollapsed ? 0 : desktopCards.length,
     )
     return undefined
-  }, [desktopCards.length, desktopTasksCollapsed])
+  }, [desktopCards.length, desktopSurfaceMode, desktopTasksCollapsed])
 
   useEffect(() => {
     if (!desktopOrbMode) return undefined
@@ -930,7 +972,11 @@ export default function App() {
   }, [desktopLifecycle, wakeGateway])
 
   useEffect(() => {
-    if (!desktopOrbMode || autoHideSeconds === 0) return undefined
+    if (
+      !desktopOrbMode
+      || desktopSurfaceMode === 'panel'
+      || autoHideSeconds === 0
+    ) return undefined
     if (!desktopCanHide({
       settled: workSettled,
       connectionState: voice.connectionState,
@@ -950,6 +996,7 @@ export default function App() {
     return () => clearTimeout(timer)
   }, [
     desktopLifecycle,
+    desktopSurfaceMode,
     lastInteractionAt,
     voice.connectionState,
     voice.visualError,
@@ -1038,12 +1085,8 @@ export default function App() {
     event.currentTarget.setPointerCapture?.(event.pointerId)
     orbDrag.current = {
       pointerId: event.pointerId,
-      startX: event.screenX,
-      startY: event.screenY,
       lastX: event.screenX,
-      moved: false,
     }
-    suppressOrbClick.current = false
     setOrbDragging(true)
     setOrbDragDirection('')
     bridge.dragStart(event.screenX, event.screenY)
@@ -1052,11 +1095,6 @@ export default function App() {
   const moveOrb = event => {
     const drag = orbDrag.current
     if (!drag || drag.pointerId !== event.pointerId) return
-    if (
-      Math.hypot(event.screenX - drag.startX, event.screenY - drag.startY) >= 4
-    ) {
-      drag.moved = true
-    }
     const deltaX = event.screenX - drag.lastX
     if (Math.abs(deltaX) >= 2) {
       setOrbDragDirection(deltaX > 0 ? 'right' : 'left')
@@ -1068,30 +1106,21 @@ export default function App() {
   const endOrbDrag = event => {
     const drag = orbDrag.current
     if (!drag || drag.pointerId !== event.pointerId) return
-    suppressOrbClick.current = drag.moved
     orbDrag.current = null
     setOrbDragging(false)
     setOrbDragDirection('')
     window.qwenAudioAgentDesktop?.dragEnd()
   }
 
-  const handleOrbClick = () => {
-    if (suppressOrbClick.current) {
-      suppressOrbClick.current = false
-      return
-    }
+  const handleVoiceOrbClick = () => {
     if (voice.state === 'speaking') {
       voice.interrupt()
-      return
-    }
-    if (desktopOrbMode && (voiceEnabled || waitingForVoice)) {
-      disableVoice()
       return
     }
     enableVoice()
   }
 
-  if (desktopOrbMode) {
+  if (desktopOrbMode && desktopSurfaceMode === 'orb') {
     return <main className={`desktop-gallery-shell${
       desktopCards.length && !desktopTasksCollapsed ? ' has-task-cards' : ''
     }${desktopTaskLayout.placement === 'above' ? ' tasks-above' : ''}`}
@@ -1122,7 +1151,6 @@ export default function App() {
               ? t('{holder}正在使用语音', { holder: ownershipLabel })
               : labelFor(orbVisualState))
         }
-        onClick={handleOrbClick}
         onPointerEnter={() => triggerSpriteAnimation('jumping')}
         onPointerDown={beginOrbDrag}
         onPointerMove={moveOrb}
@@ -1173,6 +1201,16 @@ export default function App() {
             }
           >
             <OrbControlIcon type="microphone" muted={!voiceEnabled} />
+          </button>
+          <button
+            onClick={event => {
+              event.stopPropagation()
+              void changeDesktopSurface('panel')
+            }}
+            aria-label={t('打开对话')}
+            title={t('打开对话')}
+          >
+            <OrbControlIcon type="conversation" />
           </button>
           <button
             onClick={event => {
@@ -1302,7 +1340,9 @@ export default function App() {
     {message.interrupted && <small className="interrupted">{t('已打断')}</small>}
   </article>
 
-  return <main className="app">
+  return <main className={`app${
+    desktopOrbMode ? ' desktop-conversation-panel' : ''
+  }`}>
     <header>
       <div className="brand"><span>V</span><div>qwen-audio-agent<small>REALTIME VOICE · LIVE</small></div></div>
       <a
@@ -1343,14 +1383,29 @@ export default function App() {
           {t('前台：{label}', { label: item.label })}
         </option>)}
       </select>}
-      <div className="status"><i className={orbVisualState} />{labelFor(orbVisualState)}</div>
-      <button className="ghost" onClick={resetSession}>{t('新会话')}</button>
+      <div className="status">
+        <i className={orbVisualState} /><span>{labelFor(orbVisualState)}</span>
+      </div>
+      <button
+        className={`ghost${desktopOrbMode ? ' desktop-new-session' : ''}`}
+        onClick={resetSession}
+        aria-label={t('新会话')}
+        title={desktopOrbMode ? t('新会话') : undefined}
+      >{desktopOrbMode ? '＋' : t('新会话')}</button>
       <button
         className={[
           'voice',
           voiceEnabled ? 'active' : '',
           waitingForVoice ? 'waiting' : '',
         ].filter(Boolean).join(' ')}
+        aria-label={voiceEnabled
+          ? t('麦克风静音')
+          : waitingForVoice ? t('取消等待') : t('开启麦克风')}
+        title={desktopOrbMode
+          ? voiceEnabled
+            ? t('麦克风静音')
+            : waitingForVoice ? t('取消等待') : t('开启麦克风')
+          : undefined}
         onClick={() => {
           if (voiceEnabled || waitingForVoice) {
             disableVoice()
@@ -1359,17 +1414,26 @@ export default function App() {
           enableVoice()
         }}
       >
-        {voiceEnabled
-          ? t('麦克风静音')
-          : waitingForVoice ? t('取消等待') : t('开启麦克风')}
+        {desktopOrbMode
+          ? <OrbControlIcon type="microphone" muted={!voiceEnabled} />
+          : voiceEnabled
+            ? t('麦克风静音')
+            : waitingForVoice ? t('取消等待') : t('开启麦克风')}
       </button>
+      {desktopOrbMode && <button
+        className="ghost desktop-panel-collapse"
+        onClick={() => void changeDesktopSurface('orb')}
+        title={t('收起为悬浮球')}
+      >
+        <OrbControlIcon type="collapse" />
+      </button>}
     </header>
 
     <section className="workspace">
       <div className="hero">
         <button
           className={`orb ${orbVisualState}`}
-          onClick={handleOrbClick}
+          onClick={handleVoiceOrbClick}
           aria-label={t('语音交互')}
         >
           <span />
@@ -1407,7 +1471,6 @@ export default function App() {
 
       {composerEnabled && <MultimodalComposer
         onSend={sendComposerInput}
-        onStage={voice.stageInputParts}
         dictation={{
           enabled: gatewayCapabilities.includes('composer.dictation'),
           canStart: canStartComposerDictation({
@@ -1419,6 +1482,7 @@ export default function App() {
           send: voice.sendGatewayEvent,
           setCapture: voice.setDictationCapture,
         }}
+        compact={desktopOrbMode}
       />}
 
     </section>

@@ -1,11 +1,14 @@
 import {
   backendOptionStates,
+  backendSelectionAvailable,
   backendRuntimePhase,
   backendRuntimeReady,
+  initialBackendSelection,
 } from './backend-options.mjs'
 import {
+  gatewayStatusLabel,
   realtimeConnectionStatus,
-  realtimeModelStatusLabel,
+  realtimeRuntimeLabel,
   realtimeStatusLabel,
 } from './realtime-status.mjs'
 import {
@@ -832,9 +835,14 @@ function fingerprint(value) {
 }
 
 function updateApplyState() {
+  const backendAvailable = backendSelectionAvailable(
+    backendReport,
+    selectedBackend(),
+  )
   submit.disabled = (
     applying
     || recordingWakeShortcut
+    || !backendAvailable
     || fingerprint(formSettings()) === appliedFingerprint
   )
 }
@@ -864,10 +872,12 @@ function renderRuntime() {
     return
   }
 
-  currentGateway.textContent = t('已连接')
+  currentGateway.textContent = [
+    gatewayStatusLabel(runtime.gatewayUrl),
+    t('已连接'),
+  ].filter(Boolean).join(' · ')
   currentGateway.className = 'connection-status connected'
   const realtimeLabel = realtimeStatusLabel(runtime.realtimeProvider)
-  const realtimeModelLabel = realtimeModelStatusLabel(runtime.realtimeModel)
   if (!runtime.voiceConfigured) {
     setRealtimeStatus(`${realtimeLabel} · ${t('配置不完整')}`, 'disconnected')
   } else {
@@ -883,8 +893,7 @@ function renderRuntime() {
     }[state]
     setRealtimeStatus(
       [
-        realtimeLabel,
-        realtimeModelLabel,
+        realtimeRuntimeLabel(runtime.realtimeProvider, runtime.realtimeModel),
         stateLabel,
         state === 'unavailable'
           ? truncate(
@@ -927,10 +936,10 @@ function renderRuntime() {
     return
   }
   currentBackend.title = ''
-  const details = runtime.backend.baseUrl
-    ? `${label} · ${runtime.backend.baseUrl}`
-    : label
-  setBackendStatus(details, runtime.backend.connected)
+  setBackendStatus(
+    `${label} · ${t(phase === 'connected' ? '已就绪' : '未连接')}`,
+    phase === 'connected',
+  )
 }
 
 async function refreshRuntime() {
@@ -1304,6 +1313,10 @@ form.addEventListener('submit', async event => {
 
 window.qwenAudioAgentDesktop.loadSettings().then(value => {
   settings = value.settings
+  settings.agentProtocol = initialBackendSelection({
+    configuredBackend: settings.agentProtocol,
+    firstRun: value.firstRun,
+  })
   skins = value.skins || []
   runtime = value.runtime
   renderWakeShortcutStatus(value.wakeShortcutRegistered)

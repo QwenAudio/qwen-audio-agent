@@ -203,6 +203,21 @@ export function canStartComposerDictation({
     && hostInputSuspended !== true
 }
 
+export function microphoneSamplesDuringManualInput(samples, pending = false) {
+  if (pending !== true) return samples
+  // Keep advancing provider-side VAD with silence so an already-open speech
+  // turn can close naturally, without letting ambient sound preempt the new
+  // text/image turn.
+  return new Float32Array(samples.length)
+}
+
+export function releasesManualInputGuard(event, turnId = '') {
+  if (!event || typeof event !== 'object') return false
+  if (event.type === GatewayServerEvent.ERROR) return true
+  if (event.type !== GatewayServerEvent.RESPONSE_STARTED) return false
+  return Boolean(turnId) && event.turnId === turnId
+}
+
 export default function useRealtimeVoice({
   sessionId,
   enabled,
@@ -234,6 +249,9 @@ export default function useRealtimeVoice({
   const inputErrorRef = useRef(onInputError)
   const wakeWordOnlyRef = useRef(wakeWordOnly)
   const socketRef = useRef(null)
+  const connectionStateRef = useRef('connecting')
+  const hasConnectedRef = useRef(false)
+  const pendingManualInputsRef = useRef([])
   const audioRef = useRef(null)
   const currentTurnId = useRef('')
   const clientInstanceId = useRef(crypto.randomUUID())
@@ -247,6 +265,9 @@ export default function useRealtimeVoice({
   const dictationCaptureRef = useRef(false)
   const outputMutedRef = useRef(outputMuted)
   const mutedPlaybackResponses = useRef(new Set())
+  const manualInputPendingRef = useRef(false)
+  const manualInputTurnRef = useRef('')
+  const manualInputTimerRef = useRef(null)
   const playbackRef = useRef({
     cursor: 0,
     sources: [],
@@ -261,6 +282,20 @@ export default function useRealtimeVoice({
   wakeWordOnlyRef.current = wakeWordOnly
   enabledRef.current = enabled
   outputMutedRef.current = outputMuted
+
+  const releaseManualInputGuard = useCallback(() => {
+    manualInputPendingRef.current = false
+    manualInputTurnRef.current = ''
+    clearTimeout(manualInputTimerRef.current)
+    manualInputTimerRef.current = null
+  }, [])
+
+  const holdManualInputGuard = useCallback(() => {
+    manualInputPendingRef.current = true
+    manualInputTurnRef.current = ''
+    clearTimeout(manualInputTimerRef.current)
+    manualInputTimerRef.current = setTimeout(releaseManualInputGuard, 30000)
+  }, [releaseManualInputGuard])
 
   const activateAudio = useCallback(() => {
     const AudioContext = window.AudioContext || window.webkitAudioContext
@@ -282,9 +317,29 @@ export default function useRealtimeVoice({
   const sendSocketEvent = useCallback(event => {
     const socket = socketRef.current
     if (socket?.readyState !== WebSocket.OPEN) return false
-    socket.send(JSON.stringify(event))
-    return true
+    try {
+      socket.send(JSON.stringify(event))
+      return true
+    } catch {
+      return false
+    }
   }, [])
+
+  const setRealtimeConnectionState = useCallback(next => {
+    connectionStateRef.current = next
+    if (next === 'connected') hasConnectedRef.current = true
+    setConnectionState(next)
+  }, [])
+
+  const flushPendingManualInputs = useCallback(() => {
+    if (connectionStateRef.current !== 'connected') return
+    const pending = pendingManualInputsRef.current
+    if (pending.length) holdManualInputGuard()
+    while (pending.length) {
+      if (!sendSocketEvent(pending[0])) return
+      pending.shift()
+    }
+  }, [holdManualInputGuard, sendSocketEvent])
 
   const sendPlaybackEvent = useCallback((type, responseId, reason = '') => {
     if (responseId) {
@@ -470,7 +525,7 @@ export default function useRealtimeVoice({
       setInputReady(false)
       setError('')
       setVisualError(false)
-      setConnectionState('hidden')
+      setRealtimeConnectionState('hidden')
       return undefined
     }
     let disposed = false
@@ -485,7 +540,7 @@ export default function useRealtimeVoice({
         reconnectDelay = 500
         setError('')
         setVisualError(false)
-        setConnectionState('connecting')
+        setRealtimeConnectionState('connecting')
         eventRef.current?.({ type: GatewayServerEvent.GATEWAY_CONNECTED })
         const mode = realtimeClientMode({
           enabled: enabledRef.current,
@@ -523,15 +578,17 @@ export default function useRealtimeVoice({
         }
         if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
           inputSampleRate.current = event.inputSampleRate
-          setConnectionState('connected')
+          setRealtimeConnectionState('connected')
           setError('')
           setVisualError(false)
+          flushPendingManualInputs()
         }
         if (event.type === GatewayServerEvent.VOICE_CONNECTION) {
-          setConnectionState(event.state || 'connecting')
+          setRealtimeConnectionState(event.state || 'connecting')
           if (event.state === 'connected') {
             setError('')
             setVisualError(false)
+            flushPendingManualInputs()
           } else if (event.state === 'unavailable') {
             setError(event.message || t('语音前台连接异常，正在重试'))
             setVisualError(true)
@@ -558,6 +615,15 @@ export default function useRealtimeVoice({
         }
         if (event.type === GatewayServerEvent.TURN_STARTED) {
           currentTurnId.current = event.turnId || ''
+          if (
+            manualInputPendingRef.current
+            && String(event.turnId || '').startsWith('text_')
+          ) {
+            manualInputTurnRef.current = event.turnId
+          }
+        }
+        if (releasesManualInputGuard(event, manualInputTurnRef.current)) {
+          releaseManualInputGuard()
         }
         if (event.type === GatewayServerEvent.VOICE_STATE) {
           if (acceptsVoiceState(event, currentTurnId.current)) {
@@ -601,7 +667,7 @@ export default function useRealtimeVoice({
       }
       socket.onerror = () => {
         if (!disposed) {
-          setConnectionState('unavailable')
+          setRealtimeConnectionState('unavailable')
           setError(t('实时语音连接中断，正在重连'))
           setVisualError(true)
         }
@@ -609,9 +675,10 @@ export default function useRealtimeVoice({
       socket.onclose = () => {
         if (socketRef.current === socket) socketRef.current = null
         if (disposed) return
+        releaseManualInputGuard()
         stopPlayback()
         setState('idle')
-        setConnectionState('unavailable')
+        setRealtimeConnectionState('unavailable')
         setError(t('实时语音连接中断，正在重连'))
         setVisualError(true)
         eventRef.current?.({ type: GatewayServerEvent.GATEWAY_DISCONNECTED })
@@ -620,7 +687,7 @@ export default function useRealtimeVoice({
       }
     }
     setError('')
-    setConnectionState('connecting')
+    setRealtimeConnectionState('connecting')
     connect()
 
     return () => {
@@ -630,6 +697,7 @@ export default function useRealtimeVoice({
       socketRef.current?.close()
       socketRef.current = null
       mutedResponses.clear()
+      releaseManualInputGuard()
     }
   }, [
     clientLabel,
@@ -642,15 +710,22 @@ export default function useRealtimeVoice({
     play,
     realtimeProvider,
     sendSocketEvent,
+    releaseManualInputGuard,
+    flushPendingManualInputs,
     sessionId,
     stopPlayback,
     suspended,
+    setRealtimeConnectionState,
     takeover,
   ])
 
   useEffect(() => {
     if (outputMuted) stopPlayback()
   }, [outputMuted, stopPlayback])
+
+  useEffect(() => {
+    pendingManualInputsRef.current = []
+  }, [sessionId])
 
   useEffect(() => {
     if (!shouldCaptureMicrophone({
@@ -712,8 +787,12 @@ export default function useRealtimeVoice({
         processor.onaudioprocess = event => {
           const socket = socketRef.current
           if (socket?.readyState !== WebSocket.OPEN) return
-          const audio = resample(
+          const samples = microphoneSamplesDuringManualInput(
             event.inputBuffer.getChannelData(0),
+            manualInputPendingRef.current,
+          )
+          const audio = resample(
+            samples,
             context.sampleRate,
             inputSampleRate.current,
           )
@@ -786,15 +865,24 @@ export default function useRealtimeVoice({
     sendSocketEvent({ type: GatewayClientEvent.WAKE })
   ), [sendSocketEvent])
 
-  const sendInput = useCallback(parts => sendSocketEvent({
-    type: GatewayClientEvent.INPUT_MESSAGE,
-    parts,
-  }), [sendSocketEvent])
-
-  const stageInputParts = useCallback(parts => sendSocketEvent({
-    type: GatewayClientEvent.INPUT_PARTS,
-    parts,
-  }), [sendSocketEvent])
+  const sendInput = useCallback(parts => {
+    holdManualInputGuard()
+    const event = {
+      type: GatewayClientEvent.INPUT_MESSAGE,
+      parts,
+    }
+    if (socketRef.current?.readyState === WebSocket.OPEN) {
+      if (sendSocketEvent(event)) return true
+      releaseManualInputGuard()
+      return false
+    }
+    if (hasConnectedRef.current) {
+      pendingManualInputsRef.current.push(event)
+      return true
+    }
+    releaseManualInputGuard()
+    return false
+  }, [holdManualInputGuard, releaseManualInputGuard, sendSocketEvent])
 
   const setDictationCapture = useCallback(active => {
     const next = Boolean(active)
@@ -817,7 +905,6 @@ export default function useRealtimeVoice({
     interrupt,
     wake,
     sendInput,
-    stageInputParts,
     sendGatewayEvent: sendSocketEvent,
     setDictationCapture,
   }

@@ -180,22 +180,178 @@ function cancelOrder(_args = {}, context = {}) {
   return { result: '已取消当前闪购流程' }
 }
 
-export const flashBuyAtomic = {
-  searchItems,
-  addToCart,
-  updateCart,
-  previewOrder,
-  confirmOrder,
-  cancelOrder,
-  getSession,
+function emitProgress(context, event) {
+  if (context?.onProgress) context.onProgress({ domain: 'flashbuy', ...event })
+}
+
+function statusAction(status, message) {
+  return { type: 'flashbuy', action: 'status', status, message }
+}
+
+function resultsAction(result) {
+  return {
+    type: 'flashbuy',
+    action: 'results',
+    status: 'selecting',
+    category: result.category,
+    query: result.query,
+    items: result.candidates || [],
+    message: result.candidates?.length ? '已找到附近可送商品' : '没有找到可送商品',
+  }
+}
+
+function cartAction(result) {
+  return {
+    type: 'flashbuy',
+    action: 'cart',
+    status: 'cart_updated',
+    items: result.cart || [],
+    category: result.cart?.[0]?.category,
+    total: result.total || 0,
+    message: '已更新购物车',
+  }
+}
+
+function previewAction(result) {
+  return {
+    type: 'flashbuy',
+    action: 'preview',
+    status: 'awaiting_confirm',
+    preview: result.preview,
+    category: result.preview?.items?.[0]?.category,
+    requireConfirm: true,
+    message: '请确认订单后下单',
+  }
+}
+
+function completedAction(result) {
+  return {
+    type: 'flashbuy',
+    action: 'completed',
+    status: 'completed',
+    order: result.order,
+    message: '已完成下单',
+  }
+}
+
+function sessionCompletedAction(order) {
+  return {
+    type: 'flashbuy',
+    action: 'completed',
+    status: 'completed',
+    order,
+    message: `订单${order.id}已经提交，请勿重复下单`,
+  }
+}
+
+async function executeFlashBuy(params = {}, context = {}) {
+  const actions = [{ type: 'flashbuy', action: 'open' }]
+  const { action } = params
+
+  if (action === 'cancel_order') {
+    emitProgress(context, { stage: 'flashbuy_cancelled', message: '已取消闪购', speakPolicy: 'always' })
+    const result = cancelOrder({}, context)
+    actions.push({ type: 'flashbuy', action: 'cancelled', status: 'cancelled', message: result.result })
+    return { result: result.result, actions }
+  }
+
+  if (action === 'search') {
+    emitProgress(context, { stage: 'flashbuy_searching', message: '正在查找附近可送商品', speakPolicy: 'always' })
+    actions.push(statusAction('searching', '正在查找附近可送商品'))
+    const result = searchItems(params, context)
+    emitProgress(context, { stage: 'flashbuy_results_ready', message: '已找到可送商品', speakPolicy: 'silent' })
+    actions.push(resultsAction(result))
+    return {
+      result: `${result.result}：${result.candidates.map(item => `${item.name}，${item.shopName}，${item.price}元，${item.eta}`).join('；')}`,
+      actions,
+    }
+  }
+
+  if (action === 'add_to_cart') {
+    if (!params.itemId) {
+      emitProgress(context, { stage: 'flashbuy_searching', message: '正在查找附近可送商品', speakPolicy: 'always' })
+      actions.push(statusAction('searching', '正在查找附近可送商品'))
+      const search = searchItems(params, context)
+      actions.push(resultsAction(search))
+    }
+    emitProgress(context, { stage: 'flashbuy_adding', message: '正在加入购物车', speakPolicy: 'if_slow' })
+    actions.push(statusAction('cart_updating', '正在加入购物车'))
+    const cart = addToCart(params, context)
+    actions.push(cartAction(cart))
+    emitProgress(context, { stage: 'flashbuy_previewing', message: '正在试算订单', speakPolicy: 'always' })
+    actions.push(statusAction('previewing', '正在试算订单'))
+    const preview = previewOrder(params, context)
+    if (preview.preview) actions.push(previewAction(preview))
+    return {
+      result: `${cart.result}。${preview.result}。请向用户确认是否下单。`,
+      actions,
+    }
+  }
+
+  if (action === 'update_cart') {
+    emitProgress(context, { stage: 'flashbuy_cart_updating', message: '正在更新购物车', speakPolicy: 'if_slow' })
+    actions.push(statusAction('cart_updating', '正在更新购物车'))
+    const cart = updateCart(params, context)
+    actions.push(cartAction(cart))
+    return { result: cart.result, actions }
+  }
+
+  if (action === 'preview_order') {
+    const session = getSession(context?.clientId)
+    if (session.cart.length === 0) {
+      actions.push(statusAction('selecting', '请先选择商品后再下单'))
+      return { result: '购物车为空，请先选择商品', actions }
+    }
+
+    emitProgress(context, { stage: 'flashbuy_previewing', message: '正在试算订单', speakPolicy: 'always' })
+    actions.push(statusAction('previewing', '正在试算订单'))
+    const preview = previewOrder(params, context)
+    if (preview.preview) actions.push(previewAction(preview))
+    return { result: `${preview.result}。请向用户确认是否下单。`, actions }
+  }
+
+  if (action === 'confirm_order') {
+    const session = getSession(context?.clientId)
+    if (session.order) {
+      actions.push(sessionCompletedAction(session.order))
+      return { result: `订单${session.order.id}已经提交，请勿重复下单`, actions }
+    }
+
+    if (!session.preview) {
+      if (session.cart.length > 0) {
+        emitProgress(context, { stage: 'flashbuy_previewing', message: '正在试算订单', speakPolicy: 'always' })
+        actions.push(statusAction('previewing', '正在试算订单'))
+        const preview = previewOrder(params, context)
+        if (preview.preview) actions.push(previewAction(preview))
+        return { result: `${preview.result}。请向用户确认是否下单。`, actions }
+      }
+
+      actions.push(statusAction('selecting', '请先选择商品后再下单'))
+      return { result: '还没有可确认的订单，请先选择商品并预览订单', actions }
+    }
+
+    if (!params.confirmed) {
+      actions.push(previewAction({ preview: session.preview }))
+      return { result: '下单前需要用户明确确认', actions }
+    }
+
+    emitProgress(context, { stage: 'flashbuy_ordering', message: '正在提交订单', speakPolicy: 'always' })
+    actions.push(statusAction('ordering', '正在提交订单'))
+    const result = confirmOrder(params, context)
+    if (result.duplicate && result.order) {
+      actions.push(sessionCompletedAction(result.order))
+    } else if (result.order) {
+      emitProgress(context, { stage: 'flashbuy_order_completed', message: '已完成下单', speakPolicy: 'silent' })
+      actions.push(completedAction(result))
+    } else if (result.preview) {
+      actions.push(previewAction(result))
+    }
+    return { result: result.result, actions }
+  }
+
+  return { result: '未知闪购操作', actions }
 }
 
 export default {
-  type: 'function',
-  function: {
-    name: 'flashbuy_atomic',
-    description: '淘宝闪购底层原子能力，仅供内置闪购 Skill 调用',
-    parameters: { type: 'object', properties: {} },
-  },
-  execute: async () => ({ result: 'flashbuy_atomic 仅供内部调用' }),
+  'flashbuy.run': executeFlashBuy,
 }

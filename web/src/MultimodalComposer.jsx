@@ -32,7 +32,11 @@ function filePart(file, index, sourceType = 'file') {
   })
 }
 
-export default function MultimodalComposer({ onSend, onStage, dictation = {} }) {
+export default function MultimodalComposer({
+  onSend,
+  compact = false,
+  dictation = {},
+}) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
@@ -44,11 +48,9 @@ export default function MultimodalComposer({ onSend, onStage, dictation = {} }) 
   const [dictationView, setDictationView] = useState({
     state: 'idle', partial: '', error: '', notice: '',
   })
-
   const updateAttachments = useCallback(next => {
     setAttachments(next)
-    onStage(next.map(item => item.part))
-  }, [onStage])
+  }, [])
 
   const addFiles = useCallback(async (fileList, sourceType = 'file') => {
     const files = [...fileList]
@@ -193,7 +195,9 @@ export default function MultimodalComposer({ onSend, onStage, dictation = {} }) 
       <textarea
         value={text}
         rows="1"
-        placeholder={t('输入文字，或粘贴、拖入图片和文件')}
+        placeholder={compact
+          ? t('输入文字或图片')
+          : t('输入文字，或粘贴、拖入图片和文件')}
         onChange={event => {
           if (dictationClient.current?.active) {
             dictationClient.current.keyboard(event.target.value)

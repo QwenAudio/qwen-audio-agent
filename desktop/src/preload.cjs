@@ -53,6 +53,11 @@ const desktopApi = {
       listener,
     )
   },
+  loadSurface: () => ipcRenderer.invoke('qwen-audio-agent:surface-load'),
+  setSurface: mode => ipcRenderer.invoke(
+    'qwen-audio-agent:surface-set',
+    mode,
+  ),
   enterHide: () => ipcRenderer.invoke('qwen-audio-agent:enter-hide'),
   wake: () => ipcRenderer.send('qwen-audio-agent:wake'),
   lifecycleReady: () => ipcRenderer.send('qwen-audio-agent:lifecycle-ready'),

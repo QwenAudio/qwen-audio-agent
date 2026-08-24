@@ -34,6 +34,11 @@ const CSP = [
   "style-src 'self'",
 ].join('; ')
 
+// Input attachments are base64-encoded inside input.message. Keep both sides
+// of the desktop relay aligned with Gateway's limit so an allowed 8 MB file
+// (or 12 MB attachment batch) is not rejected by the renderer proxy first.
+const REALTIME_MAX_PAYLOAD_BYTES = 20 * 1024 * 1024
+
 function targetUrl(target) {
   const value = typeof target === 'function' ? target() : target
   return new URL(value)
@@ -107,7 +112,7 @@ function relayWebSocket({
           : {}),
       },
       handshakeTimeout: 5000,
-      maxPayload: 2 * 1024 * 1024,
+      maxPayload: REALTIME_MAX_PAYLOAD_BYTES,
     })
     const pending = []
     const forward = (destination, data, isBinary) => {
@@ -260,7 +265,7 @@ export async function startDesktopRendererServer({
   const prefix = `/${token}/`
   const localSockets = new WebSocketServer({
     noServer: true,
-    maxPayload: 2 * 1024 * 1024,
+    maxPayload: REALTIME_MAX_PAYLOAD_BYTES,
   })
   let origin = ''
   const server = createServer((request, response) => {

@@ -1,5 +1,7 @@
 export const DESKTOP_ORB_WIDTH = 172
 export const DESKTOP_ORB_HEIGHT = 204
+export const DESKTOP_PANEL_WIDTH = 440
+export const DESKTOP_PANEL_HEIGHT = 680
 export const DESKTOP_TASK_SURFACE_WIDTH = 360
 export const DESKTOP_TASK_CARD_HEIGHT = 54
 export const DESKTOP_TASK_CARD_GAP = 8
@@ -9,6 +11,49 @@ const DESKTOP_TASK_PLACEMENT_HYSTERESIS = 48
 
 function clamp(value, minimum, maximum) {
   return Math.min(Math.max(minimum, value), maximum)
+}
+
+export function desktopConversationPanelBounds({
+  orbBounds,
+  workArea,
+  width = DESKTOP_PANEL_WIDTH,
+  height = DESKTOP_PANEL_HEIGHT,
+}) {
+  const panelWidth = Math.min(width, workArea.width)
+  const panelHeight = Math.min(height, workArea.height)
+  return {
+    // Grow towards the left from the orb's right edge. The orb therefore
+    // returns to the same visual anchor when the panel is collapsed.
+    x: clamp(
+      orbBounds.x + orbBounds.width - panelWidth,
+      workArea.x,
+      workArea.x + workArea.width - panelWidth,
+    ),
+    y: clamp(
+      orbBounds.y,
+      workArea.y,
+      workArea.y + workArea.height - panelHeight,
+    ),
+    width: panelWidth,
+    height: panelHeight,
+  }
+}
+
+export function desktopOrbAnchorFromPanel({ bounds, workArea }) {
+  return {
+    x: clamp(
+      bounds.x + bounds.width - DESKTOP_ORB_WIDTH,
+      workArea.x,
+      workArea.x + workArea.width - DESKTOP_ORB_WIDTH,
+    ),
+    y: clamp(
+      bounds.y,
+      workArea.y,
+      workArea.y + workArea.height - DESKTOP_ORB_HEIGHT,
+    ),
+    width: DESKTOP_ORB_WIDTH,
+    height: DESKTOP_ORB_HEIGHT,
+  }
 }
 
 function normalizedTaskCount(value) {

@@ -200,12 +200,12 @@ export function attachRealtimeGateway(server, {
     // capturing, so nothing here may re-enable audio on its own.
     let inputSuspended = inputArbitration?.suspended === true
     let nonVoiceClient = false
-    let pendingInputParts = []
     // Realtime front end for this session. Defaults to the configured provider
     // and can be switched by the client through the connect event.
     let sessionProvider = defaultRealtimeProvider
     let descriptor = clientDescriptor()
     let responseTurnCandidate = null
+    let manualInputGeneration = null
     let responseStartWatchdog = null
     let permissionResponseTimer = null
     let scheduledRealtimeReconnect = null
@@ -797,6 +797,14 @@ export function attachRealtimeGateway(server, {
         id,
         responseActivityContextPatch({ existing, event, fallback }),
       )
+      if (
+        manualInputGeneration !== null
+        && !automaticResponse
+        && context.turnGeneration === manualInputGeneration
+        && context.origin === 'model'
+      ) {
+        manualInputGeneration = null
+      }
       // Compatible Realtime servers may omit response.created and reveal the
       // correlation only on response.done. If audio already reached the
       // client, confirm the newly identified task notification immediately.
@@ -1017,6 +1025,13 @@ export function attachRealtimeGateway(server, {
       if (isSleepActivityEvent(event)) sleepController?.recordActivity()
       if (isResponseActivityEvent(event)) beginResponseLifecycle(event)
       if (event.type === 'input_audio_buffer.speech_started') {
+        // A discrete text/image submission owns the turn until its response
+        // starts. Provider-side VAD events caused by audio already in flight
+        // belong to the superseded voice turn and must not take ownership back.
+        if (manualInputGeneration !== null) {
+          inputTurns.invalidate(event.item_id)
+          return
+        }
         userSpeaking = true
         clearResponseCandidate()
         const knownTurn = event.item_id
@@ -1030,24 +1045,6 @@ export function attachRealtimeGateway(server, {
           turnId = `voice-${Date.now()}-${turnGeneration}`
           rememberInputTurn(event.item_id, currentTurn())
         }
-        if (pendingInputParts.length) {
-          const attachedParts = inputAssets.registerParts({
-            ownerId,
-            sessionId,
-            turnId,
-            parts: pendingInputParts,
-          })
-          pendingInputParts = []
-          transcripts.recordParts(turnId, attachedParts)
-          frontend?.appendUserInputContext(
-            attachedParts,
-            { accompaniesVoice: true },
-          )
-            .catch(error => send(ws, {
-              type: GatewayServerEvent.ERROR,
-              message: `附件上下文没有成功送达语音前台：${error.message}`,
-            }))
-        }
         announcementWindow.beginTurn(turnId)
         announcements.dismissActive()
         send(ws, {
@@ -1059,6 +1056,13 @@ export function attachRealtimeGateway(server, {
         frontend?.cancel()
       } else if (event.type === 'input_audio_buffer.speech_stopped') {
         const stoppedTurn = inputTurn(event)
+        if (
+          inputTurns.isInvalid(event.item_id)
+          || stoppedTurn?.turnGeneration < committedTurnGeneration
+        ) {
+          inputTurns.invalidate(event.item_id)
+          return
+        }
         userSpeaking = false
         announcementWindow.endSpeech()
         if (event.reason === 'turn_invalid') {
@@ -1088,6 +1092,13 @@ export function attachRealtimeGateway(server, {
         }
       } else if (event.type === 'input_audio_buffer.committed') {
         const committedInputTurn = inputTurn(event)
+        if (
+          inputTurns.isInvalid(event.item_id)
+          || committedInputTurn?.turnGeneration < committedTurnGeneration
+        ) {
+          inputTurns.invalidate(event.item_id)
+          return
+        }
         userSpeaking = false
         announcementWindow.endSpeech()
         if (!inputTurns.isInvalid(event.item_id)) {
@@ -1106,6 +1117,7 @@ export function attachRealtimeGateway(server, {
       ) {
         if (inputTurns.isInvalid(event.item_id)) return
         const transcriptTurn = inputTurns.resolve(event.item_id, currentTurn())
+        if (transcriptTurn?.turnGeneration < committedTurnGeneration) return
         const transcript = streamingInputTranscript(event)
         if (!transcriptTurn?.turnId || !transcript) return
         send(ws, {
@@ -1118,7 +1130,10 @@ export function attachRealtimeGateway(server, {
       } else if (event.type === 'conversation.item.input_audio_transcription.completed') {
         const completedInput = inputTurns.complete(event.item_id, currentTurn())
         const transcriptTurn = completedInput.context
-        if (completedInput.invalid) return
+        if (
+          completedInput.invalid
+          || transcriptTurn?.turnGeneration < committedTurnGeneration
+        ) return
         const transcript = String(event.transcript || '').trim()
         if (!transcript) {
           send(ws, {
@@ -1824,8 +1839,12 @@ export function attachRealtimeGateway(server, {
       })
       const text = inputText(parts)
       const display = displayInputText(parts)
+      const supersededVoiceTurn = userSpeaking ? currentTurn() : null
+      userSpeaking = false
       turnGeneration = ++turnSequence
       turnId = inputTurnId
+      manualInputGeneration = turnGeneration
+      inputTurns.invalidateBeforeGeneration(turnGeneration)
       const inputContext = currentTurn()
       commitTurn(inputContext)
       clearResponseCandidate()
@@ -1840,6 +1859,14 @@ export function attachRealtimeGateway(server, {
         type: GatewayServerEvent.PLAYBACK_CLEAR,
         reason: 'user_interruption',
       })
+      if (supersededVoiceTurn?.turnId) {
+        send(ws, {
+          type: GatewayServerEvent.TRANSCRIPT_DISCARD,
+          role: 'user',
+          turnId: supersededVoiceTurn.turnId,
+          reason: 'superseded_by_manual_input',
+        })
+      }
       send(ws, { type: GatewayServerEvent.TURN_STARTED, turnId: inputTurnId })
       send(ws, {
         type: GatewayServerEvent.VOICE_STATE,
@@ -1848,7 +1875,6 @@ export function attachRealtimeGateway(server, {
         origin: 'model',
       })
       frontend?.cancel()
-      pendingInputParts = []
       transcripts.record(inputTurnId, text || display)
       transcripts.recordParts(inputTurnId, inputFileParts(parts))
       conversationService.record({
@@ -1870,9 +1896,14 @@ export function attachRealtimeGateway(server, {
       ensureFrontend()
         .then(() => frontend.sendUserInput(
           parts,
-          { turnId: inputTurnId },
+          inputContext,
         ))
-        .catch(reportFrontendError)
+        .catch(error => {
+          if (manualInputGeneration === inputContext.turnGeneration) {
+            manualInputGeneration = null
+          }
+          reportFrontendError(error)
+        })
     }
 
     const acceptSleepingAudio = audio => {
@@ -2139,14 +2170,6 @@ export function attachRealtimeGateway(server, {
         }
         sleepController.recordActivity()
         submitInputMessage(event)
-      } else if (event.type === GatewayClientEvent.INPUT_PARTS) {
-        try {
-          pendingInputParts = Array.isArray(event.parts) && event.parts.length
-            ? inputFileParts(normalizeInputParts(event.parts))
-            : []
-        } catch (error) {
-          send(ws, { type: GatewayServerEvent.ERROR, message: error.message })
-        }
       } else if (event.type === GatewayClientEvent.INTERRUPT) {
         sleepController.recordActivity()
         turnGeneration = ++turnSequence

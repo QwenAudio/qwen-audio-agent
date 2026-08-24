@@ -6,13 +6,18 @@ import {
   rmSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
-const root = resolve(new URL('../..', import.meta.url).pathname)
+const root = fileURLToPath(new URL('../..', import.meta.url))
 
 test('native build stays permission-minimal and part of the Desktop release', () => {
+  const desktopPackage = JSON.parse(readFileSync(
+    join(root, 'desktop/package.json'),
+    'utf8',
+  ))
   const project = readFileSync(join(root, 'desktop/native/project.yml'), 'utf8')
   const builder = readFileSync(
     join(root, 'desktop/electron-builder.yml'),
@@ -28,6 +33,11 @@ test('native build stays permission-minimal and part of the Desktop release', ()
   assert.doesNotMatch(project, /Accessibility|Input Monitoring|Full Disk Access/)
   assert.match(builder, /native-input\/QwenInputBridge/)
   assert.match(builder, /native-input\/Qwen Input\.app/)
+  assert.match(
+    desktopPackage.scripts.test,
+    /^node \.\.\/scripts\/test-desktop\.mjs$/,
+    'signed native process fixtures must not overlap across test files',
+  )
 })
 
 function run(command, args, options = {}) {

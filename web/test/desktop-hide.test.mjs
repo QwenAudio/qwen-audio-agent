@@ -19,6 +19,9 @@ test('distinguishes active tasks from tasks waiting for authorization', () => {
   const running = { phase: 'delegated' }
   assert.equal(desktopTasksActive([running]), true)
   assert.equal(desktopTasksAttention([running]), false)
+  for (const kind of ['work', 'control', 'scheduled', 'delegated', 'custom']) {
+    assert.equal(desktopTasksActive([{ kind, phase: 'running' }]), true)
+  }
 
   // 等待授权的任务同时是 active（阻止自动休眠）与 attention。
   const pending = {

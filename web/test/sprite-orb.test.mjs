@@ -5,6 +5,8 @@ import {
   frameAtElapsed,
   frameRect,
   resolveAnimations,
+  spriteAnimationEventForGatewayEvent,
+  spriteAnimationForEvent,
   spriteAnimationForOrbState,
   spritePlaybackSelection,
   spriteGeometry,
@@ -18,10 +20,10 @@ test('maps every orb visual state to a pet animation track', () => {
     processing: 'review',
     occupied: 'idle',
     working: 'running',
-    attention: 'idle',
-    starting: 'waiting',
+    attention: 'review',
+    starting: 'running',
     speaking: 'waving',
-    waking: 'waving',
+    waking: 'jumping',
     error: 'failed',
     hidden: 'idle',
     unknown: 'idle',
@@ -33,12 +35,13 @@ test('maps every orb visual state to a pet animation track', () => {
   }
 })
 
-test('keeps idle and background work persistent while actions stay transient', () => {
+test('loops sustained voice, startup, and work states', () => {
   assert.deepEqual(spritePlaybackSelection({ state: 'working' }), {
     name: 'running',
     key: 'state:working:running',
     loop: true,
     completion: 'none',
+    completionId: null,
     fallback: 'running',
   })
   assert.deepEqual(spritePlaybackSelection({ state: 'idle' }), {
@@ -46,6 +49,7 @@ test('keeps idle and background work persistent while actions stay transient', (
     key: 'state:idle:idle',
     loop: true,
     completion: 'none',
+    completionId: null,
     fallback: 'idle',
   })
   assert.deepEqual(spritePlaybackSelection({
@@ -61,18 +65,25 @@ test('keeps idle and background work persistent while actions stay transient', (
   assert.deepEqual(spritePlaybackSelection({ state: 'speaking' }), {
     name: 'waving',
     key: 'state:speaking:waving',
-    loop: false,
+    loop: true,
     completion: 'none',
+    completionId: null,
     fallback: 'idle',
   })
+  assert.equal(spritePlaybackSelection({ state: 'listening' }).loop, true)
+  assert.equal(spritePlaybackSelection({ state: 'starting' }).loop, true)
+})
+
+test('plays edge states and queued events once, then restores the live base', () => {
   assert.deepEqual(spritePlaybackSelection({
     state: 'attention',
     baseWorking: true,
   }), {
-    name: 'running',
-    key: 'state:attention:running',
-    loop: true,
+    name: 'review',
+    key: 'state:attention:review',
+    loop: false,
     completion: 'none',
+    completionId: null,
     fallback: 'running',
   })
   assert.deepEqual(spritePlaybackSelection({
@@ -84,6 +95,7 @@ test('keeps idle and background work persistent while actions stay transient', (
     key: 'cue:7',
     loop: false,
     completion: 'cue',
+    completionId: 7,
     fallback: 'running',
   })
   assert.deepEqual(spritePlaybackSelection({
@@ -94,9 +106,71 @@ test('keeps idle and background work persistent while actions stay transient', (
     key: 'state:processing:review',
     loop: false,
     completion: 'none',
+    completionId: null,
     fallback: 'running',
   })
-  assert.equal(spritePlaybackSelection({ state: 'starting' }).loop, true)
+  assert.deepEqual(spritePlaybackSelection({ state: 'waking' }), {
+    name: 'jumping',
+    key: 'state:waking:jumping',
+    loop: false,
+    completion: 'none',
+    completionId: null,
+    fallback: 'idle',
+  })
+  assert.equal(spritePlaybackSelection({ state: 'error' }).name, 'failed')
+})
+
+test('maps every semantic edge and every task kind without special cases', () => {
+  const events = {
+    ready: 'jumping',
+    wake: 'jumping',
+    'task.completed': 'jumping',
+    'task.failed': 'failed',
+    query: 'review',
+    hover: 'jumping',
+    'runtime.failed': 'failed',
+  }
+  for (const [event, animation] of Object.entries(events)) {
+    assert.equal(spriteAnimationForEvent(event), animation)
+  }
+  for (const kind of ['work', 'control', 'scheduled', 'delegated', 'custom']) {
+    assert.equal(spriteAnimationEventForGatewayEvent({
+      type: 'task.completed',
+      task: { kind },
+    }), 'task.completed')
+    assert.equal(spriteAnimationEventForGatewayEvent({
+      type: 'task.failed',
+      task: { kind },
+    }), 'task.failed')
+  }
+  assert.equal(spriteAnimationEventForGatewayEvent({
+    type: 'agent.activity',
+    activity: 'query',
+  }), 'query')
+  assert.equal(spriteAnimationEventForGatewayEvent({
+    type: 'task.running',
+    task: { kind: 'work' },
+  }), null)
+})
+
+test('protected live states are not overwritten by stale one-shot cues', () => {
+  for (const [state, name] of [
+    ['waking', 'jumping'],
+    ['speaking', 'waving'],
+    ['listening', 'waiting'],
+    ['starting', 'running'],
+  ]) {
+    const playback = spritePlaybackSelection({
+      state,
+      cue: { id: 9, name: 'failed' },
+    })
+    assert.equal(playback.name, name)
+    assert.equal(playback.key, `state:${state}:${name}`)
+  }
+  assert.equal(spritePlaybackSelection({
+    state: 'waking',
+    cue: { id: 10, name: 'jumping' },
+  }).key, 'cue:10')
 })
 
 test('only idle loops by default and every action is one-shot', () => {

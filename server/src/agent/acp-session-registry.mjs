@@ -2,6 +2,11 @@ import { logger } from '../core/logger.mjs'
 import { VersionedJsonStore } from '../core/versioned-json-store.mjs'
 
 const VERSION = 1
+const MAX_RECONCILIATIONS = 20
+
+function reconciliationKey(fact = {}) {
+  return [fact.kind, fact.request_id, fact.outcome].map(String).join('\u0000')
+}
 
 export class AcpSessionRegistry {
   constructor({
@@ -21,13 +26,14 @@ export class AcpSessionRegistry {
     this.loaded = false
     this.coordinators = {}
     this.projects = {}
+    this.reconciliations = {}
   }
 
   load() {
     if (this.loaded) return
     this.loaded = true
     const parsed = this.store.load({
-      fallback: () => ({ coordinators: {}, projects: {} }),
+      fallback: () => ({ coordinators: {}, projects: {}, reconciliations: {} }),
       validate: value => Boolean(
         value.coordinators
         && typeof value.coordinators === 'object'
@@ -36,11 +42,17 @@ export class AcpSessionRegistry {
           value.projects
           && typeof value.projects === 'object'
           && !Array.isArray(value.projects)
+        ))
+        && (value.reconciliations === undefined || (
+          value.reconciliations
+          && typeof value.reconciliations === 'object'
+          && !Array.isArray(value.reconciliations)
         )),
       ),
     })
     this.coordinators = parsed.coordinators
     this.projects = parsed.projects || {}
+    this.reconciliations = parsed.reconciliations || {}
   }
 
   get(key) {
@@ -65,6 +77,37 @@ export class AcpSessionRegistry {
   delete(key) {
     this.load()
     delete this.coordinators[String(key)]
+    delete this.reconciliations[String(key)]
+    this.save()
+  }
+
+  reconciliationsFor(key) {
+    this.load()
+    const values = this.reconciliations[String(key)]
+    return Array.isArray(values) ? values.map(value => ({ ...value })) : []
+  }
+
+  appendReconciliation(key, fact) {
+    this.load()
+    const storageKey = String(key)
+    const values = this.reconciliationsFor(storageKey)
+    const identity = reconciliationKey(fact)
+    const next = values.filter(value => reconciliationKey(value) !== identity)
+    next.push({ ...fact })
+    this.reconciliations[storageKey] = next.slice(-MAX_RECONCILIATIONS)
+    this.save()
+  }
+
+  acknowledgeReconciliations(key, facts = []) {
+    this.load()
+    const storageKey = String(key)
+    const acknowledged = new Set(facts.map(reconciliationKey))
+    if (!acknowledged.size) return
+    const remaining = this.reconciliationsFor(storageKey).filter(
+      value => !acknowledged.has(reconciliationKey(value)),
+    )
+    if (remaining.length) this.reconciliations[storageKey] = remaining
+    else delete this.reconciliations[storageKey]
     this.save()
   }
 
@@ -100,6 +143,7 @@ export class AcpSessionRegistry {
     this.store.save({
       coordinators: this.coordinators,
       projects: this.projects,
+      reconciliations: this.reconciliations,
     })
   }
 

@@ -19,6 +19,7 @@ function harness({
   clientContext = {},
   requestClientState,
   inputAssets,
+  onAgentActivity,
   getTurnId = () => 'turn-one',
 } = {}) {
   const outputs = []
@@ -48,6 +49,7 @@ function harness({
     onPermissionDeliveryFailed,
     getClientContext: () => clientContext,
     requestClientState,
+    onAgentActivity,
     inputAssets,
     getConversationContext: () => [
       { role: 'user', content: '之前在改首页' },
@@ -140,10 +142,12 @@ async function permissionHarness({
 
 test('submits one nonblocking coordinator work item with organized intent', async () => {
   let received
+  let receivedOptions
   const kit = harness({
     coordinator: {
-      run: async input => {
+      run: async (input, options) => {
         received = input
+        receivedOptions = options
         return { content: '完成', metadata: {} }
       },
     },
@@ -167,6 +171,15 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
   assert.equal(received.originalRequest, '继续改刚才那个页面')
   assert.equal(received.objective, '继续修改此前讨论的页面')
   assert.equal(received.conversationContext[0].content, '之前在改首页')
+  assert.equal(receivedOptions.coordinationRequestId, kit.outputs[0][1].job_id)
+  assert.equal(
+    receivedOptions.coordinationRunId,
+    taskForJob(kit.manager, kit.outputs[0][1].job_id).id,
+  )
+  assert.notEqual(
+    receivedOptions.coordinationRequestId,
+    receivedOptions.coordinationRunId,
+  )
 })
 
 test('automatically carries current-turn attachments into spawned work', async () => {
@@ -385,7 +398,8 @@ test('blocks status polling triggered by a spawn receipt response', async () => 
 })
 
 test('allows one status query per user turn and blocks response-driven repeats', async () => {
-  const kit = harness()
+  const activities = []
+  const kit = harness({ onAgentActivity: event => activities.push(event) })
   const task = kit.manager.create({
     objective: '查询电脑内存',
     ownerId: 'owner',
@@ -418,6 +432,7 @@ test('allows one status query per user turn and blocks response-driven repeats',
   })
   assert.equal(kit.outputs.at(-1)[1].status, 'duplicate')
   assert.equal(kit.outputs.at(-1)[3].createResponse, false)
+  assert.deepEqual(activities, [{ activity: 'query', turnId: 'turn-one' }])
 })
 
 test('deduplicates the same objective replayed in one realtime turn', async () => {
@@ -653,6 +668,7 @@ test('deduplicates the same turn after a realtime handler reconnect', async () =
 test('cancels the most recently submitted active work', async () => {
   const kit = harness()
   let release
+  const cancellations = []
   kit.handler.coordinator = {
     run: async (_input, { signal }) => new Promise((resolve, reject) => {
       release = resolve
@@ -660,6 +676,10 @@ test('cancels the most recently submitted active work', async () => {
         once: true,
       })
     }),
+    cancelWork: async (workId, options) => {
+      cancellations.push([workId, options])
+      return { route: 'adapter', layer: 'coordinator' }
+    },
   }
   kit.transcripts.record('turn-one', '执行一次')
   await kit.handler.handle({
@@ -681,6 +701,10 @@ test('cancels the most recently submitted active work', async () => {
   )
   assert.equal(kit.manager.list({ active: true }).length, 0)
   assert.equal(kit.manager.list()[0].status, 'cancelled')
+  assert.deepEqual(cancellations, [[
+    kit.manager.list()[0].id,
+    { ownerId: 'owner' },
+  ]])
   release?.()
 })
 

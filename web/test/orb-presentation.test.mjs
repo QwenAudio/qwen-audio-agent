@@ -82,6 +82,10 @@ test('arbitrates visual states by layered priority', () => {
     attentionPending: true,
   }
   assert.equal(resolveOrbVisualState(background), 'attention')
+  assert.equal(resolveOrbVisualState({
+    ...background,
+    tasksActive: false,
+  }), 'attention')
   assert.equal(
     resolveOrbVisualState({ ...background, attentionPending: false }),
     'working',

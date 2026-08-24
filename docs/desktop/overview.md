@@ -48,23 +48,24 @@ The desktop does not flatten every business signal into one "Agent state".
 Lifecycle, runtime readiness, voice interaction, and background work remain
 separate; skins consume only stable presentation states and one-shot events.
 
-| System semantics | Skin action | Playback |
-| --- | --- | --- |
-| Idle | `idle` | Loop continuously |
-| Confirmed user speech | `waiting` | Play once, then restore the base action |
-| Input committed, awaiting the first response | `review` | Play once; this does not claim access to model-internal "thinking" |
-| Playback starts | `waving` | Play once, with subtle playback motion retained |
-| Background work active | `running` | Loop as the base action |
-| Application starting | `waiting` | Loop continuously |
-| First readiness or wake | `waving` | Play once |
-| Runtime or task failure | `failed` | Play once |
-| Pointer hover | `jumping` | Play once |
-| Left/right drag | `running-left` / `running-right` | Loop while dragging |
+| Standard animation | Meaning | Agent state or event | Playback |
+| --- | --- | --- | --- |
+| `idle` | Resting | `idle`, `connecting`, `occupied` | Loop while the state persists |
+| `running-right` | Moving right | The user drags the pet right | Loop while dragging |
+| `running-left` | Moving left | The user drags the pet left | Loop while dragging |
+| `waving` | Speaking | `speaking` | Loop for the full `speaking` state |
+| `jumping` | Success / wake | `waking`, first startup readiness, successful task completion, pointer enter | Play once per event |
+| `failed` | Failure | `error`, desktop runtime failure, task failure | Play once per event |
+| `waiting` | Listening | `listening` | Loop for the full `listening` state |
+| `running` | Working / startup | `working`, `starting` | Loop while the state persists |
+| `review` | Query / confirmation | `processing`, task query, `attention` | Play once per event |
 
-Permission waits, ownership by another frontend, and detailed connection
-phases remain useful business states, but do not select separate sprite
-tracks. A transient action restores idle, or running when background work is
-still active. Front-end-only mode skips backend readiness.
+Sustained states and one-shot events are arbitrated separately: startup,
+listening, speaking, and background work retain their looping tracks, while
+first readiness, wake, task results, queries, confirmation waits, and pointer
+entry trigger only on event edges. A one-shot action restores the current base
+track: `running` while work remains active, otherwise `idle`. Every task kind
+uses the same start, completion, and failure rules. Front-end-only mode skips backend readiness.
 Skin packages are static assets only (JSON + WebP) and are validated on
 import; if a selected skin package is removed, the orb falls back to the
 built-in appearance.

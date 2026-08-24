@@ -26,6 +26,7 @@ function normalizedJobNumber(value) {
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
     taskId: String(task.id),
+    jobId: String(task.jobId || ''),
     ownerId: String(task.ownerId || ''),
     sessionId: String(task.sessionId || 'main'),
     turnId: task.turnId || null,

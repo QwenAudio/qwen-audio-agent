@@ -118,11 +118,10 @@ export const openClawBackendDriver = {
       },
       defaultDelegationTitle: 'OpenClaw 项目任务',
       sessionInstructions: [
-        'For a separate or previous project, use OpenClaw native session tools:',
+        'When the coordinator routing contract selects a new or previous',
+        'project Session, use OpenClaw native session tools:',
         'sessions_spawn to create work, sessions_list to locate prior Sessions,',
         'sessions_send to continue one, and sessions_history for status.',
-        'These are third-layer tasks. After spawn/send is accepted, return the',
-        'delegated response required by the request envelope and stop this turn.',
       ].join(' '),
       uiUrl({ baseUrl }) {
         if (!baseUrl) return null

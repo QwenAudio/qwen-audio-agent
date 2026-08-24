@@ -35,25 +35,21 @@ test('treats front-end-only mode as a satisfied backend dependency', () => {
   }), 'failed')
 })
 
-test('announces first readiness once and reports each new failure transition', () => {
+test('announces first readiness once without duplicating runtime failure state', () => {
   assert.deepEqual(advanceDesktopRuntimePresentation({
     current: 'ready',
-    previous: 'starting',
     readyAnnounced: false,
-  }), { cue: 'waving', readyAnnounced: true })
+  }), { cue: 'ready', readyAnnounced: true })
   assert.deepEqual(advanceDesktopRuntimePresentation({
     current: 'ready',
-    previous: 'failed',
     readyAnnounced: true,
   }), { cue: null, readyAnnounced: true })
   assert.deepEqual(advanceDesktopRuntimePresentation({
     current: 'failed',
-    previous: 'ready',
     readyAnnounced: true,
-  }), { cue: 'failed', readyAnnounced: true })
+  }), { cue: null, readyAnnounced: true })
   assert.deepEqual(advanceDesktopRuntimePresentation({
     current: 'failed',
-    previous: 'failed',
     readyAnnounced: true,
   }), { cue: null, readyAnnounced: true })
 })

@@ -87,10 +87,10 @@ https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 | 后台 Agent | 接入方式 | 接入准备 | 推荐指数 |
 | --- | --- | --- | --- |
 | 无 | N/A | 仅前台模式，无需配置 | ★★★★★ |
+| Qwen Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
 | OpenCode | 原生 ACP | 支持一键安装和百炼配置 | ★★★★★ |
 | OpenClaw | 内置 ACP 桥接 | 支持一键安装和百炼配置 | ★★★★★ |
 | Qoder | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
-| Qwen Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
 | Kimi Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
 | Hermes | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
 | CodeBuddy | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |

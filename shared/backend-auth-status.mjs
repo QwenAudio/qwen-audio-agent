@@ -49,16 +49,22 @@ async function readJson(path, readFileImpl = readFile) {
   }
 }
 
-async function qwenAuthenticationStatus({ env, readFileImpl = readFile }) {
+async function qwenAuthenticationStatus({
+  env,
+  pathExists = existsSync,
+  readFileImpl = readFile,
+}) {
   if (QWEN_CREDENTIAL_KEYS.some(name => String(env[name] || '').trim())) {
     return 'authenticated'
   }
   const home = String(env.HOME || env.USERPROFILE || '').trim()
   if (!home) return 'unknown'
-  const settings = await readJson(
-    join(String(env.QWEN_HOME || join(home, '.qwen')), 'settings.json'),
-    readFileImpl,
+  const settingsPath = join(
+    String(env.QWEN_HOME || join(home, '.qwen')),
+    'settings.json',
   )
+  if (!pathExists(settingsPath)) return 'unauthenticated'
+  const settings = await readJson(settingsPath, readFileImpl)
   if (!settings) return 'unknown'
   const configuredEnvironment = settings.env || {}
   if (
@@ -240,6 +246,7 @@ export async function inspectBackendAuthentication(id, {
     return {
       status: await qwenAuthenticationStatus({
         env,
+        pathExists,
         readFileImpl: readCredentialFile,
       }),
     }

@@ -62,6 +62,7 @@ test('detects explicit unauthenticated results without treating failures as proo
 test('detects Qwen Code credentials without exposing their values', async () => {
   assert.equal((await inspectBackendAuthentication('qwen', {
     env: { HOME: '/home/user' },
+    pathExists: () => true,
     readCredentialFile: async path => {
       assert.equal(path, join('/home/user', '.qwen', 'settings.json'))
       return JSON.stringify({ env: { DASHSCOPE_API_KEY: 'test-key' } })
@@ -69,10 +70,15 @@ test('detects Qwen Code credentials without exposing their values', async () => 
   })).status, 'authenticated')
   assert.equal((await inspectBackendAuthentication('qwen', {
     env: { HOME: '/home/user' },
+    pathExists: () => true,
     readCredentialFile: async () => JSON.stringify({
       security: { auth: { selectedType: 'oauth' } },
     }),
   })).status, 'unknown')
+  assert.equal((await inspectBackendAuthentication('qwen', {
+    env: { HOME: '/home/user' },
+    pathExists: () => false,
+  })).status, 'unauthenticated')
 })
 
 test('uses Pi official no-refresh auth check for its configured provider', async () => {

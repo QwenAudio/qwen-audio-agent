@@ -636,6 +636,15 @@ test('uses one ACP profile family while preserving backend differences', () => {
   assert.equal(connection(qwen).command, '/opt/qwen')
   assert.deepEqual(connection(qwen).args, ['--acp'])
   assert.deepEqual(qwen.sessionConfigOptions, [])
+  assert.deepEqual(qwen.capabilities, {
+    delegation: true,
+    permissions: true,
+    backendUi: false,
+    nativeSessionHistory: true,
+    externalMcp: true,
+    nativeDelegation: false,
+    sessionMcp: true,
+  })
   const openClaw = acpBackendProfile({
     protocol: 'openclaw',
     root,

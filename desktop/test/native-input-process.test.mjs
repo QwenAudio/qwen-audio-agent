@@ -17,6 +17,7 @@ import {
 } from '../src/native-input-protocol.mjs'
 
 const root = resolve(new URL('../..', import.meta.url).pathname)
+const darwinUnixSocketPathMaxBytes = 103
 let workspace
 let output
 let bridgePath
@@ -25,7 +26,9 @@ const isMacOS = process.platform === 'darwin'
 
 before(() => {
   if (!isMacOS) return
-  workspace = mkdtempSync(join(tmpdir(), 'qwen-native-input-process-'))
+  workspace = mkdtempSync(join(tmpdir(), 'qwen-ni-'))
+  assertDarwinSocketPath(join(workspace, 'operation-runtime', 'control.sock'))
+  assertDarwinSocketPath(join(workspace, 'signal-runtime', 'control.sock'))
   output = join(workspace, 'build')
   const build = spawnSync(process.execPath, [
     'scripts/build-native-input.mjs',
@@ -302,6 +305,13 @@ function waitForProbeReady(child, bridge) {
     child.stderr.on('data', onErrorData)
     child.once('exit', onExit)
   })
+}
+
+function assertDarwinSocketPath(socketPath) {
+  assert.ok(
+    Buffer.byteLength(socketPath) <= darwinUnixSocketPathMaxBytes,
+    `Darwin Unix socket path exceeds ${darwinUnixSocketPathMaxBytes} bytes: ${socketPath}`,
+  )
 }
 
 function snapshotFiles(directory, prefix = '') {

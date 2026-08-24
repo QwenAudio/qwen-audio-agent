@@ -59,6 +59,8 @@ import {
 import {
   DESKTOP_ORB_HEIGHT,
   DESKTOP_ORB_WIDTH,
+  desktopConversationPanelBounds,
+  desktopOrbAnchorFromPanel,
   desktopOrbBounds,
   desktopSurfaceLayout,
 } from './desktop-surface-layout.mjs'
@@ -212,6 +214,7 @@ let rendererServer = null
 let desktopTaskCount = 0
 let desktopTaskPlacement = 'below'
 let desktopOrbOffsetX = 0
+let desktopSurfaceMode = 'orb'
 let reconnectTimer = null
 let embeddedGateway = null
 let borrowedGatewayOrigin = ''
@@ -479,6 +482,7 @@ async function loadQwenAudioAgent(window) {
       autoHideSeconds: settings.autoHideSeconds,
       wakeWordEnabled: settings.wakeWordEnabled,
       language: effectiveDesktopLanguage(settings.language, app.getLocale()),
+      surfaceMode: desktopSurfaceMode,
     }))
     clearTimeout(reconnectTimer)
     reconnectTimer = null
@@ -601,6 +605,7 @@ function createWindow() {
       desktopTaskCount = 0
       desktopTaskPlacement = 'below'
       desktopOrbOffsetX = 0
+      desktopSurfaceMode = 'orb'
     }
   })
 
@@ -668,6 +673,12 @@ const orbShell = bindOrbShell({
   presence: desktopPresence,
   logger,
   onOpenSettings: () => showSettings(),
+  onLoadSurface: () => desktopSurfaceMode,
+  onSetSurface: mode => {
+    const selected = setDesktopSurfaceMode(mode)
+    if (selected === 'panel') desktopPresence.wake('panel')
+    return selected
+  },
   onQuit: () => app.quit(),
   onDragEnd: () => {
     const [x, y] = mainWindow.getPosition()
@@ -676,9 +687,72 @@ const orbShell = bindOrbShell({
   },
 })
 
+function sendDesktopTaskPlacement() {
+  mainWindow?.webContents.send(
+    'qwen-audio-agent:task-card-placement',
+    {
+      placement: desktopTaskPlacement,
+      orbOffsetX: desktopOrbOffsetX,
+    },
+  )
+}
+
+function setDesktopSurfaceMode(requestedMode) {
+  if (!mainWindow || mainWindow.isDestroyed()) return 'orb'
+  const mode = requestedMode === 'panel' ? 'panel' : 'orb'
+  if (mode === desktopSurfaceMode) return mode
+
+  const bounds = mainWindow.getBounds()
+  if (mode === 'panel') {
+    const orbBounds = desktopOrbBounds(bounds, {
+      taskCount: desktopTaskCount,
+      placement: desktopTaskPlacement,
+      orbOffsetX: desktopOrbOffsetX,
+    })
+    const workArea = screen.getDisplayMatching(orbBounds).workArea
+    desktopSurfaceMode = 'panel'
+    orbShell.cancelDrag()
+    mainWindow.setAlwaysOnTop(false)
+    mainWindow.setVisibleOnAllWorkspaces(false)
+    mainWindow.setSkipTaskbar(false)
+    mainWindow.setHasShadow(true)
+    mainWindow.setBounds(desktopConversationPanelBounds({
+      orbBounds,
+      workArea,
+    }), false)
+    mainWindow.show()
+    mainWindow.focus()
+    return desktopSurfaceMode
+  }
+
+  const workArea = screen.getDisplayMatching(bounds).workArea
+  const orbAnchor = desktopOrbAnchorFromPanel({ bounds, workArea })
+  desktopSurfaceMode = 'orb'
+  mainWindow.setSkipTaskbar(true)
+  mainWindow.setHasShadow(false)
+  configureOrbWindow(mainWindow)
+  orbPlacement.recordPosition(orbAnchor)
+  const layout = desktopSurfaceLayout({
+    bounds: orbAnchor,
+    currentTaskCount: 0,
+    taskCount: desktopTaskCount,
+    placement: desktopTaskPlacement,
+    workArea,
+  })
+  desktopTaskPlacement = layout.placement
+  desktopOrbOffsetX = layout.orbOffsetX
+  sendDesktopTaskPlacement()
+  mainWindow.setBounds(layout.bounds, false)
+  return desktopSurfaceMode
+}
+
 function updateDesktopTaskSurface(value) {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const taskCount = Math.min(100, Math.max(0, Math.floor(Number(value) || 0)))
+  if (desktopSurfaceMode === 'panel') {
+    desktopTaskCount = taskCount
+    return
+  }
   const bounds = mainWindow.getBounds()
   const orbBounds = desktopOrbBounds(bounds, {
     taskCount: desktopTaskCount,
@@ -697,13 +771,7 @@ function updateDesktopTaskSurface(value) {
   desktopTaskCount = taskCount
   desktopTaskPlacement = layout.placement
   desktopOrbOffsetX = layout.orbOffsetX
-  mainWindow.webContents.send(
-    'qwen-audio-agent:task-card-placement',
-    {
-      placement: desktopTaskPlacement,
-      orbOffsetX: desktopOrbOffsetX,
-    },
-  )
+  sendDesktopTaskPlacement()
   const next = layout.bounds
   if (
     bounds.x !== next.x

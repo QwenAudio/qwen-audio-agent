@@ -113,6 +113,126 @@ html[data-desktop="orb"] #root {
     #08090d;
 }
 
+.desktop-conversation-panel {
+  border: 1px solid #ffffff18;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% -15%, #694fd43d, transparent 35%),
+    #0a0b10;
+  box-shadow: inset 0 1px #ffffff12;
+}
+
+.desktop-conversation-panel header {
+  height: 56px;
+  padding: 0 13px;
+  gap: 8px;
+  -webkit-app-region: drag;
+}
+
+.desktop-conversation-panel header button,
+.desktop-conversation-panel header a,
+.desktop-conversation-panel header select {
+  -webkit-app-region: no-drag;
+}
+
+.desktop-conversation-panel .brand > span {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+}
+
+.desktop-conversation-panel .brand small,
+.desktop-conversation-panel .backend,
+.desktop-conversation-panel .model-status,
+.desktop-conversation-panel .frontend-provider {
+  display: none;
+}
+
+.desktop-conversation-panel .brand {
+  margin-right: auto;
+  font-size: 13px;
+}
+
+.desktop-conversation-panel header button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+}
+
+.desktop-conversation-panel header .desktop-new-session,
+.desktop-conversation-panel header .desktop-panel-collapse {
+  display: grid;
+}
+
+.desktop-conversation-panel header .voice {
+  padding: 0;
+}
+
+.desktop-conversation-panel header svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.desktop-conversation-panel .status {
+  padding: 0 3px;
+}
+
+.desktop-conversation-panel .status span {
+  display: none;
+}
+
+.desktop-conversation-panel .workspace {
+  width: 100%;
+  height: calc(100dvh - 56px);
+  padding: 0;
+}
+
+.desktop-conversation-panel .hero {
+  display: none;
+}
+
+.desktop-conversation-panel .messages {
+  margin: 0;
+  padding: 16px 14px 8px;
+}
+
+.desktop-conversation-panel article {
+  max-width: 88%;
+}
+
+.desktop-conversation-panel .agent-task,
+.desktop-conversation-panel article.companion {
+  width: calc(100% - 12px);
+  margin-left: 6px;
+}
+
+.desktop-conversation-panel .multimodal-composer {
+  width: calc(100% - 24px);
+  margin: 0 12px 12px;
+  padding: 8px;
+  border-radius: 16px;
+}
+
+.desktop-conversation-panel .composer-row textarea {
+  min-height: 38px;
+  padding: 8px 3px;
+}
+
+.desktop-conversation-panel .composer-attach,
+.desktop-conversation-panel .composer-send {
+  min-width: 38px;
+  height: 38px;
+  border-radius: 11px;
+}
+
 header {
   height: 68px;
   padding: 0 28px;
@@ -158,9 +278,15 @@ header {
 .model-status small { overflow-wrap: anywhere; }
 .model-status .provider-notice { color: #f1c665; }
 .status i { width: 7px; height: 7px; border-radius: 50%; background: #555; }
+.status i.idle { background: #50dfab; box-shadow: 0 0 9px #50dfab80; }
 .status i.listening { background: #50dfab; box-shadow: 0 0 12px #50dfab; }
-.status i.processing { background: #f1c665; box-shadow: 0 0 12px #f1c665; }
+.status i.connecting,
+.status i.starting,
+.status i.processing,
+.status i.working { background: #f1c665; box-shadow: 0 0 12px #f1c665; }
+.status i.attention { background: #ff9d68; box-shadow: 0 0 12px #ff9d68; }
 .status i.speaking { background: #9a7dff; box-shadow: 0 0 12px #9a7dff; }
+.status i.error { background: #ff6f78; box-shadow: 0 0 12px #ff6f78; }
 header button { padding: 9px 13px; border-radius: 10px; color: #ddd; border: 1px solid #ffffff18; background: #ffffff08; }
 header .voice.active { color: white; border-color: #785cf4; background: #785cf4; }
 header .voice.waiting { color: #ded5ff; border-color: #927cf480; }

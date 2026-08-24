@@ -5,12 +5,12 @@ import {
   supportsComposerInput,
 } from '../../shared/client-input-capabilities.mjs'
 
-test('desktop orb remains an audio-only input surface', () => {
+test('desktop connection supports the conversation panel inputs', () => {
   assert.deepEqual(clientInputCapabilities('desktop'), {
-    text: false,
+    text: true,
     audio: true,
-    image: false,
-    resource: false,
+    image: true,
+    resource: true,
   })
-  assert.equal(supportsComposerInput('desktop'), false)
+  assert.equal(supportsComposerInput('desktop'), true)
 })

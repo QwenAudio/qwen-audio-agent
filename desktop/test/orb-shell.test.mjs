@@ -20,7 +20,9 @@ function fakeIpc() {
     },
     removeHandler: channel => handlers.delete(channel),
     emit: (channel, event, payload) => listeners.get(channel)?.(event, payload),
-    invoke: (channel, event) => handlers.get(channel)(event),
+    invoke: (channel, event, ...parameters) => (
+      handlers.get(channel)(event, ...parameters)
+    ),
     listeners,
     handlers,
   }
@@ -60,7 +62,10 @@ function fakePresence() {
   }
 }
 
-function shellHarness({ window = fakeWindow() } = {}) {
+function shellHarness({
+  window = fakeWindow(),
+  onLoadSurface = () => 'orb',
+} = {}) {
   const ipc = fakeIpc()
   const presence = fakePresence()
   const dragEnds = []
@@ -69,6 +74,11 @@ function shellHarness({ window = fakeWindow() } = {}) {
     getWindow: () => window,
     presence,
     onOpenSettings: () => dragEnds.push('settings'),
+    onLoadSurface,
+    onSetSurface: mode => {
+      dragEnds.push(`surface:${mode}`)
+      return mode
+    },
     onQuit: () => dragEnds.push('quit'),
     onDragEnd: () => dragEnds.push('drag-end'),
   })
@@ -128,6 +138,31 @@ test('quit and open-settings only request, never act on the window', () => {
   ipc.emit(ORB_CHANNELS.openSettings, event)
   ipc.emit(ORB_CHANNELS.quit, event)
   assert.deepEqual(calls, ['settings', 'quit'])
+})
+
+test('surface channels keep orb and panel in one authorized window', () => {
+  const { ipc, event, calls } = shellHarness()
+  assert.deepEqual(ipc.invoke(ORB_CHANNELS.surfaceLoad, event), { mode: 'orb' })
+  assert.deepEqual(
+    ipc.invoke(ORB_CHANNELS.surfaceSet, event, 'panel'),
+    { mode: 'panel' },
+  )
+  assert.deepEqual(calls, ['surface:panel'])
+  assert.throws(
+    () => ipc.invoke(ORB_CHANNELS.surfaceSet, { sender: {} }, 'panel'),
+    /无权/,
+  )
+})
+
+test('visible conversation panel refuses an inactivity hide request', () => {
+  const { ipc, event, presence } = shellHarness({
+    onLoadSurface: () => 'panel',
+  })
+
+  assert.deepEqual(ipc.invoke(ORB_CHANNELS.enterHide, event), {
+    state: presence.state,
+  })
+  assert.notEqual(presence.state, 'hidden')
 })
 
 test('dispose unregisters every channel and cancelDrag drops the offset', () => {

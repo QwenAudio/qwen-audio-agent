@@ -19,6 +19,8 @@ export const ORB_CHANNELS = Object.freeze({
   lifecycleLoad: 'qwen-audio-agent:lifecycle-load',
   lifecycle: 'qwen-audio-agent:lifecycle',
   taskCardPlacement: 'qwen-audio-agent:task-card-placement',
+  surfaceLoad: 'qwen-audio-agent:surface-load',
+  surfaceSet: 'qwen-audio-agent:surface-set',
   quit: 'qwen-audio-agent:quit',
 })
 
@@ -57,6 +59,8 @@ export function bindOrbShell({
   presence,
   logger = null,
   onOpenSettings = null,
+  onLoadSurface = null,
+  onSetSurface = null,
   onQuit = null,
   onDragEnd = null,
 } = {}) {
@@ -135,7 +139,28 @@ export function bindOrbShell({
     if (!fromOrbWindow(event)) {
       throw new Error('无权修改桌面状态')
     }
+    // The conversation panel is an active application surface. A stale
+    // inactivity timer from the compact orb must never disconnect its
+    // realtime session while the panel remains visible and interactive.
+    if (onLoadSurface?.() === 'panel') {
+      return { state: presence.state }
+    }
     return { state: presence.hide('inactivity') }
+  })
+
+  handle(ORB_CHANNELS.surfaceLoad, event => {
+    if (!fromOrbWindow(event)) {
+      throw new Error('无权读取桌面展示形态')
+    }
+    return { mode: onLoadSurface?.() === 'panel' ? 'panel' : 'orb' }
+  })
+
+  handle(ORB_CHANNELS.surfaceSet, (event, requestedMode) => {
+    if (!fromOrbWindow(event)) {
+      throw new Error('无权修改桌面展示形态')
+    }
+    const mode = requestedMode === 'panel' ? 'panel' : 'orb'
+    return { mode: onSetSurface?.(mode) === 'panel' ? 'panel' : 'orb' }
   })
 
   on(ORB_CHANNELS.wake, event => {

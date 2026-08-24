@@ -86,68 +86,74 @@ final class SessionLedgerTests: XCTestCase {
         XCTAssertEqual(ledger.ownedMarkedRange, range(2, 2))
     }
 
-    func testOpaquePartialCannotAdoptAnUnprovenMarkedRangeForFinal() throws {
+    func testFirstPartialRejectsWhenSelectionAndMarkedLocationAreOpaque() {
         var ledger = ledger()
 
         XCTAssertEqual(
-            try ledger.partial(
+            ledger.partial(
                 text: "opaque",
                 selectedRange: range(NSNotFound, 0),
                 clientMarkedRange: range(NSNotFound, 0),
                 generation: 3,
                 targetID: targetID
-            ).get(),
-            .setMarked(
-                text: "opaque",
-                selection: range(6, 0),
-                replacement: range(NSNotFound, 0)
-            )
-        )
-        XCTAssertEqual(ledger.ownedMarkedRange, range(NSNotFound, 6))
-
-        XCTAssertThrowsError(
-            try ledger.confirmMarkedRange(range(12, 6)).get()
-        ) { error in
-            XCTAssertEqual(error as? LedgerError, .unknownClientRange)
-        }
-        XCTAssertEqual(ledger.ownedMarkedRange, range(NSNotFound, 6))
-        XCTAssertEqual(
-            ledger.final(
-                text: "final",
-                selectedRange: range(NSNotFound, 0),
-                clientMarkedRange: range(12, 6),
-                generation: 3,
-                targetID: targetID
             ),
-            .failure(.markedRangeMismatch)
+            .failure(.unknownClientRange)
         )
+        XCTAssertNil(ledger.ownedMarkedRange)
         XCTAssertNil(ledger.latestOwnedFinalRange)
+        XCTAssertNil(ledger.latestOwnedFinalText)
     }
 
-    func testOpaquePartialCannotAdoptAnUnprovenMarkedRangeForCancel() throws {
+    func testFirstPartialUsesKnownEmptyMarkedLocationWhenSelectionIsOpaque() throws {
         var ledger = ledger()
-        _ = try ledger.partial(
-            text: "opaque",
-            selectedRange: range(NSNotFound, 0),
-            clientMarkedRange: range(NSNotFound, 0),
-            generation: 3,
-            targetID: targetID
-        ).get()
 
-        XCTAssertThrowsError(
-            try ledger.confirmMarkedRange(range(20, 6)).get()
-        ) { error in
-            XCTAssertEqual(error as? LedgerError, .unknownClientRange)
-        }
         XCTAssertEqual(
-            ledger.cancel(
-                clientMarkedRange: range(20, 6),
+            try ledger.partial(
+                text: "known",
+                selectedRange: range(NSNotFound, 0),
+                clientMarkedRange: range(8, 0),
+                generation: 3,
+                targetID: targetID
+            ).get(),
+            .setMarked(
+                text: "known",
+                selection: range(5, 0),
+                replacement: range(8, 0)
+            )
+        )
+        XCTAssertEqual(ledger.ownedMarkedRange, range(8, 5))
+    }
+
+    func testOpaqueOwnedFinalAndCancelFailClosedWithoutMutatingLedger() {
+        let opaque = range(NSNotFound, 6)
+        var finalLedger = ledger()
+        finalLedger.ownedMarkedRange = opaque
+
+        XCTAssertEqual(
+            finalLedger.final(
+                text: "final",
+                selectedRange: range(NSNotFound, 0),
+                clientMarkedRange: opaque,
                 generation: 3,
                 targetID: targetID
             ),
-            .failure(.markedRangeMismatch)
+            .failure(.unknownClientRange)
         )
-        XCTAssertEqual(ledger.ownedMarkedRange, range(NSNotFound, 6))
+        XCTAssertEqual(finalLedger.ownedMarkedRange, opaque)
+        XCTAssertNil(finalLedger.latestOwnedFinalRange)
+        XCTAssertNil(finalLedger.latestOwnedFinalText)
+
+        var cancelLedger = ledger()
+        cancelLedger.ownedMarkedRange = opaque
+        XCTAssertEqual(
+            cancelLedger.cancel(
+                clientMarkedRange: opaque,
+                generation: 3,
+                targetID: targetID
+            ),
+            .failure(.unknownClientRange)
+        )
+        XCTAssertEqual(cancelLedger.ownedMarkedRange, opaque)
     }
 
     func testReplaceAndDeleteStayInsideOneLatestOwnedFinalMatch() throws {

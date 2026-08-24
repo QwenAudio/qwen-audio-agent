@@ -89,21 +89,23 @@ test('fails closed when native arm does not return an accepted correlated result
     assert.deepEqual(sourceNotSelected.gateway, [])
   })
 
-  await withLang('en-US', async () => {
-    const targetChanged = harness({
-      sendNative: operation => Promise.resolve({
-        type: 'operation.result',
-        operationId: operation.operationId,
-        accepted: false,
-        reason: 'target_changed',
-      }),
+  for (const [lang, expected] of [
+    ['zh-CN', '当前输入目标不可用'],
+    ['en-US', 'The input target is unavailable'],
+  ]) {
+    await withLang(lang, async () => {
+      const targetUnavailable = harness({
+        sendNative: operation => Promise.resolve({
+          type: 'operation.result',
+          operationId: operation.operationId,
+          accepted: false,
+          reason: 'target_unavailable',
+        }),
+      })
+      assert.equal(await targetUnavailable.client.start(), false)
+      assert.equal(targetUnavailable.client.view().error, expected)
     })
-    assert.equal(await targetChanged.client.start(), false)
-    assert.equal(
-      targetChanged.client.view().error,
-      'The input target changed. Start dictation again.',
-    )
-  })
+  }
 })
 
 test('routes partial/final to correlated native operations and never submits conversation', async () => {

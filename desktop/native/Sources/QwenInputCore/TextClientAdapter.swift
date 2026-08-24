@@ -35,6 +35,9 @@ public struct TextClientAdapter: Sendable {
             let effectiveReplacement: NSRange
             if replacement.location == NSNotFound {
                 if client.markedRange.location == NSNotFound {
+                    guard client.selectedRange.location != NSNotFound else {
+                        return .failure(.unknownSelectedRange)
+                    }
                     effectiveReplacement = replacement
                 } else if client.markedRange.length == 0 {
                     effectiveReplacement = client.markedRange
@@ -54,6 +57,11 @@ public struct TextClientAdapter: Sendable {
             return .success(true)
 
         case let .insert(text, replacement):
+            if replacement.location == NSNotFound,
+               client.markedRange.location == NSNotFound,
+               client.selectedRange.location == NSNotFound {
+                return .failure(.unknownSelectedRange)
+            }
             if replacement.location != NSNotFound,
                client.markedRange.location != NSNotFound,
                       client.markedRange != replacement {
@@ -91,6 +99,20 @@ public struct TextClientAdapter: Sendable {
         let length = (text as NSString).length
         return selection.location <= length
             && selection.length <= length - selection.location
+    }
+}
+
+public struct ClientTextOperationController: Sendable {
+    private let adapter = TextClientAdapter()
+
+    public init() {}
+
+    public func apply(
+        _ result: Result<ClientTextEffect, LedgerError>,
+        to client: NativeTextClient
+    ) -> Bool {
+        guard case let .success(effect) = result else { return false }
+        return (try? adapter.apply(effect, to: client).get()) != nil
     }
 }
 

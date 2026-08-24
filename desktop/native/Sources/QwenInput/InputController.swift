@@ -8,6 +8,7 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
     private var targetToken: ControllerTargetToken?
     private var ledger: SessionLedger?
     private let clientAdapter = TextClientAdapter()
+    private let textOperationController = ClientTextOperationController()
     private let safetyGate = SystemSecureInputGate.makeSafetyGate()
     private let bridgeClient = InputBridgeClient()
 
@@ -210,8 +211,7 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
         client: IMKTextClientAdapter,
         ledger: inout SessionLedger
     ) -> Bool {
-        guard case let .success(effect) = result else { return false }
-        return (try? clientAdapter.apply(effect, to: client).get()) != nil
+        textOperationController.apply(result, to: client)
     }
 
     private func removeOwnedPartialIfPossible(from sender: Any?) {

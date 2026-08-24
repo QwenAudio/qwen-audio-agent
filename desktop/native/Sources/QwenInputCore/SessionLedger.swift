@@ -4,7 +4,7 @@ public struct SessionLedger: Sendable {
     public let sessionID: UUID
     public private(set) var generation: UInt64
     public private(set) var targetID: UUID
-    public private(set) var ownedMarkedRange: NSRange?
+    public internal(set) var ownedMarkedRange: NSRange?
     public private(set) var latestOwnedFinalRange: NSRange?
     public private(set) var latestOwnedFinalText: String?
 
@@ -28,12 +28,27 @@ public struct SessionLedger: Sendable {
         let replacement: NSRange
         let location: Int
         if let ownedMarkedRange {
+            guard ownedMarkedRange.location != NSNotFound,
+                  clientMarkedRange.location != NSNotFound else {
+                return .failure(.unknownClientRange)
+            }
             guard clientMarkedRange == ownedMarkedRange else {
                 return .failure(.markedRangeMismatch)
             }
             replacement = ownedMarkedRange
             location = ownedMarkedRange.location
+        } else if clientMarkedRange.location != NSNotFound {
+            guard clientMarkedRange.length == 0,
+                  selectedRange.location == NSNotFound
+                    || selectedRange.location == clientMarkedRange.location else {
+                return .failure(.markedRangeMismatch)
+            }
+            replacement = clientMarkedRange
+            location = clientMarkedRange.location
         } else {
+            guard selectedRange.location != NSNotFound else {
+                return .failure(.unknownClientRange)
+            }
             replacement = NSRange(location: NSNotFound, length: 0)
             location = selectedRange.location
         }
@@ -61,6 +76,10 @@ public struct SessionLedger: Sendable {
         let replacement: NSRange
         let location: Int
         if let ownedMarkedRange {
+            guard ownedMarkedRange.location != NSNotFound,
+                  clientMarkedRange.location != NSNotFound else {
+                return .failure(.unknownClientRange)
+            }
             guard clientMarkedRange == ownedMarkedRange else {
                 return .failure(.markedRangeMismatch)
             }
@@ -174,6 +193,10 @@ public struct SessionLedger: Sendable {
         }
         guard let ownedMarkedRange else {
             return .success(.none)
+        }
+        guard ownedMarkedRange.location != NSNotFound,
+              clientMarkedRange.location != NSNotFound else {
+            return .failure(.unknownClientRange)
         }
         guard clientMarkedRange == ownedMarkedRange else {
             return .failure(.markedRangeMismatch)

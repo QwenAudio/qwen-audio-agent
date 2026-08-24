@@ -104,6 +104,7 @@ export class ToolCallHandler {
     permissionPolicy,
     onPermissionDeliveryFailed = () => {},
     requestClientState = () => {},
+    onAgentActivity = () => {},
     inputAssets = null,
   }) {
     this.taskManager = taskManager
@@ -124,6 +125,7 @@ export class ToolCallHandler {
     this.permissionPolicy = permissionPolicy
     this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
     this.requestClientState = requestClientState
+    this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
     this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
@@ -550,6 +552,7 @@ export class ToolCallHandler {
           )
         }
       }
+      this.onAgentActivity({ activity: 'query', turnId })
       await this.getAgentTaskStatus(callId, turnId, args)
       return
     }

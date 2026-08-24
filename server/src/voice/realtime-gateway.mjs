@@ -431,6 +431,10 @@ export function attachRealtimeGateway(server, {
         })
         if (state === 'sleeping') enterSleep()
       },
+      onAgentActivity: activity => send(ws, {
+        type: GatewayServerEvent.AGENT_ACTIVITY,
+        ...activity,
+      }),
       inputAssets,
     })
     const currentTurn = () => ({

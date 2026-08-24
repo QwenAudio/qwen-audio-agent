@@ -54,31 +54,54 @@ export function defaultAnimations() {
   }
 }
 
-// 语音状态 → 动画名。状态由 orb-presentation.js 的仲裁器产出：
-// 对话态（idle/listening/processing/speaking）与后台/系统态
-// （attention/working/occupied/error/connecting/waking/hidden）。
+// 业务表现状态与单次事件只在这里映射到 Codex Pet 的九条标准轨道。
+// mode 决定播放生命周期；blocksCues 保证启动、唤醒和实时交互不会被
+// 较早排队的单次事件覆盖。皮肤资源只定义帧，不参与业务状态仲裁。
+export const PET_STATE_ANIMATION_POLICY = Object.freeze({
+  idle: { name: 'idle', mode: 'loop' },
+  connecting: { name: 'idle', mode: 'loop' },
+  occupied: { name: 'idle', mode: 'loop' },
+  hidden: { name: 'idle', mode: 'loop' },
+  listening: { name: 'waiting', mode: 'loop', blocksCues: true },
+  speaking: { name: 'waving', mode: 'loop', blocksCues: true },
+  starting: { name: 'running', mode: 'loop', blocksCues: true },
+  working: { name: 'running', mode: 'loop' },
+  waking: { name: 'jumping', mode: 'once', blocksCues: true },
+  processing: { name: 'review', mode: 'once', blocksCues: true },
+  attention: { name: 'review', mode: 'once', blocksCues: true },
+  error: { name: 'failed', mode: 'once', blocksCues: true },
+})
+
+export const PET_EVENT_ANIMATION_POLICY = Object.freeze({
+  ready: 'jumping',
+  wake: 'jumping',
+  'task.completed': 'jumping',
+  'task.failed': 'failed',
+  query: 'review',
+  hover: 'jumping',
+  'runtime.failed': 'failed',
+})
+
+export function spriteAnimationForEvent(event) {
+  return PET_EVENT_ANIMATION_POLICY[event] || null
+}
+
+export function spriteAnimationEventForGatewayEvent(event = {}) {
+  if (event.type === 'agent.activity' && event.activity === 'query') {
+    return 'query'
+  }
+  if (event.type === 'task.completed' || event.type === 'task.failed') {
+    return event.type
+  }
+  return null
+}
+
+// 状态由 orb-presentation.js 的仲裁器产出。未知状态始终安全回退 idle。
 export function spriteAnimationForOrbState({
   state,
   baseAnimation = 'idle',
 } = {}) {
-  switch (state) {
-    case 'listening':
-      return 'waiting'
-    case 'processing':
-      return 'review'
-    case 'working':
-      return 'running'
-    case 'speaking':
-      return 'waving'
-    case 'starting':
-      return 'waiting'
-    case 'waking':
-      return 'waving'
-    case 'error':
-      return 'failed'
-    default:
-      return baseAnimation
-  }
+  return PET_STATE_ANIMATION_POLICY[state]?.name || baseAnimation
 }
 
 export function spritePlaybackSelection({
@@ -88,10 +111,8 @@ export function spritePlaybackSelection({
   cue = null,
 } = {}) {
   const fallback = baseWorking || state === 'working' ? 'running' : 'idle'
-  const stateAnimation = spriteAnimationForOrbState({
-    state,
-    baseAnimation: fallback,
-  })
+  const statePolicy = PET_STATE_ANIMATION_POLICY[state]
+    || { name: fallback, mode: 'loop' }
   if (dragDirection === 'left' || dragDirection === 'right') {
     return {
       name: `running-${dragDirection}`,
@@ -101,24 +122,26 @@ export function spritePlaybackSelection({
       fallback,
     }
   }
-  if (cue?.id && cue.name) {
+  if (
+    cue?.id
+    && cue.name
+    && (!statePolicy.blocksCues || cue.name === statePolicy.name)
+  ) {
     return {
       name: cue.name,
       key: `cue:${cue.id}`,
       loop: false,
       completion: 'cue',
+      completionId: cue.id,
       fallback,
     }
   }
   return {
-    name: stateAnimation,
-    key: `state:${state}:${stateAnimation}`,
-    loop: (
-      state === 'starting'
-      || stateAnimation === 'idle'
-      || stateAnimation === 'running'
-    ),
+    name: statePolicy.name,
+    key: `state:${state}:${statePolicy.name}`,
+    loop: statePolicy.mode === 'loop',
     completion: 'none',
+    completionId: null,
     fallback,
   }
 }

@@ -19,6 +19,7 @@ function harness({
   clientContext = {},
   requestClientState,
   inputAssets,
+  onAgentActivity,
   getTurnId = () => 'turn-one',
 } = {}) {
   const outputs = []
@@ -48,6 +49,7 @@ function harness({
     onPermissionDeliveryFailed,
     getClientContext: () => clientContext,
     requestClientState,
+    onAgentActivity,
     inputAssets,
     getConversationContext: () => [
       { role: 'user', content: '之前在改首页' },
@@ -385,7 +387,8 @@ test('blocks status polling triggered by a spawn receipt response', async () => 
 })
 
 test('allows one status query per user turn and blocks response-driven repeats', async () => {
-  const kit = harness()
+  const activities = []
+  const kit = harness({ onAgentActivity: event => activities.push(event) })
   const task = kit.manager.create({
     objective: '查询电脑内存',
     ownerId: 'owner',
@@ -418,6 +421,7 @@ test('allows one status query per user turn and blocks response-driven repeats',
   })
   assert.equal(kit.outputs.at(-1)[1].status, 'duplicate')
   assert.equal(kit.outputs.at(-1)[3].createResponse, false)
+  assert.deepEqual(activities, [{ activity: 'query', turnId: 'turn-one' }])
 })
 
 test('deduplicates the same objective replayed in one realtime turn', async () => {

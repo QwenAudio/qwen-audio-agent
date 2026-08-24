@@ -22,6 +22,7 @@ export default function DesktopSpriteOrb({
   const canvasRef = useRef(null)
   const onErrorRef = useRef(onError)
   const onCueCompleteRef = useRef(onCueComplete)
+  const playbackRef = useRef(null)
   const [assets, setAssets] = useState(null)
   onErrorRef.current = onError
   onCueCompleteRef.current = onCueComplete
@@ -72,6 +73,7 @@ export default function DesktopSpriteOrb({
     dragDirection,
     cue,
   })
+  playbackRef.current = playback
 
   useEffect(() => {
     if (!assets) return undefined
@@ -79,10 +81,11 @@ export default function DesktopSpriteOrb({
     const context = canvas?.getContext('2d')
     if (!context) return undefined
     const { image, geometry, animations } = assets
-    const selected = animations[playback.name] || animations.idle
+    const activePlayback = playbackRef.current
+    const selected = animations[activePlayback.name] || animations.idle
     let track = {
       ...selected,
-      loopStart: playback.loop ? 0 : null,
+      loopStart: activePlayback.loop ? 0 : null,
       fallback: 'idle',
     }
     let startedAt = performance.now()
@@ -93,11 +96,12 @@ export default function DesktopSpriteOrb({
       if (!frame) {
         if (!completed) {
           completed = true
-          if (playback.completion === 'cue') {
-            onCueCompleteRef.current?.(cue.id)
+          if (activePlayback.completion === 'cue') {
+            onCueCompleteRef.current?.(activePlayback.completionId)
           }
         }
-        const fallback = animations[playback.fallback] || animations.idle
+        const fallbackName = playbackRef.current?.fallback || activePlayback.fallback
+        const fallback = animations[fallbackName] || animations.idle
         track = {
           ...fallback,
           loopStart: 0,
@@ -127,12 +131,7 @@ export default function DesktopSpriteOrb({
     return () => clearTimeout(timer)
   }, [
     assets,
-    cue?.id,
-    playback.completion,
-    playback.fallback,
     playback.key,
-    playback.loop,
-    playback.name,
   ])
 
   if (!assets) return <div className="stage sprite-orb" />

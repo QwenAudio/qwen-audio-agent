@@ -48,14 +48,10 @@ export function resolveDesktopRuntime({
 
 export function advanceDesktopRuntimePresentation({
   current = 'starting',
-  previous = 'starting',
   readyAnnounced = false,
 } = {}) {
   if (current === 'ready' && !readyAnnounced) {
-    return { cue: 'waving', readyAnnounced: true }
-  }
-  if (current === 'failed' && previous !== 'failed') {
-    return { cue: 'failed', readyAnnounced }
+    return { cue: 'ready', readyAnnounced: true }
   }
   return { cue: null, readyAnnounced }
 }

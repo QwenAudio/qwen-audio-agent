@@ -14,6 +14,14 @@ const ACTIVE = new Set([
 const CANCELLABLE = new Set(['scheduled', 'queued', 'running', 'delegated', 'finalizing'])
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 const REPLAYABLE_REMINDER = new Set(['queued', 'running'])
+const MAX_JOB_NUMBER = 99_999
+
+function normalizedJobNumber(value) {
+  const number = Number(value)
+  return Number.isInteger(number) && number >= 1 && number <= MAX_JOB_NUMBER
+    ? number
+    : 1
+}
 
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
@@ -55,6 +63,7 @@ function publicTask(task) {
   return {
     id: task.id,
     workId: task.id,
+    jobId: task.jobId,
     workState: ACTIVE.has(task.status) ? 'active' : task.status,
     status: task.status,
     kind: task.kind || 'work',
@@ -127,7 +136,7 @@ export class TaskManager {
     this.listeners = new Set()
     this.recoveryCandidates = []
     this.scheduledTaskRunner = null
-    this.coordinatorQueryDelegatedWork = null
+    this.nextJobNumber = 1
     this.restore()
   }
 
@@ -140,12 +149,11 @@ export class TaskManager {
     this.scheduledTaskRunner = runner
   }
 
-  configureCoordinatorQuery(callback) {
-    this.coordinatorQueryDelegatedWork = callback
-  }
-
   restore() {
-    for (const saved of this.store?.load() || []) {
+    const savedTasks = this.store?.load() || []
+    this.nextJobNumber = normalizedJobNumber(this.store?.nextJobNumber)
+    for (const saved of savedTasks) {
+      saved.jobId = String(saved.jobId || this.allocateJobId())
       // Scheduled tasks survive restarts intact. ReminderScheduler.start()
       // handles overdue vs future dispatch. Reminders that had already fired
       // (queued/running) when the Gateway stopped are also restored as
@@ -277,15 +285,23 @@ export class TaskManager {
   }
 
   persist() {
-    this.store?.save([...this.tasks.values()].map(task => (
-      this.persistedTask(task)
-    )))
+    this.store?.save(
+      [...this.tasks.values()].map(task => this.persistedTask(task)),
+      { nextJobNumber: this.nextJobNumber },
+    )
   }
 
   persistDeferred() {
     const tasks = [...this.tasks.values()].map(task => this.persistedTask(task))
-    if (this.store?.saveDeferred) this.store.saveDeferred(tasks)
-    else this.store?.save(tasks)
+    const state = { nextJobNumber: this.nextJobNumber }
+    if (this.store?.saveDeferred) this.store.saveDeferred(tasks, state)
+    else this.store?.save(tasks, state)
+  }
+
+  allocateJobId() {
+    const current = this.nextJobNumber
+    this.nextJobNumber = current >= MAX_JOB_NUMBER ? 1 : current + 1
+    return `job_${current}`
   }
 
   subscribe(listener) {
@@ -357,6 +373,7 @@ export class TaskManager {
     }
     const task = {
       id: `work_${randomUUID()}`,
+      jobId: this.allocateJobId(),
       status: 'queued',
       kind: String(kind || 'work'),
       parentWorkId: parentWorkId ? String(parentWorkId) : null,
@@ -414,6 +431,7 @@ export class TaskManager {
     const kind = type === 'task' ? 'scheduled_task' : 'reminder'
     const task = {
       id: `work_${randomUUID()}`,
+      jobId: this.allocateJobId(),
       status: 'scheduled',
       kind,
       objective: String(objective || '').trim(),
@@ -609,33 +627,11 @@ export class TaskManager {
           message = `任务"${task.objective.slice(0, 80)}"`
             + `已运行 ${elapsedMin} 分钟，正在处理中`
         }
-        if (task.status === 'delegated' && task.delegation
-          && typeof this.coordinatorQueryDelegatedWork === 'function'
-        ) {
-          this.coordinatorQueryDelegatedWork(
-            task.id, message, { ownerId: task.ownerId },
-          ).then(result => {
-            if (!ACTIVE.has(task.status)) return
-            this.emit('task.progress.check', task, {
-              persist: false,
-              message: result?.content || message,
-              delegated: true,
-            })
-          }).catch(() => {
-            if (!ACTIVE.has(task.status)) return
-            this.emit('task.progress.check', task, {
-              persist: false,
-              message,
-              delegated: false,
-            })
-          })
-        } else {
-          this.emit('task.progress.check', task, {
-            persist: false,
-            message,
-            delegated: false,
-          })
-        }
+        this.emit('task.progress.check', task, {
+          persist: false,
+          message,
+          delegated: task.status === 'delegated',
+        })
       }, task.progressCheckMs)
       task.progressCheckTimer.unref?.()
     }
@@ -805,11 +801,21 @@ export class TaskManager {
     return publicTask(task)
   }
 
+  getByJobId(jobId, { ownerId } = {}) {
+    const normalized = String(jobId || '')
+    const task = [...this.tasks.values()]
+      .filter(item => (
+        item.jobId === normalized
+        && (ownerId === undefined || item.ownerId === String(ownerId))
+      ))
+      .sort((left, right) => right.createdAt - left.createdAt)[0]
+    return task ? publicTask(task) : null
+  }
+
   list({
     ownerId,
     sessionId,
     active = false,
-    includeControl = false,
   } = {}) {
     this.prune()
     return [...this.tasks.values()]
@@ -817,7 +823,6 @@ export class TaskManager {
         (ownerId === undefined || task.ownerId === String(ownerId))
         && (sessionId === undefined || task.sessionId === String(sessionId))
         && (!active || ACTIVE.has(task.status))
-        && (includeControl || task.kind !== 'control')
       ))
       .sort((left, right) => right.createdAt - left.createdAt)
       .map(publicTask)

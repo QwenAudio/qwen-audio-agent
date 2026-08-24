@@ -76,6 +76,7 @@ function fakeAcpClient({
   action = 'start',
   holdTarget = false,
   scopeListsByCwd = false,
+  targetUpdates = [],
 } = {}) {
   const calls = []
   const sessions = new Map([
@@ -141,6 +142,7 @@ function fakeAcpClient({
       calls.push(['prompt', sessionId, prompt])
       if (sessionId !== 'coordinator-session') {
         if (options.signal?.aborted) throw options.signal.reason
+        for (const update of targetUpdates) options.onUpdate?.(update)
         return new Promise((resolve, reject) => {
           const abort = () => reject(options.signal.reason)
           options.signal?.addEventListener('abort', abort, { once: true })
@@ -300,6 +302,27 @@ test('backs off repeated health spawns after any local ACP startup failure', asy
   adapter.lastHealthFailure.at -= 30_001
   await adapter.health()
   assert.equal(starts, 2)
+})
+
+test('reports an incompatible coordinator MCP transport during health check', async () => {
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qwen',
+    client: {
+      ready: true,
+      stderr: '',
+      async start() {
+        return {
+          agentCapabilities: { mcpCapabilities: { http: false } },
+        }
+      },
+      async close() {},
+    },
+  })
+
+  const health = await adapter.health()
+
+  assert.equal(health.ok, false)
+  assert.match(health.error, /未声明支持 HTTP MCP/)
 })
 
 test('reports backend status without starting the ACP process', () => {
@@ -1046,6 +1069,63 @@ test('keeps a cached coordinator MCP connection valid across turns', async () =>
   assert.equal(tools.releaseCalls, 1)
 })
 
+test('replaces a persisted coordinator without the current coordinator contract', async () => {
+  const tools = fakeToolServer()
+  let resumes = 0
+  let creates = 0
+  const client = {
+    async newSession(options) {
+      creates += 1
+      return {
+        sessionId: 'fresh-coordinator',
+        cwd: options.cwd,
+        response: {},
+      }
+    },
+    async resumeSession() {
+      resumes += 1
+      return {
+        sessionId: 'legacy-coordinator',
+        cwd: '/legacy',
+        response: {},
+      }
+    },
+    async prompt() {
+      return {
+        content: completed('done'),
+        response: { stopReason: 'end_turn' },
+      }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qwen',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+  })
+  adapter.registry.get = () => ({
+    sessionId: 'legacy-coordinator',
+    cwd: '/legacy',
+  })
+  const deleted = []
+  const saved = []
+  adapter.registry.delete = key => deleted.push(key)
+  adapter.registry.set = (key, session) => saved.push([key, { ...session }])
+
+  await adapter.coordinatorTurn('turn', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+
+  assert.equal(resumes, 0)
+  assert.equal(creates, 1)
+  assert.equal(deleted.length, 1)
+  assert.equal(saved[0][1].sessionId, 'fresh-coordinator')
+  assert.equal(saved[0][1].contractVersion, 1)
+  await adapter.close()
+})
+
 test('isolates coordinator MCP registrations by owner and releases them', async () => {
   const tools = fakeToolServer()
   let projectId = 0
@@ -1315,7 +1395,7 @@ test('automatically allows only the Gateway-owned Session MCP tools', async () =
   await adapter.close()
 })
 
-test('delegated status queries go through the coordinator and cancellation does too when idle', async () => {
+test('delegated status and cancellation bypass the coordinator', async () => {
   const client = fakeAcpClient({ holdTarget: true })
   const tools = fakeToolServer()
   client.bind(tools)
@@ -1338,18 +1418,17 @@ test('delegated status queries go through the coordinator and cancellation does 
     '做到哪了',
     { ownerId: 'owner-one' },
   )
-  assert.equal(JSON.parse(status.content).presentation.speech, '当前状态：running')
+  assert.equal(JSON.parse(status.content).presentation.speech,
+    '这项工作仍在执行中，当前没有新的详细进展。')
+  assert.equal(status.metadata.statusSource, 'gateway')
   const cancelled = await adapter.cancelDelegatedWork('work-one', {
     ownerId: 'owner-one',
   })
-  assert.equal(cancelled.route, 'coordinator')
+  assert.equal(cancelled.route, 'adapter')
   await assert.rejects(running, /取消/)
-  assert.ok(client.calls.some(call => (
-    call[0] === 'prompt' && call[2].includes('kind="status"')
-  )))
-  assert.ok(client.calls.some(call => (
-    call[0] === 'prompt' && call[2].includes('kind="cancel"')
-  )))
+  assert.equal(client.calls.some(call => (
+    call[0] === 'prompt' && /kind="(?:status|cancel)"/.test(call[2])
+  )), false)
   await adapter.close()
 })
 
@@ -1388,6 +1467,41 @@ test('busy-coordinator cancellation uses ACP directly and reconciles on the next
   assert.match(followUp[2], /qwen_audio_agent_reconciliation/)
   assert.match(followUp[2], /delegated_session_cancelled/)
   assert.equal(adapter.pendingCoordinatorFacts.has('owner-one'), false)
+  await adapter.close()
+})
+
+test('busy-coordinator status query returns Gateway-known state immediately', async () => {
+  const client = fakeAcpClient({ holdTarget: true })
+  const tools = fakeToolServer()
+  client.bind(tools)
+  const adapter = new AcpBackendAdapter({
+    protocol: 'opencode',
+    root: '/repo',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+  })
+  const running = adapter.runCoordinator('delegate', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+  while (!adapter.delegatedWorkRuns.has('work-one')) {
+    await new Promise(resolve => setImmediate(resolve))
+  }
+  adapter.activeCoordinatorTurns.add('coordinator-session')
+  const before = client.calls.length
+  const status = await adapter.queryDelegatedWork(
+    'work-one',
+    '做到哪了',
+    { ownerId: 'owner-one' },
+  )
+  adapter.activeCoordinatorTurns.delete('coordinator-session')
+  assert.equal(client.calls.length, before)
+  assert.equal(JSON.parse(status.content).presentation.speech,
+    '这项工作仍在执行中，当前没有新的详细进展。')
+  assert.equal(status.metadata.statusSource, 'gateway')
+  await adapter.cancelDelegatedWork('work-one', { ownerId: 'owner-one' })
+  await assert.rejects(running, /取消/)
   await adapter.close()
 })
 
@@ -1989,6 +2103,77 @@ test('releases completed ACP tool-call state instead of retaining it globally', 
   })
   assert.equal(run.toolCalls.size, 0)
   assert.equal(Object.hasOwn(adapter, 'toolCalls'), false)
+})
+
+test('reports recent project Session updates with Gateway delegation status', async () => {
+  const client = fakeAcpClient({
+    holdTarget: true,
+    targetUpdates: [
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'tool-one',
+        name: 'Read',
+        status: 'in_progress',
+        rawInput: { path: '/project/package.json' },
+      },
+      {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'tool-one',
+        status: 'completed',
+      },
+      {
+        sessionUpdate: 'plan',
+        entries: [
+          { content: '读取项目', status: 'completed' },
+          { content: '实现功能', status: 'in_progress' },
+        ],
+      },
+      {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: '不应作为进展摘要保存' },
+      },
+    ],
+  })
+  const tools = fakeToolServer()
+  client.bind(tools)
+  const adapter = new AcpBackendAdapter({
+    protocol: 'opencode',
+    root: '/repo',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+  })
+
+  const running = adapter.runCoordinator('delegate', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+  while (!adapter.delegatedWorkRuns.has('work-one')) {
+    await new Promise(resolve => setImmediate(resolve))
+  }
+
+  const status = adapter.statusForDelegation({ session_id: 'project-1' })
+  assert.equal(status.status, 'running')
+  assert.deepEqual(status.recent_updates, [
+    {
+      kind: 'tool',
+      tool: 'Read',
+      status: 'completed',
+      category: 'read',
+      detail: '/project/package.json',
+    },
+    {
+      kind: 'plan',
+      status: 'running',
+      detail: '实现功能',
+      completed: 1,
+      total: 2,
+    },
+  ])
+
+  await adapter.cancelDelegatedWork('work-one', { ownerId: 'owner-one' })
+  await assert.rejects(running, /取消/)
+  await adapter.close()
 })
 
 test('injects builtin MCP servers into coordinator and project sessions', async () => {

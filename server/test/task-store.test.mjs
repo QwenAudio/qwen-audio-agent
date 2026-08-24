@@ -28,6 +28,19 @@ test('persists final work and notification delivery state', async () => {
   assert.equal(restored.get(work.id).notificationStatus, 'delivered')
 })
 
+test('continues short job numbering after restart', () => {
+  const filePath = join(mkdtempSync(join(tmpdir(), 'qwen-audio-agent-')), 'tasks.json')
+  const first = new TaskManager({ store: new TaskStore({ filePath }) })
+  const initial = first.create({ objective: 'first', ownerId: 'owner' })
+  assert.equal(initial.jobId, 'job_1')
+
+  const restored = new TaskManager({ store: new TaskStore({ filePath }) })
+  const next = restored.create({ objective: 'second', ownerId: 'owner' })
+
+  assert.equal(restored.get(initial.id).jobId, 'job_1')
+  assert.equal(next.jobId, 'job_2')
+})
+
 test('marks interrupted queued or running work as failed after restart', () => {
   const store = {
     load: () => [{

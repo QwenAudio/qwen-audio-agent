@@ -31,6 +31,7 @@ export class TaskStore {
     this.deferredContent = null
     this.writeGeneration = 0
     this.deferredWrites = Promise.resolve()
+    this.nextJobNumber = 1
   }
 
   setWarning(message, quarantinePath = null) {
@@ -81,11 +82,15 @@ export class TaskStore {
       this.quarantine('任务状态文件格式无效')
       return []
     }
+    this.nextJobNumber = Number.isInteger(parsed.nextJobNumber)
+      ? parsed.nextJobNumber
+      : 1
     return parsed.tasks.filter(task => task && typeof task === 'object')
   }
 
-  save(tasks) {
+  save(tasks, { nextJobNumber = this.nextJobNumber } = {}) {
     if (!this.filePath || this.persistenceDisabled) return
+    this.nextJobNumber = nextJobNumber
     clearTimeout(this.deferredTimer)
     this.deferredTimer = null
     this.deferredContent = null
@@ -95,7 +100,11 @@ export class TaskStore {
       const temporary = `${this.filePath}.${process.pid}.tmp`
       writeFileSync(
         temporary,
-        `${JSON.stringify({ version: VERSION, tasks }, null, 2)}\n`,
+        `${JSON.stringify({
+          version: VERSION,
+          nextJobNumber,
+          tasks,
+        }, null, 2)}\n`,
         { encoding: 'utf8', mode: 0o600 },
       )
       renameSync(temporary, this.filePath)
@@ -105,10 +114,12 @@ export class TaskStore {
     }
   }
 
-  saveDeferred(tasks) {
+  saveDeferred(tasks, { nextJobNumber = this.nextJobNumber } = {}) {
     if (!this.filePath || this.persistenceDisabled) return
+    this.nextJobNumber = nextJobNumber
     this.deferredContent = `${JSON.stringify({
       version: VERSION,
+      nextJobNumber,
       tasks,
     }, null, 2)}\n`
     clearTimeout(this.deferredTimer)

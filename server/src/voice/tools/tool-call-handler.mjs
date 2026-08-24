@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import {
   CANCEL_AGENT_TASK_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
@@ -14,6 +15,46 @@ import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
+
+const CANCEL_RECEIPT_INSTRUCTIONS = [
+  '根据本次响应中的全部取消结果，只作一次简短自然的确认。',
+  '不要逐项复述 job_id，不要再次查询或取消，不要调用其他工具。',
+].join(' ')
+
+const STATUS_RESULT_MESSAGE = '请根据这次查询结果自然回答用户；不要再次调用状态工具，不要展示 job_id。'
+
+function objectiveFingerprint(objective) {
+  return createHash('sha256')
+    .update(String(objective || '').replace(/\s+/g, ' ').trim())
+    .digest('hex')
+    .slice(0, 24)
+}
+
+function recentTaskUpdates(activity = [], limit = 5) {
+  const updates = []
+  for (const item of activity) {
+    if (!item || item.kind === 'text') continue
+    const detail = String(
+      item.detail || item.label || item.tool || '',
+    ).replace(/\s+/g, ' ').trim().slice(0, 200)
+    const update = {
+      kind: String(item.kind || 'activity'),
+      status: String(item.status || 'running'),
+      ...(item.category ? { category: String(item.category) } : {}),
+      ...(detail ? { detail } : {}),
+      ...(Number.isFinite(item.completed)
+        ? { completed: item.completed }
+        : {}),
+      ...(Number.isFinite(item.total) ? { total: item.total } : {}),
+    }
+    const previous = updates.at(-1)
+    if (previous && JSON.stringify(previous) === JSON.stringify(update)) {
+      continue
+    }
+    updates.push(update)
+  }
+  return updates.slice(-limit)
+}
 
 function mergeInputParts(...groups) {
   const merged = []
@@ -86,8 +127,27 @@ export class ToolCallHandler {
     this.inputAssets = inputAssets
     this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
-    this.turnTasks = new Map()
+    this.spawnResponseByTurn = new Map()
+    this.statusResponseByTurn = new Map()
+    this.cancelResponseByTurn = new Map()
+    this.terminalToolResponses = new Set()
     this.deferredToolResponses = new Map()
+  }
+
+  markTerminalToolResponse(responseId) {
+    const id = String(responseId || '').trim()
+    if (!id) return
+    if (!this.terminalToolResponses.has(id) && this.terminalToolResponses.size >= 100) {
+      this.terminalToolResponses.delete(this.terminalToolResponses.values().next().value)
+    }
+    this.terminalToolResponses.add(id)
+  }
+
+  consumeTerminalToolResponse(responseId) {
+    const id = String(responseId || '').trim()
+    if (!id || !this.terminalToolResponses.has(id)) return false
+    this.terminalToolResponses.delete(id)
+    return true
   }
 
   isStale(turnId, generation) {
@@ -110,7 +170,10 @@ export class ToolCallHandler {
     )
   }
 
-  beginDeferredToolResponse(responseId, { turnId, turnGeneration } = {}) {
+  beginDeferredToolResponse(responseId, {
+    turnId,
+    turnGeneration,
+  } = {}, response = null) {
     const key = String(responseId || '')
     if (!key) return null
     const batch = this.deferredToolResponses.get(key) || {
@@ -120,11 +183,16 @@ export class ToolCallHandler {
       suppressResponse: false,
       turnId,
       turnGeneration,
+      responseInstructions: [],
     }
     if (!this.deferredToolResponses.has(key) && this.deferredToolResponses.size >= 100) {
       this.deferredToolResponses.delete(this.deferredToolResponses.keys().next().value)
     }
     batch.pending += 1
+    const instructions = String(response?.instructions || '').trim()
+    if (instructions && !batch.responseInstructions.includes(instructions)) {
+      batch.responseInstructions.push(instructions)
+    }
     this.deferredToolResponses.set(key, batch)
     return key
   }
@@ -150,10 +218,19 @@ export class ToolCallHandler {
     if (!batch.sourceDone || batch.pending > 0) return
     this.deferredToolResponses.delete(responseId)
     if (batch.failed || batch.suppressResponse) return
-    await this.getFrontend()?.ensureResponse?.({
-      turnId: batch.turnId,
-      turnGeneration: batch.turnGeneration,
-    })
+    await this.getFrontend()?.ensureResponse?.(
+      {
+        turnId: batch.turnId,
+        turnGeneration: batch.turnGeneration,
+      },
+      batch.responseInstructions.length
+        ? {
+            response: {
+              instructions: batch.responseInstructions.join(' '),
+            },
+          }
+        : undefined,
+    )
   }
 
   async closeStaleCall(callId, turnId) {
@@ -264,10 +341,6 @@ export class ToolCallHandler {
       },
     })
     workId = task.id
-    this.turnTasks.set(turnId, task.id)
-    if (this.turnTasks.size > 100) {
-      this.turnTasks.delete(this.turnTasks.keys().next().value)
-    }
     return task
   }
 
@@ -324,7 +397,7 @@ export class ToolCallHandler {
 
     await this.sendOutput(callId, {
       status: 'scheduled',
-      reminder_id: task.id,
+      job_id: task.jobId,
       execute_at: args.execute_at,
       type,
       recurrence,
@@ -398,10 +471,85 @@ export class ToolCallHandler {
       return
     }
     if (toolName === CANCEL_AGENT_TASK_TOOL_NAME) {
-      await this.cancelAgentTask(callId, turnId, args)
+      const responseId = String(
+        callContext.responseId || event.response_id || '',
+      ).trim()
+      const firstCancelResponse = turnId
+        ? this.cancelResponseByTurn.get(turnId)
+        : null
+      if (responseId && firstCancelResponse
+        && firstCancelResponse !== responseId) {
+        this.markTerminalToolResponse(responseId)
+        await this.sendOutput(callId, {
+          status: 'duplicate',
+          message: '本轮取消操作已经处理，不再重复执行。',
+        }, turnId, null, { createResponse: false })
+        return
+      }
+      if (responseId && turnId && !firstCancelResponse) {
+        this.cancelResponseByTurn.set(turnId, responseId)
+        if (this.cancelResponseByTurn.size > 100) {
+          this.cancelResponseByTurn.delete(
+            this.cancelResponseByTurn.keys().next().value,
+          )
+        }
+      }
+      const deferred = this.beginDeferredToolResponse(responseId, {
+        turnId,
+        turnGeneration: generation,
+      }, { instructions: CANCEL_RECEIPT_INSTRUCTIONS })
+      let outputFailed = false
+      try {
+        await this.cancelAgentTask(
+          callId,
+          turnId,
+          args,
+          deferred
+            ? { createResponse: false }
+            : { response: { instructions: CANCEL_RECEIPT_INSTRUCTIONS } },
+        )
+      } catch (error) {
+        outputFailed = true
+        throw error
+      } finally {
+        await this.completeDeferredToolResponse(deferred, {
+          failed: outputFailed,
+        })
+      }
       return
     }
     if (toolName === GET_AGENT_TASK_STATUS_TOOL_NAME) {
+      const responseId = String(
+        callContext.responseId || event.response_id || '',
+      ).trim()
+      const spawnResponse = turnId
+        ? this.spawnResponseByTurn.get(turnId)
+        : null
+      const firstStatusResponse = turnId
+        ? this.statusResponseByTurn.get(turnId)
+        : null
+      const followsSpawnReceipt = Boolean(
+        responseId && spawnResponse && responseId !== spawnResponse,
+      )
+      const repeatsStatusQuery = Boolean(
+        responseId && firstStatusResponse && responseId !== firstStatusResponse,
+      )
+      if (followsSpawnReceipt || repeatsStatusQuery) {
+        this.markTerminalToolResponse(responseId)
+        await this.sendOutput(callId, {
+          status: 'duplicate',
+          message: '本轮不需要再次查询工作状态。',
+        }, turnId, null, { createResponse: false })
+        return
+      }
+      if (responseId && turnId && !firstStatusResponse) {
+        this.statusResponseByTurn.set(turnId, responseId)
+        if (this.statusResponseByTurn.size > 100) {
+          this.statusResponseByTurn.delete(
+            this.statusResponseByTurn.keys().next().value,
+          )
+        }
+      }
       await this.getAgentTaskStatus(callId, turnId, args)
       return
     }
@@ -530,30 +678,32 @@ export class ToolCallHandler {
       return
     }
 
-    const existingId = this.turnTasks.get(turnId)
-    if (existingId) {
-      await this.sendOutput(
-        callId,
-        {
-          status: 'duplicate',
-          work_id: existingId,
-          message: '这一轮已经提交，不要重复执行。',
-        },
-        turnId,
-        existingId,
-        {
-          response: {
-            instructions: [
-              '这个任务已经在本轮成功提交，不要再次调用工具。',
-              '结合本轮调用工具前已经对用户说过的内容，自主判断是否需要回应。',
-              '如果此前已经说明正在处理，不要重复、改写或补充确认，直接结束本次响应。',
-              '只有此前没有作出任何确认时，才用包含具体任务对象的短句说明已经开始处理。',
-              '不要把 accepted 或 duplicate 说成任务已经完成。',
-            ].join(' '),
-          },
-        },
-      )
+    const responseId = String(
+      callContext.responseId || event.response_id || '',
+    ).trim()
+    const firstSpawnResponse = turnId
+      ? this.spawnResponseByTurn.get(turnId)
+      : null
+    if (responseId && firstSpawnResponse && firstSpawnResponse !== responseId) {
+      this.markTerminalToolResponse(responseId)
+      const existing = this.taskManager.list({
+        ownerId: this.ownerId,
+        sessionId: this.sessionId,
+      }).find(item => item.turnId === turnId)
+      await this.sendOutput(callId, {
+        status: 'duplicate',
+        ...(existing?.jobId ? { job_id: existing.jobId } : {}),
+        message: '本轮工作已经提交，不再从工具回执继续创建任务。',
+      }, turnId, existing?.id, { createResponse: false })
       return
+    }
+    if (responseId && turnId && !firstSpawnResponse) {
+      this.spawnResponseByTurn.set(turnId, responseId)
+      if (this.spawnResponseByTurn.size > 100) {
+        this.spawnResponseByTurn.delete(
+          this.spawnResponseByTurn.keys().next().value,
+        )
+      }
     }
 
     let task
@@ -571,6 +721,7 @@ export class ToolCallHandler {
         'delegation',
         this.sessionId,
         turnId || callId,
+        objectiveFingerprint(objective),
       ].join(':')
       // Pin the verbatim user request without blocking the receipt: the
       // transcript waiter registers now, so the ASR result is captured even
@@ -613,35 +764,39 @@ export class ToolCallHandler {
       )
       return
     }
-    await this.sendOutput(
-      callId,
-      task.reused
-        ? {
-            status: 'duplicate',
-            work_id: task.id,
-            message: '这一轮已经提交，不要重复执行。',
-          }
-        : {
-            status: 'accepted',
-            marker: '[thinking]',
-            work_id: task.id,
-          },
+    const deferred = this.beginDeferredToolResponse(responseId, {
       turnId,
-      task.id,
-      {
-        // Always let Realtime close the tool-call turn itself. Whether it
-        // should say anything is a semantic decision based on what it already
-        // said before invoking the tool.
-        response: {
-          instructions: [
-            '结合本轮调用工具前已经对用户说过的内容，自主判断是否需要回应。',
-            '如果此前已经说明正在处理，不要重复、改写或补充确认，直接结束本次响应。',
-            '只有此前没有作出任何确认时，才用包含具体任务对象的短句说明已经开始处理；避免“好的、收到”等通用承接语。',
-            'accepted 或 duplicate 只代表任务已经提交，不代表已经完成。',
-          ].join(' '),
-        },
-      },
-    )
+      turnGeneration: generation,
+    })
+    let outputFailed = false
+    try {
+      await this.sendOutput(
+        callId,
+        task.reused
+          ? {
+              status: 'duplicate',
+              job_id: task.jobId,
+              message: '同一工作此前已受理，请自然确认一次，不要再次调用工具。',
+            }
+          : {
+              status: 'accepted',
+              job_id: task.jobId,
+              message: '工作已受理，请自然确认一次，不要再次调用工具。',
+            },
+        turnId,
+        task.id,
+        deferred
+          ? { createResponse: false }
+          : undefined,
+      )
+    } catch (error) {
+      outputFailed = true
+      throw error
+    } finally {
+      await this.completeDeferredToolResponse(deferred, {
+        failed: outputFailed,
+      })
+    }
   }
 
   async enterSleep(callId, turnId) {
@@ -773,55 +928,75 @@ export class ToolCallHandler {
     })
   }
 
-  async cancelAgentTask(callId, turnId, args) {
-    const requestedId = String(args.work_id || '').trim()
-    const targetId = requestedId || this.taskManager.list({
-      ownerId: this.ownerId,
-      sessionId: this.sessionId,
-    }).find(task => [
-      'scheduled',
-      'queued',
-      'running',
-      'delegated',
-      'finalizing',
-    ].includes(task.status))?.id
-    if (!targetId) {
+  async cancelAgentTask(callId, turnId, args, responseOptions) {
+    if (args.all === true) {
+      const targets = this.taskManager.list({
+        ownerId: this.ownerId,
+        sessionId: this.sessionId,
+        active: true,
+      })
+      if (!targets.length) {
+        await this.sendOutput(callId, {
+          status: 'not_found',
+          message: '当前没有仍在排队或执行的工作。',
+        }, turnId, null, responseOptions)
+        return
+      }
+      const results = await Promise.all(targets.map(target => (
+        this.taskManager.cancel(target.id, { ownerId: this.ownerId })
+      )))
+      const cancelledCount = results.filter(result => (
+        result?.status === 'cancelled'
+      )).length
+      await this.sendOutput(callId, {
+        status: cancelledCount === targets.length ? 'cancelled' : 'partial',
+        cancelled_count: cancelledCount,
+        requested_count: targets.length,
+        message: cancelledCount === targets.length
+          ? '当前会话中的全部工作都已取消。'
+          : '已取消仍可取消的工作，其余工作已经结束。',
+      }, turnId, null, responseOptions)
+      return
+    }
+    const requestedJobId = String(args.job_id || '').trim()
+    const target = requestedJobId
+      ? this.taskManager.getByJobId(requestedJobId, { ownerId: this.ownerId })
+      : this.taskManager.list({
+          ownerId: this.ownerId,
+          sessionId: this.sessionId,
+        }).find(task => [
+          'scheduled',
+          'queued',
+          'running',
+          'delegated',
+          'finalizing',
+        ].includes(task.status))
+    if (!target) {
       await this.sendOutput(callId, {
         status: 'not_found',
         message: '当前没有仍在排队或执行的工作。',
-      }, turnId)
+      }, turnId, null, responseOptions)
       return
     }
-    const relatedQueries = this.taskManager.list({
-      ownerId: this.ownerId,
-      active: true,
-      includeControl: true,
-    }).filter(task => (
-      task.kind === 'control'
-      && task.parentWorkId === targetId
-    ))
-    await Promise.all(relatedQueries.map(task => (
-      this.taskManager.cancel(task.id, { ownerId: this.ownerId })
-    )))
-    const task = await this.taskManager.cancel(targetId, {
+    const task = await this.taskManager.cancel(target.id, {
       ownerId: this.ownerId,
     })
     if (!task) {
       await this.sendOutput(callId, {
         status: 'not_active',
-        work_id: targetId,
+        job_id: target.jobId,
         message: '这项工作已经结束，当前无法取消。',
-      }, turnId)
+      }, turnId, null, responseOptions)
       return
     }
     await this.sendOutput(callId, task.status === 'cancelled' ? {
       status: task.status,
-      work_id: task.id,
+      job_id: task.jobId,
       message: '已取消这项工作。',
     } : failure(
       'work_cancellation_failed',
       task.error || '没有成功取消这项工作。',
-    ), turnId, task.id)
+    ), turnId, task.id, responseOptions)
   }
 
   async getAgentTaskStatus(callId, turnId, args) {
@@ -830,7 +1005,7 @@ export class ToolCallHandler {
         ownerId: this.ownerId,
         sessionId: this.sessionId,
       }).slice(0, 20).map(task => ({
-        work_id: task.id,
+        job_id: task.jobId,
         status: task.status,
         kind: task.kind,
         objective: String(task.objective || '').slice(0, 300),
@@ -843,16 +1018,24 @@ export class ToolCallHandler {
         status: tasks.length ? 'ok' : 'empty',
         count: tasks.length,
         tasks,
+        message: STATUS_RESULT_MESSAGE,
       }, turnId)
       return
     }
-    const requestedId = String(args.work_id || '').trim()
-    const task = requestedId
-      ? this.taskManager.get(requestedId, { ownerId: this.ownerId })
-      : this.taskManager.list({
-          ownerId: this.ownerId,
-          sessionId: this.sessionId,
-        })[0]
+    const requestedJobId = String(args.job_id || '').trim()
+    const sessionTasks = this.taskManager.list({
+      ownerId: this.ownerId,
+      sessionId: this.sessionId,
+    })
+    const task = requestedJobId
+      ? this.taskManager.getByJobId(requestedJobId, { ownerId: this.ownerId })
+      : sessionTasks.find(item => [
+          'scheduled',
+          'queued',
+          'running',
+          'delegated',
+          'finalizing',
+        ].includes(item.status)) || sessionTasks[0]
     if (!task) {
       await this.sendOutput(callId, {
         status: 'not_found',
@@ -860,97 +1043,13 @@ export class ToolCallHandler {
       }, turnId)
       return
     }
-    if (task.status === 'delegated') {
-      const existing = this.taskManager.list({
-        ownerId: this.ownerId,
-        sessionId: this.sessionId,
-        active: true,
-        includeControl: true,
-      }).find(item => (
-        item.kind === 'control'
-        && item.parentWorkId === task.id
-      ))
-      if (existing) {
-        await this.sendOutput(callId, {
-          status: 'querying',
-          work_id: task.id,
-          query_work_id: existing.id,
-          message: '这个项目的状态和进度已经在查询中。',
-        }, turnId, task.id)
-        return
-      }
-      const transcript = String(
-        args.question || await this.transcripts.transcript(turnId) || '',
-      ).trim()
-      const query = this.taskManager.create({
-        kind: 'control',
-        parentWorkId: task.id,
-        priority: 100,
-        objective: `查询“${task.objective.slice(0, 200)}”的状态：${
-          transcript || '查询当前状态和进度'
-        }`,
-        ownerId: this.ownerId,
-        sessionId: this.sessionId,
-        turnId,
-        laneKey: `coordinator:${this.ownerId}`,
-        laneLimit: 1,
-        runner: async (_ignored, { signal }) => {
-          try {
-            return await this.coordinator.queryDelegatedWork(
-              task.id,
-              transcript || '用户想了解这个第三层任务当前的状态和进度。',
-              {
-                ownerId: this.ownerId,
-                signal,
-              },
-            )
-          } catch (error) {
-            const latest = this.taskManager.get(task.id, {
-              ownerId: this.ownerId,
-            })
-            if (latest && latest.status !== 'delegated') {
-              const messages = {
-                completed: '这项工作已经完成，最终结果正在或已经交付。',
-                finalizing: '项目执行已经完成，系统正在整理最终结果。',
-                cancelled: '这项工作已经取消。',
-                failed: `这项工作已经失败：${latest.error || '没有更多错误信息。'}`,
-              }
-              return {
-                content: messages[latest.status]
-                  || `这项工作当前状态是 ${latest.status}。`,
-                metadata: {
-                  parentWorkId: task.id,
-                  resolvedFromLedger: true,
-                },
-              }
-            }
-            throw error
-          }
-        },
-        canceler: async ({ abort }) => {
-          abort()
-          return {
-            route: 'gateway',
-            layer: 'delegated_status_query',
-          }
-        },
-      })
-      await this.sendOutput(callId, {
-        status: 'querying',
-        work_id: task.id,
-        query_work_id: query.id,
-        message: '正在查询这个项目的状态和进度，结果出来后会自动告诉你。',
-      }, turnId, task.id)
-      return
-    }
-    const lastActivity = task.activity.at(-1)
     const consumesTaskNotification = (
       ['completed', 'failed'].includes(task.status)
       && ['pending', 'delivering'].includes(task.notificationStatus)
     )
     await this.sendOutput(callId, {
       status: 'ok',
-      work_id: task.id,
+      job_id: task.jobId,
       work_status: task.status,
       objective: task.objective.slice(0, 300),
       elapsed_ms: task.elapsedMs,
@@ -961,22 +1060,19 @@ export class ToolCallHandler {
           }
         : null,
       authorization_pending: task.authorization?.status === 'pending',
-      last_activity: lastActivity
-        ? {
-            category: lastActivity.category || lastActivity.kind,
-            status: lastActivity.status,
-            detail: String(lastActivity.detail || '').slice(0, 160),
-          }
-        : null,
+      recent_updates: recentTaskUpdates(task.activity),
       result: task.status === 'completed'
         ? String(task.result || '').slice(0, 500)
         : null,
       error: ['failed', 'cancelled'].includes(task.status)
         ? task.error
         : null,
-    }, turnId, task.id, consumesTaskNotification
-      ? { responseContext: { consumesTaskNotification: true } }
-      : undefined)
+      message: STATUS_RESULT_MESSAGE,
+    }, turnId, task.id, {
+      ...(consumesTaskNotification
+        ? { responseContext: { consumesTaskNotification: true } }
+        : {}),
+    })
   }
 
   async getCurrentTime(callId, turnId) {

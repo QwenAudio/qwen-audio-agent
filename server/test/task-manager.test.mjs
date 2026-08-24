@@ -2,6 +2,30 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
 
+test('assigns short model-facing job ids independently of internal work ids', () => {
+  const manager = new TaskManager()
+  const first = manager.create({ objective: 'A', ownerId: 'owner' })
+  const second = manager.create({ objective: 'B', ownerId: 'owner' })
+
+  assert.equal(first.jobId, 'job_1')
+  assert.equal(second.jobId, 'job_2')
+  assert.match(first.id, /^work_[0-9a-f-]{36}$/)
+  assert.notEqual(first.id, second.id)
+  assert.equal(manager.getByJobId('job_2', { ownerId: 'owner' }).id, second.id)
+})
+
+test('cycles model-facing job ids after 99999', () => {
+  const manager = new TaskManager()
+  manager.nextJobNumber = 99_999
+
+  const last = manager.create({ objective: 'last', ownerId: 'owner' })
+  const first = manager.create({ objective: 'first', ownerId: 'owner' })
+
+  assert.equal(last.jobId, 'job_99999')
+  assert.equal(first.jobId, 'job_1')
+  assert.notEqual(last.id, first.id)
+})
+
 test('serializes work in the same coordinator lane while accepting immediately', async () => {
   const manager = new TaskManager()
   const order = []
@@ -43,63 +67,6 @@ test('serializes work in the same coordinator lane while accepting immediately',
   releaseFirst()
   await Promise.all([manager.wait(first.id), manager.wait(second.id)])
   assert.deepEqual(order, ['A:start', 'A:end', 'B:start'])
-})
-
-test('runs a hidden control query before queued ordinary work', async () => {
-  const manager = new TaskManager()
-  const order = []
-  let releaseFirst
-  const first = manager.create({
-    objective: '正在执行的普通任务',
-    ownerId: 'owner',
-    sessionId: 'voice',
-    laneKey: 'coordinator:owner',
-    runner: async () => {
-      order.push('first')
-      await new Promise(resolve => { releaseFirst = resolve })
-      return { content: 'first done' }
-    },
-  })
-  const ordinary = manager.create({
-    objective: '排队的普通任务',
-    ownerId: 'owner',
-    sessionId: 'voice',
-    laneKey: 'coordinator:owner',
-    runner: async () => {
-      order.push('ordinary')
-      return { content: 'ordinary done' }
-    },
-  })
-  await new Promise(resolve => setImmediate(resolve))
-  const query = manager.create({
-    kind: 'control',
-    parentWorkId: 'delegated-work',
-    priority: 100,
-    objective: '高优先级状态查询',
-    ownerId: 'owner',
-    sessionId: 'voice',
-    laneKey: 'coordinator:owner',
-    runner: async () => {
-      order.push('query')
-      return { content: 'query done' }
-    },
-  })
-
-  assert.equal(manager.list({ ownerId: 'owner' }).some(task => (
-    task.id === query.id
-  )), false)
-  assert.equal(manager.list({
-    ownerId: 'owner',
-    includeControl: true,
-  }).some(task => task.id === query.id), true)
-
-  releaseFirst()
-  await Promise.all([
-    manager.wait(first.id),
-    manager.wait(query.id),
-    manager.wait(ordinary.id),
-  ])
-  assert.deepEqual(order, ['first', 'query', 'ordinary'])
 })
 
 test('publishes a bounded pending permission on the active work', async () => {

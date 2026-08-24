@@ -71,13 +71,13 @@ test('quarantines a corrupt Session index before accepting new state', () => {
     registry.set('qoder:owner:backend', {
       sessionId: 'new-session',
       cwd: '/work',
+      contractVersion: 1,
     })
-    assert.equal(
-      JSON.parse(readFileSync(filePath, 'utf8')).coordinators[
-        'qoder:owner:backend'
-      ].sessionId,
-      'new-session',
-    )
+    const saved = JSON.parse(readFileSync(filePath, 'utf8')).coordinators[
+      'qoder:owner:backend'
+    ]
+    assert.equal(saved.sessionId, 'new-session')
+    assert.equal(saved.contractVersion, 1)
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }

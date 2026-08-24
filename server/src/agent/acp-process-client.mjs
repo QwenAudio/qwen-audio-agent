@@ -10,6 +10,7 @@ import {
   assertPromptCapabilities,
   normalizeAcpPrompt,
 } from './acp-content.mjs'
+import { assertMcpServerCapabilities } from './acp-capabilities.mjs'
 
 const MAX_STDERR_CHARS = 12_000
 // Gateway has a 2s hard shutdown deadline. Leave enough time for adapter and
@@ -361,6 +362,12 @@ export class AcpProcessClient {
     ownerId,
     role = 'project',
   } = {}) {
+    await this.start()
+    assertMcpServerCapabilities({
+      label: this.label,
+      capabilities: this.capabilities,
+      mcpServers,
+    })
     const response = await this.request(acp.methods.agent.session.new, {
       cwd,
       mcpServers,
@@ -384,6 +391,11 @@ export class AcpProcessClient {
     role = 'project',
   } = {}) {
     await this.start()
+    assertMcpServerCapabilities({
+      label: this.label,
+      capabilities: this.capabilities,
+      mcpServers,
+    })
     const params = {
       sessionId: String(sessionId),
       cwd,

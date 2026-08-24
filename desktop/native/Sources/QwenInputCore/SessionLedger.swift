@@ -86,14 +86,16 @@ public struct SessionLedger: Sendable {
     public mutating func confirmMarkedRange(
         _ clientMarkedRange: NSRange
     ) -> Result<Void, LedgerError> {
-        guard let ownedMarkedRange,
-              clientMarkedRange.location != NSNotFound,
-              clientMarkedRange.length == ownedMarkedRange.length,
-              ownedMarkedRange.location == NSNotFound
-                || ownedMarkedRange == clientMarkedRange else {
+        guard let ownedMarkedRange else {
             return .failure(.markedRangeMismatch)
         }
-        self.ownedMarkedRange = clientMarkedRange
+        guard ownedMarkedRange.location != NSNotFound else {
+            return .failure(.unknownClientRange)
+        }
+        guard clientMarkedRange.location != NSNotFound,
+              ownedMarkedRange == clientMarkedRange else {
+            return .failure(.markedRangeMismatch)
+        }
         return .success(())
     }
 

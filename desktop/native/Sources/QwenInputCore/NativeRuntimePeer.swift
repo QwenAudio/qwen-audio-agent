@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Security
 
@@ -7,11 +8,20 @@ public enum NativeRuntimePeerError: Error, Sendable {
 
 public enum NativeRuntimePeer {
     public static func runtimeDirectory() -> SecureRuntimeDirectory {
-        SecureRuntimeDirectory(url: FileManager.default.temporaryDirectory
-            .appendingPathComponent(
-                "ai.qwenaudio.agent.native-input-\(geteuid())",
-                isDirectory: true
-            ))
+        runtimeDirectory(
+            temporaryDirectory: FileManager.default.temporaryDirectory,
+            userID: geteuid()
+        )
+    }
+
+    public static func runtimeDirectory(
+        temporaryDirectory: URL,
+        userID: uid_t
+    ) -> SecureRuntimeDirectory {
+        SecureRuntimeDirectory(url: temporaryDirectory.appendingPathComponent(
+            "qwen-ni-\(userID)",
+            isDirectory: true
+        ))
     }
 
     public static func requirement(

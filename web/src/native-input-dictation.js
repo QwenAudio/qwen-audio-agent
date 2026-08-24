@@ -1,3 +1,5 @@
+import { t } from './i18n.js'
+
 export class NativeInputDictationClient {
   constructor({
     enabled = false,
@@ -44,12 +46,12 @@ export class NativeInputDictationClient {
         this.error = nativeInputArmError(result.reason)
       }
     } catch (error) {
-      this.error = error?.message || String(error)
+      this.error = nativeInputArmError(error?.message)
       armed = false
     }
     if (!armed || generation !== this.generation) {
       this.state = 'error'
-      if (!this.error) this.error = 'Native input target is unavailable'
+      if (!this.error) this.error = nativeInputArmError()
       this.publish()
       return false
     }
@@ -162,9 +164,12 @@ export class NativeInputDictationClient {
 
 function nativeInputArmError(reason) {
   if (reason === 'input_source_selection_required') {
-    return 'Select Qwen Input from the macOS input menu'
+    return t('请从 macOS 输入菜单选择 Qwen Input')
   }
-  return String(reason || 'Native input target is unavailable')
+  if (reason === 'target_changed') {
+    return t('当前输入目标已改变，请重新开始听写')
+  }
+  return t('当前输入目标不可用')
 }
 
 export function consumeNativeInputEvents(events, afterId, handle) {

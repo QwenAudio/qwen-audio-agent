@@ -123,6 +123,21 @@ test('real Bridge reports a malformed frame and fails closed', {
   assert.notEqual(code, 0)
 })
 
+test('real Bridge reports a bounded startup phase without leaking its path', {
+  skip: !isMacOS,
+  timeout: 15_000,
+}, () => {
+  const privateRuntime = join(workspace, `private-${'x'.repeat(120)}`)
+  const result = spawnSync(bridgePath, ['--peer-probe-listen', privateRuntime], {
+    encoding: 'utf8',
+    timeout: 5_000,
+  })
+
+  assert.notEqual(result.status, 0)
+  assert.equal(result.stderr, 'QwenInputBridge startup failed: peer_probe\n')
+  assert.equal(result.stderr.includes(privateRuntime), false)
+})
+
 test('real Bridge treats control-pipe EOF as a clean shutdown', {
   skip: !isMacOS,
   timeout: 15_000,

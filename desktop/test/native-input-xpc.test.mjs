@@ -8,7 +8,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import test from 'node:test'
+import { after, before, test } from 'node:test'
 
 import {
   NativeInputFrameDecoder,
@@ -18,6 +18,35 @@ import {
 const root = resolve(new URL('../..', import.meta.url).pathname)
 const diagnosticStderrMaxBytes = 512
 const capturedStderrMaxBytes = 4_096
+const nativeFixture = { builtBeforeTimedTest: false }
+let workspace
+let output
+let runtime
+
+before(t => {
+  if (process.platform !== 'darwin') return
+  workspace = mkdtempSync(join(tmpdir(), 'qwen-native-xpc-'))
+  output = join(workspace, 'build')
+  runtime = join(workspace, 'runtime')
+  const buildStartedAt = performance.now()
+  const build = spawnSync(process.execPath, [
+    'scripts/build-native-input.mjs',
+    '--configuration', 'Debug',
+    '--arch', 'current',
+    '--output', output,
+  ], { cwd: root, encoding: 'utf8' })
+  diagnoseProcess(t, 'build', buildStartedAt, build)
+  assert.equal(
+    build.status,
+    0,
+    sanitizeDiagnosticStderr(build.stderr || build.stdout) || 'Native input build failed',
+  )
+  nativeFixture.builtBeforeTimedTest = true
+})
+
+after(() => {
+  if (workspace) rmSync(workspace, { recursive: true, force: true })
+})
 
 test('XPC diagnostics redact credentials and bound stderr', () => {
   const fixtureValue = 'diagnostic-fixture-value'
@@ -35,26 +64,14 @@ test('real signed Bridge and IME accept only their exact peer identifiers', {
   skip: process.platform !== 'darwin',
   timeout: 30_000,
 }, async t => {
-  const workspace = mkdtempSync(join(tmpdir(), 'qwen-native-xpc-'))
-  const output = join(workspace, 'build')
-  const runtime = join(workspace, 'runtime')
+  assert.equal(
+    nativeFixture.builtBeforeTimedTest,
+    true,
+    'native build must finish before the 30-second XPC test budget starts',
+  )
   let bridge
   let bridgeStderr
   try {
-    const buildStartedAt = performance.now()
-    const build = spawnSync(process.execPath, [
-      'scripts/build-native-input.mjs',
-      '--configuration', 'Debug',
-      '--arch', 'current',
-      '--output', output,
-    ], { cwd: root, encoding: 'utf8' })
-    diagnoseProcess(t, 'build', buildStartedAt, build)
-    assert.equal(
-      build.status,
-      0,
-      sanitizeDiagnosticStderr(build.stderr || build.stdout) || 'Native input build failed',
-    )
-
     const bridgePath = join(output, 'QwenInputBridge')
     const inputApp = join(output, 'Qwen Input.app')
     const inputExecutable = join(inputApp, 'Contents/MacOS/Qwen Input')
@@ -125,7 +142,6 @@ test('real signed Bridge and IME accept only their exact peer identifiers', {
     bridge = undefined
   } finally {
     bridge?.kill('SIGTERM')
-    rmSync(workspace, { recursive: true, force: true })
   }
 })
 

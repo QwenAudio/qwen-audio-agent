@@ -52,6 +52,12 @@ private func signalSource(
     return source
 }
 
+private func reportStartupFailure(_ phase: String) {
+    FileHandle.standardError.write(Data(
+        "QwenInputBridge startup failed: \(phase)\n".utf8
+    ))
+}
+
 var peerServer: AuthenticatedUnixSocketServer?
 var productionPeerServer: BridgePeerServer?
 let broker = NativeOperationBroker()
@@ -83,6 +89,7 @@ if CommandLine.arguments.count == 3,
         try server.start()
         peerServer = server
     } catch {
+        reportStartupFailure("peer_probe")
         exit(EXIT_FAILURE)
     }
 }
@@ -128,6 +135,7 @@ do {
     shutdown.stop(reason: "bridge_exit")
 } catch {
     shutdown.stop(reason: "bridge_error")
+    reportStartupFailure("runtime")
     exit(EXIT_FAILURE)
 }
 

@@ -5,6 +5,18 @@ import * as nativeDictation from '../src/native-input-dictation.js'
 
 const { NativeInputDictationClient } = nativeDictation
 
+async function withLang(lang, run) {
+  const previous = globalThis.localStorage
+  globalThis.localStorage = {
+    getItem: key => (key === 'qwen-audio-lang' ? lang : null),
+  }
+  try {
+    return await run()
+  } finally {
+    globalThis.localStorage = previous
+  }
+}
+
 function harness(overrides = {}) {
   const gateway = []
   const native = []
@@ -60,20 +72,38 @@ test('fails closed when native arm does not return an accepted correlated result
     assert.equal(blocked.client.view().state, 'error')
   }
 
-  const sourceNotSelected = harness({
-    sendNative: operation => Promise.resolve({
-      type: 'operation.result',
-      operationId: operation.operationId,
-      accepted: false,
-      reason: 'input_source_selection_required',
-    }),
+  await withLang('zh-CN', async () => {
+    const sourceNotSelected = harness({
+      sendNative: operation => Promise.resolve({
+        type: 'operation.result',
+        operationId: operation.operationId,
+        accepted: false,
+        reason: 'input_source_selection_required',
+      }),
+    })
+    assert.equal(await sourceNotSelected.client.start(), false)
+    assert.equal(
+      sourceNotSelected.client.view().error,
+      '请从 macOS 输入菜单选择 Qwen Input',
+    )
+    assert.deepEqual(sourceNotSelected.gateway, [])
   })
-  assert.equal(await sourceNotSelected.client.start(), false)
-  assert.equal(
-    sourceNotSelected.client.view().error,
-    'Select Qwen Input from the macOS input menu',
-  )
-  assert.deepEqual(sourceNotSelected.gateway, [])
+
+  await withLang('en-US', async () => {
+    const targetChanged = harness({
+      sendNative: operation => Promise.resolve({
+        type: 'operation.result',
+        operationId: operation.operationId,
+        accepted: false,
+        reason: 'target_changed',
+      }),
+    })
+    assert.equal(await targetChanged.client.start(), false)
+    assert.equal(
+      targetChanged.client.view().error,
+      'The input target changed. Start dictation again.',
+    )
+  })
 })
 
 test('routes partial/final to correlated native operations and never submits conversation', async () => {

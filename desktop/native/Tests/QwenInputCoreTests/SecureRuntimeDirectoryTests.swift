@@ -33,6 +33,26 @@ final class SecureRuntimeDirectoryTests: XCTestCase {
         )
     }
 
+    func testProductionSocketPathFitsDarwinLimitAtMaximumUserID() {
+        let maximumDarwinSocketPathBytes = 103
+        let longestSupportedTemporaryRoot = URL(
+            fileURLWithPath: "/var/folders/zz/123456789012345678901234567890123456789012345678/T"
+        )
+        let directory = NativeRuntimePeer.runtimeDirectory(
+            temporaryDirectory: longestSupportedTemporaryRoot,
+            userID: uid_t.max
+        )
+
+        XCTAssertLessThanOrEqual(
+            directory.socketURL().path.utf8.count,
+            maximumDarwinSocketPathBytes
+        )
+        XCTAssertEqual(
+            directory.url.lastPathComponent,
+            "qwen-ni-\(uid_t.max)"
+        )
+    }
+
     func testRejectsSymlinkOrWrongModeRuntimeDirectory() throws {
         let real = temporaryRoot.appendingPathExtension("real")
         try FileManager.default.createDirectory(

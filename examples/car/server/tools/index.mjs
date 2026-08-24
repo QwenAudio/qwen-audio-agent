@@ -7,15 +7,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const tools = []
 const executors = {}
-const ATOMIC_TOOL_FILES = new Set([
-  'car-control.mjs',
-  'get-vehicle-state.mjs',
-  'music.mjs',
-  'navigation.mjs',
-  'flashbuy.mjs',
-  'weather.mjs',
-  'web-search.mjs',
-])
 
 function registerTool(tool) {
   if (!tool || !tool.function?.name) return
@@ -26,7 +17,6 @@ function registerTool(tool) {
 const files = await readdir(__dirname)
 for (const file of files) {
   if (file === 'index.mjs' || !file.endsWith('.mjs')) continue
-  if (ATOMIC_TOOL_FILES.has(file)) continue
   const mod = await import(join(__dirname, file))
   const def = mod.default
   if (Array.isArray(def)) {

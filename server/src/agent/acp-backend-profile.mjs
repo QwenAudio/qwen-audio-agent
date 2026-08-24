@@ -1,4 +1,4 @@
-import { backendDriver } from './backends/registry.mjs'
+import { createBackendProfile } from './backends/registry.mjs'
 export { endpointAvailable } from './backends/shared.mjs'
 
 export function acpBackendProfile({
@@ -19,7 +19,7 @@ export function acpBackendProfile({
   args,
   label,
 }) {
-  return backendDriver(protocol).createProfile({
+  return createBackendProfile(protocol, {
     root,
     ownership,
     directory,

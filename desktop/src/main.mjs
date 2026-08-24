@@ -780,6 +780,7 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
         }
       : await runtimeStatus(),
     setupRequired,
+    firstRun: !configExistedAtLaunch,
     runtimeError: lastRuntimeError || null,
     wakeShortcutRegistered: desktopPresence.shortcutRegistered,
     restartRequired: false,

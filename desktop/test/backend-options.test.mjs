@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   backendOptionStates,
+  backendSelectionAvailable,
   backendRuntimePhase,
   backendRuntimeReady,
+  initialBackendSelection,
 } from '../src/backend-options.mjs'
 
 function report(backends) {
@@ -36,6 +38,59 @@ test('always offers the none option first, even without a report', () => {
     reason: '',
     title: '',
   }])
+})
+
+test('softly prefers Qwen Code only during first-run desktop setup', () => {
+  assert.equal(initialBackendSelection({
+    configuredBackend: 'none',
+    firstRun: true,
+  }), 'qwen')
+  assert.equal(initialBackendSelection({
+    configuredBackend: 'none',
+    firstRun: false,
+  }), 'none')
+  assert.equal(initialBackendSelection({
+    configuredBackend: 'opencode',
+    firstRun: true,
+  }), 'opencode')
+})
+
+test('orders Qwen Code first without adding a recommendation state', () => {
+  const states = backendOptionStates(report([
+    backend({ id: 'opencode', label: 'OpenCode', ready: true }),
+    backend({ id: 'pi', label: 'Pi', ready: true }),
+    backend({ id: 'qwen', label: 'Qwen Code', ready: true }),
+  ]))
+  assert.deepEqual(states.map(state => state.id), [
+    'none', 'qwen', 'opencode', 'pi',
+  ])
+  assert.equal('recommended' in states[1], false)
+})
+
+test('requires the preferred backend to be configured before applying', () => {
+  assert.equal(backendSelectionAvailable(null, 'none'), true)
+  assert.equal(backendSelectionAvailable(null, 'qwen'), false)
+  assert.equal(backendSelectionAvailable(report([
+    backend({ id: 'qwen', ready: false }),
+  ]), 'qwen'), false)
+  assert.equal(backendSelectionAvailable(report([
+    backend({
+      id: 'qwen',
+      ready: true,
+      onboarding: {
+        configuration: { required: true, status: 'unauthenticated' },
+      },
+    }),
+  ]), 'qwen'), false)
+  assert.equal(backendSelectionAvailable(report([
+    backend({
+      id: 'qwen',
+      ready: true,
+      onboarding: {
+        configuration: { required: false, status: 'authenticated' },
+      },
+    }),
+  ]), 'qwen'), true)
 })
 
 test('ready backends are selectable and never installable', () => {

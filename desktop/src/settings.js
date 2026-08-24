@@ -1,7 +1,9 @@
 import {
   backendOptionStates,
+  backendSelectionAvailable,
   backendRuntimePhase,
   backendRuntimeReady,
+  initialBackendSelection,
 } from './backend-options.mjs'
 import {
   realtimeConnectionStatus,
@@ -819,9 +821,14 @@ function fingerprint(value) {
 }
 
 function updateApplyState() {
+  const backendAvailable = backendSelectionAvailable(
+    backendReport,
+    selectedBackend(),
+  )
   submit.disabled = (
     applying
     || recordingWakeShortcut
+    || !backendAvailable
     || fingerprint(formSettings()) === appliedFingerprint
   )
 }
@@ -1229,6 +1236,10 @@ form.addEventListener('submit', async event => {
 
 window.qwenAudioAgentDesktop.loadSettings().then(value => {
   settings = value.settings
+  settings.agentProtocol = initialBackendSelection({
+    configuredBackend: settings.agentProtocol,
+    firstRun: value.firstRun,
+  })
   skins = value.skins || []
   runtime = value.runtime
   renderWakeShortcutStatus(value.wakeShortcutRegistered)

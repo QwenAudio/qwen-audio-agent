@@ -94,10 +94,10 @@ For the full design and module breakdown, see the [architecture document](docs/a
 | Backend Agent | Integration | Setup | Rating |
 | --- | --- | --- | --- |
 | None | N/A | Frontend-only mode, no config needed | ★★★★★ |
+| Qwen Code | Native ACP | One-click install, user config required | ★★★★★ |
 | OpenCode | Native ACP | One-click install + Bailian config | ★★★★★ |
 | OpenClaw | Built-in ACP bridge | One-click install + Bailian config | ★★★★★ |
 | Qoder | Native ACP | One-click install, user config required | ★★★★★ |
-| Qwen Code | Native ACP | One-click install, user config required | ★★★★☆ |
 | Kimi Code | Native ACP | One-click install, user config required | ★★★★★ |
 | Hermes | Native ACP | One-click install, user config required | ★★★★☆ |
 | CodeBuddy | Native ACP | One-click install, user config required | ★★★★☆ |

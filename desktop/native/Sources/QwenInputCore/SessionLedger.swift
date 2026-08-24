@@ -73,7 +73,7 @@ public struct SessionLedger: Sendable {
             return .failure(rejection)
         }
 
-        let replacement: NSRange
+        let effect: ClientTextEffect
         let location: Int
         if let ownedMarkedRange {
             guard ownedMarkedRange.location != NSNotFound,
@@ -83,14 +83,17 @@ public struct SessionLedger: Sendable {
             guard clientMarkedRange == ownedMarkedRange else {
                 return .failure(.markedRangeMismatch)
             }
-            replacement = ownedMarkedRange
             location = ownedMarkedRange.location
+            effect = .commitMarked(text: text, replacement: ownedMarkedRange)
         } else {
             guard selectedRange.location != NSNotFound else {
                 return .failure(.unknownClientRange)
             }
-            replacement = NSRange(location: NSNotFound, length: NSNotFound)
             location = selectedRange.location
+            effect = .commitSelection(
+                text: text,
+                expectedSelection: selectedRange
+            )
         }
 
         ownedMarkedRange = nil
@@ -99,7 +102,7 @@ public struct SessionLedger: Sendable {
             location: location,
             length: utf16Length(text)
         )
-        return .success(.insert(text: text, replacement: replacement))
+        return .success(effect)
     }
 
     public mutating func confirmMarkedRange(

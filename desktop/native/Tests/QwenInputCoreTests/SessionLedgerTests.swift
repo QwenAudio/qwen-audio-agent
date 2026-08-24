@@ -41,7 +41,7 @@ final class SessionLedgerTests: XCTestCase {
                 generation: 3,
                 targetID: targetID
             ).get(),
-            .insert(text: "A😀B", replacement: range(4, 4))
+            .commitMarked(text: "A😀B", replacement: range(4, 4))
         )
         XCTAssertNil(ledger.ownedMarkedRange)
         XCTAssertEqual(ledger.latestOwnedFinalRange, range(4, 4))

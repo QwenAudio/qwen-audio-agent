@@ -56,6 +56,36 @@ public struct TextClientAdapter: Sendable {
             )
             return .success(true)
 
+        case let .commitMarked(text, replacement):
+            let currentMarkedRange = client.markedRange
+            guard replacement.location != NSNotFound,
+                  currentMarkedRange.location != NSNotFound,
+                  currentMarkedRange == replacement else {
+                return .failure(.markedRangeMismatch)
+            }
+            client.insertText(text, replacementRange: replacement)
+            return .success(true)
+
+        case let .commitSelection(text, expectedSelection):
+            let currentMarkedRange = client.markedRange
+            let currentSelection = client.selectedRange
+            guard currentMarkedRange.location == NSNotFound else {
+                return .failure(.markedRangeMismatch)
+            }
+            guard expectedSelection.location != NSNotFound,
+                  currentSelection.location != NSNotFound,
+                  currentSelection == expectedSelection else {
+                return .failure(.unknownSelectedRange)
+            }
+            client.insertText(
+                text,
+                replacementRange: NSRange(
+                    location: NSNotFound,
+                    length: NSNotFound
+                )
+            )
+            return .success(true)
+
         case let .insert(text, replacement):
             if replacement.location == NSNotFound,
                client.markedRange.location == NSNotFound,
@@ -113,6 +143,17 @@ public struct ClientTextOperationController: Sendable {
     ) -> Bool {
         guard case let .success(effect) = result else { return false }
         return (try? adapter.apply(effect, to: client).get()) != nil
+    }
+
+    public func applyTransaction(
+        to ledger: inout SessionLedger,
+        client: NativeTextClient,
+        operation: (inout SessionLedger) -> Result<ClientTextEffect, LedgerError>
+    ) -> Bool {
+        var candidate = ledger
+        guard apply(operation(&candidate), to: client) else { return false }
+        ledger = candidate
+        return true
     }
 }
 

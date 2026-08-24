@@ -6,6 +6,8 @@ public enum OwnedTextEdit: Equatable, Sendable {
 }
 public enum ClientTextEffect: Equatable, Sendable {
     case setMarked(text: String, selection: NSRange, replacement: NSRange)
+    case commitMarked(text: String, replacement: NSRange)
+    case commitSelection(text: String, expectedSelection: NSRange)
     case insert(text: String, replacement: NSRange)
     case removeMarked(replacement: NSRange)
     case none

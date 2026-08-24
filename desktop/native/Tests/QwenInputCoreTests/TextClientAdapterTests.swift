@@ -9,16 +9,37 @@ final class TextClientAdapterTests: XCTestCase {
             case insert(String, replacement: NSRange)
         }
 
-        var selectedRange: NSRange
-        var markedRange: NSRange
+        private var selectedRanges: [NSRange]
+        private var markedRanges: [NSRange]
         private(set) var calls: [Call] = []
+
+        var selectedRange: NSRange {
+            if selectedRanges.count > 1 {
+                return selectedRanges.removeFirst()
+            }
+            return selectedRanges[0]
+        }
+
+        var markedRange: NSRange {
+            if markedRanges.count > 1 {
+                return markedRanges.removeFirst()
+            }
+            return markedRanges[0]
+        }
 
         init(
             selectedRange: NSRange = NSRange(location: 3, length: 0),
             markedRange: NSRange = NSRange(location: NSNotFound, length: 0)
         ) {
-            self.selectedRange = selectedRange
-            self.markedRange = markedRange
+            self.selectedRanges = [selectedRange]
+            self.markedRanges = [markedRange]
+        }
+
+        init(selectedRanges: [NSRange], markedRanges: [NSRange]) {
+            precondition(!selectedRanges.isEmpty)
+            precondition(!markedRanges.isEmpty)
+            self.selectedRanges = selectedRanges
+            self.markedRanges = markedRanges
         }
 
         func setMarkedText(
@@ -66,7 +87,7 @@ final class TextClientAdapterTests: XCTestCase {
         let adapter = TextClientAdapter()
 
         _ = try adapter.apply(
-            .insert(text: "hello", replacement: marked),
+            .commitMarked(text: "hello", replacement: marked),
             to: client
         ).get()
         _ = try adapter.apply(
@@ -189,6 +210,200 @@ final class TextClientAdapterTests: XCTestCase {
             ClientTextOperationController().apply(cancelResult, to: cancelClient)
         )
         XCTAssertTrue(cancelClient.calls.isEmpty)
+    }
+
+    func testControllerRejectsOwnedFinalWhenRangeBecomesOpaqueBeforeInsert() throws {
+        let targetID = UUID()
+        let ownedRange = NSRange(location: 8, length: 5)
+        var ledger = SessionLedger(
+            sessionID: UUID(),
+            generation: 3,
+            targetID: targetID
+        )
+        _ = try ledger.partial(
+            text: "draft",
+            selectedRange: NSRange(location: 8, length: 0),
+            clientMarkedRange: NSRange(location: NSNotFound, length: 0),
+            generation: 3,
+            targetID: targetID
+        ).get()
+        let client = FakeClient(
+            selectedRanges: [NSRange(location: 13, length: 0)],
+            markedRanges: [
+                ownedRange,
+                NSRange(location: NSNotFound, length: 0),
+            ]
+        )
+
+        let applied = ClientTextOperationController().applyTransaction(
+            to: &ledger,
+            client: client,
+            operation: { candidate in
+                candidate.final(
+                    text: "final",
+                    selectedRange: client.selectedRange,
+                    clientMarkedRange: client.markedRange,
+                    generation: 3,
+                    targetID: targetID
+                )
+            }
+        )
+        XCTAssertFalse(applied)
+
+        XCTAssertTrue(client.calls.isEmpty)
+        XCTAssertEqual(ledger.ownedMarkedRange, ownedRange)
+        XCTAssertNil(ledger.latestOwnedFinalRange)
+        XCTAssertNil(ledger.latestOwnedFinalText)
+    }
+
+    func testControllerKeepsOwnedRangeWhenCleanupBecomesOpaque() throws {
+        let targetID = UUID()
+        let ownedRange = NSRange(location: 8, length: 5)
+        var ledger = SessionLedger(
+            sessionID: UUID(),
+            generation: 3,
+            targetID: targetID
+        )
+        _ = try ledger.partial(
+            text: "draft",
+            selectedRange: NSRange(location: 8, length: 0),
+            clientMarkedRange: NSRange(location: NSNotFound, length: 0),
+            generation: 3,
+            targetID: targetID
+        ).get()
+        let client = FakeClient(
+            selectedRanges: [NSRange(location: 13, length: 0)],
+            markedRanges: [
+                ownedRange,
+                NSRange(location: NSNotFound, length: 0),
+            ]
+        )
+
+        let applied = ClientTextOperationController().applyTransaction(
+            to: &ledger,
+            client: client,
+            operation: { candidate in
+                candidate.cancel(
+                    clientMarkedRange: client.markedRange,
+                    generation: 3,
+                    targetID: targetID
+                )
+            }
+        )
+        XCTAssertFalse(applied)
+
+        XCTAssertTrue(client.calls.isEmpty)
+        XCTAssertEqual(ledger.ownedMarkedRange, ownedRange)
+    }
+
+    func testControllerCommitsStableOwnedFinalAndAllowsOrdinaryEdit() throws {
+        let targetID = UUID()
+        let ownedRange = NSRange(location: 8, length: 5)
+        var ledger = SessionLedger(
+            sessionID: UUID(),
+            generation: 3,
+            targetID: targetID
+        )
+        _ = try ledger.partial(
+            text: "draft",
+            selectedRange: NSRange(location: 8, length: 0),
+            clientMarkedRange: NSRange(location: NSNotFound, length: 0),
+            generation: 3,
+            targetID: targetID
+        ).get()
+        let finalClient = FakeClient(
+            selectedRanges: [NSRange(location: 13, length: 0)],
+            markedRanges: [ownedRange, ownedRange]
+        )
+
+        XCTAssertTrue(
+            ClientTextOperationController().applyTransaction(
+                to: &ledger,
+                client: finalClient,
+                operation: { candidate in
+                    candidate.final(
+                        text: "final",
+                        selectedRange: finalClient.selectedRange,
+                        clientMarkedRange: finalClient.markedRange,
+                        generation: 3,
+                        targetID: targetID
+                    )
+                }
+            )
+        )
+        XCTAssertEqual(finalClient.calls, [
+            .insert("final", replacement: ownedRange),
+        ])
+        XCTAssertNil(ledger.ownedMarkedRange)
+        XCTAssertEqual(ledger.latestOwnedFinalText, "final")
+
+        let editClient = FakeClient(
+            selectedRange: NSRange(location: NSNotFound, length: 0),
+            markedRange: NSRange(location: NSNotFound, length: 0)
+        )
+        XCTAssertTrue(
+            ClientTextOperationController().applyTransaction(
+                to: &ledger,
+                client: editClient,
+                operation: { candidate in
+                    candidate.edit(
+                        .replace(target: "final", replacement: "edited"),
+                        generation: 3,
+                        targetID: targetID
+                    )
+                }
+            )
+        )
+        XCTAssertEqual(editClient.calls, [
+            .insert("edited", replacement: ownedRange),
+        ])
+        XCTAssertEqual(ledger.latestOwnedFinalText, "edited")
+    }
+
+    func testControllerCommitsStandaloneFinalAtStableSelection() {
+        let targetID = UUID()
+        var ledger = SessionLedger(
+            sessionID: UUID(),
+            generation: 3,
+            targetID: targetID
+        )
+        let client = FakeClient(
+            selectedRanges: [
+                NSRange(location: 10, length: 0),
+                NSRange(location: 10, length: 0),
+            ],
+            markedRanges: [NSRange(location: NSNotFound, length: 0)]
+        )
+
+        XCTAssertTrue(
+            ClientTextOperationController().applyTransaction(
+                to: &ledger,
+                client: client,
+                operation: { candidate in
+                    candidate.final(
+                        text: "standalone",
+                        selectedRange: client.selectedRange,
+                        clientMarkedRange: client.markedRange,
+                        generation: 3,
+                        targetID: targetID
+                    )
+                }
+            )
+        )
+        XCTAssertEqual(client.calls, [
+            .insert(
+                "standalone",
+                replacement: NSRange(
+                    location: NSNotFound,
+                    length: NSNotFound
+                )
+            ),
+        ])
+        XCTAssertEqual(ledger.latestOwnedFinalText, "standalone")
+        XCTAssertEqual(
+            ledger.latestOwnedFinalRange,
+            NSRange(location: 10, length: 10)
+        )
     }
 
     func testPartialReusesAnEmptyCompositionLeftByTheClient() throws {

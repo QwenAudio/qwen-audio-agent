@@ -115,12 +115,17 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
         }
 
         if message.type == .sessionCancel {
-            let result = ledger.cancel(
-                clientMarkedRange: client.markedRange,
-                generation: token.generation,
-                targetID: token.targetID
-            )
-            guard apply(result, client: client, ledger: &ledger) else {
+            guard textOperationController.applyTransaction(
+                to: &ledger,
+                client: client,
+                operation: { candidate in
+                    candidate.cancel(
+                        clientMarkedRange: client.markedRange,
+                        generation: token.generation,
+                        targetID: token.targetID
+                    )
+                }
+            ) else {
                 return false
             }
             self.ledger = ledger
@@ -154,26 +159,30 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
             return false
         }
 
-        let result: Result<ClientTextEffect, LedgerError>
+        let operation: (inout SessionLedger) -> Result<ClientTextEffect, LedgerError>
         switch message.type {
         case .sessionPartial:
             guard let text = message.text else { return false }
-            result = ledger.partial(
-                text: text,
-                selectedRange: client.selectedRange,
-                clientMarkedRange: client.markedRange,
-                generation: token.generation,
-                targetID: token.targetID
-            )
+            operation = { candidate in
+                candidate.partial(
+                    text: text,
+                    selectedRange: client.selectedRange,
+                    clientMarkedRange: client.markedRange,
+                    generation: token.generation,
+                    targetID: token.targetID
+                )
+            }
         case .sessionFinal:
             guard let text = message.text else { return false }
-            result = ledger.final(
-                text: text,
-                selectedRange: client.selectedRange,
-                clientMarkedRange: client.markedRange,
-                generation: token.generation,
-                targetID: token.targetID
-            )
+            operation = { candidate in
+                candidate.final(
+                    text: text,
+                    selectedRange: client.selectedRange,
+                    clientMarkedRange: client.markedRange,
+                    generation: token.generation,
+                    targetID: token.targetID
+                )
+            }
         case .sessionOperation:
             guard let target = message.target else { return false }
             let edit: OwnedTextEdit = message.operation == "delete"
@@ -182,15 +191,21 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
                     target: target,
                     replacement: message.replacement ?? ""
                 )
-            result = ledger.edit(
-                edit,
-                generation: token.generation,
-                targetID: token.targetID
-            )
+            operation = { candidate in
+                candidate.edit(
+                    edit,
+                    generation: token.generation,
+                    targetID: token.targetID
+                )
+            }
         default:
             return false
         }
-        guard apply(result, client: client, ledger: &ledger) else {
+        guard textOperationController.applyTransaction(
+            to: &ledger,
+            client: client,
+            operation: operation
+        ) else {
             sessionState = .blocked
             return false
         }
@@ -206,26 +221,23 @@ final class QwenInputController: IMKInputController, @unchecked Sendable {
         sessionState = .error
     }
 
-    private func apply(
-        _ result: Result<ClientTextEffect, LedgerError>,
-        client: IMKTextClientAdapter,
-        ledger: inout SessionLedger
-    ) -> Bool {
-        textOperationController.apply(result, to: client)
-    }
-
     private func removeOwnedPartialIfPossible(from sender: Any?) {
         guard var ledger,
               let token = targetToken,
-              let client = IMKTextClientAdapter(sender),
-              let effect = try? ledger.cancel(
-                  clientMarkedRange: client.markedRange,
-                  generation: token.generation,
-                  targetID: token.targetID
-              ).get() else {
+              let client = IMKTextClientAdapter(sender) else {
             return
         }
-        _ = clientAdapter.apply(effect, to: client)
+        guard textOperationController.applyTransaction(
+            to: &ledger,
+            client: client,
+            operation: { candidate in
+                candidate.cancel(
+                    clientMarkedRange: client.markedRange,
+                    generation: token.generation,
+                    targetID: token.targetID
+                )
+            }
+        ) else { return }
         self.ledger = ledger
     }
 

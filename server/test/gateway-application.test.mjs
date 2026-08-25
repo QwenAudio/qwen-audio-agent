@@ -30,7 +30,12 @@ test('constructs an injectable Gateway without binding a port on import', async 
     providers: [privateProvider],
   })
   const application = createGatewayApplication({
-    config: { ...config, port: 0 },
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
     parentPort: null,
     autoStart: false,
     inputAssets,
@@ -51,6 +56,8 @@ test('constructs an injectable Gateway without binding a port on import', async 
   const health = await fetch(`http://127.0.0.1:${address.port}/api/health`)
     .then(response => response.json())
   assert.equal(health.realtimeProvider, privateProvider.key)
+  assert.deepEqual(health.frontendRetrieval.capabilities, ['url-fetch'])
+  assert.equal(health.frontendRetrieval.searchProvider, null)
   assert.equal(
     health.realtimeProviders.some(provider => provider.key === privateProvider.key),
     false,

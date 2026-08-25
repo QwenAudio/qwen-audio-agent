@@ -30,6 +30,7 @@ test('normalizes provider search results into bounded citations', async () => {
     search: async (query, options) => {
       searches.push({ query, options })
       return {
+        summary: 'Provider summary with sources.',
         results: [
           {
             title: ' Example result ',
@@ -55,6 +56,8 @@ test('normalizes provider search results into bounded citations', async () => {
 
   assert.equal(searches[0].query, 'latest example')
   assert.equal(searches[0].options.limit, 8)
+  assert.equal(result.summary, 'Provider summary with sources.')
+  assert.match(result.notice, /不可信资料/)
   assert.deepEqual(result.results, [{
     title: 'Example result',
     url: 'https://example.com/page',

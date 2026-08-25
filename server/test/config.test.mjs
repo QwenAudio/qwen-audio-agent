@@ -7,6 +7,7 @@ import {
   resolveBackendModels,
   resolveBackendWorkspace,
   resolveOpenCodeCoordinatorAgent,
+  resolveWebSearchConfiguration,
 } from '../src/core/config.mjs'
 import {
   resolveRealtimeFrontendConfiguration,
@@ -23,6 +24,51 @@ test('treats missing and blank numeric settings as unset', () => {
 test('preserves explicit zero numeric settings', () => {
   assert.equal(numberSetting('0', 120, { min: 0, max: 1000 }), 0)
   assert.equal(numberSetting(0, 120, { min: 0, max: 1000 }), 0)
+})
+
+test('uses a key-free fallback until the user configures a search provider', () => {
+  assert.deepEqual(resolveWebSearchConfiguration({}), {
+    provider: 'duckduckgo',
+    mcpUrl: '',
+    mcpToken: '',
+    mcpTool: 'web_search',
+  })
+  assert.deepEqual(resolveWebSearchConfiguration({
+    QWEN_AUDIO_WEB_SEARCH_MCP_URL: 'https://search.example/mcp',
+    QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN: 'search-key',
+    QWEN_AUDIO_WEB_SEARCH_MCP_TOOL: 'search_web',
+  }), {
+    provider: 'mcp',
+    mcpUrl: 'https://search.example/mcp',
+    mcpToken: 'search-key',
+    mcpTool: 'search_web',
+  })
+  assert.deepEqual(resolveWebSearchConfiguration({
+    DASHSCOPE_API_KEY: 'dashscope-key',
+    QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'bailian',
+  }), {
+    provider: 'bailian',
+    mcpUrl: 'https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp',
+    mcpToken: 'dashscope-key',
+    mcpTool: 'bailian_web_search',
+  })
+  assert.equal(resolveWebSearchConfiguration({
+    DASHSCOPE_API_KEY: 'dashscope-key',
+  }).provider, 'duckduckgo')
+  assert.equal(resolveWebSearchConfiguration({
+    DASHSCOPE_API_KEY: 'dashscope-key',
+    QWEN_AUDIO_WEB_SEARCH_MCP_URL: 'https://search.example/mcp',
+  }).mcpToken, '')
+  assert.equal(resolveWebSearchConfiguration({
+    QWEN_AUDIO_WEB_SEARCH_MCP_URL: 'https://search.example/mcp',
+    QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'none',
+  }).provider, 'none')
+  assert.throws(
+    () => resolveWebSearchConfiguration({
+      QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'unknown',
+    }),
+    /不支持的 Web Search Provider/,
+  )
 })
 
 test('uses the shared user data workspace for the default OpenCode workspace', () => {

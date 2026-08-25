@@ -55,6 +55,7 @@
 | `qwen-audio-agent/gateway-lease` | `readGatewayLease`、`findRunningGateway`、`acquireGatewayLease` |
 | `qwen-audio-agent/realtime-events` | `GatewayClientEvent`、`GatewayServerEvent`、`GatewayTaskEvent` |
 | `qwen-audio-agent/gateway-events` | Gateway 事件 Zod Schema 与解析函数 |
+| `qwen-audio-agent/gateway-client-state` | `createGatewayClientState`、`reduceGatewayClientState`、`acceptsGatewayVoiceState` |
 | `qwen-audio-agent/settings` | `createSettingsStore` |
 | `qwen-audio-agent/skin-store` | `importSkin`、`listSkins`、`removeSkin`、`effectiveOrbSkin`、`skinsDirectory`、`validateSkinPackage` |
 | `qwen-audio-agent/orb/main` | `bindOrbShell`、`configureOrbWindow`、`ORB_CHANNELS` |
@@ -136,6 +137,15 @@ await orb.load()
 | 服务端 → 客户端 | `input.suspend` | 立即停止采集（比用户级静音更强：不采集、不做唤醒词检测）；携带 `owner`、`reason`、`expiresAt` |
 | 服务端 → 客户端 | `input.resume` | 可以恢复采集 |
 | 客户端 → 服务端 | `input.suspend.ack` | 确认抢占已在本客户端生效 |
+
+### 共享客户端状态
+
+`qwen-audio-agent/gateway-client-state` 将公开 Gateway 事件归并为无副作用的客户端
+状态：`connectionState`、`voiceState`、`wakeWordActive`、`ownership` 与
+`currentTurnId`。`reduceGatewayClientState(state, event)` 对未知事件保持原对象不变，
+并统一忽略来自旧轮次的直连模型 `voice.state`；客户端仍自行处理音频播放、麦克风和
+界面副作用，不应再复制这部分协议状态判断。锁定测试：
+`test/gateway-client-state.test.mjs`。
 
 ## 实例租约
 

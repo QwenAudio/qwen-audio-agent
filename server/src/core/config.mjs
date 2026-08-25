@@ -97,6 +97,34 @@ export function resolveBackendModels(env = process.env) {
   }
 }
 
+export function resolveWebSearchConfiguration(env = process.env) {
+  const bailianMcpUrl = 'https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp'
+  const explicitMcpUrl = String(env.QWEN_AUDIO_WEB_SEARCH_MCP_URL || '').trim()
+  const dashscopeApiKey = String(env.DASHSCOPE_API_KEY || '').trim()
+  const requestedProvider = String(
+    env.QWEN_AUDIO_WEB_SEARCH_PROVIDER || '',
+  ).trim().toLowerCase()
+  const provider = requestedProvider || (explicitMcpUrl ? 'mcp' : 'bing')
+  if (!['bailian', 'bing', 'duckduckgo', 'mcp', 'none'].includes(provider)) {
+    throw new Error(
+      '不支持的 Web Search Provider：'
+      + `${provider}（可选 bailian、bing、duckduckgo、mcp、none）`,
+    )
+  }
+  const mcpUrl = provider === 'bailian' ? bailianMcpUrl : explicitMcpUrl
+  const usesBailianMcp = provider === 'bailian'
+  return {
+    provider,
+    mcpUrl,
+    mcpToken: String(
+      env.QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN
+      || (usesBailianMcp ? dashscopeApiKey : ''),
+    ).trim(),
+    mcpTool: String(env.QWEN_AUDIO_WEB_SEARCH_MCP_TOOL || '').trim()
+      || (usesBailianMcp ? 'bailian_web_search' : 'web_search'),
+  }
+}
+
 const configuredAgentProtocol = normalizeBackendProtocol(
   process.env.AGENT_PROTOCOL,
 )
@@ -164,6 +192,7 @@ export function resolveOpenCodeCoordinatorAgent(env = process.env) {
 }
 
 const realtimeFrontend = resolveRealtimeFrontendConfiguration(process.env)
+const webSearch = resolveWebSearchConfiguration(process.env)
 
 export const config = {
   root,
@@ -193,6 +222,10 @@ export const config = {
   speechToSpeechAuthToken: realtimeFrontend.speechToSpeechAuthToken,
   audioModel: realtimeFrontend.dashscopeModel,
   audioVoice: realtimeFrontend.dashscopeVoice,
+  webSearchProvider: webSearch.provider,
+  webSearchMcpUrl: webSearch.mcpUrl,
+  webSearchMcpToken: webSearch.mcpToken,
+  webSearchMcpTool: webSearch.mcpTool,
   allowedOrigins: String(process.env.QWEN_AUDIO_AGENT_ALLOWED_ORIGINS || '')
     .split(',')
     .map(value => value.trim())

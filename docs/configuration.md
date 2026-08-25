@@ -200,6 +200,32 @@ The minimal configuration only requires real-time voice credentials:
 DASHSCOPE_API_KEY=your-key
 ```
 
+The frontend `web_search` tool returns verifiable source links, does not create
+backend Agent work, and does not invoke another text model. Without explicit
+configuration it uses a small, key-free Bing RSS adapter that is reachable in
+mainland China. This fallback is experimental and may occasionally be blocked
+or affected by upstream changes. DuckDuckGo remains available by setting
+`QWEN_AUDIO_WEB_SEARCH_PROVIDER=duckduckgo`.
+
+After enabling Model Studio's Web Search MCP service, select its built-in preset
+explicitly; it then reuses `DASHSCOPE_API_KEY`:
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=bailian
+```
+
+The same provider-neutral adapter can connect to another compatible MCP search
+service. Custom endpoints must provide their own credentials explicitly:
+
+```dotenv
+QWEN_AUDIO_WEB_SEARCH_PROVIDER=mcp
+QWEN_AUDIO_WEB_SEARCH_MCP_URL=https://example.com/mcp
+QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
+QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
+```
+
+Set `QWEN_AUDIO_WEB_SEARCH_PROVIDER=none` to disable frontend web search.
+
 When you need to execute backend tasks, select a backend Agent (using OpenClaw as an example):
 
 ```dotenv
@@ -877,6 +903,10 @@ them to the configuration file:
 | `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV` | Empty; comma-separated opt-in environment names for generic ACP only |
 | `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` |
 | `QWEN_AUDIO_REALTIME_PROVIDER` | `dashscope` |
+| `QWEN_AUDIO_WEB_SEARCH_PROVIDER` | `bing`; optional `duckduckgo`, `bailian`, `mcp`, or `none` |
+| `QWEN_AUDIO_WEB_SEARCH_MCP_URL` | Empty; custom Streamable HTTP endpoint used by the `mcp` provider |
+| `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | `DASHSCOPE_API_KEY` for explicit `bailian`; empty for custom endpoints unless set |
+| `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian_web_search` for `bailian`; otherwise `web_search` |
 | `QWEN_AUDIO_REALTIME_VOICE` | Empty; optional Audio-family override, otherwise runtime uses `longanqian` |
 | `QWEN_OMNI_REALTIME_VOICE` | Empty; optional Omni-family override, otherwise runtime uses `Ethan` |
 | `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |

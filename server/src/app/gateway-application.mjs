@@ -40,6 +40,7 @@ import { installOfflineNotifications } from './offline-notifications.mjs'
 import {
   FrontendRetrievalRuntime,
 } from '../frontend/retrieval/frontend-retrieval-runtime.mjs'
+import { createWebSearchProvider } from '../providers/search/factory.mjs'
 import {
   projectGatewayTaskEvent,
   projectGatewayTaskSnapshot,
@@ -61,7 +62,7 @@ export function createGatewayApplication({
   autoStart = true,
   realtimeProviderRegistry = defaultRealtimeProviderRegistry,
   realtimeProvider = config.audioProvider,
-  webSearchProvider = null,
+  webSearchProvider = undefined,
   urlFetcher = undefined,
   frontendRetrieval = null,
 } = {}) {
@@ -71,7 +72,9 @@ const inputAssetRegistry = inputAssets || new InputAssetRegistry({
   maxSessions: config.maxConversationSessions,
 })
 const retrievalRuntime = frontendRetrieval || new FrontendRetrievalRuntime({
-  searchProvider: webSearchProvider,
+  searchProvider: webSearchProvider === undefined
+    ? createWebSearchProvider(config)
+    : webSearchProvider,
   ...(urlFetcher === undefined ? {} : { urlFetcher }),
 })
 const identityManager = new IdentityManager({
@@ -269,6 +272,7 @@ app.get('/api/health', (req, res) => {
     announcementBatchMs: config.announcementBatchMs,
     announcementQuietMs: config.announcementQuietMs,
     frontendMemory: frontendMemoryService.health(),
+    frontendRetrieval: retrievalRuntime.describe(),
     notes: notesStore.health(),
     taskStore: taskStore.health(),
     identityMode: config.identityMode,

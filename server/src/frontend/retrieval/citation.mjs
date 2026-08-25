@@ -72,9 +72,11 @@ export function normalizeSearchResponse(response, { query, limit = 5 } = {}) {
         : {}),
     })
   }
+  const summary = String(response?.summary || '').trim().slice(0, 8000)
   return {
     status: 'ok',
     query: cleanText(query, 500),
+    ...(summary ? { summary } : {}),
     results,
     citations,
   }

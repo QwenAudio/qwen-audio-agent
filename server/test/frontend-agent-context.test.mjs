@@ -99,6 +99,7 @@ test('loads one canonical frontend policy separately from runtime context', () =
   assert.match(prompt, /# Background work/)
   assert.match(prompt, /# Personalization and memory/)
   assert.match(prompt, /专用工具/)
+  assert.match(prompt, /公开网页搜索和网址读取[\s\S]*不要转交后台/)
   assert.match(prompt, /不要用口头承诺代替工具调用/)
   assert.match(prompt, /工具尚未返回时取消仍在进行中/)
   assert.ok(prompt.length < 5000)

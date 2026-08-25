@@ -34,6 +34,7 @@
     "./gateway-process": "./shared/gateway-process.mjs",
     "./gateway-lease": "./shared/gateway-instance-lock.mjs",
     "./realtime-events": "./shared/realtime-events.mjs",
+    "./gateway-events": "./shared/protocol/gateway-events.mjs",
     "./gateway-application": "./server/src/app/gateway-application.mjs",
     "./realtime-provider": "./server/src/voice/realtime-provider-extension.mjs",
     "./settings": "./desktop/src/settings-store.mjs",

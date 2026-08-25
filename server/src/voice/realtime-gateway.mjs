@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
+  isGatewayClientEvent,
 } from '../../../shared/realtime-events.mjs'
 import { AnnouncementManager } from './announcement/announcement-manager.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
@@ -1903,6 +1904,7 @@ export function attachRealtimeGateway(server, {
       } catch {
         return
       }
+      if (!isGatewayClientEvent(event)) return
       if (event.type === GatewayClientEvent.CONNECT) {
         descriptor = clientDescriptor(event)
         voiceClient.descriptor = descriptor

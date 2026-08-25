@@ -2,6 +2,11 @@
 
 本文档定义产品边界。违反这些不变性的变更属于架构变更，而非局部功能开发。
 
+前台 Realtime Voice Chatbot、异步 Work Bridge 与单一用户后台 Agent 的目标边界及
+分阶段重构计划见
+[Realtime Voice Chatbot Runtime Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/frontend-chatbot-runtime.zh.md)。
+在 Roadmap 分阶段落地期间，本文继续描述当前已实现并受测试保护的运行时行为。
+
 ## 1. 用户可见模型
 
 用户与一个 qwen-audio 助手对话。内部存在两个 qwen-audio-agent 层：

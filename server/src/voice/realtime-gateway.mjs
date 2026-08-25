@@ -105,10 +105,18 @@ export function attachRealtimeGateway(server, {
   defaultRealtimeProvider = config.audioProvider,
   frontendRetrieval = null,
   frontendKnowledge = null,
+  frontendToolSources = [],
 }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 20 * 1024 * 1024 })
   const activeVoiceClients = new ActiveVoiceClients()
   const voiceConnections = new Map()
+  const frontendToolSourcesReady = Promise.all(
+    frontendToolSources.map(source => source.initialize()),
+  ).catch(error => {
+    logger.warn('frontend_tools.initialization_failed', {
+      error: error.message,
+    })
+  })
 
   // A suspension is global, not per owner: the host is taking the machine's
   // microphone, so every connected client has to let go of it. The subscription
@@ -191,6 +199,20 @@ export function attachRealtimeGateway(server, {
       ownerId,
       sessionId,
       active: true,
+    })
+    const getAgentContext = () => ({
+      client: clientContext,
+      frontend: {
+        capabilities: [...new Set([
+          ...(frontendRetrieval?.capabilities?.() || []),
+          ...(frontendKnowledge?.capabilities?.() || []),
+        ])],
+        tools: frontendToolSources.flatMap(source => (
+          source.tools().map(tool => tool.definition)
+        )),
+      },
+      memories: memoryService?.list(ownerId, { limit: 64 }) || [],
+      recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),
     })
     const schedulePermissionRetry = () => {
       if (permissionRetryTimer || !outputEnabled || !realtimeSession?.ready) return
@@ -280,17 +302,7 @@ export function attachRealtimeGateway(server, {
     realtimeSession = new RealtimeProviderSession({
       providerRegistry: realtimeProviderRegistry,
       defaultProvider: defaultRealtimeProvider,
-      getAgentContext: () => ({
-        client: clientContext,
-        frontend: {
-          capabilities: [...new Set([
-            ...(frontendRetrieval?.capabilities?.() || []),
-            ...(frontendKnowledge?.capabilities?.() || []),
-          ])],
-        },
-        memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-        recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),
-      }),
+      getAgentContext,
       shouldReconnect: () => inputEnabled || outputEnabled,
       onEvent: event => handleEvent(event),
       onDiagnostic: diagnostic => {
@@ -462,6 +474,7 @@ export function attachRealtimeGateway(server, {
       inputAssets,
       frontendRetrieval,
       frontendKnowledge,
+      frontendToolSources,
       turnCitations,
     })
     const clearResponseCandidate = () => {
@@ -1034,20 +1047,21 @@ export function attachRealtimeGateway(server, {
             ? 0
             : config.sleepTimeoutMs,
         )
-        realtimeSession.updateAgentContext({
-          client: clientContext,
-        })
-        if (sleeping) {
-          sleeping = false
-          waking = true
-          sleepController.wake()
-        }
-        prepareSleepMode()
-        if (event.wakeWordOnly === true) {
-          requestExplicitSleep()
-        } else if (inputEnabled || outputEnabled) {
-          realtimeSession.ensure().catch(reportFrontendError)
-        }
+        frontendToolSourcesReady.then(() => {
+          if (ws.readyState !== WebSocket.OPEN) return
+          realtimeSession.updateAgentContext(getAgentContext())
+          if (sleeping) {
+            sleeping = false
+            waking = true
+            sleepController.wake()
+          }
+          prepareSleepMode()
+          if (event.wakeWordOnly === true) {
+            requestExplicitSleep()
+          } else if (inputEnabled || outputEnabled) {
+            realtimeSession.ensure().catch(reportFrontendError)
+          }
+        }).catch(reportFrontendError)
       } else if (event.type === GatewayClientEvent.UNMUTE) {
         explicitSleepRequested = false
         if (nonVoiceClient) {

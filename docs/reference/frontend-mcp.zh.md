@@ -4,8 +4,8 @@
 Realtime Provider，也不绑定后台 Agent。它与专用 Web Search Provider
 相互独立；Web Search 保留一个简单内置兜底，通用 MCP Server 由用户配置。
 
-当前基础版本先定义配置、发现、命名空间、健康状态、执行和结果边界。
-把发现到的工具动态接入 Realtime Session 是 Roadmap 的下一步。
+Gateway 在启动时发现显式启用的工具，为其分配稳定名称，并通过共用的前台工具
+注册表和执行器把它们加入每个 Realtime Session。
 
 ## 配置
 
@@ -13,7 +13,7 @@ Realtime Provider，也不绑定后台 Agent。它与专用 Web Search Provider
 
 ```env
 QWEN_AUDIO_FRONTEND_MCP_CONFIG=/absolute/path/to/frontend-mcp.json
-DOCUMENT_MCP_TOKEN=replace-me
+DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 ```
 
 ```json
@@ -23,8 +23,9 @@ DOCUMENT_MCP_TOKEN=replace-me
     "documents": {
       "enabled": true,
       "url": "https://mcp.example.com/mcp",
+      "connectTimeoutMs": 8000,
       "headers": {
-        "authorization": "Bearer ${DOCUMENT_MCP_TOKEN}"
+        "authorization": "${DOCUMENT_MCP_AUTHORIZATION}"
       },
       "tools": {
         "search": {
@@ -48,6 +49,7 @@ DOCUMENT_MCP_TOKEN=replace-me
 ## 当前策略
 
 - 首个版本使用 Streamable HTTP Transport。
+- 工具发现和连接有超时边界，默认 8 秒。
 - 远端服务必须使用 HTTPS；回环地址可以使用 HTTP，但不能携带 Header。
 - Header 值可以用 `${VARIABLE}` 精确引用一个环境变量；变量缺失即配置错误。
 - 启用的工具必须明确设置 `readOnly: true`。在通用前台授权链路完成前，

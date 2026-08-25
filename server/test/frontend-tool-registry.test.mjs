@@ -39,6 +39,25 @@ test('registers every default frontend tool once in stable order', () => {
   }
 })
 
+test('appends namespaced dynamic tools without changing the static registry', () => {
+  const dynamic = {
+    type: 'function',
+    function: {
+      name: 'mcp__documents__search',
+      description: 'Search configured documents.',
+      parameters: { type: 'object', properties: {} },
+    },
+  }
+  assert.deepEqual(frontendTools({
+    frontend: { tools: [dynamic] },
+  }), [...TOOLS, dynamic])
+  assert.equal(frontendToolRegistry.has('mcp__documents__search'), false)
+  assert.throws(
+    () => frontendTools({ frontend: { tools: [TOOLS[0]] } }),
+    /duplicate dynamic frontend tool/,
+  )
+})
+
 test('exposes client-state tools only when the client advertises support', () => {
   assert.equal(frontendToolRegistry.isEnabled(ENTER_SLEEP_TOOL_NAME), false)
   assert.equal(

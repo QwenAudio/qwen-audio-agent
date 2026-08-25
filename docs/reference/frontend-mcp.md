@@ -5,9 +5,9 @@ chatbot tools without coupling them to a realtime provider or a backend Agent.
 It is separate from the dedicated Web Search provider: Web Search keeps its
 small built-in fallback, while general MCP servers are configured by the user.
 
-This first foundation release defines configuration, discovery, namespacing,
-health, execution, and result boundaries. Wiring discovered tools into live
-Realtime sessions is tracked as the next Roadmap step.
+The Gateway discovers the explicitly enabled tools at startup, gives them
+stable names, and adds them to each Realtime session through the shared
+frontend tool registry and executor.
 
 ## Configuration
 
@@ -15,7 +15,7 @@ Set `QWEN_AUDIO_FRONTEND_MCP_CONFIG` to a versioned JSON file:
 
 ```env
 QWEN_AUDIO_FRONTEND_MCP_CONFIG=/absolute/path/to/frontend-mcp.json
-DOCUMENT_MCP_TOKEN=replace-me
+DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 ```
 
 ```json
@@ -25,8 +25,9 @@ DOCUMENT_MCP_TOKEN=replace-me
     "documents": {
       "enabled": true,
       "url": "https://mcp.example.com/mcp",
+      "connectTimeoutMs": 8000,
       "headers": {
-        "authorization": "Bearer ${DOCUMENT_MCP_TOKEN}"
+        "authorization": "${DOCUMENT_MCP_AUTHORIZATION}"
       },
       "tools": {
         "search": {
@@ -50,6 +51,7 @@ Each exposed tool receives a stable model-visible name:
 ## Current policy
 
 - Streamable HTTP is the initial transport.
+- Discovery and connection have a bounded timeout (8 seconds by default).
 - Remote servers require HTTPS. Loopback HTTP is allowed only without headers.
 - Header values may reference one exact environment variable with
   `${VARIABLE}`. A missing variable is a configuration error.

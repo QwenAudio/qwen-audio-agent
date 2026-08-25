@@ -87,7 +87,12 @@ export class FrontendToolLoop {
     const now = this.#now()
     let turn = this.#turns.get(key)
     if (!turn) {
-      turn = { startedAt: now, calls: 0, signatures: new Set() }
+      turn = {
+        startedAt: now,
+        calls: 0,
+        callsByTool: new Map(),
+        signatures: new Set(),
+      }
       if (this.#turns.size >= this.#maxTrackedTurns) {
         this.#turns.delete(this.#turns.keys().next().value)
       }
@@ -108,6 +113,16 @@ export class FrontendToolLoop {
         calls: turn.calls,
       }
     }
+    const toolLimit = positiveInteger(tool?.policy?.maxCallsPerTurn, null)
+    const toolCalls = turn.callsByTool.get(name) || 0
+    if (toolLimit !== null && toolCalls >= toolLimit) {
+      return {
+        admitted: false,
+        reason: 'tool_call_limit',
+        calls: turn.calls,
+        toolCalls,
+      }
+    }
 
     const signature = callSignature(name, args)
     if (
@@ -122,6 +137,7 @@ export class FrontendToolLoop {
     }
 
     turn.calls += 1
+    turn.callsByTool.set(name, toolCalls + 1)
     turn.signatures.add(signature)
     return { admitted: true, reason: null, calls: turn.calls }
   }

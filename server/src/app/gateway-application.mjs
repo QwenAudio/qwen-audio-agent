@@ -48,6 +48,11 @@ import { FrontendKnowledgeRuntime } from '../frontend/knowledge/knowledge-runtim
 import {
   LexicalKnowledgeRetrievalProvider,
 } from '../providers/knowledge/lexical-retrieval-provider.mjs'
+import { assertFrontendMcpSource } from '../frontend/mcp/frontend-mcp-source.mjs'
+import { FrontendMcpClient } from '../providers/mcp/frontend-mcp-client.mjs'
+import {
+  loadFrontendMcpConfiguration,
+} from '../providers/mcp/frontend-mcp-config.mjs'
 import {
   projectGatewayTaskEvent,
   projectGatewayTaskSnapshot,
@@ -77,6 +82,7 @@ export function createGatewayApplication({
   knowledgeIndexer = null,
   knowledgeRetrievalProvider = null,
   frontendKnowledge = null,
+  frontendMcp = undefined,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const inputAssetRegistry = inputAssets || new InputAssetRegistry({
@@ -115,6 +121,16 @@ const retrievalRuntime = frontendRetrieval || new FrontendRetrievalRuntime({
     : webSearchProvider,
   ...(urlFetcher === undefined ? {} : { urlFetcher }),
 })
+const frontendMcpRuntime = frontendMcp === undefined
+  ? new FrontendMcpClient({
+      configuration: loadFrontendMcpConfiguration({
+        filePath: config.frontendMcpConfigPath || '',
+      }),
+    })
+  : frontendMcp
+const frontendToolSources = frontendMcpRuntime
+  ? [assertFrontendMcpSource(frontendMcpRuntime)]
+  : []
 const identityManager = new IdentityManager({
   secret: config.authSecret,
   mode: config.identityMode,
@@ -312,6 +328,12 @@ app.get('/api/health', (req, res) => {
     frontendMemory: frontendMemoryService.health(),
     frontendRetrieval: retrievalRuntime.describe(),
     frontendKnowledge: frontendKnowledgeRuntime.describe(),
+    frontendMcp: frontendMcpRuntime?.health?.() || {
+      ok: true,
+      initialized: true,
+      tools: 0,
+      servers: [],
+    },
     notes: notesStore.health(),
     taskStore: taskStore.health(),
     identityMode: config.identityMode,
@@ -547,6 +569,7 @@ realtimeGateway = attachRealtimeGateway(server, {
   defaultRealtimeProvider: realtimeProvider,
   frontendRetrieval: retrievalRuntime,
   frontendKnowledge: frontendKnowledgeRuntime,
+  frontendToolSources,
 })
 const start = ({ host = config.host, port = config.port } = {}) => {
   if (server.listening) return server
@@ -586,6 +609,7 @@ const close = () => {
     // not survive into the next run.
     inputArbitration.close()
     await realtimeGateway?.close?.()
+    await frontendMcpRuntime?.close?.()
     await knowledgeStoreRuntime.close?.()
     await taskStore?.flush?.()
     if (!server.listening) return
@@ -614,6 +638,7 @@ return {
     frontendMemoryService,
     frontendRetrieval: retrievalRuntime,
     frontendKnowledge: frontendKnowledgeRuntime,
+    frontendMcp: frontendMcpRuntime,
     documentExtractor: documentExtractorRuntime,
     knowledgeStore: knowledgeStoreRuntime,
     knowledgeIndexer: knowledgeIndexerRuntime,

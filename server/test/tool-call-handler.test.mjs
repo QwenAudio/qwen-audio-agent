@@ -22,6 +22,7 @@ function harness({
   onAgentActivity,
   frontendRetrieval,
   frontendKnowledge,
+  frontendToolSources,
   getTurnId = () => 'turn-one',
 } = {}) {
   const outputs = []
@@ -60,12 +61,82 @@ function harness({
     inputAssets,
     frontendRetrieval,
     frontendKnowledge,
+    frontendToolSources,
     getConversationContext: () => [
       { role: 'user', content: '之前在改首页' },
     ],
   })
   return { outputs, ensuredResponses, manager, transcripts, handler }
 }
+
+test('executes discovered read-only external tools through the shared boundary', async () => {
+  const calls = []
+  const source = {
+    tools: () => [{
+      name: 'mcp__documents__search',
+      definition: {
+        type: 'function',
+        function: {
+          name: 'mcp__documents__search',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      policy: {
+        mode: 'inline',
+        readOnly: true,
+        maxCallsPerTurn: 1,
+        maxResultBytes: 2_048,
+      },
+    }],
+    execute: async (name, args) => {
+      calls.push([name, args])
+      return { status: 'ok', text: 'Found.' }
+    },
+  }
+  const kit = harness({ frontendToolSources: [source] })
+  const invoke = (callId, args) => kit.handler.handle({
+    call_id: callId,
+    name: 'mcp__documents__search',
+    arguments: JSON.stringify(args),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  await invoke('external-one', { query: 'architecture' })
+  await invoke('external-two', { query: 'different' })
+
+  assert.deepEqual(calls, [[
+    'mcp__documents__search',
+    { query: 'architecture' },
+  ]])
+  assert.equal(kit.outputs[0][1].text, 'Found.')
+  assert.equal(kit.outputs[1][1].error_code, 'tool_loop_limit')
+})
+
+test('never executes a dynamic external tool without a read-only policy', async () => {
+  let executed = false
+  const source = {
+    tools: () => [{
+      name: 'mcp__documents__write',
+      definition: {
+        type: 'function',
+        function: {
+          name: 'mcp__documents__write',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      policy: { mode: 'inline', readOnly: false },
+    }],
+    execute: async () => { executed = true },
+  }
+  const kit = harness({ frontendToolSources: [source] })
+  await kit.handler.handle({
+    call_id: 'external-write',
+    name: 'mcp__documents__write',
+    arguments: '{}',
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(executed, false)
+  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+})
 
 function taskForJob(manager, jobId) {
   return manager.getByJobId(jobId, { ownerId: 'owner' })

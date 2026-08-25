@@ -155,8 +155,10 @@ ACP Session、协调 Prompt、协调 MCP 和原生委托全部属于 ACP Adapter
 
 ### 4.5 Artifact 与 Presentation
 
-后台输出统一为包含 MIME 类型的 Artifact Parts。Presentation 只携带供前台表达的
-事实材料和投递策略，不携带必须逐字播报的脚本。
+Artifact 采用与 A2A 对齐的 `artifactId`、名称、描述和 Parts 结构。每个 Part 只包含
+text、URL、base64 原始内容或结构化数据中的一种，并声明 MIME 类型。Authorization
+是有界的 Work 决策请求，包含身份、状态、摘要、类别和时间戳，只转交决策，不承载凭据。
+Presentation 只携带供前台表达的事实材料和投递策略，不携带必须逐字播报的脚本。
 
 ## 5. 标准协议策略
 
@@ -237,7 +239,7 @@ ACP Session、协调 Prompt、协调 MCP 和原生委托全部属于 ACP Adapter
   - [x] 提取通知领取、租约、释放与送达状态。
   - [x] 提取持久化 Work 记录与短 Job ID 分配。
 - [x] 区分 User Work 与 System Job。
-- [ ] 建立 Artifact 与统一 Authorization 模型。
+- [x] 建立 Artifact 与统一 Authorization 模型。
 - [ ] 保持重启、取消和恰好一次结果投递语义。
 
 完成条件：Work Runtime 不包含任何 ACP 或后台产品名称。

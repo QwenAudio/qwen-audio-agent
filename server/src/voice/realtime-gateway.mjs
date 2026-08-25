@@ -673,7 +673,7 @@ export function attachRealtimeGateway(server, {
         TaskDomainEvent.FAILED,
       ].includes(event.type)) {
         recordResult(task)
-        const inline = task.resultMetadata?.presentation?.inline
+        const inline = task.presentation?.inline
         if (inline?.content) {
           send(ws, {
             type: 'timeline.inline',

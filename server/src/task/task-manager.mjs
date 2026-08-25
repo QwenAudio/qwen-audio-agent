@@ -6,11 +6,20 @@ import { TaskDomainEvent } from './task-events.mjs'
 import { TaskNotificationQueue } from './task-notification-queue.mjs'
 import { TaskRepository } from './task-repository.mjs'
 import {
+  artifactsFromOutcome,
+  normalizeArtifacts,
+} from './task-artifact.mjs'
+import {
+  normalizeAuthorization,
+  resolveAuthorization,
+} from '../core/work-authorization.mjs'
+import {
   isTaskActive,
   isTaskCancellable,
   isTaskTerminal,
   isUserWork,
   normalizeTaskScope,
+  normalizeTaskPresentation,
   persistedTask,
   publicTask,
   TaskScope,
@@ -119,6 +128,13 @@ export class TaskManager {
       saved.jobId = isUserWork(saved)
         ? String(saved.jobId || this.allocateJobId())
         : null
+      saved.presentation = normalizeTaskPresentation(
+        saved.presentation || saved.resultMetadata || null,
+      )
+      saved.artifacts = normalizeArtifacts(saved.artifacts)
+      saved.authorization = normalizeAuthorization(saved.authorization, {
+        workId: saved.id,
+      })
       // Scheduled tasks survive restarts intact. ReminderScheduler.start()
       // handles overdue vs future dispatch. Reminders that had already fired
       // (queued/running) when the Gateway stopped are also restored as
@@ -184,7 +200,7 @@ export class TaskManager {
           : null,
         authorization: wasActive || isTaskTerminal(saved.status)
           ? null
-          : saved.authorization || null,
+          : saved.authorization,
         notificationStatus: recoveredNotificationStatus,
         notificationClaimantId: null,
         notificationClaimedAt: null,
@@ -367,7 +383,8 @@ export class TaskManager {
       elapsedMs: 0,
       result: null,
       error: null,
-      resultMetadata: null,
+      artifacts: [],
+      presentation: null,
       activity: [],
       delegation: null,
       cancellation: null,
@@ -428,7 +445,8 @@ export class TaskManager {
       elapsedMs: 0,
       result: null,
       error: null,
-      resultMetadata: null,
+      artifacts: [],
+      presentation: null,
       activity: [],
       delegation: null,
       cancellation: null,
@@ -485,16 +503,30 @@ export class TaskManager {
     task.progressTimer.unref?.()
     const onEvent = event => {
       if (event?.type === 'backend.permission.requested' && event.permission) {
-        task.authorization = { ...event.permission }
-        this.emit(TaskDomainEvent.PERMISSION_REQUESTED, task)
+        const authorization = normalizeAuthorization(event.permission, {
+          workId: task.id,
+        })
+        if (!authorization) return
+        task.authorization = authorization
+        this.emit(TaskDomainEvent.PERMISSION_REQUESTED, task, {
+          permission: authorization,
+        })
         return
       }
       if (event?.type === 'backend.permission.resolved' && event.permission) {
-        if (task.authorization?.id === event.permission.id) {
+        const permission = resolveAuthorization(
+          task.authorization?.id === event.permission.id
+            ? task.authorization
+            : event.permission,
+          event.permission.status,
+          { workId: task.id },
+        )
+        if (!permission) return
+        if (task.authorization?.id === permission.id) {
           task.authorization = null
         }
         this.emit(TaskDomainEvent.PERMISSION_RESOLVED, task, {
-          permission: { ...event.permission },
+          permission,
         })
         return
       }
@@ -623,7 +655,10 @@ export class TaskManager {
         ) return
         transitionTask(task, TaskStatus.COMPLETED)
         task.result = String(outcome?.content ?? outcome ?? '').trim()
-        task.resultMetadata = outcome?.metadata || null
+        task.presentation = normalizeTaskPresentation(
+          outcome?.presentation || outcome?.metadata || null,
+        )
+        task.artifacts = artifactsFromOutcome(outcome, task.presentation)
       })
       .catch(error => {
         if (

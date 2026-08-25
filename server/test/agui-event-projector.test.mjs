@@ -16,7 +16,7 @@ function task(overrides = {}) {
     id: 'work_1',
     workId: 'work_1',
     jobId: 'job_1',
-    workState: 'active',
+    workState: 'working',
     status: 'running',
     kind: 'work',
     objective: 'inspect the system',
@@ -25,6 +25,19 @@ function task(overrides = {}) {
     result: null,
     error: null,
     ...overrides,
+  }
+}
+
+function authorization() {
+  return {
+    id: 'permission_1',
+    workId: 'work_1',
+    status: 'pending',
+    category: 'shell',
+    summary: 'run command',
+    patterns: [],
+    createdAt: 1,
+    resolvedAt: null,
   }
 }
 
@@ -69,15 +82,12 @@ test('preserves public details without exposing undeclared fields', () => {
   const projected = projectGatewayTaskEventToAgui({
     type: GatewayTaskEvent.PERMISSION_REQUESTED,
     task: task({ internalSchedulerLane: 'coordinator:owner' }),
-    permission: { id: 'permission_1', summary: 'run command' },
+    permission: authorization(),
     message: 'permission needed',
     privateReason: 'adapter-only',
   })
 
-  assert.deepEqual(projected.content.permission, {
-    id: 'permission_1',
-    summary: 'run command',
-  })
+  assert.deepEqual(projected.content.permission, authorization())
   assert.equal(projected.content.message, 'permission needed')
   assert.equal('internalSchedulerLane' in projected.content.task, false)
   assert.equal('privateReason' in projected.content, false)

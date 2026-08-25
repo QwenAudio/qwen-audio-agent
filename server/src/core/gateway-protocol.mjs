@@ -10,6 +10,10 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 3.0.0 gives public Tasks A2A-aligned work states and first-class artifact,
+// presentation and authorization values. This replaces the 2.x `active`
+// state and opaque result metadata, so event consumers must branch on the
+// capability below before reading the new fields.
 // 2.1.0 adds an opt-in AG-UI projection while preserving the native stream.
 // 2.0.0 succeeds the 1.x line of the feat/embedded-gateway-host-contract
 // fork (last 1.7.0). The major bump is semantic, not cosmetic: capabilities
@@ -17,7 +21,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '2.1.0'
+export const GATEWAY_PROTOCOL_VERSION = '3.0.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -60,6 +64,9 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // stream into AG-UI ACTIVITY_SNAPSHOT events. The default stream is
   // unchanged.
   'tasks.ag-ui-event-stream',
+  // Native Task events expose A2A-aligned submitted/working/auth_required
+  // states plus typed artifact, presentation and authorization values.
+  'tasks.work-artifacts-authorization',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

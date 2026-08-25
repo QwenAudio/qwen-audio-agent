@@ -119,7 +119,7 @@ function createDeliveryHarness() {
 
     if (['task.completed', 'task.failed'].includes(event.type)) {
       recordResult(task)
-      const inline = task.resultMetadata?.presentation?.inline
+      const inline = task.presentation?.inline
       if (inline?.content) {
         send(ws, {
           type: 'timeline.inline',
@@ -388,7 +388,7 @@ test('multiple programming tasks: each gets one inline and one injectResult', as
 test('failed task: no inline shown, error delivered via injectResult once', async () => {
   const h = createDeliveryHarness()
 
-  // Runner throws — TaskManager sets task.error, resultMetadata stays null,
+  // Runner throws — TaskManager sets task.error, presentation stays null,
   // so no inline content is available for timeline.inline.
   const { id: taskId } = h.taskManager.create({
     objective: '编写一个快速排序',
@@ -400,7 +400,7 @@ test('failed task: no inline shown, error delivered via injectResult once', asyn
   await h.taskManager.wait(taskId)
   await flush()
 
-  // Failed tasks have no resultMetadata → no timeline.inline
+  // Failed tasks have no presentation → no timeline.inline
   const inlineMsg = h.wsMessages.find(m => m.type === 'timeline.inline')
   assert.equal(inlineMsg, undefined, 'no timeline.inline for failed task')
 

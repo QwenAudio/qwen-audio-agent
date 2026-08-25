@@ -1,4 +1,5 @@
 import { TaskDomainEvent } from '../task/task-events.mjs'
+import { isTaskActive } from '../task/task-state.mjs'
 
 export function installOfflineNotifications({
   taskManager,
@@ -17,7 +18,7 @@ export function installOfflineNotifications({
       })
       if (!current) return
       if (event.type === TaskDomainEvent.PROGRESS_CHECK) {
-        if (current.workState !== 'active') return
+        if (!isTaskActive(current.status)) return
         parentPort?.postMessage({
           type: 'qwen-audio-agent:offline-notification',
           task: {

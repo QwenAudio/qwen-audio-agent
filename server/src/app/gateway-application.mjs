@@ -332,13 +332,13 @@ app.get('/api/timeline', (req, res) => {
     ownerId: req.identity.ownerId,
     sessionId: req.query.sessionId,
   })
-    .filter(task => task.resultMetadata?.presentation?.inline?.content)
+    .filter(task => task.presentation?.inline?.content)
     .map(task => ({
       id: `inline_${task.id}`,
       taskId: task.id,
       turnId: task.turnId || null,
       createdAt: task.completedAt || task.createdAt,
-      ...task.resultMetadata.presentation.inline,
+      ...task.presentation.inline,
     }))
     .sort((left, right) => left.createdAt - right.createdAt)
   res.json({ items })

@@ -12,8 +12,15 @@ export function phaseForTask(task) {
   if (task.status === 'delegated') return 'delegated'
   if (task.status === 'finalizing') return 'finalizing'
   if (task.status === 'cancelling') return 'cancelling'
-  if (task.workState === 'active') return 'running'
+  if (['working', 'auth_required', 'active'].includes(task.workState)) {
+    return 'running'
+  }
   return 'running'
+}
+
+export function taskIsActive(task) {
+  return ['submitted', 'working', 'auth_required', 'active']
+    .includes(task?.workState)
 }
 
 export function removeDeliveredTask(tasks, taskId) {

@@ -15,11 +15,68 @@ export const GatewayEventEnvelopeSchema = z.object({
   type: z.string().min(1),
 }).passthrough()
 
+export const GatewayArtifactPartSchema = z.union([
+  z.object({
+    text: z.string(),
+    mediaType: z.string().min(1),
+    filename: z.string().optional(),
+  }),
+  z.object({
+    raw: z.string().min(1),
+    mediaType: z.string().min(1),
+    filename: z.string().optional(),
+  }),
+  z.object({
+    url: z.string().min(1),
+    mediaType: z.string().min(1),
+    filename: z.string().optional(),
+  }),
+  z.object({
+    data: z.unknown(),
+    mediaType: z.string().min(1),
+    filename: z.string().optional(),
+  }),
+])
+
+export const GatewayArtifactSchema = z.object({
+  artifactId: z.string().min(1),
+  name: z.string().optional(),
+  description: z.string().optional(),
+  parts: z.array(GatewayArtifactPartSchema).min(1),
+})
+
+export const GatewayPresentationSchema = z.object({
+  speech: z.string(),
+  inline: z.object({
+    title: z.string(),
+    format: z.enum(['markdown', 'code', 'link']),
+    content: z.string(),
+  }).nullable(),
+})
+
+export const GatewayAuthorizationSchema = z.object({
+  id: z.string().min(1),
+  workId: z.string().nullable(),
+  status: z.enum(['pending', 'approved', 'denied', 'cancelled']),
+  category: z.string().min(1),
+  summary: z.string().min(1),
+  patterns: z.array(z.string()),
+  createdAt: z.number(),
+  resolvedAt: z.number().nullable(),
+})
+
 export const GatewayTaskSchema = z.object({
   id: z.string().min(1),
   workId: z.string().min(1),
   jobId: z.string().min(1),
-  workState: z.string().min(1),
+  workState: z.enum([
+    'submitted',
+    'working',
+    'auth_required',
+    'completed',
+    'failed',
+    'cancelled',
+  ]),
   status: z.string().min(1),
   kind: z.string().min(1),
   parentWorkId: z.string().nullable().optional(),
@@ -33,10 +90,11 @@ export const GatewayTaskSchema = z.object({
   elapsedMs: z.number(),
   result: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
-  resultMetadata: z.unknown().optional(),
+  artifacts: z.array(GatewayArtifactSchema).optional(),
+  presentation: GatewayPresentationSchema.nullable().optional(),
   activity: z.array(z.unknown()).optional(),
   delegation: z.unknown().optional(),
-  authorization: z.unknown().optional(),
+  authorization: GatewayAuthorizationSchema.nullable().optional(),
   notificationStatus: z.string().optional(),
   notificationDeliveredAt: z.number().nullable().optional(),
   schedule: z.unknown().optional(),
@@ -63,7 +121,7 @@ export const GatewayVoiceMessageSchema = GatewayEventEnvelopeSchema.extend({
 export const GatewayTaskEventMessageSchema = GatewayEventEnvelopeSchema.extend({
   type: GatewayTaskEventTypeSchema,
   task: GatewayTaskSchema,
-  permission: z.record(z.string(), z.unknown()).optional(),
+  permission: GatewayAuthorizationSchema.optional(),
   message: z.string().optional(),
 })
 

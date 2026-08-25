@@ -10,6 +10,7 @@ import {
   removeTaskInPhase,
   taskDeliverySettled,
   taskDetail,
+  taskIsActive,
   taskLabel,
   taskView,
 } from '../src/task-view.js'
@@ -17,11 +18,11 @@ import {
 test('presents every active coordinator request as one frontend processing phase', () => {
   assert.equal(phaseForTask({
     status: 'queued',
-    workState: 'active',
+    workState: 'submitted',
   }), 'queued')
   assert.equal(phaseForTask({
     status: 'running',
-    workState: 'active',
+    workState: 'working',
   }), 'running')
   assert.equal(taskLabel({ phase: 'queued' }), '排队中')
   assert.equal(taskLabel({ phase: 'running' }), '进行中')
@@ -30,15 +31,15 @@ test('presents every active coordinator request as one frontend processing phase
   assert.equal(taskLabel({ phase: 'cancelling' }), '正在取消')
   assert.equal(phaseForTask({
     status: 'finalizing',
-    workState: 'active',
+    workState: 'working',
   }), 'finalizing')
   assert.equal(phaseForTask({
     status: 'cancelling',
-    workState: 'active',
+    workState: 'working',
   }), 'cancelling')
   assert.equal(phaseForTask({
     status: 'delegated',
-    workState: 'active',
+    workState: 'working',
   }), 'delegated')
   assert.equal(taskDetail({
     phase: 'delegated',
@@ -58,6 +59,10 @@ test('presents every active coordinator request as one frontend processing phase
   }), 'cancelled')
   assert.equal(taskLabel({ phase: 'cancelled' }), '已取消')
   assert.equal(taskDetail({ phase: 'cancelled' }), '这项工作已停止')
+  assert.equal(taskIsActive({ workState: 'submitted' }), true)
+  assert.equal(taskIsActive({ workState: 'working' }), true)
+  assert.equal(taskIsActive({ workState: 'auth_required' }), true)
+  assert.equal(taskIsActive({ workState: 'completed' }), false)
 })
 
 test('separates backend completion from realtime result delivery', () => {

@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { AgentError } from './backend-adapter.mjs'
 import { ACP_SESSION_TOOL_NAMES } from './acp-session-tools.mjs'
+import {
+  AuthorizationStatus,
+  normalizeAuthorization,
+  resolveAuthorization,
+} from '../core/work-authorization.mjs'
 
 function clean(value) {
   return String(value || '').trim()
@@ -50,10 +55,10 @@ export class PermissionBroker {
     }
     const id = `auth_${randomUUID().replaceAll('-', '')}`
     const pending = deferred()
-    const permission = {
+    const permission = normalizeAuthorization({
       id,
       workId: session?.coordinationRunId || null,
-      status: 'pending',
+      status: AuthorizationStatus.PENDING,
       category: bounded(name, 80) || 'unknown',
       summary: [
         bounded(name, 80),
@@ -63,9 +68,9 @@ export class PermissionBroker {
           || params?.toolCall?.rawInput?.path
           || '',
         ),
-      ].filter(Boolean).join('：'),
+      ].filter(Boolean).join('：') || '后台操作',
       patterns: [],
-    }
+    })
     const record = {
       ...permission,
       ownerId: clean(session?.ownerId),
@@ -84,15 +89,13 @@ export class PermissionBroker {
   cancel(record) {
     if (!record || !this.pending.delete(record.id)) return false
     record.pending.resolve({ outcome: { outcome: 'cancelled' } })
+    const permission = resolveAuthorization(
+      record,
+      AuthorizationStatus.CANCELLED,
+    )
     record.onEvent?.({
       type: 'backend.permission.resolved',
-      permission: {
-        id: record.id,
-        workId: record.workId,
-        status: 'cancelled',
-        category: record.category,
-        summary: record.summary,
-      },
+      permission,
     })
     return true
   }
@@ -118,13 +121,10 @@ export class PermissionBroker {
     record.pending.resolve(option
       ? { outcome: { outcome: 'selected', optionId: option.optionId } }
       : { outcome: { outcome: 'cancelled' } })
-    const permission = {
-      id: record.id,
-      workId: record.workId,
-      status: approved ? 'approved' : 'denied',
-      category: record.category,
-      summary: record.summary,
-    }
+    const permission = resolveAuthorization(
+      record,
+      approved ? AuthorizationStatus.APPROVED : AuthorizationStatus.DENIED,
+    )
     record.onEvent?.({ type: 'backend.permission.resolved', permission })
     this.resolved.set(permission.id, { ownerId: record.ownerId, permission })
     while (this.resolved.size > this.resolvedLimit) {

@@ -159,11 +159,11 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 
 ### R1 — Protocol and client state
 
-- [ ] Add Zod schemas for Gateway client, server, and task events.
-- [ ] Introduce domain events and public event projectors.
-- [ ] Add an AG-UI compatibility projector without removing current events.
-- [ ] Extract a shared Gateway client and state reducer.
-- [ ] Migrate WebUI, TUI, and Desktop one at a time.
+- [x] Add Zod schemas for Gateway client, server, and task events.
+- [x] Introduce domain events and public event projectors.
+- [x] Add an AG-UI compatibility projector without removing current events.
+- [x] Extract a shared Gateway client and state reducer.
+- [x] Migrate WebUI, TUI, and Desktop one at a time.
 
 ### R2 — Frontend Chatbot Runtime
 

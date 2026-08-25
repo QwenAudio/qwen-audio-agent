@@ -205,11 +205,11 @@ ACP Session、协调 Prompt、协调 MCP 和原生委托全部属于 ACP Adapter
 
 ### R1：协议与客户端状态
 
-- [ ] 为 Gateway Client/Server/Task 事件建立 Zod Schema。
-- [ ] 建立 Domain Event 与公开 Event Projector。
-- [ ] 增加 AG-UI 兼容投射层，不立即删除现有事件。
-- [ ] 提取共享 Gateway Client 和状态 Reducer。
-- [ ] 依次迁移 WebUI、TUI、Desktop。
+- [x] 为 Gateway Client/Server/Task 事件建立 Zod Schema。
+- [x] 建立 Domain Event 与公开 Event Projector。
+- [x] 增加 AG-UI 兼容投射层，不立即删除现有事件。
+- [x] 提取共享 Gateway Client 和状态 Reducer。
+- [x] 依次迁移 WebUI、TUI、Desktop。
 
 完成条件：三个客户端不再各自解释 Work 和 Voice 状态机。
 

@@ -14,7 +14,8 @@
 版本号遵循 SemVer：新增能力升 minor；下文点名的任一端点或事件发生破坏性
 变更升 major。
 
-当前版本为 `2.0.0`，接替 `feat/embedded-gateway-host-contract` 分支的 `1.x`
+当前版本为 `2.1.0`。`2.1` 新增可选的 AG-UI Task 事件投射，默认事件流保持
+`2.0` 契约不变。`2.x` 接替 `feat/embedded-gateway-host-contract` 分支的 `1.x`
 版本线（止于 `1.7.0`）：升 major 记录的事实是——那条线宣告过的部分能力位
 （如 `gateway.embedded-lifecycle`、`desktop.settings-window`）不在本契约中。
 从该分支迁移的宿主应重新核对下方能力位表，而不是假设旧清单仍然成立。
@@ -32,6 +33,7 @@
 | `input.suspend-clears-playback` | 抢占同时清除播报，宿主录音不会录进 Gateway 自己的语音 | `server/test/input-suspend-protocol.test.mjs` |
 | `input.suspend-ttl` | 持有者不主动释放时抢占自行过期 | `server/test/input-arbitration.test.mjs` |
 | `input.suspend-ack` | 客户端以 `input.suspend.ack` 确认抢占生效（仅用于状态展示——不要等待它） | `server/test/input-suspend-protocol.test.mjs` |
+| `tasks.ag-ui-event-stream` | `GET /api/tasks/:id/events?format=ag-ui` 将现有 Task 事件流投射为 AG-UI `ACTIVITY_SNAPSHOT`；不传 `format` 时仍为原生事件流 | `server/test/agui-event-projector.test.mjs` |
 | `desktop.orb-shell` | 悬浮球形态的主进程契约随包发布：`bindOrbShell` 应答随包 preload 发出的全部通道 | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` 持有悬浮球窗口配方；其 `destroy()` 是宿主的同步销毁路径（渲染进程退出才能确定性释放麦克风） | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` 覆盖默认锚点、显示器夹取与拖放持久化 | `desktop/test/orb-placement.test.mjs` |
@@ -55,6 +57,7 @@
 | `qwen-audio-agent/gateway-lease` | `readGatewayLease`、`findRunningGateway`、`acquireGatewayLease` |
 | `qwen-audio-agent/realtime-events` | `GatewayClientEvent`、`GatewayServerEvent`、`GatewayTaskEvent` |
 | `qwen-audio-agent/gateway-events` | Gateway 事件 Zod Schema 与解析函数 |
+| `qwen-audio-agent/ag-ui-events` | 当前支持的 AG-UI 兼容事件 Zod Schema 与解析函数 |
 | `qwen-audio-agent/gateway-client-state` | `createGatewayClientState`、`reduceGatewayClientState`、`acceptsGatewayVoiceState` |
 | `qwen-audio-agent/settings` | `createSettingsStore` |
 | `qwen-audio-agent/skin-store` | `importSkin`、`listSkins`、`removeSkin`、`effectiveOrbSkin`、`skinsDirectory`、`validateSkinPackage` |
@@ -118,10 +121,15 @@ await orb.load()
 | `POST /api/input/suspend` | 抢占麦克风：`{ owner, reason?, ttlMs? }`，默认 15 秒，上限 300 秒 |
 | `POST /api/input/resume` | 释放抢占：`{ owner }` |
 | `GET /api/input` | 当前抢占状态 |
+| `GET /api/tasks/:id/events?format=ag-ui` | 单个 Task 的可选 AG-UI `ACTIVITY_SNAPSHOT` 事件流；能力位：`tasks.ag-ui-event-stream` |
 
 麦克风抢占的语义要点：**不要等回执**（按键到录音是延迟敏感路径，直接发送并
 立即开始录音）；按 owner 幂等，重复宣告只刷新截止时间；多 owner 引用计数；
 每个抢占都会过期，持有方崩溃或漏发 `resume` 也会自动恢复。
+
+该接口只是 AG-UI 事件投射，不是完整的 AG-UI Agent/Run 端点。每个 Task 使用
+稳定的 `messageId`，每次生命周期更新都会替换对应的 `qwen.audio.task` activity
+内容。原生 Task 事件流仍是默认格式，现有客户端不会收到任何新增事件。
 
 未在此列出的接口（`/api/tasks`、`/api/timeline`、`/api/backend/ui`、
 `/api/permissions/:id`，以及 `WS /api/realtime` 中除下文事件之外的负载）

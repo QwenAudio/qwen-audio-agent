@@ -18,7 +18,9 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
-The current version is `2.0.0`. It succeeds the `1.x` line of the
+The current version is `2.1.0`. The `2.1` line adds the optional AG-UI Task
+event projection; it succeeds the `2.0` contract without changing its default
+event stream. The `2.x` line succeeds the `1.x` line of the
 `feat/embedded-gateway-host-contract` fork (which ended at `1.7.0`): the major
 bump records that capabilities that line advertised — such as
 `gateway.embedded-lifecycle` and `desktop.settings-window` — are not part of
@@ -38,6 +40,7 @@ below instead of assuming the old list.
 | `input.suspend-clears-playback` | Suspending also clears playback so host recording stays clean | `server/test/input-suspend-protocol.test.mjs` |
 | `input.suspend-ttl` | A suspension expires on its own when the holder never resumes | `server/test/input-arbitration.test.mjs` |
 | `input.suspend-ack` | Clients confirm a suspension with `input.suspend.ack` (status display only — never wait for it) | `server/test/input-suspend-protocol.test.mjs` |
+| `tasks.ag-ui-event-stream` | `GET /api/tasks/:id/events?format=ag-ui` projects the existing Task stream into AG-UI `ACTIVITY_SNAPSHOT` events; omitting `format` preserves the native stream | `server/test/agui-event-projector.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |
@@ -62,6 +65,7 @@ is unsupported and breaks without notice.
 | `qwen-audio-agent/gateway-lease` | `readGatewayLease`, `findRunningGateway`, `acquireGatewayLease` |
 | `qwen-audio-agent/realtime-events` | `GatewayClientEvent`, `GatewayServerEvent`, `GatewayTaskEvent` |
 | `qwen-audio-agent/gateway-events` | Gateway event Zod schemas and parsers |
+| `qwen-audio-agent/ag-ui-events` | Zod schema and parser for the supported AG-UI compatibility surface |
 | `qwen-audio-agent/gateway-client-state` | `createGatewayClientState`, `reduceGatewayClientState`, `acceptsGatewayVoiceState` |
 | `qwen-audio-agent/settings` | `createSettingsStore` |
 | `qwen-audio-agent/skin-store` | `importSkin`, `listSkins`, `removeSkin`, `effectiveOrbSkin`, `skinsDirectory`, `validateSkinPackage` |
@@ -126,12 +130,18 @@ await orb.load()
 | `POST /api/input/suspend` | Take the microphone: `{ owner, reason?, ttlMs? }`; default TTL 15 s, cap 300 s |
 | `POST /api/input/resume` | Release it: `{ owner }` |
 | `GET /api/input` | Current suspension status |
+| `GET /api/tasks/:id/events?format=ag-ui` | Opt-in AG-UI `ACTIVITY_SNAPSHOT` stream for one Task; capability: `tasks.ag-ui-event-stream` |
 
 Microphone suspension semantics: do not wait for the acknowledgement (a key
 press that starts recording is latency sensitive — send and start recording);
 idempotent per owner, a repeated suspend refreshes the deadline; multiple
 owners are reference counted; every hold expires, so a crashed holder can
 never silence the Gateway for good.
+
+The AG-UI endpoint is an event projection, not a complete AG-UI agent/run
+endpoint. Each Task keeps one stable `messageId`; every lifecycle update
+replaces its `qwen.audio.task` activity content. The native Task stream remains
+the default and existing clients receive no additional events.
 
 Endpoints not listed here (`/api/tasks`, `/api/timeline`, `/api/backend/ui`,
 `/api/permissions/:id`, `WS /api/realtime` payloads beyond the events below)

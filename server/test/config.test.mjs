@@ -69,6 +69,12 @@ test('uses a key-free fallback until the user configures a search provider', () 
     }),
     /不支持的 Web Search Provider/,
   )
+  assert.throws(
+    () => resolveWebSearchConfiguration({
+      QWEN_AUDIO_WEB_SEARCH_PROVIDER: 'duckduckgo',
+    }),
+    /不支持的 Web Search Provider/,
+  )
 })
 
 test('uses the shared user data workspace for the default OpenCode workspace', () => {

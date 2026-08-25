@@ -115,6 +115,11 @@ with A2A Task semantics: `submitted`, `working`, `auth_required`, `completed`,
 Backends implement `describe`, `start`, `health`, `submit`, `status`, `cancel`,
 `respondAuthorization`, `subscribe`, and `close`. ACP sessions, coordinator
 prompts, coordinator MCP, and native delegation stay inside the ACP adapter.
+Every adapter implements the complete method surface and is checked at the
+composition boundary. Optional capabilities are declared by `describe()` and
+rejected explicitly, never inferred from a missing function. `submit`,
+`status`, `cancel`, and `respondAuthorization` operate on Gateway Work IDs;
+backend-private session and task identifiers never cross the port.
 
 ### Artifact and Presentation
 
@@ -201,7 +206,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 
 ### R4 — Backend Runtime
 
-- [ ] Define and validate BackendPort.
+- [x] Define and validate BackendPort.
 - [ ] Reduce AgentClient to the single-backend runtime.
 - [ ] Implement BackendPort in the ACP adapter.
 - [ ] Move coordinator and session tools into the ACP boundary.

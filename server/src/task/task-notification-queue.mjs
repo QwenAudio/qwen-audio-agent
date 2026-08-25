@@ -54,6 +54,7 @@ export class TaskNotificationQueue {
 
   markDelivered(taskIds, { claimantId } = {}) {
     let delivered = 0
+    const deliveredTasks = []
     for (const id of taskIds || []) {
       const task = this.#ownedClaim(id, claimantId)
       if (!task) continue
@@ -62,9 +63,12 @@ export class TaskNotificationQueue {
       task.notificationClaimedAt = null
       task.notificationDeliveredAt = this.now()
       delivered += 1
-      this.onDelivered(task)
+      deliveredTasks.push(task)
     }
     if (delivered) this.onChanged()
+    // Checkpoint the acknowledgement before observers see it. A crash after
+    // the event is therefore restored as delivered rather than replayed.
+    deliveredTasks.forEach(task => this.onDelivered(task))
     return delivered
   }
 

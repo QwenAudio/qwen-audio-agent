@@ -102,3 +102,28 @@ test('reclaims an expired lease but preserves a live lease', () => {
   assert.equal(tasks.get('live').notificationStatus, 'delivering')
   assert.equal(changes.length, 1)
 })
+
+test('checkpoints delivery before publishing its acknowledgement event', () => {
+  const records = [task({
+    id: 'work-one',
+    notificationStatus: 'delivering',
+    notificationClaimantId: 'desktop',
+    notificationClaimedAt: 90,
+  })]
+  const tasks = new Map(records.map(item => [item.id, item]))
+  const order = []
+  const queue = new TaskNotificationQueue({
+    tasks,
+    snapshot: item => ({ ...item }),
+    claimTtlMs: () => 50,
+    now: () => 100,
+    onChanged: () => order.push('checkpoint'),
+    onDelivered: () => order.push('event'),
+  })
+
+  assert.equal(queue.markDelivered(
+    ['work-one'],
+    { claimantId: 'desktop' },
+  ), 1)
+  assert.deepEqual(order, ['checkpoint', 'event'])
+})

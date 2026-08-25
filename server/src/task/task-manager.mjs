@@ -26,9 +26,12 @@ import {
   TaskStatus,
   transitionTask,
 } from './task-state.mjs'
+import {
+  recoveredNotificationStatus,
+  TaskRecoveryAction,
+  taskRecoveryAction,
+} from './task-recovery.mjs'
 import { logger } from '../core/logger.mjs'
-
-const REPLAYABLE_REMINDER = new Set(['queued', 'running'])
 
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
@@ -123,6 +126,7 @@ export class TaskManager {
 
   restore() {
     const savedTasks = this.repository.load()
+    let recoveryChanged = false
     for (const saved of savedTasks) {
       saved.scope = normalizeTaskScope(saved.scope)
       saved.jobId = isUserWork(saved)
@@ -135,16 +139,12 @@ export class TaskManager {
       saved.authorization = normalizeAuthorization(saved.authorization, {
         workId: saved.id,
       })
-      // Scheduled tasks survive restarts intact. ReminderScheduler.start()
-      // handles overdue vs future dispatch. Reminders that had already fired
-      // (queued/running) when the Gateway stopped are also restored as
-      // scheduled: their runner only speaks the stored text, so re-firing
-      // them as overdue catch-up is safe and they are never silently lost.
-      const restartAsScheduled = (
-        saved.kind === 'reminder'
-        && REPLAYABLE_REMINDER.has(saved.status)
-      )
-      if (saved.status === 'scheduled' || restartAsScheduled) {
+      const recovery = taskRecoveryAction(saved)
+      if (recovery !== TaskRecoveryAction.RESTORE) recoveryChanged = true
+      if (saved.notificationStatus === 'delivering') recoveryChanged = true
+      // Scheduled work survives intact. A reminder that was already firing
+      // is safe to catch up because its runner only speaks persisted text.
+      if (recovery === TaskRecoveryAction.RESCHEDULE) {
         const task = {
           ...saved,
           status: 'scheduled',
@@ -159,6 +159,9 @@ export class TaskManager {
           activity: Array.isArray(saved.activity) ? saved.activity : [],
           abortController: null,
           schedulerHeld: false,
+          notificationStatus: 'none',
+          notificationClaimantId: null,
+          notificationClaimedAt: null,
           timeoutTimer: null,
           progressCheckTimer: null,
         }
@@ -168,40 +171,30 @@ export class TaskManager {
         this.tasks.set(task.id, task)
         continue
       }
-      const wasActive = isTaskActive(saved.status)
-      const canRecoverDelegation = (
-        isUserWork(saved)
-        && ['delegated', 'finalizing'].includes(saved.status)
-        && saved.delegation?.id
-        && saved.delegation?.sessionId
-      )
-      const recoveredNotificationStatus = !isUserWork(saved)
-        ? 'none'
-        : (wasActive && !canRecoverDelegation)
-          || saved.notificationStatus === 'delivering'
-          ? 'pending'
-          : canRecoverDelegation
-            ? 'none'
-            : saved.notificationStatus || 'none'
+      const reattach = recovery === TaskRecoveryAction.REATTACH
+      const fail = recovery === TaskRecoveryAction.FAIL
+      const cancel = recovery === TaskRecoveryAction.CANCEL
       const task = {
         ...saved,
-        status: canRecoverDelegation
+        status: reattach
           ? 'queued'
-          : wasActive ? 'failed' : saved.status,
-        error: wasActive && !canRecoverDelegation
+          : cancel ? 'cancelled'
+            : fail ? 'failed' : saved.status,
+        error: fail
           ? 'qwen-audio-agent 重启时这项工作尚未完成，请重新提交。'
-          : saved.error || null,
-        completedAt: wasActive && !canRecoverDelegation
+          : cancel ? null : saved.error || null,
+        completedAt: fail || cancel
           ? Date.now()
           : saved.completedAt,
         activity: Array.isArray(saved.activity) ? saved.activity : [],
-        delegation: canRecoverDelegation || !wasActive
+        delegation: reattach || !isTaskActive(saved.status)
           ? saved.delegation || null
           : null,
-        authorization: wasActive || isTaskTerminal(saved.status)
+        authorization: recovery !== TaskRecoveryAction.RESTORE
+          || isTaskTerminal(saved.status)
           ? null
           : saved.authorization,
-        notificationStatus: recoveredNotificationStatus,
+        notificationStatus: recoveredNotificationStatus(saved, recovery),
         notificationClaimantId: null,
         notificationClaimedAt: null,
         resolve: null,
@@ -209,8 +202,12 @@ export class TaskManager {
         runner: null,
         timeoutTimer: null,
         progressCheckTimer: null,
+        // Until the adapter accepts recovery, persistence must retain the
+        // recoverable backend phase rather than checkpoint the temporary
+        // in-memory `queued` phase.
+        recoveryPersistedStatus: reattach ? saved.status : null,
       }
-      if (canRecoverDelegation) {
+      if (reattach) {
         task.promise = new Promise(resolve => {
           task.resolve = resolve
         })
@@ -221,6 +218,7 @@ export class TaskManager {
       this.tasks.set(task.id, task)
     }
     this.prune()
+    if (recoveryChanged) this.persist()
   }
 
   recoverDelegated({
@@ -235,6 +233,7 @@ export class TaskManager {
         delegation: task.delegation ? { ...task.delegation } : null,
       }
       if (!canRecover?.(snapshot)) {
+        task.recoveryPersistedStatus = null
         transitionTask(task, TaskStatus.FAILED)
         task.error = 'qwen-audio-agent 重启时这项项目任务失去连接，请重新提交。'
         task.completedAt = Date.now()
@@ -489,6 +488,7 @@ export class TaskManager {
   }
 
   start(task) {
+    task.recoveryPersistedStatus = null
     transitionTask(task, TaskStatus.RUNNING)
     task.startedAt = Date.now()
     task.abortController = new AbortController()

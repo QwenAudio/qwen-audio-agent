@@ -159,7 +159,8 @@ test('restore never re-schedules a reminder whose cancellation had started', () 
   const manager = new TaskManager({ store })
 
   const task = manager.get(saved.id)
-  assert.notEqual(task.status, 'scheduled')
+  assert.equal(task.status, 'cancelled')
+  assert.equal(task.notificationStatus, 'none')
   assert.equal(manager.tasks.get(saved.id).runner, null)
 })
 

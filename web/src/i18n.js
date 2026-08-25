@@ -56,6 +56,7 @@ const translations = {
   '拒绝': 'Deny',
   '你': 'You',
   '已打断': 'Interrupted',
+  '来源': 'Sources',
   '打开 {label}': 'Open {label}',
   '选择前台语音引擎': 'Select voice frontend engine',
   '前台：默认（{label}）': 'Frontend: default ({label})',

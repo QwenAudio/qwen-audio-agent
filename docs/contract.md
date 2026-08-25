@@ -18,7 +18,8 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
-The current version is `3.0.0`. The `3.0` line gives native Task events
+The current version is `3.1.0`. The `3.1` line adds bounded citations to final
+assistant transcript events. The `3.0` line gives native Task events
 A2A-aligned `submitted`, `working`, and `auth_required` states together with
 typed artifact, presentation, and authorization values. It replaces the `2.x`
 `active` state and opaque result metadata, so event consumers must check the
@@ -45,6 +46,7 @@ below instead of assuming the old list.
 | `input.suspend-ack` | Clients confirm a suspension with `input.suspend.ack` (status display only — never wait for it) | `server/test/input-suspend-protocol.test.mjs` |
 | `tasks.ag-ui-event-stream` | `GET /api/tasks/:id/events?format=ag-ui` projects the existing Task stream into AG-UI `ACTIVITY_SNAPSHOT` events; omitting `format` preserves the native stream | `server/test/agui-event-projector.test.mjs` |
 | `tasks.work-artifacts-authorization` | Native Task events use A2A-aligned work states and expose typed `artifacts`, `presentation`, and `authorization` values | `test/gateway-event-schema.test.mjs`, `server/test/task-state.test.mjs` |
+| `messages.citations` | Final assistant `transcript.final` events may carry normalized citations collected from frontend retrieval in the same turn | `test/gateway-event-schema.test.mjs`, `server/test/realtime-presentation-runtime.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |
@@ -161,6 +163,7 @@ spells them by hand is on its own.
 | server → client | `input.suspend` | Stop capturing outright (stronger than user-level mute: no capture, no wake word); carries `owner`, `reason`, `expiresAt` |
 | server → client | `input.resume` | Capture may resume |
 | client → server | `input.suspend.ack` | Confirms the suspension took effect on this client |
+| server → client | `transcript.final` | A final assistant transcript may include `citations: [{ id, title, url, snippet?, source?, published_at? }]`; capability: `messages.citations` |
 
 ### Shared client state
 

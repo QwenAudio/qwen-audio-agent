@@ -225,6 +225,9 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
 Set `QWEN_AUDIO_WEB_SEARCH_PROVIDER=none` to disable frontend web search.
+WebUI and terminal clients show the normalized source links below the final
+assistant answer; other clients can consume the same `messages.citations`
+Gateway capability.
 
 When you need to execute backend tasks, select a backend Agent (using OpenClaw as an example):
 

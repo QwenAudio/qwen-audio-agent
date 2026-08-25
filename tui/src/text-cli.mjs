@@ -3,6 +3,7 @@
 import { createInterface } from 'node:readline'
 import { pathToFileURL } from 'node:url'
 import WebSocket from 'ws'
+import { formatCitationLines } from '../../shared/citation-display.mjs'
 import { inputPartsFromText } from './input-parts.mjs'
 import { isExitCommand } from './terminal-commands.mjs'
 
@@ -148,6 +149,8 @@ export async function runCli(options = parseArguments(process.argv.slice(2))) {
         } else if (event.content) {
           print(`${BOLD}\u{1F916} ${RST}${event.content}`)
         }
+        const citations = formatCitationLines(event.citations)
+        if (citations) print(`${DIM}${citations}${RST}`)
       }
     } else if (event.type === 'timeline.inline') {
       const content = event.item?.content || event.item?.markdown || ''

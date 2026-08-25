@@ -217,12 +217,12 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 
 ### R5 — Complete the frontend
 
-- [ ] Web search provider, URL fetch, and citations.
+- [x] Web search provider, URL fetch, and citations.
   - [x] Define a provider-neutral Web Search port and bounded citation model.
   - [x] Add capability-gated frontend tools and an SSRF-safe URL fetcher.
   - [x] Add configurable MCP search plus an experimental key-free fallback,
     without another model call.
-  - [ ] Project citations through the public client protocol.
+  - [x] Project citations through the public client protocol.
 - [ ] Knowledge store, document extraction, and indexing system jobs.
 - [ ] Full context, retrieval provider, and RAG tools.
 - [ ] Routing, citation, interruption, duplicate-speech, and prompt-injection

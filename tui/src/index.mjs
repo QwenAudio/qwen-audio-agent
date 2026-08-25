@@ -16,6 +16,7 @@ import {
 } from '../../shared/input-parts.mjs'
 import { createLogger } from '../../shared/logger.mjs'
 import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
+import { formatCitationLines } from '../../shared/citation-display.mjs'
 import { startMacVoiceIO } from './macos-voice-io.mjs'
 import { resamplePcm16 } from './pcm-audio.mjs'
 import { startPortAudioVoiceIO } from './portaudio-voice-io.mjs'
@@ -1165,6 +1166,8 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     onAssistantDelta: content => transcriptRenderer.stream(assistantPrefix, content),
     onAssistant: (content, event) => {
       transcriptRenderer.finish(assistantPrefix, content)
+      const citations = formatCitationLines(event?.citations)
+      if (citations) print(style(citations, 'dim'))
       turnStatusDisplay.assistantFinished(event?.turnId)
     },
     onReset: () => {

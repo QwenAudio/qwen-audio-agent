@@ -113,6 +113,7 @@ export class ToolCallHandler {
     onAgentActivity = () => {},
     inputAssets = null,
     frontendRetrieval = null,
+    turnCitations = null,
   }) {
     this.taskManager = taskManager
     this.ownerId = ownerId
@@ -135,6 +136,7 @@ export class ToolCallHandler {
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
     this.frontendRetrieval = frontendRetrieval
+    this.turnCitations = turnCitations
     this.activeToolEntries = new Map()
     this.toolExecutor = frontendToolRegistry.createExecutor({
       [SPAWN_THINKING_TOOL_NAME]: context => (
@@ -214,12 +216,15 @@ export class ToolCallHandler {
           '工具结果过大，无法在当前语音轮次中安全返回。',
           { retryable: true },
         )
+    const projectedOutput = this.turnCitations?.project(turnId, safeOutput)
+      || safeOutput
     await this.getFrontend()?.sendFunctionOutput(
       callId,
-      safeOutput,
+      projectedOutput,
       { turnId, taskId, ...(responseContext || {}) },
       frontendOptions,
     )
+    return projectedOutput
   }
 
   beginDeferredToolResponse(responseId, {

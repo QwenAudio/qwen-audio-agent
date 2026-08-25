@@ -69,6 +69,7 @@ export class RealtimePresentationRuntime {
     clearResponseCandidate,
     announcementQuietMs,
     responseContextCleanupMs,
+    turnCitations = null,
   }) {
     this.ownerId = ownerId
     this.sessionId = sessionId
@@ -85,6 +86,7 @@ export class RealtimePresentationRuntime {
     this.clearResponseCandidate = clearResponseCandidate
     this.announcementQuietMs = announcementQuietMs
     this.responseContextCleanupMs = responseContextCleanupMs
+    this.turnCitations = turnCitations
     this.contexts = new Map()
     this.playbackTurns = new Map()
   }
@@ -438,6 +440,9 @@ export class RealtimePresentationRuntime {
   }
 
   #emitTranscript({ id, context, content, final }) {
+    const citations = final && String(content || '').trim()
+      ? this.turnCitations?.consume(context.turnId) || []
+      : []
     if (final) {
       this.conversationSync.record({
         ownerId: this.ownerId,
@@ -448,6 +453,7 @@ export class RealtimePresentationRuntime {
         source: context.origin === 'model'
           ? 'realtime-direct'
           : 'agent-presentation',
+        ...(citations.length ? { citations } : {}),
         ...context,
       })
     }
@@ -458,6 +464,7 @@ export class RealtimePresentationRuntime {
       role: 'assistant',
       content: content || '',
       responseId: id,
+      ...(citations.length ? { citations } : {}),
       ...this.publicContext(context),
     })
   }

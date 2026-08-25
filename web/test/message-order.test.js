@@ -7,11 +7,43 @@ import {
   finalAssistantContent,
   insertByTurn,
   normalizeTranscript,
+  upsertAssistantTranscript,
   upsertUserTranscript,
 } from '../src/message-order.js'
 
 test('normalizes hard line breaks in final ASR text', () => {
   assert.equal(normalizeTranscript('查看下载目录\n下面有哪些文件  '), '查看下载目录 下面有哪些文件')
+})
+
+test('attaches citations to a final assistant transcript and preserves them', () => {
+  let messages = upsertAssistantTranscript([], {
+    id: 'voice:response-1',
+    turnId: 'voice-100-1',
+    content: '杭州',
+  })
+  messages = upsertAssistantTranscript(messages, {
+    id: 'voice:response-1',
+    turnId: 'voice-100-1',
+    content: '今天晴。',
+    citations: [{
+      id: 'source_1',
+      title: '杭州天气',
+      url: 'https://example.com/weather',
+    }],
+    final: true,
+  })
+
+  assert.equal(messages[0].content, '今天晴。')
+  assert.equal(messages[0].live, false)
+  assert.equal(messages[0].citations[0].id, 'source_1')
+
+  messages = upsertAssistantTranscript(messages, {
+    id: 'voice:response-1',
+    turnId: 'voice-100-1',
+    content: '今天晴。',
+    final: true,
+  })
+  assert.equal(messages[0].citations[0].url, 'https://example.com/weather')
 })
 
 test('replaces the mutable ASR preview and then settles the final transcript', () => {

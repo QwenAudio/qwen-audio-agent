@@ -73,6 +73,32 @@ test('validates voice and task messages in the server direction', () => {
     GatewayServerMessageSchema.safeParse({ type: 'connect' }).success,
     false,
   )
+
+  const citation = {
+    id: 'source_1',
+    title: 'Example source',
+    url: 'https://example.com/page',
+    snippet: 'A bounded factual excerpt.',
+    source: 'example.com',
+  }
+  assert.equal(GatewayServerMessageSchema.safeParse({
+    type: 'transcript.final',
+    role: 'assistant',
+    content: 'Answer with a source.',
+    citations: [citation],
+  }).success, true)
+  assert.equal(GatewayServerMessageSchema.safeParse({
+    type: 'transcript.delta',
+    role: 'assistant',
+    content: 'Answer',
+    citations: [citation],
+  }).success, false)
+  assert.equal(GatewayServerMessageSchema.safeParse({
+    type: 'transcript.final',
+    role: 'assistant',
+    content: 'Answer',
+    citations: [{ ...citation, url: 'https://user:secret@example.com/' }],
+  }).success, false)
 })
 
 test('validates the supported AG-UI activity event surface', () => {

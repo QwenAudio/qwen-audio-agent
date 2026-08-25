@@ -10,6 +10,7 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 3.1.0 adds bounded citations to final assistant transcript events.
 // 3.0.0 gives public Tasks A2A-aligned work states and first-class artifact,
 // presentation and authorization values. This replaces the 2.x `active`
 // state and opaque result metadata, so event consumers must branch on the
@@ -21,7 +22,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '3.0.0'
+export const GATEWAY_PROTOCOL_VERSION = '3.1.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -67,6 +68,9 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // Native Task events expose A2A-aligned submitted/working/auth_required
   // states plus typed artifact, presentation and authorization values.
   'tasks.work-artifacts-authorization',
+  // Final assistant transcript events may carry bounded, normalized citations
+  // collected from frontend retrieval tools during the same user turn.
+  'messages.citations',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

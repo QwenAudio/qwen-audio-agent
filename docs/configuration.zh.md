@@ -129,6 +129,8 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
 设置 `QWEN_AUDIO_WEB_SEARCH_PROVIDER=none` 可以关闭前台联网搜索。
+WebUI 和终端客户端会在最终回答下方展示规范化的来源链接；其他客户端可通过
+Gateway 的 `messages.citations` 能力位消费同一字段。
 
 需要执行后台任务时，再选择后台 Agent（以 OpenClaw 为例）：
 

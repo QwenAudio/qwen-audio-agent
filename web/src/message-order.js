@@ -75,6 +75,50 @@ export function upsertUserTranscript(items, {
   return next
 }
 
+export function upsertAssistantTranscript(items, {
+  id,
+  content,
+  turnId,
+  taskId,
+  taskIds,
+  origin,
+  deliverySequence,
+  citations,
+  final = false,
+}) {
+  const index = items.findIndex(item => item.id === id)
+  if (index < 0) {
+    return insertByTurn(items, {
+      id,
+      role: 'assistant',
+      content: final ? finalAssistantContent(content) : content || '',
+      turnId,
+      taskId,
+      taskIds,
+      origin,
+      deliverySequence,
+      ...(citations?.length ? { citations } : {}),
+      live: !final,
+    })
+  }
+  const next = [...items]
+  const existing = next[index]
+  next[index] = {
+    ...existing,
+    content: final
+      ? finalAssistantContent(content, existing.content)
+      : existing.content + (content || ''),
+    turnId: turnId || existing.turnId,
+    taskId: taskId || existing.taskId,
+    taskIds: taskIds || existing.taskIds,
+    origin: origin || existing.origin,
+    deliverySequence: deliverySequence || existing.deliverySequence,
+    ...(citations?.length ? { citations } : {}),
+    live: !final,
+  }
+  return next
+}
+
 export function discardUserTranscript(items, turnId) {
   if (!turnId) return items
   const id = `user:${turnId}`

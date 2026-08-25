@@ -99,6 +99,7 @@ export class ConversationSync {
     taskId = null,
     taskIds = [],
     inputs = [],
+    citations = [],
   }) {
     const normalized = clean(content)
     if (!id || !normalized) return null
@@ -114,6 +115,9 @@ export class ConversationSync {
         taskIds: [...new Set((taskIds || []).filter(Boolean))],
         inputs: (inputs || []).map(input => ({ ...input })),
       })
+      if (citations?.length) {
+        existing.citations = citations.map(citation => ({ ...citation }))
+      }
       return { ...existing }
     }
     const message = {
@@ -126,6 +130,9 @@ export class ConversationSync {
       taskId,
       taskIds: [...new Set((taskIds || []).filter(Boolean))],
       inputs: (inputs || []).map(input => ({ ...input })),
+      ...(citations?.length
+        ? { citations: citations.map(citation => ({ ...citation })) }
+        : {}),
       createdAt: Date.now(),
     }
     state.messages.push(message)
@@ -143,6 +150,9 @@ export class ConversationSync {
       .map(message => ({
         ...message,
         inputs: (message.inputs || []).map(input => ({ ...input })),
+        ...(message.citations
+          ? { citations: message.citations.map(citation => ({ ...citation })) }
+          : {}),
       }))
   }
 

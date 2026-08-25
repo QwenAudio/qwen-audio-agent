@@ -184,6 +184,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 - [ ] Extract state machine, scheduler, repository, and notification concerns.
   - [x] Centralize task phases, legal transitions, and public snapshots.
   - [x] Extract notification claim, lease, release, and delivery state.
+  - [x] Extract durable Work records and short job-id allocation.
 - [ ] Separate user work from system jobs.
 - [ ] Add artifact and authorization models.
 - [ ] Preserve restart, cancellation, and exactly-once delivery semantics.

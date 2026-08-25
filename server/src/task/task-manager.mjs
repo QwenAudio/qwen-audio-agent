@@ -4,10 +4,12 @@ import { TaskScheduler } from './task-scheduler.mjs'
 import { TaskStore } from './task-store.mjs'
 import { TaskDomainEvent } from './task-events.mjs'
 import { TaskNotificationQueue } from './task-notification-queue.mjs'
+import { TaskRepository } from './task-repository.mjs'
 import {
   isTaskActive,
   isTaskCancellable,
   isTaskTerminal,
+  persistedTask,
   publicTask,
   TaskStatus,
   transitionTask,
@@ -15,14 +17,6 @@ import {
 import { logger } from '../core/logger.mjs'
 
 const REPLAYABLE_REMINDER = new Set(['queued', 'running'])
-const MAX_JOB_NUMBER = 99_999
-
-function normalizedJobNumber(value) {
-  const number = Number(value)
-  return Number.isInteger(number) && number >= 1 && number <= MAX_JOB_NUMBER
-    ? number
-    : 1
-}
 
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
@@ -52,7 +46,10 @@ export class TaskManager {
     logger: taskLogger = null,
   } = {}) {
     this.runner = runner
-    this.store = store
+    this.repository = new TaskRepository({ store, serialize: persistedTask })
+    // Compatibility view for ReminderScheduler and existing integrations.
+    // New persistence behavior belongs to repository, not this Map-like view.
+    this.tasks = this.repository
     this.scheduler = new TaskScheduler({
       maxConcurrent,
       maxConcurrentPerOwner,
@@ -63,7 +60,6 @@ export class TaskManager {
     this.maxTerminalTasksPerOwner = maxTerminalTasksPerOwner
     this.progressCheckMs = Math.max(0, Number(progressCheckMs) || 0)
     this.logger = taskLogger
-    this.tasks = new Map()
     this.listeners = new Set()
     this.notifications = new TaskNotificationQueue({
       tasks: this.tasks,
@@ -78,8 +74,15 @@ export class TaskManager {
     })
     this.recoveryCandidates = []
     this.scheduledTaskRunner = null
-    this.nextJobNumber = 1
     this.restore()
+  }
+
+  get nextJobNumber() {
+    return this.repository.nextJobNumber
+  }
+
+  set nextJobNumber(value) {
+    this.repository.nextJobNumber = value
   }
 
   configureRetention(options = {}) {
@@ -92,8 +95,7 @@ export class TaskManager {
   }
 
   restore() {
-    const savedTasks = this.store?.load() || []
-    this.nextJobNumber = normalizedJobNumber(this.store?.nextJobNumber)
+    const savedTasks = this.repository.load()
     for (const saved of savedTasks) {
       saved.jobId = String(saved.jobId || this.allocateJobId())
       // Scheduled tasks survive restarts intact. ReminderScheduler.start()
@@ -180,22 +182,6 @@ export class TaskManager {
     this.prune()
   }
 
-  persistedTask(task) {
-    const saved = publicTask(task)
-    delete saved.workId
-    delete saved.workState
-    saved.submissionKey = task.submissionKey || null
-    saved.delegation = task.delegation
-      ? {
-          ...task.delegation,
-          presentation: task.delegation.presentation
-            ? { ...task.delegation.presentation }
-            : null,
-        }
-      : null
-    return saved
-  }
-
   recoverDelegated({
     canRecover,
     runner,
@@ -227,23 +213,15 @@ export class TaskManager {
   }
 
   persist() {
-    this.store?.save(
-      [...this.tasks.values()].map(task => this.persistedTask(task)),
-      { nextJobNumber: this.nextJobNumber },
-    )
+    this.repository.save()
   }
 
   persistDeferred() {
-    const tasks = [...this.tasks.values()].map(task => this.persistedTask(task))
-    const state = { nextJobNumber: this.nextJobNumber }
-    if (this.store?.saveDeferred) this.store.saveDeferred(tasks, state)
-    else this.store?.save(tasks, state)
+    this.repository.saveDeferred()
   }
 
   allocateJobId() {
-    const current = this.nextJobNumber
-    this.nextJobNumber = current >= MAX_JOB_NUMBER ? 1 : current + 1
-    return `job_${current}`
+    return this.repository.allocateJobId()
   }
 
   subscribe(listener) {

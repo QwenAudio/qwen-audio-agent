@@ -54,6 +54,20 @@ export const GatewayPresentationSchema = z.object({
   }).nullable(),
 })
 
+const GatewayCitationUrlSchema = z.string().max(2048).url().refine(value => {
+  const url = new URL(value)
+  return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password
+}, 'citation URL must be a public HTTP(S) URL without credentials')
+
+export const GatewayCitationSchema = z.object({
+  id: z.string().min(1).max(40),
+  title: z.string().min(1).max(300),
+  url: GatewayCitationUrlSchema,
+  snippet: z.string().max(1200).optional(),
+  source: z.string().max(120).optional(),
+  published_at: z.string().max(80).optional(),
+})
+
 export const GatewayAuthorizationSchema = z.object({
   id: z.string().min(1),
   workId: z.string().nullable(),
@@ -116,6 +130,21 @@ export const GatewayClientMessageSchema = GatewayEventEnvelopeSchema.extend({
 
 export const GatewayVoiceMessageSchema = GatewayEventEnvelopeSchema.extend({
   type: GatewayServerEventTypeSchema,
+  citations: z.array(GatewayCitationSchema).max(16).optional(),
+}).superRefine((event, context) => {
+  if (
+    event.citations
+    && (
+      event.type !== GatewayServerEvent.TRANSCRIPT_FINAL
+      || event.role !== 'assistant'
+    )
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['citations'],
+      message: 'citations are allowed only on final assistant transcripts',
+    })
+  }
 })
 
 export const GatewayTaskEventMessageSchema = GatewayEventEnvelopeSchema.extend({

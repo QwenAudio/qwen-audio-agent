@@ -49,6 +49,34 @@ test('deduplicates the same message id and retains agent presentations', () => {
   )
 })
 
+test('clones citations and preserves them across a duplicate final record', () => {
+  const sync = new ConversationSync()
+  const citations = [{
+    id: 'source_1',
+    title: '杭州天气',
+    url: 'https://example.com/weather',
+  }]
+  const base = {
+    ownerId: 'owner',
+    sessionId: 'voice',
+    id: 'answer',
+    role: 'assistant',
+    content: '今天晴。',
+    source: 'realtime-direct',
+  }
+  sync.record({ ...base, citations })
+  citations[0].title = '被篡改'
+  sync.record(base)
+
+  const [message] = sync.list({ ownerId: 'owner', sessionId: 'voice' })
+  assert.equal(message.citations[0].title, '杭州天气')
+  message.citations[0].title = '再次篡改'
+  assert.equal(
+    sync.list({ ownerId: 'owner', sessionId: 'voice' })[0].citations[0].title,
+    '杭州天气',
+  )
+})
+
 test('retains cloned input references for reconnectable frontend context', () => {
   const sync = new ConversationSync()
   const inputs = [{

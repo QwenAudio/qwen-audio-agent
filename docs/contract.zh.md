@@ -14,7 +14,8 @@
 版本号遵循 SemVer：新增能力升 minor；下文点名的任一端点或事件发生破坏性
 变更升 major。
 
-当前版本为 `3.0.0`。`3.0` 为原生 Task 事件提供与 A2A 对齐的 `submitted`、
+当前版本为 `3.1.0`。`3.1` 在最终助手转写事件中增加有界 Citation。`3.0` 为原生
+Task 事件提供与 A2A 对齐的 `submitted`、
 `working`、`auth_required` 状态，以及类型明确的产物、呈现与授权对象。它替换了
 `2.x` 的 `active` 状态与不透明结果元数据，因此事件消费者必须检查下方能力位。
 `2.1` 新增了可选的 AG-UI Task 事件投射，且未改变默认事件流。`2.x` 接替
@@ -38,6 +39,7 @@
 | `input.suspend-ack` | 客户端以 `input.suspend.ack` 确认抢占生效（仅用于状态展示——不要等待它） | `server/test/input-suspend-protocol.test.mjs` |
 | `tasks.ag-ui-event-stream` | `GET /api/tasks/:id/events?format=ag-ui` 将现有 Task 事件流投射为 AG-UI `ACTIVITY_SNAPSHOT`；不传 `format` 时仍为原生事件流 | `server/test/agui-event-projector.test.mjs` |
 | `tasks.work-artifacts-authorization` | 原生 Task 事件使用与 A2A 对齐的工作状态，并暴露类型明确的 `artifacts`、`presentation` 与 `authorization` 对象 | `test/gateway-event-schema.test.mjs`、`server/test/task-state.test.mjs` |
+| `messages.citations` | 最终助手 `transcript.final` 可以携带同一轮前台检索产生的规范化 Citation | `test/gateway-event-schema.test.mjs`、`server/test/realtime-presentation-runtime.test.mjs` |
 | `desktop.orb-shell` | 悬浮球形态的主进程契约随包发布：`bindOrbShell` 应答随包 preload 发出的全部通道 | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` 持有悬浮球窗口配方；其 `destroy()` 是宿主的同步销毁路径（渲染进程退出才能确定性释放麦克风） | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` 覆盖默认锚点、显示器夹取与拖放持久化 | `desktop/test/orb-placement.test.mjs` |
@@ -149,6 +151,7 @@ await orb.load()
 | 服务端 → 客户端 | `input.suspend` | 立即停止采集（比用户级静音更强：不采集、不做唤醒词检测）；携带 `owner`、`reason`、`expiresAt` |
 | 服务端 → 客户端 | `input.resume` | 可以恢复采集 |
 | 客户端 → 服务端 | `input.suspend.ack` | 确认抢占已在本客户端生效 |
+| 服务端 → 客户端 | `transcript.final` | 最终助手转写可携带 `citations: [{ id, title, url, snippet?, source?, published_at? }]`；能力位：`messages.citations` |
 
 ### 共享客户端状态
 

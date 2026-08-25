@@ -93,7 +93,33 @@ const mdComponents = {
   ),
 }
 
-function MessageContent({ role, content, live }) {
+function CitationList({ citations }) {
+  const safeCitations = (citations || []).filter(citation => (
+    citation?.title && isSafeUrl(citation.url)
+  ))
+  if (!safeCitations.length) return null
+  return (
+    <nav className="message-citations" aria-label={t('来源')}>
+      <small>{t('来源')}</small>
+      <ol>
+        {safeCitations.map((citation, index) => (
+          <li key={citation.id || citation.url}>
+            <a
+              href={citation.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={citation.snippet || citation.title}
+            >
+              <span>{index + 1}</span>{citation.title}
+            </a>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )
+}
+
+function MessageContent({ role, content, live, citations }) {
   if (role === 'user') {
     return <div className="message-body">{content}</div>
   }
@@ -107,6 +133,7 @@ function MessageContent({ role, content, live }) {
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
         {content}
       </ReactMarkdown>
+      <CitationList citations={citations} />
     </div>
   )
 }

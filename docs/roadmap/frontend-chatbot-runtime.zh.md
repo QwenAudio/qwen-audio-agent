@@ -265,11 +265,11 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
 
 ### R5：完整前台能力
 
-- [ ] Web Search Provider、URL Fetch 和 Citation。
+- [x] Web Search Provider、URL Fetch 和 Citation。
   - [x] 定义与供应商无关的 Web Search Port 和有界 Citation 模型。
   - [x] 增加按能力启用的前台工具与防 SSRF 的 URL Fetcher。
   - [x] 增加不额外调用大模型的可配置 MCP 搜索与实验性免 Key 兜底。
-  - [ ] 通过公开客户端协议投射 Citation。
+  - [x] 通过公开客户端协议投射 Citation。
 - [ ] Knowledge Store、Document Extractor 和索引 System Job。
 - [ ] Full Context、Retrieval Provider 和 RAG 工具。
 - [ ] 路由、引用、打断、重复播报和 Prompt Injection 评测。

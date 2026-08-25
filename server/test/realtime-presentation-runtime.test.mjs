@@ -3,7 +3,7 @@ import test from 'node:test'
 import { RealtimePresentationRuntime } from '../src/voice/realtime-presentation-runtime.mjs'
 import { RealtimeTurnState } from '../src/voice/realtime-turn-state.mjs'
 
-function harness({ nonVoiceClient = false } = {}) {
+function harness({ nonVoiceClient = false, turnCitations = null } = {}) {
   const events = []
   const records = []
   const calls = []
@@ -53,6 +53,7 @@ function harness({ nonVoiceClient = false } = {}) {
     },
     announcementQuietMs: 60_000,
     responseContextCleanupMs: 60_000,
+    turnCitations,
   })
   return {
     runtime,
@@ -65,6 +66,36 @@ function harness({ nonVoiceClient = false } = {}) {
     },
   }
 }
+
+test('projects turn citations once on the final assistant transcript', () => {
+  const stored = [{
+    id: 'source_1',
+    title: '杭州天气',
+    url: 'https://example.com/weather',
+  }]
+  let consumed = false
+  const setup = harness({
+    turnCitations: {
+      consume(turnId) {
+        assert.equal(turnId, 'turn-1')
+        if (consumed) return []
+        consumed = true
+        return stored
+      },
+    },
+  })
+
+  deliver(setup.runtime, {
+    type: 'response.text.done',
+    response_id: 'response-1',
+    text: '今天晴。',
+    __voiceContext: { turnId: 'turn-1', turnGeneration: 1 },
+  })
+
+  const final = setup.events.find(event => event.type === 'transcript.final')
+  assert.deepEqual(final.citations, stored)
+  assert.deepEqual(setup.records[0].citations, stored)
+})
 
 function deliver(runtime, event) {
   runtime.begin(event)

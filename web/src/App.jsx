@@ -9,8 +9,8 @@ import {
 import {
   buildConversationTurns,
   discardUserTranscript,
-  finalAssistantContent,
   insertByTurn,
+  upsertAssistantTranscript,
   upsertUserTranscript,
 } from './message-order.js'
 import MessageContent from './MessageContent.jsx'
@@ -404,36 +404,17 @@ export default function App() {
     activeVoiceResponse.current = responseId
     const id = `voice:${responseId}`
     const trackedTurnId = responseTurnMap.current.get(responseId) || event.turnId || currentTurnId.current
-    setMessages(items => {
-      const index = items.findIndex(item => item.id === id)
-      if (index < 0) return insertByTurn(items, {
-          id,
-          role: 'assistant',
-          content: final
-            ? finalAssistantContent(event.content)
-            : event.content || '',
-          turnId: trackedTurnId,
-          taskId: event.taskId,
-          taskIds: event.taskIds,
-          origin: event.origin,
-          deliverySequence: event.deliverySequence,
-          live: !final,
-      })
-      const next = [...items]
-      next[index] = {
-        ...next[index],
-        content: final
-          ? finalAssistantContent(event.content, next[index].content)
-          : next[index].content + (event.content || ''),
-        turnId: trackedTurnId || next[index].turnId,
-        taskId: event.taskId || next[index].taskId,
-        taskIds: event.taskIds || next[index].taskIds,
-        origin: event.origin || next[index].origin,
-        deliverySequence: event.deliverySequence || next[index].deliverySequence,
-        live: !final,
-      }
-      return next
-    })
+    setMessages(items => upsertAssistantTranscript(items, {
+      id,
+      content: event.content,
+      turnId: trackedTurnId,
+      taskId: event.taskId,
+      taskIds: event.taskIds,
+      origin: event.origin,
+      deliverySequence: event.deliverySequence,
+      citations: event.citations,
+      final,
+    }))
   }, [])
 
   const updateTimelineItem = useCallback(item => {
@@ -1338,6 +1319,7 @@ export default function App() {
       role={message.role}
       content={message.content}
       live={message.live}
+      citations={message.citations}
     />
     {message.interrupted && <small className="interrupted">{t('已打断')}</small>}
   </article>

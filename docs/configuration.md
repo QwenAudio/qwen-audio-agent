@@ -202,9 +202,10 @@ DASHSCOPE_API_KEY=your-key
 
 The frontend `web_search` tool returns verifiable source links, does not create
 backend Agent work, and does not invoke another text model. Without explicit
-configuration it uses a small, key-free Bing RSS adapter that is reachable in
-mainland China. This fallback is experimental and may occasionally be blocked
-or affected by upstream changes. DuckDuckGo remains available by setting
+configuration it uses a small, key-free Bing adapter that parses one public
+search results page and is reachable in mainland China. This basic fallback is
+experimental: it may be blocked, return weak results, or break with upstream
+changes. Configure your own provider for reliable search. DuckDuckGo remains available by setting
 `QWEN_AUDIO_WEB_SEARCH_PROVIDER=duckduckgo`.
 
 After enabling Model Studio's Web Search MCP service, select its built-in preset
@@ -225,6 +226,9 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
 Set `QWEN_AUDIO_WEB_SEARCH_PROVIDER=none` to disable frontend web search.
+WebUI and terminal clients show the normalized source links below the final
+assistant answer; other clients can consume the same `messages.citations`
+Gateway capability.
 
 When you need to execute backend tasks, select a backend Agent (using OpenClaw as an example):
 

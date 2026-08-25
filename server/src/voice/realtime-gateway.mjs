@@ -23,6 +23,7 @@ import { recordTaskResult } from '../conversation/task-result-projector.mjs'
 import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
 import { ToolCallHandler } from './tools/tool-call-handler.mjs'
 import { TurnTranscripts } from './tools/turn-transcripts.mjs'
+import { TurnCitations } from './turn-citations.mjs'
 import { RealtimeInputRuntime } from './realtime-input-runtime.mjs'
 import {
   acceptsPlaybackReceipt,
@@ -181,6 +182,7 @@ export function attachRealtimeGateway(server, {
     let clientContext = normalizeClientContext()
     const turns = new RealtimeTurnState()
     const transcripts = new TurnTranscripts()
+    const turnCitations = new TurnCitations()
     const announcedPermissions = new Set()
     let permissionRetryTimer = null
     let realtimeSession
@@ -455,6 +457,7 @@ export function attachRealtimeGateway(server, {
       }),
       inputAssets,
       frontendRetrieval,
+      turnCitations,
     })
     const clearResponseCandidate = () => {
       clearTimeout(responseStartWatchdog)
@@ -551,6 +554,7 @@ export function attachRealtimeGateway(server, {
       clearResponseCandidate,
       announcementQuietMs: config.announcementQuietMs,
       responseContextCleanupMs: RESPONSE_CONTEXT_CLEANUP_MS,
+      turnCitations,
     })
 
     const queueNotification = task => {
@@ -1177,6 +1181,7 @@ export function attachRealtimeGateway(server, {
       clearResponseCandidate()
       turns.close()
       transcripts.close()
+      turnCitations.clear()
       announcementWindow.reset()
       presentationRuntime.clear()
       announcements.close()

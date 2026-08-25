@@ -205,8 +205,7 @@ backend Agent work, and does not invoke another text model. Without explicit
 configuration it uses a small, key-free Bing adapter that parses one public
 search results page and is reachable in mainland China. This basic fallback is
 experimental: it may be blocked, return weak results, or break with upstream
-changes. Configure your own provider for reliable search. DuckDuckGo remains available by setting
-`QWEN_AUDIO_WEB_SEARCH_PROVIDER=duckduckgo`.
+changes. Configure your own provider for reliable search.
 
 After enabling Model Studio's Web Search MCP service, select its built-in preset
 explicitly; it then reuses `DASHSCOPE_API_KEY`:
@@ -924,7 +923,7 @@ them to the configuration file:
 | `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV` | Empty; comma-separated opt-in environment names for generic ACP only |
 | `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` |
 | `QWEN_AUDIO_REALTIME_PROVIDER` | `dashscope` |
-| `QWEN_AUDIO_WEB_SEARCH_PROVIDER` | `bing`; optional `duckduckgo`, `bailian`, `mcp`, or `none` |
+| `QWEN_AUDIO_WEB_SEARCH_PROVIDER` | `bing`; optional `bailian`, `mcp`, or `none` |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_URL` | Empty; custom Streamable HTTP endpoint used by the `mcp` provider |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | `DASHSCOPE_API_KEY` for explicit `bailian`; empty for custom endpoints unless set |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian_web_search` for `bailian`; otherwise `web_search` |

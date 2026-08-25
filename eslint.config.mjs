@@ -70,4 +70,46 @@ export default [
       'react-hooks/exhaustive-deps': 'error',
     },
   },
+  // Architecture boundaries are executable constraints, not documentation
+  // conventions. During the staged runtime refactor these rules protect the
+  // dependencies that are already clean; new target directories will receive
+  // equivalent rules as they are introduced.
+  {
+    files: ['shared/**/*.{js,mjs,cjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['../server/**', '../../server/**', '../../../server/**'],
+          message: 'shared modules must not depend on the Gateway server',
+        }],
+      }],
+    },
+  },
+  {
+    files: ['server/src/task/**/*.{js,mjs,cjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: [
+            '../agent/**',
+            '../../agent/**',
+            '../voice/**',
+            '../../voice/**',
+          ],
+          message: 'the task domain must not depend on voice or backend adapters',
+        }],
+      }],
+    },
+  },
+  {
+    files: ['server/src/voice/**/*.{js,mjs,cjs}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['../agent/**', '../../agent/**', '../../../agent/**'],
+          message: 'the realtime frontend must use injected work/backend ports',
+        }],
+      }],
+    },
+  },
 ]

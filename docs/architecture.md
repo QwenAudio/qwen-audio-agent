@@ -3,6 +3,12 @@
 This document defines the product boundary. Changes that contradict these
 invariants are architecture changes, not local feature work.
 
+See [`roadmap/frontend-chatbot-runtime.md`](roadmap/frontend-chatbot-runtime.md)
+for the target boundary and staged refactor of the Realtime Voice Chatbot,
+asynchronous work bridge, and single user-configured backend agent. Until each
+roadmap stage lands, this document remains the tested description of current
+runtime behavior.
+
 ## 1. User-visible model
 
 The user talks to one qwen-audio assistant. Internally there are two qwen-audio-agent

@@ -50,6 +50,7 @@ export const GatewayServerEvent = Object.freeze({
 })
 
 export const GatewayTaskEvent = Object.freeze({
+  ACCEPTED: 'task.accepted',
   SCHEDULED: 'task.scheduled',
   SCHEDULED_FIRED: 'task.scheduled.fired',
   RUNNING: 'task.running',
@@ -74,3 +75,19 @@ export const GATEWAY_SERVER_EVENT_TYPES = new Set([
   ...Object.values(GatewayServerEvent),
   ...Object.values(GatewayTaskEvent),
 ])
+
+export function isGatewayClientEvent(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && GATEWAY_CLIENT_EVENT_TYPES.has(value.type),
+  )
+}
+
+export function isGatewayServerEvent(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && GATEWAY_SERVER_EVENT_TYPES.has(value.type),
+  )
+}

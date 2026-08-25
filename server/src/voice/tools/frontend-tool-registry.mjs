@@ -1,3 +1,5 @@
+import { FrontendToolLoop } from './frontend-tool-loop.mjs'
+
 function toolName(entry) {
   return String(entry?.definition?.function?.name || '').trim()
 }
@@ -33,6 +35,18 @@ function normalizedPolicy(policy = {}) {
       `Frontend tool policy requires a valid mode: ${FRONTEND_TOOL_MODES.join(', ')}`,
     )
   }
+  if (
+    policy.repeatHandling !== undefined
+    && policy.repeatHandling !== 'handler'
+  ) {
+    throw new Error('Frontend tool repeatHandling must be handler when set')
+  }
+  if (
+    policy.maxResultBytes !== undefined
+    && positivePolicyInteger(policy.maxResultBytes) === null
+  ) {
+    throw new Error('Frontend tool maxResultBytes must be a positive integer')
+  }
   const normalized = { ...policy, mode }
   if (Array.isArray(policy.requiredClientStates)) {
     normalized.requiredClientStates = Object.freeze([
@@ -40,6 +54,11 @@ function normalizedPolicy(policy = {}) {
     ])
   }
   return Object.freeze(normalized)
+}
+
+function positivePolicyInteger(value) {
+  const number = Number(value)
+  return Number.isInteger(number) && number > 0 ? number : null
 }
 
 /**
@@ -91,8 +110,8 @@ export class FrontendToolRegistry {
       .map(([, entry]) => entry.definition)
   }
 
-  createExecutor(handlers) {
-    return new FrontendToolExecutor({ registry: this, handlers })
+  createExecutor(handlers, options) {
+    return new FrontendToolExecutor({ registry: this, handlers, ...options })
   }
 }
 
@@ -106,12 +125,14 @@ export class FrontendToolRegistry {
 export class FrontendToolExecutor {
   #registry
   #handlersByName
+  #loop
 
-  constructor({ registry, handlers = {} } = {}) {
+  constructor({ registry, handlers = {}, loop = new FrontendToolLoop() } = {}) {
     if (!(registry instanceof FrontendToolRegistry)) {
       throw new Error('FrontendToolExecutor requires a FrontendToolRegistry')
     }
     this.#registry = registry
+    this.#loop = loop
     this.#handlersByName = new Map()
     for (const [name, handler] of Object.entries(handlers)) {
       if (!registry.has(name)) {
@@ -132,10 +153,26 @@ export class FrontendToolExecutor {
     const entry = this.#registry.get(name)
     const handler = this.#handlersByName.get(entry?.name)
     if (!entry || !handler) {
-      return { handled: false, tool: null, value: undefined }
+      return {
+        handled: false,
+        executed: false,
+        tool: null,
+        value: undefined,
+      }
+    }
+    const limit = this.#loop.admit({ ...context, tool: entry })
+    if (!limit.admitted) {
+      return {
+        handled: true,
+        executed: false,
+        tool: entry,
+        limit,
+        value: undefined,
+      }
     }
     return {
       handled: true,
+      executed: true,
       tool: entry,
       value: await handler({ ...context, tool: entry }),
     }

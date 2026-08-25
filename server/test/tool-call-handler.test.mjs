@@ -109,6 +109,26 @@ test('fails closed for tools absent from the frontend registry', async () => {
   assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 0)
 })
 
+test('blocks an exact repeated inline tool call within one turn', async () => {
+  const kit = harness()
+  const context = { turnId: 'turn-one', turnGeneration: 1 }
+
+  await kit.handler.handle({
+    call_id: 'call-time-one',
+    name: 'get_current_time',
+    arguments: '{}',
+  }, context)
+  await kit.handler.handle({
+    call_id: 'call-time-two',
+    name: 'get_current_time',
+    arguments: '{}',
+  }, context)
+
+  assert.equal(kit.outputs[0][1].status, 'ok')
+  assert.equal(kit.outputs[1][1].status, 'duplicate')
+  assert.equal(kit.outputs[1][3].createResponse, false)
+})
+
 async function permissionHarness({
   answer,
   authorizationId = 'auth-one',
@@ -1346,6 +1366,26 @@ test('returns the latest document when an exact edit no longer matches', async (
   })
   assert.equal(kit.outputs.at(-1)[1].error_code, 'edit_not_found')
   assert.equal(kit.outputs.at(-1)[1].documents[0].revision, 'latest')
+})
+
+test('fails closed when a frontend tool result exceeds its size budget', async () => {
+  const kit = harness({
+    memoryStore: {
+      list: () => [{
+        scope: 'memory',
+        content: 'x'.repeat(70 * 1024),
+        revision: 'large',
+      }],
+    },
+  })
+
+  await kit.handler.handle({
+    call_id: 'memory-too-large',
+    name: 'memory',
+    arguments: JSON.stringify({ action: 'read', document: 'memory' }),
+  })
+
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'tool_result_too_large')
 })
 
 test('rejects sensitive additions and incomplete atomic edits', async () => {

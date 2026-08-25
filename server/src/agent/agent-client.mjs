@@ -1,4 +1,5 @@
 import { config } from '../core/config.mjs'
+import { assertBackendPort } from '../backend/backend-port.mjs'
 import { AgentError } from './backend-adapter.mjs'
 import { createAcpBackendAdapter } from './acp-backend-factory.mjs'
 
@@ -6,10 +7,7 @@ export { AgentError }
 
 export class AgentClient {
   constructor({ adapter } = {}) {
-    if (!adapter || typeof adapter !== 'object') {
-      throw new TypeError('AgentClient requires one backend adapter')
-    }
-    this.adapter = adapter
+    this.adapter = assertBackendPort(adapter, { name: 'AgentClient adapter' })
   }
 
   get protocol() {
@@ -32,8 +30,33 @@ export class AgentClient {
     }
   }
 
-  status() {
-    return this.adapter.status()
+  status(workId, options = {}) {
+    return this.adapter.status(workId, options)
+  }
+
+  start(options = {}) {
+    return this.adapter.start(options)
+  }
+
+  submit(work, options = {}) {
+    return this.adapter.submit(work, options)
+  }
+
+  cancel(workId, options = {}) {
+    return this.adapter.cancel(workId, options)
+  }
+
+  respondAuthorization(workId, authorizationId, decision, options = {}) {
+    return this.adapter.respondAuthorization(
+      workId,
+      authorizationId,
+      decision,
+      options,
+    )
+  }
+
+  subscribe(listener) {
+    return this.adapter.subscribe(listener)
   }
 
   runCoordinator(message, options = {}) {
@@ -89,7 +112,7 @@ export class AgentClient {
   }
 
   close() {
-    return this.adapter.close?.() || Promise.resolve()
+    return this.adapter.close()
   }
 }
 

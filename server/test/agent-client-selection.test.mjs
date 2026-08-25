@@ -8,7 +8,10 @@ import {
 function fakeAcpClient() {
   return {
     start: async () => ({
-      agentCapabilities: { sessionCapabilities: { resume: {} } },
+      agentCapabilities: {
+        sessionCapabilities: { resume: {} },
+        mcpCapabilities: { http: true },
+      },
     }),
     newSession: async options => ({
       sessionId: 'ses-current',
@@ -163,6 +166,14 @@ test('AgentClient owns exactly one injected backend instance', () => {
     protocol: 'test',
     label: 'Test',
     describe: () => ({ protocol: 'test' }),
+    start: async () => {},
+    health: async () => ({ ok: true }),
+    submit: async () => ({}),
+    status: () => ({ ok: true }),
+    cancel: async () => ({}),
+    respondAuthorization: async () => ({}),
+    subscribe: () => () => {},
+    close: async () => {},
   }
   const client = new AgentClient({ adapter })
   assert.equal(client.adapter, adapter)
@@ -170,6 +181,6 @@ test('AgentClient owns exactly one injected backend instance', () => {
   assert.deepEqual(client.describe(), { protocol: 'test' })
   assert.throws(
     () => new AgentClient(),
-    /requires one backend adapter/,
+    /AgentClient adapter must be an object/,
   )
 })

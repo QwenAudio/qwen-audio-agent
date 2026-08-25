@@ -1323,7 +1323,7 @@ test('ACP permissions expose permanent allow and reject semantics', async () => 
   const requested = events.find(event => (
     event.type === 'backend.permission.requested'
   ))
-  await adapter.respondPermission(requested.permission.id, 'always', {
+  await adapter.resolveAuthorization(requested.permission.id, 'always', {
     ownerId: 'owner-one',
   })
   assert.deepEqual(await pending, {
@@ -1333,7 +1333,7 @@ test('ACP permissions expose permanent allow and reject semantics', async () => 
     event.type === 'backend.permission.resolved'
   )))
   assert.deepEqual(
-    await adapter.respondPermission(requested.permission.id, 'always', {
+    await adapter.resolveAuthorization(requested.permission.id, 'always', {
       ownerId: 'owner-one',
     }),
     events.find(event => event.type === 'backend.permission.resolved').permission,
@@ -1353,7 +1353,7 @@ test('ACP permissions expose permanent allow and reject semantics', async () => 
     event.type === 'backend.permission.requested'
   )).at(-1)
   assert.notEqual(repeatedRequest.permission.id, requested.permission.id)
-  await adapter.respondPermission(repeatedRequest.permission.id, 'reject', {
+  await adapter.resolveAuthorization(repeatedRequest.permission.id, 'reject', {
     ownerId: 'owner-one',
   })
   assert.deepEqual(await repeated, {
@@ -1409,7 +1409,7 @@ test('permission cleanup is isolated to the ACP prompt that requested it', async
   )
   assert.equal(coordinatorEvents.at(-1).permission.status, 'cancelled')
   assert.equal(adapter.pendingPermissions.has(projectPermission.id), true)
-  await adapter.respondPermission(projectPermission.id, 'always', {
+  await adapter.resolveAuthorization(projectPermission.id, 'always', {
     ownerId: 'owner-one',
   })
   assert.deepEqual(await project, {

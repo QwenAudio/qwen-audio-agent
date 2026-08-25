@@ -17,8 +17,8 @@ function gatewayHarness({ memoryExtractor }) {
     memoryService: { list: () => [] },
     memoryExtractor,
     notesStore: null,
-    coordinator: {},
-    respondPermission: async () => ({}),
+    backendRuntime: {},
+    respondAuthorization: async () => ({}),
     permissionPolicy: {
       mode: () => 'ask',
       applyDecision: () => {},

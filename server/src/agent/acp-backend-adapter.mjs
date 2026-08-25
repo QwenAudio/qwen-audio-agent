@@ -4,7 +4,7 @@ import { BACKEND_AGENT_INSTRUCTIONS } from './backend-agent-instructions.mjs'
 import {
   COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
   COORDINATOR_STABLE_INSTRUCTIONS,
-} from './coordinator-instructions.mjs'
+} from './acp-coordinator-instructions.mjs'
 import {
   acpBackendProfile,
   endpointAvailable,
@@ -31,9 +31,16 @@ import { PermissionBroker } from './permission-broker.mjs'
 import {
   appendPromptBlocks,
   nonTextPromptBlocks,
+  promptWithInputParts,
   transformPromptText,
 } from './acp-content.mjs'
 import { assertMcpServerCapabilities } from './acp-capabilities.mjs'
+import {
+  acpCoordinatorResponseState,
+  acpCoordinatorRetryPrompt,
+  buildAcpCoordinatorPrompt,
+  parseAcpCoordinatorDecision,
+} from './acp-coordinator-contract.mjs'
 
 const MAX_SESSION_RESULTS = 100
 const MAX_DELEGATION_RESULT_CHARS = 12_000
@@ -756,7 +763,7 @@ export class AcpBackendAdapter {
     return this.permissionBroker.cancel(record)
   }
 
-  async respondPermission(id, decision, { ownerId } = {}) {
+  async resolveAuthorization(id, decision, { ownerId } = {}) {
     return this.permissionBroker.respond(id, decision, { ownerId })
   }
 
@@ -1351,23 +1358,53 @@ export class AcpBackendAdapter {
   async submit(work, { signal, onEvent } = {}) {
     const workId = clean(work?.id || work?.workId)
     const ownerId = clean(work?.ownerId)
-    const message = work?.message ?? work?.objective
-    if (!workId || !ownerId || !message) {
+    const objective = clean(work?.objective ?? work?.message)
+    const jobId = clean(work?.jobId) || workId
+    if (!workId || !ownerId || !objective) {
       throw new AgentError('BackendPort submit requires work id, owner and input', {
         status: 400,
         protocol: this.protocol,
       })
     }
-    const result = await this.runCoordinator(message, {
+    const prompt = buildAcpCoordinatorPrompt({
+      ...work,
+      objective,
+      workId,
+      jobId,
+      includeStableInstructions: !this.coordinatorUsesMcpInstructions(),
+    })
+    const run = message => this.runCoordinator(message, {
       ownerId,
       coordinationRunId: workId,
-      coordinationRequestId: clean(work?.jobId) || workId,
+      coordinationRequestId: jobId,
       signal,
       onEvent,
     })
-    const presentation = coordinatorPresentation(result.content)
+    let result = await run(promptWithInputParts(prompt, work?.inputParts))
+    if (!clean(result?.content)) {
+      throw new AgentError('Coordinator backend returned an empty response', {
+        status: 502,
+        protocol: this.protocol,
+      })
+    }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const state = acpCoordinatorResponseState(result.content)
+      if (!state || state === 'completed') break
+      result = await run(acpCoordinatorRetryPrompt(jobId, state))
+    }
+    const finalState = acpCoordinatorResponseState(result.content)
+    if (finalState && finalState !== 'completed') {
+      throw new AgentError(
+        `Coordinator did not return a final result (state=${finalState})`,
+        { status: 502, protocol: this.protocol },
+      )
+    }
+    const presentation = parseAcpCoordinatorDecision(
+      result.content,
+      jobId,
+    ).presentation
     return {
-      content: presentation?.speech || clean(result.content),
+      content: presentation.speech,
       artifacts: [],
       presentation,
     }
@@ -1602,7 +1639,7 @@ export class AcpBackendAdapter {
         protocol: this.protocol,
       })
     }
-    return this.respondPermission(authorizationId, decision, { ownerId })
+    return this.resolveAuthorization(authorizationId, decision, { ownerId })
   }
 
   async queryDelegatedWork(workId, _question, { ownerId } = {}) {

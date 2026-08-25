@@ -94,9 +94,9 @@ export function attachRealtimeGateway(server, {
   memoryService,
   memoryExtractor = null,
   notesStore,
-  coordinator,
+  backendRuntime,
   backendAvailability = null,
-  respondPermission,
+  respondAuthorization,
   permissionPolicy,
   inputAssets = new InputAssetRegistry(),
   inputArbitration = null,
@@ -422,9 +422,9 @@ export function attachRealtimeGateway(server, {
       onMemoryChanged: () => realtimeSession.updateAgentContext({
         memories: memoryService?.list(ownerId, { limit: 64 }) || [],
       }),
-      coordinator,
+      backendRuntime,
       backendAvailability,
-      respondPermission,
+      respondAuthorization,
       permissionPolicy,
       // The permission decision was accepted locally but never reached the
       // backend: the authorization is still pending there, so clear the

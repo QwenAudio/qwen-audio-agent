@@ -39,7 +39,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
   })
   assert.equal(application.server.listening, false)
   assert.equal(application.services.taskManager != null, true)
-  assert.equal(application.services.coordinator != null, true)
+  assert.equal(application.services.backendRuntime != null, true)
   assert.equal(application.services.inputAssets, inputAssets)
 
   application.start()

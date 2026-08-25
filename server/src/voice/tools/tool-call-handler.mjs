@@ -97,14 +97,14 @@ export class ToolCallHandler {
     getFrontend,
     getTurnId,
     getTurnGeneration,
-    coordinator,
+    backendRuntime,
     backendAvailability = null,
     memoryService,
     notesStore,
     getClientContext = () => ({}),
     getConversationContext = () => [],
     onMemoryChanged = () => {},
-    respondPermission,
+    respondAuthorization,
     permissionPolicy,
     onPermissionDeliveryFailed = () => {},
     requestClientState = () => {},
@@ -118,14 +118,14 @@ export class ToolCallHandler {
     this.getFrontend = getFrontend
     this.getTurnId = getTurnId
     this.getTurnGeneration = getTurnGeneration
-    this.coordinator = coordinator
+    this.backendRuntime = backendRuntime
     this.backendAvailability = backendAvailability
     this.memoryService = memoryService
     this.notesStore = notesStore
     this.getClientContext = getClientContext
     this.getConversationContext = getConversationContext
     this.onMemoryChanged = onMemoryChanged
-    this.respondPermission = respondPermission
+    this.respondAuthorization = respondAuthorization
     this.permissionPolicy = permissionPolicy
     this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
     this.requestClientState = requestClientState
@@ -292,7 +292,7 @@ export class ToolCallHandler {
     )
   }
 
-  forwardCoordinatorEvent(event, onEvent) {
+  forwardBackendEvent(workId, event, onEvent) {
     const permission = event?.permission
     if (
       event?.type === 'backend.permission.resolved'
@@ -302,7 +302,7 @@ export class ToolCallHandler {
     if (
       event?.type !== 'backend.permission.requested'
       || !permission?.id
-      || !this.respondPermission
+      || !this.respondAuthorization
       || !this.permissionPolicy?.shouldAutoAllow(
         this.ownerId,
         this.sessionId,
@@ -314,7 +314,8 @@ export class ToolCallHandler {
     this.gatewayApprovedPermissions.add(permission.id)
     let approval
     try {
-      approval = this.respondPermission(
+      approval = this.respondAuthorization(
+        workId,
         permission.id,
         'always',
         { ownerId: this.ownerId },
@@ -348,13 +349,13 @@ export class ToolCallHandler {
       sessionId: this.sessionId,
       turnId,
       submissionKey,
-      laneKey: `coordinator:${this.ownerId}`,
+      laneKey: `backend:${this.ownerId}`,
       laneLimit: 1,
       runner: async (_ignored, { onEvent, signal }) => {
         // The verbatim request was pinned at acceptance and is almost
         // certainly settled by now; awaiting it never blocks the receipt.
         const resolved = (await verbatimRequest) || {}
-        return this.coordinator.run({
+        return this.backendRuntime.run({
           originalRequest: resolved.originalRequest || objective,
           objective,
           conversationContext: this.getConversationContext(),
@@ -366,14 +367,14 @@ export class ToolCallHandler {
           ownerId: this.ownerId,
           sessionId: this.sessionId,
           turnId,
-          coordinationRunId: workId,
-          coordinationRequestId: requestId,
+          workId,
+          jobId: requestId,
           signal,
-          onEvent: event => this.forwardCoordinatorEvent(event, onEvent),
+          onEvent: event => this.forwardBackendEvent(workId, event, onEvent),
         })
       },
       canceler: async ({ previousStatus, abort }) => {
-        const result = await this.coordinator.cancelWork(
+        const result = await this.backendRuntime.cancel(
           workId,
           { ownerId: this.ownerId },
         )
@@ -382,7 +383,7 @@ export class ToolCallHandler {
           ...result,
           layer: previousStatus === 'finalizing'
             ? 'finalizing'
-            : result?.layer || 'coordinator',
+            : result?.layer || 'backend',
         }
       },
     })
@@ -406,13 +407,12 @@ export class ToolCallHandler {
     const type = args.type === 'task' ? 'task' : 'reminder'
     const recurrence = args.recurrence || 'once'
 
-    // For type='task', build a coordinator runner that will execute the
-    // objective when the scheduled task fires. The coordinator singleton
-    // and ownerId are safe to capture — they outlive the voice session.
-    const coordinator = this.coordinator
+    // Scheduled work resolves through the same single-backend runtime as a
+    // live request. The runtime and owner identity outlive the voice session.
+    const backendRuntime = this.backendRuntime
     const memoryService = this.memoryService
     const runner = type === 'task'
-      ? async (objective, context) => coordinator.run({
+      ? async (objective, context) => backendRuntime.run({
           originalRequest: objective,
           objective,
           conversationContext: [],
@@ -426,8 +426,8 @@ export class ToolCallHandler {
           ownerId: context.ownerId,
           sessionId: context.sessionId,
           turnId: context.turnId,
-          coordinationRunId: context.taskId,
-          coordinationRequestId: context.jobId,
+          workId: context.taskId,
+          jobId: context.jobId,
           signal: context.signal,
           onEvent: context.onEvent,
         })
@@ -956,7 +956,7 @@ export class ToolCallHandler {
       )
       return
     }
-    if (!this.respondPermission) {
+    if (!this.respondAuthorization) {
       await this.sendOutput(
         callId,
         failure('permission_unavailable', '当前后台无法接收权限决定。'),
@@ -973,13 +973,14 @@ export class ToolCallHandler {
       this.sessionId,
       decision,
     )
-    // Receipt-based: the local policy takes effect immediately and the ACP
+    // Receipt-based: the local policy takes effect immediately and the backend
     // round trip must not delay the spoken confirmation. On delivery failure
     // the policy rolls back and the authorization is still pending on the
     // backend, so the gateway can re-announce it through the existing
     // pending-permission retry path.
     Promise.resolve()
-      .then(() => this.respondPermission(
+      .then(() => this.respondAuthorization(
+        pendingTask.id,
         authorizationId,
         decision,
         { ownerId: this.ownerId },

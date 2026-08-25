@@ -59,41 +59,6 @@ export class AgentClient {
     return this.adapter.subscribe(listener)
   }
 
-  runCoordinator(message, options = {}) {
-    return this.adapter.runCoordinator(message, options)
-  }
-
-  respondPermission(id, decision, options = {}) {
-    if (!this.adapter.respondPermission) {
-      throw new AgentError('当前后台 Agent 不支持权限确认', {
-        protocol: this.protocol,
-      })
-    }
-    return this.adapter.respondPermission(id, decision, options)
-  }
-
-  coordinatorUsesMcpInstructions() {
-    return this.adapter.coordinatorUsesMcpInstructions?.() === true
-  }
-
-  cancelWork(workId, options = {}) {
-    if (!this.adapter.cancelWork) {
-      throw new AgentError('当前后台 Agent 不支持取消任务', {
-        protocol: this.protocol,
-      })
-    }
-    return this.adapter.cancelWork(workId, options)
-  }
-
-  queryDelegatedWork(workId, question, options = {}) {
-    if (!this.adapter.queryDelegatedWork) {
-      throw new AgentError('当前后台 Agent 不支持查询第三层 Session', {
-        protocol: this.protocol,
-      })
-    }
-    return this.adapter.queryDelegatedWork(workId, question, options)
-  }
-
   canRecoverDelegatedWork(task) {
     return this.adapter.canRecoverDelegatedWork?.(task) === true
   }
@@ -165,25 +130,29 @@ export const agent = {
         ok: true,
       status: 'not_configured',
     }),
-  status: () => config.agentProtocol
-    ? requireAgent().status()
+  status: (workId, options = {}) => config.agentProtocol
+    ? requireAgent().status(workId, options)
     : {
         enabled: false,
         ok: true,
         status: 'not_configured',
         code: 'NOT_CONFIGURED',
       },
-  runCoordinator: (message, options = {}) =>
-    requireAgent().runCoordinator(message, options),
-  respondPermission: (id, decision, options = {}) =>
-    requireAgent().respondPermission(id, decision, options),
-  coordinatorUsesMcpInstructions: () => (
-    requireAgent().coordinatorUsesMcpInstructions()
+  start: (options = {}) => requireAgent().start(options),
+  submit: (work, options = {}) => requireAgent().submit(work, options),
+  cancel: (workId, options = {}) => requireAgent().cancel(workId, options),
+  respondAuthorization: (
+    workId,
+    authorizationId,
+    decision,
+    options = {},
+  ) => requireAgent().respondAuthorization(
+    workId,
+    authorizationId,
+    decision,
+    options,
   ),
-  cancelWork: (workId, options = {}) =>
-    requireAgent().cancelWork(workId, options),
-  queryDelegatedWork: (workId, question, options = {}) =>
-    requireAgent().queryDelegatedWork(workId, question, options),
+  subscribe: listener => requireAgent().subscribe(listener),
   canRecoverDelegatedWork: task => config.agentProtocol
     ? requireAgent().canRecoverDelegatedWork(task)
     : false,

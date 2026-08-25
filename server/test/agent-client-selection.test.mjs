@@ -80,9 +80,12 @@ test('opens the active OpenCode ACP coordinator Session directly', async () => {
     acpClient: fakeAcpClient(),
     sessionToolServer: fakeToolServer(),
   })
-  await client.runCoordinator('test', {
+  await client.submit({
+    id: 'one',
+    jobId: 'one',
     ownerId: 'owner-one',
-    coordinationRunId: 'one',
+    originalRequest: 'test',
+    objective: 'test',
   })
   assert.equal(
     await client.uiUrl({ ownerId: 'owner-one' }),

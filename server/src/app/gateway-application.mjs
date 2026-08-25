@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto'
 import { resolve } from 'path'
 import { agent as defaultAgent } from '../agent/agent-client.mjs'
 import { BackendAvailability } from '../agent/backend-availability.mjs'
-import { coordinator as defaultCoordinator } from '../agent/coordinator.mjs'
+import { BackendWorkRuntime } from '../backend/backend-work-runtime.mjs'
 import { config as defaultConfig } from '../core/config.mjs'
 import { logger as defaultLogger, runWithLogContext } from '../core/logger.mjs'
 import { conversationSync as defaultConversationSync } from '../conversation/conversation-sync.mjs'
@@ -48,7 +48,7 @@ import {
 export function createGatewayApplication({
   config = defaultConfig,
   agent = defaultAgent,
-  coordinator = defaultCoordinator,
+  backendRuntime = null,
   conversationSync = defaultConversationSync,
   inputAssets = null,
   taskManager = defaultTaskManager,
@@ -59,6 +59,7 @@ export function createGatewayApplication({
   realtimeProviderRegistry = defaultRealtimeProviderRegistry,
   realtimeProvider = config.audioProvider,
 } = {}) {
+const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const inputAssetRegistry = inputAssets || new InputAssetRegistry({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
@@ -81,7 +82,7 @@ taskManager.recoverDelegated({
   canRecover: task => agent.canRecoverDelegatedWork(task),
   runner: (task, context) => agent.recoverDelegatedWork(task, context),
   canceler: async (task, { abort }) => {
-    const result = await agent.cancelWork(task.id, {
+    const result = await agent.cancel(task.id, {
       ownerId: task.ownerId,
     })
     abort()
@@ -123,7 +124,7 @@ const frontendMemoryService = new FrontendMemoryService({
 // Restored scheduled tasks use persisted identity and resolve current memory
 // at execution time, exactly like tasks created by a live voice session.
 taskManager.configureScheduledTaskRunner(
-  async (objective, context) => coordinator.run({
+  async (objective, context) => workBackend.run({
     originalRequest: objective,
     objective,
     conversationContext: [],
@@ -135,8 +136,8 @@ taskManager.configureScheduledTaskRunner(
     ownerId: context.ownerId,
     sessionId: context.sessionId,
     turnId: context.turnId,
-    coordinationRunId: context.taskId,
-    coordinationRequestId: context.jobId,
+    workId: context.taskId,
+    jobId: context.jobId,
     signal: context.signal,
     onEvent: context.onEvent,
   }),
@@ -376,25 +377,28 @@ app.post('/api/permissions/:id', async (req, res, next) => {
     ownerId: req.identity.ownerId,
     active: true,
   }).find(task => task.authorization?.id === req.params.id)
-  const previousPermissionMode = permissionTask
-    ? permissionPolicy.mode(req.identity.ownerId, permissionTask.sessionId)
-    : null
-  if (permissionTask) {
-    permissionPolicy.applyDecision(
-      req.identity.ownerId,
-      permissionTask.sessionId,
-      decision,
-    )
+  if (!permissionTask) {
+    return res.status(404).json({ error: 'permission request not found' })
   }
+  const previousPermissionMode = permissionPolicy.mode(
+    req.identity.ownerId,
+    permissionTask.sessionId,
+  )
+  permissionPolicy.applyDecision(
+    req.identity.ownerId,
+    permissionTask.sessionId,
+    decision,
+  )
   try {
-    const permission = await agent.respondPermission(
+    const permission = await agent.respondAuthorization(
+      permissionTask.id,
       req.params.id,
       decision,
       { ownerId: req.identity.ownerId },
     )
     return res.json(permission)
   } catch (error) {
-    if (permissionTask && previousPermissionMode) {
+    if (previousPermissionMode) {
       permissionPolicy.setMode(
         req.identity.ownerId,
         permissionTask.sessionId,
@@ -464,7 +468,7 @@ const backendAvailability = new BackendAvailability({
     return {
       configured: true,
       ok: health.ok === true,
-      // A managed service and its ACP bridge come online in stages. Preserve
+      // A managed service and its adapter transport come online in stages. Preserve
       // that distinction so receipt-based work is not rejected from a stale
       // cold-start probe, and keep advancing initialization in the background.
       transient: health.status === 'starting'
@@ -478,10 +482,10 @@ realtimeGateway = attachRealtimeGateway(server, {
   memoryService: frontendMemoryService,
   memoryExtractor,
   notesStore,
-  coordinator,
+  backendRuntime: workBackend,
   backendAvailability,
-  respondPermission: (id, decision, options) => (
-    agent.respondPermission(id, decision, options)
+  respondAuthorization: (workId, id, decision, options) => (
+    agent.respondAuthorization(workId, id, decision, options)
   ),
   permissionPolicy,
   inputAssets: inputAssetRegistry,
@@ -550,7 +554,7 @@ return {
     agent,
     backendAvailability,
     conversationSync,
-    coordinator,
+    backendRuntime: workBackend,
     frontendMemoryService,
     identityManager,
     inputArbitration,

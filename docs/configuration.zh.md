@@ -107,8 +107,9 @@ DASHSCOPE_API_KEY=your-key
 ```
 
 语音前台的 `web_search` 工具返回可核验的来源链接，不会创建后台 Agent 工作，也不会
-额外调用文本大模型。用户未配置时，默认使用无需 Key、国内可访问的简易 Bing RSS
-Adapter；该兜底能力属于实验性实现，偶尔可能被拦截或受上游变化影响。需要时也可
+额外调用文本大模型。用户未配置时，默认使用无需 Key、国内可访问的简易 Bing Adapter，
+只解析一次公开搜索结果页。该基础兜底属于实验性实现，可能被拦截、结果质量不稳定或受上游
+变化影响；稳定使用时应配置自己的 Provider。需要时也可
 设置 `QWEN_AUDIO_WEB_SEARCH_PROVIDER=duckduckgo` 使用 DuckDuckGo。
 
 在百炼开通联网搜索 MCP 后，需要显式选择内置预设；此时会复用

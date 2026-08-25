@@ -1,5 +1,5 @@
 const SEARCH_ENDPOINT = 'https://www.bing.com/search'
-const MAX_RESPONSE_BYTES = 1024 * 1024
+const MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 export class BingWebSearchError extends Error {
   constructor(code, message) {
@@ -13,29 +13,46 @@ function clean(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
 }
 
-function decodeXml(value) {
+function decodedCodePoint(value, radix) {
+  const codePoint = Number.parseInt(value, radix)
+  if (
+    !Number.isInteger(codePoint)
+    || codePoint < 0
+    || codePoint > 0x10ffff
+    || (codePoint >= 0xd800 && codePoint <= 0xdfff)
+  ) return '\ufffd'
+  return String.fromCodePoint(codePoint)
+}
+
+function decodeEntities(value) {
   return String(value || '')
-    .replace(/^<!\[CDATA\[|\]\]>$/gu, '')
     .replace(/&amp;/giu, '&')
     .replace(/&lt;/giu, '<')
     .replace(/&gt;/giu, '>')
     .replace(/&quot;/giu, '"')
-    .replace(/&apos;/giu, "'")
-    .replace(/&#(\d+);/gu, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/giu, (_, code) => (
-      String.fromCodePoint(Number.parseInt(code, 16))
-    ))
+    .replace(/&(?:apos|#(?:39|x27));/giu, "'")
+    .replace(/&nbsp;/giu, ' ')
+    .replace(/&ensp;/giu, ' ')
+    .replace(/&emsp;/giu, ' ')
+    .replace(/&middot;/giu, '·')
+    .replace(/&#(\d+);/gu, (_, code) => decodedCodePoint(code, 10))
+    .replace(/&#x([0-9a-f]+);/giu, (_, code) => decodedCodePoint(code, 16))
 }
 
-function xmlValue(block, tag) {
-  return clean(decodeXml(
-    new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, 'iu').exec(block)?.[1],
+function plainText(value) {
+  return clean(decodeEntities(
+    String(value || '')
+      .replace(/^<!\[CDATA\[|\]\]>$/gu, '')
+      // Bing wraps query terms in <strong> inside words; drop them without
+      // spacing so highlighted words stay intact.
+      .replace(/<\/?strong\b[^>]*>/giu, '')
+      .replace(/<[^>]+>/gu, ' '),
   ))
 }
 
 function publicUrl(value) {
   try {
-    const url = new URL(value)
+    const url = new URL(decodeEntities(value))
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
       return ''
     }
@@ -45,13 +62,19 @@ function publicUrl(value) {
   }
 }
 
-export function parseBingRssResults(xml) {
+export function parseBingHtmlResults(html) {
   const results = []
-  for (const match of String(xml || '').matchAll(/<item>([\s\S]*?)<\/item>/giu)) {
-    const title = xmlValue(match[1], 'title')
-    const url = publicUrl(xmlValue(match[1], 'link'))
-    const snippet = xmlValue(match[1], 'description')
-    if (!title || !url) continue
+  const seen = new Set()
+  for (const match of String(html || '').matchAll(/<li\b[^>]*\bb_algo\b[\s\S]*?<\/li>/giu)) {
+    const block = match[0]
+    const titleMatch = /<h2\b[^>]*>[\s\S]*?<a\b[^>]*href=(?:"([^"]*)"|'([^']*)')[^>]*>([\s\S]*?)<\/a>/iu.exec(block)
+    if (!titleMatch) continue
+    const title = plainText(titleMatch[3])
+    const url = publicUrl(titleMatch[1] || titleMatch[2])
+    if (!title || !url || seen.has(url)) continue
+    seen.add(url)
+    const captionMatch = /\bb_caption\b[\s\S]*?<p\b[^>]*>([\s\S]*?)<\/p>/iu.exec(block)
+    const snippet = captionMatch ? plainText(captionMatch[1]) : ''
     results.push({
       title,
       url,
@@ -96,6 +119,34 @@ export class BingWebSearchProvider {
     return true
   }
 
+  async #fetchPage(url, accept, signal) {
+    try {
+      const response = await this.fetchImpl(url, {
+        method: 'GET',
+        headers: {
+          accept,
+          'user-agent': 'qwen-audio-agent web-search',
+        },
+        redirect: 'error',
+        signal,
+      })
+      const body = await boundedText(response)
+      if (!response.ok) {
+        throw new BingWebSearchError(
+          'search_request_failed',
+          `简易搜索服务返回 HTTP ${response.status}。`,
+        )
+      }
+      return body
+    } catch (error) {
+      if (error instanceof BingWebSearchError) throw error
+      throw new BingWebSearchError(
+        signal?.aborted ? 'search_aborted' : 'search_request_failed',
+        signal?.aborted ? '搜索已中止。' : '简易搜索服务暂时不可用。',
+      )
+    }
+  }
+
   async search(query, { limit = 5, signal } = {}) {
     const normalizedQuery = clean(query).slice(0, 400)
     if (!normalizedQuery) {
@@ -105,41 +156,11 @@ export class BingWebSearchProvider {
       )
     }
     const boundedLimit = Math.max(1, Math.min(8, Math.trunc(Number(limit) || 5)))
-    const url = new URL(SEARCH_ENDPOINT)
-    url.searchParams.set('q', normalizedQuery)
-    url.searchParams.set('format', 'rss')
-    url.searchParams.set('mkt', 'zh-CN')
-    let response
-    try {
-      response = await this.fetchImpl(url, {
-        method: 'GET',
-        headers: {
-          accept: 'application/rss+xml, application/xml, text/xml',
-          'user-agent': 'qwen-audio-agent web-search',
-        },
-        redirect: 'error',
-        signal,
-      })
-    } catch {
-      throw new BingWebSearchError(
-        signal?.aborted ? 'search_aborted' : 'search_request_failed',
-        signal?.aborted ? '搜索已中止。' : '简易搜索服务暂时不可用。',
-      )
-    }
-    const xml = await boundedText(response)
-    if (!response.ok) {
-      throw new BingWebSearchError(
-        'search_request_failed',
-        `简易搜索服务返回 HTTP ${response.status}。`,
-      )
-    }
-    if (!/<rss\b/iu.test(xml)) {
-      throw new BingWebSearchError(
-        'search_response_invalid',
-        '简易搜索没有返回预期的 RSS 内容。',
-      )
-    }
-    const results = parseBingRssResults(xml).slice(0, boundedLimit)
+    const htmlUrl = new URL(SEARCH_ENDPOINT)
+    htmlUrl.searchParams.set('q', normalizedQuery)
+    htmlUrl.searchParams.set('mkt', 'zh-CN')
+    const html = await this.#fetchPage(htmlUrl, 'text/html', signal)
+    const results = parseBingHtmlResults(html).slice(0, boundedLimit)
     if (!results.length) {
       throw new BingWebSearchError(
         'search_results_missing',

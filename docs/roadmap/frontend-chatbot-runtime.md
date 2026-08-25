@@ -233,8 +233,12 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Add explicit attachment indexing and owner-scoped document management.
   - [x] Expose one capability-gated Knowledge tool for search and bounded
     full-context reads.
-- [ ] Routing, citation, interruption, duplicate-speech, and prompt-injection
+- [x] Routing, citation, interruption, duplicate-speech, and prompt-injection
       evaluations.
+  - [x] Add a deterministic, provider-free frontend evaluation command.
+  - [x] Exercise runtime components rather than duplicating their logic in an
+    evaluation-only implementation.
+  - [x] Keep semantic model-quality evaluation separate from CI invariants.
 
 ### R6 — Open the ecosystem
 

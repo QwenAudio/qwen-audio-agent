@@ -167,11 +167,11 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 
 ### R2 — Frontend Chatbot Runtime
 
-- [ ] Extract realtime session, turn, input, playback, and presentation logic.
+- [x] Extract realtime session, turn, input, playback, and presentation logic.
   - [x] Centralize per-connection turn generation, correlation, and interruption boundaries.
   - [x] Extract provider audio/transcription and manual-input lifecycles.
   - [x] Extract response correlation, playback, and presentation lifecycles.
-  - [ ] Extract the realtime provider session lifecycle.
+  - [x] Extract the realtime provider session lifecycle.
 - [x] Add Frontend Tool Registry, Policy, and Executor.
   - [x] Extract the declarative Registry and visibility Policy.
   - [x] Route execution through the Registry-owned Executor.

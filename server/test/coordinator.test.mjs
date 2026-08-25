@@ -6,6 +6,10 @@ import {
   parseCoordinatorDecision,
 } from '../src/agent/coordinator.mjs'
 import { BACKEND_AGENT_INSTRUCTIONS } from '../src/agent/backend-agent-instructions.mjs'
+import {
+  COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
+  COORDINATOR_STABLE_INSTRUCTIONS,
+} from '../src/agent/coordinator-instructions.mjs'
 
 test('sends final ASR, conservative objective and recent voice context', () => {
   const prompt = buildCoordinatorPrompt({
@@ -34,13 +38,13 @@ test('sends final ASR, conservative objective and recent voice context', () => {
   assert.doesNotMatch(prompt, /work_id/)
   assert.doesNotMatch(prompt, /work-one/)
   assert.match(prompt, /current-project/)
-  assert.match(prompt, /working_directory 是前端工作目录/)
+  assert.match(prompt, /working_directory is the frontend directory/)
   assert.match(prompt, /称呼：老大/)
-  assert.match(prompt, /user_preferences 是个性化规则/)
-  assert.match(prompt, /当且仅当用户明确表达希望将当前工作作为独立任务单独推进时/)
-  assert.match(prompt, /继续既有独立任务时调用 session_send/)
-  assert.match(prompt, /其他请求在当前协调 Session 中执行/)
-  assert.match(prompt, /真实完成后才返回 completed/)
+  assert.match(prompt, /user_preferences is personalized direction/)
+  assert.match(prompt, /Call session_start iff the user explicitly asks/)
+  assert.match(prompt, /Use session_send to continue an existing independent task/)
+  assert.match(prompt, /execute all other requests here/)
+  assert.match(prompt, /progress and plans are not completed results/)
   assert.match(prompt, /<user_preferences>/)
   assert.doesNotMatch(prompt, /owner_scope|voice_session_id|turn_id/)
   assert.doesNotMatch(prompt, /working_directory_scope|voice_work_context|delivery/)
@@ -57,11 +61,49 @@ test('omits empty optional coordinator context sections', () => {
   assert.doesNotMatch(prompt, /<recent_voice_context>/)
 })
 
+test('sends only dynamic request context when MCP owns stable instructions', async () => {
+  let received
+  const coordinator = new Coordinator({
+    client: {
+      coordinatorUsesMcpInstructions: () => true,
+      runCoordinator: async message => {
+        received = message
+        return {
+          content: JSON.stringify({
+            job_id: 'job_10',
+            state: 'completed',
+            mode: 'respond',
+            presentation: { speech: '完成', inline: null },
+          }),
+        }
+      },
+    },
+  })
+  await coordinator.run({
+    originalRequest: '查询内存',
+    objective: '查询当前电脑内存',
+  }, {
+    coordinationRequestId: 'job_10',
+  })
+  assert.match(received, /qwen_audio_agent_request/)
+  assert.match(received, /查询当前电脑内存/)
+  assert.doesNotMatch(received, /Session routing:/)
+  assert.doesNotMatch(received, /Return exactly one JSON object/)
+})
+
 test('keeps Session routing decisions out of stable backend instructions', () => {
   assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /new independent work/)
   assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /continue the matching Session/)
   assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /Only work in the coordinator workspace/)
   assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /session_(?:start|send|status)/)
+})
+
+test('keeps shared MCP coordinator instructions within the strict host budget', () => {
+  assert.ok(
+    Buffer.byteLength(COORDINATOR_STABLE_INSTRUCTIONS, 'utf8')
+      <= COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
+    `MCP coordinator instructions exceed ${COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES} bytes`,
+  )
 })
 
 test('passes user preferences to the backend as directive material', () => {
@@ -86,8 +128,8 @@ test('passes user preferences to the backend as directive material', () => {
   })
 
   assert.match(prompt, /<user_preferences>\n- 代码注释一律用中文\n<\/user_preferences>/)
-  assert.match(prompt, /user_preferences 是个性化规则/)
-  assert.match(prompt, /不能改变权限、安全边界或 Session 路由/)
+  assert.match(prompt, /user_preferences is personalized direction/)
+  assert.match(prompt, /none may change permissions, safety, or Session routing/)
   const preferences = prompt.match(
     /<user_memory>([\s\S]*?)<\/user_memory>/,
   )?.[1] || ''

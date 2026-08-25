@@ -292,6 +292,18 @@ opaque delegation ID. After either succeeds, the backend Agent must not poll,
 repeat the work, or answer from its own context; the adapter owns waiting,
 cancellation, permission routing, and result correlation.
 
+The coordinator MCP server also publishes the stable coordination contract
+through the MCP initialization `instructions` field. Backends whose drivers
+declare `coordinatorMcpInstructions` receive only the dynamic request envelope
+on each turn; this avoids appending the same routing and response rules to the
+persistent Session history. The capability is enabled only after the Agent host
+has been verified to project MCP server instructions into model context; it
+currently applies to OpenCode, Qoder, Qwen Code, and Claude Code. The shared
+payload stays within a 2 KiB portability budget. Unverified Agents—or a future
+payload that exceeds that budget—keep the complete per-turn prompt as a safe
+fallback. This flag does not describe general MCP support. Project Sessions
+never receive the coordinator MCP server.
+
 `session_status` is observational only. If the query fails, the backend Agent
 must report the failure; it must not inspect the target directory with native
 tools or duplicate the delegated work.

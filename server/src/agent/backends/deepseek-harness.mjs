@@ -12,6 +12,7 @@ export const deepSeekHarnessBackendDriver = {
     externalMcp: false,
     nativeDelegation: false,
     sessionMcp: false,
+    coordinatorMcpInstructions: false,
   },
 
   createProfile({

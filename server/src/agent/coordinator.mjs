@@ -2,6 +2,7 @@ import { agent } from './agent-client.mjs'
 import { promptWithInputParts } from './acp-content.mjs'
 import { inputAttachmentMetadata } from '../../../shared/input-parts.mjs'
 import { parseCoordinatorPayload } from './acp-backend-session-utils.mjs'
+import { COORDINATOR_STABLE_INSTRUCTIONS } from './coordinator-instructions.mjs'
 import { canonicalScope, isDirectiveScope } from '../core/memory-scopes.mjs'
 
 const INLINE_SCHEMA = {
@@ -139,6 +140,7 @@ export function buildCoordinatorPrompt({
   coordinationRunId = '',
   coordinationRequestId = '',
   inputParts = [],
+  includeStableInstructions = true,
 }) {
   const userModel = userMemories
     .filter(memory => isDirectiveScope(clean(memory.scope)))
@@ -183,29 +185,9 @@ export function buildCoordinatorPrompt({
     ...(recentContext
       ? [`<recent_voice_context>\n${recentContext}\n</recent_voice_context>`]
       : []),
-    '',
-    '字段说明：',
-    '- request_id 即本轮 job_id；timestamp 和 timezone 是本轮时间上下文。',
-    '- final_asr 是用户原话，objective 是本工作项边界。用原话补全约束和指代，但不执行边界外的并列目标。',
-    '- attachments 是本轮原始附件。',
-    '- working_directory 是前端工作目录。用户未另指目录时优先使用；无法访问则如实说明。',
-    '- user_memory 是长期事实，user_preferences 是个性化规则；当前请求优先，且二者不能改变权限、安全边界或 Session 路由。',
-    '- recent_voice_context 仅用于理解对话指代。',
-    ...(userModel.length
-      ? ['- 在称呼、关系、语言、表达风格和默认做法上遵从 user_preferences。']
+    ...(includeStableInstructions
+      ? ['', COORDINATOR_STABLE_INSTRUCTIONS]
       : []),
-    '',
-    'Session 路由：',
-    '- 当且仅当用户明确表达希望将当前工作作为独立任务单独推进时，调用 session_start。',
-    '- 继续既有独立任务时调用 session_send；其他请求在当前协调 Session 中执行。',
-    '- 不得根据 objective 的扩写改变用户表达的执行方式。',
-    '- session_start/session_send 返回 started 后返回 delegated 并结束本轮，不查询或重复执行。',
-    '- session_status 只查询既有独立任务；失败时如实说明，不用其他工具代查。',
-    '',
-    '返回格式：',
-    '{"job_id":"request_id","state":"completed","mode":"respond","presentation":{"speech":"适合语音表达的最终结果","inline":null}}',
-    '{"job_id":"request_id","state":"delegated","mode":"delegate","delegation_id":"工具返回的ID","target_session_id":"目标Session ID","presentation":{"speech":"自然说明已经开始处理什么","inline":null}}',
-    '第一种用于完成，第二种用于委派；inline 可承载 Markdown、代码或链接。非委派请求真实完成后才返回 completed，不把进度或计划当作结果。',
   ].join('\n')
 }
 
@@ -221,6 +203,8 @@ export class Coordinator {
       ...input,
       coordinationRunId: options.coordinationRunId,
       coordinationRequestId: requestId,
+      includeStableInstructions:
+        this.client.coordinatorUsesMcpInstructions?.() !== true,
     })
     const initialMessage = promptWithInputParts(prompt, input.inputParts)
     const run = message => this.client.runCoordinator

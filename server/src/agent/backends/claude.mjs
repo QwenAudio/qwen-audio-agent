@@ -12,6 +12,9 @@ export const claudeBackendDriver = {
     externalMcp: true,
     nativeDelegation: false,
     sessionMcp: true,
+    // Claude Code projects MCP server instructions into the main model
+    // context. Keep the shared coordinator payload within its 2 KB budget.
+    coordinatorMcpInstructions: true,
   },
 
   createProfile({

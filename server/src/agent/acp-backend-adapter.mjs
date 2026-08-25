@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { AgentError } from './backend-adapter.mjs'
 import { BACKEND_AGENT_INSTRUCTIONS } from './backend-agent-instructions.mjs'
 import {
+  COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
+  COORDINATOR_STABLE_INSTRUCTIONS,
+} from './coordinator-instructions.mjs'
+import {
   acpBackendProfile,
   endpointAvailable,
 } from './acp-backend-profile.mjs'
@@ -36,7 +40,7 @@ const MAX_DELEGATION_RESULT_CHARS = 12_000
 const MAX_DELEGATION_RECENT_UPDATES = 5
 // Persistent coordinator Sessions are valid only for the contract that
 // created them. Project Sessions are user work and remain independent.
-const COORDINATOR_CONTRACT_VERSION = 2
+const COORDINATOR_CONTRACT_VERSION = 3
 
 export { acpBackendProfile } from './acp-backend-profile.mjs'
 
@@ -241,6 +245,19 @@ export class AcpBackendAdapter {
     return this.profile.label
   }
 
+  coordinatorUsesMcpInstructions() {
+    return this.profile.coordinatorMcpInstructions === true
+      && Buffer.byteLength(this.stableCoordinatorInstructions(), 'utf8')
+        <= COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES
+  }
+
+  stableCoordinatorInstructions() {
+    return [
+      COORDINATOR_STABLE_INSTRUCTIONS,
+      clean(this.profile.sessionInstructions),
+    ].filter(Boolean).join('\n\n')
+  }
+
   get lastHealthFailure() {
     return this.runtimeState.lastFailure
   }
@@ -431,7 +448,11 @@ export class AcpBackendAdapter {
       registration.update(context)
       return registration
     }
-    const pending = this.sessionToolServer.register(context).then(
+    const pending = this.sessionToolServer.register(context, {
+      instructions: this.coordinatorUsesMcpInstructions()
+        ? this.stableCoordinatorInstructions()
+        : '',
+    }).then(
       registration => {
         this.coordinatorToolRegistrations.set(key, registration)
         return registration
@@ -990,6 +1011,7 @@ export class AcpBackendAdapter {
   }
 
   coordinatorInstructions(message) {
+    if (this.coordinatorUsesMcpInstructions()) return message
     const sessionInstructions = clean(this.profile.sessionInstructions)
     return transformPromptText(message, content => [
       '<qwen_audio_agent_backend_instructions>',

@@ -35,9 +35,11 @@ function fakeToolServer() {
     updateCalls: 0,
     releaseCalls: 0,
     registrations: [],
-    async register(context) {
+    registerOptions: [],
+    async register(context, options = {}) {
       this.context = context
       this.registerCalls += 1
+      this.registerOptions.push(options)
       const registration = {
         context,
         released: false,
@@ -669,6 +671,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
     externalMcp: true,
     nativeDelegation: false,
     sessionMcp: true,
+    coordinatorMcpInstructions: true,
   })
   const openClaw = acpBackendProfile({
     protocol: 'openclaw',
@@ -1071,6 +1074,46 @@ test('keeps a cached coordinator MCP connection valid across turns', async () =>
   assert.equal(tools.releaseCalls, 1)
 })
 
+test('moves stable coordinator rules into MCP instructions for verified backends', async () => {
+  const tools = fakeToolServer()
+  const prompts = []
+  const client = {
+    async newSession(options) {
+      return {
+        sessionId: 'coordinator-session',
+        cwd: options.cwd,
+        response: {},
+      }
+    },
+    async prompt(_sessionId, prompt) {
+      prompts.push(prompt)
+      return {
+        content: completed('done'),
+        response: { stopReason: 'end_turn' },
+      }
+    },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qwen',
+    directory: '/coordinator',
+    client,
+    sessionToolServer: tools,
+  })
+  await adapter.runCoordinator('<qwen_audio_agent_request>dynamic</qwen_audio_agent_request>', {
+    ownerId: 'owner-one',
+    coordinationRunId: 'work-one',
+  })
+
+  assert.equal(adapter.coordinatorUsesMcpInstructions(), true)
+  assert.match(tools.registerOptions[0].instructions, /Session routing:/)
+  assert.match(tools.registerOptions[0].instructions, /qwen-audio-agent's backend/)
+  assert.doesNotMatch(prompts[0], /Session routing:/)
+  assert.doesNotMatch(prompts[0], /qwen-audio-agent's backend/)
+  assert.match(prompts[0], /dynamic/)
+  await adapter.close()
+})
+
 test('replaces a persisted coordinator without the current coordinator contract', async () => {
   const tools = fakeToolServer()
   let resumes = 0
@@ -1124,7 +1167,7 @@ test('replaces a persisted coordinator without the current coordinator contract'
   assert.equal(creates, 1)
   assert.equal(deleted.length, 1)
   assert.equal(saved[0][1].sessionId, 'fresh-coordinator')
-  assert.equal(saved[0][1].contractVersion, 2)
+  assert.equal(saved[0][1].contractVersion, 3)
   await adapter.close()
 })
 

@@ -97,6 +97,10 @@ export class AgentClient {
     return this.adapter.respondPermission(id, decision, options)
   }
 
+  coordinatorUsesMcpInstructions() {
+    return this.adapter.coordinatorUsesMcpInstructions?.() === true
+  }
+
   cancelWork(workId, options = {}) {
     if (!this.adapter.cancelWork) {
       throw new AgentError('当前后台 Agent 不支持取消任务', {
@@ -192,6 +196,9 @@ export const agent = {
     requireAgent().runCoordinator(message, options),
   respondPermission: (id, decision, options = {}) =>
     requireAgent().respondPermission(id, decision, options),
+  coordinatorUsesMcpInstructions: () => (
+    requireAgent().coordinatorUsesMcpInstructions()
+  ),
   cancelWork: (workId, options = {}) =>
     requireAgent().cancelWork(workId, options),
   queryDelegatedWork: (workId, question, options = {}) =>

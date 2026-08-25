@@ -1,4 +1,5 @@
 import { TaskDomainEvent } from './task-events.mjs'
+import { TaskStatus, transitionTask } from './task-state.mjs'
 
 /**
  * ReminderScheduler — setTimeout-driven scheduler for scheduled tasks.
@@ -68,7 +69,7 @@ export class ReminderScheduler {
       const delay = index * this.staggerMs
       const timer = setTimeout(() => {
         if (task.status !== 'scheduled') return
-        task.status = 'queued'
+        transitionTask(task, TaskStatus.QUEUED)
         this.taskManager.emit(TaskDomainEvent.SCHEDULED_FIRED, task)
         this.taskManager.persistDeferred()
         this.taskManager.drain()
@@ -105,7 +106,7 @@ export class ReminderScheduler {
     let fired = 0
     for (const task of this.taskManager.tasks.values()) {
       if (task.status === 'scheduled' && task.schedule?.at <= now) {
-        task.status = 'queued'
+        transitionTask(task, TaskStatus.QUEUED)
         // Phase 3: recurrence handling (create next cycle's new scheduled task)
         fired += 1
       }

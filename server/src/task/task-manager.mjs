@@ -4,17 +4,16 @@ import { TaskScheduler } from './task-scheduler.mjs'
 import { TaskStore } from './task-store.mjs'
 import { TaskDomainEvent } from './task-events.mjs'
 import { TaskNotificationQueue } from './task-notification-queue.mjs'
+import {
+  isTaskActive,
+  isTaskCancellable,
+  isTaskTerminal,
+  publicTask,
+  TaskStatus,
+  transitionTask,
+} from './task-state.mjs'
 import { logger } from '../core/logger.mjs'
 
-const ACTIVE = new Set([
-  'queued',
-  'running',
-  'delegated',
-  'finalizing',
-  'cancelling',
-])
-const CANCELLABLE = new Set(['scheduled', 'queued', 'running', 'delegated', 'finalizing'])
-const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 const REPLAYABLE_REMINDER = new Set(['queued', 'running'])
 const MAX_JOB_NUMBER = 99_999
 
@@ -37,77 +36,6 @@ export function taskExecutionContext(task, { onEvent, signal }) {
     onEvent,
     signal,
   })
-}
-
-function publicResultMetadata(metadata) {
-  if (!metadata || typeof metadata !== 'object') return null
-  const source = metadata.presentation || metadata.decision?.presentation
-  if (!source || typeof source !== 'object') return null
-  const inline = source.inline && typeof source.inline === 'object'
-    && typeof source.inline.content === 'string'
-    && source.inline.content.trim()
-    ? {
-        title: typeof source.inline.title === 'string'
-          ? source.inline.title.slice(0, 120)
-          : '',
-        format: ['markdown', 'code', 'link'].includes(source.inline.format)
-          ? source.inline.format
-          : 'markdown',
-        content: source.inline.content,
-      }
-    : null
-  const speech = typeof source.speech === 'string' ? source.speech : ''
-  if (!speech && !inline) return null
-  return { presentation: { speech, inline } }
-}
-
-function publicTask(task) {
-  const now = Date.now()
-  return {
-    id: task.id,
-    workId: task.id,
-    jobId: task.jobId,
-    workState: ACTIVE.has(task.status) ? 'active' : task.status,
-    status: task.status,
-    kind: task.kind || 'work',
-    parentWorkId: task.parentWorkId || null,
-    objective: task.objective,
-    ownerId: task.ownerId,
-    sessionId: task.sessionId,
-    turnId: task.turnId,
-    createdAt: task.createdAt,
-    startedAt: task.startedAt,
-    completedAt: task.completedAt,
-    elapsedMs: task.startedAt && ACTIVE.has(task.status)
-      ? now - task.startedAt
-      : task.elapsedMs,
-    result: task.result,
-    error: task.error,
-    resultMetadata: publicResultMetadata(task.resultMetadata),
-    activity: [...(task.activity || [])],
-    delegation: task.delegation
-      ? {
-          status: task.delegation.status || 'running',
-          title: String(task.delegation.title || '').slice(0, 160),
-          presentation: task.delegation.presentation
-            ? {
-                speech: String(
-                  task.delegation.presentation.speech || '',
-                ).slice(0, 1200),
-                inline: task.delegation.presentation.inline || null,
-              }
-            : null,
-        }
-      : null,
-    authorization: task.authorization
-      ? { ...task.authorization }
-      : null,
-    notificationStatus: task.notificationStatus,
-    notificationDeliveredAt: task.notificationDeliveredAt,
-    schedule: task.schedule || null,
-    timeoutMs: task.timeoutMs || null,
-    progressCheckMs: task.progressCheckMs || null,
-  }
 }
 
 export class TaskManager {
@@ -201,7 +129,7 @@ export class TaskManager {
         this.tasks.set(task.id, task)
         continue
       }
-      const wasActive = ACTIVE.has(saved.status)
+      const wasActive = isTaskActive(saved.status)
       const canRecoverDelegation = (
         ['delegated', 'finalizing'].includes(saved.status)
         && saved.delegation?.id
@@ -222,7 +150,7 @@ export class TaskManager {
         delegation: canRecoverDelegation || !wasActive
           ? saved.delegation || null
           : null,
-        authorization: wasActive || TERMINAL.has(saved.status)
+        authorization: wasActive || isTaskTerminal(saved.status)
           ? null
           : saved.authorization || null,
         notificationStatus: (
@@ -280,7 +208,7 @@ export class TaskManager {
         delegation: task.delegation ? { ...task.delegation } : null,
       }
       if (!canRecover?.(snapshot)) {
-        task.status = 'failed'
+        transitionTask(task, TaskStatus.FAILED)
         task.error = 'qwen-audio-agent 重启时这项项目任务失去连接，请重新提交。'
         task.completedAt = Date.now()
         task.notificationStatus = 'pending'
@@ -508,14 +436,14 @@ export class TaskManager {
   }
 
   start(task) {
-    task.status = 'running'
+    transitionTask(task, TaskStatus.RUNNING)
     task.startedAt = Date.now()
     task.abortController = new AbortController()
     this.scheduler.acquire(task)
     task.schedulerHeld = true
     this.emit(TaskDomainEvent.RUNNING, task)
     task.progressTimer = setInterval(() => {
-      if (ACTIVE.has(task.status)) {
+      if (isTaskActive(task.status)) {
         this.emit(TaskDomainEvent.PROGRESS, task, { persist: false })
       }
     }, 1000)
@@ -537,7 +465,7 @@ export class TaskManager {
       }
       if (['cancelling', 'cancelled'].includes(task.status)) return
       if (event?.type === 'backend.delegated' && event.delegation) {
-        task.status = 'delegated'
+        transitionTask(task, TaskStatus.DELEGATED)
         task.delegation = { ...event.delegation }
         if (task.schedulerHeld) {
           this.scheduler.release(task)
@@ -551,7 +479,7 @@ export class TaskManager {
         event?.type === 'backend.delegation.completed'
         && event.delegation
       ) {
-        task.status = 'finalizing'
+        transitionTask(task, TaskStatus.FINALIZING)
         task.delegation = { ...event.delegation, status: 'completed' }
         this.emit(TaskDomainEvent.FINALIZING, task)
         return
@@ -580,14 +508,14 @@ export class TaskManager {
     // cleanup window before force-failing.
     if (task.kind === 'scheduled_task' && task.timeoutMs) {
       task.timeoutTimer = setTimeout(() => {
-        if (!ACTIVE.has(task.status)) return
+        if (!isTaskActive(task.status)) return
         task.abortController?.abort(
           new Error('定时任务执行超时，正在终止'),
         )
         const cleanup = setTimeout(() => {
-          if (!ACTIVE.has(task.status)) return
+          if (!isTaskActive(task.status)) return
           task.terminalHandled = true
-          task.status = 'failed'
+          transitionTask(task, TaskStatus.FAILED)
           task.error = `定时任务执行超时（${Math.round(task.timeoutMs / 60000)} 分钟）`
           task.completedAt = Date.now()
           task.elapsedMs = task.startedAt
@@ -614,7 +542,7 @@ export class TaskManager {
     // work stays quiet until it completes, fails, or needs permission.
     if (task.kind === 'work' && task.progressCheckMs) {
       task.progressCheckTimer = setInterval(() => {
-        if (!ACTIVE.has(task.status)) {
+        if (!isTaskActive(task.status)) {
           clearInterval(task.progressCheckTimer)
           task.progressCheckTimer = null
           return
@@ -664,7 +592,7 @@ export class TaskManager {
           task.terminalHandled
           || ['cancelling', 'cancelled'].includes(task.status)
         ) return
-        task.status = 'completed'
+        transitionTask(task, TaskStatus.COMPLETED)
         task.result = String(outcome?.content ?? outcome ?? '').trim()
         task.resultMetadata = outcome?.metadata || null
       })
@@ -673,7 +601,7 @@ export class TaskManager {
           task.terminalHandled
           || ['cancelling', 'cancelled'].includes(task.status)
         ) return
-        task.status = 'failed'
+        transitionTask(task, TaskStatus.FAILED)
         task.error = error?.message || String(error)
       })
       .finally(() => {
@@ -721,7 +649,7 @@ export class TaskManager {
     if (
       !task
       || (ownerId !== undefined && task.ownerId !== String(ownerId))
-      || (!CANCELLABLE.has(task.status) && task.status !== 'cancelling')
+      || (!isTaskCancellable(task.status) && task.status !== 'cancelling')
     ) {
       return null
     }
@@ -730,7 +658,7 @@ export class TaskManager {
     if (previousStatus === 'queued' || previousStatus === 'scheduled') {
       return this.finishCancellation(task)
     }
-    task.status = 'cancelling'
+    transitionTask(task, TaskStatus.CANCELLING)
     task.authorization = null
     this.emit(TaskDomainEvent.CANCELLING, task)
     task.cancelPromise = Promise.resolve()
@@ -761,7 +689,7 @@ export class TaskManager {
         if (task.progressCheckTimer) { clearInterval(task.progressCheckTimer); task.progressCheckTimer = null }
         task.abortController = null
         task.authorization = null
-        task.status = 'failed'
+        transitionTask(task, TaskStatus.FAILED)
         task.error = `取消失败：${error?.message || String(error)}`
         task.completedAt = Date.now()
         task.elapsedMs = task.startedAt
@@ -784,7 +712,7 @@ export class TaskManager {
   }
 
   finishCancellation(task) {
-    task.status = 'cancelled'
+    transitionTask(task, TaskStatus.CANCELLED)
     task.authorization = null
     task.completedAt = Date.now()
     task.elapsedMs = task.startedAt
@@ -838,7 +766,7 @@ export class TaskManager {
       .filter(task => (
         (ownerId === undefined || task.ownerId === String(ownerId))
         && (sessionId === undefined || task.sessionId === String(sessionId))
-        && (!active || ACTIVE.has(task.status))
+        && (!active || isTaskActive(task.status))
       ))
       .sort((left, right) => right.createdAt - left.createdAt)
       .map(publicTask)
@@ -886,7 +814,7 @@ export class TaskManager {
     let changed = this.reclaimExpiredNotificationClaims(now, { persist: false }) > 0
     const terminalByOwner = new Map()
     for (const task of this.tasks.values()) {
-      if (!TERMINAL.has(task.status)) continue
+      if (!isTaskTerminal(task.status)) continue
       const age = now - (task.completedAt || task.createdAt)
       const awaitingDelivery = ['pending', 'delivering'].includes(
         task.notificationStatus,

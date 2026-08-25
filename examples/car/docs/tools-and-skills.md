@@ -12,6 +12,8 @@
 
 核心原则：LLM 优先调用 Built-in Skills；各领域的最终原子函数定义在 `server/domains/*.json`；对应实现和业务约束放在 `server/domain-executors/*.mjs`；`server/tools/` 只保留跨领域系统工具；Custom Skills 编排 Built-in Skills 和少量基础系统工具。
 
+长期目标见 [Future Goals](./future-goals.md)：所有领域 function 可配置地运行在 Realtime 侧或文本 LLM Agent 侧，并通过 harness 做工具数量统计和准确率 benchmark。
+
 ## 当前 Built-in Skills
 
 | Skill | function name | 实现位置 |

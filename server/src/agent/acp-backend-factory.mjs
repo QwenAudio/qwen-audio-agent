@@ -1,4 +1,5 @@
 import { config } from '../core/config.mjs'
+import { assertBackendPort } from '../backend/backend-port.mjs'
 import { AcpBackendAdapter } from './acp-backend-adapter.mjs'
 import {
   backendDriver,
@@ -40,7 +41,7 @@ export function createAcpBackendAdapter({
     permissionMode,
     ...options,
   })
-  return new AcpBackendAdapter({
+  const adapter = new AcpBackendAdapter({
     protocol,
     root: config.root,
     ownership,
@@ -54,5 +55,8 @@ export function createAcpBackendAdapter({
     ...(acpClient ? { client: acpClient } : {}),
     ...(acpClientFactory ? { clientFactory: acpClientFactory } : {}),
     ...(sessionToolServer ? { sessionToolServer } : {}),
+  })
+  return assertBackendPort(adapter, {
+    name: `${profile.label || protocol} ACP adapter`,
   })
 }

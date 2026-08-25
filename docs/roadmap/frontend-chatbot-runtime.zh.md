@@ -257,7 +257,7 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
 
 - [x] 定义并校验 BackendPort。
 - [x] 将 AgentClient 收敛为 Single Backend Runtime。
-- [ ] 让 ACP Adapter 实现 BackendPort。
+- [x] 让 ACP Adapter 实现 BackendPort。
 - [ ] 将 Coordinator 和 Session 工具下沉到 ACP Adapter。
 - [ ] 为 Backend Adapter 建立 conformance test suite。
 

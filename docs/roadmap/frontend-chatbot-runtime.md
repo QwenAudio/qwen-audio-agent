@@ -181,11 +181,12 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 
 ### R3 — Work Runtime
 
-- [ ] Extract state machine, scheduler, repository, and notification concerns.
+- [x] Extract state machine, scheduler, repository, and notification concerns.
   - [x] Centralize task phases, legal transitions, and public snapshots.
+  - [x] Keep concurrency and lane limits in the dedicated scheduler.
   - [x] Extract notification claim, lease, release, and delivery state.
   - [x] Extract durable Work records and short job-id allocation.
-- [ ] Separate user work from system jobs.
+- [x] Separate user work from system jobs.
 - [ ] Add artifact and authorization models.
 - [ ] Preserve restart, cancellation, and exactly-once delivery semantics.
 

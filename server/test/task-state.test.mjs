@@ -5,6 +5,7 @@ import {
   isTaskCancellable,
   isTaskTerminal,
   publicTask,
+  TaskScope,
   TaskStatus,
   transitionTask,
 } from '../src/task/task-state.mjs'
@@ -16,6 +17,20 @@ test('centralizes active, cancellable, and terminal task phases', () => {
   assert.equal(isTaskCancellable(TaskStatus.CANCELLING), false)
   assert.equal(isTaskTerminal(TaskStatus.COMPLETED), true)
   assert.equal(isTaskTerminal(TaskStatus.RUNNING), false)
+})
+
+test('defaults old records to user work and preserves explicit system jobs', () => {
+  assert.equal(publicTask({
+    id: 'old-work',
+    status: TaskStatus.QUEUED,
+    activity: [],
+  }).scope, TaskScope.USER)
+  assert.equal(publicTask({
+    id: 'system-job',
+    scope: TaskScope.SYSTEM,
+    status: TaskStatus.QUEUED,
+    activity: [],
+  }).scope, TaskScope.SYSTEM)
 })
 
 test('accepts valid transitions and rejects backwards or terminal transitions', () => {

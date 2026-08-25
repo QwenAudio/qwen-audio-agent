@@ -9,8 +9,11 @@ import {
   isTaskActive,
   isTaskCancellable,
   isTaskTerminal,
+  isUserWork,
+  normalizeTaskScope,
   persistedTask,
   publicTask,
+  TaskScope,
   TaskStatus,
   transitionTask,
 } from './task-state.mjs'
@@ -38,6 +41,7 @@ export class TaskManager {
     store = null,
     maxConcurrent = 4,
     maxConcurrentPerOwner = 2,
+    systemMaxConcurrent = 2,
     terminalTtlMs = 86_400_000,
     pendingNotificationTtlMs = 604_800_000,
     notificationClaimTtlMs = 60_000,
@@ -53,6 +57,10 @@ export class TaskManager {
     this.scheduler = new TaskScheduler({
       maxConcurrent,
       maxConcurrentPerOwner,
+    })
+    this.systemScheduler = new TaskScheduler({
+      maxConcurrent: systemMaxConcurrent,
+      maxConcurrentPerOwner: systemMaxConcurrent,
     })
     this.terminalTtlMs = terminalTtlMs
     this.pendingNotificationTtlMs = pendingNotificationTtlMs
@@ -94,10 +102,23 @@ export class TaskManager {
     this.scheduledTaskRunner = runner
   }
 
+  schedulerFor(task) {
+    return isUserWork(task) ? this.scheduler : this.systemScheduler
+  }
+
+  releaseScheduler(task) {
+    if (!task.schedulerHeld) return
+    this.schedulerFor(task).release(task)
+    task.schedulerHeld = false
+  }
+
   restore() {
     const savedTasks = this.repository.load()
     for (const saved of savedTasks) {
-      saved.jobId = String(saved.jobId || this.allocateJobId())
+      saved.scope = normalizeTaskScope(saved.scope)
+      saved.jobId = isUserWork(saved)
+        ? String(saved.jobId || this.allocateJobId())
+        : null
       // Scheduled tasks survive restarts intact. ReminderScheduler.start()
       // handles overdue vs future dispatch. Reminders that had already fired
       // (queued/running) when the Gateway stopped are also restored as
@@ -133,10 +154,19 @@ export class TaskManager {
       }
       const wasActive = isTaskActive(saved.status)
       const canRecoverDelegation = (
-        ['delegated', 'finalizing'].includes(saved.status)
+        isUserWork(saved)
+        && ['delegated', 'finalizing'].includes(saved.status)
         && saved.delegation?.id
         && saved.delegation?.sessionId
       )
+      const recoveredNotificationStatus = !isUserWork(saved)
+        ? 'none'
+        : (wasActive && !canRecoverDelegation)
+          || saved.notificationStatus === 'delivering'
+          ? 'pending'
+          : canRecoverDelegation
+            ? 'none'
+            : saved.notificationStatus || 'none'
       const task = {
         ...saved,
         status: canRecoverDelegation
@@ -155,12 +185,7 @@ export class TaskManager {
         authorization: wasActive || isTaskTerminal(saved.status)
           ? null
           : saved.authorization || null,
-        notificationStatus: (
-          (wasActive && !canRecoverDelegation)
-          || saved.notificationStatus === 'delivering'
-        )
-          ? 'pending'
-          : canRecoverDelegation ? 'none' : saved.notificationStatus || 'none',
+        notificationStatus: recoveredNotificationStatus,
         notificationClaimantId: null,
         notificationClaimedAt: null,
         resolve: null,
@@ -197,11 +222,13 @@ export class TaskManager {
         transitionTask(task, TaskStatus.FAILED)
         task.error = 'qwen-audio-agent 重启时这项项目任务失去连接，请重新提交。'
         task.completedAt = Date.now()
-        task.notificationStatus = 'pending'
+        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
         task.promise = Promise.resolve(publicTask(task))
         task.resolve = null
         this.emit(TaskDomainEvent.FAILED, task)
-        this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+        if (isUserWork(task)) {
+          this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+        }
         continue
       }
       task.runner = (_objective, context) => runner(snapshot, context)
@@ -224,9 +251,10 @@ export class TaskManager {
     return this.repository.allocateJobId()
   }
 
-  subscribe(listener) {
-    this.listeners.add(listener)
-    return () => this.listeners.delete(listener)
+  subscribe(listener, { scope = TaskScope.USER } = {}) {
+    const subscription = { listener, scope }
+    this.listeners.add(subscription)
+    return () => this.listeners.delete(subscription)
   }
 
   emit(type, task, { persist = true, ...details } = {}) {
@@ -258,9 +286,13 @@ export class TaskManager {
       elapsedMs: task.elapsedMs,
       hasError: Boolean(task.error),
     })
-    for (const listener of this.listeners) {
+    for (const subscription of this.listeners) {
+      if (
+        subscription.scope !== 'all'
+        && normalizeTaskScope(task.scope) !== subscription.scope
+      ) continue
       try {
-        listener(event)
+        subscription.listener(event)
       } catch {
         // One observer must not break the work queue.
       }
@@ -268,7 +300,25 @@ export class TaskManager {
     if (persist) this.persist()
   }
 
-  create({
+  create(options = {}) {
+    return this.#create({
+      ...options,
+      scope: TaskScope.USER,
+      kind: options.kind || 'work',
+    })
+  }
+
+  createSystemJob(options = {}) {
+    return this.#create({
+      ...options,
+      scope: TaskScope.SYSTEM,
+      kind: options.kind || 'system_job',
+      ownerId: options.ownerId || 'system',
+      sessionId: options.sessionId || 'system',
+    })
+  }
+
+  #create({
     objective,
     ownerId,
     sessionId,
@@ -276,26 +326,32 @@ export class TaskManager {
     submissionKey,
     laneKey,
     laneLimit = 1,
-    kind = 'work',
+    kind,
+    scope,
     parentWorkId = null,
     priority = 0,
     runner,
     canceler,
   }) {
+    const normalizedScope = normalizeTaskScope(scope)
     const normalizedOwnerId = String(ownerId || '')
     const normalizedSubmissionKey = String(submissionKey || '').trim()
     if (normalizedSubmissionKey) {
       const existing = [...this.tasks.values()].find(item => (
         item.ownerId === normalizedOwnerId
+        && normalizeTaskScope(item.scope) === normalizedScope
         && item.submissionKey === normalizedSubmissionKey
       ))
       if (existing) return { ...publicTask(existing), reused: true }
     }
     const task = {
       id: `work_${randomUUID()}`,
-      jobId: this.allocateJobId(),
+      jobId: normalizedScope === TaskScope.USER
+        ? this.allocateJobId()
+        : null,
       status: 'queued',
-      kind: String(kind || 'work'),
+      scope: normalizedScope,
+      kind: String(kind),
       parentWorkId: parentWorkId ? String(parentWorkId) : null,
       priority: Number.isFinite(Number(priority)) ? Number(priority) : 0,
       objective: String(objective || '').trim(),
@@ -325,7 +381,7 @@ export class TaskManager {
       terminalHandled: false,
       abortController: null,
       schedulerHeld: false,
-      progressCheckMs: String(kind || 'work') === 'work'
+      progressCheckMs: normalizedScope === TaskScope.USER && kind === 'work'
         ? this.progressCheckMs
         : null,
     }
@@ -353,6 +409,7 @@ export class TaskManager {
       id: `work_${randomUUID()}`,
       jobId: this.allocateJobId(),
       status: 'scheduled',
+      scope: TaskScope.USER,
       kind,
       objective: String(objective || '').trim(),
       ownerId: String(ownerId || ''),
@@ -408,7 +465,7 @@ export class TaskManager {
         || left.createdAt - right.createdAt
       ))
     for (const task of queued) {
-      if (!this.scheduler.canStart(task)) continue
+      if (!this.schedulerFor(task).canStart(task)) continue
       this.start(task)
     }
   }
@@ -417,7 +474,7 @@ export class TaskManager {
     transitionTask(task, TaskStatus.RUNNING)
     task.startedAt = Date.now()
     task.abortController = new AbortController()
-    this.scheduler.acquire(task)
+    this.schedulerFor(task).acquire(task)
     task.schedulerHeld = true
     this.emit(TaskDomainEvent.RUNNING, task)
     task.progressTimer = setInterval(() => {
@@ -445,10 +502,7 @@ export class TaskManager {
       if (event?.type === 'backend.delegated' && event.delegation) {
         transitionTask(task, TaskStatus.DELEGATED)
         task.delegation = { ...event.delegation }
-        if (task.schedulerHeld) {
-          this.scheduler.release(task)
-          task.schedulerHeld = false
-        }
+        this.releaseScheduler(task)
         this.emit(TaskDomainEvent.DELEGATED, task)
         this.drain()
         return
@@ -503,10 +557,7 @@ export class TaskManager {
           task.progressTimer = null
           clearInterval(task.progressCheckTimer)
           task.progressCheckTimer = null
-          if (task.schedulerHeld) {
-            this.scheduler.release(task)
-            task.schedulerHeld = false
-          }
+          this.releaseScheduler(task)
           this.emit(TaskDomainEvent.FAILED, task)
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
           this.persistDeferred()
@@ -592,10 +643,7 @@ export class TaskManager {
         task.authorization = null
         if (task.status === 'cancelling') return
         if (task.status === 'cancelled') {
-          if (task.schedulerHeld) {
-            this.scheduler.release(task)
-            task.schedulerHeld = false
-          }
+          this.releaseScheduler(task)
           this.drain()
           return
         }
@@ -603,29 +651,29 @@ export class TaskManager {
         task.elapsedMs = task.startedAt
           ? task.completedAt - task.startedAt
           : 0
-        task.notificationStatus = 'pending'
+        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
         task.terminalHandled = true
-        if (task.schedulerHeld) {
-          this.scheduler.release(task)
-          task.schedulerHeld = false
-        }
+        this.releaseScheduler(task)
         this.emit(
           task.status === 'completed'
             ? TaskDomainEvent.COMPLETED
             : TaskDomainEvent.FAILED,
           task,
         )
-        this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+        if (isUserWork(task)) {
+          this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+        }
         task.resolve?.(publicTask(task))
         this.prune()
         this.drain()
       })
   }
 
-  async cancel(id, { ownerId } = {}) {
+  async cancel(id, { ownerId, scope = TaskScope.USER } = {}) {
     const task = this.tasks.get(String(id))
     if (
       !task
+      || normalizeTaskScope(task.scope) !== scope
       || (ownerId !== undefined && task.ownerId !== String(ownerId))
       || (!isTaskCancellable(task.status) && task.status !== 'cancelling')
     ) {
@@ -673,14 +721,13 @@ export class TaskManager {
         task.elapsedMs = task.startedAt
           ? task.completedAt - task.startedAt
           : 0
-        task.notificationStatus = 'pending'
+        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
         task.terminalHandled = true
-        if (task.schedulerHeld) {
-          this.scheduler.release(task)
-          task.schedulerHeld = false
-        }
+        this.releaseScheduler(task)
         this.emit(TaskDomainEvent.FAILED, task)
-        this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+        if (isUserWork(task)) {
+          this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+        }
         task.resolve?.(publicTask(task))
         this.prune()
         this.drain()
@@ -704,10 +751,7 @@ export class TaskManager {
     if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
     if (task.progressCheckTimer) { clearInterval(task.progressCheckTimer); task.progressCheckTimer = null }
     task.abortController = null
-    if (task.schedulerHeld) {
-      this.scheduler.release(task)
-      task.schedulerHeld = false
-    }
+    this.releaseScheduler(task)
     this.emit(TaskDomainEvent.CANCELLED, task)
     task.resolve?.(publicTask(task))
     this.prune()
@@ -715,9 +759,13 @@ export class TaskManager {
     return publicTask(task)
   }
 
-  get(id, { ownerId } = {}) {
+  get(id, { ownerId, scope = TaskScope.USER } = {}) {
     const task = this.tasks.get(String(id))
-    if (!task || (ownerId !== undefined && task.ownerId !== String(ownerId))) {
+    if (
+      !task
+      || normalizeTaskScope(task.scope) !== scope
+      || (ownerId !== undefined && task.ownerId !== String(ownerId))
+    ) {
       return null
     }
     return publicTask(task)
@@ -728,6 +776,7 @@ export class TaskManager {
     const task = [...this.tasks.values()]
       .filter(item => (
         item.jobId === normalized
+        && isUserWork(item)
         && (ownerId === undefined || item.ownerId === String(ownerId))
       ))
       .sort((left, right) => right.createdAt - left.createdAt)[0]
@@ -738,11 +787,13 @@ export class TaskManager {
     ownerId,
     sessionId,
     active = false,
+    scope = TaskScope.USER,
   } = {}) {
     this.prune()
     return [...this.tasks.values()]
       .filter(task => (
-        (ownerId === undefined || task.ownerId === String(ownerId))
+        (scope === 'all' || normalizeTaskScope(task.scope) === scope)
+        && (ownerId === undefined || task.ownerId === String(ownerId))
         && (sessionId === undefined || task.sessionId === String(sessionId))
         && (!active || isTaskActive(task.status))
       ))

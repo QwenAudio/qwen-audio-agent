@@ -53,6 +53,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
     providers: [privateProvider],
   })
   let mcpClosed = false
+  let openApiClosed = false
   const frontendMcp = {
     describe: () => ({ key: 'mcp', label: 'Test MCP' }),
     initialize: async () => [],
@@ -65,6 +66,19 @@ test('constructs an injectable Gateway without binding a port on import', async 
       servers: [],
     }),
     close: async () => { mcpClosed = true },
+  }
+  const frontendOpenApi = {
+    describe: () => ({ key: 'openapi', label: 'Test OpenAPI' }),
+    initialize: async () => [],
+    tools: () => [],
+    execute: async () => ({}),
+    health: () => ({
+      ok: true,
+      initialized: true,
+      tools: 0,
+      apis: [],
+    }),
+    close: async () => { openApiClosed = true },
   }
   const application = createGatewayApplication({
     config: {
@@ -80,6 +94,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
     realtimeProviderRegistry,
     realtimeProvider: privateProvider.key,
     frontendMcp,
+    frontendOpenApi,
   })
   assert.equal(application.server.listening, false)
   assert.equal(application.services.taskManager != null, true)
@@ -90,6 +105,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.equal(application.services.knowledgeIndexer != null, true)
   assert.deepEqual(application.services.frontendKnowledge.capabilities(), ['knowledge'])
   assert.equal(application.services.frontendMcp, frontendMcp)
+  assert.equal(application.services.frontendOpenApi, frontendOpenApi)
 
   application.start()
   if (!application.server.listening) {
@@ -109,6 +125,12 @@ test('constructs an injectable Gateway without binding a port on import', async 
     tools: 0,
     servers: [],
   })
+  assert.deepEqual(health.frontendOpenApi, {
+    ok: true,
+    initialized: true,
+    tools: 0,
+    apis: [],
+  })
   assert.equal(
     health.frontendKnowledge.retrievalProvider.key,
     'local-lexical',
@@ -119,4 +141,5 @@ test('constructs an injectable Gateway without binding a port on import', async 
   )
   await application.close()
   assert.equal(mcpClosed, true)
+  assert.equal(openApiClosed, true)
 })

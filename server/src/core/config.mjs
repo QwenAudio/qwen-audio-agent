@@ -229,6 +229,9 @@ export const config = {
   frontendMcpConfigPath: String(
     process.env.QWEN_AUDIO_FRONTEND_MCP_CONFIG || '',
   ).trim(),
+  frontendOpenApiConfigPath: String(
+    process.env.QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG || '',
+  ).trim(),
   allowedOrigins: String(process.env.QWEN_AUDIO_AGENT_ALLOWED_ORIGINS || '')
     .split(',')
     .map(value => value.trim())

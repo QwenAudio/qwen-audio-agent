@@ -48,11 +48,17 @@ import { FrontendKnowledgeRuntime } from '../frontend/knowledge/knowledge-runtim
 import {
   LexicalKnowledgeRetrievalProvider,
 } from '../providers/knowledge/lexical-retrieval-provider.mjs'
-import { assertFrontendMcpSource } from '../frontend/mcp/frontend-mcp-source.mjs'
+import { assertFrontendToolSource } from '../frontend/tools/frontend-tool-source.mjs'
 import { FrontendMcpClient } from '../providers/mcp/frontend-mcp-client.mjs'
 import {
   loadFrontendMcpConfiguration,
 } from '../providers/mcp/frontend-mcp-config.mjs'
+import {
+  FrontendOpenApiAdapter,
+} from '../providers/openapi/frontend-openapi-adapter.mjs'
+import {
+  loadFrontendOpenApiConfiguration,
+} from '../providers/openapi/frontend-openapi-config.mjs'
 import {
   projectGatewayTaskEvent,
   projectGatewayTaskSnapshot,
@@ -83,6 +89,7 @@ export function createGatewayApplication({
   knowledgeRetrievalProvider = null,
   frontendKnowledge = null,
   frontendMcp = undefined,
+  frontendOpenApi = undefined,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const inputAssetRegistry = inputAssets || new InputAssetRegistry({
@@ -128,9 +135,17 @@ const frontendMcpRuntime = frontendMcp === undefined
       }),
     })
   : frontendMcp
-const frontendToolSources = frontendMcpRuntime
-  ? [assertFrontendMcpSource(frontendMcpRuntime)]
-  : []
+const frontendOpenApiRuntime = frontendOpenApi === undefined
+  ? new FrontendOpenApiAdapter({
+      configuration: loadFrontendOpenApiConfiguration({
+        filePath: config.frontendOpenApiConfigPath || '',
+      }),
+    })
+  : frontendOpenApi
+const frontendToolSources = [
+  frontendMcpRuntime,
+  frontendOpenApiRuntime,
+].filter(Boolean).map(source => assertFrontendToolSource(source))
 const identityManager = new IdentityManager({
   secret: config.authSecret,
   mode: config.identityMode,
@@ -333,6 +348,12 @@ app.get('/api/health', (req, res) => {
       initialized: true,
       tools: 0,
       servers: [],
+    },
+    frontendOpenApi: frontendOpenApiRuntime?.health?.() || {
+      ok: true,
+      initialized: true,
+      tools: 0,
+      apis: [],
     },
     notes: notesStore.health(),
     taskStore: taskStore.health(),
@@ -610,6 +631,7 @@ const close = () => {
     inputArbitration.close()
     await realtimeGateway?.close?.()
     await frontendMcpRuntime?.close?.()
+    await frontendOpenApiRuntime?.close?.()
     await knowledgeStoreRuntime.close?.()
     await taskStore?.flush?.()
     if (!server.listening) return
@@ -639,6 +661,7 @@ return {
     frontendRetrieval: retrievalRuntime,
     frontendKnowledge: frontendKnowledgeRuntime,
     frontendMcp: frontendMcpRuntime,
+    frontendOpenApi: frontendOpenApiRuntime,
     documentExtractor: documentExtractorRuntime,
     knowledgeStore: knowledgeStoreRuntime,
     knowledgeIndexer: knowledgeIndexerRuntime,

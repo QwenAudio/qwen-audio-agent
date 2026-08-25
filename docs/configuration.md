@@ -227,9 +227,14 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 
 Set `QWEN_AUDIO_WEB_SEARCH_PROVIDER=none` to disable frontend web search.
 
-General read-only chatbot tools can be connected through the frontend MCP
-client. Set `QWEN_AUDIO_FRONTEND_MCP_CONFIG` to its versioned JSON file; tools
-must be enabled individually. See [Frontend MCP client](reference/frontend-mcp.md).
+General chatbot tools can be connected through the frontend MCP client. Set
+`QWEN_AUDIO_FRONTEND_MCP_CONFIG` to its versioned JSON file; tools must be
+enabled individually and writable operations require confirmation. See
+[Frontend MCP client](reference/frontend-mcp.md).
+
+REST services with an OpenAPI 3.x document use the same tool and approval
+boundary through `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG`. See
+[Frontend OpenAPI tool adapter](reference/frontend-openapi.md).
 WebUI and terminal clients show the normalized source links below the final
 assistant answer; other clients can consume the same `messages.citations`
 Gateway capability.
@@ -916,6 +921,7 @@ them to the configuration file:
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | `DASHSCOPE_API_KEY` for explicit `bailian`; empty for custom endpoints unless set |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian_web_search` for `bailian`; otherwise `web_search` |
 | `QWEN_AUDIO_FRONTEND_MCP_CONFIG` | Empty; absolute path to the versioned frontend MCP JSON file |
+| `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | Empty; absolute path to the versioned frontend OpenAPI JSON config file |
 | `QWEN_AUDIO_AGENT_KNOWLEDGE_DIR` | `knowledge` under the shared user data directory |
 | `QWEN_AUDIO_REALTIME_VOICE` | Empty; optional Audio-family override, otherwise runtime uses `longanqian` |
 | `QWEN_OMNI_REALTIME_VOICE` | Empty; optional Omni-family override, otherwise runtime uses `Ethan` |

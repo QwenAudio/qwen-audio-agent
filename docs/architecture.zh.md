@@ -4,7 +4,7 @@
 
 前台 Realtime Voice Chatbot、异步 Work Bridge 与单一用户后台 Agent 的目标边界及
 分阶段重构计划见
-[`roadmap/frontend-chatbot-runtime.zh.md`](roadmap/frontend-chatbot-runtime.zh.md)。
+[Realtime Voice Chatbot Runtime Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/frontend-chatbot-runtime.zh.md)。
 在 Roadmap 分阶段落地期间，本文继续描述当前已实现并受测试保护的运行时行为。
 
 ## 1. 用户可见模型

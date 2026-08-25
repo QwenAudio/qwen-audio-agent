@@ -44,6 +44,7 @@ export const openClawBackendDriver = {
     externalMcp: false,
     nativeDelegation: true,
     sessionMcp: false,
+    coordinatorMcpInstructions: false,
   },
 
   createProfile({

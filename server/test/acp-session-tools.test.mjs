@@ -25,6 +25,8 @@ test('serves the shared Session tools over authenticated stateless MCP', async (
     sendSession: async input => ({ status: 'started', ...input }),
     sessionStatus: async input => ({ status: 'running', ...input }),
     cancelSession: async input => ({ status: 'cancelled', ...input }),
+  }, {
+    instructions: 'Use these tools only for coordinator Session routing.',
   })
   assert.equal(new URL(registration.descriptor.url).pathname, '/mcp')
   assert.doesNotMatch(registration.descriptor.url, /[?&]token=|\/mcp\/.+/)
@@ -42,6 +44,10 @@ test('serves the shared Session tools over authenticated stateless MCP', async (
   )
   const client = new Client({ name: 'test', version: '1.0.0' })
   await client.connect(transport)
+  assert.equal(
+    client.getInstructions(),
+    'Use these tools only for coordinator Session routing.',
+  )
   const listed = await client.listTools()
   assert.deepEqual(
     listed.tools.map(tool => tool.name).sort(),

@@ -175,10 +175,13 @@ export class AcpSessionToolServer {
     return this.startPromise
   }
 
-  async register(context) {
+  async register(context, { instructions = '' } = {}) {
     await this.start()
     const token = randomUUID()
-    this.contexts.set(token, context)
+    this.contexts.set(token, {
+      context,
+      instructions: String(instructions || '').trim(),
+    })
     let released = false
     return {
       descriptor: {
@@ -192,7 +195,11 @@ export class AcpSessionToolServer {
       },
       update: nextContext => {
         if (released || !this.contexts.has(token)) return false
-        this.contexts.set(token, nextContext)
+        const current = this.contexts.get(token)
+        this.contexts.set(token, {
+          ...current,
+          context: nextContext,
+        })
         return true
       },
       release: () => {
@@ -206,7 +213,8 @@ export class AcpSessionToolServer {
     const url = new URL(req.url || '/', `http://${this.host}`)
     const authorization = String(req.headers.authorization || '')
     const token = authorization.match(/^Bearer ([^\s]+)$/i)?.[1] || ''
-    const context = this.contexts.get(token)
+    const registration = this.contexts.get(token)
+    const context = registration?.context
     if (
       url.pathname !== '/mcp'
       || !context
@@ -230,7 +238,9 @@ export class AcpSessionToolServer {
     const server = new McpServer({
       name: ACP_SESSION_TOOL_SERVER,
       version: '1.0.0',
-    })
+    }, registration.instructions
+      ? { instructions: registration.instructions }
+      : undefined)
     registerTools(server, context)
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

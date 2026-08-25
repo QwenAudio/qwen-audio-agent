@@ -240,6 +240,14 @@ send、status 和 cancel。OpenClaw ACP 不接受客户端提供的 MCP 服务�
 和 `session_send` 返回不透明的委派 ID。在任一成功后，后端 Agent 不得轮询、
 重复工作或从自己的上下文中回答；适配器负责等待、取消、权限路由和结果关联。
 
+协调 MCP Server 还会通过 MCP 初始化响应的 `instructions` 字段发布稳定协调契约。
+后台 Driver 只有在确认 Agent Host 会把 MCP Server instructions 投射进模型上下文后，
+才声明 `coordinatorMcpInstructions`；这些后台每轮只接收动态请求信封，避免把相同的
+路由与返回规则反复追加到持久 Session 历史。目前已确认 OpenCode、Qoder、Qwen Code
+和 Claude Code，并将共享内容控制在 2 KiB 的可移植预算内。尚未验证的后台，或未来
+超过预算的内容，继续使用完整的逐轮 Prompt 安全回退。该标志不表示后台是否普遍支持
+MCP。项目 Session 不会连接协调 MCP Server。
+
 `session_status` 仅用于观察。如果查询失败，后端 Agent 必须报告失败；
 不得使用原生工具检查目标目录或复制委派的工作。
 

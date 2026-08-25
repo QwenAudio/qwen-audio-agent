@@ -36,6 +36,7 @@ export const openCodeBackendDriver = {
     externalMcp: true,
     nativeDelegation: false,
     sessionMcp: true,
+    coordinatorMcpInstructions: true,
   },
 
   createProfile({ root, directory }) {

@@ -6,6 +6,7 @@ function localAcpBackend({
   command,
   args,
   sessionConfigOptions,
+  coordinatorMcpInstructions = false,
 }) {
   return {
     id,
@@ -18,6 +19,7 @@ function localAcpBackend({
       externalMcp: true,
       nativeDelegation: false,
       sessionMcp: true,
+      coordinatorMcpInstructions,
     },
     createProfile(options) {
       return {
@@ -48,12 +50,14 @@ export const localAcpBackendDrivers = [
         ? ['--dangerously-skip-permissions']
         : []),
     ],
+    coordinatorMcpInstructions: true,
   }),
   localAcpBackend({
     id: 'qwen',
     label: 'Qwen Code',
     command: 'qwen',
     args: () => ['--acp'],
+    coordinatorMcpInstructions: true,
   }),
   localAcpBackend({
     id: 'kimi',

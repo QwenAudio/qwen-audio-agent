@@ -11,6 +11,7 @@ export const codeBuddyBackendDriver = {
     externalMcp: true,
     nativeDelegation: false,
     sessionMcp: true,
+    coordinatorMcpInstructions: false,
   },
 
   createProfile({

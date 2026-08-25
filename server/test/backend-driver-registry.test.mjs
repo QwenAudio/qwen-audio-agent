@@ -39,6 +39,7 @@ test('every Agent driver publishes one validated capability contract', () => {
       'externalMcp',
       'nativeDelegation',
       'sessionMcp',
+      'coordinatorMcpInstructions',
     ]) {
       assert.equal(typeof driver.capabilities[capability], 'boolean', (
         `${protocol}.${capability}`
@@ -62,8 +63,26 @@ test('profile construction applies the immutable driver capability contract', ()
     externalMcp: false,
     nativeDelegation: false,
     sessionMcp: false,
+    coordinatorMcpInstructions: false,
   })
   assert.equal(Object.isFrozen(profile.capabilities), true)
+})
+
+test('enables MCP coordinator instructions only for verified Agent hosts', () => {
+  for (const protocol of ['opencode', 'qoder', 'qwen', 'claude']) {
+    assert.equal(
+      backendDriver(protocol).capabilities.coordinatorMcpInstructions,
+      true,
+    )
+  }
+  for (const protocol of backendNames().filter(
+    value => !['opencode', 'qoder', 'qwen', 'claude'].includes(value),
+  )) {
+    assert.equal(
+      backendDriver(protocol).capabilities.coordinatorMcpInstructions,
+      false,
+    )
+  }
 })
 
 test('external ownership is available only to declared backend services', () => {

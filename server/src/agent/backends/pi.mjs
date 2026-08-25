@@ -12,6 +12,7 @@ export const piBackendDriver = {
     externalMcp: false,
     nativeDelegation: false,
     sessionMcp: false,
+    coordinatorMcpInstructions: false,
   },
 
   createProfile({

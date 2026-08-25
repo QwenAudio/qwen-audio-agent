@@ -17,6 +17,7 @@ const CAPABILITY_FLAGS = [
   'externalMcp',
   'nativeDelegation',
   'sessionMcp',
+  'coordinatorMcpInstructions',
 ]
 
 function validateBackendDriver(driver) {
@@ -40,6 +41,12 @@ function validateBackendDriver(driver) {
     ))
   ) {
     throw new Error(`后台 Driver 能力声明不完整：${driver.id}`)
+  }
+  if (
+    driver.capabilities.coordinatorMcpInstructions
+    && !driver.capabilities.externalMcp
+  ) {
+    throw new Error(`后台 Driver 的协调 MCP instructions 依赖 externalMcp：${driver.id}`)
   }
   return driver
 }

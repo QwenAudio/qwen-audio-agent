@@ -210,7 +210,8 @@ export class FrontendMcpClient {
           },
           policy: {
             mode: 'inline',
-            readOnly: true,
+            readOnly: policy.readOnly,
+            approval: policy.approval,
             timeoutMs: policy.timeoutMs,
             maxResultBytes: policy.maxResultBytes,
             maxCallsPerTurn: policy.maxCallsPerTurn,

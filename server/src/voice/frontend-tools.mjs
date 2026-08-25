@@ -11,6 +11,9 @@ import {
 import {
   FRONTEND_KNOWLEDGE_CAPABILITY,
 } from '../frontend/knowledge/knowledge-runtime.mjs'
+import {
+  FRONTEND_TOOL_APPROVAL_CAPABILITY,
+} from '../frontend/tools/frontend-tool-source.mjs'
 
 export const SPAWN_THINKING_TOOL_NAME = 'spawn_thinking'
 export const SCHEDULE_REMINDER_TOOL_NAME = 'schedule_reminder'
@@ -20,6 +23,7 @@ export const GET_CURRENT_TIME_TOOL_NAME = 'get_current_time'
 export const MEMORY_TOOL_NAME = 'memory'
 export const NOTES_TOOL_NAME = 'notes'
 export const RESPOND_AGENT_PERMISSION_TOOL_NAME = 'respond_agent_permission'
+export const RESPOND_FRONTEND_TOOL_PERMISSION_NAME = 'respond_frontend_tool_permission'
 export const ENTER_SLEEP_TOOL_NAME = 'enter_sleep'
 export const WEB_SEARCH_TOOL_NAME = 'web_search'
 export const FETCH_URL_TOOL_NAME = 'fetch_url'
@@ -283,6 +287,30 @@ const respondAgentPermissionTool = {
   },
 }
 
+const respondFrontendToolPermission = {
+  type: 'function',
+  function: {
+    name: RESPOND_FRONTEND_TOOL_PERMISSION_NAME,
+    description: '回复当前正在等待用户决定的前台外部工具执行请求。结合刚提出的具体操作和用户本轮自然表达判断允许或拒绝；不要依赖固定关键词，也不要代替用户作决定。每次允许只执行当前这一项操作，不会自动允许后续请求。',
+    parameters: {
+      type: 'object',
+      properties: {
+        authorization_id: {
+          type: 'string',
+          description: '待确认请求的 authorization_id，必须来自当前对话中的前台外部工具确认请求，不得猜造。',
+        },
+        decision: {
+          type: 'string',
+          enum: ['allow', 'reject'],
+          description: 'allow 表示只允许当前操作执行一次；reject 表示拒绝当前操作。',
+        },
+      },
+      required: ['authorization_id', 'decision'],
+      additionalProperties: false,
+    },
+  },
+}
+
 const enterSleepTool = {
   type: 'function',
   function: {
@@ -349,6 +377,13 @@ export const frontendToolRegistry = new FrontendToolRegistry([
     },
   },
   { definition: respondAgentPermissionTool, policy: { mode: 'control' } },
+  {
+    definition: respondFrontendToolPermission,
+    policy: {
+      mode: 'control',
+      requiredCapabilities: [FRONTEND_TOOL_APPROVAL_CAPABILITY],
+    },
+  },
   {
     definition: webSearchTool,
     policy: {

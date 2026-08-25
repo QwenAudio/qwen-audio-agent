@@ -107,6 +107,7 @@ test('discovers only explicitly enabled tools under stable namespaced names', as
   assert.deepEqual(tools[0].policy, {
     mode: 'inline',
     readOnly: true,
+    approval: 'none',
     timeoutMs: 8_000,
     maxResultBytes: 32 * 1024,
     maxCallsPerTurn: 1,
@@ -124,6 +125,33 @@ test('discovers only explicitly enabled tools under stable namespaced names', as
   })
   await client.close()
   assert.equal(mocks.clients[0].closed, true)
+})
+
+test('discovers explicitly approved writable tools without executing them', async () => {
+  const mocks = harness({
+    remoteTools: [{
+      name: 'create_issue',
+      description: 'Create an issue.',
+      inputSchema: { type: 'object', properties: {} },
+    }],
+  })
+  const client = new FrontendMcpClient({
+    configuration: configuration({
+      create_issue: {
+        enabled: true,
+        readOnly: false,
+        approval: 'required',
+      },
+    }),
+    clientFactory: mocks.clientFactory,
+    transportFactory: mocks.transportFactory,
+  })
+
+  const [tool] = await client.initialize()
+  assert.equal(tool.name, 'mcp__documents__create_issue')
+  assert.equal(tool.policy.readOnly, false)
+  assert.equal(tool.policy.approval, 'required')
+  assert.equal(mocks.calls.length, 0)
 })
 
 test('executes a discovered tool and labels bounded results as untrusted', async () => {

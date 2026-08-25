@@ -84,6 +84,7 @@ test('executes discovered read-only external tools through the shared boundary',
       policy: {
         mode: 'inline',
         readOnly: true,
+        approval: 'none',
         maxCallsPerTurn: 1,
         maxResultBytes: 2_048,
       },
@@ -109,6 +110,126 @@ test('executes discovered read-only external tools through the shared boundary',
   ]])
   assert.equal(kit.outputs[0][1].text, 'Found.')
   assert.equal(kit.outputs[1][1].error_code, 'tool_loop_limit')
+})
+
+test('executes an approved writable external tool exactly once', async () => {
+  const calls = []
+  let currentTurn = 'turn-one'
+  const source = {
+    tools: () => [{
+      name: 'mcp__issues__create',
+      definition: {
+        type: 'function',
+        function: {
+          name: 'mcp__issues__create',
+          description: 'Create an issue in the configured tracker.',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      policy: {
+        mode: 'inline',
+        readOnly: false,
+        approval: 'required',
+        maxCallsPerTurn: 1,
+        maxResultBytes: 2_048,
+      },
+    }],
+    execute: async (name, args) => {
+      calls.push([name, args])
+      return { status: 'ok', issue: 42 }
+    },
+  }
+  const kit = harness({
+    frontendToolSources: [source],
+    getTurnId: () => currentTurn,
+  })
+
+  await kit.handler.handle({
+    call_id: 'external-write',
+    name: 'mcp__issues__create',
+    arguments: JSON.stringify({ title: 'Fix it' }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  const authorizationId = kit.outputs[0][1].authorization_id
+  assert.equal(kit.outputs[0][1].status, 'confirmation_required')
+  assert.match(authorizationId, /^frontend_auth_/u)
+  assert.equal(calls.length, 0)
+
+  currentTurn = 'turn-two'
+  await kit.handler.handle({
+    call_id: 'allow-write',
+    name: 'respond_frontend_tool_permission',
+    arguments: JSON.stringify({
+      authorization_id: authorizationId,
+      decision: 'allow',
+    }),
+  }, { turnId: 'turn-two', turnGeneration: 1 })
+  assert.deepEqual(calls, [[
+    'mcp__issues__create',
+    { title: 'Fix it' },
+  ]])
+  assert.equal(kit.outputs[1][1].issue, 42)
+
+  currentTurn = 'turn-three'
+  await kit.handler.handle({
+    call_id: 'replay-write',
+    name: 'respond_frontend_tool_permission',
+    arguments: JSON.stringify({
+      authorization_id: authorizationId,
+      decision: 'allow',
+    }),
+  }, { turnId: 'turn-three', turnGeneration: 1 })
+  assert.equal(calls.length, 1)
+  assert.equal(kit.outputs[2][1].error_code, 'external_authorization_not_pending')
+})
+
+test('rejects a writable external tool without executing it', async () => {
+  let executed = false
+  let currentTurn = 'turn-one'
+  const source = {
+    tools: () => [{
+      name: 'mcp__issues__delete',
+      definition: {
+        type: 'function',
+        function: {
+          name: 'mcp__issues__delete',
+          description: 'Delete an issue.',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      policy: {
+        mode: 'inline',
+        readOnly: false,
+        approval: 'required',
+        maxCallsPerTurn: 1,
+        maxResultBytes: 2_048,
+      },
+    }],
+    execute: async () => { executed = true },
+  }
+  const kit = harness({
+    frontendToolSources: [source],
+    getTurnId: () => currentTurn,
+  })
+
+  await kit.handler.handle({
+    call_id: 'external-delete',
+    name: 'mcp__issues__delete',
+    arguments: JSON.stringify({ id: 42 }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+  const authorizationId = kit.outputs[0][1].authorization_id
+  currentTurn = 'turn-two'
+  await kit.handler.handle({
+    call_id: 'reject-delete',
+    name: 'respond_frontend_tool_permission',
+    arguments: JSON.stringify({
+      authorization_id: authorizationId,
+      decision: 'reject',
+    }),
+  }, { turnId: 'turn-two', turnGeneration: 1 })
+
+  assert.equal(executed, false)
+  assert.equal(kit.outputs[1][1].status, 'rejected')
 })
 
 test('never executes a dynamic external tool without a read-only policy', async () => {

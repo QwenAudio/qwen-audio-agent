@@ -35,6 +35,12 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
           "maxResultBytes": 32768,
           "maxCallsPerTurn": 2,
           "description": "检索用户配置的文档来源。"
+        },
+        "create_issue": {
+          "enabled": true,
+          "readOnly": false,
+          "approval": "required",
+          "description": "在用户配置的项目系统中创建 Issue。"
         }
       }
     }
@@ -52,8 +58,10 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 - 工具发现和连接有超时边界，默认 8 秒。
 - 远端服务必须使用 HTTPS；回环地址可以使用 HTTP，但不能携带 Header。
 - Header 值可以用 `${VARIABLE}` 精确引用一个环境变量；变量缺失即配置错误。
-- 启用的工具必须明确设置 `readOnly: true`。在通用前台授权链路完成前，
-  可写工具不会开放。
+- 启用的工具必须明确声明 `readOnly`。可写工具还必须设置
+  `approval: "required"`，否则 Gateway 会在启动时拒绝该配置。
+- 可写操作只有在用户自然语言确认后才会执行。每次确认只覆盖一个等待中的操作，
+  且只能执行一次；拒绝、重复确认或确认前重连都会失败关闭，不提供会话级自动授权。
 - Schema、描述、调用次数、执行时间和结果大小都有边界；MCP 结果按不可信数据
   处理，不能覆盖系统指令或用户要求。
 - 发现阶段若缺少已启用工具或工具定义无效，该 Server 失败关闭，不暴露半套工具。

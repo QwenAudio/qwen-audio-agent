@@ -42,6 +42,10 @@ import {
   isResponseActivityEvent,
   realtimeResponseId,
 } from './response-lifecycle.mjs'
+import {
+  frontendSourceToolCapabilities,
+  frontendSourceToolDefinitions,
+} from '../frontend/tools/frontend-tool-source.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
@@ -206,10 +210,9 @@ export function attachRealtimeGateway(server, {
         capabilities: [...new Set([
           ...(frontendRetrieval?.capabilities?.() || []),
           ...(frontendKnowledge?.capabilities?.() || []),
+          ...frontendSourceToolCapabilities(frontendToolSources),
         ])],
-        tools: frontendToolSources.flatMap(source => (
-          source.tools().map(tool => tool.definition)
-        )),
+        tools: frontendSourceToolDefinitions(frontendToolSources),
       },
       memories: memoryService?.list(ownerId, { limit: 64 }) || [],
       recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),

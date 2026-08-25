@@ -62,6 +62,7 @@ is unsupported and breaks without notice.
 | `qwen-audio-agent/gateway-lease` | `readGatewayLease`, `findRunningGateway`, `acquireGatewayLease` |
 | `qwen-audio-agent/realtime-events` | `GatewayClientEvent`, `GatewayServerEvent`, `GatewayTaskEvent` |
 | `qwen-audio-agent/gateway-events` | Gateway event Zod schemas and parsers |
+| `qwen-audio-agent/gateway-client-state` | `createGatewayClientState`, `reduceGatewayClientState`, `acceptsGatewayVoiceState` |
 | `qwen-audio-agent/settings` | `createSettingsStore` |
 | `qwen-audio-agent/skin-store` | `importSkin`, `listSkins`, `removeSkin`, `effectiveOrbSkin`, `skinsDirectory`, `validateSkinPackage` |
 | `qwen-audio-agent/orb/main` | `bindOrbShell`, `configureOrbWindow`, `ORB_CHANNELS` |
@@ -146,6 +147,17 @@ spells them by hand is on its own.
 | server → client | `input.suspend` | Stop capturing outright (stronger than user-level mute: no capture, no wake word); carries `owner`, `reason`, `expiresAt` |
 | server → client | `input.resume` | Capture may resume |
 | client → server | `input.suspend.ack` | Confirms the suspension took effect on this client |
+
+### Shared client state
+
+`qwen-audio-agent/gateway-client-state` folds public Gateway events into the
+side-effect-free client state fields `connectionState`, `voiceState`,
+`wakeWordActive`, `ownership`, and `currentTurnId`.
+`reduceGatewayClientState(state, event)` preserves object identity for unknown
+events and consistently ignores direct-model `voice.state` updates from stale
+turns. Clients still own playback, microphone, and UI side effects; they should
+not duplicate this protocol-state interpretation. Locked by
+`test/gateway-client-state.test.mjs`.
 
 ## Instance lease
 

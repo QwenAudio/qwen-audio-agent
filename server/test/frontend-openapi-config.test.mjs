@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
 import {
   loadFrontendOpenApiConfiguration,
@@ -42,16 +42,17 @@ test('loads no OpenAPI sources when no config path is set', () => {
 })
 
 test('normalizes local documents, secrets, and per-operation policy', () => {
+  const baseDirectory = resolve('profile')
   const normalized = normalizeFrontendOpenApiConfiguration(configuration(), {
     env: { WEATHER_TOKEN: 'Bearer secret' },
-    baseDirectory: '/tmp/profile',
+    baseDirectory,
   })
   assert.deepEqual(normalized, {
     version: 1,
     apis: [{
       key: 'weather',
       enabled: true,
-      documentPath: '/tmp/profile/weather.openapi.yaml',
+      documentPath: join(baseDirectory, 'weather.openapi.yaml'),
       baseUrl: 'https://weather.example.test/v1',
       headers: { authorization: 'Bearer secret' },
       operations: {

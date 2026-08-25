@@ -28,7 +28,7 @@ test('preserves explicit zero numeric settings', () => {
 
 test('uses a key-free fallback until the user configures a search provider', () => {
   assert.deepEqual(resolveWebSearchConfiguration({}), {
-    provider: 'duckduckgo',
+    provider: 'bing',
     mcpUrl: '',
     mcpToken: '',
     mcpTool: 'web_search',
@@ -54,7 +54,7 @@ test('uses a key-free fallback until the user configures a search provider', () 
   })
   assert.equal(resolveWebSearchConfiguration({
     DASHSCOPE_API_KEY: 'dashscope-key',
-  }).provider, 'duckduckgo')
+  }).provider, 'bing')
   assert.equal(resolveWebSearchConfiguration({
     DASHSCOPE_API_KEY: 'dashscope-key',
     QWEN_AUDIO_WEB_SEARCH_MCP_URL: 'https://search.example/mcp',

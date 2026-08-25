@@ -174,6 +174,9 @@ test('fails closed for missing tools, sources, and insecure token transport', as
 test('factory selects only configured built-in search adapters', () => {
   assert.equal(createWebSearchProvider({ webSearchProvider: 'none' }), null)
   assert.equal(createWebSearchProvider({
+    webSearchProvider: 'bing',
+  }).describe().key, 'bing')
+  assert.equal(createWebSearchProvider({
     webSearchProvider: 'duckduckgo',
   }).describe().key, 'duckduckgo')
   const provider = createWebSearchProvider({

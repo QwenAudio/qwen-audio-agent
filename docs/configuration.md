@@ -202,8 +202,10 @@ DASHSCOPE_API_KEY=your-key
 
 The frontend `web_search` tool returns verifiable source links, does not create
 backend Agent work, and does not invoke another text model. Without explicit
-configuration it uses a small, key-free DuckDuckGo HTML adapter. This fallback
-is experimental and may occasionally be blocked or affected by page changes.
+configuration it uses a small, key-free Bing RSS adapter that is reachable in
+mainland China. This fallback is experimental and may occasionally be blocked
+or affected by upstream changes. DuckDuckGo remains available by setting
+`QWEN_AUDIO_WEB_SEARCH_PROVIDER=duckduckgo`.
 
 After enabling Model Studio's Web Search MCP service, select its built-in preset
 explicitly; it then reuses `DASHSCOPE_API_KEY`:
@@ -901,7 +903,7 @@ them to the configuration file:
 | `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV` | Empty; comma-separated opt-in environment names for generic ACP only |
 | `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` |
 | `QWEN_AUDIO_REALTIME_PROVIDER` | `dashscope` |
-| `QWEN_AUDIO_WEB_SEARCH_PROVIDER` | `duckduckgo`; optional `bailian`, `mcp`, or `none` |
+| `QWEN_AUDIO_WEB_SEARCH_PROVIDER` | `bing`; optional `duckduckgo`, `bailian`, `mcp`, or `none` |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_URL` | Empty; custom Streamable HTTP endpoint used by the `mcp` provider |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | `DASHSCOPE_API_KEY` for explicit `bailian`; empty for custom endpoints unless set |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian_web_search` for `bailian`; otherwise `web_search` |

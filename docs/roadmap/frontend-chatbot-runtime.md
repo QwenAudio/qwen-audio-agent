@@ -169,6 +169,8 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 
 - [ ] Extract realtime session, turn, input, playback, and presentation logic.
 - [ ] Add Frontend Tool Registry, Policy, and Executor.
+  - [x] Extract the declarative Registry and visibility Policy.
+  - [ ] Route execution through the Registry-owned Executor.
 - [ ] Migrate existing tools without renaming or changing behavior.
 - [ ] Make `spawn_thinking` a first-class background tool.
 - [ ] Add a bounded short tool loop.

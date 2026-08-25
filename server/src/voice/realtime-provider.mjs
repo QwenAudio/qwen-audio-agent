@@ -26,6 +26,7 @@ export {
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
   TOOLS,
+  frontendToolRegistry,
   frontendTools,
   buildFrontendInstructions,
 } from './frontend-tools.mjs'

@@ -94,6 +94,8 @@
     "docs/reference/knowledge.zh.md",
     "docs/reference/frontend-evaluations.md",
     "docs/reference/frontend-evaluations.zh.md",
+    "docs/reference/frontend-mcp.md",
+    "docs/reference/frontend-mcp.zh.md",
     "docs/voice-frontends/speech-to-speech.md",
     "docs/voice-frontends/speech-to-speech.zh.md",
     "docs/voice-frontends/custom-provider.md",

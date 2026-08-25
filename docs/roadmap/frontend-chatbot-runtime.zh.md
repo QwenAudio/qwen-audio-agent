@@ -221,7 +221,7 @@ ACP Session、协调 Prompt、协调 MCP 和原生委托全部属于 ACP Adapter
   - [x] 通过 Registry 管理的 Executor 统一执行入口。
 - [x] 将现有工具逐个迁移，保持工具名与用户行为不变。
 - [x] 将 `spawn_thinking` 固化为 background tool。
-- [ ] 增加有界短工具循环。
+- [x] 增加有界短工具循环。
 
 完成条件：增加新前台工具只需要定义、实现和测试，不修改 Realtime Gateway 主流程。
 

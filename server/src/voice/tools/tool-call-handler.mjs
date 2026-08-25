@@ -11,6 +11,9 @@ import {
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
   frontendToolRegistry,
 } from '../frontend-tools.mjs'
+import {
+  boundFrontendToolResult,
+} from './frontend-tool-loop.mjs'
 import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
 import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
@@ -128,6 +131,7 @@ export class ToolCallHandler {
     this.requestClientState = requestClientState
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
+    this.activeToolEntries = new Map()
     this.toolExecutor = frontendToolRegistry.createExecutor({
       [SPAWN_THINKING_TOOL_NAME]: context => (
         this.executeSpawnThinkingToolCall(context)
@@ -192,9 +196,21 @@ export class ToolCallHandler {
       responseContext,
       ...frontendOptions
     } = options || {}
+    const tool = this.activeToolEntries.get(callId)
+    const bounded = boundFrontendToolResult(
+      output,
+      tool?.policy.maxResultBytes,
+    )
+    const safeOutput = bounded.accepted
+      ? bounded.value
+      : failure(
+          'tool_result_too_large',
+          '工具结果过大，无法在当前语音轮次中安全返回。',
+          { retryable: true },
+        )
     await this.getFrontend()?.sendFunctionOutput(
       callId,
-      output,
+      safeOutput,
       { turnId, taskId, ...(responseContext || {}) },
       frontendOptions,
     )
@@ -831,22 +847,51 @@ export class ToolCallHandler {
       return
     }
 
-    const execution = await this.toolExecutor.execute(toolName, {
-      callId,
-      turnId,
-      generation,
-      args,
-      event,
-      callContext,
-    })
-    if (!execution.handled) {
-      await this.sendOutput(
+    const tool = frontendToolRegistry.get(toolName)
+    if (tool) this.activeToolEntries.set(callId, tool)
+    try {
+      const execution = await this.toolExecutor.execute(toolName, {
         callId,
-        failure('unsupported_tool', '当前无法执行这个操作。'),
         turnId,
-      )
+        generation,
+        args,
+        event,
+        callContext,
+      })
+      if (execution.handled && !execution.executed) {
+        const responseId = String(
+          callContext.responseId || event.response_id || '',
+        ).trim()
+        this.markTerminalToolResponse(responseId)
+        await this.sendOutput(
+          callId,
+          execution.limit.reason === 'repeated_call'
+            ? {
+                status: 'duplicate',
+                message: '本轮相同操作已经处理，不再重复执行。',
+              }
+            : failure(
+                'tool_loop_limit',
+                '本轮工具调用已达到安全边界，已停止继续执行。',
+                { retryable: true },
+              ),
+          turnId,
+          null,
+          { createResponse: false },
+        )
+        return execution
+      }
+      if (!execution.handled) {
+        await this.sendOutput(
+          callId,
+          failure('unsupported_tool', '当前无法执行这个操作。'),
+          turnId,
+        )
+      }
+      return execution
+    } finally {
+      this.activeToolEntries.delete(callId)
     }
-    return execution
   }
 
   async enterSleep(callId, turnId) {

@@ -173,7 +173,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Route execution through the Registry-owned Executor.
 - [x] Migrate existing tools without renaming or changing behavior.
 - [x] Make `spawn_thinking` a first-class background tool.
-- [ ] Add a bounded short tool loop.
+- [x] Add a bounded short tool loop.
 
 ### R3 — Work Runtime
 

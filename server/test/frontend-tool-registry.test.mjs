@@ -10,6 +10,7 @@ import {
   FRONTEND_TOOL_MODES,
   FrontendToolRegistry,
 } from '../src/voice/tools/frontend-tool-registry.mjs'
+import { FrontendToolLoop } from '../src/voice/tools/frontend-tool-loop.mjs'
 
 const DEFAULT_TOOL_NAMES = [
   'spawn_thinking',
@@ -113,6 +114,18 @@ test('rejects unnamed and duplicate tool registrations', () => {
     ]),
     /requires a valid mode/,
   )
+  assert.throws(
+    () => new FrontendToolRegistry([
+      { definition, policy: { mode: 'inline', repeatHandling: 'always' } },
+    ]),
+    /repeatHandling must be handler/,
+  )
+  assert.throws(
+    () => new FrontendToolRegistry([
+      { definition, policy: { mode: 'inline', maxResultBytes: 0 } },
+    ]),
+    /maxResultBytes must be a positive integer/,
+  )
 })
 
 test('binds one executor per registered tool and rejects incomplete maps', async () => {
@@ -144,12 +157,43 @@ test('binds one executor per registered tool and rejects incomplete maps', async
   })
   const execution = await executor.execute('first', { value: 1 })
   assert.equal(execution.handled, true)
+  assert.equal(execution.executed, true)
   assert.equal(execution.tool.name, 'first')
   assert.equal(execution.tool.policy.mode, 'background')
   assert.equal(execution.value, 'first:1')
   assert.deepEqual(await executor.execute('unknown', {}), {
     handled: false,
+    executed: false,
     tool: null,
     value: undefined,
   })
+})
+
+test('enforces the tool loop before invoking a registered handler', async () => {
+  const definition = {
+    type: 'function',
+    function: { name: 'bounded', parameters: { type: 'object' } },
+  }
+  const registry = new FrontendToolRegistry([
+    { definition, policy: { mode: 'inline' } },
+  ])
+  let calls = 0
+  const executor = registry.createExecutor({
+    bounded: async () => { calls += 1 },
+  }, {
+    loop: new FrontendToolLoop({ maxCallsPerTurn: 1 }),
+  })
+
+  const context = { turnId: 'turn', turnGeneration: 1 }
+  assert.equal((await executor.execute('bounded', {
+    ...context,
+    args: { value: 1 },
+  })).executed, true)
+  const limited = await executor.execute('bounded', {
+    ...context,
+    args: { value: 2 },
+  })
+  assert.equal(limited.executed, false)
+  assert.equal(limited.limit.reason, 'call_limit')
+  assert.equal(calls, 1)
 })

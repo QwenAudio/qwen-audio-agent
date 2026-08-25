@@ -38,6 +38,9 @@ import { ReminderScheduler } from '../task/reminder-scheduler.mjs'
 import { webDistributionPath } from '../core/install-paths.mjs'
 import { installOfflineNotifications } from './offline-notifications.mjs'
 import {
+  FrontendRetrievalRuntime,
+} from '../frontend/retrieval/frontend-retrieval-runtime.mjs'
+import {
   projectGatewayTaskEvent,
   projectGatewayTaskSnapshot,
 } from '../transport/gateway-task-event-projector.mjs'
@@ -58,11 +61,18 @@ export function createGatewayApplication({
   autoStart = true,
   realtimeProviderRegistry = defaultRealtimeProviderRegistry,
   realtimeProvider = config.audioProvider,
+  webSearchProvider = null,
+  urlFetcher = undefined,
+  frontendRetrieval = null,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const inputAssetRegistry = inputAssets || new InputAssetRegistry({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
+})
+const retrievalRuntime = frontendRetrieval || new FrontendRetrievalRuntime({
+  searchProvider: webSearchProvider,
+  ...(urlFetcher === undefined ? {} : { urlFetcher }),
 })
 const identityManager = new IdentityManager({
   secret: config.authSecret,
@@ -492,6 +502,7 @@ realtimeGateway = attachRealtimeGateway(server, {
   inputArbitration,
   realtimeProviderRegistry,
   defaultRealtimeProvider: realtimeProvider,
+  frontendRetrieval: retrievalRuntime,
 })
 const start = ({ host = config.host, port = config.port } = {}) => {
   if (server.listening) return server
@@ -556,6 +567,7 @@ return {
     conversationSync,
     backendRuntime: workBackend,
     frontendMemoryService,
+    frontendRetrieval: retrievalRuntime,
     identityManager,
     inputArbitration,
     inputAssets: inputAssetRegistry,

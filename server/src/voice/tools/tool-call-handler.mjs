@@ -9,6 +9,8 @@ import {
   NOTES_TOOL_NAME,
   MEMORY_TOOL_NAME,
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
+  FETCH_URL_TOOL_NAME,
   frontendToolRegistry,
 } from '../frontend-tools.mjs'
 import {
@@ -110,6 +112,7 @@ export class ToolCallHandler {
     requestClientState = () => {},
     onAgentActivity = () => {},
     inputAssets = null,
+    frontendRetrieval = null,
   }) {
     this.taskManager = taskManager
     this.ownerId = ownerId
@@ -131,6 +134,7 @@ export class ToolCallHandler {
     this.requestClientState = requestClientState
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
+    this.frontendRetrieval = frontendRetrieval
     this.activeToolEntries = new Map()
     this.toolExecutor = frontendToolRegistry.createExecutor({
       [SPAWN_THINKING_TOOL_NAME]: context => (
@@ -158,6 +162,8 @@ export class ToolCallHandler {
       [ENTER_SLEEP_TOOL_NAME]: ({ callId, turnId }) => (
         this.enterSleep(callId, turnId)
       ),
+      [WEB_SEARCH_TOOL_NAME]: context => this.webSearch(context),
+      [FETCH_URL_TOOL_NAME]: context => this.fetchUrl(context),
     })
     this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
@@ -857,6 +863,9 @@ export class ToolCallHandler {
         args,
         event,
         callContext,
+        frontend: {
+          capabilities: this.frontendRetrieval?.capabilities?.() || [],
+        },
       })
       if (execution.handled && !execution.executed) {
         const responseId = String(
@@ -865,7 +874,13 @@ export class ToolCallHandler {
         this.markTerminalToolResponse(responseId)
         await this.sendOutput(
           callId,
-          execution.limit.reason === 'repeated_call'
+          execution.limit.reason === 'tool_unavailable'
+            ? failure(
+                'tool_unavailable',
+                '当前前台没有启用这个能力。',
+                { retryable: false },
+              )
+            : execution.limit.reason === 'repeated_call'
             ? {
                 status: 'duplicate',
                 message: '本轮相同操作已经处理，不再重复执行。',
@@ -877,7 +892,7 @@ export class ToolCallHandler {
               ),
           turnId,
           null,
-          { createResponse: false },
+          { createResponse: execution.limit.reason === 'tool_unavailable' },
         )
         return execution
       }
@@ -912,6 +927,63 @@ export class ToolCallHandler {
       { createResponse: false },
     )
     this.requestClientState('sleeping')
+  }
+
+  async webSearch({ callId, turnId, args }) {
+    const query = String(args.query || '').trim()
+    if (!query) {
+      await this.sendOutput(
+        callId,
+        failure('missing_query', '需要提供要搜索的内容。'),
+        turnId,
+      )
+      return
+    }
+    try {
+      const result = await this.frontendRetrieval.search(query, {
+        limit: args.limit,
+      })
+      await this.sendOutput(callId, result, turnId)
+    } catch (error) {
+      await this.sendOutput(
+        callId,
+        failure(
+          error.code || 'web_search_failed',
+          '网页搜索暂时不可用，请稍后再试。',
+          { retryable: true },
+        ),
+        turnId,
+      )
+    }
+  }
+
+  async fetchUrl({ callId, turnId, args }) {
+    const url = String(args.url || '').trim()
+    if (!url) {
+      await this.sendOutput(
+        callId,
+        failure('missing_url', '需要提供要读取的网址。'),
+        turnId,
+      )
+      return
+    }
+    try {
+      const result = await this.frontendRetrieval.fetchUrl(url)
+      await this.sendOutput(callId, result, turnId)
+    } catch (error) {
+      const safeMessage = error.name === 'UrlFetchError'
+        ? error.message
+        : '网页暂时无法读取，请稍后再试。'
+      await this.sendOutput(
+        callId,
+        failure(
+          error.code || 'url_fetch_failed',
+          safeMessage,
+          { retryable: error.code !== 'private_network_forbidden' },
+        ),
+        turnId,
+      )
+    }
   }
 
   notifyMemoryChanged() {

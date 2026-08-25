@@ -37,6 +37,12 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
           "maxResultBytes": 32768,
           "maxCallsPerTurn": 2,
           "description": "Search the user's configured document source."
+        },
+        "create_issue": {
+          "enabled": true,
+          "readOnly": false,
+          "approval": "required",
+          "description": "Create an issue in the configured tracker."
         }
       }
     }
@@ -55,8 +61,12 @@ Each exposed tool receives a stable model-visible name:
 - Remote servers require HTTPS. Loopback HTTP is allowed only without headers.
 - Header values may reference one exact environment variable with
   `${VARIABLE}`. A missing variable is a configuration error.
-- Every enabled tool must explicitly set `readOnly: true`. Mutating tools stay
-  unavailable until the generic frontend approval path is implemented.
+- Every enabled tool must explicitly declare `readOnly`. A writable tool must
+  also set `approval: "required"`; otherwise it is rejected at startup.
+- Writable operations execute only after a natural-language user confirmation.
+  Each confirmation covers one pending operation exactly once. Rejection,
+  replay, and a reconnect before confirmation all fail closed; there is no
+  session-wide automatic approval.
 - Schemas, descriptions, calls, time, and results are bounded. MCP results are
   treated as untrusted data and cannot override system or user instructions.
 - If an enabled tool is absent or invalid during discovery, that server fails

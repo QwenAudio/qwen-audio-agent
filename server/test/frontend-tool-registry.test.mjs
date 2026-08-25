@@ -4,6 +4,7 @@ import {
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
+  RESPOND_FRONTEND_TOOL_PERMISSION_NAME,
   WEB_SEARCH_TOOL_NAME,
   frontendToolRegistry,
   frontendTools,
@@ -99,6 +100,19 @@ test('exposes retrieval tools only when the frontend advertises each capability'
   )
 })
 
+test('exposes external-tool approval only when a source requires it', () => {
+  assert.equal(
+    frontendToolRegistry.isEnabled(RESPOND_FRONTEND_TOOL_PERMISSION_NAME),
+    false,
+  )
+  assert.deepEqual(
+    names(frontendTools({
+      frontend: { capabilities: ['external-tool-approval'] },
+    })),
+    [...DEFAULT_TOOL_NAMES, RESPOND_FRONTEND_TOOL_PERMISSION_NAME],
+  )
+})
+
 test('exposes the knowledge tool only with the frontend knowledge capability', () => {
   assert.equal(frontendToolRegistry.isEnabled(KNOWLEDGE_TOOL_NAME), false)
   assert.deepEqual(
@@ -150,6 +164,7 @@ test('declares one background tool and classifies every other tool', () => {
     notes: 'inline',
     knowledge: 'inline',
     respond_agent_permission: 'control',
+    respond_frontend_tool_permission: 'control',
     web_search: 'inline',
     fetch_url: 'inline',
     enter_sleep: 'control',

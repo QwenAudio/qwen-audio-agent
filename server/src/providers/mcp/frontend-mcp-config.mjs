@@ -76,14 +76,22 @@ function normalizedPolicy(value = {}) {
   }
   const enabled = value.enabled === true
   const readOnly = value.readOnly === true
-  if (enabled && !readOnly) {
+  const approval = clean(value.approval, 40).toLowerCase() || 'none'
+  if (enabled && typeof value.readOnly !== 'boolean') {
     throw new Error(
-      'Frontend MCP tools must be explicitly enabled and readOnly in this release.',
+      'Enabled Frontend MCP tools must explicitly declare readOnly.',
     )
+  }
+  if (enabled && !readOnly && approval !== 'required') {
+    throw new Error('Writable Frontend MCP tools require approval=required.')
+  }
+  if (readOnly && approval !== 'none') {
+    throw new Error('Read-only Frontend MCP tools cannot require approval.')
   }
   return {
     enabled,
     readOnly,
+    approval,
     timeoutMs: boundedInteger(value.timeoutMs, 8_000, 100, 30_000),
     maxResultBytes: boundedInteger(
       value.maxResultBytes,

@@ -35,7 +35,7 @@ test('loads no frontend MCP servers when no config path is set', () => {
   })
 })
 
-test('normalizes explicit server and read-only tool policies', () => {
+test('normalizes explicit server and tool policies', () => {
   const normalized = normalizeFrontendMcpConfiguration(configuration(), {
     env: { MCP_TOKEN: 'secret-token' },
   })
@@ -54,6 +54,7 @@ test('normalizes explicit server and read-only tool policies', () => {
         search: {
           enabled: true,
           readOnly: true,
+          approval: 'none',
           timeoutMs: 8_000,
           maxResultBytes: 32 * 1024,
           maxCallsPerTurn: 2,
@@ -78,7 +79,7 @@ test('loads and validates a versioned frontend MCP JSON file', () => {
   }
 })
 
-test('fails closed for unsafe endpoints, missing secrets, and mutating tools', () => {
+test('fails closed for unsafe endpoints, missing secrets, and unapproved mutations', () => {
   assert.throws(
     () => normalizeFrontendMcpConfiguration(configuration(), { env: {} }),
     /environment variable is missing: MCP_TOKEN/,
@@ -120,7 +121,63 @@ test('fails closed for unsafe endpoints, missing secrets, and mutating tools', (
         },
       },
     })),
-    /explicitly enabled and readOnly/,
+    /require approval=required/,
+  )
+})
+
+test('allows explicitly approved writable tools and rejects ambiguous policies', () => {
+  const normalized = normalizeFrontendMcpConfiguration(configuration({
+    servers: {
+      actions: {
+        enabled: true,
+        url: 'https://mcp.example.test/api',
+        tools: {
+          create_issue: {
+            enabled: true,
+            readOnly: false,
+            approval: 'required',
+          },
+        },
+      },
+    },
+  }))
+  assert.deepEqual(normalized.servers[0].tools.create_issue, {
+    enabled: true,
+    readOnly: false,
+    approval: 'required',
+    timeoutMs: 8_000,
+    maxResultBytes: 32 * 1024,
+    maxCallsPerTurn: 2,
+  })
+  assert.throws(
+    () => normalizeFrontendMcpConfiguration(configuration({
+      servers: {
+        ambiguous: {
+          enabled: true,
+          url: 'https://mcp.example.test/api',
+          tools: { action: { enabled: true } },
+        },
+      },
+    })),
+    /explicitly declare readOnly/,
+  )
+  assert.throws(
+    () => normalizeFrontendMcpConfiguration(configuration({
+      servers: {
+        read_only: {
+          enabled: true,
+          url: 'https://mcp.example.test/api',
+          tools: {
+            search: {
+              enabled: true,
+              readOnly: true,
+              approval: 'required',
+            },
+          },
+        },
+      },
+    })),
+    /cannot require approval/,
   )
 })
 

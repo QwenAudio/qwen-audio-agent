@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import {
   CANCEL_AGENT_TASK_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
@@ -9,11 +9,16 @@ import {
   NOTES_TOOL_NAME,
   MEMORY_TOOL_NAME,
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
+  RESPOND_FRONTEND_TOOL_PERMISSION_NAME,
   WEB_SEARCH_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
   frontendToolRegistry,
 } from '../frontend-tools.mjs'
+import {
+  findFrontendSourceTool,
+  frontendSourceToolCapabilities,
+} from '../../frontend/tools/frontend-tool-source.mjs'
 import {
   boundFrontendToolResult,
   FrontendToolLoop,
@@ -31,6 +36,7 @@ const CANCEL_RECEIPT_INSTRUCTIONS = [
 ].join(' ')
 
 const STATUS_RESULT_MESSAGE = '请根据这次查询结果自然回答用户；不要再次调用状态工具，不要展示 job_id。'
+const MAX_PENDING_EXTERNAL_AUTHORIZATIONS = 8
 
 function objectiveFingerprint(objective) {
   return createHash('sha256')
@@ -169,6 +175,9 @@ export class ToolCallHandler {
       [RESPOND_AGENT_PERMISSION_TOOL_NAME]: ({ callId, turnId, args }) => (
         this.respondAgentPermission(callId, turnId, args)
       ),
+      [RESPOND_FRONTEND_TOOL_PERMISSION_NAME]: ({ callId, turnId, args }) => (
+        this.respondFrontendToolPermission(callId, turnId, args)
+      ),
       [ENTER_SLEEP_TOOL_NAME]: ({ callId, turnId }) => (
         this.enterSleep(callId, turnId)
       ),
@@ -183,20 +192,88 @@ export class ToolCallHandler {
     this.cancelResponseByTurn = new Map()
     this.terminalToolResponses = new Set()
     this.deferredToolResponses = new Map()
+    this.pendingExternalAuthorizations = new Map()
   }
 
   externalTool(name) {
-    const requested = String(name || '')
-    for (const source of this.frontendToolSources) {
-      const tool = source.tools().find(entry => entry.name === requested)
-      if (tool) return { source, tool }
+    return findFrontendSourceTool(this.frontendToolSources, name)
+  }
+
+  async executeExternalSource(external, args) {
+    const { source, tool } = external
+    let output
+    try {
+      output = await source.execute(tool.name, args)
+    } catch {
+      output = failure(
+        'external_tool_unavailable',
+        '外部工具暂时不可用。',
+        { retryable: true },
+      )
     }
-    return null
+    const bounded = boundFrontendToolResult(
+      output,
+      tool.policy?.maxResultBytes,
+    )
+    return bounded.accepted
+      ? bounded.value
+      : failure(
+          'tool_result_too_large',
+          '工具结果过大，无法在当前语音轮次中安全返回。',
+          { retryable: true },
+        )
+  }
+
+  async requestExternalToolApproval(external, context) {
+    if (
+      this.pendingExternalAuthorizations.size
+      >= MAX_PENDING_EXTERNAL_AUTHORIZATIONS
+    ) {
+      await this.sendOutput(
+        context.callId,
+        failure(
+          'external_authorization_limit',
+          '当前等待确认的外部操作过多，请先处理已有请求。',
+          { retryable: true },
+        ),
+        context.turnId,
+      )
+      return { handled: true, executed: false }
+    }
+    const authorizationId = `frontend_auth_${randomUUID()}`
+    const description = String(
+      external.tool.definition?.function?.description || external.tool.name,
+    ).replace(/\s+/gu, ' ').trim().slice(0, 400)
+    this.pendingExternalAuthorizations.set(authorizationId, {
+      ...external,
+      args: context.args,
+      operation: description,
+    })
+    await this.sendOutput(context.callId, {
+      status: 'confirmation_required',
+      authorization_id: authorizationId,
+      operation: description,
+      message: '此操作会修改外部系统，必须先获得用户明确同意。',
+    }, context.turnId, null, {
+      response: {
+        instructions: [
+          '这是前台外部工具执行前的确认请求。',
+          '自然、简短地说明 operation 并询问用户是否允许，不要声称已经执行。',
+          '用户回答后按语义调用 respond_frontend_tool_permission；不要要求固定口令，也不要朗读 authorization_id。',
+        ].join(' '),
+      },
+    })
+    return { handled: true, executed: false, authorizationId }
   }
 
   async executeExternalToolCall(external, context) {
-    const { source, tool } = external
-    if (tool.policy?.readOnly !== true) {
+    const { tool } = external
+    const directlyExecutable = tool.policy?.readOnly === true
+    const requiresApproval = (
+      tool.policy?.readOnly === false
+      && tool.policy?.approval === 'required'
+    )
+    if (!directlyExecutable && !requiresApproval) {
       await this.sendOutput(
         context.callId,
         failure('tool_unavailable', '当前前台没有启用这个能力。'),
@@ -222,18 +299,43 @@ export class ToolCallHandler {
       )
       return { handled: true, executed: false, limit }
     }
-    let output
-    try {
-      output = await source.execute(tool.name, context.args)
-    } catch {
-      output = failure(
-        'external_tool_unavailable',
-        '外部工具暂时不可用。',
-        { retryable: true },
-      )
+    if (requiresApproval) {
+      return this.requestExternalToolApproval(external, context)
     }
+    const output = await this.executeExternalSource(external, context.args)
     await this.sendOutput(context.callId, output, context.turnId)
     return { handled: true, executed: true, value: output }
+  }
+
+  async respondFrontendToolPermission(callId, turnId, args = {}) {
+    const authorizationId = String(args.authorization_id || '').trim()
+    const decision = String(args.decision || '').trim()
+    const pending = this.pendingExternalAuthorizations.get(authorizationId)
+    if (!pending || !['allow', 'reject'].includes(decision)) {
+      await this.sendOutput(
+        callId,
+        failure(
+          'external_authorization_not_pending',
+          '没有找到仍在等待决定的外部工具请求。',
+        ),
+        turnId,
+      )
+      return
+    }
+    this.pendingExternalAuthorizations.delete(authorizationId)
+    if (decision === 'reject') {
+      await this.sendOutput(callId, {
+        status: 'rejected',
+        message: '用户拒绝了这次外部工具操作。',
+      }, turnId, null, {
+        response: {
+          instructions: '自然、简短地确认本次操作未执行，不要调用工具。',
+        },
+      })
+      return
+    }
+    const output = await this.executeExternalSource(pending, pending.args)
+    await this.sendOutput(callId, output, turnId)
   }
 
   markTerminalToolResponse(responseId) {
@@ -943,6 +1045,7 @@ export class ToolCallHandler {
           capabilities: [...new Set([
             ...(this.frontendRetrieval?.capabilities?.() || []),
             ...(this.frontendKnowledge?.capabilities?.() || []),
+            ...frontendSourceToolCapabilities(this.frontendToolSources),
           ])],
         },
       })

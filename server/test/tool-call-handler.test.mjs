@@ -20,6 +20,7 @@ function harness({
   requestClientState,
   inputAssets,
   onAgentActivity,
+  frontendRetrieval,
   getTurnId = () => 'turn-one',
 } = {}) {
   const outputs = []
@@ -56,6 +57,7 @@ function harness({
     requestClientState,
     onAgentActivity,
     inputAssets,
+    frontendRetrieval,
     getConversationContext: () => [
       { role: 'user', content: '之前在改首页' },
     ],
@@ -87,6 +89,53 @@ test('asks a capable client to enter sleep without creating another response', a
   assert.deepEqual(states, ['sleeping'])
   assert.equal(kit.outputs[0][1].status, 'sleeping')
   assert.equal(kit.outputs[0][3].createResponse, false)
+})
+
+test('executes only retrieval tools advertised by the injected frontend runtime', async () => {
+  const calls = []
+  const kit = harness({
+    frontendRetrieval: {
+      capabilities: () => ['web-search', 'url-fetch'],
+      search: async (query, options) => {
+        calls.push(['search', query, options.limit])
+        return { status: 'ok', query, results: [], citations: [] }
+      },
+      fetchUrl: async url => {
+        calls.push(['fetch', url])
+        return { status: 'ok', url, content: 'page', citations: [] }
+      },
+    },
+  })
+
+  await kit.handler.handle({
+    call_id: 'call-search',
+    name: 'web_search',
+    arguments: JSON.stringify({ query: 'current facts', limit: 3 }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+  await kit.handler.handle({
+    call_id: 'call-fetch',
+    name: 'fetch_url',
+    arguments: JSON.stringify({ url: 'https://example.com/' }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.deepEqual(calls, [
+    ['search', 'current facts', 3],
+    ['fetch', 'https://example.com/'],
+  ])
+  assert.equal(kit.outputs[0][1].status, 'ok')
+  assert.equal(kit.outputs[1][1].content, 'page')
+})
+
+test('fails closed when a stale model calls an unavailable retrieval tool', async () => {
+  const kit = harness()
+  await kit.handler.handle({
+    call_id: 'call-search-disabled',
+    name: 'web_search',
+    arguments: JSON.stringify({ query: 'current facts' }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+  assert.equal(kit.outputs[0][3].createResponse, true)
 })
 
 test('rejects sleep when the client did not advertise that state', async () => {

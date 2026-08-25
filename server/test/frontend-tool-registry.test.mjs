@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   ENTER_SLEEP_TOOL_NAME,
+  FETCH_URL_TOOL_NAME,
+  WEB_SEARCH_TOOL_NAME,
   frontendToolRegistry,
   frontendTools,
   TOOLS,
@@ -54,6 +56,29 @@ test('exposes client-state tools only when the client advertises support', () =>
   )
 })
 
+test('exposes retrieval tools only when the frontend advertises each capability', () => {
+  assert.equal(frontendToolRegistry.isEnabled(WEB_SEARCH_TOOL_NAME), false)
+  assert.equal(frontendToolRegistry.isEnabled(FETCH_URL_TOOL_NAME), false)
+  assert.deepEqual(
+    names(frontendTools({ frontend: { capabilities: ['url-fetch'] } })),
+    [...DEFAULT_TOOL_NAMES, FETCH_URL_TOOL_NAME],
+  )
+  assert.deepEqual(
+    names(frontendTools({
+      frontend: { capabilities: ['web-search', 'url-fetch'] },
+    })),
+    [...DEFAULT_TOOL_NAMES, WEB_SEARCH_TOOL_NAME, FETCH_URL_TOOL_NAME],
+  )
+  assert.deepEqual(
+    frontendToolRegistry.get(WEB_SEARCH_TOOL_NAME).policy,
+    {
+      mode: 'inline',
+      maxResultBytes: 48 * 1024,
+      requiredCapabilities: ['web-search'],
+    },
+  )
+})
+
 test('keeps visibility policy separate from runtime execution checks', () => {
   const entry = frontendToolRegistry.get(ENTER_SLEEP_TOOL_NAME)
   assert.deepEqual(entry.policy, {
@@ -84,6 +109,8 @@ test('declares one background tool and classifies every other tool', () => {
     memory: 'inline',
     notes: 'inline',
     respond_agent_permission: 'control',
+    web_search: 'inline',
+    fetch_url: 'inline',
     enter_sleep: 'control',
   })
 })

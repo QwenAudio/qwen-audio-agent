@@ -20,12 +20,37 @@ function clientStates(context) {
   )
 }
 
+function frontendCapabilities(context) {
+  return new Set(
+    Array.isArray(context?.frontend?.capabilities)
+      ? context.frontend.capabilities.map(String)
+      : [],
+  )
+}
+
 function policyAllows(policy = {}, context = {}) {
   const availableStates = clientStates(context)
   const requiredStates = Array.isArray(policy.requiredClientStates)
     ? policy.requiredClientStates
     : []
+  const availableCapabilities = frontendCapabilities(context)
+  const requiredCapabilities = Array.isArray(policy.requiredCapabilities)
+    ? policy.requiredCapabilities
+    : []
   return requiredStates.every(state => availableStates.has(state))
+    && requiredCapabilities.every(capability => (
+      availableCapabilities.has(capability)
+    ))
+}
+
+function capabilitiesAllow(policy = {}, context = {}) {
+  const availableCapabilities = frontendCapabilities(context)
+  const requiredCapabilities = Array.isArray(policy.requiredCapabilities)
+    ? policy.requiredCapabilities
+    : []
+  return requiredCapabilities.every(capability => (
+    availableCapabilities.has(capability)
+  ))
 }
 
 function normalizedPolicy(policy = {}) {
@@ -51,6 +76,11 @@ function normalizedPolicy(policy = {}) {
   if (Array.isArray(policy.requiredClientStates)) {
     normalized.requiredClientStates = Object.freeze([
       ...policy.requiredClientStates.map(String),
+    ])
+  }
+  if (Array.isArray(policy.requiredCapabilities)) {
+    normalized.requiredCapabilities = Object.freeze([
+      ...policy.requiredCapabilities.map(String),
     ])
   }
   return Object.freeze(normalized)
@@ -157,6 +187,15 @@ export class FrontendToolExecutor {
         handled: false,
         executed: false,
         tool: null,
+        value: undefined,
+      }
+    }
+    if (!capabilitiesAllow(entry.policy, context)) {
+      return {
+        handled: true,
+        executed: false,
+        tool: entry,
+        limit: { admitted: false, reason: 'tool_unavailable' },
         value: undefined,
       }
     }

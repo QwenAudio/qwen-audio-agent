@@ -37,14 +37,19 @@ function harness({
     getFrontend: () => frontend,
     getTurnId,
     getTurnGeneration: () => 1,
-    coordinator: coordinator || {
+    backendRuntime: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
+      cancel: async workId => ({ workId, state: 'cancelled' }),
     },
     backendAvailability,
     memoryService: memoryStore,
     notesStore,
     onMemoryChanged,
-    respondPermission,
+    respondAuthorization: respondPermission
+      ? (_workId, id, decision, options) => (
+          respondPermission(id, decision, options)
+        )
+      : undefined,
     permissionPolicy,
     onPermissionDeliveryFailed,
     getClientContext: () => clientContext,
@@ -205,14 +210,14 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
   assert.equal(received.originalRequest, '继续改刚才那个页面')
   assert.equal(received.objective, '继续修改此前讨论的页面')
   assert.equal(received.conversationContext[0].content, '之前在改首页')
-  assert.equal(receivedOptions.coordinationRequestId, kit.outputs[0][1].job_id)
+  assert.equal(receivedOptions.jobId, kit.outputs[0][1].job_id)
   assert.equal(
-    receivedOptions.coordinationRunId,
+    receivedOptions.workId,
     taskForJob(kit.manager, kit.outputs[0][1].job_id).id,
   )
   assert.notEqual(
-    receivedOptions.coordinationRequestId,
-    receivedOptions.coordinationRunId,
+    receivedOptions.jobId,
+    receivedOptions.workId,
   )
 })
 
@@ -703,16 +708,16 @@ test('cancels the most recently submitted active work', async () => {
   const kit = harness()
   let release
   const cancellations = []
-  kit.handler.coordinator = {
+  kit.handler.backendRuntime = {
     run: async (_input, { signal }) => new Promise((resolve, reject) => {
       release = resolve
       signal.addEventListener('abort', () => reject(signal.reason), {
         once: true,
       })
     }),
-    cancelWork: async (workId, options) => {
+    cancel: async (workId, options) => {
       cancellations.push([workId, options])
-      return { route: 'adapter', layer: 'coordinator' }
+      return { workId, state: 'cancelled' }
     },
   }
   kit.transcripts.record('turn-one', '执行一次')
@@ -944,7 +949,7 @@ test('queries delegated status directly from the Gateway ledger', async () => {
     objective: '继续 Megatron-LM 项目',
     ownerId: 'owner',
     sessionId: 'voice',
-    laneKey: 'coordinator:owner',
+    laneKey: 'backend:owner',
     runner: async (_objective, { onEvent, signal }) => {
       onEvent({
         type: 'backend.delegated',

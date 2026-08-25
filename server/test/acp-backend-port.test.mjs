@@ -8,6 +8,7 @@ function fakeClient({ hold = false } = {}) {
   return {
     ready: false,
     gate,
+    prompts: [],
     async start() {
       this.ready = true
       return {
@@ -20,7 +21,8 @@ function fakeClient({ hold = false } = {}) {
     async resumeSession(sessionId, options) {
       return { sessionId, cwd: options.cwd, response: {} }
     },
-    async prompt(_sessionId, _prompt, options = {}) {
+    async prompt(_sessionId, prompt, options = {}) {
+      this.prompts.push(prompt)
       options.onUpdate?.({
         sessionUpdate: 'tool_call',
         toolCallId: 'tool-one',
@@ -76,6 +78,12 @@ test('ACP submit exposes Work values while Session details stay private', async 
     jobId: 'job_1',
     ownerId: 'owner-one',
     message: '完成请求',
+    inputParts: [{
+      type: 'file',
+      mime: 'image/png',
+      filename: 'reference.png',
+      url: 'data:image/png;base64,aGVsbG8=',
+    }],
   })
   await new Promise(resolve => setImmediate(resolve))
 
@@ -89,6 +97,14 @@ test('ACP submit exposes Work values while Session details stay private', async 
   assert.equal(events[0].type, 'backend.activity')
   assert.equal(events[0].workId, 'work-one')
   assert.equal(events[0].ownerId, 'owner-one')
+  assert.equal(client.prompts[0][0].type, 'text')
+  assert.match(client.prompts[0][0].text, /reference\.png/)
+  assert.deepEqual(client.prompts[0][1], {
+    type: 'image',
+    mimeType: 'image/png',
+    data: 'aGVsbG8=',
+    uri: 'qwen-audio-agent://input/reference.png',
+  })
 
   client.gate.resolve()
   const outcome = await pending

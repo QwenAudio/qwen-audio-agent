@@ -52,11 +52,11 @@ async function startGateway() {
     }),
     memoryService: fakeMemoryStore(),
     notesStore: fakeNotesStore(),
-    coordinator: null,
+    backendRuntime: null,
     backendAvailability: {
       snapshot: () => ({ configured: false, ok: false, known: true }),
     },
-    respondPermission: async () => ({}),
+    respondAuthorization: async () => ({}),
     permissionPolicy: {
       resolveDecision: () => null,
       rememberDecision: () => {},

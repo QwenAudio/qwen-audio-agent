@@ -90,6 +90,20 @@ test('generic ACP and process cores do not bind to named backends', () => {
   assert.deepEqual(violations, [])
 })
 
+test('Gateway Work consumers use BackendPort instead of ACP coordinator APIs', () => {
+  const consumers = [
+    resolve(sourceRoot, 'backend/backend-work-runtime.mjs'),
+    resolve(sourceRoot, 'app/gateway-application.mjs'),
+    resolve(sourceRoot, 'voice/realtime-gateway.mjs'),
+    resolve(sourceRoot, 'voice/tools/tool-call-handler.mjs'),
+  ]
+  const privateAcpApi = /\b(?:runCoordinator|cancelWork|queryDelegatedWork|coordinatorUsesMcpInstructions)\b|from\s+['"][^'"]*acp-/
+  const violations = consumers
+    .filter(file => privateAcpApi.test(readFileSync(file, 'utf8')))
+    .map(file => relative(projectRoot, file))
+  assert.deepEqual(violations, [])
+})
+
 test('UI source code does not import Gateway or another client implementation', () => {
   const roots = [
     resolve(projectRoot, 'web/src'),

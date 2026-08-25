@@ -21,8 +21,9 @@ function harness({
     }),
     getTurnId: () => 'turn-1',
     getTurnGeneration: () => 1,
-    coordinator: coordinator || {
+    backendRuntime: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
+      cancel: async workId => ({ workId, state: 'cancelled' }),
     },
     memoryService: memoryStore,
     notesStore: null,
@@ -223,6 +224,6 @@ test('scheduled tasks preserve identity and resolve current user context', async
   assert.equal(coordinatorOptions.ownerId, 'owner')
   assert.equal(coordinatorOptions.sessionId, 'voice')
   assert.equal(coordinatorOptions.turnId, 'turn-1')
-  assert.equal(coordinatorOptions.coordinationRunId, taskId)
-  assert.equal(coordinatorOptions.coordinationRequestId, jobId)
+  assert.equal(coordinatorOptions.workId, taskId)
+  assert.equal(coordinatorOptions.jobId, jobId)
 })

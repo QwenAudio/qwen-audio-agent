@@ -166,12 +166,13 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
     },
   })
   kit.transcripts.record('turn-one', '继续改刚才那个页面')
-  await kit.handler.handle({
+  const execution = await kit.handler.handle({
     call_id: 'call-one',
     name: 'spawn_thinking',
     arguments: JSON.stringify({ objective: '继续修改此前讨论的页面' }),
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
+  assert.equal(execution.tool.policy.mode, 'background')
   assert.equal(kit.outputs[0][1].status, 'accepted')
   assert.equal(
     kit.outputs[0][1].message,

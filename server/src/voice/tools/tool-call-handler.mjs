@@ -846,7 +846,7 @@ export class ToolCallHandler {
         turnId,
       )
     }
-    return
+    return execution
   }
 
   async enterSleep(callId, turnId) {

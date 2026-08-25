@@ -231,17 +231,17 @@ const scheduleReminderTool = {
 }
 
 export const frontendToolRegistry = new FrontendToolRegistry([
-  { definition: spawnThinkingTool },
-  { definition: scheduleReminderTool },
-  { definition: cancelAgentTaskTool },
-  { definition: getAgentTaskStatusTool },
-  { definition: getCurrentTimeTool },
-  { definition: memoryTool },
-  { definition: notesTool },
-  { definition: respondAgentPermissionTool },
+  { definition: spawnThinkingTool, policy: { mode: 'background' } },
+  { definition: scheduleReminderTool, policy: { mode: 'inline' } },
+  { definition: cancelAgentTaskTool, policy: { mode: 'control' } },
+  { definition: getAgentTaskStatusTool, policy: { mode: 'control' } },
+  { definition: getCurrentTimeTool, policy: { mode: 'inline' } },
+  { definition: memoryTool, policy: { mode: 'inline' } },
+  { definition: notesTool, policy: { mode: 'inline' } },
+  { definition: respondAgentPermissionTool, policy: { mode: 'control' } },
   {
     definition: enterSleepTool,
-    policy: { requiredClientStates: ['sleeping'] },
+    policy: { mode: 'control', requiredClientStates: ['sleeping'] },
   },
 ])
 

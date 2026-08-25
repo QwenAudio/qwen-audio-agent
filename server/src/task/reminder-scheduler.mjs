@@ -1,3 +1,5 @@
+import { TaskDomainEvent } from './task-events.mjs'
+
 /**
  * ReminderScheduler — setTimeout-driven scheduler for scheduled tasks.
  *
@@ -24,7 +26,10 @@ export class ReminderScheduler {
 
     // Re-arm whenever a new scheduled task is created or cancelled.
     this.unsubscribe = this.taskManager.subscribe(event => {
-      if (event.type === 'task.scheduled' || event.type === 'task.cancelled') {
+      if (
+        event.type === TaskDomainEvent.SCHEDULED
+        || event.type === TaskDomainEvent.CANCELLED
+      ) {
         this.reschedule()
       }
     })
@@ -64,7 +69,7 @@ export class ReminderScheduler {
       const timer = setTimeout(() => {
         if (task.status !== 'scheduled') return
         task.status = 'queued'
-        this.taskManager.emit('task.scheduled.fired', task)
+        this.taskManager.emit(TaskDomainEvent.SCHEDULED_FIRED, task)
         this.taskManager.persistDeferred()
         this.taskManager.drain()
       }, delay)

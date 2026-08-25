@@ -39,6 +39,7 @@
     "./gateway-client-state": "./shared/gateway-client-state.mjs",
     "./gateway-application": "./server/src/app/gateway-application.mjs",
     "./backend-adapter-sdk": "./server/src/backend/backend-adapter-sdk.mjs",
+    "./a2a-backend-adapter": "./server/src/backend/a2a-backend-adapter.mjs",
     "./realtime-provider": "./server/src/voice/realtime-provider-extension.mjs",
     "./settings": "./desktop/src/settings-store.mjs",
     "./skin-store": "./desktop/src/skin-store.mjs",
@@ -104,6 +105,8 @@
     "docs/reference/frontend-profile.zh.md",
     "docs/reference/backend-adapter-sdk.md",
     "docs/reference/backend-adapter-sdk.zh.md",
+    "docs/reference/a2a-backend-adapter.md",
+    "docs/reference/a2a-backend-adapter.zh.md",
     "docs/voice-frontends/speech-to-speech.md",
     "docs/voice-frontends/speech-to-speech.zh.md",
     "docs/voice-frontends/custom-provider.md",
@@ -191,6 +194,7 @@
     "release:check": "./scripts/release-check"
   },
   "dependencies": {
+    "@a2a-js/sdk": "1.0.1",
     "@agentclientprotocol/sdk": "1.3.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@qwen-code/open-computer-use": "^0.2.3",

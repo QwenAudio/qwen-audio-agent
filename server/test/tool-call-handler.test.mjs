@@ -21,6 +21,7 @@ function harness({
   inputAssets,
   onAgentActivity,
   frontendRetrieval,
+  frontendKnowledge,
   getTurnId = () => 'turn-one',
 } = {}) {
   const outputs = []
@@ -58,6 +59,7 @@ function harness({
     onAgentActivity,
     inputAssets,
     frontendRetrieval,
+    frontendKnowledge,
     getConversationContext: () => [
       { role: 'user', content: '之前在改首页' },
     ],
@@ -136,6 +138,91 @@ test('fails closed when a stale model calls an unavailable retrieval tool', asyn
 
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
   assert.equal(kit.outputs[0][3].createResponse, true)
+})
+
+test('executes the capability-gated knowledge actions through one frontend tool', async () => {
+  const calls = []
+  const kit = harness({
+    frontendKnowledge: {
+      capabilities: () => ['knowledge'],
+      search: async (query, options) => {
+        calls.push(['search', query, options.ownerId])
+        return { status: 'ok', query, results: [] }
+      },
+      list: async ownerId => {
+        calls.push(['list', ownerId])
+        return [{
+          id: 'doc_one',
+          title: 'One',
+          mimeType: 'text/plain',
+          chunkCount: 1,
+        }]
+      },
+      read: async (ownerId, documentId) => {
+        calls.push(['read', ownerId, documentId])
+        return {
+          id: documentId,
+          title: 'One',
+          mimeType: 'text/plain',
+          content: 'Stored fact',
+        }
+      },
+      remove: async (ownerId, documentId) => {
+        calls.push(['remove', ownerId, documentId])
+        return true
+      },
+      index: async options => {
+        calls.push(['index', options.ownerId, options.sources[0].filename])
+        return {
+          documents: [{
+            id: 'doc_saved',
+            title: 'saved.md',
+            mimeType: 'text/markdown',
+            chunkCount: 1,
+          }],
+          failures: [],
+        }
+      },
+    },
+  })
+  kit.transcripts.recordParts('turn-one', [{
+    type: 'file',
+    mime: 'text/markdown',
+    filename: 'saved.md',
+    url: `data:text/markdown;base64,${Buffer.from('# Saved').toString('base64')}`,
+  }])
+  const invoke = (callId, args) => kit.handler.handle({
+    call_id: callId,
+    name: 'knowledge',
+    arguments: JSON.stringify(args),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  await invoke('knowledge-search', { action: 'search', query: 'fact' })
+  await invoke('knowledge-list', { action: 'list' })
+  await invoke('knowledge-read', { action: 'read', document_id: 'doc_one' })
+  await invoke('knowledge-remove', { action: 'remove', document_id: 'doc_one' })
+  await invoke('knowledge-index', { action: 'index' })
+
+  assert.deepEqual(calls, [
+    ['search', 'fact', 'owner'],
+    ['list', 'owner'],
+    ['read', 'owner', 'doc_one'],
+    ['remove', 'owner', 'doc_one'],
+    ['index', 'owner', 'saved.md'],
+  ])
+  assert.equal(kit.outputs[2][1].mode, 'full_context')
+  assert.equal(kit.outputs[4][1].status, 'indexed')
+})
+
+test('fails closed when a stale model calls the unavailable knowledge tool', async () => {
+  const kit = harness()
+  await kit.handler.handle({
+    call_id: 'call-knowledge-disabled',
+    name: 'knowledge',
+    arguments: JSON.stringify({ action: 'list' }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
 })
 
 test('rejects sleep when the client did not advertise that state', async () => {

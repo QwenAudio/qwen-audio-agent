@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
+  KNOWLEDGE_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   frontendToolRegistry,
   frontendTools,
@@ -79,6 +80,26 @@ test('exposes retrieval tools only when the frontend advertises each capability'
   )
 })
 
+test('exposes the knowledge tool only with the frontend knowledge capability', () => {
+  assert.equal(frontendToolRegistry.isEnabled(KNOWLEDGE_TOOL_NAME), false)
+  assert.deepEqual(
+    names(frontendTools({ frontend: { capabilities: ['knowledge'] } })),
+    [
+      ...DEFAULT_TOOL_NAMES.slice(0, 7),
+      KNOWLEDGE_TOOL_NAME,
+      ...DEFAULT_TOOL_NAMES.slice(7),
+    ],
+  )
+  assert.deepEqual(
+    frontendToolRegistry.get(KNOWLEDGE_TOOL_NAME).policy,
+    {
+      mode: 'inline',
+      maxResultBytes: 64 * 1024,
+      requiredCapabilities: ['knowledge'],
+    },
+  )
+})
+
 test('keeps visibility policy separate from runtime execution checks', () => {
   const entry = frontendToolRegistry.get(ENTER_SLEEP_TOOL_NAME)
   assert.deepEqual(entry.policy, {
@@ -108,6 +129,7 @@ test('declares one background tool and classifies every other tool', () => {
     get_current_time: 'inline',
     memory: 'inline',
     notes: 'inline',
+    knowledge: 'inline',
     respond_agent_permission: 'control',
     web_search: 'inline',
     fetch_url: 'inline',

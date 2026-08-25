@@ -77,6 +77,31 @@ test('serializes read-modify-write operations across store instances', () => {
   )
 })
 
+test('preserves valid source spans and rejects malformed spans', () => {
+  const store = fixture()
+  store.putDocument('owner', {
+    ...document('doc_spans', 'overlap'),
+    chunks: [{ text: 'overlap', start: 4, end: 11 }],
+  })
+  assert.deepEqual(
+    store.getDocument('owner', 'doc_spans').chunks[0],
+    {
+      id: 'doc_spans:chunk_1',
+      ordinal: 0,
+      text: 'overlap',
+      start: 4,
+      end: 11,
+    },
+  )
+  assert.throws(
+    () => store.putDocument('owner', {
+      ...document('doc_invalid_span', 'overlap'),
+      chunks: [{ text: 'overlap', start: 4, end: 10 }],
+    }),
+    /span is invalid/,
+  )
+})
+
 test('fails closed instead of overwriting corrupt persisted data', () => {
   const warnings = []
   const store = fixture({ onWarning: warning => warnings.push(warning) })

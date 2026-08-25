@@ -14,7 +14,7 @@ function sourceBuffer(content) {
   return Buffer.alloc(0)
 }
 
-export function chunkDocumentText(text, {
+export function chunkDocumentSpans(text, {
   chunkChars = 1_200,
   overlapChars = 120,
   maxChunks = 256,
@@ -22,7 +22,10 @@ export function chunkDocumentText(text, {
   const source = String(text || '').trim()
   if (!source) return []
   const size = Math.max(200, Math.trunc(chunkChars))
-  const overlap = Math.max(0, Math.min(Math.trunc(overlapChars), size / 3))
+  const overlap = Math.max(
+    0,
+    Math.min(Math.trunc(overlapChars), Math.floor(size / 3)),
+  )
   const chunks = []
   let offset = 0
   while (offset < source.length && chunks.length < maxChunks) {
@@ -39,8 +42,13 @@ export function chunkDocumentText(text, {
       ].filter(index => index >= minimum)
       if (candidates.length) end = offset + Math.max(...candidates) + 1
     }
-    const content = source.slice(offset, end).trim()
-    if (content) chunks.push(content)
+    const raw = source.slice(offset, end)
+    const leading = raw.match(/^\s*/u)?.[0].length || 0
+    const trailing = raw.match(/\s*$/u)?.[0].length || 0
+    const start = offset + leading
+    const finish = Math.max(start, end - trailing)
+    const content = source.slice(start, finish)
+    if (content) chunks.push({ text: content, start, end: finish })
     if (end >= source.length) {
       offset = source.length
       break
@@ -53,6 +61,10 @@ export function chunkDocumentText(text, {
     throw error
   }
   return chunks
+}
+
+export function chunkDocumentText(text, options) {
+  return chunkDocumentSpans(text, options).map(chunk => chunk.text)
 }
 
 export class KnowledgeIndexer {
@@ -100,7 +112,7 @@ export class KnowledgeIndexer {
         const extracted = await this.extractor.extract(source, {
           signal: context.signal,
         })
-        const chunks = chunkDocumentText(extracted.text, this.chunkOptions)
+        const chunks = chunkDocumentSpans(extracted.text, this.chunkOptions)
         const document = await this.store.putDocument(owner, {
           id: documentId,
           title: extracted.title,
@@ -110,7 +122,7 @@ export class KnowledgeIndexer {
             kind: String(source?.kind || 'document'),
             label: String(source?.filename || source?.title || extracted.title),
           },
-          chunks: chunks.map(text => ({ text })),
+          chunks,
         })
         return {
           content: `Indexed ${document.id} (${document.chunkCount} chunks).`,
@@ -125,5 +137,9 @@ export class KnowledgeIndexer {
 
   async list(ownerId) {
     return this.store.listDocuments(ownerId)
+  }
+
+  async wait(jobId) {
+    return this.taskManager.wait(jobId)
   }
 }

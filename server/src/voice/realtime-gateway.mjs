@@ -25,12 +25,12 @@ import { projectGatewayTaskEvent } from '../transport/gateway-task-event-project
 import { ToolCallHandler } from './tools/tool-call-handler.mjs'
 import { TurnTranscripts } from './tools/turn-transcripts.mjs'
 import { RealtimeInputRuntime } from './realtime-input-runtime.mjs'
-import { RealtimeTurnState } from './realtime-turn-state.mjs'
 import {
-  ensureResponseContext,
-  mergeResponseContext,
-  responseActivityContextPatch,
-} from './response-context.mjs'
+  acceptsPlaybackReceipt,
+  confirmsTaskNotificationOnPlaybackStart,
+  RealtimePresentationRuntime,
+} from './realtime-presentation-runtime.mjs'
+import { RealtimeTurnState } from './realtime-turn-state.mjs'
 import {
   ActiveVoiceClients,
   clientVoiceCapabilities,
@@ -39,10 +39,6 @@ import { ReconnectBackoff } from './reconnect-backoff.mjs'
 import { realtimeConnectionStatus } from './realtime-connection-status.mjs'
 import { SleepController } from './sleep-controller.mjs'
 import { createSherpaWakeWordDetector } from './wake-word/sherpa-detector.mjs'
-import {
-  evaluateResponseGuards,
-  isResponseGuardTurnCurrent,
-} from './response-guards/index.mjs'
 import {
   isResponseActivityEvent,
   realtimeResponseId,
@@ -78,22 +74,9 @@ export function isSleepActivityEvent(event = {}) {
   ].includes(event.type)
 }
 
-export function confirmsTaskNotificationOnPlaybackStart(context) {
-  return Boolean(
-    context
-    && (
-      context.origin === 'announcement'
-      || context.consumesTaskNotification
-    ),
-  )
-}
-
-export function acceptsPlaybackReceipt({
-  outputEnabled,
-  active,
-  responseKnown,
-}) {
-  return outputEnabled === true && active === true && responseKnown === true
+export {
+  acceptsPlaybackReceipt,
+  confirmsTaskNotificationOnPlaybackStart,
 }
 
 function clientDescriptor(event = {}) {
@@ -205,10 +188,8 @@ export function attachRealtimeGateway(server, {
     let sleepController
     const realtimeReconnectBackoff = new ReconnectBackoff()
     const announcementWindow = new AnnouncementWindow()
-    const playbackTurns = new Map()
     const notificationClaimantId = `voice_${randomUUID()}`
     let clientContext = normalizeClientContext()
-    const responseContexts = new Map()
     const turns = new RealtimeTurnState()
     const transcripts = new TurnTranscripts()
     const announcedPermissions = new Set()
@@ -553,6 +534,24 @@ export function attachRealtimeGateway(server, {
       reportFrontendError,
     })
 
+    const presentationRuntime = new RealtimePresentationRuntime({
+      ownerId,
+      sessionId,
+      turns,
+      conversationSync,
+      announcementWindow,
+      announcements,
+      toolCalls,
+      send: event => send(ws, event),
+      getFrontend: () => frontend,
+      getOutputEnabled: () => outputEnabled,
+      getNonVoiceClient: () => nonVoiceClient,
+      getResponseTurnCandidate: () => responseTurnCandidate,
+      clearResponseCandidate,
+      announcementQuietMs: config.announcementQuietMs,
+      responseContextCleanupMs: RESPONSE_CONTEXT_CLEANUP_MS,
+    })
+
     const queueNotification = task => {
       if (task.status === 'completed') {
         announcements.completed(task)
@@ -566,249 +565,6 @@ export function attachRealtimeGateway(server, {
       sessionId,
       task,
     })
-
-    const contextTaskIds = context => (
-      context?.taskIds?.length ? context.taskIds : [context?.taskId].filter(Boolean)
-    )
-
-    const publicResponseContext = context => ({
-      turnId: context.turnId,
-      taskId: context.taskId,
-      taskIds: context.taskIds,
-      turnIds: context.turnIds,
-      origin: context.origin,
-      turnGeneration: context.turnGeneration,
-      deliverySequence: context.deliverySequence,
-    })
-
-    const fallbackResponseContext = () => ({
-      turnId: turns.committedTurnId || turns.turnId,
-      taskId: null,
-      origin: 'model',
-      turnGeneration: turns.committedTurnId
-        ? turns.committedTurnGeneration
-        : turns.turnGeneration,
-    })
-
-    const emitAssistantTranscript = ({
-      id,
-      context,
-      content,
-      final,
-    }) => {
-      if (final) {
-        conversationSync.record({
-          ownerId,
-          sessionId,
-          id: `voice:assistant:${id}`,
-          role: 'assistant',
-          content,
-          source: context.origin === 'model' ? 'realtime-direct' : 'agent-presentation',
-          ...context,
-        })
-      }
-      send(ws, {
-        type: final ? 'transcript.final' : 'transcript.delta',
-        role: 'assistant',
-        content: content || '',
-        responseId: id,
-        ...publicResponseContext(context),
-      })
-    }
-
-    const flushPendingTranscripts = (id, context) => {
-      for (const transcript of context?.pendingTranscripts || []) {
-        emitAssistantTranscript({
-          id,
-          context,
-          content: transcript.content,
-          final: transcript.final,
-        })
-      }
-      if (context) context.pendingTranscripts = []
-    }
-
-    const finishResponseContextIfComplete = (id, context) => {
-      if (
-        context
-        && context.playbackEnded
-        && context.responseDone
-        && context.transcriptDone
-      ) {
-        responseContexts.delete(id)
-      }
-    }
-
-    const scheduleResponseContextCleanup = (id, context) => {
-      const timer = setTimeout(() => {
-        if (responseContexts.get(id) !== context) return
-        responseContexts.delete(id)
-        playbackTurns.delete(id)
-        announcementWindow.finishPlayback(id, {
-          hasFunctionCall: Boolean(context?.hasFunctionCall),
-        })
-      }, RESPONSE_CONTEXT_CLEANUP_MS)
-      timer.unref?.()
-    }
-
-    const startPlayback = id => {
-      const context = responseContexts.get(id)
-      // A cancelled response remains as a short-lived tombstone so late
-      // provider audio and client receipts cannot resurrect it.
-      if (context?.suppressed) return
-      announcementWindow.startPlayback(id)
-      const playbackTurnId = context?.turnId || playbackTurns.get(id) || turns.turnId
-      send(ws, {
-        type: 'voice.state',
-        state: 'speaking',
-        turnId: playbackTurnId,
-        origin: context?.origin || 'model',
-      })
-      if (!context || context.playbackStarted) return
-      context.playbackStarted = true
-      if (confirmsTaskNotificationOnPlaybackStart(context)) {
-        announcements.confirmMany(contextTaskIds(context))
-      }
-      flushPendingTranscripts(id, context)
-    }
-
-    const cancelQueuedPlayback = (id, { reason = '' } = {}) => {
-      const context = responseContexts.get(id)
-      announcementWindow.finishPlayback(id, {
-        hasFunctionCall: Boolean(context?.hasFunctionCall),
-      })
-      const playbackTurnId = playbackTurns.get(id) || turns.turnId
-      playbackTurns.delete(id)
-      if (context?.origin === 'announcement') {
-        if (reason === 'user_interruption') {
-          announcements.confirmMany(contextTaskIds(context))
-        } else {
-          announcements.retryMany(contextTaskIds(context))
-        }
-      }
-      if (context?.playbackStarted && reason === 'user_interruption') {
-        send(ws, {
-          type: 'response.interrupted',
-          responseId: id,
-          ...publicResponseContext(context),
-        })
-      }
-      if (context) {
-        context.suppressed = true
-        context.playbackEnded = true
-        context.pendingTranscripts = []
-        scheduleResponseContextCleanup(id, context)
-      }
-      send(ws, {
-        type: 'voice.state',
-        state: turns.userSpeaking ? 'listening' : 'idle',
-        turnId: turns.userSpeaking ? turns.turnId : playbackTurnId,
-        origin: context?.origin || 'model',
-      })
-      const timer = setTimeout(
-        () => announcements.flush(),
-        config.announcementQuietMs,
-      )
-      timer.unref?.()
-    }
-
-    const beginResponseLifecycle = event => {
-      const id = realtimeResponseId(event)
-      if (!id) return null
-      const existing = responseContexts.get(id)
-      const automaticResponse = (
-        !existing
-        && (event.__voiceOrigin || 'model') === 'model'
-        && !event.__voiceContext?.turnId
-      )
-      const automaticTurn = automaticResponse
-        ? responseTurnCandidate
-        : null
-      const fallback = {
-        turnId: event.__voiceContext?.turnId
-          || automaticTurn?.turnId
-          || turns.committedTurnId
-          || turns.turnId,
-        taskId: event.__voiceContext?.taskId || null,
-        origin: event.__voiceOrigin || 'model',
-        authorizationId: event.__voiceContext?.authorizationId || null,
-        turnGeneration: Number.isInteger(event.__voiceContext?.turnGeneration)
-          ? event.__voiceContext.turnGeneration
-          : automaticTurn?.turnGeneration
-            ?? (turns.committedTurnId
-              ? turns.committedTurnGeneration
-              : turns.turnGeneration),
-      }
-      const context = mergeResponseContext(
-        responseContexts,
-        id,
-        responseActivityContextPatch({ existing, event, fallback }),
-      )
-      if (
-        turns.manualInputGeneration !== null
-        && !automaticResponse
-        && context.turnGeneration === turns.manualInputGeneration
-        && context.origin === 'model'
-      ) {
-        turns.finishManualResponse(context)
-      }
-      // Compatible Realtime servers may omit response.created and reveal the
-      // correlation only on response.done. If audio already reached the
-      // client, confirm the newly identified task notification immediately.
-      if (
-        context.playbackStarted
-        && confirmsTaskNotificationOnPlaybackStart(context)
-      ) {
-        announcements.confirmMany(contextTaskIds(context))
-      }
-      if (automaticTurn) {
-        // Some OpenAI-compatible servers start an implicit server-VAD response
-        // with transcript or audio output and omit response.created. Any valid
-        // response output proves that turn detection accepted this turn.
-        turns.commit(automaticTurn)
-        clearResponseCandidate()
-      }
-      if (!context.responseStarted) {
-        context.responseStarted = true
-        send(ws, {
-          type: 'response.started',
-          responseId: id,
-          ...publicResponseContext(context),
-        })
-      }
-      return context
-    }
-
-    const finishPlayback = id => {
-      const playbackTurnId = playbackTurns.get(id) || turns.turnId
-      const context = responseContexts.get(id)
-      if (context?.suppressed) {
-        playbackTurns.delete(id)
-        return
-      }
-      announcementWindow.finishPlayback(id, {
-        hasFunctionCall: Boolean(context?.hasFunctionCall),
-      })
-      playbackTurns.delete(id)
-      if (context) {
-        context.playbackEnded = true
-        finishResponseContextIfComplete(id, context)
-        if (responseContexts.get(id) === context) {
-          scheduleResponseContextCleanup(id, context)
-        }
-      }
-      send(ws, {
-        type: 'voice.state',
-        state: turns.userSpeaking ? 'listening' : 'idle',
-        turnId: turns.userSpeaking ? turns.turnId : playbackTurnId,
-        origin: context?.origin || 'model',
-      })
-      const timer = setTimeout(
-        () => announcements.flush(),
-        config.announcementQuietMs,
-      )
-      timer.unref?.()
-    }
 
     const claimPendingNotifications = (
       taskIds,
@@ -899,17 +655,7 @@ export function attachRealtimeGateway(server, {
             origin === 'permission'
             && context?.authorizationId === authorizationId
           ))
-          for (const [responseId, context] of responseContexts) {
-            if (
-              context.origin === 'permission'
-              && context.authorizationId === authorizationId
-              && !context.suppressed
-            ) {
-              cancelQueuedPlayback(responseId, {
-                reason: 'permission_resolved',
-              })
-            }
-          }
+          presentationRuntime.cancelPermission(authorizationId)
         }
       }
       if (event.type === TaskDomainEvent.DELEGATED) {
@@ -949,14 +695,11 @@ export function attachRealtimeGateway(server, {
 
     const handleEvent = event => {
       if (isSleepActivityEvent(event)) sleepController?.recordActivity()
-      if (isResponseActivityEvent(event)) beginResponseLifecycle(event)
+      if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
       if (inputs.handleProviderEvent(event)) return
-      if (event.type === 'response.created') {
-        // Lifecycle setup is handled before the event switch so providers that
-        // emit output before (or instead of) response.created follow this path.
-      } else if (event.type === 'response.function_call_arguments.done') {
+      if (event.type === 'response.function_call_arguments.done') {
         const id = realtimeResponseId(event)
-        const callContext = responseContexts.get(id)
+        const callContext = presentationRuntime.get(id)
           || { turnId: '', turnGeneration: -1 }
         logger.info('realtime.tool_call.received', {
           responseId: id,
@@ -964,239 +707,12 @@ export function attachRealtimeGateway(server, {
           toolName: event.name || event.item?.name || '',
           turnId: callContext.turnId || '',
         })
-        if (responseContexts.has(id)) {
-          responseContexts.get(id).hasFunctionCall = true
-        }
+        presentationRuntime.markFunctionCall(id)
         toolCalls.handle(event, { ...callContext, responseId: id }).catch(error => {
           send(ws, { type: 'error', message: error.message })
         })
-      } else if (
-        event.type === 'response.audio.delta'
-        || event.type === 'response.output_audio.delta'
-      ) {
-        const id = realtimeResponseId(event)
-        const responseContext = ensureResponseContext(
-          responseContexts,
-          id,
-          fallbackResponseContext(),
-        )
-        if (responseContext?.suppressed) return
-        const responseTurnId = responseContext.turnId || turns.turnId
-        if (id) {
-          responseContext.hasAudio = true
-          playbackTurns.set(id, responseTurnId)
-          announcementWindow.queueAudio(id, {
-            turnId: responseTurnId,
-            origin: responseContext.origin || 'model',
-          })
-        }
-        send(ws, {
-          type: 'audio.delta',
-          audio: event.delta,
-          sampleRate: Number(event.sampleRate)
-            || frontend.provider.outputSampleRate,
-          responseId: id,
-          turnId: responseTurnId,
-        })
-      } else if (
-        event.type === 'response.audio_transcript.delta'
-        || event.type === 'response.output_audio_transcript.delta'
-      ) {
-        const id = realtimeResponseId(event)
-        const context = ensureResponseContext(
-          responseContexts,
-          id,
-          fallbackResponseContext(),
-        )
-        if (context.suppressed) return
-        if (!context.playbackStarted) {
-          context.pendingTranscripts.push({
-            content: event.delta || '',
-            final: false,
-          })
-        } else {
-          emitAssistantTranscript({
-            id,
-            context,
-            content: event.delta || '',
-            final: false,
-          })
-        }
-      } else if (
-        event.type === 'response.audio_transcript.done'
-        || event.type === 'response.output_audio_transcript.done'
-      ) {
-        const id = realtimeResponseId(event)
-        const context = ensureResponseContext(
-          responseContexts,
-          id,
-          fallbackResponseContext(),
-        )
-        if (context.suppressed) return
-        context.transcriptDone = true
-        context.assistantTranscript = event.transcript || ''
-        if (!context.playbackStarted) {
-          context.pendingTranscripts.push({
-            content: event.transcript || '',
-            final: true,
-          })
-        } else {
-          emitAssistantTranscript({
-            id,
-            context,
-            content: event.transcript || '',
-            final: true,
-          })
-        }
-        finishResponseContextIfComplete(id, context)
-      } else if (event.type === 'response.text.delta') {
-        const id = realtimeResponseId(event)
-        const context = ensureResponseContext(
-          responseContexts,
-          id,
-          fallbackResponseContext(),
-        )
-        if (context.suppressed) return
-        emitAssistantTranscript({
-          id,
-          context,
-          content: event.delta || '',
-          final: false,
-        })
-      } else if (event.type === 'response.text.done') {
-        const id = realtimeResponseId(event)
-        const context = ensureResponseContext(
-          responseContexts,
-          id,
-          fallbackResponseContext(),
-        )
-        if (context.suppressed) return
-        context.transcriptDone = true
-        context.assistantTranscript = event.text || ''
-        emitAssistantTranscript({
-          id,
-          context,
-          content: event.text || '',
-          final: true,
-        })
-      } else if (event.type === 'response.done') {
-        const id = realtimeResponseId(event)
-        const responseContext = responseContexts.get(id)
-        const terminalToolResponse = toolCalls.consumeTerminalToolResponse(id)
-        const responseTurnId = responseContext?.turnId || turns.turnId
-        const responseStatus = event.response?.status
-        const responseFailed = ['failed', 'cancelled', 'incomplete'].includes(
-          responseStatus,
-        )
-        toolCalls.finishToolResponse(id, {
-          suppressResponse: responseFailed
-            || Boolean(responseContext?.suppressed)
-            || Boolean(responseContext?.hasAudio)
-            || Boolean(responseContext?.assistantTranscript?.trim()),
-        }).catch(error => {
-          send(ws, { type: 'error', message: error.message })
-        })
-        // Guards run before the context is retired below, which drops the
-        // transcript they inspect. They can only ask the model to reconsider;
-        // they never execute tools or mutate task state directly.
-        const responseGuardDecision = evaluateResponseGuards({
-          origin: responseContext?.origin || 'model',
-          hasFunctionCall: Boolean(responseContext?.hasFunctionCall),
-          failed: responseFailed,
-          suppressed: Boolean(responseContext?.suppressed),
-          transcript: responseContext?.assistantTranscript || '',
-        })
-        if (!responseContext?.suppressed) {
-          send(ws, { type: 'audio.done', responseId: id, turnId: responseTurnId })
-          if (!responseContext?.hasAudio) {
-            send(ws, {
-              type: 'voice.state',
-              state: 'idle',
-              turnId: responseTurnId,
-              origin: responseContext?.origin || 'model',
-            })
-          }
-        }
-        if (responseContext?.hasAudio && !responseFailed) {
-          responseContext.responseDone = true
-          finishResponseContextIfComplete(id, responseContext)
-        } else {
-          const completedNonVoiceAnnouncement = (
-            responseContext?.origin === 'announcement'
-            && nonVoiceClient
-            && !responseFailed
-          )
-          const completedNonVoiceTaskNotification = (
-            responseContext?.consumesTaskNotification
-            && nonVoiceClient
-            && !responseFailed
-          )
-          if (
-            responseContext
-            && !responseFailed
-            && (
-              responseContext.origin !== 'announcement'
-              || completedNonVoiceAnnouncement
-            )
-          ) {
-            flushPendingTranscripts(id, responseContext)
-          }
-          if (responseContext?.origin === 'announcement') {
-            if (completedNonVoiceAnnouncement) {
-              announcements.confirmMany(contextTaskIds(responseContext))
-            } else {
-              announcements.retryMany(contextTaskIds(responseContext))
-            }
-          } else if (completedNonVoiceTaskNotification) {
-            announcements.confirmMany(contextTaskIds(responseContext))
-          }
-          responseContexts.delete(id)
-        }
-        if (responseFailed && id) {
-          playbackTurns.delete(id)
-          announcementWindow.finishPlayback(id, {
-            hasFunctionCall: Boolean(responseContext?.hasFunctionCall),
-          })
-        }
-        announcementWindow.responseDone({
-          turnId: responseTurnId,
-          origin: responseContext?.origin || 'model',
-          hasAudio: Boolean(responseContext?.hasAudio),
-          hasFunctionCall: Boolean(responseContext?.hasFunctionCall),
-          suppressed: Boolean(responseContext?.suppressed) || terminalToolResponse,
-          failed: responseFailed,
-        })
-        if (
-          responseGuardDecision
-          && outputEnabled
-          && frontend?.ready
-          && frontend.capabilities.perResponseInstructions
-        ) {
-          const correctionFrontend = frontend
-          const correctionGeneration = responseContext?.turnGeneration
-          correctionFrontend.ensureResponse({
-            turnId: responseTurnId,
-            turnGeneration: correctionGeneration,
-          }, {
-            shouldCreate: () => isResponseGuardTurnCurrent({
-              sameFrontend: frontend === correctionFrontend,
-              outputEnabled,
-              userSpeaking: turns.userSpeaking,
-              responseTurnId,
-              responseTurnGeneration: correctionGeneration,
-              committedTurnId: turns.committedTurnId,
-              committedTurnGeneration: turns.committedTurnGeneration,
-            }),
-            response: {
-              instructions: responseGuardDecision.instructions,
-            },
-          }).catch(error => send(ws, { type: 'error', message: error.message }))
-        }
-        const timer = setTimeout(
-          () => announcements.flush(),
-          config.announcementQuietMs,
-        )
-        timer.unref?.()
+      } else if (presentationRuntime.handle(event)) {
+        return
       } else if (event.type === 'error') {
         // A response refused by a busy single-slot provider is retried by the
         // frontend transparently; nothing user-facing happened.
@@ -1240,41 +756,7 @@ export function attachRealtimeGateway(server, {
             message: errorMessage,
           })
         }
-        const id = realtimeResponseId(event)
-        const context = responseContexts.get(id)
-        if (context?.origin === 'announcement') {
-          send(ws, { type: 'playback.clear' })
-          announcementWindow.finishPlayback(id)
-          playbackTurns.delete(id)
-          responseContexts.delete(id)
-          announcements.retryMany(contextTaskIds(context))
-        } else {
-          if (id && context?.hasAudio) {
-            send(ws, {
-              type: 'audio.done',
-              responseId: id,
-              turnId: context.turnId || turns.turnId,
-            })
-          }
-          if (id && context?.hasAudio) {
-            scheduleResponseContextCleanup(id, context)
-          } else if (id) {
-            responseContexts.delete(id)
-            playbackTurns.delete(id)
-          }
-          announcementWindow.responseDone({
-            turnId: context?.turnId || turns.turnId,
-            origin: context?.origin || 'model',
-            hasAudio: Boolean(context?.hasAudio),
-            hasFunctionCall: Boolean(context?.hasFunctionCall),
-            failed: true,
-          })
-        }
-        const timer = setTimeout(
-          () => announcements.flush(),
-          config.announcementQuietMs,
-        )
-        timer.unref?.()
+        presentationRuntime.failResponse(event)
         // A provider may close an inactive response scope while a delegated
         // backend task is still running. The task remains healthy, and any
         // pending announcement has already returned to the retry queue, so this
@@ -1839,23 +1321,23 @@ export function attachRealtimeGateway(server, {
         if (acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
-          responseKnown: responseContexts.has(id),
-        })) startPlayback(id)
+          responseKnown: presentationRuntime.has(id),
+        })) presentationRuntime.startPlayback(id)
       } else if (event.type === GatewayClientEvent.PLAYBACK_ENDED) {
         const id = String(event.responseId || '')
         if (acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
-          responseKnown: responseContexts.has(id),
-        })) finishPlayback(id)
+          responseKnown: presentationRuntime.has(id),
+        })) presentationRuntime.finishPlayback(id)
       } else if (event.type === GatewayClientEvent.PLAYBACK_CANCELLED) {
         const id = String(event.responseId || '')
         if (acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
-          responseKnown: responseContexts.has(id),
+          responseKnown: presentationRuntime.has(id),
         })) {
-          cancelQueuedPlayback(id, {
+          presentationRuntime.cancelPlayback(id, {
             reason: String(event.reason || ''),
           })
         }
@@ -1902,7 +1384,7 @@ export function attachRealtimeGateway(server, {
       turns.close()
       transcripts.close()
       announcementWindow.reset()
-      playbackTurns.clear()
+      presentationRuntime.clear()
       announcements.close()
       clearTimeout(permissionRetryTimer)
       permissionRetryTimer = null

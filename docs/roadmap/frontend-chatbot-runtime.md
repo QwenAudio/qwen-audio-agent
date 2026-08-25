@@ -170,7 +170,8 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 - [ ] Extract realtime session, turn, input, playback, and presentation logic.
   - [x] Centralize per-connection turn generation, correlation, and interruption boundaries.
   - [x] Extract provider audio/transcription and manual-input lifecycles.
-  - [ ] Extract playback/presentation and realtime session lifecycles.
+  - [x] Extract response correlation, playback, and presentation lifecycles.
+  - [ ] Extract the realtime provider session lifecycle.
 - [x] Add Frontend Tool Registry, Policy, and Executor.
   - [x] Extract the declarative Registry and visibility Policy.
   - [x] Route execution through the Registry-owned Executor.

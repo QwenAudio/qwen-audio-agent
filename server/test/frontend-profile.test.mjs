@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import test from 'node:test'
 import {
   emptyFrontendProfile,
@@ -74,7 +74,7 @@ test('keeps explicit environment paths above profile defaults', () => {
       name: 'work',
       description: 'Work profile',
     },
-    assistantProfilePath: '/explicit/ASSISTANT.md',
+    assistantProfilePath: resolve('/explicit/ASSISTANT.md'),
     frontendMcpConfigPath: '/explicit/mcp.json',
     frontendOpenApiConfigPath: '/profile/openapi.json',
   })

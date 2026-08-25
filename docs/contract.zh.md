@@ -141,8 +141,9 @@ await orb.load()
 ### 共享客户端状态
 
 `qwen-audio-agent/gateway-client-state` 将公开 Gateway 事件归并为无副作用的客户端
-状态：`connectionState`、`voiceState`、`wakeWordActive`、`ownership` 与
-`currentTurnId`。`reduceGatewayClientState(state, event)` 对未知事件保持原对象不变，
+状态：`connectionState`、`voiceReady`、`voiceState`、`wakeWordActive`、
+`ownership` 与 `currentTurnId`。`reduceGatewayClientState(state, event)` 对未知事件
+保持原对象不变，
 并统一忽略来自旧轮次的直连模型 `voice.state`；客户端仍自行处理音频播放、麦克风和
 界面副作用，不应再复制这部分协议状态判断。锁定测试：
 `test/gateway-client-state.test.mjs`。

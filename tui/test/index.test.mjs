@@ -5,6 +5,7 @@ import {
   assertInteractiveTerminal,
   audioModeForPlatform,
   canSendMicrophoneAudio,
+  canStartTuiCapture,
   completeTranscript,
   connectMessage,
   createPlayback,
@@ -57,6 +58,40 @@ test('microphone command controls input without disabling voice output', () => {
     type: 'input.unmute',
     takeover: false,
   })
+})
+
+test('waits for voice.ready and active ownership before starting capture', () => {
+  const connected = {
+    connectionState: 'connected',
+    voiceReady: false,
+    ownership: { state: 'active', holder: null },
+  }
+  assert.equal(canStartTuiCapture({
+    clientState: connected,
+    muted: false,
+    closed: false,
+    bridgeExited: false,
+    socketOpen: true,
+  }), false)
+
+  assert.equal(canStartTuiCapture({
+    clientState: { ...connected, voiceReady: true },
+    muted: false,
+    closed: false,
+    bridgeExited: false,
+    socketOpen: true,
+  }), true)
+  assert.equal(canStartTuiCapture({
+    clientState: {
+      ...connected,
+      voiceReady: true,
+      ownership: { state: 'busy', holder: { type: 'desktop' } },
+    },
+    muted: false,
+    closed: false,
+    bridgeExited: false,
+    socketOpen: true,
+  }), false)
 })
 
 test('shows a permission operation without duplicating the spoken question', () => {

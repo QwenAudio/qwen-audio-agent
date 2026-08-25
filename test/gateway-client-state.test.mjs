@@ -13,6 +13,7 @@ function reduce(events, initial = createGatewayClientState()) {
 test('creates one stable client-state vocabulary', () => {
   assert.deepEqual(createGatewayClientState(), {
     connectionState: 'connecting',
+    voiceReady: false,
     voiceState: 'idle',
     wakeWordActive: false,
     ownership: {
@@ -28,23 +29,33 @@ test('creates one stable client-state vocabulary', () => {
 })
 
 test('projects Gateway and Realtime connection events', () => {
+  const handshaken = reduceGatewayClientState(createGatewayClientState(), {
+    type: 'voice.connection',
+    state: 'connected',
+  })
+  assert.equal(handshaken.connectionState, 'connected')
+  assert.equal(handshaken.voiceReady, false)
+
   const connected = reduce([
     { type: 'gateway.connected' },
     { type: 'voice.ready', inputSampleRate: 16_000 },
   ])
   assert.equal(connected.connectionState, 'connected')
+  assert.equal(connected.voiceReady, true)
 
   const retrying = reduceGatewayClientState(connected, {
     type: 'voice.connection',
     state: 'unavailable',
   })
   assert.equal(retrying.connectionState, 'unavailable')
+  assert.equal(retrying.voiceReady, false)
 
   const disconnected = reduceGatewayClientState({
     ...retrying,
     voiceState: 'speaking',
   }, { type: 'gateway.disconnected' })
   assert.equal(disconnected.connectionState, 'unavailable')
+  assert.equal(disconnected.voiceReady, false)
   assert.equal(disconnected.voiceState, 'idle')
 })
 

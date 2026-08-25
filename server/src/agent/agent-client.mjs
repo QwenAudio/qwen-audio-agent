@@ -1,63 +1,15 @@
 import { config } from '../core/config.mjs'
 import { AgentError } from './backend-adapter.mjs'
-import { AcpBackendAdapter } from './acp-backend-adapter.mjs'
-import {
-  backendDriver,
-  createBackendProfile,
-} from './backends/registry.mjs'
+import { createAcpBackendAdapter } from './acp-backend-factory.mjs'
 
 export { AgentError }
 
 export class AgentClient {
-  constructor({
-    protocol = config.agentProtocol,
-    ownership = config.backendOwnership,
-    permissionMode = config.backendPermissionMode,
-    model,
-    coordinatorAgent,
-    timeoutMs = config.agentTimeoutMs,
-    backends = {},
-    sessionStatePath = config.backendSessionStatePath,
-    acpClient,
-    acpClientFactory,
-    sessionToolServer,
-  } = {}) {
-    const driver = backendDriver(protocol)
-    // The selected backend's option namespace (config defaults merged with
-    // per-construction overrides) plus the two cross-cutting overrides. New
-    // backends only need a config.backends entry; nothing to thread here.
-    const backend = {
-      ...(config.backends?.[driver.id] || {}),
-      ...(backends?.[driver.id] || {}),
+  constructor({ adapter } = {}) {
+    if (!adapter || typeof adapter !== 'object') {
+      throw new TypeError('AgentClient requires one backend adapter')
     }
-    const options = {
-      baseUrl: '',
-      ...backend,
-      model: model ?? backend.model,
-      coordinatorAgent: coordinatorAgent ?? backend.coordinatorAgent,
-    }
-    const profile = createBackendProfile(protocol, {
-      protocol,
-      root: config.root,
-      ownership,
-      permissionMode,
-      ...options,
-    })
-    this.adapter = new AcpBackendAdapter({
-      protocol,
-      root: config.root,
-      ownership,
-      permissionMode,
-      timeoutMs,
-      ...options,
-      profile,
-      nativeDelegationAdapter:
-        driver.createNativeDelegationAdapter?.(options) || null,
-      sessionStatePath,
-      ...(acpClient ? { client: acpClient } : {}),
-      ...(acpClientFactory ? { clientFactory: acpClientFactory } : {}),
-      ...(sessionToolServer ? { sessionToolServer } : {}),
-    })
+    this.adapter = adapter
   }
 
   get protocol() {
@@ -141,6 +93,12 @@ export class AgentClient {
   }
 }
 
+export function createAgentClient(options = {}) {
+  return new AgentClient({
+    adapter: createAcpBackendAdapter(options),
+  })
+}
+
 let sharedAgent = null
 
 function requireAgent() {
@@ -150,7 +108,7 @@ function requireAgent() {
         protocol: '',
       })
     }
-    sharedAgent = new AgentClient()
+    sharedAgent = createAgentClient()
   }
   return sharedAgent
 }

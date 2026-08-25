@@ -120,6 +120,9 @@ composition boundary. Optional capabilities are declared by `describe()` and
 rejected explicitly, never inferred from a missing function. `submit`,
 `status`, `cancel`, and `respondAuthorization` operate on Gateway Work IDs;
 backend-private session and task identifiers never cross the port.
+AgentClient owns exactly one injected backend instance. Driver selection,
+profile construction, and protocol-specific dependencies belong to the adapter
+factory rather than the runtime facade.
 
 ### Artifact and Presentation
 
@@ -207,7 +210,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 ### R4 — Backend Runtime
 
 - [x] Define and validate BackendPort.
-- [ ] Reduce AgentClient to the single-backend runtime.
+- [x] Reduce AgentClient to the single-backend runtime.
 - [ ] Implement BackendPort in the ACP adapter.
 - [ ] Move coordinator and session tools into the ACP boundary.
 - [ ] Add a reusable backend-adapter conformance suite.

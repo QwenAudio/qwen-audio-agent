@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { AgentClient } from '../src/agent/agent-client.mjs'
+import {
+  AgentClient,
+  createAgentClient,
+} from '../src/agent/agent-client.mjs'
 
 function fakeAcpClient() {
   return {
@@ -41,7 +44,7 @@ function fakeToolServer() {
 }
 
 test('selects one shared ACP adapter for OpenCode', () => {
-  const client = new AgentClient({
+  const client = createAgentClient({
     protocol: 'opencode',
     backends: {
       opencode: {
@@ -61,7 +64,7 @@ test('selects one shared ACP adapter for OpenCode', () => {
 })
 
 test('opens the active OpenCode ACP coordinator Session directly', async () => {
-  const client = new AgentClient({
+  const client = createAgentClient({
     protocol: 'opencode',
     model: '',
     backends: {
@@ -97,7 +100,7 @@ for (const protocol of [
   'acp',
 ]) {
   test(`selects ${protocol} through the same ACP adapter`, () => {
-    const client = new AgentClient({
+    const client = createAgentClient({
       protocol,
       backends: {
         openclaw: {
@@ -131,7 +134,7 @@ for (const protocol of [
 }
 
 test('does not leak opencode coordinatorAgent to drivers without a coordinatorAgent', () => {
-  const client = new AgentClient({
+  const client = createAgentClient({
     protocol: 'qoder',
     backends: {
       opencode: { coordinatorAgent: 'opencode-coordinator' },
@@ -145,7 +148,7 @@ test('does not leak opencode coordinatorAgent to drivers without a coordinatorAg
 })
 
 test('handles null backends option gracefully', () => {
-  const client = new AgentClient({
+  const client = createAgentClient({
     protocol: 'opencode',
     backends: null,
     sessionStatePath: null,
@@ -153,4 +156,20 @@ test('handles null backends option gracefully', () => {
     sessionToolServer: fakeToolServer(),
   })
   assert.equal(client.protocol, 'opencode')
+})
+
+test('AgentClient owns exactly one injected backend instance', () => {
+  const adapter = {
+    protocol: 'test',
+    label: 'Test',
+    describe: () => ({ protocol: 'test' }),
+  }
+  const client = new AgentClient({ adapter })
+  assert.equal(client.adapter, adapter)
+  assert.equal(client.protocol, 'test')
+  assert.deepEqual(client.describe(), { protocol: 'test' })
+  assert.throws(
+    () => new AgentClient(),
+    /requires one backend adapter/,
+  )
 })

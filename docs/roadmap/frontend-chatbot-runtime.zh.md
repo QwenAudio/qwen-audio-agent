@@ -293,7 +293,9 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
   - [x] 把发现到的工具接入动态 Realtime 工具注册表与执行器。
   - [x] 在启用可写工具前增加通用授权链路。
 - [x] OpenAPI Tool Adapter。
-- [ ] 轻量 Frontend Profile；暂不自创公开 Skill 标准。
+- [x] 轻量 Frontend Profile；暂不自创公开 Skill 标准。
+  - [x] 用版本化本地清单组合助手画像、MCP 与 OpenAPI 配置引用。
+  - [x] 保持密钥、用户记忆、Realtime Provider 和后台 Agent 在 Profile 边界之外。
 - [ ] Backend Adapter SDK 与示例。
 - [ ] 可选 A2A Backend Adapter。
 

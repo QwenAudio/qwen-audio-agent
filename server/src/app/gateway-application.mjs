@@ -341,6 +341,11 @@ app.get('/api/health', (req, res) => {
     announcementBatchMs: config.announcementBatchMs,
     announcementQuietMs: config.announcementQuietMs,
     frontendMemory: frontendMemoryService.health(),
+    frontendProfile: config.frontendProfile || {
+      configured: false,
+      name: 'default',
+      description: '',
+    },
     frontendRetrieval: retrievalRuntime.describe(),
     frontendKnowledge: frontendKnowledgeRuntime.describe(),
     frontendMcp: frontendMcpRuntime?.health?.() || {

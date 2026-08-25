@@ -98,6 +98,8 @@
     "docs/reference/frontend-mcp.zh.md",
     "docs/reference/frontend-openapi.md",
     "docs/reference/frontend-openapi.zh.md",
+    "docs/reference/frontend-profile.md",
+    "docs/reference/frontend-profile.zh.md",
     "docs/voice-frontends/speech-to-speech.md",
     "docs/voice-frontends/speech-to-speech.zh.md",
     "docs/voice-frontends/custom-provider.md",

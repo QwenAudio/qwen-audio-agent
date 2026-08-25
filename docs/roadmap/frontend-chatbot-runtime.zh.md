@@ -274,7 +274,10 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
   - [x] 定义与供应商无关的 Document Extractor 和 Knowledge Store Port。
   - [x] 增加有界的本地文本抽取器与按用户隔离的 Store。
   - [x] 在独立 System Job 资源池中执行索引。
-- [ ] Full Context、Retrieval Provider 和 RAG 工具。
+- [x] Full Context、Retrieval Provider 和 RAG 工具。
+  - [x] 定义与供应商无关的 Knowledge Retrieval Port，并提供有界的本地词法实现。
+  - [x] 增加显式附件索引与按用户隔离的文档管理。
+  - [x] 通过一个按能力启用的 Knowledge 工具提供检索和有界 Full Context 读取。
 - [ ] 路由、引用、打断、重复播报和 Prompt Injection 评测。
 
 完成条件：后台设置为 `none` 时，前台仍是完整的轻量 Chatbot。

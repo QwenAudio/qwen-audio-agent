@@ -104,6 +104,7 @@ export function attachRealtimeGateway(server, {
   realtimeProviderRegistry = defaultRealtimeProviderRegistry,
   defaultRealtimeProvider = config.audioProvider,
   frontendRetrieval = null,
+  frontendKnowledge = null,
 }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 20 * 1024 * 1024 })
   const activeVoiceClients = new ActiveVoiceClients()
@@ -282,7 +283,10 @@ export function attachRealtimeGateway(server, {
       getAgentContext: () => ({
         client: clientContext,
         frontend: {
-          capabilities: frontendRetrieval?.capabilities?.() || [],
+          capabilities: [...new Set([
+            ...(frontendRetrieval?.capabilities?.() || []),
+            ...(frontendKnowledge?.capabilities?.() || []),
+          ])],
         },
         memories: memoryService?.list(ownerId, { limit: 64 }) || [],
         recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),
@@ -457,6 +461,7 @@ export function attachRealtimeGateway(server, {
       }),
       inputAssets,
       frontendRetrieval,
+      frontendKnowledge,
       turnCitations,
     })
     const clearResponseCandidate = () => {

@@ -6,6 +6,7 @@ import test from 'node:test'
 import { TextDocumentExtractor } from '../src/frontend/knowledge/document-extractor.mjs'
 import { FileKnowledgeStore } from '../src/providers/knowledge/file-knowledge-store.mjs'
 import {
+  chunkDocumentSpans,
   chunkDocumentText,
   KnowledgeIndexer,
 } from '../src/frontend/knowledge/knowledge-indexer.mjs'
@@ -50,7 +51,26 @@ test('indexes documents through the invisible system-job pool', async () => {
   assert.equal(documents.length, 1)
   assert.equal(documents[0].title, 'guide.md')
   assert.equal(documents[0].chunkCount > 1, true)
-  assert.equal(store.getDocument('owner', documents[0].id).source.kind, 'upload')
+  const stored = store.getDocument('owner', documents[0].id)
+  assert.equal(stored.source.kind, 'upload')
+  assert.equal(Number.isInteger(stored.chunks[0].start), true)
+  assert.equal(Number.isInteger(stored.chunks[0].end), true)
+})
+
+test('records source spans so overlapping chunks can reconstruct full context', () => {
+  const text = `Header\n\n${'alpha beta gamma. '.repeat(80)}Footer`
+  const chunks = chunkDocumentSpans(text, {
+    chunkChars: 300,
+    overlapChars: 30,
+  })
+  let reconstructed = ''
+  let cursor = 0
+  for (const chunk of chunks) {
+    if (chunk.start > cursor && reconstructed) reconstructed += '\n'
+    reconstructed += chunk.text.slice(Math.max(0, cursor - chunk.start))
+    cursor = Math.max(cursor, chunk.end)
+  }
+  assert.equal(reconstructed, text)
 })
 
 test('uses a stable document id and replaces a changed source revision', async () => {

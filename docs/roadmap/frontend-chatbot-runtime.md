@@ -227,7 +227,12 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Define provider-neutral Document Extractor and Knowledge Store ports.
   - [x] Add a bounded local text extractor and owner-isolated store.
   - [x] Run indexing in the independent System Job pool.
-- [ ] Full context, retrieval provider, and RAG tools.
+- [x] Full context, retrieval provider, and RAG tools.
+  - [x] Define a provider-neutral Knowledge Retrieval port with a bounded
+    local lexical implementation.
+  - [x] Add explicit attachment indexing and owner-scoped document management.
+  - [x] Expose one capability-gated Knowledge tool for search and bounded
+    full-context reads.
 - [ ] Routing, citation, interruption, duplicate-speech, and prompt-injection
       evaluations.
 

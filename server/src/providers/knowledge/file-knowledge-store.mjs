@@ -56,10 +56,26 @@ function normalizeDocument(input, {
       throw new Error('Knowledge chunk is empty or exceeds the limit.')
     }
     totalChars += chars
+    const hasSpan = candidate?.start !== undefined || candidate?.end !== undefined
+    const start = Number(candidate?.start)
+    const end = Number(candidate?.end)
+    if (
+      hasSpan
+      && (
+        !Number.isInteger(start)
+        || !Number.isInteger(end)
+        || start < 0
+        || end <= start
+        || end - start !== text.length
+      )
+    ) {
+      throw new Error('Knowledge chunk span is invalid.')
+    }
     return {
       id: `${id}:chunk_${index + 1}`,
       ordinal: index,
       text,
+      ...(hasSpan ? { start, end } : {}),
     }
   })
   if (totalChars > maxDocumentChars) {

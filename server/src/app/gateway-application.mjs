@@ -44,6 +44,10 @@ import { createWebSearchProvider } from '../providers/search/factory.mjs'
 import { TextDocumentExtractor } from '../frontend/knowledge/document-extractor.mjs'
 import { FileKnowledgeStore } from '../providers/knowledge/file-knowledge-store.mjs'
 import { KnowledgeIndexer } from '../frontend/knowledge/knowledge-indexer.mjs'
+import { FrontendKnowledgeRuntime } from '../frontend/knowledge/knowledge-runtime.mjs'
+import {
+  LexicalKnowledgeRetrievalProvider,
+} from '../providers/knowledge/lexical-retrieval-provider.mjs'
 import {
   projectGatewayTaskEvent,
   projectGatewayTaskSnapshot,
@@ -71,31 +75,45 @@ export function createGatewayApplication({
   documentExtractor = null,
   knowledgeStore = null,
   knowledgeIndexer = null,
+  knowledgeRetrievalProvider = null,
+  frontendKnowledge = null,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const inputAssetRegistry = inputAssets || new InputAssetRegistry({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
 })
-const retrievalRuntime = frontendRetrieval || new FrontendRetrievalRuntime({
-  searchProvider: webSearchProvider === undefined
-    ? createWebSearchProvider(config)
-    : webSearchProvider,
-  ...(urlFetcher === undefined ? {} : { urlFetcher }),
-})
 const documentExtractorRuntime = documentExtractor
+  || frontendKnowledge?.indexer?.extractor
   || knowledgeIndexer?.extractor
   || new TextDocumentExtractor()
 const knowledgeStoreRuntime = knowledgeStore
+  || frontendKnowledge?.store
   || knowledgeIndexer?.store
   || new FileKnowledgeStore({
     directory: config.knowledgeDirectory,
     onWarning: warning => logger.warn('knowledge.persistence_warning', { warning }),
   })
-const knowledgeIndexerRuntime = knowledgeIndexer || new KnowledgeIndexer({
-  extractor: documentExtractorRuntime,
+const knowledgeIndexerRuntime = knowledgeIndexer
+  || frontendKnowledge?.indexer
+  || new KnowledgeIndexer({
+    extractor: documentExtractorRuntime,
+    store: knowledgeStoreRuntime,
+    taskManager,
+  })
+const knowledgeRetrievalRuntime = knowledgeRetrievalProvider
+  || frontendKnowledge?.retrievalProvider
+  || new LexicalKnowledgeRetrievalProvider({ store: knowledgeStoreRuntime })
+const frontendKnowledgeRuntime = frontendKnowledge || new FrontendKnowledgeRuntime({
   store: knowledgeStoreRuntime,
-  taskManager,
+  indexer: knowledgeIndexerRuntime,
+  retrievalProvider: knowledgeRetrievalRuntime,
+})
+const retrievalRuntime = frontendRetrieval || new FrontendRetrievalRuntime({
+  searchProvider: webSearchProvider === undefined
+    ? createWebSearchProvider(config)
+    : webSearchProvider,
+  ...(urlFetcher === undefined ? {} : { urlFetcher }),
 })
 const identityManager = new IdentityManager({
   secret: config.authSecret,
@@ -293,6 +311,7 @@ app.get('/api/health', (req, res) => {
     announcementQuietMs: config.announcementQuietMs,
     frontendMemory: frontendMemoryService.health(),
     frontendRetrieval: retrievalRuntime.describe(),
+    frontendKnowledge: frontendKnowledgeRuntime.describe(),
     notes: notesStore.health(),
     taskStore: taskStore.health(),
     identityMode: config.identityMode,
@@ -527,6 +546,7 @@ realtimeGateway = attachRealtimeGateway(server, {
   realtimeProviderRegistry,
   defaultRealtimeProvider: realtimeProvider,
   frontendRetrieval: retrievalRuntime,
+  frontendKnowledge: frontendKnowledgeRuntime,
 })
 const start = ({ host = config.host, port = config.port } = {}) => {
   if (server.listening) return server
@@ -593,6 +613,7 @@ return {
     backendRuntime: workBackend,
     frontendMemoryService,
     frontendRetrieval: retrievalRuntime,
+    frontendKnowledge: frontendKnowledgeRuntime,
     documentExtractor: documentExtractorRuntime,
     knowledgeStore: knowledgeStoreRuntime,
     knowledgeIndexer: knowledgeIndexerRuntime,

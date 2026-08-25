@@ -6,6 +6,29 @@ import { config } from '../src/core/config.mjs'
 import { createRealtimeProviderRegistry } from '../src/voice/providers/provider-registry.mjs'
 import { openAiCompatibleProtocol } from '../src/voice/providers/openai-compatible-protocol.mjs'
 
+function disabledBackend() {
+  return {
+    enabled: false,
+    describe: () => ({
+      configured: false,
+      enabled: false,
+      protocol: 'none',
+      label: 'No backend',
+      capabilities: {},
+    }),
+    start: async () => ({ ok: false, configured: false }),
+    health: async () => ({ ok: false, configured: false }),
+    submit: async () => { throw new Error('Backend is disabled') },
+    status: async () => null,
+    cancel: async () => ({ state: 'not_found' }),
+    respondAuthorization: async () => ({ state: 'not_found' }),
+    subscribe: () => () => {},
+    close: async () => {},
+    canRecoverDelegatedWork: () => false,
+    recoverDelegatedWork: async () => null,
+  }
+}
+
 test('constructs an injectable Gateway without binding a port on import', async () => {
   const inputAssets = { kind: 'test-input-assets' }
   const privateProvider = {
@@ -38,6 +61,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
     },
     parentPort: null,
     autoStart: false,
+    agent: disabledBackend(),
     inputAssets,
     realtimeProviderRegistry,
     realtimeProvider: privateProvider.key,
@@ -49,6 +73,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.equal(application.services.documentExtractor.describe().key, 'builtin-text')
   assert.equal(application.services.knowledgeStore.describe().key, 'local-files')
   assert.equal(application.services.knowledgeIndexer != null, true)
+  assert.deepEqual(application.services.frontendKnowledge.capabilities(), ['knowledge'])
 
   application.start()
   if (!application.server.listening) {
@@ -61,6 +86,11 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.equal(health.realtimeProvider, privateProvider.key)
   assert.deepEqual(health.frontendRetrieval.capabilities, ['url-fetch'])
   assert.equal(health.frontendRetrieval.searchProvider, null)
+  assert.deepEqual(health.frontendKnowledge.capabilities, ['knowledge'])
+  assert.equal(
+    health.frontendKnowledge.retrievalProvider.key,
+    'local-lexical',
+  )
   assert.equal(
     health.realtimeProviders.some(provider => provider.key === privateProvider.key),
     false,

@@ -24,7 +24,7 @@ import { recordTaskResult } from '../conversation/task-result-projector.mjs'
 import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
 import { ToolCallHandler } from './tools/tool-call-handler.mjs'
 import { TurnTranscripts } from './tools/turn-transcripts.mjs'
-import { TurnCorrelation } from './turn-correlation.mjs'
+import { RealtimeTurnState } from './realtime-turn-state.mjs'
 import { streamingInputTranscript } from './input-transcript.mjs'
 import {
   ensureResponseContext,
@@ -187,12 +187,6 @@ export function attachRealtimeGateway(server, {
     let frontend
     let connectPromise
     let pendingAudio = []
-    let turnId = ''
-    let turnGeneration = 0
-    let turnSequence = 0
-    let committedTurnId = ''
-    let committedTurnGeneration = 0
-    let userSpeaking = false
     let inputEnabled = false
     let outputEnabled = false
     // Set only by host arbitration. Unlike inputEnabled (which the client
@@ -205,7 +199,6 @@ export function attachRealtimeGateway(server, {
     let sessionProvider = defaultRealtimeProvider
     let descriptor = clientDescriptor()
     let responseTurnCandidate = null
-    let manualInputGeneration = null
     let responseStartWatchdog = null
     let permissionResponseTimer = null
     let scheduledRealtimeReconnect = null
@@ -223,7 +216,7 @@ export function attachRealtimeGateway(server, {
     const notificationClaimantId = `voice_${randomUUID()}`
     let clientContext = normalizeClientContext()
     const responseContexts = new Map()
-    const inputTurns = new TurnCorrelation()
+    const turns = new RealtimeTurnState()
     const transcripts = new TurnTranscripts()
     const announcedPermissions = new Set()
     let permissionRetryTimer = null
@@ -248,7 +241,7 @@ export function attachRealtimeGateway(server, {
         || permission?.status !== 'pending'
         || announcedPermissions.has(permission.id)
       ) return
-      if (userSpeaking || announcementWindow.isBlocked()) {
+      if (turns.userSpeaking || announcementWindow.isBlocked()) {
         schedulePermissionRetry()
         return
       }
@@ -399,8 +392,8 @@ export function attachRealtimeGateway(server, {
       sessionId,
       transcripts,
       getFrontend: () => frontend,
-      getTurnId: () => committedTurnId,
-      getTurnGeneration: () => committedTurnGeneration,
+      getTurnId: () => turns.committedTurnId,
+      getTurnGeneration: () => turns.committedTurnGeneration,
       memoryService,
       notesStore,
       getClientContext: () => clientContext,
@@ -440,26 +433,6 @@ export function attachRealtimeGateway(server, {
       }),
       inputAssets,
     })
-    const currentTurn = () => ({
-      turnId,
-      turnGeneration,
-    })
-    const rememberInputTurn = (itemId, context) => {
-      inputTurns.remember(itemId, context)
-    }
-    const inputTurn = event => (
-      inputTurns.resolve(event.item_id, currentTurn())
-    )
-    const commitTurn = context => {
-      if (!context?.turnId) return
-      if (
-        committedTurnId === context.turnId
-        && committedTurnGeneration === context.turnGeneration
-      ) return
-      if (context.turnGeneration < committedTurnGeneration) return
-      committedTurnId = context.turnId
-      committedTurnGeneration = context.turnGeneration
-    }
     const clearResponseCandidate = () => {
       clearTimeout(responseStartWatchdog)
       clearTimeout(permissionResponseTimer)
@@ -597,12 +570,12 @@ export function attachRealtimeGateway(server, {
     })
 
     const fallbackResponseContext = () => ({
-      turnId: committedTurnId || turnId,
+      turnId: turns.committedTurnId || turns.turnId,
       taskId: null,
       origin: 'model',
-      turnGeneration: committedTurnId
-        ? committedTurnGeneration
-        : turnGeneration,
+      turnGeneration: turns.committedTurnId
+        ? turns.committedTurnGeneration
+        : turns.turnGeneration,
     })
 
     const emitAssistantTranscript = ({
@@ -672,7 +645,7 @@ export function attachRealtimeGateway(server, {
       // provider audio and client receipts cannot resurrect it.
       if (context?.suppressed) return
       announcementWindow.startPlayback(id)
-      const playbackTurnId = context?.turnId || playbackTurns.get(id) || turnId
+      const playbackTurnId = context?.turnId || playbackTurns.get(id) || turns.turnId
       send(ws, {
         type: 'voice.state',
         state: 'speaking',
@@ -692,7 +665,7 @@ export function attachRealtimeGateway(server, {
       announcementWindow.finishPlayback(id, {
         hasFunctionCall: Boolean(context?.hasFunctionCall),
       })
-      const playbackTurnId = playbackTurns.get(id) || turnId
+      const playbackTurnId = playbackTurns.get(id) || turns.turnId
       playbackTurns.delete(id)
       if (context?.origin === 'announcement') {
         if (reason === 'user_interruption') {
@@ -716,8 +689,8 @@ export function attachRealtimeGateway(server, {
       }
       send(ws, {
         type: 'voice.state',
-        state: userSpeaking ? 'listening' : 'idle',
-        turnId: userSpeaking ? turnId : playbackTurnId,
+        state: turns.userSpeaking ? 'listening' : 'idle',
+        turnId: turns.userSpeaking ? turns.turnId : playbackTurnId,
         origin: context?.origin || 'model',
       })
       const timer = setTimeout(
@@ -742,15 +715,17 @@ export function attachRealtimeGateway(server, {
       const fallback = {
         turnId: event.__voiceContext?.turnId
           || automaticTurn?.turnId
-          || committedTurnId
-          || turnId,
+          || turns.committedTurnId
+          || turns.turnId,
         taskId: event.__voiceContext?.taskId || null,
         origin: event.__voiceOrigin || 'model',
         authorizationId: event.__voiceContext?.authorizationId || null,
         turnGeneration: Number.isInteger(event.__voiceContext?.turnGeneration)
           ? event.__voiceContext.turnGeneration
           : automaticTurn?.turnGeneration
-            ?? (committedTurnId ? committedTurnGeneration : turnGeneration),
+            ?? (turns.committedTurnId
+              ? turns.committedTurnGeneration
+              : turns.turnGeneration),
       }
       const context = mergeResponseContext(
         responseContexts,
@@ -758,12 +733,12 @@ export function attachRealtimeGateway(server, {
         responseActivityContextPatch({ existing, event, fallback }),
       )
       if (
-        manualInputGeneration !== null
+        turns.manualInputGeneration !== null
         && !automaticResponse
-        && context.turnGeneration === manualInputGeneration
+        && context.turnGeneration === turns.manualInputGeneration
         && context.origin === 'model'
       ) {
-        manualInputGeneration = null
+        turns.finishManualResponse(context)
       }
       // Compatible Realtime servers may omit response.created and reveal the
       // correlation only on response.done. If audio already reached the
@@ -778,7 +753,7 @@ export function attachRealtimeGateway(server, {
         // Some OpenAI-compatible servers start an implicit server-VAD response
         // with transcript or audio output and omit response.created. Any valid
         // response output proves that turn detection accepted this turn.
-        commitTurn(automaticTurn)
+        turns.commit(automaticTurn)
         clearResponseCandidate()
       }
       if (!context.responseStarted) {
@@ -793,7 +768,7 @@ export function attachRealtimeGateway(server, {
     }
 
     const finishPlayback = id => {
-      const playbackTurnId = playbackTurns.get(id) || turnId
+      const playbackTurnId = playbackTurns.get(id) || turns.turnId
       const context = responseContexts.get(id)
       if (context?.suppressed) {
         playbackTurns.delete(id)
@@ -812,8 +787,8 @@ export function attachRealtimeGateway(server, {
       }
       send(ws, {
         type: 'voice.state',
-        state: userSpeaking ? 'listening' : 'idle',
-        turnId: userSpeaking ? turnId : playbackTurnId,
+        state: turns.userSpeaking ? 'listening' : 'idle',
+        turnId: turns.userSpeaking ? turns.turnId : playbackTurnId,
         origin: context?.origin || 'model',
       })
       const timer = setTimeout(
@@ -967,46 +942,36 @@ export function attachRealtimeGateway(server, {
         // A discrete text/image submission owns the turn until its response
         // starts. Provider-side VAD events caused by audio already in flight
         // belong to the superseded voice turn and must not take ownership back.
-        if (manualInputGeneration !== null) {
-          inputTurns.invalidate(event.item_id)
-          return
-        }
-        userSpeaking = true
+        const started = turns.beginVoice(event.item_id)
+        if (!started.accepted) return
         clearResponseCandidate()
-        const knownTurn = event.item_id
-          ? inputTurns.resolve(event.item_id, null)
-          : null
-        if (knownTurn) {
-          turnId = knownTurn.turnId
-          turnGeneration = knownTurn.turnGeneration
-        } else {
-          turnGeneration = ++turnSequence
-          turnId = `voice-${Date.now()}-${turnGeneration}`
-          rememberInputTurn(event.item_id, currentTurn())
-        }
-        announcementWindow.beginTurn(turnId)
+        announcementWindow.beginTurn(started.context.turnId)
         announcements.dismissActive()
         send(ws, {
           type: 'playback.clear',
           reason: 'user_interruption',
         })
-        send(ws, { type: 'turn.started', turnId })
-        send(ws, { type: 'voice.state', state: 'listening', turnId })
+        send(ws, { type: 'turn.started', turnId: started.context.turnId })
+        send(ws, {
+          type: 'voice.state',
+          state: 'listening',
+          turnId: started.context.turnId,
+        })
         frontend?.cancel()
       } else if (event.type === 'input_audio_buffer.speech_stopped') {
-        const stoppedTurn = inputTurn(event)
+        const stoppedTurn = turns.resolveInput(event.item_id)
         if (
-          inputTurns.isInvalid(event.item_id)
-          || stoppedTurn?.turnGeneration < committedTurnGeneration
+          turns.isInputInvalid(event.item_id)
+          || turns.isStale(stoppedTurn)
         ) {
-          inputTurns.invalidate(event.item_id)
+          turns.invalidateInput(event.item_id)
           return
         }
-        userSpeaking = false
+        turns.endSpeech()
         announcementWindow.endSpeech()
         if (event.reason === 'turn_invalid') {
           if (event.item_id) {
-            inputTurns.invalidate(event.item_id)
+            turns.invalidateInput(event.item_id)
           }
           send(ws, {
             type: 'transcript.discard',
@@ -1030,17 +995,17 @@ export function attachRealtimeGateway(server, {
           })
         }
       } else if (event.type === 'input_audio_buffer.committed') {
-        const committedInputTurn = inputTurn(event)
+        const committedInputTurn = turns.resolveInput(event.item_id)
         if (
-          inputTurns.isInvalid(event.item_id)
-          || committedInputTurn?.turnGeneration < committedTurnGeneration
+          turns.isInputInvalid(event.item_id)
+          || turns.isStale(committedInputTurn)
         ) {
-          inputTurns.invalidate(event.item_id)
+          turns.invalidateInput(event.item_id)
           return
         }
-        userSpeaking = false
+        turns.endSpeech()
         announcementWindow.endSpeech()
-        if (!inputTurns.isInvalid(event.item_id)) {
+        if (!turns.isInputInvalid(event.item_id)) {
           send(ws, {
             type: 'voice.state',
             state: 'processing',
@@ -1049,14 +1014,14 @@ export function attachRealtimeGateway(server, {
           })
         }
       } else if (event.type === 'conversation.item.ambient_audio_transcription.completed') {
-        inputTurns.complete(event.item_id, currentTurn())
+        turns.completeInput(event.item_id)
       } else if (
         event.type === 'conversation.item.input_audio_transcription.delta'
         || event.type === 'conversation.item.input_audio_transcription.text'
       ) {
-        if (inputTurns.isInvalid(event.item_id)) return
-        const transcriptTurn = inputTurns.resolve(event.item_id, currentTurn())
-        if (transcriptTurn?.turnGeneration < committedTurnGeneration) return
+        if (turns.isInputInvalid(event.item_id)) return
+        const transcriptTurn = turns.resolveInput(event.item_id)
+        if (turns.isStale(transcriptTurn)) return
         const transcript = streamingInputTranscript(event)
         if (!transcriptTurn?.turnId || !transcript) return
         send(ws, {
@@ -1067,11 +1032,11 @@ export function attachRealtimeGateway(server, {
           replace: true,
         })
       } else if (event.type === 'conversation.item.input_audio_transcription.completed') {
-        const completedInput = inputTurns.complete(event.item_id, currentTurn())
+        const completedInput = turns.completeInput(event.item_id)
         const transcriptTurn = completedInput.context
         if (
           completedInput.invalid
-          || transcriptTurn?.turnGeneration < committedTurnGeneration
+          || turns.isStale(transcriptTurn)
         ) return
         const transcript = String(event.transcript || '').trim()
         if (!transcript) {
@@ -1082,7 +1047,7 @@ export function attachRealtimeGateway(server, {
           })
           return
         }
-        commitTurn(transcriptTurn)
+        turns.commit(transcriptTurn)
         transcripts.record(transcriptTurn.turnId, transcript)
         if (responseTurnCandidate === transcriptTurn) {
           ensurePermissionResponseFor(transcriptTurn)
@@ -1106,7 +1071,7 @@ export function attachRealtimeGateway(server, {
           turnId: transcriptTurn.turnId,
         })
       } else if (event.type === 'conversation.item.input_audio_transcription.failed') {
-        const failedInput = inputTurns.complete(event.item_id, currentTurn())
+        const failedInput = turns.completeInput(event.item_id)
         send(ws, {
           type: 'transcript.discard',
           role: 'user',
@@ -1142,7 +1107,7 @@ export function attachRealtimeGateway(server, {
           fallbackResponseContext(),
         )
         if (responseContext?.suppressed) return
-        const responseTurnId = responseContext.turnId || turnId
+        const responseTurnId = responseContext.turnId || turns.turnId
         if (id) {
           responseContext.hasAudio = true
           playbackTurns.set(id, responseTurnId)
@@ -1244,7 +1209,7 @@ export function attachRealtimeGateway(server, {
         const id = realtimeResponseId(event)
         const responseContext = responseContexts.get(id)
         const terminalToolResponse = toolCalls.consumeTerminalToolResponse(id)
-        const responseTurnId = responseContext?.turnId || turnId
+        const responseTurnId = responseContext?.turnId || turns.turnId
         const responseStatus = event.response?.status
         const responseFailed = ['failed', 'cancelled', 'incomplete'].includes(
           responseStatus,
@@ -1342,11 +1307,11 @@ export function attachRealtimeGateway(server, {
             shouldCreate: () => isResponseGuardTurnCurrent({
               sameFrontend: frontend === correctionFrontend,
               outputEnabled,
-              userSpeaking,
+              userSpeaking: turns.userSpeaking,
               responseTurnId,
               responseTurnGeneration: correctionGeneration,
-              committedTurnId,
-              committedTurnGeneration,
+              committedTurnId: turns.committedTurnId,
+              committedTurnGeneration: turns.committedTurnGeneration,
             }),
             response: {
               instructions: responseGuardDecision.instructions,
@@ -1414,7 +1379,7 @@ export function attachRealtimeGateway(server, {
             send(ws, {
               type: 'audio.done',
               responseId: id,
-              turnId: context.turnId || turnId,
+              turnId: context.turnId || turns.turnId,
             })
           }
           if (id && context?.hasAudio) {
@@ -1424,7 +1389,7 @@ export function attachRealtimeGateway(server, {
             playbackTurns.delete(id)
           }
           announcementWindow.responseDone({
-            turnId: context?.turnId || turnId,
+            turnId: context?.turnId || turns.turnId,
             origin: context?.origin || 'model',
             hasAudio: Boolean(context?.hasAudio),
             hasFunctionCall: Boolean(context?.hasFunctionCall),
@@ -1785,14 +1750,10 @@ export function attachRealtimeGateway(server, {
       })
       const text = inputText(parts)
       const display = displayInputText(parts)
-      const supersededVoiceTurn = userSpeaking ? currentTurn() : null
-      userSpeaking = false
-      turnGeneration = ++turnSequence
-      turnId = inputTurnId
-      manualInputGeneration = turnGeneration
-      inputTurns.invalidateBeforeGeneration(turnGeneration)
-      const inputContext = currentTurn()
-      commitTurn(inputContext)
+      const {
+        context: inputContext,
+        supersededVoiceTurn,
+      } = turns.beginManual(inputTurnId)
       clearResponseCandidate()
       // Text and attachment submissions are first-class user turns. They must
       // close any result announcement still occupying the previous turn and
@@ -1845,9 +1806,7 @@ export function attachRealtimeGateway(server, {
           inputContext,
         ))
         .catch(error => {
-          if (manualInputGeneration === inputContext.turnGeneration) {
-            manualInputGeneration = null
-          }
+          turns.failManualInput(inputContext)
           reportFrontendError(error)
         })
     }
@@ -1879,7 +1838,7 @@ export function attachRealtimeGateway(server, {
         (inputEnabled || config.wakeWordEnabled)
         && activeVoiceClients.isActive(ownerId, voiceClient)
         && frontend?.ready
-        && !userSpeaking
+        && !turns.userSpeaking
         && !announcementWindow.isBlocked()
         && !connectPromise
         && !waking
@@ -2078,8 +2037,7 @@ export function attachRealtimeGateway(server, {
         submitInputMessage(event)
       } else if (event.type === GatewayClientEvent.INTERRUPT) {
         sleepController.recordActivity()
-        turnGeneration = ++turnSequence
-        committedTurnGeneration = turnGeneration
+        turns.advanceBoundary()
         announcementWindow.interrupt()
         announcements.dismissActive()
         frontend?.cancel()
@@ -2114,8 +2072,7 @@ export function attachRealtimeGateway(server, {
         sleeping = false
         waking = false
         sleepController?.disable()
-        turnGeneration = ++turnSequence
-        committedTurnGeneration = turnGeneration
+        turns.advanceBoundary()
         pendingAudio = []
         announcementWindow.reset()
         cancelScheduledRealtimeReconnect()
@@ -2149,12 +2106,10 @@ export function attachRealtimeGateway(server, {
       if (!connections?.size) voiceConnections.delete(ownerId)
       unsubscribeTasks()
       clearResponseCandidate()
-      turnGeneration = ++turnSequence
-      committedTurnGeneration = turnGeneration
+      turns.close()
       transcripts.close()
       announcementWindow.reset()
       playbackTurns.clear()
-      inputTurns.clear()
       announcements.close()
       clearTimeout(permissionRetryTimer)
       permissionRetryTimer = null

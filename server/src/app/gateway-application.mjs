@@ -41,6 +41,9 @@ import {
   projectGatewayTaskEvent,
   projectGatewayTaskSnapshot,
 } from '../transport/gateway-task-event-projector.mjs'
+import {
+  projectGatewayTaskEventForFormat,
+} from '../transport/agui-event-projector.mjs'
 
 export function createGatewayApplication({
   config = defaultConfig,
@@ -408,16 +411,20 @@ app.post('/api/permissions/:id', async (req, res, next) => {
 app.get('/api/tasks/:id/events', (req, res) => {
   const task = taskManager.get(req.params.id, { ownerId: req.identity.ownerId })
   if (!task) return res.status(404).json({ error: 'task not found' })
+  const projectEvent = event => projectGatewayTaskEventForFormat(
+    event,
+    req.query.format,
+  )
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('Connection', 'keep-alive')
   res.flushHeaders()
   const write = event => res.write(`data: ${JSON.stringify(event)}\n\n`)
-  write(projectGatewayTaskSnapshot(task))
+  write(projectEvent(projectGatewayTaskSnapshot(task)))
   const unsubscribe = taskManager.subscribe(event => {
     if (event.ownerId === req.identity.ownerId && event.task.id === req.params.id) {
       const publicEvent = projectGatewayTaskEvent(event)
-      if (publicEvent) write(publicEvent)
+      if (publicEvent) write(projectEvent(publicEvent))
     }
   })
   res.on('close', unsubscribe)

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  AguiEventType,
+  parseAguiGatewayEvent,
+} from '../shared/protocol/agui-events.mjs'
+import {
   GatewayClientMessageSchema,
   GatewayServerMessageSchema,
   parseGatewayClientMessage,
@@ -69,4 +73,16 @@ test('validates voice and task messages in the server direction', () => {
     GatewayServerMessageSchema.safeParse({ type: 'connect' }).success,
     false,
   )
+})
+
+test('validates the supported AG-UI activity event surface', () => {
+  const event = parseAguiGatewayEvent({
+    type: AguiEventType.ACTIVITY_SNAPSHOT,
+    messageId: 'qwen.audio.task:work_1',
+    activityType: 'qwen.audio.task',
+    content: { task: { status: 'running' } },
+  })
+
+  assert.equal(event.replace, true)
+  assert.equal(event.activityType, 'qwen.audio.task')
 })

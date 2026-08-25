@@ -35,6 +35,7 @@
     "./gateway-lease": "./shared/gateway-instance-lock.mjs",
     "./realtime-events": "./shared/realtime-events.mjs",
     "./gateway-events": "./shared/protocol/gateway-events.mjs",
+    "./ag-ui-events": "./shared/protocol/agui-events.mjs",
     "./gateway-client-state": "./shared/gateway-client-state.mjs",
     "./gateway-application": "./server/src/app/gateway-application.mjs",
     "./realtime-provider": "./server/src/voice/realtime-provider-extension.mjs",

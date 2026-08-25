@@ -151,8 +151,8 @@ spells them by hand is on its own.
 ### Shared client state
 
 `qwen-audio-agent/gateway-client-state` folds public Gateway events into the
-side-effect-free client state fields `connectionState`, `voiceState`,
-`wakeWordActive`, `ownership`, and `currentTurnId`.
+side-effect-free client state fields `connectionState`, `voiceReady`,
+`voiceState`, `wakeWordActive`, `ownership`, and `currentTurnId`.
 `reduceGatewayClientState(state, event)` preserves object identity for unknown
 events and consistently ignores direct-model `voice.state` updates from stale
 turns. Clients still own playback, microphone, and UI side effects; they should

@@ -10,6 +10,7 @@ export function createGatewayClientState({
 } = {}) {
   return {
     connectionState,
+    voiceReady: false,
     voiceState: 'idle',
     wakeWordActive: false,
     ownership: { ...DEFAULT_OWNERSHIP },
@@ -34,24 +35,31 @@ export function reduceGatewayClientState(current, event) {
       return {
         ...state,
         connectionState: 'connecting',
+        voiceReady: false,
       }
 
     case GatewayServerEvent.GATEWAY_DISCONNECTED:
       return {
         ...state,
         connectionState: 'unavailable',
+        voiceReady: false,
         voiceState: 'idle',
       }
 
     case GatewayServerEvent.VOICE_READY:
       return event.inputSampleRate
-        ? { ...state, connectionState: 'connected' }
+        ? {
+            ...state,
+            connectionState: 'connected',
+            voiceReady: true,
+          }
         : state
 
     case GatewayServerEvent.VOICE_CONNECTION:
       return {
         ...state,
         connectionState: event.state || 'connecting',
+        voiceReady: event.state === 'connected' ? state.voiceReady : false,
       }
 
     case GatewayServerEvent.TURN_STARTED:

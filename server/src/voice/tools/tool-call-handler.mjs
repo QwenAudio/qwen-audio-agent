@@ -9,7 +9,7 @@ import {
   NOTES_TOOL_NAME,
   MEMORY_TOOL_NAME,
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
-} from '../realtime-provider.mjs'
+} from '../frontend-tools.mjs'
 import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
 import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'

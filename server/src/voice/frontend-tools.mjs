@@ -4,6 +4,7 @@ import {
   loadAssistantProfile,
 } from '../conversation/frontend-agent-context.mjs'
 import { MEMORY_DOCUMENTS } from '../core/memory-scopes.mjs'
+import { FrontendToolRegistry } from './tools/frontend-tool-registry.mjs'
 
 export const SPAWN_THINKING_TOOL_NAME = 'spawn_thinking'
 export const SCHEDULE_REMINDER_TOOL_NAME = 'schedule_reminder'
@@ -229,24 +230,29 @@ const scheduleReminderTool = {
   },
 }
 
-export const TOOLS = [
-  spawnThinkingTool,
-  scheduleReminderTool,
-  cancelAgentTaskTool,
-  getAgentTaskStatusTool,
-  getCurrentTimeTool,
-  memoryTool,
-  notesTool,
-  respondAgentPermissionTool,
-]
+export const frontendToolRegistry = new FrontendToolRegistry([
+  { definition: spawnThinkingTool },
+  { definition: scheduleReminderTool },
+  { definition: cancelAgentTaskTool },
+  { definition: getAgentTaskStatusTool },
+  { definition: getCurrentTimeTool },
+  { definition: memoryTool },
+  { definition: notesTool },
+  { definition: respondAgentPermissionTool },
+  {
+    definition: enterSleepTool,
+    policy: { requiredClientStates: ['sleeping'] },
+  },
+])
+
+export const TOOLS = frontendToolRegistry.definitions()
 
 export function frontendTools(agentContext = {}) {
-  const states = Array.isArray(agentContext.client?.states)
-    ? agentContext.client.states
-    : []
-  return states.includes('sleeping')
-    ? [...TOOLS, enterSleepTool]
-    : TOOLS
+  const tools = frontendToolRegistry.definitions(agentContext)
+  return tools.length === TOOLS.length
+    && tools.every((tool, index) => tool === TOOLS[index])
+    ? TOOLS
+    : tools
 }
 
 export const resultResponseInstructions = [

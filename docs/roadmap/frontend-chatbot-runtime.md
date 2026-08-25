@@ -248,7 +248,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Wire discovered tools into the dynamic Realtime tool registry and
     executor.
   - [x] Add generic approval before enabling mutating tools.
-- [ ] OpenAPI tool adapter.
+- [x] OpenAPI tool adapter.
 - [ ] Lightweight frontend profiles; do not invent a public skill standard.
 - [ ] Backend adapter SDK and examples.
 - [ ] Optional A2A backend adapter.

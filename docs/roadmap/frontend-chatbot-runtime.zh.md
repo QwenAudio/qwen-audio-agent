@@ -292,7 +292,7 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
     工具发现和失败关闭的只读策略。
   - [x] 把发现到的工具接入动态 Realtime 工具注册表与执行器。
   - [x] 在启用可写工具前增加通用授权链路。
-- [ ] OpenAPI Tool Adapter。
+- [x] OpenAPI Tool Adapter。
 - [ ] 轻量 Frontend Profile；暂不自创公开 Skill 标准。
 - [ ] Backend Adapter SDK 与示例。
 - [ ] 可选 A2A Backend Adapter。

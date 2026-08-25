@@ -172,7 +172,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Extract the declarative Registry and visibility Policy.
   - [x] Route execution through the Registry-owned Executor.
 - [x] Migrate existing tools without renaming or changing behavior.
-- [ ] Make `spawn_thinking` a first-class background tool.
+- [x] Make `spawn_thinking` a first-class background tool.
 - [ ] Add a bounded short tool loop.
 
 ### R3 — Work Runtime

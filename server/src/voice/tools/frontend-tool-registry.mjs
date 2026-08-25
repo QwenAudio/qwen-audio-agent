@@ -60,6 +60,10 @@ export class FrontendToolRegistry {
     return this.#entriesByName.get(String(name || '')) || null
   }
 
+  names() {
+    return [...this.#entriesByName.keys()]
+  }
+
   isEnabled(name, context = {}) {
     const entry = this.get(name)
     return Boolean(entry && policyAllows(entry.policy, context))
@@ -69,5 +73,46 @@ export class FrontendToolRegistry {
     return [...this.#entriesByName.entries()]
       .filter(([name]) => this.isEnabled(name, context))
       .map(([, entry]) => entry.definition)
+  }
+
+  createExecutor(handlers) {
+    return new FrontendToolExecutor({ registry: this, handlers })
+  }
+}
+
+/**
+ * Exact dispatcher for the tools declared by one registry.
+ *
+ * Argument parsing, turn correlation and tool-specific policy remain outside
+ * this generic boundary; the executor only guarantees that every registered
+ * tool has exactly one callable implementation and unknown tools stay closed.
+ */
+export class FrontendToolExecutor {
+  #handlersByName
+
+  constructor({ registry, handlers = {} } = {}) {
+    if (!(registry instanceof FrontendToolRegistry)) {
+      throw new Error('FrontendToolExecutor requires a FrontendToolRegistry')
+    }
+    this.#handlersByName = new Map()
+    for (const [name, handler] of Object.entries(handlers)) {
+      if (!registry.has(name)) {
+        throw new Error(`Executor handler is not registered: ${name}`)
+      }
+      if (typeof handler !== 'function') {
+        throw new Error(`Executor handler must be a function: ${name}`)
+      }
+      this.#handlersByName.set(name, handler)
+    }
+    const missing = registry.names().filter(name => !this.#handlersByName.has(name))
+    if (missing.length) {
+      throw new Error(`Frontend tools lack executors: ${missing.join(', ')}`)
+    }
+  }
+
+  async execute(name, context) {
+    const handler = this.#handlersByName.get(String(name || ''))
+    if (!handler) return { handled: false, value: undefined }
+    return { handled: true, value: await handler(context) }
   }
 }

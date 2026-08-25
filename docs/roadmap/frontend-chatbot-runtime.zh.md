@@ -216,10 +216,10 @@ ACP Session、协调 Prompt、协调 MCP 和原生委托全部属于 ACP Adapter
 ### R2：Frontend Chatbot Runtime
 
 - [ ] 提取 Realtime Session、Turn、Input、Playback 和 Presentation。
-- [ ] 建立 Frontend Tool Registry、Policy 和 Executor。
+- [x] 建立 Frontend Tool Registry、Policy 和 Executor。
   - [x] 提取声明式 Registry 与可见性 Policy。
-  - [ ] 通过 Registry 管理的 Executor 统一执行入口。
-- [ ] 将现有工具逐个迁移，保持工具名与用户行为不变。
+  - [x] 通过 Registry 管理的 Executor 统一执行入口。
+- [x] 将现有工具逐个迁移，保持工具名与用户行为不变。
 - [ ] 将 `spawn_thinking` 固化为 background tool。
 - [ ] 增加有界短工具循环。
 

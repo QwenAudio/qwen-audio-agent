@@ -76,3 +76,40 @@ test('rejects unnamed and duplicate tool registrations', () => {
     /Duplicate frontend tool/,
   )
 })
+
+test('binds one executor per registered tool and rejects incomplete maps', async () => {
+  const definition = name => ({
+    type: 'function',
+    function: { name, parameters: { type: 'object' } },
+  })
+  const registry = new FrontendToolRegistry([
+    { definition: definition('first') },
+    { definition: definition('second') },
+  ])
+
+  assert.throws(
+    () => registry.createExecutor({ first: async () => 'first' }),
+    /lack executors: second/,
+  )
+  assert.throws(
+    () => registry.createExecutor({
+      first: async () => 'first',
+      second: async () => 'second',
+      unknown: async () => 'unknown',
+    }),
+    /not registered: unknown/,
+  )
+
+  const executor = registry.createExecutor({
+    first: async context => `first:${context.value}`,
+    second: async () => 'second',
+  })
+  assert.deepEqual(await executor.execute('first', { value: 1 }), {
+    handled: true,
+    value: 'first:1',
+  })
+  assert.deepEqual(await executor.execute('unknown', {}), {
+    handled: false,
+    value: undefined,
+  })
+})

@@ -259,7 +259,7 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
 - [x] 将 AgentClient 收敛为 Single Backend Runtime。
 - [x] 让 ACP Adapter 实现 BackendPort。
 - [x] 将 Coordinator 和 Session 工具下沉到 ACP Adapter。
-- [ ] 为 Backend Adapter 建立 conformance test suite。
+- [x] 为 Backend Adapter 建立 conformance test suite。
 
 完成条件：新增非 ACP Adapter 不修改 Frontend、Work 或客户端代码。
 

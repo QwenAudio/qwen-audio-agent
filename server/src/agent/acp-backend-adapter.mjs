@@ -225,6 +225,7 @@ export class AcpBackendAdapter {
     // Track every request that reaches the persistent coordinator Session,
     // whether it stays there or delegates to a project Session.
     this.coordinationRuns = new Map()
+    this.workControllers = new Map()
     this.workEventListeners = new Set()
     this.runtimeState = new BackendRuntimeState({
       protocol: this.protocol,
@@ -1366,47 +1367,64 @@ export class AcpBackendAdapter {
         protocol: this.protocol,
       })
     }
-    const prompt = buildAcpCoordinatorPrompt({
-      ...work,
-      objective,
-      workId,
-      jobId,
-      includeStableInstructions: !this.coordinatorUsesMcpInstructions(),
-    })
-    const run = message => this.runCoordinator(message, {
-      ownerId,
-      coordinationRunId: workId,
-      coordinationRequestId: jobId,
-      signal,
-      onEvent,
-    })
-    let result = await run(promptWithInputParts(prompt, work?.inputParts))
-    if (!clean(result?.content)) {
-      throw new AgentError('Coordinator backend returned an empty response', {
-        status: 502,
+    if (this.workControllers.has(workId)) {
+      throw new AgentError('BackendPort Work is already active', {
+        status: 409,
         protocol: this.protocol,
       })
     }
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const state = acpCoordinatorResponseState(result.content)
-      if (!state || state === 'completed') break
-      result = await run(acpCoordinatorRetryPrompt(jobId, state))
-    }
-    const finalState = acpCoordinatorResponseState(result.content)
-    if (finalState && finalState !== 'completed') {
-      throw new AgentError(
-        `Coordinator did not return a final result (state=${finalState})`,
-        { status: 502, protocol: this.protocol },
-      )
-    }
-    const presentation = parseAcpCoordinatorDecision(
-      result.content,
-      jobId,
-    ).presentation
-    return {
-      content: presentation.speech,
-      artifacts: [],
-      presentation,
+    const controller = new AbortController()
+    const workSignal = signal
+      ? AbortSignal.any([signal, controller.signal])
+      : controller.signal
+    this.workControllers.set(workId, controller)
+    try {
+      const prompt = buildAcpCoordinatorPrompt({
+        ...work,
+        objective,
+        workId,
+        jobId,
+        includeStableInstructions: !this.coordinatorUsesMcpInstructions(),
+      })
+      const run = message => this.runCoordinator(message, {
+        ownerId,
+        coordinationRunId: workId,
+        coordinationRequestId: jobId,
+        signal: workSignal,
+        onEvent,
+      })
+      let result = await run(promptWithInputParts(prompt, work?.inputParts))
+      if (!clean(result?.content)) {
+        throw new AgentError('Coordinator backend returned an empty response', {
+          status: 502,
+          protocol: this.protocol,
+        })
+      }
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const state = acpCoordinatorResponseState(result.content)
+        if (!state || state === 'completed') break
+        result = await run(acpCoordinatorRetryPrompt(jobId, state))
+      }
+      const finalState = acpCoordinatorResponseState(result.content)
+      if (finalState && finalState !== 'completed') {
+        throw new AgentError(
+          `Coordinator did not return a final result (state=${finalState})`,
+          { status: 502, protocol: this.protocol },
+        )
+      }
+      const presentation = parseAcpCoordinatorDecision(
+        result.content,
+        jobId,
+      ).presentation
+      return {
+        content: presentation.speech,
+        artifacts: [],
+        presentation,
+      }
+    } finally {
+      if (this.workControllers.get(workId) === controller) {
+        this.workControllers.delete(workId)
+      }
     }
   }
 
@@ -1622,8 +1640,17 @@ export class AcpBackendAdapter {
   }
 
   async cancel(workId, options = {}) {
-    await this.cancelWork(workId, options)
-    return { workId: clean(workId), state: 'cancelled' }
+    const id = clean(workId)
+    const controller = this.workControllers.get(id)
+    if (!controller && !this.coordinationRuns.has(id)) {
+      return { workId: id, state: 'not_found' }
+    }
+    await this.cancelWork(id, options)
+    controller?.abort(new AgentError('用户已取消这项工作', {
+      status: 499,
+      protocol: this.protocol,
+    }))
+    return { workId: id, state: 'cancelled' }
   }
 
   async respondAuthorization(
@@ -1698,6 +1725,13 @@ export class AcpBackendAdapter {
   }
 
   async close() {
+    for (const controller of this.workControllers.values()) {
+      controller.abort(new AgentError('后台 Agent 已关闭', {
+        status: 503,
+        protocol: this.protocol,
+      }))
+    }
+    this.workControllers.clear()
     for (const run of this.coordinationRuns.values()) {
       run.delegation?.controller.abort(
         new Error(`${this.label} backend is shutting down`),

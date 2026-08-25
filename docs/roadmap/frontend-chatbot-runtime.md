@@ -213,7 +213,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 - [x] Reduce AgentClient to the single-backend runtime.
 - [x] Implement BackendPort in the ACP adapter.
 - [x] Move coordinator and session tools into the ACP boundary.
-- [ ] Add a reusable backend-adapter conformance suite.
+- [x] Add a reusable backend-adapter conformance suite.
 
 ### R5 — Complete the frontend
 

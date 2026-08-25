@@ -373,8 +373,24 @@ export const frontendToolRegistry = new FrontendToolRegistry([
 
 export const TOOLS = frontendToolRegistry.definitions()
 
+function dynamicFrontendTools(agentContext = {}) {
+  const configured = agentContext?.frontend?.tools
+  if (!Array.isArray(configured)) return []
+  const names = new Set(frontendToolRegistry.names())
+  return configured.map(tool => {
+    const name = String(tool?.function?.name || '').trim()
+    if (!name || names.has(name)) {
+      throw new Error(`Invalid or duplicate dynamic frontend tool: ${name || '(unnamed)'}`)
+    }
+    names.add(name)
+    return tool
+  })
+}
+
 export function frontendTools(agentContext = {}) {
   const tools = frontendToolRegistry.definitions(agentContext)
+  const dynamic = dynamicFrontendTools(agentContext)
+  if (dynamic.length) return [...tools, ...dynamic]
   return tools.length === TOOLS.length
     && tools.every((tool, index) => tool === TOOLS[index])
     ? TOOLS

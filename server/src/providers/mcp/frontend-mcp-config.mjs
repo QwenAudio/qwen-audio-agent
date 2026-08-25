@@ -115,6 +115,12 @@ function normalizedServer(key, value, env) {
   return {
     key,
     enabled: value.enabled === true,
+    connectTimeoutMs: boundedInteger(
+      value.connectTimeoutMs,
+      8_000,
+      100,
+      30_000,
+    ),
     transport: {
       type: 'streamable-http',
       url: normalizedUrl(value.url, {

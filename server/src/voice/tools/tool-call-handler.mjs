@@ -16,6 +16,7 @@ import {
 } from '../frontend-tools.mjs'
 import {
   boundFrontendToolResult,
+  FrontendToolLoop,
 } from './frontend-tool-loop.mjs'
 import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
 import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
@@ -116,6 +117,7 @@ export class ToolCallHandler {
     inputAssets = null,
     frontendRetrieval = null,
     frontendKnowledge = null,
+    frontendToolSources = [],
     turnCitations = null,
   }) {
     this.taskManager = taskManager
@@ -140,8 +142,10 @@ export class ToolCallHandler {
     this.inputAssets = inputAssets
     this.frontendRetrieval = frontendRetrieval
     this.frontendKnowledge = frontendKnowledge
+    this.frontendToolSources = frontendToolSources
     this.turnCitations = turnCitations
     this.activeToolEntries = new Map()
+    this.externalToolLoop = new FrontendToolLoop()
     this.toolExecutor = frontendToolRegistry.createExecutor({
       [SPAWN_THINKING_TOOL_NAME]: context => (
         this.executeSpawnThinkingToolCall(context)
@@ -179,6 +183,57 @@ export class ToolCallHandler {
     this.cancelResponseByTurn = new Map()
     this.terminalToolResponses = new Set()
     this.deferredToolResponses = new Map()
+  }
+
+  externalTool(name) {
+    const requested = String(name || '')
+    for (const source of this.frontendToolSources) {
+      const tool = source.tools().find(entry => entry.name === requested)
+      if (tool) return { source, tool }
+    }
+    return null
+  }
+
+  async executeExternalToolCall(external, context) {
+    const { source, tool } = external
+    if (tool.policy?.readOnly !== true) {
+      await this.sendOutput(
+        context.callId,
+        failure('tool_unavailable', '当前前台没有启用这个能力。'),
+        context.turnId,
+      )
+      return { handled: true, executed: false }
+    }
+    const limit = this.externalToolLoop.admit({ ...context, tool })
+    if (!limit.admitted) {
+      await this.sendOutput(
+        context.callId,
+        limit.reason === 'repeated_call'
+          ? {
+              status: 'duplicate',
+              message: '本轮相同操作已经处理，不再重复执行。',
+            }
+          : failure(
+              'tool_loop_limit',
+              '本轮工具调用已达到安全边界，已停止继续执行。',
+              { retryable: true },
+            ),
+        context.turnId,
+      )
+      return { handled: true, executed: false, limit }
+    }
+    let output
+    try {
+      output = await source.execute(tool.name, context.args)
+    } catch {
+      output = failure(
+        'external_tool_unavailable',
+        '外部工具暂时不可用。',
+        { retryable: true },
+      )
+    }
+    await this.sendOutput(context.callId, output, context.turnId)
+    return { handled: true, executed: true, value: output }
   }
 
   markTerminalToolResponse(responseId) {
@@ -863,9 +918,20 @@ export class ToolCallHandler {
       return
     }
 
-    const tool = frontendToolRegistry.get(toolName)
+    const external = this.externalTool(toolName)
+    const tool = frontendToolRegistry.get(toolName) || external?.tool
     if (tool) this.activeToolEntries.set(callId, tool)
     try {
+      if (external) {
+        return await this.executeExternalToolCall(external, {
+          callId,
+          turnId,
+          turnGeneration: generation,
+          args,
+          event,
+          callContext,
+        })
+      }
       const execution = await this.toolExecutor.execute(toolName, {
         callId,
         turnId,

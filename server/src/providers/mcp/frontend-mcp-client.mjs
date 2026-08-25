@@ -173,9 +173,12 @@ export class FrontendMcpClient {
       tools: [],
     }
     this.connections.set(server.key, connection)
+    const discoverySignal = AbortSignal.timeout(server.connectTimeoutMs)
     try {
-      await client.connect(transport)
-      const response = await client.listTools()
+      await client.connect(transport, { signal: discoverySignal })
+      const response = await client.listTools(undefined, {
+        signal: discoverySignal,
+      })
       const remoteTools = Array.isArray(response?.tools) ? response.tools : []
       const discovered = []
       for (const [toolName, policy] of Object.entries(server.tools)) {
@@ -222,7 +225,9 @@ export class FrontendMcpClient {
       for (const name of connection.tools) this.toolsByPublicName.delete(name)
       connection.tools = []
       connection.status = 'error'
-      connection.error = error.message
+      connection.error = discoverySignal.aborted
+        ? `Frontend MCP discovery timed out: ${server.key}`
+        : error.message
       await client.close().catch(() => {})
     }
   }

@@ -653,6 +653,36 @@ test('offers the sleep tool only to a client that advertises the state', () => {
   )
 })
 
+test('projects dynamic frontend tools into each realtime protocol shape', () => {
+  const dynamic = {
+    type: 'function',
+    function: {
+      name: 'mcp__documents__search',
+      description: 'Search configured documents.',
+      parameters: {
+        type: 'object',
+        properties: { query: { type: 'string' } },
+      },
+    },
+  }
+  const agentContext = { frontend: { tools: [dynamic] } }
+  const qwen = REALTIME_PROVIDERS.qwen.buildSession({
+    configured: false,
+    agentContext,
+  })
+  const s2s = REALTIME_PROVIDERS['speech-to-speech'].buildSession({
+    agentContext,
+  })
+
+  assert.deepEqual(qwen.tools.at(-1), dynamic)
+  assert.deepEqual(s2s.tools.at(-1), {
+    type: 'function',
+    name: dynamic.function.name,
+    description: dynamic.function.description,
+    parameters: dynamic.function.parameters,
+  })
+})
+
 test('adds an event id to realtime client events', () => {
   const frontend = createQwenFrontend()
   let sent

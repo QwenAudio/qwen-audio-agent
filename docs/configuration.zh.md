@@ -130,6 +130,10 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
 设置 `QWEN_AUDIO_WEB_SEARCH_PROVIDER=none` 可以关闭前台联网搜索。
+
+通用的只读 Chatbot 工具可以通过前台 MCP Client 接入。用
+`QWEN_AUDIO_FRONTEND_MCP_CONFIG` 指定带版本的 JSON 文件，并逐个启用工具。
+详见[前台 MCP Client](reference/frontend-mcp.zh.md)。
 WebUI 和终端客户端会在最终回答下方展示规范化的来源链接；其他客户端可通过
 Gateway 的 `messages.citations` 能力位消费同一字段。
 
@@ -747,6 +751,7 @@ Gateway 时，或后续 CLI 运行时使用了冲突的已配置模型时，会�
 | `QWEN_AUDIO_WEB_SEARCH_MCP_URL` | 空；`mcp` Provider 使用的自定义 Streamable HTTP 地址 |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | 显式选择 `bailian` 时复用 `DASHSCOPE_API_KEY`；自定义地址默认空 |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian` 为 `bailian_web_search`，其他地址为 `web_search` |
+| `QWEN_AUDIO_FRONTEND_MCP_CONFIG` | 空；前台 MCP 版本化 JSON 文件的绝对路径 |
 | `QWEN_AUDIO_AGENT_KNOWLEDGE_DIR` | 共享用户数据目录下的 `knowledge` |
 | `QWEN_AUDIO_REALTIME_VOICE` | 空；Audio 模型族的可选覆盖，未设置时运行时使用 `longanqian` |
 | `QWEN_OMNI_REALTIME_VOICE` | 空；Omni 模型族的可选覆盖，未设置时运行时使用 `Ethan` |

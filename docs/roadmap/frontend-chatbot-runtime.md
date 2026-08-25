@@ -245,7 +245,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 - [ ] MCP client with per-tool policy and enablement.
   - [x] Define a provider-neutral source contract, versioned configuration,
     HTTP transport, discovery, and fail-closed read-only policies.
-  - [ ] Wire discovered tools into the dynamic Realtime tool registry and
+  - [x] Wire discovered tools into the dynamic Realtime tool registry and
     executor.
   - [ ] Add generic approval before enabling mutating tools.
 - [ ] OpenAPI tool adapter.

@@ -15,6 +15,34 @@ test('admits distinct calls within one bounded turn', () => {
   assert.equal(loop.admit({ turnId: 'turn', tool, args: { value: 3 } }).reason, 'call_limit')
 })
 
+test('applies a per-tool call limit without consuming other tool budgets', () => {
+  const loop = new FrontendToolLoop({ maxCallsPerTurn: 4 })
+  const limited = {
+    name: 'limited',
+    policy: { maxCallsPerTurn: 1 },
+  }
+  const other = {
+    name: 'other',
+    policy: { maxCallsPerTurn: 2 },
+  }
+
+  assert.equal(loop.admit({
+    turnId: 'turn',
+    tool: limited,
+    args: { value: 1 },
+  }).admitted, true)
+  assert.equal(loop.admit({
+    turnId: 'turn',
+    tool: limited,
+    args: { value: 2 },
+  }).reason, 'tool_call_limit')
+  assert.equal(loop.admit({
+    turnId: 'turn',
+    tool: other,
+    args: { value: 1 },
+  }).admitted, true)
+})
+
 test('blocks an exact repeated call before executing it again', () => {
   const loop = new FrontendToolLoop()
 

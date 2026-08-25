@@ -52,6 +52,20 @@ test('constructs an injectable Gateway without binding a port on import', async 
   const realtimeProviderRegistry = createRealtimeProviderRegistry({
     providers: [privateProvider],
   })
+  let mcpClosed = false
+  const frontendMcp = {
+    describe: () => ({ key: 'mcp', label: 'Test MCP' }),
+    initialize: async () => [],
+    tools: () => [],
+    execute: async () => ({}),
+    health: () => ({
+      ok: true,
+      initialized: true,
+      tools: 0,
+      servers: [],
+    }),
+    close: async () => { mcpClosed = true },
+  }
   const application = createGatewayApplication({
     config: {
       ...config,
@@ -65,6 +79,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
     inputAssets,
     realtimeProviderRegistry,
     realtimeProvider: privateProvider.key,
+    frontendMcp,
   })
   assert.equal(application.server.listening, false)
   assert.equal(application.services.taskManager != null, true)
@@ -74,6 +89,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.equal(application.services.knowledgeStore.describe().key, 'local-files')
   assert.equal(application.services.knowledgeIndexer != null, true)
   assert.deepEqual(application.services.frontendKnowledge.capabilities(), ['knowledge'])
+  assert.equal(application.services.frontendMcp, frontendMcp)
 
   application.start()
   if (!application.server.listening) {
@@ -87,6 +103,12 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.deepEqual(health.frontendRetrieval.capabilities, ['url-fetch'])
   assert.equal(health.frontendRetrieval.searchProvider, null)
   assert.deepEqual(health.frontendKnowledge.capabilities, ['knowledge'])
+  assert.deepEqual(health.frontendMcp, {
+    ok: true,
+    initialized: true,
+    tools: 0,
+    servers: [],
+  })
   assert.equal(
     health.frontendKnowledge.retrievalProvider.key,
     'local-lexical',
@@ -96,4 +118,5 @@ test('constructs an injectable Gateway without binding a port on import', async 
     false,
   )
   await application.close()
+  assert.equal(mcpClosed, true)
 })

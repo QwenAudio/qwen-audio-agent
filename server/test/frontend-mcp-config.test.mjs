@@ -44,6 +44,7 @@ test('normalizes explicit server and read-only tool policies', () => {
     servers: [{
       key: 'documents',
       enabled: true,
+      connectTimeoutMs: 8_000,
       transport: {
         type: 'streamable-http',
         url: 'https://mcp.example.test/api',

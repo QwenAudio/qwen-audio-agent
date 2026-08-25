@@ -10,6 +10,11 @@ export const TaskStatus = Object.freeze({
   CANCELLED: 'cancelled',
 })
 
+export const TaskScope = Object.freeze({
+  USER: 'user',
+  SYSTEM: 'system',
+})
+
 const ACTIVE = new Set([
   TaskStatus.QUEUED,
   TaskStatus.RUNNING,
@@ -77,6 +82,14 @@ export function isTaskTerminal(status) {
   return TERMINAL.has(status)
 }
 
+export function normalizeTaskScope(scope) {
+  return scope === TaskScope.SYSTEM ? TaskScope.SYSTEM : TaskScope.USER
+}
+
+export function isUserWork(task) {
+  return normalizeTaskScope(task?.scope) === TaskScope.USER
+}
+
 export function transitionTask(task, nextStatus) {
   const currentStatus = task?.status
   if (!KNOWN.has(currentStatus) || !KNOWN.has(nextStatus)) {
@@ -119,6 +132,7 @@ export function publicTask(task, { now = Date.now() } = {}) {
     jobId: task.jobId,
     workState: isTaskActive(task.status) ? 'active' : task.status,
     status: task.status,
+    scope: normalizeTaskScope(task.scope),
     kind: task.kind || 'work',
     parentWorkId: task.parentWorkId || null,
     objective: task.objective,

@@ -231,11 +231,12 @@ ACP Session、协调 Prompt、协调 MCP 和原生委托全部属于 ACP Adapter
 
 ### R3：Work Runtime
 
-- [ ] 从 TaskManager 提取 State Machine、Scheduler、Repository 和 Notification。
+- [x] 从 TaskManager 提取 State Machine、Scheduler、Repository 和 Notification。
   - [x] 集中管理任务阶段、合法状态迁移与公开快照。
+  - [x] 由独立 Scheduler 管理并发与 Lane 限制。
   - [x] 提取通知领取、租约、释放与送达状态。
   - [x] 提取持久化 Work 记录与短 Job ID 分配。
-- [ ] 区分 User Work 与 System Job。
+- [x] 区分 User Work 与 System Job。
 - [ ] 建立 Artifact 与统一 Authorization 模型。
 - [ ] 保持重启、取消和恰好一次结果投递语义。
 

@@ -3,6 +3,7 @@ import {
 } from '../../../shared/protocol/gateway-events.mjs'
 import { GatewayTaskEvent } from '../../../shared/realtime-events.mjs'
 import { TaskDomainEvent } from '../task/task-events.mjs'
+import { TaskScope } from '../task/task-state.mjs'
 
 const PUBLIC_EVENT_TYPE = new Map([
   [TaskDomainEvent.ACCEPTED, GatewayTaskEvent.ACCEPTED],
@@ -54,6 +55,7 @@ export function projectGatewayTaskEvent(event) {
   if (!event || typeof event !== 'object') return null
   const type = PUBLIC_EVENT_TYPE.get(event.type)
   if (!type || !event.task || typeof event.task !== 'object') return null
+  if (event.task.scope === TaskScope.SYSTEM) return null
   return GatewayTaskEventMessageSchema.parse({
     type,
     task: event.task,
@@ -63,6 +65,7 @@ export function projectGatewayTaskEvent(event) {
 
 export function projectGatewayTaskSnapshot(task) {
   if (!task || typeof task !== 'object') return null
+  if (task.scope === TaskScope.SYSTEM) return null
   return GatewayTaskEventMessageSchema.parse({
     type: GatewayTaskEvent.SNAPSHOT,
     task,

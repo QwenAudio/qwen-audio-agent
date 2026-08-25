@@ -71,3 +71,12 @@ test('does not expose malformed or unrelated internal events', () => {
   assert.equal(projectGatewayTaskEvent({ type: 'backend.activity' }), null)
   assert.equal(projectGatewayTaskSnapshot(null), null)
 })
+
+test('never projects system jobs into the public task protocol', () => {
+  const system = task({ scope: 'system', jobId: null, kind: 'system_job' })
+  assert.equal(projectGatewayTaskEvent({
+    type: TaskDomainEvent.RUNNING,
+    task: system,
+  }), null)
+  assert.equal(projectGatewayTaskSnapshot(system), null)
+})

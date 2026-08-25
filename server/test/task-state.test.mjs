@@ -51,7 +51,7 @@ test('accepts valid transitions and rejects backwards or terminal transitions', 
   )
 })
 
-test('projects an active task without leaking private result metadata', () => {
+test('projects an active task into presentation and standard artifacts', () => {
   const projected = publicTask({
     id: 'work-one',
     jobId: 'job_1',
@@ -73,13 +73,35 @@ test('projects an active task without leaking private result metadata', () => {
     notificationStatus: 'none',
   }, { now: 100 })
 
-  assert.equal(projected.workState, 'active')
+  assert.equal(projected.workState, 'working')
   assert.equal(projected.elapsedMs, 60)
-  assert.deepEqual(projected.resultMetadata, {
-    presentation: {
-      speech: '报告已完成。',
-      inline: { title: '报告', format: 'markdown', content: '# 完成' },
+  assert.deepEqual(projected.presentation, {
+    speech: '报告已完成。',
+    inline: { title: '报告', format: 'markdown', content: '# 完成' },
+  })
+  assert.deepEqual(projected.artifacts, [{
+    artifactId: 'artifact_inline',
+    name: '报告',
+    parts: [{ text: '# 完成', mediaType: 'text/markdown' }],
+  }])
+  assert.equal('resultMetadata' in projected, false)
+})
+
+test('projects pending authorization as the public auth_required state', () => {
+  const projected = publicTask({
+    id: 'work-auth',
+    jobId: 'job_2',
+    status: TaskStatus.RUNNING,
+    objective: '执行命令',
+    createdAt: 1,
+    activity: [],
+    authorization: {
+      id: 'auth_1',
+      status: 'pending',
+      summary: '执行 npm test',
+      createdAt: 2,
     },
   })
-  assert.equal('backendRef' in projected.resultMetadata, false)
+  assert.equal(projected.workState, 'auth_required')
+  assert.equal(projected.authorization.workId, 'work-auth')
 })

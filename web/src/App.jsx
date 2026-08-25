@@ -30,6 +30,7 @@ import {
   removeTaskInPhase,
   taskDeliverySettled,
   taskDetail,
+  taskIsActive,
   taskLabel,
   taskView,
 } from './task-view.js'
@@ -521,7 +522,7 @@ export default function App() {
             })
             serverTasks
               .filter(task => (
-                task.workState === 'active'
+                taskIsActive(task)
                 && !known.has(task.id)
               ))
               .reverse()

@@ -16,7 +16,7 @@ function task(overrides = {}) {
     id: 'work_1',
     workId: 'work_1',
     jobId: 'job_1',
-    workState: 'active',
+    workState: 'working',
     status: 'running',
     kind: 'work',
     objective: 'test work',

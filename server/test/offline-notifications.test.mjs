@@ -38,7 +38,7 @@ test('drops delayed progress after the task has completed', () => {
     id: 'work-1',
     ownerId: 'owner',
     objective: 'build',
-    workState: 'active',
+    workState: 'working',
     status: 'running',
   }
   const testHarness = harness(task)
@@ -63,7 +63,7 @@ test('delivers delayed progress only while the task remains active', () => {
     id: 'work-1',
     ownerId: 'owner',
     objective: 'build',
-    workState: 'active',
+    workState: 'working',
     status: 'running',
   }
   const testHarness = harness(task)

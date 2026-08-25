@@ -18,9 +18,12 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
-The current version is `2.1.0`. The `2.1` line adds the optional AG-UI Task
-event projection; it succeeds the `2.0` contract without changing its default
-event stream. The `2.x` line succeeds the `1.x` line of the
+The current version is `3.0.0`. The `3.0` line gives native Task events
+A2A-aligned `submitted`, `working`, and `auth_required` states together with
+typed artifact, presentation, and authorization values. It replaces the `2.x`
+`active` state and opaque result metadata, so event consumers must check the
+capability table below. The `2.1` line added the optional AG-UI Task event
+projection without changing its default event stream. The `2.x` line succeeds the `1.x` line of the
 `feat/embedded-gateway-host-contract` fork (which ended at `1.7.0`): the major
 bump records that capabilities that line advertised — such as
 `gateway.embedded-lifecycle` and `desktop.settings-window` — are not part of
@@ -41,6 +44,7 @@ below instead of assuming the old list.
 | `input.suspend-ttl` | A suspension expires on its own when the holder never resumes | `server/test/input-arbitration.test.mjs` |
 | `input.suspend-ack` | Clients confirm a suspension with `input.suspend.ack` (status display only — never wait for it) | `server/test/input-suspend-protocol.test.mjs` |
 | `tasks.ag-ui-event-stream` | `GET /api/tasks/:id/events?format=ag-ui` projects the existing Task stream into AG-UI `ACTIVITY_SNAPSHOT` events; omitting `format` preserves the native stream | `server/test/agui-event-projector.test.mjs` |
+| `tasks.work-artifacts-authorization` | Native Task events use A2A-aligned work states and expose typed `artifacts`, `presentation`, and `authorization` values | `test/gateway-event-schema.test.mjs`, `server/test/task-state.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |

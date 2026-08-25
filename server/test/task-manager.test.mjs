@@ -94,7 +94,11 @@ test('publishes a bounded pending permission on the active work', async () => {
     },
   })
   await new Promise(resolve => setImmediate(resolve))
-  assert.equal(manager.get(task.id).authorization.id, 'auth_one')
+  const pending = manager.get(task.id)
+  assert.equal(pending.authorization.id, 'auth_one')
+  assert.equal(pending.authorization.workId, task.id)
+  assert.equal(pending.workState, 'auth_required')
+  assert.equal(Number.isFinite(pending.authorization.createdAt), true)
   assert.equal(
     events.some(event => event.type === 'task.permission.requested'),
     true,
@@ -168,7 +172,7 @@ test('keeps delegated work active while releasing its coordinator lane', async (
 
   const delegated = manager.get(task.id)
   assert.equal(delegated.status, 'delegated')
-  assert.equal(delegated.workState, 'active')
+  assert.equal(delegated.workState, 'working')
   assert.equal(delegated.delegation.status, 'running')
   assert.equal(delegated.delegation.title, '已有项目')
   assert.equal(
@@ -419,7 +423,7 @@ test('listing tasks does not rewrite unchanged persistent state', async () => {
   assert.equal(saves, before)
 })
 
-test('publishes only presentation metadata from a completed result', async () => {
+test('publishes presentation and standard artifacts from a completed result', async () => {
   const events = []
   const manager = new TaskManager()
   manager.subscribe(event => events.push(event))
@@ -451,20 +455,23 @@ test('publishes only presentation metadata from a completed result', async () =>
   })
 
   const completed = await manager.wait(task.id)
-  assert.deepEqual(completed.resultMetadata, {
-    presentation: {
-      speech: '报告已经生成。',
-      inline: {
-        title: '报告',
-        format: 'markdown',
-        content: '# 完成',
-      },
+  assert.deepEqual(completed.presentation, {
+    speech: '报告已经生成。',
+    inline: {
+      title: '报告',
+      format: 'markdown',
+      content: '# 完成',
     },
   })
+  assert.deepEqual(completed.artifacts, [{
+    artifactId: 'artifact_inline',
+    name: '报告',
+    parts: [{ text: '# 完成', mediaType: 'text/markdown' }],
+  }])
   assert.deepEqual(
     events.find(event => event.type === 'task.completed')
-      ?.task.resultMetadata,
-    completed.resultMetadata,
+      ?.task.artifacts,
+    completed.artifacts,
   )
 })
 
@@ -501,16 +508,16 @@ test('projects legacy decision presentation when restoring a task', () => {
   })
 
   const restored = manager.get('legacy-work')
-  assert.deepEqual(restored.resultMetadata, {
-    presentation: {
-      speech: '旧任务已经完成。',
-      inline: {
-        title: '旧结果',
-        format: 'code',
-        content: 'const done = true',
-      },
+  assert.deepEqual(restored.presentation, {
+    speech: '旧任务已经完成。',
+    inline: {
+      title: '旧结果',
+      format: 'code',
+      content: 'const done = true',
     },
   })
   manager.persist()
-  assert.deepEqual(saved[0].resultMetadata, restored.resultMetadata)
+  assert.deepEqual(saved[0].presentation, restored.presentation)
+  assert.deepEqual(saved[0].artifacts, restored.artifacts)
+  assert.equal('resultMetadata' in saved[0], false)
 })

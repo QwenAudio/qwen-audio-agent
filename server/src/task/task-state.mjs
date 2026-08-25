@@ -1,3 +1,9 @@
+import {
+  artifactFromInlinePresentation,
+  normalizeArtifacts,
+} from './task-artifact.mjs'
+import { publicAuthorization } from '../core/work-authorization.mjs'
+
 export const TaskStatus = Object.freeze({
   SCHEDULED: 'scheduled',
   QUEUED: 'queued',
@@ -90,6 +96,15 @@ export function isUserWork(task) {
   return normalizeTaskScope(task?.scope) === TaskScope.USER
 }
 
+export function publicWorkState(task) {
+  if (task?.authorization?.status === 'pending') return 'auth_required'
+  if ([TaskStatus.SCHEDULED, TaskStatus.QUEUED].includes(task?.status)) {
+    return 'submitted'
+  }
+  if (isTaskActive(task?.status)) return 'working'
+  return isTaskTerminal(task?.status) ? task.status : 'submitted'
+}
+
 export function transitionTask(task, nextStatus) {
   const currentStatus = task?.status
   if (!KNOWN.has(currentStatus) || !KNOWN.has(nextStatus)) {
@@ -103,9 +118,9 @@ export function transitionTask(task, nextStatus) {
   return task
 }
 
-function publicResultMetadata(metadata) {
-  if (!metadata || typeof metadata !== 'object') return null
-  const source = metadata.presentation || metadata.decision?.presentation
+export function normalizeTaskPresentation(value) {
+  if (!value || typeof value !== 'object') return null
+  const source = value.presentation || value.decision?.presentation || value
   if (!source || typeof source !== 'object') return null
   const inline = source.inline && typeof source.inline === 'object'
     && typeof source.inline.content === 'string'
@@ -122,15 +137,29 @@ function publicResultMetadata(metadata) {
     : null
   const speech = typeof source.speech === 'string' ? source.speech : ''
   if (!speech && !inline) return null
-  return { presentation: { speech, inline } }
+  return { speech, inline }
+}
+
+function taskPresentation(task) {
+  return normalizeTaskPresentation(
+    task.presentation || task.resultMetadata || null,
+  )
+}
+
+function taskArtifacts(task, presentation) {
+  const normalized = normalizeArtifacts(task.artifacts)
+  if (normalized.length) return normalized
+  const legacy = artifactFromInlinePresentation(presentation)
+  return legacy ? [legacy] : []
 }
 
 export function publicTask(task, { now = Date.now() } = {}) {
+  const presentation = taskPresentation(task)
   return {
     id: task.id,
     workId: task.id,
     jobId: task.jobId,
-    workState: isTaskActive(task.status) ? 'active' : task.status,
+    workState: publicWorkState(task),
     status: task.status,
     scope: normalizeTaskScope(task.scope),
     kind: task.kind || 'work',
@@ -147,7 +176,8 @@ export function publicTask(task, { now = Date.now() } = {}) {
       : task.elapsedMs,
     result: task.result,
     error: task.error,
-    resultMetadata: publicResultMetadata(task.resultMetadata),
+    artifacts: taskArtifacts(task, presentation),
+    presentation,
     activity: [...(task.activity || [])],
     delegation: task.delegation
       ? {
@@ -163,9 +193,7 @@ export function publicTask(task, { now = Date.now() } = {}) {
             : null,
         }
       : null,
-    authorization: task.authorization
-      ? { ...task.authorization }
-      : null,
+    authorization: publicAuthorization(task.authorization, { workId: task.id }),
     notificationStatus: task.notificationStatus,
     notificationDeliveredAt: task.notificationDeliveredAt,
     schedule: task.schedule || null,

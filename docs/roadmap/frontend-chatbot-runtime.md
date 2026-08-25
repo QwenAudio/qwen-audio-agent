@@ -118,9 +118,12 @@ prompts, coordinator MCP, and native delegation stay inside the ACP adapter.
 
 ### Artifact and Presentation
 
-Artifacts consist of MIME-typed parts. Presentation contains factual material
-and delivery policy for the frontend, not a script that must be spoken
-verbatim.
+Artifacts use the A2A-aligned `artifactId`, `name`, `description`, and Parts
+shape. Each Part contains exactly one of text, URL, base64 raw content, or
+structured data plus its MIME type. Authorization is a bounded Work request
+with identity, state, summary, category, and timestamps; it carries a decision
+request, never credentials. Presentation contains factual material and delivery
+policy for the frontend, not a script that must be spoken verbatim.
 
 ## 5. Standards strategy
 
@@ -187,7 +190,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Extract notification claim, lease, release, and delivery state.
   - [x] Extract durable Work records and short job-id allocation.
 - [x] Separate user work from system jobs.
-- [ ] Add artifact and authorization models.
+- [x] Add artifact and authorization models.
 - [ ] Preserve restart, cancellation, and exactly-once delivery semantics.
 
 ### R4 — Backend Runtime

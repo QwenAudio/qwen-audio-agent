@@ -288,6 +288,10 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
 ### R6：开放生态
 
 - [ ] MCP Client 与逐工具授权/启用策略。
+  - [x] 定义与供应商无关的 Source Contract、版本化配置、HTTP Transport、
+    工具发现和失败关闭的只读策略。
+  - [ ] 把发现到的工具接入动态 Realtime 工具注册表与执行器。
+  - [ ] 在启用可写工具前增加通用授权链路。
 - [ ] OpenAPI Tool Adapter。
 - [ ] 轻量 Frontend Profile；暂不自创公开 Skill 标准。
 - [ ] Backend Adapter SDK 与示例。

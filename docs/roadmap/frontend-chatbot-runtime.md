@@ -243,6 +243,11 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
 ### R6 — Open the ecosystem
 
 - [ ] MCP client with per-tool policy and enablement.
+  - [x] Define a provider-neutral source contract, versioned configuration,
+    HTTP transport, discovery, and fail-closed read-only policies.
+  - [ ] Wire discovered tools into the dynamic Realtime tool registry and
+    executor.
+  - [ ] Add generic approval before enabling mutating tools.
 - [ ] OpenAPI tool adapter.
 - [ ] Lightweight frontend profiles; do not invent a public skill standard.
 - [ ] Backend adapter SDK and examples.

@@ -125,6 +125,12 @@ with identity, state, summary, category, and timestamps; it carries a decision
 request, never credentials. Presentation contains factual material and delivery
 policy for the frontend, not a script that must be spoken verbatim.
 
+Restart recovery is an explicit Work policy: safe reminders are rescheduled,
+recoverable delegated runs are reattached, interrupted execution fails once,
+and a persisted cancellation intent remains cancelled. Result delivery uses a
+durable claimant lease; acknowledgement is checkpointed before its event is
+published, and only an unacknowledged or expired lease may be replayed.
+
 ## 5. Standards strategy
 
 | Boundary | Strategy |
@@ -191,7 +197,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Extract durable Work records and short job-id allocation.
 - [x] Separate user work from system jobs.
 - [x] Add artifact and authorization models.
-- [ ] Preserve restart, cancellation, and exactly-once delivery semantics.
+- [x] Preserve restart, cancellation, and exactly-once delivery semantics.
 
 ### R4 — Backend Runtime
 

@@ -206,6 +206,9 @@ export function persistedTask(task) {
   const saved = publicTask(task)
   delete saved.workId
   delete saved.workState
+  if (task.recoveryPersistedStatus) {
+    saved.status = task.recoveryPersistedStatus
+  }
   saved.submissionKey = task.submissionKey || null
   saved.delegation = task.delegation
     ? {

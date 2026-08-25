@@ -159,3 +159,19 @@ export function publicTask(task, { now = Date.now() } = {}) {
     progressCheckMs: task.progressCheckMs || null,
   }
 }
+
+export function persistedTask(task) {
+  const saved = publicTask(task)
+  delete saved.workId
+  delete saved.workState
+  saved.submissionKey = task.submissionKey || null
+  saved.delegation = task.delegation
+    ? {
+        ...task.delegation,
+        presentation: task.delegation.presentation
+          ? { ...task.delegation.presentation }
+          : null,
+      }
+    : null
+  return saved
+}

@@ -19,7 +19,9 @@ import {
 } from './realtime-provider.mjs'
 import { isAllowedOrigin } from '../core/request-security.mjs'
 import { taskManager } from '../task/task-manager.mjs'
+import { TaskDomainEvent } from '../task/task-events.mjs'
 import { recordTaskResult } from '../conversation/task-result-projector.mjs'
+import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
 import { ToolCallHandler } from './tools/tool-call-handler.mjs'
 import { TurnTranscripts } from './tools/turn-transcripts.mjs'
 import { TurnCorrelation } from './turn-correlation.mjs'
@@ -842,7 +844,7 @@ export function attachRealtimeGateway(server, {
     const unsubscribeTasks = taskManager.subscribe(event => {
       const task = event.task
       if (event.ownerId !== ownerId) return
-      if (event.type === 'task.progress.check') {
+      if (event.type === TaskDomainEvent.PROGRESS_CHECK) {
         if (task.sessionId !== sessionId) return
         if (!outputEnabled || !frontend?.ready) return
         const progressContext = {
@@ -872,7 +874,7 @@ export function attachRealtimeGateway(server, {
         })
         return
       }
-      if (event.type === 'task.notification.pending') {
+      if (event.type === TaskDomainEvent.NOTIFICATION_PENDING) {
         if (sleeping) {
           wakeFromSleep()
           return
@@ -883,19 +885,16 @@ export function attachRealtimeGateway(server, {
         return
       }
       if (task.sessionId !== sessionId) return
-      send(ws, {
-        type: event.type,
-        task,
-        ...(event.permission ? { permission: event.permission } : {}),
-      })
-      if (event.type === 'task.permission.requested') {
+      const publicEvent = projectGatewayTaskEvent(event)
+      if (publicEvent) send(ws, publicEvent)
+      if (event.type === TaskDomainEvent.PERMISSION_REQUESTED) {
         if (sleeping) {
           wakeFromSleep()
           return
         }
         announcePermission(task)
       }
-      if (event.type === 'task.permission.resolved') {
+      if (event.type === TaskDomainEvent.PERMISSION_RESOLVED) {
         const authorizationId = event.permission?.id
         if (authorizationId) {
           // 已进入对话的权限询问被其它通道（如 WebUI 按钮）处理后，把结果
@@ -926,7 +925,7 @@ export function attachRealtimeGateway(server, {
           }
         }
       }
-      if (event.type === 'task.delegated') {
+      if (event.type === TaskDomainEvent.DELEGATED) {
         const presentation = task.delegation?.presentation
         if (presentation?.inline?.content) {
           send(ws, {
@@ -940,7 +939,10 @@ export function attachRealtimeGateway(server, {
           })
         }
       }
-      if (['task.completed', 'task.failed'].includes(event.type)) {
+      if ([
+        TaskDomainEvent.COMPLETED,
+        TaskDomainEvent.FAILED,
+      ].includes(event.type)) {
         recordResult(task)
         const inline = task.resultMetadata?.presentation?.inline
         if (inline?.content) {

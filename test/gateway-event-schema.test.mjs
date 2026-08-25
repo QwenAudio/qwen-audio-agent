@@ -7,6 +7,21 @@ import {
   parseGatewayServerMessage,
 } from '../shared/protocol/gateway-events.mjs'
 
+function task(overrides = {}) {
+  return {
+    id: 'work_1',
+    workId: 'work_1',
+    jobId: 'job_1',
+    workState: 'active',
+    status: 'running',
+    kind: 'work',
+    objective: 'test work',
+    createdAt: 1,
+    elapsedMs: 0,
+    ...overrides,
+  }
+}
+
 test('validates client event envelopes and preserves extension fields', () => {
   assert.deepEqual(parseGatewayClientMessage({
     type: 'connect',
@@ -39,9 +54,16 @@ test('validates voice and task messages in the server direction', () => {
   assert.equal(
     GatewayServerMessageSchema.safeParse({
       type: 'task.accepted',
-      task: { id: 'work_1' },
+      task: task(),
     }).success,
     true,
+  )
+  assert.equal(
+    GatewayServerMessageSchema.safeParse({
+      type: 'task.accepted',
+      task: { id: 'work_1' },
+    }).success,
+    false,
   )
   assert.equal(
     GatewayServerMessageSchema.safeParse({ type: 'connect' }).success,

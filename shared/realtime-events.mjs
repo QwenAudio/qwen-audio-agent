@@ -50,6 +50,7 @@ export const GatewayServerEvent = Object.freeze({
 })
 
 export const GatewayTaskEvent = Object.freeze({
+  SNAPSHOT: 'task.snapshot',
   ACCEPTED: 'task.accepted',
   SCHEDULED: 'task.scheduled',
   SCHEDULED_FIRED: 'task.scheduled.fired',
@@ -64,6 +65,8 @@ export const GatewayTaskEvent = Object.freeze({
   CANCELLED: 'task.cancelled',
   PERMISSION_REQUESTED: 'task.permission.requested',
   PERMISSION_RESOLVED: 'task.permission.resolved',
+  NOTIFICATION_PENDING: 'task.notification.pending',
+  NOTIFICATION_DELIVERED: 'task.notification.delivered',
   NOTIFICATION_OFFLINE: 'task.notification.offline',
 })
 

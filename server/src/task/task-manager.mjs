@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { config } from '../core/config.mjs'
 import { TaskScheduler } from './task-scheduler.mjs'
 import { TaskStore } from './task-store.mjs'
+import { TaskDomainEvent } from './task-events.mjs'
 import { logger } from '../core/logger.mjs'
 
 const ACTIVE = new Set([
@@ -273,8 +274,8 @@ export class TaskManager {
         task.notificationStatus = 'pending'
         task.promise = Promise.resolve(publicTask(task))
         task.resolve = null
-        this.emit('task.failed', task)
-        this.emit('task.notification.pending', task)
+        this.emit(TaskDomainEvent.FAILED, task)
+        this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         continue
       }
       task.runner = (_objective, context) => runner(snapshot, context)
@@ -319,15 +320,15 @@ export class TaskManager {
       ...details,
     }
     const log = [
-      'task.scheduled',
+      TaskDomainEvent.SCHEDULED,
       'task.created',
-      'task.running',
-      'task.delegated',
-      'task.permission.requested',
-      'task.permission.resolved',
-      'task.completed',
-      'task.failed',
-      'task.cancelled',
+      TaskDomainEvent.RUNNING,
+      TaskDomainEvent.DELEGATED,
+      TaskDomainEvent.PERMISSION_REQUESTED,
+      TaskDomainEvent.PERMISSION_RESOLVED,
+      TaskDomainEvent.COMPLETED,
+      TaskDomainEvent.FAILED,
+      TaskDomainEvent.CANCELLED,
     ].includes(type) ? this.logger?.info : this.logger?.debug
     log?.(type, {
       taskId: task.id,
@@ -414,7 +415,7 @@ export class TaskManager {
       task.resolve = resolve
     })
     this.tasks.set(task.id, task)
-    this.emit('task.accepted', task)
+    this.emit(TaskDomainEvent.ACCEPTED, task)
     queueMicrotask(() => this.drain())
     return { ...publicTask(task), reused: false }
   }
@@ -476,7 +477,7 @@ export class TaskManager {
       task.resolve = resolve
     })
     this.tasks.set(task.id, task)
-    this.emit('task.scheduled', task)
+    this.emit(TaskDomainEvent.SCHEDULED, task)
     // Do not call drain() — scheduled tasks wait for their timer.
     return { ...publicTask(task), reused: false }
   }
@@ -500,24 +501,24 @@ export class TaskManager {
     task.abortController = new AbortController()
     this.scheduler.acquire(task)
     task.schedulerHeld = true
-    this.emit('task.running', task)
+    this.emit(TaskDomainEvent.RUNNING, task)
     task.progressTimer = setInterval(() => {
       if (ACTIVE.has(task.status)) {
-        this.emit('task.progress', task, { persist: false })
+        this.emit(TaskDomainEvent.PROGRESS, task, { persist: false })
       }
     }, 1000)
     task.progressTimer.unref?.()
     const onEvent = event => {
       if (event?.type === 'backend.permission.requested' && event.permission) {
         task.authorization = { ...event.permission }
-        this.emit('task.permission.requested', task)
+        this.emit(TaskDomainEvent.PERMISSION_REQUESTED, task)
         return
       }
       if (event?.type === 'backend.permission.resolved' && event.permission) {
         if (task.authorization?.id === event.permission.id) {
           task.authorization = null
         }
-        this.emit('task.permission.resolved', task, {
+        this.emit(TaskDomainEvent.PERMISSION_RESOLVED, task, {
           permission: { ...event.permission },
         })
         return
@@ -530,7 +531,7 @@ export class TaskManager {
           this.scheduler.release(task)
           task.schedulerHeld = false
         }
-        this.emit('task.delegated', task)
+        this.emit(TaskDomainEvent.DELEGATED, task)
         this.drain()
         return
       }
@@ -540,7 +541,7 @@ export class TaskManager {
       ) {
         task.status = 'finalizing'
         task.delegation = { ...event.delegation, status: 'completed' }
-        this.emit('task.finalizing', task)
+        this.emit(TaskDomainEvent.FINALIZING, task)
         return
       }
       if (event?.type !== 'backend.activity' || !event.activity) return
@@ -551,7 +552,7 @@ export class TaskManager {
       if (index >= 0) task.activity[index] = activity
       else task.activity.push(activity)
       task.activity = task.activity.slice(-20)
-      this.emit('task.progress', task, { persist: false })
+      this.emit(TaskDomainEvent.PROGRESS, task, { persist: false })
       this.persistDeferred()
     }
     // Fallback runner for restored scheduled tasks whose runner was lost
@@ -588,8 +589,8 @@ export class TaskManager {
             this.scheduler.release(task)
             task.schedulerHeld = false
           }
-          this.emit('task.failed', task)
-          this.emit('task.notification.pending', task)
+          this.emit(TaskDomainEvent.FAILED, task)
+          this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
           this.persistDeferred()
           this.drain()
         }, 5000)
@@ -628,7 +629,7 @@ export class TaskManager {
           message = `任务"${task.objective.slice(0, 80)}"`
             + `已运行 ${elapsedMin} 分钟，正在处理中`
         }
-        this.emit('task.progress.check', task, {
+        this.emit(TaskDomainEvent.PROGRESS_CHECK, task, {
           persist: false,
           message,
           delegated: task.status === 'delegated',
@@ -691,10 +692,12 @@ export class TaskManager {
           task.schedulerHeld = false
         }
         this.emit(
-          task.status === 'completed' ? 'task.completed' : 'task.failed',
+          task.status === 'completed'
+            ? TaskDomainEvent.COMPLETED
+            : TaskDomainEvent.FAILED,
           task,
         )
-        this.emit('task.notification.pending', task)
+        this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         task.resolve?.(publicTask(task))
         this.prune()
         this.drain()
@@ -717,7 +720,7 @@ export class TaskManager {
     }
     task.status = 'cancelling'
     task.authorization = null
-    this.emit('task.cancelling', task)
+    this.emit(TaskDomainEvent.CANCELLING, task)
     task.cancelPromise = Promise.resolve()
       .then(async () => {
         if (task.canceler) {
@@ -758,8 +761,8 @@ export class TaskManager {
           this.scheduler.release(task)
           task.schedulerHeld = false
         }
-        this.emit('task.failed', task)
-        this.emit('task.notification.pending', task)
+        this.emit(TaskDomainEvent.FAILED, task)
+        this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         task.resolve?.(publicTask(task))
         this.prune()
         this.drain()
@@ -787,7 +790,7 @@ export class TaskManager {
       this.scheduler.release(task)
       task.schedulerHeld = false
     }
-    this.emit('task.cancelled', task)
+    this.emit(TaskDomainEvent.CANCELLED, task)
     task.resolve?.(publicTask(task))
     this.prune()
     this.drain()
@@ -881,7 +884,9 @@ export class TaskManager {
       task.notificationClaimedAt = null
       task.notificationDeliveredAt = Date.now()
       delivered += 1
-      this.emit('task.notification.delivered', task, { persist: false })
+      this.emit(TaskDomainEvent.NOTIFICATION_DELIVERED, task, {
+        persist: false,
+      })
     }
     if (delivered) this.persist()
     return delivered

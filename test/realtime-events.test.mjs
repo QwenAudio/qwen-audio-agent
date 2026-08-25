@@ -53,8 +53,20 @@ test('defines the shared sleep wake lifecycle', () => {
 })
 
 test('defines every task event consumed by Gateway clients', () => {
-  assert.equal(GatewayTaskEvent.ACCEPTED, 'task.accepted')
-  assert.equal(GATEWAY_SERVER_EVENT_TYPES.has('task.accepted'), true)
+  assert.deepEqual([
+    GatewayTaskEvent.SNAPSHOT,
+    GatewayTaskEvent.ACCEPTED,
+    GatewayTaskEvent.NOTIFICATION_PENDING,
+    GatewayTaskEvent.NOTIFICATION_DELIVERED,
+  ], [
+    'task.snapshot',
+    'task.accepted',
+    'task.notification.pending',
+    'task.notification.delivered',
+  ])
+  for (const event of Object.values(GatewayTaskEvent)) {
+    assert.equal(GATEWAY_SERVER_EVENT_TYPES.has(event), true)
+  }
 })
 
 test('recognizes event direction without throwing on malformed input', () => {

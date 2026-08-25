@@ -37,6 +37,10 @@ import {
 import { ReminderScheduler } from '../task/reminder-scheduler.mjs'
 import { webDistributionPath } from '../core/install-paths.mjs'
 import { installOfflineNotifications } from './offline-notifications.mjs'
+import {
+  projectGatewayTaskEvent,
+  projectGatewayTaskSnapshot,
+} from '../transport/gateway-task-event-projector.mjs'
 
 export function createGatewayApplication({
   config = defaultConfig,
@@ -409,10 +413,11 @@ app.get('/api/tasks/:id/events', (req, res) => {
   res.setHeader('Connection', 'keep-alive')
   res.flushHeaders()
   const write = event => res.write(`data: ${JSON.stringify(event)}\n\n`)
-  write({ type: 'task.snapshot', task })
+  write(projectGatewayTaskSnapshot(task))
   const unsubscribe = taskManager.subscribe(event => {
     if (event.ownerId === req.identity.ownerId && event.task.id === req.params.id) {
-      write({ type: event.type, task: event.task })
+      const publicEvent = projectGatewayTaskEvent(event)
+      if (publicEvent) write(publicEvent)
     }
   })
   res.on('close', unsubscribe)

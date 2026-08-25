@@ -15,6 +15,35 @@ export const GatewayEventEnvelopeSchema = z.object({
   type: z.string().min(1),
 }).passthrough()
 
+export const GatewayTaskSchema = z.object({
+  id: z.string().min(1),
+  workId: z.string().min(1),
+  jobId: z.string().min(1),
+  workState: z.string().min(1),
+  status: z.string().min(1),
+  kind: z.string().min(1),
+  parentWorkId: z.string().nullable().optional(),
+  objective: z.string(),
+  ownerId: z.string().optional(),
+  sessionId: z.string().optional(),
+  turnId: z.string().nullable().optional(),
+  createdAt: z.number(),
+  startedAt: z.number().nullable().optional(),
+  completedAt: z.number().nullable().optional(),
+  elapsedMs: z.number(),
+  result: z.string().nullable().optional(),
+  error: z.string().nullable().optional(),
+  resultMetadata: z.unknown().optional(),
+  activity: z.array(z.unknown()).optional(),
+  delegation: z.unknown().optional(),
+  authorization: z.unknown().optional(),
+  notificationStatus: z.string().optional(),
+  notificationDeliveredAt: z.number().nullable().optional(),
+  schedule: z.unknown().optional(),
+  timeoutMs: z.number().nullable().optional(),
+  progressCheckMs: z.number().nullable().optional(),
+})
+
 export const GatewayClientEventTypeSchema = z.enum(GATEWAY_CLIENT_EVENT_NAMES)
 export const GatewayServerEventTypeSchema = z.enum(GATEWAY_SERVER_EVENT_NAMES)
 export const GatewayTaskEventTypeSchema = z.enum(GATEWAY_TASK_EVENT_NAMES)
@@ -27,12 +56,21 @@ export const GatewayClientMessageSchema = GatewayEventEnvelopeSchema.extend({
   type: GatewayClientEventTypeSchema,
 })
 
-export const GatewayServerMessageSchema = GatewayEventEnvelopeSchema.extend({
-  type: z.union([
-    GatewayServerEventTypeSchema,
-    GatewayTaskEventTypeSchema,
-  ]),
+export const GatewayVoiceMessageSchema = GatewayEventEnvelopeSchema.extend({
+  type: GatewayServerEventTypeSchema,
 })
+
+export const GatewayTaskEventMessageSchema = GatewayEventEnvelopeSchema.extend({
+  type: GatewayTaskEventTypeSchema,
+  task: GatewayTaskSchema,
+  permission: z.record(z.string(), z.unknown()).optional(),
+  message: z.string().optional(),
+})
+
+export const GatewayServerMessageSchema = z.union([
+  GatewayVoiceMessageSchema,
+  GatewayTaskEventMessageSchema,
+])
 
 export function parseGatewayClientMessage(value) {
   return GatewayClientMessageSchema.parse(value)

@@ -152,6 +152,9 @@ submitted → working → completed
 ```
 
 ACP Session、协调 Prompt、协调 MCP 和原生委托全部属于 ACP Adapter 内部。
+每个 Adapter 必须实现完整方法面，并在组合边界接受校验。可选能力由 `describe()` 声明，
+不支持时必须明确拒绝，不能依赖“缺少某个函数”来推断。`submit`、`status`、`cancel` 与
+`respondAuthorization` 只操作 Gateway Work ID，后台私有 Session 与任务 ID 不越过端口。
 
 ### 4.5 Artifact 与 Presentation
 
@@ -250,7 +253,7 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
 
 ### R4：Backend Runtime
 
-- [ ] 定义并校验 BackendPort。
+- [x] 定义并校验 BackendPort。
 - [ ] 将 AgentClient 收敛为 Single Backend Runtime。
 - [ ] 让 ACP Adapter 实现 BackendPort。
 - [ ] 将 Coordinator 和 Session 工具下沉到 ACP Adapter。

@@ -24,8 +24,8 @@ import { recordTaskResult } from '../conversation/task-result-projector.mjs'
 import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
 import { ToolCallHandler } from './tools/tool-call-handler.mjs'
 import { TurnTranscripts } from './tools/turn-transcripts.mjs'
+import { RealtimeInputRuntime } from './realtime-input-runtime.mjs'
 import { RealtimeTurnState } from './realtime-turn-state.mjs'
-import { streamingInputTranscript } from './input-transcript.mjs'
 import {
   ensureResponseContext,
   mergeResponseContext,
@@ -47,13 +47,6 @@ import {
   isResponseActivityEvent,
   realtimeResponseId,
 } from './response-lifecycle.mjs'
-import {
-  displayInputText,
-  inputFileParts,
-  inputText,
-  normalizeInputParts,
-  withAttachmentAnchors,
-} from '../../../shared/input-parts.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
@@ -541,6 +534,25 @@ export function attachRealtimeGateway(server, {
       responseStartWatchdog.unref?.()
     }
 
+    const inputs = new RealtimeInputRuntime({
+      ownerId,
+      sessionId,
+      turns,
+      transcripts,
+      inputAssets,
+      conversationSync,
+      announcementWindow,
+      announcements,
+      send: event => send(ws, event),
+      getFrontend: () => frontend,
+      ensureFrontend: () => ensureFrontend(),
+      clearResponseCandidate,
+      expectResponseFor,
+      shouldEnsurePermissionResponse: context => responseTurnCandidate === context,
+      ensurePermissionResponseFor,
+      reportFrontendError,
+    })
+
     const queueNotification = task => {
       if (task.status === 'completed') {
         announcements.completed(task)
@@ -938,146 +950,8 @@ export function attachRealtimeGateway(server, {
     const handleEvent = event => {
       if (isSleepActivityEvent(event)) sleepController?.recordActivity()
       if (isResponseActivityEvent(event)) beginResponseLifecycle(event)
-      if (event.type === 'input_audio_buffer.speech_started') {
-        // A discrete text/image submission owns the turn until its response
-        // starts. Provider-side VAD events caused by audio already in flight
-        // belong to the superseded voice turn and must not take ownership back.
-        const started = turns.beginVoice(event.item_id)
-        if (!started.accepted) return
-        clearResponseCandidate()
-        announcementWindow.beginTurn(started.context.turnId)
-        announcements.dismissActive()
-        send(ws, {
-          type: 'playback.clear',
-          reason: 'user_interruption',
-        })
-        send(ws, { type: 'turn.started', turnId: started.context.turnId })
-        send(ws, {
-          type: 'voice.state',
-          state: 'listening',
-          turnId: started.context.turnId,
-        })
-        frontend?.cancel()
-      } else if (event.type === 'input_audio_buffer.speech_stopped') {
-        const stoppedTurn = turns.resolveInput(event.item_id)
-        if (
-          turns.isInputInvalid(event.item_id)
-          || turns.isStale(stoppedTurn)
-        ) {
-          turns.invalidateInput(event.item_id)
-          return
-        }
-        turns.endSpeech()
-        announcementWindow.endSpeech()
-        if (event.reason === 'turn_invalid') {
-          if (event.item_id) {
-            turns.invalidateInput(event.item_id)
-          }
-          send(ws, {
-            type: 'transcript.discard',
-            role: 'user',
-            turnId: stoppedTurn.turnId,
-            reason: 'turn_invalid',
-          })
-          send(ws, {
-            type: 'voice.state',
-            state: 'idle',
-            turnId: stoppedTurn.turnId,
-            origin: 'model',
-          })
-        } else {
-          expectResponseFor(stoppedTurn)
-          send(ws, {
-            type: 'voice.state',
-            state: 'processing',
-            turnId: stoppedTurn.turnId,
-            origin: 'model',
-          })
-        }
-      } else if (event.type === 'input_audio_buffer.committed') {
-        const committedInputTurn = turns.resolveInput(event.item_id)
-        if (
-          turns.isInputInvalid(event.item_id)
-          || turns.isStale(committedInputTurn)
-        ) {
-          turns.invalidateInput(event.item_id)
-          return
-        }
-        turns.endSpeech()
-        announcementWindow.endSpeech()
-        if (!turns.isInputInvalid(event.item_id)) {
-          send(ws, {
-            type: 'voice.state',
-            state: 'processing',
-            turnId: committedInputTurn.turnId,
-            origin: 'model',
-          })
-        }
-      } else if (event.type === 'conversation.item.ambient_audio_transcription.completed') {
-        turns.completeInput(event.item_id)
-      } else if (
-        event.type === 'conversation.item.input_audio_transcription.delta'
-        || event.type === 'conversation.item.input_audio_transcription.text'
-      ) {
-        if (turns.isInputInvalid(event.item_id)) return
-        const transcriptTurn = turns.resolveInput(event.item_id)
-        if (turns.isStale(transcriptTurn)) return
-        const transcript = streamingInputTranscript(event)
-        if (!transcriptTurn?.turnId || !transcript) return
-        send(ws, {
-          type: 'transcript.delta',
-          role: 'user',
-          content: transcript,
-          turnId: transcriptTurn.turnId,
-          replace: true,
-        })
-      } else if (event.type === 'conversation.item.input_audio_transcription.completed') {
-        const completedInput = turns.completeInput(event.item_id)
-        const transcriptTurn = completedInput.context
-        if (
-          completedInput.invalid
-          || turns.isStale(transcriptTurn)
-        ) return
-        const transcript = String(event.transcript || '').trim()
-        if (!transcript) {
-          send(ws, {
-            type: 'transcript.discard',
-            role: 'user',
-            turnId: transcriptTurn.turnId,
-          })
-          return
-        }
-        turns.commit(transcriptTurn)
-        transcripts.record(transcriptTurn.turnId, transcript)
-        if (responseTurnCandidate === transcriptTurn) {
-          ensurePermissionResponseFor(transcriptTurn)
-        }
-        conversationSync.record({
-          ownerId,
-          sessionId,
-          id: `voice:user:${transcriptTurn.turnId}`,
-          role: 'user',
-          content: transcript,
-          source: 'voice-user',
-          turnId: transcriptTurn.turnId,
-          inputs: inputAssets.metadataForParts(
-            transcripts.parts(transcriptTurn.turnId),
-          ),
-        })
-        send(ws, {
-          type: 'transcript.final',
-          role: 'user',
-          content: transcript,
-          turnId: transcriptTurn.turnId,
-        })
-      } else if (event.type === 'conversation.item.input_audio_transcription.failed') {
-        const failedInput = turns.completeInput(event.item_id)
-        send(ws, {
-          type: 'transcript.discard',
-          role: 'user',
-          turnId: failedInput.context?.turnId,
-        })
-      } else if (event.type === 'response.created') {
+      if (inputs.handleProviderEvent(event)) return
+      if (event.type === 'response.created') {
         // Lifecycle setup is handled before the event switch so providers that
         // emit output before (or instead of) response.created follow this path.
       } else if (event.type === 'response.function_call_arguments.done') {
@@ -1730,87 +1604,6 @@ export function attachRealtimeGateway(server, {
       attemptWakeConnect(0)
     }
 
-    const submitInputMessage = event => {
-      let parts
-      try {
-        parts = withAttachmentAnchors(normalizeInputParts(
-          event.parts,
-          { fallbackText: event.text },
-        ))
-      } catch (error) {
-        send(ws, { type: GatewayServerEvent.ERROR, message: error.message })
-        return
-      }
-      const inputTurnId = `text_${randomUUID().replaceAll('-', '')}`
-      parts = inputAssets.registerParts({
-        ownerId,
-        sessionId,
-        turnId: inputTurnId,
-        parts,
-      })
-      const text = inputText(parts)
-      const display = displayInputText(parts)
-      const {
-        context: inputContext,
-        supersededVoiceTurn,
-      } = turns.beginManual(inputTurnId)
-      clearResponseCandidate()
-      // Text and attachment submissions are first-class user turns. They must
-      // close any result announcement still occupying the previous turn and
-      // block a newly completed task from speaking over the response now being
-      // generated, just like input_audio_buffer.speech_started does for voice.
-      announcementWindow.beginTurn(inputTurnId)
-      announcementWindow.endSpeech()
-      announcements.dismissActive()
-      send(ws, {
-        type: GatewayServerEvent.PLAYBACK_CLEAR,
-        reason: 'user_interruption',
-      })
-      if (supersededVoiceTurn?.turnId) {
-        send(ws, {
-          type: GatewayServerEvent.TRANSCRIPT_DISCARD,
-          role: 'user',
-          turnId: supersededVoiceTurn.turnId,
-          reason: 'superseded_by_manual_input',
-        })
-      }
-      send(ws, { type: GatewayServerEvent.TURN_STARTED, turnId: inputTurnId })
-      send(ws, {
-        type: GatewayServerEvent.VOICE_STATE,
-        state: 'processing',
-        turnId: inputTurnId,
-        origin: 'model',
-      })
-      frontend?.cancel()
-      transcripts.record(inputTurnId, text || display)
-      transcripts.recordParts(inputTurnId, inputFileParts(parts))
-      conversationSync.record({
-        ownerId,
-        sessionId,
-        id: `voice:user:${inputTurnId}`,
-        role: 'user',
-        content: display,
-        source: 'text-user',
-        turnId: inputTurnId,
-        inputs: inputAssets.metadataForParts(parts),
-      })
-      send(ws, {
-        type: GatewayServerEvent.TRANSCRIPT_FINAL,
-        role: 'user',
-        content: display,
-        turnId: inputTurnId,
-      })
-      ensureFrontend()
-        .then(() => frontend.sendUserInput(
-          parts,
-          inputContext,
-        ))
-        .catch(error => {
-          turns.failManualInput(inputContext)
-          reportFrontendError(error)
-        })
-    }
-
     const acceptSleepingAudio = audio => {
       try {
         const sampleRate = realtimeProviderRegistry.resolve(sessionProvider)
@@ -2034,7 +1827,7 @@ export function attachRealtimeGateway(server, {
           return
         }
         sleepController.recordActivity()
-        submitInputMessage(event)
+        inputs.submit(event)
       } else if (event.type === GatewayClientEvent.INTERRUPT) {
         sleepController.recordActivity()
         turns.advanceBoundary()

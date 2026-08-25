@@ -3,6 +3,7 @@ import { config } from '../core/config.mjs'
 import { TaskScheduler } from './task-scheduler.mjs'
 import { TaskStore } from './task-store.mjs'
 import { TaskDomainEvent } from './task-events.mjs'
+import { TaskNotificationQueue } from './task-notification-queue.mjs'
 import { logger } from '../core/logger.mjs'
 
 const ACTIVE = new Set([
@@ -136,6 +137,17 @@ export class TaskManager {
     this.logger = taskLogger
     this.tasks = new Map()
     this.listeners = new Set()
+    this.notifications = new TaskNotificationQueue({
+      tasks: this.tasks,
+      snapshot: publicTask,
+      claimTtlMs: () => this.notificationClaimTtlMs,
+      onChanged: () => this.persist(),
+      onDelivered: task => this.emit(
+        TaskDomainEvent.NOTIFICATION_DELIVERED,
+        task,
+        { persist: false },
+      ),
+    })
     this.recoveryCandidates = []
     this.scheduledTaskRunner = null
     this.nextJobNumber = 1
@@ -844,109 +856,29 @@ export class TaskManager {
     claimantId,
     taskIds,
   }) {
-    this.reclaimExpiredNotificationClaims()
-    const requested = taskIds?.length ? new Set(taskIds.map(String)) : null
-    const claimed = []
-    for (const task of this.tasks.values()) {
-      if (
-        task.ownerId !== String(ownerId)
-        || task.notificationStatus !== 'pending'
-        || (
-          sessionId !== undefined
-          && !includeOtherSessions
-          && task.sessionId !== String(sessionId)
-        )
-        || (requested && !requested.has(task.id))
-      ) continue
-      task.notificationStatus = 'delivering'
-      task.notificationClaimantId = claimantId
-      task.notificationClaimedAt = Date.now()
-      claimed.push(publicTask(task))
-    }
-    if (claimed.length) this.persist()
-    return claimed.sort((a, b) => a.createdAt - b.createdAt)
+    return this.notifications.claim({
+      ownerId,
+      sessionId,
+      includeOtherSessions,
+      claimantId,
+      taskIds,
+    })
   }
 
   markNotificationsDelivered(taskIds, { claimantId } = {}) {
-    let delivered = 0
-    for (const id of taskIds || []) {
-      const task = this.tasks.get(String(id))
-      if (
-        !task
-        || task.notificationStatus !== 'delivering'
-        || (
-          claimantId !== undefined
-          && task.notificationClaimantId !== claimantId
-        )
-      ) continue
-      task.notificationStatus = 'delivered'
-      task.notificationClaimantId = null
-      task.notificationClaimedAt = null
-      task.notificationDeliveredAt = Date.now()
-      delivered += 1
-      this.emit(TaskDomainEvent.NOTIFICATION_DELIVERED, task, {
-        persist: false,
-      })
-    }
-    if (delivered) this.persist()
-    return delivered
+    return this.notifications.markDelivered(taskIds, { claimantId })
   }
 
   renewNotificationClaims(taskIds, { claimantId } = {}) {
-    let renewed = 0
-    const now = Date.now()
-    for (const id of taskIds || []) {
-      const task = this.tasks.get(String(id))
-      if (
-        !task
-        || task.notificationStatus !== 'delivering'
-        || (
-          claimantId !== undefined
-          && task.notificationClaimantId !== claimantId
-        )
-      ) continue
-      task.notificationClaimedAt = now
-      renewed += 1
-    }
-    return renewed
+    return this.notifications.renew(taskIds, { claimantId })
   }
 
   releaseNotificationClaims(taskIds, { claimantId } = {}) {
-    let released = 0
-    for (const id of taskIds || []) {
-      const task = this.tasks.get(String(id))
-      if (
-        !task
-        || task.notificationStatus !== 'delivering'
-        || (
-          claimantId !== undefined
-          && task.notificationClaimantId !== claimantId
-        )
-      ) continue
-      task.notificationStatus = 'pending'
-      task.notificationClaimantId = null
-      task.notificationClaimedAt = null
-      released += 1
-    }
-    if (released) this.persist()
-    return released
+    return this.notifications.release(taskIds, { claimantId })
   }
 
   reclaimExpiredNotificationClaims(now = Date.now(), { persist = true } = {}) {
-    let reclaimed = 0
-    for (const task of this.tasks.values()) {
-      if (
-        task.notificationStatus !== 'delivering'
-        || !task.notificationClaimedAt
-        || now - task.notificationClaimedAt < this.notificationClaimTtlMs
-      ) continue
-      task.notificationStatus = 'pending'
-      task.notificationClaimantId = null
-      task.notificationClaimedAt = null
-      reclaimed += 1
-    }
-    if (reclaimed && persist) this.persist()
-    return reclaimed
+    return this.notifications.reclaimExpired(now, { persist })
   }
 
   prune() {

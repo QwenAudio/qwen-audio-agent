@@ -138,6 +138,8 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 具有 OpenAPI 3.x 文档的 REST 服务，通过
 `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` 复用同一套工具和授权边界。详见
 [前台 OpenAPI Tool Adapter](reference/frontend-openapi.zh.md)。
+需要把助手画像、MCP 和 OpenAPI 工具配置作为一套本地前台组合时，可以只设置
+`QWEN_AUDIO_FRONTEND_PROFILE`。详见[轻量 Frontend Profile](reference/frontend-profile.zh.md)。
 WebUI 和终端客户端会在最终回答下方展示规范化的来源链接；其他客户端可通过
 Gateway 的 `messages.citations` 能力位消费同一字段。
 
@@ -755,6 +757,7 @@ Gateway 时，或后续 CLI 运行时使用了冲突的已配置模型时，会�
 | `QWEN_AUDIO_WEB_SEARCH_MCP_URL` | 空；`mcp` Provider 使用的自定义 Streamable HTTP 地址 |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | 显式选择 `bailian` 时复用 `DASHSCOPE_API_KEY`；自定义地址默认空 |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian` 为 `bailian_web_search`，其他地址为 `web_search` |
+| `QWEN_AUDIO_FRONTEND_PROFILE` | 空；轻量 Frontend Profile JSON 文件路径 |
 | `QWEN_AUDIO_FRONTEND_MCP_CONFIG` | 空；前台 MCP 版本化 JSON 文件的绝对路径 |
 | `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | 空；前台 OpenAPI 版本化 JSON 配置文件的绝对路径 |
 | `QWEN_AUDIO_AGENT_KNOWLEDGE_DIR` | 共享用户数据目录下的 `knowledge` |

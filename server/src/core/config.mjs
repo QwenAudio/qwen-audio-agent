@@ -14,6 +14,10 @@ import {
 import {
   resolveRealtimeFrontendConfiguration,
 } from '../../../shared/realtime-provider-catalog.mjs'
+import {
+  loadFrontendProfile,
+  resolveFrontendProfileConfiguration,
+} from './frontend-profile.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const sourceRoot = resolve(here, '../../..')
@@ -193,6 +197,15 @@ export function resolveOpenCodeCoordinatorAgent(env = process.env) {
 
 const realtimeFrontend = resolveRealtimeFrontendConfiguration(process.env)
 const webSearch = resolveWebSearchConfiguration(process.env)
+const loadedFrontendProfile = loadFrontendProfile({
+  filePath: process.env.QWEN_AUDIO_FRONTEND_PROFILE,
+})
+const frontendProfileConfiguration = resolveFrontendProfileConfiguration({
+  profile: loadedFrontendProfile,
+  env: process.env,
+  defaultAssistantProfilePath: runtimeEnvironment.assistantProfilePath,
+  baseDirectory: root,
+})
 
 export const config = {
   root,
@@ -226,12 +239,9 @@ export const config = {
   webSearchMcpUrl: webSearch.mcpUrl,
   webSearchMcpToken: webSearch.mcpToken,
   webSearchMcpTool: webSearch.mcpTool,
-  frontendMcpConfigPath: String(
-    process.env.QWEN_AUDIO_FRONTEND_MCP_CONFIG || '',
-  ).trim(),
-  frontendOpenApiConfigPath: String(
-    process.env.QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG || '',
-  ).trim(),
+  frontendProfile: frontendProfileConfiguration.frontendProfile,
+  frontendMcpConfigPath: frontendProfileConfiguration.frontendMcpConfigPath,
+  frontendOpenApiConfigPath: frontendProfileConfiguration.frontendOpenApiConfigPath,
   allowedOrigins: String(process.env.QWEN_AUDIO_AGENT_ALLOWED_ORIGINS || '')
     .split(',')
     .map(value => value.trim())
@@ -406,9 +416,7 @@ export const config = {
   frontendPromptDir: process.env.QWEN_AUDIO_AGENT_FRONTEND_PROMPT_DIR
     ? resolve(root, process.env.QWEN_AUDIO_AGENT_FRONTEND_PROMPT_DIR)
     : resolve(root, 'config/frontend-agent'),
-  assistantProfilePath: process.env.QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH
-    ? resolve(root, process.env.QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH)
-    : runtimeEnvironment.assistantProfilePath,
+  assistantProfilePath: frontendProfileConfiguration.assistantProfilePath,
   frontendMemoryPath: process.env.QWEN_AUDIO_AGENT_MEMORY_PATH
     ? resolve(root, process.env.QWEN_AUDIO_AGENT_MEMORY_PATH)
     : process.env.QWEN_AUDIO_AGENT_FRONTEND_MEMORY_PATH

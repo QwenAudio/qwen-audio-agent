@@ -249,7 +249,11 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
     executor.
   - [x] Add generic approval before enabling mutating tools.
 - [x] OpenAPI tool adapter.
-- [ ] Lightweight frontend profiles; do not invent a public skill standard.
+- [x] Lightweight frontend profiles; do not invent a public skill standard.
+  - [x] Compose assistant persona, MCP, and OpenAPI configuration references
+    through one versioned local manifest.
+  - [x] Keep secrets, user memory, Realtime Providers, and backend Agents
+    outside the profile boundary.
 - [ ] Backend adapter SDK and examples.
 - [ ] Optional A2A backend adapter.
 

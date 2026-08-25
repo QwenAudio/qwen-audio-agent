@@ -52,6 +52,11 @@ test('constructs an injectable Gateway without binding a port on import', async 
   const realtimeProviderRegistry = createRealtimeProviderRegistry({
     providers: [privateProvider],
   })
+  const frontendProfile = {
+    configured: true,
+    name: 'test-profile',
+    description: 'Test frontend composition',
+  }
   let mcpClosed = false
   let openApiClosed = false
   const frontendMcp = {
@@ -86,6 +91,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
       port: 0,
       webSearchProvider: 'none',
       webSearchMcpUrl: '',
+      frontendProfile,
     },
     parentPort: null,
     autoStart: false,
@@ -119,6 +125,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.deepEqual(health.frontendRetrieval.capabilities, ['url-fetch'])
   assert.equal(health.frontendRetrieval.searchProvider, null)
   assert.deepEqual(health.frontendKnowledge.capabilities, ['knowledge'])
+  assert.deepEqual(health.frontendProfile, frontendProfile)
   assert.deepEqual(health.frontendMcp, {
     ok: true,
     initialized: true,

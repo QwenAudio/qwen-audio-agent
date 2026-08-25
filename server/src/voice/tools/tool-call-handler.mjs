@@ -9,6 +9,7 @@ import {
   NOTES_TOOL_NAME,
   MEMORY_TOOL_NAME,
   RESPOND_AGENT_PERMISSION_TOOL_NAME,
+  frontendToolRegistry,
 } from '../frontend-tools.mjs'
 import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
 import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
@@ -127,6 +128,33 @@ export class ToolCallHandler {
     this.requestClientState = requestClientState
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
+    this.toolExecutor = frontendToolRegistry.createExecutor({
+      [SPAWN_THINKING_TOOL_NAME]: context => (
+        this.executeSpawnThinkingToolCall(context)
+      ),
+      [SCHEDULE_REMINDER_TOOL_NAME]: ({ callId, turnId, args }) => (
+        this.handleScheduleReminder(callId, turnId, args)
+      ),
+      [CANCEL_AGENT_TASK_TOOL_NAME]: context => (
+        this.executeCancelToolCall(context)
+      ),
+      [GET_AGENT_TASK_STATUS_TOOL_NAME]: context => (
+        this.executeStatusToolCall(context)
+      ),
+      [GET_CURRENT_TIME_TOOL_NAME]: ({ callId, turnId }) => (
+        this.getCurrentTime(callId, turnId)
+      ),
+      [MEMORY_TOOL_NAME]: context => this.executeMemoryToolCall(context),
+      [NOTES_TOOL_NAME]: ({ callId, turnId, args }) => (
+        this.notes(callId, turnId, args)
+      ),
+      [RESPOND_AGENT_PERMISSION_TOOL_NAME]: ({ callId, turnId, args }) => (
+        this.respondAgentPermission(callId, turnId, args)
+      ),
+      [ENTER_SLEEP_TOOL_NAME]: ({ callId, turnId }) => (
+        this.enterSleep(callId, turnId)
+      ),
+    })
     this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
     this.spawnResponseByTurn = new Map()
@@ -415,166 +443,135 @@ export class ToolCallHandler {
     })
   }
 
-  async handle(event, callContext = {}) {
-    const callId = event.call_id || event.item?.call_id || ''
-    const toolName = event.name || event.item?.name || ''
-    if (!callId) throw new Error('Realtime 工具调用缺少 call_id')
-    if (this.processedCalls.has(callId)) return
-    this.processedCalls.add(callId)
-    if (this.processedCalls.size > 500) {
-      this.processedCalls.delete(this.processedCalls.values().next().value)
-    }
-
-    const turnId = callContext.turnId
-      || event.__voiceContext?.turnId
-      || this.getTurnId()
-    const generation = Number.isInteger(callContext.turnGeneration)
-      ? callContext.turnGeneration
-      : Number.isInteger(event.__voiceContext?.turnGeneration)
-        ? event.__voiceContext.turnGeneration
-        : this.getTurnGeneration()
-    let args = {}
+  async executeMemoryToolCall({
+    callId,
+    turnId,
+    generation,
+    args,
+    event,
+    callContext,
+  }) {
+    const responseId = callContext.responseId || event.response_id || ''
+    const deferred = this.beginDeferredToolResponse(responseId, {
+      turnId,
+      turnGeneration: generation,
+    })
     try {
-      args = JSON.parse(event.arguments || '{}')
-    } catch {
-      // Invalid arguments are handled as missing fields below.
+      await this.memory(callId, turnId, args, deferred
+        ? { createResponse: false }
+        : undefined)
+    } catch (error) {
+      await this.completeDeferredToolResponse(deferred, { failed: true })
+      throw error
     }
+    await this.completeDeferredToolResponse(deferred)
+  }
 
-    if (this.isStale(turnId, generation)) {
-      await this.closeStaleCall(callId, turnId)
+  async executeCancelToolCall({
+    callId,
+    turnId,
+    generation,
+    args,
+    event,
+    callContext,
+  }) {
+    const responseId = String(
+      callContext.responseId || event.response_id || '',
+    ).trim()
+    const firstCancelResponse = turnId
+      ? this.cancelResponseByTurn.get(turnId)
+      : null
+    if (responseId && firstCancelResponse
+      && firstCancelResponse !== responseId) {
+      this.markTerminalToolResponse(responseId)
+      await this.sendOutput(callId, {
+        status: 'duplicate',
+        message: '本轮取消操作已经处理，不再重复执行。',
+      }, turnId, null, { createResponse: false })
       return
     }
-
-    if (toolName === GET_CURRENT_TIME_TOOL_NAME) {
-      await this.getCurrentTime(callId, turnId)
-      return
-    }
-    if (toolName === MEMORY_TOOL_NAME) {
-      const responseId = callContext.responseId || event.response_id || ''
-      const deferred = this.beginDeferredToolResponse(responseId, {
-        turnId,
-        turnGeneration: generation,
-      })
-      try {
-        await this.memory(callId, turnId, args, deferred
-          ? { createResponse: false }
-          : undefined)
-      } catch (error) {
-        await this.completeDeferredToolResponse(deferred, { failed: true })
-        throw error
-      }
-      await this.completeDeferredToolResponse(deferred)
-      return
-    }
-    if (toolName === NOTES_TOOL_NAME) {
-      await this.notes(callId, turnId, args)
-      return
-    }
-    if (toolName === SCHEDULE_REMINDER_TOOL_NAME) {
-      await this.handleScheduleReminder(callId, turnId, args)
-      return
-    }
-    if (toolName === CANCEL_AGENT_TASK_TOOL_NAME) {
-      const responseId = String(
-        callContext.responseId || event.response_id || '',
-      ).trim()
-      const firstCancelResponse = turnId
-        ? this.cancelResponseByTurn.get(turnId)
-        : null
-      if (responseId && firstCancelResponse
-        && firstCancelResponse !== responseId) {
-        this.markTerminalToolResponse(responseId)
-        await this.sendOutput(callId, {
-          status: 'duplicate',
-          message: '本轮取消操作已经处理，不再重复执行。',
-        }, turnId, null, { createResponse: false })
-        return
-      }
-      if (responseId && turnId && !firstCancelResponse) {
-        this.cancelResponseByTurn.set(turnId, responseId)
-        if (this.cancelResponseByTurn.size > 100) {
-          this.cancelResponseByTurn.delete(
-            this.cancelResponseByTurn.keys().next().value,
-          )
-        }
-      }
-      const deferred = this.beginDeferredToolResponse(responseId, {
-        turnId,
-        turnGeneration: generation,
-      }, { instructions: CANCEL_RECEIPT_INSTRUCTIONS })
-      let outputFailed = false
-      try {
-        await this.cancelAgentTask(
-          callId,
-          turnId,
-          args,
-          deferred
-            ? { createResponse: false }
-            : { response: { instructions: CANCEL_RECEIPT_INSTRUCTIONS } },
+    if (responseId && turnId && !firstCancelResponse) {
+      this.cancelResponseByTurn.set(turnId, responseId)
+      if (this.cancelResponseByTurn.size > 100) {
+        this.cancelResponseByTurn.delete(
+          this.cancelResponseByTurn.keys().next().value,
         )
-      } catch (error) {
-        outputFailed = true
-        throw error
-      } finally {
-        await this.completeDeferredToolResponse(deferred, {
-          failed: outputFailed,
-        })
       }
-      return
     }
-    if (toolName === GET_AGENT_TASK_STATUS_TOOL_NAME) {
-      const responseId = String(
-        callContext.responseId || event.response_id || '',
-      ).trim()
-      const spawnResponse = turnId
-        ? this.spawnResponseByTurn.get(turnId)
-        : null
-      const firstStatusResponse = turnId
-        ? this.statusResponseByTurn.get(turnId)
-        : null
-      const followsSpawnReceipt = Boolean(
-        responseId && spawnResponse && responseId !== spawnResponse,
-      )
-      const repeatsStatusQuery = Boolean(
-        responseId && firstStatusResponse && responseId !== firstStatusResponse,
-      )
-      if (followsSpawnReceipt || repeatsStatusQuery) {
-        this.markTerminalToolResponse(responseId)
-        await this.sendOutput(callId, {
-          status: 'duplicate',
-          message: '本轮不需要再次查询工作状态。',
-        }, turnId, null, { createResponse: false })
-        return
-      }
-      if (responseId && turnId && !firstStatusResponse) {
-        this.statusResponseByTurn.set(turnId, responseId)
-        if (this.statusResponseByTurn.size > 100) {
-          this.statusResponseByTurn.delete(
-            this.statusResponseByTurn.keys().next().value,
-          )
-        }
-      }
-      this.onAgentActivity({ activity: 'query', turnId })
-      await this.getAgentTaskStatus(callId, turnId, args)
-      return
-    }
-    if (toolName === RESPOND_AGENT_PERMISSION_TOOL_NAME) {
-      await this.respondAgentPermission(callId, turnId, args)
-      return
-    }
-    if (toolName === ENTER_SLEEP_TOOL_NAME) {
-      await this.enterSleep(callId, turnId)
-      return
-    }
-    if (toolName !== SPAWN_THINKING_TOOL_NAME) {
-      await this.sendOutput(
+    const deferred = this.beginDeferredToolResponse(responseId, {
+      turnId,
+      turnGeneration: generation,
+    }, { instructions: CANCEL_RECEIPT_INSTRUCTIONS })
+    let outputFailed = false
+    try {
+      await this.cancelAgentTask(
         callId,
-        failure('unsupported_tool', '当前无法执行这个操作。'),
         turnId,
+        args,
+        deferred
+          ? { createResponse: false }
+          : { response: { instructions: CANCEL_RECEIPT_INSTRUCTIONS } },
       )
+    } catch (error) {
+      outputFailed = true
+      throw error
+    } finally {
+      await this.completeDeferredToolResponse(deferred, {
+        failed: outputFailed,
+      })
+    }
+  }
+
+  async executeStatusToolCall({
+    callId,
+    turnId,
+    args,
+    event,
+    callContext,
+  }) {
+    const responseId = String(
+      callContext.responseId || event.response_id || '',
+    ).trim()
+    const spawnResponse = turnId
+      ? this.spawnResponseByTurn.get(turnId)
+      : null
+    const firstStatusResponse = turnId
+      ? this.statusResponseByTurn.get(turnId)
+      : null
+    const followsSpawnReceipt = Boolean(
+      responseId && spawnResponse && responseId !== spawnResponse,
+    )
+    const repeatsStatusQuery = Boolean(
+      responseId && firstStatusResponse && responseId !== firstStatusResponse,
+    )
+    if (followsSpawnReceipt || repeatsStatusQuery) {
+      this.markTerminalToolResponse(responseId)
+      await this.sendOutput(callId, {
+        status: 'duplicate',
+        message: '本轮不需要再次查询工作状态。',
+      }, turnId, null, { createResponse: false })
       return
     }
+    if (responseId && turnId && !firstStatusResponse) {
+      this.statusResponseByTurn.set(turnId, responseId)
+      if (this.statusResponseByTurn.size > 100) {
+        this.statusResponseByTurn.delete(
+          this.statusResponseByTurn.keys().next().value,
+        )
+      }
+    }
+    this.onAgentActivity({ activity: 'query', turnId })
+    await this.getAgentTaskStatus(callId, turnId, args)
+  }
 
+  async executeSpawnThinkingToolCall({
+    callId,
+    turnId,
+    generation,
+    args,
+    event,
+    callContext,
+  }) {
     const pendingPermissionTask = this.taskManager.list({
       ownerId: this.ownerId,
       sessionId: this.sessionId,
@@ -802,6 +799,54 @@ export class ToolCallHandler {
         failed: outputFailed,
       })
     }
+  }
+
+  async handle(event, callContext = {}) {
+    const callId = event.call_id || event.item?.call_id || ''
+    const toolName = event.name || event.item?.name || ''
+    if (!callId) throw new Error('Realtime 工具调用缺少 call_id')
+    if (this.processedCalls.has(callId)) return
+    this.processedCalls.add(callId)
+    if (this.processedCalls.size > 500) {
+      this.processedCalls.delete(this.processedCalls.values().next().value)
+    }
+
+    const turnId = callContext.turnId
+      || event.__voiceContext?.turnId
+      || this.getTurnId()
+    const generation = Number.isInteger(callContext.turnGeneration)
+      ? callContext.turnGeneration
+      : Number.isInteger(event.__voiceContext?.turnGeneration)
+        ? event.__voiceContext.turnGeneration
+        : this.getTurnGeneration()
+    let args = {}
+    try {
+      args = JSON.parse(event.arguments || '{}')
+    } catch {
+      // Invalid arguments are handled as missing fields below.
+    }
+
+    if (this.isStale(turnId, generation)) {
+      await this.closeStaleCall(callId, turnId)
+      return
+    }
+
+    const execution = await this.toolExecutor.execute(toolName, {
+      callId,
+      turnId,
+      generation,
+      args,
+      event,
+      callContext,
+    })
+    if (!execution.handled) {
+      await this.sendOutput(
+        callId,
+        failure('unsupported_tool', '当前无法执行这个操作。'),
+        turnId,
+      )
+    }
+    return
   }
 
   async enterSleep(callId, turnId) {

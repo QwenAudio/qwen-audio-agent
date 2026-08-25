@@ -96,6 +96,19 @@ test('rejects sleep when the client did not advertise that state', async () => {
   assert.equal(kit.outputs[0][1].error_code, 'unsupported_client_state')
 })
 
+test('fails closed for tools absent from the frontend registry', async () => {
+  const kit = harness()
+
+  await kit.handler.handle({
+    call_id: 'call-unknown',
+    name: 'unknown_tool',
+    arguments: '{}',
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(kit.outputs[0][1].error_code, 'unsupported_tool')
+  assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 0)
+})
+
 async function permissionHarness({
   answer,
   authorizationId = 'auth-one',

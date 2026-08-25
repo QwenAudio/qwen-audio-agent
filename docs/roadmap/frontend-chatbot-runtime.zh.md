@@ -296,7 +296,9 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
 - [x] 轻量 Frontend Profile；暂不自创公开 Skill 标准。
   - [x] 用版本化本地清单组合助手画像、MCP 与 OpenAPI 配置引用。
   - [x] 保持密钥、用户记忆、Realtime Provider 和后台 Agent 在 Profile 边界之外。
-- [ ] Backend Adapter SDK 与示例。
+- [x] Backend Adapter SDK 与示例。
+  - [x] 发布 BackendPort、应用宿主包装和共用 conformance suite。
+  - [x] 用非 ACP 内存 Adapter 验证无需修改前台与 Work Runtime。
 - [ ] 可选 A2A Backend Adapter。
 
 完成条件：外部扩展通过标准协议或公开 SDK 完成，不修改核心运行时。

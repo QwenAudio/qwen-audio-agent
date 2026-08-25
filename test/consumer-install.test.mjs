@@ -83,6 +83,17 @@ test('a consumer with only the declared dependencies can run the CLI and Gateway
   assert.equal(help.status, 0, `qwenaudio --help failed: ${help.stderr}`)
   assert.match(help.stdout, /qwenaudio/)
 
+  const sdk = spawnSync(process.execPath, [
+    '--input-type=module',
+    '--eval',
+    [
+      "import { BACKEND_ADAPTER_SDK_VERSION, defineBackendAdapter } from 'qwen-audio-agent/backend-adapter-sdk'",
+      "if (BACKEND_ADAPTER_SDK_VERSION !== '1.0.0') process.exit(2)",
+      "if (typeof defineBackendAdapter !== 'function') process.exit(3)",
+    ].join(';'),
+  ], { cwd: consumer, encoding: 'utf8' })
+  assert.equal(sdk.status, 0, `Backend Adapter SDK import failed: ${sdk.stderr}`)
+
   // 2. The setup gate: an unconfigured Gateway start must refuse with an
   //    actionable error instead of listening with a dead voice.
   const gateEnvironment = {

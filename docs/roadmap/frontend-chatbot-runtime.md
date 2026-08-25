@@ -254,7 +254,10 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
     through one versioned local manifest.
   - [x] Keep secrets, user memory, Realtime Providers, and backend Agents
     outside the profile boundary.
-- [ ] Backend adapter SDK and examples.
+- [x] Backend adapter SDK and examples.
+  - [x] Publish BackendPort, the application host wrapper, and the shared
+    conformance suite.
+  - [x] Prove the boundary with a non-ACP in-memory adapter.
 - [ ] Optional A2A backend adapter.
 
 ## 8. Target repository shape

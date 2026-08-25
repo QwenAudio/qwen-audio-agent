@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { assertBackendPort } from '../../src/backend/backend-port.mjs'
+import { assertBackendPort } from './backend-port.mjs'
 
 async function usingFixture(createFixture, options, operation) {
   const fixture = await createFixture(options)
@@ -37,9 +37,13 @@ function assertOutcome(outcome) {
  * createFixture({ hold }) returns:
  *   backend: a fresh BackendPort
  *   work: a valid Work value
+ *   nextWork: a second valid Work value
  *   started: optional Promise resolved once held work reaches execution
  */
-export async function verifyBackendAdapterConformance({ createFixture }) {
+export async function verifyBackendAdapterConformance({ createFixture } = {}) {
+  if (typeof createFixture !== 'function') {
+    throw new TypeError('Backend adapter conformance requires createFixture')
+  }
   await usingFixture(createFixture, { hold: false }, async ({ backend }) => {
     const description = backend.describe()
     assert.ok(description && typeof description === 'object')
@@ -52,6 +56,7 @@ export async function verifyBackendAdapterConformance({ createFixture }) {
     assert.equal(first?.ok, true)
     assert.equal(second?.ok, true)
     assert.equal((await backend.health())?.ok, true)
+    assert.ok(backend.status() && typeof backend.status() === 'object')
     assert.equal(backend.status('missing-work')?.state, 'not_found')
     await assert.rejects(backend.submit({}), /requires work id, owner and input/i)
     await backend.close()

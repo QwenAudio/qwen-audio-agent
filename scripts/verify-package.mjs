@@ -110,6 +110,8 @@ if (isMain) {
   const required = [
     'cli/bin/qwenaudio.mjs',
     'config/codebuddy/workspace/.codebuddy/models.json',
+    'examples/backend-adapter/README.md',
+    'examples/backend-adapter/in-memory-backend.mjs',
     'CONTRIBUTING.md',
     'docs/architecture.md',
     'docs/architecture-overview.png',
@@ -129,6 +131,8 @@ if (isMain) {
     'server/src/agent/acp-process-client.mjs',
     'server/src/agent/acp-session-registry.mjs',
     'server/src/agent/acp-session-tools.mjs',
+    'server/src/backend/backend-adapter-sdk.mjs',
+    'server/src/backend/backend-adapter-conformance.mjs',
     'server/src/core/package-version.mjs',
     'server/src/index.mjs',
     'shared/runtime-environment.mjs',

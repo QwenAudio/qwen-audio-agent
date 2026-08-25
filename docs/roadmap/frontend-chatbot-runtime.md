@@ -223,7 +223,10 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Add configurable MCP search plus an experimental key-free fallback,
     without another model call.
   - [x] Project citations through the public client protocol.
-- [ ] Knowledge store, document extraction, and indexing system jobs.
+- [x] Knowledge store, document extraction, and indexing system jobs.
+  - [x] Define provider-neutral Document Extractor and Knowledge Store ports.
+  - [x] Add a bounded local text extractor and owner-isolated store.
+  - [x] Run indexing in the independent System Job pool.
 - [ ] Full context, retrieval provider, and RAG tools.
 - [ ] Routing, citation, interruption, duplicate-speech, and prompt-injection
       evaluations.

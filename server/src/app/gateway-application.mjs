@@ -41,6 +41,9 @@ import {
   FrontendRetrievalRuntime,
 } from '../frontend/retrieval/frontend-retrieval-runtime.mjs'
 import { createWebSearchProvider } from '../providers/search/factory.mjs'
+import { TextDocumentExtractor } from '../frontend/knowledge/document-extractor.mjs'
+import { FileKnowledgeStore } from '../providers/knowledge/file-knowledge-store.mjs'
+import { KnowledgeIndexer } from '../frontend/knowledge/knowledge-indexer.mjs'
 import {
   projectGatewayTaskEvent,
   projectGatewayTaskSnapshot,
@@ -65,6 +68,9 @@ export function createGatewayApplication({
   webSearchProvider = undefined,
   urlFetcher = undefined,
   frontendRetrieval = null,
+  documentExtractor = null,
+  knowledgeStore = null,
+  knowledgeIndexer = null,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const inputAssetRegistry = inputAssets || new InputAssetRegistry({
@@ -76,6 +82,20 @@ const retrievalRuntime = frontendRetrieval || new FrontendRetrievalRuntime({
     ? createWebSearchProvider(config)
     : webSearchProvider,
   ...(urlFetcher === undefined ? {} : { urlFetcher }),
+})
+const documentExtractorRuntime = documentExtractor
+  || knowledgeIndexer?.extractor
+  || new TextDocumentExtractor()
+const knowledgeStoreRuntime = knowledgeStore
+  || knowledgeIndexer?.store
+  || new FileKnowledgeStore({
+    directory: config.knowledgeDirectory,
+    onWarning: warning => logger.warn('knowledge.persistence_warning', { warning }),
+  })
+const knowledgeIndexerRuntime = knowledgeIndexer || new KnowledgeIndexer({
+  extractor: documentExtractorRuntime,
+  store: knowledgeStoreRuntime,
+  taskManager,
 })
 const identityManager = new IdentityManager({
   secret: config.authSecret,
@@ -546,6 +566,7 @@ const close = () => {
     // not survive into the next run.
     inputArbitration.close()
     await realtimeGateway?.close?.()
+    await knowledgeStoreRuntime.close?.()
     await taskStore?.flush?.()
     if (!server.listening) return
     await new Promise((resolveClose, rejectClose) => {
@@ -572,6 +593,9 @@ return {
     backendRuntime: workBackend,
     frontendMemoryService,
     frontendRetrieval: retrievalRuntime,
+    documentExtractor: documentExtractorRuntime,
+    knowledgeStore: knowledgeStoreRuntime,
+    knowledgeIndexer: knowledgeIndexerRuntime,
     identityManager,
     inputArbitration,
     inputAssets: inputAssetRegistry,

@@ -10,7 +10,7 @@
  *   start(context?) -> idempotently make the backend ready
  *   health() -> current backend availability
  *   submit(work, context?) -> run one Work and return its final outcome
- *   status(workId, context?) -> current adapter-owned Work status
+ *   status(workId?, context?) -> runtime status without an ID, otherwise Work status
  *   cancel(workId, context?) -> cancel one adapter-owned Work
  *   respondAuthorization(workId, authorizationId, decision, context?)
  *   subscribe(listener) -> unsubscribe function for backend Work events

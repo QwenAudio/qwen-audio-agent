@@ -2,7 +2,7 @@ import test from 'node:test'
 import { AcpBackendAdapter } from '../src/agent/acp-backend-adapter.mjs'
 import {
   verifyBackendAdapterConformance,
-} from './support/backend-adapter-conformance.mjs'
+} from '../src/backend/backend-adapter-conformance.mjs'
 
 function work(index) {
   return {

@@ -510,6 +510,11 @@ recommended to be written as a JSON string array so that arguments containing sp
 be parsed accurately. It uses standard ACP Sessions and Gateway-provided Session MCP tools, and
 does not assume any Agent's private startup, permission, or UI capabilities.
 
+Action systems without ACP can implement `BackendPort` in a custom Node
+launcher; see the [Backend Adapter SDK](reference/backend-adapter-sdk.md). SDK
+composition does not add an `AGENT_PROTOCOL` name or let configuration files
+dynamically load arbitrary code.
+
 ### Hermes
 
 Hermes Agent ([nousresearch/hermes-agent](https://github.com/nousresearch/hermes-agent))

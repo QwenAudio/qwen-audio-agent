@@ -384,6 +384,10 @@ ACP_WORKSPACE=
 JSON 字符串数组，以便参数中包含空格时仍能准确解析。它使用标准 ACP Session 和
 Gateway 提供的 Session MCP 工具，不假设某个 Agent 私有的启动、权限或 UI 能力。
 
+不提供 ACP 的办事系统可以在自定义 Node 启动器中实现 `BackendPort`，详见
+[Backend Adapter SDK](reference/backend-adapter-sdk.zh.md)。SDK 接入不新增
+`AGENT_PROTOCOL` 名称，也不会让配置文件动态加载任意代码。
+
 ### Hermes
 
 Hermes Agent（[nousresearch/hermes-agent](https://github.com/nousresearch/hermes-agent)）

@@ -270,7 +270,10 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
   - [x] 增加按能力启用的前台工具与防 SSRF 的 URL Fetcher。
   - [x] 增加不额外调用大模型的可配置 MCP 搜索与实验性免 Key 兜底。
   - [x] 通过公开客户端协议投射 Citation。
-- [ ] Knowledge Store、Document Extractor 和索引 System Job。
+- [x] Knowledge Store、Document Extractor 和索引 System Job。
+  - [x] 定义与供应商无关的 Document Extractor 和 Knowledge Store Port。
+  - [x] 增加有界的本地文本抽取器与按用户隔离的 Store。
+  - [x] 在独立 System Job 资源池中执行索引。
 - [ ] Full Context、Retrieval Provider 和 RAG 工具。
 - [ ] 路由、引用、打断、重复播报和 Prompt Injection 评测。
 

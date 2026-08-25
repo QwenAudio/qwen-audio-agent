@@ -64,6 +64,10 @@ test('loads setup configuration without creating or changing user files', () => 
   assert.equal(env.CODEX_PATH, '/tools/codex')
   assert.equal(existsSync(result.configDirectory), false)
   assert.equal(existsSync(result.configPath), false)
+  assert.equal(
+    result.knowledgeDirectory,
+    resolve(result.dataDirectory, 'knowledge'),
+  )
   assert.equal(env.CODEX_WORKSPACE, undefined)
   assert.equal(env.QWEN_AUDIO_AGENT_AUTH_SECRET, undefined)
 })

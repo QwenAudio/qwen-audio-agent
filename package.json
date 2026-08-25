@@ -90,6 +90,8 @@
     "docs/getting-started/tui.zh.md",
     "docs/reference/memory.md",
     "docs/reference/memory.zh.md",
+    "docs/reference/knowledge.md",
+    "docs/reference/knowledge.zh.md",
     "docs/voice-frontends/speech-to-speech.md",
     "docs/voice-frontends/speech-to-speech.zh.md",
     "docs/voice-frontends/custom-provider.md",

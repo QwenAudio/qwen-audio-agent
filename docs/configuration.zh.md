@@ -11,7 +11,7 @@
 
 桌面版与 CLI 共享同一个资产层、各自保留运行时状态（参照 Qoder IDE 与 qodercli
 的目录分层）。共享的资产——`config.env`、本地身份（`state.env`）、记忆文档
-（`USER.md`、`MEMORY.md`、`ASSISTANT.md`）、前台清单以及 Agent 共享 `workspace/`——
+（`USER.md`、`MEMORY.md`、`ASSISTANT.md`）、前台清单、知识库以及 Agent 共享 `workspace/`——
 统一放在 CLI 的用户数据目录（`~/.config/qwaudio`，可用 `QWAUDIO_DATA_DIR` 覆盖），
 两种形态是同一个助手：一份记忆、一份配置。运行时状态——`gateway.lock`、
 `tasks.json`、ACP 会话状态、日志与桌面皮肤——留在各自目录：CLI 为
@@ -747,6 +747,7 @@ Gateway 时，或后续 CLI 运行时使用了冲突的已配置模型时，会�
 | `QWEN_AUDIO_WEB_SEARCH_MCP_URL` | 空；`mcp` Provider 使用的自定义 Streamable HTTP 地址 |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | 显式选择 `bailian` 时复用 `DASHSCOPE_API_KEY`；自定义地址默认空 |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian` 为 `bailian_web_search`，其他地址为 `web_search` |
+| `QWEN_AUDIO_AGENT_KNOWLEDGE_DIR` | 共享用户数据目录下的 `knowledge` |
 | `QWEN_AUDIO_REALTIME_VOICE` | 空；Audio 模型族的可选覆盖，未设置时运行时使用 `longanqian` |
 | `QWEN_OMNI_REALTIME_VOICE` | 空；Omni 模型族的可选覆盖，未设置时运行时使用 `Ethan` |
 | `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |

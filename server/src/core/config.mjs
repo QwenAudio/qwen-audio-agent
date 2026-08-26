@@ -108,11 +108,11 @@ export function resolveWebSearchConfiguration(env = process.env) {
   const requestedProvider = String(
     env.QWEN_AUDIO_WEB_SEARCH_PROVIDER || '',
   ).trim().toLowerCase()
-  const provider = requestedProvider || (explicitMcpUrl ? 'mcp' : 'bing')
-  if (!['bailian', 'bing', 'mcp', 'none'].includes(provider)) {
+  const provider = requestedProvider || (explicitMcpUrl ? 'mcp' : 'so360')
+  if (!['bailian', 'bing', 'mcp', 'none', 'so360'].includes(provider)) {
     throw new Error(
       '不支持的 Web Search Provider：'
-      + `${provider}（可选 bailian、bing、mcp、none）`,
+      + `${provider}（可选 bailian、bing、mcp、none、so360）`,
     )
   }
   const mcpUrl = provider === 'bailian' ? bailianMcpUrl : explicitMcpUrl

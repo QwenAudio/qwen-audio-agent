@@ -238,7 +238,7 @@ test('programming task: inline code goes to timeline.inline, speech goes to inje
 
   // --- speech path: injectResult called exactly once ---
   assert.equal(h.injectCalls.length, 1, 'injectResult must be called exactly once')
-  assert.match(h.injectCalls[0].text, /后台工作的最终更新/)
+  assert.match(h.injectCalls[0].text, /你先前异步执行工作的最终更新/)
   assert.match(h.injectCalls[0].text, /快速排序已实现/)
   assert.equal(h.injectCalls[0].origin, 'announcement')
 
@@ -406,7 +406,7 @@ test('failed task: no inline shown, error delivered via injectResult once', asyn
 
   // But the error is still announced via injectResult
   assert.equal(h.injectCalls.length, 1, 'injectResult called once for failed task')
-  assert.match(h.injectCalls[0].text, /后台工作的最终更新/)
+  assert.match(h.injectCalls[0].text, /你先前异步执行工作的最终更新/)
   assert.match(h.injectCalls[0].text, /syntax error/)
 
   h.announcements.close()

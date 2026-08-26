@@ -1,6 +1,7 @@
+import { normalizeConversationSessionId } from '../../shared/conversation-session.mjs'
+
 export function requestedSessionId(search) {
-  const value = String(
+  return normalizeConversationSessionId(
     new URLSearchParams(search).get('session') || '',
-  ).trim()
-  return value && value.length <= 200 ? value : ''
+  )
 }

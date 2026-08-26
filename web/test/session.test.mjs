@@ -12,4 +12,5 @@ test('reads an explicit CLI session from the WebUI address', () => {
 test('rejects empty or unreasonably long session identifiers', () => {
   assert.equal(requestedSessionId('?session=%20'), '')
   assert.equal(requestedSessionId(`?session=${'x'.repeat(201)}`), '')
+  assert.equal(requestedSessionId('?session=bad%0Asession'), '')
 })

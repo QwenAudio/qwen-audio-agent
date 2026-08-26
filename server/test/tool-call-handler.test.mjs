@@ -62,9 +62,6 @@ function harness({
     frontendRetrieval,
     frontendKnowledge,
     frontendToolSources,
-    getConversationContext: () => [
-      { role: 'user', content: '之前在改首页' },
-    ],
   })
   return { outputs, ensuredResponses, manager, transcripts, handler }
 }
@@ -537,7 +534,8 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
   await waitForJob(kit.manager, kit.outputs[0][1].job_id)
   assert.equal(received.originalRequest, '继续改刚才那个页面')
   assert.equal(received.objective, '继续修改此前讨论的页面')
-  assert.equal(received.conversationContext[0].content, '之前在改首页')
+  assert.equal('conversationContext' in received, false)
+  assert.equal('userMemories' in received, false)
   assert.equal(receivedOptions.jobId, kit.outputs[0][1].job_id)
   assert.equal(
     receivedOptions.workId,

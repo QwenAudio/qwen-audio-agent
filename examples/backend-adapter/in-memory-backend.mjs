@@ -57,7 +57,10 @@ export class InMemoryBackendAdapter {
     const workId = clean(work?.id)
     const ownerId = clean(work?.ownerId)
     const input = clean(
-      work?.objective || work?.originalRequest || work?.message,
+      work?.instruction
+      || work?.objective
+      || work?.originalRequest
+      || work?.message,
     )
     if (!workId || !ownerId || !input) {
       throw new Error('Backend submit requires work id, owner and input')

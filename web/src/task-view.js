@@ -58,10 +58,6 @@ function latestVisibleActivity(activity = []) {
   const visible = activity.filter(item => (
     item
     && item.tool !== 'invalid'
-    && !(
-      item.kind === 'text'
-      && String(item.text || '').trim().startsWith('<qwen_audio_agent_request>')
-    )
   ))
   const activeTool = visible.findLast(item => (
     item.kind === 'tool'

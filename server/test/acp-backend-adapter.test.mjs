@@ -10,20 +10,14 @@ import {
 
 function completed(speech = '完成') {
   return JSON.stringify({
-    job_id: 'work-one',
     state: 'completed',
-    mode: 'respond',
     presentation: { speech, inline: null },
   })
 }
 
-function delegated(result) {
+function delegated() {
   return JSON.stringify({
-    job_id: 'work-one',
     state: 'delegated',
-    mode: 'delegate',
-    delegation_id: result.delegation_id,
-    target_session_id: result.session_id,
     presentation: { speech: '已经交给独立项目处理。', inline: null },
   })
 }
@@ -188,23 +182,25 @@ function fakeAcpClient({
           response: { stopReason: 'end_turn' },
         }
       }
-      if (prompt.includes('qwen_audio_agent_delegation_result')) {
+      if (prompt.includes('刚才交给独立任务处理的工作已经完成')) {
         return {
           content: completed('第三层结果已整理'),
           response: { stopReason: 'end_turn' },
         }
       }
-      const result = action === 'send'
-        ? await toolServer.context.sendSession({
-            session_id: 'previous-session',
-            prompt: 'continue previous work',
-          })
-        : await toolServer.context.startSession({
-            prompt: 'build project',
-            title: 'Project',
-          })
+      if (action === 'send') {
+        await toolServer.context.sendSession({
+          session_id: 'previous-session',
+          prompt: 'continue previous work',
+        })
+      } else {
+        await toolServer.context.startSession({
+          prompt: 'build project',
+          title: 'Project',
+        })
+      }
       return {
-        content: delegated(result),
+        content: delegated(),
         response: { stopReason: 'end_turn' },
       }
     },
@@ -1100,7 +1096,7 @@ test('moves stable coordinator rules into MCP instructions for verified backends
     client,
     sessionToolServer: tools,
   })
-  await adapter.runCoordinator('<qwen_audio_agent_request>dynamic</qwen_audio_agent_request>', {
+  await adapter.runCoordinator('dynamic task instruction', {
     ownerId: 'owner-one',
     coordinationRunId: 'work-one',
   })
@@ -1167,7 +1163,7 @@ test('replaces a persisted coordinator without the current coordinator contract'
   assert.equal(creates, 1)
   assert.equal(deleted.length, 1)
   assert.equal(saved[0][1].sessionId, 'fresh-coordinator')
-  assert.equal(saved[0][1].contractVersion, 3)
+  assert.equal(saved[0][1].contractVersion, 4)
   await adapter.close()
 })
 
@@ -1260,6 +1256,7 @@ for (const action of ['start', 'send']) {
     const result = await adapter.runCoordinator('delegate', {
       ownerId: 'owner-one',
       coordinationRunId: 'work-one',
+      workObjective: '开发一个独立网页游戏',
       onEvent: event => events.push(event),
     })
     assert.equal(JSON.parse(result.content).presentation.speech, '第三层结果已整理')
@@ -1282,6 +1279,11 @@ for (const action of ['start', 'send']) {
       call[0] === 'prompt' && call[1] === 'coordinator-session'
     ))
     assert.equal(coordinatorPrompts.length, 2)
+    assert.match(
+      JSON.stringify(coordinatorPrompts[1][2]),
+      /原任务：开发一个独立网页游戏/u,
+    )
+    assert.doesNotMatch(JSON.stringify(coordinatorPrompts[1][2]), /work-one/u)
     assert.equal(
       client.calls.some(call => call[0] === 'config'),
       false,
@@ -1529,8 +1531,11 @@ test('busy-coordinator cancellation uses ACP directly and reconciles on the next
   const followUp = client.calls.findLast(call => (
     call[0] === 'prompt' && call[2].includes('plain follow-up')
   ))
-  assert.match(followUp[2], /qwen_audio_agent_reconciliation/)
-  assert.match(followUp[2], /coordination_request_terminated/)
+  assert.match(
+    followUp[2],
+    /先前未正常结束的请求已经由 Gateway 确认终止/,
+  )
+  assert.doesNotMatch(followUp[2], /work-one|request_id|delegation_id/)
   assert.equal(
     adapter.registry.reconciliationsFor('opencode:owner-one:backend').length,
     0,
@@ -1595,10 +1600,9 @@ test('ordinary coordinator cancellation terminates the old request before the ne
     coordinationRequestId: 'job_2',
   })
   assert.equal(JSON.parse(second.content).presentation.speech, '第二个请求已完成')
-  assert.match(prompts[1], /coordination_request_terminated/)
-  assert.match(prompts[1], /"request_id":"job_1"/)
-  assert.doesNotMatch(prompts[1], /"request_id":"work-one"/)
-  assert.match(prompts[1], /current request 是本轮唯一需要处理的请求/)
+  assert.match(prompts[1], /先前未正常结束的请求已经由 Gateway 确认终止/)
+  assert.doesNotMatch(prompts[1], /job_1|work-one|request_id/)
+  assert.match(prompts[1], /新指令是本轮唯一需要处理的任务/)
   assert.deepEqual(
     adapter.registry.reconciliationsFor('qoder:owner-one:backend'),
     [],
@@ -1694,9 +1698,11 @@ test('delivers persisted cancellation reconciliation after a Gateway restart', a
     // Once to restore the persisted Session and once to re-supply its MCP
     // definitions before the first prompt after restart.
     assert.equal(resumes, 2)
-    assert.match(prompts[0], /coordination_request_terminated/)
-    assert.match(prompts[0], /"request_id":"job_21"/)
-    assert.doesNotMatch(prompts[0], /"request_id":"work-before-restart"/)
+    assert.match(prompts[0], /先前未正常结束的请求已经由 Gateway 确认终止/)
+    assert.doesNotMatch(
+      prompts[0],
+      /job_21|work-before-restart|request_id/,
+    )
     assert.deepEqual(
       secondAdapter.registry.reconciliationsFor('qoder:owner-one:backend'),
       [],

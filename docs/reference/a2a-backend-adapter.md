@@ -51,7 +51,8 @@ enabled by default through the official SDK and can be disabled with
 
 ## Work projection
 
-- The Work objective becomes the user Message text.
+- The canonical Work instruction becomes the user Message text; frontend
+  history, memory, Gateway IDs, and routing metadata are not sent remotely.
 - Input attachments become standard A2A raw or URL Parts with MIME types.
 - The adapter requests non-blocking execution, then polls `GetTask` so Gateway
   status and cancellation remain responsive without requiring streaming.

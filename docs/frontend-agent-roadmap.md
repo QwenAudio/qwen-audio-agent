@@ -74,8 +74,8 @@ Claude Code CLAUDE.md —— 都是 user-authored standing instructions。
       - 立即生效：本轮即执行并简短确认
       - 撤销："别再用那个称呼" → 删除对应 Markdown 原文
       - 边界："以后不用问权限"→ 说明权限属后台安全策略，不在调教范围
-- [x] **R7** backend envelope 附带 rules 全文，标注为用户偏好材料（后台权限
-      体系不变，用户自声明偏好是用户消息的合法延伸）；实现点在 envelope 构建处
+- [x] **R7** 前台偏好和长期记忆仅留在前台；提交后台时，只把完成当前任务所必需的
+      已知事实和约束解析进自包含 `objective`，不转发完整记忆、规则或聊天历史
 - [x] **R8** 容量约束：rules ≤ 16 条 × ≤ 200 字（long_term 是 32×500；因全量
       注入必须更紧）
 - [x] **R9** `docs/architecture.md` §3：user_memory scope 描述更新（文档允许

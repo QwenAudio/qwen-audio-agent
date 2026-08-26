@@ -98,7 +98,7 @@ test('ACP submit exposes Work values while Session details stay private', async 
   assert.equal(events[0].workId, 'work-one')
   assert.equal(events[0].ownerId, 'owner-one')
   assert.equal(client.prompts[0][0].type, 'text')
-  assert.match(client.prompts[0][0].text, /reference\.png/)
+  assert.doesNotMatch(client.prompts[0][0].text, /reference\.png|work-one|job_1/u)
   assert.deepEqual(client.prompts[0][1], {
     type: 'image',
     mimeType: 'image/png',

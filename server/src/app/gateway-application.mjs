@@ -203,17 +203,12 @@ const frontendMemoryService = new FrontendMemoryService({
   userStore: userDocuments,
   memoryStore: memoryDocuments,
 })
-// Restored scheduled tasks use persisted identity and resolve current memory
-// at execution time, exactly like tasks created by a live voice session.
+// Restored scheduled tasks submit the same self-contained Work input as live
+// requests. Frontend conversation history and memory stay at the frontend.
 taskManager.configureScheduledTaskRunner(
   async (objective, context) => workBackend.run({
     originalRequest: objective,
     objective,
-    conversationContext: [],
-    userMemories: frontendMemoryService.list(
-      context.ownerId,
-      { limit: 64 },
-    ),
   }, {
     ownerId: context.ownerId,
     sessionId: context.sessionId,

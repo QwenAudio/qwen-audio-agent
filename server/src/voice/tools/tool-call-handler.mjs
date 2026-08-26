@@ -113,7 +113,6 @@ export class ToolCallHandler {
     memoryService,
     notesStore,
     getClientContext = () => ({}),
-    getConversationContext = () => [],
     onMemoryChanged = () => {},
     respondAuthorization,
     permissionPolicy,
@@ -138,7 +137,6 @@ export class ToolCallHandler {
     this.memoryService = memoryService
     this.notesStore = notesStore
     this.getClientContext = getClientContext
-    this.getConversationContext = getConversationContext
     this.onMemoryChanged = onMemoryChanged
     this.respondAuthorization = respondAuthorization
     this.permissionPolicy = permissionPolicy
@@ -531,8 +529,6 @@ export class ToolCallHandler {
         return this.backendRuntime.run({
           originalRequest: resolved.originalRequest || objective,
           objective,
-          conversationContext: this.getConversationContext(),
-          userMemories: this.memoryService?.list(this.ownerId, { limit: 64 }) || [],
           timeZone: this.getClientContext()?.timeZone,
           workingDirectory: this.getClientContext()?.workingDirectory,
           inputParts: mergeInputParts(inputParts, resolved.inputParts || []),
@@ -583,18 +579,10 @@ export class ToolCallHandler {
     // Scheduled work resolves through the same single-backend runtime as a
     // live request. The runtime and owner identity outlive the voice session.
     const backendRuntime = this.backendRuntime
-    const memoryService = this.memoryService
     const runner = type === 'task'
       ? async (objective, context) => backendRuntime.run({
           originalRequest: objective,
           objective,
-          conversationContext: [],
-          // Resolve at execution time so a future task sees the user's latest
-          // model and long-term memory, not a snapshot from when it was set.
-          userMemories: memoryService?.list(
-            context.ownerId,
-            { limit: 64 },
-          ) || [],
         }, {
           ownerId: context.ownerId,
           sessionId: context.sessionId,

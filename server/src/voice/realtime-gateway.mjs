@@ -440,10 +440,6 @@ export function attachRealtimeGateway(server, {
       memoryService,
       notesStore,
       getClientContext: () => clientContext,
-      getConversationContext: () => conversationSync.frontendContext({
-        ownerId,
-        sessionId,
-      }),
       onMemoryChanged: () => realtimeSession.updateAgentContext({
         memories: memoryService?.list(ownerId, { limit: 64 }) || [],
       }),

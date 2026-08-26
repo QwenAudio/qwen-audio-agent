@@ -47,7 +47,8 @@ Card 的声明顺序选择首个兼容接口。官方 SDK 的 A2A 0.3 兼容默�
 
 ## Work 投射
 
-- Work objective 成为用户 Message 文本；
+- 规范 Work 指令成为用户 Message 文本；前台历史、记忆、Gateway ID 和路由元数据
+  不会发送给远程 Agent；
 - 输入附件变成带 MIME 类型的标准 A2A raw 或 URL Part；
 - Adapter 请求非阻塞执行，再轮询 `GetTask`，无需依赖 Streaming 也能保持 Gateway 状态
   和取消响应；

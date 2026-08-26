@@ -46,7 +46,7 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
   assert.equal(spawn.function.parameters.properties.input_refs.maxItems, 8)
   assert.match(
     spawn.function.parameters.properties.objective.description,
-    /忠实转达用户要做什么及其明确约束/,
+    /忠实、完整且自包含地转达用户要做什么及其明确约束/,
   )
   assert.match(spawn.function.description, /不要重复提交已经覆盖的目标/)
   assert.match(spawn.function.description, /duplicate 表示同一目标此前已提交/)
@@ -892,11 +892,11 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(spawnThinking.function.description, /get_agent_task_status/)
   assert.match(
     spawnThinking.function.parameters.properties.objective.description,
-    /忠实转达用户要做什么及其明确约束/,
+    /忠实、完整且自包含地转达用户要做什么及其明确约束/,
   )
   assert.match(
     spawnThinking.function.parameters.properties.objective.description,
-    /近期对话会随工作一并提供/,
+    /后台不会收到前台的完整对话、个性化偏好或长期记忆/,
   )
   assert.match(spawnThinking.function.description, /继续、修改已有工作/)
   const status = REALTIME_PROVIDERS.qwen

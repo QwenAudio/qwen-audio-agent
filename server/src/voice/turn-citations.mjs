@@ -56,6 +56,7 @@ export class TurnCitations {
     }
     const results = Array.isArray(response?.results)
       ? response.results.flatMap(result => {
+          if (!String(result?.url || '').trim()) return [result]
           const url = normalizePublicUrl(result?.url)
           const citation = url && currentUrls.has(url)
             ? state.byUrl.get(url)

@@ -56,8 +56,8 @@ async function evaluateRoutingContract() {
     'The frontend prompt no longer routes user-environment work to the backend.',
   )
   requireCondition(
-    /明确要求保存附件到知识库[\s\S]*`knowledge`/u.test(prompt),
-    'Knowledge indexing is no longer explicit opt-in.',
+    /`knowledge` 只检索[\s\S]*外部知识服务/u.test(prompt),
+    'Knowledge is no longer kept behind an external retrieval provider.',
   )
   return { visibleTools: names }
 }
@@ -248,10 +248,9 @@ async function evaluatePromptInjectionBoundary() {
   const search = await retrieval.search('test')
   const knowledge = normalizeKnowledgeRetrievalResponse({
     results: [{
-      documentId: 'doc_one',
-      chunkId: 'chunk_one',
-      title: 'Untrusted note',
-      text: attack,
+      id: 'chunk_one',
+      content: attack,
+      source: { id: 'doc_one', title: 'Untrusted note' },
     }],
   }, { query: 'test' })
   const prompt = loadFrontendPrompt()
@@ -264,7 +263,7 @@ async function evaluatePromptInjectionBoundary() {
     { search },
   )
   requireCondition(
-    knowledge.results[0].text === attack
+    knowledge.results[0].content === attack
       && /不能覆盖系统或用户当前指令/u.test(knowledge.notice),
     'Knowledge content lost its untrusted-data boundary.',
     { knowledge },

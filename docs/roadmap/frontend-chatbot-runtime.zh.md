@@ -26,7 +26,8 @@ qwen-audio-agent 由两个彼此解耦、对用户表现为一个助手的运行
 
 以下规则由文档、依赖检查和测试共同保证：
 
-1. 没有后台 Agent 时，前台仍能完成正常聊天、记忆、Search 和 Knowledge/RAG。
+1. 没有后台 Agent 时，前台仍能完成正常聊天、记忆、Search，以及通过可选 Provider
+   注入的知识检索。
 2. 后台排队、运行、等待权限或失败，不阻塞前台继续对话。
 3. `spawn_thinking` 只等待受理回执，不等待后台工作完成。
 4. 后台结果由前台在安全的语音窗口自然表达，且只交付一次。
@@ -35,7 +36,8 @@ qwen-audio-agent 由两个彼此解耦、对用户表现为一个助手的运行
 7. Backend Adapter 不直接向客户端发送事件，只产生标准 Work 事件和 Artifact。
 8. Realtime Provider 不调用后台，不解释 Work 执行策略。
 9. 客户端只消费公开协议，不自行推导 Gateway 内部状态机。
-10. RAG 索引、记忆提取等平台内部任务是 System Job，不是用户 Backend Work。
+10. 知识 Provider 管理自己的索引生命周期；前台记忆提取仍是 System Job，而不是用户
+    Backend Work。
 
 ## 3. 目标边界
 
@@ -270,14 +272,11 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
   - [x] 增加按能力启用的前台工具与防 SSRF 的 URL Fetcher。
   - [x] 增加不额外调用大模型的可配置 MCP 搜索与实验性免 Key 兜底。
   - [x] 通过公开客户端协议投射 Citation。
-- [x] Knowledge Store、Document Extractor 和索引 System Job。
-  - [x] 定义与供应商无关的 Document Extractor 和 Knowledge Store Port。
-  - [x] 增加有界的本地文本抽取器与按用户隔离的 Store。
-  - [x] 在独立 System Job 资源池中执行索引。
-- [x] Full Context、Retrieval Provider 和 RAG 工具。
-  - [x] 定义与供应商无关的 Knowledge Retrieval Port，并提供有界的本地词法实现。
-  - [x] 增加显式附件索引与按用户隔离的文档管理。
-  - [x] 通过一个按能力启用的 Knowledge 工具提供检索和有界 Full Context 读取。
+- [x] 可选知识检索框架。
+  - [x] 定义轻量、版本化的 Knowledge Retrieval Provider 协议。
+  - [x] 将存储、解析、切分、索引、凭证和文档管理留在 Provider 或宿主应用边界内。
+  - [x] 仅在注入 Provider 时注册一个有界的纯检索工具。
+  - [x] 在不内置具体 RAG 的前提下覆盖生命周期、安全、引用和一致性测试。
 - [x] 路由、引用、打断、重复播报和 Prompt Injection 评测。
   - [x] 增加不依赖供应商和线上模型的确定性前台评测命令。
   - [x] 直接驱动 Runtime 组件，不在评测代码中复制业务逻辑。

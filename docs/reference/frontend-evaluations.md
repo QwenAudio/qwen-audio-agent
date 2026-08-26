@@ -6,7 +6,7 @@ provider:
 
 | Dimension | Invariant |
 | --- | --- |
-| Routing | Search, URL Fetch, Knowledge, backend Task, and client control remain separate capability-gated tools. Knowledge indexing stays explicit opt-in. |
+| Routing | Search, URL Fetch, optional Knowledge retrieval, backend Task, and client control remain separate capability-gated tools. |
 | Citation | Sources receive stable per-turn IDs, duplicate URLs keep one identity, unsafe URLs are dropped, and final citations are consumed once. |
 | Interruption | Audio and transcripts arriving after a user interruption are suppressed, while the interruption event is projected once. |
 | Duplicate speech | Duplicate completion signals coalesce before presentation, and repeated acknowledgements do not create another presentation for the same Task. |

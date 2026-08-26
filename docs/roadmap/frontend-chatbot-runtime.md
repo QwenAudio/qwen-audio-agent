@@ -31,8 +31,8 @@ roadmap.
 
 ## 2. Architecture invariants
 
-1. With no backend configured, frontend chat, memory, search, and knowledge/RAG
-   continue to work.
+1. With no backend configured, frontend chat, memory, search, and an optionally
+   injected knowledge provider continue to work.
 2. Backend queuing, execution, authorization, and failure never block the live
    conversation.
 3. `spawn_thinking` waits only for intake, never for completion.
@@ -44,7 +44,8 @@ roadmap.
    client events directly.
 8. Realtime providers never call the backend or choose work strategy.
 9. Clients consume the public protocol and never infer internal state machines.
-10. RAG indexing and memory extraction are system jobs, not user backend work.
+10. Knowledge providers own their indexing lifecycle; frontend memory
+    extraction remains a system job rather than user backend work.
 
 ## 3. Target boundaries
 
@@ -229,16 +230,13 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Add configurable MCP search plus an experimental key-free fallback,
     without another model call.
   - [x] Project citations through the public client protocol.
-- [x] Knowledge store, document extraction, and indexing system jobs.
-  - [x] Define provider-neutral Document Extractor and Knowledge Store ports.
-  - [x] Add a bounded local text extractor and owner-isolated store.
-  - [x] Run indexing in the independent System Job pool.
-- [x] Full context, retrieval provider, and RAG tools.
-  - [x] Define a provider-neutral Knowledge Retrieval port with a bounded
-    local lexical implementation.
-  - [x] Add explicit attachment indexing and owner-scoped document management.
-  - [x] Expose one capability-gated Knowledge tool for search and bounded
-    full-context reads.
+- [x] Optional knowledge retrieval framework.
+  - [x] Define a small, versioned Knowledge Retrieval Provider contract.
+  - [x] Keep storage, parsing, chunking, indexing, credentials, and document
+    management behind provider or application boundaries.
+  - [x] Register one bounded retrieval-only tool when a provider is injected.
+  - [x] Provide lifecycle, safety, citation, and conformance tests without a
+    built-in RAG implementation.
 - [x] Routing, citation, interruption, duplicate-speech, and prompt-injection
       evaluations.
   - [x] Add a deterministic, provider-free frontend evaluation command.

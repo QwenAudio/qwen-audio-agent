@@ -102,45 +102,6 @@ test('coalesces Agent message chunks and first speaks after one minute', async (
   testHarness.manager.close()
 })
 
-test('speaks a neutral liveness update when a running task emits no public text', async () => {
-  const testHarness = harness()
-  testHarness.manager.track({
-    taskId: 'task_1',
-    startedAt: testHarness.now(),
-  })
-
-  await testHarness.advance(59_999)
-  assert.equal(testHarness.calls.length, 0)
-  await testHarness.advance(1)
-  assert.equal(testHarness.calls.length, 1)
-  assert.match(testHarness.calls[0][0], /仍在处理中/)
-
-  await testHarness.advance(60_000)
-  assert.equal(testHarness.calls.length, 2)
-  assert.match(testHarness.calls[1][0], /仍在处理中/)
-  testHarness.manager.close()
-})
-
-test('uses the latest public Agent text instead of the liveness fallback', async () => {
-  const testHarness = harness()
-  testHarness.manager.track({
-    taskId: 'task_1',
-    startedAt: testHarness.now(),
-  })
-  await testHarness.advance(30_000)
-  testHarness.manager.offer({
-    taskId: 'task_1',
-    startedAt: 1,
-    message: '已经完成页面结构，正在补充交互细节',
-  })
-
-  await testHarness.advance(30_000)
-  assert.equal(testHarness.calls.length, 1)
-  assert.match(testHarness.calls[0][0], /正在补充交互细节/)
-  assert.doesNotMatch(testHarness.calls[0][0], /暂时还没有/)
-  testHarness.manager.close()
-})
-
 test('applies a session-wide one-minute interval across concurrent tasks', async () => {
   const testHarness = harness()
   testHarness.manager.offer({

@@ -6,10 +6,8 @@ const CORRELATED_CONTEXT_FIELDS = [
   'turnId',
   'taskId',
   'taskIds',
-  'turnIds',
   'authorizationId',
   'turnGeneration',
-  'deliverySequence',
   'consumesTaskNotification',
 ]
 

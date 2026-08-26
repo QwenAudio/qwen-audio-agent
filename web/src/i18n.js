@@ -99,7 +99,6 @@ const translations = {
   '结果已经发送': 'Results delivered',
   '正在等待与后台重新连接': 'Waiting to reconnect to backend',
   '正在连接后台 Agent': 'Connecting to backend agent',
-  '后台 Agent 正在思考': 'Backend agent is thinking',
   '当前模式：{mode}': 'Current mode: {mode}',
   '会话：{title}': 'Session: {title}',
   '未知': 'Unknown',

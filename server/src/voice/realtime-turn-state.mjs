@@ -25,6 +25,7 @@ export class RealtimeTurnState {
     this.committedTurnId = ''
     this.committedTurnGeneration = 0
     this.userSpeaking = false
+    this.voiceStartItemId = ''
     this.manualInputGeneration = null
   }
 
@@ -49,7 +50,7 @@ export class RealtimeTurnState {
     }
 
     this.userSpeaking = true
-    const known = itemId
+    const known = itemId && !this.correlation.isComplete(itemId)
       ? this.correlation.resolve(itemId, null)
       : null
     if (known) {
@@ -58,8 +59,9 @@ export class RealtimeTurnState {
     } else {
       this.turnGeneration = ++this.turnSequence
       this.turnId = this.createVoiceTurnId(this.turnGeneration)
-      this.correlation.remember(itemId, this.current())
+      this.correlation.remember(itemId, this.current(), { replace: true })
     }
+    this.voiceStartItemId = itemId || ''
     return { accepted: true, context: this.current() }
   }
 
@@ -70,6 +72,7 @@ export class RealtimeTurnState {
   beginManual(turnId) {
     const supersededVoiceTurn = this.userSpeaking ? this.current() : null
     this.userSpeaking = false
+    this.voiceStartItemId = ''
     this.turnGeneration = ++this.turnSequence
     this.turnId = turnId
     this.manualInputGeneration = this.turnGeneration
@@ -84,7 +87,18 @@ export class RealtimeTurnState {
   }
 
   completeInput(itemId) {
-    return this.correlation.complete(itemId, this.current())
+    const completed = this.correlation.complete(itemId, this.current())
+    if (
+      this.voiceStartItemId
+      && this.voiceStartItemId !== itemId
+      && completed.context?.turnGeneration === this.turnGeneration
+    ) {
+      this.correlation.complete(this.voiceStartItemId, completed.context)
+    }
+    if (completed.context?.turnGeneration === this.turnGeneration) {
+      this.voiceStartItemId = ''
+    }
+    return completed
   }
 
   invalidateInput(itemId) {
@@ -136,6 +150,7 @@ export class RealtimeTurnState {
 
   close() {
     this.advanceBoundary()
+    this.voiceStartItemId = ''
     this.correlation.clear()
   }
 }

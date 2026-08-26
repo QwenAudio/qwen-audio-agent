@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto'
+
 export class AnnouncementManager {
   constructor({
     getFrontend,
@@ -11,6 +13,7 @@ export class AnnouncementManager {
     acknowledgementTimeoutMs = 120000,
     maxRetryAttempts = 8,
     leaseRenewIntervalMs = 20000,
+    createTurnId = () => `gateway_${randomUUID().replaceAll('-', '')}`,
     onDelivered = () => {},
     onLeaseRenew = () => {},
     onRelease = () => {},
@@ -27,6 +30,7 @@ export class AnnouncementManager {
     this.acknowledgementTimeoutMs = acknowledgementTimeoutMs
     this.maxRetryAttempts = maxRetryAttempts
     this.leaseRenewIntervalMs = leaseRenewIntervalMs
+    this.createTurnId = createTurnId
     this.onDelivered = onDelivered
     this.onLeaseRenew = onLeaseRenew
     this.onRelease = onRelease
@@ -63,7 +67,6 @@ export class AnnouncementManager {
       status: 'completed',
       objective: task.objective,
       result: task.result,
-      turnId: task.turnId,
       completedAt: task.completedAt,
     })
   }
@@ -74,7 +77,6 @@ export class AnnouncementManager {
       status: 'failed',
       objective: task.objective,
       error: task.error,
-      turnId: task.turnId,
       completedAt: task.completedAt,
     })
   }
@@ -257,8 +259,7 @@ export class AnnouncementManager {
       // Only events actually represented in this bounded model input may be
       // acknowledged when playback ends. Remaining events stay pending.
       taskIds: queued.map(item => item.taskId),
-      turnIds: announcements.map(item => item.turnId).filter(Boolean),
-      deliverySequence: queued[0].sequence,
+      deliveryTurnId: this.createTurnId(),
       contextInjected: false,
       responseCompleted: false,
       retryRequested: false,
@@ -298,11 +299,9 @@ export class AnnouncementManager {
         this.resultContextMaxChars,
       )
       const context = {
-        turnId: batch.turnIds.length === 1 ? batch.turnIds[0] : null,
-        turnIds: batch.turnIds,
+        turnId: batch.deliveryTurnId,
         taskId: batch.taskIds.length === 1 ? batch.taskIds[0] : null,
         taskIds: batch.taskIds,
-        deliverySequence: batch.deliverySequence,
       }
       const outcome = this.announceIntoContext && frontend.injectResult
         ? await frontend.injectResult(

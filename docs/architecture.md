@@ -215,9 +215,10 @@ Progress is observability, not control. The ACP adapter projects standard
 - a generic thinking signal without thought content;
 - bounded Session title and current mode metadata.
 
-The UI maps this to stable phrases such as “searching”, “reading”, “generating
-an image”, “Backend Agent thinking”, or the current mode. The desktop pet maps
-the generic thinking signal to its existing processing animation. Session IDs,
+The UI maps this to the stable task objective or phrases such as “searching”,
+“reading”, “generating an image”, or the current mode. A generic thinking signal
+keeps showing the task objective, while the desktop pet maps it to its existing
+processing animation. Session IDs,
 subagent IDs, raw permission payloads, and raw thought content are not shown. A
 pending permission may show the exact bounded title, description, command, or
 path needed for informed consent after secret-like values are redacted.
@@ -267,10 +268,11 @@ backend Agent lock and sends the verified result, including its native
 ContentBlocks, back for a final natural answer. A busy target, an empty result,
 an unrelated Session update, or an older result cannot complete the Task.
 
-The normal backend request timeout applies separately to the initial
-coordinator turn and the final synthesis turn. It does not apply while the
-adapter is waiting for the delegated Session. During that interval, only an
-explicit Task cancellation or backend shutdown cancels the target Session.
+ACP Agent turns have no artificial wall-clock deadline. An initial coordinator
+turn, a delegated target turn, and the final synthesis turn end only when ACP
+reports completion, the user explicitly cancels the Task, or the backend exits
+or shuts down. Connection initialization and bounded control RPCs retain
+timeouts so an unavailable backend cannot block Gateway startup indefinitely.
 
 Cancellation is confirmed rather than optimistic. `queued` Task is cancelled
 locally. `running` or `finalizing` Task aborts its active backend request. For
@@ -284,9 +286,10 @@ injects it once into the next safe coordinator turn. This reconciles the
 coordinator's history without delaying cancellation or repeating the stop.
 
 The frontend acknowledgement comes from the Task that the Gateway actually
-accepted, not from a coordinator-authored delegation state. The adapter aborts
-the backend turn only as a timeout fallback if it fails to finish after the
-asynchronous Session tool has already succeeded.
+accepted, not from a coordinator-authored delegation state. The coordinator
+turn still ends according to ACP lifecycle signals; the Gateway does not infer
+its completion from acknowledgement text or from a successful Session tool
+call.
 
 ## 8. Backend-internal capabilities
 

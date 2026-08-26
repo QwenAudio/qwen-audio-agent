@@ -769,7 +769,7 @@ Gateway 时，或后续 CLI 运行时使用了冲突的已配置模型时，会�
 | `SPEECH_TO_SPEECH_AUTH_TOKEN` | 空；仅用于带 Bearer 认证的代理 |
 | `QWEN_AUDIO_AGENT_IDENTITY_MODE` | `personal` |
 | `QWEN_AUDIO_AGENT_TUI_AUDIO_MODE` | `half` |
-| `AGENT_TIMEOUT_MS` | `300000` |
+| `AGENT_TIMEOUT_MS` | `300000`；ACP 连接初始化与有界控制请求的超时，不限制正在执行的 Agent 轮次 |
 
 macOS TUI 的 CoreAudio 辅助程序默认编译到
 `~/Library/Caches/qwaudio/tui/macos-voice-io`，无需额外配置。它在播报期间

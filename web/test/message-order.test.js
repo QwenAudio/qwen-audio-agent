@@ -73,6 +73,15 @@ test('replaces the mutable ASR preview and then settles the final transcript', (
   assert.equal(messages[0].content, '帮我查一下今天的天气。')
   assert.equal(messages[0].live, false)
   assert.equal(messages[0].final, true)
+
+  const settled = messages
+  messages = upsertUserTranscript(messages, {
+    id: 'user:voice-100-1',
+    turnId: 'voice-100-1',
+    content: '下一轮识别不应覆盖上一轮',
+  })
+  assert.strictEqual(messages, settled)
+  assert.equal(messages[0].content, '帮我查一下今天的天气。')
 })
 
 test('removes rejected ASR preview without deleting an already final transcript', () => {
@@ -136,7 +145,7 @@ test('places a late user transcript before assistant messages in the same turn',
   assert.deepEqual(messages.map(item => item.id), ['user', 'answer'])
 })
 
-test('keeps concurrent work presentations in delivery order at the live tail', () => {
+test('keeps asynchronous work presentations in actual arrival order', () => {
   let messages = [
     { id: 'old-user', role: 'user', turnId: 'voice-100-1', content: '任务一' },
     { id: 'new-user', role: 'user', turnId: 'voice-300-3', content: '当前对话' },
@@ -144,23 +153,21 @@ test('keeps concurrent work presentations in delivery order at the live tail', (
   messages = insertByTurn(messages, {
     id: 'result-2',
     role: 'assistant',
-    turnId: 'voice-200-2',
+    turnId: 'gateway-result-2',
     origin: 'announcement',
-    deliverySequence: 2,
     content: '任务二结果',
   })
   messages = insertByTurn(messages, {
     id: 'result-1',
     role: 'assistant',
-    turnId: 'voice-100-1',
+    turnId: 'gateway-result-1',
     origin: 'announcement',
-    deliverySequence: 1,
     content: '任务一结果',
   })
 
   assert.deepEqual(
     messages.map(item => item.id),
-    ['old-user', 'new-user', 'result-1', 'result-2'],
+    ['old-user', 'new-user', 'result-2', 'result-1'],
   )
 })
 
@@ -219,15 +226,16 @@ test('places an active task below its turn acknowledgement instead of above the 
   )
 })
 
-test('keeps the task card below the final task result in the same turn', () => {
+test('appends a final task result after its task card as a new delivery turn', () => {
   const messages = [
     { id: 'user', role: 'user', turnId: 'voice-100-1', content: '查一下天气' },
     { id: 'ack', role: 'assistant', turnId: 'voice-100-1', content: '我来查一下。' },
     {
       id: 'result',
       role: 'assistant',
-      turnId: 'voice-100-1',
+      turnId: 'gateway-result-1',
       taskId: 'job-1',
+      origin: 'announcement',
       content: '今天晴。',
     },
   ]
@@ -235,19 +243,20 @@ test('keeps the task card below the final task result in the same turn', () => {
 
   assert.deepEqual(
     buildConversationTimeline(messages, tasks).map(item => item.value.id),
-    ['user', 'ack', 'result', 'job-1'],
+    ['user', 'ack', 'job-1', 'result'],
   )
 })
 
-test('keeps one stable turn container while acknowledgement, activity and result arrive', () => {
+test('keeps the task turn stable and appends progress as an independent turn', () => {
   const messages = [
     { id: 'user', role: 'user', turnId: 'voice-100-1', content: '检查目录' },
     { id: 'ack', role: 'assistant', turnId: 'voice-100-1', content: '我来检查。' },
     {
       id: 'result',
       role: 'assistant',
-      turnId: 'voice-100-1',
+      turnId: 'gateway-progress-1',
       taskId: 'job-1',
+      origin: 'progress',
       content: '目录里有三个文件。',
     },
   ]
@@ -257,13 +266,49 @@ test('keeps one stable turn container while acknowledgement, activity and result
     phase: 'completed',
   }])
 
-  assert.equal(turns.length, 1)
+  assert.equal(turns.length, 2)
   assert.deepEqual(
     turns[0].beforeActivities.map(message => message.id),
-    ['user', 'ack', 'result'],
+    ['user', 'ack'],
   )
   assert.deepEqual(turns[0].tasks.map(task => task.id), ['job-1'])
   assert.deepEqual(turns[0].afterActivities, [])
+  assert.deepEqual(
+    turns[1].beforeActivities.map(message => message.id),
+    ['result'],
+  )
+})
+
+test('does not infer a missing input turn from task correlation', () => {
+  const turns = buildConversationTurns([
+    { id: 'user', role: 'user', turnId: 'voice-100-1', content: '开发游戏' },
+    { id: 'ack', role: 'assistant', turnId: 'voice-100-1', content: '已经开始。' },
+    {
+      id: 'progress',
+      role: 'assistant',
+      taskId: 'job-1',
+      origin: 'progress',
+      content: '游戏逻辑已经完成，正在测试。',
+    },
+    { id: 'next-user', role: 'user', turnId: 'text_next', content: '你好' },
+  ], [{
+    id: 'job-1',
+    turnId: 'voice-100-1',
+    phase: 'running',
+    createdAt: 100,
+  }])
+
+  assert.deepEqual(
+    turns.map(turn => turn.id),
+    ['voice-100-1', 'message:progress', 'text_next'],
+  )
+  assert.deepEqual(
+    turns[0].beforeActivities.map(message => message.id),
+    ['user', 'ack'],
+  )
+  assert.deepEqual(turns[0].tasks.map(task => task.id), ['job-1'])
+  assert.equal(turns[1].standalone, true)
+  assert.equal(turns[1].messages[0].id, 'progress')
 })
 
 test('keeps asynchronous announcements as new live-tail turns', () => {
@@ -272,15 +317,38 @@ test('keeps asynchronous announcements as new live-tail turns', () => {
     {
       id: 'announcement',
       role: 'assistant',
-      turnId: 'voice-100-1',
+      turnId: 'gateway-result-1',
       origin: 'announcement',
       content: '后台任务完成',
     },
   ], [])
 
   assert.equal(turns.length, 2)
-  assert.equal(turns[1].standalone, true)
+  assert.equal(turns[1].id, 'gateway-result-1')
+  assert.equal(turns[1].standalone, false)
   assert.equal(turns[1].messages[0].id, 'announcement')
+})
+
+test('keeps a multi-task result at the live tail instead of choosing one card', () => {
+  const turns = buildConversationTurns([
+    { id: 'first-user', role: 'user', turnId: 'voice-100-1', content: '任务一' },
+    { id: 'second-user', role: 'user', turnId: 'voice-200-2', content: '任务二' },
+    {
+      id: 'batch-result',
+      role: 'assistant',
+      turnId: 'gateway-result-batch',
+      origin: 'announcement',
+      taskIds: ['job-1', 'job-2'],
+      content: '两项工作都已完成。',
+    },
+  ], [
+    { id: 'job-1', turnId: 'voice-100-1', phase: 'responding' },
+    { id: 'job-2', turnId: 'voice-200-2', phase: 'responding' },
+  ])
+
+  assert.equal(turns.at(-1).id, 'gateway-result-batch')
+  assert.equal(turns.at(-1).standalone, false)
+  assert.equal(turns.at(-1).messages[0].id, 'batch-result')
 })
 
 test('appends voice messages after earlier text-turn history', () => {
@@ -314,4 +382,18 @@ test('appends voice messages after earlier text-turn history', () => {
     content: '再发文字',
   })
   assert.equal(withText.at(-1).id, 'user:text_b')
+})
+
+test('does not reorder a later voice turn above earlier text history', () => {
+  const turns = buildConversationTurns([
+    { id: 'text', role: 'user', turnId: 'text_a', content: '文字提问' },
+    {
+      id: 'voice',
+      role: 'user',
+      turnId: 'voice-200-1',
+      content: '稍后的语音提问',
+    },
+  ], [])
+
+  assert.deepEqual(turns.map(turn => turn.id), ['text_a', 'voice-200-1'])
 })

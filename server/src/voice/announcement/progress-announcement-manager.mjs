@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { progressResponseInstructions } from '../frontend-tools.mjs'
 
 const DEFAULT_INTERVAL_MS = 60_000
@@ -11,18 +12,18 @@ function text(value) {
 function progressContext(candidate) {
   return {
     taskId: candidate.taskId,
-    // A progress update belongs to the live timeline, not the historical turn
-    // that originally created the task. taskId preserves the work relation.
-    turnId: null,
+    // This injection is a new realtime turn. taskId carries the work
+    // correlation independently and is also present in the model payload.
+    turnId: candidate.deliveryTurnId,
     taskIds: [candidate.taskId],
-    deliverySequence: null,
   }
 }
 
 function progressPayload(candidate) {
   return [
     '<background_work_progress>',
-    candidate.message,
+    `task_id: ${candidate.taskId}`,
+    `进展: ${candidate.message}`,
     '</background_work_progress>',
   ].join('\n')
 }
@@ -42,6 +43,7 @@ export class ProgressAnnouncementManager {
     intervalMs = DEFAULT_INTERVAL_MS,
     quietMs = DEFAULT_QUIET_MS,
     retryMs = DEFAULT_RETRY_MS,
+    createTurnId = () => `gateway_${randomUUID().replaceAll('-', '')}`,
     onError = () => {},
     now = Date.now,
     setTimer = setTimeout,
@@ -53,6 +55,7 @@ export class ProgressAnnouncementManager {
     this.intervalMs = Math.max(1, Number(intervalMs) || DEFAULT_INTERVAL_MS)
     this.quietMs = Math.max(0, Number(quietMs) || 0)
     this.retryMs = Math.max(1, Number(retryMs) || DEFAULT_RETRY_MS)
+    this.createTurnId = createTurnId
     this.onError = onError
     this.now = now
     this.setTimer = setTimer
@@ -64,7 +67,7 @@ export class ProgressAnnouncementManager {
     this.closed = false
   }
 
-  offer({ taskId, turnId = null, startedAt = null, message } = {}) {
+  offer({ taskId, startedAt = null, message } = {}) {
     const id = text(taskId)
     const content = text(message).slice(-4_000)
     if (!id || !content || this.closed) return
@@ -72,7 +75,7 @@ export class ProgressAnnouncementManager {
     const previous = this.candidates.get(id)
     this.candidates.set(id, {
       taskId: id,
-      turnId,
+      deliveryTurnId: previous?.deliveryTurnId || this.createTurnId(),
       startedAt: Number(startedAt) || previous?.startedAt || timestamp,
       firstOfferedAt: previous?.firstOfferedAt || timestamp,
       updatedAt: timestamp,

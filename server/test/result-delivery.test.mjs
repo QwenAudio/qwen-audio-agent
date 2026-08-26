@@ -110,7 +110,6 @@ function createDeliveryHarness() {
           item: {
             id: `inline_${task.id}_delegated`,
             taskId: task.id,
-            turnId: task.turnId || null,
             ...inline,
           },
         })
@@ -126,7 +125,6 @@ function createDeliveryHarness() {
           item: {
             id: `inline_${task.id}`,
             taskId: task.id,
-            turnId: task.turnId || null,
             ...inline,
           },
         })
@@ -188,6 +186,7 @@ test('delegation updates the timeline without producing a second voice announcem
   ))
   assert.ok(inline, 'delegation presentation should update the timeline')
   assert.equal(inline.item.content, '正在开发贪吃蛇小游戏')
+  assert.equal('turnId' in inline.item, false)
   assert.equal(h.speakCalls.length, 0, 'delegation must not speak again')
   assert.equal(h.injectCalls.length, 0, 'delegation must not announce as a result')
 
@@ -231,6 +230,7 @@ test('programming task: inline code goes to timeline.inline, speech goes to inje
   const inlineMsg = h.wsMessages.find(m => m.type === 'timeline.inline')
   assert.ok(inlineMsg, 'timeline.inline message should be sent')
   assert.equal(inlineMsg.item.taskId, taskId)
+  assert.equal('turnId' in inlineMsg.item, false)
   assert.equal(inlineMsg.item.title, '快速排序实现')
   assert.equal(inlineMsg.item.format, 'code')
   assert.match(inlineMsg.item.content, /function quicksort/)

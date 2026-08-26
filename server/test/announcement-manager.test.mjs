@@ -125,6 +125,37 @@ test('batches nearby completed work into one realtime response', async () => {
   manager.close()
 })
 
+test('uses a new realtime turn while correlating results only by task id', async () => {
+  const calls = []
+  const manager = new AnnouncementManager({
+    getFrontend: () => ({
+      ready: true,
+      injectResult: async (...args) => {
+        calls.push(args)
+        return { completed: true, contextInjected: true }
+      },
+    }),
+    isDeliveryBlocked: () => false,
+    batchWindowMs: 0,
+    createTurnId: () => 'gateway-result-turn',
+  })
+  manager.completed({
+    id: 'task_1',
+    turnId: 'voice-origin-turn',
+    objective: '处理',
+    result: '完成',
+  })
+  await waitFor(() => calls.length === 1)
+
+  assert.match(calls[0][0], /task_id: task_1/)
+  assert.deepEqual(calls[0][2], {
+    turnId: 'gateway-result-turn',
+    taskId: 'task_1',
+    taskIds: ['task_1'],
+  })
+  manager.close()
+})
+
 test('delivers bounded announcement batches in order and confirms each task once', async () => {
   const inputs = []
   const delivered = []

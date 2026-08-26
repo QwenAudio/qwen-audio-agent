@@ -131,7 +131,7 @@ function fakeAcpClient({
       return values.filter(session => session.cwd === cwd)
     },
     async prompt(sessionId, prompt, options = {}) {
-      calls.push(['prompt', sessionId, prompt])
+      calls.push(['prompt', sessionId, prompt, options])
       if (sessionId !== 'coordinator-session') {
         if (options.signal?.aborted) throw options.signal.reason
         for (const update of targetUpdates) options.onUpdate?.(update)
@@ -1273,6 +1273,12 @@ for (const action of ['start', 'send']) {
       call[0] === 'prompt' && call[1] === 'coordinator-session'
     ))
     assert.equal(coordinatorPrompts.length, 2)
+    assert.equal(
+      client.calls
+        .filter(call => call[0] === 'prompt')
+        .every(call => call[3].timeoutMs === 0),
+      true,
+    )
     assert.match(
       JSON.stringify(coordinatorPrompts[1][2]),
       /原任务：开发一个独立网页游戏/u,

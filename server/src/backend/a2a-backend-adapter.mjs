@@ -15,7 +15,8 @@ import { backendInstructionFromWork } from './backend-work-input.mjs'
 import { BackendEventType, backendEvent } from '../core/backend-events.mjs'
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000
-const DEFAULT_TIMEOUT_MS = 300_000
+const DEFAULT_TIMEOUT_MS = 0
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 const MAX_TEXT_CHARS = 1_000_000
 const MAX_ARTIFACTS = 32
 const MAX_ARTIFACT_PARTS = 64
@@ -50,6 +51,11 @@ function bounded(value, max = 4_000) {
 function positiveNumber(value, fallback, minimum) {
   const number = Number(value)
   return Number.isFinite(number) && number >= minimum ? number : fallback
+}
+
+function nonNegativeNumber(value, fallback = 0) {
+  const number = Number(value)
+  return Number.isFinite(number) && number >= 0 ? number : fallback
 }
 
 function cancellationError(taskId, cause) {
@@ -92,7 +98,7 @@ function requestHeaders(input, init) {
   return result
 }
 
-function authenticatedFetch({ fetchImpl, headers, token, timeoutMs }) {
+function authenticatedFetch({ fetchImpl, headers, token, requestTimeoutMs }) {
   const base = fetchImpl || globalThis.fetch
   if (typeof base !== 'function') {
     throw new TypeError('A2A adapter requires a Fetch API implementation')
@@ -106,11 +112,19 @@ function authenticatedFetch({ fetchImpl, headers, token, timeoutMs }) {
       merged.set('authorization', `Bearer ${clean(token)}`)
     }
     new Headers(configured).forEach((value, key) => merged.set(key, value))
-    const timeout = AbortSignal.timeout(timeoutMs)
-    const signal = init.signal
-      ? AbortSignal.any([init.signal, timeout])
-      : timeout
-    return base(input, { ...init, headers: merged, signal })
+    // Active A2A operations already carry the Task cancellation signal and
+    // may legitimately stream for a long time. Bound only unscoped requests
+    // such as Agent Card discovery.
+    const requestSignal = init.signal || (
+      requestTimeoutMs > 0
+        ? AbortSignal.timeout(requestTimeoutMs)
+        : undefined
+    )
+    return base(input, {
+      ...init,
+      headers: merged,
+      ...(requestSignal ? { signal: requestSignal } : {}),
+    })
   }
 }
 
@@ -418,6 +432,18 @@ function wait(ms, signal) {
   })
 }
 
+function deadline(ms) {
+  if (!(ms > 0)) return null
+  const controller = new AbortController()
+  const timer = setTimeout(() => {
+    controller.abort(new DOMException('The operation timed out', 'TimeoutError'))
+  }, ms)
+  return {
+    signal: controller.signal,
+    dispose: () => clearTimeout(timer),
+  }
+}
+
 export class A2ABackendError extends Error {
   constructor(message, { code = 'A2A_BACKEND_ERROR', cause } = {}) {
     super(message, { cause })
@@ -443,6 +469,7 @@ export class A2ABackendAdapter {
     acceptedOutputModes = DEFAULT_OUTPUT_MODES,
     pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
     timeoutMs = DEFAULT_TIMEOUT_MS,
+    requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     legacyCompat = true,
     label = 'A2A Agent',
   } = {}) {
@@ -458,12 +485,17 @@ export class A2ABackendAdapter {
       DEFAULT_POLL_INTERVAL_MS,
       10,
     )
-    this.timeoutMs = positiveNumber(timeoutMs, DEFAULT_TIMEOUT_MS, 100)
+    this.timeoutMs = nonNegativeNumber(timeoutMs, DEFAULT_TIMEOUT_MS)
+    this.requestTimeoutMs = positiveNumber(
+      requestTimeoutMs,
+      DEFAULT_REQUEST_TIMEOUT_MS,
+      100,
+    )
     this.fetchImpl = authenticatedFetch({
       fetchImpl,
       headers,
       token,
-      timeoutMs: Math.min(this.timeoutMs, 30_000),
+      requestTimeoutMs: this.requestTimeoutMs,
     })
     this.legacyCompat = legacyCompat !== false
     this.label = clean(agentCard?.name || label) || 'A2A Agent'
@@ -591,10 +623,10 @@ export class A2ABackendAdapter {
     if (digest !== record.lastDigest) {
       record.lastDigest = digest
       record.activity = [{
-        id: 'a2a-status',
+        id: 'backend-status',
         kind: 'status',
         status: state,
-        message: message || `A2A task is ${state}`,
+        ...(message ? { message } : {}),
       }]
       this.publish(backendEvent(BackendEventType.ACTIVITY, {
         activity: record.activity[0],
@@ -655,7 +687,7 @@ export class A2ABackendAdapter {
     if (!record?.remoteTaskId || !record.client?.cancelTask) return
     try {
       await record.client.cancelTask({ id: record.remoteTaskId }, {
-        signal: AbortSignal.timeout(Math.min(this.timeoutMs, 10_000)),
+        signal: AbortSignal.timeout(Math.min(this.requestTimeoutMs, 10_000)),
       })
     } catch {
       // The primary operation error is more useful than cleanup failure.
@@ -785,10 +817,12 @@ export class A2ABackendAdapter {
     }
     await this.start()
     const controller = new AbortController()
-    const timeout = AbortSignal.timeout(this.timeoutMs)
-    const workSignal = signal
-      ? AbortSignal.any([signal, controller.signal, timeout])
-      : AbortSignal.any([controller.signal, timeout])
+    const timeout = deadline(this.timeoutMs)
+    const workSignal = AbortSignal.any([
+      signal,
+      controller.signal,
+      timeout?.signal,
+    ].filter(Boolean))
     const record = {
       gatewayTaskId: taskId,
       ownerId,
@@ -839,7 +873,7 @@ export class A2ABackendAdapter {
       if (controller.signal.aborted || signal?.aborted) {
         throw cancellationError(taskId, error)
       }
-      if (timeout.aborted) {
+      if (timeout?.signal.aborted) {
         await this.bestEffortCancel(record)
         throw new A2ABackendError(`A2A task timed out after ${this.timeoutMs} ms`, {
           code: 'A2A_TIMEOUT',
@@ -848,6 +882,7 @@ export class A2ABackendAdapter {
       }
       throw error
     } finally {
+      timeout?.dispose()
       if (this.active.get(taskId) === record) this.active.delete(taskId)
     }
   }
@@ -884,7 +919,7 @@ export class A2ABackendAdapter {
     let state = 'cancelled'
     if (record.remoteTaskId) {
       const task = await record.client.cancelTask({ id: record.remoteTaskId }, {
-        signal: AbortSignal.timeout(Math.min(this.timeoutMs, 10_000)),
+        signal: AbortSignal.timeout(Math.min(this.requestTimeoutMs, 10_000)),
       })
       if (taskLike(task)) {
         this.update(record, task)

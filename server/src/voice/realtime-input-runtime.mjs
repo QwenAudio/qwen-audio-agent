@@ -90,6 +90,7 @@ export class RealtimeInputRuntime {
       this.#completeTranscript(event)
     } else if (event.type === 'conversation.item.input_audio_transcription.failed') {
       const failedInput = this.turns.completeInput(event.item_id)
+      if (failedInput.duplicate) return true
       this.send({
         type: GatewayServerEvent.TRANSCRIPT_DISCARD,
         role: 'user',
@@ -194,7 +195,11 @@ export class RealtimeInputRuntime {
   #completeTranscript(event) {
     const completedInput = this.turns.completeInput(event.item_id)
     const transcriptTurn = completedInput.context
-    if (completedInput.invalid || this.turns.isStale(transcriptTurn)) return
+    if (
+      completedInput.invalid
+      || completedInput.duplicate
+      || this.turns.isStale(transcriptTurn)
+    ) return
     const transcript = String(event.transcript || '').trim()
     if (!transcript) {
       this.send({

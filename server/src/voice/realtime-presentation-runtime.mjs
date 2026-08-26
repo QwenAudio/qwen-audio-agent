@@ -114,10 +114,8 @@ export class RealtimePresentationRuntime {
       turnId: context.turnId,
       taskId: context.taskId,
       taskIds: context.taskIds,
-      turnIds: context.turnIds,
       origin: context.origin,
       turnGeneration: context.turnGeneration,
-      deliverySequence: context.deliverySequence,
     }
   }
 

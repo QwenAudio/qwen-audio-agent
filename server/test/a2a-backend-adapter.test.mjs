@@ -131,6 +131,29 @@ test('A2A adapter passes the reusable BackendPort conformance suite', async () =
   await verifyBackendAdapterConformance({ createFixture: fixture })
 })
 
+test('leaves Task duration unbounded by default and supports an explicit deadline', async () => {
+  const unbounded = new A2ABackendAdapter({
+    agentCard: { name: 'Long-running Agent' },
+    clientFactory: async () => ({
+      client: fakeClient({ result: message('完成。') }),
+    }),
+  })
+  assert.equal(unbounded.timeoutMs, 0)
+  await unbounded.close()
+
+  const timed = new A2ABackendAdapter({
+    agentCard: { name: 'Bounded Agent' },
+    pollIntervalMs: 10,
+    timeoutMs: 20,
+    clientFactory: async () => ({ client: fakeClient({ hold: true }) }),
+  })
+  await assert.rejects(
+    timed.submit(work()),
+    error => error.code === 'A2A_TIMEOUT',
+  )
+  await timed.close()
+})
+
 test('discovers identity without exposing credentials', async () => {
   let configured
   let requestHeaders

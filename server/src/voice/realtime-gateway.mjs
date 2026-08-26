@@ -56,6 +56,10 @@ const PERMISSION_RESPONSE_GRACE_MS = 800
 const RESPONSE_CONTEXT_CLEANUP_MS = 30000
 const REALTIME_STABLE_CONNECTION_MS = 10000
 
+function gatewayTurnId() {
+  return `gateway_${randomUUID().replaceAll('-', '')}`
+}
+
 function send(ws, event) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event))
 }
@@ -242,7 +246,9 @@ export function attachRealtimeGateway(server, {
       }
       announcedPermissions.add(permission.id)
       realtimeSession.frontend.injectPermission(permission, {
-        turnId: task.turnId,
+        // A permission prompt is a new model input and response. taskId keeps
+        // it correlated with the work without reusing the user's old turn.
+        turnId: gatewayTurnId(),
         taskId: task.id,
         authorizationId: permission.id,
       }, {
@@ -659,7 +665,6 @@ export function attachRealtimeGateway(server, {
       ) {
         progressAnnouncements.offer({
           taskId: task.id,
-          turnId: task.turnId,
           startedAt: task.startedAt,
           message: event.message,
         })
@@ -700,7 +705,6 @@ export function attachRealtimeGateway(server, {
             item: {
               id: `inline_${task.id}_delegated`,
               taskId: task.id,
-              turnId: task.turnId || null,
               ...presentation.inline,
             },
           })
@@ -725,7 +729,6 @@ export function attachRealtimeGateway(server, {
             item: {
               id: `inline_${task.id}`,
               taskId: task.id,
-              turnId: task.turnId || null,
               ...inline,
             },
           })

@@ -11,6 +11,7 @@ import {
   taskDeliverySettled,
   taskDetail,
   taskIsActive,
+  taskNeedsPresentation,
   taskLabel,
   taskView,
 } from '../src/task-view.js'
@@ -104,6 +105,22 @@ test('reconnect reconciliation recognizes terminal tasks already delivered', () 
     status: 'running',
     notificationStatus: 'delivered',
   }), false)
+  assert.equal(taskNeedsPresentation({
+    status: 'running',
+    workState: 'working',
+  }), true)
+  assert.equal(taskNeedsPresentation({
+    status: 'completed',
+    notificationStatus: 'pending',
+  }), true)
+  assert.equal(taskNeedsPresentation({
+    status: 'failed',
+    notificationStatus: 'delivering',
+  }), true)
+  assert.equal(taskNeedsPresentation({
+    status: 'completed',
+    notificationStatus: 'delivered',
+  }), false)
 })
 
 test('removes a transient task only while it remains in the expected phase', () => {
@@ -174,23 +191,29 @@ test('shows protocol Agent messages ahead of tool activity', () => {
   assert.equal(updated.message, '正在核对来源')
 })
 
-test('shows protocol-neutral thinking, mode, and session activities', () => {
+test('keeps backend-internal thinking, mode, and session state out of cards', () => {
+  assert.equal(taskDetail({
+    phase: 'running',
+    objective: '开发一个贪吃蛇游戏',
+    activity: [{ kind: 'thinking', status: 'running' }],
+  }), '开发一个贪吃蛇游戏')
   assert.equal(taskDetail({
     phase: 'running',
     activity: [{ kind: 'thinking', status: 'running' }],
-  }), '后台 Agent 正在思考')
+  }), '正在执行任务')
   assert.equal(taskDetail({
     phase: 'running',
     activity: [{ kind: 'mode', status: 'updated', mode: 'plan' }],
-  }), '当前模式：plan')
+  }), '正在执行任务')
   assert.equal(taskDetail({
     phase: 'running',
+    objective: '构建演示',
     activity: [{
       kind: 'session',
       status: 'updated',
       title: 'Build the demo',
     }],
-  }), '会话：Build the demo')
+  }), '构建演示')
 })
 
 test('prefers the active ACP step over later text and completed tools', () => {

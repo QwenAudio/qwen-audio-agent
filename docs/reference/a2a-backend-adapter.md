@@ -90,7 +90,10 @@ changing Task or frontend contracts.
 - `token`, `headers`, `fetchImpl`: authentication and transport hooks;
 - `acceptedOutputModes`: requested result MIME types;
 - `pollIntervalMs`: task polling interval, default 1 second;
-- `timeoutMs`: per-Task timeout, default 5 minutes;
+- `timeoutMs`: optional per-Task timeout; disabled by default so protocol Tasks
+  can run until completion or explicit cancellation;
+- `requestTimeoutMs`: timeout for unscoped requests such as Agent Card
+  discovery, default 30 seconds;
 - `legacyCompat`: official A2A 0.3 compatibility, default enabled;
 - `clientFactory`: test or advanced transport injection.
 

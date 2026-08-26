@@ -1063,7 +1063,7 @@ test('keeps a cached coordinator MCP connection valid across turns', async () =>
   assert.equal(tools.updateCalls, 1)
   assert.equal(tools.releaseCalls, 0)
   assert.equal(resumedDescriptors[0].url, cachedDescriptor.url)
-  assert.equal(second.run.delegation.workId, 'work-two')
+  assert.equal(second.run.delegation.taskId, 'work-two')
   assert.equal(second.run.delegation.ownerId, 'owner-one')
   await second.run.delegation.promise
   await adapter.close()
@@ -2196,7 +2196,7 @@ test('OpenClaw maps native Session tool updates into the shared delegation lifec
         })
         return {
           content: JSON.stringify({
-            job_id: 'work-one',
+            task_id: 'work-one',
             state: 'delegated',
             mode: 'delegate',
             delegation_id: 'run-one',

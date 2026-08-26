@@ -207,14 +207,12 @@ const frontendMemoryService = new FrontendMemoryService({
 // requests. Frontend conversation history and memory stay at the frontend.
 taskManager.configureScheduledTaskRunner(
   async (objective, context) => workBackend.run({
-    originalRequest: objective,
     objective,
   }, {
     ownerId: context.ownerId,
     sessionId: context.sessionId,
     turnId: context.turnId,
-    workId: context.taskId,
-    jobId: context.jobId,
+    taskId: context.taskId,
     signal: context.signal,
     onEvent: context.onEvent,
   }),
@@ -580,8 +578,8 @@ realtimeGateway = attachRealtimeGateway(server, {
   notesStore,
   backendRuntime: workBackend,
   backendAvailability,
-  respondAuthorization: (workId, id, decision, options) => (
-    agent.respondAuthorization(workId, id, decision, options)
+  respondAuthorization: (taskId, id, decision, options) => (
+    agent.respondAuthorization(taskId, id, decision, options)
   ),
   permissionPolicy,
   inputAssets: inputAssetRegistry,

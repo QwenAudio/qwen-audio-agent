@@ -54,7 +54,7 @@ test('accepts valid transitions and rejects backwards or terminal transitions', 
 test('projects an active task into presentation and standard artifacts', () => {
   const projected = publicTask({
     id: 'work-one',
-    jobId: 'job_1',
+    taskId: 'job_1',
     status: TaskStatus.RUNNING,
     objective: '生成报告',
     ownerId: 'owner',
@@ -90,7 +90,7 @@ test('projects an active task into presentation and standard artifacts', () => {
 test('projects pending authorization as the public auth_required state', () => {
   const projected = publicTask({
     id: 'work-auth',
-    jobId: 'job_2',
+    taskId: 'job_2',
     status: TaskStatus.RUNNING,
     objective: '执行命令',
     createdAt: 1,
@@ -103,5 +103,5 @@ test('projects pending authorization as the public auth_required state', () => {
     },
   })
   assert.equal(projected.workState, 'auth_required')
-  assert.equal(projected.authorization.workId, 'work-auth')
+  assert.equal(projected.authorization.taskId, 'work-auth')
 })

@@ -14,7 +14,9 @@
 版本号遵循 SemVer：新增能力升 minor；下文点名的任一端点或事件发生破坏性
 变更升 major。
 
-当前版本为 `3.1.0`。`3.1` 在最终助手转写事件中增加有界 Citation。`3.0` 为原生
+当前版本为 `4.0.0`。`4.0` 将原来的 `workId` / `jobId` 双重身份收敛为 Task 的唯一短
+`id`（模型工具结果中为 `task_id`），并增加 `task.updated` 增量快照。该字段变更会影响
+读取 Task 事件的客户端，因此升 major。`3.1` 在最终助手转写事件中增加有界 Citation。`3.0` 为原生
 Task 事件提供与 A2A 对齐的 `submitted`、
 `working`、`auth_required` 状态，以及类型明确的产物、呈现与授权对象。它替换了
 `2.x` 的 `active` 状态与不透明结果元数据，因此事件消费者必须检查下方能力位。
@@ -39,6 +41,7 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `input.suspend-ack` | 客户端以 `input.suspend.ack` 确认抢占生效（仅用于状态展示——不要等待它） | `server/test/input-suspend-protocol.test.mjs` |
 | `tasks.ag-ui-event-stream` | `GET /api/tasks/:id/events?format=ag-ui` 将现有 Task 事件流投射为 AG-UI `ACTIVITY_SNAPSHOT`；不传 `format` 时仍为原生事件流 | `server/test/agui-event-projector.test.mjs` |
 | `tasks.work-artifacts-authorization` | 原生 Task 事件使用与 A2A 对齐的工作状态，并暴露类型明确的 `artifacts`、`presentation` 与 `authorization` 对象 | `test/gateway-event-schema.test.mjs`、`server/test/task-state.test.mjs` |
+| `tasks.unified-id-updates` | Task 只公开一个短 `id`；`task.updated` 携带 Adapter 归一化后的增量消息与产物 | `test/gateway-event-schema.test.mjs`、`server/test/task-manager.test.mjs` |
 | `messages.citations` | 最终助手 `transcript.final` 可以携带同一轮前台检索产生的规范化 Citation | `test/gateway-event-schema.test.mjs`、`server/test/realtime-presentation-runtime.test.mjs` |
 | `desktop.orb-shell` | 悬浮球形态的主进程契约随包发布：`bindOrbShell` 应答随包 preload 发出的全部通道 | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` 持有悬浮球窗口配方；其 `destroy()` 是宿主的同步销毁路径（渲染进程退出才能确定性释放麦克风） | `desktop/test/orb-window.test.mjs` |

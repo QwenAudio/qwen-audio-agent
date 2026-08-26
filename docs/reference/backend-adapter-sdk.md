@@ -2,7 +2,7 @@
 
 The Backend Adapter SDK connects non-ACP action systems to qwen-audio-agent.
 A phone agent, hardware agent, HTTP service, or other task runtime implements
-the protocol-neutral `BackendPort`; voice interaction, the Work queue,
+the protocol-neutral `BackendPort`; voice interaction, the Task queue,
 authorization relay, and result presentation remain unchanged.
 
 ## Import
@@ -19,7 +19,8 @@ The SDK exports:
 
 - `defineBackendAdapter` for composition-time method validation;
 - `createBackendAgentHost` for embedded Gateway composition;
-- `BackendWorkRuntime` for projecting Gateway Work into `submit`;
+- `BackendWorkRuntime` for projecting a Gateway Task into `submit`;
+- `BackendEventType` and `backendEvent` for normalized backend events;
 - `verifyBackendAdapterConformance`, shared with the built-in ACP adapter;
 - `assertBackendPort`, `BACKEND_PORT_METHODS`, and the contract error type.
 
@@ -41,20 +42,18 @@ An adapter implements the complete surface:
 }
 ```
 
-`start` and `close` are idempotent. `status()` without a Work ID returns
-runtime status; with an ID it addresses only that Gateway Work. `submit`,
-`status`, `cancel`, and `respondAuthorization` accept Gateway Work IDs only.
-Private sessions, task IDs, and topology never cross the port.
+`start` and `close` are idempotent. `status()` without a Task ID returns
+runtime status; with an ID it addresses only that Gateway Task. `submit`,
+`status`, `cancel`, and `respondAuthorization` share one `taskId`. Private
+sessions, remote task IDs, and topology never cross the port.
 
-`submit(work)` receives structured internal Work plus one canonical
-`work.instruction`. An adapter may use routing and correlation fields internally,
+`submit(task)` receives a structured internal Task plus one canonical
+`instruction`. An adapter may use routing and correlation fields internally,
 but an Agent-facing ACP prompt, A2A text part, or equivalent must contain only
-`instruction` and native attachment parts. Do not serialize the Work object,
-IDs, owner, lifecycle, frontend memory, or chat history into model-visible
-text. `originalRequest` is bounded source evidence already incorporated into
-the canonical instruction when needed; `workingDirectory` and `timeZone` are
-likewise rendered as execution context. Custom non-model adapters may consume
-the structured Work directly.
+`instruction` and native attachment parts. Do not serialize the Task object,
+IDs, owner, lifecycle, verbatim ASR, working directory, time zone, frontend
+memory, or chat history into model-visible text. Custom non-model adapters may
+consume the structured Task directly.
 
 The final `submit` result contains at least:
 
@@ -68,7 +67,7 @@ The final `submit` result contains at least:
 
 Do not return raw protocol objects, session IDs, tokens, or credentials.
 Progress is published through `subscribe` as backend events correlated by
-`workId` and `ownerId`; a failing observer cannot interrupt execution.
+`taskId` and `ownerId`; a failing observer cannot interrupt execution.
 
 Adapters may publish protocol-neutral optional observations without expanding
 the `BackendPort` method surface:
@@ -76,7 +75,7 @@ the `BackendPort` method surface:
 ```js
 {
   type: 'backend.activity',
-  workId,
+  taskId,
   ownerId,
   activity: {
     id: 'stable-observation-id',
@@ -85,6 +84,11 @@ the `BackendPort` method surface:
   },
 }
 ```
+
+Incremental messages and artifacts use `backend.message` and
+`backend.artifact`. ACP `session/update`, A2A streaming events, and custom
+callbacks must be normalized inside the adapter; raw protocol payloads never
+reach TaskManager or the frontend.
 
 `kind` is extensible. Common presentation fields include `status`, `message`,
 `label`, `detail`, `category`, `tool`, `title`, `updatedAt`, `mode`, `completed`,
@@ -121,8 +125,8 @@ non-ACP in-memory example lives in
 
 ## Conformance
 
-Each third-party adapter should provide fresh instances, two Work values, and
-one holdable Work to the public suite:
+Each third-party adapter should provide fresh instances, two Task values, and
+one holdable Task to the public suite:
 
 ```js
 await verifyBackendAdapterConformance({
@@ -136,6 +140,6 @@ await verifyBackendAdapterConformance({
 ```
 
 The suite checks idempotent lifecycle, result boundaries, event and owner
-isolation, duplicate Work, cancellation, and subscription cleanup. Protocol-
+isolation, duplicate Tasks, cancellation, and subscription cleanup. Protocol-
 specific capabilities remain inside the adapter; ACP does not need to be
 emulated.

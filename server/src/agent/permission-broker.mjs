@@ -7,6 +7,7 @@ import {
   normalizeAuthorization,
   resolveAuthorization,
 } from '../core/work-authorization.mjs'
+import { BackendEventType, backendEvent } from '../core/backend-events.mjs'
 
 function clean(value) {
   return String(value || '').trim()
@@ -124,7 +125,7 @@ export class PermissionBroker {
     const operation = permissionOperation(params?.toolCall)
     const permission = normalizeAuthorization({
       id,
-      workId: session?.coordinationRunId || null,
+      taskId: session?.coordinationRunId || null,
       status: AuthorizationStatus.PENDING,
       category: operation.kind || bounded(name, 80) || 'unknown',
       summary: permissionSummary(operation),
@@ -142,7 +143,10 @@ export class PermissionBroker {
       onEvent: session?.onEvent,
     }
     this.pending.set(id, record)
-    record.onEvent?.({ type: 'backend.permission.requested', permission })
+    record.onEvent?.(backendEvent(
+      BackendEventType.AUTHORIZATION_REQUESTED,
+      { permission },
+    ))
     signal?.addEventListener('abort', () => this.cancel(record), { once: true })
     return pending.promise
   }
@@ -154,10 +158,10 @@ export class PermissionBroker {
       record,
       AuthorizationStatus.CANCELLED,
     )
-    record.onEvent?.({
-      type: 'backend.permission.resolved',
-      permission,
-    })
+    record.onEvent?.(backendEvent(
+      BackendEventType.AUTHORIZATION_RESOLVED,
+      { permission },
+    ))
     return true
   }
 
@@ -186,7 +190,10 @@ export class PermissionBroker {
       record,
       approved ? AuthorizationStatus.APPROVED : AuthorizationStatus.DENIED,
     )
-    record.onEvent?.({ type: 'backend.permission.resolved', permission })
+    record.onEvent?.(backendEvent(
+      BackendEventType.AUTHORIZATION_RESOLVED,
+      { permission },
+    ))
     this.resolved.set(permission.id, { ownerId: record.ownerId, permission })
     while (this.resolved.size > this.resolvedLimit) {
       this.resolved.delete(this.resolved.keys().next().value)

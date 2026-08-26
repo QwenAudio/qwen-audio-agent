@@ -19,15 +19,14 @@ async function waitFor(condition, timeoutMs = 1000) {
 test('formats only final work results for realtime presentation', () => {
   const text = formatWorkResults([{
     event: 'task.completed',
-    taskId: 'work-one',
-    jobId: 'job_1',
+    taskId: 'task_1',
     objective: '生成图片',
     status: 'completed',
     result: '图片已生成',
   }])
-  assert.match(text, /^\[COMPLETE\]/)
-  assert.match(text, /job_id: job_1/)
-  assert.match(text, /submitted_objective: 生成图片/)
+  assert.match(text, /^以下是你先前异步执行工作的最终更新/u)
+  assert.match(text, /task_id: task_1/)
+  assert.match(text, /工作: 生成图片/)
   assert.doesNotMatch(text, /original_request:/)
   assert.match(text, /图片已生成/)
   assert.doesNotMatch(text, /permission|lifecycle|session/i)
@@ -40,15 +39,13 @@ test('passes backend-provided error content through for realtime interpretation'
   })
   const text = formatWorkResults([{
     event: 'task.completed',
-    taskId: 'work-provider-error',
-    jobId: 'job_1',
+    taskId: 'task_2',
     objective: '执行后台任务',
     status: 'completed',
     result: backendResult,
   }])
 
-  assert.match(text, /^\[COMPLETE\]/)
-  assert.match(text, /type: task\.completed/)
+  assert.match(text, /^以下是你先前异步执行工作的最终更新/u)
   assert.match(text, /Provider\.InternalError/)
   assert.match(text, /backend supplied detail/)
 })
@@ -68,8 +65,7 @@ test('waits while duplex speech blocks delivery', async () => {
     batchWindowMs: 0,
   })
   manager.completed({
-    id: 'work-one',
-    jobId: 'job_1',
+    id: 'task_1',
     objective: '处理',
     result: '完成',
   })
@@ -95,8 +91,8 @@ test('batches nearby completed work into one realtime response', async () => {
     isDeliveryBlocked: () => false,
     batchWindowMs: 2,
   })
-  manager.completed({ id: 'one', jobId: 'job_1', objective: 'A', result: 'A done' })
-  manager.completed({ id: 'two', jobId: 'job_2', objective: 'B', result: 'B done' })
+  manager.completed({ id: 'one', objective: 'A', result: 'A done' })
+  manager.completed({ id: 'two', objective: 'B', result: 'B done' })
   await new Promise(resolve => setTimeout(resolve, 10))
   assert.equal(inputs.length, 1)
   assert.match(inputs[0], /A done/)
@@ -121,17 +117,17 @@ test('delivers bounded announcement batches in order and confirms each task once
     onDelivered: taskIds => delivered.push(...taskIds),
   })
 
-  manager.completed({ id: 'first', jobId: 'job_1', objective: '第一个', result: '结果一' })
-  manager.completed({ id: 'second', jobId: 'job_2', objective: '第二个', result: '结果二' })
+  manager.completed({ id: 'first', objective: '第一个', result: '结果一' })
+  manager.completed({ id: 'second', objective: '第二个', result: '结果二' })
   await new Promise(resolve => setTimeout(resolve, 5))
   assert.equal(inputs.length, 1)
-  assert.match(inputs[0], /job_id: job_1/)
+  assert.match(inputs[0], /task_id: first/)
 
   manager.confirmMany(['first'])
   manager.confirmMany(['first'])
   await new Promise(resolve => setTimeout(resolve, 5))
   assert.equal(inputs.length, 2)
-  assert.match(inputs[1], /job_id: job_2/)
+  assert.match(inputs[1], /task_id: second/)
 
   manager.confirmMany(['second'])
   manager.confirmMany(['second'])
@@ -150,11 +146,11 @@ test('does not mark a generated result delivered until playback starts', async (
     batchWindowMs: 0,
     onDelivered: taskIds => delivered.push(...taskIds),
   })
-  manager.completed({ id: 'work-one', jobId: 'job_1', objective: '处理', result: '完成' })
+  manager.completed({ id: 'task_1', objective: '处理', result: '完成' })
   await new Promise(resolve => setTimeout(resolve, 5))
   assert.deepEqual(delivered, [])
-  manager.confirmMany(['work-one'])
-  assert.deepEqual(delivered, ['work-one'])
+  manager.confirmMany(['task_1'])
+  assert.deepEqual(delivered, ['task_1'])
   manager.close()
 })
 
@@ -176,15 +172,15 @@ test('dismisses an active result after user interruption without retrying it', a
     acknowledgementTimeoutMs: 5,
     onDelivered: taskIds => delivered.push(...taskIds),
   })
-  manager.completed({ id: 'work-one', jobId: 'job_1', objective: '播报结果', result: '完成' })
+  manager.completed({ id: 'task_1', objective: '播报结果', result: '完成' })
   await new Promise(resolve => setTimeout(resolve, 2))
 
   manager.dismissActive()
-  manager.retryMany(['work-one'])
+  manager.retryMany(['task_1'])
   await new Promise(resolve => setTimeout(resolve, 15))
 
   assert.equal(attempts, 1)
-  assert.deepEqual(delivered, ['work-one'])
+  assert.deepEqual(delivered, ['task_1'])
   assert.equal(manager.activeBatch, null)
   assert.equal(manager.pending.size, 0)
   manager.close()
@@ -206,7 +202,7 @@ test('retries a generated result when playback acknowledgement times out', async
     retryMaxMs: 1,
     acknowledgementTimeoutMs: 5,
   })
-  manager.completed({ id: 'work-one', jobId: 'job_1', objective: '处理', result: '完成' })
+  manager.completed({ id: 'task_1', objective: '处理', result: '完成' })
   await waitFor(() => attempts >= 2)
   assert.ok(attempts >= 2)
   manager.close()
@@ -233,13 +229,13 @@ test('never retries an announcement while its audio is still queued or playing',
   // Queue while idle, then model the audio entering the client playback queue
   // before generation completes.
   blocked = false
-  manager.completed({ id: 'work-one', jobId: 'job_1', objective: '讲故事', result: '很长的故事' })
+  manager.completed({ id: 'task_1', objective: '讲故事', result: '很长的故事' })
   await new Promise(resolve => setTimeout(resolve, 2))
   blocked = true
   await new Promise(resolve => setTimeout(resolve, 15))
   assert.equal(attempts, 1)
 
-  manager.confirmMany(['work-one'])
+  manager.confirmMany(['task_1'])
   blocked = false
   await new Promise(resolve => setTimeout(resolve, 10))
   assert.equal(attempts, 1)
@@ -257,12 +253,12 @@ test('releases claimed notifications when a voice client is superseded', async (
     batchWindowMs: 0,
     onRelease: taskIds => released.push(...taskIds),
   })
-  manager.completed({ id: 'work-one', jobId: 'job_1', objective: '处理', result: '完成' })
+  manager.completed({ id: 'task_1', objective: '处理', result: '完成' })
   await new Promise(resolve => setTimeout(resolve, 5))
 
   manager.pause()
 
-  assert.deepEqual(released, ['work-one'])
+  assert.deepEqual(released, ['task_1'])
   assert.equal(manager.activeBatch, null)
   assert.equal(manager.pending.size, 0)
   manager.close()
@@ -362,7 +358,7 @@ test('ignores a late generation completion after the voice client is paused', as
     isDeliveryBlocked: () => false,
     batchWindowMs: 0,
   })
-  manager.completed({ id: 'work-one', jobId: 'job_1', objective: '处理', result: '完成' })
+  manager.completed({ id: 'task_1', objective: '处理', result: '完成' })
   await new Promise(resolve => setTimeout(resolve, 5))
   manager.pause()
   finishGeneration({ completed: true, contextInjected: true })
@@ -383,16 +379,16 @@ test('a paused delivery cannot disturb the replacement voice client delivery', a
     isDeliveryBlocked: () => false,
     batchWindowMs: 0,
   })
-  manager.completed({ id: 'work-one', jobId: 'job_1', objective: '第一个', result: '完成' })
+  manager.completed({ id: 'task_1', objective: '第一个', result: '完成' })
   await new Promise(resolve => setTimeout(resolve, 5))
   manager.pause()
-  manager.completed({ id: 'work-two', jobId: 'job_2', objective: '第二个', result: '完成' })
+  manager.completed({ id: 'task_2', objective: '第二个', result: '完成' })
   await new Promise(resolve => setTimeout(resolve, 5))
 
   completions[0]({ completed: true, contextInjected: true })
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(manager.delivering, true)
-  assert.deepEqual(manager.activeBatch.taskIds, ['work-two'])
+  assert.deepEqual(manager.activeBatch.taskIds, ['task_2'])
 
   completions[1]({ completed: true, contextInjected: true })
   await new Promise(resolve => setImmediate(resolve))
@@ -420,9 +416,9 @@ test('releases a poison batch after bounded retries so later results can proceed
     maxRetryAttempts: 1,
     onRelease: taskIds => released.push(...taskIds),
   })
-  manager.completed({ id: 'poison', jobId: 'job_1', objective: '坏任务', result: '坏结果' })
+  manager.completed({ id: 'poison', objective: '坏任务', result: '坏结果' })
   await waitFor(() => inputs.some(input => input.includes('坏结果')))
-  manager.completed({ id: 'healthy', jobId: 'job_2', objective: '好任务', result: '好结果' })
+  manager.completed({ id: 'healthy', objective: '好任务', result: '好结果' })
   await waitFor(() => (
     released.includes('poison')
     && inputs.some(input => input.includes('好结果'))

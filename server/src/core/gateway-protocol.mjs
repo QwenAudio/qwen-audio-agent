@@ -10,6 +10,9 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 4.0.0 replaces the dual workId/jobId Task identity with one short `id`
+// (`task_id` in model tool results) and adds task.updated snapshots for
+// normalized backend messages and artifacts.
 // 3.1.0 adds bounded citations to final assistant transcript events.
 // 3.0.0 gives public Tasks A2A-aligned work states and first-class artifact,
 // presentation and authorization values. This replaces the 2.x `active`
@@ -22,7 +25,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '3.1.0'
+export const GATEWAY_PROTOCOL_VERSION = '4.0.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -68,6 +71,9 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // Native Task events expose A2A-aligned submitted/working/auth_required
   // states plus typed artifact, presentation and authorization values.
   'tasks.work-artifacts-authorization',
+  // Every public Task has one short `id`; task.updated carries incremental
+  // backend messages and artifacts without exposing adapter protocol objects.
+  'tasks.unified-id-updates',
   // Final assistant transcript events may carry bounded, normalized citations
   // collected from frontend retrieval tools during the same user turn.
   'messages.citations',

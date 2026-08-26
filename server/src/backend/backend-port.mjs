@@ -9,11 +9,11 @@
  *   describe() -> stable identity and capabilities
  *   start(context?) -> idempotently make the backend ready
  *   health() -> current backend availability
- *   submit(work, context?) -> run one Work and return its final outcome
- *   status(workId?, context?) -> runtime status without an ID, otherwise Work status
- *   cancel(workId, context?) -> cancel one adapter-owned Work
- *   respondAuthorization(workId, authorizationId, decision, context?)
- *   subscribe(listener) -> unsubscribe function for backend Work events
+ *   submit(task, context?) -> run one Task and return its final outcome
+ *   status(taskId?, context?) -> runtime status without an ID, otherwise Task status
+ *   cancel(taskId, context?) -> cancel one adapter-owned Task
+ *   respondAuthorization(taskId, authorizationId, decision, context?)
+ *   subscribe(listener) -> unsubscribe function for normalized backend events
  *   close() -> idempotently release adapter-owned resources
  */
 export const BACKEND_PORT_METHODS = Object.freeze([

@@ -30,8 +30,8 @@ export class AgentClient {
     }
   }
 
-  status(workId, options = {}) {
-    return this.adapter.status(workId, options)
+  status(taskId, options = {}) {
+    return this.adapter.status(taskId, options)
   }
 
   start(options = {}) {
@@ -42,13 +42,13 @@ export class AgentClient {
     return this.adapter.submit(work, options)
   }
 
-  cancel(workId, options = {}) {
-    return this.adapter.cancel(workId, options)
+  cancel(taskId, options = {}) {
+    return this.adapter.cancel(taskId, options)
   }
 
-  respondAuthorization(workId, authorizationId, decision, options = {}) {
+  respondAuthorization(taskId, authorizationId, decision, options = {}) {
     return this.adapter.respondAuthorization(
-      workId,
+      taskId,
       authorizationId,
       decision,
       options,
@@ -130,8 +130,8 @@ export const agent = {
         ok: true,
       status: 'not_configured',
     }),
-  status: (workId, options = {}) => config.agentProtocol
-    ? requireAgent().status(workId, options)
+  status: (taskId, options = {}) => config.agentProtocol
+    ? requireAgent().status(taskId, options)
     : {
         enabled: false,
         ok: true,
@@ -140,14 +140,14 @@ export const agent = {
       },
   start: (options = {}) => requireAgent().start(options),
   submit: (work, options = {}) => requireAgent().submit(work, options),
-  cancel: (workId, options = {}) => requireAgent().cancel(workId, options),
+  cancel: (taskId, options = {}) => requireAgent().cancel(taskId, options),
   respondAuthorization: (
-    workId,
+    taskId,
     authorizationId,
     decision,
     options = {},
   ) => requireAgent().respondAuthorization(
-    workId,
+    taskId,
     authorizationId,
     decision,
     options,

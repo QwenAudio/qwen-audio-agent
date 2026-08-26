@@ -1,7 +1,7 @@
 # Backend Adapter SDK
 
 Backend Adapter SDK 用于把非 ACP 办事系统接到 qwen-audio-agent。手机 Agent、硬件
-Agent、HTTP 服务或其他任务运行时只需实现统一 `BackendPort`；前台语音、Work 队列、
+Agent、HTTP 服务或其他任务运行时只需实现统一 `BackendPort`；前台语音、Task 队列、
 权限转述和结果播报不需要修改。
 
 ## 导入
@@ -18,7 +18,8 @@ SDK 公开：
 
 - `defineBackendAdapter`：在组合阶段校验完整方法面；
 - `createBackendAgentHost`：把 Adapter 接到嵌入式 Gateway 的应用宿主；
-- `BackendWorkRuntime`：把 Gateway Work 输入投射到 `submit`；
+- `BackendWorkRuntime`：把 Gateway Task 输入投射到 `submit`；
+- `BackendEventType`、`backendEvent`：创建规范化后台事件；
 - `verifyBackendAdapterConformance`：与内置 ACP Adapter 共用的契约测试；
 - `assertBackendPort`、`BACKEND_PORT_METHODS` 和契约错误类型。
 
@@ -40,16 +41,15 @@ Adapter 必须实现全部方法：
 }
 ```
 
-`start` 和 `close` 必须幂等。`status()` 不带 Work ID 时返回运行时状态；带 ID 时只查询
-该 Gateway Work。`submit`、`status`、`cancel` 和 `respondAuthorization` 都只接收
-Gateway Work ID，后台私有 Session、任务 ID 和拓扑不能越过边界。
+`start` 和 `close` 必须幂等。`status()` 不带 Task ID 时返回运行时状态；带 ID 时只查询
+该 Gateway Task。`submit`、`status`、`cancel` 和 `respondAuthorization` 共享同一个
+`taskId`。后台私有 Session、远程 Task ID 和拓扑不能越过边界。
 
-`submit(work)` 接收结构化内部 Work 和唯一的规范字段 `work.instruction`。Adapter
+`submit(task)` 接收结构化内部 Task 和唯一的规范字段 `instruction`。Adapter
 可以在内部使用路由与关联字段，但面向 Agent 的 ACP Prompt、A2A 文本 Part 或同类
-输入只能包含 `instruction` 和协议原生附件 Part。不得把整个 Work、ID、owner、
-生命周期、前台记忆或聊天历史序列化为模型可见文本。`originalRequest` 是有界的事实
-依据，需要时已经合入规范指令；`workingDirectory` 和 `timeZone` 同样被投影为执行
-上下文。非模型型自定义 Adapter 仍可直接消费结构化 Work。
+输入只能包含 `instruction` 和协议原生附件 Part。不得把整个 Task、ID、owner、
+生命周期、ASR 原文、工作目录、时区、前台记忆或聊天历史序列化为模型可见文本。
+非模型型自定义 Adapter 仍可直接消费结构化 Task。
 
 `submit` 的最终结果至少包含：
 
@@ -62,14 +62,14 @@ Gateway Work ID，后台私有 Session、任务 ID 和拓扑不能越过边界�
 ```
 
 不要返回原始协议对象、Session ID、Token 或凭据。运行进度通过 `subscribe` 发布
-`workId`、`ownerId` 关联的标准后台事件；监听器异常不能中断任务。
+`taskId`、`ownerId` 关联的标准后台事件；监听器异常不能中断任务。
 
 Adapter 可以发布协议无关的可选观测信息，无需扩展 `BackendPort` 方法面：
 
 ```js
 {
   type: 'backend.activity',
-  workId,
+  taskId,
   ownerId,
   activity: {
     id: 'stable-observation-id',
@@ -78,6 +78,10 @@ Adapter 可以发布协议无关的可选观测信息，无需扩展 `BackendPor
   },
 }
 ```
+
+持续消息和产物分别使用 `backend.message` 与 `backend.artifact`。ACP
+`session/update`、A2A 流式事件和自定义回调都必须先在 Adapter 内归一化，不得把协议
+原始载荷传给 TaskManager 或前台。
 
 `kind` 可扩展。通用展示字段包括 `status`、`message`、`label`、`detail`、`category`、
 `tool`、`title`、`updatedAt`、`mode`、`completed` 和 `total`，也允许 Adapter 增加
@@ -109,7 +113,7 @@ process.once('SIGTERM', () => application.close())
 
 ## Conformance
 
-每个第三方 Adapter 都应在自己的测试中提供新实例、两个 Work 和一个可暂停 Work：
+每个第三方 Adapter 都应在自己的测试中提供新实例、两个 Task 和一个可暂停 Task：
 
 ```js
 await verifyBackendAdapterConformance({
@@ -122,5 +126,5 @@ await verifyBackendAdapterConformance({
 })
 ```
 
-测试会验证幂等启动/关闭、结果边界、事件隔离、owner 隔离、重复 Work、取消和订阅清理。
+测试会验证幂等启动/关闭、结果边界、事件隔离、owner 隔离、重复 Task、取消和订阅清理。
 协议专属能力留在 Adapter 内部；不需要模拟 ACP。

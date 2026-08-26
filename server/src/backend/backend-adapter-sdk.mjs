@@ -1,4 +1,4 @@
-export const BACKEND_ADAPTER_SDK_VERSION = '1.0.0'
+export const BACKEND_ADAPTER_SDK_VERSION = '2.0.0'
 
 export {
   assertBackendPort,
@@ -6,6 +6,11 @@ export {
   BackendPortContractError,
 } from './backend-port.mjs'
 export { BackendWorkRuntime } from './backend-work-runtime.mjs'
+export {
+  BACKEND_EVENT_TYPES,
+  BackendEventType,
+  backendEvent,
+} from '../core/backend-events.mjs'
 export {
   verifyBackendAdapterConformance,
 } from './backend-adapter-conformance.mjs'
@@ -32,12 +37,12 @@ export function createBackendAgentHost(adapter, options = {}) {
     label: initial.label || 'Custom backend',
     describe: () => backend.describe(),
     health: () => backend.health(),
-    status: (workId, context) => backend.status(workId, context),
+    status: (taskId, context) => backend.status(taskId, context),
     start: context => backend.start(context),
-    submit: (work, context) => backend.submit(work, context),
-    cancel: (workId, context) => backend.cancel(workId, context),
-    respondAuthorization: (workId, authorizationId, decision, context) => (
-      backend.respondAuthorization(workId, authorizationId, decision, context)
+    submit: (task, context) => backend.submit(task, context),
+    cancel: (taskId, context) => backend.cancel(taskId, context),
+    respondAuthorization: (taskId, authorizationId, decision, context) => (
+      backend.respondAuthorization(taskId, authorizationId, decision, context)
     ),
     subscribe: listener => backend.subscribe(listener),
     canRecoverDelegatedWork: task => (
@@ -45,7 +50,7 @@ export function createBackendAgentHost(adapter, options = {}) {
     ),
     recoverDelegatedWork: (task, context) => {
       if (typeof backend.recoverDelegatedWork !== 'function') {
-        throw new Error('Custom backend does not support delegated Work recovery')
+        throw new Error('Custom backend does not support delegated Task recovery')
       }
       return backend.recoverDelegatedWork(task, context)
     },

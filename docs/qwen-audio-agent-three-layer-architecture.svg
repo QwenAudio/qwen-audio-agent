@@ -79,7 +79,7 @@
   <text x="1275.0" y="250" text-anchor="middle" font-size="12" font-weight="400" fill="#4b5563">保持可继续交谈</text>
   <rect x="245" y="405" width="275" height="124" rx="14" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
   <text x="382.5" y="437" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">Realtime Gateway + TaskManager</text>
-  <text x="382.5" y="461" text-anchor="middle" font-size="12" font-weight="400" fill="#4b5563">work_id 与生命周期权威</text>
+  <text x="382.5" y="461" text-anchor="middle" font-size="12" font-weight="400" fill="#4b5563">task_id 与生命周期权威</text>
   <text x="382.5" y="481" text-anchor="middle" font-size="12" font-weight="400" fill="#4b5563">queued · running · delegated</text>
   <text x="382.5" y="501" text-anchor="middle" font-size="12" font-weight="400" fill="#4b5563">finalizing · completed · cancelled</text>
   <rect x="585" y="405" width="210" height="114" rx="14" fill="#ffffff" stroke="#a78bfa" stroke-width="2"/>

@@ -104,9 +104,10 @@ receipt (`spawn_thinking`); `control` tools query or change existing work.
 
 ### Work
 
-Work records carry internal and user-facing identity, owner, conversation,
-turn, original request, objective, multimodal inputs, state, activity,
-authorization, artifacts, presentation, and timestamps. Public states align
+Task records use one short `task_id` across intake, query, cancellation, events,
+and result delivery. They carry owner, conversation, turn, objective,
+multimodal inputs, state, activity, authorization, artifacts, presentation,
+and timestamps. Public states align
 with A2A Task semantics: `submitted`, `working`, `auth_required`, `completed`,
 `failed`, and `cancelled`. Gateway-specific phases remain internal.
 Backend submission adds one canonical natural-language `instruction`; frontend
@@ -121,7 +122,7 @@ prompts, coordinator MCP, and native delegation stay inside the ACP adapter.
 Every adapter implements the complete method surface and is checked at the
 composition boundary. Optional capabilities are declared by `describe()` and
 rejected explicitly, never inferred from a missing function. `submit`,
-`status`, `cancel`, and `respondAuthorization` operate on Gateway Work IDs;
+`status`, `cancel`, and `respondAuthorization` operate on one Gateway `taskId`;
 backend-private session and task identifiers never cross the port.
 Adapters project the same canonical instruction and native attachment parts
 into ACP, A2A, or custom transports while keeping correlation metadata private.
@@ -152,7 +153,7 @@ published, and only an unacknowledged or expired lease may be replayed.
 | Gateway ↔ realtime model | OpenAI Realtime-compatible provider port |
 | Model tools | Function Calling + JSON Schema |
 | External tools and data | MCP; OpenAPI adapter for REST services |
-| Gateway ↔ backend agent | ACP today; A2A-aligned internal semantics and a future A2A adapter |
+| Gateway ↔ backend agent | BackendPort with built-in ACP and A2A adapters plus custom protocols |
 | Multimodal content | MIME type plus text, URI, binary, or structured-data parts |
 | Observability | Structured logs and progressively OpenTelemetry-aligned traces |
 
@@ -263,7 +264,7 @@ delegation strategy, and backend MCP/skills/models remain backend-private.
   - [x] Publish BackendPort, the application host wrapper, and the shared
     conformance suite.
   - [x] Prove the boundary with a non-ACP in-memory adapter.
-- [ ] Optional A2A backend adapter.
+- [x] Optional A2A backend adapter.
 
 ## 8. Target repository shape
 

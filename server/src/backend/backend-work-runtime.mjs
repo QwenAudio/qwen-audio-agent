@@ -8,7 +8,7 @@ function clean(value) {
 /**
  * Protocol-neutral application facade for one configured backend.
  *
- * It translates the Gateway's accepted Work context into BackendPort calls.
+ * It translates the Gateway's accepted Task context into BackendPort calls.
  * Prompt formats, Session routing, and delegation topology belong to adapters.
  */
 export class BackendWorkRuntime {
@@ -19,17 +19,12 @@ export class BackendWorkRuntime {
   }
 
   run(input, options = {}) {
-    const workId = clean(options.workId)
-    const jobId = clean(options.jobId) || workId
+    const taskId = clean(options.taskId)
     const work = {
-      id: workId,
-      jobId,
+      id: taskId,
       ownerId: clean(options.ownerId),
       instruction: input?.instruction,
-      originalRequest: input?.originalRequest,
       objective: input?.objective,
-      timeZone: input?.timeZone,
-      workingDirectory: input?.workingDirectory,
       inputParts: input?.inputParts || [],
     }
     work.instruction = backendInstructionFromWork(work)
@@ -39,11 +34,11 @@ export class BackendWorkRuntime {
     })
   }
 
-  cancel(workId, options = {}) {
-    return this.backend.cancel(workId, options)
+  cancel(taskId, options = {}) {
+    return this.backend.cancel(taskId, options)
   }
 
-  status(workId, options = {}) {
-    return this.backend.status(workId, options)
+  status(taskId, options = {}) {
+    return this.backend.status(taskId, options)
   }
 }

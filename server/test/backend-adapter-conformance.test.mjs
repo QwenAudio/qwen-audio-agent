@@ -6,8 +6,7 @@ import {
 
 function work(index) {
   return {
-    id: `work-${index}`,
-    jobId: `job_${index}`,
+    id: `task_${index}`,
     ownerId: 'owner-one',
     originalRequest: `完成请求 ${index}`,
     objective: `完成请求 ${index}`,
@@ -55,7 +54,7 @@ function fakeClient({ hold }) {
       }
       return {
         content: JSON.stringify({
-          job_id: 'job',
+          task_id: 'job',
           state: 'completed',
           mode: 'respond',
           presentation: { speech: '已经完成。', inline: null },

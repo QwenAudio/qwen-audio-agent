@@ -18,7 +18,10 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
-The current version is `3.1.0`. The `3.1` line adds bounded citations to final
+The current version is `4.0.0`. The `4.0` line replaces the former
+`workId` / `jobId` pair with one short Task `id` (`task_id` in model tool
+results) and adds incremental `task.updated` snapshots. This changes the Task
+event shape and therefore raises the major version. The `3.1` line adds bounded citations to final
 assistant transcript events. The `3.0` line gives native Task events
 A2A-aligned `submitted`, `working`, and `auth_required` states together with
 typed artifact, presentation, and authorization values. It replaces the `2.x`
@@ -46,6 +49,7 @@ below instead of assuming the old list.
 | `input.suspend-ack` | Clients confirm a suspension with `input.suspend.ack` (status display only — never wait for it) | `server/test/input-suspend-protocol.test.mjs` |
 | `tasks.ag-ui-event-stream` | `GET /api/tasks/:id/events?format=ag-ui` projects the existing Task stream into AG-UI `ACTIVITY_SNAPSHOT` events; omitting `format` preserves the native stream | `server/test/agui-event-projector.test.mjs` |
 | `tasks.work-artifacts-authorization` | Native Task events use A2A-aligned work states and expose typed `artifacts`, `presentation`, and `authorization` values | `test/gateway-event-schema.test.mjs`, `server/test/task-state.test.mjs` |
+| `tasks.unified-id-updates` | A Task exposes one short `id`; `task.updated` carries adapter-normalized incremental messages and artifacts | `test/gateway-event-schema.test.mjs`, `server/test/task-manager.test.mjs` |
 | `messages.citations` | Final assistant `transcript.final` events may carry normalized citations collected from frontend retrieval in the same turn | `test/gateway-event-schema.test.mjs`, `server/test/realtime-presentation-runtime.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |

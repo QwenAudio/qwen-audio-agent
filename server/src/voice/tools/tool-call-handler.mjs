@@ -27,15 +27,16 @@ import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.m
 import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { knowledgeSourcesFromInputParts } from '../input-knowledge-source.mjs'
+import { BackendEventType } from '../../core/backend-events.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
 
 const CANCEL_RECEIPT_INSTRUCTIONS = [
   '根据本次响应中的全部取消结果，只作一次简短自然的确认。',
-  '不要逐项复述 job_id，不要再次查询或取消，不要调用其他工具。',
+  '不要逐项复述 task_id，不要再次查询或取消，不要调用其他工具。',
 ].join(' ')
 
-const STATUS_RESULT_MESSAGE = '请根据这次查询结果自然回答用户；不要再次调用状态工具，不要展示 job_id。'
+const STATUS_RESULT_MESSAGE = '请根据这次查询结果自然回答用户；不要再次调用状态工具，不要展示 task_id。'
 const MAX_PENDING_EXTERNAL_AUTHORIZATIONS = 8
 
 function objectiveFingerprint(objective) {
@@ -463,15 +464,15 @@ export class ToolCallHandler {
     )
   }
 
-  forwardBackendEvent(workId, event, onEvent) {
+  forwardBackendEvent(taskId, event, onEvent) {
     const permission = event?.permission
     if (
-      event?.type === 'backend.permission.resolved'
+      event?.type === BackendEventType.AUTHORIZATION_RESOLVED
       && permission?.id
       && this.gatewayApprovedPermissions.delete(permission.id)
     ) return
     if (
-      event?.type !== 'backend.permission.requested'
+      event?.type !== BackendEventType.AUTHORIZATION_REQUESTED
       || !permission?.id
       || !this.respondAuthorization
       || !this.permissionPolicy?.shouldAutoAllow(
@@ -486,7 +487,7 @@ export class ToolCallHandler {
     let approval
     try {
       approval = this.respondAuthorization(
-        workId,
+        taskId,
         permission.id,
         'always',
         { ownerId: this.ownerId },
@@ -508,12 +509,10 @@ export class ToolCallHandler {
   createWork({
     turnId,
     objective,
-    verbatimRequest,
     submissionKey,
     inputParts = [],
   }) {
-    let workId = ''
-    let requestId = ''
+    let taskId = ''
     const task = this.taskManager.create({
       objective,
       ownerId: this.ownerId,
@@ -523,28 +522,21 @@ export class ToolCallHandler {
       laneKey: `backend:${this.ownerId}`,
       laneLimit: 1,
       runner: async (_ignored, { onEvent, signal }) => {
-        // The verbatim request was pinned at acceptance and is almost
-        // certainly settled by now; awaiting it never blocks the receipt.
-        const resolved = (await verbatimRequest) || {}
         return this.backendRuntime.run({
-          originalRequest: resolved.originalRequest || objective,
           objective,
-          timeZone: this.getClientContext()?.timeZone,
-          workingDirectory: this.getClientContext()?.workingDirectory,
-          inputParts: mergeInputParts(inputParts, resolved.inputParts || []),
+          inputParts,
         }, {
           ownerId: this.ownerId,
           sessionId: this.sessionId,
           turnId,
-          workId,
-          jobId: requestId,
+          taskId,
           signal,
-          onEvent: event => this.forwardBackendEvent(workId, event, onEvent),
+          onEvent: event => this.forwardBackendEvent(taskId, event, onEvent),
         })
       },
       canceler: async ({ previousStatus, abort }) => {
         const result = await this.backendRuntime.cancel(
-          workId,
+          taskId,
           { ownerId: this.ownerId },
         )
         abort()
@@ -556,8 +548,7 @@ export class ToolCallHandler {
         }
       },
     })
-    workId = task.id
-    requestId = task.jobId
+    taskId = task.id
     return task
   }
 
@@ -581,14 +572,12 @@ export class ToolCallHandler {
     const backendRuntime = this.backendRuntime
     const runner = type === 'task'
       ? async (objective, context) => backendRuntime.run({
-          originalRequest: objective,
           objective,
         }, {
           ownerId: context.ownerId,
           sessionId: context.sessionId,
           turnId: context.turnId,
-          workId: context.taskId,
-          jobId: context.jobId,
+          taskId: context.taskId,
           signal: context.signal,
           onEvent: context.onEvent,
         })
@@ -606,7 +595,7 @@ export class ToolCallHandler {
 
     await this.sendOutput(callId, {
       status: 'scheduled',
-      job_id: task.jobId,
+      task_id: task.id,
       execute_at: args.execute_at,
       type,
       recurrence,
@@ -871,7 +860,7 @@ export class ToolCallHandler {
       }).find(item => item.turnId === turnId)
       await this.sendOutput(callId, {
         status: 'duplicate',
-        ...(existing?.jobId ? { job_id: existing.jobId } : {}),
+        ...(existing?.id ? { task_id: existing.id } : {}),
         message: '本轮工作已经提交，不再从工具回执继续创建任务。',
       }, turnId, existing?.id, { createResponse: false })
       return
@@ -902,19 +891,9 @@ export class ToolCallHandler {
         turnId || callId,
         objectiveFingerprint(objective),
       ].join(':')
-      // Pin the verbatim user request without blocking the receipt: the
-      // transcript waiter registers now, so the ASR result is captured even
-      // if the per-connection ring buffer evicts that turn before the FIFO
-      // lane dispatches this work. resolveDelegation never rejects and a
-      // closed session resolves to the model-provided objective.
-      const verbatimRequest = this.transcripts.resolveDelegation(
-        turnId,
-        objective,
-      )
       task = this.createWork({
         turnId,
         objective,
-        verbatimRequest,
         submissionKey,
         inputParts: delegatedInputParts,
       })
@@ -954,12 +933,12 @@ export class ToolCallHandler {
         task.reused
           ? {
               status: 'duplicate',
-              job_id: task.jobId,
+              task_id: task.id,
               message: '同一工作此前已受理，请自然确认一次，不要再次调用工具。',
             }
           : {
               status: 'accepted',
-              job_id: task.jobId,
+              task_id: task.id,
               message: '工作已受理，请自然确认一次，不要再次调用工具。',
             },
         turnId,
@@ -1426,9 +1405,9 @@ export class ToolCallHandler {
       }, turnId, null, responseOptions)
       return
     }
-    const requestedJobId = String(args.job_id || '').trim()
-    const target = requestedJobId
-      ? this.taskManager.getByJobId(requestedJobId, { ownerId: this.ownerId })
+    const requestedTaskId = String(args.task_id || '').trim()
+    const target = requestedTaskId
+      ? this.taskManager.getByTaskId(requestedTaskId, { ownerId: this.ownerId })
       : this.taskManager.list({
           ownerId: this.ownerId,
           sessionId: this.sessionId,
@@ -1452,14 +1431,14 @@ export class ToolCallHandler {
     if (!task) {
       await this.sendOutput(callId, {
         status: 'not_active',
-        job_id: target.jobId,
+        task_id: target.id,
         message: '这项工作已经结束，当前无法取消。',
       }, turnId, null, responseOptions)
       return
     }
     await this.sendOutput(callId, task.status === 'cancelled' ? {
       status: task.status,
-      job_id: task.jobId,
+      task_id: task.id,
       message: '已取消这项工作。',
     } : failure(
       'work_cancellation_failed',
@@ -1473,7 +1452,7 @@ export class ToolCallHandler {
         ownerId: this.ownerId,
         sessionId: this.sessionId,
       }).slice(0, 20).map(task => ({
-        job_id: task.jobId,
+        task_id: task.id,
         status: task.status,
         kind: task.kind,
         objective: String(task.objective || '').slice(0, 300),
@@ -1490,13 +1469,13 @@ export class ToolCallHandler {
       }, turnId)
       return
     }
-    const requestedJobId = String(args.job_id || '').trim()
+    const requestedTaskId = String(args.task_id || '').trim()
     const sessionTasks = this.taskManager.list({
       ownerId: this.ownerId,
       sessionId: this.sessionId,
     })
-    const task = requestedJobId
-      ? this.taskManager.getByJobId(requestedJobId, { ownerId: this.ownerId })
+    const task = requestedTaskId
+      ? this.taskManager.getByTaskId(requestedTaskId, { ownerId: this.ownerId })
       : sessionTasks.find(item => [
           'scheduled',
           'queued',
@@ -1517,8 +1496,8 @@ export class ToolCallHandler {
     )
     await this.sendOutput(callId, {
       status: 'ok',
-      job_id: task.jobId,
-      work_status: task.status,
+      task_id: task.id,
+      task_status: task.status,
       objective: task.objective.slice(0, 300),
       elapsed_ms: task.elapsedMs,
       delegation: task.delegation
@@ -1529,6 +1508,14 @@ export class ToolCallHandler {
         : null,
       authorization_pending: task.authorization?.status === 'pending',
       recent_updates: recentTaskUpdates(task.activity),
+      latest_update: task.message
+        ? String(task.message).slice(0, 1_000)
+        : null,
+      artifacts: (task.artifacts || []).slice(-8).map(artifact => ({
+        artifact_id: artifact.artifactId,
+        name: artifact.name || null,
+        description: artifact.description || null,
+      })),
       result: task.status === 'completed'
         ? String(task.result || '').slice(0, 500)
         : null,

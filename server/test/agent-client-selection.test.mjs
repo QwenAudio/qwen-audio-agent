@@ -82,7 +82,7 @@ test('opens the active OpenCode ACP coordinator Session directly', async () => {
   })
   await client.submit({
     id: 'one',
-    jobId: 'one',
+    taskId: 'one',
     ownerId: 'owner-one',
     originalRequest: 'test',
     objective: 'test',

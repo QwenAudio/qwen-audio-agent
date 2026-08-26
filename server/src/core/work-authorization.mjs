@@ -48,7 +48,7 @@ export function normalizeAuthorizationOperation(value) {
 }
 
 export function normalizeAuthorization(value, {
-  workId = '',
+  taskId = '',
   defaultStatus = AuthorizationStatus.PENDING,
   now = Date.now(),
 } = {}) {
@@ -68,7 +68,7 @@ export function normalizeAuthorization(value, {
     : 'session'
   return {
     id,
-    workId: clean(workId || value.workId, 160) || null,
+    taskId: clean(taskId || value.taskId, 160) || null,
     status,
     category: clean(value.category, 80) || 'unknown',
     summary,
@@ -84,13 +84,13 @@ export function normalizeAuthorization(value, {
 }
 
 export function resolveAuthorization(value, status, {
-  workId = '',
+  taskId = '',
   now = Date.now(),
 } = {}) {
   if (!KNOWN_STATUSES.has(status) || status === AuthorizationStatus.PENDING) {
     return null
   }
-  const authorization = normalizeAuthorization(value, { workId, now })
+  const authorization = normalizeAuthorization(value, { taskId, now })
   if (!authorization) return null
   return {
     ...authorization,
@@ -99,9 +99,9 @@ export function resolveAuthorization(value, status, {
   }
 }
 
-export function publicAuthorization(value, { workId = '' } = {}) {
+export function publicAuthorization(value, { taskId = '' } = {}) {
   const authorization = normalizeAuthorization(value, {
-    workId,
+    taskId,
     now: Number(value?.createdAt) || Date.now(),
   })
   return authorization ? { ...authorization } : null

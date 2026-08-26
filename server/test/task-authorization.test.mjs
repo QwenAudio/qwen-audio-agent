@@ -13,10 +13,10 @@ test('normalizes one bounded pending authorization request', () => {
     category: 'shell',
     summary: '  执行   npm test  ',
     patterns: ['npm test', '', 'npm test -- server'],
-  }, { workId: 'work_1', now: 10 })
+  }, { taskId: 'work_1', now: 10 })
   assert.deepEqual(authorization, {
     id: 'auth_1',
-    workId: 'work_1',
+    taskId: 'work_1',
     status: AuthorizationStatus.PENDING,
     category: 'shell',
     summary: '执行 npm test',
@@ -32,7 +32,7 @@ test('resolves authorization without mutating the pending request', () => {
   const pending = normalizeAuthorization({
     id: 'auth_1',
     summary: '写入文件',
-  }, { workId: 'work_1', now: 10 })
+  }, { taskId: 'work_1', now: 10 })
   const resolved = resolveAuthorization(
     pending,
     AuthorizationStatus.APPROVED,

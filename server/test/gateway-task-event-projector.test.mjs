@@ -9,9 +9,7 @@ import {
 
 function task(overrides = {}) {
   return {
-    id: 'work_1',
-    workId: 'work_1',
-    jobId: 'job_1',
+    id: 'task_1',
     workState: 'working',
     status: 'running',
     kind: 'work',
@@ -27,7 +25,7 @@ function task(overrides = {}) {
 function authorization() {
   return {
     id: 'permission_1',
-    workId: 'work_1',
+    taskId: 'task_1',
     status: 'pending',
     category: 'shell',
     summary: 'run command',
@@ -83,7 +81,7 @@ test('does not expose malformed or unrelated internal events', () => {
 })
 
 test('never projects system jobs into the public task protocol', () => {
-  const system = task({ scope: 'system', jobId: null, kind: 'system_job' })
+  const system = task({ scope: 'system', kind: 'system_job' })
   assert.equal(projectGatewayTaskEvent({
     type: TaskDomainEvent.RUNNING,
     task: system,

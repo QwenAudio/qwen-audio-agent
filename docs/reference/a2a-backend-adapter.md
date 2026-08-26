@@ -3,7 +3,7 @@
 The optional A2A Backend Adapter connects one remote A2A agent to the existing
 `BackendPort`. It uses the official A2A JavaScript SDK for Agent Card discovery,
 protocol negotiation, messages, Tasks, cancellation, and Artifact decoding.
-A2A objects remain private to the adapter; the Gateway, Work runtime, frontend,
+A2A objects remain private to the adapter; the Gateway, Task runtime, frontend,
 and clients continue to use their protocol-neutral contracts.
 
 This is a programmatic extension for custom Gateway launchers. It does not add
@@ -49,20 +49,22 @@ interface declared by the Agent Card is selected. A2A 0.3 compatibility is
 enabled by default through the official SDK and can be disabled with
 `legacyCompat: false`.
 
-## Work projection
+## Task projection
 
-- The canonical Work instruction becomes the user Message text; frontend
+- The canonical Task instruction becomes the user Message text; frontend
   history, memory, Gateway IDs, and routing metadata are not sent remotely.
 - Input attachments become standard A2A raw or URL Parts with MIME types.
-- The adapter requests non-blocking execution, then polls `GetTask` so Gateway
-  status and cancellation remain responsive without requiring streaming.
-- A2A status updates become `backend.activity` events.
-- Final A2A Artifacts become standard Gateway Artifacts; the final agent status
+- When the Agent Card advertises streaming, the adapter consumes native events;
+  otherwise it requests non-blocking execution and polls `GetTask`.
+- A2A status, Message, and Artifact updates become `backend.activity`,
+  `backend.message`, and `backend.artifact`, continuously updating one Gateway
+  Task.
+- Final Artifacts become standard Gateway Artifacts; the final agent status
   Message supplies natural speech material.
 - `CancelTask` is used when the remote task ID is known. Local cancellation
   still terminates a request that has not received a Task ID yet.
 
-Gateway Work IDs never become remote task identities. The mapping exists only
+The Gateway `taskId` never becomes a remote task identity. The mapping exists only
 while a submission is active and remote IDs do not cross `BackendPort`.
 
 ## State mapping
@@ -80,7 +82,7 @@ A2A does not assign universal semantics to an authorization decision after
 `AUTH_REQUIRED`; agents define that through their own flow or an extension.
 The adapter therefore does not guess credentials or approval behavior. A
 future authorization extension can be implemented inside this adapter without
-changing Work or frontend contracts.
+changing Task or frontend contracts.
 
 ## Options
 
@@ -88,10 +90,10 @@ changing Work or frontend contracts.
 - `token`, `headers`, `fetchImpl`: authentication and transport hooks;
 - `acceptedOutputModes`: requested result MIME types;
 - `pollIntervalMs`: task polling interval, default 1 second;
-- `timeoutMs`: per-Work timeout, default 5 minutes;
+- `timeoutMs`: per-Task timeout, default 5 minutes;
 - `legacyCompat`: official A2A 0.3 compatibility, default enabled;
 - `clientFactory`: test or advanced transport injection.
 
 Run the public Backend Adapter conformance suite for any derived adapter. The
-built-in A2A adapter itself is covered by conformance tests plus an A2A 1.0
-HTTP+JSON discovery and task round trip.
+built-in A2A adapter itself is covered by conformance tests plus A2A 1.0
+HTTP+JSON discovery, task round-trip, and streaming-event tests.

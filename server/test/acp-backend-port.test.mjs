@@ -33,7 +33,7 @@ function fakeClient({ hold = false } = {}) {
       if (hold) await gate.promise
       return {
         content: JSON.stringify({
-          job_id: 'job_1',
+          task_id: 'job_1',
           state: 'completed',
           mode: 'respond',
           presentation: { speech: '已经完成。', inline: null },
@@ -75,7 +75,7 @@ test('ACP submit exposes Work values while Session details stay private', async 
 
   const pending = backend.submit({
     id: 'work-one',
-    jobId: 'job_1',
+    taskId: 'job_1',
     ownerId: 'owner-one',
     message: '完成请求',
     inputParts: [{
@@ -90,12 +90,12 @@ test('ACP submit exposes Work values while Session details stay private', async 
   assert.deepEqual(backend.status('work-one', {
     ownerId: 'owner-one',
   }), {
-    workId: 'work-one',
+    taskId: 'work-one',
     state: 'working',
     activity: [],
   })
   assert.equal(events[0].type, 'backend.activity')
-  assert.equal(events[0].workId, 'work-one')
+  assert.equal(events[0].taskId, 'work-one')
   assert.equal(events[0].ownerId, 'owner-one')
   assert.equal(client.prompts[0][0].type, 'text')
   assert.doesNotMatch(client.prompts[0][0].text, /reference\.png|work-one|job_1/u)
@@ -153,7 +153,7 @@ test('ACP authorization decisions remain bound to their Work', async () => {
     'always',
     { ownerId: 'owner-one' },
   )
-  assert.equal(authorization.workId, 'work-one')
+  assert.equal(authorization.taskId, 'work-one')
   assert.equal(authorization.status, 'approved')
   assert.deepEqual(await requested, {
     outcome: { outcome: 'selected', optionId: 'allow' },

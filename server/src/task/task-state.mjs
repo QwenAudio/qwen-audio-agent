@@ -157,13 +157,11 @@ export function publicTask(task, { now = Date.now() } = {}) {
   const presentation = taskPresentation(task)
   return {
     id: task.id,
-    workId: task.id,
-    jobId: task.jobId,
     workState: publicWorkState(task),
     status: task.status,
     scope: normalizeTaskScope(task.scope),
     kind: task.kind || 'work',
-    parentWorkId: task.parentWorkId || null,
+    parentTaskId: task.parentTaskId || null,
     objective: task.objective,
     ownerId: task.ownerId,
     sessionId: task.sessionId,
@@ -176,6 +174,7 @@ export function publicTask(task, { now = Date.now() } = {}) {
       : task.elapsedMs,
     result: task.result,
     error: task.error,
+    message: task.message || null,
     artifacts: taskArtifacts(task, presentation),
     presentation,
     activity: [...(task.activity || [])],
@@ -193,7 +192,7 @@ export function publicTask(task, { now = Date.now() } = {}) {
             : null,
         }
       : null,
-    authorization: publicAuthorization(task.authorization, { workId: task.id }),
+    authorization: publicAuthorization(task.authorization, { taskId: task.id }),
     notificationStatus: task.notificationStatus,
     notificationDeliveredAt: task.notificationDeliveredAt,
     schedule: task.schedule || null,
@@ -204,7 +203,6 @@ export function publicTask(task, { now = Date.now() } = {}) {
 
 export function persistedTask(task) {
   const saved = publicTask(task)
-  delete saved.workId
   delete saved.workState
   if (task.recoveryPersistedStatus) {
     saved.status = task.recoveryPersistedStatus

@@ -53,8 +53,8 @@ documents must use `search`. Search returns at most eight bounded chunks.
 ## System jobs, storage, and privacy
 
 Indexing runs as a `knowledge_index` System Job. System Jobs use a pool
-independent from user work and are not shown as task cards, assigned a
-`job_id`, announced, or delivered as task notifications. Writes for one owner
+independent from user work and are not shown as task cards, assigned a user
+`task_id`, announced, or delivered as task notifications. Writes for one owner
 are serialized so the Desktop and CLI cannot silently overwrite one another.
 
 The default store writes one hashed file per owner under:

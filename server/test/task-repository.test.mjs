@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TaskRepository } from '../src/task/task-repository.mjs'
 
-test('owns persisted records and the durable short job-id cursor', () => {
+test('owns persisted records and the durable short task-id cursor', () => {
   const saves = []
   const store = {
-    nextJobNumber: 7,
+    nextTaskNumber: 7,
     load: () => [{ id: 'restored' }],
     save: (tasks, state) => saves.push({ tasks, state }),
   }
@@ -15,31 +15,31 @@ test('owns persisted records and the durable short job-id cursor', () => {
   })
 
   assert.deepEqual(repository.load(), [{ id: 'restored' }])
-  assert.equal(repository.allocateJobId(), 'job_7')
+  assert.equal(repository.allocateTaskId(), 'task_7')
   repository.set('work-one', { id: 'work-one', status: 'running', secret: true })
   repository.save()
 
   assert.deepEqual(saves, [{
     tasks: [{ id: 'work-one', status: 'running' }],
-    state: { nextJobNumber: 8 },
+    state: { nextTaskNumber: 8 },
   }])
 })
 
-test('cycles job ids and falls back to synchronous persistence', () => {
+test('cycles task ids and falls back to synchronous persistence', () => {
   let saved
   const repository = new TaskRepository({
     store: {
       save: (tasks, state) => { saved = { tasks, state } },
     },
   })
-  repository.nextJobNumber = 99_999
+  repository.nextTaskNumber = 99_999
   repository.set('work-one', { id: 'work-one' })
 
-  assert.equal(repository.allocateJobId(), 'job_99999')
-  assert.equal(repository.allocateJobId(), 'job_1')
+  assert.equal(repository.allocateTaskId(), 'task_99999')
+  assert.equal(repository.allocateTaskId(), 'task_1')
   repository.saveDeferred()
 
-  assert.deepEqual(saved.state, { nextJobNumber: 2 })
+  assert.deepEqual(saved.state, { nextTaskNumber: 2 })
   assert.deepEqual(saved.tasks, [{ id: 'work-one' }])
 })
 
@@ -56,6 +56,6 @@ test('uses deferred persistence when the store supports it', () => {
 
   assert.deepEqual(deferred, {
     tasks: [{ id: 'work-one' }],
-    state: { nextJobNumber: 1 },
+    state: { nextTaskNumber: 1 },
   })
 })

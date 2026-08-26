@@ -28,23 +28,48 @@ test('persists final work and notification delivery state', async () => {
   assert.equal(restored.get(work.id).notificationStatus, 'delivered')
 })
 
-test('continues short job numbering after restart', () => {
+test('continues short task numbering after restart', () => {
   const filePath = join(mkdtempSync(join(tmpdir(), 'qwen-audio-agent-')), 'tasks.json')
   const first = new TaskManager({ store: new TaskStore({ filePath }) })
   const initial = first.create({ objective: 'first', ownerId: 'owner' })
-  assert.equal(initial.jobId, 'job_1')
+  assert.equal(initial.id, 'task_1')
 
   const restored = new TaskManager({ store: new TaskStore({ filePath }) })
   const next = restored.create({ objective: 'second', ownerId: 'owner' })
 
-  assert.equal(restored.get(initial.id).jobId, 'job_1')
-  assert.equal(next.jobId, 'job_2')
+  assert.equal(restored.get(initial.id).id, 'task_1')
+  assert.equal(next.id, 'task_2')
+})
+
+test('migrates the former work and job identity into one task id', () => {
+  let saved
+  const store = {
+    nextJobNumber: 8,
+    load: () => [{
+      id: 'work_legacy_uuid',
+      jobId: 'job_7',
+      status: 'completed',
+      objective: '旧任务',
+      ownerId: 'owner',
+      createdAt: Date.now(),
+      completedAt: Date.now(),
+      notificationStatus: 'delivered',
+    }],
+    save: (tasks, state) => { saved = { tasks, state } },
+  }
+
+  const manager = new TaskManager({ store })
+
+  assert.equal(manager.get('task_7').id, 'task_7')
+  assert.equal('jobId' in manager.get('task_7'), false)
+  assert.equal(saved.tasks[0].id, 'task_7')
+  assert.equal(saved.state.nextTaskNumber, 8)
 })
 
 test('marks interrupted queued or running work as failed after restart', () => {
   const store = {
     load: () => [{
-      id: 'work-one',
+      id: 'task_41',
       status: 'running',
       objective: '未完成',
       ownerId: 'owner',
@@ -55,14 +80,14 @@ test('marks interrupted queued or running work as failed after restart', () => {
     save: () => {},
   }
   const manager = new TaskManager({ store })
-  assert.equal(manager.get('work-one').status, 'failed')
-  assert.match(manager.get('work-one').error, /重启/)
-  assert.equal(manager.get('work-one').notificationStatus, 'pending')
+  assert.equal(manager.get('task_41').status, 'failed')
+  assert.match(manager.get('task_41').error, /重启/)
+  assert.equal(manager.get('task_41').notificationStatus, 'pending')
 })
 
 test('reattaches a persisted delegated run when its adapter supports recovery', async () => {
   let saved = [{
-    id: 'work-delegated',
+    id: 'task_42',
     status: 'delegated',
     objective: '继续项目',
     ownerId: 'owner',
@@ -100,7 +125,7 @@ test('reattaches a persisted delegated run when its adapter supports recovery', 
     },
   })
 
-  const result = await manager.wait('work-delegated')
+  const result = await manager.wait('task_42')
   assert.equal(result.status, 'completed')
   assert.equal(result.result, '恢复后的结果')
   assert.equal(saved[0].delegation.id, 'run-one')

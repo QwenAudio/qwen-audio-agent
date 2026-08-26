@@ -119,9 +119,9 @@ DashScope、OpenAI-compatible、Speech-to-Speech 和私有 Provider 都实现该
 
 ### 4.3 Work
 
-Work 是 Gateway 管理的用户工作回执，不镜像后台内部任务图。它包含内部 UUID、用户可见
-job ID、owner、conversation、turn、用户原话、objective、多模态输入、状态、活动、权限、
-Artifact、Presentation 和时间戳。
+Task 是 Gateway 管理的异步工作单元，不镜像后台内部任务图。它只使用一个短
+`task_id` 贯穿受理、查询、取消、事件和结果交付，并包含 owner、conversation、turn、
+objective、多模态输入、状态、活动、权限、Artifact、Presentation 和时间戳。
 
 公共状态向 A2A Task 语义靠拢：
 
@@ -154,7 +154,7 @@ submitted → working → completed
 ACP Session、协调 Prompt、协调 MCP 和原生委托全部属于 ACP Adapter 内部。
 每个 Adapter 必须实现完整方法面，并在组合边界接受校验。可选能力由 `describe()` 声明，
 不支持时必须明确拒绝，不能依赖“缺少某个函数”来推断。`submit`、`status`、`cancel` 与
-`respondAuthorization` 只操作 Gateway Work ID，后台私有 Session 与任务 ID 不越过端口。
+`respondAuthorization` 只操作 Gateway `taskId`，后台私有 Session 与远程任务 ID 不越过端口。
 AgentClient 只持有一个注入的后台实例。驱动选择、Profile 构造和协议专属依赖属于
 Adapter Factory，不再由运行时门面承担。
 
@@ -177,7 +177,7 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
 | Gateway ↔ Realtime Model | OpenAI Realtime-compatible Provider Port |
 | 模型工具 | Function Calling + JSON Schema |
 | 外部工具与数据 | MCP；普通 REST 服务可通过 OpenAPI Adapter |
-| Gateway ↔ Backend Agent | 当前 ACP；内部 Work 语义向 A2A 对齐；未来增加 A2A Adapter |
+| Gateway ↔ Backend Agent | BackendPort；内置 ACP 与 A2A Adapter，也可接自定义协议 |
 | 多模态内容 | MIME Type + text / URI / binary / structured data Part |
 | 可观测性 | 结构化日志；逐步接入 OpenTelemetry trace 语义 |
 
@@ -299,7 +299,7 @@ Presentation 只携带供前台表达的事实材料和投递策略，不携带�
 - [x] Backend Adapter SDK 与示例。
   - [x] 发布 BackendPort、应用宿主包装和共用 conformance suite。
   - [x] 用非 ACP 内存 Adapter 验证无需修改前台与 Work Runtime。
-- [ ] 可选 A2A Backend Adapter。
+- [x] 可选 A2A Backend Adapter。
 
 完成条件：外部扩展通过标准协议或公开 SDK 完成，不修改核心运行时。
 

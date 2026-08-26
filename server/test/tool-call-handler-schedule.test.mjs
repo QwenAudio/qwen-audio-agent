@@ -23,7 +23,7 @@ function harness({
     getTurnGeneration: () => 1,
     backendRuntime: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
-      cancel: async workId => ({ workId, state: 'cancelled' }),
+      cancel: async taskId => ({ taskId, state: 'cancelled' }),
     },
     memoryService: memoryStore,
     notesStore: null,
@@ -33,8 +33,8 @@ function harness({
   return { outputs, manager, handler }
 }
 
-function taskForJob(manager, jobId) {
-  return manager.getByJobId(jobId, { ownerId: 'owner' })
+function taskForId(manager, taskId) {
+  return manager.getByTaskId(taskId, { ownerId: 'owner' })
 }
 
 test('handleScheduleReminder creates a scheduled reminder with valid future time', async () => {
@@ -55,11 +55,11 @@ test('handleScheduleReminder creates a scheduled reminder with valid future time
   const [callId, output] = outputs[0]
   assert.equal(callId, 'call-1')
   assert.equal(output.status, 'scheduled')
-  assert.equal(output.job_id, 'job_1')
+  assert.equal(output.task_id, 'task_1')
   assert.equal(output.type, 'reminder')
   assert.equal(output.execute_at, future)
 
-  const task = taskForJob(manager, output.job_id)
+  const task = taskForId(manager, output.task_id)
   assert.equal(task.status, 'scheduled')
   assert.equal(task.kind, 'reminder')
 })
@@ -103,7 +103,7 @@ test('handleScheduleReminder with type=task creates scheduled_task kind', async 
   assert.equal(output.status, 'scheduled')
   assert.equal(output.type, 'task')
 
-  const task = taskForJob(manager, output.job_id)
+  const task = taskForId(manager, output.task_id)
   assert.equal(task.kind, 'scheduled_task')
   assert.ok(task.timeoutMs > 0)
   assert.equal(task.progressCheckMs, null)
@@ -156,7 +156,7 @@ test('lists scheduled reminders and cancels the latest one without an id', async
       type: 'reminder',
     }),
   }, { turnId: 'turn-1', turnGeneration: 1 })
-  const reminderJobId = outputs.at(-1)[1].job_id
+  const reminderTaskId = outputs.at(-1)[1].task_id
 
   await handler.handle({
     call_id: 'call-list-reminders',
@@ -167,7 +167,7 @@ test('lists scheduled reminders and cancels the latest one without an id', async
   assert.equal(listing.status, 'ok')
   assert.equal(listing.count, 1)
   assert.deepEqual(listing.tasks[0], {
-    job_id: reminderJobId,
+    task_id: reminderTaskId,
     status: 'scheduled',
     kind: 'reminder',
     objective: '记得开会',
@@ -181,7 +181,7 @@ test('lists scheduled reminders and cancels the latest one without an id', async
     arguments: '{}',
   }, { turnId: 'turn-1', turnGeneration: 1 })
   assert.equal(outputs.at(-1)[1].status, 'cancelled')
-  assert.equal(taskForJob(manager, reminderJobId).status, 'cancelled')
+  assert.equal(taskForId(manager, reminderTaskId).status, 'cancelled')
 })
 
 test('scheduled tasks preserve identity without injecting frontend memory', async () => {
@@ -210,8 +210,8 @@ test('scheduled tasks preserve identity without injecting frontend memory', asyn
       type: 'task',
     }),
   }, { turnId: 'turn-1', turnGeneration: 1 })
-  const jobId = outputs.at(-1)[1].job_id
-  const taskId = taskForJob(manager, jobId).id
+  const publicTaskId = outputs.at(-1)[1].task_id
+  const taskId = taskForId(manager, publicTaskId).id
   memories.push({ scope: 'memory', content: '用户正在维护语音项目' })
 
   const internal = manager.tasks.get(taskId)
@@ -224,6 +224,5 @@ test('scheduled tasks preserve identity without injecting frontend memory', asyn
   assert.equal(coordinatorOptions.ownerId, 'owner')
   assert.equal(coordinatorOptions.sessionId, 'voice')
   assert.equal(coordinatorOptions.turnId, 'turn-1')
-  assert.equal(coordinatorOptions.workId, taskId)
-  assert.equal(coordinatorOptions.jobId, jobId)
+  assert.equal(coordinatorOptions.taskId, taskId)
 })

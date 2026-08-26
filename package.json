@@ -39,6 +39,7 @@
     "./session-events": "./shared/session-events.mjs",
     "./session-journal": "./server/src/session/session-journal.mjs",
     "./session-replay": "./server/src/session/session-replay.mjs",
+    "./conversation-history": "./shared/conversation-history.mjs",
     "./gateway-client-state": "./shared/gateway-client-state.mjs",
     "./gateway-application": "./server/src/app/gateway-application.mjs",
     "./backend-adapter-sdk": "./server/src/backend/backend-adapter-sdk.mjs",

@@ -10,6 +10,7 @@ import {
   buildConversationTurns,
   discardUserTranscript,
   insertByTurn,
+  mergeConversationHistory,
   upsertAssistantTranscript,
   upsertUserTranscript,
 } from './message-order.js'
@@ -221,6 +222,8 @@ export default function App() {
   const lastWakeAtRef = useRef(0)
   const orbVisualStateRef = useRef('idle')
   const previousDesktopLifecycle = useRef('active')
+  const sessionIdRef = useRef(sessionId)
+  sessionIdRef.current = sessionId
   const spriteAnimationCue = spriteAnimationCues[0] || null
 
   const noteInteraction = useCallback(() => {
@@ -485,6 +488,13 @@ export default function App() {
       window.qwenAudioAgentDesktop?.wake()
     }
     if (event.type === 'gateway.connected') {
+      fetch(`api/conversations/${encodeURIComponent(sessionId)}/messages`)
+        .then(response => response.ok ? response.json() : Promise.reject())
+        .then(payload => {
+          if (sessionIdRef.current !== sessionId) return
+          setMessages(items => mergeConversationHistory(items, payload.messages))
+        })
+        .catch(() => {})
       fetch(`api/tasks?sessionId=${encodeURIComponent(sessionId)}`)
         .then(response => response.ok ? response.json() : Promise.reject())
         .then(payload => {

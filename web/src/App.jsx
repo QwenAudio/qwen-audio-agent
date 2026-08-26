@@ -51,6 +51,7 @@ import {
   desktopWorkSettled,
   desktopTasksActive,
   desktopTasksAttention,
+  desktopTasksThinking,
 } from './desktop-hide.js'
 import {
   desktopTaskCards,
@@ -825,6 +826,7 @@ export default function App() {
     voiceState: voice.visualState || voice.state,
     tasksActive: desktopHasActiveTasks,
     attentionPending: desktopOrbMode && desktopTasksAttention(agentTasks),
+    tasksThinking: desktopOrbMode && desktopTasksThinking(agentTasks),
   })
   orbVisualStateRef.current = orbVisualState
   const attentionTask = agentTasks.find(
@@ -1287,7 +1289,9 @@ export default function App() {
             'always',
           )}
         >
-          {agentTask.authorization.submitting ? t('正在提交') : t('始终允许')}
+          {agentTask.authorization.submitting
+            ? t('正在提交')
+            : t('本会话始终允许')}
         </button>
         <button
           className="permission-deny"

@@ -21,6 +21,8 @@ test('normalizes one bounded pending authorization request', () => {
     category: 'shell',
     summary: '执行 npm test',
     patterns: ['npm test', 'npm test -- server'],
+    approvalScope: 'session',
+    operation: null,
     createdAt: 10,
     resolvedAt: null,
   })

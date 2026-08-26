@@ -1290,7 +1290,7 @@ for (const action of ['start', 'send']) {
   })
 }
 
-test('ACP permissions expose permanent allow and reject semantics', async () => {
+test('ACP permissions expose detailed session-scoped allow and reject semantics', async () => {
   const client = fakeAcpClient()
   const adapter = new AcpBackendAdapter({
     protocol: 'opencode',
@@ -1314,7 +1314,13 @@ test('ACP permissions expose permanent allow and reject semantics', async () => 
     toolCall: {
       toolCallId: 'tool-one',
       name: 'write',
-      rawInput: { path: '/tmp/file' },
+      title: 'Write project file',
+      kind: 'edit',
+      locations: [{ path: '/tmp/file', line: 12 }],
+      rawInput: {
+        path: '/tmp/file',
+        description: 'Update the generated project',
+      },
     },
     options,
   }, {
@@ -1323,10 +1329,24 @@ test('ACP permissions expose permanent allow and reject semantics', async () => 
   const requested = events.find(event => (
     event.type === 'backend.permission.requested'
   ))
+  assert.equal(requested.permission.approvalScope, 'session')
+  assert.equal(
+    requested.permission.summary,
+    'Write project file：Update the generated project',
+  )
+  assert.deepEqual(requested.permission.operation, {
+    title: 'Write project file',
+    kind: 'edit',
+    description: 'Update the generated project',
+    path: '/tmp/file',
+    locations: [{ path: '/tmp/file', line: 12 }],
+  })
   await adapter.resolveAuthorization(requested.permission.id, 'always', {
     ownerId: 'owner-one',
   })
   assert.deepEqual(await pending, {
+    // Gateway owns the session-wide policy, so the backend receives the
+    // narrowest option for each individual request.
     outcome: { outcome: 'selected', optionId: 'once' },
   })
   assert.ok(events.some(event => (

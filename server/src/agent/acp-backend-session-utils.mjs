@@ -75,6 +75,26 @@ export function sessionSummary(session) {
   }
 }
 
+export function applySessionMetadataUpdate(session, update) {
+  if (!session || typeof session !== 'object' || !update) return false
+  if (update.sessionUpdate === 'session_info_update') {
+    if (Object.hasOwn(update, 'title')) {
+      session.title = update.title === null ? '' : bounded(update.title, 160)
+    }
+    if (Object.hasOwn(update, 'updatedAt')) {
+      session.updatedAt = update.updatedAt === null
+        ? ''
+        : bounded(update.updatedAt, 80)
+    }
+    return true
+  }
+  if (update.sessionUpdate === 'current_mode_update') {
+    session.currentModeId = bounded(update.currentModeId, 100)
+    return true
+  }
+  return false
+}
+
 function categoryForTool(update) {
   const hint = [
     update?.name,
@@ -89,6 +109,35 @@ function categoryForTool(update) {
 }
 
 export function activityFromUpdate(update, known = new Map()) {
+  if (update?.sessionUpdate === 'agent_thought_chunk') {
+    return {
+      id: 'acp-thinking',
+      kind: 'thinking',
+      status: 'running',
+    }
+  }
+  if (update?.sessionUpdate === 'session_info_update') {
+    const title = bounded(update.title, 160)
+    const updatedAt = bounded(update.updatedAt, 80)
+    if (!title && !updatedAt) return null
+    return {
+      id: 'acp-session-info',
+      kind: 'session',
+      status: 'updated',
+      ...(title ? { title } : {}),
+      ...(updatedAt ? { updatedAt } : {}),
+    }
+  }
+  if (update?.sessionUpdate === 'current_mode_update') {
+    const mode = bounded(update.currentModeId, 100)
+    if (!mode) return null
+    return {
+      id: 'acp-current-mode',
+      kind: 'mode',
+      status: 'updated',
+      mode,
+    }
+  }
   if (update?.sessionUpdate === 'plan') {
     const entries = Array.isArray(update.entries) ? update.entries : []
     const completed = entries.filter(entry => entry?.status === 'completed').length
@@ -105,7 +154,7 @@ export function activityFromUpdate(update, known = new Map()) {
   }
   if (!['tool_call', 'tool_call_update'].includes(update?.sessionUpdate)) {
     if (update?.sessionUpdate === 'agent_message_chunk') {
-      return { id: null, kind: 'text', status: 'running' }
+      return { id: 'acp-agent-message', kind: 'text', status: 'running' }
     }
     return null
   }

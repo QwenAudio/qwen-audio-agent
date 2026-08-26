@@ -60,6 +60,37 @@ Do not return raw protocol objects, session IDs, tokens, or credentials.
 Progress is published through `subscribe` as backend events correlated by
 `workId` and `ownerId`; a failing observer cannot interrupt execution.
 
+Adapters may publish protocol-neutral optional observations without expanding
+the `BackendPort` method surface:
+
+```js
+{
+  type: 'backend.activity',
+  workId,
+  ownerId,
+  activity: {
+    id: 'stable-observation-id',
+    kind: 'thinking', // or tool, plan, mode, session, status, ...
+    status: 'running',
+  },
+}
+```
+
+`kind` is extensible. Common presentation fields include `status`, `message`,
+`label`, `detail`, `category`, `tool`, `title`, `updatedAt`, `mode`, `completed`,
+and `total`; adapter-specific fields may be added. Reusing an activity `id`
+updates that observation and makes it the most recent one. Never put raw
+reasoning, credentials, private task IDs, or protocol payloads in public
+activity.
+
+Authorization requests use `backend.permission.requested` with a normalized
+permission. In addition to a bounded `summary`, an adapter may provide an
+optional safe `operation` (`title`, `kind`, `description`, `command`, `path`,
+and bounded file `locations`) plus `approvalScope`. Public `session` scope means
+the current frontend session only; persistent provider authorization must not
+be inferred from it. Adapters that do not support authorization keep rejecting
+`respondAuthorization` explicitly, as before.
+
 ## Gateway composition
 
 ```js

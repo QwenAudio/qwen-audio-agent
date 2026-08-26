@@ -8,6 +8,7 @@ import {
   desktopHideDeadline,
   desktopTasksActive,
   desktopTasksAttention,
+  desktopTasksThinking,
   desktopWakeWordEnabled,
   desktopWorkSettled,
 } from '../src/desktop-hide.js'
@@ -15,10 +16,12 @@ import {
 test('distinguishes active tasks from tasks waiting for authorization', () => {
   assert.equal(desktopTasksActive([]), false)
   assert.equal(desktopTasksAttention([]), false)
+  assert.equal(desktopTasksThinking([]), false)
 
   const running = { phase: 'delegated' }
   assert.equal(desktopTasksActive([running]), true)
   assert.equal(desktopTasksAttention([running]), false)
+  assert.equal(desktopTasksThinking([running]), false)
   for (const kind of ['work', 'control', 'scheduled', 'delegated', 'custom']) {
     assert.equal(desktopTasksActive([{ kind, phase: 'running' }]), true)
   }
@@ -31,9 +34,16 @@ test('distinguishes active tasks from tasks waiting for authorization', () => {
   assert.equal(desktopTasksActive([pending]), true)
   assert.equal(desktopTasksAttention([pending]), true)
 
+  const thinking = {
+    phase: 'running',
+    activity: [{ kind: 'thinking', status: 'running' }],
+  }
+  assert.equal(desktopTasksThinking([thinking]), true)
+
   const done = { phase: 'completed' }
   assert.equal(desktopTasksActive([done]), false)
   assert.equal(desktopTasksAttention([done]), false)
+  assert.equal(desktopTasksThinking([done]), false)
 })
 
 test('ignores stale sleeping broadcasts right after an explicit wake', async () => {

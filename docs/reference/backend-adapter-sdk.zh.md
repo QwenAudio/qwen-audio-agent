@@ -57,6 +57,32 @@ Gateway Work ID，后台私有 Session、任务 ID 和拓扑不能越过边界�
 不要返回原始协议对象、Session ID、Token 或凭据。运行进度通过 `subscribe` 发布
 `workId`、`ownerId` 关联的标准后台事件；监听器异常不能中断任务。
 
+Adapter 可以发布协议无关的可选观测信息，无需扩展 `BackendPort` 方法面：
+
+```js
+{
+  type: 'backend.activity',
+  workId,
+  ownerId,
+  activity: {
+    id: 'stable-observation-id',
+    kind: 'thinking', // 也可以是 tool、plan、mode、session、status 等
+    status: 'running',
+  },
+}
+```
+
+`kind` 可扩展。通用展示字段包括 `status`、`message`、`label`、`detail`、`category`、
+`tool`、`title`、`updatedAt`、`mode`、`completed` 和 `total`，也允许 Adapter 增加
+自有字段。复用同一个 activity `id` 会更新该观测并把它置为最新活动。公共活动中
+不得放入原始思考、凭据、私有任务 ID 或协议载荷。
+
+权限请求通过 `backend.permission.requested` 发布规范化 permission。除有界 `summary`
+外，Adapter 可以提供可选的安全 `operation`（`title`、`kind`、`description`、
+`command`、`path` 和有界文件 `locations`）及 `approvalScope`。公共 `session` 作用域
+仅表示当前前端会话，不能据此推断服务商侧持久授权。不支持权限的 Adapter 仍像以前
+一样明确拒绝 `respondAuthorization`。
+
 ## 接入 Gateway
 
 ```js

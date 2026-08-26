@@ -425,9 +425,6 @@ export const config = {
   frontendNotesPath: process.env.QWEN_AUDIO_AGENT_FRONTEND_NOTES_PATH
     ? resolve(root, process.env.QWEN_AUDIO_AGENT_FRONTEND_NOTES_PATH)
     : runtimeEnvironment.frontendNotesPath,
-  knowledgeDirectory: process.env.QWEN_AUDIO_AGENT_KNOWLEDGE_DIR
-    ? resolve(root, process.env.QWEN_AUDIO_AGENT_KNOWLEDGE_DIR)
-    : runtimeEnvironment.knowledgeDirectory,
   userModelPath: process.env.QWEN_AUDIO_AGENT_USER_MODEL_PATH
     ? resolve(root, process.env.QWEN_AUDIO_AGENT_USER_MODEL_PATH)
     : process.env.QWEN_AUDIO_AGENT_USER_PROFILE_PATH

@@ -4,7 +4,7 @@
 
 | 维度 | 不变量 |
 | --- | --- |
-| 路由 | Search、URL Fetch、Knowledge、后台 Task 和客户端控制保持为独立的能力门控工具；知识入库必须由用户明确要求。 |
+| 路由 | Search、URL Fetch、可选 Knowledge 检索、后台 Task 和客户端控制保持为独立的能力门控工具。 |
 | 引用 | 来源在单轮内获得稳定 ID；重复 URL 保持同一身份；不安全 URL 被丢弃；最终 Citation 只消费一次。 |
 | 打断 | 用户打断后到达的音频和转写会被抑制，打断事件只投射一次。 |
 | 重复播报 | Presentation 前的重复完成信号会合并，重复确认也不会让同一 Task 再次生成 Presentation。 |

@@ -42,13 +42,7 @@ import {
   FrontendRetrievalRuntime,
 } from '../frontend/retrieval/frontend-retrieval-runtime.mjs'
 import { createWebSearchProvider } from '../providers/search/factory.mjs'
-import { TextDocumentExtractor } from '../frontend/knowledge/document-extractor.mjs'
-import { FileKnowledgeStore } from '../providers/knowledge/file-knowledge-store.mjs'
-import { KnowledgeIndexer } from '../frontend/knowledge/knowledge-indexer.mjs'
 import { FrontendKnowledgeRuntime } from '../frontend/knowledge/knowledge-runtime.mjs'
-import {
-  LexicalKnowledgeRetrievalProvider,
-} from '../providers/knowledge/lexical-retrieval-provider.mjs'
 import { assertFrontendToolSource } from '../frontend/tools/frontend-tool-source.mjs'
 import { FrontendMcpClient } from '../providers/mcp/frontend-mcp-client.mjs'
 import {
@@ -85,9 +79,8 @@ export function createGatewayApplication({
   webSearchProvider = undefined,
   urlFetcher = undefined,
   frontendRetrieval = null,
-  documentExtractor = null,
-  knowledgeStore = null,
-  knowledgeIndexer = null,
+  knowledgeProvider = null,
+  // Compatibility alias for embedders that adopted the original injection name.
   knowledgeRetrievalProvider = null,
   frontendKnowledge = null,
   frontendMcp = undefined,
@@ -120,32 +113,10 @@ const inputAssetRegistry = inputAssets || new InputAssetRegistry({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
 })
-const documentExtractorRuntime = documentExtractor
-  || frontendKnowledge?.indexer?.extractor
-  || knowledgeIndexer?.extractor
-  || new TextDocumentExtractor()
-const knowledgeStoreRuntime = knowledgeStore
-  || frontendKnowledge?.store
-  || knowledgeIndexer?.store
-  || new FileKnowledgeStore({
-    directory: config.knowledgeDirectory,
-    onWarning: warning => logger.warn('knowledge.persistence_warning', { warning }),
-  })
-const knowledgeIndexerRuntime = knowledgeIndexer
-  || frontendKnowledge?.indexer
-  || new KnowledgeIndexer({
-    extractor: documentExtractorRuntime,
-    store: knowledgeStoreRuntime,
-    taskManager,
-  })
-const knowledgeRetrievalRuntime = knowledgeRetrievalProvider
-  || frontendKnowledge?.retrievalProvider
-  || new LexicalKnowledgeRetrievalProvider({ store: knowledgeStoreRuntime })
-const frontendKnowledgeRuntime = frontendKnowledge || new FrontendKnowledgeRuntime({
-  store: knowledgeStoreRuntime,
-  indexer: knowledgeIndexerRuntime,
-  retrievalProvider: knowledgeRetrievalRuntime,
-})
+const knowledgeProviderRuntime = knowledgeProvider || knowledgeRetrievalProvider
+const frontendKnowledgeRuntime = frontendKnowledge || (knowledgeProviderRuntime
+  ? new FrontendKnowledgeRuntime({ provider: knowledgeProviderRuntime })
+  : null)
 const retrievalRuntime = frontendRetrieval || new FrontendRetrievalRuntime({
   searchProvider: webSearchProvider === undefined
     ? createWebSearchProvider(config)
@@ -397,7 +368,11 @@ app.get('/api/health', (req, res) => {
       description: '',
     },
     frontendRetrieval: retrievalRuntime.describe(),
-    frontendKnowledge: frontendKnowledgeRuntime.describe(),
+    frontendKnowledge: frontendKnowledgeRuntime?.describe() || {
+      configured: false,
+      capabilities: [],
+      provider: null,
+    },
     frontendMcp: frontendMcpRuntime?.health?.() || {
       ok: true,
       initialized: true,
@@ -714,7 +689,7 @@ const close = () => {
     await realtimeGateway?.close?.()
     await frontendMcpRuntime?.close?.()
     await frontendOpenApiRuntime?.close?.()
-    await knowledgeStoreRuntime.close?.()
+    await frontendKnowledgeRuntime?.close?.()
     unsubscribeSessionTaskJournal?.()
     await sessionJournalRuntime.flush()
     await taskStore?.flush?.()
@@ -746,9 +721,7 @@ return {
     frontendKnowledge: frontendKnowledgeRuntime,
     frontendMcp: frontendMcpRuntime,
     frontendOpenApi: frontendOpenApiRuntime,
-    documentExtractor: documentExtractorRuntime,
-    knowledgeStore: knowledgeStoreRuntime,
-    knowledgeIndexer: knowledgeIndexerRuntime,
+    knowledgeProvider: knowledgeProviderRuntime,
     identityManager,
     inputArbitration,
     inputAssets: inputAssetRegistry,

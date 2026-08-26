@@ -106,10 +106,8 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.equal(application.services.taskManager != null, true)
   assert.equal(application.services.backendRuntime != null, true)
   assert.equal(application.services.inputAssets, inputAssets)
-  assert.equal(application.services.documentExtractor.describe().key, 'builtin-text')
-  assert.equal(application.services.knowledgeStore.describe().key, 'local-files')
-  assert.equal(application.services.knowledgeIndexer != null, true)
-  assert.deepEqual(application.services.frontendKnowledge.capabilities(), ['knowledge'])
+  assert.equal(application.services.knowledgeProvider, null)
+  assert.equal(application.services.frontendKnowledge, null)
   assert.equal(application.services.frontendMcp, frontendMcp)
   assert.equal(application.services.frontendOpenApi, frontendOpenApi)
 
@@ -124,7 +122,11 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.equal(health.realtimeProvider, privateProvider.key)
   assert.deepEqual(health.frontendRetrieval.capabilities, ['url-fetch'])
   assert.equal(health.frontendRetrieval.searchProvider, null)
-  assert.deepEqual(health.frontendKnowledge.capabilities, ['knowledge'])
+  assert.deepEqual(health.frontendKnowledge, {
+    configured: false,
+    capabilities: [],
+    provider: null,
+  })
   assert.deepEqual(health.frontendProfile, frontendProfile)
   assert.deepEqual(health.frontendMcp, {
     ok: true,
@@ -139,14 +141,52 @@ test('constructs an injectable Gateway without binding a port on import', async 
     apis: [],
   })
   assert.equal(
-    health.frontendKnowledge.retrievalProvider.key,
-    'local-lexical',
-  )
-  assert.equal(
     health.realtimeProviders.some(provider => provider.key === privateProvider.key),
     false,
   )
   await application.close()
   assert.equal(mcpClosed, true)
   assert.equal(openApiClosed, true)
+})
+
+test('enables knowledge only when an external provider is injected', async () => {
+  let closed = false
+  const knowledgeProvider = {
+    describe: () => ({
+      protocolVersion: 1,
+      key: 'external-rag',
+      label: 'External RAG',
+      capabilities: { filters: true },
+    }),
+    retrieve: async () => ({ results: [] }),
+    close: async () => { closed = true },
+  }
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    knowledgeProvider,
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+
+  assert.equal(application.services.knowledgeProvider, knowledgeProvider)
+  assert.deepEqual(application.services.frontendKnowledge.describe(), {
+    configured: true,
+    capabilities: ['knowledge'],
+    provider: {
+      protocolVersion: 1,
+      key: 'external-rag',
+      label: 'External RAG',
+      capabilities: { filters: true },
+    },
+  })
+  await application.close()
+  assert.equal(closed, true)
 })

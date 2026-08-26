@@ -1,101 +1,145 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { resolve } from 'node:path'
 import test from 'node:test'
-import { TextDocumentExtractor } from '../src/frontend/knowledge/document-extractor.mjs'
-import { KnowledgeIndexer } from '../src/frontend/knowledge/knowledge-indexer.mjs'
 import { FrontendKnowledgeRuntime } from '../src/frontend/knowledge/knowledge-runtime.mjs'
-import { FileKnowledgeStore } from '../src/providers/knowledge/file-knowledge-store.mjs'
-import {
-  LexicalKnowledgeRetrievalProvider,
-} from '../src/providers/knowledge/lexical-retrieval-provider.mjs'
-import { TaskManager } from '../src/task/task-manager.mjs'
 
-function fixture(runtimeOptions = {}) {
-  const store = new FileKnowledgeStore({
-    directory: mkdtempSync(resolve(tmpdir(), 'qwaudio-knowledge-runtime-')),
-  })
-  const taskManager = new TaskManager()
-  const indexer = new KnowledgeIndexer({
-    extractor: new TextDocumentExtractor(),
-    store,
-    taskManager,
-    chunkChars: 300,
-    overlapChars: 30,
-  })
-  const retrievalProvider = new LexicalKnowledgeRetrievalProvider({ store })
-  const runtime = new FrontendKnowledgeRuntime({
-    store,
-    indexer,
-    retrievalProvider,
-    ...runtimeOptions,
-  })
-  return { runtime, store, taskManager }
+function fixture({ retrieve, health, close } = {}) {
+  return {
+    describe: () => ({
+      protocolVersion: 1,
+      key: 'fixture',
+      label: 'Fixture Provider',
+      capabilities: { filters: true },
+    }),
+    retrieve: retrieve || (async () => ({ results: [] })),
+    ...(health ? { health } : {}),
+    ...(close ? { close } : {}),
+  }
 }
 
-test('indexes explicitly supplied sources and exposes search, list, and full context', async () => {
-  const { runtime, taskManager } = fixture()
-  const userEvents = []
-  taskManager.subscribe(event => userEvents.push(event))
-  const content = `# Project notes\n\n${'The launch checklist includes release check. '.repeat(24)}`
-
-  const indexed = await runtime.index({
-    ownerId: 'owner',
-    sessionId: 'voice',
-    sources: [{
-      id: 'attachment:notes.md',
-      filename: 'notes.md',
-      mimeType: 'text/markdown',
-      content,
-      kind: 'attachment',
-    }],
+test('keeps model request fields separate from trusted Gateway context', async () => {
+  let received
+  const runtime = new FrontendKnowledgeRuntime({
+    provider: fixture({
+      retrieve: async (request, context) => {
+        received = { request, context }
+        return {
+          results: [{
+            id: 'chunk_1',
+            content: 'Provider answer',
+            source: { id: 'doc_1', title: 'Guide' },
+          }],
+        }
+      },
+    }),
+  })
+  const response = await runtime.search('  user question ', {
+    ownerId: 'owner-private',
+    sessionId: 'session-private',
+    turnId: 'turn-private',
+    traceId: 'trace-private',
+    knowledgeBaseIds: ['kb_one'],
+    filters: { language: 'zh' },
+    topK: 99,
   })
 
-  assert.equal(indexed.failures.length, 0)
-  assert.equal(indexed.documents.length, 1)
-  assert.equal(userEvents.length, 0)
-  const [summary] = await runtime.list('owner')
-  assert.equal(summary.title, 'notes.md')
-  const search = await runtime.search('launch release checklist', { ownerId: 'owner' })
-  assert.equal(search.status, 'ok')
-  assert.equal(search.results[0].document_id, summary.id)
-  const full = await runtime.read('owner', summary.id)
-  assert.equal(full.content, content.trim())
-  assert.equal(await runtime.remove('owner', summary.id), true)
-  assert.equal(await runtime.read('owner', summary.id), null)
-})
-
-test('deduplicates one explicit indexing batch by stable document revision', async () => {
-  const { runtime } = fixture()
-  const source = {
-    id: 'attachment:same.md',
-    filename: 'same.md',
-    mimeType: 'text/markdown',
-    content: 'One copy',
-  }
-  const indexed = await runtime.index({
-    ownerId: 'owner',
-    sessionId: 'voice',
-    sources: [source, { ...source }],
+  assert.deepEqual(received.request, {
+    query: 'user question',
+    topK: 8,
+    knowledgeBaseIds: ['kb_one'],
+    filters: { language: 'zh' },
   })
-  assert.equal(indexed.documents.length, 1)
-  assert.equal((await runtime.list('owner')).length, 1)
+  assert.equal(received.request.ownerId, undefined)
+  assert.equal(received.context.ownerId, 'owner-private')
+  assert.equal(received.context.sessionId, 'session-private')
+  assert.equal(received.context.turnId, 'turn-private')
+  assert.equal(received.context.traceId, 'trace-private')
+  assert.equal(received.context.signal instanceof AbortSignal, true)
+  assert.equal(response.results[0].content, 'Provider answer')
 })
 
-test('rejects full context above its byte boundary and directs callers to retrieval', async () => {
-  const { runtime } = fixture({ maxFullContextBytes: 40 })
-  const indexed = await runtime.index({
-    ownerId: 'owner',
-    sources: [{
-      id: 'attachment:large.md',
-      filename: 'large.md',
-      mimeType: 'text/markdown',
-      content: '知识内容'.repeat(20),
-    }],
+test('exposes capability, descriptor, optional health, and close lifecycle', async () => {
+  let closed = false
+  const runtime = new FrontendKnowledgeRuntime({
+    provider: fixture({
+      health: async () => ({ status: 'ready' }),
+      close: async () => { closed = true },
+    }),
+  })
+  assert.deepEqual(runtime.capabilities(), ['knowledge'])
+  assert.deepEqual(runtime.describe(), {
+    configured: true,
+    capabilities: ['knowledge'],
+    provider: {
+      protocolVersion: 1,
+      key: 'fixture',
+      label: 'Fixture Provider',
+      capabilities: { filters: true },
+    },
+  })
+  assert.deepEqual(await runtime.health(), { status: 'ready', ok: true })
+  await runtime.close()
+  await runtime.close()
+  assert.equal(closed, true)
+})
+
+test('rejects empty queries and aborts a provider at the configured timeout', async () => {
+  const runtime = new FrontendKnowledgeRuntime({
+    timeoutMs: 10,
+    provider: fixture({
+      retrieve: async (_request, { signal }) => {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(resolve, 1_000)
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer)
+            reject(signal.reason)
+          }, { once: true })
+        })
+        return []
+      },
+    }),
+  })
+  await assert.rejects(() => runtime.search(''), error => (
+    error.code === 'knowledge_query_required'
+  ))
+  await assert.rejects(() => runtime.search('slow', { ownerId: 'owner' }), error => (
+    error?.name === 'TimeoutError'
+  ))
+})
+
+test('requires Gateway-owned identity and times out providers that ignore abort', async () => {
+  const runtime = new FrontendKnowledgeRuntime({
+    timeoutMs: 10,
+    provider: fixture({
+      retrieve: async () => new Promise(() => {}),
+    }),
+  })
+  await assert.rejects(() => runtime.search('query'), error => (
+    error.code === 'knowledge_owner_required'
+  ))
+  await assert.rejects(
+    () => runtime.search('query', { ownerId: 'owner' }),
+    error => error?.name === 'TimeoutError',
+  )
+})
+
+test('does not invoke a provider for an already-aborted request', async () => {
+  let calls = 0
+  const controller = new AbortController()
+  controller.abort(new DOMException('cancelled', 'AbortError'))
+  const runtime = new FrontendKnowledgeRuntime({
+    provider: fixture({
+      retrieve: async () => {
+        calls += 1
+        return []
+      },
+    }),
   })
   await assert.rejects(
-    runtime.read('owner', indexed.documents[0].id),
-    error => error.code === 'knowledge_full_context_too_large',
+    () => runtime.search('query', {
+      ownerId: 'owner',
+      signal: controller.signal,
+    }),
+    error => error?.name === 'AbortError',
   )
+  assert.equal(calls, 0)
 })

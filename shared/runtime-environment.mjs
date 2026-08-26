@@ -468,7 +468,6 @@ export function loadRuntimeEnvironment({
     : ensureLongTermMemory(dataDirectory)
   const legacyFrontendMemoryPath = resolve(dataDirectory, 'frontend-memory.json')
   const frontendNotesPath = resolve(dataDirectory, 'frontend-notes.json')
-  const knowledgeDirectory = resolve(dataDirectory, 'knowledge')
   const taskStatePath = resolve(configDirectory, 'tasks.json')
   const backendWorkspaces = resolveBackendWorkspaces(
     env,
@@ -538,7 +537,6 @@ export function loadRuntimeEnvironment({
     userModelPath,
     frontendMemoryPath,
     frontendNotesPath,
-    knowledgeDirectory,
     taskStatePath,
     sharedWorkspace,
     openCodeWorkspace,

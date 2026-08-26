@@ -12,8 +12,8 @@ over the user configuration file.
 
 The desktop edition and CLI share one asset layer and keep their runtime state apart, mirroring how
 Qoder's IDE and CLI coexist. The shared assets — `config.env`, the local identity (`state.env`),
-memory documents (`USER.md`, `MEMORY.md`, `ASSISTANT.md`), frontend notes, the knowledge store,
-and the shared agent `workspace/` — live in the CLI's user data directory (`~/.config/qwaudio`, overridable via
+memory documents (`USER.md`, `MEMORY.md`, `ASSISTANT.md`), frontend notes, and the shared agent
+`workspace/` — live in the CLI's user data directory (`~/.config/qwaudio`, overridable via
 `QWAUDIO_DATA_DIR`), so both editions act as the same assistant with one memory and one
 configuration. Runtime state — `gateway.lock`, `tasks.json`, ACP session state, logs, and desktop
 skins — stays in each edition's own directory: `~/.config/qwaudio` for the CLI and the system
@@ -925,7 +925,6 @@ them to the configuration file:
 | `QWEN_AUDIO_FRONTEND_PROFILE` | Empty; path to a lightweight Frontend Profile JSON file |
 | `QWEN_AUDIO_FRONTEND_MCP_CONFIG` | Empty; absolute path to the versioned frontend MCP JSON file |
 | `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | Empty; absolute path to the versioned frontend OpenAPI JSON config file |
-| `QWEN_AUDIO_AGENT_KNOWLEDGE_DIR` | `knowledge` under the shared user data directory |
 | `QWEN_AUDIO_REALTIME_VOICE` | Empty; optional Audio-family override, otherwise runtime uses `longanqian` |
 | `QWEN_OMNI_REALTIME_VOICE` | Empty; optional Omni-family override, otherwise runtime uses `Ethan` |
 | `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |

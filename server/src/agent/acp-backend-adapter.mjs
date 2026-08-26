@@ -38,7 +38,7 @@ import { assertMcpServerCapabilities } from './acp-capabilities.mjs'
 import {
   acpCoordinatorResponseState,
   acpCoordinatorRetryPrompt,
-  buildAcpCoordinatorPrompt,
+  buildAcpCoordinatorInstruction,
   parseAcpCoordinatorDecision,
 } from './acp-coordinator-contract.mjs'
 
@@ -47,7 +47,7 @@ const MAX_DELEGATION_RESULT_CHARS = 12_000
 const MAX_DELEGATION_RECENT_UPDATES = 5
 // Persistent coordinator Sessions are valid only for the contract that
 // created them. Project Sessions are user work and remain independent.
-const COORDINATOR_CONTRACT_VERSION = 3
+const COORDINATOR_CONTRACT_VERSION = 4
 
 export { acpBackendProfile } from './acp-backend-profile.mjs'
 
@@ -1166,10 +1166,8 @@ export class AcpBackendAdapter {
     const pendingFacts = this.registry.reconciliationsFor(key)
     const prompt = pendingFacts.length
       ? transformPromptText(message, content => [
-          '<qwen_audio_agent_reconciliation>',
-          ...pendingFacts.map(fact => JSON.stringify(fact)),
-          '</qwen_audio_agent_reconciliation>',
-          '以上请求已经终止，不再是可执行输入。下方 current request 是本轮唯一需要处理的请求。',
+          '在本轮开始前，先前未正常结束的请求已经由 Gateway 确认终止。',
+          '不要继续、补全或回答那些旧请求；下面的新指令是本轮唯一需要处理的任务。',
           '',
           content,
         ].join('\n'))
@@ -1297,20 +1295,15 @@ export class AcpBackendAdapter {
     }
   }
 
-  delegationResultPrompt(result, coordinationRunId) {
+  delegationResultPrompt(result, objective = '') {
+    const task = clean(objective || result.title).slice(0, 2_000)
     return [
-      '<qwen_audio_agent_delegation_result>',
-      JSON.stringify({
-        request_id: clean(coordinationRunId),
-        delegation_id: result.id,
-        target_session_id: result.sessionId,
-        directory: result.directory,
-        result: clean(result.content).slice(0, MAX_DELEGATION_RESULT_CHARS),
-      }, null, 2),
-      '</qwen_audio_agent_delegation_result>',
-      '这是由 Gateway 验证并关联到当前请求的第三层 Session 最终结果。',
-      '请只整理该可信结果并生成 presentation。',
-      '返回当前 request_id 的 completed 最终 presentation；',
+      '刚才交给独立任务处理的工作已经完成。以下是 Gateway 验证并关联到当前请求的最终结果：',
+      ...(task ? ['', `原任务：${task}`] : []),
+      '',
+      clean(result.content).slice(0, MAX_DELEGATION_RESULT_CHARS),
+      '',
+      '请只整理以上可信结果并返回 state=completed 的最终 presentation；',
       '不要再次执行、委托或查询目标任务。',
     ].join('\n')
   }
@@ -1383,17 +1376,16 @@ export class AcpBackendAdapter {
       : controller.signal
     this.workControllers.set(workId, controller)
     try {
-      const prompt = buildAcpCoordinatorPrompt({
+      const prompt = buildAcpCoordinatorInstruction({
         ...work,
         objective,
-        workId,
-        jobId,
         includeStableInstructions: !this.coordinatorUsesMcpInstructions(),
       })
       const run = message => this.runCoordinator(message, {
         ownerId,
         coordinationRunId: workId,
         coordinationRequestId: jobId,
+        workObjective: objective,
         signal: workSignal,
         onEvent,
       })
@@ -1407,7 +1399,7 @@ export class AcpBackendAdapter {
       for (let attempt = 0; attempt < 2; attempt += 1) {
         const state = acpCoordinatorResponseState(result.content)
         if (!state || state === 'completed') break
-        result = await run(acpCoordinatorRetryPrompt(jobId, state))
+        result = await run(acpCoordinatorRetryPrompt(state))
       }
       const finalState = acpCoordinatorResponseState(result.content)
       if (finalState && finalState !== 'completed') {
@@ -1416,10 +1408,7 @@ export class AcpBackendAdapter {
           { status: 502, protocol: this.protocol },
         )
       }
-      const presentation = parseAcpCoordinatorDecision(
-        result.content,
-        jobId,
-      ).presentation
+      const presentation = parseAcpCoordinatorDecision(result.content).presentation
       return {
         content: presentation.speech,
         artifacts: [],
@@ -1436,6 +1425,7 @@ export class AcpBackendAdapter {
     ownerId,
     coordinationRunId,
     coordinationRequestId,
+    workObjective,
     signal,
     onEvent,
   } = {}) {
@@ -1486,10 +1476,7 @@ export class AcpBackendAdapter {
       const final = await this.serialize(
         `coordinator:${key}`,
         () => this.coordinatorTurnWithRecovery(
-          this.delegationResultPrompt(
-            target,
-            clean(coordinationRequestId) || clean(coordinationRunId),
-          ),
+          this.delegationResultPrompt(target, workObjective),
           {
             ownerId,
             coordinationRunId,
@@ -1581,10 +1568,7 @@ export class AcpBackendAdapter {
       const final = await this.serialize(
         `coordinator:${key}`,
         () => this.coordinatorTurn(
-          this.delegationResultPrompt(
-            target,
-            clean(task.jobId) || coordinationRunId,
-          ),
+          this.delegationResultPrompt(target, task.objective),
           {
             ownerId,
             coordinationRunId,

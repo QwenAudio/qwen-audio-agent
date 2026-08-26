@@ -1,4 +1,5 @@
 import { assertBackendPort } from './backend-port.mjs'
+import { backendInstructionFromWork } from './backend-work-input.mjs'
 
 function clean(value) {
   return String(value || '').trim()
@@ -20,18 +21,19 @@ export class BackendWorkRuntime {
   run(input, options = {}) {
     const workId = clean(options.workId)
     const jobId = clean(options.jobId) || workId
-    return this.backend.submit({
+    const work = {
       id: workId,
       jobId,
       ownerId: clean(options.ownerId),
+      instruction: input?.instruction,
       originalRequest: input?.originalRequest,
       objective: input?.objective,
-      conversationContext: input?.conversationContext || [],
-      userMemories: input?.userMemories || [],
       timeZone: input?.timeZone,
       workingDirectory: input?.workingDirectory,
       inputParts: input?.inputParts || [],
-    }, {
+    }
+    work.instruction = backendInstructionFromWork(work)
+    return this.backend.submit(work, {
       signal: options.signal,
       onEvent: options.onEvent,
     })

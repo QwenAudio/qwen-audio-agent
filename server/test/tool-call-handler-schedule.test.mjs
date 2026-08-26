@@ -29,7 +29,6 @@ function harness({
     notesStore: null,
     onMemoryChanged: () => {},
     getClientContext: () => ({}),
-    getConversationContext: () => [],
   })
   return { outputs, manager, handler }
 }
@@ -185,7 +184,7 @@ test('lists scheduled reminders and cancels the latest one without an id', async
   assert.equal(taskForJob(manager, reminderJobId).status, 'cancelled')
 })
 
-test('scheduled tasks preserve identity and resolve current user context', async () => {
+test('scheduled tasks preserve identity without injecting frontend memory', async () => {
   let coordinatorInput
   let coordinatorOptions
   const memories = [{ scope: 'user', content: '默认使用中文' }]
@@ -220,7 +219,8 @@ test('scheduled tasks preserve identity and resolve current user context', async
   manager.drain()
   await manager.wait(taskId)
 
-  assert.deepEqual(coordinatorInput.userMemories, memories)
+  assert.equal('userMemories' in coordinatorInput, false)
+  assert.equal('conversationContext' in coordinatorInput, false)
   assert.equal(coordinatorOptions.ownerId, 'owner')
   assert.equal(coordinatorOptions.sessionId, 'voice')
   assert.equal(coordinatorOptions.turnId, 'turn-1')

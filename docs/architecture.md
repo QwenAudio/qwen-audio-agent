@@ -140,12 +140,22 @@ approves later requests in the same frontend session. This does not create a
 persistent backend authorization rule.
 
 The `objective` passed to `spawn_thinking` is a conservative interpretation of
-the user's request, not an execution plan. Recent voice context is separately
-included in the backend Agent envelope so references such as “continue that
-page” remain understandable. Final ASR remains the source of truth. The Gateway
-automatically carries current-turn attachments. Only work that explicitly
+the user's request, not an execution plan. It must resolve references such as
+“continue that page” into one self-contained instruction before submission.
+Final ASR remains internal source evidence: when it differs from the objective,
+the adapter includes it as natural quoted wording. The objective remains this
+Work's execution boundary; within that boundary the original facts, scope, and
+constraints take priority. The backend Agent does not receive the frontend
+persona, durable memory, or recent chat history. Execution-relevant facts must
+be resolved into the instruction instead of forwarding those documents.
+
+The Gateway automatically carries current-turn attachments as native protocol
+parts, never as a model-visible JSON manifest. Only work that explicitly
 depends on an earlier image or file uses the optional `input_refs` field with a
-conversation-local input ID; calls without multimodal input remain unchanged.
+conversation-local input ID. Work IDs, owner identity, lifecycle, timestamps,
+and routing remain structured Gateway/BackendPort data and are not placed in
+the backend Agent's instruction. The working directory and user time zone are
+projected as natural execution context because they can change task meaning.
 
 ## 4. Fixed Backend Agent Session
 
@@ -222,9 +232,7 @@ The backend Agent returns one final presentation:
 
 ```json
 {
-  "work_id": "work id",
   "state": "completed",
-  "mode": "respond",
   "presentation": {
     "speech": "concise result material",
     "inline": null
@@ -249,11 +257,7 @@ intermediate transport response is instead:
 
 ```json
 {
-  "work_id": "work id",
   "state": "delegated",
-  "mode": "delegate",
-  "delegation_id": "opaque run id",
-  "target_session_id": "opaque backend Session id",
   "presentation": {
     "speech": "a natural confirmation authored by the backend Agent",
     "inline": null
@@ -261,7 +265,9 @@ intermediate transport response is instead:
 }
 ```
 
-This response is never a user-visible completion. The adapter immediately
+Correlation remains in the Gateway's Work registry and the adapter's observed
+tool result; the model is not asked to echo IDs. This response is never a
+user-visible completion. The adapter immediately
 lets the backend Agent naturally finish this short post-tool response, moves
 the original Work to `delegated`, and
 releases both the backend Agent serialization lock and the Work scheduler
@@ -308,9 +314,9 @@ cancellation, permission routing, and result correlation.
 
 The coordinator MCP server also publishes the stable coordination contract
 through the MCP initialization `instructions` field. Backends whose drivers
-declare `coordinatorMcpInstructions` receive only the dynamic request envelope
-on each turn; this avoids appending the same routing and response rules to the
-persistent Session history. The capability is enabled only after the Agent host
+declare `coordinatorMcpInstructions` receive only the dynamic natural task
+instruction on each turn; this avoids appending the same routing and response
+rules to the persistent Session history. The capability is enabled only after the Agent host
 has been verified to project MCP server instructions into model context; it
 currently applies to OpenCode, Qoder, Qwen Code, and Claude Code. The shared
 payload stays within a 2 KiB portability budget. Unverified Agents—or a future
@@ -335,9 +341,9 @@ Realtime Gateway
    ↓ spawn_thinking
 Work queue
    ↓
-backend Agent envelope
+structured BackendPort Work
    ↓
-Shared ACP adapter
+Adapter projection: natural instruction + native attachment parts
    ↓
 OpenCode ACP, OpenClaw ACP bridge, Qoder ACP,
 Qwen Code ACP, Kimi Code ACP, or another ACP Agent

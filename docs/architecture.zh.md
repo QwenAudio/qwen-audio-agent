@@ -112,10 +112,17 @@ Adapter 仍选择最窄的单次后端权限选项，
 后续请求由 Gateway 在同一前端会话内自动允许，不会创建持久的后端授权规则。
 
 传递给 `spawn_thinking` 的 `objective` 是对用户请求的保守解释，而非执行计划。
-最近的语音上下文会单独包含在后端 Agent 信封中，因此诸如"继续那个页面"之类的
-引用仍然可以理解。final ASR 仍然是事实来源。当前轮附件由 Gateway 自动随任务
-传递；只有任务明确依赖此前轮次的图片或文件时，前台才通过可选的 `input_refs`
-引用 Gateway 分配的会话内输入 ID。没有多模态输入的调用保持原协议不变。
+提交前必须结合当前对话把"继续那个页面"之类的指代解析成一条自包含指令。final
+ASR 作为内部事实依据保留；当它与 objective 不同时，Adapter 会用自然引用保留用户
+原话。objective 仍是当前 Work 的执行边界；在该边界内，以原话中的事实、范围和限制
+为准。后台 Agent 不再接收前台人格、长期记忆或最近聊天历史；与执行有关的事实必须
+先解析进指令，而不是转发这些文档。
+
+当前轮附件由 Gateway 自动作为协议原生 Part 随任务传递，而不是放入模型可见的 JSON
+清单。只有任务明确依赖此前轮次的图片或文件时，前台才通过可选的 `input_refs` 引用
+Gateway 分配的会话内输入 ID。Work ID、owner、生命周期、时间戳和路由继续作为
+Gateway/BackendPort 的结构化数据，不进入后台 Agent 的任务指令。工作目录和用户
+时区会作为自然执行上下文投影，因为它们可能改变任务含义。
 
 ## 4. 固定后端 Agent Session
 
@@ -181,9 +188,7 @@ UI 将此映射为稳定的短语，如"搜索中"、"读取中"、"生成图像
 
 ```json
 {
-  "work_id": "work id",
   "state": "completed",
-  "mode": "respond",
   "presentation": {
     "speech": "concise result material",
     "inline": null
@@ -204,11 +209,7 @@ Markdown、代码或链接，用于共享时间线。
 
 ```json
 {
-  "work_id": "work id",
   "state": "delegated",
-  "mode": "delegate",
-  "delegation_id": "opaque run id",
-  "target_session_id": "opaque backend Session id",
   "presentation": {
     "speech": "a natural confirmation authored by the backend Agent",
     "inline": null
@@ -216,7 +217,8 @@ Markdown、代码或链接，用于共享时间线。
 }
 ```
 
-此响应绝不是用户可见的完成。适配器立即让后端 Agent 自然地完成这个简短的
+关联关系保留在 Gateway 的 Work Registry 和 Adapter 观察到的工具结果中，不要求
+模型回显任何 ID。此响应绝不是用户可见的完成。适配器立即让后端 Agent 自然地完成这个简短的
 工具后响应，将原始 Work 移至 `delegated`，并释放后端 Agent 串行化锁和
 Work 调度通道。因此，其他语音请求可以在目标 Session 运行期间使用协调器。
 适配器独立地保持 Work 生命周期和事件订阅存活。只有与委派 ID 关联的匹配 ACP
@@ -251,8 +253,8 @@ send、status 和 cancel。OpenClaw ACP 不接受客户端提供的 MCP 服务�
 
 协调 MCP Server 还会通过 MCP 初始化响应的 `instructions` 字段发布稳定协调契约。
 后台 Driver 只有在确认 Agent Host 会把 MCP Server instructions 投射进模型上下文后，
-才声明 `coordinatorMcpInstructions`；这些后台每轮只接收动态请求信封，避免把相同的
-路由与返回规则反复追加到持久 Session 历史。目前已确认 OpenCode、Qoder、Qwen Code
+才声明 `coordinatorMcpInstructions`；这些后台每轮只接收动态自然任务指令，避免把
+相同的路由与返回规则反复追加到持久 Session 历史。目前已确认 OpenCode、Qoder、Qwen Code
 和 Claude Code，并将共享内容控制在 2 KiB 的可移植预算内。尚未验证的后台，或未来
 超过预算的内容，继续使用完整的逐轮 Prompt 安全回退。该标志不表示后台是否普遍支持
 MCP。项目 Session 不会连接协调 MCP Server。
@@ -272,9 +274,9 @@ Realtime Gateway
    ↓ spawn_thinking
 Work queue
    ↓
-backend agent envelope
+结构化 BackendPort Work
    ↓
-Shared ACP adapter
+Adapter 投影：自然任务指令 + 原生附件 Part
    ↓
 OpenCode ACP, OpenClaw ACP bridge, Qoder ACP,
 Qwen Code ACP, Kimi Code ACP, or another ACP Agent

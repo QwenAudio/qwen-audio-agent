@@ -44,6 +44,13 @@ Adapter 必须实现全部方法：
 该 Gateway Work。`submit`、`status`、`cancel` 和 `respondAuthorization` 都只接收
 Gateway Work ID，后台私有 Session、任务 ID 和拓扑不能越过边界。
 
+`submit(work)` 接收结构化内部 Work 和唯一的规范字段 `work.instruction`。Adapter
+可以在内部使用路由与关联字段，但面向 Agent 的 ACP Prompt、A2A 文本 Part 或同类
+输入只能包含 `instruction` 和协议原生附件 Part。不得把整个 Work、ID、owner、
+生命周期、前台记忆或聊天历史序列化为模型可见文本。`originalRequest` 是有界的事实
+依据，需要时已经合入规范指令；`workingDirectory` 和 `timeZone` 同样被投影为执行
+上下文。非模型型自定义 Adapter 仍可直接消费结构化 Work。
+
 `submit` 的最终结果至少包含：
 
 ```js

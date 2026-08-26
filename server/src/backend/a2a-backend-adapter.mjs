@@ -11,6 +11,7 @@ import {
 } from '@a2a-js/sdk/client'
 import { parseDataUrl } from '../../../shared/input-parts.mjs'
 import { defineBackendAdapter } from './backend-adapter-sdk.mjs'
+import { backendInstructionFromWork } from './backend-work-input.mjs'
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000
 const DEFAULT_TIMEOUT_MS = 300_000
@@ -312,7 +313,7 @@ function messageLike(value) {
 }
 
 function outgoingText(work) {
-  const objective = clean(work?.objective || work?.originalRequest || work?.message)
+  const objective = backendInstructionFromWork(work)
   const original = clean(work?.originalRequest)
   const supplied = (Array.isArray(work?.inputParts) ? work.inputParts : [])
     .filter(part => part?.type === 'text')
@@ -363,10 +364,7 @@ function outgoingMessage(work) {
     taskId: '',
     role: Role.ROLE_USER,
     parts,
-    metadata: {
-      'qwen.audio/workId': clean(work.id),
-      'qwen.audio/jobId': clean(work.jobId),
-    },
+    metadata: undefined,
     extensions: [],
     referenceTaskIds: [],
   }
@@ -686,10 +684,7 @@ export class A2ABackendAdapter {
           historyLength: 20,
           returnImmediately: true,
         },
-        metadata: {
-          'qwen.audio/workId': workId,
-          'qwen.audio/jobId': clean(work?.jobId),
-        },
+        metadata: undefined,
       }, { signal: workSignal })
       if (taskLike(result)) {
         record.taskId = clean(result.id)

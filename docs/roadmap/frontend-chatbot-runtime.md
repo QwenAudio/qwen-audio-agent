@@ -109,6 +109,9 @@ turn, original request, objective, multimodal inputs, state, activity,
 authorization, artifacts, presentation, and timestamps. Public states align
 with A2A Task semantics: `submitted`, `working`, `auth_required`, `completed`,
 `failed`, and `cancelled`. Gateway-specific phases remain internal.
+Backend submission adds one canonical natural-language `instruction`; frontend
+memory, chat history, routing fields, and the serialized Work record are never
+used as model-visible backend input.
 
 ### BackendPort
 
@@ -120,6 +123,8 @@ composition boundary. Optional capabilities are declared by `describe()` and
 rejected explicitly, never inferred from a missing function. `submit`,
 `status`, `cancel`, and `respondAuthorization` operate on Gateway Work IDs;
 backend-private session and task identifiers never cross the port.
+Adapters project the same canonical instruction and native attachment parts
+into ACP, A2A, or custom transports while keeping correlation metadata private.
 AgentClient owns exactly one injected backend instance. Driver selection,
 profile construction, and protocol-specific dependencies belong to the adapter
 factory rather than the runtime facade.

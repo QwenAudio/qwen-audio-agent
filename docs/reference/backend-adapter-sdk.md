@@ -46,6 +46,16 @@ runtime status; with an ID it addresses only that Gateway Work. `submit`,
 `status`, `cancel`, and `respondAuthorization` accept Gateway Work IDs only.
 Private sessions, task IDs, and topology never cross the port.
 
+`submit(work)` receives structured internal Work plus one canonical
+`work.instruction`. An adapter may use routing and correlation fields internally,
+but an Agent-facing ACP prompt, A2A text part, or equivalent must contain only
+`instruction` and native attachment parts. Do not serialize the Work object,
+IDs, owner, lifecycle, frontend memory, or chat history into model-visible
+text. `originalRequest` is bounded source evidence already incorporated into
+the canonical instruction when needed; `workingDirectory` and `timeZone` are
+likewise rendered as execution context. Custom non-model adapters may consume
+the structured Work directly.
+
 The final `submit` result contains at least:
 
 ```js

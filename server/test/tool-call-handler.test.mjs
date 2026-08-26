@@ -329,78 +329,35 @@ test('fails closed when a stale model calls an unavailable retrieval tool', asyn
   assert.equal(kit.outputs[0][3].createResponse, true)
 })
 
-test('executes the capability-gated knowledge actions through one frontend tool', async () => {
+test('executes capability-gated knowledge retrieval with trusted context', async () => {
   const calls = []
   const kit = harness({
     frontendKnowledge: {
       capabilities: () => ['knowledge'],
       search: async (query, options) => {
-        calls.push(['search', query, options.ownerId])
+        calls.push([query, options])
         return { status: 'ok', query, results: [] }
-      },
-      list: async ownerId => {
-        calls.push(['list', ownerId])
-        return [{
-          id: 'doc_one',
-          title: 'One',
-          mimeType: 'text/plain',
-          chunkCount: 1,
-        }]
-      },
-      read: async (ownerId, documentId) => {
-        calls.push(['read', ownerId, documentId])
-        return {
-          id: documentId,
-          title: 'One',
-          mimeType: 'text/plain',
-          content: 'Stored fact',
-        }
-      },
-      remove: async (ownerId, documentId) => {
-        calls.push(['remove', ownerId, documentId])
-        return true
-      },
-      index: async options => {
-        calls.push(['index', options.ownerId, options.sources[0].filename])
-        return {
-          documents: [{
-            id: 'doc_saved',
-            title: 'saved.md',
-            mimeType: 'text/markdown',
-            chunkCount: 1,
-          }],
-          failures: [],
-        }
       },
     },
   })
-  kit.transcripts.recordParts('turn-one', [{
-    type: 'file',
-    mime: 'text/markdown',
-    filename: 'saved.md',
-    url: `data:text/markdown;base64,${Buffer.from('# Saved').toString('base64')}`,
-  }])
-  const invoke = (callId, args) => kit.handler.handle({
-    call_id: callId,
+  await kit.handler.handle({
+    call_id: 'knowledge-search',
     name: 'knowledge',
-    arguments: JSON.stringify(args),
+    arguments: JSON.stringify({
+      query: 'fact',
+      knowledge_base_ids: ['kb_one'],
+      top_k: 3,
+    }),
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  await invoke('knowledge-search', { action: 'search', query: 'fact' })
-  await invoke('knowledge-list', { action: 'list' })
-  await invoke('knowledge-read', { action: 'read', document_id: 'doc_one' })
-  await invoke('knowledge-remove', { action: 'remove', document_id: 'doc_one' })
-  await invoke('knowledge-index', { action: 'index' })
-
-  assert.deepEqual(calls, [
-    ['search', 'fact', 'owner'],
-    ['list', 'owner'],
-    ['read', 'owner', 'doc_one'],
-    ['remove', 'owner', 'doc_one'],
-    ['index', 'owner', 'saved.md'],
-  ])
-  assert.equal(kit.outputs[2][1].mode, 'full_context')
-  assert.equal(kit.outputs[4][1].status, 'indexed')
+  assert.equal(calls.length, 1)
+  assert.equal(calls[0][0], 'fact')
+  assert.equal(calls[0][1].ownerId, 'owner')
+  assert.equal(calls[0][1].turnId, 'turn-one')
+  assert.equal(calls[0][1].traceId, 'knowledge-search')
+  assert.deepEqual(calls[0][1].knowledgeBaseIds, ['kb_one'])
+  assert.equal(calls[0][1].topK, 3)
+  assert.equal(kit.outputs[0][1].status, 'ok')
 })
 
 test('fails closed when a stale model calls the unavailable knowledge tool', async () => {
@@ -408,7 +365,7 @@ test('fails closed when a stale model calls the unavailable knowledge tool', asy
   await kit.handler.handle({
     call_id: 'call-knowledge-disabled',
     name: 'knowledge',
-    arguments: JSON.stringify({ action: 'list' }),
+    arguments: JSON.stringify({ query: 'fact' }),
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')

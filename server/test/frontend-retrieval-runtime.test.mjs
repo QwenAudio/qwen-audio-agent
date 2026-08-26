@@ -5,6 +5,8 @@ import {
   FrontendRetrievalRuntime,
 } from '../src/frontend/retrieval/frontend-retrieval-runtime.mjs'
 import {
+  createPinnedLookup,
+  isBlockedAddress,
   SafeUrlFetcher,
 } from '../src/frontend/retrieval/safe-url-fetcher.mjs'
 import {
@@ -96,6 +98,33 @@ test('safe URL fetch blocks loopback by default', async () => {
     fetcher.fetch('https://user:password@example.com/'),
     error => error.code === 'url_credentials_forbidden',
   )
+})
+
+test('safe URL fetch distinguishes public IPv4 from mapped private addresses', () => {
+  assert.equal(isBlockedAddress('8.8.8.8', 4), false)
+  assert.equal(isBlockedAddress('127.0.0.1', 4), true)
+  assert.equal(isBlockedAddress('10.0.0.1', 4), true)
+  assert.equal(isBlockedAddress('169.254.169.254', 4), true)
+
+  assert.equal(isBlockedAddress('2001:4860:4860::8888', 6), false)
+  assert.equal(isBlockedAddress('::1', 6), true)
+  assert.equal(isBlockedAddress('::ffff:8.8.8.8', 6), false)
+  assert.equal(isBlockedAddress('::ffff:127.0.0.1', 6), true)
+  assert.equal(isBlockedAddress('0:0:0:0:0:ffff:a00:1', 6), true)
+})
+
+test('safe URL fetch pins DNS for scalar and all-address lookup contracts', () => {
+  const address = { address: '203.0.113.10', family: 4 }
+  const lookup = createPinnedLookup(address)
+  lookup('example.com', {}, (error, resolved, family) => {
+    assert.equal(error, null)
+    assert.equal(resolved, address.address)
+    assert.equal(family, address.family)
+  })
+  lookup('example.com', { all: true }, (error, resolved) => {
+    assert.equal(error, null)
+    assert.deepEqual(resolved, [address])
+  })
 })
 
 test('fetches bounded public-page text and returns a citation', async () => {

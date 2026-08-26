@@ -97,6 +97,45 @@ test('moves updated backend activity to the end so recency stays correct', async
   )
 })
 
+test('coalesces streaming backend activity and messages into bounded progress events', async () => {
+  const manager = new TaskManager({ progressEventIntervalMs: 60_000 })
+  const events = []
+  manager.subscribe(event => events.push(event))
+  const task = manager.create({
+    objective: 'A',
+    ownerId: 'owner',
+    runner: async (_objective, { onEvent }) => {
+      for (let index = 1; index <= 100; index += 1) {
+        onEvent({
+          type: 'backend.activity',
+          activity: {
+            id: 'thinking',
+            kind: 'thinking',
+            status: 'running',
+          },
+        })
+        onEvent({
+          type: 'backend.message',
+          message: `正在处理 ${index}`,
+        })
+      }
+      return { content: 'done' }
+    },
+  })
+
+  await manager.wait(task.id)
+
+  assert.equal(
+    events.filter(event => event.type === 'task.progress').length,
+    0,
+  )
+  assert.equal(
+    events.filter(event => event.type === 'task.updated').length,
+    1,
+  )
+  assert.equal(manager.get(task.id).message, '正在处理 100')
+})
+
 test('persists normalized backend messages and artifacts as Task updates', async () => {
   const manager = new TaskManager()
   const events = []

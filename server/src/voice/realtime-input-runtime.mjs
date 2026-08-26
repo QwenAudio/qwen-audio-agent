@@ -296,9 +296,19 @@ export class RealtimeInputRuntime {
       turnId: inputTurnId,
     })
     this.ensureFrontend()
-      .then(() => {
-        this.expectResponseFor(inputContext)
-        return this.getFrontend().sendUserInput(parts, inputContext)
+      .then(() => this.getFrontend().sendUserInput(parts, inputContext))
+      .then(outcome => {
+        if (!outcome?.timedOut) return
+        this.turns.failManualInput(inputContext)
+        this.send({
+          type: GatewayServerEvent.VOICE_STATE,
+          state: 'idle',
+          turnId: inputTurnId,
+          origin: 'model',
+        })
+        this.reportFrontendError(new Error(
+          '实时模型没有开始回复，请再试一次。',
+        ))
       })
       .catch(error => {
         this.turns.failManualInput(inputContext)

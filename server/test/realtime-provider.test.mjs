@@ -1315,6 +1315,56 @@ test('cancelling a response before response.created releases its queue entry', a
   assert.equal(frontend.pendingResponses.length, 0)
 })
 
+test('cancelling an active response releases queued input without response.done', async () => {
+  const frontend = createQwenFrontend({
+    responseCancelGraceMs: 1,
+    responseStartTimeoutMs: 50,
+    responseCompletionTimeoutMs: 50,
+  })
+  frontend.ready = true
+  const sent = []
+  frontend.send = event => sent.push(event)
+
+  const interrupted = frontend.speak('旧播报')
+  await new Promise(resolve => setImmediate(resolve))
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'response-interrupted' },
+  })
+
+  frontend.cancel()
+  const next = frontend.sendUserText('你好')
+  assert.deepEqual(await interrupted, {
+    cancelled: true,
+    phase: 'completion',
+  })
+
+  await new Promise(resolve => setTimeout(resolve, 5))
+  await new Promise(resolve => setImmediate(resolve))
+  const item = sent.find(event => (
+    event.type === 'conversation.item.create'
+    && event.item?.content?.[0]?.text === '你好'
+  ))
+  assert.ok(item)
+  frontend.handleLifecycle({
+    type: 'conversation.item.created',
+    item: { ...item.item, status: 'completed' },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'response-next' },
+  })
+  frontend.handleLifecycle({
+    type: 'response.done',
+    response: { id: 'response-next', status: 'completed' },
+  })
+  assert.deepEqual(await next, {
+    completed: true,
+    responseId: 'response-next',
+  })
+})
+
 test('cancels only the matching permission response', async () => {
   const frontend = createQwenFrontend()
   const permissionOutcome = Promise.withResolvers()

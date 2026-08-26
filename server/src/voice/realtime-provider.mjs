@@ -79,6 +79,7 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   // must opt out and use the single pending item waiter instead.
   conversationItemIdEcho: true,
 })
+const DEFAULT_RESPONSE_CANCEL_GRACE_MS = 1_000
 
 export class RealtimeFrontend {
   constructor({
@@ -91,6 +92,7 @@ export class RealtimeFrontend {
     responseStartTimeoutMs,
     responseInactivityTimeoutMs,
     responseCompletionTimeoutMs,
+    responseCancelGraceMs = DEFAULT_RESPONSE_CANCEL_GRACE_MS,
   } = {}) {
     this.provider = validateRealtimeProvider(provider)
     this.connectionId = randomUUID()
@@ -130,6 +132,10 @@ export class RealtimeFrontend {
     this.responseInactivityTimeoutMs = responseInactivityTimeoutMs
       ?? responseCompletionTimeoutMs
       ?? 120000
+    this.responseCancelGraceMs = Math.max(
+      0,
+      Number(responseCancelGraceMs) || 0,
+    )
   }
 
   connect() {
@@ -434,13 +440,29 @@ export class RealtimeFrontend {
 
   cancel() {
     this.responseQueueGeneration += 1
-    const hasResponse = this.activeResponses.size || this.pendingResponses.length
+    const cancelledResponseIds = [...this.activeResponses]
+    const hasResponse = cancelledResponseIds.length || this.pendingResponses.length
     this.pendingResponses.forEach(item => {
       this.settlePending(item, { cancelled: true, phase: 'start' })
     })
     this.pendingResponses = []
+    this.responseWaiters.forEach(item => {
+      this.settlePending(item, { cancelled: true, phase: 'completion' })
+    })
     this.rejectConversationItemWaiters(new Error('Realtime 请求已取消'))
     if (hasResponse) this.send(this.protocol.responseCancel())
+    if (!cancelledResponseIds.length) {
+      this.resolveIdle()
+      return
+    }
+    const recoveryTimer = setTimeout(() => {
+      for (const responseId of cancelledResponseIds) {
+        this.activeResponses.delete(responseId)
+        this.responseWaiters.delete(responseId)
+      }
+      this.resolveIdle()
+    }, this.responseCancelGraceMs)
+    recoveryTimer.unref?.()
   }
 
   cancelResponses(predicate) {

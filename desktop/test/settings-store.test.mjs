@@ -92,6 +92,24 @@ test('orbPosition matches the placement storage contract', t => {
   assert.equal(store.loadUiState().theme, 'dark')
 })
 
+test('conversation session survives restart and changes only when explicitly replaced', t => {
+  const root = temporaryRoot(t)
+  const directory = join(root, 'data')
+  const first = createSettingsStore({ configDir: directory, env: {} })
+  const initial = first.conversationSession.load()
+  assert.match(initial, /^[0-9a-f-]{36}$/)
+  assert.equal(first.conversationSession.load(), initial)
+
+  const restarted = createSettingsStore({ configDir: directory, env: {} })
+  assert.equal(restarted.conversationSession.load(), initial)
+  assert.equal(restarted.conversationSession.save('next-session'), 'next-session')
+  assert.equal(first.conversationSession.load(), 'next-session')
+  assert.throws(
+    () => first.conversationSession.save('bad\nsession'),
+    /invalid/,
+  )
+})
+
 test('splits ui state into its own directory when uiStateDir is given', t => {
   const root = temporaryRoot(t)
   const store = createSettingsStore({

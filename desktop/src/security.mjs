@@ -2,6 +2,7 @@ import {
   isBuiltinOrbSkin,
   normalizeOrbSkinId,
 } from '../../shared/orb-skin-catalog.mjs'
+import { normalizeConversationSessionId } from '../../shared/conversation-session.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
 
@@ -46,6 +47,7 @@ export function desktopOrbUrl(value, {
   wakeWordEnabled = false,
   language = '',
   surfaceMode = 'orb',
+  sessionId = '',
 } = {}) {
   const url = new URL(value)
   url.searchParams.set('desktop', 'orb')
@@ -61,5 +63,7 @@ export function desktopOrbUrl(value, {
   if (wakeWordEnabled) url.searchParams.set('wakeWordEnabled', 'true')
   if (language) url.searchParams.set('lang', language)
   if (surfaceMode === 'panel') url.searchParams.set('surface', 'panel')
+  const normalizedSessionId = normalizeConversationSessionId(sessionId)
+  if (normalizedSessionId) url.searchParams.set('session', normalizedSessionId)
   return url.href
 }

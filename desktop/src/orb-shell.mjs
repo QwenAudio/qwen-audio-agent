@@ -21,6 +21,7 @@ export const ORB_CHANNELS = Object.freeze({
   taskCardPlacement: 'qwen-audio-agent:task-card-placement',
   surfaceLoad: 'qwen-audio-agent:surface-load',
   surfaceSet: 'qwen-audio-agent:surface-set',
+  conversationSessionSet: 'qwen-audio-agent:conversation-session-set',
   quit: 'qwen-audio-agent:quit',
 })
 
@@ -61,6 +62,7 @@ export function bindOrbShell({
   onOpenSettings = null,
   onLoadSurface = null,
   onSetSurface = null,
+  onSetConversationSession = null,
   onQuit = null,
   onDragEnd = null,
 } = {}) {
@@ -161,6 +163,13 @@ export function bindOrbShell({
     }
     const mode = requestedMode === 'panel' ? 'panel' : 'orb'
     return { mode: onSetSurface?.(mode) === 'panel' ? 'panel' : 'orb' }
+  })
+
+  handle(ORB_CHANNELS.conversationSessionSet, (event, sessionId) => {
+    if (!fromOrbWindow(event)) {
+      throw new Error('无权修改桌面对话会话')
+    }
+    return { sessionId: onSetConversationSession?.(sessionId) || '' }
   })
 
   on(ORB_CHANNELS.wake, event => {

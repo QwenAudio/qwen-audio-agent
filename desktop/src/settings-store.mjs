@@ -30,6 +30,7 @@ import {
   parseSettings,
   updateSettingsContent,
 } from './settings-config.mjs'
+import { normalizeConversationSessionId } from '../../shared/conversation-session.mjs'
 
 export const SETTINGS_FILE = 'config.env'
 export const UI_STATE_FILE = 'ui-state.json'
@@ -96,6 +97,7 @@ function writePrivateFile(path, content) {
  *   loadUiState: () => object,
  *   saveUiState: (patch: object) => object,
  *   orbPosition: { load: () => object|null, save: (state: object) => object },
+ *   conversationSession: { load: () => string, save: (sessionId: string) => string },
  * }}
  */
 export function createSettingsStore({
@@ -181,6 +183,26 @@ export function createSettingsStore({
         return loadUiState().orbPosition || null
       },
       save: state => saveUiState({ orbPosition: state }),
+    },
+
+    conversationSession: {
+      load() {
+        const current = normalizeConversationSessionId(
+          loadUiState().conversationSessionId,
+        )
+        if (current) return current
+        const created = randomUUID()
+        saveUiState({ conversationSessionId: created })
+        return created
+      },
+      save(value) {
+        const sessionId = normalizeConversationSessionId(value)
+        if (!sessionId) throw new TypeError('conversation session id is invalid')
+        if (loadUiState().conversationSessionId !== sessionId) {
+          saveUiState({ conversationSessionId: sessionId })
+        }
+        return sessionId
+      },
     },
   }
 }

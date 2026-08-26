@@ -79,6 +79,10 @@ function shellHarness({
       dragEnds.push(`surface:${mode}`)
       return mode
     },
+    onSetConversationSession: sessionId => {
+      dragEnds.push(`session:${sessionId}`)
+      return sessionId
+    },
     onQuit: () => dragEnds.push('quit'),
     onDragEnd: () => dragEnds.push('drag-end'),
   })
@@ -150,6 +154,23 @@ test('surface channels keep orb and panel in one authorized window', () => {
   assert.deepEqual(calls, ['surface:panel'])
   assert.throws(
     () => ipc.invoke(ORB_CHANNELS.surfaceSet, { sender: {} }, 'panel'),
+    /无权/,
+  )
+})
+
+test('conversation session changes cross the authorized orb host boundary', () => {
+  const { ipc, event, calls } = shellHarness()
+  assert.deepEqual(
+    ipc.invoke(ORB_CHANNELS.conversationSessionSet, event, 'session-2'),
+    { sessionId: 'session-2' },
+  )
+  assert.deepEqual(calls, ['session:session-2'])
+  assert.throws(
+    () => ipc.invoke(
+      ORB_CHANNELS.conversationSessionSet,
+      { sender: {} },
+      'foreign-session',
+    ),
     /无权/,
   )
 })

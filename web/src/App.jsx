@@ -226,6 +226,12 @@ export default function App() {
   sessionIdRef.current = sessionId
   const spriteAnimationCue = spriteAnimationCues[0] || null
 
+  useEffect(() => {
+    const persistSession = window.qwenAudioAgentDesktop?.setConversationSession
+    if (!desktopOrbMode || typeof persistSession !== 'function') return
+    void persistSession(sessionId).catch(() => {})
+  }, [sessionId])
+
   const noteInteraction = useCallback(() => {
     setLastInteractionAt(Date.now())
   }, [])

@@ -19,6 +19,7 @@ import {
 import { FrontendMemoryService } from '../conversation/frontend-memory-service.mjs'
 import { MarkdownContextStore } from '../conversation/markdown-context-store.mjs'
 import { FrontendMemoryRuntime } from '../conversation/memory-runtime.mjs'
+import { SessionConversationHistory } from './session-conversation-history.mjs'
 import { enforceSameOrigin } from '../core/request-security.mjs'
 import {
   GATEWAY_CAPABILITIES,
@@ -89,29 +90,21 @@ export function createGatewayApplication({
   frontendMcp = undefined,
   frontendOpenApi = undefined,
   sessionJournal = null,
+  conversationHistory = null,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
-conversationSync.setRecordObserver?.((message, context = {}) => {
-  if (!context.ownerId || !message?.id) return
-  sessionJournalRuntime.append({
-    ownerId: context.ownerId,
-    sessionId: context.sessionId || 'main',
-    event: {
-      type: message.role === 'user' ? 'user/message' : 'assistant/message',
-      turnId: message.turnId || null,
-      taskId: message.taskId || null,
-      source: message.source || 'conversation-sync',
-      payload: {
-        messageId: message.id,
-        content: message.content,
-        inputs: message.inputs || [],
-        taskIds: message.taskIds || [],
-        citations: message.citations || [],
-      },
-    },
-  })
+const conversationHistoryRuntime = conversationHistory || new SessionConversationHistory({
+  conversationSync,
+  sessionJournal: sessionJournalRuntime,
+  logger,
 })
+const restoredConversationMessages = conversationHistoryRuntime.start?.() || 0
+if (restoredConversationMessages) {
+  logger.info('conversation_history.restored', {
+    messages: restoredConversationMessages,
+  })
+}
 const inputAssetRegistry = inputAssets || new InputAssetRegistry({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
@@ -516,6 +509,20 @@ app.get('/api/sessions/:sessionId/replay', async (req, res, next) => {
   }
 })
 
+// Stable, bounded UI projection. Clients never depend on Session Journal
+// records or diagnostic logs, and Realtime consumes this same projection.
+app.get('/api/conversations/:sessionId/messages', async (req, res, next) => {
+  try {
+    const messages = await conversationHistoryRuntime.messages({
+      ownerId: req.identity.ownerId,
+      sessionId: req.params.sessionId,
+    })
+    res.json({ messages })
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.get('/api/tasks/:id', (req, res) => {
   const task = taskManager.get(req.params.id, { ownerId: req.identity.ownerId })
   if (!task) return res.status(404).json({ error: 'task not found' })
@@ -710,6 +717,7 @@ const close = () => {
     await frontendKnowledgeRuntime?.close?.()
     await frontendMemoryRuntime?.close?.()
     unsubscribeSessionTaskJournal?.()
+    conversationHistoryRuntime.close?.()
     await sessionJournalRuntime.flush()
     await taskStore?.flush?.()
     if (!server.listening) return
@@ -734,6 +742,7 @@ return {
     agent,
     backendAvailability,
     conversationSync,
+    conversationHistory: conversationHistoryRuntime,
     backendRuntime: workBackend,
     // Preserve the original service handle for embedders using the built-in
     // synchronous Markdown API. New integrations should use frontendMemory.

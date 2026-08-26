@@ -58,6 +58,7 @@ export class SessionJournalRegistry {
 
   async read(ownerId, sessionId = 'main') {
     const journal = this.get(ownerId, sessionId)
+    await journal.flush()
     await journal.open()
     return journal.list()
   }

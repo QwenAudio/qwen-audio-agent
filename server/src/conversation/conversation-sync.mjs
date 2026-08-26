@@ -1,3 +1,5 @@
+import { projectFrontendConversation } from './frontend-conversation-projection.mjs'
+
 function sessionKey(ownerId, sessionId) {
   return `${ownerId}\u0000${sessionId}`
 }
@@ -95,7 +97,7 @@ export class ConversationSync {
     }
   }
 
-  record({
+  upsert({
     ownerId,
     sessionId,
     id,
@@ -107,7 +109,8 @@ export class ConversationSync {
     taskIds = [],
     inputs = [],
     citations = [],
-  }) {
+    createdAt = null,
+  }, { notify = true } = {}) {
     const normalized = clean(content)
     if (!id || !normalized) return null
     const state = this.state(ownerId, sessionId)
@@ -126,7 +129,9 @@ export class ConversationSync {
         existing.citations = citations.map(citation => ({ ...citation }))
       }
       const snapshot = { ...existing }
-      try { this.onRecord?.(snapshot, { ownerId, sessionId }) } catch { /* observers must not affect sync */ }
+      if (notify) {
+        try { this.onRecord?.(snapshot, { ownerId, sessionId }) } catch { /* observers must not affect sync */ }
+      }
       return snapshot
     }
     const message = {
@@ -142,7 +147,7 @@ export class ConversationSync {
       ...(citations?.length
         ? { citations: citations.map(citation => ({ ...citation })) }
         : {}),
-      createdAt: Date.now(),
+      createdAt: Number(createdAt) || Date.now(),
     }
     state.messages.push(message)
     state.byId.set(id, message)
@@ -151,8 +156,21 @@ export class ConversationSync {
       state.byId.delete(removed.id)
     }
     const snapshot = { ...message }
-    try { this.onRecord?.(snapshot, { ownerId, sessionId }) } catch { /* observers must not affect sync */ }
+    if (notify) {
+      try { this.onRecord?.(snapshot, { ownerId, sessionId }) } catch { /* observers must not affect sync */ }
+    }
     return snapshot
+  }
+
+  record(message) {
+    return this.upsert(message)
+  }
+
+  restore({ ownerId, sessionId, messages = [] }) {
+    for (const message of messages) {
+      this.upsert({ ownerId, sessionId, ...message }, { notify: false })
+    }
+    return this.frontendContext({ ownerId, sessionId })
   }
 
   list({ ownerId, sessionId }) {
@@ -183,27 +201,7 @@ export class ConversationSync {
   }
 
   frontendContext({ ownerId, sessionId }) {
-    const messages = this.list({ ownerId, sessionId })
-    const presentedTaskIds = new Set()
-    messages
-      .filter(message => message.source === 'agent-presentation')
-      .forEach(message => {
-        if (message.taskId) presentedTaskIds.add(message.taskId)
-        message.taskIds?.forEach(taskId => presentedTaskIds.add(taskId))
-      })
-    return messages.filter(message => (
-      [
-        'voice-user',
-        'text-user',
-        'realtime-direct',
-        'agent-presentation',
-      ].includes(message.source)
-      || (
-        message.source === 'agent-result'
-        && message.taskId
-        && !presentedTaskIds.has(message.taskId)
-      )
-    ))
+    return projectFrontendConversation(this.list({ ownerId, sessionId }))
   }
 
 }

@@ -68,3 +68,22 @@ test('replays messages and latest task projection without side effects', async (
   assert.equal(replay.tasks[0].status, 'completed')
   assert.equal(replay.lastSeq, 3)
 })
+
+test('replay collapses repeated snapshots of the same visible message', async () => {
+  const journal = await journalFixture()
+  await journal.append({
+    type: SessionEventType.USER_MESSAGE,
+    source: 'voice-user',
+    payload: { messageId: 'user-1', content: 'preview' },
+  })
+  await journal.append({
+    type: SessionEventType.USER_MESSAGE,
+    source: 'voice-user',
+    payload: { messageId: 'user-1', content: 'final' },
+  })
+
+  const replay = replaySession(journal.list(), { sessionId: 'session-1' })
+  assert.equal(replay.messages.length, 1)
+  assert.equal(replay.messages[0].id, 'user-1')
+  assert.equal(replay.messages[0].content, 'final')
+})

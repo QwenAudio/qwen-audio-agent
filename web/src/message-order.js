@@ -1,3 +1,8 @@
+import {
+  RECENT_CONVERSATION_MESSAGE_LIMIT,
+  recentConversationMessages,
+} from '../../shared/conversation-history.mjs'
+
 export function normalizeTranscript(content) {
   return String(content || '').replace(/\s+/g, ' ').trim()
 }
@@ -13,7 +18,9 @@ function turnTimestamp(turnId) {
 }
 
 export function insertByTurn(items, message) {
-  if (!message.turnId) return [...items, message]
+  if (!message.turnId) {
+    return recentConversationMessages([...items, message])
+  }
   const matching = items
     .map((item, index) => item.turnId === message.turnId ? index : -1)
     .filter(index => index >= 0)
@@ -35,7 +42,38 @@ export function insertByTurn(items, message) {
   }
   const next = [...items]
   next.splice(insertAt, 0, message)
-  return next
+  return recentConversationMessages(next)
+}
+
+export function mergeConversationHistory(items, history = []) {
+  const currentIds = new Set(items.map(message => message.id))
+  const restored = history.flatMap(message => {
+    const id = String(message.id || message.messageId || '')
+    const content = String(message.content || '').trim()
+    if (!id || !content || currentIds.has(id)) return []
+    return [{
+      id,
+      role: message.role === 'user' ? 'user' : 'assistant',
+      content,
+      turnId: message.turnId || '',
+      taskId: message.taskId || null,
+      taskIds: message.taskIds || [],
+      inputs: message.inputs || [],
+      citations: message.citations || [],
+      source: message.source || 'conversation-history',
+      ...(message.source === 'agent-presentation'
+        ? { origin: 'announcement' }
+        : {}),
+      createdAt: Number(message.createdAt) || 0,
+      voice: message.source === 'voice-user',
+      final: true,
+      live: false,
+    }]
+  })
+  return recentConversationMessages(
+    [...restored, ...items],
+    RECENT_CONVERSATION_MESSAGE_LIMIT,
+  )
 }
 
 export function upsertUserTranscript(items, {

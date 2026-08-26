@@ -149,6 +149,59 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.equal(openApiClosed, true)
 })
 
+test('serves the bounded conversation projection without exposing journal records', async () => {
+  const calls = []
+  let closed = false
+  const conversationHistory = {
+    start: () => 0,
+    messages: async context => {
+      calls.push(context)
+      return [{
+        id: 'message-1',
+        role: 'user',
+        content: 'restored',
+        source: 'voice-user',
+      }]
+    },
+    close: () => { closed = true },
+  }
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    conversationHistory,
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+  const response = await fetch(
+    `http://127.0.0.1:${port}/api/conversations/desktop-session/messages`,
+  )
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), {
+    messages: [{
+      id: 'message-1',
+      role: 'user',
+      content: 'restored',
+      source: 'voice-user',
+    }],
+  })
+  assert.deepEqual(calls, [{
+    ownerId: config.personalOwnerId,
+    sessionId: 'desktop-session',
+  }])
+  await application.close()
+  assert.equal(closed, true)
+})
+
 test('enables knowledge only when an external provider is injected', async () => {
   let closed = false
   const knowledgeProvider = {

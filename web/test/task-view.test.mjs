@@ -154,6 +154,26 @@ test('shows ACP plan progress without exposing protocol details', () => {
   }), '1/3 · Implement gameplay')
 })
 
+test('shows protocol Agent messages ahead of tool activity', () => {
+  assert.equal(taskDetail({
+    phase: 'running',
+    message: '已经读完资料，正在整理关键结论。',
+    activity: [{
+      kind: 'tool',
+      status: 'running',
+      category: 'read',
+    }],
+  }), '已经读完资料，正在整理关键结论。')
+
+  const updated = taskView({
+    id: 'task-message',
+    status: 'running',
+    objective: '整理资料',
+    message: '正在核对来源',
+  })
+  assert.equal(updated.message, '正在核对来源')
+})
+
 test('shows protocol-neutral thinking, mode, and session activities', () => {
   assert.equal(taskDetail({
     phase: 'running',

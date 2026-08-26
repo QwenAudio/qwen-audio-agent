@@ -3,7 +3,12 @@ import test from 'node:test'
 import { AcpBackendAdapter } from '../src/agent/acp-backend-adapter.mjs'
 import { assertBackendPort } from '../src/backend/backend-port.mjs'
 
-function fakeClient({ hold = false } = {}) {
+function fakeClient({
+  hold = false,
+  content = '已经完成。',
+  contentBlocks = [],
+  stopReason = 'end_turn',
+} = {}) {
   const gate = Promise.withResolvers()
   return {
     ready: false,
@@ -32,13 +37,9 @@ function fakeClient({ hold = false } = {}) {
       })
       if (hold) await gate.promise
       return {
-        content: JSON.stringify({
-          task_id: 'job_1',
-          state: 'completed',
-          mode: 'respond',
-          presentation: { speech: '已经完成。', inline: null },
-        }),
-        response: { stopReason: 'end_turn' },
+        content,
+        contentBlocks,
+        response: { stopReason },
       }
     },
     async close() {},
@@ -111,12 +112,61 @@ test('ACP submit exposes Work values while Session details stay private', async 
   assert.deepEqual(outcome, {
     content: '已经完成。',
     artifacts: [],
-    presentation: { speech: '已经完成。', inline: null },
+    presentation: null,
   })
   assert.equal('metadata' in outcome, false)
   assert.equal('sessionId' in outcome, false)
   assert.equal(backend.status('work-one').state, 'not_found')
   unsubscribe()
+  await backend.close()
+})
+
+test('ACP submit preserves non-text output as standard artifacts', async () => {
+  const backend = adapter({
+    client: fakeClient({
+      content: '',
+      contentBlocks: [{
+        type: 'image',
+        mimeType: 'image/png',
+        data: 'aGVsbG8=',
+        uri: 'https://example.com/result.png',
+      }],
+    }),
+  })
+
+  const outcome = await backend.submit({
+    id: 'work-image',
+    ownerId: 'owner-one',
+    message: '生成图片',
+  })
+
+  assert.equal(outcome.content, '')
+  assert.equal(outcome.presentation, null)
+  assert.deepEqual(outcome.artifacts, [{
+    artifactId: 'acp_content_1',
+    name: 'result.png',
+    parts: [{
+      raw: 'aGVsbG8=',
+      mediaType: 'image/png',
+      filename: 'result.png',
+    }],
+  }])
+  await backend.close()
+})
+
+test('ACP submit accepts only a successful protocol turn as completed work', async () => {
+  const backend = adapter({
+    client: fakeClient({
+      content: '尚未完成的部分结果',
+      stopReason: 'max_tokens',
+    }),
+  })
+
+  await assert.rejects(backend.submit({
+    id: 'work-incomplete',
+    ownerId: 'owner-one',
+    message: '完成一项工作',
+  }), /达到最大输出长度，未能完成当前回合/u)
   await backend.close()
 })
 

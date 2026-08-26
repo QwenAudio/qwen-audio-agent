@@ -197,7 +197,6 @@ export function publicTask(task, { now = Date.now() } = {}) {
     notificationDeliveredAt: task.notificationDeliveredAt,
     schedule: task.schedule || null,
     timeoutMs: task.timeoutMs || null,
-    progressCheckMs: task.progressCheckMs || null,
   }
 }
 

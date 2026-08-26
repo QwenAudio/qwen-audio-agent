@@ -6,7 +6,6 @@ import {
   linkSync,
   lstatSync,
   mkdirSync,
-  readdirSync,
   readFileSync,
   unlinkSync,
   writeFileSync,
@@ -302,34 +301,6 @@ function resolveBackendWorkspaces(env, root, configDirectory) {
     }))
 }
 
-// 旧版本按后台隔离的 workspaces/<id>/ 目录里可能有用户文件。只提示位置，
-// 不自动迁移、不删除，由用户决定是否手动移动到共享 workspace。
-function collectLegacyWorkspaceNotices(configDirectory, sharedWorkspace) {
-  const notices = []
-  for (const definition of backendDefinitions()) {
-    if (!definition.workspaceEnvironment) continue
-    const legacyDirectory = resolve(
-      configDirectory,
-      `workspaces/${definition.id}`,
-    )
-    let entries
-    try {
-      entries = readdirSync(legacyDirectory)
-    } catch (error) {
-      if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error
-      continue
-    }
-    if (entries.length) {
-      notices.push({
-        backend: definition.id,
-        legacyDirectory,
-        sharedWorkspace,
-      })
-    }
-  }
-  return notices
-}
-
 function codeBuddyModelName(env) {
   const configured = String(
     env.QWEN_AUDIO_AGENT_BACKEND_MODEL || '',
@@ -521,7 +492,6 @@ export function loadRuntimeEnvironment({
     ? resolve(root, env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR)
     : resolve(configDirectory, 'backends/openclaw/state')
   let migratedFiles = []
-  let legacyWorkspaceNotices = []
   if (prepareBackendRuntime && !readOnly) {
     migratePrivateFile(
       resolve(root, 'runtime/frontend-memory.json'),
@@ -542,12 +512,6 @@ export function loadRuntimeEnvironment({
       }
       env[entry.environment] = entry.directory
     }
-    // 旧的按后台隔离目录可能分别留在运行时目录与资产目录（桌面版分离后）。
-    legacyWorkspaceNotices = [...new Set([configDirectory, dataDirectory])]
-      .flatMap(directory => collectLegacyWorkspaceNotices(
-        directory,
-        sharedWorkspace,
-      ))
     if (backendWorkspaces.codebuddy?.managed) {
       ensureCodeBuddyTemplate(
         resolve(root, 'config/codebuddy/workspace/.codebuddy/models.json'),
@@ -590,7 +554,6 @@ export function loadRuntimeEnvironment({
     acpWorkspace,
     openClawStateDirectory,
     migratedFiles,
-    legacyWorkspaceNotices,
     loadedFiles,
     generatedSecret: secret.generated,
     statePath: secret.statePath,

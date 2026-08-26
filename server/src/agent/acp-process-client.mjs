@@ -28,6 +28,20 @@ function cleanProcessOutput(value, sanitizeProcessOutput) {
   return clean(sanitizeProcessOutput?.(stripped) ?? stripped)
 }
 
+function requestProcessOutput(before, after) {
+  const previous = String(before || '')
+  const current = String(after || '')
+  if (!current || current === previous) return ''
+  if (!previous) return current
+  if (current.startsWith(previous)) {
+    return current.slice(previous.length).trim()
+  }
+  // The bounded process buffer may roll over during a noisy request. In that
+  // uncommon case the current buffer is still a better request diagnostic
+  // than discarding the backend-owned explanation altogether.
+  return current
+}
+
 function requestErrorDetails(error) {
   const details = error?.data?.details
   if (typeof details === 'string' && details.trim()) return details.trim()
@@ -53,6 +67,15 @@ function textFromUpdate(update) {
     || update.content?.type !== 'text'
   ) return ''
   return String(update.content.text || '')
+}
+
+function contentBlockFromUpdate(update) {
+  if (
+    update?.sessionUpdate !== 'agent_message_chunk'
+    || !update.content
+    || typeof update.content !== 'object'
+  ) return null
+  return update.content
 }
 
 function processError(label, message, stderr = '') {
@@ -296,6 +319,8 @@ export class AcpProcessClient {
     const active = this.activePrompts.get(sessionId)
     const text = textFromUpdate(update)
     if (active && text) active.text.push(text)
+    const contentBlock = contentBlockFromUpdate(update)
+    if (active && contentBlock) active.contentBlocks.push(contentBlock)
     try {
       active?.onUpdate?.(update, notification)
       this.onUpdate?.(update, {
@@ -315,17 +340,30 @@ export class AcpProcessClient {
     signal,
     timeoutMs = this.timeoutMs,
   } = {}) {
+    let processOutputBefore = ''
     try {
       await this.start()
+      processOutputBefore = cleanProcessOutput(
+        this.stderr,
+        this.sanitizeProcessOutput,
+      )
       return await this.context.request(method, params, {
         signal: this.requestSignal(signal, timeoutMs),
       })
     } catch (error) {
       if (signal?.aborted) throw signal.reason
       const isRequestError = error?.name === 'RequestError'
+      const processOutput = cleanProcessOutput(
+        this.stderr,
+        this.sanitizeProcessOutput,
+      )
       const stderr = isRequestError
-        ? ''
-        : cleanProcessOutput(this.stderr, this.sanitizeProcessOutput)
+        ? requestProcessOutput(processOutputBefore, processOutput)
+        : processOutput
+      const details = requestErrorDetails(error)
+      const body = [details, stderr]
+        .filter((value, index, values) => value && values.indexOf(value) === index)
+        .join('\n')
       throw new AgentError(
         `${this.label} ACP ${method} 失败：${
           requestErrorMessage(error, this.formatRequestError)
@@ -333,7 +371,7 @@ export class AcpProcessClient {
           stderr ? `：${stderr}` : ''
         }`,
         {
-          body: stderr || requestErrorDetails(error),
+          body,
           protocol: 'acp',
         },
       )
@@ -479,6 +517,7 @@ export class AcpProcessClient {
     }
     const active = {
       text: [],
+      contentBlocks: [],
       onUpdate,
       pauseTimeout: () => {
         permissionDepth += 1
@@ -512,10 +551,11 @@ export class AcpProcessClient {
         { signal: combined, timeoutMs: 0 },
       )
       const content = active.text.join('').trim()
-      if (response?.stopReason === 'cancelled') {
-        throw combined?.reason || new Error('ACP Session 已取消')
+      return {
+        content,
+        contentBlocks: active.contentBlocks,
+        response,
       }
-      return { content, response }
     } finally {
       clearTimeout(timeoutTimer)
       combined?.removeEventListener('abort', cancel)

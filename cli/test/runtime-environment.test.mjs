@@ -280,31 +280,6 @@ test('keeps managed backend data outside the installation directory', () => {
   )
 })
 
-test('reports legacy per-backend workspaces without touching them', () => {
-  const target = fixture()
-  const configDirectory = resolve(target.homeDirectory, '.config/qwaudio')
-  const legacyDirectory = resolve(configDirectory, 'workspaces/qwen')
-  mkdirSync(legacyDirectory, { recursive: true })
-  writeFileSync(resolve(legacyDirectory, 'notes.md'), 'user data\n')
-
-  const result = loadRuntimeEnvironment({
-    root: target.root,
-    homeDirectory: target.homeDirectory,
-    env: {},
-    generateSecret: false,
-  })
-  assert.deepEqual(result.legacyWorkspaceNotices, [{
-    backend: 'qwen',
-    legacyDirectory,
-    sharedWorkspace: result.sharedWorkspace,
-  }])
-  // 只提示，不迁移不删除。
-  assert.equal(
-    readFileSync(resolve(legacyDirectory, 'notes.md'), 'utf8'),
-    'user data\n',
-  )
-})
-
 test('keeps the generated CodeBuddy model aligned with backend settings', () => {
   const target = fixture()
   const env = {

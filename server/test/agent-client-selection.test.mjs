@@ -24,7 +24,7 @@ function fakeAcpClient() {
       response: {},
     }),
     prompt: async () => ({
-      content: '{"work_id":"one","state":"completed","mode":"respond","presentation":{"speech":"done","inline":null}}',
+      content: 'done',
       response: { stopReason: 'end_turn' },
     }),
     close: async () => {},

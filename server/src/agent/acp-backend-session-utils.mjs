@@ -14,58 +14,6 @@ export function projectSessionKey(protocol, sessionId) {
   return `${protocol}:${clean(sessionId)}`
 }
 
-export function parseCoordinatorPayload(content) {
-  let candidate = clean(content)
-  for (let depth = 0; depth < 3 && candidate; depth += 1) {
-    candidate = candidate.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1]?.trim()
-      || candidate
-    try {
-      const parsed = JSON.parse(candidate)
-      if (typeof parsed === 'string') {
-        candidate = clean(parsed)
-        continue
-      }
-      return parsed && typeof parsed === 'object' ? parsed : null
-    } catch {
-      const start = candidate.indexOf('{')
-      const end = candidate.lastIndexOf('}')
-      if (start < 0 || end <= start) return null
-      const objectCandidate = candidate.slice(start, end + 1)
-      if (objectCandidate === candidate) return null
-      candidate = objectCandidate
-    }
-  }
-  return null
-}
-
-export function normalizeCoordinatorContent(content) {
-  const text = clean(content)
-  const parsed = parseCoordinatorPayload(text)
-  if (!parsed) return text
-  const inline = parsed?.presentation?.inline
-  if (typeof inline === 'string') {
-    parsed.presentation.inline = clean(inline)
-      ? {
-          title: 'Agent 结果',
-          format: 'markdown',
-          content: inline,
-        }
-      : null
-  }
-  return JSON.stringify(parsed)
-}
-
-export function coordinatorPresentation(content) {
-  const presentation = parseCoordinatorPayload(content)?.presentation
-  if (!presentation || typeof presentation !== 'object') return null
-  return {
-    speech: clean(presentation.speech),
-    inline: presentation.inline && typeof presentation.inline === 'object'
-      ? presentation.inline
-      : null,
-  }
-}
-
 export function sessionSummary(session) {
   return {
     session_id: clean(session?.sessionId),
@@ -153,9 +101,6 @@ export function activityFromUpdate(update, known = new Map()) {
     }
   }
   if (!['tool_call', 'tool_call_update'].includes(update?.sessionUpdate)) {
-    if (update?.sessionUpdate === 'agent_message_chunk') {
-      return { id: 'acp-agent-message', kind: 'text', status: 'running' }
-    }
     return null
   }
   const id = clean(update.toolCallId)
@@ -186,6 +131,37 @@ export function activityFromUpdate(update, known = new Map()) {
   if (id && ['completed', 'failed'].includes(merged.status)) known.delete(id)
   else if (id) known.set(id, merged)
   return activity
+}
+
+/**
+ * Fold ACP `agent_message_chunk` deltas into the current user-facing Agent
+ * message. Thought chunks and tool updates are intentionally excluded: ACP
+ * already gives them distinct update types, so adapters do not need to infer
+ * whether protocol activity is suitable for speech.
+ */
+export function messageFromUpdate(update, streams = {}) {
+  streams.byId ||= new Map()
+  if (update?.sessionUpdate !== 'agent_message_chunk') {
+    // ACP 1.x permits messageId to be omitted. In that case a non-message
+    // update is the only portable boundary between two streamed messages.
+    streams.anonymous = ''
+    return null
+  }
+  if (update.content?.type !== 'text') return null
+  const delta = String(update.content.text || '')
+  if (!delta) return null
+  const messageId = clean(update.messageId)
+  if (messageId) {
+    const message = `${streams.byId.get(messageId) || ''}${delta}`.slice(-4_000)
+    streams.byId.delete(messageId)
+    streams.byId.set(messageId, message)
+    while (streams.byId.size > 8) {
+      streams.byId.delete(streams.byId.keys().next().value)
+    }
+    return { message: message.trim(), messageId }
+  }
+  streams.anonymous = `${streams.anonymous || ''}${delta}`.slice(-4_000)
+  return { message: streams.anonymous.trim(), messageId: null }
 }
 
 export function nativeToolOutput(value) {

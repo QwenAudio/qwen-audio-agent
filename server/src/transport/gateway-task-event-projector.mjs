@@ -15,7 +15,6 @@ const PUBLIC_EVENT_TYPE = new Map([
   [TaskDomainEvent.CANCELLING, GatewayTaskEvent.CANCELLING],
   [TaskDomainEvent.UPDATED, GatewayTaskEvent.UPDATED],
   [TaskDomainEvent.PROGRESS, GatewayTaskEvent.PROGRESS],
-  [TaskDomainEvent.PROGRESS_CHECK, GatewayTaskEvent.PROGRESS_CHECK],
   [TaskDomainEvent.COMPLETED, GatewayTaskEvent.COMPLETED],
   [TaskDomainEvent.FAILED, GatewayTaskEvent.FAILED],
   [TaskDomainEvent.CANCELLED, GatewayTaskEvent.CANCELLED],

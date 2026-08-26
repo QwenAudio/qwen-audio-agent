@@ -395,11 +395,14 @@ export class RealtimeFrontend {
     text,
     origin = 'announcement',
     context = {},
-    { injectContext = true } = {},
+    { injectContext = true, instructions = '' } = {},
   ) {
     const content = String(text || '').trim()
     if (!content) return
     const injection = this.provider.buildResultInjection(content)
+    if (instructions && injection?.response) {
+      injection.response.instructions = String(instructions)
+    }
     let contextInjected = false
     const outcome = await this.enqueueResponse(origin, context, async () => {
       if (injectContext) {

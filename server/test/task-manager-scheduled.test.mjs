@@ -21,7 +21,6 @@ function persistedReminder(status, id = `work_${status}_reminder`) {
     parentTaskId: null,
     schedule: { type: 'at', at: now - 60_000, recurrence: 'once' },
     timeoutMs: null,
-    progressCheckMs: null,
     createdAt: now - 60_000,
     startedAt: now - 30_000,
     completedAt: null,
@@ -58,11 +57,10 @@ test('createScheduled creates a task with status scheduled and correct kind', ()
   assert.equal(reminder.kind, 'reminder')
   assert.deepEqual(reminder.schedule, { type: 'at', at: future, recurrence: 'once' })
   assert.equal(reminder.timeoutMs, null)
-  assert.equal(reminder.progressCheckMs, null)
   assert.equal(reminder.reused, false)
 })
 
-test('createScheduled with type=task sets timeout without progress checks', () => {
+test('createScheduled with type=task sets a timeout', () => {
   const manager = new TaskManager()
   const future = Date.now() + 60_000
 
@@ -79,7 +77,6 @@ test('createScheduled with type=task sets timeout without progress checks', () =
   assert.equal(task.status, 'scheduled')
   assert.equal(task.kind, 'scheduled_task')
   assert.ok(task.timeoutMs > 0)
-  assert.equal(task.progressCheckMs, null)
 })
 
 test('createScheduled emits task.scheduled event', () => {
@@ -178,7 +175,6 @@ test('restore recovers scheduled tasks with reminder runner rebuilt', () => {
     parentTaskId: null,
     schedule: { type: 'at', at: future, recurrence: 'once' },
     timeoutMs: null,
-    progressCheckMs: null,
     createdAt: Date.now(),
     startedAt: null,
     completedAt: null,
@@ -221,7 +217,6 @@ test('restored scheduled_task receives its complete persisted execution context'
     parentTaskId: null,
     schedule: { type: 'at', at: future, recurrence: 'once' },
     timeoutMs: 1_800_000,
-    progressCheckMs: 300_000,
     createdAt: Date.now(),
     startedAt: null,
     completedAt: null,

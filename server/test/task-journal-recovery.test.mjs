@@ -30,7 +30,6 @@ test('journal snapshot supersedes a stale compact task projection', () => {
     notificationDeliveredAt: null,
     schedule: null,
     timeoutMs: null,
-    progressCheckMs: null,
   }
   assert.equal(manager.restoreFromJournalSnapshots([snapshot]), 1)
   assert.equal(manager.get(created.id).status, 'completed')

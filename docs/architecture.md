@@ -174,9 +174,9 @@ Both the Gateway queue and the ACP adapter serialize writes. This double guard
 prevents concurrent messages from racing inside one backend Session.
 
 The backend Agent owns its execution strategy. qwen-audio-agent supplies one
-self-contained natural task instruction, current-turn native attachments, and
-a final response shape; it does not forward frontend history or preferences,
-or instruct the backend Agent how to use backend-specific capabilities.
+self-contained natural task instruction and current-turn native attachments;
+it does not forward frontend history or preferences, prescribe task-state
+JSON, or instruct the backend Agent how to use backend-specific capabilities.
 
 ## 5. Task state
 
@@ -226,21 +226,16 @@ Activity never produces spoken status updates and never affects the queue.
 
 ## 7. Final result delivery
 
-The backend Agent returns one final presentation:
-
-```json
-{
-  "state": "completed",
-  "presentation": {
-    "speech": "concise result material",
-    "inline": null
-  }
-}
-```
-
-`speech` is semantic material, not a script. Realtime adapts it to the live
-conversation. `inline` carries Markdown, code, or links for the shared
-timeline.
+The backend Agent returns a standard ACP turn. Text arrives in
+`agent_message_chunk` updates, while images, audio, and resources remain native
+`ContentBlock` values; the turn ends with the `session/prompt`
+`PromptResponse`. The ACP adapter no longer flattens these values and then asks
+the model to reconstruct `state` or `presentation` JSON. It projects text and
+non-text content into the BackendPort `content` and `artifacts` fields, and the
+Gateway accepts only `stopReason=end_turn` as a successfully completed turn.
+Cancellation, refusal, and token or agent-request limits enter the Gateway's
+cancelled or failed paths. The Gateway then chooses the appropriate
+conversation, resource, and voice presentation for each client.
 
 Completed results prefer the originating conversation. On a fresh connection,
 unfinished results from older conversations may be recovered for the same
@@ -250,35 +245,30 @@ after playback finishes. If the user interrupts, is speaking, or another
 response is pending, delivery waits and retries without duplicating context.
 Retries are bounded so one malformed result cannot block later completions.
 
-When the backend Agent hands work to another native backend Session, the
-intermediate transport response is instead:
-
-```json
-{
-  "state": "delegated",
-  "presentation": {
-    "speech": "a natural confirmation authored by the backend Agent",
-    "inline": null
-  }
-}
-```
-
-Correlation remains in the Gateway's Task registry and the adapter's observed
-tool result; the model is not asked to echo IDs. This response is never a
-user-visible completion. The adapter immediately
-lets the backend Agent naturally finish this short post-tool response, moves
-the original Task to `delegated`, and
-releases both the backend Agent serialization lock and the Task scheduler
+When the backend Agent calls `session_start` or `session_send`, delegation is
+established only after the Session tool creates or continues the target work
+and returns run and Session identifiers validated by the adapter. It is not
+established by a model-authored field. ACP faithfully carries the tool call,
+tool result, and turn termination; the adapter publishes the validated
+correlation to the TaskManager, which moves the original Task to `delegated`
+and releases both the backend Agent serialization lock and the Task scheduler
 lane. Other voice requests can therefore use the coordinator while the target
-Session runs. The adapter independently keeps the Task lifecycle and event
-subscription alive. Only the matching ACP target prompt completion correlated
-to the delegation ID can complete the Task. The adapter then briefly
-reacquires the backend Agent lock and sends that verified result to it for
-final presentation. A busy target, an empty result, an unrelated Session
-update, or an older result cannot complete the Task.
+Session runs.
+
+The coordinator may naturally end its ACP turn after the tool succeeds, but
+that text neither controls task state nor acts as a completion signal.
+Correlation IDs, the target Session, and lifecycle stay in the Gateway Task
+registry and adapter runtime; the model never has to echo them.
+
+The adapter independently keeps the Task lifecycle and event subscription
+alive. Only the matching ACP target prompt completion correlated to the
+delegation ID can advance the Task. The adapter then briefly reacquires the
+backend Agent lock and sends the verified result, including its native
+ContentBlocks, back for a final natural answer. A busy target, an empty result,
+an unrelated Session update, or an older result cannot complete the Task.
 
 The normal backend request timeout applies separately to the initial
-coordinator turn and the final presentation turn. It does not apply while the
+coordinator turn and the final synthesis turn. It does not apply while the
 adapter is waiting for the delegated Session. During that interval, only an
 explicit Task cancellation or backend shutdown cancels the target Session.
 
@@ -293,11 +283,10 @@ After a direct adapter abort, the Gateway records a cancellation fact and
 injects it once into the next safe coordinator turn. This reconciles the
 coordinator's history without delaying cancellation or repeating the stop.
 
-The delegated `presentation` is authored by the backend Agent with normal
-reasoning and is spoken immediately as a start confirmation. It may explain
-what was created, submitted, or planned, but it is not a final result. The
-adapter aborts the backend turn only as a timeout fallback if it fails to finish
-after the asynchronous Session tool has already succeeded.
+The frontend acknowledgement comes from the Task that the Gateway actually
+accepted, not from a coordinator-authored delegation state. The adapter aborts
+the backend turn only as a timeout fallback if it fails to finish after the
+asynchronous Session tool has already succeeded.
 
 ## 8. Backend-internal capabilities
 

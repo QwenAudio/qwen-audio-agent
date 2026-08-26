@@ -7,6 +7,9 @@ import {
 } from '../../../shared/realtime-events.mjs'
 import { AnnouncementManager } from './announcement/announcement-manager.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
+import {
+  ProgressAnnouncementManager,
+} from './announcement/progress-announcement-manager.mjs'
 import { config } from '../core/config.mjs'
 import { logger } from '../core/logger.mjs'
 import { conversationSync } from '../conversation/conversation-sync.mjs'
@@ -297,6 +300,25 @@ export function attachRealtimeGateway(server, {
         message: `后台结果暂时无法播报，正在自动重试：${error.message}`,
       }),
     })
+    const progressAnnouncements = new ProgressAnnouncementManager({
+      getFrontend: () => realtimeSession?.frontend,
+      isDeliveryBlocked: () => (
+        sleeping
+        || waking
+        || !outputEnabled
+        || !realtimeSession?.ready
+        || turns.userSpeaking
+        || announcementWindow.isBlocked()
+      ),
+      isTaskActive: taskId => activeSessionTasks().some(task => (
+        task.id === taskId
+      )),
+      intervalMs: 60_000,
+      quietMs: config.announcementQuietMs,
+      onError: error => connectionLogger.warn('progress.injection_failed', {
+        error: error.message,
+      }),
+    })
     const reportFrontendError = error => {
       if (error?.realtimeConnectionReported) return
       if (error) error.realtimeConnectionReported = true
@@ -325,6 +347,7 @@ export function attachRealtimeGateway(server, {
         })
         prepareSleepMode()
         sleepController.recordActivity()
+        progressAnnouncements.flush()
         if (resumedFromSleep) {
           send(ws, {
             type: GatewayServerEvent.VOICE_SLEEP,
@@ -340,7 +363,10 @@ export function attachRealtimeGateway(server, {
         type: GatewayServerEvent.VOICE_STATE,
         state: 'idle',
       }),
-      onReconnected: () => announcements.flush(),
+      onReconnected: () => {
+        announcements.flush()
+        progressAnnouncements.flush()
+      },
       onConnectionState: event => send(ws, {
         type: GatewayServerEvent.VOICE_CONNECTION,
         ...event,
@@ -396,6 +422,7 @@ export function attachRealtimeGateway(server, {
         outputEnabled = false
         announcementWindow.reset()
         announcements.pause()
+        progressAnnouncements.clear()
         realtimeSession.close({ notifyDisconnected: true })
         send(ws, { type: 'playback.clear' })
         send(ws, {
@@ -425,6 +452,7 @@ export function attachRealtimeGateway(server, {
     const releaseVoiceClient = () => {
       inputEnabled = false
       outputEnabled = false
+      progressAnnouncements.clear()
       if (activeVoiceClients.release(ownerId, voiceClient)) {
         broadcastVoiceOwnership(ownerId)
       }
@@ -609,36 +637,6 @@ export function attachRealtimeGateway(server, {
     const unsubscribeTasks = taskManager.subscribe(event => {
       const task = event.task
       if (event.ownerId !== ownerId) return
-      if (event.type === TaskDomainEvent.PROGRESS_CHECK) {
-        if (task.sessionId !== sessionId) return
-        if (!outputEnabled || !realtimeSession.ready) return
-        const progressContext = {
-          taskId: task.id,
-          turnId: null,
-          taskIds: [task.id],
-          deliverySequence: null,
-        }
-        const progressText = [
-          '[PROGRESS]',
-          '<qwen_audio_agent_progress>',
-          '这是后台任务的进度更新，不是最终结果，也不是用户的新请求。',
-          '用一句自然的话简短说明进度，不要调用工具。',
-          event.message,
-          '</qwen_audio_agent_progress>',
-        ].join('\n')
-        realtimeSession.frontend.injectResult(
-          progressText,
-          'progress',
-          progressContext,
-          { injectContext: true },
-        ).catch(error => {
-          connectionLogger.warn('progress.injection_failed', {
-            taskId: task.id,
-            error: error.message,
-          })
-        })
-        return
-      }
       if (event.type === TaskDomainEvent.NOTIFICATION_PENDING) {
         if (sleeping) {
           wakeFromSleep()
@@ -652,6 +650,20 @@ export function attachRealtimeGateway(server, {
       if (task.sessionId !== sessionId) return
       const publicEvent = projectGatewayTaskEvent(event)
       if (publicEvent) send(ws, publicEvent)
+      if (
+        event.type === TaskDomainEvent.UPDATED
+        && event.message
+        && outputEnabled
+        && !sleeping
+        && !waking
+      ) {
+        progressAnnouncements.offer({
+          taskId: task.id,
+          turnId: task.turnId,
+          startedAt: task.startedAt,
+          message: event.message,
+        })
+      }
       if (event.type === TaskDomainEvent.PERMISSION_REQUESTED) {
         if (sleeping) {
           wakeFromSleep()
@@ -693,6 +705,13 @@ export function attachRealtimeGateway(server, {
             },
           })
         }
+      }
+      if ([
+        TaskDomainEvent.COMPLETED,
+        TaskDomainEvent.FAILED,
+        TaskDomainEvent.CANCELLED,
+      ].includes(event.type)) {
+        progressAnnouncements.remove(task.id)
       }
       if ([
         TaskDomainEvent.COMPLETED,
@@ -789,6 +808,7 @@ export function attachRealtimeGateway(server, {
       sleeping = true
       waking = false
       announcementWindow.reset()
+      progressAnnouncements.clear()
       wakeDetector?.reset()
       realtimeSession.close()
       if (clientContext.states?.includes('sleeping')) {
@@ -1167,6 +1187,7 @@ export function attachRealtimeGateway(server, {
         sleepController?.disable()
         turns.advanceBoundary()
         announcementWindow.reset()
+        progressAnnouncements.clear()
         realtimeSession.close({ notifyDisconnected: true })
       } else if (event.type === GatewayClientEvent.INPUT_MUTE) {
         inputEnabled = false
@@ -1203,6 +1224,7 @@ export function attachRealtimeGateway(server, {
       announcementWindow.reset()
       presentationRuntime.clear()
       announcements.close()
+      progressAnnouncements.close()
       clearTimeout(permissionRetryTimer)
       permissionRetryTimer = null
       sleepController?.close()

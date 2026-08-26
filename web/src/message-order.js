@@ -172,11 +172,22 @@ export function buildConversationTurns(messages, tasks) {
     turn.tasks.push(task)
   })
 
-  return turns.map(turn => {
-    return {
+  return turns
+    .map((turn, index) => ({ ...turn, sortKey: turnSortKey(turn, index) }))
+    .sort((left, right) => left.sortKey - right.sortKey)
+    .map(turn => ({
       ...turn,
       beforeActivities: turn.messages,
       afterActivities: [],
-    }
-  })
+    }))
+}
+
+function turnSortKey(turn, fallback) {
+  const timestamp = turnTimestamp(turn.id)
+  if (Number.isFinite(timestamp)) return timestamp
+  const itemTimes = [
+    ...turn.messages.map(item => Number(item.createdAt || 0)),
+    ...turn.tasks.map(item => Number(item.createdAt || 0)),
+  ].filter(value => value > 0)
+  return itemTimes.length ? Math.min(...itemTimes) : Number.MAX_SAFE_INTEGER + fallback
 }

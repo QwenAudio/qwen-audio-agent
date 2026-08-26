@@ -99,7 +99,7 @@ test('loads one canonical frontend policy separately from runtime context', () =
   assert.match(prompt, /# Background work/)
   assert.match(prompt, /# Personalization and memory/)
   assert.match(prompt, /专用工具/)
-  assert.match(prompt, /公开网页搜索、网址读取[\s\S]*不要转交后台/)
+  assert.match(prompt, /公开网页搜索、网址读取[\s\S]*直接调用 `spawn_thinking`/)
   assert.match(prompt, /明确要求保存附件到知识库[\s\S]*`knowledge`/)
   assert.match(prompt, /其他依赖尚未保存的输入内容[\s\S]*`spawn_thinking`/)
   assert.match(prompt, /不要用口头承诺代替工具调用/)

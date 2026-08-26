@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  artifactsFromAcpContentBlocks,
   assertPromptCapabilities,
   inputPartsToAcpBlocks,
   promptWithInputParts,
@@ -54,4 +55,43 @@ test('preserves non-text blocks while wrapping prompt text', () => {
   )
   assert.equal(transformed[0].text, 'wrapped:request')
   assert.equal(transformed[1].type, 'image')
+})
+
+test('projects standard ACP output blocks into protocol-neutral artifacts', () => {
+  assert.deepEqual(artifactsFromAcpContentBlocks([
+    { type: 'text', text: 'done' },
+    {
+      type: 'image',
+      data: 'aGVsbG8=',
+      mimeType: 'image/png',
+      uri: 'https://example.com/result.png',
+    },
+    {
+      type: 'resource',
+      resource: {
+        uri: 'file:///tmp/report.md',
+        mimeType: 'text/markdown',
+        text: '# Report',
+      },
+    },
+  ]), [
+    {
+      artifactId: 'acp_content_1',
+      name: 'result.png',
+      parts: [{
+        raw: 'aGVsbG8=',
+        mediaType: 'image/png',
+        filename: 'result.png',
+      }],
+    },
+    {
+      artifactId: 'acp_content_2',
+      name: 'report.md',
+      parts: [{
+        text: '# Report',
+        mediaType: 'text/markdown',
+        filename: 'report.md',
+      }],
+    },
+  ])
 })

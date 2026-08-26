@@ -33,7 +33,7 @@ function harness(initialTask) {
   }
 }
 
-test('drops delayed progress after the task has completed', () => {
+test('ignores non-terminal task updates', () => {
   const task = {
     id: 'work-1',
     ownerId: 'owner',
@@ -43,39 +43,13 @@ test('drops delayed progress after the task has completed', () => {
   }
   const testHarness = harness(task)
   testHarness.emit({
-    type: 'task.progress.check',
-    ownerId: 'owner',
-    task,
-    message: 'still working',
-  })
-  testHarness.setTask({
-    ...task,
-    workState: 'completed',
-    status: 'completed',
-    notificationStatus: 'pending',
-  })
-  testHarness.runTimer()
-  assert.deepEqual(testHarness.messages, [])
-})
-
-test('delivers delayed progress only while the task remains active', () => {
-  const task = {
-    id: 'work-1',
-    ownerId: 'owner',
-    objective: 'build',
-    workState: 'working',
-    status: 'running',
-  }
-  const testHarness = harness(task)
-  testHarness.emit({
-    type: 'task.progress.check',
+    type: 'task.updated',
     ownerId: 'owner',
     task,
     message: 'still working',
   })
   testHarness.runTimer()
-  assert.equal(testHarness.messages.length, 1)
-  assert.equal(testHarness.messages[0].task.status, 'progress')
+  assert.equal(testHarness.messages.length, 0)
 })
 
 test('delivers terminal notification only while its claim is pending', () => {

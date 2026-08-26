@@ -3,6 +3,99 @@ import {
   parseDataUrl,
 } from '../../../shared/input-parts.mjs'
 
+function clean(value) {
+  return String(value || '').trim()
+}
+
+function filenameFromUri(uri, fallback) {
+  const value = clean(uri)
+  if (!value) return fallback
+  try {
+    const pathname = new URL(value).pathname
+    const name = pathname.split('/').filter(Boolean).at(-1)
+    return name ? decodeURIComponent(name) : fallback
+  } catch {
+    const name = value.split('/').filter(Boolean).at(-1)
+    return name || fallback
+  }
+}
+
+function artifactPartFromAcpBlock(block, index) {
+  const fallbackName = `agent-output-${index + 1}`
+  if (block?.type === 'image' || block?.type === 'audio') {
+    const raw = clean(block.data)
+    if (!raw) return null
+    return {
+      raw,
+      mediaType: clean(block.mimeType) || (
+        block.type === 'image' ? 'image/png' : 'audio/mpeg'
+      ),
+      filename: filenameFromUri(block.uri, fallbackName),
+    }
+  }
+  if (block?.type === 'resource') {
+    const resource = block.resource
+    if (!resource || typeof resource !== 'object') return null
+    const filename = filenameFromUri(
+      resource.uri,
+      clean(resource.name) || fallbackName,
+    )
+    if (typeof resource.text === 'string') {
+      return {
+        text: resource.text,
+        mediaType: clean(resource.mimeType) || 'text/plain',
+        filename,
+      }
+    }
+    if (typeof resource.blob === 'string') {
+      return {
+        raw: resource.blob,
+        mediaType: clean(resource.mimeType) || 'application/octet-stream',
+        filename,
+      }
+    }
+    return null
+  }
+  if (block?.type === 'resource_link') {
+    const uri = clean(block.uri)
+    if (!uri) return null
+    const filename = clean(block.name)
+      || filenameFromUri(uri, fallbackName)
+    if (/^(?:data|https?):/i.test(uri)) {
+      return {
+        url: uri,
+        mediaType: clean(block.mimeType) || 'application/octet-stream',
+        filename,
+      }
+    }
+    return {
+      data: {
+        type: 'resource_link',
+        uri,
+        ...(block.description ? { description: clean(block.description) } : {}),
+      },
+      mediaType: 'application/vnd.qwen-audio-agent.resource-link+json',
+      filename,
+    }
+  }
+  return null
+}
+
+export function artifactsFromAcpContentBlocks(blocks = [], { startIndex = 0 } = {}) {
+  const artifacts = []
+  for (const block of Array.isArray(blocks) ? blocks : []) {
+    const outputIndex = startIndex + artifacts.length
+    const part = artifactPartFromAcpBlock(block, outputIndex)
+    if (!part) continue
+    artifacts.push({
+      artifactId: `acp_content_${outputIndex + 1}`,
+      name: part.filename || `Agent output ${outputIndex + 1}`,
+      parts: [part],
+    })
+  }
+  return artifacts
+}
+
 function resourceUri(part, index) {
   const filename = String(part.filename || `attachment-${index + 1}`)
   return `qwen-audio-agent://input/${encodeURIComponent(filename)}`

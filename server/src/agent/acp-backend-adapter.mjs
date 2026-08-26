@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import { AgentError } from './backend-adapter.mjs'
-import { BACKEND_AGENT_INSTRUCTIONS } from './backend-agent-instructions.mjs'
 import {
   COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
   COORDINATOR_STABLE_INSTRUCTIONS,
@@ -13,9 +12,8 @@ import {
 import {
   activityFromUpdate,
   coordinatorKey,
-  coordinatorPresentation,
+  messageFromUpdate,
   nativeToolOutput,
-  normalizeCoordinatorContent,
   projectSessionKey,
   sessionSummary,
 } from './acp-backend-session-utils.mjs'
@@ -31,29 +29,50 @@ import { KeyedSerialExecutor } from './keyed-serial-executor.mjs'
 import { PermissionBroker } from './permission-broker.mjs'
 import {
   appendPromptBlocks,
+  artifactsFromAcpContentBlocks,
   nonTextPromptBlocks,
   promptWithInputParts,
   transformPromptText,
 } from './acp-content.mjs'
 import { assertMcpServerCapabilities } from './acp-capabilities.mjs'
-import {
-  acpCoordinatorResponseState,
-  acpCoordinatorRetryPrompt,
-  buildAcpCoordinatorInstruction,
-  parseAcpCoordinatorDecision,
-} from './acp-coordinator-contract.mjs'
+import { buildAcpCoordinatorInstruction } from './acp-coordinator-contract.mjs'
 
 const MAX_SESSION_RESULTS = 100
 const MAX_DELEGATION_RESULT_CHARS = 12_000
 const MAX_DELEGATION_RECENT_UPDATES = 5
 // Persistent coordinator Sessions are valid only for the contract that
 // created them. Project Sessions are user work and remain independent.
-const COORDINATOR_CONTRACT_VERSION = 4
+const COORDINATOR_CONTRACT_VERSION = 6
 
 export { acpBackendProfile } from './acp-backend-profile.mjs'
 
 function clean(value) {
   return String(value || '').trim()
+}
+
+function assertCompletedAcpTurn(result, {
+  signal,
+  label = 'ACP Session',
+  protocol = 'acp',
+} = {}) {
+  const stopReason = clean(result?.response?.stopReason)
+  if (stopReason === 'end_turn') return result
+  if (stopReason === 'cancelled') {
+    throw signal?.reason || new AgentError(`${label} 已取消`, {
+      status: 499,
+      protocol,
+    })
+  }
+  const reason = {
+    max_tokens: '达到最大输出长度，未能完成当前回合',
+    max_turn_requests: '达到最大 Agent 请求次数，未能完成当前回合',
+    refusal: '拒绝继续当前回合',
+  }[stopReason] || `返回了未知的终止原因 ${stopReason || '(missing)'}`
+  throw new AgentError(`${label} ${reason}`, {
+    status: 502,
+    protocol,
+    body: clean(result?.content),
+  })
 }
 
 function explicitModel(value) {
@@ -802,6 +821,14 @@ export class AcpBackendAdapter {
   onSessionUpdate(run, update, { delegation = null } = {}) {
     run.receivedUpdate = true
     run.toolCalls ||= new Map()
+    run.messageStreams ||= {}
+    const streamedMessage = messageFromUpdate(update, run.messageStreams)
+    if (streamedMessage?.message) {
+      run.onEvent?.(backendEvent(BackendEventType.MESSAGE, {
+        ...streamedMessage,
+        streaming: true,
+      }))
+    }
     const activity = activityFromUpdate(update, run.toolCalls)
     if (activity) run.onEvent?.(backendEvent(BackendEventType.ACTIVITY, { activity }))
     if (delegation && this.profile.externalMcp) {
@@ -922,7 +949,7 @@ export class AcpBackendAdapter {
         session.coordinationRunId = run.coordinationRunId
         session.onEvent = run.onEvent
         session.permissionScopeId = permissionScopeId
-        const result = await this.client.prompt(
+        const result = assertCompletedAcpTurn(await this.client.prompt(
           record.sessionId,
           appendPromptBlocks(prompt, run.inputBlocks),
           {
@@ -932,7 +959,11 @@ export class AcpBackendAdapter {
               delegation: record,
             }),
           },
-        )
+        ), {
+          signal: controller.signal,
+          label: `${this.label} 项目 Session`,
+          protocol: this.protocol,
+        })
         record.status = 'completed'
         record.result = result
         return {
@@ -941,6 +972,7 @@ export class AcpBackendAdapter {
           directory: record.directory,
           title: record.title,
           content: result.content,
+          contentBlocks: result.contentBlocks || [],
         }
       } catch (error) {
         record.status = controller.signal.aborted ? 'cancelled' : 'failed'
@@ -1099,11 +1131,11 @@ export class AcpBackendAdapter {
   coordinatorInstructions(message) {
     if (this.coordinatorUsesMcpInstructions()) return message
     const sessionInstructions = clean(this.profile.sessionInstructions)
+    if (!sessionInstructions) return message
     return transformPromptText(message, content => [
-      '<qwen_audio_agent_backend_instructions>',
-      BACKEND_AGENT_INSTRUCTIONS,
-      ...(sessionInstructions ? [sessionInstructions] : []),
-      '</qwen_audio_agent_backend_instructions>',
+      '<qwen_audio_agent_backend_profile>',
+      sessionInstructions,
+      '</qwen_audio_agent_backend_profile>',
       '',
       content,
     ].join('\n'))
@@ -1116,7 +1148,7 @@ export class AcpBackendAdapter {
     let attempt = 0
     while (true) {
       try {
-        return await this.client.prompt(
+        return assertCompletedAcpTurn(await this.client.prompt(
           session.sessionId,
           this.coordinatorInstructions(prompt),
           {
@@ -1124,7 +1156,11 @@ export class AcpBackendAdapter {
             timeoutMs: this.timeoutMs,
             onUpdate,
           },
-        )
+        ), {
+          signal,
+          label: `${this.label} 协调 Session`,
+          protocol: this.protocol,
+        })
       } catch (error) {
         const retryIsSafe = !run.receivedUpdate
           && !run.delegation
@@ -1167,8 +1203,7 @@ export class AcpBackendAdapter {
     const pendingFacts = this.registry.reconciliationsFor(key)
     const prompt = pendingFacts.length
       ? transformPromptText(message, content => [
-          '在本轮开始前，先前未正常结束的请求已经由 Gateway 确认终止。',
-          '不要继续、补全或回答那些旧请求；下面的新指令是本轮唯一需要处理的任务。',
+          '上一请求已取消，不要续接其未完成内容。仅处理以下新请求。',
           '',
           content,
         ].join('\n'))
@@ -1206,7 +1241,10 @@ export class AcpBackendAdapter {
         signal,
         onUpdate: update => this.onSessionUpdate(run, update),
       })
-      if (!clean(result?.content)) {
+      if (
+        !clean(result?.content)
+        && !(result?.contentBlocks || []).some(block => block?.type !== 'text')
+      ) {
         const error = new AgentError(
           `${this.profile.label} ACP Session 未返回任何内容`,
           { status: 502, protocol: this.protocol },
@@ -1229,10 +1267,7 @@ export class AcpBackendAdapter {
       return {
         run,
         session,
-        result: {
-          ...result,
-          content: normalizeCoordinatorContent(result.content),
-        },
+        result,
       }
     } finally {
       this.activeCoordinatorTurns.delete(session.sessionId)
@@ -1280,13 +1315,17 @@ export class AcpBackendAdapter {
         : { content: await record.nativeCompletion.promise }
       const content = clean(completed?.content)
       record.status = 'completed'
-      record.result = { content }
+      record.result = {
+        content,
+        contentBlocks: completed?.contentBlocks || [],
+      }
       return {
         id: record.id,
         sessionId: record.sessionId,
         directory: record.directory,
         title: record.title,
         content,
+        contentBlocks: completed?.contentBlocks || [],
       }
     } catch (error) {
       record.status = record.controller.signal.aborted ? 'cancelled' : 'failed'
@@ -1297,20 +1336,28 @@ export class AcpBackendAdapter {
 
   delegationResultPrompt(result, objective = '') {
     const task = clean(objective || result.title).slice(0, 2_000)
-    return [
-      '刚才交给独立任务处理的工作已经完成。以下是 Gateway 验证并关联到当前请求的最终结果：',
+    const instruction = [
+      '刚才交给独立任务处理的工作已经完成。以下是与当前请求关联的可信最终结果：',
       ...(task ? ['', `原任务：${task}`] : []),
       '',
       clean(result.content).slice(0, MAX_DELEGATION_RESULT_CHARS),
       '',
-      '请只整理以上可信结果并返回 state=completed 的最终 presentation；',
-      '不要再次执行、委托或查询目标任务。',
+      '请只整理以上可信结果，直接给出自然的最终答复；',
+      '不要输出任务状态或展示协议，也不要再次执行、委托或查询目标任务。',
     ].join('\n')
+    const nonTextBlocks = (result.contentBlocks || [])
+      .filter(block => block?.type !== 'text')
+    return appendPromptBlocks(instruction, nonTextBlocks)
   }
 
-  resultEnvelope(initial, delegation = null) {
+  resultEnvelope(initial, delegation = null, priorContentBlocks = []) {
     return {
       content: initial.result.content,
+      contentBlocks: [
+        ...(priorContentBlocks || []),
+        ...(delegation?.contentBlocks || []),
+        ...(initial.result.contentBlocks || []),
+      ],
       raw: initial.result.response,
       protocol: this.protocol,
       metadata: {
@@ -1388,30 +1435,18 @@ export class AcpBackendAdapter {
         signal: workSignal,
         onEvent,
       })
-      let result = await run(promptWithInputParts(prompt, work?.inputParts))
-      if (!clean(result?.content)) {
+      const result = await run(promptWithInputParts(prompt, work?.inputParts))
+      const artifacts = artifactsFromAcpContentBlocks(result?.contentBlocks)
+      if (!clean(result?.content) && !artifacts.length) {
         throw new AgentError('Coordinator backend returned an empty response', {
           status: 502,
           protocol: this.protocol,
         })
       }
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        const state = acpCoordinatorResponseState(result.content)
-        if (!state || state === 'completed') break
-        result = await run(acpCoordinatorRetryPrompt(state))
-      }
-      const finalState = acpCoordinatorResponseState(result.content)
-      if (finalState && finalState !== 'completed') {
-        throw new AgentError(
-          `Coordinator did not return a final result (state=${finalState})`,
-          { status: 502, protocol: this.protocol },
-        )
-      }
-      const presentation = parseAcpCoordinatorDecision(result.content).presentation
       return {
-        content: presentation.speech,
-        artifacts: [],
-        presentation,
+        content: clean(result?.content),
+        artifacts,
+        presentation: null,
       }
     } finally {
       if (this.workControllers.get(taskId) === controller) {
@@ -1459,7 +1494,6 @@ export class AcpBackendAdapter {
           sessionId: delegation.sessionId,
           title: delegation.title,
           directory: delegation.directory,
-          presentation: coordinatorPresentation(initial.result.content),
         },
       })
       const target = await delegation.promise
@@ -1485,7 +1519,11 @@ export class AcpBackendAdapter {
           },
         ),
       )
-      return this.resultEnvelope(final, target)
+      return this.resultEnvelope(
+        final,
+        target,
+        initial.result.contentBlocks || [],
+      )
     } finally {
       if (runId) this.coordinationRuns.delete(runId)
     }

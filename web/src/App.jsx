@@ -645,6 +645,15 @@ export default function App() {
         taskView(progress),
       ))
     }
+    if (event.type === 'task.updated') {
+      const task = event.task
+      setAgentTasks(items => upsertTask(
+        items,
+        task.id,
+        current => taskView(task, current),
+        taskView(task),
+      ))
+    }
     if (event.type === 'task.delegated') {
       const task = event.task
       if (!task.turnId || task.turnId === currentTurnId.current) {

@@ -30,7 +30,7 @@ function promptRetryDelay({ error, attempt }) {
   if (
     !/reply session initialization conflicted for \S+/i.test(diagnostic)
   ) return null
-  return [150, 500, 1000][attempt] ?? null
+  return [150, 500, 1000, 2000, 3000][attempt] ?? null
 }
 
 export const openClawBackendDriver = {
@@ -119,8 +119,8 @@ export const openClawBackendDriver = {
       },
       defaultDelegationTitle: 'OpenClaw 项目任务',
       sessionInstructions: [
-        'When the coordinator routing contract selects a new or previous',
-        'project Session, use OpenClaw native session tools:',
+        'When the current request explicitly requires a new or previous',
+        'project Session, use OpenClaw native Session tools:',
         'sessions_spawn to create work, sessions_list to locate prior Sessions,',
         'sessions_send to continue one, and sessions_history for status.',
       ].join(' '),

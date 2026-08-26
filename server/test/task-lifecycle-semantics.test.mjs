@@ -20,8 +20,7 @@ function memoryStore(records) {
 
 function savedWork(overrides = {}) {
   return {
-    id: 'work-one',
-    jobId: 'job_1',
+    id: 'task_1',
     scope: 'user',
     kind: 'work',
     status: 'running',
@@ -46,8 +45,8 @@ test('restart durably preserves cancellation intent without a notification', () 
 
   const manager = new TaskManager({ store })
 
-  assert.equal(manager.get('work-one').status, 'cancelled')
-  assert.equal(manager.get('work-one').notificationStatus, 'none')
+  assert.equal(manager.get('task_1').status, 'cancelled')
+  assert.equal(manager.get('task_1').notificationStatus, 'none')
   assert.equal(store.state[0].status, 'cancelled')
   assert.equal(store.state[0].notificationStatus, 'none')
   assert.deepEqual(manager.claimNotifications({
@@ -66,7 +65,7 @@ test('a recoverable delegation stays attachable across the recovery checkpoint',
   })])
   const manager = new TaskManager({ store })
 
-  assert.equal(manager.get('work-one').status, 'queued')
+  assert.equal(manager.get('task_1').status, 'queued')
   assert.equal(store.state[0].status, 'delegated')
 
   manager.recoverDelegated({
@@ -74,7 +73,7 @@ test('a recoverable delegation stays attachable across the recovery checkpoint',
     runner: async () => ({ content: '恢复完成' }),
   })
 
-  const completed = await manager.wait('work-one')
+  const completed = await manager.wait('task_1')
   assert.equal(completed.status, 'completed')
   assert.equal(completed.result, '恢复完成')
   assert.equal(store.state[0].status, 'completed')
@@ -84,8 +83,8 @@ test('interrupted work becomes one durable failure delivery after restart', () =
   const store = memoryStore([savedWork()])
   const first = new TaskManager({ store })
 
-  assert.equal(first.get('work-one').status, 'failed')
-  assert.equal(first.get('work-one').notificationStatus, 'pending')
+  assert.equal(first.get('task_1').status, 'failed')
+  assert.equal(first.get('task_1').notificationStatus, 'pending')
   assert.equal(store.state[0].status, 'failed')
 
   const second = new TaskManager({ store })
@@ -94,18 +93,18 @@ test('interrupted work becomes one durable failure delivery after restart', () =
     sessionId: 'voice',
     claimantId: 'desktop',
   })
-  assert.deepEqual(claimed.map(item => item.id), ['work-one'])
+  assert.deepEqual(claimed.map(item => item.id), ['task_1'])
   assert.equal(second.markNotificationsDelivered(
-    ['work-one'],
+    ['task_1'],
     { claimantId: 'desktop' },
   ), 1)
   assert.equal(second.markNotificationsDelivered(
-    ['work-one'],
+    ['task_1'],
     { claimantId: 'desktop' },
   ), 0)
 
   const third = new TaskManager({ store })
-  assert.equal(third.get('work-one').notificationStatus, 'delivered')
+  assert.equal(third.get('task_1').notificationStatus, 'delivered')
   assert.deepEqual(third.claimNotifications({
     ownerId: 'owner',
     claimantId: 'replacement',

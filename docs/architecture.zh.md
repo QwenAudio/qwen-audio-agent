@@ -2,7 +2,7 @@
 
 本文档定义产品边界。违反这些不变性的变更属于架构变更，而非局部功能开发。
 
-前台 Realtime Voice Chatbot、异步 Work Bridge 与单一用户后台 Agent 的目标边界及
+前台 Realtime Voice Chatbot、异步 Task Bridge 与单一用户后台 Agent 的目标边界及
 分阶段重构计划见
 [Realtime Voice Chatbot Runtime Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/frontend-chatbot-runtime.zh.md)。
 在 Roadmap 分阶段落地期间，本文继续描述当前已实现并受测试保护的运行时行为。
@@ -12,12 +12,13 @@
 用户与一个 qwen-audio 助手对话。内部存在两个 qwen-audio-agent 层：
 
 1. **实时前端** — 全双工语音、简单直接回答，以及基本的本地时间/记忆工具。
-2. **后端 Agent** — 一个持久 Agent Session，负责处理所有需要工具、当前信息、文件、应用程序、代码或多步工作的请求。
+2. **后端 Agent** — 一个用户配置的办事 Agent，负责处理需要工具、文件、应用程序、代码、设备控制或多步执行的请求。
 
-后端可以是 OpenCode、OpenClaw、Qoder、Qwen Code、Kimi Code、Pi 或其他 ACP 兼容 Agent。
+后端可以是 OpenCode、OpenClaw、Qoder、Qwen Code、Kimi Code、Pi 等 ACP Agent，
+也可以是远程 A2A Agent 或自定义 BackendPort Adapter。
 它内部可以使用工具、技能、Agent 或其他 Session。这些都是后端私有实现细节，
-不会创建额外的 qwen-audio-agent 层。所有后端通过一个 ACP 客户端和一个
-共享协调适配器连接；后端特定的启动和能力行为位于已注册的驱动程序中。
+不会创建额外的 qwen-audio-agent 层。ACP、A2A 或自定义协议细节只存在于各自
+BackendPort Adapter 内；后端特定的启动和能力行为位于已注册的驱动程序中。
 
 ## 2. 非阻塞请求流
 
@@ -29,13 +30,13 @@ final ASR
    └─ requires work
           │ spawn_thinking(objective)
           ▼
-      Work accepted
+      Task accepted
           │ response returns to Realtime immediately
           ▼
       owner FIFO queue
           │
           ▼
-      fixed Backend Agent Session
+      configured BackendPort
           │ the backend decides how to work
           ▼
       final presentation
@@ -44,8 +45,8 @@ final ASR
       Realtime naturally speaks the result
 ```
 
-`spawn_thinking` 永不等待所请求的工作完成。用户可以在多个 Work 项排队期间继续
-说话。对于每个 owner，一次只有一个 Work 项被发送到后端 Agent Session。
+`spawn_thinking` 永不等待所请求的工作完成。用户可以在多个 Task 项排队期间继续
+说话。对于每个 owner，一次只有一个 Task 项被发送到配置的 BackendPort。
 
 ## 3. 实时边界
 
@@ -91,10 +92,8 @@ respond_agent_permission
 用户明确表达破坏性意图。
 
 `get_agent_task_status` 是生命周期、进度和中间结果问题的唯一实时入口。
-Gateway 直接回答非委派 Work。对于 `delegated` Work，它创建一个隐藏的、
-高优先级的控制查询，使用协调器调用 `session_status`。该查询排在已运行的
-协调器轮次之后、普通排队 Work 之前，其结果通过正常的异步通告路径传递。
-它不作为用户 Work 项暴露，也不能成为后续状态或取消请求的隐式目标。
+Gateway 直接读取自身持有的 Task 记录，包括 Adapter 归一化后的最新消息、活动和
+产物摘要。状态查询不会创建另一个 Task，不调用协调 Agent，也不进入异步播报队列。
 
 实时前端没有以下工具：
 
@@ -112,17 +111,16 @@ Adapter 仍选择最窄的单次后端权限选项，
 后续请求由 Gateway 在同一前端会话内自动允许，不会创建持久的后端授权规则。
 
 传递给 `spawn_thinking` 的 `objective` 是对用户请求的保守解释，而非执行计划。
-提交前必须结合当前对话把"继续那个页面"之类的指代解析成一条自包含指令。final
-ASR 作为内部事实依据保留；当它与 objective 不同时，Adapter 会用自然引用保留用户
-原话。objective 仍是当前 Work 的执行边界；在该边界内，以原话中的事实、范围和限制
-为准。后台 Agent 不再接收前台人格、长期记忆或最近聊天历史；与执行有关的事实必须
-先解析进指令，而不是转发这些文档。
+提交前必须结合当前对话把"继续那个页面"之类的指代解析成一条自包含指令。该指令就是
+后台 Agent 唯一收到的模型可见文本；ASR 原文不再作为第二份任务描述附加。后台 Agent
+不接收前台人格、长期记忆或最近聊天历史；与执行有关的事实必须先解析进指令，而不是
+转发这些文档。
 
 当前轮附件由 Gateway 自动作为协议原生 Part 随任务传递，而不是放入模型可见的 JSON
 清单。只有任务明确依赖此前轮次的图片或文件时，前台才通过可选的 `input_refs` 引用
-Gateway 分配的会话内输入 ID。Work ID、owner、生命周期、时间戳和路由继续作为
+Gateway 分配的会话内输入 ID。Task ID、owner、生命周期、时间戳和路由继续作为
 Gateway/BackendPort 的结构化数据，不进入后台 Agent 的任务指令。工作目录和用户
-时区会作为自然执行上下文投影，因为它们可能改变任务含义。
+时区也不重复拼入每轮文本；协议或后台自身的运行上下文负责这些信息。
 
 ## 4. 固定后端 Agent Session
 
@@ -136,18 +134,19 @@ Gateway 在该稳定键之后存储原生 ACP Session ID，并在后续轮次调
 `session/resume`。项目委派同样在其记录的工作目录中恢复选定的原生 Session，
 因此语音发起的工作保留在后端自己的 Session 历史中，而非 Gateway 副本中。
 
-语音浏览器会话 ID 和 Work ID 不会更改该身份。因此，新的语音对话会继续使用
+语音浏览器会话 ID 和 Task ID 不会更改该身份。因此，新的语音对话会继续使用
 相同的后端 Agent 上下文。
 
 Gateway 队列和 ACP 适配器都对写入进行串行化。这种双重保护防止并发消息在一个
 后端 Session 内部发生竞争。
 
-后端 Agent 拥有自己的执行策略。qwen-audio-agent 提供用户请求、最近的语音上下文、
-本地偏好和最终响应格式；它不指导后端 Agent 如何使用后端特定能力。
+后端 Agent 拥有自己的执行策略。qwen-audio-agent 只提供一条自包含自然任务指令、
+当前轮次的协议原生附件和最终响应格式；它不转发前台历史或偏好，也不指导后端 Agent
+如何使用后端特定能力。
 
-## 5. Work 状态
+## 5. Task 状态
 
-qwen-audio-agent Work 记录是交付回执，而非后端内部任务图的镜像。
+qwen-audio-agent Task 记录是交付回执，而非后端内部任务图的镜像。
 
 ```text
 queued → running ─────────────────────────→ completed
@@ -163,7 +162,8 @@ queued → running ────────────────────�
 UI 将 `queued` 和 `running` 呈现为相同的"处理中"状态。队列位置是内部调度细节，
 不会改变用户的双工对话。
 
-活跃 Work 在 Gateway 重启后无法安全恢复，因此会变为 failed 并附带明确的重启原因。
+排队中和直接执行中的 Task 在 Gateway 重启后无法安全恢复，因此会变为 failed 并附带
+明确的重启原因。委派 Task 只有在 Adapter 能确认持久化原生 Session 时才会重新挂接。
 已完成的结果和通知交付状态会被持久化。
 
 ## 6. 进度动画
@@ -217,23 +217,23 @@ Markdown、代码或链接，用于共享时间线。
 }
 ```
 
-关联关系保留在 Gateway 的 Work Registry 和 Adapter 观察到的工具结果中，不要求
+关联关系保留在 Gateway 的 Task Registry 和 Adapter 观察到的工具结果中，不要求
 模型回显任何 ID。此响应绝不是用户可见的完成。适配器立即让后端 Agent 自然地完成这个简短的
-工具后响应，将原始 Work 移至 `delegated`，并释放后端 Agent 串行化锁和
-Work 调度通道。因此，其他语音请求可以在目标 Session 运行期间使用协调器。
-适配器独立地保持 Work 生命周期和事件订阅存活。只有与委派 ID 关联的匹配 ACP
-目标提示完成才能完成 Work。然后适配器短暂重新获取后端 Agent 锁，并将经验证的
+工具后响应，将原始 Task 移至 `delegated`，并释放后端 Agent 串行化锁和
+Task 调度通道。因此，其他语音请求可以在目标 Session 运行期间使用协调器。
+适配器独立地保持 Task 生命周期和事件订阅存活。只有与委派 ID 关联的匹配 ACP
+目标提示完成才能完成 Task。然后适配器短暂重新获取后端 Agent 锁，并将经验证的
 结果发送给它进行最终呈现。繁忙的目标、空结果、无关的 Session 更新或旧结果
-都无法完成 Work。
+都无法完成 Task。
 
 正常的后端请求超时分别适用于初始协调器轮次和最终呈现轮次。当适配器在等待
-委派 Session 时不适用该超时。在该间隔内，只有显式 Work 取消或后端关闭才会
+委派 Session 时不适用该超时。在该间隔内，只有显式 Task 取消或后端关闭才会
 取消目标 Session。
 
-取消是确认式的，而非乐观式的。`queued` Work 在本地取消。`running` 或
-`finalizing` Work 中止其活跃后端请求。对于 `delegated` Work，首先请求空闲的
+取消是确认式的，而非乐观式的。`queued` Task 在本地取消。`running` 或
+`finalizing` Task 中止其活跃后端请求。对于 `delegated` Task，首先请求空闲的
 协调器调用 `session_cancel`；如果协调器 Session 被占用，ACP 适配器直接向精确
-关联的目标 Session 发送 `session/cancel`。Work 保持 `cancelling` 状态，
+关联的目标 Session 发送 `session/cancel`。Task 保持 `cancelling` 状态，
 直到其中一条路径确认停止，然后变为 `cancelled`。停止失败则变为 `failed` 并
 附带取消错误。在适配器直接中止后，Gateway 会记录一个取消事实，并在下一个安全的
 协调器轮次中注入一次。这样可以在不延迟取消或重复停止的情况下协调协调器的历史。
@@ -272,9 +272,9 @@ WebUI / TUI / Desktop
    ↓ WebSocket and HTTP
 Realtime Gateway
    ↓ spawn_thinking
-Work queue
+Task queue
    ↓
-结构化 BackendPort Work
+结构化 BackendPort Task
    ↓
 Adapter 投影：自然任务指令 + 原生附件 Part
    ↓
@@ -283,7 +283,7 @@ Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 ```
 
 后端特定的 API 细节仅属于 `server/src/agent`。实时工具不得导入后端适配器。
-UI 仅消费公共 Work 事件和最终时间线内容。包级别的 `shared` 模块是基础运行时
+UI 仅消费公共 Task 事件和最终时间线内容。包级别的 `shared` 模块是基础运行时
 工具；server `core` 和 `process` 可以依赖它们，但它们不得依赖 server 层。
 
 Gateway 可以将不可变的 `web/dist` 产物作为部署便利来提供，但这仅是静态托管。
@@ -301,7 +301,7 @@ Gateway 是唯一的核心产品服务。后台生命周期由共享的 `owned/e
 
 后台服务归属与 ACP 连接方式是两个相互独立的维度。每个后台 profile 声明一个
 `acpConnection`；连接工厂当前实现 `process`，即启动一个本地 ACP stdio 子进程。
-未来的远程 ACP bridge 可以新增另一种连接类型，而无需修改协调、权限、Work 或
+未来的远程 ACP bridge 可以新增另一种连接类型，而无需修改协调、权限、Task 或
 Session 生命周期代码。声明外部后台服务，并不意味着 ACP 连接也自动变成远程连接。
 
 每个后台通过一份经过校验的 Plugin 契约注册。目录项统一拥有身份、安装、原生配置
@@ -353,5 +353,5 @@ macOS 桌面渲染器打包在应用程序内部。Electron 从私有的随机�
 4. 工具事件是否仅用于通用 UI 进度？
 5. 完成播报是否仅来自最终后端 Agent 结果？
 6. 任何 UI 是否开始管理 Gateway 或后端进程？
-7. 打断是否能在不取消已提交 Work 的情况下推迟语音？
+7. 打断是否能在不取消已提交 Task 的情况下推迟语音？
 8. 测试是否覆盖 FIFO 串行化、固定 Session 复用、工具动画和交付重试？

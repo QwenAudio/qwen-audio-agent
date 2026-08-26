@@ -139,7 +139,7 @@ export class KnowledgeIndexer {
     return this.store.listDocuments(ownerId)
   }
 
-  async wait(jobId) {
-    return this.taskManager.wait(jobId)
+  async wait(taskId) {
+    return this.taskManager.wait(taskId)
   }
 }

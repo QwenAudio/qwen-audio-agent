@@ -912,7 +912,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     .tools.find(tool => tool.function.name === 'cancel_agent_task')
   assert.match(cancel.function.description, /定时任务或提醒/)
   assert.match(cancel.function.description, /先调用 get_agent_task_status/)
-  assert.match(cancel.function.parameters.properties.job_id.description, /job_id/)
+  assert.match(cancel.function.parameters.properties.task_id.description, /task_id/)
   assert.equal(cancel.function.parameters.properties.all.type, 'boolean')
   assert.match(
     cancel.function.parameters.properties.all.description,

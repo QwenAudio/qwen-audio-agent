@@ -7,6 +7,7 @@ import { TaskNotificationQueue } from './task-notification-queue.mjs'
 import { TaskRepository } from './task-repository.mjs'
 import {
   artifactsFromOutcome,
+  mergeArtifacts,
   normalizeArtifacts,
 } from './task-artifact.mjs'
 import {
@@ -32,11 +33,11 @@ import {
   taskRecoveryAction,
 } from './task-recovery.mjs'
 import { logger } from '../core/logger.mjs'
+import { BackendEventType } from '../core/backend-events.mjs'
 
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
     taskId: String(task.id),
-    jobId: String(task.jobId || ''),
     ownerId: String(task.ownerId || ''),
     sessionId: String(task.sessionId || 'main'),
     turnId: task.turnId || null,
@@ -97,12 +98,12 @@ export class TaskManager {
     this.restore()
   }
 
-  get nextJobNumber() {
-    return this.repository.nextJobNumber
+  get nextTaskNumber() {
+    return this.repository.nextTaskNumber
   }
 
-  set nextJobNumber(value) {
-    this.repository.nextJobNumber = value
+  set nextTaskNumber(value) {
+    this.repository.nextTaskNumber = value
   }
 
   configureRetention(options = {}) {
@@ -129,15 +130,25 @@ export class TaskManager {
     let recoveryChanged = false
     for (const saved of savedTasks) {
       saved.scope = normalizeTaskScope(saved.scope)
-      saved.jobId = isUserWork(saved)
-        ? String(saved.jobId || this.allocateJobId())
-        : null
+      if (isUserWork(saved) && !/^task_\d+$/u.test(String(saved.id || ''))) {
+        const legacy = /^job_(\d+)$/u.exec(String(saved.jobId || ''))
+        const candidate = legacy ? `task_${legacy[1]}` : ''
+        saved.id = candidate && !this.tasks.get(candidate)
+          ? candidate
+          : this.allocateTaskId()
+        recoveryChanged = true
+      }
+      delete saved.jobId
+      if (!saved.parentTaskId && saved.parentWorkId) {
+        saved.parentTaskId = saved.parentWorkId
+      }
+      delete saved.parentWorkId
       saved.presentation = normalizeTaskPresentation(
         saved.presentation || saved.resultMetadata || null,
       )
       saved.artifacts = normalizeArtifacts(saved.artifacts)
       saved.authorization = normalizeAuthorization(saved.authorization, {
-        workId: saved.id,
+        taskId: saved.id,
       })
       const recovery = taskRecoveryAction(saved)
       if (recovery !== TaskRecoveryAction.RESTORE) recoveryChanged = true
@@ -262,8 +273,8 @@ export class TaskManager {
     this.repository.saveDeferred()
   }
 
-  allocateJobId() {
-    return this.repository.allocateJobId()
+  allocateTaskId() {
+    return this.repository.allocateTaskId()
   }
 
   subscribe(listener, { scope = TaskScope.USER } = {}) {
@@ -343,7 +354,7 @@ export class TaskManager {
     laneLimit = 1,
     kind,
     scope,
-    parentWorkId = null,
+    parentTaskId = null,
     priority = 0,
     runner,
     canceler,
@@ -360,14 +371,13 @@ export class TaskManager {
       if (existing) return { ...publicTask(existing), reused: true }
     }
     const task = {
-      id: `work_${randomUUID()}`,
-      jobId: normalizedScope === TaskScope.USER
-        ? this.allocateJobId()
-        : null,
+      id: normalizedScope === TaskScope.USER
+        ? this.allocateTaskId()
+        : `system_${randomUUID()}`,
       status: 'queued',
       scope: normalizedScope,
       kind: String(kind),
-      parentWorkId: parentWorkId ? String(parentWorkId) : null,
+      parentTaskId: parentTaskId ? String(parentTaskId) : null,
       priority: Number.isFinite(Number(priority)) ? Number(priority) : 0,
       objective: String(objective || '').trim(),
       ownerId: normalizedOwnerId,
@@ -382,6 +392,7 @@ export class TaskManager {
       elapsedMs: 0,
       result: null,
       error: null,
+      message: null,
       artifacts: [],
       presentation: null,
       activity: [],
@@ -422,8 +433,7 @@ export class TaskManager {
   }) {
     const kind = type === 'task' ? 'scheduled_task' : 'reminder'
     const task = {
-      id: `work_${randomUUID()}`,
-      jobId: this.allocateJobId(),
+      id: this.allocateTaskId(),
       status: 'scheduled',
       scope: TaskScope.USER,
       kind,
@@ -432,7 +442,7 @@ export class TaskManager {
       sessionId: String(sessionId || 'main'),
       turnId: turnId || null,
       priority: 0,
-      parentWorkId: null,
+      parentTaskId: null,
       schedule: { type: 'at', at: Number(at), recurrence },
       timeoutMs: type === 'task'
         ? Number(timeoutMs) || config.scheduledTaskTimeoutMs
@@ -444,6 +454,7 @@ export class TaskManager {
       elapsedMs: 0,
       result: null,
       error: null,
+      message: null,
       artifacts: [],
       presentation: null,
       activity: [],
@@ -502,9 +513,12 @@ export class TaskManager {
     }, 1000)
     task.progressTimer.unref?.()
     const onEvent = event => {
-      if (event?.type === 'backend.permission.requested' && event.permission) {
+      if (
+        event?.type === BackendEventType.AUTHORIZATION_REQUESTED
+        && event.permission
+      ) {
         const authorization = normalizeAuthorization(event.permission, {
-          workId: task.id,
+          taskId: task.id,
         })
         if (!authorization) return
         task.authorization = authorization
@@ -513,13 +527,16 @@ export class TaskManager {
         })
         return
       }
-      if (event?.type === 'backend.permission.resolved' && event.permission) {
+      if (
+        event?.type === BackendEventType.AUTHORIZATION_RESOLVED
+        && event.permission
+      ) {
         const permission = resolveAuthorization(
           task.authorization?.id === event.permission.id
             ? task.authorization
             : event.permission,
           event.permission.status,
-          { workId: task.id },
+          { taskId: task.id },
         )
         if (!permission) return
         if (task.authorization?.id === permission.id) {
@@ -531,7 +548,7 @@ export class TaskManager {
         return
       }
       if (['cancelling', 'cancelled'].includes(task.status)) return
-      if (event?.type === 'backend.delegated' && event.delegation) {
+      if (event?.type === BackendEventType.DELEGATED && event.delegation) {
         transitionTask(task, TaskStatus.DELEGATED)
         task.delegation = { ...event.delegation }
         this.releaseScheduler(task)
@@ -540,7 +557,7 @@ export class TaskManager {
         return
       }
       if (
-        event?.type === 'backend.delegation.completed'
+        event?.type === BackendEventType.DELEGATION_COMPLETED
         && event.delegation
       ) {
         transitionTask(task, TaskStatus.FINALIZING)
@@ -548,7 +565,27 @@ export class TaskManager {
         this.emit(TaskDomainEvent.FINALIZING, task)
         return
       }
-      if (event?.type !== 'backend.activity' || !event.activity) return
+      if (event?.type === BackendEventType.MESSAGE && event.message) {
+        const message = String(event.message).trim().slice(0, 4_000)
+        if (!message || message === task.message) return
+        task.message = message
+        this.emit(TaskDomainEvent.UPDATED, task, {
+          persist: false,
+          message,
+        })
+        this.persistDeferred()
+        return
+      }
+      if (event?.type === BackendEventType.ARTIFACT && event.artifact) {
+        const artifacts = normalizeArtifacts([event.artifact])
+        if (!artifacts.length) return
+        const artifact = artifacts[0]
+        task.artifacts = mergeArtifacts(task.artifacts, [artifact])
+        this.emit(TaskDomainEvent.UPDATED, task, { persist: false })
+        this.persistDeferred()
+        return
+      }
+      if (event?.type !== BackendEventType.ACTIVITY || !event.activity) return
       const activity = event.activity
       const index = activity.id
         ? task.activity.findIndex(item => item.id === activity.id)
@@ -658,7 +695,10 @@ export class TaskManager {
         task.presentation = normalizeTaskPresentation(
           outcome?.presentation || outcome?.metadata || null,
         )
-        task.artifacts = artifactsFromOutcome(outcome, task.presentation)
+        task.artifacts = mergeArtifacts(
+          task.artifacts,
+          artifactsFromOutcome(outcome, task.presentation),
+        )
       })
       .catch(error => {
         if (
@@ -806,16 +846,8 @@ export class TaskManager {
     return publicTask(task)
   }
 
-  getByJobId(jobId, { ownerId } = {}) {
-    const normalized = String(jobId || '')
-    const task = [...this.tasks.values()]
-      .filter(item => (
-        item.jobId === normalized
-        && isUserWork(item)
-        && (ownerId === undefined || item.ownerId === String(ownerId))
-      ))
-      .sort((left, right) => right.createdAt - left.createdAt)[0]
-    return task ? publicTask(task) : null
+  getByTaskId(taskId, { ownerId } = {}) {
+    return this.get(taskId, { ownerId, scope: TaskScope.USER })
   }
 
   list({

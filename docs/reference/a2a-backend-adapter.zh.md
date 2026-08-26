@@ -2,7 +2,7 @@
 
 可选 A2A Backend Adapter 用于把一个远程 A2A Agent 接到现有 `BackendPort`。它使用
 官方 A2A JavaScript SDK 完成 Agent Card 发现、协议协商、消息提交、Task 查询与取消、
-Artifact 解码。A2A 对象只存在于 Adapter 内部；Gateway、Work Runtime、语音前台和
+Artifact 解码。A2A 对象只存在于 Adapter 内部；Gateway、Task Runtime、语音前台和
 客户端仍使用协议无关的现有契约。
 
 这是供自定义 Gateway 启动器使用的编程扩展，不新增 `AGENT_PROTOCOL` 值，也不在桌面
@@ -45,19 +45,18 @@ const backend = createA2ABackendAdapter({
 Card 的声明顺序选择首个兼容接口。官方 SDK 的 A2A 0.3 兼容默认开启，可通过
 `legacyCompat: false` 关闭。
 
-## Work 投射
+## Task 投射
 
-- 规范 Work 指令成为用户 Message 文本；前台历史、记忆、Gateway ID 和路由元数据
+- 规范 Task 指令成为用户 Message 文本；前台历史、记忆、Gateway ID 和路由元数据
   不会发送给远程 Agent；
 - 输入附件变成带 MIME 类型的标准 A2A raw 或 URL Part；
-- Adapter 请求非阻塞执行，再轮询 `GetTask`，无需依赖 Streaming 也能保持 Gateway 状态
-  和取消响应；
-- A2A 状态更新投射为 `backend.activity`；
-- 最终 A2A Artifact 投射为标准 Gateway Artifact，最终 Agent 状态 Message 提供自然播报
-  材料；
+- Agent Card 声明 Streaming 时优先消费原生事件；否则请求非阻塞执行并轮询 `GetTask`；
+- A2A 状态、Message 和 Artifact 分别投射为 `backend.activity`、`backend.message` 和
+  `backend.artifact`，持续更新同一 Gateway Task；
+- 最终 Artifact 投射为标准 Gateway Artifact，最终 Agent 状态 Message 提供自然播报材料；
 - 获得远程 Task ID 后使用 `CancelTask`；尚未获得 ID 时仍可中止本地请求。
 
-Gateway Work ID 不会成为远程 Task 身份。二者映射只在当前提交执行期间存在，远程 ID
+Gateway `taskId` 不会成为远程 Task 身份。二者映射只在当前提交执行期间存在，远程 ID
 不会越过 `BackendPort`。
 
 ## 状态映射
@@ -73,7 +72,7 @@ Gateway Work ID 不会成为远程 Task 身份。二者映射只在当前提交�
 
 A2A 不为 `AUTH_REQUIRED` 后的授权决定规定统一语义，具体流程由 Agent 或协议扩展定义。
 因此当前 Adapter 不猜测凭据或审批行为。以后可以在 Adapter 内实现具体授权扩展，无需
-修改 Work 或前台契约。
+修改 Task 或前台契约。
 
 ## 配置项
 
@@ -81,9 +80,9 @@ A2A 不为 `AUTH_REQUIRED` 后的授权决定规定统一语义，具体流程�
 - `token`、`headers`、`fetchImpl`：认证与传输扩展；
 - `acceptedOutputModes`：期望接收的结果 MIME 类型；
 - `pollIntervalMs`：Task 轮询间隔，默认 1 秒；
-- `timeoutMs`：单个 Work 超时，默认 5 分钟；
+- `timeoutMs`：单个 Task 超时，默认 5 分钟；
 - `legacyCompat`：官方 A2A 0.3 兼容，默认开启；
 - `clientFactory`：测试或高级传输注入。
 
 派生 Adapter 仍应运行公共 Backend Adapter conformance suite。内置 A2A Adapter 已覆盖
-完整 conformance 测试，以及 A2A 1.0 HTTP+JSON 的 Agent Card 发现和任务回环测试。
+完整 conformance 测试，以及 A2A 1.0 HTTP+JSON 的 Agent Card 发现、任务回环和流式事件测试。

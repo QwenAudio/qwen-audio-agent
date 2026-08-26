@@ -18,7 +18,7 @@ function persistedReminder(status, id = `work_${status}_reminder`) {
     sessionId: 'voice',
     turnId: 'turn-1',
     priority: 0,
-    parentWorkId: null,
+    parentTaskId: null,
     schedule: { type: 'at', at: now - 60_000, recurrence: 'once' },
     timeoutMs: null,
     progressCheckMs: null,
@@ -167,7 +167,7 @@ test('restore never re-schedules a reminder whose cancellation had started', () 
 test('restore recovers scheduled tasks with reminder runner rebuilt', () => {
   const future = Date.now() + 60_000
   const saved = [{
-    id: 'work_restored',
+    id: 'task_41',
     status: 'scheduled',
     kind: 'reminder',
     objective: '恢复的提醒',
@@ -175,7 +175,7 @@ test('restore recovers scheduled tasks with reminder runner rebuilt', () => {
     sessionId: 'voice',
     turnId: 'turn-1',
     priority: 0,
-    parentWorkId: null,
+    parentTaskId: null,
     schedule: { type: 'at', at: future, recurrence: 'once' },
     timeoutMs: null,
     progressCheckMs: null,
@@ -199,18 +199,18 @@ test('restore recovers scheduled tasks with reminder runner rebuilt', () => {
   const store = { load: () => saved, save: () => {} }
   const manager = new TaskManager({ store })
 
-  const task = manager.get('work_restored')
+  const task = manager.get('task_41')
   assert.equal(task.status, 'scheduled')
   assert.equal(task.kind, 'reminder')
   // Runner should be rebuilt for reminder kind
-  const internal = manager.tasks.get('work_restored')
+  const internal = manager.tasks.get('task_41')
   assert.equal(typeof internal.runner, 'function')
 })
 
 test('restored scheduled_task receives its complete persisted execution context', async () => {
   const future = Date.now() + 60_000
   const saved = [{
-    id: 'work_restored_task',
+    id: 'task_42',
     status: 'scheduled',
     kind: 'scheduled_task',
     objective: '恢复的定时任务',
@@ -218,7 +218,7 @@ test('restored scheduled_task receives its complete persisted execution context'
     sessionId: 'voice',
     turnId: 'turn-1',
     priority: 0,
-    parentWorkId: null,
+    parentTaskId: null,
     schedule: { type: 'at', at: future, recurrence: 'once' },
     timeoutMs: 1_800_000,
     progressCheckMs: 300_000,
@@ -247,17 +247,17 @@ test('restored scheduled_task receives its complete persisted execution context'
     return trivialRunner(objective)
   })
 
-  const task = manager.get('work_restored_task')
+  const task = manager.get('task_42')
   assert.equal(task.status, 'scheduled')
   assert.equal(task.kind, 'scheduled_task')
   // Runner is null until start() sets it from scheduledTaskRunner
-  const internal = manager.tasks.get('work_restored_task')
+  const internal = manager.tasks.get('task_42')
   assert.equal(internal.runner, null)
   internal.status = 'queued'
   manager.drain()
-  const completed = await manager.wait('work_restored_task')
+  const completed = await manager.wait('task_42')
   assert.equal(completed.status, 'completed')
-  assert.equal(receivedContext.taskId, 'work_restored_task')
+  assert.equal(receivedContext.taskId, 'task_42')
   assert.equal(receivedContext.ownerId, 'owner')
   assert.equal(receivedContext.sessionId, 'voice')
   assert.equal(receivedContext.turnId, 'turn-1')

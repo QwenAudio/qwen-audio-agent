@@ -209,22 +209,21 @@ async function evaluateExactlyOnceSpeech() {
     onDelivered: taskIds => delivered.push(...taskIds),
   })
   const task = {
-    id: 'work-1',
-    jobId: 'job_1',
+    id: 'task_1',
     objective: 'Produce one result',
     result: 'Done',
   }
   manager.completed(task)
   manager.completed(task)
   await new Promise(resolve => setTimeout(resolve, 10))
-  manager.confirmMany(['work-1'])
-  manager.confirmMany(['work-1'])
-  manager.retryMany(['work-1'])
+  manager.confirmMany(['task_1'])
+  manager.confirmMany(['task_1'])
+  manager.retryMany(['task_1'])
   await new Promise(resolve => setTimeout(resolve, 5))
   manager.close()
   requireCondition(
-    attempts === 1 && delivered.join(',') === 'work-1',
-    'One completed Work produced duplicate presentation attempts or receipts.',
+    attempts === 1 && delivered.join(',') === 'task_1',
+    'One completed Task produced duplicate presentation attempts or receipts.',
     { attempts, delivered },
   )
   return { attempts, delivered }

@@ -123,7 +123,7 @@ const spawnThinkingTool = {
   type: 'function',
   function: {
     name: SPAWN_THINKING_TOOL_NAME,
-    description: '将需要访问用户环境、检查设备、调用后台专属工具、处理文件、屏幕、应用、代码、图片或文件内容、图片生成、创作，或继续、修改已有工作的请求转交给后台 Agent。普通公开网页搜索和网址读取应使用对应的前台工具，不要转交后台。请求明确时直接调用，调用前不要口头回应，也不要先否认能力。用户同时提出多个目标时，可在同一个响应中分别调用；不要重复提交已经覆盖的目标。本轮图片和文件会自动随请求转交，不要声称无法查看；只有用户没有说明希望如何处理附件时，才自然询问。询问此前工作的状态、进度或阶段结果时改用 get_agent_task_status。accepted 表示本次提交成功；duplicate 表示同一目标此前已提交；二者都不表示已完成。收到本次响应中的全部这类回执后，只作一次自然回应，不展示内部 ID，也不再调用任何工具。',
+    description: '异步执行需要访问用户环境、设备、文件、屏幕、应用、代码、生成媒体或其他多步办事能力的工作；这是前台 Agent 的统一复杂工作入口。公开网页搜索和网址读取优先使用前台专用工具。请求明确时直接调用，调用前不口头回应或否认能力。本轮附件会自动传入；只在缺少处理意图时询问。多个独立目标可在同一响应中分别调用，但不得重复目标；查询已有工作改用 get_agent_task_status。accepted 和 duplicate 只表示已受理，不表示完成。收到本次响应的全部回执后只自然确认一次，不向用户暴露后台 Agent、协议、Task 或 ID，也不再调用工具。',
     parameters: {
       type: 'object',
       properties: {
@@ -148,17 +148,17 @@ const cancelAgentTaskTool = {
   type: 'function',
   function: {
     name: CANCEL_AGENT_TASK_TOOL_NAME,
-    description: '取消用户此前创建、目前仍可取消的后台工作、定时任务或提醒。用户明确要求取消或停止时必须调用，不要只口头答应。同时存在多项且目标不能可靠确定时，先调用 get_agent_task_status 列出工作。不要重复取消已经处理的工作。',
+    description: '取消用户此前开始、目前仍可取消的异步工作、定时任务或提醒。用户明确要求取消或停止时必须调用，不要只口头答应。同时存在多项且目标不能可靠确定时，先调用 get_agent_task_status 列出工作。不要重复取消已经处理的工作。',
     parameters: {
       type: 'object',
       properties: {
-        job_id: {
+        task_id: {
           type: 'string',
-          description: '要取消的 job_id。仅使用系统返回的 ID，不得猜造；省略则取消当前语音会话最近创建且仍可取消的一项。',
+          description: '要取消的 task_id。仅使用系统返回的 ID，不得猜造；省略则取消当前语音会话最近创建且仍可取消的一项。',
         },
         all: {
           type: 'boolean',
-          description: '用户明确要求取消当前会话中的全部工作、定时任务和提醒时设为 true；此时不要填写 job_id。',
+          description: '用户明确要求取消当前会话中的全部工作、定时任务和提醒时设为 true；此时不要填写 task_id。',
         },
       },
       additionalProperties: false,
@@ -174,9 +174,9 @@ const getAgentTaskStatusTool = {
     parameters: {
       type: 'object',
       properties: {
-        job_id: {
+        task_id: {
           type: 'string',
-          description: '要查询的 job_id。仅在当前对话或先前工具结果已明确给出时填写，不得猜造；省略时查询当前语音会话最近的工作。',
+          description: '要查询的 task_id。仅在当前对话或先前工具结果已明确给出时填写，不得猜造；省略时查询当前语音会话最近的工作。',
         },
         question: {
           type: 'string',

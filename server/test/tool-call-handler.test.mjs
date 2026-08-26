@@ -42,14 +42,14 @@ function harness({
     getTurnGeneration: () => 1,
     backendRuntime: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
-      cancel: async workId => ({ workId, state: 'cancelled' }),
+      cancel: async taskId => ({ taskId, state: 'cancelled' }),
     },
     backendAvailability,
     memoryService: memoryStore,
     notesStore,
     onMemoryChanged,
     respondAuthorization: respondPermission
-      ? (_workId, id, decision, options) => (
+      ? (_taskId, id, decision, options) => (
           respondPermission(id, decision, options)
         )
       : undefined,
@@ -256,12 +256,12 @@ test('never executes a dynamic external tool without a read-only policy', async 
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
 })
 
-function taskForJob(manager, jobId) {
-  return manager.getByJobId(jobId, { ownerId: 'owner' })
+function taskForId(manager, taskId) {
+  return manager.getByTaskId(taskId, { ownerId: 'owner' })
 }
 
-function waitForJob(manager, jobId) {
-  return manager.wait(taskForJob(manager, jobId).id)
+function waitForTask(manager, taskId) {
+  return manager.wait(taskForId(manager, taskId).id)
 }
 
 test('asks a capable client to enter sleep without creating another response', async () => {
@@ -531,19 +531,15 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
   assert.equal(kit.outputs[0][1].marker, undefined)
   assert.deepEqual(kit.outputs[0][3], {})
   assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 1)
-  await waitForJob(kit.manager, kit.outputs[0][1].job_id)
-  assert.equal(received.originalRequest, '继续改刚才那个页面')
+  await waitForTask(kit.manager, kit.outputs[0][1].task_id)
+  assert.equal('originalRequest' in received, false)
   assert.equal(received.objective, '继续修改此前讨论的页面')
   assert.equal('conversationContext' in received, false)
   assert.equal('userMemories' in received, false)
-  assert.equal(receivedOptions.jobId, kit.outputs[0][1].job_id)
+  assert.equal(receivedOptions.taskId, kit.outputs[0][1].task_id)
   assert.equal(
-    receivedOptions.workId,
-    taskForJob(kit.manager, kit.outputs[0][1].job_id).id,
-  )
-  assert.notEqual(
-    receivedOptions.jobId,
-    receivedOptions.workId,
+    receivedOptions.taskId,
+    taskForId(kit.manager, kit.outputs[0][1].task_id).id,
   )
 })
 
@@ -571,7 +567,7 @@ test('automatically carries current-turn attachments into spawned work', async (
     arguments: '{"objective":"根据参考图生成皮肤"}',
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  await waitForJob(kit.manager, kit.outputs[0][1].job_id)
+  await waitForTask(kit.manager, kit.outputs[0][1].task_id)
   assert.deepEqual(received.inputParts, [image])
 })
 
@@ -610,7 +606,7 @@ test('resolves an earlier-turn input reference when the next turn delegates work
     }),
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  await waitForJob(kit.manager, kit.outputs[0][1].job_id)
+  await waitForTask(kit.manager, kit.outputs[0][1].task_id)
   assert.deepEqual(received.inputParts, [historicalImage])
 })
 
@@ -660,7 +656,7 @@ test('suppresses the receipt reply when the original response already spoke', as
   )
   assert.equal(kit.outputs[0][3].createResponse, false)
   assert.equal(kit.ensuredResponses.length, 0)
-  await waitForJob(kit.manager, kit.outputs[0][1].job_id)
+  await waitForTask(kit.manager, kit.outputs[0][1].task_id)
 })
 
 test('accepts distinct spawn_thinking calls from one realtime response', async () => {
@@ -866,8 +862,8 @@ test('accepts optimistically before the first health probe and fails via the tas
   // which the announcement path reports asynchronously.
   assert.equal(probed, 1)
   assert.equal(kit.outputs[0][1].status, 'accepted')
-  await waitForJob(kit.manager, kit.outputs[0][1].job_id)
-  assert.equal(taskForJob(kit.manager, kit.outputs[0][1].job_id).status, 'failed')
+  await waitForTask(kit.manager, kit.outputs[0][1].task_id)
+  assert.equal(taskForId(kit.manager, kit.outputs[0][1].task_id).status, 'failed')
 })
 
 test('hands out the acceptance receipt without waiting for the turn transcript', async () => {
@@ -889,12 +885,11 @@ test('hands out the acceptance receipt without waiting for the turn transcript',
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
   assert.equal(kit.outputs[0][1].status, 'accepted')
-  await waitForJob(kit.manager, kit.outputs[0][1].job_id)
-  assert.equal(received.originalRequest, '整理会议纪要')
+  await waitForTask(kit.manager, kit.outputs[0][1].task_id)
   assert.equal(received.objective, '整理会议纪要')
 })
 
-test('keeps the verbatim request even when later turns evict the transcript', async () => {
+test('keeps the submitted objective even when later turns evict the transcript', async () => {
   const requests = []
   let releaseFirst
   let currentTurn = 'turn-one'
@@ -902,7 +897,7 @@ test('keeps the verbatim request even when later turns evict the transcript', as
     getTurnId: () => currentTurn,
     coordinator: {
       run: async input => {
-        requests.push(input.originalRequest)
+        requests.push(input.objective)
         if (input.objective === '堆积任务') {
           return new Promise(resolve => {
             releaseFirst = () => resolve({ content: '完成', metadata: {} })
@@ -927,18 +922,17 @@ test('keeps the verbatim request even when later turns evict the transcript', as
     name: 'spawn_thinking',
     arguments: '{"objective":"发送上周周报"}',
   }, { turnId: 'turn-two', turnGeneration: 1 })
-  const queuedJobId = kit.outputs.at(-1)[1].job_id
+  const queuedTaskId = kit.outputs.at(-1)[1].task_id
 
   // While the lane is blocked, twenty-plus newer turns evict turn-two from
-  // the transcript ring buffer. The pinned promise must retain the verbatim
-  // request regardless.
+  // the transcript ring buffer. Dispatch must retain the submitted objective.
   for (let index = 0; index < 25; index += 1) {
     kit.transcripts.record(`turn-filler-${index}`, `闲聊第 ${index} 句`)
   }
   releaseFirst()
-  await waitForJob(kit.manager, queuedJobId)
+  await waitForTask(kit.manager, queuedTaskId)
 
-  assert.deepEqual(requests, ['堆积任务', '把上周的周报发给老板'])
+  assert.deepEqual(requests, ['堆积任务', '发送上周周报'])
 })
 
 test('explains that background work is unavailable without a configured backend', async () => {
@@ -969,7 +963,7 @@ test('does not turn a permission answer into a new background task', async () =>
     answer: '可以',
     respondPermission: async () => ({
       id: 'auth-one',
-      workId: 'work-one',
+      taskId: 'work-one',
       status: 'approved',
     }),
   })
@@ -1020,7 +1014,7 @@ test('deduplicates the same turn after a realtime handler reconnect', async () =
     name: 'spawn_thinking',
     arguments: '{"objective":"执行一次"}',
   })
-  await waitForJob(manager, first.outputs[0][1].job_id)
+  await waitForTask(manager, first.outputs[0][1].task_id)
   assert.equal(manager.list({ ownerId: 'owner' }).length, 1)
   assert.equal(second.outputs[0][1].status, 'duplicate')
   assert.equal(
@@ -1041,9 +1035,9 @@ test('cancels the most recently submitted active work', async () => {
         once: true,
       })
     }),
-    cancel: async (workId, options) => {
-      cancellations.push([workId, options])
-      return { workId, state: 'cancelled' }
+    cancel: async (taskId, options) => {
+      cancellations.push([taskId, options])
+      return { taskId, state: 'cancelled' }
     },
   }
   kit.transcripts.record('turn-one', '执行一次')
@@ -1131,7 +1125,7 @@ test('batches targeted cancellations and blocks cancellation follow-ups', async 
     call_id: `call-cancel-${index}`,
     response_id: 'response-cancel-batch',
     name: 'cancel_agent_task',
-    arguments: JSON.stringify({ job_id: task.jobId }),
+    arguments: JSON.stringify({ task_id: task.id }),
   }, {
     turnId: 'turn-one',
     turnGeneration: 1,
@@ -1147,7 +1141,7 @@ test('batches targeted cancellations and blocks cancellation follow-ups', async 
     call_id: 'call-cancel-follow-up',
     response_id: 'response-cancel-follow-up',
     name: 'cancel_agent_task',
-    arguments: JSON.stringify({ job_id: tasks[0].jobId }),
+    arguments: JSON.stringify({ task_id: tasks[0].id }),
   }, {
     turnId: 'turn-one',
     turnGeneration: 1,
@@ -1166,9 +1160,8 @@ test('queries the latest work directly from the realtime task ledger', async () 
     name: 'spawn_thinking',
     arguments: '{"objective":"执行一次"}',
   })
-  const jobId = kit.outputs.at(-1)[1].job_id
-  const workId = taskForJob(kit.manager, jobId).id
-  await kit.manager.wait(workId)
+  const taskId = kit.outputs.at(-1)[1].task_id
+  await kit.manager.wait(taskId)
 
   await kit.handler.handle({
     call_id: 'call-status',
@@ -1177,12 +1170,12 @@ test('queries the latest work directly from the realtime task ledger', async () 
   })
 
   assert.equal(kit.outputs.at(-1)[1].status, 'ok')
-  assert.equal(kit.outputs.at(-1)[1].job_id, jobId)
-  assert.equal(kit.outputs.at(-1)[1].work_status, 'completed')
+  assert.equal(kit.outputs.at(-1)[1].task_id, taskId)
+  assert.equal(kit.outputs.at(-1)[1].task_status, 'completed')
   assert.equal(kit.outputs.at(-1)[1].result, '完成')
   assert.deepEqual(kit.outputs.at(-1)[2], {
     turnId: 'turn-one',
-    taskId: workId,
+    taskId: taskId,
     consumesTaskNotification: true,
   })
   assert.match(
@@ -1224,6 +1217,18 @@ test('reports recent ordinary-work activity directly from the Gateway ledger', a
           label: '写入 src/index.html',
         },
       })
+      onEvent({
+        type: 'backend.message',
+        message: '页面主体已经完成。',
+      })
+      onEvent({
+        type: 'backend.artifact',
+        artifact: {
+          artifactId: 'page',
+          name: 'index.html',
+          parts: [{ text: '<main />', mediaType: 'text/html' }],
+        },
+      })
       return new Promise(resolve => { release = resolve })
     },
   })
@@ -1242,11 +1247,11 @@ test('reports recent ordinary-work activity directly from the Gateway ledger', a
   await kit.handler.handle({
     call_id: 'call-running-status',
     name: 'get_agent_task_status',
-    arguments: JSON.stringify({ job_id: task.jobId }),
+    arguments: JSON.stringify({ task_id: task.id }),
   })
 
   const output = kit.outputs.at(-1)[1]
-  assert.equal(output.work_status, 'running')
+  assert.equal(output.task_status, 'running')
   assert.deepEqual(output.recent_updates, [
     {
       kind: 'plan',
@@ -1262,6 +1267,12 @@ test('reports recent ordinary-work activity directly from the Gateway ledger', a
       detail: '写入 src/index.html',
     },
   ])
+  assert.equal(output.latest_update, '页面主体已经完成。')
+  assert.deepEqual(output.artifacts, [{
+    artifact_id: 'page',
+    name: 'index.html',
+    description: null,
+  }])
   assert.equal(coordinatorQueries, 0)
 
   release({ content: '完成' })
@@ -1319,13 +1330,13 @@ test('queries delegated status directly from the Gateway ledger', async () => {
   await kit.handler.handle({
     call_id: 'call-delegated-status',
     name: 'get_agent_task_status',
-    arguments: JSON.stringify({ job_id: delegated.jobId }),
+    arguments: JSON.stringify({ task_id: delegated.id }),
   })
 
   const output = kit.outputs.at(-1)[1]
   assert.equal(output.status, 'ok')
-  assert.equal(output.job_id, delegated.jobId)
-  assert.equal(output.work_status, 'delegated')
+  assert.equal(output.task_id, delegated.id)
+  assert.equal(output.task_status, 'delegated')
   assert.deepEqual(output.recent_updates, [{
     kind: 'tool',
     status: 'completed',
@@ -1349,7 +1360,7 @@ test('relays a realtime semantic permission decision without evidence matching',
       calls.push({ id, decision, options })
       return {
         id,
-        workId: 'work-one',
+        taskId: 'work-one',
         status: 'approved',
       }
     },
@@ -1388,7 +1399,7 @@ test('confirms a rejected realtime permission exactly once', async () => {
     permissionPolicy,
     respondPermission: async id => ({
       id,
-      workId: 'work-one',
+      taskId: 'work-one',
       status: 'rejected',
     }),
   })
@@ -1476,7 +1487,7 @@ test('auto-allows later permissions in the Gateway without publishing them', asy
     name: 'spawn_thinking',
     arguments: '{"objective":"检查项目"}',
   })
-  await waitForJob(kit.manager, kit.outputs[0][1].job_id)
+  await waitForTask(kit.manager, kit.outputs[0][1].task_id)
 
   assert.deepEqual(approvals, [{
     id: 'auth-auto',
@@ -1495,7 +1506,7 @@ test('accepts a semantic permission decision without an evidence field', async (
     answer: '你按刚才说的做吧',
     respondPermission: async (id, decision) => {
       calls.push({ id, decision })
-      return { id, workId: 'work-one', status: 'approved' }
+      return { id, taskId: 'work-one', status: 'approved' }
     },
   })
   await kit.handler.handle({

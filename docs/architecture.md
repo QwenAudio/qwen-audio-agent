@@ -6,7 +6,7 @@ invariants are architecture changes, not local feature work.
 See the
 [Realtime Voice Chatbot Runtime Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/frontend-chatbot-runtime.md)
 for the target boundary and staged refactor of the Realtime Voice Chatbot,
-asynchronous work bridge, and single user-configured backend agent. Until each
+asynchronous Task bridge, and single user-configured backend agent. Until each
 roadmap stage lands, this document remains the tested description of current
 runtime behavior.
 
@@ -17,17 +17,17 @@ layers:
 
 1. **Realtime frontend** — full-duplex speech, simple direct answers, and basic
    local time/memory tools.
-2. **Backend Agent** — one persistent Agent Session that owns every request
-   requiring tools, current information, files, applications, code, or
-   multi-step work.
+2. **Backend Agent** — one configured action Agent that handles requests
+   requiring tools, files, applications, code, device control, or multi-step
+   execution.
 
-The backend may be OpenCode, OpenClaw, Qoder, Qwen Code, Kimi Code, Pi, or another
-ACP-compatible Agent.
+The backend may be an ACP Agent such as OpenCode, OpenClaw, Qoder, Qwen Code,
+Kimi Code, or Pi; a remote A2A Agent; or a custom BackendPort adapter.
 It may internally use tools, skills, agents, or other Sessions. Those are
 backend-private implementation details and do not create additional
-qwen-audio-agent layers. All backends connect through one ACP client and one
-shared coordination adapter; backend-specific launch and capability behavior
-lives in registered drivers.
+qwen-audio-agent layers. Protocol details remain inside ACP, A2A, or custom
+BackendPort adapters; backend-specific launch and capability behavior lives in
+registered drivers.
 
 ## 2. Nonblocking request flow
 
@@ -39,13 +39,13 @@ final ASR
    └─ requires work
           │ spawn_thinking(objective)
           ▼
-      Work accepted
+      Task accepted
           │ response returns to Realtime immediately
           ▼
       owner FIFO queue
           │
           ▼
-      fixed Backend Agent Session
+      configured BackendPort
           │ the backend decides how to work
           ▼
       final presentation
@@ -55,8 +55,8 @@ final ASR
 ```
 
 `spawn_thinking` never waits for the requested work. The user can continue
-speaking while multiple Work items are queued. For each owner, only one Work
-item is sent into the Backend Agent Session at a time.
+speaking while multiple Task items are queued. For each owner, only one Task
+item is sent into the configured BackendPort at a time.
 
 ## 3. Realtime boundary
 
@@ -112,13 +112,10 @@ candidate names back to the model for clarification. `clear` and `drop`
 additionally require an explicit destructive intent in the current turn.
 
 `get_agent_task_status` is the single Realtime entry point for lifecycle,
-progress, and interim-result questions. The Gateway answers non-delegated Work
-directly. For `delegated` Work it creates a hidden, high-priority control query
-that uses the coordinator to call `session_status`. The query waits behind an
-already-running coordinator turn but ahead of ordinary queued Work, and its
-result is delivered through the normal asynchronous announcement path. It is
-not exposed as a user Work item and cannot become the implicit target of a
-later status or cancellation request.
+progress, and interim-result questions. The Gateway reads its own Task record
+directly, including the latest adapter-normalized message, activity, and
+artifact descriptors. A status check does not create another Task, invoke the
+coordinator, or enter the asynchronous announcement queue.
 
 It does not have tools for:
 
@@ -142,20 +139,19 @@ persistent backend authorization rule.
 The `objective` passed to `spawn_thinking` is a conservative interpretation of
 the user's request, not an execution plan. It must resolve references such as
 “continue that page” into one self-contained instruction before submission.
-Final ASR remains internal source evidence: when it differs from the objective,
-the adapter includes it as natural quoted wording. The objective remains this
-Work's execution boundary; within that boundary the original facts, scope, and
-constraints take priority. The backend Agent does not receive the frontend
-persona, durable memory, or recent chat history. Execution-relevant facts must
-be resolved into the instruction instead of forwarding those documents.
+That instruction is the only model-visible task text sent to the backend; the
+verbatim ASR is not appended as a second task description. The backend Agent
+does not receive the frontend persona, durable memory, or recent chat history.
+Execution-relevant facts must be resolved into the instruction instead of
+forwarding those documents.
 
 The Gateway automatically carries current-turn attachments as native protocol
 parts, never as a model-visible JSON manifest. Only work that explicitly
 depends on an earlier image or file uses the optional `input_refs` field with a
-conversation-local input ID. Work IDs, owner identity, lifecycle, timestamps,
+conversation-local input ID. Task IDs, owner identity, lifecycle, timestamps,
 and routing remain structured Gateway/BackendPort data and are not placed in
 the backend Agent's instruction. The working directory and user time zone are
-projected as natural execution context because they can change task meaning.
+not repeated in every prompt; protocol or backend runtime context owns them.
 
 ## 4. Fixed Backend Agent Session
 
@@ -171,19 +167,20 @@ The Gateway stores the native ACP Session ID behind that stable key and calls
 selected native Session in its recorded working directory, so voice-originated
 work remains in the backend's own Session history rather than a Gateway copy.
 
-Voice browser session IDs and Work IDs never change that identity. A new voice
+Voice browser session IDs and Task IDs never change that identity. A new voice
 conversation therefore continues using the same backend Agent context.
 
 Both the Gateway queue and the ACP adapter serialize writes. This double guard
 prevents concurrent messages from racing inside one backend Session.
 
-The backend Agent owns its execution strategy. qwen-audio-agent supplies the user
-request, recent voice context, local preferences, and a final response shape;
-it does not instruct the backend Agent how to use backend-specific capabilities.
+The backend Agent owns its execution strategy. qwen-audio-agent supplies one
+self-contained natural task instruction, current-turn native attachments, and
+a final response shape; it does not forward frontend history or preferences,
+or instruct the backend Agent how to use backend-specific capabilities.
 
-## 5. Work state
+## 5. Task state
 
-A qwen-audio-agent Work record is a delivery receipt, not a mirror of the backend's
+A qwen-audio-agent Task record is a delivery receipt, not a mirror of the backend's
 internal task graph.
 
 ```text
@@ -203,9 +200,10 @@ The UI presents both `queued` and `running` as the same “processing” state.
 Queue position is an internal scheduling detail and does not change the user's
 duplex conversation.
 
-Active Work cannot be safely resumed after a Gateway restart, so
-it becomes failed with an explicit restart reason. Completed results and
-notification delivery state are persisted.
+Queued and directly running Tasks cannot be safely resumed after a Gateway
+restart, so they become failed with an explicit restart reason. A delegated
+Task may be reattached only when its adapter can verify the persisted native
+Session. Completed results and notification delivery state are persisted.
 
 ## 6. Progress animation
 
@@ -265,30 +263,30 @@ intermediate transport response is instead:
 }
 ```
 
-Correlation remains in the Gateway's Work registry and the adapter's observed
+Correlation remains in the Gateway's Task registry and the adapter's observed
 tool result; the model is not asked to echo IDs. This response is never a
 user-visible completion. The adapter immediately
 lets the backend Agent naturally finish this short post-tool response, moves
-the original Work to `delegated`, and
-releases both the backend Agent serialization lock and the Work scheduler
+the original Task to `delegated`, and
+releases both the backend Agent serialization lock and the Task scheduler
 lane. Other voice requests can therefore use the coordinator while the target
-Session runs. The adapter independently keeps the Work lifecycle and event
+Session runs. The adapter independently keeps the Task lifecycle and event
 subscription alive. Only the matching ACP target prompt completion correlated
-to the delegation ID can complete the Work. The adapter then briefly
+to the delegation ID can complete the Task. The adapter then briefly
 reacquires the backend Agent lock and sends that verified result to it for
 final presentation. A busy target, an empty result, an unrelated Session
-update, or an older result cannot complete the Work.
+update, or an older result cannot complete the Task.
 
 The normal backend request timeout applies separately to the initial
 coordinator turn and the final presentation turn. It does not apply while the
 adapter is waiting for the delegated Session. During that interval, only an
-explicit Work cancellation or backend shutdown cancels the target Session.
+explicit Task cancellation or backend shutdown cancels the target Session.
 
-Cancellation is confirmed rather than optimistic. `queued` Work is cancelled
-locally. `running` or `finalizing` Work aborts its active backend request. For
-`delegated` Work, an idle coordinator is first asked to call
+Cancellation is confirmed rather than optimistic. `queued` Task is cancelled
+locally. `running` or `finalizing` Task aborts its active backend request. For
+`delegated` Task, an idle coordinator is first asked to call
 `session_cancel`; if the coordinator Session is occupied, the ACP adapter
-directly sends `session/cancel` to the exact correlated target Session. The Work remains
+directly sends `session/cancel` to the exact correlated target Session. The Task remains
 `cancelling` until one of those paths confirms the stop, then becomes
 `cancelled`. A failed stop becomes `failed` with the cancellation error.
 After a direct adapter abort, the Gateway records a cancellation fact and
@@ -339,9 +337,9 @@ WebUI / TUI / Desktop
    ↓ WebSocket and HTTP
 Realtime Gateway
    ↓ spawn_thinking
-Work queue
+Task queue
    ↓
-structured BackendPort Work
+structured BackendPort Task
    ↓
 Adapter projection: natural instruction + native attachment parts
    ↓
@@ -350,7 +348,7 @@ Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 ```
 
 Backend-specific API details belong only in `server/src/agent`. Realtime tools
-must not import backend adapters. The UI consumes only public Work events and
+must not import backend adapters. The UI consumes only public Task events and
 final timeline content. Package-level `shared` modules are foundational runtime
 utilities; server `core` and `process` may depend on them, but they must not
 depend on server layers.
@@ -379,7 +377,7 @@ Backend service ownership and the ACP connection are independent axes. Each
 backend profile declares an `acpConnection`; the connection factory currently
 implements `process`, which launches one local ACP stdio child. A future remote
 ACP bridge can add another connection kind without changing coordinator,
-permission, Work, or Session lifecycle code. Declaring an external backend
+permission, Task, or Session lifecycle code. Declaring an external backend
 service does not by itself make the ACP connection remote.
 
 Each backend is registered through one validated plugin contract. Its catalog
@@ -446,6 +444,6 @@ Before merging a change, verify:
 4. Are tool events used only for generic UI progress?
 5. Is completion spoken only from a final backend Agent result?
 6. Did any UI begin managing a Gateway or backend process?
-7. Can interruption postpone speech without cancelling submitted Work?
+7. Can interruption postpone speech without cancelling submitted Task?
 8. Do tests cover FIFO serialization, fixed Session reuse, tool animation, and
    delivery retry?

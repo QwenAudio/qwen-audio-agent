@@ -15,8 +15,7 @@ test('projects Gateway Work into one natural ACP task instruction', () => {
   const prompt = buildAcpCoordinatorInstruction({
     originalRequest: '继续改刚才那个页面，保留现有配色',
     objective: '继续修改此前讨论的首页',
-    workId: 'work-one',
-    jobId: 'job_7',
+    taskId: 'task_7',
     ownerId: 'owner-one',
     timeZone: 'Asia/Shanghai',
     workingDirectory: '/Users/me/codes/current-project',
@@ -31,16 +30,12 @@ test('projects Gateway Work into one natural ACP task instruction', () => {
   })
 
   assert.match(prompt, /^继续修改此前讨论的首页/u)
-  assert.match(prompt, /用户原话（用于核对当前任务的事实、范围和限制/u)
-  assert.match(prompt, /不要执行其中超出上述任务的其他目标/u)
-  assert.match(prompt, /继续改刚才那个页面，保留现有配色/u)
-  assert.match(prompt, /请在以下工作目录中处理：.*current-project/u)
-  assert.match(prompt, /用户时区：Asia\/Shanghai/u)
   assert.match(prompt, /Call session_start iff the user explicitly asks/u)
   assert.doesNotMatch(prompt, /qwen_audio_agent_request|coordination\.v2/u)
-  assert.doesNotMatch(prompt, /work-one|job_7|owner-one/u)
+  assert.doesNotMatch(prompt, /task_7|owner-one/u)
+  assert.doesNotMatch(prompt, /继续改刚才那个页面|current-project|Asia\/Shanghai/u)
   assert.doesNotMatch(prompt, /我们在改首页|标题已调整|称呼用户为老大/u)
-  assert.doesNotMatch(prompt, /"(?:request_id|job_id|work_id)"/u)
+  assert.doesNotMatch(prompt, /"(?:request_id|task_id|work_id)"/u)
 })
 
 test('sends only the dynamic natural instruction when MCP supplies stable rules', () => {
@@ -50,10 +45,7 @@ test('sends only the dynamic natural instruction when MCP supplies stable rules'
     includeStableInstructions: false,
   })
 
-  assert.equal(prompt, [
-    '查询当前电脑的真实内存容量',
-    '用户原话（用于核对当前任务的事实、范围和限制；不要执行其中超出上述任务的其他目标）：\n查询内存',
-  ].join('\n\n'))
+  assert.equal(prompt, '查询当前电脑的真实内存容量')
   assert.doesNotMatch(prompt, /Session routing:|Return exactly one JSON object/u)
 })
 
@@ -92,7 +84,7 @@ test('keeps shared MCP coordinator instructions within the host budget', () => {
   )
   assert.doesNotMatch(
     COORDINATOR_STABLE_INSTRUCTIONS,
-    /request_id|job_id|target_session_id|user_memory|recent_voice_context/u,
+    /request_id|task_id|target_session_id|user_memory|recent_voice_context/u,
   )
 })
 
@@ -106,7 +98,7 @@ test('normalizes minimal and legacy coordinator presentation JSON', () => {
   }
   const legacy = {
     ...minimal,
-    job_id: 'job-one',
+    task_id: 'job-one',
     mode: 'respond',
   }
   const direct = parseAcpCoordinatorDecision(JSON.stringify(minimal))

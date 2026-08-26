@@ -10,7 +10,7 @@ function backend(overrides = {}) {
     async health() { return { ok: true } },
     async submit() { return { content: '完成', artifacts: [] } },
     status() { return { state: 'working' } },
-    async cancel(workId) { return { workId, state: 'cancelled' } },
+    async cancel(taskId) { return { taskId, state: 'cancelled' } },
     async respondAuthorization() {},
     subscribe() { return () => {} },
     async close() {},
@@ -42,20 +42,15 @@ test('submits structured Gateway Work with one model-facing instruction', async 
     inputParts: [],
   }, {
     ownerId: 'owner-one',
-    workId: 'work-one',
-    jobId: 'job_8',
+    taskId: 'task_8',
     signal,
     onEvent: event => events.push(event),
   })
   assert.deepEqual(submitted, {
-    id: 'work-one',
-    jobId: 'job_8',
+    id: 'task_8',
     ownerId: 'owner-one',
-    originalRequest: '检查项目',
     objective: '检查项目',
-    instruction: '检查项目\n\n请在以下工作目录中处理：/project',
-    timeZone: undefined,
-    workingDirectory: '/project',
+    instruction: '检查项目',
     inputParts: [],
   })
   assert.equal(context.signal, signal)
@@ -63,10 +58,9 @@ test('submits structured Gateway Work with one model-facing instruction', async 
   assert.deepEqual(result, { content: '完成', artifacts: [] })
 })
 
-test('preserves original constraints without exposing Work protocol fields', () => {
+test('keeps model-visible input to one explicit semantic instruction', () => {
   const instruction = backendInstructionFromWork({
-    id: 'work-one',
-    jobId: 'job_1',
+    id: 'task_1',
     ownerId: 'owner-one',
     objective: '继续修改首页',
     originalRequest: '继续改刚才那个首页，不要改配色',
@@ -74,13 +68,8 @@ test('preserves original constraints without exposing Work protocol fields', () 
     timeZone: 'Asia/Shanghai',
   })
 
-  assert.equal(instruction, [
-    '继续修改首页',
-    '用户原话（用于核对当前任务的事实、范围和限制；不要执行其中超出上述任务的其他目标）：\n继续改刚才那个首页，不要改配色',
-    '请在以下工作目录中处理：/project',
-    '用户时区：Asia/Shanghai',
-  ].join('\n\n'))
-  assert.doesNotMatch(instruction, /work-one|job_1|owner-one/u)
+  assert.equal(instruction, '继续修改首页')
+  assert.doesNotMatch(instruction, /task_1|owner-one/u)
 })
 
 test('lets a custom adapter provide an explicit semantic instruction', () => {
@@ -95,13 +84,13 @@ test('uses only BackendPort status and cancellation operations', async () => {
   const calls = []
   const runtime = new BackendWorkRuntime({
     backend: backend({
-      status(workId, options) {
-        calls.push(['status', workId, options])
-        return { workId, state: 'working' }
+      status(taskId, options) {
+        calls.push(['status', taskId, options])
+        return { taskId, state: 'working' }
       },
-      async cancel(workId, options) {
-        calls.push(['cancel', workId, options])
-        return { workId, state: 'cancelled' }
+      async cancel(taskId, options) {
+        calls.push(['cancel', taskId, options])
+        return { taskId, state: 'cancelled' }
       },
     }),
   })

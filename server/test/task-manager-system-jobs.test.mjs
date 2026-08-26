@@ -19,7 +19,7 @@ test('keeps system jobs out of user work queries, events, ids, and notifications
   const completed = await manager.wait(job.id)
 
   assert.equal(job.scope, TaskScope.SYSTEM)
-  assert.equal(job.jobId, null)
+  assert.equal('taskId' in job, false)
   assert.equal(completed.notificationStatus, 'none')
   assert.equal(manager.get(job.id), null)
   assert.equal(manager.get(job.id, { scope: TaskScope.SYSTEM }).status, 'completed')
@@ -76,14 +76,14 @@ test('runs system jobs in a pool independent from blocked user work', async () =
   assert.equal(secondUserStarted, true)
 })
 
-test('persists system scope without consuming user-facing job ids', async () => {
+test('persists system scope without consuming user-facing task ids', async () => {
   let saved = []
   const store = {
-    nextJobNumber: 1,
+    nextTaskNumber: 1,
     load: () => structuredClone(saved),
     save(tasks, state) {
       saved = structuredClone(tasks)
-      this.nextJobNumber = state.nextJobNumber
+      this.nextTaskNumber = state.nextTaskNumber
     },
   }
   const first = new TaskManager({ store })
@@ -99,13 +99,13 @@ test('persists system scope without consuming user-facing job ids', async () => 
   })
   await first.wait(user.id)
 
-  assert.equal(user.jobId, 'job_1')
+  assert.equal(user.id, 'task_1')
 
   const restored = new TaskManager({ store })
   assert.equal(restored.list().length, 1)
   assert.equal(restored.list({ scope: TaskScope.SYSTEM }).length, 1)
   assert.equal(
-    restored.list({ scope: TaskScope.SYSTEM })[0].jobId,
-    null,
+    restored.list({ scope: TaskScope.SYSTEM })[0].id.startsWith('system_'),
+    true,
   )
 })

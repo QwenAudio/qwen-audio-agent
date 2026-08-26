@@ -88,7 +88,7 @@
 
   <rect x="245" y="405" width="275" height="124" rx="14" fill="#ede9fe" stroke="#8b5cf6" stroke-width="2"/>
   <text x="382.5" y="437" text-anchor="middle" font-size="16" font-weight="700" fill="#111827">Voice Gateway + TaskManager</text>
-  <text x="382.5" y="461" text-anchor="middle" font-size="12" font-weight="400" fill="#4b5563">Authority for work_id and lifecycle</text>
+  <text x="382.5" y="461" text-anchor="middle" font-size="12" font-weight="400" fill="#4b5563">Authority for task_id and lifecycle</text>
   <text x="382.5" y="481" text-anchor="middle" font-size="12" font-weight="400" fill="#4b5563">queued · running · delegated</text>
   <text x="382.5" y="501" text-anchor="middle" font-size="12" font-weight="400" fill="#4b5563">finalizing · completed · cancelled</text>
 

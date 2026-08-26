@@ -6,8 +6,8 @@ function clean(value) {
   return String(value || '').trim()
 }
 
-function cancellationError(workId) {
-  const error = new Error(`Work ${workId} was cancelled`)
+function cancellationError(taskId) {
+  const error = new Error(`Task ${taskId} was cancelled`)
   error.code = 'WORK_CANCELLED'
   return error
 }
@@ -54,7 +54,7 @@ export class InMemoryBackendAdapter {
   }
 
   async submit(work) {
-    const workId = clean(work?.id)
+    const taskId = clean(work?.id)
     const ownerId = clean(work?.ownerId)
     const input = clean(
       work?.instruction
@@ -62,20 +62,20 @@ export class InMemoryBackendAdapter {
       || work?.originalRequest
       || work?.message,
     )
-    if (!workId || !ownerId || !input) {
-      throw new Error('Backend submit requires work id, owner and input')
+    if (!taskId || !ownerId || !input) {
+      throw new Error('Backend submit requires task id, owner and input')
     }
-    if (this.active.has(workId)) {
-      throw new Error(`Work ${workId} is already active`)
+    if (this.active.has(taskId)) {
+      throw new Error(`Task ${taskId} is already active`)
     }
     await this.start()
     const cancellation = Promise.withResolvers()
     cancellation.promise.catch(() => {})
-    const record = { workId, ownerId, input, cancellation }
-    this.active.set(workId, record)
+    const record = { taskId, ownerId, input, cancellation }
+    this.active.set(taskId, record)
     this.emit({
       type: 'backend.activity',
-      workId,
+      taskId,
       ownerId,
       activity: { kind: 'status', message: 'Example backend started' },
     })
@@ -89,12 +89,12 @@ export class InMemoryBackendAdapter {
         presentation: { speech: content, inline: null },
       }
     } finally {
-      this.active.delete(workId)
+      this.active.delete(taskId)
     }
   }
 
-  status(workId, { ownerId } = {}) {
-    const id = clean(workId)
+  status(taskId, { ownerId } = {}) {
+    const id = clean(taskId)
     if (!id) {
       return {
         ok: this.ready && !this.closed,
@@ -103,23 +103,23 @@ export class InMemoryBackendAdapter {
     }
     const record = this.active.get(id)
     if (!record || (ownerId && clean(ownerId) !== record.ownerId)) {
-      return { workId: id, state: 'not_found' }
+      return { taskId: id, state: 'not_found' }
     }
     return {
-      workId: record.workId,
+      taskId: record.taskId,
       state: 'working',
       activity: [{ kind: 'status', message: 'Example backend started' }],
     }
   }
 
-  async cancel(workId, { ownerId } = {}) {
-    const record = this.active.get(clean(workId))
-    if (!record) return { workId: clean(workId), state: 'not_found' }
+  async cancel(taskId, { ownerId } = {}) {
+    const record = this.active.get(clean(taskId))
+    if (!record) return { taskId: clean(taskId), state: 'not_found' }
     if (ownerId && clean(ownerId) !== record.ownerId) {
       throw new Error('Cannot cancel work owned by another user')
     }
-    record.cancellation.reject(cancellationError(record.workId))
-    return { workId: record.workId, state: 'cancelled' }
+    record.cancellation.reject(cancellationError(record.taskId))
+    return { taskId: record.taskId, state: 'cancelled' }
   }
 
   async respondAuthorization() {
@@ -148,7 +148,7 @@ export class InMemoryBackendAdapter {
     if (this.closed) return
     this.closed = true
     for (const record of this.active.values()) {
-      record.cancellation.reject(cancellationError(record.workId))
+      record.cancellation.reject(cancellationError(record.taskId))
     }
     this.listeners.clear()
   }
@@ -162,10 +162,8 @@ export function createInMemoryBackend(options) {
 
 function work(index) {
   return {
-    id: `work-${index}`,
-    jobId: `job_${index}`,
+    id: `task_${index}`,
     ownerId: 'example-owner',
-    originalRequest: `Example request ${index}`,
     objective: `Example request ${index}`,
   }
 }

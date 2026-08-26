@@ -5,6 +5,7 @@ import {
   COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
   COORDINATOR_STABLE_INSTRUCTIONS,
 } from './acp-coordinator-instructions.mjs'
+import { BackendEventType, backendEvent } from '../core/backend-events.mjs'
 import {
   acpBackendProfile,
   endpointAvailable,
@@ -299,6 +300,7 @@ export class AcpBackendAdapter {
       sessionModel: 'one-persistent-backend-agent',
       capabilities: {
         ...this.profile.capabilities,
+        taskUpdates: 'activity',
       },
     }
   }
@@ -307,20 +309,20 @@ export class AcpBackendAdapter {
     return this.runtimeState.status({ clientReady: this.client.ready })
   }
 
-  status(workId, { ownerId } = {}) {
-    const id = clean(workId)
+  status(taskId, { ownerId } = {}) {
+    const id = clean(taskId)
     if (!id) return this.runtimeStatus()
     const run = this.coordinationRuns.get(id)
     if (!run || (ownerId !== undefined && run.ownerId !== clean(ownerId))) {
-      return { workId: id, state: 'not_found', activity: [] }
+      return { taskId: id, state: 'not_found', activity: [] }
     }
     const delegation = run.delegation
     if (!delegation) {
-      return { workId: id, state: 'working', activity: [] }
+      return { taskId: id, state: 'working', activity: [] }
     }
     const current = this.statusForDelegation({ delegation_id: delegation.id })
     return {
-      workId: id,
+      taskId: id,
       state: current.status === 'running' ? 'working' : current.status,
       activity: current.recent_updates || [],
       ...(current.result ? { result: current.result } : {}),
@@ -423,7 +425,7 @@ export class AcpBackendAdapter {
     return this.sessionExecutor.run(key, operation)
   }
 
-  publishWorkEvent(event, { workId, ownerId, onEvent } = {}) {
+  publishWorkEvent(event, { taskId, ownerId, onEvent } = {}) {
     try {
       onEvent?.(event)
     } catch {
@@ -431,7 +433,7 @@ export class AcpBackendAdapter {
     }
     const published = {
       ...event,
-      workId: clean(workId) || null,
+      taskId: clean(taskId) || null,
       ownerId: clean(ownerId) || null,
     }
     for (const listener of this.workEventListeners) {
@@ -801,7 +803,7 @@ export class AcpBackendAdapter {
     run.receivedUpdate = true
     run.toolCalls ||= new Map()
     const activity = activityFromUpdate(update, run.toolCalls)
-    if (activity) run.onEvent?.({ type: 'backend.activity', activity })
+    if (activity) run.onEvent?.(backendEvent(BackendEventType.ACTIVITY, { activity }))
     if (delegation && this.profile.externalMcp) {
       this.rememberDelegationUpdate(delegation, activity)
     }
@@ -905,8 +907,7 @@ export class AcpBackendAdapter {
       directory,
       title: bounded(title || prompt, 160) || `${this.label} 项目任务`,
       ownerId: run.ownerId,
-      workId: run.coordinationRunId,
-      jobId: run.coordinationRequestId,
+      taskId: run.coordinationRunId,
       status: 'running',
       controller,
       recentUpdates: [],
@@ -1255,8 +1256,7 @@ export class AcpBackendAdapter {
       directory,
       title,
       ownerId: run.ownerId,
-      workId: run.coordinationRunId,
-      jobId: run.coordinationRequestId,
+      taskId: run.coordinationRunId,
       status: 'running',
       controller,
       result: null,
@@ -1354,18 +1354,17 @@ export class AcpBackendAdapter {
   }
 
   async submit(work, { signal, onEvent } = {}) {
-    const workId = clean(work?.id || work?.workId)
+    const taskId = clean(work?.id)
     const ownerId = clean(work?.ownerId)
     const objective = clean(work?.objective ?? work?.message)
-    const jobId = clean(work?.jobId) || workId
-    if (!workId || !ownerId || !objective) {
-      throw new AgentError('BackendPort submit requires work id, owner and input', {
+    if (!taskId || !ownerId || !objective) {
+      throw new AgentError('BackendPort submit requires task id, owner and input', {
         status: 400,
         protocol: this.protocol,
       })
     }
-    if (this.workControllers.has(workId)) {
-      throw new AgentError('BackendPort Work is already active', {
+    if (this.workControllers.has(taskId)) {
+      throw new AgentError('BackendPort Task is already active', {
         status: 409,
         protocol: this.protocol,
       })
@@ -1374,7 +1373,7 @@ export class AcpBackendAdapter {
     const workSignal = signal
       ? AbortSignal.any([signal, controller.signal])
       : controller.signal
-    this.workControllers.set(workId, controller)
+    this.workControllers.set(taskId, controller)
     try {
       const prompt = buildAcpCoordinatorInstruction({
         ...work,
@@ -1383,8 +1382,8 @@ export class AcpBackendAdapter {
       })
       const run = message => this.runCoordinator(message, {
         ownerId,
-        coordinationRunId: workId,
-        coordinationRequestId: jobId,
+        coordinationRunId: taskId,
+        coordinationRequestId: taskId,
         workObjective: objective,
         signal: workSignal,
         onEvent,
@@ -1415,8 +1414,8 @@ export class AcpBackendAdapter {
         presentation,
       }
     } finally {
-      if (this.workControllers.get(workId) === controller) {
-        this.workControllers.delete(workId)
+      if (this.workControllers.get(taskId) === controller) {
+        this.workControllers.delete(taskId)
       }
     }
   }
@@ -1436,7 +1435,7 @@ export class AcpBackendAdapter {
     const runId = clean(coordinationRunId)
     const key = coordinatorKey(ownerId, this.protocol)
     const publish = event => this.publishWorkEvent(event, {
-      workId: runId,
+      taskId: runId,
       ownerId,
       onEvent,
     })
@@ -1454,7 +1453,7 @@ export class AcpBackendAdapter {
       if (!initial.run.delegation) return this.resultEnvelope(initial)
       const delegation = initial.run.delegation
       publish({
-        type: 'backend.delegated',
+        type: BackendEventType.DELEGATED,
         delegation: {
           id: delegation.id,
           sessionId: delegation.sessionId,
@@ -1465,7 +1464,7 @@ export class AcpBackendAdapter {
       })
       const target = await delegation.promise
       publish({
-        type: 'backend.delegation.completed',
+        type: BackendEventType.DELEGATION_COMPLETED,
         delegation: {
           id: target.id,
           sessionId: target.sessionId,
@@ -1512,7 +1511,7 @@ export class AcpBackendAdapter {
     const ownerId = clean(task.ownerId)
     const coordinationRunId = clean(task.id)
     const publish = event => this.publishWorkEvent(event, {
-      workId: coordinationRunId,
+      taskId: coordinationRunId,
       ownerId,
       onEvent,
     })
@@ -1521,7 +1520,7 @@ export class AcpBackendAdapter {
     const run = {
       ownerId,
       coordinationRunId,
-      coordinationRequestId: clean(task.jobId) || coordinationRunId,
+      coordinationRequestId: coordinationRunId,
       onEvent: publish,
       sessionId: session.sessionId,
       nativeToolCalls: new Map(),
@@ -1545,7 +1544,7 @@ export class AcpBackendAdapter {
       )
     }, { once: true })
     publish({
-      type: 'backend.delegated',
+      type: BackendEventType.DELEGATED,
       delegation: {
         id: delegation.id,
         sessionId: delegation.sessionId,
@@ -1557,7 +1556,7 @@ export class AcpBackendAdapter {
     try {
       const target = await delegation.promise
       publish({
-        type: 'backend.delegation.completed',
+        type: BackendEventType.DELEGATION_COMPLETED,
         delegation: {
           id: target.id,
           sessionId: target.sessionId,
@@ -1572,7 +1571,7 @@ export class AcpBackendAdapter {
           {
             ownerId,
             coordinationRunId,
-            coordinationRequestId: clean(task.jobId) || coordinationRunId,
+            coordinationRequestId: coordinationRunId,
             signal,
             onEvent: publish,
           },
@@ -1584,8 +1583,8 @@ export class AcpBackendAdapter {
     }
   }
 
-  async cancelWork(workId, { ownerId } = {}) {
-    const run = this.coordinationRuns.get(clean(workId))
+  async cancelWork(taskId, { ownerId } = {}) {
+    const run = this.coordinationRuns.get(clean(taskId))
     const record = run?.delegation
     if (run && run.ownerId !== clean(ownerId)) {
       throw new AgentError(`没有找到可取消的 ${this.label} 任务`, {
@@ -1603,7 +1602,7 @@ export class AcpBackendAdapter {
         coordinatorKey(ownerId, this.protocol),
         {
           kind: 'coordination_request_terminated',
-          request_id: run.coordinationRequestId || clean(workId),
+          request_id: run.coordinationRequestId || clean(taskId),
           outcome: 'cancelled',
           ...(record
             ? {
@@ -1627,28 +1626,28 @@ export class AcpBackendAdapter {
     }
   }
 
-  async cancel(workId, options = {}) {
-    const id = clean(workId)
+  async cancel(taskId, options = {}) {
+    const id = clean(taskId)
     const controller = this.workControllers.get(id)
     if (!controller && !this.coordinationRuns.has(id)) {
-      return { workId: id, state: 'not_found' }
+      return { taskId: id, state: 'not_found' }
     }
     await this.cancelWork(id, options)
     controller?.abort(new AgentError('用户已取消这项工作', {
       status: 499,
       protocol: this.protocol,
     }))
-    return { workId: id, state: 'cancelled' }
+    return { taskId: id, state: 'cancelled' }
   }
 
   async respondAuthorization(
-    workId,
+    taskId,
     authorizationId,
     decision,
     { ownerId } = {},
   ) {
     const pending = this.pendingPermissions.get(clean(authorizationId))
-    if (pending && clean(workId) && pending.workId !== clean(workId)) {
+    if (pending && clean(taskId) && pending.taskId !== clean(taskId)) {
       throw new AgentError('权限请求不属于这项工作', {
         status: 404,
         protocol: this.protocol,
@@ -1657,8 +1656,8 @@ export class AcpBackendAdapter {
     return this.resolveAuthorization(authorizationId, decision, { ownerId })
   }
 
-  async queryDelegatedWork(workId, _question, { ownerId } = {}) {
-    const run = this.coordinationRuns.get(clean(workId))
+  async queryDelegatedWork(taskId, _question, { ownerId } = {}) {
+    const run = this.coordinationRuns.get(clean(taskId))
     const record = run?.delegation
     if (!record || record.ownerId !== clean(ownerId)) {
       throw new AgentError(`没有找到对应的 ${this.label} 项目任务`, {
@@ -1682,7 +1681,7 @@ export class AcpBackendAdapter {
             : '这项工作仍在执行中，当前没有新的详细进展。'
     return {
       content: JSON.stringify({
-        job_id: clean(record.jobId) || clean(workId),
+        task_id: clean(record.taskId) || clean(taskId),
         state: 'completed',
         mode: 'respond',
         presentation: { speech, inline: null },

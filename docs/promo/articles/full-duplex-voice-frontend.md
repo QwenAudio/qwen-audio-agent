@@ -53,7 +53,7 @@ qwen-audio-agent 把系统切成两层：
 ```js
 // 两种决策：respond（前台直接回答）/ delegate（委派后台）
 {
-  work_id: '…',
+  task_id: '…',
   state: 'delegated',
   mode: 'delegate',
   delegation_id: '…',

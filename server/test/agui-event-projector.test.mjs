@@ -13,9 +13,7 @@ import {
 
 function task(overrides = {}) {
   return {
-    id: 'work_1',
-    workId: 'work_1',
-    jobId: 'job_1',
+    id: 'task_1',
     workState: 'working',
     status: 'running',
     kind: 'work',
@@ -31,7 +29,7 @@ function task(overrides = {}) {
 function authorization() {
   return {
     id: 'permission_1',
-    workId: 'work_1',
+    taskId: 'task_1',
     status: 'pending',
     category: 'shell',
     summary: 'run command',
@@ -49,11 +47,11 @@ test('projects every public Task event into one AG-UI activity snapshot', () => 
     })
 
     assert.equal(projected.type, AguiEventType.ACTIVITY_SNAPSHOT)
-    assert.equal(projected.messageId, `${AGUI_TASK_ACTIVITY_TYPE}:work_1`)
+    assert.equal(projected.messageId, `${AGUI_TASK_ACTIVITY_TYPE}:task_1`)
     assert.equal(projected.activityType, AGUI_TASK_ACTIVITY_TYPE)
     assert.equal(projected.replace, true)
     assert.equal(projected.content.eventType, eventType)
-    assert.equal(projected.content.task.id, 'work_1')
+    assert.equal(projected.content.task.id, 'task_1')
     assert.deepEqual(parseAguiGatewayEvent(projected), projected)
   }
 })

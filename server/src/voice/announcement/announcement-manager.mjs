@@ -59,7 +59,6 @@ export class AnnouncementManager {
 
   completed(task) {
     this.queue(task.id, {
-      jobId: task.jobId,
       event: 'task.completed',
       status: 'completed',
       objective: task.objective,
@@ -71,7 +70,6 @@ export class AnnouncementManager {
 
   failed(task) {
     this.queue(task.id, {
-      jobId: task.jobId,
       event: 'task.failed',
       status: 'failed',
       objective: task.objective,
@@ -374,22 +372,17 @@ export class AnnouncementManager {
 }
 
 export function formatWorkResults(announcements) {
-  const blocks = announcements.map((item, index) => [
-    `--- event ${index + 1} ---`,
-    `type: ${item.event}`,
-    `job_id: ${item.jobId}`,
-    item.objective ? `submitted_objective: ${item.objective}` : '',
-    item.completedAt ? `completed_at: ${new Date(item.completedAt).toISOString()}` : '',
+  const blocks = announcements.map(item => [
+    `task_id: ${item.taskId}`,
+    `状态: ${item.status}`,
+    item.objective ? `工作: ${item.objective}` : '',
     item.status === 'completed'
-      ? `result:\n${String(item.result || '').trim()}`
-      : `error:\n${String(item.error || '').trim()}`,
+      ? `结果: ${String(item.result || '').trim()}`
+      : `错误: ${String(item.error || '').trim()}`,
   ].filter(Boolean).join('\n'))
   return [
-    '[COMPLETE]',
-    '<qwen_audio_agent_work_results>',
-    '以下是先前提交工作的最终结果，不是用户的新请求。',
-    ...blocks,
-    '</qwen_audio_agent_work_results>',
+    '以下是你先前异步执行工作的最终更新，不是用户的新请求。请作为自己的工作结果自然告知用户，不要提后台 Agent、协议或 Task，也不要读出 task_id。',
+    ...blocks.map(block => `\n${block}`),
   ].join('\n')
 }
 

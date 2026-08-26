@@ -13,9 +13,7 @@ import {
 
 function task(overrides = {}) {
   return {
-    id: 'work_1',
-    workId: 'work_1',
-    jobId: 'job_1',
+    id: 'task_1',
     workState: 'working',
     status: 'running',
     kind: 'work',
@@ -65,7 +63,7 @@ test('validates voice and task messages in the server direction', () => {
   assert.equal(
     GatewayServerMessageSchema.safeParse({
       type: 'task.accepted',
-      task: { id: 'work_1' },
+      task: { id: 'task_1' },
     }).success,
     false,
   )
@@ -113,7 +111,7 @@ test('preserves protocol-neutral backend observations and safe permission detail
       }],
       authorization: {
         id: 'auth_1',
-        workId: 'work_1',
+        taskId: 'task_1',
         status: 'pending',
         category: 'execute',
         summary: '检查内存：sysctl -n hw.memsize',

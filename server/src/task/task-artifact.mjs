@@ -134,6 +134,17 @@ export function normalizeArtifacts(artifacts) {
   })
 }
 
+export function mergeArtifacts(current, incoming) {
+  const byId = new Map()
+  for (const artifact of normalizeArtifacts(current)) {
+    byId.set(artifact.artifactId, artifact)
+  }
+  for (const artifact of normalizeArtifacts(incoming)) {
+    byId.set(artifact.artifactId, artifact)
+  }
+  return normalizeArtifacts([...byId.values()])
+}
+
 export function artifactFromInlinePresentation(presentation) {
   const inline = presentation?.inline
   const content = clean(inline?.content, MAX_TEXT_CHARS)

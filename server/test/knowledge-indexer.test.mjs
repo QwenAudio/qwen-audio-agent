@@ -43,7 +43,7 @@ test('indexes documents through the invisible system-job pool', async () => {
 
   assert.equal(job.scope, TaskScope.SYSTEM)
   assert.equal(job.kind, 'knowledge_index')
-  assert.equal(job.jobId, null)
+  assert.equal('taskId' in job, false)
   assert.equal(completed.status, 'completed')
   assert.equal(completed.notificationStatus, 'none')
   assert.equal(userEvents.length, 0)

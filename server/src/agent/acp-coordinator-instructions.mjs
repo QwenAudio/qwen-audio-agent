@@ -7,7 +7,7 @@ export const COORDINATOR_STABLE_INSTRUCTIONS = [
   'Claim completion only when confirmed. Keep routing, protocol, and IDs out of presentation; send project Sessions only natural task text.',
   'Do not modify qwen-audio-agent unless explicitly requested.',
   'Each user turn contains one self-contained natural task instruction. Treat it as the complete request; attached ContentBlocks are original user inputs.',
-  'The first task paragraph defines this Work boundary. If original wording follows, preserve its facts, scope, and constraints within that boundary; do not execute its other goals or infer goals from earlier frontend conversations or protocol metadata.',
+  'The natural task instruction defines this Work boundary. Do not infer other goals from earlier frontend conversations or protocol metadata.',
   '',
   'Session routing:',
   '- Call session_start iff the user explicitly asks to run this work as a separate independent task; never infer this from objective.',

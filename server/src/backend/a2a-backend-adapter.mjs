@@ -12,6 +12,7 @@ import {
 import { parseDataUrl } from '../../../shared/input-parts.mjs'
 import { defineBackendAdapter } from './backend-adapter-sdk.mjs'
 import { backendInstructionFromWork } from './backend-work-input.mjs'
+import { BackendEventType, backendEvent } from '../core/backend-events.mjs'
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000
 const DEFAULT_TIMEOUT_MS = 300_000
@@ -51,8 +52,8 @@ function positiveNumber(value, fallback, minimum) {
   return Number.isFinite(number) && number >= minimum ? number : fallback
 }
 
-function cancellationError(workId, cause) {
-  const error = new A2ABackendError(`Work ${workId} was cancelled`, {
+function cancellationError(taskId, cause) {
+  const error = new A2ABackendError(`Task ${taskId} was cancelled`, {
     code: 'WORK_CANCELLED',
     cause,
   })
@@ -312,13 +313,40 @@ function messageLike(value) {
   return Boolean(value && typeof value === 'object' && Array.isArray(value.parts))
 }
 
+function streamValue(value) {
+  const payload = value?.payload
+  return payload && typeof payload === 'object' && payload.value
+    ? payload.value
+    : value
+}
+
+function statusUpdateLike(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && (
+      value.kind === 'status-update'
+      || value.sessionUpdate === 'statusUpdate'
+      || (value.status && clean(value.taskId) && !Array.isArray(value.artifacts))
+    ),
+  )
+}
+
+function artifactUpdateLike(value) {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && value.artifact
+    && (value.kind === 'artifact-update' || clean(value.taskId)),
+  )
+}
+
 function outgoingText(work) {
   const objective = backendInstructionFromWork(work)
-  const original = clean(work?.originalRequest)
   const supplied = (Array.isArray(work?.inputParts) ? work.inputParts : [])
     .filter(part => part?.type === 'text')
     .map(part => clean(part.text))
-    .filter(text => text && text !== objective && text !== original)
+    .filter(text => text && text !== objective)
   return uniqueLines([objective, ...supplied]).join('\n\n')
 }
 
@@ -463,6 +491,7 @@ export class A2ABackendAdapter {
       capabilities: {
         cancel: true,
         authorization: false,
+        taskUpdates: 'native',
         discovery: true,
         streaming: card?.capabilities?.streaming === true,
         inputModes: Array.isArray(card?.defaultInputModes)
@@ -541,7 +570,7 @@ export class A2ABackendAdapter {
     }
     const published = {
       ...event,
-      workId: record?.workId || null,
+      taskId: record?.gatewayTaskId || null,
       ownerId: record?.ownerId || null,
     }
     for (const listener of this.listeners) {
@@ -555,22 +584,33 @@ export class A2ABackendAdapter {
 
   update(record, task) {
     record.task = task
-    record.taskId = clean(task?.id) || record.taskId
+    record.remoteTaskId = clean(task?.id) || record.remoteTaskId
     const state = publicState(taskState(task))
     const message = bounded(messageText(task?.status?.message), 1_000)
     const digest = `${state}\u0000${message}`
-    if (digest === record.lastDigest) return
-    record.lastDigest = digest
-    record.activity = [{
-      id: 'a2a-status',
-      kind: 'status',
-      status: state,
-      message: message || `A2A task is ${state}`,
-    }]
-    this.publish({
-      type: 'backend.activity',
-      activity: record.activity[0],
-    }, record)
+    if (digest !== record.lastDigest) {
+      record.lastDigest = digest
+      record.activity = [{
+        id: 'a2a-status',
+        kind: 'status',
+        status: state,
+        message: message || `A2A task is ${state}`,
+      }]
+      this.publish(backendEvent(BackendEventType.ACTIVITY, {
+        activity: record.activity[0],
+      }), record)
+      if (message) {
+        this.publish(backendEvent(BackendEventType.MESSAGE, { message }), record)
+      }
+    }
+    for (const artifact of taskArtifacts(task)) {
+      const artifactDigest = JSON.stringify(artifact)
+      if (record.artifactDigests.get(artifact.artifactId) === artifactDigest) {
+        continue
+      }
+      record.artifactDigests.set(artifact.artifactId, artifactDigest)
+      this.publish(backendEvent(BackendEventType.ARTIFACT, { artifact }), record)
+    }
   }
 
   outcomeFromMessage(message) {
@@ -612,9 +652,9 @@ export class A2ABackendAdapter {
   }
 
   async bestEffortCancel(record) {
-    if (!record?.taskId || !record.client?.cancelTask) return
+    if (!record?.remoteTaskId || !record.client?.cancelTask) return
     try {
-      await record.client.cancelTask({ id: record.taskId }, {
+      await record.client.cancelTask({ id: record.remoteTaskId }, {
         signal: AbortSignal.timeout(Math.min(this.timeoutMs, 10_000)),
       })
     } catch {
@@ -632,7 +672,7 @@ export class A2ABackendAdapter {
       }
       await wait(this.pollIntervalMs, signal)
       task = await record.client.getTask({
-        id: record.taskId,
+        id: record.remoteTaskId,
         historyLength: 20,
       }, { signal })
       this.update(record, task)
@@ -643,18 +683,103 @@ export class A2ABackendAdapter {
     return this.outcomeFromTask(task)
   }
 
+  async consumeStream(record, stream, signal) {
+    let task = null
+    let message = null
+    for await (const rawEvent of stream) {
+      if (signal?.aborted) throw signal.reason
+      const event = streamValue(rawEvent)
+      if (taskLike(event)) {
+        task = event
+        this.update(record, task)
+        continue
+      }
+      if (messageLike(event)) {
+        message = event
+        const text = bounded(messageText(event), 1_000)
+        if (text) {
+          this.publish(backendEvent(BackendEventType.MESSAGE, {
+            message: text,
+          }), record)
+        }
+        continue
+      }
+      if (statusUpdateLike(event)) {
+        task = {
+          ...(task || record.task || {}),
+          id: clean(event.taskId) || record.remoteTaskId,
+          status: event.status,
+        }
+        this.update(record, task)
+        continue
+      }
+      if (artifactUpdateLike(event)) {
+        const artifact = projectArtifact(event.artifact, 0)
+        if (!artifact) continue
+        task ||= record.task || {
+          id: clean(event.taskId) || record.remoteTaskId,
+          status: { state: TaskState.TASK_STATE_WORKING },
+          artifacts: [],
+        }
+        const previous = Array.isArray(task.artifacts) ? task.artifacts : []
+        const sourceId = clean(event.artifact?.artifactId)
+        const existing = previous.find(
+          item => clean(item?.artifactId) === sourceId,
+        )
+        const nextArtifact = event.append && existing
+          ? {
+              ...existing,
+              ...event.artifact,
+              parts: [
+                ...(Array.isArray(existing.parts) ? existing.parts : []),
+                ...(Array.isArray(event.artifact.parts)
+                  ? event.artifact.parts
+                  : []),
+              ],
+            }
+          : event.artifact
+        task.artifacts = [
+          ...previous.filter(item => clean(item?.artifactId) !== sourceId),
+          nextArtifact,
+        ]
+        const projected = projectArtifact(nextArtifact, 0)
+        if (!projected) continue
+        const digest = JSON.stringify(projected)
+        if (record.artifactDigests.get(projected.artifactId) !== digest) {
+          record.artifactDigests.set(projected.artifactId, digest)
+          this.publish(backendEvent(BackendEventType.ARTIFACT, {
+            artifact: projected,
+          }), record)
+        }
+      }
+    }
+    if (task) {
+      if (!TERMINAL_STATES.has(taskState(task))) {
+        return this.awaitTask(record, task, signal)
+      }
+      if (taskState(task) !== TaskState.TASK_STATE_COMPLETED) {
+        throw this.taskError(task)
+      }
+      return this.outcomeFromTask(task)
+    }
+    if (message) return this.outcomeFromMessage(message)
+    throw new A2ABackendError('A2A agent returned an empty stream', {
+      code: 'A2A_INVALID_RESPONSE',
+    })
+  }
+
   async submit(work, { signal, onEvent } = {}) {
-    const workId = clean(work?.id || work?.workId)
+    const taskId = clean(work?.id)
     const ownerId = clean(work?.ownerId)
     const input = outgoingText(work)
-    if (!workId || !ownerId || !input) {
+    if (!taskId || !ownerId || !input) {
       throw new A2ABackendError(
-        'Backend submit requires work id, owner and input',
+        'Backend submit requires task id, owner and input',
         { code: 'INVALID_WORK' },
       )
     }
-    if (this.active.has(workId)) {
-      throw new A2ABackendError(`Work ${workId} is already active`, {
+    if (this.active.has(taskId)) {
+      throw new A2ABackendError(`Task ${taskId} is already active`, {
         code: 'WORK_ALREADY_ACTIVE',
       })
     }
@@ -665,19 +790,20 @@ export class A2ABackendAdapter {
       ? AbortSignal.any([signal, controller.signal, timeout])
       : AbortSignal.any([controller.signal, timeout])
     const record = {
-      workId,
+      gatewayTaskId: taskId,
       ownerId,
       client: this.client,
       controller,
       onEvent,
-      taskId: '',
+      remoteTaskId: '',
       task: null,
       activity: [],
       lastDigest: '',
+      artifactDigests: new Map(),
     }
-    this.active.set(workId, record)
+    this.active.set(taskId, record)
     try {
-      const result = await record.client.sendMessage({
+      const request = {
         message: outgoingMessage(work),
         configuration: {
           acceptedOutputModes: this.acceptedOutputModes,
@@ -685,9 +811,24 @@ export class A2ABackendAdapter {
           returnImmediately: true,
         },
         metadata: undefined,
-      }, { signal: workSignal })
+      }
+      if (
+        this.agentCard?.capabilities?.streaming === true
+        && typeof record.client.sendMessageStream === 'function'
+      ) {
+        request.configuration.returnImmediately = false
+        return await this.consumeStream(
+          record,
+          record.client.sendMessageStream(request, { signal: workSignal }),
+          workSignal,
+        )
+      }
+      const result = await record.client.sendMessage(
+        request,
+        { signal: workSignal },
+      )
       if (taskLike(result)) {
-        record.taskId = clean(result.id)
+        record.remoteTaskId = clean(result.id)
         return await this.awaitTask(record, result, workSignal)
       }
       if (messageLike(result)) return this.outcomeFromMessage(result)
@@ -696,7 +837,7 @@ export class A2ABackendAdapter {
       })
     } catch (error) {
       if (controller.signal.aborted || signal?.aborted) {
-        throw cancellationError(workId, error)
+        throw cancellationError(taskId, error)
       }
       if (timeout.aborted) {
         await this.bestEffortCancel(record)
@@ -707,12 +848,12 @@ export class A2ABackendAdapter {
       }
       throw error
     } finally {
-      if (this.active.get(workId) === record) this.active.delete(workId)
+      if (this.active.get(taskId) === record) this.active.delete(taskId)
     }
   }
 
-  status(workId, { ownerId } = {}) {
-    const id = clean(workId)
+  status(taskId, { ownerId } = {}) {
+    const id = clean(taskId)
     if (!id) {
       return {
         ok: this.ready && !this.closed,
@@ -722,27 +863,27 @@ export class A2ABackendAdapter {
     }
     const record = this.active.get(id)
     if (!record || (ownerId && clean(ownerId) !== record.ownerId)) {
-      return { workId: id, state: 'not_found', activity: [] }
+      return { taskId: id, state: 'not_found', activity: [] }
     }
     return {
-      workId: id,
+      taskId: id,
       state: record.task ? publicState(taskState(record.task)) : 'working',
       activity: [...record.activity],
     }
   }
 
-  async cancel(workId, { ownerId } = {}) {
-    const id = clean(workId)
+  async cancel(taskId, { ownerId } = {}) {
+    const id = clean(taskId)
     const record = this.active.get(id)
-    if (!record) return { workId: id, state: 'not_found' }
+    if (!record) return { taskId: id, state: 'not_found' }
     if (ownerId && clean(ownerId) !== record.ownerId) {
-      throw new A2ABackendError('Cannot cancel work owned by another user', {
+      throw new A2ABackendError('Cannot cancel task owned by another user', {
         code: 'WORK_NOT_FOUND',
       })
     }
     let state = 'cancelled'
-    if (record.taskId) {
-      const task = await record.client.cancelTask({ id: record.taskId }, {
+    if (record.remoteTaskId) {
+      const task = await record.client.cancelTask({ id: record.remoteTaskId }, {
         signal: AbortSignal.timeout(Math.min(this.timeoutMs, 10_000)),
       })
       if (taskLike(task)) {
@@ -753,7 +894,7 @@ export class A2ABackendAdapter {
     if (state === 'cancelled') {
       record.controller.abort(cancellationError(id))
     }
-    return { workId: id, state }
+    return { taskId: id, state }
   }
 
   async respondAuthorization() {
@@ -777,7 +918,7 @@ export class A2ABackendAdapter {
     const active = [...this.active.values()]
     await Promise.allSettled(active.map(record => this.bestEffortCancel(record)))
     for (const record of active) {
-      record.controller.abort(cancellationError(record.workId))
+      record.controller.abort(cancellationError(record.gatewayTaskId))
     }
     this.active.clear()
     this.listeners.clear()

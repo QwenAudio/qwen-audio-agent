@@ -70,7 +70,7 @@ export const GatewayCitationSchema = z.object({
 
 export const GatewayAuthorizationSchema = z.object({
   id: z.string().min(1),
-  workId: z.string().nullable(),
+  taskId: z.string().nullable(),
   status: z.enum(['pending', 'approved', 'denied', 'cancelled']),
   category: z.string().min(1),
   summary: z.string().min(1),
@@ -112,8 +112,6 @@ export const GatewayActivitySchema = z.object({
 
 export const GatewayTaskSchema = z.object({
   id: z.string().min(1),
-  workId: z.string().min(1),
-  jobId: z.string().min(1),
   workState: z.enum([
     'submitted',
     'working',
@@ -124,7 +122,7 @@ export const GatewayTaskSchema = z.object({
   ]),
   status: z.string().min(1),
   kind: z.string().min(1),
-  parentWorkId: z.string().nullable().optional(),
+  parentTaskId: z.string().nullable().optional(),
   objective: z.string(),
   ownerId: z.string().optional(),
   sessionId: z.string().optional(),
@@ -135,6 +133,7 @@ export const GatewayTaskSchema = z.object({
   elapsedMs: z.number(),
   result: z.string().nullable().optional(),
   error: z.string().nullable().optional(),
+  message: z.string().nullable().optional(),
   artifacts: z.array(GatewayArtifactSchema).optional(),
   presentation: GatewayPresentationSchema.nullable().optional(),
   activity: z.array(GatewayActivitySchema).optional(),

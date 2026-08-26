@@ -289,6 +289,102 @@ header {
 header button { padding: 9px 13px; border-radius: 10px; color: #ddd; border: 1px solid #ffffff18; background: #ffffff08; }
 header .voice.active { color: white; border-color: #785cf4; background: #785cf4; }
 header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
+header .ghost.active { color: white; border-color: #785cf480; background: #785cf42e; }
+
+/* 资料库面板：夹在 header 与主对话区之间，可折叠，不抢对话的位置 */
+.domain-panel {
+  flex: 0 0 auto;
+  max-height: 44dvh;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  overflow-y: auto;
+  border: 1px solid #ffffff16;
+  border-radius: 16px;
+  background: rgba(18, 21, 27, 0.86);
+}
+
+.domain-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  margin-bottom: 10px;
+  border: 0;
+  background: none;
+}
+
+.domain-panel > header button {
+  padding: 2px 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.domain-panel form { display: flex; gap: 8px; }
+
+.domain-panel input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  color: #f5f5f7;
+  border: 1px solid #ffffff1e;
+  border-radius: 10px;
+  background: #ffffff08;
+  font: inherit;
+  font-size: 13px;
+}
+
+.domain-panel form button {
+  padding: 8px 12px;
+  color: #ddd;
+  border: 1px solid #ffffff18;
+  border-radius: 10px;
+  background: #ffffff08;
+  white-space: nowrap;
+}
+
+.domain-panel form button:disabled { opacity: 0.45; }
+
+.domain-hint, .domain-error, .domain-notice {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8f939c;
+}
+
+.domain-error { color: #f0928c; }
+.domain-notice { color: #8de5c6; }
+
+.domain-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 10px;
+  padding: 10px 76px 10px 12px;
+  border: 1px solid #ffffff12;
+  border-radius: 12px;
+  background: #ffffff06;
+}
+
+.domain-item.pending { opacity: 0.7; }
+.domain-item b { font-size: 13px; }
+.domain-item small { font-size: 12px; color: #9a9ea7; }
+.domain-item .domain-sections { color: #7f8894; }
+.domain-item .domain-meta { color: #6d727c; font-size: 11px; }
+
+.domain-item > button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #ddd;
+  border: 1px solid #ffffff18;
+  border-radius: 9px;
+  background: #ffffff08;
+}
+
+.domain-item > button:disabled { opacity: 0.45; }
 
 .workspace {
   width: min(760px, calc(100% - 32px));

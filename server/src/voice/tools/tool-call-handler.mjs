@@ -14,6 +14,8 @@ import {
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
   frontendToolRegistry,
+  RECALL_TOOL_NAME,
+  FRONTEND_RECALL_CAPABILITY,
 } from '../frontend-tools.mjs'
 import {
   findFrontendSourceTool,
@@ -24,6 +26,7 @@ import {
   FrontendToolLoop,
 } from './frontend-tool-loop.mjs'
 import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
+import { describeWhen } from '../../conversation/session-digest.mjs'
 import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { BackendEventType } from '../../core/backend-events.mjs'
@@ -124,6 +127,8 @@ export class ToolCallHandler {
     frontendKnowledge = null,
     frontendToolSources = [],
     turnCitations = null,
+    sessionDigests = null,
+    domainLibrary = null,
   }) {
     this.taskManager = taskManager
     this.ownerId = ownerId
@@ -182,7 +187,12 @@ export class ToolCallHandler {
       [WEB_SEARCH_TOOL_NAME]: context => this.webSearch(context),
       [FETCH_URL_TOOL_NAME]: context => this.fetchUrl(context),
       [KNOWLEDGE_TOOL_NAME]: context => this.knowledge(context),
+      [RECALL_TOOL_NAME]: ({ callId, turnId, args }) => (
+        this.recall(callId, turnId, args)
+      ),
     })
+    this.sessionDigests = sessionDigests
+    this.domainLibrary = domainLibrary
     this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
     this.spawnResponseByTurn = new Map()
@@ -1038,6 +1048,11 @@ export class ToolCallHandler {
             ...(this.frontendRetrieval?.capabilities?.() || []),
             ...(this.frontendKnowledge?.capabilities?.() || []),
             ...frontendSourceToolCapabilities(this.frontendToolSources),
+            // 与 realtime-gateway 的 getAgentContext 同一个判据：两处必须一致，
+            // 否则会出现「模型看得到工具但调用被策略拒掉」这种自相矛盾的状态。
+            ...(this.sessionDigests || this.domainLibrary
+              ? [FRONTEND_RECALL_CAPABILITY]
+              : []),
           ])],
         },
       })
@@ -1436,9 +1451,10 @@ export class ToolCallHandler {
 
   async getAgentTaskStatus(callId, turnId, args) {
     if (args.list_all === true) {
+      // 不限定 sessionId：用户问「上周让你整理的那个报告呢」时已是新会话，
+      // 限定当前会话会让历史工作永远查不到。
       const tasks = this.taskManager.list({
         ownerId: this.ownerId,
-        sessionId: this.sessionId,
       }).slice(0, 20).map(task => ({
         task_id: task.id,
         status: task.status,
@@ -1474,7 +1490,7 @@ export class ToolCallHandler {
     if (!task) {
       await this.sendOutput(callId, {
         status: 'not_found',
-        message: '当前语音会话中还没有可查询的后台工作。',
+        message: '还没有可查询的后台工作。',
       }, turnId)
       return
     }
@@ -1662,5 +1678,112 @@ export class ToolCallHandler {
       }
     }
     await this.sendOutput(callId, output, turnId)
+  }
+
+  // 回忆此前发生过什么：聊过的话题、派过的活、手上有哪些资料。
+  // 三个来源合在一个工具里，因为用户是想到哪问到哪的 —— 他不区分这些，模型也
+  // 不该被迫在几个工具之间猜。只到「知道有什么」这一层，要细节由模型改走
+  // spawn_thinking（带上资料路径交后端）或 get_agent_task_status（要结果全文）。
+  async recall(callId, turnId, args) {
+    const query = String(args.query || '').trim()
+    const limit = Number(args.limit)
+    if (!this.sessionDigests && !this.domainLibrary) {
+      await this.sendOutput(
+        callId,
+        failure('recall_unavailable', '回顾以前记录的功能当前不可用。'),
+        turnId,
+      )
+      return
+    }
+
+    let sessions = []
+    let documents = []
+    let degraded = false
+    try {
+      sessions = this.recalledSessions(query, limit)
+    } catch {
+      degraded = true
+    }
+    try {
+      documents = this.recalledDocuments(query, limit)
+    } catch {
+      degraded = true
+    }
+
+    let output
+    if (sessions.length || documents.length) {
+      output = {
+        status: 'found',
+        ...(sessions.length ? { sessions } : {}),
+        ...(documents.length ? { documents } : {}),
+      }
+    } else if (degraded) {
+      // 两边都读不到才算失败；一边挂了另一边有结果时照常给结果。
+      output = failure(
+        'recall_failed',
+        '暂时读不到以前的记录，请稍后再试。',
+        { retryable: true },
+      )
+    } else if (query && this.recallHasAnything()) {
+      output = { status: 'not_found', message: `没有找到和“${query}”有关的记录。` }
+    } else {
+      output = { status: 'empty', message: '还没有攒下以前的记录。' }
+    }
+    await this.sendOutput(callId, output, turnId)
+  }
+
+  recalledSessions(query, limit) {
+    if (!this.sessionDigests) return []
+    const timeZone = this.getClientContext()?.timeZone
+    const now = Date.now()
+    return this.sessionDigests
+      .search({ ownerId: this.ownerId, keyword: query, limit })
+      .map(digest => {
+        const work = this.describeRecalledWork(digest.work)
+        // 用条件展开而不是赋 undefined：后者仍会留下一个键，既让返回值多出
+        // 噪声，也会让「不泄漏内部字段」这类白名单断言失去意义。
+        return {
+          ...describeWhen(digest.at, { now, timeZone }),
+          topics: digest.topics,
+          gist: digest.gist,
+          ...(digest.turns ? { turns: digest.turns } : {}),
+          ...(work.length ? { work } : {}),
+        }
+      })
+  }
+
+  // 资料条目一定要给 path —— 那就是交给后端 Agent 的地址，模型要把它写进
+  // spawn_thinking 的 objective 里。sections 是原文章节标题，用来把 objective
+  // 说准（「去查《X》的『年费规则』一节」），不是让模型自己回答内容。
+  recalledDocuments(query, limit) {
+    if (!this.domainLibrary) return []
+    return this.domainLibrary
+      .search({ ownerId: this.ownerId, keyword: query, limit })
+      .map(entry => ({
+        title: entry.title,
+        ...(entry.gist ? { gist: entry.gist } : {}),
+        ...(entry.sections.length ? { sections: entry.sections } : {}),
+        path: entry.path,
+      }))
+  }
+
+  recallHasAnything() {
+    const digests = this.sessionDigests?.count(this.ownerId) || 0
+    const documents = this.domainLibrary?.list(this.ownerId).length || 0
+    return digests + documents > 0
+  }
+
+  // 摘要里只冻结了「派过什么活」，状态一律在这里从任务台账实时读 ——
+  // 存进摘要就会冻结，过几天那个值就是错的。台账终态只留 30 天，更早的活
+  // 查不到台账记录，此时不给 status，只报「派过」，这是刻意的降级。
+  describeRecalledWork(work = []) {
+    return work.map(item => {
+      const task = item.id
+        ? this.taskManager.get(item.id, { ownerId: this.ownerId })
+        : null
+      return task
+        ? { objective: item.objective, status: task.status }
+        : { objective: item.objective, status: 'unknown' }
+    })
   }
 }

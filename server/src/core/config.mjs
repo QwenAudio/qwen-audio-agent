@@ -507,6 +507,55 @@ export const config = {
     runtimeEnvironment.configDirectory,
     'memory-audit.jsonl',
   ),
+  // 偏好自更新：从对话里观察反复出现的表达偏好，攒够跨会话确认后写入 USER.md
+  // 的观察推断段。默认关闭 —— 它会自动改写用户档案，先让愿意尝试的用户显式开启。
+  // 复用 memoryModel / memoryBaseUrl / memoryApiKey，不额外要一套凭据。
+  preferenceLearningEnabled: String(
+    process.env.QWEN_AUDIO_PREFERENCE_LEARNING || 'off',
+  ).toLowerCase() === 'on',
+  preferenceCandidatePath: resolve(
+    runtimeEnvironment.configDirectory,
+    'preference-candidates.json',
+  ),
+  // 会话摘要：每场会话结束时记一条「聊了哪些话题 + 一句要点」，供用户日后问
+  // 「前几天我们聊的那个」时用 recall 工具查。默认关闭 —— 它留存的是
+  // 对话内容的概括，属于需要用户显式同意的一档。只存话题与一句要点，不存转写。
+  sessionDigestEnabled: String(
+    process.env.QWEN_AUDIO_SESSION_DIGEST || 'off',
+  ).toLowerCase() === 'on',
+  sessionDigestPath: resolve(
+    runtimeEnvironment.configDirectory,
+    'session-digests.json',
+  ),
+  // 领域资料库：用户导入的手册 / 规章 / 教材。资料本体落在后端共享 workspace 下，
+  // 后端拿到路径就能自己 grep / read —— 前端只维护一份带摘要的清单。
+  // 默认关闭：它会把用户的文件复制到另一个位置，需要用户显式同意。
+  domainLibraryEnabled: String(
+    process.env.QWEN_AUDIO_DOMAIN_LIBRARY || 'off',
+  ).toLowerCase() === 'on',
+  domainDocumentDirectory: resolve(
+    defaultBackendWorkspace(runtimeEnvironment.configDirectory),
+    'domain',
+  ),
+  domainIndexPath: resolve(
+    runtimeEnvironment.configDirectory,
+    'domain-index.json',
+  ),
+  // 会话内滚动摘要：后台增量维护本场摘要，压缩触发时零等待取用。
+  // 默认关闭，同样因为它会额外消耗模型调用。
+  rollingSummaryEnabled: String(
+    process.env.QWEN_AUDIO_ROLLING_SUMMARY || 'off',
+  ).toLowerCase() === 'on',
+  rollingSummaryFirstTriggerTokens: numberSetting(
+    process.env.QWEN_AUDIO_ROLLING_SUMMARY_FIRST_TOKENS,
+    10_000,
+    { min: 500 },
+  ),
+  rollingSummaryStepTriggerTokens: numberSetting(
+    process.env.QWEN_AUDIO_ROLLING_SUMMARY_STEP_TOKENS,
+    5_000,
+    { min: 500 },
+  ),
   reminderSchedulerEnabled: String(
     process.env.QWEN_AUDIO_AGENT_REMINDER_SCHEDULER || 'true'
   ).toLowerCase() === 'true',

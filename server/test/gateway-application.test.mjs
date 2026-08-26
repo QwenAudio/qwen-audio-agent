@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import WebSocket from 'ws'
 import { createGatewayApplication } from '../src/app/gateway-application.mjs'
@@ -382,4 +385,174 @@ test('can disable memory without constructing the default provider', async () =>
   assert.equal(application.services.frontendMemory, null)
   assert.equal(application.services.frontendMemoryService, null)
   await application.close()
+})
+
+// 接线契约：新增的记忆模块默认关闭，显式开启时才装配。
+// config 是模块级单例（import 时已读完 env），所以这里注入伪 config
+// 而不是改 process.env —— 后者在同一进程内无效。
+test('leaves the new memory modules unwired unless explicitly enabled', async () => {
+  const app = createGatewayApplication({
+    config: { ...config, reminderSchedulerEnabled: false },
+    autoStart: false,
+  })
+  try {
+    assert.equal(app.services.rollingSummary, null)
+    assert.equal(app.services.preferenceCandidates, null)
+    assert.equal(app.services.preferencePromoter, null)
+    assert.equal(app.services.sessionDigests, null)
+    assert.equal(app.services.sessionSummariser, null)
+    assert.equal(app.services.domainLibrary, null)
+    assert.equal(app.services.domainSummariser, null)
+  } finally {
+    await app.close()
+  }
+})
+
+// 资料库是独立开关，而且资料本体必须落在后端读得到的目录里。
+test('wires the domain library on its own switch and imports a local file', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-domain-wire-'))
+  const source = join(directory, '手册.md')
+  writeFileSync(source, '# 信用卡业务手册\n\n## 年费规则\n普卡首年免年费。\n')
+  const documents = join(directory, 'workspace', 'domain')
+  const app = createGatewayApplication({
+    config: {
+      ...config,
+      reminderSchedulerEnabled: false,
+      domainLibraryEnabled: true,
+      domainDocumentDirectory: documents,
+      domainIndexPath: join(directory, 'domain-index.json'),
+    },
+    autoStart: false,
+  })
+  try {
+    const { domainLibrary } = app.services
+    assert.ok(domainLibrary)
+    // 会话摘要没开，两者互不牵连
+    assert.equal(app.services.sessionDigests, null)
+
+    const entry = domainLibrary.import({ ownerId: 'user_personal', sourcePath: source })
+    // 落盘位置就是交给后端的地址
+    assert.equal(entry.path, join(documents, '手册.md'))
+    assert.match(readFileSync(entry.path, 'utf8'), /年费规则/)
+    assert.equal(
+      domainLibrary.search({ ownerId: 'user_personal', keyword: '手册' }).length,
+      1,
+    )
+  } finally {
+    await app.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('defaults the domain document directory into the shared backend workspace', () => {
+  // 后端默认 cwd 是 ${configDirectory}/workspace，资料放它下面后端才读得到
+  assert.match(config.domainDocumentDirectory, /workspace[/\\]domain$/)
+})
+
+// 会话摘要是独立开关：它不依赖偏好自更新，也不该被后者带起来。
+test('wires session digests and the summariser on their own switch', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-digest-wire-'))
+  const app = createGatewayApplication({
+    config: {
+      ...config,
+      reminderSchedulerEnabled: false,
+      memoryAutoEnabled: true,
+      memoryApiKey: 'test-key',
+      sessionDigestEnabled: true,
+      sessionDigestPath: join(directory, 'session-digests.json'),
+      memoryAuditPath: join(directory, 'audit.jsonl'),
+    },
+    autoStart: false,
+  })
+  try {
+    const { sessionDigests, sessionSummariser } = app.services
+    assert.ok(sessionDigests)
+    assert.ok(sessionSummariser)
+    assert.equal(sessionSummariser.enabled(), true)
+    // 偏好自更新没开，两者互不牵连
+    assert.equal(app.services.preferenceCandidates, null)
+
+    // 端到端：记一场会话 → 能按话题查回来
+    sessionDigests.record({
+      ownerId: 'user_personal',
+      sessionId: 's_a',
+      topics: ['LOCOMO'],
+      gist: '跑了一轮压缩评测',
+      turns: 9,
+    })
+    const found = sessionDigests.search({ ownerId: 'user_personal', keyword: 'LOCOMO' })
+    assert.equal(found.length, 1)
+    assert.equal(found[0].gist, '跑了一轮压缩评测')
+    // 必须落盘，否则重启即清零、「前几天聊的」永远答不上
+    assert.match(
+      readFileSync(join(directory, 'session-digests.json'), 'utf8'),
+      /LOCOMO/,
+    )
+  } finally {
+    await app.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+test('wires rolling summary and preference learning when enabled', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-wire-'))
+  const app = createGatewayApplication({
+    config: {
+      ...config,
+      reminderSchedulerEnabled: false,
+      memoryAutoEnabled: true,
+      memoryApiKey: 'test-key',
+      rollingSummaryEnabled: true,
+      preferenceLearningEnabled: true,
+      preferenceCandidatePath: join(directory, 'candidates.json'),
+      userModelPath: join(directory, 'USER.md'),
+      frontendMemoryPath: join(directory, 'MEMORY.md'),
+      memoryAuditPath: join(directory, 'audit.jsonl'),
+    },
+    autoStart: false,
+  })
+  try {
+    const {
+      rollingSummary,
+      preferenceCandidates,
+      preferencePromoter,
+      profileObserver,
+      frontendMemoryService,
+    } = app.services
+    assert.ok(rollingSummary)
+    assert.equal(rollingSummary.enabled(), true)
+    assert.ok(preferenceCandidates)
+    assert.equal(preferenceCandidates.health().persistenceEnabled, true)
+    assert.ok(preferencePromoter)
+    assert.equal(preferencePromoter.enabled(), true)
+    // 观察器是槽位池的生产者；没有它整条链没有输入，晋升永远是 0
+    assert.ok(profileObserver)
+    assert.equal(profileObserver.enabled(), true)
+
+    // 端到端：确认 2 次且跨 2 会话 → 晋升器写入 USER.md 的观察推断段
+    for (const sessionId of ['s0', 's1']) {
+      preferenceCandidates.observe({
+        ownerId: 'user_personal',
+        sessionId,
+        field: 'occupation',
+        value: '中学语文老师',
+      })
+    }
+    assert.equal(preferenceCandidates.promotable('user_personal').length, 1)
+    const promoted = preferencePromoter.run({ ownerId: 'user_personal' })
+    assert.deepEqual(promoted.map(item => item.label), ['职业：中学语文老师'])
+
+    const [document] = frontendMemoryService.list('user_personal', { scope: 'user' })
+    assert.match(document.content, /## 观察推断/)
+    assert.match(document.content, /- 职业：中学语文老师/)
+    // 观察区必须排在原有内容之后 —— 晋升只追加，不改写既有段落。
+    // 这里的初始文档是空模板 '# USER'，所以断言它仍在最前。
+    assert.match(document.content, /^# USER/)
+    assert.equal(
+      document.content.indexOf('# USER') < document.content.indexOf('## 观察推断'),
+      true,
+    )
+  } finally {
+    await app.close()
+  }
 })

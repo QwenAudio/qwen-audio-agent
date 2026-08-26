@@ -271,7 +271,14 @@ export class AnnouncementManager {
   }
 
   async deliver() {
-    if (this.closed || this.delivering || this.isDeliveryBlocked()) return
+    if (this.closed || this.delivering) return
+    if (this.isDeliveryBlocked()) {
+      // Playback completion normally flushes the queue again. Keep a delayed
+      // self-wakeup as well: a throttled renderer or a lost playback receipt
+      // must not leave a completed task parked in "replying" forever.
+      this.scheduleDelivery(this.retryBaseMs)
+      return
+    }
     const frontend = this.getFrontend()
     if (!frontend?.ready) {
       if (!this.activeBatch) this.activeBatch = this.createBatch()

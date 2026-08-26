@@ -5,7 +5,7 @@ import { RealtimeInputRuntime } from '../src/voice/realtime-input-runtime.mjs'
 import { RealtimeTurnState } from '../src/voice/realtime-turn-state.mjs'
 import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
 
-function harness() {
+function harness({ responseOutcome } = {}) {
   const events = []
   const records = []
   const calls = []
@@ -13,6 +13,7 @@ function harness() {
     cancel: () => calls.push(['cancel']),
     sendUserInput: async (parts, context) => {
       calls.push(['sendUserInput', parts, context])
+      return responseOutcome
     },
   }
   const turns = new RealtimeTurnState({
@@ -139,7 +140,7 @@ test('manual text input supersedes speech and reaches the frontend once', async 
   })
   assert.equal(
     calls.some(([name]) => name === 'expectResponseFor'),
-    true,
+    false,
   )
 })
 
@@ -152,4 +153,24 @@ test('invalid manual input fails before changing the current turn', () => {
   assert.equal(events.length, 1)
   assert.equal(events[0].type, 'error')
   assert.match(events[0].message, /不支持的输入片段类型/)
+})
+
+test('reports an explicit text response that never starts without an implicit watchdog', async () => {
+  const { runtime, events, calls } = harness({
+    responseOutcome: { timedOut: true, phase: 'start' },
+  })
+
+  runtime.submit({ text: '你好' })
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.equal(
+    calls.some(([name]) => name === 'expectResponseFor'),
+    false,
+  )
+  assert.match(
+    calls.find(([name]) => name === 'reportFrontendError')?.[1]?.message || '',
+    /没有开始回复/,
+  )
+  assert.equal(events.at(-1).type, 'voice.state')
+  assert.equal(events.at(-1).state, 'idle')
 })

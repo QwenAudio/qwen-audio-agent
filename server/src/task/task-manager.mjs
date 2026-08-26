@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
+import { isDeepStrictEqual } from 'node:util'
 import { config } from '../core/config.mjs'
 import { TaskScheduler } from './task-scheduler.mjs'
 import { TaskStore } from './task-store.mjs'
@@ -61,6 +62,7 @@ export class TaskManager {
     pendingNotificationTtlMs = 604_800_000,
     notificationClaimTtlMs = 60_000,
     maxTerminalTasksPerOwner = 100,
+    progressEventIntervalMs = 1_000,
     logger: taskLogger = null,
     sessionJournal = null,
   } = {}) {
@@ -81,6 +83,10 @@ export class TaskManager {
     this.pendingNotificationTtlMs = pendingNotificationTtlMs
     this.notificationClaimTtlMs = notificationClaimTtlMs
     this.maxTerminalTasksPerOwner = maxTerminalTasksPerOwner
+    this.progressEventIntervalMs = Math.max(
+      50,
+      Number(progressEventIntervalMs) || 1_000,
+    )
     this.logger = taskLogger
     this.sessionJournal = sessionJournal
     this.listeners = new Set()
@@ -354,6 +360,27 @@ export class TaskManager {
     if (persist) this.persist()
   }
 
+  markProgressChanged(task, { message = false } = {}) {
+    task.progressChanged = true
+    if (message) task.messageChanged = true
+  }
+
+  flushProgress(task, { heartbeat = false } = {}) {
+    if (!heartbeat && !task.progressChanged) return false
+    const messageChanged = task.messageChanged === true
+    task.progressChanged = false
+    task.messageChanged = false
+    this.emit(
+      messageChanged ? TaskDomainEvent.UPDATED : TaskDomainEvent.PROGRESS,
+      task,
+      {
+        persist: false,
+        ...(messageChanged ? { message: task.message } : {}),
+      },
+    )
+    return true
+  }
+
   create(options = {}) {
     return this.#create({
       ...options,
@@ -531,9 +558,9 @@ export class TaskManager {
     this.emit(TaskDomainEvent.RUNNING, task)
     task.progressTimer = setInterval(() => {
       if (isTaskActive(task.status)) {
-        this.emit(TaskDomainEvent.PROGRESS, task, { persist: false })
+        this.flushProgress(task, { heartbeat: true })
       }
-    }, 1000)
+    }, this.progressEventIntervalMs)
     task.progressTimer.unref?.()
     const onEvent = event => {
       if (
@@ -592,10 +619,7 @@ export class TaskManager {
         const message = String(event.message).trim().slice(0, 4_000)
         if (!message || message === task.message) return
         task.message = message
-        this.emit(TaskDomainEvent.UPDATED, task, {
-          persist: false,
-          message,
-        })
+        this.markProgressChanged(task, { message: true })
         this.persistDeferred()
         return
       }
@@ -603,7 +627,9 @@ export class TaskManager {
         const artifacts = normalizeArtifacts([event.artifact])
         if (!artifacts.length) return
         const artifact = artifacts[0]
-        task.artifacts = mergeArtifacts(task.artifacts, [artifact])
+        const merged = mergeArtifacts(task.artifacts, [artifact])
+        if (isDeepStrictEqual(merged, task.artifacts)) return
+        task.artifacts = merged
         this.emit(TaskDomainEvent.UPDATED, task, { persist: false })
         this.persistDeferred()
         return
@@ -613,10 +639,14 @@ export class TaskManager {
       const index = activity.id
         ? task.activity.findIndex(item => item.id === activity.id)
         : -1
+      if (
+        index === task.activity.length - 1
+        && isDeepStrictEqual(task.activity[index], activity)
+      ) return
       if (index >= 0) task.activity.splice(index, 1)
       task.activity.push(activity)
       task.activity = task.activity.slice(-20)
-      this.emit(TaskDomainEvent.PROGRESS, task, { persist: false })
+      this.markProgressChanged(task)
       this.persistDeferred()
     }
     // Fallback runner for restored scheduled tasks whose runner was lost
@@ -672,6 +702,7 @@ export class TaskManager {
           task.terminalHandled
           || ['cancelling', 'cancelled'].includes(task.status)
         ) return
+        this.flushProgress(task)
         transitionTask(task, TaskStatus.COMPLETED)
         task.result = String(outcome?.content ?? outcome ?? '').trim()
         task.presentation = normalizeTaskPresentation(
@@ -687,6 +718,7 @@ export class TaskManager {
           task.terminalHandled
           || ['cancelling', 'cancelled'].includes(task.status)
         ) return
+        this.flushProgress(task)
         transitionTask(task, TaskStatus.FAILED)
         task.error = error?.message || String(error)
       })

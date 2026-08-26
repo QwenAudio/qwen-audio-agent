@@ -18,6 +18,7 @@ import {
 } from '../conversation/memory-extractor.mjs'
 import { FrontendMemoryService } from '../conversation/frontend-memory-service.mjs'
 import { MarkdownContextStore } from '../conversation/markdown-context-store.mjs'
+import { FrontendMemoryRuntime } from '../conversation/memory-runtime.mjs'
 import { enforceSameOrigin } from '../core/request-security.mjs'
 import {
   GATEWAY_CAPABILITIES,
@@ -79,6 +80,8 @@ export function createGatewayApplication({
   webSearchProvider = undefined,
   urlFetcher = undefined,
   frontendRetrieval = null,
+  memoryProvider = undefined,
+  frontendMemory = null,
   knowledgeProvider = null,
   // Compatibility alias for embedders that adopted the original injection name.
   knowledgeRetrievalProvider = null,
@@ -211,26 +214,38 @@ conversationSync.configureRetention({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
 })
-const userDocuments = new MarkdownContextStore({
-  filePath: config.userModelPath,
-  scope: 'user',
-  personalOwnerId: config.personalOwnerId,
-  maxChars: 6000,
-  template: '# USER',
-  onWarning: warning => logger.warn('user_model.persistence_warning', { warning }),
-})
-const memoryDocuments = new MarkdownContextStore({
-  filePath: config.frontendMemoryPath,
-  scope: 'memory',
-  personalOwnerId: config.personalOwnerId,
-  maxChars: 8000,
-  template: '# MEMORY',
-  onWarning: warning => logger.warn('memory.persistence_warning', { warning }),
-})
-const frontendMemoryService = new FrontendMemoryService({
-  userStore: userDocuments,
-  memoryStore: memoryDocuments,
-})
+// The built-in Markdown provider preserves the existing USER.md/MEMORY.md
+// behaviour. Embedders can replace the entire persistence boundary without
+// changing Realtime, extraction, or tool handling code.
+let defaultMemoryProvider = null
+if (memoryProvider === undefined && !frontendMemory) {
+  const userDocuments = new MarkdownContextStore({
+    filePath: config.userModelPath,
+    scope: 'user',
+    personalOwnerId: config.personalOwnerId,
+    maxChars: 6000,
+    template: '# USER',
+    onWarning: warning => logger.warn('user_model.persistence_warning', { warning }),
+  })
+  const memoryDocuments = new MarkdownContextStore({
+    filePath: config.frontendMemoryPath,
+    scope: 'memory',
+    personalOwnerId: config.personalOwnerId,
+    maxChars: 8000,
+    template: '# MEMORY',
+    onWarning: warning => logger.warn('memory.persistence_warning', { warning }),
+  })
+  defaultMemoryProvider = new FrontendMemoryService({
+    userStore: userDocuments,
+    memoryStore: memoryDocuments,
+  })
+}
+const memoryProviderRuntime = memoryProvider === undefined
+  ? defaultMemoryProvider
+  : memoryProvider
+const frontendMemoryRuntime = frontendMemory || (memoryProviderRuntime
+  ? new FrontendMemoryRuntime({ provider: memoryProviderRuntime })
+  : null)
 // Restored scheduled tasks submit the same self-contained Work input as live
 // requests. Frontend conversation history and memory stay at the frontend.
 taskManager.configureScheduledTaskRunner(
@@ -269,7 +284,7 @@ const notesStore = new FrontendNotesStore({
 // and the extractor stays silently disabled; explicit memories are
 // unaffected. ASSISTANT.md is never exposed as a writable document.
 const memoryExtractor = new MemoryExtractor({
-  memoryService: frontendMemoryService,
+  memoryService: frontendMemoryRuntime,
   conversationSync,
   audit: new MemoryAudit({
     filePath: config.memoryAuditPath,
@@ -361,7 +376,11 @@ app.get('/api/health', (req, res) => {
     resultContextMaxChars: config.resultContextMaxChars,
     announcementBatchMs: config.announcementBatchMs,
     announcementQuietMs: config.announcementQuietMs,
-    frontendMemory: frontendMemoryService.health(),
+    frontendMemory: frontendMemoryRuntime?.health() || {
+      ok: true,
+      configured: false,
+      provider: null,
+    },
     frontendProfile: config.frontendProfile || {
       configured: false,
       name: 'default',
@@ -631,7 +650,7 @@ const backendAvailability = new BackendAvailability({
 backendAvailability.refresh()
 realtimeGateway = attachRealtimeGateway(server, {
   identityManager,
-  memoryService: frontendMemoryService,
+  memoryService: frontendMemoryRuntime,
   memoryExtractor,
   notesStore,
   backendRuntime: workBackend,
@@ -689,6 +708,7 @@ const close = () => {
     await frontendMcpRuntime?.close?.()
     await frontendOpenApiRuntime?.close?.()
     await frontendKnowledgeRuntime?.close?.()
+    await frontendMemoryRuntime?.close?.()
     unsubscribeSessionTaskJournal?.()
     await sessionJournalRuntime.flush()
     await taskStore?.flush?.()
@@ -715,7 +735,11 @@ return {
     backendAvailability,
     conversationSync,
     backendRuntime: workBackend,
-    frontendMemoryService,
+    // Preserve the original service handle for embedders using the built-in
+    // synchronous Markdown API. New integrations should use frontendMemory.
+    frontendMemoryService: memoryProviderRuntime,
+    frontendMemory: frontendMemoryRuntime,
+    memoryProvider: memoryProviderRuntime,
     frontendRetrieval: retrievalRuntime,
     frontendKnowledge: frontendKnowledgeRuntime,
     frontendMcp: frontendMcpRuntime,

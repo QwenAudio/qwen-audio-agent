@@ -1493,7 +1493,12 @@ export class ToolCallHandler {
           append: action === 'append' ? content : '',
         }
         const changes = [change]
-        const result = this.memoryService.apply(this.ownerId, changes)
+        const result = await this.memoryService.apply(this.ownerId, changes, {
+          source: 'realtime-tool',
+          sessionId: this.sessionId,
+          turnId,
+          traceId: callId,
+        })
         if (result.changed) this.notifyMemoryChanged()
         output = {
           status: result.changed ? 'updated' : 'unchanged',

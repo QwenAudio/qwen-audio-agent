@@ -3,6 +3,9 @@ import {
   MEMORY_DOCUMENTS,
   canonicalScope,
 } from '../core/memory-scopes.mjs'
+import {
+  MEMORY_PROVIDER_PROTOCOL_VERSION,
+} from './memory-provider.mjs'
 
 function normalizeScope(value, fallback = ALL_SCOPE) {
   const scope = canonicalScope(String(value || fallback))
@@ -15,6 +18,14 @@ function normalizeScope(value, fallback = ALL_SCOPE) {
 export class FrontendMemoryService {
   constructor({ userStore = null, memoryStore = null } = {}) {
     this.stores = { user: userStore, memory: memoryStore }
+  }
+
+  describe() {
+    return {
+      protocolVersion: MEMORY_PROVIDER_PROTOCOL_VERSION,
+      key: 'markdown',
+      label: 'Local Markdown memory',
+    }
   }
 
   list(ownerId, { scope = null } = {}) {

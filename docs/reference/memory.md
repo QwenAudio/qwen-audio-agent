@@ -97,6 +97,47 @@ several durable changes; the Gateway still produces only one follow-up response.
 starts from the latest document, and an exact replacement fails safely when its source fragment
 is missing or ambiguous.
 
+## Replacing the Memory Provider
+
+The built-in `USER.md` and `MEMORY.md` files are the default implementation, not a fixed Gateway
+storage dependency. A host application can implement the public, versioned `MemoryProvider`
+contract and inject it at the composition root:
+
+```js
+import { MEMORY_PROVIDER_PROTOCOL_VERSION } from 'qwen-audio-agent/memory-provider'
+import { createGatewayApplication } from 'qwen-audio-agent/gateway-application'
+
+const memoryProvider = {
+  describe: () => ({
+    protocolVersion: MEMORY_PROVIDER_PROTOCOL_VERSION,
+    key: 'company-memory',
+    label: 'Company Memory',
+  }),
+  list(ownerId, options) {
+    return []
+  },
+  async apply(ownerId, changes, context) {
+    return { changed: 0, documents: [] }
+  },
+  health: () => ({ ok: true }),
+  async close() {},
+}
+
+const gateway = createGatewayApplication({ memoryProvider })
+```
+
+`list()` must return a synchronous, bounded Realtime context snapshot. Remote providers should
+maintain a local cache inside their adapter. `apply()` may be asynchronous. Its Gateway-owned
+`context` identifies the source, Session, Turn, and Trace separately from model-controlled
+changes. Returned documents are bounded, their scopes are normalized, and invalid or duplicate
+documents are discarded.
+
+Realtime, automatic extraction, and tool handling depend only on `FrontendMemoryRuntime`; they
+never access a vendor SDK, database, or Markdown file. Without an injected provider, the existing
+Markdown provider remains active, so current configuration and data require no migration.
+Third-party adapters own remote authentication, tenant mapping, cache refresh, and translation
+into the public `user` and `memory` document semantics.
+
 ## Logs
 
 Logs use JSON Lines format. API Keys, Tokens, Authorization headers, Cookies, passwords,

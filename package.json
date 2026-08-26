@@ -45,6 +45,7 @@
     "./a2a-backend-adapter": "./server/src/backend/a2a-backend-adapter.mjs",
     "./realtime-provider": "./server/src/voice/realtime-provider-extension.mjs",
     "./knowledge-provider": "./server/src/frontend/knowledge/retrieval-provider.mjs",
+    "./memory-provider": "./server/src/conversation/memory-provider.mjs",
     "./settings": "./desktop/src/settings-store.mjs",
     "./skin-store": "./desktop/src/skin-store.mjs",
     "./orb/main": "./desktop/src/orb-shell.mjs",

@@ -75,9 +75,40 @@ export const GatewayAuthorizationSchema = z.object({
   category: z.string().min(1),
   summary: z.string().min(1),
   patterns: z.array(z.string()),
+  approvalScope: z.enum(['once', 'session', 'persistent']).optional(),
+  operation: z.object({
+    title: z.string().min(1),
+    kind: z.string().min(1),
+    description: z.string().optional(),
+    command: z.string().optional(),
+    path: z.string().optional(),
+    locations: z.array(z.object({
+      path: z.string().min(1),
+      line: z.number().int().positive().optional(),
+    })).optional(),
+  }).nullable().optional(),
   createdAt: z.number(),
   resolvedAt: z.number().nullable(),
 })
+
+// Adapter implementations may add presentation hints, but every activity
+// crosses the Gateway through these protocol-neutral common fields. ACP event
+// names and A2A Task payloads stay private to their adapters.
+export const GatewayActivitySchema = z.object({
+  id: z.string().nullable().optional(),
+  kind: z.string().min(1),
+  status: z.string().optional(),
+  message: z.string().optional(),
+  label: z.string().optional(),
+  detail: z.string().optional(),
+  category: z.string().optional(),
+  tool: z.string().optional(),
+  title: z.string().optional(),
+  updatedAt: z.string().optional(),
+  mode: z.string().optional(),
+  completed: z.number().int().nonnegative().optional(),
+  total: z.number().int().nonnegative().optional(),
+}).passthrough()
 
 export const GatewayTaskSchema = z.object({
   id: z.string().min(1),
@@ -106,7 +137,7 @@ export const GatewayTaskSchema = z.object({
   error: z.string().nullable().optional(),
   artifacts: z.array(GatewayArtifactSchema).optional(),
   presentation: GatewayPresentationSchema.nullable().optional(),
-  activity: z.array(z.unknown()).optional(),
+  activity: z.array(GatewayActivitySchema).optional(),
   delegation: z.unknown().optional(),
   authorization: GatewayAuthorizationSchema.nullable().optional(),
   notificationStatus: z.string().optional(),

@@ -154,6 +154,25 @@ test('shows ACP plan progress without exposing protocol details', () => {
   }), '1/3 · Implement gameplay')
 })
 
+test('shows protocol-neutral thinking, mode, and session activities', () => {
+  assert.equal(taskDetail({
+    phase: 'running',
+    activity: [{ kind: 'thinking', status: 'running' }],
+  }), '后台 Agent 正在思考')
+  assert.equal(taskDetail({
+    phase: 'running',
+    activity: [{ kind: 'mode', status: 'updated', mode: 'plan' }],
+  }), '当前模式：plan')
+  assert.equal(taskDetail({
+    phase: 'running',
+    activity: [{
+      kind: 'session',
+      status: 'updated',
+      title: 'Build the demo',
+    }],
+  }), '会话：Build the demo')
+})
+
 test('prefers the active ACP step over later text and completed tools', () => {
   assert.equal(taskDetail({
     phase: 'running',

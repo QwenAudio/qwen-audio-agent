@@ -44,6 +44,13 @@ export function desktopTasksAttention(tasks = []) {
   return tasks.some(task => task.authorization?.status === 'pending')
 }
 
+export function desktopTasksThinking(tasks = []) {
+  return tasks.some(task => (
+    ACTIVE_TASK_PHASES.has(task.phase)
+    && task.activity?.at(-1)?.kind === 'thinking'
+  ))
+}
+
 export function desktopWorkSettled({
   tasks = [],
   messages = [],

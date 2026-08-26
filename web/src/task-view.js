@@ -63,14 +63,22 @@ function latestVisibleActivity(activity = []) {
       && String(item.text || '').trim().startsWith('<qwen_audio_agent_request>')
     )
   ))
-  return visible.findLast(item => (
+  const activeTool = visible.findLast(item => (
     item.kind === 'tool'
     && !['completed', 'failed'].includes(item.status)
   ))
-    || visible.findLast(item => item.kind === 'plan' && item.status === 'running')
-    || visible.findLast(item => item.kind === 'tool')
+  if (activeTool) return activeTool
+  const activePlan = visible.findLast(
+    item => item.kind === 'plan' && item.status === 'running',
+  )
+  if (activePlan) return activePlan
+  const latest = visible.at(-1)
+  if (['thinking', 'mode', 'session', 'text'].includes(latest?.kind)) {
+    return latest
+  }
+  return visible.findLast(item => item.kind === 'tool')
     || visible.findLast(item => item.kind === 'plan')
-    || visible.at(-1)
+    || latest
 }
 
 export function taskDetail(task) {
@@ -90,6 +98,13 @@ export function taskDetail(task) {
   if (!activity) return task.phase === 'delegated'
     ? t('进行中')
     : task.objective
+  if (activity.kind === 'thinking') return t('后台 Agent 正在思考')
+  if (activity.kind === 'mode') {
+    return t('当前模式：{mode}', { mode: activity.mode || t('未知') })
+  }
+  if (activity.kind === 'session' && activity.title) {
+    return t('会话：{title}', { title: activity.title })
+  }
   if (activity.kind === 'session') return t('正在连接后台 Agent')
   if (activity.kind === 'plan') {
     const count = activity.total > 0

@@ -773,7 +773,11 @@ export class AcpBackendAdapter {
   }
 
   rememberDelegationUpdate(record, activity) {
-    if (!record || !activity || !['plan', 'tool'].includes(activity.kind)) {
+    if (
+      !record
+      || !activity
+      || !['plan', 'tool', 'thinking', 'mode', 'session'].includes(activity.kind)
+    ) {
       return
     }
     const key = clean(activity.id)

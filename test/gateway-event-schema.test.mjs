@@ -101,6 +101,47 @@ test('validates voice and task messages in the server direction', () => {
   }).success, false)
 })
 
+test('preserves protocol-neutral backend observations and safe permission details', () => {
+  const message = parseGatewayServerMessage({
+    type: 'task.permission.requested',
+    task: task({
+      activity: [{
+        id: 'provider-progress',
+        kind: 'custom-progress',
+        status: 'running',
+        providerHint: 'kept for an extension-aware client',
+      }],
+      authorization: {
+        id: 'auth_1',
+        workId: 'work_1',
+        status: 'pending',
+        category: 'execute',
+        summary: '检查内存：sysctl -n hw.memsize',
+        patterns: [],
+        approvalScope: 'session',
+        operation: {
+          title: '检查内存',
+          kind: 'execute',
+          command: 'sysctl -n hw.memsize',
+        },
+        createdAt: 1,
+        resolvedAt: null,
+      },
+    }),
+  })
+
+  assert.equal(message.task.activity[0].kind, 'custom-progress')
+  assert.equal(
+    message.task.activity[0].providerHint,
+    'kept for an extension-aware client',
+  )
+  assert.equal(message.task.authorization.approvalScope, 'session')
+  assert.equal(
+    message.task.authorization.operation.command,
+    'sysctl -n hw.memsize',
+  )
+})
+
 test('validates the supported AG-UI activity event surface', () => {
   const event = parseAguiGatewayEvent({
     type: AguiEventType.ACTIVITY_SNAPSHOT,

@@ -69,6 +69,35 @@ test('serializes work in the same coordinator lane while accepting immediately',
   assert.deepEqual(order, ['A:start', 'A:end', 'B:start'])
 })
 
+test('moves updated backend activity to the end so recency stays correct', async () => {
+  const manager = new TaskManager()
+  const task = manager.create({
+    objective: 'A',
+    ownerId: 'owner',
+    runner: async (_objective, { onEvent }) => {
+      onEvent({
+        type: 'backend.activity',
+        activity: { id: 'thinking', kind: 'thinking', status: 'running' },
+      })
+      onEvent({
+        type: 'backend.activity',
+        activity: { id: 'tool', kind: 'tool', status: 'running' },
+      })
+      onEvent({
+        type: 'backend.activity',
+        activity: { id: 'thinking', kind: 'thinking', status: 'running' },
+      })
+      return { content: 'done' }
+    },
+  })
+
+  await manager.wait(task.id)
+  assert.deepEqual(
+    manager.get(task.id).activity.map(activity => activity.id),
+    ['tool', 'thinking'],
+  )
+})
+
 test('publishes a bounded pending permission on the active work', async () => {
   const manager = new TaskManager()
   let release

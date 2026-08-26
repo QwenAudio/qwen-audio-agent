@@ -134,7 +134,10 @@ Gateway. It may understand natural affirmative or negative wording such as
 “可以” or “不允许”, but it cannot invent consent without a current-turn user
 utterance, create a request, choose a tool, or modify a backend permission
 policy. Replies are limited to `always` and `reject`; `always` uses the
-backend's Session-scoped permission option when available.
+Gateway's current frontend-session policy. The adapter still selects the
+narrowest safe per-request backend option, and the Gateway automatically
+approves later requests in the same frontend session. This does not create a
+persistent backend authorization rule.
 
 The `objective` passed to `spawn_thinking` is a conservative interpretation of
 the user's request, not an execution plan. Recent voice context is separately
@@ -181,9 +184,10 @@ queued → running ────────────────────�
 ```
 
 Public fields are limited to the user request, timestamps, final result/error,
-generic tool activity, a bounded pending permission summary, and notification
-state. There is no execution mode, delivery mode, subagent state, backend
-permission identifier, backend topology, or backend cancellation internals.
+generic activity, a bounded pending permission summary with optional safe
+operation details, and notification state. There is no execution mode,
+delivery mode, subagent state, backend permission identifier, backend topology,
+or backend cancellation internals.
 
 The UI presents both `queued` and `running` as the same “processing” state.
 Queue position is an internal scheduling detail and does not change the user's
@@ -199,13 +203,16 @@ Progress is observability, not control. The ACP adapter projects standard
 `session/update` notifications into generic activity:
 
 - tool name, bounded user-safe detail, and running/completed state;
-- text/reasoning activity represented only as “organizing result”.
+- plan progress;
+- a generic thinking signal without thought content;
+- bounded Session title and current mode metadata.
 
 The UI maps this to stable phrases such as “searching”, “reading”, “generating
-an image”, or “organizing the result”. Session IDs, subagent IDs, raw permission
-payloads, and raw reasoning are not shown. A pending permission may show the
-exact bounded operation or command needed for informed consent, after
-secret-like values are redacted.
+an image”, “Backend Agent thinking”, or the current mode. The desktop pet maps
+the generic thinking signal to its existing processing animation. Session IDs,
+subagent IDs, raw permission payloads, and raw thought content are not shown. A
+pending permission may show the exact bounded title, description, command, or
+path needed for informed consent after secret-like values are redacted.
 
 Activity never produces spoken status updates and never affects the queue.
 

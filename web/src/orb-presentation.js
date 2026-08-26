@@ -14,6 +14,7 @@ export function resolveOrbVisualState({
   voiceState = 'idle',
   tasksActive = false,
   attentionPending = false,
+  tasksThinking = false,
 } = {}) {
   if (lifecycle === 'hidden') return 'hidden'
   if (lifecycle === 'waking') return 'waking'
@@ -22,6 +23,7 @@ export function resolveOrbVisualState({
   if (connectionError) return 'error'
   if (CONVERSATION_STATES.has(voiceState)) return voiceState
   if (attentionPending) return 'attention'
+  if (tasksThinking) return 'processing'
   if (tasksActive) return 'working'
   if (ownershipBusy) return 'occupied'
   if (connecting) return 'connecting'

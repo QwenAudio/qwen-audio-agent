@@ -6,10 +6,45 @@ export const AuthorizationStatus = Object.freeze({
 })
 
 const KNOWN_STATUSES = new Set(Object.values(AuthorizationStatus))
+const KNOWN_APPROVAL_SCOPES = new Set(['once', 'session', 'persistent'])
 
 function clean(value, max = 300) {
   return String(value || '').replaceAll('\u0000', '').replace(/\s+/g, ' ')
     .trim().slice(0, max)
+}
+
+export function normalizeAuthorizationOperation(value) {
+  if (!value || typeof value !== 'object') return null
+  const title = clean(value.title, 160)
+  const kind = clean(value.kind, 80)
+  const description = clean(value.description, 600)
+  const command = clean(value.command, 1200)
+  const path = clean(value.path, 600)
+  const locations = (Array.isArray(value.locations) ? value.locations : [])
+    .map(location => {
+      const locationPath = clean(location?.path, 600)
+      if (!locationPath) return null
+      const line = Number.isInteger(location?.line) && location.line > 0
+        ? location.line
+        : null
+      return {
+        path: locationPath,
+        ...(line ? { line } : {}),
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 16)
+  if (!title && !kind && !description && !command && !path && !locations.length) {
+    return null
+  }
+  return {
+    title: title || '后台操作',
+    kind: kind || 'unknown',
+    ...(description ? { description } : {}),
+    ...(command ? { command } : {}),
+    ...(path ? { path } : {}),
+    ...(locations.length ? { locations } : {}),
+  }
 }
 
 export function normalizeAuthorization(value, {
@@ -28,6 +63,9 @@ export function normalizeAuthorization(value, {
   const resolvedAt = status === AuthorizationStatus.PENDING
     ? null
     : Number(value.resolvedAt) || now
+  const approvalScope = KNOWN_APPROVAL_SCOPES.has(value.approvalScope)
+    ? value.approvalScope
+    : 'session'
   return {
     id,
     workId: clean(workId || value.workId, 160) || null,
@@ -38,6 +76,8 @@ export function normalizeAuthorization(value, {
       .map(pattern => clean(pattern, 300))
       .filter(Boolean)
       .slice(0, 32),
+    approvalScope,
+    operation: normalizeAuthorizationOperation(value.operation),
     createdAt,
     resolvedAt,
   }

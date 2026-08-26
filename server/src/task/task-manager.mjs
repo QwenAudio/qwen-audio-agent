@@ -553,8 +553,8 @@ export class TaskManager {
       const index = activity.id
         ? task.activity.findIndex(item => item.id === activity.id)
         : -1
-      if (index >= 0) task.activity[index] = activity
-      else task.activity.push(activity)
+      if (index >= 0) task.activity.splice(index, 1)
+      task.activity.push(activity)
       task.activity = task.activity.slice(-20)
       this.emit(TaskDomainEvent.PROGRESS, task, { persist: false })
       this.persistDeferred()

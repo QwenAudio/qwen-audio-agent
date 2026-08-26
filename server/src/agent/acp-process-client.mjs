@@ -11,6 +11,7 @@ import {
   normalizeAcpPrompt,
 } from './acp-content.mjs'
 import { assertMcpServerCapabilities } from './acp-capabilities.mjs'
+import { applySessionMetadataUpdate } from './acp-backend-session-utils.mjs'
 
 const MAX_STDERR_CHARS = 12_000
 // Gateway has a 2s hard shutdown deadline. Leave enough time for adapter and
@@ -291,6 +292,7 @@ export class AcpProcessClient {
     const sessionId = String(notification?.sessionId || '')
     const update = notification?.update
     if (!sessionId || !update) return
+    applySessionMetadataUpdate(this.sessions.get(sessionId), update)
     const active = this.activePrompts.get(sessionId)
     const text = textFromUpdate(update)
     if (active && text) active.text.push(text)

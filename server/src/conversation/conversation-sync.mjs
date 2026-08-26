@@ -42,16 +42,23 @@ export class ConversationSync {
     maxMessages = 100,
     maxSessions = 500,
     sessionTtlMs = 6 * 60 * 60 * 1000,
+    onRecord = null,
   } = {}) {
     this.maxMessages = maxMessages
     this.maxSessions = maxSessions
     this.sessionTtlMs = sessionTtlMs
     this.sessions = new Map()
     this.sequence = 0
+    this.onRecord = onRecord
   }
 
   configureRetention(options = {}) {
     Object.assign(this, options)
+  }
+
+  setRecordObserver(observer) {
+    this.onRecord = typeof observer === 'function' ? observer : null
+    return this
   }
 
   state(ownerId, sessionId) {
@@ -118,7 +125,9 @@ export class ConversationSync {
       if (citations?.length) {
         existing.citations = citations.map(citation => ({ ...citation }))
       }
-      return { ...existing }
+      const snapshot = { ...existing }
+      try { this.onRecord?.(snapshot, { ownerId, sessionId }) } catch { /* observers must not affect sync */ }
+      return snapshot
     }
     const message = {
       seq: ++this.sequence,
@@ -141,7 +150,9 @@ export class ConversationSync {
       const removed = state.messages.shift()
       state.byId.delete(removed.id)
     }
-    return { ...message }
+    const snapshot = { ...message }
+    try { this.onRecord?.(snapshot, { ownerId, sessionId }) } catch { /* observers must not affect sync */ }
+    return snapshot
   }
 
   list({ ownerId, sessionId }) {

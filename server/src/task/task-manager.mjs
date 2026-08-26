@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { resolve } from 'node:path'
 import { config } from '../core/config.mjs'
 import { TaskScheduler } from './task-scheduler.mjs'
 import { TaskStore } from './task-store.mjs'
@@ -34,6 +35,7 @@ import {
 } from './task-recovery.mjs'
 import { logger } from '../core/logger.mjs'
 import { BackendEventType } from '../core/backend-events.mjs'
+import { SessionJournalRegistry } from '../session/session-journal-registry.mjs'
 
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
@@ -61,6 +63,7 @@ export class TaskManager {
     maxTerminalTasksPerOwner = 100,
     progressCheckMs = config.backgroundTaskProgressCheckMs,
     logger: taskLogger = null,
+    sessionJournal = null,
   } = {}) {
     this.runner = runner
     this.repository = new TaskRepository({ store, serialize: persistedTask })
@@ -81,6 +84,7 @@ export class TaskManager {
     this.maxTerminalTasksPerOwner = maxTerminalTasksPerOwner
     this.progressCheckMs = Math.max(0, Number(progressCheckMs) || 0)
     this.logger = taskLogger
+    this.sessionJournal = sessionJournal
     this.listeners = new Set()
     this.notifications = new TaskNotificationQueue({
       tasks: this.tasks,
@@ -96,6 +100,7 @@ export class TaskManager {
     this.recoveryCandidates = []
     this.scheduledTaskRunner = null
     this.restore()
+    if (this.sessionJournal) this.restoreFromJournal(this.sessionJournal)
   }
 
   get nextTaskNumber() {
@@ -125,10 +130,10 @@ export class TaskManager {
     task.schedulerHeld = false
   }
 
-  restore() {
-    const savedTasks = this.repository.load()
+  restore(savedTasks = null) {
+    const records = savedTasks || this.repository.load()
     let recoveryChanged = false
-    for (const saved of savedTasks) {
+    for (const saved of records) {
       saved.scope = normalizeTaskScope(saved.scope)
       if (isUserWork(saved) && !/^task_\d+$/u.test(String(saved.id || ''))) {
         const legacy = /^job_(\d+)$/u.exec(String(saved.jobId || ''))
@@ -230,6 +235,33 @@ export class TaskManager {
     }
     this.prune()
     if (recoveryChanged) this.persist()
+  }
+
+  /** Reconciles the task projection with the latest durable Journal snapshot. */
+  restoreFromJournalSnapshots(snapshots = []) {
+    const candidates = snapshots.filter(snapshot => snapshot?.id)
+    if (!candidates.length) return 0
+    let restored = 0
+    for (const snapshot of candidates) {
+      const id = String(snapshot.id)
+      const existing = this.tasks.get(id)
+      // A journal event is the durable revision. Remove the compact snapshot
+      // projection before replaying it so a terminal Journal state can repair
+      // a stale/failed tasks.json state after a crash.
+      if (existing) {
+        this.recoveryCandidates = this.recoveryCandidates.filter(
+          candidate => candidate !== existing,
+        )
+        this.tasks.delete(id)
+      }
+      this.restore([{ ...snapshot }])
+      restored += 1
+    }
+    return restored
+  }
+
+  restoreFromJournal(journal) {
+    return this.restoreFromJournalSnapshots(journal?.taskSnapshotsSync?.() || [])
   }
 
   recoverDelegated({
@@ -946,6 +978,11 @@ export const taskStore = new TaskStore({
   onWarning: warning => logger.warn('task.persistence_warning', { warning }),
 })
 
+export const taskSessionJournal = new SessionJournalRegistry({
+  directory: resolve(config.configDirectory, 'sessions'),
+  logger,
+})
+
 export const taskManager = new TaskManager({
   store: taskStore,
   logger,
@@ -954,4 +991,5 @@ export const taskManager = new TaskManager({
   terminalTtlMs: config.taskTerminalTtlMs,
   pendingNotificationTtlMs: config.taskPendingNotificationTtlMs,
   maxTerminalTasksPerOwner: config.maxTerminalTasksPerOwner,
+  sessionJournal: taskSessionJournal,
 })

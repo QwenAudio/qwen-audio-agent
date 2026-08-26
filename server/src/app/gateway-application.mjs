@@ -33,6 +33,7 @@ import { SessionPermissionPolicy } from '../voice/session-permission-policy.mjs'
 import {
   taskManager as defaultTaskManager,
   taskStore as defaultTaskStore,
+  taskSessionJournal as defaultTaskSessionJournal,
 } from '../task/task-manager.mjs'
 import { ReminderScheduler } from '../task/reminder-scheduler.mjs'
 import { webDistributionPath } from '../core/install-paths.mjs'
@@ -66,6 +67,7 @@ import {
 import {
   projectGatewayTaskEventForFormat,
 } from '../transport/agui-event-projector.mjs'
+import { replaySession } from '../session/session-replay.mjs'
 
 export function createGatewayApplication({
   config = defaultConfig,
@@ -90,8 +92,30 @@ export function createGatewayApplication({
   frontendKnowledge = null,
   frontendMcp = undefined,
   frontendOpenApi = undefined,
+  sessionJournal = null,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
+const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
+conversationSync.setRecordObserver?.((message, context = {}) => {
+  if (!context.ownerId || !message?.id) return
+  sessionJournalRuntime.append({
+    ownerId: context.ownerId,
+    sessionId: context.sessionId || 'main',
+    event: {
+      type: message.role === 'user' ? 'user/message' : 'assistant/message',
+      turnId: message.turnId || null,
+      taskId: message.taskId || null,
+      source: message.source || 'conversation-sync',
+      payload: {
+        messageId: message.id,
+        content: message.content,
+        inputs: message.inputs || [],
+        taskIds: message.taskIds || [],
+        citations: message.citations || [],
+      },
+    },
+  })
+})
 const inputAssetRegistry = inputAssets || new InputAssetRegistry({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
@@ -142,6 +166,31 @@ const frontendOpenApiRuntime = frontendOpenApi === undefined
       }),
     })
   : frontendOpenApi
+// TaskManager remains the owner of task state. The journal receives an
+// immutable event copy so recovery and replay do not depend on its in-memory
+// Map or on the current task projection.
+const unsubscribeSessionTaskJournal = taskManager.subscribe(event => {
+  const task = event?.task
+  if (!task?.id) return
+  sessionJournalRuntime.append({
+    ownerId: event.ownerId || task.ownerId,
+    sessionId: task.sessionId || 'main',
+    event: {
+      type: 'qwaudio/task/event',
+      eventId: event.eventId || randomUUID(),
+      turnId: task.turnId || null,
+      taskId: task.id,
+      source: 'task-manager',
+      payload: {
+        domainType: event.type,
+        task,
+        details: Object.fromEntries(
+          Object.entries(event).filter(([key]) => !['type', 'ownerId', 'task'].includes(key)),
+        ),
+      },
+    },
+  })
+}, { scope: 'all' })
 const frontendToolSources = [
   frontendMcpRuntime,
   frontendOpenApiRuntime,
@@ -160,6 +209,14 @@ taskManager.configureRetention({
   notificationClaimTtlMs: config.taskNotificationClaimTtlMs,
   maxTerminalTasksPerOwner: config.maxTerminalTasksPerOwner,
 })
+// Recover records missing from the compact task snapshot by replaying the
+// latest task projection found in durable Session Journals.
+const restoredJournalTasks = taskManager.sessionJournal === sessionJournalRuntime
+  ? 0
+  : taskManager.restoreFromJournal(sessionJournalRuntime)
+if (restoredJournalTasks) {
+  logger.info('session_journal.tasks_restored', { count: restoredJournalTasks })
+}
 taskManager.recoverDelegated({
   canRecover: task => agent.canRecoverDelegatedWork(task),
   runner: (task, context) => agent.recoverDelegatedWork(task, context),
@@ -439,6 +496,33 @@ app.get('/api/timeline', (req, res) => {
   res.json({ items })
 })
 
+// Durable session facts are intentionally exposed separately from the UI
+// timeline. Clients may use this for reconnect/recovery; projections should
+// not need to understand the on-disk JSONL format.
+app.get('/api/sessions/:sessionId/events', async (req, res, next) => {
+  try {
+    const events = await sessionJournalRuntime.read(
+      req.identity.ownerId,
+      req.params.sessionId,
+    )
+    res.json({ events })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/sessions/:sessionId/replay', async (req, res, next) => {
+  try {
+    const events = await sessionJournalRuntime.read(
+      req.identity.ownerId,
+      req.params.sessionId,
+    )
+    res.json({ replay: replaySession(events, { sessionId: req.params.sessionId }) })
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.get('/api/tasks/:id', (req, res) => {
   const task = taskManager.get(req.params.id, { ownerId: req.identity.ownerId })
   if (!task) return res.status(404).json({ error: 'task not found' })
@@ -631,6 +715,8 @@ const close = () => {
     await frontendMcpRuntime?.close?.()
     await frontendOpenApiRuntime?.close?.()
     await knowledgeStoreRuntime.close?.()
+    unsubscribeSessionTaskJournal?.()
+    await sessionJournalRuntime.flush()
     await taskStore?.flush?.()
     if (!server.listening) return
     await new Promise((resolveClose, rejectClose) => {
@@ -671,6 +757,7 @@ return {
     realtimeGateway,
     taskManager,
     taskStore,
+    sessionJournal: sessionJournalRuntime,
   },
 }
 }

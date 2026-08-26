@@ -78,6 +78,31 @@ test('waits while duplex speech blocks delivery', async () => {
   manager.close()
 })
 
+test('rechecks blocked delivery without requiring a playback edge', async () => {
+  let blocked = true
+  let spoken = 0
+  const manager = new AnnouncementManager({
+    getFrontend: () => ({
+      ready: true,
+      injectResult: async () => {
+        spoken += 1
+        return { completed: true, contextInjected: true }
+      },
+    }),
+    isDeliveryBlocked: () => blocked,
+    batchWindowMs: 0,
+    retryBaseMs: 2,
+  })
+
+  manager.completed({ id: 'task_1', objective: '处理', result: '完成' })
+  await new Promise(resolve => setTimeout(resolve, 5))
+  assert.equal(spoken, 0)
+
+  blocked = false
+  await waitFor(() => spoken === 1)
+  manager.close()
+})
+
 test('batches nearby completed work into one realtime response', async () => {
   const inputs = []
   const manager = new AnnouncementManager({

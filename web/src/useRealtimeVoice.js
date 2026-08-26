@@ -252,6 +252,8 @@ export default function useRealtimeVoice({
     cursor: 0,
     sources: [],
     startTimers: new Map(),
+    endTimers: new Map(),
+    responseEnds: new Map(),
     startedResponses: new Set(),
     sourceCounts: new Map(),
     doneResponses: new Set(),
@@ -328,10 +330,14 @@ export default function useRealtimeVoice({
     const playback = playbackRef.current
     const activeResponseIds = new Set([
       ...playback.startTimers.keys(),
+      ...playback.endTimers.keys(),
       ...playback.startedResponses,
       ...playback.sourceCounts.keys(),
     ])
     for (const timer of playback.startTimers.values()) {
+      clearTimeout(timer)
+    }
+    for (const timer of playback.endTimers.values()) {
       clearTimeout(timer)
     }
     for (const responseId of activeResponseIds) {
@@ -348,6 +354,8 @@ export default function useRealtimeVoice({
       cursor: 0,
       sources: [],
       startTimers: new Map(),
+      endTimers: new Map(),
+      responseEnds: new Map(),
       startedResponses: new Set(),
       sourceCounts: new Map(),
       doneResponses: new Set(),
@@ -364,6 +372,10 @@ export default function useRealtimeVoice({
       || (playback.sourceCounts.get(responseId) || 0) > 0
     ) return
     sendPlaybackEvent(GatewayClientEvent.PLAYBACK_ENDED, responseId)
+    const endTimer = playback.endTimers.get(responseId)
+    if (endTimer !== undefined) clearTimeout(endTimer)
+    playback.endTimers.delete(responseId)
+    playback.responseEnds.delete(responseId)
     playback.startedResponses.delete(responseId)
     playback.sourceCounts.delete(responseId)
     playback.doneResponses.delete(responseId)
@@ -375,6 +387,39 @@ export default function useRealtimeVoice({
     if (playback.failedResponses.delete(responseId)) return
     playback.doneResponses.add(responseId)
     finishPlaybackIfReady(responseId)
+    const responseEnd = playback.responseEnds.get(responseId)
+    if (
+      !playback.doneResponses.has(responseId)
+      || playback.endTimers.has(responseId)
+      || !Number.isFinite(responseEnd)
+    ) return
+    const checkTimelineFinished = () => {
+      const current = playbackRef.current
+      if (!current.endTimers.has(responseId)) return
+      const context = audioRef.current
+      const responseEnd = current.responseEnds.get(responseId)
+      if (
+        !context
+        || !Number.isFinite(responseEnd)
+        || context.state !== 'running'
+        || context.currentTime + 0.01 < responseEnd
+      ) {
+        const timer = setTimeout(checkTimelineFinished, 50)
+        current.endTimers.set(responseId, timer)
+        return
+      }
+      // AudioContext time has crossed the last scheduled sample. Treat that
+      // as a reliable fallback when Electron misses AudioBufferSource.onended.
+      current.sourceCounts.set(responseId, 0)
+      finishPlaybackIfReady(responseId)
+    }
+    const delay = Math.max(
+      0,
+      ((responseEnd || audioRef.current?.currentTime || 0)
+        - (audioRef.current?.currentTime || 0)) * 1000,
+    ) + 50
+    const timer = setTimeout(checkTimelineFinished, delay)
+    playback.endTimers.set(responseId, timer)
   }, [finishPlaybackIfReady])
 
   const failPlayback = useCallback((responseId, reason) => {
@@ -383,7 +428,11 @@ export default function useRealtimeVoice({
       playback.failedResponses.add(responseId)
       const timer = playback.startTimers.get(responseId)
       if (timer !== undefined) clearTimeout(timer)
+      const endTimer = playback.endTimers.get(responseId)
+      if (endTimer !== undefined) clearTimeout(endTimer)
       playback.startTimers.delete(responseId)
+      playback.endTimers.delete(responseId)
+      playback.responseEnds.delete(responseId)
       playback.startedResponses.delete(responseId)
       playback.sourceCounts.delete(responseId)
       playback.doneResponses.delete(responseId)
@@ -436,6 +485,10 @@ export default function useRealtimeVoice({
         playback.sourceCounts.set(
           responseId,
           (playback.sourceCounts.get(responseId) || 0) + 1,
+        )
+        playback.responseEnds.set(
+          responseId,
+          Math.max(playback.responseEnds.get(responseId) || 0, playback.cursor),
         )
       }
     } catch (reason) {

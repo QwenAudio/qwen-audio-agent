@@ -835,7 +835,8 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /# Voice interaction/)
   assert.match(prompt, /没有新信息时不要说话/)
   assert.match(prompt, /不要规定用户未要求的具体工具/)
-  assert.match(prompt, /\[COMPLETE\]/)
+  assert.match(prompt, /最终结果会通过单独的结果上下文到达/)
+  assert.doesNotMatch(prompt, /\[COMPLETE\]/)
   assert.doesNotMatch(prompt, /get_agent_tasks|reply_agent_permission/)
   assert.match(prompt, /respond_agent_permission/)
   assert.match(prompt, /<backend_permission_request>/)
@@ -885,7 +886,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
       tool.function.name === SPAWN_THINKING_TOOL_NAME
     ))
   assert.match(spawnThinking.function.description, /屏幕/)
-  assert.match(spawnThinking.function.description, /图片生成/)
+  assert.match(spawnThinking.function.description, /媒体创作/)
   assert.match(spawnThinking.function.description, /直接调用/)
   assert.match(spawnThinking.function.description, /不要先否认能力/)
   assert.match(spawnThinking.function.description, /阶段结果/)
@@ -898,7 +899,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     spawnThinking.function.parameters.properties.objective.description,
     /后台不会收到前台的完整对话、个性化偏好或长期记忆/,
   )
-  assert.match(spawnThinking.function.description, /继续、修改已有工作/)
+  assert.match(spawnThinking.function.description, /继续或修改已有工作/)
   const status = REALTIME_PROVIDERS.qwen
     .buildSession({ configured: false })
     .tools.find(tool => tool.function.name === 'get_agent_task_status')
@@ -1261,6 +1262,43 @@ test('injects a completed work result into Qwen conversation with tools disabled
   })
 })
 
+test('injects progress with response-scoped presentation instructions', async () => {
+  const frontend = createQwenFrontend({
+    responseStartTimeoutMs: 50,
+    responseCompletionTimeoutMs: 50,
+  })
+  const sent = []
+  frontend.ready = true
+  frontend.send = payload => sent.push(payload)
+
+  const outcome = frontend.injectResult(
+    '<background_work_progress>正在整理来源</background_work_progress>',
+    'progress',
+    { taskId: 'task-progress', turnId: null },
+    { instructions: '只简短播报阶段进展，不要说已经完成。' },
+  )
+  await new Promise(resolve => setImmediate(resolve))
+  frontend.handleLifecycle({
+    type: 'conversation.item.created',
+    item: { ...sent[0].item, status: 'completed' },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.equal(
+    sent[1].response.instructions,
+    '只简短播报阶段进展，不要说已经完成。',
+  )
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'response-progress' },
+  })
+  frontend.handleLifecycle({
+    type: 'response.done',
+    response: { id: 'response-progress', status: 'completed' },
+  })
+  assert.equal((await outcome).completed, true)
+})
+
 test('cancelling a response before response.created releases its queue entry', async () => {
   const frontend = createQwenFrontend()
   frontend.ready = true
@@ -1275,6 +1313,56 @@ test('cancelling a response before response.created releases its queue entry', a
     phase: 'start',
   })
   assert.equal(frontend.pendingResponses.length, 0)
+})
+
+test('cancelling an active response releases queued input without response.done', async () => {
+  const frontend = createQwenFrontend({
+    responseCancelGraceMs: 1,
+    responseStartTimeoutMs: 50,
+    responseCompletionTimeoutMs: 50,
+  })
+  frontend.ready = true
+  const sent = []
+  frontend.send = event => sent.push(event)
+
+  const interrupted = frontend.speak('旧播报')
+  await new Promise(resolve => setImmediate(resolve))
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'response-interrupted' },
+  })
+
+  frontend.cancel()
+  const next = frontend.sendUserText('你好')
+  assert.deepEqual(await interrupted, {
+    cancelled: true,
+    phase: 'completion',
+  })
+
+  await new Promise(resolve => setTimeout(resolve, 5))
+  await new Promise(resolve => setImmediate(resolve))
+  const item = sent.find(event => (
+    event.type === 'conversation.item.create'
+    && event.item?.content?.[0]?.text === '你好'
+  ))
+  assert.ok(item)
+  frontend.handleLifecycle({
+    type: 'conversation.item.created',
+    item: { ...item.item, status: 'completed' },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'response-next' },
+  })
+  frontend.handleLifecycle({
+    type: 'response.done',
+    response: { id: 'response-next', status: 'completed' },
+  })
+  assert.deepEqual(await next, {
+    completed: true,
+    responseId: 'response-next',
+  })
 })
 
 test('cancels only the matching permission response', async () => {

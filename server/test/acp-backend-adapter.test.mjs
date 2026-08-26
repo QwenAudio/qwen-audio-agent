@@ -9,17 +9,11 @@ import {
 } from '../src/agent/acp-backend-adapter.mjs'
 
 function completed(speech = '完成') {
-  return JSON.stringify({
-    state: 'completed',
-    presentation: { speech, inline: null },
-  })
+  return speech
 }
 
 function delegated() {
-  return JSON.stringify({
-    state: 'delegated',
-    presentation: { speech: '已经交给独立项目处理。', inline: null },
-  })
+  return '已经交给独立项目处理。'
 }
 
 function fakeToolServer() {
@@ -381,7 +375,7 @@ test('retries an empty ACP coordinator response in a fresh Session', async () =>
 
   assert.deepEqual(prompts, ['coordinator-1', 'coordinator-2'])
   assert.equal(
-    JSON.parse(result.content).presentation.speech,
+    result.content,
     '新 Session 已恢复',
   )
   await adapter.close()
@@ -429,7 +423,7 @@ test('retries an OpenClaw reply initialization conflict in the same Session', as
   assert.deepEqual(prompts, ['coordinator-1', 'coordinator-1'])
   assert.equal(nextSession, 1)
   assert.equal(
-    JSON.parse(result.content).presentation.speech,
+    result.content,
     '同一 Session 重试成功',
   )
   await adapter.close()
@@ -535,7 +529,7 @@ test('continues a remembered project Session using only its Session ID', async (
     coordinationRunId: 'work-one',
   })
   assert.equal(
-    JSON.parse(result.content).presentation.speech,
+    result.content,
     '第三层结果已整理',
   )
   assert.ok(client.calls.some(call => (
@@ -1163,7 +1157,7 @@ test('replaces a persisted coordinator without the current coordinator contract'
   assert.equal(creates, 1)
   assert.equal(deleted.length, 1)
   assert.equal(saved[0][1].sessionId, 'fresh-coordinator')
-  assert.equal(saved[0][1].contractVersion, 4)
+  assert.equal(saved[0][1].contractVersion, 6)
   await adapter.close()
 })
 
@@ -1259,7 +1253,7 @@ for (const action of ['start', 'send']) {
       workObjective: '开发一个独立网页游戏',
       onEvent: event => events.push(event),
     })
-    assert.equal(JSON.parse(result.content).presentation.speech, '第三层结果已整理')
+    assert.equal(result.content, '第三层结果已整理')
     assert.ok(events.some(event => event.type === 'backend.delegated'))
     assert.ok(events.some(
       event => event.type === 'backend.delegation.completed',
@@ -1533,7 +1527,7 @@ test('busy-coordinator cancellation uses ACP directly and reconciles on the next
   ))
   assert.match(
     followUp[2],
-    /先前未正常结束的请求已经由 Gateway 确认终止/,
+    /上一请求已取消，不要续接其未完成内容/,
   )
   assert.doesNotMatch(followUp[2], /work-one|request_id|delegation_id/)
   assert.equal(
@@ -1599,10 +1593,10 @@ test('ordinary coordinator cancellation terminates the old request before the ne
     coordinationRunId: 'work-two',
     coordinationRequestId: 'job_2',
   })
-  assert.equal(JSON.parse(second.content).presentation.speech, '第二个请求已完成')
-  assert.match(prompts[1], /先前未正常结束的请求已经由 Gateway 确认终止/)
+  assert.equal(second.content, '第二个请求已完成')
+  assert.match(prompts[1], /上一请求已取消，不要续接其未完成内容/)
   assert.doesNotMatch(prompts[1], /job_1|work-one|request_id/)
-  assert.match(prompts[1], /新指令是本轮唯一需要处理的任务/)
+  assert.match(prompts[1], /仅处理以下新请求/)
   assert.deepEqual(
     adapter.registry.reconciliationsFor('qoder:owner-one:backend'),
     [],
@@ -1698,7 +1692,7 @@ test('delivers persisted cancellation reconciliation after a Gateway restart', a
     // Once to restore the persisted Session and once to re-supply its MCP
     // definitions before the first prompt after restart.
     assert.equal(resumes, 2)
-    assert.match(prompts[0], /先前未正常结束的请求已经由 Gateway 确认终止/)
+    assert.match(prompts[0], /上一请求已取消，不要续接其未完成内容/)
     assert.doesNotMatch(
       prompts[0],
       /job_21|work-before-restart|request_id/,
@@ -2195,14 +2189,7 @@ test('OpenClaw maps native Session tool updates into the shared delegation lifec
           },
         })
         return {
-          content: JSON.stringify({
-            task_id: 'work-one',
-            state: 'delegated',
-            mode: 'delegate',
-            delegation_id: 'run-one',
-            target_session_id: 'agent:child:one',
-            presentation: { speech: 'OpenClaw 已开始执行。', inline: null },
-          }),
+          content: 'OpenClaw 已开始执行。',
           response: { stopReason: 'end_turn' },
         }
       }
@@ -2238,7 +2225,7 @@ test('OpenClaw maps native Session tool updates into the shared delegation lifec
   })
   const result = await running
   assert.equal(
-    JSON.parse(result.content).presentation.speech,
+    result.content,
     'OpenClaw 第三层结果已整理',
   )
   assert.deepEqual(nativeCalls, [[
@@ -2308,7 +2295,7 @@ test('OpenClaw reattaches a persisted native delegation after Gateway restart', 
   })
 
   assert.equal(
-    JSON.parse(result.content).presentation.speech,
+    result.content,
     '恢复结果已整理',
   )
   assert.ok(events.some(event => event.type === 'backend.delegated'))
@@ -2346,6 +2333,56 @@ test('releases completed ACP tool-call state instead of retaining it globally', 
   })
   assert.equal(run.toolCalls.size, 0)
   assert.equal(Object.hasOwn(adapter, 'toolCalls'), false)
+})
+
+test('streams only ACP Agent messages as backend progress text', () => {
+  const adapter = new AcpBackendAdapter({
+    protocol: 'qoder',
+    client: fakeAcpClient(),
+    sessionToolServer: fakeToolServer(),
+  })
+  const events = []
+  const run = {
+    toolCalls: new Map(),
+    nativeToolCalls: new Map(),
+    onEvent: event => events.push(event),
+  }
+
+  adapter.onSessionUpdate(run, {
+    sessionUpdate: 'agent_thought_chunk',
+    content: { type: 'text', text: '不应播报的内部推理' },
+  })
+  adapter.onSessionUpdate(run, {
+    sessionUpdate: 'tool_call',
+    toolCallId: 'tool-one',
+    name: 'Read',
+    status: 'in_progress',
+  })
+  adapter.onSessionUpdate(run, {
+    sessionUpdate: 'agent_message_chunk',
+    messageId: 'message-one',
+    content: { type: 'text', text: '已经完成资料读取，' },
+  })
+  adapter.onSessionUpdate(run, {
+    sessionUpdate: 'agent_message_chunk',
+    messageId: 'message-one',
+    content: { type: 'text', text: '正在整理结论。' },
+  })
+
+  const messages = events.filter(event => event.type === 'backend.message')
+  assert.deepEqual(messages.map(event => event.message), [
+    '已经完成资料读取，',
+    '已经完成资料读取，正在整理结论。',
+  ])
+  assert.ok(events.some(event => (
+    event.type === 'backend.activity'
+    && event.activity.kind === 'thinking'
+  )))
+  assert.ok(events.some(event => (
+    event.type === 'backend.activity'
+    && event.activity.kind === 'tool'
+  )))
+  assert.equal(messages.some(event => /内部推理|Read/.test(event.message)), false)
 })
 
 test('reports recent project Session updates with Gateway delegation status', async () => {

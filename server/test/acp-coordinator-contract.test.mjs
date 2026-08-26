@@ -1,11 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import {
-  acpCoordinatorResponseState,
-  buildAcpCoordinatorInstruction,
-  parseAcpCoordinatorDecision,
-} from '../src/agent/acp-coordinator-contract.mjs'
-import { BACKEND_AGENT_INSTRUCTIONS } from '../src/agent/backend-agent-instructions.mjs'
+import { buildAcpCoordinatorInstruction } from '../src/agent/acp-coordinator-contract.mjs'
 import {
   COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
   COORDINATOR_STABLE_INSTRUCTIONS,
@@ -30,7 +25,7 @@ test('projects Gateway Work into one natural ACP task instruction', () => {
   })
 
   assert.match(prompt, /^继续修改此前讨论的首页/u)
-  assert.match(prompt, /Call session_start iff the user explicitly asks/u)
+  assert.match(prompt, /Start a new project Session only when the user explicitly asks/u)
   assert.doesNotMatch(prompt, /qwen_audio_agent_request|coordination\.v2/u)
   assert.doesNotMatch(prompt, /task_7|owner-one/u)
   assert.doesNotMatch(prompt, /继续改刚才那个页面|current-project|Asia\/Shanghai/u)
@@ -46,7 +41,7 @@ test('sends only the dynamic natural instruction when MCP supplies stable rules'
   })
 
   assert.equal(prompt, '查询当前电脑的真实内存容量')
-  assert.doesNotMatch(prompt, /Session routing:|Return exactly one JSON object/u)
+  assert.doesNotMatch(prompt, /Project Session routing:|Return exactly one JSON object/u)
 })
 
 test('keeps frontend memory, history, and attachment metadata out of model text', () => {
@@ -71,12 +66,6 @@ test('keeps frontend memory, history, and attachment metadata out of model text'
   )
 })
 
-test('keeps Session routing out of generic backend instructions', () => {
-  assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /new independent work/u)
-  assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /session_(?:start|send|status)/u)
-  assert.doesNotMatch(BACKEND_AGENT_INSTRUCTIONS, /request envelope/u)
-})
-
 test('keeps shared MCP coordinator instructions within the host budget', () => {
   assert.ok(
     Buffer.byteLength(COORDINATOR_STABLE_INSTRUCTIONS, 'utf8')
@@ -86,26 +75,12 @@ test('keeps shared MCP coordinator instructions within the host budget', () => {
     COORDINATOR_STABLE_INSTRUCTIONS,
     /request_id|task_id|target_session_id|user_memory|recent_voice_context/u,
   )
-})
-
-test('normalizes minimal and legacy coordinator presentation JSON', () => {
-  const minimal = {
-    state: 'completed',
-    presentation: {
-      speech: '页面已经修改并通过检查。',
-      inline: { title: '修改说明', format: 'markdown', content: '## 完成' },
-    },
-  }
-  const legacy = {
-    ...minimal,
-    task_id: 'job-one',
-    mode: 'respond',
-  }
-  const direct = parseAcpCoordinatorDecision(JSON.stringify(minimal))
-  const encoded = parseAcpCoordinatorDecision(
-    JSON.stringify(JSON.stringify(legacy)),
+  assert.match(
+    COORDINATOR_STABLE_INSTRUCTIONS,
+    /supported ACP ContentBlocks/u,
   )
-  assert.equal(direct.presentation.inline.content, '## 完成')
-  assert.equal(encoded.presentation.speech, '页面已经修改并通过检查。')
-  assert.equal(acpCoordinatorResponseState(JSON.stringify(minimal)), 'completed')
+  assert.doesNotMatch(
+    COORDINATOR_STABLE_INSTRUCTIONS,
+    /"state"|presentation|response contract|Return exactly one JSON object/u,
+  )
 })

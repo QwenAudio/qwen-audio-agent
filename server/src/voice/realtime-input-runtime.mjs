@@ -296,7 +296,10 @@ export class RealtimeInputRuntime {
       turnId: inputTurnId,
     })
     this.ensureFrontend()
-      .then(() => this.getFrontend().sendUserInput(parts, inputContext))
+      .then(() => {
+        this.expectResponseFor(inputContext)
+        return this.getFrontend().sendUserInput(parts, inputContext)
+      })
       .catch(error => {
         this.turns.failManualInput(inputContext)
         this.reportFrontendError(error)

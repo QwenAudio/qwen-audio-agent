@@ -16,6 +16,7 @@ const allowedDependencies = {
     'core',
     'frontend',
     'providers',
+    'session',
     'task',
     'transport',
     'voice',
@@ -27,7 +28,8 @@ const allowedDependencies = {
   agent: new Set(['agent', 'backend', 'core', 'shared']),
   backend: new Set(['backend', 'core', 'shared']),
   conversation: new Set(['conversation', 'core', 'shared']),
-  task: new Set(['agent', 'core', 'task']),
+  session: new Set(['session', 'shared']),
+  task: new Set(['agent', 'core', 'session', 'task']),
   transport: new Set(['shared', 'task', 'transport']),
   voice: new Set([
     'conversation',

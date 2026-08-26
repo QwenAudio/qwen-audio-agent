@@ -185,12 +185,7 @@ restarts the backend process and always resolves it.
 All backends now share one default working directory,
 `<config-dir>/workspace`, so switching backends continues the same files
 seamlessly. Per-backend overrides (for example `OPENCODE_WORKSPACE`)
-still isolate a specific backend when set explicitly. Older versions used
-per-backend directories under `<config-dir>/workspaces/<backend>/`; if such a
-directory still contains files, the gateway logs a
-`workspace.legacy_directory` notice on startup. Files are never migrated or
-deleted automatically — move anything you still need into the shared
-workspace manually.
+still isolate a specific backend when set explicitly.
 
 ## Minimal Configuration
 

@@ -89,6 +89,8 @@ export function taskDetail(task) {
   if (task.phase === 'responding') return t('结果已经返回，正在准备语音回复')
   if (task.phase === 'completed') return task.result || t('结果已经发送')
   if (task.phase === 'disconnected') return t('正在等待与后台重新连接')
+  const message = String(task.message || '').trim()
+  if (message) return message.slice(0, 300)
 
   const activity = latestVisibleActivity(task.activity)
   if (!activity) return task.phase === 'delegated'
@@ -163,6 +165,15 @@ export function taskView(task, previous = {}) {
     result: Object.hasOwn(task, 'result')
       ? task.result
       : previous.result,
+    ...(
+      Object.hasOwn(task, 'message') || Object.hasOwn(previous, 'message')
+        ? {
+            message: Object.hasOwn(task, 'message')
+              ? task.message
+              : previous.message,
+          }
+        : {}
+    ),
     ...(
       Object.hasOwn(task, 'activity') || Object.hasOwn(previous, 'activity')
         ? { activity: task.activity || previous.activity || [] }

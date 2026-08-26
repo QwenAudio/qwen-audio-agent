@@ -185,6 +185,19 @@ test('keeps a stale assistant reply with its original turn after user interrupts
   )
 })
 
+test('keeps a late task update with its originating turn before newer ASR', () => {
+  const turns = buildConversationTurns([
+    { id: 'new-user', role: 'user', turnId: 'voice-200-2', content: '继续问一个问题' },
+  ], [{
+    id: 'old-task',
+    turnId: 'voice-100-1',
+    phase: 'running',
+    createdAt: 100,
+  }])
+  assert.deepEqual(turns.map(turn => turn.id), ['voice-100-1', 'voice-200-2'])
+  assert.equal(turns[0].tasks[0].id, 'old-task')
+})
+
 test('places an active task below its turn acknowledgement instead of above the conversation', () => {
   const messages = [
     { id: 'user-1', role: 'user', turnId: 'voice-100-1', content: '查一下天气' },

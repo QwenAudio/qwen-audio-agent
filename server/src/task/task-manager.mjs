@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { resolve } from 'node:path'
 import { config } from '../core/config.mjs'
 import { TaskScheduler } from './task-scheduler.mjs'
 import { TaskStore } from './task-store.mjs'
@@ -34,6 +35,7 @@ import {
 } from './task-recovery.mjs'
 import { logger } from '../core/logger.mjs'
 import { BackendEventType } from '../core/backend-events.mjs'
+import { SessionJournalRegistry } from '../session/session-journal-registry.mjs'
 
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
@@ -59,8 +61,8 @@ export class TaskManager {
     pendingNotificationTtlMs = 604_800_000,
     notificationClaimTtlMs = 60_000,
     maxTerminalTasksPerOwner = 100,
-    progressCheckMs = config.backgroundTaskProgressCheckMs,
     logger: taskLogger = null,
+    sessionJournal = null,
   } = {}) {
     this.runner = runner
     this.repository = new TaskRepository({ store, serialize: persistedTask })
@@ -79,8 +81,8 @@ export class TaskManager {
     this.pendingNotificationTtlMs = pendingNotificationTtlMs
     this.notificationClaimTtlMs = notificationClaimTtlMs
     this.maxTerminalTasksPerOwner = maxTerminalTasksPerOwner
-    this.progressCheckMs = Math.max(0, Number(progressCheckMs) || 0)
     this.logger = taskLogger
+    this.sessionJournal = sessionJournal
     this.listeners = new Set()
     this.notifications = new TaskNotificationQueue({
       tasks: this.tasks,
@@ -96,6 +98,7 @@ export class TaskManager {
     this.recoveryCandidates = []
     this.scheduledTaskRunner = null
     this.restore()
+    if (this.sessionJournal) this.restoreFromJournal(this.sessionJournal)
   }
 
   get nextTaskNumber() {
@@ -125,10 +128,10 @@ export class TaskManager {
     task.schedulerHeld = false
   }
 
-  restore() {
-    const savedTasks = this.repository.load()
+  restore(savedTasks = null) {
+    const records = savedTasks || this.repository.load()
     let recoveryChanged = false
-    for (const saved of savedTasks) {
+    for (const saved of records) {
       saved.scope = normalizeTaskScope(saved.scope)
       if (isUserWork(saved) && !/^task_\d+$/u.test(String(saved.id || ''))) {
         const legacy = /^job_(\d+)$/u.exec(String(saved.jobId || ''))
@@ -174,7 +177,6 @@ export class TaskManager {
           notificationClaimantId: null,
           notificationClaimedAt: null,
           timeoutTimer: null,
-          progressCheckTimer: null,
         }
         task.promise = new Promise(resolve => {
           task.resolve = resolve
@@ -212,7 +214,6 @@ export class TaskManager {
         promise: null,
         runner: null,
         timeoutTimer: null,
-        progressCheckTimer: null,
         // Until the adapter accepts recovery, persistence must retain the
         // recoverable backend phase rather than checkpoint the temporary
         // in-memory `queued` phase.
@@ -230,6 +231,33 @@ export class TaskManager {
     }
     this.prune()
     if (recoveryChanged) this.persist()
+  }
+
+  /** Reconciles the task projection with the latest durable Journal snapshot. */
+  restoreFromJournalSnapshots(snapshots = []) {
+    const candidates = snapshots.filter(snapshot => snapshot?.id)
+    if (!candidates.length) return 0
+    let restored = 0
+    for (const snapshot of candidates) {
+      const id = String(snapshot.id)
+      const existing = this.tasks.get(id)
+      // A journal event is the durable revision. Remove the compact snapshot
+      // projection before replaying it so a terminal Journal state can repair
+      // a stale/failed tasks.json state after a crash.
+      if (existing) {
+        this.recoveryCandidates = this.recoveryCandidates.filter(
+          candidate => candidate !== existing,
+        )
+        this.tasks.delete(id)
+      }
+      this.restore([{ ...snapshot }])
+      restored += 1
+    }
+    return restored
+  }
+
+  restoreFromJournal(journal) {
+    return this.restoreFromJournalSnapshots(journal?.taskSnapshotsSync?.() || [])
   }
 
   recoverDelegated({
@@ -408,9 +436,6 @@ export class TaskManager {
       terminalHandled: false,
       abortController: null,
       schedulerHeld: false,
-      progressCheckMs: normalizedScope === TaskScope.USER && kind === 'work'
-        ? this.progressCheckMs
-        : null,
     }
     task.promise = new Promise(resolve => {
       task.resolve = resolve
@@ -447,7 +472,6 @@ export class TaskManager {
       timeoutMs: type === 'task'
         ? Number(timeoutMs) || config.scheduledTaskTimeoutMs
         : null,
-      progressCheckMs: null,
       createdAt: Date.now(),
       startedAt: null,
       completedAt: null,
@@ -474,7 +498,6 @@ export class TaskManager {
       abortController: null,
       schedulerHeld: false,
       timeoutTimer: null,
-      progressCheckTimer: null,
     }
     task.promise = new Promise(resolve => {
       task.resolve = resolve
@@ -624,8 +647,6 @@ export class TaskManager {
           task.notificationStatus = 'pending'
           clearInterval(task.progressTimer)
           task.progressTimer = null
-          clearInterval(task.progressCheckTimer)
-          task.progressCheckTimer = null
           this.releaseScheduler(task)
           this.emit(TaskDomainEvent.FAILED, task)
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
@@ -635,45 +656,6 @@ export class TaskManager {
         cleanup.unref?.()
       }, task.timeoutMs)
       task.timeoutTimer.unref?.()
-    }
-    // Interactive background work reports long-running progress. Scheduled
-    // work stays quiet until it completes, fails, or needs permission.
-    if (task.kind === 'work' && task.progressCheckMs) {
-      task.progressCheckTimer = setInterval(() => {
-        if (!isTaskActive(task.status)) {
-          clearInterval(task.progressCheckTimer)
-          task.progressCheckTimer = null
-          return
-        }
-        const lastActivity = task.activity.at(-1)
-        const elapsedMin = Math.round(
-          (Date.now() - (task.startedAt || Date.now())) / 60000,
-        )
-        let message
-        if (lastActivity) {
-          const verb = {
-            run: '执行',
-            read: '读取',
-            write: '修改',
-            search: '搜索',
-            image: '生成图片',
-          }[lastActivity.category] || '处理'
-          const detail = lastActivity.detail
-            ? ` ${lastActivity.detail}` : ''
-          message = `任务"${task.objective.slice(0, 80)}"`
-            + `已运行 ${elapsedMin} 分钟，正在${verb}${detail}`
-            + `（${lastActivity.status}）`
-        } else {
-          message = `任务"${task.objective.slice(0, 80)}"`
-            + `已运行 ${elapsedMin} 分钟，正在处理中`
-        }
-        this.emit(TaskDomainEvent.PROGRESS_CHECK, task, {
-          persist: false,
-          message,
-          delegated: task.status === 'delegated',
-        })
-      }, task.progressCheckMs)
-      task.progressCheckTimer.unref?.()
     }
     Promise.resolve()
       .then(() => {
@@ -713,7 +695,6 @@ export class TaskManager {
         clearInterval(task.progressTimer)
         task.progressTimer = null
         if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
-        if (task.progressCheckTimer) { clearInterval(task.progressCheckTimer); task.progressCheckTimer = null }
         task.abortController = null
         task.authorization = null
         if (task.status === 'cancelling') return
@@ -787,7 +768,6 @@ export class TaskManager {
         clearInterval(task.progressTimer)
         task.progressTimer = null
         if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
-        if (task.progressCheckTimer) { clearInterval(task.progressCheckTimer); task.progressCheckTimer = null }
         task.abortController = null
         task.authorization = null
         transitionTask(task, TaskStatus.FAILED)
@@ -824,7 +804,6 @@ export class TaskManager {
     clearInterval(task.progressTimer)
     task.progressTimer = null
     if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
-    if (task.progressCheckTimer) { clearInterval(task.progressCheckTimer); task.progressCheckTimer = null }
     task.abortController = null
     this.releaseScheduler(task)
     this.emit(TaskDomainEvent.CANCELLED, task)
@@ -946,6 +925,11 @@ export const taskStore = new TaskStore({
   onWarning: warning => logger.warn('task.persistence_warning', { warning }),
 })
 
+export const taskSessionJournal = new SessionJournalRegistry({
+  directory: resolve(config.configDirectory, 'sessions'),
+  logger,
+})
+
 export const taskManager = new TaskManager({
   store: taskStore,
   logger,
@@ -954,4 +938,5 @@ export const taskManager = new TaskManager({
   terminalTtlMs: config.taskTerminalTtlMs,
   pendingNotificationTtlMs: config.taskPendingNotificationTtlMs,
   maxTerminalTasksPerOwner: config.maxTerminalTasksPerOwner,
+  sessionJournal: taskSessionJournal,
 })

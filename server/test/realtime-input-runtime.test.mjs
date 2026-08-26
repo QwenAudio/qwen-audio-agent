@@ -137,6 +137,10 @@ test('manual text input supersedes speech and reaches the frontend once', async 
     turnId: 'text-1',
     turnGeneration: 2,
   })
+  assert.equal(
+    calls.some(([name]) => name === 'expectResponseFor'),
+    true,
+  )
 })
 
 test('invalid manual input fails before changing the current turn', () => {

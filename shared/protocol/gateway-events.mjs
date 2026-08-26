@@ -143,7 +143,6 @@ export const GatewayTaskSchema = z.object({
   notificationDeliveredAt: z.number().nullable().optional(),
   schedule: z.unknown().optional(),
   timeoutMs: z.number().nullable().optional(),
-  progressCheckMs: z.number().nullable().optional(),
 })
 
 export const GatewayClientEventTypeSchema = z.enum(GATEWAY_CLIENT_EVENT_NAMES)

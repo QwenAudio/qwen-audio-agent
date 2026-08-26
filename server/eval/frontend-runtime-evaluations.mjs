@@ -48,7 +48,7 @@ async function evaluateRoutingContract() {
     { names },
   )
   requireCondition(
-    /公开网页搜索、网址读取和用户已[\s\S]*保存的知识文档[\s\S]*不要转交后台/u.test(prompt),
+    /公开网页搜索、网址读取和已保存知识[\s\S]*单次[\s\S]*直接调用 `spawn_thinking`/u.test(prompt),
     'The frontend prompt no longer keeps Search and Knowledge in the frontend.',
   )
   requireCondition(

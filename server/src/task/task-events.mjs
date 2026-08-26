@@ -8,7 +8,6 @@ export const TaskDomainEvent = Object.freeze({
   CANCELLING: 'task.cancelling',
   UPDATED: 'task.updated',
   PROGRESS: 'task.progress',
-  PROGRESS_CHECK: 'task.progress.check',
   COMPLETED: 'task.completed',
   FAILED: 'task.failed',
   CANCELLED: 'task.cancelled',

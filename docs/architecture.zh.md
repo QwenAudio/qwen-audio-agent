@@ -140,9 +140,9 @@ Gateway 在该稳定键之后存储原生 ACP Session ID，并在后续轮次调
 Gateway 队列和 ACP 适配器都对写入进行串行化。这种双重保护防止并发消息在一个
 后端 Session 内部发生竞争。
 
-后端 Agent 拥有自己的执行策略。qwen-audio-agent 只提供一条自包含自然任务指令、
-当前轮次的协议原生附件和最终响应格式；它不转发前台历史或偏好，也不指导后端 Agent
-如何使用后端特定能力。
+后端 Agent 拥有自己的执行策略。qwen-audio-agent 只提供一条自包含自然任务指令和
+当前轮次的协议原生附件；它不转发前台历史或偏好，不规定状态 JSON，也不指导后端
+Agent 如何使用后端特定能力。
 
 ## 5. Task 状态
 
@@ -184,20 +184,13 @@ UI 将此映射为稳定的短语，如"搜索中"、"读取中"、"生成图像
 
 ## 7. 最终结果交付
 
-后端 Agent 返回一个最终呈现：
-
-```json
-{
-  "state": "completed",
-  "presentation": {
-    "speech": "concise result material",
-    "inline": null
-  }
-}
-```
-
-`speech` 是语义材料，而非脚本。实时前端会将其适配到实时对话中。`inline` 携带
-Markdown、代码或链接，用于共享时间线。
+后端 Agent 通过标准 ACP 回合返回结果：正文来自 `agent_message_chunk`，图片、音频和
+资源保留为原生 `ContentBlock`，回合以 `session/prompt` 的 `PromptResponse` 结束。
+ACP Adapter 不再把这些内容压成一段文本，也不要求模型补写 `state` 或
+`presentation` JSON；它将文本和非文本内容分别投射为 BackendPort 的 `content` 与
+`artifacts`。只有 `stopReason=end_turn` 代表回合成功完成；取消、拒绝、Token 或
+Agent 请求次数耗尽分别进入 Gateway 的取消或失败路径。Gateway 再根据客户端能力
+决定对话展示、资源卡片和语音表达。
 
 已完成的结果优先返回到发起对话。在全新连接时，可以恢复同一 owner 的旧对话中
 未完成的结果。可续期声明防止两个实时前端呈现相同结果。结果被注入实时上下文，
@@ -205,28 +198,24 @@ Markdown、代码或链接，用于共享时间线。
 交付会等待并重试，不会重复注入上下文。重试有次数上限，因此一个格式异常的结果
 不会阻塞后续完成。
 
-当后端 Agent 将工作交给另一个原生后端 Session 时，中间传输响应为：
+当后端 Agent 调用 `session_start` 或 `session_send` 时，委派成立的权威事实是
+Session 工具已经成功创建或续接目标任务，并返回 Adapter 验证过的运行与 Session
+标识，而不是模型输出的某个字段。ACP 只负责如实传递工具调用、工具结果和当前回合的
+终止；Adapter 将验证后的关联发布给 TaskManager，后者据此把原始 Task 移至
+`delegated`，并释放后端 Agent 串行化锁和 Task 调度通道。因此，其他语音请求可以在
+目标 Session 运行期间使用协调器。
 
-```json
-{
-  "state": "delegated",
-  "presentation": {
-    "speech": "a natural confirmation authored by the backend Agent",
-    "inline": null
-  }
-}
-```
+协调 Agent 可以在工具成功后自然结束当前 ACP 回合，但该文本不控制任务状态，也不会
+被解释为完成信号。关联 ID、目标 Session 和生命周期完全保留在 Gateway 的 Task
+Registry 与 Adapter 运行时中，不要求模型回显。
 
-关联关系保留在 Gateway 的 Task Registry 和 Adapter 观察到的工具结果中，不要求
-模型回显任何 ID。此响应绝不是用户可见的完成。适配器立即让后端 Agent 自然地完成这个简短的
-工具后响应，将原始 Task 移至 `delegated`，并释放后端 Agent 串行化锁和
-Task 调度通道。因此，其他语音请求可以在目标 Session 运行期间使用协调器。
 适配器独立地保持 Task 生命周期和事件订阅存活。只有与委派 ID 关联的匹配 ACP
 目标提示完成才能完成 Task。然后适配器短暂重新获取后端 Agent 锁，并将经验证的
-结果发送给它进行最终呈现。繁忙的目标、空结果、无关的 Session 更新或旧结果
+结果及其原生 ContentBlock 发送给它整理最终答复。繁忙的目标、空结果、无关的
+Session 更新或旧结果
 都无法完成 Task。
 
-正常的后端请求超时分别适用于初始协调器轮次和最终呈现轮次。当适配器在等待
+正常的后端请求超时分别适用于初始协调器轮次和最终整理轮次。当适配器在等待
 委派 Session 时不适用该超时。在该间隔内，只有显式 Task 取消或后端关闭才会
 取消目标 Session。
 
@@ -238,9 +227,9 @@ Task 调度通道。因此，其他语音请求可以在目标 Session 运行期
 附带取消错误。在适配器直接中止后，Gateway 会记录一个取消事实，并在下一个安全的
 协调器轮次中注入一次。这样可以在不延迟取消或重复停止的情况下协调协调器的历史。
 
-委派的 `presentation` 由后端 Agent 使用正常推理编写，并作为开始确认立即播报。
-它可以解释创建了什么、提交了什么或计划了什么，但它不是最终结果。适配器仅在
-异步 Session 工具已经成功但后端轮次未能完成时，作为超时回退中止后端轮次。
+前台的受理确认来自 Gateway 已经创建的 Task，而不是协调 Agent 自报的委派状态。
+适配器仅在异步 Session 工具已经成功但后端轮次未能结束时，作为超时回退中止
+后端轮次。
 
 ## 8. 后端内部能力
 

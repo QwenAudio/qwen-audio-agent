@@ -650,6 +650,13 @@ export function attachRealtimeGateway(server, {
       if (task.sessionId !== sessionId) return
       const publicEvent = projectGatewayTaskEvent(event)
       if (publicEvent) send(ws, publicEvent)
+      if (event.type === TaskDomainEvent.RUNNING) {
+        progressAnnouncements.track({
+          taskId: task.id,
+          turnId: task.turnId,
+          startedAt: task.startedAt,
+        })
+      }
       if (
         event.type === TaskDomainEvent.UPDATED
         && event.message

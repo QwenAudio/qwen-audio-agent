@@ -3,6 +3,7 @@ import { progressResponseInstructions } from '../frontend-tools.mjs'
 const DEFAULT_INTERVAL_MS = 60_000
 const DEFAULT_QUIET_MS = 800
 const DEFAULT_RETRY_MS = 1_000
+const DEFAULT_LIVENESS_MESSAGE = '后台任务仍在处理中，暂时还没有新的阶段性结果。'
 
 function text(value) {
   return String(value || '').trim()
@@ -22,7 +23,7 @@ function progressContext(candidate) {
 function progressPayload(candidate) {
   return [
     '<background_work_progress>',
-    candidate.message,
+    candidate.message || DEFAULT_LIVENESS_MESSAGE,
     '</background_work_progress>',
   ].join('\n')
 }
@@ -32,7 +33,9 @@ function progressPayload(candidate) {
  *
  * This component owns presentation timing only. Task liveness comes from the
  * TaskManager and progress content comes from BackendPort MESSAGE events; it
- * never polls a backend or derives narration from tool activity.
+ * never polls a backend or derives narration from tool activity. A tracked
+ * task that has not emitted public text still gets a neutral liveness update,
+ * so a quiet backend cannot leave the user without feedback indefinitely.
  */
 export class ProgressAnnouncementManager {
   constructor({
@@ -64,6 +67,31 @@ export class ProgressAnnouncementManager {
     this.closed = false
   }
 
+  track({ taskId, turnId = null, startedAt = null } = {}) {
+    const id = text(taskId)
+    if (!id || this.closed) return
+    const timestamp = this.now()
+    const previous = this.candidates.get(id)
+    if (previous) {
+      if (!previous.startedAt && startedAt) {
+        previous.startedAt = Number(startedAt)
+      }
+      return
+    }
+    this.candidates.set(id, {
+      taskId: id,
+      turnId,
+      startedAt: Number(startedAt) || timestamp,
+      firstOfferedAt: timestamp,
+      updatedAt: timestamp,
+      notBefore: 0,
+      message: '',
+      version: 0,
+      announcedAt: 0,
+    })
+    this.schedule()
+  }
+
   offer({ taskId, turnId = null, startedAt = null, message } = {}) {
     const id = text(taskId)
     const content = text(message).slice(-4_000)
@@ -79,6 +107,7 @@ export class ProgressAnnouncementManager {
       notBefore: previous?.notBefore || 0,
       message: content,
       version: (previous?.version || 0) + 1,
+      announcedAt: previous?.announcedAt || 0,
     })
     this.schedule()
   }
@@ -152,6 +181,9 @@ export class ProgressAnnouncementManager {
       }))
       .sort((left, right) => (
         left.dueAt - right.dueAt
+        || left.candidate.announcedAt - right.candidate.announcedAt
+        || Number(Boolean(right.candidate.message))
+          - Number(Boolean(left.candidate.message))
         || left.candidate.updatedAt - right.candidate.updatedAt
       ))[0] || null
   }
@@ -205,8 +237,13 @@ export class ProgressAnnouncementManager {
       // A user interruption consumes this low-priority update too. Replaying
       // the same monologue would be more disruptive than omitting it.
       this.lastAnnouncedAt = this.now()
-      if (this.candidates.get(candidate.taskId)?.version === candidate.version) {
-        this.candidates.delete(candidate.taskId)
+      const current = this.candidates.get(candidate.taskId)
+      if (current?.version === candidate.version) {
+        current.message = ''
+        current.firstOfferedAt = this.lastAnnouncedAt
+        current.updatedAt = this.lastAnnouncedAt
+        current.notBefore = 0
+        current.announcedAt = this.lastAnnouncedAt
       }
     } catch (error) {
       const current = this.candidates.get(candidate.taskId)

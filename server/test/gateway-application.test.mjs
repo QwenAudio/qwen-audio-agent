@@ -190,3 +190,87 @@ test('enables knowledge only when an external provider is injected', async () =>
   await application.close()
   assert.equal(closed, true)
 })
+
+test('replaces Markdown memory through the public provider boundary', async () => {
+  let closed = false
+  const memoryProvider = {
+    describe: () => ({
+      protocolVersion: 1,
+      key: 'external-memory',
+      label: 'External Memory',
+    }),
+    list: ownerId => [{
+      id: `memory_${ownerId}`,
+      scope: 'memory',
+      content: '- External fact',
+      format: 'markdown',
+      revision: 'revision-one',
+    }],
+    apply: async () => ({ changed: 0, documents: [] }),
+    health: () => ({ ok: true, external: true }),
+    close: async () => { closed = true },
+  }
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    memoryProvider,
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+
+  assert.equal(application.services.memoryProvider, memoryProvider)
+  assert.equal(application.services.frontendMemoryService, memoryProvider)
+  assert.deepEqual(application.services.frontendMemory.describe(), {
+    configured: true,
+    provider: {
+      protocolVersion: 1,
+      key: 'external-memory',
+      label: 'External Memory',
+    },
+  })
+  assert.match(
+    application.services.frontendMemory.list('owner')[0].content,
+    /External fact/,
+  )
+  assert.deepEqual(application.services.frontendMemory.health(), {
+    ok: true,
+    external: true,
+    configured: true,
+    provider: {
+      protocolVersion: 1,
+      key: 'external-memory',
+      label: 'External Memory',
+    },
+  })
+  await application.close()
+  assert.equal(closed, true)
+})
+
+test('can disable memory without constructing the default provider', async () => {
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    memoryProvider: null,
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+
+  assert.equal(application.services.memoryProvider, null)
+  assert.equal(application.services.frontendMemory, null)
+  assert.equal(application.services.frontendMemoryService, null)
+  await application.close()
+})

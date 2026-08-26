@@ -314,7 +314,9 @@ export class MemoryExtractor {
       expectedRevision: documents.get(change.document)?.revision || '',
     }))
     try {
-      const result = this.memoryService.apply(ownerId, prepared)
+      const result = await this.memoryService.apply(ownerId, prepared, {
+        source: 'automatic-extraction',
+      })
       this.audit?.record({
         op: 'patch',
         ownerId,

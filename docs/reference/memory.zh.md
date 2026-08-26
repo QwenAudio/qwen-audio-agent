@@ -84,6 +84,44 @@ Realtime 与自动整理都通过同一个记忆服务提交受限 Markdown 变�
 一句话包含多项持久修改时，Realtime 可在同一轮逐项调用，Gateway 只生成一次
 后续回应。写入前会重新读取最新文档，精确替换找不到或匹配多处时安全失败。
 
+## 替换记忆 Provider
+
+内置的 `USER.md` 和 `MEMORY.md` 是默认实现，不是 Gateway 的固定存储依赖。宿主应用
+可以从公开入口实现版本化的 `MemoryProvider`，并在 Composition Root 注入：
+
+```js
+import { MEMORY_PROVIDER_PROTOCOL_VERSION } from 'qwen-audio-agent/memory-provider'
+import { createGatewayApplication } from 'qwen-audio-agent/gateway-application'
+
+const memoryProvider = {
+  describe: () => ({
+    protocolVersion: MEMORY_PROVIDER_PROTOCOL_VERSION,
+    key: 'company-memory',
+    label: 'Company Memory',
+  }),
+  list(ownerId, options) {
+    return []
+  },
+  async apply(ownerId, changes, context) {
+    return { changed: 0, documents: [] }
+  },
+  health: () => ({ ok: true }),
+  async close() {},
+}
+
+const gateway = createGatewayApplication({ memoryProvider })
+```
+
+`list()` 必须返回同步、有界的 Realtime 上下文快照；远程 Provider 应在 Adapter 内维护
+本地缓存。`apply()` 可以异步，`context` 中的来源、Session、Turn 和 Trace 由 Gateway
+提供，不属于模型可控的修改内容。Provider 返回的文档会统一限制长度、规范 scope，并
+丢弃重复或无效文档。
+
+Realtime、自动整理器和工具处理器只依赖 `FrontendMemoryRuntime`，不会访问供应商 SDK、
+数据库或 Markdown 文件。未注入 Provider 时继续使用现有 Markdown 实现，现有配置和数据
+无需迁移。第三方 Adapter 自行负责远程认证、租户映射、缓存刷新和底层记录到 `user`、
+`memory` 两种公开文档语义的转换。
+
 ## 日志
 
 日志采用 JSON Lines 格式，API Key、Token、Authorization、Cookie、密码和

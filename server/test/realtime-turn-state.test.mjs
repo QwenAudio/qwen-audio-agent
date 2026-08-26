@@ -27,6 +27,35 @@ test('correlates repeated provider events with one voice turn', () => {
   })
 })
 
+test('starts a new turn when a provider reuses a completed input item id', () => {
+  const turns = state()
+
+  const first = turns.beginVoice('item-reused').context
+  turns.endSpeech()
+  turns.completeInput('item-reused')
+
+  const second = turns.beginVoice('item-reused').context
+  assert.notEqual(second.turnId, first.turnId)
+  assert.deepEqual(second, {
+    turnId: 'voice-2',
+    turnGeneration: 2,
+  })
+  assert.deepEqual(turns.resolveInput('item-reused'), second)
+})
+
+test('closes the speech-start correlation when transcription uses another id', () => {
+  const turns = state()
+
+  turns.beginVoice('provider-speech-id')
+  turns.endSpeech()
+  turns.completeInput('provider-transcript-id')
+
+  assert.deepEqual(turns.beginVoice('provider-speech-id'), {
+    accepted: true,
+    context: { turnId: 'voice-2', turnGeneration: 2 },
+  })
+})
+
 test('manual input supersedes voice and rejects late provider speech', () => {
   const turns = state()
   turns.beginVoice('voice-item')

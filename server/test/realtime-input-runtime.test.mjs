@@ -107,6 +107,36 @@ test('projects one voice turn from speech start through final transcript', () =>
   )
 })
 
+test('keeps consecutive utterances separate when the provider reuses an item id', () => {
+  const { runtime, events, records } = harness()
+  const utterances = ['梁家辉最近有什么新闻', '我靠，这么牛逼']
+
+  for (const transcript of utterances) {
+    runtime.handleProviderEvent({
+      type: 'input_audio_buffer.speech_started',
+      item_id: 'provider-reused-item',
+    })
+    runtime.handleProviderEvent({
+      type: 'input_audio_buffer.speech_stopped',
+      item_id: 'provider-reused-item',
+    })
+    runtime.handleProviderEvent({
+      type: 'conversation.item.input_audio_transcription.completed',
+      item_id: 'provider-reused-item',
+      transcript,
+    })
+  }
+
+  const finals = events.filter(event => (
+    event.type === 'transcript.final' && event.role === 'user'
+  ))
+  assert.deepEqual(finals.map(event => [event.turnId, event.content]), [
+    ['voice-1', utterances[0]],
+    ['voice-2', utterances[1]],
+  ])
+  assert.deepEqual(records.map(record => record.turnId), ['voice-1', 'voice-2'])
+})
+
 test('manual text input supersedes speech and reaches the frontend once', async () => {
   const { runtime, turns, events, records, calls } = harness()
   runtime.handleProviderEvent({

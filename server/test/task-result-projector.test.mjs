@@ -58,4 +58,8 @@ test('deduplicates a terminal result recorded again during reconnect claim', () 
   recordTaskResult(input)
 
   assert.equal(sync.list({ ownerId: 'personal', sessionId: 'main' }).length, 1)
+  assert.equal(
+    sync.list({ ownerId: 'personal', sessionId: 'main' })[0].turnId,
+    null,
+  )
 })

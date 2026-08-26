@@ -80,7 +80,8 @@ A2A 不为 `AUTH_REQUIRED` 后的授权决定规定统一语义，具体流程�
 - `token`、`headers`、`fetchImpl`：认证与传输扩展；
 - `acceptedOutputModes`：期望接收的结果 MIME 类型；
 - `pollIntervalMs`：Task 轮询间隔，默认 1 秒；
-- `timeoutMs`：单个 Task 超时，默认 5 分钟；
+- `timeoutMs`：可选的单 Task 超时；默认关闭，由协议完成或显式取消结束长任务；
+- `requestTimeoutMs`：Agent Card 发现等无 Task 信号请求的超时，默认 30 秒；
 - `legacyCompat`：官方 A2A 0.3 兼容，默认开启；
 - `clientFactory`：测试或高级传输注入。
 

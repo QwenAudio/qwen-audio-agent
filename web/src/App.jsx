@@ -30,7 +30,7 @@ import {
   removeTaskInPhase,
   taskDeliverySettled,
   taskDetail,
-  taskIsActive,
+  taskNeedsPresentation,
   taskLabel,
   taskView,
 } from './task-view.js'
@@ -412,7 +412,6 @@ export default function App() {
       taskId: event.taskId,
       taskIds: event.taskIds,
       origin: event.origin,
-      deliverySequence: event.deliverySequence,
       citations: event.citations,
       final,
     }))
@@ -428,7 +427,9 @@ export default function App() {
         role: 'assistant',
         content: item.content,
         title: item.title,
-        turnId: item.turnId || currentTurnId.current,
+        // Backend presentation is a new timeline item. taskId preserves the
+        // work relation; no user turn is inferred from current UI state.
+        turnId: item.turnId || '',
         taskId: item.taskId,
         companion: true,
         final: true,
@@ -504,7 +505,7 @@ export default function App() {
             })
             serverTasks
               .filter(task => (
-                taskIsActive(task)
+                taskNeedsPresentation(task)
                 && !known.has(task.id)
               ))
               .reverse()

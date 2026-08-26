@@ -48,6 +48,7 @@ function harness(options = {}) {
   const calls = []
   const active = new Set(['task_1', 'task_2'])
   let blocked = false
+  let turnSequence = 0
   const manager = new ProgressAnnouncementManager({
     getFrontend: () => ({
       async injectResult(...args) {
@@ -63,6 +64,7 @@ function harness(options = {}) {
     now: fakeClock.now,
     setTimer: fakeClock.setTimer,
     clearTimer: fakeClock.clearTimer,
+    createTurnId: () => `gateway-turn-${++turnSequence}`,
     ...options,
   })
   return {
@@ -94,7 +96,13 @@ test('coalesces Agent message chunks and first speaks after one minute', async (
   await testHarness.advance(1)
   assert.equal(testHarness.calls.length, 1)
   assert.match(testHarness.calls[0][0], /正在读取资料并整理关键结论/)
+  assert.match(testHarness.calls[0][0], /task_id: task_1/)
   assert.equal(testHarness.calls[0][1], 'progress')
+  assert.deepEqual(testHarness.calls[0][2], {
+    taskId: 'task_1',
+    turnId: 'gateway-turn-1',
+    taskIds: ['task_1'],
+  })
   assert.match(
     testHarness.calls[0][3].instructions,
     /阶段性更新，不是最终结果/,

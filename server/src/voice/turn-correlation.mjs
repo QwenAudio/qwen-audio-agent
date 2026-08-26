@@ -3,17 +3,23 @@ export class TurnCorrelation {
     this.maxItems = maxItems
     this.turns = new Map()
     this.invalidItems = new Set()
+    this.completedItems = new Set()
   }
 
-  remember(itemId, context) {
+  remember(itemId, context, { replace = false } = {}) {
     if (!itemId) return context
     const existing = this.turns.get(itemId)
-    if (existing) return existing
+    if (existing && !replace) return existing
+    if (replace) {
+      this.invalidItems.delete(itemId)
+      this.completedItems.delete(itemId)
+    }
     this.turns.set(itemId, context)
     while (this.turns.size > this.maxItems) {
       const oldest = this.turns.keys().next().value
       this.turns.delete(oldest)
       this.invalidItems.delete(oldest)
+      this.completedItems.delete(oldest)
     }
     return context
   }
@@ -41,18 +47,28 @@ export class TurnCorrelation {
     return this.invalidItems.has(itemId)
   }
 
+  isComplete(itemId) {
+    return this.completedItems.has(itemId)
+  }
+
   complete(itemId, fallback) {
     const context = this.resolve(itemId, fallback)
-    // An OpenAI Realtime item id identifies one conversation item for the
-    // lifetime of the session. Keep the bounded correlation after completion
-    // so duplicate events or a provider reopening that item still update the
-    // same frontend turn instead of creating a second message.
+    // Keep the bounded mapping so late events still resolve to their original
+    // turn. completedItems separately prevents duplicate finals and lets a
+    // later speech-start reuse of the provider id open a new Gateway turn.
     const invalid = this.invalidItems.has(itemId)
-    return { context, invalid }
+    const duplicate = this.completedItems.has(itemId)
+    if (itemId) this.completedItems.add(itemId)
+    return {
+      context,
+      invalid,
+      ...(duplicate ? { duplicate: true } : {}),
+    }
   }
 
   clear() {
     this.turns.clear()
     this.invalidItems.clear()
+    this.completedItems.clear()
   }
 }

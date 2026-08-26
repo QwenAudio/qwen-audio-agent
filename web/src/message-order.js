@@ -13,19 +13,6 @@ function turnTimestamp(turnId) {
 }
 
 export function insertByTurn(items, message) {
-  if (message.origin === 'announcement') {
-    const sequence = Number(message.deliverySequence)
-    const insertAt = Number.isFinite(sequence)
-      ? items.findIndex(item => (
-          item.origin === 'announcement'
-          && Number(item.deliverySequence) > sequence
-        ))
-      : -1
-    if (insertAt < 0) return [...items, message]
-    const next = [...items]
-    next.splice(insertAt, 0, message)
-    return next
-  }
   if (!message.turnId) return [...items, message]
   const matching = items
     .map((item, index) => item.turnId === message.turnId ? index : -1)
@@ -70,6 +57,10 @@ export function upsertUserTranscript(items, {
   }
   const index = items.findIndex(item => item.id === id)
   if (index < 0) return insertByTurn(items, message)
+  // A final transcript is the immutable record of one Gateway turn. Any
+  // later delta with the same id is a duplicate or protocol error, not a new
+  // utterance that may replace it.
+  if (items[index].final) return items
   const next = [...items]
   next[index] = { ...next[index], ...message }
   return next
@@ -82,7 +73,6 @@ export function upsertAssistantTranscript(items, {
   taskId,
   taskIds,
   origin,
-  deliverySequence,
   citations,
   final = false,
 }) {
@@ -96,7 +86,6 @@ export function upsertAssistantTranscript(items, {
       taskId,
       taskIds,
       origin,
-      deliverySequence,
       ...(citations?.length ? { citations } : {}),
       live: !final,
     })
@@ -112,7 +101,6 @@ export function upsertAssistantTranscript(items, {
     taskId: taskId || existing.taskId,
     taskIds: taskIds || existing.taskIds,
     origin: origin || existing.origin,
-    deliverySequence: deliverySequence || existing.deliverySequence,
     ...(citations?.length ? { citations } : {}),
     live: !final,
   }
@@ -126,23 +114,11 @@ export function discardUserTranscript(items, turnId) {
 }
 
 export function buildConversationTimeline(messages, tasks) {
-  const timeline = messages.map(message => ({ type: 'message', value: message }))
-  tasks.forEach(task => {
-    let insertAt = -1
-    if (task.turnId) {
-      const matching = timeline
-        .map((item, index) => (
-          item.type === 'message' && item.value.turnId === task.turnId
-            ? index
-            : -1
-        ))
-        .filter(index => index >= 0)
-      if (matching.length) insertAt = matching.at(-1) + 1
-    }
-    if (insertAt < 0) insertAt = timeline.length
-    timeline.splice(insertAt, 0, { type: 'task', value: task })
-  })
-  return timeline
+  return buildConversationTurns(messages, tasks).flatMap(turn => [
+    ...turn.beforeActivities.map(value => ({ type: 'message', value })),
+    ...turn.tasks.map(value => ({ type: 'task', value })),
+    ...turn.afterActivities.map(value => ({ type: 'message', value })),
+  ])
 }
 
 export function buildConversationTurns(messages, tasks) {
@@ -156,8 +132,9 @@ export function buildConversationTurns(messages, tasks) {
   }
 
   messages.forEach(message => {
-    const standalone = message.origin === 'announcement' || !message.turnId
-    const id = standalone ? `message:${message.id}` : message.turnId
+    const resolvedTurnId = message.turnId || ''
+    const standalone = !resolvedTurnId
+    const id = standalone ? `message:${message.id}` : resolvedTurnId
     const turn = standalone
       ? createTurn(id, true)
       : byTurnId.get(id) || createTurn(id)
@@ -172,22 +149,46 @@ export function buildConversationTurns(messages, tasks) {
     turn.tasks.push(task)
   })
 
-  return turns
-    .map((turn, index) => ({ ...turn, sortKey: turnSortKey(turn, index) }))
-    .sort((left, right) => left.sortKey - right.sortKey)
-    .map(turn => ({
+  const orderedTurns = turns.filter(turn => turn.messages.length)
+  const taskOnlyTurns = turns
+    .filter(turn => !turn.messages.length)
+    .sort((left, right) => (
+      (turnChronologicalTime(left) ?? Number.MAX_SAFE_INTEGER)
+      - (turnChronologicalTime(right) ?? Number.MAX_SAFE_INTEGER)
+    ))
+  for (const turn of taskOnlyTurns) {
+    const timestamp = turnChronologicalTime(turn)
+    const insertAt = timestamp === null ? -1 : orderedTurns.findIndex(existing => {
+      const existingTimestamp = turnChronologicalTime(existing)
+      return existingTimestamp !== null && existingTimestamp > timestamp
+    })
+    if (insertAt < 0) orderedTurns.push(turn)
+    else orderedTurns.splice(insertAt, 0, turn)
+  }
+
+  return orderedTurns.map(turn => {
+    const taskIds = new Set(turn.tasks.map(task => task.id))
+    const afterTaskCard = message => (
+      ['progress', 'announcement'].includes(message.origin)
+      && [
+        ...(Array.isArray(message.taskIds) ? message.taskIds : []),
+        message.taskId,
+      ].some(taskId => taskIds.has(taskId))
+    )
+    return {
       ...turn,
-      beforeActivities: turn.messages,
-      afterActivities: [],
-    }))
+      beforeActivities: turn.messages.filter(message => !afterTaskCard(message)),
+      afterActivities: turn.messages.filter(afterTaskCard),
+    }
+  })
 }
 
-function turnSortKey(turn, fallback) {
-  const timestamp = turnTimestamp(turn.id)
-  if (Number.isFinite(timestamp)) return timestamp
+function turnChronologicalTime(turn) {
   const itemTimes = [
     ...turn.messages.map(item => Number(item.createdAt || 0)),
     ...turn.tasks.map(item => Number(item.createdAt || 0)),
   ].filter(value => value > 0)
-  return itemTimes.length ? Math.min(...itemTimes) : Number.MAX_SAFE_INTEGER + fallback
+  if (itemTimes.length) return Math.min(...itemTimes)
+  const timestamp = turnTimestamp(turn.id)
+  return Number.isFinite(timestamp) ? timestamp : null
 }

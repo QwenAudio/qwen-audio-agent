@@ -12,7 +12,9 @@ export function recordTaskResult({
     role: 'assistant',
     content: task.status === 'completed' ? task.result : task.error,
     source: 'agent-result',
-    turnId: task.turnId,
+    // This is a durable task fact recorded before presentation, not an
+    // assistant utterance in the user's original realtime turn.
+    turnId: null,
     taskId: task.id,
   })
 }

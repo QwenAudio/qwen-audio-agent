@@ -1153,7 +1153,10 @@ export class AcpBackendAdapter {
           this.coordinatorInstructions(prompt),
           {
             signal,
-            timeoutMs: this.timeoutMs,
+            // Agent turns are user-cancellable and may legitimately run for
+            // hours. Connection setup and control RPCs remain bounded, but a
+            // live coding turn has no artificial wall-clock deadline.
+            timeoutMs: 0,
             onUpdate,
           },
         ), {

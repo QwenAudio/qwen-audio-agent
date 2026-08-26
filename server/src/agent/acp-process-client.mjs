@@ -85,6 +85,12 @@ function processError(label, message, stderr = '') {
   )
 }
 
+function timeoutDuration(timeoutMs) {
+  return timeoutMs >= 1000
+    ? `${Math.round(timeoutMs / 1000)} 秒`
+    : `${timeoutMs} 毫秒`
+}
+
 export class AcpProcessClient {
   constructor({
     label,
@@ -542,14 +548,29 @@ export class AcpProcessClient {
     combined?.addEventListener('abort', cancel, { once: true })
     if (combined?.aborted) cancel()
     try {
-      const response = await this.request(
-        acp.methods.agent.session.prompt,
-        {
-          sessionId: id,
-          prompt: promptBlocks,
-        },
-        { signal: combined, timeoutMs: 0 },
-      )
+      let response
+      try {
+        response = await this.request(
+          acp.methods.agent.session.prompt,
+          {
+            sessionId: id,
+            prompt: promptBlocks,
+          },
+          { signal: combined, timeoutMs: 0 },
+        )
+      } catch (error) {
+        if (!timeoutController.signal.aborted || signal?.aborted) throw error
+        throw new AgentError(
+          `${this.label} ACP 请求超时（${timeoutDuration(timeoutMs)}）`,
+          { status: 504, protocol: 'acp' },
+        )
+      }
+      if (timeoutController.signal.aborted && !signal?.aborted) {
+        throw new AgentError(
+          `${this.label} ACP 请求超时（${timeoutDuration(timeoutMs)}）`,
+          { status: 504, protocol: 'acp' },
+        )
+      }
       const content = active.text.join('').trim()
       return {
         content,

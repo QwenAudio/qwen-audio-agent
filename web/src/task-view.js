@@ -23,6 +23,14 @@ export function taskIsActive(task) {
     .includes(task?.workState)
 }
 
+export function taskNeedsPresentation(task) {
+  if (taskIsActive(task)) return true
+  return (
+    ['completed', 'failed'].includes(task?.status)
+    && ['pending', 'delivering'].includes(task?.notificationStatus)
+  )
+}
+
 export function removeDeliveredTask(tasks, taskId) {
   return tasks.filter(task => task.id !== taskId)
 }
@@ -68,13 +76,9 @@ function latestVisibleActivity(activity = []) {
     item => item.kind === 'plan' && item.status === 'running',
   )
   if (activePlan) return activePlan
-  const latest = visible.at(-1)
-  if (['thinking', 'mode', 'session', 'text'].includes(latest?.kind)) {
-    return latest
-  }
   return visible.findLast(item => item.kind === 'tool')
     || visible.findLast(item => item.kind === 'plan')
-    || latest
+    || null
 }
 
 export function taskDetail(task) {
@@ -95,15 +99,7 @@ export function taskDetail(task) {
   const activity = latestVisibleActivity(task.activity)
   if (!activity) return task.phase === 'delegated'
     ? t('进行中')
-    : task.objective
-  if (activity.kind === 'thinking') return t('后台 Agent 正在思考')
-  if (activity.kind === 'mode') {
-    return t('当前模式：{mode}', { mode: activity.mode || t('未知') })
-  }
-  if (activity.kind === 'session' && activity.title) {
-    return t('会话：{title}', { title: activity.title })
-  }
-  if (activity.kind === 'session') return t('正在连接后台 Agent')
+    : task.objective || t('正在执行任务')
   if (activity.kind === 'plan') {
     const count = activity.total > 0
       ? `${activity.completed}/${activity.total}`
@@ -111,9 +107,6 @@ export function taskDetail(task) {
     return [count, activity.detail].filter(Boolean).join(' · ')
       || t('正在执行任务')
   }
-  if (activity.kind === 'text') return task.phase === 'delegated'
-    ? t('进行中')
-    : t('正在整理结果')
   if (activity.kind === 'tool') {
     if (activity.label) return activity.label
     if (activity.category === 'image') return t('正在生成图片')

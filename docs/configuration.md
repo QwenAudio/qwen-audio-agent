@@ -931,7 +931,7 @@ them to the configuration file:
 | `SPEECH_TO_SPEECH_AUTH_TOKEN` | Empty; only for proxies with Bearer authentication |
 | `QWEN_AUDIO_AGENT_IDENTITY_MODE` | `personal` |
 | `QWEN_AUDIO_AGENT_TUI_AUDIO_MODE` | `half` |
-| `AGENT_TIMEOUT_MS` | `300000` |
+| `AGENT_TIMEOUT_MS` | `300000`; timeout for ACP connection initialization and bounded control requests, not active Agent turns |
 
 The macOS TUI CoreAudio helper is compiled by default to
 `~/Library/Caches/qwaudio/tui/macos-voice-io`, requiring no additional configuration. It

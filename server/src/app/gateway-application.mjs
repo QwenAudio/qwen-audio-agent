@@ -463,7 +463,6 @@ app.get('/api/timeline', (req, res) => {
     .map(task => ({
       id: `inline_${task.id}`,
       taskId: task.id,
-      turnId: task.turnId || null,
       createdAt: task.completedAt || task.createdAt,
       ...task.presentation.inline,
     }))

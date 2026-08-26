@@ -34,11 +34,11 @@ test('keeps an invalid Smart Turn invalid for duplicate late events', () => {
   )
   assert.deepEqual(
     turns.complete('item-invalid', current),
-    { context: invalid, invalid: true },
+    { context: invalid, invalid: true, duplicate: true },
   )
 })
 
-test('keeps the first turn assigned to a repeated Realtime item id', () => {
+test('keeps an active Realtime item in one turn until transcription completes', () => {
   const turns = new TurnCorrelation()
   const first = { turnId: 'voice-100-1', turnGeneration: 1 }
   const reopened = { turnId: 'voice-200-2', turnGeneration: 2 }
@@ -50,6 +50,13 @@ test('keeps the first turn assigned to a repeated Realtime item id', () => {
   })
   assert.deepEqual(turns.remember('item-reopened', reopened), first)
   assert.deepEqual(turns.resolve('item-reopened', reopened), first)
+
+  assert.deepEqual(
+    turns.remember('item-reopened', reopened, { replace: true }),
+    reopened,
+  )
+  assert.equal(turns.isComplete('item-reopened'), false)
+  assert.deepEqual(turns.resolve('item-reopened', first), reopened)
 })
 
 test('invalidates every older voice item when manual input takes priority', () => {

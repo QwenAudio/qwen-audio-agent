@@ -307,6 +307,37 @@ test('pauses the prompt timeout while waiting for user permission', async () => 
   })
 })
 
+test('reports a prompt timeout even when the Agent confirms cancellation', async () => {
+  const client = new AcpProcessClient({
+    label: 'Test Agent',
+    command: 'unused',
+  })
+  client.start = async () => {}
+  client.context = {
+    request: (_method, _params, { signal }) => new Promise(resolve => {
+      signal.addEventListener('abort', () => {
+        resolve({ stopReason: 'cancelled' })
+      }, { once: true })
+    }),
+    notify: async () => {},
+  }
+  client.sessions.set('session-one', { sessionId: 'session-one' })
+
+  const keepAlive = setTimeout(() => {}, 50)
+  try {
+    await assert.rejects(
+      client.prompt('session-one', 'inspect project', { timeoutMs: 10 }),
+      error => {
+        assert.equal(error.status, 504)
+        assert.match(error.message, /Test Agent ACP 请求超时（10 毫秒）/)
+        return true
+      },
+    )
+  } finally {
+    clearTimeout(keepAlive)
+  }
+})
+
 test('keeps Session metadata and supports the legacy model method', async () => {
   const calls = []
   const client = new AcpProcessClient({

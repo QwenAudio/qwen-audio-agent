@@ -1,9 +1,9 @@
 import { lookup as dnsLookup } from 'node:dns/promises'
 import http from 'node:http'
 import https from 'node:https'
-import { BlockList, isIP } from 'node:net'
+import { BlockList, isIP, SocketAddress } from 'node:net'
 
-const blockedAddresses = new BlockList()
+const blockedIpv4Addresses = new BlockList()
 for (const [network, prefix] of [
   ['0.0.0.0', 8],
   ['10.0.0.0', 8],
@@ -19,7 +19,8 @@ for (const [network, prefix] of [
   ['203.0.113.0', 24],
   ['224.0.0.0', 4],
   ['240.0.0.0', 4],
-]) blockedAddresses.addSubnet(network, prefix, 'ipv4')
+]) blockedIpv4Addresses.addSubnet(network, prefix, 'ipv4')
+const blockedIpv6Addresses = new BlockList()
 for (const [network, prefix] of [
   ['::', 128],
   ['::1', 128],
@@ -27,8 +28,7 @@ for (const [network, prefix] of [
   ['fe80::', 10],
   ['ff00::', 8],
   ['2001:db8::', 32],
-  ['::ffff:0:0', 96],
-]) blockedAddresses.addSubnet(network, prefix, 'ipv6')
+]) blockedIpv6Addresses.addSubnet(network, prefix, 'ipv6')
 
 const SUPPORTED_CONTENT_TYPES = [
   'text/html',
@@ -64,9 +64,37 @@ function publicUrl(value) {
   return url
 }
 
-function isBlockedAddress(address, family) {
+function normalizedNetworkAddress(address, family) {
   const type = family === 6 || family === 'IPv6' ? 'ipv6' : 'ipv4'
-  return blockedAddresses.check(address, type)
+  if (type !== 'ipv6') return { address, type }
+
+  const parsed = SocketAddress.parse(`[${address}]:0`)
+  const normalized = parsed?.address || String(address || '')
+  const mappedPrefix = '::ffff:'
+  if (normalized.toLowerCase().startsWith(mappedPrefix)) {
+    const mappedAddress = normalized.slice(mappedPrefix.length)
+    if (isIP(mappedAddress) === 4) {
+      return { address: mappedAddress, type: 'ipv4' }
+    }
+  }
+  return { address: normalized, type }
+}
+
+export function isBlockedAddress(address, family) {
+  const normalized = normalizedNetworkAddress(address, family)
+  return normalized.type === 'ipv6'
+    ? blockedIpv6Addresses.check(normalized.address, 'ipv6')
+    : blockedIpv4Addresses.check(normalized.address, 'ipv4')
+}
+
+export function createPinnedLookup({ address, family }) {
+  return (_hostname, options, callback) => {
+    if (options?.all) {
+      callback(null, [{ address, family }])
+      return
+    }
+    callback(null, address, family)
+  }
 }
 
 async function resolvePublicAddress(hostname, { allowPrivateNetwork = false } = {}) {
@@ -102,9 +130,7 @@ function requestOnce(url, address, {
         'accept-encoding': 'identity',
         'user-agent': userAgent,
       },
-      lookup: (_hostname, _options, callback) => {
-        callback(null, address.address, address.family)
-      },
+      lookup: createPinnedLookup(address),
     }, response => {
       const chunks = []
       let size = 0

@@ -107,7 +107,7 @@ receipt (`spawn_thinking`); `control` tools query or change existing work.
 
 Task records use one short `task_id` across intake, query, cancellation, events,
 and result delivery. They carry owner, conversation, turn, objective,
-multimodal inputs, state, activity, authorization, artifacts, presentation,
+multimodal inputs, state, activity, authorization, artifacts,
 and timestamps. Public states align
 with A2A Task semantics: `submitted`, `working`, `auth_required`, `completed`,
 `failed`, and `cancelled`. Gateway-specific phases remain internal.

@@ -100,7 +100,6 @@ test('reschedule re-arms when a scheduled task is cancelled', async () => {
   const manager = new TaskManager()
   const runner = async objective => ({
     content: objective,
-    metadata: { presentation: { speech: objective } },
   })
 
   const future = Date.now() + 60_000

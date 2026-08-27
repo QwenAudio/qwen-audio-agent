@@ -57,7 +57,7 @@ function fakeClient({ hold }) {
           task_id: 'job',
           state: 'completed',
           mode: 'respond',
-          presentation: { speech: '已经完成。', inline: null },
+          result: '已经完成。',
         }),
         response: { stopReason: 'end_turn' },
       }

@@ -17,10 +17,7 @@ async function usingFixture(createFixture, options, operation) {
 function assertOutcome(outcome) {
   assert.equal(typeof outcome?.content, 'string')
   assert.ok(Array.isArray(outcome?.artifacts))
-  assert.ok(
-    outcome?.presentation == null
-      || typeof outcome.presentation === 'object',
-  )
+  assert.equal('presentation' in outcome, false)
   for (const privateField of [
     'metadata',
     'raw',

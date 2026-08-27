@@ -14,11 +14,14 @@
 版本号遵循 SemVer：新增能力升 minor；下文点名的任一端点或事件发生破坏性
 变更升 major。
 
-当前版本为 `4.0.0`。`4.0` 将原来的 `workId` / `jobId` 双重身份收敛为 Task 的唯一短
+当前版本为 `5.0.0`。`5.0` 删除由后台控制的 Task `presentation` 包装：后台只返回
+事实性 `content` 与可选的类型化 `artifacts`，前台 Chatbot 决定如何播报，各个对话
+客户端决定如何呈现。同一版本同时将现有 `WS /api/realtime` 事件模型正式发布为
+可替换的对话客户端边界。`4.0` 将原来的 `workId` / `jobId` 双重身份收敛为 Task 的唯一短
 `id`（模型工具结果中为 `task_id`），并增加 `task.updated` 增量快照。该字段变更会影响
 读取 Task 事件的客户端，因此升 major。`3.1` 在最终助手转写事件中增加有界 Citation。`3.0` 为原生
 Task 事件提供与 A2A 对齐的 `submitted`、
-`working`、`auth_required` 状态，以及类型明确的产物、呈现与授权对象。它替换了
+`working`、`auth_required` 状态，以及类型明确的产物与授权对象。它替换了
 `2.x` 的 `active` 状态与不透明结果元数据，因此事件消费者必须检查下方能力位。
 `2.1` 新增了可选的 AG-UI Task 事件投射，且未改变默认事件流。`2.x` 接替
 `feat/embedded-gateway-host-contract` 分支的 `1.x`
@@ -40,9 +43,10 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `input.suspend-ttl` | 持有者不主动释放时抢占自行过期 | `server/test/input-arbitration.test.mjs` |
 | `input.suspend-ack` | 客户端以 `input.suspend.ack` 确认抢占生效（仅用于状态展示——不要等待它） | `server/test/input-suspend-protocol.test.mjs` |
 | `tasks.ag-ui-event-stream` | `GET /api/tasks/:id/events?format=ag-ui` 将现有 Task 事件流投射为 AG-UI `ACTIVITY_SNAPSHOT`；不传 `format` 时仍为原生事件流 | `server/test/agui-event-projector.test.mjs` |
-| `tasks.work-artifacts-authorization` | 原生 Task 事件使用与 A2A 对齐的工作状态，并暴露类型明确的 `artifacts`、`presentation` 与 `authorization` 对象 | `test/gateway-event-schema.test.mjs`、`server/test/task-state.test.mjs` |
+| `tasks.structured-results-authorization` | 原生 Task 事件使用与 A2A 对齐的工作状态，并暴露事实性 `result`、类型化 `artifacts` 与 `authorization`，不规定播报或 UI | `test/gateway-event-schema.test.mjs`、`server/test/task-state.test.mjs` |
 | `tasks.unified-id-updates` | Task 只公开一个短 `id`；`task.updated` 携带 Adapter 归一化后的增量消息与产物 | `test/gateway-event-schema.test.mjs`、`server/test/task-manager.test.mjs` |
 | `messages.citations` | 最终助手 `transcript.final` 可以携带同一轮前台检索产生的规范化 Citation | `test/gateway-event-schema.test.mjs`、`server/test/realtime-presentation-runtime.test.mjs` |
+| `realtime.conversation-client-v1` | `WS /api/realtime`、公开事件常量与消息 Schema 共同构成可替换的文本/音频/多模态对话客户端边界 | `test/gateway-event-schema.test.mjs`、`test/custom-conversation-client.test.mjs` |
 | `desktop.orb-shell` | 悬浮球形态的主进程契约随包发布：`bindOrbShell` 应答随包 preload 发出的全部通道 | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` 持有悬浮球窗口配方；其 `destroy()` 是宿主的同步销毁路径（渲染进程退出才能确定性释放麦克风） | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` 覆盖默认锚点、显示器夹取与拖放持久化 | `desktop/test/orb-placement.test.mjs` |
@@ -140,14 +144,38 @@ await orb.load()
 稳定的 `messageId`，每次生命周期更新都会替换对应的 `qwen.audio.task` activity
 内容。原生 Task 事件流仍是默认格式，现有客户端不会收到任何新增事件。
 
-未在此列出的接口（`/api/tasks`、`/api/timeline`、`/api/backend/ui`、
-`/api/permissions/:id`，以及 `WS /api/realtime` 中除下文事件之外的负载）
-是我们自己前端在用的，不承诺稳定。
+未在此列出的接口（`/api/tasks`、`/api/backend/ui` 与
+`/api/permissions/:id`）是我们自己前端在用的，不承诺稳定。
 
 ## Realtime 事件
 
-事件名以常量形式发布在 `shared/realtime-events.mjs`；自行拼写字符串的客户端
-后果自负。
+`WS /api/realtime?sessionId=<id>` 是公开的对话客户端边界。事件名通过
+`qwen-audio-agent/realtime-events` 发布，消息 Schema 与解析器通过
+`qwen-audio-agent/gateway-events` 发布；客户端应使用这些包入口，不依赖内部路径。
+`gateway.connected` 与 `gateway.disconnected` 是共享状态 reducer 使用的客户端本地
+生命周期辅助事件，不会通过 WebSocket 下发。
+
+WebSocket 打开后先发送 `connect`，声明输入/输出模式、客户端身份、语言/时区与
+支持的输入类型。音频输入为 base64 PCM16 单声道，采样率取 `voice.ready` 返回的
+`inputSampleRate`；音频输出按每个 `audio.delta` 携带的 `sampleRate` 播放。文本或
+多模态轮次使用 `input.message`，按顺序提交 `text` / `file` 类型的 `parts`。Task
+事件与对话事件共用同一连接，但只做对话的客户端可以忽略它们。
+
+| 方向 | 事件组 | 含义 |
+| --- | --- | --- |
+| 客户端 → 服务端 | `connect` | 在提交输入前声明客户端及其语音/输入能力 |
+| 客户端 → 服务端 | `input.message`、`text.message` | 提交一轮文本或多模态对话输入 |
+| 客户端 → 服务端 | `audio.append` | 追加一段 base64 PCM16 单声道音频 |
+| 客户端 → 服务端 | `unmute`、`mute`、`input.unmute`、`input.mute` | 控制语音参与，或只控制麦克风采集 |
+| 客户端 → 服务端 | `interrupt`、`sleep`、`wake` | 打断前台回复，或控制显式休眠 |
+| 客户端 → 服务端 | `playback.started`、`playback.ended`、`playback.cancelled` | 按 `responseId` 回报客户端播放生命周期 |
+| 服务端 → 客户端 | `voice.ready`、`voice.connection`、`voice.ownership`、`voice.deactivated`、`voice.sleep` | 语音连接、占用权与休眠生命周期 |
+| 服务端 → 客户端 | `turn.started`、`voice.state` | 前台对话轮次标识与状态 |
+| 服务端 → 客户端 | `audio.delta`、`audio.done`、`playback.clear` | 播放音频流及清除指令 |
+| 服务端 → 客户端 | `response.started`、`response.interrupted` | 以 `responseId` 标识的回复生命周期 |
+| 服务端 → 客户端 | `transcript.delta`、`transcript.final`、`transcript.discard` | 用户与助手转写生命周期 |
+| 服务端 → 客户端 | `task.*` | 可选的后台 Task 快照、进度、授权与完成事件 |
+| 服务端 → 客户端 | `agent.activity`、`client.state`、`error` | 前台活动提示、客户端状态请求与错误 |
 
 | 方向 | 事件 | 含义 |
 | --- | --- | --- |

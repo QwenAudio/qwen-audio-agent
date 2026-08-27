@@ -4,7 +4,6 @@ import { TaskManager } from '../src/task/task-manager.mjs'
 
 const trivialRunner = async objective => ({
   content: objective,
-  metadata: { presentation: { speech: objective } },
 })
 
 function persistedReminder(status, id = `work_${status}_reminder`) {
@@ -27,7 +26,6 @@ function persistedReminder(status, id = `work_${status}_reminder`) {
     elapsedMs: 0,
     result: null,
     error: null,
-    resultMetadata: null,
     activity: [],
     delegation: null,
     cancellation: null,
@@ -181,7 +179,6 @@ test('restore recovers scheduled tasks with reminder runner rebuilt', () => {
     elapsedMs: 0,
     result: null,
     error: null,
-    resultMetadata: null,
     activity: [],
     delegation: null,
     cancellation: null,
@@ -223,7 +220,6 @@ test('restored scheduled_task receives its complete persisted execution context'
     elapsedMs: 0,
     result: null,
     error: null,
-    resultMetadata: null,
     activity: [],
     delegation: null,
     cancellation: null,

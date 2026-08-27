@@ -51,7 +51,7 @@ test('accepts valid transitions and rejects backwards or terminal transitions', 
   )
 })
 
-test('projects an active task into presentation and standard artifacts', () => {
+test('projects an active task into standard artifacts without legacy result metadata', () => {
   const projected = publicTask({
     id: 'work-one',
     taskId: 'job_1',
@@ -63,9 +63,13 @@ test('projects an active task into presentation and standard artifacts', () => {
     startedAt: 40,
     elapsedMs: 0,
     activity: [],
+    artifacts: [{
+      artifactId: 'report',
+      name: '报告',
+      parts: [{ text: '# 完成', mediaType: 'text/markdown' }],
+    }],
     resultMetadata: {
       presentation: {
-        speech: '报告已完成。',
         inline: { title: '报告', format: 'markdown', content: '# 完成' },
       },
       backendRef: { sessionId: 'private-session' },
@@ -75,12 +79,9 @@ test('projects an active task into presentation and standard artifacts', () => {
 
   assert.equal(projected.workState, 'working')
   assert.equal(projected.elapsedMs, 60)
-  assert.deepEqual(projected.presentation, {
-    speech: '报告已完成。',
-    inline: { title: '报告', format: 'markdown', content: '# 完成' },
-  })
+  assert.equal('presentation' in projected, false)
   assert.deepEqual(projected.artifacts, [{
-    artifactId: 'artifact_inline',
+    artifactId: 'report',
     name: '报告',
     parts: [{ text: '# 完成', mediaType: 'text/markdown' }],
   }])

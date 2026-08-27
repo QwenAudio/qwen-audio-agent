@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import test from 'node:test'
+import WebSocket from 'ws'
 import { createGatewayApplication } from '../src/app/gateway-application.mjs'
 import { config } from '../src/core/config.mjs'
 import { createRealtimeProviderRegistry } from '../src/voice/providers/provider-registry.mjs'
@@ -28,6 +29,61 @@ function disabledBackend() {
     recoverDelegatedWork: async () => null,
   }
 }
+
+function customTaskAnnouncementRuntime() {
+  const methods = names => Object.fromEntries(
+    names.map(name => [name, () => {}]),
+  )
+  return {
+    results: methods([
+      'completed',
+      'failed',
+      'dismissActive',
+      'confirmMany',
+      'retryMany',
+      'flush',
+      'pause',
+      'close',
+    ]),
+    progress: methods(['offer', 'remove', 'clear', 'flush', 'close']),
+  }
+}
+
+test('passes the Task announcement factory through the application composition root', async () => {
+  const calls = []
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMcp: null,
+    frontendOpenApi: null,
+    taskAnnouncementFactory: options => {
+      calls.push(options)
+      return customTaskAnnouncementRuntime()
+    },
+  })
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+  const socket = new WebSocket(
+    `ws://127.0.0.1:${port}/api/realtime?sessionId=announcement-factory`,
+  )
+  try {
+    await once(socket, 'open')
+    assert.equal(calls.length, 1)
+    assert.equal(typeof calls[0].resultOptions.getFrontend, 'function')
+    assert.equal(typeof calls[0].progressOptions.isTaskActive, 'function')
+  } finally {
+    socket.close()
+    await application.close()
+  }
+})
 
 test('constructs an injectable Gateway without binding a port on import', async () => {
   const inputAssets = { kind: 'test-input-assets' }

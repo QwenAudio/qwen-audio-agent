@@ -3,7 +3,7 @@
 The Backend Adapter SDK connects non-ACP action systems to qwen-audio-agent.
 A phone agent, hardware agent, HTTP service, or other task runtime implements
 the protocol-neutral `BackendPort`; voice interaction, the Task queue,
-authorization relay, and result presentation remain unchanged.
+authorization relay, and result delivery remain unchanged.
 
 ## Import
 
@@ -61,9 +61,13 @@ The final `submit` result contains at least:
 {
   content: 'Factual material for the frontend',
   artifacts: [],
-  presentation: { speech: 'Material for natural expression', inline: null },
 }
 ```
+
+`content` is the sole factual text that the frontend Chatbot understands,
+summarizes, and expresses naturally. An adapter must not prescribe separate
+spoken wording. Files, images, and structured output use `artifacts`;
+BackendPort does not prescribe a Conversation Client presentation.
 
 Do not return raw protocol objects, session IDs, tokens, or credentials.
 Progress is published through `subscribe` as backend events correlated by
@@ -90,7 +94,7 @@ Incremental messages and artifacts use `backend.message` and
 callbacks must be normalized inside the adapter; raw protocol payloads never
 reach TaskManager or the frontend.
 
-`kind` is extensible. Common presentation fields include `status`, `message`,
+`kind` is extensible. Common display fields include `status`, `message`,
 `label`, `detail`, `category`, `tool`, `title`, `updatedAt`, `mode`, `completed`,
 and `total`; adapter-specific fields may be added. Reusing an activity `id`
 updates that observation and makes it the most recent one. Never put raw

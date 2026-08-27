@@ -86,7 +86,6 @@ export class InMemoryBackendAdapter {
       return {
         content,
         artifacts: [],
-        presentation: { speech: content, inline: null },
       }
     } finally {
       this.active.delete(taskId)

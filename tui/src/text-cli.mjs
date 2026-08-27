@@ -9,7 +9,6 @@ import { isExitCommand } from './terminal-commands.mjs'
 
 const ESC = ''
 const DIM = `${ESC}[90m`
-const CYAN = `${ESC}[36m`
 const YELLOW = `${ESC}[33m`
 const RED = `${ESC}[31m`
 const BOLD = `${ESC}[1m`
@@ -152,9 +151,6 @@ export async function runCli(options = parseArguments(process.argv.slice(2))) {
         const citations = formatCitationLines(event.citations)
         if (citations) print(`${DIM}${citations}${RST}`)
       }
-    } else if (event.type === 'timeline.inline') {
-      const content = event.item?.content || event.item?.markdown || ''
-      if (content) print(`${CYAN}── 时间线 ──${RST}\n${content}`)
     } else if (event.type === 'error') {
       if (streaming) {
         process.stdout.write('\n')

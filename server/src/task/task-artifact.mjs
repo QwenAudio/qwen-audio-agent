@@ -145,28 +145,8 @@ export function mergeArtifacts(current, incoming) {
   return normalizeArtifacts([...byId.values()])
 }
 
-export function artifactFromInlinePresentation(presentation) {
-  const inline = presentation?.inline
-  const content = clean(inline?.content, MAX_TEXT_CHARS)
-  if (!content) return null
-  const format = ['markdown', 'code', 'link'].includes(inline.format)
-    ? inline.format
-    : 'markdown'
-  return {
-    artifactId: 'artifact_inline',
-    ...(clean(inline.title, 240) ? { name: clean(inline.title, 240) } : {}),
-    parts: [{
-      text: content,
-      mediaType: format === 'link' ? 'text/uri-list' : 'text/markdown',
-    }],
-  }
-}
-
-export function artifactsFromOutcome(outcome, presentation = null) {
-  const supplied = normalizeArtifacts(
+export function artifactsFromOutcome(outcome) {
+  return normalizeArtifacts(
     outcome?.artifacts || outcome?.metadata?.artifacts,
   )
-  if (supplied.length) return supplied
-  const inline = artifactFromInlinePresentation(presentation)
-  return inline ? [inline] : []
 }

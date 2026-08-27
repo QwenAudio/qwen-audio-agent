@@ -112,7 +112,6 @@ test('ACP submit exposes Work values while Session details stay private', async 
   assert.deepEqual(outcome, {
     content: '已经完成。',
     artifacts: [],
-    presentation: null,
   })
   assert.equal('metadata' in outcome, false)
   assert.equal('sessionId' in outcome, false)
@@ -141,7 +140,7 @@ test('ACP submit preserves non-text output as standard artifacts', async () => {
   })
 
   assert.equal(outcome.content, '')
-  assert.equal(outcome.presentation, null)
+  assert.equal('presentation' in outcome, false)
   assert.deepEqual(outcome.artifacts, [{
     artifactId: 'acp_content_1',
     name: 'result.png',

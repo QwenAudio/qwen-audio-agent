@@ -1449,7 +1449,6 @@ export class AcpBackendAdapter {
       return {
         content: clean(result?.content),
         artifacts,
-        presentation: null,
       }
     } finally {
       if (this.workControllers.get(taskId) === controller) {
@@ -1591,7 +1590,6 @@ export class AcpBackendAdapter {
         sessionId: delegation.sessionId,
         title: delegation.title,
         directory: delegation.directory,
-        presentation: saved.presentation || null,
       },
     })
     try {
@@ -1711,7 +1709,7 @@ export class AcpBackendAdapter {
       latest?.detail || latest?.tool || latest?.kind,
       240,
     )
-    const speech = status.status === 'completed'
+    const answer = status.status === 'completed'
       ? `这项工作已经完成：${clean(status.result)}`
       : status.status === 'failed'
         ? `这项工作已经失败：${clean(status.error)}`
@@ -1725,7 +1723,7 @@ export class AcpBackendAdapter {
         task_id: clean(record.taskId) || clean(taskId),
         state: 'completed',
         mode: 'respond',
-        presentation: { speech, inline: null },
+        result: answer,
       }),
       protocol: this.protocol,
       metadata: {

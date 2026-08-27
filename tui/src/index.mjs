@@ -1429,10 +1429,6 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       playback.done(event.responseId)
     }
     transcriptDisplay.handle(event)
-    if (event.type === 'timeline.inline') {
-      const content = event.item?.content || event.item?.markdown || ''
-      if (content) print(`${style('── 执行结果 ──', 'cyan')}\n${content}`)
-    }
     if (event.type === 'task.running') {
       turnStatusDisplay.status(
         event,

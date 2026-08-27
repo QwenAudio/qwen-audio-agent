@@ -47,27 +47,18 @@ qwen-audio-agent 把系统切成两层：
 - **需要工具或长时间处理** → 打包成任务委派给后台 Agent，前台先用一句话
   确认（"我去查一下，你先忙别的"），对话不断线。
 
-这个"路由"决策由一个轻量的协调器完成（`server/src/agent/coordinator.mjs`），
-它的输出是一个强 schema 约束的决策对象：
+这个路由决策由前台模型完成。需要后台处理时，它调用结构化的
+`spawn_thinking`：
 
 ```js
-// 两种决策：respond（前台直接回答）/ delegate（委派后台）
 {
-  task_id: '…',
-  state: 'delegated',
-  mode: 'delegate',
-  delegation_id: '…',
-  target_session_id: '…',
-  presentation: {
-    speech: '我让后台去跑这个任务，你可以继续问我别的。',
-    inline: { title: '任务详情', format: 'markdown', content: '…' }
-  }
+  instruction: '用户希望后台完成的事情',
+  input_refs: []
 }
 ```
 
-注意 `presentation` 被拆成 **speech（说出来）** 和 **inline（展示出来）**
-两部分。语音通道信息密度低，长内容不该念出来；同一份结果，
-耳朵收摘要，眼睛收全文。这是语音前台和聊天窗口最大的交互差异。
+后台以 `content` 返回供前台理解和自然转述的事实结果，以 `artifacts`
+返回可选文件、图片和结构化内容；后台不指定前台的播报话术或 UI 表现。
 
 ## 关键设计二：打断是状态机，不是一个事件
 

@@ -9,7 +9,6 @@ import {
 import {
   buildConversationTurns,
   discardUserTranscript,
-  insertByTurn,
   mergeConversationHistory,
   upsertAssistantTranscript,
   upsertUserTranscript,
@@ -422,30 +421,6 @@ export default function App() {
     }))
   }, [])
 
-  const updateTimelineItem = useCallback(item => {
-    if (!item?.content) return
-    setMessages(items => {
-      const id = `inline:${item.id || item.taskId || crypto.randomUUID()}`
-      const existing = items.findIndex(message => message.id === id)
-      const message = {
-        id,
-        role: 'assistant',
-        content: item.content,
-        title: item.title,
-        // Backend presentation is a new timeline item. taskId preserves the
-        // work relation; no user turn is inferred from current UI state.
-        turnId: item.turnId || '',
-        taskId: item.taskId,
-        companion: true,
-        final: true,
-      }
-      if (existing < 0) return insertByTurn(items, message)
-      const next = [...items]
-      next[existing] = message
-      return next
-    })
-  }, [])
-
   const onRealtimeEvent = useCallback(event => {
     const animationEvent = spriteAnimationEventForGatewayEvent(event)
     if (animationEvent) {
@@ -523,12 +498,6 @@ export default function App() {
           })
         })
         .catch(() => {})
-      fetch(`api/timeline?sessionId=${encodeURIComponent(sessionId)}`)
-        .then(response => response.ok ? response.json() : Promise.reject())
-        .then(payload => {
-          for (const item of payload.items || []) updateTimelineItem(item)
-        })
-        .catch(() => {})
     }
     if (event.type === 'voice.deactivated') {
       setVoiceEnabled(false)
@@ -575,9 +544,6 @@ export default function App() {
     }
     if (event.type === 'transcript.discard' && event.role === 'user') {
       setMessages(items => discardUserTranscript(items, event.turnId))
-    }
-    if (event.type === 'timeline.inline' && event.item?.content) {
-      updateTimelineItem(event.item)
     }
     if (event.type === 'response.started') {
       activeVoiceResponse.current = event.responseId
@@ -777,7 +743,6 @@ export default function App() {
     }
   }, [
     sessionId,
-    updateTimelineItem,
     updateUserTranscript,
     updateVoiceMessage,
     noteInteraction,

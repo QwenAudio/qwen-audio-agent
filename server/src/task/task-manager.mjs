@@ -22,7 +22,6 @@ import {
   isTaskTerminal,
   isUserWork,
   normalizeTaskScope,
-  normalizeTaskPresentation,
   persistedTask,
   publicTask,
   TaskScope,
@@ -152,9 +151,8 @@ export class TaskManager {
         saved.parentTaskId = saved.parentWorkId
       }
       delete saved.parentWorkId
-      saved.presentation = normalizeTaskPresentation(
-        saved.presentation || saved.resultMetadata || null,
-      )
+      delete saved.presentation
+      delete saved.resultMetadata
       saved.artifacts = normalizeArtifacts(saved.artifacts)
       saved.authorization = normalizeAuthorization(saved.authorization, {
         taskId: saved.id,
@@ -169,10 +167,7 @@ export class TaskManager {
           ...saved,
           status: 'scheduled',
           runner: saved.kind === 'reminder'
-            ? async (obj) => ({
-                content: obj,
-                metadata: { presentation: { speech: obj } },
-              })
+            ? async obj => ({ content: obj })
             : null, // scheduled_task runner set from scheduledTaskRunner in start()
           resolve: null,
           promise: null,
@@ -449,7 +444,6 @@ export class TaskManager {
       error: null,
       message: null,
       artifacts: [],
-      presentation: null,
       activity: [],
       delegation: null,
       cancellation: null,
@@ -507,7 +501,6 @@ export class TaskManager {
       error: null,
       message: null,
       artifacts: [],
-      presentation: null,
       activity: [],
       delegation: null,
       cancellation: null,
@@ -515,10 +508,7 @@ export class TaskManager {
       notificationStatus: 'none',
       notificationClaimantId: null,
       notificationClaimedAt: null,
-      runner: runner || (async (obj) => ({
-        content: obj,
-        metadata: { presentation: { speech: obj } },
-      })),
+      runner: runner || (async obj => ({ content: obj })),
       canceler: null,
       cancelPromise: null,
       terminalHandled: false,
@@ -600,7 +590,8 @@ export class TaskManager {
       if (['cancelling', 'cancelled'].includes(task.status)) return
       if (event?.type === BackendEventType.DELEGATED && event.delegation) {
         transitionTask(task, TaskStatus.DELEGATED)
-        task.delegation = { ...event.delegation }
+        const { presentation: _presentation, ...delegation } = event.delegation
+        task.delegation = delegation
         this.releaseScheduler(task)
         this.emit(TaskDomainEvent.DELEGATED, task)
         this.drain()
@@ -705,12 +696,9 @@ export class TaskManager {
         this.flushProgress(task)
         transitionTask(task, TaskStatus.COMPLETED)
         task.result = String(outcome?.content ?? outcome ?? '').trim()
-        task.presentation = normalizeTaskPresentation(
-          outcome?.presentation || outcome?.metadata || null,
-        )
         task.artifacts = mergeArtifacts(
           task.artifacts,
-          artifactsFromOutcome(outcome, task.presentation),
+          artifactsFromOutcome(outcome),
         )
       })
       .catch(error => {

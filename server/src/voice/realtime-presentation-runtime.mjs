@@ -105,7 +105,15 @@ export class RealtimePresentationRuntime {
 
   markFunctionCall(id) {
     const context = this.contexts.get(id)
-    if (context) context.hasFunctionCall = true
+    if (context) {
+      context.hasFunctionCall = true
+      this.send({
+        type: GatewayServerEvent.VOICE_STATE,
+        state: 'processing',
+        turnId: context.turnId || this.turns.turnId,
+        origin: context.origin || 'model',
+      })
+    }
     return context
   }
 
@@ -324,6 +332,12 @@ export class RealtimePresentationRuntime {
     const responseTurnId = context?.turnId || this.turns.turnId
     const responseStatus = event.response?.status
     const failed = ['failed', 'cancelled', 'incomplete'].includes(responseStatus)
+    const awaitsToolFollowUp = Boolean(
+      context?.hasFunctionCall
+      && !terminalToolResponse
+      && !failed,
+    )
+    if (context) context.awaitsToolFollowUp = awaitsToolFollowUp
     this.toolCalls.finishToolResponse(id, {
       suppressResponse: failed
         || Boolean(context?.suppressed)
@@ -346,7 +360,7 @@ export class RealtimePresentationRuntime {
         responseId: id,
         turnId: responseTurnId,
       })
-      if (!context?.hasAudio) {
+      if (!context?.hasAudio && !awaitsToolFollowUp) {
         this.send({
           type: GatewayServerEvent.VOICE_STATE,
           state: 'idle',
@@ -549,9 +563,16 @@ export class RealtimePresentationRuntime {
         this.#scheduleContextCleanup(id, context)
       }
     }
+    const remainsProcessing = Boolean(
+      context?.awaitsToolFollowUp ?? context?.hasFunctionCall,
+    )
     this.send({
       type: GatewayServerEvent.VOICE_STATE,
-      state: this.turns.userSpeaking ? 'listening' : 'idle',
+      state: this.turns.userSpeaking
+        ? 'listening'
+        : remainsProcessing
+          ? 'processing'
+          : 'idle',
       turnId: this.turns.userSpeaking ? this.turns.turnId : playbackTurnId,
       origin: context?.origin || 'model',
     })

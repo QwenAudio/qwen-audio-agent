@@ -154,6 +154,7 @@ await orb.load()
 | 服务端 → 客户端 | `input.suspend` | 立即停止采集（比用户级静音更强：不采集、不做唤醒词检测）；携带 `owner`、`reason`、`expiresAt` |
 | 服务端 → 客户端 | `input.resume` | 可以恢复采集 |
 | 客户端 → 服务端 | `input.suspend.ack` | 确认抢占已在本客户端生效 |
+| 服务端 → 客户端 | `voice.state` | 前台语音轮次的表现状态：`idle`、`listening`、`processing` 或 `speaking`；同步前台工具调用期间保持 `processing`，直到终止结果或直连后续回复开始 |
 | 服务端 → 客户端 | `transcript.final` | 最终助手转写可携带 `citations: [{ id, title, url, snippet?, source?, published_at? }]`；能力位：`messages.citations` |
 
 ### 共享客户端状态
@@ -165,6 +166,10 @@ await orb.load()
 并统一忽略来自旧轮次的直连模型 `voice.state`；客户端仍自行处理音频播放、麦克风和
 界面副作用，不应再复制这部分协议状态判断。锁定测试：
 `test/gateway-client-state.test.mjs`。
+
+`voice.state` 只描述前台 Realtime 轮次。后台 Agent 工作使用 Task 生命周期，不能从
+`processing` 推断。等待审批同样是 Task 交互，而不是语音状态：客户端可以显示任务
+卡片；需要语音询问时会自然进入 `speaking`。
 
 ## 实例租约
 

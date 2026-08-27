@@ -3,8 +3,8 @@ const CONVERSATION_STATES = new Set(['listening', 'processing', 'speaking'])
 
 // 悬浮球视觉状态仲裁器：所有事件源收敛为单一状态，优先级从高到低：
 // 生命周期（hidden/waking）→ 连接异常（error）→ 对话态 →
-// attention（后台等你确认）→ working（任务执行中）→
-// occupied（他端占用）→ connecting → idle。
+// working（后台任务执行中）→ occupied（他端占用）→ connecting → idle。
+// 授权请求是独立的前后台交互，不占用 Agent 动画状态。
 export function resolveOrbVisualState({
   lifecycle = 'active',
   runtimeState = null,
@@ -12,9 +12,7 @@ export function resolveOrbVisualState({
   connecting = false,
   ownershipBusy = false,
   voiceState = 'idle',
-  tasksActive = false,
-  attentionPending = false,
-  tasksThinking = false,
+  tasksWorking = false,
 } = {}) {
   if (lifecycle === 'hidden') return 'hidden'
   if (lifecycle === 'waking') return 'waking'
@@ -22,9 +20,7 @@ export function resolveOrbVisualState({
   if (runtimeState === 'starting') return 'starting'
   if (connectionError) return 'error'
   if (CONVERSATION_STATES.has(voiceState)) return voiceState
-  if (attentionPending) return 'attention'
-  if (tasksThinking) return 'processing'
-  if (tasksActive) return 'working'
+  if (tasksWorking) return 'working'
   if (ownershipBusy) return 'occupied'
   if (connecting) return 'connecting'
   // Voice providers may add private states, but presentation is a closed

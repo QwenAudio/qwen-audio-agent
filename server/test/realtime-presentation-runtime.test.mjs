@@ -3,7 +3,11 @@ import test from 'node:test'
 import { RealtimePresentationRuntime } from '../src/voice/realtime-presentation-runtime.mjs'
 import { RealtimeTurnState } from '../src/voice/realtime-turn-state.mjs'
 
-function harness({ nonVoiceClient = false, turnCitations = null } = {}) {
+function harness({
+  nonVoiceClient = false,
+  turnCitations = null,
+  terminalToolResponses = [],
+} = {}) {
   const events = []
   const records = []
   const calls = []
@@ -16,6 +20,7 @@ function harness({ nonVoiceClient = false, turnCitations = null } = {}) {
     provider: { outputSampleRate: 24000 },
     capabilities: { perResponseInstructions: false },
   }
+  const terminalResponses = new Set(terminalToolResponses)
   const runtime = new RealtimePresentationRuntime({
     ownerId: 'owner-1',
     sessionId: 'session-1',
@@ -35,7 +40,7 @@ function harness({ nonVoiceClient = false, turnCitations = null } = {}) {
     toolCalls: {
       consumeTerminalToolResponse: id => {
         calls.push(['consumeTerminalToolResponse', id])
-        return false
+        return terminalResponses.delete(id)
       },
       finishToolResponse: async (...args) => calls.push([
         'finishToolResponse',
@@ -195,6 +200,69 @@ test('retires an audio response only after response, transcript and playback end
   runtime.finishPlayback('response-1')
 
   assert.equal(runtime.has('response-1'), false)
+})
+
+test('keeps processing while a foreground tool result is pending', () => {
+  const { runtime, events } = harness()
+
+  deliver(runtime, {
+    type: 'response.created',
+    response: { id: 'response-1' },
+    __voiceContext: { turnId: 'turn-1', turnGeneration: 1 },
+  })
+  runtime.markFunctionCall('response-1')
+  deliver(runtime, {
+    type: 'response.done',
+    response: { id: 'response-1', status: 'completed' },
+  })
+
+  assert.deepEqual(
+    events.filter(event => event.type === 'voice.state').map(event => event.state),
+    ['processing'],
+  )
+})
+
+test('returns to idle after a terminal tool response', () => {
+  const { runtime, events } = harness({
+    terminalToolResponses: ['response-1'],
+  })
+
+  deliver(runtime, {
+    type: 'response.created',
+    response: { id: 'response-1' },
+    __voiceContext: { turnId: 'turn-1', turnGeneration: 1 },
+  })
+  runtime.markFunctionCall('response-1')
+  deliver(runtime, {
+    type: 'response.done',
+    response: { id: 'response-1', status: 'completed' },
+  })
+
+  assert.deepEqual(
+    events.filter(event => event.type === 'voice.state').map(event => event.state),
+    ['processing', 'idle'],
+  )
+})
+
+test('keeps processing after function-call audio playback ends', () => {
+  const { runtime, events } = harness()
+
+  deliver(runtime, {
+    type: 'response.audio.delta',
+    response_id: 'response-1',
+    delta: 'audio',
+    __voiceContext: { turnId: 'turn-1', turnGeneration: 1 },
+  })
+  runtime.markFunctionCall('response-1')
+  runtime.startPlayback('response-1')
+  deliver(runtime, {
+    type: 'response.done',
+    response: { id: 'response-1', status: 'completed' },
+  })
+  runtime.finishPlayback('response-1')
+
+  assert.equal(events.at(-1).type, 'voice.state')
+  assert.equal(events.at(-1).state, 'processing')
 })
 
 test('user interruption confirms an announcement and suppresses late output', () => {

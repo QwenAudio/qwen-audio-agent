@@ -39,15 +39,12 @@ export function desktopTasksActive(tasks = []) {
   ))
 }
 
-// 后台任务在等待用户授权：不确认就永远卡住，优先级高于普通执行态。
-export function desktopTasksAttention(tasks = []) {
-  return tasks.some(task => task.authorization?.status === 'pending')
-}
-
-export function desktopTasksThinking(tasks = []) {
+// 动画只呈现实际执行中的后台工作。等待授权仍属于 active，用于阻止
+// 自动休眠，但它是一次前后台交互，不是 working 动画状态。
+export function desktopTasksWorking(tasks = []) {
   return tasks.some(task => (
     ACTIVE_TASK_PHASES.has(task.phase)
-    && task.activity?.at(-1)?.kind === 'thinking'
+    && task.authorization?.status !== 'pending'
   ))
 }
 

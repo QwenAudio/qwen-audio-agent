@@ -7,43 +7,39 @@ import {
   DESKTOP_WAKE_GRACE_MS,
   desktopHideDeadline,
   desktopTasksActive,
-  desktopTasksAttention,
-  desktopTasksThinking,
+  desktopTasksWorking,
   desktopWakeWordEnabled,
   desktopWorkSettled,
 } from '../src/desktop-hide.js'
 
 test('distinguishes active tasks from tasks waiting for authorization', () => {
   assert.equal(desktopTasksActive([]), false)
-  assert.equal(desktopTasksAttention([]), false)
-  assert.equal(desktopTasksThinking([]), false)
+  assert.equal(desktopTasksWorking([]), false)
 
   const running = { phase: 'delegated' }
   assert.equal(desktopTasksActive([running]), true)
-  assert.equal(desktopTasksAttention([running]), false)
-  assert.equal(desktopTasksThinking([running]), false)
+  assert.equal(desktopTasksWorking([running]), true)
   for (const kind of ['work', 'control', 'scheduled', 'delegated', 'custom']) {
     assert.equal(desktopTasksActive([{ kind, phase: 'running' }]), true)
   }
 
-  // 等待授权的任务同时是 active（阻止自动休眠）与 attention。
+  // 等待授权仍是 active（阻止自动休眠），但不属于动画 working 状态。
   const pending = {
     phase: 'running',
     authorization: { status: 'pending' },
   }
   assert.equal(desktopTasksActive([pending]), true)
-  assert.equal(desktopTasksAttention([pending]), true)
+  assert.equal(desktopTasksWorking([pending]), false)
 
   const thinking = {
     phase: 'running',
     activity: [{ kind: 'thinking', status: 'running' }],
   }
-  assert.equal(desktopTasksThinking([thinking]), true)
+  assert.equal(desktopTasksWorking([thinking]), true)
 
   const done = { phase: 'completed' }
   assert.equal(desktopTasksActive([done]), false)
-  assert.equal(desktopTasksAttention([done]), false)
-  assert.equal(desktopTasksThinking([done]), false)
+  assert.equal(desktopTasksWorking([done]), false)
 })
 
 test('ignores stale sleeping broadcasts right after an explicit wake', async () => {

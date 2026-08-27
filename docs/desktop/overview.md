@@ -58,14 +58,17 @@ separate; skins consume only stable presentation states and one-shot events.
 | `failed` | Failure | `error`, desktop runtime failure, task failure | Play once per event |
 | `waiting` | Listening | `listening` | Loop for the full `listening` state |
 | `running` | Working / startup | `working`, `starting` | Loop while the state persists |
-| `review` | Query / confirmation | `processing`, task query, `attention` | Play once per event |
+| `review` | Foreground turn processing | `processing` | Play once per processing phase |
 
 Sustained states and one-shot events are arbitrated separately: startup,
 listening, speaking, and background work retain their looping tracks, while
-first readiness, wake, task results, queries, confirmation waits, and pointer
-entry trigger only on event edges. A one-shot action restores the current base
-track: `running` while work remains active, otherwise `idle`. Every task kind
-uses the same start, completion, and failure rules. Front-end-only mode skips backend readiness.
+first readiness, wake, task results, foreground processing, and pointer entry
+play once. A one-shot action restores the current base track: `running` while
+work remains active, otherwise `idle`. Every active background task uses
+`working` → `running`, including backend thinking; a pending authorization does
+not select an Agent animation and remains visible in the Task UI until its
+spoken request naturally enters `speaking`. Every task kind uses the same
+start, completion, and failure rules. Front-end-only mode skips backend readiness.
 Skin packages are static assets only (JSON + WebP) and are validated on
 import; if a selected skin package is removed, the orb falls back to the
 built-in appearance.

@@ -164,7 +164,23 @@ platform notes, see [quick start](docs/getting-started/quickstart.md),
 [voice frontends](docs/voice-frontends/speech-to-speech.md), and
 [TUI notes](docs/getting-started/tui.md).
 
-## Examples
+## Examples and Scenario Expansion
+
+The current qwen-audio-agent framework focuses on desktop productivity: users
+can keep talking with the Agent in realtime while delegating tool use, file
+work, code changes, and long-running tasks to the backend Agent.
+
+This "foreground conversation + background task" design is not limited to
+desktop use. It can also expand to more scenarios where the Agent can both
+chat naturally and get real work done.
+
+| Scenario | Description | Link | Status |
+| --- | --- | --- | --- |
+| Desktop | Voice chat, progress follow-up, tools, and background tasks. | [Docs][desktop-docs] | Available |
+| Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][car-example] | Available |
+| Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
+| Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |
+| Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Exploratory |
 
 This repository includes a smart cockpit voice Agent example with vehicle
 control, navigation, music, weather, web search, flash-buy workflows, and a
@@ -179,6 +195,9 @@ npm run example:car:web      # Terminal 2: car UI
 ```
 
 See [examples/car](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/car) for details.
+
+[desktop-docs]: docs/desktop/overview.md
+[car-example]: examples/car
 
 ## Desktop App
 

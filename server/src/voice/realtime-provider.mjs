@@ -271,8 +271,13 @@ export class RealtimeFrontend {
     this.send(this.protocol.conversationItemCreate({ id, ...item }))
   }
 
-  updateAgentContext(patch = {}) {
+  // refreshSession 为 false 时只更新 agentContext 缓存，不重发 session.update。
+  // instructions 是 prompt 前缀的一部分，重发等于换前缀，会让整场会话已经建立的
+  // 前缀缓存失效。所以「更新了上下文但不需要本轮就生效」的调用方（例如后台写入
+  // 长期记忆）应当传 false，让新内容在下一次自然的 session.update 时带上去。
+  updateAgentContext(patch = {}, { refreshSession = true } = {}) {
     this.agentContext = { ...this.agentContext, ...patch }
+    if (!refreshSession) return
     if (!this.ready) return
     const refresh = async () => {
       await this.whenIdle()

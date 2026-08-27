@@ -60,7 +60,9 @@ function harness({
       appendAudio: audio => calls.push(['appendAudio', audio]),
       cancel: () => calls.push(['cancel']),
       close: () => calls.push(['close', options.providerName]),
-      updateAgentContext: context => calls.push(['updateAgentContext', context]),
+      // 记下第二个参数：这一层曾经只转发 context，把 options 静默吞掉，
+      // 而 stub 当时也只记录第一个参数，于是那个断点在测试里完全隐形。
+      updateAgentContext: (context, options) => calls.push(['updateAgentContext', context, options]),
       triggerError: error => options.onError(error),
       triggerClose: () => {
         frontend.ready = false
@@ -214,4 +216,18 @@ test('explicit close can notify disconnection without a duplicate close callback
     calls.filter(([name]) => name === 'onDisconnected').length,
     1,
   )
+})
+
+test('forwards agent context options down to the frontend', async () => {
+  // 底层靠 { refreshSession: false } 决定要不要重发 session.update。这一层
+  // 若只转发第一个参数，调用方的意图会被静默丢弃 —— 不报错，测试也照样绿，
+  // 只是整场会话的前缀缓存白白失效。
+  const { runtime, calls } = harness({ connectMode: 'resolve' })
+  await runtime.ensure()
+
+  runtime.updateAgentContext({ memories: [] }, { refreshSession: false })
+
+  const [, context, options] = calls.find(([name]) => name === 'updateAgentContext')
+  assert.deepEqual(context, { memories: [] })
+  assert.deepEqual(options, { refreshSession: false }, 'options 必须原样到底层')
 })

@@ -14,8 +14,9 @@ import {
 import {
   FRONTEND_TOOL_APPROVAL_CAPABILITY,
 } from '../frontend/tools/frontend-tool-source.mjs'
+import { spawnThinkingTool } from './tools/spawn-thinking-tool.mjs'
 
-export const SPAWN_THINKING_TOOL_NAME = 'spawn_thinking'
+export { SPAWN_THINKING_TOOL_NAME } from './tools/spawn-thinking-tool.mjs'
 export const SCHEDULE_REMINDER_TOOL_NAME = 'schedule_reminder'
 export const CANCEL_AGENT_TASK_TOOL_NAME = 'cancel_agent_task'
 export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
@@ -99,31 +100,6 @@ const knowledgeTool = {
         },
       },
       required: ['query'],
-      additionalProperties: false,
-    },
-  },
-}
-
-const spawnThinkingTool = {
-  type: 'function',
-  function: {
-    name: SPAWN_THINKING_TOOL_NAME,
-    description: '异步执行需要访问用户环境、设备、文件、屏幕、应用、代码、媒体创作、继续或修改已有工作，以及任何需要多步调用、跨来源综合、持续处理或结构化交付的复杂任务。单次、范围明确且可在当前回合完成的公开检索可使用前台工具；一旦判断需要后台执行，直接调用本工具，不要先用其他工具试探。请求明确时直接调用，调用前不要口头回应，也不要先否认能力。本轮附件会自动传入；只在缺少处理意图时询问。多个独立目标可在同一响应中分别调用；不要重复提交已经覆盖的目标。查询已有工作的状态、进度或阶段结果改用 get_agent_task_status。accepted 表示本次提交成功；duplicate 表示同一目标此前已提交；二者都不表示完成。收到本次响应的全部回执后只自然确认一次，不向用户暴露后台 Agent、协议、Task 或 ID，也不再调用任何工具。',
-    parameters: {
-      type: 'object',
-      properties: {
-        objective: {
-          type: 'string',
-          description: '忠实、完整且自包含地转达用户要做什么及其明确约束。应根据当前对话消解“它”“刚才那个”等明确指代；若任务依赖已知背景，只转述完成它所必需的事实或约束。不得遗漏、推断或改变用户语义，也不要提交占位目标；后台不会收到前台的完整对话、个性化偏好或长期记忆。',
-        },
-        input_refs: {
-          type: 'array',
-          items: { type: 'string' },
-          maxItems: 8,
-          description: '仅当任务依赖此前轮次标注为“可引用输入”的图片或文件时填写对应 input_N；本轮提交的输入会自动携带。没有相关输入时省略，不得猜造引用。',
-        },
-      },
-      required: ['objective'],
       additionalProperties: false,
     },
   },

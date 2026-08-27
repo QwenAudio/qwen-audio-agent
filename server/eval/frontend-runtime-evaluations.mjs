@@ -48,12 +48,12 @@ async function evaluateRoutingContract() {
     { names },
   )
   requireCondition(
-    /公开网页搜索、网址读取和已保存知识[\s\S]*单次[\s\S]*直接调用 `spawn_thinking`/u.test(prompt),
+    /公开网页搜索、网址读取和已保存知识[\s\S]*单次[\s\S]*属于该工具声明能力范围/u.test(prompt),
     'The frontend prompt no longer keeps Search and Knowledge in the frontend.',
   )
   requireCondition(
-    /访问用户环境[\s\S]*`spawn_thinking`/u.test(prompt),
-    'The frontend prompt no longer routes user-environment work to the backend.',
+    /符合 `spawn_thinking` description 声明的[\s\S]*能力范围/u.test(prompt),
+    'The frontend prompt no longer routes declared backend capabilities.',
   )
   requireCondition(
     /`knowledge` 只检索[\s\S]*外部知识服务/u.test(prompt),

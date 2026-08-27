@@ -68,7 +68,6 @@ export const PET_STATE_ANIMATION_POLICY = Object.freeze({
   working: { name: 'running', mode: 'loop' },
   waking: { name: 'jumping', mode: 'once', blocksCues: true },
   processing: { name: 'review', mode: 'once', blocksCues: true },
-  attention: { name: 'review', mode: 'once', blocksCues: true },
   error: { name: 'failed', mode: 'once', blocksCues: true },
 })
 
@@ -77,7 +76,6 @@ export const PET_EVENT_ANIMATION_POLICY = Object.freeze({
   wake: 'jumping',
   'task.completed': 'jumping',
   'task.failed': 'failed',
-  query: 'review',
   hover: 'jumping',
   'runtime.failed': 'failed',
 })
@@ -87,9 +85,6 @@ export function spriteAnimationForEvent(event) {
 }
 
 export function spriteAnimationEventForGatewayEvent(event = {}) {
-  if (event.type === 'agent.activity' && event.activity === 'query') {
-    return 'query'
-  }
   if (event.type === 'task.completed' || event.type === 'task.failed') {
     return event.type
   }

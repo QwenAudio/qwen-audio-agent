@@ -50,9 +50,7 @@ import {
   desktopHideDeadline,
   desktopWakeWordEnabled,
   desktopWorkSettled,
-  desktopTasksActive,
-  desktopTasksAttention,
-  desktopTasksThinking,
+  desktopTasksWorking,
 } from './desktop-hide.js'
 import {
   desktopTaskCards,
@@ -107,7 +105,6 @@ function labelFor(state) {
     processing: t('正在处理'),
     speaking: t('正在说'),
     working: t('正在处理任务'),
-    attention: t('等待你的确认'),
     starting: t('正在启动'),
     connecting: t('正在连接语音前台'),
     occupied: t('其他入口正在使用'),
@@ -220,7 +217,6 @@ export default function App() {
   const previousWorkSettled = useRef(true)
   const workSettledAtRef = useRef(workSettledAt)
   const lastWakeAtRef = useRef(0)
-  const orbVisualStateRef = useRef('idle')
   const previousDesktopLifecycle = useRef('active')
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
@@ -452,10 +448,7 @@ export default function App() {
 
   const onRealtimeEvent = useCallback(event => {
     const animationEvent = spriteAnimationEventForGatewayEvent(event)
-    if (
-      animationEvent
-      && !(animationEvent === 'query' && orbVisualStateRef.current === 'processing')
-    ) {
+    if (animationEvent) {
       triggerSpriteAnimation(animationEvent)
     }
     if (event.type === 'turn.started') {
@@ -837,10 +830,10 @@ export default function App() {
     realtime: desktopRealtimeRuntime(voice.connectionState),
     backend: desktopBackendRuntime(backend),
   })
-  const desktopHasActiveTasks = desktopOrbMode && desktopTasksActive(agentTasks)
+  const desktopHasWorkingTasks = desktopOrbMode && desktopTasksWorking(agentTasks)
   // 统一视觉状态仲裁：生命周期 → 异常 → 对话态 → 后台态。
-  // 后台任务态（attention/working）仅在桌面悬浮球展示，
-  // WebUI 由任务卡片承载同类信息。
+  // 后台工作态仅在桌面悬浮球展示；等待授权由播报和任务卡片承载，
+  // 不占用 Agent 动画状态。WebUI 也由任务卡片承载同类信息。
   const orbVisualState = resolveOrbVisualState({
     lifecycle: desktopLifecycle,
     runtimeState: desktopOrbMode ? desktopRuntime.overall : null,
@@ -850,12 +843,9 @@ export default function App() {
       && voice.connectionState === 'connecting',
     ownershipBusy: voice.ownership.state === 'busy',
     voiceState: voice.visualState || voice.state,
-    tasksActive: desktopHasActiveTasks,
-    attentionPending: desktopOrbMode && desktopTasksAttention(agentTasks),
-    tasksThinking: desktopOrbMode && desktopTasksThinking(agentTasks),
+    tasksWorking: desktopHasWorkingTasks,
   })
-  orbVisualStateRef.current = orbVisualState
-  const attentionTask = agentTasks.find(
+  const authorizationTask = agentTasks.find(
     task => task.authorization?.status === 'pending',
   )
 
@@ -1156,8 +1146,8 @@ export default function App() {
           desktopLifecycle === 'waking'
             ? t('正在显示悬浮球')
             : voice.error
-          || (orbVisualState === 'attention' && attentionTask
-            ? taskDetail(attentionTask)
+          || (orbVisualState === 'idle' && authorizationTask
+            ? taskDetail(authorizationTask)
             : orbVisualState === 'occupied' && ownershipLabel
               ? t('{holder}正在使用语音', { holder: ownershipLabel })
               : labelFor(orbVisualState))
@@ -1178,7 +1168,7 @@ export default function App() {
               <DesktopSpriteOrb
                 skin={orbSkinId}
                 state={orbVisualState}
-                baseWorking={desktopHasActiveTasks}
+                baseWorking={desktopHasWorkingTasks}
                 dragDirection={orbDragDirection}
                 cue={spriteAnimationCue}
                 onCueComplete={completeSpriteAnimationCue}

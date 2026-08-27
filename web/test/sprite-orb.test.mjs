@@ -20,7 +20,6 @@ test('maps every orb visual state to a pet animation track', () => {
     processing: 'review',
     occupied: 'idle',
     working: 'running',
-    attention: 'review',
     starting: 'running',
     speaking: 'waving',
     waking: 'jumping',
@@ -74,18 +73,7 @@ test('loops sustained voice, startup, and work states', () => {
   assert.equal(spritePlaybackSelection({ state: 'starting' }).loop, true)
 })
 
-test('plays edge states and queued events once, then restores the live base', () => {
-  assert.deepEqual(spritePlaybackSelection({
-    state: 'attention',
-    baseWorking: true,
-  }), {
-    name: 'review',
-    key: 'state:attention:review',
-    loop: false,
-    completion: 'none',
-    completionId: null,
-    fallback: 'running',
-  })
+test('plays processing and queued events once, then restores the live base', () => {
   assert.deepEqual(spritePlaybackSelection({
     state: 'working',
     baseWorking: true,
@@ -126,7 +114,6 @@ test('maps every semantic edge and every task kind without special cases', () =>
     wake: 'jumping',
     'task.completed': 'jumping',
     'task.failed': 'failed',
-    query: 'review',
     hover: 'jumping',
     'runtime.failed': 'failed',
   }
@@ -143,10 +130,11 @@ test('maps every semantic edge and every task kind without special cases', () =>
       task: { kind },
     }), 'task.failed')
   }
+  assert.equal(spriteAnimationForEvent('query'), null)
   assert.equal(spriteAnimationEventForGatewayEvent({
     type: 'agent.activity',
     activity: 'query',
-  }), 'query')
+  }), null)
   assert.equal(spriteAnimationEventForGatewayEvent({
     type: 'task.running',
     task: { kind: 'work' },
@@ -158,6 +146,7 @@ test('protected live states are not overwritten by stale one-shot cues', () => {
     ['waking', 'jumping'],
     ['speaking', 'waving'],
     ['listening', 'waiting'],
+    ['processing', 'review'],
     ['starting', 'running'],
   ]) {
     const playback = spritePlaybackSelection({

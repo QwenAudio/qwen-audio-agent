@@ -167,6 +167,7 @@ spells them by hand is on its own.
 | server → client | `input.suspend` | Stop capturing outright (stronger than user-level mute: no capture, no wake word); carries `owner`, `reason`, `expiresAt` |
 | server → client | `input.resume` | Capture may resume |
 | client → server | `input.suspend.ack` | Confirms the suspension took effect on this client |
+| server → client | `voice.state` | Foreground voice-turn presentation state: `idle`, `listening`, `processing`, or `speaking`; `processing` remains active across a synchronous frontend tool call until its terminal result or direct follow-up response |
 | server → client | `transcript.final` | A final assistant transcript may include `citations: [{ id, title, url, snippet?, source?, published_at? }]`; capability: `messages.citations` |
 
 ### Shared client state
@@ -179,6 +180,12 @@ events and consistently ignores direct-model `voice.state` updates from stale
 turns. Clients still own playback, microphone, and UI side effects; they should
 not duplicate this protocol-state interpretation. Locked by
 `test/gateway-client-state.test.mjs`.
+
+`voice.state` describes only the foreground Realtime turn. Background Agent
+work uses the Task lifecycle and must not be inferred from `processing`.
+Likewise, a pending authorization is a Task interaction, not a voice state: a
+client may show its Task card, and any spoken request naturally appears as
+`speaking`.
 
 ## Instance lease
 

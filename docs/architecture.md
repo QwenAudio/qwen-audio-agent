@@ -217,11 +217,13 @@ Progress is observability, not control. The ACP adapter projects standard
 
 The UI maps this to the stable task objective or phrases such as “searching”,
 “reading”, “generating an image”, or the current mode. A generic thinking signal
-keeps showing the task objective, while the desktop pet maps it to its existing
-processing animation. Session IDs,
+keeps showing the task objective. All active backend work, including thinking,
+shares the desktop pet's `working` presentation; the `processing` presentation
+is reserved for the foreground Realtime turn. Session IDs,
 subagent IDs, raw permission payloads, and raw thought content are not shown. A
 pending permission may show the exact bounded title, description, command, or
-path needed for informed consent after secret-like values are redacted.
+path needed for informed consent after secret-like values are redacted, but it
+does not introduce a separate Agent animation state.
 
 Activity never produces spoken status updates and never affects the queue.
 

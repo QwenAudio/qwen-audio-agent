@@ -69,6 +69,7 @@
     "config/deepseek-harness/cordis.yml",
     "config/codebuddy/workspace/.codebuddy/models.json",
     "examples/backend-adapter/",
+    "examples/custom-conversation-client/",
     "docs/architecture.md",
     "docs/architecture.zh.md",
     "docs/architecture-overview.png",

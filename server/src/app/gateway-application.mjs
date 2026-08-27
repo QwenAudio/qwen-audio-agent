@@ -91,6 +91,7 @@ export function createGatewayApplication({
   frontendOpenApi = undefined,
   sessionJournal = null,
   conversationHistory = null,
+  taskAnnouncementFactory = undefined,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
@@ -466,25 +467,9 @@ app.get('/api/tasks', (req, res) => {
   })
 })
 
-app.get('/api/timeline', (req, res) => {
-  const items = taskManager.list({
-    ownerId: req.identity.ownerId,
-    sessionId: req.query.sessionId,
-  })
-    .filter(task => task.presentation?.inline?.content)
-    .map(task => ({
-      id: `inline_${task.id}`,
-      taskId: task.id,
-      createdAt: task.completedAt || task.createdAt,
-      ...task.presentation.inline,
-    }))
-    .sort((left, right) => left.createdAt - right.createdAt)
-  res.json({ items })
-})
-
-// Durable session facts are intentionally exposed separately from the UI
-// timeline. Clients may use this for reconnect/recovery; projections should
-// not need to understand the on-disk JSONL format.
+// Durable session facts are intentionally exposed separately from UI state.
+// Clients may use this for reconnect/recovery; projections should not need to
+// understand the on-disk JSONL format.
 app.get('/api/sessions/:sessionId/events', async (req, res, next) => {
   try {
     const events = await sessionJournalRuntime.read(
@@ -673,6 +658,7 @@ realtimeGateway = attachRealtimeGateway(server, {
   frontendRetrieval: retrievalRuntime,
   frontendKnowledge: frontendKnowledgeRuntime,
   frontendToolSources,
+  taskAnnouncementFactory,
 })
 const start = ({ host = config.host, port = config.port } = {}) => {
   if (server.listening) return server

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  artifactFromInlinePresentation,
   artifactsFromOutcome,
   normalizeArtifacts,
 } from '../src/task/task-artifact.mjs'
@@ -54,23 +53,7 @@ test('drops duplicate artifacts and unsafe or malformed parts', () => {
   }])
 })
 
-test('adapts the legacy inline presentation into one stable artifact', () => {
-  const presentation = {
-    speech: '报告已完成。',
-    inline: { title: '报告', format: 'code', content: 'const done = true' },
-  }
-  const artifact = artifactFromInlinePresentation(presentation)
-  assert.deepEqual(artifactsFromOutcome({ metadata: {} }, presentation), [
-    artifact,
-  ])
-  assert.deepEqual(artifact, {
-    artifactId: 'artifact_inline',
-    name: '报告',
-    parts: [{ text: 'const done = true', mediaType: 'text/markdown' }],
-  })
-})
-
-test('prefers backend artifacts over the inline compatibility projection', () => {
+test('normalizes artifacts supplied by a backend outcome', () => {
   const artifacts = artifactsFromOutcome({
     artifacts: [{
       artifactId: 'image',
@@ -79,9 +62,19 @@ test('prefers backend artifacts over the inline compatibility projection', () =>
         mediaType: 'image/png',
       }],
     }],
-  }, {
-    inline: { title: 'ignored', format: 'markdown', content: 'ignored' },
   })
   assert.equal(artifacts.length, 1)
   assert.equal(artifacts[0].artifactId, 'image')
+})
+
+test('accepts the legacy metadata location without a presentation fallback', () => {
+  const artifacts = artifactsFromOutcome({
+    metadata: {
+      artifacts: [{ artifactId: 'report', parts: [{ text: '# Report' }] }],
+    },
+  })
+  assert.deepEqual(artifacts, [{
+    artifactId: 'report',
+    parts: [{ text: '# Report', mediaType: 'text/plain' }],
+  }])
 })

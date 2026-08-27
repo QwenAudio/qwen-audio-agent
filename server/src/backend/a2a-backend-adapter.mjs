@@ -288,7 +288,7 @@ function taskSummary(task) {
   const lines = uniqueLines([status, ...history, ...artifactText])
   return {
     content: bounded(lines.join('\n\n'), MAX_TEXT_CHARS),
-    speech: status || history.at(-1) || '',
+    fallback: status || history.at(-1) || '',
   }
 }
 
@@ -646,22 +646,21 @@ export class A2ABackendAdapter {
   }
 
   outcomeFromMessage(message) {
-    const content = messageText(message)
-    const speech = bounded(content) || '后台工作已经完成。'
+    const content = bounded(messageText(message)) || '后台工作已经完成。'
     return {
-      content: content || speech,
+      content,
       artifacts: messageArtifact(message),
-      presentation: { speech, inline: null },
     }
   }
 
   outcomeFromTask(task) {
     const summary = taskSummary(task)
-    const speech = bounded(summary.speech) || '后台工作已经完成。'
+    const content = summary.content
+      || bounded(summary.fallback)
+      || '后台工作已经完成。'
     return {
-      content: summary.content || speech,
+      content,
       artifacts: taskArtifacts(task),
-      presentation: { speech, inline: null },
     }
   }
 

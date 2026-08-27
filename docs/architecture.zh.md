@@ -188,8 +188,8 @@ UI 将此映射为稳定的任务说明或短语，如"搜索中"、"读取中"�
 
 后端 Agent 通过标准 ACP 回合返回结果：正文来自 `agent_message_chunk`，图片、音频和
 资源保留为原生 `ContentBlock`，回合以 `session/prompt` 的 `PromptResponse` 结束。
-ACP Adapter 不再把这些内容压成一段文本，也不要求模型补写 `state` 或
-`presentation` JSON；它将文本和非文本内容分别投射为 BackendPort 的 `content` 与
+ACP Adapter 不再把这些内容压成一段文本，也不要求模型补写专有结果 JSON；
+它将文本和非文本内容分别投射为 BackendPort 的 `content` 与
 `artifacts`。只有 `stopReason=end_turn` 代表回合成功完成；取消、拒绝、Token 或
 Agent 请求次数耗尽分别进入 Gateway 的取消或失败路径。Gateway 再根据客户端能力
 决定对话展示、资源卡片和语音表达。
@@ -274,12 +274,17 @@ Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 ```
 
 后端特定的 API 细节仅属于 `server/src/agent`。实时工具不得导入后端适配器。
-UI 仅消费公共 Task 事件和最终时间线内容。包级别的 `shared` 模块是基础运行时
+UI 仅消费公共 Task 与对话事件。包级别的 `shared` 模块是基础运行时
 工具；server `core` 和 `process` 可以依赖它们，但它们不得依赖 server 层。
 
 Gateway 可以将不可变的 `web/dist` 产物作为部署便利来提供，但这仅是静态托管。
 Gateway 源码不得导入 UI 组件、呈现文本、样式、终端行为或桌面行为。
 所有三个 UI 拥有自己的渲染，并将结构化协议字段映射到各自的标签和交互模式。
+
+后台 Task 播报只保留一个代码级装配接缝：嵌入方可以向
+`createGatewayApplication` 传入 `taskAnnouncementFactory`。默认 factory 原样组合
+现有的最终结果播报与低频进度播报管理器；场景方也可以整体替换两者。这是产品代码的
+依赖注入点，不是用户设置、策略注册表或新的线上协议。
 
 ## 10. 进程所有权
 

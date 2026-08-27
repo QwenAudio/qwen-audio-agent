@@ -40,6 +40,29 @@ test('validates client event envelopes and preserves extension fields', () => {
     false,
   )
   assert.equal(GatewayClientMessageSchema.safeParse(null).success, false)
+
+  assert.equal(parseGatewayClientMessage({
+    type: 'input.message',
+    parts: [
+      { type: 'text', text: '检查前方天气' },
+      {
+        type: 'file',
+        mime: 'image/jpeg',
+        filename: 'road.jpg',
+        url: 'data:image/jpeg;base64,YQ==',
+      },
+    ],
+  }).parts.length, 2)
+  assert.equal(GatewayClientMessageSchema.safeParse({
+    type: 'input.message',
+    parts: [],
+  }).success, false)
+  assert.equal(GatewayClientMessageSchema.safeParse({
+    type: 'audio.append',
+  }).success, false)
+  assert.equal(GatewayClientMessageSchema.safeParse({
+    type: 'playback.ended',
+  }).success, false)
 })
 
 test('validates voice and task messages in the server direction', () => {
@@ -64,6 +87,21 @@ test('validates voice and task messages in the server direction', () => {
     GatewayServerMessageSchema.safeParse({
       type: 'task.accepted',
       task: { id: 'task_1' },
+    }).success,
+    false,
+  )
+  assert.equal(
+    GatewayServerMessageSchema.safeParse({
+      type: 'voice.ready',
+      inputSampleRate: 0,
+    }).success,
+    false,
+  )
+  assert.equal(
+    GatewayServerMessageSchema.safeParse({
+      type: 'audio.delta',
+      audio: 'YQ==',
+      sampleRate: 24_000,
     }).success,
     false,
   )
@@ -138,6 +176,7 @@ test('preserves protocol-neutral backend observations and safe permission detail
     message.task.authorization.operation.command,
     'sysctl -n hw.memsize',
   )
+  assert.equal('presentation' in message.task, false)
 })
 
 test('validates the supported AG-UI activity event surface', () => {

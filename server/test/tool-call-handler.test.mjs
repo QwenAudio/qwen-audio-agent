@@ -1457,6 +1457,77 @@ test('auto-allows later permissions in the Gateway without publishing them', asy
   )
 })
 
+test('batches concurrent backend permissions into one confirmation and one delivery each', async () => {
+  const permissionIds = ['auth-news-1', 'auth-news-2', 'auth-news-3', 'auth-news-4']
+  const approvals = []
+  let release
+  const kit = harness({
+    permissionPolicy: new SessionPermissionPolicy(),
+    respondPermission: async (id, decision, options) => {
+      approvals.push({ id, decision, options })
+      return { id, status: 'approved' }
+    },
+    coordinator: {
+      run: async (_input, { onEvent }) => {
+        permissionIds.forEach(id => onEvent({
+          type: 'backend.permission.requested',
+          permission: {
+            id,
+            status: 'pending',
+            category: 'search',
+            summary: `Allow search ${id}`,
+          },
+        }))
+        return new Promise(resolve => { release = resolve })
+      },
+    },
+  })
+  kit.transcripts.record('turn-one', '搜索新闻')
+  await kit.handler.handle({
+    call_id: 'spawn-news',
+    name: 'spawn_thinking',
+    arguments: '{"objective":"搜索最新新闻"}',
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+  await new Promise(resolve => setImmediate(resolve))
+
+  kit.transcripts.record('turn-one', '我同意')
+  const decisions = permissionIds.map((authorizationId, index) => (
+    kit.handler.handle({
+      call_id: `allow-news-${index}`,
+      response_id: 'permission-response',
+      name: 'respond_agent_permission',
+      arguments: JSON.stringify({
+        authorization_id: authorizationId,
+        decision: 'always',
+      }),
+    }, {
+      turnId: 'turn-one',
+      turnGeneration: 1,
+      responseId: 'permission-response',
+    })
+  ))
+  await kit.handler.finishToolResponse('permission-response')
+  await Promise.all(decisions)
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.deepEqual(
+    approvals.map(call => call.id).sort(),
+    [...permissionIds].sort(),
+  )
+  assert.ok(approvals.every(call => call.decision === 'always'))
+  assert.ok(kit.outputs.slice(1).every(output => output[3].createResponse === false))
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.match(
+    kit.ensuredResponses[0][1].response.instructions,
+    /已允许，后台继续执行/,
+  )
+
+  release({ content: '完成' })
+  await Promise.all(kit.manager.list({ ownerId: 'owner' }).map(task => (
+    kit.manager.wait(task.id)
+  )))
+})
+
 test('accepts a semantic permission decision without an evidence field', async () => {
   const calls = []
   const kit = await permissionHarness({

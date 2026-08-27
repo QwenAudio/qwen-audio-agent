@@ -45,15 +45,6 @@ export const GatewayArtifactSchema = z.object({
   parts: z.array(GatewayArtifactPartSchema).min(1),
 })
 
-export const GatewayPresentationSchema = z.object({
-  speech: z.string(),
-  inline: z.object({
-    title: z.string(),
-    format: z.enum(['markdown', 'code', 'link']),
-    content: z.string(),
-  }).nullable(),
-})
-
 const GatewayCitationUrlSchema = z.string().max(2048).url().refine(value => {
   const url = new URL(value)
   return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password
@@ -91,7 +82,7 @@ export const GatewayAuthorizationSchema = z.object({
   resolvedAt: z.number().nullable(),
 })
 
-// Adapter implementations may add presentation hints, but every activity
+// Adapter implementations may add display hints, but every activity
 // crosses the Gateway through these protocol-neutral common fields. ACP event
 // names and A2A Task payloads stay private to their adapters.
 export const GatewayActivitySchema = z.object({
@@ -135,7 +126,6 @@ export const GatewayTaskSchema = z.object({
   error: z.string().nullable().optional(),
   message: z.string().nullable().optional(),
   artifacts: z.array(GatewayArtifactSchema).optional(),
-  presentation: GatewayPresentationSchema.nullable().optional(),
   activity: z.array(GatewayActivitySchema).optional(),
   delegation: z.unknown().optional(),
   authorization: GatewayAuthorizationSchema.nullable().optional(),
@@ -149,18 +139,152 @@ export const GatewayClientEventTypeSchema = z.enum(GATEWAY_CLIENT_EVENT_NAMES)
 export const GatewayServerEventTypeSchema = z.enum(GATEWAY_SERVER_EVENT_NAMES)
 export const GatewayTaskEventTypeSchema = z.enum(GATEWAY_TASK_EVENT_NAMES)
 
-// The first protocol boundary deliberately validates the stable envelope and
-// event namespace while preserving provider/client extension fields. Payload
-// schemas can now be tightened one event at a time without inventing a second
-// event registry or breaking compatible clients.
+export const GatewayInputPartSchema = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('text'),
+    text: z.string().min(1),
+  }).passthrough(),
+  z.object({
+    type: z.literal('file'),
+    mime: z.string().min(3).refine(value => value.includes('/'), 'invalid MIME type'),
+    filename: z.string().min(1).optional(),
+    url: z.string().min(1),
+  }).passthrough(),
+])
+
+const GatewayInputMessagePayloadSchema = z.object({
+  text: z.string().min(1).optional(),
+  parts: z.array(GatewayInputPartSchema).min(1).max(16).optional(),
+}).passthrough().refine(value => value.text || value.parts, {
+  message: 'a text or parts payload is required',
+})
+
+const GatewayClientPayloadSchemas = Object.freeze({
+  [GatewayClientEvent.CONNECT]: z.object({
+    voiceEnabled: z.boolean().optional(),
+    inputEnabled: z.boolean().optional(),
+    outputEnabled: z.boolean().optional(),
+    textOnly: z.boolean().optional(),
+    takeover: z.boolean().optional(),
+    provider: z.string().min(1).optional(),
+    clientType: z.string().min(1).optional(),
+    clientLabel: z.string().min(1).optional(),
+    clientInstanceId: z.string().min(1).optional(),
+    timeZone: z.string().min(1).optional(),
+    locale: z.string().min(1).optional(),
+    workingDirectory: z.string().min(1).optional(),
+    inputCapabilities: z.object({
+      text: z.boolean().optional(),
+      audio: z.boolean().optional(),
+      image: z.boolean().optional(),
+      resource: z.boolean().optional(),
+    }).passthrough().optional(),
+    clientStates: z.array(z.string().min(1)).optional(),
+  }).passthrough(),
+  [GatewayClientEvent.AUDIO_APPEND]: z.object({
+    audio: z.string().min(1),
+  }).passthrough(),
+  [GatewayClientEvent.TEXT_MESSAGE]: GatewayInputMessagePayloadSchema,
+  [GatewayClientEvent.INPUT_MESSAGE]: GatewayInputMessagePayloadSchema,
+  [GatewayClientEvent.PLAYBACK_STARTED]: z.object({
+    responseId: z.string().min(1),
+  }).passthrough(),
+  [GatewayClientEvent.PLAYBACK_ENDED]: z.object({
+    responseId: z.string().min(1),
+  }).passthrough(),
+  [GatewayClientEvent.PLAYBACK_CANCELLED]: z.object({
+    responseId: z.string().min(1),
+    reason: z.string().optional(),
+  }).passthrough(),
+})
+
+const GatewayVoicePayloadSchemas = Object.freeze({
+  [GatewayServerEvent.VOICE_READY]: z.object({
+    inputSampleRate: z.number().int().positive(),
+    provider: z.string().min(1).optional(),
+    providerLabel: z.string().min(1).optional(),
+  }).passthrough(),
+  [GatewayServerEvent.VOICE_CONNECTION]: z.object({
+    state: z.string().min(1),
+  }).passthrough(),
+  [GatewayServerEvent.VOICE_STATE]: z.object({
+    state: z.enum(['idle', 'listening', 'processing', 'speaking']),
+    turnId: z.string().min(1).nullable().optional(),
+  }).passthrough(),
+  [GatewayServerEvent.VOICE_OWNERSHIP]: z.object({
+    state: z.enum(['active', 'busy', 'available']),
+    holder: z.unknown().nullable().optional(),
+  }).passthrough(),
+  [GatewayServerEvent.VOICE_DEACTIVATED]: z.object({
+    holder: z.unknown().nullable().optional(),
+  }).passthrough(),
+  [GatewayServerEvent.VOICE_SLEEP]: z.object({
+    state: z.enum(['preparing', 'enabled', 'sleeping', 'detected', 'awake', 'disabled']),
+  }).passthrough(),
+  [GatewayServerEvent.TURN_STARTED]: z.object({
+    turnId: z.string().min(1),
+  }).passthrough(),
+  [GatewayServerEvent.INPUT_SUSPEND]: z.object({
+    owner: z.string().min(1),
+    reason: z.string().optional(),
+    expiresAt: z.number().optional(),
+  }).passthrough(),
+  [GatewayServerEvent.AUDIO_DELTA]: z.object({
+    audio: z.string().min(1),
+    sampleRate: z.number().int().positive(),
+    responseId: z.string().min(1),
+  }).passthrough(),
+  [GatewayServerEvent.AUDIO_DONE]: z.object({
+    responseId: z.string().min(1),
+  }).passthrough(),
+  [GatewayServerEvent.RESPONSE_STARTED]: z.object({
+    responseId: z.string().min(1),
+  }).passthrough(),
+  [GatewayServerEvent.RESPONSE_INTERRUPTED]: z.object({
+    responseId: z.string().min(1),
+  }).passthrough(),
+  [GatewayServerEvent.TRANSCRIPT_DELTA]: z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+  }).passthrough(),
+  [GatewayServerEvent.TRANSCRIPT_FINAL]: z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+  }).passthrough(),
+  [GatewayServerEvent.TRANSCRIPT_DISCARD]: z.object({
+    role: z.enum(['user', 'assistant']),
+  }).passthrough(),
+  [GatewayServerEvent.AGENT_ACTIVITY]: z.object({
+    activity: z.string().min(1),
+  }).passthrough(),
+  [GatewayServerEvent.CLIENT_STATE]: z.object({
+    state: z.string().min(1),
+  }).passthrough(),
+  [GatewayServerEvent.ERROR]: z.object({
+    message: z.string().min(1),
+  }).passthrough(),
+})
+
+function validatePayload(schema, event, context) {
+  if (!schema) return
+  const result = schema.safeParse(event)
+  if (result.success) return
+  for (const issue of result.error.issues) context.addIssue(issue)
+}
+
+// Stable fields are validated per event while passthrough preserves optional
+// client/provider extensions. The constants remain the single event registry.
 export const GatewayClientMessageSchema = GatewayEventEnvelopeSchema.extend({
   type: GatewayClientEventTypeSchema,
+}).superRefine((event, context) => {
+  validatePayload(GatewayClientPayloadSchemas[event.type], event, context)
 })
 
 export const GatewayVoiceMessageSchema = GatewayEventEnvelopeSchema.extend({
   type: GatewayServerEventTypeSchema,
   citations: z.array(GatewayCitationSchema).max(16).optional(),
 }).superRefine((event, context) => {
+  validatePayload(GatewayVoicePayloadSchemas[event.type], event, context)
   if (
     event.citations
     && (

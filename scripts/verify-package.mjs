@@ -112,6 +112,8 @@ if (isMain) {
     'config/codebuddy/workspace/.codebuddy/models.json',
     'examples/backend-adapter/README.md',
     'examples/backend-adapter/in-memory-backend.mjs',
+    'examples/custom-conversation-client/README.md',
+    'examples/custom-conversation-client/client.mjs',
     'CONTRIBUTING.md',
     'docs/architecture.md',
     'docs/architecture-overview.png',

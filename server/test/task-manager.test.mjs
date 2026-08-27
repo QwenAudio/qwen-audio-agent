@@ -251,8 +251,11 @@ test('keeps delegated work active while releasing its coordinator lane', async (
           title: '已有项目',
           directory: '/project',
           presentation: {
-            speech: '项目已经接着做了。',
-            inline: null,
+            inline: {
+              title: '已有项目',
+              format: 'markdown',
+              content: '项目已经接着做了。',
+            },
           },
         },
       })
@@ -277,10 +280,7 @@ test('keeps delegated work active while releasing its coordinator lane', async (
   assert.equal(delegated.workState, 'working')
   assert.equal(delegated.delegation.status, 'running')
   assert.equal(delegated.delegation.title, '已有项目')
-  assert.equal(
-    delegated.delegation.presentation.speech,
-    '项目已经接着做了。',
-  )
+  assert.equal('presentation' in delegated.delegation, false)
   assert.ok(events.some(event => event.type === 'task.delegated'))
   assert.equal(secondStarted, true)
   assert.equal(manager.get(second.id).status, 'completed')
@@ -525,7 +525,7 @@ test('listing tasks does not rewrite unchanged persistent state', async () => {
   assert.equal(saves, before)
 })
 
-test('publishes presentation and standard artifacts from a completed result', async () => {
+test('publishes standard artifacts from a completed result', async () => {
   const events = []
   const manager = new TaskManager()
   manager.subscribe(event => events.push(event))
@@ -535,15 +535,12 @@ test('publishes presentation and standard artifacts from a completed result', as
     sessionId: 'voice',
     runner: async () => ({
       content: '报告已经生成',
+      artifacts: [{
+        artifactId: 'report',
+        name: '报告',
+        parts: [{ text: '# 完成', mediaType: 'text/markdown' }],
+      }],
       metadata: {
-        presentation: {
-          speech: '报告已经生成。',
-          inline: {
-            title: '报告',
-            format: 'markdown',
-            content: '# 完成',
-          },
-        },
         backendRef: {
           sessionId: 'backend-session',
           directory: '/private/project',
@@ -557,16 +554,9 @@ test('publishes presentation and standard artifacts from a completed result', as
   })
 
   const completed = await manager.wait(task.id)
-  assert.deepEqual(completed.presentation, {
-    speech: '报告已经生成。',
-    inline: {
-      title: '报告',
-      format: 'markdown',
-      content: '# 完成',
-    },
-  })
+  assert.equal('presentation' in completed, false)
   assert.deepEqual(completed.artifacts, [{
-    artifactId: 'artifact_inline',
+    artifactId: 'report',
     name: '报告',
     parts: [{ text: '# 完成', mediaType: 'text/markdown' }],
   }])
@@ -577,7 +567,7 @@ test('publishes presentation and standard artifacts from a completed result', as
   )
 })
 
-test('projects legacy decision presentation when restoring a task', () => {
+test('drops legacy presentation while preserving standard artifacts on restore', () => {
   let saved = []
   const manager = new TaskManager({
     store: {
@@ -588,10 +578,13 @@ test('projects legacy decision presentation when restoring a task', () => {
         ownerId: 'owner',
         sessionId: 'voice',
         result: '旧结果',
+        artifacts: [{
+          artifactId: 'legacy-result',
+          parts: [{ text: 'const done = true', mediaType: 'text/plain' }],
+        }],
         resultMetadata: {
           decision: {
             presentation: {
-              speech: '旧任务已经完成。',
               inline: {
                 title: '旧结果',
                 format: 'code',
@@ -610,16 +603,9 @@ test('projects legacy decision presentation when restoring a task', () => {
   })
 
   const restored = manager.get('task_92')
-  assert.deepEqual(restored.presentation, {
-    speech: '旧任务已经完成。',
-    inline: {
-      title: '旧结果',
-      format: 'code',
-      content: 'const done = true',
-    },
-  })
+  assert.equal('presentation' in restored, false)
   manager.persist()
-  assert.deepEqual(saved[0].presentation, restored.presentation)
   assert.deepEqual(saved[0].artifacts, restored.artifacts)
+  assert.equal('presentation' in saved[0], false)
   assert.equal('resultMetadata' in saved[0], false)
 })

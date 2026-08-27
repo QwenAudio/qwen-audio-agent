@@ -1,7 +1,4 @@
-import {
-  artifactFromInlinePresentation,
-  normalizeArtifacts,
-} from './task-artifact.mjs'
+import { normalizeArtifacts } from './task-artifact.mjs'
 import { publicAuthorization } from '../core/work-authorization.mjs'
 
 export const TaskStatus = Object.freeze({
@@ -118,43 +115,7 @@ export function transitionTask(task, nextStatus) {
   return task
 }
 
-export function normalizeTaskPresentation(value) {
-  if (!value || typeof value !== 'object') return null
-  const source = value.presentation || value.decision?.presentation || value
-  if (!source || typeof source !== 'object') return null
-  const inline = source.inline && typeof source.inline === 'object'
-    && typeof source.inline.content === 'string'
-    && source.inline.content.trim()
-    ? {
-        title: typeof source.inline.title === 'string'
-          ? source.inline.title.slice(0, 120)
-          : '',
-        format: ['markdown', 'code', 'link'].includes(source.inline.format)
-          ? source.inline.format
-          : 'markdown',
-        content: source.inline.content,
-      }
-    : null
-  const speech = typeof source.speech === 'string' ? source.speech : ''
-  if (!speech && !inline) return null
-  return { speech, inline }
-}
-
-function taskPresentation(task) {
-  return normalizeTaskPresentation(
-    task.presentation || task.resultMetadata || null,
-  )
-}
-
-function taskArtifacts(task, presentation) {
-  const normalized = normalizeArtifacts(task.artifacts)
-  if (normalized.length) return normalized
-  const legacy = artifactFromInlinePresentation(presentation)
-  return legacy ? [legacy] : []
-}
-
 export function publicTask(task, { now = Date.now() } = {}) {
-  const presentation = taskPresentation(task)
   return {
     id: task.id,
     workState: publicWorkState(task),
@@ -175,21 +136,12 @@ export function publicTask(task, { now = Date.now() } = {}) {
     result: task.result,
     error: task.error,
     message: task.message || null,
-    artifacts: taskArtifacts(task, presentation),
-    presentation,
+    artifacts: normalizeArtifacts(task.artifacts),
     activity: [...(task.activity || [])],
     delegation: task.delegation
       ? {
           status: task.delegation.status || 'running',
           title: String(task.delegation.title || '').slice(0, 160),
-          presentation: task.delegation.presentation
-            ? {
-                speech: String(
-                  task.delegation.presentation.speech || '',
-                ).slice(0, 1200),
-                inline: task.delegation.presentation.inline || null,
-              }
-            : null,
         }
       : null,
     authorization: publicAuthorization(task.authorization, { taskId: task.id }),
@@ -208,12 +160,7 @@ export function persistedTask(task) {
   }
   saved.submissionKey = task.submissionKey || null
   saved.delegation = task.delegation
-    ? {
-        ...task.delegation,
-        presentation: task.delegation.presentation
-          ? { ...task.delegation.presentation }
-          : null,
-      }
+    ? { ...task.delegation }
     : null
   return saved
 }

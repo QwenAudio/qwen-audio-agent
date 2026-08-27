@@ -226,7 +226,7 @@ test('projects A2A messages and task artifacts into public outcomes', async () =
   })
 
   const outcome = await backend.submit(work())
-  assert.equal(outcome.presentation.speech, '报告已经完成。')
+  assert.equal(outcome.presentation, undefined)
   assert.match(outcome.content, /分析过程/)
   assert.match(outcome.content, /# 结果/)
   assert.deepEqual(outcome.artifacts, [{
@@ -351,7 +351,8 @@ test('normalizes A2A streaming status messages and artifacts into Task updates',
   const outcome = await backend.submit(work())
 
   assert.equal(requests[0].configuration.returnImmediately, false)
-  assert.equal(outcome.presentation.speech, '已经完成。')
+  assert.match(outcome.content, /已经完成/)
+  assert.equal(outcome.presentation, undefined)
   assert.equal(outcome.artifacts[0].artifactId, 'stream-report')
   assert.ok(events.some(event => (
     event.type === 'backend.message'
@@ -463,7 +464,8 @@ test('interoperates with an A2A 1.0 HTTP+JSON agent through official discovery',
     assert.equal(backend.describe().transport, 'HTTP+JSON')
     assert.equal(received.message.parts[0].text, '回环测试')
     assert.equal(received.configuration.returnImmediately, true)
-    assert.equal(outcome.presentation.speech, '回环任务已经完成。')
+    assert.equal(outcome.content, '回环任务已经完成。')
+    assert.equal(outcome.presentation, undefined)
   } finally {
     await backend.close()
     await new Promise(resolve => server.close(resolve))

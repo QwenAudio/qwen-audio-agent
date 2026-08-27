@@ -5,11 +5,11 @@ import {
   GatewayServerEvent,
   isGatewayClientEvent,
 } from '../../../shared/realtime-events.mjs'
-import { AnnouncementManager } from './announcement/announcement-manager.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import {
-  ProgressAnnouncementManager,
-} from './announcement/progress-announcement-manager.mjs'
+  createTaskAnnouncementRuntime,
+  resolveTaskAnnouncementRuntime,
+} from './announcement/task-announcement-runtime.mjs'
 import { config } from '../core/config.mjs'
 import { logger } from '../core/logger.mjs'
 import { conversationSync } from '../conversation/conversation-sync.mjs'
@@ -117,6 +117,7 @@ export function attachRealtimeGateway(server, {
   frontendRetrieval = null,
   frontendKnowledge = null,
   frontendToolSources = [],
+  taskAnnouncementFactory = createTaskAnnouncementRuntime,
 }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 20 * 1024 * 1024 })
   const activeVoiceClients = new ActiveVoiceClients()
@@ -279,52 +280,64 @@ export function attachRealtimeGateway(server, {
       }
       activeTasks.forEach(announcePermission)
     }
-    const announcements = new AnnouncementManager({
-      getFrontend: () => realtimeSession?.frontend,
-      isDeliveryBlocked: () => sleeping || waking || !outputEnabled || announcementWindow.isBlocked(),
-      announceIntoContext: config.announceIntoContext,
-      resultContextMaxChars: config.resultContextMaxChars,
-      maxBatchItems: config.announcementMaxBatchItems,
-      batchWindowMs: config.announcementBatchMs,
-      acknowledgementTimeoutMs: config.announcementAcknowledgementTimeoutMs,
-      maxRetryAttempts: config.announcementMaxRetryAttempts,
-      leaseRenewIntervalMs: Math.max(
-        1000,
-        Math.floor(config.taskNotificationClaimTtlMs / 3),
-      ),
-      onDelivered: taskIds => taskManager.markNotificationsDelivered(taskIds, {
-        claimantId: notificationClaimantId,
-      }),
-      onLeaseRenew: taskIds => taskManager.renewNotificationClaims(taskIds, {
-        claimantId: notificationClaimantId,
-      }),
-      onRelease: taskIds => taskManager.releaseNotificationClaims(taskIds, {
-        claimantId: notificationClaimantId,
-      }),
-      onError: error => send(ws, {
-        type: 'error',
-        message: `后台结果暂时无法播报，正在自动重试：${error.message}`,
-      }),
-    })
-    const progressAnnouncements = new ProgressAnnouncementManager({
-      getFrontend: () => realtimeSession?.frontend,
-      isDeliveryBlocked: () => (
-        sleeping
-        || waking
-        || !outputEnabled
-        || !realtimeSession?.ready
-        || turns.userSpeaking
-        || announcementWindow.isBlocked()
-      ),
-      isTaskActive: taskId => activeSessionTasks().some(task => (
-        task.id === taskId
-      )),
-      intervalMs: 60_000,
-      quietMs: config.announcementQuietMs,
-      onError: error => connectionLogger.warn('progress.injection_failed', {
-        error: error.message,
-      }),
-    })
+    const taskAnnouncements = resolveTaskAnnouncementRuntime(
+      taskAnnouncementFactory,
+      {
+        resultOptions: {
+          getFrontend: () => realtimeSession?.frontend,
+          isDeliveryBlocked: () => (
+            sleeping
+            || waking
+            || !outputEnabled
+            || announcementWindow.isBlocked()
+          ),
+          announceIntoContext: config.announceIntoContext,
+          resultContextMaxChars: config.resultContextMaxChars,
+          maxBatchItems: config.announcementMaxBatchItems,
+          batchWindowMs: config.announcementBatchMs,
+          acknowledgementTimeoutMs: config.announcementAcknowledgementTimeoutMs,
+          maxRetryAttempts: config.announcementMaxRetryAttempts,
+          leaseRenewIntervalMs: Math.max(
+            1000,
+            Math.floor(config.taskNotificationClaimTtlMs / 3),
+          ),
+          onDelivered: taskIds => taskManager.markNotificationsDelivered(taskIds, {
+            claimantId: notificationClaimantId,
+          }),
+          onLeaseRenew: taskIds => taskManager.renewNotificationClaims(taskIds, {
+            claimantId: notificationClaimantId,
+          }),
+          onRelease: taskIds => taskManager.releaseNotificationClaims(taskIds, {
+            claimantId: notificationClaimantId,
+          }),
+          onError: error => send(ws, {
+            type: 'error',
+            message: `后台结果暂时无法播报，正在自动重试：${error.message}`,
+          }),
+        },
+        progressOptions: {
+          getFrontend: () => realtimeSession?.frontend,
+          isDeliveryBlocked: () => (
+            sleeping
+            || waking
+            || !outputEnabled
+            || !realtimeSession?.ready
+            || turns.userSpeaking
+            || announcementWindow.isBlocked()
+          ),
+          isTaskActive: taskId => activeSessionTasks().some(task => (
+            task.id === taskId
+          )),
+          intervalMs: 60_000,
+          quietMs: config.announcementQuietMs,
+          onError: error => connectionLogger.warn('progress.injection_failed', {
+            error: error.message,
+          }),
+        },
+      },
+    )
+    const announcements = taskAnnouncements.results
+    const progressAnnouncements = taskAnnouncements.progress
     const reportFrontendError = error => {
       if (error?.realtimeConnectionReported) return
       if (error) error.realtimeConnectionReported = true
@@ -678,6 +691,10 @@ export function attachRealtimeGateway(server, {
       }
       if (event.type === TaskDomainEvent.PERMISSION_RESOLVED) {
         const authorizationId = event.permission?.id
+        // A permission confirmation already tells the user that work resumes.
+        // Drop progress queued before the decision so it cannot immediately
+        // repeat the same “still working” information after that confirmation.
+        progressAnnouncements.remove(task.id)
         if (authorizationId) {
           // 已进入对话的权限询问被其它通道（如 WebUI 按钮）处理后，把结果
           // 静默回注模型上下文：避免模型不知情而重复追问，或把用户随后的
@@ -697,19 +714,6 @@ export function attachRealtimeGateway(server, {
           presentationRuntime.cancelPermission(authorizationId)
         }
       }
-      if (event.type === TaskDomainEvent.DELEGATED) {
-        const presentation = task.delegation?.presentation
-        if (presentation?.inline?.content) {
-          send(ws, {
-            type: 'timeline.inline',
-            item: {
-              id: `inline_${task.id}_delegated`,
-              taskId: task.id,
-              ...presentation.inline,
-            },
-          })
-        }
-      }
       if ([
         TaskDomainEvent.COMPLETED,
         TaskDomainEvent.FAILED,
@@ -722,17 +726,6 @@ export function attachRealtimeGateway(server, {
         TaskDomainEvent.FAILED,
       ].includes(event.type)) {
         recordResult(task)
-        const inline = task.presentation?.inline
-        if (inline?.content) {
-          send(ws, {
-            type: 'timeline.inline',
-            item: {
-              id: `inline_${task.id}`,
-              taskId: task.id,
-              ...inline,
-            },
-          })
-        }
         claimPendingNotifications([task.id])
       }
     })

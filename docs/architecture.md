@@ -232,8 +232,8 @@ Activity never produces spoken status updates and never affects the queue.
 The backend Agent returns a standard ACP turn. Text arrives in
 `agent_message_chunk` updates, while images, audio, and resources remain native
 `ContentBlock` values; the turn ends with the `session/prompt`
-`PromptResponse`. The ACP adapter no longer flattens these values and then asks
-the model to reconstruct `state` or `presentation` JSON. It projects text and
+`PromptResponse`. The ACP adapter no longer flattens these values or asks the
+model to reconstruct a proprietary result envelope. It projects text and
 non-text content into the BackendPort `content` and `artifacts` fields, and the
 Gateway accepts only `stopReason=end_turn` as a successfully completed turn.
 Cancellation, refusal, and token or agent-request limits enter the Gateway's
@@ -342,8 +342,8 @@ Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 ```
 
 Backend-specific API details belong only in `server/src/agent`. Realtime tools
-must not import backend adapters. The UI consumes only public Task events and
-final timeline content. Package-level `shared` modules are foundational runtime
+must not import backend adapters. The UI consumes only public Task and
+conversation events. Package-level `shared` modules are foundational runtime
 utilities; server `core` and `process` may depend on them, but they must not
 depend on server layers.
 
@@ -352,6 +352,13 @@ convenience, but this is static hosting only. Gateway source must not import UI
 components, presentation text, styling, terminal behavior, or desktop behavior.
 All three UIs own their rendering and map structured protocol fields to their
 own labels and interaction patterns.
+
+Background Task announcement behaviour has one code-level composition seam:
+an embedder may pass `taskAnnouncementFactory` to `createGatewayApplication`.
+The default factory keeps the existing final-result and low-frequency progress
+managers unchanged; a scenario may replace both together. This is dependency
+injection for product code, not a user setting, strategy registry, or new wire
+protocol.
 
 ## 10. Process ownership
 

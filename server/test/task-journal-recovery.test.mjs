@@ -22,7 +22,6 @@ test('journal snapshot supersedes a stale compact task projection', () => {
     error: null,
     message: null,
     artifacts: [],
-    presentation: null,
     activity: [],
     delegation: null,
     authorization: null,

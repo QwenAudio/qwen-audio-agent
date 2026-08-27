@@ -170,8 +170,8 @@ export class ToolCallHandler {
       [NOTES_TOOL_NAME]: ({ callId, turnId, args }) => (
         this.notes(callId, turnId, args)
       ),
-      [RESPOND_AGENT_PERMISSION_TOOL_NAME]: ({ callId, turnId, args }) => (
-        this.respondAgentPermission(callId, turnId, args)
+      [RESPOND_AGENT_PERMISSION_TOOL_NAME]: context => (
+        this.respondAgentPermission(context)
       ),
       [RESPOND_FRONTEND_TOOL_PERMISSION_NAME]: ({ callId, turnId, args }) => (
         this.respondFrontendToolPermission(callId, turnId, args)
@@ -190,6 +190,8 @@ export class ToolCallHandler {
     this.cancelResponseByTurn = new Map()
     this.terminalToolResponses = new Set()
     this.deferredToolResponses = new Map()
+    this.pendingBackendPermissions = new Map()
+    this.submittedBackendPermissions = new Set()
     this.pendingExternalAuthorizations = new Map()
   }
 
@@ -468,6 +470,13 @@ export class ToolCallHandler {
     if (
       event?.type === BackendEventType.AUTHORIZATION_RESOLVED
       && permission?.id
+    ) {
+      this.pendingBackendPermissions.delete(permission.id)
+      this.submittedBackendPermissions.delete(permission.id)
+    }
+    if (
+      event?.type === BackendEventType.AUTHORIZATION_RESOLVED
+      && permission?.id
       && this.gatewayApprovedPermissions.delete(permission.id)
     ) return
     if (
@@ -479,6 +488,15 @@ export class ToolCallHandler {
         this.sessionId,
       )
     ) {
+      if (
+        event?.type === BackendEventType.AUTHORIZATION_REQUESTED
+        && permission?.id
+      ) {
+        this.pendingBackendPermissions.set(permission.id, {
+          taskId,
+          permission,
+        })
+      }
       onEvent(event)
       return
     }
@@ -521,17 +539,25 @@ export class ToolCallHandler {
       laneKey: `backend:${this.ownerId}`,
       laneLimit: 1,
       runner: async (_ignored, { onEvent, signal }) => {
-        return this.backendRuntime.run({
-          objective,
-          inputParts,
-        }, {
-          ownerId: this.ownerId,
-          sessionId: this.sessionId,
-          turnId,
-          taskId,
-          signal,
-          onEvent: event => this.forwardBackendEvent(taskId, event, onEvent),
-        })
+        try {
+          return await this.backendRuntime.run({
+            objective,
+            inputParts,
+          }, {
+            ownerId: this.ownerId,
+            sessionId: this.sessionId,
+            turnId,
+            taskId,
+            signal,
+            onEvent: event => this.forwardBackendEvent(taskId, event, onEvent),
+          })
+        } finally {
+          for (const [id, entry] of this.pendingBackendPermissions) {
+            if (entry.taskId !== taskId) continue
+            this.pendingBackendPermissions.delete(id)
+            this.submittedBackendPermissions.delete(id)
+          }
+        }
       },
       canceler: async ({ previousStatus, abort }) => {
         const result = await this.backendRuntime.cancel(
@@ -1179,70 +1205,144 @@ export class ToolCallHandler {
     }
   }
 
-  async respondAgentPermission(callId, turnId, args) {
+  async respondAgentPermission({
+    callId,
+    turnId,
+    generation,
+    args,
+    callContext,
+  }) {
     const authorizationId = String(args.authorization_id || '').trim()
     const decision = String(args.decision || '').trim()
-    const transcript = String(await this.transcripts.transcript(turnId)).trim()
-    if (
-      !authorizationId
-      || !['always', 'reject'].includes(decision)
-      || !transcript
-    ) {
-      await this.sendOutput(
-        callId,
-        failure('invalid_permission_response', '没有找到有效的权限请求或决定。'),
-        turnId,
+    const responseId = String(
+      callContext?.responseId || callContext?.event?.response_id || '',
+    ).trim()
+    const response = ['always', 'reject'].includes(decision)
+      ? {
+          instructions: decision === 'always'
+            ? [
+                '权限决定已提交，并在本会话立即生效。',
+                '只用一句简短自然口语确认“已允许，后台继续执行”。',
+                '不要重述操作，不要再次询问或调用工具。',
+              ].join(' ')
+            : [
+                '权限决定已提交。',
+                '只用一句简短自然口语确认“已拒绝，后台不会执行这项操作”。',
+                '不要重述操作，不要再次询问或调用工具。',
+              ].join(' '),
+        }
+      : null
+    const deferred = this.beginDeferredToolResponse(responseId, {
+      turnId,
+      turnGeneration: generation,
+    }, response)
+    const outputOptions = deferred
+      ? { createResponse: false }
+      : { response }
+    let failed = false
+    try {
+      const transcript = String(await this.transcripts.transcript(turnId)).trim()
+      if (!authorizationId || !response || !transcript) {
+        await this.sendOutput(
+          callId,
+          failure('invalid_permission_response', '没有找到有效的权限请求或决定。'),
+          turnId,
+          null,
+          deferred ? { createResponse: false } : undefined,
+        )
+        return
+      }
+      const trackedPermission = this.pendingBackendPermissions.get(authorizationId)
+      const pendingTask = trackedPermission
+        ? this.taskManager.getByTaskId(trackedPermission.taskId, {
+            ownerId: this.ownerId,
+          })
+        : this.taskManager.list({
+            ownerId: this.ownerId,
+            sessionId: this.sessionId,
+            active: true,
+          }).find(task => task.authorization?.id === authorizationId)
+      if (!pendingTask) {
+        await this.sendOutput(
+          callId,
+          failure(
+            'permission_not_pending',
+            '这项权限请求已经处理过或不属于当前任务；若用户刚在界面上确认过，'
+            + '无需重复回应，直接继续即可。',
+            { retryable: false },
+          ),
+          turnId,
+          null,
+          deferred ? { createResponse: false } : undefined,
+        )
+        return
+      }
+      if (!this.respondAuthorization) {
+        await this.sendOutput(
+          callId,
+          failure('permission_unavailable', '当前后台无法接收权限决定。'),
+          turnId,
+          null,
+          deferred ? { createResponse: false } : undefined,
+        )
+        return
+      }
+      if (this.submittedBackendPermissions.has(authorizationId)) {
+        await this.sendOutput(callId, {
+          status: 'already_submitted',
+          authorization_id: authorizationId,
+        }, turnId, pendingTask.id, deferred ? { createResponse: false } : undefined)
+        return
+      }
+      const previousPermissionMode = this.permissionPolicy?.mode(
+        this.ownerId,
+        this.sessionId,
       )
-      return
-    }
-    const pendingTask = this.taskManager.list({
-      ownerId: this.ownerId,
-      sessionId: this.sessionId,
-      active: true,
-    }).find(task => task.authorization?.id === authorizationId)
-    if (!pendingTask) {
-      await this.sendOutput(
-        callId,
-        failure(
-          'permission_not_pending',
-          '这项权限请求已经处理过或不属于当前任务；若用户刚在界面上确认过，'
-          + '无需重复回应，直接继续即可。',
-          { retryable: false },
-        ),
-        turnId,
-      )
-      return
-    }
-    if (!this.respondAuthorization) {
-      await this.sendOutput(
-        callId,
-        failure('permission_unavailable', '当前后台无法接收权限决定。'),
-        turnId,
-      )
-      return
-    }
-    const previousPermissionMode = this.permissionPolicy?.mode(
-      this.ownerId,
-      this.sessionId,
-    )
-    this.permissionPolicy?.applyDecision(
-      this.ownerId,
-      this.sessionId,
-      decision,
-    )
-    // Receipt-based: the local policy takes effect immediately and the backend
-    // round trip must not delay the spoken confirmation. On delivery failure
-    // the policy rolls back and the authorization is still pending on the
-    // backend, so the gateway can re-announce it through the existing
-    // pending-permission retry path.
-    Promise.resolve()
-      .then(() => this.respondAuthorization(
-        pendingTask.id,
-        authorizationId,
+      this.permissionPolicy?.applyDecision(
+        this.ownerId,
+        this.sessionId,
         decision,
-        { ownerId: this.ownerId },
-      ))
-      .catch(error => {
+      )
+      // Receipt-based: the local policy takes effect immediately and the backend
+      // round trip must not delay the spoken confirmation. An "always" decision
+      // also settles permissions that arrived concurrently for this same task.
+      const permissions = decision === 'always'
+        ? [...this.pendingBackendPermissions.entries()]
+            .filter(([id, entry]) => (
+              entry.taskId === pendingTask.id
+              && !this.submittedBackendPermissions.has(id)
+            ))
+            .map(([id, entry]) => ({ id, taskId: entry.taskId }))
+        : [{ id: authorizationId, taskId: pendingTask.id }]
+      if (!permissions.some(permission => permission.id === authorizationId)) {
+        permissions.push({ id: authorizationId, taskId: pendingTask.id })
+      }
+      permissions.forEach(permission => {
+        this.submittedBackendPermissions.add(permission.id)
+      })
+      Promise.all(permissions.map(async permission => {
+        try {
+          await this.respondAuthorization(
+            permission.taskId,
+            permission.id,
+            decision,
+            { ownerId: this.ownerId },
+          )
+        } catch (error) {
+          this.submittedBackendPermissions.delete(permission.id)
+          try {
+            this.onPermissionDeliveryFailed({
+              authorizationId: permission.id,
+              decision,
+              taskId: permission.taskId,
+              error: String(error?.message || error),
+            })
+          } catch {
+            // Delivery diagnostics must not break the voice session.
+          }
+          throw error
+        }
+      })).catch(() => {
         if (previousPermissionMode) {
           this.permissionPolicy?.setMode(
             this.ownerId,
@@ -1250,35 +1350,17 @@ export class ToolCallHandler {
             previousPermissionMode,
           )
         }
-        try {
-          this.onPermissionDeliveryFailed({
-            authorizationId,
-            decision,
-            taskId: pendingTask.id,
-            error: String(error?.message || error),
-          })
-        } catch {
-          // Delivery diagnostics must not break the voice session.
-        }
       })
-    await this.sendOutput(callId, {
-      status: 'submitted',
-      authorization_id: authorizationId,
-    }, turnId, pendingTask.id, {
-      response: {
-        instructions: decision === 'always'
-          ? [
-              '权限决定已提交，并在本会话立即生效。',
-              '只用一句简短自然口语确认“已允许，后台继续执行”。',
-              '不要重述操作，不要再次询问或调用工具。',
-            ].join(' ')
-          : [
-              '权限决定已提交。',
-              '只用一句简短自然口语确认“已拒绝，后台不会执行这项操作”。',
-              '不要重述操作，不要再次询问或调用工具。',
-            ].join(' '),
-      },
-    })
+      await this.sendOutput(callId, {
+        status: 'submitted',
+        authorization_id: authorizationId,
+      }, turnId, pendingTask.id, outputOptions)
+    } catch (error) {
+      failed = true
+      throw error
+    } finally {
+      await this.completeDeferredToolResponse(deferred, { failed })
+    }
   }
 
   async cancelAgentTask(callId, turnId, args, responseOptions) {

@@ -2,7 +2,7 @@
 
 Backend Adapter SDK 用于把非 ACP 办事系统接到 qwen-audio-agent。手机 Agent、硬件
 Agent、HTTP 服务或其他任务运行时只需实现统一 `BackendPort`；前台语音、Task 队列、
-权限转述和结果播报不需要修改。
+权限转述和结果交付不需要修改。
 
 ## 导入
 
@@ -57,9 +57,12 @@ Adapter 必须实现全部方法：
 {
   content: '供前台理解的事实结果',
   artifacts: [],
-  presentation: { speech: '可自然表达的结果材料', inline: null },
 }
 ```
+
+`content` 是前台 Chatbot 理解、概括和自然播报结果的唯一事实文本。Adapter
+不得另行指定播报话术。文件、图片和结构化结果使用 `artifacts`；BackendPort
+不规定 Conversation Client 的具体展示方式。
 
 不要返回原始协议对象、Session ID、Token 或凭据。运行进度通过 `subscribe` 发布
 `taskId`、`ownerId` 关联的标准后台事件；监听器异常不能中断任务。

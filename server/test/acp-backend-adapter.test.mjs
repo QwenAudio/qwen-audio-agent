@@ -1485,7 +1485,7 @@ test('delegated status and cancellation bypass the coordinator', async () => {
     '做到哪了',
     { ownerId: 'owner-one' },
   )
-  assert.equal(JSON.parse(status.content).presentation.speech,
+  assert.equal(JSON.parse(status.content).result,
     '这项工作仍在执行中，当前没有新的详细进展。')
   assert.equal(status.metadata.statusSource, 'gateway')
   const cancelled = await adapter.cancelWork('work-one', {
@@ -1740,7 +1740,7 @@ test('busy-coordinator status query returns Gateway-known state immediately', as
   )
   adapter.activeCoordinatorTurns.delete('coordinator-session')
   assert.equal(client.calls.length, before)
-  assert.equal(JSON.parse(status.content).presentation.speech,
+  assert.equal(JSON.parse(status.content).result,
     '这项工作仍在执行中，当前没有新的详细进展。')
   assert.equal(status.metadata.statusSource, 'gateway')
   await adapter.cancelWork('work-one', { ownerId: 'owner-one' })

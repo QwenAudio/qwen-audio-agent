@@ -4,30 +4,18 @@ import { TaskManager } from '../src/task/task-manager.mjs'
 import { AnnouncementManager } from '../src/voice/announcement/announcement-manager.mjs'
 import { recordTaskResult } from '../src/conversation/task-result-projector.mjs'
 
-const OPEN = 1 // WebSocket.OPEN
-
 /**
  * Simulates the realtime-gateway subscriber for task completion delivery.
  *
  * In production this logic lives inside `attachRealtimeGateway`'s
  * `wss.on('connection')` handler.  The harness extracts only the
- * delivery-relevant paths so we can verify the two independent channels:
- *
- *   1. inline  → timeline.inline  via WebSocket (Realtime model NOT involved)
- *   2. speech  → AnnouncementManager → frontend.injectResult (Realtime model)
- *
- * Each path must fire exactly once per task — never duplicated by the
+ * delivery-relevant path so we can verify that a factual Task result reaches
+ * AnnouncementManager → frontend.injectResult exactly once — never duplicated by the
  * subsequent `task.notification.pending` event.
  */
 function createDeliveryHarness() {
-  const wsMessages = []
   const injectCalls = []
   const speakCalls = []
-
-  const ws = {
-    readyState: OPEN,
-    send(data) { wsMessages.push(JSON.parse(data)) },
-  }
 
   const frontend = {
     ready: true,
@@ -59,10 +47,6 @@ function createDeliveryHarness() {
     onDelivered: taskIds =>
       taskManager.markNotificationsDelivered(taskIds, { claimantId: 'test' }),
   })
-
-  const send = (socket, event) => {
-    if (socket.readyState === OPEN) socket.send(JSON.stringify(event))
-  }
 
   const recordResult = task =>
     recordTaskResult({ conversationSync, ownerId, sessionId, task })
@@ -96,39 +80,8 @@ function createDeliveryHarness() {
 
     if (task.sessionId !== sessionId) return
 
-    send(ws, {
-      type: event.type,
-      task,
-      ...(event.permission ? { permission: event.permission } : {}),
-    })
-
-    if (event.type === 'task.delegated') {
-      const inline = task.delegation?.presentation?.inline
-      if (inline?.content) {
-        send(ws, {
-          type: 'timeline.inline',
-          item: {
-            id: `inline_${task.id}_delegated`,
-            taskId: task.id,
-            ...inline,
-          },
-        })
-      }
-    }
-
     if (['task.completed', 'task.failed'].includes(event.type)) {
       recordResult(task)
-      const inline = task.presentation?.inline
-      if (inline?.content) {
-        send(ws, {
-          type: 'timeline.inline',
-          item: {
-            id: `inline_${task.id}`,
-            taskId: task.id,
-            ...inline,
-          },
-        })
-      }
       claimPendingNotifications([task.id])
     }
   })
@@ -136,8 +89,6 @@ function createDeliveryHarness() {
   return {
     taskManager,
     announcements,
-    ws,
-    wsMessages,
     injectCalls,
     speakCalls,
     ownerId,
@@ -150,7 +101,7 @@ async function flush() {
   await new Promise(resolve => setTimeout(resolve, 10))
 }
 
-test('delegation updates the timeline without producing a second voice announcement', async () => {
+test('delegation does not produce a premature voice announcement', async () => {
   const h = createDeliveryHarness()
   let release
   const { id: taskId } = h.taskManager.create({
@@ -164,14 +115,6 @@ test('delegation updates the timeline without producing a second voice announcem
           id: 'delegation-one',
           sessionId: 'project-session-one',
           title: '贪吃蛇小游戏',
-          presentation: {
-            speech: '贪吃蛇小游戏已经开始开发。',
-            inline: {
-              title: '项目正在执行',
-              format: 'text',
-              content: '正在开发贪吃蛇小游戏',
-            },
-          },
         },
       })
       return new Promise(resolve => { release = resolve })
@@ -180,13 +123,6 @@ test('delegation updates the timeline without producing a second voice announcem
 
   await new Promise(resolve => setImmediate(resolve))
 
-  const inline = h.wsMessages.find(message => (
-    message.type === 'timeline.inline'
-    && message.item.id === `inline_${taskId}_delegated`
-  ))
-  assert.ok(inline, 'delegation presentation should update the timeline')
-  assert.equal(inline.item.content, '正在开发贪吃蛇小游戏')
-  assert.equal('turnId' in inline.item, false)
   assert.equal(h.speakCalls.length, 0, 'delegation must not speak again')
   assert.equal(h.injectCalls.length, 0, 'delegation must not announce as a result')
 
@@ -200,7 +136,7 @@ test('delegation updates the timeline without producing a second voice announcem
 // Test scenarios
 // ---------------------------------------------------------------------------
 
-test('programming task: inline code goes to timeline.inline, speech goes to injectResult, each exactly once', async () => {
+test('programming task delivers its factual result exactly once', async () => {
   const h = createDeliveryHarness()
 
   // create() auto-starts the task via queueMicrotask(() => drain())
@@ -210,33 +146,12 @@ test('programming task: inline code goes to timeline.inline, speech goes to inje
     sessionId: h.sessionId,
     runner: async () => ({
       content: '快速排序已实现',
-      metadata: {
-        presentation: {
-          speech: '快速排序已实现，使用了经典的分治策略。',
-          inline: {
-            title: '快速排序实现',
-            format: 'code',
-            content: 'function quicksort(arr) {\n  if (arr.length <= 1) return arr\n  const [pivot, ...rest] = arr\n  return [...quicksort(rest.filter(x => x < pivot)), pivot, ...quicksort(rest.filter(x => x >= pivot))]\n}',
-          },
-        },
-      },
     }),
   })
 
   await h.taskManager.wait(taskId)
   await flush()
 
-  // --- inline path: timeline.inline sent via WebSocket ---
-  const inlineMsg = h.wsMessages.find(m => m.type === 'timeline.inline')
-  assert.ok(inlineMsg, 'timeline.inline message should be sent')
-  assert.equal(inlineMsg.item.taskId, taskId)
-  assert.equal('turnId' in inlineMsg.item, false)
-  assert.equal(inlineMsg.item.title, '快速排序实现')
-  assert.equal(inlineMsg.item.format, 'code')
-  assert.match(inlineMsg.item.content, /function quicksort/)
-  assert.match(inlineMsg.item.content, /pivot/)
-
-  // --- speech path: injectResult called exactly once ---
   assert.equal(h.injectCalls.length, 1, 'injectResult must be called exactly once')
   assert.match(h.injectCalls[0].text, /你先前异步执行工作的最终更新/)
   assert.match(h.injectCalls[0].text, /快速排序已实现/)
@@ -245,14 +160,10 @@ test('programming task: inline code goes to timeline.inline, speech goes to inje
   // --- speak should not be used (announcement uses injectResult) ---
   assert.equal(h.speakCalls.length, 0, 'speak should not be called for announcements')
 
-  // --- no duplicate timeline.inline ---
-  const inlineCount = h.wsMessages.filter(m => m.type === 'timeline.inline').length
-  assert.equal(inlineCount, 1, 'timeline.inline must not be duplicated')
-
   h.announcements.close()
 })
 
-test('task with inline=null: no timeline.inline sent, injectResult still called once', async () => {
+test('result-only task injects its factual result once', async () => {
   const h = createDeliveryHarness()
 
   const { id: taskId } = h.taskManager.create({
@@ -261,24 +172,14 @@ test('task with inline=null: no timeline.inline sent, injectResult still called 
     sessionId: h.sessionId,
     runner: async () => ({
       content: '今天晴，25度。',
-      metadata: {
-        presentation: {
-          speech: '今天晴，25度。',
-          inline: null,
-        },
-      },
     }),
   })
 
   await h.taskManager.wait(taskId)
   await flush()
 
-  // No inline content → no timeline.inline message
-  const inlineMsg = h.wsMessages.find(m => m.type === 'timeline.inline')
-  assert.equal(inlineMsg, undefined, 'no timeline.inline when inline is null')
-
-  // Speech still delivered via announcement system
-  assert.equal(h.injectCalls.length, 1, 'injectResult called once for speech-only task')
+  // The factual result is still delivered through the announcement system.
+  assert.equal(h.injectCalls.length, 1, 'injectResult called once for result-only task')
   assert.match(h.injectCalls[0].text, /今天晴/)
 
   h.announcements.close()
@@ -293,16 +194,6 @@ test('no duplication: task.completed and task.notification.pending both fire but
     sessionId: h.sessionId,
     runner: async () => ({
       content: '快速排序已实现',
-      metadata: {
-        presentation: {
-          speech: '快速排序已实现。',
-          inline: {
-            title: '代码',
-            format: 'code',
-            content: 'function qs() {}',
-          },
-        },
-      },
     }),
   })
 
@@ -316,14 +207,10 @@ test('no duplication: task.completed and task.notification.pending both fire but
   assert.equal(h.injectCalls.length, 1,
     'injectResult must be called exactly once despite two events')
 
-  // timeline.inline also sent exactly once
-  const inlineCount = h.wsMessages.filter(m => m.type === 'timeline.inline').length
-  assert.equal(inlineCount, 1, 'timeline.inline must not be duplicated')
-
   h.announcements.close()
 })
 
-test('multiple programming tasks: each gets one inline and one injectResult', async () => {
+test('multiple programming tasks each get one injected result', async () => {
   const h = createDeliveryHarness()
 
   // maxBatchItems=1 in the harness forces separate deliveries.
@@ -335,13 +222,6 @@ test('multiple programming tasks: each gets one inline and one injectResult', as
     sessionId: h.sessionId,
     runner: async () => ({
       content: '冒泡排序已实现',
-      metadata: {
-        presentation: {
-          speech: '冒泡排序已实现。',
-          inline: { title: '冒泡排序', format: 'code',
-            content: 'function bubble(arr) { /* bubble sort */ }' },
-        },
-      },
     }),
   })
 
@@ -358,24 +238,11 @@ test('multiple programming tasks: each gets one inline and one injectResult', as
     sessionId: h.sessionId,
     runner: async () => ({
       content: '归并排序已实现',
-      metadata: {
-        presentation: {
-          speech: '归并排序已实现。',
-          inline: { title: '归并排序', format: 'code',
-            content: 'function merge(arr) { /* merge sort */ }' },
-        },
-      },
     }),
   })
 
   await h.taskManager.wait(id2)
   await flush()
-
-  // --- Two timeline.inline messages, one per task ---
-  const inlineMsgs = h.wsMessages.filter(m => m.type === 'timeline.inline')
-  assert.equal(inlineMsgs.length, 2, 'two inline messages for two tasks')
-  assert.match(inlineMsgs[0].item.content, /bubble/)
-  assert.match(inlineMsgs[1].item.content, /merge/)
 
   // --- Two injectResult calls, one per task ---
   assert.equal(h.injectCalls.length, 2, 'two injectResult calls for two tasks')
@@ -385,11 +252,9 @@ test('multiple programming tasks: each gets one inline and one injectResult', as
   h.announcements.close()
 })
 
-test('failed task: no inline shown, error delivered via injectResult once', async () => {
+test('failed task delivers its error via injectResult once', async () => {
   const h = createDeliveryHarness()
 
-  // Runner throws — TaskManager sets task.error, presentation stays null,
-  // so no inline content is available for timeline.inline.
   const { id: taskId } = h.taskManager.create({
     objective: '编写一个快速排序',
     ownerId: h.ownerId,
@@ -399,10 +264,6 @@ test('failed task: no inline shown, error delivered via injectResult once', asyn
 
   await h.taskManager.wait(taskId)
   await flush()
-
-  // Failed tasks have no presentation → no timeline.inline
-  const inlineMsg = h.wsMessages.find(m => m.type === 'timeline.inline')
-  assert.equal(inlineMsg, undefined, 'no timeline.inline for failed task')
 
   // But the error is still announced via injectResult
   assert.equal(h.injectCalls.length, 1, 'injectResult called once for failed task')

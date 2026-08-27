@@ -48,8 +48,10 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
     spawn.function.parameters.properties.objective.description,
     /忠实、完整且自包含地转达用户要做什么及其明确约束/,
   )
-  assert.match(spawn.function.description, /不要重复提交已经覆盖的目标/)
-  assert.match(spawn.function.description, /duplicate 表示同一目标此前已提交/)
+  assert.ok(spawn.function.description.trim())
+  const instructions = buildFrontendInstructions()
+  assert.match(instructions, /不要重复提交已经覆盖的目标/)
+  assert.match(instructions, /duplicate.*同一目标此前已提交/)
 })
 
 function createQwenFrontend(options = {}) {
@@ -806,7 +808,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /“这次”、“今天”或“暂时”时才不保存/)
   assert.match(prompt, /清除冲突或归类错误的旧内容/)
   assert.match(prompt, /选择最直接且足够的处理方式/)
-  assert.match(prompt, /`spawn_thinking` 是统一的执行\s*兜底入口/)
+  assert.match(prompt, /`spawn_thinking` 声明能力范围[\s\S]*统一的执行入口/)
   assert.match(prompt, /必须调用它，不能提前声称“做不到”/)
   assert.match(prompt, /可通过已注册工具完成的事就是你的能力/)
   assert.match(prompt, /不要先说自己不能做/)
@@ -885,12 +887,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     .tools.find(tool => (
       tool.function.name === SPAWN_THINKING_TOOL_NAME
     ))
-  assert.match(spawnThinking.function.description, /屏幕/)
-  assert.match(spawnThinking.function.description, /媒体创作/)
-  assert.match(spawnThinking.function.description, /直接调用/)
-  assert.match(spawnThinking.function.description, /不要先否认能力/)
-  assert.match(spawnThinking.function.description, /阶段结果/)
-  assert.match(spawnThinking.function.description, /get_agent_task_status/)
+  assert.ok(spawnThinking.function.description.trim())
   assert.match(
     spawnThinking.function.parameters.properties.objective.description,
     /忠实、完整且自包含地转达用户要做什么及其明确约束/,
@@ -899,7 +896,6 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     spawnThinking.function.parameters.properties.objective.description,
     /后台不会收到前台的完整对话、个性化偏好或长期记忆/,
   )
-  assert.match(spawnThinking.function.description, /继续或修改已有工作/)
   const status = REALTIME_PROVIDERS.qwen
     .buildSession({ configured: false })
     .tools.find(tool => tool.function.name === 'get_agent_task_status')

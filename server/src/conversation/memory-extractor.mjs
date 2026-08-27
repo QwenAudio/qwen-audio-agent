@@ -52,6 +52,11 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '规则：',
   '- user 只保存用户本人明确提出、会直接改变未来交互方式的长期指令：称呼、关系、助手在该用户面前的名称、语言、表达风格和默认做法。不得推测。',
   '- memory 只保存用户本人明确陈述、稳定且具有跨会话价值的非交互事实与决定：所在地、习惯、兴趣、人际关系事实、项目、长期目标或计划。不得推测。',
+  // 别在这条规则上再加「不要把对话原话当 old_text」之类的强调 —— 试过了，
+  // A/B 各 15 轮同时段交替发起：edit 误用率 73% → 73%，一点没降，只是把写入
+  // 成功率从 MEMORY 挪到了 USER（60%→20% / 13%→47%），总量还少 1。
+  // 模型误用 edits 这件事靠 prompt 管不住，已改为在 pruneUnappliableEdits 里
+  // 结构性兜住。
   '- edits 用于更正或删除已有内容；old_text 必须逐字来自对应的现有文档且只出现一次。删除时 new_text 为空。',
   '- append 是追加到对应文档的完整 Markdown 块，可包含多项信息并使用合适的小标题；没有新增时为空字符串。',
   '- 保持文档简洁、自然、可直接由人阅读，不添加 ID、时间戳、来源或 JSON 字段。',
@@ -61,6 +66,52 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '- 同一文档的修改合并为一个 change，每个 document 最多出现一次。',
   '- 没有值得修改的内容时输出 {"changes":[]}。',
 ].join('\n')
+
+// 与 markdown-context-store 的 old_text 判定同口径：不重叠计数，必须恰好一次。
+// 两处口径必须一致，否则这里放行的 edit 会在 prepareEdit 里再次被拒。
+function countOccurrences(content, needle) {
+  if (!needle) return 0
+  let count = 0
+  let offset = 0
+  while ((offset = content.indexOf(needle, offset)) >= 0) {
+    count += 1
+    offset += needle.length
+  }
+  return count
+}
+
+// 摘掉落不了地的 edit。
+//
+// 模型很容易把【对话里的原话】当成 old_text，而 old_text 必须是【现有文档里】的
+// 原文；文档还是空模板时更是必错。这类 edit 在 prepareEdit 里会抛错，而 apply 是
+// 整批原子的 —— 一条坏 edit 会连带丢掉同一批里完全正确的 append。
+//
+// 这里按顺序在副本上模拟替换（edits 是顺序应用的，后一条可能依赖前一条的结果），
+// 找不到或出现多次的单独摘出去，保住其余部分。
+//
+// 已知限制：这里用的是 memoryService.list() 给出的内容，与喂给模型的是同一份，
+// 因此和模型的视角一致；但 prepareEdit 用的是未截断的原文。文档超过注入预算时，
+// 被截断部分若含重复文本，仍可能在 prepareEdit 处判为 ambiguous 而整批失败。
+// 那种情况下 read 侧本来就有截断告警，属可接受的窄边界。
+function pruneUnappliableEdits(edits = [], currentContent = '') {
+  let working = String(currentContent || '')
+  const kept = []
+  const dropped = []
+  for (const edit of edits) {
+    const oldText = String(edit?.old_text || '').trim()
+    const matches = countOccurrences(working, oldText)
+    if (matches !== 1) {
+      dropped.push({
+        reason: oldText ? (matches ? 'ambiguous' : 'not_found') : 'empty',
+        old_text: oldText.slice(0, 40),
+      })
+      continue
+    }
+    working = working.replace(oldText, String(edit?.new_text || ''))
+    kept.push(edit)
+  }
+  return { kept, dropped }
+}
 
 function containsSensitiveContent(value) {
   return SENSITIVE_PATTERNS.some(pattern => pattern.test(value))
@@ -288,7 +339,34 @@ export class MemoryExtractor {
       this.audit?.record({ op: 'skip', ownerId, reason: 'sensitive' })
       return
     }
-    const invalidBoundary = changes.some(change => {
+    // 摘掉落不了地的 edit —— 见 pruneUnappliableEdits 的注释。必须排在边界校验
+    // 之前：被摘掉的 new_text 不会写入，不该再参与「该进哪个文档」的判断。
+    const droppedEdits = []
+    const applicable = []
+    for (const change of changes) {
+      const current = documents.get(change.document)?.content || ''
+      const { kept, dropped } = pruneUnappliableEdits(change.edits, current)
+      for (const item of dropped) {
+        droppedEdits.push({ document: change.document, ...item })
+      }
+      // edits 全被摘掉、又没有 append 的 change 整个不要
+      if (kept.length || change.append) {
+        applicable.push({ ...change, edits: kept })
+      }
+    }
+    if (droppedEdits.length) {
+      this.audit?.record({
+        op: 'skip',
+        ownerId,
+        reason: 'edit_not_applicable',
+        detail: droppedEdits,
+      })
+    }
+    if (!applicable.length) {
+      this.audit?.record({ op: 'skip', ownerId, reason: 'no_applicable_change' })
+      return
+    }
+    const invalidBoundary = applicable.some(change => {
       const additions = [
         ...change.edits.map(edit => edit.new_text),
         change.append,
@@ -303,13 +381,13 @@ export class MemoryExtractor {
       return
     }
     if (
-      changes.some(change => change.document === 'user')
+      applicable.some(change => change.document === 'user')
       && !hasExplicitUserDirective(lines)
     ) {
       this.audit?.record({ op: 'skip', ownerId, reason: 'user_directive_not_explicit' })
       return
     }
-    const prepared = changes.map(change => ({
+    const prepared = applicable.map(change => ({
       ...change,
       expectedRevision: documents.get(change.document)?.revision || '',
     }))

@@ -154,9 +154,24 @@ qwenaudio tui    # 终端 2：TUI
 [语音前台](docs/voice-frontends/speech-to-speech.zh.md)与
 [TUI 注意](docs/getting-started/tui.zh.md)。
 
-## 示例
+## 示例与场景扩展
 
-仓库内提供智能座舱语音 Agent 示例，包含车控、导航、音乐、天气、联网查询、淘宝闪购和座舱 UI：
+当前 qwen-audio-agent 的主框架以桌面办公为核心：用户可以通过实时语音与 Agent
+持续交流，同时把需要工具、文件、代码或长时间处理的任务交给后台 Agent 执行。
+
+这套“前台对话 + 后台任务”的设计并不局限于桌面办公，未来也可以扩展到更多既能
+自然聊天、又能实际办事的场景。
+
+| 场景 | 描述 | 链接 | 状态 |
+| --- | --- | --- | --- |
+| 桌面办公 | 实时语音交流、进度追问、工具调用和后台任务执行。 | [文档][desktop-docs-zh] | 已提供 |
+| 智能座舱 | 车控、导航、音乐、天气和生活服务。 | [示例][car-example] | 已提供 |
+| 客服助手 | 问题澄清、订单查询、工单处理和人工转接。 | 待补充 | 规划中 |
+| 具身智能 | 语音指令、动作执行、巡检和异常反馈。 | 待补充 | 规划中 |
+| 直播助手 | 弹幕互动、商品讲解、优惠发放和风险提醒。 | 待补充 | 探索中 |
+
+仓库内已提供智能座舱语音 Agent 示例，包含车控、导航、音乐、天气、联网查询、
+淘宝闪购和座舱 UI：
 
 ```bash
 cp examples/car/.env.example examples/car/.env.local
@@ -167,6 +182,9 @@ npm run example:car:web      # 终端 2：座舱 UI
 ```
 
 详细说明见 [examples/car](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/car)。
+
+[desktop-docs-zh]: docs/desktop/overview.zh.md
+[car-example]: examples/car
 
 ## 桌面版
 

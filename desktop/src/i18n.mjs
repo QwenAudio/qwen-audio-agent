@@ -7,7 +7,7 @@ const ENGLISH = {
   '后台 Agent': 'Backend Agent',
   '设置分类': 'Settings categories',
   '语音前台': 'Voice Frontend',
-  '应用': 'App',
+  '应用程序': 'Application',
   '选择实时语音引擎': 'Select realtime voice engine',
   '服务地址': 'Service URL',
   '获取 API Key': 'Get API Key',

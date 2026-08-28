@@ -16,10 +16,6 @@ test('builds a WebUI address with the CLI voice session', () => {
     webUiUrl('http://127.0.0.1:3101', '项目一'),
     'http://127.0.0.1:3101/?session=%E9%A1%B9%E7%9B%AE%E4%B8%80',
   )
-  assert.equal(
-    webUiUrl('http://127.0.0.1:3101', 'voice', true),
-    'http://127.0.0.1:3101/?session=voice&takeover=1',
-  )
 })
 
 test('recognizes only loopback Gateway addresses as locally startable', () => {

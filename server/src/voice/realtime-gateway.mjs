@@ -578,14 +578,12 @@ export function attachRealtimeGateway(server, {
     voiceConnections.get(ownerId).add(voiceClient)
 
     const activateVoiceClient = ({
-      takeover = false,
       enableInput = true,
       enableOutput = true,
     } = {}) => {
       const result = activeVoiceClients.activate(
         ownerId,
         voiceClient,
-        { takeover },
       )
       inputEnabled = result.granted && enableInput
       outputEnabled = result.granted && enableOutput
@@ -1251,7 +1249,6 @@ export function attachRealtimeGateway(server, {
         })
         if (capabilities.participatesInVoiceArbitration) {
           activateVoiceClient({
-            takeover: event.takeover === true,
             enableInput: capabilities.inputEnabled,
             enableOutput: capabilities.outputEnabled,
           })
@@ -1327,7 +1324,7 @@ export function attachRealtimeGateway(server, {
           outputEnabled = true
           broadcastVoiceOwnership(ownerId)
         } else {
-          activateVoiceClient({ takeover: event.takeover === true })
+          activateVoiceClient()
         }
         realtimeSession.ensure()
           .then(() => {
@@ -1344,7 +1341,7 @@ export function attachRealtimeGateway(server, {
           outputEnabled = true
           broadcastVoiceOwnership(ownerId)
         } else {
-          activateVoiceClient({ takeover: event.takeover === true })
+          activateVoiceClient()
         }
         if (sleeping) {
           prepareSleepMode()

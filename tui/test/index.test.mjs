@@ -56,7 +56,6 @@ test('microphone command controls input without disabling voice output', () => {
   })
   assert.deepEqual(microphoneControlEvent(false), {
     type: 'input.unmute',
-    takeover: false,
   })
 })
 
@@ -126,12 +125,10 @@ test('parses a custom gateway, session and audio mode', () => {
     'terminal-one',
     '--audio-mode',
     'full',
-    '--takeover',
   ], {})
   assert.equal(options.url, 'https://voice.example.com')
   assert.equal(options.sessionId, 'terminal-one')
   assert.equal(options.audioMode, 'full')
-  assert.equal(options.takeover, true)
   assert.equal(
     parseArguments([], {
       QWEN_AUDIO_AGENT_TUI_AUDIO_MODE: 'FULL',
@@ -170,7 +167,6 @@ test('builds the realtime websocket URL', () => {
 test('reports the TUI launch directory as client context', () => {
   assert.deepEqual(connectMessage({
     voiceEnabled: true,
-    takeover: true,
     workingDirectory: '/Users/me/codes/snake-game',
     timeZone: 'Asia/Shanghai',
     locale: 'zh-CN',
@@ -185,7 +181,6 @@ test('reports the TUI launch directory as client context', () => {
       image: true,
       resource: true,
     },
-    takeover: true,
     workingDirectory: '/Users/me/codes/snake-game',
     timeZone: 'Asia/Shanghai',
     locale: 'zh-CN',
@@ -197,7 +192,6 @@ test('advertises a muted TUI as output-capable on reconnect', () => {
     voiceEnabled: true,
     inputEnabled: false,
     outputEnabled: true,
-    takeover: false,
     workingDirectory: '/workspace',
     timeZone: 'Asia/Shanghai',
     locale: 'zh-CN',
@@ -214,7 +208,6 @@ test('advertises a muted TUI as output-capable on reconnect', () => {
       image: true,
       resource: true,
     },
-    takeover: false,
     workingDirectory: '/workspace',
     timeZone: 'Asia/Shanghai',
     locale: 'zh-CN',

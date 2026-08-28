@@ -98,8 +98,6 @@ export async function performDesktopClientAction(event, {
   desktop = false,
   bridge,
   onLifecycle = () => {},
-  lastWakeAt = 0,
-  now = Date.now(),
 } = {}) {
   if (event?.type !== GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST) return null
   if (
@@ -115,17 +113,10 @@ export async function performDesktopClientAction(event, {
       },
     }
   }
-  if (now - lastWakeAt < DESKTOP_WAKE_GRACE_MS) {
-    return {
-      status: 'failed',
-      error: {
-        code: 'desktop_wake_grace',
-        message: 'Desktop is still inside its wake grace period',
-      },
-    }
-  }
   try {
-    const lifecycle = await bridge.enterHide()
+    // A Client Action is an explicit model/user request. It must not be
+    // blocked by the grace period used only for stale automatic sleep events.
+    const lifecycle = await bridge.enterHide({ explicit: true })
     if (lifecycle?.state) onLifecycle(lifecycle.state)
     if (lifecycle?.state !== 'hidden') {
       return {

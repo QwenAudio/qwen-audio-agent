@@ -51,7 +51,6 @@ function connectionConfiguration(value = {}) {
     ...(value.provider ? { provider: String(value.provider) } : {}),
     ...(value.workingDirectory ? { working_directory: String(value.workingDirectory) } : {}),
     ...(Array.isArray(value.clientStates) ? { client_states: value.clientStates } : {}),
-    ...(value.takeover === undefined ? {} : { takeover: value.takeover === true }),
   }
 }
 

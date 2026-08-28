@@ -179,16 +179,15 @@ export function microphoneControlEvent({
   enabled,
   inputOnlyMute = false,
   wakeWordOnly = false,
-  takeover = false,
 } = {}) {
   if (wakeWordOnly) return { type: GatewayClientEvent.SLEEP }
   if (inputOnlyMute) {
     return enabled
-      ? { type: GatewayClientEvent.INPUT_UNMUTE, takeover }
+      ? { type: GatewayClientEvent.INPUT_UNMUTE }
       : { type: GatewayClientEvent.INPUT_MUTE }
   }
   return enabled
-    ? { type: GatewayClientEvent.UNMUTE, takeover }
+    ? { type: GatewayClientEvent.UNMUTE }
     : { type: GatewayClientEvent.MUTE }
 }
 
@@ -217,7 +216,6 @@ export default function useRealtimeVoice({
   clientType = 'web',
   clientLabel = 'WebUI',
   clientStates = [],
-  takeover = false,
   realtimeProvider = '',
   onEvent,
   onInputError,
@@ -664,7 +662,6 @@ export default function useRealtimeVoice({
             ? clientStatesSignature.split(',')
             : [],
           clientInstanceId: clientInstanceId.current,
-          takeover,
           // Empty means "keep the server default front end".
           ...(realtimeProvider ? { provider: realtimeProvider } : {}),
         }
@@ -732,7 +729,6 @@ export default function useRealtimeVoice({
     sessionId,
     stopPlayback,
     suspended,
-    takeover,
   ])
 
   useEffect(() => {
@@ -820,7 +816,6 @@ export default function useRealtimeVoice({
           enabled: true,
           inputOnlyMute,
           wakeWordOnly,
-          takeover,
         }))
       } catch (reason) {
         if (!disposed) failInput(reason)
@@ -844,7 +839,6 @@ export default function useRealtimeVoice({
     sendSocketEvent,
     sessionId,
     suspended,
-    takeover,
   ])
 
   useEffect(() => {

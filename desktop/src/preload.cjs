@@ -39,7 +39,10 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
     'qwen-audio-agent:conversation-session-set',
     sessionId,
   ),
-  enterHide: () => ipcRenderer.invoke('qwen-audio-agent:enter-hide'),
+  enterHide: options => ipcRenderer.invoke(
+    'qwen-audio-agent:enter-hide',
+    options,
+  ),
   wake: () => ipcRenderer.send('qwen-audio-agent:wake'),
   lifecycleReady: () => ipcRenderer.send('qwen-audio-agent:lifecycle-ready'),
   loadLifecycle: () => ipcRenderer.invoke('qwen-audio-agent:lifecycle-load'),

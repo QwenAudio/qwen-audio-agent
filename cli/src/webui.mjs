@@ -1,10 +1,9 @@
 import { spawn } from 'node:child_process'
 
-export function webUiUrl(baseUrl, sessionId, takeover = false) {
+export function webUiUrl(baseUrl, sessionId) {
   const url = new URL(baseUrl)
   url.pathname = `${url.pathname.replace(/\/+$/, '')}/`
   url.searchParams.set('session', sessionId)
-  if (takeover) url.searchParams.set('takeover', '1')
   return url.toString()
 }
 
@@ -46,7 +45,6 @@ export async function launchWebUi(options, {
   const pageUrl = webUiUrl(
     options.url,
     options.sessionId,
-    options.takeover,
   )
   stdout.write(`qwenaudio WebUI: ${pageUrl}\n`)
   if (options.openBrowser) {

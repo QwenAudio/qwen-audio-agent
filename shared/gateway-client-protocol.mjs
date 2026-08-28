@@ -119,7 +119,6 @@ export const GatewaySessionHelloSchema = GatewayClientEnvelopeSchema.extend({
     provider: z.string().min(1).max(80).optional(),
     working_directory: z.string().min(1).max(4096).optional(),
     client_states: z.array(z.string().min(1).max(80)).max(16).optional(),
-    takeover: z.boolean().optional(),
   }).optional(),
 }).superRefine((value, context) => {
   if (new Set(value.capabilities).size !== value.capabilities.length) {
@@ -393,7 +392,6 @@ export function gatewayHelloAsLegacyConnect(hello) {
       outputEnabled: parsed.connection.output_enabled ?? true,
       textOnly: parsed.connection.text_only ?? !audioInput,
       wakeWordOnly: parsed.connection.wake_word_only === true,
-      takeover: parsed.connection.takeover === true,
       ...(parsed.connection.provider ? { provider: parsed.connection.provider } : {}),
       ...(parsed.connection.working_directory
         ? { workingDirectory: parsed.connection.working_directory }

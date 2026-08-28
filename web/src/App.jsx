@@ -75,9 +75,6 @@ const initialDesktopSurfaceMode = (
     ? 'panel'
     : 'orb'
 )
-const takeoverRequested = (
-  new URLSearchParams(window.location.search).get('takeover') === '1'
-)
 const orbSkinId = resolveOrbSkinId({
   orbSkin: new URLSearchParams(window.location.search).get('orbSkin'),
   orbStyle: new URLSearchParams(window.location.search).get('orbStyle'),
@@ -752,7 +749,6 @@ export default function App() {
     clientType: desktopOrbMode ? 'desktop' : 'web',
     clientLabel: desktopOrbMode ? t('桌面端') : 'WebUI',
     clientStates: desktopOrbMode ? ['sleeping'] : [],
-    takeover: takeoverRequested,
     realtimeProvider: realtimeProviderForConnection(
       realtimeProvider,
       healthValidated,
@@ -767,7 +763,6 @@ export default function App() {
       desktop: desktopOrbMode,
       bridge: window.qwenAudioAgentDesktop,
       onLifecycle: setDesktopLifecycle,
-      lastWakeAt: lastWakeAtRef.current,
     }),
   })
   gatewayCommandsRef.current = voice
@@ -1013,7 +1008,7 @@ export default function App() {
 
   const enableVoice = () => {
     if (!voice.activateAudio()) return
-    if (voice.ownership.state === 'busy' && !takeoverRequested) {
+    if (voice.ownership.state === 'busy') {
       setWaitingForVoice(true)
       setActivity(t('等待{holder}释放语音', { holder: ownershipLabel || t('其他入口') }))
       return

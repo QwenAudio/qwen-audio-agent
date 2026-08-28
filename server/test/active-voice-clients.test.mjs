@@ -21,28 +21,13 @@ test('does not implicitly replace the active voice client', () => {
   assert.equal(clients.isActive('owner-one', second), false)
 })
 
-test('replaces the active voice client only through explicit takeover', () => {
-  const clients = new ActiveVoiceClients()
-  let replacement
-  const first = { deactivate: client => { replacement = client } }
-  const second = {}
-
-  clients.activate('owner-one', first)
-  const result = clients.activate('owner-one', second, { takeover: true })
-
-  assert.equal(result.granted, true)
-  assert.equal(result.previous, first)
-  assert.equal(replacement, second)
-  assert.equal(clients.active('owner-one'), second)
-})
-
 test('a stale client cannot release the newer active client', () => {
   const clients = new ActiveVoiceClients()
-  const first = {}
+  const first = { isAlive: () => false }
   const second = {}
 
   clients.activate('owner-one', first)
-  clients.activate('owner-one', second, { takeover: true })
+  clients.activate('owner-one', second)
   clients.release('owner-one', first)
 
   assert.equal(clients.isActive('owner-one', second), true)
@@ -50,7 +35,7 @@ test('a stale client cannot release the newer active client', () => {
   assert.equal(clients.isActive('owner-one', second), false)
 })
 
-test('a dead previous owner does not block a new claim without takeover', () => {
+test('a dead previous owner does not block a new claim', () => {
   const clients = new ActiveVoiceClients()
   let deactivatedWith
   // An unclean disconnect leaves the previous owner registered but its socket
@@ -67,7 +52,7 @@ test('a dead previous owner does not block a new claim without takeover', () => 
   assert.equal(clients.isActive('owner-one', fresh), true)
 })
 
-test('a live previous owner still blocks a non-takeover claim', () => {
+test('a live previous owner blocks a new claim', () => {
   const clients = new ActiveVoiceClients()
   const live = { isAlive: () => true }
   const other = { isAlive: () => true }

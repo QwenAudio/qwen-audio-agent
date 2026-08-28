@@ -19,7 +19,6 @@ function harness({
   sessionDigests = null,
   clientContext = { timeZone: 'Asia/Shanghai' },
   manager = new TaskManager(),
-  domainLibrary = null,
 } = {}) {
   const outputs = []
   const handler = new ToolCallHandler({
@@ -36,7 +35,6 @@ function harness({
     backendRuntime: { run: async () => ({ content: '完成', metadata: {} }) },
     getClientContext: () => clientContext,
     sessionDigests,
-    domainLibrary,
   })
   // sendFunctionOutput(callId, payload, ...) —— payload 已经是对象，不是 JSON 串
   const lastOutput = () => outputs.at(-1)[1]
@@ -173,7 +171,7 @@ test('survives a throwing digest pool', async () => {
 test('the tool is only exposed when session digests are enabled', () => {
   // 暴露与否由 registry 的 capability 策略决定，不再由 gateway 手工拼工具数组 ——
   // 手工拼会绕过策略过滤。capability 由 realtime-gateway 与 tool-call-handler
-  // 用【同一个判据】给出（sessionDigests 或 domainLibrary 存在），两处必须一致。
+  // 用【同一个判据】给出（sessionDigests 存在），两处必须一致。
   const names = context => frontendTools(context).map(tool => tool.function.name)
   assert.ok(!names({}).includes(RECALL_TOOL_NAME))
   assert.ok(
@@ -195,7 +193,9 @@ test('the tool description points detail questions at the backend', () => {
   })
     .filter(item => item.function.name === RECALL_TOOL_NAME)
   // 「最多一层」的边界必须写在 description 里，否则模型会拿这几行当全部事实
-  assert.match(tool.function.description, /spawn_thinking/)
+  assert.match(tool.function.description, /get_agent_task_status/)
+  // 资料检索归 knowledge 工具，description 要把模型指过去，否则它会拿 recall 硬试
+  assert.match(tool.function.description, /knowledge/)
   assert.match(tool.function.description, /不含原话和执行细节|不要编造/)
   // 要细节全文时该改用哪个工具，也得写清楚，否则模型会拿这里的简写当结果
   assert.match(tool.function.description, /get_agent_task_status/)
@@ -279,104 +279,4 @@ test('omits the work field entirely when nothing was dispatched', async () => {
   })
   await handler.handle(call({}))
   assert.equal('work' in lastOutput().sessions[0], false)
-})
-
-// 资料是第三个来源。用户不区分「聊过的」「派过的」「我给过的资料」，
-// 所以一个工具要都能答。
-function documentShelf(entries = []) {
-  return {
-    entries,
-    search({ keyword = '' }) {
-      if (!keyword) return this.entries
-      const needle = keyword.toLowerCase()
-      return this.entries.filter(entry => [
-        entry.title,
-        entry.gist,
-        ...entry.sections,
-      ].join(' ').toLowerCase().includes(needle))
-    },
-    list() { return this.entries },
-  }
-}
-
-const manual = {
-  id: 'doc1',
-  title: '信用卡业务手册',
-  gist: '覆盖开卡与年费两类流程',
-  sections: ['开卡与激活', '年费规则'],
-  path: '/data/workspace/domain/信用卡业务手册.md',
-  filename: '信用卡业务手册.md',
-}
-
-test('returns an imported document with the path meant for the backend', async () => {
-  const { handler, lastOutput } = harness({ domainLibrary: documentShelf([manual]) })
-  await handler.handle(call({ query: '年费' }))
-  const output = lastOutput()
-  assert.equal(output.status, 'found')
-  const [document] = output.documents
-  assert.equal(document.title, '信用卡业务手册')
-  assert.deepEqual(document.sections, ['开卡与激活', '年费规则'])
-  // path 是这套机制的用处所在：模型要把它写进 spawn_thinking 的 objective
-  assert.equal(document.path, manual.path)
-  // 内部字段不该出现
-  assert.deepEqual(Object.keys(document).sort(), ['gist', 'path', 'sections', 'title'])
-})
-
-test('answers with both sessions and documents in one call', async () => {
-  const { handler, lastOutput } = harness({
-    sessionDigests: digestPool([
-      { session: 's_a', at: NOW - DAY, turns: 5, topics: ['年费'], gist: '聊过年费' },
-    ]),
-    domainLibrary: documentShelf([manual]),
-  })
-  await handler.handle(call({ query: '年费' }))
-  const output = lastOutput()
-  assert.equal(output.sessions.length, 1)
-  assert.equal(output.documents.length, 1)
-})
-
-test('omits a source that has nothing to say', async () => {
-  const { handler, lastOutput } = harness({
-    sessionDigests: digestPool([
-      { session: 's_a', at: NOW - DAY, turns: 5, topics: ['年费'], gist: '聊过年费' },
-    ]),
-    domainLibrary: documentShelf([manual]),
-  })
-  await handler.handle(call({ query: '开卡与激活' }))
-  const output = lastOutput()
-  assert.equal('sessions' in output, false, '没命中的来源不该留下空数组')
-  assert.equal(output.documents.length, 1)
-})
-
-test('works with only a document library and no session digests', async () => {
-  const { handler, lastOutput } = harness({ domainLibrary: documentShelf([manual]) })
-  await handler.handle(call({}))
-  assert.equal(lastOutput().status, 'found')
-})
-
-test('still answers when one source is broken', async () => {
-  const { handler, lastOutput } = harness({
-    sessionDigests: { search() { throw new Error('磁盘挂了') }, count: () => 0 },
-    domainLibrary: documentShelf([manual]),
-  })
-  await handler.handle(call({ query: '年费' }))
-  // 一边挂了另一边有结果，就照常给结果，不该整体报错
-  assert.equal(lastOutput().status, 'found')
-  assert.equal(lastOutput().documents.length, 1)
-})
-
-test('reports not_found when neither source matches but something exists', async () => {
-  const { handler, lastOutput } = harness({ domainLibrary: documentShelf([manual]) })
-  await handler.handle(call({ query: '房贷' }))
-  assert.equal(lastOutput().status, 'not_found')
-})
-
-test('the description tells the model to hand the path to the backend', () => {
-  const [tool] = frontendTools({
-    frontend: { capabilities: [FRONTEND_RECALL_CAPABILITY] },
-  })
-    .filter(item => item.function.name === RECALL_TOOL_NAME)
-  assert.match(tool.function.description, /path/)
-  // 不许凭标题猜内容 —— 前端只给锚点，读原文是后端的事
-  assert.match(tool.function.description, /不要凭标题猜测/)
 })

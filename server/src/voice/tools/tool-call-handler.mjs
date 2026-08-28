@@ -128,7 +128,6 @@ export class ToolCallHandler {
     frontendToolSources = [],
     turnCitations = null,
     sessionDigests = null,
-    domainLibrary = null,
   }) {
     this.taskManager = taskManager
     this.ownerId = ownerId
@@ -192,7 +191,6 @@ export class ToolCallHandler {
       ),
     })
     this.sessionDigests = sessionDigests
-    this.domainLibrary = domainLibrary
     this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
     this.spawnResponseByTurn = new Map()
@@ -1050,9 +1048,9 @@ export class ToolCallHandler {
             ...frontendSourceToolCapabilities(this.frontendToolSources),
             // 与 realtime-gateway 的 getAgentContext 同一个判据：两处必须一致，
             // 否则会出现「模型看得到工具但调用被策略拒掉」这种自相矛盾的状态。
-            ...(this.sessionDigests || this.domainLibrary
-              ? [FRONTEND_RECALL_CAPABILITY]
-              : []),
+            // 与 realtime-gateway 的 getAgentContext 必须同一个判据。资料检索
+            // 已归 knowledge 工具，所以这里只看会话摘要。
+            ...(this.sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
           ])],
         },
       })
@@ -1680,14 +1678,14 @@ export class ToolCallHandler {
     await this.sendOutput(callId, output, turnId)
   }
 
-  // 回忆此前发生过什么：聊过的话题、派过的活、手上有哪些资料。
-  // 三个来源合在一个工具里，因为用户是想到哪问到哪的 —— 他不区分这些，模型也
-  // 不该被迫在几个工具之间猜。只到「知道有什么」这一层，要细节由模型改走
-  // spawn_thinking（带上资料路径交后端）或 get_agent_task_status（要结果全文）。
+  // 只答「以前聊过什么、派过什么活」。用户自己的资料走 knowledge 工具 ——
+  // 那一侧由 KnowledgeRetrievalProvider 负责，本机资料库的实现见
+  // domain/domain-knowledge-provider.mjs。刻意不在这里兼管资料检索：
+  // 两个查询类工具的职责重叠会让模型难选，而 knowledge 已经是主线的统一入口。
   async recall(callId, turnId, args) {
     const query = String(args.query || '').trim()
     const limit = Number(args.limit)
-    if (!this.sessionDigests && !this.domainLibrary) {
+    if (!this.sessionDigests) {
       await this.sendOutput(
         callId,
         failure('recall_unavailable', '回顾以前记录的功能当前不可用。'),
@@ -1697,28 +1695,17 @@ export class ToolCallHandler {
     }
 
     let sessions = []
-    let documents = []
     let degraded = false
     try {
       sessions = this.recalledSessions(query, limit)
     } catch {
       degraded = true
     }
-    try {
-      documents = this.recalledDocuments(query, limit)
-    } catch {
-      degraded = true
-    }
 
     let output
-    if (sessions.length || documents.length) {
-      output = {
-        status: 'found',
-        ...(sessions.length ? { sessions } : {}),
-        ...(documents.length ? { documents } : {}),
-      }
+    if (sessions.length) {
+      output = { status: 'found', sessions }
     } else if (degraded) {
-      // 两边都读不到才算失败；一边挂了另一边有结果时照常给结果。
       output = failure(
         'recall_failed',
         '暂时读不到以前的记录，请稍后再试。',
@@ -1755,26 +1742,12 @@ export class ToolCallHandler {
   // 资料条目一定要给 path —— 那就是交给后端 Agent 的地址，模型要把它写进
   // spawn_thinking 的 objective 里。sections 是原文章节标题，用来把 objective
   // 说准（「去查《X》的『年费规则』一节」），不是让模型自己回答内容。
-  recalledDocuments(query, limit) {
-    if (!this.domainLibrary) return []
-    return this.domainLibrary
-      .search({ ownerId: this.ownerId, keyword: query, limit })
-      .map(entry => ({
-        title: entry.title,
-        ...(entry.gist ? { gist: entry.gist } : {}),
-        ...(entry.sections.length ? { sections: entry.sections } : {}),
-        path: entry.path,
-      }))
-  }
-
   recallHasAnything() {
-    const digests = this.sessionDigests?.count(this.ownerId) || 0
-    const documents = this.domainLibrary?.list(this.ownerId).length || 0
-    return digests + documents > 0
+    return (this.sessionDigests?.count(this.ownerId) || 0) > 0
   }
 
   // 摘要里只冻结了「派过什么活」，状态一律在这里从任务台账实时读 ——
-  // 存进摘要就会冻结，过几天那个值就是错的。台账终态只留 30 天，更早的活
+  // 存进摘要就会冻结，过几天那个值就是错的。台账终态只留 3 天，更早的活
   // 查不到台账记录，此时不给 status，只报「派过」，这是刻意的降级。
   describeRecalledWork(work = []) {
     return work.map(item => {

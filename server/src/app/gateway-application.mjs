@@ -57,6 +57,7 @@ import {
 } from '../frontend/retrieval/frontend-retrieval-runtime.mjs'
 import { createWebSearchProvider } from '../providers/search/factory.mjs'
 import { FrontendKnowledgeRuntime } from '../frontend/knowledge/knowledge-runtime.mjs'
+import { LocalDomainKnowledgeProvider } from '../frontend/knowledge/local-domain-provider.mjs'
 import { assertFrontendToolSource } from '../frontend/tools/frontend-tool-source.mjs'
 import { FrontendMcpClient } from '../providers/mcp/frontend-mcp-client.mjs'
 import {
@@ -122,10 +123,6 @@ const inputAssetRegistry = inputAssets || new InputAssetRegistry({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
 })
-const knowledgeProviderRuntime = knowledgeProvider || knowledgeRetrievalProvider
-const frontendKnowledgeRuntime = frontendKnowledge || (knowledgeProviderRuntime
-  ? new FrontendKnowledgeRuntime({ provider: knowledgeProviderRuntime })
-  : null)
 const retrievalRuntime = frontendRetrieval || new FrontendRetrievalRuntime({
   searchProvider: webSearchProvider === undefined
     ? createWebSearchProvider(config)
@@ -391,6 +388,20 @@ if (config.domainLibraryEnabled) {
       })
     : null
 }
+
+// 知识检索 Provider 的装配放在资料库之后，因为本机资料库可以直接作为一个
+// Provider 用（见 frontend/knowledge/local-domain-provider.mjs）。
+//
+// 优先级：宿主显式注入 > 本机资料库兜底。一个 Gateway 只挂一个 Provider ——
+// 这是 Provider 模式的正常语义：用户配了企业知识服务说明他已有更完整的方案，
+// 那时不该再用这个轻量实现去覆盖它。真要两者并存，宿主自己写一层把两个
+// Provider 包起来（按 knowledgeBaseIds 路由或合并结果），那是应用层的自由。
+const knowledgeProviderRuntime = knowledgeProvider
+  || knowledgeRetrievalProvider
+  || (domainLibrary ? new LocalDomainKnowledgeProvider({ library: domainLibrary }) : null)
+const frontendKnowledgeRuntime = frontendKnowledge || (knowledgeProviderRuntime
+  ? new FrontendKnowledgeRuntime({ provider: knowledgeProviderRuntime })
+  : null)
 const app = express()
 // 资料条目对外的形状。fingerprint 是内部去重用的，不该出现在 API 里；
 // path 要给出来 —— 它就是交给后端 Agent 的那个地址，是这套机制的用处所在。

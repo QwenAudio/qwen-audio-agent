@@ -110,7 +110,6 @@ export function attachRealtimeGateway(server, {
   profileObserver = null,
   sessionDigests = null,
   sessionSummariser = null,
-  domainLibrary = null,
   notesStore,
   backendRuntime,
   backendAvailability = null,
@@ -228,7 +227,7 @@ export function attachRealtimeGateway(server, {
           // 会话摘要池与资料库都没启用时不暴露 recall —— 池子永远是空的，
           // 暴露它只会让模型白调一次。会话摘要本身绝不注入 instructions：
           // 它每场都在变，会让 prompt 前缀每场都变。
-          ...(sessionDigests || domainLibrary ? [FRONTEND_RECALL_CAPABILITY] : []),
+          ...(sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
         ])],
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
@@ -540,7 +539,6 @@ export function attachRealtimeGateway(server, {
       frontendToolSources,
       turnCitations,
       sessionDigests,
-      domainLibrary,
     })
     const clearResponseCandidate = () => {
       clearTimeout(responseStartWatchdog)

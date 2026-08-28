@@ -14,11 +14,11 @@
 版本号遵循 SemVer：新增能力升 minor；下文点名的任一端点或事件发生破坏性
 变更升 major。
 
-拟议中的 6.0 北向边界记录在草案
+稳定的 6.0 北向边界记录在
 [Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.zh.md) 与
-[Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.zh.md) 中，并由
+[已完成的 Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.zh.md) 中，并由已关闭的
 [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)
-跟踪。GCP1–GCP5 已完成：6.0 握手、Client Event Ingress、运行时命令面、Agent
+记录。GCP1–GCP5 已完成：6.0 握手、Client Event Ingress、运行时命令面、Agent
 Delivery、Client Action、参考 Client SDK 与有限回放均落在同一条 WebSocket 上。
 已实现行为仍以本契约索引为准。
 

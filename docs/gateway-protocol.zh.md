@@ -1,11 +1,11 @@
 # Gateway Client Protocol
 
-> 状态：**Draft 0.6**<br>
-> 目标线协议版本：**6.0.0**<br>
+> 状态：**Stable 6.0**<br>
+> 线协议版本：**6.0.0**<br>
 > Roadmap：[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > 当前实现事实源：`shared/gateway-client-protocol.mjs`、`server/src/client/client-event-router.mjs`、`server/src/client/client-command-runtime.mjs`、`shared/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
 
-本文档定义 qwen-audio-agent Gateway 与唯一活动 Client Environment 之间的北向协议。它描述的是下一主版本的目标契约，不代表当前 5.x 已经实现全部事件。
+本文档定义 qwen-audio-agent Gateway 与唯一活动 Client Environment 之间已经落地的北向协议。当前第一方客户端使用 6.0 线协议；健康契约 5.x 的旧入口仅作为临时兼容别名保留。
 
 ## 1. 产品边界
 

@@ -139,9 +139,6 @@ QWEN_AUDIO_AGENT_USER_MODEL_PATH=/absolute/path/to/USER.md
 QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH=/absolute/path/to/ASSISTANT.md
 ```
 
-In multi-user `browser` mode, each identity gets isolated Markdown documents under `users/`;
-the default local user's files are never shared.
-
 The same user directory also stores:
 
 ```text

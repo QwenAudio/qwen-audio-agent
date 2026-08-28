@@ -13,7 +13,7 @@ frontend tool registry and executor.
 
 Set `QWEN_AUDIO_FRONTEND_MCP_CONFIG` to a versioned JSON file:
 
-```env
+```dotenv
 QWEN_AUDIO_FRONTEND_MCP_CONFIG=/absolute/path/to/frontend-mcp.json
 DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 ```

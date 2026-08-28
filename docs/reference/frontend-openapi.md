@@ -14,7 +14,7 @@ automatically.
 Set `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` to a versioned JSON file. OpenAPI
 documents may use JSON or YAML and are resolved relative to this config file:
 
-```env
+```dotenv
 QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG=/absolute/path/to/frontend-openapi.json
 WEATHER_AUTHORIZATION=Bearer replace-me
 ```

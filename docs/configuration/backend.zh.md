@@ -474,13 +474,3 @@ OpenClaw 的执行授权同时受 exec approvals、elevated 和执行 host 等�
 需要按 OpenClaw 自身方式单独配置。最高权限会放大误操作风险，只应在可信项目和
 可信提示词环境中启用。
 
-桌面版、CLI 和 WebUI 可以复用同一个 Gateway，但同一用户同时只有一个活跃语音
-入口。CLI 默认不抢占现有桌面语音；需要明确接管时使用：
-
-```bash
-qwenaudio tui --takeover
-```
-
-同一用户只能运行一个 TUI。Gateway、桌面应用和 WebUI 可以同时驻留；桌面球会在
-TUI 接管语音期间显示占用状态。
-

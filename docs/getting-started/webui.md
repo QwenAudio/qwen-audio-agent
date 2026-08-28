@@ -21,7 +21,6 @@ Options:
 | --- | --- |
 | `--url URL` | Connect to a Gateway at another address (default `http://127.0.0.1:3101`) |
 | `--session ID` | Resume a specific voice session |
-| `--takeover` | Take over voice control from the currently active client |
 | `--no-open` | Print the URL only, without opening a browser |
 
 ## What you can do
@@ -34,11 +33,12 @@ Options:
 
 ## Relationship to other clients
 
-The TUI, WebUI, and the desktop orb all connect to the same Gateway as
-Conversation Clients. One Gateway serves **one active voice client at a time**;
-hand voice control over with `--takeover`, or simply close the other client.
-The same WebUI page also powers the desktop app's conversation window, so
-behavior stays consistent across surfaces.
+The TUI, WebUI, and desktop orb all use the same Gateway Client Protocol. A
+Gateway accepts **one active Client connection at a time**; close the current
+client before connecting another one. The desktop app can also run its own
+Gateway process while sharing user configuration with the CLI. The same WebUI
+page powers the desktop conversation window, so presentation behavior stays
+consistent across surfaces.
 
 > Exposing the WebUI beyond your own machine crosses a trust boundary: put an
 > HTTPS reverse proxy with authentication in front and follow

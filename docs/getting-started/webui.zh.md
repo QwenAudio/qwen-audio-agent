@@ -20,7 +20,6 @@ qwenaudio webui
 | --- | --- |
 | `--url URL` | 连接其他地址的 Gateway（默认 `http://127.0.0.1:3101`） |
 | `--session ID` | 复用指定的语音会话 |
-| `--takeover` | 从当前活跃客户端接管语音控制权 |
 | `--no-open` | 只打印地址，不打开浏览器 |
 
 ## 能做什么
@@ -31,10 +30,10 @@ qwenaudio webui
 
 ## 与其他客户端的关系
 
-TUI、WebUI、桌面悬浮球都是连接同一个 Gateway 的对话客户端。一个 Gateway
-同时只服务**一个活跃语音客户端**；用 `--takeover` 移交语音控制权，或直接
-关掉另一个客户端。桌面版的对话窗口复用的就是同一套 WebUI 页面，因此各
-端行为保持一致。
+TUI、WebUI、桌面悬浮球都使用同一套 Gateway Client Protocol。一个 Gateway
+同时只接受**一个活动 Client 连接**；连接另一客户端前，需要先关闭当前客户端。
+桌面版也可以运行自己的 Gateway 进程，并与 CLI 共享用户配置。桌面版的对话窗口
+复用同一套 WebUI 页面，因此各端的展示行为保持一致。
 
 > 把 WebUI 暴露到本机之外会跨越信任边界：请在前面加带认证的 HTTPS 反向
 > 代理，并遵循[远程访问安全](../configuration/advanced.zh.md#远程访问安全)。

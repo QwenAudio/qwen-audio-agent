@@ -63,8 +63,22 @@ function write(dest, writeContent) {
 }
 
 function sync() {
-  rmSync(siteDir, { recursive: true, force: true })
+  // VitePress may be reading the tree while we replace it; retry briefly
+  // instead of crashing the watcher on ENOTEMPTY/ENOENT races.
+  rmSync(siteDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })
   const files = walk(docsDir).filter((rel) => !EXCLUDED_FILES.has(rel))
+  const published = new Set(files)
+  const missingPairs = []
+  for (const rel of published) {
+    if (!rel.endsWith('.md')) continue
+    const companion = rel.endsWith('.zh.md')
+      ? rel.replace(/\.zh\.md$/, '.md')
+      : rel.replace(/\.md$/, '.zh.md')
+    if (!published.has(companion)) missingPairs.push(`${rel} -> ${companion}`)
+  }
+  if (missingPairs.length) {
+    throw new Error(`Published documentation must be bilingual:\n${missingPairs.join('\n')}`)
+  }
   for (const rel of files) {
     const src = join(docsDir, rel)
     if (rel.endsWith('.zh.md')) {
@@ -88,7 +102,15 @@ if (process.argv.includes('--watch')) {
   watch(docsDir, { recursive: true }, (_event, filename) => {
     if (!filename || filename.startsWith('.vitepress')) return
     clearTimeout(timer)
-    timer = setTimeout(sync, 200)
+    timer = setTimeout(() => {
+      try {
+        sync()
+      } catch (error) {
+        // Keep the watcher alive: a transient mid-edit state (e.g. a new
+        // page saved before its companion) should not kill docs:dev.
+        console.error(`[docs-site] sync failed: ${error.message}`)
+      }
+    }, 200)
   })
   console.log('[docs-site] watching docs/ for changes')
 }

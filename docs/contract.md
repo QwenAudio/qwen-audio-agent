@@ -18,9 +18,9 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
-The proposed 6.0 northbound boundary is documented in the draft
+The stable 6.0 northbound boundary is documented in the
 [Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.md) and its
-[roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.md), tracked by
+[completed roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.md), tracked by the closed
 [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251).
 GCP1–GCP5 are complete: the 6.0 handshake, Client Event ingress,
 runtime-command plane, Agent Delivery, Client Actions, reference Client SDK,

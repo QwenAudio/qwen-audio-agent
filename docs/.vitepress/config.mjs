@@ -23,23 +23,23 @@ function sidebar(prefix = '') {
       items: [
         { text: t('安装', 'Installation'), link: `${prefix}/getting-started/install` },
         { text: t('快速开始', 'Quickstart'), link: `${prefix}/getting-started/quickstart` },
-        { text: t('TUI 终端', 'TUI'), link: `${prefix}/getting-started/tui` },
-        { text: t('WebUI 浏览器', 'WebUI'), link: `${prefix}/getting-started/webui` },
       ],
     },
     {
-      text: t('架构', 'Architecture'),
+      text: t('客户端', 'Clients'),
       items: [
-        { text: t('总览', 'Overview'), link: `${prefix}/architecture/overview` },
-        { text: t('详细架构', 'Deep Dive'), link: `${prefix}/architecture/deep-dive` },
+        { text: t('TUI 终端', 'TUI'), link: `${prefix}/getting-started/tui` },
+        { text: t('WebUI 浏览器', 'WebUI'), link: `${prefix}/getting-started/webui` },
+        { text: t('桌面版', 'Desktop'), link: `${prefix}/desktop/overview` },
+        { text: t('桌宠皮肤', 'Pet Skins'), link: `${prefix}/desktop/pet-skin-spec` },
       ],
     },
     {
       text: t('配置', 'Configuration'),
       items: [
         { text: t('总览', 'Overview'), link: `${prefix}/configuration` },
-        { text: t('前台', 'Frontend'), link: `${prefix}/configuration/frontend` },
-        { text: t('后台', 'Backend'), link: `${prefix}/configuration/backend` },
+        { text: t('语音前台', 'Voice Frontend'), link: `${prefix}/configuration/frontend` },
+        { text: t('后台 Agent', 'Backend Agent'), link: `${prefix}/configuration/backend` },
         { text: t('高级设置', 'Advanced'), link: `${prefix}/configuration/advanced` },
       ],
     },
@@ -60,17 +60,17 @@ function sidebar(prefix = '') {
       ],
     },
     {
-      text: t('后台', 'Backends'),
+      text: t('后台 Agent', 'Backend Agents'),
       items: [
         { text: t('支持现状', 'Supported Backends'), link: `${prefix}/backends/overview` },
         { text: t('接入新后台', 'Adding a New Backend'), link: `${prefix}/backends/extend` },
       ],
     },
     {
-      text: t('桌面版', 'Desktop'),
+      text: t('架构', 'Architecture'),
       items: [
-        { text: t('桌面版总览', 'Desktop Overview'), link: `${prefix}/desktop/overview` },
-        { text: t('宠物皮肤规范', 'Pet Skin Spec'), link: `${prefix}/desktop/pet-skin-spec` },
+        { text: t('总览', 'Overview'), link: `${prefix}/architecture/overview` },
+        { text: t('详细架构', 'Deep Dive'), link: `${prefix}/architecture/deep-dive` },
       ],
     },
     {
@@ -99,10 +99,9 @@ function sidebar(prefix = '') {
       ],
     },
     {
-      text: t('场景示例', 'Scenarios'),
+      text: t('示例', 'Examples'),
       items: [
         { text: t('智能座舱', 'Smart Cockpit'), link: `${prefix}/scenarios/smart-cockpit` },
-        { text: t('客服', 'Customer Service'), link: `${prefix}/scenarios/customer-service` },
       ],
     },
   ]
@@ -110,7 +109,7 @@ function sidebar(prefix = '') {
 
 export default defineConfig({
   title: 'Qwen Audio Agent',
-  description: 'Realtime voice runtime that keeps AI agents talking, working, and present',
+  description: 'Realtime voice runtime that keeps AI agents present while work continues',
   // DOCS_BASE allows the same sources to deploy to a root domain
   // (DOCS_BASE=/ npm run docs:build) or another hosting path.
   base: process.env.DOCS_BASE || '/qwen-audio-agent/',
@@ -129,8 +128,9 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: 'Guide', link: '/getting-started/quickstart' },
+          { text: 'Clients', link: '/desktop/overview' },
+          { text: 'Backend Agents', link: '/backends/overview' },
           { text: 'Architecture', link: '/architecture/overview' },
-          { text: 'Configuration', link: '/configuration' },
           { text: 'Extending', link: '/extensions' },
         ],
         sidebar: sidebar(),
@@ -147,8 +147,9 @@ export default defineConfig({
       themeConfig: {
         nav: [
           { text: '指南', link: '/zh/getting-started/quickstart' },
+          { text: '客户端', link: '/zh/desktop/overview' },
+          { text: '后台 Agent', link: '/zh/backends/overview' },
           { text: '架构', link: '/zh/architecture/overview' },
-          { text: '配置', link: '/zh/configuration' },
           { text: '拓展', link: '/zh/extensions' },
         ],
         sidebar: sidebar('/zh'),

@@ -534,14 +534,3 @@ unified switch; when `full` is selected, the Gateway explicitly refuses to start
 separate configuration via OpenClaw's own method. The highest permission amplifies the risk of
 misoperation and should only be enabled in trusted projects and trusted prompt environments.
 
-The desktop edition, CLI, and WebUI can reuse the same Gateway, but only one active voice
-entry point is allowed per user at a time. The CLI does not preempt the existing desktop voice
-by default; use this when you need to explicitly take over:
-
-```bash
-qwenaudio tui --takeover
-```
-
-Only one TUI can run per user. The Gateway, desktop app, and WebUI can all reside
-simultaneously; the desktop orb displays an occupied status during TUI voice takeover.
-

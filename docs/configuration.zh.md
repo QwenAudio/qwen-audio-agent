@@ -121,9 +121,6 @@ QWEN_AUDIO_AGENT_USER_MODEL_PATH=/absolute/path/to/USER.md
 QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH=/absolute/path/to/ASSISTANT.md
 ```
 
-多用户 `browser` 模式会在 `users/` 子目录中按身份隔离各自的 Markdown 文档，
-不会共享本机默认用户的内容。
-
 同一用户目录还保存：
 
 ```text

@@ -17,19 +17,20 @@ protocol surfaces between them.
 2. **Gateway — the conversation layer and the state plane.** Two parts
    share one process:
    - The **Realtime frontend** is a lightweight voice agent: full-duplex
-     speech, instant answers, and a deliberately small tool set (time,
-     memory, reminders, task control).
-   - The **coordinator** is deterministic — no LLM in the routing path. It
-     owns the task ledger, permission arbitration, announcement policy,
-     and the injection defense between frontend and backend.
+     speech, instant answers, and a deliberately small set of conversation
+     tools, including search, memory, reminders, and work control.
+   - The **Gateway control plane** is deterministic — no additional LLM sits
+     in the routing path. It owns the task ledger, permission arbitration,
+     announcement policy, and the injection defense between frontend and
+     backend.
 
 3. **Backend — the execution layer.** Anything behind the `BackendPort`:
    an ACP agent (OpenCode, OpenClaw, Qoder, Qwen Code, Kimi Code, Claude
    Code, Codex, DeepSeek, Pi, or your own), a remote A2A agent, or a
-   custom adapter built with the Backend Adapter SDK. One persistent
-   session per user executes long-running work; the backend's internal
-   tools, skills, and sub-sessions are backend-private and never become
-   new layers.
+   custom adapter built with the Backend Adapter SDK. ACP integrations keep
+   a persistent coordination Session for continuous work; the backend's
+   internal tools, skills, and sub-sessions are backend-private and never
+   become new layers.
 
 ## Two protocol surfaces, nothing else
 

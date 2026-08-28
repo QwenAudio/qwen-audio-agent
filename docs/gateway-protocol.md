@@ -1,11 +1,11 @@
 # Gateway Client Protocol
 
-> Status: **Draft 0.6**<br>
-> Target wire version: **6.0.0**<br>
+> Status: **Stable 6.0**<br>
+> Wire version: **6.0.0**<br>
 > Roadmap: [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > Current implementation sources of truth: `shared/gateway-client-protocol.mjs`, `server/src/client/client-event-router.mjs`, `server/src/client/client-command-runtime.mjs`, `shared/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
 
-This specification defines the northbound boundary between qwen-audio-agent's Gateway and one active Client Environment. It is the target contract for the next protocol major and does not claim that the current 5.x implementation already implements every event below.
+This specification defines the implemented northbound boundary between qwen-audio-agent's Gateway and one active Client Environment. Current first-party clients use the 6.0 wire protocol; health-contract 5.x aliases remain temporarily available for compatibility.
 
 ## 1. Product boundary
 

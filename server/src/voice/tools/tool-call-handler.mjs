@@ -120,7 +120,7 @@ export class ToolCallHandler {
     respondAuthorization,
     permissionPolicy,
     onPermissionDeliveryFailed = () => {},
-    requestClientState = () => {},
+    presenceController = null,
     onAgentActivity = () => {},
     inputAssets = null,
     frontendRetrieval = null,
@@ -145,7 +145,7 @@ export class ToolCallHandler {
     this.respondAuthorization = respondAuthorization
     this.permissionPolicy = permissionPolicy
     this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
-    this.requestClientState = requestClientState
+    this.presenceController = presenceController
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
     this.frontendRetrieval = frontendRetrieval
@@ -1097,23 +1097,34 @@ export class ToolCallHandler {
   }
 
   async enterSleep(callId, turnId) {
-    const supported = this.getClientContext()?.states?.includes('sleeping')
-    if (!supported) {
+    if (!this.presenceController?.supportsSleep()) {
       await this.sendOutput(
         callId,
-        failure('unsupported_client_state', '当前入口不支持休眠。'),
+        failure('client_action_unsupported', '当前入口不支持休眠。'),
         turnId,
       )
       return
     }
-    await this.sendOutput(
-      callId,
-      { status: 'sleeping' },
-      turnId,
-      null,
-      { createResponse: false },
-    )
-    this.requestClientState('sleeping')
+    try {
+      await this.presenceController.requestSleep({ source: 'realtime_tool' })
+      await this.sendOutput(
+        callId,
+        { status: 'sleeping' },
+        turnId,
+        null,
+        { createResponse: false },
+      )
+    } catch (error) {
+      await this.sendOutput(
+        callId,
+        failure(
+          error.code || 'client_action_failed',
+          `休眠没有完成：${error.message}`,
+          { retryable: true },
+        ),
+        turnId,
+      )
+    }
   }
 
   async webSearch({ callId, turnId, args }) {

@@ -65,7 +65,13 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
     "session.replay"
   ],
   "locale": "zh-CN",
-  "time_zone": "Asia/Shanghai"
+  "time_zone": "Asia/Shanghai",
+  "connection": {
+    "voice_enabled": true,
+    "input_enabled": true,
+    "output_enabled": true,
+    "text_only": false
+  }
 }
 ```
 
@@ -108,8 +114,8 @@ GCP1 在不分叉 Gateway 业务逻辑的前提下实现信封与握手。6.0 Cl
 `session.hello` 开始；Gateway 返回 `session.ready`，为后续下行事件补充
 `event_id`，并把 6.0 输入别名归一化到现有内部事件模型。5.x Client 仍可使用
 `connect`，收到的旧事件形状保持不变。握手只协商已有运行时实现的能力。GCP2 的
-Client Event 与运行时命令 capability、GCP3 Agent Delivery 已经实现；GCP4–GCP5
-预留的名称仍只用于统一扩展词汇，在对应 Runtime 完成前不会被声明为已实现。
+Client Event 与运行时命令 capability、GCP3 Agent Delivery、GCP4 Client Action
+以及 GCP5 参考 Client 与有限回放均已实现。
 
 ### 3.2 GCP2 运行时落地
 
@@ -131,6 +137,26 @@ GCP3 实现第 6 节定义的 Provider 无关值与四种路由模式。Task 最
 Realtime Provider 只编码最终的上下文项与可选回复；Client 或后台协议原始对象不会
 进入模型。现有 Task 播报的批处理、安全窗口重试、通知认领和播放确认继续作为这条共享
 投影外围的可靠生命周期。
+
+### 3.4 GCP4 Client Action 落地
+
+GCP4 实现有关联关系的 `client.action.request/result` 与协议无关的
+`ClientActionPort`。只有当前 Client 声明对应 capability，Realtime 才能看到由
+Action 派生的工具。`enter_sleep`、桌面空闲事件兜底与旧 Gateway 超时入口统一进入
+幂等 `PresenceController`；支持 Action 的 Client 只有在环境切换成功回执后才会被
+标记为 sleeping。第一方桌面 Client 已通过 `session.hello` 协商并回传 Action
+Result；5.x `connect` 只保留为废弃兼容别名。
+
+### 3.5 GCP5 参考 Client 与回放落地
+
+GCP5 发布共享 `GatewayClient` SDK，统一处理握手、命令关联、Client Action、断线重连
+和状态恢复。WebUI、Desktop 与 TUI 使用同一 capability profile 和一致性测试。Task
+生命周期推送携带 Session 内递增的 `sequence`，`session.replay` 有界回放断线前未消费
+的事件；随后通过同一 WebSocket 的 `task.list` 与 `conversation.history` 恢复断线期间
+可能变化的最终快照。媒体增量、临时转写和即时命令结果不回放。
+
+健康契约 `5.5.0` 起，`connect` 以及 Task、权限、对话历史和 Session 回放的 REST
+路径成为废弃兼容别名，且不会早于健康契约 `6.0.0` 删除。
 
 ## 4. 通用事件信封
 
@@ -255,11 +281,15 @@ client.action.result
 
 `status` 为 `completed`、`failed` 或 `unsupported`。失败包含有界的 `{code, message}`。只有活动 Client 协商了相应 capability，Gateway 才向 Realtime 暴露由该 Action 派生的工具。
 
+首个实现的 Action 是 `desktop.presence.enter_sleep`。它的工具调用、自动 Client
+Event 兜底、超时和重复请求共用一个 Presence 状态机。旧 `client.state` sleeping
+消息仍作为当前 Client 的迁移兼容入口，但不再承担实际执行边界。
+
 Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client Environment 自己拥有的能力；其他外部系统继续使用适合的工具或 Backend Adapter。
 
 ### 5.4 运行时命令与查询
 
-活动 Client 通过同一个 WebSocket 发起运行时命令与查询。每个命令携带 `event_id`；即时 `<command>.result` 通过 `request_event_id` 关联请求。后续生命周期变化仍作为普通服务端推送发布，不能隐藏在命令结果中；有界回放由 GCP5 补充。
+活动 Client 通过同一个 WebSocket 发起运行时命令与查询。每个命令携带 `event_id`；即时 `<command>.result` 通过 `request_event_id` 关联请求。后续生命周期变化仍作为普通服务端推送发布，不能隐藏在命令结果中；Task 生命周期推送由 `session.replay` 有界回放。
 
 | 命令 | 方向 | 语义 |
 |---|---|---|
@@ -483,7 +513,7 @@ Gateway 协议定义自己的类型。下表是刻意且非规范性的语义对
 
 ## 12. Conformance 要求
 
-6.0 稳定前至少覆盖：
+6.0 的稳定行为由以下测试范围锁定：
 
 - 全局单 Client 占用、释放和心跳超时；
 - 版本与 capability 协商；

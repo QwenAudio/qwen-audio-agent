@@ -22,13 +22,18 @@ The proposed 6.0 northbound boundary is documented in the draft
 [Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.md) and its
 [roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.md), tracked by
 [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251).
-Those documents remain the design target. GCP1 and GCP2 are now available as
-an opt-in 6.0 handshake, Client Event ingress, and runtime-command plane over
-the existing WebSocket; capabilities for later stages remain vocabulary only
-until their runtimes ship.
+GCP1–GCP5 are complete: the 6.0 handshake, Client Event ingress,
+runtime-command plane, Agent Delivery, Client Actions, reference Client SDK,
+and bounded replay all share the same WebSocket.
 This contract index remains authoritative for implemented behavior.
 
-The current health-contract version is `5.2.0`. The additive `5.2` line exposes
+The current health-contract version is `5.5.0`. The additive `5.5` line ships
+the shared reference Client SDK, bounded Task-event replay, and reconnect state
+recovery. First-party WebUI, Desktop, and TUI clients now pass the same
+conformance suite and no longer use internal REST routes for Task control,
+permission decisions, or conversation history. The additive `5.4` line adds
+correlated Client Actions and the shared Presence state machine. The additive
+`5.3` line adds provider-neutral Agent Delivery. The additive `5.2` line exposes
 registered Client Event ingress and Task, permission, and conversation-history
 commands on the negotiated 6.0 WebSocket while retaining REST compatibility
 aliases. The additive `5.1` line exposes
@@ -75,6 +80,8 @@ below instead of assuming the old list.
 | `realtime.gateway-client-protocol-v6-handshake` | The same WebSocket accepts an opt-in 6.0 `session.hello`, returns correlated `session.ready`, negotiates implemented capabilities, and normalizes 6.0 input aliases into the existing business path | `test/gateway-client-protocol.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-runtime-commands` | Negotiated 6.0 Clients can publish registered semantic Client Events and use correlated Task, permission, and conversation-history commands over the same WebSocket; existing REST routes call the same command service as compatibility aliases | `test/gateway-client-protocol.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/client-command-runtime.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-agent-delivery` | Client Events, Task results and progress, and permission prompts cross one provider-neutral `AgentDelivery` boundary with `handle`, `context`, `respond`, and `interrupt` modes | `server/test/agent-delivery.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/realtime-provider.test.mjs`, `server/test/announcement-manager.test.mjs` |
+| `realtime.gateway-client-protocol-v6-client-actions` | Correlated `client.action.request/result` messages execute Client-owned environment operations; `enter_sleep` is capability-gated and sleeping commits only after Client success | `test/gateway-client-protocol.test.mjs`, `server/test/client-action-port.test.mjs`, `server/test/gateway-client-handshake.test.mjs`, `desktop/test/enter-sleep-flow.test.mjs` |
+| `realtime.gateway-client-protocol-v6-reference-client-replay` | The shared reference Client SDK owns handshake, command correlation, Client Actions, reconnect, and recovery; Task pushes use bounded `sequence` replay and WebUI, Desktop, and TUI share one conformance suite | `test/gateway-client-sdk.test.mjs`, `test/gateway-client-conformance.test.mjs`, `server/test/gateway-client-protocol-session.test.mjs`, `server/test/gateway-client-replay-buffer.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |
@@ -95,7 +102,10 @@ is unsupported and breaks without notice.
 | `qwen-audio-agent/electron` | **CJS**: `load()` (every contract in one namespace), `PRELOAD_PATH` |
 | `qwen-audio-agent/gateway-protocol` | `GATEWAY_PROTOCOL_VERSION`, `GATEWAY_CAPABILITIES` |
 | `qwen-audio-agent/gateway-client-protocol` | GCP 6.0 envelope and handshake schemas, parsers, capability constants, and reference Client helpers |
+| `qwen-audio-agent/gateway-client-sdk` | `GatewayClient`: WebSocket lifecycle, 6.0 handshake, request correlation, Client Actions, bounded replay, and reconnect recovery |
+| `qwen-audio-agent/gateway-client-profiles` | Reference capability profiles for WebUI, Desktop, and TUI |
 | `qwen-audio-agent/client-events` | Client Event definition registry, built-in definitions, routing policies, and `GatewayEventRouter` for Gateway extensions |
+| `qwen-audio-agent/client-actions` | `ClientActionPort`, built-in action names, capability mapping, request/result correlation, deadlines, and in-flight deduplication |
 | `qwen-audio-agent/agent-delivery` | Provider-neutral `AgentDelivery` values and routing modes |
 | `qwen-audio-agent/gateway-setup` | `gatewaySetupStatus`, `assertGatewaySetup` |
 | `qwen-audio-agent/gateway-process` | `GatewayProcess`, `createGatewayProcess`, `GATEWAY_READY_MESSAGE`, `DEFAULT_GATEWAY_ENTRY`, `validateGatewayOrigin`, `portInUse` |
@@ -180,9 +190,11 @@ endpoint. Each Task keeps one stable `messageId`; every lifecycle update
 replaces its `qwen.audio.task` activity content. The native Task stream remains
 the default and existing clients receive no additional events.
 
-Endpoints not listed here (`/api/tasks`, `/api/backend/ui`, and
-`/api/permissions/:id`) are used by our own front ends and carry no stability
-promise.
+`/api/tasks`, `/api/permissions/:id`, `/api/conversations/:id/messages`, and
+`/api/sessions/:id/replay` are compatibility aliases as of health contract
+`5.5.0`: first-party clients use the 6.0 WebSocket commands and
+`session.replay`. The aliases will not be removed before health contract
+`6.0.0`. Other unlisted endpoints such as `/api/backend/ui` remain internal.
 
 ## Realtime events
 
@@ -193,11 +205,11 @@ those package entries rather than internal module paths.
 `gateway.connected` and `gateway.disconnected` are client-side lifecycle
 helpers used by the shared state reducer; they are not WebSocket wire events.
 
-Legacy 5.x clients send `connect` first. An opt-in 6.0 client instead sends
-`session.hello`, waits for the correlated `session.ready`, and then uses the
-negotiated capabilities. The Gateway normalizes both handshakes and the current
-6.0 input aliases into the same business path; later GCP capabilities are not
-advertised before their implementations exist. The handshake declares input/output mode,
+Legacy 5.x clients send `connect` first. That alias is deprecated as of health
+contract `5.5.0` and will not be removed before `6.0.0`. A 6.0 client sends
+`session.hello`, includes its connection configuration in that envelope, waits
+for the correlated `session.ready`, and then uses the negotiated capabilities.
+The handshake declares input/output mode,
 client identity, locale/time zone, and supported input kinds. Audio input is
 base64 PCM16 mono at the `inputSampleRate` reported by `voice.ready`; audio
 output uses the `sampleRate` carried by each `audio.delta`. A text or multimodal
@@ -213,13 +225,14 @@ conversation surface.
 | client → server | `unmute`, `mute`, `input.unmute`, `input.mute` | Control voice participation or only microphone capture |
 | client → server | `interrupt`, `sleep`, `wake` | Interrupt the foreground response or control explicit sleep |
 | client → server | `playback.started`, `playback.ended`, `playback.cancelled` | Report client-side playback lifecycle by `responseId` |
+| server → client → server | `client.action.request`, `client.action.result` | Execute a capability-gated Client Environment operation and return its correlated outcome |
 | server → client | `voice.ready`, `voice.connection`, `voice.ownership`, `voice.deactivated`, `voice.sleep` | Voice connection, ownership, and sleep lifecycle |
 | server → client | `turn.started`, `voice.state` | Foreground conversation-turn identity and state |
 | server → client | `audio.delta`, `audio.done`, `playback.clear` | Audio playback stream and cancellation |
 | server → client | `response.started`, `response.interrupted` | Response lifecycle keyed by `responseId` |
 | server → client | `transcript.delta`, `transcript.final`, `transcript.discard` | User and assistant transcript lifecycle |
 | server → client | `task.*` | Optional background Task snapshots, progress, authorization, and completion |
-| server → client | `agent.activity`, `client.state`, `error` | Foreground activity hints, supported client-state requests, and errors |
+| server → client | `agent.activity`, `client.state`, `error` | Foreground activity hints, the temporary 5.x client-state migration alias, and errors |
 
 | Direction | Event | Meaning |
 | --- | --- | --- |

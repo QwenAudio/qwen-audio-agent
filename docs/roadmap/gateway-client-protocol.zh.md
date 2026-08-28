@@ -100,24 +100,24 @@ Backend Agent
 
 ## GCP4 — Client Action Port
 
-- [ ] 增加 `ClientActionPort` 与 `client.action.request/result`。
-- [ ] 在握手中声明 Client Action capability。
-- [ ] 只有 Client 支持时才暴露 Action 派生的 Realtime 工具。
-- [ ] 将 `enter_sleep` 从 `requestClientState()` 迁移到共享 Action 链路。
-- [ ] 以一个幂等 `PresenceController` 处理用户主动、自动、超时与重复休眠请求。
-- [ ] Client Action 成功后才标记 sleeping。
+- [x] 增加 `ClientActionPort` 与 `client.action.request/result`。
+- [x] 在握手中声明 Client Action capability。
+- [x] 只有 Client 支持时才暴露 Action 派生的 Realtime 工具。
+- [x] 将 `enter_sleep` 从 `requestClientState()` 迁移到共享 Action 链路。
+- [x] 以一个幂等 `PresenceController` 处理用户主动、自动、超时与重复休眠请求。
+- [x] Client Action 成功后才标记 sleeping。
 
 完成条件：Realtime Tool Call 与 Gateway 兜底共用一个 Action/状态机，Gateway Core 不再知道 Desktop 如何隐藏窗口。
 
 ## GCP5 — 参考 Client、回放与稳定
 
-- [ ] WebUI、TUI、Desktop 迁移到共享参考 Client SDK。
-- [ ] 增加有界回放与重连恢复。
-- [ ] 将 Task 控制、权限决策、对话历史和 Task 事件恢复从内部 REST/SSE 别名迁走。
-- [ ] 对所有第一方 Client 运行同一套 conformance suite。
-- [ ] 在 `docs/contract.md` 及中文版记录有测试锁定的 capability。
-- [ ] 旧别名至少经过一个明确废弃版本后再删除。
-- [ ] 替代链路验证完成后，才将 6.0 Spec 标记为稳定。
+- [x] WebUI、TUI、Desktop 迁移到共享参考 Client SDK。
+- [x] 增加有界回放与重连恢复。
+- [x] 将 Task 控制、权限决策、对话历史和 Task 事件恢复从内部 REST/SSE 别名迁走。
+- [x] 对所有第一方 Client 运行同一套 conformance suite。
+- [x] 在 `docs/contract.md` 及中文版记录有测试锁定的 capability。
+- [x] 旧别名至少经过一个明确废弃版本后再删除。
+- [x] 替代链路验证完成后，才将 6.0 Spec 标记为稳定。
 
 完成条件：第一方 Client 只包含 Presentation 与环境行为，不自行重建 Gateway 状态机；Gateway 不包含第一方 Client 实现分支。
 

@@ -41,7 +41,13 @@ test('publishes a frozen capability vocabulary and only advertises implemented s
     GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(
       GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
     ),
-    false,
+    true,
+  )
+  assert.equal(
+    GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(
+      GatewayClientCapability.SESSION_REPLAY,
+    ),
+    true,
   )
 })
 
@@ -88,7 +94,7 @@ test('negotiates one supported 6.0 version and the capability intersection', () 
   ])
 })
 
-test('validates GCP2 runtime commands and their correlated results', () => {
+test('validates runtime commands, Client Actions and correlated results', () => {
   const create = parseGatewayClientProtocolMessage({
     type: GatewayClientProtocolEvent.TASK_CREATE,
     event_id: 'evt_create_1',
@@ -117,6 +123,50 @@ test('validates GCP2 runtime commands and their correlated results', () => {
     name: 'desktop.presence.sleep_requested',
   })
   assert.equal(result.request_event_id, 'evt_presence_1')
+
+  const action = parseGatewayServerProtocolMessage({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
+    event_id: 'evt_gateway_action_1',
+    name: 'desktop.presence.enter_sleep',
+    arguments: {},
+  })
+  assert.equal(action.name, 'desktop.presence.enter_sleep')
+  const actionResult = parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
+    event_id: 'evt_client_action_1',
+    request_event_id: action.event_id,
+    status: 'completed',
+    output: { state: 'hidden' },
+  })
+  assert.equal(actionResult.request_event_id, action.event_id)
+  assert.equal(
+    gatewayClientProtocolCapabilityFor(actionResult.type),
+    GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+  )
+  assert.throws(() => parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
+    event_id: 'evt_client_action_failed',
+    request_event_id: action.event_id,
+    status: 'failed',
+  }))
+
+  const replay = parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.SESSION_REPLAY,
+    event_id: 'evt_client_replay',
+    after_sequence: 12,
+    limit: 200,
+  })
+  assert.equal(replay.after_sequence, 12)
+  assert.equal(
+    gatewayClientProtocolCapabilityFor(replay.type),
+    GatewayClientCapability.SESSION_REPLAY,
+  )
+  assert.throws(() => parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.SESSION_REPLAY,
+    event_id: 'evt_client_replay_unbounded',
+    after_sequence: 0,
+    limit: 201,
+  }))
 })
 
 test('normalizes 6.0 event names into the existing business event vocabulary', () => {
@@ -164,13 +214,25 @@ test('6.0 hello and 5.x connect enter the same legacy business path', () => {
       GatewayClientCapability.INPUT_TEXT,
       GatewayClientCapability.CLIENT_EVENTS,
     ],
+    connection: {
+      voice_enabled: true,
+      input_enabled: false,
+      output_enabled: true,
+      text_only: false,
+      provider: 'dashscope',
+      working_directory: '/tmp/client-project',
+      client_states: ['active'],
+    },
   })
   const accepted = modern.receive(hello)
   assert.equal(accepted.event.type, 'connect')
   assert.equal(accepted.event.clientType, 'desktop')
-  assert.equal(accepted.event.inputEnabled, true)
+  assert.equal(accepted.event.inputEnabled, false)
   assert.equal(accepted.event.outputEnabled, true)
   assert.equal(accepted.event.textOnly, false)
+  assert.equal(accepted.event.provider, 'dashscope')
+  assert.equal(accepted.event.workingDirectory, '/tmp/client-project')
+  assert.deepEqual(accepted.event.clientStates, ['active'])
   assert.deepEqual(accepted.reply.capabilities, [
     GatewayClientCapability.INPUT_AUDIO,
     GatewayClientCapability.INPUT_TEXT,
@@ -193,6 +255,16 @@ test('6.0 hello and 5.x connect enter the same legacy business path', () => {
   })
   assert.equal(connected.event.type, accepted.event.type)
   assert.equal(connected.reply, undefined)
+  const legacyActionResult = legacy.receive({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
+    event_id: 'evt_client_legacy_action',
+    request_event_id: 'evt_gateway_legacy_action',
+    status: 'completed',
+  })
+  assert.equal(
+    legacyActionResult.runtimeMessage.type,
+    GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
+  )
   assert.deepEqual(connected.pending, [pendingEvent])
   assert.equal(legacy.encode(pendingEvent), pendingEvent)
 })

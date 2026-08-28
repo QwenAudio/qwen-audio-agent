@@ -17,7 +17,7 @@ function harness({
   permissionPolicy,
   onPermissionDeliveryFailed,
   clientContext = {},
-  requestClientState,
+  presenceController,
   inputAssets,
   onAgentActivity,
   frontendRetrieval,
@@ -56,7 +56,7 @@ function harness({
     permissionPolicy,
     onPermissionDeliveryFailed,
     getClientContext: () => clientContext,
-    requestClientState,
+    presenceController,
     onAgentActivity,
     inputAssets,
     frontendRetrieval,
@@ -265,10 +265,12 @@ function waitForTask(manager, taskId) {
 }
 
 test('asks a capable client to enter sleep without creating another response', async () => {
-  const states = []
+  const sources = []
   const kit = harness({
-    clientContext: { states: ['sleeping'] },
-    requestClientState: state => states.push(state),
+    presenceController: {
+      supportsSleep: () => true,
+      requestSleep: async ({ source }) => sources.push(source),
+    },
   })
 
   await kit.handler.handle({
@@ -277,7 +279,7 @@ test('asks a capable client to enter sleep without creating another response', a
     arguments: '{}',
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  assert.deepEqual(states, ['sleeping'])
+  assert.deepEqual(sources, ['realtime_tool'])
   assert.equal(kit.outputs[0][1].status, 'sleeping')
   assert.equal(kit.outputs[0][3].createResponse, false)
 })
@@ -371,7 +373,7 @@ test('fails closed when a stale model calls the unavailable knowledge tool', asy
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
 })
 
-test('rejects sleep when the client did not advertise that state', async () => {
+test('rejects sleep when the client does not advertise the action', async () => {
   const kit = harness()
 
   await kit.handler.handle({
@@ -380,7 +382,7 @@ test('rejects sleep when the client did not advertise that state', async () => {
     arguments: '{}',
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  assert.equal(kit.outputs[0][1].error_code, 'unsupported_client_state')
+  assert.equal(kit.outputs[0][1].error_code, 'client_action_unsupported')
 })
 
 test('fails closed for tools absent from the frontend registry', async () => {

@@ -16,6 +16,8 @@ import {
 } from '../../shared/input-parts.mjs'
 import { createLogger } from '../../shared/logger.mjs'
 import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
+import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
+import { gatewayReferenceClientCapabilities } from '../../shared/gateway-client-profiles.mjs'
 import { formatCitationLines } from '../../shared/citation-display.mjs'
 import { startMacVoiceIO } from './macos-voice-io.mjs'
 import { resamplePcm16 } from './pcm-audio.mjs'
@@ -1492,16 +1494,10 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     }
   }
 
-  const syncActiveTasks = async () => {
-    const url = new URL('/api/tasks', options.url)
-    url.searchParams.set('sessionId', options.sessionId)
-    url.searchParams.set('active', 'true')
-    const response = await fetch(url, { headers })
-    if (!response.ok) {
-      throw new Error(`任务状态恢复失败（${response.status}）`)
-    }
-    const payload = await response.json()
-    for (const task of payload.tasks || []) {
+  const restoreTasks = tasks => {
+    for (const task of tasks || []) {
+      if (!['queued', 'running', 'delegated', 'finalizing', 'cancelling'].includes(task.status)
+        && task.authorization?.status !== 'pending') continue
       const type = task.authorization?.status === 'pending'
         ? 'task.permission.requested'
         : `task.${task.status}`
@@ -1511,65 +1507,69 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
 
   const connectGateway = () => {
     if (closed || bridgeExited) return
-    const nextSocket = new WebSocket(
-      websocketUrl(options.url, options.sessionId),
-      { headers },
-    )
-    socket = nextSocket
-    nextSocket.on('open', () => {
-      if (socket !== nextSocket || closed) return
-      reconnectDelay = 500
-      gatewayClientState = reduceGatewayClientState(gatewayClientState, {
-        type: GatewayServerEvent.GATEWAY_CONNECTED,
-      })
-      setStatus('Gateway 已连接 · 语音服务准备中')
-      nextSocket.send(JSON.stringify(connectMessage({
+    const nextClient = new GatewayClient({
+      url: websocketUrl(options.url, options.sessionId),
+      createSocket: url => new WebSocket(url, { headers }),
+      clientType: 'cli',
+      clientLabel: 'CLI',
+      clientInstanceId: `tui-${process.pid}`,
+      capabilities: gatewayReferenceClientCapabilities('cli'),
+      reconnect: false,
+      configure: () => connectMessage({
         voiceEnabled: true,
         inputEnabled: !muted,
         outputEnabled: true,
         takeover: options.takeover === true,
-      })))
-      syncActiveTasks().catch(error => {
-        print(style(`[任务状态] ${error.message}`, 'yellow'))
-      })
-      if (connectedOnce) {
-        print(style('[qwen-audio-agent 已重新连接]', 'green'))
-      } else {
-        connectedOnce = true
-        print(
-          `${style('qwen-audio-agent Voice TUI', 'bold')} · ${health.realtimeLabel || health.realtimeModelProfile?.label || health.realtimeModel || 'Realtime'} → ${health.backend?.label || health.backend?.kind || 'Gateway'}\n`
-          + `${realtimeModelStatusText(health)}\n`
-          + `会话：${options.sessionId}\n`
-          + `音频：${audioMode.label}\n`
-          + `${helpText(audioMode)}\n`,
-        )
-      }
+      }),
+      locale: Intl.DateTimeFormat().resolvedOptions().locale,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      onEvent: event => handleGatewayMessage(JSON.stringify(event)),
+      onRecovery: recovery => restoreTasks(recovery.tasks),
+      onStatus: status => {
+        if (socket !== nextClient || closed) return
+        if (status.state === 'connected') {
+          reconnectDelay = 500
+          gatewayClientState = reduceGatewayClientState(gatewayClientState, {
+            type: GatewayServerEvent.GATEWAY_CONNECTED,
+          })
+          setStatus('Gateway 已连接 · 语音服务准备中')
+          if (connectedOnce) {
+            print(style('[qwen-audio-agent 已重新连接]', 'green'))
+          } else {
+            connectedOnce = true
+            print(
+              `${style('qwen-audio-agent Voice TUI', 'bold')} · ${health.realtimeLabel || health.realtimeModelProfile?.label || health.realtimeModel || 'Realtime'} → ${health.backend?.label || health.backend?.kind || 'Gateway'}\n`
+              + `${realtimeModelStatusText(health)}\n`
+              + `会话：${options.sessionId}\n`
+              + `音频：${audioMode.label}\n`
+              + `${helpText(audioMode)}\n`,
+            )
+          }
+        } else if (status.state === 'unavailable') {
+          if (!closed) print(`${style('[连接错误]', 'red')} ${status.error?.message || '连接失败'}`)
+        } else if (status.state === 'recovery_failed') {
+          print(style(`[任务状态] ${status.error.message}`, 'yellow'))
+        } else if (status.state === 'disconnected') {
+          gatewayClientState = reduceGatewayClientState(gatewayClientState, {
+            type: GatewayServerEvent.GATEWAY_DISCONNECTED,
+          })
+          setCaptureEnabled(false)
+          playback.clear()
+          transcriptDisplay.reset()
+          if (closed) {
+            print('qwen-audio-agent 连接已关闭。')
+          } else if (bridgeExited) {
+            cleanup()
+          } else {
+            setStatus('Gateway 已断开 · 正在自动重连 · /exit 或 Ctrl-C 可退出')
+            print(style('[qwen-audio-agent 连接中断，正在重连]', 'yellow'))
+            scheduleReconnect()
+          }
+        }
+      },
     })
-    nextSocket.on('message', handleGatewayMessage)
-    nextSocket.on('error', error => {
-      if (!closed) print(`${style('[连接错误]', 'red')} ${error.message}`)
-    })
-    nextSocket.on('close', () => {
-      if (socket !== nextSocket) return
-      socket = null
-      gatewayClientState = reduceGatewayClientState(gatewayClientState, {
-        type: GatewayServerEvent.GATEWAY_DISCONNECTED,
-      })
-      setCaptureEnabled(false)
-      playback.clear()
-      transcriptDisplay.reset()
-      if (closed) {
-        print('qwen-audio-agent 连接已关闭。')
-        return
-      }
-      if (bridgeExited) {
-        cleanup()
-        return
-      }
-      setStatus('Gateway 已断开 · 正在自动重连 · /exit 或 Ctrl-C 可退出')
-      print(style('[qwen-audio-agent 连接中断，正在重连]', 'yellow'))
-      scheduleReconnect()
-    })
+    socket = nextClient
+    nextClient.start()
   }
 
   const scheduleReconnect = () => {

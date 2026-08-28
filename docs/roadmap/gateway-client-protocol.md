@@ -100,24 +100,24 @@ Exit criteria: one event can update Gateway/UI only, update model context silent
 
 ## GCP4 — Client Action port
 
-- [ ] Add `ClientActionPort` and `client.action.request/result`.
-- [ ] Advertise Client Action capabilities during handshake.
-- [ ] Expose action-derived Realtime tools only when supported.
-- [ ] Migrate `enter_sleep` from `requestClientState()` to the shared action path.
-- [ ] Add one idempotent `PresenceController` for user-requested, automatic, timeout, and duplicate sleep requests.
-- [ ] Mark sleeping only after a successful Client Action result.
+- [x] Add `ClientActionPort` and `client.action.request/result`.
+- [x] Advertise Client Action capabilities during handshake.
+- [x] Expose action-derived Realtime tools only when supported.
+- [x] Migrate `enter_sleep` from `requestClientState()` to the shared action path.
+- [x] Add one idempotent `PresenceController` for user-requested, automatic, timeout, and duplicate sleep requests.
+- [x] Mark sleeping only after a successful Client Action result.
 
 Exit criteria: Realtime Tool Calls and Gateway fallbacks use one action/state machine, and Gateway Core no longer knows how Desktop hides its window.
 
 ## GCP5 — Reference clients, replay, and stabilization
 
-- [ ] Migrate WebUI, TUI, and Desktop to the shared reference Client SDK.
-- [ ] Add bounded replay and reconnect recovery.
-- [ ] Migrate Task control, permission decisions, conversation history, and Task event recovery away from internal REST/SSE aliases.
-- [ ] Run one conformance suite against all first-party clients.
-- [ ] Update `docs/contract.md` and its Chinese counterpart with locked capabilities and tests.
-- [ ] Deprecate old aliases for at least one announced release before removal.
-- [ ] Mark the 6.0 specification stable only after the replacement path is proven.
+- [x] Migrate WebUI, TUI, and Desktop to the shared reference Client SDK.
+- [x] Add bounded replay and reconnect recovery.
+- [x] Migrate Task control, permission decisions, conversation history, and Task event recovery away from internal REST/SSE aliases.
+- [x] Run one conformance suite against all first-party clients.
+- [x] Update `docs/contract.md` and its Chinese counterpart with locked capabilities and tests.
+- [x] Deprecate old aliases for at least one announced release before removal.
+- [x] Mark the 6.0 specification stable only after the replacement path is proven.
 
 Exit criteria: first-party clients contain presentation and environment behavior but no reconstructed Gateway state machine; Gateway contains no first-party Client implementation branch.
 

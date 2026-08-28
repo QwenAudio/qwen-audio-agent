@@ -65,7 +65,13 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
     "session.replay"
   ],
   "locale": "zh-CN",
-  "time_zone": "Asia/Shanghai"
+  "time_zone": "Asia/Shanghai",
+  "connection": {
+    "voice_enabled": true,
+    "input_enabled": true,
+    "output_enabled": true,
+    "text_only": false
+  }
 }
 ```
 
@@ -110,8 +116,8 @@ logic. A 6.0 Client starts with `session.hello`; Gateway returns
 6.0 input aliases into the existing internal event model. A 5.x Client may
 continue to start with `connect` and receives the unchanged legacy event shape.
 Only capabilities with working runtimes are negotiated. GCP2 Client Event and
-runtime-command capabilities and GCP3 Agent Delivery are now implemented;
-names reserved for GCP4–GCP5 remain vocabulary-only until their runtimes ship.
+runtime-command capabilities, GCP3 Agent Delivery, GCP4 Client Actions, and
+the GCP5 reference Client and bounded replay are implemented.
 
 ### 3.2 GCP2 runtime rollout
 
@@ -138,6 +144,31 @@ Realtime providers encode only the resulting context item and optional response;
 raw Client or backend protocol objects never enter the model. Existing Task
 announcement batching, safe-window retry, notification claims, and playback
 acknowledgement remain the reliable lifecycle around that shared projection.
+
+### 3.4 GCP4 Client Action rollout
+
+GCP4 implements correlated `client.action.request/result` messages and a
+protocol-neutral `ClientActionPort`. The active Client capability-gates
+action-derived Realtime tools. `enter_sleep`, the desktop idle-event fallback,
+and the legacy Gateway timeout converge on one idempotent
+`PresenceController`; an action-capable Client is marked sleeping only after it
+reports that the environment transition completed. The first-party desktop now
+negotiates and returns Action results through `session.hello`; the 5.x
+`connect` path remains only as a deprecated compatibility alias.
+
+### 3.5 GCP5 reference Client and replay rollout
+
+GCP5 ships the shared `GatewayClient` SDK for handshake, command correlation,
+Client Actions, reconnect, and recovery. WebUI, Desktop, and TUI share one
+capability profile and conformance suite. Task lifecycle pushes carry a
+session-monotonic `sequence`; `session.replay` recovers bounded events missed
+at disconnect, then `task.list` and `conversation.history` on the same
+WebSocket reconcile final state that may have changed while offline. Media
+deltas, provisional transcripts, and immediate command results are not replayed.
+
+As of health contract `5.5.0`, `connect` and the REST Task, permission,
+conversation-history, and Session-replay paths are deprecated compatibility
+aliases. They will not be removed before health contract `6.0.0`.
 
 ## 4. Common event envelope
 
@@ -262,11 +293,17 @@ client.action.result
 
 `status` is `completed`, `failed`, or `unsupported`. Failure includes a bounded `{code, message}` object. Gateway exposes an action-derived Realtime tool only when the active Client negotiated the corresponding capability.
 
+The first implemented action is `desktop.presence.enter_sleep`. Its tool,
+automatic Client Event fallback, timeout handling, and duplicate requests share
+one Presence state machine. The legacy `client.state` sleeping message remains
+accepted by current clients as a migration alias, but is no longer the execution
+boundary.
+
 Client Action is not a replacement for MCP, OpenAPI, ACP, or A2A. It covers capabilities owned by the connected Client Environment. Other external systems continue to use the appropriate tool or backend adapter.
 
 ### 5.4 Runtime commands and queries
 
-The active Client uses the same WebSocket for runtime commands and queries. Each command carries an `event_id`; its immediate `<command>.result` carries `request_event_id`. Later lifecycle changes remain ordinary server pushes rather than being hidden inside the command result; bounded replay is added in GCP5.
+The active Client uses the same WebSocket for runtime commands and queries. Each command carries an `event_id`; its immediate `<command>.result` carries `request_event_id`. Later lifecycle changes remain ordinary server pushes rather than being hidden inside the command result; `session.replay` provides bounded Task lifecycle replay.
 
 | Command | Direction | Meaning |
 |---|---|---|
@@ -491,7 +528,7 @@ Health checks, static assets, installation, and settings remain host/operations 
 
 ## 12. Conformance requirements
 
-Before 6.0 becomes stable, tests must cover:
+The stable 6.0 behavior is locked by tests covering:
 
 - global single-Client ownership, release, and heartbeat expiry;
 - version and capability negotiation;

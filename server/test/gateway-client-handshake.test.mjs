@@ -213,6 +213,63 @@ test('commits sleep only after the negotiated Client Action completes', async t 
   await waitFor(modern.received, event => (
     event.type === 'voice.sleep' && event.state === 'sleeping'
   ))
+  assert.equal(modern.received.some(event => (
+    event.type === 'voice.connection' && event.state === 'sleeping'
+  )), false)
+  modern.socket.close()
+})
+
+test('client inactivity enters sleep without asking the model to call a tool', async t => {
+  const { server, gateway } = gatewayHarness({
+    clientEventRouter: new GatewayEventRouter(),
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const modern = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-auto-sleep-hello',
+    clientType: 'desktop',
+    clientInstanceId: 'desktop-auto-sleep-test',
+    capabilities: [
+      GatewayClientCapability.CLIENT_EVENTS,
+      GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+    ],
+  }))
+  await waitFor(modern.received, event => event.type === 'session.ready')
+
+  modern.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
+    event_id: 'evt-client-inactivity',
+    name: 'desktop.presence.sleep_requested',
+    data: { idle_ms: 60_000 },
+  }))
+  const published = await waitFor(
+    modern.received,
+    event => event.request_event_id === 'evt-client-inactivity',
+  )
+  assert.equal(published.accepted, true)
+
+  const action = await waitFor(
+    modern.received,
+    event => event.type === GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
+  )
+  assert.equal(action.name, 'desktop.presence.enter_sleep')
+  modern.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
+    event_id: 'evt-auto-sleep-result',
+    request_event_id: action.event_id,
+    status: 'completed',
+    output: { state: 'hidden' },
+  }))
+  await waitFor(modern.received, event => (
+    event.type === 'voice.sleep' && event.state === 'sleeping'
+  ))
+  assert.equal(modern.received.some(event => (
+    event.type === 'voice.connection' && event.state === 'sleeping'
+  )), false)
   modern.socket.close()
 })
 

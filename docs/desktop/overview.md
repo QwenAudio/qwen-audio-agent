@@ -14,7 +14,7 @@ ACP process and do not show irrelevant connection fields.
 
 When idle, the orb automatically hides and disconnects real-time voice; you can also say "可以退下了" (you may step down) to hide it. The app remains in the menu bar and can be re-summoned from the menu bar or via a show shortcut. The default shortcut is `⇧⌘ Space` and can be changed in app settings.
 
-The sleep timeout and auto-hide are unified into a single "Auto Sleep" setting: during sleep, the microphone continues local listening, and saying the wake word "你好千问" (hello Qianwen) will resume the conversation. Backend agents and submitted tasks are not stopped by sleep; task results will be announced after wake-up. When the wake word is enabled for the first time, it automatically downloads and validates approximately 33 MB of the [`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx) Chinese-English KWS model, and uses the local cache thereafter.
+The sleep timeout and auto-hide are unified into a single "Auto Sleep" setting: during sleep, the microphone continues local listening, and saying the wake word "你好千问" (hello Qianwen) will resume the conversation. Backend agents and submitted tasks are not stopped by sleep; task results will be announced after wake-up. When the wake word is enabled for the first time, it automatically downloads and validates approximately 33 MB of the [`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx) Chinese-English KWS model, and uses the local cache thereafter. Detection runs entirely in an isolated Desktop Client worker; wake-word audio is not sent to Gateway, and a successful detection emits only the standard `wake` event.
 
 ## Appearance
 

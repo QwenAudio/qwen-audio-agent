@@ -80,6 +80,7 @@ import {
   updateSettingsContent,
   applySettingsEnvironment,
 } from './settings-config.mjs'
+import { DesktopWakeWordRuntime } from './wake-word/runtime.mjs'
 import {
   effectiveOrbSkin as resolveEffectiveOrbSkin,
   importSkin,
@@ -194,6 +195,7 @@ const initialSettings = parseSettings(
   process.env,
 )
 let desktopLanguage = initialSettings.language
+let desktopWakeWordEnabled = initialSettings.wakeWordEnabled
 const desktopText = (text, params) => desktopTranslator(
   desktopLanguage,
   app.getLocale(),
@@ -228,6 +230,27 @@ const desktopPresence = new DesktopPresence({
   getWindow: () => mainWindow,
   globalShortcut,
   logger,
+})
+
+const desktopWakeWord = new DesktopWakeWordRuntime({
+  modelRoot: resolve(runtimeEnvironment.configDirectory, 'models/wake-word'),
+  onDetected: () => desktopPresence.wake('wake-word'),
+  onError: error => logger.warn('wake_word.failed', { error }),
+})
+desktopWakeWord.setEnabled(desktopWakeWordEnabled)
+
+ipcMain.on('qwen-audio-agent:wake-word-audio', (event, payload) => {
+  if (
+    !desktopWakeWordEnabled
+    || desktopPresence.state !== 'hidden'
+    || !mainWindow
+    || mainWindow.isDestroyed()
+    || event.sender !== mainWindow.webContents
+  ) return
+  const audio = typeof payload?.audio === 'string' ? payload.audio : ''
+  const sampleRate = Number(payload?.sampleRate)
+  if (!audio || audio.length > 128 * 1024 || sampleRate !== 16_000) return
+  desktopWakeWord.accept(audio, sampleRate)
 })
 
 const MAX_GATEWAY_CRASH_RESTARTS = 3
@@ -492,6 +515,16 @@ async function loadQwenAudioAgent(window) {
   } catch {
     await showUnavailable(window)
   }
+}
+
+function sendDesktopClientSettings(window, settings) {
+  if (!window || window.isDestroyed()) return
+  window.webContents.send('qwen-audio-agent:client-settings', {
+    orbSkin: effectiveOrbSkin(settings.orbSkin),
+    autoHideSeconds: settings.autoHideSeconds,
+    wakeWordEnabled: settings.wakeWordEnabled,
+    language: effectiveDesktopLanguage(settings.language, app.getLocale()),
+  })
 }
 
 function showDesktop(reason = 'tray') {
@@ -1198,7 +1231,6 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     || speechToSpeechChanged
     || backendModelChanged
     || backendConnectionChanged
-    || wakeWordChanged
   )
   if (!remote && borrowedGatewayOrigin && gatewayRuntimeChanged) {
     const borrowedHealth = await readGatewayHealth(borrowedGatewayOrigin)
@@ -1238,6 +1270,8 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   }
   chmodSync(runtimeEnvironment.configPath, 0o600)
   desktopLanguage = normalized.language
+  desktopWakeWordEnabled = normalized.wakeWordEnabled
+  desktopWakeWord.setEnabled(desktopWakeWordEnabled)
   createTray()
   if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.setTitle(desktopText('设置'))
@@ -1293,7 +1327,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   process.env.QWEN_AUDIO_ORB_SKIN = normalized.orbSkin
   await ensureDesktopUi()
   const desktopRendererChanged = (
-    (restarted || gatewayChanged || orbSkinChanged || autoHideChanged || languageChanged)
+    gatewayChanged
     && mainWindow
     && !mainWindow.isDestroyed()
   )
@@ -1304,6 +1338,12 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     // restart.
     desktopPresence.wake('settings')
     void loadQwenAudioAgent(mainWindow)
+  } else if (mainWindow && !mainWindow.isDestroyed()) {
+    // Client-owned presentation and presence preferences are hot-applied in
+    // the renderer. They must not replace the Gateway Client connection (and
+    // therefore the Realtime Session) as a side effect of changing a skin,
+    // language or idle policy.
+    sendDesktopClientSettings(mainWindow, normalized)
   }
   const runtime = await runtimeStatus(appOrigin)
   return {
@@ -1424,6 +1464,7 @@ if (!app.requestSingleInstanceLock()) {
     cleanup: async () => {
       logger.info('desktop.stopping')
       desktopPresence.destroy()
+      desktopWakeWord.stop()
       tray?.destroy()
       tray = null
       const server = rendererServer

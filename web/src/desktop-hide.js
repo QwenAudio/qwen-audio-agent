@@ -54,12 +54,10 @@ export function desktopTasksWorking(tasks = []) {
 
 export function desktopWorkSettled({
   tasks = [],
-  messages = [],
   voiceState = 'idle',
 } = {}) {
   return (
     !desktopTasksActive(tasks)
-    && !messages.some(message => message.live)
     && !ACTIVE_VOICE_STATES.has(voiceState)
   )
 }
@@ -76,6 +74,10 @@ export function desktopCanHide({
     && connectionState === 'connected'
     && visualError !== true
   )
+}
+
+export function desktopCanFinishWaking(connectionState) {
+  return connectionState === 'connected' || connectionState === 'unavailable'
 }
 
 export function desktopHideDeadline({

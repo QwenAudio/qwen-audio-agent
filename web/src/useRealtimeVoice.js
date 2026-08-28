@@ -10,6 +10,7 @@ import {
 } from '../../shared/gateway-client-state.mjs'
 import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
 import {
+  createGatewayProtocolEventId,
   GatewayClientProtocolEvent,
 } from '../../shared/gateway-client-protocol.mjs'
 import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
@@ -220,6 +221,7 @@ export default function useRealtimeVoice({
   onEvent,
   onInputError,
   onClientAction,
+  onWakeWordAudio,
 }) {
   const [clientState, dispatchClientState] = useReducer(
     reduceGatewayClientState,
@@ -238,6 +240,7 @@ export default function useRealtimeVoice({
   const eventRef = useRef(onEvent)
   const inputErrorRef = useRef(onInputError)
   const clientActionRef = useRef(onClientAction)
+  const wakeWordAudioRef = useRef(onWakeWordAudio)
   const wakeWordOnlyRef = useRef(wakeWordOnly)
   const socketRef = useRef(null)
   const hasConnectedRef = useRef(false)
@@ -271,6 +274,7 @@ export default function useRealtimeVoice({
   eventRef.current = onEvent
   inputErrorRef.current = onInputError
   clientActionRef.current = onClientAction
+  wakeWordAudioRef.current = onWakeWordAudio
   wakeWordOnlyRef.current = wakeWordOnly
   enabledRef.current = enabled
   outputMutedRef.current = outputMuted
@@ -795,12 +799,17 @@ export default function useRealtimeVoice({
         source = context.createMediaStreamSource(media)
         processor = context.createScriptProcessor(2048, 1, 1)
         processor.onaudioprocess = event => {
-          const socket = socketRef.current
-          if (socket?.readyState !== WebSocket.OPEN) return
           const samples = microphoneSamplesDuringManualInput(
             event.inputBuffer.getChannelData(0),
             manualInputPendingRef.current,
           )
+          if (wakeWordOnlyRef.current) {
+            const wakeAudio = resample(samples, context.sampleRate, 16_000)
+            wakeWordAudioRef.current?.(pcmBase64(wakeAudio), 16_000)
+            return
+          }
+          const socket = socketRef.current
+          if (socket?.readyState !== WebSocket.OPEN) return
           const audio = resample(
             samples,
             context.sampleRate,

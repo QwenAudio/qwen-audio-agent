@@ -1,6 +1,6 @@
 // The one translation from host-facing options to the environment the Gateway
 // reads. The hosted process manager applies it to the child it forks; keeping
-// a single mapping means a host's `backend: 'none'` or `wakeWord: false`
+// a single mapping means a host's `backend: 'none'`
 // cannot mean one thing in one launch shape and another elsewhere.
 //
 // Only options a caller actually passed are emitted, so an unset option leaves
@@ -16,7 +16,6 @@ export function gatewayOptionsEnvironment({
   host,
   port,
   backend,
-  wakeWord,
   owner,
   logConsole,
 } = {}) {
@@ -28,11 +27,6 @@ export function gatewayOptionsEnvironment({
     env.AGENT_PROTOCOL = backend === 'none' || backend === null
       ? ''
       : String(backend)
-  }
-  if (wakeWord !== undefined) {
-    // The wake word engine is the only consumer of the optional sherpa-onnx
-    // native dependency, so this single switch keeps it untouched for hosts.
-    env.QWEN_AUDIO_WAKE_WORD_ENABLED = wakeWord ? 'true' : 'false'
   }
   if (owner !== undefined) env.QWEN_AUDIO_GATEWAY_OWNER = String(owner)
   if (logConsole !== undefined) {

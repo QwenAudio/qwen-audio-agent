@@ -572,13 +572,6 @@ export const config = {
     0,
     { min: 0, max: 86_400 },
   ) * 1000,
-  wakeWordEnabled: String(
-    process.env.QWEN_AUDIO_WAKE_WORD_ENABLED || '',
-  ).toLowerCase() === 'true',
-  wakeWord: '你好千问',
-  wakeWordModelDirectory: process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR
-    ? resolve(process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR)
-    : resolve(runtimeEnvironment.configDirectory, 'models/wake-word'),
 }
 
 export function realtimeUrl(baseUrl, model) {

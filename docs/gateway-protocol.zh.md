@@ -142,7 +142,7 @@ Realtime Provider 只编码最终的上下文项与可选回复；Client 或后�
 
 GCP4 实现有关联关系的 `client.action.request/result` 与协议无关的
 `ClientActionPort`。只有当前 Client 声明对应 capability，Realtime 才能看到由
-Action 派生的工具。`enter_sleep`、桌面空闲事件兜底与旧 Gateway 超时入口统一进入
+Action 派生的工具。`enter_sleep`、桌面空闲事件与旧 Gateway 超时入口统一进入
 幂等 `PresenceController`；支持 Action 的 Client 只有在环境切换成功回执后才会被
 标记为 sleeping。第一方桌面 Client 已通过 `session.hello` 协商并回传 Action
 Result；5.x `connect` 只保留为废弃兼容别名。
@@ -411,7 +411,7 @@ Provider 的 response 对象。
 
 ## 7. Presence 与休眠
 
-两种休眠最终进入同一个模型工具和 Client Action 链路。
+两种休眠最终进入同一个 PresenceController 和 Client Action 链路，但只有用户主动休眠需要模型工具调用。
 
 ### 用户主动休眠
 
@@ -422,18 +422,19 @@ Provider 的 response 对象。
          → Gateway 进入 sleeping
 ```
 
-模型可以先说话，也可以直接调用工具。协议不强制告别话术，也不强制等待播放结束。
+模型可以先说话，也可以直接调用工具。协议不强制告别话术，也不强制等待播放结束。工具失败只作为工具结果返回，不主动触发播报。
 
 ### Client 自动休眠
 
 ```text
 client.event.publish(desktop.presence.sleep_requested)
-         → GatewayEventRouter → AgentDelivery(respond)
-         → Realtime → 可选承接语 → enter_sleep
-         → 同一个 PresenceController 与 ClientActionPort
+         → GatewayEventRouter → AgentDelivery(context)
+         → Realtime 获知客户端即将休眠（不回复、不调用工具）
+         → Gateway → PresenceController → ClientActionPort
+         → 客户端静音并隐藏 → Gateway 进入 sleeping
 ```
 
-Client 请求可以携带有界 deadline。Realtime Provider 不可用、生成失败，或模型在 deadline 前没有调用 `enter_sleep` 时，Gateway 以同一个幂等 `PresenceController` 执行兜底。这不是第二套休眠实现。
+Client 在本地空闲时间到期后发布事件，可携带空闲时长、原因等有界状态信息。Gateway 把它作为上下文投递给 Realtime 后，确定性地执行休眠；自动休眠不依赖模型生成，也不要求模型再次调用 `enter_sleep`。
 
 状态机：
 
@@ -441,9 +442,10 @@ Client 请求可以携带有界 deadline。Realtime Provider 不可用、生成�
 active → sleep_requested → sleeping
 ```
 
-只有第一次转换发出 Client Action。模型调用与超时兜底并发时，重复请求返回 `pending` 或 `already_sleeping`。只有 Client Action 成功后，Gateway 才标记为 `sleeping`。休眠不会取消后台 Task，也不会丢弃待播报结果。
+只有第一次转换发出 Client Action。重复请求复用正在进行的转换或返回已休眠状态。只有 Client Action 成功后，Gateway 才标记为 `sleeping`。休眠不会取消后台 Task，也不会丢弃待播报结果。
 
-唤醒手段属于 Client。唤醒事件恢复 Presence，Gateway 重连 Realtime Provider 并投递暂存通知。
+唤醒手段属于 Client。休眠期间 Gateway 保持 Realtime Provider 连接，只停止向其发送
+客户端音频；唤醒事件恢复 Presence、麦克风输入并投递暂存通知。
 
 ## 8. 回放、错误与限制
 

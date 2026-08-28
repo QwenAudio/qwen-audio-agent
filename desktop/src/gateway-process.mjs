@@ -60,6 +60,10 @@ export function desktopGatewayEnvironment({
   if (Object.hasOwn(configured, 'DASHSCOPE_API_KEY')) {
     merged.QWEN_AUDIO_REALTIME_API_KEY = configured.DASHSCOPE_API_KEY
   }
+  // Wake-word capture and inference belong to the Desktop Client. Do not leak
+  // that client preference or its model path into the Gateway child process.
+  delete merged.QWEN_AUDIO_WAKE_WORD_ENABLED
+  delete merged.QWEN_AUDIO_WAKE_WORD_MODEL_DIR
   return {
     ...merged,
     PATH: desktopExecutablePath({

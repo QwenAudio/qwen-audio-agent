@@ -324,8 +324,12 @@ test('recomputes the key from field and value so hand edits cannot desync it', (
 })
 
 test('keeps serving from memory when the disk write fails', () => {
-  // 指向一个不可能创建的路径，触发写失败降级
-  const filePath = join('/proc/definitely-not-writable', 'candidates.json')
+  // 用普通文件占住父目录的位置，确保 Windows / macOS / Linux 都会稳定触发
+  // 写失败。不要依赖 /proc 或 POSIX 权限位：Windows 上这些路径和权限语义不同。
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-candidates-write-failure-'))
+  const parentFile = join(directory, 'not-a-directory')
+  writeFileSync(parentFile, 'blocks directory creation', 'utf8')
+  const filePath = join(parentFile, 'candidates.json')
   const warnings = []
   const store = new PreferenceCandidateStore({
     filePath,

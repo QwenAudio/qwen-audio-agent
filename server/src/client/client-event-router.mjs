@@ -54,7 +54,7 @@ export const BUILTIN_CLIENT_EVENT_DEFINITIONS = Object.freeze([
     maxBytes: 1_024,
     rateLimit: Object.freeze({ max: 4, windowMs: 10_000 }),
     retention: 'latest',
-    route: 'respond',
+    route: 'context',
     project: event => createAgentDelivery({
       id: `client_event_${event.id}`,
       causeEventId: event.id,
@@ -62,17 +62,16 @@ export const BUILTIN_CLIENT_EVENT_DEFINITIONS = Object.freeze([
       origin: 'client-event',
       text: [
         '<client_environment_event>',
-        '客户端准备因一段时间无交互而进入休眠。',
+        '客户端检测到一段时间没有交互，即将进入休眠。',
         Number.isFinite(event.data.idle_ms)
           ? `空闲时长：${event.data.idle_ms} 毫秒`
           : '',
-        '这不是用户的新话语。请自然回应当前情境，并调用可用的休眠工具完成状态切换。',
+        '这不是用户的新话语，仅用于同步客户端状态；不要回复，也不要调用工具。',
         '</client_environment_event>',
       ].filter(Boolean).join('\n'),
       correlation: { clientEventId: event.id },
       presentation: {
-        instructions: '把这个客户端环境事件作为当前情境自然处理；不要把它说成用户刚刚说的话。',
-        allowTools: true,
+        contextTiming: 'immediate',
       },
     }),
   }),

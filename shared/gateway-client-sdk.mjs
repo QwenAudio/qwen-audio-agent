@@ -51,7 +51,6 @@ function connectionConfiguration(value = {}) {
     ...(value.provider ? { provider: String(value.provider) } : {}),
     ...(value.workingDirectory ? { working_directory: String(value.workingDirectory) } : {}),
     ...(Array.isArray(value.clientStates) ? { client_states: value.clientStates } : {}),
-    ...(value.takeover === undefined ? {} : { takeover: value.takeover === true }),
   }
 }
 
@@ -141,7 +140,17 @@ export class GatewayClient {
   send(event) {
     if (!socketOpen(this.socket)) return false
     try {
-      this.socket.send(typeof event === 'string' ? event : JSON.stringify(event))
+      const message = (
+        event
+        && typeof event === 'object'
+        && typeof event.type === 'string'
+        && !event.event_id
+      )
+        ? createGatewayClientProtocolMessage(event.type, Object.fromEntries(
+          Object.entries(event).filter(([key]) => key !== 'type'),
+        ))
+        : event
+      this.socket.send(typeof message === 'string' ? message : JSON.stringify(message))
       return true
     } catch {
       return false

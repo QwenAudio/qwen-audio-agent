@@ -149,7 +149,7 @@ acknowledgement remain the reliable lifecycle around that shared projection.
 
 GCP4 implements correlated `client.action.request/result` messages and a
 protocol-neutral `ClientActionPort`. The active Client capability-gates
-action-derived Realtime tools. `enter_sleep`, the desktop idle-event fallback,
+action-derived Realtime tools. `enter_sleep`, the desktop idle event,
 and the legacy Gateway timeout converge on one idempotent
 `PresenceController`; an action-capable Client is marked sleeping only after it
 reports that the environment transition completed. The first-party desktop now
@@ -426,7 +426,7 @@ Routing modes are:
 
 ## 7. Presence and sleep
 
-Both sleep modes converge on the same model tool and Client Action path.
+Both sleep modes converge on the same PresenceController and Client Action path, but only user-requested sleep requires a model Tool Call.
 
 ### User-requested sleep
 
@@ -437,18 +437,20 @@ user input → Realtime → optional acknowledgement → enter_sleep
            → Gateway enters sleeping
 ```
 
-The model may speak before the Tool Call or call it directly. The protocol does not mandate farewell text or a playback gate.
+The model may speak before the Tool Call or call it directly. The protocol does not mandate farewell text or a playback gate. Tool failures remain Tool Call results and do not proactively trigger speech.
 
 ### Client automatic sleep
 
 ```text
 client.event.publish(desktop.presence.sleep_requested)
-           → GatewayEventRouter → AgentDelivery(respond)
-           → Realtime → optional acknowledgement → enter_sleep
-           → the same PresenceController and ClientActionPort
+           → GatewayEventRouter → AgentDelivery(context)
+           → Realtime learns that the Client is about to sleep
+             (no response and no Tool Call)
+           → Gateway → PresenceController → ClientActionPort
+           → Client mutes and hides → Gateway enters sleeping
 ```
 
-The Client request may carry a bounded deadline. If the Realtime provider is unavailable, generation fails, or the model does not call `enter_sleep` by that deadline, Gateway invokes the same idempotent `PresenceController` as a fallback. This is not a second sleep implementation.
+After its local inactivity timeout expires, the Client publishes the event with bounded state such as idle duration and reason. Gateway injects it as Realtime context and then deterministically enters sleep. Automatic sleep does not depend on model generation and never asks the model to call `enter_sleep` again.
 
 The state machine is:
 
@@ -456,9 +458,11 @@ The state machine is:
 active → sleep_requested → sleeping
 ```
 
-Only the first transition issues a Client Action. Concurrent model and timeout requests return `pending` or `already_sleeping`. Gateway marks the state `sleeping` only after a successful Client action result. Sleep does not cancel backend Tasks or discard pending results.
+Only the first transition issues a Client Action. Duplicate requests reuse the pending transition or return the already-sleeping state. Gateway marks the state `sleeping` only after a successful Client action result. Sleep does not cancel backend Tasks or discard pending results.
 
-Wake mechanism is a Client concern. A wake event restores presence and lets Gateway reconnect the Realtime provider and deliver pending notifications.
+Wake mechanism is a Client concern. Gateway retains the Realtime provider
+connection while sleeping and stops forwarding Client audio. A wake event
+restores presence and microphone input, then delivers pending notifications.
 
 ## 8. Replay, errors, and limits
 

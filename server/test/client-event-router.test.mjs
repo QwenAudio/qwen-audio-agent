@@ -36,7 +36,7 @@ test('registers built-in and extension Client Event definitions', () => {
       },
     ],
   })
-  assert.equal(registry.get('desktop.presence.sleep_requested')?.route, 'respond')
+  assert.equal(registry.get('desktop.presence.sleep_requested')?.route, 'context')
   assert.equal(registry.get('vehicle.control.button_pressed')?.route, 'context')
   assert.throws(() => registry.register({
     name: 'task.changed',
@@ -97,12 +97,12 @@ test('deduplicates by trusted source and retains only the latest event', async (
   const next = await router.publish(sleepEvent({
     event_id: 'evt-sleep-2',
     data: { reason: 'new' },
-    // A client may request a quieter route, but never upgrade beyond the
-    // registered definition's maximum route.
+    // A client may never upgrade automatic sleep beyond its context-only
+    // registered route.
     delivery_hint: 'interrupt',
   }), { source })
-  assert.equal(next.event.route, 'respond')
-  assert.equal(next.delivery.mode, 'respond')
+  assert.equal(next.event.route, 'context')
+  assert.equal(next.delivery.mode, 'context')
   assert.equal(router.latestEvents().length, 1)
   assert.equal(router.latestEvents()[0].data.reason, 'new')
 })

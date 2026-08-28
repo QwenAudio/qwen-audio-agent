@@ -103,7 +103,6 @@ function connectDesktopClient(server) {
         clientLabel: '桌面端',
         clientStates: ['sleeping'],
         clientInstanceId: 'repro-instance',
-        takeover: false,
       }))
       resolve(socket)
     })

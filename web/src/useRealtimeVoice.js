@@ -10,6 +10,7 @@ import {
 } from '../../shared/gateway-client-state.mjs'
 import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
 import {
+  createGatewayProtocolEventId,
   GatewayClientProtocolEvent,
 } from '../../shared/gateway-client-protocol.mjs'
 import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
@@ -179,16 +180,15 @@ export function microphoneControlEvent({
   enabled,
   inputOnlyMute = false,
   wakeWordOnly = false,
-  takeover = false,
 } = {}) {
   if (wakeWordOnly) return { type: GatewayClientEvent.SLEEP }
   if (inputOnlyMute) {
     return enabled
-      ? { type: GatewayClientEvent.INPUT_UNMUTE, takeover }
+      ? { type: GatewayClientEvent.INPUT_UNMUTE }
       : { type: GatewayClientEvent.INPUT_MUTE }
   }
   return enabled
-    ? { type: GatewayClientEvent.UNMUTE, takeover }
+    ? { type: GatewayClientEvent.UNMUTE }
     : { type: GatewayClientEvent.MUTE }
 }
 
@@ -217,11 +217,11 @@ export default function useRealtimeVoice({
   clientType = 'web',
   clientLabel = 'WebUI',
   clientStates = [],
-  takeover = false,
   realtimeProvider = '',
   onEvent,
   onInputError,
   onClientAction,
+  onWakeWordAudio,
 }) {
   const [clientState, dispatchClientState] = useReducer(
     reduceGatewayClientState,
@@ -240,6 +240,7 @@ export default function useRealtimeVoice({
   const eventRef = useRef(onEvent)
   const inputErrorRef = useRef(onInputError)
   const clientActionRef = useRef(onClientAction)
+  const wakeWordAudioRef = useRef(onWakeWordAudio)
   const wakeWordOnlyRef = useRef(wakeWordOnly)
   const socketRef = useRef(null)
   const hasConnectedRef = useRef(false)
@@ -273,6 +274,7 @@ export default function useRealtimeVoice({
   eventRef.current = onEvent
   inputErrorRef.current = onInputError
   clientActionRef.current = onClientAction
+  wakeWordAudioRef.current = onWakeWordAudio
   wakeWordOnlyRef.current = wakeWordOnly
   enabledRef.current = enabled
   outputMutedRef.current = outputMuted
@@ -312,7 +314,10 @@ export default function useRealtimeVoice({
     const socket = socketRef.current
     if (socket?.readyState !== WebSocket.OPEN) return false
     try {
-      socket.send(JSON.stringify(event))
+      // GatewayClient owns the wire envelope and supplies event_id for every
+      // client event. Keeping that responsibility in the SDK prevents audio,
+      // microphone, playback, and lifecycle events from drifting out of GCP.
+      socket.send(event)
       return true
     } catch {
       return false
@@ -558,20 +563,21 @@ export default function useRealtimeVoice({
   }, [failPlayback, finishPlaybackIfReady, sendPlaybackEvent])
 
   useEffect(() => {
-    if (suspended) {
-      dispatchClientState({
-        type: GatewayServerEvent.VOICE_STATE,
-        state: 'idle',
-      })
-      dispatchClientState({
-        type: GatewayServerEvent.VOICE_CONNECTION,
-        state: 'hidden',
-      })
-      setInputReady(false)
-      setError('')
-      setVisualError(false)
-      return undefined
-    }
+    if (!suspended) return
+    dispatchClientState({
+      type: GatewayServerEvent.VOICE_STATE,
+      state: 'idle',
+    })
+    dispatchClientState({
+      type: GatewayServerEvent.VOICE_CONNECTION,
+      state: 'hidden',
+    })
+    setInputReady(false)
+    setError('')
+    setVisualError(false)
+  }, [suspended])
+
+  useEffect(() => {
     const mutedResponses = mutedPlaybackResponses.current
     const handleEvent = event => {
       dispatchClientState(event)
@@ -664,7 +670,6 @@ export default function useRealtimeVoice({
             ? clientStatesSignature.split(',')
             : [],
           clientInstanceId: clientInstanceId.current,
-          takeover,
           // Empty means "keep the server default front end".
           ...(realtimeProvider ? { provider: realtimeProvider } : {}),
         }
@@ -711,7 +716,7 @@ export default function useRealtimeVoice({
     client.start()
 
     return () => {
-      stopPlayback(suspended ? 'desktop_hidden' : 'connection_closed')
+      stopPlayback('connection_closed')
       client.stop()
       socketRef.current = null
       mutedResponses.clear()
@@ -731,8 +736,6 @@ export default function useRealtimeVoice({
     flushPendingManualInputs,
     sessionId,
     stopPlayback,
-    suspended,
-    takeover,
   ])
 
   useEffect(() => {
@@ -796,21 +799,26 @@ export default function useRealtimeVoice({
         source = context.createMediaStreamSource(media)
         processor = context.createScriptProcessor(2048, 1, 1)
         processor.onaudioprocess = event => {
-          const socket = socketRef.current
-          if (socket?.readyState !== WebSocket.OPEN) return
           const samples = microphoneSamplesDuringManualInput(
             event.inputBuffer.getChannelData(0),
             manualInputPendingRef.current,
           )
+          if (wakeWordOnlyRef.current) {
+            const wakeAudio = resample(samples, context.sampleRate, 16_000)
+            wakeWordAudioRef.current?.(pcmBase64(wakeAudio), 16_000)
+            return
+          }
+          const socket = socketRef.current
+          if (socket?.readyState !== WebSocket.OPEN) return
           const audio = resample(
             samples,
             context.sampleRate,
             inputSampleRate.current,
           )
-          socket.send(JSON.stringify({
+          socket.send({
             type: GatewayClientEvent.AUDIO_APPEND,
             audio: pcmBase64(audio),
-          }))
+          })
         }
         source.connect(processor)
         processor.connect(context.destination)
@@ -820,7 +828,6 @@ export default function useRealtimeVoice({
           enabled: true,
           inputOnlyMute,
           wakeWordOnly,
-          takeover,
         }))
       } catch (reason) {
         if (!disposed) failInput(reason)
@@ -844,7 +851,6 @@ export default function useRealtimeVoice({
     sendSocketEvent,
     sessionId,
     suspended,
-    takeover,
   ])
 
   useEffect(() => {

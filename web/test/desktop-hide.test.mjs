@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   applyDesktopClientState,
   desktopAutoHideSeconds,
+  desktopCanFinishWaking,
   desktopCanHide,
   DESKTOP_WAKE_GRACE_MS,
   desktopHideDeadline,
@@ -89,19 +90,26 @@ test('maps a supported sleeping client state to the desktop bridge', async () =>
 
 test('reports Client Action completion only after the desktop is hidden', async () => {
   const lifecycle = []
+  const hideRequests = []
   const result = await performDesktopClientAction({
     type: GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
     name: 'desktop.presence.enter_sleep',
   }, {
     desktop: true,
-    bridge: { enterHide: async () => ({ state: 'hidden' }) },
+    bridge: { enterHide: async options => {
+      hideRequests.push(options)
+      return { state: 'hidden' }
+    } },
     onLifecycle: state => lifecycle.push(state),
+    // Explicit user/model sleep must still work immediately after wake.
+    lastWakeAt: Date.now(),
   })
   assert.deepEqual(result, {
     status: 'completed',
     output: { state: 'hidden' },
   })
   assert.deepEqual(lifecycle, ['hidden'])
+  assert.deepEqual(hideRequests, [{ explicit: true }])
 
   const unsupported = await performDesktopClientAction({
     type: GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
@@ -118,13 +126,15 @@ test('uses a 60 second desktop hide default and supports never', () => {
   assert.equal(desktopAutoHideSeconds('?autoSleepSeconds=300'), 300)
 })
 
-test('waits for tasks, permission prompts, transcripts, and voice playback', () => {
+test('waits for tasks, permission prompts, and active voice states', () => {
   assert.equal(desktopWorkSettled(), true)
   assert.equal(desktopWorkSettled({ tasks: [{ phase: 'running' }] }), false)
   assert.equal(desktopWorkSettled({
     tasks: [{ phase: 'completed', authorization: { status: 'pending' } }],
   }), false)
-  assert.equal(desktopWorkSettled({ messages: [{ live: true }] }), false)
+  // A response interrupted by sleep may leave stale rendering metadata.
+  // Current task and voice state remain the authoritative activity gates.
+  assert.equal(desktopWorkSettled({ messages: [{ live: true }] }), true)
   assert.equal(desktopWorkSettled({ voiceState: 'speaking' }), false)
   assert.equal(desktopWorkSettled({ voiceState: 'listening' }), false)
   assert.equal(desktopWorkSettled({ voiceState: 'processing' }), false)
@@ -144,6 +154,13 @@ test('only hides a healthy active desktop', () => {
     connectionState: 'connected',
     lifecycle: 'waking',
   }), false)
+})
+
+test('finishes waking from the Gateway connection without waiting for microphone capture', () => {
+  assert.equal(desktopCanFinishWaking('connected'), true)
+  assert.equal(desktopCanFinishWaking('unavailable'), true)
+  assert.equal(desktopCanFinishWaking('connecting'), false)
+  assert.equal(desktopCanFinishWaking('hidden'), false)
 })
 
 test('starts the timeout after both interaction and work have ended', () => {

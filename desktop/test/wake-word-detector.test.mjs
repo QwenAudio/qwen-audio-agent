@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { pcm16Base64ToFloat32 } from '../src/voice/wake-word/sherpa-detector.mjs'
+import { pcm16Base64ToFloat32 } from '../src/wake-word/sherpa-detector.mjs'
 
 test('converts little-endian PCM16 audio into normalized float samples', () => {
   const pcm = Buffer.alloc(8)

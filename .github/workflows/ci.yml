@@ -54,3 +54,20 @@ jobs:
           registry-url: https://registry.npmjs.org/
       - run: npm ci
       - run: npm run release:check
+
+  # One stable branch-protection context. The matrix job names change whenever
+  # the supported OS/Node set changes; this aggregate keeps main protection
+  # bound to the complete CI result instead of a fragile list of matrix names.
+  required:
+    name: required
+    if: ${{ always() }}
+    needs: [test, release-check]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify all required jobs
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          RELEASE_CHECK_RESULT: ${{ needs.release-check.result }}
+        run: |
+          test "$TEST_RESULT" = success
+          test "$RELEASE_CHECK_RESULT" = success

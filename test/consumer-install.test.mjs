@@ -241,7 +241,6 @@ async function main() {
   const gateway = api.createGatewayProcess({
     configDir,
     backend: 'none',
-    wakeWord: false,
     preferredPort: 0,
     forkImpl: (entry, args, options) => fork(entry, args, {
       ...options,

@@ -21,11 +21,10 @@ import DomainLibraryPanel from './DomainLibraryPanel.jsx'
 import { desktopOrbClassName, resolveOrbVisualState } from './orb-presentation.js'
 import {
   isBuiltinOrbSkin,
-  resolveOrbSkinId,
 } from '../../shared/orb-skin-catalog.mjs'
 import { supportsComposerInput } from '../../shared/client-input-capabilities.mjs'
 import { resultLabel } from './presentation.js'
-import { t } from './i18n.js'
+import { setRuntimeLanguage, t } from './i18n.js'
 import {
   removeDeliveredTask,
   removeTaskInPhase,
@@ -45,10 +44,10 @@ import { requestedSessionId } from './session.js'
 import { initialVoiceEnabled } from './voice-defaults.js'
 import {
   applyDesktopClientState,
-  desktopAutoHideSeconds,
+  desktopCanFinishWaking,
   desktopCanHide,
   desktopHideDeadline,
-  desktopWakeWordEnabled,
+  desktopTasksActive,
   desktopWorkSettled,
   desktopTasksWorking,
   performDesktopClientAction,
@@ -66,6 +65,10 @@ import {
   spriteAnimationEventForGatewayEvent,
   spriteAnimationForEvent,
 } from './sprite-orb.js'
+import {
+  applyDesktopClientSettings,
+  initialDesktopClientSettings,
+} from './desktop-client-settings.js'
 
 const desktopOrbMode = (
   new URLSearchParams(window.location.search).get('desktop') === 'orb'
@@ -75,15 +78,6 @@ const initialDesktopSurfaceMode = (
     ? 'panel'
     : 'orb'
 )
-const takeoverRequested = (
-  new URLSearchParams(window.location.search).get('takeover') === '1'
-)
-const orbSkinId = resolveOrbSkinId({
-  orbSkin: new URLSearchParams(window.location.search).get('orbSkin'),
-  orbStyle: new URLSearchParams(window.location.search).get('orbStyle'),
-})
-const autoHideSeconds = desktopAutoHideSeconds(window.location.search)
-const wakeWordEnabled = desktopWakeWordEnabled(window.location.search)
 const composerEnabled = supportsComposerInput(desktopOrbMode ? 'desktop' : 'web')
 
 function getSessionId() {
@@ -166,6 +160,18 @@ function upsertTask(items, taskId, update, fallback) {
 }
 
 export default function App() {
+  const [desktopClientSettings, setDesktopClientSettings] = useState(
+    () => initialDesktopClientSettings(window.location.search),
+  )
+  const {
+    orbSkinId,
+    autoHideSeconds,
+    wakeWordEnabled,
+  } = desktopClientSettings
+  // `t()` reads the module-level runtime language. Keeping a revision in
+  // React state makes a language-only settings update repaint this surface
+  // without replacing its Gateway WebSocket or Realtime Session.
+  const [, setLanguageRevision] = useState(0)
   const [sessionId, setSessionId] = useState(getSessionId)
   const [voiceEnabled, setVoiceEnabled] = useState(() => initialVoiceEnabled({
     desktopOrbMode,
@@ -205,7 +211,6 @@ export default function App() {
     initialDesktopSurfaceMode,
   )
   const [lastInteractionAt, setLastInteractionAt] = useState(Date.now)
-  const [workSettledAt, setWorkSettledAt] = useState(Date.now)
   const activeVoiceResponse = useRef('')
   const currentTurnId = useRef('')
   const responseTurnMap = useRef(new Map())
@@ -216,14 +221,33 @@ export default function App() {
   const orbDrag = useRef(null)
   const spriteAnimationCueId = useRef(0)
   const runtimeReadyAnnounced = useRef(false)
-  const previousWorkSettled = useRef(true)
-  const workSettledAtRef = useRef(workSettledAt)
+  const previousTasksActive = useRef(false)
+  const workSettledAtRef = useRef(Date.now())
+  const autoHideStateRef = useRef(null)
+  const autoHideRequestedDeadlineRef = useRef(0)
   const lastWakeAtRef = useRef(0)
   const previousDesktopLifecycle = useRef('active')
   const gatewayCommandsRef = useRef(null)
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
   const spriteAnimationCue = spriteAnimationCues[0] || null
+
+  useEffect(() => {
+    if (!desktopOrbMode) return undefined
+    const bridge = window.qwenAudioAgentDesktop
+    if (typeof bridge?.onClientSettings !== 'function') return undefined
+    return bridge.onClientSettings(settings => {
+      setDesktopClientSettings(current => applyDesktopClientSettings(
+        current,
+        settings,
+      ))
+      if (settings.orbSkin) setSpriteOrbFailed(false)
+      if (settings.language) {
+        setRuntimeLanguage(settings.language)
+        setLanguageRevision(value => value + 1)
+      }
+    })
+  }, [])
 
   useEffect(() => {
     const persistSession = window.qwenAudioAgentDesktop?.setConversationSession
@@ -256,7 +280,7 @@ export default function App() {
     setSpriteAnimationCues(current => (
       priority ? [cue, ...current] : [...current, cue]
     ))
-  }, [])
+  }, [orbSkinId])
 
   const completeSpriteAnimationCue = useCallback(id => {
     setSpriteAnimationCues(current => (
@@ -394,7 +418,8 @@ export default function App() {
         turnId: event.turnId,
         final,
       }))
-  }, [])
+    if (final) noteInteraction()
+  }, [noteInteraction])
 
   const updateVoiceMessage = useCallback((event, final = false) => {
     const responseId = event.responseId || activeVoiceResponse.current
@@ -420,7 +445,6 @@ export default function App() {
       triggerSpriteAnimation(animationEvent)
     }
     if (event.type === 'turn.started') {
-      noteInteraction()
       currentTurnId.current = event.turnId || ''
       activeVoiceResponse.current = ''
       stickToBottom.current = true
@@ -725,7 +749,6 @@ export default function App() {
     sessionId,
     updateUserTranscript,
     updateVoiceMessage,
-    noteInteraction,
     voiceEnabled,
     waitingForVoice,
     triggerSpriteAnimation,
@@ -752,7 +775,6 @@ export default function App() {
     clientType: desktopOrbMode ? 'desktop' : 'web',
     clientLabel: desktopOrbMode ? t('桌面端') : 'WebUI',
     clientStates: desktopOrbMode ? ['sleeping'] : [],
-    takeover: takeoverRequested,
     realtimeProvider: realtimeProviderForConnection(
       realtimeProvider,
       healthValidated,
@@ -767,8 +789,10 @@ export default function App() {
       desktop: desktopOrbMode,
       bridge: window.qwenAudioAgentDesktop,
       onLifecycle: setDesktopLifecycle,
-      lastWakeAt: lastWakeAtRef.current,
     }),
+    onWakeWordAudio: (audio, sampleRate) => {
+      window.qwenAudioAgentDesktop?.acceptWakeWordAudio(audio, sampleRate)
+    },
   })
   gatewayCommandsRef.current = voice
   const lifecycleTransition = (
@@ -857,19 +881,18 @@ export default function App() {
 
   const workSettled = desktopWorkSettled({
     tasks: agentTasks,
-    messages,
     voiceState: voice.visualState || voice.state,
   })
+  const tasksActive = desktopTasksActive(agentTasks)
 
   useEffect(() => {
     if (!desktopOrbMode) return
-    if (workSettled && !previousWorkSettled.current) {
+    if (!tasksActive && previousTasksActive.current) {
       const settledAt = Date.now()
       workSettledAtRef.current = settledAt
-      setWorkSettledAt(settledAt)
     }
-    previousWorkSettled.current = workSettled
-  }, [workSettled])
+    previousTasksActive.current = tasksActive
+  }, [tasksActive])
 
   useEffect(() => {
     if (!desktopOrbMode) return undefined
@@ -887,7 +910,13 @@ export default function App() {
       setDesktopLifecycle(lifecycle.state)
       if (lifecycle.state === 'waking') lastWakeAtRef.current = Date.now()
       if (lifecycle.reason === 'activity') noteInteraction()
-      if (lifecycle.state === 'hidden') setActivity(t('已隐藏'))
+      if (lifecycle.state === 'hidden') {
+        // Main has already collapsed a visible conversation panel before an
+        // explicit sleep. Mirror that authoritative surface transition so a
+        // later wake cannot render the panel inside the compact orb window.
+        setDesktopSurfaceMode('orb')
+        setActivity(t('已隐藏'))
+      }
       if (lifecycle.state === 'waking') setActivity(t('正在显示悬浮球'))
       if (lifecycle.state === 'active' && lifecycle.reason === 'ready') {
         setActivity(t('待命'))
@@ -908,22 +937,19 @@ export default function App() {
 
   useEffect(() => {
     if (!desktopOrbMode || desktopLifecycle !== 'waking') return
-    const ready = (
-      voice.connectionState === 'connected'
-      && (!voiceEnabled || voice.inputReady)
-    )
-    if (ready || voice.connectionState === 'unavailable') {
+    // Presence readiness describes whether the desktop surface can finish
+    // waking, not whether microphone capture has initialized. Keeping those
+    // lifecycles separate prevents a slow/denied microphone from leaving the
+    // orb permanently in `waking`, which would also disable inactivity sleep.
+    if (desktopCanFinishWaking(voice.connectionState)) {
       window.qwenAudioAgentDesktop?.lifecycleReady()
     }
   }, [
     desktopLifecycle,
     voice.connectionState,
-    voice.inputReady,
-    voiceEnabled,
   ])
 
-  // 快捷键/托盘唤起只恢复窗口；Gateway 若在休眠，前台连接会停在 sleeping，
-  // 需要显式唤醒才能走到 connected，否则悬浮球永远无法就绪。
+  // 快捷键/托盘唤起恢复 Gateway presence；Realtime 连接在休眠期间保持。
   const wakeGateway = voice.wake
   const publishClientEvent = voice.publishClientEvent
   useEffect(() => {
@@ -931,39 +957,45 @@ export default function App() {
     wakeGateway()
   }, [desktopLifecycle, wakeGateway])
 
-  useEffect(() => {
-    if (
-      !desktopOrbMode
-      || desktopSurfaceMode === 'panel'
-      || autoHideSeconds === 0
-    ) return undefined
-    if (!desktopCanHide({
-      settled: workSettled,
-      connectionState: voice.connectionState,
-      visualError: voice.visualError,
-      lifecycle: desktopLifecycle,
-    })) return undefined
-    const deadline = desktopHideDeadline({
-      lastInteractionAt,
-      workSettledAt: workSettledAtRef.current,
-      timeoutSeconds: autoHideSeconds,
-    })
-    const timer = setTimeout(() => {
-      publishClientEvent('desktop.presence.sleep_requested', {
-        idle_ms: autoHideSeconds * 1000,
-      })
-    }, Math.max(0, deadline - Date.now()))
-    return () => clearTimeout(timer)
-  }, [
+  autoHideStateRef.current = {
     desktopLifecycle,
     desktopSurfaceMode,
     lastInteractionAt,
-    publishClientEvent,
-    voice.connectionState,
-    voice.visualError,
+    connectionState: voice.connectionState,
+    visualError: voice.visualError,
     workSettled,
-    workSettledAt,
-  ])
+  }
+
+  useEffect(() => {
+    if (!desktopOrbMode || autoHideSeconds === 0) return undefined
+    const check = () => {
+      const current = autoHideStateRef.current
+      if (!current || current.desktopSurfaceMode === 'panel') return
+      if (!desktopCanHide({
+        settled: current.workSettled,
+        connectionState: current.connectionState,
+        visualError: current.visualError,
+        lifecycle: current.desktopLifecycle,
+      })) return
+      const deadline = desktopHideDeadline({
+        lastInteractionAt: current.lastInteractionAt,
+        workSettledAt: workSettledAtRef.current,
+        timeoutSeconds: autoHideSeconds,
+      })
+      if (
+        Date.now() < deadline
+        || autoHideRequestedDeadlineRef.current === deadline
+      ) return
+      if (publishClientEvent('desktop.presence.sleep_requested', {
+        idle_ms: autoHideSeconds * 1000,
+      })) {
+        autoHideRequestedDeadlineRef.current = deadline
+      }
+    }
+    const timer = setInterval(check, 1_000)
+    check()
+    return () => clearInterval(timer)
+  }, [autoHideSeconds, publishClientEvent])
 
   // Switching the front end reconnects on its own: realtimeProvider is part of
   // the realtime effect's dependencies, so changing it tears the current socket
@@ -1013,7 +1045,7 @@ export default function App() {
 
   const enableVoice = () => {
     if (!voice.activateAudio()) return
-    if (voice.ownership.state === 'busy' && !takeoverRequested) {
+    if (voice.ownership.state === 'busy') {
       setWaitingForVoice(true)
       setActivity(t('等待{holder}释放语音', { holder: ownershipLabel || t('其他入口') }))
       return

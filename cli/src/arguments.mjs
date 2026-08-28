@@ -120,7 +120,6 @@ export function parseArguments(argv, env = process.env) {
     skillNames: [],
     skillList: false,
     openBrowser: true,
-    takeover: false,
     json: false,
     yes: false,
     backendSpecified: false,
@@ -164,7 +163,6 @@ export function parseArguments(argv, env = process.env) {
     else if (argument === '--skill') {
       options.skillNames.push(nextValue(args, index++, '--skill'))
     } else if (argument === '--list') options.skillList = true
-    else if (argument === '--takeover') options.takeover = true
     else if (argument === '--json') options.json = true
     else if (argument === '--yes' || argument === '-y') options.yes = true
     else if (argument === '--help' || argument === '-h') options.help = true
@@ -231,9 +229,6 @@ export function parseArguments(argv, env = process.env) {
   }
   if (command !== 'webui' && !options.openBrowser) {
     throw new Error('--no-open 只适用于 webui')
-  }
-  if (!['tui', 'webui'].includes(command) && options.takeover) {
-    throw new Error('--takeover 只适用于 tui 或 webui')
   }
   if (command !== 'setup' && options.json) {
     throw new Error('--json 只适用于 setup')
@@ -327,7 +322,6 @@ export function helpText() {
     '界面选项：',
     '  --session ID           复用指定语音会话',
     '  --audio-mode MODE      Linux / Windows 使用 half（默认）或 full',
-    '  --takeover             接管当前语音控制权',
     '  --no-open              WebUI 只打印地址，不打开浏览器',
     '  -h, --help             显示帮助',
     '',

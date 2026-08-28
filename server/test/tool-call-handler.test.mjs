@@ -284,6 +284,27 @@ test('asks a capable client to enter sleep without creating another response', a
   assert.equal(kit.outputs[0][3].createResponse, false)
 })
 
+test('creates a response only when the client fails to enter sleep', async () => {
+  const error = Object.assign(new Error('window could not be hidden'), {
+    code: 'desktop_hide_failed',
+  })
+  const kit = harness({
+    presenceController: {
+      supportsSleep: () => true,
+      requestSleep: async () => { throw error },
+    },
+  })
+
+  await kit.handler.handle({
+    call_id: 'call-hide-failed',
+    name: 'enter_sleep',
+    arguments: '{}',
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(kit.outputs[0][1].error_code, 'desktop_hide_failed')
+  assert.equal(kit.outputs[0][3].createResponse, true)
+})
+
 test('executes only retrieval tools advertised by the injected frontend runtime', async () => {
   const calls = []
   const kit = harness({
@@ -383,6 +404,7 @@ test('rejects sleep when the client does not advertise the action', async () => 
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
   assert.equal(kit.outputs[0][1].error_code, 'client_action_unsupported')
+  assert.equal(kit.outputs[0][3].createResponse, true)
 })
 
 test('fails closed for tools absent from the frontend registry', async () => {

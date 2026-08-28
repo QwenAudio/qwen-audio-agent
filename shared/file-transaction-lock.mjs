@@ -67,6 +67,11 @@ function acquire(filePath, {
           { encoding: 'utf8', mode: 0o600 },
         )
       } catch (error) {
+        // Another contender may have reclaimed a just-created lock directory
+        // after observing it before owner.json was written. Treat that narrow
+        // initialization race like a lost acquire attempt instead of failing
+        // the caller's transaction.
+        if (error?.code === 'ENOENT') continue
         rmSync(lockPath, { recursive: true, force: true })
         throw error
       }

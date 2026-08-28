@@ -142,7 +142,17 @@ const translations = {
   '打开链接': 'Open link',
 }
 
+let runtimeLanguage = ''
+
+export function setRuntimeLanguage(language = '') {
+  runtimeLanguage = String(language || '').trim()
+  if (typeof document !== 'undefined' && runtimeLanguage) {
+    document.documentElement.lang = isChinese(runtimeLanguage) ? 'zh-CN' : 'en'
+  }
+}
+
 function currentLanguage() {
+  if (runtimeLanguage) return runtimeLanguage
   try {
     const requested = new URLSearchParams(globalThis.location?.search || '').get('lang')
     if (requested) return requested

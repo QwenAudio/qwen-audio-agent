@@ -1102,6 +1102,8 @@ export class ToolCallHandler {
         callId,
         failure('client_action_unsupported', '当前入口不支持休眠。'),
         turnId,
+        null,
+        { createResponse: true },
       )
       return
     }
@@ -1123,6 +1125,8 @@ export class ToolCallHandler {
           { retryable: true },
         ),
         turnId,
+        null,
+        { createResponse: true },
       )
     }
   }

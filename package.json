@@ -150,8 +150,6 @@
     "docs/voice-frontends/qwen-omni-realtime.zh.md",
     "docs/scenarios/smart-cockpit.md",
     "docs/scenarios/smart-cockpit.zh.md",
-    "docs/scenarios/customer-service.md",
-    "docs/scenarios/customer-service.zh.md",
     "server/src/",
     "server/package.json",
     "shared/",

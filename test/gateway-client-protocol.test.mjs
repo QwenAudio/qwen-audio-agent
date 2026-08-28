@@ -43,6 +43,12 @@ test('publishes a frozen capability vocabulary and only advertises implemented s
     ),
     true,
   )
+  assert.equal(
+    GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(
+      GatewayClientCapability.SESSION_REPLAY,
+    ),
+    true,
+  )
 })
 
 test('validates the 6.0 envelope and rejects duplicate capabilities', () => {
@@ -143,6 +149,24 @@ test('validates runtime commands, Client Actions and correlated results', () => 
     request_event_id: action.event_id,
     status: 'failed',
   }))
+
+  const replay = parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.SESSION_REPLAY,
+    event_id: 'evt_client_replay',
+    after_sequence: 12,
+    limit: 200,
+  })
+  assert.equal(replay.after_sequence, 12)
+  assert.equal(
+    gatewayClientProtocolCapabilityFor(replay.type),
+    GatewayClientCapability.SESSION_REPLAY,
+  )
+  assert.throws(() => parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.SESSION_REPLAY,
+    event_id: 'evt_client_replay_unbounded',
+    after_sequence: 0,
+    limit: 201,
+  }))
 })
 
 test('normalizes 6.0 event names into the existing business event vocabulary', () => {
@@ -190,13 +214,25 @@ test('6.0 hello and 5.x connect enter the same legacy business path', () => {
       GatewayClientCapability.INPUT_TEXT,
       GatewayClientCapability.CLIENT_EVENTS,
     ],
+    connection: {
+      voice_enabled: true,
+      input_enabled: false,
+      output_enabled: true,
+      text_only: false,
+      provider: 'dashscope',
+      working_directory: '/tmp/client-project',
+      client_states: ['active'],
+    },
   })
   const accepted = modern.receive(hello)
   assert.equal(accepted.event.type, 'connect')
   assert.equal(accepted.event.clientType, 'desktop')
-  assert.equal(accepted.event.inputEnabled, true)
+  assert.equal(accepted.event.inputEnabled, false)
   assert.equal(accepted.event.outputEnabled, true)
   assert.equal(accepted.event.textOnly, false)
+  assert.equal(accepted.event.provider, 'dashscope')
+  assert.equal(accepted.event.workingDirectory, '/tmp/client-project')
+  assert.deepEqual(accepted.event.clientStates, ['active'])
   assert.deepEqual(accepted.reply.capabilities, [
     GatewayClientCapability.INPUT_AUDIO,
     GatewayClientCapability.INPUT_TEXT,

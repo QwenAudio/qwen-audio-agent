@@ -220,6 +220,7 @@ export default function App() {
   const workSettledAtRef = useRef(workSettledAt)
   const lastWakeAtRef = useRef(0)
   const previousDesktopLifecycle = useRef('active')
+  const gatewayCommandsRef = useRef(null)
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
   const spriteAnimationCue = spriteAnimationCues[0] || null
@@ -278,15 +279,9 @@ export default function App() {
       }),
     ))
     try {
-      const response = await fetch(
-        `api/permissions/${encodeURIComponent(permission.id)}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ decision }),
-        },
-      )
-      if (response.status === 404 || response.status === 409) {
+      await gatewayCommandsRef.current?.respondPermission(permission.id, decision)
+    } catch (error) {
+      if (['permission_not_found', 'task_not_found'].includes(error.code)) {
         setAgentTasks(items => upsertTask(
           items,
           taskId,
@@ -294,11 +289,6 @@ export default function App() {
         ))
         return
       }
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({}))
-        throw new Error(payload.error || t('请求失败（{status}）', { status: response.status }))
-      }
-    } catch (error) {
       setAgentTasks(items => upsertTask(
         items,
         taskId,
@@ -464,43 +454,30 @@ export default function App() {
     ) {
       window.qwenAudioAgentDesktop?.wake()
     }
-    if (event.type === 'gateway.connected') {
-      fetch(`api/conversations/${encodeURIComponent(sessionId)}/messages`)
-        .then(response => response.ok ? response.json() : Promise.reject())
-        .then(payload => {
-          if (sessionIdRef.current !== sessionId) return
-          setMessages(items => mergeConversationHistory(items, payload.messages))
+    if (event.type === 'session.recovered') {
+      if (sessionIdRef.current !== sessionId) return
+      setMessages(items => mergeConversationHistory(items, event.messages || []))
+      const serverTasks = event.tasks || []
+      const byId = new Map(serverTasks.map(task => [task.id, task]))
+      setAgentTasks(items => {
+        const known = new Set(items.map(task => task.id))
+        const reconciled = items.flatMap(task => {
+          const current = byId.get(task.id)
+          if (current && taskDeliverySettled(current)) return []
+          if (current) return [taskView(current, task)]
+          if (task.phase !== 'disconnected') return [task]
+          return [{
+            ...task,
+            phase: 'failed',
+            error: t('网关重连后未找到这次后台执行，请重新提交。'),
+          }]
         })
-        .catch(() => {})
-      fetch(`api/tasks?sessionId=${encodeURIComponent(sessionId)}`)
-        .then(response => response.ok ? response.json() : Promise.reject())
-        .then(payload => {
-          const serverTasks = payload.tasks || []
-          const byId = new Map(serverTasks.map(task => [task.id, task]))
-          setAgentTasks(items => {
-            const known = new Set(items.map(task => task.id))
-            const reconciled = items.flatMap(task => {
-              const current = byId.get(task.id)
-              if (current && taskDeliverySettled(current)) return []
-              if (current) return [taskView(current, task)]
-              if (task.phase !== 'disconnected') return [task]
-              return [{
-                ...task,
-                phase: 'failed',
-                error: t('网关重连后未找到这次后台执行，请重新提交。'),
-              }]
-            })
-            serverTasks
-              .filter(task => (
-                taskNeedsPresentation(task)
-                && !known.has(task.id)
-              ))
-              .reverse()
-              .forEach(task => reconciled.push(taskView(task)))
-            return reconciled
-          })
-        })
-        .catch(() => {})
+        serverTasks
+          .filter(task => taskNeedsPresentation(task) && !known.has(task.id))
+          .reverse()
+          .forEach(task => reconciled.push(taskView(task)))
+        return reconciled
+      })
     }
     if (event.type === 'voice.deactivated') {
       setVoiceEnabled(false)
@@ -793,6 +770,7 @@ export default function App() {
       lastWakeAt: lastWakeAtRef.current,
     }),
   })
+  gatewayCommandsRef.current = voice
   const lifecycleTransition = (
     desktopOrbMode && desktopLifecycle !== 'active'
   )
@@ -1423,6 +1401,7 @@ export default function App() {
     <section className="workspace">
       {showDomainLibrary && <DomainLibraryPanel
         onClose={() => setShowDomainLibrary(false)}
+        getTask={voice.getTask}
       />}
       <div className="hero">
         <button

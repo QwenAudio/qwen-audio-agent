@@ -10,9 +10,10 @@ import {
 } from '../../shared/gateway-client-state.mjs'
 import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
 import {
-  createGatewayProtocolEventId,
   GatewayClientProtocolEvent,
 } from '../../shared/gateway-client-protocol.mjs'
+import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
+import { gatewayReferenceClientCapabilities } from '../../shared/gateway-client-profiles.mjs'
 import { decodePcm, pcmBase64, resample } from './audio.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
 import { t } from './i18n.js'
@@ -67,6 +68,10 @@ export function realtimeClientMode({
     // it must not claim voice ownership.
     outputEnabled: textOnly || inputOnlyMute === true || inputEnabled,
   }
+}
+
+export function gatewayClientCapabilities({ clientType = 'web' } = {}) {
+  return gatewayReferenceClientCapabilities(clientType)
 }
 
 // Keeps a persisted front end selection only while the server still offers it.
@@ -567,28 +572,83 @@ export default function useRealtimeVoice({
       setVisualError(false)
       return undefined
     }
-    let disposed = false
-    let reconnectTimer
-    let reconnectDelay = 500
     const mutedResponses = mutedPlaybackResponses.current
-    const connect = () => {
-      if (disposed) return
-      const socket = new WebSocket(socketUrl(sessionId))
-      socketRef.current = socket
-      socket.onopen = () => {
-        reconnectDelay = 500
+    const handleEvent = event => {
+      dispatchClientState(event)
+      if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
+        inputSampleRate.current = event.inputSampleRate
+        hasConnectedRef.current = true
         setError('')
         setVisualError(false)
-        const connectedEvent = { type: GatewayServerEvent.GATEWAY_CONNECTED }
-        dispatchClientState(connectedEvent)
-        eventRef.current?.(connectedEvent)
+        flushPendingManualInputs()
+      }
+      if (event.type === GatewayServerEvent.VOICE_CONNECTION) {
+        if (event.state === 'connected') {
+          hasConnectedRef.current = true
+          setError('')
+          setVisualError(false)
+          flushPendingManualInputs()
+        } else if (event.state === 'unavailable') {
+          setError(event.message || t('语音前台连接异常，正在重试'))
+          setVisualError(true)
+        }
+      }
+      if (event.type === GatewayServerEvent.TURN_STARTED) {
+        currentTurnId.current = event.turnId || ''
+        if (
+          manualInputPendingRef.current
+          && String(event.turnId || '').startsWith('text_')
+        ) {
+          manualInputTurnRef.current = event.turnId
+        }
+      }
+      if (releasesManualInputGuard(event, manualInputTurnRef.current)) {
+        releaseManualInputGuard()
+      }
+      if (
+        event.type === GatewayServerEvent.VOICE_STATE
+        && acceptsVoiceState(event, currentTurnId.current)
+        && event.state === 'listening'
+      ) {
+        stopPlayback('user_interruption')
+      }
+      if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
+        stopPlayback(event.reason || '')
+      }
+      if (event.type === GatewayServerEvent.AUDIO_DELTA) {
+        if (outputMutedRef.current || !audioRef.current) {
+          consumeMutedAudio(event.responseId)
+        } else {
+          play(event.audio, event.sampleRate, event.responseId)
+        }
+      }
+      if (event.type === GatewayServerEvent.AUDIO_DONE) {
+        if (mutedPlaybackResponses.current.has(event.responseId)) {
+          finishMutedAudio(event.responseId)
+        } else {
+          markAudioDone(event.responseId)
+        }
+      }
+      if (event.type === GatewayServerEvent.ERROR) setError(event.message)
+      eventRef.current?.(event)
+    }
+    const client = new GatewayClient({
+      url: socketUrl(sessionId),
+      createSocket: url => new WebSocket(url),
+      clientType,
+      clientLabel,
+      clientInstanceId: clientInstanceId.current,
+      capabilities: gatewayClientCapabilities({ clientType }),
+      locale: navigator.language,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      configure: () => {
         const mode = realtimeClientMode({
           enabled: enabledRef.current,
           inputReady: inputReadyRef.current,
           inputOnlyMute,
           wakeWordOnly: wakeWordOnlyRef.current,
         })
-        socket.send(JSON.stringify({
+        return {
           type: GatewayClientEvent.CONNECT,
           timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           locale: navigator.language,
@@ -607,145 +667,52 @@ export default function useRealtimeVoice({
           takeover,
           // Empty means "keep the server default front end".
           ...(realtimeProvider ? { provider: realtimeProvider } : {}),
-        }))
-      }
-      socket.onmessage = async message => {
-        let event
-        try {
-          event = JSON.parse(message.data)
-        } catch {
-          return
         }
-        if (event.type === GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST) {
-          let result
-          try {
-            result = await clientActionRef.current?.(event)
-          } catch (error) {
-            result = {
-              status: 'failed',
-              error: {
-                code: 'client_action_failed',
-                message: String(error?.message || error).slice(0, 500),
-              },
-            }
-          }
-          const normalized = result?.status ? result : {
-            status: 'unsupported',
-            error: {
-              code: 'client_action_unsupported',
-              message: `Unsupported Client Action: ${String(event.name || '')}`,
-            },
-          }
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-              type: GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
-              event_id: createGatewayProtocolEventId('client'),
-              request_event_id: event.event_id,
-              status: normalized.status,
-              ...(normalized.output === undefined
-                ? {}
-                : { output: normalized.output }),
-              ...(normalized.error ? { error: normalized.error } : {}),
-            }))
-          }
-          return
-        }
-        dispatchClientState(event)
-        if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
-          inputSampleRate.current = event.inputSampleRate
-          hasConnectedRef.current = true
+      },
+      onEvent: handleEvent,
+      onAction: event => clientActionRef.current?.(event),
+      onRecovery: recovery => eventRef.current?.({
+        type: 'session.recovered',
+        ...recovery,
+      }),
+      onStatus: status => {
+        if (status.state === 'connected') {
           setError('')
           setVisualError(false)
-          flushPendingManualInputs()
-        }
-        if (event.type === GatewayServerEvent.VOICE_CONNECTION) {
-          if (event.state === 'connected') {
-            hasConnectedRef.current = true
-            setError('')
-            setVisualError(false)
-            flushPendingManualInputs()
-          } else if (event.state === 'unavailable') {
-            setError(event.message || t('语音前台连接异常，正在重试'))
-            setVisualError(true)
-          }
-        }
-        if (event.type === GatewayServerEvent.TURN_STARTED) {
-          currentTurnId.current = event.turnId || ''
-          if (
-            manualInputPendingRef.current
-            && String(event.turnId || '').startsWith('text_')
-          ) {
-            manualInputTurnRef.current = event.turnId
-          }
-        }
-        if (releasesManualInputGuard(event, manualInputTurnRef.current)) {
-          releaseManualInputGuard()
-        }
-        if (event.type === GatewayServerEvent.VOICE_STATE) {
-          if (acceptsVoiceState(event, currentTurnId.current)) {
-            if (event.state === 'listening') {
-              stopPlayback('user_interruption')
-            }
-          }
-        }
-        if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
-          stopPlayback(event.reason || '')
-        }
-        if (event.type === GatewayServerEvent.AUDIO_DELTA) {
-          if (outputMutedRef.current || !audioRef.current) {
-            consumeMutedAudio(event.responseId)
-          } else {
-            play(event.audio, event.sampleRate, event.responseId)
-          }
-        }
-        if (event.type === GatewayServerEvent.AUDIO_DONE) {
-          if (mutedPlaybackResponses.current.has(event.responseId)) {
-            finishMutedAudio(event.responseId)
-          } else {
-            markAudioDone(event.responseId)
-          }
-        }
-        if (event.type === GatewayServerEvent.ERROR) setError(event.message)
-        eventRef.current?.(event)
-      }
-      socket.onerror = () => {
-        if (!disposed) {
+          const connectedEvent = { type: GatewayServerEvent.GATEWAY_CONNECTED }
+          dispatchClientState(connectedEvent)
+          eventRef.current?.(connectedEvent)
+        } else if (status.state === 'unavailable') {
           dispatchClientState({
             type: GatewayServerEvent.VOICE_CONNECTION,
             state: 'unavailable',
           })
           setError(t('实时语音连接中断，正在重连'))
           setVisualError(true)
-        }
-      }
-      socket.onclose = () => {
-        if (socketRef.current === socket) socketRef.current = null
-        if (disposed) return
-        releaseManualInputGuard()
-        stopPlayback()
-        const disconnectedEvent = {
+        } else if (status.state === 'disconnected') {
+          releaseManualInputGuard()
+          stopPlayback()
+          const disconnectedEvent = {
           type: GatewayServerEvent.GATEWAY_DISCONNECTED,
         }
         dispatchClientState(disconnectedEvent)
-        setError(t('实时语音连接中断，正在重连'))
-        setVisualError(true)
-        eventRef.current?.(disconnectedEvent)
-        reconnectTimer = setTimeout(connect, reconnectDelay)
-        reconnectDelay = Math.min(5000, reconnectDelay * 2)
+          setError(t('实时语音连接中断，正在重连'))
+          setVisualError(true)
+          eventRef.current?.(disconnectedEvent)
+        }
       }
-    }
+    })
+    socketRef.current = client
     setError('')
     dispatchClientState({
       type: GatewayServerEvent.VOICE_CONNECTION,
       state: 'connecting',
     })
-    connect()
+    client.start()
 
     return () => {
-      disposed = true
-      clearTimeout(reconnectTimer)
       stopPlayback(suspended ? 'desktop_hidden' : 'connection_closed')
-      socketRef.current?.close()
+      client.stop()
       socketRef.current = null
       mutedResponses.clear()
       releaseManualInputGuard()
@@ -913,6 +880,35 @@ export default function useRealtimeVoice({
     })
   ), [sendSocketEvent])
 
+  const requestGateway = useCallback((type, payload = {}) => {
+    const client = socketRef.current
+    if (!client?.request) {
+      return Promise.reject(Object.assign(new Error('Gateway 尚未连接'), {
+        code: 'client_not_ready',
+      }))
+    }
+    return client.request(type, payload)
+  }, [])
+  const listTasks = useCallback(options => requestGateway(
+    GatewayClientProtocolEvent.TASK_LIST,
+    options,
+  ).then(result => result.tasks), [requestGateway])
+  const getTask = useCallback(taskId => requestGateway(
+    GatewayClientProtocolEvent.TASK_GET,
+    { task_id: taskId },
+  ).then(result => result.task), [requestGateway])
+  const cancelTask = useCallback(taskId => requestGateway(
+    GatewayClientProtocolEvent.TASK_CANCEL,
+    { task_id: taskId },
+  ).then(result => result.task), [requestGateway])
+  const respondPermission = useCallback((permissionId, decision) => requestGateway(
+    GatewayClientProtocolEvent.PERMISSION_RESPOND,
+    { permission_id: permissionId, decision },
+  ).then(result => result.permission), [requestGateway])
+  const conversationHistory = useCallback(() => requestGateway(
+    GatewayClientProtocolEvent.CONVERSATION_HISTORY,
+  ).then(result => result.messages), [requestGateway])
+
   const sendInput = useCallback(parts => {
     holdManualInputGuard()
     const event = {
@@ -946,5 +942,10 @@ export default function useRealtimeVoice({
     wake,
     publishClientEvent,
     sendInput,
+    listTasks,
+    getTask,
+    cancelTask,
+    respondPermission,
+    conversationHistory,
   }
 }

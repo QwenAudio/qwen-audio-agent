@@ -25,7 +25,7 @@ Backend Agent
 
 仓库已经具备：
 
-- 一条 WebSocket 承载语音、文本、播放回执、Task 与状态；
+- 一条 WebSocket 承载语音、文本、播放回执、Task 与状态，但部分运行时命令仍使用内部 REST/SSE 路由；
 - 共享事件常量和 Zod 消息 Schema；
 - 独立用户输入 Runtime；
 - 规范化 BackendPort Event 与 Task Projection；
@@ -39,6 +39,7 @@ Backend Agent
 - Desktop capability 与休眠仍然存在特殊分支；
 - 缺少通用 Client-to-Gateway 语义事件 API；
 - 缺少通用 Gateway-to-Client Action/Result 契约；
+- Task 控制、权限决策、对话历史和恢复仍分散在 WebSocket 与内部 REST/SSE 路由；
 - 用户输入、Task 播报、权限和 Gateway Trigger 尚未共享统一语义 Event/Delivery 边界；
 - 缺少 6.0 握手、事件关联和完整 Client conformance suite。
 
@@ -50,14 +51,18 @@ Backend Agent
 4. 模型是否感知、何时回复由 Gateway Policy 决定。
 5. 语义事件先投影成 Provider 无关 Agent Delivery，再编码成 Provider 协议。
 6. 模型可见的 Client 工具来自协商后的 Client Action capability。
-7. 所有第一方 Client 完成迁移前，每个阶段保持向后兼容。
-8. 每个阶段使用独立可审查 PR，并关联 issue #251。
+7. 使用一条 WebSocket 作为运行时控制面；REST 只保留发现、健康检查、静态配置和 Host 管理。
+8. 所有公开 Gateway 类型由本协议定义；语义一致时，可以刻意对齐外部标准中熟悉的字段名和 payload 形状。
+9. 上下文来源放在单一活动 Client 后面，不增加第二种连接角色。
+10. 所有第一方 Client 完成迁移前，每个阶段保持向后兼容。
+11. 每个阶段使用独立可审查 PR，并关联 issue #251。
 
 ## GCP0 — 固化契约
 
 - [ ] 合并中英文协议和本 Roadmap。
 - [ ] 记录当前 5.x 别名与 characterization coverage。
 - [ ] 将协议文档加入公开契约索引。
+- [ ] 固化标准对齐映射、WebSocket 运行时命令面和单 Client 上下文来源决策。
 
 完成条件：术语、单 Client 所有权、Event/Action 语义、路由模式、休眠汇合与迁移策略可以在一个位置完整评审。
 
@@ -66,20 +71,23 @@ Backend Agent
 - [ ] 增加包含 `event_id`、`request_event_id`、回放 `sequence` 的 6.0 Schema。
 - [ ] 增加 `session.hello` / `session.ready` 协商。
 - [ ] 增加 Client Event、Client Action 和回放 capability。
+- [ ] 增加 Task 命令、权限决策和对话历史 capability。
 - [ ] 通过归一化层继续支持 5.x `connect` 和旧事件别名。
 - [ ] 发布共享 Parser 与 Client SDK Helper。
 
 完成条件：5.x 与 6.0 参考 Client 可以连接同一个 Gateway，且不分叉业务逻辑。
 
-## GCP2 — Client Event Ingress
+## GCP2 — Client Event Ingress 与运行时命令
 
 - [ ] 增加 Client Event Definition Registry。
 - [ ] 增加 `GatewayEventRouter` 与 `client.event.publish/result`。
+- [ ] 增加 `task.create/get/list/cancel`、`permission.respond` 与 `conversation.history` 的 WebSocket Schema 和 Handler。
+- [ ] 即时命令结果通过 `request_event_id` 关联；后续 Task 与权限变化继续通过普通、可回放事件流发布。
 - [ ] 在连接边界填写可信来源身份。
 - [ ] 执行 Schema、大小、频率、保存、去重与合并 Policy。
 - [ ] 以 `desktop.presence.sleep_requested` 完成首个端到端事件。
 
-完成条件：Client 可以发布已注册的环境或用户行为事件，不需要伪装成用户文本，也不需要给 Gateway 增加新的条件分支。
+完成条件：Client 可以发布已注册的环境或用户行为事件，不需要伪装成用户文本，也不需要给 Gateway 增加新的条件分支；第一方运行时命令都有内部 REST 路径的 WebSocket 替代方案。
 
 ## GCP3 — Agent Delivery
 
@@ -106,6 +114,7 @@ Backend Agent
 
 - [ ] WebUI、TUI、Desktop 迁移到共享参考 Client SDK。
 - [ ] 增加有界回放与重连恢复。
+- [ ] 将 Task 控制、权限决策、对话历史和 Task 事件恢复从内部 REST/SSE 别名迁走。
 - [ ] 对所有第一方 Client 运行同一套 conformance suite。
 - [ ] 在 `docs/contract.md` 及中文版记录有测试锁定的 capability。
 - [ ] 旧别名至少经过一个明确废弃版本后再删除。
@@ -119,4 +128,4 @@ Backend Agent
 - 每个 PR 关联 issue #251，并注明所属 GCP 阶段。
 - 每个公开事件同时提交 Schema、Parser、反例测试、capability 行为与文档。
 - 删除兼容别名前，现有第一方行为必须持续通过测试。
-- 任何阶段都不能让 Realtime Provider、ACP、A2A、Electron、React 或 CoreAudio 对象跨越公开 Port。
+- 任何阶段都不能让 Realtime Provider、ACP、A2A、Electron、React 或 CoreAudio 原生协议对象跨越公开 Port；Gateway 规范明确记录的语义字段名和 payload 形状对齐除外。

@@ -1,6 +1,6 @@
 # Gateway Client Protocol
 
-> 状态：**Draft 0.3**<br>
+> 状态：**Draft 0.4**<br>
 > 目标线协议版本：**6.0.0**<br>
 > Roadmap：[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > 当前 5.x 实现事实源：`shared/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
@@ -34,7 +34,7 @@ TUI、WebUI 和桌面悬浮球是第一方参考客户端；OpenCode、Qwen Code
 5. Realtime Tool Call 是模型接口；适用的 Tool Call 由 `ClientActionPort` 映射为 Client Action。
 6. Gateway 决定事件是确定性处理、只进入模型上下文、稍后回复还是立即回复。
 7. Client Event 不能伪造 Gateway、Task、权限或后台生命周期事件。
-8. Realtime Provider 与后台协议的原生对象不能跨越本边界。
+8. Realtime Provider 与后台协议的原生协议对象不能跨越本边界。所有公开类型由 Gateway 定义；语义一致时，可以刻意对齐外部标准中熟悉的字段命名和形状。
 9. 本地静音、窗口布局、唤醒手段和渲染属于 Client；只有影响共享状态的部分进入协议。
 10. 在全部第一方客户端完成迁移并具备 conformance coverage 前，现有行为通过兼容别名继续可用。
 
@@ -57,6 +57,9 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
     "input.text",
     "input.image",
     "playback.receipts",
+    "tasks.commands",
+    "permissions.respond",
+    "conversation.history",
     "client.events",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
@@ -80,6 +83,9 @@ Gateway 返回协商后的版本与能力交集：
     "input.text",
     "input.image",
     "playback.receipts",
+    "tasks.commands",
+    "permissions.respond",
+    "conversation.history",
     "client.events",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
@@ -94,6 +100,7 @@ Gateway 返回协商后的版本与能力交集：
 - 6.0 不提供接管、踢出、并发观察或多 Client 仲裁。
 - Client 必须依据协商后的 capabilities 判断能力，不能只比较产品版本。
 - 协议版本、Client 身份和能力不能在当前连接中改变；需要改变时重连。
+- 6.0 不定义 `context_source`、`integration` 或 Observer 连接角色。车辆总线、CRM、传感器等上下文来源通过客户端侧 Adapter 接入当前活动 Client Environment，再由该 Client 校验并转发已注册的语义事件。
 
 ## 4. 通用事件信封
 
@@ -117,6 +124,8 @@ Gateway 采用扁平的 OpenAI Realtime 风格信封：
 | `occurred_at` | 已知发生时间的语义事件 | 事件源的毫秒时间戳；Gateway 另记接收时间 |
 
 即时命令结果和错误不回放。媒体增量、转写增量、心跳以及 `session.replay.result` 也不回放。
+
+命名相似是有意为之，但本文定义的 Schema 才是权威契约。复用标准字段名或兼容形状，不代表引入该标准的对象类型，也不宣称线兼容。
 
 所有控制消息使用 UTF-8 JSON 文本帧。6.0 在 JSON 中以 base64 承载 PCM 音频；未来可以通过能力协商增加二进制媒体帧，而不改变语义事件路由。
 
@@ -217,7 +226,26 @@ client.action.result
 
 Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client Environment 自己拥有的能力；其他外部系统继续使用适合的工具或 Backend Adapter。
 
-### 5.4 Gateway 状态与 Presentation
+### 5.4 运行时命令与查询
+
+活动 Client 通过同一个 WebSocket 发起运行时命令与查询。每个命令携带 `event_id`；即时 `<command>.result` 通过 `request_event_id` 关联请求。后续生命周期变化仍作为普通、可回放的服务端推送发布，不能隐藏在命令结果中。
+
+| 命令 | 方向 | 语义 |
+|---|---|---|
+| `task.create` | C→G | 显式创建异步 Task，不伪装成对话中的用户输入 |
+| `task.get` / `task.list` | C→G | 查询一个 Task，或读取有界、可筛选的 Task 快照 |
+| `task.cancel` | C→G | 请求取消一个 Task；最终状态由后续生命周期事件报告 |
+| `permission.respond` | C→G | 处理当前等待中的授权请求 |
+| `conversation.history` | C→G | 读取有界、对 Client 安全的对话投影 |
+| `session.replay` | C→G | 从 sequence 游标回放符合条件的服务端推送 |
+
+`task.create` 使用与 A2A 语义对齐的 `message.parts`，而不是另设只能传纯文本的 objective 字段。这样显式集成可以提交文本、文件或结构化 Part，同时不引入 A2A Message 原生对象。
+
+这是 Client 的运行时控制面。等价的内部 REST/SSE 路由作为迁移别名保留，直到所有第一方 Client 都改用 WebSocket 命令和回放路径。REST 仍适合启动发现、健康检查、静态配置，以及不属于活动 Client Session 的 Host 管理操作。
+
+`task.create` 是显式集成命令，不是常规语音聊天路径。对话请求仍由前台 Agent 通过工具创建 Task，以保留它的路由判断和自然承接行为。
+
+### 5.5 Gateway 状态与 Presentation
 
 Gateway 发布规范化状态，Client 不需要反向推导内部状态机：
 
@@ -229,9 +257,30 @@ Gateway 发布规范化状态，Client 不需要反向推导内部状态机：
 
 每个公开 Task 只有一个 Gateway `task_id`。ACP Session ID、A2A 远程 Task ID 和自定义 Adapter ID 留在 `BackendPort` Adapter 内部。
 
+Task 快照和更新使用 Gateway 自己的包装，但嵌套形状刻意与 A2A 语义对齐：
+
+```jsonc
+{
+  "type": "task.updated",
+  "event_id": "evt_gateway_88",
+  "sequence": 41,
+  "task_id": "task_42",
+  "status": {
+    "state": "working",
+    "message": {
+      "role": "agent",
+      "parts": [{ "text": "正在检查磁盘空间。" }]
+    }
+  },
+  "artifacts": []
+}
+```
+
+状态词汇和事件生命周期由 Gateway 定义。嵌套的 `status.state`、`status.message.parts` 和 `artifacts[].parts` 便于复用 Adapter 与 UI，但不属于 A2A 原生对象。
+
 Task 进展可以推送给 Client，但不一定进入 Realtime 模型。Gateway Event Policy 只选择有意义的进展、权限、完成和失败事件进行模型投递。
 
-### 5.5 回执与决策
+### 5.6 回执与决策
 
 | 事件 | 方向 | 语义 |
 |---|---|---|
@@ -243,7 +292,7 @@ Task 进展可以推送给 Client，但不一定进入 Realtime 模型。Gateway
 
 `response.done` 只表示生成完成，不表示用户已经听到。确实需要可听送达确认的工作流使用播放回执。
 
-### 5.6 本地静音与外部采集占用
+### 5.7 本地静音与外部采集占用
 
 本地静音只在 Client 停止麦克风输入，不断开连接、不取消 Task、不抑制输出，不需要 Gateway 事件。
 
@@ -366,28 +415,30 @@ internal
 - 内置 Action 需要 capability；扩展 Action 需要已安装且可信的 Client/Host 扩展。
 - 一个活动 Client 可以聚合多个本地传感器和环境来源，不需要增加 Gateway Socket。
 
-基础 API 使用现有 WebSocket。未来可增加带认证的 HTTP 或进程内 Ingress Adapter，将同一事件转换到 `ClientEventIngress`；它不能定义第二套语义协议，也不能占用活动 Client 槽位。
+基础 API 使用现有 WebSocket。6.0 不提供绕过活动 Client 的独立 HTTP、`context_source` 或 Integration 连接。未来部署若需要机器直接向 Gateway 投递事件，必须重新做出明确协议决策，不能悄悄演变成第二种 Client 角色。
 
 ## 10. 与外部标准的关系
 
-| 标准 | 使用方式 | 边界 |
+Gateway 协议定义自己的类型。下表是刻意且非规范性的语义对齐：帮助实现者识别熟悉概念，但不引入外部标准的原生协议对象。
+
+| Gateway 概念或形状 | 语义对齐 | 边界 |
 |---|---|---|
-| OpenAI Realtime | 常见媒体、对话、回复和取消词汇 | Gateway 扩展与握手不宣称完整线兼容 |
-| A2A | Task、状态、Artifact 与消息语义 | A2A 传输和原生对象留在 Backend Adapter |
-| ACP | 有状态本地 Agent Backend Adapter | ACP Session、Tool Call 与 Update 不进入 Client 协议 |
-| AG-UI | 可选的只读投影 | 不作为 6.0 基线传输 |
-| MCP / OpenAPI | 前台工具与外部服务 | 不替代 Client Event 或 Client Action |
+| `input_audio_buffer.*`、`conversation.item.create`、回复与音频事件名 | [OpenAI Realtime](https://platform.openai.com/docs/api-reference/realtime-client-events) 的媒体、对话、回复与取消词汇 | Gateway Schema、握手、扩展和生命周期才是权威契约；不宣称完整线兼容 |
+| `task_id`、`status.state`、`status.message.parts`、`artifacts[].parts` | [A2A](https://a2a-protocol.org/latest/specification/) 的 Task、状态、Message 与 Artifact 语义 | A2A 传输、JSON-RPC 对象、远程 Task ID 和 Agent Card 留在 A2A Backend Adapter 内部 |
+| 规范化权限和后台活动 | ACP 的权限、Session Update、Tool Call 与计划语义 | ACP 请求/更新对象与 Session ID 留在 ACP Backend Adapter 内部 |
+| 可选的只读活动投影 | AG-UI 活动语义 | AG-UI 不作为 6.0 基线传输或命令面 |
+| 前台工具和外部服务 | MCP / OpenAPI 工具语义 | 不替代 Client Event、Client Action 或 Gateway 运行时命令面 |
 
 ## 11. 从 5.x 迁移
 
 1. 固化本文档，为当前客户端增加 characterization tests。
 2. 增加 6.0 信封、握手、capabilities 和 Parser，同时继续接受 5.x 别名。
-3. 增加 `GatewayEventRouter`、Client Event Registry 和 `client.event.publish/result`。
+3. 增加 `GatewayEventRouter`、Client Event Registry、`client.event.publish/result` 和 WebSocket 运行时命令/查询面。
 4. 增加 Provider 无关 Agent Delivery，复用当前 Task 播报可靠性。
 5. 增加 `ClientActionPort` 和 `client.action.request/result`，首先迁移 `enter_sleep`。
 6. WebUI、TUI、Desktop 依次迁移到共享参考 Client SDK。
-7. 增加回放与完整 conformance coverage。
-8. 停止写出 5.x 别名，并在明确的废弃版本之后删除。
+7. 增加回放与完整 conformance coverage；把 Task、权限和对话运行时调用从内部 REST/SSE 别名迁走。
+8. 停止写出 5.x 与 REST/SSE 运行时别名，并在明确的废弃版本之后删除。
 
 健康检查、静态资源、安装和设置仍是 Host/运维 API，不强制迁移到业务 WebSocket。
 

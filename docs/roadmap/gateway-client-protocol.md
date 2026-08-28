@@ -25,7 +25,7 @@ Backend Agent
 
 The repository already has:
 
-- one WebSocket carrying voice, text, playback receipts, Task events, and state;
+- one WebSocket carrying voice, text, playback receipts, Task events, and state, while some runtime commands still use internal REST/SSE routes;
 - shared event constants and Zod message schemas;
 - a dedicated user-input runtime;
 - normalized BackendPort events and Task projections;
@@ -39,6 +39,7 @@ The remaining gaps are:
 - desktop capabilities and sleep behavior still appear as special cases;
 - no generic Client-to-Gateway semantic event API exists;
 - no generic Gateway-to-Client action/result contract exists;
+- Task control, permission decisions, conversation history, and recovery are still split between WebSocket and internal REST/SSE routes;
 - user input, Task announcements, permissions, and Gateway triggers do not yet share one semantic event/delivery boundary;
 - no 6.0 handshake, event correlation, or complete Client conformance suite exists.
 
@@ -50,14 +51,18 @@ The remaining gaps are:
 4. Let Gateway policy decide model visibility and response timing.
 5. Project semantic events into provider-neutral Agent Delivery values before provider encoding.
 6. Derive model-visible Client tools from negotiated Client Action capabilities.
-7. Keep every stage backward compatible until all first-party clients have migrated.
-8. Land every stage as a separately reviewable PR linked to issue #251.
+7. Use one WebSocket runtime control plane; keep REST for discovery, health, static configuration, and host management.
+8. Own every public Gateway type while deliberately aligning familiar field names and payload shapes with external standards where semantics match.
+9. Keep context sources behind the single active Client instead of adding a second connection role.
+10. Keep every stage backward compatible until all first-party clients have migrated.
+11. Land every stage as a separately reviewable PR linked to issue #251.
 
 ## GCP0 — Freeze the contract
 
 - [ ] Merge the bilingual protocol spec and this roadmap.
 - [ ] Record current 5.x aliases and characterization coverage.
 - [ ] Add the protocol documents to the public contract index.
+- [ ] Freeze the standard-alignment mapping, WebSocket runtime command plane, and single-Client context-source decision.
 
 Exit criteria: terminology, single-Client ownership, Event versus Action semantics, routing modes, sleep convergence, and migration policy are reviewable in one place.
 
@@ -66,20 +71,23 @@ Exit criteria: terminology, single-Client ownership, Event versus Action semanti
 - [ ] Add 6.0 envelope schemas for `event_id`, `request_event_id`, and replay `sequence`.
 - [ ] Add `session.hello` / `session.ready` negotiation.
 - [ ] Add capability constants for Client Event, Client Action, and replay.
+- [ ] Add capability constants for Task commands, permission decisions, and conversation history.
 - [ ] Keep 5.x `connect` and event aliases working through a normalization layer.
 - [ ] Publish shared parser and Client SDK helpers.
 
 Exit criteria: a 5.x and a 6.0 reference Client can connect to the same Gateway without divergent business logic.
 
-## GCP2 — Client Event ingress
+## GCP2 — Client Event ingress and runtime commands
 
 - [ ] Add the Client Event definition registry.
 - [ ] Add `GatewayEventRouter` and `client.event.publish/result`.
+- [ ] Add WebSocket schemas and handlers for `task.create/get/list/cancel`, `permission.respond`, and `conversation.history`.
+- [ ] Keep each immediate command result correlated by `request_event_id`; publish later Task and permission changes through the normal replayable event stream.
 - [ ] Stamp trusted source identity at the connection boundary.
 - [ ] Enforce schema, size, rate, retention, deduplication, and coalescing policy.
 - [ ] Add `desktop.presence.sleep_requested` as the first end-to-end event.
 
-Exit criteria: a Client can publish a registered environment or user-behavior event without pretending it is user text or adding a new Gateway branch.
+Exit criteria: a Client can publish a registered environment or user-behavior event without pretending it is user text or adding a new Gateway branch, and first-party runtime commands have a WebSocket replacement for their internal REST path.
 
 ## GCP3 — Agent Delivery
 
@@ -106,6 +114,7 @@ Exit criteria: Realtime Tool Calls and Gateway fallbacks use one action/state ma
 
 - [ ] Migrate WebUI, TUI, and Desktop to the shared reference Client SDK.
 - [ ] Add bounded replay and reconnect recovery.
+- [ ] Migrate Task control, permission decisions, conversation history, and Task event recovery away from internal REST/SSE aliases.
 - [ ] Run one conformance suite against all first-party clients.
 - [ ] Update `docs/contract.md` and its Chinese counterpart with locked capabilities and tests.
 - [ ] Deprecate old aliases for at least one announced release before removal.
@@ -119,4 +128,4 @@ Exit criteria: first-party clients contain presentation and environment behavior
 - Every PR links issue #251 and identifies its GCP stage.
 - Every new public event ships with Schema, parser, negative tests, capability behavior, and documentation.
 - Existing first-party behavior remains green before compatibility aliases are removed.
-- No stage may leak Realtime-provider, ACP, A2A, Electron, React, or CoreAudio objects across a public port.
+- No stage may leak Realtime-provider, ACP, A2A, Electron, React, or CoreAudio wire objects across a public port. Semantic field-name and payload-shape alignment documented by the Gateway specification is allowed.

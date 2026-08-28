@@ -1,6 +1,6 @@
 # Gateway Client Protocol
 
-> Status: **Draft 0.3**<br>
+> Status: **Draft 0.4**<br>
 > Target wire version: **6.0.0**<br>
 > Roadmap: [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > Current 5.x sources of truth: `shared/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
@@ -34,7 +34,7 @@ TUI, WebUI, and Desktop Orb are first-party reference clients. OpenCode, Qwen Co
 5. Realtime Tool Calls are model-facing. `ClientActionPort` maps applicable Tool Calls to Client Actions.
 6. Gateway decides whether an event is handled deterministically, added to model context, answered later, or answered immediately.
 7. Client events cannot spoof Gateway, Task, permission, or backend lifecycle events.
-8. Realtime-provider and backend-protocol objects never cross this boundary.
+8. Realtime-provider and backend-protocol wire objects never cross this boundary. The Gateway owns every public type, while deliberately aligning familiar field names and shapes with external standards where semantics match.
 9. Local mute, window layout, wake mechanism, and rendering remain client concerns unless they affect shared Gateway state.
 10. Existing behavior remains available through compatibility aliases until every first-party client has migrated and conformance coverage exists.
 
@@ -57,6 +57,9 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
     "input.text",
     "input.image",
     "playback.receipts",
+    "tasks.commands",
+    "permissions.respond",
+    "conversation.history",
     "client.events",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
@@ -80,6 +83,9 @@ Gateway returns the selected version and capability intersection:
     "input.text",
     "input.image",
     "playback.receipts",
+    "tasks.commands",
+    "permissions.respond",
+    "conversation.history",
     "client.events",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
@@ -94,6 +100,7 @@ Rules:
 - No takeover, kick, concurrent observer, or multi-client arbitration exists in 6.0.
 - The Client must branch on negotiated capabilities, not product versions.
 - Protocol version, Client identity, and capabilities cannot change without reconnecting.
+- Version 6.0 defines no `context_source`, `integration`, or observer connection role. Vehicle buses, CRM feeds, sensors, and other context sources attach to the active Client Environment through client-side adapters; that Client validates and relays registered semantic events.
 
 ## 4. Common event envelope
 
@@ -117,6 +124,8 @@ Gateway follows the flat OpenAI Realtime envelope style:
 | `occurred_at` | Semantic events when known | Millisecond timestamp at the event source; Gateway records receipt time separately |
 
 Immediate results and errors are not replayed. Media deltas, incremental transcripts, heartbeat traffic, and `session.replay.result` are also not replayed.
+
+The naming resemblance is intentional, but the schemas in this specification are authoritative. Reusing a standard's field name or compatible shape does not import that standard's object type or claim wire compatibility.
 
 All control messages are UTF-8 JSON text frames. Version 6.0 carries PCM audio as base64 in JSON; a future binary media capability may replace that without changing semantic event routing.
 
@@ -217,7 +226,26 @@ client.action.result
 
 Client Action is not a replacement for MCP, OpenAPI, ACP, or A2A. It covers capabilities owned by the connected Client Environment. Other external systems continue to use the appropriate tool or backend adapter.
 
-### 5.4 Gateway state and presentation
+### 5.4 Runtime commands and queries
+
+The active Client uses the same WebSocket for runtime commands and queries. Each command carries an `event_id`; its immediate `<command>.result` carries `request_event_id`. Later lifecycle changes remain ordinary replayable server pushes rather than being hidden inside the command result.
+
+| Command | Direction | Meaning |
+|---|---|---|
+| `task.create` | C→G | Explicitly create an asynchronous Task without impersonating conversational user input |
+| `task.get` / `task.list` | C→G | Read one Task or a bounded filtered Task snapshot |
+| `task.cancel` | C→G | Request cancellation of one Task; subsequent lifecycle events report the final state |
+| `permission.respond` | C→G | Resolve the currently pending authorization request |
+| `conversation.history` | C→G | Read the bounded, client-safe conversation projection |
+| `session.replay` | C→G | Replay eligible server pushes after a sequence cursor |
+
+`task.create` carries an A2A-aligned `message.parts` value rather than a second plain-text-only objective field, so an explicit integration may submit text, file, or structured parts without importing an A2A Message object.
+
+This is the Client runtime control plane. Equivalent internal REST/SSE routes remain migration aliases until every first-party Client uses the WebSocket commands and replay path. REST remains appropriate for startup discovery, health, static configuration, and host-management operations that are not part of an active Client session.
+
+`task.create` is an explicit integration command, not the normal voice-chat path. Conversational requests still reach Task creation through the frontend Agent's tools, preserving its routing and acknowledgement behavior.
+
+### 5.5 Gateway state and presentation
 
 Gateway publishes normalized state; the Client renders it without reconstructing Gateway internals:
 
@@ -229,9 +257,30 @@ Gateway publishes normalized state; the Client renders it without reconstructing
 
 Every public Task keeps one Gateway `task_id`. ACP Session IDs, A2A remote Task IDs, and custom-adapter identifiers remain private to `BackendPort` adapters.
 
+Task snapshots and updates use a Gateway-owned wrapper with deliberately A2A-aligned nested shapes:
+
+```jsonc
+{
+  "type": "task.updated",
+  "event_id": "evt_gateway_88",
+  "sequence": 41,
+  "task_id": "task_42",
+  "status": {
+    "state": "working",
+    "message": {
+      "role": "agent",
+      "parts": [{ "text": "正在检查磁盘空间。" }]
+    }
+  },
+  "artifacts": []
+}
+```
+
+The Gateway owns the state vocabulary and event lifecycle. The nested `status.state`, `status.message.parts`, and `artifacts[].parts` shapes aid adapter and UI reuse but are not native A2A objects.
+
 Task progress may be pushed to the Client without being sent to the Realtime model. Gateway's event policy selects only meaningful progress, permission, completion, and failure events for model delivery.
 
-### 5.5 Receipts and decisions
+### 5.6 Receipts and decisions
 
 | Event | Direction | Meaning |
 |---|---|---|
@@ -243,7 +292,7 @@ Task progress may be pushed to the Client without being sent to the Realtime mod
 
 `response.done` means generation finished, not that the user heard the response. Delivery workflows that require audible confirmation use playback receipts.
 
-### 5.6 Local mute and external capture ownership
+### 5.7 Local mute and external capture ownership
 
 Local mute stops microphone input at the Client and does not disconnect, cancel Tasks, or suppress output. It does not need a Gateway event.
 
@@ -366,28 +415,30 @@ Event definitions impose payload, rate, retention, and coalescing limits. Latest
 - Built-in actions are capability-gated. Extension actions require an installed and trusted Client/host extension.
 - One active Client may aggregate many local sensors or environment sources without opening more Gateway sockets.
 
-The base API is the existing WebSocket. A future authenticated HTTP or in-process ingestion adapter may translate the same event into `ClientEventIngress`; it must not define a second semantic protocol or consume the active Client slot.
+The base API is the existing WebSocket. Version 6.0 does not expose an independent HTTP, `context_source`, or integration connection that bypasses the active Client. A future deployment that needs direct machine-to-Gateway event ingestion requires an explicit protocol decision; it cannot silently become a second Client role.
 
 ## 10. Relationship to external standards
 
-| Standard | Use | Boundary |
+The Gateway protocol defines its own types. The following alignment is deliberate and non-normative: it helps implementers recognize familiar semantics without importing foreign wire objects.
+
+| Gateway concept or shape | Semantic alignment | Boundary |
 |---|---|---|
-| OpenAI Realtime | Common media, conversation, response, and cancellation vocabulary | Gateway extensions and negotiation are not claimed to be wire-compatible |
-| A2A | Task, state, artifact, and message semantics | A2A transport and native objects remain in its Backend adapter |
-| ACP | Stateful local-agent Backend adapter | ACP Session, Tool Call, and Update objects never enter the Client protocol |
-| AG-UI | Optional read-only projection where useful | Not the 6.0 base transport |
-| MCP / OpenAPI | Frontend tools and external services | Not a substitute for Client Event or Client Action |
+| `input_audio_buffer.*`, `conversation.item.create`, response and audio event names | [OpenAI Realtime](https://platform.openai.com/docs/api-reference/realtime-client-events) media, conversation, response, and cancellation vocabulary | Gateway schemas, handshake, extensions, and lifecycle remain authoritative; full wire compatibility is not claimed |
+| `task_id`, `status.state`, `status.message.parts`, `artifacts[].parts` | [A2A](https://a2a-protocol.org/latest/specification/) Task, status, Message, and Artifact semantics | A2A transport, JSON-RPC objects, remote Task IDs, and Agent Card objects remain inside the A2A Backend adapter |
+| normalized authorization and backend activity | ACP permission, Session update, Tool Call, and plan semantics | ACP request/update objects and Session IDs remain inside the ACP Backend adapter |
+| optional read-only activity projection | AG-UI activity semantics | AG-UI is not the 6.0 base transport or command plane |
+| frontend tools and external services | MCP / OpenAPI tool semantics | They do not replace Client Event, Client Action, or the Gateway runtime command plane |
 
 ## 11. Migration from 5.x
 
 1. Freeze this specification and add characterization tests for current clients.
 2. Add the 6.0 envelope, handshake, capabilities, and parsers while still accepting 5.x aliases.
-3. Add `GatewayEventRouter`, the Client Event registry, and `client.event.publish/result`.
+3. Add `GatewayEventRouter`, the Client Event registry, `client.event.publish/result`, and the WebSocket runtime command/query plane.
 4. Add provider-neutral Agent Delivery and reuse current Task announcement reliability.
 5. Add `ClientActionPort` and `client.action.request/result`; migrate `enter_sleep` first.
 6. Migrate WebUI, TUI, and Desktop through the shared reference Client SDK.
-7. Add replay and full conformance coverage.
-8. Stop emitting 5.x aliases, then remove them only after an announced deprecation release.
+7. Add replay and full conformance coverage; migrate Task, permission, and conversation runtime calls away from internal REST/SSE aliases.
+8. Stop emitting 5.x and REST/SSE runtime aliases, then remove them only after an announced deprecation release.
 
 Health checks, static assets, installation, and settings remain host/operations APIs and are not forced onto the business WebSocket.
 

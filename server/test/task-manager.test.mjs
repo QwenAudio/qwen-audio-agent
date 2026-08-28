@@ -463,6 +463,36 @@ test('does not evict pending notifications to satisfy delivered history limit', 
   assert.equal(manager.list({ ownerId: 'owner' }).length, 2)
 })
 
+test('keeps a delivered task reachable the next day but drops it after the window', async () => {
+  // 语音场景里「周五派的活周一问」很常见，隔天还能查到状态是这个 TTL 的用途。
+  // 这里不写死毫秒数，只锁「跨天仍在、超窗即走」这条语义。
+  const manager = new TaskManager()
+  const day = 86_400_000
+  const [next, expired] = await Promise.all(['隔天问', '很久以前'].map(async objective => {
+    const task = manager.create({
+      objective,
+      ownerId: 'owner',
+      sessionId: 'voice',
+      runner: async () => ({ content: '结果' }),
+    })
+    await manager.wait(task.id)
+    return task
+  }))
+  // 通知已送达才会走 terminalTtlMs；未送达的走 pendingNotificationTtlMs
+  for (const task of [next, expired]) {
+    manager.tasks.get(task.id).notificationStatus = 'delivered'
+  }
+  // 用 2 天前而不是 1 天前：判断是 age > ttl，1 天前正好卡在等号上，
+  // 24 小时与 3 天两种配置都不会删，那样这条测试就锁不住任何东西。
+  manager.tasks.get(next.id).completedAt = Date.now() - day * 2
+  manager.tasks.get(expired.id).completedAt = Date.now() - day * 4
+
+  manager.prune()
+  const ids = manager.list({ ownerId: 'owner' }).map(task => task.taskId ?? task.id)
+  assert.ok(ids.includes(next.id), '隔天的活必须还能查到状态')
+  assert.ok(!ids.includes(expired.id), '超出保留窗的活应当被清掉')
+})
+
 test('reuses a persisted submission key instead of running duplicate work', async () => {
   let saved = []
   let runs = 0

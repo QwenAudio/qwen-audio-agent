@@ -57,7 +57,12 @@ export class TaskManager {
     maxConcurrent = 4,
     maxConcurrentPerOwner = 2,
     systemMaxConcurrent = 2,
-    terminalTtlMs = 86_400_000,
+    // 终态任务保留 3 天而非 24 小时：语音场景里「周五派的活周一问」很常见，
+    // 24 小时会让隔天的查询就拿不到状态，用户只能重新派一次。
+    //
+    // 数量上限（maxTerminalTasksPerOwner）保持不变：prune() 按 createdAt 降序
+    // 保留最新的那一批，所以放宽时间窗不会让内存无界增长 —— 上限仍然是硬顶。
+    terminalTtlMs = 259_200_000,
     pendingNotificationTtlMs = 604_800_000,
     notificationClaimTtlMs = 60_000,
     maxTerminalTasksPerOwner = 100,

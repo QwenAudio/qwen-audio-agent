@@ -18,6 +18,14 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
+The proposed 6.0 northbound boundary is documented in the draft
+[Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.md) and its
+[roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.md), tracked by
+[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251).
+Those documents are design targets, not current 5.x promises; this contract
+index remains authoritative until each capability is implemented and locked by
+a named test.
+
 The current version is `5.0.0`. The `5.0` line removes the backend-controlled
 Task `presentation` envelope. A backend returns factual `content` plus optional
 typed `artifacts`; the foreground Chatbot decides how to speak, while each

@@ -14,6 +14,13 @@
 版本号遵循 SemVer：新增能力升 minor；下文点名的任一端点或事件发生破坏性
 变更升 major。
 
+拟议中的 6.0 北向边界记录在草案
+[Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.zh.md) 与
+[Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.zh.md) 中，并由
+[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)
+跟踪。它们是设计目标，不是当前 5.x 承诺；只有能力完成实现并由下文点名的测试锁定后，
+才进入本契约索引。
+
 当前版本为 `5.0.0`。`5.0` 删除由后台控制的 Task `presentation` 包装：后台只返回
 事实性 `content` 与可选的类型化 `artifacts`，前台 Chatbot 决定如何播报，各个对话
 客户端决定如何呈现。同一版本同时将现有 `WS /api/realtime` 事件模型正式发布为

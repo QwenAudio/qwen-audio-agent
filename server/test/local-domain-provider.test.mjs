@@ -44,6 +44,25 @@ test('conforms to the knowledge retrieval provider contract', () => {
   assert.equal(described.provider.key, 'local-domain')
 })
 
+test('tells the model to hand the path to the backend', async () => {
+  // 前端只知道这份资料是什么，不知道里面写了什么，而模型手上没有读文件的工具。
+  // 只说「正文在某个路径」的话，模型会以为自己能读 —— 要么凭标题猜内容，要么让
+  // 用户自己去看文件。这条移交指令是「细节交给后端」这个分工的最后一环，
+  // 而它不能写进 knowledge 工具的 description（那是主线的通用工具）。
+  const runtime = new FrontendKnowledgeRuntime({
+    provider: new LocalDomainKnowledgeProvider({ library: library() }),
+  })
+  const output = await runtime.search('年费', { ownerId: 'owner' })
+  const [result] = output.results
+
+  assert.match(result.content, /spawn_thinking/, '必须点名交给哪个工具')
+  assert.match(result.content, /objective/, '要说清路径写进哪里')
+  assert.ok(result.content.includes(manual.path), '路径要出现在正文里，不只在 locator')
+  assert.match(result.content, /不要凭标题/, '要挡住凭标题猜内容')
+  // 章节标题作为定位锚点一并交出去，让 objective 能说准查哪一节
+  assert.match(result.content, /年费规则/)
+})
+
 test('describes a document without carrying its body', async () => {
   const runtime = new FrontendKnowledgeRuntime({
     provider: new LocalDomainKnowledgeProvider({ library: library() }),

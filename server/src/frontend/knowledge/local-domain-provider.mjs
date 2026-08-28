@@ -85,16 +85,28 @@ export class LocalDomainKnowledgeProvider {
   }
 }
 
-// 一条资料的自我介绍：标题、一句说明、章节标题。
+// 一条资料的自我介绍：标题、一句说明、章节标题，以及【怎么拿到细节】。
 //
-// 章节标题必须照抄原文 —— 它是后端 grep 的锚点，改写了就对不上。
+// 章节标题必须照抄原文 —— 它是后端定位的锚点，改写了就对不上。
 // 这也是为什么这里不做任何美化或翻译。
+//
+// 最后那句移交指令必须明确写出「交给 spawn_thinking」：前端只知道这份资料是什么，
+// 不知道里面写了什么，而模型手上没有读文件的工具。只说「正文在某个路径」的话，
+// 模型会以为自己能读，于是要么凭标题猜内容，要么告诉用户去看文件 —— 两种都不对。
+//
+// 这句引导不能写进 knowledge 工具的 description：那是主线的通用工具，面向外部
+// 知识服务时 content 本身就是答案、不需要再移交。只有本机资料这个 provider 返回的
+// 是路径而不是答案，所以引导属于这里。
 function describeEntry(entry) {
+  // 章节列表只出现一次。原先在「章节：」和移交指令里各写一遍，10 章时重复部分
+  // 就占了 220 字符 —— 而这两处要表达的是同一件事：拿哪些锚点去定位。
   const lines = [
     `《${entry.title || entry.filename}》`,
     entry.gist ? entry.gist : '',
-    entry.sections.length ? `章节：${entry.sections.join('、')}` : '',
-    `正文在 ${entry.path}，需要原文时读这个文件。`,
+    entry.sections.length ? `章节（原文标题，可作定位锚点）：${entry.sections.join('、')}` : '',
+    `需要里面的具体内容、或要基于它做事时，用 spawn_thinking 把这个路径`
+    + `（${entry.path}）连同相关章节标题写进 objective，让后台去读原文。`
+    + `不要凭标题或章节名猜测内容。`,
   ]
   return lines.filter(Boolean).join('\n')
 }

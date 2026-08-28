@@ -98,7 +98,7 @@ test('observation accumulates across a restart and only then reaches USER.md', a
     assert.equal(accepted.length, 1, '观察器应当收下这条画像信号')
     assert.equal(accepted[0].confirm, 1)
     assert.deepEqual(first.pool.promotable(OWNER), [], '单场证据不得晋升')
-    assert.deepEqual(first.promoter.run({ ownerId: OWNER }), [])
+    assert.deepEqual(await first.promoter.run({ ownerId: OWNER }), [])
 
     // ── 重启：新对象只能从 candidates.json 恢复证据
     const second = boot(directory, { messages, reply: OCCUPATION_REPLY })
@@ -112,7 +112,7 @@ test('observation accumulates across a restart and only then reaches USER.md', a
     assert.equal(again[0].confirm, 2)
     assert.equal(second.pool.promotable(OWNER).length, 1)
 
-    const promoted = second.promoter.run({ ownerId: OWNER })
+    const promoted = await second.promoter.run({ ownerId: OWNER })
     assert.deepEqual(promoted.map(item => item.label), ['职业：中学语文老师'])
 
     // 断言落到真实文件上，而不是只看服务返回值
@@ -121,7 +121,7 @@ test('observation accumulates across a restart and only then reaches USER.md', a
     assert.match(onDisk, /- 职业：中学语文老师/)
 
     // ── 幂等：同一条不该被写第二遍
-    assert.deepEqual(second.promoter.run({ ownerId: OWNER }), [])
+    assert.deepEqual(await second.promoter.run({ ownerId: OWNER }), [])
     const afterRerun = readFileSync(join(directory, 'USER.md'), 'utf8')
     assert.equal(
       afterRerun.match(/职业：中学语文老师/g).length,

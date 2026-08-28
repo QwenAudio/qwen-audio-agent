@@ -541,21 +541,6 @@ export const config = {
     runtimeEnvironment.configDirectory,
     'domain-index.json',
   ),
-  // 会话内滚动摘要：后台增量维护本场摘要，压缩触发时零等待取用。
-  // 默认关闭，同样因为它会额外消耗模型调用。
-  rollingSummaryEnabled: String(
-    process.env.QWEN_AUDIO_ROLLING_SUMMARY || 'off',
-  ).toLowerCase() === 'on',
-  rollingSummaryFirstTriggerTokens: numberSetting(
-    process.env.QWEN_AUDIO_ROLLING_SUMMARY_FIRST_TOKENS,
-    10_000,
-    { min: 500 },
-  ),
-  rollingSummaryStepTriggerTokens: numberSetting(
-    process.env.QWEN_AUDIO_ROLLING_SUMMARY_STEP_TOKENS,
-    5_000,
-    { min: 500 },
-  ),
   reminderSchedulerEnabled: String(
     process.env.QWEN_AUDIO_AGENT_REMINDER_SCHEDULER || 'true'
   ).toLowerCase() === 'true',

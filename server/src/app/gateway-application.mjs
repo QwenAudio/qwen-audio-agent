@@ -32,9 +32,6 @@ import {
   classifySource,
 } from '../domain/domain-library.mjs'
 import { DomainSummariser } from '../domain/domain-summariser.mjs'
-import { RollingSummary } from '../conversation/rolling-summary.mjs'
-import { estimateTokens } from '../conversation/compaction-strategy.mjs'
-import { SUMMARY_PROMPT_V2 } from '../conversation/summary-prompt.mjs'
 import { enforceSameOrigin } from '../core/request-security.mjs'
 import {
   GATEWAY_CAPABILITIES,
@@ -312,20 +309,6 @@ const memoryExtractor = new MemoryExtractor({
   llmCall: memoryLlmCall,
   logger,
 })
-// 会话内滚动摘要：后台增量维护本场摘要。只写内存态、绝不重发 session.update
-// （改 instructions 等于改 prompt 前缀，会让整场会话的缓存失效）。
-// 默认关闭；关闭时 rollingSummary 为 null，调用点全部是可选链。
-const rollingSummary = (config.rollingSummaryEnabled && memoryLlmCall)
-  ? new RollingSummary({
-      conversationSync,
-      llmCall: memoryLlmCall,
-      summaryPrompt: SUMMARY_PROMPT_V2,
-      countTokens: estimateTokens,
-      firstTriggerTokens: config.rollingSummaryFirstTriggerTokens,
-      stepTriggerTokens: config.rollingSummaryStepTriggerTokens,
-      logger,
-    })
-  : null
 // 偏好自更新：观察器从刚结束的会话里推断画像信号 → 槽位池积累跨会话确认 →
 // 攒够后由晋升器写入 USER.md 的观察推断段。槽位池必须落盘，否则重启即清零、
 // 跨会话确认永远攒不满。观察器需要模型，没有 API key 时它为 null，
@@ -439,15 +422,20 @@ function enqueueDomainConversion({ ownerId, sourcePath, target }) {
   return taskManager.create({
     objective,
     ownerId,
-    laneKey: `coordinator:${ownerId}`,
+    // 与后台活共用一条泳道：转换是一次普通的后台执行，不该和用户派的活抢并发。
+    laneKey: `backend:${ownerId}`,
     laneLimit: 1,
-    runner: async (_ignored, { onEvent, signal }) => {
-      const result = await coordinator.run({
-        originalRequest: `把 ${sourcePath} 转成可检索的文本资料`,
+    runner: async (_ignored, { onEvent, signal, taskId }) => {
+      // 必须经 BackendPort（workBackend）而不是直接摸具体后台实现 —— 换适配器时
+      // 这里不该跟着改。参数形状与上面的 configureScheduledTaskRunner 保持一致。
+      //
+      // 不传 workingDirectory：BackendPort 的 submit 契约只接受
+      // { id, ownerId, objective, instruction, inputParts }，没有工作目录这一项。
+      // 目标位置靠 objective 里的绝对路径表达（conversionTarget 返回的 path 是
+      // join(documentDirectory, filename)），所以后端不依赖 cwd 也能写对地方。
+      const result = await workBackend.run({
         objective,
-        userMemories: [],
-        workingDirectory: config.domainDocumentDirectory,
-      }, { ownerId, signal, onEvent })
+      }, { ownerId, taskId, signal, onEvent })
 
       // 后端说完成不等于真的写了 —— 以文件系统为准，不以它的回话为准。
       let entry
@@ -683,7 +671,7 @@ app.post('/api/domain/import', async (req, res, next) => {
       return next(error)
     }
     const task = enqueueDomainConversion({ ownerId, sourcePath, target })
-    res.status(202).json({ status: 'converting', work_id: task.id, target: target.filename })
+    res.status(202).json({ status: 'converting', task_id: task.id, target: target.filename })
     return
   }
 
@@ -914,7 +902,6 @@ realtimeGateway = attachRealtimeGateway(server, {
   identityManager,
   memoryService: frontendMemoryRuntime,
   memoryExtractor,
-  rollingSummary,
   preferencePromoter,
   profileObserver,
   sessionDigests,
@@ -1025,7 +1012,6 @@ return {
     preferencePromoter,
     profileObserver,
     realtimeGateway,
-    rollingSummary,
     sessionDigests,
     sessionSummariser,
     domainLibrary,

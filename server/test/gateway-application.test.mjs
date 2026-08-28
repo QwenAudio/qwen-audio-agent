@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import test from 'node:test'
 import WebSocket from 'ws'
 import { createGatewayApplication } from '../src/app/gateway-application.mjs'
@@ -396,7 +396,6 @@ test('leaves the new memory modules unwired unless explicitly enabled', async ()
     autoStart: false,
   })
   try {
-    assert.equal(app.services.rollingSummary, null)
     assert.equal(app.services.preferenceCandidates, null)
     assert.equal(app.services.preferencePromoter, null)
     assert.equal(app.services.sessionDigests, null)
@@ -440,6 +439,77 @@ test('wires the domain library on its own switch and imports a local file', asyn
     )
   } finally {
     await app.close()
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
+
+// PDF / Word 走后台转换，而这条路径此前没有任何测试执行过 —— 它曾经调用一个
+// 早已不存在的 coordinator 变量，运行时必抛 ReferenceError，而全套测试照样全绿。
+// 所以这条测试要真的把 runner 跑起来，不能只断言接线。
+test('converts a PDF through the BackendPort and ingests what the backend wrote', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-domain-convert-'))
+  const source = join(directory, 'manual.pdf')
+  writeFileSync(source, '%PDF-1.7 pretend this is a PDF')
+  const documents = join(directory, 'workspace', 'domain')
+  const submitted = []
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+      reminderSchedulerEnabled: false,
+      domainLibraryEnabled: true,
+      domainDocumentDirectory: documents,
+      domainIndexPath: join(directory, 'domain-index.json'),
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMcp: null,
+    frontendOpenApi: null,
+    // 最小 BackendPort 替身：把「提取文字」做成真的写文件 —— 收录那一步是以
+    // 文件系统为准、不看后端的回话，所以只回一句话的替身过不了这条测试。
+    backendRuntime: {
+      run: async (input, options) => {
+        submitted.push({ input, options })
+        const target = input.objective.match(/原样写入「(.+?)」/)[1]
+        mkdirSync(dirname(target), { recursive: true })
+        writeFileSync(target, '# Manual\n\n## Warranty\nOne year.\n')
+        return { content: 'done' }
+      },
+      cancel: async taskId => ({ taskId, state: 'cancelled' }),
+    },
+  })
+  try {
+    application.start()
+    if (!application.server.listening) await once(application.server, 'listening')
+    const { port } = application.server.address()
+
+    const accepted = await fetch(`http://127.0.0.1:${port}/api/domain/import`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path: source }),
+    }).then(response => response.json())
+    assert.ok(accepted.task_id, `导入应当派出后台任务，实际返回 ${JSON.stringify(accepted)}`)
+
+    await application.services.taskManager.wait(accepted.task_id)
+
+    // 关键断言：请求真的经过了 BackendPort，而不是某个具体后台实现
+    assert.equal(submitted.length, 1)
+    const [{ input, options }] = submitted
+    assert.match(input.objective, /原样写入/, '目标路径要在 objective 里')
+    assert.ok(options.ownerId, 'ownerId 必须透传')
+    assert.ok(options.taskId, 'taskId 必须透传，取消与状态查询都靠它')
+    assert.ok(options.signal, 'signal 必须透传，否则取消传不到后端')
+    assert.equal(typeof options.onEvent, 'function', 'onEvent 必须透传，否则没有进度')
+
+    // 后端写下的文件被收录了
+    const [entry] = application.services.domainLibrary.list(options.ownerId)
+    assert.equal(entry.path, join(documents, 'manual.md'))
+    assert.match(readFileSync(entry.path, 'utf8'), /Warranty/)
+  } finally {
+    await application.close()
     rmSync(directory, { recursive: true, force: true })
   }
 })
@@ -502,7 +572,6 @@ test('wires rolling summary and preference learning when enabled', async () => {
       reminderSchedulerEnabled: false,
       memoryAutoEnabled: true,
       memoryApiKey: 'test-key',
-      rollingSummaryEnabled: true,
       preferenceLearningEnabled: true,
       preferenceCandidatePath: join(directory, 'candidates.json'),
       userModelPath: join(directory, 'USER.md'),
@@ -513,14 +582,11 @@ test('wires rolling summary and preference learning when enabled', async () => {
   })
   try {
     const {
-      rollingSummary,
       preferenceCandidates,
       preferencePromoter,
       profileObserver,
       frontendMemoryService,
     } = app.services
-    assert.ok(rollingSummary)
-    assert.equal(rollingSummary.enabled(), true)
     assert.ok(preferenceCandidates)
     assert.equal(preferenceCandidates.health().persistenceEnabled, true)
     assert.ok(preferencePromoter)
@@ -539,7 +605,7 @@ test('wires rolling summary and preference learning when enabled', async () => {
       })
     }
     assert.equal(preferenceCandidates.promotable('user_personal').length, 1)
-    const promoted = preferencePromoter.run({ ownerId: 'user_personal' })
+    const promoted = await preferencePromoter.run({ ownerId: 'user_personal' })
     assert.deepEqual(promoted.map(item => item.label), ['职业：中学语文老师'])
 
     const [document] = frontendMemoryService.list('user_personal', { scope: 'user' })

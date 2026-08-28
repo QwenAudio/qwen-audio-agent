@@ -94,13 +94,20 @@ export class PreferencePromoter {
   }
 
   // 离线扫描入口。返回本次晋升的条目，便于审计与测试。
-  // 永不抛错：任何失败都记审计并返回空数组。
-  run({ ownerId }) {
+  //
+  // 是 async 的：MemoryProvider 协议允许 apply() 返回 Promise（远程 provider 就是
+  // 异步的），而候选销账必须等写入真的成功 —— 否则写失败时候选已被消费，那条
+  // 攒了至少两场会话的证据就永久丢了，且无法重试。
+  //
+  // 【永不抛错】这条契约保持不变，而且现在更要紧：调用方是会话关闭钩子，
+  // 它用同步 try/catch 包着这里。如果这里改成 async 之后还会 reject，
+  // 那个 catch 就抓不到了 —— 会从「有日志的失败」变成未处理的 rejection。
+  async run({ ownerId }) {
     if (!this.enabled()) return []
     const safeOwnerId = String(ownerId || '')
     if (!safeOwnerId) return []
     try {
-      return this.promote(safeOwnerId)
+      return await this.promote(safeOwnerId)
     } catch (error) {
       this.audit?.record({
         op: 'error',
@@ -114,7 +121,7 @@ export class PreferencePromoter {
     }
   }
 
-  promote(ownerId) {
+  async promote(ownerId) {
     const promotable = this.candidatePool.promotable(ownerId)
     if (!promotable.length) return []
 
@@ -164,7 +171,10 @@ export class PreferencePromoter {
       .filter(Boolean)
     const nextContent = `${sections.join('\n\n')}\n`
 
-    this.memoryService.apply(ownerId, [{
+    // 必须 await：apply() 允许返回 Promise。写入失败时下面的 markPromoted 一条
+    // 都不会执行，候选留在池子里，下一场会话结束再试 —— 这是「宁可晋升晚一点，
+    // 也不要证据丢了」。抛出的错由 run() 统一记审计。
+    await this.memoryService.apply(ownerId, [{
       document: 'user',
       edits: content
         ? [{ old_text: content.trimEnd(), new_text: nextContent.trimEnd() }]
@@ -173,6 +183,7 @@ export class PreferencePromoter {
       expectedRevision: document?.revision || '',
     }])
 
+    // 只有写入成功才销账。顺序不能反 —— 反了就是评审指出的那个数据丢失路径。
     for (const slot of accepted) {
       this.candidatePool.markPromoted(ownerId, slot.key)
       this.audit?.record({
@@ -196,7 +207,11 @@ export class PreferencePromoter {
   // 用户在管理界面或语音里否决某条观察：从观察区移除并进黑名单。
   //
   // 定位优先 key，其次 field+value；只拿到界面上那行文本时用 label 反查槽位。
-  reject({ ownerId, key = '', field = '', value = '', label = '' }) {
+  //
+  // 是 async 的，理由同 run()：apply() 允许返回 Promise。这里的顺序也刻意先写
+  // 文档再拉黑 —— 反过来的话写入失败会留下「候选已拉黑、文档里那行还在」，
+  // 用户看到删除没生效又点一次，而重新晋升的路已经被自己堵死了。
+  async reject({ ownerId, key = '', field = '', value = '', label = '' }) {
     if (!this.enabled()) return false
     const safeOwnerId = String(ownerId || '')
     if (!safeOwnerId) return false
@@ -215,6 +230,10 @@ export class PreferencePromoter {
     }
     if (!text) return false
 
+    // 拉黑排在前面，而且刻意不受下面「文档里有没有这行」的影响：用户可能否决的是
+    // 一条还没晋升的候选（观察区里根本没有它），那时也必须记住「以后别晋升这条」。
+    // 一度想把它挪到 apply 之后，那会让上述情况在 kept.length === items.length
+    // 处提前返回、拉黑执行不到 —— 是功能回退。
     this.candidatePool.reject({ ownerId: safeOwnerId, ...target })
 
     const document = this.currentUserDocument(safeOwnerId)
@@ -226,7 +245,9 @@ export class PreferencePromoter {
 
     const sections = [before, renderObservedSection(kept), after].filter(Boolean)
     const nextContent = `${sections.join('\n\n')}\n`
-    this.memoryService.apply(safeOwnerId, [{
+    // await：apply() 允许返回 Promise。写入失败时这里抛出，调用方拿不到 true，
+    // 而拉黑已经生效且幂等 —— 用户再点一次会重新走 apply，这条路径自愈。
+    await this.memoryService.apply(safeOwnerId, [{
       document: 'user',
       edits: [{ old_text: content.trimEnd(), new_text: nextContent.trimEnd() }],
       expectedRevision: document?.revision || '',

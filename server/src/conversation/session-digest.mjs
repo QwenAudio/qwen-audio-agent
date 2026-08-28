@@ -1,13 +1,13 @@
 // 会话摘要 —— 「你记得前几天我们聊的 xxx 吗」的唯一数据来源。
 //
 // 现状是这个问题一个字都答不上：ConversationSync 纯内存、会话结束即失，
-// rolling-summary 在关闭钩子里被显式 drop 掉。这里补上那一层。
+// ConversationSync 的本场镜像在会话结束时就丢掉了。这里补上那一层。
 //
 // ★ 只存档 1，不存档 2。
 // 每场只留 topics + 一句 gist（硬上限 MAX_GIST_CHARS），刻意不存完整摘要。
 // realtime-gateway 关闭钩子里那句注释是这条纪律的出处：留下完整摘要等于
 // 「悄悄开启每场会话长期留存」，那需要用户显式同意。所以本模块绝不接受
-// rolling-summary 的产物作为 gist —— 它是完整摘要，长度不受这里控制。
+// 完整摘要作为 gist —— 那种文本长度不受这里控制。
 //
 // ★ 不注入 instructions，只通过工具按需查。
 // 这类数据每场会话都不一样，注进 instructions 等于让 prompt 前缀每场都变，

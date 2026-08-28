@@ -26,7 +26,7 @@ export default function DomainLibraryPanel({ onClose }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
-  // 正在后台转换的文件：{ workId, filename }
+  // 正在后台转换的文件：{ taskId, filename }
   const [converting, setConverting] = useState([])
   // 功能没开时给一句明确的说明，而不是让面板空着让人以为坏了
   const [disabled, setDisabled] = useState(false)
@@ -55,7 +55,7 @@ export default function DomainLibraryPanel({ onClose }) {
     const timer = setInterval(async () => {
       for (const item of converting) {
         const response = await fetch(
-          `api/tasks/${encodeURIComponent(item.workId)}`,
+          `api/tasks/${encodeURIComponent(item.taskId)}`,
           { cache: 'no-store' },
         ).catch(() => null)
         if (!response?.ok) continue
@@ -65,7 +65,7 @@ export default function DomainLibraryPanel({ onClose }) {
         if (!status || ['queued', 'running', 'delegated', 'finalizing'].includes(status)) {
           continue
         }
-        setConverting(items => items.filter(entry => entry.workId !== item.workId))
+        setConverting(items => items.filter(entry => entry.taskId !== item.taskId))
         if (status === 'completed') {
           setNotice(t('“{name}” 已提取并收进资料库', { name: item.filename }))
           refresh()
@@ -95,7 +95,7 @@ export default function DomainLibraryPanel({ onClose }) {
         // PDF / Word：后台正在提取文字
         setConverting(items => [
           ...items,
-          { workId: payload.work_id, filename: payload.target || trimmed },
+          { taskId: payload.task_id, filename: payload.target || trimmed },
         ])
         setNotice(t('正在后台提取文字，完成后会自动收进资料库'))
         setPath('')
@@ -164,7 +164,7 @@ export default function DomainLibraryPanel({ onClose }) {
         {error && <p className="domain-error" role="alert">{error}</p>}
         {notice && <p className="domain-notice">{notice}</p>}
 
-        {converting.map(item => <div key={item.workId} className="domain-item pending">
+        {converting.map(item => <div key={item.taskId} className="domain-item pending">
           <b>{item.filename}</b>
           <small>{t('正在提取文字…')}</small>
         </div>)}

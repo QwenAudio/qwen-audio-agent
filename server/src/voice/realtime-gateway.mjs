@@ -106,7 +106,6 @@ export function attachRealtimeGateway(server, {
   identityManager,
   memoryService,
   memoryExtractor = null,
-  rollingSummary = null,
   preferencePromoter = null,
   profileObserver = null,
   sessionDigests = null,
@@ -1260,9 +1259,23 @@ export function attachRealtimeGateway(server, {
       // 否则本场刚攒到的确认要等下一场会话结束才被扫到，白等一轮。观察器未启用
       // 或未达门槛时走同步分支，保持原有行为。晋升本身是纯本地计算、无模型调用，
       // 写入只在下一个新会话生效，不触碰当前会话的 instructions（保护前缀缓存）。
+      // promoter.run() 是 async 的（写入要等 MemoryProvider 落地才销账），所以
+      // 同步 try/catch 抓不到它内部的失败 —— 必须挂 .catch()，否则一次写入失败
+      // 就变成未处理的 rejection：没有日志，也看不出是哪条偏好没写进去。
+      //
+      // 刻意不 await：这里是连接关闭路径，后面还有会话摘要等链路。远程 provider
+      // 一次超时不该拖住整条关闭流程 —— 用户已经挂断了，资源该释放。写入失败时
+      // 候选留在池子里，下一场会话结束自动重试。
       const promotePreferences = () => {
         try {
-          preferencePromoter?.run({ ownerId })
+          const promoting = preferencePromoter?.run({ ownerId })
+          if (promoting?.catch) {
+            promoting.catch(error => {
+              connectionLogger.warn('preference.promote_hook_failed', {
+                error: String(error?.message || error),
+              })
+            })
+          }
         } catch (error) {
           connectionLogger.warn('preference.promote_hook_failed', {
             error: String(error?.message || error),
@@ -1293,7 +1306,6 @@ export function attachRealtimeGateway(server, {
       // 滚动摘要取走即删：本场摘要已被上面的下游消费，留着等于悄悄开启了
       // 「每场会话长期留存完整摘要」，那需要用户显式同意。
       try {
-        rollingSummary?.drop({ ownerId, sessionId })
       } catch (error) {
         connectionLogger.warn('rolling_summary.drop_failed', {
           error: String(error?.message || error),

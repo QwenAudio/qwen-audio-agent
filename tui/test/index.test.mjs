@@ -410,7 +410,7 @@ test('manual interruption works in half-duplex modes', () => {
       },
       socket: {
         readyState: 1,
-        send: value => events.push(['send', JSON.parse(value)]),
+        send: value => events.push(['send', value]),
       },
       startMicrophone: () => events.push(['capture']),
       print: value => events.push(['print', value]),

@@ -310,7 +310,10 @@ export default function useRealtimeVoice({
     const socket = socketRef.current
     if (socket?.readyState !== WebSocket.OPEN) return false
     try {
-      socket.send(JSON.stringify(event))
+      // GatewayClient owns the wire envelope and supplies event_id for every
+      // client event. Keeping that responsibility in the SDK prevents audio,
+      // microphone, playback, and lifecycle events from drifting out of GCP.
+      socket.send(event)
       return true
     } catch {
       return false
@@ -556,20 +559,21 @@ export default function useRealtimeVoice({
   }, [failPlayback, finishPlaybackIfReady, sendPlaybackEvent])
 
   useEffect(() => {
-    if (suspended) {
-      dispatchClientState({
-        type: GatewayServerEvent.VOICE_STATE,
-        state: 'idle',
-      })
-      dispatchClientState({
-        type: GatewayServerEvent.VOICE_CONNECTION,
-        state: 'hidden',
-      })
-      setInputReady(false)
-      setError('')
-      setVisualError(false)
-      return undefined
-    }
+    if (!suspended) return
+    dispatchClientState({
+      type: GatewayServerEvent.VOICE_STATE,
+      state: 'idle',
+    })
+    dispatchClientState({
+      type: GatewayServerEvent.VOICE_CONNECTION,
+      state: 'hidden',
+    })
+    setInputReady(false)
+    setError('')
+    setVisualError(false)
+  }, [suspended])
+
+  useEffect(() => {
     const mutedResponses = mutedPlaybackResponses.current
     const handleEvent = event => {
       dispatchClientState(event)
@@ -708,7 +712,7 @@ export default function useRealtimeVoice({
     client.start()
 
     return () => {
-      stopPlayback(suspended ? 'desktop_hidden' : 'connection_closed')
+      stopPlayback('connection_closed')
       client.stop()
       socketRef.current = null
       mutedResponses.clear()
@@ -728,7 +732,6 @@ export default function useRealtimeVoice({
     flushPendingManualInputs,
     sessionId,
     stopPlayback,
-    suspended,
   ])
 
   useEffect(() => {
@@ -803,10 +806,10 @@ export default function useRealtimeVoice({
             context.sampleRate,
             inputSampleRate.current,
           )
-          socket.send(JSON.stringify({
+          socket.send({
             type: GatewayClientEvent.AUDIO_APPEND,
             audio: pcmBase64(audio),
-          }))
+          })
         }
         source.connect(processor)
         processor.connect(context.destination)

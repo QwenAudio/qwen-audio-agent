@@ -82,6 +82,29 @@ test('reference Client negotiates once and correlates runtime commands', async (
   client.stop()
 })
 
+test('reference Client envelopes direct runtime events with event_id', () => {
+  const socket = new FakeSocket()
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    clientInstanceId: 'sdk-direct-event-test',
+    reconnect: false,
+  }).start()
+  socket.open()
+
+  client.send({ type: 'input.unmute' })
+  assert.equal(socket.sent.at(-1).type, 'input.unmute')
+  assert.match(socket.sent.at(-1).event_id, /^evt_client_/)
+
+  client.send({
+    type: 'playback.started',
+    event_id: 'evt_client_supplied',
+    responseId: 'response-1',
+  })
+  assert.equal(socket.sent.at(-1).event_id, 'evt_client_supplied')
+  client.stop()
+})
+
 test('reference Client executes negotiated Actions and deduplicates replayed events', async () => {
   const socket = new FakeSocket()
   const received = []

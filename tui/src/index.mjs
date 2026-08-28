@@ -300,7 +300,7 @@ export function performManualInterrupt({
   playback.clear('user_interruption')
   transcriptRenderer.cancel()
   if (socket?.readyState === WebSocket.OPEN) {
-    socket.send(JSON.stringify({ type: 'interrupt' }))
+    socket.send({ type: 'interrupt' })
   }
   startMicrophone()
   print(style('[已手动打断，麦克风已恢复]', 'yellow'))
@@ -1195,10 +1195,10 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       muted,
       captureEnabled,
     })) {
-      socket.send(JSON.stringify({
+      socket.send({
         type: 'audio.append',
         audio: chunk.toString('base64'),
-      }))
+      })
     }
   }
   reconcileStagedInputParts = value => {
@@ -1270,27 +1270,27 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     onError: message => print(`${style('[播放错误]', 'red')} ${message}`),
     onStarted: responseId => {
       if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
+        socket.send({
           type: GatewayClientEvent.PLAYBACK_STARTED,
           responseId,
-        }))
+        })
       }
     },
     onEnded: responseId => {
       if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
+        socket.send({
           type: GatewayClientEvent.PLAYBACK_ENDED,
           responseId,
-        }))
+        })
       }
     },
     onCancelled: (responseId, reason = '') => {
       if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
+        socket.send({
           type: GatewayClientEvent.PLAYBACK_CANCELLED,
           responseId,
           ...(reason ? { reason } : {}),
-        }))
+        })
       }
     },
     onIdle: () => {
@@ -1321,10 +1321,10 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     if (socket?.readyState !== WebSocket.OPEN) {
       throw new Error('Gateway 尚未连接')
     }
-    socket.send(JSON.stringify({
+    socket.send({
       type: GatewayClientEvent.INPUT_MESSAGE,
       parts,
-    }))
+    })
     const transcript = displayInputText(parts)
     stagedInputParts = []
     typedTranscripts.push(transcript)
@@ -1337,7 +1337,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       setCaptureEnabled(false)
       setStatus('麦克风已静音 · 语音回复保持开启')
       if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(microphoneControlEvent(true)))
+        socket.send(microphoneControlEvent(true))
       }
       print(style(
         '[麦克风已静音，语音输入不会被识别；输入 /mute 恢复]',
@@ -1348,7 +1348,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
       }
     } else {
       if (socket?.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify(microphoneControlEvent(false)))
+        socket.send(microphoneControlEvent(false))
       }
       print(style('[麦克风已恢复]', 'green'))
       setStatus('麦克风正在恢复 · 语音回复保持开启')

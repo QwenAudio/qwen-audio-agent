@@ -97,7 +97,7 @@ export const dashscopeProvider = {
     instructions: speakResponseInstructions(content),
   }),
 
-  buildResultInjection: content => ({
+  buildResultInjection: (content, { allowTools = false } = {}) => ({
     item: {
       type: 'message',
       role: 'user',
@@ -105,7 +105,7 @@ export const dashscopeProvider = {
     },
     response: {
       modalities: responseModalities(activeModelProfile()),
-      tool_choice: 'none',
+      tool_choice: allowTools ? 'auto' : 'none',
       instructions: resultResponseInstructions,
     },
   }),

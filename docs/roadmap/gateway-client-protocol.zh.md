@@ -90,11 +90,11 @@ Backend Agent
 
 ## GCP3 — Agent Delivery
 
-- [ ] 定义 Provider 无关 `AgentDelivery` 以及 `handle`、`context`、`respond`、`interrupt`。
-- [ ] 为全部 Realtime Provider 增加 context-only 注入。
-- [ ] 从当前 Task 播报链路抽取可复用的串行化、阻塞、重试和播放确认。
-- [ ] 让有意义的 Task、权限、Gateway 与 Client Event 使用共享 Delivery Runtime。
-- [ ] 高频进展和媒体不进入模型路径。
+- [x] 定义 Provider 无关 `AgentDelivery` 以及 `handle`、`context`、`respond`、`interrupt`。
+- [x] 为全部 Realtime Provider 增加 context-only 注入。
+- [x] 抽取共享 Delivery 串行化与 Provider 投影，同时保留 Task 链路的阻塞、重试和播放确认生命周期。
+- [x] 让有意义的 Task、权限、Gateway 与 Client Event 投影使用共享 Delivery Runtime。
+- [x] 高频进展和媒体不进入模型路径。
 
 完成条件：同一个事件可以只更新 Gateway/UI、静默更新模型上下文，或只产生一次安全的 Realtime 回复，并且 Gateway 不包含 Provider 专属逻辑。
 

@@ -102,7 +102,7 @@ export const s2sProvider = {
     tool_choice: 'none',
   }),
 
-  buildResultInjection: content => ({
+  buildResultInjection: (content, { allowTools = false } = {}) => ({
     item: {
       type: 'message',
       role: 'user',
@@ -110,7 +110,7 @@ export const s2sProvider = {
     },
     response: {
       modalities: ['audio'],
-      tool_choice: 'none',
+      tool_choice: allowTools ? 'auto' : 'none',
       instructions: resultResponseInstructions,
     },
   }),

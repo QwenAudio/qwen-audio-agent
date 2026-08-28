@@ -74,6 +74,7 @@ below instead of assuming the old list.
 | `realtime.conversation-client-v1` | `WS /api/realtime`, published event constants, and message schemas form the replaceable text/audio/multimodal Conversation Client boundary | `test/gateway-event-schema.test.mjs`, `test/custom-conversation-client.test.mjs` |
 | `realtime.gateway-client-protocol-v6-handshake` | The same WebSocket accepts an opt-in 6.0 `session.hello`, returns correlated `session.ready`, negotiates implemented capabilities, and normalizes 6.0 input aliases into the existing business path | `test/gateway-client-protocol.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-runtime-commands` | Negotiated 6.0 Clients can publish registered semantic Client Events and use correlated Task, permission, and conversation-history commands over the same WebSocket; existing REST routes call the same command service as compatibility aliases | `test/gateway-client-protocol.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/client-command-runtime.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
+| `realtime.gateway-client-protocol-v6-agent-delivery` | Client Events, Task results and progress, and permission prompts cross one provider-neutral `AgentDelivery` boundary with `handle`, `context`, `respond`, and `interrupt` modes | `server/test/agent-delivery.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/realtime-provider.test.mjs`, `server/test/announcement-manager.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |
@@ -95,6 +96,7 @@ is unsupported and breaks without notice.
 | `qwen-audio-agent/gateway-protocol` | `GATEWAY_PROTOCOL_VERSION`, `GATEWAY_CAPABILITIES` |
 | `qwen-audio-agent/gateway-client-protocol` | GCP 6.0 envelope and handshake schemas, parsers, capability constants, and reference Client helpers |
 | `qwen-audio-agent/client-events` | Client Event definition registry, built-in definitions, routing policies, and `GatewayEventRouter` for Gateway extensions |
+| `qwen-audio-agent/agent-delivery` | Provider-neutral `AgentDelivery` values and routing modes |
 | `qwen-audio-agent/gateway-setup` | `gatewaySetupStatus`, `assertGatewaySetup` |
 | `qwen-audio-agent/gateway-process` | `GatewayProcess`, `createGatewayProcess`, `GATEWAY_READY_MESSAGE`, `DEFAULT_GATEWAY_ENTRY`, `validateGatewayOrigin`, `portInUse` |
 | `qwen-audio-agent/gateway-lease` | `readGatewayLease`, `findRunningGateway`, `acquireGatewayLease` |

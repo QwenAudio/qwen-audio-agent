@@ -408,15 +408,63 @@ export class RealtimeFrontend {
     context = {},
     { injectContext = true, instructions = '' } = {},
   ) {
+    const outcome = await this.injectDelivery(text, origin, context, {
+      route: 'respond',
+      injectContext,
+      instructions,
+    })
+    if (!outcome) return outcome
+    const { route: _route, ...legacyOutcome } = outcome
+    return legacyOutcome
+  }
+
+  async injectDelivery(
+    text,
+    origin = 'gateway',
+    context = {},
+    {
+      route = 'respond',
+      injectContext = true,
+      instructions = '',
+      allowTools = false,
+      contextTiming = 'response',
+      shouldRespond,
+    } = {},
+  ) {
     const content = String(text || '').trim()
     if (!content) return
-    const injection = this.provider.buildResultInjection(content)
+    if (route === 'handle') {
+      return { completed: true, handled: true, route }
+    }
+    if (!['context', 'respond', 'interrupt'].includes(route)) {
+      throw new TypeError(`unsupported AgentDelivery route: ${route}`)
+    }
+    if (route === 'interrupt') this.cancel()
+    const injection = this.provider.buildResultInjection(content, { allowTools })
     if (instructions && injection?.response) {
       injection.response.instructions = String(instructions)
     }
     let contextInjected = false
-    const outcome = await this.enqueueResponse(origin, context, async () => {
+    if (route === 'context') {
       if (injectContext) {
+        await this.enqueueAction(async () => {
+          await this.createConversationItem(injection.item)
+          contextInjected = true
+        })
+      }
+      return {
+        completed: true,
+        contextInjected,
+        route,
+      }
+    }
+    if (contextTiming === 'immediate' && injectContext) {
+      await this.createConversationItem(injection.item)
+      contextInjected = true
+    }
+    const outcome = await this.enqueueResponse(origin, context, async () => {
+      if (shouldRespond && !shouldRespond()) return false
+      if (injectContext && !contextInjected) {
         await this.createConversationItem(injection.item)
         contextInjected = true
       }
@@ -425,6 +473,7 @@ export class RealtimeFrontend {
     return {
       ...(outcome || {}),
       contextInjected,
+      route,
     }
   }
 

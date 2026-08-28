@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
 
 const ROUTE_PRIORITY = Object.freeze({
   handle: 0,
@@ -54,6 +55,26 @@ export const BUILTIN_CLIENT_EVENT_DEFINITIONS = Object.freeze([
     rateLimit: Object.freeze({ max: 4, windowMs: 10_000 }),
     retention: 'latest',
     route: 'respond',
+    project: event => createAgentDelivery({
+      id: `client_event_${event.id}`,
+      causeEventId: event.id,
+      mode: event.route,
+      origin: 'client-event',
+      text: [
+        '<client_environment_event>',
+        '客户端准备因一段时间无交互而进入休眠。',
+        Number.isFinite(event.data.idle_ms)
+          ? `空闲时长：${event.data.idle_ms} 毫秒`
+          : '',
+        '这不是用户的新话语。请自然回应当前情境，并调用可用的休眠工具完成状态切换。',
+        '</client_environment_event>',
+      ].filter(Boolean).join('\n'),
+      correlation: { clientEventId: event.id },
+      presentation: {
+        instructions: '把这个客户端环境事件作为当前情境自然处理；不要把它说成用户刚刚说的话。',
+        allowTools: true,
+      },
+    }),
   }),
 ])
 
@@ -99,6 +120,7 @@ export class ClientEventDefinitionRegistry {
         ? definition.coalesceKey
         : null,
       handle: typeof definition.handle === 'function' ? definition.handle : null,
+      project: typeof definition.project === 'function' ? definition.project : null,
     })
     this.definitions.set(name, normalized)
     return normalized
@@ -184,6 +206,7 @@ export class GatewayEventRouter {
       route: boundedRoute(message.delivery_hint, definition.route),
     })
     await definition.handle?.(event)
+    const delivery = definition.project?.(event) || null
     this.seen.set(duplicateKey, now)
     this.#boundSeen()
 
@@ -196,6 +219,7 @@ export class GatewayEventRouter {
       duplicate: false,
       name: definition.name,
       event,
+      delivery,
     }
   }
 

@@ -349,7 +349,9 @@ depend on server layers.
 
 `server/src/client` owns the northbound Client Event registry and runtime
 command application service. It may depend only on public `shared` protocol
-values and the protocol-neutral Task layer. The composition root in
+values, provider-neutral `delivery` values, and the protocol-neutral Task layer.
+`server/src/delivery` owns the `AgentDelivery` value and has no dependency on
+Client, Realtime, or Backend implementations. The composition root in
 `server/src/app` injects those services into the Realtime transport; neither
 the voice path nor Client code imports their concrete implementation.
 

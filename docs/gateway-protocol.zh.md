@@ -108,8 +108,8 @@ GCP1 在不分叉 Gateway 业务逻辑的前提下实现信封与握手。6.0 Cl
 `session.hello` 开始；Gateway 返回 `session.ready`，为后续下行事件补充
 `event_id`，并把 6.0 输入别名归一化到现有内部事件模型。5.x Client 仍可使用
 `connect`，收到的旧事件形状保持不变。握手只协商已有运行时实现的能力。GCP2 的
-Client Event 与运行时命令 capability 已经实现；GCP3–GCP5 预留的名称仍只用于统一
-扩展词汇，在对应 Runtime 完成前不会被声明为已实现。
+Client Event 与运行时命令 capability、GCP3 Agent Delivery 已经实现；GCP4–GCP5
+预留的名称仍只用于统一扩展词汇，在对应 Runtime 完成前不会被声明为已实现。
 
 ### 3.2 GCP2 运行时落地
 
@@ -120,9 +120,17 @@ Task、权限和对话历史命令。即时结果与错误通过 `request_event_
 Client Event Definition 在 Gateway 组合阶段注册。Registry 统一定义 payload
 Schema、大小、频率、保存、合并、最大路由等级与可选确定性 Handler。Gateway 根据
 已认证连接填写 owner、Session、Client 类型与 Client 实例；这些可信字段不能由
-Event data 提供。首个内置定义是 `desktop.presence.sleep_requested`。它进入模型的
-Delivery 留到 GCP3，因此 GCP2 只负责接收、校验、保存和确定性处理，不会把它伪装成
-用户输入。
+Event data 提供。首个内置定义是 `desktop.presence.sleep_requested`。GCP2 负责接收、
+校验、保存和确定性处理，不会把它伪装成用户输入；GCP3 已经把它投影到统一的 Agent
+Delivery 边界。
+
+### 3.3 GCP3 Delivery 落地
+
+GCP3 实现第 6 节定义的 Provider 无关值与四种路由模式。Task 最终结果、有意义的低频
+进展、权限请求和已注册 Client Event 投影统一进入 `RealtimeAgentDeliveryRuntime`。
+Realtime Provider 只编码最终的上下文项与可选回复；Client 或后台协议原始对象不会
+进入模型。现有 Task 播报的批处理、安全窗口重试、通知认领和播放确认继续作为这条共享
+投影外围的可靠生命周期。
 
 ## 4. 通用事件信封
 
@@ -353,9 +361,14 @@ Gateway Trigger ─┘        ├─ 确定性 Handler
   origin: 'client',
   text: '用户触摸了桌面上的水杯。',
   mode: 'context',
-  correlation: { eventName: 'user.object.touched' }
+  correlation: { eventName: 'user.object.touched' },
+  presentation: { instructions: '', allowTools: false, contextTiming: 'response' }
 }
 ```
+
+`presentation` 是可选的 Provider 无关回复策略，可以约束回复表达方式、前台 Agent
+能否调用自身工具，以及上下文是否必须先于排队中的回复生效；它绝不是某个 Realtime
+Provider 的 response 对象。
 
 路由模式：
 

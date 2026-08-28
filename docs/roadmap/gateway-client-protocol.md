@@ -90,11 +90,11 @@ Exit criteria: a Client can publish a registered environment or user-behavior ev
 
 ## GCP3 — Agent Delivery
 
-- [ ] Define provider-neutral `AgentDelivery` and the `handle`, `context`, `respond`, and `interrupt` routing modes.
-- [ ] Add context-only injection to each Realtime Provider.
-- [ ] Extract reusable delivery serialization, blocking, retry, and playback acknowledgement from the current Task announcement path.
-- [ ] Route meaningful Task, permission, Gateway, and Client events through the shared delivery runtime.
-- [ ] Keep high-frequency progress and media off the model path.
+- [x] Define provider-neutral `AgentDelivery` and the `handle`, `context`, `respond`, and `interrupt` routing modes.
+- [x] Add context-only injection to each Realtime Provider.
+- [x] Extract shared delivery serialization and provider projection while retaining the Task path's blocking, retry, and playback acknowledgement lifecycle.
+- [x] Route meaningful Task, permission, Gateway, and Client event projections through the shared delivery runtime.
+- [x] Keep high-frequency progress and media off the model path.
 
 Exit criteria: one event can update Gateway/UI only, update model context silently, or produce exactly one safe Realtime response without provider-specific Gateway code.
 

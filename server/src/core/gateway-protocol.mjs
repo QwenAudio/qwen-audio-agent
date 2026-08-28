@@ -97,7 +97,7 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // replaceable Conversation Client boundary for audio, text, multimodal
   // input, transcripts, playback receipts, voice state and Task projections.
   'realtime.conversation-client-v1',
-  // session.hello/session.ready negotiate the draft 6.0 Client protocol;
+  // session.hello/session.ready negotiate the stable 6.0 Client protocol;
   // 5.x connect and event names remain compatibility aliases through one
   // normalization layer.
   'realtime.gateway-client-protocol-v6-handshake',

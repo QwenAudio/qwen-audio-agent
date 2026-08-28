@@ -951,6 +951,37 @@ test('refreshes live session instructions after frontend context changes', async
   assert.doesNotMatch(sent[0].session.instructions, /只在恢复连接时注入的历史/)
 })
 
+test('keeps the live session untouched when refreshSession is false', async () => {
+  // instructions 是 prompt 前缀的一部分，重发 session.update 等于换前缀，会让
+  // 整场会话已经建立的前缀缓存失效。所以「更新了上下文但不需要本轮就生效」的
+  // 调用方要能只写缓存、不动会话。
+  const frontend = createQwenFrontend({
+    agentContext: {
+      client: { timeZone: 'Asia/Shanghai', locale: 'zh-CN' },
+      memories: [{ scope: 'profile', content: '旧的记忆' }],
+    },
+  })
+  const sent = []
+  frontend.ready = true
+  frontend.sessionConfigured = true
+  frontend.send = payload => sent.push(payload)
+
+  frontend.updateAgentContext(
+    { memories: [{ scope: 'profile', content: '新的记忆' }] },
+    { refreshSession: false },
+  )
+  await frontend.outputQueue
+
+  assert.deepEqual(sent, [], '不该重发 session.update')
+  // 缓存要更新到位：下一次自然的 session.update 必须带上新内容，
+  // 否则这个开关就变成了「丢掉这次更新」。
+  frontend.updateAgentContext({})
+  await frontend.outputQueue
+  assert.equal(sent[0].type, 'session.update')
+  assert.match(sent[0].session.instructions, /新的记忆/)
+  assert.doesNotMatch(sent[0].session.instructions, /旧的记忆/)
+})
+
 test('restores recent conversation once after configuring a fresh session', () => {
   const frontend = createQwenFrontend({
     agentContext: {

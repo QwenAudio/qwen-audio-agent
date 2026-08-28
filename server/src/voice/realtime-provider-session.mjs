@@ -117,8 +117,11 @@ export class RealtimeProviderSession {
     this.frontend?.cancel()
   }
 
-  updateAgentContext(context) {
-    return this.frontend?.updateAgentContext(context)
+  // options 必须一并转发：底层靠 { refreshSession: false } 决定是否重发
+  // session.update。这一层若吞掉第二个参数，调用方的意图会被静默丢弃 ——
+  // 不报错、测试也照样绿，只是前缀缓存白白失效。
+  updateAgentContext(context, options) {
+    return this.frontend?.updateAgentContext(context, options)
   }
 
   appendAudio(audio) {

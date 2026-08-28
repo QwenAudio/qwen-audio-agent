@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 import test from 'node:test'
 import {
   DOMAIN_LIMITS,
@@ -177,6 +177,41 @@ test('rejects a file over the size limit', () => {
       error => error instanceof DomainImportError && error.code === 'too_large',
     )
   })
+})
+
+// 路径校验必须在 resolve 之前拦掉空输入：resolve('') 返回进程 cwd，那是个存在的
+// 目录，会一路走到 statSync 才因为「不是文件」被拒 —— 用户看到的错误码就对不上
+// 他实际做错的事。
+test('rejects an empty path with invalid_path rather than not_a_file', () => {
+  withDirs(({ root, docs }) => {
+    const shelf = library({ docs, root })
+    for (const input of ['', '   ', null, undefined]) {
+      assert.throws(
+        () => shelf.import({ ownerId: OWNER, sourcePath: input }),
+        error => error instanceof DomainImportError && error.code === 'invalid_path',
+        `输入 ${JSON.stringify(input)} 应当报 invalid_path`,
+      )
+    }
+  })
+})
+
+// 根目录判断用 parse().root 而不是写死 '/'。Windows 的根是 'C:\' 或
+// '\\server\share\'，写死斜杠在那边一个都拦不住。这里直接对着 path.win32
+// 验证判据本身 —— 在 POSIX 机器上跑 import() 无法复现 Windows 的路径语义。
+test('recognises a filesystem root on both path flavours', () => {
+  const isRoot = (impl, input) => {
+    const absolute = impl.resolve(input)
+    return absolute === impl.parse(absolute).root
+  }
+  // Windows：两种根都要认出来
+  assert.equal(isRoot(win32, 'C:\\'), true)
+  assert.equal(isRoot(win32, '\\\\server\\share'), true)
+  assert.equal(isRoot(win32, 'C:\\Users\\me\\manual.pdf'), false)
+  // POSIX：行为不变
+  assert.equal(isRoot(posix, '/'), true)
+  assert.equal(isRoot(posix, '/tmp/manual.pdf'), false)
+  // 写死 '/' 的旧判据放行了 Windows 的根 —— 这条固定住为什么必须改
+  assert.equal(win32.resolve('C:\\') === '/', false)
 })
 
 test('reports a clear error when no document directory is configured', () => {

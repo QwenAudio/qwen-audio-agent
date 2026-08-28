@@ -8,6 +8,14 @@ import { PreferenceCandidatePool } from '../src/conversation/preference-candidat
 
 const DAY = 24 * 60 * 60_000
 
+// 与 managed-backend.test.mjs 同一个判据：Windows 用 ACL 管权限，不暴露 POSIX
+// mode 位，chmod(0o600) 之后 mode & 0o777 仍是 0o666，写死断言必挂。
+function assertPrivateMode(filePath) {
+  if (process.platform !== 'win32') {
+    assert.equal(statSync(filePath).mode & 0o777, 0o600)
+  }
+}
+
 function scratch() {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-candidates-'))
   return join(directory, 'candidates.json')
@@ -184,7 +192,7 @@ test('writes the file with owner-only permissions', () => {
     field: 'response_length',
     value: 'brief',
   })
-  assert.equal(statSync(filePath).mode & 0o777, 0o600)
+  assertPrivateMode(filePath)
 })
 
 test('does not leak evidence beyond the cap onto disk', () => {

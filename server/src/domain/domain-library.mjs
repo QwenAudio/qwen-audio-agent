@@ -28,7 +28,7 @@ import {
   rmSync,
   statSync,
 } from 'node:fs'
-import { basename, extname, join, resolve } from 'node:path'
+import { basename, extname, join, parse, resolve } from 'node:path'
 import { JsonSnapshotStore } from '../core/json-snapshot-store.mjs'
 
 const FILE_VERSION = 1
@@ -187,8 +187,17 @@ export class DomainLibrary {
     if (!safeOwnerId) {
       throw new DomainImportError('missing_owner', '缺少归属用户。')
     }
-    const absolute = resolve(String(sourcePath || '').trim())
-    if (!absolute || absolute === '/') {
+    // 空输入必须在 resolve 之前拦掉：resolve('') 返回的是进程 cwd，那是个存在的
+    // 目录，会一路走到 statSync 才因为「不是文件」被拒，错误信息变成 not_a_file
+    // —— 用户看到的提示就对不上他实际做错的事。
+    const raw = String(sourcePath || '').trim()
+    if (!raw) {
+      throw new DomainImportError('invalid_path', '需要一个具体的文件路径。')
+    }
+    const absolute = resolve(raw)
+    // 用 parse().root 判断而不是比 '/'：Windows 上根是 'C:\\'，写死斜杠在那边
+    // 永不生效。
+    if (absolute === parse(absolute).root) {
       throw new DomainImportError('invalid_path', '需要一个具体的文件路径。')
     }
 

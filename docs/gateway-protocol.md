@@ -1,9 +1,9 @@
 # Gateway Client Protocol
 
-> Status: **Draft 0.4**<br>
+> Status: **Draft 0.5**<br>
 > Target wire version: **6.0.0**<br>
 > Roadmap: [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
-> Current 5.x sources of truth: `shared/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
+> Current implementation sources of truth: `shared/gateway-client-protocol.mjs`, `shared/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
 
 This specification defines the northbound boundary between qwen-audio-agent's Gateway and one active Client Environment. It is the target contract for the next protocol major and does not claim that the current 5.x implementation already implements every event below.
 
@@ -101,6 +101,17 @@ Rules:
 - The Client must branch on negotiated capabilities, not product versions.
 - Protocol version, Client identity, and capabilities cannot change without reconnecting.
 - Version 6.0 defines no `context_source`, `integration`, or observer connection role. Vehicle buses, CRM feeds, sensors, and other context sources attach to the active Client Environment through client-side adapters; that Client validates and relays registered semantic events.
+
+### 3.1 GCP1 compatibility rollout
+
+GCP1 implements the envelope and handshake without forking Gateway business
+logic. A 6.0 Client starts with `session.hello`; Gateway returns
+`session.ready`, adds `event_id` to subsequent outbound events, and normalizes
+6.0 input aliases into the existing internal event model. A 5.x Client may
+continue to start with `connect` and receives the unchanged legacy event shape.
+Only capabilities with working runtimes are negotiated. Names reserved for
+GCP2–GCP5 are published for extension interoperability but are not advertised
+as implemented.
 
 ## 4. Common event envelope
 

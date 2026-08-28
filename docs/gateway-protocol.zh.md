@@ -1,9 +1,9 @@
 # Gateway Client Protocol
 
-> 状态：**Draft 0.4**<br>
+> 状态：**Draft 0.5**<br>
 > 目标线协议版本：**6.0.0**<br>
 > Roadmap：[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
-> 当前 5.x 实现事实源：`shared/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
+> 当前实现事实源：`shared/gateway-client-protocol.mjs`、`shared/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
 
 本文档定义 qwen-audio-agent Gateway 与唯一活动 Client Environment 之间的北向协议。它描述的是下一主版本的目标契约，不代表当前 5.x 已经实现全部事件。
 
@@ -101,6 +101,14 @@ Gateway 返回协商后的版本与能力交集：
 - Client 必须依据协商后的 capabilities 判断能力，不能只比较产品版本。
 - 协议版本、Client 身份和能力不能在当前连接中改变；需要改变时重连。
 - 6.0 不定义 `context_source`、`integration` 或 Observer 连接角色。车辆总线、CRM、传感器等上下文来源通过客户端侧 Adapter 接入当前活动 Client Environment，再由该 Client 校验并转发已注册的语义事件。
+
+### 3.1 GCP1 兼容落地
+
+GCP1 在不分叉 Gateway 业务逻辑的前提下实现信封与握手。6.0 Client 以
+`session.hello` 开始；Gateway 返回 `session.ready`，为后续下行事件补充
+`event_id`，并把 6.0 输入别名归一化到现有内部事件模型。5.x Client 仍可使用
+`connect`，收到的旧事件形状保持不变。握手只协商已有运行时实现的能力；为
+GCP2–GCP5 预留的名称用于统一扩展词汇，但不会被声明为已实现。
 
 ## 4. 通用事件信封
 

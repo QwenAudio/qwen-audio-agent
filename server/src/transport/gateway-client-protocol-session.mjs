@@ -4,9 +4,12 @@ import {
   GATEWAY_CLIENT_PROTOCOL_VERSION,
   GatewayClientProtocolEvent,
   GatewaySessionHelloSchema,
+  gatewayClientProtocolCapabilityFor,
   gatewayHelloAsLegacyConnect,
+  isGatewayClientRuntimeMessage,
   negotiateGatewayClientCapabilities,
   normalizeGatewayClientProtocolMessage,
+  parseGatewayClientProtocolMessage,
   supportsGatewayClientProtocol,
 } from '../../../shared/gateway-client-protocol.mjs'
 import { parseGatewayClientMessage } from '../../../shared/protocol/gateway-events.mjs'
@@ -52,6 +55,24 @@ export class GatewayClientProtocolSession {
       return this.#error('bad_event', 'session.hello is only valid as the first message', {
         requestEventId: value?.event_id,
       })
+    }
+
+    if (isGatewayClientRuntimeMessage(value?.type)) {
+      const requiredCapability = gatewayClientProtocolCapabilityFor(value.type)
+      if (!this.capabilities.includes(requiredCapability)) {
+        return this.#error(
+          'capability_not_negotiated',
+          `${requiredCapability} was not negotiated`,
+          { requestEventId: value?.event_id },
+        )
+      }
+      try {
+        return { event: null, runtimeMessage: parseGatewayClientProtocolMessage(value) }
+      } catch (error) {
+        return this.#error('bad_event', error.message, {
+          requestEventId: value?.event_id,
+        })
+      }
     }
 
     try {

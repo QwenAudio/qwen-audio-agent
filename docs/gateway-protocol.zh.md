@@ -1,9 +1,9 @@
 # Gateway Client Protocol
 
-> 状态：**Draft 0.5**<br>
+> 状态：**Draft 0.6**<br>
 > 目标线协议版本：**6.0.0**<br>
 > Roadmap：[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
-> 当前实现事实源：`shared/gateway-client-protocol.mjs`、`shared/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
+> 当前实现事实源：`shared/gateway-client-protocol.mjs`、`server/src/client/client-event-router.mjs`、`server/src/client/client-command-runtime.mjs`、`shared/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
 
 本文档定义 qwen-audio-agent Gateway 与唯一活动 Client Environment 之间的北向协议。它描述的是下一主版本的目标契约，不代表当前 5.x 已经实现全部事件。
 
@@ -107,8 +107,22 @@ Gateway 返回协商后的版本与能力交集：
 GCP1 在不分叉 Gateway 业务逻辑的前提下实现信封与握手。6.0 Client 以
 `session.hello` 开始；Gateway 返回 `session.ready`，为后续下行事件补充
 `event_id`，并把 6.0 输入别名归一化到现有内部事件模型。5.x Client 仍可使用
-`connect`，收到的旧事件形状保持不变。握手只协商已有运行时实现的能力；为
-GCP2–GCP5 预留的名称用于统一扩展词汇，但不会被声明为已实现。
+`connect`，收到的旧事件形状保持不变。握手只协商已有运行时实现的能力。GCP2 的
+Client Event 与运行时命令 capability 已经实现；GCP3–GCP5 预留的名称仍只用于统一
+扩展词汇，在对应 Runtime 完成前不会被声明为已实现。
+
+### 3.2 GCP2 运行时落地
+
+GCP2 在协商后的同一条 WebSocket 上实现 `client.event.publish`，以及第 5.4 节的
+Task、权限和对话历史命令。即时结果与错误通过 `request_event_id` 关联。现有 REST
+路由调用同一个 Runtime Command Service，并暂时作为兼容别名保留。
+
+Client Event Definition 在 Gateway 组合阶段注册。Registry 统一定义 payload
+Schema、大小、频率、保存、合并、最大路由等级与可选确定性 Handler。Gateway 根据
+已认证连接填写 owner、Session、Client 类型与 Client 实例；这些可信字段不能由
+Event data 提供。首个内置定义是 `desktop.presence.sleep_requested`。它进入模型的
+Delivery 留到 GCP3，因此 GCP2 只负责接收、校验、保存和确定性处理，不会把它伪装成
+用户输入。
 
 ## 4. 通用事件信封
 
@@ -184,7 +198,8 @@ client.event.publish.result
   "type": "client.event.publish.result",
   "event_id": "evt_gateway_31",
   "request_event_id": "evt_client_17",
-  "accepted": true
+  "accepted": true,
+  "name": "user.object.touched"
 }
 ```
 
@@ -236,7 +251,7 @@ Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client 
 
 ### 5.4 运行时命令与查询
 
-活动 Client 通过同一个 WebSocket 发起运行时命令与查询。每个命令携带 `event_id`；即时 `<command>.result` 通过 `request_event_id` 关联请求。后续生命周期变化仍作为普通、可回放的服务端推送发布，不能隐藏在命令结果中。
+活动 Client 通过同一个 WebSocket 发起运行时命令与查询。每个命令携带 `event_id`；即时 `<command>.result` 通过 `request_event_id` 关联请求。后续生命周期变化仍作为普通服务端推送发布，不能隐藏在命令结果中；有界回放由 GCP5 补充。
 
 | 命令 | 方向 | 语义 |
 |---|---|---|
@@ -397,6 +412,7 @@ active → sleep_requested → sleeping
 client_occupied
 protocol_version_unsupported
 capability_unsupported
+capability_not_negotiated
 bad_event
 unknown_type
 client_event_unsupported
@@ -405,6 +421,8 @@ client_action_unsupported
 session_expired
 sequence_expired
 task_not_found
+task_not_cancellable
+permission_not_found
 payload_too_large
 rate_limited
 internal

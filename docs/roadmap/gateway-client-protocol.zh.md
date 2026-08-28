@@ -37,11 +37,10 @@ Backend Agent
 
 - Client 分发仍集中在 `realtime-gateway.mjs`；
 - Desktop capability 与休眠仍然存在特殊分支；
-- 缺少通用 Client-to-Gateway 语义事件 API；
 - 缺少通用 Gateway-to-Client Action/Result 契约；
-- Task 控制、权限决策、对话历史和恢复仍分散在 WebSocket 与内部 REST/SSE 路由；
+- 第一方 Client 的部分 Task 控制、权限、对话历史与恢复流程仍在使用内部 REST/SSE 兼容别名；
 - 用户输入、Task 播报、权限和 Gateway Trigger 尚未共享统一语义 Event/Delivery 边界；
-- 缺少 6.0 握手、事件关联和完整 Client conformance suite。
+- 回放、完整第一方迁移与完整 Client conformance suite 尚未实现。
 
 ## 架构规则
 
@@ -79,13 +78,13 @@ Backend Agent
 
 ## GCP2 — Client Event Ingress 与运行时命令
 
-- [ ] 增加 Client Event Definition Registry。
-- [ ] 增加 `GatewayEventRouter` 与 `client.event.publish/result`。
-- [ ] 增加 `task.create/get/list/cancel`、`permission.respond` 与 `conversation.history` 的 WebSocket Schema 和 Handler。
-- [ ] 即时命令结果通过 `request_event_id` 关联；后续 Task 与权限变化继续通过普通、可回放事件流发布。
-- [ ] 在连接边界填写可信来源身份。
-- [ ] 执行 Schema、大小、频率、保存、去重与合并 Policy。
-- [ ] 以 `desktop.presence.sleep_requested` 完成首个端到端事件。
+- [x] 增加 Client Event Definition Registry。
+- [x] 增加 `GatewayEventRouter` 与 `client.event.publish/result`。
+- [x] 增加 `task.create/get/list/cancel`、`permission.respond` 与 `conversation.history` 的 WebSocket Schema 和 Handler。
+- [x] 即时命令结果通过 `request_event_id` 关联；后续 Task 与权限变化继续通过普通事件流发布，并在 GCP5 具备回放能力。
+- [x] 在连接边界填写可信来源身份。
+- [x] 执行 Schema、大小、频率、保存、去重与合并 Policy。
+- [x] 以 `desktop.presence.sleep_requested` 完成首个端到端事件。
 
 完成条件：Client 可以发布已注册的环境或用户行为事件，不需要伪装成用户文本，也不需要给 Gateway 增加新的条件分支；第一方运行时命令都有内部 REST 路径的 WebSocket 替代方案。
 

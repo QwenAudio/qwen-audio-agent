@@ -50,6 +50,11 @@ import {
 } from '../frontend/tools/frontend-tool-source.mjs'
 import { FRONTEND_RECALL_CAPABILITY } from './frontend-tools.mjs'
 import { GatewayClientProtocolSession } from '../transport/gateway-client-protocol-session.mjs'
+import {
+  GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
+  GatewayClientCapability,
+  GatewayClientProtocolEvent,
+} from '../../../shared/gateway-client-protocol.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
@@ -127,8 +132,22 @@ export function attachRealtimeGateway(server, {
   frontendKnowledge = null,
   frontendToolSources = [],
   taskAnnouncementFactory = createTaskAnnouncementRuntime,
+  clientCommandRuntime = null,
+  clientEventRouter = null,
 }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 20 * 1024 * 1024 })
+  const supportedClientCapabilities = GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES
+    .filter(capability => {
+      if (capability === GatewayClientCapability.CLIENT_EVENTS) {
+        return Boolean(clientEventRouter)
+      }
+      if ([
+        GatewayClientCapability.TASK_COMMANDS,
+        GatewayClientCapability.PERMISSION_RESPOND,
+        GatewayClientCapability.CONVERSATION_HISTORY,
+      ].includes(capability)) return Boolean(clientCommandRuntime)
+      return true
+    })
   const activeVoiceClients = new ActiveVoiceClients()
   const voiceConnections = new Map()
   const frontendToolSourcesReady = Promise.all(
@@ -184,7 +203,10 @@ export function attachRealtimeGateway(server, {
   wss.on('connection', (ws, url, identity) => {
     const ownerId = identity.ownerId
     const sessionId = url.searchParams.get('sessionId') || 'main'
-    const clientProtocol = new GatewayClientProtocolSession({ sessionId })
+    const clientProtocol = new GatewayClientProtocolSession({
+      sessionId,
+      supportedCapabilities: supportedClientCapabilities,
+    })
     clientProtocolSessions.set(ws, clientProtocol)
     const connectionLogger = logger.child({
       subsystem: 'realtime',
@@ -218,6 +240,7 @@ export function attachRealtimeGateway(server, {
     const announcedPermissions = new Set()
     let permissionRetryTimer = null
     let realtimeSession
+    let runtimeMessageChain = Promise.resolve()
     const activeSessionTasks = () => taskManager.list({
       ownerId,
       sessionId,
@@ -1008,6 +1031,62 @@ export function attachRealtimeGateway(server, {
         expiresAt: status.expiresAt,
       })
     }
+    const runtimeSource = () => ({
+      ownerId,
+      sessionId,
+      clientType: descriptor.type,
+      clientInstanceId: descriptor.instanceId,
+    })
+    const sendRuntimeError = (message, error) => {
+      connectionLogger.warn('client_runtime.command_failed', {
+        type: String(message?.type || ''),
+        requestEventId: String(message?.event_id || ''),
+        code: String(error?.code || 'internal'),
+        error: String(error?.message || error),
+      })
+      send(ws, {
+        type: 'error',
+        ...(message?.event_id
+          ? { request_event_id: String(message.event_id) }
+          : {}),
+        error: {
+          code: String(error?.code || 'internal').slice(0, 80),
+          message: String(error?.message || error).slice(0, 500),
+        },
+      })
+    }
+    const handleRuntimeMessage = async message => {
+      if (message.type === GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH) {
+        if (!clientEventRouter) {
+          const error = new Error('Client Event runtime unavailable')
+          error.code = 'internal'
+          throw error
+        }
+        const result = await clientEventRouter.publish(message, {
+          source: runtimeSource(),
+        })
+        send(ws, {
+          type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT,
+          request_event_id: message.event_id,
+          accepted: result.accepted === true,
+          name: result.name,
+          ...(result.duplicate ? { duplicate: true } : {}),
+        })
+        return
+      }
+      if (!clientCommandRuntime) {
+        const error = new Error('Gateway Client command runtime unavailable')
+        error.code = 'internal'
+        throw error
+      }
+      const result = await clientCommandRuntime.execute(message, {
+        ownerId,
+        sessionId,
+        source: runtimeSource(),
+      })
+      send(ws, result)
+    }
+
     ws.on('message', raw => {
       let event
       try {
@@ -1023,6 +1102,13 @@ export function attachRealtimeGateway(server, {
       }
       for (const pendingEvent of protocolOutcome.pending || []) {
         send(ws, pendingEvent)
+      }
+      if (protocolOutcome.runtimeMessage) {
+        const runtimeMessage = protocolOutcome.runtimeMessage
+        runtimeMessageChain = runtimeMessageChain
+          .then(() => handleRuntimeMessage(runtimeMessage))
+          .catch(error => sendRuntimeError(runtimeMessage, error))
+        return
       }
       event = protocolOutcome.event
       if (!event) return

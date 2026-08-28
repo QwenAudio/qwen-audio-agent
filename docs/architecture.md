@@ -347,6 +347,12 @@ conversation events. Package-level `shared` modules are foundational runtime
 utilities; server `core` and `process` may depend on them, but they must not
 depend on server layers.
 
+`server/src/client` owns the northbound Client Event registry and runtime
+command application service. It may depend only on public `shared` protocol
+values and the protocol-neutral Task layer. The composition root in
+`server/src/app` injects those services into the Realtime transport; neither
+the voice path nor Client code imports their concrete implementation.
+
 Gateway may serve the immutable `web/dist` artifact as a deployment
 convenience, but this is static hosting only. Gateway source must not import UI
 components, presentation text, styling, terminal behavior, or desktop behavior.

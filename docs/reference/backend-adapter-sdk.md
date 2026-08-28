@@ -125,7 +125,7 @@ process.once('SIGTERM', () => application.close())
 This entry is for custom Node launchers. Existing `AGENT_PROTOCOL` values still
 select built-in backends and never load arbitrary code dynamically. A complete
 non-ACP in-memory example lives in
-[`examples/backend-adapter`](../../examples/backend-adapter/README.md).
+[`examples/backend-adapter`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/backend-adapter).
 
 ## Conformance
 

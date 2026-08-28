@@ -90,12 +90,13 @@ npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 
 ## 数据目录与隔离
 
-桌面版使用系统标准应用数据目录（macOS 为
+桌面版与 CLI 共享同一个用户目录（`~/.config/qwaudio`）：设置、身份、
+记忆与共享工作区在两者间一致。只有运行时状态——Gateway 进程、锁、
+日志、任务记录与皮肤——存放在桌面版自己的应用数据目录（macOS 为
 `~/Library/Application Support/Qwen Audio Agent`，Windows 为
 `%APPDATA%/Qwen Audio Agent`，Linux 为
-`~/.config/Qwen Audio Agent`），与 CLI 的 `~/.config/qwaudio` 完全隔离。
-两者的 Gateway、锁、日志与设置互不干扰，可以同时运行。桌面版首次启动时会从
-CLI 目录复制 `config.env` 等用户配置（CLI 保留原件）。
+`~/.config/Qwen Audio Agent`），因此两者可以同时运行。首次启动时，
+旧版桌面版的配置会迁移进共享的 CLI 目录（CLI 保留原件）。
 
 ## 自动更新与日志
 
@@ -103,4 +104,4 @@ CLI 目录复制 `config.env` 等用户配置（CLI 保留原件）。
 
 桌面版可在“设置 → 应用 → 日志”中打开日志目录，与 Gateway 一起记录结构化
 JSONL 日志，凭据自动脱敏并自动轮转。日志配置详见
-[配置说明](../configuration.zh.md#本地日志)。
+[配置说明](../configuration/advanced.zh.md#本地日志)。

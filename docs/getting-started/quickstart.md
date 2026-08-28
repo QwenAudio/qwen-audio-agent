@@ -61,4 +61,4 @@ explicitly start in frontend-only mode with `qwenaudio --backend none`.
 For selecting, one-click installing, permission modes, and persistent service of backend agents, see
 [Backend Agents](../backends/overview.md). For a complete list of environment variables, see
 [Configuration](../configuration.md). For TUI platform differences, see
-[TUI Notes](tui.md).
+[TUI Notes](tui.md); for the browser client, see [WebUI](webui.md).

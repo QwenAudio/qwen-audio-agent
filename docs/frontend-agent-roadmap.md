@@ -6,12 +6,12 @@
 > 为第一优先级，并通过链路连接后台 Agent。
 
 > 2026-08-10 更新：下方 P0 的 `profile / rules / long_term` 是历史实现记录，现已
-> 被 `USER.md / MEMORY.md` 两文档取代。当前边界、原子 `memory` 协议与优先级以 `docs/architecture.zh.md`
+> 被 `USER.md / MEMORY.md` 两文档取代。当前边界、原子 `memory` 协议与优先级以 `docs/architecture/deep-dive.zh.md`
 > 和 `docs/reference/memory.zh.md` 为准。
 
 ## 一、现状基线
 
-前台 Realtime 当前基础工具如下（`architecture.md` §3 明文规定）：
+前台 Realtime 当前基础工具如下（`architecture/deep-dive.md` §3 明文规定）：
 
 ```
 spawn_thinking / schedule_reminder / cancel_agent_task / get_agent_task_status
@@ -78,7 +78,7 @@ Claude Code CLAUDE.md —— 都是 user-authored standing instructions。
       已知事实和约束解析进自包含 `objective`，不转发完整记忆、规则或聊天历史
 - [x] **R8** 容量约束：rules ≤ 16 条 × ≤ 200 字（long_term 是 32×500；因全量
       注入必须更紧）
-- [x] **R9** `docs/architecture.md` §3：user_memory scope 描述更新（文档允许
+- [x] **R9** `docs/architecture/deep-dive.md` §3：user_memory scope 描述更新（文档允许
       的局部特性演进，非架构变更）
 - [x] **R10** 测试：frontend-memory / profiled-memory-store /
       frontend-agent-context / tool-call-handler
@@ -102,7 +102,7 @@ control query（排在 running turn 之后、普通队列之前）已验证该�
       插队、结果关联逻辑）
 - [ ] **Q3** 新前台工具（如 `quick_lookup`）+ PROMPT.md 路由规则（何时
       quick、何时 spawn_thinking）
-- [ ] **Q4** `architecture.md` §3 工具清单与 §2 流程图更新——**此项涉及
+- [ ] **Q4** `architecture/deep-dive.md` §3 工具清单与 §2 流程图更新——**此项涉及
       架构不变量，需明确评审**
 - [ ] **Q5** 测试：插队优先级、超时降级、打断时丢弃悬空查询
 

@@ -40,7 +40,7 @@ Talk while it talks. Interrupt anytime. Change your mind mid-sentence.
 
 - **It hides itself** when idle; or just say "你可以退下了" ("you may go")
 - **Bring it back** with `⇧⌘ Space` or the menu-bar icon
-- **Wake word**: enable it in settings, then say "你好千问" — detection runs fully on-device, audio never leaves your Mac
+- **Wake word**: enable it in settings, then say the wake word — detection runs fully on-device, audio never leaves your Mac
 - **Two looks**: pick between the fluid audio orb and the liquid gradient orb in settings
 
 ## Prefer typing?

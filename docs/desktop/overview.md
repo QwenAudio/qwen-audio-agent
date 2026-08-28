@@ -37,7 +37,7 @@ Generated skins may use the optional `animations.frames/fps` extension to
 describe each standard action's effective frames and speed. See the
 [desktop pet skin protocol](./pet-skin-spec.md).
 
-To import a skin you already downloaded, open "Settings → Application →
+To import a skin you already downloaded, open "Settings → App →
 Appearance", click "Import Skin…", and select the skin folder, its
 `pet.json`, or a zip archive. Imported skins are stored under `skins/` in
 the desktop data directory and appear in the appearance dropdown alongside
@@ -92,11 +92,11 @@ The output is located in `dist/desktop/`.
 
 ## Data Directory and Isolation
 
-The desktop app uses the standard system application data directory (`~/Library/Application Support/Qwen Audio Agent` on macOS, `%APPDATA%/Qwen Audio Agent` on Windows, and `~/.config/Qwen Audio Agent` on Linux), which is completely isolated from the CLI's `~/.config/qwaudio`. The Gateway, locks, logs, and settings of the two do not interfere with each other and can run simultaneously. On first launch, the desktop app copies `config.env` and other user configurations from the CLI directory (the CLI retains the originals).
+The desktop app shares the CLI's user directory (`~/.config/qwaudio`): settings, identity, memory, and the shared workspace are the same across both. Only runtime state — the Gateway process, locks, logs, task records, and skins — lives in the desktop app's own application data directory (`~/Library/Application Support/Qwen Audio Agent` on macOS, `%APPDATA%/Qwen Audio Agent` on Windows, and `~/.config/Qwen Audio Agent` on Linux), so the two can run simultaneously. On first launch, configuration from an older desktop build is migrated into the shared CLI directory (the CLI retains the originals).
 
 ## Auto Update and Logs
 
 The settings page displays the current version and allows manual update checks. When a new version is found, the background downloads a delta update, and once complete, a one-click restart installs it.
 
-The desktop app can open the log directory from "Settings → Application → Logs". Along with the Gateway, it records structured JSONL logs with automatic credential redaction and log rotation. For log configuration details, see
-[Configuration Guide](../configuration.md#本地日志).
+The desktop app can open the log directory from "Settings → App → Logs". Along with the Gateway, it records structured JSONL logs with automatic credential redaction and log rotation. For log configuration details, see
+[Configuration Guide](../configuration/advanced.md#local-logs).

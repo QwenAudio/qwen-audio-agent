@@ -26,7 +26,7 @@ npm run release:check
 
 ## 变更原则
 
-- 保持 Realtime 前台与后台 Agent 的边界，遵循 `docs/architecture.md`。
+- 保持 Realtime 前台与后台 Agent 的边界，遵循 `docs/architecture/deep-dive.md`。
 - 修复应包含覆盖失败场景的测试。
 - 避免在无关变更中重排或重写大段代码。
 - 新配置必须有安全默认值，并同步更新 `.env.example` 与配置文档。

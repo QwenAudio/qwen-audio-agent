@@ -1,10 +1,9 @@
-# We built a full-duplex voice layer for coding agents (conversation keeps going while tasks run)
+# We built a full-duplex voice runtime for AI agents (conversation keeps going while tasks run)
 
-qwen-audio-agent is an open-source realtime voice runtime that sits in
-front of your existing AI coding agents. It connects to backends over
-ACP (Agent Client Protocol), so it works with Claude Code, Codex,
-OpenCode, Qoder, Kimi Code and more, without touching the agents
-themselves.
+qwen-audio-agent is an open-source realtime voice runtime that keeps AI
+agents talking, working, and present. It connects to agents over ACP
+(Agent Client Protocol) — Claude Code, Codex, OpenCode, Qoder, Kimi
+Code, or your own — without touching the agents themselves.
 
 The problem we wanted to solve: today, voice interaction with agents is
 walkie-talkie style. You say something, the agent goes silent while it
@@ -24,11 +23,15 @@ Our model is different:
   modify, or kick off the next task, with full context intact.
 - Voice wake word on desktop. After idle timeout the runtime sleeps but
   keeps the mic open with a local 3M-parameter sherpa-onnx keyword
-  spotter ("no cloud call while sleeping"); saying the wake word brings
+  spotter (no cloud call while sleeping); saying the wake word brings
   the whole session back.
 
-Interfaces: WebUI, terminal TUI (full-duplex on macOS), and a macOS
-desktop floating orb. Linux desktop builds just landed.
+Interfaces: WebUI, terminal TUI (full-duplex on macOS), and a desktop
+floating orb on macOS, Windows, and Linux. The client protocol is
+documented and open, so the runtime is not tied to any single
+environment — the repo ships a smart-cockpit voice agent example (car
+controls, navigation, music) built as a custom client, next to the
+default coding-assistant setups.
 
 Architecture notes worth sharing:
 
@@ -51,5 +54,5 @@ frontend for fully local stacks is also available).
 Repo: https://github.com/QwenAudio/qwen-audio-agent
 
 We would love feedback from people who have tried to bolt voice onto
-coding agents: how do you handle permission prompts over audio, and what
+agents: how do you handle permission prompts over audio, and what
 wake-word false-positive rates are acceptable in practice?

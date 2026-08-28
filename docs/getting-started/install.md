@@ -1,6 +1,6 @@
 # Installation
 
-Requires Node.js 22.22.2+ or 24.15.0+ and npm 10+. When using the default DashScope
+Requires Node.js ^22.22.2, ^24.15.0, or >=26.0.0, and npm 10+. When using the default DashScope
 real-time voice frontend, a DashScope API Key is also required.
 The repository provides `.nvmrc` and `.node-version`; when using nvm, you can simply run `nvm use`.
 
@@ -59,9 +59,11 @@ qwenaudio setup
 
 ## Configuration File Location
 
-The CLI uses `~/.config/qwaudio/config.env`; the desktop version uses the system's standard application data directory
-(`~/Library/Application Support/Qwen Audio Agent` on macOS). The two have separate Gateways,
-locks, logs, and settings, and can run simultaneously. Set `QWAUDIO_CONFIG_DIR` or
+The CLI and the desktop version share `~/.config/qwaudio/config.env` (settings, identity,
+memory, and the shared workspace live in the same user directory). Only runtime state —
+Gateway process, locks, logs, and skins — is kept in the desktop app's own application
+data directory (`~/Library/Application Support/Qwen Audio Agent` on macOS), so the two can run
+simultaneously. Set `QWAUDIO_CONFIG_DIR` or
 `XDG_CONFIG_HOME` to change the configuration directory. See [Configuration](../configuration.md) for details.
 
 ## Obtain a DashScope API Key

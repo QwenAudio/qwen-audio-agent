@@ -112,7 +112,7 @@ process.once('SIGTERM', () => application.close())
 
 这个入口用于自定义 Node 启动器；现有 `AGENT_PROTOCOL` 仍选择项目内置后台，不会动态
 加载任意代码。完整的非 ACP 内存示例位于
-[`examples/backend-adapter`](../../examples/backend-adapter/README.md)。
+[`examples/backend-adapter`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/backend-adapter)。
 
 ## Conformance
 

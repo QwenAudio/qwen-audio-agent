@@ -10,6 +10,8 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.4.0 adds GCP4 ClientActionPort request/result correlation and the shared
+// presence state machine used by Realtime tools and Gateway sleep triggers.
 // 5.3.0 adds GCP3 provider-neutral AgentDelivery routing for Client Events,
 // Task results and progress, and permission prompts.
 // 5.2.0 adds GCP2 Client Event ingress and WebSocket runtime commands for
@@ -37,7 +39,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.3.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.4.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -105,6 +107,10 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // provider-neutral AgentDelivery runtime with handle/context/respond/
   // interrupt modes before any Realtime-provider encoding occurs.
   'realtime.gateway-client-protocol-v6-agent-delivery',
+  // Gateway-to-Client environment operations use correlated action
+  // request/results. enter_sleep is capability-gated and commits Gateway
+  // sleeping only after the active Client reports a successful transition.
+  'realtime.gateway-client-protocol-v6-client-actions',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

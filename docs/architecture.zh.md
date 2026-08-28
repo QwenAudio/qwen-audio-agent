@@ -277,8 +277,10 @@ Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 UI 仅消费公共 Task 与对话事件。包级别的 `shared` 模块是基础运行时
 工具；server `core` 和 `process` 可以依赖它们，但它们不得依赖 server 层。
 
-`server/src/client` 管理北向 Client Event Registry 与运行时命令应用服务，只能依赖
-公开 `shared` 协议值、与供应商无关的 `delivery` 值和协议无关的 Task 层。
+`server/src/client` 管理北向 Client Event Registry、运行时命令应用服务、
+`ClientActionPort` 与幂等 Presence 状态机。Client Action 描述一次环境操作并等待
+当前 Client 回传结果，不导入 Electron 或任何 UI 实现。该层只能依赖公开 `shared`
+协议值、与供应商无关的 `delivery` 值和协议无关的 Task 层。
 `server/src/delivery` 只管理 `AgentDelivery` 值，不依赖 Client、Realtime 或 Backend
 具体实现。`server/src/app` 组合根把这些服务注入
 Realtime Transport；语音链路与 Client 代码都不能导入其具体实现。

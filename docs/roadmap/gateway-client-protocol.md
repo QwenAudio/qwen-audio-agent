@@ -100,12 +100,12 @@ Exit criteria: one event can update Gateway/UI only, update model context silent
 
 ## GCP4 — Client Action port
 
-- [ ] Add `ClientActionPort` and `client.action.request/result`.
-- [ ] Advertise Client Action capabilities during handshake.
-- [ ] Expose action-derived Realtime tools only when supported.
-- [ ] Migrate `enter_sleep` from `requestClientState()` to the shared action path.
-- [ ] Add one idempotent `PresenceController` for user-requested, automatic, timeout, and duplicate sleep requests.
-- [ ] Mark sleeping only after a successful Client Action result.
+- [x] Add `ClientActionPort` and `client.action.request/result`.
+- [x] Advertise Client Action capabilities during handshake.
+- [x] Expose action-derived Realtime tools only when supported.
+- [x] Migrate `enter_sleep` from `requestClientState()` to the shared action path.
+- [x] Add one idempotent `PresenceController` for user-requested, automatic, timeout, and duplicate sleep requests.
+- [x] Mark sleeping only after a successful Client Action result.
 
 Exit criteria: Realtime Tool Calls and Gateway fallbacks use one action/state machine, and Gateway Core no longer knows how Desktop hides its window.
 

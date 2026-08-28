@@ -37,6 +37,7 @@
     "./gateway-events": "./shared/protocol/gateway-events.mjs",
     "./gateway-client-protocol": "./shared/gateway-client-protocol.mjs",
     "./client-events": "./server/src/client/client-event-router.mjs",
+    "./client-actions": "./server/src/client/client-action-port.mjs",
     "./agent-delivery": "./server/src/delivery/agent-delivery.mjs",
     "./ag-ui-events": "./shared/protocol/agui-events.mjs",
     "./session-events": "./shared/session-events.mjs",

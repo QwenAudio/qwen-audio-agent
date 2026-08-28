@@ -59,20 +59,22 @@ test('appends namespaced dynamic tools without changing the static registry', ()
   )
 })
 
-test('exposes client-state tools only when the client advertises support', () => {
+test('exposes Client Action tools only when the client advertises support', () => {
   assert.equal(frontendToolRegistry.isEnabled(ENTER_SLEEP_TOOL_NAME), false)
   assert.equal(
     frontendToolRegistry.isEnabled(ENTER_SLEEP_TOOL_NAME, {
-      client: { states: ['sleeping'] },
+      client: { actions: ['desktop.presence.enter_sleep'] },
     }),
     true,
   )
   assert.deepEqual(
-    names(frontendTools({ client: { states: ['sleeping'] } })),
+    names(frontendTools({
+      client: { actions: ['desktop.presence.enter_sleep'] },
+    })),
     [...DEFAULT_TOOL_NAMES, ENTER_SLEEP_TOOL_NAME],
   )
   assert.deepEqual(
-    names(frontendTools({ client: { states: ['unknown'] } })),
+    names(frontendTools({ client: { actions: ['unknown'] } })),
     DEFAULT_TOOL_NAMES,
   )
 })
@@ -137,10 +139,10 @@ test('keeps visibility policy separate from runtime execution checks', () => {
   const entry = frontendToolRegistry.get(ENTER_SLEEP_TOOL_NAME)
   assert.deepEqual(entry.policy, {
     mode: 'control',
-    requiredClientStates: ['sleeping'],
+    requiredClientActions: ['desktop.presence.enter_sleep'],
   })
   assert.equal(Object.isFrozen(entry.policy), true)
-  assert.equal(Object.isFrozen(entry.policy.requiredClientStates), true)
+  assert.equal(Object.isFrozen(entry.policy.requiredClientActions), true)
 })
 
 test('declares one background tool and classifies every other tool', () => {

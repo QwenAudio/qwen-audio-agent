@@ -40,6 +40,7 @@ const allowedDependencies = {
   task: new Set(['agent', 'core', 'session', 'task']),
   transport: new Set(['shared', 'task', 'transport']),
   voice: new Set([
+    'client',
     'conversation',
     'core',
     'delivery',

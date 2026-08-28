@@ -110,8 +110,9 @@ logic. A 6.0 Client starts with `session.hello`; Gateway returns
 6.0 input aliases into the existing internal event model. A 5.x Client may
 continue to start with `connect` and receives the unchanged legacy event shape.
 Only capabilities with working runtimes are negotiated. GCP2 Client Event and
-runtime-command capabilities and GCP3 Agent Delivery are now implemented;
-names reserved for GCP4–GCP5 remain vocabulary-only until their runtimes ship.
+runtime-command capabilities, GCP3 Agent Delivery, and GCP4 Client Actions are
+now implemented; names reserved for GCP5 remain vocabulary-only until its
+runtime ships.
 
 ### 3.2 GCP2 runtime rollout
 
@@ -138,6 +139,18 @@ Realtime providers encode only the resulting context item and optional response;
 raw Client or backend protocol objects never enter the model. Existing Task
 announcement batching, safe-window retry, notification claims, and playback
 acknowledgement remain the reliable lifecycle around that shared projection.
+
+### 3.4 GCP4 Client Action rollout
+
+GCP4 implements correlated `client.action.request/result` messages and a
+protocol-neutral `ClientActionPort`. The active Client capability-gates
+action-derived Realtime tools. `enter_sleep`, the desktop idle-event fallback,
+and the legacy Gateway timeout converge on one idempotent
+`PresenceController`; an action-capable Client is marked sleeping only after it
+reports that the environment transition completed. The current first-party
+desktop may publish the built-in idle event and return an Action result after
+the 5.x `connect` alias during migration;
+GCP5 moves them to `session.hello` without changing the Action semantics.
 
 ## 4. Common event envelope
 
@@ -261,6 +274,12 @@ client.action.result
 ```
 
 `status` is `completed`, `failed`, or `unsupported`. Failure includes a bounded `{code, message}` object. Gateway exposes an action-derived Realtime tool only when the active Client negotiated the corresponding capability.
+
+The first implemented action is `desktop.presence.enter_sleep`. Its tool,
+automatic Client Event fallback, timeout handling, and duplicate requests share
+one Presence state machine. The legacy `client.state` sleeping message remains
+accepted by current clients as a migration alias, but is no longer the execution
+boundary.
 
 Client Action is not a replacement for MCP, OpenAPI, ACP, or A2A. It covers capabilities owned by the connected Client Environment. Other external systems continue to use the appropriate tool or backend adapter.
 

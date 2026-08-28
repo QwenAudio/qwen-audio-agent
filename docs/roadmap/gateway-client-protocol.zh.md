@@ -100,12 +100,12 @@ Backend Agent
 
 ## GCP4 — Client Action Port
 
-- [ ] 增加 `ClientActionPort` 与 `client.action.request/result`。
-- [ ] 在握手中声明 Client Action capability。
-- [ ] 只有 Client 支持时才暴露 Action 派生的 Realtime 工具。
-- [ ] 将 `enter_sleep` 从 `requestClientState()` 迁移到共享 Action 链路。
-- [ ] 以一个幂等 `PresenceController` 处理用户主动、自动、超时与重复休眠请求。
-- [ ] Client Action 成功后才标记 sleeping。
+- [x] 增加 `ClientActionPort` 与 `client.action.request/result`。
+- [x] 在握手中声明 Client Action capability。
+- [x] 只有 Client 支持时才暴露 Action 派生的 Realtime 工具。
+- [x] 将 `enter_sleep` 从 `requestClientState()` 迁移到共享 Action 链路。
+- [x] 以一个幂等 `PresenceController` 处理用户主动、自动、超时与重复休眠请求。
+- [x] Client Action 成功后才标记 sleeping。
 
 完成条件：Realtime Tool Call 与 Gateway 兜底共用一个 Action/状态机，Gateway Core 不再知道 Desktop 如何隐藏窗口。
 

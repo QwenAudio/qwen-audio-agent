@@ -171,6 +171,51 @@ test('routes negotiated GCP2 commands and Client Events with correlated results'
   modern.socket.close()
 })
 
+test('commits sleep only after the negotiated Client Action completes', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const modern = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-client-action-hello',
+    clientType: 'desktop',
+    clientInstanceId: 'desktop-action-test',
+    capabilities: [GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP],
+  }))
+  const ready = await waitFor(modern.received, event => event.type === 'session.ready')
+  assert.deepEqual(ready.capabilities, [
+    GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+  ])
+
+  modern.socket.send(JSON.stringify({
+    type: 'sleep',
+    event_id: 'evt-client-sleep-command',
+  }))
+  const action = await waitFor(
+    modern.received,
+    event => event.type === GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
+  )
+  assert.equal(action.name, 'desktop.presence.enter_sleep')
+  assert.equal(modern.received.some(event => (
+    event.type === 'voice.sleep' && event.state === 'sleeping'
+  )), false)
+
+  modern.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
+    event_id: 'evt-client-action-result',
+    request_event_id: action.event_id,
+    status: 'completed',
+    output: { state: 'hidden' },
+  }))
+  await waitFor(modern.received, event => (
+    event.type === 'voice.sleep' && event.state === 'sleeping'
+  ))
+  modern.socket.close()
+})
+
 test('rejects unnegotiated GCP2 commands before dispatch', async t => {
   const { server, gateway } = gatewayHarness({
     clientCommandRuntime: {

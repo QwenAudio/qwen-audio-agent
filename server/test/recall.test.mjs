@@ -181,7 +181,7 @@ test('the tool is only exposed when session digests are enabled', () => {
   // 与既有的条件工具互不干扰
   const both = names({
     frontend: { capabilities: [FRONTEND_RECALL_CAPABILITY] },
-    client: { states: ['sleeping'] },
+    client: { actions: ['desktop.presence.enter_sleep'] },
   })
   assert.ok(both.includes(RECALL_TOOL_NAME))
   assert.ok(both.includes('enter_sleep'))

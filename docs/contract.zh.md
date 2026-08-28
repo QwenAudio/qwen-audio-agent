@@ -15,8 +15,8 @@
 变更升 major。
 
 拟议中的 6.0 北向边界记录在草案
-[Gateway Client Protocol](gateway-protocol.zh.md) 与
-[Roadmap](roadmap/gateway-client-protocol.zh.md) 中，并由
+[Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.zh.md) 与
+[Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.zh.md) 中，并由
 [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)
 跟踪。它们是设计目标，不是当前 5.x 承诺；只有能力完成实现并由下文点名的测试锁定后，
 才进入本契约索引。

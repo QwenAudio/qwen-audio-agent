@@ -19,8 +19,8 @@ Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
 The proposed 6.0 northbound boundary is documented in the draft
-[Gateway Client Protocol](gateway-protocol.md) and its
-[roadmap](roadmap/gateway-client-protocol.md), tracked by
+[Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.md) and its
+[roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.md), tracked by
 [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251).
 Those documents are design targets, not current 5.x promises; this contract
 index remains authoritative until each capability is implemented and locked by

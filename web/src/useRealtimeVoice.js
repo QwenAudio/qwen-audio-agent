@@ -9,6 +9,10 @@ import {
   reduceGatewayClientState,
 } from '../../shared/gateway-client-state.mjs'
 import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
+import {
+  createGatewayProtocolEventId,
+  GatewayClientProtocolEvent,
+} from '../../shared/gateway-client-protocol.mjs'
 import { decodePcm, pcmBase64, resample } from './audio.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
 import { t } from './i18n.js'
@@ -212,6 +216,7 @@ export default function useRealtimeVoice({
   realtimeProvider = '',
   onEvent,
   onInputError,
+  onClientAction,
 }) {
   const [clientState, dispatchClientState] = useReducer(
     reduceGatewayClientState,
@@ -229,6 +234,7 @@ export default function useRealtimeVoice({
   } = clientState
   const eventRef = useRef(onEvent)
   const inputErrorRef = useRef(onInputError)
+  const clientActionRef = useRef(onClientAction)
   const wakeWordOnlyRef = useRef(wakeWordOnly)
   const socketRef = useRef(null)
   const hasConnectedRef = useRef(false)
@@ -261,6 +267,7 @@ export default function useRealtimeVoice({
   })
   eventRef.current = onEvent
   inputErrorRef.current = onInputError
+  clientActionRef.current = onClientAction
   wakeWordOnlyRef.current = wakeWordOnly
   enabledRef.current = enabled
   outputMutedRef.current = outputMuted
@@ -602,11 +609,45 @@ export default function useRealtimeVoice({
           ...(realtimeProvider ? { provider: realtimeProvider } : {}),
         }))
       }
-      socket.onmessage = message => {
+      socket.onmessage = async message => {
         let event
         try {
           event = JSON.parse(message.data)
         } catch {
+          return
+        }
+        if (event.type === GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST) {
+          let result
+          try {
+            result = await clientActionRef.current?.(event)
+          } catch (error) {
+            result = {
+              status: 'failed',
+              error: {
+                code: 'client_action_failed',
+                message: String(error?.message || error).slice(0, 500),
+              },
+            }
+          }
+          const normalized = result?.status ? result : {
+            status: 'unsupported',
+            error: {
+              code: 'client_action_unsupported',
+              message: `Unsupported Client Action: ${String(event.name || '')}`,
+            },
+          }
+          if (socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+              type: GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
+              event_id: createGatewayProtocolEventId('client'),
+              request_event_id: event.event_id,
+              status: normalized.status,
+              ...(normalized.output === undefined
+                ? {}
+                : { output: normalized.output }),
+              ...(normalized.error ? { error: normalized.error } : {}),
+            }))
+          }
           return
         }
         dispatchClientState(event)
@@ -862,6 +903,16 @@ export default function useRealtimeVoice({
     sendSocketEvent({ type: GatewayClientEvent.WAKE })
   ), [sendSocketEvent])
 
+  const publishClientEvent = useCallback((name, data = {}, deliveryHint) => (
+    sendSocketEvent({
+      type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
+      event_id: createGatewayProtocolEventId('client'),
+      name,
+      data,
+      ...(deliveryHint ? { delivery_hint: deliveryHint } : {}),
+    })
+  ), [sendSocketEvent])
+
   const sendInput = useCallback(parts => {
     holdManualInputGuard()
     const event = {
@@ -893,6 +944,7 @@ export default function useRealtimeVoice({
     activateAudio,
     interrupt,
     wake,
+    publishClientEvent,
     sendInput,
   }
 }

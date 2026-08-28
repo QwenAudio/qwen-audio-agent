@@ -15,6 +15,7 @@ import {
   FRONTEND_TOOL_APPROVAL_CAPABILITY,
 } from '../frontend/tools/frontend-tool-source.mjs'
 import { spawnThinkingTool } from './tools/spawn-thinking-tool.mjs'
+import { ClientActionName } from '../client/client-action-port.mjs'
 
 export { SPAWN_THINKING_TOOL_NAME } from './tools/spawn-thinking-tool.mjs'
 export const SCHEDULE_REMINDER_TOOL_NAME = 'schedule_reminder'
@@ -404,7 +405,10 @@ export const frontendToolRegistry = new FrontendToolRegistry([
   },
   {
     definition: enterSleepTool,
-    policy: { mode: 'control', requiredClientStates: ['sleeping'] },
+    policy: {
+      mode: 'control',
+      requiredClientActions: [ClientActionName.ENTER_SLEEP],
+    },
   },
 ])
 

@@ -22,13 +22,15 @@ The proposed 6.0 northbound boundary is documented in the draft
 [Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.md) and its
 [roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.md), tracked by
 [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251).
-Those documents remain the design target. GCP1 and GCP2 are now available as
-an opt-in 6.0 handshake, Client Event ingress, and runtime-command plane over
-the existing WebSocket; capabilities for later stages remain vocabulary only
-until their runtimes ship.
+Those documents remain the design target. GCP1–GCP4 are now available as an
+opt-in 6.0 handshake, Client Event ingress, runtime-command plane, Agent
+Delivery, and Client Action boundary over the existing WebSocket; capabilities
+for later stages remain vocabulary only until their runtimes ship.
 This contract index remains authoritative for implemented behavior.
 
-The current health-contract version is `5.2.0`. The additive `5.2` line exposes
+The current health-contract version is `5.4.0`. The additive `5.4` line adds
+correlated Client Actions and the shared Presence state machine. The additive
+`5.3` line adds provider-neutral Agent Delivery. The additive `5.2` line exposes
 registered Client Event ingress and Task, permission, and conversation-history
 commands on the negotiated 6.0 WebSocket while retaining REST compatibility
 aliases. The additive `5.1` line exposes
@@ -75,6 +77,7 @@ below instead of assuming the old list.
 | `realtime.gateway-client-protocol-v6-handshake` | The same WebSocket accepts an opt-in 6.0 `session.hello`, returns correlated `session.ready`, negotiates implemented capabilities, and normalizes 6.0 input aliases into the existing business path | `test/gateway-client-protocol.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-runtime-commands` | Negotiated 6.0 Clients can publish registered semantic Client Events and use correlated Task, permission, and conversation-history commands over the same WebSocket; existing REST routes call the same command service as compatibility aliases | `test/gateway-client-protocol.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/client-command-runtime.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-agent-delivery` | Client Events, Task results and progress, and permission prompts cross one provider-neutral `AgentDelivery` boundary with `handle`, `context`, `respond`, and `interrupt` modes | `server/test/agent-delivery.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/realtime-provider.test.mjs`, `server/test/announcement-manager.test.mjs` |
+| `realtime.gateway-client-protocol-v6-client-actions` | Correlated `client.action.request/result` messages execute Client-owned environment operations; `enter_sleep` is capability-gated and sleeping commits only after Client success | `test/gateway-client-protocol.test.mjs`, `server/test/client-action-port.test.mjs`, `server/test/gateway-client-handshake.test.mjs`, `desktop/test/enter-sleep-flow.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |
@@ -96,6 +99,7 @@ is unsupported and breaks without notice.
 | `qwen-audio-agent/gateway-protocol` | `GATEWAY_PROTOCOL_VERSION`, `GATEWAY_CAPABILITIES` |
 | `qwen-audio-agent/gateway-client-protocol` | GCP 6.0 envelope and handshake schemas, parsers, capability constants, and reference Client helpers |
 | `qwen-audio-agent/client-events` | Client Event definition registry, built-in definitions, routing policies, and `GatewayEventRouter` for Gateway extensions |
+| `qwen-audio-agent/client-actions` | `ClientActionPort`, built-in action names, capability mapping, request/result correlation, deadlines, and in-flight deduplication |
 | `qwen-audio-agent/agent-delivery` | Provider-neutral `AgentDelivery` values and routing modes |
 | `qwen-audio-agent/gateway-setup` | `gatewaySetupStatus`, `assertGatewaySetup` |
 | `qwen-audio-agent/gateway-process` | `GatewayProcess`, `createGatewayProcess`, `GATEWAY_READY_MESSAGE`, `DEFAULT_GATEWAY_ENTRY`, `validateGatewayOrigin`, `portInUse` |
@@ -213,13 +217,14 @@ conversation surface.
 | client → server | `unmute`, `mute`, `input.unmute`, `input.mute` | Control voice participation or only microphone capture |
 | client → server | `interrupt`, `sleep`, `wake` | Interrupt the foreground response or control explicit sleep |
 | client → server | `playback.started`, `playback.ended`, `playback.cancelled` | Report client-side playback lifecycle by `responseId` |
+| server → client → server | `client.action.request`, `client.action.result` | Execute a capability-gated Client Environment operation and return its correlated outcome |
 | server → client | `voice.ready`, `voice.connection`, `voice.ownership`, `voice.deactivated`, `voice.sleep` | Voice connection, ownership, and sleep lifecycle |
 | server → client | `turn.started`, `voice.state` | Foreground conversation-turn identity and state |
 | server → client | `audio.delta`, `audio.done`, `playback.clear` | Audio playback stream and cancellation |
 | server → client | `response.started`, `response.interrupted` | Response lifecycle keyed by `responseId` |
 | server → client | `transcript.delta`, `transcript.final`, `transcript.discard` | User and assistant transcript lifecycle |
 | server → client | `task.*` | Optional background Task snapshots, progress, authorization, and completion |
-| server → client | `agent.activity`, `client.state`, `error` | Foreground activity hints, supported client-state requests, and errors |
+| server → client | `agent.activity`, `client.state`, `error` | Foreground activity hints, the temporary 5.x client-state migration alias, and errors |
 
 | Direction | Event | Meaning |
 | --- | --- | --- |

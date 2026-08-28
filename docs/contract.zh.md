@@ -18,12 +18,14 @@
 [Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.zh.md) 与
 [Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.zh.md) 中，并由
 [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)
-跟踪。它们仍是完整设计目标；GCP1 与 GCP2 已以可选的 6.0 握手、Client Event Ingress
-与运行时命令面落在现有 WebSocket 上。后续阶段的 capability 仍是已冻结词汇，在对应
-运行时实现前不会参与协商。
+跟踪。它们仍是完整设计目标；GCP1–GCP4 已以可选的 6.0 握手、Client Event Ingress、
+运行时命令面、Agent Delivery 与 Client Action 边界落在现有 WebSocket 上。后续阶段的
+capability 仍是已冻结词汇，在对应运行时实现前不会参与协商。
 已实现行为仍以本契约索引为准。
 
-当前健康契约版本为 `5.2.0`。新增的 `5.2` 能力在协商后的 6.0 WebSocket 上提供已注册
+当前健康契约版本为 `5.4.0`。新增的 `5.4` 能力提供有关联关系的 Client Action 与共享
+Presence 状态机；`5.3` 增加 Provider 无关 Agent Delivery；`5.2` 在协商后的 6.0
+WebSocket 上提供已注册
 Client Event Ingress 与 Task、权限、对话历史命令，同时保留 REST 兼容别名。`5.1`
 能力提供可选 GCP 6.0
 `session.hello` / `session.ready` 握手，同时保留 5.x `connect` 路径与业务事件别名。
@@ -63,6 +65,7 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `realtime.gateway-client-protocol-v6-handshake` | 同一 WebSocket 可选择以 6.0 `session.hello` 接入，返回有关联关系的 `session.ready`，协商已实现能力，并把 6.0 输入别名归一化到现有业务路径 | `test/gateway-client-protocol.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-runtime-commands` | 协商后的 6.0 Client 可以通过同一 WebSocket 发布已注册的语义 Client Event，并使用有关联结果的 Task、权限和对话历史命令；现有 REST 路由调用同一命令服务作为兼容别名 | `test/gateway-client-protocol.test.mjs`、`server/test/client-event-router.test.mjs`、`server/test/client-command-runtime.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-agent-delivery` | Client Event、Task 结果与低频进展、权限请求统一跨越 Provider 无关 `AgentDelivery` 边界，并支持 `handle`、`context`、`respond`、`interrupt` 四种模式 | `server/test/agent-delivery.test.mjs`、`server/test/client-event-router.test.mjs`、`server/test/realtime-provider.test.mjs`、`server/test/announcement-manager.test.mjs` |
+| `realtime.gateway-client-protocol-v6-client-actions` | 有关联关系的 `client.action.request/result` 执行 Client 自有环境操作；`enter_sleep` 按 capability 暴露，只有 Client 成功后才提交 sleeping | `test/gateway-client-protocol.test.mjs`、`server/test/client-action-port.test.mjs`、`server/test/gateway-client-handshake.test.mjs`、`desktop/test/enter-sleep-flow.test.mjs` |
 | `desktop.orb-shell` | 悬浮球形态的主进程契约随包发布：`bindOrbShell` 应答随包 preload 发出的全部通道 | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` 持有悬浮球窗口配方；其 `destroy()` 是宿主的同步销毁路径（渲染进程退出才能确定性释放麦克风） | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` 覆盖默认锚点、显示器夹取与拖放持久化 | `desktop/test/orb-placement.test.mjs` |
@@ -83,6 +86,7 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `qwen-audio-agent/gateway-protocol` | `GATEWAY_PROTOCOL_VERSION`、`GATEWAY_CAPABILITIES` |
 | `qwen-audio-agent/gateway-client-protocol` | GCP 6.0 信封与握手 Schema、解析器、能力常量和参考 Client Helper |
 | `qwen-audio-agent/client-events` | 供 Gateway 扩展使用的 Client Event Definition Registry、内置定义、路由 Policy 与 `GatewayEventRouter` |
+| `qwen-audio-agent/client-actions` | `ClientActionPort`、内置 Action 名称、capability 映射、请求/结果关联、deadline 与进行中请求去重 |
 | `qwen-audio-agent/agent-delivery` | Provider 无关的 `AgentDelivery` 值与路由模式 |
 | `qwen-audio-agent/gateway-setup` | `gatewaySetupStatus`、`assertGatewaySetup` |
 | `qwen-audio-agent/gateway-process` | `GatewayProcess`、`createGatewayProcess`、`GATEWAY_READY_MESSAGE`、`DEFAULT_GATEWAY_ENTRY`、`validateGatewayOrigin`、`portInUse` |
@@ -191,13 +195,14 @@ await orb.load()
 | 客户端 → 服务端 | `unmute`、`mute`、`input.unmute`、`input.mute` | 控制语音参与，或只控制麦克风采集 |
 | 客户端 → 服务端 | `interrupt`、`sleep`、`wake` | 打断前台回复，或控制显式休眠 |
 | 客户端 → 服务端 | `playback.started`、`playback.ended`、`playback.cancelled` | 按 `responseId` 回报客户端播放生命周期 |
+| 服务端 → 客户端 → 服务端 | `client.action.request`、`client.action.result` | 执行 capability 约束的 Client Environment 操作并返回有关联结果 |
 | 服务端 → 客户端 | `voice.ready`、`voice.connection`、`voice.ownership`、`voice.deactivated`、`voice.sleep` | 语音连接、占用权与休眠生命周期 |
 | 服务端 → 客户端 | `turn.started`、`voice.state` | 前台对话轮次标识与状态 |
 | 服务端 → 客户端 | `audio.delta`、`audio.done`、`playback.clear` | 播放音频流及清除指令 |
 | 服务端 → 客户端 | `response.started`、`response.interrupted` | 以 `responseId` 标识的回复生命周期 |
 | 服务端 → 客户端 | `transcript.delta`、`transcript.final`、`transcript.discard` | 用户与助手转写生命周期 |
 | 服务端 → 客户端 | `task.*` | 可选的后台 Task 快照、进度、授权与完成事件 |
-| 服务端 → 客户端 | `agent.activity`、`client.state`、`error` | 前台活动提示、客户端状态请求与错误 |
+| 服务端 → 客户端 | `agent.activity`、`client.state`、`error` | 前台活动提示、临时保留的 5.x Client State 迁移别名与错误 |
 
 | 方向 | 事件 | 含义 |
 | --- | --- | --- |

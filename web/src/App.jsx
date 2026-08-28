@@ -51,6 +51,7 @@ import {
   desktopWakeWordEnabled,
   desktopWorkSettled,
   desktopTasksWorking,
+  performDesktopClientAction,
 } from './desktop-hide.js'
 import {
   desktopTaskCards,
@@ -785,6 +786,12 @@ export default function App() {
       setWaitingForVoice(false)
       setActivity(message)
     },
+    onClientAction: event => performDesktopClientAction(event, {
+      desktop: desktopOrbMode,
+      bridge: window.qwenAudioAgentDesktop,
+      onLifecycle: setDesktopLifecycle,
+      lastWakeAt: lastWakeAtRef.current,
+    }),
   })
   const lifecycleTransition = (
     desktopOrbMode && desktopLifecycle !== 'active'
@@ -940,6 +947,7 @@ export default function App() {
   // 快捷键/托盘唤起只恢复窗口；Gateway 若在休眠，前台连接会停在 sleeping，
   // 需要显式唤醒才能走到 connected，否则悬浮球永远无法就绪。
   const wakeGateway = voice.wake
+  const publishClientEvent = voice.publishClientEvent
   useEffect(() => {
     if (!desktopOrbMode || desktopLifecycle !== 'waking') return
     wakeGateway()
@@ -963,15 +971,16 @@ export default function App() {
       timeoutSeconds: autoHideSeconds,
     })
     const timer = setTimeout(() => {
-      window.qwenAudioAgentDesktop?.enterHide()
-        .then(lifecycle => setDesktopLifecycle(lifecycle.state))
-        .catch(() => {})
+      publishClientEvent('desktop.presence.sleep_requested', {
+        idle_ms: autoHideSeconds * 1000,
+      })
     }, Math.max(0, deadline - Date.now()))
     return () => clearTimeout(timer)
   }, [
     desktopLifecycle,
     desktopSurfaceMode,
     lastInteractionAt,
+    publishClientEvent,
     voice.connectionState,
     voice.visualError,
     workSettled,

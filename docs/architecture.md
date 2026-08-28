@@ -347,9 +347,12 @@ conversation events. Package-level `shared` modules are foundational runtime
 utilities; server `core` and `process` may depend on them, but they must not
 depend on server layers.
 
-`server/src/client` owns the northbound Client Event registry and runtime
-command application service. It may depend only on public `shared` protocol
-values, provider-neutral `delivery` values, and the protocol-neutral Task layer.
+`server/src/client` owns the northbound Client Event registry, runtime-command
+application service, `ClientActionPort`, and idempotent presence state machine.
+Client Actions describe an environment operation and wait for the active Client
+to report its result; they never import Electron or another UI implementation.
+This layer may depend only on public `shared` protocol values, provider-neutral
+`delivery` values, and the protocol-neutral Task layer.
 `server/src/delivery` owns the `AgentDelivery` value and has no dependency on
 Client, Realtime, or Backend implementations. The composition root in
 `server/src/app` injects those services into the Realtime transport; neither

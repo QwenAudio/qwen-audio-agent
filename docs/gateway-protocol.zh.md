@@ -108,8 +108,9 @@ GCP1 在不分叉 Gateway 业务逻辑的前提下实现信封与握手。6.0 Cl
 `session.hello` 开始；Gateway 返回 `session.ready`，为后续下行事件补充
 `event_id`，并把 6.0 输入别名归一化到现有内部事件模型。5.x Client 仍可使用
 `connect`，收到的旧事件形状保持不变。握手只协商已有运行时实现的能力。GCP2 的
-Client Event 与运行时命令 capability、GCP3 Agent Delivery 已经实现；GCP4–GCP5
-预留的名称仍只用于统一扩展词汇，在对应 Runtime 完成前不会被声明为已实现。
+Client Event 与运行时命令 capability、GCP3 Agent Delivery、GCP4 Client Action
+已经实现；GCP5 预留名称仍只用于统一扩展词汇，在对应 Runtime 完成前不会被声明为
+已实现。
 
 ### 3.2 GCP2 运行时落地
 
@@ -131,6 +132,16 @@ GCP3 实现第 6 节定义的 Provider 无关值与四种路由模式。Task 最
 Realtime Provider 只编码最终的上下文项与可选回复；Client 或后台协议原始对象不会
 进入模型。现有 Task 播报的批处理、安全窗口重试、通知认领和播放确认继续作为这条共享
 投影外围的可靠生命周期。
+
+### 3.4 GCP4 Client Action 落地
+
+GCP4 实现有关联关系的 `client.action.request/result` 与协议无关的
+`ClientActionPort`。只有当前 Client 声明对应 capability，Realtime 才能看到由
+Action 派生的工具。`enter_sleep`、桌面空闲事件兜底与旧 Gateway 超时入口统一进入
+幂等 `PresenceController`；支持 Action 的 Client 只有在环境切换成功回执后才会被
+标记为 sleeping。迁移期间，现有第一方桌面 Client 可以在 5.x `connect` 别名后发布
+内置空闲事件并回传 Action Result；GCP5 再把它们迁移到 `session.hello`，Action
+语义不变。
 
 ## 4. 通用事件信封
 
@@ -254,6 +265,10 @@ client.action.result
 ```
 
 `status` 为 `completed`、`failed` 或 `unsupported`。失败包含有界的 `{code, message}`。只有活动 Client 协商了相应 capability，Gateway 才向 Realtime 暴露由该 Action 派生的工具。
+
+首个实现的 Action 是 `desktop.presence.enter_sleep`。它的工具调用、自动 Client
+Event 兜底、超时和重复请求共用一个 Presence 状态机。旧 `client.state` sleeping
+消息仍作为当前 Client 的迁移兼容入口，但不再承担实际执行边界。
 
 Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client Environment 自己拥有的能力；其他外部系统继续使用适合的工具或 Backend Adapter。
 

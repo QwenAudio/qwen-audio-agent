@@ -10,7 +10,11 @@ import {
   desktopTasksWorking,
   desktopWakeWordEnabled,
   desktopWorkSettled,
+  performDesktopClientAction,
 } from '../src/desktop-hide.js'
+import {
+  GatewayClientProtocolEvent,
+} from '../../shared/gateway-client-protocol.mjs'
 
 test('distinguishes active tasks from tasks waiting for authorization', () => {
   assert.equal(desktopTasksActive([]), false)
@@ -81,6 +85,29 @@ test('maps a supported sleeping client state to the desktop bridge', async () =>
     type: 'client.state',
     state: 'sleeping',
   }), false)
+})
+
+test('reports Client Action completion only after the desktop is hidden', async () => {
+  const lifecycle = []
+  const result = await performDesktopClientAction({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
+    name: 'desktop.presence.enter_sleep',
+  }, {
+    desktop: true,
+    bridge: { enterHide: async () => ({ state: 'hidden' }) },
+    onLifecycle: state => lifecycle.push(state),
+  })
+  assert.deepEqual(result, {
+    status: 'completed',
+    output: { state: 'hidden' },
+  })
+  assert.deepEqual(lifecycle, ['hidden'])
+
+  const unsupported = await performDesktopClientAction({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
+    name: 'hardware.light.turn_on',
+  }, { desktop: true })
+  assert.equal(unsupported.status, 'unsupported')
 })
 
 test('uses a 60 second desktop hide default and supports never', () => {

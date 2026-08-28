@@ -19,6 +19,8 @@ export const GatewayClientProtocolEvent = Object.freeze({
   RESPONSE_CANCEL: 'response.cancel',
   CLIENT_EVENT_PUBLISH: 'client.event.publish',
   CLIENT_EVENT_PUBLISH_RESULT: 'client.event.publish.result',
+  CLIENT_ACTION_REQUEST: 'client.action.request',
+  CLIENT_ACTION_RESULT: 'client.action.result',
   TASK_CREATE: 'task.create',
   TASK_CREATE_RESULT: 'task.create.result',
   TASK_GET: 'task.get',
@@ -47,6 +49,10 @@ export const GatewayClientCapability = Object.freeze({
   SESSION_REPLAY: 'session.replay',
 })
 
+export const GatewayClientActionName = Object.freeze({
+  ENTER_SLEEP: 'desktop.presence.enter_sleep',
+})
+
 // The complete roadmap vocabulary is published so clients and extensions do
 // not invent competing names. Only capabilities whose runtime exists today
 // are negotiated; later stages append implementations without changing the
@@ -65,6 +71,7 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.PERMISSION_RESPOND,
   GatewayClientCapability.CONVERSATION_HISTORY,
   GatewayClientCapability.CLIENT_EVENTS,
+  GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
 ])
 
 const IdentifierSchema = z.string().min(1).max(128)
@@ -147,6 +154,31 @@ export const GatewayClientEventPublishResultSchema = GatewayServerEnvelopeSchema
   duplicate: z.boolean().optional(),
 })
 
+export const GatewayClientActionRequestSchema = GatewayServerEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST),
+  name: EventNameSchema,
+  arguments: z.unknown().optional(),
+})
+
+export const GatewayClientActionResultSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.CLIENT_ACTION_RESULT),
+  request_event_id: IdentifierSchema,
+  status: z.enum(['completed', 'failed', 'unsupported']),
+  output: z.unknown().optional(),
+  error: z.object({
+    code: z.string().min(1).max(80),
+    message: z.string().min(1).max(500),
+  }).optional(),
+}).superRefine((value, context) => {
+  if (value.status !== 'completed' && !value.error) {
+    context.addIssue({
+      code: 'custom',
+      path: ['error'],
+      message: 'failed and unsupported Client Actions require an error',
+    })
+  }
+})
+
 export const GatewayTaskCreateSchema = GatewayClientEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.TASK_CREATE),
   message: z.object({
@@ -212,8 +244,9 @@ export const GatewayConversationHistoryResultSchema = GatewayServerEnvelopeSchem
   messages: z.array(z.unknown()).max(100),
 })
 
-const GCP2_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
+const GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientEventPublishSchema,
+  [GatewayClientProtocolEvent.CLIENT_ACTION_RESULT]: GatewayClientActionResultSchema,
   [GatewayClientProtocolEvent.TASK_CREATE]: GatewayTaskCreateSchema,
   [GatewayClientProtocolEvent.TASK_GET]: GatewayTaskGetSchema,
   [GatewayClientProtocolEvent.TASK_LIST]: GatewayTaskListSchema,
@@ -222,8 +255,9 @@ const GCP2_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.CONVERSATION_HISTORY]: GatewayConversationHistorySchema,
 })
 
-const GCP2_SERVER_MESSAGE_SCHEMAS = Object.freeze({
+const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT]: GatewayClientEventPublishResultSchema,
+  [GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST]: GatewayClientActionRequestSchema,
   [GatewayClientProtocolEvent.TASK_CREATE_RESULT]: GatewayTaskCreateResultSchema,
   [GatewayClientProtocolEvent.TASK_GET_RESULT]: GatewayTaskGetResultSchema,
   [GatewayClientProtocolEvent.TASK_LIST_RESULT]: GatewayTaskListResultSchema,
@@ -232,8 +266,9 @@ const GCP2_SERVER_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.CONVERSATION_HISTORY_RESULT]: GatewayConversationHistoryResultSchema,
 })
 
-const GCP2_REQUIRED_CAPABILITIES = Object.freeze({
+const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientCapability.CLIENT_EVENTS,
+  [GatewayClientProtocolEvent.CLIENT_ACTION_RESULT]: GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
   [GatewayClientProtocolEvent.TASK_CREATE]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.TASK_GET]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.TASK_LIST]: GatewayClientCapability.TASK_COMMANDS,
@@ -291,11 +326,11 @@ export function normalizeGatewayClientProtocolMessage(value) {
 }
 
 export function gatewayClientProtocolCapabilityFor(type) {
-  return GCP2_REQUIRED_CAPABILITIES[type] || null
+  return GATEWAY_RUNTIME_REQUIRED_CAPABILITIES[type] || null
 }
 
 export function isGatewayClientRuntimeMessage(type) {
-  return Boolean(GCP2_CLIENT_MESSAGE_SCHEMAS[type])
+  return Boolean(GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS[type])
 }
 
 export function gatewayHelloAsLegacyConnect(hello) {
@@ -376,8 +411,8 @@ export function parseGatewayClientProtocolMessage(value) {
   if (value?.type === GatewayClientProtocolEvent.SESSION_HELLO) {
     return GatewaySessionHelloSchema.parse(value)
   }
-  if (GCP2_CLIENT_MESSAGE_SCHEMAS[value?.type]) {
-    return GCP2_CLIENT_MESSAGE_SCHEMAS[value.type].parse(value)
+  if (GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS[value?.type]) {
+    return GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS[value.type].parse(value)
   }
   return GatewayClientEnvelopeSchema.parse(value)
 }
@@ -389,8 +424,8 @@ export function parseGatewayServerProtocolMessage(value) {
   if (value?.type === 'error' && value?.error) {
     return GatewayProtocolErrorSchema.parse(value)
   }
-  if (GCP2_SERVER_MESSAGE_SCHEMAS[value?.type]) {
-    return GCP2_SERVER_MESSAGE_SCHEMAS[value.type].parse(value)
+  if (GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS[value?.type]) {
+    return GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS[value.type].parse(value)
   }
   return GatewayServerEnvelopeSchema.parse(value)
 }

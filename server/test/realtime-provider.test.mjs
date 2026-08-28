@@ -623,17 +623,17 @@ test('client text-only hints do not change the Qwen Realtime session', () => {
   )
 })
 
-test('offers the sleep tool only to a client that advertises the state', () => {
+test('offers the sleep tool only to a client that advertises the action', () => {
   const ordinary = REALTIME_PROVIDERS.qwen.buildSession({
     configured: false,
-    agentContext: { client: { states: [] } },
+    agentContext: { client: { actions: [] } },
   })
   const desktop = REALTIME_PROVIDERS.qwen.buildSession({
     configured: false,
-    agentContext: { client: { states: ['sleeping'] } },
+    agentContext: { client: { actions: ['desktop.presence.enter_sleep'] } },
   })
   const s2sDesktop = REALTIME_PROVIDERS['speech-to-speech'].buildSession({
-    agentContext: { client: { states: ['sleeping'] } },
+    agentContext: { client: { actions: ['desktop.presence.enter_sleep'] } },
   })
 
   assert.equal(

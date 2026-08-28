@@ -48,6 +48,20 @@ export class GatewayClientProtocolSession {
     }
 
     if (this.mode === 'legacy') {
+      // Client Actions are introduced by 6.0, but current first-party clients
+      // still open with the 5.x connect alias during staged migration. Accept
+      // only the typed result message here; every other legacy behavior stays
+      // unchanged and GCP5 will move these clients to session.hello.
+      if ([
+        GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
+        GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
+      ].includes(value?.type)) {
+        try {
+          return { event: null, runtimeMessage: parseGatewayClientProtocolMessage(value) }
+        } catch {
+          return { event: null }
+        }
+      }
       return { event: this.#parseLegacy(value) }
     }
 

@@ -3,7 +3,11 @@ import {
   GatewayClientEvent,
   GATEWAY_CLIENT_EVENT_TYPES,
 } from './realtime-events.mjs'
-import { parseGatewayClientMessage } from './protocol/gateway-events.mjs'
+import {
+  GatewayInputPartSchema,
+  GatewayTaskSchema,
+  parseGatewayClientMessage,
+} from './protocol/gateway-events.mjs'
 
 export const GATEWAY_CLIENT_PROTOCOL_VERSION = '6.0.0'
 
@@ -13,6 +17,20 @@ export const GatewayClientProtocolEvent = Object.freeze({
   INPUT_AUDIO_APPEND: 'input_audio_buffer.append',
   CONVERSATION_ITEM_CREATE: 'conversation.item.create',
   RESPONSE_CANCEL: 'response.cancel',
+  CLIENT_EVENT_PUBLISH: 'client.event.publish',
+  CLIENT_EVENT_PUBLISH_RESULT: 'client.event.publish.result',
+  TASK_CREATE: 'task.create',
+  TASK_CREATE_RESULT: 'task.create.result',
+  TASK_GET: 'task.get',
+  TASK_GET_RESULT: 'task.get.result',
+  TASK_LIST: 'task.list',
+  TASK_LIST_RESULT: 'task.list.result',
+  TASK_CANCEL: 'task.cancel',
+  TASK_CANCEL_RESULT: 'task.cancel.result',
+  PERMISSION_RESPOND: 'permission.respond',
+  PERMISSION_RESPOND_RESULT: 'permission.respond.result',
+  CONVERSATION_HISTORY: 'conversation.history',
+  CONVERSATION_HISTORY_RESULT: 'conversation.history.result',
 })
 
 export const GatewayClientCapability = Object.freeze({
@@ -29,9 +47,9 @@ export const GatewayClientCapability = Object.freeze({
   SESSION_REPLAY: 'session.replay',
 })
 
-// GCP1 publishes the complete vocabulary so clients and extensions do not
-// invent competing names. Only capabilities whose runtime exists today are
-// negotiated; later stages append their implementations without changing the
+// The complete roadmap vocabulary is published so clients and extensions do
+// not invent competing names. Only capabilities whose runtime exists today
+// are negotiated; later stages append implementations without changing the
 // handshake shape.
 export const GATEWAY_CLIENT_KNOWN_CAPABILITIES = Object.freeze(
   Object.values(GatewayClientCapability),
@@ -43,6 +61,10 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.INPUT_IMAGE,
   GatewayClientCapability.INPUT_FILE,
   GatewayClientCapability.PLAYBACK_RECEIPTS,
+  GatewayClientCapability.TASK_COMMANDS,
+  GatewayClientCapability.PERMISSION_RESPOND,
+  GatewayClientCapability.CONVERSATION_HISTORY,
+  GatewayClientCapability.CLIENT_EVENTS,
 ])
 
 const IdentifierSchema = z.string().min(1).max(128)
@@ -105,6 +127,121 @@ export const GatewayProtocolErrorSchema = GatewayServerEnvelopeSchema.extend({
   }),
 })
 
+const EventNameSchema = z.string()
+  .min(3)
+  .max(120)
+  .regex(/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/)
+
+export const GatewayClientEventPublishSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH),
+  name: EventNameSchema,
+  data: z.unknown().optional(),
+  delivery_hint: z.enum(['handle', 'context', 'respond', 'interrupt']).optional(),
+})
+
+export const GatewayClientEventPublishResultSchema = GatewayServerEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT),
+  request_event_id: IdentifierSchema,
+  accepted: z.boolean(),
+  name: EventNameSchema,
+  duplicate: z.boolean().optional(),
+})
+
+export const GatewayTaskCreateSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_CREATE),
+  message: z.object({
+    parts: z.array(GatewayInputPartSchema).min(1).max(16),
+  }),
+})
+
+export const GatewayTaskGetSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_GET),
+  task_id: IdentifierSchema,
+})
+
+export const GatewayTaskListSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_LIST),
+  active: z.boolean().optional(),
+  session_id: IdentifierSchema.optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+})
+
+export const GatewayTaskCancelSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_CANCEL),
+  task_id: IdentifierSchema,
+})
+
+export const GatewayPermissionRespondSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.PERMISSION_RESPOND),
+  permission_id: IdentifierSchema,
+  decision: z.enum(['always', 'reject']),
+})
+
+export const GatewayConversationHistorySchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.CONVERSATION_HISTORY),
+  session_id: IdentifierSchema.optional(),
+})
+
+const TaskResultBaseSchema = GatewayServerEnvelopeSchema.extend({
+  request_event_id: IdentifierSchema,
+  task: GatewayTaskSchema,
+})
+
+export const GatewayTaskCreateResultSchema = TaskResultBaseSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_CREATE_RESULT),
+})
+export const GatewayTaskGetResultSchema = TaskResultBaseSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_GET_RESULT),
+})
+export const GatewayTaskCancelResultSchema = TaskResultBaseSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_CANCEL_RESULT),
+})
+export const GatewayTaskListResultSchema = GatewayServerEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_LIST_RESULT),
+  request_event_id: IdentifierSchema,
+  tasks: z.array(GatewayTaskSchema).max(100),
+})
+export const GatewayPermissionRespondResultSchema = GatewayServerEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.PERMISSION_RESPOND_RESULT),
+  request_event_id: IdentifierSchema,
+  permission: z.unknown(),
+})
+export const GatewayConversationHistoryResultSchema = GatewayServerEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.CONVERSATION_HISTORY_RESULT),
+  request_event_id: IdentifierSchema,
+  messages: z.array(z.unknown()).max(100),
+})
+
+const GCP2_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
+  [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientEventPublishSchema,
+  [GatewayClientProtocolEvent.TASK_CREATE]: GatewayTaskCreateSchema,
+  [GatewayClientProtocolEvent.TASK_GET]: GatewayTaskGetSchema,
+  [GatewayClientProtocolEvent.TASK_LIST]: GatewayTaskListSchema,
+  [GatewayClientProtocolEvent.TASK_CANCEL]: GatewayTaskCancelSchema,
+  [GatewayClientProtocolEvent.PERMISSION_RESPOND]: GatewayPermissionRespondSchema,
+  [GatewayClientProtocolEvent.CONVERSATION_HISTORY]: GatewayConversationHistorySchema,
+})
+
+const GCP2_SERVER_MESSAGE_SCHEMAS = Object.freeze({
+  [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT]: GatewayClientEventPublishResultSchema,
+  [GatewayClientProtocolEvent.TASK_CREATE_RESULT]: GatewayTaskCreateResultSchema,
+  [GatewayClientProtocolEvent.TASK_GET_RESULT]: GatewayTaskGetResultSchema,
+  [GatewayClientProtocolEvent.TASK_LIST_RESULT]: GatewayTaskListResultSchema,
+  [GatewayClientProtocolEvent.TASK_CANCEL_RESULT]: GatewayTaskCancelResultSchema,
+  [GatewayClientProtocolEvent.PERMISSION_RESPOND_RESULT]: GatewayPermissionRespondResultSchema,
+  [GatewayClientProtocolEvent.CONVERSATION_HISTORY_RESULT]: GatewayConversationHistoryResultSchema,
+})
+
+const GCP2_REQUIRED_CAPABILITIES = Object.freeze({
+  [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientCapability.CLIENT_EVENTS,
+  [GatewayClientProtocolEvent.TASK_CREATE]: GatewayClientCapability.TASK_COMMANDS,
+  [GatewayClientProtocolEvent.TASK_GET]: GatewayClientCapability.TASK_COMMANDS,
+  [GatewayClientProtocolEvent.TASK_LIST]: GatewayClientCapability.TASK_COMMANDS,
+  [GatewayClientProtocolEvent.TASK_CANCEL]: GatewayClientCapability.TASK_COMMANDS,
+  [GatewayClientProtocolEvent.PERMISSION_RESPOND]: GatewayClientCapability.PERMISSION_RESPOND,
+  [GatewayClientProtocolEvent.CONVERSATION_HISTORY]: GatewayClientCapability.CONVERSATION_HISTORY,
+})
+
 const V6_CLIENT_EVENT_ALIASES = Object.freeze({
   [GatewayClientProtocolEvent.INPUT_AUDIO_APPEND]: GatewayClientEvent.AUDIO_APPEND,
   [GatewayClientProtocolEvent.CONVERSATION_ITEM_CREATE]: GatewayClientEvent.INPUT_MESSAGE,
@@ -151,6 +288,14 @@ export function normalizeGatewayClientProtocolMessage(value) {
     throw error
   }
   return parseGatewayClientMessage(normalized)
+}
+
+export function gatewayClientProtocolCapabilityFor(type) {
+  return GCP2_REQUIRED_CAPABILITIES[type] || null
+}
+
+export function isGatewayClientRuntimeMessage(type) {
+  return Boolean(GCP2_CLIENT_MESSAGE_SCHEMAS[type])
 }
 
 export function gatewayHelloAsLegacyConnect(hello) {
@@ -219,7 +364,7 @@ export function createGatewayClientProtocolMessage(type, payload = {}, {
   eventId = createGatewayProtocolEventId('client'),
   occurredAt,
 } = {}) {
-  return GatewayClientEnvelopeSchema.parse({
+  return parseGatewayClientProtocolMessage({
     type,
     event_id: eventId,
     ...(occurredAt == null ? {} : { occurred_at: occurredAt }),
@@ -231,6 +376,9 @@ export function parseGatewayClientProtocolMessage(value) {
   if (value?.type === GatewayClientProtocolEvent.SESSION_HELLO) {
     return GatewaySessionHelloSchema.parse(value)
   }
+  if (GCP2_CLIENT_MESSAGE_SCHEMAS[value?.type]) {
+    return GCP2_CLIENT_MESSAGE_SCHEMAS[value.type].parse(value)
+  }
   return GatewayClientEnvelopeSchema.parse(value)
 }
 
@@ -240,6 +388,9 @@ export function parseGatewayServerProtocolMessage(value) {
   }
   if (value?.type === 'error' && value?.error) {
     return GatewayProtocolErrorSchema.parse(value)
+  }
+  if (GCP2_SERVER_MESSAGE_SCHEMAS[value?.type]) {
+    return GCP2_SERVER_MESSAGE_SCHEMAS[value.type].parse(value)
   }
   return GatewayServerEnvelopeSchema.parse(value)
 }

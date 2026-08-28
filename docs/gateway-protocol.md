@@ -1,9 +1,9 @@
 # Gateway Client Protocol
 
-> Status: **Draft 0.5**<br>
+> Status: **Draft 0.6**<br>
 > Target wire version: **6.0.0**<br>
 > Roadmap: [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
-> Current implementation sources of truth: `shared/gateway-client-protocol.mjs`, `shared/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
+> Current implementation sources of truth: `shared/gateway-client-protocol.mjs`, `server/src/client/client-event-router.mjs`, `server/src/client/client-command-runtime.mjs`, `shared/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
 
 This specification defines the northbound boundary between qwen-audio-agent's Gateway and one active Client Environment. It is the target contract for the next protocol major and does not claim that the current 5.x implementation already implements every event below.
 
@@ -109,9 +109,25 @@ logic. A 6.0 Client starts with `session.hello`; Gateway returns
 `session.ready`, adds `event_id` to subsequent outbound events, and normalizes
 6.0 input aliases into the existing internal event model. A 5.x Client may
 continue to start with `connect` and receives the unchanged legacy event shape.
-Only capabilities with working runtimes are negotiated. Names reserved for
-GCP2–GCP5 are published for extension interoperability but are not advertised
-as implemented.
+Only capabilities with working runtimes are negotiated. GCP2 Client Event and
+runtime-command capabilities are now implemented; names reserved for GCP3–GCP5
+remain vocabulary-only until their runtimes ship.
+
+### 3.2 GCP2 runtime rollout
+
+GCP2 adds `client.event.publish` and the Task, permission, and conversation
+history commands in section 5.4 to the negotiated WebSocket. Immediate results
+and errors correlate through `request_event_id`. Existing REST routes call the
+same runtime command service and remain temporary compatibility aliases.
+
+Client Event definitions are registered at Gateway composition time. The
+registry owns payload Schema, size, rate, retention, coalescing, maximum route,
+and an optional deterministic handler. Gateway stamps owner, Session, Client
+type, and Client instance from the authenticated connection; none of those
+trusted fields are accepted from event data. The first built-in definition is
+`desktop.presence.sleep_requested`. Its model delivery is intentionally deferred
+to GCP3, so GCP2 accepts, validates, retains, and handles the event without
+pretending it is user input.
 
 ## 4. Common event envelope
 
@@ -187,7 +203,8 @@ client.event.publish.result
   "type": "client.event.publish.result",
   "event_id": "evt_gateway_31",
   "request_event_id": "evt_client_17",
-  "accepted": true
+  "accepted": true,
+  "name": "user.object.touched"
 }
 ```
 
@@ -239,7 +256,7 @@ Client Action is not a replacement for MCP, OpenAPI, ACP, or A2A. It covers capa
 
 ### 5.4 Runtime commands and queries
 
-The active Client uses the same WebSocket for runtime commands and queries. Each command carries an `event_id`; its immediate `<command>.result` carries `request_event_id`. Later lifecycle changes remain ordinary replayable server pushes rather than being hidden inside the command result.
+The active Client uses the same WebSocket for runtime commands and queries. Each command carries an `event_id`; its immediate `<command>.result` carries `request_event_id`. Later lifecycle changes remain ordinary server pushes rather than being hidden inside the command result; bounded replay is added in GCP5.
 
 | Command | Direction | Meaning |
 |---|---|---|
@@ -400,6 +417,7 @@ Base error codes include:
 client_occupied
 protocol_version_unsupported
 capability_unsupported
+capability_not_negotiated
 bad_event
 unknown_type
 client_event_unsupported
@@ -408,6 +426,8 @@ client_action_unsupported
 session_expired
 sequence_expired
 task_not_found
+task_not_cancellable
+permission_not_found
 payload_too_large
 rate_limited
 internal

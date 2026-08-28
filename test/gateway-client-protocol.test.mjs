@@ -10,8 +10,10 @@ import {
   GatewaySessionHelloSchema,
   createGatewayClientProtocolMessage,
   createGatewaySessionHello,
+  gatewayClientProtocolCapabilityFor,
   negotiateGatewayClientCapabilities,
   normalizeGatewayClientProtocolMessage,
+  parseGatewayClientProtocolMessage,
   parseGatewayServerProtocolMessage,
   supportsGatewayClientProtocol,
 } from '../shared/gateway-client-protocol.mjs'
@@ -22,7 +24,7 @@ function ids() {
   return () => `evt_gateway_${++value}`
 }
 
-test('publishes a frozen capability vocabulary without advertising future stages', () => {
+test('publishes a frozen capability vocabulary and only advertises implemented stages', () => {
   assert.equal(GATEWAY_CLIENT_PROTOCOL_VERSION, '6.0.0')
   assert.equal(Object.isFrozen(GATEWAY_CLIENT_KNOWN_CAPABILITIES), true)
   assert.equal(Object.isFrozen(GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES), true)
@@ -33,7 +35,7 @@ test('publishes a frozen capability vocabulary without advertising future stages
   assert.ok(GATEWAY_CLIENT_KNOWN_CAPABILITIES.includes(GatewayClientCapability.SESSION_REPLAY))
   assert.equal(
     GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(GatewayClientCapability.CLIENT_EVENTS),
-    false,
+    true,
   )
   assert.equal(
     GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(
@@ -80,7 +82,41 @@ test('negotiates one supported 6.0 version and the capability intersection', () 
     GatewayClientCapability.CLIENT_EVENTS,
     GatewayClientCapability.INPUT_TEXT,
     GatewayClientCapability.INPUT_TEXT,
-  ]), [GatewayClientCapability.INPUT_TEXT])
+  ]), [
+    GatewayClientCapability.CLIENT_EVENTS,
+    GatewayClientCapability.INPUT_TEXT,
+  ])
+})
+
+test('validates GCP2 runtime commands and their correlated results', () => {
+  const create = parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.TASK_CREATE,
+    event_id: 'evt_create_1',
+    message: { parts: [{ type: 'text', text: '查询本机内存' }] },
+  })
+  assert.equal(create.message.parts[0].text, '查询本机内存')
+  assert.equal(
+    gatewayClientProtocolCapabilityFor(create.type),
+    GatewayClientCapability.TASK_COMMANDS,
+  )
+
+  const published = parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
+    event_id: 'evt_presence_1',
+    name: 'desktop.presence.sleep_requested',
+    data: { reason: 'idle' },
+    delivery_hint: 'context',
+  })
+  assert.equal(published.name, 'desktop.presence.sleep_requested')
+
+  const result = parseGatewayServerProtocolMessage({
+    type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT,
+    event_id: 'evt_gateway_1',
+    request_event_id: 'evt_presence_1',
+    accepted: true,
+    name: 'desktop.presence.sleep_requested',
+  })
+  assert.equal(result.request_event_id, 'evt_presence_1')
 })
 
 test('normalizes 6.0 event names into the existing business event vocabulary', () => {
@@ -138,6 +174,7 @@ test('6.0 hello and 5.x connect enter the same legacy business path', () => {
   assert.deepEqual(accepted.reply.capabilities, [
     GatewayClientCapability.INPUT_AUDIO,
     GatewayClientCapability.INPUT_TEXT,
+    GatewayClientCapability.CLIENT_EVENTS,
   ])
   assert.equal(accepted.reply.request_event_id, 'evt_client_hello')
   assert.deepEqual(accepted.pending, [pendingEvent])
@@ -196,6 +233,25 @@ test('preserves the legacy silent-ignore behavior for malformed messages', () =>
   const session = new GatewayClientProtocolSession({ sessionId: 'legacy' })
   assert.equal(session.receive({ type: 'not-a-real-event' }).event, null)
   assert.equal(session.mode, 'pending')
+})
+
+test('requires runtime capabilities to be negotiated before accepting commands', () => {
+  const session = new GatewayClientProtocolSession({
+    sessionId: 'runtime-capabilities',
+    createEventId: ids(),
+  })
+  session.receive(createGatewaySessionHello({
+    eventId: 'evt-client-hello',
+    clientInstanceId: 'client-1',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  }))
+  const rejected = session.receive({
+    type: GatewayClientProtocolEvent.TASK_LIST,
+    event_id: 'evt-client-list',
+  })
+  assert.equal(rejected.runtimeMessage, undefined)
+  assert.equal(rejected.reply.request_event_id, 'evt-client-list')
+  assert.equal(rejected.reply.error.code, 'capability_not_negotiated')
 })
 
 test('bounds server events held while the client has not selected a protocol', () => {

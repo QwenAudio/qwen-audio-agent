@@ -277,6 +277,10 @@ Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 UI 仅消费公共 Task 与对话事件。包级别的 `shared` 模块是基础运行时
 工具；server `core` 和 `process` 可以依赖它们，但它们不得依赖 server 层。
 
+`server/src/client` 管理北向 Client Event Registry 与运行时命令应用服务，只能依赖
+公开 `shared` 协议值和协议无关的 Task 层。`server/src/app` 组合根把这些服务注入
+Realtime Transport；语音链路与 Client 代码都不能导入其具体实现。
+
 Gateway 可以将不可变的 `web/dist` 产物作为部署便利来提供，但这仅是静态托管。
 Gateway 源码不得导入 UI 组件、呈现文本、样式、终端行为或桌面行为。
 所有三个 UI 拥有自己的渲染，并将结构化协议字段映射到各自的标签和交互模式。

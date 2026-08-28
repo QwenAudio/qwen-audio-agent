@@ -37,11 +37,10 @@ The remaining gaps are:
 
 - Client dispatch is still concentrated in `realtime-gateway.mjs`;
 - desktop capabilities and sleep behavior still appear as special cases;
-- no generic Client-to-Gateway semantic event API exists;
 - no generic Gateway-to-Client action/result contract exists;
-- Task control, permission decisions, conversation history, and recovery are still split between WebSocket and internal REST/SSE routes;
+- first-party Clients still use internal REST/SSE aliases for some Task control, permission, conversation-history, and recovery flows;
 - user input, Task announcements, permissions, and Gateway triggers do not yet share one semantic event/delivery boundary;
-- no 6.0 handshake, event correlation, or complete Client conformance suite exists.
+- replay, full first-party migration, and a complete Client conformance suite are not implemented yet.
 
 ## Architectural rules
 
@@ -79,13 +78,13 @@ Exit criteria: a 5.x and a 6.0 reference Client can connect to the same Gateway 
 
 ## GCP2 — Client Event ingress and runtime commands
 
-- [ ] Add the Client Event definition registry.
-- [ ] Add `GatewayEventRouter` and `client.event.publish/result`.
-- [ ] Add WebSocket schemas and handlers for `task.create/get/list/cancel`, `permission.respond`, and `conversation.history`.
-- [ ] Keep each immediate command result correlated by `request_event_id`; publish later Task and permission changes through the normal replayable event stream.
-- [ ] Stamp trusted source identity at the connection boundary.
-- [ ] Enforce schema, size, rate, retention, deduplication, and coalescing policy.
-- [ ] Add `desktop.presence.sleep_requested` as the first end-to-end event.
+- [x] Add the Client Event definition registry.
+- [x] Add `GatewayEventRouter` and `client.event.publish/result`.
+- [x] Add WebSocket schemas and handlers for `task.create/get/list/cancel`, `permission.respond`, and `conversation.history`.
+- [x] Keep each immediate command result correlated by `request_event_id`; publish later Task and permission changes through the normal event stream, which becomes replayable in GCP5.
+- [x] Stamp trusted source identity at the connection boundary.
+- [x] Enforce schema, size, rate, retention, deduplication, and coalescing policy.
+- [x] Add `desktop.presence.sleep_requested` as the first end-to-end event.
 
 Exit criteria: a Client can publish a registered environment or user-behavior event without pretending it is user text or adding a new Gateway branch, and first-party runtime commands have a WebSocket replacement for their internal REST path.
 

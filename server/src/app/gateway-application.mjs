@@ -77,6 +77,12 @@ import {
   projectGatewayTaskEventForFormat,
 } from '../transport/agui-event-projector.mjs'
 import { replaySession } from '../session/session-replay.mjs'
+import { GatewayClientCommandRuntime } from '../client/client-command-runtime.mjs'
+import {
+  BUILTIN_CLIENT_EVENT_DEFINITIONS,
+  ClientEventDefinitionRegistry,
+  GatewayEventRouter,
+} from '../client/client-event-router.mjs'
 
 export function createGatewayApplication({
   config = defaultConfig,
@@ -105,6 +111,9 @@ export function createGatewayApplication({
   sessionJournal = null,
   conversationHistory = null,
   taskAnnouncementFactory = undefined,
+  clientCommandRuntime = null,
+  clientEventRouter = null,
+  clientEventDefinitions = [],
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
@@ -473,6 +482,24 @@ const permissionPolicy = new SessionPermissionPolicy({
   ttlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
 })
+const runtimeCommands = clientCommandRuntime || new GatewayClientCommandRuntime({
+  taskManager,
+  backendRuntime: workBackend,
+  conversationHistory: conversationHistoryRuntime,
+  respondAuthorization: (taskId, id, decision, options) => (
+    agent.respondAuthorization(taskId, id, decision, options)
+  ),
+  permissionPolicy,
+  logger,
+})
+const gatewayEventRouter = clientEventRouter || new GatewayEventRouter({
+  registry: new ClientEventDefinitionRegistry({
+    definitions: [
+      ...BUILTIN_CLIENT_EVENT_DEFINITIONS,
+      ...clientEventDefinitions,
+    ],
+  }),
+})
 
 app.disable('x-powered-by')
 app.use(enforceSameOrigin)
@@ -634,11 +661,11 @@ app.get('/api/backend/ui', async (req, res, next) => {
 
 app.get('/api/tasks', (req, res) => {
   res.json({
-    tasks: taskManager.list({
-      ownerId: req.identity.ownerId,
-      sessionId: req.query.sessionId,
+    tasks: runtimeCommands.listTasks({
+      session_id: req.query.sessionId,
       active: req.query.active === 'true',
-    }),
+      limit: Number.MAX_SAFE_INTEGER,
+    }, { ownerId: req.identity.ownerId, allSessions: true }),
   })
 })
 
@@ -767,10 +794,9 @@ app.get('/api/sessions/:sessionId/replay', async (req, res, next) => {
 // records or diagnostic logs, and Realtime consumes this same projection.
 app.get('/api/conversations/:sessionId/messages', async (req, res, next) => {
   try {
-    const messages = await conversationHistoryRuntime.messages({
-      ownerId: req.identity.ownerId,
-      sessionId: req.params.sessionId,
-    })
+    const messages = await runtimeCommands.history({
+      session_id: req.params.sessionId,
+    }, { ownerId: req.identity.ownerId })
     res.json({ messages })
   } catch (error) {
     next(error)
@@ -778,26 +804,38 @@ app.get('/api/conversations/:sessionId/messages', async (req, res, next) => {
 })
 
 app.get('/api/tasks/:id', (req, res) => {
-  const task = taskManager.get(req.params.id, { ownerId: req.identity.ownerId })
-  if (!task) return res.status(404).json({ error: 'task not found' })
-  res.json(task)
+  try {
+    res.json(runtimeCommands.getTask(req.params.id, {
+      ownerId: req.identity.ownerId,
+    }))
+  } catch (error) {
+    if (error?.code === 'task_not_found') {
+      return res.status(404).json({ error: 'task not found' })
+    }
+    res.status(400).json({ error: error.message })
+  }
 })
 
-app.delete('/api/tasks/:id', async (req, res) => {
-  const existing = taskManager.get(req.params.id, {
-    ownerId: req.identity.ownerId,
-  })
-  if (!existing) return res.status(404).json({ error: 'task not found' })
-  const task = await taskManager.cancel(req.params.id, {
-    ownerId: req.identity.ownerId,
-  })
-  if (!task) {
-    return res.status(409).json({
-      error: 'task is no longer active',
-      task: existing,
-    })
+app.delete('/api/tasks/:id', async (req, res, next) => {
+  try {
+    const task = await runtimeCommands.cancelTask(req.params.id, {
+      ownerId: req.identity.ownerId,
+    }, { wait: true })
+    res.json(task)
+  } catch (error) {
+    if (error?.code === 'task_not_found') {
+      return res.status(404).json({ error: 'task not found' })
+    }
+    if (error?.code === 'task_not_cancellable') {
+      return res.status(409).json({
+        error: 'task is no longer active',
+        task: runtimeCommands.getTask(req.params.id, {
+          ownerId: req.identity.ownerId,
+        }),
+      })
+    }
+    next(error)
   }
-  res.json(task)
 })
 
 app.post('/api/permissions/:id', async (req, res, next) => {
@@ -805,39 +843,14 @@ app.post('/api/permissions/:id', async (req, res, next) => {
   if (!['always', 'reject'].includes(decision)) {
     return res.status(400).json({ error: 'decision must be always or reject' })
   }
-  const permissionTask = taskManager.list({
-    ownerId: req.identity.ownerId,
-    active: true,
-  }).find(task => task.authorization?.id === req.params.id)
-  if (!permissionTask) {
-    return res.status(404).json({ error: 'permission request not found' })
-  }
-  const previousPermissionMode = permissionPolicy.mode(
-    req.identity.ownerId,
-    permissionTask.sessionId,
-  )
-  permissionPolicy.applyDecision(
-    req.identity.ownerId,
-    permissionTask.sessionId,
-    decision,
-  )
   try {
-    const permission = await agent.respondAuthorization(
-      permissionTask.id,
-      req.params.id,
+    const permission = await runtimeCommands.respondPermission({
+      permission_id: req.params.id,
       decision,
-      { ownerId: req.identity.ownerId },
-    )
+    }, { ownerId: req.identity.ownerId })
     return res.json(permission)
   } catch (error) {
-    if (previousPermissionMode) {
-      permissionPolicy.setMode(
-        req.identity.ownerId,
-        permissionTask.sessionId,
-        previousPermissionMode,
-      )
-    }
-    if (error?.status === 404) {
+    if (error?.status === 404 || error?.code === 'permission_not_found') {
       return res.status(404).json({ error: error.message })
     }
     return next(error)
@@ -933,6 +946,8 @@ realtimeGateway = attachRealtimeGateway(server, {
   frontendKnowledge: frontendKnowledgeRuntime,
   frontendToolSources,
   taskAnnouncementFactory,
+  clientCommandRuntime: runtimeCommands,
+  clientEventRouter: gatewayEventRouter,
 })
 const start = ({ host = config.host, port = config.port } = {}) => {
   if (server.listening) return server
@@ -1013,6 +1028,8 @@ return {
     frontendKnowledge: frontendKnowledgeRuntime,
     frontendMcp: frontendMcpRuntime,
     frontendOpenApi: frontendOpenApiRuntime,
+    runtimeCommands,
+    gatewayEventRouter,
     knowledgeProvider: knowledgeProviderRuntime,
     identityManager,
     inputArbitration,

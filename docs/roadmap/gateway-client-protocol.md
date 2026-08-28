@@ -111,13 +111,13 @@ Exit criteria: Realtime Tool Calls and Gateway fallbacks use one action/state ma
 
 ## GCP5 — Reference clients, replay, and stabilization
 
-- [ ] Migrate WebUI, TUI, and Desktop to the shared reference Client SDK.
-- [ ] Add bounded replay and reconnect recovery.
-- [ ] Migrate Task control, permission decisions, conversation history, and Task event recovery away from internal REST/SSE aliases.
-- [ ] Run one conformance suite against all first-party clients.
-- [ ] Update `docs/contract.md` and its Chinese counterpart with locked capabilities and tests.
-- [ ] Deprecate old aliases for at least one announced release before removal.
-- [ ] Mark the 6.0 specification stable only after the replacement path is proven.
+- [x] Migrate WebUI, TUI, and Desktop to the shared reference Client SDK.
+- [x] Add bounded replay and reconnect recovery.
+- [x] Migrate Task control, permission decisions, conversation history, and Task event recovery away from internal REST/SSE aliases.
+- [x] Run one conformance suite against all first-party clients.
+- [x] Update `docs/contract.md` and its Chinese counterpart with locked capabilities and tests.
+- [x] Deprecate old aliases for at least one announced release before removal.
+- [x] Mark the 6.0 specification stable only after the replacement path is proven.
 
 Exit criteria: first-party clients contain presentation and environment behavior but no reconstructed Gateway state machine; Gateway contains no first-party Client implementation branch.
 

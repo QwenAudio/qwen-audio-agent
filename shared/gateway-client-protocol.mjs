@@ -33,6 +33,8 @@ export const GatewayClientProtocolEvent = Object.freeze({
   PERMISSION_RESPOND_RESULT: 'permission.respond.result',
   CONVERSATION_HISTORY: 'conversation.history',
   CONVERSATION_HISTORY_RESULT: 'conversation.history.result',
+  SESSION_REPLAY: 'session.replay',
+  SESSION_REPLAY_RESULT: 'session.replay.result',
 })
 
 export const GatewayClientCapability = Object.freeze({
@@ -72,6 +74,7 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.CONVERSATION_HISTORY,
   GatewayClientCapability.CLIENT_EVENTS,
   GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+  GatewayClientCapability.SESSION_REPLAY,
 ])
 
 const IdentifierSchema = z.string().min(1).max(128)
@@ -107,6 +110,17 @@ export const GatewaySessionHelloSchema = GatewayClientEnvelopeSchema.extend({
   capabilities: z.array(CapabilitySchema).max(64),
   locale: z.string().min(2).max(40).optional(),
   time_zone: z.string().min(1).max(80).optional(),
+  connection: z.object({
+    voice_enabled: z.boolean().optional(),
+    input_enabled: z.boolean().optional(),
+    output_enabled: z.boolean().optional(),
+    text_only: z.boolean().optional(),
+    wake_word_only: z.boolean().optional(),
+    provider: z.string().min(1).max(80).optional(),
+    working_directory: z.string().min(1).max(4096).optional(),
+    client_states: z.array(z.string().min(1).max(80)).max(16).optional(),
+    takeover: z.boolean().optional(),
+  }).optional(),
 }).superRefine((value, context) => {
   if (new Set(value.capabilities).size !== value.capabilities.length) {
     context.addIssue({
@@ -214,6 +228,12 @@ export const GatewayConversationHistorySchema = GatewayClientEnvelopeSchema.exte
   session_id: IdentifierSchema.optional(),
 })
 
+export const GatewaySessionReplaySchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.SESSION_REPLAY),
+  after_sequence: z.number().int().nonnegative().default(0),
+  limit: z.number().int().min(1).max(200).default(50),
+})
+
 const TaskResultBaseSchema = GatewayServerEnvelopeSchema.extend({
   request_event_id: IdentifierSchema,
   task: GatewayTaskSchema,
@@ -243,6 +263,15 @@ export const GatewayConversationHistoryResultSchema = GatewayServerEnvelopeSchem
   request_event_id: IdentifierSchema,
   messages: z.array(z.unknown()).max(100),
 })
+export const GatewaySessionReplayResultSchema = GatewayServerEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.SESSION_REPLAY_RESULT),
+  request_event_id: IdentifierSchema,
+  events: z.array(GatewayServerEnvelopeSchema).max(200),
+  earliest_sequence: z.number().int().nonnegative(),
+  latest_sequence: z.number().int().nonnegative(),
+  next_sequence: z.number().int().nonnegative(),
+  has_more: z.boolean(),
+})
 
 const GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientEventPublishSchema,
@@ -253,6 +282,7 @@ const GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.TASK_CANCEL]: GatewayTaskCancelSchema,
   [GatewayClientProtocolEvent.PERMISSION_RESPOND]: GatewayPermissionRespondSchema,
   [GatewayClientProtocolEvent.CONVERSATION_HISTORY]: GatewayConversationHistorySchema,
+  [GatewayClientProtocolEvent.SESSION_REPLAY]: GatewaySessionReplaySchema,
 })
 
 const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
@@ -264,6 +294,7 @@ const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.TASK_CANCEL_RESULT]: GatewayTaskCancelResultSchema,
   [GatewayClientProtocolEvent.PERMISSION_RESPOND_RESULT]: GatewayPermissionRespondResultSchema,
   [GatewayClientProtocolEvent.CONVERSATION_HISTORY_RESULT]: GatewayConversationHistoryResultSchema,
+  [GatewayClientProtocolEvent.SESSION_REPLAY_RESULT]: GatewaySessionReplayResultSchema,
 })
 
 const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
@@ -275,6 +306,7 @@ const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
   [GatewayClientProtocolEvent.TASK_CANCEL]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.PERMISSION_RESPOND]: GatewayClientCapability.PERMISSION_RESPOND,
   [GatewayClientProtocolEvent.CONVERSATION_HISTORY]: GatewayClientCapability.CONVERSATION_HISTORY,
+  [GatewayClientProtocolEvent.SESSION_REPLAY]: GatewayClientCapability.SESSION_REPLAY,
 })
 
 const V6_CLIENT_EVENT_ALIASES = Object.freeze({
@@ -355,6 +387,21 @@ export function gatewayHelloAsLegacyConnect(hello) {
       image: capabilities.has(GatewayClientCapability.INPUT_IMAGE),
       resource: capabilities.has(GatewayClientCapability.INPUT_FILE),
     },
+    ...(parsed.connection ? {
+      voiceEnabled: parsed.connection.voice_enabled ?? audioInput,
+      inputEnabled: parsed.connection.input_enabled ?? audioInput,
+      outputEnabled: parsed.connection.output_enabled ?? true,
+      textOnly: parsed.connection.text_only ?? !audioInput,
+      wakeWordOnly: parsed.connection.wake_word_only === true,
+      takeover: parsed.connection.takeover === true,
+      ...(parsed.connection.provider ? { provider: parsed.connection.provider } : {}),
+      ...(parsed.connection.working_directory
+        ? { workingDirectory: parsed.connection.working_directory }
+        : {}),
+      ...(parsed.connection.client_states
+        ? { clientStates: parsed.connection.client_states }
+        : {}),
+    } : {}),
   })
 }
 
@@ -378,6 +425,7 @@ export function createGatewaySessionHello({
   capabilities = GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
   locale,
   timeZone,
+  connection,
 } = {}) {
   return GatewaySessionHelloSchema.parse({
     type: GatewayClientProtocolEvent.SESSION_HELLO,
@@ -392,6 +440,7 @@ export function createGatewaySessionHello({
     capabilities,
     locale,
     time_zone: timeZone,
+    connection,
   })
 }
 

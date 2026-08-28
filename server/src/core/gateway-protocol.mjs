@@ -10,6 +10,8 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.5.0 adds the GCP5 reference Client SDK, bounded Task-event replay, and
+// migrates first-party task/history/permission recovery to the WebSocket.
 // 5.4.0 adds GCP4 ClientActionPort request/result correlation and the shared
 // presence state machine used by Realtime tools and Gateway sleep triggers.
 // 5.3.0 adds GCP3 provider-neutral AgentDelivery routing for Client Events,
@@ -39,7 +41,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.4.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.5.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -111,6 +113,10 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // request/results. enter_sleep is capability-gated and commits Gateway
   // sleeping only after the active Client reports a successful transition.
   'realtime.gateway-client-protocol-v6-client-actions',
+  // The shipped reference Client owns handshake, correlation, Actions and
+  // reconnection recovery. Replayable Task pushes carry monotonic sequence
+  // numbers and session.replay provides a bounded page after a cursor.
+  'realtime.gateway-client-protocol-v6-reference-client-replay',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

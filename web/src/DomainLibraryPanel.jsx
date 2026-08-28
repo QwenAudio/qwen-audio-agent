@@ -20,7 +20,7 @@ function formatBytes(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-export default function DomainLibraryPanel({ onClose }) {
+export default function DomainLibraryPanel({ onClose, getTask }) {
   const [documents, setDocuments] = useState([])
   const [path, setPath] = useState('')
   const [busy, setBusy] = useState(false)
@@ -54,13 +54,7 @@ export default function DomainLibraryPanel({ onClose }) {
     if (!converting.length) return undefined
     const timer = setInterval(async () => {
       for (const item of converting) {
-        const response = await fetch(
-          `api/tasks/${encodeURIComponent(item.taskId)}`,
-          { cache: 'no-store' },
-        ).catch(() => null)
-        if (!response?.ok) continue
-        // /api/tasks/:id 直接返回 task 本身，不是 { task }
-        const task = await response.json().catch(() => null)
+        const task = await getTask?.(item.taskId).catch(() => null)
         const status = task?.status
         if (!status || ['queued', 'running', 'delegated', 'finalizing'].includes(status)) {
           continue
@@ -75,7 +69,7 @@ export default function DomainLibraryPanel({ onClose }) {
       }
     }, POLL_INTERVAL_MS)
     return () => clearInterval(timer)
-  }, [converting, refresh])
+  }, [converting, getTask, refresh])
 
   const submit = async event => {
     event.preventDefault()

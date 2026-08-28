@@ -249,3 +249,32 @@ test('rejects unnegotiated GCP2 commands before dispatch', async t => {
   assert.equal(error.error.code, 'capability_not_negotiated')
   modern.socket.close()
 })
+
+test('allows only one active Gateway Client connection', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+  const first = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-first-hello',
+    clientInstanceId: 'first-client',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  }))
+  await waitFor(first.received, event => event.type === 'session.ready')
+
+  const second = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-second-hello',
+    clientInstanceId: 'second-client',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  }))
+  const occupied = await waitFor(
+    second.received,
+    event => event.error?.code === 'client_occupied',
+  )
+  assert.equal(occupied.type, 'error')
+  await new Promise(resolve => second.socket.once('close', resolve))
+  assert.equal(first.socket.readyState, WebSocket.OPEN)
+  first.socket.close()
+})

@@ -13,6 +13,7 @@ import {
   supportsGatewayClientProtocol,
 } from '../../../shared/gateway-client-protocol.mjs'
 import { parseGatewayClientMessage } from '../../../shared/protocol/gateway-events.mjs'
+import { isReplayableGatewayEvent } from './gateway-client-replay-buffer.mjs'
 
 function eventId() {
   return `evt_gateway_${randomUUID().replaceAll('-', '')}`
@@ -24,6 +25,7 @@ export class GatewayClientProtocolSession {
     supportedCapabilities = GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
     createEventId = eventId,
     maxPendingServerEvents = 128,
+    replayBuffer = null,
   } = {}) {
     this.sessionId = String(sessionId || 'main')
     this.supportedCapabilities = [...supportedCapabilities]
@@ -33,6 +35,7 @@ export class GatewayClientProtocolSession {
     this.protocolVersion = null
     this.capabilities = []
     this.pendingServerEvents = []
+    this.replayBuffer = replayBuffer
   }
 
   receive(value) {
@@ -81,9 +84,12 @@ export class GatewayClientProtocolSession {
         )
       }
       try {
+        if (value.type === GatewayClientProtocolEvent.SESSION_REPLAY) {
+          return { event: null, reply: this.#replay(value) }
+        }
         return { event: null, runtimeMessage: parseGatewayClientProtocolMessage(value) }
       } catch (error) {
-        return this.#error('bad_event', error.message, {
+        return this.#error(error.code || 'bad_event', error.message, {
           requestEventId: value?.event_id,
         })
       }
@@ -107,11 +113,14 @@ export class GatewayClientProtocolSession {
       return null
     }
     if (this.mode === 'legacy') return event
-    if (event?.event_id) return event
-    return {
+    const encoded = event?.event_id ? event : {
       ...event,
       event_id: this.createEventId(),
     }
+    if (this.replayBuffer && isReplayableGatewayEvent(encoded)) {
+      return this.replayBuffer.append(encoded)
+    }
+    return encoded
   }
 
   #acceptHello(value) {
@@ -147,6 +156,28 @@ export class GatewayClientProtocolSession {
         capabilities: this.capabilities,
       },
       pending: this.#drainPending(),
+    }
+  }
+
+  #replay(message) {
+    const parsed = parseGatewayClientProtocolMessage(message)
+    if (!this.replayBuffer) {
+      const error = new Error('session replay is unavailable')
+      error.code = 'replay_unavailable'
+      throw error
+    }
+    const page = this.replayBuffer.replay(parsed.after_sequence, {
+      limit: parsed.limit,
+    })
+    return {
+      type: GatewayClientProtocolEvent.SESSION_REPLAY_RESULT,
+      event_id: this.createEventId(),
+      request_event_id: parsed.event_id,
+      events: page.events,
+      earliest_sequence: page.earliestSequence,
+      latest_sequence: page.latestSequence,
+      next_sequence: page.nextSequence,
+      has_more: page.hasMore,
     }
   }
 

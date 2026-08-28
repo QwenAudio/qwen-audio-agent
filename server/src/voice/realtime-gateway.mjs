@@ -63,12 +63,14 @@ import {
   ClientActionPort,
 } from '../client/client-action-port.mjs'
 import { PresenceController } from '../client/presence-controller.mjs'
+import { GatewayClientReplayBuffer } from '../transport/gateway-client-replay-buffer.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
 const PERMISSION_RESPONSE_GRACE_MS = 800
 const RESPONSE_CONTEXT_CLEANUP_MS = 30000
 const REALTIME_STABLE_CONNECTION_MS = 10000
+const MAX_CLIENT_REPLAY_SESSIONS = 32
 const clientProtocolSessions = new WeakMap()
 
 function gatewayTurnId() {
@@ -158,6 +160,8 @@ export function attachRealtimeGateway(server, {
     })
   const activeVoiceClients = new ActiveVoiceClients()
   const voiceConnections = new Map()
+  const activeClientSockets = new Set()
+  const replayBuffers = new Map()
   const frontendToolSourcesReady = Promise.all(
     frontendToolSources.map(source => source.initialize()),
   ).catch(error => {
@@ -209,11 +213,38 @@ export function attachRealtimeGateway(server, {
   })
 
   wss.on('connection', (ws, url, identity) => {
+    if (activeClientSockets.size > 0) {
+      ws.send(JSON.stringify({
+        type: 'error',
+        event_id: `evt_gateway_${randomUUID().replaceAll('-', '')}`,
+        message: 'Gateway 已由另一个 Client 使用',
+        error: {
+          code: 'client_occupied',
+          message: 'Gateway already has an active Client connection',
+        },
+      }))
+      ws.close(1008, 'client_occupied')
+      return
+    }
+    activeClientSockets.add(ws)
     const ownerId = identity.ownerId
     const sessionId = url.searchParams.get('sessionId') || 'main'
+    const replayKey = `${ownerId}\u0000${sessionId}`
+    let replayBuffer = replayBuffers.get(replayKey)
+    if (!replayBuffer) {
+      while (replayBuffers.size >= MAX_CLIENT_REPLAY_SESSIONS) {
+        replayBuffers.delete(replayBuffers.keys().next().value)
+      }
+      replayBuffer = new GatewayClientReplayBuffer()
+      replayBuffers.set(replayKey, replayBuffer)
+    } else {
+      replayBuffers.delete(replayKey)
+      replayBuffers.set(replayKey, replayBuffer)
+    }
     const clientProtocol = new GatewayClientProtocolSession({
       sessionId,
       supportedCapabilities: supportedClientCapabilities,
+      replayBuffer,
     })
     clientProtocolSessions.set(ws, clientProtocol)
     const connectionLogger = logger.child({
@@ -1415,6 +1446,7 @@ export function attachRealtimeGateway(server, {
     })
 
     ws.on('close', () => {
+      activeClientSockets.delete(ws)
       clientProtocolSessions.delete(ws)
       connectionLogger.info('voice_client.disconnected', {
         clientType: descriptor.type,

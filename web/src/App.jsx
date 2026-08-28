@@ -882,7 +882,13 @@ export default function App() {
       setDesktopLifecycle(lifecycle.state)
       if (lifecycle.state === 'waking') lastWakeAtRef.current = Date.now()
       if (lifecycle.reason === 'activity') noteInteraction()
-      if (lifecycle.state === 'hidden') setActivity(t('已隐藏'))
+      if (lifecycle.state === 'hidden') {
+        // Main has already collapsed a visible conversation panel before an
+        // explicit sleep. Mirror that authoritative surface transition so a
+        // later wake cannot render the panel inside the compact orb window.
+        setDesktopSurfaceMode('orb')
+        setActivity(t('已隐藏'))
+      }
       if (lifecycle.state === 'waking') setActivity(t('正在显示悬浮球'))
       if (lifecycle.state === 'active' && lifecycle.reason === 'ready') {
         setActivity(t('待命'))

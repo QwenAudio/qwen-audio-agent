@@ -14,6 +14,7 @@ const allowedDependencies = {
     'backend',
     'conversation',
     'core',
+    'domain',
     'frontend',
     'providers',
     'session',
@@ -28,6 +29,9 @@ const allowedDependencies = {
   agent: new Set(['agent', 'backend', 'core', 'shared']),
   backend: new Set(['backend', 'core', 'shared']),
   conversation: new Set(['conversation', 'core', 'shared']),
+  // 资料库刻意不依赖 conversation：它复用的落盘与敏感闸门都在 core，
+  // 让「用户给的手册」去依赖「会话逻辑」是没有道理的耦合。
+  domain: new Set(['core', 'domain', 'shared']),
   session: new Set(['session', 'shared']),
   task: new Set(['agent', 'core', 'session', 'task']),
   transport: new Set(['shared', 'task', 'transport']),

@@ -184,6 +184,66 @@ References: [LangChain retrievers](https://docs.langchain.com/oss/python/integra
 Adapters should translate vendor fields at their boundary. Vendor clients and
 response objects must not leak into Gateway, voice, or client code.
 
+## Built-in local document provider
+
+The repository ships one optional implementation,
+`LocalDomainKnowledgeProvider`, for the case "the user points at a file on this
+machine and expects the assistant to find it later". Set
+`QWEN_AUDIO_DOMAIN_LIBRARY=on` to enable it; when the host injects no other
+provider, this one becomes the provider.
+
+It splits along the boundary this document draws:
+
+| Part | Owner |
+| --- | --- |
+| Retrieval | `LocalDomainKnowledgeProvider`, implementing this protocol |
+| Import, list, delete, PDF and Word conversion | `DomainLibrary`, the separate management extension described below |
+
+### What it returns
+
+Never the body. `content` is "title, one-line summary, section headings, where the
+body lives", and the file path goes in `source.locator` — a local path is a private
+address, so the Gateway drops `uri` and issues no citation.
+
+Each document therefore costs the same at the frontend regardless of its size: a
+three-page memo and a three-hundred-page manual occupy the same space. When the
+body is needed, the `locator` goes to the backend, which reads the file itself.
+
+Section headings are copied **verbatim** because they are the backend's anchors; a
+rewritten heading no longer matches the source.
+
+### It cannot coexist with an external RAG provider
+
+One Gateway mounts one provider (`knowledgeProvider ||
+knowledgeRetrievalProvider ||` the local library as fallback). A user who has
+configured an enterprise knowledge service already has the more complete solution,
+and this lightweight implementation should not override it.
+
+When both are needed, the host composes them; the core does not need to help:
+
+```js
+const composite = {
+  describe: () => enterprise.describe(),
+  async retrieve(request, context) {
+    const [remote, local] = await Promise.all([
+      enterprise.retrieve(request, context),
+      localDomain.retrieve(request, context),
+    ])
+    return { results: [...remote.results, ...local.results] }
+  },
+}
+```
+
+### Two known limits
+
+- **Without memory credentials, retrieval matches only filenames and titles.**
+  Sections and the summary come from one model call; with no
+  `QWEN_AUDIO_MEMORY_API_KEY` they stay empty. A query for a term that
+  appears only in the body will not match, while a term in the filename will.
+- **It cannot answer "which documents do I have".** Retrieval requires a non-empty
+  `query` and always treats it as a filter; listing belongs to the management
+  extension (the Web panel already lists and deletes).
+
 ## Document management is a separate extension
 
 Ingestion, listing, reading full documents, updating, and deleting are not part

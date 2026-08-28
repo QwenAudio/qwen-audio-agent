@@ -163,6 +163,7 @@ test('declares one background tool and classifies every other tool', () => {
     memory: 'inline',
     notes: 'inline',
     knowledge: 'inline',
+    recall: 'inline',
     respond_agent_permission: 'control',
     respond_frontend_tool_permission: 'control',
     web_search: 'inline',

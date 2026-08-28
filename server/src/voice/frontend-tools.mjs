@@ -29,6 +29,10 @@ export const ENTER_SLEEP_TOOL_NAME = 'enter_sleep'
 export const WEB_SEARCH_TOOL_NAME = 'web_search'
 export const FETCH_URL_TOOL_NAME = 'fetch_url'
 export const KNOWLEDGE_TOOL_NAME = 'knowledge'
+export const RECALL_TOOL_NAME = 'recall'
+// recall 依赖会话摘要池或资料库，两者都可能没启用。用 capability 声明而不是
+// 在 gateway 里手工拼工具数组 —— 后者会绕过 registry 的策略过滤。
+export const FRONTEND_RECALL_CAPABILITY = 'recall'
 
 const webSearchTool = {
   type: 'function',
@@ -318,6 +322,36 @@ const scheduleReminderTool = {
   },
 }
 
+// 「你记得前几天我们聊的 xxx 吗」的入口。刻意做成工具而不是静态注入：
+// 会话摘要每场都在变，注进 instructions 会让 prompt 前缀每场都变、前缀缓存失效。
+//
+// 一个工具而不是按数据源拆成几个：用户是想到哪问到哪的，他不区分「聊过的」
+// 和「派过的活」，模型也不该被迫在两个工具之间猜。共性是「查过去发生过什么」，
+// 差异只是内部存在哪个文件里。
+const recallTool = {
+  type: 'function',
+  function: {
+    name: RECALL_TOOL_NAME,
+    description: '回忆此前发生过什么 —— 聊过哪些话题、派过哪些活。用户问“我们之前聊过某事吗”“前几天说的那个”“上次让你做的那件事”“最近都聊了什么”等回顾过去的问题时调用。传入用户提到的关键词；泛泛问“最近怎么样”时省略 query。返回每场对话的话题、一句要点，以及那场派过的活及其当前状态，不含原文和执行细节。想知道某项工作的详细进展或结果全文，改用 get_agent_task_status；要查用户自己的资料，用 knowledge。返回 not_found 时如实说明没找到，不要编造聊过的内容。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '用户提到的话题或事情的关键词，尽量用用户自己说的原词，不要改写或扩写；用户没有指明时省略。',
+        },
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 10,
+          description: '最多返回几场，默认 5。语音场景下不要一次要太多。',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+}
+
 export const frontendToolRegistry = new FrontendToolRegistry([
   {
     definition: spawnThinkingTool,
@@ -335,6 +369,13 @@ export const frontendToolRegistry = new FrontendToolRegistry([
       mode: 'inline',
       maxResultBytes: 64 * 1024,
       requiredCapabilities: [FRONTEND_KNOWLEDGE_CAPABILITY],
+    },
+  },
+  {
+    definition: recallTool,
+    policy: {
+      mode: 'inline',
+      requiredCapabilities: [FRONTEND_RECALL_CAPABILITY],
     },
   },
   { definition: respondAgentPermissionTool, policy: { mode: 'control' } },

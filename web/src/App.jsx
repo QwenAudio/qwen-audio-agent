@@ -17,6 +17,7 @@ import MessageContent from './MessageContent.jsx'
 import MultimodalComposer from './MultimodalComposer.jsx'
 import DesktopFluidOrb from './DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './DesktopSpriteOrb.jsx'
+import DomainLibraryPanel from './DomainLibraryPanel.jsx'
 import { desktopOrbClassName, resolveOrbVisualState } from './orb-presentation.js'
 import {
   isBuiltinOrbSkin,
@@ -189,6 +190,7 @@ export default function App() {
   })
   const [agentTasks, setAgentTasks] = useState([])
   const [desktopTasksCollapsed, setDesktopTasksCollapsed] = useState(false)
+  const [showDomainLibrary, setShowDomainLibrary] = useState(false)
   const [desktopTaskLayout, setDesktopTaskLayout] = useState({
     placement: 'below',
     orbOffsetX: 0,
@@ -1355,6 +1357,17 @@ export default function App() {
       <div className="status">
         <i className={orbVisualState} /><span>{labelFor(orbVisualState)}</span>
       </div>
+      {/* 资料库入口只在 web 模式给：桌面悬浮球的 header 已经紧到把「新会话」
+          压成一个「＋」，再塞一个文字按钮会挤掉语音按钮 */}
+      {!desktopOrbMode && (
+        <button
+          className={`ghost${showDomainLibrary ? ' active' : ''}`}
+          onClick={() => setShowDomainLibrary(value => !value)}
+          title={t('把本机的手册、规章、教材交给助手')}
+        >
+          {t('资料库')}
+        </button>
+      )}
       <button
         className={`ghost${desktopOrbMode ? ' desktop-new-session' : ''}`}
         onClick={resetSession}
@@ -1399,6 +1412,9 @@ export default function App() {
     </header>
 
     <section className="workspace">
+      {showDomainLibrary && <DomainLibraryPanel
+        onClose={() => setShowDomainLibrary(false)}
+      />}
       <div className="hero">
         <button
           className={`orb ${orbVisualState}`}

@@ -67,6 +67,10 @@ export class MarkdownContextStore {
     scope,
     personalOwnerId = 'user_personal',
     maxChars = 8000,
+    // maxChars 是「注入预算」而非存储上限：超出后仍然写盘保留全量，
+    // 只在 read()/list() 注入时截断并给出告警（读写两侧行为一致）。
+    // hardMaxChars 是防失控的绝对上限，只有它才拒绝写入。
+    hardMaxChars = null,
     template = '',
     onWarning = warning => console.warn(warning.message),
   } = {}) {
@@ -74,6 +78,9 @@ export class MarkdownContextStore {
     this.scope = scope
     this.personalOwnerId = String(personalOwnerId)
     this.maxChars = maxChars
+    this.hardMaxChars = Number(hardMaxChars) > 0
+      ? Number(hardMaxChars)
+      : maxChars * 4
     this.template = text(template).trimEnd()
     this.onWarning = onWarning
     this.warning = null
@@ -97,7 +104,17 @@ export class MarkdownContextStore {
     if (!path) return ''
     try {
       const content = text(readFileSync(path, 'utf8')).trim()
-      this.warning = null
+      if ([...content].length > this.maxChars) {
+        // 文档现状就超预算（可能由上一次写入或外部编辑造成）——注入会被截断，
+        // 这个状态必须让上层看见，而不是被"读成功"清掉。
+        this.warn(
+          `${basename(path)} 已超过注入预算 ${this.maxChars} 个字符`
+          + `（当前 ${[...content].length}）：注入时会被截断。`,
+          { overBudget: true },
+        )
+      } else {
+        this.warning = null
+      }
       return content
     } catch (error) {
       if (error.code === 'ENOENT') return ''
@@ -177,10 +194,21 @@ export class MarkdownContextStore {
         document: publicDocument(this.scope, current),
       }
     }
-    if ([...next].length > this.maxChars) {
-      const error = new Error(`${basename(this.filePath)} 最多保存 ${this.maxChars} 个字符`)
+    // 只有超出绝对上限才拒绝：注入预算（maxChars）被突破时仍然写盘保留全量，
+    // 由 read()/list() 负责截断并告警，避免用户的记忆因为"太长"而直接写不进去。
+    if ([...next].length > this.hardMaxChars) {
+      const error = new Error(
+        `${basename(this.filePath)} 已超出绝对上限 ${this.hardMaxChars} 个字符，请先精简`,
+      )
       error.code = 'document_too_large'
       throw error
+    }
+    if ([...next].length > this.maxChars) {
+      this.warn(
+        `${basename(this.filePath)} 已超过注入预算 ${this.maxChars} 个字符`
+        + `（当前 ${[...next].length}）：内容已完整写盘，但注入时会被截断。`,
+        { overBudget: true },
+      )
     }
     return {
       changed,
@@ -197,11 +225,15 @@ export class MarkdownContextStore {
     writeFileSync(temporary, content, { encoding: 'utf8', mode: 0o600 })
     replaceFileSync(temporary, path)
     chmodSync(path, 0o600)
-    this.warning = null
+    // 写盘成功清除 I/O 类告警，但保留"超出注入预算"这类仍然成立的状态告警：
+    // 它描述的是文档现状（注入会被截断），不会因为写成功而消失。
+    if (!this.warning?.overBudget) {
+      this.warning = null
+    }
   }
 
-  warn(message) {
-    this.warning = { message, at: Date.now() }
+  warn(message, { overBudget = false } = {}) {
+    this.warning = { message, at: Date.now(), overBudget }
     try {
       this.onWarning?.(this.warning)
     } catch {

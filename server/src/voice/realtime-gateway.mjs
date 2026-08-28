@@ -49,6 +49,7 @@ import {
   frontendSourceToolCapabilities,
   frontendSourceToolDefinitions,
 } from '../frontend/tools/frontend-tool-source.mjs'
+import { FRONTEND_RECALL_CAPABILITY } from './frontend-tools.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
@@ -105,6 +106,10 @@ export function attachRealtimeGateway(server, {
   identityManager,
   memoryService,
   memoryExtractor = null,
+  preferencePromoter = null,
+  profileObserver = null,
+  sessionDigests = null,
+  sessionSummariser = null,
   notesStore,
   backendRuntime,
   backendAvailability = null,
@@ -219,6 +224,10 @@ export function attachRealtimeGateway(server, {
           ...(frontendRetrieval?.capabilities?.() || []),
           ...(frontendKnowledge?.capabilities?.() || []),
           ...frontendSourceToolCapabilities(frontendToolSources),
+          // 会话摘要池与资料库都没启用时不暴露 recall —— 池子永远是空的，
+          // 暴露它只会让模型白调一次。会话摘要本身绝不注入 instructions：
+          // 它每场都在变，会让 prompt 前缀每场都变。
+          ...(sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
         ])],
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
@@ -487,9 +496,16 @@ export function attachRealtimeGateway(server, {
       memoryService,
       notesStore,
       getClientContext: () => clientContext,
+      getConversationContext: () => conversationSync.frontendContext({
+        ownerId,
+        sessionId,
+      }),
+      // 记忆写入只刷新缓存，不重发 session.update：改 instructions 等于改 prompt
+      // 前缀，会让整场会话的前缀缓存失效，而用户刚说过的内容本来就在上下文里，
+      // 不必靠 instructions 再讲一遍。新值在下一个新会话生效。
       onMemoryChanged: () => realtimeSession.updateAgentContext({
         memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-      }),
+      }, { refreshSession: false }),
       backendRuntime,
       backendAvailability,
       respondAuthorization,
@@ -522,6 +538,7 @@ export function attachRealtimeGateway(server, {
       frontendKnowledge,
       frontendToolSources,
       turnCitations,
+      sessionDigests,
     })
     const clearResponseCandidate = () => {
       clearTimeout(responseStartWatchdog)
@@ -1233,6 +1250,62 @@ export function attachRealtimeGateway(server, {
         memoryExtractor?.maybeRun({ ownerId, sessionId })
       } catch (error) {
         connectionLogger.warn('memory.extract_hook_failed', {
+          error: String(error?.message || error),
+        })
+      }
+      // 画像观察 → 晋升扫描。观察器要调模型所以是异步的，晋升必须排在它之后：
+      // 否则本场刚攒到的确认要等下一场会话结束才被扫到，白等一轮。观察器未启用
+      // 或未达门槛时走同步分支，保持原有行为。晋升本身是纯本地计算、无模型调用，
+      // 写入只在下一个新会话生效，不触碰当前会话的 instructions（保护前缀缓存）。
+      // promoter.run() 是 async 的（写入要等 MemoryProvider 落地才销账），所以
+      // 同步 try/catch 抓不到它内部的失败 —— 必须挂 .catch()，否则一次写入失败
+      // 就变成未处理的 rejection：没有日志，也看不出是哪条偏好没写进去。
+      //
+      // 刻意不 await：这里是连接关闭路径，后面还有会话摘要等链路。远程 provider
+      // 一次超时不该拖住整条关闭流程 —— 用户已经挂断了，资源该释放。写入失败时
+      // 候选留在池子里，下一场会话结束自动重试。
+      const promotePreferences = () => {
+        try {
+          const promoting = preferencePromoter?.run({ ownerId })
+          if (promoting?.catch) {
+            promoting.catch(error => {
+              connectionLogger.warn('preference.promote_hook_failed', {
+                error: String(error?.message || error),
+              })
+            })
+          }
+        } catch (error) {
+          connectionLogger.warn('preference.promote_hook_failed', {
+            error: String(error?.message || error),
+          })
+        }
+      }
+      try {
+        const observing = profileObserver?.maybeRun({ ownerId, sessionId })
+        // 观察失败也要照常扫描：池子里可能还有前几场攒下的确认。
+        if (observing?.then) observing.then(promotePreferences, promotePreferences)
+        else promotePreferences()
+      } catch (error) {
+        connectionLogger.warn('preference.observe_hook_failed', {
+          error: String(error?.message || error),
+        })
+        promotePreferences()
+      }
+      // 会话摘要：记下本场聊了什么，供以后 recall 查。
+      // 与抽取器、观察器彼此独立 —— 三条链路读同一份转写，但任何一条失败都不该
+      // 连带丢掉另外两条的产出，所以各自 try 各自 catch。
+      try {
+        sessionSummariser?.maybeRun({ ownerId, sessionId })
+      } catch (error) {
+        connectionLogger.warn('session_digest.summarise_hook_failed', {
+          error: String(error?.message || error),
+        })
+      }
+      // 滚动摘要取走即删：本场摘要已被上面的下游消费，留着等于悄悄开启了
+      // 「每场会话长期留存完整摘要」，那需要用户显式同意。
+      try {
+      } catch (error) {
+        connectionLogger.warn('rolling_summary.drop_failed', {
           error: String(error?.message || error),
         })
       }

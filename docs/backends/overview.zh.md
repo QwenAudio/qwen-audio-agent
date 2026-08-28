@@ -5,20 +5,23 @@
 
 ## 支持的 Agent
 
-| 后台 Agent | 接入方式 | 接入准备 | 推荐指数 |
-| --- | --- | --- | --- |
-| 无 | N/A | 仅前台模式，无需配置 | ★★★★★ |
-| Qwen Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
-| OpenCode | 原生 ACP | 支持一键安装和百炼配置 | ★★★★★ |
-| OpenClaw | 内置 ACP 桥接 | 支持一键安装和百炼配置 | ★★★★★ |
-| Qoder | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
-| Kimi Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
-| Hermes | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
-| CodeBuddy | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
-| Codex | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
-| Claude Code | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
-| DeepSeek | 原生 ACP | 支持一键安装，需 DeepSeek API Key | ★★★★☆ |
-| Pi | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
+| 后台 Agent | 接入方式 | 接入准备 | Skills | 推荐指数 |
+| --- | --- | --- | --- | --- |
+| 无 | N/A | 仅前台模式，无需配置 | — | ★★★★★ |
+| Qwen Code | 原生 ACP | 支持一键安装，需用户配置 | `~/.qwen/skills/` | ★★★★★ |
+| OpenCode | 原生 ACP | 支持一键安装和百炼配置 | `~/.config/opencode/skills/` | ★★★★★ |
+| OpenClaw | 内置 ACP 桥接 | 支持一键安装和百炼配置 | `~/.openclaw/skills/` | ★★★★★ |
+| Qoder | 原生 ACP | 支持一键安装，需用户配置 | `~/.qoder/skills/` | ★★★★★ |
+| Kimi Code | 原生 ACP | 支持一键安装，需用户配置 | `~/.agents/skills/` | ★★★★★ |
+| Hermes | 原生 ACP | 支持一键安装，需用户配置 | `~/.hermes/skills/` | ★★★★☆ |
+| CodeBuddy | 原生 ACP | 支持一键安装，需用户配置 | `~/.codebuddy/skills/` | ★★★★☆ |
+| Codex | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | `~/.codex/skills/` | ★★★★☆ |
+| Claude Code | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | `~/.claude/skills/` | ★★★★☆ |
+| DeepSeek | 原生 ACP | 支持一键安装，需 DeepSeek API Key | `~/.agents/skills/` | ★★★★☆ |
+| Pi | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | `~/.pi/agent/skills/` | ★★★★☆ |
+
+通过 `qwenaudio skill install` 安装一次标准 Agent Skill 后，会自动写入上表各后台的
+用户级目录。详见[技能管理](../configuration/backend.zh.md#技能管理)。
 
 推荐指数综合反映当前集成完整度、兼容性和实际验证程度：五星表示已经过充分测试的
 推荐集成，四星表示正在开发或尚未完成同等范围验证。

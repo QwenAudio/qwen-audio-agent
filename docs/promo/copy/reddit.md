@@ -2,7 +2,7 @@
 
 ## Title
 
-I built a full-duplex voice interface for Claude Code (and Codex/OpenCode) — the conversation keeps going while it works
+I built a full-duplex voice runtime for AI agents — the conversation keeps going while Claude Code works
 
 ## Body
 
@@ -22,7 +22,7 @@ agents via ACP (Agent Client Protocol). What it actually does:
   async task, and you keep talking. When the task finishes it just says
   so, and you can follow up with full context.
 - Permission requests come through voice too — "it wants to edit X, ok?"
-- Desktop app with a floating orb (macOS, Linux builds just landed),
+- Desktop app with a floating orb (macOS, Windows, Linux),
   plus a TUI and web UI. Wake word support: it sleeps after idle but
   wakes on a local keyword-spotting model, no cloud calls while asleep.
 
@@ -32,7 +32,7 @@ the Claude Code ACP adapter for you. Voice stack defaults to DashScope
 
 Repo: https://github.com/QwenAudio/qwen-audio-agent
 
-Genuinely curious: anyone else experimenting with voice-driven coding
+Genuinely curious: anyone else experimenting with voice-driven
 agents? The hardest unsolved problem for me is how verbose spoken
 progress updates should be.
 

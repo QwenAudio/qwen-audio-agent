@@ -1,6 +1,6 @@
 # 安装
 
-需要 Node.js 22.22.2+ 或 24.15.0+、npm 10+。使用默认的 DashScope
+需要 Node.js ^22.22.2、^24.15.0 或 >=26.0.0，npm 10+。使用默认的 DashScope
 实时语音前台时，还需要 DashScope API Key。
 仓库提供 `.nvmrc` 和 `.node-version`；使用 nvm 时可直接运行 `nvm use`。
 
@@ -59,9 +59,9 @@ qwenaudio setup
 
 ## 配置文件位置
 
-CLI 使用 `~/.config/qwaudio/config.env`；桌面版使用系统标准应用数据目录
-（macOS 为 `~/Library/Application Support/Qwen Audio Agent`），两者的 Gateway、
-锁、日志与设置互不干扰，可以同时运行。设置 `QWAUDIO_CONFIG_DIR` 或
+CLI 与桌面版共享 `~/.config/qwaudio/config.env`（设置、身份、记忆与共享 workspace
+都在同一个用户目录下）。只有运行时状态——Gateway 进程、锁、日志与皮肤——存放在桌面版
+自己的应用数据目录（macOS 为 `~/Library/Application Support/Qwen Audio Agent`），两者可以同时运行。设置 `QWAUDIO_CONFIG_DIR` 或
 `XDG_CONFIG_HOME` 可以更改配置目录。详见[配置说明](../configuration.zh.md)。
 
 ## 获取 DashScope API Key

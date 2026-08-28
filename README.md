@@ -87,7 +87,7 @@ Throughout, the user always faces the same assistant.
 
 ![qwen-audio-agent reference architecture](docs/qwen-audio-agent-three-layer-architecture-en.png)
 
-For the full design and module breakdown, see the [architecture document](docs/architecture.md).
+For the full design and module breakdown, see the [architecture document](docs/architecture/deep-dive.md).
 
 </details>
 

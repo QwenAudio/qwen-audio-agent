@@ -2,11 +2,11 @@
 
 ## 标题
 
-给 Claude Code / Codex 装上全双工语音：干活的时候对话不断线
+给 AI Agent 装上全双工语音：干活的时候对话不断线（Claude Code / Codex / OpenCode 都能接）
 
 ## 正文
 
-各位好，分享一个开源项目 qwen-audio-agent，给编码 Agent 做的实时语音前台。
+各位好，分享一个开源项目 qwen-audio-agent：全双工实时语音运行时，让 AI Agent 持续在场。
 
 做这个东西的原因：用语音驱动 Claude Code 时，它一开始读文件、调工具，
 对话就死了，只能干等。我想要的是"它在干活，我们还能继续聊"。
@@ -19,7 +19,7 @@
   Agent 异步跑，任务完成后自然回到对话里，可以接着追问
 - 走 ACP 协议接入，Claude Code/Codex 用适配器，OpenCode/Qoder/Kimi 原生，
   接一个新 Agent 就是加一个 driver 文件，语音层零改动
-- 桌面悬浮球（macOS，Linux 刚支持），还有 TUI 和 WebUI
+- 桌面悬浮球（macOS / Windows / Linux），还有 TUI 和 WebUI
 - 唤醒词：空闲休眠后麦克风保持开着，本地 sherpa-onnx 3M 模型监听，
   休眠期间没有任何云端调用
 

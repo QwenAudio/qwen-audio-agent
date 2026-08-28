@@ -115,7 +115,7 @@ if (isMain) {
     'examples/custom-conversation-client/README.md',
     'examples/custom-conversation-client/client.mjs',
     'CONTRIBUTING.md',
-    'docs/architecture.md',
+    'docs/architecture/deep-dive.md',
     'docs/architecture-overview.png',
     'NOTICE',
     'PRIVACY.md',

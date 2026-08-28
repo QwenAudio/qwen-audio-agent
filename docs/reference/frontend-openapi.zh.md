@@ -12,7 +12,7 @@ qwen-audio-agent 策略显式决定，不会自动开放整份 API。
 用 `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` 指定带版本的 JSON 配置文件。
 OpenAPI 文档可以是 JSON 或 YAML，相对路径以该配置文件所在目录为基准：
 
-```env
+```dotenv
 QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG=/absolute/path/to/frontend-openapi.json
 WEATHER_AUTHORIZATION=Bearer replace-me
 ```

@@ -12,6 +12,13 @@ qwen-audio-agent 也可以连接用户自行运行的
 pip install "speech-to-speech[paraformer]"
 ```
 
+下文的中文配置依赖 v0.2.12 之后合入的 CJK 标点与 Qwen3-TTS 长文本预算修复。
+在包含这些修复的版本发布之前，请直接安装已合入的修订版本：
+
+```bash
+pip install "speech-to-speech[paraformer] @ git+https://github.com/huggingface/speech-to-speech.git@f75d6b435d89b8dff911f639672c172166595409"
+```
+
 ## 启动服务
 
 Linux / Windows（NVIDIA GPU）：
@@ -22,6 +29,26 @@ speech-to-speech \
   --llm_backend transformers \
   --device cuda
 ```
+
+经过测试的中文 Qwen3-TTS 配置如下：显式指定模型、语言、说话人与表达指令，
+采样参数保持后端默认值：
+
+```bash
+speech-to-speech \
+  --stt paraformer \
+  --llm_backend transformers \
+  --model_name Qwen/Qwen3-4B-Instruct-2507 \
+  --tts qwen3 \
+  --qwen3_tts_backend torch \
+  --qwen3_tts_model_name Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
+  --qwen3_tts_speaker Vivian \
+  --qwen3_tts_language chinese \
+  --qwen3_tts_instruct "请用平稳、自然、克制的语气说话，保持均匀语速，避免夸张的音高变化，句末自然收束。" \
+  --device cuda
+```
+
+已合入的 speech-to-speech 修复会保留中文标点，并为 CJK 文本自动放大
+Qwen3-TTS codec token 预算，无需覆盖采样参数或设置更大的固定 token 上限。
 
 Apple Silicon：
 

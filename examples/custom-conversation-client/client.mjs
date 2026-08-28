@@ -7,6 +7,13 @@ import {
   GatewayServerEvent,
 } from 'qwen-audio-agent/realtime-events'
 import { parseGatewayServerMessage } from 'qwen-audio-agent/gateway-events'
+import {
+  GatewayClientCapability,
+  GatewayClientProtocolEvent,
+  createGatewayClientProtocolMessage,
+  createGatewaySessionHello,
+  parseGatewayServerProtocolMessage,
+} from 'qwen-audio-agent/gateway-client-protocol'
 
 export function conversationSocketUrl(origin, sessionId = 'custom-client') {
   const url = new URL('/api/realtime', origin)
@@ -45,7 +52,42 @@ export function createTextInputMessage(text) {
   }
 }
 
+export function createProtocolHello({
+  eventId,
+  clientInstanceId = 'custom-conversation-client',
+} = {}) {
+  return createGatewaySessionHello({
+    eventId,
+    clientType: 'web',
+    clientInstanceId,
+    clientLabel: 'Custom Conversation Client',
+    locale: 'zh-CN',
+    timeZone: 'Asia/Shanghai',
+    capabilities: [
+      GatewayClientCapability.INPUT_TEXT,
+      GatewayClientCapability.INPUT_IMAGE,
+      GatewayClientCapability.INPUT_FILE,
+      GatewayClientCapability.PLAYBACK_RECEIPTS,
+    ],
+  })
+}
+
+export function createProtocolTextInputMessage(text, { eventId } = {}) {
+  const content = String(text || '').trim()
+  if (!content) throw new Error('text is required')
+  return createGatewayClientProtocolMessage(
+    GatewayClientProtocolEvent.CONVERSATION_ITEM_CREATE,
+    { parts: [{ type: 'text', text: content }] },
+    { eventId },
+  )
+}
+
 export function displayServerMessage(value, write = console.log) {
+  if (value?.type === GatewayClientProtocolEvent.SESSION_READY) {
+    const ready = parseGatewayServerProtocolMessage(value)
+    write(`session: ${ready.protocol_version}`)
+    return ready
+  }
   const event = parseGatewayServerMessage(value)
   if (
     event.type === GatewayServerEvent.TRANSCRIPT_DELTA
@@ -60,15 +102,22 @@ export function displayServerMessage(value, write = console.log) {
   return event
 }
 
-export function run({ origin, text, sessionId = 'custom-client' }) {
+export function run({ origin, text, sessionId = 'custom-client', protocol = '6' }) {
   const socket = new WebSocket(conversationSocketUrl(origin, sessionId))
   socket.on('open', () => {
-    socket.send(JSON.stringify(createConnectionMessage()))
-    socket.send(JSON.stringify(createTextInputMessage(text)))
+    if (protocol === '5') {
+      socket.send(JSON.stringify(createConnectionMessage()))
+      socket.send(JSON.stringify(createTextInputMessage(text)))
+      return
+    }
+    socket.send(JSON.stringify(createProtocolHello()))
   })
   socket.on('message', raw => {
     try {
-      displayServerMessage(JSON.parse(raw.toString()))
+      const event = displayServerMessage(JSON.parse(raw.toString()))
+      if (event.type === GatewayClientProtocolEvent.SESSION_READY) {
+        socket.send(JSON.stringify(createProtocolTextInputMessage(text)))
+      }
     } catch (error) {
       console.error(`invalid Gateway event: ${error.message}`)
     }

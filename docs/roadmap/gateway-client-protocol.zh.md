@@ -59,21 +59,21 @@ Backend Agent
 
 ## GCP0 — 固化契约
 
-- [ ] 合并中英文协议和本 Roadmap。
-- [ ] 记录当前 5.x 别名与 characterization coverage。
-- [ ] 将协议文档加入公开契约索引。
-- [ ] 固化标准对齐映射、WebSocket 运行时命令面和单 Client 上下文来源决策。
+- [x] 合并中英文协议和本 Roadmap。
+- [x] 记录当前 5.x 别名与 characterization coverage。
+- [x] 将协议文档加入公开契约索引。
+- [x] 固化标准对齐映射、WebSocket 运行时命令面和单 Client 上下文来源决策。
 
 完成条件：术语、单 Client 所有权、Event/Action 语义、路由模式、休眠汇合与迁移策略可以在一个位置完整评审。
 
 ## GCP1 — 信封、握手与能力
 
-- [ ] 增加包含 `event_id`、`request_event_id`、回放 `sequence` 的 6.0 Schema。
-- [ ] 增加 `session.hello` / `session.ready` 协商。
-- [ ] 增加 Client Event、Client Action 和回放 capability。
-- [ ] 增加 Task 命令、权限决策和对话历史 capability。
-- [ ] 通过归一化层继续支持 5.x `connect` 和旧事件别名。
-- [ ] 发布共享 Parser 与 Client SDK Helper。
+- [x] 增加包含 `event_id`、`request_event_id`、回放 `sequence` 的 6.0 Schema。
+- [x] 增加 `session.hello` / `session.ready` 协商。
+- [x] 增加 Client Event、Client Action 和回放 capability。
+- [x] 增加 Task 命令、权限决策和对话历史 capability。
+- [x] 通过归一化层继续支持 5.x `connect` 和旧事件别名。
+- [x] 发布共享 Parser 与 Client SDK Helper。
 
 完成条件：5.x 与 6.0 参考 Client 可以连接同一个 Gateway，且不分叉业务逻辑。
 

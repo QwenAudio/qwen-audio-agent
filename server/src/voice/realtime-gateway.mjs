@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
-  isGatewayClientEvent,
 } from '../../../shared/realtime-events.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import {
@@ -50,19 +49,24 @@ import {
   frontendSourceToolDefinitions,
 } from '../frontend/tools/frontend-tool-source.mjs'
 import { FRONTEND_RECALL_CAPABILITY } from './frontend-tools.mjs'
+import { GatewayClientProtocolSession } from '../transport/gateway-client-protocol-session.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
 const PERMISSION_RESPONSE_GRACE_MS = 800
 const RESPONSE_CONTEXT_CLEANUP_MS = 30000
 const REALTIME_STABLE_CONNECTION_MS = 10000
+const clientProtocolSessions = new WeakMap()
 
 function gatewayTurnId() {
   return `gateway_${randomUUID().replaceAll('-', '')}`
 }
 
 function send(ws, event) {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event))
+  if (ws.readyState !== WebSocket.OPEN) return
+  const protocol = clientProtocolSessions.get(ws)
+  const wireEvent = protocol ? protocol.encode(event) : event
+  if (wireEvent) ws.send(JSON.stringify(wireEvent))
 }
 
 function rejectUpgrade(socket, status, message) {
@@ -180,6 +184,8 @@ export function attachRealtimeGateway(server, {
   wss.on('connection', (ws, url, identity) => {
     const ownerId = identity.ownerId
     const sessionId = url.searchParams.get('sessionId') || 'main'
+    const clientProtocol = new GatewayClientProtocolSession({ sessionId })
+    clientProtocolSessions.set(ws, clientProtocol)
     const connectionLogger = logger.child({
       subsystem: 'realtime',
       ownerId,
@@ -1009,7 +1015,17 @@ export function attachRealtimeGateway(server, {
       } catch {
         return
       }
-      if (!isGatewayClientEvent(event)) return
+      const protocolOutcome = clientProtocol.receive(event)
+      if (protocolOutcome.reply) send(ws, protocolOutcome.reply)
+      if (protocolOutcome.close) {
+        ws.close(1002, protocolOutcome.reply?.error?.code || 'protocol error')
+        return
+      }
+      for (const pendingEvent of protocolOutcome.pending || []) {
+        send(ws, pendingEvent)
+      }
+      event = protocolOutcome.event
+      if (!event) return
       if (event.type === GatewayClientEvent.CONNECT) {
         descriptor = clientDescriptor(event)
         voiceClient.descriptor = descriptor
@@ -1222,6 +1238,7 @@ export function attachRealtimeGateway(server, {
     })
 
     ws.on('close', () => {
+      clientProtocolSessions.delete(ws)
       connectionLogger.info('voice_client.disconnected', {
         clientType: descriptor.type,
       })

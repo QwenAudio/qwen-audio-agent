@@ -10,6 +10,8 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.1.0 adds the opt-in 6.0 Gateway Client Protocol handshake and versioned
+// envelope while preserving every 5.x Client event as a compatibility alias.
 // 5.0.0 removes the backend-controlled Task presentation envelope. Backend
 // outcomes now expose factual `content` plus optional typed `artifacts`; the
 // frontend Chatbot owns spoken expression and each Conversation Client owns
@@ -30,7 +32,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.0.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.1.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -86,6 +88,10 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // replaceable Conversation Client boundary for audio, text, multimodal
   // input, transcripts, playback receipts, voice state and Task projections.
   'realtime.conversation-client-v1',
+  // session.hello/session.ready negotiate the draft 6.0 Client protocol;
+  // 5.x connect and event names remain compatibility aliases through one
+  // normalization layer.
+  'realtime.gateway-client-protocol-v6-handshake',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

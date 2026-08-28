@@ -22,11 +22,14 @@ The proposed 6.0 northbound boundary is documented in the draft
 [Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.md) and its
 [roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.md), tracked by
 [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251).
-Those documents are design targets, not current 5.x promises; this contract
-index remains authoritative until each capability is implemented and locked by
-a named test.
+Those documents remain the design target. GCP1 is now available as an opt-in
+6.0 handshake and envelope over the existing WebSocket; capabilities for later
+stages are vocabulary only and are not negotiated until their runtimes ship.
+This contract index remains authoritative for implemented behavior.
 
-The current version is `5.0.0`. The `5.0` line removes the backend-controlled
+The current health-contract version is `5.1.0`. The additive `5.1` line exposes
+the opt-in GCP 6.0 `session.hello` / `session.ready` handshake while preserving
+the 5.x `connect` path and business event aliases. The `5.0` line removes the backend-controlled
 Task `presentation` envelope. A backend returns factual `content` plus optional
 typed `artifacts`; the foreground Chatbot decides how to speak, while each
 Conversation Client decides how to render. The same line publishes the existing
@@ -65,6 +68,7 @@ below instead of assuming the old list.
 | `tasks.unified-id-updates` | A Task exposes one short `id`; `task.updated` carries adapter-normalized incremental messages and artifacts | `test/gateway-event-schema.test.mjs`, `server/test/task-manager.test.mjs` |
 | `messages.citations` | Final assistant `transcript.final` events may carry normalized citations collected from frontend retrieval in the same turn | `test/gateway-event-schema.test.mjs`, `server/test/realtime-presentation-runtime.test.mjs` |
 | `realtime.conversation-client-v1` | `WS /api/realtime`, published event constants, and message schemas form the replaceable text/audio/multimodal Conversation Client boundary | `test/gateway-event-schema.test.mjs`, `test/custom-conversation-client.test.mjs` |
+| `realtime.gateway-client-protocol-v6-handshake` | The same WebSocket accepts an opt-in 6.0 `session.hello`, returns correlated `session.ready`, negotiates implemented capabilities, and normalizes 6.0 input aliases into the existing business path | `test/gateway-client-protocol.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |
@@ -84,6 +88,7 @@ is unsupported and breaks without notice.
 | --- | --- |
 | `qwen-audio-agent/electron` | **CJS**: `load()` (every contract in one namespace), `PRELOAD_PATH` |
 | `qwen-audio-agent/gateway-protocol` | `GATEWAY_PROTOCOL_VERSION`, `GATEWAY_CAPABILITIES` |
+| `qwen-audio-agent/gateway-client-protocol` | GCP 6.0 envelope and handshake schemas, parsers, capability constants, and reference Client helpers |
 | `qwen-audio-agent/gateway-setup` | `gatewaySetupStatus`, `assertGatewaySetup` |
 | `qwen-audio-agent/gateway-process` | `GatewayProcess`, `createGatewayProcess`, `GATEWAY_READY_MESSAGE`, `DEFAULT_GATEWAY_ENTRY`, `validateGatewayOrigin`, `portInUse` |
 | `qwen-audio-agent/gateway-lease` | `readGatewayLease`, `findRunningGateway`, `acquireGatewayLease` |
@@ -180,7 +185,11 @@ those package entries rather than internal module paths.
 `gateway.connected` and `gateway.disconnected` are client-side lifecycle
 helpers used by the shared state reducer; they are not WebSocket wire events.
 
-After the socket opens, send `connect` first. It declares input/output mode,
+Legacy 5.x clients send `connect` first. An opt-in 6.0 client instead sends
+`session.hello`, waits for the correlated `session.ready`, and then uses the
+negotiated capabilities. The Gateway normalizes both handshakes and the current
+6.0 input aliases into the same business path; later GCP capabilities are not
+advertised before their implementations exist. The handshake declares input/output mode,
 client identity, locale/time zone, and supported input kinds. Audio input is
 base64 PCM16 mono at the `inputSampleRate` reported by `voice.ready`; audio
 output uses the `sampleRate` carried by each `audio.delta`. A text or multimodal

@@ -59,21 +59,21 @@ The remaining gaps are:
 
 ## GCP0 — Freeze the contract
 
-- [ ] Merge the bilingual protocol spec and this roadmap.
-- [ ] Record current 5.x aliases and characterization coverage.
-- [ ] Add the protocol documents to the public contract index.
-- [ ] Freeze the standard-alignment mapping, WebSocket runtime command plane, and single-Client context-source decision.
+- [x] Merge the bilingual protocol spec and this roadmap.
+- [x] Record current 5.x aliases and characterization coverage.
+- [x] Add the protocol documents to the public contract index.
+- [x] Freeze the standard-alignment mapping, WebSocket runtime command plane, and single-Client context-source decision.
 
 Exit criteria: terminology, single-Client ownership, Event versus Action semantics, routing modes, sleep convergence, and migration policy are reviewable in one place.
 
 ## GCP1 — Envelope, handshake, and capabilities
 
-- [ ] Add 6.0 envelope schemas for `event_id`, `request_event_id`, and replay `sequence`.
-- [ ] Add `session.hello` / `session.ready` negotiation.
-- [ ] Add capability constants for Client Event, Client Action, and replay.
-- [ ] Add capability constants for Task commands, permission decisions, and conversation history.
-- [ ] Keep 5.x `connect` and event aliases working through a normalization layer.
-- [ ] Publish shared parser and Client SDK helpers.
+- [x] Add 6.0 envelope schemas for `event_id`, `request_event_id`, and replay `sequence`.
+- [x] Add `session.hello` / `session.ready` negotiation.
+- [x] Add capability constants for Client Event, Client Action, and replay.
+- [x] Add capability constants for Task commands, permission decisions, and conversation history.
+- [x] Keep 5.x `connect` and event aliases working through a normalization layer.
+- [x] Publish shared parser and Client SDK helpers.
 
 Exit criteria: a 5.x and a 6.0 reference Client can connect to the same Gateway without divergent business logic.
 

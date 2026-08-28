@@ -10,6 +10,8 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.3.0 adds GCP3 provider-neutral AgentDelivery routing for Client Events,
+// Task results and progress, and permission prompts.
 // 5.2.0 adds GCP2 Client Event ingress and WebSocket runtime commands for
 // Tasks, permissions, and conversation history while retaining the existing
 // REST paths as migration aliases.
@@ -35,7 +37,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.2.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.3.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -99,6 +101,10 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // Task, permission, and conversation-history runtime commands over the same
   // WebSocket. Immediate results and errors correlate through request_event_id.
   'realtime.gateway-client-protocol-v6-runtime-commands',
+  // Semantic Client, Task and permission events are projected into one
+  // provider-neutral AgentDelivery runtime with handle/context/respond/
+  // interrupt modes before any Realtime-provider encoding occurs.
+  'realtime.gateway-client-protocol-v6-agent-delivery',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

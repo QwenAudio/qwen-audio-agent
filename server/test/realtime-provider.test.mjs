@@ -1289,6 +1289,87 @@ test('injects a completed work result into Qwen conversation with tools disabled
   })
 })
 
+test('injects AgentDelivery context without creating a realtime response', async () => {
+  const frontend = createQwenFrontend({ responseStartTimeoutMs: 50 })
+  const sent = []
+  frontend.ready = true
+  frontend.send = payload => sent.push(payload)
+
+  const outcome = frontend.injectDelivery(
+    '客户端环境已变化。',
+    'client-event',
+    { clientEventId: 'event-1' },
+    { route: 'context' },
+  )
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+  frontend.handleLifecycle({
+    type: 'conversation.item.created',
+    item: { ...sent[0].item, status: 'completed' },
+  })
+  assert.deepEqual(await outcome, {
+    completed: true,
+    contextInjected: true,
+    route: 'context',
+  })
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+})
+
+test('can expose permission context before its response queue becomes idle', async () => {
+  const frontend = createQwenFrontend({
+    responseStartTimeoutMs: 50,
+    responseCompletionTimeoutMs: 50,
+  })
+  const sent = []
+  frontend.ready = true
+  frontend.send = payload => sent.push(payload)
+  frontend.activeResponses.add('response-active')
+
+  const outcome = frontend.injectDelivery(
+    '<backend_permission_request>operation=test</backend_permission_request>',
+    'permission',
+    { authorizationId: 'permission-1' },
+    { route: 'respond', contextTiming: 'immediate' },
+  )
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+  frontend.handleLifecycle({
+    type: 'conversation.item.created',
+    item: { ...sent[0].item, status: 'completed' },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+
+  frontend.handleLifecycle({
+    type: 'response.done',
+    response: { id: 'response-active', status: 'completed' },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(sent[1].type, 'response.create')
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'response-permission' },
+  })
+  frontend.handleLifecycle({
+    type: 'response.done',
+    response: { id: 'response-permission', status: 'completed' },
+  })
+  assert.equal((await outcome).contextInjected, true)
+})
+
+test('keeps tool policy provider-neutral for all result-injection providers', () => {
+  for (const provider of [REALTIME_PROVIDERS.qwen, REALTIME_PROVIDERS.s2s]) {
+    assert.equal(
+      provider.buildResultInjection('event', { allowTools: true }).response.tool_choice,
+      'auto',
+    )
+    assert.equal(
+      provider.buildResultInjection('event').response.tool_choice,
+      'none',
+    )
+  }
+})
+
 test('injects progress with response-scoped presentation instructions', async () => {
   const frontend = createQwenFrontend({
     responseStartTimeoutMs: 50,

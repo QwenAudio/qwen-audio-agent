@@ -82,6 +82,8 @@ test('deduplicates by trusted source and retains only the latest event', async (
     source: { ownerId: 'spoofed-owner', clientType: 'spoofed-client' },
   }), { source })
   assert.equal(first.event.route, 'context')
+  assert.equal(first.delivery.mode, 'context')
+  assert.equal(first.delivery.causeEventId, 'evt-sleep-1')
   assert.deepEqual(first.event.source, source)
   assert.equal(first.event.source.ownerId, 'owner-1')
 
@@ -100,6 +102,7 @@ test('deduplicates by trusted source and retains only the latest event', async (
     delivery_hint: 'interrupt',
   }), { source })
   assert.equal(next.event.route, 'respond')
+  assert.equal(next.delivery.mode, 'respond')
   assert.equal(router.latestEvents().length, 1)
   assert.equal(router.latestEvents()[0].data.reason, 'new')
 })

@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto'
+import { createAgentDelivery } from '../../delivery/agent-delivery.mjs'
+import { RealtimeAgentDeliveryRuntime } from '../realtime-agent-delivery-runtime.mjs'
 
 export class AnnouncementManager {
   constructor({
     getFrontend,
+    deliveryRuntime = null,
     isDeliveryBlocked,
     announceIntoContext = true,
     resultContextMaxChars = 6000,
@@ -21,6 +24,10 @@ export class AnnouncementManager {
   }) {
     this.getFrontend = getFrontend
     this.isDeliveryBlocked = isDeliveryBlocked || (() => false)
+    this.deliveryRuntime = deliveryRuntime || new RealtimeAgentDeliveryRuntime({
+      getFrontend,
+      isDeliveryBlocked: this.isDeliveryBlocked,
+    })
     this.announceIntoContext = announceIntoContext
     this.resultContextMaxChars = resultContextMaxChars
     this.maxBatchItems = maxBatchItems
@@ -303,13 +310,14 @@ export class AnnouncementManager {
         taskId: batch.taskIds.length === 1 ? batch.taskIds[0] : null,
         taskIds: batch.taskIds,
       }
-      const outcome = this.announceIntoContext && frontend.injectResult
-        ? await frontend.injectResult(
-            eventText,
-            'announcement',
-            context,
-            { injectContext: !batch.contextInjected },
-          )
+      const outcome = this.announceIntoContext
+        ? await this.deliveryRuntime.deliver(createAgentDelivery({
+            id: `task_result_${batch.deliveryTurnId}`,
+            mode: 'respond',
+            origin: 'announcement',
+            text: eventText,
+            correlation: context,
+          }), { injectContext: !batch.contextInjected })
         : await frontend.speak(eventText, 'announcement', context)
       if (
         this.deliveryGeneration !== deliveryGeneration

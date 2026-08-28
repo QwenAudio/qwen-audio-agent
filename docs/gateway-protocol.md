@@ -110,8 +110,8 @@ logic. A 6.0 Client starts with `session.hello`; Gateway returns
 6.0 input aliases into the existing internal event model. A 5.x Client may
 continue to start with `connect` and receives the unchanged legacy event shape.
 Only capabilities with working runtimes are negotiated. GCP2 Client Event and
-runtime-command capabilities are now implemented; names reserved for GCP3–GCP5
-remain vocabulary-only until their runtimes ship.
+runtime-command capabilities and GCP3 Agent Delivery are now implemented;
+names reserved for GCP4–GCP5 remain vocabulary-only until their runtimes ship.
 
 ### 3.2 GCP2 runtime rollout
 
@@ -125,9 +125,19 @@ registry owns payload Schema, size, rate, retention, coalescing, maximum route,
 and an optional deterministic handler. Gateway stamps owner, Session, Client
 type, and Client instance from the authenticated connection; none of those
 trusted fields are accepted from event data. The first built-in definition is
-`desktop.presence.sleep_requested`. Its model delivery is intentionally deferred
-to GCP3, so GCP2 accepts, validates, retains, and handles the event without
-pretending it is user input.
+`desktop.presence.sleep_requested`. GCP2 accepts, validates, retains, and
+handles the event without pretending it is user input; GCP3 now projects it
+through the shared Agent Delivery boundary.
+
+### 3.3 GCP3 delivery rollout
+
+GCP3 implements the provider-neutral value and all four routing modes from
+section 6. Task results, low-frequency meaningful progress, permission prompts,
+and registered Client Event projections use one `RealtimeAgentDeliveryRuntime`.
+Realtime providers encode only the resulting context item and optional response;
+raw Client or backend protocol objects never enter the model. Existing Task
+announcement batching, safe-window retry, notification claims, and playback
+acknowledgement remain the reliable lifecycle around that shared projection.
 
 ## 4. Common event envelope
 
@@ -358,9 +368,15 @@ An optional provider-neutral `AgentDelivery` records how the Realtime frontend a
   origin: 'client',
   text: '用户触摸了桌面上的水杯。',
   mode: 'context',
-  correlation: { eventName: 'user.object.touched' }
+  correlation: { eventName: 'user.object.touched' },
+  presentation: { instructions: '', allowTools: false, contextTiming: 'response' }
 }
 ```
+
+`presentation` is optional provider-neutral response policy. It may constrain
+how a response is expressed, whether the frontend Agent may call its own tools,
+and whether context must be visible before a queued response; it is never a
+Realtime-provider response object.
 
 Routing modes are:
 

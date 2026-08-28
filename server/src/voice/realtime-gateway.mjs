@@ -55,6 +55,9 @@ import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
 } from '../../../shared/gateway-client-protocol.mjs'
+import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
+import { permissionResponseInstructions } from './frontend-tools.mjs'
+import { RealtimeAgentDeliveryRuntime } from './realtime-agent-delivery-runtime.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
@@ -240,6 +243,15 @@ export function attachRealtimeGateway(server, {
     const announcedPermissions = new Set()
     let permissionRetryTimer = null
     let realtimeSession
+    const agentDeliveries = new RealtimeAgentDeliveryRuntime({
+      getFrontend: () => realtimeSession?.frontend,
+      isDeliveryBlocked: () => (
+        sleeping
+        || waking
+        || !outputEnabled
+        || !realtimeSession?.ready
+      ),
+    })
     let runtimeMessageChain = Promise.resolve()
     const activeSessionTasks = () => taskManager.list({
       ownerId,
@@ -284,14 +296,30 @@ export function attachRealtimeGateway(server, {
         return
       }
       announcedPermissions.add(permission.id)
-      realtimeSession.frontend.injectPermission(permission, {
+      agentDeliveries.deliver(createAgentDelivery({
+        id: `permission_${permission.id}`,
+        causeEventId: permission.id,
+        mode: 'respond',
+        origin: 'permission',
+        text: [
+          '<backend_permission_request>',
+          `authorization_id=${permission.id}`,
+          `operation=${permission.summary}`,
+          '</backend_permission_request>',
+        ].join('\n'),
         // A permission prompt is a new model input and response. taskId keeps
         // it correlated with the work without reusing the user's old turn.
-        turnId: gatewayTurnId(),
-        taskId: task.id,
-        authorizationId: permission.id,
-      }, {
-        shouldSpeak: () => activeSessionTasks().some(activeTask => (
+        correlation: {
+          turnId: gatewayTurnId(),
+          taskId: task.id,
+          authorizationId: permission.id,
+        },
+        presentation: {
+          instructions: permissionResponseInstructions,
+          contextTiming: 'immediate',
+        },
+      }), {
+        shouldDeliver: () => activeSessionTasks().some(activeTask => (
           activeTask.authorization?.id === permission.id
           && activeTask.authorization.status === 'pending'
         )),
@@ -323,6 +351,7 @@ export function attachRealtimeGateway(server, {
       {
         resultOptions: {
           getFrontend: () => realtimeSession?.frontend,
+          deliveryRuntime: agentDeliveries,
           isDeliveryBlocked: () => (
             sleeping
             || waking
@@ -355,6 +384,7 @@ export function attachRealtimeGateway(server, {
         },
         progressOptions: {
           getFrontend: () => realtimeSession?.frontend,
+          deliveryRuntime: agentDeliveries,
           isDeliveryBlocked: () => (
             sleeping
             || waking
@@ -1072,6 +1102,20 @@ export function attachRealtimeGateway(server, {
           name: result.name,
           ...(result.duplicate ? { duplicate: true } : {}),
         })
+        if (!result.duplicate && result.delivery) {
+          agentDeliveries.deliver(result.delivery).then(outcome => {
+            if (outcome?.completed || outcome?.handled) return
+            connectionLogger.warn('client_event.delivery_skipped', {
+              name: result.name,
+              mode: result.delivery.mode,
+              blocked: outcome?.blocked === true,
+              unavailable: outcome?.unavailable === true,
+            })
+          }).catch(error => connectionLogger.warn('client_event.delivery_failed', {
+            name: result.name,
+            error: error.message,
+          }))
+        }
         return
       }
       if (!clientCommandRuntime) {

@@ -27,6 +27,7 @@ import {
 import { BackendRuntimeState } from './backend-runtime-state.mjs'
 import { KeyedSerialExecutor } from './keyed-serial-executor.mjs'
 import { PermissionBroker } from './permission-broker.mjs'
+import { InputBroker } from './input-broker.mjs'
 import {
   appendPromptBlocks,
   artifactsFromAcpContentBlocks,
@@ -234,6 +235,7 @@ export class AcpBackendAdapter {
       protocol: this.protocol,
       permissionMode: this.permissionMode,
     })
+    this.inputBroker = new InputBroker({ protocol: this.protocol })
     this.coordinatorSessions = new Map()
     this.coordinatorSessionPromises = new Map()
     // ACP agents may cache the first MCP connection for a Session. Keep its
@@ -264,6 +266,9 @@ export class AcpBackendAdapter {
       timeoutMs,
       onPermission: (params, context) => (
         this.handlePermission(params, context)
+      ),
+      onElicitation: (params, context) => (
+        this.handleElicitation(params, context)
       ),
       sanitizeProcessOutput: this.profile.sanitizeProcessOutput,
       formatRequestError: this.profile.formatRequestError,
@@ -303,6 +308,10 @@ export class AcpBackendAdapter {
     return this.permissionBroker.resolved
   }
 
+  get pendingInputs() {
+    return this.inputBroker.pending
+  }
+
   describe() {
     return {
       kind: this.protocol,
@@ -320,6 +329,7 @@ export class AcpBackendAdapter {
       capabilities: {
         ...this.profile.capabilities,
         taskUpdates: 'activity',
+        inputRequests: 'elicitation',
       },
     }
   }
@@ -781,6 +791,10 @@ export class AcpBackendAdapter {
     return this.permissionBroker.request(params, { signal, session })
   }
 
+  async handleElicitation(params, { signal, session } = {}) {
+    return this.inputBroker.request(params, { signal, session })
+  }
+
   cancelPermission(record) {
     return this.permissionBroker.cancel(record)
   }
@@ -791,6 +805,7 @@ export class AcpBackendAdapter {
 
   cancelPermissionsForScope(permissionScopeId) {
     this.permissionBroker.cancelScope(permissionScopeId)
+    this.inputBroker.cancelScope(permissionScopeId)
   }
 
   rememberDelegationUpdate(record, activity) {
@@ -1695,6 +1710,17 @@ export class AcpBackendAdapter {
     return this.resolveAuthorization(authorizationId, decision, { ownerId })
   }
 
+  async respondInput(taskId, inputRequestId, response, { ownerId } = {}) {
+    const pending = this.pendingInputs.get(clean(inputRequestId))
+    if (pending && clean(taskId) && pending.taskId !== clean(taskId)) {
+      throw new AgentError('输入请求不属于这项工作', {
+        status: 404,
+        protocol: this.protocol,
+      })
+    }
+    return this.inputBroker.respond(inputRequestId, response, { ownerId })
+  }
+
   async queryDelegatedWork(taskId, _question, { ownerId } = {}) {
     const run = this.coordinationRuns.get(clean(taskId))
     const record = run?.delegation
@@ -1764,6 +1790,7 @@ export class AcpBackendAdapter {
       )
     }
     this.permissionBroker.cancelAll()
+    this.inputBroker.cancelAll()
     await Promise.allSettled(
       [...this.coordinatorToolRegistrationPromises.values()],
     )

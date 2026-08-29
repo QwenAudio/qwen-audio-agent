@@ -307,6 +307,56 @@ test('pauses the prompt timeout while waiting for user permission', async () => 
   })
 })
 
+test('pauses the prompt timeout while waiting for elicited input', async () => {
+  let resolveInput
+  let finishPrompt
+  let promptSettled = false
+  const client = new AcpProcessClient({
+    label: 'Test Agent',
+    command: 'unused',
+    onElicitation: () => new Promise(resolve => {
+      resolveInput = resolve
+    }),
+  })
+  client.start = async () => {}
+  client.context = {
+    request: (_method, _params, { signal }) => new Promise(
+      (resolve, reject) => {
+        finishPrompt = () => resolve({ stopReason: 'end_turn' })
+        signal.addEventListener('abort', () => reject(signal.reason), {
+          once: true,
+        })
+      },
+    ),
+    notify: async () => {},
+  }
+  client.sessions.set('session-one', { sessionId: 'session-one' })
+
+  const prompting = client.prompt('session-one', 'inspect project', {
+    timeoutMs: 30,
+  }).finally(() => {
+    promptSettled = true
+  })
+  await new Promise(resolve => setTimeout(resolve, 10))
+  const elicitation = client.handleElicitation({
+    sessionId: 'session-one',
+    mode: 'form',
+    message: 'Choose an output language',
+  }, new AbortController().signal)
+
+  await new Promise(resolve => setTimeout(resolve, 45))
+  assert.equal(promptSettled, false)
+
+  resolveInput({ action: 'accept', content: { language: 'zh' } })
+  await elicitation
+  finishPrompt()
+  assert.deepEqual(await prompting, {
+    content: '',
+    contentBlocks: [],
+    response: { stopReason: 'end_turn' },
+  })
+})
+
 test('reports a prompt timeout even when the Agent confirms cancellation', async () => {
   const client = new AcpProcessClient({
     label: 'Test Agent',

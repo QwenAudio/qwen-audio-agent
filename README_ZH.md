@@ -126,7 +126,7 @@ qwenaudio config
 
 ```dotenv
 DASHSCOPE_API_KEY=your-key
-# 语音前台模型：Omni Flash/Plus 或 Audio Flash/Plus（默认 Audio Plus）
+# 语音前台模型：Audio Flash/Plus 或 Omni Flash/Plus（默认 Audio Plus）
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # 后台Agent：可选，不设置或设置为 none 时，启动仅前台模式
 AGENT_PROTOCOL=openclaw
@@ -135,12 +135,7 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
 > 默认使用 DashScope 实时语音前台；也可切换为本地 [speech-to-speech 前台](docs/voice-frontends/speech-to-speech.zh.md)，无需云端 API Key。
-> `qwen3.5-omni-flash-realtime` 与 `qwen3.5-omni-plus-realtime`
-> 在模型层支持文本、音频和图片输入。本版本客户端传输层仅启用文本和音频；
-> 图片/画面帧与原生视频传输仍保持关闭，待对应客户端和 Gateway 链路实现。
 
-桌面版或 `qwenaudio config set --realtime-model <id>` 配置 Gateway 统一使用的模型；
-CLI 修改后需要重启 Gateway。WebUI 与 TUI 只显示当前生效模型，不单独覆盖模型。
 
 2. 启动 Gateway，另开终端启动 TUI（也可用 `qwenaudio webui` 启动浏览器界面）：
 
@@ -189,9 +184,7 @@ npm run example:car:web      # 终端 2：座舱 UI
 ## 桌面版
 
 桌面版提供常驻桌面的语音悬浮球，内置 Gateway，支持空闲自动休眠、自定义唤醒
-快捷键和本地语音唤醒。休眠时会断开 Realtime 前台，但桌面进程、Gateway、后台
-Agent 和已提交任务仍继续运行；它不等于退出或重启桌面版。任务完成后可以唤醒
-桌面版，并把结果带回当前对话。从发布页下载对应平台安装包，或从源码构建：
+快捷键和本地语音唤醒。从发布页下载对应平台安装包，或从源码构建：
 
 ```bash
 npm run desktop:build:local      # macOS

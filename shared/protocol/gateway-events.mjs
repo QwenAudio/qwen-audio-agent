@@ -82,6 +82,19 @@ export const GatewayAuthorizationSchema = z.object({
   resolvedAt: z.number().nullable(),
 })
 
+export const GatewayInputRequestSchema = z.object({
+  id: z.string().min(1),
+  taskId: z.string().nullable(),
+  status: z.enum(['pending', 'accepted', 'declined', 'cancelled']),
+  kind: z.enum(['input', 'authorization']),
+  mode: z.enum(['text', 'form', 'url']),
+  prompt: z.string().min(1),
+  schema: z.record(z.unknown()).optional(),
+  url: z.string().url().optional(),
+  createdAt: z.number(),
+  resolvedAt: z.number().nullable(),
+})
+
 // Adapter implementations may add display hints, but every activity
 // crosses the Gateway through these protocol-neutral common fields. ACP event
 // names and A2A Task payloads stay private to their adapters.
@@ -107,6 +120,7 @@ export const GatewayTaskSchema = z.object({
     'submitted',
     'working',
     'auth_required',
+    'input_required',
     'completed',
     'failed',
     'cancelled',
@@ -129,6 +143,7 @@ export const GatewayTaskSchema = z.object({
   activity: z.array(GatewayActivitySchema).optional(),
   delegation: z.unknown().optional(),
   authorization: GatewayAuthorizationSchema.nullable().optional(),
+  inputRequest: GatewayInputRequestSchema.nullable().optional(),
   notificationStatus: z.string().optional(),
   notificationDeliveredAt: z.number().nullable().optional(),
   schedule: z.unknown().optional(),

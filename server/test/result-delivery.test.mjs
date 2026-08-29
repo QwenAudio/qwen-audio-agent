@@ -81,7 +81,6 @@ function createDeliveryHarness() {
     if (task.sessionId !== sessionId) return
 
     if (['task.completed', 'task.failed'].includes(event.type)) {
-      recordResult(task)
       claimPendingNotifications([task.id])
     }
   })

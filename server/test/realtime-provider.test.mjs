@@ -12,6 +12,7 @@ import {
   TOOLS,
 } from '../src/voice/realtime-provider.mjs'
 import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
+import { permissionReference } from '../src/voice/tools/permission-reference.mjs'
 import {
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
@@ -27,7 +28,6 @@ const FRONTEND_TOOL_NAMES = [
   'get_current_time',
   'memory',
   'notes',
-  'respond_agent_permission',
 ]
 
 test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
@@ -49,8 +49,12 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
     /忠实、完整且自包含地转达用户要做什么及其明确约束/,
   )
   assert.ok(spawn.function.description.trim())
+  assert.match(spawn.function.description, /用户补充信息、作出选择或确认后继续/)
   const instructions = buildFrontendInstructions()
   assert.match(instructions, /不要重复提交已经覆盖的目标/)
+  assert.match(instructions, /把回答交回请求中的同一项工作/)
+  assert.match(instructions, /不支持结构化输入请求的旧后台.*既有工作的续办/s)
+  assert.match(instructions, /不要预测、模拟或代替后台提出权限请求/)
   assert.match(instructions, /duplicate.*同一目标此前已提交/)
 })
 
@@ -360,6 +364,15 @@ test('fails closed instead of ambiguously correlating two pending starts', async
 
 test('configures Qwen Audio Realtime with Smart Turn only', () => {
   const session = REALTIME_PROVIDERS.qwen.buildSession({ configured: false })
+  const permissionSession = REALTIME_PROVIDERS.qwen.buildSession({
+    configured: false,
+    agentContext: {
+      frontend: { capabilities: ['permission.respond'] },
+    },
+  })
+  const permissionTool = permissionSession.tools.find(tool => (
+    tool.function.name === 'respond_permission'
+  ))
 
   assert.deepEqual(session.turn_detection, { type: 'smart_turn' })
   assert.equal(session.turn_detection.threshold, undefined)
@@ -374,16 +387,16 @@ test('configures Qwen Audio Realtime with Smart Turn only', () => {
     ['objective'],
   )
   assert.deepEqual(
-    session.tools.find(tool => (
-      tool.function.name === 'respond_agent_permission'
-    )).function.parameters.required,
-    ['authorization_id', 'decision'],
+    permissionTool.function.parameters.required,
+    ['permission_id', 'decision'],
+  )
+  assert.deepEqual(
+    permissionTool.function.parameters.properties.decision.enum,
+    ['once', 'always', 'reject'],
   )
   assert.match(
-    session.tools.find(tool => (
-      tool.function.name === 'respond_agent_permission'
-    )).function.description,
-    /用户回答“可以”.*应调用 always/,
+    permissionTool.function.description,
+    /普通肯定表达选择 once.*以后都允许时选择 always/,
   )
 })
 
@@ -840,10 +853,10 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /最终结果会通过单独的结果上下文到达/)
   assert.doesNotMatch(prompt, /\[COMPLETE\]/)
   assert.doesNotMatch(prompt, /get_agent_tasks|reply_agent_permission/)
-  assert.match(prompt, /respond_agent_permission/)
-  assert.match(prompt, /<backend_permission_request>/)
-  assert.match(prompt, /使用请求中的 `authorization_id`/)
-  assert.match(prompt, /按\s*`respond_agent_permission` 的契约处理用户回答/)
+  assert.match(prompt, /respond_permission/)
+  assert.match(prompt, /<permission_request>/)
+  assert.match(prompt, /原样使用请求中的 `permission_id`/)
+  assert.match(prompt, /按 `respond_permission` 的契约处理/)
   assert.match(prompt, /调用前不要\s*口头确认/)
   assert.match(prompt, /不要仅凭对话历史推测当前状态/)
   assert.doesNotMatch(prompt, /<active_work>/)
@@ -917,8 +930,13 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   )
   const permission = REALTIME_PROVIDERS.qwen.buildPermissionInjection({
     id: 'permission-one',
+    taskId: 'task_42',
     summary: '查看系统内存',
   })
+  const permissionText = permission.item.content[0].text
+  assert.match(permissionText, new RegExp(`permission_id=${permissionReference('permission-one')}`))
+  assert.match(permissionText, /task_id=task_42/)
+  assert.doesNotMatch(permissionText, /authorization_id/)
   assert.match(permission.response.instructions, /自然、简短地说明操作/)
   assert.match(permission.response.instructions, /是否同意授权/)
   assert.doesNotMatch(permission.response.instructions, /用一句完整的话/)
@@ -1326,7 +1344,7 @@ test('can expose permission context before its response queue becomes idle', asy
   frontend.activeResponses.add('response-active')
 
   const outcome = frontend.injectDelivery(
-    '<backend_permission_request>operation=test</backend_permission_request>',
+    '<permission_request>operation=test</permission_request>',
     'permission',
     { authorizationId: 'permission-1' },
     { route: 'respond', contextTiming: 'immediate' },

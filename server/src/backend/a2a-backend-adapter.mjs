@@ -13,6 +13,11 @@ import { parseDataUrl } from '../../../shared/input-parts.mjs'
 import { defineBackendAdapter } from './backend-adapter-sdk.mjs'
 import { backendInstructionFromWork } from './backend-work-input.mjs'
 import { BackendEventType, backendEvent } from '../core/backend-events.mjs'
+import {
+  InputRequestStatus,
+  normalizeInputRequest,
+  resolveInputRequest,
+} from '../core/work-input-request.mjs'
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000
 const DEFAULT_TIMEOUT_MS = 0
@@ -412,6 +417,48 @@ function outgoingMessage(work) {
   }
 }
 
+function continuationMessage(text, task) {
+  return {
+    messageId: randomUUID(),
+    contextId: clean(task?.contextId),
+    taskId: clean(task?.id),
+    role: Role.ROLE_USER,
+    parts: [{
+      content: { $case: 'text', value: clean(text) },
+      metadata: undefined,
+      filename: '',
+      mediaType: 'text/plain',
+    }],
+    metadata: undefined,
+    extensions: [],
+    referenceTaskIds: [],
+  }
+}
+
+function deferred() {
+  let resolvePromise
+  const promise = new Promise(resolve => { resolvePromise = resolve })
+  return { promise, resolve: resolvePromise }
+}
+
+function waitForDeferred(promise, signal) {
+  if (signal?.aborted) return Promise.reject(signal.reason)
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      signal?.removeEventListener('abort', abort)
+      reject(signal.reason)
+    }
+    signal?.addEventListener('abort', abort, { once: true })
+    promise.then(value => {
+      signal?.removeEventListener('abort', abort)
+      resolve(value)
+    }, error => {
+      signal?.removeEventListener('abort', abort)
+      reject(error)
+    })
+  })
+}
+
 function wait(ms, signal) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -523,6 +570,7 @@ export class A2ABackendAdapter {
       capabilities: {
         cancel: true,
         authorization: false,
+        inputRequests: 'task-state',
         taskUpdates: 'native',
         discovery: true,
         streaming: card?.capabilities?.streaming === true,
@@ -682,6 +730,70 @@ export class A2ABackendAdapter {
     )
   }
 
+  async continueInterruptedTask(record, task, signal) {
+    const state = taskState(task)
+    const kind = state === TaskState.TASK_STATE_AUTH_REQUIRED
+      ? 'authorization'
+      : 'input'
+    const prompt = bounded(messageText(task?.status?.message), 4_000)
+      || (kind === 'authorization'
+        ? '后台工作需要完成认证后才能继续。'
+        : '后台工作需要你补充信息后才能继续。')
+    const current = record.pendingInput
+    const request = current?.input || normalizeInputRequest({
+      id: `input_${randomUUID().replaceAll('-', '')}`,
+      taskId: record.gatewayTaskId,
+      status: InputRequestStatus.PENDING,
+      kind,
+      mode: 'text',
+      prompt,
+    })
+    if (!current) {
+      const pending = deferred()
+      record.pendingInput = { input: request, pending, settled: false }
+      this.publish(backendEvent(BackendEventType.INPUT_REQUESTED, {
+        input: request,
+      }), record)
+    }
+    const answer = await waitForDeferred(
+      record.pendingInput.pending.promise,
+      signal,
+    )
+    const resolved = resolveInputRequest(request, answer.action === 'accept'
+      ? InputRequestStatus.ACCEPTED
+      : answer.action === 'decline'
+        ? InputRequestStatus.DECLINED
+        : InputRequestStatus.CANCELLED)
+    record.pendingInput = null
+    this.publish(backendEvent(BackendEventType.INPUT_RESOLVED, {
+      input: resolved,
+    }), record)
+    if (answer.action === 'cancel') {
+      await this.bestEffortCancel(record)
+      throw cancellationError(record.gatewayTaskId)
+    }
+    const text = answer.action === 'decline'
+      ? clean(answer.text) || '用户拒绝提供所请求的信息。'
+      : clean(answer.text)
+        || (answer.values && Object.keys(answer.values).length
+          ? JSON.stringify(answer.values)
+          : '用户已确认，请继续处理。')
+    const result = await record.client.sendMessage({
+      message: continuationMessage(text, task),
+      configuration: {
+        acceptedOutputModes: this.acceptedOutputModes,
+        historyLength: 20,
+        returnImmediately: true,
+      },
+      metadata: undefined,
+    }, { signal })
+    if (taskLike(result)) return result
+    if (messageLike(result)) return { __outcome: this.outcomeFromMessage(result) }
+    throw new A2ABackendError('A2A agent returned an invalid continuation response', {
+      code: 'A2A_INVALID_RESPONSE',
+    })
+  }
+
   async bestEffortCancel(record) {
     if (!record?.remoteTaskId || !record.client?.cancelTask) return
     try {
@@ -698,8 +810,10 @@ export class A2ABackendAdapter {
     this.update(record, task)
     while (!TERMINAL_STATES.has(taskState(task))) {
       if (INTERRUPTED_STATES.has(taskState(task))) {
-        await this.bestEffortCancel(record)
-        throw this.taskError(task)
+        task = await this.continueInterruptedTask(record, task, signal)
+        if (task?.__outcome) return task.__outcome
+        this.update(record, task)
+        continue
       }
       await wait(this.pollIntervalMs, signal)
       task = await record.client.getTask({
@@ -723,6 +837,11 @@ export class A2ABackendAdapter {
       if (taskLike(event)) {
         task = event
         this.update(record, task)
+        if (INTERRUPTED_STATES.has(taskState(task))) {
+          task = await this.continueInterruptedTask(record, task, signal)
+          if (task?.__outcome) return task.__outcome
+          this.update(record, task)
+        }
         continue
       }
       if (messageLike(event)) {
@@ -742,6 +861,11 @@ export class A2ABackendAdapter {
           status: event.status,
         }
         this.update(record, task)
+        if (INTERRUPTED_STATES.has(taskState(task))) {
+          task = await this.continueInterruptedTask(record, task, signal)
+          if (task?.__outcome) return task.__outcome
+          this.update(record, task)
+        }
         continue
       }
       if (artifactUpdateLike(event)) {
@@ -833,6 +957,7 @@ export class A2ABackendAdapter {
       activity: [],
       lastDigest: '',
       artifactDigests: new Map(),
+      pendingInput: null,
     }
     this.active.set(taskId, record)
     try {
@@ -935,6 +1060,43 @@ export class A2ABackendAdapter {
     throw new A2ABackendError(
       'A2A adapter does not define an authorization decision extension',
       { code: 'A2A_AUTHORIZATION_UNSUPPORTED' },
+    )
+  }
+
+  async respondInput(taskId, inputRequestId, response = {}, { ownerId } = {}) {
+    const id = clean(taskId)
+    const record = this.active.get(id)
+    if (!record || (ownerId && clean(ownerId) !== record.ownerId)) {
+      throw new A2ABackendError('Input request does not belong to an active task', {
+        code: 'WORK_NOT_FOUND',
+      })
+    }
+    if (record.pendingInput?.input?.id !== clean(inputRequestId)) {
+      throw new A2ABackendError('Input request is no longer pending', {
+        code: 'INPUT_NOT_PENDING',
+      })
+    }
+    if (record.pendingInput.settled) {
+      throw new A2ABackendError('Input response was already submitted', {
+        code: 'INPUT_ALREADY_SUBMITTED',
+      })
+    }
+    const action = ['accept', 'decline', 'cancel'].includes(response.action)
+      ? response.action
+      : 'accept'
+    record.pendingInput.settled = true
+    record.pendingInput.pending.resolve({
+      action,
+      text: clean(response.text),
+      values: response.values,
+    })
+    return resolveInputRequest(
+      record.pendingInput.input,
+      action === 'accept'
+        ? InputRequestStatus.ACCEPTED
+        : action === 'decline'
+          ? InputRequestStatus.DECLINED
+          : InputRequestStatus.CANCELLED,
     )
   }
 

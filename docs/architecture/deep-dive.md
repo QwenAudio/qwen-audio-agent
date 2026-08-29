@@ -71,8 +71,12 @@ get_agent_task_status
 get_current_time
 memory
 notes
-respond_agent_permission
 ```
+
+The Gateway exposes one `respond_permission` tool for pending backend
+permissions and frontend external-tool approvals. The model answers the
+permission request; the Gateway routes `permission_id` to the backend Task or
+the frontend tool execution queue.
 
 `memory` maintains two ordinary Markdown documents through one flat interface. Each call is one
 atomic `read`, `append`, or `replace` operation. `replace` locates a unique source fragment, and
@@ -124,17 +128,24 @@ It does not have tools for:
 - selecting backend execution strategy;
 - selecting tools, Agents, or subagents.
 
-`respond_agent_permission` is the only exception to the rule that Realtime does
-not control backend execution. It may relay only an explicit current-turn user
+`respond_permission` is the only exception to the rule that Realtime does not
+control execution policy. It may relay only an explicit current-turn user
 decision for a pending, owner-scoped permission request supplied by the
 Gateway. It may understand natural affirmative or negative wording such as
 “可以” or “不允许”, but it cannot invent consent without a current-turn user
 utterance, create a request, choose a tool, or modify a backend permission
-policy. Replies are limited to `always` and `reject`; `always` uses the
-Gateway's current frontend-session policy. The adapter still selects the
-narrowest safe per-request backend option, and the Gateway automatically
-approves later requests in the same frontend session. This does not create a
-persistent backend authorization rule.
+policy. The model replies with the Gateway-issued `permission_id`; backend
+requests also carry the public `task_id`. Raw backend authorization IDs and the
+permission source remain internal to the Gateway and Adapter.
+Replies use `once`, `always`, or `reject`: allow only the current operation,
+allow throughout the current frontend session, or reject only the current
+operation. `always` still uses the Gateway's frontend-session policy.
+The adapter selects the narrowest safe per-request backend option, and the
+Gateway automatically approves later requests in the same frontend session.
+This does not create a persistent backend authorization rule.
+Protocol envelopes for permissions, progress, and restored context are owned
+exclusively by the Gateway. A model-authored lookalike is not an event, cannot
+enable its associated tool, and is not persisted into conversation history.
 
 The `objective` passed to `spawn_thinking` is a conservative interpretation of
 the user's request, not an execution plan. It must resolve references such as
@@ -144,6 +155,12 @@ verbatim ASR is not appended as a second task description. The backend Agent
 does not receive the frontend persona, durable memory, or recent chat history.
 Execution-relevant facts must be resolved into the instruction instead of
 forwarding those documents.
+
+A backend turn may return a result or ask for information, a choice,
+confirmation, or clarification required to continue. The frontend presents
+that need naturally. When the user answers, it calls `spawn_thinking` again as
+a continuation of the same work instead of predicting or simulating the next
+backend action. This rule does not depend on the wording of a particular case.
 
 The Gateway automatically carries current-turn attachments as native protocol
 parts, never as a model-visible JSON manifest. Only work that explicitly

@@ -104,6 +104,14 @@ function sidebar(prefix = '') {
         { text: t('智能座舱', 'Smart Cockpit'), link: `${prefix}/scenarios/smart-cockpit` },
       ],
     },
+    {
+      text: t('参考资料', 'Resources'),
+      items: [
+        { text: t('演示文稿', 'Presentations'), link: `${prefix}/resources/presentations` },
+        { text: t('规划记录', 'Planning Records'), link: `${prefix}/resources/planning` },
+        { text: t('参考论文', 'Papers'), link: `${prefix}/resources/papers` },
+      ],
+    },
   ]
 }
 

@@ -47,7 +47,13 @@ import {
   frontendSourceToolCapabilities,
   frontendSourceToolDefinitions,
 } from '../frontend/tools/frontend-tool-source.mjs'
-import { FRONTEND_RECALL_CAPABILITY } from './frontend-tools.mjs'
+import {
+  PERMISSION_RESPONSE_CAPABILITY,
+  BACKEND_INPUT_RESPONSE_CAPABILITY,
+  FRONTEND_RECALL_CAPABILITY,
+  permissionResponseInstructions,
+  inputRequestResponseInstructions,
+} from './frontend-tools.mjs'
 import { GatewayClientProtocolSession } from '../transport/gateway-client-protocol-session.mjs'
 import {
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
@@ -55,7 +61,6 @@ import {
   GatewayClientProtocolEvent,
 } from '../../../shared/gateway-client-protocol.mjs'
 import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
-import { permissionResponseInstructions } from './frontend-tools.mjs'
 import { RealtimeAgentDeliveryRuntime } from './realtime-agent-delivery-runtime.mjs'
 import {
   ClientActionName,
@@ -63,6 +68,7 @@ import {
 } from '../client/client-action-port.mjs'
 import { PresenceController } from '../client/presence-controller.mjs'
 import { GatewayClientReplayBuffer } from '../transport/gateway-client-replay-buffer.mjs'
+import { permissionReference } from './tools/permission-reference.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
@@ -74,6 +80,22 @@ const clientProtocolSessions = new WeakMap()
 
 function gatewayTurnId() {
   return `gateway_${randomUUID().replaceAll('-', '')}`
+}
+
+function inputSchemaSummary(schema) {
+  const properties = schema?.properties
+  if (!properties || typeof properties !== 'object') return ''
+  const required = new Set(Array.isArray(schema.required) ? schema.required : [])
+  const fields = Object.entries(properties).slice(0, 32).map(([name, field]) => ({
+    name: String(name).slice(0, 160),
+    type: String(field?.type || 'string').slice(0, 40),
+    required: required.has(name),
+    ...(field?.title ? { title: String(field.title).slice(0, 200) } : {}),
+    ...(Array.isArray(field?.enum)
+      ? { options: field.enum.slice(0, 32).map(value => String(value).slice(0, 200)) }
+      : {}),
+  }))
+  return fields.length ? JSON.stringify(fields) : ''
 }
 
 function send(ws, event) {
@@ -132,6 +154,7 @@ export function attachRealtimeGateway(server, {
   backendRuntime,
   backendAvailability = null,
   respondAuthorization,
+  respondInput,
   permissionPolicy,
   inputAssets = new InputAssetRegistry(),
   inputArbitration = null,
@@ -153,6 +176,7 @@ export function attachRealtimeGateway(server, {
       if ([
         GatewayClientCapability.TASK_COMMANDS,
         GatewayClientCapability.PERMISSION_RESPOND,
+        GatewayClientCapability.INPUT_RESPOND,
         GatewayClientCapability.CONVERSATION_HISTORY,
       ].includes(capability)) return Boolean(clientCommandRuntime)
       return true
@@ -290,6 +314,7 @@ export function attachRealtimeGateway(server, {
     const transcripts = new TurnTranscripts()
     const turnCitations = new TurnCitations()
     const announcedPermissions = new Set()
+    const announcedInputs = new Set()
     let permissionRetryTimer = null
     let realtimeSession
     const agentDeliveries = new RealtimeAgentDeliveryRuntime({
@@ -307,6 +332,12 @@ export function attachRealtimeGateway(server, {
       sessionId,
       active: true,
     })
+    const hasPendingBackendPermission = () => activeSessionTasks().some(task => (
+      task.authorization?.status === 'pending'
+    ))
+    const hasPendingBackendInput = () => activeSessionTasks().some(task => (
+      task.inputRequest?.status === 'pending'
+    ))
     const getAgentContext = () => ({
       client: clientContext,
       frontend: {
@@ -314,6 +345,12 @@ export function attachRealtimeGateway(server, {
           ...(frontendRetrieval?.capabilities?.() || []),
           ...(frontendKnowledge?.capabilities?.() || []),
           ...frontendSourceToolCapabilities(frontendToolSources),
+          ...(hasPendingBackendPermission()
+            ? [PERMISSION_RESPONSE_CAPABILITY]
+            : []),
+          ...(hasPendingBackendInput()
+            ? [BACKEND_INPUT_RESPONSE_CAPABILITY]
+            : []),
           // 会话摘要池与资料库都没启用时不暴露 recall —— 池子永远是空的，
           // 暴露它只会让模型白调一次。会话摘要本身绝不注入 instructions：
           // 它每场都在变，会让 prompt 前缀每场都变。
@@ -351,10 +388,12 @@ export function attachRealtimeGateway(server, {
         mode: 'respond',
         origin: 'permission',
         text: [
-          '<backend_permission_request>',
-          `authorization_id=${permission.id}`,
+          '<permission_request>',
+          `permission_id=${permissionReference(permission.id)}`,
+          `task_id=${task.id}`,
           `operation=${permission.summary}`,
-          '</backend_permission_request>',
+          'allowed_decisions=once,always,reject',
+          '</permission_request>',
         ].join('\n'),
         // A permission prompt is a new model input and response. taskId keeps
         // it correlated with the work without reusing the user's old turn.
@@ -394,6 +433,54 @@ export function attachRealtimeGateway(server, {
         if (!pendingIds.has(id)) announcedPermissions.delete(id)
       }
       activeTasks.forEach(announcePermission)
+    }
+    const announceInputRequest = task => {
+      const input = task?.inputRequest
+      if (
+        !outputEnabled
+        || !realtimeSession?.ready
+        || input?.status !== 'pending'
+        || announcedInputs.has(input.id)
+      ) return
+      const fields = inputSchemaSummary(input.schema)
+      announcedInputs.add(input.id)
+      agentDeliveries.deliver(createAgentDelivery({
+        id: `input_${input.id}`,
+        causeEventId: input.id,
+        mode: 'respond',
+        origin: 'backend-input',
+        text: [
+          '<backend_input_request>',
+          `task_id=${task.id}`,
+          `request=${input.prompt}`,
+          ...(fields ? [`fields=${fields}`] : []),
+          ...(input.mode === 'url' && input.url ? [`url=${input.url}`] : []),
+          '</backend_input_request>',
+        ].join('\n'),
+        correlation: {
+          turnId: gatewayTurnId(),
+          taskId: task.id,
+          inputRequestId: input.id,
+        },
+        presentation: {
+          instructions: inputRequestResponseInstructions,
+          contextTiming: 'immediate',
+        },
+      }), {
+        shouldDeliver: () => activeSessionTasks().some(activeTask => (
+          activeTask.inputRequest?.id === input.id
+          && activeTask.inputRequest.status === 'pending'
+        )),
+      }).catch(error => {
+        announcedInputs.delete(input.id)
+        send(ws, {
+          type: 'error',
+          message: `暂时无法转达后台问题：${error.message}`,
+        })
+      })
+    }
+    const announcePendingInputs = () => {
+      for (const task of activeSessionTasks()) announceInputRequest(task)
     }
     const taskAnnouncements = resolveTaskAnnouncementRuntime(
       taskAnnouncementFactory,
@@ -470,7 +557,10 @@ export function attachRealtimeGateway(server, {
         const { event, ...fields } = diagnostic
         connectionLogger.warn(event, fields)
       },
-      onConnected: () => announcePendingPermissions(),
+      onConnected: () => {
+        announcePendingPermissions()
+        announcePendingInputs()
+      },
       onReady: createdFrontend => {
         const resumedFromSleep = waking
         waking = false
@@ -613,6 +703,7 @@ export function attachRealtimeGateway(server, {
       backendRuntime,
       backendAvailability,
       respondAuthorization,
+      respondInput,
       permissionPolicy,
       // The permission decision was accepted locally but never reached the
       // backend: the authorization is still pending there, so clear the
@@ -797,6 +888,10 @@ export function attachRealtimeGateway(server, {
         })
       }
       if (event.type === TaskDomainEvent.PERMISSION_REQUESTED) {
+        // Queue tool exposure before the permission delivery. The model can
+        // answer a real request on the next user turn, while ordinary turns
+        // cannot fabricate permission protocol state.
+        realtimeSession.updateAgentContext(getAgentContext())
         if (sleeping) {
           wakeFromSleep()
           return
@@ -804,6 +899,7 @@ export function attachRealtimeGateway(server, {
         announcePermission(task)
       }
       if (event.type === TaskDomainEvent.PERMISSION_RESOLVED) {
+        realtimeSession.updateAgentContext(getAgentContext())
         const authorizationId = event.permission?.id
         // A permission confirmation already tells the user that work resumes.
         // Drop progress queued before the decision so it cannot immediately
@@ -828,6 +924,22 @@ export function attachRealtimeGateway(server, {
           presentationRuntime.cancelPermission(authorizationId)
         }
       }
+      if (event.type === TaskDomainEvent.INPUT_REQUESTED) {
+        realtimeSession.updateAgentContext(getAgentContext())
+        if (sleeping) wakeFromSleep()
+        announceInputRequest(task)
+      }
+      if (event.type === TaskDomainEvent.INPUT_RESOLVED) {
+        realtimeSession.updateAgentContext(getAgentContext())
+        const inputId = event.input?.id
+        if (inputId) {
+          announcedInputs.delete(inputId)
+          realtimeSession.frontend?.cancelResponses((context, origin) => (
+            origin === 'backend-input'
+            && context?.inputRequestId === inputId
+          ))
+        }
+      }
       if ([
         TaskDomainEvent.COMPLETED,
         TaskDomainEvent.FAILED,
@@ -839,7 +951,6 @@ export function attachRealtimeGateway(server, {
         TaskDomainEvent.COMPLETED,
         TaskDomainEvent.FAILED,
       ].includes(event.type)) {
-        recordResult(task)
         claimPendingNotifications([task.id])
       }
     })
@@ -950,6 +1061,7 @@ export function attachRealtimeGateway(server, {
         state: 'awake',
       })
       announcePendingPermissions()
+      announcePendingInputs()
       claimPendingNotifications()
       announcements.flush()
       progressAnnouncements.flush()

@@ -344,9 +344,9 @@ style: |
 | 职责域 | 组件 | 架构职责 |
 | --- | --- | --- |
 | 实时对话 | Realtime Frontstage | 理解对话、决定直接回答或提交异步任务，承接后台结果 |
-| 语音控制 | Realtime Gateway | 管理语音连接、回合、打断、Realtime 协议、响应关联与播放状态 |
+| 语音控制 | Realtime Gateway | 管理客户端接入（GCP）、语音连接、回合、打断、Realtime 协议、响应关联与播放状态 |
 | 任务账本 | TaskManager | 记录任务是否排队、运行、完成或取消 |
-| 协议适配 | Backend Adapter | 将不同后台 Agent 归一为统一事件与状态 |
+| 后台接入 | BackendPort / Adapter | 将 ACP、A2A 与自定义后台 Agent 归一为统一事件与状态 |
 | 持续协调 | Coordinator Session | 维持用户上下文，决定直接完成或继续委派 |
 | 结果播报 | AnnouncementManager | 等到合适时机，再让前台自然说出结果 |
 
@@ -406,7 +406,7 @@ style: |
 ## 提交后台
 
 - 需要搜索、工具或文件
-- 通过 `spawn_thinking` 提交异步 Work
+- 通过 `spawn_thinking` 提交异步任务
 - 得到任务编号后结束本轮
 - 后台独立继续执行
 
@@ -418,43 +418,48 @@ style: |
 
 ---
 
-# 工具白名单，让前台能力保持可控
+# 工具注册表，让前台能力保持可控
 
 ```js
-export const TOOLS = [
-  spawnThinkingTool,          // spawn_thinking：提交异步任务
-  scheduleReminderTool,       // schedule_reminder：创建提醒或定时任务
-  cancelAgentTaskTool,        // cancel_agent_task：取消后台任务
-  getAgentTaskStatusTool,     // get_agent_task_status：查询状态与结果
-  getCurrentTimeTool,         // get_current_time：获取用户本地时间
-  memoryTool,                 // memory：读写长期记忆
-  notesTool,                  // notes：管理命名清单
-  respondAgentPermissionTool, // respond_agent_permission：回答权限请求
-]
+export const frontendToolRegistry = new FrontendToolRegistry([
+  // ── 内置：始终存在 ──
+  { definition: spawnThinkingTool,       policy: { mode: 'background' } },
+  { definition: scheduleReminderTool,    policy: { mode: 'inline' } },
+  { definition: getCurrentTimeTool,      policy: { mode: 'inline' } },
+  { definition: memoryTool,              policy: { mode: 'inline' } },
+  { definition: notesTool,               policy: { mode: 'inline' } },
+  { definition: cancelAgentTaskTool,     policy: { mode: 'control' } },
+  { definition: getAgentTaskStatusTool,  policy: { mode: 'control' } },
+  // ── 可扩展：按能力或客户端动作出现 ──
+  { definition: webSearchTool,           policy: { mode: 'inline',  requiredCapabilities: […] } },
+  { definition: fetchUrlTool,            policy: { mode: 'inline',  requiredCapabilities: […] } },
+  { definition: knowledgeTool,           policy: { mode: 'inline',  requiredCapabilities: […] } },
+  { definition: recallTool,              policy: { mode: 'inline',  requiredCapabilities: […] } },
+  { definition: respondPermissionTool,   policy: { mode: 'control', requiredCapabilities: […] } },
+  { definition: respondAgentInputTool,   policy: { mode: 'control', requiredCapabilities: […] } },
+  { definition: enterSleepTool,          policy: { mode: 'control', requiredClientActions: […] } },
+])
 ```
 
-> <strong>前台工具集保持最小且有界：</strong> 复杂执行能力统一下沉后台，确保实时回合的低延迟与可预测性。
-
-- 这些工具要么很快，要么只负责“提交和查询”。
-- 前台没有创建后台 Session、选择子 Agent 或选择执行模式的工具。
-- 工具越少，实时回合越可预测，也越容易保证安全。
+> <strong>前台工具集保持最小且有界：</strong> 每个工具携带策略：inline 快速读写、control 状态操作、background 异步任务。
 
 <!--
 [Sources]
 - server/src/voice/frontend-tools.mjs
+- server/src/voice/tools/spawn-thinking-tool.mjs
 -->
 
 ---
 
 # `spawn_thinking` ：快速受理，不等待结果
 
-> **`spawn_thinking`** 是实时前台提交异步 Work 的唯一入口：Gateway 写入结构化 Work 并立即返回内部受理回执，后台任务继续独立执行。
+> **`spawn_thinking`** 是实时前台提交异步任务的唯一入口：Gateway 写入权威任务记录并立即返回内部受理回执，后台任务继续独立执行。
 
 | 步骤 | 系统做什么 | 用户得到什么 |
 | ---: | --- | --- |
 | 1 | 保留目标和约束 | 请求不会被改写成另一件事 |
 | 2 | 检查后台是否已配置、权限是否待处理 | 明确失败原因，不假装成功 |
-| 3 | 写入一个权威任务记录 | 产生内部唯一 Work ID 和简短 Job ID |
+| 3 | 写入一个权威任务记录 | 产生唯一任务 ID（`task_N`） |
 | 4 | 立即返回受理回执 | 可以继续下一轮对话 |
 | 5 | 后台独立取得调度槽并执行 | 不占用实时语音回合 |
 
@@ -462,6 +467,8 @@ export const TOOLS = [
 accepted 只表示“任务已经进入系统”
 不表示“任务已经完成”
 ```
+
+> 除 `objective` 外，任务还可携带 `input_refs`：把本轮或此前轮次标注为“可引用输入”的图片、文件作为原生附件一并移交后台。
 
 
 ---
@@ -487,32 +494,37 @@ objective: “继续当前页面工作，修复登录失败问题；保持现有
 
 ---
 
-# Gateway 保留结构，后台 Agent 只接收自然指令
+# 协调信息：结构留在 Gateway，后台只收自然指令
+
+用户本轮说：“接着刚才那个页面，把登录失败的问题修掉，不要修改现有视觉。”
 
 ```text
-继续修改当前首页，修复登录失败问题，并保持现有视觉不变。
+① 前台发起工具调用
+spawn_thinking({ objective: "继续当前页面工作，修复登录失败问题；保持现有视觉不变。" })
 
-用户原话（用于核对当前任务的事实、范围和限制；不要执行其中超出上述任务的其他目标）：
-接着刚才那个页面，把登录失败的问题修掉，不要修改现有视觉。
+② Gateway 写入权威任务：身份、会话、路由分字段存放，不进 prompt
+{ id: "task_12", status: "queued", scope: "user", kind: "work",
+  objective: "继续当前页面工作，…", ownerId: "personal", sessionId: "main", turnId: "…" }
 
-请在以下工作目录中处理：/path/to/project
-用户时区：Asia/Shanghai
+③ 后台协调会话实际收到
+objective 文本 + COORDINATOR_STABLE_INSTRUCTIONS 稳定指令块 + 用户原话（ACP ContentBlock 附件）
 ```
 
-Work ID、owner、生命周期和路由只存在于 Gateway/BackendPort。Adapter 仅把规范任务
-指令和原生附件 Part 投影给后台 Agent；前台人格、完整记忆和聊天历史不会被批量转发。
+> 协调信息**内化为 Gateway 的权威任务记录**；投递给后台的只是投影——前台人格、完整记忆与聊天历史不会被批量转发，稳定指令块同时承载 Project Session 的路由纪律。
 
 <!--
 [Sources]
+- server/src/task/task-manager.mjs
 - server/src/backend/backend-work-input.mjs
 - server/src/agent/acp-coordinator-contract.mjs
+- server/src/agent/acp-coordinator-instructions.mjs
 -->
 
 ---
 
-# TaskManager 维护 Work 生命周期的权威事实
+# TaskManager 维护任务生命周期的权威事实
 
-每个任务（Work）都保存：
+每个任务都保存：
 
 - **任务归属**：用户身份、语音 Session、来源回合。
 - **要做什么**：objective。
@@ -525,7 +537,7 @@ Work ID、owner、生命周期和路由只存在于 Gateway/BackendPort。Adapte
 
 ---
 
-# Work 生命周期由显式状态机驱动
+# 任务生命周期由显式状态机驱动
 
 ```text
 scheduled
@@ -631,8 +643,9 @@ Backend Adapter 是后台协议适配层：
 
 这样更换后台 Agent 时，不需要重写前台工具、任务状态机和播报逻辑。
 
->  **扩展红利**：得益于 **ACP 协议**的普及，无需为每个 Agent 单独写适配器。
-> 实现一套 ACP Adapter，即可无缝对接大部分主流 Agent。
+> **扩展红利**：后台接入收敛为 **BackendPort** 契约——ACP 后台走通用 Adapter，
+> 远程 A2A Agent 有专属 Adapter，非 ACP 系统可用 Backend Adapter SDK 自行实现。
+> 统一的一致性测试套件对所有适配器执行同一组行为验证。
 
 ---
 
@@ -802,13 +815,13 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 | ---: | --- | --- |
 | 1 | 协调会话 | 调用 `session_start` 或 `session_send` |
 | 2 | Adapter | 记录 delegation ID 与目标 Session |
-| 3 | TaskManager | Work 进入 `delegated`，释放协调槽位 |
+| 3 | TaskManager | 任务进入 `delegated`，释放协调槽位 |
 | 4 | 独立 Session | 使用文件、终端、搜索等能力长期执行 |
 | 5 | Adapter | 等待与当前委派精确匹配的最终结果 |
 | 6 | 协调会话 | 重新取得控制权，校验并整理结果 |
-| 7 | TaskManager | Work 进入 `completed`，等待自然播报 |
+| 7 | TaskManager | 任务进入 `completed`，等待自然播报 |
 
-> 取消、查询、权限和重启恢复，始终绑定同一个 Work 与目标 Session。
+> 取消、查询、权限和重启恢复，始终绑定同一项任务与目标 Session。
 
 ---
 
@@ -827,15 +840,16 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 ---
 
-# 记忆架构：双路径写入与统一上下文消费
+# 记忆架构：三路径写入与统一上下文消费
 
-明确上下文边界后，仅 `USER.md` 与 `MEMORY.md` 参与动态写入。它们通过两条路径进入统一服务，最终供前后台消费：
+明确上下文边界后，仅 `USER.md` 与 `MEMORY.md` 参与动态写入。它们通过三条路径进入统一服务，最终供前后台消费：
 
 <div class="memory-arch">
 
 <div class="memory-stack">
   <div class="memory-node"><strong>显式写入</strong>Realtime <code>memory</code> tool</div>
-  <div class="memory-node"><strong>会后整理</strong>MemoryExtractor</div>
+  <div class="memory-node"><strong>会后整理</strong>MemoryExtractor（不得推测）</div>
+  <div class="memory-node"><strong>观察推断</strong>ProfileObserver → 候选池 → 晋升</div>
 </div>
 
 <div class="memory-arrow">›</div>
@@ -845,7 +859,7 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 <div class="memory-arrow">›</div>
 
 <div class="memory-stack">
-  <div class="memory-node memory-store"><strong>USER.md</strong>长期交互偏好</div>
+  <div class="memory-node memory-store"><strong>USER.md</strong>明确要求 ＋ 观察推断（分区存放）</div>
   <div class="memory-node memory-store"><strong>MEMORY.md</strong>长期事实数据</div>
 </div>
 
@@ -864,13 +878,15 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 - server/src/conversation/frontend-agent-context.mjs
 - server/src/conversation/frontend-memory-service.mjs
 - server/src/conversation/memory-extractor.mjs
+- server/src/conversation/profile-observer.mjs
+- server/src/conversation/preference-promoter.mjs
 -->
 
 ---
 
-# 长期信息通过显式记忆与会后整理两种入口写入
+# 长期信息通过三种入口写入，纪律各不相同
 
-<div class="two-col">
+<div class="three-col">
 
 <div>
 
@@ -886,18 +902,29 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 <div>
 
-## 会话结束后自动整理
+## 会后整理（不得推测）
 
 - 由语音 Session 关闭异步触发
-- MemoryExtractor 提议最小修改
+- MemoryExtractor 只记录用户明说的事实
 - 只处理 `USER.md` 与 `MEMORY.md`
 - 静默运行，不阻塞会话关闭
 
 </div>
 
+<div>
+
+## 观察推断（允许推测）
+
+- ProfileObserver 观察画像字段，证据必须逐字出自用户发言
+- 候选进入槽位池，跨会话攒确认
+- 过门后由晋升器写入 `USER.md` 的「观察推断」区
+- 永不覆盖「用户明确要求」区
+
 </div>
 
-**两个入口最终调用同一个 FrontendMemoryService；模型和工具都不能直接改写 Markdown 文件。**
+</div>
+
+**三个入口最终调用同一个 FrontendMemoryService；模型和工具都不能直接改写 Markdown 文件。**
 
 ---
 
@@ -951,7 +978,7 @@ ConversationSync 是 Gateway 内的短期会话账本，记录用户说了什么
 
 - **连接重建**：把最近对话重新交给 Realtime Frontstage
 - **结果交付**：判断后台结果是否已经说过，避免重复注入或播报
-- **记忆整理**：会话结束后向 MemoryExtractor 提供完整转写
+- **记忆整理**：会话结束后向 MemoryExtractor 与 ProfileObserver 提供完整转写
 
 </div>
 

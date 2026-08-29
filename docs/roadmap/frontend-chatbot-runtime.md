@@ -109,7 +109,7 @@ Task records use one short `task_id` across intake, query, cancellation, events,
 and result delivery. They carry owner, conversation, turn, objective,
 multimodal inputs, state, activity, authorization, artifacts,
 and timestamps. Public states align
-with A2A Task semantics: `submitted`, `working`, `auth_required`, `completed`,
+with A2A Task semantics: `submitted`, `working`, `input_required`, `auth_required`, `completed`,
 `failed`, and `cancelled`. Gateway-specific phases remain internal.
 Backend submission adds one canonical natural-language `instruction`; frontend
 memory, chat history, routing fields, and the serialized Work record are never
@@ -118,12 +118,12 @@ used as model-visible backend input.
 ### BackendPort
 
 Backends implement `describe`, `start`, `health`, `submit`, `status`, `cancel`,
-`respondAuthorization`, `subscribe`, and `close`. ACP sessions, coordinator
+`respondAuthorization`, `respondInput`, `subscribe`, and `close`. ACP sessions, coordinator
 prompts, coordinator MCP, and native delegation stay inside the ACP adapter.
 Every adapter implements the complete method surface and is checked at the
 composition boundary. Optional capabilities are declared by `describe()` and
 rejected explicitly, never inferred from a missing function. `submit`,
-`status`, `cancel`, and `respondAuthorization` operate on one Gateway `taskId`;
+`status`, `cancel`, `respondAuthorization`, and `respondInput` operate on one Gateway `taskId`;
 backend-private session and task identifiers never cross the port.
 Adapters project the same canonical instruction and native attachment parts
 into ACP, A2A, or custom transports while keeping correlation metadata private.
@@ -138,7 +138,10 @@ shape. Each Part contains exactly one of text, URL, base64 raw content, or
 structured data plus its MIME type. Authorization is a bounded Work request
 with identity, state, summary, category, and timestamps; it carries a decision
 request, never credentials. Presentation contains factual material and delivery
-policy for the frontend, not a script that must be spoken verbatim.
+policy for the frontend, not a script that must be spoken verbatim. A backend
+question remains part of the same active Task: adapters emit a bounded input
+request and resume through `respondInput`; a resolved backend call alone is
+therefore not interpreted as Task completion.
 
 Restart recovery is an explicit Work policy: safe reminders are rescheduled,
 recoverable delegated runs are reattached, interrupted execution fails once,

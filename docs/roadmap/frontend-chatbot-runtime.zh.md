@@ -129,6 +129,7 @@ objective、多模态输入、状态、活动、权限、Artifact、Presentation
 
 ```text
 submitted → working → completed
+                  ├→ input_required
                   ├→ auth_required
                   ├→ failed
                   └→ cancelled
@@ -148,6 +149,7 @@ submitted → working → completed
   status,
   cancel,
   respondAuthorization,
+  respondInput,
   subscribe,
   close,
 }
@@ -156,7 +158,9 @@ submitted → working → completed
 ACP Session、协调 Prompt、协调 MCP 和原生委托全部属于 ACP Adapter 内部。
 每个 Adapter 必须实现完整方法面，并在组合边界接受校验。可选能力由 `describe()` 声明，
 不支持时必须明确拒绝，不能依赖“缺少某个函数”来推断。`submit`、`status`、`cancel` 与
-`respondAuthorization` 只操作 Gateway `taskId`，后台私有 Session 与远程任务 ID 不越过端口。
+`respondAuthorization`、`respondInput` 只操作 Gateway `taskId`，后台私有 Session 与远程任务 ID 不越过端口。
+后台追问不会结束当前 Task：Adapter 发出有界输入请求，Gateway 经 `respondInput`
+把用户回答交回同一 Task 后继续执行。因此一次后台调用返回不再等同于 Task 已完成。
 AgentClient 只持有一个注入的后台实例。驱动选择、Profile 构造和协议专属依赖属于
 Adapter Factory，不再由运行时门面承担。
 

@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  PERMISSION_RESPONSE_CAPABILITY,
+  BACKEND_INPUT_RESPONSE_CAPABILITY,
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
-  RESPOND_FRONTEND_TOOL_PERMISSION_NAME,
+  RESPOND_PERMISSION_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   frontendToolRegistry,
   frontendTools,
@@ -24,7 +26,6 @@ const DEFAULT_TOOL_NAMES = [
   'get_current_time',
   'memory',
   'notes',
-  'respond_agent_permission',
 ]
 
 function names(tools) {
@@ -57,6 +58,28 @@ test('appends namespaced dynamic tools without changing the static registry', ()
     () => frontendTools({ frontend: { tools: [TOOLS[0]] } }),
     /duplicate dynamic frontend tool/,
   )
+})
+
+test('exposes the unified permission response only for a real request capability', () => {
+  assert.equal(
+    names(frontendTools()).includes(RESPOND_PERMISSION_TOOL_NAME),
+    false,
+  )
+  assert.deepEqual(
+    names(frontendTools({
+      frontend: {
+        capabilities: [PERMISSION_RESPONSE_CAPABILITY],
+      },
+    })),
+    [...DEFAULT_TOOL_NAMES, RESPOND_PERMISSION_TOOL_NAME],
+  )
+})
+
+test('exposes backend input response only for a real pending request', () => {
+  assert.equal(names(frontendTools()).includes('respond_agent_input'), false)
+  assert.deepEqual(names(frontendTools({
+    frontend: { capabilities: [BACKEND_INPUT_RESPONSE_CAPABILITY] },
+  })), [...DEFAULT_TOOL_NAMES, 'respond_agent_input'])
 })
 
 test('exposes Client Action tools only when the client advertises support', () => {
@@ -102,16 +125,16 @@ test('exposes retrieval tools only when the frontend advertises each capability'
   )
 })
 
-test('exposes external-tool approval only when a source requires it', () => {
+test('uses the same permission response tool for external-tool approval', () => {
   assert.equal(
-    frontendToolRegistry.isEnabled(RESPOND_FRONTEND_TOOL_PERMISSION_NAME),
+    frontendToolRegistry.isEnabled(RESPOND_PERMISSION_TOOL_NAME),
     false,
   )
   assert.deepEqual(
     names(frontendTools({
-      frontend: { capabilities: ['external-tool-approval'] },
+      frontend: { capabilities: [PERMISSION_RESPONSE_CAPABILITY] },
     })),
-    [...DEFAULT_TOOL_NAMES, RESPOND_FRONTEND_TOOL_PERMISSION_NAME],
+    [...DEFAULT_TOOL_NAMES, RESPOND_PERMISSION_TOOL_NAME],
   )
 })
 
@@ -166,8 +189,8 @@ test('declares one background tool and classifies every other tool', () => {
     notes: 'inline',
     knowledge: 'inline',
     recall: 'inline',
-    respond_agent_permission: 'control',
-    respond_frontend_tool_permission: 'control',
+    respond_permission: 'control',
+    respond_agent_input: 'control',
     web_search: 'inline',
     fetch_url: 'inline',
     enter_sleep: 'control',

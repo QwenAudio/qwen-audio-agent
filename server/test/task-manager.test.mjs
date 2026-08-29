@@ -209,6 +209,49 @@ test('publishes a bounded pending permission on the active work', async () => {
   await manager.wait(task.id)
 })
 
+test('keeps a backend input request on the same active work until resumed', async () => {
+  const manager = new TaskManager()
+  let release
+  const events = []
+  manager.subscribe(event => events.push(event))
+  const task = manager.create({
+    objective: '生成报告',
+    ownerId: 'owner',
+    sessionId: 'voice',
+    runner: async (_objective, { onEvent }) => {
+      onEvent({
+        type: 'backend.input.requested',
+        input: {
+          id: 'input_one',
+          status: 'pending',
+          mode: 'text',
+          prompt: '使用中文还是英文？',
+        },
+      })
+      await new Promise(resolve => { release = resolve })
+      onEvent({
+        type: 'backend.input.resolved',
+        input: {
+          id: 'input_one',
+          status: 'accepted',
+          mode: 'text',
+          prompt: '使用中文还是英文？',
+        },
+      })
+      return { content: '中文报告已完成' }
+    },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(manager.get(task.id).workState, 'input_required')
+  assert.equal(manager.get(task.id).status, 'running')
+  assert.ok(events.some(event => event.type === 'task.input.requested'))
+  release()
+  await manager.wait(task.id)
+  assert.equal(manager.get(task.id).status, 'completed')
+  assert.equal(manager.get(task.id).inputRequest, null)
+  assert.ok(events.some(event => event.type === 'task.input.resolved'))
+})
+
 test('drops stale permissions restored on terminal work', () => {
   const manager = new TaskManager({
     store: {

@@ -489,6 +489,9 @@ const runtimeCommands = clientCommandRuntime || new GatewayClientCommandRuntime(
   respondAuthorization: (taskId, id, decision, options) => (
     agent.respondAuthorization(taskId, id, decision, options)
   ),
+  respondInput: (taskId, id, response, options) => (
+    agent.respondInput(taskId, id, response, options)
+  ),
   permissionPolicy,
   logger,
 })
@@ -840,8 +843,10 @@ app.delete('/api/tasks/:id', async (req, res, next) => {
 
 app.post('/api/permissions/:id', async (req, res, next) => {
   const decision = String(req.body?.decision || '')
-  if (!['always', 'reject'].includes(decision)) {
-    return res.status(400).json({ error: 'decision must be always or reject' })
+  if (!['once', 'always', 'reject'].includes(decision)) {
+    return res.status(400).json({
+      error: 'decision must be once, always, or reject',
+    })
   }
   try {
     const permission = await runtimeCommands.respondPermission({
@@ -936,6 +941,9 @@ realtimeGateway = attachRealtimeGateway(server, {
   backendAvailability,
   respondAuthorization: (taskId, id, decision, options) => (
     agent.respondAuthorization(taskId, id, decision, options)
+  ),
+  respondInput: (taskId, id, response, options) => (
+    agent.respondInput(taskId, id, response, options)
   ),
   permissionPolicy,
   inputAssets: inputAssetRegistry,

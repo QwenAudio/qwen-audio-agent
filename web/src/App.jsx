@@ -1288,6 +1288,17 @@ export default function App() {
           onClick={() => respondToPermission(
             agentTask.id,
             agentTask.authorization,
+            'once',
+          )}
+        >
+          {t('本次允许')}
+        </button>
+        <button
+          className="permission-allow"
+          disabled={agentTask.authorization.submitting}
+          onClick={() => respondToPermission(
+            agentTask.id,
+            agentTask.authorization,
             'always',
           )}
         >

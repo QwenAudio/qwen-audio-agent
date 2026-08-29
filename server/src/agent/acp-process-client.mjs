@@ -105,6 +105,7 @@ export class AcpProcessClient {
     platform = process.platform,
     killImpl = process.kill,
     onPermission,
+    onElicitation,
     onUpdate,
     sanitizeProcessOutput,
     formatRequestError,
@@ -121,6 +122,7 @@ export class AcpProcessClient {
     this.platform = platform
     this.kill = killImpl
     this.onPermission = onPermission
+    this.onElicitation = onElicitation
     this.onUpdate = onUpdate
     this.sanitizeProcessOutput = sanitizeProcessOutput
     this.formatRequestError = formatRequestError
@@ -206,6 +208,10 @@ export class AcpProcessClient {
         acp.methods.client.session.requestPermission,
         context => this.handlePermission(context.params, context.signal),
       )
+      .onRequest(
+        acp.methods.client.elicitation.create,
+        context => this.handleElicitation(context.params, context.signal),
+      )
       .onNotification(
         acp.methods.client.session.update,
         context => this.handleUpdate(context.params),
@@ -245,7 +251,9 @@ export class AcpProcessClient {
           acp.methods.agent.initialize,
           {
             protocolVersion: acp.PROTOCOL_VERSION,
-            clientCapabilities: {},
+            clientCapabilities: {
+              elicitation: { form: {} },
+            },
             clientInfo: {
               name: 'qwen-audio-agent',
               title: 'qwen-audio-agent Gateway',
@@ -311,6 +319,21 @@ export class AcpProcessClient {
       return await this.onPermission(params, {
         signal,
         session: this.sessions.get(String(params.sessionId)),
+      })
+    } finally {
+      active?.resumeTimeout?.()
+    }
+  }
+
+  async handleElicitation(params, signal) {
+    if (!this.onElicitation) return { action: 'cancel' }
+    const sessionId = String(params?.sessionId || '')
+    const active = this.activePrompts.get(sessionId)
+    active?.pauseTimeout?.()
+    try {
+      return await this.onElicitation(params, {
+        signal,
+        session: this.sessions.get(sessionId),
       })
     } finally {
       active?.resumeTimeout?.()

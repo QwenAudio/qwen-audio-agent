@@ -26,6 +26,7 @@ function disabledBackend() {
     status: async () => null,
     cancel: async () => ({ state: 'not_found' }),
     respondAuthorization: async () => ({ state: 'not_found' }),
+    respondInput: async () => ({ state: 'not_found' }),
     subscribe: () => () => {},
     close: async () => {},
     canRecoverDelegatedWork: () => false,

@@ -1,5 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto'
+import { permissionReference } from './permission-reference.mjs'
 import {
+  PERMISSION_RESPONSE_CAPABILITY,
+  BACKEND_INPUT_RESPONSE_CAPABILITY,
   CANCEL_AGENT_TASK_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
@@ -8,8 +11,8 @@ import {
   ENTER_SLEEP_TOOL_NAME,
   NOTES_TOOL_NAME,
   MEMORY_TOOL_NAME,
-  RESPOND_AGENT_PERMISSION_TOOL_NAME,
-  RESPOND_FRONTEND_TOOL_PERMISSION_NAME,
+  RESPOND_PERMISSION_TOOL_NAME,
+  RESPOND_AGENT_INPUT_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
@@ -118,6 +121,7 @@ export class ToolCallHandler {
     getClientContext = () => ({}),
     onMemoryChanged = () => {},
     respondAuthorization,
+    respondInput,
     permissionPolicy,
     onPermissionDeliveryFailed = () => {},
     presenceController = null,
@@ -143,6 +147,7 @@ export class ToolCallHandler {
     this.getClientContext = getClientContext
     this.onMemoryChanged = onMemoryChanged
     this.respondAuthorization = respondAuthorization
+    this.respondInput = respondInput
     this.permissionPolicy = permissionPolicy
     this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
     this.presenceController = presenceController
@@ -174,11 +179,9 @@ export class ToolCallHandler {
       [NOTES_TOOL_NAME]: ({ callId, turnId, args }) => (
         this.notes(callId, turnId, args)
       ),
-      [RESPOND_AGENT_PERMISSION_TOOL_NAME]: context => (
-        this.respondAgentPermission(context)
-      ),
-      [RESPOND_FRONTEND_TOOL_PERMISSION_NAME]: ({ callId, turnId, args }) => (
-        this.respondFrontendToolPermission(callId, turnId, args)
+      [RESPOND_PERMISSION_TOOL_NAME]: context => this.respondPermission(context),
+      [RESPOND_AGENT_INPUT_TOOL_NAME]: context => (
+        this.respondAgentInput(context)
       ),
       [ENTER_SLEEP_TOOL_NAME]: ({ callId, turnId }) => (
         this.enterSleep(callId, turnId)
@@ -205,6 +208,25 @@ export class ToolCallHandler {
 
   externalTool(name) {
     return findFrontendSourceTool(this.frontendToolSources, name)
+  }
+
+  hasPendingBackendPermission() {
+    if (this.pendingBackendPermissions.size) return true
+    if (!this.taskManager?.list) return false
+    return this.taskManager.list({
+      ownerId: this.ownerId,
+      sessionId: this.sessionId,
+      active: true,
+    }).some(task => task.authorization?.status === 'pending')
+  }
+
+  hasPendingBackendInput() {
+    if (!this.taskManager?.list) return false
+    return this.taskManager.list({
+      ownerId: this.ownerId,
+      sessionId: this.sessionId,
+      active: true,
+    }).some(task => task.inputRequest?.status === 'pending')
   }
 
   async executeExternalSource(external, args) {
@@ -248,7 +270,7 @@ export class ToolCallHandler {
       )
       return { handled: true, executed: false }
     }
-    const authorizationId = `frontend_auth_${randomUUID()}`
+    const authorizationId = `permission_${randomUUID().replaceAll('-', '')}`
     const description = String(
       external.tool.definition?.function?.description || external.tool.name,
     ).replace(/\s+/gu, ' ').trim().slice(0, 400)
@@ -259,15 +281,16 @@ export class ToolCallHandler {
     })
     await this.sendOutput(context.callId, {
       status: 'confirmation_required',
-      authorization_id: authorizationId,
+      permission_id: authorizationId,
       operation: description,
+      allowed_decisions: ['once', 'reject'],
       message: '此操作会修改外部系统，必须先获得用户明确同意。',
     }, context.turnId, null, {
       response: {
         instructions: [
           '这是前台外部工具执行前的确认请求。',
           '自然、简短地说明 operation 并询问用户是否允许，不要声称已经执行。',
-          '用户回答后按语义调用 respond_frontend_tool_permission；不要要求固定口令，也不要朗读 authorization_id。',
+          '用户回答后按语义调用 respond_permission，并原样使用 permission_id；本请求只允许 once 或 reject。不要要求固定口令，也不要朗读内部 ID。',
         ].join(' '),
       },
     })
@@ -316,10 +339,10 @@ export class ToolCallHandler {
   }
 
   async respondFrontendToolPermission(callId, turnId, args = {}) {
-    const authorizationId = String(args.authorization_id || '').trim()
+    const authorizationId = String(args.permission_id || '').trim()
     const decision = String(args.decision || '').trim()
     const pending = this.pendingExternalAuthorizations.get(authorizationId)
-    if (!pending || !['allow', 'reject'].includes(decision)) {
+    if (!pending || !['once', 'reject'].includes(decision)) {
       await this.sendOutput(
         callId,
         failure(
@@ -344,6 +367,33 @@ export class ToolCallHandler {
     }
     const output = await this.executeExternalSource(pending, pending.args)
     await this.sendOutput(callId, output, turnId)
+  }
+
+  async respondPermission(context) {
+    const permissionId = String(context.args?.permission_id || '').trim()
+    if (this.pendingExternalAuthorizations.has(permissionId)) {
+      return this.respondFrontendToolPermission(
+        context.callId,
+        context.turnId,
+        context.args,
+      )
+    }
+    const backendPermissionPending = [...this.pendingBackendPermissions.keys()]
+      .some(id => permissionReference(id) === permissionId)
+      || this.taskManager?.list?.({
+        ownerId: this.ownerId,
+        sessionId: this.sessionId,
+        active: true,
+      }).some(task => (
+        task.authorization?.status === 'pending'
+        && permissionReference(task.authorization.id) === permissionId
+      ))
+    if (backendPermissionPending) return this.respondAgentPermission(context)
+    return this.sendOutput(
+      context.callId,
+      failure('permission_not_pending', '没有找到仍在等待决定的权限请求。'),
+      context.turnId,
+    )
   }
 
   markTerminalToolResponse(responseId) {
@@ -422,6 +472,13 @@ export class ToolCallHandler {
     }
     this.deferredToolResponses.set(key, batch)
     return key
+  }
+
+  addDeferredToolResponseInstructions(responseId, instructions) {
+    const batch = this.deferredToolResponses.get(String(responseId || ''))
+    const value = String(instructions || '').trim()
+    if (!batch || !value || batch.responseInstructions.includes(value)) return
+    batch.responseInstructions.push(value)
   }
 
   async completeDeferredToolResponse(responseId, { failed = false } = {}) {
@@ -783,7 +840,7 @@ export class ToolCallHandler {
           status: 'authorization_pending',
           error: true,
           error_code: 'permission_decision_required',
-          authorization_id: pendingPermissionTask.authorization.id,
+          task_id: pendingPermissionTask.id,
           operation: pendingPermissionTask.authorization.summary,
           user_message: '当前有一项权限请求正在等待用户决定，不能把本轮回答提交成新工作。',
           retryable: true,
@@ -795,7 +852,7 @@ export class ToolCallHandler {
             instructions: [
               '当前有一项权限请求正在等待决定，本轮不能调用 spawn_thinking。',
               '重新结合刚才提出的具体权限问题和本轮用户原话判断。',
-              '若用户已自然表达同意或拒绝，立即调用 respond_agent_permission；按语义判断，不要要求固定口令。',
+              '若用户已自然表达同意或拒绝，立即调用 respond_permission；按语义判断，不要要求固定口令。',
               '若用户没有作出决定，只用一句自然的话继续确认。',
               '绝对不要代替用户同意，也不要声称权限已经生效。',
             ].join(' '),
@@ -1051,6 +1108,12 @@ export class ToolCallHandler {
             // 与 realtime-gateway 的 getAgentContext 必须同一个判据。资料检索
             // 已归 knowledge 工具，所以这里只看会话摘要。
             ...(this.sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
+            ...(this.hasPendingBackendPermission()
+              ? [PERMISSION_RESPONSE_CAPABILITY]
+              : []),
+            ...(this.hasPendingBackendInput()
+              ? [BACKEND_INPUT_RESPONSE_CAPABILITY]
+              : []),
           ])],
         },
       })
@@ -1240,22 +1303,29 @@ export class ToolCallHandler {
     args,
     callContext,
   }) {
-    const authorizationId = String(args.authorization_id || '').trim()
+    const taskId = String(args.task_id || '').trim()
+    const requestedPermissionId = String(args.permission_id || '').trim()
     const decision = String(args.decision || '').trim()
     const responseId = String(
       callContext?.responseId || callContext?.event?.response_id || '',
     ).trim()
-    const response = ['always', 'reject'].includes(decision)
+    const response = ['once', 'always', 'reject'].includes(decision)
       ? {
-          instructions: decision === 'always'
+          instructions: decision === 'reject'
             ? [
+                '权限决定已提交。',
+                '只用一句简短自然口语确认“已拒绝，后台不会执行这项操作”。',
+                '不要重述操作，不要再次询问或调用工具。',
+              ].join(' ')
+            : decision === 'always'
+              ? [
                 '权限决定已提交，并在本会话立即生效。',
                 '只用一句简短自然口语确认“已允许，后台继续执行”。',
                 '不要重述操作，不要再次询问或调用工具。',
               ].join(' ')
-            : [
-                '权限决定已提交。',
-                '只用一句简短自然口语确认“已拒绝，后台不会执行这项操作”。',
+              : [
+                '本次权限决定已提交。',
+                '只用一句简短自然口语确认“已允许，后台继续执行”。',
                 '不要重述操作，不要再次询问或调用工具。',
               ].join(' '),
         }
@@ -1263,45 +1333,63 @@ export class ToolCallHandler {
     const deferred = this.beginDeferredToolResponse(responseId, {
       turnId,
       turnGeneration: generation,
-    }, response)
-    const outputOptions = deferred
-      ? { createResponse: false }
-      : { response }
+    })
+    const responseOptions = instructions => {
+      if (deferred) {
+        this.addDeferredToolResponseInstructions(deferred, instructions)
+        return { createResponse: false }
+      }
+      return { response: { instructions } }
+    }
+    const invalidPermissionInstructions = [
+      '当前没有真实、仍待确认的后台权限请求，任何相关操作都没有因此获得授权或开始执行。',
+      '简短说明这次授权没有生效，不要伪造权限请求、工作 ID 或执行状态，也不要调用工具。',
+    ].join(' ')
     let failed = false
     try {
       const transcript = String(await this.transcripts.transcript(turnId)).trim()
-      if (!authorizationId || !response || !transcript) {
+      if (!requestedPermissionId || !response || !transcript) {
         await this.sendOutput(
           callId,
           failure('invalid_permission_response', '没有找到有效的权限请求或决定。'),
           turnId,
           null,
-          deferred ? { createResponse: false } : undefined,
+          responseOptions(invalidPermissionInstructions),
         )
         return
       }
-      const trackedPermission = this.pendingBackendPermissions.get(authorizationId)
-      const pendingTask = trackedPermission
-        ? this.taskManager.getByTaskId(trackedPermission.taskId, {
-            ownerId: this.ownerId,
-          })
+      const pendingTask = taskId
+        ? this.taskManager.getByTaskId(taskId, { ownerId: this.ownerId })
         : this.taskManager.list({
             ownerId: this.ownerId,
             sessionId: this.sessionId,
             active: true,
-          }).find(task => task.authorization?.id === authorizationId)
-      if (!pendingTask) {
+          }).find(task => task.authorization?.id === requestedPermissionId)
+      const trackedAuthorization = [...this.pendingBackendPermissions.entries()]
+        .find(([id]) => permissionReference(id) === requestedPermissionId)
+      const trackedPermission = trackedAuthorization?.[1]
+      const trackedAuthorizationId = trackedAuthorization?.[0] || ''
+      const authorizationId = (
+        pendingTask
+        && trackedPermission?.taskId === pendingTask.id
+        && !this.submittedBackendPermissions.has(trackedAuthorizationId)
+      ) || (
+        pendingTask?.authorization?.status === 'pending'
+        && permissionReference(pendingTask.authorization.id) === requestedPermissionId
+      )
+        ? trackedAuthorizationId || pendingTask.authorization.id
+        : ''
+      if (!pendingTask || pendingTask.sessionId !== this.sessionId || !authorizationId) {
         await this.sendOutput(
           callId,
           failure(
             'permission_not_pending',
-            '这项权限请求已经处理过或不属于当前任务；若用户刚在界面上确认过，'
-            + '无需重复回应，直接继续即可。',
+            '当前工作没有真实待确认的权限请求，相关操作没有获得授权或开始执行。',
             { retryable: false },
           ),
           turnId,
           null,
-          deferred ? { createResponse: false } : undefined,
+          responseOptions(invalidPermissionInstructions),
         )
         return
       }
@@ -1311,15 +1399,19 @@ export class ToolCallHandler {
           failure('permission_unavailable', '当前后台无法接收权限决定。'),
           turnId,
           null,
-          deferred ? { createResponse: false } : undefined,
+          responseOptions('当前后台无法接收权限决定。简短说明授权没有生效，不要声称操作已经执行，也不要调用工具。'),
         )
         return
       }
       if (this.submittedBackendPermissions.has(authorizationId)) {
+        const outputOptions = responseOptions([
+          '该权限决定此前已经提交。',
+          '只用一句简短自然口语说明后台正在继续处理，不要再次调用工具。',
+        ].join(' '))
         await this.sendOutput(callId, {
           status: 'already_submitted',
-          authorization_id: authorizationId,
-        }, turnId, pendingTask.id, deferred ? { createResponse: false } : undefined)
+          task_id: pendingTask.id,
+        }, turnId, pendingTask.id, outputOptions)
         return
       }
       const previousPermissionMode = this.permissionPolicy?.mode(
@@ -1379,9 +1471,10 @@ export class ToolCallHandler {
           )
         }
       })
+      const outputOptions = responseOptions(response.instructions)
       await this.sendOutput(callId, {
         status: 'submitted',
-        authorization_id: authorizationId,
+        task_id: pendingTask.id,
       }, turnId, pendingTask.id, outputOptions)
     } catch (error) {
       failed = true
@@ -1389,6 +1482,53 @@ export class ToolCallHandler {
     } finally {
       await this.completeDeferredToolResponse(deferred, { failed })
     }
+  }
+
+  async respondAgentInput({ callId, turnId, args }) {
+    const taskId = String(args.task_id || '').trim()
+    const action = ['accept', 'decline', 'cancel'].includes(args.action)
+      ? args.action
+      : ''
+    const task = taskId ? this.taskManager.getByTaskId(taskId, {
+      ownerId: this.ownerId,
+    }) : null
+    const request = task?.inputRequest
+    if (
+      !task
+      || task.sessionId !== this.sessionId
+      || request?.status !== 'pending'
+      || !action
+    ) {
+      await this.sendOutput(callId, failure(
+        'input_not_pending',
+        '当前没有仍在等待回答的后台输入请求。',
+      ), turnId, null, {
+        response: { instructions: '简短说明这次回答没有提交成功，不要声称后台已经继续。' },
+      })
+      return
+    }
+    if (!this.respondInput) {
+      await this.sendOutput(callId, failure(
+        'input_unavailable',
+        '当前后台无法接收补充输入。',
+      ), turnId)
+      return
+    }
+    await this.respondInput(task.id, request.id, {
+      action,
+      text: String(args.text || '').trim(),
+      values: args.values,
+    }, { ownerId: this.ownerId })
+    await this.sendOutput(callId, {
+      status: 'submitted',
+      task_id: task.id,
+    }, turnId, task.id, {
+      response: {
+        instructions: action === 'accept'
+          ? '回答已交给原来的后台工作。只简短自然地说明会继续处理，不要新建工作或重复问题。'
+          : '用户没有提供这次补充信息。只作简短自然确认，不要声称工作已经完成。',
+      },
+    })
   }
 
   async cancelAgentTask(callId, turnId, args, responseOptions) {

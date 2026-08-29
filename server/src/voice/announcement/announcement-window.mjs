@@ -21,7 +21,7 @@ export class AnnouncementWindow {
     turnId,
     origin = 'model',
     hasAudio = false,
-    hasFunctionCall = false,
+    awaitsToolFollowUp = false,
     suppressed = false,
     failed = false,
   } = {}) {
@@ -29,7 +29,7 @@ export class AnnouncementWindow {
       origin === 'announcement'
       || String(turnId || '') !== this.activeTurnId
       || hasAudio
-      || (hasFunctionCall && !suppressed && !failed)
+      || (awaitsToolFollowUp && !suppressed && !failed)
     ) return
     this.turnPending = false
   }
@@ -48,7 +48,7 @@ export class AnnouncementWindow {
     if (id) this.playingResponses.add(id)
   }
 
-  finishPlayback(responseId, { hasFunctionCall = false } = {}) {
+  finishPlayback(responseId, { awaitsToolFollowUp = false } = {}) {
     const id = String(responseId || '')
     const context = this.audioResponses.get(id)
     this.audioResponses.delete(id)
@@ -57,7 +57,7 @@ export class AnnouncementWindow {
       context?.origin !== 'announcement'
       && context?.turnId
       && context.turnId === this.activeTurnId
-      && !hasFunctionCall
+      && !awaitsToolFollowUp
     ) {
       this.turnPending = false
     }

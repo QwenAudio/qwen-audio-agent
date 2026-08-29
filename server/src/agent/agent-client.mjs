@@ -55,6 +55,10 @@ export class AgentClient {
     )
   }
 
+  respondInput(taskId, inputRequestId, response, options = {}) {
+    return this.adapter.respondInput(taskId, inputRequestId, response, options)
+  }
+
   subscribe(listener) {
     return this.adapter.subscribe(listener)
   }
@@ -152,6 +156,12 @@ export const agent = {
     decision,
     options,
   ),
+  respondInput: (
+    taskId,
+    inputRequestId,
+    response,
+    options = {},
+  ) => requireAgent().respondInput(taskId, inputRequestId, response, options),
   subscribe: listener => requireAgent().subscribe(listener),
   canRecoverDelegatedWork: task => config.agentProtocol
     ? requireAgent().canRecoverDelegatedWork(task)

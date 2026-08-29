@@ -60,8 +60,11 @@ get_agent_task_status
 get_current_time
 memory
 notes
-respond_agent_permission
 ```
+
+当 Gateway 存在待确认的后台权限或前台外部工具审批时，提供统一的
+`respond_permission`。模型只回答权限请求；Gateway 根据 `permission_id` 将决定路由到
+后台 Task 或前台工具执行队列。
 
 `memory` 通过一个扁平接口维护两份普通 Markdown 文档。每次调用只执行一个
 原子操作：`read`、`append` 或 `replace`；`replace` 使用唯一匹配的原文定位，
@@ -102,19 +105,28 @@ Gateway 直接读取自身持有的 Task 记录，包括 Adapter 归一化后的
 - 选择后端执行策略；
 - 选择工具、Agent 或子 Agent。
 
-`respond_agent_permission` 是实时前端不控制后端执行这一规则的唯一例外。
+`respond_permission` 是实时前端不控制执行策略这一规则的唯一例外。
 它只能转发由 Gateway 提供的、针对待处理的、owner 作用域权限请求的明确当前轮次
 用户决策。它可以理解自然的肯定或否定措辞，如"可以"或"不允许"，但不能在没有
 当前轮次用户话语的情况下虚构同意、创建请求、选择工具或修改后端权限策略。
-回复仅限于 `always` 和 `reject`；`always` 使用 Gateway 当前前端会话的策略。
-Adapter 仍选择最窄的单次后端权限选项，
+模型使用 Gateway 提供的 `permission_id` 精确回复请求；后台请求同时带有公开
+`task_id`。原始后台授权 ID 与权限来源只在 Gateway 和 Adapter 内部流转。
+回复分为 `once`、`always` 和 `reject`：分别表示仅允许当前操作、在当前前端会话中
+始终允许，以及仅拒绝当前操作。`always` 仍由 Gateway 当前前端会话的策略实现，
+Adapter 选择最窄的单次后端权限选项，
 后续请求由 Gateway 在同一前端会话内自动允许，不会创建持久的后端授权规则。
+权限、进度和恢复上下文的协议标签由 Gateway 独占。模型生成的同名标签不构成事件，
+不能启用相应工具，也不会写入持久对话。
 
 传递给 `spawn_thinking` 的 `objective` 是对用户请求的保守解释，而非执行计划。
 提交前必须结合当前对话把"继续那个页面"之类的指代解析成一条自包含指令。该指令就是
 后台 Agent 唯一收到的模型可见文本；ASR 原文不再作为第二份任务描述附加。后台 Agent
 不接收前台人格、长期记忆或最近聊天历史；与执行有关的事实必须先解析进指令，而不是
 转发这些文档。
+
+一次后台轮次可以返回结果，也可以提出继续工作所需的问题、选择、确认或补充信息。
+前台自然转达后者；用户随后回答时，再通过 `spawn_thinking` 以同一工作的续办关系提交，
+而不是在前台推测或模拟后续执行。这一语义不依赖具体问题内容或关键词。
 
 当前轮附件由 Gateway 自动作为协议原生 Part 随任务传递，而不是放入模型可见的 JSON
 清单。只有任务明确依赖此前轮次的图片或文件时，前台才通过可选的 `input_refs` 引用

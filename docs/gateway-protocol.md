@@ -311,8 +311,13 @@ The active Client uses the same WebSocket for runtime commands and queries. Each
 | `task.get` / `task.list` | C→G | Read one Task or a bounded filtered Task snapshot |
 | `task.cancel` | C→G | Request cancellation of one Task; subsequent lifecycle events report the final state |
 | `permission.respond` | C→G | Resolve the currently pending authorization request |
+| `task.input.respond` | C→G | Continue the same Task with requested user input, or decline/cancel that interaction |
 | `conversation.history` | C→G | Read the bounded, client-safe conversation projection |
 | `session.replay` | C→G | Replay eligible server pushes after a sequence cursor |
+
+`permission.respond.decision` accepts `once`, `always`, or `reject`: allow only
+the current operation, always allow during the current frontend session, or
+reject only the current operation.
 
 `task.create` carries an A2A-aligned `message.parts` value rather than a second plain-text-only objective field, so an explicit integration may submit text, file, or structured parts without importing an A2A Message object.
 
@@ -327,7 +332,7 @@ Gateway publishes normalized state; the Client renders it without reconstructing
 - `gateway.*` and `voice.*` for connection and frontend state;
 - `response.*`, transcript, and audio events for conversation output;
 - `task.*` for Task lifecycle, activity, artifacts, and notification state;
-- `task.permission.*` for authorization state;
+- `task.permission.*` and `task.input.*` for authorization and requested-input state;
 - `playback.clear` and other explicit presentation controls.
 
 Every public Task keeps one Gateway `task_id`. ACP Session IDs, A2A remote Task IDs, and custom-adapter identifiers remain private to `BackendPort` adapters.
@@ -353,7 +358,7 @@ Task snapshots and updates use a Gateway-owned wrapper with deliberately A2A-ali
 
 The Gateway owns the state vocabulary and event lifecycle. The nested `status.state`, `status.message.parts`, and `artifacts[].parts` shapes aid adapter and UI reuse but are not native A2A objects.
 
-Task progress may be pushed to the Client without being sent to the Realtime model. Gateway's event policy selects only meaningful progress, permission, completion, and failure events for model delivery.
+Task progress may be pushed to the Client without being sent to the Realtime model. Gateway's event policy selects only meaningful progress, permission, requested input, completion, and failure events for model delivery. `input_required` remains an active Task state; answering it resumes the same Task rather than creating another one.
 
 ### 5.6 Receipts and decisions
 
@@ -364,6 +369,7 @@ Task progress may be pushed to the Client without being sent to the Realtime mod
 | `playback.cancelled` | C→G | Playback was discarded or interrupted |
 | `client.action.result` | C→G | Client action completed or failed |
 | `permission.respond` | C→G | User authorization decision |
+| `task.input.respond` | C→G | User answer to a pending backend question |
 
 `response.done` means generation finished, not that the user heard the response. Delivery workflows that require audible confirmation use playback receipts.
 

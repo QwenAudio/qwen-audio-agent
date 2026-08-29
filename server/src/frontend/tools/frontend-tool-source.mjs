@@ -1,4 +1,4 @@
-export const FRONTEND_TOOL_APPROVAL_CAPABILITY = 'external-tool-approval'
+export const FRONTEND_TOOL_APPROVAL_CAPABILITY = 'permission.respond'
 
 const SOURCE_KEY = /^[a-z0-9][a-z0-9-]*$/u
 

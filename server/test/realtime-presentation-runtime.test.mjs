@@ -102,6 +102,34 @@ test('projects turn citations once on the final assistant transcript', () => {
   assert.deepEqual(setup.records[0].citations, stored)
 })
 
+test('does not persist a model-generated Gateway protocol envelope', () => {
+  const setup = harness()
+  const content = [
+    '<permission_request>',
+    'task_id=fake',
+    '</permission_request>',
+  ].join(' ')
+
+  deliver(setup.runtime, {
+    type: 'response.text.done',
+    response_id: 'response-fake-protocol',
+    text: content,
+    __voiceContext: {
+      origin: 'model',
+      turnId: 'turn-1',
+      turnGeneration: 1,
+    },
+  })
+
+  assert.equal(setup.records.length, 0)
+  assert.equal(
+    setup.events.some(event => (
+      event.type === 'transcript.final' && event.content === content
+    )),
+    true,
+  )
+})
+
 function deliver(runtime, event) {
   runtime.begin(event)
   runtime.handle(event)
@@ -244,8 +272,8 @@ test('returns to idle after a terminal tool response', () => {
   )
 })
 
-test('keeps processing after function-call audio playback ends', () => {
-  const { runtime, events } = harness()
+test('releases a spoken function-call turn when its tool follow-up is suppressed', () => {
+  const { runtime, events, calls } = harness()
 
   deliver(runtime, {
     type: 'response.audio.delta',
@@ -262,7 +290,22 @@ test('keeps processing after function-call audio playback ends', () => {
   runtime.finishPlayback('response-1')
 
   assert.equal(events.at(-1).type, 'voice.state')
-  assert.equal(events.at(-1).state, 'processing')
+  assert.equal(events.at(-1).state, 'idle')
+  assert.deepEqual(
+    calls.find(([name]) => name === 'finishToolResponse'),
+    ['finishToolResponse', 'response-1', { suppressResponse: true }],
+  )
+  assert.deepEqual(
+    calls.find(([name]) => name === 'responseDone'),
+    ['responseDone', {
+      turnId: 'turn-1',
+      origin: 'model',
+      hasAudio: true,
+      awaitsToolFollowUp: false,
+      suppressed: false,
+      failed: false,
+    }],
+  )
 })
 
 test('user interruption confirms an announcement and suppresses late output', () => {

@@ -37,6 +37,7 @@ An adapter implements the complete surface:
   status,
   cancel,
   respondAuthorization,
+  respondInput,
   subscribe,
   close,
 }
@@ -44,7 +45,7 @@ An adapter implements the complete surface:
 
 `start` and `close` are idempotent. `status()` without a Task ID returns
 runtime status; with an ID it addresses only that Gateway Task. `submit`,
-`status`, `cancel`, and `respondAuthorization` share one `taskId`. Private
+`status`, `cancel`, `respondAuthorization`, and `respondInput` share one `taskId`. Private
 sessions, remote task IDs, and topology never cross the port.
 
 `submit(task)` receives a structured internal Task plus one canonical
@@ -108,6 +109,13 @@ and bounded file `locations`) plus `approvalScope`. Public `session` scope means
 the current frontend session only; persistent provider authorization must not
 be inferred from it. Adapters that do not support authorization keep rejecting
 `respondAuthorization` explicitly, as before.
+
+Backend questions use `backend.input.requested` and remain part of the active
+Task. The adapter must keep `submit` pending until `respondInput` resumes that
+same operation, then emit `backend.input.resolved`. The request carries a
+bounded prompt and `text`, `form`, or `url` mode; protocol-native objects and
+remote IDs remain private. Adapters without interactive input reject
+`respondInput` explicitly.
 
 ## Gateway composition
 

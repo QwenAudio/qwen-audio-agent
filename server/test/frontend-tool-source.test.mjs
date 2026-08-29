@@ -65,7 +65,7 @@ test('projects source tools, definitions, and approval capability', () => {
     [read.tool.definition, write.tool.definition],
   )
   assert.deepEqual(frontendSourceToolCapabilities(sources), [
-    'external-tool-approval',
+    'permission.respond',
   ])
   assert.equal(findFrontendSourceTool(sources, write.tool.name)?.tool, write.tool)
 })

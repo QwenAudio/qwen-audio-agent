@@ -10,6 +10,7 @@ import {
   speakResponseInstructions,
   permissionResponseInstructions,
 } from '../frontend-tools.mjs'
+import { permissionReference } from '../tools/permission-reference.mjs'
 import { isRecoverableRealtimeInactivityError } from '../realtime-errors.mjs'
 import { openAiCompatibleProtocol } from './openai-compatible-protocol.mjs'
 
@@ -117,10 +118,12 @@ export const dashscopeProvider = {
       content: [{
         type: 'input_text',
         text: [
-          '<backend_permission_request>',
-          `authorization_id=${permission.id}`,
+          '<permission_request>',
+          `permission_id=${permissionReference(permission.id)}`,
+          `task_id=${permission.taskId}`,
           `operation=${permission.summary}`,
-          '</backend_permission_request>',
+          'allowed_decisions=once,always,reject',
+          '</permission_request>',
         ].join('\n'),
       }],
     },

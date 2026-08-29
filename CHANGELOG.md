@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 修复内置 `open-computer-use` MCP 缺少 `stdio` 传输类型，导致 Kimi Code 等严格
+  校验 ACP MCP 描述的后台无法创建 Session 的问题。
 - 新增 Pi 后台支持：通过社区 `pi-acp` 适配器接入，并支持一键安装。Pi 没有
   内置沙箱与权限审批机制，始终等效于 `full` 权限，请仅在可信环境中使用。
 

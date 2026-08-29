@@ -2485,6 +2485,7 @@ test('reports recent project Session updates with Gateway delegation status', as
 test('injects builtin MCP servers into coordinator and project sessions', async () => {
   const builtin = {
     name: 'open-computer-use',
+    type: 'stdio',
     command: process.execPath,
     args: ['/repo/node_modules/open-computer-use/bin', 'mcp'],
     env: [{ name: 'ELECTRON_RUN_AS_NODE', value: '1' }],
@@ -2542,9 +2543,11 @@ test('injects builtin MCP servers into coordinator and project sessions', async 
   assert.equal(coordinator.length, 2)
   assert.equal(coordinator[0].type, 'http')
   assert.equal(coordinator[1], builtin)
+  assert.equal(coordinator[1].type, 'stdio')
 
   const project = sessionMcp.get('project-session')
   assert.deepEqual(project, [builtin])
+  assert.equal(project[0].type, 'stdio')
   await adapter.close()
 })
 

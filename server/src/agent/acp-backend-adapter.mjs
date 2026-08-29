@@ -124,20 +124,6 @@ function modelConfigOption(options = []) {
     || null
 }
 
-function legacyModelState(response) {
-  const models = response?.models
-  if (!models || !Array.isArray(models.availableModels)) return null
-  return {
-    currentValue: clean(models.currentModelId),
-    choices: models.availableModels
-      .map(item => ({
-        value: clean(item?.modelId),
-        names: [item?.name].map(clean).filter(Boolean),
-      }))
-      .filter(item => item.value),
-  }
-}
-
 function deferred() {
   let resolvePromise
   let rejectPromise
@@ -600,7 +586,7 @@ export class AcpBackendAdapter {
       }
     }
     options = await this.applyProfileSessionConfig(session, options)
-    if (this.model && this.profile.processModelConfiguration !== true) {
+    if (this.model && this.profile.sessionModelConfiguration !== false) {
       await this.forceSessionModel(session, options)
     }
   }
@@ -661,67 +647,6 @@ export class AcpBackendAdapter {
     const desired = this.model
     const option = modelConfigOption(options)
     if (!option) {
-      if (this.nativeDelegationAdapter?.setSessionModel) {
-        try {
-          await this.nativeDelegationAdapter.setSessionModel({
-            sessionKey: clean(session?.meta?.sessionKey)
-              || clean(session?.sessionId),
-            model: desired,
-          })
-          return
-        } catch (error) {
-          throw new AgentError(
-            `${this.label} 无法把 Session 模型设置为 ${desired}：${
-              clean(error?.message) || '未知错误'
-            }`,
-            {
-              status: error.status || 502,
-              protocol: error.protocol || `${this.protocol}-native`,
-            },
-          )
-        }
-      }
-      const legacy = legacyModelState(session?.response)
-      if (legacy && this.client.setLegacySessionModel) {
-        const selected = matchingOptionValue(
-          legacy.choices.map(choice => ({
-            value: choice.value,
-            name: choice.names[0],
-          })),
-          desired,
-        )
-        if (!selected) {
-          const availableModels = legacy.choices.map(choice => (
-            choice.names[0] || choice.value
-          ))
-          const available = availableModels.length
-            ? `；可选模型：${availableModels.slice(0, 12).join('、')}`
-            : ''
-          throw new AgentError(
-            `${this.label} 当前 Session 不支持模型 ${desired}${available}`,
-            { status: 422, protocol: 'acp' },
-          )
-        }
-        if (modelKey(legacy.currentValue) === modelKey(selected)) return
-        try {
-          await this.client.setLegacySessionModel(
-            session.sessionId,
-            selected,
-          )
-        } catch (error) {
-          throw new AgentError(
-            `${this.label} 无法把 Session 模型设置为 ${desired}：${
-              clean(error?.message) || '未知错误'
-            }`,
-            {
-              status: error.status || 502,
-              protocol: 'acp',
-            },
-          )
-        }
-        session.response.models.currentModelId = selected
-        return
-      }
       throw new AgentError(
         `${this.label} 没有通过 ACP 提供 Session 模型配置，`
         + `无法强制使用模型 ${desired}`,

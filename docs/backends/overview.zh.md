@@ -120,5 +120,5 @@ qwenaudio gateway uninstall
 后台服务每次启动都会重新读取 `config.env`，修改配置后执行 `gateway restart`
 即可生效。
 
-各后台的高级配置（可执行文件路径、工作目录、模型覆盖等）见
+各后台的高级配置（可执行文件路径、工作目录、ACP 标准模型覆盖等）见
 [配置说明](../configuration.zh.md)。

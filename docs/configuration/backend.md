@@ -206,6 +206,10 @@ also be overridden via `OPENCLAW_GATEWAY_TOKEN`, or `OPENCLAW_CONFIG_PATH` can b
 specify a different OpenClaw configuration. When connecting to an external Gateway, also set
 `OPENCLAW_GATEWAY_TOKEN` (or `OPENCLAW_GATEWAY_TOKEN_FILE`).
 
+That model value is only used to provision a locally managed instance before startup. For an
+external OpenClaw Gateway, a Session model override requires its ACP bridge to advertise standard
+`configOptions`; the Gateway no longer calls the private OpenClaw `sessions.patch` RPC.
+
 OpenCode: The Gateway interacts with it via `opencode acp` and manages the local service used
 to open the native Session interface. When there is no compatible installation, it automatically
 uses a fixed npm package; users do not need to separately install or start the service.
@@ -366,10 +370,10 @@ AGENT_PROTOCOL=codebuddy
 QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
 ```
 
-By default, it directly uses CodeBuddy's existing model configuration. Only when
-`QWEN_AUDIO_AGENT_BACKEND_MODEL` is explicitly set will the coordination workspace generate a
-project-level `.codebuddy/models.json`, reading the specified model and address via environment
-variables. Advanced configuration:
+By default, it directly uses CodeBuddy's existing model configuration. When
+`QWEN_AUDIO_AGENT_BACKEND_MODEL` is explicit, the Gateway overrides it only through
+`session/set_config_option` after CodeBuddy ACP advertises a standard model option; it does not
+pass `--model` or generate a project-level `.codebuddy/models.json`. Advanced configuration:
 
 ```dotenv
 CODEBUDDY_BIN=
@@ -377,10 +381,8 @@ CODEBUDDY_WORKSPACE=
 CODEBUDDY_MODEL_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
 ```
 
-After canceling the model override, the Gateway removes the `.codebuddy/models.json` it
-generated and restores CodeBuddy's original model; user-modified files are always preserved.
-When the override is enabled, changes to `QWEN_AUDIO_AGENT_BACKEND_MODEL` are automatically
-synced to the system-generated file.
+`CODEBUDDY_MODEL_URL` is CodeBuddy's own provider endpoint and does not prove that a Session model
+changed; the returned ACP `configOptions` remain authoritative.
 
 ### Codex
 
@@ -395,10 +397,10 @@ AGENT_PROTOCOL=codex
 QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
 ```
 
-By default, it reuses the user's `~/.codex`, login state, and model. The model is only
-overridden when `QWEN_AUDIO_AGENT_BACKEND_MODEL` is explicitly set; `CODEX_BASE_URL` is only
-used to configure a custom model service address. Neither modifies the user's configuration
-file. Advanced configuration:
+By default, it reuses the user's `~/.codex`, login state, and model. An explicit
+`QWEN_AUDIO_AGENT_BACKEND_MODEL` overrides a Session only through the standard ACP model option;
+`CODEX_BASE_URL` configures a custom provider endpoint and no longer writes a model into
+`CODEX_CONFIG`. Neither setting modifies the user's configuration file. Advanced configuration:
 
 ```dotenv
 CODEX_ACP_BIN=
@@ -533,4 +535,3 @@ and execution host configurations, and cannot be safely and completely expressed
 unified switch; when `full` is selected, the Gateway explicitly refuses to start, requiring
 separate configuration via OpenClaw's own method. The highest permission amplifies the risk of
 misoperation and should only be enabled in trusted projects and trusted prompt environments.
-

@@ -738,8 +738,6 @@ test('uses one ACP profile family while preserving backend differences', () => {
   })
   assert.deepEqual(connection(codeBuddy).args, [
     '--acp',
-    '--model',
-    'qwen3.7-max',
     '--dangerously-skip-permissions',
   ])
   assert.equal(
@@ -766,7 +764,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
   assert.equal(connection(codex).args[0], resolve(root, 'scripts/codex-acp.mjs'))
   assert.equal(connection(codex).env.INITIAL_AGENT_MODE, 'agent-full-access')
   const codexConfig = JSON.parse(connection(codex).env.CODEX_CONFIG)
-  assert.equal(codexConfig.model, 'qwen3.7-max')
+  assert.equal(codexConfig.model, undefined)
   assert.equal(
     codexConfig.model_providers['qwen-audio-agent'].base_url,
     'https://example.com/compatible-mode/v1',
@@ -827,6 +825,7 @@ test('lets the official OpenClaw bridge diagnose external Gateway failures', () 
     permissionMode: 'native',
   })
   assert.equal(external.readinessMessage, '')
+  assert.equal(external.sessionModelConfiguration, true)
   assert.ok(external.acpConnection.args.includes('wss://agent.example.com'))
 
   const owned = acpBackendProfile({
@@ -838,6 +837,7 @@ test('lets the official OpenClaw bridge diagnose external Gateway failures', () 
     permissionMode: 'native',
   })
   assert.match(owned.readinessMessage, /正在启动/)
+  assert.equal(owned.sessionModelConfiguration, false)
 })
 
 test('can launch a trusted OpenClaw ACP bridge executable directly', () => {
@@ -1960,91 +1960,6 @@ test('replaces a restored OpenCode coordinator with a stale mode', async () => {
   await adapter.close()
 })
 
-test('supports legacy ACP Session model selection', async () => {
-  const client = fakeAcpClient()
-  const configured = []
-  client.setLegacySessionModel = async (...args) => configured.push(args)
-  const adapter = new AcpBackendAdapter({
-    protocol: 'claude',
-    model: 'claude-sonnet',
-    client,
-  })
-  const session = {
-    sessionId: 'legacy-session',
-    response: {
-      models: {
-        currentModelId: 'claude-default',
-        availableModels: [
-          { modelId: 'claude-default' },
-          { modelId: 'claude-sonnet' },
-        ],
-      },
-    },
-  }
-  await adapter.configureSession(session, 'project')
-  assert.deepEqual(configured, [
-    ['legacy-session', 'claude-sonnet'],
-  ])
-  assert.equal(session.response.models.currentModelId, 'claude-sonnet')
-  await adapter.close()
-})
-
-test('matches legacy ACP model IDs case-insensitively', async () => {
-  const client = fakeAcpClient()
-  const configured = []
-  client.setLegacySessionModel = async (...args) => configured.push(args)
-  const adapter = new AcpBackendAdapter({
-    protocol: 'claude',
-    model: 'claude-sonnet',
-    client,
-  })
-  const session = {
-    sessionId: 'legacy-session',
-    response: {
-      models: {
-        currentModelId: 'Claude-Default',
-        availableModels: [
-          { modelId: 'Claude-Default' },
-          { modelId: 'Claude-Sonnet' },
-        ],
-      },
-    },
-  }
-  await adapter.configureSession(session, 'project')
-  assert.deepEqual(configured, [
-    ['legacy-session', 'Claude-Sonnet'],
-  ])
-  assert.equal(session.response.models.currentModelId, 'Claude-Sonnet')
-  await adapter.close()
-})
-
-test('uses OpenClaw Gateway model override when ACP omits model options', async () => {
-  const client = fakeAcpClient()
-  const configured = []
-  const adapter = new AcpBackendAdapter({
-    protocol: 'openclaw',
-    baseUrl: 'http://127.0.0.1:18789',
-    directory: '/coordinator',
-    model: 'bailian/qwen3.7-plus',
-    client,
-    nativeDelegationAdapter: {
-      async setSessionModel(input) {
-        configured.push(input)
-      },
-    },
-  })
-  await adapter.configureSession({
-    sessionId: 'openclaw-session',
-    meta: { sessionKey: 'agent:voice:coordinator' },
-    response: { configOptions: [] },
-  }, 'coordinator')
-  assert.deepEqual(configured, [{
-    sessionKey: 'agent:voice:coordinator',
-    model: 'bailian/qwen3.7-plus',
-  }])
-  await adapter.close()
-})
-
 test('rejects explicit models that ACP cannot apply', async () => {
   const client = fakeAcpClient()
   const adapter = new AcpBackendAdapter({
@@ -2055,7 +1970,13 @@ test('rejects explicit models that ACP cannot apply', async () => {
   await assert.rejects(
     adapter.configureSession({
       sessionId: 'missing-option',
-      response: { configOptions: [] },
+      response: {
+        configOptions: [],
+        models: {
+          currentModelId: 'legacy-default',
+          availableModels: [{ modelId: 'forced-model' }],
+        },
+      },
     }, 'project'),
     /没有通过 ACP 提供 Session 模型配置/,
   )

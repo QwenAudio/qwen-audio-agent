@@ -73,7 +73,6 @@
     "config/frontend-agent/",
     "config/openclaw/openclaw.json5",
     "config/deepseek-harness/cordis.yml",
-    "config/codebuddy/workspace/.codebuddy/models.json",
     "examples/backend-adapter/",
     "examples/custom-conversation-client/",
     "docs/architecture/overview.md",

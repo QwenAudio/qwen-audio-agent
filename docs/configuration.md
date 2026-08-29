@@ -102,10 +102,12 @@ specified, the user's already installed and configured Agent is used preferentia
 overwriting its models, providers, tools, MCPs, Skills, and authentication. Other backends
 currently require users to install and configure them manually.
 
-This is the only backend model configuration entry for qwen-audio-agent. The Gateway maps this
-value to the model identifier used by the selected backend; the model ID is still defined by each
-Agent and is not uniformly named by ACP. The backend's own native model environment variables can
-still be read by the backend, but the Gateway does not interpret them as model override requests.
+This is qwen-audio-agent's only backend Session model override entry. The model ID is an opaque
+value advertised by the backend through ACP; the Gateway neither guesses nor rewrites it. Native
+model environment variables may still be read by the backend, but the Gateway does not interpret
+them as Session model override requests. One-click OpenCode/OpenClaw provisioning uses the same
+value to initialize an isolated Bailian configuration before startup; that is deployment, not an
+ACP Session override.
 
 When no model is specified, the Gateway does not pass a model and does not guess a default value:
 the model for a newly created Session is entirely chosen by the backend Agent based on user
@@ -118,8 +120,9 @@ project Sessions. The Gateway discovers model options from ACP `configOptions` b
 `category: model` and sets them via `session/set_config_option`; if the Agent does not provide
 model configuration, the target model is not in the selectable list, the call fails, or the
 returned result cannot be confirmed as effective, the current request will explicitly fail
-without silently switching to another model. When `QWEN_AUDIO_AGENT_BACKEND_MODEL` is not set,
-the model setting interface is not called at all.
+without silently switching to another model. The Gateway does not emulate a Session override with
+`session/set_model`, private backend RPCs, process arguments, or generated configuration files.
+When `QWEN_AUDIO_AGENT_BACKEND_MODEL` is not set, the model setting interface is not called at all.
 
 The local identity key is automatically generated when the program first starts, saved in
 `state.env` in the same configuration directory, with file permissions restricted to read and

@@ -164,7 +164,7 @@ them to the configuration file:
 | `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS` | Empty; only loopback allowed |
 | `OPENCODE_WORKSPACE` | `workspaces/opencode` under the user config directory |
 | `QODER_WORKSPACE` | `workspaces/qoder` under the user config directory |
-| `QWEN_AUDIO_AGENT_BACKEND_MODEL` | Empty; uses the backend Agent's original model |
+| `QWEN_AUDIO_AGENT_BACKEND_MODEL` | Empty; explicit values override Sessions only through standard ACP, except managed OpenCode/OpenClaw provisioning |
 | `QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE` | `native` |
 | `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV` | Empty; comma-separated opt-in environment names for generic ACP only |
 | `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` |

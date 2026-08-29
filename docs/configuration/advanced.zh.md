@@ -145,7 +145,7 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS` | 空；只允许 loopback |
 | `OPENCODE_WORKSPACE` | 用户配置目录下的 `workspaces/opencode` |
 | `QODER_WORKSPACE` | 用户配置目录下的 `workspaces/qoder` |
-| `QWEN_AUDIO_AGENT_BACKEND_MODEL` | 空；使用后台 Agent 原有模型 |
+| `QWEN_AUDIO_AGENT_BACKEND_MODEL` | 空；显式值仅通过 ACP 标准覆盖 Session；OpenCode/OpenClaw 托管初始化除外 |
 | `QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE` | `native` |
 | `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV` | 空；仅供通用 ACP 显式传递的环境变量名，逗号分隔 |
 | `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` |

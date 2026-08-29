@@ -241,37 +241,6 @@ export class OpenClawAcpDelegationAdapter {
     }
   }
 
-  async setSessionModel({ sessionKey, model, signal }) {
-    const desired = clean(model)
-    const key = clean(sessionKey)
-    if (!key || !desired) {
-      throw new AgentError('OpenClaw Session 模型覆盖缺少 Session 或模型', {
-        protocol: 'openclaw-gateway',
-      })
-    }
-    const gateway = await this.gateway()
-    const result = await gateway.call('sessions.patch', {
-      key,
-      model: desired,
-    }, { signal, timeoutMs: 15_000 })
-    const provider = clean(result?.resolved?.modelProvider)
-    const resolvedModel = clean(result?.resolved?.model)
-    const resolved = provider && resolvedModel
-      ? `${provider}/${resolvedModel}`
-      : resolvedModel
-    if (
-      resolved !== desired
-      && resolvedModel !== desired
-    ) {
-      throw new AgentError(
-        `OpenClaw 未确认模型覆盖生效：要求 ${desired}，`
-        + `实际 ${resolved || '未知'}`,
-        { protocol: 'openclaw-gateway' },
-      )
-    }
-    return result
-  }
-
   async cancel({ runId, sessionId, signal }) {
     const gateway = await this.gateway()
     return gateway.call('chat.abort', {

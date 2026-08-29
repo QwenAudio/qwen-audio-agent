@@ -388,7 +388,7 @@ test('reports a prompt timeout even when the Agent confirms cancellation', async
   }
 })
 
-test('keeps Session metadata and supports the legacy model method', async () => {
+test('keeps Session metadata on the process client boundary', async () => {
   const calls = []
   const client = new AcpProcessClient({
     label: 'Test Agent',
@@ -408,16 +408,8 @@ test('keeps Session metadata and supports the legacy model method', async () => 
     cwd: '/workspace',
     meta,
   })
-  await client.setLegacySessionModel('session-one', 'claude-sonnet')
-
   assert.equal(session.meta, meta)
-  assert.deepEqual(calls.at(-1), [
-    'session/set_model',
-    {
-      sessionId: 'session-one',
-      modelId: 'claude-sonnet',
-    },
-  ])
+  assert.deepEqual(calls.at(-1)[0], 'session/new')
 })
 
 test('rejects an MCP transport the Agent did not advertise', async () => {

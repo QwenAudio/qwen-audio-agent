@@ -109,7 +109,6 @@ if (isMain) {
   const files = new Set(packages[0].files.map(file => file.path))
   const required = [
     'cli/bin/qwenaudio.mjs',
-    'config/codebuddy/workspace/.codebuddy/models.json',
     'examples/backend-adapter/README.md',
     'examples/backend-adapter/in-memory-backend.mjs',
     'examples/custom-conversation-client/README.md',

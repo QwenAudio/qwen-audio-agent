@@ -37,15 +37,6 @@ class FakeWebSocket extends EventEmitter {
         ],
       }
     }
-    if (request.method === 'sessions.patch') {
-      const [modelProvider, ...modelParts] = request.params.model.split('/')
-      payload = {
-        resolved: {
-          modelProvider,
-          model: modelParts.join('/'),
-        },
-      }
-    }
     queueMicrotask(() => this.emit('message', JSON.stringify({
       type: 'res',
       id: request.id,
@@ -121,26 +112,5 @@ test('cancels an OpenClaw child by run and Session identity', async () => {
   assert.deepEqual(abort.params, {
     runId: 'run-two',
     sessionKey: 'agent:child:two',
-  })
-})
-
-test('sets and verifies an OpenClaw Session model through Gateway RPC', async () => {
-  FakeWebSocket.requests = []
-  const adapter = new OpenClawAcpDelegationAdapter({
-    baseUrl: 'http://127.0.0.1:18789',
-    WebSocketImpl: FakeWebSocket,
-  })
-
-  await adapter.setSessionModel({
-    sessionKey: 'agent:voice:coordinator',
-    model: 'bailian/qwen3.7-plus',
-  })
-
-  const patch = FakeWebSocket.requests.find(item => (
-    item.method === 'sessions.patch'
-  ))
-  assert.deepEqual(patch.params, {
-    key: 'agent:voice:coordinator',
-    model: 'bailian/qwen3.7-plus',
   })
 })

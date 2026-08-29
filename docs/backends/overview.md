@@ -109,5 +109,5 @@ qwenaudio gateway uninstall
 
 The background service re-reads `config.env` on every startup; after modifying configuration, run `gateway restart` to apply changes.
 
-For advanced configuration of each backend (executable paths, working directories, model overrides, etc.), see
+For advanced configuration of each backend (executable paths, working directories, standard ACP model overrides, etc.), see
 [Configuration Guide](../configuration.md).

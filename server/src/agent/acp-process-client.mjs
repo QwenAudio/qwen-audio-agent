@@ -627,17 +627,6 @@ export class AcpProcessClient {
     )
   }
 
-  async setLegacySessionModel(sessionId, modelId) {
-    return this.request(
-      'session/set_model',
-      {
-        sessionId: String(sessionId),
-        modelId: String(modelId),
-      },
-      { timeoutMs: 15_000 },
-    )
-  }
-
   async closeSession(sessionId) {
     await this.start()
     if (!this.capabilities.sessionCapabilities?.close) {

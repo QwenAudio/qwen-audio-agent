@@ -10,6 +10,7 @@ test('computer-use MCP server resolves as stdio descriptor by default', () => {
   const descriptor = computerUseMcpServer({})
   assert.ok(descriptor, 'expected descriptor when package is installed')
   assert.equal(descriptor.name, 'open-computer-use')
+  assert.equal(descriptor.type, 'stdio')
   assert.equal(descriptor.command, process.execPath)
   assert.equal(descriptor.args.length, 2)
   assert.match(descriptor.args[0], /open-computer-use/)

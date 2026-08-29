@@ -91,9 +91,10 @@ OpenCode 和 OpenClaw 在以上配置下可以自动下载兼容版本并配置�
 一键启动。若未指定后台模型，则优先使用用户已经安装和配置的 Agent，不覆盖其
 模型、Provider、工具、MCP、Skill 和认证。其他后台暂时需要用户自行安装配置。
 
-这是 qwen-audio-agent 唯一的后台模型配置入口。Gateway 会把该值映射为所选后台
-使用的模型标识；模型 ID 仍由各 Agent 定义，并不由 ACP 统一命名。后台自身的
-原生模型环境变量可以继续由后台读取，但 Gateway 不会把它们解释为模型覆盖请求。
+这是 qwen-audio-agent 唯一的后台 Session 模型覆盖入口。模型 ID 是后台通过 ACP
+声明的不透明值，Gateway 不会猜测或改写它。后台自身的原生模型环境变量仍可由后台
+读取，但 Gateway 不会把它们解释为 Session 模型覆盖请求。OpenCode/OpenClaw
+一键托管使用同一值初始化独立的百炼配置，属于启动前部署，不属于 ACP Session 覆盖。
 
 未指定模型时，Gateway 不传模型，也不猜测默认值：新建 Session 的模型完全由
 后台 Agent 根据用户配置选择，恢复 Session 则保留其原有模型。历史 Session
@@ -104,7 +105,8 @@ Gateway 不会擅自重置。
 从 ACP `configOptions` 中按 `category: model` 发现模型选项，并通过
 `session/set_config_option` 设置；如果 Agent 没有提供模型配置、目标模型不在
 可选清单中、调用失败或返回结果无法确认生效，当前请求会明确失败，不会静默换用
-其他模型。未设置 `QWEN_AUDIO_AGENT_BACKEND_MODEL` 时完全不调用模型设置接口。
+其他模型。Gateway 不使用 `session/set_model`、后台私有 RPC、启动参数或生成配置文件
+模拟 Session 覆盖。未设置 `QWEN_AUDIO_AGENT_BACKEND_MODEL` 时完全不调用模型设置接口。
 
 本地身份密钥由程序首次启动时自动生成，保存在同一配置目录的 `state.env`，
 文件权限为仅当前用户可读写。

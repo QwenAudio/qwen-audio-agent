@@ -95,6 +95,9 @@ export const openClawBackendDriver = {
       externalMcp: false,
       sessionMcp: false,
       nativeDelegation: true,
+      // Owned instances are provisioned before ACP starts. External instances
+      // must advertise the standard ACP model option for Session overrides.
+      sessionModelConfiguration: ownership !== 'owned',
       backendUi: true,
       sanitizeProcessOutput,
       formatRequestError,

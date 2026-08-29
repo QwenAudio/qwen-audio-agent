@@ -30,7 +30,8 @@ const USER_CONFIG_TEMPLATE = [
   '# 权限模式：native（后台自行询问）或 full（最高权限；仅支持安全映射的后端）',
   '# Pi 没有权限审批机制，无论配置什么都始终生效 full',
   '# QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native',
-  '# 可选：显式覆盖后台模型；留空时使用 Agent 原有模型',
+  '# 可选：通过 ACP 标准覆盖 Session 模型；OpenCode/OpenClaw 托管初始化也会使用',
+  '# 留空时完全沿用 Agent 原有模型；后台未声明 ACP 模型选项时显式覆盖会失败',
   '# QWEN_AUDIO_AGENT_BACKEND_MODEL=',
   '# 可选：QWEN_AUDIO_AGENT_BACKEND_AGENT=协调 Agent ID',
   '# Kimi Code 可复用原生登录，或设置官方 KIMI_MODEL_* 临时模型变量',
@@ -301,98 +302,6 @@ function resolveBackendWorkspaces(env, root, configDirectory) {
     }))
 }
 
-function codeBuddyModelName(env) {
-  const configured = String(
-    env.QWEN_AUDIO_AGENT_BACKEND_MODEL || '',
-  ).trim()
-  const separator = configured.indexOf('/')
-  return separator >= 0 ? configured.slice(separator + 1) : configured
-}
-
-function codeBuddyTemplateContent(templatePath, model) {
-  const template = JSON.parse(readFileSync(templatePath, 'utf8'))
-  const defaultModel = String(template.models?.[0]?.id || '').trim()
-  if (!defaultModel) {
-    throw new Error(`CodeBuddy 模型模板缺少默认模型：${templatePath}`)
-  }
-  template.models = template.models.map(entry => (
-    entry.id === defaultModel
-      ? {
-          ...entry,
-          id: model,
-          ...(entry.name ? {
-            name: model === defaultModel ? entry.name : model,
-          } : {}),
-        }
-      : entry
-  ))
-  if (Array.isArray(template.availableModels)) {
-    template.availableModels = template.availableModels.map(id => (
-      id === defaultModel ? model : id
-    ))
-  }
-  return `${JSON.stringify(template, null, 2)}\n`
-}
-
-function ensureCodeBuddyTemplate(templatePath, targetPath, env) {
-  mkdirSync(dirname(targetPath), { recursive: true, mode: 0o700 })
-  const model = codeBuddyModelName(env)
-  if (!model) {
-    let current
-    try {
-      current = readFileSync(targetPath, 'utf8')
-    } catch (error) {
-      if (error.code === 'ENOENT') return null
-      throw error
-    }
-    try {
-      const currentModel = String(
-        JSON.parse(current).models?.[0]?.id || '',
-      ).trim()
-      if (
-        currentModel
-        && current === codeBuddyTemplateContent(templatePath, currentModel)
-      ) {
-        unlinkSync(targetPath)
-      }
-    } catch {
-      // Preserve malformed or manually edited user configuration.
-    }
-    return null
-  }
-  const desired = codeBuddyTemplateContent(templatePath, model)
-  try {
-    writeFileSync(targetPath, desired, {
-      encoding: 'utf8',
-      flag: 'wx',
-      mode: 0o600,
-    })
-  } catch (error) {
-    if (error.code !== 'EEXIST') throw error
-    const current = readFileSync(targetPath, 'utf8')
-    let generated = false
-    try {
-      const currentModel = String(
-        JSON.parse(current).models?.[0]?.id || '',
-      ).trim()
-      generated = Boolean(currentModel) && current === codeBuddyTemplateContent(
-        templatePath,
-        currentModel,
-      )
-    } catch {
-      // Preserve malformed or manually edited user configuration.
-    }
-    if (generated && current !== desired) {
-      writeFileSync(targetPath, desired, {
-        encoding: 'utf8',
-        mode: 0o600,
-      })
-    }
-  }
-  chmodSync(targetPath, 0o600)
-  return targetPath
-}
-
 function migratePrivateFile(legacyPath, targetPath) {
   try {
     lstatSync(targetPath)
@@ -510,13 +419,6 @@ export function loadRuntimeEnvironment({
         mkdirSync(entry.directory, { recursive: true, mode: 0o700 })
       }
       env[entry.environment] = entry.directory
-    }
-    if (backendWorkspaces.codebuddy?.managed) {
-      ensureCodeBuddyTemplate(
-        resolve(root, 'config/codebuddy/workspace/.codebuddy/models.json'),
-        resolve(codeBuddyWorkspace, '.codebuddy/models.json'),
-        env,
-      )
     }
     mkdirSync(openClawStateDirectory, { recursive: true, mode: 0o700 })
     env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR = openClawStateDirectory

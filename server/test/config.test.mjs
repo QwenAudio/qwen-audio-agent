@@ -127,7 +127,7 @@ test('shares one default workspace across additional ACP backends', () => {
   }
 })
 
-test('maps one backend model name to each managed backend provider', () => {
+test('maps managed provider IDs while preserving standard ACP model IDs', () => {
   assert.deepEqual(resolveBackendModels({
     QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen3.7-plus',
   }), {
@@ -209,6 +209,19 @@ test('uses only the unified backend model override', () => {
   })
 })
 
+test('preserves opaque ACP model IDs outside managed provisioning', () => {
+  const models = resolveBackendModels({
+    QWEN_AUDIO_AGENT_BACKEND_MODEL: 'provider/model-id',
+  })
+  assert.equal(models.openCode, 'alibaba-cn/model-id')
+  assert.equal(models.openClaw, 'bailian/model-id')
+  for (const backend of [
+    'qoder', 'qwen', 'kimi', 'hermes', 'codeBuddy', 'codex', 'claude', 'pi', 'acp',
+  ]) {
+    assert.equal(models[backend], 'provider/model-id')
+  }
+})
+
 test('uses a DeepSeek-specific model without leaking unrelated overrides', () => {
   assert.equal(resolveBackendModels({
     DEEPSEEK_HARNESS_MODEL: 'deepseek-v4-flash',
@@ -216,7 +229,7 @@ test('uses a DeepSeek-specific model without leaking unrelated overrides', () =>
   }).deepSeekHarness, 'deepseek-v4-flash')
   assert.equal(resolveBackendModels({
     QWEN_AUDIO_AGENT_BACKEND_MODEL: 'deepseek-v4-pro',
-  }).deepSeekHarness, 'deepseek-v4-pro')
+  }).deepSeekHarness, '')
 })
 
 test('changes the realtime configuration signature when only the model changes', () => {

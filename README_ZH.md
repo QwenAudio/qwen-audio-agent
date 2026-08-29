@@ -130,7 +130,7 @@ DASHSCOPE_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # 后台Agent：可选，不设置或设置为 none 时，启动仅前台模式
 AGENT_PROTOCOL=openclaw
-# 后台模型：可为空，留空则沿用 Agent 自身的用户配置
+# 后台模型：可为空；显式设置通过 ACP 标准覆盖，留空沿用 Agent 配置
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 

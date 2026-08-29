@@ -173,6 +173,10 @@ qwen-audio-agent Gateway 关闭。
 OpenClaw 配置。连接外部 Gateway 时，应同时设置 `OPENCLAW_GATEWAY_TOKEN`（或
 `OPENCLAW_GATEWAY_TOKEN_FILE`）。
 
+上述模型值只用于本机托管实例的启动前初始化。连接外部 OpenClaw 时，Session
+模型覆盖必须由其 ACP bridge 通过标准 `configOptions` 声明；Gateway 不再调用
+OpenClaw 私有 `sessions.patch` 接口修改模型。
+
 OpenCode：Gateway 通过 `opencode acp` 与它交互，并管理用于打开原生 Session
 界面的本地服务。没有兼容安装时会自动使用固定 npm 包，用户不需要另行安装或
 启动服务。`OPENCODE_BASE_URL` 是该本地 Session UI 服务的地址，并不是可供
@@ -324,9 +328,10 @@ AGENT_PROTOCOL=codebuddy
 QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
 ```
 
-默认直接使用 CodeBuddy 已有的模型配置。只有显式设置
-`QWEN_AUDIO_AGENT_BACKEND_MODEL` 时，协调工作区才会生成项目级
-`.codebuddy/models.json`，通过环境变量读取指定的模型与地址。高级配置：
+默认直接使用 CodeBuddy 已有的模型配置。显式设置
+`QWEN_AUDIO_AGENT_BACKEND_MODEL` 时，只会在 CodeBuddy ACP 声明标准模型选项后
+通过 `session/set_config_option` 覆盖；Gateway 不传 `--model`，也不生成项目级
+`.codebuddy/models.json`。高级配置：
 
 ```dotenv
 CODEBUDDY_BIN=
@@ -334,9 +339,8 @@ CODEBUDDY_WORKSPACE=
 CODEBUDDY_MODEL_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
 ```
 
-取消模型覆盖后，Gateway 会移除自己生成的 `.codebuddy/models.json`，恢复
-CodeBuddy 原有模型；用户手动修改的文件始终保留。启用覆盖时，
-`QWEN_AUDIO_AGENT_BACKEND_MODEL` 的变化会自动同步到系统生成的文件。
+`CODEBUDDY_MODEL_URL` 是 CodeBuddy 自身的 Provider 地址，不代表 Session 模型已经
+切换；模型是否生效仍以 ACP 返回的 `configOptions` 为准。
 
 ### Codex
 
@@ -350,9 +354,10 @@ AGENT_PROTOCOL=codex
 QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
 ```
 
-默认复用用户的 `~/.codex`、登录状态和模型。只有显式设置
-`QWEN_AUDIO_AGENT_BACKEND_MODEL` 时才覆盖模型；`CODEX_BASE_URL` 只用于配置
-自定义模型服务地址。两者都不会修改用户配置文件。高级配置：
+默认复用用户的 `~/.codex`、登录状态和模型。显式设置
+`QWEN_AUDIO_AGENT_BACKEND_MODEL` 时，只通过 ACP 标准模型选项覆盖 Session；
+`CODEX_BASE_URL` 只配置自定义 Provider 地址，不再向 `CODEX_CONFIG` 写入模型。
+两者都不会修改用户配置文件。高级配置：
 
 ```dotenv
 CODEX_ACP_BIN=
@@ -473,4 +478,3 @@ OpenClaw 的执行授权同时受 exec approvals、elevated 和执行 host 等�
 无法由一个统一开关安全、完整地表达；选择 `full` 时 Gateway 会明确拒绝启动，
 需要按 OpenClaw 自身方式单独配置。最高权限会放大误操作风险，只应在可信项目和
 可信提示词环境中启用。
-

@@ -18,7 +18,7 @@ qwenaudio config
 DASHSCOPE_API_KEY=your-key
 ```
 
-需要执行后台任务时，再选择后台 Agent 并指定后台模型：
+需要执行后台任务时，再选择后台 Agent；模型覆盖是可选的：
 
 ```dotenv
 DASHSCOPE_API_KEY=your-key
@@ -26,7 +26,7 @@ DASHSCOPE_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # 后台 Agent：留空或设为 none 时启动仅前台模式
 AGENT_PROTOCOL=openclaw
-# 后台模型：留空则完全由 Agent 使用自身配置选择
+# 后台模型：显式设置通过 ACP 标准覆盖；留空沿用 Agent 配置
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 

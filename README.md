@@ -138,7 +138,7 @@ DASHSCOPE_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # Backend Agent: optional, leave empty or set to none for frontend-only mode
 AGENT_PROTOCOL=openclaw
-# Backend model: can be empty; if empty, uses the Agent's own user config
+# Backend model: optional; explicit values use standard ACP, empty reuses Agent config
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 

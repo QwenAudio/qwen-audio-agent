@@ -85,16 +85,15 @@ export function resolveBackendModels(env = process.env) {
     common,
     openCode: common ? `alibaba-cn/${name}` : '',
     openClaw: common ? `bailian/${name}` : '',
-    qoder: name,
-    qwen: name,
+    qoder: common,
+    qwen: common,
     kimi: common,
     hermes: common,
-    codeBuddy: name,
-    codex: name,
+    codeBuddy: common,
+    codex: common,
     claude: common,
     deepSeekHarness: String(
-      env.DEEPSEEK_HARNESS_MODEL
-      || (name.startsWith('deepseek-') ? name : ''),
+      env.DEEPSEEK_HARNESS_MODEL || '',
     ).trim(),
     pi: common,
     acp: common,
@@ -282,7 +281,9 @@ export const config = {
         process.env.OPENCLAW_GATEWAY_TOKEN_FILE
         || resolve(runtimeEnvironment.openClawStateDirectory, 'gateway-token')
       ),
-      model: backendModels.openClaw,
+      model: backendOwnership === 'owned'
+        ? backendModels.openClaw
+        : backendModels.common,
       directory: resolveBackendWorkspace('openclaw'),
       cliPath: String(process.env.OPENCLAW_ACP_BIN || '').trim(),
       coordinatorAgent: (
@@ -322,12 +323,7 @@ export const config = {
     codebuddy: {
       model: String(backendModels.codeBuddy).trim(),
       modelUrl: (
-        process.env.CODEBUDDY_MODEL_URL
-        || (backendModels.common ? (
-          process.env.DASHSCOPE_WORKSPACE_ID
-            ? `https://${process.env.DASHSCOPE_WORKSPACE_ID}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions`
-            : 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
-        ) : '')
+        process.env.CODEBUDDY_MODEL_URL || ''
       ),
       directory: resolveBackendWorkspace('codebuddy'),
       cliPath: String(process.env.CODEBUDDY_BIN || '').trim(),
@@ -335,12 +331,7 @@ export const config = {
     codex: {
       model: String(backendModels.codex).trim(),
       modelUrl: (
-        process.env.CODEX_BASE_URL
-        || (backendModels.common ? (
-          process.env.DASHSCOPE_WORKSPACE_ID
-            ? `https://${process.env.DASHSCOPE_WORKSPACE_ID}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`
-            : 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-        ) : '')
+        process.env.CODEX_BASE_URL || ''
       ).replace(/\/+$/, ''),
       directory: resolveBackendWorkspace('codex'),
       cliPath: String(process.env.CODEX_ACP_BIN || '').trim(),

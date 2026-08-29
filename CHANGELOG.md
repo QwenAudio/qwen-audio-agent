@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
+  `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
+  模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。
 - 修复内置 `open-computer-use` MCP 缺少 `stdio` 传输类型，导致 Kimi Code 等严格
   校验 ACP MCP 描述的后台无法创建 Session 的问题。
 - 新增 Pi 后台支持：通过社区 `pi-acp` 适配器接入，并支持一键安装。Pi 没有

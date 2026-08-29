@@ -50,7 +50,7 @@ export const deepSeekHarnessBackendDriver = {
       nativeDelegation: false,
       delegation: false,
       nativeSessionHistory: false,
-      processModelConfiguration: true,
+      sessionModelConfiguration: false,
       backendUi: false,
       sessionInstructions: [
         'DeepSeek Harness ACP does not expose project Session management to',

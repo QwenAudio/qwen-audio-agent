@@ -27,6 +27,7 @@ const ENGLISH = {
   '重新检测本机已安装的后台 Agent': 'Detect installed backend Agents again',
   '刷新': 'Refresh',
   '后台模型': 'Backend model',
+  '留空沿用 Agent 配置': 'Leave blank to use the Agent configuration',
   '留空使用默认模型': 'Leave blank to use the default model',
   '连接方式': 'Connection',
   '由应用管理': 'Managed by app',

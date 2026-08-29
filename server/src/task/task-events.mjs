@@ -13,6 +13,8 @@ export const TaskDomainEvent = Object.freeze({
   CANCELLED: 'task.cancelled',
   PERMISSION_REQUESTED: 'task.permission.requested',
   PERMISSION_RESOLVED: 'task.permission.resolved',
+  INPUT_REQUESTED: 'task.input.requested',
+  INPUT_RESOLVED: 'task.input.resolved',
   NOTIFICATION_PENDING: 'task.notification.pending',
   NOTIFICATION_DELIVERED: 'task.notification.delivered',
 })

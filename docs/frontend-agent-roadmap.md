@@ -15,7 +15,7 @@
 
 ```
 spawn_thinking / schedule_reminder / cancel_agent_task / get_agent_task_status
-get_current_time / memory / notes / respond_agent_permission
+get_current_time / memory / notes / respond_permission
 ```
 
 （另有 `enter_sleep` 仅在客户端声明 `sleeping` 状态时附加，不属于基础工具集。）
@@ -144,7 +144,7 @@ control query（排在 running turn 之后、普通队列之前）已验证该�
 
 1. 前台永不新增多步编排/subagent/Session 选择/执行策略选择能力
 2. 需要权限确认的写操作执行体只在后台；前台仅转述意图
-   （`respond_agent_permission` 模式已正确，保持）
+   （`respond_permission` 统一确认模式已正确，保持）
 3. 双工语音全程可打断；后台排队/执行不阻塞对话
 4. `spawn_thinking` 语义不变：objective 是意图交接，不是执行计划
 

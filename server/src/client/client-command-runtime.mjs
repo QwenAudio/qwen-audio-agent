@@ -41,6 +41,7 @@ export class GatewayClientCommandRuntime {
     backendRuntime,
     conversationHistory,
     respondAuthorization,
+    respondInput,
     permissionPolicy,
     logger = null,
   } = {}) {
@@ -51,6 +52,7 @@ export class GatewayClientCommandRuntime {
     this.backendRuntime = backendRuntime
     this.conversationHistory = conversationHistory
     this.respondAuthorization = respondAuthorization
+    this.respondInput = respondInput
     this.permissionPolicy = permissionPolicy
     this.logger = logger
   }
@@ -88,6 +90,12 @@ export class GatewayClientCommandRuntime {
           type: GatewayClientProtocolEvent.PERMISSION_RESPOND_RESULT,
           ...common,
           permission: await this.respondPermission(message, context),
+        }
+      case GatewayClientProtocolEvent.INPUT_RESPOND:
+        return {
+          type: GatewayClientProtocolEvent.INPUT_RESPOND_RESULT,
+          ...common,
+          input: await this.respondToInput(message, context),
         }
       case GatewayClientProtocolEvent.CONVERSATION_HISTORY:
         return {
@@ -214,6 +222,25 @@ export class GatewayClientCommandRuntime {
       }
       throw error
     }
+  }
+
+  async respondToInput(message, { ownerId } = {}) {
+    if (!this.respondInput) {
+      throw new RuntimeCommandError('input_not_found', 'input runtime unavailable')
+    }
+    const task = this.taskManager.get(clean(message.task_id), { ownerId })
+    if (
+      !task
+      || task.inputRequest?.id !== clean(message.input_request_id)
+      || task.inputRequest.status !== 'pending'
+    ) {
+      throw new RuntimeCommandError('input_not_found', 'input request not found')
+    }
+    return this.respondInput(task.id, task.inputRequest.id, {
+      action: message.action,
+      text: message.text,
+      values: message.values,
+    }, { ownerId })
   }
 
   history(message = {}, { ownerId, sessionId = 'main' } = {}) {

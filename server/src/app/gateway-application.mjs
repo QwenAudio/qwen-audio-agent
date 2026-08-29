@@ -489,6 +489,9 @@ const runtimeCommands = clientCommandRuntime || new GatewayClientCommandRuntime(
   respondAuthorization: (taskId, id, decision, options) => (
     agent.respondAuthorization(taskId, id, decision, options)
   ),
+  respondInput: (taskId, id, response, options) => (
+    agent.respondInput(taskId, id, response, options)
+  ),
   permissionPolicy,
   logger,
 })
@@ -938,6 +941,9 @@ realtimeGateway = attachRealtimeGateway(server, {
   backendAvailability,
   respondAuthorization: (taskId, id, decision, options) => (
     agent.respondAuthorization(taskId, id, decision, options)
+  ),
+  respondInput: (taskId, id, response, options) => (
+    agent.respondInput(taskId, id, response, options)
   ),
   permissionPolicy,
   inputAssets: inputAssetRegistry,

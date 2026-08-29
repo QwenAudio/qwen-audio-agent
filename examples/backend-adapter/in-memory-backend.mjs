@@ -125,6 +125,10 @@ export class InMemoryBackendAdapter {
     throw new Error('Example backend does not support authorization requests')
   }
 
+  async respondInput() {
+    throw new Error('Example backend does not support input requests')
+  }
+
   subscribe(listener) {
     if (typeof listener !== 'function') {
       throw new TypeError('Backend event listener must be a function')

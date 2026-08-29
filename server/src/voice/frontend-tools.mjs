@@ -24,9 +24,10 @@ export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
 export const GET_CURRENT_TIME_TOOL_NAME = 'get_current_time'
 export const MEMORY_TOOL_NAME = 'memory'
 export const NOTES_TOOL_NAME = 'notes'
-export const RESPOND_AGENT_PERMISSION_TOOL_NAME = 'respond_agent_permission'
-export const BACKEND_PERMISSION_RESPONSE_CAPABILITY = 'backend.permission.respond'
-export const RESPOND_FRONTEND_TOOL_PERMISSION_NAME = 'respond_frontend_tool_permission'
+export const RESPOND_PERMISSION_TOOL_NAME = 'respond_permission'
+export const PERMISSION_RESPONSE_CAPABILITY = FRONTEND_TOOL_APPROVAL_CAPABILITY
+export const RESPOND_AGENT_INPUT_TOOL_NAME = 'respond_agent_input'
+export const BACKEND_INPUT_RESPONSE_CAPABILITY = 'backend.input.respond'
 export const ENTER_SLEEP_TOOL_NAME = 'enter_sleep'
 export const WEB_SEARCH_TOOL_NAME = 'web_search'
 export const FETCH_URL_TOOL_NAME = 'fetch_url'
@@ -230,49 +231,62 @@ const notesTool = {
   },
 }
 
-const respondAgentPermissionTool = {
+const respondPermissionTool = {
   type: 'function',
   function: {
-    name: RESPOND_AGENT_PERMISSION_TOOL_NAME,
-    description: '回复当前正在等待用户决定的后台权限请求。结合刚提出的具体操作和用户本轮自然表达判断，不要依赖固定关键词：普通的肯定表达表示仅允许本次，调用 once；用户明确表示以后都允许、本会话不再询问时调用 always；明确拒绝时调用 reject；意思不明确时不要调用并继续询问。不得要求用户复述固定口令。',
+    name: RESPOND_PERMISSION_TOOL_NAME,
+    description: '回复当前正在等待用户决定的权限请求。结合刚提出的具体操作、请求允许的选项和用户本轮自然表达判断，不要依赖固定关键词：普通肯定表达选择 once；仅当请求允许且用户明确表示本会话以后都允许时选择 always；明确拒绝时选择 reject；意思不明确时不要调用并继续询问。不得猜测权限来源、代替用户决定或要求固定口令。',
     parameters: {
       type: 'object',
       properties: {
+        permission_id: {
+          type: 'string',
+          description: '待确认权限请求的 ID，必须来自 Gateway 提供的当前权限请求。',
+        },
         task_id: {
           type: 'string',
-          description: '等待授权的工作 ID，必须来自当前对话中的后台权限请求。',
+          description: '权限请求关联的工作 ID；仅当 Gateway 在请求中提供时原样传入。',
         },
         decision: {
           type: 'string',
           enum: ['once', 'always', 'reject'],
-          description: 'once 仅允许当前操作；always 允许当前操作，并由 Gateway 在本次前台会话中自动允许后续权限请求；reject 仅拒绝当前操作。',
+          description: 'once 仅允许当前操作；always 仅在请求明确允许时表示本会话后续同类请求也允许；reject 拒绝当前操作。',
         },
       },
-      required: ['task_id', 'decision'],
+      required: ['permission_id', 'decision'],
       additionalProperties: false,
     },
   },
 }
 
-const respondFrontendToolPermission = {
+const respondAgentInputTool = {
   type: 'function',
   function: {
-    name: RESPOND_FRONTEND_TOOL_PERMISSION_NAME,
-    description: '回复当前正在等待用户决定的前台外部工具执行请求。结合刚提出的具体操作和用户本轮自然表达判断允许或拒绝；不要依赖固定关键词，也不要代替用户作决定。每次允许只执行当前这一项操作，不会自动允许后续请求。',
+    name: RESPOND_AGENT_INPUT_TOOL_NAME,
+    description: '把用户对当前后台追问的回答交回同一项工作，使其继续执行。仅在系统提供真实的后台输入请求时可用；不得新建工作或猜造 task_id。用户拒绝回答时选择 decline，要求取消这次交互时选择 cancel。',
     parameters: {
       type: 'object',
       properties: {
-        authorization_id: {
+        task_id: {
           type: 'string',
-          description: '待确认请求的 authorization_id，必须来自当前对话中的前台外部工具确认请求，不得猜造。',
+          description: '等待补充输入的工作 ID，必须来自当前后台输入请求。',
         },
-        decision: {
+        action: {
           type: 'string',
-          enum: ['allow', 'reject'],
-          description: 'allow 表示只允许当前操作执行一次；reject 表示拒绝当前操作。',
+          enum: ['accept', 'decline', 'cancel'],
+          description: 'accept 提交回答并继续；decline 拒绝提供；cancel 取消这次交互。',
+        },
+        text: {
+          type: 'string',
+          description: '用户要交给后台的自然语言回答。action=accept 时填写。',
+        },
+        values: {
+          type: 'object',
+          description: '可选的结构化表单回答；字段必须来自请求中提供的 schema。',
+          additionalProperties: true,
         },
       },
-      required: ['authorization_id', 'decision'],
+      required: ['task_id', 'action'],
       additionalProperties: false,
     },
   },
@@ -381,19 +395,19 @@ export const frontendToolRegistry = new FrontendToolRegistry([
     },
   },
   {
-    definition: respondAgentPermissionTool,
+    definition: respondPermissionTool,
     policy: {
       mode: 'control',
       // This is a response channel for an authoritative Gateway event, not a
       // generally available action the model may decide to initiate.
-      requiredCapabilities: [BACKEND_PERMISSION_RESPONSE_CAPABILITY],
+      requiredCapabilities: [PERMISSION_RESPONSE_CAPABILITY],
     },
   },
   {
-    definition: respondFrontendToolPermission,
+    definition: respondAgentInputTool,
     policy: {
       mode: 'control',
-      requiredCapabilities: [FRONTEND_TOOL_APPROVAL_CAPABILITY],
+      requiredCapabilities: [BACKEND_INPUT_RESPONSE_CAPABILITY],
     },
   },
   {
@@ -474,6 +488,13 @@ export const permissionResponseInstructions = [
   '自然、简短地说明操作，并询问用户是否同意授权。',
   '不要规定具体回答方式，也不要提供或要求复述固定口令。',
   '不要调用工具或朗读内部字段，等待用户回答。',
+].join(' ')
+
+export const inputRequestResponseInstructions = [
+  '这是同一项后台工作为继续执行而提出的补充问题，不是最终结果，也不是新任务。',
+  '自然、简短地转达问题并等待用户回答；不要调用 spawn_thinking。',
+  '用户回答后调用 respond_agent_input，把回答交回同一项工作。',
+  '不要朗读协议字段或工作 ID，也不要把等待输入说成工作已经完成。',
 ].join(' ')
 
 export function buildFrontendInstructions(agentContext = {}) {

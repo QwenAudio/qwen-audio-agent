@@ -106,3 +106,24 @@ test('projects pending authorization as the public auth_required state', () => {
   assert.equal(projected.workState, 'auth_required')
   assert.equal(projected.authorization.taskId, 'work-auth')
 })
+
+test('projects a backend question without completing the active task', () => {
+  const projected = publicTask({
+    id: 'task_3',
+    status: TaskStatus.RUNNING,
+    objective: '生成报告',
+    createdAt: 1,
+    activity: [],
+    inputRequest: {
+      id: 'input_1',
+      status: 'pending',
+      kind: 'input',
+      mode: 'text',
+      prompt: '报告使用中文还是英文？',
+      createdAt: 2,
+    },
+  })
+  assert.equal(projected.workState, 'input_required')
+  assert.equal(projected.status, TaskStatus.RUNNING)
+  assert.equal(projected.inputRequest.taskId, 'task_3')
+})

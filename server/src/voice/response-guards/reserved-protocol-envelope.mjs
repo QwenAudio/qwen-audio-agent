@@ -2,7 +2,7 @@
 // consume them as context, but must never manufacture them as assistant output.
 // Keep this list narrow: ordinary XML-like text is valid conversational content.
 export const GATEWAY_RESERVED_ENVELOPES = Object.freeze([
-  'backend_permission_request',
+  'permission_request',
   'background_work_progress',
   'restored_context',
 ])

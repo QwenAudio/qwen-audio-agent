@@ -11,6 +11,8 @@ export const BackendEventType = Object.freeze({
   ARTIFACT: 'backend.artifact',
   AUTHORIZATION_REQUESTED: 'backend.permission.requested',
   AUTHORIZATION_RESOLVED: 'backend.permission.resolved',
+  INPUT_REQUESTED: 'backend.input.requested',
+  INPUT_RESOLVED: 'backend.input.resolved',
   DELEGATED: 'backend.delegated',
   DELEGATION_COMPLETED: 'backend.delegation.completed',
 })

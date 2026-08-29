@@ -15,7 +15,7 @@ import {
 } from '../../examples/backend-adapter/in-memory-backend.mjs'
 
 test('exports one stable Backend Adapter SDK entry point', () => {
-  assert.equal(BACKEND_ADAPTER_SDK_VERSION, '2.0.0')
+  assert.equal(BACKEND_ADAPTER_SDK_VERSION, '3.0.0')
   assert.equal(BackendEventType.MESSAGE, 'backend.message')
   const backend = createInMemoryBackend()
   assert.equal(defineBackendAdapter(backend), backend)

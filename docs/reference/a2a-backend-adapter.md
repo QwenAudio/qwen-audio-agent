@@ -76,13 +76,14 @@ while a submission is active and remote IDs do not cross `BackendPort`.
 | `COMPLETED` | completed outcome |
 | `FAILED` / `REJECTED` | failed outcome |
 | `CANCELED` | cancelled outcome |
-| `INPUT_REQUIRED` / `AUTH_REQUIRED` | explicit unsupported-interaction error |
+| `INPUT_REQUIRED` | `input_required`; wait for `respondInput` and continue the same remote Task |
+| `AUTH_REQUIRED` | `auth_required`; surface the remote request and continue the same remote Task after input |
 
-A2A does not assign universal semantics to an authorization decision after
-`AUTH_REQUIRED`; agents define that through their own flow or an extension.
-The adapter therefore does not guess credentials or approval behavior. A
-future authorization extension can be implemented inside this adapter without
-changing Task or frontend contracts.
+A2A does not assign universal credential or approval semantics after
+`AUTH_REQUIRED`. The adapter therefore exposes the Agent's status message as a
+protocol-neutral input request; it never guesses credentials. The answer is
+sent as a new user Message carrying the same remote Task and Context IDs, while
+the Gateway keeps the original Task active.
 
 ## Options
 

@@ -73,8 +73,10 @@ memory
 notes
 ```
 
-The Gateway temporarily adds `respond_agent_permission` only while it owns a
-real pending backend permission request, and removes it after resolution.
+The Gateway exposes one `respond_permission` tool for pending backend
+permissions and frontend external-tool approvals. The model answers the
+permission request; the Gateway routes `permission_id` to the backend Task or
+the frontend tool execution queue.
 
 `memory` maintains two ordinary Markdown documents through one flat interface. Each call is one
 atomic `read`, `append`, or `replace` operation. `replace` locates a unique source fragment, and
@@ -126,17 +128,18 @@ It does not have tools for:
 - selecting backend execution strategy;
 - selecting tools, Agents, or subagents.
 
-`respond_agent_permission` is the only exception to the rule that Realtime does
-not control backend execution. It may relay only an explicit current-turn user
+`respond_permission` is the only exception to the rule that Realtime does not
+control execution policy. It may relay only an explicit current-turn user
 decision for a pending, owner-scoped permission request supplied by the
 Gateway. It may understand natural affirmative or negative wording such as
 “可以” or “不允许”, but it cannot invent consent without a current-turn user
 utterance, create a request, choose a tool, or modify a backend permission
-policy. The model uses the public `task_id` to distinguish work items awaiting
-authorization; the concrete authorization ID remains inside the Gateway,
-client protocol, and adapter. Replies use `once`, `always`, or `reject`: allow only the current
-operation, allow throughout the current frontend session, or reject only the
-current operation. `always` still uses the Gateway's frontend-session policy.
+policy. The model replies with the Gateway-issued `permission_id`; backend
+requests also carry the public `task_id`. Raw backend authorization IDs and the
+permission source remain internal to the Gateway and Adapter.
+Replies use `once`, `always`, or `reject`: allow only the current operation,
+allow throughout the current frontend session, or reject only the current
+operation. `always` still uses the Gateway's frontend-session policy.
 The adapter selects the narrowest safe per-request backend option, and the
 Gateway automatically approves later requests in the same frontend session.
 This does not create a persistent backend authorization rule.

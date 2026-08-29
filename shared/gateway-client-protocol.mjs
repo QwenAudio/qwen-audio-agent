@@ -31,6 +31,8 @@ export const GatewayClientProtocolEvent = Object.freeze({
   TASK_CANCEL_RESULT: 'task.cancel.result',
   PERMISSION_RESPOND: 'permission.respond',
   PERMISSION_RESPOND_RESULT: 'permission.respond.result',
+  INPUT_RESPOND: 'task.input.respond',
+  INPUT_RESPOND_RESULT: 'task.input.respond.result',
   CONVERSATION_HISTORY: 'conversation.history',
   CONVERSATION_HISTORY_RESULT: 'conversation.history.result',
   SESSION_REPLAY: 'session.replay',
@@ -45,6 +47,7 @@ export const GatewayClientCapability = Object.freeze({
   PLAYBACK_RECEIPTS: 'playback.receipts',
   TASK_COMMANDS: 'tasks.commands',
   PERMISSION_RESPOND: 'permissions.respond',
+  INPUT_RESPOND: 'tasks.input.respond',
   CONVERSATION_HISTORY: 'conversation.history',
   CLIENT_EVENTS: 'client.events',
   CLIENT_ACTION_ENTER_SLEEP: 'client.actions.desktop.presence.enter_sleep',
@@ -71,6 +74,7 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.PLAYBACK_RECEIPTS,
   GatewayClientCapability.TASK_COMMANDS,
   GatewayClientCapability.PERMISSION_RESPOND,
+  GatewayClientCapability.INPUT_RESPOND,
   GatewayClientCapability.CONVERSATION_HISTORY,
   GatewayClientCapability.CLIENT_EVENTS,
   GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
@@ -222,6 +226,15 @@ export const GatewayPermissionRespondSchema = GatewayClientEnvelopeSchema.extend
   decision: z.enum(['once', 'always', 'reject']),
 })
 
+export const GatewayInputRespondSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.INPUT_RESPOND),
+  task_id: IdentifierSchema,
+  input_request_id: IdentifierSchema,
+  action: z.enum(['accept', 'decline', 'cancel']),
+  text: z.string().max(16_000).optional(),
+  values: z.record(z.unknown()).optional(),
+})
+
 export const GatewayConversationHistorySchema = GatewayClientEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.CONVERSATION_HISTORY),
   session_id: IdentifierSchema.optional(),
@@ -257,6 +270,11 @@ export const GatewayPermissionRespondResultSchema = GatewayServerEnvelopeSchema.
   request_event_id: IdentifierSchema,
   permission: z.unknown(),
 })
+export const GatewayInputRespondResultSchema = GatewayServerEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.INPUT_RESPOND_RESULT),
+  request_event_id: IdentifierSchema,
+  input: z.unknown(),
+})
 export const GatewayConversationHistoryResultSchema = GatewayServerEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.CONVERSATION_HISTORY_RESULT),
   request_event_id: IdentifierSchema,
@@ -280,6 +298,7 @@ const GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.TASK_LIST]: GatewayTaskListSchema,
   [GatewayClientProtocolEvent.TASK_CANCEL]: GatewayTaskCancelSchema,
   [GatewayClientProtocolEvent.PERMISSION_RESPOND]: GatewayPermissionRespondSchema,
+  [GatewayClientProtocolEvent.INPUT_RESPOND]: GatewayInputRespondSchema,
   [GatewayClientProtocolEvent.CONVERSATION_HISTORY]: GatewayConversationHistorySchema,
   [GatewayClientProtocolEvent.SESSION_REPLAY]: GatewaySessionReplaySchema,
 })
@@ -292,6 +311,7 @@ const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.TASK_LIST_RESULT]: GatewayTaskListResultSchema,
   [GatewayClientProtocolEvent.TASK_CANCEL_RESULT]: GatewayTaskCancelResultSchema,
   [GatewayClientProtocolEvent.PERMISSION_RESPOND_RESULT]: GatewayPermissionRespondResultSchema,
+  [GatewayClientProtocolEvent.INPUT_RESPOND_RESULT]: GatewayInputRespondResultSchema,
   [GatewayClientProtocolEvent.CONVERSATION_HISTORY_RESULT]: GatewayConversationHistoryResultSchema,
   [GatewayClientProtocolEvent.SESSION_REPLAY_RESULT]: GatewaySessionReplayResultSchema,
 })
@@ -304,6 +324,7 @@ const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
   [GatewayClientProtocolEvent.TASK_LIST]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.TASK_CANCEL]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.PERMISSION_RESPOND]: GatewayClientCapability.PERMISSION_RESPOND,
+  [GatewayClientProtocolEvent.INPUT_RESPOND]: GatewayClientCapability.INPUT_RESPOND,
   [GatewayClientProtocolEvent.CONVERSATION_HISTORY]: GatewayClientCapability.CONVERSATION_HISTORY,
   [GatewayClientProtocolEvent.SESSION_REPLAY]: GatewayClientCapability.SESSION_REPLAY,
 })

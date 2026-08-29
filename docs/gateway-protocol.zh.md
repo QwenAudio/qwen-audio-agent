@@ -297,6 +297,7 @@ Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client 
 | `task.get` / `task.list` | C→G | 查询一个 Task，或读取有界、可筛选的 Task 快照 |
 | `task.cancel` | C→G | 请求取消一个 Task；最终状态由后续生命周期事件报告 |
 | `permission.respond` | C→G | 处理当前等待中的授权请求 |
+| `task.input.respond` | C→G | 把用户补充输入交回同一 Task，或拒绝/取消这次交互 |
 | `conversation.history` | C→G | 读取有界、对 Client 安全的对话投影 |
 | `session.replay` | C→G | 从 sequence 游标回放符合条件的服务端推送 |
 
@@ -316,7 +317,7 @@ Gateway 发布规范化状态，Client 不需要反向推导内部状态机：
 - `gateway.*`、`voice.*`：连接和前台状态；
 - `response.*`、转写和音频事件：对话输出；
 - `task.*`：Task 生命周期、活动、Artifact 与通知状态；
-- `task.permission.*`：权限状态；
+- `task.permission.*`、`task.input.*`：权限与补充输入状态；
 - `playback.clear` 等明确的展示控制。
 
 每个公开 Task 只有一个 Gateway `task_id`。ACP Session ID、A2A 远程 Task ID 和自定义 Adapter ID 留在 `BackendPort` Adapter 内部。
@@ -342,7 +343,7 @@ Task 快照和更新使用 Gateway 自己的包装，但嵌套形状刻意与 A2
 
 状态词汇和事件生命周期由 Gateway 定义。嵌套的 `status.state`、`status.message.parts` 和 `artifacts[].parts` 便于复用 Adapter 与 UI，但不属于 A2A 原生对象。
 
-Task 进展可以推送给 Client，但不一定进入 Realtime 模型。Gateway Event Policy 只选择有意义的进展、权限、完成和失败事件进行模型投递。
+Task 进展可以推送给 Client，但不一定进入 Realtime 模型。Gateway Event Policy 只选择有意义的进展、权限、补充输入、完成和失败事件进行模型投递。`input_required` 仍是活动 Task 状态；回答会恢复同一 Task，而不是新建一项工作。
 
 ### 5.6 回执与决策
 
@@ -353,6 +354,7 @@ Task 进展可以推送给 Client，但不一定进入 Realtime 模型。Gateway
 | `playback.cancelled` | C→G | 播放被丢弃或打断 |
 | `client.action.result` | C→G | Client Action 完成或失败 |
 | `permission.respond` | C→G | 用户授权决策 |
+| `task.input.respond` | C→G | 回答后台当前追问 |
 
 `response.done` 只表示生成完成，不表示用户已经听到。确实需要可听送达确认的工作流使用播放回执。
 

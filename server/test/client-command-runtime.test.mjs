@@ -27,7 +27,7 @@ function task(overrides = {}) {
 
 function harness(overrides = {}) {
   const records = new Map([['task_1', task()]])
-  const calls = { created: [], cancelled: [], backend: [] }
+  const calls = { created: [], cancelled: [], backend: [], inputs: [] }
   const taskManager = {
     create(options) {
       calls.created.push(options)
@@ -74,6 +74,10 @@ function harness(overrides = {}) {
       messages: ({ ownerId, sessionId }) => [{ role: 'user', text: `${ownerId}:${sessionId}` }],
     },
     respondAuthorization: async () => ({ status: 'approved' }),
+    respondInput: async (...args) => {
+      calls.inputs.push(args)
+      return { status: 'accepted' }
+    },
     permissionPolicy: null,
     ...overrides,
   })
@@ -137,6 +141,33 @@ test('cancels active tasks asynchronously and rejects terminal tasks', async () 
     error => error instanceof RuntimeCommandError
       && error.code === 'task_not_cancellable',
   )
+})
+
+test('responds to a pending backend input on the same task', async () => {
+  const { runtime, records, calls } = harness()
+  records.set('task_1', task({
+    workState: 'input_required',
+    inputRequest: {
+      id: 'input-1',
+      status: 'pending',
+      prompt: '选择语言',
+    },
+  }))
+  const result = await runtime.execute({
+    type: GatewayClientProtocolEvent.INPUT_RESPOND,
+    event_id: 'evt-input-1',
+    task_id: 'task_1',
+    input_request_id: 'input-1',
+    action: 'accept',
+    text: '中文',
+  }, { ownerId: 'owner-1' })
+  assert.equal(result.type, GatewayClientProtocolEvent.INPUT_RESPOND_RESULT)
+  assert.equal(result.input.status, 'accepted')
+  assert.deepEqual(calls.inputs[0].slice(0, 3), [
+    'task_1',
+    'input-1',
+    { action: 'accept', text: '中文', values: undefined },
+  ])
 })
 
 test('applies the shared attachment safety policy to explicit Task commands', async () => {

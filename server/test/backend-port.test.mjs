@@ -22,6 +22,7 @@ test('defines the complete protocol-neutral backend boundary', () => {
     'status',
     'cancel',
     'respondAuthorization',
+    'respondInput',
     'subscribe',
     'close',
   ])

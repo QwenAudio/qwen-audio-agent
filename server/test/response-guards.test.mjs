@@ -14,7 +14,7 @@ import {
 
 test('recognises only Gateway-owned protocol envelopes', () => {
   assert.equal(containsReservedProtocolEnvelope(
-    '<backend_permission_request> task_id=task_1 </backend_permission_request>',
+    '<permission_request> permission_id=permission_1 task_id=task_1 </permission_request>',
   ), true)
   assert.equal(containsReservedProtocolEnvelope(
     '<background_work_progress>still running</background_work_progress>',
@@ -24,7 +24,7 @@ test('recognises only Gateway-owned protocol envelopes', () => {
 })
 
 test('corrects model-generated Gateway protocol but not Gateway delivery', () => {
-  const transcript = '<backend_permission_request> fake request </backend_permission_request>'
+  const transcript = '<permission_request> fake request </permission_request>'
   assert.deepEqual(evaluateResponseGuards({
     origin: 'model',
     transcript,

@@ -62,8 +62,9 @@ memory
 notes
 ```
 
-当 Gateway 确实持有待确认的后台权限请求时，才临时加入
-`respond_agent_permission`；请求处理完毕后立即移除。
+当 Gateway 存在待确认的后台权限或前台外部工具审批时，提供统一的
+`respond_permission`。模型只回答权限请求；Gateway 根据 `permission_id` 将决定路由到
+后台 Task 或前台工具执行队列。
 
 `memory` 通过一个扁平接口维护两份普通 Markdown 文档。每次调用只执行一个
 原子操作：`read`、`append` 或 `replace`；`replace` 使用唯一匹配的原文定位，
@@ -104,12 +105,12 @@ Gateway 直接读取自身持有的 Task 记录，包括 Adapter 归一化后的
 - 选择后端执行策略；
 - 选择工具、Agent 或子 Agent。
 
-`respond_agent_permission` 是实时前端不控制后端执行这一规则的唯一例外。
+`respond_permission` 是实时前端不控制执行策略这一规则的唯一例外。
 它只能转发由 Gateway 提供的、针对待处理的、owner 作用域权限请求的明确当前轮次
 用户决策。它可以理解自然的肯定或否定措辞，如"可以"或"不允许"，但不能在没有
 当前轮次用户话语的情况下虚构同意、创建请求、选择工具或修改后端权限策略。
-模型用公开 `task_id` 区分多个等待授权的工作；具体授权 ID 只在 Gateway、客户端协议
-和 Adapter 内部流转，不进入模型上下文。
+模型使用 Gateway 提供的 `permission_id` 精确回复请求；后台请求同时带有公开
+`task_id`。原始后台授权 ID 与权限来源只在 Gateway 和 Adapter 内部流转。
 回复分为 `once`、`always` 和 `reject`：分别表示仅允许当前操作、在当前前端会话中
 始终允许，以及仅拒绝当前操作。`always` 仍由 Gateway 当前前端会话的策略实现，
 Adapter 选择最窄的单次后端权限选项，

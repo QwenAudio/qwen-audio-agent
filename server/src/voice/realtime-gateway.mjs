@@ -47,7 +47,11 @@ import {
   frontendSourceToolCapabilities,
   frontendSourceToolDefinitions,
 } from '../frontend/tools/frontend-tool-source.mjs'
-import { FRONTEND_RECALL_CAPABILITY } from './frontend-tools.mjs'
+import {
+  BACKEND_PERMISSION_RESPONSE_CAPABILITY,
+  FRONTEND_RECALL_CAPABILITY,
+  permissionResponseInstructions,
+} from './frontend-tools.mjs'
 import { GatewayClientProtocolSession } from '../transport/gateway-client-protocol-session.mjs'
 import {
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
@@ -55,7 +59,6 @@ import {
   GatewayClientProtocolEvent,
 } from '../../../shared/gateway-client-protocol.mjs'
 import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
-import { permissionResponseInstructions } from './frontend-tools.mjs'
 import { RealtimeAgentDeliveryRuntime } from './realtime-agent-delivery-runtime.mjs'
 import {
   ClientActionName,
@@ -307,6 +310,9 @@ export function attachRealtimeGateway(server, {
       sessionId,
       active: true,
     })
+    const hasPendingBackendPermission = () => activeSessionTasks().some(task => (
+      task.authorization?.status === 'pending'
+    ))
     const getAgentContext = () => ({
       client: clientContext,
       frontend: {
@@ -314,6 +320,9 @@ export function attachRealtimeGateway(server, {
           ...(frontendRetrieval?.capabilities?.() || []),
           ...(frontendKnowledge?.capabilities?.() || []),
           ...frontendSourceToolCapabilities(frontendToolSources),
+          ...(hasPendingBackendPermission()
+            ? [BACKEND_PERMISSION_RESPONSE_CAPABILITY]
+            : []),
           // 会话摘要池与资料库都没启用时不暴露 recall —— 池子永远是空的，
           // 暴露它只会让模型白调一次。会话摘要本身绝不注入 instructions：
           // 它每场都在变，会让 prompt 前缀每场都变。
@@ -352,7 +361,7 @@ export function attachRealtimeGateway(server, {
         origin: 'permission',
         text: [
           '<backend_permission_request>',
-          `authorization_id=${permission.id}`,
+          `task_id=${task.id}`,
           `operation=${permission.summary}`,
           '</backend_permission_request>',
         ].join('\n'),
@@ -797,6 +806,10 @@ export function attachRealtimeGateway(server, {
         })
       }
       if (event.type === TaskDomainEvent.PERMISSION_REQUESTED) {
+        // Queue tool exposure before the permission delivery. The model can
+        // answer a real request on the next user turn, while ordinary turns
+        // cannot fabricate permission protocol state.
+        realtimeSession.updateAgentContext(getAgentContext())
         if (sleeping) {
           wakeFromSleep()
           return
@@ -804,6 +817,7 @@ export function attachRealtimeGateway(server, {
         announcePermission(task)
       }
       if (event.type === TaskDomainEvent.PERMISSION_RESOLVED) {
+        realtimeSession.updateAgentContext(getAgentContext())
         const authorizationId = event.permission?.id
         // A permission confirmation already tells the user that work resumes.
         // Drop progress queued before the decision so it cannot immediately
@@ -839,7 +853,6 @@ export function attachRealtimeGateway(server, {
         TaskDomainEvent.COMPLETED,
         TaskDomainEvent.FAILED,
       ].includes(event.type)) {
-        recordResult(task)
         claimPendingNotifications([task.id])
       }
     })

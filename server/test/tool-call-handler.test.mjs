@@ -957,7 +957,7 @@ test('does not turn a permission answer into a new background task', async () =>
 
   const output = kit.outputs.at(-1)
   assert.equal(output[1].error_code, 'permission_decision_required')
-  assert.equal(output[1].authorization_id, 'auth-one')
+  assert.equal(output[1].task_id, kit.task.id)
   assert.match(
     output[3].response.instructions,
     /respond_agent_permission/,
@@ -1330,7 +1330,7 @@ test('queries delegated status directly from the Gateway ledger', async () => {
   await manager.wait(delegated.id)
 })
 
-test('relays a realtime semantic permission decision without evidence matching', async () => {
+test('allows one realtime permission without enabling later automatic approval', async () => {
   const calls = []
   const answer = '你按刚才说的处理就成'
   const permissionPolicy = new SessionPermissionPolicy()
@@ -1350,8 +1350,8 @@ test('relays a realtime semantic permission decision without evidence matching',
     call_id: 'permission-semantic-allow',
     name: 'respond_agent_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-one',
-      decision: 'always',
+      task_id: kit.task.id,
+      decision: 'once',
     }),
   })
 
@@ -1360,14 +1360,14 @@ test('relays a realtime semantic permission decision without evidence matching',
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(calls, [{
     id: 'auth-one',
-    decision: 'always',
+    decision: 'once',
     options: { ownerId: 'owner' },
   }])
   assert.match(
     kit.outputs.at(-1)[3].response.instructions,
     /已允许，后台继续执行/,
   )
-  assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), true)
+  assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), false)
   await kit.finish()
 })
 
@@ -1388,7 +1388,7 @@ test('confirms a rejected realtime permission exactly once', async () => {
     call_id: 'permission-semantic-reject',
     name: 'respond_agent_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-one',
+      task_id: kit.task.id,
       decision: 'reject',
     }),
   })
@@ -1417,7 +1417,7 @@ test('rolls back the session policy when the permission delivery fails', async (
     call_id: 'permission-delivery-failed',
     name: 'respond_agent_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-one',
+      task_id: kit.task.id,
       decision: 'always',
     }),
   })
@@ -1481,7 +1481,7 @@ test('auto-allows later permissions in the Gateway without publishing them', asy
   )
 })
 
-test('batches concurrent backend permissions into one confirmation and one delivery each', async () => {
+test('one always decision settles every pending permission for the selected task', async () => {
   const permissionIds = ['auth-news-1', 'auth-news-2', 'auth-news-3', 'auth-news-4']
   const approvals = []
   let release
@@ -1515,23 +1515,22 @@ test('batches concurrent backend permissions into one confirmation and one deliv
   await new Promise(resolve => setImmediate(resolve))
 
   kit.transcripts.record('turn-one', '我同意')
-  const decisions = permissionIds.map((authorizationId, index) => (
-    kit.handler.handle({
-      call_id: `allow-news-${index}`,
-      response_id: 'permission-response',
-      name: 'respond_agent_permission',
-      arguments: JSON.stringify({
-        authorization_id: authorizationId,
-        decision: 'always',
-      }),
-    }, {
-      turnId: 'turn-one',
-      turnGeneration: 1,
-      responseId: 'permission-response',
-    })
-  ))
+  const taskId = kit.manager.list({ ownerId: 'owner' })[0].id
+  const decision = kit.handler.handle({
+    call_id: 'allow-news',
+    response_id: 'permission-response',
+    name: 'respond_agent_permission',
+    arguments: JSON.stringify({
+      task_id: taskId,
+      decision: 'always',
+    }),
+  }, {
+    turnId: 'turn-one',
+    turnGeneration: 1,
+    responseId: 'permission-response',
+  })
   await kit.handler.finishToolResponse('permission-response')
-  await Promise.all(decisions)
+  await decision
   await new Promise(resolve => setImmediate(resolve))
 
   assert.deepEqual(
@@ -1565,7 +1564,7 @@ test('accepts a semantic permission decision without an evidence field', async (
     call_id: 'permission-without-evidence',
     name: 'respond_agent_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-one',
+      task_id: kit.task.id,
       decision: 'always',
     }),
   })
@@ -1577,7 +1576,7 @@ test('accepts a semantic permission decision without an evidence field', async (
   await kit.finish()
 })
 
-test('rejects a permission id that is not pending on the current task', async () => {
+test('rejects a task id that has no pending permission', async () => {
   let called = false
   const answer = '照你说的来'
   const kit = await permissionHarness({
@@ -1590,13 +1589,27 @@ test('rejects a permission id that is not pending on the current task', async ()
     call_id: 'permission-wrong-id',
     name: 'respond_agent_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-other',
+      task_id: 'task-other',
       decision: 'always',
     }),
+  }, {
+    turnId: 'turn-one',
+    turnGeneration: 1,
+    responseId: 'permission-wrong-response',
   })
+  await kit.handler.finishToolResponse('permission-wrong-response')
 
   assert.equal(called, false)
   assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_not_pending')
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.match(
+    kit.ensuredResponses[0][1].response.instructions,
+    /没有真实、仍待确认的后台权限请求/,
+  )
+  assert.doesNotMatch(
+    kit.ensuredResponses[0][1].response.instructions,
+    /已允许/,
+  )
   await kit.finish()
 })
 

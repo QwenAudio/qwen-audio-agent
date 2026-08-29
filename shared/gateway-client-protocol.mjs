@@ -219,7 +219,7 @@ export const GatewayTaskCancelSchema = GatewayClientEnvelopeSchema.extend({
 export const GatewayPermissionRespondSchema = GatewayClientEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.PERMISSION_RESPOND),
   permission_id: IdentifierSchema,
-  decision: z.enum(['always', 'reject']),
+  decision: z.enum(['once', 'always', 'reject']),
 })
 
 export const GatewayConversationHistorySchema = GatewayClientEnvelopeSchema.extend({

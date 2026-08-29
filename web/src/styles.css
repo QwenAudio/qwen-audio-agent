@@ -942,6 +942,8 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
 .agent-task .task-controls {
   min-width: auto;
   flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
 }

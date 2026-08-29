@@ -25,6 +25,7 @@ export const GET_CURRENT_TIME_TOOL_NAME = 'get_current_time'
 export const MEMORY_TOOL_NAME = 'memory'
 export const NOTES_TOOL_NAME = 'notes'
 export const RESPOND_AGENT_PERMISSION_TOOL_NAME = 'respond_agent_permission'
+export const BACKEND_PERMISSION_RESPONSE_CAPABILITY = 'backend.permission.respond'
 export const RESPOND_FRONTEND_TOOL_PERMISSION_NAME = 'respond_frontend_tool_permission'
 export const ENTER_SLEEP_TOOL_NAME = 'enter_sleep'
 export const WEB_SEARCH_TOOL_NAME = 'web_search'
@@ -233,21 +234,21 @@ const respondAgentPermissionTool = {
   type: 'function',
   function: {
     name: RESPOND_AGENT_PERMISSION_TOOL_NAME,
-    description: '回复当前正在等待用户决定的后台权限请求。由你结合刚提出的具体权限问题和用户本轮自然表达，智能判断为本会话自动允许、拒绝或尚不明确；不要依赖固定关键词。用户回答“可以”“行”“好”“允许”“同意”“没问题”等自然肯定表达就是明确同意，应调用 always，不得要求复述固定口令。明确拒绝时调用 reject，不明确时不要调用并继续询问。',
+    description: '回复当前正在等待用户决定的后台权限请求。结合刚提出的具体操作和用户本轮自然表达判断，不要依赖固定关键词：普通的肯定表达表示仅允许本次，调用 once；用户明确表示以后都允许、本会话不再询问时调用 always；明确拒绝时调用 reject；意思不明确时不要调用并继续询问。不得要求用户复述固定口令。',
     parameters: {
       type: 'object',
       properties: {
-        authorization_id: {
+        task_id: {
           type: 'string',
-          description: '待确认请求的 authorization_id，必须来自当前对话中的后台权限请求，不得猜造。',
+          description: '等待授权的工作 ID，必须来自当前对话中的后台权限请求。',
         },
         decision: {
           type: 'string',
-          enum: ['always', 'reject'],
-          description: 'always 表示允许当前操作，并由 Gateway 在本次前台会话中自动允许后续权限请求；reject 表示拒绝当前操作，后续请求仍继续询问。',
+          enum: ['once', 'always', 'reject'],
+          description: 'once 仅允许当前操作；always 允许当前操作，并由 Gateway 在本次前台会话中自动允许后续权限请求；reject 仅拒绝当前操作。',
         },
       },
-      required: ['authorization_id', 'decision'],
+      required: ['task_id', 'decision'],
       additionalProperties: false,
     },
   },
@@ -379,7 +380,15 @@ export const frontendToolRegistry = new FrontendToolRegistry([
       requiredCapabilities: [FRONTEND_RECALL_CAPABILITY],
     },
   },
-  { definition: respondAgentPermissionTool, policy: { mode: 'control' } },
+  {
+    definition: respondAgentPermissionTool,
+    policy: {
+      mode: 'control',
+      // This is a response channel for an authoritative Gateway event, not a
+      // generally available action the model may decide to initiate.
+      requiredCapabilities: [BACKEND_PERMISSION_RESPONSE_CAPABILITY],
+    },
+  },
   {
     definition: respondFrontendToolPermission,
     policy: {
@@ -442,6 +451,7 @@ export const resultResponseInstructions = [
   '这是先前提交工作的最终结果，不是用户的新请求。',
   '把 result 当作事实材料，结合当前对话自然回应；可以按语境概括、合并、承接或询问必要信息，避免重复已经表达过的内容。',
   '结果上下文包含多项工作时，必须覆盖每项工作的实质结果；不得只说其中一项，也不得让过程性或状态性内容掩盖真正完成的工作。',
+  '结果若提出继续工作所需的问题、选择、确认或补充信息，只自然转达该需要；用户后续回答会作为同一工作的续办处理。',
   '开头直接说实际结果、关键发现、阻塞或必要问题，不用“好的、收到、任务完成了”等空泛承接语。',
   '屏幕上已经展示详细结果时，只说重点和查看方向，不要逐字朗读。',
   '不要朗读协议前缀、字段、执行 ID、路径、URL 或不适合口语的长内容。',

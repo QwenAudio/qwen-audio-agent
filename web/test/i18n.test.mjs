@@ -39,6 +39,8 @@ test('non-Chinese locales get English', () => {
     assert.equal(t('模型支持：{modes}', { modes: 'text' }), 'Model supports: text')
     assert.equal(t('Web 传输：{modes}', { modes: 'audio' }), 'Web transport: audio')
     assert.equal(t('已恢复为服务器默认前台'), 'Restored the server default frontend')
+    assert.equal(t('本次允许'), 'Allow once')
+    assert.equal(t('本会话始终允许'), 'Always allow in this session')
   })
 })
 

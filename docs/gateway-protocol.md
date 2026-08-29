@@ -314,6 +314,10 @@ The active Client uses the same WebSocket for runtime commands and queries. Each
 | `conversation.history` | C→G | Read the bounded, client-safe conversation projection |
 | `session.replay` | C→G | Replay eligible server pushes after a sequence cursor |
 
+`permission.respond.decision` accepts `once`, `always`, or `reject`: allow only
+the current operation, always allow during the current frontend session, or
+reject only the current operation.
+
 `task.create` carries an A2A-aligned `message.parts` value rather than a second plain-text-only objective field, so an explicit integration may submit text, file, or structured parts without importing an A2A Message object.
 
 This is the Client runtime control plane. Equivalent internal REST/SSE routes remain migration aliases until every first-party Client uses the WebSocket commands and replay path. REST remains appropriate for startup discovery, health, static configuration, and host-management operations that are not part of an active Client session.

@@ -1360,6 +1360,26 @@ test('ACP permissions expose detailed session-scoped allow and reject semantics'
     }),
     events.find(event => event.type === 'backend.permission.resolved').permission,
   )
+  const oneShot = adapter.handlePermission({
+    sessionId: 'coordinator-session',
+    toolCall: {
+      toolCallId: 'tool-once',
+      name: 'write',
+      rawInput: { path: '/tmp/one-shot' },
+    },
+    options,
+  }, {
+    session: client.sessions.get('coordinator-session'),
+  })
+  const oneShotRequest = events.filter(event => (
+    event.type === 'backend.permission.requested'
+  )).at(-1)
+  await adapter.resolveAuthorization(oneShotRequest.permission.id, 'once', {
+    ownerId: 'owner-one',
+  })
+  assert.deepEqual(await oneShot, {
+    outcome: { outcome: 'selected', optionId: 'once' },
+  })
   const repeated = adapter.handlePermission({
     sessionId: 'coordinator-session',
     toolCall: {

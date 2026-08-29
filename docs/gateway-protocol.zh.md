@@ -300,6 +300,9 @@ Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client 
 | `conversation.history` | C→G | 读取有界、对 Client 安全的对话投影 |
 | `session.replay` | C→G | 从 sequence 游标回放符合条件的服务端推送 |
 
+`permission.respond.decision` 支持 `once`、`always` 和 `reject`，分别表示
+仅允许当前操作、当前前端会话内始终允许，以及仅拒绝当前操作。
+
 `task.create` 使用与 A2A 语义对齐的 `message.parts`，而不是另设只能传纯文本的 objective 字段。这样显式集成可以提交文本、文件或结构化 Part，同时不引入 A2A Message 原生对象。
 
 这是 Client 的运行时控制面。等价的内部 REST/SSE 路由作为迁移别名保留，直到所有第一方 Client 都改用 WebSocket 命令和回放路径。REST 仍适合启动发现、健康检查、静态配置，以及不属于活动 Client Session 的 Host 管理操作。

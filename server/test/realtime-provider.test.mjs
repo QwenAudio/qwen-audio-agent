@@ -27,7 +27,6 @@ const FRONTEND_TOOL_NAMES = [
   'get_current_time',
   'memory',
   'notes',
-  'respond_agent_permission',
 ]
 
 test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
@@ -49,8 +48,11 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
     /忠实、完整且自包含地转达用户要做什么及其明确约束/,
   )
   assert.ok(spawn.function.description.trim())
+  assert.match(spawn.function.description, /用户补充信息、作出选择或确认后继续/)
   const instructions = buildFrontendInstructions()
   assert.match(instructions, /不要重复提交已经覆盖的目标/)
+  assert.match(instructions, /属于同一工作的续办/)
+  assert.match(instructions, /不要预测、模拟或代替后台提出权限请求/)
   assert.match(instructions, /duplicate.*同一目标此前已提交/)
 })
 
@@ -360,6 +362,15 @@ test('fails closed instead of ambiguously correlating two pending starts', async
 
 test('configures Qwen Audio Realtime with Smart Turn only', () => {
   const session = REALTIME_PROVIDERS.qwen.buildSession({ configured: false })
+  const permissionSession = REALTIME_PROVIDERS.qwen.buildSession({
+    configured: false,
+    agentContext: {
+      frontend: { capabilities: ['backend.permission.respond'] },
+    },
+  })
+  const permissionTool = permissionSession.tools.find(tool => (
+    tool.function.name === 'respond_agent_permission'
+  ))
 
   assert.deepEqual(session.turn_detection, { type: 'smart_turn' })
   assert.equal(session.turn_detection.threshold, undefined)
@@ -374,16 +385,16 @@ test('configures Qwen Audio Realtime with Smart Turn only', () => {
     ['objective'],
   )
   assert.deepEqual(
-    session.tools.find(tool => (
-      tool.function.name === 'respond_agent_permission'
-    )).function.parameters.required,
-    ['authorization_id', 'decision'],
+    permissionTool.function.parameters.required,
+    ['task_id', 'decision'],
+  )
+  assert.deepEqual(
+    permissionTool.function.parameters.properties.decision.enum,
+    ['once', 'always', 'reject'],
   )
   assert.match(
-    session.tools.find(tool => (
-      tool.function.name === 'respond_agent_permission'
-    )).function.description,
-    /用户回答“可以”.*应调用 always/,
+    permissionTool.function.description,
+    /普通的肯定表达.*调用 once.*以后都允许.*调用 always/,
   )
 })
 
@@ -842,7 +853,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.doesNotMatch(prompt, /get_agent_tasks|reply_agent_permission/)
   assert.match(prompt, /respond_agent_permission/)
   assert.match(prompt, /<backend_permission_request>/)
-  assert.match(prompt, /使用请求中的 `authorization_id`/)
+  assert.match(prompt, /使用请求中的 `task_id`/)
   assert.match(prompt, /按\s*`respond_agent_permission` 的契约处理用户回答/)
   assert.match(prompt, /调用前不要\s*口头确认/)
   assert.match(prompt, /不要仅凭对话历史推测当前状态/)
@@ -917,8 +928,12 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   )
   const permission = REALTIME_PROVIDERS.qwen.buildPermissionInjection({
     id: 'permission-one',
+    taskId: 'task_42',
     summary: '查看系统内存',
   })
+  const permissionText = permission.item.content[0].text
+  assert.match(permissionText, /task_id=task_42/)
+  assert.doesNotMatch(permissionText, /permission-one|authorization_id/)
   assert.match(permission.response.instructions, /自然、简短地说明操作/)
   assert.match(permission.response.instructions, /是否同意授权/)
   assert.doesNotMatch(permission.response.instructions, /用一句完整的话/)

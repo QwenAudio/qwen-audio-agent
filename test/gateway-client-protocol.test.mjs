@@ -106,6 +106,18 @@ test('validates runtime commands, Client Actions and correlated results', () => 
     GatewayClientCapability.TASK_COMMANDS,
   )
 
+  const permission = parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.PERMISSION_RESPOND,
+    event_id: 'evt_permission_once',
+    permission_id: 'permission_1',
+    decision: 'once',
+  })
+  assert.equal(permission.decision, 'once')
+  assert.throws(() => parseGatewayClientProtocolMessage({
+    ...permission,
+    decision: 'reject_always',
+  }))
+
   const published = parseGatewayClientProtocolMessage({
     type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
     event_id: 'evt_presence_1',

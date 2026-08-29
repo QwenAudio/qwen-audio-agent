@@ -52,6 +52,7 @@ const translations = {
   '折叠后台任务': 'Collapse background tasks',
   '展开后台任务': 'Expand background tasks',
   '正在提交': 'Submitting',
+  '本次允许': 'Allow once',
   '本会话始终允许': 'Always allow in this session',
   '拒绝': 'Deny',
   '你': 'You',

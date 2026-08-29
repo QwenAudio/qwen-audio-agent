@@ -123,7 +123,7 @@ export const s2sProvider = {
         type: 'input_text',
         text: [
           '<backend_permission_request>',
-          `authorization_id=${permission.id}`,
+          `task_id=${permission.taskId}`,
           `operation=${permission.summary}`,
           '</backend_permission_request>',
         ].join('\n'),

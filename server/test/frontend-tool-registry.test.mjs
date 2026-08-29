@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  BACKEND_PERMISSION_RESPONSE_CAPABILITY,
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
@@ -24,7 +25,6 @@ const DEFAULT_TOOL_NAMES = [
   'get_current_time',
   'memory',
   'notes',
-  'respond_agent_permission',
 ]
 
 function names(tools) {
@@ -56,6 +56,21 @@ test('appends namespaced dynamic tools without changing the static registry', ()
   assert.throws(
     () => frontendTools({ frontend: { tools: [TOOLS[0]] } }),
     /duplicate dynamic frontend tool/,
+  )
+})
+
+test('exposes backend permission response only for a real pending request', () => {
+  assert.equal(
+    names(frontendTools()).includes('respond_agent_permission'),
+    false,
+  )
+  assert.deepEqual(
+    names(frontendTools({
+      frontend: {
+        capabilities: [BACKEND_PERMISSION_RESPONSE_CAPABILITY],
+      },
+    })),
+    [...DEFAULT_TOOL_NAMES, 'respond_agent_permission'],
   )
 })
 

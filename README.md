@@ -134,7 +134,7 @@ qwenaudio config
 
 ```dotenv
 DASHSCOPE_API_KEY=your-key
-# Voice frontend model: Omni Flash/Plus or Audio Flash/Plus (Audio Plus is default)
+# Voice frontend model: Audio Flash/Plus or Omni Flash/Plus (Audio Plus is default)
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # Backend Agent: optional, leave empty or set to none for frontend-only mode
 AGENT_PROTOCOL=openclaw
@@ -143,14 +143,6 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
 > Uses DashScope realtime voice frontend by default; alternatively, switch to a local [speech-to-speech frontend](docs/voice-frontends/speech-to-speech.md), no cloud API Key needed.
-> `qwen3.5-omni-flash-realtime` and `qwen3.5-omni-plus-realtime`
-> accept text, audio, and image at the model level. This release transports text and
-> audio only; image/frame and native-video transport remain disabled until their client and
-> Gateway paths are implemented.
-
-The Desktop app or `qwenaudio config set --realtime-model <id>` configures the single
-Gateway-wide model. Restart the Gateway after a CLI change. WebUI and TUI display the active
-model but do not override it.
 
 2. Start the Gateway, then open another terminal to start the TUI (or use `qwenaudio webui` for the browser UI):
 

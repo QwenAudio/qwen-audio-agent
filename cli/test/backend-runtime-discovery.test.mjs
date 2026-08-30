@@ -292,9 +292,10 @@ test('automatic fallback requires explicit Bailian setup', {
 
     const openClawResult = execute('scripts/openclaw.mjs', openClaw, {
       OPENCLAW_RUNTIME: 'auto',
+      ORCAROUTER_API_KEY: '',
     }, ['acp'])
     assert.notEqual(openClawResult.status, 0)
-    assert.match(openClawResult.stderr, /requires DASHSCOPE_API_KEY/)
+    assert.match(openClawResult.stderr, /requires a DASHSCOPE_API_KEY or OPENCLAW_ORCAROUTER_API_KEY/)
   } finally {
     openCode.close()
     openClaw.close()
@@ -613,6 +614,43 @@ test('automatically configures explicit Bailian models for OpenCode and OpenClaw
     )), true)
   } finally {
     openCode.close()
+    openClaw.close()
+  }
+})
+
+test('provisions managed OpenClaw against OrcaRouter when its key is set', {
+  skip: process.platform === 'win32',
+}, () => {
+  const openClaw = fixture()
+  try {
+    command(resolve(openClaw.bin, 'openclaw'), {
+      version: 'OpenClaw 2026.6.33',
+      captureModels: true,
+    })
+    const openClawOutput = run('scripts/openclaw.mjs', openClaw, {
+      OPENCLAW_ORCAROUTER_API_KEY: 'sk-orca-test',
+      QWEN_AUDIO_AGENT_BACKEND_MODEL: 'openai/gpt-4o-mini',
+    }, ['gateway', 'run'])
+    assert.deepEqual(openClawOutput.slice(-5), [
+      'OPENCODE_MODEL=',
+      'OPENCLAW_MODEL=orcarouter/openai/gpt-4o-mini',
+      'OPENCLAW_MODEL_ID=openai/gpt-4o-mini',
+      `OPENCLAW_CONFIG_PATH=${resolve(
+        openClaw.directory,
+        'config/backends/openclaw/openclaw.json5',
+      )}`,
+      `OPENCLAW_STATE_DIR=${resolve(
+        openClaw.directory,
+        'config/backends/openclaw/state/gateway-18789',
+      )}`,
+    ])
+    const config = readFileSync(resolve(
+      openClaw.directory,
+      'config/backends/openclaw/openclaw.json5',
+    ), 'utf8')
+    assert.match(config, /api\.orcarouter\.ai/)
+    assert.match(config, /openai-completions/)
+  } finally {
     openClaw.close()
   }
 })

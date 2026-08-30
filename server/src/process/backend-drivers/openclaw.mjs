@@ -38,12 +38,18 @@ export const openClawRuntimeDriver = {
   },
 
   prepareEnvironment(env, backend) {
-    const managedBailian = backend.ownership === 'owned'
+    const managedCredential = (
+      env.OPENCLAW_ORCAROUTER_API_KEY
+      || (!env.DASHSCOPE_API_KEY && env.ORCAROUTER_API_KEY)
+      || env.DASHSCOPE_API_KEY
+      || ''
+    )
+    const managed = backend.ownership === 'owned'
       && !String(env.OPENCLAW_CONFIG_PATH || '').trim()
-      && Boolean(String(env.DASHSCOPE_API_KEY || '').trim())
+      && Boolean(String(managedCredential).trim())
       && Boolean(String(env.QWEN_AUDIO_AGENT_BACKEND_MODEL || '').trim())
       && String(env.QWEN_AUDIO_AGENT_BACKEND_MODEL).trim().toLowerCase() !== 'auto'
-    if (managedBailian && !String(env.OPENCLAW_GATEWAY_TOKEN || '').trim()) {
+    if (managed && !String(env.OPENCLAW_GATEWAY_TOKEN || '').trim()) {
       // Gateway transport authentication is independent from the local user
       // identity signing secret and remains private to this backend plugin.
       env.OPENCLAW_GATEWAY_TOKEN = randomBytes(32).toString('hex')

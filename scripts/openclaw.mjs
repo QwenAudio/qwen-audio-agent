@@ -54,17 +54,26 @@ process.env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR = STATE_DIR
 process.env.QWEN_AUDIO_AGENT_OPENCLAW_WORKSPACE = WORKSPACE
 mkdirSync(STATE_DIR, { recursive: true })
 mkdirSync(WORKSPACE, { recursive: true })
-// ── managed (DashScope) OpenClaw ─────────────────────────────────────────────
+// ── managed (DashScope/OrcaRouter) OpenClaw ──────────────────────────────────
 
 let managed = false
 const MODEL = (process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL || '').toLowerCase()
 const EXTERNAL_SERVICE = (
   process.env.QWEN_AUDIO_AGENT_BACKEND_OWNERSHIP === 'external'
 )
+const OPENCLAW_ORCAROUTER_API_KEY = (
+  process.env.OPENCLAW_ORCAROUTER_API_KEY || ''
+).trim()
+const ORCAROUTER_API_KEY = OPENCLAW_ORCAROUTER_API_KEY
+  || (process.env.DASHSCOPE_API_KEY ? '' : (process.env.ORCAROUTER_API_KEY || '').trim())
+const MANAGED_PROVIDER = ORCAROUTER_API_KEY ? 'orcarouter' : 'bailian'
+const managedCredential = ORCAROUTER_API_KEY
+  || process.env.DASHSCOPE_API_KEY
+  || ''
 if (
   !EXTERNAL_SERVICE
   && !process.env.OPENCLAW_CONFIG_PATH
-  && process.env.DASHSCOPE_API_KEY
+  && managedCredential
   && MODEL
   && MODEL !== 'auto'
 ) {
@@ -73,10 +82,18 @@ if (
   mkdirSync(cfgDir, { recursive: true })
   copyFileSync(join(ROOT, 'config', 'openclaw', 'openclaw.json5'), join(cfgDir, 'openclaw.json5'))
   process.env.OPENCLAW_CONFIG_PATH = join(cfgDir, 'openclaw.json5')
-  const modelId = process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL.includes('/')
-    ? process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL.split('/')[1] : process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL
-  process.env.QWEN_AUDIO_AGENT_OPENCLAW_MODEL = `bailian/${modelId}`
+  const rawModel = process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL.trim()
+  // OrcaRouter model names are provider-scoped (e.g. openai/gpt-4o-mini); the
+  // provider prefix above must be stripped by OpenClaw before the request, so
+  // the full path stays in the model id. Bailian models are bare names.
+  const modelId = MANAGED_PROVIDER === 'orcarouter'
+    ? rawModel
+    : (rawModel.includes('/')
+        ? rawModel.split('/')[1]
+        : rawModel)
+  process.env.QWEN_AUDIO_AGENT_OPENCLAW_MODEL = `${MANAGED_PROVIDER}/${modelId}`
   process.env.QWEN_AUDIO_AGENT_OPENCLAW_MODEL_ID = modelId
+  process.env.OPENCLAW_ORCAROUTER_API_KEY = ORCAROUTER_API_KEY
 }
 
 // ── gateway-specific setup ───────────────────────────────────────────────────
@@ -164,7 +181,9 @@ async function runPackage() {
   await spawnAndProxy(binary, CLI_ARGS)
 }
 async function runManaged() {
-  if (!process.env.DASHSCOPE_API_KEY) fatal('Automatic OpenClaw setup requires DASHSCOPE_API_KEY.')
+  if (!managedCredential) {
+    fatal('Automatic OpenClaw setup requires a DASHSCOPE_API_KEY or OPENCLAW_ORCAROUTER_API_KEY.')
+  }
   if (!process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL || MODEL === 'auto') {
     fatal('Automatic OpenClaw setup requires QWEN_AUDIO_AGENT_BACKEND_MODEL.')
   }

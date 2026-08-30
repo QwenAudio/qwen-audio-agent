@@ -198,7 +198,12 @@ When `OPENCLAW_BASE_URL` is not set, it preferentially launches the `openclaw`
 in the user environment. When both
 `DASHSCOPE_API_KEY` and `QWEN_AUDIO_AGENT_BACKEND_MODEL` are provided, an independent Bailian
 configuration and state directory is generated for the qwen-audio-agent process, without
-modifying the user's native configuration. When no backend model is specified, it inherits the
+modifying the user's native configuration. Alternatively, setting
+`OPENCLAW_ORCAROUTER_API_KEY` (or `ORCAROUTER_API_KEY`) instead of `DASHSCOPE_API_KEY`
+provisions the managed instance against [OrcaRouter](https://www.orcarouter.ai)
+(`https://api.orcarouter.ai/v1`) — an OpenAI-compatible AI gateway that provides
+adaptive routing, failover, zero-markup inference, observability, and guardrails for
+models and agents. When no backend model is specified, it inherits the
 user's native configuration, models, and authentication, but does not enable external messaging
 channels such as DingTalk in the independent instance. In managed mode, if the original configuration
 has enabled a Gateway Token, it will be automatically read and used for local ACP connections; it can

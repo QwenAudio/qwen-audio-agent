@@ -143,6 +143,28 @@ test('Gateway-owned backend moves away from occupied ports', async () => {
   assert.deepEqual(signals, [[-4242, 'SIGTERM']])
 })
 
+test('provisions an OrcaRouter-managed OpenClaw Gateway token', async () => {
+  const env = {
+    AGENT_PROTOCOL: 'openclaw',
+    QWEN_AUDIO_AGENT_BACKEND_OWNERSHIP: 'owned',
+    OPENCLAW_BASE_URL: 'http://127.0.0.1:18789',
+    OPENCLAW_ORCAROUTER_API_KEY: 'sk-orca-test',
+    QWEN_AUDIO_AGENT_BACKEND_MODEL: 'openai/gpt-4o-mini',
+  }
+  const child = childProcess()
+  const runtime = await startManagedBackend({
+    root: '/repo',
+    env,
+    platform: 'darwin',
+    isAddressInUse: async () => false,
+    findFreeAddress: async () => 'http://127.0.0.1:45679',
+    spawnImpl: () => child,
+  })
+  runtime.killImpl = () => {}
+  assert.equal(env.OPENCLAW_GATEWAY_TOKEN.length, 64)
+  runtime.close()
+})
+
 test('force-stops a managed backend that ignores graceful shutdown', async () => {
   const env = {
     AGENT_PROTOCOL: 'openclaw',

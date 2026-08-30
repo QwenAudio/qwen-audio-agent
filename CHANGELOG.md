@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- OpenClaw 一键托管初始化支持使用 OrcaRouter 作为模型服务：设置
+  `OPENCLAW_ORCAROUTER_API_KEY`（或 `ORCAROUTER_API_KEY`）后，自动生成的 OpenClaw
+  配置将对接 `https://api.orcarouter.ai/v1`，与百炼配置互为替代。
 - 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
   `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
   模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。

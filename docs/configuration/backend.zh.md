@@ -166,7 +166,11 @@ qwen-audio-agent Gateway 关闭。
 未设置 `OPENCLAW_BASE_URL` 时，默认优先启动用户环境中的 `openclaw`。同时提供
 `DASHSCOPE_API_KEY` 和
 `QWEN_AUDIO_AGENT_BACKEND_MODEL` 时，会为 qwen-audio-agent 进程生成独立的
-百炼配置和状态目录，不修改用户原生配置。未指定后台模型时则继承用户的原生
+百炼配置和状态目录，不修改用户原生配置。也可以改设
+`OPENCLAW_ORCAROUTER_API_KEY`（或 `ORCAROUTER_API_KEY`）代替 `DASHSCOPE_API_KEY`，
+让托管实例对接 [OrcaRouter](https://www.orcarouter.ai)
+（`https://api.orcarouter.ai/v1`）——一个 OpenAI 兼容的 AI 网关，提供自适应路由、
+故障转移、零加价推理、可观测性和护栏，同时服务模型与 Agent。未指定后台模型时则继承用户的原生
 配置、模型和认证，但不会在独立实例中启用钉钉等外部消息渠道。自管模式下若原配置
 启用了 Gateway Token，会自动读取并用于本地 ACP 连接；也可以通过
 `OPENCLAW_GATEWAY_TOKEN` 覆盖，或设置 `OPENCLAW_CONFIG_PATH` 明确指定另一份

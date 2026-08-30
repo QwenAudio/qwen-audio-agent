@@ -232,6 +232,32 @@ test('uses a DeepSeek-specific model without leaking unrelated overrides', () =>
   }).deepSeekHarness, '')
 })
 
+test('maps managed OpenClaw models to OrcaRouter when its key is present', () => {
+  for (const key of ['OPENCLAW_ORCAROUTER_API_KEY', 'ORCAROUTER_API_KEY']) {
+    assert.deepEqual(resolveBackendModels({
+      QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen3.7-plus',
+      [key]: 'sk-orca-test',
+    }), {
+      common: 'qwen3.7-plus',
+      openCode: 'alibaba-cn/qwen3.7-plus',
+      openClaw: 'orcarouter/qwen3.7-plus',
+      qoder: 'qwen3.7-plus',
+      qwen: 'qwen3.7-plus',
+      kimi: 'qwen3.7-plus',
+      hermes: 'qwen3.7-plus',
+      codeBuddy: 'qwen3.7-plus',
+      codex: 'qwen3.7-plus',
+      claude: 'qwen3.7-plus',
+      pi: 'qwen3.7-plus',
+      deepSeekHarness: '',
+      acp: 'qwen3.7-plus',
+    })
+  }
+  assert.equal(resolveBackendModels({
+    QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen3.7-max',
+  }).openClaw, 'bailian/qwen3.7-max')
+})
+
 test('changes the realtime configuration signature when only the model changes', () => {
   const shared = {
     DASHSCOPE_API_KEY: 'same-key',

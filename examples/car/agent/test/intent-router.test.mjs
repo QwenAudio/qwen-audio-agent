@@ -23,10 +23,7 @@ test('routes representative cockpit requests to existing MCP tools', () => {
     name: 'music_play',
     arguments: { query: '晴天' },
   })
-  assert.deepEqual(planCockpitTool('杭州天气怎么样'), {
-    name: 'weather',
-    arguments: { city: '杭州' },
-  })
+  assert.equal(planCockpitTool('杭州天气怎么样'), null)
 })
 
 test('keeps explicit order confirmation separate from product search', () => {

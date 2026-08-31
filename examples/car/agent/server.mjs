@@ -45,9 +45,9 @@ function agentCard(origin) {
     skills: [{
       id: 'cockpit_operations',
       name: 'Cockpit operations',
-      description: 'Vehicle, navigation, music, weather and flash-buy example operations.',
+      description: 'Vehicle, navigation, music and flash-buy example operations.',
       tags: ['cockpit', 'vehicle', 'navigation', 'music'],
-      examples: ['打开主驾车窗', '导航到西湖', '播放晴天', '杭州天气怎么样'],
+      examples: ['打开主驾车窗', '导航到西湖', '播放晴天'],
       inputModes: ['text/plain'],
       outputModes: ['text/plain', 'application/json'],
       securityRequirements: [],

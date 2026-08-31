@@ -88,7 +88,7 @@ export class CockpitAgentExecutor {
       const result = plan
         ? await this.tools.call(plan.name, plan.arguments, { signal: controller.signal })
         : {
-            content: '这个轻量示例只演示车控、导航、音乐、天气和闪购能力。',
+            content: '这个轻量示例的后台 Agent 只演示车控、导航、音乐和闪购能力。',
             data: {},
           }
       eventBus.publish(AgentEvent.artifactUpdate({

@@ -3,8 +3,6 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
-import { COCKPIT_TOOL_DEFINITIONS } from './tool-catalog.mjs'
-
 function errorResult(error) {
   return {
     content: [{
@@ -15,8 +13,13 @@ function errorResult(error) {
   }
 }
 
-export function createCockpitMcpServer({ domain, cockpitId = 'default' } = {}) {
+export function createCockpitMcpServer({
+  domain,
+  cockpitId = 'default',
+  tools,
+} = {}) {
   if (!domain?.execute) throw new TypeError('Cockpit MCP server requires a domain runtime')
+  if (!Array.isArray(tools)) throw new TypeError('Cockpit MCP server requires a scoped tool list')
   const server = new Server({
     name: 'qwen-audio-agent-cockpit',
     version: '1.0.0',
@@ -24,10 +27,13 @@ export function createCockpitMcpServer({ domain, cockpitId = 'default' } = {}) {
     capabilities: { tools: {} },
   })
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: COCKPIT_TOOL_DEFINITIONS,
+    tools,
   }))
   server.setRequestHandler(CallToolRequestSchema, async request => {
     try {
+      if (!tools.some(tool => tool.name === request.params.name)) {
+        throw new Error(`Tool is not available on this MCP surface: ${request.params.name}`)
+      }
       const output = await domain.execute(
         request.params.name,
         request.params.arguments || {},

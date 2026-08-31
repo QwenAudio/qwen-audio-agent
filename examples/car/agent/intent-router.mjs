@@ -23,11 +23,6 @@ function destination(text) {
   return clean(match?.[1]).replace(/(?:怎么走|的路线|路线)$/u, '')
 }
 
-function city(text) {
-  const match = text.match(/([\p{Script=Han}]{2,12})(?:市|的)?(?:天气|气温)/u)
-  return clean(match?.[1]).replace(/市$/u, '') || '杭州'
-}
-
 function songQuery(text) {
   const match = text.match(/(?:播放|放|听)(?:一首|一下)?([^，。,.！？!?\n]{1,30})/u)
   return clean(match?.[1]).replace(/(?:这首歌|音乐|歌曲)$/u, '')
@@ -54,10 +49,6 @@ export function planCockpitTool(input) {
         category,
       },
     }
-  }
-
-  if (/(天气|气温)/u.test(text)) {
-    return { name: 'weather', arguments: { city: city(text) } }
   }
 
   if (/(停止导航|结束导航|取消导航)/u.test(text)) {
@@ -129,6 +120,5 @@ export function describePlan(plan) {
   if (plan.name.startsWith('vehicle_')) return '正在执行车辆操作'
   if (plan.name.startsWith('navigation_')) return '正在处理导航请求'
   if (plan.name.startsWith('music_')) return '正在处理音乐请求'
-  if (plan.name === 'weather') return '正在查询天气'
   return '正在处理闪购请求'
 }

@@ -57,6 +57,7 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 - 首个版本使用 Streamable HTTP Transport。
 - 工具发现和连接有超时边界，默认 8 秒。
 - 远端服务必须使用 HTTPS；回环地址可以使用 HTTP，但不能携带 Header。
+- Server URL 可以用 `${MCP_URL}` 精确引用一个环境变量。
 - Header 值可以用 `${VARIABLE}` 精确引用一个环境变量；变量缺失即配置错误。
 - 启用的工具必须明确声明 `readOnly`。可写工具还必须设置
   `approval: "required"`，否则 Gateway 会在启动时拒绝该配置。

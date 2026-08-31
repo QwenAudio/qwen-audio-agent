@@ -29,3 +29,7 @@
 - 给 UI 的业务状态投影面（HTTP/SSE、消息总线或客户协议）。
 
 不要把场景对象塞入 Gateway，也不要恢复 `actions[]` 作为隐式 UI 控制协议。
+
+## 增加或调整工具
+
+`tools/` 中每个目录是一个领域工具包：`manifest.json` 定义 MCP 工具，`execute.mjs` 实现场景逻辑。将工具包加入 `registry.mjs` 的 `FRONTEND_TOOL_GROUPS` 或 `BACKEND_TOOL_GROUPS` 即可决定调用面。这是代码层的明确修改点，不是新的动态插件框架。

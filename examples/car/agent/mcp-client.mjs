@@ -8,7 +8,7 @@ export class CockpitMcpTools {
     origin = 'http://127.0.0.1:3010',
     cockpitId = 'default',
   } = {}) {
-    this.url = new URL('/mcp', origin)
+    this.url = new URL('/mcp/backend', origin)
     this.url.searchParams.set('cockpitId', cockpitId)
     this.client = null
     this.connecting = null

@@ -3,8 +3,8 @@
 | 边界 | 覆盖内容 | 自动化入口 |
 |---|---|---|
 | cockpit-domain | 多座舱隔离、车控校验、音乐、导航阶段、闪购确认、状态事件 | `examples/car/domain/test` |
-| MCP | 工具发现、参数传递、与 HTTP 共用单一状态 | `examples/car/domain/test/server.test.mjs` |
-| cockpit-agent | 车控、导航、音乐、天气、闪购意图；未知请求不臆造能力 | `examples/car/agent/test` |
+| MCP | 前/后台工具面隔离、工具发现、参数传递、与 HTTP 共用单一状态 | `examples/car/domain/test/server.test.mjs` |
+| cockpit-agent | 车控、导航、音乐、闪购意图；天气和未知请求不进入后台 | `examples/car/agent/test` |
 | A2A → MCP | 标准 Task 生命周期和真实领域状态变更 | `examples/car/agent/test/integration.test.mjs` |
 | Gateway 装配 | 仅使用公开 API 注入 A2A Agent、健康和关闭 | `examples/car/test/gateway-composition.test.mjs` |
 | 启动预检 | Realtime 配置、四进程端口、无效端口 | `examples/car/test/preflight.test.mjs` |

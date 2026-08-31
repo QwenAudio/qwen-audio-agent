@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "servers": {
+    "cockpit": {
+      "enabled": true,
+      "url": "${COCKPIT_FRONTEND_MCP_URL}",
+      "tools": {
+        "weather": {
+          "enabled": true,
+          "readOnly": true,
+          "description": "查询指定城市的当日天气、温度和出行提示。这是可由前台语音助手直接调用的座舱示例工具。"
+        }
+      }
+    }
+  }
+}

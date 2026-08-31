@@ -5,6 +5,9 @@ import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from './spawn-thinking-tool.mjs'
 loadCockpitEnvironment()
 process.env.QWAUDIO_CONFIG_DIR ||= fileURLToPath(new URL('./.runtime', import.meta.url))
 process.env.QWAUDIO_DATA_DIR ||= process.env.QWAUDIO_CONFIG_DIR
+process.env.COCKPIT_FRONTEND_MCP_URL ||= `${
+  process.env.COCKPIT_DOMAIN_ORIGIN || 'http://127.0.0.1:3010'
+}/mcp/frontend`
 process.env.QWEN_AUDIO_FRONTEND_PROFILE ||= fileURLToPath(
   new URL('./frontend-profile.json', import.meta.url),
 )
@@ -24,6 +27,27 @@ function port(value, fallback) {
   return Number.isInteger(parsed) && parsed >= 0 && parsed <= 65_535
     ? parsed
     : fallback
+}
+
+export async function waitForCockpitDomain({
+  origin = process.env.COCKPIT_DOMAIN_ORIGIN || 'http://127.0.0.1:3010',
+  timeoutMs = 8_000,
+  intervalMs = 100,
+  fetchImpl = fetch,
+} = {}) {
+  const deadline = Date.now() + timeoutMs
+  let lastError = null
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetchImpl(new URL('/health', origin))
+      if (response.ok) return
+      lastError = new Error(`Cockpit Domain health returned ${response.status}`)
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
+  throw new Error(`Cockpit Domain is not ready: ${lastError?.message || origin}`)
 }
 
 export function startCockpitGateway({
@@ -66,6 +90,7 @@ export function startCockpitGateway({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await waitForCockpitDomain()
   const runtime = startCockpitGateway()
   runtime.server.once('listening', () => {
     const address = runtime.server.address()

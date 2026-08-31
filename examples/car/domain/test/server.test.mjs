@@ -121,30 +121,65 @@ test('streams navigation activity to the scenario UI', async t => {
   await reader.cancel()
 })
 
-test('exposes the same domain operations through MCP', async t => {
+test('separates frontend and backend tools across standard MCP surfaces', async t => {
   const server = new CockpitDomainServer({ domain: domainFixture(), port: 0 })
   await server.start()
   t.after(() => server.close())
-  const client = new Client({ name: 'cockpit-domain-test', version: '1.0.0' })
-  const transport = new StreamableHTTPClientTransport(
-    new URL(`${server.origin}/mcp?cockpitId=mcp-car`),
-  )
-  await client.connect(transport)
-  t.after(() => client.close())
+  const backend = new Client({ name: 'cockpit-backend-test', version: '1.0.0' })
+  await backend.connect(new StreamableHTTPClientTransport(
+    new URL(`${server.origin}/mcp/backend?cockpitId=mcp-car`),
+  ))
+  t.after(() => backend.close())
+  const frontend = new Client({ name: 'cockpit-frontend-test', version: '1.0.0' })
+  await frontend.connect(new StreamableHTTPClientTransport(
+    new URL(`${server.origin}/mcp/frontend?cockpitId=mcp-car`),
+  ))
+  t.after(() => frontend.close())
 
-  const tools = await client.listTools()
-  assert.equal(tools.tools.length, 15)
-  assert.ok(tools.tools.some(tool => tool.name === 'vehicle_climate_control'))
-  assert.ok(tools.tools.some(tool => tool.name === 'flashbuy'))
+  const backendTools = await backend.listTools()
+  assert.equal(backendTools.tools.length, 14)
+  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_climate_control'))
+  assert.ok(backendTools.tools.some(tool => tool.name === 'flashbuy'))
+  assert.ok(!backendTools.tools.some(tool => tool.name === 'weather'))
 
-  const output = await client.callTool({
+  const frontendTools = await frontend.listTools()
+  assert.deepEqual(frontendTools.tools.map(tool => tool.name), ['weather'])
+
+  const output = await backend.callTool({
     name: 'vehicle_climate_control',
     arguments: { action: 'set_temp', temperature: 22 },
   })
   assert.equal(output.isError, undefined)
   assert.equal(output.structuredContent.vehicle.acTemp, 22)
 
+  const weather = await frontend.callTool({
+    name: 'weather',
+    arguments: { city: '杭州' },
+  })
+  assert.equal(weather.isError, undefined)
+  assert.match(weather.content[0].text, /杭州，晴，25°/u)
+
+  const unavailable = await frontend.callTool({
+    name: 'vehicle_state_query',
+    arguments: {},
+  })
+  assert.equal(unavailable.isError, true)
+  assert.match(unavailable.content[0].text, /not available on this MCP surface/u)
+
   const state = await fetch(`${server.origin}/api/cockpit/state?cockpitId=mcp-car`)
     .then(response => response.json())
   assert.equal(state.vehicle.acTemp, 22)
+  assert.equal(state.weather.dayweather, '晴')
+})
+
+test('does not expose an ambiguous combined MCP endpoint', async t => {
+  const server = new CockpitDomainServer({ domain: domainFixture(), port: 0 })
+  await server.start()
+  t.after(() => server.close())
+  const response = await fetch(`${server.origin}/mcp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+  })
+  assert.equal(response.status, 404)
 })

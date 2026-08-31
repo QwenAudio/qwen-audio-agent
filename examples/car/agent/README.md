@@ -17,7 +17,7 @@ Defaults:
 
 - A2A Agent: `http://127.0.0.1:3020`
 - Agent Card: `http://127.0.0.1:3020/.well-known/agent-card.json`
-- Cockpit MCP: `http://127.0.0.1:3010/mcp?cockpitId=default`
+- Cockpit MCP: `http://127.0.0.1:3010/mcp/backend?cockpitId=default`
 
 Environment variables:
 

@@ -37,9 +37,6 @@ const TOOL_TAGS = {
   web_search: { label: '联网查询', cls: 'tag-skill' },
 }
 
-const MEMORY_MUTATION_TOOLS = new Set(['memory_write', 'memory_delete'])
-const SKILL_MUTATION_TOOLS = new Set(['skill_create', 'skill_delete'])
-
 function progressTag(progress) {
   if (progress.domain === 'flashbuy') return { label: '闪购', cls: 'tag-skill' }
   if (progress.domain === 'weather') return { label: '天气', cls: 'tag-nav' }
@@ -59,9 +56,17 @@ function getDefaultPosition(panel) {
   }
 }
 
-export default function ChatPanel({ onClose, messages, onMessagesChange, onActions, onClearHistory, onMemoryChange, onSkillChange, onMapAction, onNavigate, routeStrategy, soul, clientId, voiceActive = false, thinking = false, onThinkingChange }) {
+export default function ChatPanel({
+  onClose,
+  messages,
+  onMessagesChange,
+  onClearHistory,
+  onSendMessage,
+  voiceActive = false,
+  thinking = false,
+  onThinkingChange,
+}) {
   const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
   const [position, setPosition] = useState({ x: 0, y: 0 })
   const panelRef = useRef(null)
   const listRef = useRef(null)
@@ -85,7 +90,7 @@ export default function ChatPanel({ onClose, messages, onMessagesChange, onActio
 
   useEffect(() => {
     listRef.current?.scrollTo(0, listRef.current.scrollHeight)
-  }, [messages, loading])
+  }, [messages])
 
   const handleDragStart = useCallback((e) => {
     const panel = panelRef.current
@@ -112,98 +117,22 @@ export default function ChatPanel({ onClose, messages, onMessagesChange, onActio
     document.addEventListener('mouseup', onUp)
   }, [])
 
-  const sendMessage = async () => {
+  const sendMessage = () => {
     const text = input.trim()
-    if (!text || loading) return
+    if (!text) return
 
-    const userMsg = { role: 'user', content: text }
-    const newMessages = [...messages, userMsg]
-    onMessagesChange(newMessages)
+    const userMsg = { id: crypto.randomUUID(), role: 'user', content: text }
+    const accepted = onSendMessage?.(text) === true
+    onMessagesChange([
+      ...messages,
+      userMsg,
+      ...(accepted ? [] : [{
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: '对话中控尚未连接，请稍后再试。',
+      }]),
+    ])
     setInput('')
-    setLoading(true)
-
-    const assistantMsg = { role: 'assistant', content: '', thinking: '', thinkingMs: 0, debug: { tool_calls: [] } }
-    const streamMessages = [...newMessages, assistantMsg]
-    let thinkingStart = null
-
-    try {
-      const res = await fetch('/api/chat/stream', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: newMessages, soul, strategy: routeStrategy, thinking, clientId }),
-      })
-
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop()
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const event = JSON.parse(line.slice(6))
-
-          if (event.type === 'map_action') {
-            if (onMapAction) onMapAction(event)
-          } else if (event.type === 'thinking') {
-            if (!thinkingStart) thinkingStart = Date.now()
-            assistantMsg.thinking += event.content
-            onMessagesChange([...streamMessages])
-          } else if (event.type === 'progress') {
-            assistantMsg.debug.progress = [...(assistantMsg.debug.progress || []), event]
-            if (event.domain === 'navigation' && onNavigate) onNavigate()
-            if (event.domain === 'flashbuy' && onActions) {
-              onActions([
-                { type: 'flashbuy', action: 'open' },
-                { type: 'flashbuy', action: 'status', status: event.stage, message: event.message },
-              ])
-            }
-            onMessagesChange([...streamMessages])
-          } else if (event.type === 'tool_call') {
-            if (thinkingStart) {
-              assistantMsg.thinkingMs = Date.now() - thinkingStart
-              thinkingStart = null
-            }
-            if (event.name === 'navigation' && onNavigate) onNavigate()
-            if (MEMORY_MUTATION_TOOLS.has(event.name) && onMemoryChange) onMemoryChange()
-            if (SKILL_MUTATION_TOOLS.has(event.name) && onSkillChange) onSkillChange()
-            assistantMsg.debug.tool_calls = [...assistantMsg.debug.tool_calls, event]
-            onMessagesChange([...streamMessages])
-          } else if (event.type === 'action') {
-            if (onActions) onActions([event.action])
-          } else if (event.type === 'text') {
-            if (thinkingStart) {
-              assistantMsg.thinkingMs = Date.now() - thinkingStart
-              thinkingStart = null
-            }
-            assistantMsg.content += event.content
-            onMessagesChange([...streamMessages])
-          } else if (event.type === 'done') {
-            assistantMsg.content = event.content
-            assistantMsg.debug.rounds = event.debug?.rounds
-            assistantMsg.debug.usage = event.debug?.usage
-            assistantMsg.debug.duration_ms = event.debug?.duration_ms
-            onMessagesChange([...streamMessages])
-            if (onMemoryChange) onMemoryChange()
-            if (onSkillChange) onSkillChange()
-          } else if (event.type === 'error') {
-            assistantMsg.content = event.message || '抱歉，执行失败，请稍后再试。'
-            onMessagesChange([...streamMessages])
-          }
-        }
-      }
-    } catch {
-      assistantMsg.content = '抱歉，连接失败，请稍后再试。'
-      onMessagesChange([...streamMessages])
-    } finally {
-      setLoading(false)
-    }
   }
 
   const handleKeyDown = (e) => {
@@ -278,11 +207,6 @@ export default function ChatPanel({ onClose, messages, onMessagesChange, onActio
             </div>
           </div>
         ))}
-        {loading && (
-          <div className="chat-bubble assistant loading">
-            <span className="dot-pulse"></span>
-          </div>
-        )}
       </div>
       {voiceActive ? (
         <div className="chat-input-area chat-input-voice-hint">
@@ -313,9 +237,8 @@ export default function ChatPanel({ onClose, messages, onMessagesChange, onActio
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="输入消息..."
-              disabled={loading}
             />
-            <button className="chat-send" onClick={sendMessage} disabled={loading || !input.trim()}>
+            <button className="chat-send" onClick={sendMessage} disabled={!input.trim()}>
               <svg className="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M2 21 23 12 2 3v7l15 2-15 2v7Z" fill="currentColor" />
               </svg>

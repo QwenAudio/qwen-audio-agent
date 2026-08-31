@@ -1,39 +1,49 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { GatewayClient } from 'qwen-audio-agent/gateway-client-sdk'
+import { GatewayClientCapability } from 'qwen-audio-agent/gateway-client-protocol'
+import {
+  GatewayClientEvent,
+  GatewayServerEvent,
+} from 'qwen-audio-agent/realtime-events'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
 const SPEECH_THRESHOLD = 0.035
-const THINKING_TIMEOUT_MS = 35000
+const TASK_TERMINAL_EVENTS = new Set([
+  'task.completed',
+  'task.failed',
+  'task.cancelled',
+])
 
-function voiceWsUrl(clientId) {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}/api/voice/realtime?clientId=${encodeURIComponent(clientId)}`
+function gatewayWsUrl(sessionId) {
+  const origin = import.meta.env.VITE_GATEWAY_ORIGIN || window.location.origin
+  const url = new URL('/api/realtime', origin)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.searchParams.set('sessionId', sessionId)
+  return url.toString()
 }
 
 function floatToPcm16Base64(samples) {
   const bytes = new Uint8Array(samples.length * 2)
   const view = new DataView(bytes.buffer)
-  for (let i = 0; i < samples.length; i += 1) {
-    const sample = Math.max(-1, Math.min(1, samples[i]))
-    view.setInt16(i * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = Math.max(-1, Math.min(1, samples[index]))
+    view.setInt16(index * 2, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true)
   }
-
   let binary = ''
-  const chunkSize = 0x8000
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  for (let index = 0; index < bytes.length; index += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000))
   }
   return btoa(binary)
 }
 
 function base64Pcm16ToFloat32(base64) {
   const binary = atob(base64)
-  const samples = new Float32Array(binary.length / 2)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+  const bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
   const view = new DataView(bytes.buffer)
-  for (let i = 0; i < samples.length; i += 1) {
-    samples[i] = view.getInt16(i * 2, true) / 0x8000
+  const samples = new Float32Array(bytes.length / 2)
+  for (let index = 0; index < samples.length; index += 1) {
+    samples[index] = view.getInt16(index * 2, true) / 0x8000
   }
   return samples
 }
@@ -43,378 +53,385 @@ function resampleLinear(input, fromRate, toRate) {
   const ratio = fromRate / toRate
   const length = Math.max(1, Math.round(input.length / ratio))
   const output = new Float32Array(length)
-  for (let i = 0; i < length; i += 1) {
-    const index = i * ratio
-    const before = Math.floor(index)
+  for (let index = 0; index < length; index += 1) {
+    const position = index * ratio
+    const before = Math.floor(position)
     const after = Math.min(input.length - 1, before + 1)
-    const weight = index - before
-    output[i] = input[before] * (1 - weight) + input[after] * weight
+    const weight = position - before
+    output[index] = input[before] * (1 - weight) + input[after] * weight
   }
   return output
 }
 
 function rmsLevel(samples) {
+  if (!samples.length) return 0
   let sum = 0
-  for (let i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i]
+  for (let index = 0; index < samples.length; index += 1) {
+    sum += samples[index] * samples[index]
+  }
   return Math.sqrt(sum / samples.length)
 }
 
-export default function useVoiceSession({ muted, clientId, persona, routeStrategy, thinking = false, onAgentActions, onMapAction, onVoiceMessage }) {
+function taskProgress(event) {
+  if (!String(event?.type || '').startsWith('task.')) return null
+  const task = event.task || {}
+  const activity = Array.isArray(task.activity) ? task.activity.at(-1) : null
+  const category = activity?.category || task.kind || 'task'
+  return {
+    domain: category,
+    stage: activity?.status || task.status || event.type.slice(5),
+    message: event.message || activity?.message || task.message || '',
+    taskId: task.id,
+  }
+}
+
+function gatewayVoiceState(event) {
+  if (event?.type === GatewayServerEvent.VOICE_STATE) {
+    return event.state === 'processing' ? 'thinking' : event.state
+  }
+  if (event?.type === GatewayServerEvent.AGENT_ACTIVITY) return 'thinking'
+  if (String(event?.type || '').startsWith('task.') && !TASK_TERMINAL_EVENTS.has(event.type)) {
+    return 'thinking'
+  }
+  return null
+}
+
+export default function useVoiceSession({
+  muted,
+  clientId,
+  onVoiceMessage,
+  onConversationRecovery,
+}) {
   const [voiceState, setVoiceState] = useState('idle')
   const [inputLevel, setInputLevel] = useState(0)
   const [outputLevel, setOutputLevel] = useState(0)
   const [progress, setProgress] = useState(null)
   const [error, setError] = useState(null)
-  const cleanupRef = useRef(() => {})
-  const onAgentActionsRef = useRef(onAgentActions)
-  const onMapActionRef = useRef(onMapAction)
+  const clientRef = useRef(null)
+  const audioContextRef = useRef(null)
+  const inputSampleRateRef = useRef(INPUT_SAMPLE_RATE)
+  const mutedRef = useRef(muted)
   const onVoiceMessageRef = useRef(onVoiceMessage)
+  const onConversationRecoveryRef = useRef(onConversationRecovery)
+  const playbackRef = useRef({
+    cursor: 0,
+    sources: new Set(),
+    counts: new Map(),
+    started: new Set(),
+    done: new Set(),
+    startTimers: new Map(),
+  })
 
+  useEffect(() => { mutedRef.current = muted }, [muted])
+  useEffect(() => { onVoiceMessageRef.current = onVoiceMessage }, [onVoiceMessage])
   useEffect(() => {
-    onAgentActionsRef.current = onAgentActions
-  }, [onAgentActions])
+    onConversationRecoveryRef.current = onConversationRecovery
+  }, [onConversationRecovery])
 
-  useEffect(() => {
-    onMapActionRef.current = onMapAction
-  }, [onMapAction])
+  const sendPlaybackReceipt = useCallback((type, responseId, reason = '') => {
+    if (!responseId) return
+    clientRef.current?.send({
+      type,
+      responseId,
+      ...(reason ? { reason } : {}),
+    })
+  }, [])
 
-  useEffect(() => {
-    onVoiceMessageRef.current = onVoiceMessage
-  }, [onVoiceMessage])
+  const finishResponsePlayback = useCallback((responseId) => {
+    const playback = playbackRef.current
+    if (
+      !playback.done.has(responseId)
+      || !playback.started.has(responseId)
+      || (playback.counts.get(responseId) || 0) > 0
+    ) return
+    sendPlaybackReceipt(GatewayClientEvent.PLAYBACK_ENDED, responseId)
+    playback.done.delete(responseId)
+    playback.started.delete(responseId)
+    playback.counts.delete(responseId)
+    if (!playback.counts.size) {
+      setOutputLevel(0)
+      setVoiceState('idle')
+    }
+  }, [sendPlaybackReceipt])
 
-  useEffect(() => {
-    cleanupRef.current()
+  const clearPlayback = useCallback((reason = '') => {
+    const playback = playbackRef.current
+    const responseIds = new Set([
+      ...playback.counts.keys(),
+      ...playback.started,
+      ...playback.done,
+    ])
+    for (const timer of playback.startTimers.values()) clearTimeout(timer)
+    for (const source of playback.sources) {
+      try { source.stop() } catch { /* source already ended */ }
+      try { source.disconnect() } catch { /* source already disconnected */ }
+    }
+    for (const responseId of responseIds) {
+      sendPlaybackReceipt(GatewayClientEvent.PLAYBACK_CANCELLED, responseId, reason)
+    }
+    playbackRef.current = {
+      cursor: audioContextRef.current?.currentTime || 0,
+      sources: new Set(),
+      counts: new Map(),
+      started: new Set(),
+      done: new Set(),
+      startTimers: new Map(),
+    }
+    setOutputLevel(0)
+  }, [sendPlaybackReceipt])
 
-    if (muted) {
-      const resetFrame = requestAnimationFrame(() => {
-        setVoiceState('idle')
-        setInputLevel(0)
-        setOutputLevel(0)
-        setProgress(null)
-        setError(null)
+  const playPcmAudio = useCallback((audioBase64, sampleRate, responseId) => {
+    const context = audioContextRef.current
+    if (!context || mutedRef.current) {
+      if (!playbackRef.current.started.has(responseId)) {
+        playbackRef.current.started.add(responseId)
+        sendPlaybackReceipt(GatewayClientEvent.PLAYBACK_STARTED, responseId)
+      }
+      return
+    }
+    try {
+      const samples = base64Pcm16ToFloat32(audioBase64)
+      const buffer = context.createBuffer(1, samples.length, sampleRate || OUTPUT_SAMPLE_RATE)
+      buffer.copyToChannel(samples, 0)
+      const source = context.createBufferSource()
+      source.buffer = buffer
+      source.connect(context.destination)
+      const playback = playbackRef.current
+      const startAt = Math.max(context.currentTime + 0.02, playback.cursor)
+      playback.cursor = startAt + buffer.duration
+      playback.sources.add(source)
+      playback.counts.set(responseId, (playback.counts.get(responseId) || 0) + 1)
+      if (!playback.started.has(responseId) && !playback.startTimers.has(responseId)) {
+        const timer = setTimeout(() => {
+          const current = playbackRef.current
+          current.startTimers.delete(responseId)
+          if (!current.counts.has(responseId) || current.started.has(responseId)) return
+          current.started.add(responseId)
+          sendPlaybackReceipt(GatewayClientEvent.PLAYBACK_STARTED, responseId)
+        }, Math.max(0, (startAt - context.currentTime) * 1000))
+        playback.startTimers.set(responseId, timer)
+      }
+      source.addEventListener('ended', () => {
+        const current = playbackRef.current
+        current.sources.delete(source)
+        current.counts.set(responseId, Math.max(0, (current.counts.get(responseId) || 0) - 1))
+        try { source.disconnect() } catch { /* source already disconnected */ }
+        finishResponsePlayback(responseId)
       })
-      cleanupRef.current = () => {}
-      return () => cancelAnimationFrame(resetFrame)
+      source.start(startAt)
+      setOutputLevel(Math.min(1, rmsLevel(samples) / 0.18))
+      setVoiceState('speaking')
+    } catch (reason) {
+      sendPlaybackReceipt(GatewayClientEvent.PLAYBACK_CANCELLED, responseId, 'playback_error')
+      setError(reason?.message || '语音播放失败')
+      setVoiceState('error')
+    }
+  }, [finishResponsePlayback, sendPlaybackReceipt])
+
+  useEffect(() => {
+    const handleEvent = (event) => {
+      const state = gatewayVoiceState(event)
+      if (state) setVoiceState(state)
+      if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
+        inputSampleRateRef.current = event.inputSampleRate
+        setError(null)
+      } else if (event.type === GatewayServerEvent.AUDIO_DELTA) {
+        playPcmAudio(event.audio, event.sampleRate, event.responseId)
+      } else if (event.type === GatewayServerEvent.AUDIO_DONE) {
+        const playback = playbackRef.current
+        if (!playback.started.has(event.responseId)) {
+          playback.started.add(event.responseId)
+          sendPlaybackReceipt(GatewayClientEvent.PLAYBACK_STARTED, event.responseId)
+        }
+        playback.done.add(event.responseId)
+        finishResponsePlayback(event.responseId)
+      } else if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
+        clearPlayback(event.reason || 'gateway_clear')
+      } else if (
+        event.type === GatewayServerEvent.TRANSCRIPT_DELTA
+        || event.type === GatewayServerEvent.TRANSCRIPT_FINAL
+      ) {
+        onVoiceMessageRef.current?.({
+          role: event.role,
+          content: event.content,
+          delta: event.type === GatewayServerEvent.TRANSCRIPT_DELTA,
+          final: event.type === GatewayServerEvent.TRANSCRIPT_FINAL,
+        })
+      } else if (event.type === GatewayServerEvent.ERROR) {
+        setError(event.message || '语音服务错误')
+        setVoiceState('error')
+      }
+      const nextProgress = taskProgress(event)
+      if (nextProgress) {
+        setProgress(nextProgress)
+        onVoiceMessageRef.current?.({ role: 'assistant', progress: nextProgress })
+        if (TASK_TERMINAL_EVENTS.has(event.type)) {
+          setTimeout(() => setProgress(null), 1800)
+        }
+      }
     }
 
-    let cancelled = false
+    const client = new GatewayClient({
+      url: gatewayWsUrl(clientId),
+      createSocket: url => new WebSocket(url),
+      clientType: 'web',
+      clientVersion: '2.0.0',
+      clientInstanceId: clientId,
+      clientLabel: 'Cockpit Conversation Client',
+      capabilities: [
+        GatewayClientCapability.INPUT_AUDIO,
+        GatewayClientCapability.INPUT_TEXT,
+        GatewayClientCapability.PLAYBACK_RECEIPTS,
+        GatewayClientCapability.TASK_COMMANDS,
+        GatewayClientCapability.PERMISSION_RESPOND,
+        GatewayClientCapability.CONVERSATION_HISTORY,
+        GatewayClientCapability.SESSION_REPLAY,
+      ],
+      locale: navigator.language,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      configure: () => ({
+        voiceEnabled: !mutedRef.current,
+        inputEnabled: !mutedRef.current,
+        outputEnabled: !mutedRef.current,
+        textOnly: mutedRef.current,
+      }),
+      onEvent: handleEvent,
+      onRecovery: recovery => {
+        onConversationRecoveryRef.current?.(recovery.messages || [])
+      },
+      onStatus: status => {
+        if (status.state === 'ready') {
+          setError(null)
+        } else if (status.state === 'unavailable' || status.state === 'disconnected') {
+          setError('对话中控连接中断，正在重连')
+          setVoiceState('error')
+        }
+      },
+    })
+    clientRef.current = client
+    client.start()
+    return () => {
+      clearPlayback('connection_closed')
+      client.stop()
+      if (clientRef.current === client) clientRef.current = null
+    }
+  }, [clearPlayback, clientId, finishResponsePlayback, playPcmAudio, sendPlaybackReceipt])
+
+  useEffect(() => {
+    if (muted) {
+      clientRef.current?.send({ type: GatewayClientEvent.MUTE })
+      const frame = requestAnimationFrame(() => {
+        setInputLevel(0)
+        setOutputLevel(0)
+        setVoiceState('idle')
+        clearPlayback('client_muted')
+      })
+      return () => cancelAnimationFrame(frame)
+    }
+
+    let disposed = false
     let frame = 0
-    let stream = null
-    let audioContext = null
+    let media = null
     let source = null
     let analyser = null
     let processor = null
     let lastVoiceAt = 0
-    let remoteBusy = false
-    let displayState = 'idle'
-    let ws = null
-    let playbackCursor = 0
-    let playbackTimers = []
-    let playbackSources = []
-    let playbackActive = false
-    let postPlaybackState = null
-    let progressClearTimer = 0
-    let thinkingTimer = 0
-
-    const clearProgressTimer = () => {
-      if (progressClearTimer) {
-        clearTimeout(progressClearTimer)
-        progressClearTimer = 0
-      }
-    }
-
-    const clearThinkingTimer = () => {
-      if (thinkingTimer) {
-        clearTimeout(thinkingTimer)
-        thinkingTimer = 0
-      }
-    }
-
-    const clearProgressLater = (delay = 2200) => {
-      clearProgressTimer()
-      progressClearTimer = setTimeout(() => {
-        setProgress(null)
-        progressClearTimer = 0
-      }, delay)
-    }
-
-    const setDisplayState = (next) => {
-      if (displayState === next) return
-      displayState = next
-      clearThinkingTimer()
-      if (next === 'thinking') {
-        thinkingTimer = setTimeout(() => {
-          thinkingTimer = 0
-          if (displayState !== 'thinking') return
-          remoteBusy = false
-          postPlaybackState = null
-          setOutputLevel(0)
-          setError('语音处理超时，请再试一次')
-          setDisplayState('idle')
-          clearProgressLater(800)
-        }, THINKING_TIMEOUT_MS)
-      }
-      setVoiceState(next)
-    }
-
-    const sendWs = (payload) => {
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(payload))
-      }
-    }
-
-    const clearPlaybackTimers = () => {
-      playbackTimers.forEach(timer => clearTimeout(timer))
-      playbackTimers = []
-    }
-
-    const clearPlayback = () => {
-      clearPlaybackTimers()
-      playbackSources.forEach((sourceNode) => {
-        try {
-          sourceNode.stop()
-        } catch {
-          // The source may already have ended.
-        }
-        try {
-          sourceNode.disconnect()
-        } catch {
-          // Already disconnected.
-        }
-      })
-      playbackSources = []
-      playbackCursor = audioContext?.currentTime || 0
-      playbackActive = false
-      postPlaybackState = null
-      setOutputLevel(0)
-    }
-
-    const hasPendingPlayback = () => (
-      playbackActive
-      && audioContext
-      && audioContext.currentTime < playbackCursor - 0.02
-    )
-
-    const finishPlaybackIfDone = () => {
-      if (!playbackActive || hasPendingPlayback()) return
-      playbackActive = false
-      setOutputLevel(0)
-      if (postPlaybackState) {
-        const nextState = postPlaybackState
-        postPlaybackState = null
-        setDisplayState(nextState)
-      } else if (!remoteBusy) {
-        setDisplayState('idle')
-      }
-    }
-
-    const playPcmAudio = (audioBase64, sampleRate = OUTPUT_SAMPLE_RATE) => {
-      if (!audioContext) return
-      const samples = base64Pcm16ToFloat32(audioBase64)
-      const buffer = audioContext.createBuffer(1, samples.length, sampleRate)
-      buffer.copyToChannel(samples, 0)
-      const output = audioContext.createBufferSource()
-      output.buffer = buffer
-      output.connect(audioContext.destination)
-      playbackSources.push(output)
-      output.addEventListener('ended', () => {
-        playbackSources = playbackSources.filter(item => item !== output)
-        try {
-          output.disconnect()
-        } catch {
-          // Already disconnected.
-        }
-      })
-
-      const startAt = Math.max(audioContext.currentTime + 0.02, playbackCursor)
-      playbackCursor = startAt + buffer.duration
-      output.start(startAt)
-
-      const level = Math.min(1, rmsLevel(samples) / 0.18)
-      playbackActive = true
-      setOutputLevel(level)
-      setDisplayState('speaking')
-
-      const timer = setTimeout(() => {
-        finishPlaybackIfDone()
-      }, Math.max(0, (playbackCursor - audioContext.currentTime) * 1000 + 50))
-      playbackTimers.push(timer)
-    }
-
-    const cleanup = () => {
-      cancelled = true
-      cancelAnimationFrame(frame)
-      playbackActive = false
-      clearThinkingTimer()
-      clearProgressTimer()
-      clearPlayback()
-      processor?.disconnect()
-      source?.disconnect()
-      stream?.getTracks().forEach(track => track.stop())
-      audioContext?.close()
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'mute' }))
-      }
-      ws?.close()
-    }
-
-    cleanupRef.current = cleanup
 
     const start = async () => {
       try {
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error('当前浏览器不支持麦克风采集')
         }
-
-        ws = new WebSocket(voiceWsUrl(clientId))
-        ws.addEventListener('open', () => {
-          sendWs({ type: 'config', soul: persona, routeStrategy, thinking })
-          sendWs({ type: 'unmute' })
-        })
-        ws.addEventListener('message', (event) => {
-          let payload
-          try {
-            payload = JSON.parse(event.data)
-          } catch {
-            return
-          }
-
-          if (payload.type === 'voice_state') {
-            remoteBusy = ['thinking', 'speaking'].includes(payload.state)
-            if (payload.state === 'idle' && !hasPendingPlayback()) clearProgressLater(900)
-            if (hasPendingPlayback() && payload.state !== 'speaking') {
-              postPlaybackState = payload.state
-              setDisplayState('speaking')
-            } else {
-              postPlaybackState = null
-              setDisplayState(payload.state)
-            }
-          } else if (payload.type === 'transcript') {
-            if (payload.content) {
-              onVoiceMessageRef.current?.({ role: payload.role, content: payload.content, final: true })
-            }
-          } else if (payload.type === 'transcript_delta') {
-            if (payload.content) {
-              onVoiceMessageRef.current?.({ role: payload.role, content: payload.content, delta: true })
-            }
-          } else if (payload.type === 'audio') {
-            remoteBusy = true
-            playPcmAudio(payload.audio, payload.sampleRate || OUTPUT_SAMPLE_RATE)
-          } else if (payload.type === 'audio_done') {
-            remoteBusy = false
-            clearProgressLater()
-            if (hasPendingPlayback()) {
-              setDisplayState('speaking')
-            } else if (playbackActive) {
-              finishPlaybackIfDone()
-            } else {
-              setOutputLevel(0)
-              setDisplayState('idle')
-            }
-          } else if (payload.type === 'agent_actions') {
-            onAgentActionsRef.current?.(payload.actions || [])
-          } else if (payload.type === 'playback.clear') {
-            remoteBusy = false
-            clearPlayback()
-            setDisplayState(payload.reason === 'user_interruption' ? 'listening' : 'idle')
-          } else if (payload.type === 'agent_map_action') {
-            if (payload.mapAction) onMapActionRef.current?.(payload.mapAction)
-          } else if (payload.type === 'agent_thinking') {
-            onVoiceMessageRef.current?.({ role: 'assistant', thinkingDelta: payload.content })
-          } else if (payload.type === 'agent_tool_call') {
-            onVoiceMessageRef.current?.({ role: 'assistant', toolCall: payload.toolCall })
-          } else if (payload.type === 'agent_progress') {
-            if (payload.progress) {
-              setProgress(payload.progress)
-              if (payload.progress.stage === 'navigation_started' || payload.progress.stage === 'route_ready') {
-                clearProgressLater(1800)
-              }
-            }
-            onVoiceMessageRef.current?.({ role: 'assistant', progress: payload.progress })
-          } else if (payload.type === 'agent_debug') {
-            clearProgressLater(800)
-            onVoiceMessageRef.current?.({ role: 'assistant', debug: payload.debug })
-          } else if (payload.type === 'error') {
-            remoteBusy = false
-            setDisplayState('error')
-            setError(payload.message || '语音服务错误')
-          }
-        })
-        ws.addEventListener('error', () => {
-          remoteBusy = false
-          setDisplayState('error')
-          setError('语音服务连接失败')
-        })
-
-        stream = await navigator.mediaDevices.getUserMedia({
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext
+        if (!AudioContextClass) throw new Error('当前浏览器不支持实时语音播放')
+        const context = audioContextRef.current?.state === 'closed'
+          ? new AudioContextClass()
+          : audioContextRef.current || new AudioContextClass()
+        audioContextRef.current = context
+        await context.resume()
+        media = await navigator.mediaDevices.getUserMedia({
           audio: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
           },
         })
-        if (cancelled) {
-          stream.getTracks().forEach(track => track.stop())
+        if (disposed) {
+          media.getTracks().forEach(track => track.stop())
           return
         }
-
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext
-        audioContext = new AudioContextClass()
-        analyser = audioContext.createAnalyser()
+        analyser = context.createAnalyser()
         analyser.fftSize = 512
-        source = audioContext.createMediaStreamSource(stream)
+        source = context.createMediaStreamSource(media)
         source.connect(analyser)
-        processor = audioContext.createScriptProcessor(2048, 1, 1)
-        processor.onaudioprocess = (event) => {
-          if (cancelled || !ws || ws.readyState !== WebSocket.OPEN) return
-          const input = event.inputBuffer.getChannelData(0)
-          const pcm = floatToPcm16Base64(resampleLinear(input, audioContext.sampleRate, INPUT_SAMPLE_RATE))
-          sendWs({ type: 'audio', audio: pcm })
+        processor = context.createScriptProcessor(2048, 1, 1)
+        processor.onaudioprocess = event => {
+          const activeClient = clientRef.current
+          if (!activeClient?.ready || mutedRef.current) return
+          const samples = resampleLinear(
+            event.inputBuffer.getChannelData(0),
+            context.sampleRate,
+            inputSampleRateRef.current,
+          )
+          activeClient.send({
+            type: GatewayClientEvent.AUDIO_APPEND,
+            audio: floatToPcm16Base64(samples),
+          })
         }
         source.connect(processor)
-        processor.connect(audioContext.destination)
+        processor.connect(context.destination)
+        clientRef.current?.send({ type: GatewayClientEvent.UNMUTE })
+        setError(null)
 
         const data = new Float32Array(analyser.fftSize)
-        setError(null)
-        setDisplayState('idle')
-
         const tick = () => {
           analyser.getFloatTimeDomainData(data)
-          let sum = 0
-          for (let i = 0; i < data.length; i += 1) {
-            sum += data[i] * data[i]
-          }
-
-          const rms = Math.sqrt(sum / data.length)
-          const level = Math.min(1, rms / 0.18)
+          const level = rmsLevel(data)
           const now = performance.now()
-          setInputLevel(level)
-
-          if (rms > SPEECH_THRESHOLD && !remoteBusy) {
+          setInputLevel(Math.min(1, level / 0.18))
+          if (level > SPEECH_THRESHOLD) {
             lastVoiceAt = now
-            if (displayState === 'idle') setDisplayState('listening')
+            setVoiceState(current => current === 'idle' ? 'listening' : current)
           } else if (now - lastVoiceAt > 900) {
-            if (!remoteBusy && !playbackActive) setDisplayState('idle')
+            setVoiceState(current => current === 'listening' ? 'idle' : current)
           }
-
           frame = requestAnimationFrame(tick)
         }
-
         frame = requestAnimationFrame(tick)
-      } catch (err) {
-        if (!cancelled) {
+      } catch (reason) {
+        if (!disposed) {
           setInputLevel(0)
           setVoiceState('error')
-          setProgress(null)
-          setError(err.message || '麦克风不可用')
+          setError(reason?.message || '麦克风不可用')
         }
       }
     }
-
     start()
 
-    return cleanup
-  }, [clientId, muted, persona, routeStrategy, thinking])
+    return () => {
+      disposed = true
+      cancelAnimationFrame(frame)
+      processor?.disconnect()
+      source?.disconnect()
+      media?.getTracks().forEach(track => track.stop())
+    }
+  }, [clearPlayback, muted])
 
-  return { voiceState, inputLevel, outputLevel, progress, error }
+  useEffect(() => () => {
+    audioContextRef.current?.close()
+    audioContextRef.current = null
+  }, [])
+
+  const sendInput = useCallback((parts) => (
+    clientRef.current?.send({ type: GatewayClientEvent.INPUT_MESSAGE, parts }) === true
+  ), [])
+
+  return {
+    voiceState,
+    inputLevel,
+    outputLevel,
+    progress,
+    error,
+    sendInput,
+  }
 }

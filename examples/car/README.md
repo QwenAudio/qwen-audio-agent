@@ -16,6 +16,27 @@ conversation, GCP Client SDK, BackendPort, A2A, and MCP seams.
 The backend Agent may derive independent Sessions as an optional third-layer
 execution space. This lightweight cockpit Agent does not implement that option.
 
+## Structure at a glance
+
+| Directory / process | Default address | Role and contract | Change it when... |
+|---|---|---|---|
+| [`react-app/`](react-app/) / cockpit-client | `http://127.0.0.1:5173` | Replaceable foreground client. Uses GCP for conversation and scenario HTTP/SSE for panels. | Replacing the cockpit UI, browser audio I/O, or panel interaction. |
+| [`gateway.mjs`](gateway.mjs) / cockpit-gateway | `http://127.0.0.1:18888` | Foreground composition root. Reuses the framework Gateway and connects the configured backend through BackendPort/A2A. | Wiring a different protocol adapter or changing scenario composition—not implementing business logic. |
+| [`agent/`](agent/) / cockpit-agent | `http://127.0.0.1:3020` | Small replaceable A2A backend example. Calls only the backend MCP surface. | Replacing or teaching the bundled backend example. |
+| [`domain/`](domain/) / cockpit-domain | `http://127.0.0.1:3010` | Scenario-owned state and external-service adapters. Serves UI HTTP/SSE and both scoped MCP surfaces. | Adding business state, validation, or an external service integration. |
+| [`tools/`](tools/) | served by cockpit-domain | Cockpit capability contract. Each group keeps its MCP manifest beside its executor; `registry.mjs` explicitly assigns it to the foreground or backend. | Adding or changing a cockpit capability. |
+
+Common changes should stay local:
+
+- **Replace the backend Agent:** point `COCKPIT_AGENT_CARD_URL` at your Agent, or
+  replace only [`agent/`](agent/) when editing the bundled example. The client,
+  Gateway core, Domain, and tool contracts do not change.
+- **Add a scenario capability:** change [`tools/`](tools/) and touch
+  [`domain/`](domain/) only when the capability needs new state or an external
+  service adapter. Do not add business branches to the Gateway or client.
+- **Replace the cockpit UI:** replace only [`react-app/`](react-app/) while
+  keeping the GCP and scenario-state contracts.
+
 ## Quick start
 
 From the repository root:
@@ -38,13 +59,7 @@ npm run example:car
 ```
 
 Open `http://localhost:5173`.
-
-| Process | Default address | Architecture role | Responsibility |
-|---|---|---|---|
-| cockpit-client | `http://127.0.0.1:5173` | Foreground client component | Scenario UI, browser audio I/O, business panels |
-| cockpit-gateway | `http://127.0.0.1:18888` | Foreground conversation core | Realtime conversation, frontend tools, Task bridge, speech, interruption, recovery |
-| cockpit-agent | `http://127.0.0.1:3020` | Backend example | Small replaceable A2A cockpit Agent |
-| cockpit-domain | `http://127.0.0.1:3010` | Scenario infrastructure, not another layer | Authoritative business state, HTTP/SSE, MCP capabilities |
+The command starts the four processes listed above.
 
 Press `Ctrl+C` to stop all processes.
 

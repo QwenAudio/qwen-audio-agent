@@ -38,6 +38,8 @@ Open `http://localhost:5173`.
 
 Press `Ctrl+C` to stop all processes.
 
+A preflight validates the Realtime configuration and all four ports before any child process starts. Missing credentials and stale instances therefore produce one actionable error instead of several child-process stack traces.
+
 ## Boundaries
 
 - The UI talks to the Gateway through GCP and knows nothing about the Realtime provider or backend Agent.

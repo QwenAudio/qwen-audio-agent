@@ -7,6 +7,7 @@
 | cockpit-agent | 车控、导航、音乐、天气、闪购意图；未知请求不臆造能力 | `examples/car/agent/test` |
 | A2A → MCP | 标准 Task 生命周期和真实领域状态变更 | `examples/car/agent/test/integration.test.mjs` |
 | Gateway 装配 | 仅使用公开 API 注入 A2A Agent、健康和关闭 | `examples/car/test/gateway-composition.test.mjs` |
+| 启动预检 | Realtime 配置、四进程端口、无效端口 | `examples/car/test/preflight.test.mjs` |
 | GCP 客户端 | 握手、重连、回放、播放回执、Task 与会话恢复 | 根目录 Gateway Client SDK / protocol tests |
 | BackendPort/A2A | 取消、超时、断线、重复终态、输入与权限映射 | `server/test/a2a-backend-adapter.test.mjs` 及 Backend tests |
 | cockpit-client | ESLint 与生产构建 | `npm run example:car:lint`、`npm run example:car:build` |

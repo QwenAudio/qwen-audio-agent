@@ -1,12 +1,12 @@
-import { existsSync } from 'node:fs'
 import { createServer } from 'node:http'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { pathToFileURL } from 'node:url'
 import {
   StreamableHTTPServerTransport,
 } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { createAmapCockpitServices } from './amap-services.mjs'
 import { CockpitDomain } from './cockpit-domain.mjs'
 import { createCockpitMcpServer } from './mcp-server.mjs'
+import { loadCockpitEnvironment } from '../environment.mjs'
 
 const MAX_JSON_BYTES = 64 * 1024
 
@@ -180,8 +180,7 @@ export async function startCockpitDomainServer(options = {}) {
 
 const entry = process.argv[1] ? pathToFileURL(process.argv[1]).href : ''
 if (entry === import.meta.url) {
-  const envFile = fileURLToPath(new URL('../.env.local', import.meta.url))
-  if (existsSync(envFile)) process.loadEnvFile(envFile)
+  loadCockpitEnvironment()
   const server = await startCockpitDomainServer({
     host: process.env.COCKPIT_DOMAIN_HOST || '127.0.0.1',
     port: Number(process.env.COCKPIT_DOMAIN_PORT) || 3010,

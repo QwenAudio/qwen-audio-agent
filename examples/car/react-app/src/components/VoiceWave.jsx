@@ -24,6 +24,8 @@ const STATE_STYLE = {
 const PROGRESS_STYLE = {
   searching_destination: { speed: 0.00068, color: COLORS.user, accent: COLORS.thinkingSoft, direction: 1, activity: 0.66 },
   searching_via: { speed: 0.00068, color: COLORS.user, accent: COLORS.thinkingSoft, direction: 1, activity: 0.66 },
+  destination_locked: { speed: 0.00052, color: COLORS.user, accent: COLORS.systemSoft, direction: -1, activity: 0.58, routeNodes: true },
+  via_locked: { speed: 0.00052, color: COLORS.user, accent: COLORS.systemSoft, direction: -1, activity: 0.58, routeNodes: true },
   planning_route: { speed: 0.0046, color: COLORS.thinking, accent: COLORS.systemSoft, direction: 1, activity: 0.74, oscillate: true, routeNodes: true },
   route_ready: { speed: 0.00052, color: COLORS.system, accent: COLORS.systemSoft, direction: -1, activity: 0.58, routeNodes: true },
   navigation_started: { speed: 0.00052, color: COLORS.system, accent: COLORS.systemSoft, direction: -1, activity: 0.58, routeNodes: true },

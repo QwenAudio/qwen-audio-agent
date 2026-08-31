@@ -87,9 +87,35 @@ test('projects navigation progress and route state separately', async () => {
   assert.equal(output.data.navigation.map.polylines.length, 2)
   assert.deepEqual(activities.map(event => event.status), [
     'searching_destination',
+    'destination_locked',
+    'searching_via',
+    'via_locked',
     'planning_route',
     'navigation_started',
   ])
+})
+
+test('publishes scenario activity independently from the call observer', async () => {
+  const { domain, options } = fixture()
+  const published = []
+  const unsubscribe = domain.subscribeActivity(
+    'car-one',
+    event => published.push(event),
+  )
+  await domain.execute('navigation_start', { destination: '西湖' }, options)
+  unsubscribe()
+
+  assert.deepEqual(published.map(event => event.status), [
+    'searching_destination',
+    'destination_locked',
+    'planning_route',
+    'navigation_started',
+  ])
+  assert.ok(published.every(event => (
+    event.type === 'cockpit.activity'
+    && event.cockpitId === 'car-one'
+    && event.category === 'navigation'
+  )))
 })
 
 test('queries the current route without requiring another destination', async () => {

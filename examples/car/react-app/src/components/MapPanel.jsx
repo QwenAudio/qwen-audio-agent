@@ -1,5 +1,6 @@
 import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
+import { navigationRouteView } from '../navigation-route'
 
 window._AMapSecurityConfig = {
   securityJsCode: import.meta.env.VITE_AMAP_SECRET,
@@ -393,17 +394,7 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
     if (puck) puck.style.transform = `rotate(${bearing}deg)`
   }, [])
 
-  const routeInfo = useMemo(() => {
-    if (navState?.status !== 'navigating' || !navState.route) return null
-    const route = navState.route
-    return {
-      destination: route.destination,
-      distKm: route.distKm,
-      durationMin: route.durationMin,
-      arrivalStr: route.arrivalStr,
-      polyline: route.polyline,
-    }
-  }, [navState])
+  const routeInfo = useMemo(() => navigationRouteView(navState), [navState])
 
   const activeNavProgress = useMemo(() => (
     navProgress?.domain === 'navigation' && navProgress.message ? navProgress : null
@@ -576,8 +567,8 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
     markersRef.current = []
     clearPreview()
 
-    if (navState?.status === 'navigating' && navState.route) {
-      const route = navState.route
+    if (routeInfo) {
+      const route = routeInfo
 
       if (route.polyline) {
         const points = parsePolyline(route.polyline, AMap)
@@ -632,6 +623,7 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
                 animateRoute(routeLayers.animated, points, () => {
                   startRouteFlow(points)
                   setCameraStage('settle')
+                  if (route.status !== 'navigating') return
                   const followCamera = getFollowCamera(points)
                   rotateVehiclePuck(followCamera.rotation)
                   tweenCamera(followCamera, CAMERA_SETTLE_DURATION, () => setCameraStage('tracking'))
@@ -665,7 +657,9 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
           }, CAMERA_EXPAND_DURATION)
           scheduleCameraStep(() => {
             setCameraStage('settle')
-            tweenCamera({ center: destPos, zoom: 16.4, pitch: 54, rotation: 0 }, CAMERA_SETTLE_DURATION, () => setCameraStage('tracking'))
+            if (route.status === 'navigating') {
+              tweenCamera({ center: destPos, zoom: 16.4, pitch: 54, rotation: 0 }, CAMERA_SETTLE_DURATION, () => setCameraStage('tracking'))
+            }
           }, CAMERA_EXPAND_DURATION + CAMERA_DESTINATION_HOLD)
         }, CAMERA_FOCUS_DURATION + CAMERA_MASK_LEAD)
       }
@@ -673,7 +667,7 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
       scheduleCameraStep(() => setCameraStage('idle'), 0)
       tweenCamera({ center: DEFAULT_CENTER, zoom: 14, pitch: 42, rotation: 0 }, 520)
     }
-  }, [navState, mapReady, clearPreview, clearRouteLayers, createRouteLayers, animateRoute, parsePolyline, clearCameraTimeline, stopRouteFlow, scheduleCameraStep, tweenCamera, calculateBearing, getRouteCamera, getFollowCamera, getDestinationMarkerContent, startRouteFlow, rotateVehiclePuck])
+  }, [navState?.status, routeInfo, mapReady, clearPreview, clearRouteLayers, createRouteLayers, animateRoute, parsePolyline, clearCameraTimeline, stopRouteFlow, scheduleCameraStep, tweenCamera, calculateBearing, getRouteCamera, getFollowCamera, getDestinationMarkerContent, startRouteFlow, rotateVehiclePuck])
 
   useEffect(() => {
     if (!mapReady || routeInfo || !activeNavProgress) return undefined

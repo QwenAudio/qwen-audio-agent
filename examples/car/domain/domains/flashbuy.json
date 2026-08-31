@@ -1,7 +1,7 @@
 {
   "domain": "flashbuy",
   "label": "淘宝闪购",
-  "description": "外卖、奶茶、咖啡等附近商品搜索、加购、订单预览、确认下单和取消能力。",
+  "description": "座舱示例的附近商品搜索、加购、订单预览、确认下单和取消能力。",
   "enabled": true,
   "routeRules": [
     "用户表达任何外卖、奶茶、咖啡、点餐、淘宝闪购、下单相关意图 → 必须调用 flashbuy",

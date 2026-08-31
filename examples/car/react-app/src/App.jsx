@@ -23,15 +23,13 @@ const INITIAL_CAR_STATE = {
   acFan: 3,
 }
 
-const VALID_TABS = ['persona', 'skill', 'memory']
+const VALID_TABS = ['persona']
 const VALID_PERSONAS = ['聊愈师', '行动派', '疯批']
 const VALID_VOICES = ['小酒窝', '台御姐', '阳光男', '酷酷男']
 const DEFAULT_PERSONA = '聊愈师'
 const DEFAULT_VOICE = '小酒窝'
 const PERSONA_STORAGE_KEY = 'selectedPersona'
 const VOICE_STORAGE_KEY = 'selectedVoice'
-const MEMORY_MUTATION_TOOLS = new Set(['memory_write', 'memory_delete'])
-const SKILL_MUTATION_TOOLS = new Set(['skill_create', 'skill_delete'])
 const INITIAL_WEATHER_STATE = {
   city: '杭州市',
   dayweather: '多云',
@@ -82,11 +80,9 @@ export default function App() {
   const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(PERSONA_STORAGE_KEY, DEFAULT_PERSONA, VALID_PERSONAS))
   const [selectedVoice, setSelectedVoice] = useState(() => getStoredChoice(VOICE_STORAGE_KEY, DEFAULT_VOICE, VALID_VOICES))
   const [selectedWake, setSelectedWake] = useState('主驾')
-  const [memories, setMemories] = useState([])
   const carState = cockpitState?.vehicle || INITIAL_CAR_STATE
   const [showChat, setShowChat] = useState(false)
   const [chatMessages, setChatMessages] = useState([])
-  const [customSkills, setCustomSkills] = useState([])
   const navState = cockpitState?.navigation || { status: 'idle' }
   const mapActions = useMemo(() => [], [])
   const [routeStrategy, setRouteStrategy] = useState(0)
@@ -94,7 +90,6 @@ export default function App() {
   const flashBuyState = cockpitState?.flashbuy || INITIAL_FLASH_BUY_STATE
   const weatherState = cockpitState?.weather || INITIAL_WEATHER_STATE
   const [voiceMuted, setVoiceMuted] = useState(true)
-  const [thinking, setThinking] = useState(false)
   const voiceAssistantMessageIdRef = useRef(null)
 
   const runCockpitCommand = useCallback((name, args = {}) => {
@@ -142,36 +137,6 @@ export default function App() {
     }
   }, [flashBuyState.cartItems, runCockpitCommand])
 
-  const fetchMemories = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/memories?clientId=${clientId}`)
-      const items = await res.json()
-      setMemories(items.map((m, i) => ({ id: i, text: m.content, time: m.time })))
-    } catch (error) {
-      console.warn('Failed to fetch memories', error)
-    }
-  }, [clientId])
-
-  const fetchSkills = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/skills?clientId=${clientId}`)
-      const items = await res.json()
-      setCustomSkills(items)
-    } catch (error) {
-      console.warn('Failed to fetch skills', error)
-    }
-  }, [clientId])
-
-  const deleteSkill = useCallback(async (name) => {
-    try {
-      const res = await fetch(`/api/skills/${encodeURIComponent(name)}?clientId=${clientId}`, { method: 'DELETE' })
-      const items = await res.json()
-      setCustomSkills(items)
-    } catch (error) {
-      console.warn('Failed to delete skill', error)
-    }
-  }, [clientId])
-
   const toggleCarPart = useCallback((part) => {
     const action = carState[part] === 0 ? 'open' : 'close'
     if (part.startsWith('window')) {
@@ -198,16 +163,6 @@ export default function App() {
     setSettingsTab(tab)
     window.location.hash = `#settings/${tab}`
   }, [])
-
-  const deleteMemory = useCallback(async (id) => {
-    try {
-      const res = await fetch(`/api/memories/${id}?clientId=${clientId}`, { method: 'DELETE' })
-      const items = await res.json()
-      setMemories(items.map((m, i) => ({ id: i, text: m.content, time: m.time })))
-    } catch (error) {
-      console.warn('Failed to delete memory', error)
-    }
-  }, [clientId])
 
   const toggleChat = useCallback(() => {
     setShowChat(prev => !prev)
@@ -244,8 +199,6 @@ export default function App() {
     }
 
     if (event.toolCall) {
-      if (MEMORY_MUTATION_TOOLS.has(event.toolCall.name)) fetchMemories()
-      if (SKILL_MUTATION_TOOLS.has(event.toolCall.name)) fetchSkills()
       updateAssistantMessage(msg => ({
         ...msg,
         thinkingMs: msg.thinkingMs || 1,
@@ -270,9 +223,6 @@ export default function App() {
     }
 
     if (event.debug) {
-      const toolCalls = event.debug.tool_calls || []
-      if (toolCalls.some(toolCall => MEMORY_MUTATION_TOOLS.has(toolCall.name))) fetchMemories()
-      if (toolCalls.some(toolCall => SKILL_MUTATION_TOOLS.has(toolCall.name))) fetchSkills()
       updateAssistantMessage(msg => {
         const thinking = msg.thinking || event.debug.thinking || ''
         return {
@@ -315,7 +265,7 @@ export default function App() {
       updateAssistantMessage(msg => ({ ...msg, content: event.content || msg.content }))
       voiceAssistantMessageIdRef.current = null
     }
-  }, [fetchMemories, fetchSkills])
+  }, [])
 
   const handleConversationRecovery = useCallback((messages) => {
     voiceAssistantMessageIdRef.current = null
@@ -338,11 +288,6 @@ export default function App() {
     onConversationRecovery: handleConversationRecovery,
   })
 
-  const handleClearHistory = useCallback(() => {
-    voiceAssistantMessageIdRef.current = null
-    setChatMessages([])
-  }, [])
-
   const handleTextMessage = useCallback((text) => (
     sendInput([{ type: 'text', text }])
   ), [sendInput])
@@ -362,10 +307,6 @@ export default function App() {
   }, [voiceProgress])
 
   useEffect(() => {
-    Promise.resolve().then(() => {
-      fetchMemories()
-      fetchSkills()
-    })
     const onHashChange = () => {
       const { screen: s, tab } = parseHash()
       setScreen(s)
@@ -374,7 +315,7 @@ export default function App() {
     window.addEventListener('hashchange', onHashChange)
     onHashChange()
     return () => window.removeEventListener('hashchange', onHashChange)
-  }, [fetchMemories, fetchSkills])
+  }, [])
 
   return (
     <main className="device" aria-label="车机语音交互原型">
@@ -411,13 +352,10 @@ export default function App() {
                 selectedPersona={selectedPersona} onSelectPersona={setSelectedPersona}
                 selectedVoice={selectedVoice} onSelectVoice={setSelectedVoice}
                 selectedWake={selectedWake} onSelectWake={setSelectedWake}
-                memories={memories} onDeleteMemory={deleteMemory}
-                customSkills={customSkills} onDeleteSkill={deleteSkill}
-                clientId={clientId}
               />
             )}
           </div>
-          {showChat && <ChatPanel onClose={toggleChat} messages={chatMessages} onMessagesChange={setChatMessages} onClearHistory={handleClearHistory} onSendMessage={handleTextMessage} voiceActive={!voiceMuted} thinking={thinking} onThinkingChange={setThinking} />}
+          {showChat && <ChatPanel onClose={toggleChat} messages={chatMessages} onMessagesChange={setChatMessages} onSendMessage={handleTextMessage} voiceActive={!voiceMuted} />}
         </div>
 
         <Dock screen={screen} onNavigateHome={navigateHome} onOpenSettings={() => openSettings('persona')} onToggleChat={toggleChat} carState={carState} musicState={musicState} onTogglePlay={musicState.playing ? musicPause : musicPlay} onOpenMusic={openMusic} onOpenFlashBuy={openFlashBuy} />

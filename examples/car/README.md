@@ -1,96 +1,57 @@
 # Qwen Audio Agent Car
 
-[中文](README_ZH.md) | [English](README.md)
+English | [中文](README_ZH.md)
 
-## Agent Presence In The Car
+This smart-cockpit reference scenario is rebuilt on the qwen-audio-agent three-layer framework. It preserves the main cockpit UI and interactions without maintaining a second Realtime gateway, conversation history implementation, or Agent loop.
 
-Real cockpit interaction should not feel like issuing commands to a slow menu.
-The driver or passenger speaks naturally, the assistant keeps listening, and
-vehicle tasks continue without blocking the conversation.
+The cockpit UI and cockpit Agent are replaceable examples, not mandatory framework modules. The reusable core is the Gateway, foreground realtime conversation, GCP Client SDK, BackendPort, A2A, and MCP seams.
 
-**Qwen Audio Agent Car** is a smart cockpit example for
-`qwen-audio-agent`. It combines a car UI, realtime speech, a text Agent,
-vehicle control, navigation, music, flash-buy workflows, weather, web search,
-memory, and custom skills in one runnable demo. The example is intentionally
-self-contained today, so the core qwen-audio-agent runtime remains generic.
+## Quick start
 
-## Quick Start
-
-Run the following commands from the `qwen-audio-agent` repository root.
-
-### 1. Configure Environment
+From the repository root:
 
 ```bash
 cp examples/car/.env.example examples/car/.env.local
 ```
 
-Fill in `examples/car/.env.local`:
+Set at least:
 
 ```dotenv
-VITE_AMAP_KEY=your_amap_js_key
-VITE_AMAP_SECRET=your_amap_js_secret
-AMAP_MCP_KEY=your_amap_mcp_key
-
 DASHSCOPE_API_KEY=your_dashscope_api_key
-DASHSCOPE_MODEL=qwen3.6-plus
-DASHSCOPE_WEB_SEARCH_MODEL=qwen-plus
 ```
 
-Optional realtime voice overrides are also listed in `.env.example`.
-
-### 2. Start The Agent Server
+Optionally configure `VITE_AMAP_KEY`, `VITE_AMAP_SECRET`, and `AMAP_MCP_KEY` for AMap rendering and route services. Install the example dependencies and start all four processes:
 
 ```bash
-npm install --prefix examples/car/server
-npm run example:car:server
-```
-
-The server listens on `http://localhost:3001`.
-
-### 3. Start The Car UI
-
-Open another terminal:
-
-```bash
-npm install --prefix examples/car/react-app
-npm run example:car:web
+npm run example:car:install
+npm run example:car
 ```
 
 Open `http://localhost:5173`.
 
-## Features
+| Process | Default address | Responsibility |
+|---|---|---|
+| cockpit-client | `http://127.0.0.1:5173` | Scenario UI, browser audio I/O, business panels |
+| cockpit-gateway | `http://127.0.0.1:18888` | Foreground conversation, tools, Tasks, speech, interruption, recovery |
+| cockpit-agent | `http://127.0.0.1:3020` | Small replaceable A2A backend example |
+| cockpit-domain | `http://127.0.0.1:3010` | Authoritative business state, HTTP/SSE, MCP capabilities |
 
-- Natural voice conversation with full-duplex listening and interruption
-- Smart cockpit controls for windows, sunroof, headlights, air conditioning,
-  and vehicle status
-- Navigation assistance for destination search, route preview, and driving
-  guidance
-- Music playback controls for search, play, pause, and song switching
-- Flash-buy flows for food, drinks, shopping cart preview, and order
-  confirmation
-- Weather, web search, and time-aware answers for in-car decisions
-- Personalized memory for names, preferences, habits, and recurring needs
-- Custom cockpit skills that can extend the assistant with user-defined
-  workflows
+Press `Ctrl+C` to stop all processes.
 
-## Architecture
+## Boundaries
 
-![Qwen Audio Agent Car architecture](docs/system-architecture.svg)
+- The UI talks to the Gateway through GCP and knows nothing about the Realtime provider or backend Agent.
+- Scenario-specific HTTP/SSE projects vehicle, route, media, weather, and order state. The Gateway does not parse those objects.
+- The foreground Agent owns realtime conversation and submits cockpit work through the fixed `spawn_thinking` bridge.
+- The example backend attaches over A2A and invokes domain capabilities through MCP. It intentionally implements only a small intent router.
+- Customers can replace the UI, backend Agent, or domain service without changing the framework core.
 
-## Development
+## Development and tests
 
 ```bash
-npm run example:car:build
 npm run example:car:lint
+npm run example:car:build
+npm run test:car
 ```
 
-For voice testing on a LAN device, browser microphone permissions usually
-require HTTPS or an explicit insecure-origin allowlist. `localhost` works
-without extra browser configuration.
-
-## References
-
-- [System architecture](docs/system-architecture.md)
-- [Agent design](docs/agent-design.md)
-- [Tools and Skills design](docs/tools-and-skills.md)
-- [Voice interaction design](docs/voice-interaction-design.md)
+See [architecture and data flow](docs/architecture.md), [component replacement](docs/replacing-components.md), and the [test matrix](docs/test-matrix.md).

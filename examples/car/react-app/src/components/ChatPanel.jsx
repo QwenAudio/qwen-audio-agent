@@ -6,19 +6,11 @@ function formatArgs(args) {
 }
 
 const TOOL_TAGS = {
-  skill_create: { label: '技能创建', cls: 'tag-skill' },
-  skill_run: { label: '技能执行', cls: 'tag-skill' },
-  memory_write: { label: '记忆写入', cls: 'tag-memory' },
-  memory_read: { label: '记忆读取', cls: 'tag-memory' },
-  memory_delete: { label: '记忆删除', cls: 'tag-memory' },
   vehicle_state_query: { label: '车况查询', cls: 'tag-car' },
   vehicle_window_control: { label: '车窗控制', cls: 'tag-car' },
   vehicle_sunroof_control: { label: '天窗控制', cls: 'tag-car' },
   vehicle_headlights_control: { label: '大灯控制', cls: 'tag-car' },
   vehicle_climate_control: { label: '空调控制', cls: 'tag-car' },
-  notify_user: { label: '通知', cls: 'tag-skill' },
-  timer_set: { label: '定时器', cls: 'tag-skill' },
-  timer_cancel: { label: '定时器', cls: 'tag-skill' },
   navigation_start: { label: '开始导航', cls: 'tag-nav' },
   navigation_route_query: { label: '路线查询', cls: 'tag-nav' },
   navigation_stop: { label: '停止导航', cls: 'tag-nav' },
@@ -60,11 +52,8 @@ export default function ChatPanel({
   onClose,
   messages,
   onMessagesChange,
-  onClearHistory,
   onSendMessage,
   voiceActive = false,
-  thinking = false,
-  onThinkingChange,
 }) {
   const [input, setInput] = useState('')
   const [position, setPosition] = useState({ x: 0, y: 0 })
@@ -147,11 +136,6 @@ export default function ChatPanel({
       <div className="chat-header" onMouseDown={handleDragStart}>
         <span className="chat-title">Qwen Audio Agent Car · 调试</span>
         <div className="chat-header-actions">
-          <button className="chat-reset" onClick={onClearHistory} aria-label="清空">
-            <svg className="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M3 6h18M8 6V4h8v2M5 6v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-            </svg>
-          </button>
           <button className="chat-close" onClick={onClose} aria-label="关闭">
             <svg className="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -210,26 +194,10 @@ export default function ChatPanel({
       </div>
       {voiceActive ? (
         <div className="chat-input-area chat-input-voice-hint">
-          <div className="chat-input-options">
-            <button className={`thinking-chip ${thinking ? 'active' : ''}`} onClick={() => onThinkingChange?.(!thinking)}>
-              <svg className="icon-thinking" viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M8 1a5.5 5.5 0 0 0-2 10.63V13a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-1.37A5.5 5.5 0 0 0 8 1ZM6 14.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 0-1h-3a.5.5 0 0 0-.5.5Z" fill="currentColor" />
-              </svg>
-              深度思考
-            </button>
-          </div>
           <span>语音模式中，请通过麦克风交互</span>
         </div>
       ) : (
         <div className="chat-input-area">
-          <div className="chat-input-options">
-            <button className={`thinking-chip ${thinking ? 'active' : ''}`} onClick={() => onThinkingChange?.(!thinking)}>
-              <svg className="icon-thinking" viewBox="0 0 16 16" aria-hidden="true">
-                <path d="M8 1a5.5 5.5 0 0 0-2 10.63V13a1 1 0 0 0 1 1h2a1 1 0 0 0 1-1v-1.37A5.5 5.5 0 0 0 8 1ZM6 14.5a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 0-1h-3a.5.5 0 0 0-.5.5Z" fill="currentColor" />
-              </svg>
-              深度思考
-            </button>
-          </div>
           <div className="chat-input-row">
             <input
               className="chat-input"

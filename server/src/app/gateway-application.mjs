@@ -977,7 +977,7 @@ const start = ({ host = config.host, port = config.port } = {}) => {
     }
     logger.info('gateway.ready', {
       origin,
-      backend: config.agentProtocol || 'none',
+      backend: agent.describe?.()?.protocol || config.agentProtocol || 'none',
       realtimeProvider,
     }, `qwen-audio-agent running at ${origin}`)
   })

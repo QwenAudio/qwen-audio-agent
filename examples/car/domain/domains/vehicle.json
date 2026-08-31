@@ -1,7 +1,7 @@
 {
   "domain": "vehicle",
   "label": "车控",
-  "description": "车辆状态查询、车窗、天窗、大灯与空调控制能力。",
+  "description": "座舱示例的车辆状态查询、车窗、天窗、大灯与空调控制能力。",
   "enabled": true,
   "routeRules": [
     "用户查询车辆状态、车窗状态、天窗状态、大灯状态、空调状态 → 必须调用 vehicle_state_query",

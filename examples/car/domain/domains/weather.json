@@ -1,7 +1,7 @@
 {
   "domain": "weather",
   "label": "天气",
-  "description": "当前位置或指定城市的天气、气温、风力和出行建议能力。",
+  "description": "座舱示例的当前位置或指定城市天气、气温、风力和出行建议能力。",
   "enabled": true,
   "routeRules": [
     "用户表达任何天气、气温、下雨、带伞、穿衣、冷不冷、热不热、风力相关意图 → 必须调用 weather",

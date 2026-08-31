@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node server.mjs",
+    "start": "node --env-file-if-exists=../.env.local server.mjs",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {

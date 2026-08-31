@@ -1,89 +1,61 @@
 # Qwen Audio Agent Car
 
-[中文](README_ZH.md) | [English](README.md)
+[English](README.md) | 中文
 
-## 车内的 Agent Presence
+这是一个基于 qwen-audio-agent 三层框架重新实现的智能座舱参考场景。它保留原座舱面板的主要视觉和交互，但不再自建 Realtime、对话历史或 Agent Loop。
 
-真实的座舱交互不应该像在缓慢菜单里下指令。驾驶员或乘客自然说话，助手持续聆听，
-车辆任务在执行时也不阻塞当前对话。
-
-**Qwen Audio Agent Car** 是 `qwen-audio-agent` 的智能座舱示例。它把车机 UI、
-实时语音、文本 Agent、车辆控制、导航、音乐、淘宝闪购、天气、联网查询、记忆和
-自定义技能放在一个可运行的 demo 里。当前示例刻意保持自包含，让
-qwen-audio-agent 主运行时继续维持通用边界。
+示例中的座舱 UI 和座舱 Agent 都是可替换样例，不是框架强制模块。真正复用的框架能力是 Gateway、前台实时对话、GCP Client SDK、BackendPort、A2A 和 MCP 接缝。
 
 ## 快速开始
 
-以下命令默认在 `qwen-audio-agent` 仓库根目录执行。
-
-### 1. 配置环境
+在仓库根目录执行：
 
 ```bash
 cp examples/car/.env.example examples/car/.env.local
 ```
 
-填写 `examples/car/.env.local`：
+至少填写：
 
 ```dotenv
-VITE_AMAP_KEY=your_amap_js_key
-VITE_AMAP_SECRET=your_amap_js_secret
-AMAP_MCP_KEY=your_amap_mcp_key
-
 DASHSCOPE_API_KEY=your_dashscope_api_key
-DASHSCOPE_MODEL=qwen3.6-plus
-DASHSCOPE_WEB_SEARCH_MODEL=qwen-plus
 ```
 
-可选的实时语音覆盖配置也列在 `.env.example` 中。
-
-### 2. 启动 Agent 服务
+高德地图和路线服务可按需填写 `VITE_AMAP_KEY`、`VITE_AMAP_SECRET` 与 `AMAP_MCP_KEY`。然后安装示例依赖并一键启动：
 
 ```bash
-npm install --prefix examples/car/server
-npm run example:car:server
+npm run example:car:install
+npm run example:car
 ```
 
-服务默认监听 `http://localhost:3001`。
+浏览器打开 `http://localhost:5173`。该命令同时启动：
 
-### 3. 启动座舱 UI
+| 进程 | 默认地址 | 职责 |
+|---|---|---|
+| cockpit-client | `http://127.0.0.1:5173` | 场景 UI、浏览器音频 I/O、业务面板 |
+| cockpit-gateway | `http://127.0.0.1:18888` | 前台实时对话、工具、任务、播报、打断和恢复 |
+| cockpit-agent | `http://127.0.0.1:3020` | 轻量、可替换的 A2A 后台示例 |
+| cockpit-domain | `http://127.0.0.1:3010` | 单一业务状态、HTTP/SSE 与 MCP 能力 |
 
-另开一个终端：
+按 `Ctrl+C` 会一起关闭四个进程。
 
-```bash
-npm install --prefix examples/car/react-app
-npm run example:car:web
-```
+## 边界
 
-浏览器打开 `http://localhost:5173`。
+- UI 仅通过 GCP 与 Gateway 对话，不感知 Realtime Provider 或后台 Agent。
+- UI 通过场景自己的 HTTP/SSE 通道展示车辆、路线、音乐、天气和订单状态；Gateway 不解析这些对象。
+- 前台 Agent 负责实时聊天，座舱任务通过固定的 `spawn_thinking` 桥梁提交给后台。
+- 示例后台通过 A2A 接入 Gateway，并通过 MCP 调用领域能力；它只实现少量意图路由，不模拟完整行业 Agent。
+- 客户可以替换整个 UI、后台 Agent 或领域服务，而不修改框架核心。
 
-## 核心能力
-
-- 自然语音对话，支持全双工聆听和说话打断
-- 智能座舱控制，覆盖车窗、天窗、大灯、空调和车辆状态
-- 导航辅助，支持目的地搜索、路线预览和行程引导
-- 音乐播放控制，支持搜歌、播放、暂停和切歌
-- 淘宝闪购流程，支持外卖、饮品、购物车预览和确认下单
-- 天气、联网查询和时间感知回答，辅助车内即时决策
-- 个性化记忆，记住称呼、偏好、习惯和常用需求
-- 自定义座舱技能，可扩展用户自己的工作流
-
-## 架构
-
-![Qwen Audio Agent Car 架构](docs/system-architecture.svg)
-
-## 开发
+## 开发与测试
 
 ```bash
-npm run example:car:build
 npm run example:car:lint
+npm run example:car:build
+npm run test:car
 ```
 
-如果要在局域网设备上体验语音，浏览器麦克风权限通常需要 HTTPS，或把访问地址加入允许的不安全源。
-`localhost` 不需要额外浏览器配置。
+更多说明：
 
-## 参考文档
-
-- [系统架构](docs/system-architecture.md)
-- [Agent 设计](docs/agent-design.md)
-- [Tools and Skills 设计](docs/tools-and-skills.md)
-- [语音交互设计](docs/voice-interaction-design.md)
+- [架构与数据流](docs/architecture.md)
+- [替换 UI、Agent 或领域服务](docs/replacing-components.md)
+- [测试矩阵](docs/test-matrix.md)

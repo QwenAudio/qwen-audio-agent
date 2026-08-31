@@ -9,7 +9,7 @@ const DOMAIN_FILES = [
 ]
 
 function loadDomain(name) {
-  const url = new URL(`../server/domains/${name}.json`, import.meta.url)
+  const url = new URL(`./domains/${name}.json`, import.meta.url)
   return JSON.parse(readFileSync(url, 'utf8'))
 }
 

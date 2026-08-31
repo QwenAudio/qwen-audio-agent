@@ -75,7 +75,8 @@ function parseHash() {
 
 export default function App() {
   const clientId = useMemo(() => getClientId(), [])
-  const { state: cockpitState, execute: executeCockpitCommand } = useCockpitState(clientId)
+  const cockpitId = import.meta.env.VITE_COCKPIT_ID || 'default'
+  const { state: cockpitState, execute: executeCockpitCommand } = useCockpitState(cockpitId)
   const [screen, setScreen] = useState('main')
   const [settingsTab, setSettingsTab] = useState('persona')
   const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(PERSONA_STORAGE_KEY, DEFAULT_PERSONA, VALID_PERSONAS))

@@ -94,4 +94,5 @@ VoiceDock 的主提示文案是“说吧，想做什么？”。有任务进度�
 - 局域网 IP 访问通常需要 HTTPS 或浏览器允许不安全源，否则麦克风权限会被拦截。
 - `VITE_GATEWAY_ORIGIN` 可指定 Gateway 地址；开发代理默认指向 `http://127.0.0.1:18888`。
 - `VITE_COCKPIT_DOMAIN_ORIGIN` 可指定领域服务地址，默认 `http://127.0.0.1:3010`。
+- `VITE_COCKPIT_ID` 指定面板订阅的座舱实例，默认 `default`，需与场景 Agent 的 `COCKPIT_ID` 一致。
 - 前端只感知 GCP，不感知具体 Realtime provider 或后台 Agent。

@@ -6,6 +6,10 @@ export default defineConfig({
   envDir: '../',
   server: {
     proxy: {
+      '/api/realtime': {
+        target: 'http://127.0.0.1:18888',
+        ws: true,
+      },
       '/api': {
         target: 'http://localhost:3001',
         ws: true,

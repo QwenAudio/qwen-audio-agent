@@ -7,6 +7,7 @@ import SettingsPanel from './components/SettingsPanel'
 import ChatPanel from './components/ChatPanel'
 import MusicPanel, { PLAYLIST } from './components/MusicPanel'
 import FlashBuyPanel from './components/FlashBuyPanel'
+import useCockpitState from './hooks/useCockpitState'
 import useVoiceSession from './hooks/useVoiceSession'
 
 const INITIAL_CAR_STATE = {
@@ -74,33 +75,40 @@ function parseHash() {
 
 export default function App() {
   const clientId = useMemo(() => getClientId(), [])
+  const { state: cockpitState, execute: executeCockpitCommand } = useCockpitState(clientId)
   const [screen, setScreen] = useState('main')
   const [settingsTab, setSettingsTab] = useState('persona')
   const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(PERSONA_STORAGE_KEY, DEFAULT_PERSONA, VALID_PERSONAS))
   const [selectedVoice, setSelectedVoice] = useState(() => getStoredChoice(VOICE_STORAGE_KEY, DEFAULT_VOICE, VALID_VOICES))
   const [selectedWake, setSelectedWake] = useState('主驾')
   const [memories, setMemories] = useState([])
-  const [carState, setCarState] = useState(INITIAL_CAR_STATE)
+  const carState = cockpitState?.vehicle || INITIAL_CAR_STATE
   const [showChat, setShowChat] = useState(false)
   const [chatMessages, setChatMessages] = useState([])
   const [customSkills, setCustomSkills] = useState([])
-  const [navState, setNavState] = useState({ status: 'idle' })
-  const navStateRef = useRef(navState)
-  useEffect(() => { navStateRef.current = navState }, [navState])
-  const [mapActions, setMapActions] = useState([])
+  const navState = cockpitState?.navigation || { status: 'idle' }
+  const mapActions = useMemo(() => [], [])
   const [routeStrategy, setRouteStrategy] = useState(0)
-  const [musicState, setMusicState] = useState({ playing: false, currentIndex: 0 })
-  const [flashBuyState, setFlashBuyState] = useState(INITIAL_FLASH_BUY_STATE)
-  const [weatherState, setWeatherState] = useState(INITIAL_WEATHER_STATE)
+  const musicState = cockpitState?.music || { playing: false, currentIndex: 0 }
+  const flashBuyState = cockpitState?.flashbuy || INITIAL_FLASH_BUY_STATE
+  const weatherState = cockpitState?.weather || INITIAL_WEATHER_STATE
   const [voiceMuted, setVoiceMuted] = useState(true)
   const [thinking, setThinking] = useState(false)
   const voiceAssistantMessageIdRef = useRef(null)
 
-  const musicPlay = useCallback(() => setMusicState(prev => ({ ...prev, playing: true })), [])
-  const musicPause = useCallback(() => setMusicState(prev => ({ ...prev, playing: false })), [])
-  const musicNext = useCallback(() => setMusicState(prev => ({ ...prev, currentIndex: (prev.currentIndex + 1) % PLAYLIST.length, playing: true })), [])
-  const musicPrev = useCallback(() => setMusicState(prev => ({ ...prev, currentIndex: (prev.currentIndex - 1 + PLAYLIST.length) % PLAYLIST.length, playing: true })), [])
-  const musicSelectTrack = useCallback((i) => setMusicState({ playing: true, currentIndex: i }), [])
+  const runCockpitCommand = useCallback((name, args = {}) => {
+    executeCockpitCommand(name, args).catch(error => {
+      console.warn(`Cockpit command ${name} failed`, error)
+    })
+  }, [executeCockpitCommand])
+
+  const musicPlay = useCallback(() => runCockpitCommand('music_play'), [runCockpitCommand])
+  const musicPause = useCallback(() => runCockpitCommand('music_pause'), [runCockpitCommand])
+  const musicNext = useCallback(() => runCockpitCommand('music_next'), [runCockpitCommand])
+  const musicPrev = useCallback(() => runCockpitCommand('music_previous'), [runCockpitCommand])
+  const musicSelectTrack = useCallback((index) => {
+    runCockpitCommand('music_play', { query: PLAYLIST[index]?.title })
+  }, [runCockpitCommand])
 
   useEffect(() => {
     localStorage.setItem(PERSONA_STORAGE_KEY, selectedPersona)
@@ -122,45 +130,16 @@ export default function App() {
 
   const handleFlashBuyAction = useCallback((event) => {
     if (event.type === 'set_category') {
-      setFlashBuyState(prev => ({ ...prev, category: event.category, items: [] }))
+      runCockpitCommand('flashbuy', { action: 'search', category: event.category })
     } else if (event.type === 'toggle_item') {
-      setFlashBuyState(prev => {
-        const item = (prev.items || []).find(row => row.id === event.itemId) || event.item
-        if (!item) return prev
-        const exists = prev.cartItems.some(row => (row.itemId || row.id) === event.itemId)
-        const cartItems = exists
-          ? prev.cartItems.filter(row => (row.itemId || row.id) !== event.itemId)
-          : [...prev.cartItems, { ...item, itemId: item.id, quantity: 1 }]
-        return {
-          ...prev,
-          status: cartItems.length ? 'cart_updated' : 'selecting',
-          message: cartItems.length ? '已更新购物车' : '请选择商品',
-          cartItems,
-          total: cartItems.reduce((sum, row) => sum + row.price * (row.quantity || 1), 0),
-          preview: null,
-          order: null,
-        }
-      })
+      const exists = flashBuyState.cartItems.some(row => row.id === event.itemId)
+      runCockpitCommand('flashbuy', exists
+        ? { action: 'update_cart', itemId: event.itemId, quantity: 0 }
+        : { action: 'add_to_cart', itemId: event.itemId })
     } else if (event.type === 'confirm_order') {
-      setFlashBuyState(prev => {
-        if (!prev.cartItems.length && !prev.preview) return prev
-        const order = {
-          id: `SG${Math.floor(1000 + Math.random() * 9000)}`,
-          status: '骑手取货中',
-          eta: prev.preview?.eta || prev.cartItems[0]?.eta || '25分钟',
-          total: prev.preview?.total || prev.total,
-        }
-        return {
-          ...prev,
-          status: 'completed',
-          message: '已完成下单',
-          order,
-          cartItems: [],
-          preview: null,
-        }
-      })
+      runCockpitCommand('flashbuy', { action: 'confirm_order', confirmed: true })
     }
-  }, [])
+  }, [flashBuyState.cartItems, runCockpitCommand])
 
   const fetchMemories = useCallback(async () => {
     try {
@@ -182,17 +161,6 @@ export default function App() {
     }
   }, [clientId])
 
-  const fetchChatHistory = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/history?clientId=${clientId}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const items = await res.json()
-      if (Array.isArray(items)) setChatMessages(items)
-    } catch (error) {
-      console.warn('Failed to fetch chat history', error)
-    }
-  }, [clientId])
-
   const deleteSkill = useCallback(async (name) => {
     try {
       const res = await fetch(`/api/skills/${encodeURIComponent(name)}?clientId=${clientId}`, { method: 'DELETE' })
@@ -204,8 +172,15 @@ export default function App() {
   }, [clientId])
 
   const toggleCarPart = useCallback((part) => {
-    setCarState(prev => ({ ...prev, [part]: prev[part] === 0 ? 1 : 0 }))
-  }, [])
+    const action = carState[part] === 0 ? 'open' : 'close'
+    if (part.startsWith('window')) {
+      runCockpitCommand('vehicle_window_control', { action, window: part })
+    } else if (part === 'sunroof') {
+      runCockpitCommand('vehicle_sunroof_control', { action })
+    } else if (part === 'headlights') {
+      runCockpitCommand('vehicle_headlights_control', { action })
+    }
+  }, [carState, runCockpitCommand])
 
   const navigateHome = useCallback(() => {
     setScreen('main')
@@ -239,113 +214,6 @@ export default function App() {
 
   const toggleVoiceMute = useCallback(() => {
     setVoiceMuted(prev => !prev)
-  }, [])
-
-  const handleAgentActions = useCallback((actions) => {
-    for (const action of actions) {
-      if (action.type === 'car_control') {
-        if (action.part === 'ac') {
-          setCarState(prev => ({
-            ...prev,
-            ac: action.state,
-            ...(action.temperature != null ? { acTemp: action.temperature } : {}),
-            ...(action.mode ? { acMode: action.mode } : {}),
-            ...(action.fan != null ? { acFan: action.fan } : {}),
-          }))
-        } else if (action.part in INITIAL_CAR_STATE) {
-          setCarState(prev => ({ ...prev, [action.part]: action.state }))
-        }
-      } else if (action.type === 'music') {
-        if (action.action === 'play') {
-          if (action.query) {
-            const q = action.query.toLowerCase()
-            const idx = PLAYLIST.findIndex(t => t.title.toLowerCase().includes(q) || t.artist.toLowerCase().includes(q))
-            if (idx >= 0) setMusicState({ playing: true, currentIndex: idx })
-            else setMusicState(prev => ({ ...prev, playing: true }))
-          } else {
-            setMusicState(prev => ({ ...prev, playing: true }))
-          }
-          if (navStateRef.current.status !== 'navigating') {
-            setScreen('music')
-            window.location.hash = '#music'
-          }
-        } else if (action.action === 'pause') {
-          setMusicState(prev => ({ ...prev, playing: false }))
-        } else if (action.action === 'next') {
-          setMusicState(prev => ({ ...prev, currentIndex: (prev.currentIndex + 1) % PLAYLIST.length, playing: true }))
-        } else if (action.action === 'prev') {
-          setMusicState(prev => ({ ...prev, currentIndex: (prev.currentIndex - 1 + PLAYLIST.length) % PLAYLIST.length, playing: true }))
-        }
-      } else if (action.type === 'navigation') {
-        if (action.action === 'start') {
-          setMapActions([])
-          if (action.strategy != null) setRouteStrategy(action.strategy)
-          setNavState({ status: 'navigating', destination: action.destination, via: action.via, route: action.route })
-          setScreen('main')
-          window.location.hash = '#main'
-        } else if (action.action === 'stop') {
-          setMapActions([])
-          setNavState({ status: 'idle' })
-        }
-      } else if (action.type === 'flashbuy') {
-        if (action.action === 'open') {
-          setScreen('flashbuy')
-          window.location.hash = '#flashbuy'
-        } else if (action.action === 'status') {
-          setFlashBuyState(prev => ({
-            ...prev,
-            status: action.status || prev.status,
-            message: action.message || prev.message,
-            order: action.status === 'ordering' ? null : prev.order,
-          }))
-        } else if (action.action === 'results') {
-          setFlashBuyState(prev => ({
-            ...prev,
-            status: action.status || 'selecting',
-            message: action.message || '已找到附近可送商品',
-            category: action.category || prev.category,
-            items: action.items || [],
-            preview: null,
-            order: null,
-          }))
-        } else if (action.action === 'cart') {
-          setFlashBuyState(prev => ({
-            ...prev,
-            status: action.status || 'cart_updated',
-            message: action.message || '已更新购物车',
-            category: action.category || prev.category,
-            cartItems: action.items || [],
-            total: action.total || 0,
-            preview: null,
-            order: null,
-          }))
-        } else if (action.action === 'preview') {
-          setFlashBuyState(prev => ({
-            ...prev,
-            status: action.status || 'awaiting_confirm',
-            message: action.message || '请确认订单后下单',
-            category: action.category || prev.category,
-            preview: action.preview || null,
-            cartItems: action.preview?.items || prev.cartItems,
-            total: action.preview?.total ?? prev.total,
-            order: null,
-          }))
-        } else if (action.action === 'completed') {
-          setFlashBuyState(prev => ({
-            ...prev,
-            status: 'completed',
-            message: action.message || '已完成下单',
-            order: action.order || null,
-            cartItems: [],
-            preview: null,
-          }))
-        } else if (action.action === 'cancelled') {
-          setFlashBuyState({ ...INITIAL_FLASH_BUY_STATE, message: action.message || '已取消当前闪购流程' })
-        }
-      } else if (action.type === 'weather') {
-        if (action.weather) setWeatherState(action.weather)
-      }
-    }
   }, [])
 
   const handleVoiceMessage = useCallback((event) => {
@@ -423,10 +291,14 @@ export default function App() {
     if (event.role === 'user') {
       voiceAssistantMessageIdRef.current = null
       if (!event.content) return
-      setChatMessages(prev => [
-        ...prev,
-        { id: crypto.randomUUID(), role: 'user', content: event.content },
-      ].slice(-80))
+      setChatMessages(prev => {
+        const last = prev.at(-1)
+        if (last?.role === 'user' && last.content === event.content) return prev
+        return [
+          ...prev,
+          { id: crypto.randomUUID(), role: 'user', content: event.content },
+        ].slice(-80)
+      })
       return
     }
 
@@ -444,37 +316,35 @@ export default function App() {
     }
   }, [fetchMemories, fetchSkills])
 
-  const handleMapAction = useCallback((event) => {
-    if (event.action === 'clear') {
-      setMapActions([])
-    } else {
-      setMapActions(prev => [...prev, event])
-      setScreen('main')
-      window.location.hash = '#main'
-    }
+  const handleConversationRecovery = useCallback((messages) => {
+    voiceAssistantMessageIdRef.current = null
+    setChatMessages((Array.isArray(messages) ? messages : []).map(message => ({
+      ...message,
+      id: message.id || crypto.randomUUID(),
+    })).slice(-10))
   }, [])
 
-  const { voiceState, inputLevel, outputLevel, progress: voiceProgress } = useVoiceSession({
+  const {
+    voiceState,
+    inputLevel,
+    outputLevel,
+    progress: voiceProgress,
+    sendInput,
+  } = useVoiceSession({
     muted: voiceMuted,
     clientId,
-    persona: selectedPersona,
-    routeStrategy,
-    thinking,
-    onAgentActions: handleAgentActions,
-    onMapAction: handleMapAction,
     onVoiceMessage: handleVoiceMessage,
+    onConversationRecovery: handleConversationRecovery,
   })
 
-  const handleClearHistory = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/history?clientId=${clientId}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      voiceAssistantMessageIdRef.current = null
-      setChatMessages([])
-    } catch (error) {
-      console.warn('Failed to clear chat history', error)
-    }
-  }, [clientId])
+  const handleClearHistory = useCallback(() => {
+    voiceAssistantMessageIdRef.current = null
+    setChatMessages([])
+  }, [])
+
+  const handleTextMessage = useCallback((text) => (
+    sendInput([{ type: 'text', text }])
+  ), [sendInput])
 
   useEffect(() => {
     if (!['navigation', 'flashbuy'].includes(voiceProgress?.domain)) return undefined
@@ -494,7 +364,6 @@ export default function App() {
     Promise.resolve().then(() => {
       fetchMemories()
       fetchSkills()
-      fetchChatHistory()
     })
     const onHashChange = () => {
       const { screen: s, tab } = parseHash()
@@ -504,7 +373,7 @@ export default function App() {
     window.addEventListener('hashchange', onHashChange)
     onHashChange()
     return () => window.removeEventListener('hashchange', onHashChange)
-  }, [fetchMemories, fetchSkills, fetchChatHistory])
+  }, [fetchMemories, fetchSkills])
 
   return (
     <main className="device" aria-label="车机语音交互原型">
@@ -547,7 +416,7 @@ export default function App() {
               />
             )}
           </div>
-          {showChat && <ChatPanel onClose={toggleChat} messages={chatMessages} onMessagesChange={setChatMessages} onActions={handleAgentActions} onClearHistory={handleClearHistory} onMemoryChange={fetchMemories} onSkillChange={fetchSkills} onMapAction={handleMapAction} onNavigate={navigateHome} routeStrategy={routeStrategy} soul={selectedPersona} clientId={clientId} voiceActive={!voiceMuted} thinking={thinking} onThinkingChange={setThinking} />}
+          {showChat && <ChatPanel onClose={toggleChat} messages={chatMessages} onMessagesChange={setChatMessages} onClearHistory={handleClearHistory} onSendMessage={handleTextMessage} voiceActive={!voiceMuted} thinking={thinking} onThinkingChange={setThinking} />}
         </div>
 
         <Dock screen={screen} onNavigateHome={navigateHome} onOpenSettings={() => openSettings('persona')} onToggleChat={toggleChat} carState={carState} musicState={musicState} onTogglePlay={musicState.playing ? musicPause : musicPlay} onOpenMusic={openMusic} onOpenFlashBuy={openFlashBuy} />

@@ -280,6 +280,7 @@ export default function App() {
     inputLevel,
     outputLevel,
     progress: voiceProgress,
+    error: voiceError,
     sendInput,
   } = useVoiceSession({
     muted: voiceMuted,
@@ -331,6 +332,7 @@ export default function App() {
               voiceMuted={voiceMuted}
               voiceState={voiceState}
               voiceProgress={voiceProgress}
+              voiceError={voiceError}
               inputLevel={inputLevel}
               outputLevel={outputLevel}
               persona={selectedPersona}

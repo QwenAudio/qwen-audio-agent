@@ -5,6 +5,7 @@ import {
   GatewayClientEvent,
   GatewayServerEvent,
 } from 'qwen-audio-agent/realtime-events'
+import { cockpitVoiceConnectionMode } from './voiceSessionMode'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
@@ -289,12 +290,7 @@ export default function useVoiceSession({
       ],
       locale: navigator.language,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      configure: () => ({
-        voiceEnabled: !mutedRef.current,
-        inputEnabled: !mutedRef.current,
-        outputEnabled: !mutedRef.current,
-        textOnly: mutedRef.current,
-      }),
+      configure: () => cockpitVoiceConnectionMode(mutedRef.current),
       onEvent: handleEvent,
       onRecovery: recovery => {
         onConversationRecoveryRef.current?.(recovery.messages || [])

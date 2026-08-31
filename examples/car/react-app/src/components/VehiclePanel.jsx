@@ -1,7 +1,7 @@
 import CarModel3D from './CarModel3D'
 import VoiceDock from './VoiceDock'
 
-export default function VehiclePanel({ onOpenSettings, carState, voiceMuted, voiceState, voiceProgress, inputLevel, outputLevel, persona, onSelectPersona, onToggleVoiceMute }) {
+export default function VehiclePanel({ onOpenSettings, carState, voiceMuted, voiceState, voiceProgress, voiceError, inputLevel, outputLevel, persona, onSelectPersona, onToggleVoiceMute }) {
   return (
     <aside className="vehicle-panel">
       <div className="speed-readout">
@@ -15,6 +15,7 @@ export default function VehiclePanel({ onOpenSettings, carState, voiceMuted, voi
         muted={voiceMuted}
         state={voiceState}
         progress={voiceProgress}
+        error={voiceError}
         inputLevel={inputLevel}
         outputLevel={outputLevel}
         persona={persona}

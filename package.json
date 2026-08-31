@@ -241,6 +241,7 @@
     "docs:preview": "vitepress preview docs",
     "eval:frontend": "node server/eval/run-frontend-evaluations.mjs",
     "test": "node --test test/*.test.mjs && npm run test --workspace server && npm run test --workspace web && npm run test --workspace tui && npm run test --workspace desktop && npm run test --workspace @qwen-audio-agent/cli && npm run test:smart-cockpit",
+    "pretest:smart-cockpit": "npm ci --prefix examples/smart-cockpit/service --ignore-scripts && npm ci --prefix examples/smart-cockpit/agent --ignore-scripts",
     "test:smart-cockpit": "npm test --prefix examples/smart-cockpit/service && npm test --prefix examples/smart-cockpit/agent && node --test examples/smart-cockpit/test/*.test.mjs",
     "audit:release": "node scripts/audit-dependencies.mjs",
     "version:set": "node scripts/set-version.mjs",

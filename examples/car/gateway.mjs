@@ -1,3 +1,6 @@
+// Foreground composition root for the cockpit showcase. Keep scenario choices
+// here and consume only public qwen-audio-agent exports; do not copy framework
+// runtime logic or move cockpit business state into the Gateway.
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { loadCockpitEnvironment } from './environment.mjs'
 import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from './spawn-thinking-tool.mjs'

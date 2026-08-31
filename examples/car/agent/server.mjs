@@ -1,3 +1,6 @@
+// Replaceable backend example for the cockpit showcase. It demonstrates the
+// A2A boundary and delegates business operations to the backend MCP surface;
+// it is intentionally not a second conversation runtime or a generic Agent SDK.
 import {
   A2A_PROTOCOL_VERSION,
   AGENT_CARD_PATH,

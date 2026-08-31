@@ -2,9 +2,19 @@
 
 English | [中文](README_ZH.md)
 
-This smart-cockpit reference scenario is rebuilt on the qwen-audio-agent three-layer framework. It preserves the main cockpit UI and interactions without maintaining a second Realtime gateway, conversation history implementation, or Agent loop.
+This is qwen-audio-agent's runnable smart-cockpit showcase. It reimplements the
+complete cockpit path through public framework APIs while reusing suitable UI
+code and visual assets from an earlier cockpit prototype to save implementation
+effort. It is not a migration or compatibility retrofit, and it does not
+maintain a second Realtime gateway, conversation history, or Agent loop.
 
-The cockpit UI and cockpit Agent are replaceable examples, not mandatory framework modules. The reusable core is the Gateway, foreground realtime conversation, GCP Client SDK, BackendPort, A2A, and MCP seams.
+The base qwen-audio-agent boundary has two layers: foreground conversation and backend execution.
+The cockpit UI is a replaceable client component inside the foreground, and the
+cockpit Agent is a replaceable backend example. Neither is a mandatory framework
+implementation. The reusable core is the Gateway, foreground realtime
+conversation, GCP Client SDK, BackendPort, A2A, and MCP seams.
+The backend Agent may derive independent Sessions as an optional third-layer
+execution space. This lightweight cockpit Agent does not implement that option.
 
 ## Quick start
 
@@ -29,12 +39,12 @@ npm run example:car
 
 Open `http://localhost:5173`.
 
-| Process | Default address | Responsibility |
-|---|---|---|
-| cockpit-client | `http://127.0.0.1:5173` | Scenario UI, browser audio I/O, business panels |
-| cockpit-gateway | `http://127.0.0.1:18888` | Foreground conversation, tools, Tasks, speech, interruption, recovery |
-| cockpit-agent | `http://127.0.0.1:3020` | Small replaceable A2A backend example |
-| cockpit-domain | `http://127.0.0.1:3010` | Authoritative business state, HTTP/SSE, MCP capabilities |
+| Process | Default address | Architecture role | Responsibility |
+|---|---|---|---|
+| cockpit-client | `http://127.0.0.1:5173` | Foreground client component | Scenario UI, browser audio I/O, business panels |
+| cockpit-gateway | `http://127.0.0.1:18888` | Foreground conversation core | Realtime conversation, frontend tools, Task bridge, speech, interruption, recovery |
+| cockpit-agent | `http://127.0.0.1:3020` | Backend example | Small replaceable A2A cockpit Agent |
+| cockpit-domain | `http://127.0.0.1:3010` | Scenario infrastructure, not another layer | Authoritative business state, HTTP/SSE, MCP capabilities |
 
 Press `Ctrl+C` to stop all processes.
 
@@ -42,11 +52,16 @@ A preflight validates the Realtime configuration and all four ports before any c
 
 ## Boundaries
 
+- The cockpit client and Gateway/Realtime conversation runtime are components
+  of one foreground layer, not separate Agent layers.
 - The UI talks to the Gateway through GCP and knows nothing about the Realtime provider or backend Agent.
 - The primary cockpit stays voice-only. Transcripts appear only in the debug panel, and ASR displays final results only.
 - Scenario-specific HTTP/SSE projects vehicle, route, media, weather, and order state, plus fine-grained scenario progress. The Gateway does not parse those objects.
 - The foreground Agent owns realtime conversation and can call the read-only weather tool directly through standard MCP. Other cockpit work goes through the fixed `spawn_thinking` bridge.
 - The example backend attaches over A2A and uses a separate backend MCP surface for vehicle, navigation, music, and flash-buy operations. It intentionally implements only a small intent router.
+- How the backend invokes tools and organizes work is backend-private. If it
+  creates independent derived Sessions, they form an optional third-layer
+  execution space extended by the backend without changing the foreground protocol.
 - Scenario tools live in domain-oriented packages under [`tools/`](tools/README.md). One explicit registry adds groups or assigns them to the foreground or backend without changing Gateway protocols.
 - Customers can replace the UI, backend Agent, or domain service without changing the framework core.
 

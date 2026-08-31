@@ -1,3 +1,6 @@
+// Scenario-owned business infrastructure. This service projects cockpit state
+// to the UI and exposes scoped MCP tools, but it is not part of the Gateway or
+// an additional qwen-audio-agent layer.
 import { createServer } from 'node:http'
 import { pathToFileURL } from 'node:url'
 import {

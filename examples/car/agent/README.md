@@ -2,7 +2,9 @@
 
 This directory is deliberately a small, replaceable backend example. It is not
 the qwen-audio-agent framework and does not implement a general-purpose Agent
-runtime.
+runtime. Tool calls stay inside the backend. If a replacement Agent derives an
+independent Session, that Session may act as a third execution layer extended
+from the backend; this lightweight example intentionally does not do so.
 
 The example exposes an A2A 1.0 Agent Card and JSON-RPC endpoint. A compact
 intent router selects one of the existing cockpit MCP tools; the authoritative

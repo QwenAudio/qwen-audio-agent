@@ -62,6 +62,39 @@ async function waitFor(received, predicate, timeoutMs = 2000) {
   throw new Error(`Gateway event was not received: ${JSON.stringify(received)}`)
 }
 
+async function waitUntil(predicate, timeoutMs = 2000) {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() <= deadline) {
+    if (predicate()) return
+    await new Promise(resolve => setTimeout(resolve, 10))
+  }
+  throw new Error('Gateway condition was not met')
+}
+
+test('a muted voice-capable client can claim voice after unmute', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const client = await connect(server, {
+    type: 'connect',
+    clientType: 'web',
+    voiceEnabled: false,
+    inputEnabled: false,
+    outputEnabled: false,
+    textOnly: false,
+  })
+  await waitFor(client.received, event => event.type === 'voice.state')
+  assert.equal(gateway.status().activeOwners, 0)
+
+  client.socket.send(JSON.stringify({ type: 'unmute' }))
+  await waitUntil(() => gateway.status().activeOwners === 1)
+  client.socket.close()
+})
+
 test('5.x connect and 6.0 session.hello share one Gateway business path', async t => {
   const { server, gateway } = gatewayHarness()
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))

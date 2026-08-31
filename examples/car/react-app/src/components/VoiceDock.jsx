@@ -3,8 +3,9 @@ import VoiceWave from './VoiceWave'
 
 const PERSONAS = ['聊愈师', '行动派', '疯批']
 
-export default function VoiceDock({ muted, state = 'idle', progress = null, inputLevel = 0, outputLevel = 0, persona, onSelectPersona, onToggleMute, onOpenSettings }) {
-  const activeState = muted ? 'muted' : state
+export default function VoiceDock({ muted, state = 'idle', progress = null, error = null, inputLevel = 0, outputLevel = 0, persona, onSelectPersona, onToggleMute, onOpenSettings }) {
+  const activeError = !muted && error
+  const activeState = muted ? 'muted' : activeError ? 'error' : state
   const activeProgress = !muted && progress?.message ? progress : null
   const progressClass = activeProgress?.stage ? ` has-progress progress-${activeProgress.stage}` : ''
   const [personaMenuOpen, setPersonaMenuOpen] = useState(false)
@@ -41,7 +42,7 @@ export default function VoiceDock({ muted, state = 'idle', progress = null, inpu
   return (
     <section className={`voice-dock is-${activeState}${progressClass}`} aria-label="语音助手">
       <div className="voice-dock-title">
-        <span>{activeProgress?.message || '说吧，想做什么？'}</span>
+        <span>{activeError || activeProgress?.message || '说吧，想做什么？'}</span>
       </div>
 
       <div className="voice-dock-logo-slot" aria-hidden="true" />

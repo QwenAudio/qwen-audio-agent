@@ -54,26 +54,18 @@ const music = toolGroup('music', executeMusicTool)
 const weather = toolGroup('weather', executeWeatherTool)
 const flashbuy = toolGroup('flashbuy', executeFlashbuyTool)
 
-// This explicit composition is the scenario customization point. It keeps the
-// MCP contract standard without introducing a dynamic plugin framework.
-export const FRONTEND_TOOL_GROUPS = Object.freeze([weather])
-export const BACKEND_TOOL_GROUPS = Object.freeze([
+export const COCKPIT_TOOL_GROUPS = Object.freeze([
   vehicle,
   navigation,
   music,
+  weather,
   flashbuy,
-])
-export const COCKPIT_TOOL_GROUPS = Object.freeze([
-  ...FRONTEND_TOOL_GROUPS,
-  ...BACKEND_TOOL_GROUPS,
 ])
 
 function definitions(groups) {
   return Object.freeze(groups.flatMap(group => group.definitions))
 }
 
-export const FRONTEND_TOOL_DEFINITIONS = definitions(FRONTEND_TOOL_GROUPS)
-export const BACKEND_TOOL_DEFINITIONS = definitions(BACKEND_TOOL_GROUPS)
 export const COCKPIT_TOOL_DEFINITIONS = definitions(COCKPIT_TOOL_GROUPS)
 export const COCKPIT_TOOL_NAMES = Object.freeze(
   COCKPIT_TOOL_DEFINITIONS.map(tool => tool.name),
@@ -82,6 +74,35 @@ export const COCKPIT_TOOL_NAMES = Object.freeze(
 if (new Set(COCKPIT_TOOL_NAMES).size !== COCKPIT_TOOL_NAMES.length) {
   throw new Error('Cockpit tool names must be unique across groups')
 }
+
+// Tool implementation stays grouped by business domain. This explicit surface
+// assignment is the scenario customization point: simple low-latency actions
+// run inline in the foreground, while orchestrated work stays with the backend
+// Agent. It keeps one executor per capability without a dynamic plugin layer.
+export const FRONTEND_TOOL_NAMES = Object.freeze([
+  'weather',
+  'vehicle_state_query',
+  'vehicle_window_control',
+  'vehicle_headlights_control',
+])
+
+const toolDefinitionsByName = new Map(
+  COCKPIT_TOOL_DEFINITIONS.map(tool => [tool.name, tool]),
+)
+const frontendNames = new Set(FRONTEND_TOOL_NAMES)
+const unknownFrontendNames = FRONTEND_TOOL_NAMES.filter(
+  name => !toolDefinitionsByName.has(name),
+)
+if (unknownFrontendNames.length) {
+  throw new Error(`Unknown frontend cockpit tools: ${unknownFrontendNames.join(', ')}`)
+}
+
+export const FRONTEND_TOOL_DEFINITIONS = Object.freeze(
+  FRONTEND_TOOL_NAMES.map(name => toolDefinitionsByName.get(name)),
+)
+export const BACKEND_TOOL_DEFINITIONS = Object.freeze(
+  COCKPIT_TOOL_DEFINITIONS.filter(tool => !frontendNames.has(tool.name)),
+)
 
 const EXECUTORS = new Map(COCKPIT_TOOL_GROUPS.flatMap(group => (
   group.definitions.map(tool => [tool.name, group.execute])

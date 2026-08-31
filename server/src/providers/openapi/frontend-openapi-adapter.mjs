@@ -272,11 +272,6 @@ function discoverOperations(api, document) {
     if (!match) {
       throw new Error(`Enabled Frontend OpenAPI operation is missing: ${api.key}/${operationId}`)
     }
-    if (policy.readOnly && !SAFE_METHODS.has(match.method)) {
-      throw new Error(
-        `Frontend OpenAPI ${api.key}/${operationId} cannot mark ${match.method.toUpperCase()} as read-only.`,
-      )
-    }
     if (SAFE_METHODS.has(match.method) && match.operation.requestBody) {
       throw new Error(
         `Frontend OpenAPI ${api.key}/${operationId} cannot send a body with ${match.method.toUpperCase()}.`,
@@ -307,8 +302,6 @@ function discoverOperations(api, document) {
       },
       policy: {
         mode: 'inline',
-        readOnly: policy.readOnly,
-        approval: policy.approval,
         timeoutMs: policy.timeoutMs,
         maxResultBytes: policy.maxResultBytes,
         maxCallsPerTurn: policy.maxCallsPerTurn,

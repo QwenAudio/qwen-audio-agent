@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { permissionReference } from './permission-reference.mjs'
 import {
   PERMISSION_RESPONSE_CAPABILITY,
@@ -22,7 +22,6 @@ import {
 } from '../frontend-tools.mjs'
 import {
   findFrontendSourceTool,
-  frontendSourceToolCapabilities,
 } from '../../frontend/tools/frontend-tool-source.mjs'
 import {
   boundFrontendToolResult,
@@ -42,8 +41,6 @@ const CANCEL_RECEIPT_INSTRUCTIONS = [
 ].join(' ')
 
 const STATUS_RESULT_MESSAGE = '请根据这次查询结果自然回答用户；不要再次调用状态工具，不要展示 task_id。'
-const MAX_PENDING_EXTERNAL_AUTHORIZATIONS = 8
-
 function objectiveFingerprint(objective) {
   return createHash('sha256')
     .update(String(objective || '').replace(/\s+/g, ' ').trim())
@@ -203,7 +200,6 @@ export class ToolCallHandler {
     this.deferredToolResponses = new Map()
     this.pendingBackendPermissions = new Map()
     this.submittedBackendPermissions = new Set()
-    this.pendingExternalAuthorizations = new Map()
   }
 
   externalTool(name) {
@@ -254,64 +250,8 @@ export class ToolCallHandler {
         )
   }
 
-  async requestExternalToolApproval(external, context) {
-    if (
-      this.pendingExternalAuthorizations.size
-      >= MAX_PENDING_EXTERNAL_AUTHORIZATIONS
-    ) {
-      await this.sendOutput(
-        context.callId,
-        failure(
-          'external_authorization_limit',
-          '当前等待确认的外部操作过多，请先处理已有请求。',
-          { retryable: true },
-        ),
-        context.turnId,
-      )
-      return { handled: true, executed: false }
-    }
-    const authorizationId = `permission_${randomUUID().replaceAll('-', '')}`
-    const description = String(
-      external.tool.definition?.function?.description || external.tool.name,
-    ).replace(/\s+/gu, ' ').trim().slice(0, 400)
-    this.pendingExternalAuthorizations.set(authorizationId, {
-      ...external,
-      args: context.args,
-      operation: description,
-    })
-    await this.sendOutput(context.callId, {
-      status: 'confirmation_required',
-      permission_id: authorizationId,
-      operation: description,
-      allowed_decisions: ['once', 'reject'],
-      message: '此操作会修改外部系统，必须先获得用户明确同意。',
-    }, context.turnId, null, {
-      response: {
-        instructions: [
-          '这是前台外部工具执行前的确认请求。',
-          '自然、简短地说明 operation 并询问用户是否允许，不要声称已经执行。',
-          '用户回答后按语义调用 respond_permission，并原样使用 permission_id；本请求只允许 once 或 reject。不要要求固定口令，也不要朗读内部 ID。',
-        ].join(' '),
-      },
-    })
-    return { handled: true, executed: false, authorizationId }
-  }
-
   async executeExternalToolCall(external, context) {
     const { tool } = external
-    const directlyExecutable = tool.policy?.readOnly === true
-    const requiresApproval = (
-      tool.policy?.readOnly === false
-      && tool.policy?.approval === 'required'
-    )
-    if (!directlyExecutable && !requiresApproval) {
-      await this.sendOutput(
-        context.callId,
-        failure('tool_unavailable', '当前前台没有启用这个能力。'),
-        context.turnId,
-      )
-      return { handled: true, executed: false }
-    }
     const limit = this.externalToolLoop.admit({ ...context, tool })
     if (!limit.admitted) {
       await this.sendOutput(
@@ -330,54 +270,13 @@ export class ToolCallHandler {
       )
       return { handled: true, executed: false, limit }
     }
-    if (requiresApproval) {
-      return this.requestExternalToolApproval(external, context)
-    }
     const output = await this.executeExternalSource(external, context.args)
     await this.sendOutput(context.callId, output, context.turnId)
     return { handled: true, executed: true, value: output }
   }
 
-  async respondFrontendToolPermission(callId, turnId, args = {}) {
-    const authorizationId = String(args.permission_id || '').trim()
-    const decision = String(args.decision || '').trim()
-    const pending = this.pendingExternalAuthorizations.get(authorizationId)
-    if (!pending || !['once', 'reject'].includes(decision)) {
-      await this.sendOutput(
-        callId,
-        failure(
-          'external_authorization_not_pending',
-          '没有找到仍在等待决定的外部工具请求。',
-        ),
-        turnId,
-      )
-      return
-    }
-    this.pendingExternalAuthorizations.delete(authorizationId)
-    if (decision === 'reject') {
-      await this.sendOutput(callId, {
-        status: 'rejected',
-        message: '用户拒绝了这次外部工具操作。',
-      }, turnId, null, {
-        response: {
-          instructions: '自然、简短地确认本次操作未执行，不要调用工具。',
-        },
-      })
-      return
-    }
-    const output = await this.executeExternalSource(pending, pending.args)
-    await this.sendOutput(callId, output, turnId)
-  }
-
   async respondPermission(context) {
     const permissionId = String(context.args?.permission_id || '').trim()
-    if (this.pendingExternalAuthorizations.has(permissionId)) {
-      return this.respondFrontendToolPermission(
-        context.callId,
-        context.turnId,
-        context.args,
-      )
-    }
     const backendPermissionPending = [...this.pendingBackendPermissions.keys()]
       .some(id => permissionReference(id) === permissionId)
       || this.taskManager?.list?.({
@@ -1102,7 +1001,6 @@ export class ToolCallHandler {
           capabilities: [...new Set([
             ...(this.frontendRetrieval?.capabilities?.() || []),
             ...(this.frontendKnowledge?.capabilities?.() || []),
-            ...frontendSourceToolCapabilities(this.frontendToolSources),
             // 与 realtime-gateway 的 getAgentContext 同一个判据：两处必须一致，
             // 否则会出现「模型看得到工具但调用被策略拒掉」这种自相矛盾的状态。
             // 与 realtime-gateway 的 getAgentContext 必须同一个判据。资料检索

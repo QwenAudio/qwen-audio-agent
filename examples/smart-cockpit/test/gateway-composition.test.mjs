@@ -15,6 +15,9 @@ test('composes the public Gateway API with the replaceable A2A Agent', async t =
 
   const service = await startCockpitServiceServer({ port: 0 })
   t.after(() => service.close())
+  process.env.COCKPIT_SERVICE_ORIGIN = service.origin
+  process.env.COCKPIT_ID = 'composition-car'
+  delete process.env.COCKPIT_FRONTEND_MCP_URL
   const cockpitAgent = await startCockpitAgentServer({
     port: 0,
     serviceOrigin: service.origin,
@@ -22,6 +25,10 @@ test('composes the public Gateway API with the replaceable A2A Agent', async t =
   t.after(() => cockpitAgent.close())
 
   const { startCockpitGateway } = await import('../gateway.mjs')
+  assert.equal(
+    process.env.COCKPIT_FRONTEND_MCP_URL,
+    `${service.origin}/mcp/frontend?cockpitId=composition-car`,
+  )
   const gateway = startCockpitGateway({
     port: 0,
     agentCardUrl: cockpitAgent.agentCardUrl,

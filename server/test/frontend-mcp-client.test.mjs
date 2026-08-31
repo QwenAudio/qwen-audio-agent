@@ -6,7 +6,6 @@ import { normalizeFrontendMcpConfiguration } from '../src/providers/mcp/frontend
 function configuration(tools = {
   search: {
     enabled: true,
-    readOnly: true,
     description: 'Search approved documents.',
     maxResultBytes: 2_048,
     maxCallsPerTurn: 1,
@@ -86,7 +85,6 @@ test('discovers only explicitly enabled tools under stable namespaced names', as
     configuration: configuration({
       search: {
         enabled: true,
-        readOnly: true,
         description: 'Configured description.',
         maxCallsPerTurn: 1,
       },
@@ -106,8 +104,6 @@ test('discovers only explicitly enabled tools under stable namespaced names', as
   })
   assert.deepEqual(tools[0].policy, {
     mode: 'inline',
-    readOnly: true,
-    approval: 'none',
     timeoutMs: 8_000,
     maxResultBytes: 32 * 1024,
     maxCallsPerTurn: 1,
@@ -127,20 +123,22 @@ test('discovers only explicitly enabled tools under stable namespaced names', as
   assert.equal(mocks.clients[0].closed, true)
 })
 
-test('discovers explicitly approved writable tools without executing them', async () => {
+test('preserves standard MCP annotations without turning them into execution policy', async () => {
   const mocks = harness({
     remoteTools: [{
       name: 'create_issue',
       description: 'Create an issue.',
       inputSchema: { type: 'object', properties: {} },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+      },
     }],
   })
   const client = new FrontendMcpClient({
     configuration: configuration({
       create_issue: {
         enabled: true,
-        readOnly: false,
-        approval: 'required',
       },
     }),
     clientFactory: mocks.clientFactory,
@@ -149,8 +147,16 @@ test('discovers explicitly approved writable tools without executing them', asyn
 
   const [tool] = await client.initialize()
   assert.equal(tool.name, 'mcp__documents__create_issue')
-  assert.equal(tool.policy.readOnly, false)
-  assert.equal(tool.policy.approval, 'required')
+  assert.deepEqual(tool.annotations, {
+    readOnlyHint: false,
+    destructiveHint: false,
+  })
+  assert.deepEqual(tool.policy, {
+    mode: 'inline',
+    timeoutMs: 8_000,
+    maxResultBytes: 32 * 1024,
+    maxCallsPerTurn: 2,
+  })
   assert.equal(mocks.calls.length, 0)
 })
 

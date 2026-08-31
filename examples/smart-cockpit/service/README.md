@@ -14,8 +14,10 @@ npm run example:smart-cockpit:service
 
 Endpoints:
 
-- `POST /mcp/frontend` — foreground MCP surface; weather only.
-- `POST /mcp/backend` — backend Agent MCP surface; vehicle, navigation, music, and flash-buy.
+- `POST /mcp/frontend` — foreground MCP surface; weather, vehicle-state queries,
+  window control, and headlight control.
+- `POST /mcp/backend` — backend Agent MCP surface; sunroof, climate,
+  navigation, music, and flash-buy.
 - `GET /api/cockpit/state?cockpitId=default` — current snapshot.
 - `GET /api/cockpit/events?cockpitId=default` — snapshot plus state updates via SSE.
 - `POST /api/cockpit/commands` — direct scenario UI operations using the same tool names.

@@ -6,10 +6,20 @@ import {
   FRONTEND_TOOL_DEFINITIONS,
 } from '../service/tools/registry.mjs'
 
-test('assigns weather to the foreground and all other cockpit tools to the backend', () => {
-  assert.deepEqual(FRONTEND_TOOL_DEFINITIONS.map(tool => tool.name), ['weather'])
-  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 14)
-  assert.ok(!BACKEND_TOOL_DEFINITIONS.some(tool => tool.name === 'weather'))
+test('assigns low-latency cockpit tools to the foreground without backend duplicates', () => {
+  assert.deepEqual(FRONTEND_TOOL_DEFINITIONS.map(tool => tool.name), [
+    'weather',
+    'vehicle_state_query',
+    'vehicle_window_control',
+    'vehicle_headlights_control',
+  ])
+  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 11)
+  const backendNames = BACKEND_TOOL_DEFINITIONS.map(tool => tool.name)
+  assert.ok(backendNames.includes('vehicle_sunroof_control'))
+  assert.ok(backendNames.includes('vehicle_climate_control'))
+  assert.ok(!backendNames.includes('weather'))
+  assert.ok(!backendNames.includes('vehicle_window_control'))
+  assert.ok(!backendNames.includes('vehicle_headlights_control'))
 })
 
 test('binds the cockpit frontend profile to the scoped MCP configuration', () => {
@@ -24,7 +34,14 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
   ))
   assert.equal(profile.toolSources.mcp, 'service/tools/frontend-mcp.json')
   assert.equal(config.servers.cockpit.url, '${COCKPIT_FRONTEND_MCP_URL}')
-  assert.deepEqual(Object.keys(config.servers.cockpit.tools), ['weather'])
+  assert.deepEqual(Object.keys(config.servers.cockpit.tools), [
+    'weather',
+    'vehicle_state_query',
+    'vehicle_window_control',
+    'vehicle_headlights_control',
+  ])
+  assert.equal(config.servers.cockpit.tools.vehicle_window_control.enabled, true)
+  assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_window_control))
 })
 
 test('keeps asynchronous cockpit acknowledgements natural and action-specific', () => {

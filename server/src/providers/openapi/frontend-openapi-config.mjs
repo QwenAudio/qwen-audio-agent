@@ -81,23 +81,13 @@ function normalizedPolicy(value = {}) {
     throw new Error('Frontend OpenAPI operation policy must be an object.')
   }
   const enabled = value.enabled === true
-  const readOnly = value.readOnly === true
-  const approval = clean(value.approval, 40).toLowerCase() || 'none'
-  if (enabled && typeof value.readOnly !== 'boolean') {
+  if ('readOnly' in value || 'approval' in value) {
     throw new Error(
-      'Enabled Frontend OpenAPI operations must explicitly declare readOnly.',
+      'Frontend OpenAPI configuration does not define readOnly or approval; enforce confirmation in the API service.',
     )
-  }
-  if (enabled && !readOnly && approval !== 'required') {
-    throw new Error('Writable Frontend OpenAPI operations require approval=required.')
-  }
-  if (readOnly && approval !== 'none') {
-    throw new Error('Read-only Frontend OpenAPI operations cannot require approval.')
   }
   return {
     enabled,
-    readOnly,
-    approval,
     timeoutMs: boundedInteger(value.timeoutMs, 8_000, 100, 30_000),
     maxResultBytes: boundedInteger(
       value.maxResultBytes,

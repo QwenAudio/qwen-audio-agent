@@ -12,9 +12,6 @@ import {
   FRONTEND_KNOWLEDGE_CAPABILITY,
 } from '../frontend/knowledge/knowledge-runtime.mjs'
 import {
-  FRONTEND_TOOL_APPROVAL_CAPABILITY,
-} from '../frontend/tools/frontend-tool-source.mjs'
-import {
   spawnThinkingTool,
   withSpawnThinkingDescription,
 } from './tools/spawn-thinking-tool.mjs'
@@ -28,7 +25,7 @@ export const GET_CURRENT_TIME_TOOL_NAME = 'get_current_time'
 export const MEMORY_TOOL_NAME = 'memory'
 export const NOTES_TOOL_NAME = 'notes'
 export const RESPOND_PERMISSION_TOOL_NAME = 'respond_permission'
-export const PERMISSION_RESPONSE_CAPABILITY = FRONTEND_TOOL_APPROVAL_CAPABILITY
+export const PERMISSION_RESPONSE_CAPABILITY = 'permission.respond'
 export const RESPOND_AGENT_INPUT_TOOL_NAME = 'respond_agent_input'
 export const BACKEND_INPUT_RESPONSE_CAPABILITY = 'backend.input.respond'
 export const ENTER_SLEEP_TOOL_NAME = 'enter_sleep'

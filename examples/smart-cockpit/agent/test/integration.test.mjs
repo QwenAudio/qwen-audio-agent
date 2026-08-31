@@ -25,8 +25,8 @@ function cockpitModel() {
       const last = messages.at(-1)
       if (last.role === 'tool') return { content: last.content }
       const objective = last.content
-      if (/主驾车窗/u.test(objective)) {
-        return toolCall('vehicle_window_control', { action: 'open', window: 'windowFL' })
+      if (/空调/u.test(objective)) {
+        return toolCall('vehicle_climate_control', { action: 'set_temp', temperature: 22 })
       }
       if (/五常地铁站/u.test(objective)) {
         return toolCall('navigation_start', {
@@ -108,8 +108,8 @@ test('runs core cockpit capabilities through A2A and MCP without UI actions', as
     objective,
   })
 
-  const vehicle = await submit('打开主驾车窗')
-  assert.match(vehicle.content, /已打开主驾车窗/u)
+  const vehicle = await submit('空调调到二十二度')
+  assert.match(vehicle.content, /空调当前开启.*22°C/u)
   assert.equal(vehicle.presentation, undefined)
 
   const navigation = await submit('导航到杭州西湖')
@@ -149,7 +149,7 @@ test('runs core cockpit capabilities through A2A and MCP without UI actions', as
 
   state = await fetch(`${service.origin}/api/cockpit/state?cockpitId=default`)
     .then(response => response.json())
-  assert.equal(state.vehicle.windowFL, 1)
+  assert.equal(state.vehicle.acTemp, 22)
   assert.equal(state.navigation.status, 'navigating')
   assert.equal(state.navigation.destination, '萧山机场')
   assert.deepEqual(state.navigation.waypoints, ['五常地铁站', '城西银泰'])

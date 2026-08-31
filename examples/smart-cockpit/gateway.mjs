@@ -8,9 +8,14 @@ import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from './spawn-thinking-tool.mjs'
 loadCockpitEnvironment()
 process.env.QWAUDIO_CONFIG_DIR ||= fileURLToPath(new URL('./.runtime', import.meta.url))
 process.env.QWAUDIO_DATA_DIR ||= process.env.QWAUDIO_CONFIG_DIR
-process.env.COCKPIT_FRONTEND_MCP_URL ||= `${
-  process.env.COCKPIT_SERVICE_ORIGIN || 'http://127.0.0.1:3010'
-}/mcp/frontend`
+if (!process.env.COCKPIT_FRONTEND_MCP_URL) {
+  const frontendMcpUrl = new URL(
+    '/mcp/frontend',
+    process.env.COCKPIT_SERVICE_ORIGIN || 'http://127.0.0.1:3010',
+  )
+  frontendMcpUrl.searchParams.set('cockpitId', process.env.COCKPIT_ID || 'default')
+  process.env.COCKPIT_FRONTEND_MCP_URL = frontendMcpUrl.toString()
+}
 process.env.QWEN_AUDIO_FRONTEND_PROFILE ||= fileURLToPath(
   new URL('./frontend-profile.json', import.meta.url),
 )

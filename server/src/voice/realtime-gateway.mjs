@@ -44,7 +44,6 @@ import {
   realtimeResponseId,
 } from './response-lifecycle.mjs'
 import {
-  frontendSourceToolCapabilities,
   frontendSourceToolDefinitions,
 } from '../frontend/tools/frontend-tool-source.mjs'
 import {
@@ -346,7 +345,6 @@ export function attachRealtimeGateway(server, {
         capabilities: [...new Set([
           ...(frontendRetrieval?.capabilities?.() || []),
           ...(frontendKnowledge?.capabilities?.() || []),
-          ...frontendSourceToolCapabilities(frontendToolSources),
           ...(hasPendingBackendPermission()
             ? [PERMISSION_RESPONSE_CAPABILITY]
             : []),

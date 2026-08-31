@@ -198,20 +198,21 @@ export class FrontendMcpClient {
           name,
           serverKey: server.key,
           remoteName: toolName,
+          ...(remote.annotations && typeof remote.annotations === 'object'
+            ? { annotations: structuredClone(remote.annotations) }
+            : {}),
           definition: {
             type: 'function',
             function: {
               name,
               description: policy.description
                 || clean(remote.description, 1_200)
-                || `User-enabled read-only MCP tool ${server.key}/${toolName}.`,
+                || `User-enabled MCP tool ${server.key}/${toolName}.`,
               parameters: normalizedSchema(remote.inputSchema),
             },
           },
           policy: {
             mode: 'inline',
-            readOnly: policy.readOnly,
-            approval: policy.approval,
             timeoutMs: policy.timeoutMs,
             maxResultBytes: policy.maxResultBytes,
             maxCallsPerTurn: policy.maxCallsPerTurn,

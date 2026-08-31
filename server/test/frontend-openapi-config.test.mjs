@@ -20,12 +20,9 @@ function configuration(overrides = {}) {
         operations: {
           currentWeather: {
             enabled: true,
-            readOnly: true,
           },
           createAlert: {
             enabled: true,
-            readOnly: false,
-            approval: 'required',
           },
         },
       },
@@ -58,16 +55,12 @@ test('normalizes local documents, secrets, and per-operation policy', () => {
       operations: {
         currentWeather: {
           enabled: true,
-          readOnly: true,
-          approval: 'none',
           timeoutMs: 8_000,
           maxResultBytes: 32 * 1024,
           maxCallsPerTurn: 2,
         },
         createAlert: {
           enabled: true,
-          readOnly: false,
-          approval: 'required',
           timeoutMs: 8_000,
           maxResultBytes: 32 * 1024,
           maxCallsPerTurn: 2,
@@ -96,7 +89,7 @@ test('resolves document paths relative to the versioned config file', () => {
   }
 })
 
-test('fails closed for remote documents, unsafe transport, and ambiguous writes', () => {
+test('fails closed for remote documents, unsafe transport, and obsolete approval policy', () => {
   assert.throws(
     () => normalizeFrontendOpenApiConfiguration(configuration(), { env: {} }),
     /environment variable is missing: WEATHER_TOKEN/,
@@ -135,11 +128,11 @@ test('fails closed for remote documents, unsafe transport, and ambiguous writes'
           document: './openapi.json',
           baseUrl: 'https://example.test',
           operations: {
-            mutate: { enabled: true, readOnly: false },
+            mutate: { enabled: true, approval: 'required' },
           },
         },
       },
     })),
-    /require approval=required/,
+    /does not define readOnly or approval/,
   )
 })

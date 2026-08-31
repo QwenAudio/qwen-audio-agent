@@ -38,4 +38,8 @@
 
 ## 增加或调整工具
 
-`service/tools/` 中每个目录是一个场景工具包：`manifest.json` 定义 MCP 工具，`execute.mjs` 实现场景逻辑。将工具包加入 `service/tools/registry.mjs` 的 `FRONTEND_TOOL_GROUPS` 或 `BACKEND_TOOL_GROUPS` 即可决定调用面。这是代码层的明确修改点，不是新的动态插件框架。
+`service/tools/` 中每个目录是一个场景领域工具包：`manifest.json` 定义 MCP 工具，
+`execute.mjs` 实现场景逻辑。在 `service/tools/registry.mjs` 注册领域工具包后，将适合
+低延迟直出的工具名加入 `FRONTEND_TOOL_NAMES`；其余工具自动进入后台工具面。
+同一个领域可以跨两个工具面，但只保留一份 executor 和状态源。这是代码层的明确
+修改点，不是新的动态插件框架。

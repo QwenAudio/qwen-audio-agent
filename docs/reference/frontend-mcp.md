@@ -32,7 +32,6 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
       "tools": {
         "search": {
           "enabled": true,
-          "readOnly": true,
           "timeoutMs": 8000,
           "maxResultBytes": 32768,
           "maxCallsPerTurn": 2,
@@ -40,8 +39,6 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
         },
         "create_issue": {
           "enabled": true,
-          "readOnly": false,
-          "approval": "required",
           "description": "Create an issue in the configured tracker."
         }
       }
@@ -62,12 +59,13 @@ Each exposed tool receives a stable model-visible name:
 - A server URL may be one exact environment reference such as `${MCP_URL}`.
 - Header values may reference one exact environment variable with
   `${VARIABLE}`. A missing variable is a configuration error.
-- Every enabled tool must explicitly declare `readOnly`. A writable tool must
-  also set `approval: "required"`; otherwise it is rejected at startup.
-- Writable operations execute only after a natural-language user confirmation.
-  Each confirmation covers one pending operation exactly once. Rejection,
-  replay, and a reconnect before confirmation all fail closed; there is no
-  session-wide automatic approval.
+- `tools` is an explicit allowlist. Enabled tools execute inline in the current
+  conversation turn; the Gateway does not insert a generic confirmation turn
+  based on whether a tool reads or writes.
+- Behavioral metadata such as `readOnlyHint` and `destructiveHint` belongs to
+  the MCP server's standard Tool Annotations. It is metadata, not Gateway policy.
+- MCP servers must enforce any required confirmation, authorization, or business
+  safety checks inside their own capability boundary.
 - Schemas, descriptions, calls, time, and results are bounded. MCP results are
   treated as untrusted data and cannot override system or user instructions.
 - If an enabled tool is absent or invalid during discovery, that server fails

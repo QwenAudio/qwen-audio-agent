@@ -1,6 +1,8 @@
 # 座舱场景客户端
 
-这是客户自定义 UI 的参考实现，不是框架 WebUI 的派生版本。它复用公开的 Gateway Client SDK 和 GCP 6.0，对浏览器麦克风、Web Audio、3D 车辆与业务面板保持完全自主。
+这是前台对话层中“客户自定义客户端”的参考实现，不是框架 WebUI 的派生版本，
+也不是独立 Agent 层。它复用公开的 Gateway Client SDK 和 GCP 6.0，对浏览器麦克风、
+Web Audio、3D 车辆与业务面板保持完全自主。
 
 关键模块：
 

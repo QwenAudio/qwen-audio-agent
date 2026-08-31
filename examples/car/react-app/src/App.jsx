@@ -1,3 +1,6 @@
+// Replaceable cockpit client: conversation crosses GCP, while scenario panels
+// observe the cockpit Domain directly. Keep Agent and Realtime provider logic
+// out of this component tree.
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import TopBar from './components/TopBar'
 import Dock from './components/Dock'

@@ -18,6 +18,8 @@ Qwen Audio Agent Car 是 qwen-audio-agent 的智能座舱语音 Agent 示例。�
 
 代码位置：`server/domains/`、`server/domain-executors/` 和 `server/skills/builtin/index.mjs`。
 
+长期目标：所有领域 function 都可以通过配置选择运行在 Realtime 侧或文本 LLM Agent 侧，并通过 harness 统一管理前后台路由、工具、记忆和 benchmark。详见 `docs/future-goals.md`。
+
 当前 Built-in Skills：
 
 - 车控：`vehicle_state_query`、`vehicle_window_control`、`vehicle_sunroof_control`、`vehicle_headlights_control`、`vehicle_climate_control`

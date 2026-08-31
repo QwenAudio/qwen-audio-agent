@@ -1,7 +1,7 @@
 {
   "domain": "music",
   "label": "音乐",
-  "description": "音乐播放、暂停、切歌和搜索能力。",
+  "description": "座舱示例的音乐播放、暂停、切歌和搜索能力。",
   "enabled": true,
   "routeRules": [
     "用户说“我要听歌”、“放首歌”、“播放音乐”、“继续播放”等任何播放意图 → 必须调用 music_play",

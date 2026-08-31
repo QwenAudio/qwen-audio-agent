@@ -1,7 +1,7 @@
 {
   "domain": "navigation",
   "label": "导航",
-  "description": "地点搜索、路线规划、开始导航与停止导航能力。",
+  "description": "座舱示例的地点搜索、路线规划、开始导航与停止导航能力。",
   "enabled": true,
   "routeRules": [
     "用户表达开始导航、带我去、导航到某地 → 必须调用 navigation_start",

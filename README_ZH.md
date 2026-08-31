@@ -165,15 +165,13 @@ qwenaudio tui    # 终端 2：TUI
 | 具身智能 | 语音指令、动作执行、巡检和异常反馈。 | 待补充 | 规划中 |
 | 直播助手 | 弹幕互动、商品讲解、优惠发放和风险提醒。 | 待补充 | 探索中 |
 
-仓库内已提供智能座舱语音 Agent 示例，包含车控、导航、音乐、天气、联网查询、
-淘宝闪购和座舱 UI：
+仓库内已提供基于三层框架的智能座舱参考场景，座舱 UI 与轻量 A2A Agent 均可由
+客户替换：
 
 ```bash
 cp examples/car/.env.example examples/car/.env.local
-npm install --prefix examples/car/server
-npm install --prefix examples/car/react-app
-npm run example:car:server   # 终端 1：座舱 Agent 服务
-npm run example:car:web      # 终端 2：座舱 UI
+npm run example:car:install
+npm run example:car          # 同时启动 domain、agent、gateway 和 client
 ```
 
 详细说明见 [examples/car](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/car)。

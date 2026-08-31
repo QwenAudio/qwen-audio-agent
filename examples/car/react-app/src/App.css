@@ -2527,7 +2527,6 @@ button {
   gap: 4px;
 }
 
-.chat-reset,
 .chat-close {
   width: 28px;
   height: 28px;
@@ -2536,11 +2535,6 @@ button {
   border-radius: 50%;
   color: #84939a;
   transition: background 150ms ease, color 150ms ease;
-}
-
-.chat-reset:hover {
-  background: rgba(95, 124, 134, 0.12);
-  color: #5f7c86;
 }
 
 .chat-close:hover {
@@ -2640,46 +2634,6 @@ button {
   padding: 14px;
   color: rgba(95, 124, 134, 0.6);
   font-size: 13px;
-}
-
-.chat-input-voice-hint .chat-input-options {
-  margin-bottom: 0;
-}
-
-.chat-input-options {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.thinking-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 14px;
-  font-size: 11px;
-  font-weight: 500;
-  color: #84939a;
-  background: rgba(95, 124, 134, 0.08);
-  border: 1px solid rgba(95, 124, 134, 0.12);
-  transition: all 150ms ease;
-  cursor: pointer;
-}
-
-.thinking-chip:hover {
-  background: rgba(95, 124, 134, 0.14);
-}
-
-.thinking-chip.active {
-  color: #fff;
-  background: var(--aqua);
-  border-color: var(--aqua);
-}
-
-.icon-thinking {
-  width: 12px;
-  height: 12px;
 }
 
 .chat-input-row {

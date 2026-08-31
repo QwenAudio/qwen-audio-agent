@@ -174,16 +174,13 @@ chat naturally and get real work done.
 | Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |
 | Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Exploratory |
 
-This repository includes a smart cockpit voice Agent example with vehicle
-control, navigation, music, weather, web search, flash-buy workflows, and a
-car UI:
+This repository includes a three-layer smart-cockpit reference scenario. Its
+cockpit UI and small A2A Agent are both customer-replaceable examples:
 
 ```bash
 cp examples/car/.env.example examples/car/.env.local
-npm install --prefix examples/car/server
-npm install --prefix examples/car/react-app
-npm run example:car:server   # Terminal 1: car Agent server
-npm run example:car:web      # Terminal 2: car UI
+npm run example:car:install
+npm run example:car          # domain + agent + gateway + client
 ```
 
 See [examples/car](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/car) for details.

@@ -114,6 +114,7 @@ export function createGatewayApplication({
   clientCommandRuntime = null,
   clientEventRouter = null,
   clientEventDefinitions = [],
+  spawnThinkingDescription = '',
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
@@ -953,6 +954,7 @@ realtimeGateway = attachRealtimeGateway(server, {
   frontendRetrieval: retrievalRuntime,
   frontendKnowledge: frontendKnowledgeRuntime,
   frontendToolSources,
+  spawnThinkingDescription,
   taskAnnouncementFactory,
   clientCommandRuntime: runtimeCommands,
   clientEventRouter: gatewayEventRouter,

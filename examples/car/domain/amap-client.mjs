@@ -1,5 +1,8 @@
 let callListener = null
 
+const REQUEST_TIMEOUT_MS = 8_000
+const REQUEST_ATTEMPTS = 2
+
 export function setCallListener(listener) {
   callListener = listener
 }
@@ -21,9 +24,43 @@ function extractText(result) {
   return result.content.find(item => item.type === 'text')?.text || null
 }
 
+function retryableStatus(status) {
+  return status === 429 || status >= 500
+}
+
+async function fetchWithRetry(url, init = {}, {
+  attempts = REQUEST_ATTEMPTS,
+  timeoutMs = REQUEST_TIMEOUT_MS,
+} = {}) {
+  let lastError
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const response = await fetch(url, { ...init, signal: controller.signal })
+      if (attempt < attempts && retryableStatus(response.status)) {
+        await response.body?.cancel()
+        continue
+      }
+      return response
+    } catch (error) {
+      lastError = error
+      if (attempt === attempts) throw error
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  throw lastError
+}
+
+function assertSuccessfulResponse(response, service) {
+  if (response.ok) return
+  throw new Error(`${service}请求失败（HTTP ${response.status}）`)
+}
+
 async function callMcp(toolName, args) {
   const startedAt = Date.now()
-  const response = await fetch(`https://mcp.amap.com/mcp?key=${key()}`, {
+  const response = await fetchWithRetry(`https://mcp.amap.com/mcp?key=${key()}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -36,6 +73,7 @@ async function callMcp(toolName, args) {
       params: { name: toolName, arguments: args },
     }),
   })
+  assertSuccessfulResponse(response, '地图服务')
   const contentType = response.headers.get('content-type') || ''
   let result = null
   if (contentType.includes('text/event-stream')) {
@@ -111,7 +149,9 @@ export async function drivingRoute(origin, destination, strategy = 0) {
   url.searchParams.set('key', key())
   url.searchParams.set('extensions', 'all')
   url.searchParams.set('strategy', String(strategy))
-  const data = await fetch(url).then(response => response.json())
+  const response = await fetchWithRetry(url)
+  assertSuccessfulResponse(response, '路线服务')
+  const data = await response.json()
   if (data.status !== '1') {
     emitCall({
       name: 'maps_direction_driving',

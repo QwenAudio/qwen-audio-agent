@@ -41,6 +41,20 @@ test('registers every default frontend tool once in stable order', () => {
   }
 })
 
+test('customizes only the spawn_thinking capability description', () => {
+  const description = '只处理座舱车辆、导航、音乐、天气和闪购任务。'
+  const customized = frontendTools({
+    frontend: { spawnThinkingDescription: description },
+  })
+
+  assert.equal(customized[0].function.name, 'spawn_thinking')
+  assert.equal(customized[0].function.description, description)
+  assert.deepEqual(customized[0].function.parameters, TOOLS[0].function.parameters)
+  assert.notEqual(customized[0], TOOLS[0])
+  assert.deepEqual(customized.slice(1), TOOLS.slice(1))
+  assert.notEqual(TOOLS[0].function.description, description)
+})
+
 test('appends namespaced dynamic tools without changing the static registry', () => {
   const dynamic = {
     type: 'function',

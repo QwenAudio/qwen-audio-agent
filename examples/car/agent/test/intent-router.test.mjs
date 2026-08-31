@@ -15,6 +15,10 @@ test('routes representative cockpit requests to existing MCP tools', () => {
     name: 'navigation_start',
     arguments: { destination: '杭州西湖' },
   })
+  assert.deepEqual(planCockpitTool('导航还有多久'), {
+    name: 'navigation_route_query',
+    arguments: {},
+  })
   assert.deepEqual(planCockpitTool('播放晴天'), {
     name: 'music_play',
     arguments: { query: '晴天' },

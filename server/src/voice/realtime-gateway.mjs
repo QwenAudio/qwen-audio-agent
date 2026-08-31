@@ -163,6 +163,7 @@ export function attachRealtimeGateway(server, {
   frontendRetrieval = null,
   frontendKnowledge = null,
   frontendToolSources = [],
+  spawnThinkingDescription = '',
   taskAnnouncementFactory = createTaskAnnouncementRuntime,
   clientCommandRuntime = null,
   clientEventRouter = null,
@@ -341,6 +342,7 @@ export function attachRealtimeGateway(server, {
     const getAgentContext = () => ({
       client: clientContext,
       frontend: {
+        ...(spawnThinkingDescription ? { spawnThinkingDescription } : {}),
         capabilities: [...new Set([
           ...(frontendRetrieval?.capabilities?.() || []),
           ...(frontendKnowledge?.capabilities?.() || []),

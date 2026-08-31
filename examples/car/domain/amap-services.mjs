@@ -5,14 +5,22 @@ import {
   searchPlace,
 } from './amap-client.mjs'
 
-export function createAmapCockpitServices() {
+export function createAmapCockpitServices({
+  search = searchPlace,
+  encode = geocode,
+  route = drivingRoute,
+  forecast = getWeather,
+} = {}) {
   return {
     async resolvePlace(name, city) {
-      const place = await searchPlace(name, city)
+      let place = null
+      try {
+        place = await search(name, city)
+      } catch {}
       if (place?.location) return place.location
-      return geocode(name, city)
+      return encode(name, city)
     },
-    drivingRoute,
-    weather: getWeather,
+    drivingRoute: route,
+    weather: forecast,
   }
 }

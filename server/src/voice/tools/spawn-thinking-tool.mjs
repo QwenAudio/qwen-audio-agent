@@ -26,3 +26,17 @@ export const spawnThinkingTool = {
     },
   },
 }
+
+export function withSpawnThinkingDescription(description) {
+  const customized = String(description || '').trim()
+  if (!customized || customized === spawnThinkingTool.function.description) {
+    return spawnThinkingTool
+  }
+  return {
+    ...spawnThinkingTool,
+    function: {
+      ...spawnThinkingTool.function,
+      description: customized,
+    },
+  }
+}

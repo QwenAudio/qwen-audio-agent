@@ -375,23 +375,6 @@ button {
     rgba(245, 251, 252, 0.66);
 }
 
-.voice-dock-title {
-  position: relative;
-  z-index: 1;
-  grid-column: 1;
-  grid-row: 1;
-  max-width: 190px;
-  color: #9aa8ad;
-  font-size: 16px;
-  line-height: 1.2;
-  font-weight: 650;
-  transition: color 180ms ease;
-}
-
-.voice-dock.has-progress .voice-dock-title {
-  color: #526873;
-}
-
 .voice-dock-logo-slot {
   position: relative;
   z-index: 1;

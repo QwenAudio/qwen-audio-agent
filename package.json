@@ -224,6 +224,7 @@
     "openclaw": "node scripts/openclaw-gateway.mjs",
     "opencode": "node scripts/opencode-server.mjs",
     "example:car:server": "npm run start --prefix examples/car/server",
+    "example:car:domain": "npm run start --prefix examples/car/domain",
     "example:car:web": "npm run dev --prefix examples/car/react-app",
     "example:car:build": "npm run build --prefix examples/car/react-app",
     "example:car:lint": "npm run lint --prefix examples/car/react-app",

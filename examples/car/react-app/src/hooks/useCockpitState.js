@@ -3,6 +3,7 @@ import {
   isTerminalNavigationProgress,
   navigationProgressFromActivity,
 } from '../navigation-progress'
+import { applyCockpitStateUpdate } from '../cockpit-state-update'
 
 function domainOrigin() {
   return import.meta.env.VITE_COCKPIT_DOMAIN_ORIGIN || 'http://127.0.0.1:3010'
@@ -40,7 +41,10 @@ export default function useCockpitState(cockpitId) {
       if (!disposed) setState(JSON.parse(event.data))
     })
     events.addEventListener('state', event => {
-      if (!disposed) setState(JSON.parse(event.data).state)
+      if (!disposed) {
+        const update = JSON.parse(event.data)
+        setState(previous => applyCockpitStateUpdate(previous, update))
+      }
     })
     events.addEventListener('activity', event => {
       if (disposed) return

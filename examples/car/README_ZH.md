@@ -13,6 +13,25 @@ qwen-audio-agent 的基础边界是“前台对话 + 后台执行”两层。示
 后台 Agent 可以按需派生独立 Session，扩展出第三层执行空间；当前轻量座舱 Agent
 没有实现这项可选能力。
 
+## 目录职责一览
+
+| 目录 / 进程 | 默认地址 | 角色与契约 | 什么时候修改 |
+|---|---|---|---|
+| [`react-app/`](react-app/) / cockpit-client | `http://127.0.0.1:5173` | 可替换的前台客户端。对话走 GCP，业务面板走场景 HTTP/SSE。 | 替换座舱 UI、浏览器音频 I/O 或面板交互时。 |
+| [`gateway.mjs`](gateway.mjs) / cockpit-gateway | `http://127.0.0.1:18888` | 前台装配入口。复用框架 Gateway，通过 BackendPort/A2A 连接配置的后台。 | 更换协议 Adapter 或调整场景装配时；不在这里实现业务逻辑。 |
+| [`agent/`](agent/) / cockpit-agent | `http://127.0.0.1:3020` | 轻量、可替换的 A2A 后台示例，只调用后台 MCP 工具面。 | 替换或扩展示例后台 Agent 时。 |
+| [`domain/`](domain/) / cockpit-domain | `http://127.0.0.1:3010` | 场景自己的状态与外部服务适配，向 UI 提供 HTTP/SSE，并承载两个受限 MCP 工具面。 | 增加业务状态、校验或外部服务接入时。 |
+| [`tools/`](tools/) | 由 cockpit-domain 承载 | 座舱能力契约。每组把 MCP manifest 和 executor 放在一起，由 `registry.mjs` 显式分配给前台或后台。 | 增加或修改座舱能力时。 |
+
+常见修改应保持局部化：
+
+- **想换后台 Agent：**将 `COCKPIT_AGENT_CARD_URL` 指向自己的 Agent；如果修改
+  仓库自带示例，只动 [`agent/`](agent/)。客户端、Gateway 核心、Domain 和工具
+  契约都不需要变化。
+- **想加场景能力：**修改 [`tools/`](tools/)；只有需要新增状态或外部服务适配时
+  才修改 [`domain/`](domain/)。不要把业务分支写入 Gateway 或客户端。
+- **想换座舱 UI：**只替换 [`react-app/`](react-app/)，继续遵守 GCP 和场景状态契约。
+
 ## 快速开始
 
 在仓库根目录执行：
@@ -34,14 +53,7 @@ npm run example:car:install
 npm run example:car
 ```
 
-浏览器打开 `http://localhost:5173`。该命令同时启动：
-
-| 进程 | 默认地址 | 架构归属 | 职责 |
-|---|---|---|---|
-| cockpit-client | `http://127.0.0.1:5173` | 前台客户端组件 | 场景 UI、浏览器音频 I/O、业务面板 |
-| cockpit-gateway | `http://127.0.0.1:18888` | 前台对话核心 | 实时对话、前台工具、任务桥梁、播报、打断和恢复 |
-| cockpit-agent | `http://127.0.0.1:3020` | 后台执行示例 | 轻量、可替换的 A2A 座舱 Agent |
-| cockpit-domain | `http://127.0.0.1:3010` | 场景基础设施（非额外层） | 单一业务状态、HTTP/SSE 与 MCP 能力 |
+浏览器打开 `http://localhost:5173`。该命令会同时启动上表中的四个进程。
 
 按 `Ctrl+C` 会一起关闭四个进程。
 

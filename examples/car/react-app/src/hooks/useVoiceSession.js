@@ -5,7 +5,10 @@ import {
   GatewayClientEvent,
   GatewayServerEvent,
 } from 'qwen-audio-agent/realtime-events'
-import { cockpitVoiceConnectionMode } from './voiceSessionMode'
+import {
+  cockpitConnectionError,
+  cockpitVoiceConnectionMode,
+} from './voiceSessionMode'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
@@ -108,6 +111,7 @@ export default function useVoiceSession({
   const [outputLevel, setOutputLevel] = useState(0)
   const [progress, setProgress] = useState(null)
   const [error, setError] = useState(null)
+  const [connectionError, setConnectionError] = useState(null)
   const clientRef = useRef(null)
   const audioContextRef = useRef(null)
   const inputSampleRateRef = useRef(INPUT_SAMPLE_RATE)
@@ -296,11 +300,13 @@ export default function useVoiceSession({
         onConversationRecoveryRef.current?.(recovery.messages || [])
       },
       onStatus: status => {
-        if (status.state === 'ready') {
-          setError(null)
-        } else if (status.state === 'unavailable' || status.state === 'disconnected') {
-          setError('对话中控连接中断，正在重连')
+        const nextConnectionError = cockpitConnectionError(status.state)
+        if (nextConnectionError === undefined) return
+        setConnectionError(nextConnectionError)
+        if (nextConnectionError) {
           setVoiceState('error')
+        } else {
+          setVoiceState(current => current === 'error' ? 'idle' : current)
         }
       },
     })
@@ -427,7 +433,7 @@ export default function useVoiceSession({
     inputLevel,
     outputLevel,
     progress,
-    error,
+    error: connectionError || error,
     sendInput,
   }
 }

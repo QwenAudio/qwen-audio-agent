@@ -1,3 +1,5 @@
+export const COCKPIT_CONNECTION_INTERRUPTED = '对话中控连接中断，正在重连'
+
 export function cockpitVoiceConnectionMode(muted) {
   const enabled = muted !== true
   return {
@@ -9,4 +11,12 @@ export function cockpitVoiceConnectionMode(muted) {
     // the standard unmute event without reconnecting or changing protocol.
     textOnly: false,
   }
+}
+
+export function cockpitConnectionError(state) {
+  if (state === 'unavailable' || state === 'disconnected') {
+    return COCKPIT_CONNECTION_INTERRUPTED
+  }
+  if (state === 'connected' || state === 'ready') return null
+  return undefined
 }

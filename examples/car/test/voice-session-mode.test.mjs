@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { cockpitVoiceConnectionMode } from '../react-app/src/hooks/voiceSessionMode.js'
+import {
+  COCKPIT_CONNECTION_INTERRUPTED,
+  cockpitConnectionError,
+  cockpitVoiceConnectionMode,
+} from '../react-app/src/hooks/voiceSessionMode.js'
 
 test('keeps a muted cockpit Client voice-capable without claiming voice', () => {
   assert.deepEqual(cockpitVoiceConnectionMode(true), {
@@ -18,4 +22,18 @@ test('enables both voice directions when the cockpit microphone starts active', 
     outputEnabled: true,
     textOnly: false,
   })
+})
+
+test('clears a transient connection error as soon as the Gateway reconnects', () => {
+  assert.equal(
+    cockpitConnectionError('disconnected'),
+    COCKPIT_CONNECTION_INTERRUPTED,
+  )
+  assert.equal(
+    cockpitConnectionError('unavailable'),
+    COCKPIT_CONNECTION_INTERRUPTED,
+  )
+  assert.equal(cockpitConnectionError('connected'), null)
+  assert.equal(cockpitConnectionError('ready'), null)
+  assert.equal(cockpitConnectionError('recovery_failed'), undefined)
 })

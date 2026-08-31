@@ -44,7 +44,7 @@ npm run example:car
 
 - UI 仅通过 GCP 与 Gateway 对话，不感知 Realtime Provider 或后台 Agent。
 - 主座舱区域保持纯语音交互；文字转写只进入调试面板，并且 ASR 仅展示最终结果。
-- UI 通过场景自己的 HTTP/SSE 通道展示车辆、路线、音乐、天气和订单状态；Gateway 不解析这些对象。
+- UI 通过场景自己的 HTTP/SSE 通道展示车辆、路线、音乐、天气和订单状态，以及细粒度场景进度；Gateway 不解析这些对象。
 - 前台 Agent 负责实时聊天，座舱任务通过固定的 `spawn_thinking` 桥梁提交给后台；场景只在 [`spawn-thinking-tool.mjs`](spawn-thinking-tool.mjs) 定义后台能力描述，不改工具名称和参数协议。
 - 示例后台通过 A2A 接入 Gateway，并通过 MCP 调用领域能力；它只实现少量意图路由，不模拟完整行业 Agent。
 - 客户可以替换整个 UI、后台 Agent 或领域服务，而不修改框架核心。

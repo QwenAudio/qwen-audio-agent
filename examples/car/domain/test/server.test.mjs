@@ -89,6 +89,38 @@ test('streams authoritative state changes to cockpit panels', async t => {
   await reader.cancel()
 })
 
+test('streams navigation activity to the scenario UI', async t => {
+  const server = new CockpitDomainServer({ domain: domainFixture(), port: 0 })
+  await server.start()
+  t.after(() => server.close())
+  const controller = new AbortController()
+  t.after(() => controller.abort())
+  const response = await fetch(
+    `${server.origin}/api/cockpit/events?cockpitId=progress-car`,
+    { signal: controller.signal },
+  )
+  const reader = response.body.getReader()
+  await readSseEvent(reader, 'snapshot')
+
+  const activityPromise = readSseEvent(reader, 'activity')
+  const commandPromise = fetch(`${server.origin}/api/cockpit/commands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      cockpitId: 'progress-car',
+      name: 'navigation_start',
+      arguments: { destination: '西湖' },
+    }),
+  })
+  const activity = await activityPromise
+  await commandPromise
+
+  assert.equal(activity.category, 'navigation')
+  assert.equal(activity.status, 'searching_destination')
+  assert.equal(activity.message, '正在查找目的地')
+  await reader.cancel()
+})
+
 test('exposes the same domain operations through MCP', async t => {
   const server = new CockpitDomainServer({ domain: domainFixture(), port: 0 })
   await server.start()

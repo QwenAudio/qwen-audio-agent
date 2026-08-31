@@ -1,4 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import {
+  isTerminalNavigationProgress,
+  navigationProgressFromActivity,
+} from '../navigation-progress'
 
 function domainOrigin() {
   return import.meta.env.VITE_COCKPIT_DOMAIN_ORIGIN || 'http://127.0.0.1:3010'
@@ -6,10 +10,12 @@ function domainOrigin() {
 
 export default function useCockpitState(cockpitId) {
   const [state, setState] = useState(null)
+  const [progress, setProgress] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     let disposed = false
+    let progressTimer = null
     const query = new URLSearchParams({ cockpitId })
     const stateUrl = `${domainOrigin()}/api/cockpit/state?${query}`
     const eventsUrl = `${domainOrigin()}/api/cockpit/events?${query}`
@@ -36,6 +42,18 @@ export default function useCockpitState(cockpitId) {
     events.addEventListener('state', event => {
       if (!disposed) setState(JSON.parse(event.data).state)
     })
+    events.addEventListener('activity', event => {
+      if (disposed) return
+      const next = navigationProgressFromActivity(JSON.parse(event.data))
+      if (!next) return
+      clearTimeout(progressTimer)
+      setProgress(next)
+      if (isTerminalNavigationProgress(next)) {
+        progressTimer = setTimeout(() => {
+          if (!disposed) setProgress(null)
+        }, 1800)
+      }
+    })
     events.addEventListener('open', () => {
       if (!disposed) setError(null)
     })
@@ -44,6 +62,7 @@ export default function useCockpitState(cockpitId) {
     })
     return () => {
       disposed = true
+      clearTimeout(progressTimer)
       events.close()
     }
   }, [cockpitId])
@@ -59,5 +78,5 @@ export default function useCockpitState(cockpitId) {
     return result
   }, [cockpitId])
 
-  return { state, error, execute }
+  return { state, progress, error, execute }
 }

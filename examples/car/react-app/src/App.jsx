@@ -75,7 +75,11 @@ function parseHash() {
 export default function App() {
   const clientId = useMemo(() => getClientId(), [])
   const cockpitId = import.meta.env.VITE_COCKPIT_ID || 'default'
-  const { state: cockpitState, execute: executeCockpitCommand } = useCockpitState(cockpitId)
+  const {
+    state: cockpitState,
+    progress: cockpitProgress,
+    execute: executeCockpitCommand,
+  } = useCockpitState(cockpitId)
   const [screen, setScreen] = useState('main')
   const [settingsTab, setSettingsTab] = useState('persona')
   const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(PERSONA_STORAGE_KEY, DEFAULT_PERSONA, VALID_PERSONAS))
@@ -290,15 +294,16 @@ export default function App() {
     onVoiceMessage: handleVoiceMessage,
     onConversationRecovery: handleConversationRecovery,
   })
+  const visualProgress = cockpitProgress || voiceProgress
 
   const handleTextMessage = useCallback((text) => (
     sendInput([{ type: 'text', text }])
   ), [sendInput])
 
   useEffect(() => {
-    if (!['navigation', 'flashbuy'].includes(voiceProgress?.domain)) return undefined
+    if (!['navigation', 'flashbuy'].includes(visualProgress?.domain)) return undefined
     const frame = requestAnimationFrame(() => {
-      if (voiceProgress.domain === 'navigation') {
+      if (visualProgress.domain === 'navigation') {
         setScreen('main')
         window.location.hash = '#main'
       } else {
@@ -307,7 +312,7 @@ export default function App() {
       }
     })
     return () => cancelAnimationFrame(frame)
-  }, [voiceProgress])
+  }, [visualProgress])
 
   useEffect(() => {
     const onHashChange = () => {
@@ -333,7 +338,7 @@ export default function App() {
               onTogglePart={toggleCarPart}
               voiceMuted={voiceMuted}
               voiceState={voiceState}
-              voiceProgress={voiceProgress}
+              voiceProgress={visualProgress}
               voiceError={voiceError}
               inputLevel={inputLevel}
               outputLevel={outputLevel}
@@ -342,7 +347,7 @@ export default function App() {
               onToggleVoiceMute={toggleVoiceMute}
             />
             {screen === 'main' && (
-              <MapPanel navState={navState} navProgress={voiceProgress} mapActions={mapActions} routeStrategy={routeStrategy} onStrategyChange={setRouteStrategy} />
+              <MapPanel navState={navState} navProgress={visualProgress} mapActions={mapActions} routeStrategy={routeStrategy} onStrategyChange={setRouteStrategy} />
             )}
             {screen === 'music' && (
               <MusicPanel musicState={musicState} onPlay={musicPlay} onPause={musicPause} onNext={musicNext} onPrev={musicPrev} onSelectTrack={musicSelectTrack} />

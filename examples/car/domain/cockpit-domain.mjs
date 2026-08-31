@@ -95,6 +95,7 @@ export class CockpitDomain {
     this.services = services
     this.now = now
     this.random = random
+    this.activityListeners = new Map()
   }
 
   snapshot(cockpitId = 'default') {
@@ -105,12 +106,48 @@ export class CockpitDomain {
     return this.store.subscribe(cockpitId, listener)
   }
 
+  subscribeActivity(cockpitId, listener) {
+    if (typeof listener !== 'function') throw new TypeError('listener must be a function')
+    const id = clean(cockpitId) || 'default'
+    const listeners = this.activityListeners.get(id) || new Set()
+    listeners.add(listener)
+    this.activityListeners.set(id, listeners)
+    return () => {
+      listeners.delete(listener)
+      if (!listeners.size) this.activityListeners.delete(id)
+    }
+  }
+
+  #publishActivity(cockpitId, event) {
+    const id = clean(cockpitId) || 'default'
+    const published = Object.freeze({
+      type: 'cockpit.activity',
+      cockpitId: id,
+      ...event,
+    })
+    for (const listener of this.activityListeners.get(id) || []) {
+      try {
+        listener(published)
+      } catch {
+        // Scenario observers cannot interrupt domain operations.
+      }
+    }
+  }
+
   async execute(name, args = {}, {
     cockpitId = 'default',
     onActivity = null,
   } = {}) {
     if (!COCKPIT_TOOL_NAMES.includes(name)) {
       throw new Error(`Unknown cockpit tool: ${name}`)
+    }
+    const reportActivity = event => {
+      try {
+        onActivity?.(event)
+      } catch {
+        // Call-scoped observers cannot interrupt domain operations.
+      }
+      this.#publishActivity(cockpitId, event)
     }
     if (name.startsWith('vehicle_')) {
       return this.#vehicle(name, args, cockpitId)
@@ -119,12 +156,12 @@ export class CockpitDomain {
       return this.#music(name, args, cockpitId)
     }
     if (name.startsWith('navigation_')) {
-      return this.#navigation(name, args, cockpitId, onActivity)
+      return this.#navigation(name, args, cockpitId, reportActivity)
     }
     if (name === 'weather') {
-      return this.#weather(args, cockpitId, onActivity)
+      return this.#weather(args, cockpitId, reportActivity)
     }
-    return this.#flashbuy(args, cockpitId, onActivity)
+    return this.#flashbuy(args, cockpitId, reportActivity)
   }
 
   #vehicle(name, args, cockpitId) {
@@ -297,9 +334,17 @@ export class CockpitDomain {
       const state = this.snapshot(cockpitId)
       return result(`无法找到“${destination}”的位置信息`, state, [])
     }
-    const viaLocation = via
-      ? await this.services.resolvePlace(via, DEFAULT_ORIGIN.city)
-      : null
+    activity(onActivity, 'navigation', 'destination_locked', `已找到${destination}`)
+    let viaLocation = null
+    if (via) {
+      activity(onActivity, 'navigation', 'searching_via', '正在查找途经点')
+      viaLocation = await this.services.resolvePlace(via, DEFAULT_ORIGIN.city)
+      if (!viaLocation) {
+        activity(onActivity, 'navigation', 'via_not_found', `没有找到${via}`)
+        return result(`无法找到途经点“${via}”的位置信息`, this.snapshot(cockpitId), [])
+      }
+      activity(onActivity, 'navigation', 'via_locked', `已找到途经点${via}`)
+    }
     activity(onActivity, 'navigation', 'planning_route', '正在规划路线')
     const route = await this.#planRoute(destinationLocation, viaLocation, strategy)
     if (!route) {

@@ -146,12 +146,17 @@ export class CockpitDomainServer {
       response.write(`event: ${type}\ndata: ${JSON.stringify(value)}\n\n`)
     }
     send('snapshot', this.domain.snapshot(id))
-    const unsubscribe = this.domain.subscribe(id, event => send('state', event))
+    const unsubscribeState = this.domain.subscribe(id, event => send('state', event))
+    const unsubscribeActivity = this.domain.subscribeActivity(
+      id,
+      event => send('activity', event),
+    )
     const heartbeat = setInterval(() => response.write(': heartbeat\n\n'), 15_000)
     heartbeat.unref?.()
     request.once('close', () => {
       clearInterval(heartbeat)
-      unsubscribe()
+      unsubscribeState()
+      unsubscribeActivity()
     })
   }
 

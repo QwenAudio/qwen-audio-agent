@@ -332,6 +332,15 @@ button {
     rgba(245, 251, 252, 0.66);
 }
 
+.voice-dock.progress-destination_locked,
+.voice-dock.progress-via_locked {
+  background:
+    radial-gradient(ellipse at 34% 100%, rgba(50, 177, 161, 0.2), transparent 44%),
+    radial-gradient(ellipse at 76% 100%, rgba(196, 168, 95, 0.16), transparent 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(237, 248, 241, 0.6)),
+    rgba(245, 251, 252, 0.66);
+}
+
 .voice-dock.progress-planning_route {
   background:
     radial-gradient(ellipse at 48% 100%, rgba(91, 148, 214, 0.24), transparent 48%),

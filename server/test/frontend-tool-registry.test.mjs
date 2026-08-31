@@ -139,7 +139,7 @@ test('exposes retrieval tools only when the frontend advertises each capability'
   )
 })
 
-test('uses the same permission response tool for external-tool approval', () => {
+test('gates the backend permission response tool behind its capability', () => {
   assert.equal(
     frontendToolRegistry.isEnabled(RESPOND_PERMISSION_TOOL_NAME),
     false,

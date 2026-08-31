@@ -2,7 +2,7 @@
 
 前台 OpenAPI Adapter 用于把选定的 REST 操作接入 Chatbot，不绑定具体
 Realtime Provider，也不绑定后台 Agent。它与前台 MCP Client 复用同一套动态工具
-Source、执行边界和逐操作授权链路。
+Source 和执行边界。
 
 OpenAPI 文档只描述 API；哪些 `operationId` 可以被模型看到，由独立的
 qwen-audio-agent 策略显式决定，不会自动开放整份 API。
@@ -31,13 +31,10 @@ WEATHER_AUTHORIZATION=Bearer replace-me
       "operations": {
         "getWeather": {
           "enabled": true,
-          "readOnly": true,
           "description": "读取指定城市的当前天气。"
         },
         "createAlert": {
           "enabled": true,
-          "readOnly": false,
-          "approval": "required",
           "description": "创建天气提醒。"
         }
       }
@@ -56,10 +53,8 @@ WEATHER_AUTHORIZATION=Bearer replace-me
 - Path、Query 参数和 `application/json` Request Body。
 - 本地 `$ref`；外部引用和递归引用失败关闭。
 - 固定请求 Header；密钥值可用精确的 `${VARIABLE}` 环境变量引用。
-- GET、HEAD 可以声明为只读；其他方法必须声明为可写，并设置
-  `approval: "required"`。
-- 每次可写调用都要获得用户自然语言确认，且最多执行一次；拒绝、重复确认或确认前
-  重连都会失败关闭。
+- `operations` 是显式白名单；启用的操作由 Gateway 在当前对话轮次内直接调用。
+- 需要确认、鉴权或业务安全校验的操作由 API 服务自行强制执行。
 - 远端 API 必须使用 HTTPS；回环地址可使用 HTTP，但不能携带 Header；不跟随重定向。
 - Schema、调用次数、执行时间和结果大小都有边界；API 返回按不可信数据处理，
   不能覆盖系统指令或用户要求。

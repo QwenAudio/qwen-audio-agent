@@ -7,7 +7,7 @@ import {
   normalizeFrontendMcpConfiguration,
 } from '../../../server/src/providers/mcp/frontend-mcp-config.mjs'
 
-test('calls cockpit weather inline through the framework frontend MCP client', async t => {
+test('calls selected cockpit tools inline through the frontend MCP client', async t => {
   const service = new CockpitService({
     services: {
       async weather(city) {
@@ -26,7 +26,10 @@ test('calls cockpit weather inline through the framework frontend MCP client', a
           enabled: true,
           url: `${server.origin}/mcp/frontend`,
           tools: {
-            weather: { enabled: true, readOnly: true },
+            weather: { enabled: true },
+            vehicle_state_query: { enabled: true },
+            vehicle_window_control: { enabled: true },
+            vehicle_headlights_control: { enabled: true },
           },
         },
       },
@@ -35,8 +38,27 @@ test('calls cockpit weather inline through the framework frontend MCP client', a
   t.after(() => client.close())
 
   const tools = await client.initialize()
-  assert.deepEqual(tools.map(tool => tool.name), ['mcp__cockpit__weather'])
+  assert.deepEqual(tools.map(tool => tool.name), [
+    'mcp__cockpit__weather',
+    'mcp__cockpit__vehicle_state_query',
+    'mcp__cockpit__vehicle_window_control',
+    'mcp__cockpit__vehicle_headlights_control',
+  ])
   const output = await client.execute('mcp__cockpit__weather', { city: '杭州' })
   assert.match(output.text, /杭州，晴，27°/u)
+  await client.execute('mcp__cockpit__vehicle_window_control', {
+    action: 'open',
+    window: 'windowFL',
+  })
+  await client.execute('mcp__cockpit__vehicle_headlights_control', {
+    action: 'open',
+  })
+  const state = await client.execute('mcp__cockpit__vehicle_state_query', {
+    part: 'all',
+  })
+  assert.match(state.text, /主驾车窗: 开启/u)
+  assert.match(state.text, /大灯: 开启/u)
   assert.equal(service.snapshot().weather.daytemp, '27')
+  assert.equal(service.snapshot().vehicle.windowFL, 1)
+  assert.equal(service.snapshot().vehicle.headlights, 1)
 })

@@ -69,7 +69,7 @@ function harness({
   return { outputs, ensuredResponses, manager, transcripts, handler }
 }
 
-test('executes discovered read-only external tools through the shared boundary', async () => {
+test('executes discovered external tools through the shared boundary', async () => {
   const calls = []
   const source = {
     tools: () => [{
@@ -83,8 +83,6 @@ test('executes discovered read-only external tools through the shared boundary',
       },
       policy: {
         mode: 'inline',
-        readOnly: true,
-        approval: 'none',
         maxCallsPerTurn: 1,
         maxResultBytes: 2_048,
       },
@@ -112,151 +110,43 @@ test('executes discovered read-only external tools through the shared boundary',
   assert.equal(kit.outputs[1][1].error_code, 'tool_loop_limit')
 })
 
-test('executes an approved writable external tool exactly once', async () => {
+test('executes an explicitly enabled state-changing external tool inline', async () => {
   const calls = []
-  let currentTurn = 'turn-one'
   const source = {
     tools: () => [{
-      name: 'mcp__issues__create',
+      name: 'mcp__cockpit__vehicle_window_control',
       definition: {
         type: 'function',
         function: {
-          name: 'mcp__issues__create',
-          description: 'Create an issue in the configured tracker.',
+          name: 'mcp__cockpit__vehicle_window_control',
           parameters: { type: 'object', properties: {} },
         },
       },
       policy: {
         mode: 'inline',
-        readOnly: false,
-        approval: 'required',
         maxCallsPerTurn: 1,
         maxResultBytes: 2_048,
       },
     }],
     execute: async (name, args) => {
       calls.push([name, args])
-      return { status: 'ok', issue: 42 }
+      return { status: 'ok', text: '已打开主驾车窗' }
     },
   }
-  const kit = harness({
-    frontendToolSources: [source],
-    getTurnId: () => currentTurn,
-  })
-
-  await kit.handler.handle({
-    call_id: 'external-write',
-    name: 'mcp__issues__create',
-    arguments: JSON.stringify({ title: 'Fix it' }),
-  }, { turnId: 'turn-one', turnGeneration: 1 })
-
-  const authorizationId = kit.outputs[0][1].permission_id
-  assert.equal(kit.outputs[0][1].status, 'confirmation_required')
-  assert.match(authorizationId, /^permission_/u)
-  assert.equal(calls.length, 0)
-
-  currentTurn = 'turn-two'
-  await kit.handler.handle({
-    call_id: 'allow-write',
-    name: 'respond_permission',
-    arguments: JSON.stringify({
-      permission_id: authorizationId,
-      decision: 'once',
-    }),
-  }, { turnId: 'turn-two', turnGeneration: 1 })
-  assert.deepEqual(calls, [[
-    'mcp__issues__create',
-    { title: 'Fix it' },
-  ]])
-  assert.equal(kit.outputs[1][1].issue, 42)
-
-  currentTurn = 'turn-three'
-  await kit.handler.handle({
-    call_id: 'replay-write',
-    name: 'respond_permission',
-    arguments: JSON.stringify({
-      permission_id: authorizationId,
-      decision: 'once',
-    }),
-  }, { turnId: 'turn-three', turnGeneration: 1 })
-  assert.equal(calls.length, 1)
-  assert.equal(kit.outputs[2][1].error_code, 'permission_not_pending')
-})
-
-test('rejects a writable external tool without executing it', async () => {
-  let executed = false
-  let currentTurn = 'turn-one'
-  const source = {
-    tools: () => [{
-      name: 'mcp__issues__delete',
-      definition: {
-        type: 'function',
-        function: {
-          name: 'mcp__issues__delete',
-          description: 'Delete an issue.',
-          parameters: { type: 'object', properties: {} },
-        },
-      },
-      policy: {
-        mode: 'inline',
-        readOnly: false,
-        approval: 'required',
-        maxCallsPerTurn: 1,
-        maxResultBytes: 2_048,
-      },
-    }],
-    execute: async () => { executed = true },
-  }
-  const kit = harness({
-    frontendToolSources: [source],
-    getTurnId: () => currentTurn,
-  })
-
-  await kit.handler.handle({
-    call_id: 'external-delete',
-    name: 'mcp__issues__delete',
-    arguments: JSON.stringify({ id: 42 }),
-  }, { turnId: 'turn-one', turnGeneration: 1 })
-  const authorizationId = kit.outputs[0][1].permission_id
-  currentTurn = 'turn-two'
-  await kit.handler.handle({
-    call_id: 'reject-delete',
-    name: 'respond_permission',
-    arguments: JSON.stringify({
-      permission_id: authorizationId,
-      decision: 'reject',
-    }),
-  }, { turnId: 'turn-two', turnGeneration: 1 })
-
-  assert.equal(executed, false)
-  assert.equal(kit.outputs[1][1].status, 'rejected')
-})
-
-test('never executes a dynamic external tool without a read-only policy', async () => {
-  let executed = false
-  const source = {
-    tools: () => [{
-      name: 'mcp__documents__write',
-      definition: {
-        type: 'function',
-        function: {
-          name: 'mcp__documents__write',
-          parameters: { type: 'object', properties: {} },
-        },
-      },
-      policy: { mode: 'inline', readOnly: false },
-    }],
-    execute: async () => { executed = true },
-  }
   const kit = harness({ frontendToolSources: [source] })
+
   await kit.handler.handle({
-    call_id: 'external-write',
-    name: 'mcp__documents__write',
-    arguments: '{}',
+    call_id: 'window-control',
+    name: 'mcp__cockpit__vehicle_window_control',
+    arguments: JSON.stringify({ action: 'open', window: 'windowFL' }),
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  assert.equal(executed, false)
-  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+  assert.deepEqual(calls, [[
+    'mcp__cockpit__vehicle_window_control',
+    { action: 'open', window: 'windowFL' },
+  ]])
+  assert.equal(kit.outputs[0][1].text, '已打开主驾车窗')
+  assert.equal(kit.outputs[0][1].status, 'ok')
 })
 
 function taskForId(manager, taskId) {

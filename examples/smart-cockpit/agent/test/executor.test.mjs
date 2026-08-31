@@ -6,14 +6,14 @@ import {
 } from '@a2a-js/sdk'
 import { CockpitAgentExecutor } from '../executor.mjs'
 
-const WINDOW_TOOL = {
-  name: 'vehicle_window_control',
-  description: '控制车窗',
+const CLIMATE_TOOL = {
+  name: 'vehicle_climate_control',
+  description: '控制空调',
   inputSchema: {
     type: 'object',
     properties: {
       action: { type: 'string' },
-      window: { type: 'string' },
+      temperature: { type: 'number' },
     },
   },
 }
@@ -45,7 +45,7 @@ test('lets the model plan an MCP call and publishes the A2A lifecycle', async ()
   const executor = new CockpitAgentExecutor({
     model: {
       async complete({ messages, tools }) {
-        assert.equal(tools[0].function.name, WINDOW_TOOL.name)
+        assert.equal(tools[0].function.name, CLIMATE_TOOL.name)
         if (round++ === 0) {
           assert.match(messages[0].content, /必须使用提供的工具/u)
           assert.match(messages[0].content, /后续指令中明确确认/u)
@@ -53,10 +53,10 @@ test('lets the model plan an MCP call and publishes the A2A lifecycle', async ()
           return {
             content: null,
             tool_calls: [{
-              id: 'call-window',
+              id: 'call-climate',
               function: {
-                name: WINDOW_TOOL.name,
-                arguments: JSON.stringify({ action: 'open', window: 'windowFL' }),
+                name: CLIMATE_TOOL.name,
+                arguments: JSON.stringify({ action: 'set_temp', temperature: 22 }),
               },
             }],
           }
@@ -66,20 +66,20 @@ test('lets the model plan an MCP call and publishes the A2A lifecycle', async ()
       },
     },
     tools: {
-      async list() { return [WINDOW_TOOL] },
+      async list() { return [CLIMATE_TOOL] },
       async call(name, args) {
         calls.push({ name, args })
-        return { content: '已打开主驾车窗', data: { vehicle: { windowFL: 1 } } }
+        return { content: '空调当前开启，制冷，22°C，3档', data: { vehicle: { acTemp: 22 } } }
       },
     },
   })
-  await executor.execute(requestContext('打开主驾车窗'), {
+  await executor.execute(requestContext('空调调到二十二度'), {
     publish(event) { events.push(event) },
   })
 
   assert.deepEqual(calls, [{
-    name: 'vehicle_window_control',
-    args: { action: 'open', window: 'windowFL' },
+    name: 'vehicle_climate_control',
+    args: { action: 'set_temp', temperature: 22 },
   }])
   assert.deepEqual(events.map(event => event.kind), [
     'task',
@@ -92,7 +92,7 @@ test('lets the model plan an MCP call and publishes the A2A lifecycle', async ()
   assert.equal(events.at(-1).data.status.state, TaskState.TASK_STATE_COMPLETED)
   assert.equal(
     events.at(-2).data.artifact.parts[0].content.value,
-    '已打开主驾车窗',
+    '空调当前开启，制冷，22°C，3档',
   )
 })
 
@@ -106,7 +106,7 @@ test('returns a model clarification without inventing a tool call', async () => 
       },
     },
     tools: {
-      async list() { return [WINDOW_TOOL] },
+      async list() { return [CLIMATE_TOOL] },
       async call() { called = true },
     },
   })

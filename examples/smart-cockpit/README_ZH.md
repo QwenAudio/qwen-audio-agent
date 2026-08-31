@@ -67,11 +67,16 @@ npm run example:smart-cockpit
 - UI 仅通过 GCP 与 Gateway 对话，不感知 Realtime Provider 或后台 Agent。
 - 主座舱区域保持纯语音交互；文字转写只进入调试面板，并且 ASR 仅展示最终结果。
 - UI 通过场景自己的 HTTP/SSE 通道展示车辆、路线、音乐、天气和订单状态，以及细粒度场景进度；Gateway 不解析这些对象。
-- 前台 Agent 负责实时聊天，可通过标准 MCP 直接调用只读天气工具；其他座舱任务通过固定的 `spawn_thinking` 桥梁提交给后台。
-- 示例后台通过 A2A 接入 Gateway。Qwen3.8-Flash 会发现并调用独立的后台 MCP 工具面，完成车控、导航、音乐和闪购任务，包括有序的多途经点导航。
+- 前台 Agent 负责实时聊天，通过标准 MCP 直接调用天气、车况、车窗和大灯工具；
+  用户明确说出的车窗和大灯指令直接执行，不再增加重复确认。
+- 其他座舱任务通过固定的 `spawn_thinking` 桥梁提交给后台。示例后台通过 A2A
+  接入 Gateway，Qwen3.8-Flash 会发现并调用独立的后台 MCP 工具面，完成天窗、
+  空调、导航、音乐和闪购任务，包括有序的多途经点导航。
 - 后台 Agent 如何调用工具和组织工作是后台内部实现；若创建独立派生 Session，
   可以形成由后台扩展出的第三层执行空间，不改变前台协议。
-- 场景工具按领域收敛在 [`service/tools/`](service/tools/README.md)，开发者通过显式注册表增加工具包或调整前后台归属，不需要修改 Gateway 协议。
+- 场景工具按领域收敛在 [`service/tools/`](service/tools/README.md)，开发者通过显式
+  注册表增加领域工具包，并按工具名决定哪些由前台直出；其余工具自动留在后台，
+  不需要修改 Gateway 协议或复制执行逻辑。
 - 客户可以替换整个 UI、座舱 Agent 或座舱 Service，而不修改框架核心。
 
 ## 开发与测试

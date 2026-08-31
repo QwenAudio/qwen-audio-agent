@@ -3,7 +3,7 @@
 | 边界 | 覆盖内容 | 自动化入口 |
 |---|---|---|
 | cockpit-service | 多座舱隔离、车控校验、音乐、导航阶段、闪购确认、导航/音乐/闪购状态事件 | `examples/smart-cockpit/service/test` |
-| MCP | 前/后台工具面隔离、工具发现、参数传递、与 HTTP 共用单一状态 | `examples/smart-cockpit/service/test/server.test.mjs` |
+| MCP | 前/后台工具面隔离、显式工具白名单、车窗/车灯即时执行、参数传递、与 HTTP 共用单一状态 | `examples/smart-cockpit/service/test/server.test.mjs`、`examples/smart-cockpit/test/frontend-tools.test.mjs` |
 | cockpit-agent | Qwen3.8-Flash 思考模式、标准函数工具、多轮工具循环、歧义追问 | `examples/smart-cockpit/agent/test`（模型使用确定性测试替身） |
 | A2A → MCP | 标准 Task 生命周期、真实领域状态变更和有序多途经点导航 | `examples/smart-cockpit/agent/test/integration.test.mjs` |
 | Gateway 装配 | 仅使用公开 API 注入 A2A Agent、健康和关闭 | `examples/smart-cockpit/test/gateway-composition.test.mjs` |

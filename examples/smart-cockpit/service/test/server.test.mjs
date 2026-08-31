@@ -169,13 +169,20 @@ test('separates frontend and backend tools across standard MCP surfaces', async 
   t.after(() => frontend.close())
 
   const backendTools = await backend.listTools()
-  assert.equal(backendTools.tools.length, 14)
+  assert.equal(backendTools.tools.length, 11)
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_climate_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'flashbuy'))
   assert.ok(!backendTools.tools.some(tool => tool.name === 'weather'))
+  assert.ok(!backendTools.tools.some(tool => tool.name === 'vehicle_window_control'))
+  assert.ok(!backendTools.tools.some(tool => tool.name === 'vehicle_headlights_control'))
 
   const frontendTools = await frontend.listTools()
-  assert.deepEqual(frontendTools.tools.map(tool => tool.name), ['weather'])
+  assert.deepEqual(frontendTools.tools.map(tool => tool.name), [
+    'weather',
+    'vehicle_state_query',
+    'vehicle_window_control',
+    'vehicle_headlights_control',
+  ])
 
   const output = await backend.callTool({
     name: 'vehicle_climate_control',
@@ -191,9 +198,16 @@ test('separates frontend and backend tools across standard MCP surfaces', async 
   assert.equal(weather.isError, undefined)
   assert.match(weather.content[0].text, /杭州，晴，25°/u)
 
-  const unavailable = await frontend.callTool({
-    name: 'vehicle_state_query',
-    arguments: {},
+  const window = await frontend.callTool({
+    name: 'vehicle_window_control',
+    arguments: { action: 'open', window: 'windowFL' },
+  })
+  assert.equal(window.isError, undefined)
+  assert.equal(window.structuredContent.vehicle.windowFL, 1)
+
+  const unavailable = await backend.callTool({
+    name: 'vehicle_window_control',
+    arguments: { action: 'close', window: 'windowFL' },
   })
   assert.equal(unavailable.isError, true)
   assert.match(unavailable.content[0].text, /not available on this MCP surface/u)
@@ -201,6 +215,7 @@ test('separates frontend and backend tools across standard MCP surfaces', async 
   const state = await fetch(`${server.origin}/api/cockpit/state?cockpitId=mcp-car`)
     .then(response => response.json())
   assert.equal(state.vehicle.acTemp, 22)
+  assert.equal(state.vehicle.windowFL, 1)
   assert.equal(state.weather.dayweather, '晴')
 })
 

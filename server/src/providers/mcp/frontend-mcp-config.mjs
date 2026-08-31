@@ -75,23 +75,13 @@ function normalizedPolicy(value = {}) {
     throw new Error('Frontend MCP tool policy must be an object.')
   }
   const enabled = value.enabled === true
-  const readOnly = value.readOnly === true
-  const approval = clean(value.approval, 40).toLowerCase() || 'none'
-  if (enabled && typeof value.readOnly !== 'boolean') {
+  if ('readOnly' in value || 'approval' in value) {
     throw new Error(
-      'Enabled Frontend MCP tools must explicitly declare readOnly.',
+      'Frontend MCP configuration does not define readOnly or approval; use MCP tool annotations and enforce confirmation in the tool service.',
     )
-  }
-  if (enabled && !readOnly && approval !== 'required') {
-    throw new Error('Writable Frontend MCP tools require approval=required.')
-  }
-  if (readOnly && approval !== 'none') {
-    throw new Error('Read-only Frontend MCP tools cannot require approval.')
   }
   return {
     enabled,
-    readOnly,
-    approval,
     timeoutMs: boundedInteger(value.timeoutMs, 8_000, 100, 30_000),
     maxResultBytes: boundedInteger(
       value.maxResultBytes,

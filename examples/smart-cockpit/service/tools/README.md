@@ -9,9 +9,14 @@ shared cockpit state and external services through the execution context.
 
 `registry.mjs` is the only composition point:
 
-- `FRONTEND_TOOL_GROUPS` are called inline by the foreground Realtime Agent.
-- `BACKEND_TOOL_GROUPS` are called by the replaceable cockpit Agent over MCP.
+- Capability implementations stay grouped by domain in `COCKPIT_TOOL_GROUPS`.
+- `FRONTEND_TOOL_NAMES` selects simple low-latency tools called inline by the
+  foreground Realtime Agent.
+- Every remaining tool is exposed to the replaceable cockpit Agent over the
+  backend MCP surface.
 
 Both surfaces use the standard MCP contract. Adding a group requires no change
-to the Gateway protocol or the cockpit UI protocol. The explicit registry is a
-readable code-level extension point, not a dynamic plugin framework.
+to the Gateway protocol or the cockpit UI protocol. A domain group may safely
+serve both surfaces because execution still has one implementation and one
+authoritative state source. The explicit registry is a readable code-level
+extension point, not a dynamic plugin framework.

@@ -85,12 +85,8 @@ function setup(t, overrides = {}) {
         document: documentPath,
         headers: { authorization: '${API_TOKEN}' },
         operations: overrides.operations || {
-          getWeather: { enabled: true, readOnly: true },
-          createAlert: {
-            enabled: true,
-            readOnly: false,
-            approval: 'required',
-          },
+          getWeather: { enabled: true },
+          createAlert: { enabled: true },
         },
       },
     },
@@ -116,8 +112,12 @@ test('discovers only enabled operationIds with standard function schemas', async
     tools[1].definition.function.parameters.properties.body.required,
     ['city', 'threshold'],
   )
-  assert.equal(tools[1].policy.readOnly, false)
-  assert.equal(tools[1].policy.approval, 'required')
+  assert.deepEqual(tools[1].policy, {
+    mode: 'inline',
+    timeoutMs: 8_000,
+    maxResultBytes: 32 * 1024,
+    maxCallsPerTurn: 2,
+  })
   assert.deepEqual(adapter.health(), {
     ok: true,
     initialized: true,
@@ -168,9 +168,9 @@ test('executes path, query, headers, and JSON bodies through one adapter', async
   assert.match(weather.notice, /不可信数据/)
 })
 
-test('fails one API closed for missing operations and unsafe read-only methods', async t => {
+test('fails one API closed when an enabled operation is missing', async t => {
   const missing = setup(t, {
-    operations: { missing: { enabled: true, readOnly: true } },
+    operations: { missing: { enabled: true } },
   })
   const missingAdapter = new FrontendOpenApiAdapter({
     configuration: missing.configuration,
@@ -178,15 +178,6 @@ test('fails one API closed for missing operations and unsafe read-only methods',
   assert.deepEqual(await missingAdapter.initialize(), [])
   assert.equal(missingAdapter.health().ok, false)
   assert.match(missingAdapter.health().apis[0].error, /operation is missing/)
-
-  const unsafe = setup(t, {
-    operations: { createAlert: { enabled: true, readOnly: true } },
-  })
-  const unsafeAdapter = new FrontendOpenApiAdapter({
-    configuration: unsafe.configuration,
-  })
-  assert.deepEqual(await unsafeAdapter.initialize(), [])
-  assert.match(unsafeAdapter.health().apis[0].error, /cannot mark POST as read-only/)
 })
 
 test('normalizes non-success responses as bounded untrusted tool data', async t => {

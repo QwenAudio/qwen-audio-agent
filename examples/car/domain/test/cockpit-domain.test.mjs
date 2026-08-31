@@ -92,6 +92,20 @@ test('projects navigation progress and route state separately', async () => {
   ])
 })
 
+test('queries the current route without requiring another destination', async () => {
+  const { domain, options } = fixture()
+  const empty = await domain.execute('navigation_route_query', {}, options)
+  assert.match(empty.content, /没有进行中的导航/u)
+  assert.deepEqual(empty.changed, [])
+
+  await domain.execute('navigation_start', { destination: '西湖' }, options)
+  const current = await domain.execute('navigation_route_query', {}, options)
+  assert.match(current.content, /当前正导航到西湖/u)
+  assert.match(current.content, /12\.3公里/u)
+  assert.deepEqual(current.changed, [])
+  assert.equal(current.data.navigation.status, 'navigating')
+})
+
 test('requires a preview and explicit confirmation before ordering', async () => {
   const { domain, options } = fixture()
   const premature = await domain.execute('flashbuy', {

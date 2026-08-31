@@ -41,10 +41,6 @@ export default function VoiceDock({ muted, state = 'idle', progress = null, erro
 
   return (
     <section className={`voice-dock is-${activeState}${progressClass}`} aria-label="语音助手">
-      <div className="voice-dock-title">
-        <span>{activeError || activeProgress?.message || '说吧，想做什么？'}</span>
-      </div>
-
       <div className="voice-dock-logo-slot" aria-hidden="true" />
 
       <div className="voice-dock-wave">

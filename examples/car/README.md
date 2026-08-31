@@ -43,8 +43,9 @@ A preflight validates the Realtime configuration and all four ports before any c
 ## Boundaries
 
 - The UI talks to the Gateway through GCP and knows nothing about the Realtime provider or backend Agent.
+- The primary cockpit stays voice-only. Transcripts appear only in the debug panel, and ASR displays final results only.
 - Scenario-specific HTTP/SSE projects vehicle, route, media, weather, and order state. The Gateway does not parse those objects.
-- The foreground Agent owns realtime conversation and submits cockpit work through the fixed `spawn_thinking` bridge.
+- The foreground Agent owns realtime conversation and submits cockpit work through the fixed `spawn_thinking` bridge. The scenario customizes only the backend capability description in [`spawn-thinking-tool.mjs`](spawn-thinking-tool.mjs), while the tool name and argument contract stay fixed.
 - The example backend attaches over A2A and invokes domain capabilities through MCP. It intentionally implements only a small intent router.
 - Customers can replace the UI, backend Agent, or domain service without changing the framework core.
 

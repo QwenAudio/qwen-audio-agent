@@ -14,7 +14,10 @@ import {
 import {
   FRONTEND_TOOL_APPROVAL_CAPABILITY,
 } from '../frontend/tools/frontend-tool-source.mjs'
-import { spawnThinkingTool } from './tools/spawn-thinking-tool.mjs'
+import {
+  spawnThinkingTool,
+  withSpawnThinkingDescription,
+} from './tools/spawn-thinking-tool.mjs'
 import { ClientActionName } from '../client/client-action-port.mjs'
 
 export { SPAWN_THINKING_TOOL_NAME } from './tools/spawn-thinking-tool.mjs'
@@ -452,7 +455,12 @@ function dynamicFrontendTools(agentContext = {}) {
 }
 
 export function frontendTools(agentContext = {}) {
-  const tools = frontendToolRegistry.definitions(agentContext)
+  const spawnThinkingDescription = agentContext?.frontend?.spawnThinkingDescription
+  const tools = frontendToolRegistry.definitions(agentContext).map(tool => (
+    tool === spawnThinkingTool && spawnThinkingDescription
+      ? withSpawnThinkingDescription(spawnThinkingDescription)
+      : tool
+  ))
   const dynamic = dynamicFrontendTools(agentContext)
   if (dynamic.length) return [...tools, ...dynamic]
   return tools.length === TOOLS.length

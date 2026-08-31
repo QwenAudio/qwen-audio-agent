@@ -1,5 +1,6 @@
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { loadCockpitEnvironment } from './environment.mjs'
+import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from './spawn-thinking-tool.mjs'
 
 loadCockpitEnvironment()
 process.env.QWAUDIO_CONFIG_DIR ||= fileURLToPath(new URL('./.runtime', import.meta.url))
@@ -41,6 +42,7 @@ export function startCockpitGateway({
   const application = createGatewayApplication({
     agent,
     autoStart: false,
+    spawnThinkingDescription: COCKPIT_SPAWN_THINKING_DESCRIPTION,
   })
   const server = application.start({ host, port: listenPort })
   let closePromise = null

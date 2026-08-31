@@ -270,6 +270,23 @@ export class CockpitDomain {
     }
 
     const destination = clean(args.destination)
+    if (!destination && name === 'navigation_route_query') {
+      const state = this.snapshot(cockpitId)
+      const navigation = state.navigation
+      if (!navigation.route || navigation.status === 'idle') {
+        return result('当前没有进行中的导航，请先告诉我要去哪里', state, [], {
+          navigation,
+        })
+      }
+      const viaText = navigation.via ? `，途经${navigation.via}` : ''
+      return result(
+        `当前正${navigation.status === 'navigating' ? '导航' : '规划'}到${navigation.destination}${viaText}，`
+          + `全程${navigation.route.distKm}公里，约${navigation.route.durationMin}分钟`,
+        state,
+        [],
+        { navigation },
+      )
+    }
     if (!destination) throw new Error('Destination is required')
     const via = clean(args.via)
     const strategy = Number(args.strategy) || 0

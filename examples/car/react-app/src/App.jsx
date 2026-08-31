@@ -9,6 +9,7 @@ import MusicPanel, { PLAYLIST } from './components/MusicPanel'
 import FlashBuyPanel from './components/FlashBuyPanel'
 import useCockpitState from './hooks/useCockpitState'
 import useVoiceSession from './hooks/useVoiceSession'
+import { finalUserTranscript } from './voice-transcript'
 
 const INITIAL_CAR_STATE = {
   windowFL: 0,
@@ -241,13 +242,14 @@ export default function App() {
 
     if (event.role === 'user') {
       voiceAssistantMessageIdRef.current = null
-      if (!event.content) return
+      const content = finalUserTranscript(event)
+      if (!content) return
       setChatMessages(prev => {
         const last = prev.at(-1)
-        if (last?.role === 'user' && last.content === event.content) return prev
+        if (last?.role === 'user' && last.content === content) return prev
         return [
           ...prev,
-          { id: crypto.randomUUID(), role: 'user', content: event.content },
+          { id: crypto.randomUUID(), role: 'user', content },
         ].slice(-80)
       })
       return

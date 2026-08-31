@@ -1,0 +1,16 @@
+{
+  "name": "qwen-audio-agent-smart-cockpit-agent",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@a2a-js/sdk": "1.0.1",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "express": "^4.22.2",
+    "openai": "^6.39.0"
+  }
+}

@@ -46,6 +46,8 @@ test('recognises only a short explicit promise to execute work', () => {
   assert.equal(promisesAction('好的，我马上检查这个仓库。'), true)
   assert.equal(promisesAction('马上去看这个文件。'), true)
   assert.equal(promisesAction('稍等，我来核实一下。'), true)
+  assert.equal(promisesAction('我来帮您处理下单流程。'), true)
+  assert.equal(promisesAction('我来帮您将黑椒牛肉饭加入购物车。'), true)
 })
 
 test('does not treat ordinary statements or questions as promises', () => {

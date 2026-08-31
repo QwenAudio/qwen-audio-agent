@@ -1,7 +1,7 @@
 import {
   DEFAULT_DELIVERY_ADDRESS,
-  SONGS,
-} from './catalog.mjs'
+} from '../tools/flashbuy/catalog.mjs'
+import { SONGS } from '../tools/music/catalog.mjs'
 
 const DEFAULT_COCKPIT_ID = 'default'
 

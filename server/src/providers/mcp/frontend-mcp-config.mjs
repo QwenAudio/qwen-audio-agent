@@ -20,7 +20,7 @@ function clean(value, maxChars = 1_000) {
   return [...String(value || '').trim()].slice(0, maxChars).join('')
 }
 
-function resolveSecret(value, env) {
+function resolveEnvironmentReference(value, env) {
   const source = clean(value, 8_192)
   const match = ENV_REFERENCE.exec(source)
   if (!match) return source
@@ -40,7 +40,7 @@ function normalizedHeaders(value, env) {
   if (entries.length > 16) throw new Error('Frontend MCP has too many headers.')
   return Object.fromEntries(entries.map(([name, content]) => {
     const header = clean(name, 80).toLowerCase()
-    const resolved = resolveSecret(content, env)
+    const resolved = resolveEnvironmentReference(content, env)
     if (!/^[a-z0-9-]+$/u.test(header) || /[\r\n]/u.test(resolved)) {
       throw new Error('Frontend MCP contains an invalid header.')
     }
@@ -48,10 +48,10 @@ function normalizedHeaders(value, env) {
   }).filter(([, content]) => Boolean(content)))
 }
 
-function normalizedUrl(value, { hasHeaders }) {
+function normalizedUrl(value, { env, hasHeaders }) {
   let url
   try {
-    url = new URL(clean(value, 2_048))
+    url = new URL(resolveEnvironmentReference(value, env))
   } catch {
     throw new Error('Frontend MCP URL is invalid.')
   }
@@ -132,6 +132,7 @@ function normalizedServer(key, value, env) {
     transport: {
       type: 'streamable-http',
       url: normalizedUrl(value.url, {
+        env,
         hasHeaders: Object.keys(headers).length > 0,
       }),
       headers,

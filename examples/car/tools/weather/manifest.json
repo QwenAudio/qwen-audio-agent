@@ -3,28 +3,12 @@
   "label": "天气",
   "description": "座舱示例的当前位置或指定城市天气、气温、风力和出行建议能力。",
   "enabled": true,
-  "routeRules": [
-    "用户表达任何天气、气温、下雨、带伞、穿衣、冷不冷、热不热、风力相关意图 → 必须调用 weather",
-    "用户未指定城市时，默认查询杭州/当前车辆所在城市天气",
-    "禁止直接凭常识或静态状态栏内容回答天气"
-  ],
-  "examples": [
-    "用户说“今天杭州天气怎么样” → 调用 weather(city=杭州)",
-    "用户说“外面冷不冷” → 调用 weather(city=杭州)",
-    "用户说“今天要带伞吗” → 调用 weather(city=杭州)"
-  ],
   "functions": [
     {
       "name": "weather",
       "label": "天气",
       "description": "查询当前城市或指定城市天气、气温、下雨、风力和出行建议。用户未指定城市时默认杭州/当前车辆所在城市。",
-      "executor": "weather.query",
       "enabled": true,
-      "exposure": {
-        "text": true,
-        "voice": true,
-        "debug": true
-      },
       "parameters": {
         "type": "object",
         "properties": {

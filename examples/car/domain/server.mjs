@@ -7,6 +7,10 @@ import { createAmapCockpitServices } from './amap-services.mjs'
 import { CockpitDomain } from './cockpit-domain.mjs'
 import { createCockpitMcpServer } from './mcp-server.mjs'
 import { loadCockpitEnvironment } from '../environment.mjs'
+import {
+  BACKEND_TOOL_DEFINITIONS,
+  FRONTEND_TOOL_DEFINITIONS,
+} from '../tools/registry.mjs'
 
 const MAX_JSON_BYTES = 64 * 1024
 
@@ -120,11 +124,16 @@ export class CockpitDomainServer {
       json(response, 200, output)
       return
     }
-    if (url.pathname === '/mcp' && request.method === 'POST') {
-      await this.#mcp(request, response, cockpitId(request, url))
+    const mcpTools = url.pathname === '/mcp/frontend'
+      ? FRONTEND_TOOL_DEFINITIONS
+      : url.pathname === '/mcp/backend'
+        ? BACKEND_TOOL_DEFINITIONS
+        : null
+    if (mcpTools && request.method === 'POST') {
+      await this.#mcp(request, response, cockpitId(request, url), mcpTools)
       return
     }
-    if (url.pathname === '/mcp') {
+    if (mcpTools) {
       json(response, 405, {
         jsonrpc: '2.0',
         id: null,
@@ -160,8 +169,12 @@ export class CockpitDomainServer {
     })
   }
 
-  async #mcp(request, response, id) {
-    const server = createCockpitMcpServer({ domain: this.domain, cockpitId: id })
+  async #mcp(request, response, id, tools) {
+    const server = createCockpitMcpServer({
+      domain: this.domain,
+      cockpitId: id,
+      tools,
+    })
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
     })

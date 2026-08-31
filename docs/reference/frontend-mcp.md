@@ -59,6 +59,7 @@ Each exposed tool receives a stable model-visible name:
 - Streamable HTTP is the initial transport.
 - Discovery and connection have a bounded timeout (8 seconds by default).
 - Remote servers require HTTPS. Loopback HTTP is allowed only without headers.
+- A server URL may be one exact environment reference such as `${MCP_URL}`.
 - Header values may reference one exact environment variable with
   `${VARIABLE}`. A missing variable is a configuration error.
 - Every enabled tool must explicitly declare `readOnly`. A writable tool must

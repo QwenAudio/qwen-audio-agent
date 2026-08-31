@@ -26,9 +26,6 @@ test('runs core cockpit capabilities through A2A and MCP without UI actions', as
           trafficSegments: [],
         }
       },
-      async weather(city) {
-        return { city, dayweather: '晴', daytemp: '26', nighttemp: '18' }
-      },
     },
   })
   const domain = new CockpitDomainServer({ domain: cockpit, port: 0 })
@@ -65,9 +62,6 @@ test('runs core cockpit capabilities through A2A and MCP without UI actions', as
   const music = await submit('播放晴天')
   assert.match(music.content, /正在播放：晴天/u)
 
-  const weather = await submit('杭州天气怎么样')
-  assert.match(weather.content, /杭州，晴，26°/u)
-
   const cart = await submit('帮我买杯奶茶')
   assert.match(cart.content, /订单预览/u)
   assert.match(cart.content, /确认是否下单/u)
@@ -82,6 +76,5 @@ test('runs core cockpit capabilities through A2A and MCP without UI actions', as
   assert.equal(state.navigation.destination, '杭州西湖')
   assert.equal(state.music.playing, true)
   assert.equal(state.music.playlist[state.music.currentIndex].title, '晴天')
-  assert.equal(state.weather.dayweather, '晴')
   assert.match(state.flashbuy.order.id, /^SG/u)
 })

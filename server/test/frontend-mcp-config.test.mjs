@@ -64,6 +64,26 @@ test('normalizes explicit server and tool policies', () => {
   })
 })
 
+test('resolves a complete MCP endpoint from the launching environment', () => {
+  const normalized = normalizeFrontendMcpConfiguration(configuration({
+    servers: {
+      cockpit: {
+        enabled: true,
+        url: '${COCKPIT_MCP_URL}',
+        tools: {
+          weather: { enabled: true, readOnly: true },
+        },
+      },
+    },
+  }), {
+    env: { COCKPIT_MCP_URL: 'http://127.0.0.1:3010/mcp/frontend' },
+  })
+  assert.equal(
+    normalized.servers[0].transport.url,
+    'http://127.0.0.1:3010/mcp/frontend',
+  )
+})
+
 test('loads and validates a versioned frontend MCP JSON file', () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-mcp-'))
   const filePath = join(directory, 'mcp.json')

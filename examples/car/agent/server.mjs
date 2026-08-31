@@ -15,6 +15,7 @@ import express from 'express'
 import { pathToFileURL } from 'node:url'
 import { CockpitAgentExecutor } from './executor.mjs'
 import { CockpitMcpTools } from './mcp-client.mjs'
+import { loadCockpitEnvironment } from '../environment.mjs'
 
 function agentCard(origin) {
   return {
@@ -103,6 +104,7 @@ export async function startCockpitAgentServer({
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  loadCockpitEnvironment()
   const runtime = await startCockpitAgentServer({
     host: process.env.COCKPIT_AGENT_HOST || '127.0.0.1',
     port: Number(process.env.COCKPIT_AGENT_PORT) || 3020,

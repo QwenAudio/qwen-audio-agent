@@ -38,6 +38,8 @@ npm run example:car
 
 按 `Ctrl+C` 会一起关闭四个进程。
 
+启动前会一次性检查 Realtime 配置和四个默认端口；缺少 Key 或存在旧实例时会给出明确提示，不会再让四个子进程分别输出错误堆栈。
+
 ## 边界
 
 - UI 仅通过 GCP 与 Gateway 对话，不感知 Realtime Provider 或后台 Agent。

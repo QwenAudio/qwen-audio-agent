@@ -1,5 +1,7 @@
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { loadCockpitEnvironment } from './environment.mjs'
 
+loadCockpitEnvironment()
 process.env.QWAUDIO_CONFIG_DIR ||= fileURLToPath(new URL('./.runtime', import.meta.url))
 process.env.QWAUDIO_DATA_DIR ||= process.env.QWAUDIO_CONFIG_DIR
 process.env.QWEN_AUDIO_FRONTEND_PROFILE ||= fileURLToPath(

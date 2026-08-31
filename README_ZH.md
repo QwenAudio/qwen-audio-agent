@@ -160,24 +160,24 @@ qwenaudio tui    # 终端 2：TUI
 | 场景 | 描述 | 链接 | 状态 |
 | --- | --- | --- | --- |
 | 桌面办公 | 实时语音交流、进度追问、工具调用和后台任务执行。 | [文档][desktop-docs-zh] | 已提供 |
-| 智能座舱 | 车控、导航、音乐、天气和生活服务。 | [示例][car-example] | 已提供 |
+| 智能座舱 | 车控、导航、音乐、天气和生活服务。 | [示例][smart-cockpit-example] | 已提供 |
 | 客服助手 | 问题澄清、订单查询、工单处理和人工转接。 | 待补充 | 规划中 |
 | 具身智能 | 语音指令、动作执行、巡检和异常反馈。 | 待补充 | 规划中 |
 | 直播助手 | 弹幕互动、商品讲解、优惠发放和风险提醒。 | 待补充 | 探索中 |
 
-仓库内已提供基于三层框架的智能座舱参考场景，座舱 UI 与轻量 A2A Agent 均可由
-客户替换：
+仓库内已提供基于“前台对话 + 后台执行”边界的智能座舱参考场景，座舱 UI、
+轻量 A2A Agent 和座舱 Service 均可由客户替换：
 
 ```bash
-cp examples/car/.env.example examples/car/.env.local
-npm run example:car:install
-npm run example:car          # 同时启动 domain、agent、gateway 和 client
+cp examples/smart-cockpit/.env.example examples/smart-cockpit/.env.local
+npm run example:smart-cockpit:install
+npm run example:smart-cockpit          # 同时启动 service、agent、gateway 和 client
 ```
 
-详细说明见 [examples/car](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/car)。
+详细说明见 [examples/smart-cockpit](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/smart-cockpit)。
 
 [desktop-docs-zh]: docs/desktop/overview.zh.md
-[car-example]: examples/car
+[smart-cockpit-example]: examples/smart-cockpit
 
 ## 桌面版
 

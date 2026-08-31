@@ -1,0 +1,93 @@
+{
+  "domain": "navigation",
+  "label": "导航",
+  "description": "座舱示例的地点搜索、路线规划、开始导航与停止导航能力。",
+  "enabled": true,
+  "functions": [
+    {
+      "name": "navigation_start",
+      "label": "开始导航",
+      "description": "搜索目的地、规划驾车路线并立即开始导航。用户说“导航到”“带我去”“去某地”或“开始导航”时使用；成功后不要再询问是否开始。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "destination": {
+            "type": "string",
+            "description": "目的地名称或地址"
+          },
+          "waypoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "description": "按行驶顺序排列的途经点（可选）；最终目的地不要放入此数组"
+          },
+          "strategy": {
+            "type": "number",
+            "enum": [
+              0,
+              13,
+              5,
+              4,
+              11,
+              14,
+              2
+            ],
+            "description": "路线偏好: 0=智能推荐, 13=高速优先, 5=不走高速, 4=躲避拥堵, 11=少收费, 14=大路优先, 2=时间优先。当用户提及路线偏好时设置此参数"
+          }
+        },
+        "required": [
+          "destination"
+        ]
+      }
+    },
+    {
+      "name": "navigation_route_query",
+      "label": "路线查询",
+      "description": "仅查询或预览路线，不开始导航。只在用户明确询问“怎么走”“多远”“多久”“查路线”或“先看看路线”时使用；明确要求导航时应使用 navigation_start。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "destination": {
+            "type": "string",
+            "description": "目的地名称或地址"
+          },
+          "waypoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "description": "按行驶顺序排列的途经点（可选）；最终目的地不要放入此数组"
+          },
+          "strategy": {
+            "type": "number",
+            "enum": [
+              0,
+              13,
+              5,
+              4,
+              11,
+              14,
+              2
+            ],
+            "description": "路线偏好: 0=智能推荐, 13=高速优先, 5=不走高速, 4=躲避拥堵, 11=少收费, 14=大路优先, 2=时间优先。当用户提及路线偏好时设置此参数"
+          }
+        }
+      }
+    },
+    {
+      "name": "navigation_stop",
+      "label": "停止导航",
+      "description": "停止当前导航并清空地图路线。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

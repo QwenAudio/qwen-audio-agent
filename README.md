@@ -169,24 +169,25 @@ chat naturally and get real work done.
 | Scenario | Description | Link | Status |
 | --- | --- | --- | --- |
 | Desktop | Voice chat, progress follow-up, tools, and background tasks. | [Docs][desktop-docs] | Available |
-| Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][car-example] | Available |
+| Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][smart-cockpit-example] | Available |
 | Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
 | Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |
 | Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Exploratory |
 
-This repository includes a three-layer smart-cockpit reference scenario. Its
-cockpit UI and small A2A Agent are both customer-replaceable examples:
+This repository includes a smart-cockpit reference scenario built on the
+foreground-conversation and backend-execution boundary. Its cockpit UI, small
+A2A Agent, and cockpit service are customer-replaceable examples:
 
 ```bash
-cp examples/car/.env.example examples/car/.env.local
-npm run example:car:install
-npm run example:car          # domain + agent + gateway + client
+cp examples/smart-cockpit/.env.example examples/smart-cockpit/.env.local
+npm run example:smart-cockpit:install
+npm run example:smart-cockpit          # service + agent + gateway + client
 ```
 
-See [examples/car](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/car) for details.
+See [examples/smart-cockpit](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/smart-cockpit) for details.
 
 [desktop-docs]: docs/desktop/overview.md
-[car-example]: examples/car
+[smart-cockpit-example]: examples/smart-cockpit
 
 ## Desktop App
 

@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" width="1200" height="680" role="img" aria-labelledby="title desc">
+  <title id="title">Qwen Audio Agent 智能座舱框架图</title>
+  <desc id="desc">可替换的座舱客户端通过 GCP 连接框架 Gateway，可替换的后台 Agent 通过 A2A 接入，两者分别通过 MCP 调用座舱环境与工具。</desc>
+  <style>
+    text { font-family: 'Alibaba PuHuiTi', 'Heiti SC', 'PingFang SC', 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+    .title { fill: #111827; font-size: 24px; font-weight: 700; }
+    .subtitle { fill: #6b7280; font-size: 13px; }
+    .group-label { fill: #6b7280; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; }
+    .node-title { fill: #111827; font-size: 17px; font-weight: 700; }
+    .node-subtitle { fill: #4b5563; font-size: 12px; }
+    .chip { fill: #374151; font-size: 11px; font-weight: 600; }
+    .flow-label { fill: #4b5563; font-size: 11px; font-weight: 600; }
+    .legend { fill: #6b7280; font-size: 11px; }
+  </style>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-blue-start" markerWidth="10" markerHeight="7" refX="1" refY="3.5" orient="auto">
+      <polygon points="10 0,0 3.5,10 7" fill="#2563eb"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#9333ea"/>
+    </marker>
+    <marker id="arrow-purple-start" markerWidth="10" markerHeight="7" refX="1" refY="3.5" orient="auto">
+      <polygon points="10 0,0 3.5,10 7" fill="#9333ea"/>
+    </marker>
+    <marker id="arrow-orange" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#ea580c"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0,10 3.5,0 7" fill="#16a34a"/>
+    </marker>
+  </defs>
+
+  <rect width="1200" height="680" fill="#ffffff"/>
+  <text x="40" y="43" class="title">Qwen Audio Agent · 智能座舱示例架构</text>
+  <text x="40" y="66" class="subtitle">前台实时对话是框架核心；客户端、后台 Agent 和场景 Service 均可按客户环境替换</text>
+
+  <rect x="40" y="100" width="260" height="270" rx="12" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text x="58" y="124" class="group-label">REPLACEABLE CLIENT</text>
+  <rect x="66" y="145" width="208" height="188" rx="10" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.5"/>
+  <rect x="66" y="145" width="208" height="28" rx="10" fill="#dbeafe"/>
+  <rect x="66" y="163" width="208" height="10" fill="#dbeafe"/>
+  <circle cx="82" cy="159" r="4" fill="#ef4444" opacity="0.8"/>
+  <circle cx="94" cy="159" r="4" fill="#f59e0b" opacity="0.8"/>
+  <circle cx="106" cy="159" r="4" fill="#10b981" opacity="0.8"/>
+  <text x="170" y="207" text-anchor="middle" class="node-title">座舱客户端</text>
+  <text x="170" y="229" text-anchor="middle" class="node-subtitle">Cockpit Client</text>
+  <rect x="88" y="250" width="164" height="26" rx="13" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="170" y="267" text-anchor="middle" class="chip">音频 I/O · 对话交互</text>
+  <rect x="88" y="285" width="164" height="26" rx="13" fill="#ffffff" stroke="#bfdbfe"/>
+  <text x="170" y="302" text-anchor="middle" class="chip">场景 UI · 设置面板</text>
+  <text x="170" y="351" text-anchor="middle" class="node-subtitle">可替换为车机、手机或自定义面板</text>
+
+  <rect x="355" y="100" width="370" height="270" rx="12" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+  <text x="375" y="124" class="group-label" fill="#1d4ed8">FRAMEWORK CORE</text>
+  <rect x="385" y="145" width="310" height="188" rx="10" fill="#ffffff" stroke="#93c5fd" stroke-width="1.5"/>
+  <polygon points="430,185 454,199 454,227 430,241 406,227 406,199" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="430" y="217" text-anchor="middle" fill="#1d4ed8" font-size="11" font-weight="700">GW</text>
+  <text x="476" y="202" class="node-title">前台 Agent + Gateway</text>
+  <text x="476" y="224" class="node-subtitle">Realtime foreground conversation</text>
+  <rect x="407" y="255" width="126" height="48" rx="8" fill="#f8fafc" stroke="#d1d5db"/>
+  <text x="470" y="275" text-anchor="middle" class="chip">对话轮次</text>
+  <text x="470" y="291" text-anchor="middle" class="node-subtitle">播报 · 打断 · 记忆</text>
+  <rect x="547" y="255" width="126" height="48" rx="8" fill="#faf5ff" stroke="#d8b4fe"/>
+  <text x="610" y="275" text-anchor="middle" class="chip">spawn_thinking</text>
+  <text x="610" y="291" text-anchor="middle" class="node-subtitle">结构化任务桥梁</text>
+  <text x="540" y="351" text-anchor="middle" class="node-subtitle">发布包的框架能力，场景仅做组装</text>
+
+  <rect x="780" y="100" width="380" height="270" rx="12" fill="#faf5ff" stroke="#c084fc" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text x="800" y="124" class="group-label">REPLACEABLE BACKEND</text>
+  <rect x="810" y="145" width="320" height="188" rx="10" fill="#ffffff" stroke="#d8b4fe" stroke-width="1.5"/>
+  <polygon points="858,176 885,192 885,224 858,240 831,224 831,192" fill="#ede9fe" stroke="#9333ea" stroke-width="1.5"/>
+  <text x="858" y="212" text-anchor="middle" fill="#7e22ce" font-size="11" font-weight="700">AI</text>
+  <text x="907" y="202" class="node-title">座舱后台 Agent</text>
+  <text x="907" y="224" class="node-subtitle">Cockpit Backend Agent</text>
+  <rect x="834" y="255" width="272" height="48" rx="8" fill="#faf5ff" stroke="#e9d5ff"/>
+  <text x="970" y="275" text-anchor="middle" class="chip">复杂任务编排 · 业务流程</text>
+  <text x="970" y="292" text-anchor="middle" class="node-subtitle">示例使用 Qwen3.8-Flash + MCP</text>
+  <text x="970" y="351" text-anchor="middle" class="node-subtitle">可替换为客户自有 Agent</text>
+
+  <path d="M300 212 L355 212" fill="none" stroke="#2563eb" stroke-width="2" marker-start="url(#arrow-blue-start)" marker-end="url(#arrow-blue)"/>
+  <rect x="305" y="183" width="45" height="18" rx="9" fill="#ffffff"/>
+  <text x="327.5" y="196" text-anchor="middle" class="flow-label">GCP</text>
+  <text x="327.5" y="235" text-anchor="middle" class="legend">音频/事件</text>
+
+  <path d="M725 212 L780 212" fill="none" stroke="#9333ea" stroke-width="2" marker-start="url(#arrow-purple-start)" marker-end="url(#arrow-purple)"/>
+  <rect x="730" y="183" width="45" height="18" rx="9" fill="#ffffff"/>
+  <text x="752.5" y="196" text-anchor="middle" class="flow-label">A2A</text>
+  <text x="752.5" y="235" text-anchor="middle" class="legend">任务/结果</text>
+
+  <rect x="260" y="430" width="680" height="178" rx="12" fill="#fff7ed" stroke="#fb923c" stroke-width="1.5" stroke-dasharray="7 5"/>
+  <text x="280" y="454" class="group-label">SCENARIO ENVIRONMENT &amp; TOOLS</text>
+  <text x="600" y="483" text-anchor="middle" class="node-title">座舱 Service（环境与基础设施）</text>
+  <text x="600" y="503" text-anchor="middle" class="node-subtitle">Cockpit Service · 不是额外的 Agent 层</text>
+  <rect x="294" y="526" width="180" height="50" rx="8" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="384" y="547" text-anchor="middle" class="chip">工具契约</text>
+  <text x="384" y="565" text-anchor="middle" class="node-subtitle">前台 MCP / 后台 MCP</text>
+  <rect x="510" y="526" width="180" height="50" rx="8" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="600" y="547" text-anchor="middle" class="chip">权威场景状态</text>
+  <text x="600" y="565" text-anchor="middle" class="node-subtitle">导航 · 车辆 · 音乐 · 订单</text>
+  <rect x="726" y="526" width="180" height="50" rx="8" fill="#ffffff" stroke="#fed7aa"/>
+  <text x="816" y="547" text-anchor="middle" class="chip">外部服务适配</text>
+  <text x="816" y="565" text-anchor="middle" class="node-subtitle">地图 · 天气 · 业务系统</text>
+
+  <path d="M540 370 L540 430" fill="none" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <rect x="472" y="386" width="136" height="18" rx="9" fill="#ffffff"/>
+  <text x="540" y="399" text-anchor="middle" class="flow-label">前台低延迟 MCP</text>
+
+  <path d="M970 370 L970 400 L820 400 L820 430" fill="none" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+  <rect x="845" y="384" width="94" height="18" rx="9" fill="#ffffff"/>
+  <text x="892" y="397" text-anchor="middle" class="flow-label">后台 MCP</text>
+
+  <path d="M260 548 L195 548 L195 370" fill="none" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <rect x="94" y="462" width="126" height="18" rx="9" fill="#ffffff"/>
+  <text x="157" y="475" text-anchor="middle" class="flow-label">HTTP / SSE 状态投影</text>
+
+  <g transform="translate(276 642)">
+    <line x1="0" y1="0" x2="28" y2="0" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+    <text x="36" y="4" class="legend">对话协议</text>
+    <line x1="132" y1="0" x2="160" y2="0" stroke="#9333ea" stroke-width="2" marker-end="url(#arrow-purple)"/>
+    <text x="168" y="4" class="legend">异步任务</text>
+    <line x1="264" y1="0" x2="292" y2="0" stroke="#ea580c" stroke-width="2" marker-end="url(#arrow-orange)"/>
+    <text x="300" y="4" class="legend">工具调用</text>
+    <line x1="396" y1="0" x2="424" y2="0" stroke="#16a34a" stroke-width="2" marker-end="url(#arrow-green)"/>
+    <text x="432" y="4" class="legend">场景状态</text>
+  </g>
+</svg>

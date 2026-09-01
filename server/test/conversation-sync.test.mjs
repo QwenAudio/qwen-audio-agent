@@ -29,9 +29,9 @@ test('keeps recent voice context isolated by owner and voice session', () => {
   )
 })
 
-test('uses the same bounded twenty-message projection for frontend history and Realtime', () => {
+test('uses the same bounded forty-message projection for frontend history and Realtime', () => {
   const sync = new ConversationSync()
-  for (let index = 1; index <= 24; index += 1) {
+  for (let index = 1; index <= 44; index += 1) {
     sync.record({
       ownerId: 'owner',
       sessionId: 'voice',
@@ -45,7 +45,7 @@ test('uses the same bounded twenty-message projection for frontend history and R
   assert.deepEqual(
     sync.frontendContext({ ownerId: 'owner', sessionId: 'voice' })
       .map(message => message.content),
-    Array.from({ length: 20 }, (_, index) => `message ${index + 5}`),
+    Array.from({ length: 40 }, (_, index) => `message ${index + 5}`),
   )
 })
 

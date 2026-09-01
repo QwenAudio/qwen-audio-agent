@@ -160,6 +160,7 @@ export function attachRealtimeGateway(server, {
   inputArbitration = null,
   realtimeProviderRegistry = defaultRealtimeProviderRegistry,
   defaultRealtimeProvider = config.audioProvider,
+  realtimeFrontendFactory = undefined,
   frontendRetrieval = null,
   frontendKnowledge = null,
   frontendToolSources = [],
@@ -618,6 +619,9 @@ export function attachRealtimeGateway(server, {
       logger: connectionLogger,
       maxPendingAudioChunks: MAX_PENDING_AUDIO_CHUNKS,
       stableConnectionMs: REALTIME_STABLE_CONNECTION_MS,
+      ...(realtimeFrontendFactory
+        ? { createFrontend: realtimeFrontendFactory }
+        : {}),
     })
     const voiceClient = {
       ws,

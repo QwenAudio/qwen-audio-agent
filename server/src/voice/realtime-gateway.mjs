@@ -38,6 +38,7 @@ import {
   clientVoiceCapabilities,
 } from './active-voice-clients.mjs'
 import { RealtimeProviderSession } from './realtime-provider-session.mjs'
+import { RealtimeRecoveryContext } from './realtime-recovery-context.mjs'
 import { SleepController } from './sleep-controller.mjs'
 import {
   isResponseActivityEvent,
@@ -159,6 +160,7 @@ export function attachRealtimeGateway(server, {
   inputArbitration = null,
   realtimeProviderRegistry = defaultRealtimeProviderRegistry,
   defaultRealtimeProvider = config.audioProvider,
+  realtimeFrontendFactory = undefined,
   frontendRetrieval = null,
   frontendKnowledge = null,
   frontendToolSources = [],
@@ -310,6 +312,8 @@ export function attachRealtimeGateway(server, {
     const announcementWindow = new AnnouncementWindow()
     const notificationClaimantId = `voice_${randomUUID()}`
     let clientContext = normalizeClientContext()
+    let sessionAssistantProfile = ''
+    let sessionOutputVoice = ''
     const turns = new RealtimeTurnState()
     const transcripts = new TurnTranscripts()
     const turnCitations = new TurnCitations()
@@ -338,6 +342,12 @@ export function attachRealtimeGateway(server, {
     const hasPendingBackendInput = () => activeSessionTasks().some(task => (
       task.inputRequest?.status === 'pending'
     ))
+    // Keep visible history intact while excluding only a provider-rejected turn
+    // from future Realtime Session restoration.
+    const realtimeRecoveryContext = new RealtimeRecoveryContext()
+    const frontendRecentMessages = () => realtimeRecoveryContext.project(
+      conversationSync.frontendContext({ ownerId, sessionId }),
+    )
     const getAgentContext = () => ({
       client: clientContext,
       frontend: {
@@ -359,7 +369,10 @@ export function attachRealtimeGateway(server, {
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
       memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-      recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),
+      recentMessages: frontendRecentMessages(),
+      ...(sessionAssistantProfile
+        ? { assistantProfile: sessionAssistantProfile }
+        : {}),
     })
     const schedulePermissionRetry = () => {
       if (permissionRetryTimer || !outputEnabled || !realtimeSession?.ready) return
@@ -551,6 +564,9 @@ export function attachRealtimeGateway(server, {
       providerRegistry: realtimeProviderRegistry,
       defaultProvider: defaultRealtimeProvider,
       getAgentContext,
+      getSessionOptions: () => ({
+        ...(sessionOutputVoice ? { voice: sessionOutputVoice } : {}),
+      }),
       shouldReconnect: () => inputEnabled || outputEnabled,
       onEvent: event => handleEvent(event),
       onDiagnostic: diagnostic => {
@@ -603,6 +619,9 @@ export function attachRealtimeGateway(server, {
       logger: connectionLogger,
       maxPendingAudioChunks: MAX_PENDING_AUDIO_CHUNKS,
       stableConnectionMs: REALTIME_STABLE_CONNECTION_MS,
+      ...(realtimeFrontendFactory
+        ? { createFrontend: realtimeFrontendFactory }
+        : {}),
     })
     const voiceClient = {
       ws,
@@ -999,6 +1018,37 @@ export function attachRealtimeGateway(server, {
         // 也不应触发失败簿记(此时本就没有响应在跑)。
         const benignCancelRace = providerError === 'no_active_response'
         if (benignCancelRace) return
+        if (providerError === 'content_safety') {
+          const recentMessages = conversationSync.frontendContext({ ownerId, sessionId })
+          const failedContext = presentationRuntime.get(realtimeResponseId(event)) || {
+            turnId: turns.committedTurnId || turns.turnId,
+          }
+          realtimeRecoveryContext.excludeFailure(failedContext, recentMessages)
+          clearResponseCandidate()
+          presentationRuntime.failResponse(event)
+          send(ws, {
+            type: GatewayServerEvent.PLAYBACK_CLEAR,
+            reason: 'provider_content_safety',
+          })
+          send(ws, {
+            type: GatewayServerEvent.VOICE_STATE,
+            state: 'idle',
+            origin: 'model',
+          })
+          connectionLogger.warn('realtime.content_safety_recovery', {
+            provider: realtimeSession.providerKey,
+            excludedTurnId: failedContext.turnId || '',
+          })
+          send(ws, {
+            type: 'error',
+            message: '这次内容未能处理，语音会话已自动恢复，请换个说法再试。',
+          })
+          realtimeSession.reconnect().catch(error => send(ws, {
+            type: 'error',
+            message: error.message,
+          }))
+          return
+        }
         if (providerError === 'fatal') {
           connectionLogger.error('realtime.blocked', {
             provider: realtimeSession.providerKey,
@@ -1122,6 +1172,45 @@ export function attachRealtimeGateway(server, {
         },
       })
     }
+    const updateSessionOutputVoice = voice => {
+      const nextVoice = String(voice || '').trim()
+      const provider = realtimeSession.provider()
+      if (provider.capabilities?.sessionOutputVoice !== true) {
+        const error = new Error(
+          `${provider.label} does not support session output voice updates`,
+        )
+        error.code = 'output_voice_unsupported'
+        throw error
+      }
+      if (nextVoice === sessionOutputVoice) {
+        return {
+          voice: nextVoice,
+          changed: false,
+          reconnecting: false,
+        }
+      }
+
+      sessionOutputVoice = nextVoice
+      const hasUpstreamSession = realtimeSession.ready || realtimeSession.connecting
+      if (hasUpstreamSession) {
+        realtimeSession.cancelResponse()
+        send(ws, {
+          type: GatewayServerEvent.PLAYBACK_CLEAR,
+          reason: 'output_voice_changed',
+        })
+        // Realtime providers apply voice selection when a Session is created.
+        // Rebuild only that provider Session; the GCP client and Gateway
+        // conversation remain connected and keep their state.
+        realtimeSession.detach({ clearAudio: false })
+      }
+      const reconnecting = hasUpstreamSession && (inputEnabled || outputEnabled)
+      if (reconnecting) realtimeSession.ensure().catch(reportFrontendError)
+      return {
+        voice: nextVoice,
+        changed: true,
+        reconnecting,
+      }
+    }
     const handleRuntimeMessage = async message => {
       if (message.type === GatewayClientProtocolEvent.CLIENT_ACTION_RESULT) {
         if (!clientActions.receive(message)) {
@@ -1129,6 +1218,15 @@ export function attachRealtimeGateway(server, {
             requestEventId: message.request_event_id,
           })
         }
+        return
+      }
+      if (message.type === GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE) {
+        const result = updateSessionOutputVoice(message.voice)
+        send(ws, {
+          type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
+          request_event_id: message.event_id,
+          ...result,
+        })
         return
       }
       if (message.type === GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH) {
@@ -1139,6 +1237,15 @@ export function attachRealtimeGateway(server, {
         }
         const result = await clientEventRouter.publish(message, {
           source: runtimeSource(),
+          effects: {
+            setAssistantProfile(profile) {
+              // Only a server-registered Client Event handler can reach this
+              // effect. The Client supplies a schema-validated identifier,
+              // while the handler owns the actual profile content.
+              sessionAssistantProfile = String(profile || '').trim()
+              realtimeSession.updateAgentContext(getAgentContext())
+            },
+          },
         })
         connectionLogger.info('client_event.received', {
           name: result.name,
@@ -1230,6 +1337,7 @@ export function attachRealtimeGateway(server, {
           textOnly: event.textOnly === true,
         })
         nonVoiceClient = event.textOnly === true
+        sessionOutputVoice = String(event.outputVoice || '').trim()
         // The client may pick a realtime front end per session. An unknown
         // name is reported instead of silently falling back, so a typo does
         // not look like a working session on the wrong provider.

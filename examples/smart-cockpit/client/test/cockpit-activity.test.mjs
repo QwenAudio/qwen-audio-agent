@@ -4,7 +4,7 @@ import {
   cockpitProgressFromActivity,
   cockpitScreenForProgress,
   isTerminalCockpitProgress,
-} from '../client/src/cockpit-activity.js'
+} from '../src/projections/cockpit-activity.js'
 
 test('projects supported scenario activity into UI progress', () => {
   assert.deepEqual(cockpitProgressFromActivity({

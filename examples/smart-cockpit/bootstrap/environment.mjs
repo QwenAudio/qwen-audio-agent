@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs'
 import { parseEnv } from 'node:util'
 
 const ENVIRONMENT_FILES = Object.freeze([
-  new URL('./.env.local', import.meta.url),
-  new URL('../../.env.local', import.meta.url),
+  new URL('../.env.local', import.meta.url),
+  new URL('../../../.env.local', import.meta.url),
 ])
 
 export function loadCockpitEnvironment(env = process.env) {

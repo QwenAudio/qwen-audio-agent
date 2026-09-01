@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { executeCustomSkillTool } from './custom-skills/execute.mjs'
 import { executeFlashbuyTool } from './flashbuy/execute.mjs'
 import { executeMusicTool } from './music/execute.mjs'
 import { executeNavigationTool } from './navigation/execute.mjs'
@@ -17,6 +18,8 @@ function definition(tool) {
     inputSchema: tool.parameters,
     annotations: {
       readOnlyHint: [
+        'custom_skill_list',
+        'custom_skill_load',
         'vehicle_state_query',
         'navigation_route_query',
         'navigation_search_place',
@@ -64,6 +67,7 @@ const navigation = toolGroup('navigation', executeNavigationTool)
 const music = toolGroup('music', executeMusicTool)
 const weather = toolGroup('weather', executeWeatherTool)
 const flashbuy = toolGroup('flashbuy', executeFlashbuyTool)
+const customSkills = toolGroup('custom-skills', executeCustomSkillTool)
 
 export const COCKPIT_TOOL_GROUPS = Object.freeze([
   vehicle,
@@ -71,6 +75,7 @@ export const COCKPIT_TOOL_GROUPS = Object.freeze([
   music,
   weather,
   flashbuy,
+  customSkills,
 ])
 
 function definitions(groups) {
@@ -88,23 +93,19 @@ if (new Set(COCKPIT_TOOL_NAMES).size !== COCKPIT_TOOL_NAMES.length) {
 
 // Tool implementation stays grouped by business domain. This explicit surface
 // assignment is the scenario customization point: simple low-latency actions
-// run inline in the foreground, while orchestrated work stays with the backend
-// Agent. It keeps one executor per capability without a dynamic plugin layer.
+// run inline in the foreground, while the backend retains the full surface for
+// composed work such as user-defined skills. Both paths share one executor per
+// capability; this is not a dynamic plugin layer.
 export const FRONTEND_TOOL_NAMES = Object.freeze([
   'weather',
   'vehicle_state_query',
   'vehicle_window_control',
+  'vehicle_sunroof_control',
   'vehicle_headlights_control',
+  'vehicle_climate_control',
   'navigation_set_route_strategy',
   'navigation_set_voice',
   'navigation_set_view',
-])
-
-const BACKEND_EXCLUDED_TOOL_NAMES = new Set([
-  'weather',
-  'vehicle_state_query',
-  'vehicle_window_control',
-  'vehicle_headlights_control',
 ])
 
 const toolDefinitionsByName = new Map(
@@ -121,9 +122,7 @@ if (unknownFrontendNames.length) {
 export const FRONTEND_TOOL_DEFINITIONS = Object.freeze(
   FRONTEND_TOOL_NAMES.map(name => toolDefinitionsByName.get(name)),
 )
-export const BACKEND_TOOL_DEFINITIONS = Object.freeze(
-  COCKPIT_TOOL_DEFINITIONS.filter(tool => !BACKEND_EXCLUDED_TOOL_NAMES.has(tool.name)),
-)
+export const BACKEND_TOOL_DEFINITIONS = COCKPIT_TOOL_DEFINITIONS
 
 const EXECUTORS = new Map(COCKPIT_TOOL_GROUPS.flatMap(group => (
   group.definitions.map(tool => [tool.name, group.execute])

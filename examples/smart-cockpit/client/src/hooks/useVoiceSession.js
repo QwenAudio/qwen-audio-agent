@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GatewayClient } from 'qwen-audio-agent/gateway-client-sdk'
-import { GatewayClientCapability } from 'qwen-audio-agent/gateway-client-protocol'
+import {
+  GatewayClientCapability,
+  GatewayClientProtocolEvent,
+} from 'qwen-audio-agent/gateway-client-protocol'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
@@ -13,11 +16,21 @@ import {
   rememberTaskProgress,
   taskProgressFingerprint,
   taskProgressFromEvent,
-} from '../task-progress'
+} from '../projections/task-progress'
+import {
+  COCKPIT_ASSISTANT_PROFILE_EVENT,
+  cockpitPersonaId,
+} from '../config/personas'
+import { activateAudioContext } from '../audio/activation'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
 const SPEECH_THRESHOLD = 0.035
+const AUDIO_CAPTURE_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+}
 const TASK_TERMINAL_EVENTS = new Set([
   'task.completed',
   'task.failed',
@@ -95,6 +108,8 @@ function gatewayVoiceState(event) {
 export default function useVoiceSession({
   muted,
   clientId,
+  persona,
+  voice,
   onVoiceMessage,
   onConversationRecovery,
 }) {
@@ -106,8 +121,14 @@ export default function useVoiceSession({
   const [connectionError, setConnectionError] = useState(null)
   const clientRef = useRef(null)
   const audioContextRef = useRef(null)
+  const audioReadyRef = useRef(null)
+  const mediaRequestRef = useRef(null)
   const inputSampleRateRef = useRef(INPUT_SAMPLE_RATE)
   const mutedRef = useRef(muted)
+  const personaRef = useRef(persona)
+  const voiceRef = useRef(voice)
+  const personaSyncRef = useRef({ generation: 0, pending: '', published: '' })
+  const voiceSyncRef = useRef({ generation: 0, pending: '', published: '' })
   const onVoiceMessageRef = useRef(onVoiceMessage)
   const onConversationRecoveryRef = useRef(onConversationRecovery)
   const taskProgressSeenRef = useRef(new Map())
@@ -134,6 +155,65 @@ export default function useVoiceSession({
       type,
       responseId,
       ...(reason ? { reason } : {}),
+    })
+  }, [])
+
+  const publishAssistantProfile = useCallback((client = clientRef.current) => {
+    const profile = cockpitPersonaId(personaRef.current)
+    const sync = personaSyncRef.current
+    if (
+      !client?.ready
+      || !client.supports(GatewayClientCapability.CLIENT_EVENTS)
+      || sync.pending === profile
+      || sync.published === profile
+    ) return
+    const generation = sync.generation
+    sync.pending = profile
+    client.request(GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH, {
+      name: COCKPIT_ASSISTANT_PROFILE_EVENT,
+      data: { profile },
+      delivery_hint: 'handle',
+    }).then(() => {
+      const current = personaSyncRef.current
+      if (
+        current.generation === generation
+        && cockpitPersonaId(personaRef.current) === profile
+      ) current.published = profile
+    }).catch(error => {
+      console.warn('Cockpit Assistant Profile sync failed', error)
+    }).finally(() => {
+      const current = personaSyncRef.current
+      if (current.generation === generation && current.pending === profile) {
+        current.pending = ''
+      }
+    })
+  }, [])
+
+  const syncOutputVoice = useCallback((client = clientRef.current) => {
+    const selectedVoice = String(voiceRef.current || '').trim()
+    const sync = voiceSyncRef.current
+    if (
+      !selectedVoice
+      || !client?.ready
+      || !client.supports(GatewayClientCapability.SESSION_OUTPUT_VOICE)
+      || sync.pending === selectedVoice
+      || sync.published === selectedVoice
+    ) return
+    const generation = sync.generation
+    sync.pending = selectedVoice
+    client.updateOutputVoice(selectedVoice).then(() => {
+      const current = voiceSyncRef.current
+      if (
+        current.generation === generation
+        && voiceRef.current === selectedVoice
+      ) current.published = selectedVoice
+    }).catch(error => {
+      console.warn('Cockpit output voice sync failed', error)
+    }).finally(() => {
+      const current = voiceSyncRef.current
+      if (current.generation === generation && current.pending === selectedVoice) {
+        current.pending = ''
+      }
     })
   }, [])
 
@@ -228,6 +308,35 @@ export default function useVoiceSession({
     }
   }, [finishResponsePlayback, sendPlaybackReceipt])
 
+  const activateVoice = useCallback(() => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('当前浏览器不支持麦克风采集')
+      }
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext
+      const activation = activateAudioContext({
+        current: audioContextRef.current,
+        AudioContextClass,
+      })
+      audioContextRef.current = activation.context
+      audioReadyRef.current = activation.ready
+      const mediaRequest = navigator.mediaDevices.getUserMedia({
+        audio: AUDIO_CAPTURE_CONSTRAINTS,
+      })
+      mediaRequestRef.current = mediaRequest
+      // The capture effect consumes both promises. Attach handlers here too so
+      // a fast rejection cannot become unhandled before React runs the effect.
+      activation.ready.catch(() => {})
+      mediaRequest.catch(() => {})
+      setError(null)
+      return true
+    } catch (reason) {
+      setError(reason?.message || '语音启用失败')
+      setVoiceState('error')
+      return false
+    }
+  }, [])
+
   useEffect(() => {
     const handleEvent = (event) => {
       const state = gatewayVoiceState(event)
@@ -254,6 +363,8 @@ export default function useVoiceSession({
         onVoiceMessageRef.current?.({
           role: event.role,
           content: event.content,
+          responseId: event.responseId,
+          turnId: event.turnId,
           delta: event.type === GatewayServerEvent.TRANSCRIPT_DELTA,
           final: event.type === GatewayServerEvent.TRANSCRIPT_FINAL,
         })
@@ -295,16 +406,28 @@ export default function useVoiceSession({
         GatewayClientCapability.TASK_COMMANDS,
         GatewayClientCapability.PERMISSION_RESPOND,
         GatewayClientCapability.CONVERSATION_HISTORY,
+        GatewayClientCapability.CLIENT_EVENTS,
+        GatewayClientCapability.SESSION_OUTPUT_VOICE,
         GatewayClientCapability.SESSION_REPLAY,
       ],
       locale: navigator.language,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      configure: () => cockpitVoiceConnectionMode(mutedRef.current),
+      configure: () => cockpitVoiceConnectionMode(mutedRef.current, voiceRef.current),
       onEvent: handleEvent,
       onRecovery: recovery => {
         onConversationRecoveryRef.current?.(recovery.messages || [])
       },
       onStatus: status => {
+        if (status.state === 'ready') {
+          publishAssistantProfile(client)
+          syncOutputVoice(client)
+        } else if (['connecting', 'disconnected', 'unavailable'].includes(status.state)) {
+          for (const sync of [personaSyncRef.current, voiceSyncRef.current]) {
+            sync.generation += 1
+            sync.pending = ''
+            sync.published = ''
+          }
+        }
         const nextConnectionError = cockpitConnectionError(status.state)
         if (nextConnectionError === undefined) return
         setConnectionError(nextConnectionError)
@@ -323,7 +446,17 @@ export default function useVoiceSession({
       client.stop()
       if (clientRef.current === client) clientRef.current = null
     }
-  }, [clearPlayback, clientId, finishResponsePlayback, playPcmAudio, sendPlaybackReceipt])
+  }, [clearPlayback, clientId, finishResponsePlayback, playPcmAudio, publishAssistantProfile, sendPlaybackReceipt, syncOutputVoice])
+
+  useEffect(() => {
+    personaRef.current = persona
+    publishAssistantProfile()
+  }, [persona, publishAssistantProfile])
+
+  useEffect(() => {
+    voiceRef.current = voice
+    syncOutputVoice()
+  }, [syncOutputVoice, voice])
 
   useEffect(() => {
     if (muted) {
@@ -350,24 +483,29 @@ export default function useVoiceSession({
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error('当前浏览器不支持麦克风采集')
         }
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext
-        if (!AudioContextClass) throw new Error('当前浏览器不支持实时语音播放')
-        const context = audioContextRef.current?.state === 'closed'
-          ? new AudioContextClass()
-          : audioContextRef.current || new AudioContextClass()
-        audioContextRef.current = context
-        await context.resume()
-        media = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        })
+        const pendingMedia = mediaRequestRef.current
+        mediaRequestRef.current = null
+        media = await (pendingMedia || navigator.mediaDevices.getUserMedia({
+          audio: AUDIO_CAPTURE_CONSTRAINTS,
+        }))
         if (disposed) {
           media.getTracks().forEach(track => track.stop())
           return
         }
+        let context = audioContextRef.current
+        let audioReady = audioReadyRef.current
+        if (!context || !audioReady) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext
+          const activation = activateAudioContext({
+            current: context,
+            AudioContextClass,
+          })
+          context = activation.context
+          audioReady = activation.ready
+          audioContextRef.current = context
+          audioReadyRef.current = audioReady
+        }
+        await audioReady
         analyser = context.createAnalyser()
         analyser.fftSize = 512
         source = context.createMediaStreamSource(media)
@@ -407,6 +545,7 @@ export default function useVoiceSession({
         }
         frame = requestAnimationFrame(tick)
       } catch (reason) {
+        media?.getTracks().forEach(track => track.stop())
         if (!disposed) {
           setInputLevel(0)
           setVoiceState('error')
@@ -428,6 +567,8 @@ export default function useVoiceSession({
   useEffect(() => () => {
     audioContextRef.current?.close()
     audioContextRef.current = null
+    audioReadyRef.current = null
+    mediaRequestRef.current = null
   }, [])
 
   const sendInput = useCallback((parts) => (
@@ -440,6 +581,7 @@ export default function useVoiceSession({
     outputLevel,
     progress,
     error: connectionError || error,
+    activateVoice,
     sendInput,
   }
 }

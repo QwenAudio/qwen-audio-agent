@@ -32,6 +32,7 @@ const CAPABILITY_FLAGS = [
   'responseMetadataCorrelation',
   'perResponseInstructions',
   'conversationItemIdEcho',
+  'sessionOutputVoice',
 ]
 
 const MODEL_CAPABILITY_FLAGS = [

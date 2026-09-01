@@ -1,0 +1,64 @@
+{
+  "domain": "custom-skills",
+  "label": "自定义技能",
+  "description": "创建、发现并加载当前座舱用户保存的多步骤工作流。",
+  "enabled": true,
+  "functions": [
+    {
+      "name": "custom_skill_list",
+      "label": "自定义技能目录",
+      "description": "列出当前座舱用户已经保存的自定义技能名称和简介。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "custom_skill_create",
+      "label": "创建自定义技能",
+      "description": "把用户明确要求保存的座舱工作流创建或更新为自定义技能。技能只能编排当前提供的座舱工具，不能扩大工具权限。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "简短、易于语音触发的技能名称，最多 40 个字符"
+          },
+          "description": {
+            "type": "string",
+            "description": "用于目录展示和意图识别的简短说明"
+          },
+          "instructions": {
+            "type": "string",
+            "description": "清晰的 Markdown 执行步骤，引用当前可用工具的语义能力，不伪造未提供的能力"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "instructions"
+        ]
+      }
+    },
+    {
+      "name": "custom_skill_load",
+      "label": "加载自定义技能",
+      "description": "按名称加载一个自定义技能的完整工作流。加载后仍需使用当前提供的工具逐步执行，不得把加载本身当作完成。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "skill_name": {
+            "type": "string",
+            "description": "要加载的自定义技能名称"
+          }
+        },
+        "required": [
+          "skill_name"
+        ]
+      }
+    }
+  ]
+}

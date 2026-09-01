@@ -61,6 +61,7 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
     "permissions.respond",
     "conversation.history",
     "client.events",
+    "session.output_voice",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ],
@@ -70,10 +71,16 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
     "voice_enabled": true,
     "input_enabled": true,
     "output_enabled": true,
-    "text_only": false
+    "text_only": false,
+    "output_voice": "longanlufeng"
   }
 }
 ```
+
+`connection.output_voice` 是可选的会话级输出音色偏好。Gateway 将它交给当前
+Realtime Provider 解释；不设置时继续使用 Provider 的部署级默认音色。对于仅允许在
+首次会话配置音色的 Provider，Gateway 在运行时切换时只重建上游 Provider Session；
+客户端 GCP 连接与 Gateway 会话保持不变。
 
 Gateway 返回协商后的版本与能力交集：
 
@@ -93,6 +100,7 @@ Gateway 返回协商后的版本与能力交集：
     "permissions.respond",
     "conversation.history",
     "client.events",
+    "session.output_voice",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ]
@@ -129,6 +137,10 @@ Schema、大小、频率、保存、合并、最大路由等级与可选确定�
 Event data 提供。首个内置定义是 `desktop.presence.sleep_requested`。GCP2 负责接收、
 校验、保存和确定性处理，不会把它伪装成用户输入；GCP3 已经把它投影到统一的 Agent
 Delivery 边界。
+
+确定性 Handler 可以使用 Gateway 宿主提供的窄效果，例如从部署方拥有的
+Assistant Profile 白名单中为当前 Realtime Session 选择一项。Client 仍然只能发送
+Schema 校验过的标识：Event data 不会直接变成指令，效果也不接受任意 Prompt 文本。
 
 ### 3.3 GCP3 Delivery 落地
 
@@ -299,7 +311,34 @@ Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client 
 | `permission.respond` | C→G | 处理当前等待中的授权请求 |
 | `task.input.respond` | C→G | 把用户补充输入交回同一 Task，或拒绝/取消这次交互 |
 | `conversation.history` | C→G | 读取有界、对 Client 安全的对话投影 |
+| `session.output_voice.update` | C→G | 更新当前会话的输出音色；结果为 `session.output_voice.updated` |
 | `session.replay` | C→G | 从 sequence 游标回放符合条件的服务端推送 |
+
+协商 `session.output_voice` 能力后，客户端可以直接调用 SDK 的
+`GatewayClient.updateOutputVoice(voice)`。对应线协议为：
+
+```jsonc
+{
+  "type": "session.output_voice.update",
+  "event_id": "evt_client_voice_1",
+  "voice": "longanlufeng"
+}
+```
+
+```jsonc
+{
+  "type": "session.output_voice.updated",
+  "event_id": "evt_gateway_voice_1",
+  "request_event_id": "evt_client_voice_1",
+  "voice": "longanlufeng",
+  "changed": true,
+  "reconnecting": true
+}
+```
+
+`changed` 表示偏好是否变化，`reconnecting` 表示 Gateway 是否正在用新音色重建上游
+Realtime Session。Provider 不支持会话音色时返回关联错误
+`output_voice_unsupported`，Client 不需要识别具体 Provider。
 
 `permission.respond.decision` 支持 `once`、`always` 和 `reject`，分别表示
 仅允许当前操作、当前前端会话内始终允许，以及仅拒绝当前操作。

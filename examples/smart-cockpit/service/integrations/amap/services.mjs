@@ -5,7 +5,7 @@ import {
   searchPlace,
   searchPlaces,
   searchNearbyPlaces,
-} from './amap-client.mjs'
+} from './client.mjs'
 
 export function createAmapCockpitServices({
   search = searchPlace,

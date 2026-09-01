@@ -1,4 +1,5 @@
 import { CockpitStateStore } from './state-store.mjs'
+import { CustomSkillStore } from './custom-skills/store.mjs'
 import {
   COCKPIT_TOOL_NAMES,
   executeCockpitTool,
@@ -21,11 +22,13 @@ function emptyServices() {
 export class CockpitService {
   constructor({
     store = new CockpitStateStore(),
+    customSkills = new CustomSkillStore(),
     services = emptyServices(),
     now = Date.now,
     random = Math.random,
   } = {}) {
     this.store = store
+    this.customSkills = customSkills
     this.services = services
     this.now = now
     this.random = random
@@ -54,6 +57,27 @@ export class CockpitService {
 
   reset(cockpitId = 'default') {
     return this.store.reset(cockpitId)
+  }
+
+  listSkills(cockpitId = 'default') {
+    return this.customSkills.list(cockpitId)
+  }
+
+  getSkill(cockpitId = 'default', reference) {
+    return this.customSkills.get(cockpitId, reference)
+  }
+
+  async deleteSkill(cockpitId = 'default', reference) {
+    const skill = await this.customSkills.delete(cockpitId, reference)
+    if (skill) {
+      this.#publishActivity(cockpitId, {
+        kind: 'status',
+        category: 'custom_skills',
+        status: 'skills_changed',
+        message: `已删除自定义技能“${skill.name}”`,
+      })
+    }
+    return skill
   }
 
   #publishActivity(cockpitId, event) {
@@ -89,6 +113,7 @@ export class CockpitService {
     }
     return executeCockpitTool(name, args, {
       cockpitId,
+      customSkills: this.customSkills,
       now: this.now,
       onActivity: reportActivity,
       random: this.random,

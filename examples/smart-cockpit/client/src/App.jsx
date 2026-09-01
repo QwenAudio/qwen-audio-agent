@@ -11,9 +11,22 @@ import ChatPanel from './components/ChatPanel'
 import MusicPanel, { PLAYLIST } from './components/MusicPanel'
 import FlashBuyPanel from './components/FlashBuyPanel'
 import useCockpitState from './hooks/useCockpitState'
+import useCockpitSkills from './hooks/useCockpitSkills'
 import useVoiceSession from './hooks/useVoiceSession'
-import { finalUserTranscript } from './voice-transcript'
-import { cockpitScreenForProgress } from './cockpit-activity'
+import {
+  finalUserTranscript,
+  voiceConversationMessageId,
+  voiceEventBelongsToTurn,
+} from './projections/voice-transcript'
+import { cockpitScreenForProgress } from './projections/cockpit-activity'
+import {
+  COCKPIT_VOICE_IDS,
+  DEFAULT_COCKPIT_VOICE,
+} from './config/voices'
+import {
+  COCKPIT_PERSONA_LABELS,
+  DEFAULT_COCKPIT_PERSONA_LABEL,
+} from './config/personas'
 
 const INITIAL_CAR_STATE = {
   windowFL: 0,
@@ -28,11 +41,7 @@ const INITIAL_CAR_STATE = {
   acFan: 3,
 }
 
-const VALID_TABS = ['persona']
-const VALID_PERSONAS = ['聊愈师', '行动派', '疯批']
-const VALID_VOICES = ['小酒窝', '台御姐', '阳光男', '酷酷男']
-const DEFAULT_PERSONA = '聊愈师'
-const DEFAULT_VOICE = '小酒窝'
+const VALID_TABS = ['persona', 'skills']
 const PERSONA_STORAGE_KEY = 'selectedPersona'
 const VOICE_STORAGE_KEY = 'selectedVoice'
 const INITIAL_WEATHER_STATE = {
@@ -88,13 +97,28 @@ export default function App() {
   const {
     state: cockpitState,
     progress: cockpitProgress,
+    activity: cockpitActivity,
     execute: executeCockpitCommand,
     reset: resetCockpitState,
   } = useCockpitState(cockpitId)
+  const {
+    skills: customSkills,
+    error: customSkillsError,
+    load: loadCustomSkill,
+    remove: deleteCustomSkill,
+  } = useCockpitSkills(cockpitId, cockpitActivity)
   const [screen, setScreen] = useState('main')
   const [settingsTab, setSettingsTab] = useState('persona')
-  const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(PERSONA_STORAGE_KEY, DEFAULT_PERSONA, VALID_PERSONAS))
-  const [selectedVoice, setSelectedVoice] = useState(() => getStoredChoice(VOICE_STORAGE_KEY, DEFAULT_VOICE, VALID_VOICES))
+  const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(
+    PERSONA_STORAGE_KEY,
+    DEFAULT_COCKPIT_PERSONA_LABEL,
+    COCKPIT_PERSONA_LABELS,
+  ))
+  const [selectedVoice, setSelectedVoice] = useState(() => getStoredChoice(
+    VOICE_STORAGE_KEY,
+    DEFAULT_COCKPIT_VOICE,
+    COCKPIT_VOICE_IDS,
+  ))
   const [selectedWake, setSelectedWake] = useState('主驾')
   const carState = cockpitState?.vehicle || INITIAL_CAR_STATE
   const [showChat, setShowChat] = useState(false)
@@ -107,6 +131,7 @@ export default function App() {
   const weatherState = cockpitState?.weather || INITIAL_WEATHER_STATE
   const [voiceMuted, setVoiceMuted] = useState(true)
   const voiceAssistantMessageIdRef = useRef(null)
+  const voiceTurnIdRef = useRef('')
 
   const runCockpitCommand = useCallback((name, args = {}) => {
     executeCockpitCommand(name, args).catch(error => {
@@ -192,16 +217,20 @@ export default function App() {
     setShowChat(prev => !prev)
   }, [])
 
-  const toggleVoiceMute = useCallback(() => {
-    setVoiceMuted(prev => !prev)
-  }, [])
-
   const handleVoiceMessage = useCallback((event) => {
     if (!event) return
 
     const updateAssistantMessage = (updater) => {
-      const id = voiceAssistantMessageIdRef.current || crypto.randomUUID()
-      voiceAssistantMessageIdRef.current = id
+      const id = voiceConversationMessageId(
+        event,
+        voiceAssistantMessageIdRef.current || crypto.randomUUID(),
+      )
+      if (
+        event.final !== true
+        && voiceEventBelongsToTurn(event, voiceTurnIdRef.current)
+      ) {
+        voiceAssistantMessageIdRef.current = id
+      }
       setChatMessages(prev => {
         const next = [...prev]
         let index = next.findIndex(msg => msg.id === id)
@@ -212,6 +241,7 @@ export default function App() {
         next[index] = updater(next[index])
         return next.slice(-80)
       })
+      return id
     }
 
     if (event.thinkingDelta) {
@@ -267,13 +297,17 @@ export default function App() {
       voiceAssistantMessageIdRef.current = null
       const content = finalUserTranscript(event)
       if (!content) return
+      voiceTurnIdRef.current = String(event.turnId || '').trim()
+      const id = voiceConversationMessageId(event, crypto.randomUUID())
       setChatMessages(prev => {
-        const last = prev.at(-1)
-        if (last?.role === 'user' && last.content === content) return prev
-        return [
-          ...prev,
-          { id: crypto.randomUUID(), role: 'user', content },
-        ].slice(-80)
+        const next = [...prev]
+        const index = next.findIndex(message => message.id === id)
+        if (index >= 0) {
+          next[index] = { ...next[index], role: 'user', content }
+        } else {
+          next.push({ id, role: 'user', content })
+        }
+        return next.slice(-80)
       })
       return
     }
@@ -287,17 +321,26 @@ export default function App() {
     }
 
     if (event.final) {
-      updateAssistantMessage(msg => ({ ...msg, content: event.content || msg.content }))
-      voiceAssistantMessageIdRef.current = null
+      const id = updateAssistantMessage(msg => ({
+        ...msg,
+        content: event.content || msg.content,
+      }))
+      if (voiceAssistantMessageIdRef.current === id) {
+        voiceAssistantMessageIdRef.current = null
+      }
     }
   }, [])
 
   const handleConversationRecovery = useCallback((messages) => {
     voiceAssistantMessageIdRef.current = null
-    setChatMessages((Array.isArray(messages) ? messages : []).map(message => ({
+    const recovered = (Array.isArray(messages) ? messages : []).map(message => ({
       ...message,
       id: message.id || crypto.randomUUID(),
-    })).slice(-10))
+    })).slice(-10)
+    voiceTurnIdRef.current = [...recovered]
+      .reverse()
+      .find(message => message.role === 'user')?.turnId || ''
+    setChatMessages(recovered)
   }, [])
 
   const {
@@ -306,13 +349,23 @@ export default function App() {
     outputLevel,
     progress: voiceProgress,
     error: voiceError,
+    activateVoice,
     sendInput,
   } = useVoiceSession({
     muted: voiceMuted,
     clientId,
+    persona: selectedPersona,
+    voice: selectedVoice,
     onVoiceMessage: handleVoiceMessage,
     onConversationRecovery: handleConversationRecovery,
   })
+  const toggleVoiceMute = useCallback(() => {
+    if (!voiceMuted) {
+      setVoiceMuted(true)
+      return
+    }
+    if (activateVoice()) setVoiceMuted(false)
+  }, [activateVoice, voiceMuted])
   const visualProgress = cockpitProgress || voiceProgress
 
   const handleTextMessage = useCallback((text) => (
@@ -396,6 +449,10 @@ export default function App() {
                 selectedPersona={selectedPersona} onSelectPersona={setSelectedPersona}
                 selectedVoice={selectedVoice} onSelectVoice={setSelectedVoice}
                 selectedWake={selectedWake} onSelectWake={setSelectedWake}
+                skills={customSkills}
+                skillsError={customSkillsError}
+                onLoadSkill={loadCustomSkill}
+                onDeleteSkill={deleteCustomSkill}
               />
             )}
           </div>

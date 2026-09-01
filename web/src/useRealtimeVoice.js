@@ -16,6 +16,7 @@ import {
 import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
 import { gatewayReferenceClientCapabilities } from '../../shared/gateway-client-profiles.mjs'
 import { decodePcm, pcmBase64, resample } from './audio.js'
+import { createMicrophoneCaptureLifecycle } from './microphone-capture.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
 import { t } from './i18n.js'
 
@@ -759,10 +760,19 @@ export default function useRealtimeVoice({
     }
 
     let disposed = false
-    let media
-    let source
-    let processor
     inputReadyRef.current = false
+    const setCaptureReady = ready => {
+      if (disposed) return
+      const changed = inputReadyRef.current !== ready
+      inputReadyRef.current = ready
+      setInputReady(ready)
+      if (!changed) return
+      sendSocketEvent(microphoneControlEvent({
+        enabled: ready,
+        inputOnlyMute,
+        wakeWordOnly: ready && wakeWordOnlyRef.current,
+      }))
+    }
     const failInput = reason => {
       const message = reason?.message || String(reason || t('无法打开麦克风'))
       inputReadyRef.current = false
@@ -772,86 +782,118 @@ export default function useRealtimeVoice({
         inputOnlyMute,
         wakeWordOnly: false,
       }))
-      media?.getTracks().forEach(track => track.stop())
-      processor?.disconnect()
-      source?.disconnect()
       setError(message)
       setVisualError(true)
       inputErrorRef.current?.(message)
     }
-    const startAudio = async () => {
-      try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      failInput(t('无法打开麦克风'))
+      return undefined
+    }
+    const unsupportedInput = message => {
+      const error = new Error(message)
+      error.name = 'NotSupportedError'
+      return error
+    }
+    const capture = createMicrophoneCaptureLifecycle({
+      mediaDevices: navigator.mediaDevices,
+      acquire: async () => {
         if (!activateAudio()) {
-          failInput(t('当前浏览器不支持实时语音播放'))
-          return
+          throw unsupportedInput(t('当前浏览器不支持实时语音播放'))
         }
         const context = audioRef.current
-        if (!context) {
-          failInput(t('无法初始化实时语音播放'))
-          return
-        }
+        if (!context) throw unsupportedInput(t('无法初始化实时语音播放'))
         if (context.state === 'suspended') await context.resume()
-        media = await navigator.mediaDevices.getUserMedia({
+        const media = await navigator.mediaDevices.getUserMedia({
           audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
         })
-        if (disposed) return media.getTracks().forEach(track => track.stop())
-        setVisualError(false)
-        source = context.createMediaStreamSource(media)
-        processor = context.createScriptProcessor(2048, 1, 1)
-        processor.onaudioprocess = event => {
-          const samples = microphoneSamplesDuringManualInput(
-            event.inputBuffer.getChannelData(0),
-            manualInputPendingRef.current,
-          )
-          if (wakeWordOnlyRef.current) {
-            const wakeAudio = resample(samples, context.sampleRate, 16_000)
-            wakeWordAudioRef.current?.(pcmBase64(wakeAudio), 16_000)
-            return
+        let source
+        let processor
+        try {
+          source = context.createMediaStreamSource(media)
+          processor = context.createScriptProcessor(2048, 1, 1)
+          processor.onaudioprocess = event => {
+            const samples = microphoneSamplesDuringManualInput(
+              event.inputBuffer.getChannelData(0),
+              manualInputPendingRef.current,
+            )
+            if (wakeWordOnlyRef.current) {
+              const wakeAudio = resample(samples, context.sampleRate, 16_000)
+              wakeWordAudioRef.current?.(pcmBase64(wakeAudio), 16_000)
+              return
+            }
+            const socket = socketRef.current
+            if (socket?.readyState !== WebSocket.OPEN) return
+            const audio = resample(
+              samples,
+              context.sampleRate,
+              inputSampleRate.current,
+            )
+            socket.send({
+              type: GatewayClientEvent.AUDIO_APPEND,
+              audio: pcmBase64(audio),
+            })
           }
-          const socket = socketRef.current
-          if (socket?.readyState !== WebSocket.OPEN) return
-          const audio = resample(
-            samples,
-            context.sampleRate,
-            inputSampleRate.current,
-          )
-          socket.send({
-            type: GatewayClientEvent.AUDIO_APPEND,
-            audio: pcmBase64(audio),
-          })
+          source.connect(processor)
+          processor.connect(context.destination)
+          return {
+            media,
+            track: media.getAudioTracks()[0],
+            close() {
+              media.getTracks().forEach(track => track.stop())
+              processor?.disconnect()
+              source?.disconnect()
+            },
+          }
+        } catch (error) {
+          media.getTracks().forEach(track => track.stop())
+          processor?.disconnect()
+          source?.disconnect()
+          throw error
         }
-        source.connect(processor)
-        processor.connect(context.destination)
-        inputReadyRef.current = true
-        setInputReady(true)
-        sendSocketEvent(microphoneControlEvent({
-          enabled: true,
-          inputOnlyMute,
-          wakeWordOnly,
-        }))
-      } catch (reason) {
-        if (!disposed) failInput(reason)
-      }
-    }
-    startAudio()
+      },
+      onState: captureState => {
+        if (captureState.state === 'ready') {
+          setError('')
+          setVisualError(false)
+          setCaptureReady(true)
+          return
+        }
+        setCaptureReady(false)
+        if (captureState.error && captureState.recoverable) {
+          setError(captureState.state === 'unavailable'
+            ? t('未检测到可用麦克风，连接设备后会自动恢复')
+            : t('正在切换麦克风'))
+          setVisualError(true)
+        }
+      },
+      onFatalError: failInput,
+    })
+    capture.start()
 
     return () => {
       disposed = true
       inputReadyRef.current = false
       setInputReady(false)
-      media?.getTracks().forEach(track => track.stop())
-      processor?.disconnect()
-      source?.disconnect()
+      capture.stop()
     }
   }, [
     activateAudio,
     enabled,
     inputOnlyMute,
-    wakeWordOnly,
     sendSocketEvent,
     sessionId,
     suspended,
   ])
+
+  useEffect(() => {
+    if (!enabled || suspended || !inputReadyRef.current) return
+    sendSocketEvent(microphoneControlEvent({
+      enabled: true,
+      inputOnlyMute,
+      wakeWordOnly,
+    }))
+  }, [enabled, inputOnlyMute, sendSocketEvent, suspended, wakeWordOnly])
 
   useEffect(() => {
     if (!suspended) return

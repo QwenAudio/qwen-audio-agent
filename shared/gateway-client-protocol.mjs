@@ -14,6 +14,8 @@ export const GATEWAY_CLIENT_PROTOCOL_VERSION = '6.0.0'
 export const GatewayClientProtocolEvent = Object.freeze({
   SESSION_HELLO: 'session.hello',
   SESSION_READY: 'session.ready',
+  SESSION_OUTPUT_VOICE_UPDATE: 'session.output_voice.update',
+  SESSION_OUTPUT_VOICE_UPDATED: 'session.output_voice.updated',
   INPUT_AUDIO_APPEND: 'input_audio_buffer.append',
   CONVERSATION_ITEM_CREATE: 'conversation.item.create',
   RESPONSE_CANCEL: 'response.cancel',
@@ -50,6 +52,7 @@ export const GatewayClientCapability = Object.freeze({
   INPUT_RESPOND: 'tasks.input.respond',
   CONVERSATION_HISTORY: 'conversation.history',
   CLIENT_EVENTS: 'client.events',
+  SESSION_OUTPUT_VOICE: 'session.output_voice',
   CLIENT_ACTION_ENTER_SLEEP: 'client.actions.desktop.presence.enter_sleep',
   SESSION_REPLAY: 'session.replay',
 })
@@ -77,6 +80,7 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.INPUT_RESPOND,
   GatewayClientCapability.CONVERSATION_HISTORY,
   GatewayClientCapability.CLIENT_EVENTS,
+  GatewayClientCapability.SESSION_OUTPUT_VOICE,
   GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
   GatewayClientCapability.SESSION_REPLAY,
 ])
@@ -121,6 +125,7 @@ export const GatewaySessionHelloSchema = GatewayClientEnvelopeSchema.extend({
     text_only: z.boolean().optional(),
     wake_word_only: z.boolean().optional(),
     provider: z.string().min(1).max(80).optional(),
+    output_voice: z.string().min(1).max(160).optional(),
     working_directory: z.string().min(1).max(4096).optional(),
     client_states: z.array(z.string().min(1).max(80)).max(16).optional(),
   }).optional(),
@@ -169,6 +174,19 @@ export const GatewayClientEventPublishResultSchema = GatewayServerEnvelopeSchema
   accepted: z.boolean(),
   name: EventNameSchema,
   duplicate: z.boolean().optional(),
+})
+
+export const GatewaySessionOutputVoiceUpdateSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE),
+  voice: z.string().trim().min(1).max(160),
+})
+
+export const GatewaySessionOutputVoiceUpdatedSchema = GatewayServerEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED),
+  request_event_id: IdentifierSchema,
+  voice: z.string().min(1).max(160),
+  changed: z.boolean(),
+  reconnecting: z.boolean(),
 })
 
 export const GatewayClientActionRequestSchema = GatewayServerEnvelopeSchema.extend({
@@ -292,6 +310,7 @@ export const GatewaySessionReplayResultSchema = GatewayServerEnvelopeSchema.exte
 
 const GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientEventPublishSchema,
+  [GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE]: GatewaySessionOutputVoiceUpdateSchema,
   [GatewayClientProtocolEvent.CLIENT_ACTION_RESULT]: GatewayClientActionResultSchema,
   [GatewayClientProtocolEvent.TASK_CREATE]: GatewayTaskCreateSchema,
   [GatewayClientProtocolEvent.TASK_GET]: GatewayTaskGetSchema,
@@ -305,6 +324,7 @@ const GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
 
 const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT]: GatewayClientEventPublishResultSchema,
+  [GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED]: GatewaySessionOutputVoiceUpdatedSchema,
   [GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST]: GatewayClientActionRequestSchema,
   [GatewayClientProtocolEvent.TASK_CREATE_RESULT]: GatewayTaskCreateResultSchema,
   [GatewayClientProtocolEvent.TASK_GET_RESULT]: GatewayTaskGetResultSchema,
@@ -318,6 +338,7 @@ const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
 
 const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientCapability.CLIENT_EVENTS,
+  [GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE]: GatewayClientCapability.SESSION_OUTPUT_VOICE,
   [GatewayClientProtocolEvent.CLIENT_ACTION_RESULT]: GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
   [GatewayClientProtocolEvent.TASK_CREATE]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.TASK_GET]: GatewayClientCapability.TASK_COMMANDS,
@@ -414,6 +435,9 @@ export function gatewayHelloAsLegacyConnect(hello) {
       textOnly: parsed.connection.text_only ?? !audioInput,
       wakeWordOnly: parsed.connection.wake_word_only === true,
       ...(parsed.connection.provider ? { provider: parsed.connection.provider } : {}),
+      ...(parsed.connection.output_voice
+        ? { outputVoice: parsed.connection.output_voice }
+        : {}),
       ...(parsed.connection.working_directory
         ? { workingDirectory: parsed.connection.working_directory }
         : {}),

@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
-import { navigationRouteKey, navigationRouteView } from '../navigation-route'
+import { navigationRouteKey, navigationRouteView } from '../projections/navigation-route'
 
 window._AMapSecurityConfig = {
   securityJsCode: import.meta.env.VITE_AMAP_SECRET,

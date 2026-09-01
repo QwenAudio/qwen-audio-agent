@@ -132,6 +132,17 @@ test('classifies non-recoverable DashScope account errors as fatal', () => {
   )
 })
 
+test('classifies DashScope content inspection errors for clean-session recovery', () => {
+  const provider = REALTIME_PROVIDERS.qwen
+  for (const message of [
+    'DataInspectionFailed: Input or output data may contain inappropriate content.',
+    'IPInfringementSuspect: The input may violate content policy.',
+    'content_filter: response blocked by content safety',
+  ]) {
+    assert.equal(provider.classifyError(message), 'content_safety', message)
+  }
+})
+
 test('carries originating turn metadata to a created realtime response', () => {
   const frontend = createQwenFrontend()
   frontend.pendingResponses.push({
@@ -471,6 +482,25 @@ test('prefers the selected DashScope family voice override over the profile defa
   )
 })
 
+test('prefers a per-session output voice over the process-wide default', t => {
+  const originalModel = config.audioModel
+  const originalVoice = config.audioVoice
+  t.after(() => {
+    config.audioModel = originalModel
+    config.audioVoice = originalVoice
+  })
+
+  config.audioModel = DEFAULT_DASHSCOPE_REALTIME_MODEL
+  config.audioVoice = 'longanqian'
+
+  const session = REALTIME_PROVIDERS.qwen.buildSession({
+    configured: false,
+    sessionOptions: { voice: 'longanlufeng' },
+  })
+
+  assert.equal(session.voice, 'longanlufeng')
+})
+
 test('advertises Omni model vision without admitting unsupported visual transport', t => {
   const originalModel = config.audioModel
   t.after(() => {
@@ -790,6 +820,17 @@ test('isolates a provider with a different wire message shape', () => {
   })
   assert.equal(frontend.activeResponses.size, 0)
   assert.equal(events[1].type, 'response.done')
+})
+
+test('uses a trusted session Assistant Profile without changing core policy', () => {
+  const prompt = buildFrontendInstructions({
+    assistantProfile: '# Identity\n\n你是当前会话的行动派座舱伙伴。',
+  })
+
+  assert.match(prompt, /<assistant_profile authority="persona_only">[\s\S]*行动派座舱伙伴/u)
+  assert.doesNotMatch(prompt, /默认自然、直接、可靠/u)
+  assert.match(prompt, /与用户进行全双工语音交互的统一助手/u)
+  assert.match(prompt, /工具 description 和 schema 是各项能力的调用契约/u)
 })
 
 test('builds cache-friendly policy, identity, memory and reconnect context', () => {
@@ -1583,6 +1624,28 @@ test('associates an unscoped provider error with the sole active response', asyn
   assert.equal(frontend.activeResponses.size, 0)
 })
 
+test('retires a sole automatic response when its provider error has no response id', () => {
+  const frontend = createQwenFrontend()
+  frontend.ready = true
+  frontend.send = () => {}
+
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'automatic-response-error' },
+  })
+  const error = {
+    type: 'error',
+    error: {
+      code: 'DataInspectionFailed',
+      message: 'Input data may contain inappropriate content.',
+    },
+  }
+  frontend.handleLifecycle(error)
+
+  assert.equal(error.response_id, 'automatic-response-error')
+  assert.equal(frontend.activeResponses.size, 0)
+})
+
 test('identifies a permission response rejected while the user is speaking', async () => {
   const frontend = createQwenFrontend()
   const sent = []
@@ -1867,6 +1930,7 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     singleResponseSlot: false,
     responseMetadataCorrelation: false,
     perResponseInstructions: true,
+    sessionOutputVoice: true,
     conversationItemIdEcho: true,
   })
 })
@@ -1881,6 +1945,7 @@ test('per-response instructions require explicit provider opt-in', () => {
   })
 
   assert.equal(frontend.capabilities.perResponseInstructions, false)
+  assert.equal(frontend.capabilities.sessionOutputVoice, false)
 })
 
 test('does not correlate an automatic VAD response with a pending GA response', async () => {

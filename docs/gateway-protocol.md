@@ -61,6 +61,7 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
     "permissions.respond",
     "conversation.history",
     "client.events",
+    "session.output_voice",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ],
@@ -70,10 +71,18 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
     "voice_enabled": true,
     "input_enabled": true,
     "output_enabled": true,
-    "text_only": false
+    "text_only": false,
+    "output_voice": "longanlufeng"
   }
 }
 ```
+
+`connection.output_voice` is an optional session-scoped output voice preference.
+The Gateway leaves its interpretation to the active Realtime Provider; when it
+is absent, the Provider keeps its deployment-level default. Providers that only
+accept a voice in their initial session configuration require a fresh Realtime
+Session when the voice changes. At runtime the Gateway performs that upstream
+rebuild while preserving the Client's GCP connection and Gateway session.
 
 Gateway returns the selected version and capability intersection:
 
@@ -93,6 +102,7 @@ Gateway returns the selected version and capability intersection:
     "permissions.respond",
     "conversation.history",
     "client.events",
+    "session.output_voice",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ]
@@ -134,6 +144,12 @@ trusted fields are accepted from event data. The first built-in definition is
 `desktop.presence.sleep_requested`. GCP2 accepts, validates, retains, and
 handles the event without pretending it is user input; GCP3 now projects it
 through the shared Agent Delivery boundary.
+
+A deterministic handler may use narrow effects supplied by its Gateway host,
+such as selecting one deployment-owned Assistant Profile for the current
+Realtime Session. The Client still sends only schema-validated identifiers:
+event data never becomes instructions, and arbitrary prompt text is not an
+allowed effect input.
 
 ### 3.3 GCP3 delivery rollout
 
@@ -313,7 +329,35 @@ The active Client uses the same WebSocket for runtime commands and queries. Each
 | `permission.respond` | C→G | Resolve the currently pending authorization request |
 | `task.input.respond` | C→G | Continue the same Task with requested user input, or decline/cancel that interaction |
 | `conversation.history` | C→G | Read the bounded, client-safe conversation projection |
+| `session.output_voice.update` | C→G | Change this session's output voice; the result is `session.output_voice.updated` |
 | `session.replay` | C→G | Replay eligible server pushes after a sequence cursor |
+
+After negotiating `session.output_voice`, clients may call
+`GatewayClient.updateOutputVoice(voice)`. Its wire request and result are:
+
+```jsonc
+{
+  "type": "session.output_voice.update",
+  "event_id": "evt_client_voice_1",
+  "voice": "longanlufeng"
+}
+```
+
+```jsonc
+{
+  "type": "session.output_voice.updated",
+  "event_id": "evt_gateway_voice_1",
+  "request_event_id": "evt_client_voice_1",
+  "voice": "longanlufeng",
+  "changed": true,
+  "reconnecting": true
+}
+```
+
+`changed` reports whether the preference changed; `reconnecting` reports
+whether the Gateway is rebuilding the upstream Realtime Session with the new
+voice. A Provider without session-voice support returns the correlated
+`output_voice_unsupported` error, so the Client never branches on Provider name.
 
 `permission.respond.decision` accepts `once`, `always`, or `reject`: allow only
 the current operation, always allow during the current frontend session, or

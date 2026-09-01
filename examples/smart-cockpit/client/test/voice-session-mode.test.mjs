@@ -4,7 +4,7 @@ import {
   COCKPIT_CONNECTION_INTERRUPTED,
   cockpitConnectionError,
   cockpitVoiceConnectionMode,
-} from '../client/src/hooks/voiceSessionMode.js'
+} from '../src/hooks/voiceSessionMode.js'
 
 test('keeps a muted cockpit Client voice-capable without claiming voice', () => {
   assert.deepEqual(cockpitVoiceConnectionMode(true), {
@@ -16,11 +16,12 @@ test('keeps a muted cockpit Client voice-capable without claiming voice', () => 
 })
 
 test('enables both voice directions when the cockpit microphone starts active', () => {
-  assert.deepEqual(cockpitVoiceConnectionMode(false), {
+  assert.deepEqual(cockpitVoiceConnectionMode(false, 'longanlufeng'), {
     voiceEnabled: true,
     inputEnabled: true,
     outputEnabled: true,
     textOnly: false,
+    outputVoice: 'longanlufeng',
   })
 })
 

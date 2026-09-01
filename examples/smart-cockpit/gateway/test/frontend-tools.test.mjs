@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CockpitService } from '../service/cockpit-service.mjs'
-import { CockpitServiceServer } from '../service/server.mjs'
-import { FrontendMcpClient } from '../../../server/src/providers/mcp/frontend-mcp-client.mjs'
+import { CockpitService } from '../../service/cockpit-service.mjs'
+import { CockpitServiceServer } from '../../service/server.mjs'
+import { FrontendMcpClient } from '../../../../server/src/providers/mcp/frontend-mcp-client.mjs'
 import {
   normalizeFrontendMcpConfiguration,
-} from '../../../server/src/providers/mcp/frontend-mcp-config.mjs'
+} from '../../../../server/src/providers/mcp/frontend-mcp-config.mjs'
 
 test('calls selected cockpit tools inline through the frontend MCP client', async t => {
   const service = new CockpitService({
@@ -33,7 +33,9 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
             weather: { enabled: true },
             vehicle_state_query: { enabled: true },
             vehicle_window_control: { enabled: true },
+            vehicle_sunroof_control: { enabled: true },
             vehicle_headlights_control: { enabled: true },
+            vehicle_climate_control: { enabled: true },
             navigation_set_route_strategy: { enabled: true },
             navigation_set_voice: { enabled: true },
             navigation_set_view: { enabled: true },
@@ -49,7 +51,9 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
     'mcp__cockpit__weather',
     'mcp__cockpit__vehicle_state_query',
     'mcp__cockpit__vehicle_window_control',
+    'mcp__cockpit__vehicle_sunroof_control',
     'mcp__cockpit__vehicle_headlights_control',
+    'mcp__cockpit__vehicle_climate_control',
     'mcp__cockpit__navigation_set_route_strategy',
     'mcp__cockpit__navigation_set_voice',
     'mcp__cockpit__navigation_set_view',
@@ -62,6 +66,13 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
   })
   await client.execute('mcp__cockpit__vehicle_headlights_control', {
     action: 'open',
+  })
+  await client.execute('mcp__cockpit__vehicle_sunroof_control', {
+    action: 'open',
+  })
+  await client.execute('mcp__cockpit__vehicle_climate_control', {
+    action: 'set_temp',
+    temperature: 22,
   })
   const state = await client.execute('mcp__cockpit__vehicle_state_query', {
     part: 'all',
@@ -83,7 +94,9 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
   assert.match(voice.text, /简洁播报/u)
   assert.equal(service.snapshot().weather.daytemp, '27')
   assert.equal(service.snapshot().vehicle.windowFL, 1)
+  assert.equal(service.snapshot().vehicle.sunroof, 1)
   assert.equal(service.snapshot().vehicle.headlights, 1)
+  assert.equal(service.snapshot().vehicle.acTemp, 22)
   assert.equal(service.snapshot().navigation.viewMode, 'overview')
   assert.equal(service.snapshot().navigation.strategy, 4)
   assert.equal(service.snapshot().navigation.voice.broadcastMode, 'brief')

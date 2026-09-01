@@ -19,10 +19,10 @@ export function gatewayReferenceClientCapabilities(clientType = 'web') {
     GatewayClientCapability.PERMISSION_RESPOND,
     GatewayClientCapability.CONVERSATION_HISTORY,
     GatewayClientCapability.CLIENT_EVENTS,
+    GatewayClientCapability.SESSION_OUTPUT_VOICE,
     GatewayClientCapability.SESSION_REPLAY,
     ...(clientType === GatewayReferenceClientType.DESKTOP
       ? [GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP]
       : []),
   ]
 }
-

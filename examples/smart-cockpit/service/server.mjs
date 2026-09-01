@@ -6,10 +6,10 @@ import { pathToFileURL } from 'node:url'
 import {
   StreamableHTTPServerTransport,
 } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { createAmapCockpitServices } from './amap-services.mjs'
+import { createAmapCockpitServices } from './integrations/amap/services.mjs'
 import { CockpitService } from './cockpit-service.mjs'
 import { createCockpitMcpServer } from './mcp-server.mjs'
-import { loadCockpitEnvironment } from '../environment.mjs'
+import { loadCockpitEnvironment } from '../bootstrap/environment.mjs'
 import {
   BACKEND_TOOL_DEFINITIONS,
   FRONTEND_TOOL_DEFINITIONS,
@@ -102,7 +102,7 @@ export class CockpitServiceServer {
       response.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Headers': 'content-type, x-cockpit-id, mcp-protocol-version, mcp-session-id',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
       })
       response.end()
       return
@@ -117,6 +117,27 @@ export class CockpitServiceServer {
     }
     if (url.pathname === '/api/cockpit/events' && request.method === 'GET') {
       this.#events(request, response, cockpitId(request, url))
+      return
+    }
+    if (url.pathname === '/api/cockpit/skills' && request.method === 'GET') {
+      json(response, 200, await this.service.listSkills(cockpitId(request, url)))
+      return
+    }
+    const skillMatch = url.pathname.match(/^\/api\/cockpit\/skills\/([^/]+)$/u)
+    if (skillMatch && request.method === 'GET') {
+      const skill = await this.service.getSkill(
+        cockpitId(request, url),
+        decodeURIComponent(skillMatch[1]),
+      )
+      json(response, skill ? 200 : 404, skill || { error: 'Skill not found' })
+      return
+    }
+    if (skillMatch && request.method === 'DELETE') {
+      const skill = await this.service.deleteSkill(
+        cockpitId(request, url),
+        decodeURIComponent(skillMatch[1]),
+      )
+      json(response, skill ? 200 : 404, skill || { error: 'Skill not found' })
       return
     }
     if (url.pathname === '/api/cockpit/commands' && request.method === 'POST') {

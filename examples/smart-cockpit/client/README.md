@@ -8,7 +8,13 @@ Web Audio、3D 车辆与业务面板保持完全自主。
 
 - `src/hooks/useVoiceSession.js`：GCP 连接、音频采集/播放、回执、Task 与最近对话恢复。
 - `src/hooks/useCockpitState.js`：本示例的 HTTP/SSE 业务状态适配器。
+- `src/hooks/useCockpitSkills.js`：按座舱读取、查看和删除持久化的自定义技能。
+- `src/config/`：客户端拥有的人设展示和音色选项；不包含实际 Assistant Prompt。
+- `src/projections/`：把 GCP/座舱 Service 事件投影为客户端展示状态。
 - `src/App.jsx`：页面状态和对话/业务投影，不包含 Agent 或 Realtime Provider 逻辑。
+
+“技能”设置页只负责展示和管理。技能创建与运行仍从语音对话进入 Gateway，
+再通过固定的 `spawn_thinking` 桥梁交给后台座舱 Agent。
 
 从仓库根目录使用 `npm run example:smart-cockpit` 启动完整链路。单独开发 UI 时运行：
 

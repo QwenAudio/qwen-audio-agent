@@ -95,6 +95,91 @@ test('a muted voice-capable client can claim voice after unmute', async t => {
   client.socket.close()
 })
 
+test('recovers the client and excludes only the content-safety rejected turn', async t => {
+  const frontends = []
+  const realtimeFrontendFactory = options => {
+    const provider = options.providerRegistry.resolve(options.providerName)
+    const frontend = {
+      provider,
+      capabilities: provider.capabilities,
+      ready: false,
+      inputs: [],
+      connect: async () => {
+        frontend.ready = true
+      },
+      close: () => {
+        frontend.ready = false
+      },
+      appendAudio: () => {},
+      cancel: () => {},
+      updateAgentContext: () => {},
+      ensureResponse: async () => {},
+      injectContext: async () => {},
+      whenIdle: async () => {},
+      sendUserInput: async (parts, context) => {
+        frontend.inputs.push({ parts, context })
+        return {}
+      },
+      emit: event => options.onEvent(event),
+    }
+    frontends.push({ frontend, agentContext: options.agentContext })
+    return frontend
+  }
+  const { server, gateway } = gatewayHarness({ realtimeFrontendFactory })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const client = await connect(server, {
+    type: 'connect',
+    clientType: 'web',
+    voiceEnabled: true,
+    inputEnabled: true,
+    outputEnabled: true,
+    textOnly: false,
+  })
+  await waitFor(client.received, event => event.type === 'voice.ready')
+
+  client.socket.send(JSON.stringify({ type: 'text.message', text: '正常问题' }))
+  await waitUntil(() => frontends[0].frontend.inputs.length === 1)
+  client.socket.send(JSON.stringify({ type: 'text.message', text: '违规问题' }))
+  await waitUntil(() => frontends[0].frontend.inputs.length === 2)
+  const rejectedContext = frontends[0].frontend.inputs[1].context
+
+  frontends[0].frontend.emit({
+    type: 'response.created',
+    response: { id: 'response-rejected' },
+    __voiceContext: rejectedContext,
+  })
+  frontends[0].frontend.emit({
+    type: 'error',
+    response_id: 'response-rejected',
+    error: {
+      code: 'DataInspectionFailed',
+      message: 'Input data may contain inappropriate content.',
+    },
+  })
+
+  const clear = await waitFor(
+    client.received,
+    event => event.type === 'playback.clear'
+      && event.reason === 'provider_content_safety',
+  )
+  assert.equal(clear.reason, 'provider_content_safety')
+  await waitFor(
+    client.received,
+    event => event.type === 'voice.state' && event.state === 'idle',
+  )
+  await waitUntil(() => frontends.length === 2)
+  assert.deepEqual(
+    frontends[1].agentContext.recentMessages.map(message => message.content),
+    ['正常问题'],
+  )
+  client.socket.close()
+})
+
 test('5.x connect and 6.0 session.hello share one Gateway business path', async t => {
   const { server, gateway } = gatewayHarness()
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -201,6 +286,94 @@ test('routes negotiated GCP2 commands and Client Events with correlated results'
   )
   assert.equal(history.type, GatewayClientProtocolEvent.CONVERSATION_HISTORY_RESULT)
   assert.equal(commands[0].context.sessionId, 'protocol-test')
+  modern.socket.close()
+})
+
+test('updates the session output voice through the negotiated GCP command', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const modern = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-client-output-voice-hello',
+    clientType: 'web',
+    clientInstanceId: 'web-output-voice-test',
+    capabilities: [GatewayClientCapability.SESSION_OUTPUT_VOICE],
+    connection: {
+      input_enabled: false,
+      output_enabled: false,
+      text_only: true,
+      output_voice: 'longanqian',
+    },
+  }))
+  const ready = await waitFor(modern.received, event => event.type === 'session.ready')
+  assert.deepEqual(ready.capabilities, [GatewayClientCapability.SESSION_OUTPUT_VOICE])
+
+  modern.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE,
+    event_id: 'evt-client-output-voice-update',
+    voice: 'longanlufeng',
+  }))
+  const updated = await waitFor(
+    modern.received,
+    event => event.request_event_id === 'evt-client-output-voice-update',
+  )
+  assert.equal(updated.type, GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED)
+  assert.equal(updated.voice, 'longanlufeng')
+  assert.equal(updated.changed, true)
+  assert.equal(updated.reconnecting, false)
+
+  modern.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE,
+    event_id: 'evt-client-output-voice-same',
+    voice: 'longanlufeng',
+  }))
+  const unchanged = await waitFor(
+    modern.received,
+    event => event.request_event_id === 'evt-client-output-voice-same',
+  )
+  assert.equal(unchanged.changed, false)
+  assert.equal(unchanged.reconnecting, false)
+  modern.socket.close()
+})
+
+test('returns a correlated error when the active Provider cannot select a voice', async t => {
+  const { server, gateway } = gatewayHarness({
+    defaultRealtimeProvider: 'speech-to-speech',
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const modern = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-client-unsupported-voice-hello',
+    clientType: 'web',
+    clientInstanceId: 'web-unsupported-voice-test',
+    capabilities: [GatewayClientCapability.SESSION_OUTPUT_VOICE],
+    connection: {
+      input_enabled: false,
+      output_enabled: false,
+      text_only: true,
+    },
+  }))
+  await waitFor(modern.received, event => event.type === 'session.ready')
+
+  modern.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE,
+    event_id: 'evt-client-unsupported-voice-update',
+    voice: 'longanqian',
+  }))
+  const error = await waitFor(
+    modern.received,
+    event => event.request_event_id === 'evt-client-unsupported-voice-update',
+  )
+  assert.equal(error.type, 'error')
+  assert.equal(error.error.code, 'output_voice_unsupported')
   modern.socket.close()
 })
 

@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { isAbsolute, resolve } from 'node:path'
 
 const SERVER_KEY = /^[a-z][a-z0-9_-]{0,39}$/u
 const TOOL_NAME = /^[a-zA-Z0-9_.:/-]{1,128}$/u
 const ENV_REFERENCE = /^\$\{([A-Z_][A-Z0-9_]*)\}$/u
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u
 const MAX_SERVERS = 8
 const MAX_TOOLS_PER_SERVER = 32
+const MAX_STDIO_ARGS = 64
+const MAX_STDIO_ENVIRONMENT = 32
 
 function boundedInteger(value, fallback, minimum, maximum) {
   const parsed = Number(value)
@@ -48,6 +51,45 @@ function normalizedHeaders(value, env) {
   }).filter(([, content]) => Boolean(content)))
 }
 
+function normalizedStdioEnvironment(value, env) {
+  if (value === undefined) return {}
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Frontend MCP stdio env must be an object.')
+  }
+  const entries = Object.entries(value)
+  if (entries.length > MAX_STDIO_ENVIRONMENT) {
+    throw new Error('Frontend MCP stdio env has too many variables.')
+  }
+  return Object.fromEntries(entries.map(([name, content]) => {
+    const variable = clean(name, 80)
+    if (!ENV_NAME.test(variable)) {
+      throw new Error(`Frontend MCP stdio env name is invalid: ${variable || '(empty)'}`)
+    }
+    const resolved = resolveEnvironmentReference(content, env)
+    if (resolved.includes('\0')) {
+      throw new Error(`Frontend MCP stdio env value is invalid: ${variable}`)
+    }
+    return [variable, resolved]
+  }))
+}
+
+function normalizedStdioArgs(value, env) {
+  if (value === undefined) return []
+  if (!Array.isArray(value) || value.length > MAX_STDIO_ARGS) {
+    throw new Error(`Frontend MCP stdio args must contain at most ${MAX_STDIO_ARGS} strings.`)
+  }
+  return value.map(argument => {
+    if (typeof argument !== 'string') {
+      throw new Error('Frontend MCP stdio args must contain only strings.')
+    }
+    const resolved = resolveEnvironmentReference(argument, env)
+    if (resolved.length > 8_192 || resolved.includes('\0')) {
+      throw new Error('Frontend MCP stdio argument is invalid.')
+    }
+    return resolved
+  })
+}
+
 function normalizedUrl(value, { env, hasHeaders }) {
   let url
   try {
@@ -68,6 +110,76 @@ function normalizedUrl(value, { env, hasHeaders }) {
     )
   }
   return url.toString()
+}
+
+function normalizedHttpTransport(value, env) {
+  const headers = normalizedHeaders(value.headers, env)
+  return {
+    type: 'streamable-http',
+    url: normalizedUrl(value.url, {
+      env,
+      hasHeaders: Object.keys(headers).length > 0,
+    }),
+    headers,
+  }
+}
+
+function normalizedStdioTransport(value, env) {
+  const command = resolveEnvironmentReference(value.command, env)
+  if (!command || command.length > 2_048 || command.includes('\0')) {
+    throw new Error('Frontend MCP stdio command is invalid.')
+  }
+  const cwd = value.cwd === undefined
+    ? ''
+    : resolveEnvironmentReference(value.cwd, env)
+  if (cwd && (!isAbsolute(cwd) || cwd.includes('\0'))) {
+    throw new Error('Frontend MCP stdio cwd must be an absolute path.')
+  }
+  return {
+    type: 'stdio',
+    command,
+    args: normalizedStdioArgs(value.args, env),
+    env: normalizedStdioEnvironment(value.env, env),
+    ...(cwd ? { cwd } : {}),
+  }
+}
+
+function normalizedTransport(value, env) {
+  if (value.transport !== undefined) {
+    if (!value.transport || typeof value.transport !== 'object' || Array.isArray(value.transport)) {
+      throw new Error('Frontend MCP transport must be an object.')
+    }
+    if (['url', 'headers', 'command', 'args', 'env', 'cwd'].some(key => key in value)) {
+      throw new Error('Frontend MCP transport cannot be mixed with legacy server transport fields.')
+    }
+    if (value.transport.type === 'streamable-http') {
+      if (['command', 'args', 'env', 'cwd'].some(key => key in value.transport)) {
+        throw new Error('Frontend MCP Streamable HTTP transport contains stdio fields.')
+      }
+      return normalizedHttpTransport(value.transport, env)
+    }
+    if (value.transport.type === 'stdio') {
+      if (['url', 'headers'].some(key => key in value.transport)) {
+        throw new Error('Frontend MCP stdio transport contains HTTP fields.')
+      }
+      return normalizedStdioTransport(value.transport, env)
+    }
+    throw new Error(`Unsupported Frontend MCP transport: ${clean(value.transport.type, 80) || '(missing)'}`)
+  }
+  const hasUrl = value.url !== undefined
+  const hasCommand = value.command !== undefined
+  if (hasUrl === hasCommand) {
+    throw new Error('Frontend MCP server must define exactly one of url or command.')
+  }
+  if (hasUrl && ['args', 'env', 'cwd'].some(key => key in value)) {
+    throw new Error('Frontend MCP HTTP server contains stdio fields.')
+  }
+  if (hasCommand && 'headers' in value) {
+    throw new Error('Frontend MCP stdio server contains HTTP fields.')
+  }
+  return hasCommand
+    ? normalizedStdioTransport(value, env)
+    : normalizedHttpTransport(value, env)
 }
 
 function normalizedPolicy(value = {}) {
@@ -101,7 +213,6 @@ function normalizedServer(key, value, env) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`Frontend MCP server ${key} must be an object.`)
   }
-  const headers = normalizedHeaders(value.headers, env)
   const tools = value.tools === undefined ? {} : value.tools
   if (!tools || typeof tools !== 'object' || Array.isArray(tools)) {
     throw new Error(`Frontend MCP server ${key} tools must be an object.`)
@@ -119,14 +230,7 @@ function normalizedServer(key, value, env) {
       100,
       30_000,
     ),
-    transport: {
-      type: 'streamable-http',
-      url: normalizedUrl(value.url, {
-        env,
-        hasHeaders: Object.keys(headers).length > 0,
-      }),
-      headers,
-    },
+    transport: normalizedTransport(value, env),
     tools: Object.fromEntries(toolEntries.map(([toolName, policy]) => {
       if (!TOOL_NAME.test(toolName)) {
         throw new Error(`Invalid Frontend MCP tool name: ${toolName}`)

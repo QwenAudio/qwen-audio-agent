@@ -24,11 +24,14 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
   "servers": {
     "documents": {
       "enabled": true,
-      "url": "https://mcp.example.com/mcp",
-      "connectTimeoutMs": 8000,
-      "headers": {
-        "authorization": "${DOCUMENT_MCP_AUTHORIZATION}"
+      "transport": {
+        "type": "streamable-http",
+        "url": "https://mcp.example.com/mcp",
+        "headers": {
+          "authorization": "${DOCUMENT_MCP_AUTHORIZATION}"
+        }
       },
+      "connectTimeoutMs": 8000,
       "tools": {
         "search": {
           "enabled": true,
@@ -47,18 +50,52 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 }
 ```
 
+Local MCP servers can use standard input and output:
+
+```json
+{
+  "version": 1,
+  "servers": {
+    "filesystem": {
+      "enabled": true,
+      "transport": {
+        "type": "stdio",
+        "command": "npx",
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "${FILES_ROOT}"],
+        "env": {
+          "SERVICE_TOKEN": "${SERVICE_TOKEN}"
+        },
+        "cwd": "${MCP_WORKING_DIRECTORY}"
+      },
+      "tools": {
+        "list_directory": { "enabled": true }
+      }
+    }
+  }
+}
+```
+
+For compatibility, top-level `url` and `headers` fields still select Streamable
+HTTP. Top-level `command`, `args`, `env`, and `cwd` fields are also accepted as
+stdio shorthand. New configurations should use the explicit `transport` object.
+
 Each exposed tool receives a stable model-visible name:
 `mcp__<server>__<tool>`. Tools omitted from `tools`, or without
 `enabled: true`, are never exposed.
 
 ## Current policy
 
-- Streamable HTTP is the initial transport.
+- Streamable HTTP and stdio transports are supported. The legacy standalone SSE
+  transport is not supported.
 - Discovery and connection have a bounded timeout (8 seconds by default).
 - Remote servers require HTTPS. Loopback HTTP is allowed only without headers.
 - A server URL may be one exact environment reference such as `${MCP_URL}`.
 - Header values may reference one exact environment variable with
   `${VARIABLE}`. A missing variable is a configuration error.
+- The Gateway starts stdio servers directly without a shell and closes their child
+  processes when it shuts down. `command`, arguments, environment values, and
+  `cwd` may use exact environment references; a configured `cwd` must be absolute.
+  The child receives only the SDK's safe base environment plus explicit `env` values.
 - `tools` is an explicit allowlist. Enabled tools execute inline in the current
   conversation turn; the Gateway does not insert a generic confirmation turn
   based on whether a tool reads or writes.

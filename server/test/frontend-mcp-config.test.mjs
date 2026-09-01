@@ -81,6 +81,59 @@ test('resolves a complete MCP endpoint from the launching environment', () => {
   )
 })
 
+test('normalizes an explicit stdio transport with bounded process settings', () => {
+  const normalized = normalizeFrontendMcpConfiguration({
+    version: 1,
+    servers: {
+      local_files: {
+        enabled: true,
+        transport: {
+          type: 'stdio',
+          command: '${MCP_COMMAND}',
+          args: ['server.mjs', '${MCP_ROOT}'],
+          cwd: '${MCP_CWD}',
+          env: {
+            MCP_TOKEN: '${MCP_TOKEN}',
+          },
+        },
+        tools: {
+          list_files: { enabled: true },
+        },
+      },
+    },
+  }, {
+    env: {
+      MCP_COMMAND: '/usr/bin/node',
+      MCP_ROOT: '/tmp/files',
+      MCP_CWD: '/tmp',
+      MCP_TOKEN: 'secret-token',
+    },
+  })
+  assert.deepEqual(normalized.servers[0].transport, {
+    type: 'stdio',
+    command: '/usr/bin/node',
+    args: ['server.mjs', '/tmp/files'],
+    cwd: '/tmp',
+    env: { MCP_TOKEN: 'secret-token' },
+  })
+})
+
+test('accepts the common command shorthand for stdio servers', () => {
+  const normalized = normalizeFrontendMcpConfiguration({
+    version: 1,
+    servers: {
+      local: {
+        enabled: true,
+        command: 'local-mcp-server',
+        args: ['--stdio'],
+        tools: {},
+      },
+    },
+  })
+  assert.equal(normalized.servers[0].transport.type, 'stdio')
+  assert.equal(normalized.servers[0].transport.command, 'local-mcp-server')
+})
+
 test('loads and validates a versioned frontend MCP JSON file', () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-mcp-'))
   const filePath = join(directory, 'mcp.json')
@@ -125,6 +178,67 @@ test('fails closed for unsafe endpoints and missing secrets', () => {
       },
     })),
     /Remote Frontend MCP requires HTTPS/,
+  )
+  assert.throws(
+    () => normalizeFrontendMcpConfiguration({
+      version: 1,
+      servers: {
+        ambiguous: {
+          enabled: true,
+          url: 'https://mcp.example.test/api',
+          command: 'local-mcp-server',
+          tools: {},
+        },
+      },
+    }),
+    /exactly one of url or command/,
+  )
+  assert.throws(
+    () => normalizeFrontendMcpConfiguration({
+      version: 1,
+      servers: {
+        unsafe_cwd: {
+          enabled: true,
+          transport: {
+            type: 'stdio',
+            command: 'local-mcp-server',
+            cwd: './relative',
+          },
+          tools: {},
+        },
+      },
+    }),
+    /cwd must be an absolute path/,
+  )
+  assert.throws(
+    () => normalizeFrontendMcpConfiguration({
+      version: 1,
+      servers: {
+        unsupported: {
+          enabled: true,
+          transport: { type: 'sse', url: 'https://mcp.example.test/sse' },
+          tools: {},
+        },
+      },
+    }),
+    /Unsupported Frontend MCP transport: sse/,
+  )
+  assert.throws(
+    () => normalizeFrontendMcpConfiguration({
+      version: 1,
+      servers: {
+        mixed: {
+          enabled: true,
+          transport: {
+            type: 'stdio',
+            command: 'local-mcp-server',
+            url: 'https://mcp.example.test/api',
+          },
+          tools: {},
+        },
+      },
+    }),
+    /stdio transport contains HTTP fields/,
   )
 })
 

@@ -16,6 +16,7 @@ function harness({
   connectMode = 'manual',
   shouldReconnect = false,
   maxPendingAudioChunks = 2,
+  sessionOptions = {},
 } = {}) {
   const calls = []
   const frontends = []
@@ -47,6 +48,7 @@ function harness({
   const createFrontend = options => {
     const connection = deferred()
     const frontend = {
+      options,
       provider: profiles[options.providerName],
       ready: false,
       connect: () => {
@@ -78,6 +80,9 @@ function harness({
     providerRegistry,
     defaultProvider: 'dashscope',
     getAgentContext: () => ({ client: { locale: 'zh-CN' } }),
+    getSessionOptions: () => (
+      typeof sessionOptions === 'function' ? sessionOptions() : sessionOptions
+    ),
     shouldReconnect: () => shouldReconnect,
     onEvent: event => calls.push(['event', event]),
     onDiagnostic: value => calls.push(['diagnostic', value]),
@@ -103,6 +108,36 @@ function harness({
   })
   return { runtime, calls, frontends }
 }
+
+test('passes session options into every provider connection attempt', async () => {
+  const { runtime, frontends } = harness({
+    connectMode: 'resolve',
+    sessionOptions: { voice: 'longanlufeng' },
+  })
+
+  await runtime.ensure()
+
+  assert.deepEqual(frontends[0].options.sessionOptions, {
+    voice: 'longanlufeng',
+  })
+})
+
+test('reads fresh session options when an upstream provider Session is rebuilt', async () => {
+  let outputVoice = 'longanqian'
+  const { runtime, frontends } = harness({
+    connectMode: 'resolve',
+    sessionOptions: () => ({ voice: outputVoice }),
+  })
+
+  await runtime.ensure()
+  runtime.detach({ clearAudio: false })
+  outputVoice = 'longanlufeng'
+  await runtime.ensure()
+
+  assert.equal(frontends.length, 2)
+  assert.equal(frontends[0].options.sessionOptions.voice, 'longanqian')
+  assert.equal(frontends[1].options.sessionOptions.voice, 'longanlufeng')
+})
 
 test('shares one connection attempt and flushes bounded audio before ready', async () => {
   const { runtime, calls, frontends } = harness()

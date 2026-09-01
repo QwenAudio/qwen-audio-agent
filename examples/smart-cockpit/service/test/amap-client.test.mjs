@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { geocode } from '../amap-client.mjs'
+import { geocode } from '../integrations/amap/client.mjs'
 
 test('retries a transient map service response once', async t => {
   const originalFetch = globalThis.fetch

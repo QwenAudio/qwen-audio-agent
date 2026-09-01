@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createAmapCockpitServices } from '../amap-services.mjs'
+import { createAmapCockpitServices } from '../integrations/amap/services.mjs'
 
 test('falls back to geocoding when place search is temporarily unavailable', async () => {
   const calls = []

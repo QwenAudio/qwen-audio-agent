@@ -33,6 +33,9 @@ test('publishes a frozen capability vocabulary and only advertises implemented s
     GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
   ))
   assert.ok(GATEWAY_CLIENT_KNOWN_CAPABILITIES.includes(GatewayClientCapability.SESSION_REPLAY))
+  assert.ok(GATEWAY_CLIENT_KNOWN_CAPABILITIES.includes(
+    GatewayClientCapability.SESSION_OUTPUT_VOICE,
+  ))
   assert.equal(
     GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(GatewayClientCapability.CLIENT_EVENTS),
     true,
@@ -46,6 +49,12 @@ test('publishes a frozen capability vocabulary and only advertises implemented s
   assert.equal(
     GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(
       GatewayClientCapability.SESSION_REPLAY,
+    ),
+    true,
+  )
+  assert.equal(
+    GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(
+      GatewayClientCapability.SESSION_OUTPUT_VOICE,
     ),
     true,
   )
@@ -179,6 +188,26 @@ test('validates runtime commands, Client Actions and correlated results', () => 
     after_sequence: 0,
     limit: 201,
   }))
+
+  const voiceUpdate = parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE,
+    event_id: 'evt_client_output_voice',
+    voice: 'longanlufeng',
+  })
+  assert.equal(voiceUpdate.voice, 'longanlufeng')
+  assert.equal(
+    gatewayClientProtocolCapabilityFor(voiceUpdate.type),
+    GatewayClientCapability.SESSION_OUTPUT_VOICE,
+  )
+  const voiceUpdated = parseGatewayServerProtocolMessage({
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
+    event_id: 'evt_gateway_output_voice',
+    request_event_id: voiceUpdate.event_id,
+    voice: 'longanlufeng',
+    changed: true,
+    reconnecting: true,
+  })
+  assert.equal(voiceUpdated.request_event_id, voiceUpdate.event_id)
 })
 
 test('normalizes 6.0 event names into the existing business event vocabulary', () => {
@@ -232,6 +261,7 @@ test('6.0 hello and 5.x connect enter the same legacy business path', () => {
       output_enabled: true,
       text_only: false,
       provider: 'dashscope',
+      output_voice: 'longanlufeng',
       working_directory: '/tmp/client-project',
       client_states: ['active'],
     },
@@ -243,6 +273,7 @@ test('6.0 hello and 5.x connect enter the same legacy business path', () => {
   assert.equal(accepted.event.outputEnabled, true)
   assert.equal(accepted.event.textOnly, false)
   assert.equal(accepted.event.provider, 'dashscope')
+  assert.equal(accepted.event.outputVoice, 'longanlufeng')
   assert.equal(accepted.event.workingDirectory, '/tmp/client-project')
   assert.deepEqual(accepted.event.clientStates, ['active'])
   assert.deepEqual(accepted.reply.capabilities, [

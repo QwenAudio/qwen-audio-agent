@@ -150,7 +150,10 @@ export class GatewayEventRouter {
     this.latest = new Map()
   }
 
-  async publish(message, { source = {} } = {}) {
+  // effects are supplied by the Gateway host, never decoded from Client data.
+  // They let a registered deterministic handler request a narrow local state
+  // transition without exposing Gateway internals or upgrading event authority.
+  async publish(message, { source = {}, effects = {} } = {}) {
     const messageId = cleanName(message?.event_id)
     if (!messageId) {
       throw new ClientEventRoutingError(
@@ -204,7 +207,7 @@ export class GatewayEventRouter {
       source: trustedSource,
       route: boundedRoute(message.delivery_hint, definition.route),
     })
-    await definition.handle?.(event)
+    await definition.handle?.(event, effects)
     const delivery = definition.project?.(event) || null
     this.seen.set(duplicateKey, now)
     this.#boundSeen()

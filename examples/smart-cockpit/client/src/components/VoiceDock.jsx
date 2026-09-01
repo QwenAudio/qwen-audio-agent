@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import VoiceWave from './VoiceWave'
-
-const PERSONAS = ['聊愈师', '行动派', '疯批']
+import { COCKPIT_PERSONA_LABELS } from '../config/personas'
 
 export default function VoiceDock({ muted, state = 'idle', progress = null, error = null, inputLevel = 0, outputLevel = 0, persona, onSelectPersona, onToggleMute, onOpenSettings }) {
   const activeError = !muted && error
@@ -80,7 +79,7 @@ export default function VoiceDock({ muted, state = 'idle', progress = null, erro
 
           {personaMenuOpen && (
             <div className="voice-persona-options" role="menu" aria-label="灵魂类型">
-              {PERSONAS.map(item => (
+              {COCKPIT_PERSONA_LABELS.map(item => (
                 <button
                   key={item}
                   className={`voice-persona-option ${persona === item ? 'is-selected' : ''}`}

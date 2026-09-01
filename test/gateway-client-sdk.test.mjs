@@ -105,6 +105,66 @@ test('reference Client envelopes direct runtime events with event_id', () => {
   client.stop()
 })
 
+test('reference Client initializes and updates the output voice through GCP', async () => {
+  const socket = new FakeSocket()
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    clientInstanceId: 'sdk-output-voice-test',
+    capabilities: [GatewayClientCapability.SESSION_OUTPUT_VOICE],
+    configure: { outputVoice: 'longanlufeng' },
+    reconnect: false,
+  }).start()
+
+  socket.open()
+
+  assert.equal(socket.sent[0].connection.output_voice, 'longanlufeng')
+  socket.receive({
+    type: GatewayClientProtocolEvent.SESSION_READY,
+    event_id: 'evt_gateway_voice_ready',
+    request_event_id: socket.sent[0].event_id,
+    protocol_version: '6.0.0',
+    session_id: 'main',
+    capabilities: [GatewayClientCapability.SESSION_OUTPUT_VOICE],
+  })
+  await new Promise(resolve => setImmediate(resolve))
+
+  const pending = client.updateOutputVoice('longanqian')
+  const request = socket.sent.at(-1)
+  assert.equal(request.type, GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE)
+  assert.equal(request.voice, 'longanqian')
+  socket.receive({
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
+    event_id: 'evt_gateway_voice_updated',
+    request_event_id: request.event_id,
+    voice: 'longanqian',
+    changed: true,
+    reconnecting: true,
+  })
+  assert.deepEqual(await pending, {
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
+    event_id: 'evt_gateway_voice_updated',
+    request_event_id: request.event_id,
+    voice: 'longanqian',
+    changed: true,
+    reconnecting: true,
+  })
+  client.stop()
+})
+
+test('reference Client rejects output voice updates without negotiated support', async () => {
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => new FakeSocket(),
+    reconnect: false,
+  })
+
+  await assert.rejects(
+    client.updateOutputVoice('longanqian'),
+    error => error.code === 'capability_not_negotiated',
+  )
+})
+
 test('reference Client executes negotiated Actions and deduplicates replayed events', async () => {
   const socket = new FakeSocket()
   const received = []

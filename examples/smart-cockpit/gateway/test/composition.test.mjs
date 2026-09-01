@@ -3,8 +3,8 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { startCockpitAgentServer } from '../agent/server.mjs'
-import { startCockpitServiceServer } from '../service/server.mjs'
+import { startCockpitAgentServer } from '../../agent/server.mjs'
+import { startCockpitServiceServer } from '../../service/server.mjs'
 
 test('composes the public Gateway API with the replaceable A2A Agent', async t => {
   const runtimeDirectory = await mkdtemp(join(tmpdir(), 'qwaudio-cockpit-'))
@@ -24,7 +24,7 @@ test('composes the public Gateway API with the replaceable A2A Agent', async t =
   })
   t.after(() => cockpitAgent.close())
 
-  const { startCockpitGateway } = await import('../gateway.mjs')
+  const { startCockpitGateway } = await import('../server.mjs')
   assert.equal(
     process.env.COCKPIT_FRONTEND_MCP_URL,
     `${service.origin}/mcp/frontend?cockpitId=composition-car`,

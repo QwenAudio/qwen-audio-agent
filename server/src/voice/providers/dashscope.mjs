@@ -57,6 +57,7 @@ export const dashscopeProvider = {
   get capabilities() {
     return {
       perResponseInstructions: true,
+      sessionOutputVoice: true,
       conversationItemIdEcho: activeModelProfile().family !== 'omni',
     }
   },
@@ -73,8 +74,9 @@ export const dashscopeProvider = {
   headers: () => ({ Authorization: `Bearer ${config.dashscopeApiKey}` }),
   classifyError,
 
-  buildSession: ({ configured, agentContext }) => {
+  buildSession: ({ configured, agentContext, sessionOptions }) => {
     const profile = activeModelProfile()
+    const sessionVoice = String(sessionOptions?.voice || '').trim()
     const session = {
       instructions: buildFrontendInstructions(agentContext),
     }
@@ -84,7 +86,7 @@ export const dashscopeProvider = {
     if (!configured) {
       session.modalities = responseModalities(profile)
       if (profile.modelCapabilities.audioOutput) {
-        session.voice = dashscopeProvider.voice()
+        session.voice = sessionVoice || dashscopeProvider.voice()
         session.output_audio_format = 'pcm'
       }
       if (profile.transportCapabilities.audioInput) {

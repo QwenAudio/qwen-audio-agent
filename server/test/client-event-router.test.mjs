@@ -131,3 +131,32 @@ test('does not acknowledge or retain a Client Event whose handler fails', async 
   assert.equal((await router.publish(message, { source })).duplicate, false)
   assert.equal(attempts, 2)
 })
+
+test('passes host-supplied deterministic effects to an extension handler', async () => {
+  let handled = null
+  const registry = new ClientEventDefinitionRegistry({
+    definitions: [{
+      name: 'vehicle.assistant_profile.selected',
+      schema: z.object({ profile: z.enum(['brief']) }).strict(),
+      handle(event, effects) {
+        effects.setAssistantProfile(`profile:${event.data.profile}`)
+      },
+    }],
+  })
+  const router = new GatewayEventRouter({ registry })
+
+  await router.publish({
+    event_id: 'evt-profile-1',
+    name: 'vehicle.assistant_profile.selected',
+    data: { profile: 'brief' },
+  }, {
+    source,
+    effects: {
+      setAssistantProfile(profile) {
+        handled = profile
+      },
+    },
+  })
+
+  assert.equal(handled, 'profile:brief')
+})

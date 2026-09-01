@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   cockpitProgressFromActivity,
   isTerminalCockpitProgress,
-} from '../cockpit-activity'
-import { applyCockpitStateUpdate } from '../cockpit-state-update'
+} from '../projections/cockpit-activity'
+import { applyCockpitStateUpdate } from '../projections/cockpit-state'
 
 function serviceOrigin() {
   return import.meta.env.VITE_COCKPIT_SERVICE_ORIGIN || 'http://127.0.0.1:3010'

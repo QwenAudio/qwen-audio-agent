@@ -6,10 +6,10 @@ import { pathToFileURL } from 'node:url'
 import {
   StreamableHTTPServerTransport,
 } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import { createAmapCockpitServices } from './amap-services.mjs'
+import { createAmapCockpitServices } from './integrations/amap/services.mjs'
 import { CockpitService } from './cockpit-service.mjs'
 import { createCockpitMcpServer } from './mcp-server.mjs'
-import { loadCockpitEnvironment } from '../environment.mjs'
+import { loadCockpitEnvironment } from '../bootstrap/environment.mjs'
 import {
   BACKEND_TOOL_DEFINITIONS,
   FRONTEND_TOOL_DEFINITIONS,

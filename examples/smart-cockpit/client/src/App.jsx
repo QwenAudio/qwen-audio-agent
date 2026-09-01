@@ -13,8 +13,16 @@ import FlashBuyPanel from './components/FlashBuyPanel'
 import useCockpitState from './hooks/useCockpitState'
 import useCockpitSkills from './hooks/useCockpitSkills'
 import useVoiceSession from './hooks/useVoiceSession'
-import { finalUserTranscript } from './voice-transcript'
-import { cockpitScreenForProgress } from './cockpit-activity'
+import { finalUserTranscript } from './projections/voice-transcript'
+import { cockpitScreenForProgress } from './projections/cockpit-activity'
+import {
+  COCKPIT_VOICE_IDS,
+  DEFAULT_COCKPIT_VOICE,
+} from './config/voices'
+import {
+  COCKPIT_PERSONA_LABELS,
+  DEFAULT_COCKPIT_PERSONA_LABEL,
+} from './config/personas'
 
 const INITIAL_CAR_STATE = {
   windowFL: 0,
@@ -30,10 +38,6 @@ const INITIAL_CAR_STATE = {
 }
 
 const VALID_TABS = ['persona', 'skills']
-const VALID_PERSONAS = ['聊愈师', '行动派', '疯批']
-const VALID_VOICES = ['小酒窝', '台御姐', '阳光男', '酷酷男']
-const DEFAULT_PERSONA = '聊愈师'
-const DEFAULT_VOICE = '小酒窝'
 const PERSONA_STORAGE_KEY = 'selectedPersona'
 const VOICE_STORAGE_KEY = 'selectedVoice'
 const INITIAL_WEATHER_STATE = {
@@ -94,8 +98,16 @@ export default function App() {
   } = useCockpitSkills(cockpitId, cockpitActivity)
   const [screen, setScreen] = useState('main')
   const [settingsTab, setSettingsTab] = useState('persona')
-  const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(PERSONA_STORAGE_KEY, DEFAULT_PERSONA, VALID_PERSONAS))
-  const [selectedVoice, setSelectedVoice] = useState(() => getStoredChoice(VOICE_STORAGE_KEY, DEFAULT_VOICE, VALID_VOICES))
+  const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(
+    PERSONA_STORAGE_KEY,
+    DEFAULT_COCKPIT_PERSONA_LABEL,
+    COCKPIT_PERSONA_LABELS,
+  ))
+  const [selectedVoice, setSelectedVoice] = useState(() => getStoredChoice(
+    VOICE_STORAGE_KEY,
+    DEFAULT_COCKPIT_VOICE,
+    COCKPIT_VOICE_IDS,
+  ))
   const [selectedWake, setSelectedWake] = useState('主驾')
   const carState = cockpitState?.vehicle || INITIAL_CAR_STATE
   const [showChat, setShowChat] = useState(false)
@@ -303,6 +315,8 @@ export default function App() {
   } = useVoiceSession({
     muted: voiceMuted,
     clientId,
+    persona: selectedPersona,
+    voice: selectedVoice,
     onVoiceMessage: handleVoiceMessage,
     onConversationRecovery: handleConversationRecovery,
   })

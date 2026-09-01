@@ -18,9 +18,10 @@
 | 目录 / 入口 | 性质 | 允许依赖 | 不应承担 |
 |---|---|---|---|
 | `client/` | 前台客户端示例 | GCP Client SDK、座舱 Service HTTP/SSE | Realtime Provider、后台 Agent 实现、业务执行 |
-| `gateway.mjs` | 前台装配入口 | qwen-audio-agent 公开导出、场景 Profile、A2A Agent Card | 复制 Gateway 核心、解析座舱业务对象 |
+| `gateway/` | 前台 Agent 与 Gateway 装配 | qwen-audio-agent 公开导出、场景 Profile、A2A Agent Card | 复制 Gateway 核心、解析座舱业务对象 |
 | `agent/` | 模型驱动的后台 Agent 示例 | DashScope、A2A SDK、`/mcp/backend` | UI 控制、Realtime 会话、场景状态存储 |
 | `service/` | 座舱环境与基础设施 | `service/tools/`、场景状态与规则、外部服务适配、HTTP/SSE/MCP Transport | 对话、播报、Agent 编排 |
+| `bootstrap/` | 本地示例启动支持 | `.env.local`、端口探测 | 对话、业务状态或 Agent 行为 |
 
 运行时依赖始终从客户端指向公开 Gateway 协议、从 Gateway 指向公开 BackendPort，
 不会从示例反向引用框架内部源码。测试可以直接引用内部实现做契约验证，但这不是
@@ -72,9 +73,15 @@ cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► coc
 
 ## 场景装配
 
-`gateway.mjs` 是唯一的前台场景装配点：它通过公开入口创建 A2A Backend Adapter、
-Backend Agent Host 和 Gateway Application。场景人设集中在 `ASSISTANT.md`，前台
-MCP 工具源由 `frontend-profile.json` 引用，没有复制框架核心，也没有引入座舱专用
-框架分支。
+`gateway/server.mjs` 是唯一的前台场景装配点：它通过公开入口创建 A2A Backend Adapter、
+Backend Agent Host 和 Gateway Application。完整前台人设集中在 `gateway/assistant/`，
+`gateway/frontend-profile.json` 指向默认的 `healer.md`。客户端在自己的
+`client/src/config/personas.js` 中维护展示项，只发送 Profile ID；Gateway 的
+`assistant/event.mjs` 独立校验 ID 并加载可信 Markdown。Gateway 等当前回复空闲后通过现有
+`session.update` 刷新同一个 Realtime Session，不重连、不重写 Markdown。
+
+人设文件只定义身份、人格与表达风格。前台工具选择规则属于 MCP description/schema，
+后台任务边界属于 `gateway/spawn-thinking-tool.mjs`。这些装配均没有复制框架核心，
+也没有引入座舱专用框架分支。
 
 四个进程的默认端口只用于本地示例，可通过 `.env.local` 覆盖。`COCKPIT_ID` 用于隔离不同座舱实例，UI 与 Agent 必须使用同一个值。

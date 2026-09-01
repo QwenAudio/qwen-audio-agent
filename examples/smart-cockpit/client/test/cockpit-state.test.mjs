@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { applyCockpitStateUpdate } from '../client/src/cockpit-state-update.js'
+import { applyCockpitStateUpdate } from '../src/projections/cockpit-state.js'
 
 function state(version, overrides = {}) {
   return {

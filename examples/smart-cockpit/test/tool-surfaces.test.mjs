@@ -5,6 +5,7 @@ import {
   BACKEND_TOOL_DEFINITIONS,
   FRONTEND_TOOL_DEFINITIONS,
 } from '../service/tools/registry.mjs'
+import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from '../gateway/spawn-thinking-tool.mjs'
 
 test('adds a foreground fast path while retaining a complete backend orchestration surface', () => {
   assert.deepEqual(FRONTEND_TOOL_DEFINITIONS.map(tool => tool.name), [
@@ -26,7 +27,7 @@ test('adds a foreground fast path while retaining a complete backend orchestrati
 })
 
 test('binds the cockpit frontend profile to the scoped MCP configuration', () => {
-  const profileUrl = new URL('../frontend-profile.json', import.meta.url)
+  const profileUrl = new URL('../gateway/frontend-profile.json', import.meta.url)
   const profile = JSON.parse(readFileSync(
     profileUrl,
     'utf8',
@@ -35,7 +36,7 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
     new URL(profile.toolSources.mcp, profileUrl),
     'utf8',
   ))
-  assert.equal(profile.toolSources.mcp, 'service/tools/frontend-mcp.json')
+  assert.equal(profile.toolSources.mcp, 'frontend-mcp.json')
   assert.equal(config.servers.cockpit.url, '${COCKPIT_FRONTEND_MCP_URL}')
   assert.deepEqual(Object.keys(config.servers.cockpit.tools), [
     'weather',
@@ -48,17 +49,10 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
 })
 
 test('keeps asynchronous cockpit acknowledgements natural and action-specific', () => {
-  const assistant = readFileSync(
-    new URL('../ASSISTANT.md', import.meta.url),
-    'utf8',
-  )
-  assert.match(assistant, /不说“好的，已为你提交”/u)
-  assert.match(assistant, /不提“提交”“已受理”“后台”“任务”/u)
-  assert.match(assistant, /优先简短复述关键对象和动作/u)
-  assert.match(assistant, /可以省略主语/u)
-  assert.match(assistant, /不要固定使用某种开头、句式或话术/u)
-  assert.doesNotMatch(assistant, /导航时说|点歌时说|闪购时说|车控时说/u)
-  assert.match(assistant, /必须忠实保留用户当前的动作和已选商品/u)
-  assert.match(assistant, /不得改写成再次搜索/u)
-  assert.match(assistant, /不得只口头承诺处理/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /不说“好的，已为你提交”/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /不提“提交”“已受理”“后台”“任务”/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /与当前动作相关/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /不固定话术/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /忠实保留用户选定的商品和当前动作/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /不要把加购改写为搜索/u)
 })

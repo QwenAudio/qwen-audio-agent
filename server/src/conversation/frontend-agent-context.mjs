@@ -80,6 +80,15 @@ export function loadAssistantProfile() {
   return [...content].slice(0, MAX_ASSISTANT_CHARS).join('')
 }
 
+export function resolveAssistantProfile(agentContext = {}) {
+  // A trusted host may select a complete profile for one live Session. Client
+  // payloads never enter this field directly; the packaged/local file remains
+  // the deployment-wide fallback.
+  const sessionProfile = String(agentContext.assistantProfile || '').trim()
+  if (!sessionProfile) return loadAssistantProfile()
+  return [...sessionProfile].slice(0, MAX_ASSISTANT_CHARS).join('')
+}
+
 function userPreferencesSection(memories = []) {
   const document = memories.find(memory => (
     isDirectiveScope(clean(memory.scope))

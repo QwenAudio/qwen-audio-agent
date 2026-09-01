@@ -19,7 +19,7 @@ import { pathToFileURL } from 'node:url'
 import { CockpitAgentExecutor } from './executor.mjs'
 import { CockpitMcpTools } from './mcp-client.mjs'
 import { DashScopeCockpitModel } from './model.mjs'
-import { loadCockpitEnvironment } from '../environment.mjs'
+import { loadCockpitEnvironment } from '../bootstrap/environment.mjs'
 
 function agentCard(origin) {
   return {

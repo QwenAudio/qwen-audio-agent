@@ -311,6 +311,8 @@ export function attachRealtimeGateway(server, {
     const announcementWindow = new AnnouncementWindow()
     const notificationClaimantId = `voice_${randomUUID()}`
     let clientContext = normalizeClientContext()
+    let sessionAssistantProfile = ''
+    let sessionOutputVoice = ''
     const turns = new RealtimeTurnState()
     const transcripts = new TurnTranscripts()
     const turnCitations = new TurnCitations()
@@ -367,6 +369,9 @@ export function attachRealtimeGateway(server, {
       },
       memories: memoryService?.list(ownerId, { limit: 64 }) || [],
       recentMessages: frontendRecentMessages(),
+      ...(sessionAssistantProfile
+        ? { assistantProfile: sessionAssistantProfile }
+        : {}),
     })
     const schedulePermissionRetry = () => {
       if (permissionRetryTimer || !outputEnabled || !realtimeSession?.ready) return
@@ -558,6 +563,9 @@ export function attachRealtimeGateway(server, {
       providerRegistry: realtimeProviderRegistry,
       defaultProvider: defaultRealtimeProvider,
       getAgentContext,
+      getSessionOptions: () => ({
+        ...(sessionOutputVoice ? { voice: sessionOutputVoice } : {}),
+      }),
       shouldReconnect: () => inputEnabled || outputEnabled,
       onEvent: event => handleEvent(event),
       onDiagnostic: diagnostic => {
@@ -1160,6 +1168,45 @@ export function attachRealtimeGateway(server, {
         },
       })
     }
+    const updateSessionOutputVoice = voice => {
+      const nextVoice = String(voice || '').trim()
+      const provider = realtimeSession.provider()
+      if (provider.capabilities?.sessionOutputVoice !== true) {
+        const error = new Error(
+          `${provider.label} does not support session output voice updates`,
+        )
+        error.code = 'output_voice_unsupported'
+        throw error
+      }
+      if (nextVoice === sessionOutputVoice) {
+        return {
+          voice: nextVoice,
+          changed: false,
+          reconnecting: false,
+        }
+      }
+
+      sessionOutputVoice = nextVoice
+      const hasUpstreamSession = realtimeSession.ready || realtimeSession.connecting
+      if (hasUpstreamSession) {
+        realtimeSession.cancelResponse()
+        send(ws, {
+          type: GatewayServerEvent.PLAYBACK_CLEAR,
+          reason: 'output_voice_changed',
+        })
+        // Realtime providers apply voice selection when a Session is created.
+        // Rebuild only that provider Session; the GCP client and Gateway
+        // conversation remain connected and keep their state.
+        realtimeSession.detach({ clearAudio: false })
+      }
+      const reconnecting = hasUpstreamSession && (inputEnabled || outputEnabled)
+      if (reconnecting) realtimeSession.ensure().catch(reportFrontendError)
+      return {
+        voice: nextVoice,
+        changed: true,
+        reconnecting,
+      }
+    }
     const handleRuntimeMessage = async message => {
       if (message.type === GatewayClientProtocolEvent.CLIENT_ACTION_RESULT) {
         if (!clientActions.receive(message)) {
@@ -1167,6 +1214,15 @@ export function attachRealtimeGateway(server, {
             requestEventId: message.request_event_id,
           })
         }
+        return
+      }
+      if (message.type === GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE) {
+        const result = updateSessionOutputVoice(message.voice)
+        send(ws, {
+          type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
+          request_event_id: message.event_id,
+          ...result,
+        })
         return
       }
       if (message.type === GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH) {
@@ -1177,6 +1233,15 @@ export function attachRealtimeGateway(server, {
         }
         const result = await clientEventRouter.publish(message, {
           source: runtimeSource(),
+          effects: {
+            setAssistantProfile(profile) {
+              // Only a server-registered Client Event handler can reach this
+              // effect. The Client supplies a schema-validated identifier,
+              // while the handler owns the actual profile content.
+              sessionAssistantProfile = String(profile || '').trim()
+              realtimeSession.updateAgentContext(getAgentContext())
+            },
+          },
         })
         connectionLogger.info('client_event.received', {
           name: result.name,
@@ -1268,6 +1333,7 @@ export function attachRealtimeGateway(server, {
           textOnly: event.textOnly === true,
         })
         nonVoiceClient = event.textOnly === true
+        sessionOutputVoice = String(event.outputVoice || '').trim()
         // The client may pick a realtime front end per session. An unknown
         // name is reported instead of silently falling back, so a typo does
         // not look like a working session on the wrong provider.

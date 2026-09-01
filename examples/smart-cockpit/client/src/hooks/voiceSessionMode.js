@@ -1,6 +1,6 @@
 export const COCKPIT_CONNECTION_INTERRUPTED = '对话中控连接中断，正在重连'
 
-export function cockpitVoiceConnectionMode(muted) {
+export function cockpitVoiceConnectionMode(muted, outputVoice = '') {
   const enabled = muted !== true
   return {
     voiceEnabled: enabled,
@@ -10,6 +10,7 @@ export function cockpitVoiceConnectionMode(muted) {
     // Keeping it false lets a muted cockpit Client claim voice later through
     // the standard unmute event without reconnecting or changing protocol.
     textOnly: false,
+    ...(outputVoice ? { outputVoice } : {}),
   }
 }
 

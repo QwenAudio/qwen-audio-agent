@@ -14,13 +14,19 @@
 
 车辆总线和业务面板仍由客户自己的通道连接。`client/src/hooks/useVoiceSession.js` 是浏览器接入参考，`useCockpitState.js` 只是本示例的业务状态适配器。
 
+如果客户 UI 需要保留人设切换，它应声明 `client.events` capability，并发布
+`cockpit.assistant_profile.selected`；payload 只包含 `gateway/assistant/event.mjs`
+允许的 Profile ID。客户端展示项位于 `client/src/config/personas.js`，实际 Prompt
+位于 Gateway，两者不共享实现代码。
+不应由客户端上传 Prompt 或文件路径。不需要该功能的 UI 可以完全不实现这个场景事件。
+
 ## 替换后台 Agent
 
 示例 Agent 是由 Qwen3.8-Flash 驱动的真实 A2A Agent：模型理解任务，通过 MCP
 发现工具，可以连续完成多个工具调用。正式场景仍可使用任意 Agent 框架或既有行业 Agent：
 
 - 发布标准 A2A Agent Card，并在 `COCKPIT_AGENT_CARD_URL` 中填写地址；或
-- 在 `gateway.mjs` 的装配点替换为 ACP Adapter；或
+- 在 `gateway/server.mjs` 的装配点替换为 ACP Adapter；或
 - 实现 BackendPort 后通过 `createBackendAgentHost` 注入自定义协议。
 
 替换后台不需要修改 GCP 客户端、Realtime 前台或座舱服务。后台只需把适合对话的
@@ -40,7 +46,8 @@
 
 `service/tools/` 中每个目录是一个场景领域工具包：`manifest.json` 定义 MCP 工具，
 `execute.mjs` 实现场景逻辑。在 `service/tools/registry.mjs` 注册领域工具包后，将适合
-低延迟直出的工具名加入 `FRONTEND_TOOL_NAMES`；后台仍保留完整工具面用于组合任务。
+低延迟直出的工具名加入 `FRONTEND_TOOL_NAMES`，并在 `gateway/frontend-mcp.json`
+启用对应的前台消费项；后台仍保留完整工具面用于组合任务。
 同一个领域可以跨两个工具面，但只保留一份 executor 和状态源。这是代码层的明确
 修改点，不是新的动态插件框架。
 

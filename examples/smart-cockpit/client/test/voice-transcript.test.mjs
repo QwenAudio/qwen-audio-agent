@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { finalUserTranscript } from '../client/src/voice-transcript.js'
+import { finalUserTranscript } from '../src/projections/voice-transcript.js'
 
 test('shows only normalized final ASR in the debug conversation', () => {
   assert.equal(finalUserTranscript({

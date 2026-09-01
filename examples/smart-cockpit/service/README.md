@@ -26,5 +26,8 @@ Endpoints:
 
 Tool manifests and executors live under [`tools/`](tools/); this service owns
 their shared state, business rules, external integrations, and protocol transports.
+External AMap access is isolated under `integrations/amap/`. The foreground
+consumer allowlist lives with the Gateway in `../gateway/frontend-mcp.json`;
+it does not duplicate the Service executors.
 Custom skill records live under `../.runtime/custom-skills/`; they are user data
 and remain separate from the transient cockpit state snapshot.

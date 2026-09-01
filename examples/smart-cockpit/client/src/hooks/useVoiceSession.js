@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GatewayClient } from 'qwen-audio-agent/gateway-client-sdk'
-import { GatewayClientCapability } from 'qwen-audio-agent/gateway-client-protocol'
+import {
+  GatewayClientCapability,
+  GatewayClientProtocolEvent,
+} from 'qwen-audio-agent/gateway-client-protocol'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
@@ -13,7 +16,11 @@ import {
   rememberTaskProgress,
   taskProgressFingerprint,
   taskProgressFromEvent,
-} from '../task-progress'
+} from '../projections/task-progress'
+import {
+  COCKPIT_ASSISTANT_PROFILE_EVENT,
+  cockpitPersonaId,
+} from '../config/personas'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
@@ -95,6 +102,8 @@ function gatewayVoiceState(event) {
 export default function useVoiceSession({
   muted,
   clientId,
+  persona,
+  voice,
   onVoiceMessage,
   onConversationRecovery,
 }) {
@@ -108,6 +117,10 @@ export default function useVoiceSession({
   const audioContextRef = useRef(null)
   const inputSampleRateRef = useRef(INPUT_SAMPLE_RATE)
   const mutedRef = useRef(muted)
+  const personaRef = useRef(persona)
+  const voiceRef = useRef(voice)
+  const personaSyncRef = useRef({ generation: 0, pending: '', published: '' })
+  const voiceSyncRef = useRef({ generation: 0, pending: '', published: '' })
   const onVoiceMessageRef = useRef(onVoiceMessage)
   const onConversationRecoveryRef = useRef(onConversationRecovery)
   const taskProgressSeenRef = useRef(new Map())
@@ -134,6 +147,65 @@ export default function useVoiceSession({
       type,
       responseId,
       ...(reason ? { reason } : {}),
+    })
+  }, [])
+
+  const publishAssistantProfile = useCallback((client = clientRef.current) => {
+    const profile = cockpitPersonaId(personaRef.current)
+    const sync = personaSyncRef.current
+    if (
+      !client?.ready
+      || !client.supports(GatewayClientCapability.CLIENT_EVENTS)
+      || sync.pending === profile
+      || sync.published === profile
+    ) return
+    const generation = sync.generation
+    sync.pending = profile
+    client.request(GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH, {
+      name: COCKPIT_ASSISTANT_PROFILE_EVENT,
+      data: { profile },
+      delivery_hint: 'handle',
+    }).then(() => {
+      const current = personaSyncRef.current
+      if (
+        current.generation === generation
+        && cockpitPersonaId(personaRef.current) === profile
+      ) current.published = profile
+    }).catch(error => {
+      console.warn('Cockpit Assistant Profile sync failed', error)
+    }).finally(() => {
+      const current = personaSyncRef.current
+      if (current.generation === generation && current.pending === profile) {
+        current.pending = ''
+      }
+    })
+  }, [])
+
+  const syncOutputVoice = useCallback((client = clientRef.current) => {
+    const selectedVoice = String(voiceRef.current || '').trim()
+    const sync = voiceSyncRef.current
+    if (
+      !selectedVoice
+      || !client?.ready
+      || !client.supports(GatewayClientCapability.SESSION_OUTPUT_VOICE)
+      || sync.pending === selectedVoice
+      || sync.published === selectedVoice
+    ) return
+    const generation = sync.generation
+    sync.pending = selectedVoice
+    client.updateOutputVoice(selectedVoice).then(() => {
+      const current = voiceSyncRef.current
+      if (
+        current.generation === generation
+        && voiceRef.current === selectedVoice
+      ) current.published = selectedVoice
+    }).catch(error => {
+      console.warn('Cockpit output voice sync failed', error)
+    }).finally(() => {
+      const current = voiceSyncRef.current
+      if (current.generation === generation && current.pending === selectedVoice) {
+        current.pending = ''
+      }
     })
   }, [])
 
@@ -295,16 +367,28 @@ export default function useVoiceSession({
         GatewayClientCapability.TASK_COMMANDS,
         GatewayClientCapability.PERMISSION_RESPOND,
         GatewayClientCapability.CONVERSATION_HISTORY,
+        GatewayClientCapability.CLIENT_EVENTS,
+        GatewayClientCapability.SESSION_OUTPUT_VOICE,
         GatewayClientCapability.SESSION_REPLAY,
       ],
       locale: navigator.language,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      configure: () => cockpitVoiceConnectionMode(mutedRef.current),
+      configure: () => cockpitVoiceConnectionMode(mutedRef.current, voiceRef.current),
       onEvent: handleEvent,
       onRecovery: recovery => {
         onConversationRecoveryRef.current?.(recovery.messages || [])
       },
       onStatus: status => {
+        if (status.state === 'ready') {
+          publishAssistantProfile(client)
+          syncOutputVoice(client)
+        } else if (['connecting', 'disconnected', 'unavailable'].includes(status.state)) {
+          for (const sync of [personaSyncRef.current, voiceSyncRef.current]) {
+            sync.generation += 1
+            sync.pending = ''
+            sync.published = ''
+          }
+        }
         const nextConnectionError = cockpitConnectionError(status.state)
         if (nextConnectionError === undefined) return
         setConnectionError(nextConnectionError)
@@ -323,7 +407,17 @@ export default function useVoiceSession({
       client.stop()
       if (clientRef.current === client) clientRef.current = null
     }
-  }, [clearPlayback, clientId, finishResponsePlayback, playPcmAudio, sendPlaybackReceipt])
+  }, [clearPlayback, clientId, finishResponsePlayback, playPcmAudio, publishAssistantProfile, sendPlaybackReceipt, syncOutputVoice])
+
+  useEffect(() => {
+    personaRef.current = persona
+    publishAssistantProfile()
+  }, [persona, publishAssistantProfile])
+
+  useEffect(() => {
+    voiceRef.current = voice
+    syncOutputVoice()
+  }, [syncOutputVoice, voice])
 
   useEffect(() => {
     if (muted) {

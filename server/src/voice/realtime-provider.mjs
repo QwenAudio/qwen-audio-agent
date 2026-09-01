@@ -704,6 +704,18 @@ export class RealtimeFrontend {
         id = first[0]
         pending = first[1]
       }
+      // Automatic VAD responses are not represented in responseWaiters. Some
+      // providers also omit response_id from a terminal error (notably content
+      // safety failures), so associate it with the sole active response. If we
+      // leave that id behind, whenIdle() never resolves and every later output
+      // remains blocked behind a response that has already failed.
+      if (
+        event.type === 'error'
+        && !id && this.activeResponses.size === 1
+      ) {
+        id = this.activeResponses.values().next().value
+        event.response_id = id
+      }
       // A response.create can race either another response or the tail of a
       // Smart Turn input. Both are transient: retry the exact refused payload
       // instead of surfacing a protocol timing error to the user.

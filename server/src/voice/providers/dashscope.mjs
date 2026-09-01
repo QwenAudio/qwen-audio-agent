@@ -19,6 +19,11 @@ function classifyError(message) {
   if (/user is speaking/i.test(message)) return 'input_busy'
   if (/no active response/i.test(message)) return 'no_active_response'
   if (
+    /data[_ -]?inspection[_ -]?failed|ip[_ -]?infringement[_ -]?suspect/i.test(message)
+    || /inappropriate content|content[_ -]?(?:filter|moderation|safety|policy)/i.test(message)
+    || /(?:input|output) data may contain/i.test(message)
+  ) return 'content_safety'
+  if (
     /invalid[_ -]?api[_ -]?key|incorrect api key|authentication failed|unauthorized|unexpected server response: (?:401|403)/i
       .test(message)
     || /\barrearage\b|account is not in good standing/i.test(message)

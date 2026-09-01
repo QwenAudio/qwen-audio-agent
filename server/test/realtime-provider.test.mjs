@@ -132,6 +132,17 @@ test('classifies non-recoverable DashScope account errors as fatal', () => {
   )
 })
 
+test('classifies DashScope content inspection errors for clean-session recovery', () => {
+  const provider = REALTIME_PROVIDERS.qwen
+  for (const message of [
+    'DataInspectionFailed: Input or output data may contain inappropriate content.',
+    'IPInfringementSuspect: The input may violate content policy.',
+    'content_filter: response blocked by content safety',
+  ]) {
+    assert.equal(provider.classifyError(message), 'content_safety', message)
+  }
+})
+
 test('carries originating turn metadata to a created realtime response', () => {
   const frontend = createQwenFrontend()
   frontend.pendingResponses.push({
@@ -1580,6 +1591,28 @@ test('associates an unscoped provider error with the sole active response', asyn
     responseId: 'response-error',
     status: undefined,
   })
+  assert.equal(frontend.activeResponses.size, 0)
+})
+
+test('retires a sole automatic response when its provider error has no response id', () => {
+  const frontend = createQwenFrontend()
+  frontend.ready = true
+  frontend.send = () => {}
+
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'automatic-response-error' },
+  })
+  const error = {
+    type: 'error',
+    error: {
+      code: 'DataInspectionFailed',
+      message: 'Input data may contain inappropriate content.',
+    },
+  }
+  frontend.handleLifecycle(error)
+
+  assert.equal(error.response_id, 'automatic-response-error')
   assert.equal(frontend.activeResponses.size, 0)
 })
 

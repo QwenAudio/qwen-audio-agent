@@ -338,6 +338,15 @@ export function attachRealtimeGateway(server, {
     const hasPendingBackendInput = () => activeSessionTasks().some(task => (
       task.inputRequest?.status === 'pending'
     ))
+    // A content-safety rejection can leave the provider conversation poisoned:
+    // replaying the rejected turn into a replacement connection makes every
+    // later utterance fail again. Keep visible history intact, but establish a
+    // new provider-context boundary at the rejected turn. Messages recorded
+    // after recovery remain eligible for future reconnect restoration.
+    let realtimeContextFloorSeq = 0
+    const frontendRecentMessages = () => conversationSync
+      .frontendContext({ ownerId, sessionId })
+      .filter(message => Number(message.seq) > realtimeContextFloorSeq)
     const getAgentContext = () => ({
       client: clientContext,
       frontend: {
@@ -359,7 +368,7 @@ export function attachRealtimeGateway(server, {
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
       memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-      recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),
+      recentMessages: frontendRecentMessages(),
     })
     const schedulePermissionRetry = () => {
       if (permissionRetryTimer || !outputEnabled || !realtimeSession?.ready) return
@@ -999,6 +1008,38 @@ export function attachRealtimeGateway(server, {
         // 也不应触发失败簿记(此时本就没有响应在跑)。
         const benignCancelRace = providerError === 'no_active_response'
         if (benignCancelRace) return
+        if (providerError === 'content_safety') {
+          clearResponseCandidate()
+          presentationRuntime.failResponse(event)
+          send(ws, {
+            type: GatewayServerEvent.PLAYBACK_CLEAR,
+            reason: 'provider_content_safety',
+          })
+          send(ws, {
+            type: GatewayServerEvent.VOICE_STATE,
+            state: 'idle',
+            origin: 'model',
+          })
+          realtimeContextFloorSeq = Math.max(
+            realtimeContextFloorSeq,
+            ...conversationSync
+              .frontendContext({ ownerId, sessionId })
+              .map(message => Number(message.seq) || 0),
+          )
+          connectionLogger.warn('realtime.content_safety_recovery', {
+            provider: realtimeSession.providerKey,
+            contextFloorSeq: realtimeContextFloorSeq,
+          })
+          send(ws, {
+            type: 'error',
+            message: '这次内容未能处理，语音会话已自动恢复，请换个说法再试。',
+          })
+          realtimeSession.reconnect().catch(error => send(ws, {
+            type: 'error',
+            message: error.message,
+          }))
+          return
+        }
         if (providerError === 'fatal') {
           connectionLogger.error('realtime.blocked', {
             provider: realtimeSession.providerKey,

@@ -15,11 +15,16 @@ test('adds a foreground fast path while retaining a complete backend orchestrati
     'vehicle_sunroof_control',
     'vehicle_headlights_control',
     'vehicle_climate_control',
+    'navigation_set_route_strategy',
+    'navigation_set_voice',
+    'navigation_set_view',
   ])
-  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 18)
+  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 27)
   const backendNames = BACKEND_TOOL_DEFINITIONS.map(tool => tool.name)
   assert.ok(backendNames.includes('vehicle_sunroof_control'))
   assert.ok(backendNames.includes('vehicle_climate_control'))
+  assert.ok(backendNames.includes('navigation_set_route_strategy'))
+  assert.ok(backendNames.includes('navigation_set_view'))
   assert.ok(backendNames.includes('weather'))
   assert.ok(backendNames.includes('vehicle_window_control'))
   assert.ok(backendNames.includes('vehicle_headlights_control'))
@@ -47,8 +52,12 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
     'vehicle_sunroof_control',
     'vehicle_headlights_control',
     'vehicle_climate_control',
+    'navigation_set_route_strategy',
+    'navigation_set_voice',
+    'navigation_set_view',
   ])
   assert.equal(config.servers.cockpit.tools.vehicle_window_control.enabled, true)
+  assert.equal(config.servers.cockpit.tools.navigation_set_view.enabled, true)
   assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_window_control))
   assert.equal(config.servers.cockpit.tools.vehicle_climate_control.enabled, true)
   assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_climate_control))
@@ -61,4 +70,17 @@ test('keeps asynchronous cockpit acknowledgements natural and action-specific', 
   assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /不固定话术/u)
   assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /忠实保留用户选定的商品和当前动作/u)
   assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /不要把加购改写为搜索/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /导航视图、导航播报和当前路线偏好/u)
+
+  const frontendConfig = JSON.parse(readFileSync(
+    new URL('../gateway/frontend-mcp.json', import.meta.url),
+    'utf8',
+  ))
+  const navigationViewDescription = frontendConfig.servers.cockpit.tools.navigation_set_view.description
+  assert.match(navigationViewDescription, /直接调用/u)
+  assert.match(navigationViewDescription, /不要只口头回应/u)
+  assert.match(
+    frontendConfig.servers.cockpit.tools.navigation_set_route_strategy.description,
+    /躲避拥堵/u,
+  )
 })

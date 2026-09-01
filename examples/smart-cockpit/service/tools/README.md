@@ -14,6 +14,9 @@ shared cockpit state and external services through the execution context.
   foreground Realtime Agent.
 - The backend MCP surface retains every scenario tool so the replaceable
   cockpit Agent can compose them in complex tasks and user-defined workflows.
+- Some immediate navigation tools, such as route view, voice and current-route
+  strategy changes, are intentionally exposed on the foreground fast path while
+  remaining available on the complete backend surface.
 
 Both surfaces use the standard MCP contract. Adding a group requires no change
 to the Gateway protocol or the cockpit UI protocol. A domain group may safely

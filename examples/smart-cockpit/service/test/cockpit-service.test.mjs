@@ -32,6 +32,12 @@ function fixture() {
       async weather(city) {
         return { city, dayweather: '小雨', daytemp: '9', nighttemp: '5' }
       },
+      async searchPlaces(query) {
+        return [{ name: query, location: '120.3,30.4' }]
+      },
+      async searchNearbyPlaces({ keywords }) {
+        return [{ name: keywords, location: '120.4,30.5', distance: 800 }]
+      },
     },
   })
   return {
@@ -140,6 +146,91 @@ test('queries the current route without requiring another destination', async ()
   assert.equal(current.data.navigation.status, 'navigating')
 })
 
+test('updates an active navigation route with waypoints destination and strategy', async () => {
+  const { service, options } = fixture()
+  await service.execute('navigation_start', { destination: '西湖' }, options)
+
+  const added = await service.execute('navigation_add_waypoint', {
+    waypoint: '城西银泰',
+  }, options)
+  assert.match(added.content, /已增加途经点城西银泰/u)
+  assert.deepEqual(added.data.navigation.waypoints, ['城西银泰'])
+  assert.equal(added.data.navigation.map.markers.length, 2)
+  assert.equal(added.data.navigation.map.polylines.length, 2)
+
+  const changed = await service.execute('navigation_change_destination', {
+    destination: '萧山机场',
+  }, options)
+  assert.match(changed.content, /已将目的地改为萧山机场/u)
+  assert.equal(changed.data.navigation.destination, '萧山机场')
+  assert.deepEqual(changed.data.navigation.waypoints, ['城西银泰'])
+
+  const strategy = await service.execute('navigation_set_route_strategy', {
+    strategy: 5,
+  }, options)
+  assert.match(strategy.content, /不走高速/u)
+  assert.equal(strategy.data.navigation.strategy, 5)
+
+  const removed = await service.execute('navigation_remove_waypoint', {
+    waypoint: '城西银泰',
+  }, options)
+  assert.match(removed.content, /已删除途经点城西银泰/u)
+  assert.deepEqual(removed.data.navigation.waypoints, [])
+  assert.equal(removed.data.navigation.map.markers.length, 1)
+})
+
+test('supports place search favorites voice and view navigation tools', async () => {
+  const { service, options } = fixture()
+  const search = await service.execute('navigation_search_place', {
+    query: '充电站',
+    nearby: true,
+  }, options)
+  assert.match(search.content, /找到1个地点/u)
+  assert.equal(search.data.results[0].name, '充电站')
+  assert.deepEqual(search.changed, [])
+
+  const favorite = await service.execute('navigation_set_favorite', {
+    favoriteType: 'home',
+    address: '西湖',
+  }, options)
+  assert.match(favorite.content, /设置为家/u)
+  assert.equal(favorite.data.navigation.favorites.home.label, '家')
+  assert.equal(favorite.data.navigation.favorites.home.name, '西湖')
+  assert.equal(favorite.data.navigation.favorites.home.address, '西湖')
+
+  const home = await service.execute('navigation_to_favorite', {
+    favoriteType: 'home',
+  }, options)
+  assert.match(home.content, /已开始导航到西湖/u)
+  assert.equal(home.data.navigation.status, 'navigating')
+
+  const voice = await service.execute('navigation_set_voice', {
+    mute: true,
+    broadcastMode: 'brief',
+  }, options)
+  assert.match(voice.content, /导航静音/u)
+  assert.equal(voice.data.navigation.voice.muted, true)
+  assert.equal(voice.data.navigation.voice.broadcastMode, 'brief')
+
+  const view = await service.execute('navigation_set_view', {
+    viewMode: 'overview',
+  }, options)
+  assert.match(view.content, /路线全览/u)
+  assert.equal(view.data.navigation.viewMode, 'overview')
+
+  const invalidVoice = await service.execute('navigation_set_voice', {
+    broadcastMode: 'verbose',
+  }, options)
+  assert.match(invalidVoice.content, /有效的导航播报模式/u)
+  assert.equal(invalidVoice.data.navigation.voice.broadcastMode, 'brief')
+
+  const invalidView = await service.execute('navigation_set_view', {
+    viewMode: 'bird_eye',
+  }, options)
+  assert.match(invalidView.content, /有效的导航视图模式/u)
+  assert.equal(invalidView.data.navigation.viewMode, 'overview')
+})
+
 test('requires a preview and explicit confirmation before ordering', async () => {
   const { service, activities, options } = fixture()
   const premature = await service.execute('flashbuy', {
@@ -196,6 +287,26 @@ test('publishes versioned snapshots after state changes', async () => {
   assert.deepEqual(events[0].changed, ['weather'])
   assert.equal(events[0].state.weather.dayweather, '小雨')
   assert.equal(events[0].version, events[0].state.version)
+})
+
+test('resets cockpit state and publishes a full state update', async () => {
+  const { service, options } = fixture()
+  await service.execute('navigation_set_favorite', {
+    favoriteType: 'home',
+    address: '西湖',
+  }, options)
+  await service.execute('music_play', { query: '稻香' }, options)
+
+  const events = []
+  const unsubscribe = service.subscribe('car-one', event => events.push(event))
+  const reset = service.reset('car-one')
+  unsubscribe()
+
+  assert.equal(reset.version, 1)
+  assert.equal(reset.navigation.favorites.home, null)
+  assert.equal(reset.music.playing, false)
+  assert.deepEqual(events.at(-1).changed, ['vehicle', 'navigation', 'music', 'flashbuy', 'weather'])
+  assert.equal(events.at(-1).state.navigation.status, 'idle')
 })
 
 test('stores custom skills outside transient cockpit state and publishes catalog changes', async t => {

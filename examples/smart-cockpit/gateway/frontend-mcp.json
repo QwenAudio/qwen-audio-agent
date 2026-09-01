@@ -28,6 +28,18 @@
         "vehicle_climate_control": {
           "enabled": true,
           "description": "立即打开或关闭空调，或设置用户明确指定的温度、制冷制热模式和风量；不要把状态查询当成控制指令，也不要再通过 spawn_thinking 重复执行同一操作。"
+        },
+        "navigation_set_route_strategy": {
+          "enabled": true,
+          "description": "在当前导航或路线预览中立即切换路线偏好并重新规划路线。用户说“躲避拥堵”“避开拥堵”“不走高速”“少收费”“高速优先”“时间优先”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
+        },
+        "navigation_set_voice": {
+          "enabled": true,
+          "description": "立即设置导航静音或播报模式。用户说“导航静音”“取消静音”“详细播报”“简洁播报”“标准播报”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
+        },
+        "navigation_set_view": {
+          "enabled": true,
+          "description": "立即设置地图导航视图。用户说“查看全程”“路线全览”“回到跟车视角”“北向上”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
         }
       }
     }

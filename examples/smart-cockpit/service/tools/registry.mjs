@@ -22,10 +22,21 @@ function definition(tool) {
         'custom_skill_load',
         'vehicle_state_query',
         'navigation_route_query',
+        'navigation_search_place',
         'music_search',
         'weather',
       ].includes(tool.name),
-      openWorldHint: ['navigation_start', 'navigation_route_query', 'weather'].includes(tool.name),
+      openWorldHint: [
+        'navigation_start',
+        'navigation_route_query',
+        'navigation_add_waypoint',
+        'navigation_change_destination',
+        'navigation_set_route_strategy',
+        'navigation_search_place',
+        'navigation_to_favorite',
+        'navigation_set_favorite',
+        'weather',
+      ].includes(tool.name),
       destructiveHint: tool.name === 'flashbuy',
     },
   })
@@ -92,6 +103,9 @@ export const FRONTEND_TOOL_NAMES = Object.freeze([
   'vehicle_sunroof_control',
   'vehicle_headlights_control',
   'vehicle_climate_control',
+  'navigation_set_route_strategy',
+  'navigation_set_voice',
+  'navigation_set_view',
 ])
 
 const toolDefinitionsByName = new Map(

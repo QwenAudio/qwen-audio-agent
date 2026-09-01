@@ -2,6 +2,7 @@ import {
   DEFAULT_DELIVERY_ADDRESS,
 } from './tools/flashbuy/catalog.mjs'
 import { SONGS } from './tools/music/catalog.mjs'
+import { DEFAULT_ORIGIN } from './tools/navigation/catalog.mjs'
 
 const DEFAULT_COCKPIT_ID = 'default'
 
@@ -34,10 +35,24 @@ export function createInitialCockpitState(now = Date.now()) {
     navigation: {
       status: 'idle',
       destination: null,
+      destinationLocation: null,
       waypoints: [],
+      waypointLocations: [],
       strategy: 0,
       route: null,
       map: { markers: [], polylines: [] },
+      favorites: {
+        home: null,
+        office: null,
+        school: null,
+        custom: null,
+      },
+      voice: {
+        muted: false,
+        broadcastMode: 'standard',
+      },
+      viewMode: 'follow',
+      currentLocation: DEFAULT_ORIGIN.location,
     },
     music: {
       playing: false,
@@ -117,7 +132,21 @@ export class CockpitStateStore {
     const id = normalizeCockpitId(cockpitId)
     const state = createInitialCockpitState(this.now())
     this.records.set(id, state)
-    return this.snapshot(id)
+    const event = Object.freeze({
+      type: 'cockpit.state.updated',
+      cockpitId: id,
+      version: state.version,
+      changed: Object.freeze(['vehicle', 'navigation', 'music', 'flashbuy', 'weather']),
+      state: this.snapshot(id),
+    })
+    for (const listener of this.listeners.get(id) || []) {
+      try {
+        listener(event)
+      } catch {
+        // State observers cannot interrupt cockpit operations.
+      }
+    }
+    return event.state
   }
 
   #record(cockpitId) {

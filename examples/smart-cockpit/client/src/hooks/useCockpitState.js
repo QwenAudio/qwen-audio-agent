@@ -85,5 +85,18 @@ export default function useCockpitState(cockpitId) {
     return result
   }, [cockpitId])
 
-  return { state, progress, activity, error, execute }
+  const reset = useCallback(async () => {
+    const response = await fetch(`${serviceOrigin()}/api/cockpit/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cockpitId }),
+    })
+    const result = await response.json()
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`)
+    setState(result)
+    setProgress(null)
+    return result
+  }, [cockpitId])
+
+  return { state, progress, activity, error, execute, reset }
 }

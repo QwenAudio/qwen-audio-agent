@@ -61,6 +61,14 @@ test('serves state and commands over the scenario HTTP boundary', async t => {
   const state = await fetch(`${server.origin}/api/cockpit/state?cockpitId=http-car`)
     .then(response => response.json())
   assert.equal(state.vehicle.headlights, 1)
+
+  const reset = await fetch(`${server.origin}/api/cockpit/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cockpitId: 'http-car' }),
+  }).then(response => response.json())
+  assert.equal(reset.vehicle.headlights, 0)
+  assert.equal(reset.navigation.status, 'idle')
 })
 
 test('streams authoritative state changes to cockpit panels', async t => {
@@ -173,7 +181,7 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   t.after(() => frontend.close())
 
   const backendTools = await backend.listTools()
-  assert.equal(backendTools.tools.length, 18)
+  assert.equal(backendTools.tools.length, 27)
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_climate_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'flashbuy'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'weather'))
@@ -189,6 +197,9 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
     'vehicle_sunroof_control',
     'vehicle_headlights_control',
     'vehicle_climate_control',
+    'navigation_set_route_strategy',
+    'navigation_set_voice',
+    'navigation_set_view',
   ])
 
   const output = await backend.callTool({
@@ -226,6 +237,23 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   assert.equal(climate.isError, undefined)
   assert.equal(climate.structuredContent.vehicle.acFan, 4)
 
+  await backend.callTool({
+    name: 'navigation_start',
+    arguments: { destination: '西湖' },
+  })
+  const view = await frontend.callTool({
+    name: 'navigation_set_view',
+    arguments: { viewMode: 'overview' },
+  })
+  assert.equal(view.isError, undefined)
+  assert.equal(view.structuredContent.navigation.viewMode, 'overview')
+  const strategy = await frontend.callTool({
+    name: 'navigation_set_route_strategy',
+    arguments: { strategy: 4 },
+  })
+  assert.equal(strategy.isError, undefined)
+  assert.equal(strategy.structuredContent.navigation.strategy, 4)
+
   const unavailable = await frontend.callTool({
     name: 'music_pause',
     arguments: {},
@@ -240,6 +268,8 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   assert.equal(state.vehicle.sunroof, 1)
   assert.equal(state.vehicle.windowFL, 1)
   assert.equal(state.weather.dayweather, '晴')
+  assert.equal(state.navigation.viewMode, 'overview')
+  assert.equal(state.navigation.strategy, 4)
 })
 
 test('serves persistent custom skill management to the scenario UI', async t => {

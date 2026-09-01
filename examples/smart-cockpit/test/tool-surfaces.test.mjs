@@ -12,7 +12,9 @@ test('adds a foreground fast path while retaining a complete backend orchestrati
     'weather',
     'vehicle_state_query',
     'vehicle_window_control',
+    'vehicle_sunroof_control',
     'vehicle_headlights_control',
+    'vehicle_climate_control',
   ])
   assert.equal(BACKEND_TOOL_DEFINITIONS.length, 18)
   const backendNames = BACKEND_TOOL_DEFINITIONS.map(tool => tool.name)
@@ -42,10 +44,14 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
     'weather',
     'vehicle_state_query',
     'vehicle_window_control',
+    'vehicle_sunroof_control',
     'vehicle_headlights_control',
+    'vehicle_climate_control',
   ])
   assert.equal(config.servers.cockpit.tools.vehicle_window_control.enabled, true)
   assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_window_control))
+  assert.equal(config.servers.cockpit.tools.vehicle_climate_control.enabled, true)
+  assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_climate_control))
 })
 
 test('keeps asynchronous cockpit acknowledgements natural and action-specific', () => {

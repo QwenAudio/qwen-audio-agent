@@ -29,7 +29,9 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
             weather: { enabled: true },
             vehicle_state_query: { enabled: true },
             vehicle_window_control: { enabled: true },
+            vehicle_sunroof_control: { enabled: true },
             vehicle_headlights_control: { enabled: true },
+            vehicle_climate_control: { enabled: true },
           },
         },
       },
@@ -42,7 +44,9 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
     'mcp__cockpit__weather',
     'mcp__cockpit__vehicle_state_query',
     'mcp__cockpit__vehicle_window_control',
+    'mcp__cockpit__vehicle_sunroof_control',
     'mcp__cockpit__vehicle_headlights_control',
+    'mcp__cockpit__vehicle_climate_control',
   ])
   const output = await client.execute('mcp__cockpit__weather', { city: '杭州' })
   assert.match(output.text, /杭州，晴，27°/u)
@@ -53,6 +57,13 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
   await client.execute('mcp__cockpit__vehicle_headlights_control', {
     action: 'open',
   })
+  await client.execute('mcp__cockpit__vehicle_sunroof_control', {
+    action: 'open',
+  })
+  await client.execute('mcp__cockpit__vehicle_climate_control', {
+    action: 'set_temp',
+    temperature: 22,
+  })
   const state = await client.execute('mcp__cockpit__vehicle_state_query', {
     part: 'all',
   })
@@ -60,5 +71,7 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
   assert.match(state.text, /大灯: 开启/u)
   assert.equal(service.snapshot().weather.daytemp, '27')
   assert.equal(service.snapshot().vehicle.windowFL, 1)
+  assert.equal(service.snapshot().vehicle.sunroof, 1)
   assert.equal(service.snapshot().vehicle.headlights, 1)
+  assert.equal(service.snapshot().vehicle.acTemp, 22)
 })

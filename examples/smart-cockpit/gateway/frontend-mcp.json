@@ -17,9 +17,17 @@
           "enabled": true,
           "description": "立即打开或关闭指定车窗；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
         },
+        "vehicle_sunroof_control": {
+          "enabled": true,
+          "description": "立即打开或关闭车辆天窗；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
+        },
         "vehicle_headlights_control": {
           "enabled": true,
           "description": "立即打开或关闭车辆大灯；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
+        },
+        "vehicle_climate_control": {
+          "enabled": true,
+          "description": "立即打开或关闭空调，或设置用户明确指定的温度、制冷制热模式和风量；不要把状态查询当成控制指令，也不要再通过 spawn_thinking 重复执行同一操作。"
         }
       }
     }

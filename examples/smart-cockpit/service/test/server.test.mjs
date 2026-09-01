@@ -186,7 +186,9 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
     'weather',
     'vehicle_state_query',
     'vehicle_window_control',
+    'vehicle_sunroof_control',
     'vehicle_headlights_control',
+    'vehicle_climate_control',
   ])
 
   const output = await backend.callTool({
@@ -210,9 +212,23 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   assert.equal(window.isError, undefined)
   assert.equal(window.structuredContent.vehicle.windowFL, 1)
 
-  const unavailable = await frontend.callTool({
+  const sunroof = await frontend.callTool({
+    name: 'vehicle_sunroof_control',
+    arguments: { action: 'open' },
+  })
+  assert.equal(sunroof.isError, undefined)
+  assert.equal(sunroof.structuredContent.vehicle.sunroof, 1)
+
+  const climate = await frontend.callTool({
     name: 'vehicle_climate_control',
-    arguments: { action: 'close' },
+    arguments: { action: 'set_fan', fan: 4 },
+  })
+  assert.equal(climate.isError, undefined)
+  assert.equal(climate.structuredContent.vehicle.acFan, 4)
+
+  const unavailable = await frontend.callTool({
+    name: 'music_pause',
+    arguments: {},
   })
   assert.equal(unavailable.isError, true)
   assert.match(unavailable.content[0].text, /not available on this MCP surface/u)
@@ -220,6 +236,8 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   const state = await fetch(`${server.origin}/api/cockpit/state?cockpitId=mcp-car`)
     .then(response => response.json())
   assert.equal(state.vehicle.acTemp, 22)
+  assert.equal(state.vehicle.acFan, 4)
+  assert.equal(state.vehicle.sunroof, 1)
   assert.equal(state.vehicle.windowFL, 1)
   assert.equal(state.weather.dayweather, '晴')
 })

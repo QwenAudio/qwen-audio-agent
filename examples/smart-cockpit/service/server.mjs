@@ -127,6 +127,11 @@ export class CockpitServiceServer {
       json(response, 200, output)
       return
     }
+    if (url.pathname === '/api/cockpit/reset' && request.method === 'POST') {
+      const body = await readJson(request)
+      json(response, 200, this.service.reset(cockpitId(request, url, body)))
+      return
+    }
     const mcpTools = url.pathname === '/mcp/frontend'
       ? FRONTEND_TOOL_DEFINITIONS
       : url.pathname === '/mcp/backend'

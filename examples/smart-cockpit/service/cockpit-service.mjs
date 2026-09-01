@@ -11,6 +11,8 @@ function clean(value) {
 function emptyServices() {
   return {
     async resolvePlace() { return null },
+    async searchPlaces() { return [] },
+    async searchNearbyPlaces() { return [] },
     async drivingRoute() { return null },
     async weather() { return null },
   }
@@ -48,6 +50,10 @@ export class CockpitService {
       listeners.delete(listener)
       if (!listeners.size) this.activityListeners.delete(id)
     }
+  }
+
+  reset(cockpitId = 'default') {
+    return this.store.reset(cockpitId)
   }
 
   #publishActivity(cockpitId, event) {

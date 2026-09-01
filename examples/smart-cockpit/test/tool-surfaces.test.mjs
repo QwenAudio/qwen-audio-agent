@@ -6,17 +6,22 @@ import {
   FRONTEND_TOOL_DEFINITIONS,
 } from '../service/tools/registry.mjs'
 
-test('assigns low-latency cockpit tools to the foreground without backend duplicates', () => {
+test('assigns low-latency cockpit tools to the foreground with explicit backend exclusions', () => {
   assert.deepEqual(FRONTEND_TOOL_DEFINITIONS.map(tool => tool.name), [
     'weather',
     'vehicle_state_query',
     'vehicle_window_control',
     'vehicle_headlights_control',
+    'navigation_set_route_strategy',
+    'navigation_set_voice',
+    'navigation_set_view',
   ])
-  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 11)
+  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 20)
   const backendNames = BACKEND_TOOL_DEFINITIONS.map(tool => tool.name)
   assert.ok(backendNames.includes('vehicle_sunroof_control'))
   assert.ok(backendNames.includes('vehicle_climate_control'))
+  assert.ok(backendNames.includes('navigation_set_route_strategy'))
+  assert.ok(backendNames.includes('navigation_set_view'))
   assert.ok(!backendNames.includes('weather'))
   assert.ok(!backendNames.includes('vehicle_window_control'))
   assert.ok(!backendNames.includes('vehicle_headlights_control'))
@@ -39,8 +44,12 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
     'vehicle_state_query',
     'vehicle_window_control',
     'vehicle_headlights_control',
+    'navigation_set_route_strategy',
+    'navigation_set_voice',
+    'navigation_set_view',
   ])
   assert.equal(config.servers.cockpit.tools.vehicle_window_control.enabled, true)
+  assert.equal(config.servers.cockpit.tools.navigation_set_view.enabled, true)
   assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_window_control))
 })
 
@@ -58,4 +67,7 @@ test('keeps asynchronous cockpit acknowledgements natural and action-specific', 
   assert.match(assistant, /必须忠实保留用户当前的动作和已选商品/u)
   assert.match(assistant, /不得改写成再次搜索/u)
   assert.match(assistant, /不得只口头承诺处理/u)
+  assert.match(assistant, /直接调用\s+`navigation_set_view`/u)
+  assert.match(assistant, /直接调用 `navigation_set_route_strategy`/u)
+  assert.match(assistant, /不要只口头回应/u)
 })

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { navigationRouteView } from '../client/src/navigation-route.js'
+import { navigationRouteKey, navigationRouteView } from '../client/src/navigation-route.js'
 
 test('projects authoritative navigation state into the map view contract', () => {
   assert.deepEqual(navigationRouteView({
@@ -50,4 +50,27 @@ test('supports route previews and ignores idle navigation', () => {
     destination: '西湖',
     route: { legs: [] },
   }).status, 'preview')
+})
+
+test('keeps route key stable for voice and view changes', () => {
+  const navigation = {
+    status: 'navigating',
+    destination: '西湖',
+    viewMode: 'follow',
+    voice: { muted: false, broadcastMode: 'standard' },
+    route: {
+      distKm: '12.3',
+      durationMin: 25,
+      arrival: '15:10',
+      legs: [{ polyline: '120.0,30.0;120.1,30.1' }],
+    },
+    map: {
+      markers: [{ role: 'destination', location: '120.1,30.1' }],
+    },
+  }
+  assert.equal(navigationRouteKey(navigation), navigationRouteKey({
+    ...navigation,
+    viewMode: 'overview',
+    voice: { muted: true, broadcastMode: 'brief' },
+  }))
 })

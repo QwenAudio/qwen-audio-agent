@@ -1,6 +1,6 @@
 import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
-import { navigationRouteView } from '../navigation-route'
+import { navigationRouteKey, navigationRouteView } from '../navigation-route'
 
 window._AMapSecurityConfig = {
   securityJsCode: import.meta.env.VITE_AMAP_SECRET,
@@ -35,7 +35,21 @@ const STRATEGIES = [
   { value: 2, label: '时间优先' },
 ]
 
-export default function MapPanel({ navState, navProgress, mapActions, routeStrategy, onStrategyChange }) {
+const DESTINATION_SHORTCUTS = [
+  { type: 'home', label: '家', title: '回家' },
+  { type: 'office', label: '公司', title: '去公司' },
+]
+
+export default function MapPanel({
+  navState,
+  navProgress,
+  mapActions,
+  routeStrategy,
+  onStrategyChange,
+  onFavoriteNavigate,
+  onFavoriteSetup,
+  onSearchDestination,
+}) {
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
   const amapRef = useRef(null)
@@ -53,6 +67,8 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
   const flowRafRef = useRef(null)
   const cameraRafRef = useRef(null)
   const cameraTimersRef = useRef([])
+  const currentViewModeRef = useRef(navState?.viewMode || 'follow')
+  const lastAppliedViewModeRef = useRef(navState?.viewMode || 'follow')
   const [cameraStage, setCameraStage] = useState('idle')
   const [mapReady, setMapReady] = useState(false)
 
@@ -394,7 +410,24 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
     if (puck) puck.style.transform = `rotate(${bearing}deg)`
   }, [])
 
-  const routeInfo = useMemo(() => navigationRouteView(navState), [navState])
+  const routeKey = navigationRouteKey(navState)
+  const routeInfo = useMemo(() => navigationRouteView(JSON.parse(routeKey)), [routeKey])
+  const navigationViewMode = navState?.viewMode || 'follow'
+  const navigationVoiceLabel = useMemo(() => {
+    if (navState?.voice?.muted) return '导航静音'
+    if (navState?.voice?.broadcastMode === 'detailed') return '详细播报'
+    if (navState?.voice?.broadcastMode === 'brief') return '简洁播报'
+    return '标准播报'
+  }, [navState?.voice?.broadcastMode, navState?.voice?.muted])
+  const destinationShortcuts = useMemo(() => DESTINATION_SHORTCUTS.map(item => {
+    const favorite = navState?.favorites?.[item.type]
+    const subtitle = favorite?.address || favorite?.name || '点击设置'
+    return {
+      ...item,
+      subtitle,
+      configured: Boolean(favorite?.location),
+    }
+  }), [navState?.favorites])
 
   const activeNavProgress = useMemo(() => (
     navProgress?.domain === 'navigation' && navProgress.message ? navProgress : null
@@ -429,6 +462,29 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
   const getDestinationMarkerContent = useCallback((name) => (
     `<div class="destination-pin"><div class="dest-marker target-lock marker-pop"></div><span>${escapeHtml(name)}</span></div>`
   ), [escapeHtml])
+
+  const applyRouteViewMode = useCallback((viewMode) => {
+    const AMap = amapRef.current
+    if (!AMap || !routeInfo?.polyline) return
+
+    const points = parsePolyline(routeInfo.polyline, AMap)
+    if (points.length < 2) return
+
+    clearCameraTimeline()
+    if (viewMode === 'overview') {
+      setCameraStage('settle')
+      tweenCamera(getFullRouteCamera(points), CAMERA_ROUTE_OVERVIEW_DURATION)
+      return
+    }
+
+    const followCamera = getFollowCamera(points)
+    rotateVehiclePuck(followCamera.rotation)
+    setCameraStage(routeInfo.status === 'navigating' ? 'tracking' : 'settle')
+    tweenCamera({
+      ...followCamera,
+      rotation: viewMode === 'north_up' ? 0 : followCamera.rotation,
+    }, CAMERA_SETTLE_DURATION)
+  }, [clearCameraTimeline, getFollowCamera, getFullRouteCamera, parsePolyline, routeInfo, rotateVehiclePuck, tweenCamera])
 
   const clearPreview = useCallback(() => {
     const map = mapInstance.current
@@ -623,10 +679,18 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
                 animateRoute(routeLayers.animated, points, () => {
                   startRouteFlow(points)
                   setCameraStage('settle')
+                  const viewMode = currentViewModeRef.current
+                  if (viewMode === 'overview') {
+                    tweenCamera(getFullRouteCamera(points), CAMERA_SETTLE_DURATION)
+                    return
+                  }
                   if (route.status !== 'navigating') return
                   const followCamera = getFollowCamera(points)
                   rotateVehiclePuck(followCamera.rotation)
-                  tweenCamera(followCamera, CAMERA_SETTLE_DURATION, () => setCameraStage('tracking'))
+                  tweenCamera({
+                    ...followCamera,
+                    rotation: viewMode === 'north_up' ? 0 : followCamera.rotation,
+                  }, CAMERA_SETTLE_DURATION, () => setCameraStage('tracking'))
                 })
               }
             }, CAMERA_EXPAND_DURATION + CAMERA_DESTINATION_HOLD)
@@ -667,7 +731,14 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
       scheduleCameraStep(() => setCameraStage('idle'), 0)
       tweenCamera({ center: DEFAULT_CENTER, zoom: 14, pitch: 42, rotation: 0 }, 520)
     }
-  }, [navState?.status, routeInfo, mapReady, clearPreview, clearRouteLayers, createRouteLayers, animateRoute, parsePolyline, clearCameraTimeline, stopRouteFlow, scheduleCameraStep, tweenCamera, calculateBearing, getRouteCamera, getFollowCamera, getDestinationMarkerContent, startRouteFlow, rotateVehiclePuck])
+  }, [navState?.status, routeInfo, mapReady, clearPreview, clearRouteLayers, createRouteLayers, animateRoute, parsePolyline, clearCameraTimeline, stopRouteFlow, scheduleCameraStep, tweenCamera, calculateBearing, getRouteCamera, getFollowCamera, getFullRouteCamera, getDestinationMarkerContent, startRouteFlow, rotateVehiclePuck])
+
+  useEffect(() => {
+    currentViewModeRef.current = navigationViewMode
+    if (lastAppliedViewModeRef.current === navigationViewMode) return
+    lastAppliedViewModeRef.current = navigationViewMode
+    applyRouteViewMode(navigationViewMode)
+  }, [applyRouteViewMode, navigationViewMode])
 
   useEffect(() => {
     if (!mapReady || routeInfo || !activeNavProgress) return undefined
@@ -711,17 +782,6 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
     mapInstance.current?.setZoomAndCenter(16, DEFAULT_CENTER)
   }
 
-  function handleViewFullRoute() {
-    const AMap = amapRef.current
-    if (!AMap || !routeInfo?.polyline) return
-
-    const points = parsePolyline(routeInfo.polyline, AMap)
-    if (points.length < 2) return
-
-    clearCameraTimeline()
-    tweenCamera(getFullRouteCamera(points), CAMERA_ROUTE_OVERVIEW_DURATION)
-  }
-
   return (
     <section className={`map-panel${routeInfo || activeNavProgress ? ' is-routing' : ''} camera-${cameraStage}`} aria-label="导航区域">
       <div ref={mapRef} className="map-field" />
@@ -733,6 +793,7 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
           <span className="nav-ai-dot"></span>
           <span>AI 已为你规划路线</span>
           <strong>{routeInfo.durationMin} 分钟</strong>
+          <span className="nav-voice-badge">{navigationVoiceLabel}</span>
         </div>
       )}
       {routeInfo && (
@@ -775,12 +836,43 @@ export default function MapPanel({ navState, navProgress, mapActions, routeStrat
           <div className="route-progress"><span></span></div>
         </div>
       )}
+      {!routeInfo && !activeNavProgress && (
+        <div className="destination-search-panel" aria-label="目的地搜索">
+          <button className="destination-search-field" onClick={onSearchDestination} aria-label="搜索目的地">
+            <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10.8 4a6.8 6.8 0 0 1 5.43 10.9l3.44 3.43-1.42 1.42-3.43-3.44A6.8 6.8 0 1 1 10.8 4Zm0 2a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6Z" fill="currentColor" />
+            </svg>
+            <span>搜索目的地</span>
+          </button>
+          <div className="destination-shortcuts">
+            {destinationShortcuts.map(item => (
+              <div className={`destination-shortcut${item.configured ? ' is-configured' : ''}`} key={item.type}>
+                <div className="destination-shortcut-icon" aria-hidden="true">{item.label.slice(0, 1)}</div>
+                <div className="destination-shortcut-text">
+                  <strong>{item.title}</strong>
+                  <span>{item.subtitle}</span>
+                </div>
+                <button
+                  className="destination-shortcut-action"
+                  onClick={() => (
+                    item.configured
+                      ? onFavoriteNavigate?.(item.type)
+                      : onFavoriteSetup?.(item.type)
+                  )}
+                >
+                  {item.configured ? '导航' : '设置'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="map-bottom-bar">
         <div className="map-bottom-left">
           <button className="map-fab" aria-label="定位" onClick={handleLocate}><svg className="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm-1-8v2.07A8.001 8.001 0 0 0 4.07 11H2v2h2.07A8.001 8.001 0 0 0 11 19.93V22h2v-2.07A8.001 8.001 0 0 0 19.93 13H22v-2h-2.07A8.001 8.001 0 0 0 13 4.07V2h-2Zm1 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z" fill="currentColor" /></svg></button>
           <button className="map-fab" aria-label="路线"><svg className="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6Zm10 8a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM7 7a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm10 8a1 1 0 1 1 0 2 1 1 0 0 1 0-2Zm-.7-8.7 1.4 1.4-9 9-1.4-1.4 9-9Z" fill="currentColor" /></svg></button>
           {routeInfo?.polyline && (
-            <button className="map-overview-btn" aria-label="查看全程" onClick={handleViewFullRoute}>
+            <button className="map-overview-btn" aria-label="查看全程" onClick={() => applyRouteViewMode('overview')}>
               <svg className="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h5v2H7.41l3.3 3.29-1.42 1.42L6 7.41V10H4V5a1 1 0 0 1 1-1Zm9 0h5a1 1 0 0 1 1 1v5h-2V7.41l-3.29 3.3-1.42-1.42 3.3-3.29H14V4ZM6 16.59l3.29-3.3 1.42 1.42-3.3 3.29H10v2H5a1 1 0 0 1-1-1v-5h2v2.59Zm12 0V14h2v5a1 1 0 0 1-1 1h-5v-2h2.59l-3.3-3.29 1.42-1.42 3.29 3.3Z" fill="currentColor" /></svg>
               <span>查看全程</span>
             </button>

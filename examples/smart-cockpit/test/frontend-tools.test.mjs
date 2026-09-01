@@ -10,6 +10,10 @@ import {
 test('calls selected cockpit tools inline through the frontend MCP client', async t => {
   const service = new CockpitService({
     services: {
+      async resolvePlace() { return '120.1,30.2' },
+      async drivingRoute() {
+        return { distance: 1_000, duration: 120, polyline: '120.0,30.0;120.1,30.2', trafficSegments: [] }
+      },
       async weather(city) {
         return { city, dayweather: '晴', daytemp: '27' }
       },
@@ -30,6 +34,9 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
             vehicle_state_query: { enabled: true },
             vehicle_window_control: { enabled: true },
             vehicle_headlights_control: { enabled: true },
+            navigation_set_route_strategy: { enabled: true },
+            navigation_set_voice: { enabled: true },
+            navigation_set_view: { enabled: true },
           },
         },
       },
@@ -43,6 +50,9 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
     'mcp__cockpit__vehicle_state_query',
     'mcp__cockpit__vehicle_window_control',
     'mcp__cockpit__vehicle_headlights_control',
+    'mcp__cockpit__navigation_set_route_strategy',
+    'mcp__cockpit__navigation_set_voice',
+    'mcp__cockpit__navigation_set_view',
   ])
   const output = await client.execute('mcp__cockpit__weather', { city: '杭州' })
   assert.match(output.text, /杭州，晴，27°/u)
@@ -58,7 +68,23 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
   })
   assert.match(state.text, /主驾车窗: 开启/u)
   assert.match(state.text, /大灯: 开启/u)
+  await service.execute('navigation_start', { destination: '西湖' })
+  const view = await client.execute('mcp__cockpit__navigation_set_view', {
+    viewMode: 'overview',
+  })
+  assert.match(view.text, /路线全览/u)
+  const strategy = await client.execute('mcp__cockpit__navigation_set_route_strategy', {
+    strategy: 4,
+  })
+  assert.match(strategy.text, /躲避拥堵/u)
+  const voice = await client.execute('mcp__cockpit__navigation_set_voice', {
+    broadcastMode: 'brief',
+  })
+  assert.match(voice.text, /简洁播报/u)
   assert.equal(service.snapshot().weather.daytemp, '27')
   assert.equal(service.snapshot().vehicle.windowFL, 1)
   assert.equal(service.snapshot().vehicle.headlights, 1)
+  assert.equal(service.snapshot().navigation.viewMode, 'overview')
+  assert.equal(service.snapshot().navigation.strategy, 4)
+  assert.equal(service.snapshot().navigation.voice.broadcastMode, 'brief')
 })

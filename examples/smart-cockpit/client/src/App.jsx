@@ -60,6 +60,12 @@ function getClientId() {
   return id
 }
 
+function createClientId() {
+  const id = crypto.randomUUID()
+  localStorage.setItem('clientId', id)
+  return id
+}
+
 function getStoredChoice(key, fallback, validValues) {
   const value = localStorage.getItem(key)
   return validValues.includes(value) ? value : fallback
@@ -77,12 +83,13 @@ function parseHash() {
 }
 
 export default function App() {
-  const clientId = useMemo(() => getClientId(), [])
+  const [clientId, setClientId] = useState(() => getClientId())
   const cockpitId = import.meta.env.VITE_COCKPIT_ID || 'default'
   const {
     state: cockpitState,
     progress: cockpitProgress,
     execute: executeCockpitCommand,
+    reset: resetCockpitState,
   } = useCockpitState(cockpitId)
   const [screen, setScreen] = useState('main')
   const [settingsTab, setSettingsTab] = useState('persona')
@@ -114,6 +121,14 @@ export default function App() {
   const musicSelectTrack = useCallback((index) => {
     runCockpitCommand('music_play', { query: PLAYLIST[index]?.title })
   }, [runCockpitCommand])
+
+  const navigateToFavorite = useCallback((favoriteType) => {
+    runCockpitCommand('navigation_to_favorite', { favoriteType })
+  }, [runCockpitCommand])
+
+  const openDestinationInput = useCallback(() => {
+    setShowChat(true)
+  }, [])
 
   useEffect(() => {
     localStorage.setItem(PERSONA_STORAGE_KEY, selectedPersona)
@@ -304,6 +319,15 @@ export default function App() {
     sendInput([{ type: 'text', text }])
   ), [sendInput])
 
+  const handleClearDebug = useCallback(() => {
+    voiceAssistantMessageIdRef.current = null
+    setChatMessages([])
+    setClientId(createClientId())
+    resetCockpitState().catch(error => {
+      console.warn('Cockpit reset failed', error)
+    })
+  }, [resetCockpitState])
+
   useEffect(() => {
     const targetScreen = cockpitScreenForProgress(visualProgress, {
       navigationActive: navState.status === 'navigating',
@@ -349,7 +373,16 @@ export default function App() {
               onToggleVoiceMute={toggleVoiceMute}
             />
             {screen === 'main' && (
-              <MapPanel navState={navState} navProgress={visualProgress} mapActions={mapActions} routeStrategy={routeStrategy} onStrategyChange={setRouteStrategy} />
+              <MapPanel
+                navState={navState}
+                navProgress={visualProgress}
+                mapActions={mapActions}
+                routeStrategy={routeStrategy}
+                onStrategyChange={setRouteStrategy}
+                onFavoriteNavigate={navigateToFavorite}
+                onFavoriteSetup={openDestinationInput}
+                onSearchDestination={openDestinationInput}
+              />
             )}
             {screen === 'music' && (
               <MusicPanel musicState={musicState} onPlay={musicPlay} onPause={musicPause} onNext={musicNext} onPrev={musicPrev} onSelectTrack={musicSelectTrack} />
@@ -366,7 +399,7 @@ export default function App() {
               />
             )}
           </div>
-          {showChat && <ChatPanel onClose={toggleChat} messages={chatMessages} onMessagesChange={setChatMessages} onSendMessage={handleTextMessage} voiceActive={!voiceMuted} />}
+          {showChat && <ChatPanel onClose={toggleChat} onClear={handleClearDebug} messages={chatMessages} onMessagesChange={setChatMessages} onSendMessage={handleTextMessage} voiceActive={!voiceMuted} />}
         </div>
 
         <Dock screen={screen} onNavigateHome={navigateHome} onOpenSettings={() => openSettings('persona')} onToggleChat={toggleChat} carState={carState} musicState={musicState} onTogglePlay={musicState.playing ? musicPause : musicPlay} onOpenMusic={openMusic} onOpenFlashBuy={openFlashBuy} />

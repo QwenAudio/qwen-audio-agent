@@ -76,19 +76,20 @@ A preflight validates the Realtime configuration and all four ports before any c
 - The primary cockpit stays voice-only. Transcripts appear only in the debug panel, and ASR displays final results only.
 - Scenario-specific HTTP/SSE projects vehicle, route, media, weather, and order state, plus fine-grained scenario progress. The Gateway does not parse those objects.
 - The foreground Agent owns realtime conversation and directly calls weather,
-  vehicle-state, window, and headlight tools through standard MCP. Explicit
-  window and headlight commands execute inline without a redundant second confirmation.
+  vehicle-state, window, headlight, and short in-route navigation tools through
+  standard MCP. Explicit window, headlight, route-view, voice, and current-route
+  preference commands execute inline without a redundant second confirmation.
 - Other cockpit work goes through the fixed `spawn_thinking` bridge. The example
   backend attaches over A2A, and Qwen3.8-Flash discovers the separate backend MCP
-  surface for sunroof, climate, navigation, music, and flash-buy operations,
-  including ordered multi-stop navigation.
+  surface for sunroof, climate, complex navigation, music, and flash-buy
+  operations, including ordered multi-stop navigation.
 - How the backend invokes tools and organizes work is backend-private. If it
   creates independent derived Sessions, they form an optional third-layer
   execution space extended by the backend without changing the foreground protocol.
 - Scenario tools live in domain-oriented packages under [`service/tools/`](service/tools/README.md).
   One explicit registry adds domain groups and assigns individual tools to the
-  foreground; all remaining tools stay on the backend surface without changing
-  Gateway protocols or duplicating executors.
+  foreground or backend surfaces without changing Gateway protocols or
+  duplicating executors.
 - Customers can replace the UI, cockpit Agent, or cockpit service without changing the framework core.
 
 ## Development and tests

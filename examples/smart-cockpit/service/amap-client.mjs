@@ -116,19 +116,62 @@ export async function geocode(address, city) {
 }
 
 export async function searchPlace(keywords, city) {
+  const places = await searchPlaces(keywords, { city, limit: 1 })
+  return places[0] || null
+}
+
+function normalizePoi(poi) {
+  if (!poi) return null
+  return {
+    id: poi.id || '',
+    name: poi.name || '',
+    type: poi.type || poi.typecode || '',
+    address: Array.isArray(poi.address) ? poi.address.join('') : poi.address || '',
+    distance: poi.distance ? Number(poi.distance) || null : null,
+    location: poi.location || '',
+  }
+}
+
+export async function searchPlaces(keywords, {
+  city,
+  types,
+  limit = 5,
+} = {}) {
   const args = { keywords }
   if (city) args.city = city
+  if (types) args.types = types
   const text = extractText(await callMcp('maps_text_search', args))
-  if (!text) return null
+  if (!text) return []
   try {
-    const poi = JSON.parse(text).pois?.[0]
-    if (poi?.location) return { location: poi.location, name: poi.name }
-    if (poi?.id) {
-      const location = await getPoiLocation(poi.id)
-      if (location) return { location, name: poi.name }
+    const pois = JSON.parse(text).pois || []
+    const places = []
+    for (const poi of pois.slice(0, limit)) {
+      const place = normalizePoi(poi)
+      if (!place) continue
+      if (!place.location && place.id) place.location = await getPoiLocation(place.id) || ''
+      places.push(place)
     }
+    return places
   } catch {}
-  return null
+  return []
+}
+
+export async function searchNearbyPlaces({
+  keywords,
+  location,
+  radius,
+  limit = 5,
+} = {}) {
+  const args = { location }
+  if (keywords) args.keywords = keywords
+  if (radius) args.radius = String(radius)
+  const text = extractText(await callMcp('maps_around_search', args))
+  if (!text) return []
+  try {
+    const pois = JSON.parse(text).pois || []
+    return pois.slice(0, limit).map(normalizePoi).filter(Boolean)
+  } catch {}
+  return []
 }
 
 async function getPoiLocation(id) {

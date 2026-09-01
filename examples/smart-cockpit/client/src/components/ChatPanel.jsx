@@ -14,6 +14,15 @@ const TOOL_TAGS = {
   navigation_start: { label: '开始导航', cls: 'tag-nav' },
   navigation_route_query: { label: '路线查询', cls: 'tag-nav' },
   navigation_stop: { label: '停止导航', cls: 'tag-nav' },
+  navigation_add_waypoint: { label: '增加途经点', cls: 'tag-nav' },
+  navigation_remove_waypoint: { label: '删除途经点', cls: 'tag-nav' },
+  navigation_change_destination: { label: '变更目的地', cls: 'tag-nav' },
+  navigation_set_route_strategy: { label: '路线偏好', cls: 'tag-nav' },
+  navigation_search_place: { label: '地点搜索', cls: 'tag-nav' },
+  navigation_to_favorite: { label: '常用地点导航', cls: 'tag-nav' },
+  navigation_set_favorite: { label: '设置常用地点', cls: 'tag-nav' },
+  navigation_set_voice: { label: '导航播报', cls: 'tag-nav' },
+  navigation_set_view: { label: '导航视图', cls: 'tag-nav' },
   maps_geo: { label: '地理编码', cls: 'tag-nav' },
   maps_text_search: { label: '地点搜索', cls: 'tag-nav' },
   maps_search_detail: { label: '地点详情', cls: 'tag-nav' },
@@ -50,6 +59,7 @@ function getDefaultPosition(panel) {
 
 export default function ChatPanel({
   onClose,
+  onClear,
   messages,
   onMessagesChange,
   onSendMessage,
@@ -136,6 +146,19 @@ export default function ChatPanel({
       <div className="chat-header" onMouseDown={handleDragStart}>
         <span className="chat-title">Qwen Audio Agent Smart Cockpit · 调试</span>
         <div className="chat-header-actions">
+          <button
+            className="chat-clear"
+            onClick={onClear}
+            onMouseDown={event => event.stopPropagation()}
+            aria-label="清空"
+            title="清空"
+          >
+            <svg className="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              <path d="M6 7l1 13h10l1-13M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+            </svg>
+          </button>
           <button className="chat-close" onClick={onClose} aria-label="关闭">
             <svg className="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

@@ -20,6 +20,18 @@
         "vehicle_headlights_control": {
           "enabled": true,
           "description": "立即打开或关闭车辆大灯；用户明确说出的灯光控制指令即为本次操作授权。"
+        },
+        "navigation_set_route_strategy": {
+          "enabled": true,
+          "description": "在已有导航或路线预览中立即切换路线偏好并重新规划。用户说“躲避拥堵”“不走高速”“少收费”“高速优先”“时间优先”等当前路线修改时直接调用。"
+        },
+        "navigation_set_voice": {
+          "enabled": true,
+          "description": "立即设置导航静音或播报模式。用户说“导航静音”“取消静音”“详细播报”“简洁播报”“标准播报”时直接调用。"
+        },
+        "navigation_set_view": {
+          "enabled": true,
+          "description": "立即设置地图导航视图。用户说“查看全程”“路线全览”“回到跟车视角”“北向上”时直接调用。"
         }
       }
     }

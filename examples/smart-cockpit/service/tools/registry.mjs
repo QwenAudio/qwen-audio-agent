@@ -19,10 +19,21 @@ function definition(tool) {
       readOnlyHint: [
         'vehicle_state_query',
         'navigation_route_query',
+        'navigation_search_place',
         'music_search',
         'weather',
       ].includes(tool.name),
-      openWorldHint: ['navigation_start', 'navigation_route_query', 'weather'].includes(tool.name),
+      openWorldHint: [
+        'navigation_start',
+        'navigation_route_query',
+        'navigation_add_waypoint',
+        'navigation_change_destination',
+        'navigation_set_route_strategy',
+        'navigation_search_place',
+        'navigation_to_favorite',
+        'navigation_set_favorite',
+        'weather',
+      ].includes(tool.name),
       destructiveHint: tool.name === 'flashbuy',
     },
   })
@@ -84,6 +95,16 @@ export const FRONTEND_TOOL_NAMES = Object.freeze([
   'vehicle_state_query',
   'vehicle_window_control',
   'vehicle_headlights_control',
+  'navigation_set_route_strategy',
+  'navigation_set_voice',
+  'navigation_set_view',
+])
+
+const BACKEND_EXCLUDED_TOOL_NAMES = new Set([
+  'weather',
+  'vehicle_state_query',
+  'vehicle_window_control',
+  'vehicle_headlights_control',
 ])
 
 const toolDefinitionsByName = new Map(
@@ -101,7 +122,7 @@ export const FRONTEND_TOOL_DEFINITIONS = Object.freeze(
   FRONTEND_TOOL_NAMES.map(name => toolDefinitionsByName.get(name)),
 )
 export const BACKEND_TOOL_DEFINITIONS = Object.freeze(
-  COCKPIT_TOOL_DEFINITIONS.filter(tool => !frontendNames.has(tool.name)),
+  COCKPIT_TOOL_DEFINITIONS.filter(tool => !BACKEND_EXCLUDED_TOOL_NAMES.has(tool.name)),
 )
 
 const EXECUTORS = new Map(COCKPIT_TOOL_GROUPS.flatMap(group => (

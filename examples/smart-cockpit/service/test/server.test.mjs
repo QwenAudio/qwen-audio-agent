@@ -57,6 +57,14 @@ test('serves state and commands over the scenario HTTP boundary', async t => {
   const state = await fetch(`${server.origin}/api/cockpit/state?cockpitId=http-car`)
     .then(response => response.json())
   assert.equal(state.vehicle.headlights, 1)
+
+  const reset = await fetch(`${server.origin}/api/cockpit/reset`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cockpitId: 'http-car' }),
+  }).then(response => response.json())
+  assert.equal(reset.vehicle.headlights, 0)
+  assert.equal(reset.navigation.status, 'idle')
 })
 
 test('streams authoritative state changes to cockpit panels', async t => {
@@ -169,7 +177,7 @@ test('separates frontend and backend tools across standard MCP surfaces', async 
   t.after(() => frontend.close())
 
   const backendTools = await backend.listTools()
-  assert.equal(backendTools.tools.length, 11)
+  assert.equal(backendTools.tools.length, 20)
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_climate_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'flashbuy'))
   assert.ok(!backendTools.tools.some(tool => tool.name === 'weather'))
@@ -182,6 +190,9 @@ test('separates frontend and backend tools across standard MCP surfaces', async 
     'vehicle_state_query',
     'vehicle_window_control',
     'vehicle_headlights_control',
+    'navigation_set_route_strategy',
+    'navigation_set_voice',
+    'navigation_set_view',
   ])
 
   const output = await backend.callTool({
@@ -204,6 +215,23 @@ test('separates frontend and backend tools across standard MCP surfaces', async 
   })
   assert.equal(window.isError, undefined)
   assert.equal(window.structuredContent.vehicle.windowFL, 1)
+
+  await backend.callTool({
+    name: 'navigation_start',
+    arguments: { destination: '西湖' },
+  })
+  const view = await frontend.callTool({
+    name: 'navigation_set_view',
+    arguments: { viewMode: 'overview' },
+  })
+  assert.equal(view.isError, undefined)
+  assert.equal(view.structuredContent.navigation.viewMode, 'overview')
+  const strategy = await frontend.callTool({
+    name: 'navigation_set_route_strategy',
+    arguments: { strategy: 4 },
+  })
+  assert.equal(strategy.isError, undefined)
+  assert.equal(strategy.structuredContent.navigation.strategy, 4)
 
   const unavailable = await backend.callTool({
     name: 'vehicle_window_control',

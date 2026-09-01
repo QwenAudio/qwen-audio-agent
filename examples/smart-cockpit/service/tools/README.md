@@ -12,8 +12,10 @@ shared cockpit state and external services through the execution context.
 - Capability implementations stay grouped by domain in `COCKPIT_TOOL_GROUPS`.
 - `FRONTEND_TOOL_NAMES` selects simple low-latency tools called inline by the
   foreground Realtime Agent.
-- Every remaining tool is exposed to the replaceable cockpit Agent over the
-  backend MCP surface.
+- `BACKEND_EXCLUDED_TOOL_NAMES` keeps frontend-only tools out of the backend
+  MCP surface; tools not excluded remain available to the replaceable cockpit
+  Agent. Some immediate navigation tools are intentionally shared by both
+  surfaces.
 
 Both surfaces use the standard MCP contract. Adding a group requires no change
 to the Gateway protocol or the cockpit UI protocol. A domain group may safely

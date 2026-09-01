@@ -28,3 +28,18 @@ export function navigationRouteView(navigation) {
     waypointLocations,
   }
 }
+
+export function navigationRouteKey(navigation) {
+  return JSON.stringify({
+    status: navigation?.status || 'idle',
+    destination: navigation?.destination || '',
+    route: navigation?.route || null,
+    map: {
+      markers: (navigation?.map?.markers || []).map(marker => ({
+        role: marker?.role,
+        index: marker?.index,
+        location: marker?.location,
+      })),
+    },
+  })
+}

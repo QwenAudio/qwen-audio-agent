@@ -2,6 +2,8 @@
 
 [English](README.md) | 中文
 
+![智能座舱框架架构图](docs/framework-architecture.svg)
+
 这是 qwen-audio-agent 在智能座舱领域的可运行落地示范。它使用框架公开能力
 重新实现完整座舱链路，并在边界合适的地方复用早期座舱原型的 UI 代码和视觉资源，
 以节约实现成本。它不是对旧 Demo 的迁移或兼容改造，也没有自建第二套 Realtime

@@ -2,6 +2,8 @@
 
 English | [中文](README_ZH.md)
 
+![Smart cockpit framework architecture](docs/framework-architecture.svg)
+
 This is qwen-audio-agent's runnable smart-cockpit showcase. It reimplements the
 complete cockpit path through public framework APIs while reusing suitable UI
 code and visual assets from an earlier cockpit prototype to save implementation

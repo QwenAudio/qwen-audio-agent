@@ -136,6 +136,8 @@ const translations = {
   '语音前台连接异常，正在重试': 'Voice frontend connection error, retrying',
   '实时语音连接中断，正在重连': 'Realtime voice connection lost, reconnecting',
   '无法打开麦克风': 'Could not open the microphone',
+  '正在切换麦克风': 'Switching microphone',
+  '未检测到可用麦克风，连接设备后会自动恢复': 'No microphone detected. Input will recover automatically when a device is connected.',
   '无法初始化实时语音播放': 'Could not initialize realtime voice playback',
   '加载远程图片': 'Load remote image',
   '加载远程音频': 'Load remote audio',

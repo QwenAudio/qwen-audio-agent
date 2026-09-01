@@ -21,10 +21,16 @@ import {
   COCKPIT_ASSISTANT_PROFILE_EVENT,
   cockpitPersonaId,
 } from '../config/personas'
+import { activateAudioContext } from '../audio/activation'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
 const SPEECH_THRESHOLD = 0.035
+const AUDIO_CAPTURE_CONSTRAINTS = {
+  echoCancellation: true,
+  noiseSuppression: true,
+  autoGainControl: true,
+}
 const TASK_TERMINAL_EVENTS = new Set([
   'task.completed',
   'task.failed',
@@ -115,6 +121,8 @@ export default function useVoiceSession({
   const [connectionError, setConnectionError] = useState(null)
   const clientRef = useRef(null)
   const audioContextRef = useRef(null)
+  const audioReadyRef = useRef(null)
+  const mediaRequestRef = useRef(null)
   const inputSampleRateRef = useRef(INPUT_SAMPLE_RATE)
   const mutedRef = useRef(muted)
   const personaRef = useRef(persona)
@@ -300,6 +308,35 @@ export default function useVoiceSession({
     }
   }, [finishResponsePlayback, sendPlaybackReceipt])
 
+  const activateVoice = useCallback(() => {
+    try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('当前浏览器不支持麦克风采集')
+      }
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext
+      const activation = activateAudioContext({
+        current: audioContextRef.current,
+        AudioContextClass,
+      })
+      audioContextRef.current = activation.context
+      audioReadyRef.current = activation.ready
+      const mediaRequest = navigator.mediaDevices.getUserMedia({
+        audio: AUDIO_CAPTURE_CONSTRAINTS,
+      })
+      mediaRequestRef.current = mediaRequest
+      // The capture effect consumes both promises. Attach handlers here too so
+      // a fast rejection cannot become unhandled before React runs the effect.
+      activation.ready.catch(() => {})
+      mediaRequest.catch(() => {})
+      setError(null)
+      return true
+    } catch (reason) {
+      setError(reason?.message || '语音启用失败')
+      setVoiceState('error')
+      return false
+    }
+  }, [])
+
   useEffect(() => {
     const handleEvent = (event) => {
       const state = gatewayVoiceState(event)
@@ -326,6 +363,8 @@ export default function useVoiceSession({
         onVoiceMessageRef.current?.({
           role: event.role,
           content: event.content,
+          responseId: event.responseId,
+          turnId: event.turnId,
           delta: event.type === GatewayServerEvent.TRANSCRIPT_DELTA,
           final: event.type === GatewayServerEvent.TRANSCRIPT_FINAL,
         })
@@ -444,24 +483,29 @@ export default function useVoiceSession({
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error('当前浏览器不支持麦克风采集')
         }
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext
-        if (!AudioContextClass) throw new Error('当前浏览器不支持实时语音播放')
-        const context = audioContextRef.current?.state === 'closed'
-          ? new AudioContextClass()
-          : audioContextRef.current || new AudioContextClass()
-        audioContextRef.current = context
-        await context.resume()
-        media = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        })
+        const pendingMedia = mediaRequestRef.current
+        mediaRequestRef.current = null
+        media = await (pendingMedia || navigator.mediaDevices.getUserMedia({
+          audio: AUDIO_CAPTURE_CONSTRAINTS,
+        }))
         if (disposed) {
           media.getTracks().forEach(track => track.stop())
           return
         }
+        let context = audioContextRef.current
+        let audioReady = audioReadyRef.current
+        if (!context || !audioReady) {
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext
+          const activation = activateAudioContext({
+            current: context,
+            AudioContextClass,
+          })
+          context = activation.context
+          audioReady = activation.ready
+          audioContextRef.current = context
+          audioReadyRef.current = audioReady
+        }
+        await audioReady
         analyser = context.createAnalyser()
         analyser.fftSize = 512
         source = context.createMediaStreamSource(media)
@@ -501,6 +545,7 @@ export default function useVoiceSession({
         }
         frame = requestAnimationFrame(tick)
       } catch (reason) {
+        media?.getTracks().forEach(track => track.stop())
         if (!disposed) {
           setInputLevel(0)
           setVoiceState('error')
@@ -522,6 +567,8 @@ export default function useVoiceSession({
   useEffect(() => () => {
     audioContextRef.current?.close()
     audioContextRef.current = null
+    audioReadyRef.current = null
+    mediaRequestRef.current = null
   }, [])
 
   const sendInput = useCallback((parts) => (
@@ -534,6 +581,7 @@ export default function useVoiceSession({
     outputLevel,
     progress,
     error: connectionError || error,
+    activateVoice,
     sendInput,
   }
 }

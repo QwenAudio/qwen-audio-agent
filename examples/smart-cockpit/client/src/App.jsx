@@ -13,7 +13,11 @@ import FlashBuyPanel from './components/FlashBuyPanel'
 import useCockpitState from './hooks/useCockpitState'
 import useCockpitSkills from './hooks/useCockpitSkills'
 import useVoiceSession from './hooks/useVoiceSession'
-import { finalUserTranscript } from './projections/voice-transcript'
+import {
+  finalUserTranscript,
+  voiceConversationMessageId,
+  voiceEventBelongsToTurn,
+} from './projections/voice-transcript'
 import { cockpitScreenForProgress } from './projections/cockpit-activity'
 import {
   COCKPIT_VOICE_IDS,
@@ -120,6 +124,7 @@ export default function App() {
   const weatherState = cockpitState?.weather || INITIAL_WEATHER_STATE
   const [voiceMuted, setVoiceMuted] = useState(true)
   const voiceAssistantMessageIdRef = useRef(null)
+  const voiceTurnIdRef = useRef('')
 
   const runCockpitCommand = useCallback((name, args = {}) => {
     executeCockpitCommand(name, args).catch(error => {
@@ -197,16 +202,20 @@ export default function App() {
     setShowChat(prev => !prev)
   }, [])
 
-  const toggleVoiceMute = useCallback(() => {
-    setVoiceMuted(prev => !prev)
-  }, [])
-
   const handleVoiceMessage = useCallback((event) => {
     if (!event) return
 
     const updateAssistantMessage = (updater) => {
-      const id = voiceAssistantMessageIdRef.current || crypto.randomUUID()
-      voiceAssistantMessageIdRef.current = id
+      const id = voiceConversationMessageId(
+        event,
+        voiceAssistantMessageIdRef.current || crypto.randomUUID(),
+      )
+      if (
+        event.final !== true
+        && voiceEventBelongsToTurn(event, voiceTurnIdRef.current)
+      ) {
+        voiceAssistantMessageIdRef.current = id
+      }
       setChatMessages(prev => {
         const next = [...prev]
         let index = next.findIndex(msg => msg.id === id)
@@ -217,6 +226,7 @@ export default function App() {
         next[index] = updater(next[index])
         return next.slice(-80)
       })
+      return id
     }
 
     if (event.thinkingDelta) {
@@ -272,13 +282,17 @@ export default function App() {
       voiceAssistantMessageIdRef.current = null
       const content = finalUserTranscript(event)
       if (!content) return
+      voiceTurnIdRef.current = String(event.turnId || '').trim()
+      const id = voiceConversationMessageId(event, crypto.randomUUID())
       setChatMessages(prev => {
-        const last = prev.at(-1)
-        if (last?.role === 'user' && last.content === content) return prev
-        return [
-          ...prev,
-          { id: crypto.randomUUID(), role: 'user', content },
-        ].slice(-80)
+        const next = [...prev]
+        const index = next.findIndex(message => message.id === id)
+        if (index >= 0) {
+          next[index] = { ...next[index], role: 'user', content }
+        } else {
+          next.push({ id, role: 'user', content })
+        }
+        return next.slice(-80)
       })
       return
     }
@@ -292,17 +306,26 @@ export default function App() {
     }
 
     if (event.final) {
-      updateAssistantMessage(msg => ({ ...msg, content: event.content || msg.content }))
-      voiceAssistantMessageIdRef.current = null
+      const id = updateAssistantMessage(msg => ({
+        ...msg,
+        content: event.content || msg.content,
+      }))
+      if (voiceAssistantMessageIdRef.current === id) {
+        voiceAssistantMessageIdRef.current = null
+      }
     }
   }, [])
 
   const handleConversationRecovery = useCallback((messages) => {
     voiceAssistantMessageIdRef.current = null
-    setChatMessages((Array.isArray(messages) ? messages : []).map(message => ({
+    const recovered = (Array.isArray(messages) ? messages : []).map(message => ({
       ...message,
       id: message.id || crypto.randomUUID(),
-    })).slice(-10))
+    })).slice(-10)
+    voiceTurnIdRef.current = [...recovered]
+      .reverse()
+      .find(message => message.role === 'user')?.turnId || ''
+    setChatMessages(recovered)
   }, [])
 
   const {
@@ -311,6 +334,7 @@ export default function App() {
     outputLevel,
     progress: voiceProgress,
     error: voiceError,
+    activateVoice,
     sendInput,
   } = useVoiceSession({
     muted: voiceMuted,
@@ -320,6 +344,13 @@ export default function App() {
     onVoiceMessage: handleVoiceMessage,
     onConversationRecovery: handleConversationRecovery,
   })
+  const toggleVoiceMute = useCallback(() => {
+    if (!voiceMuted) {
+      setVoiceMuted(true)
+      return
+    }
+    if (activateVoice()) setVoiceMuted(false)
+  }, [activateVoice, voiceMuted])
   const visualProgress = cockpitProgress || voiceProgress
 
   const handleTextMessage = useCallback((text) => (

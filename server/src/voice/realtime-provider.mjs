@@ -74,6 +74,8 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   // Applies instructions supplied on one response.create without requiring a
   // persistent conversation item.
   perResponseInstructions: false,
+  // Applies a client-selected output voice when creating a fresh Session.
+  sessionOutputVoice: false,
   // Echoes a client-assigned item id in conversation.item.created. Some
   // providers acknowledge the item but replace its id, so those providers
   // must opt out and use the single pending item waiter instead.
@@ -89,6 +91,7 @@ export class RealtimeFrontend {
     onClose,
     onDiagnostic,
     agentContext = {},
+    sessionOptions = {},
     responseStartTimeoutMs,
     responseInactivityTimeoutMs,
     responseCompletionTimeoutMs,
@@ -112,6 +115,7 @@ export class RealtimeFrontend {
     this.onClose = onClose
     this.onDiagnostic = onDiagnostic
     this.agentContext = agentContext
+    this.sessionOptions = sessionOptions
     this.ws = null
     this.ready = false
     this.sessionConfigured = false
@@ -250,6 +254,7 @@ export class RealtimeFrontend {
     const session = this.provider.buildSession({
       configured: this.sessionConfigured,
       agentContext: this.agentContext,
+      sessionOptions: this.sessionOptions,
     })
     this.send(this.protocol.sessionUpdate(session))
   }
@@ -703,6 +708,18 @@ export class RealtimeFrontend {
         const first = this.responseWaiters.entries().next().value
         id = first[0]
         pending = first[1]
+      }
+      // Automatic VAD responses are not represented in responseWaiters. Some
+      // providers also omit response_id from a terminal error (notably content
+      // safety failures), so associate it with the sole active response. If we
+      // leave that id behind, whenIdle() never resolves and every later output
+      // remains blocked behind a response that has already failed.
+      if (
+        event.type === 'error'
+        && !id && this.activeResponses.size === 1
+      ) {
+        id = this.activeResponses.values().next().value
+        event.response_id = id
       }
       // A response.create can race either another response or the tail of a
       // Smart Turn input. Both are transient: retry the exact refused payload

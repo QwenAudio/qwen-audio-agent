@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { CockpitService } from '../service/cockpit-service.mjs'
-import { CockpitServiceServer } from '../service/server.mjs'
-import { FrontendMcpClient } from '../../../server/src/providers/mcp/frontend-mcp-client.mjs'
+import { CockpitService } from '../../service/cockpit-service.mjs'
+import { CockpitServiceServer } from '../../service/server.mjs'
+import { FrontendMcpClient } from '../../../../server/src/providers/mcp/frontend-mcp-client.mjs'
 import {
   normalizeFrontendMcpConfiguration,
-} from '../../../server/src/providers/mcp/frontend-mcp-config.mjs'
+} from '../../../../server/src/providers/mcp/frontend-mcp-config.mjs'
 
 test('calls selected cockpit tools inline through the frontend MCP client', async t => {
   const service = new CockpitService({

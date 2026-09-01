@@ -36,6 +36,9 @@ WebUI 和 TUI 只展示当前生效模型，不单独覆盖。
 ## 音色与话轮检测
 
 - 默认音色 `longanqian`，可用 `QWEN_AUDIO_REALTIME_VOICE` 覆盖。
+- GCP 客户端可在首次 `session.hello` 的 `connection.output_voice` 中提供会话级音色；
+  它优先于环境变量。运行时调用 `GatewayClient.updateOutputVoice(voice)`，Gateway 会
+  重建上游 Realtime Session，客户端连接和 Gateway 会话保持不变。
 - 话轮检测为 `smart_turn`（语义判停），由运行时配置，不暴露手动 VAD 调参。
 
 ## 端点覆盖

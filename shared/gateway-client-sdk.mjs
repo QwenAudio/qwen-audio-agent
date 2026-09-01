@@ -9,6 +9,7 @@ import {
 
 const RESULT_TYPES = new Set([
   GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT,
+  GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
   GatewayClientProtocolEvent.TASK_CREATE_RESULT,
   GatewayClientProtocolEvent.TASK_GET_RESULT,
   GatewayClientProtocolEvent.TASK_LIST_RESULT,
@@ -49,6 +50,7 @@ function connectionConfiguration(value = {}) {
     ...(value.textOnly === undefined ? {} : { text_only: value.textOnly === true }),
     ...(value.wakeWordOnly === undefined ? {} : { wake_word_only: value.wakeWordOnly === true }),
     ...(value.provider ? { provider: String(value.provider) } : {}),
+    ...(value.outputVoice ? { output_voice: String(value.outputVoice) } : {}),
     ...(value.workingDirectory ? { working_directory: String(value.workingDirectory) } : {}),
     ...(Array.isArray(value.clientStates) ? { client_states: value.clientStates } : {}),
   }
@@ -181,6 +183,20 @@ export class GatewayClient {
         }))
       }
     })
+  }
+
+  updateOutputVoice(voice, options) {
+    if (!this.supports(GatewayClientCapability.SESSION_OUTPUT_VOICE)) {
+      return Promise.reject(Object.assign(
+        new Error('session.output_voice was not negotiated'),
+        { code: 'capability_not_negotiated' },
+      ))
+    }
+    return this.request(
+      GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE,
+      { voice: String(voice || '').trim() },
+      options,
+    )
   }
 
   async recover() {

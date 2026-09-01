@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "servers": {
+    "cockpit": {
+      "enabled": true,
+      "url": "${COCKPIT_FRONTEND_MCP_URL}",
+      "tools": {
+        "weather": {
+          "enabled": true,
+          "description": "查询指定城市的当日天气、温度和出行提示。这是可由前台语音助手直接调用的座舱示例工具。"
+        },
+        "vehicle_state_query": {
+          "enabled": true,
+          "description": "直接查询车窗、天窗、大灯和空调等车辆当前状态。用户询问是否开启、当前档位或整体车况时使用；不要把状态问题当成控制指令。"
+        },
+        "vehicle_window_control": {
+          "enabled": true,
+          "description": "立即打开或关闭指定车窗；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
+        },
+        "vehicle_headlights_control": {
+          "enabled": true,
+          "description": "立即打开或关闭车辆大灯；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
+        }
+      }
+    }
+  }
+}

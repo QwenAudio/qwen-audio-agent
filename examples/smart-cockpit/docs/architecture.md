@@ -18,9 +18,10 @@
 | 目录 / 入口 | 性质 | 允许依赖 | 不应承担 |
 |---|---|---|---|
 | `client/` | 前台客户端示例 | GCP Client SDK、座舱 Service HTTP/SSE | Realtime Provider、后台 Agent 实现、业务执行 |
-| `gateway.mjs` | 前台装配入口 | qwen-audio-agent 公开导出、场景 Profile、A2A Agent Card | 复制 Gateway 核心、解析座舱业务对象 |
+| `gateway/` | 前台 Agent 与 Gateway 装配 | qwen-audio-agent 公开导出、场景 Profile、A2A Agent Card | 复制 Gateway 核心、解析座舱业务对象 |
 | `agent/` | 模型驱动的后台 Agent 示例 | DashScope、A2A SDK、`/mcp/backend` | UI 控制、Realtime 会话、场景状态存储 |
 | `service/` | 座舱环境与基础设施 | `service/tools/`、场景状态与规则、外部服务适配、HTTP/SSE/MCP Transport | 对话、播报、Agent 编排 |
+| `bootstrap/` | 本地示例启动支持 | `.env.local`、端口探测 | 对话、业务状态或 Agent 行为 |
 
 运行时依赖始终从客户端指向公开 Gateway 协议、从 Gateway 指向公开 BackendPort，
 不会从示例反向引用框架内部源码。测试可以直接引用内部实现做契约验证，但这不是
@@ -32,7 +33,7 @@
 cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► cockpit-agent
       │                          │                         │
       │ HTTP/SSE                │ frontend MCP            │ backend MCP
-      │ 业务状态                 │ 天气/车况/车窗/大灯       │ 天窗/空调/导航/音乐/闪购
+      │ 业务状态                 │ 天气/车况/车窗/大灯       │ 完整工具面/自定义技能
       ▼                          ▼                         ▼
                          cockpit-service
                          单一场景状态与工具执行
@@ -52,17 +53,35 @@ cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► coc
 - UI 通过 HTTP 获取快照、执行面板操作，通过 SSE 接收状态变化。
 - Gateway 的前台 Agent 通过 `/mcp/frontend` 直接使用天气、车况、车窗和大灯工具；
   明确的车窗和大灯口头指令直接执行，不增加重复确认。
-- 后台 Agent 通过 `/mcp/backend` 使用天窗、空调、导航、音乐和闪购工具。
-- 两个工具面由 `service/tools/registry.mjs` 显式组合，但共用同一份座舱状态。
+- 后台 Agent 通过 `/mcp/backend` 使用完整工具面，支持组合任务以及自定义技能的
+  发现、创建、加载和执行。
+- 两个工具面由 `service/tools/registry.mjs` 显式组合，但共用同一份执行器和座舱状态；
+  前台工具是完整后台能力上的低延迟快路径，不是另一份业务实现。
 - Gateway 不接收 `actions[]`，也不理解车辆、路线、媒体或订单结构。
 
 因此后台任务还可以把详细状态发送给客户自己的座舱系统；Gateway 只接收适合继续对话和播报的 Task 进展与结果。
 
+## 自定义技能
+
+座舱自定义技能是用户通过语音保存的场景工作流。记录由 `cockpit-service` 按
+`cockpitId` 持久化，UI 通过场景 HTTP/SSE 展示；前台只负责把创建或运行意图经
+`spawn_thinking` 交给后台。后台 Agent 每次任务读取精简目录，命中后调用
+`custom_skill_load`，再用已有 MCP 工具逐步执行。
+
+这里不会为每个技能动态注册 MCP Tool，也不会修改 A2A Agent Card。它与通过
+`qwenaudio skill install` 安装给开发者后台的 Agent Skills 是不同概念。
+
 ## 场景装配
 
-`gateway.mjs` 是唯一的前台场景装配点：它通过公开入口创建 A2A Backend Adapter、
-Backend Agent Host 和 Gateway Application。场景人设集中在 `ASSISTANT.md`，前台
-MCP 工具源由 `frontend-profile.json` 引用，没有复制框架核心，也没有引入座舱专用
-框架分支。
+`gateway/server.mjs` 是唯一的前台场景装配点：它通过公开入口创建 A2A Backend Adapter、
+Backend Agent Host 和 Gateway Application。完整前台人设集中在 `gateway/assistant/`，
+`gateway/frontend-profile.json` 指向默认的 `healer.md`。客户端在自己的
+`client/src/config/personas.js` 中维护展示项，只发送 Profile ID；Gateway 的
+`assistant/event.mjs` 独立校验 ID 并加载可信 Markdown。Gateway 等当前回复空闲后通过现有
+`session.update` 刷新同一个 Realtime Session，不重连、不重写 Markdown。
+
+人设文件只定义身份、人格与表达风格。前台工具选择规则属于 MCP description/schema，
+后台任务边界属于 `gateway/spawn-thinking-tool.mjs`。这些装配均没有复制框架核心，
+也没有引入座舱专用框架分支。
 
 四个进程的默认端口只用于本地示例，可通过 `.env.local` 覆盖。`COCKPIT_ID` 用于隔离不同座舱实例，UI 与 Agent 必须使用同一个值。

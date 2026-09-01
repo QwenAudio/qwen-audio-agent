@@ -3,7 +3,7 @@ import {
   geocode,
   getWeather,
   searchPlace,
-} from './amap-client.mjs'
+} from './client.mjs'
 
 export function createAmapCockpitServices({
   search = searchPlace,

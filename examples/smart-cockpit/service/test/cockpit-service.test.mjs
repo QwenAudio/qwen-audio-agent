@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { resolve } from 'node:path'
 import { CockpitService } from '../cockpit-service.mjs'
+import { CustomSkillStore } from '../custom-skills/store.mjs'
 import { CockpitStateStore } from '../state-store.mjs'
 
 function fixture() {
@@ -192,4 +196,38 @@ test('publishes versioned snapshots after state changes', async () => {
   assert.deepEqual(events[0].changed, ['weather'])
   assert.equal(events[0].state.weather.dayweather, '小雨')
   assert.equal(events[0].version, events[0].state.version)
+})
+
+test('stores custom skills outside transient cockpit state and publishes catalog changes', async t => {
+  const root = await mkdtemp(resolve(tmpdir(), 'qwen-cockpit-service-skills-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const customSkills = new CustomSkillStore({ root })
+  const { service, options } = fixture()
+  service.customSkills = customSkills
+  const published = []
+  const unsubscribe = service.subscribeActivity('car-one', event => published.push(event))
+
+  const created = await service.execute('custom_skill_create', {
+    name: '下班回家',
+    description: '导航、音乐和空调',
+    instructions: '依次导航回家、播放音乐并把空调调到 23 度。',
+  }, options)
+  assert.equal(created.changed.length, 0)
+  assert.equal(service.snapshot('car-one').version, 1)
+  assert.equal((await service.listSkills('car-one'))[0].name, '下班回家')
+
+  const loaded = await service.execute('custom_skill_load', {
+    skill_name: '下班回家',
+  }, options)
+  assert.match(loaded.content, /custom_skill_instructions/u)
+  assert.match(loaded.content, /23 度/u)
+  assert.equal('instructions' in loaded.data.skill, false)
+
+  await service.deleteSkill('car-one', created.data.skill.id)
+  unsubscribe()
+  assert.deepEqual(published.map(event => event.status), [
+    'skills_changed',
+    'skills_changed',
+  ])
+  assert.deepEqual(await service.listSkills('car-one'), [])
 })

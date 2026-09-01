@@ -39,6 +39,11 @@ WebUI and TUI only display the active model; they never override it.
 ## Voice and turn detection
 
 - Default voice: `longanqian` — override with `QWEN_AUDIO_REALTIME_VOICE`.
+- A GCP client may provide a session-scoped voice in
+  `connection.output_voice` on its initial `session.hello`. It takes precedence
+  over the environment default. At runtime, call
+  `GatewayClient.updateOutputVoice(voice)`; the Gateway rebuilds the upstream
+  Realtime Session while preserving the Client connection and Gateway session.
 - Turn detection: `smart_turn` (semantic end-of-turn), configured by the
   runtime; no manual VAD tuning is exposed.
 

@@ -1,4 +1,7 @@
-export const RECENT_CONVERSATION_MESSAGE_LIMIT = 10
+// Ten user/assistant turns in the common case. This window is shared by live
+// frontend history and Realtime Session restoration so reconnects retain enough
+// conversational continuity without growing the injected context unboundedly.
+export const RECENT_CONVERSATION_MESSAGE_LIMIT = 20
 
 export function recentConversationMessages(
   messages = [],

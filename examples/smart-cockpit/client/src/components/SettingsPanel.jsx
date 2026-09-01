@@ -1,7 +1,9 @@
 import PersonaTab from './PersonaTab'
+import SkillTab from './SkillTab'
 
 const TABS = [
   { id: 'persona', label: '个性化' },
+  { id: 'skills', label: '技能' },
 ]
 
 export default function SettingsPanel({
@@ -9,6 +11,7 @@ export default function SettingsPanel({
   selectedPersona, onSelectPersona,
   selectedVoice, onSelectVoice,
   selectedWake, onSelectWake,
+  skills, skillsError, onLoadSkill, onDeleteSkill,
 }) {
   return (
     <section className="settings-panel">
@@ -30,6 +33,14 @@ export default function SettingsPanel({
           selectedPersona={selectedPersona} onSelectPersona={onSelectPersona}
           selectedVoice={selectedVoice} onSelectVoice={onSelectVoice}
           selectedWake={selectedWake} onSelectWake={onSelectWake}
+        />
+      </div>
+      <div className={`tab-page ${activeTab === 'skills' ? 'is-active' : ''}`}>
+        <SkillTab
+          skills={skills}
+          error={skillsError}
+          onLoad={onLoadSkill}
+          onDelete={onDeleteSkill}
         />
       </div>
     </section>

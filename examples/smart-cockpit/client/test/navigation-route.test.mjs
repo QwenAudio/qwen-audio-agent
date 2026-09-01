@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { navigationRouteView } from '../client/src/navigation-route.js'
+import { navigationRouteView } from '../src/projections/navigation-route.js'
 
 test('projects authoritative navigation state into the map view contract', () => {
   assert.deepEqual(navigationRouteView({

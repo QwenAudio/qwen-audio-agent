@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   rememberTaskProgress,
   taskProgressFromEvent,
-} from '../client/src/task-progress.js'
+} from '../src/projections/task-progress.js'
 
 function taskEvent(type, {
   id = 'task-one',

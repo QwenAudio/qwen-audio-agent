@@ -22,9 +22,10 @@ execution space. The bundled example instead runs a compact Qwen3.8-Flash tool l
 | Directory / process | Default address | Role and contract | Change it when... |
 |---|---|---|---|
 | [`client/`](client/) / cockpit-client | `http://127.0.0.1:5173` | Replaceable foreground client. Uses GCP for conversation and scenario HTTP/SSE for panels. | Replacing the cockpit UI, browser audio I/O, or panel interaction. |
-| [`gateway.mjs`](gateway.mjs) / cockpit-gateway | `http://127.0.0.1:18888` | Foreground composition root. Reuses the framework Gateway and connects the configured backend through BackendPort/A2A. | Wiring a different protocol adapter or changing scenario composition—not implementing business logic. |
+| [`gateway/`](gateway/) / cockpit-gateway | `http://127.0.0.1:18888` | Foreground Agent and Gateway composition. Trusted personas, the frontend Profile, and the `spawn_thinking` description belong here. | Wiring a protocol adapter, changing a foreground Prompt, or changing scenario composition—not implementing business logic. |
 | [`agent/`](agent/) / cockpit-agent | `http://127.0.0.1:3020` | Replaceable model-powered A2A backend example. Qwen3.8-Flash plans and calls only the backend MCP surface. | Replacing or extending the bundled backend Agent. |
 | [`service/`](service/) / cockpit-service | `http://127.0.0.1:3010` | Cockpit environment and infrastructure: scenario state, business rules, external-service adapters, and [`tools/`](service/tools/) capability contracts. Exposes scoped interfaces to the UI, foreground, and cockpit Agent. | Adding a cockpit capability, business state, validation, or external integration. |
+| [`bootstrap/`](bootstrap/) | — | Shared environment loading and startup preflight for all four processes. | Changing local-example startup requirements or port checks. |
 
 Common changes should stay local:
 
@@ -33,9 +34,16 @@ Common changes should stay local:
   Gateway core and cockpit service contracts do not change.
 - **Add a scenario capability:** change [`service/tools/`](service/tools/) and
   touch the other `service/` modules only when the capability needs new state,
-  rules, or an external adapter. Do not add business branches to the Gateway or client.
+  rules, or an external adapter. To expose it as a foreground low-latency tool,
+  also update `gateway/frontend-mcp.json`. Do not add business execution branches
+  to the Gateway or client.
 - **Replace the cockpit UI:** replace only [`client/`](client/) while
   keeping the GCP and scenario-state contracts.
+- **Change a foreground persona:** edit its Markdown under
+  [`gateway/assistant/`](gateway/assistant/). For a new option, add the Gateway
+  allowlist entry and the presentation entry in `client/src/config/personas.js`;
+  the two sides align only through the scenario event id and never import each
+  other's implementation.
 
 ## Quick start
 
@@ -73,22 +81,34 @@ A preflight validates the Realtime configuration and all four ports before any c
 - The cockpit client and Gateway/Realtime conversation runtime are components
   of one foreground layer, not separate Agent layers.
 - The UI talks to the Gateway through GCP and knows nothing about the Realtime provider or backend Agent.
+- Voice settings expose only Qwen Audio 3.0 Realtime's sweet female
+  (`longanqian`) and sunny male (`longanlufeng`) voices. Changing the selection
+  uses the formal GCP/Client SDK voice capability and refreshes only the
+  upstream Realtime Session without restarting the cockpit app.
+- The UI publishes only the allowlisted `healer`, `action`, or `sharp` ID through
+  a registered `client.event.publish`. The Gateway maps it to deployment-owned
+  Markdown and applies it to the current Realtime Session with `session.update`
+  from the next turn. The Client cannot submit arbitrary prompt text, files are
+  not rewritten, and switching neither drops conversation state nor speaks an acknowledgement.
 - The primary cockpit stays voice-only. Transcripts appear only in the debug panel, and ASR displays final results only.
 - Scenario-specific HTTP/SSE projects vehicle, route, media, weather, and order state, plus fine-grained scenario progress. The Gateway does not parse those objects.
+- Users can create and run persistent cockpit-specific workflows by voice. The
+  backend Agent loads these workflows and composes existing MCP tools; they are
+  not dynamic MCP plugins, A2A Agent Card entries, or globally installed Agent Skills.
 - The foreground Agent owns realtime conversation and directly calls weather,
   vehicle-state, window, and headlight tools through standard MCP. Explicit
   window and headlight commands execute inline without a redundant second confirmation.
 - Other cockpit work goes through the fixed `spawn_thinking` bridge. The example
-  backend attaches over A2A, and Qwen3.8-Flash discovers the separate backend MCP
-  surface for sunroof, climate, navigation, music, and flash-buy operations,
+  backend attaches over A2A, and Qwen3.8-Flash discovers the complete backend MCP
+  surface for vehicle control, navigation, music, flash-buy, and custom workflows,
   including ordered multi-stop navigation.
 - How the backend invokes tools and organizes work is backend-private. If it
   creates independent derived Sessions, they form an optional third-layer
   execution space extended by the backend without changing the foreground protocol.
 - Scenario tools live in domain-oriented packages under [`service/tools/`](service/tools/README.md).
-  One explicit registry adds domain groups and assigns individual tools to the
-  foreground; all remaining tools stay on the backend surface without changing
-  Gateway protocols or duplicating executors.
+  One explicit registry adds domain groups and selects individual tools for an
+  additional foreground low-latency path. The backend retains the complete
+  orchestration surface without changing Gateway protocols or duplicating executors.
 - Customers can replace the UI, cockpit Agent, or cockpit service without changing the framework core.
 
 ## Development and tests

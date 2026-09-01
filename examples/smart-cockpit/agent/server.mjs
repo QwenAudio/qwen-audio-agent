@@ -19,7 +19,7 @@ import { pathToFileURL } from 'node:url'
 import { CockpitAgentExecutor } from './executor.mjs'
 import { CockpitMcpTools } from './mcp-client.mjs'
 import { DashScopeCockpitModel } from './model.mjs'
-import { loadCockpitEnvironment } from '../environment.mjs'
+import { loadCockpitEnvironment } from '../bootstrap/environment.mjs'
 
 function agentCard(origin) {
   return {
@@ -49,9 +49,9 @@ function agentCard(origin) {
     skills: [{
       id: 'cockpit_operations',
       name: 'Cockpit operations',
-      description: 'Sunroof, climate, navigation, music and flash-buy example operations.',
-      tags: ['cockpit', 'vehicle', 'navigation', 'music'],
-      examples: ['空调调到二十二度', '导航到西湖', '播放晴天'],
+      description: 'Cockpit controls, navigation, music, flash-buy and user-defined cockpit workflows.',
+      tags: ['cockpit', 'vehicle', 'navigation', 'music', 'custom-workflows'],
+      examples: ['空调调到二十二度', '导航到西湖', '播放晴天', '创建一个下班回家技能'],
       inputModes: ['text/plain'],
       outputModes: ['text/plain', 'application/json'],
       securityRequirements: [],

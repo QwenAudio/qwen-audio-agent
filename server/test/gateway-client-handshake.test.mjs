@@ -204,6 +204,94 @@ test('routes negotiated GCP2 commands and Client Events with correlated results'
   modern.socket.close()
 })
 
+test('updates the session output voice through the negotiated GCP command', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const modern = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-client-output-voice-hello',
+    clientType: 'web',
+    clientInstanceId: 'web-output-voice-test',
+    capabilities: [GatewayClientCapability.SESSION_OUTPUT_VOICE],
+    connection: {
+      input_enabled: false,
+      output_enabled: false,
+      text_only: true,
+      output_voice: 'longanqian',
+    },
+  }))
+  const ready = await waitFor(modern.received, event => event.type === 'session.ready')
+  assert.deepEqual(ready.capabilities, [GatewayClientCapability.SESSION_OUTPUT_VOICE])
+
+  modern.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE,
+    event_id: 'evt-client-output-voice-update',
+    voice: 'longanlufeng',
+  }))
+  const updated = await waitFor(
+    modern.received,
+    event => event.request_event_id === 'evt-client-output-voice-update',
+  )
+  assert.equal(updated.type, GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED)
+  assert.equal(updated.voice, 'longanlufeng')
+  assert.equal(updated.changed, true)
+  assert.equal(updated.reconnecting, false)
+
+  modern.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE,
+    event_id: 'evt-client-output-voice-same',
+    voice: 'longanlufeng',
+  }))
+  const unchanged = await waitFor(
+    modern.received,
+    event => event.request_event_id === 'evt-client-output-voice-same',
+  )
+  assert.equal(unchanged.changed, false)
+  assert.equal(unchanged.reconnecting, false)
+  modern.socket.close()
+})
+
+test('returns a correlated error when the active Provider cannot select a voice', async t => {
+  const { server, gateway } = gatewayHarness({
+    defaultRealtimeProvider: 'speech-to-speech',
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const modern = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-client-unsupported-voice-hello',
+    clientType: 'web',
+    clientInstanceId: 'web-unsupported-voice-test',
+    capabilities: [GatewayClientCapability.SESSION_OUTPUT_VOICE],
+    connection: {
+      input_enabled: false,
+      output_enabled: false,
+      text_only: true,
+    },
+  }))
+  await waitFor(modern.received, event => event.type === 'session.ready')
+
+  modern.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE,
+    event_id: 'evt-client-unsupported-voice-update',
+    voice: 'longanqian',
+  }))
+  const error = await waitFor(
+    modern.received,
+    event => event.request_event_id === 'evt-client-unsupported-voice-update',
+  )
+  assert.equal(error.type, 'error')
+  assert.equal(error.error.code, 'output_voice_unsupported')
+  modern.socket.close()
+})
+
 test('commits sleep only after the negotiated Client Action completes', async t => {
   const { server, gateway } = gatewayHarness()
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))

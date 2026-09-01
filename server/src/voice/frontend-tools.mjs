@@ -1,7 +1,7 @@
 import {
   buildFrontendContext,
   loadFrontendPrompt,
-  loadAssistantProfile,
+  resolveAssistantProfile,
 } from '../conversation/frontend-agent-context.mjs'
 import { MEMORY_DOCUMENTS } from '../core/memory-scopes.mjs'
 import { FrontendToolRegistry } from './tools/frontend-tool-registry.mjs'
@@ -507,7 +507,7 @@ export function buildFrontendInstructions(agentContext = {}) {
     loadFrontendPrompt(),
     '# Assistant Profile',
     '<assistant_profile authority="persona_only">',
-    loadAssistantProfile(),
+    resolveAssistantProfile(agentContext),
     '</assistant_profile>',
     buildFrontendContext(agentContext),
   ].join('\n\n')

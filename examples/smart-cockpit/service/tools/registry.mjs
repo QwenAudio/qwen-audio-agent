@@ -89,7 +89,9 @@ export const FRONTEND_TOOL_NAMES = Object.freeze([
   'weather',
   'vehicle_state_query',
   'vehicle_window_control',
+  'vehicle_sunroof_control',
   'vehicle_headlights_control',
+  'vehicle_climate_control',
 ])
 
 const toolDefinitionsByName = new Map(

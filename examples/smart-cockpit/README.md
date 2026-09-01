@@ -96,8 +96,9 @@ A preflight validates the Realtime configuration and all four ports before any c
   backend Agent loads these workflows and composes existing MCP tools; they are
   not dynamic MCP plugins, A2A Agent Card entries, or globally installed Agent Skills.
 - The foreground Agent owns realtime conversation and directly calls weather,
-  vehicle-state, window, and headlight tools through standard MCP. Explicit
-  window and headlight commands execute inline without a redundant second confirmation.
+  vehicle-state, window, sunroof, headlight, and climate tools through standard
+  MCP. Explicit single vehicle-control commands execute inline without a redundant
+  second confirmation.
 - Other cockpit work goes through the fixed `spawn_thinking` bridge. The example
   backend attaches over A2A, and Qwen3.8-Flash discovers the complete backend MCP
   surface for vehicle control, navigation, music, flash-buy, and custom workflows,

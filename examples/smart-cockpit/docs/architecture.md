@@ -51,8 +51,8 @@ cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► coc
 
 - `cockpit-service` 是车辆、导航、音乐、天气和闪购状态的唯一来源。
 - UI 通过 HTTP 获取快照、执行面板操作，通过 SSE 接收状态变化。
-- Gateway 的前台 Agent 通过 `/mcp/frontend` 直接使用天气、车况、车窗和大灯工具；
-  明确的车窗和大灯口头指令直接执行，不增加重复确认。
+- Gateway 的前台 Agent 通过 `/mcp/frontend` 直接使用天气、车况以及车窗、天窗、
+  大灯和空调工具；明确的单次车辆控制口头指令直接执行，不增加重复确认。
 - 后台 Agent 通过 `/mcp/backend` 使用完整工具面，支持组合任务以及自定义技能的
   发现、创建、加载和执行。
 - 两个工具面由 `service/tools/registry.mjs` 显式组合，但共用同一份执行器和座舱状态；

@@ -12,8 +12,8 @@ import {
   upsertUserTranscript,
 } from '../src/message-order.js'
 
-test('hydrates only the recent twenty persisted messages and keeps live duplicates', () => {
-  const history = Array.from({ length: 24 }, (_, index) => ({
+test('hydrates only the recent forty persisted messages and keeps live duplicates', () => {
+  const history = Array.from({ length: 44 }, (_, index) => ({
     id: `message-${index + 1}`,
     role: index % 2 ? 'assistant' : 'user',
     content: `persisted ${index + 1}`,
@@ -21,19 +21,19 @@ test('hydrates only the recent twenty persisted messages and keeps live duplicat
     createdAt: index + 1,
   }))
   const current = [{
-    id: 'message-24',
+    id: 'message-44',
     role: 'assistant',
-    content: 'live 24',
+    content: 'live 44',
     live: false,
   }]
 
   const messages = mergeConversationHistory(current, history)
-  assert.equal(messages.length, 20)
+  assert.equal(messages.length, 40)
   assert.deepEqual(
     messages.map(message => message.id),
-    Array.from({ length: 20 }, (_, index) => `message-${index + 5}`),
+    Array.from({ length: 40 }, (_, index) => `message-${index + 5}`),
   )
-  assert.equal(messages.at(-1).content, 'live 24')
+  assert.equal(messages.at(-1).content, 'live 44')
 })
 
 test('normalizes hard line breaks in final ASR text', () => {

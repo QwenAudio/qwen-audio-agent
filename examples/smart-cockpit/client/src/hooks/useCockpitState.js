@@ -12,6 +12,7 @@ function serviceOrigin() {
 export default function useCockpitState(cockpitId) {
   const [state, setState] = useState(null)
   const [progress, setProgress] = useState(null)
+  const [activity, setActivity] = useState(null)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -48,7 +49,9 @@ export default function useCockpitState(cockpitId) {
     })
     events.addEventListener('activity', event => {
       if (disposed) return
-      const next = cockpitProgressFromActivity(JSON.parse(event.data))
+      const value = JSON.parse(event.data)
+      setActivity(value)
+      const next = cockpitProgressFromActivity(value)
       if (!next) return
       clearTimeout(progressTimer)
       setProgress(next)
@@ -82,5 +85,5 @@ export default function useCockpitState(cockpitId) {
     return result
   }, [cockpitId])
 
-  return { state, progress, error, execute }
+  return { state, progress, activity, error, execute }
 }

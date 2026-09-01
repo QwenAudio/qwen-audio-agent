@@ -32,7 +32,7 @@
 cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► cockpit-agent
       │                          │                         │
       │ HTTP/SSE                │ frontend MCP            │ backend MCP
-      │ 业务状态                 │ 天气/车况/车窗/大灯       │ 天窗/空调/导航/音乐/闪购
+      │ 业务状态                 │ 天气/车况/车窗/大灯       │ 完整工具面/自定义技能
       ▼                          ▼                         ▼
                          cockpit-service
                          单一场景状态与工具执行
@@ -52,11 +52,23 @@ cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► coc
 - UI 通过 HTTP 获取快照、执行面板操作，通过 SSE 接收状态变化。
 - Gateway 的前台 Agent 通过 `/mcp/frontend` 直接使用天气、车况、车窗和大灯工具；
   明确的车窗和大灯口头指令直接执行，不增加重复确认。
-- 后台 Agent 通过 `/mcp/backend` 使用天窗、空调、导航、音乐和闪购工具。
-- 两个工具面由 `service/tools/registry.mjs` 显式组合，但共用同一份座舱状态。
+- 后台 Agent 通过 `/mcp/backend` 使用完整工具面，支持组合任务以及自定义技能的
+  发现、创建、加载和执行。
+- 两个工具面由 `service/tools/registry.mjs` 显式组合，但共用同一份执行器和座舱状态；
+  前台工具是完整后台能力上的低延迟快路径，不是另一份业务实现。
 - Gateway 不接收 `actions[]`，也不理解车辆、路线、媒体或订单结构。
 
 因此后台任务还可以把详细状态发送给客户自己的座舱系统；Gateway 只接收适合继续对话和播报的 Task 进展与结果。
+
+## 自定义技能
+
+座舱自定义技能是用户通过语音保存的场景工作流。记录由 `cockpit-service` 按
+`cockpitId` 持久化，UI 通过场景 HTTP/SSE 展示；前台只负责把创建或运行意图经
+`spawn_thinking` 交给后台。后台 Agent 每次任务读取精简目录，命中后调用
+`custom_skill_load`，再用已有 MCP 工具逐步执行。
+
+这里不会为每个技能动态注册 MCP Tool，也不会修改 A2A Agent Card。它与通过
+`qwenaudio skill install` 安装给开发者后台的 Agent Skills 是不同概念。
 
 ## 场景装配
 

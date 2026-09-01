@@ -10,6 +10,11 @@ discovers tools from the backend MCP surface and feeds tool results back to the
 model until it produces a final answer. Authoritative state and business rules
 remain in `../service`.
 
+At the start of each task the Agent reads the small custom-skill catalog. A
+matched workflow is loaded through `custom_skill_load`, then executed with the
+same ordinary MCP tools as any other cockpit task. Skill text is user data, not
+an authority or a way to add tools dynamically.
+
 ```bash
 npm install
 npm start

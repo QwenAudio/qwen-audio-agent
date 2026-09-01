@@ -11,6 +11,7 @@ import ChatPanel from './components/ChatPanel'
 import MusicPanel, { PLAYLIST } from './components/MusicPanel'
 import FlashBuyPanel from './components/FlashBuyPanel'
 import useCockpitState from './hooks/useCockpitState'
+import useCockpitSkills from './hooks/useCockpitSkills'
 import useVoiceSession from './hooks/useVoiceSession'
 import { finalUserTranscript } from './voice-transcript'
 import { cockpitScreenForProgress } from './cockpit-activity'
@@ -28,7 +29,7 @@ const INITIAL_CAR_STATE = {
   acFan: 3,
 }
 
-const VALID_TABS = ['persona']
+const VALID_TABS = ['persona', 'skills']
 const VALID_PERSONAS = ['聊愈师', '行动派', '疯批']
 const VALID_VOICES = ['小酒窝', '台御姐', '阳光男', '酷酷男']
 const DEFAULT_PERSONA = '聊愈师'
@@ -82,8 +83,15 @@ export default function App() {
   const {
     state: cockpitState,
     progress: cockpitProgress,
+    activity: cockpitActivity,
     execute: executeCockpitCommand,
   } = useCockpitState(cockpitId)
+  const {
+    skills: customSkills,
+    error: customSkillsError,
+    load: loadCustomSkill,
+    remove: deleteCustomSkill,
+  } = useCockpitSkills(cockpitId, cockpitActivity)
   const [screen, setScreen] = useState('main')
   const [settingsTab, setSettingsTab] = useState('persona')
   const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(PERSONA_STORAGE_KEY, DEFAULT_PERSONA, VALID_PERSONAS))
@@ -363,6 +371,10 @@ export default function App() {
                 selectedPersona={selectedPersona} onSelectPersona={setSelectedPersona}
                 selectedVoice={selectedVoice} onSelectVoice={setSelectedVoice}
                 selectedWake={selectedWake} onSelectWake={setSelectedWake}
+                skills={customSkills}
+                skillsError={customSkillsError}
+                onLoadSkill={loadCustomSkill}
+                onDeleteSkill={deleteCustomSkill}
               />
             )}
           </div>

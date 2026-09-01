@@ -8,10 +8,12 @@
 |---|---|---|
 | `client/` | React 座舱 UI + Browser Audio | GCP 6.0 / Gateway Client SDK |
 | `gateway.mjs` | qwen-audio-agent Gateway + 前台 Realtime Agent | 复用框架核心并进行场景装配 |
-| `agent/` | Qwen3.7-Max 驱动的 A2A 座舱 Agent | BackendPort / A2A / ACP / 定制 Adapter |
+| `agent/` | Qwen3.8-Flash 驱动的 A2A 座舱 Agent | BackendPort / A2A / ACP / 定制 Adapter |
 | `service/` | 座舱环境、状态、规则、工具和外部服务适配 | HTTP/SSE / MCP / 客户协议 |
 
 座舱 Service 独立维护车辆、路线、媒体和订单状态。UI 通过 HTTP/SSE 展示，前台和后台 Agent 通过受限 MCP 工具面调用；Gateway 不解析场景对象，也不承担业务状态总线。
+
+示例也支持通过语音创建和运行按座舱持久化的自定义技能。后台 Agent 加载技能工作流后编排现有 MCP 工具；不会为用户技能动态修改 Gateway 协议、MCP 工具集或 A2A Agent Card。
 
 这说明客户通常只保留框架的对话中控：座舱 UI 和后台 Agent 都可以换成自己的实现。客户 UI 不需要继承框架 WebUI，只需实现 GCP 客户端和自己的音频、页面及业务状态通道。
 

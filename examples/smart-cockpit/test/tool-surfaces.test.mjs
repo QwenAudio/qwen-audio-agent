@@ -6,20 +6,23 @@ import {
   FRONTEND_TOOL_DEFINITIONS,
 } from '../service/tools/registry.mjs'
 
-test('assigns low-latency cockpit tools to the foreground without backend duplicates', () => {
+test('adds a foreground fast path while retaining a complete backend orchestration surface', () => {
   assert.deepEqual(FRONTEND_TOOL_DEFINITIONS.map(tool => tool.name), [
     'weather',
     'vehicle_state_query',
     'vehicle_window_control',
     'vehicle_headlights_control',
   ])
-  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 11)
+  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 18)
   const backendNames = BACKEND_TOOL_DEFINITIONS.map(tool => tool.name)
   assert.ok(backendNames.includes('vehicle_sunroof_control'))
   assert.ok(backendNames.includes('vehicle_climate_control'))
-  assert.ok(!backendNames.includes('weather'))
-  assert.ok(!backendNames.includes('vehicle_window_control'))
-  assert.ok(!backendNames.includes('vehicle_headlights_control'))
+  assert.ok(backendNames.includes('weather'))
+  assert.ok(backendNames.includes('vehicle_window_control'))
+  assert.ok(backendNames.includes('vehicle_headlights_control'))
+  assert.ok(backendNames.includes('custom_skill_list'))
+  assert.ok(backendNames.includes('custom_skill_create'))
+  assert.ok(backendNames.includes('custom_skill_load'))
 })
 
 test('binds the cockpit frontend profile to the scoped MCP configuration', () => {

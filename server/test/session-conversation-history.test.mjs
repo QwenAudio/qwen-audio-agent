@@ -18,7 +18,7 @@ test('restores the same recent messages for the UI and Realtime after restart', 
   })
   firstHistory.start()
 
-  for (let index = 1; index <= 12; index += 1) {
+  for (let index = 1; index <= 24; index += 1) {
     firstSync.record({
       ownerId: 'owner',
       sessionId: 'desktop',
@@ -36,7 +36,7 @@ test('restores the same recent messages for the UI and Realtime after restart', 
     conversationSync: restoredSync,
     sessionJournal: new SessionJournalRegistry({ directory }),
   })
-  assert.equal(restoredHistory.start(), 10)
+  assert.equal(restoredHistory.start(), 20)
 
   const realtimeMessages = restoredSync.frontendContext({
     ownerId: 'owner',
@@ -46,7 +46,7 @@ test('restores the same recent messages for the UI and Realtime after restart', 
     ownerId: 'owner',
     sessionId: 'desktop',
   })
-  const expected = Array.from({ length: 10 }, (_, index) => `message ${index + 3}`)
+  const expected = Array.from({ length: 20 }, (_, index) => `message ${index + 5}`)
   assert.deepEqual(realtimeMessages.map(message => message.content), expected)
   assert.deepEqual(visibleMessages.map(message => message.content), expected)
   assert.deepEqual(

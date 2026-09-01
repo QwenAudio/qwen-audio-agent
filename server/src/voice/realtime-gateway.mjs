@@ -38,6 +38,7 @@ import {
   clientVoiceCapabilities,
 } from './active-voice-clients.mjs'
 import { RealtimeProviderSession } from './realtime-provider-session.mjs'
+import { RealtimeRecoveryContext } from './realtime-recovery-context.mjs'
 import { SleepController } from './sleep-controller.mjs'
 import {
   isResponseActivityEvent,
@@ -338,15 +339,12 @@ export function attachRealtimeGateway(server, {
     const hasPendingBackendInput = () => activeSessionTasks().some(task => (
       task.inputRequest?.status === 'pending'
     ))
-    // A content-safety rejection can leave the provider conversation poisoned:
-    // replaying the rejected turn into a replacement connection makes every
-    // later utterance fail again. Keep visible history intact, but establish a
-    // new provider-context boundary at the rejected turn. Messages recorded
-    // after recovery remain eligible for future reconnect restoration.
-    let realtimeContextFloorSeq = 0
-    const frontendRecentMessages = () => conversationSync
-      .frontendContext({ ownerId, sessionId })
-      .filter(message => Number(message.seq) > realtimeContextFloorSeq)
+    // Keep visible history intact while excluding only a provider-rejected turn
+    // from future Realtime Session restoration.
+    const realtimeRecoveryContext = new RealtimeRecoveryContext()
+    const frontendRecentMessages = () => realtimeRecoveryContext.project(
+      conversationSync.frontendContext({ ownerId, sessionId }),
+    )
     const getAgentContext = () => ({
       client: clientContext,
       frontend: {
@@ -1009,6 +1007,11 @@ export function attachRealtimeGateway(server, {
         const benignCancelRace = providerError === 'no_active_response'
         if (benignCancelRace) return
         if (providerError === 'content_safety') {
+          const recentMessages = conversationSync.frontendContext({ ownerId, sessionId })
+          const failedContext = presentationRuntime.get(realtimeResponseId(event)) || {
+            turnId: turns.committedTurnId || turns.turnId,
+          }
+          realtimeRecoveryContext.excludeFailure(failedContext, recentMessages)
           clearResponseCandidate()
           presentationRuntime.failResponse(event)
           send(ws, {
@@ -1020,15 +1023,9 @@ export function attachRealtimeGateway(server, {
             state: 'idle',
             origin: 'model',
           })
-          realtimeContextFloorSeq = Math.max(
-            realtimeContextFloorSeq,
-            ...conversationSync
-              .frontendContext({ ownerId, sessionId })
-              .map(message => Number(message.seq) || 0),
-          )
           connectionLogger.warn('realtime.content_safety_recovery', {
             provider: realtimeSession.providerKey,
-            contextFloorSeq: realtimeContextFloorSeq,
+            excludedTurnId: failedContext.turnId || '',
           })
           send(ws, {
             type: 'error',

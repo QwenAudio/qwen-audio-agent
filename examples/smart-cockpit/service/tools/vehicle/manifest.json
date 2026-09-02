@@ -5,6 +5,16 @@
   "enabled": true,
   "functions": [
     {
+      "name": "vehicle_location_query",
+      "label": "车辆位置查询",
+      "description": "查询车辆当前的城市、区域、地址和坐标。用于回答“我在哪”、“当前位置”等问题。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
       "name": "vehicle_state_query",
       "label": "车况查询",
       "description": "查询车窗、天窗、大灯、空调等车辆当前状态。",

@@ -125,7 +125,7 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState([])
   const navState = cockpitState?.navigation || { status: 'idle' }
   const mapActions = useMemo(() => [], [])
-  const [routeStrategy, setRouteStrategy] = useState(0)
+  const routeStrategy = Number(navState.strategy) || 0
   const musicState = cockpitState?.music || { playing: false, currentIndex: 0 }
   const flashBuyState = cockpitState?.flashbuy || INITIAL_FLASH_BUY_STATE
   const weatherState = cockpitState?.weather || INITIAL_WEATHER_STATE
@@ -149,6 +149,10 @@ export default function App() {
 
   const navigateToFavorite = useCallback((favoriteType) => {
     runCockpitCommand('navigation_to_favorite', { favoriteType })
+  }, [runCockpitCommand])
+
+  const changeRouteStrategy = useCallback((strategy) => {
+    runCockpitCommand('navigation_set_route_strategy', { strategy })
   }, [runCockpitCommand])
 
   const openDestinationInput = useCallback(() => {
@@ -350,6 +354,7 @@ export default function App() {
     progress: voiceProgress,
     error: voiceError,
     activateVoice,
+    deactivateVoice,
     sendInput,
   } = useVoiceSession({
     muted: voiceMuted,
@@ -361,11 +366,12 @@ export default function App() {
   })
   const toggleVoiceMute = useCallback(() => {
     if (!voiceMuted) {
+      deactivateVoice()
       setVoiceMuted(true)
       return
     }
     if (activateVoice()) setVoiceMuted(false)
-  }, [activateVoice, voiceMuted])
+  }, [activateVoice, deactivateVoice, voiceMuted])
   const visualProgress = cockpitProgress || voiceProgress
 
   const handleTextMessage = useCallback((text) => (
@@ -431,7 +437,7 @@ export default function App() {
                 navProgress={visualProgress}
                 mapActions={mapActions}
                 routeStrategy={routeStrategy}
-                onStrategyChange={setRouteStrategy}
+                onStrategyChange={changeRouteStrategy}
                 onFavoriteNavigate={navigateToFavorite}
                 onFavoriteSetup={openDestinationInput}
                 onSearchDestination={openDestinationInput}

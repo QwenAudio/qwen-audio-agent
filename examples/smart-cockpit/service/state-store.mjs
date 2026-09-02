@@ -2,7 +2,7 @@ import {
   DEFAULT_DELIVERY_ADDRESS,
 } from './tools/flashbuy/catalog.mjs'
 import { SONGS } from './tools/music/catalog.mjs'
-import { DEFAULT_ORIGIN } from './tools/navigation/catalog.mjs'
+import { DEFAULT_VEHICLE_LOCATION } from './vehicle-location.mjs'
 
 const DEFAULT_COCKPIT_ID = 'default'
 
@@ -32,6 +32,7 @@ export function createInitialCockpitState(now = Date.now()) {
       acMode: 'cool',
       acFan: 3,
     },
+    location: clone(DEFAULT_VEHICLE_LOCATION),
     navigation: {
       status: 'idle',
       destination: null,
@@ -52,7 +53,6 @@ export function createInitialCockpitState(now = Date.now()) {
         broadcastMode: 'standard',
       },
       viewMode: 'follow',
-      currentLocation: DEFAULT_ORIGIN.location,
     },
     music: {
       playing: false,
@@ -136,7 +136,7 @@ export class CockpitStateStore {
       type: 'cockpit.state.updated',
       cockpitId: id,
       version: state.version,
-      changed: Object.freeze(['vehicle', 'navigation', 'music', 'flashbuy', 'weather']),
+      changed: Object.freeze(['vehicle', 'location', 'navigation', 'music', 'flashbuy', 'weather']),
       state: this.snapshot(id),
     })
     for (const listener of this.listeners.get(id) || []) {

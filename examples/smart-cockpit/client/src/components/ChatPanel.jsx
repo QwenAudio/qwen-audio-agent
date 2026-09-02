@@ -6,6 +6,7 @@ function formatArgs(args) {
 }
 
 const TOOL_TAGS = {
+  vehicle_location_query: { label: '位置查询', cls: 'tag-car' },
   vehicle_state_query: { label: '车况查询', cls: 'tag-car' },
   vehicle_window_control: { label: '车窗控制', cls: 'tag-car' },
   vehicle_sunroof_control: { label: '天窗控制', cls: 'tag-car' },

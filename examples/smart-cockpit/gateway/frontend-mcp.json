@@ -9,6 +9,10 @@
           "enabled": true,
           "description": "查询指定城市的当日天气、温度和出行提示。这是可由前台语音助手直接调用的座舱示例工具。"
         },
+        "vehicle_location_query": {
+          "enabled": true,
+          "description": "直接查询车辆当前位置。用户问‘我在哪’、‘车在哪’或‘当前位置’时调用；不要通过 spawn_thinking 查询。"
+        },
         "vehicle_state_query": {
           "enabled": true,
           "description": "直接查询车窗、天窗、大灯和空调等车辆当前状态。用户询问是否开启、当前档位或整体车况时使用；不要把状态问题当成控制指令。"
@@ -31,7 +35,7 @@
         },
         "navigation_set_route_strategy": {
           "enabled": true,
-          "description": "在当前导航或路线预览中立即切换路线偏好并重新规划路线。用户说“躲避拥堵”“避开拥堵”“不走高速”“少收费”“高速优先”“时间优先”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "立即设置路线偏好：有当前路线时重新规划，无路线时作为后续导航的默认偏好。用户说“躲避拥堵”“避开拥堵”“不走高速”“少收费”“高速优先”“时间优先”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
         },
         "navigation_set_voice": {
           "enabled": true,
@@ -40,6 +44,22 @@
         "navigation_set_view": {
           "enabled": true,
           "description": "立即设置地图导航视图。用户说“查看全程”“路线全览”“回到跟车视角”“北向上”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
+        },
+        "navigation_stop": {
+          "enabled": true,
+          "description": "立即停止当前导航并清空路线。用户说停止、取消或结束导航时直接调用；不要调用 cancel_agent_task，也不要通过 spawn_thinking 提交。"
+        },
+        "music_pause": {
+          "enabled": true,
+          "description": "立即暂停当前音乐。用户要求暂停时直接调用，不要通过 spawn_thinking 提交。"
+        },
+        "music_next": {
+          "enabled": true,
+          "description": "立即切换到下一首音乐。用户要求切下一首时直接调用，不要通过 spawn_thinking 提交。"
+        },
+        "music_previous": {
+          "enabled": true,
+          "description": "立即切换到上一首音乐。用户要求切上一首时直接调用，不要通过 spawn_thinking 提交。"
         }
       }
     }

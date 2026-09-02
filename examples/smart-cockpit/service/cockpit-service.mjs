@@ -4,10 +4,24 @@ import {
   COCKPIT_TOOL_NAMES,
   executeCockpitTool,
 } from './tools/registry.mjs'
+import { normalizeVehicleLocation } from './vehicle-location.mjs'
 
 function clean(value) {
   return String(value || '').trim()
 }
+
+const LOCATION_AWARE_TOOLS = new Set([
+  'vehicle_location_query',
+  'navigation_start',
+  'navigation_route_query',
+  'navigation_add_waypoint',
+  'navigation_remove_waypoint',
+  'navigation_change_destination',
+  'navigation_set_route_strategy',
+  'navigation_search_place',
+  'navigation_to_favorite',
+  'navigation_set_favorite',
+])
 
 function emptyServices() {
   return {
@@ -103,6 +117,9 @@ export class CockpitService {
     if (!COCKPIT_TOOL_NAMES.includes(name)) {
       throw new Error(`Unknown cockpit tool: ${name}`)
     }
+    if (LOCATION_AWARE_TOOLS.has(name)) {
+      await this.#refreshVehicleLocation(cockpitId)
+    }
     const reportActivity = event => {
       try {
         onActivity?.(event)
@@ -120,6 +137,22 @@ export class CockpitService {
       services: this.services,
       snapshot: () => this.snapshot(cockpitId),
       store: this.store,
+    })
+  }
+
+  async #refreshVehicleLocation(cockpitId) {
+    if (typeof this.services.vehicleLocation !== 'function') return
+    let location = null
+    try {
+      location = normalizeVehicleLocation(await this.services.vehicleLocation())
+    } catch {
+      return
+    }
+    if (!location) return
+    const current = this.snapshot(cockpitId).location
+    if (JSON.stringify(current) === JSON.stringify(location)) return
+    this.store.update(cockpitId, ['location'], next => {
+      next.location = location
     })
   }
 }

@@ -29,23 +29,36 @@ execution space. The bundled example instead runs a compact Qwen3.8-Flash tool l
 | [`service/`](service/) / cockpit-service | `http://127.0.0.1:3010` | Cockpit environment and infrastructure: scenario state, business rules, external-service adapters, and [`tools/`](service/tools/) capability contracts. Exposes scoped interfaces to the UI, foreground, and cockpit Agent. | Adding a cockpit capability, business state, validation, or external integration. |
 | [`bootstrap/`](bootstrap/) | — | Shared environment loading and startup preflight for all four processes. | Changing local-example startup requirements or port checks. |
 
-Common changes should stay local:
+## Function call surface
 
-- **Replace the backend Agent:** point `COCKPIT_AGENT_CARD_URL` at your Agent, or
-  replace only [`agent/`](agent/) when editing the bundled example. The client,
-  Gateway core and cockpit service contracts do not change.
-- **Add a scenario capability:** change [`service/tools/`](service/tools/) and
-  touch the other `service/` modules only when the capability needs new state,
-  rules, or an external adapter. To expose it as a foreground low-latency tool,
-  also update `gateway/frontend-mcp.json`. Do not add business execution branches
-  to the Gateway or client.
-- **Replace the cockpit UI:** replace only [`client/`](client/) while
-  keeping the GCP and scenario-state contracts.
-- **Change a foreground persona:** edit its Markdown under
-  [`gateway/assistant/`](gateway/assistant/). For a new option, add the Gateway
-  allowlist entry and the presentation entry in `client/src/config/personas.js`;
-  the two sides align only through the scenario event id and never import each
-  other's implementation.
+The bundled cockpit service exposes 34 domain tools across vehicle, navigation,
+music, and weather.
+
+| Domain | Total functions | Function description and examples |
+|---|---:|---|
+| `vehicle` | 11 | Vehicle location/state and strict vehicle controls, including climate, temperature, windows, sunroof, closures, comfort, lights, sound, and charging. Examples: “Where is the car?”, “Set the cabin to 22 degrees”, “Open the front trunk”, “Start charging”. |
+| `navigation` | 12 | Destination routing, route preview, waypoint edits, favorites, route preferences, map view, navigation voice, and stop-navigation. Examples: “Navigate to West Lake via Huanglong Stadium”, “Avoid highways”, “Show the full route”, “Stop navigation”. |
+| `music` | 10 | Playback, search, status query, volume, media source, favorites, and next/previous track controls. Examples: “Play 晴天”, “Turn the volume up”, “Switch to Bluetooth”, “Favorite this song”. |
+| `weather` | 1 | City weather lookup for travel context. Examples: “How is the weather in Hangzhou today?”, “Will it rain in Shanghai?”. |
+| **Total** | **34** | Covers cross-domain tool selection, argument extraction, execution path choice, and final cockpit state outcome for benchmark evaluation. |
+
+Frontend Realtime tools are selected in `service/tools/registry.mjs` and exposed
+through `gateway/frontend-mcp.json`. Backend-only tools are mostly navigation
+operations that may require place resolution, route planning, ordered waypoint
+state, or favorite-address updates.
+
+For a future benchmark comparing Realtime and text-only model tool-calling
+accuracy, this table defines the shared tool surface to evaluate:
+
+- **Tool selection accuracy:** whether the model chooses the correct domain and
+  function for a user utterance.
+- **Argument accuracy:** whether slots such as destination, route strategy,
+  temperature zone, window target, media source, volume, and song query are
+  extracted correctly.
+- **Execution path choice:** whether simple low-latency actions stay in the
+  foreground Realtime path and composed tasks go to the backend Agent.
+- **State outcome:** whether the resulting cockpit state matches the requested
+  operation after the tool call.
 
 ## Quick start
 
@@ -97,10 +110,10 @@ A preflight validates the Realtime configuration and all four ports before any c
 - Users can create and run persistent cockpit-specific workflows by voice. The
   backend Agent loads these workflows and composes existing MCP tools; they are
   not dynamic MCP plugins, A2A Agent Card entries, or globally installed Agent Skills.
-- The foreground Agent directly calls weather, vehicle-location, vehicle-state,
-  window, sunroof, headlight, climate, navigation-stop, route-view, navigation
-  voice/preference, and music transport tools through standard MCP. These
-  low-latency commands execute inline without a redundant second confirmation.
+- The foreground Agent directly calls weather, vehicle location/state, vehicle
+  controls, navigation-stop, route-view, navigation voice/preference, and
+  single-step music controls through standard MCP. These low-latency commands
+  execute inline without a redundant second confirmation.
 - Vehicle-location queries and navigation origins share the Cockpit Service's
   `vehicleLocation()` adapter. Without a vehicle GPS integration the example
   explicitly reports its demo fallback; a deployment replaces only that service.

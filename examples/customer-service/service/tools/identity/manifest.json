@@ -1,0 +1,38 @@
+{
+  "domain": "identity",
+  "functions": [
+    {
+      "name": "verify_identity",
+      "label": "身份核验",
+      "enabled": true,
+      "description": "核验来电客户身份。两种方式任选其一：邮箱，或者姓名加收货地址邮编。这是办理任何业务的前置步骤，核验通过后本次通话内不需要重复核验。客户自己报出的用户 ID 不能作为核验依据。一次只问一项信息，不要同时索要邮箱和姓名邮编。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "客户提供的注册邮箱。用邮箱核验时填这一项，不要同时填姓名邮编。"
+          },
+          "name": {
+            "type": "string",
+            "description": "客户姓名。与 zip 配合使用，两项必须同时提供。"
+          },
+          "zip": {
+            "type": "string",
+            "description": "收货地址邮编，六位数字。与 name 配合使用。"
+          }
+        }
+      }
+    },
+    {
+      "name": "identity_status",
+      "label": "核验状态",
+      "enabled": true,
+      "description": "查询本次通话当前的身份核验状态。不确定是否已核验时先查这个，而不是重新向客户索要信息。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

@@ -32,10 +32,15 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
           tools: {
             weather: { enabled: true },
             vehicle_state_query: { enabled: true },
+            vehicle_climate_control: { enabled: true },
+            vehicle_temperature_control: { enabled: true },
             vehicle_window_control: { enabled: true },
             vehicle_sunroof_control: { enabled: true },
-            vehicle_headlights_control: { enabled: true },
-            vehicle_climate_control: { enabled: true },
+            vehicle_closure_control: { enabled: true },
+            vehicle_comfort_control: { enabled: true },
+            vehicle_light_control: { enabled: true },
+            vehicle_sound_control: { enabled: true },
+            vehicle_charging_control: { enabled: true },
             navigation_set_route_strategy: { enabled: true },
             navigation_set_voice: { enabled: true },
             navigation_set_view: { enabled: true },
@@ -50,10 +55,15 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
   assert.deepEqual(tools.map(tool => tool.name), [
     'mcp__cockpit__weather',
     'mcp__cockpit__vehicle_state_query',
+    'mcp__cockpit__vehicle_climate_control',
+    'mcp__cockpit__vehicle_temperature_control',
     'mcp__cockpit__vehicle_window_control',
     'mcp__cockpit__vehicle_sunroof_control',
-    'mcp__cockpit__vehicle_headlights_control',
-    'mcp__cockpit__vehicle_climate_control',
+    'mcp__cockpit__vehicle_closure_control',
+    'mcp__cockpit__vehicle_comfort_control',
+    'mcp__cockpit__vehicle_light_control',
+    'mcp__cockpit__vehicle_sound_control',
+    'mcp__cockpit__vehicle_charging_control',
     'mcp__cockpit__navigation_set_route_strategy',
     'mcp__cockpit__navigation_set_voice',
     'mcp__cockpit__navigation_set_view',
@@ -64,14 +74,15 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
     action: 'open',
     window: 'windowFL',
   })
-  await client.execute('mcp__cockpit__vehicle_headlights_control', {
+  await client.execute('mcp__cockpit__vehicle_light_control', {
     action: 'open',
+    light: 'headlights',
   })
   await client.execute('mcp__cockpit__vehicle_sunroof_control', {
     action: 'open',
   })
-  await client.execute('mcp__cockpit__vehicle_climate_control', {
-    action: 'set_temp',
+  await client.execute('mcp__cockpit__vehicle_temperature_control', {
+    action: 'set',
     temperature: 22,
   })
   const state = await client.execute('mcp__cockpit__vehicle_state_query', {

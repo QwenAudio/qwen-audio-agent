@@ -11,23 +11,43 @@
         },
         "vehicle_state_query": {
           "enabled": true,
-          "description": "直接查询车窗、天窗、大灯和空调等车辆当前状态。用户询问是否开启、当前档位或整体车况时使用；不要把状态问题当成控制指令。"
-        },
-        "vehicle_window_control": {
-          "enabled": true,
-          "description": "立即打开或关闭指定车窗；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
-        },
-        "vehicle_sunroof_control": {
-          "enabled": true,
-          "description": "立即打开或关闭车辆天窗；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
-        },
-        "vehicle_headlights_control": {
-          "enabled": true,
-          "description": "立即打开或关闭车辆大灯；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "直接查询车辆当前状态，覆盖空调温度、车窗、天窗、开闭件、座椅/方向盘舒适控制、灯光声音和充电状态。用户询问是否开启、当前档位或整体车况时使用；不要把状态问题当成控制指令。"
         },
         "vehicle_climate_control": {
           "enabled": true,
-          "description": "立即打开或关闭空调，或设置用户明确指定的温度、制冷制热模式和风量；不要把状态查询当成控制指令，也不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "立即开启或关闭空调/空调预处理，或设置制冷制热模式和风量；设置温度优先使用 vehicle_temperature_control。不要把状态查询当成控制指令，也不要再通过 spawn_thinking 重复执行同一操作。"
+        },
+        "vehicle_temperature_control": {
+          "enabled": true,
+          "description": "立即设置或调高/调低主驾、副驾、后排或全车座舱温度。用户说“调到多少度”“温度高一点/低一点”时调用；不要只口头回应。"
+        },
+        "vehicle_window_control": {
+          "enabled": true,
+          "description": "立即打开、关闭、通风或设置指定车窗/前排/后排/左侧/右侧/全车车窗开度；只在用户明确要求控制时调用，该指令即为本次操作授权。"
+        },
+        "vehicle_sunroof_control": {
+          "enabled": true,
+          "description": "立即打开、关闭、通风/翘起或停止车辆天窗；只在用户明确要求控制时调用，该指令即为本次操作授权。"
+        },
+        "vehicle_closure_control": {
+          "enabled": true,
+          "description": "立即打开或关闭前备箱、后备箱/尾门、充电口或加油口；只在用户明确要求控制时调用。"
+        },
+        "vehicle_comfort_control": {
+          "enabled": true,
+          "description": "立即控制座椅加热、座椅通风/制冷、自动座椅温控、方向盘加热和方向盘自动加热；用户指定座位或档位时写入参数。"
+        },
+        "vehicle_light_control": {
+          "enabled": true,
+          "description": "立即打开/关闭大灯，或短暂闪灯用于定位车辆；只在用户明确要求控制时调用。"
+        },
+        "vehicle_sound_control": {
+          "enabled": true,
+          "description": "立即鸣笛或播放车外定位提示音；这是一次性声音动作，只在用户明确要求时调用。"
+        },
+        "vehicle_charging_control": {
+          "enabled": true,
+          "description": "立即开始/停止充电、设置充电上限/电流、设置标准/最大续航模式或管理充电计划；不要把充电状态查询当成控制指令。"
         },
         "navigation_set_route_strategy": {
           "enabled": true,

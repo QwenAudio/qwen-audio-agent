@@ -7,10 +7,15 @@ function formatArgs(args) {
 
 const TOOL_TAGS = {
   vehicle_state_query: { label: '车况查询', cls: 'tag-car' },
+  vehicle_climate_control: { label: '空调控制', cls: 'tag-car' },
+  vehicle_temperature_control: { label: '温度控制', cls: 'tag-car' },
   vehicle_window_control: { label: '车窗控制', cls: 'tag-car' },
   vehicle_sunroof_control: { label: '天窗控制', cls: 'tag-car' },
-  vehicle_headlights_control: { label: '大灯控制', cls: 'tag-car' },
-  vehicle_climate_control: { label: '空调控制', cls: 'tag-car' },
+  vehicle_closure_control: { label: '开闭件控制', cls: 'tag-car' },
+  vehicle_comfort_control: { label: '舒适控制', cls: 'tag-car' },
+  vehicle_light_control: { label: '灯光控制', cls: 'tag-car' },
+  vehicle_sound_control: { label: '声音控制', cls: 'tag-car' },
+  vehicle_charging_control: { label: '充电控制', cls: 'tag-car' },
   navigation_start: { label: '开始导航', cls: 'tag-nav' },
   navigation_route_query: { label: '路线查询', cls: 'tag-nav' },
   navigation_stop: { label: '停止导航', cls: 'tag-nav' },

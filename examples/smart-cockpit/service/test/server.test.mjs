@@ -52,8 +52,8 @@ test('serves state and commands over the scenario HTTP boundary', async t => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       cockpitId: 'http-car',
-      name: 'vehicle_headlights_control',
-      arguments: { action: 'open' },
+      name: 'vehicle_light_control',
+      arguments: { action: 'open', light: 'headlights' },
     }),
   }).then(response => response.json())
   assert.deepEqual(command.changed, ['vehicle'])
@@ -181,30 +181,37 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   t.after(() => frontend.close())
 
   const backendTools = await backend.listTools()
-  assert.equal(backendTools.tools.length, 27)
+  assert.equal(backendTools.tools.length, 32)
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_climate_control'))
+  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_temperature_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'flashbuy'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'weather'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_window_control'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_headlights_control'))
+  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_light_control'))
+  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_charging_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'custom_skill_create'))
 
   const frontendTools = await frontend.listTools()
   assert.deepEqual(frontendTools.tools.map(tool => tool.name), [
     'weather',
     'vehicle_state_query',
+    'vehicle_climate_control',
+    'vehicle_temperature_control',
     'vehicle_window_control',
     'vehicle_sunroof_control',
-    'vehicle_headlights_control',
-    'vehicle_climate_control',
+    'vehicle_closure_control',
+    'vehicle_comfort_control',
+    'vehicle_light_control',
+    'vehicle_sound_control',
+    'vehicle_charging_control',
     'navigation_set_route_strategy',
     'navigation_set_voice',
     'navigation_set_view',
   ])
 
   const output = await backend.callTool({
-    name: 'vehicle_climate_control',
-    arguments: { action: 'set_temp', temperature: 22 },
+    name: 'vehicle_temperature_control',
+    arguments: { action: 'set', temperature: 22 },
   })
   assert.equal(output.isError, undefined)
   assert.equal(output.structuredContent.vehicle.acTemp, 22)
@@ -236,6 +243,13 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   })
   assert.equal(climate.isError, undefined)
   assert.equal(climate.structuredContent.vehicle.acFan, 4)
+
+  const comfort = await frontend.callTool({
+    name: 'vehicle_comfort_control',
+    arguments: { target: 'steering_wheel_heat_level', action: 'set', level: 2 },
+  })
+  assert.equal(comfort.isError, undefined)
+  assert.equal(comfort.structuredContent.vehicle.steeringWheelHeatLevel, 2)
 
   await backend.callTool({
     name: 'navigation_start',

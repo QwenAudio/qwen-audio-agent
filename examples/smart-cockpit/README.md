@@ -106,6 +106,9 @@ A preflight validates the Realtime configuration and all four ports before any c
   explicitly reports its demo fallback; a deployment replaces only that service.
 - Route preference buttons write the authoritative cockpit state. The next route
   inherits that preference unless the user explicitly chooses another one.
+- The memory settings panel uses the Gateway's provider-neutral memory control
+  plane. It lists and exactly deletes entries from the same USER/MEMORY documents
+  used by Realtime, rather than maintaining a cockpit-only memory store.
 - Other cockpit work goes through the fixed `spawn_thinking` bridge. The example
   backend attaches over A2A, and Qwen3.8-Flash discovers the complete backend MCP
   surface for vehicle control, navigation, music, flash-buy, and custom workflows,

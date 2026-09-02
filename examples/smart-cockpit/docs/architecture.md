@@ -63,6 +63,10 @@ cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► coc
 
 因此后台任务还可以把详细状态发送给客户自己的座舱系统；Gateway 只接收适合继续对话和播报的 Task 进展与结果。
 
+记忆属于前台对话面，不属于座舱 Service。客户端的记忆列表/删除面板使用
+Gateway `GET/PATCH /api/memory` 控制面，与 Realtime 记忆工具共用同一个
+`MemoryProvider`；默认 Markdown 与外部 Provider 对客户端是同一份协议。
+
 ## 自定义技能
 
 座舱自定义技能是用户通过语音保存的场景工作流。记录由 `cockpit-service` 按

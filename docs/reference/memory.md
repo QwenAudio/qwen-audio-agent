@@ -37,6 +37,20 @@ several durable changes; the Gateway still produces only one follow-up response.
 starts from the latest document, and an exact replacement fails safely when its source fragment
 is missing or ambiguous.
 
+## Client Control Plane
+
+Replaceable clients can manage the same memory through two Gateway endpoints:
+
+- `GET /api/memory` returns the current owner's bounded `user` and `memory` documents.
+- `PATCH /api/memory` accepts the same exact edits as the Realtime memory tool, including
+  `expectedRevision`; stale revisions return `409` so a client can reload instead of
+  overwriting a concurrent change.
+
+This is a document control plane, not a second memory store. It is owner-scoped by the Gateway,
+passes writes through `FrontendMemoryRuntime`, and therefore works unchanged with the default
+Markdown provider or an injected provider. Clients should render only the formats they
+understand and preserve exact source text when issuing a delete or replacement.
+
 ## Session Digests and Recall (off by default)
 
 With `QWEN_AUDIO_SESSION_DIGEST=on`, each finished session records its topics and

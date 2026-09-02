@@ -388,6 +388,104 @@ test('can disable memory without constructing the default provider', async () =>
   await application.close()
 })
 
+test('serves and edits frontend memory through the generic client control plane', async () => {
+  const calls = []
+  const documents = [{
+    id: 'memory_document',
+    scope: 'memory',
+    content: '# MEMORY\n\n- 用户喜欢茶',
+    format: 'markdown',
+    revision: 'revision-one',
+    editable: true,
+  }]
+  const frontendMemory = {
+    list: ownerId => {
+      calls.push({ kind: 'list', ownerId })
+      return documents
+    },
+    apply: async (ownerId, changes, context) => {
+      calls.push({ kind: 'apply', ownerId, changes, context })
+      if (changes[0]?.expectedRevision === 'stale') {
+        throw Object.assign(new Error('memory document changed'), {
+          code: 'stale_document',
+        })
+      }
+      return { changed: 1, documents: [] }
+    },
+    health: () => ({ ok: true, configured: true, provider: { key: 'test' } }),
+    close: async () => {},
+  }
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      memoryAutoEnabled: false,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMemory,
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+  const origin = `http://127.0.0.1:${port}`
+  try {
+    const listed = await fetch(`${origin}/api/memory`)
+    assert.equal(listed.status, 200)
+    assert.deepEqual(await listed.json(), { documents })
+
+    const invalid = await fetch(`${origin}/api/memory`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ changes: [] }),
+    })
+    assert.equal(invalid.status, 400)
+
+    const stale = await fetch(`${origin}/api/memory`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        changes: [{
+          document: 'memory',
+          expectedRevision: 'stale',
+          edits: [{ old_text: '- 用户喜欢茶', new_text: '' }],
+        }],
+      }),
+    })
+    assert.equal(stale.status, 409)
+    assert.deepEqual(await stale.json(), {
+      error: 'memory document changed',
+      code: 'stale_document',
+    })
+
+    const changes = [{
+      document: 'memory',
+      expectedRevision: 'revision-one',
+      edits: [{ old_text: '- 用户喜欢茶', new_text: '' }],
+    }]
+    const edited = await fetch(`${origin}/api/memory`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ changes }),
+    })
+    assert.equal(edited.status, 200)
+    assert.deepEqual(await edited.json(), { changed: 1, documents: [] })
+    assert.deepEqual(calls.at(-1), {
+      kind: 'apply',
+      ownerId: config.personalOwnerId,
+      changes,
+      context: { source: 'gateway-memory-api' },
+    })
+  } finally {
+    await application.close()
+  }
+})
+
 // 接线契约：新增的记忆模块默认关闭，显式开启时才装配。
 // config 是模块级单例（import 时已读完 env），所以这里注入伪 config
 // 而不是改 process.env —— 后者在同一进程内无效。

@@ -27,7 +27,9 @@ runtime-command plane, Agent Delivery, Client Actions, reference Client SDK,
 and bounded replay all share the same WebSocket.
 This contract index remains authoritative for implemented behavior.
 
-The current health-contract version is `5.5.0`. The additive `5.5` line ships
+The current health-contract version is `5.6.0`. The additive `5.6` line exposes
+a provider-neutral frontend memory control plane for replaceable clients. The
+additive `5.5` line ships
 the shared reference Client SDK, bounded Task-event replay, and reconnect state
 recovery. First-party WebUI, Desktop, and TUI clients now pass the same
 conformance suite and no longer use internal REST routes for Task control,
@@ -76,6 +78,7 @@ below instead of assuming the old list.
 | `tasks.structured-results-authorization` | Native Task events use A2A-aligned work states and expose factual `result`, typed `artifacts`, and `authorization`, without prescribing speech or UI | `test/gateway-event-schema.test.mjs`, `server/test/task-state.test.mjs` |
 | `tasks.unified-id-updates` | A Task exposes one short `id`; `task.updated` carries adapter-normalized incremental messages and artifacts | `test/gateway-event-schema.test.mjs`, `server/test/task-manager.test.mjs` |
 | `messages.citations` | Final assistant `transcript.final` events may carry normalized citations collected from frontend retrieval in the same turn | `test/gateway-event-schema.test.mjs`, `server/test/realtime-presentation-runtime.test.mjs` |
+| `frontend.memory-control` | `GET/PATCH /api/memory` lets replaceable clients list and exactly edit the same provider-backed USER/MEMORY documents used by Realtime, without depending on a storage implementation | `server/test/gateway-application.test.mjs` |
 | `realtime.conversation-client-v1` | `WS /api/realtime`, published event constants, and message schemas form the replaceable text/audio/multimodal Conversation Client boundary | `test/gateway-event-schema.test.mjs`, `test/custom-conversation-client.test.mjs` |
 | `realtime.gateway-client-protocol-v6-handshake` | The same WebSocket accepts an opt-in 6.0 `session.hello`, returns correlated `session.ready`, negotiates implemented capabilities, and normalizes 6.0 input aliases into the existing business path | `test/gateway-client-protocol.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-runtime-commands` | Negotiated 6.0 Clients can publish registered semantic Client Events and use correlated Task, permission, conversation-history, and session output-voice commands over the same WebSocket; existing REST routes call the same command service as compatibility aliases | `test/gateway-client-protocol.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/client-command-runtime.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
@@ -174,6 +177,8 @@ await orb.load()
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /api/health` | Liveness, capability discovery and runtime status; includes `protocolVersion`, `capabilities`, `gatewayInstanceId`, `voiceConfigured`, `inputSuspension`, `voiceClients`, `backend` |
+| `GET /api/memory` | List the current owner's bounded, provider-neutral frontend memory documents |
+| `PATCH /api/memory` | Apply exact revision-checked edits to those documents; stale revisions return `409` |
 | `POST /api/input/suspend` | Take the microphone: `{ owner, reason?, ttlMs? }`; default TTL 15 s, cap 300 s |
 | `POST /api/input/resume` | Release it: `{ owner }` |
 | `GET /api/input` | Current suspension status |

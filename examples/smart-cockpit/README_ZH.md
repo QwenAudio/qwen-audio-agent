@@ -88,6 +88,8 @@ npm run example:smart-cockpit
 - 位置查询与导航起点共用 Cockpit Service 的 `vehicleLocation()` 适配入口；
   未接车机 GPS 时会明确返回 Demo 默认位置，部署时只需替换该服务。
 - 路线偏好按钮写入座舱权威状态；用户未另行指定时，后续导航会继承该偏好。
+- 记忆设置面板调用 Gateway 的 Provider 无关记忆控制面，列出并精确删除
+  Realtime 共用的 USER/MEMORY 文档条目，不维护座舱私有的另一份记忆。
 - 其他座舱任务通过固定的 `spawn_thinking` 桥梁提交给后台。示例后台通过 A2A
   接入 Gateway，Qwen3.8-Flash 会发现并调用独立的后台 MCP 工具面，完成车控、
   导航、音乐、闪购和自定义技能任务，包括有序的多途经点导航。

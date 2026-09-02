@@ -23,6 +23,7 @@ import {
   cockpitPersonaId,
 } from '../config/personas'
 import { activateAudioContext } from '../audio/activation'
+import { gatewayWebSocketUrl } from '../config/gateway'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
@@ -39,9 +40,7 @@ const TASK_TERMINAL_EVENTS = new Set([
 ])
 
 function gatewayWsUrl(sessionId) {
-  const origin = import.meta.env.VITE_GATEWAY_ORIGIN || window.location.origin
-  const url = new URL('/api/realtime', origin)
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  const url = gatewayWebSocketUrl('/api/realtime')
   url.searchParams.set('sessionId', sessionId)
   return url.toString()
 }

@@ -12,6 +12,7 @@ import MusicPanel, { PLAYLIST } from './components/MusicPanel'
 import FlashBuyPanel from './components/FlashBuyPanel'
 import useCockpitState from './hooks/useCockpitState'
 import useCockpitSkills from './hooks/useCockpitSkills'
+import useGatewayMemory from './hooks/useGatewayMemory'
 import useVoiceSession from './hooks/useVoiceSession'
 import {
   finalUserTranscript,
@@ -41,7 +42,7 @@ const INITIAL_CAR_STATE = {
   acFan: 3,
 }
 
-const VALID_TABS = ['persona', 'skills']
+const VALID_TABS = ['persona', 'skills', 'memory']
 const PERSONA_STORAGE_KEY = 'selectedPersona'
 const VOICE_STORAGE_KEY = 'selectedVoice'
 const INITIAL_WEATHER_STATE = {
@@ -107,6 +108,13 @@ export default function App() {
     load: loadCustomSkill,
     remove: deleteCustomSkill,
   } = useCockpitSkills(cockpitId, cockpitActivity)
+  const {
+    items: memories,
+    loading: memoryLoading,
+    error: memoryError,
+    load: loadMemories,
+    remove: deleteMemory,
+  } = useGatewayMemory()
   const [screen, setScreen] = useState('main')
   const [settingsTab, setSettingsTab] = useState('persona')
   const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(
@@ -410,6 +418,10 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
+  useEffect(() => {
+    if (screen === 'settings' && settingsTab === 'memory') loadMemories()
+  }, [loadMemories, screen, settingsTab])
+
   return (
     <main className="device" aria-label="车机语音交互原型">
       <section className="screen">
@@ -459,6 +471,11 @@ export default function App() {
                 skillsError={customSkillsError}
                 onLoadSkill={loadCustomSkill}
                 onDeleteSkill={deleteCustomSkill}
+                memories={memories}
+                memoryLoading={memoryLoading}
+                memoryError={memoryError}
+                onDeleteMemory={deleteMemory}
+                onRefreshMemory={loadMemories}
               />
             )}
           </div>

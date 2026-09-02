@@ -12,7 +12,7 @@
 | 启动预检 | Realtime 配置、四进程端口、无效端口 | `examples/smart-cockpit/bootstrap/test/preflight.test.mjs` |
 | GCP 客户端 | 握手、重连、回放、播放回执、Task 与会话恢复 | 根目录 Gateway Client SDK / protocol tests |
 | BackendPort/A2A | 取消、超时、断线、重复终态、输入与权限映射 | `server/test/a2a-backend-adapter.test.mjs` 及 Backend tests |
-| cockpit-client | 场景活动到导航/音乐/闪购面板的投影、路线动画终止、解除静音意图与麦克风权限解耦、自定义技能列表/详情/删除、Task 进度语义去重、ESLint 与生产构建 | `examples/smart-cockpit/client/test/`、`npm run example:smart-cockpit:lint`、`npm run example:smart-cockpit:build` |
+| cockpit-client | 场景活动到导航/音乐/闪购面板的投影、路线动画终止、解除静音意图与麦克风权限解耦、自定义技能列表/详情/删除、前台记忆投影/删除、Task 进度语义去重、ESLint 与生产构建 | `examples/smart-cockpit/client/test/`、`server/test/gateway-application.test.mjs`、`npm run example:smart-cockpit:lint`、`npm run example:smart-cockpit:build` |
 
 统一运行：
 

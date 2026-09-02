@@ -10,6 +10,8 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.6.0 adds a provider-neutral frontend memory control plane for replaceable
+// clients to list and edit the same documents used by Realtime.
 // 5.5.0 adds the GCP5 reference Client SDK, bounded Task-event replay, and
 // migrates first-party task/history/permission recovery to the WebSocket.
 // 5.4.0 adds GCP4 ClientActionPort request/result correlation and the shared
@@ -41,7 +43,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.5.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.6.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -93,6 +95,9 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // Final assistant transcript events may carry bounded, normalized citations
   // collected from frontend retrieval tools during the same user turn.
   'messages.citations',
+  // GET/PATCH /api/memory lists and edits the provider-backed frontend memory
+  // documents used by Realtime; no storage implementation leaks to clients.
+  'frontend.memory-control',
   // WS /api/realtime plus the published event constants and schemas form the
   // replaceable Conversation Client boundary for audio, text, multimodal
   // input, transcripts, playback receipts, voice state and Task projections.

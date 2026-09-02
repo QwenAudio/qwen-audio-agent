@@ -619,6 +619,47 @@ app.get('/api/health', (req, res) => {
   })
 })
 
+// Provider-neutral memory control plane for replaceable Conversation Clients.
+// It exposes the same bounded documents used by Realtime without leaking the
+// Markdown default or any injected provider's persistence details.
+app.get('/api/memory', (req, res, next) => {
+  if (!frontendMemoryRuntime) {
+    return res.status(404).json({ error: 'frontend memory is not configured' })
+  }
+  try {
+    return res.json({
+      documents: frontendMemoryRuntime.list(req.identity.ownerId),
+    })
+  } catch (error) {
+    return next(error)
+  }
+})
+
+app.patch('/api/memory', async (req, res, next) => {
+  if (!frontendMemoryRuntime) {
+    return res.status(404).json({ error: 'frontend memory is not configured' })
+  }
+  const changes = req.body?.changes
+  if (!Array.isArray(changes) || changes.length === 0) {
+    return res.status(400).json({ error: 'changes must be a non-empty array' })
+  }
+  try {
+    return res.json(await frontendMemoryRuntime.apply(
+      req.identity.ownerId,
+      changes,
+      { source: 'gateway-memory-api' },
+    ))
+  } catch (error) {
+    if (error?.code === 'stale_document') {
+      return res.status(409).json({ error: error.message, code: error.code })
+    }
+    if (['invalid_edit', 'ambiguous_edit', 'edit_not_found'].includes(error?.code)) {
+      return res.status(400).json({ error: error.message, code: error.code })
+    }
+    return next(error)
+  }
+})
+
 // Host control plane for microphone arbitration. The host announces that it is
 // taking the microphone and the Gateway commands its clients to stop capturing.
 // Both calls are idempotent per owner, and a suspension expires on its own so a

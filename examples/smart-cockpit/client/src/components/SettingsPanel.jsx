@@ -1,9 +1,11 @@
 import PersonaTab from './PersonaTab'
 import SkillTab from './SkillTab'
+import MemoryTab from './MemoryTab'
 
 const TABS = [
   { id: 'persona', label: '个性化' },
   { id: 'skills', label: '技能' },
+  { id: 'memory', label: '记忆' },
 ]
 
 export default function SettingsPanel({
@@ -12,6 +14,7 @@ export default function SettingsPanel({
   selectedVoice, onSelectVoice,
   selectedWake, onSelectWake,
   skills, skillsError, onLoadSkill, onDeleteSkill,
+  memories, memoryLoading, memoryError, onDeleteMemory, onRefreshMemory,
 }) {
   return (
     <section className="settings-panel">
@@ -41,6 +44,15 @@ export default function SettingsPanel({
           error={skillsError}
           onLoad={onLoadSkill}
           onDelete={onDeleteSkill}
+        />
+      </div>
+      <div className={`tab-page ${activeTab === 'memory' ? 'is-active' : ''}`}>
+        <MemoryTab
+          items={memories}
+          loading={memoryLoading}
+          error={memoryError}
+          onDelete={onDeleteMemory}
+          onRefresh={onRefreshMemory}
         />
       </div>
     </section>

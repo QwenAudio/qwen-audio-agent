@@ -19,13 +19,7 @@ export function truncateForVoice(items, limit = 3) {
   return { shown: items.slice(0, limit), rest: items.length - limit }
 }
 
-// 未核验身份就碰订单数据，是细则第十条点名的违规。
-// 【它只负责判定并给出文案，拦不拦由调用方决定】——因为两类偏差的处置不同：
-//   · 涉及客户数据的（订单、档案）→ 硬拒，泄露说出去就收不回来
-//   · 纯顺序类的（先查款式后查订单）→ 只记录，无害
-// 计划 §8.3 第 2 层说「偏差要可见而不是消灭」，指的是后者。
-export function guardVerified(session, tool) {
-  return session.identity.verified
-    ? null
-    : `${tool} 在身份未核验时被调用`
-}
+// 曾经这里有个 guardVerified，写死「必须已核验身份」。
+// 前置条件已经搬到 domains/*/guards.json，由 guards.mjs 的
+// checkPreconditions 求值 —— 管理员改配置就能改变哪些工具需要先核验什么。
+// 留这段注释是因为「为什么这个文件里没有权限检查」值得说明。

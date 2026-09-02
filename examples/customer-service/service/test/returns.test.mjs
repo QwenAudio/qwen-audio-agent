@@ -148,7 +148,7 @@ test('已发货的订单不能取消，提示改走退货或拒收', async () =>
   const service = await verified('c7')
   const call = backend(service, 'c7')
   const result = await call('cancel_order', { orderId: '#W5027341', reason: '不需要了' })
-  assert.equal(result.data.blocked, 'not_pending')
+  assert.equal(result.data.blocked, 'not_cancellable')
   assert.match(result.content, /已发货/)
 })
 
@@ -177,7 +177,8 @@ test('超出时限的退货被拒，并说明天数与类别时限', async () =>
   // #W7719204 是电热水壶（家电 15 天），6 月中签收，早就超了
   const result = await call('return_items', { orderId: '#W7719204' })
   assert.equal(result.data.blocked, 'window_expired')
-  assert.match(result.content, /家用电器类 15 天/)
+  // 理由文案现在来自 guards.json 的 reason 字段
+  assert.match(result.content, /家用电器类退货窗口 15 天/)
   assert.ok(result.data.elapsed > 15)
 })
 
@@ -230,7 +231,7 @@ test('未签收的订单不走退货流程', async () => {
   const service = await verified('r6')
   const call = backend(service, 'r6')
   const pending = await call('return_items', { orderId: '#W1082334' })
-  assert.equal(pending.data.blocked, 'not_delivered')
+  assert.equal(pending.data.blocked, 'not_returnable')
   assert.match(pending.content, /取消订单/)
   const shipped = await call('return_items', { orderId: '#W5027341' })
   assert.match(shipped.content, /拒收/)
@@ -280,7 +281,7 @@ test('已发货的订单不能改地址', async () => {
   const service = await verified('a2', 'wangfang2277@example.com')
   const call = backend(service, 'a2')
   const result = await call('modify_address', { orderId: '#W8825431', address: '别的地方 100 号' })
-  assert.equal(result.data.blocked, 'not_pending')
+  assert.equal(result.data.blocked, 'not_editable')
   assert.match(result.content, /拒收/)
 })
 
@@ -302,7 +303,7 @@ test('写库工具在未核验时全部拒绝', async () => {
     ['modify_address', { orderId: '#W6613075', address: '某地 1 号' }],
   ]) {
     const result = await call(name, args)
-    assert.equal(result.data.blocked, 'identity_required', `${name} 未核验时应被拒`)
+    assert.equal(result.data.blocked, 'precondition', `${name} 未核验时应被拒`)
   }
   const { audit } = service.snapshot('n1')
   assert.equal(audit.filter(entry => entry.warning).length, 3)

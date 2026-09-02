@@ -1,4 +1,5 @@
-import { clean, guardVerified, toolResult, truncateForVoice } from '../shared.mjs'
+import { clean, toolResult, truncateForVoice } from '../shared.mjs'
+import { checkPreconditions, loadGuards } from '../../guards.mjs'
 
 const STATUS_TEXT = Object.freeze({
   pending: '未发货',
@@ -58,16 +59,21 @@ function describeOrder(order, db) {
 
 export function executeOrdersTool(name, args, { store, sessionId, surface }) {
   const session = store.mutable(sessionId)
-  const warning = guardVerified(session, name)
+  const guards = loadGuards(session.domain)
+  const gate = checkPreconditions(guards, name, session)
 
-  // 【这三个工具在未核验时硬拒，不是只记警告】
-  // 它们返回的是客户账户信息，说出去就收不回来。而「未核验就查订单」
-  // 又恰好是细则第十条点名的违规，所以：拒绝执行 + 留下红色审计记录。
-  // 顺序类的偏差（比如先查款式后查订单）不在这里拦 —— 那些无害。
-  if (warning) {
-    const content = '需要先核验客户身份才能查订单。请向客户索要注册邮箱，或者姓名加收货地址邮编。'
-    store.appendAudit(sessionId, { tool: name, surface, ok: false, summary: content, warning })
-    return toolResult(content, session, false, { blocked: 'identity_required' })
+  // 【前置条件从 guards.json 读，不再写死】
+  // 这三个工具返回的是客户账户信息，说出去就收不回来，所以 onMissing
+  // 配的是 refuse：拒绝执行 + 留下红色审计记录。
+  // 管理员如果把某个只读工具的前置条件去掉，这里就不拦了 ——
+  // 那是他的决定，不是代码的默认。
+  if (!gate.ok) {
+    store.appendAudit(sessionId, {
+      tool: name, surface, ok: false, summary: gate.message,
+      warning: `${name} 缺前置条件：${gate.missing.join('、')}`,
+    })
+    return toolResult(gate.message, session, false,
+      { blocked: 'precondition', missing: gate.missing })
   }
 
   const ownerId = session.identity.userId

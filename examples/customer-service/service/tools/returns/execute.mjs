@@ -1,4 +1,5 @@
-import { clean, guardVerified, toolResult } from '../shared.mjs'
+import { clean, toolResult } from '../shared.mjs'
+import { checkPreconditions, decide, enumValues, loadGuards } from '../../guards.mjs'
 import {
   APPROVAL_ERROR_TEXT,
   approvalPrompt,
@@ -6,16 +7,17 @@ import {
   createApproval,
 } from '../approval.mjs'
 
-// 退货时限表，抄自 domains/retail/policy.md 第二条。
-// 【furniture 刻意不在表里】—— 细则确实没写家具类的窗口。
-// 查不到时返回「细则未覆盖，需转人工」，而不是挑一个看起来合理的天数。
-// 这是「不许编造」的机制保证：不靠 prompt 请模型别编，而是工具本身给不出数字。
-const RETURN_WINDOW_DAYS = Object.freeze({
-  apparel: 30,
-  accessory: 30,
-  digital: 7,
-  appliance: 15,
-})
+// 【业务规则不在这个文件里，在 domains/*/guards.json】
+// 退货时限表、退款上限、哪些状态能取消，原本都硬编码在这里。
+// 搬到配置之后，管理员在配置台改一个数字就能改变行为 ——
+// 而不是提一个改代码的需求。
+//
+// 这里只保留两件事：从 db 取出决策所需的输入（类别、天数、状态、金额），
+// 以及把决策结果翻成给模型看的话。
+//
+// 曾经反对「工具级状态机」的理由是「前置条件随场景变、硬编码会把场景差异
+// 写进工具定义、枚举不全那个场景就不能用」。配置化解决前两点；
+// 第三点靠 guards.mjs 的缺省放行解决 —— 漏声明只是少一道保护。
 
 const CATEGORY_TEXT = Object.freeze({
   apparel: '服饰鞋包',
@@ -25,10 +27,15 @@ const CATEGORY_TEXT = Object.freeze({
   furniture: '家具',
 })
 
-// 细则第六条与第九条：超过这个数不自行处理，转人工主管。
-const REFUND_CEILING = 2000
+const STATUS_TEXT = Object.freeze({
+  pending: '未发货',
+  shipped: '已发货',
+  delivered: '已签收',
+  cancelled: '已取消',
+})
 
 function daysSince(iso) {
+  if (!iso) return null
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000)
 }
 
@@ -69,6 +76,7 @@ function finish(store, sessionId, surface, tool, content, changed, data, summary
 
 export function executeReturnsTool(name, args, { store, sessionId, surface }) {
   const session = store.mutable(sessionId)
+  const guards = loadGuards(session.domain)
 
   if (name === 'transfer_to_human') {
     const reason = clean(args.reason)
@@ -83,13 +91,13 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
       true, { transferred: true }, `转人工：${reason}`, null)
   }
 
-  // 写库类工具在未核验时一律拒绝。理由和只读类不同：只读是防泄露，
-  // 这里是防「改了不该改的人的单」—— 没有 ownerId 连该改谁都不知道。
-  const warning = guardVerified(session, name)
-  if (warning) {
-    return finish(store, sessionId, surface, name,
-      '需要先核验客户身份才能办理这项业务。', false,
-      { blocked: 'identity_required' }, null, warning)
+  // 前置条件改从 guards.json 读。之前是写死的 guardVerified，
+  // 现在管理员可以改「退货到底需要先确认什么」。
+  const gate = checkPreconditions(guards, name, session)
+  if (!gate.ok) {
+    return finish(store, sessionId, surface, name, gate.message, false,
+      { blocked: 'precondition', missing: gate.missing },
+      null, `${name} 缺前置条件：${gate.missing.join('、')}`)
   }
 
   const ownerId = session.identity.userId
@@ -110,27 +118,29 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
   const token = clean(args.approval_token)
 
   if (name === 'cancel_order') {
-    // 数据合法性校验（第 1 层，硬保证）。照 τ² 的做法：工具只管数据本身
-    // 合不合法，不管流程顺序对不对。
-    if (order.status !== 'pending') {
+    // 哪些状态能取消改从决策表读。之前写死为 status !== 'pending'。
+    const cancellable = decide(guards, 'cancellable', { status: order.status })
+    if (cancellable.outcome !== 'allow') {
+      const detail = cancellable.reason || `当前状态「${STATUS_TEXT[order.status] || order.status}」不允许取消`
       return finish(store, sessionId, surface, name,
-        `这笔订单当前是「${order.status === 'shipped' ? '已发货'
-          : order.status === 'delivered' ? '已签收' : '已取消'}」，不能取消。`
-        + (order.status === 'shipped' ? '可以引导客户签收后办退货，或者拒收。' : ''),
-        false, { blocked: 'not_pending' }, null, null)
+        `这笔订单不能取消：${detail}。`,
+        false, { blocked: 'not_cancellable' }, null, null)
     }
+    const allowedReasons = enumValues(guards, 'cancel_reason')
     const reason = clean(args.reason)
-    if (!['不需要了', '买错了'].includes(reason)) {
+    if (allowedReasons && !allowedReasons.includes(reason)) {
       return finish(store, sessionId, surface, name,
-        '取消原因只能是「不需要了」或「买错了」，请把客户的说法归到最接近的一种。',
+        `取消原因只能是${allowedReasons.map(item => `「${item}」`).join('或')}，`
+        + '请把客户的说法归到最接近的一种。',
         false, {}, null, null)
     }
 
     // 【超上限的不发令牌】没有令牌就执行不了，所以这条上限不是提示而是拦截。
-    // 若只在预览里写「金额较大建议转人工」，模型完全可以照样往下走。
-    if (order.total > REFUND_CEILING) {
+    // 阈值现在从 guards.json 的 refund_authority 表里读。
+    const authority = decide(guards, 'refund_authority', { amount: order.total })
+    if (authority.outcome === 'escalate') {
       return finish(store, sessionId, surface, name,
-        `退款金额 ￥${order.total.toFixed(2)} 超过 ￥${REFUND_CEILING} 上限，`
+        `退款金额 ￥${order.total.toFixed(2)} ${authority.reason || '超出客服权限'}，`
         + '客服不能自行处理。请向客户说明需要主管审批，然后调用 transfer_to_human。',
         false, { blocked: 'over_ceiling', total: order.total },
         `退款 ￥${order.total.toFixed(2)} 超上限，需转人工`, null)
@@ -176,14 +186,12 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
   }
 
   if (name === 'return_items') {
-    if (order.status !== 'delivered') {
+    // 哪些状态能退货改从决策表读。
+    const returnable = decide(guards, 'returnable_status', { status: order.status })
+    if (returnable.outcome !== 'allow') {
       return finish(store, sessionId, surface, name,
-        order.status === 'pending'
-          ? '这笔还没发货，退货流程不适用，应该走取消订单。'
-          : order.status === 'shipped'
-            ? '这笔已发货但还没签收，可以引导客户拒收，签收后才能办退货。'
-            : '这笔已经取消了，不能退货。',
-        false, { blocked: 'not_delivered' }, null, null)
+        returnable.reason || `当前状态「${STATUS_TEXT[order.status] || order.status}」不能退货。`,
+        false, { blocked: 'not_returnable' }, null, null)
     }
 
     const wanted = Array.isArray(args.itemIds) ? args.itemIds.map(clean).filter(Boolean) : []
@@ -204,18 +212,23 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
       }
     }
 
-    // 资格判定：按类别查时限。这一步的依据在 policy 里，不在数据库里 ——
-    // 也是这个示例最想验证的东西。
+    // 资格判定：逐件过 return_window 决策表。
+    // 【“policy_gap” 是表里的兜底行，不是代码里的 undefined 分支】
+    // 家具类在 policy 里没写时限，表里也就没有它，兜底行把它导向
+    // 转人工 —— 而不是猜一个天数。这是「不许编造」的机制形态。
     const elapsed = daysSince(order.deliveredAt)
     const uncovered = []
     const expired = []
     for (const item of targets) {
-      const category = productOf(db, item)?.category
-      const window = RETURN_WINDOW_DAYS[category]
-      if (window === undefined) {
-        uncovered.push(`${productOf(db, item)?.name}（${CATEGORY_TEXT[category] || category}）`)
-      } else if (elapsed > window) {
-        expired.push(`${productOf(db, item)?.name}（${CATEGORY_TEXT[category]}类 ${window} 天）`)
+      const product = productOf(db, item)
+      const verdict = decide(guards, 'return_window', {
+        category: product?.category,
+        daysSinceDelivery: elapsed,
+      })
+      if (!verdict.available || verdict.outcome === 'policy_gap') {
+        uncovered.push(`${product?.name}（${CATEGORY_TEXT[product?.category] || product?.category}）`)
+      } else if (verdict.outcome === 'expired') {
+        expired.push(`${product?.name}（${verdict.reason || '超出时限'}）`)
       }
     }
     if (uncovered.length) {
@@ -235,9 +248,10 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
     const amount = Math.round(
       targets.reduce((acc, item) => acc + item.price * item.quantity, 0) * 100,
     ) / 100
-    if (amount > REFUND_CEILING) {
+    const authority = decide(guards, 'refund_authority', { amount })
+    if (authority.outcome === 'escalate') {
       return finish(store, sessionId, surface, name,
-        `退款金额 ￥${amount.toFixed(2)} 超过 ￥${REFUND_CEILING} 上限，客服不能自行处理。`
+        `退款金额 ￥${amount.toFixed(2)} ${authority.reason || '超出客服权限'}，客服不能自行处理。`
         + '请向客户说明需要主管审批，然后调用 transfer_to_human。',
         false, { blocked: 'over_ceiling', amount },
         `退款 ￥${amount.toFixed(2)} 超上限，需转人工`, null)
@@ -282,13 +296,11 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
   }
 
   if (name === 'modify_address') {
-    if (order.status !== 'pending') {
+    const editable = decide(guards, 'address_editable', { status: order.status })
+    if (editable.outcome !== 'allow') {
       return finish(store, sessionId, surface, name,
-        `这笔订单当前是「${order.status === 'shipped' ? '已发货'
-          : order.status === 'delivered' ? '已签收' : '已取消'}」，不能改地址。`
-        + (order.status === 'shipped'
-          ? '可以引导客户签收后自行处理，或者拒收后重新下单。' : ''),
-        false, { blocked: 'not_pending' }, null, null)
+        editable.reason || `当前状态「${STATUS_TEXT[order.status] || order.status}」不能改地址。`,
+        false, { blocked: 'not_editable' }, null, null)
     }
     const address = clean(args.address)
     if (address.length < 6) {

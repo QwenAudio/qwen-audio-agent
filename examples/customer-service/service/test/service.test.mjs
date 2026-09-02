@@ -43,10 +43,12 @@ test('surface 只接受 frontend / backend', async () => {
 test('未核验时查订单被硬拒，并留下 warning', async () => {
   const service = fresh()
   const result = await service.execute('list_orders', {}, { sessionId: 's1', surface: 'frontend' })
-  assert.equal(result.data.blocked, 'identity_required')
+  assert.equal(result.data.blocked, 'precondition')
+  assert.deepEqual(result.data.missing, ['identity_verified'])
   assert.match(result.content, /先核验/)
   const { audit } = service.snapshot('s1')
-  assert.equal(audit.at(-1).warning, 'list_orders 在身份未核验时被调用')
+  // warning 文案现在由 guards.mjs 拼，含缺失的事实名
+  assert.match(audit.at(-1).warning, /list_orders 缺前置条件：identity_verified/)
   assert.equal(audit.at(-1).ok, false)
 })
 

@@ -1,4 +1,5 @@
 import { clean, toolResult } from '../shared.mjs'
+import { vehicleLocationText } from '../../vehicle-location.mjs'
 
 const WINDOW_PARTS = ['windowFL', 'windowFR', 'windowRL', 'windowRR']
 const TEMPERATURE_LIMITS = Object.freeze({ min: 16, max: 32 })
@@ -511,6 +512,15 @@ function executeCharging(args, context) {
 }
 
 export function executeVehicleTool(name, args, context) {
+  const { cockpitId, snapshot, store } = context
+  if (name === 'vehicle_location_query') {
+    const state = snapshot()
+    const location = state.location
+    const prefix = location.source === 'demo-default'
+      ? '演示车辆当前定位为'
+      : '车辆当前位于'
+    return toolResult(`${prefix}${vehicleLocationText(location)}`, state, [], { location })
+  }
   if (name === 'vehicle_state_query') {
     const state = context.snapshot()
     return toolResult(stateText(clean(args.part) || 'all', state.vehicle), state, [], {

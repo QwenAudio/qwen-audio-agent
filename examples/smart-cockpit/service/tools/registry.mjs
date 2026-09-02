@@ -20,6 +20,7 @@ function definition(tool) {
       readOnlyHint: [
         'custom_skill_list',
         'custom_skill_load',
+        'vehicle_location_query',
         'vehicle_state_query',
         'navigation_route_query',
         'navigation_search_place',
@@ -98,6 +99,7 @@ if (new Set(COCKPIT_TOOL_NAMES).size !== COCKPIT_TOOL_NAMES.length) {
 // capability; this is not a dynamic plugin layer.
 export const FRONTEND_TOOL_NAMES = Object.freeze([
   'weather',
+  'vehicle_location_query',
   'vehicle_state_query',
   'vehicle_climate_control',
   'vehicle_temperature_control',
@@ -111,6 +113,10 @@ export const FRONTEND_TOOL_NAMES = Object.freeze([
   'navigation_set_route_strategy',
   'navigation_set_voice',
   'navigation_set_view',
+  'navigation_stop',
+  'music_pause',
+  'music_next',
+  'music_previous',
 ])
 
 const toolDefinitionsByName = new Map(

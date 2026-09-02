@@ -28,6 +28,18 @@ Realtime 与自动整理都通过同一个记忆服务提交受限 Markdown 变�
 一句话包含多项持久修改时，Realtime 可在同一轮逐项调用，Gateway 只生成一次
 后续回应。写入前会重新读取最新文档，精确替换找不到或匹配多处时安全失败。
 
+## 客户端控制面
+
+可替换客户端可以通过两个 Gateway 接口管理同一份记忆：
+
+- `GET /api/memory` 返回当前 owner 有界的 `user` 与 `memory` 文档。
+- `PATCH /api/memory` 接受与 Realtime 记忆工具相同的精确编辑，其中包含
+  `expectedRevision`；版本过期返回 `409`，客户端应重新读取，而不是覆盖并发修改。
+
+这是一层文档控制面，不是第二套记忆存储。Gateway 负责 owner 隔离，写入统一经过
+`FrontendMemoryRuntime`，所以默认 Markdown Provider 与外部注入 Provider 使用同一协议。
+客户端只应展示自己理解的格式，删除或替换时必须保留并提交精确原文。
+
 ## 会话摘要与回溯（默认关闭）
 
 设 `QWEN_AUDIO_SESSION_DIGEST=on` 后，会话结束时记下这一场的话题与一句不超过 50 字的

@@ -1,5 +1,13 @@
 export const COCKPIT_CONNECTION_INTERRUPTED = '对话中控连接中断，正在重连'
 
+export function publishCockpitVoiceIntent(client, muted, publishedMuted = null) {
+  if (!client || publishedMuted === muted) return publishedMuted
+  const sent = client.send({
+    type: muted ? 'mute' : 'unmute',
+  }) === true
+  return sent ? muted : publishedMuted
+}
+
 export function cockpitVoiceConnectionMode(muted, outputVoice = '') {
   const enabled = muted !== true
   return {

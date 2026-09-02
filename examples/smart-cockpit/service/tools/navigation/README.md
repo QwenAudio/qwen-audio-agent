@@ -12,6 +12,10 @@
 - 服务层能力：编排高德 MCP / 高德 Web API，例如地点搜索、地理编码、周边搜索、驾车路线规划。
 - 状态层：维护当前导航状态、目的地、途经点、常用地点、路线、地图 marker/polyline、语音和视图设置。
 
+路线起点、“当前位置”收藏和 `vehicle_location_query` 共用
+`service/vehicle-location.mjs` 的定位结果。默认位置只是 Demo 回退；接入
+车机 GPS 时通过 Cockpit Service 的 `services.vehicleLocation()` 替换。
+
 这样可以减少模型在低层地图 API 之间的选择负担，同时保留车机场景需要的运行态控制。
 
 ## 工具大类
@@ -34,7 +38,7 @@
 | `navigation_add_waypoint` | “中途去一下”“顺路去”“加个途经点”“先去一下” | `waypoint`, `insertPosition?`, `strategy?` | 保持当前 `status`，插入途经点并重新规划 | 地点解析 + 驾车路线 |
 | `navigation_remove_waypoint` | “取消途经点”“不去刚才那个地方了”“删掉第几个途经点” | `waypoint?`, `index?` | 保持当前 `status`，删除途经点并重新规划 | 本地状态 + 驾车路线 |
 | `navigation_change_destination` | “目的地改成”“换个地方”“不去那里了去这里” | `destination`, `strategy?` | 保持当前 `status`，改最终目的地并重新规划 | 地点解析 + 驾车路线 |
-| `navigation_set_route_strategy` | “换成不走高速”“改成少收费”“避开拥堵” | `strategy` | 保持当前 `status`，改路线偏好并重新规划 | 驾车路线 |
+| `navigation_set_route_strategy` | “换成不走高速”“改成少收费”“避开拥堵” | `strategy` | 有路线时重新规划；无路线时作为后续导航的默认偏好 | 本地状态 + 必要时的驾车路线 |
 | `navigation_search_place` | “附近有没有充电站”“找个加油站”，但没有要求导航 | `query?`, `category?`, `nearby?`, `radius?` | 不修改导航状态 | `maps_text_search` / `maps_around_search` / `maps_search_detail` |
 | `navigation_to_favorite` | “回家”“去公司”“去学校” | `favoriteType`, `strategy?` | `status=navigating`，基于常用地点开始导航 | 读取本地收藏地址 + 驾车路线 |
 | `navigation_set_favorite` | “把这里设为家”“设置公司地址”“把某地设为学校” | `favoriteType`, `address?`, `useCurrentLocation?` | 更新 `navigation.favorites` | 地点解析或当前位置 |

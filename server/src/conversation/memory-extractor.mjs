@@ -215,24 +215,41 @@ export function createExtractorLlmCall({
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetchImpl(`${baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
+      const request = async (includeTemperature) => fetchImpl(
+        `${baseUrl}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: user },
+            ],
+            ...(includeTemperature ? { temperature: 0 } : {}),
+          }),
+          signal: controller.signal,
         },
-        body: JSON.stringify({
-          model,
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: user },
-          ],
-          temperature: 0,
-        }),
-        signal: controller.signal,
-      })
+      )
+      // Some OpenAI-compatible models reject optional sampling parameters.
+      // Retry once with the smallest common request shape; the timeout remains
+      // shared so a compatibility retry cannot double the caller's deadline.
+      let response = await request(true)
+      if (response.status === 400) {
+        await response.body?.cancel?.()
+        response = await request(false)
+      }
       if (!response.ok) {
-        throw new Error(`memory extractor request failed: ${response.status}`)
+        const detail = String(await response.text().catch(() => ''))
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 300)
+        throw new Error(
+          `memory extractor request failed: ${response.status}${detail ? ` ${detail}` : ''}`,
+        )
       }
       const payload = await response.json()
       return String(payload?.choices?.[0]?.message?.content || '')

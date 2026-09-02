@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { GatewayClient } from '../shared/gateway-client-sdk.mjs'
 import {
+  GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
 } from '../shared/gateway-client-protocol.mjs'
@@ -286,4 +287,28 @@ test('reference Client reconnects, replays from its cursor, then reconciles snap
   assert.deepEqual(received.map(event => event.sequence), [1, 2])
   assert.deepEqual(recovered.events.map(event => event.sequence), [2])
   client.stop()
+})
+
+test('reference Client does not reconnect after a newer instance replaces it', async () => {
+  const sockets = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => {
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+    clientInstanceId: 'sdk-replaced-test',
+    reconnectMinMs: 50,
+    reconnectMaxMs: 50,
+  }).start()
+  const socket = sockets[0]
+  socket.open()
+  socket.readyState = 3
+  socket.emit('close', { code: GATEWAY_CLIENT_REPLACED_CLOSE_CODE })
+
+  await new Promise(resolve => setTimeout(resolve, 70))
+
+  assert.equal(sockets.length, 1)
+  assert.equal(client.readyState, 3)
 })

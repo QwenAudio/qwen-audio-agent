@@ -1,5 +1,6 @@
 import {
   GATEWAY_CLIENT_PROTOCOL_VERSION,
+  GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
   createGatewayClientProtocolMessage,
@@ -273,7 +274,7 @@ export class GatewayClient {
       if (this.socket !== socket || this.stopped) return
       this.onStatus?.({ state: 'unavailable', error })
     })
-    addSocketListener(socket, 'close', () => {
+    addSocketListener(socket, 'close', eventOrCode => {
       if (this.socket !== socket) return
       this.socket = null
       this.ready = false
@@ -281,6 +282,16 @@ export class GatewayClient {
       this.#rejectPending('connection_closed', 'Gateway connection closed')
       if (this.stopped) return
       this.onStatus?.({ state: 'disconnected' })
+      const closeCode = typeof eventOrCode === 'number'
+        ? eventOrCode
+        : Number(eventOrCode?.code)
+      if (closeCode === GATEWAY_CLIENT_REPLACED_CLOSE_CODE) {
+        // A newer connection from this logical Client has taken ownership.
+        // Retrying this superseded socket would make the two instances evict
+        // each other forever during a page refresh or development hot reload.
+        this.stopped = true
+        return
+      }
       if (!this.reconnect) return
       this.reconnectTimer = setTimeout(() => this.#connect(), this.reconnectDelay)
       this.reconnectDelay = Math.min(this.reconnectMaxMs, this.reconnectDelay * 2)

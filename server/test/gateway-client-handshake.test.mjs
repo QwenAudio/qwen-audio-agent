@@ -4,6 +4,7 @@ import test from 'node:test'
 import WebSocket from 'ws'
 import {
   GatewayClientCapability,
+  GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
   GatewayClientProtocolEvent,
   createGatewaySessionHello,
 } from '../../shared/gateway-client-protocol.mjs'
@@ -537,7 +538,38 @@ test('allows only one active Gateway Client connection', async t => {
     event => event.error?.code === 'client_occupied',
   )
   assert.equal(occupied.type, 'error')
-  await new Promise(resolve => second.socket.once('close', resolve))
+  await waitUntil(() => second.socket.readyState === WebSocket.CLOSED)
   assert.equal(first.socket.readyState, WebSocket.OPEN)
   first.socket.close()
+})
+
+test('replaces a stale socket after the same logical Client reconnects', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+  const hello = () => createGatewaySessionHello({
+    clientInstanceId: 'same-client',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  })
+  const first = await connect(server, hello())
+  await waitFor(first.received, event => event.type === 'session.ready')
+  const firstClosed = new Promise(resolve => {
+    first.socket.once('close', (code, reason) => resolve({
+      code,
+      reason: reason.toString(),
+    }))
+  })
+
+  const second = await connect(server, hello())
+  await waitFor(second.received, event => event.type === 'session.ready')
+  assert.deepEqual(await firstClosed, {
+    code: GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
+    reason: 'client_replaced',
+  })
+  await waitUntil(() => gateway.status().connected === 1)
+  assert.equal(second.socket.readyState, WebSocket.OPEN)
+  second.socket.close()
 })

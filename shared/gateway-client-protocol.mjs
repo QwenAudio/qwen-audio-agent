@@ -10,6 +10,7 @@ import {
 } from './protocol/gateway-events.mjs'
 
 export const GATEWAY_CLIENT_PROTOCOL_VERSION = '6.0.0'
+export const GATEWAY_CLIENT_REPLACED_CLOSE_CODE = 4001
 
 export const GatewayClientProtocolEvent = Object.freeze({
   SESSION_HELLO: 'session.hello',

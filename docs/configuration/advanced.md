@@ -81,6 +81,13 @@ keys, tokens, Authorization, cookies, passwords, and secret fields are desensiti
 writing; by default, microphone audio, user transcription text, model reply text, task
 objectives, and task results are not recorded.
 
+For foreground-tool latency analysis, correlate `realtime.provider.speech_stopped`,
+`realtime.tool_call.received`, `realtime.tool_call.result_ready`, and
+`realtime.playback.started` by `sessionId` and `turnId`; failed calls use
+`realtime.tool_call.failed`. The first event is the Realtime provider's endpoint decision,
+not the user's physical last speech sample. Measuring the earlier acoustic-to-endpoint interval
+requires a Client-side capture timestamp or a controlled real-time PCM replay.
+
 The desktop edition can open the log directory in "Settings → App → Logs". The default
 log level is `info`; individual files rotate after reaching 10 MiB, with a total of 5 files
 retained. These can be adjusted via the following environment variables:

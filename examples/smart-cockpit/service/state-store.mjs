@@ -1,7 +1,7 @@
 import {
   DEFAULT_DELIVERY_ADDRESS,
 } from './tools/flashbuy/catalog.mjs'
-import { SONGS } from './tools/music/catalog.mjs'
+import { MUSIC_SOURCES, SONGS } from './tools/music/catalog.mjs'
 import { DEFAULT_VEHICLE_LOCATION } from './vehicle-location.mjs'
 
 const DEFAULT_COCKPIT_ID = 'default'
@@ -93,6 +93,13 @@ export function createInitialCockpitState(now = Date.now()) {
     music: {
       playing: false,
       currentIndex: 0,
+      source: 'qq_music',
+      sources: clone(MUSIC_SOURCES),
+      volume: 5,
+      volumeMax: 11,
+      volumeStep: 1,
+      muted: false,
+      favoriteIds: [],
       results: [],
       playlist: clone(SONGS),
     },

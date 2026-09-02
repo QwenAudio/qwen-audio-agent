@@ -49,9 +49,16 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
             navigation_set_voice: { enabled: true },
             navigation_set_view: { enabled: true },
             navigation_stop: { enabled: true },
+            music_state_query: { enabled: true },
+            music_play: { enabled: true },
+            music_toggle_playback: { enabled: true },
             music_pause: { enabled: true },
             music_next: { enabled: true },
             music_previous: { enabled: true },
+            music_volume_control: { enabled: true },
+            music_source_control: { enabled: true },
+            music_favorite_control: { enabled: true },
+            music_search: { enabled: true },
           },
         },
       },
@@ -77,9 +84,16 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
     'mcp__cockpit__navigation_set_voice',
     'mcp__cockpit__navigation_set_view',
     'mcp__cockpit__navigation_stop',
+    'mcp__cockpit__music_state_query',
+    'mcp__cockpit__music_play',
+    'mcp__cockpit__music_toggle_playback',
     'mcp__cockpit__music_pause',
     'mcp__cockpit__music_next',
     'mcp__cockpit__music_previous',
+    'mcp__cockpit__music_volume_control',
+    'mcp__cockpit__music_source_control',
+    'mcp__cockpit__music_favorite_control',
+    'mcp__cockpit__music_search',
   ])
   const output = await client.execute('mcp__cockpit__weather', { city: '杭州' })
   assert.match(output.text, /杭州，晴，27°/u)
@@ -120,6 +134,11 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
   assert.match(voice.text, /简洁播报/u)
   await client.execute('mcp__cockpit__music_next', {})
   await client.execute('mcp__cockpit__music_previous', {})
+  await client.execute('mcp__cockpit__music_volume_control', { action: 'set', volume: 7 })
+  await client.execute('mcp__cockpit__music_source_control', { source: 'bluetooth' })
+  await client.execute('mcp__cockpit__music_favorite_control', { action: 'add', query: '晴天' })
+  const musicState = await client.execute('mcp__cockpit__music_state_query', { part: 'all' })
+  assert.match(musicState.text, /当前来源蓝牙/u)
   await client.execute('mcp__cockpit__music_pause', {})
   await client.execute('mcp__cockpit__navigation_stop', {})
   assert.equal(service.snapshot().weather.daytemp, '27')
@@ -130,4 +149,7 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
   assert.equal(service.snapshot().navigation.status, 'idle')
   assert.equal(service.snapshot().navigation.strategy, 4)
   assert.equal(service.snapshot().navigation.voice.broadcastMode, 'brief')
+  assert.equal(service.snapshot().music.volume, 7)
+  assert.equal(service.snapshot().music.source, 'bluetooth')
+  assert.deepEqual(service.snapshot().music.favoriteIds, ['sunny-day'])
 })

@@ -25,11 +25,18 @@ test('adds a foreground fast path while retaining a complete backend orchestrati
     'navigation_set_voice',
     'navigation_set_view',
     'navigation_stop',
+    'music_state_query',
+    'music_play',
+    'music_toggle_playback',
     'music_pause',
     'music_next',
     'music_previous',
+    'music_volume_control',
+    'music_source_control',
+    'music_favorite_control',
+    'music_search',
   ])
-  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 33)
+  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 38)
   const backendNames = BACKEND_TOOL_DEFINITIONS.map(tool => tool.name)
   assert.ok(backendNames.includes('vehicle_sunroof_control'))
   assert.ok(backendNames.includes('vehicle_climate_control'))
@@ -44,6 +51,10 @@ test('adds a foreground fast path while retaining a complete backend orchestrati
   assert.ok(backendNames.includes('weather'))
   assert.ok(backendNames.includes('vehicle_window_control'))
   assert.ok(backendNames.includes('vehicle_location_query'))
+  assert.ok(backendNames.includes('music_state_query'))
+  assert.ok(backendNames.includes('music_volume_control'))
+  assert.ok(backendNames.includes('music_source_control'))
+  assert.ok(backendNames.includes('music_favorite_control'))
   assert.ok(backendNames.includes('custom_skill_list'))
   assert.ok(backendNames.includes('custom_skill_create'))
   assert.ok(backendNames.includes('custom_skill_load'))
@@ -78,9 +89,16 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
     'navigation_set_voice',
     'navigation_set_view',
     'navigation_stop',
+    'music_state_query',
+    'music_play',
+    'music_toggle_playback',
     'music_pause',
     'music_next',
     'music_previous',
+    'music_volume_control',
+    'music_source_control',
+    'music_favorite_control',
+    'music_search',
   ])
   assert.equal(config.servers.cockpit.tools.vehicle_window_control.enabled, true)
   assert.equal(config.servers.cockpit.tools.navigation_set_view.enabled, true)
@@ -90,6 +108,10 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
   assert.equal(config.servers.cockpit.tools.vehicle_climate_control.enabled, true)
   assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_climate_control))
   assert.equal(config.servers.cockpit.tools.vehicle_charging_control.enabled, true)
+  assert.equal(config.servers.cockpit.tools.music_state_query.enabled, true)
+  assert.match(config.servers.cockpit.tools.music_state_query.description, /不要把查询当成控制/u)
+  assert.match(config.servers.cockpit.tools.music_search.description, /不自动播放/u)
+  assert.match(config.servers.cockpit.tools.music_volume_control.description, /直接调用/u)
 })
 
 test('keeps asynchronous cockpit acknowledgements natural and action-specific', () => {

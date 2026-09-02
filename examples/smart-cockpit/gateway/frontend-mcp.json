@@ -69,6 +69,18 @@
           "enabled": true,
           "description": "立即停止当前导航并清空路线。用户说停止、取消或结束导航时直接调用；不要调用 cancel_agent_task，也不要通过 spawn_thinking 提交。"
         },
+        "music_state_query": {
+          "enabled": true,
+          "description": "直接查询当前媒体播放、曲目、音量、来源、收藏或搜索结果。用户问“现在放的什么”“音量多少”“当前音乐来源”时调用；不要把查询当成控制。"
+        },
+        "music_play": {
+          "enabled": true,
+          "description": "立即播放或继续播放音乐，可按歌曲名、歌手、专辑点播。用户说“播放/听某首歌/继续播放”时直接调用；不要通过 spawn_thinking 提交。"
+        },
+        "music_toggle_playback": {
+          "enabled": true,
+          "description": "立即切换播放/暂停，或显式执行播放、暂停。用户说“暂停/继续一下”“播放暂停切一下”时直接调用。"
+        },
         "music_pause": {
           "enabled": true,
           "description": "立即暂停当前音乐。用户要求暂停时直接调用，不要通过 spawn_thinking 提交。"
@@ -80,6 +92,22 @@
         "music_previous": {
           "enabled": true,
           "description": "立即切换到上一首音乐。用户要求切上一首时直接调用，不要通过 spawn_thinking 提交。"
+        },
+        "music_volume_control": {
+          "enabled": true,
+          "description": "立即设置、调高、调低、静音或取消静音媒体音量。用户说“音量大一点/小一点/调到 6/静音”时直接调用。"
+        },
+        "music_source_control": {
+          "enabled": true,
+          "description": "立即切换媒体来源。用户说“切到蓝牙/广播/Spotify/Apple Music/QQ音乐”等来源时直接调用。"
+        },
+        "music_favorite_control": {
+          "enabled": true,
+          "description": "立即收藏/取消收藏当前或指定歌曲，或切换到上一首/下一首收藏歌曲。用户说“收藏这首/取消收藏/下一首收藏”时调用。"
+        },
+        "music_search": {
+          "enabled": true,
+          "description": "直接搜索歌曲、歌手或专辑，但不自动播放。用户只是问“搜一下/找找有没有”时调用；用户明确要播放时用 music_play。"
         }
       }
     }

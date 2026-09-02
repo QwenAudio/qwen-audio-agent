@@ -6,3 +6,16 @@ export const SONGS = Object.freeze([
   Object.freeze({ id: 'simple-love', title: '简单爱', artist: '周杰伦', album: '范特西' }),
   Object.freeze({ id: 'blue-and-white-porcelain', title: '青花瓷', artist: '周杰伦', album: '我很忙' }),
 ])
+
+export const MUSIC_SOURCES = Object.freeze([
+  Object.freeze({ id: 'qq_music', label: 'QQ音乐' }),
+  Object.freeze({ id: 'radio', label: '广播' }),
+  Object.freeze({ id: 'bluetooth', label: '蓝牙' }),
+  Object.freeze({ id: 'usb', label: 'USB' }),
+  Object.freeze({ id: 'spotify', label: 'Spotify' }),
+  Object.freeze({ id: 'apple_music', label: 'Apple Music' }),
+  Object.freeze({ id: 'tunein', label: 'TuneIn' }),
+  Object.freeze({ id: 'youtube_music', label: 'YouTube Music' }),
+  Object.freeze({ id: 'caraoke', label: 'Caraoke' }),
+  Object.freeze({ id: 'browser', label: '浏览器音频' }),
+])

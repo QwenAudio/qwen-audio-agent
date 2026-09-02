@@ -24,6 +24,7 @@ function definition(tool) {
         'vehicle_state_query',
         'navigation_route_query',
         'navigation_search_place',
+        'music_state_query',
         'music_search',
         'weather',
       ].includes(tool.name),
@@ -114,9 +115,16 @@ export const FRONTEND_TOOL_NAMES = Object.freeze([
   'navigation_set_voice',
   'navigation_set_view',
   'navigation_stop',
+  'music_state_query',
+  'music_play',
+  'music_toggle_playback',
   'music_pause',
   'music_next',
   'music_previous',
+  'music_volume_control',
+  'music_source_control',
+  'music_favorite_control',
+  'music_search',
 ])
 
 const toolDefinitionsByName = new Map(

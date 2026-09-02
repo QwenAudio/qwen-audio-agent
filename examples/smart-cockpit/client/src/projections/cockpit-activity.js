@@ -19,6 +19,9 @@ const TERMINAL_STAGES = new Set([
   'music_started',
   'music_paused',
   'music_track_changed',
+  'music_volume_changed',
+  'music_source_changed',
+  'music_favorites_changed',
   'music_results_ready',
 ])
 

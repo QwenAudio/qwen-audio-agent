@@ -4,7 +4,6 @@ import {
   FRONTEND_TOOL_SOURCE_METHODS,
   assertFrontendToolSource,
   findFrontendSourceTool,
-  frontendSourceToolCapabilities,
   frontendSourceToolDefinitions,
   frontendSourceTools,
 } from '../src/frontend/tools/frontend-tool-source.mjs'
@@ -45,15 +44,9 @@ function source(name, policy) {
   return { tools: () => [tool], tool }
 }
 
-test('projects source tools, definitions, and approval capability', () => {
-  const read = source('mcp__docs__search', {
-    readOnly: true,
-    approval: 'none',
-  })
-  const write = source('mcp__docs__create', {
-    readOnly: false,
-    approval: 'required',
-  })
+test('projects source tools and definitions without classifying side effects', () => {
+  const read = source('mcp__docs__search', { mode: 'inline' })
+  const write = source('mcp__docs__create', { mode: 'inline' })
   const sources = [read, write]
 
   assert.deepEqual(
@@ -64,23 +57,13 @@ test('projects source tools, definitions, and approval capability', () => {
     frontendSourceToolDefinitions(sources),
     [read.tool.definition, write.tool.definition],
   )
-  assert.deepEqual(frontendSourceToolCapabilities(sources), [
-    'external-tool-approval',
-  ])
   assert.equal(findFrontendSourceTool(sources, write.tool.name)?.tool, write.tool)
 })
 
-test('omits approval capability for read-only sources and rejects duplicates', () => {
-  const first = source('mcp__docs__search', {
-    readOnly: true,
-    approval: 'none',
-  })
-  const duplicate = source('mcp__docs__search', {
-    readOnly: false,
-    approval: 'required',
-  })
+test('rejects duplicate tools without inspecting their execution semantics', () => {
+  const first = source('mcp__docs__search', { mode: 'inline' })
+  const duplicate = source('mcp__docs__search', { mode: 'inline' })
 
-  assert.deepEqual(frontendSourceToolCapabilities([first]), [])
   assert.throws(
     () => frontendSourceTools([first, duplicate]),
     /duplicate frontend source tool/,

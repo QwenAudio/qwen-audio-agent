@@ -1,7 +1,7 @@
 import {
   buildFrontendContext,
   loadFrontendPrompt,
-  loadAssistantProfile,
+  resolveAssistantProfile,
 } from '../conversation/frontend-agent-context.mjs'
 import { MEMORY_DOCUMENTS } from '../core/memory-scopes.mjs'
 import { FrontendToolRegistry } from './tools/frontend-tool-registry.mjs'
@@ -12,9 +12,10 @@ import {
   FRONTEND_KNOWLEDGE_CAPABILITY,
 } from '../frontend/knowledge/knowledge-runtime.mjs'
 import {
-  FRONTEND_TOOL_APPROVAL_CAPABILITY,
-} from '../frontend/tools/frontend-tool-source.mjs'
-import { spawnThinkingTool } from './tools/spawn-thinking-tool.mjs'
+  spawnThinkingTool,
+  withSpawnThinkingDescription,
+} from './tools/spawn-thinking-tool.mjs'
+import { ClientActionName } from '../client/client-action-port.mjs'
 
 export { SPAWN_THINKING_TOOL_NAME } from './tools/spawn-thinking-tool.mjs'
 export const SCHEDULE_REMINDER_TOOL_NAME = 'schedule_reminder'
@@ -23,12 +24,18 @@ export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
 export const GET_CURRENT_TIME_TOOL_NAME = 'get_current_time'
 export const MEMORY_TOOL_NAME = 'memory'
 export const NOTES_TOOL_NAME = 'notes'
-export const RESPOND_AGENT_PERMISSION_TOOL_NAME = 'respond_agent_permission'
-export const RESPOND_FRONTEND_TOOL_PERMISSION_NAME = 'respond_frontend_tool_permission'
+export const RESPOND_PERMISSION_TOOL_NAME = 'respond_permission'
+export const PERMISSION_RESPONSE_CAPABILITY = 'permission.respond'
+export const RESPOND_AGENT_INPUT_TOOL_NAME = 'respond_agent_input'
+export const BACKEND_INPUT_RESPONSE_CAPABILITY = 'backend.input.respond'
 export const ENTER_SLEEP_TOOL_NAME = 'enter_sleep'
 export const WEB_SEARCH_TOOL_NAME = 'web_search'
 export const FETCH_URL_TOOL_NAME = 'fetch_url'
 export const KNOWLEDGE_TOOL_NAME = 'knowledge'
+export const RECALL_TOOL_NAME = 'recall'
+// recall 依赖会话摘要池或资料库，两者都可能没启用。用 capability 声明而不是
+// 在 gateway 里手工拼工具数组 —— 后者会绕过 registry 的策略过滤。
+export const FRONTEND_RECALL_CAPABILITY = 'recall'
 
 const webSearchTool = {
   type: 'function',
@@ -224,49 +231,62 @@ const notesTool = {
   },
 }
 
-const respondAgentPermissionTool = {
+const respondPermissionTool = {
   type: 'function',
   function: {
-    name: RESPOND_AGENT_PERMISSION_TOOL_NAME,
-    description: '回复当前正在等待用户决定的后台权限请求。由你结合刚提出的具体权限问题和用户本轮自然表达，智能判断为本会话自动允许、拒绝或尚不明确；不要依赖固定关键词。用户回答“可以”“行”“好”“允许”“同意”“没问题”等自然肯定表达就是明确同意，应调用 always，不得要求复述固定口令。明确拒绝时调用 reject，不明确时不要调用并继续询问。',
+    name: RESPOND_PERMISSION_TOOL_NAME,
+    description: '回复当前正在等待用户决定的权限请求。结合刚提出的具体操作、请求允许的选项和用户本轮自然表达判断，不要依赖固定关键词：普通肯定表达选择 once；仅当请求允许且用户明确表示本会话以后都允许时选择 always；明确拒绝时选择 reject；意思不明确时不要调用并继续询问。不得猜测权限来源、代替用户决定或要求固定口令。',
     parameters: {
       type: 'object',
       properties: {
-        authorization_id: {
+        permission_id: {
           type: 'string',
-          description: '待确认请求的 authorization_id，必须来自当前对话中的后台权限请求，不得猜造。',
+          description: '待确认权限请求的 ID，必须来自 Gateway 提供的当前权限请求。',
+        },
+        task_id: {
+          type: 'string',
+          description: '权限请求关联的工作 ID；仅当 Gateway 在请求中提供时原样传入。',
         },
         decision: {
           type: 'string',
-          enum: ['always', 'reject'],
-          description: 'always 表示允许当前操作，并由 Gateway 在本次前台会话中自动允许后续权限请求；reject 表示拒绝当前操作，后续请求仍继续询问。',
+          enum: ['once', 'always', 'reject'],
+          description: 'once 仅允许当前操作；always 仅在请求明确允许时表示本会话后续同类请求也允许；reject 拒绝当前操作。',
         },
       },
-      required: ['authorization_id', 'decision'],
+      required: ['permission_id', 'decision'],
       additionalProperties: false,
     },
   },
 }
 
-const respondFrontendToolPermission = {
+const respondAgentInputTool = {
   type: 'function',
   function: {
-    name: RESPOND_FRONTEND_TOOL_PERMISSION_NAME,
-    description: '回复当前正在等待用户决定的前台外部工具执行请求。结合刚提出的具体操作和用户本轮自然表达判断允许或拒绝；不要依赖固定关键词，也不要代替用户作决定。每次允许只执行当前这一项操作，不会自动允许后续请求。',
+    name: RESPOND_AGENT_INPUT_TOOL_NAME,
+    description: '把用户对当前后台追问的回答交回同一项工作，使其继续执行。仅在系统提供真实的后台输入请求时可用；不得新建工作或猜造 task_id。用户拒绝回答时选择 decline，要求取消这次交互时选择 cancel。',
     parameters: {
       type: 'object',
       properties: {
-        authorization_id: {
+        task_id: {
           type: 'string',
-          description: '待确认请求的 authorization_id，必须来自当前对话中的前台外部工具确认请求，不得猜造。',
+          description: '等待补充输入的工作 ID，必须来自当前后台输入请求。',
         },
-        decision: {
+        action: {
           type: 'string',
-          enum: ['allow', 'reject'],
-          description: 'allow 表示只允许当前操作执行一次；reject 表示拒绝当前操作。',
+          enum: ['accept', 'decline', 'cancel'],
+          description: 'accept 提交回答并继续；decline 拒绝提供；cancel 取消这次交互。',
+        },
+        text: {
+          type: 'string',
+          description: '用户要交给后台的自然语言回答。action=accept 时填写。',
+        },
+        values: {
+          type: 'object',
+          description: '可选的结构化表单回答；字段必须来自请求中提供的 schema。',
+          additionalProperties: true,
         },
       },
-      required: ['authorization_id', 'decision'],
+      required: ['task_id', 'action'],
       additionalProperties: false,
     },
   },
@@ -318,6 +338,36 @@ const scheduleReminderTool = {
   },
 }
 
+// 「你记得前几天我们聊的 xxx 吗」的入口。刻意做成工具而不是静态注入：
+// 会话摘要每场都在变，注进 instructions 会让 prompt 前缀每场都变、前缀缓存失效。
+//
+// 一个工具而不是按数据源拆成几个：用户是想到哪问到哪的，他不区分「聊过的」
+// 和「派过的活」，模型也不该被迫在两个工具之间猜。共性是「查过去发生过什么」，
+// 差异只是内部存在哪个文件里。
+const recallTool = {
+  type: 'function',
+  function: {
+    name: RECALL_TOOL_NAME,
+    description: '回忆此前发生过什么 —— 聊过哪些话题、派过哪些活。用户问“我们之前聊过某事吗”“前几天说的那个”“上次让你做的那件事”“最近都聊了什么”等回顾过去的问题时调用。传入用户提到的关键词；泛泛问“最近怎么样”时省略 query。返回每场对话的话题、一句要点，以及那场派过的活及其当前状态，不含原文和执行细节。想知道某项工作的详细进展或结果全文，改用 get_agent_task_status；要查用户自己的资料，用 knowledge。返回 not_found 时如实说明没找到，不要编造聊过的内容。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '用户提到的话题或事情的关键词，尽量用用户自己说的原词，不要改写或扩写；用户没有指明时省略。',
+        },
+        limit: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 10,
+          description: '最多返回几场，默认 5。语音场景下不要一次要太多。',
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+}
+
 export const frontendToolRegistry = new FrontendToolRegistry([
   {
     definition: spawnThinkingTool,
@@ -337,12 +387,27 @@ export const frontendToolRegistry = new FrontendToolRegistry([
       requiredCapabilities: [FRONTEND_KNOWLEDGE_CAPABILITY],
     },
   },
-  { definition: respondAgentPermissionTool, policy: { mode: 'control' } },
   {
-    definition: respondFrontendToolPermission,
+    definition: recallTool,
+    policy: {
+      mode: 'inline',
+      requiredCapabilities: [FRONTEND_RECALL_CAPABILITY],
+    },
+  },
+  {
+    definition: respondPermissionTool,
     policy: {
       mode: 'control',
-      requiredCapabilities: [FRONTEND_TOOL_APPROVAL_CAPABILITY],
+      // This is a response channel for an authoritative Gateway event, not a
+      // generally available action the model may decide to initiate.
+      requiredCapabilities: [PERMISSION_RESPONSE_CAPABILITY],
+    },
+  },
+  {
+    definition: respondAgentInputTool,
+    policy: {
+      mode: 'control',
+      requiredCapabilities: [BACKEND_INPUT_RESPONSE_CAPABILITY],
     },
   },
   {
@@ -363,7 +428,10 @@ export const frontendToolRegistry = new FrontendToolRegistry([
   },
   {
     definition: enterSleepTool,
-    policy: { mode: 'control', requiredClientStates: ['sleeping'] },
+    policy: {
+      mode: 'control',
+      requiredClientActions: [ClientActionName.ENTER_SLEEP],
+    },
   },
 ])
 
@@ -384,7 +452,12 @@ function dynamicFrontendTools(agentContext = {}) {
 }
 
 export function frontendTools(agentContext = {}) {
-  const tools = frontendToolRegistry.definitions(agentContext)
+  const spawnThinkingDescription = agentContext?.frontend?.spawnThinkingDescription
+  const tools = frontendToolRegistry.definitions(agentContext).map(tool => (
+    tool === spawnThinkingTool && spawnThinkingDescription
+      ? withSpawnThinkingDescription(spawnThinkingDescription)
+      : tool
+  ))
   const dynamic = dynamicFrontendTools(agentContext)
   if (dynamic.length) return [...tools, ...dynamic]
   return tools.length === TOOLS.length
@@ -397,6 +470,7 @@ export const resultResponseInstructions = [
   '这是先前提交工作的最终结果，不是用户的新请求。',
   '把 result 当作事实材料，结合当前对话自然回应；可以按语境概括、合并、承接或询问必要信息，避免重复已经表达过的内容。',
   '结果上下文包含多项工作时，必须覆盖每项工作的实质结果；不得只说其中一项，也不得让过程性或状态性内容掩盖真正完成的工作。',
+  '结果若提出继续工作所需的问题、选择、确认或补充信息，只自然转达该需要；用户后续回答会作为同一工作的续办处理。',
   '开头直接说实际结果、关键发现、阻塞或必要问题，不用“好的、收到、任务完成了”等空泛承接语。',
   '屏幕上已经展示详细结果时，只说重点和查看方向，不要逐字朗读。',
   '不要朗读协议前缀、字段、执行 ID、路径、URL 或不适合口语的长内容。',
@@ -421,12 +495,19 @@ export const permissionResponseInstructions = [
   '不要调用工具或朗读内部字段，等待用户回答。',
 ].join(' ')
 
+export const inputRequestResponseInstructions = [
+  '这是同一项后台工作为继续执行而提出的补充问题，不是最终结果，也不是新任务。',
+  '自然、简短地转达问题并等待用户回答；不要调用 spawn_thinking。',
+  '用户回答后调用 respond_agent_input，把回答交回同一项工作。',
+  '不要朗读协议字段或工作 ID，也不要把等待输入说成工作已经完成。',
+].join(' ')
+
 export function buildFrontendInstructions(agentContext = {}) {
   return [
     loadFrontendPrompt(),
     '# Assistant Profile',
     '<assistant_profile authority="persona_only">',
-    loadAssistantProfile(),
+    resolveAssistantProfile(agentContext),
     '</assistant_profile>',
     buildFrontendContext(agentContext),
   ].join('\n\n')

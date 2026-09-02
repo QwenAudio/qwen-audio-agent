@@ -11,7 +11,7 @@ docs/promo/
 │   ├── full-duplex-voice-frontend.md     # 中文：全双工语音前台设计
 │   ├── acp-decoupling.md                 # 中文：ACP 解耦架构实践
 │   ├── wake-word-engineering.md          # 中文：本地唤醒词工程实现
-│   └── voice-layer-for-coding-agents-en.md  # 英文旗舰稿（HN/Gist 用）
+│   └── voice-runtime-for-ai-agents-en.md    # 英文旗舰稿（HN/Gist 用）
 ├── beginner/                     # 小白向内容（面向桌面端普通用户）
 │   ├── quickstart.md                     # 中文：3 分钟上手指南
 │   ├── quickstart-en.md                  # 英文：Getting started
@@ -31,8 +31,12 @@ docs/promo/
 
 ## 使用约定
 
-- 文案统一口径："基于 Qwen/DashScope 的社区开源项目"，
-  不宣称阿里官方出品；
+- 定位口径：实时语音运行时（realtime voice runtime for AI
+  agents），不说"编码 Agent 的语音接口/语音层"；编码 Agent
+  只是可接入的后台之一，面向具体社区时可作场景示例而非产品定义；
+- 品牌口径：对外统一"全双工实时语音的社区开源项目"，不强调 Qwen
+  关联、不宣称官方出品，唤醒词不提具体词内容；技术栈披露
+  （基于 Qwen/DashScope 构建）仅限仓库内公告；
 - beginner/ 目录面向不懂代码的普通用户，写作原则见 [beginner/README.md](beginner/README.md)；
 - 文章转载请注明仓库链接；
 - 新增物料按上述结构归类，本文件同步更新。

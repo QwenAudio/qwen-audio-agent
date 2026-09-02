@@ -17,6 +17,10 @@ import {
   resolveAuthorization,
 } from '../core/work-authorization.mjs'
 import {
+  normalizeInputRequest,
+  resolveInputRequest,
+} from '../core/work-input-request.mjs'
+import {
   isTaskActive,
   isTaskCancellable,
   isTaskTerminal,
@@ -162,6 +166,9 @@ export class TaskManager {
       saved.authorization = normalizeAuthorization(saved.authorization, {
         taskId: saved.id,
       })
+      saved.inputRequest = normalizeInputRequest(saved.inputRequest, {
+        taskId: saved.id,
+      })
       const recovery = taskRecoveryAction(saved)
       if (recovery !== TaskRecoveryAction.RESTORE) recoveryChanged = true
       if (saved.notificationStatus === 'delivering') recoveryChanged = true
@@ -213,6 +220,10 @@ export class TaskManager {
           || isTaskTerminal(saved.status)
           ? null
           : saved.authorization,
+        inputRequest: recovery !== TaskRecoveryAction.RESTORE
+          || isTaskTerminal(saved.status)
+          ? null
+          : saved.inputRequest,
         notificationStatus: recoveredNotificationStatus(saved, recovery),
         notificationClaimantId: null,
         notificationClaimedAt: null,
@@ -453,6 +464,7 @@ export class TaskManager {
       delegation: null,
       cancellation: null,
       authorization: null,
+      inputRequest: null,
       notificationStatus: 'none',
       notificationClaimantId: null,
       notificationClaimedAt: null,
@@ -510,6 +522,7 @@ export class TaskManager {
       delegation: null,
       cancellation: null,
       authorization: null,
+      inputRequest: null,
       notificationStatus: 'none',
       notificationClaimantId: null,
       notificationClaimedAt: null,
@@ -590,6 +603,28 @@ export class TaskManager {
         this.emit(TaskDomainEvent.PERMISSION_RESOLVED, task, {
           permission,
         })
+        return
+      }
+      if (event?.type === BackendEventType.INPUT_REQUESTED && event.input) {
+        const inputRequest = normalizeInputRequest(event.input, {
+          taskId: task.id,
+        })
+        if (!inputRequest) return
+        task.inputRequest = inputRequest
+        this.emit(TaskDomainEvent.INPUT_REQUESTED, task, { input: inputRequest })
+        return
+      }
+      if (event?.type === BackendEventType.INPUT_RESOLVED && event.input) {
+        const input = resolveInputRequest(
+          task.inputRequest?.id === event.input.id
+            ? task.inputRequest
+            : event.input,
+          event.input.status,
+          { taskId: task.id },
+        )
+        if (!input) return
+        if (task.inputRequest?.id === input.id) task.inputRequest = null
+        this.emit(TaskDomainEvent.INPUT_RESOLVED, task, { input })
         return
       }
       if (['cancelling', 'cancelled'].includes(task.status)) return
@@ -722,6 +757,7 @@ export class TaskManager {
         if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
         task.abortController = null
         task.authorization = null
+        task.inputRequest = null
         if (task.status === 'cancelling') return
         if (task.status === 'cancelled') {
           this.releaseScheduler(task)
@@ -767,6 +803,7 @@ export class TaskManager {
     }
     transitionTask(task, TaskStatus.CANCELLING)
     task.authorization = null
+    task.inputRequest = null
     this.emit(TaskDomainEvent.CANCELLING, task)
     task.cancelPromise = Promise.resolve()
       .then(async () => {
@@ -795,6 +832,7 @@ export class TaskManager {
         if (task.timeoutTimer) { clearTimeout(task.timeoutTimer); task.timeoutTimer = null }
         task.abortController = null
         task.authorization = null
+        task.inputRequest = null
         transitionTask(task, TaskStatus.FAILED)
         task.error = `取消失败：${error?.message || String(error)}`
         task.completedAt = Date.now()
@@ -819,6 +857,7 @@ export class TaskManager {
   finishCancellation(task) {
     transitionTask(task, TaskStatus.CANCELLED)
     task.authorization = null
+    task.inputRequest = null
     task.completedAt = Date.now()
     task.elapsedMs = task.startedAt
       ? task.completedAt - task.startedAt

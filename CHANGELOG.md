@@ -6,6 +6,11 @@
   不会自动调用模型或持久化摄像头画面。
 - WebUI 支持用户主动开启摄像头连续观察：约每秒发送一帧 JPEG，内存中最多保留最近
   8 帧；不会因观察自动触发模型回复，页面隐藏、断线或停止时会释放摄像头。
+- 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
+  `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
+  模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。
+- 修复内置 `open-computer-use` MCP 缺少 `stdio` 传输类型，导致 Kimi Code 等严格
+  校验 ACP MCP 描述的后台无法创建 Session 的问题。
 - 新增 Pi 后台支持：通过社区 `pi-acp` 适配器接入，并支持一键安装。Pi 没有
   内置沙箱与权限审批机制，始终等效于 `full` 权限，请仅在可信环境中使用。
 

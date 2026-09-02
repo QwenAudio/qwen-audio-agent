@@ -19,7 +19,6 @@ function configuration(overrides = {}) {
         tools: {
           search: {
             enabled: true,
-            readOnly: true,
           },
         },
       },
@@ -53,8 +52,6 @@ test('normalizes explicit server and tool policies', () => {
       tools: {
         search: {
           enabled: true,
-          readOnly: true,
-          approval: 'none',
           timeoutMs: 8_000,
           maxResultBytes: 32 * 1024,
           maxCallsPerTurn: 2,
@@ -62,6 +59,79 @@ test('normalizes explicit server and tool policies', () => {
       },
     }],
   })
+})
+
+test('resolves a complete MCP endpoint from the launching environment', () => {
+  const normalized = normalizeFrontendMcpConfiguration(configuration({
+    servers: {
+      cockpit: {
+        enabled: true,
+        url: '${COCKPIT_MCP_URL}',
+        tools: {
+          weather: { enabled: true },
+        },
+      },
+    },
+  }), {
+    env: { COCKPIT_MCP_URL: 'http://127.0.0.1:3010/mcp/frontend' },
+  })
+  assert.equal(
+    normalized.servers[0].transport.url,
+    'http://127.0.0.1:3010/mcp/frontend',
+  )
+})
+
+test('normalizes an explicit stdio transport with bounded process settings', () => {
+  const normalized = normalizeFrontendMcpConfiguration({
+    version: 1,
+    servers: {
+      local_files: {
+        enabled: true,
+        transport: {
+          type: 'stdio',
+          command: '${MCP_COMMAND}',
+          args: ['server.mjs', '${MCP_ROOT}'],
+          cwd: '${MCP_CWD}',
+          env: {
+            MCP_TOKEN: '${MCP_TOKEN}',
+          },
+        },
+        tools: {
+          list_files: { enabled: true },
+        },
+      },
+    },
+  }, {
+    env: {
+      MCP_COMMAND: '/usr/bin/node',
+      MCP_ROOT: '/tmp/files',
+      MCP_CWD: '/tmp',
+      MCP_TOKEN: 'secret-token',
+    },
+  })
+  assert.deepEqual(normalized.servers[0].transport, {
+    type: 'stdio',
+    command: '/usr/bin/node',
+    args: ['server.mjs', '/tmp/files'],
+    cwd: '/tmp',
+    env: { MCP_TOKEN: 'secret-token' },
+  })
+})
+
+test('accepts the common command shorthand for stdio servers', () => {
+  const normalized = normalizeFrontendMcpConfiguration({
+    version: 1,
+    servers: {
+      local: {
+        enabled: true,
+        command: 'local-mcp-server',
+        args: ['--stdio'],
+        tools: {},
+      },
+    },
+  })
+  assert.equal(normalized.servers[0].transport.type, 'stdio')
+  assert.equal(normalized.servers[0].transport.command, 'local-mcp-server')
 })
 
 test('loads and validates a versioned frontend MCP JSON file', () => {
@@ -79,7 +149,7 @@ test('loads and validates a versioned frontend MCP JSON file', () => {
   }
 })
 
-test('fails closed for unsafe endpoints, missing secrets, and unapproved mutations', () => {
+test('fails closed for unsafe endpoints and missing secrets', () => {
   assert.throws(
     () => normalizeFrontendMcpConfiguration(configuration(), { env: {} }),
     /environment variable is missing: MCP_TOKEN/,
@@ -110,22 +180,69 @@ test('fails closed for unsafe endpoints, missing secrets, and unapproved mutatio
     /Remote Frontend MCP requires HTTPS/,
   )
   assert.throws(
-    () => normalizeFrontendMcpConfiguration(configuration({
+    () => normalizeFrontendMcpConfiguration({
+      version: 1,
       servers: {
-        mutation: {
+        ambiguous: {
           enabled: true,
           url: 'https://mcp.example.test/api',
-          tools: {
-            write: { enabled: true, readOnly: false },
-          },
+          command: 'local-mcp-server',
+          tools: {},
         },
       },
-    })),
-    /require approval=required/,
+    }),
+    /exactly one of url or command/,
+  )
+  assert.throws(
+    () => normalizeFrontendMcpConfiguration({
+      version: 1,
+      servers: {
+        unsafe_cwd: {
+          enabled: true,
+          transport: {
+            type: 'stdio',
+            command: 'local-mcp-server',
+            cwd: './relative',
+          },
+          tools: {},
+        },
+      },
+    }),
+    /cwd must be an absolute path/,
+  )
+  assert.throws(
+    () => normalizeFrontendMcpConfiguration({
+      version: 1,
+      servers: {
+        unsupported: {
+          enabled: true,
+          transport: { type: 'sse', url: 'https://mcp.example.test/sse' },
+          tools: {},
+        },
+      },
+    }),
+    /Unsupported Frontend MCP transport: sse/,
+  )
+  assert.throws(
+    () => normalizeFrontendMcpConfiguration({
+      version: 1,
+      servers: {
+        mixed: {
+          enabled: true,
+          transport: {
+            type: 'stdio',
+            command: 'local-mcp-server',
+            url: 'https://mcp.example.test/api',
+          },
+          tools: {},
+        },
+      },
+    }),
+    /stdio transport contains HTTP fields/,
   )
 })
 
-test('allows explicitly approved writable tools and rejects ambiguous policies', () => {
+test('enables selected tools without classifying reads and writes', () => {
   const normalized = normalizeFrontendMcpConfiguration(configuration({
     servers: {
       actions: {
@@ -134,8 +251,6 @@ test('allows explicitly approved writable tools and rejects ambiguous policies',
         tools: {
           create_issue: {
             enabled: true,
-            readOnly: false,
-            approval: 'required',
           },
         },
       },
@@ -143,8 +258,6 @@ test('allows explicitly approved writable tools and rejects ambiguous policies',
   }))
   assert.deepEqual(normalized.servers[0].tools.create_issue, {
     enabled: true,
-    readOnly: false,
-    approval: 'required',
     timeoutMs: 8_000,
     maxResultBytes: 32 * 1024,
     maxCallsPerTurn: 2,
@@ -155,11 +268,11 @@ test('allows explicitly approved writable tools and rejects ambiguous policies',
         ambiguous: {
           enabled: true,
           url: 'https://mcp.example.test/api',
-          tools: { action: { enabled: true } },
+          tools: { action: { enabled: true, approval: 'required' } },
         },
       },
     })),
-    /explicitly declare readOnly/,
+    /does not define readOnly or approval/,
   )
   assert.throws(
     () => normalizeFrontendMcpConfiguration(configuration({
@@ -171,13 +284,12 @@ test('allows explicitly approved writable tools and rejects ambiguous policies',
             search: {
               enabled: true,
               readOnly: true,
-              approval: 'required',
             },
           },
         },
       },
     })),
-    /cannot require approval/,
+    /does not define readOnly or approval/,
   )
 })
 
@@ -195,7 +307,6 @@ test('rejects unsupported versions and out-of-range policies', () => {
           tools: {
             search: {
               enabled: true,
-              readOnly: true,
               timeoutMs: 31_000,
             },
           },

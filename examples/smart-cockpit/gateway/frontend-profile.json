@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "cockpit-example",
+  "description": "A concise, action-oriented foreground voice assistant for the cockpit example.",
+  "assistant": "assistant/healer.md",
+  "toolSources": {
+    "mcp": "frontend-mcp.json"
+  }
+}

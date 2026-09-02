@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
-  isGatewayClientEvent,
 } from '../../../shared/realtime-events.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import {
@@ -40,29 +39,72 @@ import {
   clientVoiceCapabilities,
 } from './active-voice-clients.mjs'
 import { RealtimeProviderSession } from './realtime-provider-session.mjs'
+import { RealtimeRecoveryContext } from './realtime-recovery-context.mjs'
 import { SleepController } from './sleep-controller.mjs'
-import { createSherpaWakeWordDetector } from './wake-word/sherpa-detector.mjs'
 import {
   isResponseActivityEvent,
   realtimeResponseId,
 } from './response-lifecycle.mjs'
 import {
-  frontendSourceToolCapabilities,
   frontendSourceToolDefinitions,
 } from '../frontend/tools/frontend-tool-source.mjs'
+import {
+  PERMISSION_RESPONSE_CAPABILITY,
+  BACKEND_INPUT_RESPONSE_CAPABILITY,
+  FRONTEND_RECALL_CAPABILITY,
+  permissionResponseInstructions,
+  inputRequestResponseInstructions,
+} from './frontend-tools.mjs'
+import { GatewayClientProtocolSession } from '../transport/gateway-client-protocol-session.mjs'
+import {
+  GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
+  GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
+  GatewayClientCapability,
+  GatewayClientProtocolEvent,
+} from '../../../shared/gateway-client-protocol.mjs'
+import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
+import { RealtimeAgentDeliveryRuntime } from './realtime-agent-delivery-runtime.mjs'
+import {
+  ClientActionName,
+  ClientActionPort,
+} from '../client/client-action-port.mjs'
+import { PresenceController } from '../client/presence-controller.mjs'
+import { GatewayClientReplayBuffer } from '../transport/gateway-client-replay-buffer.mjs'
+import { permissionReference } from './tools/permission-reference.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
 const RESPONSE_START_WATCHDOG_MS = 12000
 const PERMISSION_RESPONSE_GRACE_MS = 800
 const RESPONSE_CONTEXT_CLEANUP_MS = 30000
 const REALTIME_STABLE_CONNECTION_MS = 10000
+const MAX_CLIENT_REPLAY_SESSIONS = 32
+const clientProtocolSessions = new WeakMap()
 
 function gatewayTurnId() {
   return `gateway_${randomUUID().replaceAll('-', '')}`
 }
 
+function inputSchemaSummary(schema) {
+  const properties = schema?.properties
+  if (!properties || typeof properties !== 'object') return ''
+  const required = new Set(Array.isArray(schema.required) ? schema.required : [])
+  const fields = Object.entries(properties).slice(0, 32).map(([name, field]) => ({
+    name: String(name).slice(0, 160),
+    type: String(field?.type || 'string').slice(0, 40),
+    required: required.has(name),
+    ...(field?.title ? { title: String(field.title).slice(0, 200) } : {}),
+    ...(Array.isArray(field?.enum)
+      ? { options: field.enum.slice(0, 32).map(value => String(value).slice(0, 200)) }
+      : {}),
+  }))
+  return fields.length ? JSON.stringify(fields) : ''
+}
+
 function send(ws, event) {
-  if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(event))
+  if (ws.readyState !== WebSocket.OPEN) return
+  const protocol = clientProtocolSessions.get(ws)
+  const wireEvent = protocol ? protocol.encode(event) : event
+  if (wireEvent) ws.send(JSON.stringify(wireEvent))
 }
 
 function rejectUpgrade(socket, status, message) {
@@ -106,23 +148,47 @@ export function attachRealtimeGateway(server, {
   identityManager,
   memoryService,
   memoryExtractor = null,
+  preferencePromoter = null,
+  profileObserver = null,
+  sessionDigests = null,
+  sessionSummariser = null,
   notesStore,
   backendRuntime,
   backendAvailability = null,
   respondAuthorization,
+  respondInput,
   permissionPolicy,
   inputAssets = new InputAssetRegistry(),
   inputArbitration = null,
   realtimeProviderRegistry = defaultRealtimeProviderRegistry,
   defaultRealtimeProvider = config.audioProvider,
+  realtimeFrontendFactory = undefined,
   frontendRetrieval = null,
   frontendKnowledge = null,
   frontendToolSources = [],
+  spawnThinkingDescription = '',
   taskAnnouncementFactory = createTaskAnnouncementRuntime,
+  clientCommandRuntime = null,
+  clientEventRouter = null,
 }) {
   const wss = new WebSocketServer({ noServer: true, maxPayload: 20 * 1024 * 1024 })
+  const supportedClientCapabilities = GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES
+    .filter(capability => {
+      if (capability === GatewayClientCapability.CLIENT_EVENTS) {
+        return Boolean(clientEventRouter)
+      }
+      if ([
+        GatewayClientCapability.TASK_COMMANDS,
+        GatewayClientCapability.PERMISSION_RESPOND,
+        GatewayClientCapability.INPUT_RESPOND,
+        GatewayClientCapability.CONVERSATION_HISTORY,
+      ].includes(capability)) return Boolean(clientCommandRuntime)
+      return true
+    })
   const activeVoiceClients = new ActiveVoiceClients()
   const voiceConnections = new Map()
+  const activeClientSockets = new Map()
+  const replayBuffers = new Map()
   const frontendToolSourcesReady = Promise.all(
     frontendToolSources.map(source => source.initialize()),
   ).catch(error => {
@@ -176,6 +242,24 @@ export function attachRealtimeGateway(server, {
   wss.on('connection', (ws, url, identity) => {
     const ownerId = identity.ownerId
     const sessionId = url.searchParams.get('sessionId') || 'main'
+    const replayKey = `${ownerId}\u0000${sessionId}`
+    let replayBuffer = replayBuffers.get(replayKey)
+    if (!replayBuffer) {
+      while (replayBuffers.size >= MAX_CLIENT_REPLAY_SESSIONS) {
+        replayBuffers.delete(replayBuffers.keys().next().value)
+      }
+      replayBuffer = new GatewayClientReplayBuffer()
+      replayBuffers.set(replayKey, replayBuffer)
+    } else {
+      replayBuffers.delete(replayKey)
+      replayBuffers.set(replayKey, replayBuffer)
+    }
+    const clientProtocol = new GatewayClientProtocolSession({
+      sessionId,
+      supportedCapabilities: supportedClientCapabilities,
+      replayBuffer,
+    })
+    clientProtocolSessions.set(ws, clientProtocol)
     const connectionLogger = logger.child({
       subsystem: 'realtime',
       ownerId,
@@ -190,42 +274,95 @@ export function attachRealtimeGateway(server, {
     let inputSuspended = inputArbitration?.suspended === true
     let nonVoiceClient = false
     let descriptor = clientDescriptor()
+    let admitted = false
     let responseTurnCandidate = null
     let responseStartWatchdog = null
     let permissionResponseTimer = null
     let sleeping = false
     let waking = false
-    let explicitSleepRequested = false
-    let wakeDetector = null
-    let wakeDetectorPromise = null
     let sleepController
+    const clientActionCapabilities = new Set()
+    const clientActions = new ClientActionPort({
+      send: event => send(ws, event),
+      getCapabilities: () => [...clientActionCapabilities],
+    })
+    const presenceController = new PresenceController({
+      clientActions,
+      beforeSleep: async () => {
+        inputEnabled = false
+        realtimeSession.clearPendingAudio()
+      },
+      onSleeping: () => enterSleep(),
+      onFailure: ({ error }) => connectionLogger.warn('presence.sleep_failed', {
+        code: String(error?.code || 'client_action_failed'),
+        error: String(error?.message || error),
+      }),
+    })
     const announcementWindow = new AnnouncementWindow()
     const notificationClaimantId = `voice_${randomUUID()}`
     let clientContext = normalizeClientContext()
+    let sessionAssistantProfile = ''
+    let sessionOutputVoice = ''
     const turns = new RealtimeTurnState()
     const transcripts = new TurnTranscripts()
     const turnCitations = new TurnCitations()
     const announcedPermissions = new Set()
+    const announcedInputs = new Set()
     let permissionRetryTimer = null
     let realtimeSession
     let observationRuntime
+    const agentDeliveries = new RealtimeAgentDeliveryRuntime({
+      getFrontend: () => realtimeSession?.frontend,
+      isDeliveryBlocked: () => (
+        sleeping
+        || waking
+        || !outputEnabled
+        || !realtimeSession?.ready
+      ),
+    })
+    let runtimeMessageChain = Promise.resolve()
     const activeSessionTasks = () => taskManager.list({
       ownerId,
       sessionId,
       active: true,
     })
+    const hasPendingBackendPermission = () => activeSessionTasks().some(task => (
+      task.authorization?.status === 'pending'
+    ))
+    const hasPendingBackendInput = () => activeSessionTasks().some(task => (
+      task.inputRequest?.status === 'pending'
+    ))
+    // Keep visible history intact while excluding only a provider-rejected turn
+    // from future Realtime Session restoration.
+    const realtimeRecoveryContext = new RealtimeRecoveryContext()
+    const frontendRecentMessages = () => realtimeRecoveryContext.project(
+      conversationSync.frontendContext({ ownerId, sessionId }),
+    )
     const getAgentContext = () => ({
       client: clientContext,
       frontend: {
+        ...(spawnThinkingDescription ? { spawnThinkingDescription } : {}),
         capabilities: [...new Set([
           ...(frontendRetrieval?.capabilities?.() || []),
           ...(frontendKnowledge?.capabilities?.() || []),
-          ...frontendSourceToolCapabilities(frontendToolSources),
+          ...(hasPendingBackendPermission()
+            ? [PERMISSION_RESPONSE_CAPABILITY]
+            : []),
+          ...(hasPendingBackendInput()
+            ? [BACKEND_INPUT_RESPONSE_CAPABILITY]
+            : []),
+          // 会话摘要池与资料库都没启用时不暴露 recall —— 池子永远是空的，
+          // 暴露它只会让模型白调一次。会话摘要本身绝不注入 instructions：
+          // 它每场都在变，会让 prompt 前缀每场都变。
+          ...(sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
         ])],
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
       memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-      recentMessages: conversationSync.frontendContext({ ownerId, sessionId }),
+      recentMessages: frontendRecentMessages(),
+      ...(sessionAssistantProfile
+        ? { assistantProfile: sessionAssistantProfile }
+        : {}),
     })
     const schedulePermissionRetry = () => {
       if (permissionRetryTimer || !outputEnabled || !realtimeSession?.ready) return
@@ -248,14 +385,32 @@ export function attachRealtimeGateway(server, {
         return
       }
       announcedPermissions.add(permission.id)
-      realtimeSession.frontend.injectPermission(permission, {
+      agentDeliveries.deliver(createAgentDelivery({
+        id: `permission_${permission.id}`,
+        causeEventId: permission.id,
+        mode: 'respond',
+        origin: 'permission',
+        text: [
+          '<permission_request>',
+          `permission_id=${permissionReference(permission.id)}`,
+          `task_id=${task.id}`,
+          `operation=${permission.summary}`,
+          'allowed_decisions=once,always,reject',
+          '</permission_request>',
+        ].join('\n'),
         // A permission prompt is a new model input and response. taskId keeps
         // it correlated with the work without reusing the user's old turn.
-        turnId: gatewayTurnId(),
-        taskId: task.id,
-        authorizationId: permission.id,
-      }, {
-        shouldSpeak: () => activeSessionTasks().some(activeTask => (
+        correlation: {
+          turnId: gatewayTurnId(),
+          taskId: task.id,
+          authorizationId: permission.id,
+        },
+        presentation: {
+          instructions: permissionResponseInstructions,
+          contextTiming: 'immediate',
+        },
+      }), {
+        shouldDeliver: () => activeSessionTasks().some(activeTask => (
           activeTask.authorization?.id === permission.id
           && activeTask.authorization.status === 'pending'
         )),
@@ -282,11 +437,60 @@ export function attachRealtimeGateway(server, {
       }
       activeTasks.forEach(announcePermission)
     }
+    const announceInputRequest = task => {
+      const input = task?.inputRequest
+      if (
+        !outputEnabled
+        || !realtimeSession?.ready
+        || input?.status !== 'pending'
+        || announcedInputs.has(input.id)
+      ) return
+      const fields = inputSchemaSummary(input.schema)
+      announcedInputs.add(input.id)
+      agentDeliveries.deliver(createAgentDelivery({
+        id: `input_${input.id}`,
+        causeEventId: input.id,
+        mode: 'respond',
+        origin: 'backend-input',
+        text: [
+          '<backend_input_request>',
+          `task_id=${task.id}`,
+          `request=${input.prompt}`,
+          ...(fields ? [`fields=${fields}`] : []),
+          ...(input.mode === 'url' && input.url ? [`url=${input.url}`] : []),
+          '</backend_input_request>',
+        ].join('\n'),
+        correlation: {
+          turnId: gatewayTurnId(),
+          taskId: task.id,
+          inputRequestId: input.id,
+        },
+        presentation: {
+          instructions: inputRequestResponseInstructions,
+          contextTiming: 'immediate',
+        },
+      }), {
+        shouldDeliver: () => activeSessionTasks().some(activeTask => (
+          activeTask.inputRequest?.id === input.id
+          && activeTask.inputRequest.status === 'pending'
+        )),
+      }).catch(error => {
+        announcedInputs.delete(input.id)
+        send(ws, {
+          type: 'error',
+          message: `暂时无法转达后台问题：${error.message}`,
+        })
+      })
+    }
+    const announcePendingInputs = () => {
+      for (const task of activeSessionTasks()) announceInputRequest(task)
+    }
     const taskAnnouncements = resolveTaskAnnouncementRuntime(
       taskAnnouncementFactory,
       {
         resultOptions: {
           getFrontend: () => realtimeSession?.frontend,
+          deliveryRuntime: agentDeliveries,
           isDeliveryBlocked: () => (
             sleeping
             || waking
@@ -319,6 +523,7 @@ export function attachRealtimeGateway(server, {
         },
         progressOptions: {
           getFrontend: () => realtimeSession?.frontend,
+          deliveryRuntime: agentDeliveries,
           isDeliveryBlocked: () => (
             sleeping
             || waking
@@ -349,13 +554,19 @@ export function attachRealtimeGateway(server, {
       providerRegistry: realtimeProviderRegistry,
       defaultProvider: defaultRealtimeProvider,
       getAgentContext,
+      getSessionOptions: () => ({
+        ...(sessionOutputVoice ? { voice: sessionOutputVoice } : {}),
+      }),
       shouldReconnect: () => inputEnabled || outputEnabled,
       onEvent: event => handleEvent(event),
       onDiagnostic: diagnostic => {
         const { event, ...fields } = diagnostic
         connectionLogger.warn(event, fields)
       },
-      onConnected: () => announcePendingPermissions(),
+      onConnected: () => {
+        announcePendingPermissions()
+        announcePendingInputs()
+      },
       onReady: createdFrontend => {
         const resumedFromSleep = waking
         waking = false
@@ -366,14 +577,12 @@ export function attachRealtimeGateway(server, {
           provider: createdFrontend.provider.key,
           providerLabel: createdFrontend.provider.label,
         })
-        prepareSleepMode()
         sleepController.recordActivity()
         progressAnnouncements.flush()
         if (resumedFromSleep) {
           send(ws, {
             type: GatewayServerEvent.VOICE_SLEEP,
             state: 'awake',
-            wakeWord: config.wakeWord,
           })
           announcePendingPermissions()
           claimPendingNotifications()
@@ -403,6 +612,9 @@ export function attachRealtimeGateway(server, {
       logger: connectionLogger,
       maxPendingAudioChunks: MAX_PENDING_AUDIO_CHUNKS,
       stableConnectionMs: REALTIME_STABLE_CONNECTION_MS,
+      ...(realtimeFrontendFactory
+        ? { createFrontend: realtimeFrontendFactory }
+        : {}),
     })
     observationRuntime = new RealtimeObservationRuntime({
       ensureFrontend: () => realtimeSession.ensure(),
@@ -436,7 +648,6 @@ export function attachRealtimeGateway(server, {
           return
         }
         send(ws, { type: GatewayServerEvent.INPUT_RESUME })
-        prepareSleepMode()
       },
       realtimeStatus: () => realtimeSession.status({
         sleeping,
@@ -448,6 +659,7 @@ export function attachRealtimeGateway(server, {
       deactivate: replacement => {
         sleeping = false
         waking = false
+        presenceController.wake()
         sleepController?.disable()
         inputEnabled = false
         outputEnabled = false
@@ -467,14 +679,12 @@ export function attachRealtimeGateway(server, {
     voiceConnections.get(ownerId).add(voiceClient)
 
     const activateVoiceClient = ({
-      takeover = false,
       enableInput = true,
       enableOutput = true,
     } = {}) => {
       const result = activeVoiceClients.activate(
         ownerId,
         voiceClient,
-        { takeover },
       )
       inputEnabled = result.granted && enableInput
       outputEnabled = result.granted && enableOutput
@@ -489,6 +699,7 @@ export function attachRealtimeGateway(server, {
         broadcastVoiceOwnership(ownerId)
       }
     }
+    const toolCallTimings = new Map()
     const toolCalls = new ToolCallHandler({
       taskManager,
       ownerId,
@@ -500,12 +711,20 @@ export function attachRealtimeGateway(server, {
       memoryService,
       notesStore,
       getClientContext: () => clientContext,
+      getConversationContext: () => conversationSync.frontendContext({
+        ownerId,
+        sessionId,
+      }),
+      // 记忆写入只刷新缓存，不重发 session.update：改 instructions 等于改 prompt
+      // 前缀，会让整场会话的前缀缓存失效，而用户刚说过的内容本来就在上下文里，
+      // 不必靠 instructions 再讲一遍。新值在下一个新会话生效。
       onMemoryChanged: () => realtimeSession.updateAgentContext({
         memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-      }),
+      }, { refreshSession: false }),
       backendRuntime,
       backendAvailability,
       respondAuthorization,
+      respondInput,
       permissionPolicy,
       // The permission decision was accepted locally but never reached the
       // backend: the authorization is still pending there, so clear the
@@ -518,14 +737,18 @@ export function attachRealtimeGateway(server, {
         announcedPermissions.delete(authorizationId)
         announcePendingPermissions()
       },
-      requestClientState: state => {
-        if (!clientContext.states?.includes(state)) return
-        send(ws, {
-          type: GatewayServerEvent.CLIENT_STATE,
-          state,
+      onToolResultReady: ({ callId, turnId, toolName }) => {
+        const timing = toolCallTimings.get(callId)
+        if (!timing || timing.resultReady) return
+        timing.resultReady = true
+        connectionLogger.info('realtime.tool_call.result_ready', {
+          ...timing.fields,
+          turnId: turnId || timing.fields.turnId,
+          toolName: toolName || timing.fields.toolName,
+          durationMs: Math.max(0, Date.now() - timing.startedAt),
         })
-        if (state === 'sleeping') enterSleep()
       },
+      presenceController,
       onAgentActivity: activity => send(ws, {
         type: GatewayServerEvent.AGENT_ACTIVITY,
         ...activity,
@@ -535,6 +758,7 @@ export function attachRealtimeGateway(server, {
       frontendKnowledge,
       frontendToolSources,
       turnCitations,
+      sessionDigests,
     })
     const clearResponseCandidate = () => {
       clearTimeout(responseStartWatchdog)
@@ -613,6 +837,9 @@ export function attachRealtimeGateway(server, {
       shouldEnsurePermissionResponse: context => responseTurnCandidate === context,
       ensurePermissionResponseFor,
       reportFrontendError,
+      onSpeechStopped: fields => {
+        connectionLogger.info('realtime.provider.speech_stopped', fields)
+      },
     })
 
     const presentationRuntime = new RealtimePresentationRuntime({
@@ -696,6 +923,10 @@ export function attachRealtimeGateway(server, {
         })
       }
       if (event.type === TaskDomainEvent.PERMISSION_REQUESTED) {
+        // Queue tool exposure before the permission delivery. The model can
+        // answer a real request on the next user turn, while ordinary turns
+        // cannot fabricate permission protocol state.
+        realtimeSession.updateAgentContext(getAgentContext())
         if (sleeping) {
           wakeFromSleep()
           return
@@ -703,6 +934,7 @@ export function attachRealtimeGateway(server, {
         announcePermission(task)
       }
       if (event.type === TaskDomainEvent.PERMISSION_RESOLVED) {
+        realtimeSession.updateAgentContext(getAgentContext())
         const authorizationId = event.permission?.id
         // A permission confirmation already tells the user that work resumes.
         // Drop progress queued before the decision so it cannot immediately
@@ -727,6 +959,22 @@ export function attachRealtimeGateway(server, {
           presentationRuntime.cancelPermission(authorizationId)
         }
       }
+      if (event.type === TaskDomainEvent.INPUT_REQUESTED) {
+        realtimeSession.updateAgentContext(getAgentContext())
+        if (sleeping) wakeFromSleep()
+        announceInputRequest(task)
+      }
+      if (event.type === TaskDomainEvent.INPUT_RESOLVED) {
+        realtimeSession.updateAgentContext(getAgentContext())
+        const inputId = event.input?.id
+        if (inputId) {
+          announcedInputs.delete(inputId)
+          realtimeSession.frontend?.cancelResponses((context, origin) => (
+            origin === 'backend-input'
+            && context?.inputRequestId === inputId
+          ))
+        }
+      }
       if ([
         TaskDomainEvent.COMPLETED,
         TaskDomainEvent.FAILED,
@@ -738,7 +986,6 @@ export function attachRealtimeGateway(server, {
         TaskDomainEvent.COMPLETED,
         TaskDomainEvent.FAILED,
       ].includes(event.type)) {
-        recordResult(task)
         claimPendingNotifications([task.id])
       }
     })
@@ -751,16 +998,29 @@ export function attachRealtimeGateway(server, {
         const id = realtimeResponseId(event)
         const callContext = presentationRuntime.get(id)
           || { turnId: '', turnGeneration: -1 }
-        logger.info('realtime.tool_call.received', {
+        const callFields = {
           responseId: id,
           callId: event.call_id || event.item?.call_id || '',
           toolName: event.name || event.item?.name || '',
           turnId: callContext.turnId || '',
-        })
+        }
+        connectionLogger.info('realtime.tool_call.received', callFields)
         presentationRuntime.markFunctionCall(id)
-        toolCalls.handle(event, { ...callContext, responseId: id }).catch(error => {
-          send(ws, { type: 'error', message: error.message })
+        const startedAt = Date.now()
+        toolCallTimings.set(callFields.callId, {
+          fields: callFields,
+          startedAt,
+          resultReady: false,
         })
+        toolCalls.handle(event, { ...callContext, responseId: id })
+          .catch(error => {
+            connectionLogger.warn('realtime.tool_call.failed', {
+              ...callFields,
+              durationMs: Math.max(0, Date.now() - startedAt),
+            })
+            send(ws, { type: 'error', message: error.message })
+          })
+          .finally(() => toolCallTimings.delete(callFields.callId))
       } else if (presentationRuntime.handle(event)) {
         return
       } else if (event.type === 'error') {
@@ -787,6 +1047,37 @@ export function attachRealtimeGateway(server, {
         // 也不应触发失败簿记(此时本就没有响应在跑)。
         const benignCancelRace = providerError === 'no_active_response'
         if (benignCancelRace) return
+        if (providerError === 'content_safety') {
+          const recentMessages = conversationSync.frontendContext({ ownerId, sessionId })
+          const failedContext = presentationRuntime.get(realtimeResponseId(event)) || {
+            turnId: turns.committedTurnId || turns.turnId,
+          }
+          realtimeRecoveryContext.excludeFailure(failedContext, recentMessages)
+          clearResponseCandidate()
+          presentationRuntime.failResponse(event)
+          send(ws, {
+            type: GatewayServerEvent.PLAYBACK_CLEAR,
+            reason: 'provider_content_safety',
+          })
+          send(ws, {
+            type: GatewayServerEvent.VOICE_STATE,
+            state: 'idle',
+            origin: 'model',
+          })
+          connectionLogger.warn('realtime.content_safety_recovery', {
+            provider: realtimeSession.providerKey,
+            excludedTurnId: failedContext.turnId || '',
+          })
+          send(ws, {
+            type: 'error',
+            message: '这次内容未能处理，语音会话已自动恢复，请换个说法再试。',
+          })
+          realtimeSession.reconnect().catch(error => send(ws, {
+            type: 'error',
+            message: error.message,
+          }))
+          return
+        }
         if (providerError === 'fatal') {
           connectionLogger.error('realtime.blocked', {
             provider: realtimeSession.providerKey,
@@ -819,164 +1110,47 @@ export function attachRealtimeGateway(server, {
       waking = false
       announcementWindow.reset()
       progressAnnouncements.clear()
-      wakeDetector?.reset()
-      realtimeSession.close()
-      if (clientContext.states?.includes('sleeping')) {
-        send(ws, {
-          type: GatewayServerEvent.CLIENT_STATE,
-          state: 'sleeping',
-        })
-      }
-      send(ws, {
-        type: GatewayServerEvent.VOICE_CONNECTION,
-        state: 'sleeping',
-        provider: realtimeSession.providerKey,
-      })
       send(ws, {
         type: GatewayServerEvent.VOICE_SLEEP,
         state: 'sleeping',
-        wakeWord: config.wakeWord,
       })
     }
 
-    const prepareSleepMode = () => {
-      if (
-        !config.wakeWordEnabled
-        || nonVoiceClient
-        // A suspended client is not capturing, so there is nothing for the wake
-        // word to listen to and nothing that may wake this session.
-        || inputSuspended
-        || wakeDetectorPromise
-      ) return
-      if (wakeDetector) {
-        sleepController.enable()
-        if (sleeping) sleepController.holdSleeping()
-        return
-      }
-      send(ws, {
-        type: GatewayServerEvent.VOICE_SLEEP,
-        state: 'preparing',
-        wakeWord: config.wakeWord,
-      })
-      wakeDetectorPromise = createSherpaWakeWordDetector({
-        modelRoot: config.wakeWordModelDirectory,
-      }).then(detector => {
-        wakeDetector = detector
-        if (ws.readyState === WebSocket.OPEN) {
-          sleepController.enable()
-          send(ws, {
-            type: GatewayServerEvent.VOICE_SLEEP,
-            state: 'enabled',
-            timeoutMs: config.sleepTimeoutMs,
-            wakeWord: config.wakeWord,
-          })
-        }
-      }).catch(error => {
-        sleepController.disable()
+    // Sleep is a Client presence transition: mute input and hide the surface,
+    // but retain the Realtime connection and its conversation context.
+    // Desktop decides when it is safe to hide because only the client knows
+    // about visible work, permission prompts and playback.
+    const requestExplicitSleep = (source = 'client') => {
+      presenceController.requestSleep({ source }).catch(error => {
         send(ws, {
-          type: GatewayServerEvent.VOICE_SLEEP,
-          state: 'disabled',
-          message: `休眠功能未启用：${error.message}`,
+          type: GatewayServerEvent.ERROR,
+          message: `休眠没有完成：${error.message}`,
         })
-      }).finally(() => {
-        wakeDetectorPromise = null
       })
-    }
-
-    // The desktop window and the realtime provider enter sleep as one explicit
-    // state transition. Desktop decides when it is safe to hide because only
-    // the client knows about visible work, permission prompts and playback.
-    const requestExplicitSleep = () => {
-      if (!config.wakeWordEnabled || nonVoiceClient) return false
-      explicitSleepRequested = true
-      inputEnabled = false
-      realtimeSession.clearPendingAudio()
-      prepareSleepMode()
-      const finish = () => {
-        if (!explicitSleepRequested || !wakeDetector) return false
-        enterSleep()
-        return sleeping
-      }
-      if (wakeDetector) return finish()
-      wakeDetectorPromise?.then(finish).catch(() => {})
       return true
-    }
-
-    const WAKE_CONNECT_MAX_ATTEMPTS = 3
-    const WAKE_CONNECT_RETRY_BACKOFF_MS = 350
-
-    const attemptWakeConnect = attempt => {
-      realtimeSession.ensure().catch(error => {
-        const provider = realtimeSession.provider()
-        const classification = realtimeSession.classifyError(error.message)
-        if (
-          classification === 'capacity_busy'
-          && attempt < WAKE_CONNECT_MAX_ATTEMPTS
-        ) {
-          connectionLogger.info('realtime.wake_connect_retry', {
-            attempt: attempt + 1,
-            provider: provider.key,
-            error: error.message,
-          })
-          // 先放弃失败的前端，避免其异步 onClose 干扰下一次重试。
-          realtimeSession.detach({ clearAudio: false })
-          setTimeout(
-            () => attemptWakeConnect(attempt + 1),
-            WAKE_CONNECT_RETRY_BACKOFF_MS,
-          )
-          return
-        }
-        waking = false
-        sleeping = true
-        sleepController.holdSleeping()
-        realtimeSession.close()
-        send(ws, {
-          type: GatewayServerEvent.VOICE_CONNECTION,
-          state: 'sleeping',
-          provider: realtimeSession.providerKey,
-          message: error.message,
-        })
-      })
     }
 
     const wakeFromSleep = () => {
       if (!sleeping || waking) return
-      explicitSleepRequested = false
       sleeping = false
-      waking = true
+      waking = false
+      presenceController.wake()
       sleepController.wake()
       send(ws, {
         type: GatewayServerEvent.VOICE_SLEEP,
-        state: 'detected',
-        wakeWord: config.wakeWord,
+        state: 'awake',
       })
-      attemptWakeConnect(0)
-    }
-
-    const acceptSleepingAudio = audio => {
-      try {
-        const sampleRate = realtimeSession.provider().inputSampleRate
-        if (wakeDetector?.accept(audio, sampleRate)) wakeFromSleep()
-      } catch (error) {
-        sleeping = false
-        waking = false
-        sleepController.disable()
-        send(ws, {
-          type: GatewayServerEvent.VOICE_SLEEP,
-          state: 'disabled',
-          message: `唤醒词检测已停止：${error.message}`,
-        })
-        realtimeSession.ensure().catch(connectionError => send(ws, {
-          type: 'error',
-          message: connectionError.message,
-        }))
-      }
+      announcePendingPermissions()
+      announcePendingInputs()
+      claimPendingNotifications()
+      announcements.flush()
+      progressAnnouncements.flush()
     }
 
     sleepController = new SleepController({
       timeoutMs: config.sleepTimeoutMs,
       canSleep: () => (
-        (inputEnabled || config.wakeWordEnabled)
+        inputEnabled
         && activeVoiceClients.isActive(ownerId, voiceClient)
         && realtimeSession.ready
         && !turns.userSpeaking
@@ -984,7 +1158,12 @@ export function attachRealtimeGateway(server, {
         && !realtimeSession.connecting
         && !waking
       ),
-      onSleep: enterSleep,
+      onSleep: () => presenceController.requestSleep({
+        source: 'timeout',
+        requireClientAction: false,
+      }).catch(error => connectionLogger.warn('presence.timeout_failed', {
+        error: error.message,
+      })),
     })
 
     send(ws, { type: GatewayServerEvent.VOICE_STATE, state: 'idle' })
@@ -999,6 +1178,209 @@ export function attachRealtimeGateway(server, {
         expiresAt: status.expiresAt,
       })
     }
+    const runtimeSource = () => ({
+      ownerId,
+      sessionId,
+      clientType: descriptor.type,
+      clientInstanceId: descriptor.instanceId,
+    })
+    const admitClientConnection = nextDescriptor => {
+      const occupied = activeClientSockets.entries().next().value
+      if (!occupied) {
+        activeClientSockets.set(ws, {
+          ownerId,
+          sessionId,
+          instanceId: nextDescriptor.instanceId,
+        })
+        admitted = true
+        return true
+      }
+      const [occupiedSocket, occupiedClient] = occupied
+      if (occupiedSocket === ws) return true
+      const replacesSameClient = Boolean(
+        nextDescriptor.instanceId
+        && occupiedClient.instanceId === nextDescriptor.instanceId
+        && occupiedClient.ownerId === ownerId
+        && occupiedClient.sessionId === sessionId
+      )
+      if (!replacesSameClient) return false
+
+      // Remove before closing: the replacement may claim voice ownership while
+      // the superseded socket is still completing its asynchronous close.
+      activeClientSockets.delete(occupiedSocket)
+      activeClientSockets.set(ws, {
+        ownerId,
+        sessionId,
+        instanceId: nextDescriptor.instanceId,
+      })
+      admitted = true
+      occupiedSocket.close(
+        GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
+        'client_replaced',
+      )
+      connectionLogger.info('voice_client.replaced', {
+        clientType: nextDescriptor.type,
+        clientInstanceId: nextDescriptor.instanceId,
+      })
+      return true
+    }
+    const rejectOccupiedClient = () => {
+      send(ws, {
+        type: 'error',
+        message: 'Gateway 已由另一个 Client 使用',
+        error: {
+          code: 'client_occupied',
+          message: 'Gateway already has an active Client connection',
+        },
+      })
+      ws.close(1008, 'client_occupied')
+    }
+    const sendRuntimeError = (message, error) => {
+      connectionLogger.warn('client_runtime.command_failed', {
+        type: String(message?.type || ''),
+        requestEventId: String(message?.event_id || ''),
+        code: String(error?.code || 'internal'),
+        error: String(error?.message || error),
+      })
+      send(ws, {
+        type: 'error',
+        ...(message?.event_id
+          ? { request_event_id: String(message.event_id) }
+          : {}),
+        error: {
+          code: String(error?.code || 'internal').slice(0, 80),
+          message: String(error?.message || error).slice(0, 500),
+        },
+      })
+    }
+    const updateSessionOutputVoice = voice => {
+      const nextVoice = String(voice || '').trim()
+      const provider = realtimeSession.provider()
+      if (provider.capabilities?.sessionOutputVoice !== true) {
+        const error = new Error(
+          `${provider.label} does not support session output voice updates`,
+        )
+        error.code = 'output_voice_unsupported'
+        throw error
+      }
+      if (nextVoice === sessionOutputVoice) {
+        return {
+          voice: nextVoice,
+          changed: false,
+          reconnecting: false,
+        }
+      }
+
+      sessionOutputVoice = nextVoice
+      const hasUpstreamSession = realtimeSession.ready || realtimeSession.connecting
+      if (hasUpstreamSession) {
+        realtimeSession.cancelResponse()
+        send(ws, {
+          type: GatewayServerEvent.PLAYBACK_CLEAR,
+          reason: 'output_voice_changed',
+        })
+        // Realtime providers apply voice selection when a Session is created.
+        // Rebuild only that provider Session; the GCP client and Gateway
+        // conversation remain connected and keep their state.
+        realtimeSession.detach({ clearAudio: false })
+      }
+      const reconnecting = hasUpstreamSession && (inputEnabled || outputEnabled)
+      if (reconnecting) realtimeSession.ensure().catch(reportFrontendError)
+      return {
+        voice: nextVoice,
+        changed: true,
+        reconnecting,
+      }
+    }
+    const handleRuntimeMessage = async message => {
+      if (message.type === GatewayClientProtocolEvent.CLIENT_ACTION_RESULT) {
+        if (!clientActions.receive(message)) {
+          connectionLogger.debug('client_action.result_stale', {
+            requestEventId: message.request_event_id,
+          })
+        }
+        return
+      }
+      if (message.type === GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE) {
+        const result = updateSessionOutputVoice(message.voice)
+        send(ws, {
+          type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
+          request_event_id: message.event_id,
+          ...result,
+        })
+        return
+      }
+      if (message.type === GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH) {
+        if (!clientEventRouter) {
+          const error = new Error('Client Event runtime unavailable')
+          error.code = 'internal'
+          throw error
+        }
+        const result = await clientEventRouter.publish(message, {
+          source: runtimeSource(),
+          effects: {
+            setAssistantProfile(profile) {
+              // Only a server-registered Client Event handler can reach this
+              // effect. The Client supplies a schema-validated identifier,
+              // while the handler owns the actual profile content.
+              sessionAssistantProfile = String(profile || '').trim()
+              realtimeSession.updateAgentContext(getAgentContext())
+            },
+          },
+        })
+        connectionLogger.info('client_event.received', {
+          name: result.name,
+          duplicate: result.duplicate === true,
+        })
+        send(ws, {
+          type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT,
+          request_event_id: message.event_id,
+          accepted: result.accepted === true,
+          name: result.name,
+          ...(result.duplicate ? { duplicate: true } : {}),
+        })
+        const automaticSleep = (
+          !result.duplicate
+          && result.name === 'desktop.presence.sleep_requested'
+        )
+        if (!result.duplicate && result.delivery) {
+          agentDeliveries.deliver(result.delivery).then(outcome => {
+            if (outcome?.completed || outcome?.handled) return
+            connectionLogger.warn('client_event.delivery_skipped', {
+              name: result.name,
+              mode: result.delivery.mode,
+              blocked: outcome?.blocked === true,
+              unavailable: outcome?.unavailable === true,
+            })
+          }).catch(error => connectionLogger.warn('client_event.delivery_failed', {
+            name: result.name,
+            error: error.message,
+          }))
+        }
+        if (automaticSleep) {
+          // The Client Event informs the frontend model of the environment
+          // transition, but automatic sleep is deterministic client policy.
+          // It must not wait for the model to call enter_sleep again.
+          const timer = setTimeout(() => {
+            if (!sleeping) requestExplicitSleep('client_inactivity')
+          }, 100)
+          timer.unref?.()
+        }
+        return
+      }
+      if (!clientCommandRuntime) {
+        const error = new Error('Gateway Client command runtime unavailable')
+        error.code = 'internal'
+        throw error
+      }
+      const result = await clientCommandRuntime.execute(message, {
+        ownerId,
+        sessionId,
+        source: runtimeSource(),
+      })
+      send(ws, result)
+    }
+
     ws.on('message', raw => {
       let event
       try {
@@ -1006,7 +1388,36 @@ export function attachRealtimeGateway(server, {
       } catch {
         return
       }
-      if (!isGatewayClientEvent(event)) return
+      const protocolOutcome = clientProtocol.receive(event)
+      if (protocolOutcome.close) {
+        if (protocolOutcome.reply) send(ws, protocolOutcome.reply)
+        ws.close(1002, protocolOutcome.reply?.error?.code || 'protocol error')
+        return
+      }
+      const negotiatedEvent = protocolOutcome.event
+      if (
+        negotiatedEvent?.type === GatewayClientEvent.CONNECT
+        && !admitted
+      ) {
+        const nextDescriptor = clientDescriptor(negotiatedEvent)
+        if (!admitClientConnection(nextDescriptor)) {
+          rejectOccupiedClient()
+          return
+        }
+      }
+      if (protocolOutcome.reply) send(ws, protocolOutcome.reply)
+      for (const pendingEvent of protocolOutcome.pending || []) {
+        send(ws, pendingEvent)
+      }
+      if (protocolOutcome.runtimeMessage) {
+        const runtimeMessage = protocolOutcome.runtimeMessage
+        runtimeMessageChain = runtimeMessageChain
+          .then(() => handleRuntimeMessage(runtimeMessage))
+          .catch(error => sendRuntimeError(runtimeMessage, error))
+        return
+      }
+      event = negotiatedEvent
+      if (!event) return
       if (event.type === GatewayClientEvent.CONNECT) {
         descriptor = clientDescriptor(event)
         voiceClient.descriptor = descriptor
@@ -1019,6 +1430,7 @@ export function attachRealtimeGateway(server, {
           textOnly: event.textOnly === true,
         })
         nonVoiceClient = event.textOnly === true
+        sessionOutputVoice = String(event.outputVoice || '').trim()
         // The client may pick a realtime front end per session. An unknown
         // name is reported instead of silently falling back, so a typo does
         // not look like a working session on the wrong provider.
@@ -1038,7 +1450,6 @@ export function attachRealtimeGateway(server, {
         })
         if (capabilities.participatesInVoiceArbitration) {
           activateVoiceClient({
-            takeover: event.takeover === true,
             enableInput: capabilities.inputEnabled,
             enableOutput: capabilities.outputEnabled,
           })
@@ -1058,6 +1469,22 @@ export function attachRealtimeGateway(server, {
           && Array.isArray(event.clientStates)
           && event.clientStates.includes('sleeping')
         ) ? ['sleeping'] : []
+        clientActionCapabilities.clear()
+        if (
+          clientProtocol.capabilities.includes(
+            GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+          )
+          || clientContext.states.includes('sleeping')
+        ) {
+          clientActionCapabilities.add(
+            GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+          )
+        }
+        clientContext.actions = [
+          ...(clientActions.supports(ClientActionName.ENTER_SLEEP)
+            ? [ClientActionName.ENTER_SLEEP]
+            : []),
+        ]
         clientContext.inputCapabilities = (
           event.inputCapabilities
           && typeof event.inputCapabilities === 'object'
@@ -1069,11 +1496,11 @@ export function attachRealtimeGateway(server, {
             resource: event.inputCapabilities.resource === true,
           }
           : null
-        // A desktop that advertises the sleeping state owns its inactivity
-        // policy. Keep Gateway's legacy automatic timer only for clients that
-        // cannot request an explicit synchronized sleep transition.
+        // An action-capable desktop owns its inactivity policy and publishes a
+        // semantic request. Keep Gateway's legacy timer only for clients that
+        // cannot request a synchronized Client Action transition.
         sleepController.setTimeoutMs(
-          clientContext.states.includes('sleeping')
+          clientActions.supports(ClientActionName.ENTER_SLEEP)
             ? 0
             : config.sleepTimeoutMs,
         )
@@ -1083,9 +1510,9 @@ export function attachRealtimeGateway(server, {
           if (sleeping) {
             sleeping = false
             waking = true
+            presenceController.wake()
             sleepController.wake()
           }
-          prepareSleepMode()
           if (event.wakeWordOnly === true) {
             requestExplicitSleep()
           } else if (inputEnabled || outputEnabled) {
@@ -1093,49 +1520,41 @@ export function attachRealtimeGateway(server, {
           }
         }).catch(reportFrontendError)
       } else if (event.type === GatewayClientEvent.UNMUTE) {
-        explicitSleepRequested = false
         if (nonVoiceClient) {
           inputEnabled = false
           outputEnabled = true
           broadcastVoiceOwnership(ownerId)
         } else {
-          activateVoiceClient({ takeover: event.takeover === true })
+          activateVoiceClient()
         }
         realtimeSession.ensure()
           .then(() => {
-            prepareSleepMode()
             announcePendingPermissions()
             claimPendingNotifications()
             announcements.flush()
           })
           .catch(reportFrontendError)
       } else if (event.type === GatewayClientEvent.INPUT_UNMUTE) {
-        explicitSleepRequested = false
         if (nonVoiceClient) return
         if (activeVoiceClients.isActive(ownerId, voiceClient)) {
           inputEnabled = true
           outputEnabled = true
           broadcastVoiceOwnership(ownerId)
         } else {
-          activateVoiceClient({ takeover: event.takeover === true })
+          activateVoiceClient()
         }
         if (sleeping) {
-          prepareSleepMode()
           return
         }
         realtimeSession.ensure()
           .then(() => {
-            prepareSleepMode()
             announcePendingPermissions()
             claimPendingNotifications()
             announcements.flush()
           })
           .catch(reportFrontendError)
       } else if (event.type === GatewayClientEvent.AUDIO_APPEND) {
-        if (sleeping) {
-          if (wakeDetector) acceptSleepingAudio(event.audio)
-          return
-        }
+        if (sleeping) return
         if (
           !inputEnabled
           // Defence in depth: a client that has not yet acted on the suspension
@@ -1176,7 +1595,7 @@ export function attachRealtimeGateway(server, {
         if (sleeping || waking) {
           send(ws, {
             type: 'error',
-            message: `已休眠，请先说“${config.wakeWord}”唤醒。`,
+            message: '当前客户端已休眠，请先唤醒后再继续。',
           })
           return
         }
@@ -1190,11 +1609,19 @@ export function attachRealtimeGateway(server, {
         realtimeSession.cancelResponse()
       } else if (event.type === GatewayClientEvent.PLAYBACK_STARTED) {
         const id = String(event.responseId || '')
+        const playbackContext = presentationRuntime.get(id)
         if (acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
           responseKnown: presentationRuntime.has(id),
-        })) presentationRuntime.startPlayback(id)
+        })) {
+          connectionLogger.info('realtime.playback.started', {
+            responseId: id,
+            turnId: playbackContext?.turnId || '',
+            origin: playbackContext?.origin || 'model',
+          })
+          presentationRuntime.startPlayback(id)
+        }
       } else if (event.type === GatewayClientEvent.PLAYBACK_ENDED) {
         const id = String(event.responseId || '')
         if (acceptsPlaybackReceipt({
@@ -1214,11 +1641,11 @@ export function attachRealtimeGateway(server, {
           })
         }
       } else if (event.type === GatewayClientEvent.MUTE) {
-        explicitSleepRequested = false
         observationRuntime.stop('voice_muted')
         releaseVoiceClient()
         sleeping = false
         waking = false
+        presenceController.wake()
         sleepController?.disable()
         turns.advanceBoundary()
         announcementWindow.reset()
@@ -1229,11 +1656,9 @@ export function attachRealtimeGateway(server, {
         observationRuntime.stop('input_muted')
         realtimeSession.clearPendingAudio()
       } else if (event.type === GatewayClientEvent.SLEEP) {
-        requestExplicitSleep()
+        requestExplicitSleep('client')
       } else if (event.type === GatewayClientEvent.WAKE) {
-        // 桌面快捷键/托盘唤起只恢复窗口可见性，休眠中的前台连接靠这个事件
-        // 恢复，复用唤醒词检测之后同一套重连与退避路径。
-        explicitSleepRequested = false
+        // 桌面快捷键/托盘唤起恢复可见性和输入；Realtime 连接在休眠期间保持。
         if (sleeping) wakeFromSleep()
         else sleepController.recordActivity()
       } else if (event.type === GatewayClientEvent.INPUT_SUSPEND_ACK) {
@@ -1245,6 +1670,8 @@ export function attachRealtimeGateway(server, {
     })
 
     ws.on('close', () => {
+      activeClientSockets.delete(ws)
+      clientProtocolSessions.delete(ws)
       connectionLogger.info('voice_client.disconnected', {
         clientType: descriptor.type,
       })
@@ -1265,6 +1692,7 @@ export function attachRealtimeGateway(server, {
       permissionRetryTimer = null
       sleepController?.close()
       observationRuntime?.stop('gateway_disconnected')
+      presenceController.close()
       realtimeSession.close()
       // Invisible memory: distil durable personal facts from this session in
       // the background. All gating (debounce, minimum turns, disabled state)
@@ -1274,6 +1702,62 @@ export function attachRealtimeGateway(server, {
         memoryExtractor?.maybeRun({ ownerId, sessionId })
       } catch (error) {
         connectionLogger.warn('memory.extract_hook_failed', {
+          error: String(error?.message || error),
+        })
+      }
+      // 画像观察 → 晋升扫描。观察器要调模型所以是异步的，晋升必须排在它之后：
+      // 否则本场刚攒到的确认要等下一场会话结束才被扫到，白等一轮。观察器未启用
+      // 或未达门槛时走同步分支，保持原有行为。晋升本身是纯本地计算、无模型调用，
+      // 写入只在下一个新会话生效，不触碰当前会话的 instructions（保护前缀缓存）。
+      // promoter.run() 是 async 的（写入要等 MemoryProvider 落地才销账），所以
+      // 同步 try/catch 抓不到它内部的失败 —— 必须挂 .catch()，否则一次写入失败
+      // 就变成未处理的 rejection：没有日志，也看不出是哪条偏好没写进去。
+      //
+      // 刻意不 await：这里是连接关闭路径，后面还有会话摘要等链路。远程 provider
+      // 一次超时不该拖住整条关闭流程 —— 用户已经挂断了，资源该释放。写入失败时
+      // 候选留在池子里，下一场会话结束自动重试。
+      const promotePreferences = () => {
+        try {
+          const promoting = preferencePromoter?.run({ ownerId })
+          if (promoting?.catch) {
+            promoting.catch(error => {
+              connectionLogger.warn('preference.promote_hook_failed', {
+                error: String(error?.message || error),
+              })
+            })
+          }
+        } catch (error) {
+          connectionLogger.warn('preference.promote_hook_failed', {
+            error: String(error?.message || error),
+          })
+        }
+      }
+      try {
+        const observing = profileObserver?.maybeRun({ ownerId, sessionId })
+        // 观察失败也要照常扫描：池子里可能还有前几场攒下的确认。
+        if (observing?.then) observing.then(promotePreferences, promotePreferences)
+        else promotePreferences()
+      } catch (error) {
+        connectionLogger.warn('preference.observe_hook_failed', {
+          error: String(error?.message || error),
+        })
+        promotePreferences()
+      }
+      // 会话摘要：记下本场聊了什么，供以后 recall 查。
+      // 与抽取器、观察器彼此独立 —— 三条链路读同一份转写，但任何一条失败都不该
+      // 连带丢掉另外两条的产出，所以各自 try 各自 catch。
+      try {
+        sessionSummariser?.maybeRun({ ownerId, sessionId })
+      } catch (error) {
+        connectionLogger.warn('session_digest.summarise_hook_failed', {
+          error: String(error?.message || error),
+        })
+      }
+      // 滚动摘要取走即删：本场摘要已被上面的下游消费，留着等于悄悄开启了
+      // 「每场会话长期留存完整摘要」，那需要用户显式同意。
+      try {
+      } catch (error) {
+        connectionLogger.warn('rolling_summary.drop_failed', {
           error: String(error?.message || error),
         })
       }

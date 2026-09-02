@@ -14,6 +14,7 @@ export class RealtimeProviderSession {
     providerRegistry,
     defaultProvider,
     getAgentContext,
+    getSessionOptions = () => ({}),
     shouldReconnect,
     onEvent,
     onDiagnostic,
@@ -33,6 +34,7 @@ export class RealtimeProviderSession {
     this.providerRegistry = providerRegistry
     this.providerKey = providerRegistry.resolve(defaultProvider).key
     this.getAgentContext = getAgentContext
+    this.getSessionOptions = getSessionOptions
     this.shouldReconnect = shouldReconnect
     this.onEvent = onEvent
     this.onDiagnostic = onDiagnostic
@@ -163,6 +165,7 @@ export class RealtimeProviderSession {
       providerName: this.providerKey,
       providerRegistry: this.providerRegistry,
       agentContext: this.getAgentContext(),
+      sessionOptions: this.getSessionOptions(),
       onEvent: this.onEvent,
       onDiagnostic: this.onDiagnostic,
       onError: error => this.#handleProviderError(createdFrontend, error),

@@ -39,8 +39,15 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
     'qwen-audio-agent:conversation-session-set',
     sessionId,
   ),
-  enterHide: () => ipcRenderer.invoke('qwen-audio-agent:enter-hide'),
+  enterHide: options => ipcRenderer.invoke(
+    'qwen-audio-agent:enter-hide',
+    options,
+  ),
   wake: () => ipcRenderer.send('qwen-audio-agent:wake'),
+  acceptWakeWordAudio: (audio, sampleRate) => ipcRenderer.send(
+    'qwen-audio-agent:wake-word-audio',
+    { audio, sampleRate },
+  ),
   lifecycleReady: () => ipcRenderer.send('qwen-audio-agent:lifecycle-ready'),
   loadLifecycle: () => ipcRenderer.invoke('qwen-audio-agent:lifecycle-load'),
   pauseWakeShortcut: () => ipcRenderer.invoke(
@@ -55,6 +62,15 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
     ipcRenderer.on('qwen-audio-agent:lifecycle', listener)
     return () => ipcRenderer.removeListener(
       'qwen-audio-agent:lifecycle',
+      listener,
+    )
+  },
+  onClientSettings: callback => {
+    if (typeof callback !== 'function') return () => {}
+    const listener = (_event, settings) => callback(settings || {})
+    ipcRenderer.on('qwen-audio-agent:client-settings', listener)
+    return () => ipcRenderer.removeListener(
+      'qwen-audio-agent:client-settings',
       listener,
     )
   },

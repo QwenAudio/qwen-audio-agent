@@ -2,8 +2,7 @@
 
 The frontend OpenAPI adapter connects selected REST operations to the chatbot
 without coupling them to a realtime provider or a backend Agent. It uses the
-same dynamic tool source, execution limits, and per-operation approval path as
-the frontend MCP client.
+same dynamic tool source and execution limits as the frontend MCP client.
 
 The OpenAPI document describes the API. A separate qwen-audio-agent policy
 decides which `operationId` values are model-visible; no operation is enabled
@@ -14,7 +13,7 @@ automatically.
 Set `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` to a versioned JSON file. OpenAPI
 documents may use JSON or YAML and are resolved relative to this config file:
 
-```env
+```dotenv
 QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG=/absolute/path/to/frontend-openapi.json
 WEATHER_AUTHORIZATION=Bearer replace-me
 ```
@@ -33,13 +32,10 @@ WEATHER_AUTHORIZATION=Bearer replace-me
       "operations": {
         "getWeather": {
           "enabled": true,
-          "readOnly": true,
           "description": "Read the current weather for one city."
         },
         "createAlert": {
           "enabled": true,
-          "readOnly": false,
-          "approval": "required",
           "description": "Create a weather alert."
         }
       }
@@ -59,10 +55,10 @@ overrides the first `servers` URL in the document when set.
 - Local `$ref` values. External and recursive references fail closed.
 - Fixed request headers, with an exact `${VARIABLE}` environment reference for
   secret values.
-- GET and HEAD operations may be declared read-only. Other methods must be
-  writable and set `approval: "required"`.
-- Every writable call asks for natural-language confirmation and executes at
-  most once. Rejection, replay, and reconnect-before-confirmation fail closed.
+- `operations` is an explicit allowlist. Enabled operations execute inline in
+  the current conversation turn.
+- API services must enforce any required confirmation, authorization, or
+  business safety checks themselves.
 - Remote APIs require HTTPS. Loopback HTTP is allowed only without headers.
   Redirects are not followed.
 - Schemas, calls, time, and results are bounded. API responses are untrusted

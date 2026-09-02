@@ -5,6 +5,7 @@ import { ToolCallHandler } from '../src/voice/tools/tool-call-handler.mjs'
 import { FrontendNotesStore } from '../src/conversation/frontend-notes.mjs'
 import { SessionPermissionPolicy } from '../src/voice/session-permission-policy.mjs'
 import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
+import { permissionReference } from '../src/voice/tools/permission-reference.mjs'
 
 function harness({
   coordinator,
@@ -14,10 +15,11 @@ function harness({
   onMemoryChanged = () => {},
   backendAvailability = null,
   respondPermission,
+  respondInput,
   permissionPolicy,
   onPermissionDeliveryFailed,
   clientContext = {},
-  requestClientState,
+  presenceController,
   inputAssets,
   onAgentActivity,
   frontendRetrieval,
@@ -26,6 +28,7 @@ function harness({
   getTurnId = () => 'turn-one',
 } = {}) {
   const outputs = []
+  const toolResultsReady = []
   const ensuredResponses = []
   const transcripts = new TurnTranscripts({ waitMs: 5 })
   const frontend = {
@@ -53,20 +56,29 @@ function harness({
           respondPermission(id, decision, options)
         )
       : undefined,
+    respondInput,
     permissionPolicy,
     onPermissionDeliveryFailed,
     getClientContext: () => clientContext,
-    requestClientState,
+    presenceController,
     onAgentActivity,
     inputAssets,
     frontendRetrieval,
     frontendKnowledge,
     frontendToolSources,
+    onToolResultReady: fields => toolResultsReady.push(fields),
   })
-  return { outputs, ensuredResponses, manager, transcripts, handler }
+  return {
+    outputs,
+    toolResultsReady,
+    ensuredResponses,
+    manager,
+    transcripts,
+    handler,
+  }
 }
 
-test('executes discovered read-only external tools through the shared boundary', async () => {
+test('executes discovered external tools through the shared boundary', async () => {
   const calls = []
   const source = {
     tools: () => [{
@@ -80,8 +92,6 @@ test('executes discovered read-only external tools through the shared boundary',
       },
       policy: {
         mode: 'inline',
-        readOnly: true,
-        approval: 'none',
         maxCallsPerTurn: 1,
         maxResultBytes: 2_048,
       },
@@ -109,151 +119,48 @@ test('executes discovered read-only external tools through the shared boundary',
   assert.equal(kit.outputs[1][1].error_code, 'tool_loop_limit')
 })
 
-test('executes an approved writable external tool exactly once', async () => {
+test('executes an explicitly enabled state-changing external tool inline', async () => {
   const calls = []
-  let currentTurn = 'turn-one'
   const source = {
     tools: () => [{
-      name: 'mcp__issues__create',
+      name: 'mcp__cockpit__vehicle_window_control',
       definition: {
         type: 'function',
         function: {
-          name: 'mcp__issues__create',
-          description: 'Create an issue in the configured tracker.',
+          name: 'mcp__cockpit__vehicle_window_control',
           parameters: { type: 'object', properties: {} },
         },
       },
       policy: {
         mode: 'inline',
-        readOnly: false,
-        approval: 'required',
         maxCallsPerTurn: 1,
         maxResultBytes: 2_048,
       },
     }],
     execute: async (name, args) => {
       calls.push([name, args])
-      return { status: 'ok', issue: 42 }
+      return { status: 'ok', text: '已打开主驾车窗' }
     },
   }
-  const kit = harness({
-    frontendToolSources: [source],
-    getTurnId: () => currentTurn,
-  })
-
-  await kit.handler.handle({
-    call_id: 'external-write',
-    name: 'mcp__issues__create',
-    arguments: JSON.stringify({ title: 'Fix it' }),
-  }, { turnId: 'turn-one', turnGeneration: 1 })
-
-  const authorizationId = kit.outputs[0][1].authorization_id
-  assert.equal(kit.outputs[0][1].status, 'confirmation_required')
-  assert.match(authorizationId, /^frontend_auth_/u)
-  assert.equal(calls.length, 0)
-
-  currentTurn = 'turn-two'
-  await kit.handler.handle({
-    call_id: 'allow-write',
-    name: 'respond_frontend_tool_permission',
-    arguments: JSON.stringify({
-      authorization_id: authorizationId,
-      decision: 'allow',
-    }),
-  }, { turnId: 'turn-two', turnGeneration: 1 })
-  assert.deepEqual(calls, [[
-    'mcp__issues__create',
-    { title: 'Fix it' },
-  ]])
-  assert.equal(kit.outputs[1][1].issue, 42)
-
-  currentTurn = 'turn-three'
-  await kit.handler.handle({
-    call_id: 'replay-write',
-    name: 'respond_frontend_tool_permission',
-    arguments: JSON.stringify({
-      authorization_id: authorizationId,
-      decision: 'allow',
-    }),
-  }, { turnId: 'turn-three', turnGeneration: 1 })
-  assert.equal(calls.length, 1)
-  assert.equal(kit.outputs[2][1].error_code, 'external_authorization_not_pending')
-})
-
-test('rejects a writable external tool without executing it', async () => {
-  let executed = false
-  let currentTurn = 'turn-one'
-  const source = {
-    tools: () => [{
-      name: 'mcp__issues__delete',
-      definition: {
-        type: 'function',
-        function: {
-          name: 'mcp__issues__delete',
-          description: 'Delete an issue.',
-          parameters: { type: 'object', properties: {} },
-        },
-      },
-      policy: {
-        mode: 'inline',
-        readOnly: false,
-        approval: 'required',
-        maxCallsPerTurn: 1,
-        maxResultBytes: 2_048,
-      },
-    }],
-    execute: async () => { executed = true },
-  }
-  const kit = harness({
-    frontendToolSources: [source],
-    getTurnId: () => currentTurn,
-  })
-
-  await kit.handler.handle({
-    call_id: 'external-delete',
-    name: 'mcp__issues__delete',
-    arguments: JSON.stringify({ id: 42 }),
-  }, { turnId: 'turn-one', turnGeneration: 1 })
-  const authorizationId = kit.outputs[0][1].authorization_id
-  currentTurn = 'turn-two'
-  await kit.handler.handle({
-    call_id: 'reject-delete',
-    name: 'respond_frontend_tool_permission',
-    arguments: JSON.stringify({
-      authorization_id: authorizationId,
-      decision: 'reject',
-    }),
-  }, { turnId: 'turn-two', turnGeneration: 1 })
-
-  assert.equal(executed, false)
-  assert.equal(kit.outputs[1][1].status, 'rejected')
-})
-
-test('never executes a dynamic external tool without a read-only policy', async () => {
-  let executed = false
-  const source = {
-    tools: () => [{
-      name: 'mcp__documents__write',
-      definition: {
-        type: 'function',
-        function: {
-          name: 'mcp__documents__write',
-          parameters: { type: 'object', properties: {} },
-        },
-      },
-      policy: { mode: 'inline', readOnly: false },
-    }],
-    execute: async () => { executed = true },
-  }
   const kit = harness({ frontendToolSources: [source] })
+
   await kit.handler.handle({
-    call_id: 'external-write',
-    name: 'mcp__documents__write',
-    arguments: '{}',
+    call_id: 'window-control',
+    name: 'mcp__cockpit__vehicle_window_control',
+    arguments: JSON.stringify({ action: 'open', window: 'windowFL' }),
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  assert.equal(executed, false)
-  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+  assert.deepEqual(calls, [[
+    'mcp__cockpit__vehicle_window_control',
+    { action: 'open', window: 'windowFL' },
+  ]])
+  assert.equal(kit.outputs[0][1].text, '已打开主驾车窗')
+  assert.equal(kit.outputs[0][1].status, 'ok')
+  assert.deepEqual(kit.toolResultsReady, [{
+    callId: 'window-control',
+    turnId: 'turn-one',
+    toolName: 'mcp__cockpit__vehicle_window_control',
+  }])
 })
 
 function taskForId(manager, taskId) {
@@ -265,10 +172,12 @@ function waitForTask(manager, taskId) {
 }
 
 test('asks a capable client to enter sleep without creating another response', async () => {
-  const states = []
+  const sources = []
   const kit = harness({
-    clientContext: { states: ['sleeping'] },
-    requestClientState: state => states.push(state),
+    presenceController: {
+      supportsSleep: () => true,
+      requestSleep: async ({ source }) => sources.push(source),
+    },
   })
 
   await kit.handler.handle({
@@ -277,9 +186,30 @@ test('asks a capable client to enter sleep without creating another response', a
     arguments: '{}',
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  assert.deepEqual(states, ['sleeping'])
+  assert.deepEqual(sources, ['realtime_tool'])
   assert.equal(kit.outputs[0][1].status, 'sleeping')
   assert.equal(kit.outputs[0][3].createResponse, false)
+})
+
+test('creates a response only when the client fails to enter sleep', async () => {
+  const error = Object.assign(new Error('window could not be hidden'), {
+    code: 'desktop_hide_failed',
+  })
+  const kit = harness({
+    presenceController: {
+      supportsSleep: () => true,
+      requestSleep: async () => { throw error },
+    },
+  })
+
+  await kit.handler.handle({
+    call_id: 'call-hide-failed',
+    name: 'enter_sleep',
+    arguments: '{}',
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(kit.outputs[0][1].error_code, 'desktop_hide_failed')
+  assert.equal(kit.outputs[0][3].createResponse, true)
 })
 
 test('executes only retrieval tools advertised by the injected frontend runtime', async () => {
@@ -371,7 +301,7 @@ test('fails closed when a stale model calls the unavailable knowledge tool', asy
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
 })
 
-test('rejects sleep when the client did not advertise that state', async () => {
+test('rejects sleep when the client does not advertise the action', async () => {
   const kit = harness()
 
   await kit.handler.handle({
@@ -380,7 +310,8 @@ test('rejects sleep when the client did not advertise that state', async () => {
     arguments: '{}',
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  assert.equal(kit.outputs[0][1].error_code, 'unsupported_client_state')
+  assert.equal(kit.outputs[0][1].error_code, 'client_action_unsupported')
+  assert.equal(kit.outputs[0][3].createResponse, true)
 })
 
 test('fails closed for tools absent from the frontend registry', async () => {
@@ -933,10 +864,10 @@ test('does not turn a permission answer into a new background task', async () =>
 
   const output = kit.outputs.at(-1)
   assert.equal(output[1].error_code, 'permission_decision_required')
-  assert.equal(output[1].authorization_id, 'auth-one')
+  assert.equal(output[1].task_id, kit.task.id)
   assert.match(
     output[3].response.instructions,
-    /respond_agent_permission/,
+    /respond_permission/,
   )
   assert.equal(
     kit.manager.list({ ownerId: 'owner' }).filter(task => (
@@ -945,6 +876,55 @@ test('does not turn a permission answer into a new background task', async () =>
     0,
   )
   await kit.finish()
+})
+
+test('returns a backend answer to the same pending task', async () => {
+  const manager = new TaskManager()
+  let release
+  const task = manager.create({
+    objective: '生成报告',
+    ownerId: 'owner',
+    sessionId: 'voice',
+    runner: async (_objective, { onEvent }) => {
+      onEvent({
+        type: 'backend.input.requested',
+        input: {
+          id: 'input-one',
+          status: 'pending',
+          mode: 'text',
+          prompt: '使用中文还是英文？',
+        },
+      })
+      await new Promise(resolve => { release = resolve })
+      return { content: '完成' }
+    },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  const calls = []
+  const kit = harness({
+    manager,
+    respondInput: async (...args) => {
+      calls.push(args)
+      return { status: 'accepted' }
+    },
+  })
+  await kit.handler.handle({
+    call_id: 'input-answer',
+    name: 'respond_agent_input',
+    arguments: JSON.stringify({
+      task_id: task.id,
+      action: 'accept',
+      text: '中文',
+    }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+  assert.deepEqual(calls[0].slice(0, 3), [
+    task.id,
+    'input-one',
+    { action: 'accept', text: '中文', values: undefined },
+  ])
+  assert.equal(kit.outputs[0][1].status, 'submitted')
+  release()
+  await manager.wait(task.id)
 })
 
 test('deduplicates the same turn after a realtime handler reconnect', async () => {
@@ -1306,7 +1286,7 @@ test('queries delegated status directly from the Gateway ledger', async () => {
   await manager.wait(delegated.id)
 })
 
-test('relays a realtime semantic permission decision without evidence matching', async () => {
+test('allows one realtime permission without enabling later automatic approval', async () => {
   const calls = []
   const answer = '你按刚才说的处理就成'
   const permissionPolicy = new SessionPermissionPolicy()
@@ -1324,10 +1304,11 @@ test('relays a realtime semantic permission decision without evidence matching',
   })
   await kit.handler.handle({
     call_id: 'permission-semantic-allow',
-    name: 'respond_agent_permission',
+    name: 'respond_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-one',
-      decision: 'always',
+      permission_id: permissionReference('auth-one'),
+      task_id: kit.task.id,
+      decision: 'once',
     }),
   })
 
@@ -1336,14 +1317,14 @@ test('relays a realtime semantic permission decision without evidence matching',
   await new Promise(resolve => setImmediate(resolve))
   assert.deepEqual(calls, [{
     id: 'auth-one',
-    decision: 'always',
+    decision: 'once',
     options: { ownerId: 'owner' },
   }])
   assert.match(
     kit.outputs.at(-1)[3].response.instructions,
     /已允许，后台继续执行/,
   )
-  assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), true)
+  assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), false)
   await kit.finish()
 })
 
@@ -1362,9 +1343,10 @@ test('confirms a rejected realtime permission exactly once', async () => {
   })
   await kit.handler.handle({
     call_id: 'permission-semantic-reject',
-    name: 'respond_agent_permission',
+    name: 'respond_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-one',
+      permission_id: permissionReference('auth-one'),
+      task_id: kit.task.id,
       decision: 'reject',
     }),
   })
@@ -1391,9 +1373,10 @@ test('rolls back the session policy when the permission delivery fails', async (
   })
   await kit.handler.handle({
     call_id: 'permission-delivery-failed',
-    name: 'respond_agent_permission',
+    name: 'respond_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-one',
+      permission_id: permissionReference('auth-one'),
+      task_id: kit.task.id,
       decision: 'always',
     }),
   })
@@ -1457,7 +1440,7 @@ test('auto-allows later permissions in the Gateway without publishing them', asy
   )
 })
 
-test('batches concurrent backend permissions into one confirmation and one delivery each', async () => {
+test('one always decision settles every pending permission for the selected task', async () => {
   const permissionIds = ['auth-news-1', 'auth-news-2', 'auth-news-3', 'auth-news-4']
   const approvals = []
   let release
@@ -1491,23 +1474,23 @@ test('batches concurrent backend permissions into one confirmation and one deliv
   await new Promise(resolve => setImmediate(resolve))
 
   kit.transcripts.record('turn-one', '我同意')
-  const decisions = permissionIds.map((authorizationId, index) => (
-    kit.handler.handle({
-      call_id: `allow-news-${index}`,
-      response_id: 'permission-response',
-      name: 'respond_agent_permission',
-      arguments: JSON.stringify({
-        authorization_id: authorizationId,
-        decision: 'always',
-      }),
-    }, {
-      turnId: 'turn-one',
-      turnGeneration: 1,
-      responseId: 'permission-response',
-    })
-  ))
+  const taskId = kit.manager.list({ ownerId: 'owner' })[0].id
+  const decision = kit.handler.handle({
+    call_id: 'allow-news',
+    response_id: 'permission-response',
+    name: 'respond_permission',
+    arguments: JSON.stringify({
+      permission_id: permissionReference(permissionIds[0]),
+      task_id: taskId,
+      decision: 'always',
+    }),
+  }, {
+    turnId: 'turn-one',
+    turnGeneration: 1,
+    responseId: 'permission-response',
+  })
   await kit.handler.finishToolResponse('permission-response')
-  await Promise.all(decisions)
+  await decision
   await new Promise(resolve => setImmediate(resolve))
 
   assert.deepEqual(
@@ -1539,9 +1522,10 @@ test('accepts a semantic permission decision without an evidence field', async (
   })
   await kit.handler.handle({
     call_id: 'permission-without-evidence',
-    name: 'respond_agent_permission',
+    name: 'respond_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-one',
+      permission_id: permissionReference('auth-one'),
+      task_id: kit.task.id,
       decision: 'always',
     }),
   })
@@ -1553,7 +1537,7 @@ test('accepts a semantic permission decision without an evidence field', async (
   await kit.finish()
 })
 
-test('rejects a permission id that is not pending on the current task', async () => {
+test('rejects a task id that has no pending permission', async () => {
   let called = false
   const answer = '照你说的来'
   const kit = await permissionHarness({
@@ -1564,15 +1548,30 @@ test('rejects a permission id that is not pending on the current task', async ()
   })
   await kit.handler.handle({
     call_id: 'permission-wrong-id',
-    name: 'respond_agent_permission',
+    name: 'respond_permission',
     arguments: JSON.stringify({
-      authorization_id: 'auth-other',
+      permission_id: permissionReference('auth-one'),
+      task_id: 'task-other',
       decision: 'always',
     }),
+  }, {
+    turnId: 'turn-one',
+    turnGeneration: 1,
+    responseId: 'permission-wrong-response',
   })
+  await kit.handler.finishToolResponse('permission-wrong-response')
 
   assert.equal(called, false)
   assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_not_pending')
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.match(
+    kit.ensuredResponses[0][1].response.instructions,
+    /没有真实、仍待确认的后台权限请求/,
+  )
+  assert.doesNotMatch(
+    kit.ensuredResponses[0][1].response.instructions,
+    /已允许/,
+  )
   await kit.finish()
 })
 

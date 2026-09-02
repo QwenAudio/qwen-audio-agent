@@ -85,16 +85,15 @@ export function resolveBackendModels(env = process.env) {
     common,
     openCode: common ? `alibaba-cn/${name}` : '',
     openClaw: common ? `bailian/${name}` : '',
-    qoder: name,
-    qwen: name,
+    qoder: common,
+    qwen: common,
     kimi: common,
     hermes: common,
-    codeBuddy: name,
-    codex: name,
+    codeBuddy: common,
+    codex: common,
     claude: common,
     deepSeekHarness: String(
-      env.DEEPSEEK_HARNESS_MODEL
-      || (name.startsWith('deepseek-') ? name : ''),
+      env.DEEPSEEK_HARNESS_MODEL || '',
     ).trim(),
     pi: common,
     acp: common,
@@ -282,7 +281,9 @@ export const config = {
         process.env.OPENCLAW_GATEWAY_TOKEN_FILE
         || resolve(runtimeEnvironment.openClawStateDirectory, 'gateway-token')
       ),
-      model: backendModels.openClaw,
+      model: backendOwnership === 'owned'
+        ? backendModels.openClaw
+        : backendModels.common,
       directory: resolveBackendWorkspace('openclaw'),
       cliPath: String(process.env.OPENCLAW_ACP_BIN || '').trim(),
       coordinatorAgent: (
@@ -322,12 +323,7 @@ export const config = {
     codebuddy: {
       model: String(backendModels.codeBuddy).trim(),
       modelUrl: (
-        process.env.CODEBUDDY_MODEL_URL
-        || (backendModels.common ? (
-          process.env.DASHSCOPE_WORKSPACE_ID
-            ? `https://${process.env.DASHSCOPE_WORKSPACE_ID}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions`
-            : 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
-        ) : '')
+        process.env.CODEBUDDY_MODEL_URL || ''
       ),
       directory: resolveBackendWorkspace('codebuddy'),
       cliPath: String(process.env.CODEBUDDY_BIN || '').trim(),
@@ -335,12 +331,7 @@ export const config = {
     codex: {
       model: String(backendModels.codex).trim(),
       modelUrl: (
-        process.env.CODEX_BASE_URL
-        || (backendModels.common ? (
-          process.env.DASHSCOPE_WORKSPACE_ID
-            ? `https://${process.env.DASHSCOPE_WORKSPACE_ID}.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`
-            : 'https://dashscope.aliyuncs.com/compatible-mode/v1'
-        ) : '')
+        process.env.CODEX_BASE_URL || ''
       ).replace(/\/+$/, ''),
       directory: resolveBackendWorkspace('codex'),
       cliPath: String(process.env.CODEX_ACP_BIN || '').trim(),
@@ -507,6 +498,40 @@ export const config = {
     runtimeEnvironment.configDirectory,
     'memory-audit.jsonl',
   ),
+  // 偏好自更新：从对话里观察反复出现的表达偏好，攒够跨会话确认后写入 USER.md
+  // 的观察推断段。默认关闭 —— 它会自动改写用户档案，先让愿意尝试的用户显式开启。
+  // 复用 memoryModel / memoryBaseUrl / memoryApiKey，不额外要一套凭据。
+  preferenceLearningEnabled: String(
+    process.env.QWEN_AUDIO_PREFERENCE_LEARNING || 'off',
+  ).toLowerCase() === 'on',
+  preferenceCandidatePath: resolve(
+    runtimeEnvironment.configDirectory,
+    'preference-candidates.json',
+  ),
+  // 会话摘要：每场会话结束时记一条「聊了哪些话题 + 一句要点」，供用户日后问
+  // 「前几天我们聊的那个」时用 recall 工具查。默认关闭 —— 它留存的是
+  // 对话内容的概括，属于需要用户显式同意的一档。只存话题与一句要点，不存转写。
+  sessionDigestEnabled: String(
+    process.env.QWEN_AUDIO_SESSION_DIGEST || 'off',
+  ).toLowerCase() === 'on',
+  sessionDigestPath: resolve(
+    runtimeEnvironment.configDirectory,
+    'session-digests.json',
+  ),
+  // 领域资料库：用户导入的手册 / 规章 / 教材。资料本体落在后端共享 workspace 下，
+  // 后端拿到路径就能自己 grep / read —— 前端只维护一份带摘要的清单。
+  // 默认关闭：它会把用户的文件复制到另一个位置，需要用户显式同意。
+  domainLibraryEnabled: String(
+    process.env.QWEN_AUDIO_DOMAIN_LIBRARY || 'off',
+  ).toLowerCase() === 'on',
+  domainDocumentDirectory: resolve(
+    defaultBackendWorkspace(runtimeEnvironment.configDirectory),
+    'domain',
+  ),
+  domainIndexPath: resolve(
+    runtimeEnvironment.configDirectory,
+    'domain-index.json',
+  ),
   reminderSchedulerEnabled: String(
     process.env.QWEN_AUDIO_AGENT_REMINDER_SCHEDULER || 'true'
   ).toLowerCase() === 'true',
@@ -538,13 +563,6 @@ export const config = {
     0,
     { min: 0, max: 86_400 },
   ) * 1000,
-  wakeWordEnabled: String(
-    process.env.QWEN_AUDIO_WAKE_WORD_ENABLED || '',
-  ).toLowerCase() === 'true',
-  wakeWord: '你好千问',
-  wakeWordModelDirectory: process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR
-    ? resolve(process.env.QWEN_AUDIO_WAKE_WORD_MODEL_DIR)
-    : resolve(runtimeEnvironment.configDirectory, 'models/wake-word'),
 }
 
 export function realtimeUrl(baseUrl, model) {

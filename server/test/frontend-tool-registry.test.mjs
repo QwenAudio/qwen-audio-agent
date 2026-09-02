@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  PERMISSION_RESPONSE_CAPABILITY,
+  BACKEND_INPUT_RESPONSE_CAPABILITY,
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
-  RESPOND_FRONTEND_TOOL_PERMISSION_NAME,
+  RESPOND_PERMISSION_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   frontendToolRegistry,
   frontendTools,
@@ -24,7 +26,6 @@ const DEFAULT_TOOL_NAMES = [
   'get_current_time',
   'memory',
   'notes',
-  'respond_agent_permission',
 ]
 
 function names(tools) {
@@ -38,6 +39,20 @@ test('registers every default frontend tool once in stable order', () => {
   for (const name of DEFAULT_TOOL_NAMES) {
     assert.equal(frontendToolRegistry.has(name), true)
   }
+})
+
+test('customizes only the spawn_thinking capability description', () => {
+  const description = '只处理座舱车辆、导航、音乐、天气和闪购任务。'
+  const customized = frontendTools({
+    frontend: { spawnThinkingDescription: description },
+  })
+
+  assert.equal(customized[0].function.name, 'spawn_thinking')
+  assert.equal(customized[0].function.description, description)
+  assert.deepEqual(customized[0].function.parameters, TOOLS[0].function.parameters)
+  assert.notEqual(customized[0], TOOLS[0])
+  assert.deepEqual(customized.slice(1), TOOLS.slice(1))
+  assert.notEqual(TOOLS[0].function.description, description)
 })
 
 test('appends namespaced dynamic tools without changing the static registry', () => {
@@ -59,20 +74,44 @@ test('appends namespaced dynamic tools without changing the static registry', ()
   )
 })
 
-test('exposes client-state tools only when the client advertises support', () => {
+test('exposes the unified permission response only for a real request capability', () => {
+  assert.equal(
+    names(frontendTools()).includes(RESPOND_PERMISSION_TOOL_NAME),
+    false,
+  )
+  assert.deepEqual(
+    names(frontendTools({
+      frontend: {
+        capabilities: [PERMISSION_RESPONSE_CAPABILITY],
+      },
+    })),
+    [...DEFAULT_TOOL_NAMES, RESPOND_PERMISSION_TOOL_NAME],
+  )
+})
+
+test('exposes backend input response only for a real pending request', () => {
+  assert.equal(names(frontendTools()).includes('respond_agent_input'), false)
+  assert.deepEqual(names(frontendTools({
+    frontend: { capabilities: [BACKEND_INPUT_RESPONSE_CAPABILITY] },
+  })), [...DEFAULT_TOOL_NAMES, 'respond_agent_input'])
+})
+
+test('exposes Client Action tools only when the client advertises support', () => {
   assert.equal(frontendToolRegistry.isEnabled(ENTER_SLEEP_TOOL_NAME), false)
   assert.equal(
     frontendToolRegistry.isEnabled(ENTER_SLEEP_TOOL_NAME, {
-      client: { states: ['sleeping'] },
+      client: { actions: ['desktop.presence.enter_sleep'] },
     }),
     true,
   )
   assert.deepEqual(
-    names(frontendTools({ client: { states: ['sleeping'] } })),
+    names(frontendTools({
+      client: { actions: ['desktop.presence.enter_sleep'] },
+    })),
     [...DEFAULT_TOOL_NAMES, ENTER_SLEEP_TOOL_NAME],
   )
   assert.deepEqual(
-    names(frontendTools({ client: { states: ['unknown'] } })),
+    names(frontendTools({ client: { actions: ['unknown'] } })),
     DEFAULT_TOOL_NAMES,
   )
 })
@@ -100,16 +139,16 @@ test('exposes retrieval tools only when the frontend advertises each capability'
   )
 })
 
-test('exposes external-tool approval only when a source requires it', () => {
+test('gates the backend permission response tool behind its capability', () => {
   assert.equal(
-    frontendToolRegistry.isEnabled(RESPOND_FRONTEND_TOOL_PERMISSION_NAME),
+    frontendToolRegistry.isEnabled(RESPOND_PERMISSION_TOOL_NAME),
     false,
   )
   assert.deepEqual(
     names(frontendTools({
-      frontend: { capabilities: ['external-tool-approval'] },
+      frontend: { capabilities: [PERMISSION_RESPONSE_CAPABILITY] },
     })),
-    [...DEFAULT_TOOL_NAMES, RESPOND_FRONTEND_TOOL_PERMISSION_NAME],
+    [...DEFAULT_TOOL_NAMES, RESPOND_PERMISSION_TOOL_NAME],
   )
 })
 
@@ -137,10 +176,10 @@ test('keeps visibility policy separate from runtime execution checks', () => {
   const entry = frontendToolRegistry.get(ENTER_SLEEP_TOOL_NAME)
   assert.deepEqual(entry.policy, {
     mode: 'control',
-    requiredClientStates: ['sleeping'],
+    requiredClientActions: ['desktop.presence.enter_sleep'],
   })
   assert.equal(Object.isFrozen(entry.policy), true)
-  assert.equal(Object.isFrozen(entry.policy.requiredClientStates), true)
+  assert.equal(Object.isFrozen(entry.policy.requiredClientActions), true)
 })
 
 test('declares one background tool and classifies every other tool', () => {
@@ -163,8 +202,9 @@ test('declares one background tool and classifies every other tool', () => {
     memory: 'inline',
     notes: 'inline',
     knowledge: 'inline',
-    respond_agent_permission: 'control',
-    respond_frontend_tool_permission: 'control',
+    recall: 'inline',
+    respond_permission: 'control',
+    respond_agent_input: 'control',
     web_search: 'inline',
     fetch_url: 'inline',
     enter_sleep: 'control',

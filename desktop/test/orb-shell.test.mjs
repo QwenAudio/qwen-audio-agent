@@ -186,6 +186,20 @@ test('visible conversation panel refuses an inactivity hide request', () => {
   assert.notEqual(presence.state, 'hidden')
 })
 
+test('explicit sleep closes a visible conversation panel and hides the desktop', () => {
+  const { ipc, event, presence, calls } = shellHarness({
+    onLoadSurface: () => 'panel',
+  })
+
+  assert.deepEqual(ipc.invoke(
+    ORB_CHANNELS.enterHide,
+    event,
+    { explicit: true },
+  ), { state: 'hidden' })
+  assert.equal(presence.state, 'hidden')
+  assert.deepEqual(calls, ['surface:orb'])
+})
+
 test('dispose unregisters every channel and cancelDrag drops the offset', () => {
   const { ipc, shell, window, event } = shellHarness()
   ipc.emit(ORB_CHANNELS.dragStart, event, { x: 0, y: 0 })

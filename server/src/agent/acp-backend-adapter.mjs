@@ -27,6 +27,7 @@ import {
 import { BackendRuntimeState } from './backend-runtime-state.mjs'
 import { KeyedSerialExecutor } from './keyed-serial-executor.mjs'
 import { PermissionBroker } from './permission-broker.mjs'
+import { InputBroker } from './input-broker.mjs'
 import {
   appendPromptBlocks,
   artifactsFromAcpContentBlocks,
@@ -121,20 +122,6 @@ function modelConfigOption(options = []) {
       ['model', 'models'].includes(clean(option?.id).toLowerCase())
     ))
     || null
-}
-
-function legacyModelState(response) {
-  const models = response?.models
-  if (!models || !Array.isArray(models.availableModels)) return null
-  return {
-    currentValue: clean(models.currentModelId),
-    choices: models.availableModels
-      .map(item => ({
-        value: clean(item?.modelId),
-        names: [item?.name].map(clean).filter(Boolean),
-      }))
-      .filter(item => item.value),
-  }
 }
 
 function deferred() {
@@ -234,6 +221,7 @@ export class AcpBackendAdapter {
       protocol: this.protocol,
       permissionMode: this.permissionMode,
     })
+    this.inputBroker = new InputBroker({ protocol: this.protocol })
     this.coordinatorSessions = new Map()
     this.coordinatorSessionPromises = new Map()
     // ACP agents may cache the first MCP connection for a Session. Keep its
@@ -264,6 +252,9 @@ export class AcpBackendAdapter {
       timeoutMs,
       onPermission: (params, context) => (
         this.handlePermission(params, context)
+      ),
+      onElicitation: (params, context) => (
+        this.handleElicitation(params, context)
       ),
       sanitizeProcessOutput: this.profile.sanitizeProcessOutput,
       formatRequestError: this.profile.formatRequestError,
@@ -303,6 +294,10 @@ export class AcpBackendAdapter {
     return this.permissionBroker.resolved
   }
 
+  get pendingInputs() {
+    return this.inputBroker.pending
+  }
+
   describe() {
     return {
       kind: this.protocol,
@@ -320,6 +315,7 @@ export class AcpBackendAdapter {
       capabilities: {
         ...this.profile.capabilities,
         taskUpdates: 'activity',
+        inputRequests: 'elicitation',
       },
     }
   }
@@ -590,7 +586,7 @@ export class AcpBackendAdapter {
       }
     }
     options = await this.applyProfileSessionConfig(session, options)
-    if (this.model && this.profile.processModelConfiguration !== true) {
+    if (this.model && this.profile.sessionModelConfiguration !== false) {
       await this.forceSessionModel(session, options)
     }
   }
@@ -651,67 +647,6 @@ export class AcpBackendAdapter {
     const desired = this.model
     const option = modelConfigOption(options)
     if (!option) {
-      if (this.nativeDelegationAdapter?.setSessionModel) {
-        try {
-          await this.nativeDelegationAdapter.setSessionModel({
-            sessionKey: clean(session?.meta?.sessionKey)
-              || clean(session?.sessionId),
-            model: desired,
-          })
-          return
-        } catch (error) {
-          throw new AgentError(
-            `${this.label} 无法把 Session 模型设置为 ${desired}：${
-              clean(error?.message) || '未知错误'
-            }`,
-            {
-              status: error.status || 502,
-              protocol: error.protocol || `${this.protocol}-native`,
-            },
-          )
-        }
-      }
-      const legacy = legacyModelState(session?.response)
-      if (legacy && this.client.setLegacySessionModel) {
-        const selected = matchingOptionValue(
-          legacy.choices.map(choice => ({
-            value: choice.value,
-            name: choice.names[0],
-          })),
-          desired,
-        )
-        if (!selected) {
-          const availableModels = legacy.choices.map(choice => (
-            choice.names[0] || choice.value
-          ))
-          const available = availableModels.length
-            ? `；可选模型：${availableModels.slice(0, 12).join('、')}`
-            : ''
-          throw new AgentError(
-            `${this.label} 当前 Session 不支持模型 ${desired}${available}`,
-            { status: 422, protocol: 'acp' },
-          )
-        }
-        if (modelKey(legacy.currentValue) === modelKey(selected)) return
-        try {
-          await this.client.setLegacySessionModel(
-            session.sessionId,
-            selected,
-          )
-        } catch (error) {
-          throw new AgentError(
-            `${this.label} 无法把 Session 模型设置为 ${desired}：${
-              clean(error?.message) || '未知错误'
-            }`,
-            {
-              status: error.status || 502,
-              protocol: 'acp',
-            },
-          )
-        }
-        session.response.models.currentModelId = selected
-        return
-      }
       throw new AgentError(
         `${this.label} 没有通过 ACP 提供 Session 模型配置，`
         + `无法强制使用模型 ${desired}`,
@@ -781,6 +716,10 @@ export class AcpBackendAdapter {
     return this.permissionBroker.request(params, { signal, session })
   }
 
+  async handleElicitation(params, { signal, session } = {}) {
+    return this.inputBroker.request(params, { signal, session })
+  }
+
   cancelPermission(record) {
     return this.permissionBroker.cancel(record)
   }
@@ -791,6 +730,7 @@ export class AcpBackendAdapter {
 
   cancelPermissionsForScope(permissionScopeId) {
     this.permissionBroker.cancelScope(permissionScopeId)
+    this.inputBroker.cancelScope(permissionScopeId)
   }
 
   rememberDelegationUpdate(record, activity) {
@@ -1695,6 +1635,17 @@ export class AcpBackendAdapter {
     return this.resolveAuthorization(authorizationId, decision, { ownerId })
   }
 
+  async respondInput(taskId, inputRequestId, response, { ownerId } = {}) {
+    const pending = this.pendingInputs.get(clean(inputRequestId))
+    if (pending && clean(taskId) && pending.taskId !== clean(taskId)) {
+      throw new AgentError('输入请求不属于这项工作', {
+        status: 404,
+        protocol: this.protocol,
+      })
+    }
+    return this.inputBroker.respond(inputRequestId, response, { ownerId })
+  }
+
   async queryDelegatedWork(taskId, _question, { ownerId } = {}) {
     const run = this.coordinationRuns.get(clean(taskId))
     const record = run?.delegation
@@ -1764,6 +1715,7 @@ export class AcpBackendAdapter {
       )
     }
     this.permissionBroker.cancelAll()
+    this.inputBroker.cancelAll()
     await Promise.allSettled(
       [...this.coordinatorToolRegistrationPromises.values()],
     )

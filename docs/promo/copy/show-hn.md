@@ -2,12 +2,12 @@
 
 ## Title（二选一）
 
-- Show HN: qwen-audio-agent – Full-duplex voice interface for coding agents
+- Show HN: qwen-audio-agent – Full-duplex voice runtime for AI agents
 - Show HN: Talk to Claude Code/Codex hands-free, with tasks running in parallel
 
 ## Body
 
-> 直接使用 articles/voice-layer-for-coding-agents-en.md 全文作为正文。
+> 直接使用 articles/voice-runtime-for-ai-agents-en.md 全文作为正文。
 > 该文已按 HN 调性撰写：陈述事实、无营销语、结尾抛出两个讨论问题。
 
 ## 评论区预答 FAQ（发布后第一时间自评 1~2 条）
@@ -28,9 +28,10 @@ self-hosted. Wake-word detection is always local (sherpa-onnx).
 
 ### Q: Which agents work best?
 
-Native ACP backends (OpenCode, Qoder, Kimi Code) are one-click setups.
-Claude Code and Codex connect through ACP adapters; both are supported
-by the one-command installer.
+Native ACP backends (OpenCode, OpenClaw, Qoder, Kimi Code) are
+one-click setups. Claude Code and Codex connect through ACP adapters;
+both are supported by the one-command installer. It also runs with no
+backend at all — frontend-only mode is a first-class configuration.
 
 ## 发布时间建议
 

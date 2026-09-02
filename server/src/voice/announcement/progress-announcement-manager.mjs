@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
+import { createAgentDelivery } from '../../delivery/agent-delivery.mjs'
 import { progressResponseInstructions } from '../frontend-tools.mjs'
+import { RealtimeAgentDeliveryRuntime } from '../realtime-agent-delivery-runtime.mjs'
 
 const DEFAULT_INTERVAL_MS = 60_000
 const DEFAULT_QUIET_MS = 800
@@ -38,6 +40,7 @@ function progressPayload(candidate) {
 export class ProgressAnnouncementManager {
   constructor({
     getFrontend,
+    deliveryRuntime = null,
     isDeliveryBlocked = () => false,
     isTaskActive = () => true,
     intervalMs = DEFAULT_INTERVAL_MS,
@@ -51,6 +54,10 @@ export class ProgressAnnouncementManager {
   } = {}) {
     this.getFrontend = getFrontend
     this.isDeliveryBlocked = isDeliveryBlocked
+    this.deliveryRuntime = deliveryRuntime || new RealtimeAgentDeliveryRuntime({
+      getFrontend,
+      isDeliveryBlocked,
+    })
     this.isTaskActive = isTaskActive
     this.intervalMs = Math.max(1, Number(intervalMs) || DEFAULT_INTERVAL_MS)
     this.quietMs = Math.max(0, Number(quietMs) || 0)
@@ -188,7 +195,14 @@ export class ProgressAnnouncementManager {
       blocked = true
     }
     const frontend = this.getFrontend?.()
-    if (blocked || typeof frontend?.injectResult !== 'function') {
+    if (
+      blocked
+      || frontend?.ready === false
+      || (
+        typeof frontend?.injectDelivery !== 'function'
+        && typeof frontend?.injectResult !== 'function'
+      )
+    ) {
       candidate.notBefore = timestamp + this.retryMs
       this.schedule()
       return
@@ -196,15 +210,18 @@ export class ProgressAnnouncementManager {
 
     this.delivering = true
     try {
-      await frontend.injectResult(
-        progressPayload(candidate),
-        'progress',
-        progressContext(candidate),
-        {
-          injectContext: true,
-          instructions: progressResponseInstructions,
-        },
-      )
+      const outcome = await this.deliveryRuntime.deliver(createAgentDelivery({
+        id: `task_progress_${candidate.deliveryTurnId}`,
+        mode: 'respond',
+        origin: 'progress',
+        text: progressPayload(candidate),
+        correlation: progressContext(candidate),
+        presentation: { instructions: progressResponseInstructions },
+      }))
+      if (!outcome?.completed) {
+        candidate.notBefore = this.now() + this.retryMs
+        return
+      }
       // A user interruption consumes this low-priority update too. Replaying
       // the same monologue would be more disruptive than omitting it.
       this.lastAnnouncedAt = this.now()

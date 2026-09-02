@@ -10,6 +10,7 @@ import {
   speakResponseInstructions,
   permissionResponseInstructions,
 } from '../frontend-tools.mjs'
+import { permissionReference } from '../tools/permission-reference.mjs'
 import { isRecoverableRealtimeInactivityError } from '../realtime-errors.mjs'
 import { openAiCompatibleProtocol } from './openai-compatible-protocol.mjs'
 
@@ -17,6 +18,11 @@ function classifyError(message) {
   if (isRecoverableRealtimeInactivityError(message)) return 'inactivity'
   if (/user is speaking/i.test(message)) return 'input_busy'
   if (/no active response/i.test(message)) return 'no_active_response'
+  if (
+    /data[_ -]?inspection[_ -]?failed|ip[_ -]?infringement[_ -]?suspect/i.test(message)
+    || /inappropriate content|content[_ -]?(?:filter|moderation|safety|policy)/i.test(message)
+    || /(?:input|output) data may contain/i.test(message)
+  ) return 'content_safety'
   if (
     /invalid[_ -]?api[_ -]?key|incorrect api key|authentication failed|unauthorized|unexpected server response: (?:401|403)/i
       .test(message)
@@ -51,6 +57,7 @@ export const dashscopeProvider = {
   get capabilities() {
     return {
       perResponseInstructions: true,
+      sessionOutputVoice: true,
       conversationItemIdEcho: activeModelProfile().family !== 'omni',
     }
   },
@@ -67,8 +74,9 @@ export const dashscopeProvider = {
   headers: () => ({ Authorization: `Bearer ${config.dashscopeApiKey}` }),
   classifyError,
 
-  buildSession: ({ configured, agentContext }) => {
+  buildSession: ({ configured, agentContext, sessionOptions }) => {
     const profile = activeModelProfile()
+    const sessionVoice = String(sessionOptions?.voice || '').trim()
     const session = {
       instructions: buildFrontendInstructions(agentContext),
     }
@@ -78,7 +86,7 @@ export const dashscopeProvider = {
     if (!configured) {
       session.modalities = responseModalities(profile)
       if (profile.modelCapabilities.audioOutput) {
-        session.voice = dashscopeProvider.voice()
+        session.voice = sessionVoice || dashscopeProvider.voice()
         session.output_audio_format = 'pcm'
       }
       if (profile.transportCapabilities.audioInput) {
@@ -97,7 +105,7 @@ export const dashscopeProvider = {
     instructions: speakResponseInstructions(content),
   }),
 
-  buildResultInjection: content => ({
+  buildResultInjection: (content, { allowTools = false } = {}) => ({
     item: {
       type: 'message',
       role: 'user',
@@ -105,7 +113,7 @@ export const dashscopeProvider = {
     },
     response: {
       modalities: responseModalities(activeModelProfile()),
-      tool_choice: 'none',
+      tool_choice: allowTools ? 'auto' : 'none',
       instructions: resultResponseInstructions,
     },
   }),
@@ -117,10 +125,12 @@ export const dashscopeProvider = {
       content: [{
         type: 'input_text',
         text: [
-          '<backend_permission_request>',
-          `authorization_id=${permission.id}`,
+          '<permission_request>',
+          `permission_id=${permissionReference(permission.id)}`,
+          `task_id=${permission.taskId}`,
           `operation=${permission.summary}`,
-          '</backend_permission_request>',
+          'allowed_decisions=once,always,reject',
+          '</permission_request>',
         ].join('\n'),
       }],
     },

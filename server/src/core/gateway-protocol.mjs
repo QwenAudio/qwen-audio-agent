@@ -10,6 +10,21 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.7.0 adds explicit WebUI camera observation for vision-capable Realtime
+// frontends without triggering model responses.
+// 5.6.0 adds a provider-neutral frontend memory control plane for replaceable
+// clients to list and edit the same documents used by Realtime.
+// 5.5.0 adds the GCP5 reference Client SDK, bounded Task-event replay, and
+// migrates first-party task/history/permission recovery to the WebSocket.
+// 5.4.0 adds GCP4 ClientActionPort request/result correlation and the shared
+// presence state machine used by Realtime tools and Gateway sleep triggers.
+// 5.3.0 adds GCP3 provider-neutral AgentDelivery routing for Client Events,
+// Task results and progress, and permission prompts.
+// 5.2.0 adds GCP2 Client Event ingress and WebSocket runtime commands for
+// Tasks, permissions, and conversation history while retaining the existing
+// REST paths as migration aliases.
+// 5.1.0 adds the opt-in 6.0 Gateway Client Protocol handshake and versioned
+// envelope while preserving every 5.x Client event as a compatibility alias.
 // 5.0.0 removes the backend-controlled Task presentation envelope. Backend
 // outcomes now expose factual `content` plus optional typed `artifacts`; the
 // frontend Chatbot owns spoken expression and each Conversation Client owns
@@ -30,7 +45,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.1.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.7.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -82,6 +97,9 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // Final assistant transcript events may carry bounded, normalized citations
   // collected from frontend retrieval tools during the same user turn.
   'messages.citations',
+  // GET/PATCH /api/memory lists and edits the provider-backed frontend memory
+  // documents used by Realtime; no storage implementation leaks to clients.
+  'frontend.memory-control',
   // WS /api/realtime plus the published event constants and schemas form the
   // replaceable Conversation Client boundary for audio, text, multimodal
   // input, transcripts, playback receipts, voice state and Task projections.
@@ -89,6 +107,26 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // The WebUI may explicitly open a camera and stream bounded JPEG snapshots
   // to a vision-capable Realtime frontend without triggering responses.
   'realtime.camera-observation-v1',
+  // session.hello/session.ready negotiate the stable 6.0 Client protocol;
+  // 5.x connect and event names remain compatibility aliases through one
+  // normalization layer.
+  'realtime.gateway-client-protocol-v6-handshake',
+  // Negotiated 6.0 clients can publish registered Client Events and execute
+  // Task, permission, and conversation-history runtime commands over the same
+  // WebSocket. Immediate results and errors correlate through request_event_id.
+  'realtime.gateway-client-protocol-v6-runtime-commands',
+  // Semantic Client, Task and permission events are projected into one
+  // provider-neutral AgentDelivery runtime with handle/context/respond/
+  // interrupt modes before any Realtime-provider encoding occurs.
+  'realtime.gateway-client-protocol-v6-agent-delivery',
+  // Gateway-to-Client environment operations use correlated action
+  // request/results. enter_sleep is capability-gated and commits Gateway
+  // sleeping only after the active Client reports a successful transition.
+  'realtime.gateway-client-protocol-v6-client-actions',
+  // The shipped reference Client owns handshake, correlation, Actions and
+  // reconnection recovery. Replayable Task pushes carry monotonic sequence
+  // numbers and session.replay provides a bounded page after a cursor.
+  'realtime.gateway-client-protocol-v6-reference-client-replay',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

@@ -59,6 +59,7 @@ export function computerUseMcpServer(env = process.env) {
   if (!binPath) return null
   const descriptor = {
     name: 'open-computer-use',
+    type: 'stdio',
     command: process.execPath,
     args: [binPath, 'mcp'],
     // The bin is a Node script; when the Gateway runs inside Electron the

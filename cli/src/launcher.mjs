@@ -47,7 +47,6 @@ async function runMinimal(options) {
     url: options.url,
     sessionId: options.sessionId,
     audioMode: options.audioMode,
-    takeover: options.takeover,
   })
   return 0
 }

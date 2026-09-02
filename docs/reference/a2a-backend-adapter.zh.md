@@ -68,11 +68,12 @@ Gateway `taskId` 不会成为远程 Task 身份。二者映射只在当前提交
 | `COMPLETED` | 完成结果 |
 | `FAILED` / `REJECTED` | 失败结果 |
 | `CANCELED` | 取消结果 |
-| `INPUT_REQUIRED` / `AUTH_REQUIRED` | 明确返回暂不支持交互的错误 |
+| `INPUT_REQUIRED` | `input_required`；等待 `respondInput` 后继续同一远程 Task |
+| `AUTH_REQUIRED` | `auth_required`；上浮远端请求，收到输入后继续同一远程 Task |
 
-A2A 不为 `AUTH_REQUIRED` 后的授权决定规定统一语义，具体流程由 Agent 或协议扩展定义。
-因此当前 Adapter 不猜测凭据或审批行为。以后可以在 Adapter 内实现具体授权扩展，无需
-修改 Task 或前台契约。
+A2A 不为 `AUTH_REQUIRED` 后的凭据或审批决定规定统一语义。因此 Adapter 只把 Agent 的
+状态消息投射为协议中立的输入请求，不猜测凭据；回答作为带相同远程 Task ID 与 Context ID
+的新用户 Message 发回，Gateway 中原来的 Task 始终保持活动。
 
 ## 配置项
 

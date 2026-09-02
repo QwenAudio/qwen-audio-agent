@@ -1,4 +1,4 @@
-export const BACKEND_ADAPTER_SDK_VERSION = '2.0.0'
+export const BACKEND_ADAPTER_SDK_VERSION = '3.0.0'
 
 export {
   assertBackendPort,
@@ -11,6 +11,11 @@ export {
   BackendEventType,
   backendEvent,
 } from '../core/backend-events.mjs'
+export {
+  InputRequestStatus,
+  normalizeInputRequest,
+  resolveInputRequest,
+} from '../core/work-input-request.mjs'
 export {
   verifyBackendAdapterConformance,
 } from './backend-adapter-conformance.mjs'
@@ -43,6 +48,9 @@ export function createBackendAgentHost(adapter, options = {}) {
     cancel: (taskId, context) => backend.cancel(taskId, context),
     respondAuthorization: (taskId, authorizationId, decision, context) => (
       backend.respondAuthorization(taskId, authorizationId, decision, context)
+    ),
+    respondInput: (taskId, inputRequestId, response, context) => (
+      backend.respondInput(taskId, inputRequestId, response, context)
     ),
     subscribe: listener => backend.subscribe(listener),
     canRecoverDelegatedWork: task => (

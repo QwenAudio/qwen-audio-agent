@@ -1,0 +1,23 @@
+{
+  "domain": "weather",
+  "label": "天气",
+  "description": "座舱示例的当前位置或指定城市天气、气温、风力和出行建议能力。",
+  "enabled": true,
+  "functions": [
+    {
+      "name": "weather",
+      "label": "天气",
+      "description": "查询当前城市或指定城市天气、气温、下雨、风力和出行建议。用户未指定城市时默认杭州/当前车辆所在城市。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string",
+            "description": "城市名称或 adcode。用户未指定城市时默认杭州。"
+          }
+        }
+      }
+    }
+  ]
+}

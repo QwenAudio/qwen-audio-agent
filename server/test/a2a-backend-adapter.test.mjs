@@ -367,22 +367,41 @@ test('normalizes A2A streaming status messages and artifacts into Task updates',
   await backend.close()
 })
 
-test('fails explicitly when an A2A task requires an unsupported interaction', async () => {
-  const client = fakeClient({
-    result: task(A2ATaskState.TASK_STATE_AUTH_REQUIRED, {
-      statusText: '请完成登录。',
-    }),
-  })
+test('resumes the same A2A task after input is supplied', async () => {
+  const client = fakeClient()
+  let calls = 0
+  client.sendMessage = async request => {
+    client.sent.push(request)
+    calls += 1
+    return calls === 1
+      ? task(A2ATaskState.TASK_STATE_INPUT_REQUIRED, {
+          statusText: '请选择输出格式。',
+        })
+      : task(A2ATaskState.TASK_STATE_COMPLETED, {
+          statusText: '已经按 Markdown 输出。',
+        })
+  }
   const backend = new A2ABackendAdapter({
-    agentCard: { name: 'Auth Agent' },
+    agentCard: { name: 'Interactive Agent' },
     clientFactory: async () => ({ client }),
   })
-
-  await assert.rejects(
-    backend.submit(work()),
-    error => error.code === 'A2A_INTERACTION_REQUIRED'
-      && /请完成登录/.test(error.message),
-  )
+  const events = []
+  backend.subscribe(event => events.push(event))
+  const pending = backend.submit(work())
+  await new Promise(resolve => setImmediate(resolve))
+  const requested = events.find(event => event.type === 'backend.input.requested')
+  assert.equal(requested.input.prompt, '请选择输出格式。')
+  assert.equal(backend.status('task_1').state, 'input_required')
+  await backend.respondInput('task_1', requested.input.id, {
+    action: 'accept',
+    text: 'Markdown',
+  }, { ownerId: 'owner-one' })
+  const outcome = await pending
+  assert.match(outcome.content, /Markdown/)
+  assert.equal(client.sent[1].message.taskId, 'a2a-task-one')
+  assert.equal(client.sent[1].message.contextId, 'context-one')
+  assert.equal(client.sent[1].message.parts[0].content.value, 'Markdown')
+  assert.ok(events.some(event => event.type === 'backend.input.resolved'))
   await backend.close()
 })
 

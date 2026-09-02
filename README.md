@@ -1,6 +1,6 @@
 # Qwen Audio Agent
 
-[中文](README_ZH.md) | [English](README.md)
+[中文](README_ZH.md) | [English](README.md) | [User Guide](https://qwenaudio.github.io/qwen-audio-agent/) | [Quickstart](https://qwenaudio.github.io/qwen-audio-agent/getting-started/quickstart)
 
 [![CI](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/qwen-audio-agent)](https://www.npmjs.com/package/qwen-audio-agent)
@@ -87,7 +87,7 @@ Throughout, the user always faces the same assistant.
 
 ![qwen-audio-agent reference architecture](docs/qwen-audio-agent-three-layer-architecture-en.png)
 
-For the full design and module breakdown, see the [architecture document](docs/architecture.md).
+For the full design and module breakdown, see the [architecture document](docs/architecture/deep-dive.md).
 
 </details>
 
@@ -134,11 +134,11 @@ qwenaudio config
 
 ```dotenv
 DASHSCOPE_API_KEY=your-key
-# Voice frontend model: Omni Flash/Plus or Audio Flash/Plus (Audio Plus is default)
+# Voice frontend model: Audio Flash/Plus or Omni Flash/Plus (Audio Plus is default)
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # Backend Agent: optional, leave empty or set to none for frontend-only mode
 AGENT_PROTOCOL=openclaw
-# Backend model: can be empty; if empty, uses the Agent's own user config
+# Backend model: optional; explicit values use standard ACP, empty reuses Agent config
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
@@ -178,27 +178,25 @@ chat naturally and get real work done.
 | Scenario | Description | Link | Status |
 | --- | --- | --- | --- |
 | Desktop | Voice chat, progress follow-up, tools, and background tasks. | [Docs][desktop-docs] | Available |
-| Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][car-example] | Available |
+| Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][smart-cockpit-example] | Available |
 | Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
 | Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |
 | Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Exploratory |
 
-This repository includes a smart cockpit voice Agent example with vehicle
-control, navigation, music, weather, web search, flash-buy workflows, and a
-car UI:
+This repository includes a smart-cockpit reference scenario built on the
+foreground-conversation and backend-execution boundary. Its cockpit UI, small
+A2A Agent, and cockpit service are customer-replaceable examples:
 
 ```bash
-cp examples/car/.env.example examples/car/.env.local
-npm install --prefix examples/car/server
-npm install --prefix examples/car/react-app
-npm run example:car:server   # Terminal 1: car Agent server
-npm run example:car:web      # Terminal 2: car UI
+cp examples/smart-cockpit/.env.example examples/smart-cockpit/.env.local
+npm run example:smart-cockpit:install
+npm run example:smart-cockpit          # service + agent + gateway + client
 ```
 
-See [examples/car](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/car) for details.
+See [examples/smart-cockpit](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/smart-cockpit) for details.
 
 [desktop-docs]: docs/desktop/overview.md
-[car-example]: examples/car
+[smart-cockpit-example]: examples/smart-cockpit
 
 ## Desktop App
 

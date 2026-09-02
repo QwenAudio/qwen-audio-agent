@@ -6,6 +6,7 @@ import {
   speakResponseInstructions,
   permissionResponseInstructions,
 } from '../frontend-tools.mjs'
+import { permissionReference } from '../tools/permission-reference.mjs'
 import { gaRealtimeProtocol } from './ga-protocol.mjs'
 
 const INPUT_SAMPLE_RATE = 16000
@@ -102,7 +103,7 @@ export const s2sProvider = {
     tool_choice: 'none',
   }),
 
-  buildResultInjection: content => ({
+  buildResultInjection: (content, { allowTools = false } = {}) => ({
     item: {
       type: 'message',
       role: 'user',
@@ -110,7 +111,7 @@ export const s2sProvider = {
     },
     response: {
       modalities: ['audio'],
-      tool_choice: 'none',
+      tool_choice: allowTools ? 'auto' : 'none',
       instructions: resultResponseInstructions,
     },
   }),
@@ -122,10 +123,12 @@ export const s2sProvider = {
       content: [{
         type: 'input_text',
         text: [
-          '<backend_permission_request>',
-          `authorization_id=${permission.id}`,
+          '<permission_request>',
+          `permission_id=${permissionReference(permission.id)}`,
+          `task_id=${permission.taskId}`,
           `operation=${permission.summary}`,
-          '</backend_permission_request>',
+          'allowed_decisions=once,always,reject',
+          '</permission_request>',
         ].join('\n'),
       }],
     },

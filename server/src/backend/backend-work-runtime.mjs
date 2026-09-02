@@ -41,4 +41,13 @@ export class BackendWorkRuntime {
   status(taskId, options = {}) {
     return this.backend.status(taskId, options)
   }
+
+  respondInput(taskId, inputRequestId, response, options = {}) {
+    return this.backend.respondInput(
+      taskId,
+      inputRequestId,
+      response,
+      options,
+    )
+  }
 }

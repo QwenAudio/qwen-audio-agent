@@ -26,6 +26,8 @@ const PUBLIC_EVENT_TYPE = new Map([
     TaskDomainEvent.PERMISSION_RESOLVED,
     GatewayTaskEvent.PERMISSION_RESOLVED,
   ],
+  [TaskDomainEvent.INPUT_REQUESTED, GatewayTaskEvent.INPUT_REQUESTED],
+  [TaskDomainEvent.INPUT_RESOLVED, GatewayTaskEvent.INPUT_RESOLVED],
   [
     TaskDomainEvent.NOTIFICATION_PENDING,
     GatewayTaskEvent.NOTIFICATION_PENDING,
@@ -41,6 +43,11 @@ function publicDetails(event) {
     ...(
       event.permission && typeof event.permission === 'object'
         ? { permission: event.permission }
+        : {}
+    ),
+    ...(
+      event.input && typeof event.input === 'object'
+        ? { input: event.input }
         : {}
     ),
     ...(

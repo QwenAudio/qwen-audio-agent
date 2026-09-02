@@ -11,6 +11,8 @@ export default [
       '**/node_modules/**',
       '**/dist/**',
       '**/coverage/**',
+      'docs/.vitepress/cache/**',
+      'docs/.vitepress/.site/**',
       'examples/**',
       'tui/native/**',
     ],

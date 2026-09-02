@@ -88,7 +88,7 @@ test('a consumer with only the declared dependencies can run the CLI and Gateway
     '--eval',
     [
       "import { BACKEND_ADAPTER_SDK_VERSION, defineBackendAdapter } from 'qwen-audio-agent/backend-adapter-sdk'",
-      "if (BACKEND_ADAPTER_SDK_VERSION !== '2.0.0') process.exit(2)",
+      "if (BACKEND_ADAPTER_SDK_VERSION !== '3.0.0') process.exit(2)",
       "if (typeof defineBackendAdapter !== 'function') process.exit(3)",
     ].join(';'),
   ], { cwd: consumer, encoding: 'utf8' })
@@ -241,7 +241,6 @@ async function main() {
   const gateway = api.createGatewayProcess({
     configDir,
     backend: 'none',
-    wakeWord: false,
     preferredPort: 0,
     forkImpl: (entry, args, options) => fork(entry, args, {
       ...options,

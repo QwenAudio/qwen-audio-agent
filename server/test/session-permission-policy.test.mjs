@@ -15,6 +15,9 @@ test('keeps automatic permission scoped to one owner and frontend session', () =
 
   policy.applyDecision('owner-one', 'voice-one', 'reject')
   assert.equal(policy.mode('owner-one', 'voice-one'), 'ask')
+
+  policy.applyDecision('owner-one', 'voice-one', 'once')
+  assert.equal(policy.mode('owner-one', 'voice-one'), 'ask')
 })
 
 test('expires inactive frontend permission sessions', () => {

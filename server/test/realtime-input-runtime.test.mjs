@@ -9,6 +9,7 @@ function harness({ responseOutcome } = {}) {
   const events = []
   const records = []
   const calls = []
+  const speechStops = []
   const frontend = {
     cancel: () => calls.push(['cancel']),
     sendUserInput: async (parts, context) => {
@@ -48,9 +49,10 @@ function harness({ responseOutcome } = {}) {
       context,
     ]),
     reportFrontendError: error => calls.push(['reportFrontendError', error]),
+    onSpeechStopped: fields => speechStops.push(fields),
     createInputTurnId: () => 'text-1',
   })
-  return { runtime, turns, events, records, calls }
+  return { runtime, turns, events, records, calls, speechStops }
 }
 
 test('handles only provider input lifecycle events', () => {
@@ -64,7 +66,7 @@ test('handles only provider input lifecycle events', () => {
 })
 
 test('projects one voice turn from speech start through final transcript', () => {
-  const { runtime, turns, events, records, calls } = harness()
+  const { runtime, turns, events, records, calls, speechStops } = harness()
 
   runtime.handleProviderEvent({
     type: 'input_audio_buffer.speech_started',
@@ -101,6 +103,10 @@ test('projects one voice turn from speech start through final transcript', () =>
   assert.equal(records.length, 1)
   assert.equal(records[0].content, '你好')
   assert.equal(records[0].source, 'voice-user')
+  assert.deepEqual(speechStops, [{
+    turnId: 'voice-1',
+    source: 'realtime_provider',
+  }])
   assert.equal(
     calls.some(([name]) => name === 'ensurePermissionResponseFor'),
     true,

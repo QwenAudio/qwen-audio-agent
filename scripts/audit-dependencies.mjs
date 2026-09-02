@@ -2,10 +2,30 @@
 
 import { spawnSync } from 'node:child_process'
 
-// 无当前生效的临时例外；新增例外时按 1124334（GHSA-mh99-v99m-4gvg）的
-// 格式加入：source id -> { id, expires, reason }。已修复或不再出现的例外
-// 必须及时删除，脚本会在例外失效时强制报错提醒。
-const TEMPORARY_BUILD_ADVISORIES = new Map([])
+// 仅记录没有上游修复版本、且不进入生产依赖的构建链问题。已修复或不再
+// 出现的例外必须及时删除，脚本会在例外失效时强制报错提醒。
+const TEMPORARY_BUILD_ADVISORIES = new Map([
+  [1102341, {
+    id: 'GHSA-67mh-4wv8-2f99',
+    expires: '2026-11-30',
+    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
+  }],
+  [1116229, {
+    id: 'GHSA-4w7w-66w2-5vf9',
+    expires: '2026-11-30',
+    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
+  }],
+  [1120784, {
+    id: 'GHSA-v6wh-96g9-6wx3',
+    expires: '2026-11-30',
+    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
+  }],
+  [1123525, {
+    id: 'GHSA-fx2h-pf6j-xcff',
+    expires: '2026-11-30',
+    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
+  }],
+])
 
 function runAudit(args) {
   const npmExecutable = process.env.npm_execpath

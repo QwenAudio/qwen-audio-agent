@@ -85,7 +85,7 @@ test('describes prior input references without embedding their file data', () =>
 
 test('keeps client capabilities out of the runtime prose context', () => {
   const desktop = buildFrontendContext({
-    client: { states: ['sleeping'] },
+    client: { actions: ['desktop.presence.enter_sleep'] },
   })
   assert.doesNotMatch(desktop, /enter_sleep|does not cancel background work/)
 })

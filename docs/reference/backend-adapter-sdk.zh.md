@@ -36,13 +36,14 @@ Adapter 必须实现全部方法：
   status,
   cancel,
   respondAuthorization,
+  respondInput,
   subscribe,
   close,
 }
 ```
 
 `start` 和 `close` 必须幂等。`status()` 不带 Task ID 时返回运行时状态；带 ID 时只查询
-该 Gateway Task。`submit`、`status`、`cancel` 和 `respondAuthorization` 共享同一个
+该 Gateway Task。`submit`、`status`、`cancel`、`respondAuthorization` 和 `respondInput` 共享同一个
 `taskId`。后台私有 Session、远程 Task ID 和拓扑不能越过边界。
 
 `submit(task)` 接收结构化内部 Task 和唯一的规范字段 `instruction`。Adapter
@@ -97,6 +98,12 @@ Adapter 可以发布协议无关的可选观测信息，无需扩展 `BackendPor
 仅表示当前前端会话，不能据此推断服务商侧持久授权。不支持权限的 Adapter 仍像以前
 一样明确拒绝 `respondAuthorization`。
 
+后台追问通过 `backend.input.requested` 发布，并始终属于当前活动 Task。Adapter 必须让
+`submit` 保持等待，直到 `respondInput` 恢复同一次操作，再发出
+`backend.input.resolved`。请求只携带有界问题及 `text`、`form` 或 `url` 模式；
+协议原生对象与远程 ID 留在 Adapter 内。不支持交互输入的 Adapter 必须明确拒绝
+`respondInput`。
+
 ## 接入 Gateway
 
 ```js
@@ -112,7 +119,7 @@ process.once('SIGTERM', () => application.close())
 
 这个入口用于自定义 Node 启动器；现有 `AGENT_PROTOCOL` 仍选择项目内置后台，不会动态
 加载任意代码。完整的非 ACP 内存示例位于
-[`examples/backend-adapter`](../../examples/backend-adapter/README.md)。
+[`examples/backend-adapter`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/backend-adapter)。
 
 ## Conformance
 

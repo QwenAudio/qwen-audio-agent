@@ -28,7 +28,7 @@ test('keeps the insertion window closed across an intermediate tool call respons
   window.responseDone({
     turnId: 'turn-tool',
     origin: 'model',
-    hasFunctionCall: true,
+    awaitsToolFollowUp: true,
   })
   assert.equal(window.isBlocked(), true)
 
@@ -40,7 +40,7 @@ test('keeps the insertion window closed across an intermediate tool call respons
   assert.equal(window.isBlocked(), false)
 })
 
-test('does not treat a spoken tool acknowledgement as the end of the turn', () => {
+test('releases a spoken tool acknowledgement when its follow-up is suppressed', () => {
   const window = new AnnouncementWindow()
   window.beginTurn('turn-tool')
   window.endSpeech()
@@ -52,17 +52,30 @@ test('does not treat a spoken tool acknowledgement as the end of the turn', () =
     turnId: 'turn-tool',
     origin: 'model',
     hasAudio: true,
-    hasFunctionCall: true,
+    awaitsToolFollowUp: false,
   })
 
-  window.finishPlayback('response-tool-ack', { hasFunctionCall: true })
+  window.finishPlayback('response-tool-ack', { awaitsToolFollowUp: false })
+  assert.equal(window.isBlocked(), false)
+})
+
+test('releases a suppressed tool follow-up when playback ended before response.done', () => {
+  const window = new AnnouncementWindow()
+  window.beginTurn('turn-tool')
+  window.endSpeech()
+  window.queueAudio('response-tool-ack', {
+    turnId: 'turn-tool',
+    origin: 'model',
+  })
+  window.finishPlayback('response-tool-ack', { awaitsToolFollowUp: true })
   assert.equal(window.isBlocked(), true)
 
-  window.queueAudio('response-tool-result', {
+  window.responseDone({
     turnId: 'turn-tool',
-    origin: 'agent',
+    origin: 'model',
+    hasAudio: false,
+    awaitsToolFollowUp: false,
   })
-  window.finishPlayback('response-tool-result')
   assert.equal(window.isBlocked(), false)
 })
 
@@ -73,7 +86,7 @@ test('releases a tool-call turn when its agent follow-up completes without audio
   window.responseDone({
     turnId: 'turn-tool',
     origin: 'model',
-    hasFunctionCall: true,
+    awaitsToolFollowUp: true,
   })
   assert.equal(window.isBlocked(), true)
 
@@ -103,7 +116,7 @@ test('releases a tool-call turn when its follow-up response fails before audio',
   window.responseDone({
     turnId: 'turn-failed',
     origin: 'model',
-    hasFunctionCall: true,
+    awaitsToolFollowUp: true,
     failed: true,
   })
   assert.equal(window.isBlocked(), false)

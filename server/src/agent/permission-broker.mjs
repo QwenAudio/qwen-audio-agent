@@ -87,12 +87,15 @@ function deferred() {
 
 function optionFor(params, decision) {
   const options = Array.isArray(params?.options) ? params.options : []
-  // Public `always` is deliberately scoped to the current frontend session.
-  // Select a one-shot ACP option when available; the Gateway auto-approves
-  // later requests in the same session without persisting backend policy.
-  const kinds = decision === 'always'
-    ? ['allow_once', 'allow_always']
-    : ['reject_always', 'reject_once']
+  // Product decisions are stable across BackendPort implementations. ACP
+  // option ids remain opaque and are selected by their standard kind here.
+  // Public `always` is scoped to the current frontend session, so prefer an
+  // ACP one-shot option and let the Gateway approve subsequent requests.
+  const kinds = decision === 'once'
+    ? ['allow_once']
+    : decision === 'always'
+      ? ['allow_once', 'allow_always']
+      : ['reject_once']
   return kinds
     .map(kind => options.find(candidate => candidate.kind === kind))
     .find(Boolean) || null
@@ -177,12 +180,17 @@ export class PermissionBroker {
         protocol: this.protocol,
       })
     }
-    this.pending.delete(record.id)
-    const approved = decision === 'always'
+    const approved = decision === 'once' || decision === 'always'
     const option = optionFor(
       record.params,
-      approved ? 'always' : 'reject',
+      decision,
     )
+    if (approved && !option) {
+      throw new AgentError('后台未提供所请求的允许方式', {
+        protocol: this.protocol,
+      })
+    }
+    this.pending.delete(record.id)
     record.pending.resolve(option
       ? { outcome: { outcome: 'selected', optionId: option.optionId } }
       : { outcome: { outcome: 'cancelled' } })

@@ -12,6 +12,7 @@ import {
   TOOLS,
 } from '../src/voice/realtime-provider.mjs'
 import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
+import { permissionReference } from '../src/voice/tools/permission-reference.mjs'
 import {
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
@@ -27,7 +28,6 @@ const FRONTEND_TOOL_NAMES = [
   'get_current_time',
   'memory',
   'notes',
-  'respond_agent_permission',
 ]
 
 test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
@@ -49,8 +49,12 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
     /忠实、完整且自包含地转达用户要做什么及其明确约束/,
   )
   assert.ok(spawn.function.description.trim())
+  assert.match(spawn.function.description, /用户补充信息、作出选择或确认后继续/)
   const instructions = buildFrontendInstructions()
   assert.match(instructions, /不要重复提交已经覆盖的目标/)
+  assert.match(instructions, /把回答交回请求中的同一项工作/)
+  assert.match(instructions, /不支持结构化输入请求的旧后台.*既有工作的续办/s)
+  assert.match(instructions, /不要预测、模拟或代替后台提出权限请求/)
   assert.match(instructions, /duplicate.*同一目标此前已提交/)
 })
 
@@ -126,6 +130,17 @@ test('classifies non-recoverable DashScope account errors as fatal', () => {
     provider.classifyError('You exceeded your current quota, please check your plan.'),
     'other',
   )
+})
+
+test('classifies DashScope content inspection errors for clean-session recovery', () => {
+  const provider = REALTIME_PROVIDERS.qwen
+  for (const message of [
+    'DataInspectionFailed: Input or output data may contain inappropriate content.',
+    'IPInfringementSuspect: The input may violate content policy.',
+    'content_filter: response blocked by content safety',
+  ]) {
+    assert.equal(provider.classifyError(message), 'content_safety', message)
+  }
 })
 
 test('carries originating turn metadata to a created realtime response', () => {
@@ -360,6 +375,15 @@ test('fails closed instead of ambiguously correlating two pending starts', async
 
 test('configures Qwen Audio Realtime with Smart Turn only', () => {
   const session = REALTIME_PROVIDERS.qwen.buildSession({ configured: false })
+  const permissionSession = REALTIME_PROVIDERS.qwen.buildSession({
+    configured: false,
+    agentContext: {
+      frontend: { capabilities: ['permission.respond'] },
+    },
+  })
+  const permissionTool = permissionSession.tools.find(tool => (
+    tool.function.name === 'respond_permission'
+  ))
 
   assert.deepEqual(session.turn_detection, { type: 'smart_turn' })
   assert.equal(session.turn_detection.threshold, undefined)
@@ -374,16 +398,16 @@ test('configures Qwen Audio Realtime with Smart Turn only', () => {
     ['objective'],
   )
   assert.deepEqual(
-    session.tools.find(tool => (
-      tool.function.name === 'respond_agent_permission'
-    )).function.parameters.required,
-    ['authorization_id', 'decision'],
+    permissionTool.function.parameters.required,
+    ['permission_id', 'decision'],
+  )
+  assert.deepEqual(
+    permissionTool.function.parameters.properties.decision.enum,
+    ['once', 'always', 'reject'],
   )
   assert.match(
-    session.tools.find(tool => (
-      tool.function.name === 'respond_agent_permission'
-    )).function.description,
-    /用户回答“可以”.*应调用 always/,
+    permissionTool.function.description,
+    /普通肯定表达选择 once.*以后都允许时选择 always/,
   )
 })
 
@@ -456,6 +480,25 @@ test('prefers the selected DashScope family voice override over the profile defa
     REALTIME_PROVIDERS.qwen.buildSession({ configured: false }).voice,
     'custom-omni',
   )
+})
+
+test('prefers a per-session output voice over the process-wide default', t => {
+  const originalModel = config.audioModel
+  const originalVoice = config.audioVoice
+  t.after(() => {
+    config.audioModel = originalModel
+    config.audioVoice = originalVoice
+  })
+
+  config.audioModel = DEFAULT_DASHSCOPE_REALTIME_MODEL
+  config.audioVoice = 'longanqian'
+
+  const session = REALTIME_PROVIDERS.qwen.buildSession({
+    configured: false,
+    sessionOptions: { voice: 'longanlufeng' },
+  })
+
+  assert.equal(session.voice, 'longanlufeng')
 })
 
 test('advertises Omni model vision and supported observation transport', t => {
@@ -623,17 +666,17 @@ test('client text-only hints do not change the Qwen Realtime session', () => {
   )
 })
 
-test('offers the sleep tool only to a client that advertises the state', () => {
+test('offers the sleep tool only to a client that advertises the action', () => {
   const ordinary = REALTIME_PROVIDERS.qwen.buildSession({
     configured: false,
-    agentContext: { client: { states: [] } },
+    agentContext: { client: { actions: [] } },
   })
   const desktop = REALTIME_PROVIDERS.qwen.buildSession({
     configured: false,
-    agentContext: { client: { states: ['sleeping'] } },
+    agentContext: { client: { actions: ['desktop.presence.enter_sleep'] } },
   })
   const s2sDesktop = REALTIME_PROVIDERS['speech-to-speech'].buildSession({
-    agentContext: { client: { states: ['sleeping'] } },
+    agentContext: { client: { actions: ['desktop.presence.enter_sleep'] } },
   })
 
   assert.equal(
@@ -779,6 +822,17 @@ test('isolates a provider with a different wire message shape', () => {
   assert.equal(events[1].type, 'response.done')
 })
 
+test('uses a trusted session Assistant Profile without changing core policy', () => {
+  const prompt = buildFrontendInstructions({
+    assistantProfile: '# Identity\n\n你是当前会话的行动派座舱伙伴。',
+  })
+
+  assert.match(prompt, /<assistant_profile authority="persona_only">[\s\S]*行动派座舱伙伴/u)
+  assert.doesNotMatch(prompt, /默认自然、直接、可靠/u)
+  assert.match(prompt, /与用户进行全双工语音交互的统一助手/u)
+  assert.match(prompt, /工具 description 和 schema 是各项能力的调用契约/u)
+})
+
 test('builds cache-friendly policy, identity, memory and reconnect context', () => {
   const prompt = buildFrontendInstructions({
     client: { timeZone: 'Asia/Shanghai', locale: 'zh-CN' },
@@ -840,10 +894,10 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /最终结果会通过单独的结果上下文到达/)
   assert.doesNotMatch(prompt, /\[COMPLETE\]/)
   assert.doesNotMatch(prompt, /get_agent_tasks|reply_agent_permission/)
-  assert.match(prompt, /respond_agent_permission/)
-  assert.match(prompt, /<backend_permission_request>/)
-  assert.match(prompt, /使用请求中的 `authorization_id`/)
-  assert.match(prompt, /按\s*`respond_agent_permission` 的契约处理用户回答/)
+  assert.match(prompt, /respond_permission/)
+  assert.match(prompt, /<permission_request>/)
+  assert.match(prompt, /原样使用请求中的 `permission_id`/)
+  assert.match(prompt, /按 `respond_permission` 的契约处理/)
   assert.match(prompt, /调用前不要\s*口头确认/)
   assert.match(prompt, /不要仅凭对话历史推测当前状态/)
   assert.doesNotMatch(prompt, /<active_work>/)
@@ -917,8 +971,13 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   )
   const permission = REALTIME_PROVIDERS.qwen.buildPermissionInjection({
     id: 'permission-one',
+    taskId: 'task_42',
     summary: '查看系统内存',
   })
+  const permissionText = permission.item.content[0].text
+  assert.match(permissionText, new RegExp(`permission_id=${permissionReference('permission-one')}`))
+  assert.match(permissionText, /task_id=task_42/)
+  assert.doesNotMatch(permissionText, /authorization_id/)
   assert.match(permission.response.instructions, /自然、简短地说明操作/)
   assert.match(permission.response.instructions, /是否同意授权/)
   assert.doesNotMatch(permission.response.instructions, /用一句完整的话/)
@@ -1289,6 +1348,87 @@ test('injects a completed work result into Qwen conversation with tools disabled
   })
 })
 
+test('injects AgentDelivery context without creating a realtime response', async () => {
+  const frontend = createQwenFrontend({ responseStartTimeoutMs: 50 })
+  const sent = []
+  frontend.ready = true
+  frontend.send = payload => sent.push(payload)
+
+  const outcome = frontend.injectDelivery(
+    '客户端环境已变化。',
+    'client-event',
+    { clientEventId: 'event-1' },
+    { route: 'context' },
+  )
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+  frontend.handleLifecycle({
+    type: 'conversation.item.created',
+    item: { ...sent[0].item, status: 'completed' },
+  })
+  assert.deepEqual(await outcome, {
+    completed: true,
+    contextInjected: true,
+    route: 'context',
+  })
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+})
+
+test('can expose permission context before its response queue becomes idle', async () => {
+  const frontend = createQwenFrontend({
+    responseStartTimeoutMs: 50,
+    responseCompletionTimeoutMs: 50,
+  })
+  const sent = []
+  frontend.ready = true
+  frontend.send = payload => sent.push(payload)
+  frontend.activeResponses.add('response-active')
+
+  const outcome = frontend.injectDelivery(
+    '<permission_request>operation=test</permission_request>',
+    'permission',
+    { authorizationId: 'permission-1' },
+    { route: 'respond', contextTiming: 'immediate' },
+  )
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+  frontend.handleLifecycle({
+    type: 'conversation.item.created',
+    item: { ...sent[0].item, status: 'completed' },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+
+  frontend.handleLifecycle({
+    type: 'response.done',
+    response: { id: 'response-active', status: 'completed' },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(sent[1].type, 'response.create')
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'response-permission' },
+  })
+  frontend.handleLifecycle({
+    type: 'response.done',
+    response: { id: 'response-permission', status: 'completed' },
+  })
+  assert.equal((await outcome).contextInjected, true)
+})
+
+test('keeps tool policy provider-neutral for all result-injection providers', () => {
+  for (const provider of [REALTIME_PROVIDERS.qwen, REALTIME_PROVIDERS.s2s]) {
+    assert.equal(
+      provider.buildResultInjection('event', { allowTools: true }).response.tool_choice,
+      'auto',
+    )
+    assert.equal(
+      provider.buildResultInjection('event').response.tool_choice,
+      'none',
+    )
+  }
+})
+
 test('injects progress with response-scoped presentation instructions', async () => {
   const frontend = createQwenFrontend({
     responseStartTimeoutMs: 50,
@@ -1481,6 +1621,28 @@ test('associates an unscoped provider error with the sole active response', asyn
     responseId: 'response-error',
     status: undefined,
   })
+  assert.equal(frontend.activeResponses.size, 0)
+})
+
+test('retires a sole automatic response when its provider error has no response id', () => {
+  const frontend = createQwenFrontend()
+  frontend.ready = true
+  frontend.send = () => {}
+
+  frontend.handleLifecycle({
+    type: 'response.created',
+    response: { id: 'automatic-response-error' },
+  })
+  const error = {
+    type: 'error',
+    error: {
+      code: 'DataInspectionFailed',
+      message: 'Input data may contain inappropriate content.',
+    },
+  }
+  frontend.handleLifecycle(error)
+
+  assert.equal(error.response_id, 'automatic-response-error')
   assert.equal(frontend.activeResponses.size, 0)
 })
 
@@ -1768,6 +1930,7 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     singleResponseSlot: false,
     responseMetadataCorrelation: false,
     perResponseInstructions: true,
+    sessionOutputVoice: true,
     conversationItemIdEcho: true,
   })
 })
@@ -1782,6 +1945,7 @@ test('per-response instructions require explicit provider opt-in', () => {
   })
 
   assert.equal(frontend.capabilities.perResponseInstructions, false)
+  assert.equal(frontend.capabilities.sessionOutputVoice, false)
 })
 
 test('does not correlate an automatic VAD response with a pending GA response', async () => {

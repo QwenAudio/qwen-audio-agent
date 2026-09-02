@@ -1,0 +1,207 @@
+{
+  "domain": "music",
+  "label": "音乐",
+  "description": "座舱示例的媒体播放、搜索、音量、来源、收藏和状态查询能力。",
+  "enabled": true,
+  "functions": [
+    {
+      "name": "music_state_query",
+      "label": "音乐状态查询",
+      "description": "查询当前媒体播放状态、曲目信息、音量、媒体来源、收藏或最近搜索结果；只读，不改变播放状态。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": "string",
+            "enum": [
+              "all",
+              "playback",
+              "volume",
+              "source",
+              "favorites",
+              "results"
+            ],
+            "description": "查询范围，默认 all"
+          }
+        }
+      }
+    },
+    {
+      "name": "music_play",
+      "label": "音乐播放",
+      "description": "播放或继续播放音乐，可按歌曲名、歌手或专辑点歌。当前歌单：晴天、七里香、稻香、夜曲、简单爱、青花瓷",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "要播放的歌曲名、歌手、专辑或关键词；不填表示继续播放当前歌曲"
+          }
+        }
+      }
+    },
+    {
+      "name": "music_toggle_playback",
+      "label": "音乐播放切换",
+      "description": "切换当前媒体播放/暂停状态，也可显式指定播放或暂停；对应 Tesla media_toggle_playback 和语音中的 play/pause song。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "toggle",
+              "play",
+              "pause"
+            ],
+            "description": "默认 toggle；play=继续播放，pause=暂停"
+          }
+        }
+      }
+    },
+    {
+      "name": "music_pause",
+      "label": "音乐暂停",
+      "description": "暂停当前音乐播放。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "music_next",
+      "label": "下一首",
+      "description": "切换到下一首音乐。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "music_previous",
+      "label": "上一首",
+      "description": "切换到上一首音乐。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "music_volume_control",
+      "label": "音乐音量控制",
+      "description": "设置、调高、调低、静音或取消静音媒体音量；音量范围采用 Tesla 媒体遥测常见 0~11 档。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "increase",
+              "decrease",
+              "set",
+              "mute",
+              "unmute"
+            ],
+            "description": "increase/decrease=升降音量，set=设置指定音量，mute/unmute=静音/取消静音"
+          },
+          "volume": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 11,
+            "description": "目标音量，仅 action=set 时需要"
+          },
+          "delta": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 11,
+            "description": "升降幅度，默认 1 档"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "music_source_control",
+      "label": "音乐来源控制",
+      "description": "切换媒体来源，例如 QQ音乐、广播、蓝牙、USB、Spotify、Apple Music、TuneIn、YouTube Music、Caraoke 或浏览器音频。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "qq_music",
+              "radio",
+              "bluetooth",
+              "usb",
+              "spotify",
+              "apple_music",
+              "tunein",
+              "youtube_music",
+              "caraoke",
+              "browser"
+            ],
+            "description": "要切换到的媒体来源"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      }
+    },
+    {
+      "name": "music_favorite_control",
+      "label": "音乐收藏控制",
+      "description": "收藏/取消收藏当前或指定歌曲，也可切换到上一首/下一首收藏歌曲；对应 Tesla media_next_fav/media_prev_fav 和媒体收藏行为。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "add",
+              "remove",
+              "toggle",
+              "next",
+              "previous"
+            ],
+            "description": "收藏动作，默认 toggle"
+          },
+          "query": {
+            "type": "string",
+            "description": "歌曲名、歌手或专辑关键词；不填表示当前歌曲"
+          }
+        }
+      }
+    },
+    {
+      "name": "music_search",
+      "label": "音乐搜索",
+      "description": "搜索歌曲、歌手或专辑，不直接开始播放。当前歌单：晴天、七里香、稻香、夜曲、简单爱、青花瓷",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "要搜索的歌曲名、歌手、专辑或关键词"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  ]
+}

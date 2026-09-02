@@ -1,5 +1,6 @@
 import { normalizeArtifacts } from './task-artifact.mjs'
 import { publicAuthorization } from '../core/work-authorization.mjs'
+import { publicInputRequest } from '../core/work-input-request.mjs'
 
 export const TaskStatus = Object.freeze({
   SCHEDULED: 'scheduled',
@@ -95,6 +96,11 @@ export function isUserWork(task) {
 
 export function publicWorkState(task) {
   if (task?.authorization?.status === 'pending') return 'auth_required'
+  if (task?.inputRequest?.status === 'pending') {
+    return task.inputRequest.kind === 'authorization'
+      ? 'auth_required'
+      : 'input_required'
+  }
   if ([TaskStatus.SCHEDULED, TaskStatus.QUEUED].includes(task?.status)) {
     return 'submitted'
   }
@@ -145,6 +151,7 @@ export function publicTask(task, { now = Date.now() } = {}) {
         }
       : null,
     authorization: publicAuthorization(task.authorization, { taskId: task.id }),
+    inputRequest: publicInputRequest(task.inputRequest, { taskId: task.id }),
     notificationStatus: task.notificationStatus,
     notificationDeliveredAt: task.notificationDeliveredAt,
     schedule: task.schedule || null,

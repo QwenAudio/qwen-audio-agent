@@ -1,5 +1,3 @@
-export const FRONTEND_TOOL_APPROVAL_CAPABILITY = 'external-tool-approval'
-
 const SOURCE_KEY = /^[a-z0-9][a-z0-9-]*$/u
 
 export const FRONTEND_TOOL_SOURCE_METHODS = Object.freeze([
@@ -52,13 +50,6 @@ export function frontendSourceTools(sources = []) {
 
 export function frontendSourceToolDefinitions(sources = []) {
   return frontendSourceTools(sources).map(({ tool }) => tool.definition)
-}
-
-export function frontendSourceToolCapabilities(sources = []) {
-  return frontendSourceTools(sources).some(({ tool }) => (
-    tool.policy?.readOnly === false
-    && tool.policy?.approval === 'required'
-  )) ? [FRONTEND_TOOL_APPROVAL_CAPABILITY] : []
 }
 
 export function findFrontendSourceTool(sources, name) {

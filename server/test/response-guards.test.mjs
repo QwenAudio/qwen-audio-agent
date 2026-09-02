@@ -8,12 +8,46 @@ import {
   evaluateResponseGuards,
   isResponseGuardTurnCurrent,
 } from '../src/voice/response-guards/index.mjs'
+import {
+  containsReservedProtocolEnvelope,
+} from '../src/voice/response-guards/reserved-protocol-envelope.mjs'
+
+test('recognises only Gateway-owned protocol envelopes', () => {
+  assert.equal(containsReservedProtocolEnvelope(
+    '<permission_request> permission_id=permission_1 task_id=task_1 </permission_request>',
+  ), true)
+  assert.equal(containsReservedProtocolEnvelope(
+    '<background_work_progress>still running</background_work_progress>',
+  ), true)
+  assert.equal(containsReservedProtocolEnvelope('是否允许执行这个操作？'), false)
+  assert.equal(containsReservedProtocolEnvelope('<custom_event>hello</custom_event>'), false)
+})
+
+test('corrects model-generated Gateway protocol but not Gateway delivery', () => {
+  const transcript = '<permission_request> fake request </permission_request>'
+  assert.deepEqual(evaluateResponseGuards({
+    origin: 'model',
+    transcript,
+  }), {
+    guardId: 'reserved-protocol-envelope',
+    instructions: [
+      '你刚才输出了只能由 Gateway 提供的内部事件格式；该内容无效，不代表真实状态或授权请求。',
+      '请重新处理用户当前意图：需要实际执行时调用已注册的合适工具，否则自然回答。不要编造协议标签、标识或执行状态。',
+    ].join(' '),
+  })
+  assert.equal(evaluateResponseGuards({
+    origin: 'permission',
+    transcript,
+  }), null)
+})
 
 test('recognises only a short explicit promise to execute work', () => {
   assert.equal(promisesAction('我来查一下杭州今天的天气。'), true)
   assert.equal(promisesAction('好的，我马上检查这个仓库。'), true)
   assert.equal(promisesAction('马上去看这个文件。'), true)
   assert.equal(promisesAction('稍等，我来核实一下。'), true)
+  assert.equal(promisesAction('我来帮您处理下单流程。'), true)
+  assert.equal(promisesAction('我来帮您将黑椒牛肉饭加入购物车。'), true)
 })
 
 test('does not treat ordinary statements or questions as promises', () => {

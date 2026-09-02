@@ -42,10 +42,9 @@ test('parses independent TUI and WebUI client commands', () => {
     'full',
   )
 
-  const web = parseArguments(['webui', '--no-open', '--takeover'], {})
+  const web = parseArguments(['webui', '--no-open'], {})
   assert.equal(web.command, 'webui')
   assert.equal(web.openBrowser, false)
-  assert.equal(web.takeover, true)
 })
 
 test('parses read-only backend setup options', () => {
@@ -255,8 +254,8 @@ test('rejects client-only flags on unrelated commands', () => {
     /只适用于 webui/,
   )
   assert.throws(
-    () => parseArguments(['status', '--takeover'], {}),
-    /只适用于 tui 或 webui/,
+    () => parseArguments(['webui', '--takeover'], {}),
+    /未知参数：--takeover/,
   )
   assert.throws(
     () => parseArguments(['gateway', 'install', '--backend', 'openclaw'], {}),

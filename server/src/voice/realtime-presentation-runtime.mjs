@@ -8,6 +8,9 @@ import {
   evaluateResponseGuards,
   isResponseGuardTurnCurrent,
 } from './response-guards/index.mjs'
+import {
+  containsReservedProtocolEnvelope,
+} from './response-guards/reserved-protocol-envelope.mjs'
 import { realtimeResponseId } from './response-lifecycle.mjs'
 
 const PRESENTATION_RESPONSE_EVENTS = new Set([
@@ -45,6 +48,10 @@ function contextTaskIds(context) {
   return context?.taskIds?.length
     ? context.taskIds
     : [context?.taskId].filter(Boolean)
+}
+
+function awaitsToolFollowUp(context) {
+  return Boolean(context?.awaitsToolFollowUp ?? context?.hasFunctionCall)
 }
 
 /**
@@ -332,17 +339,20 @@ export class RealtimePresentationRuntime {
     const responseTurnId = context?.turnId || this.turns.turnId
     const responseStatus = event.response?.status
     const failed = ['failed', 'cancelled', 'incomplete'].includes(responseStatus)
-    const awaitsToolFollowUp = Boolean(
+    const suppressToolFollowUp = Boolean(
+      failed
+      || context?.suppressed
+      || context?.hasAudio
+      || context?.assistantTranscript?.trim()
+    )
+    const toolFollowUpPending = Boolean(
       context?.hasFunctionCall
       && !terminalToolResponse
-      && !failed,
+      && !suppressToolFollowUp,
     )
-    if (context) context.awaitsToolFollowUp = awaitsToolFollowUp
+    if (context) context.awaitsToolFollowUp = toolFollowUpPending
     this.toolCalls.finishToolResponse(id, {
-      suppressResponse: failed
-        || Boolean(context?.suppressed)
-        || Boolean(context?.hasAudio)
-        || Boolean(context?.assistantTranscript?.trim()),
+      suppressResponse: suppressToolFollowUp,
     }).catch(error => this.send({
       type: GatewayServerEvent.ERROR,
       message: error.message,
@@ -360,7 +370,7 @@ export class RealtimePresentationRuntime {
         responseId: id,
         turnId: responseTurnId,
       })
-      if (!context?.hasAudio && !awaitsToolFollowUp) {
+      if (!context?.hasAudio && !toolFollowUpPending) {
         this.send({
           type: GatewayServerEvent.VOICE_STATE,
           state: 'idle',
@@ -408,14 +418,14 @@ export class RealtimePresentationRuntime {
     if (failed && id) {
       this.playbackTurns.delete(id)
       this.announcementWindow.finishPlayback(id, {
-        hasFunctionCall: Boolean(context?.hasFunctionCall),
+        awaitsToolFollowUp: false,
       })
     }
     this.announcementWindow.responseDone({
       turnId: responseTurnId,
       origin: context?.origin || 'model',
-      hasAudio: Boolean(context?.hasAudio),
-      hasFunctionCall: Boolean(context?.hasFunctionCall),
+      hasAudio: Boolean(context?.hasAudio && !context?.playbackEnded),
+      awaitsToolFollowUp: toolFollowUpPending,
       suppressed: Boolean(context?.suppressed) || terminalToolResponse,
       failed,
     })
@@ -455,7 +465,12 @@ export class RealtimePresentationRuntime {
     const citations = final && String(content || '').trim()
       ? this.turnCitations?.consume(context.turnId) || []
       : []
-    if (final) {
+    const invalidModelProtocol = Boolean(
+      final
+      && context.origin === 'model'
+      && containsReservedProtocolEnvelope(content),
+    )
+    if (final && !invalidModelProtocol) {
       this.conversationSync.record({
         ownerId: this.ownerId,
         sessionId: this.sessionId,
@@ -510,7 +525,7 @@ export class RealtimePresentationRuntime {
       this.contexts.delete(id)
       this.playbackTurns.delete(id)
       this.announcementWindow.finishPlayback(id, {
-        hasFunctionCall: Boolean(context?.hasFunctionCall),
+        awaitsToolFollowUp: awaitsToolFollowUp(context),
       })
     }, this.responseContextCleanupMs)
     timer.unref?.()
@@ -553,7 +568,7 @@ export class RealtimePresentationRuntime {
       return
     }
     this.announcementWindow.finishPlayback(id, {
-      hasFunctionCall: Boolean(context?.hasFunctionCall),
+      awaitsToolFollowUp: awaitsToolFollowUp(context),
     })
     this.playbackTurns.delete(id)
     if (context) {
@@ -564,7 +579,7 @@ export class RealtimePresentationRuntime {
       }
     }
     const remainsProcessing = Boolean(
-      context?.awaitsToolFollowUp ?? context?.hasFunctionCall,
+      awaitsToolFollowUp(context),
     )
     this.send({
       type: GatewayServerEvent.VOICE_STATE,
@@ -582,7 +597,7 @@ export class RealtimePresentationRuntime {
   cancelPlayback(id, { reason = '' } = {}) {
     const context = this.contexts.get(id)
     this.announcementWindow.finishPlayback(id, {
-      hasFunctionCall: Boolean(context?.hasFunctionCall),
+      awaitsToolFollowUp: awaitsToolFollowUp(context),
     })
     const playbackTurnId = this.playbackTurns.get(id) || this.turns.turnId
     this.playbackTurns.delete(id)
@@ -652,7 +667,7 @@ export class RealtimePresentationRuntime {
         turnId: context?.turnId || this.turns.turnId,
         origin: context?.origin || 'model',
         hasAudio: Boolean(context?.hasAudio),
-        hasFunctionCall: Boolean(context?.hasFunctionCall),
+        awaitsToolFollowUp: false,
         failed: true,
       })
     }

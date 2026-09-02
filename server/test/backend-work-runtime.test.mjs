@@ -12,6 +12,7 @@ function backend(overrides = {}) {
     status() { return { state: 'working' } },
     async cancel(taskId) { return { taskId, state: 'cancelled' } },
     async respondAuthorization() {},
+    async respondInput() {},
     subscribe() { return () => {} },
     async close() {},
     ...overrides,

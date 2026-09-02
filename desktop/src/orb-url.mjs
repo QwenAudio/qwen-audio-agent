@@ -1,5 +1,5 @@
-// The orb page URL for a given Gateway origin: skin, auto-hide, wake word and
-// language travel as query parameters the page reads on load. Published so an
-// embedding host builds the same URL the desktop shell does — applying an
-// imported skin is `settings.save({ orbSkin }) → orb.load(desktopOrbUrl(...))`.
+// The initial orb page URL for a given Gateway origin. Query parameters seed
+// client-owned presentation and presence preferences on first load; subsequent
+// desktop setting changes travel over the Electron preload bridge so applying
+// them never replaces the Gateway Client connection.
 export { desktopOrbUrl } from './security.mjs'

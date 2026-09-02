@@ -1,9 +1,13 @@
+import {
+  reservedProtocolEnvelopeGuard,
+} from './reserved-protocol-envelope.mjs'
 import { actionPromiseGuard } from './action-promise.mjs'
 
 // Registration is intentionally static. Adding a guard is a reviewed code change,
 // not runtime configuration, and the first matching guard is the only correction
 // allowed for one response.
 const RESPONSE_GUARDS = Object.freeze([
+  reservedProtocolEnvelopeGuard,
   actionPromiseGuard,
 ])
 

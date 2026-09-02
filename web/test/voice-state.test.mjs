@@ -38,10 +38,8 @@ test('desktop microphone controls mute only input', () => {
   assert.deepEqual(microphoneControlEvent({
     enabled: true,
     inputOnlyMute: true,
-    takeover: true,
   }), {
     type: 'input.unmute',
-    takeover: true,
   })
 })
 
@@ -80,10 +78,8 @@ test('regular voice controls retain full mute behavior', () => {
   })
   assert.deepEqual(microphoneControlEvent({
     enabled: true,
-    takeover: false,
   }), {
     type: 'unmute',
-    takeover: false,
   })
 })
 

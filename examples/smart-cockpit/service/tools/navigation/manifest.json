@@ -1,0 +1,352 @@
+{
+  "domain": "navigation",
+  "label": "导航",
+  "description": "座舱示例的地点搜索、路线规划、导航中修改、常用地点与导航呈现能力。",
+  "enabled": true,
+  "functions": [
+    {
+      "name": "navigation_start",
+      "label": "开始导航",
+      "description": "搜索目的地、规划驾车路线并立即开始导航。用户说“导航到”“带我去”“去某地”或“开始导航”时使用；成功后不要再询问是否开始。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "destination": {
+            "type": "string",
+            "description": "目的地名称或地址"
+          },
+          "waypoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "description": "按行驶顺序排列的途经点（可选）；最终目的地不要放入此数组"
+          },
+          "strategy": {
+            "type": "number",
+            "enum": [
+              0,
+              13,
+              5,
+              4,
+              11,
+              14,
+              2
+            ],
+            "description": "路线偏好: 0=智能推荐, 13=高速优先, 5=不走高速, 4=躲避拥堵, 11=少收费, 14=大路优先, 2=时间优先。当用户提及路线偏好时设置此参数"
+          }
+        },
+        "required": [
+          "destination"
+        ]
+      }
+    },
+    {
+      "name": "navigation_route_query",
+      "label": "路线查询",
+      "description": "仅查询或预览路线，不开始导航。只在用户明确询问“怎么走”“多远”“多久”“查路线”或“先看看路线”时使用；明确要求导航时应使用 navigation_start。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "destination": {
+            "type": "string",
+            "description": "目的地名称或地址"
+          },
+          "waypoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "description": "按行驶顺序排列的途经点（可选）；最终目的地不要放入此数组"
+          },
+          "strategy": {
+            "type": "number",
+            "enum": [
+              0,
+              13,
+              5,
+              4,
+              11,
+              14,
+              2
+            ],
+            "description": "路线偏好: 0=智能推荐, 13=高速优先, 5=不走高速, 4=躲避拥堵, 11=少收费, 14=大路优先, 2=时间优先。当用户提及路线偏好时设置此参数"
+          }
+        }
+      }
+    },
+    {
+      "name": "navigation_stop",
+      "label": "停止导航",
+      "description": "停止当前导航并清空地图路线。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "navigation_add_waypoint",
+      "label": "增加途经点",
+      "description": "在当前导航或路线预览中增加一个途经点并重新规划路线。用户说“中途去一下”“顺路去”“加个途经点”“先去一下”时使用；如果用户同时给出新的最终目的地，应使用 navigation_start 或 navigation_change_destination。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "waypoint": {
+            "type": "string",
+            "description": "要增加的途经点名称或地址"
+          },
+          "insertPosition": {
+            "type": "string",
+            "enum": [
+              "next",
+              "before_destination"
+            ],
+            "description": "插入位置，默认 next 表示作为下一站；before_destination 表示插入到最终目的地之前"
+          },
+          "strategy": {
+            "type": "number",
+            "enum": [
+              0,
+              13,
+              5,
+              4,
+              11,
+              14,
+              2
+            ],
+            "description": "路线偏好；未提供时沿用当前导航策略"
+          }
+        },
+        "required": [
+          "waypoint"
+        ]
+      }
+    },
+    {
+      "name": "navigation_remove_waypoint",
+      "label": "删除途经点",
+      "description": "从当前导航或路线预览中删除一个途经点并重新规划路线。用户说“取消途经点”“不去刚才那个地方了”“删掉第几个途经点”时使用。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "waypoint": {
+            "type": "string",
+            "description": "要删除的途经点名称；和 index 二选一"
+          },
+          "index": {
+            "type": "number",
+            "description": "要删除的途经点序号，从 1 开始；和 waypoint 二选一"
+          }
+        }
+      }
+    },
+    {
+      "name": "navigation_change_destination",
+      "label": "变更目的地",
+      "description": "在当前导航或路线预览中将最终目的地改成新地点，并保留现有途经点重新规划路线。用户说“目的地改成”“换个地方”“不去那里了去这里”时使用。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "destination": {
+            "type": "string",
+            "description": "新的最终目的地名称或地址"
+          },
+          "strategy": {
+            "type": "number",
+            "enum": [
+              0,
+              13,
+              5,
+              4,
+              11,
+              14,
+              2
+            ],
+            "description": "路线偏好；未提供时沿用当前导航策略"
+          }
+        },
+        "required": [
+          "destination"
+        ]
+      }
+    },
+    {
+      "name": "navigation_set_route_strategy",
+      "label": "切换路线偏好",
+      "description": "设置路线偏好。有当前导航或路线预览时，基于当前目的地和途经点重新规划；无路线时，作为后续导航的默认偏好。用户说“换成不走高速”“改成少收费”“避开拥堵”时使用；如果用户同时给出新目的地，应使用 navigation_start 或 navigation_route_query。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "strategy": {
+            "type": "number",
+            "enum": [
+              0,
+              13,
+              5,
+              4,
+              11,
+              14,
+              2
+            ],
+            "description": "路线偏好: 0=智能推荐, 13=高速优先, 5=不走高速, 4=躲避拥堵, 11=少收费, 14=大路优先, 2=时间优先"
+          }
+        },
+        "required": [
+          "strategy"
+        ]
+      }
+    },
+    {
+      "name": "navigation_search_place",
+      "label": "地点搜索",
+      "description": "搜索地点或周边 POI，但不开始导航。用户只说“找一下”“附近有没有”“查一下哪里有”时使用；如果用户明确要去某地，应使用 navigation_start。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索关键词，例如充电站、加油站、餐厅或具体地点名称"
+          },
+          "category": {
+            "type": "string",
+            "description": "POI 类别；当用户表达“我饿了”等隐含需求时可归一为 restaurant"
+          },
+          "nearby": {
+            "type": "boolean",
+            "description": "是否按当前位置周边搜索"
+          },
+          "radius": {
+            "type": "number",
+            "description": "周边搜索半径，单位米"
+          }
+        }
+      }
+    },
+    {
+      "name": "navigation_to_favorite",
+      "label": "导航到常用地点",
+      "description": "导航到已保存的常用地点。用户说“回家”“去公司”“去学校”等常用地点导航时使用。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "favoriteType": {
+            "type": "string",
+            "enum": [
+              "home",
+              "office",
+              "school",
+              "custom"
+            ],
+            "description": "常用地点类型"
+          },
+          "strategy": {
+            "type": "number",
+            "enum": [
+              0,
+              13,
+              5,
+              4,
+              11,
+              14,
+              2
+            ],
+            "description": "路线偏好；未提供时使用智能推荐"
+          }
+        },
+        "required": [
+          "favoriteType"
+        ]
+      }
+    },
+    {
+      "name": "navigation_set_favorite",
+      "label": "设置常用地点",
+      "description": "设置或更新常用地点。用户说“把这里设为家”“设置公司地址”“把某地设为学校”时使用。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "favoriteType": {
+            "type": "string",
+            "enum": [
+              "home",
+              "office",
+              "school",
+              "custom"
+            ],
+            "description": "常用地点类型"
+          },
+          "address": {
+            "type": "string",
+            "description": "常用地点名称或地址；useCurrentLocation 为 true 时可省略"
+          },
+          "useCurrentLocation": {
+            "type": "boolean",
+            "description": "是否把当前位置保存为常用地点"
+          }
+        },
+        "required": [
+          "favoriteType"
+        ]
+      }
+    },
+    {
+      "name": "navigation_set_voice",
+      "label": "导航语音设置",
+      "description": "设置导航静音或播报模式。用户说“导航静音”“取消静音”“详细播报”“简洁播报”时使用。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "mute": {
+            "type": "boolean",
+            "description": "是否开启导航静音"
+          },
+          "broadcastMode": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "detailed",
+              "brief"
+            ],
+            "description": "播报模式：standard=标准播报, detailed=详细播报, brief=简洁播报"
+          }
+        }
+      }
+    },
+    {
+      "name": "navigation_set_view",
+      "label": "导航视图设置",
+      "description": "设置地图或导航视图。用户说“查看全程”“回到车头视角”“切到全览”时使用。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "viewMode": {
+            "type": "string",
+            "enum": [
+              "follow",
+              "overview",
+              "north_up"
+            ],
+            "description": "视图模式：follow=跟车视角, overview=路线全览, north_up=北向上"
+          }
+        },
+        "required": [
+          "viewMode"
+        ]
+      }
+    }
+  ]
+}

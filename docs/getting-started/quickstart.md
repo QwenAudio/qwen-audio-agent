@@ -26,7 +26,7 @@ DASHSCOPE_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # Backend agent: leave empty or set to none to start in frontend-only mode
 AGENT_PROTOCOL=openclaw
-# Backend model: leave empty to use the agent's own user configuration; if not reused, the agent selects one
+# Backend model: explicit values use standard ACP; empty reuses Agent config
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
@@ -61,4 +61,4 @@ explicitly start in frontend-only mode with `qwenaudio --backend none`.
 For selecting, one-click installing, permission modes, and persistent service of backend agents, see
 [Backend Agents](../backends/overview.md). For a complete list of environment variables, see
 [Configuration](../configuration.md). For TUI platform differences, see
-[TUI Notes](tui.md).
+[TUI Notes](tui.md); for the browser client, see [WebUI](webui.md).

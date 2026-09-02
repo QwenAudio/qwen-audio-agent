@@ -20,6 +20,14 @@ function clientStates(context) {
   )
 }
 
+function clientActions(context) {
+  return new Set(
+    Array.isArray(context?.client?.actions)
+      ? context.client.actions.map(String)
+      : [],
+  )
+}
+
 function frontendCapabilities(context) {
   return new Set(
     Array.isArray(context?.frontend?.capabilities)
@@ -33,11 +41,16 @@ function policyAllows(policy = {}, context = {}) {
   const requiredStates = Array.isArray(policy.requiredClientStates)
     ? policy.requiredClientStates
     : []
+  const availableActions = clientActions(context)
+  const requiredActions = Array.isArray(policy.requiredClientActions)
+    ? policy.requiredClientActions
+    : []
   const availableCapabilities = frontendCapabilities(context)
   const requiredCapabilities = Array.isArray(policy.requiredCapabilities)
     ? policy.requiredCapabilities
     : []
   return requiredStates.every(state => availableStates.has(state))
+    && requiredActions.every(action => availableActions.has(action))
     && requiredCapabilities.every(capability => (
       availableCapabilities.has(capability)
     ))
@@ -76,6 +89,11 @@ function normalizedPolicy(policy = {}) {
   if (Array.isArray(policy.requiredClientStates)) {
     normalized.requiredClientStates = Object.freeze([
       ...policy.requiredClientStates.map(String),
+    ])
+  }
+  if (Array.isArray(policy.requiredClientActions)) {
+    normalized.requiredClientActions = Object.freeze([
+      ...policy.requiredClientActions.map(String),
     ])
   }
   if (Array.isArray(policy.requiredCapabilities)) {

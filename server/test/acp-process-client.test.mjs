@@ -307,6 +307,56 @@ test('pauses the prompt timeout while waiting for user permission', async () => 
   })
 })
 
+test('pauses the prompt timeout while waiting for elicited input', async () => {
+  let resolveInput
+  let finishPrompt
+  let promptSettled = false
+  const client = new AcpProcessClient({
+    label: 'Test Agent',
+    command: 'unused',
+    onElicitation: () => new Promise(resolve => {
+      resolveInput = resolve
+    }),
+  })
+  client.start = async () => {}
+  client.context = {
+    request: (_method, _params, { signal }) => new Promise(
+      (resolve, reject) => {
+        finishPrompt = () => resolve({ stopReason: 'end_turn' })
+        signal.addEventListener('abort', () => reject(signal.reason), {
+          once: true,
+        })
+      },
+    ),
+    notify: async () => {},
+  }
+  client.sessions.set('session-one', { sessionId: 'session-one' })
+
+  const prompting = client.prompt('session-one', 'inspect project', {
+    timeoutMs: 30,
+  }).finally(() => {
+    promptSettled = true
+  })
+  await new Promise(resolve => setTimeout(resolve, 10))
+  const elicitation = client.handleElicitation({
+    sessionId: 'session-one',
+    mode: 'form',
+    message: 'Choose an output language',
+  }, new AbortController().signal)
+
+  await new Promise(resolve => setTimeout(resolve, 45))
+  assert.equal(promptSettled, false)
+
+  resolveInput({ action: 'accept', content: { language: 'zh' } })
+  await elicitation
+  finishPrompt()
+  assert.deepEqual(await prompting, {
+    content: '',
+    contentBlocks: [],
+    response: { stopReason: 'end_turn' },
+  })
+})
+
 test('reports a prompt timeout even when the Agent confirms cancellation', async () => {
   const client = new AcpProcessClient({
     label: 'Test Agent',
@@ -338,7 +388,7 @@ test('reports a prompt timeout even when the Agent confirms cancellation', async
   }
 })
 
-test('keeps Session metadata and supports the legacy model method', async () => {
+test('keeps Session metadata on the process client boundary', async () => {
   const calls = []
   const client = new AcpProcessClient({
     label: 'Test Agent',
@@ -358,16 +408,8 @@ test('keeps Session metadata and supports the legacy model method', async () => 
     cwd: '/workspace',
     meta,
   })
-  await client.setLegacySessionModel('session-one', 'claude-sonnet')
-
   assert.equal(session.meta, meta)
-  assert.deepEqual(calls.at(-1), [
-    'session/set_model',
-    {
-      sessionId: 'session-one',
-      modelId: 'claude-sonnet',
-    },
-  ])
+  assert.deepEqual(calls.at(-1)[0], 'session/new')
 })
 
 test('rejects an MCP transport the Agent did not advertise', async () => {

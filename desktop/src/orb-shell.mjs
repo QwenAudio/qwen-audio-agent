@@ -137,17 +137,19 @@ export function bindOrbShell({
     return { state: presence.state }
   })
 
-  handle(ORB_CHANNELS.enterHide, event => {
+  handle(ORB_CHANNELS.enterHide, (event, options = {}) => {
     if (!fromOrbWindow(event)) {
       throw new Error('无权修改桌面状态')
     }
     // The conversation panel is an active application surface. A stale
     // inactivity timer from the compact orb must never disconnect its
     // realtime session while the panel remains visible and interactive.
-    if (onLoadSurface?.() === 'panel') {
+    const explicit = options?.explicit === true
+    if (!explicit && onLoadSurface?.() === 'panel') {
       return { state: presence.state }
     }
-    return { state: presence.hide('inactivity') }
+    if (explicit && onLoadSurface?.() === 'panel') onSetSurface?.('orb')
+    return { state: presence.hide(explicit ? 'requested' : 'inactivity') }
   })
 
   handle(ORB_CHANNELS.surfaceLoad, event => {

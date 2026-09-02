@@ -12,8 +12,11 @@ const allowedDependencies = {
     'agent',
     'app',
     'backend',
+    'client',
     'conversation',
     'core',
+    'delivery',
+    'domain',
     'frontend',
     'providers',
     'session',
@@ -27,13 +30,20 @@ const allowedDependencies = {
   providers: new Set(['core', 'frontend', 'providers', 'shared']),
   agent: new Set(['agent', 'backend', 'core', 'shared']),
   backend: new Set(['backend', 'core', 'shared']),
+  client: new Set(['client', 'delivery', 'shared', 'task']),
+  delivery: new Set(['delivery']),
   conversation: new Set(['conversation', 'core', 'shared']),
+  // 资料库刻意不依赖 conversation：它复用的落盘与敏感闸门都在 core，
+  // 让「用户给的手册」去依赖「会话逻辑」是没有道理的耦合。
+  domain: new Set(['core', 'domain', 'shared']),
   session: new Set(['session', 'shared']),
   task: new Set(['agent', 'core', 'session', 'task']),
   transport: new Set(['shared', 'task', 'transport']),
   voice: new Set([
+    'client',
     'conversation',
     'core',
+    'delivery',
     'frontend',
     'shared',
     'task',
@@ -145,10 +155,16 @@ test('UI source code does not import Gateway or another client implementation', 
   assert.deepEqual(violations, [])
 })
 
-test('UI clients do not expose the removed background execution control', () => {
-  const fullscreenTui = readFileSync(
-    resolve(projectRoot, 'tui/fullscreen/app.py'),
-    'utf8',
-  )
-  assert.doesNotMatch(fullscreenTui, /task\.background|action_background|\/bg/)
+test('shipped UI clients do not expose the removed background execution control', () => {
+  const roots = [
+    resolve(projectRoot, 'web/src'),
+    resolve(projectRoot, 'tui/src'),
+    resolve(projectRoot, 'desktop/src'),
+  ]
+  const violations = roots.flatMap(root => sourceFiles(root))
+    .filter(file => /task\.background|action_background|\/bg/.test(
+      readFileSync(file, 'utf8'),
+    ))
+    .map(file => relative(projectRoot, file))
+  assert.deepEqual(violations, [])
 })

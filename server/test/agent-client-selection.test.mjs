@@ -175,6 +175,7 @@ test('AgentClient owns exactly one injected backend instance', () => {
     status: () => ({ ok: true }),
     cancel: async () => ({}),
     respondAuthorization: async () => ({}),
+    respondInput: async () => ({}),
     subscribe: () => () => {},
     close: async () => {},
   }

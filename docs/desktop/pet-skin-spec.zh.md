@@ -22,8 +22,8 @@
 
 ## 九个标准动作
 
-皮肤制作方只应使用以下动作名。每个动作的帧必须位于对应行内，帧数可以是
-1–8，顺序即播放顺序。
+皮肤制作方只应使用以下动作名。每个动作的帧按播放顺序排列——惯例为对应行内的
+1–8 帧（整张雪碧图受 256 帧总量上限约束）。
 
 | 行 | 动作名 | 中文含义 | 默认有效帧 |
 | ---: | --- | --- | --- |
@@ -65,7 +65,7 @@
 - `displayName`：建议填写，界面显示名称。
 - `description`：可选。
 - `spriteVersionNumber`：可选，省略时为 v1；v2 必须填写 `2`。
-- `spritesheetPath`：必填，通常为 `spritesheet.webp`。
+- `spritesheetPath`：可选，缺省为 `spritesheet.webp`。
 - `animations`：可选的 qwen-audio-agent 动画扩展。
 
 每个 `animations` 条目只包含：

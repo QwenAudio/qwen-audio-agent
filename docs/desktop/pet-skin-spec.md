@@ -24,8 +24,9 @@ fixed atlas rules.
 
 ## Nine standard actions
 
-Producers should use only these action names. An action may use 1–8 frames,
-all from its assigned row, in playback order.
+Producers should use only these action names. An action lists its frames in
+playback order — conventionally 1–8 frames from its assigned row (the sheet
+total is bounded by 256 frames).
 
 | Row | Action | Meaning | Default frames |
 | ---: | --- | --- | --- |
@@ -67,7 +68,7 @@ Base fields:
 - `displayName`: recommended UI label.
 - `description`: optional.
 - `spriteVersionNumber`: optional and defaults to v1; v2 must set `2`.
-- `spritesheetPath`: required and normally `spritesheet.webp`.
+- `spritesheetPath`: optional; defaults to `spritesheet.webp`.
 - `animations`: optional qwen-audio-agent animation extension.
 
 Each `animations` entry contains only:

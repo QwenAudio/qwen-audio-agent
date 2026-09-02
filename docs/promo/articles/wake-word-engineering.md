@@ -1,55 +1,36 @@
 # 本地语音唤醒词的工程实现：让 Agent 睡着也能被叫醒
 
-> 桌面语音助手休眠后，麦克风保持开启，说出"你好千问"即可唤醒。
+> 桌面语音助手休眠后，麦克风保持开启，说出唤醒词即可唤醒。
 > 本文讲 qwen-audio-agent 中这套唤醒词链路的工程实现与踩坑。
 
 ## 需求：休眠不是关机
 
-语音助手有一个矛盾：为了省电和隐私，空闲时应该"睡着"
-（断开实时语音连接、停止大模型推理）；但用户期望随时开口就能叫它。
+语音助手有一个矛盾：为了避免环境误输入，空闲时应该隐藏界面并停止向
+Realtime 发送麦克风音频；但用户仍期望随时开口就能叫它。
 
 解法是**本地唤醒词（Keyword Spotting）**：休眠期间只跑一个极小的
-本地模型监听麦克风，检测到唤醒词后再唤醒整个会话链路。
+本地模型监听麦克风，检测到唤醒词后再恢复客户端 Presence 和输入链路。
 全程本地推理，无云端调用，隐私和延迟都可控。
 
-## 状态机：SleepController
+## 边界：唤醒属于桌面客户端
 
-休眠/唤醒的状态管理被刻意做成了一个 80 行的小类
-（`server/src/voice/sleep-controller.mjs`），核心逻辑：
+麦克风、窗口、快捷键和本地唤醒都属于 Client Environment。桌面 Renderer
+只在隐藏状态把 16 kHz 音频交给 Electron 主进程；主进程在独立 Worker 中运行
+检测器，命中后显示窗口，并通过 Gateway Client Protocol 发送标准 `wake` 事件。
+Gateway 不加载唤醒模型，也不接收唤醒词音频。
 
-```js
-export class SleepController {
-  constructor({ timeoutMs, retryMs, canSleep, onSleep }) { /* ... */ }
-
-  recordActivity() {        // 任何用户活动重置休眠倒计时
-    if (!this.enabled || this.sleeping || this.closed) return
-    this.schedule(this.timeoutMs)
-  }
-
-  async trySleep() {        // 倒计时结束，先问"现在能睡吗"
-    if (!this.canSleep()) {
-      this.schedule(this.retryMs)  // 不能睡就稍后重试
-      return
-    }
-    this.sleeping = true
-    await this.onSleep()
-  }
-
-  wake() { /* 唤醒并重置活动计时 */ }
-}
+```text
+Microphone → Desktop Renderer → Desktop KWS Worker
+                                      ↓ detected
+Desktop Presence ← Electron Main → GCP wake → Gateway
 ```
 
 三个关键设计：
 
-1. **`canSleep` 守卫**：Agent 正在说话、任务刚完成等待追问、权限请求
-   未确认时不能休眠。"能不能睡"的判断权在业务层，状态机只管调度。
-2. **重试而非放弃**：不能睡就 `retryMs` 后再试，避免一次错过就永远不休眠。
-3. **唤醒即活动**：`wake()` 会重置计时器，唤醒后的交互窗口内不会
-   再次立刻休眠。
-
-此外还有任务通知唤醒：后台任务完成或出现权限请求时，
-即使处于休眠也会被主动唤醒播报——"睡着"只是降低资源占用，
-不是失联。
+1. **音频不越界**：休眠音频只进入客户端 Worker，不发送给 Gateway 或云端。
+2. **推理不阻塞 UI**：sherpa-onnx 不在 Electron 主线程执行。
+3. **会话不重建**：休眠保留 Realtime Session；唤醒只恢复 Presence 和输入，
+   后台任务、对话上下文和待播报结果保持原状。
 
 ## 检测引擎：sherpa-onnx
 
@@ -57,7 +38,7 @@ export class SleepController {
 的 Keyword Spotting，模型是 3M 参数的中英 transducer
 （`sherpa-onnx-kws-zipformer-zh-en-3M`），CPU 单线程即可实时运行。
 
-`server/src/voice/wake-word/sherpa-detector.mjs` 里的关键配置：
+`desktop/src/wake-word/sherpa-detector.mjs` 里的关键配置：
 
 ```js
 const keywordSpotter = createKws({

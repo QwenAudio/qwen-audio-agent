@@ -2,6 +2,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import {
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { PACKAGE_VERSION } from '../../core/package-version.mjs'
 
 const PUBLIC_TOOL_NAME = /^[a-zA-Z0-9_]{1,128}$/u
@@ -116,20 +117,31 @@ function defaultClientFactory(server) {
   })
 }
 
-function defaultTransportFactory(server) {
-  return new StreamableHTTPClientTransport(
-    new URL(server.transport.url),
-    Object.keys(server.transport.headers).length
-      ? { requestInit: { headers: server.transport.headers } }
-      : undefined,
-  )
+export function createFrontendMcpTransport(server) {
+  if (server.transport.type === 'stdio') {
+    return new StdioClientTransport({
+      command: server.transport.command,
+      args: server.transport.args,
+      env: server.transport.env,
+      ...(server.transport.cwd ? { cwd: server.transport.cwd } : {}),
+    })
+  }
+  if (server.transport.type === 'streamable-http') {
+    return new StreamableHTTPClientTransport(
+      new URL(server.transport.url),
+      Object.keys(server.transport.headers).length
+        ? { requestInit: { headers: server.transport.headers } }
+        : undefined,
+    )
+  }
+  throw new Error(`Unsupported Frontend MCP transport: ${server.transport.type}`)
 }
 
 export class FrontendMcpClient {
   constructor({
     configuration = { version: 1, servers: [] },
     clientFactory = defaultClientFactory,
-    transportFactory = defaultTransportFactory,
+    transportFactory = createFrontendMcpTransport,
   } = {}) {
     this.configuration = configuration
     this.clientFactory = clientFactory
@@ -198,20 +210,21 @@ export class FrontendMcpClient {
           name,
           serverKey: server.key,
           remoteName: toolName,
+          ...(remote.annotations && typeof remote.annotations === 'object'
+            ? { annotations: structuredClone(remote.annotations) }
+            : {}),
           definition: {
             type: 'function',
             function: {
               name,
               description: policy.description
                 || clean(remote.description, 1_200)
-                || `User-enabled read-only MCP tool ${server.key}/${toolName}.`,
+                || `User-enabled MCP tool ${server.key}/${toolName}.`,
               parameters: normalizedSchema(remote.inputSchema),
             },
           },
           policy: {
             mode: 'inline',
-            readOnly: policy.readOnly,
-            approval: policy.approval,
             timeoutMs: policy.timeoutMs,
             maxResultBytes: policy.maxResultBytes,
             maxCallsPerTurn: policy.maxCallsPerTurn,

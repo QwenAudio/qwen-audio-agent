@@ -13,6 +13,7 @@
  *   status(taskId?, context?) -> runtime status without an ID, otherwise Task status
  *   cancel(taskId, context?) -> cancel one adapter-owned Task
  *   respondAuthorization(taskId, authorizationId, decision, context?)
+ *   respondInput(taskId, inputRequestId, response, context?)
  *   subscribe(listener) -> unsubscribe function for normalized backend events
  *   close() -> idempotently release adapter-owned resources
  */
@@ -24,6 +25,7 @@ export const BACKEND_PORT_METHODS = Object.freeze([
   'status',
   'cancel',
   'respondAuthorization',
+  'respondInput',
   'subscribe',
   'close',
 ])

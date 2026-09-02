@@ -33,7 +33,7 @@ async function evaluateRoutingContract() {
   const prompt = loadFrontendPrompt()
   const names = toolNames({
     frontend: { capabilities: ['web-search', 'url-fetch', 'knowledge'] },
-    client: { states: ['sleeping'] },
+    client: { actions: ['desktop.presence.enter_sleep'] },
   })
   const required = [
     'spawn_thinking',

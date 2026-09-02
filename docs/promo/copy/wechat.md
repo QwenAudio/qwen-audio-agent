@@ -3,7 +3,7 @@
 ## 标题候选
 
 1. 我们给 AI Agent 装上了耳朵和嘴：对话继续，任务也在继续
-2. 喊一声"你好千问"，你的编码 Agent 就醒了
+2. 喊一声，你的 AI Agent 就醒了
 
 ## 正文框架
 
@@ -35,7 +35,7 @@
 
 ### 结尾
 
-项目开源（Apache-2.0），基于 Qwen/DashScope 构建：
+项目开源（Apache-2.0），一个全双工实时语音的社区开源项目：
 - GitHub：https://github.com/QwenAudio/qwen-audio-agent
 - 安装：npm install -g qwen-audio-agent
 - 扫码加入交流群（放 wechat-group-qr.png）

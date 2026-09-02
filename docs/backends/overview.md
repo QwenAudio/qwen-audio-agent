@@ -22,7 +22,7 @@ The Backend Agent handles tasks that require tools, file operations, or sustaine
 Skills install once through `qwenaudio skill install` (a branded entry point
 for the standard skills.sh installer) and land in every backend's user-level
 directory above automatically. See
-[Skill Management](../configuration.md#skill-management).
+[Skill Management](../configuration/backend.md#skill-management).
 
 The recommendation rating reflects the current integration completeness, compatibility, and extent of real-world verification: five stars indicates a fully tested and recommended integration, while four stars indicates ongoing development or incomplete verification of the same scope.
 
@@ -109,5 +109,5 @@ qwenaudio gateway uninstall
 
 The background service re-reads `config.env` on every startup; after modifying configuration, run `gateway restart` to apply changes.
 
-For advanced configuration of each backend (executable paths, working directories, model overrides, etc.), see
+For advanced configuration of each backend (executable paths, working directories, standard ACP model overrides, etc.), see
 [Configuration Guide](../configuration.md).

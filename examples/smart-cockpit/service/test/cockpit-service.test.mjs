@@ -162,6 +162,48 @@ test('updates music state without returning UI actions', async () => {
   assert.equal('actions' in output, false)
 })
 
+test('controls expanded music playback volume source favorites and state queries', async () => {
+  const { service, options } = fixture()
+
+  const source = await service.execute('music_source_control', { source: 'bluetooth' }, options)
+  assert.equal(source.data.music.source, 'bluetooth')
+  assert.match(source.content, /蓝牙/u)
+
+  const volume = await service.execute('music_volume_control', {
+    action: 'set',
+    volume: 8,
+  }, options)
+  assert.equal(volume.data.music.volume, 8)
+  assert.equal(volume.data.music.muted, false)
+
+  const quieter = await service.execute('music_volume_control', {
+    action: 'decrease',
+    delta: 2,
+  }, options)
+  assert.equal(quieter.data.music.volume, 6)
+
+  const muted = await service.execute('music_volume_control', { action: 'mute' }, options)
+  assert.equal(muted.data.music.muted, true)
+
+  const toggle = await service.execute('music_toggle_playback', {}, options)
+  assert.equal(toggle.data.music.playing, true)
+
+  const favorite = await service.execute('music_favorite_control', {
+    action: 'add',
+    query: '稻香',
+  }, options)
+  assert.deepEqual(favorite.data.music.favoriteIds, ['rice-field'])
+
+  const nextFavorite = await service.execute('music_favorite_control', { action: 'next' }, options)
+  assert.match(nextFavorite.content, /稻香/u)
+  assert.equal(nextFavorite.data.music.playing, true)
+
+  const state = await service.execute('music_state_query', { part: 'all' }, options)
+  assert.equal(state.changed.length, 0)
+  assert.match(state.content, /当前来源蓝牙/u)
+  assert.match(state.content, /音量 6\/11/u)
+})
+
 test('projects navigation progress and route state separately', async () => {
   const { service, activities, options, routeOrigins } = fixture()
   const output = await service.execute('navigation_start', {

@@ -181,7 +181,7 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   t.after(() => frontend.close())
 
   const backendTools = await backend.listTools()
-  assert.equal(backendTools.tools.length, 33)
+  assert.equal(backendTools.tools.length, 38)
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_climate_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_temperature_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'flashbuy'))
@@ -190,6 +190,8 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_location_query'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_light_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_charging_control'))
+  assert.ok(backendTools.tools.some(tool => tool.name === 'music_volume_control'))
+  assert.ok(backendTools.tools.some(tool => tool.name === 'music_source_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'custom_skill_create'))
 
   const frontendTools = await frontend.listTools()
@@ -210,9 +212,16 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
     'navigation_set_voice',
     'navigation_set_view',
     'navigation_stop',
+    'music_state_query',
+    'music_play',
+    'music_toggle_playback',
     'music_pause',
     'music_next',
     'music_previous',
+    'music_volume_control',
+    'music_source_control',
+    'music_favorite_control',
+    'music_search',
   ])
 
   const output = await backend.callTool({
@@ -286,6 +295,30 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
     arguments: {},
   })
   assert.equal(pause.isError, undefined)
+  const musicVolume = await frontend.callTool({
+    name: 'music_volume_control',
+    arguments: { action: 'set', volume: 7 },
+  })
+  assert.equal(musicVolume.isError, undefined)
+  assert.equal(musicVolume.structuredContent.music.volume, 7)
+  const musicSource = await frontend.callTool({
+    name: 'music_source_control',
+    arguments: { source: 'bluetooth' },
+  })
+  assert.equal(musicSource.isError, undefined)
+  assert.equal(musicSource.structuredContent.music.source, 'bluetooth')
+  const musicFavorite = await frontend.callTool({
+    name: 'music_favorite_control',
+    arguments: { action: 'add', query: '晴天' },
+  })
+  assert.equal(musicFavorite.isError, undefined)
+  assert.deepEqual(musicFavorite.structuredContent.music.favoriteIds, ['sunny-day'])
+  const musicState = await frontend.callTool({
+    name: 'music_state_query',
+    arguments: { part: 'all' },
+  })
+  assert.equal(musicState.isError, undefined)
+  assert.match(musicState.content[0].text, /当前来源蓝牙/u)
   const stopped = await frontend.callTool({
     name: 'navigation_stop',
     arguments: {},
@@ -302,6 +335,9 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   assert.equal(state.navigation.viewMode, 'overview')
   assert.equal(state.navigation.strategy, 4)
   assert.equal(state.navigation.status, 'idle')
+  assert.equal(state.music.volume, 7)
+  assert.equal(state.music.source, 'bluetooth')
+  assert.deepEqual(state.music.favoriteIds, ['sunny-day'])
 })
 
 test('serves persistent custom skill management to the scenario UI', async t => {

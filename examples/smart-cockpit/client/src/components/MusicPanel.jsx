@@ -10,6 +10,19 @@ const PLAYLIST = [
   { title: '青花瓷', artist: '周杰伦', album: '我很忙', duration: 239, cover: '/covers/wohenmang.jpg' },
 ]
 
+const SOURCE_LABELS = {
+  qq_music: 'QQ音乐',
+  radio: '广播',
+  bluetooth: '蓝牙',
+  usb: 'USB',
+  spotify: 'Spotify',
+  apple_music: 'Apple Music',
+  tunein: 'TuneIn',
+  youtube_music: 'YouTube Music',
+  caraoke: 'Caraoke',
+  browser: '浏览器音频',
+}
+
 function formatTime(s) {
   const m = Math.floor(s / 60)
   const sec = Math.floor(s % 60)
@@ -19,7 +32,7 @@ function formatTime(s) {
 export { PLAYLIST }
 
 export default function MusicPanel({ musicState, onPlay, onPause, onNext, onPrev, onSelectTrack }) {
-  const { playing, currentIndex } = musicState
+  const { playing, currentIndex, source = 'qq_music', volume = 5, volumeMax = 11, muted = false } = musicState
   const track = PLAYLIST[currentIndex] || PLAYLIST[0]
   const [progress, setProgress] = useState(0)
   const [liked, setLiked] = useState({})
@@ -75,7 +88,8 @@ export default function MusicPanel({ musicState, onPlay, onPause, onNext, onPrev
       <div className="music-left">
         <div className="music-source">
           <img src={qqMusicIcon} alt="QQ音乐" className="music-source-icon" />
-          <span className="music-source-name">QQ音乐</span>
+          <span className="music-source-name">{SOURCE_LABELS[source] || source}</span>
+          <span className="music-source-name">{muted ? '静音' : `音量 ${volume}/${volumeMax}`}</span>
         </div>
         <div className="music-cover-wrap">
           <img className={`music-cover-img ${playing ? 'is-spinning' : ''}`} src={track.cover} alt={track.album} />

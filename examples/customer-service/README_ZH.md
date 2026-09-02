@@ -2,7 +2,7 @@
 
 [English](README.md) | [中文](README_ZH.md)
 
-> **状态：进行中（draft）。** 目前只完成服务层与零售域的只读闭环，
+> **状态：进行中（draft）。** 服务层与零售域的完整工具面已可用（含写库与批准机制），
 > 客户端界面、Gateway 装配与后台 Agent 尚未接入。可运行的部分见下方「当前能跑什么」。
 
 ## 这个示例要回答什么
@@ -45,9 +45,38 @@ service/tools/orders/execute.mjs        ← 唯一的实现
 两个面调的是同一行代码、同一份状态。**前台面是后台面的子集，不是互斥的两个列表** ——
 所以白名单配错了只是性能退化，不是功能故障。
 
-前台白名单只放核验与只读查询。写库类（取消、退货、换货、改地址）留给后台，
-因为只有后台任务能通过 `auth_required` 挂起等客户批准；前台工具没有这个机制，
-确认就只能靠 prompt，而那守不住。
+前台白名单只放核验与只读查询。写库类（取消、退货、改地址、转人工）只在后台面。
+
+### 写库前的确认是数据依赖，不是 prompt 请求
+
+原本打算让写库工具带一个 `user_confirmed` 参数，靠 prompt 要求模型「问过客户再填
+true」。那守不住 —— 模型可以不问就填，我们只能事后在审计里发现，而钱已经出去了。
+
+改成两段式：
+
+```text
+① cancel_order(orderId, reason)
+   → 返回预览「将取消 #W1082334：无线耳机 ×1，￥899.00 将退回招商银行信用卡…」
+     和一枚 approval_token
+   → 不碰数据库
+
+② 把预览念给客户，得到明确同意
+
+③ cancel_order(orderId, reason, approval_token)
+   → 校验令牌 → 真正执行
+```
+
+**模型没有「跳过批准」这个选项 —— 它拿不到令牌就执行不了。**
+
+三处细节：
+
+- 令牌绑定「动作 + 对象」，不是通用通行证。否则能拿取消 A 单的批准去取消 B 单；
+  部分退货还要把款式写进指纹，「退耳机」的批准不能拿去退鼠标。
+- 令牌一次性，取出即删。否则一次批准可被重放成多次退款。
+- 预览里的金额由 executor 算，不经模型的手 —— 模型算错退款金额比它不会算更糟。
+
+**退款超上限时不发令牌**，直接要求转人工。若只在预览里写「金额较大建议转人工」，
+模型照样能往下走。
 
 ### policy 拆成三处
 
@@ -62,7 +91,7 @@ service/tools/orders/execute.mjs        ← 唯一的实现
 ```bash
 cd examples/customer-service/service
 npm install
-npm test                    # 33 条：数据完整性 15 + 服务层 18
+npm test                    # 56 条：数据完整性 15 + 服务层 18 + 写库与批准 23
 npm start                   # 默认 http://127.0.0.1:3110
 ```
 
@@ -116,15 +145,18 @@ curl -s -X POST 'http://127.0.0.1:3110/mcp/frontend?sessionId=demo' \
 
 按优先级：
 
-1. **写库工具与后台编排**（`cancel_order` / `return_items` / `exchange_items` /
-   `modify_address` / `transfer_to_human`）。它们要走后台并使用 `auth_required`。
-2. **`auth_required` 端到端探链**。这条链在 realtime 侧代码是接通的
+1. **`auth_required` 端到端探链**。这条链在 realtime 侧代码是接通的
    （`realtime-gateway.mjs` 6 处、`tool-call-handler.mjs` 2 处），但座舱示例用不到它，
    所以**可能从没在真实语音会话里跑过**。它通不通会影响工具归属的划分。
-3. **Gateway 装配与后台 Agent**（照抄 `smart-cockpit/gateway` 与 `agent/`）。
+2. **Gateway 装配与后台 Agent**（照抄 `smart-cockpit/gateway` 与 `agent/`）。
+3. **换货**（`exchange_items`）：要先查库存、算差价，比退货多两步。
 4. **客户端界面**：客户档案、订单、流程进度、生效的约束、操作流水五个面板，
    放 `client/src/projections/`（纯函数 + 单测）。
 5. **航空域**（复用骨架，换 `domains/airline/`）。
+
+> 批准机制与 `auth_required` 是两层，互不替代：令牌保证「没批准就执行不了」，
+> `auth_required` 让后台任务挂起、把问题送到客户耳边。即使 `auth_required`
+> 这条链不通，令牌那层仍然拦得住。
 
 ## 与 τ²-bench 的关系，以及一处刻意偏离
 

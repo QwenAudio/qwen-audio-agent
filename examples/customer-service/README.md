@@ -2,9 +2,9 @@
 
 [English](README.md) | [中文](README_ZH.md)
 
-> **Status: work in progress (draft).** Only the service layer and the read-only
-> retail loop are done. The client UI, Gateway composition and backend Agent are
-> not wired yet. See "What runs today" below.
+> **Status: work in progress (draft).** The service layer and the full retail tool
+> surface are usable (including write operations and the approval mechanism). The client
+> UI, Gateway composition and backend Agent are not wired yet. See "What runs today".
 
 ## What this example is for
 
@@ -53,9 +53,43 @@ a subset of the backend surface, not a mutually exclusive list** — so a mis-co
 whitelist only costs latency, it does not break functionality.
 
 The frontend whitelist holds verification and read-only lookups only. Write operations
-(cancel, return, exchange, change address) stay on the backend, because only a backend task
-can suspend itself via `auth_required` and wait for the customer to approve. Frontend tools
-have no such mechanism, which would leave confirmation up to the prompt — and that does not hold.
+(cancel, return, change address, escalate) live on the backend surface exclusively.
+
+### Confirmation before a write is a data dependency, not a prompt request
+
+The original plan was to give write tools a `user_confirmed` parameter and ask the model
+via prompt to "only set true after asking the customer". That does not hold — the model can
+set it without asking, and we would only find out in the audit trail, after the money left.
+
+It is now two-phase:
+
+```text
+① cancel_order(orderId, reason)
+   → returns a preview ("will cancel #W1082334: 1× wireless headphones, ¥899.00 back to
+     the CMB credit card…") plus an approval_token
+   → does not touch the database
+
+② read the preview to the customer, obtain explicit consent
+
+③ cancel_order(orderId, reason, approval_token)
+   → validates the token → actually executes
+```
+
+**The model has no "skip approval" option — without a token it cannot execute.**
+
+Three details:
+
+- The token is bound to "action + subject", not a general pass. Otherwise approval to cancel
+  order A could cancel order B; partial returns additionally fold the item ids into the
+  fingerprint, so approval to return headphones cannot return the mouse.
+- The token is single-use, deleted on consumption. Otherwise one approval could be replayed
+  into several refunds.
+- The amount in the preview is computed by the executor, never by the model — a model that
+  gets a refund amount wrong is worse than one that cannot compute it.
+
+**No token is issued when the refund exceeds the ceiling**; it demands escalation instead.
+Merely writing "large amount, consider escalating" into the preview would let the model
+proceed anyway.
 
 ### Policy is split across three places
 
@@ -70,7 +104,7 @@ have no such mechanism, which would leave confirmation up to the prompt — and 
 ```bash
 cd examples/customer-service/service
 npm install
-npm test                    # 33 assertions: 15 data integrity + 18 service layer
+npm test                    # 56 assertions: 15 data integrity + 18 service + 23 write/approval
 npm start                   # defaults to http://127.0.0.1:3110
 ```
 
@@ -126,17 +160,21 @@ lose one and the matching scenario can no longer be demonstrated.
 
 In priority order:
 
-1. **Write tools and backend orchestration** (`cancel_order` / `return_items` /
-   `exchange_items` / `modify_address` / `transfer_to_human`). These must run on the
-   backend and use `auth_required`.
-2. **End-to-end probe of `auth_required`.** The chain is wired on the realtime side
+1. **End-to-end probe of `auth_required`.** The chain is wired on the realtime side
    (6 sites in `realtime-gateway.mjs`, 2 in `tool-call-handler.mjs`) but the cockpit example
    never needs it, so it **may never have run in a real voice session**. Whether it works
    affects how tools are split between surfaces.
-3. **Gateway composition and backend Agent** (mirroring `smart-cockpit/gateway` and `agent/`).
+2. **Gateway composition and backend Agent** (mirroring `smart-cockpit/gateway` and `agent/`).
+3. **Exchanges** (`exchange_items`): needs a stock check and a price-difference step on top
+   of the return flow.
 4. **Client UI**: customer card, orders, flow progress, active constraints and action log —
    five panels living in `client/src/projections/` as pure functions with unit tests.
 5. **Airline domain** (reuse the skeleton, swap in `domains/airline/`).
+
+> The approval mechanism and `auth_required` are two separate layers, neither replaces the
+> other: the token guarantees "no approval, no execution"; `auth_required` suspends the
+> backend task and carries the question to the customer's ear. Even if the `auth_required`
+> chain turns out to be broken, the token layer still holds.
 
 ## Relationship to τ²-bench, and one deliberate deviation
 

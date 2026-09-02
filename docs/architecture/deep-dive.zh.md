@@ -14,7 +14,7 @@
 1. **实时前端** — 全双工语音、简单直接回答，以及基本的本地时间/记忆工具。
 2. **后端 Agent** — 一个用户配置的办事 Agent，负责处理需要工具、文件、应用程序、代码、设备控制或多步执行的请求。
 
-后端可以是 OpenCode、OpenClaw、Qoder、Qwen Code、Kimi Code、Pi 等 ACP Agent，
+后端可以是 OpenCode、OpenClaw、Qoder、Qwen Code、MiniMax Code、Kimi Code、Pi 等 ACP Agent，
 也可以是远程 A2A Agent 或自定义 BackendPort Adapter。
 它内部可以使用工具、技能、Agent 或其他 Session。这些都是后端私有实现细节，
 不会创建额外的 qwen-audio-agent 层。ACP、A2A 或自定义协议细节只存在于各自
@@ -247,8 +247,8 @@ ACP Agent 轮次不设人为墙钟超时。初始协调轮次、委派目标轮�
 
 ## 8. 后端内部能力
 
-对于接受客户端提供的 MCP 服务器的 ACP 后端（包括 OpenCode、Qoder、Qwen Code 和
-Kimi Code），Gateway 向协调器注入相同的五个工具：Session list、start、
+对于接受客户端提供的 MCP 服务器的 ACP 后端（包括 OpenCode、Qoder、Qwen Code、
+MiniMax Code 和 Kimi Code），Gateway 向协调器注入相同的五个工具：Session list、start、
 send、status 和 cancel。OpenClaw ACP 不接受客户端提供的 MCP 服务器，
 因此相同的协调契约映射到 OpenClaw 的原生 Session 工具。`session_start`
 和 `session_send` 返回不透明的委派 ID。在任一成功后，后端 Agent 不得轮询、
@@ -332,7 +332,7 @@ HTTP/WebSocket 应用由可注入的组合根构造。导入应用工厂不会�
 配置和日志服务。
 
 共享适配器通常拥有一个 ACP stdio 子进程，并随 Gateway 一起停止。OpenCode、Qoder、
-Qwen Code 和 Kimi Code 直接作为 ACP Agent 运行；OpenCode 还可以额外启动其原生本地 Session
+Qwen Code、MiniMax Code 和 Kimi Code 直接作为 ACP Agent 运行；OpenCode 还可以额外启动其原生本地 Session
 UI 服务。当前 `OPENCODE_BASE_URL` 表示这个 UI 服务地址，不是远程 ACP 执行端点，
 因此 OpenCode 仍属于 `owned`。
 

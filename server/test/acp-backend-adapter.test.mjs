@@ -663,6 +663,20 @@ test('uses one ACP profile family while preserving backend differences', () => {
     sessionMcp: true,
     coordinatorMcpInstructions: true,
   })
+  const minimax = acpBackendProfile({
+    protocol: 'minimax',
+    root,
+    directory: '/work',
+    cliPath: '/opt/mcode',
+    permissionMode: 'full',
+  })
+  assert.equal(connection(minimax).command, '/opt/mcode')
+  assert.deepEqual(connection(minimax).args, ['acp'])
+  assert.deepEqual(minimax.sessionConfigOptions, [
+    { id: 'permissionMode', value: 'bypassPermissions' },
+  ])
+  assert.equal(minimax.externalMcp, true)
+  assert.equal(minimax.nativeSessionHistory, true)
   const openClaw = acpBackendProfile({
     protocol: 'openclaw',
     root,

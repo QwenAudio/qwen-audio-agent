@@ -99,6 +99,16 @@ test('detects a compatible native Qwen Code installation', () => {
   assert.match(legacy.issues[0], /最低版本 0\.21\.6/)
 })
 
+test('detects a native MiniMax Code installation', () => {
+  const ready = inspector({
+    backend: 'minimax',
+    commands: { mcode: '/bin/mcode' },
+  }).backends[0]
+  assert.equal(ready.ready, true)
+  assert.equal(ready.integration, 'native')
+  assert.equal(ready.backend.path, '/bin/mcode')
+})
+
 test('checks independent backend versions concurrently', async () => {
   const pending = []
   const reportPromise = inspectBackendSetupsAsync({

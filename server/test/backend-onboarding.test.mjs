@@ -12,6 +12,7 @@ const expectedCommands = new Map([
   ['openclaw', 'openclaw onboard'],
   ['qoder', 'qodercli login'],
   ['qwen', 'qwen'],
+  ['minimax', 'mcode login'],
   ['kimi', 'kimi login'],
   ['hermes', 'hermes setup --portal'],
   ['codebuddy', 'codebuddy'],

@@ -20,7 +20,7 @@ features:
   - title: Conversation stays responsive
     details: Speak naturally, interrupt replies, and keep talking while longer work continues asynchronously.
   - title: Use your existing agent
-    details: Connect Qwen Code, OpenCode, OpenClaw, other ACP agents, remote A2A agents, or your own adapter without replacing their tools, skills, or configuration.
+    details: Connect Qwen Code, OpenCode, MiniMax Code, OpenClaw, other ACP agents, remote A2A agents, or your own adapter without replacing their tools, skills, or configuration.
   - title: Work remains controllable
     details: Follow progress, answer permission requests, inspect results, and cancel work without blocking the voice conversation.
   - title: Choose your client

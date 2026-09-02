@@ -88,6 +88,13 @@ test('npm steps report locked packages and honor package overrides', () => {
     ['npm install -g @qwen-code/qwen-code@0.21.6'],
   )
 
+  const minimax = installSupport('minimax', { env: {}, platform: 'darwin' })
+  assert.equal(minimax.supported, true)
+  assert.equal(minimax.requiresConfirmation, true)
+  assert.match(minimax.steps[0].display, /filecdn\.minimax\.chat\/public\/install\.sh/)
+  const minimaxWin = installSupport('minimax', { env: {}, platform: 'win32' })
+  assert.match(minimaxWin.steps[0].display, /filecdn\.minimax\.chat\/public\/install\.ps1/)
+
   const harness = installSupport('deepseek', {
     env: {},
     platform: 'linux',

@@ -29,6 +29,7 @@ JSON 输出与 CLI 使用同一个共享检测模块，可供桌面版和其他�
 ```bash
 qwenaudio install codex
 qwenaudio install deepseek
+qwenaudio install minimax
 ```
 
 - 安装前先检测，只补齐缺失的组件：原生 ACP 后台装好即可用；本体缺失时装本体；
@@ -91,9 +92,10 @@ qwenaudio skill update                          # 更新已安装技能
 多技能仓库必须带 `--skill`（重复可装多个）；先用 `--list` 查看来源提供的技能。
 刻意不支持一次安装整个大型目录——每个技能描述都会注入后台系统提示词。
 
-技能落到各后台 CLI 自己的用户级目录（`~/.claude/skills/`、`~/.qwen/skills/`、
-`~/.openclaw/skills/`、`~/.agents/skills/` 等），因此直接使用这些 CLI 时也生效，
-桌面版与 CLI 共享同一套技能。
+技能落到已声明 skills.sh 安装器的后台 CLI 自己的用户级目录（`~/.claude/skills/`、
+`~/.qwen/skills/`、`~/.openclaw/skills/`、`~/.agents/skills/` 等），因此直接使用这些
+CLI 时也生效，桌面版与 CLI 共享同一套技能。MiniMax Code 的 Skill/Plugin 存储由
+其自身管理，当前不会由 `qwenaudio skill` 写入其私有目录。
 
 切换到——或新安装——缺少已安装技能的后台时，Gateway 会在启动时同步补齐：
 先对 skills.sh 锁文件（`~/.agents/.skill-lock.json`）做毫秒级本地检查，仅在确实
@@ -228,6 +230,44 @@ QWEN_CODE_WORKSPACE=
 ```
 
 当前仅支持本地 ACP 进程，暂不把 Qwen Code 的实验性网络服务作为远程后台。
+
+### MiniMax Code
+
+MiniMax Code（[官方 CLI 文档](https://agent.minimax.io/docs/cli/features)）通过官方
+`mcode acp` 以 ACP v1/stdio 接入。Gateway 只启动这个本地 ACP 进程；认证、Provider、
+模型、Session 和 Skill/Plugin 配置均由 MiniMax Code 自己管理。
+
+可使用统一安装命令安装官方 CLI：
+
+```bash
+qwenaudio install minimax
+```
+
+首次认证：
+
+```bash
+mcode login
+```
+
+Global 账号可使用 `mcode login --region global`；自定义 Provider 或 API Key 请运行
+`mcode provider` 配置。已经完成 MiniMax Code 自身配置后，只需选择后台：
+
+```dotenv
+AGENT_PROTOCOL=minimax
+QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
+```
+
+高级配置：
+
+```dotenv
+MINIMAX_CODE_BIN=
+MINIMAX_CODE_WORKSPACE=
+```
+
+建议不要用 `QWEN_AUDIO_AGENT_BACKEND_MODEL` 覆盖 MiniMax Code 的模型；如果显式设置，
+Gateway 只会在 MiniMax ACP 声明兼容的标准 `configOptions` 时尝试覆盖，否则会明确报错。
+由于 MiniMax Code 的公开文档没有声明 skills.sh 兼容的用户目录，`qwenaudio skill` 不会
+把技能复制到其私有 Skill/Plugin 存储，请使用 MiniMax Code 自己的管理流程。
 
 ### Kimi Code
 
@@ -449,7 +489,7 @@ PI_ACP_RUNTIME=auto
 暂不提供 Gateway Session 工具和第三层独立任务委派；Pi 会使用自身工具在当前
 Session 内完成工作。
 
-Kimi Code、Hermes、CodeBuddy、Codex、Claude Code 和 Pi 均由 Gateway 直接管理 ACP
+MiniMax Code、Kimi Code、Hermes、CodeBuddy、Codex、Claude Code 和 Pi 均由 Gateway 直接管理 ACP
 子进程，不接受 `--backend-url`。
 
 ## 后台权限模式
@@ -459,7 +499,7 @@ Kimi Code、Hermes、CodeBuddy、Codex、Claude Code 和 Pi 均由 Gateway 直�
 - `native`（默认）：权限由后台 Agent 自己判断和询问，Gateway 只负责原样转发。
 - `full`：启动时明确授予最高权限，后台可直接执行命令、读写文件，不再逐次确认。
 
-`full` 当前支持 OpenCode、Qoder、Qwen Code、Kimi Code、Hermes、CodeBuddy、Codex 和
+`full` 当前支持 OpenCode、Qoder、Qwen Code、MiniMax Code、Kimi Code、Hermes、CodeBuddy、Codex 和
 Claude Code。Gateway 会自动批准这些 ACP 后台发起的权限请求；此外 Kimi Code
 会通过 ACP Session 配置切换到不会再提问的 Auto 模式，Qoder 和 CodeBuddy CLI
 会使用 `--dangerously-skip-permissions`，OpenCode 会在受管进程的内联配置中为协调

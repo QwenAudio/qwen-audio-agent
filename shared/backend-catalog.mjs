@@ -1,4 +1,5 @@
 const HERMES_INSTALL_COMMAND = 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash'
+const MINIMAX_CODE_INSTALL_COMMAND = 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash'
 
 // Static backend metadata lives here so CLI, desktop, runtime setup and the
 // Gateway do not maintain parallel lists. Executable behavior stays in backend
@@ -122,6 +123,42 @@ const definitions = new Map([
       names: ['DASHSCOPE_API_KEY', 'OPENAI_API_KEY', 'OPENAI_BASE_URL'],
       prefixes: ['QWEN_CODE_'],
     },
+  }],
+  ['minimax', {
+    id: 'minimax',
+    label: 'MiniMax Code',
+    workspaceEnvironment: 'MINIMAX_CODE_WORKSPACE',
+    // MiniMax Code manages its own Skills and Plugins; no public skills.sh
+    // compatible installation directory is declared here.
+    skills: null,
+    setup: {
+      command: 'mcode',
+      executableEnvironment: 'MINIMAX_CODE_BIN',
+      integration: 'native',
+    },
+    lifecycle: {
+      installation: {
+        steps: [
+          {
+            kind: 'script',
+            command: MINIMAX_CODE_INSTALL_COMMAND,
+            platforms: ['darwin', 'linux'],
+          },
+          {
+            kind: 'script',
+            command: 'irm https://filecdn.minimax.chat/public/install.ps1 | iex',
+            platforms: ['win32'],
+          },
+        ],
+      },
+      configuration: { mode: 'backend-owned' },
+    },
+    onboarding: {
+      command: 'mcode login',
+      hint: '首次使用请运行 mcode login 完成 MiniMax Code 官方认证；如使用自定义 Provider，请运行 mcode provider。',
+    },
+    supportsFullPermission: true,
+    environment: { prefixes: ['MINIMAX_'] },
   }],
   ['kimi', {
     id: 'kimi',

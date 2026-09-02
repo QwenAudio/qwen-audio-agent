@@ -47,6 +47,19 @@ test('keeps each backend credential namespace isolated', () => {
   )
 })
 
+test('projects MiniMax Code variables without importing unrelated credentials', () => {
+  const projected = backendEnvironment('minimax', {
+    env: {
+      ...env,
+      MINIMAX_API_KEY: 'minimax-secret',
+    },
+  })
+  assert.equal(projected.MINIMAX_API_KEY, 'minimax-secret')
+  assert.equal(projected.ANTHROPIC_API_KEY, undefined)
+  assert.equal(projected.DEEPSEEK_API_KEY, undefined)
+  assert.equal(projected.QWEN_AUDIO_AGENT_AUTH_SECRET, undefined)
+})
+
 test('generic ACP forwards additional names only when explicitly requested', () => {
   const projected = backendEnvironment('acp', {
     env: {

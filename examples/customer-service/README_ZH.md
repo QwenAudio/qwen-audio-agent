@@ -2,8 +2,8 @@
 
 [English](README.md) | [中文](README_ZH.md)
 
-> **状态：进行中（draft）。** 服务层与零售域的完整工具面已可用（含写库与批准机制），
-> 客户端界面、Gateway 装配与后台 Agent 尚未接入。可运行的部分见下方「当前能跑什么」。
+> **状态：进行中（draft）。** 服务层、后台 A2A Agent 与批准链路已可用，
+> `auth_required` 全链已实测跑通。客户端界面与 Gateway 装配尚未接入。
 
 ## 这个示例要回答什么
 
@@ -89,10 +89,15 @@ true」。那守不住 —— 模型可以不问就填，我们只能事后在�
 ## 当前能跑什么
 
 ```bash
+# 业务服务（状态源 + 两个 MCP 工具面）
 cd examples/customer-service/service
-npm install
-npm test                    # 56 条：数据完整性 15 + 服务层 18 + 写库与批准 23
+npm install && npm test     # 56 条：数据完整性 15 + 服务层 18 + 写库与批准 23
 npm start                   # 默认 http://127.0.0.1:3110
+
+# 后台 A2A Agent（需要 DASHSCOPE_API_KEY）
+cd ../agent
+npm install && npm test     # 5 条：auth_required 全链（含拒绝路径）
+npm start                   # 默认 http://127.0.0.1:3120
 ```
 
 起来之后可以直接打两个 MCP 面：
@@ -124,6 +129,32 @@ curl -s -X POST 'http://127.0.0.1:3110/mcp/frontend?sessionId=demo' \
 | `POST /api/service/reset` | 一键回到初始状态（Demo 反复演示用） |
 | `POST /mcp/frontend` \| `POST /mcp/backend` | 两个 MCP 工具面 |
 
+## auth_required：已实测跑通
+
+这条链在框架的 realtime 侧代码一直是接通的（`realtime-gateway.mjs` 6 处、
+`tool-call-handler.mjs` 2 处），但座舱示例用不到它 —— 开天窗不需要客户批准。
+所以此前没有证据说明它真能跑。现在有了：
+
+```text
+工具返回 needsApproval
+  → executor 发 TASK_STATE_AUTH_REQUIRED + 预览消息
+  → adapter 转成 InputRequest{kind:'authorization', status:'pending'}
+  → respondInput({action:'accept'}) → 任务恢复 → 带令牌执行 → 订单 cancelled
+```
+
+拒绝路径同样测了：`{action:'decline'}` 之后订单保持 `pending`。
+
+### 接这条链时撞到的三个坑
+
+| 坑 | 症状 | 修法 |
+|---|---|---|
+| 首个事件不是 Task | `Received statusUpdate before initial 'Message'/'Task' event.` | 先 `publish(AgentEvent.task(...))` |
+| 恢复执行时重发 Task | `Stream ordering violation: received task in task lifecycle stream.` | 只在 `!requestContext.task` 时发 |
+| **恢复时丢了 approval_token** | 客户被问第二遍 —— 模型看不到上一轮的工具返回，只能重新取预览 | 挂起时把预览原文一起存下，恢复时拼进 objective |
+
+第三个是设计缺陷而不是测试问题：`runServiceAgent` 每次都是空对话开局，
+真实模型同样看不到上一轮的工具返回。预览是唯一能把令牌送回去的载体。
+
 ## 零售域的数据与场景
 
 `domains/retail/db.json` 裁剪自 τ²-bench retail 的结构：5 用户 / 20 订单 / 12 类商品。
@@ -145,11 +176,10 @@ curl -s -X POST 'http://127.0.0.1:3110/mcp/frontend?sessionId=demo' \
 
 按优先级：
 
-1. **`auth_required` 端到端探链**。这条链在 realtime 侧代码是接通的
-   （`realtime-gateway.mjs` 6 处、`tool-call-handler.mjs` 2 处），但座舱示例用不到它，
-   所以**可能从没在真实语音会话里跑过**。它通不通会影响工具归属的划分。
-2. **Gateway 装配与后台 Agent**（照抄 `smart-cockpit/gateway` 与 `agent/`）。
-3. **换货**（`exchange_items`）：要先查库存、算差价，比退货多两步。
+1. **Gateway 装配**（照抄 `smart-cockpit/gateway`）+ 真实语音会话验证。
+   目前 `auth_required` 是用 `A2ABackendAdapter` 直接对接验证的，
+   还没经过 realtime 语音那一层。
+2. **换货**（`exchange_items`）：要先查库存、算差价，比退货多两步。
 4. **客户端界面**：客户档案、订单、流程进度、生效的约束、操作流水五个面板，
    放 `client/src/projections/`（纯函数 + 单测）。
 5. **航空域**（复用骨架，换 `domains/airline/`）。

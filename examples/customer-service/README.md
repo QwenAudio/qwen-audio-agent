@@ -2,9 +2,9 @@
 
 [English](README.md) | [中文](README_ZH.md)
 
-> **Status: work in progress (draft).** The service layer and the full retail tool
-> surface are usable (including write operations and the approval mechanism). The client
-> UI, Gateway composition and backend Agent are not wired yet. See "What runs today".
+> **Status: work in progress (draft).** The service layer, the backend A2A Agent and the
+> approval chain are usable, and the full `auth_required` round-trip has been verified
+> end-to-end. The client UI and Gateway composition are not wired yet.
 
 ## What this example is for
 
@@ -102,10 +102,15 @@ proceed anyway.
 ## What runs today
 
 ```bash
+# Business service (state source + both MCP tool surfaces)
 cd examples/customer-service/service
-npm install
-npm test                    # 56 assertions: 15 data integrity + 18 service + 23 write/approval
+npm install && npm test     # 56: 15 data integrity + 18 service + 23 write/approval
 npm start                   # defaults to http://127.0.0.1:3110
+
+# Backend A2A Agent (needs DASHSCOPE_API_KEY)
+cd ../agent
+npm install && npm test     # 5: full auth_required chain, including the decline path
+npm start                   # defaults to http://127.0.0.1:3120
 ```
 
 Once running you can hit both MCP surfaces directly:
@@ -137,6 +142,34 @@ Other endpoints:
 | `POST /api/service/reset` | Reset to the initial state (needed for repeated demos) |
 | `POST /mcp/frontend` \| `POST /mcp/backend` | The two MCP tool surfaces |
 
+## auth_required: verified end-to-end
+
+The chain has always been wired on the framework's realtime side (6 sites in
+`realtime-gateway.mjs`, 2 in `tool-call-handler.mjs`), but the cockpit example never needs
+it — opening a sunroof requires no customer approval. So there was no evidence it actually
+worked. Now there is:
+
+```text
+tool returns needsApproval
+  → executor emits TASK_STATE_AUTH_REQUIRED with the preview message
+  → adapter turns it into InputRequest{kind:'authorization', status:'pending'}
+  → respondInput({action:'accept'}) → task resumes → executes with token → order cancelled
+```
+
+The decline path is covered too: after `{action:'decline'}` the order stays `pending`.
+
+### Three traps hit while wiring this
+
+| Trap | Symptom | Fix |
+|---|---|---|
+| First event is not a Task | `Received statusUpdate before initial 'Message'/'Task' event.` | publish `AgentEvent.task(...)` first |
+| Re-publishing Task on resume | `Stream ordering violation: received task in task lifecycle stream.` | only publish when `!requestContext.task` |
+| **Losing the approval_token on resume** | the customer gets asked twice — the model cannot see the previous tool result, so it fetches a fresh preview | store the preview text alongside the objective and fold it back in on resume |
+
+The third is a design flaw rather than a test artifact: `runServiceAgent` always starts from
+an empty conversation, so a real model equally cannot see the previous tool result. The
+preview is the only vehicle that can carry the token back.
+
 ## Retail data and scenarios
 
 `domains/retail/db.json` is trimmed from the τ²-bench retail structure: 5 users,
@@ -160,12 +193,10 @@ lose one and the matching scenario can no longer be demonstrated.
 
 In priority order:
 
-1. **End-to-end probe of `auth_required`.** The chain is wired on the realtime side
-   (6 sites in `realtime-gateway.mjs`, 2 in `tool-call-handler.mjs`) but the cockpit example
-   never needs it, so it **may never have run in a real voice session**. Whether it works
-   affects how tools are split between surfaces.
-2. **Gateway composition and backend Agent** (mirroring `smart-cockpit/gateway` and `agent/`).
-3. **Exchanges** (`exchange_items`): needs a stock check and a price-difference step on top
+1. **Gateway composition** (mirroring `smart-cockpit/gateway`) plus verification through a
+   real voice session. `auth_required` is currently verified by driving
+   `A2ABackendAdapter` directly; it has not yet gone through the realtime voice layer.
+2. **Exchanges** (`exchange_items`): needs a stock check and a price-difference step on top
    of the return flow.
 4. **Client UI**: customer card, orders, flow progress, active constraints and action log —
    five panels living in `client/src/projections/` as pure functions with unit tests.

@@ -25,6 +25,15 @@ import {
 } from '../src/index.mjs'
 import { isExitCommand } from '../src/terminal-commands.mjs'
 
+function readBufferedText(stream) {
+  const chunks = []
+  let chunk
+  while ((chunk = stream.read()) !== null) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)))
+  }
+  return Buffer.concat(chunks).toString()
+}
+
 test('supports /exit and keeps existing exit aliases', () => {
   assert.equal(isExitCommand('/exit'), true)
   assert.equal(isExitCommand('/quit'), true)
@@ -336,7 +345,7 @@ test('keeps a fixed composer active while asynchronous output arrives', async ()
   assert.deepEqual(submitted, ['你好'])
   assert.equal(closeRequests, 1)
   assert.deepEqual(rawModes, [true, false])
-  const output = stdout.read().toString()
+  const output = readBufferedText(stdout)
   assert.match(output, /\u001b\[\?1049h/)
   assert.match(output, /后台处理中/)
   assert.match(output, /Gateway 已连接 · 麦克风已开启/)
@@ -378,7 +387,7 @@ test('replaces a bracketed pasted path with an attachment anchor', async () => {
   assert.equal(applied, 2)
   assert.equal(changes.at(-1), '[Image 1] [Image 2]')
   assert.deepEqual(submitted, ['[Image 1] [Image 2]'])
-  const output = stdout.read().toString()
+  const output = readBufferedText(stdout)
   assert.match(output, /你 > \[Image 1\] \[Image 2\]/)
   assert.match(output, /\u001b\[\?2004h/)
   assert.match(output, /\u001b\[\?2004l/)

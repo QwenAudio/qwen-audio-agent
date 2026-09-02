@@ -20,7 +20,7 @@ features:
   - title: 对话始终流畅
     details: 自然说话、随时打断；耗时工作异步进行时，仍然可以继续交流。
   - title: 沿用你的 Agent
-    details: 接入 Qwen Code、OpenCode、OpenClaw、其他 ACP Agent、远程 A2A Agent 或自定义适配器，不改变原有工具、Skill 与配置。
+    details: 接入 Qwen Code、OpenCode、MiniMax Code、OpenClaw、其他 ACP Agent、远程 A2A Agent 或自定义适配器，不改变原有工具、Skill 与配置。
   - title: 工作始终可控
     details: 不阻塞语音对话，也能查看进度、处理权限、获取结果或取消工作。
   - title: 选择客户端形态

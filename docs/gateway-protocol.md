@@ -23,7 +23,7 @@ The three roles are intentionally independent:
 - **Backend Agent** is the user's execution environment. Gateway reaches it only through `BackendPort`, implemented by ACP, A2A, or a custom adapter.
 - **Client Environment** owns I/O, rendering, playback, local UX, sensors, client state, user behavior, and actions available in the surrounding environment.
 
-TUI, WebUI, and Desktop Orb are first-party reference clients. OpenCode, Qwen Code, Pi, OpenClaw, remote A2A agents, and other integrations are reference backends. Neither list limits the framework.
+TUI, WebUI, and Desktop Orb are first-party reference clients. OpenCode, Qwen Code, MiniMax Code, Pi, OpenClaw, remote A2A agents, and other integrations are reference backends. Neither list limits the framework.
 
 ## 2. Invariants
 

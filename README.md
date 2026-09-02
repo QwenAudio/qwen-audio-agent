@@ -100,6 +100,7 @@ For the full design and module breakdown, see the [architecture document](docs/a
 | OpenCode | Native ACP | One-click install + Bailian config | ★★★★★ |
 | OpenClaw | Built-in ACP bridge | One-click install + Bailian config | ★★★★★ |
 | Qoder | Native ACP | One-click install, user config required | ★★★★★ |
+| MiniMax Code | Native ACP | One-click install, user config required | ★★★★☆ |
 | Kimi Code | Native ACP | One-click install, user config required | ★★★★★ |
 | Hermes | Native ACP | One-click install, user config required | ★★★★☆ |
 | CodeBuddy | Native ACP | One-click install, user config required | ★★★★☆ |

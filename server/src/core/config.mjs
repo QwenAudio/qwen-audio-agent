@@ -87,6 +87,7 @@ export function resolveBackendModels(env = process.env) {
     openClaw: common ? `bailian/${name}` : '',
     qoder: common,
     qwen: common,
+    minimax: common,
     kimi: common,
     hermes: common,
     codeBuddy: common,
@@ -309,6 +310,11 @@ export const config = {
       model: String(backendModels.qwen).trim(),
       directory: resolveBackendWorkspace('qwen'),
       cliPath: String(process.env.QWEN_CODE_BIN || '').trim(),
+    },
+    minimax: {
+      model: String(backendModels.minimax).trim(),
+      directory: resolveBackendWorkspace('minimax'),
+      cliPath: String(process.env.MINIMAX_CODE_BIN || '').trim(),
     },
     kimi: {
       model: String(backendModels.kimi).trim(),

@@ -23,7 +23,8 @@
     "qoder",
     "kimi-code",
     "claude-code",
-    "deepseek"
+    "deepseek",
+    "minimax-code"
   ],
   "type": "module",
   "exports": {

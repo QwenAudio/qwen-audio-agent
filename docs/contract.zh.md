@@ -14,7 +14,7 @@
 版本号遵循 SemVer：新增能力升 minor；下文点名的任一端点或事件发生破坏性
 变更升 major。
 
-当前版本为 `5.0.0`。`5.0` 删除由后台控制的 Task `presentation` 包装：后台只返回
+当前版本为 `5.1.0`。`5.1` 增加用户显式开启的摄像头画面观察事件；`5.0` 删除由后台控制的 Task `presentation` 包装：后台只返回
 事实性 `content` 与可选的类型化 `artifacts`，前台 Chatbot 决定如何播报，各个对话
 客户端决定如何呈现。同一版本同时将现有 `WS /api/realtime` 事件模型正式发布为
 可替换的对话客户端边界。`4.0` 将原来的 `workId` / `jobId` 双重身份收敛为 Task 的唯一短
@@ -47,6 +47,7 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `tasks.unified-id-updates` | Task 只公开一个短 `id`；`task.updated` 携带 Adapter 归一化后的增量消息与产物 | `test/gateway-event-schema.test.mjs`、`server/test/task-manager.test.mjs` |
 | `messages.citations` | 最终助手 `transcript.final` 可以携带同一轮前台检索产生的规范化 Citation | `test/gateway-event-schema.test.mjs`、`server/test/realtime-presentation-runtime.test.mjs` |
 | `realtime.conversation-client-v1` | `WS /api/realtime`、公开事件常量与消息 Schema 共同构成可替换的文本/音频/多模态对话客户端边界 | `test/gateway-event-schema.test.mjs`、`test/custom-conversation-client.test.mjs` |
+| `realtime.camera-observation-v1` | WebUI 显式开启后，以约 1 FPS 发送最近最多 8 帧 JPEG 到支持视觉输入的 Realtime 前台；不自动创建模型响应，停止、断线、隐藏页面时释放相机 | `server/test/realtime-observation-runtime.test.mjs`、`web/test/camera-input.test.mjs` |
 | `desktop.orb-shell` | 悬浮球形态的主进程契约随包发布：`bindOrbShell` 应答随包 preload 发出的全部通道 | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` 持有悬浮球窗口配方；其 `destroy()` 是宿主的同步销毁路径（渲染进程退出才能确定性释放麦克风） | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` 覆盖默认锚点、显示器夹取与拖放持久化 | `desktop/test/orb-placement.test.mjs` |

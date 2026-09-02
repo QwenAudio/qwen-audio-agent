@@ -27,7 +27,7 @@ const omniTransportCapabilities = {
   textInput: true,
   audioInput: true,
   imageInput: false,
-  observationInput: false,
+  observationInput: true,
   nativeVideoInput: false,
 }
 

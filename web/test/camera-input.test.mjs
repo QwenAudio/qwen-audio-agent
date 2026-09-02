@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   CAMERA_IMAGE_TOO_LARGE,
+  OBSERVATION_MAX_BASE64_BYTES,
+  appendRecentObservationFrame,
+  blobToBase64,
   cameraFrameSize,
   captureCameraFrame,
   encodeCameraCanvas,
@@ -94,4 +97,46 @@ test('stops every track when closing a camera stream', () => {
     ],
   })
   assert.deepEqual(stopped, ['video', 'audio'])
+})
+
+test('keeps only the latest eight observation frames', () => {
+  const frames = Array.from({ length: 8 }, (_, sequence) => ({ sequence }))
+  const next = appendRecentObservationFrame(frames, { sequence: 8 })
+  assert.equal(next.length, 8)
+  assert.deepEqual(next.map(frame => frame.sequence), [1, 2, 3, 4, 5, 6, 7, 8])
+})
+
+test('converts a captured JPEG blob to its Base64 body', async () => {
+  const previousReader = globalThis.FileReader
+  class FakeFileReader {
+    readAsDataURL(blob) {
+      assert.equal(blob, 'blob')
+      this.result = 'data:image/jpeg;base64,/9j/fake'
+      this.onload?.()
+    }
+  }
+  globalThis.FileReader = FakeFileReader
+  try {
+    assert.equal(await blobToBase64('blob'), '/9j/fake')
+  } finally {
+    globalThis.FileReader = previousReader
+  }
+})
+
+test('rejects a Base64 observation body above the provider limit', async () => {
+  const previousReader = globalThis.FileReader
+  class FakeFileReader {
+    readAsDataURL() {
+      this.result = `data:image/jpeg;base64,${'a'.repeat(OBSERVATION_MAX_BASE64_BYTES + 1)}`
+      this.onload?.()
+    }
+  }
+  globalThis.FileReader = FakeFileReader
+  try {
+    await assert.rejects(blobToBase64('blob'), error => (
+      error.message === CAMERA_IMAGE_TOO_LARGE
+    ))
+  } finally {
+    globalThis.FileReader = previousReader
+  }
 })

@@ -1,6 +1,12 @@
 export const CAMERA_MAX_WIDTH = 1280
 export const CAMERA_MAX_HEIGHT = 720
 export const CAMERA_MAX_BYTES = 256 * 1024
+// DashScope measures the encoded Base64 payload, so keep the raw JPEG below
+// the provider's recommended ~190 KiB margin before converting it to Base64.
+export const OBSERVATION_MAX_BYTES = 190 * 1024
+export const OBSERVATION_MAX_BASE64_BYTES = 256 * 1024
+export const OBSERVATION_MAX_FRAMES = 8
+export const OBSERVATION_INTERVAL_MS = 1000
 export const CAMERA_IMAGE_TOO_LARGE = 'camera_image_too_large'
 
 export const CAMERA_JPEG_QUALITIES = Object.freeze([
@@ -35,6 +41,40 @@ export function cameraFrameSize(
 
 export function stopCameraStream(stream) {
   stream?.getTracks?.().forEach(track => track.stop())
+}
+
+export function blobToBase64(blob) {
+  if (!blob || typeof FileReader === 'undefined') {
+    return Promise.reject(new Error('camera_encoder_unavailable'))
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(reader.error || new Error('camera_encoder_unavailable'))
+    reader.onload = () => {
+      const dataUrl = String(reader.result || '')
+      const separator = dataUrl.indexOf(',')
+      if (separator < 0) {
+        reject(new Error('camera_encoder_unavailable'))
+        return
+      }
+      const base64 = dataUrl.slice(separator + 1)
+      if (base64.length > OBSERVATION_MAX_BASE64_BYTES) {
+        reject(new Error(CAMERA_IMAGE_TOO_LARGE))
+        return
+      }
+      resolve(base64)
+    }
+    reader.readAsDataURL(blob)
+  })
+}
+
+export function appendRecentObservationFrame(
+  frames,
+  frame,
+  maxFrames = OBSERVATION_MAX_FRAMES,
+) {
+  const next = [...(Array.isArray(frames) ? frames : []), frame]
+  return next.slice(-Math.max(1, Math.floor(Number(maxFrames) || OBSERVATION_MAX_FRAMES)))
 }
 
 export function encodeCameraCanvas(

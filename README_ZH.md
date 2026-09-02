@@ -136,8 +136,9 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 
 > 默认使用 DashScope 实时语音前台；也可切换为本地 [speech-to-speech 前台](docs/voice-frontends/speech-to-speech.zh.md)，无需云端 API Key。
 > `qwen3.5-omni-flash-realtime` 与 `qwen3.5-omni-plus-realtime`
-> 在模型层支持文本、音频和图片输入。本版本客户端传输层仅启用文本和音频；
-> 图片/画面帧与原生视频传输仍保持关闭，待对应客户端和 Gateway 链路实现。
+> 在模型层支持文本、音频和图片输入。WebUI 对这两个 Omni 模型还支持用户显式开启的
+> 摄像头连续观察：每秒发送一帧有界 JPEG，内存中最多保留最近 8 帧，观察本身不会创建
+> 模型回复。原生视频和旧版 Audio 模型的画面观察仍不可用。
 
 桌面版或 `qwenaudio config set --realtime-model <id>` 配置 Gateway 统一使用的模型；
 CLI 修改后需要重启 Gateway。WebUI 与 TUI 只显示当前生效模型，不单独覆盖模型。

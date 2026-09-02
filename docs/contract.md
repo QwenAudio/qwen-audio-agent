@@ -18,7 +18,8 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
-The current version is `5.0.0`. The `5.0` line removes the backend-controlled
+The current version is `5.1.0`. The `5.1` line adds explicit camera observation
+events; the `5.0` line removes the backend-controlled
 Task `presentation` envelope. A backend returns factual `content` plus optional
 typed `artifacts`; the foreground Chatbot decides how to speak, while each
 Conversation Client decides how to render. The same line publishes the existing
@@ -57,6 +58,7 @@ below instead of assuming the old list.
 | `tasks.unified-id-updates` | A Task exposes one short `id`; `task.updated` carries adapter-normalized incremental messages and artifacts | `test/gateway-event-schema.test.mjs`, `server/test/task-manager.test.mjs` |
 | `messages.citations` | Final assistant `transcript.final` events may carry normalized citations collected from frontend retrieval in the same turn | `test/gateway-event-schema.test.mjs`, `server/test/realtime-presentation-runtime.test.mjs` |
 | `realtime.conversation-client-v1` | `WS /api/realtime`, published event constants, and message schemas form the replaceable text/audio/multimodal Conversation Client boundary | `test/gateway-event-schema.test.mjs`, `test/custom-conversation-client.test.mjs` |
+| `realtime.camera-observation-v1` | After an explicit WebUI opt-in, sends at most one bounded JPEG frame per second and retains at most eight recent frames for a vision-capable Realtime frontend; it never creates a model response and releases the camera on stop, disconnect, or page hide | `server/test/realtime-observation-runtime.test.mjs`, `web/test/camera-input.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |

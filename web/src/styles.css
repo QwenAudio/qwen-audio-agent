@@ -77,8 +77,30 @@
 
 .camera-actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
+}
+
+.camera-observation-status {
+  color: #b8b0ff;
+  font-size: 12px;
+}
+
+.camera-observation {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(154, 139, 255, 0.45);
+  border-radius: 13px;
+  color: #e5e0ff;
+  background: rgba(109, 93, 252, 0.16);
+}
+
+.camera-observation.active {
+  border-color: rgba(126, 229, 197, 0.45);
+  color: #bff6e3;
+  background: rgba(48, 148, 117, 0.2);
 }
 
 .camera-actions .ghost {

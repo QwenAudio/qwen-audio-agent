@@ -30,7 +30,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.0.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.1.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -86,6 +86,9 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // replaceable Conversation Client boundary for audio, text, multimodal
   // input, transcripts, playback receipts, voice state and Task projections.
   'realtime.conversation-client-v1',
+  // The WebUI may explicitly open a camera and stream bounded JPEG snapshots
+  // to a vision-capable Realtime frontend without triggering responses.
+  'realtime.camera-observation-v1',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

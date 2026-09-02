@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { executeIdentityTool } from './identity/execute.mjs'
 import { executeOrdersTool } from './orders/execute.mjs'
+import { executeReturnsTool } from './returns/execute.mjs'
 
 // 【前台工具白名单】判据（计划 §7.2，实测修正版）：
 // 一次调用设完一件事、不依赖外部服务、且不涉及不可逆后果。
@@ -21,8 +22,11 @@ export const FRONTEND_TOOL_NAMES = Object.freeze([
 
 // MCP 标准标注 + 一个非标准的 monetaryHint。
 // destructiveHint 表达「不可逆」，monetaryHint 表达「涉及钱」——
-// 客服场景必须区分：转人工不可逆但不涉款，改地址涉客户利益但可改回。
-// §9 配置台靠这两个字段自动给出「该不该前台直出」的建议。
+// 客服场景必须区分这两件事：
+//   transfer_to_human  不可逆（会话交出去了）但不涉款
+//   modify_address     可以再改回来，也不涉款，但错了货会寄丢
+//   cancel_order       不可逆 + 涉款
+// 配置台靠这两个字段自动给出「该不该前台直出」的建议。
 const READ_ONLY = new Set([
   'identity_status', 'list_orders', 'get_order', 'check_variant',
 ])
@@ -74,6 +78,7 @@ function toolGroup(name, execute) {
 const GROUPS = Object.freeze([
   toolGroup('identity', executeIdentityTool),
   toolGroup('orders', executeOrdersTool),
+  toolGroup('returns', executeReturnsTool),
 ])
 
 const BY_NAME = new Map()

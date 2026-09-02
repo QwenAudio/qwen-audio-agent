@@ -1,0 +1,95 @@
+{
+  "domain": "returns",
+  "functions": [
+    {
+      "name": "cancel_order",
+      "label": "取消订单",
+      "enabled": true,
+      "description": "取消一笔未发货的订单。分两步：先不带 approval_token 调用一次，会返回要取消的内容与退款金额；把这些念给客户，得到明确同意后带上返回的 approval_token 再调用一次才真正执行。退款金额超过上限的会被拒绝并要求转人工。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "订单号，形如 #W1082334，也接受后四位。"
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["不需要了", "买错了"],
+            "description": "取消原因，只能是这两种之一。客户说别的原因时归到最接近的一种。"
+          },
+          "approval_token": {
+            "type": "string",
+            "description": "第一次调用返回的批准令牌。客户明确同意后才填，没有同意不要填。"
+          }
+        },
+        "required": ["orderId", "reason"]
+      }
+    },
+    {
+      "name": "return_items",
+      "label": "退货",
+      "enabled": true,
+      "description": "为已签收的订单办理退货。会自动按商品类别核对退货时限，超期的直接拒绝并说明天数。同样分两步：先取预览与退款金额，客户明确同意后带 approval_token 再调用。可以只退订单里的部分商品。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "订单号，也接受后四位。"
+          },
+          "itemIds": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "要退的商品款式编号，形如 KB_CLICKY_RGB_FULL，可从 get_order 的返回里拿到。不填表示整单退。"
+          },
+          "approval_token": {
+            "type": "string",
+            "description": "第一次调用返回的批准令牌。客户明确同意后才填。"
+          }
+        },
+        "required": ["orderId"]
+      }
+    },
+    {
+      "name": "modify_address",
+      "label": "修改收货地址",
+      "enabled": true,
+      "description": "修改未发货订单的收货地址。已发货的不能改。分两步：先取预览，把新地址全文念给客户确认后带 approval_token 再调用。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "订单号，也接受后四位。"
+          },
+          "address": {
+            "type": "string",
+            "description": "新的收货地址全文，包含省市区与门牌。"
+          },
+          "approval_token": {
+            "type": "string",
+            "description": "第一次调用返回的批准令牌。客户确认地址无误后才填。"
+          }
+        },
+        "required": ["orderId", "address"]
+      }
+    },
+    {
+      "name": "transfer_to_human",
+      "label": "转人工",
+      "enabled": true,
+      "description": "把通话转给人工。只在超出自身能力范围时使用：退款超上限、身份两种方式都核验不过、客户明确要求人工、遇到细则未覆盖的情形、或客户投诉需要升级。调用前要先向客户说明原因。不要用它回避可以自己办的业务。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "转接原因，一句话说清为什么自己办不了。会记入工单。"
+          }
+        },
+        "required": ["reason"]
+      }
+    }
+  ]
+}

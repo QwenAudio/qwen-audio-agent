@@ -8,6 +8,7 @@ function harness({
   coordinator = null,
   manager = new TaskManager(),
   memoryStore = null,
+  clientContext = {},
 } = {}) {
   const outputs = []
   const transcripts = new TurnTranscripts({ waitMs: 5 })
@@ -28,7 +29,7 @@ function harness({
     memoryService: memoryStore,
     notesStore: null,
     onMemoryChanged: () => {},
-    getClientContext: () => ({}),
+    getClientContext: () => clientContext,
   })
   return { outputs, manager, handler }
 }
@@ -125,8 +126,10 @@ test('handleScheduleReminder defaults type to reminder when not specified', asyn
   assert.equal(output.type, 'reminder')
 })
 
-test('handleScheduleReminder defaults recurrence to once', async () => {
-  const { outputs, handler } = harness()
+test('handleScheduleReminder preserves daily recurrence and client timezone', async () => {
+  const { outputs, manager, handler } = harness({
+    clientContext: { timeZone: 'Asia/Shanghai' },
+  })
   const future = new Date(Date.now() + 60_000).toISOString()
 
   await handler.handle({
@@ -141,6 +144,27 @@ test('handleScheduleReminder defaults recurrence to once', async () => {
 
   const [, output] = outputs[0]
   assert.equal(output.recurrence, 'daily')
+  assert.equal(
+    taskForId(manager, output.task_id).schedule.timeZone,
+    'Asia/Shanghai',
+  )
+})
+
+test('handleScheduleReminder defaults recurrence to once', async () => {
+  const { outputs, handler } = harness()
+  const future = new Date(Date.now() + 60_000).toISOString()
+
+  await handler.handle({
+    call_id: 'call-6',
+    name: 'schedule_reminder',
+    arguments: JSON.stringify({
+      execute_at: future,
+      reminder: '一次性提醒',
+    }),
+  }, { turnId: 'turn-1', turnGeneration: 1 })
+
+  const [, output] = outputs[0]
+  assert.equal(output.recurrence, 'once')
 })
 
 test('lists scheduled reminders and cancels the latest one without an id', async () => {

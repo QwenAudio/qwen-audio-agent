@@ -68,12 +68,18 @@ simultaneously. Set `QWAUDIO_CONFIG_DIR` or
 
 ## Obtain a DashScope API Key
 
-Alibaba Cloud Model Studio (Bailian) provides a
-[free trial quota](https://help.aliyun.com/zh/model-studio/new-free-quota) for Qwen Audio 3.0 Realtime. After creating an API Key,
-you can start using qwen-audio-agent for free.
+Alibaba Cloud Model Studio (Bailian) automatically provides eligible new users with a
+[new-user free quota](https://help.aliyun.com/zh/model-studio/new-free-quota), which normally does not require a separate claim.
+See the official [free-quota guide](https://help.aliyun.com/zh/model-studio/new-free-quota)
+for current eligibility, region, validity, and stop-when-exhausted rules. You can also
+open the [model usage page](https://help.aliyun.com/zh/model-studio/model-usage-statistics)
+to check remaining quota. Quota and billing rules can vary by region, model, and account
+status; follow the official Bailian pages for the current rules.
 
 1. Open the [API Key page](https://bailian.console.aliyun.com/?tab=model#/api-key) in the Bailian console,
    log in to your account, and click **Create API Key**.
 2. Copy the generated Key and fill it into `config.env` later. Do not publicly share or commit your API Key.
 
-For detailed instructions, see the [official Bailian documentation](https://help.aliyun.com/zh/model-studio/get-api-key).
+For detailed instructions, see [Get and configure an API Key](https://help.aliyun.com/zh/model-studio/get-api-key).
+After quota is exhausted, verified accounts may continue with pay-as-you-go billing, so
+enable the official stop-when-exhausted option when appropriate.

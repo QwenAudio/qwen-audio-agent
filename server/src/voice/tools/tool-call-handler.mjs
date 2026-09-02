@@ -32,6 +32,7 @@ import { describeWhen } from '../../conversation/session-digest.mjs'
 import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { BackendEventType } from '../../core/backend-events.mjs'
+import { normalizeRecurrence } from '../../task/recurrence.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
 
@@ -566,7 +567,7 @@ export class ToolCallHandler {
     }
 
     const type = args.type === 'task' ? 'task' : 'reminder'
-    const recurrence = args.recurrence || 'once'
+    const recurrence = normalizeRecurrence(args.recurrence)
 
     // Scheduled work resolves through the same single-backend runtime as a
     // live request. The runtime and owner identity outlive the voice session.
@@ -589,7 +590,13 @@ export class ToolCallHandler {
       ownerId: this.ownerId,
       sessionId: this.sessionId,
       turnId,
-      schedule: { at: executeAt, recurrence },
+      schedule: {
+        at: executeAt,
+        recurrence,
+        ...(recurrence === 'once'
+          ? {}
+          : { timeZone: this.getClientContext()?.timeZone }),
+      },
       type,
       runner,
     })

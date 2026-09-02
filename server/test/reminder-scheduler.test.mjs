@@ -3,13 +3,25 @@ import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
 import { ReminderScheduler } from '../src/task/reminder-scheduler.mjs'
 
-function createScheduledTask(manager, { at, objective = 'test', ownerId = 'owner', type = 'reminder', runner = null } = {}) {
+function createScheduledTask(manager, {
+  at,
+  objective = 'test',
+  ownerId = 'owner',
+  type = 'reminder',
+  recurrence = 'once',
+  timeZone = null,
+  runner = null,
+} = {}) {
   return manager.createScheduled({
     objective,
     ownerId,
     sessionId: 'voice',
     turnId: 'turn-1',
-    schedule: { at, recurrence: 'once' },
+    schedule: {
+      at,
+      recurrence,
+      ...(timeZone ? { timeZone } : {}),
+    },
     type,
     runner,
   })
@@ -121,4 +133,29 @@ test('reschedule does nothing when no future scheduled tasks exist', () => {
   const scheduler = new ReminderScheduler({ taskManager: manager })
   scheduler.reschedule()
   assert.equal(scheduler.timer, null)
+})
+
+test('fire creates the next daily occurrence while preserving the task runner', async () => {
+  const manager = new TaskManager()
+  const runner = async objective => ({ content: objective })
+  const firstAt = Date.parse('2026-01-01T09:30:00.000Z')
+  const task = createScheduledTask(manager, {
+    at: firstAt,
+    recurrence: 'daily',
+    timeZone: 'UTC',
+    runner,
+  })
+  const scheduler = new ReminderScheduler({ taskManager: manager })
+
+  scheduler.fire(firstAt + 1_000)
+  await new Promise(resolve => setImmediate(resolve))
+
+  const next = manager.list({ ownerId: 'owner' })
+    .find(item => item.status === 'scheduled')
+  assert.ok(next)
+  assert.notEqual(next.id, task.id)
+  assert.equal(next.schedule.at, Date.parse('2026-01-02T09:30:00.000Z'))
+  assert.equal(next.schedule.recurrence, 'daily')
+  assert.equal(next.schedule.timeZone, 'UTC')
+  assert.equal(manager.tasks.get(next.id).runner, runner)
 })

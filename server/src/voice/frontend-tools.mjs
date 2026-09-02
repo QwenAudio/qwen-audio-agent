@@ -329,7 +329,7 @@ const scheduleReminderTool = {
         recurrence: {
           type: 'string',
           enum: ['once', 'daily', 'weekly', 'weekdays'],
-          description: '重复模式，默认 once。',
+          description: '重复模式，默认 once；daily=每天，weekly=每周，weekdays=每周一至周五。重复提醒按客户端时区保留本地时间。',
         },
       },
       required: ['execute_at', 'reminder'],

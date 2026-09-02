@@ -26,7 +26,7 @@ function cockpitModel() {
       if (last.role === 'tool') return { content: last.content }
       const objective = last.content
       if (/空调/u.test(objective)) {
-        return toolCall('vehicle_climate_control', { action: 'set_temp', temperature: 22 })
+        return toolCall('vehicle_temperature_control', { action: 'set', temperature: 22 })
       }
       if (/五常地铁站/u.test(objective)) {
         return toolCall('navigation_start', {
@@ -109,7 +109,7 @@ test('runs core cockpit capabilities through A2A and MCP without UI actions', as
   })
 
   const vehicle = await submit('空调调到二十二度')
-  assert.match(vehicle.content, /空调当前开启.*22°C/u)
+  assert.match(vehicle.content, /已调整全车温度.*22°C/u)
   assert.equal(vehicle.presentation, undefined)
 
   const navigation = await submit('导航到杭州西湖')

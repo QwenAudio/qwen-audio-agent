@@ -12,10 +12,15 @@ test('adds a foreground fast path while retaining a complete backend orchestrati
     'weather',
     'vehicle_location_query',
     'vehicle_state_query',
+    'vehicle_climate_control',
+    'vehicle_temperature_control',
     'vehicle_window_control',
     'vehicle_sunroof_control',
-    'vehicle_headlights_control',
-    'vehicle_climate_control',
+    'vehicle_closure_control',
+    'vehicle_comfort_control',
+    'vehicle_light_control',
+    'vehicle_sound_control',
+    'vehicle_charging_control',
     'navigation_set_route_strategy',
     'navigation_set_voice',
     'navigation_set_view',
@@ -24,15 +29,20 @@ test('adds a foreground fast path while retaining a complete backend orchestrati
     'music_next',
     'music_previous',
   ])
-  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 28)
+  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 33)
   const backendNames = BACKEND_TOOL_DEFINITIONS.map(tool => tool.name)
   assert.ok(backendNames.includes('vehicle_sunroof_control'))
   assert.ok(backendNames.includes('vehicle_climate_control'))
+  assert.ok(backendNames.includes('vehicle_temperature_control'))
+  assert.ok(backendNames.includes('vehicle_closure_control'))
+  assert.ok(backendNames.includes('vehicle_comfort_control'))
+  assert.ok(backendNames.includes('vehicle_light_control'))
+  assert.ok(backendNames.includes('vehicle_sound_control'))
+  assert.ok(backendNames.includes('vehicle_charging_control'))
   assert.ok(backendNames.includes('navigation_set_route_strategy'))
   assert.ok(backendNames.includes('navigation_set_view'))
   assert.ok(backendNames.includes('weather'))
   assert.ok(backendNames.includes('vehicle_window_control'))
-  assert.ok(backendNames.includes('vehicle_headlights_control'))
   assert.ok(backendNames.includes('vehicle_location_query'))
   assert.ok(backendNames.includes('custom_skill_list'))
   assert.ok(backendNames.includes('custom_skill_create'))
@@ -55,10 +65,15 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
     'weather',
     'vehicle_location_query',
     'vehicle_state_query',
+    'vehicle_climate_control',
+    'vehicle_temperature_control',
     'vehicle_window_control',
     'vehicle_sunroof_control',
-    'vehicle_headlights_control',
-    'vehicle_climate_control',
+    'vehicle_closure_control',
+    'vehicle_comfort_control',
+    'vehicle_light_control',
+    'vehicle_sound_control',
+    'vehicle_charging_control',
     'navigation_set_route_strategy',
     'navigation_set_voice',
     'navigation_set_view',
@@ -74,6 +89,7 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
   assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_window_control))
   assert.equal(config.servers.cockpit.tools.vehicle_climate_control.enabled, true)
   assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_climate_control))
+  assert.equal(config.servers.cockpit.tools.vehicle_charging_control.enabled, true)
 })
 
 test('keeps asynchronous cockpit acknowledgements natural and action-specific', () => {

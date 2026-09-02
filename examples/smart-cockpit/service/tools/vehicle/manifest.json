@@ -1,7 +1,7 @@
 {
   "domain": "vehicle",
   "label": "车控",
-  "description": "座舱示例的车辆状态查询、车窗、天窗、大灯与空调控制能力。",
+  "description": "座舱示例的车辆状态查询、空调温控、车窗天窗、开闭件、舒适控制、灯光声音与充电控制能力。",
   "enabled": true,
   "functions": [
     {
@@ -17,7 +17,7 @@
     {
       "name": "vehicle_state_query",
       "label": "车况查询",
-      "description": "查询车窗、天窗、大灯、空调等车辆当前状态。",
+      "description": "查询车辆当前状态。用户询问是否开启、当前温度/档位、充电状态或整体车况时使用；不要把状态问题当成控制指令。",
       "enabled": true,
       "parameters": {
         "type": "object",
@@ -25,102 +25,31 @@
           "part": {
             "type": "string",
             "enum": [
+              "all",
+              "climate",
+              "temperature",
+              "comfort",
+              "windows",
               "windowFL",
               "windowFR",
               "windowRL",
               "windowRR",
-              "windows",
               "sunroof",
+              "closures",
+              "lights",
               "headlights",
-              "ac",
-              "all"
+              "sound",
+              "charging"
             ],
-            "description": "要查询的车辆部件。windows=全部车窗，all=全部车辆状态"
+            "description": "要查询的车辆部件或能力域。all=全部车辆状态"
           }
         }
       }
     },
     {
-      "name": "vehicle_window_control",
-      "label": "车窗控制",
-      "description": "打开或关闭一个车窗，或一次打开/关闭全部车窗。",
-      "enabled": true,
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "open",
-              "close"
-            ],
-            "description": "open=打开车窗，close=关闭车窗"
-          },
-          "window": {
-            "type": "string",
-            "enum": [
-              "windowFL",
-              "windowFR",
-              "windowRL",
-              "windowRR",
-              "windows"
-            ],
-            "description": "要控制的车窗。windows=全部车窗；不指定时默认全部车窗"
-          }
-        },
-        "required": [
-          "action"
-        ]
-      }
-    },
-    {
-      "name": "vehicle_sunroof_control",
-      "label": "天窗控制",
-      "description": "打开或关闭车辆天窗。",
-      "enabled": true,
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "open",
-              "close"
-            ],
-            "description": "open=打开天窗，close=关闭天窗"
-          }
-        },
-        "required": [
-          "action"
-        ]
-      }
-    },
-    {
-      "name": "vehicle_headlights_control",
-      "label": "大灯控制",
-      "description": "打开或关闭车辆大灯。",
-      "enabled": true,
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "action": {
-            "type": "string",
-            "enum": [
-              "open",
-              "close"
-            ],
-            "description": "open=打开大灯，close=关闭大灯"
-          }
-        },
-        "required": [
-          "action"
-        ]
-      }
-    },
-    {
       "name": "vehicle_climate_control",
       "label": "空调控制",
-      "description": "打开或关闭空调，并设置温度、制冷/制热模式或风量。",
+      "description": "开启或关闭空调预处理/空调，并兼容设置制冷制热模式和风量。设置温度请优先使用 vehicle_temperature_control。",
       "enabled": true,
       "parameters": {
         "type": "object",
@@ -128,17 +57,14 @@
           "action": {
             "type": "string",
             "enum": [
+              "start",
+              "stop",
               "open",
               "close",
-              "set_temp",
               "set_mode",
               "set_fan"
             ],
-            "description": "open=打开空调, close=关闭空调, set_temp=设置温度, set_mode=设置模式, set_fan=设置风量"
-          },
-          "temperature": {
-            "type": "number",
-            "description": "空调目标温度，范围 16~32，仅 set_temp 使用"
+            "description": "start/open=开启空调或预处理，stop/close=关闭空调或预处理，set_mode=设置制冷/制热模式，set_fan=设置风量"
           },
           "mode": {
             "type": "string",
@@ -150,7 +76,319 @@
           },
           "fan": {
             "type": "number",
-            "description": "空调风量档位，范围 1~5，仅 set_fan 使用"
+            "description": "空调风量档位，范围 1~8，仅 set_fan 使用"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "vehicle_temperature_control",
+      "label": "温度控制",
+      "description": "设置或调节座舱温度，覆盖主驾、副驾、后排或全车。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "set",
+              "increase",
+              "decrease"
+            ],
+            "description": "set=设置目标温度，increase=升高温度，decrease=降低温度"
+          },
+          "zone": {
+            "type": "string",
+            "enum": [
+              "driver",
+              "passenger",
+              "rear",
+              "front",
+              "all"
+            ],
+            "description": "温区。不指定时默认 all"
+          },
+          "temperature": {
+            "type": "number",
+            "description": "目标温度，范围 16~32，仅 set 使用"
+          },
+          "delta": {
+            "type": "number",
+            "description": "相对调整幅度，默认 1 度，仅 increase/decrease 使用"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "vehicle_window_control",
+      "label": "车窗控制",
+      "description": "打开、关闭、通风或设置一个/多个车窗开度。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "open",
+              "close",
+              "vent",
+              "set"
+            ],
+            "description": "open=打开，close=关闭，vent=通风/开缝，set=设置开度"
+          },
+          "window": {
+            "type": "string",
+            "enum": [
+              "windowFL",
+              "windowFR",
+              "windowRL",
+              "windowRR",
+              "windows",
+              "front",
+              "rear",
+              "left",
+              "right"
+            ],
+            "description": "要控制的车窗。不指定时默认全部车窗"
+          },
+          "level": {
+            "type": "number",
+            "description": "车窗开度百分比，范围 0~100，仅 set 使用"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "vehicle_sunroof_control",
+      "label": "天窗控制",
+      "description": "打开、关闭、通风/翘起或停止天窗动作。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "open",
+              "close",
+              "vent",
+              "tilt",
+              "stop"
+            ],
+            "description": "open=打开，close=关闭，vent/tilt=通风/翘起，stop=停止动作"
+          },
+          "position": {
+            "type": "string",
+            "enum": [
+              "front",
+              "rear",
+              "all"
+            ],
+            "description": "预留位置参数。不指定时默认 all"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "vehicle_closure_control",
+      "label": "开闭件控制",
+      "description": "打开或关闭前备箱、后备箱/尾门、充电口或加油口。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "front_trunk",
+              "rear_trunk",
+              "trunk",
+              "charge_port",
+              "fuel_port"
+            ],
+            "description": "要控制的开闭件"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "open",
+              "close"
+            ],
+            "description": "open=打开，close=关闭"
+          }
+        },
+        "required": [
+          "target",
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "vehicle_comfort_control",
+      "label": "舒适控制",
+      "description": "控制座椅加热、座椅通风/制冷、自动座椅温控、方向盘加热和方向盘自动加热。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "type": "string",
+            "enum": [
+              "seat_heater",
+              "seat_cooler",
+              "auto_seat_climate",
+              "steering_wheel_heater",
+              "steering_wheel_heat_level",
+              "auto_steering_wheel_heat"
+            ],
+            "description": "要控制的舒适功能"
+          },
+          "seat": {
+            "type": "string",
+            "enum": [
+              "driver",
+              "passenger",
+              "rearLeft",
+              "rearRight",
+              "front",
+              "rear",
+              "all"
+            ],
+            "description": "座位。不指定时默认 driver；方向盘功能忽略该参数"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "open",
+              "close",
+              "set"
+            ],
+            "description": "open=开启，close=关闭，set=设置档位或开关"
+          },
+          "level": {
+            "type": "number",
+            "description": "档位。座椅加热/通风范围 0~3，方向盘加热范围 0~2"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "自动舒适功能开关，仅 auto_* 目标使用"
+          }
+        },
+        "required": [
+          "target",
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "vehicle_light_control",
+      "label": "灯光控制",
+      "description": "打开/关闭灯光，或短暂闪灯用于定位车辆。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "open",
+              "close",
+              "flash"
+            ],
+            "description": "open=打开，close=关闭，flash=闪灯"
+          },
+          "light": {
+            "type": "string",
+            "enum": [
+              "headlights",
+              "all"
+            ],
+            "description": "灯光对象。不指定时默认 headlights"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "vehicle_sound_control",
+      "label": "声音控制",
+      "description": "鸣笛或通过外部扬声器播放定位提示音。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "honk",
+              "boombox"
+            ],
+            "description": "honk=鸣笛，boombox=播放外部提示音"
+          },
+          "soundId": {
+            "type": "string",
+            "description": "外部提示音标识，仅 boombox 使用"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "vehicle_charging_control",
+      "label": "充电控制",
+      "description": "开始/停止充电、设置充电上限/电流、设置续航充电模式或管理充电计划。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "stop",
+              "set_limit",
+              "set_amps",
+              "standard",
+              "max_range",
+              "add_schedule",
+              "remove_schedule",
+              "set_scheduled"
+            ],
+            "description": "充电动作"
+          },
+          "limitPercent": {
+            "type": "number",
+            "description": "充电上限百分比，范围 50~100，仅 set_limit 使用"
+          },
+          "amps": {
+            "type": "number",
+            "description": "充电电流，范围 5~48，仅 set_amps 使用"
+          },
+          "schedule": {
+            "type": "object",
+            "description": "充电计划，建议包含 id、time、enabled 等字段"
+          },
+          "scheduleId": {
+            "type": "string",
+            "description": "要移除的充电计划 id"
           }
         },
         "required": [

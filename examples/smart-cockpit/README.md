@@ -19,6 +19,16 @@ conversation, GCP Client SDK, BackendPort, A2A, and MCP seams.
 The backend Agent may derive independent Sessions as an optional third-layer
 execution space. The bundled example instead runs a compact Qwen3.8-Flash tool loop.
 
+## Demo
+
+Use natural voice to start vehicle-control and navigation tasks, showing how
+realtime foreground conversation, backend Agent execution, and cockpit UI state
+work together.
+
+> Turn on sound for the full experience.
+
+https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
+
 ## Structure at a glance
 
 | Directory / process | Default address | Role and contract | Change it when... |

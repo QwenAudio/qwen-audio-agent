@@ -33,7 +33,7 @@ const SCHEMA_HINT = `{
     {
       "name": "简短名称，如 refund_ceiling",
       "value": 数字或 null,
-      "unit": "元 | 天 | 次",
+      "unit": "元 | 天 | 小时 | 件 | 次",
       "applies_to": "适用范围，如 单笔退款",
       "quote": "policy 原文",
       "confidence": "certain | ambiguous"
@@ -41,6 +41,17 @@ const SCHEMA_HINT = `{
   ],
   "category_windows": [
     { "category": "类别代码", "days": 数字, "quote": "policy 原文" }
+  ],
+  "lookup_tables": [
+    {
+      "name": "这张表决定什么，如 free_baggage_allowance",
+      "inputs": ["决定结果的维度名，如 memberTier", "cabin"],
+      "rows": [
+        { "when": { "memberTier": "维度取值", "cabin": "维度取值" }, "then": "结果（数字或字符串）" }
+      ],
+      "quote": "policy 原文里的一行或表头",
+      "confidence": "certain | ambiguous"
+    }
   ],
   "escalation_triggers": [
     { "trigger": "触发条件", "quote": "policy 原文", "confidence": "certain | ambiguous" }
@@ -83,6 +94,18 @@ quote 必须是你在【用户给你的这份文件里】真实读到的句子�
   days 必须填成数字。原文用表格给出各类别的天数时，category 填类别代码，days 填天数。
   同一条信息不要既放进 category_windows 又放进 thresholds，选前者。
   填不出数字的不要放进这一项，改放到 gaps。
+
+关于 lookup_tables：
+  当一个结果由【两个或更多维度交叉】决定时用这一项。典型形态是原文里的二维表：
+  行是一个维度，列是另一个维度，格子里是结果。
+  inputs 写维度名，rows 里每一格一行。
+  单维度的规则不要放这里 —— 那属于 thresholds 或 category_windows。
+
+【不适用的类别要留空数组，不要硬套】
+  这份 schema 是通用的，不是每个域都用得上每一项。
+  比如「按商品类别计算的退货天数」只有零售域才有；航空域没有这个概念，
+  那 category_windows 就该是 []，而不是把舱位等级塞进去、天数填 0。
+  宁可少抽一项，也不要为了填满结构而制造一条不存在的规则。
 
 只输出一个 JSON 对象，不要任何解释文字，结构如下：
 ${SCHEMA_HINT}`
@@ -164,8 +187,10 @@ export function annotate(parsed, lines) {
     const fuzzy = lines.findIndex(line => strip(line).includes(loose))
     if (fuzzy >= 0) return fuzzy + 1
     // 再退一步：markdown 表格里一条信息跨多行，模型会把表头说明和
-    // 表体行拼成一句。拆开后只要有一段能落回去，就把那一行当作依据。
-    for (const piece of needle.split(/[：:，。]/).map(strip).filter(part => part.length >= 4)) {
+    // 表体行拼成一句（「经济舱 改签手续费 200 元」）。拆开后只要有
+    // 一段能落回去，就把那一行当作依据 —— 宁可定到表头行，
+    // 也比完全落不回去强。切分符包括空白，因为表格拼接只靠空格分隔。
+    for (const piece of needle.split(/[：:，。\s]/).map(strip).filter(part => part.length >= 4)) {
       const partial = lines.findIndex(line => strip(line).includes(piece))
       if (partial >= 0) return partial + 1
     }
@@ -193,21 +218,40 @@ export function annotate(parsed, lines) {
 
   const categoryWindows = (parsed.category_windows || []).map(item => {
     const annotated = withLine(item)
-    if (typeof item.days === 'number') return annotated
-    // 【天数能从 quote 里解析出来就不该麻烦人】模型常把类别放对、
-    // 却漏填 days，而 quote 里明明写着「30 天」。这是确定信息，
-    // 让它进待决定栏只会淹没真正需要判断的那几条。
-    const parsedDays = Number(String(item.quote || '').match(/(\d+)\s*天/)?.[1])
-    if (Number.isFinite(parsedDays) && parsedDays > 0) {
-      return { ...annotated, days: parsedDays, daysFrom: 'quote' }
+    const days = typeof item.days === 'number'
+      ? item.days
+      // 【天数能从 quote 里解析出来就不该麻烦人】模型常把类别放对、
+      // 却漏填 days，而 quote 里明明写着「30 天」。这是确定信息，
+      // 让它进待决定栏只会淹没真正需要判断的那几条。
+      : Number(String(item.quote || '').match(/(\d+)\s*天/)?.[1])
+    // 【days <= 0 是可疑的】实测到一次：把航空 policy 丢给抽取器，
+    // 它把三个舱位当成「类别时限」，天数全填 0 —— 而 0 恰好是个
+    // 合法数字，直接进了确定栏。而「0 天的退货窗口」没有业务意义。
+    if (!Number.isFinite(days) || days <= 0) {
+      return { ...annotated, confidence: 'ambiguous', rejectedReason: 'missing_or_zero_days' }
     }
-    return { ...annotated, confidence: 'ambiguous', rejectedReason: 'missing_days' }
+    return { ...annotated, days, daysFrom: typeof item.days === 'number' ? 'model' : 'quote' }
+  })
+
+  // 二维以上的交叉表。行李额那种「会员等级 × 舱位」的 3×3 表
+  // 在旧 schema 里无处存放，于是整张表被默默丢掉。
+  const lookupTables = (parsed.lookup_tables || []).map(item => {
+    const annotated = withLine(item)
+    const rows = Array.isArray(item.rows) ? item.rows : []
+    const inputs = Array.isArray(item.inputs) ? item.inputs : []
+    // 单维度的不该放这里 —— 那属于 thresholds。
+    // 行数少于维度数的乘积说明表没抽全，不能当确定项用。
+    if (inputs.length < 2 || rows.length < 2) {
+      return { ...annotated, confidence: 'ambiguous', rejectedReason: 'not_a_cross_table' }
+    }
+    return { ...annotated, inputs, rows }
   })
 
   return {
     orderRules,
     thresholds: (parsed.thresholds || []).map(withLine),
     categoryWindows,
+    lookupTables,
     escalationTriggers: (parsed.escalation_triggers || []).map(withLine),
     gaps: parsed.gaps || [],
   }
@@ -232,6 +276,14 @@ export function partition(extracted) {
 
   const byValue = (item, kind, value) => {
     const entry = { kind, ...item }
+    // 【rejectedReason 优先】annotate 里已经判定过的降级不能在这里被翻盘。
+    // 实测到过一次：模型把延误补偿档位塞进 category_windows、days 填 0，
+    // annotate 正确地打了 missing_or_zero_days，但它没删 days 字段 ——
+    // 而这里只看「value 是不是有限数字」，于是 0 又把它放进了确定栏。
+    if (item.rejectedReason) {
+      undecided.push(entry)
+      return
+    }
     if (typeof value === 'number' && Number.isFinite(value) && item.quoteVerified) {
       determined.push(entry)
     } else {
@@ -250,6 +302,13 @@ export function partition(extracted) {
   for (const item of extracted.escalationTriggers) bySemantics(item, 'escalation')
   for (const item of extracted.categoryWindows) byValue(item, 'window', item.days)
   for (const item of extracted.thresholds) byValue(item, 'threshold', item.value)
+  // 交叉表：只要结构完整且 quote 可核就算确定，和数值类一致。
+  // 它们是从原文表格抄下来的，不靠语义判断。
+  for (const item of extracted.lookupTables || []) {
+    const entry = { kind: 'lookup', ...item }
+    if (item.rejectedReason || !item.quoteVerified) undecided.push(entry)
+    else determined.push(entry)
+  }
   for (const gap of extracted.gaps) {
     undecided.push({ kind: 'gap', ...gap, confidence: 'ambiguous', quoteVerified: false })
   }

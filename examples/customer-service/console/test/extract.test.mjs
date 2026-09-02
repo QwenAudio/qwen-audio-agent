@@ -94,7 +94,60 @@ test('quote 里也没有天数时才降级', () => {
   const out = annotate({
     category_windows: [{ category: 'furniture', quote: '## 十、禁止事项' }],
   }, LINES)
-  assert.equal(out.categoryWindows[0].rejectedReason, 'missing_days')
+  assert.equal(out.categoryWindows[0].rejectedReason, 'missing_or_zero_days')
+})
+
+test('days 为 0 也算降级', () => {
+  // 【实测依据】把航空 policy 丢给抽取器，它把三个舱位当成「类别时限」、
+  // 天数全填 0 —— 而 0 恰好是个合法数字，直接进了确定栏。
+  // 而「0 天的退货窗口」没有业务意义。
+  const out = annotate({
+    category_windows: [{ category: '经济舱', days: 0, quote: '| 服饰鞋包 | apparel | 30 天 |' }],
+  }, LINES)
+  assert.equal(out.categoryWindows[0].rejectedReason, 'missing_or_zero_days')
+})
+
+test('降级过的项不会在 partition 里被翻盘', () => {
+  // 【回归】annotate 打了 rejectedReason 但没删 days 字段，
+  // 而 partition 的 byValue 只看「value 是不是有限数字」——
+  // 于是 days=0 又把它放进了确定栏。两处判据必须一致。
+  const { determined, undecided } = partition(annotate({
+    category_windows: [{ category: '经济舱', days: 0, quote: '| 服饰鞋包 | apparel | 30 天 |' }],
+  }, LINES))
+  assert.equal(determined.length, 0)
+  assert.equal(undecided[0].rejectedReason, 'missing_or_zero_days')
+})
+
+test('二维交叉表被抽成 lookup', () => {
+  // 【实测依据】行李额那种「会员等级 × 舱位」的 3×3 表在旧 schema 里
+  // 无处存放，整张表被默默丢掉。lookup_tables 就是为它加的。
+  const { determined } = partition(annotate({
+    lookup_tables: [{
+      name: 'free_baggage_allowance',
+      inputs: ['memberTier', 'cabin'],
+      rows: [
+        { when: { memberTier: 'regular', cabin: 'economy' }, then: 1 },
+        { when: { memberTier: 'gold', cabin: 'business' }, then: 4 },
+      ],
+      quote: '| 服饰鞋包 | apparel | 30 天 |',
+      confidence: 'certain',
+    }],
+  }, LINES))
+  assert.equal(determined.length, 1)
+  assert.equal(determined[0].kind, 'lookup')
+  assert.equal(determined[0].rows.length, 2)
+})
+
+test('单维度的表不算交叉表', () => {
+  const out = annotate({
+    lookup_tables: [{
+      name: 'change_fee',
+      inputs: ['cabin'],
+      rows: [{ when: { cabin: 'economy' }, then: 200 }],
+      quote: '| 服饰鞋包 | apparel | 30 天 |',
+    }],
+  }, LINES)
+  assert.equal(out.lookupTables[0].rejectedReason, 'not_a_cross_table')
 })
 
 test('有数值且 quote 可核的阈值进确定栏', () => {

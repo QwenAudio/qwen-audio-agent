@@ -22,9 +22,25 @@ const EMPTY = Object.freeze({
   preconditions: Object.freeze({}),
   decisions: Object.freeze({}),
   enums: Object.freeze({}),
+  thresholds: Object.freeze({}),
 })
 
 const cache = new Map()
+
+// 下划线开头的键是注释，不是配置项。JSON 不支持注释，而这些文件是给人读、
+// 给人改的 —— 每张表旁边说明「为什么这么排」比另开一份文档有用。
+// 约定成 _ 前缀而不是别的：JSON Schema 生态里这是惯例。
+function isComment(key) {
+  return key.startsWith('_')
+}
+
+function withoutComments(source) {
+  const out = {}
+  for (const [key, value] of Object.entries(source || {})) {
+    if (!isComment(key)) out[key] = value
+  }
+  return out
+}
 
 export function loadGuards(domain) {
   if (cache.has(domain)) return cache.get(domain)
@@ -45,17 +61,19 @@ export function loadGuards(domain) {
     }
     throw new Error(`guards.json for ${domain} is not valid JSON: ${error.message}`)
   }
+  const decisions = withoutComments(parsed.decisions)
   // 【装载时就校验每张表】否则一张缺兜底行的表要等到某个未覆盖的输入
   // 走到它才炸，而那时已经在通话中了。
-  for (const [name, table] of Object.entries(parsed.decisions || {})) {
+  for (const [name, table] of Object.entries(decisions)) {
     validateTable(table, `${domain}.${name}`)
   }
   const guards = Object.freeze({
     version: parsed.version || 1,
     domain: parsed.domain || domain,
-    preconditions: Object.freeze(parsed.preconditions || {}),
-    decisions: Object.freeze(parsed.decisions || {}),
-    enums: Object.freeze(parsed.enums || {}),
+    preconditions: Object.freeze(withoutComments(parsed.preconditions)),
+    decisions: Object.freeze(decisions),
+    enums: Object.freeze(withoutComments(parsed.enums)),
+    thresholds: Object.freeze(withoutComments(parsed.thresholds)),
   })
   cache.set(domain, guards)
   return guards
@@ -114,4 +132,11 @@ export function decide(guards, name, inputs) {
 export function enumValues(guards, name) {
   const values = guards.enums?.[name]
   return Array.isArray(values) ? values : null
+}
+
+// 单值阈值（行李费、保险费、免费退窗口）不值得各开一张决策表。
+// 拉不到时返回 fallback 而不是抛错：缺一个费率不应该让整通电话停掉。
+export function threshold(guards, name, fallback = null) {
+  const value = guards.thresholds?.[name]
+  return typeof value === 'number' ? value : fallback
 }

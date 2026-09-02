@@ -28,6 +28,7 @@ function harness({
   getTurnId = () => 'turn-one',
 } = {}) {
   const outputs = []
+  const toolResultsReady = []
   const ensuredResponses = []
   const transcripts = new TurnTranscripts({ waitMs: 5 })
   const frontend = {
@@ -65,8 +66,16 @@ function harness({
     frontendRetrieval,
     frontendKnowledge,
     frontendToolSources,
+    onToolResultReady: fields => toolResultsReady.push(fields),
   })
-  return { outputs, ensuredResponses, manager, transcripts, handler }
+  return {
+    outputs,
+    toolResultsReady,
+    ensuredResponses,
+    manager,
+    transcripts,
+    handler,
+  }
 }
 
 test('executes discovered external tools through the shared boundary', async () => {
@@ -147,6 +156,11 @@ test('executes an explicitly enabled state-changing external tool inline', async
   ]])
   assert.equal(kit.outputs[0][1].text, '已打开主驾车窗')
   assert.equal(kit.outputs[0][1].status, 'ok')
+  assert.deepEqual(kit.toolResultsReady, [{
+    callId: 'window-control',
+    turnId: 'turn-one',
+    toolName: 'mcp__cockpit__vehicle_window_control',
+  }])
 })
 
 function taskForId(manager, taskId) {

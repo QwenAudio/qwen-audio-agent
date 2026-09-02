@@ -121,6 +121,7 @@ export class ToolCallHandler {
     respondInput,
     permissionPolicy,
     onPermissionDeliveryFailed = () => {},
+    onToolResultReady = () => {},
     presenceController = null,
     onAgentActivity = () => {},
     inputAssets = null,
@@ -147,6 +148,7 @@ export class ToolCallHandler {
     this.respondInput = respondInput
     this.permissionPolicy = permissionPolicy
     this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
+    this.onToolResultReady = onToolResultReady
     this.presenceController = presenceController
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
@@ -324,6 +326,16 @@ export class ToolCallHandler {
       ...frontendOptions
     } = options || {}
     const tool = this.activeToolEntries.get(callId)
+    try {
+      this.onToolResultReady({
+        callId,
+        turnId,
+        toolName: tool?.name || '',
+        ...(taskId ? { taskId } : {}),
+      })
+    } catch {
+      // Observability hooks must never affect tool execution or delivery.
+    }
     const bounded = boundFrontendToolResult(
       output,
       tool?.policy.maxResultBytes,

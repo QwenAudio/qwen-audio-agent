@@ -74,6 +74,13 @@ qwen-audio-agent 使用统一的本地结构化日志，默认写入：
 Authorization、Cookie、密码和 Secret 字段会在写入前脱敏；默认不记录麦克风音频、
 用户转写正文、模型回复正文、任务目标或任务结果。
 
+分析前台工具延迟时，可以按 `sessionId` 和 `turnId` 串联
+`realtime.provider.speech_stopped`、`realtime.tool_call.received`、
+`realtime.tool_call.result_ready` 与 `realtime.playback.started`；工具失败记为
+`realtime.tool_call.failed`。其中第一个事件表示 Realtime Provider 确认的
+端点，不是用户真实发声的最后一个采样；如需测量更早的“真实话音结束→端点检测”，
+需使用客户端采集时间戳或受控的实时 PCM 回放。
+
 桌面版可在“设置 → 应用 → 日志”中打开日志目录。默认日志级别为 `info`，单个文件
 达到 10 MiB 后轮转，总共保留 5 份。可通过以下环境变量调整：
 

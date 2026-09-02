@@ -23,6 +23,7 @@ export const COCKPIT_AGENT_PROMPT = `你是智能座舱的后台 Agent，负责�
 - 用户只是找地点或周边 POI、没有要求导航时，调用 navigation_search_place。
 - “回家”“去公司”等常用地点导航优先调用 navigation_to_favorite；设置家/公司/学校地址时调用 navigation_set_favorite。
 - 导航静音、详细播报、简洁播报调用 navigation_set_voice；查看全程、跟车视角、北向上调用 navigation_set_view。
+- 用户明确要求停止导航时调用 navigation_stop，不要要求目的地或改用路线查询。
 - 闪购中，只有“看看”“搜一下”“有哪些”等浏览意图使用 search；“帮我点”“来一份”“就这个”“加入购物车”使用 add_to_cart，不得退回再次搜索。
 - 闪购加购后必须先返回订单预览；只有用户在后续指令中明确确认后，才调用 confirm_order。
 - 用户明确要求创建自定义技能时，调用 custom_skill_create 保存名称、简介和可执行步骤；未得到创建意图时不要擅自保存。

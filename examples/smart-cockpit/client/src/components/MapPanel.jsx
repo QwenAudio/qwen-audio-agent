@@ -1,6 +1,7 @@
 import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { navigationRouteKey, navigationRouteView } from '../projections/navigation-route'
+import { routeFlowFrame } from '../projections/route-flow'
 
 window._AMapSecurityConfig = {
   securityJsCode: import.meta.env.VITE_AMAP_SECRET,
@@ -222,13 +223,14 @@ export default function MapPanel({
     map.add([traveled, ahead, flow])
     routeFlowLayersRef.current = [traveled, ahead, flow]
 
-    const segmentSize = Math.max(6, Math.floor(points.length * 0.08))
     const startTime = performance.now()
     const tick = (now) => {
-      const cycle = 2200
-      const progress = ((now - startTime) % cycle) / cycle
-      const startIndex = Math.floor(progress * Math.max(1, points.length - segmentSize))
-      flow.setPath(points.slice(startIndex, Math.min(points.length, startIndex + segmentSize)))
+      const frame = routeFlowFrame(points, now - startTime)
+      flow.setPath(frame.path)
+      if (frame.done) {
+        stopRouteFlow()
+        return
+      }
       flowRafRef.current = requestAnimationFrame(tick)
     }
 

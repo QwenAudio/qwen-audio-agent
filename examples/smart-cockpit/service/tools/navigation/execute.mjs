@@ -28,7 +28,7 @@ function normalizeStrategy(value, fallback = 0) {
 }
 
 function currentOrigin(state) {
-  return state.navigation?.currentLocation || DEFAULT_ORIGIN.location
+  return state.location?.coordinates || DEFAULT_ORIGIN.location
 }
 
 function activeNavigation(state) {
@@ -361,15 +361,21 @@ async function changeDestination(args, context) {
 }
 
 async function setRouteStrategy(args, context) {
-  const { services, snapshot } = context
+  const { cockpitId, services, snapshot, store } = context
   const state = snapshot()
-  if (!activeNavigation(state)) {
-    return toolResult('当前没有路线，请先告诉我要去哪里', state, [], {
-      navigation: state.navigation,
-    })
-  }
   const strategy = normalizeStrategy(args.strategy, null)
   if (strategy === null) return toolResult('请提供有效的路线偏好', state, [], { navigation: state.navigation })
+  if (!activeNavigation(state)) {
+    const nextState = store.update(cockpitId, ['navigation'], next => {
+      next.navigation.strategy = strategy
+    })
+    return toolResult(
+      `已将后续路线偏好设为${STRATEGY_LABELS.get(strategy)}`,
+      nextState,
+      ['navigation'],
+      { navigation: nextState.navigation },
+    )
+  }
   const existing = await resolveExistingRouteLocations(state.navigation, services)
   if (!existing) return toolResult('当前路线信息不完整，请重新发起导航', state, [], { navigation: state.navigation })
   const output = await replanExistingRoute({
@@ -436,7 +442,7 @@ async function navigateToFavorite(args, context) {
     status: 'navigating',
     destination: favorite.name || FAVORITE_LABELS[favoriteType] || '常用地点',
     waypoints: [],
-    strategy: normalizeStrategy(args.strategy, 0),
+    strategy: normalizeStrategy(args.strategy, snapshot().navigation.strategy),
     context: {
       ...context,
       services: {
@@ -601,7 +607,7 @@ export async function executeNavigationTool(name, args, context) {
     status: name === 'navigation_start' ? 'navigating' : 'preview',
     destination,
     waypoints,
-    strategy: normalizeStrategy(args.strategy, 0),
+    strategy: normalizeStrategy(args.strategy, snapshot().navigation.strategy),
     context,
   })
 }

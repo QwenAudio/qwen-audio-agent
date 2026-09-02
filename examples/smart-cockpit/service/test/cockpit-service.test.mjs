@@ -10,16 +10,28 @@ import { CockpitStateStore } from '../state-store.mjs'
 function fixture() {
   let timestamp = 1_700_000_000_000
   const activities = []
+  const routeOrigins = []
   const store = new CockpitStateStore({ now: () => timestamp++ })
   const service = new CockpitService({
     store,
     now: () => timestamp++,
     random: () => 0.25,
     services: {
+      async vehicleLocation() {
+        return {
+          name: '测试车位',
+          city: '测试市',
+          district: '测试区',
+          address: '测试路1号',
+          lng: 121.1,
+          lat: 31.2,
+        }
+      },
       async resolvePlace(name) {
         return name === '不存在' ? null : name === '西湖' ? '120.1,30.2' : '120.2,30.3'
       },
       async drivingRoute(origin, destination) {
+        routeOrigins.push(origin)
         return {
           origin,
           destination,
@@ -43,9 +55,38 @@ function fixture() {
   return {
     service,
     activities,
+    routeOrigins,
     options: { cockpitId: 'car-one', onActivity: event => activities.push(event) },
   }
 }
+
+test('queries a live vehicle location without changing unrelated cockpit state', async () => {
+  const { service, options } = fixture()
+  const output = await service.execute('vehicle_location_query', {}, options)
+
+  assert.match(output.content, /测试车位/u)
+  assert.deepEqual(output.changed, [])
+  assert.equal(output.data.location.coordinates, '121.1,31.2')
+  assert.equal(service.snapshot('car-one').location.source, 'vehicle')
+})
+
+test('keeps local navigation controls independent from the location adapter', async () => {
+  let requests = 0
+  const service = new CockpitService({
+    services: {
+      async vehicleLocation() {
+        requests += 1
+        return null
+      },
+    },
+  })
+
+  await service.execute('navigation_set_view', { viewMode: 'overview' })
+  await service.execute('navigation_set_voice', { mute: true })
+  await service.execute('navigation_stop', {})
+
+  assert.equal(requests, 0)
+})
 
 test('keeps isolated authoritative state per cockpit', async () => {
   const { service } = fixture()
@@ -86,7 +127,7 @@ test('updates music state without returning UI actions', async () => {
 })
 
 test('projects navigation progress and route state separately', async () => {
-  const { service, activities, options } = fixture()
+  const { service, activities, options, routeOrigins } = fixture()
   const output = await service.execute('navigation_start', {
     destination: '西湖',
     waypoints: ['黄龙体育中心', '城西银泰'],
@@ -97,6 +138,7 @@ test('projects navigation progress and route state separately', async () => {
   assert.deepEqual(output.data.navigation.waypoints, ['黄龙体育中心', '城西银泰'])
   assert.equal(output.data.navigation.map.markers.length, 3)
   assert.equal(output.data.navigation.map.polylines.length, 3)
+  assert.equal(routeOrigins[0], '121.1,31.2')
   assert.deepEqual(activities.map(event => event.status), [
     'searching_destination',
     'destination_locked',
@@ -107,6 +149,20 @@ test('projects navigation progress and route state separately', async () => {
     'planning_route',
     'navigation_started',
   ])
+})
+
+test('persists a route preference before a destination is selected', async () => {
+  const { service, options } = fixture()
+  const preference = await service.execute('navigation_set_route_strategy', {
+    strategy: 13,
+  }, options)
+  assert.match(preference.content, /后续路线偏好设为高速优先/u)
+  assert.equal(preference.data.navigation.strategy, 13)
+
+  const route = await service.execute('navigation_start', {
+    destination: '西湖',
+  }, options)
+  assert.equal(route.data.navigation.strategy, 13)
 })
 
 test('publishes scenario activity independently from the call observer', async () => {
@@ -305,7 +361,14 @@ test('resets cockpit state and publishes a full state update', async () => {
   assert.equal(reset.version, 1)
   assert.equal(reset.navigation.favorites.home, null)
   assert.equal(reset.music.playing, false)
-  assert.deepEqual(events.at(-1).changed, ['vehicle', 'navigation', 'music', 'flashbuy', 'weather'])
+  assert.deepEqual(events.at(-1).changed, [
+    'vehicle',
+    'location',
+    'navigation',
+    'music',
+    'flashbuy',
+    'weather',
+  ])
   assert.equal(events.at(-1).state.navigation.status, 'idle')
 })
 

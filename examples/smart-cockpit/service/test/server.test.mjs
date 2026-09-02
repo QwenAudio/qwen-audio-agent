@@ -181,17 +181,19 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   t.after(() => frontend.close())
 
   const backendTools = await backend.listTools()
-  assert.equal(backendTools.tools.length, 27)
+  assert.equal(backendTools.tools.length, 28)
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_climate_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'flashbuy'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'weather'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_window_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_headlights_control'))
+  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_location_query'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'custom_skill_create'))
 
   const frontendTools = await frontend.listTools()
   assert.deepEqual(frontendTools.tools.map(tool => tool.name), [
     'weather',
+    'vehicle_location_query',
     'vehicle_state_query',
     'vehicle_window_control',
     'vehicle_sunroof_control',
@@ -200,6 +202,10 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
     'navigation_set_route_strategy',
     'navigation_set_voice',
     'navigation_set_view',
+    'navigation_stop',
+    'music_pause',
+    'music_next',
+    'music_previous',
   ])
 
   const output = await backend.callTool({
@@ -215,6 +221,13 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   })
   assert.equal(weather.isError, undefined)
   assert.match(weather.content[0].text, /杭州，晴，25°/u)
+
+  const location = await frontend.callTool({
+    name: 'vehicle_location_query',
+    arguments: {},
+  })
+  assert.equal(location.isError, undefined)
+  assert.match(location.content[0].text, /云谷园区/u)
 
   const window = await frontend.callTool({
     name: 'vehicle_window_control',
@@ -254,12 +267,16 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   assert.equal(strategy.isError, undefined)
   assert.equal(strategy.structuredContent.navigation.strategy, 4)
 
-  const unavailable = await frontend.callTool({
+  const pause = await frontend.callTool({
     name: 'music_pause',
     arguments: {},
   })
-  assert.equal(unavailable.isError, true)
-  assert.match(unavailable.content[0].text, /not available on this MCP surface/u)
+  assert.equal(pause.isError, undefined)
+  const stopped = await frontend.callTool({
+    name: 'navigation_stop',
+    arguments: {},
+  })
+  assert.equal(stopped.isError, undefined)
 
   const state = await fetch(`${server.origin}/api/cockpit/state?cockpitId=mcp-car`)
     .then(response => response.json())
@@ -270,6 +287,7 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   assert.equal(state.weather.dayweather, '晴')
   assert.equal(state.navigation.viewMode, 'overview')
   assert.equal(state.navigation.strategy, 4)
+  assert.equal(state.navigation.status, 'idle')
 })
 
 test('serves persistent custom skill management to the scenario UI', async t => {

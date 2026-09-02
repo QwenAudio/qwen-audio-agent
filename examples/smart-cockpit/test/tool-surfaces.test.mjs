@@ -10,6 +10,7 @@ import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from '../gateway/spawn-thinking-to
 test('adds a foreground fast path while retaining a complete backend orchestration surface', () => {
   assert.deepEqual(FRONTEND_TOOL_DEFINITIONS.map(tool => tool.name), [
     'weather',
+    'vehicle_location_query',
     'vehicle_state_query',
     'vehicle_window_control',
     'vehicle_sunroof_control',
@@ -18,8 +19,12 @@ test('adds a foreground fast path while retaining a complete backend orchestrati
     'navigation_set_route_strategy',
     'navigation_set_voice',
     'navigation_set_view',
+    'navigation_stop',
+    'music_pause',
+    'music_next',
+    'music_previous',
   ])
-  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 27)
+  assert.equal(BACKEND_TOOL_DEFINITIONS.length, 28)
   const backendNames = BACKEND_TOOL_DEFINITIONS.map(tool => tool.name)
   assert.ok(backendNames.includes('vehicle_sunroof_control'))
   assert.ok(backendNames.includes('vehicle_climate_control'))
@@ -28,6 +33,7 @@ test('adds a foreground fast path while retaining a complete backend orchestrati
   assert.ok(backendNames.includes('weather'))
   assert.ok(backendNames.includes('vehicle_window_control'))
   assert.ok(backendNames.includes('vehicle_headlights_control'))
+  assert.ok(backendNames.includes('vehicle_location_query'))
   assert.ok(backendNames.includes('custom_skill_list'))
   assert.ok(backendNames.includes('custom_skill_create'))
   assert.ok(backendNames.includes('custom_skill_load'))
@@ -47,6 +53,7 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
   assert.equal(config.servers.cockpit.url, '${COCKPIT_FRONTEND_MCP_URL}')
   assert.deepEqual(Object.keys(config.servers.cockpit.tools), [
     'weather',
+    'vehicle_location_query',
     'vehicle_state_query',
     'vehicle_window_control',
     'vehicle_sunroof_control',
@@ -55,9 +62,15 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
     'navigation_set_route_strategy',
     'navigation_set_voice',
     'navigation_set_view',
+    'navigation_stop',
+    'music_pause',
+    'music_next',
+    'music_previous',
   ])
   assert.equal(config.servers.cockpit.tools.vehicle_window_control.enabled, true)
   assert.equal(config.servers.cockpit.tools.navigation_set_view.enabled, true)
+  assert.equal(config.servers.cockpit.tools.vehicle_location_query.enabled, true)
+  assert.equal(config.servers.cockpit.tools.navigation_stop.enabled, true)
   assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_window_control))
   assert.equal(config.servers.cockpit.tools.vehicle_climate_control.enabled, true)
   assert.ok(!('approval' in config.servers.cockpit.tools.vehicle_climate_control))
@@ -70,7 +83,8 @@ test('keeps asynchronous cockpit acknowledgements natural and action-specific', 
   assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /不固定话术/u)
   assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /忠实保留用户选定的商品和当前动作/u)
   assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /不要把加购改写为搜索/u)
-  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /导航视图、导航播报和当前路线偏好/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /导航视图、导航播报、当前路线偏好/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /停止导航/u)
 
   const frontendConfig = JSON.parse(readFileSync(
     new URL('../gateway/frontend-mcp.json', import.meta.url),

@@ -181,7 +181,7 @@
     {
       "name": "navigation_set_route_strategy",
       "label": "切换路线偏好",
-      "description": "在当前导航或路线预览中切换路线偏好，并基于当前目的地和途经点重新规划路线。用户说“换成不走高速”“改成少收费”“避开拥堵”时使用；如果用户同时给出新目的地，应使用 navigation_start 或 navigation_route_query。",
+      "description": "设置路线偏好。有当前导航或路线预览时，基于当前目的地和途经点重新规划；无路线时，作为后续导航的默认偏好。用户说“换成不走高速”“改成少收费”“避开拥堵”时使用；如果用户同时给出新目的地，应使用 navigation_start 或 navigation_route_query。",
       "enabled": true,
       "parameters": {
         "type": "object",

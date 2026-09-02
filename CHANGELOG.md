@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 实现 `schedule_reminder` 的 `daily`、`weekly` 和 `weekdays` 重复触发；每次触发
+  会生成下一周期的独立任务，并按客户端时区保留本地时间。
 - 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
   `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
   模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。

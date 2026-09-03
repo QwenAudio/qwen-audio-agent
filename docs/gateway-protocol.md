@@ -474,6 +474,13 @@ Routing modes are:
 
 `AgentDeliveryRuntime` owns user-speech blocking, response serialization, sleep deferral, retry, and playback acknowledgement. Realtime Provider adapters translate the delivery into their own wire protocol. Raw Client JSON is never pasted into a model prompt.
 
+Gateway-originated events that the frontend Agent must perceive use the same
+boundary. For example, after Realtime content is rejected, the Gateway excludes
+the failed turn, restores the connection, and then delivers
+`realtime.content_rejected`. The model receives only a sanitized instruction to
+ask the user to change topics; provider errors, error codes, and rejected source
+content never enter the replacement Session.
+
 ## 7. Presence and sleep
 
 Both sleep modes converge on the same PresenceController and Client Action path, but only user-requested sleep requires a model Tool Call.

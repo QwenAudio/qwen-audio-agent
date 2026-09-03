@@ -74,7 +74,9 @@ function backendSupportsImages(runtime) {
   const capabilities = description?.capabilities || {}
   const promptCapabilities = capabilities.promptCapabilities
     || capabilities.prompt_capabilities
-  if (promptCapabilities && promptCapabilities.image === false) return false
+  if (promptCapabilities && typeof promptCapabilities.image === 'boolean') {
+    return promptCapabilities.image === true
+  }
   const inputModes = capabilities.inputModes || capabilities.input_modes
   if (Array.isArray(inputModes) && inputModes.length) {
     return inputModes.some(imageInputMode)

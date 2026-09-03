@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>客服工作台</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e4e7ee;
+    --dim: #8b93a7; --accent: #5b9dff; --warn: #e0a33a; --danger: #e05c5c;
+    --ok: #4caf7d; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; height: 100vh; display: flex; flex-direction: column;
+    background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 14px; padding: 12px 18px;
+    border-bottom: 1px solid var(--line); background: var(--panel); flex-shrink: 0;
+  }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .grow { flex: 1; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); display: inline-block; }
+  .dot.on { background: var(--ok); }
+  .dot.busy { background: var(--warn); }
+  button, input, select {
+    background: #1e222b; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 7px 11px; font: inherit; font-size: 13px;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06122b; font-weight: 600; }
+
+  main { flex: 1; display: grid; grid-template-columns: 1fr 400px; min-height: 0; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .chat { display: flex; flex-direction: column; min-height: 0; }
+  .log { flex: 1; overflow-y: auto; padding: 16px 18px; }
+  .composer { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
+  .composer input { flex: 1; }
+  aside {
+    border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 40px;
+  }
+  @media (max-width: 1000px) { aside { border-left: none; border-top: 1px solid var(--line); } }
+
+  .turn { margin-bottom: 14px; max-width: 82%; }
+  .turn.user { margin-left: auto; }
+  .who { font-size: 11.5px; color: var(--dim); margin-bottom: 3px; }
+  .turn.user .who { text-align: right; }
+  .bubble {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 12px; white-space: pre-wrap;
+  }
+  .turn.user .bubble { background: #1d2836; border-color: #2c3a4d; }
+  .cites { margin-top: 6px; font-size: 12px; color: var(--dim); }
+  .cites b { color: var(--accent); font-weight: 500; }
+
+  h2 {
+    font-size: 12px; color: var(--dim); text-transform: uppercase;
+    letter-spacing: .06em; margin: 18px 0 8px; font-weight: 600;
+  }
+  h2:first-child { margin-top: 0; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 9px 11px; margin-bottom: 7px; font-size: 13px;
+  }
+  .card.ok { border-left: 3px solid var(--ok); }
+  .card.bad { border-left: 3px solid var(--danger); }
+  .card.warn { border-left: 3px solid var(--warn); }
+  .row { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .tag {
+    font-size: 11px; padding: 1px 6px; border-radius: 4px;
+    background: #262b36; color: var(--dim); font-family: var(--mono); white-space: nowrap;
+  }
+  .tag.ok { background: #4caf7d22; color: var(--ok); }
+  .tag.bad { background: #e05c5c22; color: var(--danger); }
+  .tag.warn { background: #e0a33a22; color: var(--warn); }
+  .muted { color: var(--dim); font-size: 12.5px; }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .empty { color: var(--dim); font-size: 13px; padding: 4px 0; }
+  .hint { color: var(--dim); font-size: 12.5px; margin-bottom: 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<header>
+  <h1>客服工作台</h1>
+  <span class="dot" id="dot"></span>
+  <span class="muted" id="status">连接中…</span>
+  <span class="grow"></span>
+  <button id="reset">重置会话</button>
+</header>
+
+<main>
+  <div class="chat">
+    <div class="log" id="log">
+      <div class="hint">
+        这是客户侧的视角。右侧三个面板显示同一通话在服务端留下的痕迹 ——
+        身份核验状态、订单数据、以及每一次工具调用的审计记录。<br>
+        试试：「你好，我想退货」 / 「我的邮箱是 liming3021@example.com」 /
+        「订单 #W2378156 的键盘想换 clicky 轴」
+      </div>
+    </div>
+    <div class="composer">
+      <input id="say" placeholder="替客户说一句话…" autocomplete="off">
+      <button id="send" class="primary">发送</button>
+    </div>
+  </div>
+
+  <aside>
+    <h2>客户</h2>
+    <div id="identity"></div>
+    <h2>订单</h2>
+    <div id="orders"></div>
+    <h2 id="audit-title">工具调用审计</h2>
+    <div id="audit"></div>
+  </aside>
+</main>
+
+<script type="module">
+const $ = id => document.getElementById(id)
+const el = (tag, cls, html) => {
+  const node = document.createElement(tag)
+  if (cls) node.className = cls
+  if (html !== undefined) node.innerHTML = html
+  return node
+}
+const esc = value => String(value ?? '').replace(/[&<>"]/g,
+  ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
+
+// 【sessionId 必须和网关启动时那个一致】
+// 网关把它烘进了 CS_FRONTEND_MCP_URL（见 gateway/server.mjs 里的说明），
+// 换一个只会换掉 WebSocket 那一侧：模型的前台工具还打在 default，
+// 于是它看到「尚未核验」，连订单都查不到。
+const SESSION = new URLSearchParams(location.search).get('sessionId') || 'default'
+// 【全部走同源相对路径】server.mjs 把 /api/* 代理给网关与 service。
+// 直连 18889 会被网关的 DNS rebinding 防护拓回（origin not allowed）——
+// 它要求 origin 的 host 等于请求的 host，跳端口绕不过去。
+const API = ''
+
+const STATUS_TEXT = {
+  pending: '未发货', shipped: '已发货', delivered: '已签收',
+  cancelled: '已取消', exchanging: '换货中', returning: '退货中',
+}
+const CATEGORY_TEXT = {
+  apparel: '服饰鞋包', accessory: '配件', digital: '数码电子',
+  appliance: '家用电器', furniture: '家具',
+}
+
+// ── 对话区 ──
+
+const seenMessages = new Set()
+
+function renderTurn({ role, content, source }) {
+  const turn = el('div', `turn ${role === 'user' ? 'user' : ''}`)
+  turn.append(el('div', 'who', role === 'user' ? '客户' : '客服'))
+  turn.append(el('div', 'bubble', esc(content)))
+  // source 区分「前台模型直接说的」和「后台任务汇报的」——
+  // 后者意味着有个 spawn_thinking 在跑，客户听到的其实是两个模型接力。
+  if (source === 'agent-presentation') {
+    turn.append(el('div', 'cites', '<b>后台</b> 这句来自后台 Agent 的汇报'))
+  }
+  $('log').append(turn)
+  $('log').scrollTop = $('log').scrollHeight
+}
+
+// 对话从 REST 拉，不从 WebSocket 拿。
+// 【踩过】助手侧的话不在 WS 事件流里，而在 /api/conversations/:id/messages。
+// 我一开始只连了 WS，什么都没看到，据此写下「助手 transcript 不回传」——
+// 那是错的，web 界面一直好好显示着它。
+async function pullMessages() {
+  try {
+    const response = await fetch(`${API}/api/conversations/${SESSION}/messages`)
+    if (!response.ok) return
+    const payload = await response.json()
+    const messages = Array.isArray(payload) ? payload : (payload.messages || [])
+    for (const message of messages) {
+      const key = message.id || `${message.seq}:${message.role}:${message.content}`
+      if (seenMessages.has(key)) continue
+      seenMessages.add(key)
+      if (!String(message.content || '').trim()) continue
+      renderTurn(message)
+    }
+  } catch {
+    // 网关没起来时静默 —— 状态灯已经在报了
+  }
+}
+
+// ── 业务面板 ──
+
+function renderIdentity(state) {
+  const host = $('identity')
+  host.innerHTML = ''
+  const identity = state.identity || {}
+  if (!identity.verified) {
+    const card = el('div', 'card warn')
+    card.append(el('div', 'row', '<span class="tag warn">尚未核验</span>'))
+    card.append(el('div', 'muted',
+      '核验之前不该谈任何订单，连「有没有这笔单」都不能确认 —— 细则第十条。'))
+    host.append(card)
+    return
+  }
+  const user = (state.db?.users || []).find(item => item.userId === identity.userId)
+  const card = el('div', 'card ok')
+  card.append(el('div', 'row',
+    `<span class="tag ok">已核验</span><b>${esc(user?.name || identity.userId)}</b>`
+    + `<span class="tag">${esc(identity.method === 'email' ? '邮箱' : '姓名+邮编')}</span>`))
+  if (user) {
+    card.append(el('div', 'muted mono', esc(user.email || '')))
+    card.append(el('div', 'muted', esc(user.address || '')))
+  }
+  host.append(card)
+}
+
+function renderOrders(state) {
+  const host = $('orders')
+  host.innerHTML = ''
+  const identity = state.identity || {}
+  if (!identity.verified) {
+    host.append(el('div', 'empty', '核验后显示该客户的订单。'))
+    return
+  }
+  const orders = (state.db?.orders || []).filter(order => order.userId === identity.userId)
+  if (!orders.length) {
+    host.append(el('div', 'empty', '这位客户名下没有订单。'))
+    return
+  }
+  for (const order of orders) {
+    const card = el('div', 'card')
+    card.append(el('div', 'row',
+      `<b class="mono">${esc(order.orderId)}</b>`
+      + `<span class="tag">${esc(STATUS_TEXT[order.status] || order.status)}</span>`
+      + `<span class="muted">￥${Number(order.total).toFixed(2)}</span>`))
+    for (const item of order.items || []) {
+      const product = (state.db?.products || []).find(entry => entry.productId === item.productId)
+      const category = CATEGORY_TEXT[product?.category] || product?.category || ''
+      card.append(el('div', 'muted',
+        `· ${esc(item.name || product?.name || item.productId)} ×${item.quantity || 1}`
+        + (category ? `　<span class="tag">${esc(category)}</span>` : '')))
+    }
+    if (order.deliveredAt) {
+      const days = Math.floor((Date.now() - new Date(order.deliveredAt).getTime()) / 86_400_000)
+      // 签收天数直接显示出来 —— 它是退货资格判定的输入，
+      // 摆在这里能让人一眼看出模型说的「超期」对不对。
+      card.append(el('div', 'muted', `签收于 ${order.deliveredAt.slice(0, 10)}，距今 ${days} 天`))
+    }
+    host.append(card)
+  }
+}
+
+function renderAudit(state) {
+  const host = $('audit')
+  host.innerHTML = ''
+  const audit = [...(state.audit || [])].reverse()
+  $('audit-title').innerHTML = `工具调用审计 <span class="tag">${audit.length}</span>`
+  if (!audit.length) {
+    host.append(el('div', 'empty', '还没有工具调用。'))
+    return
+  }
+  for (const entry of audit) {
+    // 【被拦住的调用要显眼】它们才是这个面板存在的理由 ——
+    // 成功的调用看结果就知道，而「模型试了但被 guards 拦下」
+    // 只有在这里能看见。
+    const card = el('div', `card ${entry.ok ? 'ok' : 'bad'}`)
+    card.append(el('div', 'row',
+      `<span class="tag ${entry.ok ? 'ok' : 'bad'}">${entry.ok ? '执行' : '拦下'}</span>`
+      + `<span class="mono">${esc(entry.tool)}</span>`
+      + `<span class="tag">${esc(entry.surface === 'frontend' ? '前台' : '后台')}</span>`
+      + `<span class="muted">${new Date(entry.at).toLocaleTimeString('zh-CN')}</span>`))
+    if (entry.summary) card.append(el('div', 'muted', esc(entry.summary)))
+    if (entry.warning) {
+      card.append(el('div', 'row',
+        `<span class="tag warn">违规</span><span class="muted">${esc(entry.warning)}</span>`))
+    }
+    host.append(card)
+  }
+}
+
+function renderState(state) {
+  renderIdentity(state)
+  renderOrders(state)
+  renderAudit(state)
+}
+
+// 业务状态走 SSE：工具一执行完面板就变，不用轮询。
+// 后台 Agent 改了订单，前台这边也会立刻看到 —— 同一份 executor、同一个状态源。
+function subscribeState() {
+  const events = new EventSource(`${API}/api/service/events?sessionId=${SESSION}`)
+  events.onmessage = event => {
+    try {
+      renderState(JSON.parse(event.data))
+    } catch {}
+  }
+  events.onerror = () => {
+    $('status').textContent = 'service 未连接'
+    $('dot').className = 'dot'
+  }
+  return events
+}
+
+// ── 语音会话（文字通道）──
+
+let socket = null
+
+function connect() {
+  const url = new URL('/api/realtime', location.origin)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  url.searchParams.set('sessionId', SESSION)
+  socket = new WebSocket(url)
+
+  socket.addEventListener('open', () => {
+    // 建连后必须先声明会话形态。
+    // 这里只走文字：客服工作台的用途是看清链路，音频采集与播放留给
+    // 框架自带的 web 界面（同一个网关的 / 路径）。
+    socket.send(JSON.stringify({
+      type: 'connect',
+      voiceEnabled: false,
+      inputEnabled: true,
+      outputEnabled: true,
+      clientType: 'web',
+      clientLabel: '客服工作台',
+      inputCapabilities: { text: true, audio: false },
+    }))
+    $('status').textContent = '已连接'
+    $('dot').className = 'dot on'
+  })
+
+  socket.addEventListener('message', event => {
+    let payload
+    try {
+      payload = JSON.parse(event.data)
+    } catch {
+      return
+    }
+    const type = payload.type || ''
+
+    // 【网关一次只接一个客户端】realtime-gateway.mjs:241 —— activeClientSockets
+    // 非空就直接拒。所以这个工作台和网关自带的 web 界面（18889 的 /）
+    // 不能同时开着。
+    //
+    // 这个错误必须显眼：不显示的话，页面看起来一切正常（状态灯是绿的，
+    // 消息也发得出去），只是永远等不到回复。我第一次实测就卡在这里两分钟。
+    if (payload.error?.code === 'client_occupied' || /另一个 Client/.test(payload.message || '')) {
+      $('status').textContent = '网关已被另一个客户端占用'
+      $('dot').className = 'dot'
+      renderTurn({
+        role: 'assistant',
+        content: '网关一次只接一个客户端。请关掉网关自带的 web 界面'
+          + '（http://127.0.0.1:18889/）或别的工作台标签页，然后刷新这一页。',
+      })
+      return
+    }
+
+    if (type === 'voice.state') {
+      const busy = payload.state === 'processing' || payload.state === 'speaking'
+      $('dot').className = `dot ${busy ? 'busy' : 'on'}`
+      $('status').textContent = busy ? '客服正在应答…' : '已连接'
+    }
+    // 任务状态：后台在办事时让它可见。挂起等批准是最要紧的一种 ——
+    // 客户此时会被口头问一次，界面上要能对上。
+    if (type === 'task.input.requested' || payload.task?.workState === 'auth_required') {
+      $('status').textContent = '后台挂起，等客户批准'
+      $('dot').className = 'dot busy'
+    }
+    if (['task.completed', 'task.failed', 'task.cancelled'].includes(type)) {
+      $('status').textContent = '已连接'
+      $('dot').className = 'dot on'
+    }
+    // 有新回复就去拉一次对话 —— 助手的话在 REST 那边。
+    if (['transcript.final', 'audio.done', 'response.started'].includes(type)) {
+      pullMessages()
+    }
+  })
+
+  socket.addEventListener('close', () => {
+    $('status').textContent = '连接已断开'
+    $('dot').className = 'dot'
+    setTimeout(connect, 3_000)
+  })
+}
+
+function say(text) {
+  if (!text.trim() || socket?.readyState !== WebSocket.OPEN) return
+  socket.send(JSON.stringify({
+    type: 'text.message',
+    parts: [{ type: 'text', text }],
+  }))
+  $('say').value = ''
+  // 立刻回显，不等服务端 —— 语音场景里客户说完就该看到自己说了什么
+  setTimeout(pullMessages, 200)
+}
+
+$('send').onclick = () => say($('say').value)
+$('say').onkeydown = event => {
+  if (event.key === 'Enter') say($('say').value)
+}
+$('reset').onclick = async () => {
+  await fetch(`${API}/api/service/reset?sessionId=${SESSION}`, { method: 'POST' })
+  // 只重置业务状态。对话历史在网关的 .runtime 里，清它要重启网关 ——
+  // 这一点值得说明：否则会以为「重置」了却发现模型还记得上一轮。
+  $('log').innerHTML = ''
+  seenMessages.clear()
+  renderTurn({
+    role: 'assistant',
+    content: '业务状态已重置。注意对话历史仍在网关侧，模型还记得刚才聊过什么。',
+  })
+}
+
+subscribeState()
+connect()
+await pullMessages()
+// 兜底轮询：SSE 只推业务状态，对话要靠 WS 事件触发拉取。
+// 万一某个事件没到，这个五秒一次的轮询保证界面不会一直空着。
+setInterval(pullMessages, 5_000)
+</script>
+</body>
+</html>

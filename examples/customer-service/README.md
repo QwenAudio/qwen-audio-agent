@@ -383,3 +383,67 @@ Two follow-ups:
 That last one matters. Previously the executor blocked fabrication by refusing to
 supply a number; now **the model itself cannot produce one** — the retrieved text
 genuinely has no furniture row.
+
+## Customer service console (client)
+
+```bash
+cd client && npm start      # http://127.0.0.1:4620
+```
+
+Type as the customer on the left; the three panels on the right show what the
+same call left behind on the server: verification state, order data, and an audit
+entry for every tool call.
+
+A full run (verify → list orders → ask about a return):
+
+| Panel | Observed |
+|---|---|
+| Customer | after verification: "verified · 李明 · email" plus address |
+| Orders | 5 appear; `#W2378156` lists a keyboard (digital) and a thermostat (appliance), tagged "delivered 2026-08-10, 24 days ago" |
+| Audit | `verify_identity` ✓ / `list_orders` ✓, each with a timestamp and surface tag |
+
+**The delivered-days figure is on the card deliberately** — it is an input to the
+return-eligibility decision, so having it visible makes it obvious whether the
+model's "expired" claim is right.
+
+### Two limitations, both intentional in the framework
+
+**One: the gateway accepts a single client at a time**
+(`realtime-gateway.mjs:241`). This console and the gateway's own web UI
+(`:18889`) cannot both be open. The page surfaces that error explicitly —
+without it everything looks fine (green status light, messages send) and replies
+simply never arrive. That cost two minutes of confusion on the first run.
+
+**Two: it must proxy, not connect directly.** Every request uses a same-origin
+relative path, and `client/server.mjs` forwards to the gateway and service.
+Connecting straight to `:18889` is rejected:
+
+```
+WebSocket ws://127.0.0.1:18889/api/realtime → 403
+fetch     http://127.0.0.1:18889/api/...    → {"error":"origin not allowed"}
+```
+
+The cause is `server/src/core/request-security.mjs` — DNS rebinding protection
+requiring the Origin host to equal the request host. A different port can never
+satisfy that, and `config.allowedOrigins` does not help (it carries the same host
+equality requirement). The framework's own web UI lives at the gateway's `/`, so
+it is same-origin by construction.
+
+### One unresolved problem
+
+**The agent's replies show no text in this console.** Tool calls, verification and
+order changes all appear on the right in real time — those are server-side facts
+and reliable — but the conversation pane only ever shows customer bubbles.
+
+Ruled out: the proxy layer (WebSocket frames and REST requests were both verified
+to forward correctly), framework support for assistant transcripts
+(`realtime-presentation-runtime.mjs:20-25` listens for six transcript event
+types and `web/src/App.jsx:567` consumes them), and model capability
+(`textOutput: true`).
+
+Still unexplained: why, on the same gateway, the built-in web UI receives
+`role: 'assistant'` messages and this console does not. The only remaining
+difference in their `connect` payloads is `inputEnabled` (false from the WebUI,
+true from the console).
+
+Use the gateway's own UI to see what the agent says, for now.

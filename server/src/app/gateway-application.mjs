@@ -144,6 +144,7 @@ const frontendMcpRuntime = frontendMcp === undefined
       configuration: loadFrontendMcpConfiguration({
         filePath: config.frontendMcpConfigPath || '',
       }),
+      logger,
     })
   : frontendMcp
 const frontendOpenApiRuntime = frontendOpenApi === undefined

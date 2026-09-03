@@ -328,6 +328,30 @@ test('applies the disk cache without running the login shell synchronously', () 
   }
 })
 
+test('a service-style environment reads the shared config-directory PATH cache', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'qwen-audio-service-path-'))
+  try {
+    writeFileSync(
+      join(dir, 'login-shell-path.json'),
+      JSON.stringify({ path: '/user/tools/bin:/usr/bin' }),
+      'utf8',
+    )
+    const env = {
+      PATH: '/usr/bin',
+      QWAUDIO_CONFIG_DIR: dir,
+    }
+    assert.equal(expandProcessPath({
+      env,
+      platform: 'darwin',
+      refreshCache: false,
+      existsImpl: () => true,
+    }), true)
+    assert.equal(env.PATH, '/usr/bin:/user/tools/bin')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('writes the login shell result to the cache on first launch', () => {
   const { file, cleanup } = tempCacheFile()
   try {
@@ -387,6 +411,26 @@ test('refreshProcessPath falls back to the cache when the shell fails', () => {
       existsImpl: () => true,
     })
     assert.equal(env.PATH, '/usr/bin:/cached/bin')
+  } finally {
+    cleanup()
+  }
+})
+
+test('refreshProcessPath persists the invoking PATH when shell discovery fails', () => {
+  const { file, cleanup } = tempCacheFile()
+  try {
+    const env = { PATH: '/toolchain/bin:/usr/bin', SHELL: '/bin/zsh' }
+    refreshProcessPath({
+      env,
+      platform: 'darwin',
+      cacheFile: file,
+      spawnImpl: () => ({ stdout: 'no mark' }),
+      existsImpl: () => false,
+    })
+    assert.equal(
+      JSON.parse(readFileSync(file, 'utf8')).path,
+      '/toolchain/bin:/usr/bin',
+    )
   } finally {
     cleanup()
   }

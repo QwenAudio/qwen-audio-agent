@@ -62,6 +62,13 @@ run `qwenaudio gateway restart` to apply it. Service logs are located at
 `~/.config/qwaudio/logs/gateway.log`; on Linux, you can also view them via
 `journalctl --user -u qwen-audio-agent-gateway`.
 
+The Gateway, desktop app, backend Agents, and local stdio MCP servers share one
+user command search path. `gateway install`, `start`, and `restart` refresh the
+cached login-environment `PATH`, so commands installed through Homebrew, npm,
+uv, or a version manager become available after a restart. The service does not
+persist secrets from temporary shell exports; put persistent settings in the
+`config.env` printed by the CLI.
+
 ## Local Logs
 
 qwen-audio-agent uses a unified local structured log, written by default to:

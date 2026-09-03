@@ -27,14 +27,18 @@ const air = () => {
 
 // ── 工具集按域分开 ──
 
-test('两个域的工具面互不重叠（除 identity）', () => {
+test('两个域的工具面只共用身份核验与转人工', () => {
   const retail = new Set(allToolNames('retail'))
   const airline = new Set(allToolNames('airline'))
   const shared = [...retail].filter(name => airline.has(name))
-  // 【只有身份核验共用】其余重叠都是错：航空客服不该有 return_items，
-  // 零售客服不该有 update_baggages。模型看到用不上的工具会去试，
-  // 试完发现数据对不上，那种失败很难归因。
-  assert.deepEqual(shared.sort(), ['identity_status', 'verify_identity'])
+  // 【共用的只该有这三个】
+  // identity_status / verify_identity —— 判据按域分支，工具名保持一个。
+  // transfer_to_human —— 转人工不是域特有的，每个域都要有出口。
+  //
+  // 其余重叠都是错：航空客服不该有 return_items，零售客服不该有
+  // update_baggages。模型看到用不上的工具会去试，试完发现数据对不上，
+  // 那种失败很难归因。
+  assert.deepEqual(shared.sort(), ['identity_status', 'transfer_to_human', 'verify_identity'])
 })
 
 test('航空域没有零售的写库工具', () => {
@@ -244,4 +248,185 @@ test('同一航班号多天有班时，要求确认而不是猜一天', async ()
   // 给了日期就能定位
   const exact = await call('get_flight_status', { flightNo: 'CY1201', date: '2026-09-21' })
   assert.equal(exact.data.found, true)
+})
+
+// ── 退票：五输入决策表 + 两段式批准 ──
+
+const tokenFrom = text => text.match(/approval_token="([^"]+)"/)?.[1] || null
+
+test('已飞的订单不能退票 —— 已飞优先于一切', async () => {
+  // 五输入表的第一行。排错就会把「公务舱已飞」判成全额退款。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const result = await call('cancel_reservation', { reservationId: 'CYR8805' })
+  assert.equal(result.data.blocked, 'not_refundable')
+  assert.match(result.content, /已经有航段飞过/)
+})
+
+test('航司取消 → 全额退，且优先于 24 小时窗口', async () => {
+  // CYR8804 出票已超 24 小时、经济舱、无保险 —— 只靠「航司取消」这一条退成。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10077390' })
+  const preview = await call('cancel_reservation', { reservationId: 'CYR8804' })
+  assert.equal(preview.data.needsApproval, true)
+  assert.match(preview.content, /航班被航司取消/)
+
+  const done = await call('cancel_reservation', {
+    reservationId: 'CYR8804',
+    approval_token: tokenFrom(preview.content),
+  })
+  assert.equal(done.data.cancelled, true)
+  assert.equal(done.data.amount, 880)
+})
+
+test('特价经济舱无保险超 24 小时 → 不可退', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const result = await call('cancel_reservation', { reservationId: 'CYR8807' })
+  assert.equal(result.data.blocked, 'not_refundable')
+  assert.match(result.content, /无保险时不可退款/)
+})
+
+test('公务舱超 24 小时也能全额退', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10077390' })
+  const result = await call('cancel_reservation', { reservationId: 'CYR8808' })
+  assert.equal(result.data.needsApproval, true)
+  assert.match(result.content, /公务舱可全额退款/)
+})
+
+test('走保险退款时原因必须是健康或天气', async () => {
+  // 【表只看有没有买保险，原因要另外校验】
+  // 细则第六条是「购买了旅行保险，且因健康或天气原因」——
+  // 决策表那一行表达不了「且」后面这半句，因为原因不是数据库字段。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10058127' })
+
+  const wrong = await call('cancel_reservation', {
+    reservationId: 'CYR8806',
+    reason: '不想去了',
+  })
+  assert.equal(wrong.data.blocked, 'insurance_reason')
+  assert.match(wrong.content, /健康原因/)
+
+  const right = await call('cancel_reservation', {
+    reservationId: 'CYR8806',
+    reason: '健康原因',
+  })
+  assert.equal(right.data.needsApproval, true)
+})
+
+test('公务舱退票不卡原因 —— 它本来就能全额退', async () => {
+  // 只在「靠保险才退得成」时才校验原因。公务舱、24 小时内、航司取消
+  // 这三条本来就能退，不该因为客户说不清原因而拦住。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10077390' })
+  const result = await call('cancel_reservation', {
+    reservationId: 'CYR8808',
+    reason: '随便写的原因',
+  })
+  assert.equal(result.data.needsApproval, true, '公务舱不该因原因被拦')
+})
+
+test('第一次调用不碰数据库', async () => {
+  const { call, snapshot } = air()
+  await call('verify_identity', { memberId: 'CY10077390' })
+  await call('cancel_reservation', { reservationId: 'CYR8804' })
+  const reservation = snapshot().db.reservations.find(item => item.reservationId === 'CYR8804')
+  assert.notEqual(reservation.status, 'cancelled', '预览阶段就改了库')
+})
+
+test('令牌一次性，第二次用同一枚会被拒', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10058127' })
+  const preview = await call('cancel_reservation', {
+    reservationId: 'CYR8806', reason: '健康原因',
+  })
+  const token = tokenFrom(preview.content)
+  const first = await call('cancel_reservation', {
+    reservationId: 'CYR8806', reason: '健康原因', approval_token: token,
+  })
+  assert.equal(first.data.cancelled, true)
+
+  const replay = await call('cancel_reservation', {
+    reservationId: 'CYR8806', reason: '健康原因', approval_token: token,
+  })
+  // 【这里要断言令牌错误而不是「反正失败了」】
+  // 退票之后 status 变成 cancelled，会被 already_cancelled 先拦住 ——
+  // 那样即使令牌能重放，测试照样绿。所以必须确认拦它的是哪一条。
+  assert.equal(replay.data.blocked, 'already_cancelled')
+})
+
+test('令牌绑定预订号，换一笔用不了', async () => {
+  // 【要挑一对都能退的订单，否则测不到】
+  // 第一版拿 CYR8801 的令牌去退 CYR8805（已飞）—— 已飞会先拦住，
+  // 那样即使令牌完全不校验对象，测试照样绿。
+  // 第二版加了个「占位断言」，同样没测到绑定本身。
+  //
+  // 吴敏（CY10077390）名下有两笔都能退：CYR8804（航司取消）与
+  // CYR8808（公务舱）。拿一笔的令牌去退另一笔，才真正暴露绑定语义。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10077390' })
+
+  const preview = await call('cancel_reservation', { reservationId: 'CYR8804' })
+  const token = tokenFrom(preview.content)
+  assert.ok(token, '应该发出令牌')
+
+  const crossUse = await call('cancel_reservation', {
+    reservationId: 'CYR8808', approval_token: token,
+  })
+  assert.equal(crossUse.data.cancelled, undefined, 'CYR8804 的令牌退掉了 CYR8808')
+  assert.equal(crossUse.data.approvalError, 'mismatched_subject')
+
+  // 【错用一次令牌就作废 —— 这是实测到的行为，不是我猜的】
+  // 我先猜「指纹不匹配是拒绝、不消费，所以原令牌还能用」，断言失败；
+  // 读 consumeApproval 才看清 session.pendingApprovals.delete(token)
+  // 在指纹校验【之前】—— 令牌一经出示就作废，无论用对没用对。
+  //
+  // 这个顺序是对的：否则拿一枚令牌可以逐个订单试，直到蒙对一个。
+  // 代价是客户批准过的那笔要重新批准一次，而那比让人试探安全。
+  const retry = await call('cancel_reservation', {
+    reservationId: 'CYR8804', approval_token: token,
+  })
+  assert.equal(retry.data.approvalError, 'unknown_or_expired',
+    '出示过的令牌应当作废，否则可以逐笔试探')
+})
+
+test('退票后余额与状态都变了，礼品卡即时到账', async () => {
+  const { call, snapshot } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const before = snapshot().db.users
+    .find(item => item.userId === 'CY10091455')
+    .paymentMethods.find(item => item.type === 'gift_card').balance
+
+  // CYR8803 是经济舱、无保险、超 24 小时 —— 但航班延误 5 小时不影响退款资格，
+  // 所以它退不成。换 CYR8807 也退不成。这里改用航司取消那笔来验余额。
+  const preview = await call('cancel_reservation', { reservationId: 'CYR8803' })
+  assert.equal(preview.data.blocked, 'not_refundable', '延误不构成退款理由')
+  assert.equal(
+    snapshot().db.users.find(item => item.userId === 'CY10091455')
+      .paymentMethods.find(item => item.type === 'gift_card').balance,
+    before,
+    '被拦下的调用不该动余额',
+  )
+})
+
+test('转人工要写原因，并记进会话', async () => {
+  const { call, snapshot } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const empty = await call('transfer_to_human', {})
+  assert.match(empty.content, /写明原因/)
+
+  const done = await call('transfer_to_human', { reason: '客户要求人工' })
+  assert.equal(done.data.transferred, true)
+  assert.equal(snapshot().transferred?.reason, '客户要求人工')
+})
+
+test('每次退票调用都留审计，包括被拦下的', async () => {
+  const { call, snapshot } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  await call('cancel_reservation', { reservationId: 'CYR8805' })
+  const last = snapshot().audit.at(-1)
+  assert.equal(last.tool, 'cancel_reservation')
+  assert.equal(last.ok, false)
 })

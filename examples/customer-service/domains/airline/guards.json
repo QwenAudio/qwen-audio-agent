@@ -155,7 +155,9 @@
 
   "enums": {
     "cabin": ["basic_economy", "economy", "business"],
-    "member_tier": ["regular", "silver", "gold"]
+    "member_tier": ["regular", "silver", "gold"],
+    "_insurance_reason_note": "决策表的 refundable 只看『有没有买保险』，而细则第六条要求『因健康或天气原因』。差的这一半靠枚举补：表管情形，枚举管原因。两者都过才发令牌。",
+    "insurance_refund_reason": ["健康原因", "天气原因"]
   },
 
   "_thresholds_note": "单值阈值。executor 直接读，不走决策表。",

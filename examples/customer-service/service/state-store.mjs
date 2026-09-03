@@ -74,6 +74,11 @@ export class ServiceStateStore {
       domain: session.domain,
       version: session.version,
       identity: session.identity,
+      // 【transferred 要投影出来】它一直没在 snapshot 里 ——
+      // executor 写了 session.transferred，但界面和测试都看不到。
+      // 「已转人工」是会话的终态之一：转出去之后客服不该再自行办业务，
+      // 界面上也该显示出来，否则演示时看不出转接发生了。
+      transferred: session.transferred || null,
       db: session.db,
       audit: session.audit,
     }))

@@ -47,6 +47,46 @@
         },
         "required": ["flightNo"]
       }
+    },
+    {
+      "name": "cancel_reservation",
+      "label": "退票",
+      "enabled": true,
+      "description": "为客户办理退票。会先返回一份预览，说明能退多少、多久到账，并附一枚批准令牌；客户明确同意之后带着令牌再调一次才真正执行。不要自己填令牌，也不要在拿到预览之后就告诉客户「已经办好了」。已经有航段执飞完毕的订单不能退票。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": {
+            "type": "string",
+            "description": "预订编号，形如 CYR8801。"
+          },
+          "reason": {
+            "type": "string",
+            "description": "退票原因。买了旅行保险且要走保险全额退款时，原因必须是「健康原因」或「天气原因」之一 —— 细则只认这两种。其他情形填客户的原话概要即可。"
+          },
+          "approval_token": {
+            "type": "string",
+            "description": "第一次调用不要填。客户看过预览并明确同意后，把预览里的令牌原样填进来再调一次。"
+          }
+        },
+        "required": ["reservationId"]
+      }
+    },
+    {
+      "name": "transfer_to_human",
+      "label": "转人工",
+      "enabled": true,
+      "description": "把当前通话转给人工客服。金额超出权限、身份核验两种方式都不通过、客户明确要求人工、或者细则未覆盖的情形时调用。转接前先向客户说明原因，不要承诺人工多久回复或一定能解决 —— 细则没写这些。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "一句话说清为什么自己办不了。这句会进审计记录，也会被人工客服看到。"
+          }
+        },
+        "required": ["reason"]
+      }
     }
   ]
 }

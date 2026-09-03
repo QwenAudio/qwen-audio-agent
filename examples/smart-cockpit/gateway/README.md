@@ -6,8 +6,11 @@ or order execution logic.
 
 - `server.mjs` wires the Gateway to the replaceable A2A backend Agent.
 - `frontend-profile.json` selects the default Assistant and foreground tool sources.
-- `frontend-mcp.json` enables the Service tools exposed to the foreground Agent.
-- `spawn-thinking-tool.mjs` describes the fixed asynchronous task bridge.
+- `frontend-mcp.json` shows the default Service tools exposed to the foreground
+  Agent; `server.mjs` generates the runtime MCP bundle from the active domain
+  routing.
+- `spawn-thinking-tool.mjs` describes the asynchronous task bridge using the
+  active frontend/backend domain routing.
 - `assistant/` owns trusted foreground persona Prompts and validates the
   scenario-specific Client Event.
 

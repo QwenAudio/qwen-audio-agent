@@ -273,8 +273,11 @@
     "vitepress": "^1.6.4"
   },
   "overrides": {
+    "@xmldom/xmldom": "0.8.15",
     "@hono/node-server": "2.0.12",
     "@electron/asar": "4.2.1",
-    "@electron/universal": "3.0.6"
+    "@electron/universal": "3.0.6",
+    "fast-uri": "3.1.6",
+    "qs": "6.16.0"
   }
 }

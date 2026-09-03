@@ -62,6 +62,10 @@ import {
   GatewayClientProtocolEvent,
 } from '../../../shared/gateway-client-protocol.mjs'
 import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
+import {
+  createGatewaySystemEventDelivery,
+  GatewaySystemEvent,
+} from '../delivery/gateway-system-event.mjs'
 import { RealtimeAgentDeliveryRuntime } from './realtime-agent-delivery-runtime.mjs'
 import {
   ClientActionName,
@@ -1059,10 +1063,28 @@ export function attachRealtimeGateway(server, {
             type: 'error',
             message: '这次内容未能处理，语音会话已自动恢复，请换个说法再试。',
           })
-          realtimeSession.reconnect().catch(error => send(ws, {
-            type: 'error',
-            message: error.message,
-          }))
+          const recoveryTurnId = gatewayTurnId()
+          const recoveryDelivery = createGatewaySystemEventDelivery(
+            GatewaySystemEvent.REALTIME_CONTENT_REJECTED,
+            {
+              id: `content_recovery_${recoveryTurnId}`,
+              correlation: { turnId: recoveryTurnId },
+            },
+          )
+          realtimeSession.reconnect()
+            .then(() => agentDeliveries.deliver(recoveryDelivery))
+            .then(outcome => {
+              if (outcome?.completed) return
+              connectionLogger.warn('realtime.content_safety_delivery_skipped', {
+                provider: realtimeSession.providerKey,
+                blocked: outcome?.blocked === true,
+                unavailable: outcome?.unavailable === true,
+              })
+            })
+            .catch(error => send(ws, {
+              type: 'error',
+              message: error.message,
+            }))
           return
         }
         if (providerError === 'fatal') {

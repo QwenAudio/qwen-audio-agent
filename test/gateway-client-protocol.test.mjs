@@ -36,6 +36,9 @@ test('publishes a frozen capability vocabulary and only advertises implemented s
   assert.ok(GATEWAY_CLIENT_KNOWN_CAPABILITIES.includes(
     GatewayClientCapability.SESSION_OUTPUT_VOICE,
   ))
+  assert.ok(GATEWAY_CLIENT_KNOWN_CAPABILITIES.includes(
+    GatewayClientCapability.SESSION_TAKEOVER,
+  ))
   assert.equal(
     GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(GatewayClientCapability.CLIENT_EVENTS),
     true,
@@ -85,6 +88,15 @@ test('validates the 6.0 envelope and rejects duplicate capabilities', () => {
       GatewayClientCapability.INPUT_TEXT,
     ],
   }).success, false)
+  assert.equal(GatewaySessionHelloSchema.safeParse({
+    ...hello,
+    connection: { takeover: true },
+  }).success, false)
+  assert.equal(createGatewaySessionHello({
+    clientInstanceId: 'phone_1',
+    capabilities: [GatewayClientCapability.SESSION_TAKEOVER],
+    takeover: true,
+  }).connection.takeover, true)
 })
 
 test('negotiates one supported 6.0 version and the capability intersection', () => {

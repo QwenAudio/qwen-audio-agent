@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
@@ -9,6 +10,35 @@ import { createGatewayApplication } from '../src/app/gateway-application.mjs'
 import { config } from '../src/core/config.mjs'
 import { createRealtimeProviderRegistry } from '../src/voice/providers/provider-registry.mjs'
 import { openAiCompatibleProtocol } from '../src/voice/providers/openai-compatible-protocol.mjs'
+
+function requestJson({ port, path, method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method,
+      headers: {
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...headers,
+      },
+    }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.on('end', () => {
+        const text = Buffer.concat(chunks).toString()
+        resolve({
+          status: response.statusCode,
+          headers: response.headers,
+          body: text ? JSON.parse(text) : null,
+        })
+      })
+    })
+    request.once('error', reject)
+    if (body !== undefined) request.write(JSON.stringify(body))
+    request.end()
+  })
+}
 
 function disabledBackend() {
   return {
@@ -52,6 +82,82 @@ function customTaskAnnouncementRuntime() {
     progress: methods(['offer', 'remove', 'clear', 'flush', 'close']),
   }
 }
+
+test('protects remote HTTP access and completes one-time device pairing', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwa-app-access-'))
+  const accessToken = 'application-remote-access-token-over-24-characters'
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+      gatewayAccessToken: accessToken,
+      gatewayAccessKeys: '',
+      gatewayDeviceStatePath: join(directory, 'gateway-devices.json'),
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+  t.after(async () => {
+    await application.close()
+    rmSync(directory, { recursive: true, force: true })
+  })
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+
+  const denied = await requestJson({
+    port,
+    path: '/api/health',
+    headers: { Host: 'gateway.example.test' },
+  })
+  assert.equal(denied.status, 401)
+
+  const authenticated = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+  assert.equal(authenticated.status, 200)
+  assert.match(authenticated.headers['set-cookie'][0], /HttpOnly/)
+
+  const ticket = await requestJson({
+    port,
+    path: '/api/access/pairing-tickets',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: {},
+  })
+  assert.equal(ticket.status, 201)
+  const paired = await requestJson({
+    port,
+    path: '/api/access/pair',
+    method: 'POST',
+    headers: { Host: 'gateway.example.test' },
+    body: {
+      code: ticket.body.code,
+      device: { id: 'phone-one', type: 'mobile', label: 'Phone' },
+    },
+  })
+  assert.equal(paired.status, 200)
+  assert.equal(paired.body.device.id, 'phone-one')
+  assert.equal(typeof paired.body.access_token, 'string')
+  const replay = await requestJson({
+    port,
+    path: '/api/access/pair',
+    method: 'POST',
+    headers: { Host: 'gateway.example.test' },
+    body: { code: ticket.body.code },
+  })
+  assert.equal(replay.status, 401)
+})
 
 test('passes the Task announcement factory through the application composition root', async () => {
   const calls = []

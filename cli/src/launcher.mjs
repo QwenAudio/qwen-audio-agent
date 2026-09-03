@@ -24,6 +24,7 @@ import {
 } from '../../shared/skill-library.mjs'
 import { helpText, parseArguments } from './arguments.mjs'
 import {
+  createGatewayPairingTicket,
   ensureRuntime,
   isLocalGateway,
   readGatewayHealth,
@@ -46,6 +47,7 @@ async function runMinimal(options) {
   const { runTui } = await import(moduleUrl)
   await runTui({
     url: options.url,
+    accessToken: options.accessToken,
     sessionId: options.sessionId,
     audioMode: options.audioMode,
   })
@@ -184,6 +186,7 @@ export async function main(argv, {
   runMinimalTui = runMinimal,
   prepareRuntime = options => ensureRuntime(options, { root, env }),
   inspectGateway = url => readGatewayHealth(url),
+  createPairingTicket = url => createGatewayPairingTicket(url),
   manageService = (action, options) => manageGatewayService(action, options),
   refreshPath = options => refreshProcessPath(options),
   waitForService = (url, { requireBackend = false } = {}) =>
@@ -316,6 +319,15 @@ export async function main(argv, {
     ) {
       stdout.write(`${configurationHint}\n`)
     }
+    return 0
+  }
+
+  if (options.command === 'gateway' && options.gatewayAction === 'pair') {
+    const ticket = await createPairingTicket(options.url)
+    stdout.write(
+      `远程客户端配对码：${ticket.code}\n`
+      + `有效期至：${new Date(ticket.expiresAt).toLocaleString()}\n`,
+    )
     return 0
   }
 

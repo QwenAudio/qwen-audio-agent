@@ -32,7 +32,12 @@ import {
   classifySource,
 } from '../domain/domain-library.mjs'
 import { DomainSummariser } from '../domain/domain-summariser.mjs'
-import { enforceSameOrigin } from '../core/request-security.mjs'
+import { enforceSameOrigin, isAllowedOrigin } from '../core/request-security.mjs'
+import {
+  GatewayAccessManager,
+  GatewayDeviceRegistry,
+  parseGatewayAccessKeys,
+} from '../access/gateway-access.mjs'
 import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
@@ -115,6 +120,7 @@ export function createGatewayApplication({
   clientEventRouter = null,
   clientEventDefinitions = [],
   spawnThinkingDescription = '',
+  gatewayAccess = null,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
@@ -186,6 +192,20 @@ const frontendToolSources = [
 const identityManager = new IdentityManager({
   secret: config.authSecret,
   mode: config.identityMode,
+  personalOwnerId: config.personalOwnerId,
+})
+const gatewayAccessRuntime = gatewayAccess || new GatewayAccessManager({
+  identityManager,
+  secret: config.authSecret,
+  configuredKeys: parseGatewayAccessKeys({
+    accessToken: config.gatewayAccessToken,
+    accessKeys: config.gatewayAccessKeys,
+    personalOwnerId: config.personalOwnerId,
+  }),
+  deviceRegistry: new GatewayDeviceRegistry({
+    filePath: config.gatewayDeviceStatePath,
+    onWarning: warning => logger.warn('gateway_access.persistence_warning', { warning }),
+  }),
   personalOwnerId: config.personalOwnerId,
 })
 // 麦克风抢占控制面：外部宿主（输入法、平台应用）需要录音时通过
@@ -507,9 +527,48 @@ const gatewayEventRouter = clientEventRouter || new GatewayEventRouter({
 })
 
 app.disable('x-powered-by')
-app.use(enforceSameOrigin)
+app.use(express.json({ limit: '1mb' }))
+
+// Pairing is the only unauthenticated remote operation. The short-lived,
+// one-time ticket is created by an already authenticated local Client. Native
+// clients may omit Origin; browsers still have to come from an allowlisted
+// public origin.
+app.post('/api/access/pair', (req, res) => {
+  if (req.headers.origin && !isAllowedOrigin(req, {
+    allowedOrigins: config.allowedOrigins,
+  })) {
+    return res.status(403).json({ error: 'origin not allowed' })
+  }
+  const paired = gatewayAccessRuntime.redeemPairingTicket(req.body?.code, {
+    device: req.body?.device,
+  })
+  if (!paired) {
+    return res.status(401).json({
+      error: 'pairing ticket is invalid or expired',
+      code: 'pairing_invalid',
+    })
+  }
+  const identity = {
+    ownerId: paired.device.ownerId,
+    access: 'remote',
+    credentialId: paired.credentialId,
+  }
+  gatewayAccessRuntime.issueCookie(res, identity, req)
+  return res.json({
+    access_token: paired.token,
+    owner_id: paired.device.ownerId,
+    device: paired.device,
+  })
+})
+
 app.use((req, res, next) => {
-  req.identity = identityManager.resolveHttp(req, res)
+  req.identity = gatewayAccessRuntime.resolveHttp(req, res)
+  if (!req.identity) {
+    return res.status(401).json({
+      error: 'Gateway access authentication required',
+      code: 'access_required',
+    })
+  }
   const requestId = randomUUID()
   res.setHeader('X-Request-Id', requestId)
   runWithLogContext({
@@ -517,6 +576,7 @@ app.use((req, res, next) => {
     ownerId: req.identity?.ownerId,
   }, next)
 })
+app.use(enforceSameOrigin)
 app.use((req, res, next) => {
   const startedAt = Date.now()
   res.once('finish', () => {
@@ -534,9 +594,38 @@ app.use((req, res, next) => {
   })
   next()
 })
-app.use(express.json({ limit: '1mb' }))
-
 let realtimeGateway
+
+app.post('/api/access/pairing-tickets', (req, res) => {
+  if (req.identity.access !== 'local') {
+    return res.status(403).json({ error: 'pairing tickets can only be created locally' })
+  }
+  return res.status(201).json(gatewayAccessRuntime.createPairingTicket({
+    ownerId: req.identity.ownerId,
+  }))
+})
+
+app.get('/api/access/devices', (req, res) => {
+  if (req.identity.access !== 'local') {
+    return res.status(403).json({ error: 'paired devices can only be managed locally' })
+  }
+  return res.json({ devices: gatewayAccessRuntime.deviceRegistry.list() })
+})
+
+app.delete('/api/access/devices/:id', (req, res) => {
+  if (req.identity.access !== 'local') {
+    return res.status(403).json({ error: 'paired devices can only be managed locally' })
+  }
+  if (!gatewayAccessRuntime.deviceRegistry.revoke(req.params.id)) {
+    return res.status(404).json({ error: 'paired device not found' })
+  }
+  return res.status(204).end()
+})
+
+app.delete('/api/access/session', (req, res) => {
+  gatewayAccessRuntime.clearCookie(res, req)
+  return res.status(204).end()
+})
 
 app.get('/livez', (req, res) => {
   res.json({ ok: true, status: 'live' })
@@ -608,6 +697,7 @@ app.get('/api/health', (req, res) => {
     notes: notesStore.health(),
     taskStore: taskStore.health(),
     identityMode: config.identityMode,
+    gatewayAccess: gatewayAccessRuntime.describe(),
     voiceClients: realtimeGateway?.status() || {
       connected: 0,
       activeOwners: 0,
@@ -971,7 +1061,7 @@ const backendAvailability = new BackendAvailability({
 })
 backendAvailability.refresh()
 realtimeGateway = attachRealtimeGateway(server, {
-  identityManager,
+  identityManager: gatewayAccessRuntime,
   memoryService: frontendMemoryRuntime,
   memoryExtractor,
   preferencePromoter,

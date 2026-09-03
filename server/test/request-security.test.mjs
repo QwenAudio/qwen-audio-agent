@@ -28,6 +28,9 @@ test('rejects DNS rebinding and direct network access by default', () => {
   assert.equal(isAllowedOrigin({
     headers: { host: '192.168.1.20:3101' },
   }), false)
+  assert.equal(isAllowedOrigin({
+    headers: { host: '192.168.1.20:3101' },
+  }, { authenticatedRemote: true }), true)
 })
 
 test('allows only an explicitly configured reverse-proxy origin', () => {

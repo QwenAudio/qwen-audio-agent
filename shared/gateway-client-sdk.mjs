@@ -1,4 +1,5 @@
 import {
+  GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
   GATEWAY_CLIENT_PROTOCOL_VERSION,
   GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
   GatewayClientCapability,
@@ -65,6 +66,8 @@ export class GatewayClient {
     clientVersion,
     clientInstanceId,
     clientLabel,
+    accessToken,
+    takeover = false,
     capabilities = [],
     locale,
     timeZone,
@@ -88,7 +91,12 @@ export class GatewayClient {
       instanceId: clientInstanceId,
       label: clientLabel,
     }
-    this.requestedCapabilities = [...new Set(capabilities)]
+    this.accessToken = String(accessToken || '').trim()
+    this.takeover = takeover === true
+    this.requestedCapabilities = [...new Set([
+      ...capabilities,
+      ...(takeover ? [GatewayClientCapability.SESSION_TAKEOVER] : []),
+    ])]
     this.locale = locale
     this.timeZone = timeZone
     this.configure = configure
@@ -238,7 +246,11 @@ export class GatewayClient {
   #connect() {
     if (this.stopped) return
     this.onStatus?.({ state: 'connecting' })
-    const socket = this.createSocket(this.url)
+    const socket = this.createSocket(this.url, {
+      headers: this.accessToken
+        ? { Authorization: `Bearer ${this.accessToken}` }
+        : {},
+    })
     this.socket = socket
     addSocketListener(socket, 'open', () => {
       if (this.socket !== socket || this.stopped) return
@@ -258,6 +270,7 @@ export class GatewayClient {
         locale: this.locale,
         timeZone: this.timeZone,
         connection: connectionConfiguration(configured),
+        takeover: this.takeover,
       }))
     })
     addSocketListener(socket, 'message', raw => {
@@ -281,17 +294,24 @@ export class GatewayClient {
       this.negotiatedCapabilities = []
       this.#rejectPending('connection_closed', 'Gateway connection closed')
       if (this.stopped) return
-      this.onStatus?.({ state: 'disconnected' })
       const closeCode = typeof eventOrCode === 'number'
         ? eventOrCode
         : Number(eventOrCode?.code)
-      if (closeCode === GATEWAY_CLIENT_REPLACED_CLOSE_CODE) {
-        // A newer connection from this logical Client has taken ownership.
-        // Retrying this superseded socket would make the two instances evict
-        // each other forever during a page refresh or development hot reload.
+      if (
+        closeCode === GATEWAY_CLIENT_REPLACED_CLOSE_CODE
+        || closeCode === GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE
+      ) {
+        // Retrying an occupied or superseded socket would either hammer the
+        // active Client or make two instances evict each other forever.
         this.stopped = true
+        this.onStatus?.({
+          state: closeCode === GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE
+            ? 'occupied'
+            : 'replaced',
+        })
         return
       }
+      this.onStatus?.({ state: 'disconnected' })
       if (!this.reconnect) return
       this.reconnectTimer = setTimeout(() => this.#connect(), this.reconnectDelay)
       this.reconnectDelay = Math.min(this.reconnectMaxMs, this.reconnectDelay * 2)

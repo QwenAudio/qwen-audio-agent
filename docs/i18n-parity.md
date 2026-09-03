@@ -5,9 +5,9 @@
 
 ## Current baseline
 
-Updated 2026-09-02:
+Updated 2026-09-03:
 
-- Gateway health contract `5.6.0`;
+- Gateway health contract `5.7.0`;
 - stable Gateway Client Protocol wire version `6.0.0`;
 - GCP1–GCP5 complete;
 - WebUI, Desktop, and TUI on the shared reference Client SDK;

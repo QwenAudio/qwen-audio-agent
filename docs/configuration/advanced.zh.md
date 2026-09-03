@@ -56,6 +56,12 @@ qwenaudio gateway uninstall
 `~/.config/qwaudio/logs/gateway.log`；Linux 也可以通过
 `journalctl --user -u qwen-audio-agent-gateway` 查看。
 
+Gateway、桌面版、后台 Agent 和本地 stdio MCP 共用一份用户命令搜索路径。
+执行 `gateway install`、`start` 或 `restart` 时，CLI 会刷新登录环境中的
+`PATH` 缓存，因此通过 Homebrew、npm、uv 或版本管理器安装的新命令在重启后即可使用。
+后台服务不会保存终端临时 `export` 的密钥；持久配置请写入命令显示的
+`config.env`。
+
 ## 本地日志
 
 qwen-audio-agent 使用统一的本地结构化日志，默认写入：

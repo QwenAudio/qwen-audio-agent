@@ -29,6 +29,7 @@ function harness({ ownsProcesses = false } = {}) {
         dataDirectory: '/home/user/.config/qwaudio',
         configPath: '/home/user/.config/qwaudio/config.env',
       }),
+      refreshPath: () => {},
       inspectSetups: options => {
         calls.push(['setup', options])
         return {
@@ -334,6 +335,23 @@ test('installs, stops and reports the background Gateway service', async () => {
   ])
 })
 
+test('reports a configured frontend MCP failure in Gateway status', async () => {
+  const target = harness()
+  target.dependencies.inspectGateway = async () => ({
+    backend: { kind: 'opencode', ok: true },
+    frontendMcp: {
+      ok: false,
+      initialized: true,
+      tools: 0,
+      servers: [{ key: 'files', enabled: true, status: 'error' }],
+    },
+  })
+
+  assert.equal(await main(['gateway', 'status'], target.dependencies), 0)
+  const output = target.calls.find(call => call[0] === 'stdout')[1]
+  assert.match(output, /前台 MCP 异常/)
+})
+
 test('passes the configured local Gateway host and port to its service', async () => {
   const target = harness()
   target.dependencies.env.QWEN_AUDIO_AGENT_URL = 'http://127.0.0.1:3200'
@@ -358,6 +376,26 @@ test('passes the configured local Gateway host and port to its service', async (
     PORT: '3200',
     QWAUDIO_DATA_DIR: '/home/user/.config/qwaudio',
   })
+})
+
+test('refreshes the shared process PATH before starting a background service', async () => {
+  const target = harness()
+  let refreshedEnv = null
+  target.dependencies.refreshPath = ({ env }) => {
+    refreshedEnv = env
+    env.PATH = '/stable/user/bin:/usr/bin'
+  }
+  target.dependencies.manageService = async (action, options) => {
+    target.calls.push(['service', action, options])
+    return { installed: true, running: true, logPath: null }
+  }
+
+  assert.equal(await main(['gateway', 'restart'], target.dependencies), 0)
+  assert.equal(refreshedEnv, target.dependencies.env)
+  const restart = target.calls.find(call => (
+    call[0] === 'service' && call[1] === 'restart'
+  ))
+  assert.equal(restart[2].serviceEnvironment.HOST, '127.0.0.1')
 })
 
 test('passes a custom shared profile directory to the background service', async () => {

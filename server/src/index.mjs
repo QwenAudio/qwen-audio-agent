@@ -2,6 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { once } from 'node:events'
 import { fileURLToPath } from 'node:url'
 import { loadRuntimeEnvironment } from '../../shared/runtime-environment.mjs'
+import { expandProcessPath } from '../../shared/process-path.mjs'
 import { ensureBackendSkills } from '../../shared/skill-library.mjs'
 import { createLogger } from '../../shared/logger.mjs'
 import { acquireGatewayLease } from '../../shared/gateway-instance-lock.mjs'
@@ -11,6 +12,9 @@ import { startManagedBackend } from './process/managed-backend.mjs'
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const root = process.env.QWEN_AUDIO_AGENT_RUNTIME_ROOT || sourceRoot
 const runtimeEnvironment = loadRuntimeEnvironment({ root })
+// Foreground CLI, launchd/systemd and Electron all resolve user-installed
+// backends and stdio MCP servers from the same persisted login-shell PATH.
+expandProcessPath({ env: process.env, refreshCache: false })
 
 const logger = createLogger({
   component: 'gateway',

@@ -12,6 +12,11 @@ const DOMAIN_FILES = Object.freeze({
   airline: new URL('../domains/airline/db.json', import.meta.url),
 })
 
+// 【默认域由环境变量定】一个 service 进程可以同时服务两个域（按 session 分），
+// 但「没指定域时给哪个」应该跟着这一组进程的用途走 ——
+// CS_DOMAIN=airline 起的那一组，默认就该是航空。
+export const DEFAULT_DOMAIN = DOMAIN_FILES[process.env.CS_DOMAIN] ? process.env.CS_DOMAIN : 'retail'
+
 function loadDomain(domain) {
   const url = DOMAIN_FILES[domain]
   if (!url) throw new Error(`Unknown domain: ${domain}`)
@@ -32,18 +37,27 @@ export class ServiceStateStore {
 
   // 每个 sessionId 一份独立的库。Demo 里同时开两个浏览器标签演示不同场景时，
   // 它们不该互相看见对方改的订单。
-  #session(sessionId, domain = 'retail') {
+  //
+  // 【domain 缺省时不能填默认值，要沿用已有会话的域】
+  // 第一版签名是 #session(sessionId, domain = 'retail')，于是任何不传 domain
+  // 的调用（executor 里到处都是 store.mutable(sessionId)）都会被当成
+  // 「要 retail」—— 而下面那个 session.domain !== domain 的判断随即
+  // 把航空会话整个重建成零售，身份、订单改动、审计全丢。
+  //
+  // 现在的语义：显式传 domain 才可能换域，不传就是「给我当前这个会话」。
+  #session(sessionId, domain) {
     const id = String(sessionId || '').trim() || 'default'
     let session = this.#sessions.get(id)
-    if (!session || (domain && session.domain !== domain)) {
+    const wanted = domain || session?.domain || DEFAULT_DOMAIN
+    if (!session || session.domain !== wanted) {
       session = {
         id,
-        domain,
+        domain: wanted,
         version: 0,
         // 身份是【会话级事实】，不是任务级参数：前端核验一次，
         // 后端派活时能直接读到，用户不会被问第二次。
         identity: { verified: false, userId: null, method: null, at: null },
-        db: loadDomain(domain),
+        db: loadDomain(wanted),
         // 每次工具调用一条，给 ActionLog 面板用。它是审计证据，
         // 所以连失败的调用也要记 —— 「未核验身份就查订单」正是靠这个发现的。
         audit: [],

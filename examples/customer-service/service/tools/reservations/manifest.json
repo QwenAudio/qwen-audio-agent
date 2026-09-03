@@ -1,0 +1,52 @@
+{
+  "_note": "航空域工具。参考了 EVA-Bench 的 airline tool schema（工具命名与参数设计）和 τ²-bench airline 的业务范围，但数据模型是我们自己的两层结构（reservation → segments），没有照搬 EVA 的 journey/segment 三层。",
+  "domain": "reservations",
+  "functions": [
+    {
+      "name": "list_reservations",
+      "label": "预订列表",
+      "enabled": true,
+      "description": "列出已核验客户名下的所有预订。客户说不清订单号、或者要求「查一下我的机票」时调用。返回条数多时只念前三条并告知总数。核验之前不要调用。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_reservation",
+      "label": "预订详情",
+      "enabled": true,
+      "description": "查询单笔预订的航段、舱位、乘客、行李与金额。客户报出订单号，或者从列表里选定某一笔之后调用。念订单号和金额时逐字念一遍让客户确认。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": {
+            "type": "string",
+            "description": "预订编号，形如 CYR8801。客户可能念成「CYR 八八零一」，转成大写字母加数字。"
+          }
+        },
+        "required": ["reservationId"]
+      }
+    },
+    {
+      "name": "get_flight_status",
+      "label": "航班状态",
+      "enabled": true,
+      "description": "查询某个航班当天的起降时间、当前状态与延误时长。客户问「航班晚不晚」「几点起飞」时调用。这一步只查状态，不产生任何变更，也不判定补偿 —— 补偿要按细则的延误档位另行确认。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "flightNo": {
+            "type": "string",
+            "description": "航班号，形如 CY1201。"
+          },
+          "date": {
+            "type": "string",
+            "description": "航班日期，形如 2026-09-20。不填时按该航班号唯一的一班处理；同一航班号有多天时必须填。"
+          }
+        },
+        "required": ["flightNo"]
+      }
+    }
+  ]
+}

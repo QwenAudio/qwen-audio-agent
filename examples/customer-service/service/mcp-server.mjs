@@ -4,6 +4,7 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import { toolDefinitions } from './tools/registry.mjs'
+import { DEFAULT_DOMAIN } from './state-store.mjs'
 
 function errorResult(error) {
   return {
@@ -18,12 +19,16 @@ export function createCustomerServiceMcpServer({
   service,
   sessionId = 'default',
   surface = 'backend',
+  // 工具面按域挑。不传时用这一组进程的默认域（CS_DOMAIN）——
+  // 而不是写死 retail，否则 CS_DOMAIN=airline 起的 service 会把
+  // 零售工具列给航空客服。
+  domain = DEFAULT_DOMAIN,
 } = {}) {
   if (!service?.execute) throw new TypeError('MCP server requires a customer service')
   if (surface !== 'frontend' && surface !== 'backend') {
     throw new TypeError(`Unknown tool surface: ${surface}`)
   }
-  const tools = toolDefinitions(surface)
+  const tools = toolDefinitions(surface, domain)
   const server = new Server({
     name: `qwen-audio-agent-customer-service-${surface}`,
     version: '1.0.0',

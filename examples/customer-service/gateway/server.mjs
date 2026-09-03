@@ -127,6 +127,17 @@ export function startCustomerServiceGateway({
     // 反问客户，或者凭常识编。实测到过中间状态 ——
     // 它说「我需要查一下《明远优选零售客服细则》」然后查不到。
     knowledgeRetrievalProvider: new PolicyKnowledgeProvider({ domain }),
+    // 【关掉用户画像】客服场景里每通电话都是不同的客户。
+    //
+    // 框架默认会建一个 Markdown provider 读写 .runtime/USER.md 与 MEMORY.md，
+    // 而那份内容会进模型上下文（realtime-gateway.mjs:371 的 memories）。
+    // 偏好晋升器（conversation/preference-promoter.mjs）默认是关的，
+    // 所以不会自动写入 —— 但只要有人往 USER.md 里写一句，
+    // 它就会出现在【每一通】客服电话的 prompt 里。那是串号。
+    //
+    // 座舱保留它是对的：一台车对一个车主，「记住我喜欢 24 度」正是它要的。
+    // 客服的会话之间必须互不相识 —— 客户信息只能来自本次核验和数据库。
+    memoryProvider: null,
   })
   const server = application.start({ host, port: listenPort })
   let closePromise = null

@@ -186,6 +186,9 @@ test('未注册的工具名会被拒绝', async () => {
   const service = fresh()
   await assert.rejects(
     () => service.execute('drop_database', {}, { sessionId: 's13', surface: 'backend' }),
-    /Unknown customer-service tool/,
+    // 报错要说清是哪个域没有 —— 工具集按域组装之后，
+    // 「Unknown tool: return_items」会让人以为没实现，
+    // 而实际是航空域压根不该有它。
+    /retail 域没有这个工具：drop_database/,
   )
 })

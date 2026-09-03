@@ -16,6 +16,13 @@
       "message": "需要先核验客户身份才能查订单。请向客户索要会员号，或者姓名加证件号后四位。",
       "policyLine": 13
     },
+    "_flight_status_note": "航班状态本身是公开信息，但这个工具只在通话里用 —— 未核验就查等于让来电者确认「某人某天有没有这班」，那是间接的订单存在性泄露。细则第十条。",
+    "get_flight_status": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份。核验之后可以帮客户查具体航班的状态。",
+      "policyLine": 13
+    },
     "update_flights": {
       "requires": ["identity_verified"],
       "onMissing": "refuse",

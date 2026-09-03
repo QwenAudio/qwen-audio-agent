@@ -41,6 +41,36 @@ test('前台不暴露联网检索能力', async () => {
   })
 })
 
+test('前台不装配用户画像', async () => {
+  // 【客服的会话之间必须互不相识】每通电话是不同的客户。
+  //
+  // 框架默认建一个 Markdown provider 读写 .runtime/USER.md 与 MEMORY.md，
+  // 而那份内容会进模型上下文（realtime-gateway.mjs:371 的 memories）。
+  // 偏好晋升器默认是关的，所以不会自动写入 —— 但只要有人往 USER.md 里写一句，
+  // 它就出现在【每一通】电话的 prompt 里。那是串号。
+  //
+  // 座舱保留它是对的：一台车对一个车主。判据不是「要不要记忆」，
+  // 是「会话对面是不是同一个人」。
+  await withGateway(async (base) => {
+    const health = await (await fetch(`${base}/api/health`)).json()
+    const memory = health.frontendMemory || {}
+    assert.equal(memory.configured, false,
+      `不该装配画像，实际：${JSON.stringify(memory)}`)
+    assert.equal(memory.provider, null)
+  })
+})
+
+test('policy 检索源装上了，且是当前域的', async () => {
+  // 关掉联网后必须有正确来源，否则模型只剩反问客户或凭常识编两条路。
+  await withGateway(async (base) => {
+    const health = await (await fetch(`${base}/api/health`)).json()
+    const knowledge = health.frontendKnowledge || {}
+    assert.equal(knowledge.configured, true, 'policy 检索源没装上')
+    assert.equal(knowledge.provider?.key, 'customer-service-policy')
+    assert.match(knowledge.provider?.label, /客服细则/)
+  })
+})
+
 test('前台白名单只有五个只读或单步工具', async () => {
   const mcp = JSON.parse(readFileSync(
     new URL('../frontend-mcp.json', import.meta.url), 'utf8',

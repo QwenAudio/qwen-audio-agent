@@ -263,3 +263,76 @@ Four things in the UI:
 Exporting writes `domains/<domain>/guards.json` and `gateway/frontend-mcp.json`.
 The console never takes part in execution — if it dies, calls keep working; you
 just cannot change configuration.
+
+## Running the four processes
+
+```bash
+cd service && npm start     # :3110  state source + two MCP tool surfaces
+cd agent   && npm start     # :3120  backend A2A agent
+node gateway/server.mjs     # :18889 foreground gateway
+cd console && npm start     # :4610  policy console
+```
+
+Five tools are frontend-direct (`verify_identity`, `identity_status`,
+`list_orders`, `get_order`, `check_variant`); everything else goes through
+`spawn_thinking` to the backend.
+
+## auth_required in a real voice gateway
+
+The chain below was read out of the framework source, not guessed:
+
+| Step | What happens | Where |
+|---|---|---|
+| 1 | Customer asks to cancel → model calls `spawn_thinking` | — |
+| 2 | Backend gets a write preview needing approval → task suspends | `service/tools/approval.mjs` |
+| 3 | `inputRequest.kind = 'authorization'` → `workState = auth_required` | `server/src/task/task-state.mjs:97` |
+| 4 | Gateway wraps it as `<backend_input_request>` for the realtime model | `realtime-gateway.mjs:946` |
+| 5 | Model relays the question **out loud** | `frontend-tools.mjs:498` |
+| 6 | Customer answers → model calls `respond_agent_input` | `frontend-tools.mjs:29` |
+
+**Steps 5–6 were assumed to need a custom approval UI.** Checking every
+`GatewayClientEvent` member showed no "respond to input" type at all — only the
+model can answer, by calling a tool. A client therefore cannot build a button
+that replies to an `inputRequest` directly; `/api/permissions/:id` belongs to
+the separate permission mechanism. The step-6 tool is exposed only while a
+request is pending (`hasPendingBackendInput()`).
+
+### Verified through step 4; step 6 not reproduced
+
+Running `runtime/gateway-auth-probe.mjs` with text instead of audio produced one
+complete piece of evidence:
+
+```
+task.accepted         objective="cancel order #W1082334 … customer confirmed."
+task.input.requested  workState=auth_required  inputKind=authorization
+```
+
+**The first four steps hold.** Repeated attempts afterwards — including clearing
+`.runtime` and restarting all three processes — did not get the model to submit
+the task again, so step 6 (`respond_agent_input` actually cancelling the order)
+**currently rests on source reading, not on a runtime observation.**
+
+Three confounders found while investigating, all noted in the probe:
+
+- `sessionId` must match the one baked in at gateway startup. See below.
+- Conversation history is restored from `.runtime/`
+  (`conversation_history.restored` in the log), after which the model considers
+  the order already being handled and stops resubmitting.
+- **Assistant transcripts are not sent back** — only `role=user`
+  `transcript.final` arrives; model speech goes out as `audio.delta`. So what it
+  said is invisible; only `task.*` events reveal whether it called a tool.
+
+## Known limitation: sessionId is fixed at process start
+
+`server/src/providers/mcp/frontend-mcp-client.mjs:132` uses the static
+`transport.headers` from configuration; the framework does not inject
+per-session parameters into MCP requests. So `gateway/server.mjs` bakes
+`sessionId` into `CS_FRONTEND_MCP_URL`.
+
+The cockpit does this correctly — its `cockpitId` means "which car", one fixed
+value per vehicle. A customer-service `sessionId` means "which call" and should
+differ every time. Doing that properly needs framework support for per-session
+injection; papering over it with a fake isolation layer in an example would be
+worse.
+
+**This is a single-call demo.** Concurrent calls share one service session.

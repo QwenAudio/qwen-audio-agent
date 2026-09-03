@@ -237,3 +237,68 @@ cd console && npm start          # http://127.0.0.1:4610
 
 导出会写 `domains/<domain>/guards.json` 与 `gateway/frontend-mcp.json`。
 配置台不参与执行 —— 它挂了通话照常，只是改不了配置。
+
+## 四进程跑起来
+
+```bash
+cd service && npm start     # :3110  状态源 + 两个 MCP 工具面
+cd agent   && npm start     # :3120  后台 A2A Agent
+node gateway/server.mjs     # :18889 前台网关
+cd console && npm start     # :4610  Policy 配置台
+```
+
+前台白名单 5 个（`verify_identity` / `identity_status` / `list_orders` /
+`get_order` / `check_variant`），其余经 `spawn_thinking` 交后台。
+
+## auth_required 在真实语音网关里的实测
+
+链路是核实过代码的，不是推测的：
+
+| 步 | 发生什么 | 位置 |
+|---|---|---|
+| 1 | 客户说要取消 → 模型调 `spawn_thinking` | — |
+| 2 | 后台取到写库预览发现要批准 → 任务挂起 | `service/tools/approval.mjs` |
+| 3 | `inputRequest.kind = 'authorization'` → `workState = auth_required` | `server/src/task/task-state.mjs:97` |
+| 4 | 网关包成 `<backend_input_request>` 交给 realtime 模型 | `realtime-gateway.mjs:946` |
+| 5 | 模型**口头**转达问题 | `frontend-tools.mjs:498` |
+| 6 | 客户口头回答 → 模型调 `respond_agent_input` 交回同一项工作 | `frontend-tools.mjs:29` |
+
+**第 5、6 步一开始以为要自己做批准 UI。** 查了 `GatewayClientEvent` 全部枚举
+—— 没有任何「应答 input」的类型，应答只能由模型调工具完成。
+所以客户端做不出直接回 `inputRequest` 的按钮；`/api/permissions/:id` 那条路
+走的是 permission 机制，和 `inputRequest` 是两套东西。
+第 6 步的工具只在有挂起请求时动态暴露（`hasPendingBackendInput()`）。
+
+### 实测到第 4 步，第 6 步未复现
+
+用文字消息代替语音跑 `runtime/gateway-auth-probe.mjs`，拿到过一次完整证据：
+
+```
+task.accepted         objective="取消订单 #W1082334…客户已确认取消。"
+task.input.requested  workState=auth_required  inputKind=authorization
+```
+
+**前四步成立。** 但之后多次重跑（含清 `.runtime`、重启三进程）都没能让模型
+再次提交任务，因此第 6 步（`respond_agent_input` → 订单真的取消）
+**目前只有代码依据，没有运行证据**。
+
+三条排查中确认的干扰因素，都写进了探针的注释：
+
+- `sessionId` 必须与网关启动时那个一致。原因见下一节。
+- `.runtime/` 里的对话历史会被恢复（日志里的 `conversation_history.restored`），
+  模型看到「这单已经在办」就不再提交。
+- **助手侧的 transcript 不回传** —— 只有 `role=user` 的 `transcript.final`，
+  模型的语音输出走 `audio.delta`。所以看不到它说了什么，
+  只能靠 `task.*` 事件判断它有没有调工具。
+
+## 一个已知限制：sessionId 在进程启动时定下来
+
+`server/src/providers/mcp/frontend-mcp-client.mjs:132` 用的是配置里的静态
+`transport.headers`，框架不会按语音会话注入 MCP 请求参数。
+所以 `gateway/server.mjs` 把 `sessionId` 烘进了 `CS_FRONTEND_MCP_URL`。
+
+座舱那样写是对的 —— 它的 `cockpitId` 是「哪台车」，一台车一个固定值。
+客服的 `sessionId` 语义上是「哪通电话」，本该每通不同。要做到那样需要框架支持
+按会话注入，那是框架的事，不该在示例里加一个假的隔离层糊过去。
+
+**当前形态是单通话演示。** 多通并发会共享同一份客服会话状态。

@@ -1,0 +1,32 @@
+{
+  "_note": "前台工具白名单。由 console 配置台从 service/tools/*/manifest.json 推出（判据见 console/surfaces.mjs），描述里的选用规则是手写的 —— 那部分决定模型什么时候调它，manifest 里的 title 太短，撑不起这个作用。",
+  "version": 1,
+  "servers": {
+    "customer-service": {
+      "enabled": true,
+      "url": "${CS_FRONTEND_MCP_URL}",
+      "tools": {
+        "verify_identity": {
+          "enabled": true,
+          "description": "核验客户身份。客户报出注册邮箱，或者姓名加收货地址邮编时调用。这是办理任何业务的前提，没核验通过之前不要查订单也不要谈具体订单。客户主动报出的订单号不作为核验依据。"
+        },
+        "identity_status": {
+          "enabled": true,
+          "description": "查询当前通话的身份核验状态。不确定是否已核验时先查这个，不要凭印象判断，也不要重复要求客户提供已经核验过的信息。"
+        },
+        "list_orders": {
+          "enabled": true,
+          "description": "列出已核验客户名下的订单。客户说不清订单号、或者要求「查一下我的订单」时调用。返回条数多时只念前三条并告知总数。"
+        },
+        "get_order": {
+          "enabled": true,
+          "description": "查询单笔订单的商品、金额、状态与时间。客户报出订单号，或者从列表里选定某一笔之后调用。念订单号和金额时逐字念一遍让客户确认。"
+        },
+        "check_variant": {
+          "enabled": true,
+          "description": "查询换货用的款式或尺码是否有货。客户提出换货意向后调用，确认目标款式可换再谈后续。这一步只查库存，不产生任何变更。"
+        }
+      }
+    }
+  }
+}

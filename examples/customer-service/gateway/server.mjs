@@ -94,6 +94,23 @@ export function startCustomerServiceGateway({
     agent,
     autoStart: false,
     spawnThinkingDescription: CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION,
+    // 【关掉联网检索】客服的信息边界是封闭的：能说的话只该来自
+    // domains/*/policy.md 和数据库，每句话都要能追到细则第几行或订单某个字段。
+    //
+    // 这不是「用不上所以关掉」，是实测踩过：客户问退货政策，模型调了
+    // web_search，拿回来的是昆明本地宝、法律咨询、书法拍卖（「明远」被搜成
+    // 「明星大侦探」），然后建议客户「自己查阅《明远优选零售客服细则》」——
+    // 而那份细则就在 domains/retail/policy.md 里。
+    //
+    // 更要紧的是：有 web_search 时模型会优先用它（通用、便宜），
+    // 于是永远不会去查 knowledge。关掉它是让 policy 检索被使用的前提。
+    //
+    // 座舱留着这两个是对的 —— 查天气路况本来就需要外部信息。
+    // 客服和它的差别不在场景大小，在信息边界是否封闭。
+    webSearchProvider: null,
+    // urlFetcher 默认是 new SafeUrlFetcher()，恒为真，所以 fetch_url 是
+    // 无条件暴露的，不关掉它光关 web_search 等于没关。
+    urlFetcher: null,
   })
   const server = application.start({ host, port: listenPort })
   let closePromise = null

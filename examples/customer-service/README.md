@@ -336,3 +336,50 @@ injection; papering over it with a fake isolation layer in an example would be
 worse.
 
 **This is a single-call demo.** Concurrent calls share one service session.
+
+## Policy retrieval
+
+With web access removed, the model needs a correct source or it is left with two
+options: interrogate the customer, or invent. `gateway/policy-knowledge.mjs`
+splits `domains/<domain>/policy.md` on `##` headings and mounts it as the
+framework's knowledge retrieval source.
+
+**The source text is handed to the model verbatim** — no summarisation. Summarising adds
+one more chance to distort, and the whole value of this text is that it is the
+authoritative original. Each passage carries its provenance:
+
+```
+《明远优选零售客服细则》二、退货时限（第 16 行起）
+
+| 类别 | 代码 | 退货窗口 |
+| 服饰鞋包 | apparel | 30 天 |
+...
+```
+
+Line numbers live inside `content` rather than going through the citation
+protocol: `normalizeCitation` requires a public URL and returns null without one
+(`citation.mjs:21`), while the policy is a local private file.
+
+**One process serves one domain** (`CS_DOMAIN`, default retail). The first
+version loaded both; a retail session asking about shipping fees got airline
+baggage allowance as its second hit. Mixing domains is not just ranking noise —
+a retail agent could answer with airline rules.
+
+### Three-way comparison
+
+The same question — "I'd like to ask about the return policy" — asked three times:
+
+| | Web on | Web off | Policy retrieval on |
+|---|---|---|---|
+| External citations | 5 (local news site, calligraphy auction) | none | none |
+| Concrete day counts | 30 days (from the web) | none | **30 / 7 / 15, correct per category** |
+| Wording | "you should check the policy" | "I need to look up the policy" (couldn't) | gives the content directly |
+
+Two follow-ups:
+
+- "How many days for digital products?" → **7 days**, correct
+- "How many days for furniture?" → **"furniture is not listed as a category in the policy"**
+
+That last one matters. Previously the executor blocked fabrication by refusing to
+supply a number; now **the model itself cannot produce one** — the retrieved text
+genuinely has no furniture row.

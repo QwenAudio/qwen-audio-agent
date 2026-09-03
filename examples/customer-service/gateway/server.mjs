@@ -5,6 +5,7 @@
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { loadServiceEnvironment } from '../bootstrap/environment.mjs'
 import { CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION } from './spawn-thinking-tool.mjs'
+import { PolicyKnowledgeProvider } from './policy-knowledge.mjs'
 
 loadServiceEnvironment()
 process.env.QWAUDIO_CONFIG_DIR ||= fileURLToPath(new URL('../.runtime', import.meta.url))
@@ -35,6 +36,14 @@ if (!process.env.CS_FRONTEND_MCP_URL) {
 }
 process.env.QWEN_AUDIO_FRONTEND_PROFILE ||= fileURLToPath(
   new URL('./frontend-profile.json', import.meta.url),
+)
+
+// 人设按域选。profile 里的 assistant 字段是相对路径，所以换域要换整份 profile ——
+// 与其为两个域各写一份 profile（两份里只有一行不同、改一处必忘另一处），
+// 不如在这里按域覆盖 assistant 路径。
+// 变量名核实自 server/src/core/frontend-profile.mjs:164。
+process.env.QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH ||= fileURLToPath(
+  new URL(`./assistant/${process.env.CS_DOMAIN || 'retail'}.md`, import.meta.url),
 )
 
 const [
@@ -80,6 +89,9 @@ export async function waitForCustomerService({
 export function startCustomerServiceGateway({
   host = process.env.CS_GATEWAY_HOST || '127.0.0.1',
   port: listenPort = port(process.env.CS_GATEWAY_PORT, 18_889),
+  // 一个进程一个域：人设、policy 检索源、guards 都按它选。
+  // 混域会让零售客服查到航空细则 —— 实测过，见 policy-knowledge.mjs 里的说明。
+  domain = process.env.CS_DOMAIN || 'retail',
   agentCardUrl = process.env.CS_AGENT_CARD_URL
     || 'http://127.0.0.1:3120/.well-known/agent-card.json',
 } = {}) {
@@ -111,6 +123,10 @@ export function startCustomerServiceGateway({
     // urlFetcher 默认是 new SafeUrlFetcher()，恒为真，所以 fetch_url 是
     // 无条件暴露的，不关掉它光关 web_search 等于没关。
     urlFetcher: null,
+    // 关掉联网之后必须给个正确的来源，否则模型只剩两条路：
+    // 反问客户，或者凭常识编。实测到过中间状态 ——
+    // 它说「我需要查一下《明远优选零售客服细则》」然后查不到。
+    knowledgeRetrievalProvider: new PolicyKnowledgeProvider({ domain }),
   })
   const server = application.start({ host, port: listenPort })
   let closePromise = null

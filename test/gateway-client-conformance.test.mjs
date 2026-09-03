@@ -86,4 +86,3 @@ for (const clientType of Object.values(GatewayReferenceClientType)) {
     client.stop()
   })
 }
-

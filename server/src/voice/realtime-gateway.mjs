@@ -27,6 +27,7 @@ import { ToolCallHandler } from './tools/tool-call-handler.mjs'
 import { TurnTranscripts } from './tools/turn-transcripts.mjs'
 import { TurnCitations } from './turn-citations.mjs'
 import { RealtimeInputRuntime } from './realtime-input-runtime.mjs'
+import { RealtimeObservationRuntime } from './realtime-observation-runtime.mjs'
 import {
   acceptsPlaybackReceipt,
   confirmsTaskNotificationOnPlaybackStart,
@@ -313,6 +314,7 @@ export function attachRealtimeGateway(server, {
     const announcedInputs = new Set()
     let permissionRetryTimer = null
     let realtimeSession
+    let observationRuntime
     const agentDeliveries = new RealtimeAgentDeliveryRuntime({
       getFrontend: () => realtimeSession?.frontend,
       isDeliveryBlocked: () => (
@@ -591,10 +593,13 @@ export function attachRealtimeGateway(server, {
           announcements.flush()
         }
       },
-      onDisconnected: () => send(ws, {
-        type: GatewayServerEvent.VOICE_STATE,
-        state: 'idle',
-      }),
+      onDisconnected: () => {
+        observationRuntime?.stop('realtime_disconnected')
+        send(ws, {
+          type: GatewayServerEvent.VOICE_STATE,
+          state: 'idle',
+        })
+      },
       onReconnected: () => {
         announcements.flush()
         progressAnnouncements.flush()
@@ -615,6 +620,12 @@ export function attachRealtimeGateway(server, {
         ? { createFrontend: realtimeFrontendFactory }
         : {}),
     })
+    observationRuntime = new RealtimeObservationRuntime({
+      ensureFrontend: () => realtimeSession.ensure(),
+      getFrontend: () => realtimeSession.frontend,
+      send: event => send(ws, event),
+      onError: reportFrontendError,
+    })
     const voiceClient = {
       ws,
       descriptor,
@@ -628,6 +639,7 @@ export function attachRealtimeGateway(server, {
         if (suspend) {
           // Buffered audio predates the suspension and is no longer wanted.
           realtimeSession.clearPendingAudio()
+          observationRuntime?.stop('input_suspended')
           sleepController?.disable()
           realtimeSession.cancelResponse()
           send(ws, { type: GatewayServerEvent.PLAYBACK_CLEAR, reason: 'input_suspended' })
@@ -655,6 +667,7 @@ export function attachRealtimeGateway(server, {
         sleepController?.disable()
         inputEnabled = false
         outputEnabled = false
+        observationRuntime?.stop('voice_deactivated')
         announcementWindow.reset()
         announcements.pause()
         progressAnnouncements.clear()
@@ -1114,6 +1127,7 @@ export function attachRealtimeGateway(server, {
 
     const enterSleep = () => {
       if (sleeping) return
+      observationRuntime?.stop('sleeping')
       sleeping = true
       waking = false
       announcementWindow.reset()
@@ -1500,6 +1514,7 @@ export function attachRealtimeGateway(server, {
             text: event.inputCapabilities.text === true,
             audio: event.inputCapabilities.audio === true,
             image: event.inputCapabilities.image === true,
+            observation: event.inputCapabilities.observation === true,
             resource: event.inputCapabilities.resource === true,
           }
           : null
@@ -1572,6 +1587,29 @@ export function attachRealtimeGateway(server, {
           return
         }
         realtimeSession.appendAudio(event.audio)
+      } else if (event.type === GatewayClientEvent.OBSERVATION_START) {
+        if (sleeping || waking) {
+          send(ws, {
+            type: GatewayServerEvent.ERROR,
+            message: `已休眠，请先说“${config.wakeWord}”唤醒。`,
+          })
+          return
+        }
+        if (inputSuspended) {
+          send(ws, {
+            type: GatewayServerEvent.ERROR,
+            message: '当前输入正被其他客户端占用，无法进行画面观察。',
+          })
+          return
+        }
+        sleepController.recordActivity()
+        observationRuntime.start()
+      } else if (event.type === GatewayClientEvent.OBSERVATION_FRAME) {
+        if (sleeping || waking) return
+        sleepController.recordActivity()
+        observationRuntime.frame(event)
+      } else if (event.type === GatewayClientEvent.OBSERVATION_STOP) {
+        observationRuntime.stop(event.reason || 'user')
       } else if (
         event.type === GatewayClientEvent.TEXT_MESSAGE
         || event.type === GatewayClientEvent.INPUT_MESSAGE
@@ -1625,6 +1663,7 @@ export function attachRealtimeGateway(server, {
           })
         }
       } else if (event.type === GatewayClientEvent.MUTE) {
+        observationRuntime.stop('voice_muted')
         releaseVoiceClient()
         sleeping = false
         waking = false
@@ -1636,6 +1675,7 @@ export function attachRealtimeGateway(server, {
         realtimeSession.close({ notifyDisconnected: true })
       } else if (event.type === GatewayClientEvent.INPUT_MUTE) {
         inputEnabled = false
+        observationRuntime.stop('input_muted')
         realtimeSession.clearPendingAudio()
       } else if (event.type === GatewayClientEvent.SLEEP) {
         requestExplicitSleep('client')
@@ -1673,6 +1713,7 @@ export function attachRealtimeGateway(server, {
       clearTimeout(permissionRetryTimer)
       permissionRetryTimer = null
       sleepController?.close()
+      observationRuntime?.stop('gateway_disconnected')
       presenceController.close()
       realtimeSession.close()
       // Invisible memory: distil durable personal facts from this session in

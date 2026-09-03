@@ -174,6 +174,14 @@ const GatewayInputMessagePayloadSchema = z.object({
   message: 'a text or parts payload is required',
 })
 
+const GatewayObservationFramePayloadSchema = z.object({
+  // The browser sends the Base64 body rather than a data URL. Keeping the
+  // protocol bound close to the provider's 256 KiB encoded-image limit avoids
+  // accepting a large frame that would only be rejected downstream.
+  image: z.string().min(1).max(256 * 1024),
+  sequence: z.number().int().nonnegative().optional(),
+}).passthrough()
+
 const GatewayClientPayloadSchemas = Object.freeze({
   [GatewayClientEvent.CONNECT]: z.object({
     voiceEnabled: z.boolean().optional(),
@@ -192,6 +200,7 @@ const GatewayClientPayloadSchemas = Object.freeze({
       text: z.boolean().optional(),
       audio: z.boolean().optional(),
       image: z.boolean().optional(),
+      observation: z.boolean().optional(),
       resource: z.boolean().optional(),
     }).passthrough().optional(),
     clientStates: z.array(z.string().min(1)).optional(),
@@ -201,6 +210,11 @@ const GatewayClientPayloadSchemas = Object.freeze({
   }).passthrough(),
   [GatewayClientEvent.TEXT_MESSAGE]: GatewayInputMessagePayloadSchema,
   [GatewayClientEvent.INPUT_MESSAGE]: GatewayInputMessagePayloadSchema,
+  [GatewayClientEvent.OBSERVATION_START]: z.object({}).passthrough(),
+  [GatewayClientEvent.OBSERVATION_FRAME]: GatewayObservationFramePayloadSchema,
+  [GatewayClientEvent.OBSERVATION_STOP]: z.object({
+    reason: z.string().max(80).optional(),
+  }).passthrough(),
   [GatewayClientEvent.PLAYBACK_STARTED]: z.object({
     responseId: z.string().min(1),
   }).passthrough(),
@@ -268,6 +282,11 @@ const GatewayVoicePayloadSchemas = Object.freeze({
   }).passthrough(),
   [GatewayServerEvent.TRANSCRIPT_DISCARD]: z.object({
     role: z.enum(['user', 'assistant']),
+  }).passthrough(),
+  [GatewayServerEvent.OBSERVATION_STATE]: z.object({
+    state: z.enum(['idle', 'starting', 'active', 'unavailable']),
+    frames: z.number().int().nonnegative().optional(),
+    reason: z.string().max(80).optional(),
   }).passthrough(),
   [GatewayServerEvent.AGENT_ACTIVITY]: z.object({
     activity: z.string().min(1),

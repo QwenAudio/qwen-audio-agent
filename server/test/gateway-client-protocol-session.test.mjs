@@ -50,4 +50,3 @@ test('shares a bounded Task replay cursor across protocol connections', () => {
   assert.deepEqual(outcome.reply.events.map(event => event.sequence), [2])
   assert.equal(outcome.reply.has_more, false)
 })
-

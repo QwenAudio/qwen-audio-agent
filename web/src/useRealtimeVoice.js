@@ -147,6 +147,7 @@ export function realtimeModelStatus(health = {}) {
       TRANSPORT_INPUT_CAPABILITIES,
     ),
     imageInputEnabled: transportCapabilities?.imageInput === true,
+    observationInputEnabled: transportCapabilities?.observationInput === true,
   }
 }
 
@@ -230,6 +231,7 @@ export default function useRealtimeVoice({
     createGatewayClientState,
   )
   const [inputReady, setInputReady] = useState(false)
+  const [observationState, setObservationState] = useState('idle')
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState(false)
   const {
@@ -574,6 +576,7 @@ export default function useRealtimeVoice({
       state: 'hidden',
     })
     setInputReady(false)
+    setObservationState('idle')
     setError('')
     setVisualError(false)
   }, [suspended])
@@ -599,6 +602,9 @@ export default function useRealtimeVoice({
           setError(event.message || t('语音前台连接异常，正在重试'))
           setVisualError(true)
         }
+      }
+      if (event.type === GatewayServerEvent.OBSERVATION_STATE) {
+        setObservationState(event.state || 'idle')
       }
       if (event.type === GatewayServerEvent.TURN_STARTED) {
         currentTurnId.current = event.turnId || ''
@@ -698,6 +704,7 @@ export default function useRealtimeVoice({
         } else if (status.state === 'disconnected') {
           releaseManualInputGuard()
           stopPlayback()
+          setObservationState('idle')
           const disconnectedEvent = {
           type: GatewayServerEvent.GATEWAY_DISCONNECTED,
         }
@@ -718,6 +725,7 @@ export default function useRealtimeVoice({
 
     return () => {
       stopPlayback('connection_closed')
+      setObservationState('idle')
       client.stop()
       socketRef.current = null
       mutedResponses.clear()
@@ -745,6 +753,7 @@ export default function useRealtimeVoice({
 
   useEffect(() => {
     pendingManualInputsRef.current = []
+    setObservationState('idle')
   }, [sessionId])
 
   useEffect(() => {
@@ -976,6 +985,27 @@ export default function useRealtimeVoice({
     return false
   }, [holdManualInputGuard, releaseManualInputGuard, sendSocketEvent])
 
+  const sendObservationStart = useCallback(() => (
+    sendSocketEvent({ type: GatewayClientEvent.OBSERVATION_START })
+  ), [sendSocketEvent])
+
+  const sendObservationFrame = useCallback((image, sequence) => {
+    const value = String(image || '').trim()
+    if (!value) return false
+    return sendSocketEvent({
+      type: GatewayClientEvent.OBSERVATION_FRAME,
+      image: value,
+      ...(Number.isInteger(sequence) ? { sequence } : {}),
+    })
+  }, [sendSocketEvent])
+
+  const sendObservationStop = useCallback((reason = 'user') => (
+    sendSocketEvent({
+      type: GatewayClientEvent.OBSERVATION_STOP,
+      reason: String(reason || 'user').slice(0, 80),
+    })
+  ), [sendSocketEvent])
+
   return {
     state,
     visualState: visualVoiceState(state),
@@ -983,6 +1013,7 @@ export default function useRealtimeVoice({
     error,
     visualError,
     connectionState,
+    observationState,
     wakeWordActive,
     ownership,
     activateAudio,
@@ -995,5 +1026,8 @@ export default function useRealtimeVoice({
     cancelTask,
     respondPermission,
     conversationHistory,
+    sendObservationStart,
+    sendObservationFrame,
+    sendObservationStop,
   }
 }

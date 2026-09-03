@@ -1,8 +1,14 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useLayoutEffect } from 'react'
+import { displayToolName } from '../projections/tool-call-debug'
 
 function formatArgs(args) {
   if (!args || Object.keys(args).length === 0) return ''
-  return Object.entries(args).map(([k, v]) => `${k}=${v}`).join(', ')
+  return Object.entries(args).map(([k, v]) => {
+    const value = v && typeof v === 'object'
+      ? JSON.stringify(v)
+      : String(v)
+    return `${k}=${value}`
+  }).join(', ')
 }
 
 const TOOL_TAGS = {
@@ -56,6 +62,12 @@ function progressTag(progress) {
   return { label: '导航', cls: 'tag-nav' }
 }
 
+function surfaceTag(call) {
+  return call.surface === 'backend'
+    ? { label: '后台', cls: 'tag-backend' }
+    : { label: '前台', cls: 'tag-frontend' }
+}
+
 function getDefaultPosition(panel) {
   const container = panel?.parentElement
   if (!panel || !container) return { x: 0, y: 0 }
@@ -68,6 +80,18 @@ function getDefaultPosition(panel) {
   }
 }
 
+function clampPanelPosition(panel, position) {
+  const container = panel?.parentElement
+  if (!panel || !container) return { x: 0, y: 0 }
+
+  const panelRect = panel.getBoundingClientRect()
+  const containerRect = container.getBoundingClientRect()
+  return {
+    x: Math.max(0, Math.min(position.x, containerRect.width - panelRect.width)),
+    y: Math.max(0, Math.min(position.y, containerRect.height - panelRect.height)),
+  }
+}
+
 export default function ChatPanel({
   onClose,
   onClear,
@@ -77,25 +101,38 @@ export default function ChatPanel({
   voiceActive = false,
 }) {
   const [input, setInput] = useState('')
-  const [position, setPosition] = useState({ x: 0, y: 0 })
+  const [position, setPosition] = useState(null)
+  const didDragRef = useRef(false)
   const panelRef = useRef(null)
   const listRef = useRef(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const panel = panelRef.current
     if (!panel) return undefined
+    const container = panel.parentElement
 
-    const syncDefaultPosition = () => {
+    const syncPanelPosition = () => {
       setPosition(prev => {
-        const next = getDefaultPosition(panel)
-        if (prev.x === next.x && prev.y === next.y) return prev
+        const base = didDragRef.current && prev
+          ? prev
+          : getDefaultPosition(panel)
+        const next = clampPanelPosition(panel, base)
+        if (prev && prev.x === next.x && prev.y === next.y) return prev
         return next
       })
     }
 
-    syncDefaultPosition()
-    window.addEventListener('resize', syncDefaultPosition)
-    return () => window.removeEventListener('resize', syncDefaultPosition)
+    syncPanelPosition()
+    const resizeObserver = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(syncPanelPosition)
+      : null
+    resizeObserver?.observe(panel)
+    if (container) resizeObserver?.observe(container)
+    window.addEventListener('resize', syncPanelPosition)
+    return () => {
+      resizeObserver?.disconnect()
+      window.removeEventListener('resize', syncPanelPosition)
+    }
   }, [])
 
   useEffect(() => {
@@ -103,8 +140,15 @@ export default function ChatPanel({
   }, [messages])
 
   const handleDragStart = useCallback((e) => {
+    if (e.button !== undefined && e.button !== 0) return
     const panel = panelRef.current
+    if (!panel) return
     const container = panel.parentElement
+    if (!container) return
+
+    e.preventDefault()
+    didDragRef.current = true
+
     const panelRect = panel.getBoundingClientRect()
     const containerRect = container.getBoundingClientRect()
     const offsetX = e.clientX - panelRect.left
@@ -119,12 +163,14 @@ export default function ChatPanel({
     }
 
     const onUp = () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
+      document.removeEventListener('pointermove', onMove)
+      document.removeEventListener('pointerup', onUp)
+      document.removeEventListener('pointercancel', onUp)
     }
 
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
+    document.addEventListener('pointermove', onMove)
+    document.addEventListener('pointerup', onUp)
+    document.addEventListener('pointercancel', onUp)
   }, [])
 
   const sendMessage = () => {
@@ -153,14 +199,22 @@ export default function ChatPanel({
   }
 
   return (
-    <div className="chat-panel" ref={panelRef} style={{ left: position.x, top: position.y }}>
-      <div className="chat-header" onMouseDown={handleDragStart}>
+    <div
+      className="chat-panel"
+      ref={panelRef}
+      style={{
+        left: position?.x || 0,
+        top: position?.y || 0,
+        visibility: position ? undefined : 'hidden',
+      }}
+    >
+      <div className="chat-header" onPointerDown={handleDragStart}>
         <span className="chat-title">Qwen Audio Agent Smart Cockpit · 调试</span>
         <div className="chat-header-actions">
           <button
             className="chat-clear"
             onClick={onClear}
-            onMouseDown={event => event.stopPropagation()}
+            onPointerDown={event => event.stopPropagation()}
             aria-label="清空"
             title="清空"
           >
@@ -170,7 +224,12 @@ export default function ChatPanel({
               <path d="M6 7l1 13h10l1-13M9 7V4h6v3" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
             </svg>
           </button>
-          <button className="chat-close" onClick={onClose} aria-label="关闭">
+          <button
+            className="chat-close"
+            onClick={onClose}
+            onPointerDown={event => event.stopPropagation()}
+            aria-label="关闭"
+          >
             <svg className="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M18 6 6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
@@ -201,14 +260,21 @@ export default function ChatPanel({
                   </div>
                 ))}
                 {msg.debug.tool_calls.map((tc, j) => {
-                  const tag = TOOL_TAGS[tc.name]
+                  const displayName = displayToolName(tc.name)
+                  const tag = TOOL_TAGS[displayName] || TOOL_TAGS[tc.name]
+                  const layer = surfaceTag(tc)
                   return (
                     <div key={j} className="debug-call">
+                      <span className={`debug-tag ${layer.cls}`}>{layer.label}</span>
                       {tag && <span className={`debug-tag ${tag.cls}`}>{tag.label}</span>}
-                      <span className="debug-fn">{tc.name}</span>
+                      <span className="debug-fn">{displayName || tc.name}</span>
                       <span className="debug-args">{formatArgs(tc.arguments)}</span>
-                      <span className="debug-result">{tc.result}</span>
-                      <span className="debug-time">{tc.duration_ms}ms</span>
+                      {(tc.result || tc.status) && (
+                        <span className="debug-result">{tc.result || tc.status}</span>
+                      )}
+                      {Number.isFinite(tc.duration_ms) && (
+                        <span className="debug-time">{tc.duration_ms}ms</span>
+                      )}
                     </div>
                   )
                 })}

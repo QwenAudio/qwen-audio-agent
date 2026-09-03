@@ -34,6 +34,7 @@ import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { BackendEventType } from '../../core/backend-events.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
+const MAX_DEBUG_RESULT_CHARS = 180
 
 const CANCEL_RECEIPT_INSTRUCTIONS = [
   '根据本次响应中的全部取消结果，只作一次简短自然的确认。',
@@ -102,6 +103,28 @@ function failure(errorCode, userMessage, {
   }
 }
 
+function compactDebugValue(value, maxChars = MAX_DEBUG_RESULT_CHARS) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  return [...text].slice(0, maxChars).join('')
+}
+
+function compactDebugResult(output) {
+  if (typeof output === 'string') return compactDebugValue(output)
+  if (!output || typeof output !== 'object') return compactDebugValue(output)
+  return compactDebugValue(
+    output.user_message
+    || output.message
+    || output.content
+    || output.status
+    || output.error_code
+    || JSON.stringify(output),
+  )
+}
+
+function debugSurface(toolName) {
+  return toolName === SPAWN_THINKING_TOOL_NAME ? 'backend' : 'frontend'
+}
+
 export class ToolCallHandler {
   constructor({
     taskManager,
@@ -122,6 +145,7 @@ export class ToolCallHandler {
     permissionPolicy,
     onPermissionDeliveryFailed = () => {},
     onToolResultReady = () => {},
+    onToolCallDebug = () => {},
     presenceController = null,
     onAgentActivity = () => {},
     inputAssets = null,
@@ -149,6 +173,7 @@ export class ToolCallHandler {
     this.permissionPolicy = permissionPolicy
     this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
     this.onToolResultReady = onToolResultReady
+    this.onToolCallDebug = onToolCallDebug
     this.presenceController = presenceController
     this.onAgentActivity = onAgentActivity
     this.inputAssets = inputAssets
@@ -157,6 +182,7 @@ export class ToolCallHandler {
     this.frontendToolSources = frontendToolSources
     this.turnCitations = turnCitations
     this.activeToolEntries = new Map()
+    this.activeToolDebugEntries = new Map()
     this.externalToolLoop = new FrontendToolLoop()
     this.toolExecutor = frontendToolRegistry.createExecutor({
       [SPAWN_THINKING_TOOL_NAME]: context => (
@@ -206,6 +232,14 @@ export class ToolCallHandler {
 
   externalTool(name) {
     return findFrontendSourceTool(this.frontendToolSources, name)
+  }
+
+  emitToolCallDebug(event) {
+    try {
+      this.onToolCallDebug(event)
+    } catch {
+      // Debug hooks must never affect user-visible tool handling.
+    }
   }
 
   hasPendingBackendPermission() {
@@ -326,6 +360,7 @@ export class ToolCallHandler {
       ...frontendOptions
     } = options || {}
     const tool = this.activeToolEntries.get(callId)
+    const debug = this.activeToolDebugEntries.get(callId)
     try {
       this.onToolResultReady({
         callId,
@@ -349,6 +384,15 @@ export class ToolCallHandler {
         )
     const projectedOutput = this.turnCitations?.project(turnId, safeOutput)
       || safeOutput
+    if (debug) {
+      this.emitToolCallDebug({
+        ...debug,
+        status: safeOutput?.error ? 'failed' : 'completed',
+        result: compactDebugResult(projectedOutput),
+        durationMs: Math.max(0, Date.now() - debug.startedAt),
+        ...(taskId ? { taskId } : {}),
+      })
+    }
     await this.getFrontend()?.sendFunctionOutput(
       callId,
       projectedOutput,
@@ -991,6 +1035,19 @@ export class ToolCallHandler {
     const external = this.externalTool(toolName)
     const tool = frontendToolRegistry.get(toolName) || external?.tool
     if (tool) this.activeToolEntries.set(callId, tool)
+    const responseId = String(callContext.responseId || event.response_id || '').trim()
+    const debug = {
+      callId,
+      turnId,
+      responseId,
+      name: toolName,
+      surface: debugSurface(toolName),
+      status: 'received',
+      arguments: args,
+      startedAt: Date.now(),
+    }
+    this.activeToolDebugEntries.set(callId, debug)
+    this.emitToolCallDebug(debug)
     try {
       if (external) {
         return await this.executeExternalToolCall(external, {
@@ -1066,6 +1123,7 @@ export class ToolCallHandler {
       return execution
     } finally {
       this.activeToolEntries.delete(callId)
+      this.activeToolDebugEntries.delete(callId)
     }
   }
 

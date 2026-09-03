@@ -739,6 +739,13 @@ export function attachRealtimeGateway(server, {
           durationMs: Math.max(0, Date.now() - timing.startedAt),
         })
       },
+      onToolCallDebug: event => {
+        const { startedAt: _startedAt, ...publicEvent } = event || {}
+        send(ws, {
+          type: GatewayServerEvent.TOOL_CALL,
+          ...publicEvent,
+        })
+      },
       presenceController,
       onAgentActivity: activity => send(ws, {
         type: GatewayServerEvent.AGENT_ACTIVITY,

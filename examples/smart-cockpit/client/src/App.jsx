@@ -19,6 +19,7 @@ import {
   voiceConversationMessageId,
   voiceEventBelongsToTurn,
 } from './projections/voice-transcript'
+import { mergeToolCallDebug } from './projections/tool-call-debug'
 import { cockpitScreenForProgress } from './projections/cockpit-activity'
 import {
   COCKPIT_VOICE_IDS,
@@ -283,7 +284,10 @@ export default function App() {
         thinkingMs: msg.thinkingMs || 1,
         debug: {
           ...(msg.debug || {}),
-          tool_calls: [...(msg.debug?.tool_calls || []), event.toolCall],
+          tool_calls: mergeToolCallDebug(
+            msg.debug?.tool_calls || [],
+            event.toolCall,
+          ),
         },
       }))
       return

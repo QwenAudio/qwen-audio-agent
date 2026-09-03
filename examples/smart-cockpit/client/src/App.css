@@ -2880,6 +2880,16 @@ button {
   color: #c4a0ff;
 }
 
+.tag-frontend {
+  background: rgba(68, 196, 184, 0.2);
+  color: #7fe0d4;
+}
+
+.tag-backend {
+  background: rgba(229, 186, 53, 0.2);
+  color: #f0cc62;
+}
+
 .tag-memory {
   background: rgba(100, 191, 232, 0.2);
   color: #7cc8e8;

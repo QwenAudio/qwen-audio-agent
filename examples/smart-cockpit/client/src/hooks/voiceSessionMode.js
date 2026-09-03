@@ -22,6 +22,13 @@ export function cockpitVoiceConnectionMode(muted, outputVoice = '') {
   }
 }
 
+export function playbackUnavailableReason({ context, muted } = {}) {
+  if (muted) return 'client_muted'
+  if (!context) return 'audio_context_missing'
+  if (context.state && context.state !== 'running') return 'audio_context_suspended'
+  return ''
+}
+
 export function cockpitConnectionError(state) {
   if (state === 'unavailable' || state === 'disconnected') {
     return COCKPIT_CONNECTION_INTERRUPTED

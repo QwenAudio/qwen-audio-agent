@@ -430,3 +430,267 @@ test('每次退票调用都留审计，包括被拦下的', async () => {
   assert.equal(last.tool, 'cancel_reservation')
   assert.equal(last.ok, false)
 })
+
+// ── 加行李：3×3 交叉表 + 超额费 ──
+
+test('行李只能增不能减', async () => {
+  // 细则第五条。传更小的数不是「参数错误」，是业务上不允许 ——
+  // 话术要让模型能向客户解释，而不是重试。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const result = await call('update_baggages', { reservationId: 'CYR8803', totalBags: 0 })
+  assert.equal(result.data.blocked, 'baggage_decrease')
+  assert.match(result.content, /只能增加不能减少/)
+})
+
+test('超出免费额度按件收费，额度走 3×3 表', async () => {
+  // 周涛是普通会员，CYR8803 是经济舱 → 免费 1 件；加到 3 件超 2 件 × 80 = 160
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const preview = await call('update_baggages', { reservationId: 'CYR8803', totalBags: 3 })
+  assert.equal(preview.data.fee, 160)
+  assert.match(preview.content, /免费额度 1 件/)
+  assert.match(preview.content, /普通会员经济舱/)
+
+  const done = await call('update_baggages', {
+    reservationId: 'CYR8803', totalBags: 3, approval_token: tokenFrom(preview.content),
+  })
+  assert.equal(done.data.totalBags, 3)
+  assert.equal(done.data.fee, 160)
+})
+
+test('免费额度内不收费', async () => {
+  // 赵宇金卡 + 公务舱 → 免费 4 件，从 2 加到 3 件不超额
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const preview = await call('update_baggages', { reservationId: 'CYR8801', totalBags: 3 })
+  assert.equal(preview.data.fee, 0)
+  assert.match(preview.content, /不额外收费/)
+})
+
+test('加行李后总额与交易流水都变了', async () => {
+  const { call, snapshot } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const before = snapshot().db.reservations.find(item => item.reservationId === 'CYR8803').total
+  const preview = await call('update_baggages', { reservationId: 'CYR8803', totalBags: 3 })
+  await call('update_baggages', {
+    reservationId: 'CYR8803', totalBags: 3, approval_token: tokenFrom(preview.content),
+  })
+  const after = snapshot().db.reservations.find(item => item.reservationId === 'CYR8803')
+  assert.equal(Math.round((after.total - before) * 100) / 100, 160)
+  assert.equal(after.payment.transactions.at(-1).amount, 160)
+})
+
+// ── 改签 ──
+
+test('特价经济舱不可改签', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10058127' })
+  const result = await call('update_flights', {
+    reservationId: 'CYR8802', flightNo: 'CY1201',
+  })
+  assert.equal(result.data.blocked, 'not_changeable')
+  assert.match(result.content, /特价经济舱不可改签/)
+})
+
+test('经济舱改签收 200 手续费', async () => {
+  // 【这条是反证补出来的】把 change_fee 表里 economy 的 200 改成 0，
+  // 55 条测试全绿 —— 因为只测过公务舱（免费）那一格。
+  // 一张表只测一格等于没测这张表。
+  //
+  // 周涛的 CYR8803 是经济舱，CAN → CTU。同航线另有 CY2312。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const preview = await call('update_flights', {
+    reservationId: 'CYR8803', flightNo: 'CY2312',
+  })
+  assert.equal(preview.data.fee, 200, '经济舱改签手续费应为 200')
+  assert.match(preview.content, /经济舱改签手续费 ￥200\.00/)
+
+  // 差价：CY2310 economy 760 → CY2312 economy 790，补 30
+  assert.equal(preview.data.diff, 30)
+
+  const done = await call('update_flights', {
+    reservationId: 'CYR8803', flightNo: 'CY2312', approval_token: tokenFrom(preview.content),
+  })
+  // 手续费 200 + 差价 30 = 230
+  assert.match(done.content, /共收取 ￥230\.00/)
+})
+
+test('公务舱改签免手续费，只收差价', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const preview = await call('update_flights', {
+    reservationId: 'CYR8801', flightNo: 'CY1203',
+  })
+  assert.equal(preview.data.fee, 0, '公务舱改签手续费应为 0')
+  assert.equal(preview.data.diff, 200, 'CY1201 2600 → CY1203 2800')
+  const done = await call('update_flights', {
+    reservationId: 'CYR8801', flightNo: 'CY1203', approval_token: tokenFrom(preview.content),
+  })
+  assert.equal(done.data.flightNo, 'CY1203')
+})
+
+test('改签不能改变航线', async () => {
+  // 细则第三条。这一条不在决策表里 —— 它不是可调参数，
+  // 是改签这个动作的定义。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const result = await call('update_flights', {
+    reservationId: 'CYR8801', flightNo: 'CY2310',
+  })
+  assert.equal(result.data.blocked, 'route_changed')
+  assert.match(result.content, /PVG 到 PEK/)
+})
+
+test('改签后余量一加一减', async () => {
+  const { call, snapshot } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const seatsOf = (no) => snapshot().db.flights
+    .find(item => item.flightNo === no).seats.business
+  const before = { from: seatsOf('CY1201'), to: seatsOf('CY1203') }
+
+  const preview = await call('update_flights', {
+    reservationId: 'CYR8801', flightNo: 'CY1203',
+  })
+  await call('update_flights', {
+    reservationId: 'CYR8801', flightNo: 'CY1203', approval_token: tokenFrom(preview.content),
+  })
+  assert.equal(seatsOf('CY1201'), before.from + 1, '原航班余量应加回')
+  assert.equal(seatsOf('CY1203'), before.to - 1, '新航班余量应减掉')
+})
+
+test('改到同一班会被拦', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const result = await call('update_flights', {
+    reservationId: 'CYR8801', flightNo: 'CY1201', date: '2026-09-20',
+  })
+  assert.equal(result.data.blocked, 'same_flight')
+})
+
+// ── 改舱位 ──
+
+test('改舱位比改签宽松：特价经济舱也能改', async () => {
+  // 细则第四条：所有订单都可以改舱位，包括特价经济舱。
+  // 这一点和「特价经济舱不可改签」刻意分成两张表。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10058127' })
+  const preview = await call('update_cabin', {
+    reservationId: 'CYR8802', cabin: 'economy',
+  })
+  assert.equal(preview.data.needsApproval, true)
+  // CY1203 特价经济 720 → 经济 1080
+  assert.equal(preview.data.diff, 360)
+
+  const done = await call('update_cabin', {
+    reservationId: 'CYR8802', cabin: 'economy', approval_token: tokenFrom(preview.content),
+  })
+  assert.equal(done.data.cabin, 'economy')
+})
+
+test('已飞的不能改舱位', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const result = await call('update_cabin', {
+    reservationId: 'CYR8805', cabin: 'business',
+  })
+  assert.equal(result.data.blocked, 'not_editable')
+})
+
+test('改成当前舱位会被拦', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const result = await call('update_cabin', {
+    reservationId: 'CYR8801', cabin: 'business',
+  })
+  assert.equal(result.data.blocked, 'same_cabin')
+})
+
+test('降舱退差价', async () => {
+  // CYR8801 公务舱 2600 → 经济舱 980，退 1620
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const preview = await call('update_cabin', {
+    reservationId: 'CYR8801', cabin: 'economy',
+  })
+  assert.equal(preview.data.diff, -1620)
+  assert.match(preview.content, /将退差价 ￥1620\.00/)
+})
+
+// ── 延误补偿 ──
+
+test('延误 5 小时发 400 元，走档位表', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const preview = await call('send_certificate', { reservationId: 'CYR8803' })
+  assert.equal(preview.data.amount, 400)
+  assert.match(preview.content, /延误 5 小时/)
+  assert.match(preview.content, /余额不可退现/)
+
+  const done = await call('send_certificate', {
+    reservationId: 'CYR8803', approval_token: tokenFrom(preview.content),
+  })
+  assert.equal(done.data.amount, 400)
+})
+
+test('同一预订只能发一次补偿', async () => {
+  // 细则第七条。状态记在预订上 —— 靠模型记住「刚才发过了」
+  // 是守不住的，尤其在长通话里。
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const preview = await call('send_certificate', { reservationId: 'CYR8803' })
+  await call('send_certificate', {
+    reservationId: 'CYR8803', approval_token: tokenFrom(preview.content),
+  })
+  const again = await call('send_certificate', { reservationId: 'CYR8803' })
+  assert.equal(again.data.blocked, 'already_issued')
+  assert.match(again.content, /只能发一次/)
+})
+
+test('延误不足两小时没有补偿', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const result = await call('send_certificate', { reservationId: 'CYR8807' })
+  assert.equal(result.data.blocked, 'no_compensation')
+  assert.equal(result.data.delayHours, 1)
+})
+
+test('没有延误的预订不发补偿', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const result = await call('send_certificate', { reservationId: 'CYR8801' })
+  assert.equal(result.data.blocked, 'no_compensation')
+  assert.match(result.content, /没有延误记录/)
+})
+
+// ── 搜航班 ──
+
+test('搜航班只返回有余量且可订的', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10058127' })
+  const result = await call('search_flights', {
+    from: 'PVG', to: 'PEK', cabin: 'basic_economy',
+  })
+  // CY1203 的 basic_economy 余量是 0，不该出现
+  assert.ok(!/CY1203/.test(result.content), '列出了满舱的航班')
+  assert.ok(result.data.count > 0)
+})
+
+test('搜航班排除已飞与已取消', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10077390' })
+  const result = await call('search_flights', { from: 'SZX', to: 'XIY', cabin: 'economy' })
+  // CY3405 已被航司取消，不该作为改签目标
+  assert.ok(!/CY3405/.test(result.content), '列出了已取消的航班')
+})
+
+test('搜不到时给出下一步建议，而不是空结果', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const result = await call('search_flights', {
+    from: 'PVG', to: 'PEK', cabin: 'business', date: '2030-01-01',
+  })
+  assert.equal(result.data.count, 0)
+  assert.match(result.content, /是否接受别的日期/)
+})

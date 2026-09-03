@@ -73,6 +73,94 @@
       }
     },
     {
+      "name": "search_flights",
+      "label": "搜候选航班",
+      "enabled": true,
+      "description": "搜同一航线上的其他航班，供改签选择。必须先确认这笔预订可以改签再搜 —— 特价经济舱不可改签，搜了也用不上。只返回目标舱位还有余量的航班。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "出发机场三字码，如 PVG。改签不能改出发地，所以填原航段的出发地。"
+          },
+          "to": {
+            "type": "string",
+            "description": "到达机场三字码，如 PEK。改签不能改目的地。"
+          },
+          "cabin": {
+            "type": "string",
+            "description": "舱位代码：basic_economy / economy / business。填原预订的舱位 —— 改签不改舱位，改舱位是另一个工具。"
+          },
+          "date": {
+            "type": "string",
+            "description": "希望的出发日期，形如 2026-09-25。不填时返回该航线所有可订航班。"
+          }
+        },
+        "required": ["from", "to", "cabin"]
+      }
+    },
+    {
+      "name": "update_flights",
+      "label": "改签",
+      "enabled": true,
+      "description": "把预订改到同航线的另一个航班。两段式：先不带令牌调一次拿预览（含手续费与差价），客户明确同意后带令牌再调。特价经济舱不可改签；已有航段执飞完毕的不能改；不能改出发地、目的地和行程类型。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "description": "预订编号。" },
+          "flightNo": { "type": "string", "description": "新航班号，从 search_flights 的结果里选。" },
+          "date": { "type": "string", "description": "新航班日期，形如 2026-09-25。" },
+          "approval_token": { "type": "string", "description": "第一次不填。客户同意后把预览里的令牌原样填回来。" }
+        },
+        "required": ["reservationId", "flightNo"]
+      }
+    },
+    {
+      "name": "update_cabin",
+      "label": "升降舱",
+      "enabled": true,
+      "description": "改预订的舱位，不改航班。两段式。所有舱位都可以改，包括特价经济舱 —— 这一点和改签不同。已有航段执飞完毕的不能改。同一预订内所有航段的舱位必须一致，不能只改一段。票价更高补差价，更低退差价。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "description": "预订编号。" },
+          "cabin": { "type": "string", "description": "目标舱位：basic_economy / economy / business。" },
+          "approval_token": { "type": "string", "description": "第一次不填。客户同意后填回来。" }
+        },
+        "required": ["reservationId", "cabin"]
+      }
+    },
+    {
+      "name": "update_baggages",
+      "label": "加行李",
+      "enabled": true,
+      "description": "增加托运行李件数。两段式。行李只能增不能减 —— 客户要减时说明规则，不要调这个工具传更小的数。免费额度按会员等级与舱位查表，超出部分按件收费。不要给客户添加他没有要求的行李。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "description": "预订编号。" },
+          "totalBags": { "type": "integer", "description": "改完之后的【总件数】，不是新增件数。必须大于当前件数。" },
+          "approval_token": { "type": "string", "description": "第一次不填。客户同意后填回来。" }
+        },
+        "required": ["reservationId", "totalBags"]
+      }
+    },
+    {
+      "name": "send_certificate",
+      "label": "发延误补偿",
+      "enabled": true,
+      "description": "按航班延误时长发放旅行券。两段式。补偿档位按细则的延误时长表判定 —— 不要自己估算金额。同一预订只能发一次；延误不足两小时没有补偿。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "description": "预订编号。" },
+          "approval_token": { "type": "string", "description": "第一次不填。客户同意后填回来。" }
+        },
+        "required": ["reservationId"]
+      }
+    },
+    {
       "name": "transfer_to_human",
       "label": "转人工",
       "enabled": true,

@@ -23,6 +23,13 @@
       "message": "需要先核验客户身份。核验之后可以帮客户查具体航班的状态。",
       "policyLine": 13
     },
+    "_search_note": "搜航班本身不涉及客户数据，但它只在改签流程里用 —— 而改签要先确认能改，那一步已经要核验。放开它没有价值，只会让模型在核验前就开始搜。",
+    "search_flights": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份，确认这笔预订可以改签之后再搜候选航班。",
+      "policyLine": 13
+    },
     "update_flights": {
       "requires": ["identity_verified"],
       "onMissing": "refuse",

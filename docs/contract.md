@@ -27,7 +27,10 @@ runtime-command plane, Agent Delivery, Client Actions, reference Client SDK,
 and bounded replay all share the same WebSocket.
 This contract index remains authoritative for implemented behavior.
 
-The current health-contract version is `5.7.0`. The additive `5.7` line exposes
+The current health-contract version is `5.8.0`. The additive `5.8` line exposes
+explicit, user-triggered background image and recent-frame analysis through the
+configured backend Agent, bounded `VisualInsight` events, and optional
+foreground `AgentDelivery` context or response. The additive `5.7` line exposes
 explicit WebUI camera observation for vision-capable Realtime frontends without
 creating model responses. The additive `5.6` line exposes
 a provider-neutral frontend memory control plane for replaceable clients. The
@@ -83,6 +86,7 @@ below instead of assuming the old list.
 | `frontend.memory-control` | `GET/PATCH /api/memory` lets replaceable clients list and exactly edit the same provider-backed USER/MEMORY documents used by Realtime, without depending on a storage implementation | `server/test/gateway-application.test.mjs` |
 | `realtime.conversation-client-v1` | `WS /api/realtime`, published event constants, and message schemas form the replaceable text/audio/multimodal Conversation Client boundary | `test/gateway-event-schema.test.mjs`, `test/custom-conversation-client.test.mjs` |
 | `realtime.camera-observation-v1` | After an explicit WebUI opt-in, sends at most one bounded JPEG frame per second and retains at most eight recent frames for a vision-capable Realtime frontend; it never creates a model response and releases the camera on stop, disconnect, or page hide | `server/test/realtime-observation-runtime.test.mjs`, `web/test/camera-input.test.mjs` |
+| `realtime.background-vision-v1` | An explicit `observation.analyze` request or `analyze_visual_scene` call freezes the latest or recent bounded camera frames, submits them only to the configured backend Agent as image input, and returns bounded `observation.analysis.state` / `observation.insight` events without logging or default persistence of raw frames | `server/test/background-vision-runtime.test.mjs`, `server/test/visual-insight.test.mjs`, `test/gateway-event-schema.test.mjs` |
 | `realtime.gateway-client-protocol-v6-handshake` | The same WebSocket accepts an opt-in 6.0 `session.hello`, returns correlated `session.ready`, negotiates implemented capabilities, and normalizes 6.0 input aliases into the existing business path | `test/gateway-client-protocol.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-runtime-commands` | Negotiated 6.0 Clients can publish registered semantic Client Events and use correlated Task, permission, conversation-history, and session output-voice commands over the same WebSocket; existing REST routes call the same command service as compatibility aliases | `test/gateway-client-protocol.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/client-command-runtime.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-agent-delivery` | Client Events, Task results and progress, and permission prompts cross one provider-neutral `AgentDelivery` boundary with `handle`, `context`, `respond`, and `interrupt` modes | `server/test/agent-delivery.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/realtime-provider.test.mjs`, `server/test/announcement-manager.test.mjs` |

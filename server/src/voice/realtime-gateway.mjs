@@ -28,6 +28,7 @@ import { TurnTranscripts } from './tools/turn-transcripts.mjs'
 import { TurnCitations } from './turn-citations.mjs'
 import { RealtimeInputRuntime } from './realtime-input-runtime.mjs'
 import { RealtimeObservationRuntime } from './realtime-observation-runtime.mjs'
+import { BackgroundVisionRuntime } from '../vision/background-vision-runtime.mjs'
 import {
   acceptsPlaybackReceipt,
   confirmsTaskNotificationOnPlaybackStart,
@@ -52,6 +53,7 @@ import {
   PERMISSION_RESPONSE_CAPABILITY,
   BACKEND_INPUT_RESPONSE_CAPABILITY,
   FRONTEND_RECALL_CAPABILITY,
+  FRONTEND_VISION_ANALYSIS_CAPABILITY,
   permissionResponseInstructions,
   inputRequestResponseInstructions,
 } from './frontend-tools.mjs'
@@ -315,6 +317,7 @@ export function attachRealtimeGateway(server, {
     let permissionRetryTimer = null
     let realtimeSession
     let observationRuntime
+    let backgroundVisionRuntime
     const agentDeliveries = new RealtimeAgentDeliveryRuntime({
       getFrontend: () => realtimeSession?.frontend,
       isDeliveryBlocked: () => (
@@ -359,6 +362,7 @@ export function attachRealtimeGateway(server, {
           // 暴露它只会让模型白调一次。会话摘要本身绝不注入 instructions：
           // 它每场都在变，会让 prompt 前缀每场都变。
           ...(sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
+          ...(backendRuntime ? [FRONTEND_VISION_ANALYSIS_CAPABILITY] : []),
         ])],
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
@@ -626,6 +630,25 @@ export function attachRealtimeGateway(server, {
       send: event => send(ws, event),
       onError: reportFrontendError,
     })
+    backgroundVisionRuntime = new BackgroundVisionRuntime({
+      taskManager,
+      backendRuntime,
+      backendAvailability,
+      inputAssets,
+      ownerId,
+      sessionId,
+      getFrames: options => observationRuntime.snapshotFrames(options),
+      getObservationContext: () => observationRuntime.observationMetadata(),
+      deliveryRuntime: agentDeliveries,
+      onEvent: event => send(ws, event),
+      onInsight: analysis => send(ws, {
+        type: GatewayServerEvent.OBSERVATION_INSIGHT,
+        analysis,
+      }),
+      onError: error => connectionLogger.warn('visual_analysis.delivery_failed', {
+        error: String(error?.message || error),
+      }),
+    })
     const voiceClient = {
       ws,
       descriptor,
@@ -727,6 +750,7 @@ export function attachRealtimeGateway(server, {
       }, { refreshSession: false }),
       backendRuntime,
       backendAvailability,
+      visionRuntime: backgroundVisionRuntime,
       respondAuthorization,
       respondInput,
       permissionPolicy,
@@ -1610,13 +1634,61 @@ export function attachRealtimeGateway(server, {
           return
         }
         sleepController.recordActivity()
-        observationRuntime.start()
+        const startObservation = async () => {
+          let foreground = realtimeSession.frontend
+            ?.transportCapabilities?.observationInput === true
+          if (!foreground && !realtimeSession.frontend) {
+            try {
+              await realtimeSession.ensure()
+              foreground = realtimeSession.frontend
+                ?.transportCapabilities?.observationInput === true
+            } catch (error) {
+              if (!backgroundVisionRuntime?.canAnalyze()) {
+                reportFrontendError(error)
+                return
+              }
+            }
+          }
+          if (!foreground && !backgroundVisionRuntime?.canAnalyze()) {
+            send(ws, {
+              type: GatewayServerEvent.ERROR,
+              message: '当前没有可用的视觉观察或后台图片分析能力。',
+            })
+            return
+          }
+          const started = await observationRuntime.start({ foreground })
+          if (!started && !foreground) {
+            send(ws, {
+              type: GatewayServerEvent.ERROR,
+              message: '后台视觉观察启动失败。',
+            })
+          }
+        }
+        void startObservation().catch(reportFrontendError)
       } else if (event.type === GatewayClientEvent.OBSERVATION_FRAME) {
         if (sleeping || waking) return
         sleepController.recordActivity()
         observationRuntime.frame(event)
       } else if (event.type === GatewayClientEvent.OBSERVATION_STOP) {
         observationRuntime.stop(event.reason || 'user')
+      } else if (event.type === GatewayClientEvent.OBSERVATION_ANALYZE) {
+        if (sleeping || waking) {
+          send(ws, {
+            type: GatewayServerEvent.ERROR,
+            message: `已休眠，请先说“${config.wakeWord}”唤醒。`,
+          })
+          return
+        }
+        sleepController.recordActivity()
+        void backgroundVisionRuntime.analyze({
+          query: event.query,
+          window: event.window,
+          delivery: event.delivery,
+          turnId: gatewayTurnId(),
+        }).catch(error => send(ws, {
+          type: GatewayServerEvent.ERROR,
+          message: error?.message || String(error),
+        }))
       } else if (
         event.type === GatewayClientEvent.TEXT_MESSAGE
         || event.type === GatewayClientEvent.INPUT_MESSAGE
@@ -1721,6 +1793,7 @@ export function attachRealtimeGateway(server, {
       permissionRetryTimer = null
       sleepController?.close()
       observationRuntime?.stop('gateway_disconnected')
+      backgroundVisionRuntime?.close()
       presenceController.close()
       realtimeSession.close()
       // Invisible memory: distil durable personal facts from this session in

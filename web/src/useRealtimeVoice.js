@@ -1006,6 +1006,22 @@ export default function useRealtimeVoice({
     })
   ), [sendSocketEvent])
 
+  const sendObservationAnalyze = useCallback((
+    query,
+    { window = 'recent', delivery = 'respond' } = {},
+  ) => {
+    const value = String(query || '').replace(/\s+/g, ' ').trim()
+    if (!value) return false
+    return sendSocketEvent({
+      type: GatewayClientEvent.OBSERVATION_ANALYZE,
+      query: value.slice(0, 2_000),
+      window: ['latest', 'recent'].includes(window) ? window : 'recent',
+      delivery: ['display', 'context', 'respond'].includes(delivery)
+        ? delivery
+        : 'respond',
+    })
+  }, [sendSocketEvent])
+
   return {
     state,
     visualState: visualVoiceState(state),
@@ -1029,5 +1045,6 @@ export default function useRealtimeVoice({
     sendObservationStart,
     sendObservationFrame,
     sendObservationStop,
+    sendObservationAnalyze,
   }
 }

@@ -45,8 +45,13 @@ export default function MultimodalComposer({
   onObservationStart,
   onObservationFrame,
   onObservationStop,
+  onObservationAnalyze,
   observationAvailable = false,
+  liveObservationAvailable = false,
+  backgroundVisionAvailable = false,
   observationState = 'idle',
+  observationAnalysisState = null,
+  visualInsights = [],
   connectionState = 'connected',
   compact = false,
 }) {
@@ -64,6 +69,9 @@ export default function MultimodalComposer({
   const observationFramesRef = useRef([])
   const observationSequenceRef = useRef(0)
   const previousObservationStateRef = useRef(observationState)
+  const analysisBusy = ['queued', 'running'].includes(
+    observationAnalysisState?.state,
+  )
   const updateAttachments = useCallback(next => {
     setAttachments(next)
   }, [])
@@ -150,7 +158,10 @@ export default function MultimodalComposer({
       closeCamera('model_changed')
       return
     }
-    if (['unavailable', 'hidden'].includes(connectionState)) {
+    if (
+      connectionState === 'hidden'
+      || (connectionState === 'unavailable' && !backgroundVisionAvailable)
+    ) {
       setError(t('画面观察连接不可用'))
       closeCamera('gateway_disconnected')
       return
@@ -166,7 +177,13 @@ export default function MultimodalComposer({
     ) {
       closeCamera('observation_stopped')
     }
-  }, [closeCamera, connectionState, observationAvailable, observationState])
+  }, [
+    backgroundVisionAvailable,
+    closeCamera,
+    connectionState,
+    observationAvailable,
+    observationState,
+  ])
 
   useEffect(() => {
     if (
@@ -285,6 +302,20 @@ export default function MultimodalComposer({
     setError('')
   }
 
+  const analyzeObservation = useCallback(() => {
+    if (!onObservationAnalyze || analysisBusy) return
+    const sent = onObservationAnalyze(
+      '请分析最近的摄像头画面，说明出现了什么以及发生了哪些变化。',
+      { window: 'recent', delivery: 'respond' },
+    )
+    if (!sent) setError(t('Gateway 尚未连接'))
+  }, [analysisBusy, onObservationAnalyze])
+
+  const insightTime = insight => {
+    if (!Number.isFinite(Number(insight?.capturedTo))) return ''
+    return new Date(Number(insight.capturedTo)).toLocaleTimeString()
+  }
+
   return <form
     className="multimodal-composer"
     onSubmit={submit}
@@ -353,7 +384,7 @@ export default function MultimodalComposer({
       />
       <button className="composer-send" type="submit">{t('发送')}</button>
     </div>
-    {cameraOpen && <div className="camera-capture" role="dialog" aria-modal="true" aria-label={t('拍照')}>
+      {cameraOpen && <div className="camera-capture" role="dialog" aria-modal="true" aria-label={t('拍照')}>
       <video
         ref={cameraVideo}
         autoPlay
@@ -362,11 +393,13 @@ export default function MultimodalComposer({
         onLoadedMetadata={() => setCameraReady(true)}
         aria-label={t('相机预览')}
       />
-      {observationRequested && <small className="camera-observation-status">
-        {observationState !== 'active'
-          ? t('正在启动画面观察')
-          : t('连续观察中：最近 {count}/8 帧', { count: observationFrameCount })}
-      </small>}
+        {observationRequested && <small className="camera-observation-status">
+          {observationState !== 'active'
+            ? t('正在启动画面观察')
+            : liveObservationAvailable
+              ? t('连续观察中：最近 {count}/8 帧', { count: observationFrameCount })
+              : t('后台观察中：最近 {count}/8 帧', { count: observationFrameCount })}
+        </small>}
       <div className="camera-actions">
         <button
           type="button"
@@ -385,6 +418,13 @@ export default function MultimodalComposer({
           className="camera-observation active"
           onClick={() => stopObservation('user')}
         >{t('停止观察')}</button>}
+        {observationRequested && <button
+          type="button"
+          className="camera-analysis"
+          disabled={!cameraReady || !backgroundVisionAvailable || analysisBusy}
+          title={backgroundVisionAvailable ? t('深度分析当前画面') : t('后台视觉分析不可用')}
+          onClick={analyzeObservation}
+        >{analysisBusy ? t('后台分析中') : t('深度分析')}</button>}
         <button
           type="button"
           className="composer-send"
@@ -394,7 +434,46 @@ export default function MultimodalComposer({
           {t('拍摄')}
         </button>
       </div>
-    </div>}
+      </div>}
+    {visualInsights.length > 0 && <section className="visual-insights" aria-live="polite">
+      <div className="visual-insights-heading">
+        <strong>{t('视觉分析结果')}</strong>
+        {observationAnalysisState?.state && <small>
+          {observationAnalysisState.state === 'queued'
+            ? t('排队中')
+            : observationAnalysisState.state === 'running'
+              ? t('后台分析中')
+              : observationAnalysisState.state === 'failed'
+                ? t('处理失败')
+                : t('处理完成')}
+        </small>}
+      </div>
+      {visualInsights.slice(0, 3).map(insight => <article
+        className="visual-insight-card"
+        key={insight.analysisId}
+      >
+        <div className="visual-insight-meta">
+          <span>{insight.delivery === 'respond' ? t('后台视觉') : t('画面观察')}</span>
+          <time>{insightTime(insight)}</time>
+        </div>
+        <p>{insight.summary}</p>
+        {insight.entities?.length > 0 && <small>
+          {t('识别对象')}：{insight.entities.map(item => item.name).join('、')}
+        </small>}
+        {insight.changes?.length > 0 && <small>
+          {t('变化')}：{insight.changes.join('；')}
+        </small>}
+        {insight.warnings?.length > 0 && <small className="visual-insight-warning">
+          {t('不确定项')}：{insight.warnings.join('；')}
+        </small>}
+        <small className="visual-insight-source">
+          {t('来源帧')} {insight.fromSequence ?? '?'}–{insight.toSequence ?? '?'}
+          {insight.confidence === null || insight.confidence === undefined
+            ? ''
+            : ` · ${t('置信度')} ${Math.round(insight.confidence * 100)}%`}
+        </small>
+      </article>)}
+    </section>}
     {error && <small className="composer-error" role="alert">{error}</small>}
   </form>
 }

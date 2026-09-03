@@ -549,6 +549,24 @@ app.get('/readyz', (req, res) => {
 app.get('/api/health', (req, res) => {
   const backend = agent.status()
   const backendDescription = agent.describe()
+  const backendCapabilities = backendDescription.capabilities || {}
+  const promptCapabilities = backendCapabilities.promptCapabilities
+  const inputModes = backendCapabilities.inputModes
+  const imageCapabilityKnown = Boolean(
+    promptCapabilities && typeof promptCapabilities.image === 'boolean'
+    || Array.isArray(inputModes) && inputModes.length > 0,
+  )
+  const backgroundVision = {
+    enabled: backendDescription.enabled !== false
+      && backendDescription.configured !== false
+      && agent.enabled !== false,
+    image: imageCapabilityKnown
+      ? promptCapabilities && typeof promptCapabilities.image === 'boolean'
+        ? promptCapabilities.image === true
+        : inputModes.some(mode => String(mode).toLowerCase().startsWith('image'))
+      : null,
+    known: imageCapabilityKnown,
+  }
   const realtime = describeActiveRealtime(realtimeProvider, {
     registry: realtimeProviderRegistry,
   })
@@ -617,6 +635,7 @@ app.get('/api/health', (req, res) => {
       ...backendDescription,
       ...backend,
     },
+    backgroundVision,
   })
 })
 

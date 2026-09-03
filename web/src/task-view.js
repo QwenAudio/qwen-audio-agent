@@ -50,6 +50,9 @@ export function removeTaskInPhase(tasks, taskId, phase) {
 
 export function taskLabel(task) {
   if (task.authorization?.status === 'pending') return t('等待你的确认')
+  if (task.kind === 'visual_analysis' && !['failed', 'cancelled'].includes(task.phase)) {
+    return t('后台视觉分析')
+  }
   if (task.phase === 'failed') return t('处理失败')
   if (task.phase === 'cancelled') return t('已取消')
   if (task.phase === 'disconnected') return t('连接已中断')

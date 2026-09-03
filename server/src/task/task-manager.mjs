@@ -202,6 +202,7 @@ export class TaskManager {
       const cancel = recovery === TaskRecoveryAction.CANCEL
       const task = {
         ...saved,
+        notify: saved.notify !== false,
         status: reattach
           ? 'queued'
           : cancel ? 'cancelled'
@@ -293,11 +294,13 @@ export class TaskManager {
         transitionTask(task, TaskStatus.FAILED)
         task.error = 'qwen-audio-agent 重启时这项项目任务失去连接，请重新提交。'
         task.completedAt = Date.now()
-        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
+        task.notificationStatus = isUserWork(task) && task.notify !== false
+          ? 'pending'
+          : 'none'
         task.promise = Promise.resolve(publicTask(task))
         task.resolve = null
         this.emit(TaskDomainEvent.FAILED, task)
-        if (isUserWork(task)) {
+        if (isUserWork(task) && task.notify !== false) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
         continue
@@ -424,6 +427,7 @@ export class TaskManager {
     priority = 0,
     runner,
     canceler,
+    notify = true,
   }) {
     const normalizedScope = normalizeTaskScope(scope)
     const normalizedOwnerId = String(ownerId || '')
@@ -470,6 +474,7 @@ export class TaskManager {
       notificationClaimedAt: null,
       runner: runner || this.runner,
       canceler: typeof canceler === 'function' ? canceler : null,
+      notify: notify !== false,
       cancelPromise: null,
       terminalHandled: false,
       abortController: null,
@@ -705,12 +710,14 @@ export class TaskManager {
           task.completedAt = Date.now()
           task.elapsedMs = task.startedAt
             ? task.completedAt - task.startedAt : 0
-          task.notificationStatus = 'pending'
+          task.notificationStatus = task.notify === false ? 'none' : 'pending'
           clearInterval(task.progressTimer)
           task.progressTimer = null
           this.releaseScheduler(task)
           this.emit(TaskDomainEvent.FAILED, task)
-          this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+          if (task.notify !== false) {
+            this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+          }
           this.persistDeferred()
           this.drain()
         }, 5000)
@@ -768,7 +775,9 @@ export class TaskManager {
         task.elapsedMs = task.startedAt
           ? task.completedAt - task.startedAt
           : 0
-        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
+        task.notificationStatus = isUserWork(task) && task.notify !== false
+          ? 'pending'
+          : 'none'
         task.terminalHandled = true
         this.releaseScheduler(task)
         this.emit(
@@ -777,7 +786,7 @@ export class TaskManager {
             : TaskDomainEvent.FAILED,
           task,
         )
-        if (isUserWork(task)) {
+        if (isUserWork(task) && task.notify !== false) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
         task.resolve?.(publicTask(task))
@@ -839,11 +848,13 @@ export class TaskManager {
         task.elapsedMs = task.startedAt
           ? task.completedAt - task.startedAt
           : 0
-        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
+        task.notificationStatus = isUserWork(task) && task.notify !== false
+          ? 'pending'
+          : 'none'
         task.terminalHandled = true
         this.releaseScheduler(task)
         this.emit(TaskDomainEvent.FAILED, task)
-        if (isUserWork(task)) {
+        if (isUserWork(task) && task.notify !== false) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
         task.resolve?.(publicTask(task))

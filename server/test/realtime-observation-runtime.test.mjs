@@ -96,6 +96,15 @@ test('fails closed when the active model does not support observation', async ()
   assert.equal(fixtureState.errors[0].message, '当前 Realtime 模型不支持画面观察')
 })
 
+test('can capture frames for a backend-only session without a foreground provider', async () => {
+  const fixtureState = fixture({ supported: false })
+  assert.equal(await fixtureState.runtime.start({ foreground: false }), true)
+  assert.equal(fixtureState.runtime.frame({ image: JPEG, sequence: 7 }), true)
+  assert.equal(fixtureState.providerEvents.length, 0)
+  assert.match(fixtureState.runtime.observationMetadata().observationId, /^observation_/)
+  assert.equal(fixtureState.runtime.observationMetadata().generation, 1)
+})
+
 test('stop clears raw frame memory and publishes an idle state', async () => {
   const fixtureState = fixture()
   await fixtureState.runtime.start()

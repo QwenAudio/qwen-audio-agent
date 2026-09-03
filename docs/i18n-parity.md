@@ -7,7 +7,7 @@
 
 Updated 2026-09-02:
 
-- Gateway health contract `5.7.0`;
+- Gateway health contract `5.8.0`;
 - WebUI explicit camera observation for vision-capable Realtime frontends;
 - stable Gateway Client Protocol wire version `6.0.0`;
 - GCP1–GCP5 complete;

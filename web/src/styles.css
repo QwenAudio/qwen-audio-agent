@@ -103,6 +103,15 @@
   background: rgba(48, 148, 117, 0.2);
 }
 
+.camera-analysis {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 190, 105, 0.45);
+  border-radius: 13px;
+  color: #ffe7bd;
+  background: rgba(187, 123, 45, 0.18);
+}
+
 .camera-actions .ghost {
   min-height: 42px;
   padding: 0 14px;
@@ -158,6 +167,54 @@
   display: block;
   padding: 5px 4px 0;
   color: #ff8c8c;
+}
+
+.visual-insights {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(109, 93, 252, 0.08);
+}
+
+.visual-insights-heading,
+.visual-insight-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.visual-insights-heading small,
+.visual-insight-meta,
+.visual-insight-card > small {
+  color: #aaa6bb;
+  font-size: 11px;
+}
+
+.visual-insight-card {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.visual-insight-card p {
+  margin: 0;
+  color: #f1eef8;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.visual-insight-warning {
+  color: #ffd48a !important;
+}
+
+.visual-insight-source {
+  color: #898596 !important;
 }
 
 * { box-sizing: border-box; }

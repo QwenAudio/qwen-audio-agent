@@ -10,6 +10,8 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.8.0 adds explicit background image/multi-frame vision analysis with
+// structured Insight events and provider-neutral AgentDelivery.
 // 5.7.0 adds explicit WebUI camera observation for vision-capable Realtime
 // frontends without triggering model responses.
 // 5.6.0 adds a provider-neutral frontend memory control plane for replaceable
@@ -45,7 +47,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.7.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.8.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -107,6 +109,10 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // The WebUI may explicitly open a camera and stream bounded JPEG snapshots
   // to a vision-capable Realtime frontend without triggering responses.
   'realtime.camera-observation-v1',
+  // A Client may explicitly submit the bounded recent observation window to the
+  // configured backend Agent; results return as structured Insight events and
+  // may be delivered to the foreground as context or one response.
+  'realtime.background-vision-v1',
   // session.hello/session.ready negotiate the stable 6.0 Client protocol;
   // 5.x connect and event names remain compatibility aliases through one
   // normalization layer.

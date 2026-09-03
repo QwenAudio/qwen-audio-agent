@@ -194,7 +194,10 @@ export default function App() {
     ready: false,
     status: 'starting',
     code: null,
+    backgroundVision: null,
   })
+  const [visualInsights, setVisualInsights] = useState([])
+  const [visualAnalysisState, setVisualAnalysisState] = useState(null)
   const [agentTasks, setAgentTasks] = useState([])
   const [desktopTasksCollapsed, setDesktopTasksCollapsed] = useState(false)
   const [showDomainLibrary, setShowDomainLibrary] = useState(false)
@@ -385,6 +388,7 @@ export default function App() {
           ),
           code: backendPayload.code || null,
           error: backendPayload.error || '',
+          backgroundVision: payload.backgroundVision || null,
           url: payload.backend?.uiPath || payload.backend?.baseUrl || '',
         })
         setActivity(response.ok ? t('Gateway 已连接') : t('能力服务尚未连接'))
@@ -464,6 +468,23 @@ export default function App() {
           ? { ...task, phase: 'disconnected' }
           : task
       )))
+    }
+    if (event.type === 'observation.analysis.state') {
+      setVisualAnalysisState(event)
+      if (event.state === 'failed' && event.error) {
+        setActivity(t('视觉分析失败：{error}', { error: event.error }))
+      }
+    }
+    if (event.type === 'observation.insight' && event.analysis) {
+      setVisualInsights(items => [
+        event.analysis,
+        ...items.filter(item => item.analysisId !== event.analysis.analysisId),
+      ].slice(0, 8))
+      setVisualAnalysisState(current => (
+        current?.analysisId === event.analysis.analysisId
+          ? { ...current, state: 'completed' }
+          : current
+      ))
     }
     void applyDesktopClientState(event, {
       desktop: desktopOrbMode,
@@ -684,7 +705,9 @@ export default function App() {
       const completed = event.task
       if (completed.turnId) agentTurnIds.current.delete(completed.turnId)
       if (!completed.turnId || completed.turnId === currentTurnId.current) {
-        setActivity(t('正在准备回复'))
+        setActivity(completed.kind === 'visual_analysis'
+          ? t('视觉分析完成')
+          : t('正在准备回复'))
       }
       setAgentTasks(items => upsertTask(
         items,
@@ -1027,10 +1050,16 @@ export default function App() {
     nativeVideo: t('原生视频'),
   }
   const modeList = modes => modes.map(mode => inputModeLabels[mode]).join(' / ')
-  const observationAvailable = (
+  const liveObservationAvailable = (
     modelStatus.metadataStatus === 'current'
     && modelStatus.observationInputEnabled === true
   )
+  const backgroundVisionAvailable = (
+    backend.enabled === true
+    && backend.ready === true
+    && backend.backgroundVision?.image !== false
+  )
+  const observationAvailable = liveObservationAvailable || backgroundVisionAvailable
 
   const resetSession = () => {
     taskDismissTimers.current.forEach(timer => clearTimeout(timer))
@@ -1040,6 +1069,8 @@ export default function App() {
     setSessionId(next)
     setMessages([])
     setAgentTasks([])
+    setVisualInsights([])
+    setVisualAnalysisState(null)
     currentTurnId.current = ''
     activeVoiceResponse.current = ''
     responseTurnMap.current.clear()
@@ -1494,8 +1525,13 @@ export default function App() {
         onObservationStart={voice.sendObservationStart}
         onObservationFrame={voice.sendObservationFrame}
         onObservationStop={voice.sendObservationStop}
+        onObservationAnalyze={voice.sendObservationAnalyze}
         observationAvailable={observationAvailable}
+        liveObservationAvailable={liveObservationAvailable}
+        backgroundVisionAvailable={backgroundVisionAvailable}
         observationState={voice.observationState}
+        observationAnalysisState={visualAnalysisState}
+        visualInsights={visualInsights}
         connectionState={voice.connectionState}
         compact={desktopOrbMode}
       />}

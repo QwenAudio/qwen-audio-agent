@@ -3,6 +3,8 @@ import test from 'node:test'
 import {
   PERMISSION_RESPONSE_CAPABILITY,
   BACKEND_INPUT_RESPONSE_CAPABILITY,
+  FRONTEND_VISION_ANALYSIS_CAPABILITY,
+  ANALYZE_VISUAL_SCENE_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
@@ -53,6 +55,19 @@ test('customizes only the spawn_thinking capability description', () => {
   assert.notEqual(customized[0], TOOLS[0])
   assert.deepEqual(customized.slice(1), TOOLS.slice(1))
   assert.notEqual(TOOLS[0].function.description, description)
+})
+
+test('exposes visual analysis only when a backend vision capability is present', () => {
+  assert.equal(frontendToolRegistry.isEnabled(ANALYZE_VISUAL_SCENE_TOOL_NAME), false)
+  assert.equal(
+    frontendToolRegistry.isEnabled(ANALYZE_VISUAL_SCENE_TOOL_NAME, {
+      frontend: { capabilities: [FRONTEND_VISION_ANALYSIS_CAPABILITY] },
+    }),
+    true,
+  )
+  assert.ok(names(frontendTools({
+    frontend: { capabilities: [FRONTEND_VISION_ANALYSIS_CAPABILITY] },
+  })).includes(ANALYZE_VISUAL_SCENE_TOOL_NAME))
 })
 
 test('appends namespaced dynamic tools without changing the static registry', () => {
@@ -195,6 +210,7 @@ test('declares one background tool and classifies every other tool', () => {
     ]),
   ), {
     spawn_thinking: 'background',
+    analyze_visual_scene: 'background',
     schedule_reminder: 'inline',
     cancel_agent_task: 'control',
     get_agent_task_status: 'control',

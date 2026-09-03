@@ -112,6 +112,15 @@ function bounded(value, max = 300) {
   return clean(value).replace(/\s+/g, ' ').slice(0, max)
 }
 
+function promptCapabilities(value) {
+  if (!value || typeof value !== 'object') return null
+  const supported = ['image', 'audio', 'embeddedContext'].filter(key => (
+    typeof value[key] === 'boolean'
+  ))
+  if (!supported.length) return null
+  return Object.fromEntries(supported.map(key => [key, value[key]]))
+}
+
 function optionValues(entries = []) {
   return optionChoices(entries).map(entry => entry.value)
 }
@@ -299,6 +308,9 @@ export class AcpBackendAdapter {
   }
 
   describe() {
+    const declaredPromptCapabilities = promptCapabilities(
+      this.client?.capabilities?.promptCapabilities,
+    )
     return {
       kind: this.protocol,
       label: this.label,
@@ -314,6 +326,9 @@ export class AcpBackendAdapter {
       sessionModel: 'one-persistent-backend-agent',
       capabilities: {
         ...this.profile.capabilities,
+        ...(declaredPromptCapabilities
+          ? { promptCapabilities: declaredPromptCapabilities }
+          : {}),
         taskUpdates: 'activity',
         inputRequests: 'elicitation',
       },

@@ -6,6 +6,7 @@ import {
   normalizeObservationImage,
 } from './observation-session-runtime.mjs'
 import { ForegroundObservationSink } from './foreground-observation-sink.mjs'
+import { randomUUID } from 'node:crypto'
 
 export {
   OBSERVATION_INTERVAL_MS,
@@ -38,6 +39,9 @@ export class RealtimeObservationRuntime {
       getFrontend,
       onError,
     })
+    this.foregroundEnabled = true
+    this.observationId = ''
+    this.observationGeneration = 0
     this.session = new ObservationSessionRuntime({
       send,
       onError,
@@ -46,6 +50,7 @@ export class RealtimeObservationRuntime {
       maxFrames,
       maxBase64Bytes,
       onFrame: frame => {
+        if (!this.foregroundEnabled) return true
         const forwarded = this.foregroundSink.forward(frame)
         if (!forwarded && this.foregroundSink.unavailable) {
           this.session.stop('provider_unavailable')
@@ -67,14 +72,31 @@ export class RealtimeObservationRuntime {
     return this.session.snapshotFrames(options)
   }
 
-  start() {
+  observationMetadata() {
+    return {
+      observationId: this.observationId,
+      generation: this.observationGeneration,
+      state: this.state,
+    }
+  }
+
+  start({ foreground = true } = {}) {
+    if (this.session.state === 'active' || this.session.startPromise) {
+      return this.session.start()
+    }
+    this.foregroundEnabled = foreground !== false
+    this.observationId = `observation_${randomUUID().replaceAll('-', '')}`
+    this.observationGeneration += 1
     return this.session.start({
-      prepare: () => this.foregroundSink.prepare(),
+      prepare: this.foregroundEnabled
+        ? () => this.foregroundSink.prepare()
+        : undefined,
     })
   }
 
   stop(reason = 'user') {
     this.foregroundSink.stop()
+    this.foregroundEnabled = true
     this.session.stop(reason)
   }
 

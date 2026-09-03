@@ -59,3 +59,18 @@ clients cannot select conflicting models on one Gateway. A Desktop attached to a
 Gateway, or a later CLI runtime using a conflicting configured model, refuses the mismatch
 instead of silently changing the running service. To roll back, set the legacy ID above and
 restart the Gateway.
+
+## Background vision analysis
+
+Camera observation and backend vision analysis are independent capabilities. When the
+configured backend Agent accepts image input, the WebUI exposes a **Deep analysis** action and
+the foreground Agent can call `analyze_visual_scene`. The Gateway freezes either the latest
+frame or the recent bounded window (up to eight frames), sends those JPEG inputs only to the
+configured backend for the requested analysis, and keeps the raw frames out of logs and default
+persistence.
+
+The result is a bounded `VisualInsight` with the source observation, generation, frame range,
+capture timestamps, summary, uncertainty, and confidence. Delivery can be `display` (UI only),
+`context` (available to the foreground on a later turn), or `respond` (one natural foreground
+reply). A backend that does not advertise image input fails explicitly; the realtime foreground
+continues to support ordinary conversation.

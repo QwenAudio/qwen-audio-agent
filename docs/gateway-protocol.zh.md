@@ -453,6 +453,11 @@ Provider 的 response 对象。
 
 `AgentDeliveryRuntime` 管理用户说话阻塞、回复串行化、休眠暂存、重试和播放确认。Realtime Provider Adapter 再转换成自己的线协议。不能把 Client 原始 JSON 直接粘贴进模型 Prompt。
 
+Gateway 自身产生且需要前台 Agent 感知的事件也使用同一边界。例如 Realtime
+内容被拒绝后，Gateway 先排除失败轮次并恢复连接，再投递
+`realtime.content_rejected`。模型只会收到脱敏的“上一轮内容无法回复，请换个话题”，
+不会收到供应商错误对象、错误码或被拒绝的原始内容。
+
 ## 7. Presence 与休眠
 
 两种休眠最终进入同一个 PresenceController 和 Client Action 链路，但只有用户主动休眠需要模型工具调用。

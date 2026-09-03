@@ -45,11 +45,12 @@
 ## 增加或调整工具
 
 `service/tools/` 中每个目录是一个场景领域工具包：`manifest.json` 定义 MCP 工具，
-`execute.mjs` 实现场景逻辑。在 `service/tools/registry.mjs` 注册领域工具包后，将适合
-低延迟直出的工具名加入 `FRONTEND_TOOL_NAMES`，并在 `gateway/frontend-mcp.json`
-启用对应的前台消费项；后台仍保留完整工具面用于组合任务。
-同一个领域可以跨两个工具面，但只保留一份 executor 和状态源。这是代码层的明确
-修改点，不是新的动态插件框架。
+`execute.mjs` 实现场景逻辑。在 `service/tools/registry.mjs` 注册领域工具包后，通过
+`service/tools/surface-routing.json` 配置整个领域走 `frontend` 还是 `backend`。
+`FRONTEND_TOOL_NAMES`、`BACKEND_TOOL_NAMES` 和 Gateway 运行时前台 MCP 配置都会从
+这份 routing 自动生成；不再逐个 function 手写前台 allowlist。同一个领域一次只暴露在
+一个工具面，但仍然只保留一份 executor 和状态源。这是代码层的明确修改点，不是新的
+动态插件框架。
 
 用户自定义技能同样属于场景实现：持久化和 MCP 契约位于 `service/`，理解与编排
 位于可替换的 `agent/`，客户端只消费列表、详情和变更事件。替换后台 Agent 时可以

@@ -22,6 +22,7 @@ function harness({
   presenceController,
   inputAssets,
   onAgentActivity,
+  onToolCallDebug,
   frontendRetrieval,
   frontendKnowledge,
   frontendToolSources,
@@ -67,6 +68,7 @@ function harness({
     frontendKnowledge,
     frontendToolSources,
     onToolResultReady: fields => toolResultsReady.push(fields),
+    onToolCallDebug,
   })
   return {
     outputs,
@@ -117,6 +119,50 @@ test('executes discovered external tools through the shared boundary', async () 
   ]])
   assert.equal(kit.outputs[0][1].text, 'Found.')
   assert.equal(kit.outputs[1][1].error_code, 'tool_loop_limit')
+})
+
+test('publishes frontend tool call debug lifecycle for external tools', async () => {
+  const debugEvents = []
+  const source = {
+    tools: () => [{
+      name: 'mcp__cockpit__navigation_start',
+      definition: {
+        type: 'function',
+        function: {
+          name: 'mcp__cockpit__navigation_start',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      policy: {
+        mode: 'inline',
+        maxCallsPerTurn: 1,
+        maxResultBytes: 2_048,
+      },
+    }],
+    execute: async () => ({ status: 'ok', message: '已开始导航' }),
+  }
+  const kit = harness({
+    frontendToolSources: [source],
+    onToolCallDebug: event => debugEvents.push(event),
+  })
+
+  await kit.handler.handle({
+    call_id: 'call-nav',
+    name: 'mcp__cockpit__navigation_start',
+    arguments: JSON.stringify({ destination: '西湖' }),
+  }, {
+    turnId: 'turn-one',
+    turnGeneration: 1,
+    responseId: 'response-one',
+  })
+
+  assert.equal(debugEvents.length, 2)
+  assert.deepEqual(debugEvents.map(event => event.status), ['received', 'completed'])
+  assert.equal(debugEvents[0].surface, 'frontend')
+  assert.equal(debugEvents[0].name, 'mcp__cockpit__navigation_start')
+  assert.deepEqual(debugEvents[0].arguments, { destination: '西湖' })
+  assert.equal(debugEvents[1].result, '已开始导航')
+  assert.equal(Number.isFinite(debugEvents[1].durationMs), true)
 })
 
 test('executes an explicitly enabled state-changing external tool inline', async () => {

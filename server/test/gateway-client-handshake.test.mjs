@@ -116,6 +116,11 @@ test('recovers the client and excludes only the content-safety rejected turn', a
       updateAgentContext: () => {},
       ensureResponse: async () => {},
       injectContext: async () => {},
+      deliveries: [],
+      injectDelivery: async (text, origin, context, deliveryOptions) => {
+        frontend.deliveries.push({ text, origin, context, deliveryOptions })
+        return { completed: true, route: deliveryOptions.route }
+      },
       whenIdle: async () => {},
       sendUserInput: async (parts, context) => {
         frontend.inputs.push({ parts, context })
@@ -178,6 +183,14 @@ test('recovers the client and excludes only the content-safety rejected turn', a
     frontends[1].agentContext.recentMessages.map(message => message.content),
     ['正常问题'],
   )
+  await waitUntil(() => frontends[1].frontend.deliveries.length === 1)
+  const [recovery] = frontends[1].frontend.deliveries
+  assert.match(recovery.text, /上一轮内容无法回复，请换个话题/u)
+  assert.equal(recovery.origin, 'gateway-system-event')
+  assert.equal(recovery.context.eventName, 'realtime.content_rejected')
+  assert.equal(recovery.deliveryOptions.route, 'respond')
+  assert.equal(recovery.deliveryOptions.allowTools, false)
+  assert.equal(recovery.deliveryOptions.contextTiming, 'immediate')
   client.socket.close()
 })
 

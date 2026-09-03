@@ -11,6 +11,7 @@ import {
 import {
   cockpitConnectionError,
   cockpitVoiceConnectionMode,
+  playbackUnavailableReason,
   publishCockpitVoiceIntent,
 } from './voiceSessionMode'
 import {
@@ -18,6 +19,10 @@ import {
   taskProgressFingerprint,
   taskProgressFromEvent,
 } from '../projections/task-progress'
+import {
+  toolCallFromGatewayEvent,
+  toolCallFromTaskEvent,
+} from '../projections/tool-call-debug'
 import {
   COCKPIT_ASSISTANT_PROFILE_EVENT,
   cockpitPersonaId,
@@ -273,11 +278,18 @@ export default function useVoiceSession({
 
   const playPcmAudio = useCallback((audioBase64, sampleRate, responseId) => {
     const context = audioContextRef.current
-    if (!context || mutedRef.current) {
-      if (!playbackRef.current.started.has(responseId)) {
-        playbackRef.current.started.add(responseId)
-        sendPlaybackReceipt(GatewayClientEvent.PLAYBACK_STARTED, responseId)
-      }
+    const unavailableReason = playbackUnavailableReason({
+      context,
+      muted: mutedRef.current,
+    })
+    if (unavailableReason) {
+      sendPlaybackReceipt(
+        GatewayClientEvent.PLAYBACK_CANCELLED,
+        responseId,
+        unavailableReason,
+      )
+      setOutputLevel(0)
+      setVoiceState(current => current === 'speaking' ? 'idle' : current)
       return
     }
     try {
@@ -374,6 +386,16 @@ export default function useVoiceSession({
         finishResponsePlayback(event.responseId)
       } else if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
         clearPlayback(event.reason || 'gateway_clear')
+      } else if (event.type === GatewayServerEvent.TOOL_CALL) {
+        const toolCall = toolCallFromGatewayEvent(event)
+        if (toolCall) {
+          onVoiceMessageRef.current?.({
+            role: 'assistant',
+            responseId: toolCall.responseId,
+            turnId: toolCall.turnId,
+            toolCall,
+          })
+        }
       } else if (
         event.type === GatewayServerEvent.TRANSCRIPT_DELTA
         || event.type === GatewayServerEvent.TRANSCRIPT_FINAL
@@ -389,6 +411,14 @@ export default function useVoiceSession({
       } else if (event.type === GatewayServerEvent.ERROR) {
         setError(event.message || '语音服务错误')
         setVoiceState('error')
+      }
+      const toolCall = toolCallFromTaskEvent(event)
+      if (toolCall) {
+        onVoiceMessageRef.current?.({
+          role: 'assistant',
+          turnId: toolCall.turnId,
+          toolCall,
+        })
       }
       const nextProgress = taskProgressFromEvent(event)
       if (

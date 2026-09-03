@@ -59,6 +59,7 @@ export class CockpitServiceServer {
     this.port = port
     this.server = null
     this.sockets = new Set()
+    this.toolCallListeners = new Set()
   }
 
   get origin() {
@@ -94,6 +95,14 @@ export class CockpitServiceServer {
     for (const socket of this.sockets) socket.destroy()
     this.sockets.clear()
     await new Promise(resolve => server.close(resolve))
+  }
+
+  subscribeToolCalls(listener) {
+    if (typeof listener !== 'function') {
+      throw new TypeError('Cockpit service tool call listener must be a function')
+    }
+    this.toolCallListeners.add(listener)
+    return () => this.toolCallListeners.delete(listener)
   }
 
   async #handle(request, response) {
@@ -153,13 +162,18 @@ export class CockpitServiceServer {
       json(response, 200, this.service.reset(cockpitId(request, url, body)))
       return
     }
-    const mcpTools = url.pathname === '/mcp/frontend'
-      ? FRONTEND_TOOL_DEFINITIONS
+    const mcpSurface = url.pathname === '/mcp/frontend'
+      ? 'frontend'
       : url.pathname === '/mcp/backend'
+        ? 'backend'
+        : null
+    const mcpTools = mcpSurface === 'frontend'
+      ? FRONTEND_TOOL_DEFINITIONS
+      : mcpSurface === 'backend'
         ? BACKEND_TOOL_DEFINITIONS
         : null
     if (mcpTools && request.method === 'POST') {
-      await this.#mcp(request, response, cockpitId(request, url), mcpTools)
+      await this.#mcp(request, response, cockpitId(request, url), mcpTools, mcpSurface)
       return
     }
     if (mcpTools) {
@@ -198,11 +212,23 @@ export class CockpitServiceServer {
     })
   }
 
-  async #mcp(request, response, id, tools) {
+  #publishToolCall(event) {
+    for (const listener of this.toolCallListeners) {
+      try {
+        listener(event)
+      } catch {
+        // Benchmark tracing must not affect the scenario service path.
+      }
+    }
+  }
+
+  async #mcp(request, response, id, tools, surface) {
     const server = createCockpitMcpServer({
       service: this.service,
       cockpitId: id,
       tools,
+      surface,
+      onToolCall: event => this.#publishToolCall(event),
     })
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,

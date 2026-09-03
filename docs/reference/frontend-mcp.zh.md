@@ -89,6 +89,8 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 - Server URL 可以用 `${MCP_URL}` 精确引用一个环境变量。
 - Header 值可以用 `${VARIABLE}` 精确引用一个环境变量；变量缺失即配置错误。
 - stdio Server 由 Gateway 直接启动，不经过 Shell；Gateway 关闭时会一并关闭子进程。
+- stdio Server 与后台 Agent 使用 Gateway 的统一用户命令搜索路径。安装新命令后执行
+  `qwenaudio gateway restart`，CLI 会刷新后台服务使用的登录环境 `PATH` 缓存。
 - stdio 的 `command`、参数、环境变量值和 `cwd` 可以精确引用环境变量；`cwd`
   如果填写，必须是绝对路径。子进程只继承 SDK 的安全基础环境和显式配置的 `env`。
 - `tools` 是显式白名单；启用的工具由 Gateway 在当前对话轮次内直接调用，不再根据
@@ -100,4 +102,5 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
   处理，不能覆盖系统指令或用户要求。
 - 发现阶段若缺少已启用工具或工具定义无效，该 Server 失败关闭，不暴露半套工具。
 
-修改配置后需要重启 Gateway。密钥应通过环境变量传入，不要写入并提交 JSON。
+修改配置后需要重启 Gateway。后台服务所需的变量应写入用户 `config.env`；密钥不要
+直接写入并提交 JSON，也不要依赖只在当前终端有效的临时 `export`。

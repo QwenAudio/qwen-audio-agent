@@ -53,21 +53,53 @@
           "enabled": true,
           "description": "立即开始/停止充电、设置充电上限/电流、设置标准/最大续航模式或管理充电计划；不要把充电状态查询当成控制指令。"
         },
-        "navigation_set_route_strategy": {
+        "navigation_start": {
           "enabled": true,
-          "description": "立即设置路线偏好：有当前路线时重新规划，无路线时作为后续导航的默认偏好。用户说“躲避拥堵”“避开拥堵”“不走高速”“少收费”“高速优先”“时间优先”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "立即搜索目的地、规划路线并开始导航。用户说“导航到”“带我去”“去某地”或“开始导航”时直接调用；成功后不要再询问是否开始，也不要通过 spawn_thinking 提交。"
         },
-        "navigation_set_voice": {
+        "navigation_route_query": {
           "enabled": true,
-          "description": "立即设置导航静音或播报模式。用户说“导航静音”“取消静音”“详细播报”“简洁播报”“标准播报”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
-        },
-        "navigation_set_view": {
-          "enabled": true,
-          "description": "立即设置地图导航视图。用户说“查看全程”“路线全览”“回到跟车视角”“北向上”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "仅查询或预览路线，不开始导航。用户明确询问“怎么走”“多远”“多久”“查路线”或“先看看路线”时直接调用；明确要求导航时应使用 navigation_start。"
         },
         "navigation_stop": {
           "enabled": true,
           "description": "立即停止当前导航并清空路线。用户说停止、取消或结束导航时直接调用；不要调用 cancel_agent_task，也不要通过 spawn_thinking 提交。"
+        },
+        "navigation_add_waypoint": {
+          "enabled": true,
+          "description": "仅当已有当前导航或路线预览、且已知最终目的地时，立即增加途经点并重新规划。没有当前目的地时先追问最终要去哪里，不要调用本工具探测状态。"
+        },
+        "navigation_remove_waypoint": {
+          "enabled": true,
+          "description": "立即从当前导航或路线预览中删除途经点并重新规划。用户说“取消途经点”“不去刚才那个地方了”“删掉第几个途经点”时直接调用。"
+        },
+        "navigation_change_destination": {
+          "enabled": true,
+          "description": "立即将当前导航或路线预览的最终目的地改为新地点，并保留现有途经点重新规划路线。用户说“目的地改成”“换个地方”时直接调用。"
+        },
+        "navigation_set_route_strategy": {
+          "enabled": true,
+          "description": "立即设置路线偏好：有当前路线时重新规划，无路线时作为后续导航的默认偏好。用户说“躲避拥堵”“避开拥堵”“不走高速”“少收费”“高速优先”“时间优先”时直接调用。"
+        },
+        "navigation_search_place": {
+          "enabled": true,
+          "description": "直接搜索地点或周边 POI，但不开始导航。用户只说“找一下”“附近有没有”“查一下哪里有”时调用；如果用户明确要去某地，应使用 navigation_start。"
+        },
+        "navigation_to_favorite": {
+          "enabled": true,
+          "description": "立即导航到已保存的常用地点。用户说“回家”“去公司”“去学校”等常用地点导航时直接调用。"
+        },
+        "navigation_set_favorite": {
+          "enabled": true,
+          "description": "立即设置或更新常用地点。用户说“把这里设为家”“设置公司地址”“把某地设为学校”时直接调用。"
+        },
+        "navigation_set_voice": {
+          "enabled": true,
+          "description": "立即设置导航静音或播报模式。用户说“导航静音”“取消静音”“详细播报”“简洁播报”“标准播报”时直接调用。"
+        },
+        "navigation_set_view": {
+          "enabled": true,
+          "description": "立即设置地图导航视图。用户说“查看全程”“路线全览”“回到跟车视角”“北向上”时直接调用。"
         },
         "music_state_query": {
           "enabled": true,

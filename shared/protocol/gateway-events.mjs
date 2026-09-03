@@ -288,6 +288,18 @@ const GatewayVoicePayloadSchemas = Object.freeze({
     frames: z.number().int().nonnegative().optional(),
     reason: z.string().max(80).optional(),
   }).passthrough(),
+  [GatewayServerEvent.TOOL_CALL]: z.object({
+    callId: z.string().min(1),
+    name: z.string().min(1),
+    surface: z.enum(['frontend', 'backend']),
+    status: z.string().min(1),
+    arguments: z.unknown().optional(),
+    result: z.string().optional(),
+    durationMs: z.number().nonnegative().optional(),
+    responseId: z.string().optional(),
+    turnId: z.string().optional(),
+    taskId: z.string().optional(),
+  }).passthrough(),
   [GatewayServerEvent.AGENT_ACTIVITY]: z.object({
     activity: z.string().min(1),
   }).passthrough(),

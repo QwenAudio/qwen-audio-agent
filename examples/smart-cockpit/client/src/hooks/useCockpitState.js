@@ -3,7 +3,11 @@ import {
   cockpitProgressFromActivity,
   isTerminalCockpitProgress,
 } from '../projections/cockpit-activity'
-import { applyCockpitStateUpdate } from '../projections/cockpit-state'
+import {
+  applyCockpitStateUpdate,
+  clearNavigationSession,
+  hasActiveNavigationSession,
+} from '../projections/cockpit-state'
 
 function serviceOrigin() {
   return import.meta.env.VITE_COCKPIT_SERVICE_ORIGIN || 'http://127.0.0.1:3010'
@@ -21,6 +25,34 @@ export default function useCockpitState(cockpitId) {
     const query = new URLSearchParams({ cockpitId })
     const stateUrl = `${serviceOrigin()}/api/cockpit/state?${query}`
     const eventsUrl = `${serviceOrigin()}/api/cockpit/events?${query}`
+    let resetNavigationOnBoot = true
+    let resetNavigationRequested = false
+
+    const resetNavigationSession = () => {
+      if (resetNavigationRequested) return
+      resetNavigationRequested = true
+      fetch(`${serviceOrigin()}/api/cockpit/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cockpitId,
+          name: 'navigation_stop',
+          arguments: { reason: 'client_refresh' },
+        }),
+      }).catch(reason => {
+        if (!disposed) console.warn('Cockpit navigation boot reset failed', reason)
+      })
+    }
+
+    const stateForClientBoot = (value, authoritative = value) => {
+      if (!resetNavigationOnBoot) return value
+      if (!hasActiveNavigationSession(authoritative)) {
+        resetNavigationOnBoot = false
+        return value
+      }
+      resetNavigationSession()
+      return clearNavigationSession(value)
+    }
 
     fetch(stateUrl)
       .then(response => {
@@ -29,7 +61,7 @@ export default function useCockpitState(cockpitId) {
       })
       .then(value => {
         if (!disposed) {
-          setState(value)
+          setState(stateForClientBoot(value))
           setError(null)
         }
       })
@@ -39,12 +71,15 @@ export default function useCockpitState(cockpitId) {
 
     const events = new EventSource(eventsUrl)
     events.addEventListener('snapshot', event => {
-      if (!disposed) setState(JSON.parse(event.data))
+      if (!disposed) setState(stateForClientBoot(JSON.parse(event.data)))
     })
     events.addEventListener('state', event => {
       if (!disposed) {
         const update = JSON.parse(event.data)
-        setState(previous => applyCockpitStateUpdate(previous, update))
+        setState(previous => {
+          const next = applyCockpitStateUpdate(previous, update)
+          return stateForClientBoot(next, update.state)
+        })
       }
     })
     events.addEventListener('activity', event => {

@@ -10,6 +10,10 @@ import {
 import { CockpitService } from '../cockpit-service.mjs'
 import { CustomSkillStore } from '../custom-skills/store.mjs'
 import { CockpitServiceServer } from '../server.mjs'
+import {
+  BACKEND_TOOL_NAMES,
+  FRONTEND_TOOL_NAMES,
+} from '../tools/registry.mjs'
 
 function serviceFixture() {
   return new CockpitService({
@@ -165,7 +169,7 @@ test('streams flash-buy activity that lets the client open the Taobao panel', as
   await reader.cancel()
 })
 
-test('scopes frontend tools while retaining a complete backend MCP surface', async t => {
+test('scopes MCP tools according to domain surface routing', async t => {
   const server = new CockpitServiceServer({ service: serviceFixture(), port: 0 })
   await server.start()
   t.after(() => server.close())
@@ -181,50 +185,18 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   t.after(() => frontend.close())
 
   const backendTools = await backend.listTools()
-  assert.equal(backendTools.tools.length, 38)
-  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_climate_control'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_temperature_control'))
+  assert.deepEqual(backendTools.tools.map(tool => tool.name), BACKEND_TOOL_NAMES)
   assert.ok(backendTools.tools.some(tool => tool.name === 'flashbuy'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'weather'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_window_control'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_location_query'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_light_control'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'vehicle_charging_control'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'music_volume_control'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'music_source_control'))
   assert.ok(backendTools.tools.some(tool => tool.name === 'custom_skill_create'))
+  assert.ok(!backendTools.tools.some(tool => tool.name === 'navigation_start'))
+  assert.ok(!backendTools.tools.some(tool => tool.name === 'weather'))
+  assert.ok(!backendTools.tools.some(tool => tool.name === 'vehicle_window_control'))
+  assert.ok(!backendTools.tools.some(tool => tool.name === 'music_play'))
 
   const frontendTools = await frontend.listTools()
-  assert.deepEqual(frontendTools.tools.map(tool => tool.name), [
-    'weather',
-    'vehicle_location_query',
-    'vehicle_state_query',
-    'vehicle_climate_control',
-    'vehicle_temperature_control',
-    'vehicle_window_control',
-    'vehicle_sunroof_control',
-    'vehicle_closure_control',
-    'vehicle_comfort_control',
-    'vehicle_light_control',
-    'vehicle_sound_control',
-    'vehicle_charging_control',
-    'navigation_set_route_strategy',
-    'navigation_set_voice',
-    'navigation_set_view',
-    'navigation_stop',
-    'music_state_query',
-    'music_play',
-    'music_toggle_playback',
-    'music_pause',
-    'music_next',
-    'music_previous',
-    'music_volume_control',
-    'music_source_control',
-    'music_favorite_control',
-    'music_search',
-  ])
+  assert.deepEqual(frontendTools.tools.map(tool => tool.name), FRONTEND_TOOL_NAMES)
 
-  const output = await backend.callTool({
+  const output = await frontend.callTool({
     name: 'vehicle_temperature_control',
     arguments: { action: 'set', temperature: 22 },
   })
@@ -273,7 +245,7 @@ test('scopes frontend tools while retaining a complete backend MCP surface', asy
   assert.equal(comfort.isError, undefined)
   assert.equal(comfort.structuredContent.vehicle.steeringWheelHeatLevel, 2)
 
-  await backend.callTool({
+  await frontend.callTool({
     name: 'navigation_start',
     arguments: { destination: '西湖' },
   })
@@ -383,6 +355,56 @@ test('serves persistent custom skill management to the scenario UI', async t => 
       .then(response => response.json()),
     [],
   )
+})
+
+test('publishes MCP tool call traces with scoped surface names', async t => {
+  const server = new CockpitServiceServer({ service: serviceFixture(), port: 0 })
+  const calls = []
+  const unsubscribe = server.subscribeToolCalls(call => calls.push(call))
+  t.after(unsubscribe)
+  await server.start()
+  t.after(() => server.close())
+
+  const backend = new Client({ name: 'cockpit-trace-backend-test', version: '1.0.0' })
+  await backend.connect(new StreamableHTTPClientTransport(
+    new URL(`${server.origin}/mcp/backend?cockpitId=trace-car`),
+  ))
+  t.after(() => backend.close())
+  const frontend = new Client({ name: 'cockpit-trace-frontend-test', version: '1.0.0' })
+  await frontend.connect(new StreamableHTTPClientTransport(
+    new URL(`${server.origin}/mcp/frontend?cockpitId=trace-car`),
+  ))
+  t.after(() => frontend.close())
+
+  await backend.callTool({
+    name: 'custom_skill_list',
+    arguments: {},
+  })
+  await frontend.callTool({
+    name: 'weather',
+    arguments: { city: '杭州' },
+  })
+
+  assert.deepEqual(calls.map(call => ({
+    cockpitId: call.cockpitId,
+    surface: call.surface,
+    name: call.name,
+    arguments: call.arguments,
+  })), [
+    {
+      cockpitId: 'trace-car',
+      surface: 'backend',
+      name: 'custom_skill_list',
+      arguments: {},
+    },
+    {
+      cockpitId: 'trace-car',
+      surface: 'frontend',
+      name: 'weather',
+      arguments: { city: '杭州' },
+    },
+  ])
+  assert.match(calls[0].at, /^\d{4}-\d{2}-\d{2}T/u)
 })
 
 test('does not expose an ambiguous combined MCP endpoint', async t => {

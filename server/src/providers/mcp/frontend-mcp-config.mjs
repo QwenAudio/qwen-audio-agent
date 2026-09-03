@@ -6,7 +6,7 @@ const TOOL_NAME = /^[a-zA-Z0-9_.:/-]{1,128}$/u
 const ENV_REFERENCE = /^\$\{([A-Z_][A-Z0-9_]*)\}$/u
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/u
 const MAX_SERVERS = 8
-const MAX_TOOLS_PER_SERVER = 32
+const MAX_TOOLS_PER_SERVER = 64
 const MAX_STDIO_ARGS = 64
 const MAX_STDIO_ENVIRONMENT = 32
 

@@ -4,6 +4,7 @@ import {
   COCKPIT_CONNECTION_INTERRUPTED,
   cockpitConnectionError,
   cockpitVoiceConnectionMode,
+  playbackUnavailableReason,
   publishCockpitVoiceIntent,
 } from '../src/hooks/voiceSessionMode.js'
 
@@ -67,4 +68,23 @@ test('clears a transient connection error as soon as the Gateway reconnects', ()
   assert.equal(cockpitConnectionError('connected'), null)
   assert.equal(cockpitConnectionError('ready'), null)
   assert.equal(cockpitConnectionError('recovery_failed'), undefined)
+})
+
+test('does not acknowledge playback start when audio cannot actually play', () => {
+  assert.equal(
+    playbackUnavailableReason({ muted: true, context: { state: 'running' } }),
+    'client_muted',
+  )
+  assert.equal(
+    playbackUnavailableReason({ muted: false, context: null }),
+    'audio_context_missing',
+  )
+  assert.equal(
+    playbackUnavailableReason({ muted: false, context: { state: 'suspended' } }),
+    'audio_context_suspended',
+  )
+  assert.equal(
+    playbackUnavailableReason({ muted: false, context: { state: 'running' } }),
+    '',
+  )
 })

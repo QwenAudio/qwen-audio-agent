@@ -2,6 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import readline from 'node:readline'
 import { loadRuntimeEnvironment } from '../../shared/runtime-environment.mjs'
+import { refreshProcessPath } from '../../shared/process-path.mjs'
 import {
   backendDefinition,
   backendNames,
@@ -89,15 +90,28 @@ function gatewaySummary(health) {
     || health?.realtimeLabel
     || health?.realtimeModel
   const modelSummary = model ? `Realtime：${model}` : ''
+  const frontendMcp = health?.frontendMcp
+  const mcpConfigured = frontendMcp?.servers?.some(server => server.enabled)
+  const mcpSummary = !mcpConfigured
+    ? ''
+    : frontendMcp.ok === false
+      ? '前台 MCP 异常'
+      : frontendMcp.initialized === false
+        ? '前台 MCP 连接中'
+        : `前台 MCP ${frontendMcp.tools || 0} 个工具`
   if (health?.backend?.enabled === false) {
-    return [modelSummary, '仅前台聊天模式'].filter(Boolean).join(' · ')
+    return [modelSummary, '仅前台聊天模式', mcpSummary]
+      .filter(Boolean)
+      .join(' · ')
   }
   const label = health?.backend?.label
     || health?.backend?.kind
     || health?.backend?.protocol
     || '后台 Agent'
   const state = health?.backend?.ok ? '已连接' : '未连接'
-  return [modelSummary, `${label} ${state}`].filter(Boolean).join(' · ')
+  return [modelSummary, `${label} ${state}`, mcpSummary]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function gatewayServiceEnvironment(url) {
@@ -171,6 +185,7 @@ export async function main(argv, {
   prepareRuntime = options => ensureRuntime(options, { root, env }),
   inspectGateway = url => readGatewayHealth(url),
   manageService = (action, options) => manageGatewayService(action, options),
+  refreshPath = options => refreshProcessPath(options),
   waitForService = (url, { requireBackend = false } = {}) =>
     waitForGateway(url, { requireBackend }),
   waitForServiceStop = url => waitForGatewayStop(url, { inspectGateway }),
@@ -185,6 +200,14 @@ export async function main(argv, {
     || (argv[0] === 'config' && argv[1] === 'show')
   const environment = prepareEnvironment({ readOnly: readOnlyCommand })
   const options = parseArguments(argv, env)
+  if (
+    options.command === 'gateway'
+    && ['install', 'start', 'restart'].includes(options.gatewayAction)
+  ) {
+    // A persistent service cannot inherit later changes from the invoking
+    // shell. Refresh the shared, non-secret PATH cache before it starts.
+    refreshPath({ env })
+  }
   if (options.help) {
     stdout.write(`${helpText()}\n`)
     return 0

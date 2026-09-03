@@ -92,7 +92,7 @@
     {
       "name": "navigation_add_waypoint",
       "label": "增加途经点",
-      "description": "在当前导航或路线预览中增加一个途经点并重新规划路线。用户说“中途去一下”“顺路去”“加个途经点”“先去一下”时使用；如果用户同时给出新的最终目的地，应使用 navigation_start 或 navigation_change_destination。",
+      "description": "仅当已有当前导航或路线预览、且已知最终目的地时，在当前路线中增加一个途经点并重新规划。用户说“中途去一下”“顺路去”“加个途经点”“先去一下”时，先确认对话或状态里已有目的地；如果没有当前目的地，必须先追问最终要去哪里，不要调用本工具探测状态。如果用户同时给出新的最终目的地，应使用 navigation_start 或 navigation_change_destination。",
       "enabled": true,
       "parameters": {
         "type": "object",

@@ -142,10 +142,12 @@ export class FrontendMcpClient {
     configuration = { version: 1, servers: [] },
     clientFactory = defaultClientFactory,
     transportFactory = createFrontendMcpTransport,
+    logger = null,
   } = {}) {
     this.configuration = configuration
     this.clientFactory = clientFactory
     this.transportFactory = transportFactory
+    this.logger = logger
     this.connections = new Map()
     this.toolsByPublicName = new Map()
     this.initialization = null
@@ -235,6 +237,11 @@ export class FrontendMcpClient {
       for (const tool of discovered) this.toolsByPublicName.set(tool.name, tool)
       connection.status = 'ready'
       connection.tools = discovered.map(tool => tool.name)
+      this.logger?.info?.('frontend_mcp.connected', {
+        server: server.key,
+        transport: server.transport.type,
+        tools: connection.tools.length,
+      })
     } catch (error) {
       for (const name of connection.tools) this.toolsByPublicName.delete(name)
       connection.tools = []
@@ -242,6 +249,11 @@ export class FrontendMcpClient {
       connection.error = discoverySignal.aborted
         ? `Frontend MCP discovery timed out: ${server.key}`
         : error.message
+      this.logger?.warn?.('frontend_mcp.connection_failed', {
+        server: server.key,
+        transport: server.transport.type,
+        error: connection.error,
+      })
       await client.close().catch(() => {})
     }
   }

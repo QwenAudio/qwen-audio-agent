@@ -36,6 +36,10 @@ https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
 ## Function call 工具面
 
 当前座舱服务在 vehicle、navigation、music、weather 四个领域共暴露 34 个领域工具。
+默认领域执行面配置在 `service/tools/surface-routing.json`：`vehicle`、`navigation`、
+`music`、`weather` 走前台 Realtime 快路径，`flashbuy` 和 `custom-skills` 走后台
+Agent。可通过 `COCKPIT_TOOL_SURFACE_ROUTING` 指向自定义 JSON，或用
+`COCKPIT_DOMAIN_SURFACES` 内联 JSON 覆盖。
 
 | 领域 | Function 数量 | 功能描述和示例 |
 |---|---:|---|

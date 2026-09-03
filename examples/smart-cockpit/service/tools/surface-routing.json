@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "domains": {
+    "vehicle": "frontend",
+    "music": "frontend",
+    "navigation": "frontend",
+    "weather": "frontend",
+    "flashbuy": "backend",
+    "custom-skills": "backend"
+  }
+}

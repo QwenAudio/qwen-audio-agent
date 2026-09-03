@@ -42,10 +42,12 @@ music, and weather.
 | `weather` | 1 | City weather lookup for travel context. Examples: “How is the weather in Hangzhou today?”, “Will it rain in Shanghai?”. |
 | **Total** | **34** | Covers cross-domain tool selection, argument extraction, execution path choice, and final cockpit state outcome for benchmark evaluation. |
 
-Frontend Realtime tools are selected in `service/tools/registry.mjs` and exposed
-through `gateway/frontend-mcp.json`. Backend-only tools are mostly navigation
-operations that may require place resolution, route planning, ordered waypoint
-state, or favorite-address updates.
+Frontend and backend execution surfaces are selected by domain in
+`service/tools/surface-routing.json`. The default routing keeps `vehicle`,
+`navigation`, `music`, and `weather` on the foreground Realtime fast path,
+while `flashbuy` and `custom-skills` run through the backend Agent.
+Override the defaults with `COCKPIT_TOOL_SURFACE_ROUTING=/absolute/path.json`
+or an inline `COCKPIT_DOMAIN_SURFACES` JSON value.
 
 For a future benchmark comparing Realtime and text-only model tool-calling
 accuracy, this table defines the shared tool surface to evaluate:
@@ -55,8 +57,8 @@ accuracy, this table defines the shared tool surface to evaluate:
 - **Argument accuracy:** whether slots such as destination, route strategy,
   temperature zone, window target, media source, volume, and song query are
   extracted correctly.
-- **Execution path choice:** whether simple low-latency actions stay in the
-  foreground Realtime path and composed tasks go to the backend Agent.
+- **Execution path choice:** whether each domain follows the active
+  frontend/backend surface routing.
 - **State outcome:** whether the resulting cockpit state matches the requested
   operation after the tool call.
 

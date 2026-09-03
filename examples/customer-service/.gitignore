@@ -1,3 +1,6 @@
 node_modules/
 .env.local
 runtime/
+# 抽取缓存。一次抽取要跑 3 遍模型约一分钟，缓存下来刷新页面不用重抽；
+# 但它是本机产物，policy 一改就失效，不该进版本库。
+console/.cache/

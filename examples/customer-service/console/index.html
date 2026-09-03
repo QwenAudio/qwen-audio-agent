@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policy 配置台</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e4e7ee;
+    --dim: #8b93a7; --accent: #5b9dff; --warn: #e0a33a; --danger: #e05c5c;
+    --ok: #4caf7d; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6
+    -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; padding: 14px 20px;
+    border-bottom: 1px solid var(--line); background: var(--panel);
+    position: sticky; top: 0; z-index: 10; flex-wrap: wrap;
+  }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .grow { flex: 1; }
+  select, button, input {
+    background: #1e222b; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06122b; font-weight: 600; }
+  #search { width: 240px; }
+  .chip {
+    padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+    font-size: 12px; cursor: pointer; user-select: none; color: var(--dim);
+  }
+  .chip.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
+
+  main { display: grid; grid-template-columns: 1fr 380px; gap: 0; align-items: start; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .col { padding: 16px 20px 60px; }
+  aside { border-left: 1px solid var(--line); min-height: calc(100vh - 56px); }
+
+  section { margin-bottom: 22px; }
+  h2 {
+    font-size: 13px; color: var(--dim); text-transform: uppercase;
+    letter-spacing: .06em; margin: 0 0 10px; font-weight: 600;
+  }
+  h2 .count { color: var(--text); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 8px;
+  }
+  .card.dispute { border-left: 3px solid var(--warn); }
+  .card.risk { border-left: 3px solid var(--danger); }
+  .card.ok { border-left: 3px solid var(--ok); }
+  .row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .tag {
+    font-size: 11px; padding: 1px 7px; border-radius: 4px; background: #262b36;
+    color: var(--dim); font-family: var(--mono); white-space: nowrap;
+  }
+  .tag.agree { background: #4caf7d22; color: var(--ok); }
+  .tag.warn { background: #e0a33a22; color: var(--warn); }
+  .tag.bad { background: #e05c5c22; color: var(--danger); }
+  .label { font-weight: 500; }
+  .quote {
+    color: var(--dim); font-size: 12.5px; margin-top: 5px; cursor: pointer;
+    border-left: 2px solid var(--line); padding-left: 8px;
+  }
+  .quote:hover { color: var(--accent); border-color: var(--accent); }
+  .variant { margin: 6px 0 0 14px; padding-left: 8px; border-left: 2px dashed var(--warn); font-size: 13px; }
+  .why { color: var(--dim); font-size: 12.5px; margin-top: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  td.mono, th.mono { font-family: var(--mono); font-size: 12.5px; }
+  tr.catchall td { background: #e0a33a10; }
+  tr.catchall td:first-child::after { content: ' 兜底'; color: var(--warn); font-size: 11px; }
+
+  .policy { font-family: var(--mono); font-size: 12.5px; max-height: 62vh; overflow: auto; }
+  .policy div { display: flex; gap: 10px; padding: 0 4px; white-space: pre-wrap; }
+  .policy .ln { color: #4a5262; min-width: 30px; text-align: right; user-select: none; }
+  .policy div.hit { background: #5b9dff22; }
+  .empty { color: var(--dim); font-size: 13px; padding: 8px 0; }
+  .bar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+  details > summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+  .surface-toggle { display: flex; gap: 4px; }
+  .surface-toggle span {
+    font-size: 11px; padding: 2px 8px; border: 1px solid var(--line);
+    border-radius: 4px; cursor: pointer; color: var(--dim);
+  }
+  .surface-toggle span.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
+  .surface-toggle span.moved { border-color: var(--warn); color: var(--warn); background: #e0a33a18; }
+  .row .grow { flex: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Policy 配置台</h1>
+  <select id="domain"></select>
+  <input id="search" type="search" placeholder="搜索规则、工具、原文…">
+  <span class="chip on" data-filter="all">全部</span>
+  <span class="chip" data-filter="dispute">只看待决定</span>
+  <span class="chip" data-filter="risk">只看有风险</span>
+  <span class="grow"></span>
+  <span id="status" style="color:var(--dim);font-size:12.5px"></span>
+  <button id="extract">抽取 policy（跑 3 次）</button>
+  <button id="export" class="primary" disabled>导出配置</button>
+</header>
+
+<main>
+  <div class="col">
+    <section id="sec-dispute"></section>
+    <section id="sec-agreed"></section>
+    <section id="sec-tables"></section>
+    <section id="sec-surfaces"></section>
+  </div>
+  <aside class="col">
+    <h2>policy 原文 <span class="count" id="policy-count"></span></h2>
+    <div class="policy" id="policy"></div>
+  </aside>
+</main>
+
+<script type="module">
+const $ = id => document.getElementById(id)
+const el = (tag, cls, html) => {
+  const node = document.createElement(tag)
+  if (cls) node.className = cls
+  if (html !== undefined) node.innerHTML = html
+  return node
+}
+const esc = value => String(value ?? '').replace(/[&<>"]/g,
+  ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
+
+const state = {
+  domain: 'retail',
+  filter: 'all',
+  query: '',
+  extract: null,
+  guards: null,
+  surfaces: null,
+  // 管理员把某个工具挪到另一面的记录。不直接改 suggestions ——
+  // 「建议」和「决定」要分开存，否则改回来时不知道原建议是什么。
+  overrides: {},
+}
+
+// —— 每条项目怎么显示 ——
+
+function labelOf(item) {
+  switch (item.kind) {
+    case 'threshold': return `${item.name} = ${item.value} ${item.unit || ''}`
+    case 'window': return `${item.category} = ${item.days} 天`
+    case 'escalation': return item.trigger
+    case 'order': return `${item.before} → ${item.after}`
+    case 'lookup': return `${item.name}（${(item.inputs || []).join(' × ')}，${(item.rows || []).length} 行）`
+    case 'gap': return item.topic
+    default: return item.name || ''
+  }
+}
+
+const KIND_TEXT = {
+  threshold: '阈值', window: '时限', escalation: '转人工',
+  order: '顺序', lookup: '交叉表', gap: 'policy 缺口',
+}
+const DISPUTE_TEXT = {
+  conflicting_values: '结论冲突', partial_agreement: '部分出现',
+  stable_but_ambiguous: '稳定但需判断',
+}
+
+// 搜索命中判定：把一条项目的所有可读字段拼起来搜。
+// 【要包含 quote】管理员常记得的是原文里的说法，而不是我们起的字段名。
+function matches(item, query) {
+  if (!query) return true
+  const haystack = [
+    labelOf(item), item.quote, item.why, item.reason, item.kind,
+    KIND_TEXT[item.kind], item.name, item.topic, item.trigger,
+    ...(item.variants || []).map(labelOf),
+  ].filter(Boolean).join(' ').toLowerCase()
+  return haystack.includes(query.toLowerCase())
+}
+
+function itemCard(item, { dispute = false } = {}) {
+  const card = el('div', `card ${dispute ? 'dispute' : 'ok'}`)
+  const row = el('div', 'row')
+  if (item.agreement) {
+    const bad = Number(String(item.agreement).split('/')[0]) < Number(String(item.agreement).split('/')[1])
+    row.append(el('span', `tag ${bad ? 'warn' : 'agree'}`, esc(item.agreement)))
+  }
+  row.append(el('span', 'tag', esc(KIND_TEXT[item.kind] || item.kind)))
+  if (item.disputeKind) row.append(el('span', 'tag warn', esc(DISPUTE_TEXT[item.disputeKind])))
+  if (item.rejectedReason) row.append(el('span', 'tag bad', esc(item.rejectedReason)))
+  row.append(el('span', 'label', esc(labelOf(item))))
+  card.append(row)
+
+  if (item.why) card.append(el('div', 'why', esc(item.why)))
+
+  if (item.quote) {
+    // 【字段名是 policyLine，不是 line】第一版写成 item.line，
+    // 于是每条都显示「落不回原文」、点下去也不跳 ——
+    // 而行号校验本身是这套东西里最核心的防幻觉机制，它得能被看见。
+    const line = item.policyLine
+    const quote = el('div', 'quote',
+      `${line ? `第 ${line} 行` : '落不回原文'} · ${esc(item.quote)}`)
+    // 点 quote 跳到 policy 原文那一行。
+    quote.onclick = () => highlightPolicy(line)
+    card.append(quote)
+  }
+
+  for (const other of item.variants || []) {
+    const variant = el('div', 'variant')
+    variant.append(el('span', 'tag warn', esc(other.agreement || '')))
+    variant.append(document.createTextNode(` 另一版本：${labelOf(other)}`))
+    card.append(variant)
+  }
+  return card
+}
+
+// —— 渲染 ——
+
+function renderExtract() {
+  const dispute = $('sec-dispute')
+  const agreed = $('sec-agreed')
+  dispute.innerHTML = ''
+  agreed.innerHTML = ''
+  if (!state.extract) {
+    dispute.append(el('h2', null, '抽取结果'))
+    dispute.append(el('div', 'empty', '还没抽取。点右上角「抽取 policy」开始 —— 跑 3 次约需一分钟。'))
+    return
+  }
+  const disputed = state.extract.disputed.filter(item => matches(item, state.query))
+  const stable = state.extract.agreed.filter(item => matches(item, state.query))
+
+  dispute.append(el('h2', null,
+    `待你决定 <span class="count">${disputed.length} / ${state.extract.disputed.length} 条</span>`))
+  if (!disputed.length) dispute.append(el('div', 'empty', '没有命中的项。'))
+  for (const item of disputed) dispute.append(itemCard(item, { dispute: true }))
+
+  if (state.filter === 'dispute' || state.filter === 'risk') return
+
+  const details = el('details')
+  details.append(el('summary', null,
+    `${state.extract.runs} 次抽取完全一致，无需人看 · ${stable.length} / ${state.extract.agreed.length} 条`))
+  for (const item of stable) details.append(itemCard(item))
+  agreed.append(el('h2', null, '已确定'))
+  agreed.append(details)
+}
+
+function renderTables() {
+  const host = $('sec-tables')
+  host.innerHTML = ''
+  if (!state.guards) return
+  if (state.filter === 'dispute' || state.filter === 'risk') return
+
+  const tables = state.guards.tables.filter(table => {
+    if (!state.query) return true
+    const haystack = [
+      table.name, table.hitPolicy, ...(table.inputs || []),
+      ...table.rules.flatMap(rule => [
+        ...Object.entries(rule.when).flat(), rule.then, rule.reason,
+      ]),
+    ].filter(value => value !== null && value !== undefined).join(' ').toLowerCase()
+    return haystack.includes(state.query.toLowerCase())
+  })
+
+  host.append(el('h2', null,
+    `决策表 <span class="count">${tables.length} / ${state.guards.tables.length} 张 · 改这里会真的改变行为</span>`))
+
+  for (const table of tables) {
+    const card = el('div', 'card')
+    const head = el('div', 'row')
+    head.append(el('span', 'label', esc(table.name)))
+    head.append(el('span', 'tag', `hit: ${esc(table.hitPolicy)}`))
+    if (table.inputs.length) {
+      head.append(el('span', 'tag', esc(table.inputs.join(' × ')))) 
+    }
+    if (table.policyLine) {
+      const link = el('span', 'tag', `policy 第 ${table.policyLine} 行`)
+      link.style.cursor = 'pointer'
+      link.onclick = () => highlightPolicy(table.policyLine)
+      head.append(link)
+    }
+    card.append(head)
+
+    const columns = table.inputs.length
+      ? table.inputs
+      : [...new Set(table.rules.flatMap(rule => Object.keys(rule.when)))]
+    const grid = el('table')
+    const header = el('tr')
+    header.append(el('th', null, '#'))
+    for (const column of columns) header.append(el('th', 'mono', esc(column)))
+    header.append(el('th', null, '结果'))
+    header.append(el('th', null, '理由'))
+    grid.append(header)
+    for (const rule of table.rules) {
+      const tr = el('tr', rule.isCatchAll ? 'catchall' : null)
+      tr.append(el('td', null, String(rule.index)))
+      for (const column of columns) {
+        const value = rule.when[column]
+        tr.append(el('td', 'mono', value === undefined || value === '' ? '–' : esc(value)))
+      }
+      tr.append(el('td', 'mono', esc(rule.then)))
+      tr.append(el('td', null, esc(rule.reason || '')))
+      grid.append(tr)
+    }
+    card.append(grid)
+    host.append(card)
+  }
+
+  if (state.guards.preconditions.length) {
+    const card = el('div', 'card')
+    card.append(el('div', 'row', '<span class="label">工具前置条件</span>'
+      + '<span class="tag">没在这里声明的工具缺省不拦</span>'))
+    const grid = el('table')
+    grid.append(el('tr', null,
+      '<th>工具</th><th>要求</th><th>不满足时</th><th>依据</th>'))
+    for (const rule of state.guards.preconditions) {
+      const tr = el('tr')
+      tr.append(el('td', 'mono', esc(rule.tool)))
+      tr.append(el('td', 'mono', esc(rule.requires.join(', '))))
+      tr.append(el('td', null, esc(rule.onMissing)))
+      const cell = el('td', null, rule.policyLine ? `第 ${rule.policyLine} 行` : '—')
+      cell.style.cursor = 'pointer'
+      cell.onclick = () => highlightPolicy(rule.policyLine)
+      tr.append(cell)
+      grid.append(tr)
+    }
+    card.append(grid)
+    host.append(card)
+  }
+}
+
+function renderSurfaces() {
+  const host = $('sec-surfaces')
+  host.innerHTML = ''
+  if (!state.surfaces) return
+
+  const warned = new Map((state.surfaces.warnings || []).map(item => [item.name, item]))
+  let list = state.surfaces.suggestions
+  if (state.query) {
+    list = list.filter(tool => [tool.name, tool.title, tool.why, tool.ruleId]
+      .filter(Boolean).join(' ').toLowerCase().includes(state.query.toLowerCase()))
+  }
+  if (state.filter === 'risk') list = list.filter(tool => warned.has(tool.name))
+  if (state.filter === 'dispute') list = list.filter(tool => state.overrides[tool.name])
+
+  host.append(el('h2', null,
+    `工具面编排 <span class="count">${list.length} / ${state.surfaces.suggestions.length} 个</span>`))
+
+  for (const tool of list) {
+    const decided = state.overrides[tool.name] || tool.suggested
+    const moved = decided !== tool.suggested
+    const warning = warned.get(tool.name)
+    const severe = warning && warning.severity === 'risk'
+    const card = el('div', `card ${severe ? 'risk' : moved ? 'dispute' : ''}`)
+    const row = el('div', 'row')
+    row.append(el('span', 'label', esc(tool.title || tool.name)))
+    row.append(el('span', 'tag', esc(tool.name)))
+    row.append(el('span', 'tag', esc(tool.ruleId)))
+    row.append(el('span', 'grow', ''))
+
+    const toggle = el('div', 'surface-toggle')
+    for (const surface of ['frontend', 'backend']) {
+      const chosen = decided === surface
+      const option = el('span', chosen ? (moved ? 'on moved' : 'on') : null,
+        surface === 'frontend' ? '前台直出' : '后台 Agent')
+      option.onclick = () => {
+        // 选回建议值就删掩盖，而不是记一个等于建议的掩盖 ——
+        // 否则无法区分「没动过」和「改过又改回来了」。
+        if (surface === tool.suggested) delete state.overrides[tool.name]
+        else state.overrides[tool.name] = surface
+        refreshSurfaces()
+      }
+      toggle.append(option)
+    }
+    row.append(toggle)
+    card.append(row)
+    card.append(el('div', 'why', esc(tool.why)))
+    if (moved) {
+      // 【警告里的字段叫 detail，不是 message】第一版写错，于是改了开关
+      // 只能看到 undefined。而「改到前台会绕过 auth_required」这句话
+      // 正是管理员拨开关时唯一需要看到的东西。
+      const consequence = warning ? warning.detail : tool.ifOverridden
+      card.append(el('div', 'why',
+        `<span class="tag ${severe ? 'bad' : 'warn'}">`
+        + `改到${decided === 'frontend' ? '前台' : '后台'}的后果</span> `
+        + esc(consequence)))
+    }
+    host.append(card)
+  }
+}
+
+function highlightPolicy(line) {
+  if (!line) return
+  for (const node of document.querySelectorAll('.policy div.hit')) node.classList.remove('hit')
+  const target = document.querySelector(`.policy div[data-line="${line}"]`)
+  if (!target) return
+  target.classList.add('hit')
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+}
+
+function renderPolicy(lines) {
+  const host = $('policy')
+  host.innerHTML = ''
+  let shown = 0
+  for (const { line, content } of lines) {
+    // 搜索时原文也跟着筛 —— 管理员搜一个词，要能同时看到规则和原文出处。
+    if (state.query && !content.toLowerCase().includes(state.query.toLowerCase())) continue
+    shown += 1
+    const row = el('div')
+    row.dataset.line = line
+    row.append(el('span', 'ln', String(line)))
+    row.append(el('span', null, esc(content)))
+    host.append(row)
+  }
+  $('policy-count').textContent = state.query
+    ? `${shown} / ${lines.length} 行命中`
+    : `${lines.length} 行`
+  if (!shown) host.append(el('div', 'empty', '原文里没有命中的行。'))
+}
+
+// —— 数据装载 ——
+
+async function api(path) {
+  const response = await fetch(path)
+  if (!response.ok) throw new Error(`${path} → ${response.status}`)
+  return response.json()
+}
+
+async function refreshSurfaces() {
+  state.surfaces = await api(`/api/surfaces?overrides=${encodeURIComponent(JSON.stringify(state.overrides))}`)
+  renderSurfaces()
+  $('export').disabled = false
+}
+
+let policyLines = []
+
+async function loadDomain(domain) {
+  state.domain = domain
+  state.extract = null
+  $('status').textContent = '装载中…'
+  const [policy, guards] = await Promise.all([
+    api(`/api/policy?domain=${domain}`),
+    api(`/api/guards?domain=${domain}`),
+  ])
+  policyLines = policy.lines
+  state.guards = guards
+  renderPolicy(policyLines)
+  renderTables()
+  await refreshSurfaces()
+
+  // 有缓存就直接显示，不用等一分钟。
+  const cached = await api(`/api/extract?domain=${domain}`)
+  if (cached.cached) {
+    state.extract = cached
+    $('status').textContent = `抽取结果来自缓存 · ${new Date(cached.extractedAt).toLocaleString('zh-CN')}`
+  } else {
+    $('status').textContent = ''
+  }
+  renderExtract()
+}
+
+function startExtract(force) {
+  const bar = el('div', 'bar', '<i></i>')
+  $('sec-dispute').prepend(bar)
+  const fill = bar.querySelector('i')
+  $('extract').disabled = true
+  $('status').textContent = '抽取中…'
+
+  const source = new EventSource(
+    `/api/extract/stream?domain=${state.domain}&runs=3${force ? '&force=1' : ''}`)
+  source.addEventListener('progress', event => {
+    const { done, total } = JSON.parse(event.data)
+    fill.style.width = `${(done / total) * 100}%`
+    $('status').textContent = `抽取中… 第 ${done + 1} / ${total} 次`
+  })
+  source.addEventListener('done', event => {
+    state.extract = JSON.parse(event.data)
+    $('status').textContent = state.extract.cached
+      ? '来自缓存'
+      : `${state.extract.runs} 次抽取完成`
+    $('extract').disabled = false
+    source.close()
+    renderExtract()
+  })
+  source.addEventListener('failed', event => {
+    const { message } = JSON.parse(event.data)
+    // 最常见的原因是没配 API key。把原始消息显示出来，
+    // 只说「失败」用户无从下手。
+    $('status').textContent = `抽取失败：${message}`
+    $('extract').disabled = false
+    source.close()
+    bar.remove()
+  })
+  source.onerror = () => {
+    $('extract').disabled = false
+    source.close()
+  }
+}
+
+// —— 事件 ——
+
+$('search').oninput = event => {
+  state.query = event.target.value.trim()
+  renderExtract()
+  renderTables()
+  renderSurfaces()
+  renderPolicy(policyLines)
+}
+
+for (const chip of document.querySelectorAll('.chip')) {
+  chip.onclick = () => {
+    for (const other of document.querySelectorAll('.chip')) other.classList.remove('on')
+    chip.classList.add('on')
+    state.filter = chip.dataset.filter
+    renderExtract()
+    renderTables()
+    renderSurfaces()
+  }
+}
+
+$('extract').onclick = () => startExtract(Boolean(state.extract))
+$('domain').onchange = event => loadDomain(event.target.value)
+
+$('export').onclick = async () => {
+  const response = await fetch('/api/export', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      domain: state.domain,
+      frontendMcp: state.surfaces.frontendMcp,
+    }),
+  })
+  const result = await response.json()
+  $('status').textContent = result.ok
+    ? `已写入 ${result.written.join('、')}`
+    : `导出失败：${result.error}`
+}
+
+const domains = await api('/api/domains')
+for (const { id, label } of domains.domains) {
+  const option = document.createElement('option')
+  option.value = id
+  option.textContent = label
+  $('domain').append(option)
+}
+await loadDomain(domains.domains[0].id)
+</script>
+</body>
+</html>

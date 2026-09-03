@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "extract": "node extract-cli.mjs",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {

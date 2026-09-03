@@ -223,3 +223,43 @@ you should not respond to the user at the same time.
 In τ² this exists to keep evaluation decidable, **but in a voice setting it produces
 audible silence** — saying nothing while a tool runs makes the customer think the line
 dropped. Our persona asks for the opposite: say "let me check that" before calling a tool.
+
+## Policy console
+
+```bash
+cd console && npm start          # http://127.0.0.1:4610
+```
+
+Turns `policy.md` into `guards.json` and `frontend-mcp.json`.
+
+**Extraction runs three times, not once.** Measured: extracting the same policy
+three times at temperature 0, the model labels every item `certain`, yet the
+ordering rules differ every run — twice producing **opposite orders** from the
+same sentence. So the criterion is not the model's self-assessment but the
+agreement across runs:
+
+| Agreement | Treatment |
+|---|---|
+| 3/3, determined every run | Collapsed, no attention needed |
+| 3/3 but ambiguous every run | Stably needs a human (policy gaps land here) |
+| Same topic, different conclusions | Variants shown side by side to pick from |
+| Only some runs produced it | Either a miss or a hallucination |
+
+Four things in the UI:
+
+- **Needs your decision** — sorted by how much the runs disagreed. Each grey
+  quote carries the policy line number; clicking it scrolls and highlights that
+  line on the right. Items that cannot be traced back say so — usually meaning
+  the model invented a rule the policy never stated.
+- **Decision tables** — flattened into grids with the catch-all row shaded.
+  Change one cell and the executor behaves differently on its next call.
+- **Tool surfaces** — assignment derived by rules, no model involved, and
+  overridable. Overriding shows the consequence: moving `cancel_order` to the
+  frontend is flagged red because it bypasses `auth_required`; moving a
+  read-only tool to the backend is only amber — it just adds 1–3s of silence.
+- **Search and filters** — one keyword filters rules, tables, tools and the
+  policy text at once, plus "pending only" and "risky only" toggles.
+
+Exporting writes `domains/<domain>/guards.json` and `gateway/frontend-mcp.json`.
+The console never takes part in execution — if it dies, calls keep working; you
+just cannot change configuration.

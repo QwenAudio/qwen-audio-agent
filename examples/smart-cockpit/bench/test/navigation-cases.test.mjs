@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BENCHMARK_DOMAINS,
+  MIXED_DOMAIN,
   loadBenchmarkCases,
   loadNavigationCases,
   assertBenchmarkCase,
@@ -48,6 +49,35 @@ test('cockpit benchmark cases are valid and cover all configured domains', () =>
 
   assert.ok(cases.every(item => item.expected_response === undefined))
   assert.equal(cases.filter(item => item.response_quality).length, 6)
+})
+
+test('mixed long-context benchmark cases are valid and dense enough', () => {
+  const cases = routeCasesExpectedPaths(loadBenchmarkCases({ suite: 'long' }), COCKPIT_SURFACE_ROUTING)
+  assert.equal(cases.length, 10)
+  assert.ok(cases.every(item => item.domain === MIXED_DOMAIN))
+  assert.equal(new Set(cases.map(item => item.id)).size, cases.length)
+  assert.equal(cases.reduce((count, item) => count + item.expected_calls.length, 0), 250)
+
+  for (const caseItem of cases) {
+    assertBenchmarkCase(caseItem, {
+      toolNames: benchmarkToolNames,
+      surfaceForTool: surfaceForCockpitTool,
+    })
+    assert.equal(caseItem.turns.length, 50)
+    assert.equal(caseItem.expected_calls.length, 25)
+    assert.equal(caseItem.turns.filter(turn => turn.expect_no_tool).length, 25)
+    assert.ok((caseItem.state_checkpoints || []).length >= 4)
+    assert.deepEqual(
+      [...new Set(caseItem.expected_calls.map(call => call.name === 'weather' ? 'weather' : call.name.split('_')[0]))].sort(),
+      [...BENCHMARK_DOMAINS].sort(),
+    )
+  }
+})
+
+test('all benchmark suite includes short cases and long mixed cases', () => {
+  const cases = loadBenchmarkCases({ suite: 'all' })
+  assert.equal(cases.length, 96)
+  assert.equal(cases.filter(item => item.domain === MIXED_DOMAIN).length, 10)
 })
 
 test('navigation benchmark cases are valid and cover the navigation surface', () => {
@@ -139,7 +169,64 @@ test('scores traces across calls arguments paths state and chitchat guardrails',
   assert.equal(bad.noSpuriousBeforeInstruction, false)
   assert.equal(bad.noExtraCalls, false)
   assert.equal(bad.arguments, 0)
+  assert.equal(bad.alignedToolSelection, 1)
+  assert.equal(bad.alignedArguments, 0)
+  assert.equal(bad.alignmentExtraCallCount, 1)
   assert.equal(bad.state, false)
+})
+
+test('aligns later calls after a missed action without index drift', () => {
+  const score = scoreTrace({
+    id: 'alignment_probe',
+    domain: 'mixed',
+    expected_calls: [
+      {
+        turn_index: 1,
+        path: 'frontend',
+        name: 'weather',
+        arguments: { city: '杭州' },
+      },
+      {
+        turn_index: 3,
+        path: 'frontend',
+        name: 'vehicle_climate_control',
+        arguments: { action: 'start' },
+      },
+      {
+        turn_index: 5,
+        path: 'frontend',
+        name: 'music_play',
+        arguments: { query: '晴天' },
+      },
+    ],
+  }, {
+    calls: [
+      {
+        turn_index: 3,
+        path: 'frontend',
+        name: 'vehicle_climate_control',
+        arguments: { action: 'start' },
+      },
+      {
+        turn_index: 5,
+        path: 'frontend',
+        name: 'music_play',
+        arguments: { query: '晴天' },
+      },
+    ],
+    final_state: {},
+  })
+
+  assert.equal(score.passed, false)
+  assert.equal(score.toolSelection, 0)
+  assert.equal(score.turn, 0)
+  assert.equal(score.alignedToolSelection, 2)
+  assert.equal(score.alignedArguments, 2)
+  assert.equal(score.alignedPath, 2)
+  assert.equal(score.alignedTurn, 2)
+  assert.equal(score.alignmentMissingCallCount, 1)
+  assert.equal(score.alignmentExtraCallCount, 0)
+  assert.deepEqual(score.alignment.missingCalls.map(item => item.call.name), ['weather'])
 })
 
 test('keeps response quality separate from action scoring', () => {
@@ -186,6 +273,7 @@ test('normalizes equivalent tool arguments before scoring', () => {
   })
   assert.equal(score.passed, true)
   assert.equal(score.arguments, 1)
+  assert.equal(score.alignedArguments, 1)
 })
 
 test('summarizes benchmark scores as rates', () => {
@@ -194,8 +282,11 @@ test('summarizes benchmark scores as rates', () => {
       passed: true,
       domain: 'navigation',
       state: true,
+      finalState: true,
+      noToolOnSilentTurns: true,
       noSpuriousBeforeInstruction: true,
       noExtraCalls: true,
+      stateCheckpoints: [],
       expectedCallCount: 1,
       actualCallCount: 1,
       expectedToolCallsByDomain: { navigation: 1 },
@@ -204,14 +295,23 @@ test('summarizes benchmark scores as rates', () => {
       arguments: 1,
       path: 1,
       turn: 1,
+      alignedToolSelection: 1,
+      alignedArguments: 1,
+      alignedPath: 1,
+      alignedTurn: 1,
+      alignmentMissingCallCount: 0,
+      alignmentExtraCallCount: 0,
       responseQuality: null,
     },
     {
       passed: false,
       domain: 'music',
       state: false,
+      finalState: false,
+      noToolOnSilentTurns: true,
       noSpuriousBeforeInstruction: true,
       noExtraCalls: true,
+      stateCheckpoints: [{ state: false }],
       expectedCallCount: 1,
       actualCallCount: 1,
       expectedToolCallsByDomain: { music: 1 },
@@ -220,6 +320,12 @@ test('summarizes benchmark scores as rates', () => {
       arguments: 0,
       path: 1,
       turn: 1,
+      alignedToolSelection: 1,
+      alignedArguments: 0,
+      alignedPath: 1,
+      alignedTurn: 1,
+      alignmentMissingCallCount: 0,
+      alignmentExtraCallCount: 0,
       responseQuality: {
         evaluated: true,
         passed: false,
@@ -241,10 +347,19 @@ test('summarizes benchmark scores as rates', () => {
   })
   assert.equal(summary.no_extra_call_rate, 1)
   assert.equal(summary.state_success_rate, 0.5)
+  assert.equal(summary.final_state_success_rate, 0.5)
+  assert.equal(summary.state_checkpoint_success_rate, 0)
   assert.equal(summary.no_spurious_rate, 1)
+  assert.equal(summary.no_tool_on_silent_turn_rate, 1)
   assert.equal(summary.tool_selection_accuracy, 0.5)
   assert.equal(summary.argument_accuracy, 0.5)
   assert.equal(summary.path_accuracy, 1)
+  assert.equal(summary.aligned_tool_selection_accuracy, 1)
+  assert.equal(summary.aligned_argument_accuracy, 0.5)
+  assert.equal(summary.aligned_path_accuracy, 1)
+  assert.equal(summary.aligned_turn_accuracy, 1)
+  assert.equal(summary.alignment_missing_calls, 0)
+  assert.equal(summary.alignment_extra_calls, 0)
   assert.equal(summary.response_quality_evaluated, 1)
   assert.equal(summary.response_quality_rate, 0)
   assert.equal(summary.domains.navigation.total_cases, 1)

@@ -299,6 +299,7 @@ async function runCase(caseItem, {
   const calls = []
   const ignoredCalls = []
   const assistantMessages = []
+  const stateSnapshots = []
   const events = []
   const errors = []
   const pendingTools = new Set()
@@ -387,6 +388,10 @@ async function runCase(caseItem, {
           timeoutMs: turnTimeoutMs,
           settleMs,
         })
+        stateSnapshots.push({
+          turn_index: turnIndex,
+          state: service.snapshot(cockpitId),
+        })
         activeTurnIndex = null
       }
     } catch (error) {
@@ -396,6 +401,7 @@ async function runCase(caseItem, {
         calls,
         ignored_calls: ignoredCalls,
         assistant_messages: assistantMessages,
+        state_snapshots: stateSnapshots,
         realtime_events: events,
         error: {
           message: error.message || String(error),
@@ -408,6 +414,7 @@ async function runCase(caseItem, {
       calls,
       ignored_calls: ignoredCalls,
       assistant_messages: assistantMessages,
+      state_snapshots: stateSnapshots,
       realtime_events: events,
       final_state: service.snapshot(cockpitId),
     }
@@ -435,15 +442,17 @@ async function main() {
   const provider = resolveRealtimeProvider(args.get('realtime-provider'))
   const limit = Number(args.get('limit') || 0)
   const caseId = args.get('case-id')
-  const domains = args.get('domain')
+  const requestedDomains = args.get('domain')
     ? String(args.get('domain')).split(',').map(item => item.trim()).filter(Boolean)
     : harness.BENCHMARK_DOMAINS
+  const suite = String(args.get('suite') || 'short')
+  const domains = suite === 'short' ? requestedDomains : harness.BENCHMARK_DOMAINS
   const outputMode = String(args.get('output') || 'text')
   if (!['text', 'audio', 'both'].includes(outputMode)) {
     throw new Error('--output must be text, audio, or both')
   }
 
-  let cases = routeCasesExpectedPaths(loadBenchmarkCases({ domains }), COCKPIT_SURFACE_ROUTING)
+  let cases = routeCasesExpectedPaths(loadBenchmarkCases({ domains: requestedDomains, suite }), COCKPIT_SURFACE_ROUTING)
   if (caseId) cases = cases.filter(item => item.id === caseId)
   if (limit > 0) cases = cases.slice(0, limit)
   if (!cases.length) throw new Error('No benchmark cases selected')
@@ -471,6 +480,7 @@ async function main() {
   const report = {
     suite: 'smart-cockpit/cockpit',
     mode: 'realtime',
+    benchmark_suite: suite,
     domains,
     realtime_provider: provider.key,
     realtime_model: provider.model(),

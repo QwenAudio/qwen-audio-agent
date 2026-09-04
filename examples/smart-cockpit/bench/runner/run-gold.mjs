@@ -21,21 +21,31 @@ async function replayCase(caseItem, { harness }) {
   await harness.setupBenchmarkCase(caseItem, { service, cockpitId })
   const calls = []
   const assistantMessages = []
-  for (const expected of caseItem.expected_calls || []) {
-    const output = await harness.executeBenchmarkTool({
-      service,
-      cockpitId,
-      calls,
-      turnIndex: expected.turn_index,
-      name: expected.name,
-      args: expected.arguments || {},
+  const stateSnapshots = []
+  for (const [turnIndex] of caseItem.turns.entries()) {
+    const expectedCalls = (caseItem.expected_calls || [])
+      .filter(call => call.turn_index === turnIndex)
+    for (const expected of expectedCalls) {
+      const output = await harness.executeBenchmarkTool({
+        service,
+        cockpitId,
+        calls,
+        turnIndex: expected.turn_index,
+        name: expected.name,
+        args: expected.arguments || {},
+      })
+      assistantMessages.push(output.content || '')
+    }
+    stateSnapshots.push({
+      turn_index: turnIndex,
+      state: service.snapshot(cockpitId),
     })
-    assistantMessages.push(output.content || '')
   }
   return {
     id: caseItem.id,
     calls,
     assistant_messages: assistantMessages,
+    state_snapshots: stateSnapshots,
     final_state: service.snapshot(cockpitId),
   }
 }
@@ -46,10 +56,12 @@ async function main() {
   const harness = await import('./controlled-harness.mjs')
   const { COCKPIT_SURFACE_ROUTING } = await import('../../service/tools/registry.mjs')
   const outPath = args.get('out')
-  const domains = args.get('domain')
+  const requestedDomains = args.get('domain')
     ? String(args.get('domain')).split(',').map(item => item.trim()).filter(Boolean)
     : harness.BENCHMARK_DOMAINS
-  const cases = routeCasesExpectedPaths(loadBenchmarkCases({ domains }), COCKPIT_SURFACE_ROUTING)
+  const suite = String(args.get('suite') || 'short')
+  const domains = suite === 'short' ? requestedDomains : harness.BENCHMARK_DOMAINS
+  const cases = routeCasesExpectedPaths(loadBenchmarkCases({ domains: requestedDomains, suite }), COCKPIT_SURFACE_ROUTING)
   const traces = []
   for (const caseItem of cases) {
     traces.push(await replayCase(caseItem, { harness }))
@@ -58,6 +70,7 @@ async function main() {
   const report = {
     suite: 'smart-cockpit/cockpit',
     mode: 'gold',
+    benchmark_suite: suite,
     domains,
     routing: COCKPIT_SURFACE_ROUTING.domains,
     created_at: new Date().toISOString(),

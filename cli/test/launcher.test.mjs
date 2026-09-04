@@ -7,6 +7,10 @@ import { PassThrough } from 'node:stream'
 import test from 'node:test'
 import { main } from '../src/launcher.mjs'
 import {
+  createGatewayInvitation,
+  encodeGatewayInvitation,
+} from '../../shared/gateway-remote-access.mjs'
+import {
   showConfig,
   updateRealtimeModelConfig,
 } from '../src/config-command.mjs'
@@ -55,6 +59,10 @@ function harness({ ownsProcesses = false } = {}) {
       },
       acquireInstance: () => ({
         release: () => calls.push(['instance.release']),
+      }),
+      createConnectionProfiles: () => ({
+        resolve: async () => null,
+        remove: async () => false,
       }),
       prepareRuntime: async options => {
         calls.push(['runtime', options])
@@ -540,6 +548,58 @@ test('connects TUI and WebUI without starting services', async () => {
   const web = harness()
   assert.equal(await main(['webui'], web.dependencies), 13)
   assert.deepEqual(web.calls.map(call => call[0]), ['webui'])
+})
+
+test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
+  const profiles = new Map()
+  const profileStore = {
+    resolve: async id => profiles.get(id) || null,
+    save: async (profile, credential) => {
+      profiles.set(profile.id, { profile, credential })
+      return profile
+    },
+    remove: async id => profiles.delete(id),
+  }
+  const invitation = encodeGatewayInvitation(createGatewayInvitation({
+    gatewayUrl: 'https://voice.example.test',
+    pairingCode: 'pair-once',
+    expiresAt: Date.now() + 60_000,
+  }))
+  const connected = harness()
+  connected.dependencies.createConnectionProfiles = () => profileStore
+  connected.dependencies.pairInvitation = async (decoded, options) => {
+    assert.equal(decoded.gateway_url, 'https://voice.example.test')
+    const profile = {
+      id: options.profileId,
+      gateway_url: decoded.gateway_url,
+      device_id: options.device.id,
+      credential_ref: `gateway/${options.device.id}`,
+      client_instance_id: options.clientInstanceId,
+    }
+    await options.profileStore.save(profile, 'paired-token')
+    return { profile, owner_id: 'user_personal' }
+  }
+  assert.equal(await main(['connect', invitation], connected.dependencies), 0)
+  assert.match(connected.calls.at(-1)[1], /voice\.example\.test/)
+
+  const tui = harness()
+  tui.dependencies.createConnectionProfiles = () => profileStore
+  let inspected = null
+  tui.dependencies.inspectGateway = async (url, accessToken) => {
+    inspected = { url, accessToken }
+    return { backend: { enabled: false } }
+  }
+  assert.equal(await main(['tui'], tui.dependencies), 11)
+  assert.deepEqual(inspected, {
+    url: 'https://voice.example.test',
+    accessToken: 'paired-token',
+  })
+  assert.equal(tui.calls[0][1].accessToken, 'paired-token')
+
+  const disconnected = harness()
+  disconnected.dependencies.createConnectionProfiles = () => profileStore
+  assert.equal(await main(['disconnect'], disconnected.dependencies), 0)
+  assert.equal(profiles.size, 0)
 })
 
 test('requires a running Gateway for client commands', async () => {

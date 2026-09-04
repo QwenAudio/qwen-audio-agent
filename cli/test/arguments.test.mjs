@@ -53,6 +53,19 @@ test('parses independent TUI and WebUI client commands', () => {
   assert.equal(web.openBrowser, false)
 })
 
+test('parses remote Gateway connection profile commands', () => {
+  const invitation = 'qwaudio://connect?payload=abc'
+  const connected = parseArguments(['connect', invitation], {})
+  assert.equal(connected.command, 'connect')
+  assert.equal(connected.invitation, invitation)
+  assert.equal(connected.urlSpecified, false)
+  assert.equal(parseArguments(['disconnect'], {}).command, 'disconnect')
+  assert.equal(
+    parseArguments(['tui', '--url', 'https://gateway.example.test'], {}).urlSpecified,
+    true,
+  )
+})
+
 test('parses read-only backend setup options', () => {
   const all = parseArguments(['setup'], {})
   assert.equal(all.command, 'setup')

@@ -14,6 +14,8 @@ const COMMANDS = new Set([
   'setup',
   'install',
   'skill',
+  'connect',
+  'disconnect',
 ])
 const GATEWAY_ACTIONS = new Set([
   'run',
@@ -153,6 +155,10 @@ export function parseArguments(argv, env = process.env) {
     yes: false,
     backendSpecified: false,
     gatewayConfigurationSpecified: false,
+    invitation: command === 'connect' && args[0] && !args[0].startsWith('-')
+      ? args.shift()
+      : '',
+    urlSpecified: Boolean(env.QWEN_AUDIO_AGENT_URL),
   }
   let audioModeSpecified = false
 
@@ -160,6 +166,7 @@ export function parseArguments(argv, env = process.env) {
     const argument = args[index]
     if (argument === '--url') {
       options.url = nextValue(args, index++, '--url')
+      options.urlSpecified = true
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--backend') {
       options.backend = normalizeBackendProtocol(
@@ -338,6 +345,8 @@ export function helpText() {
     '  qwenaudio gateway uninstall       移除后台常驻服务',
     '  qwenaudio tui [选项]         连接现有 Gateway 的终端界面',
     '  qwenaudio webui [选项]       打开现有 Gateway 的 WebUI',
+    '  qwenaudio connect <邀请>      配对并保存远程 Gateway',
+    '  qwenaudio disconnect          忘记已保存的远程 Gateway',
     '  qwenaudio status [选项]      gateway status 的兼容别名',
     '  qwenaudio config             显示用户配置文件位置',
     '  qwenaudio config show        显示有效 Realtime 模型（不含凭据）',

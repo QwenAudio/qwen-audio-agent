@@ -33,6 +33,19 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: Test native iOS Gateway client package
+        if: ${{ matrix.os == 'macos-latest' && matrix.node == '22.22.2' }}
+        working-directory: mobile/ios
+        run: swift test
+      - name: Build native iOS Gateway client package
+        if: ${{ matrix.os == 'macos-latest' && matrix.node == '22.22.2' }}
+        working-directory: mobile/ios
+        run: >-
+          xcodebuild
+          -scheme QwenAudioAgentMobile
+          -destination 'generic/platform=iOS'
+          CODE_SIGNING_ALLOWED=NO
+          build
       - if: ${{ matrix.os == 'macos-latest' && matrix.node == '22.22.2' }}
         run: npm run test:desktop-smoke
       # 真实消费者验收：打包 → 装进只含已声明依赖的裸消费者 → CLI 与

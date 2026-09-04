@@ -152,7 +152,9 @@ and remotely.
 
 ## RA4 — Mobile Client
 
-- [ ] Reuse the public Gateway Client SDK and capability profiles; do not import
+- [x] Add a native iOS foundation for invitation validation, one-time pairing,
+  Keychain credential storage, connection profiles, and the GCP 6.0 handshake.
+- [ ] Reuse the public Gateway Client SDK semantics and capability profiles; do not import
   Gateway, Realtime, ACP, A2A, or Electron internals.
 - [ ] Provide QR/deep-link pairing and secure credential storage.
 - [ ] Support realtime microphone capture, audio playback, voice interruption,

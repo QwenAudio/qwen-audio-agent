@@ -19,6 +19,11 @@ const TEMPORARY_BUILD_ADVISORIES = new Map([
     expires: '2026-11-30',
     reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
   }],
+  [1119441, {
+    id: 'GHSA-w5hq-g745-h8pq',
+    expires: '2026-11-30',
+    reason: 'Capacitor CLI 8.5.1 的开发构建链间接依赖 xcode 3.0.1；npm 当前无可用修复，且不进入生产依赖',
+  }],
   [1120784, {
     id: 'GHSA-v6wh-96g9-6wx3',
     expires: '2026-11-30',

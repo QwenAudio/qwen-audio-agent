@@ -5,11 +5,6 @@ import { spawnSync } from 'node:child_process'
 // 仅记录没有上游修复版本、且不进入生产依赖的构建链问题。已修复或不再
 // 出现的例外必须及时删除，脚本会在例外失效时强制报错提醒。
 const TEMPORARY_BUILD_ADVISORIES = new Map([
-  [1102341, {
-    id: 'GHSA-67mh-4wv8-2f99',
-    expires: '2026-11-30',
-    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
-  }],
   [1116229, {
     id: 'GHSA-4w7w-66w2-5vf9',
     expires: '2026-11-30',

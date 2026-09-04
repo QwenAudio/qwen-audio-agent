@@ -323,6 +323,7 @@ html[data-desktop="orb"] #root {
 }
 
 .desktop-conversation-panel .agent-task,
+.desktop-conversation-panel .tool-call-activity,
 .desktop-conversation-panel article.companion {
   width: calc(100% - 12px);
   margin-left: 6px;
@@ -1305,6 +1306,73 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
 .agent-task.disconnected .task-spinner {
   animation: none;
   border-color: #efb569;
+}
+.tool-call-activity {
+  flex: 0 0 auto;
+  width: calc(100% - 32px);
+  min-height: 42px;
+  margin: 3px 0 5px 18px;
+  padding: 8px 12px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #8069ef3d;
+  border-radius: 11px;
+  background: linear-gradient(120deg, #151321, #111219);
+  animation: task-in .2s ease-out both;
+}
+.tool-call-activity > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tool-call-activity b {
+  overflow: hidden;
+  color: #d8d2f4;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-call-activity small {
+  overflow: hidden;
+  color: #858092;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-call-indicator {
+  width: 9px;
+  height: 9px;
+  border: 2px solid #7865d54d;
+  border-top-color: #9d88ff;
+  border-radius: 50%;
+}
+.tool-call-activity.received .tool-call-indicator,
+.tool-call-activity.running .tool-call-indicator {
+  animation: task-spin .8s linear infinite;
+}
+.tool-call-activity.completed {
+  border-color: #50dfab33;
+  background: linear-gradient(120deg, #111d1a, #12161a);
+}
+.tool-call-activity.completed .tool-call-indicator {
+  border-color: #50dfab;
+}
+.tool-call-activity.failed {
+  border-color: #ef696955;
+}
+.tool-call-activity.failed .tool-call-indicator {
+  border-color: #ef6969;
+}
+.tool-call-activity.cancelled {
+  border-color: #939aa655;
+  opacity: .82;
+}
+.tool-call-activity.cancelled .tool-call-indicator {
+  border-color: #8b929d;
 }
 article {
   flex: 0 0 auto;

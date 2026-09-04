@@ -13,6 +13,12 @@ import {
   upsertAssistantTranscript,
   upsertUserTranscript,
 } from './message-order.js'
+import {
+  cancelToolCallsForResponse,
+  displayToolName,
+  mergeToolCallDebug,
+  toolCallFromGatewayEvent,
+} from './tool-call-debug.js'
 import MessageContent from './MessageContent.jsx'
 import MultimodalComposer from './composer/MultimodalComposer.jsx'
 import TaskArtifacts from './TaskArtifacts.jsx'
@@ -208,6 +214,7 @@ export default function App() {
   }))
   const [waitingForVoice, setWaitingForVoice] = useState(false)
   const [messages, setMessages] = useState([])
+  const [toolCalls, setToolCalls] = useState([])
   const [activity, setActivity] = useState(t('正在检查后台 Agent'))
   const [frontend, setFrontend] = useState({ label: 'Realtime Agent' })
   const [modelStatus, setModelStatus] = useState(() => realtimeModelStatus())
@@ -388,7 +395,7 @@ export default function App() {
     if (container && stickToBottom.current) {
       container.scrollTop = container.scrollHeight
     }
-  }, [messages, agentTasks])
+  }, [messages, agentTasks, toolCalls])
 
   useEffect(() => () => {
     taskDismissTimers.current.forEach(timer => clearTimeout(timer))
@@ -454,6 +461,7 @@ export default function App() {
         id,
         content: event.content,
         turnId: event.turnId,
+        createdAt: Date.now(),
         final,
       }))
     if (final) noteInteraction()
@@ -473,11 +481,25 @@ export default function App() {
       taskIds: event.taskIds,
       origin: event.origin,
       citations: event.citations,
+      createdAt: Date.now(),
       final,
     }))
   }, [])
 
   const onRealtimeEvent = useCallback(event => {
+    const toolCall = toolCallFromGatewayEvent(event, currentTurnId.current)
+    if (toolCall) {
+      setToolCalls(items => mergeToolCallDebug(items, {
+        ...toolCall,
+        createdAt: Date.now(),
+      }))
+      if (
+        ['received', 'running'].includes(toolCall.status)
+        && (!toolCall.turnId || toolCall.turnId === currentTurnId.current)
+      ) {
+        setActivity(t('正在执行工具'))
+      }
+    }
     const animationEvent = spriteAnimationEventForGatewayEvent(event)
     if (animationEvent) {
       triggerSpriteAnimation(animationEvent)
@@ -490,6 +512,11 @@ export default function App() {
     }
     if (event.type === 'gateway.disconnected') {
       setActivity(t('qwen-audio-agent Gateway 已断开，正在重连'))
+      setToolCalls(items => items.map(toolCall => (
+        ['completed', 'failed', 'cancelled'].includes(toolCall.status)
+          ? toolCall
+          : { ...toolCall, status: 'cancelled' }
+      )))
       setAgentTasks(items => items.map(task => (
         [
           'queued',
@@ -611,6 +638,7 @@ export default function App() {
           ? { ...message, interrupted: true, live: false }
           : message
       )))
+      setToolCalls(items => cancelToolCallsForResponse(items, event.responseId))
     }
     if (event.type === 'task.scheduled') {
       const task = event.task
@@ -1053,6 +1081,7 @@ export default function App() {
     localStorage.setItem('qwen-audio-agent.session', next)
     setSessionId(next)
     setMessages([])
+    setToolCalls([])
     setAgentTasks([])
     currentTurnId.current = ''
     activeVoiceResponse.current = ''
@@ -1086,8 +1115,8 @@ export default function App() {
   }
 
   const turns = useMemo(
-    () => buildConversationTurns(messages, agentTasks),
-    [messages, agentTasks],
+    () => buildConversationTurns(messages, agentTasks, toolCalls),
+    [messages, agentTasks, toolCalls],
   )
 
   const beginOrbDrag = event => {
@@ -1323,6 +1352,36 @@ export default function App() {
     </div>}
   </aside>
 
+  const renderToolCall = toolCall => {
+    const surface = toolCall.surface === 'backend' ? t('后台工具') : t('前台工具')
+    const status = {
+      received: t('工具执行中'),
+      running: t('工具执行中'),
+      completed: t('工具已完成'),
+      failed: t('工具失败'),
+      cancelled: t('工具已取消'),
+    }[toolCall.status] || t('工具执行中')
+    const duration = Number.isFinite(toolCall.durationMs)
+      ? toolCall.durationMs < 1_000
+        ? t('{ms} 毫秒', { ms: Math.max(0, Math.round(toolCall.durationMs)) })
+        : t('{seconds} 秒', {
+            seconds: Number((toolCall.durationMs / 1_000).toFixed(1)),
+          })
+      : ''
+    return <aside
+      key={`tool-call:${toolCall.callId}`}
+      className={`tool-call-activity ${toolCall.surface} ${toolCall.status}`}
+      aria-label={`${surface} ${displayToolName(toolCall.name)} · ${status}`}
+      title={toolCall.name}
+    >
+      <span className="tool-call-indicator" aria-hidden="true" />
+      <div>
+        <b>{displayToolName(toolCall.name)}</b>
+        <small>{[surface, status, duration].filter(Boolean).join(' · ')}</small>
+      </div>
+    </aside>
+  }
+
   const renderMessage = message => <article
     key={message.id}
     className={`${message.role}${message.companion ? ' companion' : ''}`}
@@ -1458,7 +1517,11 @@ export default function App() {
           key={turn.id}
           className={`conversation-turn${turn.standalone ? ' standalone' : ''}`}
         >
-          {turn.beforeActivities.map(renderMessage)}
+          {turn.beforeEvents.map(item => (
+            item.type === 'tool-call'
+              ? renderToolCall(item.value)
+              : renderMessage(item.value)
+          ))}
           {turn.tasks.map(renderTask)}
           {turn.afterActivities.map(renderMessage)}
         </section>)}

@@ -2,9 +2,15 @@
 
 import { spawnSync } from 'node:child_process'
 
-// 仅记录没有上游修复版本、且不进入生产依赖的构建链问题。已修复或不再
-// 出现的例外必须及时删除，脚本会在例外失效时强制报错提醒。
+// 仅记录没有上游修复版本、且不进入生产依赖的构建链问题。npm 的审计
+// 快照偶尔会漏报已有 advisory，因此例外按明确到期日收敛，不以单次缺席
+// 判定已修复。
 const TEMPORARY_BUILD_ADVISORIES = new Map([
+  [1102341, {
+    id: 'GHSA-67mh-4wv8-2f99',
+    expires: '2026-11-30',
+    reason: 'VitePress 1.6.4 的开发服务器间接依赖；npm 当前无可用修复，且不进入生产依赖',
+  }],
   [1116229, {
     id: 'GHSA-4w7w-66w2-5vf9',
     expires: '2026-11-30',
@@ -74,6 +80,11 @@ function assertProductionClean() {
 }
 
 function assertFullAuditIsExplicitlyAccountedFor() {
+  for (const [source, exception] of TEMPORARY_BUILD_ADVISORIES) {
+    if (Date.now() > Date.parse(`${exception.expires}T23:59:59Z`)) {
+      throw new Error(`${exception.id}（${source}）例外已于 ${exception.expires} 到期`)
+    }
+  }
   const { report, status } = runAudit(['--audit-level=high'])
   if (status === 0) return
   const vulnerabilities = report.vulnerabilities || {}
@@ -100,12 +111,8 @@ function assertFullAuditIsExplicitlyAccountedFor() {
   if (unexpected.length) {
     throw new Error(`依赖审计发现未批准问题：${unexpected.join('；')}`)
   }
-  for (const [source, exception] of TEMPORARY_BUILD_ADVISORIES) {
-    if (!observedExceptions.has(source)) {
-      throw new Error(
-        `${exception.id}（${source}）已不再出现，请删除过期的审计例外`,
-      )
-    }
+  for (const source of observedExceptions) {
+    const exception = TEMPORARY_BUILD_ADVISORIES.get(source)
     process.stdout.write(
       `已记录临时构建链例外 ${exception.id}，到期日 ${exception.expires}：`
       + `${exception.reason}。\n`,

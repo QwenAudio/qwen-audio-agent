@@ -1,6 +1,7 @@
 import { config } from './config.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
+const TRUSTED_NATIVE_CLIENT_ORIGINS = new Set(['https://qwaudio.local'])
 
 function normalizedOrigin(value) {
   try {
@@ -44,6 +45,7 @@ export function isAllowedOrigin(
     allowedOrigins = config.allowedOrigins,
     authenticatedRemote = false,
     allowSecureSameOrigin = false,
+    trustedNativeClient = false,
   } = {},
 ) {
   const requestHost = parsedHost(req.headers.host)
@@ -61,6 +63,12 @@ export function isAllowedOrigin(
       || trustedHost
       || authenticatedRemote === true
   }
+
+  if (
+    authenticatedRemote
+    && trustedNativeClient
+    && TRUSTED_NATIVE_CLIENT_ORIGINS.has(origin)
+  ) return true
 
   const originUrl = new URL(origin)
   if (configured.includes(origin)) {
@@ -91,6 +99,7 @@ export function isAllowedOrigin(
 export function enforceSameOrigin(req, res, next) {
   if (!isAllowedOrigin(req, {
     authenticatedRemote: req.identity?.access === 'remote',
+    trustedNativeClient: req.identity?.clientType === 'mobile',
   })) {
     res.status(403).json({ error: 'origin not allowed' })
     return

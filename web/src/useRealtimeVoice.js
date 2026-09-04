@@ -19,17 +19,13 @@ import { decodePcm, pcmBase64, resample } from './audio.js'
 import { createMicrophoneCaptureLifecycle } from './microphone-capture.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
 import { t } from './i18n.js'
+import {
+  createGatewayWebSocket,
+  gatewayRealtimeUrl,
+} from './gateway-transport.js'
 
 const DEFAULT_INPUT_RATE = 16000
 const OUTPUT_RATE = 24000
-
-function socketUrl(sessionId) {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const basePath = location.pathname.endsWith('/')
-    ? location.pathname
-    : location.pathname.replace(/[^/]*$/, '')
-  return `${protocol}//${location.host}${basePath}api/realtime?sessionId=${encodeURIComponent(sessionId)}`
-}
 
 export function acceptsVoiceState(event, currentTurnId) {
   return acceptsGatewayVoiceState(event, currentTurnId)
@@ -642,8 +638,8 @@ export default function useRealtimeVoice({
       eventRef.current?.(event)
     }
     const client = new GatewayClient({
-      url: socketUrl(sessionId),
-      createSocket: url => new WebSocket(url),
+      url: gatewayRealtimeUrl(sessionId),
+      createSocket: createGatewayWebSocket,
       clientType,
       clientLabel,
       clientInstanceId: clientInstanceId.current,

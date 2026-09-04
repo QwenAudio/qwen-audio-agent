@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createTailscaleGatewayEndpointPublisher } from '../shared/gateway-tailscale-publisher.mjs'
+import {
+  createTailscaleCommandRunner,
+  createTailscaleGatewayEndpointPublisher,
+} from '../shared/gateway-tailscale-publisher.mjs'
 
 function runner({ serve = {} } = {}) {
   const calls = []
@@ -83,4 +86,21 @@ test('Tailscale publisher reports missing and logged-out installations distinctl
     run: async () => ({ stdout: JSON.stringify({ BackendState: 'NeedsLogin' }) }),
   })
   assert.equal((await loggedOut.inspect()).backendState, 'NeedsLogin')
+})
+
+test('command runner finds the macOS app binary when the shell command is absent', async () => {
+  const commands = []
+  const run = createTailscaleCommandRunner({
+    platform: 'darwin',
+    execFileImpl: async command => {
+      commands.push(command)
+      if (command === 'tailscale') throw Object.assign(new Error('missing'), { code: 'ENOENT' })
+      return { stdout: '{}' }
+    },
+  })
+  await run(['status', '--json'])
+  assert.deepEqual(commands, [
+    'tailscale',
+    '/Applications/Tailscale.app/Contents/MacOS/Tailscale',
+  ])
 })

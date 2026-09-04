@@ -15,22 +15,39 @@ function commandError(error, code, fallback) {
 }
 
 export function createTailscaleCommandRunner({
-  command = 'tailscale',
+  command,
+  platform = process.platform,
   execFileImpl = execFile,
 } = {}) {
+  const candidates = command
+    ? [command]
+    : [
+        'tailscale',
+        ...(platform === 'darwin'
+          ? ['/Applications/Tailscale.app/Contents/MacOS/Tailscale']
+          : []),
+        ...(platform === 'win32'
+          ? ['C:\\Program Files\\Tailscale\\tailscale.exe']
+          : []),
+      ]
   return async args => {
-    try {
-      return await execFileImpl(command, args, {
-        encoding: 'utf8',
-        maxBuffer: 1024 * 1024,
-        windowsHide: true,
-      })
-    } catch (error) {
-      if (error?.code === 'ENOENT') {
-        throw commandError(error, 'tailscale_not_installed', 'Tailscale is not installed')
+    let missing
+    for (const candidate of candidates) {
+      try {
+        return await execFileImpl(candidate, args, {
+          encoding: 'utf8',
+          maxBuffer: 1024 * 1024,
+          windowsHide: true,
+        })
+      } catch (error) {
+        if (error?.code === 'ENOENT') {
+          missing = error
+          continue
+        }
+        throw commandError(error, 'tailscale_command_failed', 'Tailscale command failed')
       }
-      throw commandError(error, 'tailscale_command_failed', 'Tailscale command failed')
     }
+    throw commandError(missing, 'tailscale_not_installed', 'Tailscale is not installed')
   }
 }
 

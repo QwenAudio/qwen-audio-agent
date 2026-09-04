@@ -111,11 +111,11 @@ Connection Profile 保存并重新连接。
 
 ## RA2 — Tailscale Publisher
 
-- [ ] 实现 Desktop 与 CLI 共用的 Tailscale Adapter。
-- [ ] 使用机器可读输出检测安装、登录、网络就绪、主机名与发布状态。
-- [ ] 使用专属 Gateway Endpoint 启停，不覆盖用户已有的其他 Tailscale Serve 配置，
+- [x] 实现 Desktop 与 CLI 共用的 Tailscale Adapter。
+- [x] 使用机器可读输出检测安装、登录、网络就绪、主机名与发布状态。
+- [x] 使用专属 Gateway Endpoint 启停，不覆盖用户已有的其他 Tailscale Serve 配置，
   同时保持 Gateway Listener 只监听 loopback。
-- [ ] 增加 CLI status、enable、disable、invite、设备列表与撤销命令。
+- [x] 增加 CLI status、enable、disable、invite、设备列表与撤销命令。
 - [ ] 在确定最终 Serve 模式前验证 GCP WebSocket 长连接，并保留 tailnet 直连回退。
 
 完成条件：用户无需编辑 Gateway 配置、复制 Token 或暴露 LAN/公网 Listener，即可开启

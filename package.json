@@ -264,6 +264,7 @@
     "@qwen-code/open-computer-use": "^0.2.3",
     "electron-updater": "6.8.9",
     "express": "^4.22.2",
+    "qrcode": "1.5.4",
     "sherpa-onnx": "1.13.4",
     "tar-stream": "3.1.7",
     "unbzip2-stream": "1.4.3",

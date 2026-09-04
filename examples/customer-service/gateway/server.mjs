@@ -39,12 +39,34 @@ process.env.QWEN_AUDIO_FRONTEND_PROFILE ||= fileURLToPath(
 )
 
 // 人设按域选。profile 里的 assistant 字段是相对路径，所以换域要换整份 profile ——
-// 与其为两个域各写一份 profile（两份里只有一行不同、改一处必忘另一处），
+// 与其为两个域各写一份 profile（两份里只有一行不同、改一处必忘另一份），
 // 不如在这里按域覆盖 assistant 路径。
 // 变量名核实自 server/src/core/frontend-profile.mjs:164。
 process.env.QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH ||= fileURLToPath(
   new URL(`./assistant/${process.env.CS_DOMAIN || 'retail'}.md`, import.meta.url),
 )
+
+// 前台工具白名单也要按域选。
+//
+// 【这是实测发现的一个严重遗漏】
+// 人设按域换了（上面那行），但 frontend-mcp.json 只有一份而且是零售的，
+// 于是航空会话里模型看到的前台工具是两边的交集：
+//   能用的         verify_identity、identity_status（只剩核验）
+//   白名单有但未实现  list_orders、get_order、check_variant（调了报错）
+//   实现了但未放行  list_reservations、get_reservation、get_flight_status
+//
+// 也就是说航空客服根本查不了预订和航班。
+// 上一轮我宣称「两组域配置真的隔离」时，只验了 policy 检索源和 service
+// 的工具面，没验网关这一层的白名单 —— 结论下得太早。
+//
+// QWEN_AUDIO_FRONTEND_MCP_CONFIG 的优先级比 profile.toolSources.mcp 高
+// （frontend-profile.mjs:176），所以用它覆盖。零售仍用 frontend-mcp.json，
+// 跟 profile 里写的一致；只有航空需要换一份。
+if (!process.env.QWEN_AUDIO_FRONTEND_MCP_CONFIG && process.env.CS_DOMAIN === 'airline') {
+  process.env.QWEN_AUDIO_FRONTEND_MCP_CONFIG = fileURLToPath(
+    new URL('./frontend-mcp.airline.json', import.meta.url),
+  )
+}
 
 const [
   { createGatewayApplication },

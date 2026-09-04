@@ -13,9 +13,10 @@ from voicemem import VoiceMem, build_memory_context
 
 
 class Runtime:
-    def __init__(self, state_dir: Path) -> None:
+    def __init__(self, state_dir: Path, input_mode: str = "text") -> None:
         self.root = state_dir / "memory-spaces"
         self.root.mkdir(parents=True, exist_ok=True)
+        self.input_mode = "audio" if input_mode == "audio" else "text"
         self.instances: dict[str, VoiceMem] = {}
         self.seen_path = state_dir / "observed-messages.json"
         self.observed_order: list[str] = []
@@ -28,7 +29,7 @@ class Runtime:
             self.instances[owner_id] = VoiceMem(
                 user_id=owner_id,
                 memory_root=str(self.root / owner_id),
-                mode="text",
+                mode="multi_modal" if self.input_mode == "audio" else "text",
             )
         return self.instances[owner_id]
 
@@ -48,7 +49,7 @@ class Runtime:
 
     def observe(self, params: dict) -> dict:
         owner_id = str(params["ownerId"])
-        unseen: list[tuple[str, str]] = []
+        unseen: list[tuple[str, str, Path | None]] = []
         for message in params.get("messages", []):
             if message.get("role") != "user":
                 continue
@@ -61,16 +62,37 @@ class Runtime:
             ).hexdigest()
             if message_key in self.observed_messages:
                 continue
-            unseen.append((message_key, content))
+            audio_path = Path(str(message.get("audioPath", "")))
+            unseen.append((
+                message_key,
+                content,
+                audio_path if self.input_mode == "audio" and audio_path.is_file() else None,
+            ))
         if not unseen:
             return {"observed": False, "messages": 0}
 
-        # One completed voice Session is one observation unit. Batching avoids
-        # N sequential LLM extractions for N short turns and retains the
-        # conversational context needed to resolve corrections within a Session.
-        transcript = "\n".join(f"- {content}" for _, content in unseen)
-        self.memory(owner_id).ingest(transcript)
-        for message_key, _ in unseen:
+        memory = self.memory(owner_id)
+        session_id = str(params.get("sessionId", "")).strip() or None
+        audio_messages = 0
+        if self.input_mode == "audio":
+            # Audio-backed voice turns use VoiceMem's native ingest(audio=...)
+            # path, including its own ASR and acoustic perception. Typed turns
+            # have no audio segment and intentionally fall back to text.
+            for _, content, audio_path in unseen:
+                if audio_path is not None:
+                    memory.ingest(audio=str(audio_path), session_id=session_id)
+                    audio_messages += 1
+                else:
+                    memory.ingest(content, session_id=session_id)
+            batches = len(unseen)
+        else:
+            # One completed voice Session is one observation unit. Batching
+            # avoids N sequential LLM extractions for N short turns and retains
+            # context needed to resolve corrections within a Session.
+            transcript = "\n".join(f"- {content}" for _, content, _ in unseen)
+            memory.ingest(transcript, session_id=session_id)
+            batches = 1
+        for message_key, _, _ in unseen:
             self.observed_messages.add(message_key)
             self.observed_order.append(message_key)
         self.observed_order = self.observed_order[-20_000:]
@@ -78,7 +100,13 @@ class Runtime:
         temporary = self.seen_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(self.observed_order), encoding="utf-8")
         temporary.replace(self.seen_path)
-        return {"observed": True, "messages": len(unseen), "batches": 1}
+        return {
+            "observed": True,
+            "messages": len(unseen),
+            "audioMessages": audio_messages,
+            "batches": batches,
+            "inputMode": self.input_mode,
+        }
 
     def flush(self, params: dict) -> dict:
         self.memory(str(params["ownerId"])).flush()
@@ -93,8 +121,13 @@ class Runtime:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--state-dir", required=True, type=Path)
+    parser.add_argument(
+        "--input-mode",
+        choices=("text", "audio"),
+        default="text",
+    )
     args = parser.parse_args()
-    runtime = Runtime(args.state_dir)
+    runtime = Runtime(args.state_dir, args.input_mode)
     methods = {
         "recall": runtime.recall,
         "observe": runtime.observe,

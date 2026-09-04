@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
@@ -15,6 +16,33 @@ import { MEMORY_PROVIDER_PROTOCOL_VERSION } from 'qwen-audio-agent/memory-provid
 const EXAMPLE_DIRECTORY = dirname(fileURLToPath(import.meta.url))
 const SCOPES = new Set(['user', 'memory'])
 const SENSITIVE = /(?:api[_ -]?key|secret|token|password|passwd|credential|密码|密钥|验证码|令牌|证件号|身份证|详细住址|病史|病历|诊断|用药|\bsk-[a-z0-9_-]+|\b\d{11,19}\b)/iu
+const DEFAULT_SAMPLE_RATE = 16_000
+const PCM_BYTES_PER_SAMPLE = 2
+
+export function normalizeVoiceMemInputMode(value) {
+  return String(value || '').trim().toLowerCase() === 'audio' ? 'audio' : 'text'
+}
+
+function wavBuffer(pcm, sampleRate) {
+  const rate = Number.isFinite(sampleRate) && sampleRate > 0
+    ? Math.floor(sampleRate)
+    : DEFAULT_SAMPLE_RATE
+  const header = Buffer.alloc(44)
+  header.write('RIFF', 0)
+  header.writeUInt32LE(36 + pcm.length, 4)
+  header.write('WAVE', 8)
+  header.write('fmt ', 12)
+  header.writeUInt32LE(16, 16)
+  header.writeUInt16LE(1, 20)
+  header.writeUInt16LE(1, 22)
+  header.writeUInt32LE(rate, 24)
+  header.writeUInt32LE(rate * PCM_BYTES_PER_SAMPLE, 28)
+  header.writeUInt16LE(PCM_BYTES_PER_SAMPLE, 32)
+  header.writeUInt16LE(16, 34)
+  header.write('data', 36)
+  header.writeUInt32LE(pcm.length, 40)
+  return Buffer.concat([header, pcm])
+}
 
 export function applyRecommendedDashScopeConfiguration(env = process.env) {
   if (String(env.OPENAI_API_KEY || '').trim()) return false
@@ -145,13 +173,16 @@ class JsonLineSidecar {
  * learning, consolidation, and semantic recall. Both are private
  * implementation details behind the same Gateway contract.
  */
-export class VoiceMemMemoryProvider {
+export class VoiceMemProvider {
   constructor({
     stateDirectory = resolve(process.cwd(), '.qwen-audio', 'voicemem'),
     python = null,
     sidecarPath = join(EXAMPLE_DIRECTORY, 'sidecar', 'server.py'),
     timeoutMs = 30_000,
     backgroundTimeoutMs = 120_000,
+    audioPreRollMs = 1_000,
+    maxAudioTurnSeconds = 45,
+    maxAudioSessionBytes = 24 * 1024 * 1024,
     env = process.env,
     sidecar = null,
   } = {}) {
@@ -161,10 +192,28 @@ export class VoiceMemMemoryProvider {
     this.cache = new Map()
     this.backgroundOperations = new Map()
     this.pendingObservations = new Map()
+    this.inputMode = normalizeVoiceMemInputMode(env.VOICEMEM_INPUT_MODE)
+    this.audioPreRollMs = Math.max(0, Math.min(2_000, Number(audioPreRollMs) || 0))
+    this.maxAudioTurnSeconds = Math.max(1, Number(maxAudioTurnSeconds) || 45)
+    this.maxAudioSessionBytes = Math.max(
+      64 * 1024,
+      Number(maxAudioSessionBytes) || 24 * 1024 * 1024,
+    )
+    this.audioSessions = new Map()
+    this.audioStagingDirectory = join(this.stateDirectory, 'audio-staging')
+    if (this.inputMode === 'audio') {
+      mkdirSync(this.audioStagingDirectory, { recursive: true, mode: 0o700 })
+    }
     this.backgroundTimeoutMs = Math.max(timeoutMs, backgroundTimeoutMs)
     this.sidecar = sidecar || new JsonLineSidecar({
       command: python || defaultPythonCommand(env),
-      args: [sidecarPath, '--state-dir', this.stateDirectory],
+      args: [
+        sidecarPath,
+        '--state-dir',
+        this.stateDirectory,
+        '--input-mode',
+        this.inputMode,
+      ],
       cwd: EXAMPLE_DIRECTORY,
       env: { ...env },
       timeoutMs,
@@ -179,8 +228,139 @@ export class VoiceMemMemoryProvider {
       capabilities: {
         semanticQuery: true,
         sessionObservation: true,
+        audioStreamObservation: this.inputMode === 'audio',
       },
     }
+  }
+
+  #audioSessionKey(ownerId, sessionId) {
+    return `${ownerKey(ownerId)}\0${clean(sessionId, 200)}`
+  }
+
+  #audioSession(ownerId, context) {
+    const sessionId = clean(context?.sessionId, 200)
+    if (!sessionId) return null
+    const key = this.#audioSessionKey(ownerId, sessionId)
+    let state = this.audioSessions.get(key)
+    if (!state) {
+      state = {
+        sampleRate: DEFAULT_SAMPLE_RATE,
+        preRoll: [],
+        preRollBytes: 0,
+        active: null,
+        completed: new Map(),
+        completedBytes: 0,
+      }
+      this.audioSessions.set(key, state)
+    }
+    return state
+  }
+
+  #appendPreRoll(state, chunk) {
+    const limit = Math.ceil(
+      state.sampleRate * PCM_BYTES_PER_SAMPLE * this.audioPreRollMs / 1_000,
+    )
+    if (!limit) return
+    const retained = chunk.length > limit ? chunk.subarray(chunk.length - limit) : chunk
+    state.preRoll.push(retained)
+    state.preRollBytes += retained.length
+    while (state.preRollBytes > limit && state.preRoll.length) {
+      const removed = state.preRoll.shift()
+      state.preRollBytes -= removed.length
+    }
+  }
+
+  #storeCompletedTurn(state, segment) {
+    if (!segment?.turnId || !segment.bytes) return
+    const prior = state.completed.get(segment.turnId)
+    if (prior) state.completedBytes -= prior.bytes
+    state.completed.set(segment.turnId, segment)
+    state.completedBytes += segment.bytes
+    while (
+      state.completed.size > 20
+      || state.completedBytes > this.maxAudioSessionBytes
+    ) {
+      const oldest = state.completed.entries().next().value
+      if (!oldest) break
+      state.completed.delete(oldest[0])
+      state.completedBytes -= oldest[1].bytes
+    }
+  }
+
+  observeAudio(ownerId, event = {}, context = {}) {
+    if (this.inputMode !== 'audio') return { observed: false }
+    const state = this.#audioSession(ownerId, context)
+    if (!state) return { observed: false }
+    const type = String(event.type || '')
+
+    if (type === 'chunk') {
+      const sampleRate = Number(event.sampleRate)
+      if (Number.isFinite(sampleRate) && sampleRate > 0) state.sampleRate = sampleRate
+      let chunk
+      try { chunk = Buffer.from(String(event.audio || ''), 'base64') } catch { return { observed: false } }
+      if (!chunk.length) return { observed: false }
+      if (!state.active) {
+        this.#appendPreRoll(state, chunk)
+        return { observed: true }
+      }
+      const limit = Math.ceil(
+        state.active.sampleRate * PCM_BYTES_PER_SAMPLE * this.maxAudioTurnSeconds,
+      )
+      if (state.active.bytes < limit) {
+        const accepted = chunk.subarray(0, limit - state.active.bytes)
+        state.active.chunks.push(accepted)
+        state.active.bytes += accepted.length
+      }
+      return { observed: true }
+    }
+
+    if (type === 'speech_started') {
+      state.active = {
+        turnId: clean(event.turnId, 240),
+        sampleRate: state.sampleRate,
+        chunks: state.preRoll,
+        bytes: state.preRollBytes,
+      }
+      state.preRoll = []
+      state.preRollBytes = 0
+      return { observed: true }
+    }
+
+    if (type === 'speech_stopped') {
+      const segment = state.active
+      state.active = null
+      if (event.reason !== 'turn_invalid') this.#storeCompletedTurn(state, segment)
+      return { observed: Boolean(segment) }
+    }
+
+    if (type === 'session_ended') {
+      state.active = null
+      state.preRoll = []
+      state.preRollBytes = 0
+      return { observed: true }
+    }
+    return { observed: false }
+  }
+
+  #takeAudioFiles(ownerId, sessionId, messages) {
+    if (this.inputMode !== 'audio') return []
+    const key = this.#audioSessionKey(ownerId, sessionId)
+    const state = this.audioSessions.get(key)
+    this.audioSessions.delete(key)
+    if (!state) return []
+    const paths = []
+    for (const message of messages) {
+      if (message.role !== 'user' || !message.turnId) continue
+      const segment = state.completed.get(message.turnId)
+      if (!segment?.bytes) continue
+      const path = join(this.audioStagingDirectory, `${randomUUID()}.wav`)
+      writeFileSync(path, wavBuffer(Buffer.concat(segment.chunks), segment.sampleRate), {
+        mode: 0o600,
+      })
+      message.audioPath = path
+      paths.push(path)
+    }
+    return paths
   }
 
   #path(ownerId) {
@@ -297,25 +477,43 @@ export class VoiceMemMemoryProvider {
           id: clean(message?.id, 240),
           role: message?.role === 'assistant' ? 'assistant' : 'user',
           content: clean(message?.content, 4_000),
+          turnId: clean(message?.turnId, 240),
         })).filter(message => message.content && !SENSITIVE.test(message.content))
       : []
-    if (!messages.length) return { observed: false }
     const owner = ownerKey(ownerId)
+    const sessionId = clean(context.sessionId, 200)
+    if (!messages.length) {
+      if (this.inputMode === 'audio') {
+        this.audioSessions.delete(this.#audioSessionKey(ownerId, sessionId))
+      }
+      return { observed: false }
+    }
     const observationKey = createHash('sha256').update(JSON.stringify({
       ownerId: owner,
       messages,
+      inputMode: this.inputMode,
     })).digest('hex')
     const pending = this.pendingObservations.get(observationKey)
     if (pending) return pending
+    const audioPaths = this.#takeAudioFiles(ownerId, sessionId, messages)
     this.#beginBackground(owner)
-    const operation = this.sidecar.request('observe', {
-      ownerId: owner,
-      sessionId: clean(context.sessionId, 200),
-      messages,
-    }, { timeoutMs: this.backgroundTimeoutMs }).finally(() => {
+    const finish = () => {
+      for (const path of audioPaths) rmSync(path, { force: true })
       this.#endBackground(owner)
       this.pendingObservations.delete(observationKey)
-    })
+    }
+    let request
+    try {
+      request = this.sidecar.request('observe', {
+        ownerId: owner,
+        sessionId,
+        messages,
+      }, { timeoutMs: this.backgroundTimeoutMs })
+    } catch (error) {
+      finish()
+      throw error
+    }
+    const operation = Promise.resolve(request).finally(finish)
     this.pendingObservations.set(observationKey, operation)
     return operation
   }
@@ -340,7 +538,11 @@ export class VoiceMemMemoryProvider {
     }
   }
 
-  close() {
-    return this.sidecar.close({ timeoutMs: this.backgroundTimeoutMs })
+  async close() {
+    try {
+      await this.sidecar.close({ timeoutMs: this.backgroundTimeoutMs })
+    } finally {
+      this.audioSessions.clear()
+    }
   }
 }

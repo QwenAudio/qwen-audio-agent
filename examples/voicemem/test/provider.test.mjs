@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import {
   applyRecommendedDashScopeConfiguration,
-  VoiceMemMemoryProvider,
-} from '../voicemem-memory-provider.mjs'
+  normalizeVoiceMemInputMode,
+  VoiceMemProvider,
+} from '../voicemem-provider.mjs'
+
+test('defaults unknown input modes to text', () => {
+  assert.equal(normalizeVoiceMemInputMode(), 'text')
+  assert.equal(normalizeVoiceMemInputMode('TEXT'), 'text')
+  assert.equal(normalizeVoiceMemInputMode('audio'), 'audio')
+  assert.equal(normalizeVoiceMemInputMode('unexpected'), 'text')
+})
 
 test('maps Model Studio credentials without overriding explicit providers', () => {
   const env = { DASHSCOPE_API_KEY: 'dashscope-key' }
@@ -36,7 +44,7 @@ test('maps Model Studio credentials without overriding explicit providers', () =
 
 test('keeps a synchronous control snapshot and applies exact edits', async () => {
   const stateDirectory = mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-'))
-  const provider = new VoiceMemMemoryProvider({ stateDirectory })
+  const provider = new VoiceMemProvider({ stateDirectory })
   assert.equal(provider.describe().capabilities.sessionObservation, true)
   assert.match(provider.list('owner')[0].content, /# USER/)
 
@@ -72,7 +80,7 @@ test('uses a longer timeout for background observation and consolidation', async
       return Promise.resolve()
     },
   }
-  const provider = new VoiceMemMemoryProvider({
+  const provider = new VoiceMemProvider({
     stateDirectory: mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-timeout-')),
     timeoutMs: 5_000,
     backgroundTimeoutMs: 120_000,
@@ -112,7 +120,7 @@ test('coalesces duplicate observations and never queues recall behind them', asy
     },
     close() {},
   }
-  const provider = new VoiceMemMemoryProvider({
+  const provider = new VoiceMemProvider({
     stateDirectory: mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-busy-')),
     sidecar,
   })
@@ -131,4 +139,125 @@ test('coalesces duplicate observations and never queues recall behind them', asy
   assert.equal(otherOwnerRecall.context, 'semantic context')
   finishObservation({ observed: true })
   await Promise.all([first, duplicate])
+})
+
+test('captures bounded PCM turns and passes real WAV files only in audio mode', async () => {
+  const observed = []
+  const sidecar = {
+    lastError: null,
+    request(method, params) {
+      if (method === 'observe') {
+        const audioPath = params.messages[0].audioPath
+        observed.push({
+          params,
+          audioPath,
+          wav: readFileSync(audioPath),
+        })
+      }
+      return Promise.resolve({})
+    },
+    close() {},
+  }
+  const provider = new VoiceMemProvider({
+    stateDirectory: mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-audio-')),
+    env: { VOICEMEM_INPUT_MODE: 'audio' },
+    sidecar,
+  })
+  const context = { sessionId: 'session-1' }
+
+  assert.equal(provider.describe().capabilities.audioStreamObservation, true)
+  provider.observeAudio('owner', {
+    type: 'chunk',
+    audio: Buffer.from([1, 2, 3, 4]).toString('base64'),
+    sampleRate: 16_000,
+  }, context)
+  provider.observeAudio('owner', {
+    type: 'speech_started',
+    turnId: 'voice-1',
+  }, context)
+  provider.observeAudio('owner', {
+    type: 'chunk',
+    audio: Buffer.from([5, 6, 7, 8, 9, 10]).toString('base64'),
+    sampleRate: 16_000,
+  }, context)
+  provider.observeAudio('owner', {
+    type: 'speech_stopped',
+    turnId: 'voice-1',
+  }, context)
+  provider.observeAudio('owner', { type: 'session_ended' }, context)
+
+  await provider.observe('owner', {
+    messages: [{
+      id: 'message-1',
+      role: 'user',
+      turnId: 'voice-1',
+      content: 'I like tea.',
+    }],
+  }, context)
+
+  assert.equal(observed.length, 1)
+  assert.equal(observed[0].params.messages[0].turnId, 'voice-1')
+  assert.equal(observed[0].wav.subarray(0, 4).toString(), 'RIFF')
+  assert.equal(observed[0].wav.subarray(8, 12).toString(), 'WAVE')
+  assert.equal(observed[0].wav.readUInt32LE(24), 16_000)
+  assert.equal(observed[0].wav.readUInt32LE(40), 10)
+  assert.equal(existsSync(observed[0].audioPath), false)
+})
+
+test('discards invalid audio turns and keeps text mode audio-free', async () => {
+  const calls = []
+  const sidecar = {
+    lastError: null,
+    request(method, params) {
+      calls.push({ method, params })
+      return Promise.resolve({})
+    },
+    close() {},
+  }
+  const stateDirectory = mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-mode-'))
+  const textProvider = new VoiceMemProvider({
+    stateDirectory,
+    env: { VOICEMEM_INPUT_MODE: 'text' },
+    sidecar,
+  })
+  assert.equal(
+    textProvider.describe().capabilities.audioStreamObservation,
+    false,
+  )
+  assert.deepEqual(
+    textProvider.observeAudio('owner', { type: 'chunk', audio: 'AA==' }),
+    { observed: false },
+  )
+  await textProvider.observe('owner', {
+    messages: [{ id: 'text-1', role: 'user', content: 'typed text' }],
+  }, { sessionId: 'text-session' })
+  assert.equal(calls[0].params.messages[0].audioPath, undefined)
+
+  const audioProvider = new VoiceMemProvider({
+    stateDirectory: mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-invalid-')),
+    env: { VOICEMEM_INPUT_MODE: 'audio' },
+    sidecar,
+  })
+  const context = { sessionId: 'audio-session' }
+  audioProvider.observeAudio('owner', {
+    type: 'speech_started',
+    turnId: 'invalid-turn',
+  }, context)
+  audioProvider.observeAudio('owner', {
+    type: 'chunk',
+    audio: Buffer.from([1, 2]).toString('base64'),
+  }, context)
+  audioProvider.observeAudio('owner', {
+    type: 'speech_stopped',
+    reason: 'turn_invalid',
+  }, context)
+  await audioProvider.observe('owner', {
+    messages: [{
+      id: 'invalid-message',
+      role: 'user',
+      turnId: 'invalid-turn',
+      content: 'fallback text',
+    }],
+  }, context)
+  assert.equal(calls.at(-1).params.messages[0].audioPath, undefined)
 })

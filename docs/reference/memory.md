@@ -98,6 +98,7 @@ const memoryProvider = {
     capabilities: {
       semanticQuery: true,
       sessionObservation: true,
+      audioStreamObservation: true,
     },
   }),
   list(ownerId, options) {
@@ -110,6 +111,7 @@ const memoryProvider = {
     return { memories: [], context: '' }
   },
   async observe(ownerId, exchange, context) {},
+  observeAudio(ownerId, event, context) {},
   async flush(ownerId, context) {},
   health: () => ({ ok: true }),
   async close() {},
@@ -129,6 +131,10 @@ replaceable:
 - A provider advertising `semanticQuery` implements `query()` for natural-language recall.
 - A provider advertising `sessionObservation` implements `observe()` to receive completed
   conversation exchanges. Optional `flush()` completes provider-owned session-boundary work.
+- A provider advertising `audioStreamObservation` implements synchronous `observeAudio()`.
+  It receives accepted PCM16 chunks plus speech/session boundary events. Because this hook is on
+  the input hot path, it must only perform bounded in-memory work; file, network, model, and
+  asynchronous processing belong in `observe()` or `flush()`.
 - Optional `health()` and `close()` integrate provider diagnostics and lifecycle cleanup.
 
 Capabilities are explicit. When `sessionObservation` is enabled, the built-in Markdown extractor
@@ -142,7 +148,7 @@ never access a vendor SDK, database, or Markdown file. Without an injected provi
 Markdown provider remains active, so current configuration and data require no migration.
 Third-party adapters own remote authentication, tenant mapping, cache refresh, and translation
 into the public `user` and `memory` context semantics. See the runnable
-[VoiceMem example](../scenarios/voicemem-memory.md) for a complete replacement using VoiceMem
+[VoiceMem example](../scenarios/voicemem.md) for a complete replacement using VoiceMem
 behind a Python sidecar.
 
 ## Logs

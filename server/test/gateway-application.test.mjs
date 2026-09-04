@@ -453,6 +453,7 @@ test('replaces Markdown memory through the public provider boundary', async () =
       capabilities: {
         semanticQuery: false,
         sessionObservation: false,
+        audioStreamObservation: false,
       },
     }),
     list: ownerId => [{
@@ -492,6 +493,7 @@ test('replaces Markdown memory through the public provider boundary', async () =
       capabilities: {
         semanticQuery: false,
         sessionObservation: false,
+        audioStreamObservation: false,
       },
     },
   })
@@ -510,6 +512,7 @@ test('replaces Markdown memory through the public provider boundary', async () =
       capabilities: {
         semanticQuery: false,
         sessionObservation: false,
+        audioStreamObservation: false,
       },
     },
   })

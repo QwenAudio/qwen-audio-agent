@@ -1,4 +1,4 @@
-# Qwen Audio Agent VoiceMem 记忆 Provider 示例
+# Qwen Audio Agent VoiceMem 示例
 
 [English](README.md) | 中文
 
@@ -14,8 +14,9 @@
 - **记忆系统可替换：**Gateway 只依赖带版本的 `MemoryProvider` 接口，不包含 VoiceMem
   专用逻辑。
 - **明确偏好即时更新：**原有 `memory` 工具继续支持精确读取、新增、替换和删除。
-- **自动学习：**语音 Session 断开后，完整用户轮次会合并为一个观察批次，由 VoiceMem
-  在后台抽取和整理。
+- **两种输入：**默认使用 Realtime 转写文本；也可切换到 VoiceMem 原生音频处理，使用
+  它自己的 ASR、情绪、环境感知及可选声纹能力。
+- **自动学习：**语音 Session 断开后，完整用户轮次由 VoiceMem 在后台抽取和整理。
 - **语义召回：**自然语言记忆查询使用 VoiceMem 检索，不要求与原文精确匹配。
 - **用户隔离：**每个 Gateway owner 使用独立哈希标识的偏好快照和 VoiceMem 记忆空间。
 - **单一学习链路：**VoiceMem 接管会话观察后，框架内置抽取器和偏好学习器自动停用，
@@ -26,7 +27,7 @@
 | 组件 | 职责 |
 |---|---|
 | qwen-audio-agent Gateway | 实时语音对话、记忆工具和 Provider 生命周期。 |
-| [`voicemem-memory-provider.mjs`](voicemem-memory-provider.mjs) | Node.js `MemoryProvider`、同步偏好快照、用户隔离和子进程管理。 |
+| [`voicemem-provider.mjs`](voicemem-provider.mjs) | Node.js `MemoryProvider`、同步偏好快照、用户隔离和子进程管理。 |
 | [`sidecar/server.py`](sidecar/server.py) | 基于 JSONL 的轻量进程边界，调用 VoiceMem 公开 Python API。 |
 | VoiceMem | 记忆抽取、整理、结构化存储和语义检索。 |
 | 阿里云百炼 | 推荐推理服务：Qwen3.8-Flash 处理记忆，text-embedding-v4 生成检索向量。 |
@@ -41,19 +42,19 @@ JSON 请求和响应。Python 依赖不会进入 Gateway 的 npm 依赖和公共
 ```bash
 npm ci
 python3 --version # 需要 3.10 或更高版本
-python3.12 -m venv examples/voicemem-memory/.venv
-examples/voicemem-memory/.venv/bin/pip install \
+python3.12 -m venv examples/voicemem/.venv
+examples/voicemem/.venv/bin/pip install \
   --index-url https://mirrors.aliyun.com/pypi/simple/ \
-  -r examples/voicemem-memory/sidecar/requirements.txt
-cp examples/voicemem-memory/.env.example \
-  examples/voicemem-memory/.env.local
+  -r examples/voicemem/sidecar/requirements.txt
+cp examples/voicemem/.env.example \
+  examples/voicemem/.env.local
 ```
 
 在 `.env.local` 中填写百炼 API Key，然后启动。默认配置使用仅前台模式和隔离的本地
 运行数据，不会修改用户日常使用的 Gateway 配置：
 
 ```bash
-cd examples/voicemem-memory
+cd examples/voicemem
 node --env-file=.env.local gateway.mjs
 ```
 
@@ -74,12 +75,32 @@ VOICEMEM_CHAT_MODEL=qwen3.8-flash
 VOICEMEM_EMBEDDING_MODEL=text-embedding-v4
 VOICEMEM_EMBED_DIM=1024
 VOICEMEM_MEMORY_LANGUAGE=zh
+VOICEMEM_INPUT_MODE=text
+VOICE_ENABLE_VOICEPRINT=false
 ```
 
 [`qwen3.8-flash`](https://help.aliyun.com/zh/model-studio/qwen3-8-flash) 用于记忆抽取和整理，
 [`text-embedding-v4`](https://help.aliyun.com/zh/model-studio/embedding) 用于语义检索。
 `OPENAI_*` 是 VoiceMem 兼容客户端采用的变量名；这套配置使用的密钥、服务地址和模型
 均来自百炼。用户显式设置的 `OPENAI_*` 和 `VOICEMEM_*` 配置优先。
+
+### 切换记忆输入
+
+```dotenv
+# 默认：直接使用 Realtime 已有的 ASR 转写，启动轻、资源占用低
+VOICEMEM_INPUT_MODE=text
+
+# 原生音频：把每个有效用户语音轮次交给 VoiceMem
+VOICEMEM_INPUT_MODE=audio
+```
+
+`audio` 模式不是把转写文本换一个字段发送：Gateway Adapter 会从麦克风 PCM16 流中按
+`turn_id` 截取有效语音，生成临时 WAV，然后调用 VoiceMem 的
+`ingest(audio=...)`。VoiceMem 使用自己的 ASR，并执行声纹、情绪及声学环境分析；键盘
+输入没有音频，仍使用文本处理。第一次使用会下载和加载 VoiceMem 的本地音频模型，
+通常明显慢于后续调用，推荐保留默认的 `VOICEMEM_ASR=funasr`。VoiceMem 的声纹模型
+不随 Python 包安装，所以推荐配置默认关闭声纹；安装其独立 speaker model 并设置
+`VOICEMEM_SPEAKER_MODEL` 或 `VOICEMEM_MODELS_DIR` 后再启用。
 
 ## 体验方法
 
@@ -101,20 +122,20 @@ VOICEMEM_MEMORY_LANGUAGE=zh
 | `profiles/<owner-hash>.json` | 明确偏好和事实的有界同步快照。 |
 | `memory-spaces/<owner-hash>/` | VoiceMem SQLite 数据、元信息和本地 Qdrant 向量。 |
 | `observed-messages.json` | 防止重连后重复写入的有界消息指纹。 |
+| `audio-staging/` | `audio` 模式下等待 Sidecar 处理的临时 WAV；处理完成即删除。 |
 
 不要提交该目录。生产部署应使用持久化存储、托管 Sidecar 进程，并自行制定凭据和租户
-映射策略。
+映射策略。Adapter 不记录麦克风音频；VoiceMem 默认不保留原始音频，但音频模式会生成
+声纹等派生数据。部署方应根据隐私要求配置 VoiceMem 的 `VOICE_SCENE` 与保留策略。
 
 ## 替换和扩展
 
 | 需求 | 修改位置 |
 |---|---|
 | 使用其他 OpenAI 兼容推理服务 | 设置 `OPENAI_API_KEY`、`OPENAI_BASE_URL` 和对应的 `VOICEMEM_*` 模型变量。 |
-| 修改记忆持久化位置 | 创建 `VoiceMemMemoryProvider` 时传入 `stateDirectory`。 |
+| 修改记忆持久化位置 | 创建 `VoiceMemProvider` 时传入 `stateDirectory`。 |
 | 替换为其他记忆系统 | 实现同一版本的 `MemoryProvider` 接口，并注入 `createGatewayApplication`。 |
-| 增加 VoiceMem 原生音频处理 | 扩展 Adapter 与 Sidecar，无需修改 Gateway 接口。 |
-
-当前示例只向 VoiceMem 发送用户语音的转写文本，不发送原始麦克风音频流。
+| 切换文本或原生音频输入 | 设置 `VOICEMEM_INPUT_MODE=text` 或 `audio`。 |
 
 ## 作者与致谢
 

@@ -47,7 +47,7 @@ Provider 注册表。
 [长期记忆](reference/memory.zh.md)
 
 可运行的 Provider 示例：
-[`examples/voicemem-memory`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem-memory)。
+[`examples/voicemem`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem)。
 
 ## 客户端：自己构建
 

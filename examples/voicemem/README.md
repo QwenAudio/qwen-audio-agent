@@ -1,4 +1,4 @@
-# Qwen Audio Agent VoiceMem Memory Provider Example
+# Qwen Audio Agent VoiceMem Example
 
 English | [中文](README_ZH.md)
 
@@ -17,8 +17,10 @@ session-boundary consolidation.
   `MemoryProvider` contract and contains no VoiceMem-specific logic.
 - **Explicit preference updates:** the existing `memory` tool still supports
   precise reads, additions, replacements, and deletions.
-- **Automatic learning:** completed user turns are combined into one observation
-  batch after a voice Session disconnects and consolidated in the background.
+- **Two input paths:** use existing Realtime transcripts by default, or switch to
+  VoiceMem-native ASR, emotion, acoustic perception, and optional voiceprint.
+- **Automatic learning:** completed user turns are consolidated by VoiceMem in
+  the background after a voice Session disconnects.
 - **Semantic recall:** natural-language memory queries use VoiceMem retrieval
   instead of requiring exact text matches.
 - **User isolation:** each Gateway owner receives an independently hashed
@@ -32,7 +34,7 @@ session-boundary consolidation.
 | Component | Responsibility |
 |---|---|
 | qwen-audio-agent Gateway | Realtime conversation, memory tools, and the provider lifecycle. |
-| [`voicemem-memory-provider.mjs`](voicemem-memory-provider.mjs) | Node.js `MemoryProvider`, synchronous preference snapshot, user isolation, and process supervision. |
+| [`voicemem-provider.mjs`](voicemem-provider.mjs) | Node.js `MemoryProvider`, synchronous preference snapshot, user isolation, and process supervision. |
 | [`sidecar/server.py`](sidecar/server.py) | Small JSONL process boundary around VoiceMem's public Python API. |
 | VoiceMem | Memory extraction, consolidation, structured storage, and semantic retrieval. |
 | Alibaba Cloud Model Studio | Recommended inference provider: Qwen3.8-Flash for memory processing and text-embedding-v4 for retrieval vectors. |
@@ -50,12 +52,12 @@ From the repository root:
 ```bash
 npm ci
 python3 --version # must be 3.10 or later
-python3.12 -m venv examples/voicemem-memory/.venv
-examples/voicemem-memory/.venv/bin/pip install \
+python3.12 -m venv examples/voicemem/.venv
+examples/voicemem/.venv/bin/pip install \
   --index-url https://mirrors.aliyun.com/pypi/simple/ \
-  -r examples/voicemem-memory/sidecar/requirements.txt
-cp examples/voicemem-memory/.env.example \
-  examples/voicemem-memory/.env.local
+  -r examples/voicemem/sidecar/requirements.txt
+cp examples/voicemem/.env.example \
+  examples/voicemem/.env.local
 ```
 
 Set your Alibaba Cloud Model Studio API key in `.env.local`, then start the
@@ -63,7 +65,7 @@ example. Its default configuration uses frontend-only mode and isolated local
 runtime data, so it does not change the user's regular Gateway configuration:
 
 ```bash
-cd examples/voicemem-memory
+cd examples/voicemem
 node --env-file=.env.local gateway.mjs
 ```
 
@@ -84,6 +86,8 @@ VOICEMEM_CHAT_MODEL=qwen3.8-flash
 VOICEMEM_EMBEDDING_MODEL=text-embedding-v4
 VOICEMEM_EMBED_DIM=1024
 VOICEMEM_MEMORY_LANGUAGE=zh
+VOICEMEM_INPUT_MODE=text
+VOICE_ENABLE_VOICEPRINT=false
 ```
 
 [`qwen3.8-flash`](https://help.aliyun.com/zh/model-studio/qwen3-8-flash)
@@ -93,6 +97,27 @@ provides semantic retrieval. The `OPENAI_*` names belong to VoiceMem's
 compatible client; this configuration uses Model Studio credentials, endpoints,
 and models throughout. Explicit `OPENAI_*` and `VOICEMEM_*` values override the
 recommended defaults.
+
+### Choose the memory input
+
+```dotenv
+# Default: reuse the Realtime transcript; fastest startup and lowest overhead
+VOICEMEM_INPUT_MODE=text
+
+# Native audio: send each accepted user speech turn to VoiceMem
+VOICEMEM_INPUT_MODE=audio
+```
+
+Audio mode is not a renamed transcript path. The Gateway adapter segments the
+microphone PCM16 stream by `turn_id`, writes a temporary WAV, and invokes
+VoiceMem through `ingest(audio=...)`. VoiceMem then runs its own ASR plus
+emotion, acoustic-environment analysis, and optional voiceprint. Typed messages have no
+audio and fall back to text. The first audio use downloads and loads VoiceMem's
+local audio models, so it is substantially slower than later calls. The
+recommended ASR remains the default `VOICEMEM_ASR=funasr`. VoiceMem's speaker
+model is not included in its Python package, so the recommended configuration
+disables voiceprint. Enable it only after installing that model and setting
+`VOICEMEM_SPEAKER_MODEL` or `VOICEMEM_MODELS_DIR`.
 
 ## Try it
 
@@ -119,22 +144,22 @@ State is stored under `.qwen-audio/voicemem/` in the current working directory:
 | `profiles/<owner-hash>.json` | Bounded synchronous snapshot for explicit user preferences and facts. |
 | `memory-spaces/<owner-hash>/` | VoiceMem SQLite data, metadata, and local Qdrant vectors. |
 | `observed-messages.json` | Bounded message fingerprints used to prevent duplicate ingestion after reconnects. |
+| `audio-staging/` | Temporary WAV files awaiting sidecar processing in audio mode; removed afterward. |
 
 Do not commit this directory. Production hosts should place it on durable
 storage, supervise the sidecar, and define their own credential and tenant
-mapping policy.
+mapping policy. The adapter does not log microphone audio. VoiceMem does not
+retain raw audio by default, but audio mode can persist derived voiceprint data;
+configure VoiceMem's `VOICE_SCENE` and retention policy for your privacy needs.
 
 ## Replace and extend
 
 | Goal | Change |
 |---|---|
 | Use another OpenAI-compatible inference provider | Set `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and the relevant `VOICEMEM_*` model variables. |
-| Move memory to another persistent location | Pass `stateDirectory` when creating `VoiceMemMemoryProvider`. |
+| Move memory to another persistent location | Pass `stateDirectory` when creating `VoiceMemProvider`. |
 | Replace VoiceMem with another memory system | Implement the same versioned `MemoryProvider` contract and inject it into `createGatewayApplication`. |
-| Add VoiceMem audio-native processing | Extend the adapter and sidecar; no Gateway contract change is required. |
-
-This example currently sends transcribed user text to VoiceMem. It does not
-send the raw microphone stream.
+| Switch between text and native audio | Set `VOICEMEM_INPUT_MODE=text` or `audio`. |
 
 ## Authors and acknowledgements
 

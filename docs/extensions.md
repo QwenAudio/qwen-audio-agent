@@ -50,7 +50,7 @@ without changing the voice runtime.
 [Long-Term Memory](reference/memory.md)
 
 Runnable provider example:
-[`examples/voicemem-memory`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem-memory).
+[`examples/voicemem`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem).
 
 ## Client: Build Your Own
 

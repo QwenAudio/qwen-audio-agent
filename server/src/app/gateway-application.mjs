@@ -32,7 +32,13 @@ import {
   classifySource,
 } from '../domain/domain-library.mjs'
 import { DomainSummariser } from '../domain/domain-summariser.mjs'
-import { enforceSameOrigin } from '../core/request-security.mjs'
+import { enforceSameOrigin, isAllowedOrigin } from '../core/request-security.mjs'
+import {
+  GatewayAccessManager,
+  GatewayDeviceRegistry,
+  parseGatewayAccessKeys,
+} from '../access/gateway-access.mjs'
+import { gatewayBrowserPairingPage } from '../access/browser-pairing-page.mjs'
 import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
@@ -115,6 +121,7 @@ export function createGatewayApplication({
   clientEventRouter = null,
   clientEventDefinitions = [],
   spawnThinkingDescription = '',
+  gatewayAccess = null,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
@@ -186,6 +193,20 @@ const frontendToolSources = [
 const identityManager = new IdentityManager({
   secret: config.authSecret,
   mode: config.identityMode,
+  personalOwnerId: config.personalOwnerId,
+})
+const gatewayAccessRuntime = gatewayAccess || new GatewayAccessManager({
+  identityManager,
+  secret: config.authSecret,
+  configuredKeys: parseGatewayAccessKeys({
+    accessToken: config.gatewayAccessToken,
+    accessKeys: config.gatewayAccessKeys,
+    personalOwnerId: config.personalOwnerId,
+  }),
+  deviceRegistry: new GatewayDeviceRegistry({
+    filePath: config.gatewayDeviceStatePath,
+    onWarning: warning => logger.warn('gateway_access.persistence_warning', { warning }),
+  }),
   personalOwnerId: config.personalOwnerId,
 })
 // 麦克风抢占控制面：外部宿主（输入法、平台应用）需要录音时通过
@@ -291,9 +312,10 @@ const notesStore = new FrontendNotesStore({
   ownerTtlMs: config.frontendMemoryOwnerTtlMs,
   onWarning: warning => logger.warn('notes.persistence_warning', { warning }),
 })
-// Invisible memory (issue #92): after a voice session closes, a lightweight
-// text model reconciles explicit user directives and durable facts through the
-// same context service used by the realtime memory tool.
+// Invisible memory (issue #92): the default Markdown provider uses a
+// lightweight text model after a voice session closes. Providers advertising
+// sessionObservation own that lifecycle themselves, so two independent
+// learners can never write conflicting memories from the same conversation.
 // Without an API key createExtractorLlmCall returns null
 // and the extractor stays silently disabled; explicit memories are
 // unaffected. ASSISTANT.md is never exposed as a writable document.
@@ -310,13 +332,19 @@ const memoryLlmCall = config.memoryAutoEnabled
       model: config.memoryModel,
     })
   : null
-const memoryExtractor = new MemoryExtractor({
-  memoryService: frontendMemoryRuntime,
-  conversationSync,
-  audit: memoryAudit,
-  llmCall: memoryLlmCall,
-  logger,
-})
+const providerOwnsSessionObservation = (
+  typeof frontendMemoryRuntime?.ownsSessionObservation === 'function'
+  && frontendMemoryRuntime.ownsSessionObservation() === true
+)
+const memoryExtractor = providerOwnsSessionObservation
+  ? null
+  : new MemoryExtractor({
+      memoryService: frontendMemoryRuntime,
+      conversationSync,
+      audit: memoryAudit,
+      llmCall: memoryLlmCall,
+      logger,
+    })
 // 偏好自更新：观察器从刚结束的会话里推断画像信号 → 槽位池积累跨会话确认 →
 // 攒够后由晋升器写入 USER.md 的观察推断段。槽位池必须落盘，否则重启即清零、
 // 跨会话确认永远攒不满。观察器需要模型，没有 API key 时它为 null，
@@ -324,7 +352,7 @@ const memoryExtractor = new MemoryExtractor({
 let preferenceCandidates = null
 let preferencePromoter = null
 let profileObserver = null
-if (config.preferenceLearningEnabled) {
+if (config.preferenceLearningEnabled && !providerOwnsSessionObservation) {
   preferenceCandidates = new PreferenceCandidatePool({
     store: new PreferenceCandidateStore({
       filePath: config.preferenceCandidatePath,
@@ -507,9 +535,59 @@ const gatewayEventRouter = clientEventRouter || new GatewayEventRouter({
 })
 
 app.disable('x-powered-by')
-app.use(enforceSameOrigin)
+app.use(express.json({ limit: '1mb' }))
+
+// This shell contains no Gateway data. It is the only application page that
+// can load before authentication; the invitation remains in the URL fragment
+// and is therefore never sent in an HTTP request or access log.
+app.get('/connect', (_req, res) => {
+  res.setHeader('cache-control', 'no-store')
+  res.setHeader('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+  res.setHeader('referrer-policy', 'no-referrer')
+  return res.type('html').send(gatewayBrowserPairingPage())
+})
+
+// Pairing is the only unauthenticated remote operation. The short-lived,
+// one-time ticket is created by an already authenticated local Client. Native
+// clients may omit Origin; browsers still have to come from an allowlisted
+// public origin.
+app.post('/api/access/pair', (req, res) => {
+  if (req.headers.origin && !isAllowedOrigin(req, {
+    allowedOrigins: config.allowedOrigins,
+    allowSecureSameOrigin: true,
+  })) {
+    return res.status(403).json({ error: 'origin not allowed' })
+  }
+  const paired = gatewayAccessRuntime.redeemPairingTicket(req.body?.code, {
+    device: req.body?.device,
+  })
+  if (!paired) {
+    return res.status(401).json({
+      error: 'pairing ticket is invalid or expired',
+      code: 'pairing_invalid',
+    })
+  }
+  const identity = {
+    ownerId: paired.device.ownerId,
+    access: 'remote',
+    credentialId: paired.credentialId,
+  }
+  gatewayAccessRuntime.issueCookie(res, identity, req)
+  return res.json({
+    access_token: paired.token,
+    owner_id: paired.device.ownerId,
+    device: paired.device,
+  })
+})
+
 app.use((req, res, next) => {
-  req.identity = identityManager.resolveHttp(req, res)
+  req.identity = gatewayAccessRuntime.resolveHttp(req, res)
+  if (!req.identity) {
+    return res.status(401).json({
+      error: 'Gateway access authentication required',
+      code: 'access_required',
+    })
+  }
   const requestId = randomUUID()
   res.setHeader('X-Request-Id', requestId)
   runWithLogContext({
@@ -517,6 +595,7 @@ app.use((req, res, next) => {
     ownerId: req.identity?.ownerId,
   }, next)
 })
+app.use(enforceSameOrigin)
 app.use((req, res, next) => {
   const startedAt = Date.now()
   res.once('finish', () => {
@@ -534,9 +613,40 @@ app.use((req, res, next) => {
   })
   next()
 })
-app.use(express.json({ limit: '1mb' }))
-
 let realtimeGateway
+
+app.post('/api/access/pairing-tickets', (req, res) => {
+  if (req.identity.access !== 'local') {
+    return res.status(403).json({ error: 'pairing tickets can only be created locally' })
+  }
+  return res.status(201).json(gatewayAccessRuntime.createPairingTicket({
+    ownerId: req.identity.ownerId,
+  }))
+})
+
+app.get('/api/access/devices', (req, res) => {
+  if (req.identity.access !== 'local') {
+    return res.status(403).json({ error: 'paired devices can only be managed locally' })
+  }
+  return res.json({ devices: gatewayAccessRuntime.deviceRegistry.list() })
+})
+
+app.delete('/api/access/devices/:id', (req, res) => {
+  if (req.identity.access !== 'local') {
+    return res.status(403).json({ error: 'paired devices can only be managed locally' })
+  }
+  const credentialId = gatewayAccessRuntime.deviceRegistry.credentialId(req.params.id)
+  if (!gatewayAccessRuntime.deviceRegistry.revoke(req.params.id)) {
+    return res.status(404).json({ error: 'paired device not found' })
+  }
+  realtimeGateway?.disconnectCredential(credentialId)
+  return res.status(204).end()
+})
+
+app.delete('/api/access/session', (req, res) => {
+  gatewayAccessRuntime.clearCookie(res, req)
+  return res.status(204).end()
+})
 
 app.get('/livez', (req, res) => {
   res.json({ ok: true, status: 'live' })
@@ -626,6 +736,7 @@ app.get('/api/health', (req, res) => {
     notes: notesStore.health(),
     taskStore: taskStore.health(),
     identityMode: config.identityMode,
+    gatewayAccess: gatewayAccessRuntime.describe(),
     voiceClients: realtimeGateway?.status() || {
       connected: 0,
       activeOwners: 0,
@@ -990,7 +1101,7 @@ const backendAvailability = new BackendAvailability({
 })
 backendAvailability.refresh()
 realtimeGateway = attachRealtimeGateway(server, {
-  identityManager,
+  identityManager: gatewayAccessRuntime,
   memoryService: frontendMemoryRuntime,
   memoryExtractor,
   preferencePromoter,

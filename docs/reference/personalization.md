@@ -1,13 +1,15 @@
-# Assistant Profile and User Preferences
+# Personalization and Memory
 
-Frontend context is split into four layers with non-overlapping responsibilities:
+The voice frontend composes four context layers. The first two define the assistant;
+the last two describe the current user and can be supplied by a replaceable memory
+provider.
 
 | Layer | Source | Responsibility |
 | --- | --- | --- |
 | Core policy | `config/frontend-agent/PROMPT.md` | Tool protocol, permission, safety, and task boundaries; user memory cannot override it |
 | Assistant profile | `ASSISTANT.md` | Instance-wide default identity, personality, relationship stance, and expression style; configured by users or downstream products |
-| User preferences | `USER.md` / `user` | Explicit long-term personalization for the current user; overrides the default persona |
-| Long-term memory | `MEMORY.md` / `memory` | Durable facts and decisions used to understand the user and answer questions; no behavioral authority |
+| User preferences | `user` (default provider: `USER.md`) | Explicit long-term personalization for the current user; overrides the default persona |
+| Long-term memory | `memory` (default provider: `MEMORY.md`) | Durable facts and decisions used to understand the user and answer questions; no behavioral authority |
 
 Instruction conflicts resolve in this order: core policy, the user's current explicit request,
 the user preferences, then the assistant profile. Long-term memory is not part of the instruction
@@ -16,7 +18,10 @@ Saying “keep replies shorter from now on” or “call yourself Skiff from now
 current user's `USER.md`, not instance-wide `ASSISTANT.md`; a temporary request applies only to
 the current turn.
 
-User data is stored under the configuration directory (`~/.config/qwaudio/` for the CLI):
+## Default implementation
+
+Without an injected `MemoryProvider`, the Gateway uses its built-in Markdown provider. It keeps
+the following files under the configuration directory (`~/.config/qwaudio/` for the CLI):
 
 | File | Description |
 | --- | --- |
@@ -24,12 +29,10 @@ User data is stored under the configuration directory (`~/.config/qwaudio/` for 
 | `USER.md` | Long-term personalization overlay for the current user |
 | `MEMORY.md` | Durable facts and decisions about the user |
 | `memory-audit.jsonl` | Diagnostic log for automatic memory patches, skips, and failures |
-| `tasks.json` | Background task results and pending notification states |
-| `state.env` | Local identity key (auto-generated on first launch, readable and writable only by the current user) |
-| `logs/` | Credential-redacted, auto-rotated local runtime logs |
 
-These files are stored only on the local machine, are never committed to the source
-repository, and have file permissions restricted to the current user only.
+These files remain local and are never committed to the source repository. `USER.md` and
+`MEMORY.md` are the default provider's physical representation, not a requirement imposed on
+other providers.
 
 ## Assistant Profile
 
@@ -64,7 +67,7 @@ Do not store passwords, API Keys, verification codes, or tokens in this file.
 Legacy `profile`, `rules`, and `user` records from `frontend-memory.json` are migrated into
 `USER.md` on first launch.
 
-## Preference Self-Update (off by default)
+## Preference self-update (default provider only, off by default)
 
 With `QWEN_AUDIO_PREFERENCE_LEARNING=on`, the Gateway observes user traits from a
 finished session and writes them to `USER.md` only after enough cross-session
@@ -109,7 +112,24 @@ time:
 Diagnostics land in `memory-audit.jsonl`, so a rejected observation can be
 explained after the fact.
 
+## Replacing the memory implementation
+
+A host application can inject a versioned `MemoryProvider` to replace the `user` and `memory`
+layers. The provider may use Markdown, a database, a remote service, or a semantic memory
+engine. It owns storage and retrieval; when it declares `sessionObservation`, it also owns
+session-end learning and the built-in extractor and preference learner are disabled.
+Providers that need acoustic context may additionally opt into bounded PCM16 observation;
+transcript-only providers and the default Markdown implementation receive no microphone audio.
+
+This boundary deliberately excludes `PROMPT.md` and `ASSISTANT.md`. Core behavior and the
+instance-wide default persona therefore stay stable regardless of the selected memory system.
+The Realtime Agent continues to use the same `memory` tool and the same logical `user` /
+`memory` scopes.
+
+See [Long-Term Memory](memory.md) for the provider contract and the runnable
+[VoiceMem example](../scenarios/voicemem.md) for a complete replacement.
+
 ## Read next
 
-- [Long-Term Memory](memory.md) — `MEMORY.md` mechanics, the `memory` tool,
-  session digests and recall, and the replaceable Memory Provider
+- [Long-Term Memory](memory.md) — the default Markdown implementation, the `memory` tool,
+  session digests, and the replaceable provider contract

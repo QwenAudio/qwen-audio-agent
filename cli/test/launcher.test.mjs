@@ -7,6 +7,10 @@ import { PassThrough } from 'node:stream'
 import test from 'node:test'
 import { main } from '../src/launcher.mjs'
 import {
+  createGatewayInvitation,
+  encodeGatewayInvitation,
+} from '../../shared/gateway-remote-access.mjs'
+import {
   showConfig,
   updateRealtimeModelConfig,
 } from '../src/config-command.mjs'
@@ -56,6 +60,10 @@ function harness({ ownsProcesses = false } = {}) {
       acquireInstance: () => ({
         release: () => calls.push(['instance.release']),
       }),
+      createConnectionProfiles: () => ({
+        resolve: async () => null,
+        remove: async () => false,
+      }),
       prepareRuntime: async options => {
         calls.push(['runtime', options])
         return runtime
@@ -63,6 +71,31 @@ function harness({ ownsProcesses = false } = {}) {
       inspectGateway: async () => ({
         backend: { kind: 'opencode', ok: true },
       }),
+      createPairingTicket: async url => {
+        calls.push(['pair', url])
+        return { code: 'PAIR-CODE', expiresAt: Date.now() + 60_000 }
+      },
+      createRemotePublisher: () => ({
+        inspect: async () => ({
+          available: true,
+          connected: true,
+          published: true,
+          endpoint: { url: 'https://voice.example.ts.net:8443' },
+        }),
+        publish: async () => ({
+          url: 'https://voice.example.ts.net:8443',
+          secure: true,
+          publisher: 'tailscale',
+        }),
+        unpublish: async () => ({ changed: true, published: false }),
+      }),
+      listPairedDevices: async url => {
+        calls.push(['devices', url])
+        return { devices: [{ id: 'phone-one', label: 'Phone' }] }
+      },
+      revokePairedDevice: async (url, id) => {
+        calls.push(['revoke', url, id])
+      },
       manageService: async action => {
         calls.push(['service', action])
         return {
@@ -335,6 +368,40 @@ test('installs, stops and reports the background Gateway service', async () => {
   ])
 })
 
+test('creates a one-time remote Client pairing code through the running Gateway', async () => {
+  const target = harness()
+  assert.equal(await main(['gateway', 'pair'], target.dependencies), 0)
+  assert.deepEqual(target.calls.map(call => call[0]), ['pair', 'stdout'])
+  assert.equal(target.calls[0][1], 'http://127.0.0.1:3101')
+  assert.match(target.calls[1][1], /PAIR-CODE/)
+})
+
+test('manages a Tailscale endpoint and creates a portable invitation', async () => {
+  const enabled = harness()
+  assert.equal(await main(['gateway', 'remote', 'enable'], enabled.dependencies), 0)
+  assert.match(enabled.calls.at(-1)[1], /voice\.example\.ts\.net/)
+
+  const invited = harness()
+  assert.equal(await main(['gateway', 'remote', 'invite'], invited.dependencies), 0)
+  const output = invited.calls.at(-1)[1]
+  assert.match(output, /^远程客户端邀请：qwaudio:\/\/connect#/)
+  assert.match(output, /远程 WebUI：https:\/\/voice\.example\.ts\.net:8443\/connect#/)
+  assert.match(output, /有效期至/)
+
+  const devices = harness()
+  assert.equal(await main(['gateway', 'remote', 'devices'], devices.dependencies), 0)
+  assert.match(devices.calls.at(-1)[1], /phone-one/)
+
+  const revoked = harness()
+  assert.equal(
+    await main(['gateway', 'remote', 'revoke', 'phone-one'], revoked.dependencies),
+    0,
+  )
+  assert.deepEqual(revoked.calls.find(call => call[0] === 'revoke'), [
+    'revoke', 'http://127.0.0.1:3101', 'phone-one',
+  ])
+})
+
 test('reports a configured frontend MCP failure in Gateway status', async () => {
   const target = harness()
   target.dependencies.inspectGateway = async () => ({
@@ -466,6 +533,7 @@ test('does not confuse a foreground Gateway with the background service', async 
 
 test('connects TUI and WebUI without starting services', async () => {
   const tui = harness()
+  tui.dependencies.env.QWEN_AUDIO_AGENT_ACCESS_TOKEN = 'remote-token'
   assert.equal(
     await main(['tui', '--audio-mode', 'full'], tui.dependencies),
     11,
@@ -475,10 +543,63 @@ test('connects TUI and WebUI without starting services', async () => {
     'instance.release',
   ])
   assert.equal(tui.calls[0][1].audioMode, 'full')
+  assert.equal(tui.calls[0][1].accessToken, 'remote-token')
 
   const web = harness()
   assert.equal(await main(['webui'], web.dependencies), 13)
   assert.deepEqual(web.calls.map(call => call[0]), ['webui'])
+})
+
+test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
+  const profiles = new Map()
+  const profileStore = {
+    resolve: async id => profiles.get(id) || null,
+    save: async (profile, credential) => {
+      profiles.set(profile.id, { profile, credential })
+      return profile
+    },
+    remove: async id => profiles.delete(id),
+  }
+  const invitation = encodeGatewayInvitation(createGatewayInvitation({
+    gatewayUrl: 'https://voice.example.test',
+    pairingCode: 'pair-once',
+    expiresAt: Date.now() + 60_000,
+  }))
+  const connected = harness()
+  connected.dependencies.createConnectionProfiles = () => profileStore
+  connected.dependencies.pairInvitation = async (decoded, options) => {
+    assert.equal(decoded.gateway_url, 'https://voice.example.test')
+    const profile = {
+      id: options.profileId,
+      gateway_url: decoded.gateway_url,
+      device_id: options.device.id,
+      credential_ref: `gateway/${options.device.id}`,
+      client_instance_id: options.clientInstanceId,
+    }
+    await options.profileStore.save(profile, 'paired-token')
+    return { profile, owner_id: 'user_personal' }
+  }
+  assert.equal(await main(['connect', invitation], connected.dependencies), 0)
+  assert.match(connected.calls.at(-1)[1], /voice\.example\.test/)
+
+  const tui = harness()
+  tui.dependencies.createConnectionProfiles = () => profileStore
+  let inspected = null
+  tui.dependencies.inspectGateway = async (url, accessToken) => {
+    inspected = { url, accessToken }
+    return { backend: { enabled: false } }
+  }
+  assert.equal(await main(['tui'], tui.dependencies), 11)
+  assert.deepEqual(inspected, {
+    url: 'https://voice.example.test',
+    accessToken: 'paired-token',
+  })
+  assert.equal(tui.calls[0][1].accessToken, 'paired-token')
+
+  const disconnected = harness()
+  disconnected.dependencies.createConnectionProfiles = () => profileStore
+  assert.equal(await main(['disconnect'], disconnected.dependencies), 0)
+  assert.equal(profiles.size, 0)
 })
 
 test('requires a running Gateway for client commands', async () => {

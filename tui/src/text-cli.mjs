@@ -19,10 +19,15 @@ const RED = `${ESC}[31m`
 const BOLD = `${ESC}[1m`
 const RST = `${ESC}[0m`
 
-export function parseArguments(argv) {
+export function parseArguments(argv, env = process.env) {
   const options = {
-    url: process.env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
-    sessionId: process.env.QWEN_AUDIO_AGENT_SESSION_ID || 'cli-main',
+    url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
+    accessToken: String(
+      env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN
+      || env.QWEN_AUDIO_AGENT_ACCESS_TOKEN
+      || '',
+    ).trim(),
+    sessionId: env.QWEN_AUDIO_AGENT_SESSION_ID || 'cli-main',
   }
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === '--url' && argv[index + 1]) options.url = argv[++index]
@@ -80,7 +85,11 @@ export async function runCli(options = parseArguments(process.argv.slice(2))) {
     return
   }
 
-  const healthResponse = await fetch(`${options.url}/api/health`)
+  const healthResponse = await fetch(`${options.url}/api/health`, {
+    headers: options.accessToken
+      ? { Authorization: `Bearer ${options.accessToken}` }
+      : {},
+  })
   const cookie = cookieFrom(healthResponse)
   const health = await healthResponse.json()
   if (!healthResponse.ok) {
@@ -93,13 +102,19 @@ export async function runCli(options = parseArguments(process.argv.slice(2))) {
   const startedResponses = new Set()
   let resolveOpened
   let rejectOpened
+  let connectionReady = false
+  let readline = null
   const opened = new Promise((resolve, reject) => {
     resolveOpened = resolve
     rejectOpened = reject
   })
   const client = new GatewayClient({
     url: websocketUrl(options.url, options.sessionId),
-    createSocket: url => new WebSocket(url, { headers }),
+    createSocket: (url, socketOptions = {}) => new WebSocket(url, {
+      headers: { ...headers, ...socketOptions.headers },
+    }),
+    accessToken: options.accessToken,
+    takeover: options.takeover === true,
     clientType: 'cli',
     clientLabel: 'Text CLI',
     clientInstanceId: `text-cli-${process.pid}`,
@@ -114,9 +129,22 @@ export async function runCli(options = parseArguments(process.argv.slice(2))) {
     }),
     onStatus: status => {
       if (status.state === 'ready') {
+        connectionReady = true
         print(`${DIM}已连接(文本模式,会话 ${options.sessionId});/help 查看命令${RST}`)
         resolveOpened()
       } else if (status.state === 'unavailable') rejectOpened(status.error)
+      else if (['occupied', 'replaced', 'revoked'].includes(status.state)) {
+        const error = new Error(status.state === 'occupied'
+          ? 'Gateway 正由同一用户的另一个客户端使用'
+          : status.state === 'revoked'
+            ? '当前远程设备的访问权限已被撤销，请重新配对'
+            : '当前连接已被同一用户的另一个客户端接管')
+        if (!connectionReady) rejectOpened(error)
+        else {
+          print(`${YELLOW}${error.message}${RST}`)
+          readline?.close()
+        }
+      }
       else if (status.state === 'disconnected') print(`${RED}连接已断开${RST}`)
     },
     onEvent: event => {
@@ -163,7 +191,7 @@ export async function runCli(options = parseArguments(process.argv.slice(2))) {
   client.start()
 
   await opened
-  const readline = createInterface({ input: process.stdin })
+  readline = createInterface({ input: process.stdin })
   for await (const line of readline) {
     const text = line.trim()
     if (!text) continue

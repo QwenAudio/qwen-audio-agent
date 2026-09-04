@@ -35,6 +35,12 @@ test('parses independent TUI and WebUI client commands', () => {
   assert.equal(tui.url, 'https://voice.example.com')
   assert.equal(tui.sessionId, 'project-one')
   assert.equal(tui.audioMode, 'full')
+  assert.equal(parseArguments(['tui'], {
+    QWEN_AUDIO_GATEWAY_CLIENT_TOKEN: 'remote-token',
+  }).accessToken, 'remote-token')
+  assert.equal(parseArguments(['tui'], {
+    QWEN_AUDIO_AGENT_ACCESS_TOKEN: 'legacy-token',
+  }).accessToken, 'legacy-token')
   assert.equal(
     parseArguments(['tui'], {
       QWEN_AUDIO_AGENT_TUI_AUDIO_MODE: 'FULL',
@@ -45,6 +51,21 @@ test('parses independent TUI and WebUI client commands', () => {
   const web = parseArguments(['webui', '--no-open'], {})
   assert.equal(web.command, 'webui')
   assert.equal(web.openBrowser, false)
+})
+
+test('parses remote Gateway connection profile commands', () => {
+  const invitation = 'qwaudio://connect?payload=abc'
+  const connected = parseArguments(['connect', invitation], {})
+  assert.equal(connected.command, 'connect')
+  assert.equal(connected.invitation, invitation)
+  assert.equal(connected.urlSpecified, false)
+  assert.equal(parseArguments(['disconnect'], {}).command, 'disconnect')
+  assert.equal(
+    parseArguments(['tui', '--url', 'https://gateway.example.test', '--takeover'], {}).urlSpecified,
+    true,
+  )
+  assert.equal(parseArguments(['tui', '--takeover'], {}).takeover, true)
+  assert.throws(() => parseArguments(['webui', '--takeover'], {}), /只适用于 tui/)
 })
 
 test('parses read-only backend setup options', () => {
@@ -229,6 +250,23 @@ test('parses foreground and service Gateway commands', () => {
   )
   assert.equal(parseArguments(['gateway', 'start'], {}).gatewayAction, 'start')
   assert.equal(parseArguments(['gateway', 'stop'], {}).gatewayAction, 'stop')
+  assert.equal(parseArguments(['gateway', 'pair'], {}).gatewayAction, 'pair')
+  const remote = parseArguments([
+    'gateway', 'remote', 'invite', '--remote-port', '9443', '--json',
+  ], {})
+  assert.equal(remote.gatewayAction, 'remote')
+  assert.equal(remote.remoteAction, 'invite')
+  assert.equal(remote.remotePort, 9443)
+  assert.equal(remote.remoteMode, 'https')
+  assert.equal(remote.json, true)
+  assert.equal(
+    parseArguments(['gateway', 'remote', 'revoke', 'phone-one'], {}).remoteDeviceId,
+    'phone-one',
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'remote', 'revoke'], {}),
+    /设备 ID/,
+  )
   assert.equal(
     parseArguments(['gateway', 'restart'], {}).gatewayAction,
     'restart',
@@ -255,7 +293,7 @@ test('rejects client-only flags on unrelated commands', () => {
   )
   assert.throws(
     () => parseArguments(['webui', '--takeover'], {}),
-    /未知参数：--takeover/,
+    /只适用于 tui/,
   )
   assert.throws(
     () => parseArguments(['gateway', 'install', '--backend', 'openclaw'], {}),
@@ -269,6 +307,8 @@ test('documents the service and client commands', () => {
   assert.match(text, /qwenaudio \[gateway\]/)
   assert.match(text, /gateway install/)
   assert.match(text, /gateway uninstall/)
+  assert.match(text, /gateway pair/)
+  assert.match(text, /gateway remote invite/)
   assert.match(text, /qwenaudio tui/)
   assert.match(text, /qwenaudio webui/)
   assert.match(text, /qwenaudio status/)

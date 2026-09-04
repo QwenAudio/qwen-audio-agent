@@ -15,6 +15,8 @@ export default [
       'docs/.vitepress/.site/**',
       'examples/**',
       'tui/native/**',
+      'mobile/android/app/src/main/assets/public/**',
+      'mobile/ios/App/App/public/**',
     ],
   },
   {
@@ -63,13 +65,29 @@ export default [
     },
   },
   {
-    files: ['web/src/**/*.{js,jsx}'],
+    files: ['web/src/**/*.{js,jsx}', 'mobile/src/**/*.{js,jsx}'],
     plugins: {
       'react-hooks': reactHooks,
     },
     rules: {
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'error',
+    },
+  },
+  {
+    files: ['mobile/src/**/*.{js,mjs,cjs,jsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: [
+            '../../server/**',
+            '../../../server/**',
+            '../../desktop/**',
+            '../../../desktop/**',
+          ],
+          message: 'Mobile must use public Gateway Client and web presentation boundaries',
+        }],
+      }],
     },
   },
   // Architecture boundaries are executable constraints, not documentation

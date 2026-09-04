@@ -1,20 +1,24 @@
-# 助手画像与用户偏好
+# 个性化与记忆
 
-前台上下文分成四层，职责互不重叠：
+语音前台由四层上下文组成。前两层定义助手，后两层描述当前用户，并可由可替换的记忆
+Provider 提供。
 
 | 层级 | 载体 | 职责 |
 | --- | --- | --- |
 | 核心规则 | `config/frontend-agent/PROMPT.md` | 工具协议、权限、安全和任务边界，用户记忆不能覆盖 |
 | 助手画像 | `ASSISTANT.md` | 助手实例的默认身份、人格、关系定位和表达风格，由用户或二次开发者配置 |
-| 用户偏好 | `USER.md` / `user` | 当前用户明确设定的长期个性化覆盖，覆盖助手默认人设 |
-| 长期记忆 | `MEMORY.md` / `memory` | 用于理解用户和回答问题的长期事实与决定，不具有行为权威 |
+| 用户偏好 | `user`（默认 Provider 使用 `USER.md`） | 当前用户明确设定的长期个性化覆盖，覆盖助手默认人设 |
+| 长期记忆 | `memory`（默认 Provider 使用 `MEMORY.md`） | 用于理解用户和回答问题的长期事实与决定，不具有行为权威 |
 
 指令冲突按“核心规则 → 用户当前明确要求 → 用户偏好 → 助手画像”处理。长期记忆
 不在指令优先级中，它只是回答依据；与用户当前陈述冲突时，以当前陈述为准。
 因此，对话中说“以后回答短一点”或“以后你叫小舟”会更新当前用户的 `USER.md`，
 不会修改实例级 `ASSISTANT.md`；本轮临时要求只在本轮生效。
 
-用户数据保存在配置目录下（CLI 为 `~/.config/qwaudio/`）：
+## 默认实现
+
+没有注入 `MemoryProvider` 时，Gateway 使用内置 Markdown Provider。相关数据保存在配置目录下（CLI 为
+`~/.config/qwaudio/`）：
 
 | 文件 | 说明 |
 | --- | --- |
@@ -22,11 +26,9 @@
 | `USER.md` | 当前用户的长期个性化覆盖 |
 | `MEMORY.md` | 关于用户的长期事实与决定 |
 | `memory-audit.jsonl` | 自动记忆的诊断日志（补丁、跳过、失败逐条追加，仅供事后查阅） |
-| `tasks.json` | 后台任务结果和待通知状态 |
-| `state.env` | 本地身份密钥（首次启动自动生成，仅当前用户可读写） |
-| `logs/` | 经过凭据脱敏并自动轮转的本地运行日志 |
 
-这些文件只保存在本机，不会写入源码仓库，文件权限为仅当前用户可读写。
+这些文件只保存在本机，不会写入源码仓库。`USER.md` 与 `MEMORY.md` 只是默认 Provider
+的物理实现，不是其他 Provider 必须采用的格式。
 
 ## 助手画像
 
@@ -58,7 +60,7 @@
 旧版 `frontend-memory.json` 中的 `profile`、`rules` 和 `user` 内容会在首次启动时
 迁移到 `USER.md`。
 
-## 偏好自更新（默认关闭）
+## 偏好自更新（仅默认 Provider，默认关闭）
 
 设 `QWEN_AUDIO_PREFERENCE_LEARNING=on` 后，会话结束时会从这一场对话里观察用户画像，
 跨会话攒够确认再写进 `USER.md`。默认关闭，因为它每场会话多一次模型调用。
@@ -95,7 +97,22 @@
 
 诊断记录写进 `memory-audit.jsonl`，可以事后查某条为什么没被收下。
 
+## 替换记忆实现
+
+宿主应用可以注入带版本的 `MemoryProvider`，完整替换 `user` 与 `memory` 两层。Provider
+可以使用 Markdown、数据库、远程服务或语义记忆引擎。它负责存储与检索；声明
+`sessionObservation` 后还会接管会话结束后的自动学习，内置抽取器和偏好学习器会停用。
+需要声学上下文的 Provider 还可以显式订阅有界的 PCM16 音频观察；仅文本 Provider
+和默认 Markdown 实现不会收到麦克风音频。
+
+这个扩展边界刻意不包含 `PROMPT.md` 和 `ASSISTANT.md`，因此无论使用哪套记忆系统，
+核心行为和实例级默认人设都保持稳定。Realtime Agent 仍使用同一个 `memory` 工具以及
+`user` / `memory` 两种逻辑作用域。
+
+Provider 接口见[长期记忆](memory.zh.md)，完整替换方式见可运行的
+[VoiceMem 示例](../scenarios/voicemem.zh.md)。
+
 ## 继续阅读
 
-- [长期记忆](memory.zh.md) —— `MEMORY.md` 机制、`memory` 工具、会话摘要与回溯，
-  以及可替换的记忆 Provider
+- [长期记忆](memory.zh.md) —— 默认 Markdown 实现、`memory` 工具、会话摘要与
+  可替换 Provider 接口

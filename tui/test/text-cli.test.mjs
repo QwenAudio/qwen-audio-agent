@@ -18,6 +18,9 @@ test('parseArguments 默认值与覆盖', () => {
   const custom = parseArguments(['--url', 'http://host:9/', '--session', 's1'])
   assert.equal(custom.url, 'http://host:9')
   assert.equal(custom.sessionId, 's1')
+  assert.equal(parseArguments([], {
+    QWEN_AUDIO_GATEWAY_CLIENT_TOKEN: 'remote-token',
+  }).accessToken, 'remote-token')
 
   assert.equal(parseArguments(['--help']).help, true)
 })

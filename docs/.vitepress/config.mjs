@@ -30,6 +30,7 @@ function sidebar(prefix = '') {
       items: [
         { text: t('TUI 终端', 'TUI'), link: `${prefix}/getting-started/tui` },
         { text: t('WebUI 浏览器', 'WebUI'), link: `${prefix}/getting-started/webui` },
+        { text: t('移动端', 'Mobile'), link: `${prefix}/getting-started/mobile` },
         { text: t('桌面版', 'Desktop'), link: `${prefix}/desktop/overview` },
         { text: t('桌宠皮肤', 'Pet Skins'), link: `${prefix}/desktop/pet-skin-spec` },
       ],
@@ -102,6 +103,7 @@ function sidebar(prefix = '') {
       text: t('示例', 'Examples'),
       items: [
         { text: t('智能座舱', 'Smart Cockpit'), link: `${prefix}/scenarios/smart-cockpit` },
+        { text: 'VoiceMem', link: `${prefix}/scenarios/voicemem` },
       ],
     },
     {

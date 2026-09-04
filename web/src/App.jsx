@@ -69,6 +69,11 @@ import {
   applyDesktopClientSettings,
   initialDesktopClientSettings,
 } from './desktop-client-settings.js'
+import {
+  gatewayClientLabel,
+  gatewayClientType,
+  gatewayFetch,
+} from './gateway-transport.js'
 
 const desktopOrbMode = (
   new URLSearchParams(window.location.search).get('desktop') === 'orb'
@@ -78,7 +83,8 @@ const initialDesktopSurfaceMode = (
     ? 'panel'
     : 'orb'
 )
-const composerEnabled = supportsComposerInput(desktopOrbMode ? 'desktop' : 'web')
+const activeClientType = gatewayClientType(desktopOrbMode ? 'desktop' : 'web')
+const composerEnabled = supportsComposerInput(activeClientType)
 
 function getSessionId() {
   const requested = requestedSessionId(window.location.search)
@@ -111,6 +117,7 @@ function labelFor(state) {
 function frontendLabel(holder) {
   return holder?.label || {
     desktop: t('桌面端'),
+    mobile: t('移动端'),
     cli: t('终端'),
     web: 'WebUI',
   }[holder?.type] || t('其他入口')
@@ -175,6 +182,7 @@ export default function App() {
   const [sessionId, setSessionId] = useState(getSessionId)
   const [voiceEnabled, setVoiceEnabled] = useState(() => initialVoiceEnabled({
     desktopOrbMode,
+    clientType: activeClientType,
   }))
   const [waitingForVoice, setWaitingForVoice] = useState(false)
   const [messages, setMessages] = useState([])
@@ -348,7 +356,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false
     let refreshTimer
-    const refresh = () => fetch('api/health', { cache: 'no-store' })
+    const refresh = () => gatewayFetch('api/health', { cache: 'no-store' })
       .then(async response => ({ response, payload: await response.json() }))
       .then(({ response, payload }) => {
         if (cancelled) return
@@ -795,8 +803,8 @@ export default function App() {
     // microphone capture and never closes or interrupts the output stream.
     inputOnlyMute: true,
     wakeWordOnly: voiceEnabledForWakeWord,
-    clientType: desktopOrbMode ? 'desktop' : 'web',
-    clientLabel: desktopOrbMode ? t('桌面端') : 'WebUI',
+    clientType: activeClientType,
+    clientLabel: gatewayClientLabel(desktopOrbMode ? t('桌面端') : 'WebUI'),
     clientStates: desktopOrbMode ? ['sleeping'] : [],
     realtimeProvider: realtimeProviderForConnection(
       realtimeProvider,

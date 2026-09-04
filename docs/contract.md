@@ -31,7 +31,9 @@ The current health-contract version is `5.8.0`. The additive `5.8` line exposes
 explicit, user-triggered background image and recent-frame analysis through the
 configured backend Agent, bounded `VisualInsight` events, and optional
 foreground `AgentDelivery` context or response. The additive `5.7` line exposes
-explicit WebUI camera observation for vision-capable Realtime frontends without
+authenticated remote Client access, one-time device pairing, owner-scoped
+active Client takeover, and explicit WebUI camera observation for vision-capable
+Realtime frontends without
 creating model responses. The additive `5.6` line exposes
 a provider-neutral frontend memory control plane for replaceable clients. The
 additive `5.5` line ships
@@ -73,6 +75,7 @@ below instead of assuming the old list.
 | `gateway.instance-lease` | A lease in the config directory names the running instance; `/api/health` echoes `gatewayInstanceId` so a foreign process on the same port is never mistaken for this Gateway | `test/consumer-install.test.mjs` |
 | `gateway.setup-gate` | An unconfigured start is refused with `QWAUDIO_GATEWAY_SETUP_REQUIRED` and a `missing` list instead of serving an instance whose voice cannot work | `test/gateway-setup.test.mjs` |
 | `gateway.settings-store` | Configuration persistence is owned by this package: `createSettingsStore({ configDir })` — a host names no setting and no file of its own | `desktop/test/settings-store.test.mjs` |
+| `gateway.remote-access-pairing` | Loopback stays zero-config; remote HTTP/WS access requires a configured or paired credential, and local operators can issue and revoke device tokens | `server/test/gateway-access.test.mjs`, `server/test/request-security.test.mjs` |
 | `host.electron-entry` | `qwen-audio-agent/electron`: a CommonJS entry an Electron main process can `require`, loading every ESM contract through one `load()` | `test/consumer-install.test.mjs` |
 | `host.gateway-process` | `GatewayProcess` ships: forking, port fallback, the readiness handshake, restart, and telling a planned exit from a crash — the desktop app runs the same implementation | `desktop/test/gateway-process.test.mjs` |
 | `input.suspend-protocol` | `POST /api/input/suspend\|resume`, `GET /api/input`; the Gateway relays the suspension to clients through `input.suspend` / `input.resume` | `server/test/input-suspend-protocol.test.mjs` |
@@ -92,6 +95,7 @@ below instead of assuming the old list.
 | `realtime.gateway-client-protocol-v6-agent-delivery` | Client Events, Task results and progress, and permission prompts cross one provider-neutral `AgentDelivery` boundary with `handle`, `context`, `respond`, and `interrupt` modes | `server/test/agent-delivery.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/realtime-provider.test.mjs`, `server/test/announcement-manager.test.mjs` |
 | `realtime.gateway-client-protocol-v6-client-actions` | Correlated `client.action.request/result` messages execute Client-owned environment operations; `enter_sleep` is capability-gated and sleeping commits only after Client success | `test/gateway-client-protocol.test.mjs`, `server/test/client-action-port.test.mjs`, `server/test/gateway-client-handshake.test.mjs`, `desktop/test/enter-sleep-flow.test.mjs` |
 | `realtime.gateway-client-protocol-v6-reference-client-replay` | The shared reference Client SDK owns handshake, command correlation, `updateOutputVoice()`, Client Actions, reconnect, and recovery; Task pushes use bounded `sequence` replay and WebUI, Desktop, and TUI share one conformance suite | `test/gateway-client-sdk.test.mjs`, `test/gateway-client-conformance.test.mjs`, `server/test/gateway-client-protocol-session.test.mjs`, `server/test/gateway-client-replay-buffer.test.mjs` |
+| `realtime.gateway-client-protocol-v6-owner-takeover` | One active Client lease is enforced per authenticated owner; negotiated explicit takeover, same-instance reconnect, heartbeat expiry, and monotonically increasing lease generations prevent stale sockets from regaining control | `server/test/active-client-leases.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `desktop.orb-shell` | The orb form's main-process contract ships: `bindOrbShell` answers the channels the shipped preload sends | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` owns the orb window recipe; its `destroy()` is the host's synchronous teardown path (renderer exit is what releases the microphone) | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` covers the default anchor, display clamping and drop persistence | `desktop/test/orb-placement.test.mjs` |
@@ -114,6 +118,11 @@ is unsupported and breaks without notice.
 | `qwen-audio-agent/gateway-client-protocol` | GCP 6.0 envelope, handshake and runtime-command schemas, parsers, capability constants, and reference Client helpers |
 | `qwen-audio-agent/gateway-client-sdk` | `GatewayClient`: WebSocket lifecycle, 6.0 handshake, request correlation, Client Actions, bounded replay, and reconnect recovery |
 | `qwen-audio-agent/gateway-client-profiles` | Reference capability profiles for WebUI, Desktop, and TUI |
+| `qwen-audio-agent/gateway-access-client` | Client helpers for creating a local one-time pairing ticket and exchanging it for a remote device token |
+| `qwen-audio-agent/gateway-remote-access` | Versioned endpoint-descriptor, connection-profile, and invitation schemas; profiles contain secure-store references rather than credentials |
+| `qwen-audio-agent/gateway-endpoint-publishers` | Provider registry plus built-in local and manual endpoint publishers |
+| `qwen-audio-agent/gateway-tailscale-publisher` | Host-only Tailscale endpoint publisher; Tailscale details remain outside Gateway Core and GCP |
+| `qwen-audio-agent/gateway-connection-profiles` | Versioned connection-profile persistence and the native Client credential-store port |
 | `qwen-audio-agent/client-events` | Client Event definition registry, built-in definitions, routing policies, and `GatewayEventRouter` for Gateway extensions |
 | `qwen-audio-agent/client-actions` | `ClientActionPort`, built-in action names, capability mapping, request/result correlation, deadlines, and in-flight deduplication |
 | `qwen-audio-agent/agent-delivery` | Provider-neutral `AgentDelivery` values and routing modes |

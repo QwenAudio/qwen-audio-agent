@@ -1,4 +1,5 @@
 import { dirname, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import readline from 'node:readline'
 import { loadRuntimeEnvironment } from '../../shared/runtime-environment.mjs'
@@ -24,11 +25,26 @@ import {
 } from '../../shared/skill-library.mjs'
 import { helpText, parseArguments } from './arguments.mjs'
 import {
+  createGatewayPairingTicket,
   ensureRuntime,
   isLocalGateway,
   readGatewayHealth,
   waitForGateway,
 } from './runtime.mjs'
+import {
+  listGatewayDevices,
+  pairGatewayInvitation,
+  revokeGatewayDevice,
+} from '../../shared/gateway-access-client.mjs'
+import {
+  createGatewayInvitation,
+  decodeGatewayInvitation,
+  encodeGatewayBrowserInvitation,
+  encodeGatewayInvitation,
+} from '../../shared/gateway-remote-access.mjs'
+import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
+import { createPrivateFileGatewayCredentialStore } from '../../shared/gateway-file-credential-store.mjs'
+import { createTailscaleGatewayEndpointPublisher } from '../../shared/gateway-tailscale-publisher.mjs'
 import { launchWebUi } from './webui.mjs'
 import { acquireCliInstance } from './instance-lock.mjs'
 import { manageGatewayService } from './gateway-service.mjs'
@@ -46,8 +62,10 @@ async function runMinimal(options) {
   const { runTui } = await import(moduleUrl)
   await runTui({
     url: options.url,
+    accessToken: options.accessToken,
     sessionId: options.sessionId,
     audioMode: options.audioMode,
+    takeover: options.takeover,
   })
   return 0
 }
@@ -183,7 +201,15 @@ export async function main(argv, {
   },
   runMinimalTui = runMinimal,
   prepareRuntime = options => ensureRuntime(options, { root, env }),
-  inspectGateway = url => readGatewayHealth(url),
+  inspectGateway = (url, accessToken = '') => readGatewayHealth(
+    url,
+    fetch,
+    { accessToken },
+  ),
+  createPairingTicket = url => createGatewayPairingTicket(url),
+  listPairedDevices = url => listGatewayDevices(url),
+  revokePairedDevice = (url, id) => revokeGatewayDevice(url, id),
+  createRemotePublisher = options => createTailscaleGatewayEndpointPublisher(options),
   manageService = (action, options) => manageGatewayService(action, options),
   refreshPath = options => refreshProcessPath(options),
   waitForService = (url, { requireBackend = false } = {}) =>
@@ -192,6 +218,13 @@ export async function main(argv, {
   runWebUi = options => launchWebUi(options),
   acquireInstance = directory => acquireCliInstance(directory),
   updateConfig = updateRealtimeModelConfig,
+  createConnectionProfiles = directory => new GatewayConnectionProfileStore({
+    filePath: resolve(directory, 'state/gateway-connections.json'),
+    credentialStore: createPrivateFileGatewayCredentialStore({
+      filePath: resolve(directory, 'state/gateway-client-credentials.json'),
+    }),
+  }),
+  pairInvitation = pairGatewayInvitation,
 } = {}) {
   const processRealtimeModelOverride = String(
     env.QWEN_AUDIO_REALTIME_MODEL || '',
@@ -200,6 +233,16 @@ export async function main(argv, {
     || (argv[0] === 'config' && argv[1] === 'show')
   const environment = prepareEnvironment({ readOnly: readOnlyCommand })
   const options = parseArguments(argv, env)
+  const connectionProfiles = ['connect', 'disconnect', 'tui'].includes(options.command)
+    ? createConnectionProfiles(environment.configDirectory)
+    : null
+  if (!options.urlSpecified && options.command === 'tui') {
+    const saved = await connectionProfiles.resolve('cli-default')
+    if (saved?.credential) {
+      options.url = saved.profile.gateway_url
+      options.accessToken = saved.credential
+    }
+  }
   if (
     options.command === 'gateway'
     && ['install', 'start', 'restart'].includes(options.gatewayAction)
@@ -210,6 +253,27 @@ export async function main(argv, {
   }
   if (options.help) {
     stdout.write(`${helpText()}\n`)
+    return 0
+  }
+  if (options.command === 'connect') {
+    if (!options.invitation) throw new Error('connect 需要远程 Gateway 邀请')
+    const instanceId = `cli_${randomUUID()}`
+    const paired = await pairInvitation(
+      decodeGatewayInvitation(options.invitation),
+      {
+        device: { id: instanceId, type: 'cli', label: 'TUI' },
+        clientInstanceId: instanceId,
+        profileId: 'cli-default',
+        label: 'Remote Gateway',
+        profileStore: connectionProfiles,
+      },
+    )
+    stdout.write(`已连接远程 Gateway：${paired.profile.gateway_url}\n`)
+    return 0
+  }
+  if (options.command === 'disconnect') {
+    const removed = await connectionProfiles.remove('cli-default')
+    stdout.write(removed ? '已忘记远程 Gateway\n' : '没有已保存的远程 Gateway\n')
     return 0
   }
   if (options.command === 'config') {
@@ -315,6 +379,76 @@ export async function main(argv, {
       && result.authentication?.status !== 'authenticated'
     ) {
       stdout.write(`${configurationHint}\n`)
+    }
+    return 0
+  }
+
+  if (options.command === 'gateway' && options.gatewayAction === 'pair') {
+    const ticket = await createPairingTicket(options.url)
+    stdout.write(
+      `远程客户端配对码：${ticket.code}\n`
+      + `有效期至：${new Date(ticket.expiresAt).toLocaleString()}\n`,
+    )
+    return 0
+  }
+
+  if (options.command === 'gateway' && options.gatewayAction === 'remote') {
+    const publisher = createRemotePublisher({
+      gatewayUrl: options.url,
+      mode: options.remoteMode,
+      port: options.remotePort,
+    })
+    if (options.remoteAction === 'devices') {
+      const result = await listPairedDevices(options.url)
+      if (options.json) stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+      else if (!result.devices?.length) stdout.write('尚未配对远程设备\n')
+      else {
+        for (const device of result.devices) {
+          stdout.write(`${device.id}\t${device.label || device.type || 'Client'}\n`)
+        }
+      }
+      return 0
+    }
+    if (options.remoteAction === 'revoke') {
+      await revokePairedDevice(options.url, options.remoteDeviceId)
+      stdout.write(`已撤销远程设备：${options.remoteDeviceId}\n`)
+      return 0
+    }
+    if (options.remoteAction === 'disable') {
+      const result = await publisher.unpublish()
+      stdout.write(result.changed ? 'Tailscale 远程访问已关闭\n' : 'Tailscale 远程访问未开启\n')
+      return 0
+    }
+    if (options.remoteAction === 'status') {
+      const status = await publisher.inspect()
+      if (options.json) stdout.write(`${JSON.stringify(status, null, 2)}\n`)
+      else if (!status.available) stdout.write('Tailscale 未安装\n')
+      else if (!status.connected) stdout.write(`Tailscale 未连接（${status.backendState}）\n`)
+      else if (status.occupied) stdout.write(`端口 ${options.remotePort} 已被其他 Tailscale Serve 配置占用\n`)
+      else if (status.published) stdout.write(`远程访问已开启：${status.endpoint.url}\n`)
+      else stdout.write('Tailscale 已连接，远程访问未开启\n')
+      return status.published ? 0 : 1
+    }
+    const health = await inspectGateway(options.url)
+    if (!health) throw new Error(`Gateway 未运行：${options.url}`)
+    const endpoint = await publisher.publish()
+    if (options.remoteAction === 'enable') {
+      stdout.write(`Tailscale 远程访问已开启：${endpoint.url}\n`)
+      return 0
+    }
+    const ticket = await createPairingTicket(options.url)
+    const invitation = createGatewayInvitation({
+      gatewayUrl: endpoint.url,
+      pairingCode: ticket.code,
+      expiresAt: ticket.expiresAt,
+    })
+    if (options.json) stdout.write(`${JSON.stringify(invitation, null, 2)}\n`)
+    else {
+      stdout.write(
+        `远程客户端邀请：${encodeGatewayInvitation(invitation)}\n`
+        + `远程 WebUI：${encodeGatewayBrowserInvitation(invitation)}\n`
+        + `有效期至：${new Date(invitation.expires_at).toLocaleString()}\n`,
+      )
     }
     return 0
   }
@@ -446,7 +580,7 @@ export async function main(argv, {
     }
   }
 
-  const health = await inspectGateway(options.url)
+  const health = await inspectGateway(options.url, options.accessToken)
   if (!health) {
     throw new Error(
       `Gateway 未运行：${options.url}。请先执行 qwenaudio gateway`,

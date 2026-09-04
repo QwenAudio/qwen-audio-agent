@@ -2,34 +2,88 @@
 
 ## Remote Access Security
 
-By default, the Gateway only trusts literal loopback Host/Origin, preventing malicious web
-pages from connecting to local voice and backend Agents via DNS rebinding. To access from other
-devices, do not simply set `HOST=0.0.0.0` and expose the port; instead, use an HTTPS reverse
-proxy with access authentication, and configure the public Origin:
+By default, the Gateway binds to loopback and trusts only literal loopback Host/Origin. Remote
+requests require a Gateway access credential before they can reach HTTP or WebSocket business
+APIs. Do not expose the port directly to the public Internet; use a trusted VPN or an HTTPS/WSS
+reverse proxy.
+
+For the reference private-network path, install and sign in to the Tailscale app on the Gateway
+host and remote device, then run:
+
+```bash
+qwenaudio gateway remote enable
+qwenaudio gateway remote invite
+```
+
+The first command publishes the loopback Gateway on a dedicated Tailscale Serve HTTPS port;
+the second prints a short-lived invitation for a remote Client. The adapter refuses to overwrite
+an unrelated Serve route. Use `gateway remote status`, `devices`, `revoke ID`, and `disable` to
+manage it. `--remote-mode tcp` is a native-Client fallback when tailnet HTTPS is unavailable;
+browser and Mobile microphone access should use the default HTTPS mode.
+
+For one personal access key:
+
+```dotenv
+QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=replace-with-at-least-24-random-characters
+```
+
+Generate one with `openssl rand -base64 32`. This token authenticates Gateway
+access only; never put it in a URL, GCP message, or public log.
+
+Native clients send it as a Bearer token. Browser clients exchange one authenticated HTTP
+request for an `HttpOnly`, `SameSite=Strict` session cookie. To serve the browser UI through an
+HTTPS reverse proxy, keep the Gateway on loopback and allowlist the exact public Origin:
 
 ```dotenv
 HOST=127.0.0.1
 QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com
 ```
 
+For example, a native TUI can connect without putting the credential in its URL:
+
+```bash
+QWEN_AUDIO_AGENT_URL=https://voice.example.com \
+QWEN_AUDIO_GATEWAY_CLIENT_TOKEN="$ACCESS_TOKEN" \
+qwenaudio tui
+```
+
 The reverse proxy must:
 
-- Complete user authentication before forwarding;
 - Only accept HTTPS, and correctly forward WebSocket;
 - Preserve the public `Host`;
 - Forward traffic to the local `127.0.0.1:3101`.
 
-`QWEN_AUDIO_AGENT_AUTH_SECRET` is only used to sign the local identity, not as a remote access
-password. It must not be used as a substitute for reverse proxy authentication. Multiple
-trusted Origins can be separated by English commas.
+Alternatively, run `qwenaudio gateway pair` locally. It prints a short-lived, single-use code
+that a remote Client exchanges at `POST /api/access/pair` for a revocable device token. Paired
+devices can be listed with `GET /api/access/devices` and revoked with
+`DELETE /api/access/devices/:id`; management is loopback-only.
+
+Multiple trusted Origins can be separated by commas. Advanced hosts can map separate access
+tokens to separate owner identities:
+
+```dotenv
+QWEN_AUDIO_AGENT_ACCESS_KEYS='[{"token":"replace-with-a-long-random-token","owner_id":"user_alice","label":"Alice"}]'
+```
+
+Each owner has one active Client lease. A second Client is rejected unless it reconnects with
+the same `client.instance_id` or explicitly negotiates `session.takeover`; takeover closes the
+previous Client and generation-fences late messages from its socket.
+
+`QWEN_AUDIO_AGENT_AUTH_SECRET` only signs local and remote session identities. It is not a
+remote access password and must never be sent to a Client.
+
+`QWEN_AUDIO_AGENT_ACCESS_TOKEN` remains a deprecated alias for both settings. New setups use
+the separate host and Client names above so a Client credential is never mistaken for Gateway
+server configuration.
 
 ## Gateway Operation
 
 A single data directory only allows one local Gateway at any time. The CLI, TUI, and WebUI
 share `~/.config/qwaudio` and preferentially reuse the same instance; the desktop edition uses
 a separate directory and only reuses or manages the Gateway under its own directory. Multiple
-clients within the same directory can connect simultaneously, but do not each start a set of
-backend Agents. The instance identity is recorded in a temporary `gateway.lock` file under the
+authenticated owners are isolated by identity; each owner has one active Client and all of them
+share this one Gateway process and backend service. The instance identity is recorded in a
+temporary `gateway.lock` file under the
 user configuration directory; it is deleted when the Gateway exits normally, and locks left by
 abnormal exits are automatically reclaimed after confirming the original process has ended. If
 the existing Gateway's Realtime, backend Agent, or permission configuration is inconsistent with

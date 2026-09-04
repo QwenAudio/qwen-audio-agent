@@ -8,13 +8,13 @@ import { attachRealtimeGateway } from '../src/voice/realtime-gateway.mjs'
 // client connects to the gateway endpoint and disconnects; the gateway must
 // hand the owner/session pair to the extractor exactly once, and a hook
 // failure must never break the close path.
-function gatewayHarness({ memoryExtractor }) {
+function gatewayHarness({ memoryExtractor, memoryService = { list: () => [] } }) {
   const server = createServer()
   attachRealtimeGateway(server, {
     identityManager: {
       resolveUpgrade: () => ({ ownerId: 'owner-hook' }),
     },
-    memoryService: { list: () => [] },
+    memoryService,
     memoryExtractor,
     notesStore: null,
     backendRuntime: {},
@@ -89,4 +89,29 @@ test('a missing or failing extractor never breaks the close path', async t => {
     await new Promise(resolvePromise => setTimeout(resolvePromise, 25))
   }
   assert.equal(threw, true)
+})
+
+test('closes an opted-in memory audio observation before session observation', async t => {
+  const events = []
+  const memoryService = {
+    list: () => [],
+    ownsAudioStreamObservation: () => true,
+    observeAudio: (_ownerId, event, context) => events.push({ event, context }),
+  }
+  const server = gatewayHarness({ memoryExtractor: null, memoryService })
+  t.after(() => new Promise(resolvePromise => server.close(resolvePromise)))
+
+  await connectAndClose(server, { sessionId: 'audio-memory-hook' })
+
+  for (let attempt = 0; attempt < 20 && !events.length; attempt += 1) {
+    await new Promise(resolvePromise => setTimeout(resolvePromise, 25))
+  }
+
+  assert.deepEqual(events, [{
+    event: { type: 'session_ended' },
+    context: {
+      source: 'voice-input',
+      sessionId: 'audio-memory-hook',
+    },
+  }])
 })

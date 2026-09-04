@@ -1,0 +1,65 @@
+html, body, #root { min-height: 100%; }
+body { background: #08090d; }
+
+.mobile-onboarding {
+  width: min(100% - 40px, 440px);
+  min-height: 100dvh;
+  margin: auto;
+  padding: max(72px, env(safe-area-inset-top)) 0 max(32px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #f5f5f7;
+}
+
+.mobile-mark {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: linear-gradient(145deg, #a38aff, #6343e5);
+  box-shadow: 0 18px 55px #7156e75c;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.mobile-onboarding h1 { margin: 26px 0 10px; font-size: 30px; }
+.mobile-onboarding p { margin: 0 0 28px; color: #a6a3af; line-height: 1.65; }
+.mobile-onboarding button,
+.mobile-onboarding textarea {
+  width: 100%;
+  border: 1px solid #ffffff1f;
+  border-radius: 14px;
+  color: #f5f5f7;
+  background: #ffffff0b;
+}
+.mobile-onboarding button { min-height: 48px; padding: 0 18px; }
+.mobile-onboarding button:disabled { opacity: .5; }
+.mobile-onboarding .mobile-primary { border: 0; background: #7055ed; font-weight: 700; }
+.mobile-onboarding label { display: grid; gap: 8px; color: #aaa7b2; font-size: 13px; }
+.mobile-onboarding textarea { min-height: 78px; padding: 12px; resize: vertical; font: inherit; }
+.mobile-onboarding small { min-height: 20px; margin-top: 16px; color: #a6a3af; text-align: center; }
+.mobile-divider { margin: 22px 0; display: flex; align-items: center; gap: 12px; color: #666572; font-size: 12px; }
+.mobile-divider::before, .mobile-divider::after { content: ''; height: 1px; flex: 1; background: #ffffff14; }
+
+.mobile-runtime { height: 100dvh; padding-top: env(safe-area-inset-top); }
+.mobile-runtime .app { height: calc(100dvh - env(safe-area-inset-top)); }
+.mobile-disconnect {
+  position: fixed;
+  z-index: 30;
+  top: calc(env(safe-area-inset-top) + 76px);
+  right: 14px;
+  padding: 6px 9px;
+  border: 1px solid #ffffff18;
+  border-radius: 9px;
+  color: #aaa7b2;
+  background: #111319dd;
+  font-size: 11px;
+}
+
+@media (max-width: 600px) {
+  .mobile-runtime header { padding-top: 2px; }
+  .mobile-runtime .brand div { font-size: 12px; }
+  .mobile-runtime .model-status { display: none; }
+}

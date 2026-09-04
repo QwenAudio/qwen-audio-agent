@@ -9,6 +9,7 @@ function harness({ responseOutcome } = {}) {
   const events = []
   const records = []
   const calls = []
+  const speechStarts = []
   const speechStops = []
   const frontend = {
     cancel: () => calls.push(['cancel']),
@@ -49,10 +50,11 @@ function harness({ responseOutcome } = {}) {
       context,
     ]),
     reportFrontendError: error => calls.push(['reportFrontendError', error]),
+    onSpeechStarted: fields => speechStarts.push(fields),
     onSpeechStopped: fields => speechStops.push(fields),
     createInputTurnId: () => 'text-1',
   })
-  return { runtime, turns, events, records, calls, speechStops }
+  return { runtime, turns, events, records, calls, speechStarts, speechStops }
 }
 
 test('handles only provider input lifecycle events', () => {
@@ -66,7 +68,15 @@ test('handles only provider input lifecycle events', () => {
 })
 
 test('projects one voice turn from speech start through final transcript', () => {
-  const { runtime, turns, events, records, calls, speechStops } = harness()
+  const {
+    runtime,
+    turns,
+    events,
+    records,
+    calls,
+    speechStarts,
+    speechStops,
+  } = harness()
 
   runtime.handleProviderEvent({
     type: 'input_audio_buffer.speech_started',
@@ -104,6 +114,10 @@ test('projects one voice turn from speech start through final transcript', () =>
   assert.equal(records[0].content, '你好')
   assert.equal(records[0].source, 'voice-user')
   assert.deepEqual(speechStops, [{
+    turnId: 'voice-1',
+    source: 'realtime_provider',
+  }])
+  assert.deepEqual(speechStarts, [{
     turnId: 'voice-1',
     source: 'realtime_provider',
   }])

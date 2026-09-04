@@ -12,6 +12,8 @@
 //
 // 5.8.0 adds explicit background image/multi-frame vision analysis with
 // structured Insight events and provider-neutral AgentDelivery.
+// 5.7.0 also adds authenticated remote Client access, one-time device pairing,
+// and owner-scoped active Client takeover with generation fencing.
 // 5.7.0 adds explicit WebUI camera observation for vision-capable Realtime
 // frontends without triggering model responses.
 // 5.6.0 adds a provider-neutral frontend memory control plane for replaceable
@@ -70,6 +72,10 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // settings in the config directory, and a host names no setting and no file
   // of its own.
   'gateway.settings-store',
+  // Remote HTTP/WS access requires a configured or paired credential. Local
+  // access stays zero-config; pairing issues revocable device tokens without
+  // putting secrets into the Gateway Client Protocol.
+  'gateway.remote-access-pairing',
   // qwen-audio-agent/electron: a CommonJS entry an Electron main process can
   // require, which loads every ESM contract.
   'host.electron-entry',
@@ -133,6 +139,10 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // reconnection recovery. Replayable Task pushes carry monotonic sequence
   // numbers and session.replay provides a bounded page after a cursor.
   'realtime.gateway-client-protocol-v6-reference-client-replay',
+  // Active Client ownership is scoped by authenticated owner. A negotiated
+  // Client may explicitly replace that owner's current Client; monotonically
+  // increasing lease generations fence late messages and stale releases.
+  'realtime.gateway-client-protocol-v6-owner-takeover',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

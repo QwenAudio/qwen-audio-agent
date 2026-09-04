@@ -1,0 +1,15 @@
+{
+  "appId": "com.qwenaudio.agent",
+  "appName": "Qwen Audio Agent",
+  "webDir": "dist",
+  "server": {
+    "hostname": "qwaudio.local",
+    "iosScheme": "https",
+    "androidScheme": "https"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "enabled": true
+    }
+  }
+}

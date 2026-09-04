@@ -54,6 +54,10 @@ jobs:
           registry-url: https://registry.npmjs.org/
       - run: npm ci
       - run: npm run release:check
+        env:
+          # Pull requests remain deterministic during a transient npm audit
+          # outage. The release workflow stays fail-closed.
+          QWEN_AUDIO_AGENT_AUDIT_ALLOW_UNAVAILABLE: '1'
 
   # One stable branch-protection context. The matrix job names change whenever
   # the supported OS/Node set changes; this aggregate keeps main protection

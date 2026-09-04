@@ -17,6 +17,7 @@ const PROFILES = Object.freeze({
     observation: true,
     resource: true,
   }),
+  mobile: Object.freeze({ text: true, audio: true, image: true, resource: true }),
 })
 
 export function clientInputCapabilities(clientType = 'web') {

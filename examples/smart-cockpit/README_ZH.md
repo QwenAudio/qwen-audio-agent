@@ -2,18 +2,9 @@
 
 [English](README.md) | 中文
 
-![智能座舱框架架构图](docs/framework-architecture.svg)
-
-这是 qwen-audio-agent 在智能座舱领域的可运行落地示范。它使用框架公开能力
-重新实现完整座舱链路，并在边界合适的地方复用早期座舱原型的 UI 代码和视觉资源，
-以节约实现成本。它不是对旧 Demo 的迁移或兼容改造，也没有自建第二套 Realtime
-或前台对话历史；后台模型循环只存在于可替换的 `agent/` 进程中。
-
-qwen-audio-agent 的基础边界是“前台对话 + 后台执行”两层。示例中的座舱 UI 是前台的
-可替换客户端组件，座舱 Agent 是可替换后台；二者都不是框架强制实现。真正复用的
-框架能力是 Gateway、前台实时对话、GCP Client SDK、BackendPort、A2A 和 MCP 接缝。
-后台 Agent 可以按需派生独立 Session，扩展出第三层执行空间；仓库自带示例则使用
-紧凑的 Qwen3.8-Flash 工具调用循环。
+这是一个基于 qwen-audio-agent 的可运行智能座舱 Agent 示例。用户可以通过自然语音
+控制车辆、规划导航、播放音乐、查询天气、使用闪购和自定义技能，座舱界面会同步展示
+车辆与任务状态。它展示了如何使用框架组合前台实时对话、工具调用和可替换的后台 Agent。
 
 ## 座舱演示
 
@@ -23,38 +14,31 @@ qwen-audio-agent 的基础边界是“前台对话 + 后台执行”两层。示
 
 https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
 
-## 目录职责一览
+## 核心特点
 
-| 目录 / 进程 | 默认地址 | 角色与契约 | 什么时候修改 |
-|---|---|---|---|
-| [`client/`](client/) / cockpit-client | `http://127.0.0.1:5173` | 可替换的前台客户端。对话走 GCP，业务面板走场景 HTTP/SSE。 | 替换座舱 UI、浏览器音频 I/O 或面板交互时。 |
-| [`gateway/`](gateway/) / cockpit-gateway | `http://127.0.0.1:18888` | 前台 Agent 与 Gateway 的场景装配；可信人设、前台 Profile 和 `spawn_thinking` 描述都归这里。 | 更换协议 Adapter、前台 Prompt 或场景装配时；不在这里实现业务逻辑。 |
-| [`agent/`](agent/) / cockpit-agent | `http://127.0.0.1:3020` | 可替换、由模型驱动的 A2A 后台示例。Qwen3.8-Flash 规划任务并调用后台 MCP 工具面。 | 替换或扩展示例后台 Agent 时。 |
-| [`service/`](service/) / cockpit-service | `http://127.0.0.1:3010` | 座舱环境与基础设施：集中管理场景状态、业务规则、外部服务适配和 [`tools/`](service/tools/) 能力契约，并向 UI、前台和座舱 Agent 提供受限接口。 | 增加座舱能力、业务状态、校验或外部服务接入时。 |
-| [`bootstrap/`](bootstrap/) | — | 四个进程共用的环境加载与启动预检。 | 调整本地示例的启动条件或端口检查时。 |
+- **实时语音对话：**支持连续交流、自然打断、多轮上下文、音色和人设切换。
+- **标准工具调用：**车控、导航、音乐、天气、闪购和自定义技能统一定义为 MCP 工具。
+- **前后台分工：**低延迟操作由前台 Realtime 直接执行，闪购和自定义工作流等任务交给后台 Agent。
+- **标准后台接入：**示例 Agent 通过 A2A 1.0 连接 Gateway，可替换为客户自己的 A2A、ACP 或定制后台。
+- **场景状态联动：**座舱 UI 通过场景 HTTP/SSE 通道展示车辆、路线、音乐和订单状态。
+- **组件可替换：**客户可以独立替换座舱客户端、后台 Agent 或场景 Service，无需修改框架核心。
 
-## Function call 工具面
+## 架构
 
-当前座舱服务在 vehicle、navigation、music、weather 四个领域共暴露 34 个领域工具。
-默认领域执行面配置在 `service/tools/surface-routing.json`：`vehicle`、`navigation`、
-`music`、`weather` 走前台 Realtime 快路径，`flashbuy` 和 `custom-skills` 走后台
-Agent。可通过 `COCKPIT_TOOL_SURFACE_ROUTING` 指向自定义 JSON，或用
-`COCKPIT_DOMAIN_SURFACES` 内联 JSON 覆盖。
+![智能座舱框架架构图](docs/framework-architecture.svg)
 
-| 领域 | Function 数量 | 功能描述和示例 |
-|---|---:|---|
-| `vehicle` | 11 | 车辆位置/车况查询和严格车控，包括空调、温度、车窗、天窗、开闭件、舒适控制、灯光、声音和充电。示例：“车在哪？”、“空调调到 22 度”、“打开前备箱”、“开始充电”。 |
-| `navigation` | 12 | 目的地导航、路线预览、途经点修改、常用地点、路线偏好、地图视图、导航播报和停止导航。示例：“导航到西湖，途经黄龙体育中心”、“避开高速”、“查看全程路线”、“停止导航”。 |
-| `music` | 10 | 播放、搜索、状态查询、音量、媒体来源、收藏和上一首/下一首控制。示例：“播放晴天”、“音量大一点”、“切到蓝牙”、“收藏这首歌”。 |
-| `weather` | 1 | 查询城市天气，用于出行上下文。示例：“杭州今天天气怎么样？”、“上海会下雨吗？”。 |
-| **总计** | **34** | 覆盖跨领域工具选择、参数抽取、执行路径选择和最终座舱状态结果，可作为后续 benchmark 的共同工具面。 |
+qwen-audio-agent 的基础边界是“前台对话 + 后台执行”。座舱客户端与 Gateway 组成前台，
+座舱 Agent 负责后台任务，Service 提供场景状态、业务规则和工具执行环境。
 
-后续如果要 benchmark Realtime 和纯文本模型的工具调用准确率，可以基于这张表定义统一工具面：
+| 目录 / 进程 | 默认地址 | 职责 |
+|---|---|---|
+| [`client/`](client/) / cockpit-client | `http://127.0.0.1:5173` | 可替换的座舱客户端；负责音频 I/O、对话交互和业务面板。 |
+| [`gateway/`](gateway/) / cockpit-gateway | `http://127.0.0.1:18888` | 前台 Agent 与 Gateway 场景装配；处理实时对话、前台工具和后台任务提交。 |
+| [`agent/`](agent/) / cockpit-agent | `http://127.0.0.1:3020` | 可替换的 A2A 后台 Agent；Qwen3.8-Flash 负责理解和编排任务。 |
+| [`service/`](service/) / cockpit-service | `http://127.0.0.1:3010` | 座舱环境与基础设施；管理状态、规则、外部服务适配和 MCP 工具。 |
+| [`bootstrap/`](bootstrap/) | — | 四个进程共用的环境加载和启动预检。 |
 
-- **工具选择准确率：**模型是否为用户话术选择了正确领域和 function。
-- **参数准确率：**目的地、路线偏好、温区、车窗目标、媒体来源、音量、歌曲关键词等槽位是否抽取正确。
-- **执行路径选择：**简单低延迟动作是否留在前台 Realtime 路径，组合任务是否交给后台 Agent。
-- **状态结果：**工具调用后的座舱状态是否符合用户请求。
+完整的边界与数据流见[架构文档](docs/architecture.md)。
 
 ## 快速开始
 
@@ -70,63 +54,70 @@ cp examples/smart-cockpit/.env.example examples/smart-cockpit/.env.local
 DASHSCOPE_API_KEY=your_dashscope_api_key
 ```
 
-后台 Agent 默认使用 `qwen3.8-flash` 并开启思考模式；需要时可通过 `DASHSCOPE_MODEL` 覆盖。
-
-高德地图和路线服务可按需填写 `VITE_AMAP_KEY`、`VITE_AMAP_SECRET` 与 `AMAP_MCP_KEY`。然后安装示例依赖并一键启动：
+高德地图和路线服务可按需填写 `VITE_AMAP_KEY`、`VITE_AMAP_SECRET` 与 `AMAP_MCP_KEY`。
+然后安装依赖并启动示例：
 
 ```bash
 npm run example:smart-cockpit:install
 npm run example:smart-cockpit
 ```
 
-浏览器打开 `http://localhost:5173`。该命令会同时启动上表中的四个进程。
+浏览器打开 `http://localhost:5173`。按 `Ctrl+C` 可一起关闭全部示例进程。
 
-按 `Ctrl+C` 会一起关闭四个进程。
+## 工具调用
 
-启动前会一次性检查 Realtime 配置和四个默认端口；缺少 Key 或存在旧实例时会给出明确提示，不会再让四个子进程分别输出错误堆栈。
+座舱 Service 在 6 个场景领域共提供 38 个工具，工具定义、执行器和前后台分流均保持独立。
 
-## 边界
+| 领域 | 数量 | 能力示例 |
+|---|---:|---|
+| `vehicle` | 11 | 车辆位置与车况、空调、车窗、天窗、车灯、充电等。 |
+| `navigation` | 12 | 地点搜索、路线规划、多途经点、常用地点、路线偏好和停止导航。 |
+| `music` | 10 | 搜索与播放、上下曲、音量、媒体源和收藏。 |
+| `weather` | 1 | 城市天气查询。 |
+| `flashbuy` | 1 | 闪购商品搜索与下单演示。 |
+| `custom-skills` | 3 | 列出、创建和加载用户自定义座舱工作流。 |
+| **合计** | **38** | 覆盖前台低延迟操作与后台组合任务。 |
 
-- 前台由座舱客户端和 Gateway/Realtime 对话中控组成；两者是一个前台层内的
-  组件边界，不是两个 Agent 层。
-- UI 仅通过 GCP 与 Gateway 对话，不感知 Realtime Provider 或后台 Agent。
-- 音色设置只提供 Qwen Audio 3.0 Realtime 的“甜美女声”（`longanqian`）和
-  “阳光男声”（`longanlufeng`）；客户端通过正式 GCP/SDK 音色能力切换，Gateway
-  只刷新上游 Realtime 会话，不会重启座舱应用。
-- UI 通过已注册的 `client.event.publish` 只发送 `healer`、`action` 或 `sharp`；
-  Gateway 将其映射到已有 Markdown，并通过 `session.update` 从下一轮起刷新当前会话人设。
-  客户端不能传入任意 Prompt，切换不会修改磁盘文件、丢失对话或产生额外播报。
-- 主座舱区域保持纯语音交互；文字转写只进入调试面板，并且 ASR 仅展示最终结果。
-- UI 通过场景自己的 HTTP/SSE 通道展示车辆、路线、音乐、天气和订单状态，以及细粒度场景进度；Gateway 不解析这些对象。
-- 用户可以通过语音创建和运行持久化的座舱自定义技能；技能是按座舱隔离的用户工作流，
-  由后台 Agent 加载后编排现有 MCP 工具。它不是动态 MCP 插件、A2A Agent Card 或全局 Agent Skill。
-- 前台 Agent 通过标准 MCP 直接调用天气、车辆位置/车况、车辆控制、停止导航、
-  导航视图/播报/偏好和单步音乐控制工具；这些低延迟指令直接执行，不再增加重复确认。
-- 位置查询与导航起点共用 Cockpit Service 的 `vehicleLocation()` 适配入口；
-  未接车机 GPS 时会明确返回 Demo 默认位置，部署时只需替换该服务。
-- 路线偏好按钮写入座舱权威状态；用户未另行指定时，后续导航会继承该偏好。
-- 记忆设置面板调用 Gateway 的 Provider 无关记忆控制面，列出并精确删除
-  Realtime 共用的 USER/MEMORY 文档条目，不维护座舱私有的另一份记忆。
-- 其他座舱任务通过固定的 `spawn_thinking` 桥梁提交给后台。示例后台通过 A2A
-  接入 Gateway，Qwen3.8-Flash 会发现并调用独立的后台 MCP 工具面，完成车控、
-  导航、音乐、闪购和自定义技能任务，包括有序的多途经点导航。
-- 后台 Agent 如何调用工具和组织工作是后台内部实现；若创建独立派生 Session，
-  可以形成由后台扩展出的第三层执行空间，不改变前台协议。
-- 场景工具按领域收敛在 [`service/tools/`](service/tools/README.md)，开发者通过显式
-  注册表增加领域工具包，并按工具名选择哪些额外暴露给前台作为低延迟快路径；
-  后台保留完整工具面用于组合任务，不需要修改 Gateway 协议或复制执行逻辑。
-- 客户可以替换整个 UI、座舱 Agent 或座舱 Service，而不修改框架核心。
+默认情况下，`vehicle`、`navigation`、`music` 和 `weather` 走前台 Realtime 快路径，
+`flashbuy` 和 `custom-skills` 由后台 Agent 执行。通过
+[`surface-routing.json`](service/tools/surface-routing.json) 即可调整场景分流；扩展方式见
+[工具目录说明](service/tools/README.md)。
 
-## 开发与测试
+## Benchmark
+
+示例内置可复现的座舱工具调用评测，使用同一套工具、Prompt、确定性状态和评分器，
+验证模型在单轮及长上下文对话中的工具选择、参数生成与无工具判断：
+
+- 短用例集：86 个座舱指令。
+- 长上下文集：10 段对话、500 轮，其中包含 250 次预期工具调用和 250 个无工具轮次。
+- 支持 Gold、文本模型、受控 Realtime 和完整语音链路四种运行方式。
 
 ```bash
-npm run example:smart-cockpit:lint
-npm run example:smart-cockpit:build
-npm run test:smart-cockpit
+node examples/smart-cockpit/bench/runner/run-gold.mjs
+node examples/smart-cockpit/bench/runner/run-text.mjs
+node examples/smart-cockpit/bench/runner/run-realtime.mjs
+node examples/smart-cockpit/bench/runner/run-voice.mjs
 ```
 
-更多说明：
+数据集、运行参数和评分规则见 [Benchmark 说明](bench/README.md)。
 
-- [架构与数据流](docs/architecture.md)
-- [替换 UI、Agent 或座舱 Service](docs/replacing-components.md)
-- [测试矩阵](docs/test-matrix.md)
+## 替换和扩展
+
+| 需求 | 修改位置 |
+|---|---|
+| 替换座舱 UI 或音频 I/O | [`client/`](client/) |
+| 替换后台 Agent | 修改 `COCKPIT_AGENT_CARD_URL`，或替换 [`agent/`](agent/) |
+| 增加场景工具、状态或外部服务 | [`service/`](service/) 与 [`service/tools/`](service/tools/) |
+| 调整前台人设或后台任务语义 | [`gateway/`](gateway/) |
+| 调整前后台工具分流 | [`surface-routing.json`](service/tools/surface-routing.json) |
+
+更完整的迁移方法见[组件替换指南](docs/replacing-components.md)。
+
+## 作者与致谢
+
+- [Zhang Binbin](https://github.com/robin1001)：负责座舱领域能力的设计与扩展，包括导航、
+  车控、音乐工具体系、前后台工具分流与评测用例。
+- [Li Xu](https://github.com/x-lixu)：负责基于 qwen-audio-agent 的场景架构与整体实现，
+  包括客户端、Gateway、后台 Agent 的边界，实时语音链路以及 A2A/MCP 接入。
+- [Peng Zhendong](https://github.com/pengzhendong)：提供原始座舱 UI 与视觉资源，包括整体界面设计、
+  交互形态和相关视觉素材。

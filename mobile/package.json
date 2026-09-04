@@ -1,0 +1,32 @@
+{
+  "name": "@qwen-audio-agent/mobile",
+  "private": true,
+  "version": "1.11.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "sync": "npm run build && cap sync",
+    "ios": "npm run sync && cap open ios",
+    "android": "npm run sync && cap open android",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-secure-storage": "8.0.0",
+    "@capacitor/app": "8.1.1",
+    "@capacitor/barcode-scanner": "3.1.2",
+    "@capacitor/core": "8.5.1",
+    "@capacitor/preferences": "8.0.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "vite": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "8.5.1",
+    "@capacitor/cli": "8.5.1",
+    "@capacitor/ios": "8.5.1"
+  }
+}

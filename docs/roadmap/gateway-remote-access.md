@@ -122,12 +122,12 @@ and reconnect through a provider-neutral connection profile.
 
 ## RA2 — Tailscale publisher
 
-- [ ] Implement one shared Tailscale adapter for Desktop and CLI.
-- [ ] Detect installation, login, readiness, hostname, and publication state
+- [x] Implement one shared Tailscale adapter for Desktop and CLI.
+- [x] Detect installation, login, readiness, hostname, and publication state
   from machine-readable output.
-- [ ] Publish a dedicated Gateway endpoint without overwriting unrelated user
+- [x] Publish a dedicated Gateway endpoint without overwriting unrelated user
   Tailscale Serve configuration, while keeping Gateway on loopback.
-- [ ] Add CLI status, enable, disable, invite, device-list, and revoke commands.
+- [x] Add CLI status, enable, disable, invite, device-list, and revoke commands.
 - [ ] Validate persistent GCP WebSocket behavior before selecting the final Serve
   mode; retain a direct tailnet fallback.
 

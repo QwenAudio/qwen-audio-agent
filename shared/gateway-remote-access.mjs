@@ -106,3 +106,32 @@ export function assertGatewayInvitationActive(invitation, now = Date.now()) {
   }
   return parsed
 }
+
+export function encodeGatewayInvitation(invitation) {
+  const parsed = parseGatewayInvitation(invitation)
+  return `qwaudio://connect#${encodeURIComponent(JSON.stringify(parsed))}`
+}
+
+export function decodeGatewayInvitation(value) {
+  let url
+  try {
+    url = new URL(String(value || ''))
+  } catch {
+    throw Object.assign(new Error('Invalid Gateway invitation URL'), {
+      code: 'gateway_invitation_invalid',
+    })
+  }
+  if (url.protocol !== 'qwaudio:' || url.hostname !== 'connect' || !url.hash) {
+    throw Object.assign(new Error('Invalid Gateway invitation URL'), {
+      code: 'gateway_invitation_invalid',
+    })
+  }
+  try {
+    return parseGatewayInvitation(JSON.parse(decodeURIComponent(url.hash.slice(1))))
+  } catch (error) {
+    throw Object.assign(new Error('Invalid Gateway invitation payload'), {
+      code: 'gateway_invitation_invalid',
+      cause: error,
+    })
+  }
+}

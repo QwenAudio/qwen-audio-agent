@@ -30,6 +30,15 @@ import {
   readGatewayHealth,
   waitForGateway,
 } from './runtime.mjs'
+import {
+  listGatewayDevices,
+  revokeGatewayDevice,
+} from '../../shared/gateway-access-client.mjs'
+import {
+  createGatewayInvitation,
+  encodeGatewayInvitation,
+} from '../../shared/gateway-remote-access.mjs'
+import { createTailscaleGatewayEndpointPublisher } from '../../shared/gateway-tailscale-publisher.mjs'
 import { launchWebUi } from './webui.mjs'
 import { acquireCliInstance } from './instance-lock.mjs'
 import { manageGatewayService } from './gateway-service.mjs'
@@ -187,6 +196,9 @@ export async function main(argv, {
   prepareRuntime = options => ensureRuntime(options, { root, env }),
   inspectGateway = url => readGatewayHealth(url),
   createPairingTicket = url => createGatewayPairingTicket(url),
+  listPairedDevices = url => listGatewayDevices(url),
+  revokePairedDevice = (url, id) => revokeGatewayDevice(url, id),
+  createRemotePublisher = options => createTailscaleGatewayEndpointPublisher(options),
   manageService = (action, options) => manageGatewayService(action, options),
   refreshPath = options => refreshProcessPath(options),
   waitForService = (url, { requireBackend = false } = {}) =>
@@ -328,6 +340,66 @@ export async function main(argv, {
       `远程客户端配对码：${ticket.code}\n`
       + `有效期至：${new Date(ticket.expiresAt).toLocaleString()}\n`,
     )
+    return 0
+  }
+
+  if (options.command === 'gateway' && options.gatewayAction === 'remote') {
+    const publisher = createRemotePublisher({
+      gatewayUrl: options.url,
+      mode: options.remoteMode,
+      port: options.remotePort,
+    })
+    if (options.remoteAction === 'devices') {
+      const result = await listPairedDevices(options.url)
+      if (options.json) stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+      else if (!result.devices?.length) stdout.write('尚未配对远程设备\n')
+      else {
+        for (const device of result.devices) {
+          stdout.write(`${device.id}\t${device.label || device.type || 'Client'}\n`)
+        }
+      }
+      return 0
+    }
+    if (options.remoteAction === 'revoke') {
+      await revokePairedDevice(options.url, options.remoteDeviceId)
+      stdout.write(`已撤销远程设备：${options.remoteDeviceId}\n`)
+      return 0
+    }
+    if (options.remoteAction === 'disable') {
+      const result = await publisher.unpublish()
+      stdout.write(result.changed ? 'Tailscale 远程访问已关闭\n' : 'Tailscale 远程访问未开启\n')
+      return 0
+    }
+    if (options.remoteAction === 'status') {
+      const status = await publisher.inspect()
+      if (options.json) stdout.write(`${JSON.stringify(status, null, 2)}\n`)
+      else if (!status.available) stdout.write('Tailscale 未安装\n')
+      else if (!status.connected) stdout.write(`Tailscale 未连接（${status.backendState}）\n`)
+      else if (status.occupied) stdout.write(`端口 ${options.remotePort} 已被其他 Tailscale Serve 配置占用\n`)
+      else if (status.published) stdout.write(`远程访问已开启：${status.endpoint.url}\n`)
+      else stdout.write('Tailscale 已连接，远程访问未开启\n')
+      return status.published ? 0 : 1
+    }
+    const health = await inspectGateway(options.url)
+    if (!health) throw new Error(`Gateway 未运行：${options.url}`)
+    const endpoint = await publisher.publish()
+    if (options.remoteAction === 'enable') {
+      stdout.write(`Tailscale 远程访问已开启：${endpoint.url}\n`)
+      return 0
+    }
+    const ticket = await createPairingTicket(options.url)
+    const invitation = createGatewayInvitation({
+      gatewayUrl: endpoint.url,
+      pairingCode: ticket.code,
+      expiresAt: ticket.expiresAt,
+    })
+    if (options.json) stdout.write(`${JSON.stringify(invitation, null, 2)}\n`)
+    else {
+      stdout.write(
+        `远程客户端邀请：${encodeGatewayInvitation(invitation)}\n`
+        + `有效期至：${new Date(invitation.expires_at).toLocaleString()}\n`,
+      )
+    }
     return 0
   }
 

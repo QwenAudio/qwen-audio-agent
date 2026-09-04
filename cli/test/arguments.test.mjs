@@ -236,6 +236,22 @@ test('parses foreground and service Gateway commands', () => {
   assert.equal(parseArguments(['gateway', 'start'], {}).gatewayAction, 'start')
   assert.equal(parseArguments(['gateway', 'stop'], {}).gatewayAction, 'stop')
   assert.equal(parseArguments(['gateway', 'pair'], {}).gatewayAction, 'pair')
+  const remote = parseArguments([
+    'gateway', 'remote', 'invite', '--remote-port', '9443', '--json',
+  ], {})
+  assert.equal(remote.gatewayAction, 'remote')
+  assert.equal(remote.remoteAction, 'invite')
+  assert.equal(remote.remotePort, 9443)
+  assert.equal(remote.remoteMode, 'https')
+  assert.equal(remote.json, true)
+  assert.equal(
+    parseArguments(['gateway', 'remote', 'revoke', 'phone-one'], {}).remoteDeviceId,
+    'phone-one',
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'remote', 'revoke'], {}),
+    /设备 ID/,
+  )
   assert.equal(
     parseArguments(['gateway', 'restart'], {}).gatewayAction,
     'restart',
@@ -277,6 +293,7 @@ test('documents the service and client commands', () => {
   assert.match(text, /gateway install/)
   assert.match(text, /gateway uninstall/)
   assert.match(text, /gateway pair/)
+  assert.match(text, /gateway remote invite/)
   assert.match(text, /qwenaudio tui/)
   assert.match(text, /qwenaudio webui/)
   assert.match(text, /qwenaudio status/)

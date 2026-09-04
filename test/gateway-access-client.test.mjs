@@ -2,8 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createGatewayPairingTicket,
+  listGatewayDevices,
   pairGatewayInvitation,
   pairGatewayDevice,
+  revokeGatewayDevice,
 } from '../shared/gateway-access-client.mjs'
 
 function jsonResponse(body, { status = 200 } = {}) {
@@ -81,4 +83,22 @@ test('a Gateway invitation pairs and persists through credential abstractions', 
     }, { profileStore: { save: async () => {} }, now: 1_000 }),
     error => error.code === 'gateway_invitation_expired',
   )
+})
+
+test('Gateway device management helpers remain on the local host plane', async () => {
+  const requests = []
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options })
+    return url.endsWith('/devices')
+      ? jsonResponse({ devices: [{ id: 'phone-one' }] })
+      : new Response(null, { status: 204 })
+  }
+  assert.equal(
+    (await listGatewayDevices('http://127.0.0.1:3101', fetchImpl)).devices[0].id,
+    'phone-one',
+  )
+  await revokeGatewayDevice('http://127.0.0.1:3101', 'phone/one', fetchImpl)
+  assert.equal(requests[0].options.method, 'GET')
+  assert.match(requests[1].url, /phone%2Fone$/)
+  assert.equal(requests[1].options.method, 'DELETE')
 })

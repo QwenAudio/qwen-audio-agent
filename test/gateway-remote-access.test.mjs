@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createGatewayInvitation,
+  decodeGatewayInvitation,
   defineGatewayEndpointPublisher,
+  encodeGatewayInvitation,
   parseGatewayConnectionProfile,
   parseGatewayEndpointDescriptor,
   parseGatewayInvitation,
@@ -84,6 +86,7 @@ test('invitations are versioned, bounded records without permanent credentials',
   assert.deepEqual(parseGatewayInvitation(invitation), invitation)
   assert.equal(invitation.version, 1)
   assert.equal('access_token' in invitation, false)
+  assert.deepEqual(decodeGatewayInvitation(encodeGatewayInvitation(invitation)), invitation)
   assert.throws(() => parseGatewayInvitation({ ...invitation, version: 2 }))
   assert.throws(() => parseGatewayInvitation({ ...invitation, backend: 'opencode' }))
 })

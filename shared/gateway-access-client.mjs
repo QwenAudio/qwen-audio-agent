@@ -1,6 +1,8 @@
 export {
   createGatewayPairingTicket,
+  listGatewayDevices,
   pairGatewayDevice,
+  revokeGatewayDevice,
 } from './gateway-client.mjs'
 
 import { pairGatewayDevice } from './gateway-client.mjs'

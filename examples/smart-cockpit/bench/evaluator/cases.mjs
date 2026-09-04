@@ -4,15 +4,19 @@ export const NAVIGATION_CASES_URL = new URL('../cases/navigation.jsonl', import.
 export const VEHICLE_CASES_URL = new URL('../cases/vehicle.jsonl', import.meta.url)
 export const MUSIC_CASES_URL = new URL('../cases/music.jsonl', import.meta.url)
 export const WEATHER_CASES_URL = new URL('../cases/weather.jsonl', import.meta.url)
+export const MIXED_LONG_CONTEXT_CASES_URL = new URL('../cases/mixed-long-context.jsonl', import.meta.url)
 
-export const BENCHMARK_CASE_URLS = Object.freeze({
+export const SHORT_BENCHMARK_CASE_URLS = Object.freeze({
   vehicle: VEHICLE_CASES_URL,
   music: MUSIC_CASES_URL,
   navigation: NAVIGATION_CASES_URL,
   weather: WEATHER_CASES_URL,
 })
 
+export const BENCHMARK_CASE_URLS = SHORT_BENCHMARK_CASE_URLS
 export const BENCHMARK_DOMAINS = Object.freeze(Object.keys(BENCHMARK_CASE_URLS))
+export const MIXED_DOMAIN = 'mixed'
+export const BENCHMARK_SUITES = Object.freeze(['short', 'long', 'all'])
 
 export function parseJsonl(text, source = 'jsonl') {
   return text
@@ -34,14 +38,26 @@ export function loadNavigationCases(url = NAVIGATION_CASES_URL) {
 
 export function loadBenchmarkCases({
   domains = BENCHMARK_DOMAINS,
-  urls = BENCHMARK_CASE_URLS,
+  suite = 'short',
+  urls = SHORT_BENCHMARK_CASE_URLS,
+  longContextUrl = MIXED_LONG_CONTEXT_CASES_URL,
 } = {}) {
+  if (!BENCHMARK_SUITES.includes(suite)) {
+    throw new Error(`Unknown benchmark suite: ${suite}`)
+  }
   const selected = Array.isArray(domains) && domains.length ? domains : BENCHMARK_DOMAINS
-  return selected.flatMap(domain => {
-    const url = urls[domain]
-    if (!url) throw new Error(`Unknown benchmark domain: ${domain}`)
-    return parseJsonl(readFileSync(url, 'utf8'), url.pathname)
-  })
+  const cases = []
+  if (suite === 'short' || suite === 'all') {
+    cases.push(...selected.flatMap(domain => {
+      const url = urls[domain]
+      if (!url) throw new Error(`Unknown benchmark domain: ${domain}`)
+      return parseJsonl(readFileSync(url, 'utf8'), url.pathname)
+    }))
+  }
+  if (suite === 'long' || suite === 'all') {
+    cases.push(...parseJsonl(readFileSync(longContextUrl, 'utf8'), longContextUrl.pathname))
+  }
+  return cases
 }
 
 export function routeCaseExpectedPaths(caseItem, routing) {
@@ -71,8 +87,9 @@ export function assertBenchmarkCase(caseItem, {
 } = {}) {
   if (!caseItem || typeof caseItem !== 'object') throw new TypeError('case must be an object')
   if (!caseItem.id || typeof caseItem.id !== 'string') throw new TypeError('case.id is required')
-  if (!BENCHMARK_DOMAINS.includes(caseItem.domain)) {
-    throw new TypeError(`${caseItem.id}: domain must be one of ${BENCHMARK_DOMAINS.join(', ')}`)
+  const allowedCaseDomains = [...BENCHMARK_DOMAINS, MIXED_DOMAIN]
+  if (!allowedCaseDomains.includes(caseItem.domain)) {
+    throw new TypeError(`${caseItem.id}: domain must be one of ${allowedCaseDomains.join(', ')}`)
   }
   if (!Array.isArray(caseItem.turns) || caseItem.turns.length === 0) {
     throw new TypeError(`${caseItem.id}: turns must be a non-empty array`)
@@ -84,12 +101,20 @@ export function assertBenchmarkCase(caseItem, {
     if (!turn || typeof turn.user !== 'string' || turn.user.trim().length === 0) {
       throw new TypeError(`${caseItem.id}: turns[${index}].user is required`)
     }
+    if (turn.expect_no_tool !== undefined && typeof turn.expect_no_tool !== 'boolean') {
+      throw new TypeError(`${caseItem.id}: turns[${index}].expect_no_tool must be a boolean`)
+    }
   }
   for (const [index, call] of caseItem.expected_calls.entries()) {
     if (!toolNames.has(call.name)) {
       throw new TypeError(`${caseItem.id}: expected_calls[${index}].name is not a benchmark tool`)
     }
-    if (toolDomain(call.name) !== caseItem.domain) {
+    const callDomain = toolDomain(call.name)
+    if (caseItem.domain === MIXED_DOMAIN) {
+      if (!BENCHMARK_DOMAINS.includes(callDomain)) {
+        throw new TypeError(`${caseItem.id}: expected_calls[${index}].name is not a benchmark domain tool`)
+      }
+    } else if (callDomain !== caseItem.domain) {
       throw new TypeError(`${caseItem.id}: expected_calls[${index}].name does not match case domain`)
     }
     if (!Number.isInteger(call.turn_index) || call.turn_index < 0 || call.turn_index >= caseItem.turns.length) {
@@ -111,6 +136,26 @@ export function assertBenchmarkCase(caseItem, {
     const boundary = caseItem.forbidden_calls_before_turn
     if (!Number.isInteger(boundary) || boundary < 0 || boundary > caseItem.turns.length) {
       throw new TypeError(`${caseItem.id}: forbidden_calls_before_turn is invalid`)
+    }
+  }
+  if (caseItem.state_checkpoints !== undefined) {
+    if (!Array.isArray(caseItem.state_checkpoints)) {
+      throw new TypeError(`${caseItem.id}: state_checkpoints must be an array`)
+    }
+    for (const [index, checkpoint] of caseItem.state_checkpoints.entries()) {
+      if (!checkpoint || typeof checkpoint !== 'object' || Array.isArray(checkpoint)) {
+        throw new TypeError(`${caseItem.id}: state_checkpoints[${index}] must be an object`)
+      }
+      if (
+        !Number.isInteger(checkpoint.turn_index)
+        || checkpoint.turn_index < 0
+        || checkpoint.turn_index >= caseItem.turns.length
+      ) {
+        throw new TypeError(`${caseItem.id}: state_checkpoints[${index}].turn_index is invalid`)
+      }
+      if (!checkpoint.expected_state || typeof checkpoint.expected_state !== 'object' || Array.isArray(checkpoint.expected_state)) {
+        throw new TypeError(`${caseItem.id}: state_checkpoints[${index}].expected_state must be an object`)
+      }
     }
   }
   if (caseItem.expected_response !== undefined) {

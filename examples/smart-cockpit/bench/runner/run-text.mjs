@@ -37,6 +37,7 @@ async function runCase(caseItem, {
   const messages = [{ role: 'system', content: harness.cockpitBenchmarkPrompt({ domains }) }]
   const calls = []
   const assistantMessages = []
+  const stateSnapshots = []
 
   try {
     for (const [turnIndex, turn] of caseItem.turns.entries()) {
@@ -76,6 +77,10 @@ async function runCase(caseItem, {
           assistantMessages.push('模型在本轮超过最大工具调用轮数')
         }
       }
+      stateSnapshots.push({
+        turn_index: turnIndex,
+        state: service.snapshot(cockpitId),
+      })
     }
   } catch (error) {
     assistantMessages.push(`BENCHMARK_ERROR: ${error.message || String(error)}`)
@@ -83,6 +88,7 @@ async function runCase(caseItem, {
       id: caseItem.id,
       calls,
       assistant_messages: assistantMessages,
+      state_snapshots: stateSnapshots,
       error: {
         message: error.message || String(error),
       },
@@ -94,6 +100,7 @@ async function runCase(caseItem, {
     id: caseItem.id,
     calls,
     assistant_messages: assistantMessages,
+    state_snapshots: stateSnapshots,
     final_state: service.snapshot(cockpitId),
   }
 }
@@ -106,15 +113,17 @@ async function main() {
   const limit = Number(args.get('limit') || 0)
   const caseId = args.get('case-id')
   const requestTimeoutMs = harness.numberArg(args, 'request-timeout-ms', DEFAULT_REQUEST_TIMEOUT_MS)
-  const domains = args.get('domain')
+  const requestedDomains = args.get('domain')
     ? String(args.get('domain')).split(',').map(item => item.trim()).filter(Boolean)
     : harness.BENCHMARK_DOMAINS
+  const suite = String(args.get('suite') || 'short')
+  const domains = suite === 'short' ? requestedDomains : harness.BENCHMARK_DOMAINS
   const outPath = args.get('out')
     || 'examples/smart-cockpit/bench/reports/cockpit-text-latest.json'
   const model = new DashScopeCockpitModel({
     model: args.get('model') || process.env.DASHSCOPE_MODEL,
   })
-  let cases = routeCasesExpectedPaths(loadBenchmarkCases({ domains }), COCKPIT_SURFACE_ROUTING)
+  let cases = routeCasesExpectedPaths(loadBenchmarkCases({ domains: requestedDomains, suite }), COCKPIT_SURFACE_ROUTING)
   if (caseId) cases = cases.filter(item => item.id === caseId)
   if (limit > 0) cases = cases.slice(0, limit)
   if (!cases.length) throw new Error('No benchmark cases selected')
@@ -133,6 +142,7 @@ async function main() {
   const report = {
     suite: 'smart-cockpit/cockpit',
     mode: 'text',
+    benchmark_suite: suite,
     domains,
     model: model.model,
     request_timeout_ms: requestTimeoutMs,

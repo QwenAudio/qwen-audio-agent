@@ -249,7 +249,7 @@ Gateway 采用扁平的 OpenAI Realtime 风格信封：
 | `response.output_audio_transcript.delta` / `.done` | G→C | 助手转写 |
 | `response.done` | G→C | 回复最终状态；取消使用 `response.status = "cancelled"` |
 
-Gateway 扩展包括 `turn.started`、`transcript.discard`、`playback.clear` 和播放回执。`input_file` 是 Gateway content part 扩展，不属于 OpenAI Realtime 标准字段。
+Gateway 扩展包括 `turn.started`、`transcript.discard`、`tool.call`、`playback.clear` 和播放回执。`tool.call` 是用于展示 Realtime 工具调用的有界生命周期事件，不是执行请求，不参与回放，客户端不得据此推断 Gateway 或后台的私有状态。`input_file` 是 Gateway content part 扩展，不属于 OpenAI Realtime 标准字段。
 
 用户输入代表明确的用户意图，会开启或替代用户轮次。Client 语义事件不能伪装成用户输入。
 

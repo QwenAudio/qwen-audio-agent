@@ -37,6 +37,19 @@ function normalizeDocuments(value) {
   return documents
 }
 
+function normalizeQueryResult(value) {
+  if (Array.isArray(value)) {
+    return { memories: normalizeDocuments(value), context: '' }
+  }
+  if (!value || typeof value !== 'object') {
+    throw new TypeError('MemoryProvider query() must return an object or documents array')
+  }
+  return {
+    memories: normalizeDocuments(value.memories || value.documents || []),
+    context: clean(value.context, 8_000),
+  }
+}
+
 export class FrontendMemoryRuntime {
   constructor({ provider } = {}) {
     this.provider = assertMemoryProvider(provider)
@@ -48,6 +61,14 @@ export class FrontendMemoryRuntime {
       configured: true,
       provider: describeMemoryProvider(this.provider),
     }
+  }
+
+  capabilities() {
+    return describeMemoryProvider(this.provider).capabilities
+  }
+
+  ownsSessionObservation() {
+    return this.capabilities().sessionObservation
   }
 
   list(ownerId, options = {}) {
@@ -68,10 +89,36 @@ export class FrontendMemoryRuntime {
       )
     }
     return {
-      ...result,
       changed: Math.max(0, Math.trunc(Number(result.changed) || 0)),
       documents: normalizeDocuments(result.documents),
     }
+  }
+
+  async query(ownerId, query, options = {}, context = {}) {
+    const text = clean(query, 2_000)
+    if (!text || typeof this.provider.query !== 'function') {
+      return {
+        memories: this.list(ownerId, options),
+        context: '',
+      }
+    }
+    return normalizeQueryResult(
+      await this.provider.query(ownerId, text, options, context),
+    )
+  }
+
+  async observe(ownerId, exchange = {}, context = {}) {
+    if (!this.ownsSessionObservation()) return { observed: false }
+    const result = await this.provider.observe(ownerId, exchange, context)
+    return result && typeof result === 'object'
+      ? { ...result, observed: result.observed !== false }
+      : { observed: true }
+  }
+
+  async flush(ownerId, context = {}) {
+    if (typeof this.provider.flush !== 'function') return { flushed: false }
+    await this.provider.flush(ownerId, context)
+    return { flushed: true }
   }
 
   health() {

@@ -174,6 +174,7 @@ chat naturally and get real work done.
 | --- | --- | --- | --- |
 | Desktop | Voice chat, progress follow-up, tools, and background tasks. | [Docs][desktop-docs] | Available |
 | Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][smart-cockpit-example] | Available |
+| VoiceMem | Replace the complete personal-memory subsystem with semantic memory. | [Example][voicemem-example] | Available |
 | Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
 | Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |
 | Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Exploratory |
@@ -190,8 +191,13 @@ npm run example:smart-cockpit          # service + agent + gateway + client
 
 See [examples/smart-cockpit](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/smart-cockpit) for details.
 
+The [VoiceMem example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem-memory)
+demonstrates how to replace user preferences, long-term facts, automatic learning, and semantic
+recall through the public `MemoryProvider` boundary.
+
 [desktop-docs]: docs/desktop/overview.md
 [smart-cockpit-example]: examples/smart-cockpit
+[voicemem-example]: examples/voicemem-memory
 
 ## Community
 

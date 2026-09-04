@@ -1647,6 +1647,31 @@ test('reads both natural Markdown memory documents', async () => {
   assert.equal(kit.outputs.at(-1)[1].documents[0].revision, 'rev-user')
 })
 
+test('routes a semantic memory query through the provider runtime', async () => {
+  let received
+  const kit = harness({
+    memoryStore: {
+      query: async (...args) => {
+        received = args
+        return { memories: [], context: '用户去年开始学习摄影。' }
+      },
+    },
+  })
+  await kit.handler.handle({
+    call_id: 'memory-query',
+    name: 'memory',
+    arguments: JSON.stringify({
+      action: 'read',
+      document: 'memory',
+      query: '我什么时候开始学摄影？',
+    }),
+  })
+  assert.equal(received[0], 'owner')
+  assert.equal(received[1], '我什么时候开始学摄影？')
+  assert.deepEqual(received[2], { scope: 'memory', limit: 8 })
+  assert.equal(kit.outputs.at(-1)[1].context, '用户去年开始学习摄影。')
+})
+
 test('replaces one exact Markdown fragment', async () => {
   let call
   let changes = 0

@@ -202,6 +202,7 @@ export function attachRealtimeGateway(server, {
   const activeClientLeases = new ActiveClientLeases()
   const voiceConnections = new Map()
   const replayBuffers = new Map()
+  const pendingMemoryOperations = new Set()
   const frontendToolSourcesReady = Promise.all(
     frontendToolSources.map(source => source.initialize()),
   ).catch(error => {
@@ -1740,6 +1741,30 @@ export function attachRealtimeGateway(server, {
           error: String(error?.message || error),
         })
       }
+      // A provider-managed memory engine receives the complete bounded
+      // exchange instead of the built-in Markdown extractor. This is the only
+      // automatic-learning hook exposed by the Gateway; vendor-specific
+      // indexing, consolidation and storage stay inside the provider.
+      if (memoryService?.ownsSessionObservation?.()) {
+        const exchange = {
+          messages: conversationSync.frontendContext({ ownerId, sessionId }),
+        }
+        const observing = Promise.resolve(memoryService.observe(ownerId, exchange, {
+          source: 'session-close',
+          sessionId,
+        })).then(
+          () => memoryService.flush(ownerId, {
+            source: 'session-close',
+            sessionId,
+          }),
+        ).catch(error => {
+          connectionLogger.warn('memory.provider_observe_hook_failed', {
+            error: String(error?.message || error),
+          })
+        })
+        pendingMemoryOperations.add(observing)
+        observing.finally(() => pendingMemoryOperations.delete(observing))
+      }
       // 画像观察 → 晋升扫描。观察器要调模型所以是异步的，晋升必须排在它之后：
       // 否则本场刚攒到的确认要等下一场会话结束才被扫到，白等一轮。观察器未启用
       // 或未达门槛时走同步分支，保持原有行为。晋升本身是纯本地计算、无模型调用，
@@ -1823,12 +1848,13 @@ export function attachRealtimeGateway(server, {
       }
       return disconnected
     },
-    close() {
+    async close() {
       clearInterval(heartbeat)
       for (const client of wss.clients) client.close()
-      return new Promise(resolveClose => {
+      await new Promise(resolveClose => {
         wss.close(() => resolveClose())
       })
+      await Promise.allSettled([...pendingMemoryOperations])
     },
     status() {
       const byType = { desktop: 0, cli: 0, web: 0 }

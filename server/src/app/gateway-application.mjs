@@ -312,9 +312,10 @@ const notesStore = new FrontendNotesStore({
   ownerTtlMs: config.frontendMemoryOwnerTtlMs,
   onWarning: warning => logger.warn('notes.persistence_warning', { warning }),
 })
-// Invisible memory (issue #92): after a voice session closes, a lightweight
-// text model reconciles explicit user directives and durable facts through the
-// same context service used by the realtime memory tool.
+// Invisible memory (issue #92): the default Markdown provider uses a
+// lightweight text model after a voice session closes. Providers advertising
+// sessionObservation own that lifecycle themselves, so two independent
+// learners can never write conflicting memories from the same conversation.
 // Without an API key createExtractorLlmCall returns null
 // and the extractor stays silently disabled; explicit memories are
 // unaffected. ASSISTANT.md is never exposed as a writable document.
@@ -331,13 +332,19 @@ const memoryLlmCall = config.memoryAutoEnabled
       model: config.memoryModel,
     })
   : null
-const memoryExtractor = new MemoryExtractor({
-  memoryService: frontendMemoryRuntime,
-  conversationSync,
-  audit: memoryAudit,
-  llmCall: memoryLlmCall,
-  logger,
-})
+const providerOwnsSessionObservation = (
+  typeof frontendMemoryRuntime?.ownsSessionObservation === 'function'
+  && frontendMemoryRuntime.ownsSessionObservation() === true
+)
+const memoryExtractor = providerOwnsSessionObservation
+  ? null
+  : new MemoryExtractor({
+      memoryService: frontendMemoryRuntime,
+      conversationSync,
+      audit: memoryAudit,
+      llmCall: memoryLlmCall,
+      logger,
+    })
 // 偏好自更新：观察器从刚结束的会话里推断画像信号 → 槽位池积累跨会话确认 →
 // 攒够后由晋升器写入 USER.md 的观察推断段。槽位池必须落盘，否则重启即清零、
 // 跨会话确认永远攒不满。观察器需要模型，没有 API key 时它为 null，
@@ -345,7 +352,7 @@ const memoryExtractor = new MemoryExtractor({
 let preferenceCandidates = null
 let preferencePromoter = null
 let profileObserver = null
-if (config.preferenceLearningEnabled) {
+if (config.preferenceLearningEnabled && !providerOwnsSessionObservation) {
   preferenceCandidates = new PreferenceCandidatePool({
     store: new PreferenceCandidateStore({
       filePath: config.preferenceCandidatePath,

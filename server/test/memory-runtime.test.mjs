@@ -61,7 +61,36 @@ test('normalizes provider health and rejects malformed writes', async () => {
       protocolVersion: 1,
       key: 'fixture',
       label: 'Fixture Memory',
+      capabilities: {
+        semanticQuery: false,
+        sessionObservation: false,
+      },
     },
   })
   await assert.rejects(() => runtime.apply('owner', []), /changed and documents/)
+})
+
+test('routes semantic query and provider-owned session observation', async () => {
+  const calls = []
+  const runtime = new FrontendMemoryRuntime({
+    provider: provider({
+      describe: () => ({
+        protocolVersion: 2,
+        key: 'semantic',
+        label: 'Semantic Memory',
+        capabilities: { semanticQuery: true, sessionObservation: true },
+      }),
+      query: async (...args) => {
+        calls.push(['query', ...args])
+        return { context: 'related memory', memories: [] }
+      },
+      observe: async (...args) => { calls.push(['observe', ...args]) },
+      flush: async (...args) => { calls.push(['flush', ...args]) },
+    }),
+  })
+  assert.equal(runtime.ownsSessionObservation(), true)
+  assert.equal((await runtime.query('owner', 'tea')).context, 'related memory')
+  assert.equal((await runtime.observe('owner', { messages: [] })).observed, true)
+  assert.deepEqual(await runtime.flush('owner'), { flushed: true })
+  assert.deepEqual(calls.map(call => call[0]), ['query', 'observe', 'flush'])
 })

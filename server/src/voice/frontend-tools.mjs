@@ -177,7 +177,7 @@ const memoryTool = {
   type: 'function',
   function: {
     name: MEMORY_TOOL_NAME,
-    description: '管理当前用户的长期个性化和记忆。用户要求记住、修改或遗忘长期信息时必须调用。直接设定或纠正称呼、关系、助手名称、表达方式或默认做法时，默认写入 user；明确限定“这次”、“今天”或“暂时”时不保存。长期事实与决定写入 memory。每次调用执行一个 read、append 或 replace；同一句话有多项持久修改时逐项调用。不要保存后台工作记录、密码、密钥、验证码或令牌；工具成功前不得声称已经记住。',
+    description: '管理当前用户的长期个性化和记忆。用户要求记住、修改或遗忘长期信息时必须调用。直接设定或纠正称呼、关系、助手名称、表达方式或默认做法时，默认写入 user；明确限定“这次”、“今天”或“暂时”时不保存。长期事实与决定写入 memory。read 可携带 query 从支持语义检索的记忆 Provider 中查找相关内容。每次调用执行一个 read、append 或 replace；同一句话有多项持久修改时逐项调用。不要保存后台工作记录、密码、密钥、验证码或令牌；工具成功前不得声称已经记住。',
     parameters: {
       type: 'object',
       properties: {
@@ -194,6 +194,7 @@ const memoryTool = {
         old_text: { type: 'string', description: 'replace 时使用：在已提供或 read 返回的相应上下文中恰好出现一次的原文。' },
         new_text: { type: 'string', description: 'replace 时使用：替换后的内容；空字符串表示删除。' },
         content: { type: 'string', description: 'append 时追加的简洁、可读 Markdown 内容。' },
+        query: { type: 'string', description: 'read 时可选：要从长期记忆中查找的自然语言问题。仅在当前注入的记忆不足时使用。' },
       },
       required: ['action'],
       additionalProperties: false,

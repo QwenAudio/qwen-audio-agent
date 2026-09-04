@@ -9,12 +9,12 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@agentclientprotocol/sdk": "1.3.0",
+    "@agentclientprotocol/sdk": "1.4.0",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@qwen-code/open-computer-use": "^0.2.3",
     "express": "^4.22.2",
-    "ws": "^8.21.1",
+    "ws": "^8.21.3",
     "yaml": "2.9.0",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   }
 }

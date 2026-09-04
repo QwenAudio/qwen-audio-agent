@@ -53,6 +53,9 @@ Gateway 访问认证与 GCP 明确分层。访问凭据在 `session.hello` 之�
 一次性配对码。远程 Client 通过 `POST /api/access/pair` 换取可撤销设备令牌。
 设备令牌只以 SHA-256 摘要持久化；本机管理接口可列出和撤销已配对设备。
 
+端点发布、配对码创建与设备管理等 Host 管理请求不属于交互式 GCP Session。
+它们独立完成认证，也不会取得或替换活动 Client 租约。
+
 ## 3. 连接与能力协商
 
 Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.hello`。

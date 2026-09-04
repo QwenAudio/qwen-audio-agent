@@ -64,6 +64,11 @@ It creates a short-lived, one-time ticket. A remote Client redeems it with
 are persisted only as SHA-256 hashes. Local management endpoints list and
 revoke paired devices.
 
+Host-management requests, including endpoint publication, pairing-ticket
+creation, and device administration, are outside the interactive GCP Session.
+They authenticate independently and never claim or replace the active Client
+lease.
+
 ## 3. Connection and negotiation
 
 The Client connects to `ws://<gateway>/api/realtime`. The first message is `session.hello`.

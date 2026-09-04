@@ -113,6 +113,7 @@ test('redeems one-time pairing tickets into persisted, revocable device tokens',
     }))
     assert.equal(pairedIdentity.ownerId, 'user_personal')
     assert.equal(pairedIdentity.credentialId, paired.credentialId)
+    assert.equal(pairedIdentity.clientType, 'mobile')
 
     const restored = new GatewayDeviceRegistry({
       filePath: resolve(directory, 'devices.json'),
@@ -126,4 +127,22 @@ test('redeems one-time pairing tickets into persisted, revocable device tokens',
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
+})
+
+test('accepts a remote browser credential in the WebSocket subprotocol header', () => {
+  const access = runtime()
+  const identity = access.resolveUpgrade(request({
+    authorization: undefined,
+    host: 'gateway.example.test',
+  }))
+  assert.equal(identity, null)
+  const authenticated = access.resolveUpgrade({
+    ...request(),
+    headers: {
+      ...request().headers,
+      'sec-websocket-protocol': `qwaudio.gcp.v6, qwaudio.bearer.${ACCESS_TOKEN}`,
+    },
+  })
+  assert.equal(authenticated.ownerId, 'user_personal')
+  assert.equal(authenticated.access, 'remote')
 })

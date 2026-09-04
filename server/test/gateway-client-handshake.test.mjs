@@ -10,6 +10,10 @@ import {
   createGatewaySessionHello,
 } from '../../shared/gateway-client-protocol.mjs'
 import {
+  GATEWAY_WEBSOCKET_PROTOCOL,
+  gatewayWebSocketProtocols,
+} from '../../shared/gateway-websocket-auth.mjs'
+import {
   GatewayAccessManager,
   parseGatewayAccessKeys,
 } from '../src/access/gateway-access.mjs'
@@ -45,12 +49,12 @@ function gatewayHarness(overrides = {}) {
   return { server, gateway }
 }
 
-async function connect(server, firstMessage, { headers } = {}) {
+async function connect(server, firstMessage, { headers, protocols } = {}) {
   const { port } = server.address()
-  const socket = new WebSocket(
-    `ws://127.0.0.1:${port}/api/realtime?sessionId=protocol-test`,
-    { headers },
-  )
+  const url = `ws://127.0.0.1:${port}/api/realtime?sessionId=protocol-test`
+  const socket = protocols?.length
+    ? new WebSocket(url, protocols, { headers })
+    : new WebSocket(url, { headers })
   const received = []
   socket.on('message', raw => received.push(JSON.parse(raw.toString())))
   await new Promise((resolve, reject) => {
@@ -703,12 +707,11 @@ test('requires access authentication before a remote WebSocket can enter GCP', a
     clientInstanceId: 'remote-phone',
     capabilities: [GatewayClientCapability.INPUT_TEXT],
   }), {
-    headers: {
-      Host: 'gateway.example.test',
-      Authorization: `Bearer ${REMOTE_ACCESS_TOKEN}`,
-    },
+    headers: { Host: 'gateway.example.test' },
+    protocols: gatewayWebSocketProtocols(REMOTE_ACCESS_TOKEN),
   })
   await waitFor(accepted.received, event => event.type === 'session.ready')
   assert.equal(accepted.socket.readyState, WebSocket.OPEN)
+  assert.equal(accepted.socket.protocol, GATEWAY_WEBSOCKET_PROTOCOL)
   accepted.socket.close()
 })

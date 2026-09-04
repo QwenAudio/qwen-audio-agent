@@ -6,6 +6,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto'
 import { VersionedJsonStore } from '../core/versioned-json-store.mjs'
+import { gatewayWebSocketBearer } from '../../../shared/gateway-websocket-auth.mjs'
 
 const ACCESS_COOKIE = 'qwen_audio_agent_access'
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000
@@ -280,11 +281,13 @@ export class GatewayAccessManager {
       const identity = this.identityManager.resolveUpgrade(req)
       return identity ? { ...identity, access: 'local' } : null
     }
-    return this.resolveRemote(req)
+    return this.resolveRemote(req, {
+      webSocketBearer: gatewayWebSocketBearer(req.headers['sec-websocket-protocol']),
+    })
   }
 
-  resolveRemote(req) {
-    const bearer = bearerToken(req.headers.authorization)
+  resolveRemote(req, { webSocketBearer = '' } = {}) {
+    const bearer = bearerToken(req.headers.authorization) || webSocketBearer
     if (bearer) {
       const credential = this.findCredential(bearer)
       if (!credential) return null
@@ -292,6 +295,7 @@ export class GatewayAccessManager {
         ownerId: credential.ownerId,
         access: 'remote',
         credentialId: credential.tokenId || credential.id,
+        clientType: credential.type || '',
       }
     }
     return this.resolveCookie(req.headers.cookie)

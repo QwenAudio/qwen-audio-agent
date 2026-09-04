@@ -77,3 +77,20 @@ test('allows secure same-origin requests only for authenticated or pairing paths
     },
   }, { allowSecureSameOrigin: true }), false)
 })
+
+test('allows the fixed mobile app origin only for an authenticated mobile device', () => {
+  const req = {
+    headers: {
+      host: 'gateway.example.test',
+      origin: 'https://qwaudio.local',
+    },
+  }
+  assert.equal(isAllowedOrigin(req, {
+    authenticatedRemote: true,
+    trustedNativeClient: true,
+  }), true)
+  assert.equal(isAllowedOrigin(req, {
+    authenticatedRemote: true,
+    trustedNativeClient: false,
+  }), false)
+})

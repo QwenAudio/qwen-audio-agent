@@ -1,4 +1,5 @@
 import { WebSocket, WebSocketServer } from 'ws'
+import { selectGatewayWebSocketProtocol } from '../../../shared/gateway-websocket-auth.mjs'
 import { randomUUID } from 'node:crypto'
 import {
   GatewayClientEvent,
@@ -179,7 +180,11 @@ export function attachRealtimeGateway(server, {
   clientCommandRuntime = null,
   clientEventRouter = null,
 }) {
-  const wss = new WebSocketServer({ noServer: true, maxPayload: 20 * 1024 * 1024 })
+  const wss = new WebSocketServer({
+    noServer: true,
+    maxPayload: 20 * 1024 * 1024,
+    handleProtocols: selectGatewayWebSocketProtocol,
+  })
   const supportedClientCapabilities = GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES
     .filter(capability => {
       if (capability === GatewayClientCapability.CLIENT_EVENTS) {
@@ -240,6 +245,7 @@ export function attachRealtimeGateway(server, {
     }
     if (!isAllowedOrigin(request, {
       authenticatedRemote: identity.access === 'remote',
+      trustedNativeClient: identity.clientType === 'mobile',
     })) {
       rejectUpgrade(socket, '403 Forbidden', 'origin not allowed')
       return

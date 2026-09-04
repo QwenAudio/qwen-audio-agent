@@ -1,0 +1,36 @@
+{
+  "_note": "航空域的前台工具白名单。与零售那份的关系：结构完全一样，工具集不同 —— 航空客服不该看到 list_orders / check_variant，零售客服不该看到 list_reservations。这两份都是 console 配置台从 service/tools/*/manifest.json 推出来的（判据见 console/surfaces.mjs），描述里的选用规则是手写的：那部分决定模型什么时候调它。",
+  "version": 1,
+  "servers": {
+    "customer-service": {
+      "enabled": true,
+      "url": "${CS_FRONTEND_MCP_URL}",
+      "tools": {
+        "verify_identity": {
+          "enabled": true,
+          "description": "核验客户身份。客户报出会员号，或者姓名加证件号后四位时调用。这是办理任何业务的前提，没核验通过之前不要查预订也不要谈具体行程。客户主动报出的订单号不作为核验依据。一次只问一项，不要同时索要会员号和证件信息。"
+        },
+        "identity_status": {
+          "enabled": true,
+          "description": "查询当前通话的身份核验状态。不确定是否已核验时先查这个，不要凭印象判断，也不要重复要求客户提供已经核验过的信息。"
+        },
+        "list_reservations": {
+          "enabled": true,
+          "description": "列出已核验客户名下的预订。客户说不清订单号、或者要求「查一下我的机票」时调用。返回条数多时只念前三条并告知总数。"
+        },
+        "get_reservation": {
+          "enabled": true,
+          "description": "查询单笔预订的航段、舱位、乘客、行李与金额。客户报出订单号，或者从列表里选定某一笔之后调用。念订单号和金额时逐字念一遍让客户确认。返回里如果写着「已有航段执飞完毕」，那么退票、改签、改舱位三件事都办不了 —— 不要先答应再发现。"
+        },
+        "get_flight_status": {
+          "enabled": true,
+          "description": "查询某个航班当天的起降时间、当前状态与延误时长。客户问「航班晚不晚」「几点起飞」时调用。这一步只查状态，不判定补偿 —— 补偿金额要按细则的延误档位表来，不要自己按延误时长估算。"
+        },
+        "search_flights": {
+          "enabled": true,
+          "description": "搜同一航线上的其他航班，供客户选改签目标。先用 get_reservation 确认这笔能改签再搜 —— 特价经济舱不可改签，搜了也用不上。出发地、目的地填原航段的那两个，舱位填原舱位（改签不改舱位）。搜到多班时念前三班让客户选，客户选定之后再去办改签。"
+        }
+      }
+    }
+  }
+}

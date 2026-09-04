@@ -1,0 +1,176 @@
+{
+  "_note": "由 console 配置台从 policy.md 生成。executor 读它做判定 —— 改这里会真的改变行为。",
+  "version": 1,
+  "domain": "airline",
+
+  "preconditions": {
+    "get_reservation": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能查订单。请向客户索要会员号，或者姓名加证件号后四位。",
+      "policyLine": 13
+    },
+    "list_reservations": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能查订单。请向客户索要会员号，或者姓名加证件号后四位。",
+      "policyLine": 13
+    },
+    "_flight_status_note": "航班状态本身是公开信息，但这个工具只在通话里用 —— 未核验就查等于让来电者确认「某人某天有没有这班」，那是间接的订单存在性泄露。细则第十条。",
+    "get_flight_status": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份。核验之后可以帮客户查具体航班的状态。",
+      "policyLine": 13
+    },
+    "_search_note": "搜航班本身不涉及客户数据，但它只在改签流程里用 —— 而改签要先确认能改，那一步已经要核验。放开它没有价值，只会让模型在核验前就开始搜。",
+    "search_flights": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份，确认这笔预订可以改签之后再搜候选航班。",
+      "policyLine": 13
+    },
+    "update_flights": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能办理改签。",
+      "policyLine": 13
+    },
+    "update_cabin": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能办理升降舱。",
+      "policyLine": 13
+    },
+    "update_baggages": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能办理行李变更。",
+      "policyLine": 13
+    },
+    "cancel_reservation": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能办理退票。",
+      "policyLine": 13
+    },
+    "send_certificate": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能发放补偿。",
+      "policyLine": 13
+    }
+  },
+
+  "decisions": {
+    "_changeable_note": "改签资格。特价经济舱不可改签是硬规则；已飞航段也不能改。",
+    "changeable": {
+      "hitPolicy": "first",
+      "inputs": ["cabin", "hasFlownSegment"],
+      "policyLine": 25,
+      "rules": [
+        { "when": { "hasFlownSegment": "true" }, "then": "refuse", "reason": "订单里已经有航段飞过了，不能改签" },
+        { "when": { "cabin": "basic_economy" }, "then": "refuse", "reason": "特价经济舱不可改签，可以询问客户是否愿意先升舱" },
+        { "when": { "cabin": "economy" }, "then": "allow" },
+        { "when": { "cabin": "business" }, "then": "allow" },
+        { "when": {}, "then": "refuse", "reason": "细则里没有规定这个舱位的改签规则" }
+      ]
+    },
+
+    "_change_fee_note": "改签手续费按舱位。basic_economy 走不到这里（前一张表已拦），保留一行是为了表自身完整。",
+    "change_fee": {
+      "hitPolicy": "unique",
+      "inputs": ["cabin"],
+      "policyLine": 30,
+      "rules": [
+        { "when": { "cabin": "basic_economy" }, "then": -1, "reason": "特价经济舱不可改签" },
+        { "when": { "cabin": "economy" }, "then": 200 },
+        { "when": { "cabin": "business" }, "then": 0 },
+        { "when": {}, "then": -1, "reason": "细则里没有规定这个舱位的改签手续费" }
+      ]
+    },
+
+    "_cabin_changeable_note": "改舱位比改签宽松：包括特价经济舱在内都可以改，只有已飞航段例外。",
+    "cabin_changeable": {
+      "hitPolicy": "first",
+      "inputs": ["hasFlownSegment"],
+      "policyLine": 38,
+      "rules": [
+        { "when": { "hasFlownSegment": "true" }, "then": "refuse", "reason": "订单里已经有航段飞过了，不能改舱位" },
+        { "when": {}, "then": "allow" }
+      ]
+    },
+
+    "_baggage_note": "免费托运行李额：会员等级 × 舱位 的 3×3 交叉表。这是 DMN 决策表相对扁平配置的价值所在 —— 两个输入列天然支持交叉，不需要嵌套结构。",
+    "free_baggage_allowance": {
+      "hitPolicy": "unique",
+      "inputs": ["memberTier", "cabin"],
+      "policyLine": 49,
+      "rules": [
+        { "when": { "memberTier": "regular", "cabin": "basic_economy" }, "then": 0 },
+        { "when": { "memberTier": "regular", "cabin": "economy" }, "then": 1 },
+        { "when": { "memberTier": "regular", "cabin": "business" }, "then": 2 },
+        { "when": { "memberTier": "silver", "cabin": "basic_economy" }, "then": 1 },
+        { "when": { "memberTier": "silver", "cabin": "economy" }, "then": 2 },
+        { "when": { "memberTier": "silver", "cabin": "business" }, "then": 3 },
+        { "when": { "memberTier": "gold", "cabin": "basic_economy" }, "then": 2 },
+        { "when": { "memberTier": "gold", "cabin": "economy" }, "then": 3 },
+        { "when": { "memberTier": "gold", "cabin": "business" }, "then": 4 },
+        { "when": {}, "then": 0, "reason": "细则里没有规定这个会员等级与舱位的组合，按 0 件处理并提示人工确认" }
+      ]
+    },
+
+    "_refundable_note": "退票资格。24 小时内无条件；超过则按航班状态、保险、舱位判定。顺序很重要：航司取消优先于一切。",
+    "refundable": {
+      "hitPolicy": "first",
+      "inputs": ["hoursSinceBooking", "flightStatus", "hasInsurance", "cabin", "hasFlownSegment"],
+      "policyLine": 61,
+      "rules": [
+        { "when": { "hasFlownSegment": "true" }, "then": "refuse", "reason": "订单里已经有航段飞过了，不能退票" },
+        { "when": { "flightStatus": "cancelled" }, "then": "full_refund", "reason": "航班被航司取消，全额退款" },
+        { "when": { "hoursSinceBooking": "<= 24" }, "then": "full_refund", "reason": "出票 24 小时内，无条件全额退款" },
+        { "when": { "cabin": "business" }, "then": "full_refund", "reason": "公务舱可全额退款" },
+        { "when": { "hasInsurance": "true" }, "then": "full_refund", "reason": "购买了旅行保险，因健康或天气原因可全额退款" },
+        { "when": {}, "then": "refuse", "reason": "超过 24 小时的特价经济舱与经济舱，无保险时不可退款" }
+      ]
+    },
+
+    "_compensation_note": "延误补偿档位。用区间记法表达边界：2 至 4 小时是 ]2..4]，4 小时正好落在这一档。",
+    "delay_compensation": {
+      "hitPolicy": "first",
+      "inputs": ["delayHours"],
+      "policyLine": 80,
+      "rules": [
+        { "when": { "delayHours": "> 8" }, "then": 600 },
+        { "when": { "delayHours": "]4..8]" }, "then": 400 },
+        { "when": { "delayHours": "]2..4]" }, "then": 200 },
+        { "when": {}, "then": 0, "reason": "延误 2 小时以内没有补偿" }
+      ]
+    },
+
+    "_authority_note": "退款与补偿的权限上限。航空的上限是 3000 元，比零售高。",
+    "refund_authority": {
+      "hitPolicy": "first",
+      "inputs": ["amount"],
+      "policyLine": 104,
+      "rules": [
+        { "when": { "amount": "> 3000" }, "then": "escalate", "reason": "金额超过 3000 元上限" },
+        { "when": {}, "then": "allow" }
+      ]
+    }
+  },
+
+  "enums": {
+    "cabin": ["basic_economy", "economy", "business"],
+    "member_tier": ["regular", "silver", "gold"],
+    "_insurance_reason_note": "决策表的 refundable 只看『有没有买保险』，而细则第六条要求『因健康或天气原因』。差的这一半靠枚举补：表管情形，枚举管原因。两者都过才发令牌。",
+    "insurance_refund_reason": ["健康原因", "天气原因"]
+  },
+
+  "_thresholds_note": "单值阈值。executor 直接读，不走决策表。",
+  "thresholds": {
+    "extra_baggage_fee": 80,
+    "insurance_per_passenger": 60,
+    "free_cancel_hours": 24
+  }
+}

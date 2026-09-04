@@ -1,0 +1,115 @@
+{
+  "_note": "由 console 配置台从 policy.md 生成，管理员可在配置台里调整后重新导出。executor 在执行前读这份文件做判定 —— 改这里会真的改变行为。schema 见 service/decision-table.mjs。",
+  "version": 1,
+  "domain": "retail",
+
+  "_preconditions_note": "工具执行前必须已经成立的会话事实。没在这里声明的工具缺省不拦 —— 所以「漏声明」退化成「少一道保护」，而不是「功能不可用」。这是它能配置化的前提。",
+  "preconditions": {
+    "list_orders": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能查订单。请向客户索要注册邮箱，或者姓名加收货地址邮编。",
+      "policyLine": 14
+    },
+    "get_order": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能查订单。请向客户索要注册邮箱，或者姓名加收货地址邮编。",
+      "policyLine": 14
+    },
+    "cancel_order": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能办理这项业务。",
+      "policyLine": 14
+    },
+    "return_items": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能办理这项业务。",
+      "policyLine": 14
+    },
+    "modify_address": {
+      "requires": ["identity_verified"],
+      "onMissing": "refuse",
+      "message": "需要先核验客户身份才能办理这项业务。",
+      "policyLine": 14
+    }
+  },
+
+  "_decisions_note": "DMN 式决策表。兜底行必须存在：没有它，未覆盖的输入会返回 undefined，而调用方多半当成「没限制」放行。",
+  "decisions": {
+    "return_window": {
+      "hitPolicy": "first",
+      "inputs": ["category", "daysSinceDelivery"],
+      "policyLine": 18,
+      "rules": [
+        { "when": { "category": "apparel", "daysSinceDelivery": "<= 30" }, "then": "allow" },
+        { "when": { "category": "accessory", "daysSinceDelivery": "<= 30" }, "then": "allow" },
+        { "when": { "category": "digital", "daysSinceDelivery": "<= 7" }, "then": "allow" },
+        { "when": { "category": "appliance", "daysSinceDelivery": "<= 15" }, "then": "allow" },
+
+        { "when": { "category": "apparel" }, "then": "expired", "reason": "服饰鞋包类退货窗口 30 天" },
+        { "when": { "category": "accessory" }, "then": "expired", "reason": "配件类退货窗口 30 天" },
+        { "when": { "category": "digital" }, "then": "expired", "reason": "数码电子类退货窗口 7 天" },
+        { "when": { "category": "appliance" }, "then": "expired", "reason": "家用电器类退货窗口 15 天" },
+
+        {
+          "when": {},
+          "then": "policy_gap",
+          "reason": "细则里没有规定这一类商品的退货时限"
+        }
+      ]
+    },
+
+    "refund_authority": {
+      "hitPolicy": "first",
+      "inputs": ["amount"],
+      "policyLine": 63,
+      "rules": [
+        { "when": { "amount": "> 2000" }, "then": "escalate", "reason": "退款金额超过 2000 元上限" },
+        { "when": {}, "then": "allow" }
+      ]
+    },
+
+    "cancellable": {
+      "hitPolicy": "first",
+      "inputs": ["status"],
+      "policyLine": 70,
+      "rules": [
+        { "when": { "status": "pending" }, "then": "allow" },
+        { "when": { "status": "shipped" }, "then": "refuse", "reason": "已发货，可以引导客户签收后办退货，或者拒收" },
+        { "when": { "status": "delivered" }, "then": "refuse", "reason": "已签收，取消流程不适用" },
+        { "when": {}, "then": "refuse", "reason": "当前状态不允许取消" }
+      ]
+    },
+
+    "address_editable": {
+      "hitPolicy": "first",
+      "inputs": ["status"],
+      "policyLine": 76,
+      "rules": [
+        { "when": { "status": "pending" }, "then": "allow" },
+        { "when": { "status": "shipped" }, "then": "refuse", "reason": "已发货，可引导客户签收后自行处理，或者拒收后重新下单" },
+        { "when": {}, "then": "refuse", "reason": "只有未发货的订单可以修改地址" }
+      ]
+    },
+
+    "returnable_status": {
+      "hitPolicy": "first",
+      "inputs": ["status"],
+      "policyLine": 30,
+      "rules": [
+        { "when": { "status": "delivered" }, "then": "allow" },
+        { "when": { "status": "pending" }, "then": "refuse", "reason": "还没发货，退货流程不适用，应该走取消订单" },
+        { "when": { "status": "shipped" }, "then": "refuse", "reason": "已发货但还没签收，可以引导客户拒收，签收后才能办退货" },
+        { "when": {}, "then": "refuse", "reason": "当前状态不能退货" }
+      ]
+    }
+  },
+
+  "_enums_note": "枚举取值也从 policy 来。改这里等于改工具接受的参数范围。",
+  "enums": {
+    "cancel_reason": ["不需要了", "买错了"]
+  }
+}

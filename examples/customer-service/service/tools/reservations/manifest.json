@@ -1,0 +1,180 @@
+{
+  "_note": "航空域工具。参考了 EVA-Bench 的 airline tool schema（工具命名与参数设计）和 τ²-bench airline 的业务范围，但数据模型是我们自己的两层结构（reservation → segments），没有照搬 EVA 的 journey/segment 三层。",
+  "domain": "reservations",
+  "functions": [
+    {
+      "name": "list_reservations",
+      "label": "预订列表",
+      "enabled": true,
+      "description": "列出已核验客户名下的所有预订。客户说不清订单号、或者要求「查一下我的机票」时调用。返回条数多时只念前三条并告知总数。核验之前不要调用。",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_reservation",
+      "label": "预订详情",
+      "enabled": true,
+      "description": "查询单笔预订的航段、舱位、乘客、行李与金额。客户报出订单号，或者从列表里选定某一笔之后调用。念订单号和金额时逐字念一遍让客户确认。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": {
+            "type": "string",
+            "description": "预订编号，形如 CYR8801。客户可能念成「CYR 八八零一」，转成大写字母加数字。"
+          }
+        },
+        "required": ["reservationId"]
+      }
+    },
+    {
+      "name": "get_flight_status",
+      "label": "航班状态",
+      "enabled": true,
+      "description": "查询某个航班当天的起降时间、当前状态与延误时长。客户问「航班晚不晚」「几点起飞」时调用。这一步只查状态，不产生任何变更，也不判定补偿 —— 补偿要按细则的延误档位另行确认。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "flightNo": {
+            "type": "string",
+            "description": "航班号，形如 CY1201。"
+          },
+          "date": {
+            "type": "string",
+            "description": "航班日期，形如 2026-09-20。不填时按该航班号唯一的一班处理；同一航班号有多天时必须填。"
+          }
+        },
+        "required": ["flightNo"]
+      }
+    },
+    {
+      "name": "cancel_reservation",
+      "label": "退票",
+      "enabled": true,
+      "description": "为客户办理退票。会先返回一份预览，说明能退多少、多久到账，并附一枚批准令牌；客户明确同意之后带着令牌再调一次才真正执行。不要自己填令牌，也不要在拿到预览之后就告诉客户「已经办好了」。已经有航段执飞完毕的订单不能退票。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": {
+            "type": "string",
+            "description": "预订编号，形如 CYR8801。"
+          },
+          "reason": {
+            "type": "string",
+            "description": "退票原因。买了旅行保险且要走保险全额退款时，原因必须是「健康原因」或「天气原因」之一 —— 细则只认这两种。其他情形填客户的原话概要即可。"
+          },
+          "approval_token": {
+            "type": "string",
+            "description": "第一次调用不要填。客户看过预览并明确同意后，把预览里的令牌原样填进来再调一次。"
+          }
+        },
+        "required": ["reservationId"]
+      }
+    },
+    {
+      "name": "search_flights",
+      "label": "搜候选航班",
+      "enabled": true,
+      "description": "搜同一航线上的其他航班，供改签选择。必须先确认这笔预订可以改签再搜 —— 特价经济舱不可改签，搜了也用不上。只返回目标舱位还有余量的航班。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "出发机场三字码，如 PVG。改签不能改出发地，所以填原航段的出发地。"
+          },
+          "to": {
+            "type": "string",
+            "description": "到达机场三字码，如 PEK。改签不能改目的地。"
+          },
+          "cabin": {
+            "type": "string",
+            "description": "舱位代码：basic_economy / economy / business。填原预订的舱位 —— 改签不改舱位，改舱位是另一个工具。"
+          },
+          "date": {
+            "type": "string",
+            "description": "希望的出发日期，形如 2026-09-25。不填时返回该航线所有可订航班。"
+          }
+        },
+        "required": ["from", "to", "cabin"]
+      }
+    },
+    {
+      "name": "update_flights",
+      "label": "改签",
+      "enabled": true,
+      "description": "把预订改到同航线的另一个航班。两段式：先不带令牌调一次拿预览（含手续费与差价），客户明确同意后带令牌再调。特价经济舱不可改签；已有航段执飞完毕的不能改；不能改出发地、目的地和行程类型。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "description": "预订编号。" },
+          "flightNo": { "type": "string", "description": "新航班号，从 search_flights 的结果里选。" },
+          "date": { "type": "string", "description": "新航班日期，形如 2026-09-25。" },
+          "approval_token": { "type": "string", "description": "第一次不填。客户同意后把预览里的令牌原样填回来。" }
+        },
+        "required": ["reservationId", "flightNo"]
+      }
+    },
+    {
+      "name": "update_cabin",
+      "label": "升降舱",
+      "enabled": true,
+      "description": "改预订的舱位，不改航班。两段式。所有舱位都可以改，包括特价经济舱 —— 这一点和改签不同。已有航段执飞完毕的不能改。同一预订内所有航段的舱位必须一致，不能只改一段。票价更高补差价，更低退差价。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "description": "预订编号。" },
+          "cabin": { "type": "string", "description": "目标舱位：basic_economy / economy / business。" },
+          "approval_token": { "type": "string", "description": "第一次不填。客户同意后填回来。" }
+        },
+        "required": ["reservationId", "cabin"]
+      }
+    },
+    {
+      "name": "update_baggages",
+      "label": "加行李",
+      "enabled": true,
+      "description": "增加托运行李件数。两段式。行李只能增不能减 —— 客户要减时说明规则，不要调这个工具传更小的数。免费额度按会员等级与舱位查表，超出部分按件收费。不要给客户添加他没有要求的行李。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "description": "预订编号。" },
+          "totalBags": { "type": "integer", "description": "改完之后的【总件数】，不是新增件数。必须大于当前件数。" },
+          "approval_token": { "type": "string", "description": "第一次不填。客户同意后填回来。" }
+        },
+        "required": ["reservationId", "totalBags"]
+      }
+    },
+    {
+      "name": "send_certificate",
+      "label": "发延误补偿",
+      "enabled": true,
+      "description": "按航班延误时长发放旅行券。两段式。补偿档位按细则的延误时长表判定 —— 不要自己估算金额。同一预订只能发一次；延误不足两小时没有补偿。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reservationId": { "type": "string", "description": "预订编号。" },
+          "approval_token": { "type": "string", "description": "第一次不填。客户同意后填回来。" }
+        },
+        "required": ["reservationId"]
+      }
+    },
+    {
+      "name": "transfer_to_human",
+      "label": "转人工",
+      "enabled": true,
+      "description": "把当前通话转给人工客服。金额超出权限、身份核验两种方式都不通过、客户明确要求人工、或者细则未覆盖的情形时调用。转接前先向客户说明原因，不要承诺人工多久回复或一定能解决 —— 细则没写这些。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "一句话说清为什么自己办不了。这句会进审计记录，也会被人工客服看到。"
+          }
+        },
+        "required": ["reason"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,184 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { readFileSync } from 'node:fs'
+import { startCustomerServiceGateway } from '../server.mjs'
+import { frontendToolNames } from '../../service/tools/registry.mjs'
+
+// 网关装配的测试。它不起真实语音会话 —— 那要 API key 和三个进程。
+// 这里只断言【装配出来的能力面是对的】，因为出问题的恰恰是这一层：
+// 工具多了一个不该有的，功能上一切正常，只是模型会走错路。
+
+async function withGateway(probe) {
+  const runtime = startCustomerServiceGateway({ port: 0 })
+  await new Promise(resolve => runtime.server.once('listening', resolve))
+  const { port } = runtime.server.address()
+  try {
+    await probe(`http://127.0.0.1:${port}`, runtime)
+  } finally {
+    await runtime.close()
+  }
+}
+
+test('前台不暴露联网检索能力', async () => {
+  // 【这条是实测踩出来的】客户问退货政策，模型调了 web_search，
+  // 拿回来的是昆明本地宝、法律咨询、书法拍卖（「明远」被搜成「明星大侦探」），
+  // 然后建议客户自己去查细则 —— 而细则就在 domains/retail/policy.md 里。
+  //
+  // 客服的信息边界是封闭的：能说的话只该来自 policy 和数据库。
+  await withGateway(async (base) => {
+    const response = await fetch(`${base}/api/health`)
+    const health = await response.json()
+    const retrieval = health.frontendRetrieval || {}
+    const capabilities = retrieval.capabilities || []
+    assert.ok(
+      !capabilities.includes('web-search'),
+      `前台不该有 web-search，实际能力：${capabilities.join(', ')}`,
+    )
+    assert.ok(
+      !capabilities.includes('url-fetch'),
+      `前台不该有 url-fetch，实际能力：${capabilities.join(', ')}`,
+    )
+    assert.equal(retrieval.searchProvider, null, '不该装配任何搜索 provider')
+  })
+})
+
+test('前台不装配用户画像', async () => {
+  // 【客服的会话之间必须互不相识】每通电话是不同的客户。
+  //
+  // 框架默认建一个 Markdown provider 读写 .runtime/USER.md 与 MEMORY.md，
+  // 而那份内容会进模型上下文（realtime-gateway.mjs:371 的 memories）。
+  // 偏好晋升器默认是关的，所以不会自动写入 —— 但只要有人往 USER.md 里写一句，
+  // 它就出现在【每一通】电话的 prompt 里。那是串号。
+  //
+  // 座舱保留它是对的：一台车对一个车主。判据不是「要不要记忆」，
+  // 是「会话对面是不是同一个人」。
+  await withGateway(async (base) => {
+    const health = await (await fetch(`${base}/api/health`)).json()
+    const memory = health.frontendMemory || {}
+    assert.equal(memory.configured, false,
+      `不该装配画像，实际：${JSON.stringify(memory)}`)
+    assert.equal(memory.provider, null)
+  })
+})
+
+test('policy 检索源装上了，且是当前域的', async () => {
+  // 关掉联网后必须有正确来源，否则模型只剩反问客户或凭常识编两条路。
+  await withGateway(async (base) => {
+    const health = await (await fetch(`${base}/api/health`)).json()
+    const knowledge = health.frontendKnowledge || {}
+    assert.equal(knowledge.configured, true, 'policy 检索源没装上')
+    assert.equal(knowledge.provider?.key, 'customer-service-policy')
+    assert.match(knowledge.provider?.label, /客服细则/)
+  })
+})
+
+test('前台白名单只有五个只读或单步工具', async () => {
+  const mcp = JSON.parse(readFileSync(
+    new URL('../frontend-mcp.json', import.meta.url), 'utf8',
+  ))
+  const tools = Object.keys(mcp.servers['customer-service'].tools)
+  assert.deepEqual(tools.sort(), [
+    'check_variant', 'get_order', 'identity_status', 'list_orders', 'verify_identity',
+  ])
+  // 写库类工具一个都不能在前台 —— 它们要走 auth_required 等客户批准
+  for (const forbidden of ['cancel_order', 'return_items', 'modify_address']) {
+    assert.ok(!tools.includes(forbidden), `${forbidden} 不该在前台白名单里`)
+  }
+})
+
+test('每个前台工具的描述都写了选用规则', async () => {
+  // manifest 里的 title 太短（「订单列表」），撑不起「模型什么时候该调它」。
+  // 描述是模型选工具的唯一依据，所以这里要求它足够长。
+  const mcp = JSON.parse(readFileSync(
+    new URL('../frontend-mcp.json', import.meta.url), 'utf8',
+  ))
+  for (const [name, tool] of Object.entries(mcp.servers['customer-service'].tools)) {
+    assert.equal(tool.enabled, true, `${name} 没启用`)
+    assert.ok(
+      String(tool.description).length >= 40,
+      `${name} 的描述只有 ${tool.description.length} 字，写不清什么时候该调它`,
+    )
+  }
+})
+
+test('spawn_thinking 描述里写了「提交后不要承诺结果」', async () => {
+  const { CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION } = await import('../spawn-thinking-tool.mjs')
+  // 涉及金额的操作会挂起等客户批准。模型若在提交后就说「已经办好了」，
+  // 客户随后又被问一次要不要办，两句话对不上。
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /不要向客户承诺结果|不要说「已经帮您办好了」/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /取消订单|退货/)
+})
+
+test('前台 MCP 地址由环境变量注入，不写死端口', async () => {
+  const raw = readFileSync(new URL('../frontend-mcp.json', import.meta.url), 'utf8')
+  const mcp = JSON.parse(raw)
+  const url = mcp.servers['customer-service'].url
+  assert.match(url, /^\$\{[A-Z_]+\}$/, `url 应是占位符，实际是 ${url}`)
+  assert.ok(!raw.includes('127.0.0.1'), '配置文件里不该出现本机地址')
+})
+
+// ── 白名单必须与 service 的前台工具面逐个对齐（按域）──
+
+test('每个域的前台白名单与 service 实现完全一致', () => {
+  // 【这条守着一个实测发现的严重遗漏】
+  // 人设按域换了，但 frontend-mcp.json 只有一份而且是零售的，
+  // 于是航空会话里模型能用的前台工具只剩两个核验：
+  //   白名单有但航空未实现  list_orders / get_order / check_variant（调了报错）
+  //   航空实现了但未放行    list_reservations / get_reservation / get_flight_status
+  //
+  // 也就是说航空客服根本查不了预订和航班。而这个错不会报任何异常 ——
+  // 模型只是「没有那个工具」，然后开始编或者说办不了。
+  //
+  // 我当时宣称「两组域配置真的隔离」，只验了 policy 检索源和 service 的
+  // 工具面，没验网关这一层。一条断言就能永久拦住这类错。
+  for (const [domain, file] of [
+    ['retail', '../frontend-mcp.json'],
+    ['airline', '../frontend-mcp.airline.json'],
+  ]) {
+    const config = JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8'))
+    const whitelist = Object.keys(config.servers['customer-service'].tools)
+    const implemented = frontendToolNames(domain)
+    assert.deepEqual(
+      whitelist.slice().sort(),
+      implemented.slice().sort(),
+      `${domain} 的白名单与 service 前台面不一致：`
+      + `白名单多出 ${whitelist.filter(n => !implemented.includes(n)).join('/') || '无'}，`
+      + `少放行 ${implemented.filter(n => !whitelist.includes(n)).join('/') || '无'}`,
+    )
+  }
+})
+
+test('两个域的白名单确实不同 —— 否则上一条会因为共用一份而假绿', () => {
+  const read = file => Object.keys(
+    JSON.parse(readFileSync(new URL(file, import.meta.url), 'utf8'))
+      .servers['customer-service'].tools,
+  )
+  const retail = read('../frontend-mcp.json')
+  const airline = read('../frontend-mcp.airline.json')
+  assert.notDeepEqual(retail.slice().sort(), airline.slice().sort())
+  // 共用的只该是核验那两个
+  const shared = retail.filter(name => airline.includes(name))
+  assert.deepEqual(shared.slice().sort(), ['identity_status', 'verify_identity'])
+})
+
+test('航空白名单里的每个工具都带选用规则说明', () => {
+  // description 决定模型什么时候调它。空描述等于让它猜。
+  const config = JSON.parse(
+    readFileSync(new URL('../frontend-mcp.airline.json', import.meta.url), 'utf8'),
+  )
+  for (const [name, tool] of Object.entries(config.servers['customer-service'].tools)) {
+    assert.ok(tool.description && tool.description.length > 30,
+      `${name} 的描述太短，撑不起「什么时候调它」这个作用`)
+  }
+})
+
+test('航空网关会把白名单换成航空那份', async () => {
+  // 核实覆盖逻辑本身：CS_DOMAIN=airline 时环境变量指向 airline 那份。
+  // 【不实际启动网关】那要十秒且依赖外部服务；这里只验分支条件，
+  // 真实装载在浏览器实测里确认过（5 个工具、policy 检索源是云途航空）。
+  const source = readFileSync(new URL('../server.mjs', import.meta.url), 'utf8')
+  assert.match(source, /QWEN_AUDIO_FRONTEND_MCP_CONFIG/,
+    '没有按域覆盖前台 MCP 配置的代码')
+  assert.match(source, /frontend-mcp\.airline\.json/)
+  assert.match(source, /CS_DOMAIN === 'airline'/)
+})

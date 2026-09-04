@@ -73,7 +73,6 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `realtime.gateway-client-protocol-v6-client-actions` | 有关联关系的 `client.action.request/result` 执行 Client 自有环境操作；`enter_sleep` 按 capability 暴露，只有 Client 成功后才提交 sleeping | `test/gateway-client-protocol.test.mjs`、`server/test/client-action-port.test.mjs`、`server/test/gateway-client-handshake.test.mjs`、`desktop/test/enter-sleep-flow.test.mjs` |
 | `realtime.gateway-client-protocol-v6-reference-client-replay` | 共享参考 Client SDK 统一处理握手、命令关联、`updateOutputVoice()`、Client Action、重连与状态恢复；Task 推送以 `sequence` 有限回放，WebUI、Desktop、TUI 共用一致性测试 | `test/gateway-client-sdk.test.mjs`、`test/gateway-client-conformance.test.mjs`、`server/test/gateway-client-protocol-session.test.mjs`、`server/test/gateway-client-replay-buffer.test.mjs` |
 | `realtime.gateway-client-protocol-v6-owner-takeover` | 每个已认证用户只有一个活动 Client 租约；显式接管、同实例重连、心跳过期与单调递增的租约代次共同阻止旧 Socket 重新取得控制 | `server/test/active-client-leases.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
-| `realtime.gateway-remote-access-v1-models` | Provider 无关的端点描述、连接配置与邀请模型保证发布拓扑和凭据不会进入 GCP | `test/gateway-remote-access.test.mjs` |
 | `desktop.orb-shell` | 悬浮球形态的主进程契约随包发布：`bindOrbShell` 应答随包 preload 发出的全部通道 | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` 持有悬浮球窗口配方；其 `destroy()` 是宿主的同步销毁路径（渲染进程退出才能确定性释放麦克风） | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` 覆盖默认锚点、显示器夹取与拖放持久化 | `desktop/test/orb-placement.test.mjs` |

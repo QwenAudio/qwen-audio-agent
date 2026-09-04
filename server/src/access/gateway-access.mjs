@@ -201,6 +201,12 @@ export class GatewayDeviceRegistry {
       .map(record => this.publicRecord(record))
   }
 
+  credentialId(id, ownerId) {
+    const record = this.devices.get(clean(id))
+    if (!record || (ownerId && record.ownerId !== ownerId)) return null
+    return record.tokenId
+  }
+
   revoke(id, ownerId) {
     const record = this.devices.get(clean(id))
     if (!record || (ownerId && record.ownerId !== ownerId)) return false
@@ -285,7 +291,7 @@ export class GatewayAccessManager {
       return {
         ownerId: credential.ownerId,
         access: 'remote',
-        credentialId: credential.id || credential.tokenId,
+        credentialId: credential.tokenId || credential.id,
       }
     }
     return this.resolveCookie(req.headers.cookie)

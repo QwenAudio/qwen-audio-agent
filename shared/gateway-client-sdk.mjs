@@ -2,6 +2,7 @@ import {
   GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
   GATEWAY_CLIENT_PROTOCOL_VERSION,
   GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
+  GATEWAY_CLIENT_REVOKED_CLOSE_CODE,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
   createGatewayClientProtocolMessage,
@@ -300,6 +301,7 @@ export class GatewayClient {
       if (
         closeCode === GATEWAY_CLIENT_REPLACED_CLOSE_CODE
         || closeCode === GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE
+        || closeCode === GATEWAY_CLIENT_REVOKED_CLOSE_CODE
       ) {
         // Retrying an occupied or superseded socket would either hammer the
         // active Client or make two instances evict each other forever.
@@ -307,7 +309,9 @@ export class GatewayClient {
         this.onStatus?.({
           state: closeCode === GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE
             ? 'occupied'
-            : 'replaced',
+            : closeCode === GATEWAY_CLIENT_REVOKED_CLOSE_CODE
+              ? 'revoked'
+              : 'replaced',
         })
         return
       }

@@ -59,6 +59,7 @@ import {
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
   GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
   GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
+  GATEWAY_CLIENT_REVOKED_CLOSE_CODE,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
 } from '../../../shared/gateway-client-protocol.mjs'
@@ -139,9 +140,10 @@ export {
 }
 
 function clientDescriptor(event = {}) {
-  const type = ['desktop', 'cli', 'web'].includes(event.clientType)
-    ? event.clientType
-    : 'web'
+  // Client type is descriptive metadata. Runtime behavior is negotiated from
+  // capabilities, so a new first- or third-party Client never needs a Gateway
+  // allowlist entry before it can speak GCP.
+  const type = String(event.clientType || '').trim().slice(0, 40) || 'unknown'
   const label = String(event.clientLabel || '').trim().slice(0, 40)
   return {
     type,
@@ -249,6 +251,9 @@ export function attachRealtimeGateway(server, {
 
   wss.on('connection', (ws, url, identity) => {
     ws.isAlive = true
+    ws.gatewayCredentialId = identity.access === 'remote'
+      ? identity.credentialId
+      : null
     ws.on('pong', () => { ws.isAlive = true })
     const ownerId = identity.ownerId
     const sessionId = url.searchParams.get('sessionId') || 'main'
@@ -1801,6 +1806,17 @@ export function attachRealtimeGateway(server, {
   heartbeat.unref?.()
 
   return {
+    disconnectCredential(credentialId) {
+      const target = String(credentialId || '').trim()
+      if (!target) return 0
+      let disconnected = 0
+      for (const client of wss.clients) {
+        if (client.gatewayCredentialId !== target) continue
+        disconnected += 1
+        client.close(GATEWAY_CLIENT_REVOKED_CLOSE_CODE, 'credential_revoked')
+      }
+      return disconnected
+    },
     close() {
       clearInterval(heartbeat)
       for (const client of wss.clients) client.close()

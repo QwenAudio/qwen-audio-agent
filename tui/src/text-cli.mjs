@@ -114,6 +114,7 @@ export async function runCli(options = parseArguments(process.argv.slice(2))) {
       headers: { ...headers, ...socketOptions.headers },
     }),
     accessToken: options.accessToken,
+    takeover: options.takeover === true,
     clientType: 'cli',
     clientLabel: 'Text CLI',
     clientInstanceId: `text-cli-${process.pid}`,
@@ -132,10 +133,12 @@ export async function runCli(options = parseArguments(process.argv.slice(2))) {
         print(`${DIM}已连接(文本模式,会话 ${options.sessionId});/help 查看命令${RST}`)
         resolveOpened()
       } else if (status.state === 'unavailable') rejectOpened(status.error)
-      else if (status.state === 'occupied' || status.state === 'replaced') {
+      else if (['occupied', 'replaced', 'revoked'].includes(status.state)) {
         const error = new Error(status.state === 'occupied'
           ? 'Gateway 正由同一用户的另一个客户端使用'
-          : '当前连接已被同一用户的另一个客户端接管')
+          : status.state === 'revoked'
+            ? '当前远程设备的访问权限已被撤销，请重新配对'
+            : '当前连接已被同一用户的另一个客户端接管')
         if (!connectionReady) rejectOpened(error)
         else {
           print(`${YELLOW}${error.message}${RST}`)

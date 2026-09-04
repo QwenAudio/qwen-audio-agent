@@ -108,9 +108,11 @@ test('redeems one-time pairing tickets into persisted, revocable device tokens',
     assert.equal(paired.device.id, 'phone-one')
     assert.equal(paired.device.type, 'mobile')
     assert.equal(access.redeemPairingTicket(ticket.code), null)
-    assert.equal(access.resolveUpgrade(request({
+    const pairedIdentity = access.resolveUpgrade(request({
       authorization: `Bearer ${paired.token}`,
-    })).ownerId, 'user_personal')
+    }))
+    assert.equal(pairedIdentity.ownerId, 'user_personal')
+    assert.equal(pairedIdentity.credentialId, paired.credentialId)
 
     const restored = new GatewayDeviceRegistry({
       filePath: resolve(directory, 'devices.json'),

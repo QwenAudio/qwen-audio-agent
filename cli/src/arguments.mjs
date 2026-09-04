@@ -14,6 +14,8 @@ const COMMANDS = new Set([
   'setup',
   'install',
   'skill',
+  'connect',
+  'disconnect',
 ])
 const GATEWAY_ACTIONS = new Set([
   'run',
@@ -151,8 +153,13 @@ export function parseArguments(argv, env = process.env) {
     openBrowser: true,
     json: false,
     yes: false,
+    takeover: false,
     backendSpecified: false,
     gatewayConfigurationSpecified: false,
+    invitation: command === 'connect' && args[0] && !args[0].startsWith('-')
+      ? args.shift()
+      : '',
+    urlSpecified: Boolean(env.QWEN_AUDIO_AGENT_URL),
   }
   let audioModeSpecified = false
 
@@ -160,6 +167,7 @@ export function parseArguments(argv, env = process.env) {
     const argument = args[index]
     if (argument === '--url') {
       options.url = nextValue(args, index++, '--url')
+      options.urlSpecified = true
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--backend') {
       options.backend = normalizeBackendProtocol(
@@ -193,6 +201,7 @@ export function parseArguments(argv, env = process.env) {
       options.audioMode = nextValue(args, index++, '--audio-mode').toLowerCase()
       audioModeSpecified = true
     } else if (argument === '--no-open') options.openBrowser = false
+    else if (argument === '--takeover') options.takeover = true
     else if (argument === '--skill') {
       options.skillNames.push(nextValue(args, index++, '--skill'))
     } else if (argument === '--list') options.skillList = true
@@ -269,6 +278,9 @@ export function parseArguments(argv, env = process.env) {
   if (command !== 'tui' && audioModeSpecified) {
     throw new Error('--audio-mode 只适用于 tui')
   }
+  if (command !== 'tui' && options.takeover) {
+    throw new Error('--takeover 只适用于 tui')
+  }
   if (command === 'tui' && !TUI_AUDIO_MODES.has(options.audioMode)) {
     throw new Error(
       `不支持的音频模式：${options.audioMode}（可选 half、full）`,
@@ -338,6 +350,8 @@ export function helpText() {
     '  qwenaudio gateway uninstall       移除后台常驻服务',
     '  qwenaudio tui [选项]         连接现有 Gateway 的终端界面',
     '  qwenaudio webui [选项]       打开现有 Gateway 的 WebUI',
+    '  qwenaudio connect <邀请>      配对并保存远程 Gateway',
+    '  qwenaudio disconnect          忘记已保存的远程 Gateway',
     '  qwenaudio status [选项]      gateway status 的兼容别名',
     '  qwenaudio config             显示用户配置文件位置',
     '  qwenaudio config show        显示有效 Realtime 模型（不含凭据）',
@@ -373,6 +387,7 @@ export function helpText() {
     '界面选项：',
     '  --session ID           复用指定语音会话',
     '  --audio-mode MODE      Linux / Windows 使用 half（默认）或 full',
+    '  --takeover             显式接管同一用户的现有活动客户端（仅 TUI）',
     '  --no-open              WebUI 只打印地址，不打开浏览器',
     '  -h, --help             显示帮助',
     '',

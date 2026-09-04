@@ -1,4 +1,5 @@
 import { dirname, resolve } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import readline from 'node:readline'
 import { loadRuntimeEnvironment } from '../../shared/runtime-environment.mjs'
@@ -32,12 +33,17 @@ import {
 } from './runtime.mjs'
 import {
   listGatewayDevices,
+  pairGatewayInvitation,
   revokeGatewayDevice,
 } from '../../shared/gateway-access-client.mjs'
 import {
   createGatewayInvitation,
+  decodeGatewayInvitation,
+  encodeGatewayBrowserInvitation,
   encodeGatewayInvitation,
 } from '../../shared/gateway-remote-access.mjs'
+import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
+import { createPrivateFileGatewayCredentialStore } from '../../shared/gateway-file-credential-store.mjs'
 import { createTailscaleGatewayEndpointPublisher } from '../../shared/gateway-tailscale-publisher.mjs'
 import { launchWebUi } from './webui.mjs'
 import { acquireCliInstance } from './instance-lock.mjs'
@@ -59,6 +65,7 @@ async function runMinimal(options) {
     accessToken: options.accessToken,
     sessionId: options.sessionId,
     audioMode: options.audioMode,
+    takeover: options.takeover,
   })
   return 0
 }
@@ -194,7 +201,11 @@ export async function main(argv, {
   },
   runMinimalTui = runMinimal,
   prepareRuntime = options => ensureRuntime(options, { root, env }),
-  inspectGateway = url => readGatewayHealth(url),
+  inspectGateway = (url, accessToken = '') => readGatewayHealth(
+    url,
+    fetch,
+    { accessToken },
+  ),
   createPairingTicket = url => createGatewayPairingTicket(url),
   listPairedDevices = url => listGatewayDevices(url),
   revokePairedDevice = (url, id) => revokeGatewayDevice(url, id),
@@ -207,6 +218,13 @@ export async function main(argv, {
   runWebUi = options => launchWebUi(options),
   acquireInstance = directory => acquireCliInstance(directory),
   updateConfig = updateRealtimeModelConfig,
+  createConnectionProfiles = directory => new GatewayConnectionProfileStore({
+    filePath: resolve(directory, 'state/gateway-connections.json'),
+    credentialStore: createPrivateFileGatewayCredentialStore({
+      filePath: resolve(directory, 'state/gateway-client-credentials.json'),
+    }),
+  }),
+  pairInvitation = pairGatewayInvitation,
 } = {}) {
   const processRealtimeModelOverride = String(
     env.QWEN_AUDIO_REALTIME_MODEL || '',
@@ -215,6 +233,16 @@ export async function main(argv, {
     || (argv[0] === 'config' && argv[1] === 'show')
   const environment = prepareEnvironment({ readOnly: readOnlyCommand })
   const options = parseArguments(argv, env)
+  const connectionProfiles = ['connect', 'disconnect', 'tui'].includes(options.command)
+    ? createConnectionProfiles(environment.configDirectory)
+    : null
+  if (!options.urlSpecified && options.command === 'tui') {
+    const saved = await connectionProfiles.resolve('cli-default')
+    if (saved?.credential) {
+      options.url = saved.profile.gateway_url
+      options.accessToken = saved.credential
+    }
+  }
   if (
     options.command === 'gateway'
     && ['install', 'start', 'restart'].includes(options.gatewayAction)
@@ -225,6 +253,27 @@ export async function main(argv, {
   }
   if (options.help) {
     stdout.write(`${helpText()}\n`)
+    return 0
+  }
+  if (options.command === 'connect') {
+    if (!options.invitation) throw new Error('connect 需要远程 Gateway 邀请')
+    const instanceId = `cli_${randomUUID()}`
+    const paired = await pairInvitation(
+      decodeGatewayInvitation(options.invitation),
+      {
+        device: { id: instanceId, type: 'cli', label: 'TUI' },
+        clientInstanceId: instanceId,
+        profileId: 'cli-default',
+        label: 'Remote Gateway',
+        profileStore: connectionProfiles,
+      },
+    )
+    stdout.write(`已连接远程 Gateway：${paired.profile.gateway_url}\n`)
+    return 0
+  }
+  if (options.command === 'disconnect') {
+    const removed = await connectionProfiles.remove('cli-default')
+    stdout.write(removed ? '已忘记远程 Gateway\n' : '没有已保存的远程 Gateway\n')
     return 0
   }
   if (options.command === 'config') {
@@ -397,6 +446,7 @@ export async function main(argv, {
     else {
       stdout.write(
         `远程客户端邀请：${encodeGatewayInvitation(invitation)}\n`
+        + `远程 WebUI：${encodeGatewayBrowserInvitation(invitation)}\n`
         + `有效期至：${new Date(invitation.expires_at).toLocaleString()}\n`,
       )
     }
@@ -530,7 +580,7 @@ export async function main(argv, {
     }
   }
 
-  const health = await inspectGateway(options.url)
+  const health = await inspectGateway(options.url, options.accessToken)
   if (!health) {
     throw new Error(
       `Gateway 未运行：${options.url}。请先执行 qwenaudio gateway`,

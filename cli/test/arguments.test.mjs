@@ -53,6 +53,21 @@ test('parses independent TUI and WebUI client commands', () => {
   assert.equal(web.openBrowser, false)
 })
 
+test('parses remote Gateway connection profile commands', () => {
+  const invitation = 'qwaudio://connect?payload=abc'
+  const connected = parseArguments(['connect', invitation], {})
+  assert.equal(connected.command, 'connect')
+  assert.equal(connected.invitation, invitation)
+  assert.equal(connected.urlSpecified, false)
+  assert.equal(parseArguments(['disconnect'], {}).command, 'disconnect')
+  assert.equal(
+    parseArguments(['tui', '--url', 'https://gateway.example.test', '--takeover'], {}).urlSpecified,
+    true,
+  )
+  assert.equal(parseArguments(['tui', '--takeover'], {}).takeover, true)
+  assert.throws(() => parseArguments(['webui', '--takeover'], {}), /只适用于 tui/)
+})
+
 test('parses read-only backend setup options', () => {
   const all = parseArguments(['setup'], {})
   assert.equal(all.command, 'setup')
@@ -278,7 +293,7 @@ test('rejects client-only flags on unrelated commands', () => {
   )
   assert.throws(
     () => parseArguments(['webui', '--takeover'], {}),
-    /未知参数：--takeover/,
+    /只适用于 tui/,
   )
   assert.throws(
     () => parseArguments(['gateway', 'install', '--backend', 'openclaw'], {}),

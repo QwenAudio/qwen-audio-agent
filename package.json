@@ -43,6 +43,7 @@
     "./gateway-endpoint-publishers": "./shared/gateway-endpoint-publishers.mjs",
     "./gateway-tailscale-publisher": "./shared/gateway-tailscale-publisher.mjs",
     "./gateway-connection-profiles": "./shared/gateway-connection-profiles.mjs",
+    "./gateway-file-credential-store": "./shared/gateway-file-credential-store.mjs",
     "./client-events": "./server/src/client/client-event-router.mjs",
     "./client-actions": "./server/src/client/client-action-port.mjs",
     "./agent-delivery": "./server/src/delivery/agent-delivery.mjs",

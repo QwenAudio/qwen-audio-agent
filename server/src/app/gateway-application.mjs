@@ -38,6 +38,7 @@ import {
   GatewayDeviceRegistry,
   parseGatewayAccessKeys,
 } from '../access/gateway-access.mjs'
+import { gatewayBrowserPairingPage } from '../access/browser-pairing-page.mjs'
 import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
@@ -529,6 +530,16 @@ const gatewayEventRouter = clientEventRouter || new GatewayEventRouter({
 app.disable('x-powered-by')
 app.use(express.json({ limit: '1mb' }))
 
+// This shell contains no Gateway data. It is the only application page that
+// can load before authentication; the invitation remains in the URL fragment
+// and is therefore never sent in an HTTP request or access log.
+app.get('/connect', (_req, res) => {
+  res.setHeader('cache-control', 'no-store')
+  res.setHeader('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
+  res.setHeader('referrer-policy', 'no-referrer')
+  return res.type('html').send(gatewayBrowserPairingPage())
+})
+
 // Pairing is the only unauthenticated remote operation. The short-lived,
 // one-time ticket is created by an already authenticated local Client. Native
 // clients may omit Origin; browsers still have to come from an allowlisted
@@ -536,6 +547,7 @@ app.use(express.json({ limit: '1mb' }))
 app.post('/api/access/pair', (req, res) => {
   if (req.headers.origin && !isAllowedOrigin(req, {
     allowedOrigins: config.allowedOrigins,
+    allowSecureSameOrigin: true,
   })) {
     return res.status(403).json({ error: 'origin not allowed' })
   }
@@ -616,9 +628,11 @@ app.delete('/api/access/devices/:id', (req, res) => {
   if (req.identity.access !== 'local') {
     return res.status(403).json({ error: 'paired devices can only be managed locally' })
   }
+  const credentialId = gatewayAccessRuntime.deviceRegistry.credentialId(req.params.id)
   if (!gatewayAccessRuntime.deviceRegistry.revoke(req.params.id)) {
     return res.status(404).json({ error: 'paired device not found' })
   }
+  realtimeGateway?.disconnectCredential(credentialId)
   return res.status(204).end()
 })
 

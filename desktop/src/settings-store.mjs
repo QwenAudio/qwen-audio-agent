@@ -204,5 +204,15 @@ export function createSettingsStore({
         return sessionId
       },
     },
+
+    gatewayClientInstance: {
+      load() {
+        const current = String(loadUiState().gatewayClientInstanceId || '').trim()
+        if (current) return current
+        const created = `desktop_${randomUUID()}`
+        saveUiState({ gatewayClientInstanceId: created })
+        return created
+      },
+    },
   }
 }

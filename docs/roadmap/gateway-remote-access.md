@@ -136,12 +136,14 @@ configuration, copying a token, or exposing a LAN/public listener.
 
 ## RA3 — First-party remote Client parity
 
-- [ ] Add `mobile` to reference Client profiles and remove behavior-driving
+- [x] Add `mobile` to reference Client profiles and remove behavior-driving
   Client-type allowlists from Gateway.
-- [ ] Add a minimal unauthenticated browser pairing shell while keeping every
+- [x] Add a minimal unauthenticated browser pairing shell while keeping every
   business API and application page protected.
-- [ ] Let remote WebUI persist an HttpOnly session and reconnect safely.
-- [ ] Let Desktop and TUI consume invitations and store credentials securely.
+- [x] Let remote WebUI persist an HttpOnly session and reconnect safely.
+- [x] Let Desktop and TUI consume invitations and store revocable credentials
+  outside ordinary settings (OS-protected storage on Desktop; an owner-only
+  file for terminal clients without a portable keychain API).
 - [ ] Add uniform occupied, takeover-confirmation, replaced, revoked, offline,
   and reconnect states.
 

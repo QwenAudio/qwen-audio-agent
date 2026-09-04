@@ -4,6 +4,7 @@ import { GatewayClient } from '../shared/gateway-client-sdk.mjs'
 import {
   GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
   GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
+  GATEWAY_CLIENT_REVOKED_CLOSE_CODE,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
 } from '../shared/gateway-client-protocol.mjs'
@@ -367,4 +368,31 @@ test('reference Client reports an occupied lease without retrying', async () => 
   assert.equal(sockets.length, 1)
   assert.equal(client.readyState, 3)
   assert.equal(statuses.at(-1), 'occupied')
+})
+
+test('reference Client reports credential revocation without retrying', async () => {
+  const sockets = []
+  const statuses = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => {
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+    clientInstanceId: 'sdk-revoked-test',
+    reconnectMinMs: 50,
+    reconnectMaxMs: 50,
+    onStatus: status => statuses.push(status.state),
+  }).start()
+  const socket = sockets[0]
+  socket.open()
+  socket.readyState = 3
+  socket.emit('close', { code: GATEWAY_CLIENT_REVOKED_CLOSE_CODE })
+
+  await new Promise(resolve => setTimeout(resolve, 70))
+
+  assert.equal(sockets.length, 1)
+  assert.equal(client.readyState, 3)
+  assert.equal(statuses.at(-1), 'revoked')
 })

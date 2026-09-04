@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import test from 'node:test'
 import WebSocket from 'ws'
 import { createGatewayApplication } from '../src/app/gateway-application.mjs'
+import { GATEWAY_CLIENT_REVOKED_CLOSE_CODE } from '../../shared/gateway-client-protocol.mjs'
 import { config } from '../src/core/config.mjs'
 import { createRealtimeProviderRegistry } from '../src/voice/providers/provider-registry.mjs'
 import { openAiCompatibleProtocol } from '../src/voice/providers/openai-compatible-protocol.mjs'
@@ -157,6 +158,37 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     body: { code: ticket.body.code },
   })
   assert.equal(replay.status, 401)
+
+  const remoteSocket = new WebSocket(
+    `ws://127.0.0.1:${port}/api/realtime?sessionId=paired-device`,
+    {
+      headers: {
+        Host: 'gateway.example.test',
+        Authorization: `Bearer ${paired.body.access_token}`,
+      },
+    },
+  )
+  await once(remoteSocket, 'open')
+  const remoteClosed = once(remoteSocket, 'close')
+  const revoked = await requestJson({
+    port,
+    path: '/api/access/devices/phone-one',
+    method: 'DELETE',
+    headers: { Host: `127.0.0.1:${port}` },
+  })
+  assert.equal(revoked.status, 204)
+  const [closeCode] = await remoteClosed
+  assert.equal(closeCode, GATEWAY_CLIENT_REVOKED_CLOSE_CODE)
+
+  const deniedAfterRevocation = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${paired.body.access_token}`,
+    },
+  })
+  assert.equal(deniedAfterRevocation.status, 401)
 })
 
 test('passes the Task announcement factory through the application composition root', async () => {

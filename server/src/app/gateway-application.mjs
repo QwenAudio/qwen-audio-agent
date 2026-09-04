@@ -628,9 +628,11 @@ app.delete('/api/access/devices/:id', (req, res) => {
   if (req.identity.access !== 'local') {
     return res.status(403).json({ error: 'paired devices can only be managed locally' })
   }
+  const credentialId = gatewayAccessRuntime.deviceRegistry.credentialId(req.params.id)
   if (!gatewayAccessRuntime.deviceRegistry.revoke(req.params.id)) {
     return res.status(404).json({ error: 'paired device not found' })
   }
+  realtimeGateway?.disconnectCredential(credentialId)
   return res.status(204).end()
 })
 

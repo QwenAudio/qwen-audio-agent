@@ -705,6 +705,22 @@ export default function useRealtimeVoice({
           setError(t('实时语音连接中断，正在重连'))
           setVisualError(true)
           eventRef.current?.(disconnectedEvent)
+        } else if (['occupied', 'replaced', 'revoked'].includes(status.state)) {
+          releaseManualInputGuard()
+          stopPlayback()
+          const disconnectedEvent = {
+            type: GatewayServerEvent.GATEWAY_DISCONNECTED,
+          }
+          dispatchClientState(disconnectedEvent)
+          setError(t(
+            status.state === 'occupied'
+              ? 'Gateway 正由另一个客户端使用'
+              : status.state === 'replaced'
+                ? '当前连接已被另一个客户端接管'
+                : '当前设备的访问权限已被撤销，请重新配对',
+          ))
+          setVisualError(true)
+          eventRef.current?.(disconnectedEvent)
         }
       }
     })

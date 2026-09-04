@@ -12,6 +12,7 @@ import {
 export const GATEWAY_CLIENT_PROTOCOL_VERSION = '6.0.0'
 export const GATEWAY_CLIENT_REPLACED_CLOSE_CODE = 4001
 export const GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE = 4002
+export const GATEWAY_CLIENT_REVOKED_CLOSE_CODE = 4003
 
 export const GatewayClientProtocolEvent = Object.freeze({
   SESSION_HELLO: 'session.hello',

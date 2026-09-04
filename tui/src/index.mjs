@@ -1568,6 +1568,10 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
           setStatus('当前连接已被同一用户的另一个客户端接管')
           print(style('[连接已被接管]', 'yellow'))
           close()
+        } else if (status.state === 'revoked') {
+          setStatus('当前远程设备的访问权限已被撤销')
+          print(style('[访问已撤销] 请重新配对远程 Gateway', 'yellow'))
+          close()
         } else if (status.state === 'disconnected') {
           gatewayClientState = reduceGatewayClientState(gatewayClientState, {
             type: GatewayServerEvent.GATEWAY_DISCONNECTED,

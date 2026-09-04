@@ -377,6 +377,7 @@ test('manages a Tailscale endpoint and creates a portable invitation', async () 
   assert.equal(await main(['gateway', 'remote', 'invite'], invited.dependencies), 0)
   const output = invited.calls.at(-1)[1]
   assert.match(output, /^远程客户端邀请：qwaudio:\/\/connect#/)
+  assert.match(output, /远程 WebUI：https:\/\/voice\.example\.ts\.net:8443\/connect#/)
   assert.match(output, /有效期至/)
 
   const devices = harness()

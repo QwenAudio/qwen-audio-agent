@@ -1,6 +1,13 @@
-export async function readGatewayHealth(baseUrl, fetchImpl = fetch) {
+export async function readGatewayHealth(
+  baseUrl,
+  fetchImpl = fetch,
+  { accessToken = '' } = {},
+) {
   try {
     const response = await fetchImpl(`${baseUrl}/api/health`, {
+      headers: accessToken
+        ? { Authorization: `Bearer ${String(accessToken).trim()}` }
+        : {},
       signal: AbortSignal.timeout(1500),
     })
     const payload = await response.json()

@@ -36,6 +36,7 @@ import {
 } from '../../shared/gateway-access-client.mjs'
 import {
   createGatewayInvitation,
+  encodeGatewayBrowserInvitation,
   encodeGatewayInvitation,
 } from '../../shared/gateway-remote-access.mjs'
 import { createTailscaleGatewayEndpointPublisher } from '../../shared/gateway-tailscale-publisher.mjs'
@@ -397,6 +398,7 @@ export async function main(argv, {
     else {
       stdout.write(
         `远程客户端邀请：${encodeGatewayInvitation(invitation)}\n`
+        + `远程 WebUI：${encodeGatewayBrowserInvitation(invitation)}\n`
         + `有效期至：${new Date(invitation.expires_at).toLocaleString()}\n`,
       )
     }

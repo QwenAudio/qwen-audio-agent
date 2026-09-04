@@ -13,6 +13,8 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { extractPolicy, partition } from './extract.mjs'
 import { consense } from './consensus.mjs'
+import { checkCoverage } from './coverage.mjs'
+import { validateDatabase } from './db-validate.mjs'
 import { buildFrontendMcp, overrideWarnings, suggestSurfaces } from './surfaces.mjs'
 import { loadGuards } from '../service/guards.mjs'
 import { loadServiceEnvironment } from '../bootstrap/environment.mjs'
@@ -148,6 +150,24 @@ const routes = {
     return { domain, ...flattenGuards(domain) }
   },
 
+  // 覆盖度检查：新传的 policy 抽出来的规则，现有数据能不能演示得出来。
+  // 它回答的是「改了配置但看不出效果」那类问题 ——
+  // 比如 policy 提到家具类 30 天可退，而库里根本没有家具商品。
+  'GET /api/coverage': (url) => {
+    const domain = url.searchParams.get('domain')
+    if (!DOMAINS.includes(domain)) return { error: 'unknown domain' }
+    const guards = loadGuards(domain)
+    const db = JSON.parse(readFileSync(domainUrl(domain, 'db.json'), 'utf8'))
+    return { domain, ...checkCoverage(guards, db) }
+  },
+
+  // 当前的数据库原文。给编辑器预填。
+  'GET /api/database': (url) => {
+    const domain = url.searchParams.get('domain')
+    if (!DOMAINS.includes(domain)) return { error: 'unknown domain' }
+    return { domain, text: readFileSync(domainUrl(domain, 'db.json'), 'utf8') }
+  },
+
   'GET /api/surfaces': (url) => {
     const overridesRaw = url.searchParams.get('overrides')
     let overrides = {}
@@ -250,6 +270,46 @@ async function readBody(request) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'))
 }
 
+// 解析 + 校验，不写盘。两个端点共用 ——
+// 写盘那个必须先过这一道，否则校验就只是个建议。
+function validateOnly({ domain, text } = {}) {
+  if (!DOMAINS.includes(domain)) return { ok: false, errors: [{ path: '', message: `未知的域：${domain}` }] }
+  let parsed
+  try {
+    parsed = JSON.parse(text || '')
+  } catch (error) {
+    // JSON 语法错要单独报 —— 它和引用断链是两回事，
+    // 混在一起会让人以为是数据关系出了问题。
+    return { ok: false, errors: [{ path: '', message: `JSON 解析失败：${error.message}` }] }
+  }
+  return { domain, ...validateDatabase(domain, parsed) }
+}
+
+// 【写盘之前必须先备份】
+// 管理员把库改坏了又想退回去时，没有备份就只能 git checkout ——
+// 而那会把他在配置台里做的其余改动一并丢掉。
+function handleDatabaseWrite(response, body) {
+  const verdict = validateOnly(body)
+  if (!verdict.ok) {
+    // 422 而不是 400：请求本身是合法的，是内容过不了业务校验。
+    json(response, 422, verdict)
+    return
+  }
+  const target = domainUrl(body.domain, 'db.json')
+  const backup = new URL(`db.backup.json`, target)
+  writeFileSync(backup, readFileSync(target, 'utf8'), 'utf8')
+  // 四个空格缩排，和仓里其余 JSON 一致 —— 否则每改一次 diff 全是格式噪声。
+  writeFileSync(target, `${JSON.stringify(JSON.parse(body.text), null, 2)}\n`, 'utf8')
+  json(response, 200, {
+    ok: true,
+    domain: body.domain,
+    // 【这一句必须说】已经跑着的 service 进程把 db.json 缓在内存里（loadDomain 只读一次），
+    // 不重启就看不到新数据。不说的话管理员会以为写失败了。
+    note: '已写入。跑着的 service 进程要重启才会读到新数据（会话里的库是启动时装载的）。',
+    backup: 'db.backup.json',
+  })
+}
+
 export function createConsoleServer() {
   return createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`)
@@ -267,6 +327,18 @@ export function createConsoleServer() {
       }
       if (key === 'POST /api/export') {
         handleExport(response, await readBody(request))
+        return
+      }
+      // 只校不写。编辑器里每改完一次就调这个，
+      // 管理员在点「应用」之前就能看到断了哪一条。
+      if (key === 'POST /api/database/validate') {
+        const body = await readBody(request)
+        json(response, 200, validateOnly(body))
+        return
+      }
+      if (key === 'POST /api/database') {
+        const body = await readBody(request)
+        handleDatabaseWrite(response, body)
         return
       }
       const handler = routes[key]

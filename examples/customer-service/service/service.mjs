@@ -20,6 +20,12 @@ export class CustomerService {
     return this.store.reset(sessionId, domain)
   }
 
+  // 切换到另一位客户：同一个 sessionId 背后换一份全新的库。
+  // 为什么是重绑而不是换 sessionId，见 state-store.mjs 里那段说明。
+  newCustomer(sessionId, domain) {
+    return this.store.newCustomer(sessionId, domain)
+  }
+
   // surface 必须由调用方传，而且只能是这两个值。
   // 它进 audit 记录 —— 「这个不可逆动作是从哪个面调进来的」
   // 事后从日志推不出来，只能在调用时记下。

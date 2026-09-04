@@ -110,6 +110,18 @@ class CustomerServiceServer {
       return
     }
 
+    // 切换到另一位客户。和 reset 的区别只在语义：
+    //   reset        这一位客户的操作全部撤回，还是同一位
+    //   new-customer 换一位客户，之前的交互都不算了
+    // 实现上都是重建库；分成两个端点是为了界面能给出不同的提示 ——
+    // new-customer 要额外说明「对话历史清不掉」。
+    if (url.pathname === '/api/service/new-customer' && request.method === 'POST') {
+      const body = await readJson(request)
+      const session = sessionOf(request, url, body)
+      json(response, 200, this.service.newCustomer(session, body.domain))
+      return
+    }
+
     const surface = url.pathname === '/mcp/frontend'
       ? 'frontend'
       : url.pathname === '/mcp/backend'

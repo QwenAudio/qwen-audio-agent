@@ -132,9 +132,40 @@ export class ServiceStateStore {
     const id = String(sessionId || '').trim() || 'default'
     const previous = this.#sessions.get(id)
     this.#sessions.delete(id)
-    const session = this.#session(id, domain || previous?.domain || 'retail')
+    const session = this.#session(id, domain || previous?.domain || DEFAULT_DOMAIN)
     this.#publish(session)
     return session.version
+  }
+
+  // 切换到「另一位客户」。
+  //
+  // 【为什么不换 sessionId 而是重绑】
+  // sessionId 在网关启动时被烘进 CS_FRONTEND_MCP_URL
+  // （见 gateway/server.mjs 里的说明：MCP 客户端用的是静态 transport.headers，
+  // 框架不按会话注入参数）。所以换 sessionId 只会换掉 WebSocket 那一侧 ——
+  // 模型的前台工具还打在原来那个会话上，它会看到「尚未核验」而客户
+  // 明明刚核验过。
+  //
+  // 重绑的语义：同一个 sessionId 背后换一份全新的库。对模型和 MCP 完全透明。
+  //
+  // 【它清不掉对话历史】那份在网关的 .runtime/sessions/<sessionId>/ 里，
+  // 而网关没有清空接口（只有三个 GET）。所以返回值里带 conversationRetained，
+  // 让界面能明说「模型还记得刚才聊过什么」，而不是假装换了个新客户。
+  newCustomer(sessionId, domain) {
+    const id = String(sessionId || '').trim() || 'default'
+    const previous = this.#sessions.get(id)
+    const wanted = domain || previous?.domain || DEFAULT_DOMAIN
+    this.#sessions.delete(id)
+    const session = this.#session(id, wanted)
+    // 序号从上一份接着走，这样界面的 SSE 能察觉到变化 ——
+    // 归零的话订阅方看到 version 变小，可能当成乱序丢弃。
+    session.version = (previous?.version || 0) + 1
+    this.#publish(session)
+    return {
+      version: session.version,
+      domain: session.domain,
+      conversationRetained: true,
+    }
   }
 
   subscribe(sessionId, listener) {

@@ -16,9 +16,12 @@
     -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
   }
   header {
-    display: flex; align-items: center; gap: 16px; padding: 14px 20px;
+    display: flex; align-items: center; gap: 10px; padding: 10px 20px;
     border-bottom: 1px solid var(--line); background: var(--panel);
     position: sticky; top: 0; z-index: 10; flex-wrap: wrap;
+    /* 窄屏下换行可以，但不能撑到两三百 px —— 它是 sticky，
+       多高一分就多盖住一分内容。row-gap 单独调小。 */
+    row-gap: 6px;
   }
   h1 { font-size: 15px; margin: 0; font-weight: 600; }
   .grow { flex: 1; }
@@ -96,9 +99,62 @@
   .surface-toggle span.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
   .surface-toggle span.moved { border-color: var(--warn); color: var(--warn); background: #e0a33a18; }
   .row .grow { flex: 1; }
+
+  /* 【sticky header 会盖住可点元素 —— 这是实测抳到的】
+     窗口窄的时候 header 里的控件会换行，它能高到 200px 以上。
+     而它是 position: sticky + z-index: 10，于是滞留在顶部盖在内容上。
+
+     实测现象：数据库区的「校验」按钮被 scrollIntoView 滚到 top:132px，
+     而 header 的 bottom 是 205.7px —— elementFromPoint(按钮中心) 返回 HEADER。
+     点击全打在 header 上，JS 完全正确但一个 fetch 也没发出，零报错。
+
+     这个坑不是新区域引入的 —— 头部的 chips、工具面开关同样会中招，
+     只是之前没人把它们滚到那个位置去点。两道一起上：
+       一、scroll-margin-top 让程序滚动给 header 留出位置（高度由 JS 同步）
+       二、header 本身压矮，窄屏下不要撑到两三百 px */
+  section { scroll-margin-top: calc(var(--header-h, 64px) + 12px); }
+
+  /* 首屏遮罩 */
+  #gate {
+    position: fixed; inset: 0; z-index: 50; display: flex;
+    align-items: center; justify-content: center;
+    background: var(--bg);
+  }
+  #gate.done { display: none; }
+  .gate-card {
+    max-width: 640px; padding: 32px 36px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  }
+  .gate-card h2 { margin: 0 0 10px; font-size: 20px; }
+  .gate-hint { margin: 0 0 22px; color: var(--dim); font-size: 13px; line-height: 1.7; }
+  .gate-option {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    padding: 14px 16px; margin-bottom: 10px;
+    background: #1d2129; border: 1px solid var(--line); border-radius: 8px;
+    color: var(--text); font: inherit;
+  }
+  .gate-option:hover { border-color: var(--accent); }
+  .gate-option b { display: block; margin-bottom: 4px; font-size: 15px; }
+  .gate-option span { color: var(--dim); font-size: 12.5px; }
 </style>
 </head>
 <body>
+<!-- 首屏：先选系统。
+     【为什么要一个遮罩而不是只留那个下拉】
+     下拉菜单里默认选中的那一项看上去像「当前就是零售」，
+     而管理员可能根本没注意到还有另一个系统。先选一次把这个选择变成显式的；
+     选完之后头部那个下拉仍然可用，不用反复回首屏。 -->
+<div id="gate">
+  <div class="gate-card">
+    <h2>选一个客服系统</h2>
+    <p class="gate-hint">
+      两套配置跑在同一份代码上 —— 换一份 policy 就换一个业务域，
+      工具集、决策表、人设、数据库全部跟着变。
+    </p>
+    <div id="gate-options"></div>
+  </div>
+</div>
+
 <header>
   <h1>Policy 配置台</h1>
   <select id="domain"></select>
@@ -118,6 +174,8 @@
     <section id="sec-agreed"></section>
     <section id="sec-tables"></section>
     <section id="sec-surfaces"></section>
+    <section id="sec-coverage"></section>
+    <section id="sec-database"></section>
   </div>
   <aside class="col">
     <h2>policy 原文 <span class="count" id="policy-count"></span></h2>
@@ -127,6 +185,18 @@
 
 <script type="module">
 const $ = id => document.getElementById(id)
+
+// header 是 sticky 而且高度随窗口宽度变（控件会换行）。
+// 把它的实际高度同步到 CSS 变量，让 section 的 scroll-margin-top 跟着走 ——
+// 写死一个值在窄屏下仍然会被盖。
+const syncHeaderHeight = () => {
+  const header = document.querySelector('header')
+  if (header) {
+    document.documentElement.style.setProperty('--header-h', `${header.offsetHeight}px`)
+  }
+}
+syncHeaderHeight()
+new ResizeObserver(syncHeaderHeight).observe(document.querySelector('header'))
 const el = (tag, cls, html) => {
   const node = document.createElement(tag)
   if (cls) node.className = cls
@@ -430,6 +500,17 @@ async function api(path) {
   return response.json()
 }
 
+// 【422 不能当成错误抛】它带着校验结果，正是界面要展示的东西。
+// 用 api() 那个写法会把它变成 throw，于是管理员只看到一个空白区域。
+async function postJson(path, body) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return response.json()
+}
+
 async function refreshSurfaces() {
   state.surfaces = await api(`/api/surfaces?overrides=${encodeURIComponent(JSON.stringify(state.overrides))}`)
   renderSurfaces()
@@ -441,6 +522,7 @@ let policyLines = []
 async function loadDomain(domain) {
   state.domain = domain
   state.extract = null
+  $('domain').value = domain
   $('status').textContent = '装载中…'
   const [policy, guards] = await Promise.all([
     api(`/api/policy?domain=${domain}`),
@@ -451,6 +533,9 @@ async function loadDomain(domain) {
   renderPolicy(policyLines)
   renderTables()
   await refreshSurfaces()
+  // 这两区不依赖抽取结果，可以先画出来。
+  await refreshCoverage()
+  await loadDatabase()
 
   // 有缓存就直接显示，不用等一分钟。
   const cached = await api(`/api/extract?domain=${domain}`)
@@ -461,6 +546,122 @@ async function loadDomain(domain) {
     $('status').textContent = ''
   }
   renderExtract()
+}
+
+// ── 覆盖度：这份数据能不能把规则演出来 ──
+
+async function refreshCoverage() {
+  const host = $('sec-coverage')
+  host.innerHTML = ''
+  const result = await api(`/api/coverage?domain=${state.domain}`)
+  const head = el('h2', null,
+    `数据覆盖度 <span class="count">${result.ok ? '全部覆盖' : result.gaps.length + ' 处缺口'}</span>`)
+  host.append(head)
+
+  const card = el('div', result.ok ? 'card' : 'card warn')
+  card.append(el('div', 'muted', esc(result.summary)))
+  if (result.ok) {
+    // 全覆盖时也要说清这一区在查什么 ——
+    // 否则看到一句「没问题」不知道它到底检了啥。
+    card.append(el('div', 'muted',
+      '检的是三件事：决策表里的每个取值库里有没有对应数据、'
+      + '枚举的每个值用到没、时限类规则的边界两侧有没有样本。'))
+  }
+  host.append(card)
+
+  for (const gap of result.gaps) {
+    const item = el('div', 'card warn')
+    item.append(el('div', 'row', `<span class="tag warn">${esc(gap.kind)}</span>`))
+    item.append(el('div', null, esc(gap.detail)))
+    if (gap.fix) item.append(el('div', 'muted', `建议：${esc(gap.fix)}`))
+    if (gap.sources?.length) {
+      item.append(el('div', 'muted', `涉及：${esc(gap.sources.join('、'))}`))
+    }
+    host.append(item)
+  }
+}
+
+// ── 数据库编辑：整份提交 + 强制校验 ──
+//
+// 【为何不做逐字段 CRUD】库里的引用是自洽的（订单行指向商品、
+// 航段指向航班、支付方式指向本人名下的卡）。逐字段编辑要把路径
+// 暴露给管理员，点错一格就写坏；而写坏之后的表现不是报错，
+// 是工具静默返回空值，很难归因。整份 JSON 提交要么全过要么全退。
+
+async function loadDatabase() {
+  const host = $('sec-database')
+  host.innerHTML = ''
+  const result = await api(`/api/database?domain=${state.domain}`)
+
+  host.append(el('h2', null, '数据库 <span class="count">整份提交</span>'))
+  const card = el('div', 'card')
+  card.append(el('div', 'muted',
+    '改完先点【校验】。校不过的写不进去 —— 引用断了之后工具不报错，'
+    + '只会静默返回空值，演示当场废掉而且很难查。'))
+
+  const editor = document.createElement('textarea')
+  editor.id = 'db-editor'
+  editor.value = result.text
+  editor.spellcheck = false
+  editor.style.cssText = 'width:100%;height:280px;margin-top:10px;padding:10px;'
+    + 'background:#0f1115;color:var(--text);border:1px solid var(--line);'
+    + 'border-radius:6px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical'
+  card.append(editor)
+
+  const bar = el('div', 'row')
+  bar.style.marginTop = '10px'
+  const validateButton = document.createElement('button')
+  validateButton.textContent = '校验'
+  const applyButton = document.createElement('button')
+  applyButton.textContent = '写入'
+  applyButton.className = 'primary'
+  applyButton.disabled = true
+  const verdict = el('span', 'muted')
+  verdict.style.marginLeft = '4px'
+  bar.append(validateButton, applyButton, verdict)
+  card.append(bar)
+
+  const problems = el('div')
+  card.append(problems)
+
+  const runValidate = async () => {
+    problems.innerHTML = ''
+    const outcome = await postJson('/api/database/validate', {
+      domain: state.domain, text: editor.value,
+    })
+    verdict.textContent = outcome.summary || (outcome.ok ? '通过' : '有问题')
+    verdict.style.color = outcome.ok ? 'var(--ok)' : 'var(--bad)'
+    // 只有校过了才能写 —— 这是界面上的第一道，
+    // 服务端那道（422）是真正拦住它的。
+    applyButton.disabled = !outcome.ok
+    for (const error of outcome.errors || []) {
+      const line = el('div', 'card warn')
+      line.append(el('div', null,
+        `<span class="mono">${esc(error.path || '整份')}</span> — ${esc(error.message)}`))
+      if (error.hint) line.append(el('div', 'muted', `后果：${esc(error.hint)}`))
+      problems.append(line)
+    }
+    return outcome.ok
+  }
+
+  validateButton.onclick = runValidate
+  editor.oninput = () => {
+    // 改了就要重新校 —— 否则校过一次之后随便改都能写。
+    applyButton.disabled = true
+    verdict.textContent = ''
+  }
+  applyButton.onclick = async () => {
+    if (!(await runValidate())) return
+    const outcome = await postJson('/api/database', {
+      domain: state.domain, text: editor.value,
+    })
+    verdict.textContent = outcome.note || '已写入'
+    verdict.style.color = 'var(--ok)'
+    applyButton.disabled = true
+    await refreshCoverage()
+  }
+
+  host.append(card)
 }
 
 function startExtract(force) {
@@ -540,14 +741,41 @@ $('export').onclick = async () => {
     : `导出失败：${result.error}`
 }
 
+const DOMAIN_BLURB = {
+  retail: '明远优选 —— 退货、换货、取消订单、改地址。退货时限按商品类别分档。',
+  airline: '云途航空 —— 退票、改签、升降舱、加行李、延误补偿。'
+    + '免费行李额是会员等级×舱位的三乘三交叉表，退票资格看五个条件。',
+}
+
 const domains = await api('/api/domains')
 for (const { id, label } of domains.domains) {
   const option = document.createElement('option')
   option.value = id
   option.textContent = label
   $('domain').append(option)
+
+  const choice = document.createElement('button')
+  choice.className = 'gate-option'
+  choice.innerHTML = `<b>${esc(label)}</b><span>${esc(DOMAIN_BLURB[id] || '')}</span>`
+  choice.onclick = async () => {
+    // 先收遮罩再装载 —— 装载要几百毫秒，护着遮罩的话看着像点不动。
+    $('gate').classList.add('done')
+    await loadDomain(id)
+  }
+  $('gate-options').append(choice)
 }
-await loadDomain(domains.domains[0].id)
+
+// 【不在首屏阶段预装载任何一个域】
+// 预装载会把两个域的抽取缓存都碰一遍，而管理员可能只要其中一个。
+// 选完之后再装。
+if (new URLSearchParams(location.search).get('domain')) {
+  // 带了 ?domain= 就跳过首屏 —— 方便从客服工作台直链过来。
+  const wanted = new URLSearchParams(location.search).get('domain')
+  if (domains.domains.some(item => item.id === wanted)) {
+    $('gate').classList.add('done')
+    await loadDomain(wanted)
+  }
+}
 </script>
 </body>
 </html>

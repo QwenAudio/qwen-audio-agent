@@ -86,10 +86,12 @@
 <body>
 <header>
   <h1>客服工作台</h1>
+  <span class="tag" id="domain-tag">…</span>
   <span class="dot" id="dot"></span>
   <span class="muted" id="status">连接中…</span>
   <span class="grow"></span>
-  <button id="reset">重置会话</button>
+  <button id="new-customer">换一位客户</button>
+  <button id="reset">重置本位客户</button>
 </header>
 
 <main>
@@ -109,9 +111,10 @@
   </div>
 
   <aside>
-    <h2>客户</h2>
+    <h2 id="script-title">你正在演谁</h2>
+    <div id="script"></div>
+    <h2>客服看到的</h2>
     <div id="identity"></div>
-    <h2>订单</h2>
     <div id="orders"></div>
     <h2 id="audit-title">工具调用审计</h2>
     <div id="audit"></div>
@@ -147,6 +150,16 @@ const CATEGORY_TEXT = {
   apparel: '服饰鞋包', accessory: '配件', digital: '数码电子',
   appliance: '家用电器', furniture: '家具',
 }
+const CABIN_TEXT = {
+  basic_economy: '特价经济舱', economy: '经济舱', business: '公务舱',
+}
+const TIER_TEXT = { regular: '普通会员', silver: '银卡会员', gold: '金卡会员' }
+const DOMAIN_TEXT = { retail: '零售', airline: '航空' }
+
+// 当前演哪位客户。这是本地选择，不进服务端 ——
+// 它只决定剧本区把谁的资料摄给你看，和客服看到什么无关。
+let playing = null
+let latestState = null
 
 // ── 对话区 ──
 
@@ -189,6 +202,127 @@ async function pullMessages() {
 
 // ── 业务面板 ──
 
+// ── 剧本区：你正在演谁 ──
+//
+// 【这一区和右下的「客服看到的」必须分开】
+// 测试的人不是真客户，不知道自己订了买了什么 —— 得先看到剧本
+// 才知道该说什么。所以剧本区从一开始就可见。
+//
+// 而客服（模型）在核验之前什么都看不到。两边合并的话，
+// 「未核验时客服不该知道订单」这条合规约束就演示不出来了，
+// 而那正是这个 demo 最想展示的东西之一。
+
+function candidates(state) {
+  return state?.db?.users || []
+}
+
+function renderScript(state) {
+  const host = $('script')
+  host.innerHTML = ''
+  const users = candidates(state)
+  if (!users.length) return
+
+  // 默认演第一位。换客户之后库重建，playing 可能指向不存在的人，
+  // 所以每次都校一下。
+  if (!playing || !users.some(user => user.userId === playing)) {
+    playing = users[0].userId
+  }
+  const me = users.find(user => user.userId === playing)
+
+  const picker = el('div', 'card')
+  picker.append(el('div', 'muted', '选一位客户来演（客服看不到这一区）'))
+  const row = el('div', 'surface-toggle')
+  row.style.flexWrap = 'wrap'
+  row.style.marginTop = '6px'
+  for (const user of users) {
+    const option = el('span', user.userId === playing ? 'on' : null, esc(user.name))
+    option.onclick = () => {
+      playing = user.userId
+      renderScript(latestState)
+    }
+    row.append(option)
+  }
+  picker.append(row)
+  host.append(picker)
+
+  const card = el('div', 'card')
+  const isAirline = state.domain === 'airline'
+
+  card.append(el('div', 'row',
+    `<b>${esc(me.name)}</b>`
+    + (isAirline
+      ? `<span class="tag">${esc(TIER_TEXT[me.memberTier] || me.memberTier)}</span>`
+      : '')))
+
+  // 核验要用的那几项单独摆出来 —— 两个域的判据不同，
+  // 测试的人最先需要的就是这几个字串。
+  const credentials = isAirline
+    ? [['会员号', me.userId], ['姓名 + 证件后四位', `${me.name} + ${me.idTail}`]]
+    : [['注册邮箱', me.email || '（未登记）'], ['姓名 + 邮编', `${me.name} + ${me.zip}`]]
+  for (const [label, value] of credentials) {
+    card.append(el('div', 'muted', `${label}：<span class="mono">${esc(value)}</span>`))
+  }
+  host.append(card)
+
+  // 名下的订单 / 预订。这是剧本的主体 —— 测试的人靠它想出该说什么。
+  const mine = isAirline
+    ? (state.db.reservations || []).filter(item => item.userId === me.userId)
+    : (state.db.orders || []).filter(item => item.userId === me.userId)
+
+  $('script-title').innerHTML = `你正在演谁 <span class="tag">${mine.length} 笔</span>`
+  if (!mine.length) {
+    host.append(el('div', 'empty', '这位客户名下没有记录。'))
+    return
+  }
+
+  for (const item of mine) {
+    const card2 = el('div', 'card')
+    if (isAirline) {
+      const first = item.segments[0]
+      const flight = (state.db.flights || []).find(
+        entry => entry.flightNo === first.flightNo && entry.date === first.date,
+      )
+      card2.append(el('div', 'row',
+        `<b class="mono">${esc(item.reservationId)}</b>`
+        + `<span class="tag">${esc(CABIN_TEXT[item.cabin] || item.cabin)}</span>`
+        + `<span class="muted">￥${Number(item.total).toFixed(2)}</span>`
+        + (item.status === 'cancelled' ? '<span class="tag bad">已退票</span>' : '')))
+      if (flight) {
+        // 航班状态直接摆出来 —— 它决定能不能退、能不能改、能不能要补偿。
+        // 测试的人看到「延误 5 小时」才知道可以去问补偿。
+        const extra = flight.status === 'delayed' ? `延误 ${flight.delayHours} 小时`
+          : flight.status === 'cancelled' ? '航司已取消'
+            : flight.status === 'flown' ? '已执飞' : '正常'
+        card2.append(el('div', 'muted',
+          `${esc(flight.flightNo)}　${esc(flight.from)} → ${esc(flight.to)}`
+          + `　${esc(first.date)}　<span class="tag">${esc(extra)}</span>`))
+      }
+      card2.append(el('div', 'muted',
+        `行李 ${item.checkedBags} 件　保险${item.insurance ? '已购' : '未购'}`
+        + (item.certificateIssued ? '　<span class="tag">补偿已发</span>' : '')))
+    } else {
+      card2.append(el('div', 'row',
+        `<b class="mono">${esc(item.orderId)}</b>`
+        + `<span class="tag">${esc(STATUS_TEXT[item.status] || item.status)}</span>`
+        + `<span class="muted">￥${Number(item.total).toFixed(2)}</span>`))
+      for (const line of item.items || []) {
+        const product = (state.db.products || []).find(
+          entry => entry.productId === line.productId,
+        )
+        const category = CATEGORY_TEXT[product?.category] || product?.category || ''
+        card2.append(el('div', 'muted',
+          `· ${esc(line.name || product?.name || line.productId)} ×${line.quantity || 1}`
+          + (category ? `　<span class="tag">${esc(category)}</span>` : '')))
+      }
+      if (item.deliveredAt) {
+        const days = Math.floor((Date.now() - new Date(item.deliveredAt).getTime()) / 86_400_000)
+        card2.append(el('div', 'muted', `签收于 ${item.deliveredAt.slice(0, 10)}，距今 ${days} 天`))
+      }
+    }
+    host.append(card2)
+  }
+}
+
 function renderIdentity(state) {
   const host = $('identity')
   host.innerHTML = ''
@@ -217,15 +351,34 @@ function renderOrders(state) {
   const host = $('orders')
   host.innerHTML = ''
   const identity = state.identity || {}
+  const isAirline = state.domain === 'airline'
+  const noun = isAirline ? '预订' : '订单'
   if (!identity.verified) {
-    host.append(el('div', 'empty', '核验后显示该客户的订单。'))
+    host.append(el('div', 'empty', `核验后客服才能看到${noun}。`))
     return
   }
-  const orders = (state.db?.orders || []).filter(order => order.userId === identity.userId)
-  if (!orders.length) {
-    host.append(el('div', 'empty', '这位客户名下没有订单。'))
+  // 【航空域只显示摘要】预订的细节（航段、行李、保险）已经在剧本区里了。
+  // 这一区要回答的是「客服现在能看到什么」，而不是再拄一遍数据。
+  const mine = isAirline
+    ? (state.db?.reservations || []).filter(item => item.userId === identity.userId)
+    : (state.db?.orders || []).filter(item => item.userId === identity.userId)
+  if (!mine.length) {
+    host.append(el('div', 'empty', `这位客户名下没有${noun}。`))
     return
   }
+  if (isAirline) {
+    for (const item of mine) {
+      const card = el('div', 'card')
+      card.append(el('div', 'row',
+        `<b class="mono">${esc(item.reservationId)}</b>`
+        + `<span class="tag">${esc(CABIN_TEXT[item.cabin] || item.cabin)}</span>`
+        + `<span class="muted">￥${Number(item.total).toFixed(2)}</span>`
+        + (item.status === 'cancelled' ? '<span class="tag bad">已退票</span>' : '')))
+      host.append(card)
+    }
+    return
+  }
+  const orders = mine
   for (const order of orders) {
     const card = el('div', 'card')
     card.append(el('div', 'row',
@@ -278,9 +431,18 @@ function renderAudit(state) {
 }
 
 function renderState(state) {
+  latestState = state
+  // 域标签跟着状态走 —— 界面自己不知道连的是哪一组进程，
+  // 只有 service 的 snapshot 里带着 domain。
+  $('domain-tag').textContent = DOMAIN_TEXT[state.domain] || state.domain || '?'
+  renderScript(state)
   renderIdentity(state)
   renderOrders(state)
   renderAudit(state)
+  // 转人工是会话的终态之一 —— 转出去之后客服不该再自行办业务。
+  if (state.transferred) {
+    $('status').textContent = `已转人工：${state.transferred.reason}`
+  }
 }
 
 // 业务状态走 SSE：工具一执行完面板就变，不用轮询。
@@ -403,7 +565,29 @@ $('reset').onclick = async () => {
   seenMessages.clear()
   renderTurn({
     role: 'assistant',
-    content: '业务状态已重置。注意对话历史仍在网关侧，模型还记得刚才聊过什么。',
+    content: '本位客户的操作已全部撒回。注意对话历史仍在网关侧，模型还记得刚才聊过什么。',
+  })
+}
+
+// 【换一位客户】同一个 sessionId 背后换一份全新的库。
+// 不换 sessionId 的理由：它在网关启动时被烘进了 CS_FRONTEND_MCP_URL，
+// 换了只会换掉 WebSocket 那一侧 —— 模型的前台工具还打在原来那个会话上，
+// 于是它看到「尚未核验」而客户明明刚核验过。详见 state-store.mjs。
+$('new-customer').onclick = async () => {
+  const response = await fetch(`${API}/api/service/new-customer?sessionId=${SESSION}`, {
+    method: 'POST',
+  })
+  const result = await response.json().catch(() => ({}))
+  playing = null
+  $('log').innerHTML = ''
+  seenMessages.clear()
+  renderTurn({
+    role: 'assistant',
+    content: '已换一位客户，数据库回到初始状态。'
+      + (result.conversationRetained
+        ? '\n\n【注意】对话历史清不掉 —— 它在网关的 .runtime 里，而网关没有清空接口。'
+          + '模型还会记得上一位客户聊过什么。要彻底干净，重启网关进程。'
+        : ''),
   })
 }
 

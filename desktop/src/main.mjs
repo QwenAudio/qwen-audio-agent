@@ -7,6 +7,7 @@ import {
   Menu,
   nativeImage,
   Notification,
+  safeStorage,
   screen,
   shell,
   Tray,
@@ -20,6 +21,7 @@ import {
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseEnv } from 'node:util'
+import QRCode from 'qrcode'
 import {
   loadRuntimeEnvironment,
   userConfigDirectory,
@@ -40,6 +42,9 @@ import {
 import {
   readGatewayHealth,
 } from '../../shared/gateway-client.mjs'
+import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
+import { pairGatewayInvitation } from '../../shared/gateway-access-client.mjs'
+import { decodeGatewayInvitation } from '../../shared/gateway-remote-access.mjs'
 import {
   findRunningGateway,
 } from '../../shared/gateway-instance-lock.mjs'
@@ -106,6 +111,14 @@ import {
 } from './updater.mjs'
 import { createGracefulShutdown } from './graceful-shutdown.mjs'
 import { DesktopPresence } from './desktop-presence.mjs'
+import { createTailscaleGatewayEndpointPublisher } from '../../shared/gateway-tailscale-publisher.mjs'
+import { createGatewayPairingTicket } from '../../shared/gateway-access-client.mjs'
+import {
+  createGatewayInvitation,
+  encodeGatewayBrowserInvitation,
+  encodeGatewayInvitation,
+} from '../../shared/gateway-remote-access.mjs'
+import { createElectronGatewayCredentialStore } from './gateway-credential-store.mjs'
 
 // macOS / Linux 图形界面应用的 PATH 只包含系统目录。在启动最早阶段
 // 将其扩充为用户登录 shell 的 PATH，让 Gateway 子进程与后台可用性
@@ -161,7 +174,16 @@ const desktopSettingsStore = createSettingsStore({
   configDir: runtimeEnvironment.dataDirectory,
   uiStateDir: runtimeEnvironment.configDirectory,
 })
+const desktopGatewayCredentials = createElectronGatewayCredentialStore({
+  filePath: resolve(runtimeEnvironment.configDirectory, 'state/gateway-credentials.json'),
+  safeStorage,
+})
+const desktopGatewayProfiles = new GatewayConnectionProfileStore({
+  filePath: resolve(runtimeEnvironment.configDirectory, 'state/gateway-connections.json'),
+  credentialStore: desktopGatewayCredentials,
+})
 let desktopConversationSessionId = desktopSettingsStore.conversationSession.load()
+const desktopGatewayClientInstanceId = desktopSettingsStore.gatewayClientInstance.load()
 const orbPlacement = createOrbPlacement({
   getDisplays: () => screen.getAllDisplays(),
   orbSize: { width: DESKTOP_ORB_WIDTH, height: DESKTOP_ORB_HEIGHT },
@@ -225,6 +247,12 @@ let gatewayCrashCount = 0
 let lastRuntimeError = ''
 let desktopUpdater = null
 let tray = null
+let gatewayAccessToken = String(
+  process.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN
+  || process.env.QWEN_AUDIO_AGENT_ACCESS_TOKEN
+  || '',
+).trim()
+let pendingGatewayInvitation = null
 
 const desktopPresence = new DesktopPresence({
   getWindow: () => mainWindow,
@@ -264,6 +292,18 @@ function configuredOrigin() {
     origin: validateAppUrl(settings.gatewayUrl),
     settings,
   }
+}
+
+async function selectDesktopGatewayCredential(origin) {
+  const resolved = await desktopGatewayProfiles.resolve('desktop')
+  gatewayAccessToken = resolved?.profile?.gateway_url === origin
+    ? String(resolved.credential || '').trim()
+    : String(process.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN || '').trim()
+  return gatewayAccessToken
+}
+
+function readDesktopGatewayHealth(origin) {
+  return readGatewayHealth(origin, fetch, { accessToken: gatewayAccessToken })
 }
 
 function configuredGatewayEnvironment() {
@@ -398,6 +438,7 @@ async function ensureDesktopUi() {
       webRoot,
       target: () => appOrigin,
       skinsRoot,
+      accessToken: () => gatewayAccessToken,
     })
   }
   if (!mainWindow || mainWindow.isDestroyed()) {
@@ -407,6 +448,7 @@ async function ensureDesktopUi() {
 
 async function startConfiguredRuntime(settings = configuredOrigin().settings) {
   configuredGatewayOrigin = validateAppUrl(settings.gatewayUrl)
+  await selectDesktopGatewayCredential(configuredGatewayOrigin)
   appOrigin = isLoopbackUrl(configuredGatewayOrigin)
     ? await startLocalGateway(configuredGatewayOrigin)
     : configuredGatewayOrigin
@@ -419,7 +461,7 @@ async function startConfiguredRuntime(settings = configuredOrigin().settings) {
 }
 
 async function runtimeStatus(target = appOrigin) {
-  const health = await readGatewayHealth(target)
+  const health = await readDesktopGatewayHealth(target)
   return {
     gatewayConnected: Boolean(health),
     gatewayUrl: String(target || ''),
@@ -967,6 +1009,65 @@ ipcMain.handle('qwen-audio-agent:open-logs', async event => {
   return logger.directory
 })
 
+function desktopRemotePublisher() {
+  if (!isLoopbackUrl(appOrigin)) {
+    const error = new Error('只有运行本机 Gateway 时才能发布远程访问')
+    error.code = 'gateway_remote_host_required'
+    throw error
+  }
+  return createTailscaleGatewayEndpointPublisher({ gatewayUrl: appOrigin })
+}
+
+function assertSettingsRequest(event) {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权管理远程访问')
+  }
+}
+
+ipcMain.handle('qwen-audio-agent:remote-access-status', async event => {
+  assertSettingsRequest(event)
+  return desktopRemotePublisher().inspect()
+})
+
+ipcMain.handle('qwen-audio-agent:remote-access-enable', async event => {
+  assertSettingsRequest(event)
+  if (!await readDesktopGatewayHealth(appOrigin)) {
+    throw new Error('Gateway 尚未启动')
+  }
+  const endpoint = await desktopRemotePublisher().publish()
+  logger.info('gateway.remote_access_enabled', { endpoint: endpoint.url })
+  return endpoint
+})
+
+ipcMain.handle('qwen-audio-agent:remote-access-disable', async event => {
+  assertSettingsRequest(event)
+  const result = await desktopRemotePublisher().unpublish()
+  logger.info('gateway.remote_access_disabled', { changed: result.changed })
+  return result
+})
+
+ipcMain.handle('qwen-audio-agent:remote-access-invite', async event => {
+  assertSettingsRequest(event)
+  if (!await readDesktopGatewayHealth(appOrigin)) {
+    throw new Error('Gateway 尚未启动')
+  }
+  const endpoint = await desktopRemotePublisher().publish()
+  const ticket = await createGatewayPairingTicket(appOrigin)
+  const invitation = createGatewayInvitation({
+    gatewayUrl: endpoint.url,
+    pairingCode: ticket.code,
+    expiresAt: ticket.expiresAt,
+  })
+  const appUrl = encodeGatewayInvitation(invitation)
+  const webUrl = encodeGatewayBrowserInvitation(invitation)
+  return {
+    appUrl,
+    webUrl,
+    qrCode: await QRCode.toDataURL(appUrl, { width: 360, margin: 2 }),
+    expiresAt: invitation.expires_at,
+  }
+})
+
 // 与 `qwenaudio setup --json` 同款的只读检测，供设置页标注各后台
 // Agent 在本机的可用状态。合并 config.env 是因为检测需要其中的
 // AGENT_PROTOCOL / DASHSCOPE_API_KEY / ACP_COMMAND 等配置。
@@ -1169,6 +1270,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
       : '请先填写 Speech-to-Speech 服务地址')
   }
   if (remote) {
+    await selectDesktopGatewayCredential(nextOrigin)
     const remoteRuntime = await runtimeStatus(nextOrigin)
     if (!remoteRuntime.gatewayConnected) {
       throw new Error(`无法连接 Gateway：${nextOrigin}`)
@@ -1233,7 +1335,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     || backendConnectionChanged
   )
   if (!remote && borrowedGatewayOrigin && gatewayRuntimeChanged) {
-    const borrowedHealth = await readGatewayHealth(borrowedGatewayOrigin)
+    const borrowedHealth = await readDesktopGatewayHealth(borrowedGatewayOrigin)
     if (borrowedHealth) {
       const nextEnvironment = desktopGatewayEnvironment({
         env: process.env,
@@ -1385,10 +1487,93 @@ ipcMain.handle('qwen-audio-agent:skin-remove', async (event, id) => {
   return { removed }
 })
 
+function gatewayInvitationFromArguments(argv = []) {
+  return argv.find(value => String(value || '').startsWith('qwaudio://connect#')) || null
+}
+
+async function applyGatewayInvitation(value) {
+  const invitation = decodeGatewayInvitation(value)
+  const paired = await pairGatewayInvitation(invitation, {
+    device: {
+      id: desktopGatewayClientInstanceId,
+      type: 'desktop',
+      label: app.getName(),
+    },
+    clientInstanceId: desktopGatewayClientInstanceId,
+    profileId: 'desktop',
+    label: 'Remote Gateway',
+    profileStore: desktopGatewayProfiles,
+  })
+  gatewayAccessToken = String(
+    (await desktopGatewayProfiles.resolve('desktop'))?.credential || '',
+  ).trim()
+  const settings = desktopSettingsStore.save({
+    ...desktopSettingsStore.load(),
+    gatewayUrl: paired.profile.gateway_url,
+  })
+  if (embeddedGateway) {
+    await embeddedGateway.stop()
+    embeddedGateway = null
+  }
+  borrowedGatewayOrigin = ''
+  setupRequired = false
+  configuredGatewayOrigin = paired.profile.gateway_url
+  appOrigin = paired.profile.gateway_url
+  process.env.QWEN_AUDIO_AGENT_URL = appOrigin
+  await ensureDesktopUi()
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    await loadQwenAudioAgent(mainWindow)
+    desktopPresence.wake('remote-paired')
+  }
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
+    settingsWindow.webContents.reload()
+  }
+  logger.info('gateway.remote_paired', {
+    gatewayUrl: paired.profile.gateway_url,
+    deviceId: paired.profile.device_id,
+  })
+  return settings
+}
+
+async function consumeGatewayInvitation(value) {
+  if (!value) return
+  try {
+    await applyGatewayInvitation(value)
+    dialog.showMessageBox({
+      type: 'info',
+      title: desktopText('Gateway 已连接'),
+      message: desktopText('远程 Gateway 已配对并保存。'),
+    })
+  } catch (error) {
+    logger.warn('gateway.remote_pairing_failed', { error })
+    dialog.showErrorBox(
+      desktopText('Gateway 配对失败'),
+      String(error?.message || error),
+    )
+  }
+}
+
+if (process.defaultApp && process.argv[1]) {
+  app.setAsDefaultProtocolClient('qwaudio', process.execPath, [resolve(process.argv[1])])
+} else {
+  app.setAsDefaultProtocolClient('qwaudio')
+}
+
+app.on('open-url', (event, value) => {
+  event.preventDefault()
+  if (app.isReady()) void consumeGatewayInvitation(value)
+  else pendingGatewayInvitation = value
+})
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    const invitation = gatewayInvitationFromArguments(argv)
+    if (invitation) {
+      void consumeGatewayInvitation(invitation)
+      return
+    }
     if (setupRequired || !mainWindow) {
       showSettings()
       return
@@ -1402,6 +1587,12 @@ if (!app.requestSingleInstanceLock()) {
       app.dock?.hide()
     }
     createTray()
+    const launchInvitation = pendingGatewayInvitation
+      || gatewayInvitationFromArguments(process.argv)
+    pendingGatewayInvitation = null
+    if (launchInvitation) {
+      await consumeGatewayInvitation(launchInvitation)
+    }
     const refreshDesktopTaskSurface = () => {
       updateDesktopTaskSurface(desktopTaskCount)
     }
@@ -1425,11 +1616,12 @@ if (!app.requestSingleInstanceLock()) {
         }
       },
     })
+    const startupSettings = configuredOrigin().settings
     if (setupRequired) {
       showSettings()
     } else {
       try {
-        await startConfiguredRuntime(initialSettings)
+        await startConfiguredRuntime(startupSettings)
       } catch (error) {
         lastRuntimeError = error?.message || String(error)
         setupRequired = true

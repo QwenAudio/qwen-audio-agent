@@ -4,7 +4,38 @@ import {
   COCKPIT_CONNECTION_INTERRUPTED,
   cockpitConnectionError,
   cockpitVoiceConnectionMode,
+  playbackUnavailableReason,
+  publishCockpitVoiceIntent,
 } from '../src/hooks/voiceSessionMode.js'
+
+test('publishes voice intent once and retries it after a disconnected send', () => {
+  const events = []
+  let connected = false
+  const client = {
+    send(event) {
+      if (!connected) return false
+      events.push(event)
+      return true
+    },
+  }
+
+  let published = publishCockpitVoiceIntent(client, false)
+  assert.equal(published, null)
+  assert.deepEqual(events, [])
+
+  connected = true
+  published = publishCockpitVoiceIntent(client, false, published)
+  assert.equal(published, false)
+  assert.deepEqual(events, [{ type: 'unmute' }])
+
+  published = publishCockpitVoiceIntent(client, false, published)
+  assert.equal(published, false)
+  assert.equal(events.length, 1)
+
+  published = publishCockpitVoiceIntent(client, true, published)
+  assert.equal(published, true)
+  assert.deepEqual(events.at(-1), { type: 'mute' })
+})
 
 test('keeps a muted cockpit Client voice-capable without claiming voice', () => {
   assert.deepEqual(cockpitVoiceConnectionMode(true), {
@@ -37,4 +68,23 @@ test('clears a transient connection error as soon as the Gateway reconnects', ()
   assert.equal(cockpitConnectionError('connected'), null)
   assert.equal(cockpitConnectionError('ready'), null)
   assert.equal(cockpitConnectionError('recovery_failed'), undefined)
+})
+
+test('does not acknowledge playback start when audio cannot actually play', () => {
+  assert.equal(
+    playbackUnavailableReason({ muted: true, context: { state: 'running' } }),
+    'client_muted',
+  )
+  assert.equal(
+    playbackUnavailableReason({ muted: false, context: null }),
+    'audio_context_missing',
+  )
+  assert.equal(
+    playbackUnavailableReason({ muted: false, context: { state: 'suspended' } }),
+    'audio_context_suspended',
+  )
+  assert.equal(
+    playbackUnavailableReason({ muted: false, context: { state: 'running' } }),
+    '',
+  )
 })

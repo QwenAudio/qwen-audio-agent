@@ -96,6 +96,9 @@ Each exposed tool receives a stable model-visible name:
   processes when it shuts down. `command`, arguments, environment values, and
   `cwd` may use exact environment references; a configured `cwd` must be absolute.
   The child receives only the SDK's safe base environment plus explicit `env` values.
+- stdio servers and backend Agents use the Gateway's shared user command search
+  path. After installing a command, run `qwenaudio gateway restart`; the CLI
+  refreshes the login-environment `PATH` cache used by the background service.
 - `tools` is an explicit allowlist. Enabled tools execute inline in the current
   conversation turn; the Gateway does not insert a generic confirmation turn
   based on whether a tool reads or writes.
@@ -108,5 +111,6 @@ Each exposed tool receives a stable model-visible name:
 - If an enabled tool is absent or invalid during discovery, that server fails
   closed and exposes no partial tool set.
 
-Restart the Gateway after changing this file. Secrets should be passed through
-environment variables instead of committed to JSON.
+Restart the Gateway after changing this file. Put variables required by the
+background service in the user `config.env`; do not commit secrets to JSON or
+rely on temporary exports that exist only in the current terminal.

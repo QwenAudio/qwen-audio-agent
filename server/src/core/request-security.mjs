@@ -1,6 +1,7 @@
 import { config } from './config.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
+const TRUSTED_NATIVE_CLIENT_ORIGINS = new Set(['https://qwaudio.local'])
 
 function normalizedOrigin(value) {
   try {
@@ -40,7 +41,12 @@ function trustedOrigins(allowedOrigins) {
 
 export function isAllowedOrigin(
   req,
-  { allowedOrigins = config.allowedOrigins } = {},
+  {
+    allowedOrigins = config.allowedOrigins,
+    authenticatedRemote = false,
+    allowSecureSameOrigin = false,
+    trustedNativeClient = false,
+  } = {},
 ) {
   const requestHost = parsedHost(req.headers.host)
   if (!requestHost) return false
@@ -53,12 +59,31 @@ export function isAllowedOrigin(
   // CLI and other non-browser clients do not send Origin. They are accepted
   // only through a loopback address or an explicitly trusted reverse proxy.
   if (!origin) {
-    return LOOPBACK_HOSTS.has(requestHost.hostname) || trustedHost
+    return LOOPBACK_HOSTS.has(requestHost.hostname)
+      || trustedHost
+      || authenticatedRemote === true
   }
+
+  if (
+    authenticatedRemote
+    && trustedNativeClient
+    && TRUSTED_NATIVE_CLIENT_ORIGINS.has(origin)
+  ) return true
 
   const originUrl = new URL(origin)
   if (configured.includes(origin)) {
     return originUrl.host === requestHost.host
+  }
+
+  // An authenticated remote browser is already bound to a Gateway-issued
+  // credential. The unauthenticated pairing endpoint opts into this path
+  // separately because its one-time ticket is the credential being redeemed.
+  if (
+    (authenticatedRemote || allowSecureSameOrigin)
+    && originUrl.protocol === 'https:'
+    && originUrl.host === requestHost.host
+  ) {
+    return true
   }
 
   // Comparing arbitrary Origin and Host values is vulnerable to DNS rebinding.
@@ -72,7 +97,10 @@ export function isAllowedOrigin(
 }
 
 export function enforceSameOrigin(req, res, next) {
-  if (!isAllowedOrigin(req)) {
+  if (!isAllowedOrigin(req, {
+    authenticatedRemote: req.identity?.access === 'remote',
+    trustedNativeClient: req.identity?.clientType === 'mobile',
+  })) {
     res.status(403).json({ error: 'origin not allowed' })
     return
   }

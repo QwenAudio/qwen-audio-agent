@@ -44,6 +44,7 @@ test('recognizes terminal scenario progress stages', () => {
   assert.equal(isTerminalCockpitProgress({ stage: 'navigation_started' }), true)
   assert.equal(isTerminalCockpitProgress({ stage: 'flashbuy_preview_ready' }), true)
   assert.equal(isTerminalCockpitProgress({ stage: 'music_started' }), true)
+  assert.equal(isTerminalCockpitProgress({ stage: 'music_volume_changed' }), true)
 })
 
 test('maps scenario activity to the same screens as the original cockpit interaction', () => {

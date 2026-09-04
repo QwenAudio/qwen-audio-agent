@@ -187,10 +187,14 @@ test('executes a discovered tool and labels bounded results as untrusted', async
 
 test('fails a server closed when an explicitly enabled tool is absent', async () => {
   const mocks = harness({ remoteTools: [] })
+  const warnings = []
   const client = new FrontendMcpClient({
     configuration: configuration(),
     clientFactory: mocks.clientFactory,
     transportFactory: mocks.transportFactory,
+    logger: {
+      warn: (event, fields) => warnings.push({ event, fields }),
+    },
   })
   assert.deepEqual(await client.initialize(), [])
   assert.deepEqual(client.health(), {
@@ -210,6 +214,14 @@ test('fails a server closed when an explicitly enabled tool is absent', async ()
     /not enabled/,
   )
   assert.equal(mocks.clients[0].closed, true)
+  assert.deepEqual(warnings, [{
+    event: 'frontend_mcp.connection_failed',
+    fields: {
+      server: 'documents',
+      transport: 'streamable-http',
+      error: 'Enabled Frontend MCP tool is missing: documents/search',
+    },
+  }])
 })
 
 test('normalizes MCP tool errors without exposing protocol internals', async () => {

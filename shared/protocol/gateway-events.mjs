@@ -195,6 +195,7 @@ const GatewayClientPayloadSchemas = Object.freeze({
       resource: z.boolean().optional(),
     }).passthrough().optional(),
     clientStates: z.array(z.string().min(1)).optional(),
+    takeoverRequested: z.boolean().optional(),
   }).passthrough(),
   [GatewayClientEvent.AUDIO_APPEND]: z.object({
     audio: z.string().min(1),
@@ -268,6 +269,18 @@ const GatewayVoicePayloadSchemas = Object.freeze({
   }).passthrough(),
   [GatewayServerEvent.TRANSCRIPT_DISCARD]: z.object({
     role: z.enum(['user', 'assistant']),
+  }).passthrough(),
+  [GatewayServerEvent.TOOL_CALL]: z.object({
+    callId: z.string().min(1),
+    name: z.string().min(1),
+    surface: z.enum(['frontend', 'backend']),
+    status: z.string().min(1),
+    arguments: z.unknown().optional(),
+    result: z.string().optional(),
+    durationMs: z.number().nonnegative().optional(),
+    responseId: z.string().optional(),
+    turnId: z.string().optional(),
+    taskId: z.string().optional(),
   }).passthrough(),
   [GatewayServerEvent.AGENT_ACTIVITY]: z.object({
     activity: z.string().min(1),

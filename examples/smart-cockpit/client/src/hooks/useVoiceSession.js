@@ -11,6 +11,8 @@ import {
 import {
   cockpitConnectionError,
   cockpitVoiceConnectionMode,
+  playbackUnavailableReason,
+  publishCockpitVoiceIntent,
 } from './voiceSessionMode'
 import {
   rememberTaskProgress,
@@ -18,10 +20,15 @@ import {
   taskProgressFromEvent,
 } from '../projections/task-progress'
 import {
+  toolCallFromGatewayEvent,
+  toolCallFromTaskEvent,
+} from '../projections/tool-call-debug'
+import {
   COCKPIT_ASSISTANT_PROFILE_EVENT,
   cockpitPersonaId,
 } from '../config/personas'
 import { activateAudioContext } from '../audio/activation'
+import { gatewayWebSocketUrl } from '../config/gateway'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
@@ -38,9 +45,7 @@ const TASK_TERMINAL_EVENTS = new Set([
 ])
 
 function gatewayWsUrl(sessionId) {
-  const origin = import.meta.env.VITE_GATEWAY_ORIGIN || window.location.origin
-  const url = new URL('/api/realtime', origin)
-  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  const url = gatewayWebSocketUrl('/api/realtime')
   url.searchParams.set('sessionId', sessionId)
   return url.toString()
 }
@@ -125,6 +130,7 @@ export default function useVoiceSession({
   const mediaRequestRef = useRef(null)
   const inputSampleRateRef = useRef(INPUT_SAMPLE_RATE)
   const mutedRef = useRef(muted)
+  const publishedMutedRef = useRef(null)
   const personaRef = useRef(persona)
   const voiceRef = useRef(voice)
   const personaSyncRef = useRef({ generation: 0, pending: '', published: '' })
@@ -143,7 +149,17 @@ export default function useVoiceSession({
     startTimers: new Map(),
   })
 
-  useEffect(() => { mutedRef.current = muted }, [muted])
+  const publishMutedState = useCallback((nextMuted, client = clientRef.current) => {
+    mutedRef.current = nextMuted
+    publishedMutedRef.current = publishCockpitVoiceIntent(
+      client,
+      nextMuted,
+      publishedMutedRef.current,
+    )
+    return publishedMutedRef.current === nextMuted
+  }, [])
+
+  useEffect(() => { publishMutedState(muted) }, [muted, publishMutedState])
   useEffect(() => { onVoiceMessageRef.current = onVoiceMessage }, [onVoiceMessage])
   useEffect(() => {
     onConversationRecoveryRef.current = onConversationRecovery
@@ -262,11 +278,18 @@ export default function useVoiceSession({
 
   const playPcmAudio = useCallback((audioBase64, sampleRate, responseId) => {
     const context = audioContextRef.current
-    if (!context || mutedRef.current) {
-      if (!playbackRef.current.started.has(responseId)) {
-        playbackRef.current.started.add(responseId)
-        sendPlaybackReceipt(GatewayClientEvent.PLAYBACK_STARTED, responseId)
-      }
+    const unavailableReason = playbackUnavailableReason({
+      context,
+      muted: mutedRef.current,
+    })
+    if (unavailableReason) {
+      sendPlaybackReceipt(
+        GatewayClientEvent.PLAYBACK_CANCELLED,
+        responseId,
+        unavailableReason,
+      )
+      setOutputLevel(0)
+      setVoiceState(current => current === 'speaking' ? 'idle' : current)
       return
     }
     try {
@@ -324,6 +347,9 @@ export default function useVoiceSession({
         audio: AUDIO_CAPTURE_CONSTRAINTS,
       })
       mediaRequestRef.current = mediaRequest
+      // Publish the intent while the click still owns browser activation.
+      // Microphone permission may resolve later and must not delay UNMUTE.
+      publishMutedState(false)
       // The capture effect consumes both promises. Attach handlers here too so
       // a fast rejection cannot become unhandled before React runs the effect.
       activation.ready.catch(() => {})
@@ -335,7 +361,11 @@ export default function useVoiceSession({
       setVoiceState('error')
       return false
     }
-  }, [])
+  }, [publishMutedState])
+
+  const deactivateVoice = useCallback(() => {
+    publishMutedState(true)
+  }, [publishMutedState])
 
   useEffect(() => {
     const handleEvent = (event) => {
@@ -356,6 +386,16 @@ export default function useVoiceSession({
         finishResponsePlayback(event.responseId)
       } else if (event.type === GatewayServerEvent.PLAYBACK_CLEAR) {
         clearPlayback(event.reason || 'gateway_clear')
+      } else if (event.type === GatewayServerEvent.TOOL_CALL) {
+        const toolCall = toolCallFromGatewayEvent(event)
+        if (toolCall) {
+          onVoiceMessageRef.current?.({
+            role: 'assistant',
+            responseId: toolCall.responseId,
+            turnId: toolCall.turnId,
+            toolCall,
+          })
+        }
       } else if (
         event.type === GatewayServerEvent.TRANSCRIPT_DELTA
         || event.type === GatewayServerEvent.TRANSCRIPT_FINAL
@@ -371,6 +411,14 @@ export default function useVoiceSession({
       } else if (event.type === GatewayServerEvent.ERROR) {
         setError(event.message || '语音服务错误')
         setVoiceState('error')
+      }
+      const toolCall = toolCallFromTaskEvent(event)
+      if (toolCall) {
+        onVoiceMessageRef.current?.({
+          role: 'assistant',
+          turnId: toolCall.turnId,
+          toolCall,
+        })
       }
       const nextProgress = taskProgressFromEvent(event)
       if (
@@ -419,9 +467,11 @@ export default function useVoiceSession({
       },
       onStatus: status => {
         if (status.state === 'ready') {
+          publishedMutedRef.current = mutedRef.current
           publishAssistantProfile(client)
           syncOutputVoice(client)
         } else if (['connecting', 'disconnected', 'unavailable'].includes(status.state)) {
+          publishedMutedRef.current = null
           for (const sync of [personaSyncRef.current, voiceSyncRef.current]) {
             sync.generation += 1
             sync.pending = ''
@@ -460,7 +510,6 @@ export default function useVoiceSession({
 
   useEffect(() => {
     if (muted) {
-      clientRef.current?.send({ type: GatewayClientEvent.MUTE })
       const frame = requestAnimationFrame(() => {
         setInputLevel(0)
         setOutputLevel(0)
@@ -526,7 +575,6 @@ export default function useVoiceSession({
         }
         source.connect(processor)
         processor.connect(context.destination)
-        clientRef.current?.send({ type: GatewayClientEvent.UNMUTE })
         setError(null)
 
         const data = new Float32Array(analyser.fftSize)
@@ -582,6 +630,7 @@ export default function useVoiceSession({
     progress,
     error: connectionError || error,
     activateVoice,
+    deactivateVoice,
     sendInput,
   }
 }

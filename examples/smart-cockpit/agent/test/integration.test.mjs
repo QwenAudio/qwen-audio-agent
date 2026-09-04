@@ -26,7 +26,7 @@ function cockpitModel() {
       if (last.role === 'tool') return { content: last.content }
       const objective = last.content
       if (/空调/u.test(objective)) {
-        return toolCall('vehicle_climate_control', { action: 'set_temp', temperature: 22 })
+        return toolCall('vehicle_temperature_control', { action: 'set', temperature: 22 })
       }
       if (/五常地铁站/u.test(objective)) {
         return toolCall('navigation_start', {
@@ -61,7 +61,7 @@ function cockpitModel() {
   }
 }
 
-test('runs core cockpit capabilities through A2A and MCP without UI actions', async t => {
+test('runs backend-routed cockpit capabilities through A2A and MCP', async t => {
   const cockpit = new CockpitService({
     random: () => 0.25,
     services: {
@@ -108,23 +108,6 @@ test('runs core cockpit capabilities through A2A and MCP without UI actions', as
     objective,
   })
 
-  const vehicle = await submit('空调调到二十二度')
-  assert.match(vehicle.content, /空调当前开启.*22°C/u)
-  assert.equal(vehicle.presentation, undefined)
-
-  const navigation = await submit('导航到杭州西湖')
-  assert.match(navigation.content, /已开始导航到杭州西湖/u)
-
-  const multiStop = await submit('先去五常地铁站，再到城西银泰，最后去萧山机场')
-  assert.match(multiStop.content, /已开始导航到萧山机场/u)
-  assert.match(multiStop.content, /途经五常地铁站、城西银泰/u)
-
-  const currentRoute = await submit('导航还有多久')
-  assert.match(currentRoute.content, /当前正导航到萧山机场/u)
-
-  const music = await submit('播放晴天')
-  assert.match(music.content, /正在播放：晴天/u)
-
   const search = await submit('搜索附近的黑椒牛肉饭外卖')
   assert.match(search.content, /找到\d+个可送商品/u)
 
@@ -149,11 +132,5 @@ test('runs core cockpit capabilities through A2A and MCP without UI actions', as
 
   state = await fetch(`${service.origin}/api/cockpit/state?cockpitId=default`)
     .then(response => response.json())
-  assert.equal(state.vehicle.acTemp, 22)
-  assert.equal(state.navigation.status, 'navigating')
-  assert.equal(state.navigation.destination, '萧山机场')
-  assert.deepEqual(state.navigation.waypoints, ['五常地铁站', '城西银泰'])
-  assert.equal(state.music.playing, true)
-  assert.equal(state.music.playlist[state.music.currentIndex].title, '晴天')
   assert.match(state.flashbuy.order.id, /^SG/u)
 })

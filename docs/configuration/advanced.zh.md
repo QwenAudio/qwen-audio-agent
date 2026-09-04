@@ -2,31 +2,83 @@
 
 ## 远程访问安全
 
-Gateway 默认只信任字面量 loopback Host/Origin，避免恶意网页通过 DNS rebinding
-连接本机语音与后台 Agent。若要从其他设备访问，不要直接设置 `HOST=0.0.0.0`
-后暴露端口；应使用具备访问认证的 HTTPS 反向代理，并配置公开 Origin：
+Gateway 默认只监听 loopback，并只信任字面量 loopback Host/Origin。远程请求必须先
+通过 Gateway 访问认证，才能进入 HTTP 或 WebSocket 业务接口。不要把端口直接暴露到
+公网；请使用可信 VPN 或 HTTPS/WSS 反向代理。
+
+推荐的私有网络路径是在 Gateway 主机与远程设备上安装并登录 Tailscale，然后执行：
+
+```bash
+qwenaudio gateway remote enable
+qwenaudio gateway remote invite
+```
+
+第一条命令通过独立的 Tailscale Serve HTTPS 端口发布 loopback Gateway，第二条命令
+输出供远程 Client 使用的短时邀请。Adapter 不会覆盖其他 Serve 路由。可通过
+`gateway remote status`、`devices`、`revoke ID` 与 `disable` 管理。若 tailnet HTTPS
+不可用，原生 Client 可用 `--remote-mode tcp` 兜底；浏览器和 Mobile 的麦克风访问应
+使用默认 HTTPS 模式。
+
+配置一个个人访问密钥：
+
+```dotenv
+QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=替换为至少24字符的随机密钥
+```
+
+可用 `openssl rand -base64 32` 生成随机密钥。该密钥只用于 Gateway 访问认证，
+不要写入 URL、GCP 消息或公开日志。
+
+原生 Client 使用 Bearer Token；浏览器 Client 可先发起一次带认证的 HTTP 请求，换取
+`HttpOnly`、`SameSite=Strict` 会话 Cookie。通过 HTTPS 反向代理提供浏览器界面时，
+Gateway 保持监听 loopback，并精确配置公开 Origin：
 
 ```dotenv
 HOST=127.0.0.1
 QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com
 ```
 
+例如，原生 TUI 可通过环境变量连接远程 Gateway，无需把密钥放进 URL：
+
+```bash
+QWEN_AUDIO_AGENT_URL=https://voice.example.com \
+QWEN_AUDIO_GATEWAY_CLIENT_TOKEN="$ACCESS_TOKEN" \
+qwenaudio tui
+```
+
 反向代理必须：
 
-- 在转发前完成用户认证；
 - 只接受 HTTPS，并正确转发 WebSocket；
 - 保留公开 `Host`；
 - 将流量转发至本机 `127.0.0.1:3101`。
 
-`QWEN_AUDIO_AGENT_AUTH_SECRET` 只用于签署本地身份，不是远程访问密码。不得用它
-替代反向代理认证。多个可信 Origin 可使用英文逗号分隔。
+也可以在本机执行 `qwenaudio gateway pair`。命令会输出短时、一次性配对码，远程
+Client 通过 `POST /api/access/pair` 换取可撤销设备令牌。已配对设备可通过
+`GET /api/access/devices` 列出，并通过 `DELETE /api/access/devices/:id` 撤销；
+管理接口仅允许本机访问。
+
+多个可信 Origin 使用英文逗号分隔。高级宿主可用 JSON 数组把不同访问密钥映射到
+不同用户身份：
+
+```dotenv
+QWEN_AUDIO_AGENT_ACCESS_KEYS='[{"token":"替换为足够长的随机密钥","owner_id":"user_alice","label":"Alice"}]'
+```
+
+每个用户只有一个活动 Client 租约。第二个 Client 默认被拒绝；相同
+`client.instance_id` 的重连，或显式协商 `session.takeover` 的接管可以替换旧 Client。
+接管会关闭旧连接，并用租约代次阻止旧 Socket 的迟到消息生效。
+
+`QWEN_AUDIO_AGENT_AUTH_SECRET` 只用于签署本地和远程会话身份，不是远程访问密码，
+绝不能发送给 Client。
+
+`QWEN_AUDIO_AGENT_ACCESS_TOKEN` 暂时保留为两种配置的旧别名。新配置应使用上面的宿主与
+Client 独立名称，避免把 Client 凭据误当作 Gateway 服务端配置。
 
 ## Gateway 运行方式
 
 同一数据目录在任意时刻只允许一个本地 Gateway。CLI、TUI 和 WebUI 共用
 `~/.config/qwaudio`，会优先复用同一个实例；桌面版使用独立目录，只复用或管理
-自己目录下的 Gateway。同一目录内的多个客户端可以同时连接，但不会各自启动一套
-后台 Agent。实例身份记录在
+自己目录下的 Gateway。多个已认证用户按身份隔离；每个用户只有一个活动 Client，
+并共享同一个 Gateway 进程和后台服务。实例身份记录在
 用户配置目录下的临时 `gateway.lock` 中，Gateway 正常退出时会删除，异常退出留下的
 锁会在确认原进程已经结束后自动回收。若现有 Gateway 的 Realtime、后台 Agent 或
 权限配置与当前请求不一致，启动会明确报错，而不会静默另开随机端口。远程 Gateway
@@ -56,6 +108,12 @@ qwenaudio gateway uninstall
 `~/.config/qwaudio/logs/gateway.log`；Linux 也可以通过
 `journalctl --user -u qwen-audio-agent-gateway` 查看。
 
+Gateway、桌面版、后台 Agent 和本地 stdio MCP 共用一份用户命令搜索路径。
+执行 `gateway install`、`start` 或 `restart` 时，CLI 会刷新登录环境中的
+`PATH` 缓存，因此通过 Homebrew、npm、uv 或版本管理器安装的新命令在重启后即可使用。
+后台服务不会保存终端临时 `export` 的密钥；持久配置请写入命令显示的
+`config.env`。
+
 ## 本地日志
 
 qwen-audio-agent 使用统一的本地结构化日志，默认写入：
@@ -73,6 +131,13 @@ qwen-audio-agent 使用统一的本地结构化日志，默认写入：
 `taskId`、`provider`、`backend`、`durationMs` 等关联信息。API Key、Token、
 Authorization、Cookie、密码和 Secret 字段会在写入前脱敏；默认不记录麦克风音频、
 用户转写正文、模型回复正文、任务目标或任务结果。
+
+分析前台工具延迟时，可以按 `sessionId` 和 `turnId` 串联
+`realtime.provider.speech_stopped`、`realtime.tool_call.received`、
+`realtime.tool_call.result_ready` 与 `realtime.playback.started`；工具失败记为
+`realtime.tool_call.failed`。其中第一个事件表示 Realtime Provider 确认的
+端点，不是用户真实发声的最后一个采样；如需测量更早的“真实话音结束→端点检测”，
+需使用客户端采集时间戳或受控的实时 PCM 回放。
 
 桌面版可在“设置 → 应用 → 日志”中打开日志目录。默认日志级别为 `info`，单个文件
 达到 10 MiB 后轮转，总共保留 5 份。可通过以下环境变量调整：

@@ -14,6 +14,8 @@ const COMMANDS = new Set([
   'setup',
   'install',
   'skill',
+  'connect',
+  'disconnect',
 ])
 const GATEWAY_ACTIONS = new Set([
   'run',
@@ -22,8 +24,11 @@ const GATEWAY_ACTIONS = new Set([
   'stop',
   'restart',
   'status',
+  'pair',
+  'remote',
   'uninstall',
 ])
+const REMOTE_ACTIONS = new Set(['status', 'enable', 'disable', 'invite', 'devices', 'revoke'])
 const BACKEND_PERMISSION_MODES = new Set(['native', 'full'])
 const TUI_AUDIO_MODES = new Set(['half', 'full'])
 const SKILL_ACTIONS = new Set(['install', 'list', 'remove', 'update'])
@@ -69,6 +74,23 @@ export function parseArguments(argv, env = process.env) {
   if (command === 'gateway' && !GATEWAY_ACTIONS.has(gatewayAction)) {
     throw new Error(`未知 Gateway 命令：${gatewayAction}`)
   }
+  const remoteAction = gatewayAction === 'remote'
+    && args[0]
+    && !args[0].startsWith('-')
+    ? args.shift()
+    : gatewayAction === 'remote' ? 'status' : ''
+  if (gatewayAction === 'remote' && !REMOTE_ACTIONS.has(remoteAction)) {
+    throw new Error(`未知远程访问命令：${remoteAction}`)
+  }
+  const remoteDeviceId = gatewayAction === 'remote'
+    && remoteAction === 'revoke'
+    && args[0]
+    && !args[0].startsWith('-')
+    ? args.shift()
+    : ''
+  if (gatewayAction === 'remote' && remoteAction === 'revoke' && !remoteDeviceId) {
+    throw new Error('gateway remote revoke 需要设备 ID')
+  }
   const installTarget = command === 'install'
     && args[0]
     && !args[0].startsWith('-')
@@ -100,7 +122,16 @@ export function parseArguments(argv, env = process.env) {
     configAction,
     realtimeModel: '',
     gatewayAction,
+    remoteAction,
+    remoteDeviceId,
+    remoteMode: 'https',
+    remotePort: 8443,
     url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
+    accessToken: String(
+      env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN
+      || env.QWEN_AUDIO_AGENT_ACCESS_TOKEN
+      || '',
+    ).trim(),
     sessionId: env.QWEN_AUDIO_AGENT_SESSION_ID || createVoiceSessionId(),
     audioMode: String(
       env.QWEN_AUDIO_AGENT_TUI_AUDIO_MODE || 'half',
@@ -122,8 +153,13 @@ export function parseArguments(argv, env = process.env) {
     openBrowser: true,
     json: false,
     yes: false,
+    takeover: false,
     backendSpecified: false,
     gatewayConfigurationSpecified: false,
+    invitation: command === 'connect' && args[0] && !args[0].startsWith('-')
+      ? args.shift()
+      : '',
+    urlSpecified: Boolean(env.QWEN_AUDIO_AGENT_URL),
   }
   let audioModeSpecified = false
 
@@ -131,6 +167,7 @@ export function parseArguments(argv, env = process.env) {
     const argument = args[index]
     if (argument === '--url') {
       options.url = nextValue(args, index++, '--url')
+      options.urlSpecified = true
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--backend') {
       options.backend = normalizeBackendProtocol(
@@ -138,6 +175,10 @@ export function parseArguments(argv, env = process.env) {
       )
       options.backendSpecified = true
       options.gatewayConfigurationSpecified = true
+    } else if (argument === '--remote-mode') {
+      options.remoteMode = nextValue(args, index++, '--remote-mode').toLowerCase()
+    } else if (argument === '--remote-port') {
+      options.remotePort = Number(nextValue(args, index++, '--remote-port'))
     } else if (argument === '--backend-agent') {
       options.backendAgent = nextValue(args, index++, '--backend-agent').trim()
       options.gatewayConfigurationSpecified = true
@@ -160,6 +201,7 @@ export function parseArguments(argv, env = process.env) {
       options.audioMode = nextValue(args, index++, '--audio-mode').toLowerCase()
       audioModeSpecified = true
     } else if (argument === '--no-open') options.openBrowser = false
+    else if (argument === '--takeover') options.takeover = true
     else if (argument === '--skill') {
       options.skillNames.push(nextValue(args, index++, '--skill'))
     } else if (argument === '--list') options.skillList = true
@@ -230,11 +272,14 @@ export function parseArguments(argv, env = process.env) {
   if (command !== 'webui' && !options.openBrowser) {
     throw new Error('--no-open 只适用于 webui')
   }
-  if (command !== 'setup' && options.json) {
-    throw new Error('--json 只适用于 setup')
+  if (command !== 'setup' && gatewayAction !== 'remote' && options.json) {
+    throw new Error('--json 只适用于 setup 或 gateway remote')
   }
   if (command !== 'tui' && audioModeSpecified) {
     throw new Error('--audio-mode 只适用于 tui')
+  }
+  if (command !== 'tui' && options.takeover) {
+    throw new Error('--takeover 只适用于 tui')
   }
   if (command === 'tui' && !TUI_AUDIO_MODES.has(options.audioMode)) {
     throw new Error(
@@ -243,12 +288,23 @@ export function parseArguments(argv, env = process.env) {
   }
   if (
     command === 'gateway'
-    && !['run', 'status'].includes(options.gatewayAction)
+    && !['run', 'status', 'pair', 'remote'].includes(options.gatewayAction)
     && options.gatewayConfigurationSpecified
   ) {
     throw new Error(
       'Gateway 后台服务从 config.env 读取配置；请先修改配置，再执行服务命令',
     )
+  }
+  if (gatewayAction !== 'remote' && (options.remoteMode !== 'https' || options.remotePort !== 8443)) {
+    throw new Error('--remote-mode 和 --remote-port 只适用于 gateway remote')
+  }
+  if (gatewayAction === 'remote') {
+    if (!['https', 'tcp'].includes(options.remoteMode)) {
+      throw new Error('远程访问模式只支持 https 或 tcp')
+    }
+    if (!Number.isInteger(options.remotePort) || options.remotePort < 1 || options.remotePort > 65535) {
+      throw new Error('--remote-port 必须是 1 到 65535 之间的整数')
+    }
   }
 
   options.url = cleanOrigin(options.url, ' Gateway URL')
@@ -282,11 +338,20 @@ export function helpText() {
     '  qwenaudio gateway install         安装并启动后台常驻服务',
     '  qwenaudio gateway start           启动后台服务',
     '  qwenaudio gateway status          查看 Gateway 状态',
+    '  qwenaudio gateway pair            创建远程客户端一次性配对码',
+    '  qwenaudio gateway remote enable   通过 Tailscale 开启远程访问',
+    '  qwenaudio gateway remote status   查看远程访问状态',
+    '  qwenaudio gateway remote invite   创建可导入的远程客户端邀请',
+    '  qwenaudio gateway remote disable  关闭本项目的 Tailscale 端点',
+    '  qwenaudio gateway remote devices  列出已配对设备',
+    '  qwenaudio gateway remote revoke ID  撤销设备',
     '  qwenaudio gateway stop            停止后台服务',
     '  qwenaudio gateway restart         重启后台服务',
     '  qwenaudio gateway uninstall       移除后台常驻服务',
     '  qwenaudio tui [选项]         连接现有 Gateway 的终端界面',
     '  qwenaudio webui [选项]       打开现有 Gateway 的 WebUI',
+    '  qwenaudio connect <邀请>      配对并保存远程 Gateway',
+    '  qwenaudio disconnect          忘记已保存的远程 Gateway',
     '  qwenaudio status [选项]      gateway status 的兼容别名',
     '  qwenaudio config             显示用户配置文件位置',
     '  qwenaudio config show        显示有效 Realtime 模型（不含凭据）',
@@ -322,6 +387,7 @@ export function helpText() {
     '界面选项：',
     '  --session ID           复用指定语音会话',
     '  --audio-mode MODE      Linux / Windows 使用 half（默认）或 full',
+    '  --takeover             显式接管同一用户的现有活动客户端（仅 TUI）',
     '  --no-open              WebUI 只打印地址，不打开浏览器',
     '  -h, --help             显示帮助',
     '',

@@ -39,6 +39,13 @@
     "./gateway-client-protocol": "./shared/gateway-client-protocol.mjs",
     "./gateway-client-sdk": "./shared/gateway-client-sdk.mjs",
     "./gateway-client-profiles": "./shared/gateway-client-profiles.mjs",
+    "./gateway-access-client": "./shared/gateway-access-client.mjs",
+    "./gateway-remote-access": "./shared/gateway-remote-access.mjs",
+    "./gateway-endpoint-publishers": "./shared/gateway-endpoint-publishers.mjs",
+    "./gateway-tailscale-publisher": "./shared/gateway-tailscale-publisher.mjs",
+    "./gateway-connection-profiles": "./shared/gateway-connection-profiles.mjs",
+    "./gateway-file-credential-store": "./shared/gateway-file-credential-store.mjs",
+    "./gateway-websocket-auth": "./shared/gateway-websocket-auth.mjs",
     "./client-events": "./server/src/client/client-event-router.mjs",
     "./client-actions": "./server/src/client/client-action-port.mjs",
     "./agent-delivery": "./server/src/delivery/agent-delivery.mjs",
@@ -105,6 +112,8 @@
     "docs/gateway-protocol.zh.md",
     "docs/roadmap/gateway-client-protocol.md",
     "docs/roadmap/gateway-client-protocol.zh.md",
+    "docs/roadmap/gateway-remote-access.md",
+    "docs/roadmap/gateway-remote-access.zh.md",
     "docs/backends/overview.md",
     "docs/backends/overview.zh.md",
     "docs/backends/extend.md",
@@ -258,6 +267,7 @@
     "@qwen-code/open-computer-use": "^0.2.3",
     "electron-updater": "6.8.9",
     "express": "^4.22.2",
+    "qrcode": "1.5.4",
     "sherpa-onnx": "1.13.4",
     "tar-stream": "3.1.7",
     "unbzip2-stream": "1.4.3",
@@ -274,8 +284,11 @@
     "vitepress": "^1.6.4"
   },
   "overrides": {
+    "@xmldom/xmldom": "0.8.15",
     "@hono/node-server": "2.0.12",
     "@electron/asar": "4.2.1",
-    "@electron/universal": "3.0.6"
+    "@electron/universal": "3.0.6",
+    "fast-uri": "3.1.6",
+    "qs": "6.16.0"
   }
 }

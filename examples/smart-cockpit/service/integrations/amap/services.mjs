@@ -14,6 +14,7 @@ export function createAmapCockpitServices({
   encode = geocode,
   route = drivingRoute,
   forecast = getWeather,
+  locate,
 } = {}) {
   return {
     async resolvePlace(name, city) {
@@ -28,5 +29,6 @@ export function createAmapCockpitServices({
     searchNearbyPlaces: searchNearby,
     drivingRoute: route,
     weather: forecast,
+    ...(typeof locate === 'function' ? { vehicleLocation: locate } : {}),
   }
 }

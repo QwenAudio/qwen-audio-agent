@@ -1,14 +1,45 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 import WebSocket from 'ws'
 import { createGatewayApplication } from '../src/app/gateway-application.mjs'
+import { GATEWAY_CLIENT_REVOKED_CLOSE_CODE } from '../../shared/gateway-client-protocol.mjs'
 import { config } from '../src/core/config.mjs'
 import { createRealtimeProviderRegistry } from '../src/voice/providers/provider-registry.mjs'
 import { openAiCompatibleProtocol } from '../src/voice/providers/openai-compatible-protocol.mjs'
+
+function requestJson({ port, path, method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method,
+      headers: {
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...headers,
+      },
+    }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.on('end', () => {
+        const text = Buffer.concat(chunks).toString()
+        resolve({
+          status: response.statusCode,
+          headers: response.headers,
+          body: text ? JSON.parse(text) : null,
+        })
+      })
+    })
+    request.once('error', reject)
+    if (body !== undefined) request.write(JSON.stringify(body))
+    request.end()
+  })
+}
 
 function disabledBackend() {
   return {
@@ -52,6 +83,114 @@ function customTaskAnnouncementRuntime() {
     progress: methods(['offer', 'remove', 'clear', 'flush', 'close']),
   }
 }
+
+test('protects remote HTTP access and completes one-time device pairing', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwa-app-access-'))
+  const accessToken = 'application-remote-access-token-over-24-characters'
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+      gatewayAccessToken: accessToken,
+      gatewayAccessKeys: '',
+      gatewayDeviceStatePath: join(directory, 'gateway-devices.json'),
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+  t.after(async () => {
+    await application.close()
+    rmSync(directory, { recursive: true, force: true })
+  })
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+
+  const denied = await requestJson({
+    port,
+    path: '/api/health',
+    headers: { Host: 'gateway.example.test' },
+  })
+  assert.equal(denied.status, 401)
+
+  const authenticated = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+  assert.equal(authenticated.status, 200)
+  assert.match(authenticated.headers['set-cookie'][0], /HttpOnly/)
+
+  const ticket = await requestJson({
+    port,
+    path: '/api/access/pairing-tickets',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: {},
+  })
+  assert.equal(ticket.status, 201)
+  const paired = await requestJson({
+    port,
+    path: '/api/access/pair',
+    method: 'POST',
+    headers: { Host: 'gateway.example.test' },
+    body: {
+      code: ticket.body.code,
+      device: { id: 'phone-one', type: 'mobile', label: 'Phone' },
+    },
+  })
+  assert.equal(paired.status, 200)
+  assert.equal(paired.body.device.id, 'phone-one')
+  assert.equal(typeof paired.body.access_token, 'string')
+  const replay = await requestJson({
+    port,
+    path: '/api/access/pair',
+    method: 'POST',
+    headers: { Host: 'gateway.example.test' },
+    body: { code: ticket.body.code },
+  })
+  assert.equal(replay.status, 401)
+
+  const remoteSocket = new WebSocket(
+    `ws://127.0.0.1:${port}/api/realtime?sessionId=paired-device`,
+    {
+      headers: {
+        Host: 'gateway.example.test',
+        Authorization: `Bearer ${paired.body.access_token}`,
+        Origin: 'https://qwaudio.local',
+      },
+    },
+  )
+  await once(remoteSocket, 'open')
+  const remoteClosed = once(remoteSocket, 'close')
+  const revoked = await requestJson({
+    port,
+    path: '/api/access/devices/phone-one',
+    method: 'DELETE',
+    headers: { Host: `127.0.0.1:${port}` },
+  })
+  assert.equal(revoked.status, 204)
+  const [closeCode] = await remoteClosed
+  assert.equal(closeCode, GATEWAY_CLIENT_REVOKED_CLOSE_CODE)
+
+  const deniedAfterRevocation = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${paired.body.access_token}`,
+    },
+  })
+  assert.equal(deniedAfterRevocation.status, 401)
+})
 
 test('passes the Task announcement factory through the application composition root', async () => {
   const calls = []
@@ -386,6 +525,104 @@ test('can disable memory without constructing the default provider', async () =>
   assert.equal(application.services.frontendMemory, null)
   assert.equal(application.services.frontendMemoryService, null)
   await application.close()
+})
+
+test('serves and edits frontend memory through the generic client control plane', async () => {
+  const calls = []
+  const documents = [{
+    id: 'memory_document',
+    scope: 'memory',
+    content: '# MEMORY\n\n- 用户喜欢茶',
+    format: 'markdown',
+    revision: 'revision-one',
+    editable: true,
+  }]
+  const frontendMemory = {
+    list: ownerId => {
+      calls.push({ kind: 'list', ownerId })
+      return documents
+    },
+    apply: async (ownerId, changes, context) => {
+      calls.push({ kind: 'apply', ownerId, changes, context })
+      if (changes[0]?.expectedRevision === 'stale') {
+        throw Object.assign(new Error('memory document changed'), {
+          code: 'stale_document',
+        })
+      }
+      return { changed: 1, documents: [] }
+    },
+    health: () => ({ ok: true, configured: true, provider: { key: 'test' } }),
+    close: async () => {},
+  }
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      memoryAutoEnabled: false,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMemory,
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+  const origin = `http://127.0.0.1:${port}`
+  try {
+    const listed = await fetch(`${origin}/api/memory`)
+    assert.equal(listed.status, 200)
+    assert.deepEqual(await listed.json(), { documents })
+
+    const invalid = await fetch(`${origin}/api/memory`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ changes: [] }),
+    })
+    assert.equal(invalid.status, 400)
+
+    const stale = await fetch(`${origin}/api/memory`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        changes: [{
+          document: 'memory',
+          expectedRevision: 'stale',
+          edits: [{ old_text: '- 用户喜欢茶', new_text: '' }],
+        }],
+      }),
+    })
+    assert.equal(stale.status, 409)
+    assert.deepEqual(await stale.json(), {
+      error: 'memory document changed',
+      code: 'stale_document',
+    })
+
+    const changes = [{
+      document: 'memory',
+      expectedRevision: 'revision-one',
+      edits: [{ old_text: '- 用户喜欢茶', new_text: '' }],
+    }]
+    const edited = await fetch(`${origin}/api/memory`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ changes }),
+    })
+    assert.equal(edited.status, 200)
+    assert.deepEqual(await edited.json(), { changed: 1, documents: [] })
+    assert.deepEqual(calls.at(-1), {
+      kind: 'apply',
+      ownerId: config.personalOwnerId,
+      changes,
+      context: { source: 'gateway-memory-api' },
+    })
+  } finally {
+    await application.close()
+  }
 })
 
 // 接线契约：新增的记忆模块默认关闭，显式开启时才装配。

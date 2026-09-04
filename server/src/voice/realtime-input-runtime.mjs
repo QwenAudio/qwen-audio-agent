@@ -45,6 +45,7 @@ export class RealtimeInputRuntime {
     shouldEnsurePermissionResponse,
     ensurePermissionResponseFor,
     reportFrontendError,
+    onSpeechStopped = () => {},
     createInputTurnId = () => `text_${randomUUID().replaceAll('-', '')}`,
   }) {
     this.ownerId = ownerId
@@ -63,6 +64,7 @@ export class RealtimeInputRuntime {
     this.shouldEnsurePermissionResponse = shouldEnsurePermissionResponse
     this.ensurePermissionResponseFor = ensurePermissionResponseFor
     this.reportFrontendError = reportFrontendError
+    this.onSpeechStopped = onSpeechStopped
     this.createInputTurnId = createInputTurnId
   }
 
@@ -131,6 +133,11 @@ export class RealtimeInputRuntime {
       this.turns.invalidateInput(event.item_id)
       return
     }
+    this.onSpeechStopped({
+      turnId: stoppedTurn.turnId,
+      source: 'realtime_provider',
+      ...(event.reason ? { reason: String(event.reason) } : {}),
+    })
     this.turns.endSpeech()
     this.announcementWindow.endSpeech()
     if (event.reason === 'turn_invalid') {

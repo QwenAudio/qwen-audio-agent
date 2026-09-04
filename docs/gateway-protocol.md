@@ -5,7 +5,7 @@
 > Roadmap: [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > Current implementation sources of truth: `shared/gateway-client-protocol.mjs`, `server/src/client/client-event-router.mjs`, `server/src/client/client-command-runtime.mjs`, `shared/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
 
-This specification defines the implemented northbound boundary between qwen-audio-agent's Gateway and one active Client Environment. Current first-party clients use the 6.0 wire protocol; health-contract 5.x aliases remain temporarily available for compatibility.
+This specification defines the implemented northbound boundary between qwen-audio-agent's Gateway and one active Client Environment per authenticated owner. Current first-party clients use the 6.0 wire protocol; health-contract 5.x aliases remain temporarily available for compatibility.
 
 ## 1. Product boundary
 
@@ -27,7 +27,7 @@ TUI, WebUI, and Desktop Orb are first-party reference clients. OpenCode, Qwen Co
 
 ## 2. Invariants
 
-1. One Gateway instance accepts only one active Client connection at a time.
+1. One authenticated owner has only one active Client connection at a time. The default personal deployment has one owner, so its behavior remains single-Client.
 2. One WebSocket carries the Client's business traffic. A second context or observer socket is not introduced.
 3. Raw audio stays on the media fast path. Only committed semantic inputs enter semantic routing.
 4. Client **Events** describe what happened. Client **Actions** request that the environment do something and return a result.
@@ -37,6 +37,37 @@ TUI, WebUI, and Desktop Orb are first-party reference clients. OpenCode, Qwen Co
 8. Realtime-provider and backend-protocol wire objects never cross this boundary. The Gateway owns every public type, while deliberately aligning familiar field names and shapes with external standards where semantics match.
 9. Local mute, window layout, wake mechanism, and rendering remain client concerns unless they affect shared Gateway state.
 10. Existing behavior remains available through compatibility aliases until every first-party client has migrated and conformance coverage exists.
+
+### 2.1 Access boundary
+
+Gateway access is deliberately separate from GCP. Credentials authenticate a
+principal before `session.hello`; access tokens never appear in GCP envelopes,
+model context, Task events, or logs.
+
+- Loopback access remains zero-config and the Gateway still binds to
+  `127.0.0.1` by default.
+- Remote HTTP and WebSocket access requires either a configured access token or
+  a revocable token issued by one-time device pairing.
+- A native Client sends `Authorization: Bearer <token>`. A browser can first
+  make an authenticated same-origin HTTP request; Gateway exchanges the Bearer
+  credential for an `HttpOnly`, `SameSite=Strict` session cookie.
+- Remote browser origins must be explicitly listed in
+  `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS`. Remote deployments should use a trusted
+  VPN or an HTTPS/WSS reverse proxy; direct public exposure is unsupported.
+- A configured token maps to one owner. The optional
+  `QWEN_AUDIO_AGENT_ACCESS_KEYS` JSON array can map independent tokens to
+  independent owners without changing GCP.
+
+The local operator can run `qwenaudio gateway pair` against a running Gateway.
+It creates a short-lived, one-time ticket. A remote Client redeems it with
+`POST /api/access/pair` and receives a revocable device token. Device tokens
+are persisted only as SHA-256 hashes. Local management endpoints list and
+revoke paired devices.
+
+Host-management requests, including endpoint publication, pairing-ticket
+creation, and device administration, are outside the interactive GCP Session.
+They authenticate independently and never claim or replace the active Client
+lease.
 
 ## 3. Connection and negotiation
 
@@ -62,6 +93,7 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
     "conversation.history",
     "client.events",
     "session.output_voice",
+    "session.takeover",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ],
@@ -93,6 +125,10 @@ Gateway returns the selected version and capability intersection:
   "request_event_id": "evt_client_1",
   "protocol_version": "6.0.0",
   "session_id": "session_01",
+  "connection": {
+    "lease_generation": 7,
+    "replaced": false
+  },
   "capabilities": [
     "input.audio",
     "input.text",
@@ -103,6 +139,7 @@ Gateway returns the selected version and capability intersection:
     "conversation.history",
     "client.events",
     "session.output_voice",
+    "session.takeover",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ]
@@ -111,9 +148,12 @@ Gateway returns the selected version and capability intersection:
 
 Rules:
 
-- With an active Client, a new connection receives `client_occupied` and is closed.
-- The owner is released when the socket closes or its heartbeat expires.
-- No takeover, kick, concurrent observer, or multi-client arbitration exists in 6.0.
+- With an active Client, another Client for the same owner receives `client_occupied` and is closed by default.
+- A Client that negotiated `session.takeover` may set `connection.takeover: true` in `session.hello`. Gateway closes the previous Client and grants a new, monotonically increasing lease generation.
+- Reconnection from the same `client.instance_id` replaces its stale socket without requiring explicit takeover.
+- Owners are independent. Each owner still has exactly one active Client.
+- The lease is released when the socket closes or its heartbeat expires. Lease-generation fencing prevents a stale socket from releasing or mutating a newer lease.
+- No observer connection or concurrent multi-Client control exists in 6.0.
 - The Client must branch on negotiated capabilities, not product versions.
 - Protocol version, Client identity, and capabilities cannot change without reconnecting.
 - Version 6.0 defines no `context_source`, `integration`, or observer connection role. Vehicle buses, CRM feeds, sensors, and other context sources attach to the active Client Environment through client-side adapters; that Client validates and relays registered semantic events.
@@ -474,6 +514,13 @@ Routing modes are:
 
 `AgentDeliveryRuntime` owns user-speech blocking, response serialization, sleep deferral, retry, and playback acknowledgement. Realtime Provider adapters translate the delivery into their own wire protocol. Raw Client JSON is never pasted into a model prompt.
 
+Gateway-originated events that the frontend Agent must perceive use the same
+boundary. For example, after Realtime content is rejected, the Gateway excludes
+the failed turn, restores the connection, and then delivers
+`realtime.content_rejected`. The model receives only a sanitized instruction to
+ask the user to change topics; provider errors, error codes, and rejected source
+content never enter the replacement Session.
+
 ## 7. Presence and sleep
 
 Both sleep modes converge on the same PresenceController and Client Action path, but only user-requested sleep requires a model Tool Call.
@@ -584,7 +631,7 @@ Health checks, static assets, installation, and settings remain host/operations 
 
 The stable 6.0 behavior is locked by tests covering:
 
-- global single-Client ownership, release, and heartbeat expiry;
+- owner-scoped single-Client ownership, explicit takeover, generation fencing, release, and heartbeat expiry;
 - version and capability negotiation;
 - `event_id`, `request_event_id`, and replay `sequence` semantics;
 - user input versus Client Event authority;
@@ -600,7 +647,7 @@ The stable 6.0 behavior is locked by tests covering:
 
 ## 13. Non-goals
 
-- Multi-user or multi-Client concurrency, observers, takeover, and kick semantics.
+- Concurrent controlling Clients for the same owner, observers, and arbitrary kick semantics.
 - Exposing Electron, React, CoreAudio, or a specific Client implementation in Gateway Core.
 - Treating ACP as the only backend protocol.
 - Allowing arbitrary Client data to become model instructions.

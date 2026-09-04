@@ -5,6 +5,7 @@ import { executeMusicTool } from './music/execute.mjs'
 import { executeNavigationTool } from './navigation/execute.mjs'
 import { executeVehicleTool } from './vehicle/execute.mjs'
 import { executeWeatherTool } from './weather/execute.mjs'
+import { loadCockpitSurfaceRouting } from './surface-routing.mjs'
 
 function loadManifest(name) {
   return JSON.parse(readFileSync(new URL(`./${name}/manifest.json`, import.meta.url), 'utf8'))
@@ -20,9 +21,11 @@ function definition(tool) {
       readOnlyHint: [
         'custom_skill_list',
         'custom_skill_load',
+        'vehicle_location_query',
         'vehicle_state_query',
         'navigation_route_query',
         'navigation_search_place',
+        'music_state_query',
         'music_search',
         'weather',
       ].includes(tool.name),
@@ -91,38 +94,36 @@ if (new Set(COCKPIT_TOOL_NAMES).size !== COCKPIT_TOOL_NAMES.length) {
   throw new Error('Cockpit tool names must be unique across groups')
 }
 
-// Tool implementation stays grouped by business domain. This explicit surface
-// assignment is the scenario customization point: simple low-latency actions
-// run inline in the foreground, while the backend retains the full surface for
-// composed work such as user-defined skills. Both paths share one executor per
-// capability; this is not a dynamic plugin layer.
-export const FRONTEND_TOOL_NAMES = Object.freeze([
-  'weather',
-  'vehicle_state_query',
-  'vehicle_window_control',
-  'vehicle_sunroof_control',
-  'vehicle_headlights_control',
-  'vehicle_climate_control',
-  'navigation_set_route_strategy',
-  'navigation_set_voice',
-  'navigation_set_view',
-])
-
+// Tool implementation stays grouped by business domain. Surface routing is the
+// scenario customization point: each domain is exposed either to the foreground
+// low-latency MCP surface or to the backend orchestration MCP surface.
+export const COCKPIT_SURFACE_ROUTING = loadCockpitSurfaceRouting({
+  groups: COCKPIT_TOOL_GROUPS,
+})
 const toolDefinitionsByName = new Map(
   COCKPIT_TOOL_DEFINITIONS.map(tool => [tool.name, tool]),
 )
-const frontendNames = new Set(FRONTEND_TOOL_NAMES)
-const unknownFrontendNames = FRONTEND_TOOL_NAMES.filter(
-  name => !toolDefinitionsByName.has(name),
+const definitionsForNames = names => Object.freeze(
+  names.map(name => {
+    const definitionForName = toolDefinitionsByName.get(name)
+    if (!definitionForName) throw new Error(`Unknown cockpit tool in surface routing: ${name}`)
+    return definitionForName
+  }),
 )
-if (unknownFrontendNames.length) {
-  throw new Error(`Unknown frontend cockpit tools: ${unknownFrontendNames.join(', ')}`)
-}
 
+export const FRONTEND_TOOL_NAMES = COCKPIT_SURFACE_ROUTING.frontendToolNames
+export const BACKEND_TOOL_NAMES = COCKPIT_SURFACE_ROUTING.backendToolNames
 export const FRONTEND_TOOL_DEFINITIONS = Object.freeze(
-  FRONTEND_TOOL_NAMES.map(name => toolDefinitionsByName.get(name)),
+  definitionsForNames(FRONTEND_TOOL_NAMES),
 )
-export const BACKEND_TOOL_DEFINITIONS = COCKPIT_TOOL_DEFINITIONS
+export const BACKEND_TOOL_DEFINITIONS = Object.freeze(
+  definitionsForNames(BACKEND_TOOL_NAMES),
+)
+export const COCKPIT_TOOL_SURFACE_ENTRIES = COCKPIT_SURFACE_ROUTING.toolSurfaceEntries
+
+export function surfaceForCockpitTool(name) {
+  return COCKPIT_SURFACE_ROUTING.surfaceForTool(name)
+}
 
 const EXECUTORS = new Map(COCKPIT_TOOL_GROUPS.flatMap(group => (
   group.definitions.map(tool => [tool.name, group.execute])

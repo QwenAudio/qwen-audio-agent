@@ -51,8 +51,10 @@ cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► coc
 
 - `cockpit-service` 是车辆、导航、音乐、天气和闪购状态的唯一来源。
 - UI 通过 HTTP 获取快照、执行面板操作，通过 SSE 接收状态变化。
-- Gateway 的前台 Agent 通过 `/mcp/frontend` 直接使用天气、车况以及车窗、天窗、
-  大灯、空调和短导航工具；明确的单次车辆控制、导航视图、导航播报和当前路线偏好口头指令直接执行，不增加重复确认。
+- Gateway 的前台 Agent 通过 `/mcp/frontend` 直接使用天气、车辆位置、车况、单次车辆控制、
+  停止导航、导航视图/播报/偏好和音乐播放控制工具；明确的低延迟指令直接执行。
+- `service/vehicle-location.mjs` 将车机定位收敛为单一适配边界：位置查询、导航起点和
+  “当前位置”收藏都使用同一状态，未接真实定位时才使用带来源标记的 Demo 回退。
 - 后台 Agent 通过 `/mcp/backend` 使用完整工具面，支持组合任务以及自定义技能的
   发现、创建、加载和执行。
 - 两个工具面由 `service/tools/registry.mjs` 显式组合，但共用同一份执行器和座舱状态；
@@ -60,6 +62,10 @@ cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► coc
 - Gateway 不接收 `actions[]`，也不理解车辆、路线、媒体或订单结构。
 
 因此后台任务还可以把详细状态发送给客户自己的座舱系统；Gateway 只接收适合继续对话和播报的 Task 进展与结果。
+
+记忆属于前台对话面，不属于座舱 Service。客户端的记忆列表/删除面板使用
+Gateway `GET/PATCH /api/memory` 控制面，与 Realtime 记忆工具共用同一个
+`MemoryProvider`；默认 Markdown 与外部 Provider 对客户端是同一份协议。
 
 ## 自定义技能
 

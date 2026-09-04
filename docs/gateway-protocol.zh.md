@@ -5,7 +5,7 @@
 > Roadmap：[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > 当前实现事实源：`shared/gateway-client-protocol.mjs`、`server/src/client/client-event-router.mjs`、`server/src/client/client-command-runtime.mjs`、`shared/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
 
-本文档定义 qwen-audio-agent Gateway 与唯一活动 Client Environment 之间已经落地的北向协议。当前第一方客户端使用 6.0 线协议；健康契约 5.x 的旧入口仅作为临时兼容别名保留。
+本文档定义 qwen-audio-agent Gateway 与每个已认证用户的一个活动 Client Environment 之间已经落地的北向协议。当前第一方客户端使用 6.0 线协议；健康契约 5.x 的旧入口仅作为临时兼容别名保留。
 
 ## 1. 产品边界
 
@@ -27,7 +27,7 @@ TUI、WebUI 和桌面悬浮球是第一方参考客户端；OpenCode、Qwen Code
 
 ## 2. 架构不变量
 
-1. 同一个 Gateway 实例同一时刻只接受一个活动 Client 连接。
+1. 每个已认证用户同一时刻只有一个活动 Client 连接。默认个人部署只有一个用户，因此仍表现为单 Client。
 2. Client 的业务流量使用一条 WebSocket，不额外建立 context 或 observer 连接。
 3. 原始音频走媒体快速路径，只有已经提交的语义输入进入语义路由。
 4. Client **Event** 描述发生了什么；Client **Action** 要求环境执行操作并返回结果。
@@ -37,6 +37,24 @@ TUI、WebUI 和桌面悬浮球是第一方参考客户端；OpenCode、Qwen Code
 8. Realtime Provider 与后台协议的原生协议对象不能跨越本边界。所有公开类型由 Gateway 定义；语义一致时，可以刻意对齐外部标准中熟悉的字段命名和形状。
 9. 本地静音、窗口布局、唤醒手段和渲染属于 Client；只有影响共享状态的部分进入协议。
 10. 在全部第一方客户端完成迁移并具备 conformance coverage 前，现有行为通过兼容别名继续可用。
+
+### 2.1 访问边界
+
+Gateway 访问认证与 GCP 明确分层。访问凭据在 `session.hello` 之前完成身份认证；
+访问令牌不会进入 GCP 信封、模型上下文、Task 事件或日志。
+
+- 本机回环访问继续保持零配置，Gateway 默认仍只监听 `127.0.0.1`。
+- 远程 HTTP 与 WebSocket 必须使用配置的访问密钥，或一次性设备配对签发的可撤销令牌。
+- 原生 Client 使用 `Authorization: Bearer <token>`。浏览器可先发起一次带认证的同源 HTTP 请求；Gateway 会把 Bearer 凭据换成 `HttpOnly`、`SameSite=Strict` 的会话 Cookie。
+- 远程浏览器来源必须显式写入 `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS`。远程部署应使用可信 VPN 或 HTTPS/WSS 反向代理，不支持直接暴露到公网。
+- 一个配置密钥映射一个用户；可选的 `QWEN_AUDIO_AGENT_ACCESS_KEYS` JSON 数组可把不同密钥映射到不同用户，而无需修改 GCP。
+
+本机操作者可对运行中的 Gateway 执行 `qwenaudio gateway pair`，生成一个短时、
+一次性配对码。远程 Client 通过 `POST /api/access/pair` 换取可撤销设备令牌。
+设备令牌只以 SHA-256 摘要持久化；本机管理接口可列出和撤销已配对设备。
+
+端点发布、配对码创建与设备管理等 Host 管理请求不属于交互式 GCP Session。
+它们独立完成认证，也不会取得或替换活动 Client 租约。
 
 ## 3. 连接与能力协商
 
@@ -62,6 +80,7 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
     "conversation.history",
     "client.events",
     "session.output_voice",
+    "session.takeover",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ],
@@ -91,6 +110,10 @@ Gateway 返回协商后的版本与能力交集：
   "request_event_id": "evt_client_1",
   "protocol_version": "6.0.0",
   "session_id": "session_01",
+  "connection": {
+    "lease_generation": 7,
+    "replaced": false
+  },
   "capabilities": [
     "input.audio",
     "input.text",
@@ -101,6 +124,7 @@ Gateway 返回协商后的版本与能力交集：
     "conversation.history",
     "client.events",
     "session.output_voice",
+    "session.takeover",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ]
@@ -109,9 +133,12 @@ Gateway 返回协商后的版本与能力交集：
 
 规则：
 
-- 已有活动 Client 时，新连接收到 `client_occupied` 后关闭。
-- WebSocket 关闭或心跳超时后释放连接所有权。
-- 6.0 不提供接管、踢出、并发观察或多 Client 仲裁。
+- 同一用户已有活动 Client 时，另一个 Client 默认收到 `client_occupied` 后关闭。
+- 协商了 `session.takeover` 的 Client 可在 `session.hello` 中设置 `connection.takeover: true`。Gateway 会关闭原 Client，并授予单调递增的新租约代次。
+- 相同 `client.instance_id` 的重连无需显式接管，会自动替换旧 Socket。
+- 不同用户彼此独立，但每个用户仍只有一个活动 Client。
+- WebSocket 关闭或心跳超时后释放租约；租约代次 fencing 会阻止旧 Socket 释放或修改新租约。
+- 6.0 不提供 Observer 连接或同一用户下的并发多 Client 控制。
 - Client 必须依据协商后的 capabilities 判断能力，不能只比较产品版本。
 - 协议版本、Client 身份和能力不能在当前连接中改变；需要改变时重连。
 - 6.0 不定义 `context_source`、`integration` 或 Observer 连接角色。车辆总线、CRM、传感器等上下文来源通过客户端侧 Adapter 接入当前活动 Client Environment，再由该 Client 校验并转发已注册的语义事件。
@@ -453,6 +480,11 @@ Provider 的 response 对象。
 
 `AgentDeliveryRuntime` 管理用户说话阻塞、回复串行化、休眠暂存、重试和播放确认。Realtime Provider Adapter 再转换成自己的线协议。不能把 Client 原始 JSON 直接粘贴进模型 Prompt。
 
+Gateway 自身产生且需要前台 Agent 感知的事件也使用同一边界。例如 Realtime
+内容被拒绝后，Gateway 先排除失败轮次并恢复连接，再投递
+`realtime.content_rejected`。模型只会收到脱敏的“上一轮内容无法回复，请换个话题”，
+不会收到供应商错误对象、错误码或被拒绝的原始内容。
+
 ## 7. Presence 与休眠
 
 两种休眠最终进入同一个 PresenceController 和 Client Action 链路，但只有用户主动休眠需要模型工具调用。
@@ -561,7 +593,7 @@ Gateway 协议定义自己的类型。下表是刻意且非规范性的语义对
 
 6.0 的稳定行为由以下测试范围锁定：
 
-- 全局单 Client 占用、释放和心跳超时；
+- 按用户单 Client 占用、显式接管、租约代次 fencing、释放与心跳超时；
 - 版本与 capability 协商；
 - `event_id`、`request_event_id` 和回放 `sequence`；
 - 用户输入与 Client Event 的权限差异；
@@ -577,7 +609,7 @@ Gateway 协议定义自己的类型。下表是刻意且非规范性的语义对
 
 ## 13. 明确不做
 
-- 多用户、多 Client 并发、Observer、接管或踢出。
+- 同一用户下的并发控制 Client、Observer 与任意踢出语义。
 - 在 Gateway Core 中依赖 Electron、React、CoreAudio 或具体 Client。
 - 将 ACP 规定为唯一后台协议。
 - 允许任意 Client 数据成为模型指令。

@@ -9,37 +9,137 @@
           "enabled": true,
           "description": "查询指定城市的当日天气、温度和出行提示。这是可由前台语音助手直接调用的座舱示例工具。"
         },
+        "vehicle_location_query": {
+          "enabled": true,
+          "description": "直接查询车辆当前位置。用户问‘我在哪’、‘车在哪’或‘当前位置’时调用；不要通过 spawn_thinking 查询。"
+        },
         "vehicle_state_query": {
           "enabled": true,
-          "description": "直接查询车窗、天窗、大灯和空调等车辆当前状态。用户询问是否开启、当前档位或整体车况时使用；不要把状态问题当成控制指令。"
-        },
-        "vehicle_window_control": {
-          "enabled": true,
-          "description": "立即打开或关闭指定车窗；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
-        },
-        "vehicle_sunroof_control": {
-          "enabled": true,
-          "description": "立即打开或关闭车辆天窗；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
-        },
-        "vehicle_headlights_control": {
-          "enabled": true,
-          "description": "立即打开或关闭车辆大灯；只在用户明确要求控制时调用，该指令即为本次操作授权。不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "直接查询车辆当前状态，覆盖空调温度、车窗、天窗、开闭件、座椅/方向盘舒适控制、灯光声音和充电状态。用户询问是否开启、当前档位或整体车况时使用；不要把状态问题当成控制指令。"
         },
         "vehicle_climate_control": {
           "enabled": true,
-          "description": "立即打开或关闭空调，或设置用户明确指定的温度、制冷制热模式和风量；不要把状态查询当成控制指令，也不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "立即开启或关闭空调/空调预处理，或设置制冷制热模式和风量；设置温度优先使用 vehicle_temperature_control。不要把状态查询当成控制指令，也不要再通过 spawn_thinking 重复执行同一操作。"
+        },
+        "vehicle_temperature_control": {
+          "enabled": true,
+          "description": "立即设置或调高/调低主驾、副驾、后排或全车座舱温度。用户说“调到多少度”“温度高一点/低一点”时调用；不要只口头回应。"
+        },
+        "vehicle_window_control": {
+          "enabled": true,
+          "description": "立即打开、关闭、通风或设置指定车窗/前排/后排/左侧/右侧/全车车窗开度；只在用户明确要求控制时调用，该指令即为本次操作授权。"
+        },
+        "vehicle_sunroof_control": {
+          "enabled": true,
+          "description": "立即打开、关闭、通风/翘起或停止车辆天窗；只在用户明确要求控制时调用，该指令即为本次操作授权。"
+        },
+        "vehicle_closure_control": {
+          "enabled": true,
+          "description": "立即打开或关闭前备箱、后备箱/尾门、充电口或加油口；只在用户明确要求控制时调用。"
+        },
+        "vehicle_comfort_control": {
+          "enabled": true,
+          "description": "立即控制座椅加热、座椅通风/制冷、自动座椅温控、方向盘加热和方向盘自动加热；用户指定座位或档位时写入参数。"
+        },
+        "vehicle_light_control": {
+          "enabled": true,
+          "description": "立即打开/关闭大灯，或短暂闪灯用于定位车辆；只在用户明确要求控制时调用。"
+        },
+        "vehicle_sound_control": {
+          "enabled": true,
+          "description": "立即鸣笛或播放车外定位提示音；这是一次性声音动作，只在用户明确要求时调用。"
+        },
+        "vehicle_charging_control": {
+          "enabled": true,
+          "description": "立即开始/停止充电、设置充电上限/电流、设置标准/最大续航模式或管理充电计划；不要把充电状态查询当成控制指令。"
+        },
+        "navigation_start": {
+          "enabled": true,
+          "description": "立即搜索目的地、规划路线并开始导航。用户说“导航到”“带我去”“去某地”或“开始导航”时直接调用；成功后不要再询问是否开始，也不要通过 spawn_thinking 提交。"
+        },
+        "navigation_route_query": {
+          "enabled": true,
+          "description": "仅查询或预览路线，不开始导航。用户明确询问“怎么走”“多远”“多久”“查路线”或“先看看路线”时直接调用；明确要求导航时应使用 navigation_start。"
+        },
+        "navigation_stop": {
+          "enabled": true,
+          "description": "立即停止当前导航并清空路线。用户说停止、取消或结束导航时直接调用；不要调用 cancel_agent_task，也不要通过 spawn_thinking 提交。"
+        },
+        "navigation_add_waypoint": {
+          "enabled": true,
+          "description": "仅当已有当前导航或路线预览、且已知最终目的地时，立即增加途经点并重新规划。没有当前目的地时先追问最终要去哪里，不要调用本工具探测状态。"
+        },
+        "navigation_remove_waypoint": {
+          "enabled": true,
+          "description": "立即从当前导航或路线预览中删除途经点并重新规划。用户说“取消途经点”“不去刚才那个地方了”“删掉第几个途经点”时直接调用。"
+        },
+        "navigation_change_destination": {
+          "enabled": true,
+          "description": "立即将当前导航或路线预览的最终目的地改为新地点，并保留现有途经点重新规划路线。用户说“目的地改成”“换个地方”时直接调用。"
         },
         "navigation_set_route_strategy": {
           "enabled": true,
-          "description": "在当前导航或路线预览中立即切换路线偏好并重新规划路线。用户说“躲避拥堵”“避开拥堵”“不走高速”“少收费”“高速优先”“时间优先”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "立即设置路线偏好：有当前路线时重新规划，无路线时作为后续导航的默认偏好。用户说“躲避拥堵”“避开拥堵”“不走高速”“少收费”“高速优先”“时间优先”时直接调用。"
+        },
+        "navigation_search_place": {
+          "enabled": true,
+          "description": "直接搜索地点或周边 POI，但不开始导航。用户只说“找一下”“附近有没有”“查一下哪里有”时调用；如果用户明确要去某地，应使用 navigation_start。"
+        },
+        "navigation_to_favorite": {
+          "enabled": true,
+          "description": "立即导航到已保存的常用地点。用户说“回家”“去公司”“去学校”等常用地点导航时直接调用。"
+        },
+        "navigation_set_favorite": {
+          "enabled": true,
+          "description": "立即设置或更新常用地点。用户说“把这里设为家”“设置公司地址”“把某地设为学校”时直接调用。"
         },
         "navigation_set_voice": {
           "enabled": true,
-          "description": "立即设置导航静音或播报模式。用户说“导航静音”“取消静音”“详细播报”“简洁播报”“标准播报”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "立即设置导航静音或播报模式。用户说“导航静音”“取消静音”“详细播报”“简洁播报”“标准播报”时直接调用。"
         },
         "navigation_set_view": {
           "enabled": true,
-          "description": "立即设置地图导航视图。用户说“查看全程”“路线全览”“回到跟车视角”“北向上”时直接调用；不要只口头回应，也不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "立即设置地图导航视图。用户说“查看全程”“路线全览”“回到跟车视角”“北向上”时直接调用。"
+        },
+        "music_state_query": {
+          "enabled": true,
+          "description": "直接查询当前媒体播放、曲目、音量、来源、收藏或搜索结果。用户问“现在放的什么”“音量多少”“当前音乐来源”时调用；不要把查询当成控制。"
+        },
+        "music_play": {
+          "enabled": true,
+          "description": "立即播放或继续播放音乐，可按歌曲名、歌手、专辑点播。用户说“播放/听某首歌/继续播放”时直接调用；不要通过 spawn_thinking 提交。"
+        },
+        "music_toggle_playback": {
+          "enabled": true,
+          "description": "立即切换播放/暂停，或显式执行播放、暂停。用户说“暂停/继续一下”“播放暂停切一下”时直接调用。"
+        },
+        "music_pause": {
+          "enabled": true,
+          "description": "立即暂停当前音乐。用户要求暂停时直接调用，不要通过 spawn_thinking 提交。"
+        },
+        "music_next": {
+          "enabled": true,
+          "description": "立即切换到下一首音乐。用户要求切下一首时直接调用，不要通过 spawn_thinking 提交。"
+        },
+        "music_previous": {
+          "enabled": true,
+          "description": "立即切换到上一首音乐。用户要求切上一首时直接调用，不要通过 spawn_thinking 提交。"
+        },
+        "music_volume_control": {
+          "enabled": true,
+          "description": "立即设置、调高、调低、静音或取消静音媒体音量。用户说“音量大一点/小一点/调到 6/静音”时直接调用。"
+        },
+        "music_source_control": {
+          "enabled": true,
+          "description": "立即切换媒体来源。用户说“切到蓝牙/广播/Spotify/Apple Music/QQ音乐”等来源时直接调用。"
+        },
+        "music_favorite_control": {
+          "enabled": true,
+          "description": "立即收藏/取消收藏当前或指定歌曲，或切换到上一首/下一首收藏歌曲。用户说“收藏这首/取消收藏/下一首收藏”时调用。"
+        },
+        "music_search": {
+          "enabled": true,
+          "description": "直接搜索歌曲、歌手或专辑，但不自动播放。用户只是问“搜一下/找找有没有”时调用；用户明确要播放时用 music_play。"
         }
       }
     }

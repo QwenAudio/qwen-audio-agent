@@ -5,6 +5,7 @@ const PROFILES = Object.freeze({
   // client connection. Advertise the panel's inputs for the whole connection
   // so expanding the window never requires a Realtime reconnect.
   desktop: Object.freeze({ text: true, audio: true, image: true, resource: true }),
+  mobile: Object.freeze({ text: true, audio: true, image: true, resource: true }),
 })
 
 export function clientInputCapabilities(clientType = 'web') {

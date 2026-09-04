@@ -5,6 +5,7 @@ export const GatewayReferenceClientType = Object.freeze({
   WEB: 'web',
   DESKTOP: 'desktop',
   TUI: 'cli',
+  MOBILE: 'mobile',
 })
 
 export function gatewayReferenceClientCapabilities(clientType = 'web') {

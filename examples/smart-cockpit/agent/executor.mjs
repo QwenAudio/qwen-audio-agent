@@ -5,24 +5,43 @@ import {
 } from '@a2a-js/sdk'
 import { AgentEvent } from '@a2a-js/sdk/server'
 import { DashScopeCockpitModel } from './model.mjs'
+import { COCKPIT_SURFACE_ROUTING } from '../service/tools/registry.mjs'
 
 const MAX_AGENT_ROUNDS = 8
 const CUSTOM_SKILL_LIST_TOOL = 'custom_skill_list'
 
-export const COCKPIT_AGENT_PROMPT = `你是智能座舱的后台 Agent，负责理解并执行座舱任务。
+const DOMAIN_LABELS = Object.freeze({
+  vehicle: '车控',
+  music: '音乐',
+  navigation: '导航',
+  weather: '天气',
+  flashbuy: '闪购',
+  'custom-skills': '自定义座舱技能',
+})
+
+function domainLabels(routing, surface) {
+  return Object.entries(routing.domains)
+    .filter(([, value]) => value === surface)
+    .map(([domain]) => DOMAIN_LABELS[domain] || domain)
+}
+
+export const BASE_COCKPIT_AGENT_PROMPT = `你是智能座舱的后台 Agent，负责理解并执行座舱任务。
 
 规则：
-- 单次车况查询及车窗、天窗、大灯、空调操作通常由前台低延迟处理；当车辆操作属于后台收到的组合任务或自定义技能时，仍须使用提供的工具真实执行。
+- 单次车况查询及车窗、天窗、灯光、空调、温度、开闭件、舒适控制、声音和充电操作通常由前台低延迟处理；当车辆操作属于后台收到的组合任务或自定义技能时，仍须使用提供的工具真实执行。
 - 导航、音乐、闪购、自定义技能及后台收到的车辆操作必须使用提供的工具，不得假装已经执行。
 - 复杂请求可以连续调用多个工具；严格按照用户表达的先后顺序执行。
 - 导航请求可以包含多个有序途经点。将中间地点放入 waypoints，最后一个地点作为 destination。
 - 用户明确说“导航到”“带我去”“去某地”或“开始导航”时直接调用 navigation_start，成功后不要再次询问是否开始。
 - 只有用户明确说“查路线”“怎么走”“多远”“多久”或“先看看路线”时才调用 navigation_route_query。
-- 用户在已有导航中说“中途去一下”“顺路去”“加个途经点”时调用 navigation_add_waypoint；说“不去这个途经点了”“取消途经点”时调用 navigation_remove_waypoint。
+- 只有对话或状态里明确已有当前导航/路线预览和最终目的地时，用户说“中途去一下”“顺路去”“加个途经点”才调用 navigation_add_waypoint；如果用户只给出途经点、没有当前目的地，先追问最终要去哪里，不要调用工具探测状态。说“不去这个途经点了”“取消途经点”时调用 navigation_remove_waypoint。
 - 用户在已有导航中说“目的地改成”“换个地方”时调用 navigation_change_destination；只说“换成不走高速”“改成少收费”“避开拥堵”时调用 navigation_set_route_strategy。
 - 用户只是找地点或周边 POI、没有要求导航时，调用 navigation_search_place。
 - “回家”“去公司”等常用地点导航优先调用 navigation_to_favorite；设置家/公司/学校地址时调用 navigation_set_favorite。
 - 导航静音、详细播报、简洁播报调用 navigation_set_voice；查看全程、跟车视角、北向上调用 navigation_set_view。
+- 车况查询调用 vehicle_state_query；空调开关/预处理调用 vehicle_climate_control；设置或调节温度调用 vehicle_temperature_control；灯光调用 vehicle_light_control；鸣笛或外放提示音调用 vehicle_sound_control；充电相关控制调用 vehicle_charging_control。
+- 用户明确要求停止导航时调用 navigation_stop，不要要求目的地或改用路线查询。
+- 音乐状态查询调用 music_state_query；播放/点歌调用 music_play；搜索但不播放调用 music_search；播放暂停切换调用 music_toggle_playback 或 music_pause；上下首调用 music_next/music_previous；音量调用 music_volume_control；媒体来源调用 music_source_control；收藏和收藏切歌调用 music_favorite_control。
 - 闪购中，只有“看看”“搜一下”“有哪些”等浏览意图使用 search；“帮我点”“来一份”“就这个”“加入购物车”使用 add_to_cart，不得退回再次搜索。
 - 闪购加购后必须先返回订单预览；只有用户在后续指令中明确确认后，才调用 confirm_order。
 - 用户明确要求创建自定义技能时，调用 custom_skill_create 保存名称、简介和可执行步骤；未得到创建意图时不要擅自保存。
@@ -31,6 +50,21 @@ export const COCKPIT_AGENT_PROMPT = `你是智能座舱的后台 Agent，负责�
 - 地点、对象或高风险操作存在关键歧义时，先用一句简短中文追问，不要笼统声称系统不支持。
 - 不处理普通闲聊、桌面文件、代码或未提供工具的业务；只简洁说明座舱 Agent 的能力边界。
 - 最终回复应简短、自然，适合由前台语音助手直接播报。`
+
+export function createCockpitAgentPrompt({
+  routing = COCKPIT_SURFACE_ROUTING,
+} = {}) {
+  const backendDomains = domainLabels(routing, 'backend')
+  const frontendDomains = domainLabels(routing, 'frontend')
+  return `${BASE_COCKPIT_AGENT_PROMPT}
+
+当前领域执行面配置：
+- 后台执行领域：${backendDomains.length ? backendDomains.join('、') : '无'}。
+- 前台执行领域：${frontendDomains.length ? frontendDomains.join('、') : '无'}。
+后台 Agent 只能调用当前提供的工具真实执行；如果某个领域已配置为前台执行但仍被转入后台，不要假装完成不存在的工具能力。`
+}
+
+export const COCKPIT_AGENT_PROMPT = createCockpitAgentPrompt()
 
 function textPart(text) {
   return {

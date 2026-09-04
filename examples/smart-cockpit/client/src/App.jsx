@@ -12,12 +12,14 @@ import MusicPanel, { PLAYLIST } from './components/MusicPanel'
 import FlashBuyPanel from './components/FlashBuyPanel'
 import useCockpitState from './hooks/useCockpitState'
 import useCockpitSkills from './hooks/useCockpitSkills'
+import useGatewayMemory from './hooks/useGatewayMemory'
 import useVoiceSession from './hooks/useVoiceSession'
 import {
   finalUserTranscript,
   voiceConversationMessageId,
   voiceEventBelongsToTurn,
 } from './projections/voice-transcript'
+import { mergeToolCallDebug } from './projections/tool-call-debug'
 import { cockpitScreenForProgress } from './projections/cockpit-activity'
 import {
   COCKPIT_VOICE_IDS,
@@ -35,13 +37,20 @@ const INITIAL_CAR_STATE = {
   windowRR: 0,
   sunroof: 0,
   headlights: 0,
+  flashLightsCount: 0,
+  frontTrunk: 0,
+  rearTrunk: 0,
+  chargePort: 0,
+  charging: 0,
   ac: 1,
   acTemp: 25.0,
+  passengerTemp: 25.0,
+  rearTemp: 25.0,
   acMode: 'cool',
   acFan: 3,
 }
 
-const VALID_TABS = ['persona', 'skills']
+const VALID_TABS = ['persona', 'skills', 'memory']
 const PERSONA_STORAGE_KEY = 'selectedPersona'
 const VOICE_STORAGE_KEY = 'selectedVoice'
 const INITIAL_WEATHER_STATE = {
@@ -75,6 +84,12 @@ function createClientId() {
   return id
 }
 
+function cockpitIdFromLocation() {
+  return new URLSearchParams(window.location.search).get('cockpitId')
+    || import.meta.env.VITE_COCKPIT_ID
+    || 'default'
+}
+
 function getStoredChoice(key, fallback, validValues) {
   const value = localStorage.getItem(key)
   return validValues.includes(value) ? value : fallback
@@ -93,7 +108,7 @@ function parseHash() {
 
 export default function App() {
   const [clientId, setClientId] = useState(() => getClientId())
-  const cockpitId = import.meta.env.VITE_COCKPIT_ID || 'default'
+  const cockpitId = cockpitIdFromLocation()
   const {
     state: cockpitState,
     progress: cockpitProgress,
@@ -107,6 +122,13 @@ export default function App() {
     load: loadCustomSkill,
     remove: deleteCustomSkill,
   } = useCockpitSkills(cockpitId, cockpitActivity)
+  const {
+    items: memories,
+    loading: memoryLoading,
+    error: memoryError,
+    load: loadMemories,
+    remove: deleteMemory,
+  } = useGatewayMemory()
   const [screen, setScreen] = useState('main')
   const [settingsTab, setSettingsTab] = useState('persona')
   const [selectedPersona, setSelectedPersona] = useState(() => getStoredChoice(
@@ -125,7 +147,7 @@ export default function App() {
   const [chatMessages, setChatMessages] = useState([])
   const navState = cockpitState?.navigation || { status: 'idle' }
   const mapActions = useMemo(() => [], [])
-  const [routeStrategy, setRouteStrategy] = useState(0)
+  const routeStrategy = Number(navState.strategy) || 0
   const musicState = cockpitState?.music || { playing: false, currentIndex: 0 }
   const flashBuyState = cockpitState?.flashbuy || INITIAL_FLASH_BUY_STATE
   const weatherState = cockpitState?.weather || INITIAL_WEATHER_STATE
@@ -149,6 +171,10 @@ export default function App() {
 
   const navigateToFavorite = useCallback((favoriteType) => {
     runCockpitCommand('navigation_to_favorite', { favoriteType })
+  }, [runCockpitCommand])
+
+  const changeRouteStrategy = useCallback((strategy) => {
+    runCockpitCommand('navigation_set_route_strategy', { strategy })
   }, [runCockpitCommand])
 
   const openDestinationInput = useCallback(() => {
@@ -193,7 +219,7 @@ export default function App() {
     } else if (part === 'sunroof') {
       runCockpitCommand('vehicle_sunroof_control', { action })
     } else if (part === 'headlights') {
-      runCockpitCommand('vehicle_headlights_control', { action })
+      runCockpitCommand('vehicle_light_control', { action, light: 'headlights' })
     }
   }, [carState, runCockpitCommand])
 
@@ -258,7 +284,10 @@ export default function App() {
         thinkingMs: msg.thinkingMs || 1,
         debug: {
           ...(msg.debug || {}),
-          tool_calls: [...(msg.debug?.tool_calls || []), event.toolCall],
+          tool_calls: mergeToolCallDebug(
+            msg.debug?.tool_calls || [],
+            event.toolCall,
+          ),
         },
       }))
       return
@@ -350,6 +379,7 @@ export default function App() {
     progress: voiceProgress,
     error: voiceError,
     activateVoice,
+    deactivateVoice,
     sendInput,
   } = useVoiceSession({
     muted: voiceMuted,
@@ -361,11 +391,12 @@ export default function App() {
   })
   const toggleVoiceMute = useCallback(() => {
     if (!voiceMuted) {
+      deactivateVoice()
       setVoiceMuted(true)
       return
     }
     if (activateVoice()) setVoiceMuted(false)
-  }, [activateVoice, voiceMuted])
+  }, [activateVoice, deactivateVoice, voiceMuted])
   const visualProgress = cockpitProgress || voiceProgress
 
   const handleTextMessage = useCallback((text) => (
@@ -404,6 +435,10 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHashChange)
   }, [])
 
+  useEffect(() => {
+    if (screen === 'settings' && settingsTab === 'memory') loadMemories()
+  }, [loadMemories, screen, settingsTab])
+
   return (
     <main className="device" aria-label="车机语音交互原型">
       <section className="screen">
@@ -431,7 +466,7 @@ export default function App() {
                 navProgress={visualProgress}
                 mapActions={mapActions}
                 routeStrategy={routeStrategy}
-                onStrategyChange={setRouteStrategy}
+                onStrategyChange={changeRouteStrategy}
                 onFavoriteNavigate={navigateToFavorite}
                 onFavoriteSetup={openDestinationInput}
                 onSearchDestination={openDestinationInput}
@@ -453,6 +488,11 @@ export default function App() {
                 skillsError={customSkillsError}
                 onLoadSkill={loadCustomSkill}
                 onDeleteSkill={deleteCustomSkill}
+                memories={memories}
+                memoryLoading={memoryLoading}
+                memoryError={memoryError}
+                onDeleteMemory={deleteMemory}
+                onRefreshMemory={loadMemories}
               />
             )}
           </div>

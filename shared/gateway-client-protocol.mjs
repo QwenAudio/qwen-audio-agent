@@ -10,6 +10,9 @@ import {
 } from './protocol/gateway-events.mjs'
 
 export const GATEWAY_CLIENT_PROTOCOL_VERSION = '6.0.0'
+export const GATEWAY_CLIENT_REPLACED_CLOSE_CODE = 4001
+export const GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE = 4002
+export const GATEWAY_CLIENT_REVOKED_CLOSE_CODE = 4003
 
 export const GatewayClientProtocolEvent = Object.freeze({
   SESSION_HELLO: 'session.hello',
@@ -55,6 +58,7 @@ export const GatewayClientCapability = Object.freeze({
   SESSION_OUTPUT_VOICE: 'session.output_voice',
   CLIENT_ACTION_ENTER_SLEEP: 'client.actions.desktop.presence.enter_sleep',
   SESSION_REPLAY: 'session.replay',
+  SESSION_TAKEOVER: 'session.takeover',
 })
 
 export const GatewayClientActionName = Object.freeze({
@@ -83,6 +87,7 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.SESSION_OUTPUT_VOICE,
   GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
   GatewayClientCapability.SESSION_REPLAY,
+  GatewayClientCapability.SESSION_TAKEOVER,
 ])
 
 const IdentifierSchema = z.string().min(1).max(128)
@@ -128,6 +133,7 @@ export const GatewaySessionHelloSchema = GatewayClientEnvelopeSchema.extend({
     output_voice: z.string().min(1).max(160).optional(),
     working_directory: z.string().min(1).max(4096).optional(),
     client_states: z.array(z.string().min(1).max(80)).max(16).optional(),
+    takeover: z.boolean().optional(),
   }).optional(),
 }).superRefine((value, context) => {
   if (new Set(value.capabilities).size !== value.capabilities.length) {
@@ -135,6 +141,16 @@ export const GatewaySessionHelloSchema = GatewayClientEnvelopeSchema.extend({
       code: 'custom',
       path: ['capabilities'],
       message: 'capabilities must not contain duplicates',
+    })
+  }
+  if (
+    value.connection?.takeover === true
+    && !value.capabilities.includes(GatewayClientCapability.SESSION_TAKEOVER)
+  ) {
+    context.addIssue({
+      code: 'custom',
+      path: ['connection', 'takeover'],
+      message: 'takeover requires the session.takeover capability',
     })
   }
 })
@@ -145,6 +161,10 @@ export const GatewaySessionReadySchema = GatewayServerEnvelopeSchema.extend({
   protocol_version: SemVerSchema,
   session_id: IdentifierSchema,
   capabilities: z.array(CapabilitySchema).max(64),
+  connection: z.object({
+    lease_generation: z.number().int().positive(),
+    replaced: z.boolean(),
+  }).optional(),
 })
 
 export const GatewayProtocolErrorSchema = GatewayServerEnvelopeSchema.extend({
@@ -444,6 +464,7 @@ export function gatewayHelloAsLegacyConnect(hello) {
       ...(parsed.connection.client_states
         ? { clientStates: parsed.connection.client_states }
         : {}),
+      takeoverRequested: parsed.connection.takeover === true,
     } : {}),
   })
 }
@@ -469,7 +490,14 @@ export function createGatewaySessionHello({
   locale,
   timeZone,
   connection,
+  takeover = false,
 } = {}) {
+  const connectionValue = connection || takeover
+    ? {
+        ...(connection || {}),
+        ...(takeover ? { takeover: true } : {}),
+      }
+    : undefined
   return GatewaySessionHelloSchema.parse({
     type: GatewayClientProtocolEvent.SESSION_HELLO,
     event_id: eventId,
@@ -483,7 +511,7 @@ export function createGatewaySessionHello({
     capabilities,
     locale,
     time_zone: timeZone,
-    connection,
+    connection: connectionValue,
   })
 }
 

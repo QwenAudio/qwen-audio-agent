@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { GatewayClient } from '../shared/gateway-client-sdk.mjs'
 import {
+  GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
+  GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
+  GATEWAY_CLIENT_REVOKED_CLOSE_CODE,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
 } from '../shared/gateway-client-protocol.mjs'
@@ -35,6 +38,34 @@ class FakeSocket {
   send(value) { this.sent.push(JSON.parse(value)) }
   close() { this.readyState = 3 }
 }
+
+test('passes remote credentials below GCP and requests takeover explicitly', () => {
+  const socket = new FakeSocket()
+  let socketOptions
+  const client = new GatewayClient({
+    url: 'wss://gateway.test/api/realtime',
+    createSocket: (_url, options) => {
+      socketOptions = options
+      return socket
+    },
+    accessToken: 'device-token',
+    takeover: true,
+    clientInstanceId: 'phone-one',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+    reconnect: false,
+  }).start()
+  socket.open()
+  assert.deepEqual(socketOptions, {
+    headers: { Authorization: 'Bearer device-token' },
+  })
+  assert.equal(socket.sent[0].connection.takeover, true)
+  assert.equal(
+    socket.sent[0].capabilities.includes(GatewayClientCapability.SESSION_TAKEOVER),
+    true,
+  )
+  assert.equal(JSON.stringify(socket.sent[0]).includes('device-token'), false)
+  client.stop()
+})
 
 test('reference Client negotiates once and correlates runtime commands', async () => {
   const socket = new FakeSocket()
@@ -286,4 +317,82 @@ test('reference Client reconnects, replays from its cursor, then reconciles snap
   assert.deepEqual(received.map(event => event.sequence), [1, 2])
   assert.deepEqual(recovered.events.map(event => event.sequence), [2])
   client.stop()
+})
+
+test('reference Client does not reconnect after a newer instance replaces it', async () => {
+  const sockets = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => {
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+    clientInstanceId: 'sdk-replaced-test',
+    reconnectMinMs: 50,
+    reconnectMaxMs: 50,
+  }).start()
+  const socket = sockets[0]
+  socket.open()
+  socket.readyState = 3
+  socket.emit('close', { code: GATEWAY_CLIENT_REPLACED_CLOSE_CODE })
+
+  await new Promise(resolve => setTimeout(resolve, 70))
+
+  assert.equal(sockets.length, 1)
+  assert.equal(client.readyState, 3)
+})
+
+test('reference Client reports an occupied lease without retrying', async () => {
+  const sockets = []
+  const statuses = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => {
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+    clientInstanceId: 'sdk-occupied-test',
+    reconnectMinMs: 50,
+    reconnectMaxMs: 50,
+    onStatus: status => statuses.push(status.state),
+  }).start()
+  const socket = sockets[0]
+  socket.open()
+  socket.readyState = 3
+  socket.emit('close', { code: GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE })
+
+  await new Promise(resolve => setTimeout(resolve, 70))
+
+  assert.equal(sockets.length, 1)
+  assert.equal(client.readyState, 3)
+  assert.equal(statuses.at(-1), 'occupied')
+})
+
+test('reference Client reports credential revocation without retrying', async () => {
+  const sockets = []
+  const statuses = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => {
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+    clientInstanceId: 'sdk-revoked-test',
+    reconnectMinMs: 50,
+    reconnectMaxMs: 50,
+    onStatus: status => statuses.push(status.state),
+  }).start()
+  const socket = sockets[0]
+  socket.open()
+  socket.readyState = 3
+  socket.emit('close', { code: GATEWAY_CLIENT_REVOKED_CLOSE_CODE })
+
+  await new Promise(resolve => setTimeout(resolve, 70))
+
+  assert.equal(sockets.length, 1)
+  assert.equal(client.readyState, 3)
+  assert.equal(statuses.at(-1), 'revoked')
 })

@@ -22,7 +22,9 @@
 Delivery、Client Action、参考 Client SDK 与有限回放均落在同一条 WebSocket 上。
 已实现行为仍以本契约索引为准。
 
-当前健康契约版本为 `5.5.0`。新增的 `5.5` 能力提供共享参考 Client SDK、有限 Task
+当前健康契约版本为 `5.7.0`。新增的 `5.7` 能力提供远程 Client 认证、一次性
+设备配对，以及按用户生效的活动 Client 接管与租约代次 fencing。`5.6` 能力为可替换客户端提供
+Provider 无关的前台记忆控制面。`5.5` 能力提供共享参考 Client SDK、有限 Task
 事件回放与断线状态恢复。第一方 WebUI、Desktop 和 TUI 已通过同一套一致性测试，
 Task 控制、权限决策和对话历史不再依赖内部 REST 路由。`5.4` 能力提供有关联关系的 Client Action 与共享
 Presence 状态机；`5.3` 增加 Provider 无关 Agent Delivery；`5.2` 在协商后的 6.0
@@ -52,6 +54,7 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `gateway.instance-lease` | 配置目录中的租约标识运行中的实例；`/api/health` 回显 `gatewayInstanceId`，同端口的陌生进程不会被误认为本 Gateway | `test/consumer-install.test.mjs` |
 | `gateway.setup-gate` | 未配置的启动以 `QWAUDIO_GATEWAY_SETUP_REQUIRED` 拒绝并附带 `missing` 清单，而不是运行一个语音不可用的实例 | `test/gateway-setup.test.mjs` |
 | `gateway.settings-store` | 配置持久化由本包自持：`createSettingsStore({ configDir })`——宿主不认识任何配置项、不持有任何配置文件 | `desktop/test/settings-store.test.mjs` |
+| `gateway.remote-access-pairing` | 本机访问保持零配置；远程 HTTP/WS 必须使用配置或配对凭据，本机操作者可签发和撤销设备令牌 | `server/test/gateway-access.test.mjs`、`server/test/request-security.test.mjs` |
 | `host.electron-entry` | `qwen-audio-agent/electron`：Electron 主进程可直接 `require` 的 CommonJS 入口，一次 `load()` 拿到全部契约 | `test/consumer-install.test.mjs` |
 | `host.gateway-process` | `GatewayProcess` 随包发布：fork、端口回退、就绪握手、重启、计划退出与崩溃分离——桌面版跑的是同一份实现 | `desktop/test/gateway-process.test.mjs` |
 | `input.suspend-protocol` | `POST /api/input/suspend\|resume`、`GET /api/input`；Gateway 通过 `input.suspend` / `input.resume` 把抢占传达给客户端 | `server/test/input-suspend-protocol.test.mjs` |
@@ -62,12 +65,14 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `tasks.structured-results-authorization` | 原生 Task 事件使用与 A2A 对齐的工作状态，并暴露事实性 `result`、类型化 `artifacts` 与 `authorization`，不规定播报或 UI | `test/gateway-event-schema.test.mjs`、`server/test/task-state.test.mjs` |
 | `tasks.unified-id-updates` | Task 只公开一个短 `id`；`task.updated` 携带 Adapter 归一化后的增量消息与产物 | `test/gateway-event-schema.test.mjs`、`server/test/task-manager.test.mjs` |
 | `messages.citations` | 最终助手 `transcript.final` 可以携带同一轮前台检索产生的规范化 Citation | `test/gateway-event-schema.test.mjs`、`server/test/realtime-presentation-runtime.test.mjs` |
+| `frontend.memory-control` | `GET/PATCH /api/memory` 供可替换客户端列出并精确编辑 Realtime 共用的 Provider 记忆文档，不暴露具体存储实现 | `server/test/gateway-application.test.mjs` |
 | `realtime.conversation-client-v1` | `WS /api/realtime`、公开事件常量与消息 Schema 共同构成可替换的文本/音频/多模态对话客户端边界 | `test/gateway-event-schema.test.mjs`、`test/custom-conversation-client.test.mjs` |
 | `realtime.gateway-client-protocol-v6-handshake` | 同一 WebSocket 可选择以 6.0 `session.hello` 接入，返回有关联关系的 `session.ready`，协商已实现能力，并把 6.0 输入别名归一化到现有业务路径 | `test/gateway-client-protocol.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-runtime-commands` | 协商后的 6.0 Client 可以通过同一 WebSocket 发布已注册的语义 Client Event，并使用有关联结果的 Task、权限、对话历史和会话输出音色命令；现有 REST 路由调用同一命令服务作为兼容别名 | `test/gateway-client-protocol.test.mjs`、`server/test/client-event-router.test.mjs`、`server/test/client-command-runtime.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-agent-delivery` | Client Event、Task 结果与低频进展、权限请求统一跨越 Provider 无关 `AgentDelivery` 边界，并支持 `handle`、`context`、`respond`、`interrupt` 四种模式 | `server/test/agent-delivery.test.mjs`、`server/test/client-event-router.test.mjs`、`server/test/realtime-provider.test.mjs`、`server/test/announcement-manager.test.mjs` |
 | `realtime.gateway-client-protocol-v6-client-actions` | 有关联关系的 `client.action.request/result` 执行 Client 自有环境操作；`enter_sleep` 按 capability 暴露，只有 Client 成功后才提交 sleeping | `test/gateway-client-protocol.test.mjs`、`server/test/client-action-port.test.mjs`、`server/test/gateway-client-handshake.test.mjs`、`desktop/test/enter-sleep-flow.test.mjs` |
 | `realtime.gateway-client-protocol-v6-reference-client-replay` | 共享参考 Client SDK 统一处理握手、命令关联、`updateOutputVoice()`、Client Action、重连与状态恢复；Task 推送以 `sequence` 有限回放，WebUI、Desktop、TUI 共用一致性测试 | `test/gateway-client-sdk.test.mjs`、`test/gateway-client-conformance.test.mjs`、`server/test/gateway-client-protocol-session.test.mjs`、`server/test/gateway-client-replay-buffer.test.mjs` |
+| `realtime.gateway-client-protocol-v6-owner-takeover` | 每个已认证用户只有一个活动 Client 租约；显式接管、同实例重连、心跳过期与单调递增的租约代次共同阻止旧 Socket 重新取得控制 | `server/test/active-client-leases.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
 | `desktop.orb-shell` | 悬浮球形态的主进程契约随包发布：`bindOrbShell` 应答随包 preload 发出的全部通道 | `desktop/test/orb-shell.test.mjs` |
 | `desktop.orb-window-factory` | `createOrbWindow` 持有悬浮球窗口配方；其 `destroy()` 是宿主的同步销毁路径（渲染进程退出才能确定性释放麦克风） | `desktop/test/orb-window.test.mjs` |
 | `desktop.orb-placement` | `createOrbPlacement` 覆盖默认锚点、显示器夹取与拖放持久化 | `desktop/test/orb-placement.test.mjs` |
@@ -89,6 +94,11 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `qwen-audio-agent/gateway-client-protocol` | GCP 6.0 信封、握手与运行时命令 Schema、解析器、能力常量和参考 Client Helper |
 | `qwen-audio-agent/gateway-client-sdk` | `GatewayClient`：WebSocket 生命周期、6.0 握手、请求关联、Client Action、有限回放和重连恢复 |
 | `qwen-audio-agent/gateway-client-profiles` | WebUI、Desktop、TUI 的参考 capability profile |
+| `qwen-audio-agent/gateway-access-client` | 创建本机一次性配对码、换取远程设备令牌的 Client Helper |
+| `qwen-audio-agent/gateway-remote-access` | 带版本的端点描述、连接配置与邀请 Schema；配置仅保存安全存储引用，不保存凭据 |
+| `qwen-audio-agent/gateway-endpoint-publishers` | Provider Registry，以及内置 local、manual Endpoint Publisher |
+| `qwen-audio-agent/gateway-tailscale-publisher` | 仅宿主使用的 Tailscale Endpoint Publisher；Tailscale 细节不会进入 Gateway Core 与 GCP |
+| `qwen-audio-agent/gateway-connection-profiles` | 带版本的 Connection Profile 持久化与原生 Client Credential Store Port |
 | `qwen-audio-agent/client-events` | 供 Gateway 扩展使用的 Client Event Definition Registry、内置定义、路由 Policy 与 `GatewayEventRouter` |
 | `qwen-audio-agent/client-actions` | `ClientActionPort`、内置 Action 名称、capability 映射、请求/结果关联、deadline 与进行中请求去重 |
 | `qwen-audio-agent/agent-delivery` | Provider 无关的 `AgentDelivery` 值与路由模式 |
@@ -158,6 +168,8 @@ await orb.load()
 | 接口 | 用途 |
 | --- | --- |
 | `GET /api/health` | 存活、能力探测与运行状态；含 `protocolVersion`、`capabilities`、`gatewayInstanceId`、`voiceConfigured`、`inputSuspension`、`voiceClients`、`backend` |
+| `GET /api/memory` | 列出当前 owner 有界、Provider 无关的前台记忆文档 |
+| `PATCH /api/memory` | 按 revision 精确编辑这些文档；版本过期返回 `409` |
 | `POST /api/input/suspend` | 抢占麦克风：`{ owner, reason?, ttlMs? }`，默认 15 秒，上限 300 秒 |
 | `POST /api/input/resume` | 释放抢占：`{ owner }` |
 | `GET /api/input` | 当前抢占状态 |

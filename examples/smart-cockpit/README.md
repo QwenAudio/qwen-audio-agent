@@ -2,50 +2,56 @@
 
 English | [中文](README_ZH.md)
 
+This runnable smart-cockpit Agent example is built with qwen-audio-agent. Users
+can naturally control the vehicle, plan routes, play music, check the weather,
+place flash-buy orders, and run custom workflows while the cockpit UI reflects
+vehicle and task state. It shows how to combine foreground realtime conversation,
+tool calling, and a replaceable backend Agent with the framework.
+
+## Demo
+
+Use natural voice to start vehicle-control and navigation tasks, showing how
+realtime foreground conversation, backend Agent execution, and cockpit UI state
+work together.
+
+> Turn on sound for the full experience.
+
+https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
+
+## Core features
+
+- **Realtime voice conversation:** continuous dialogue, natural interruption,
+  multi-turn context, and runtime voice and persona switching.
+- **Standard tool calling:** vehicle control, navigation, music, weather,
+  flash-buy, and custom workflows are exposed as MCP tools.
+- **Foreground/backend routing:** low-latency operations run directly in the
+  foreground Realtime path; flash-buy and custom workflows go to the backend Agent.
+- **Standard backend integration:** the example Agent connects through A2A 1.0
+  and can be replaced by a customer-owned A2A, ACP, or custom backend.
+- **Scenario-state projection:** the cockpit UI receives vehicle, route, music,
+  and order state through scenario-owned HTTP/SSE channels.
+- **Replaceable components:** the client, backend Agent, and scenario service can
+  each be replaced without changing the framework core.
+
+## Architecture
+
 ![Smart cockpit framework architecture](docs/framework-architecture.svg)
 
-This is qwen-audio-agent's runnable smart-cockpit showcase. It reimplements the
-complete cockpit path through public framework APIs while reusing suitable UI
-code and visual assets from an earlier cockpit prototype to save implementation
-effort. It is not a migration or compatibility retrofit, and it does not
-maintain a second Realtime gateway or foreground conversation history. The
-backend model loop lives only in the replaceable `agent/` process.
+The base qwen-audio-agent boundary is foreground conversation plus backend
+execution. The cockpit client and Gateway form the foreground, the cockpit Agent
+handles backend tasks, and the Service supplies scenario state, business rules,
+and the tool execution environment.
 
-The base qwen-audio-agent boundary has two layers: foreground conversation and backend execution.
-The cockpit UI is a replaceable client component inside the foreground, and the
-cockpit Agent is a replaceable backend example. Neither is a mandatory framework
-implementation. The reusable core is the Gateway, foreground realtime
-conversation, GCP Client SDK, BackendPort, A2A, and MCP seams.
-The backend Agent may derive independent Sessions as an optional third-layer
-execution space. The bundled example instead runs a compact Qwen3.8-Flash tool loop.
+| Directory / process | Default address | Responsibility |
+|---|---|---|
+| [`client/`](client/) / cockpit-client | `http://127.0.0.1:5173` | Replaceable cockpit client responsible for audio I/O, conversation interaction, and business panels. |
+| [`gateway/`](gateway/) / cockpit-gateway | `http://127.0.0.1:18888` | Foreground Agent and Gateway composition for realtime conversation, foreground tools, and backend task submission. |
+| [`agent/`](agent/) / cockpit-agent | `http://127.0.0.1:3020` | Replaceable A2A backend Agent; Qwen3.8-Flash interprets and orchestrates tasks. |
+| [`service/`](service/) / cockpit-service | `http://127.0.0.1:3010` | Cockpit environment and infrastructure for state, rules, external integrations, and MCP tools. |
+| [`bootstrap/`](bootstrap/) | — | Shared environment loading and startup preflight for all four processes. |
 
-## Structure at a glance
-
-| Directory / process | Default address | Role and contract | Change it when... |
-|---|---|---|---|
-| [`client/`](client/) / cockpit-client | `http://127.0.0.1:5173` | Replaceable foreground client. Uses GCP for conversation and scenario HTTP/SSE for panels. | Replacing the cockpit UI, browser audio I/O, or panel interaction. |
-| [`gateway/`](gateway/) / cockpit-gateway | `http://127.0.0.1:18888` | Foreground Agent and Gateway composition. Trusted personas, the frontend Profile, and the `spawn_thinking` description belong here. | Wiring a protocol adapter, changing a foreground Prompt, or changing scenario composition—not implementing business logic. |
-| [`agent/`](agent/) / cockpit-agent | `http://127.0.0.1:3020` | Replaceable model-powered A2A backend example. Qwen3.8-Flash plans and calls only the backend MCP surface. | Replacing or extending the bundled backend Agent. |
-| [`service/`](service/) / cockpit-service | `http://127.0.0.1:3010` | Cockpit environment and infrastructure: scenario state, business rules, external-service adapters, and [`tools/`](service/tools/) capability contracts. Exposes scoped interfaces to the UI, foreground, and cockpit Agent. | Adding a cockpit capability, business state, validation, or external integration. |
-| [`bootstrap/`](bootstrap/) | — | Shared environment loading and startup preflight for all four processes. | Changing local-example startup requirements or port checks. |
-
-Common changes should stay local:
-
-- **Replace the backend Agent:** point `COCKPIT_AGENT_CARD_URL` at your Agent, or
-  replace only [`agent/`](agent/) when editing the bundled example. The client,
-  Gateway core and cockpit service contracts do not change.
-- **Add a scenario capability:** change [`service/tools/`](service/tools/) and
-  touch the other `service/` modules only when the capability needs new state,
-  rules, or an external adapter. To expose it as a foreground low-latency tool,
-  also update `gateway/frontend-mcp.json`. Do not add business execution branches
-  to the Gateway or client.
-- **Replace the cockpit UI:** replace only [`client/`](client/) while
-  keeping the GCP and scenario-state contracts.
-- **Change a foreground persona:** edit its Markdown under
-  [`gateway/assistant/`](gateway/assistant/). For a new option, add the Gateway
-  allowlist entry and the presentation entry in `client/src/config/personas.js`;
-  the two sides align only through the scenario event id and never import each
-  other's implementation.
+See the [architecture document](docs/architecture.md) for complete boundaries
+and data flows.
 
 ## Quick start
 
@@ -61,65 +67,81 @@ Set at least:
 DASHSCOPE_API_KEY=your_dashscope_api_key
 ```
 
-The backend Agent uses `qwen3.8-flash` with thinking enabled by default. Override it with
-`DASHSCOPE_MODEL` when needed.
-
-Optionally configure `VITE_AMAP_KEY`, `VITE_AMAP_SECRET`, and `AMAP_MCP_KEY` for AMap rendering and route services. Install the example dependencies and start all four processes:
+Optionally configure `VITE_AMAP_KEY`, `VITE_AMAP_SECRET`, and `AMAP_MCP_KEY`
+for AMap rendering and route services. Then install dependencies and start the
+example:
 
 ```bash
 npm run example:smart-cockpit:install
 npm run example:smart-cockpit
 ```
 
-Open `http://localhost:5173`.
-The command starts the four processes listed above.
+Open `http://localhost:5173`. Press `Ctrl+C` to stop all example processes.
 
-Press `Ctrl+C` to stop all processes.
+## Tool calling
 
-A preflight validates the Realtime configuration and all four ports before any child process starts. Missing credentials and stale instances therefore produce one actionable error instead of several child-process stack traces.
+The cockpit Service provides 38 tools across six scenario domains. Tool
+definitions, executors, and foreground/backend routing remain independent.
 
-## Boundaries
+| Domain | Count | Example capabilities |
+|---|---:|---|
+| `vehicle` | 11 | Vehicle location and state, climate, windows, sunroof, lights, charging, and other controls. |
+| `navigation` | 12 | Place search, routing, ordered waypoints, favorites, route preferences, and stop-navigation. |
+| `music` | 10 | Search and playback, previous/next track, volume, media source, and favorites. |
+| `weather` | 1 | City weather lookup. |
+| `flashbuy` | 1 | Flash-buy product search and ordering demonstration. |
+| `custom-skills` | 3 | List, create, and load user-defined cockpit workflows. |
+| **Total** | **38** | Foreground low-latency operations and backend composed tasks. |
 
-- The cockpit client and Gateway/Realtime conversation runtime are components
-  of one foreground layer, not separate Agent layers.
-- The UI talks to the Gateway through GCP and knows nothing about the Realtime provider or backend Agent.
-- Voice settings expose only Qwen Audio 3.0 Realtime's sweet female
-  (`longanqian`) and sunny male (`longanlufeng`) voices. Changing the selection
-  uses the formal GCP/Client SDK voice capability and refreshes only the
-  upstream Realtime Session without restarting the cockpit app.
-- The UI publishes only the allowlisted `healer`, `action`, or `sharp` ID through
-  a registered `client.event.publish`. The Gateway maps it to deployment-owned
-  Markdown and applies it to the current Realtime Session with `session.update`
-  from the next turn. The Client cannot submit arbitrary prompt text, files are
-  not rewritten, and switching neither drops conversation state nor speaks an acknowledgement.
-- The primary cockpit stays voice-only. Transcripts appear only in the debug panel, and ASR displays final results only.
-- Scenario-specific HTTP/SSE projects vehicle, route, media, weather, and order state, plus fine-grained scenario progress. The Gateway does not parse those objects.
-- Users can create and run persistent cockpit-specific workflows by voice. The
-  backend Agent loads these workflows and composes existing MCP tools; they are
-  not dynamic MCP plugins, A2A Agent Card entries, or globally installed Agent Skills.
-  vehicle-state, window, sunroof, headlight, climate, and short in-route
-  navigation tools through standard MCP. Explicit single vehicle-control,
-  route-view, voice, and current-route preference commands execute inline
-  without a redundant second confirmation.
-- Other cockpit work goes through the fixed `spawn_thinking` bridge. The example
-  backend attaches over A2A, and Qwen3.8-Flash discovers the complete backend MCP
-  surface for vehicle control, navigation, music, flash-buy, and custom workflows,
-  including ordered multi-stop navigation.
-- How the backend invokes tools and organizes work is backend-private. If it
-  creates independent derived Sessions, they form an optional third-layer
-  execution space extended by the backend without changing the foreground protocol.
-- Scenario tools live in domain-oriented packages under [`service/tools/`](service/tools/README.md).
-  One explicit registry adds domain groups and selects individual tools for an
-  additional foreground low-latency path. The backend retains the complete
-  orchestration surface without changing Gateway protocols or duplicating executors.
-- Customers can replace the UI, cockpit Agent, or cockpit service without changing the framework core.
+By default, `vehicle`, `navigation`, `music`, and `weather` use the foreground
+Realtime fast path, while `flashbuy` and `custom-skills` run through the backend
+Agent. Change the scenario routing in
+[`surface-routing.json`](service/tools/surface-routing.json); see the
+[tool directory guide](service/tools/README.md) for extension details.
 
-## Development and tests
+## Benchmark
+
+The example includes a reproducible cockpit tool-calling benchmark. It uses the
+same tools, prompt, deterministic state, and scorer to evaluate tool selection,
+argument generation, and no-tool decisions in both single-turn and long-context
+conversations:
+
+- Short suite: 86 cockpit instructions.
+- Long-context suite: 10 conversations and 500 turns, including 250 expected
+  tool calls and 250 no-tool turns.
+- Four runners: Gold, text model, controlled Realtime, and full voice pipeline.
 
 ```bash
-npm run example:smart-cockpit:lint
-npm run example:smart-cockpit:build
-npm run test:smart-cockpit
+node examples/smart-cockpit/bench/runner/run-gold.mjs
+node examples/smart-cockpit/bench/runner/run-text.mjs
+node examples/smart-cockpit/bench/runner/run-realtime.mjs
+node examples/smart-cockpit/bench/runner/run-voice.mjs
 ```
 
-See [architecture and data flow](docs/architecture.md), [component replacement](docs/replacing-components.md), and the [test matrix](docs/test-matrix.md).
+See the [Benchmark guide](bench/README.md) for datasets, runtime options, and
+scoring rules.
+
+## Replace and extend
+
+| Goal | Change |
+|---|---|
+| Replace the cockpit UI or audio I/O | [`client/`](client/) |
+| Replace the backend Agent | Change `COCKPIT_AGENT_CARD_URL` or replace [`agent/`](agent/) |
+| Add scenario tools, state, or external services | [`service/`](service/) and [`service/tools/`](service/tools/) |
+| Change foreground personas or backend-task semantics | [`gateway/`](gateway/) |
+| Change foreground/backend tool routing | [`surface-routing.json`](service/tools/surface-routing.json) |
+
+See the [component replacement guide](docs/replacing-components.md) for the
+complete migration path.
+
+## Authors and acknowledgements
+
+- [Zhang Binbin](https://github.com/robin1001): designed and expanded the
+  cockpit domain capabilities, including the navigation, vehicle-control and
+  music tool suites, foreground/backend routing, and evaluation cases.
+- [Li Xu](https://github.com/x-lixu): designed and implemented the scenario on
+  qwen-audio-agent, including the client, Gateway and backend Agent boundaries,
+  the realtime voice path, and the A2A/MCP integrations.
+- [Peng Zhendong](https://github.com/pengzhendong): provided the original
+  cockpit UI and visual assets, including the overall interface design,
+  interaction patterns, and related visual materials.

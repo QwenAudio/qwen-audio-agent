@@ -6,9 +6,9 @@ import {
 } from '@a2a-js/sdk'
 import { CockpitAgentExecutor } from '../executor.mjs'
 
-const CLIMATE_TOOL = {
-  name: 'vehicle_climate_control',
-  description: '控制空调',
+const TEMPERATURE_TOOL = {
+  name: 'vehicle_temperature_control',
+  description: '控制座舱温度',
   inputSchema: {
     type: 'object',
     properties: {
@@ -45,7 +45,7 @@ test('lets the model plan an MCP call and publishes the A2A lifecycle', async ()
   const executor = new CockpitAgentExecutor({
     model: {
       async complete({ messages, tools }) {
-        assert.equal(tools[0].function.name, CLIMATE_TOOL.name)
+        assert.equal(tools[0].function.name, TEMPERATURE_TOOL.name)
         if (round++ === 0) {
           assert.match(messages[0].content, /必须使用提供的工具/u)
           assert.match(messages[0].content, /后续指令中明确确认/u)
@@ -55,8 +55,8 @@ test('lets the model plan an MCP call and publishes the A2A lifecycle', async ()
             tool_calls: [{
               id: 'call-climate',
               function: {
-                name: CLIMATE_TOOL.name,
-                arguments: JSON.stringify({ action: 'set_temp', temperature: 22 }),
+                name: TEMPERATURE_TOOL.name,
+                arguments: JSON.stringify({ action: 'set', temperature: 22 }),
               },
             }],
           }
@@ -66,7 +66,7 @@ test('lets the model plan an MCP call and publishes the A2A lifecycle', async ()
       },
     },
     tools: {
-      async list() { return [CLIMATE_TOOL] },
+      async list() { return [TEMPERATURE_TOOL] },
       async call(name, args) {
         calls.push({ name, args })
         return { content: '空调当前开启，制冷，22°C，3档', data: { vehicle: { acTemp: 22 } } }
@@ -78,8 +78,8 @@ test('lets the model plan an MCP call and publishes the A2A lifecycle', async ()
   })
 
   assert.deepEqual(calls, [{
-    name: 'vehicle_climate_control',
-    args: { action: 'set_temp', temperature: 22 },
+    name: 'vehicle_temperature_control',
+    args: { action: 'set', temperature: 22 },
   }])
   assert.deepEqual(events.map(event => event.kind), [
     'task',
@@ -106,7 +106,7 @@ test('returns a model clarification without inventing a tool call', async () => 
       },
     },
     tools: {
-      async list() { return [CLIMATE_TOOL] },
+      async list() { return [TEMPERATURE_TOOL] },
       async call() { called = true },
     },
   })

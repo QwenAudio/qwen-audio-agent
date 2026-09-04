@@ -78,6 +78,14 @@ const currentBackend = document.querySelector('#current-backend')
 const updaterStatus = document.querySelector('#updater-status')
 const checkUpdates = document.querySelector('#check-updates')
 const openLogs = document.querySelector('#open-logs')
+const remoteAccessStatus = document.querySelector('#remote-access-status')
+const enableRemoteAccess = document.querySelector('#enable-remote-access')
+const inviteRemoteClient = document.querySelector('#invite-remote-client')
+const disableRemoteAccess = document.querySelector('#disable-remote-access')
+const remoteInvitationDialog = document.querySelector('#remote-invitation-dialog')
+const remoteInvitationQr = document.querySelector('#remote-invitation-qr')
+const remoteInvitationUrl = document.querySelector('#remote-invitation-url')
+const copyRemoteInvitation = document.querySelector('#copy-remote-invitation')
 const submit = form.querySelector('button[type="submit"]')
 const settingsTabs = [...document.querySelectorAll('[data-settings-tab]')]
 const settingsPanels = [...document.querySelectorAll('[data-settings-panel]')]
@@ -109,6 +117,33 @@ let realtimeVoiceDrafts = createRealtimeVoiceDrafts()
 const defaultWakeShortcut = 'CommandOrControl+Shift+Space'
 const defaultRealtimeBaseUrl = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
 const macPlatform = /Mac|iPhone|iPad/.test(navigator.platform)
+
+function renderRemoteAccess(value) {
+  const available = value?.available === true
+  const connected = value?.connected === true
+  const published = value?.published === true
+  remoteAccessStatus.textContent = !available
+    ? t('需要安装 Tailscale')
+    : !connected
+      ? t('请先登录 Tailscale')
+      : published
+        ? t('已开启')
+        : t('未开启')
+  enableRemoteAccess.disabled = !connected || published
+  inviteRemoteClient.disabled = !published
+  disableRemoteAccess.disabled = !published
+}
+
+async function refreshRemoteAccess() {
+  try {
+    renderRemoteAccess(await window.qwenAudioAgentDesktop.remoteAccessStatus())
+  } catch (error) {
+    remoteAccessStatus.textContent = localizeDesktopError(error, translate)
+    enableRemoteAccess.disabled = true
+    inviteRemoteClient.disabled = true
+    disableRemoteAccess.disabled = true
+  }
+}
 
 function renderRealtimeModelOptions(selectedModel) {
   const profiles = listDashScopeRealtimeModelProfiles()
@@ -1124,6 +1159,53 @@ getApiKey.addEventListener('click', () => {
   window.qwenAudioAgentDesktop.openExternal(BAILIAN_API_KEY_URL)
 })
 
+enableRemoteAccess.addEventListener('click', async () => {
+  enableRemoteAccess.disabled = true
+  remoteAccessStatus.textContent = t('正在开启…')
+  try {
+    await window.qwenAudioAgentDesktop.enableRemoteAccess()
+    await refreshRemoteAccess()
+  } catch (error) {
+    showMessage(friendlyError(error, t('开启远程访问失败')), 'error')
+    await refreshRemoteAccess()
+  }
+})
+
+disableRemoteAccess.addEventListener('click', async () => {
+  disableRemoteAccess.disabled = true
+  try {
+    await window.qwenAudioAgentDesktop.disableRemoteAccess()
+    await refreshRemoteAccess()
+  } catch (error) {
+    showMessage(friendlyError(error, t('关闭远程访问失败')), 'error')
+    await refreshRemoteAccess()
+  }
+})
+
+inviteRemoteClient.addEventListener('click', async () => {
+  inviteRemoteClient.disabled = true
+  try {
+    const invitation = await window.qwenAudioAgentDesktop.createRemoteInvitation()
+    remoteInvitationQr.src = invitation.qrCode
+    remoteInvitationUrl.value = invitation.appUrl
+    remoteInvitationDialog.showModal()
+  } catch (error) {
+    showMessage(friendlyError(error, t('创建远程邀请失败')), 'error')
+  } finally {
+    await refreshRemoteAccess()
+  }
+})
+
+copyRemoteInvitation.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(remoteInvitationUrl.value)
+    copyRemoteInvitation.textContent = t('已复制')
+    setTimeout(() => { copyRemoteInvitation.textContent = t('复制链接') }, 1200)
+  } catch {
+    remoteInvitationUrl.select()
+  }
+})
+
 orbSkinSelect.addEventListener('change', updateRemoveSkinState)
 
 importSkinButton.addEventListener('click', async () => {
@@ -1248,6 +1330,7 @@ window.qwenAudioAgentDesktop.loadSettings().then(value => {
   renderWakeShortcutStatus(value.wakeShortcutRegistered)
   render()
   void detectBackendOptions()
+  void refreshRemoteAccess()
   if (value.runtimeError) {
     startupError = value.runtimeError
     showMessage(t('当前配置启动失败：{error}', {

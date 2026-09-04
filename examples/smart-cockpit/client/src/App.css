@@ -2554,6 +2554,26 @@ button {
   gap: 18px;
 }
 
+.memory-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  color: #7f8d93;
+  font-size: 13px;
+}
+
+.memory-toolbar button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.settings-error {
+  margin: 12px 0 0;
+  color: #b54a62;
+  font-size: 13px;
+}
+
 .memory-item {
   display: grid;
   grid-template-columns: 1fr 34px;
@@ -2571,7 +2591,9 @@ button {
   line-height: 1.35;
 }
 
-.memory-item time {
+.memory-item time,
+.memory-meta {
+  display: block;
   color: #9aa6ab;
   font-size: 12px;
 }
@@ -2856,6 +2878,16 @@ button {
 .tag-skill {
   background: rgba(168, 130, 255, 0.2);
   color: #c4a0ff;
+}
+
+.tag-frontend {
+  background: rgba(68, 196, 184, 0.2);
+  color: #7fe0d4;
+}
+
+.tag-backend {
+  background: rgba(229, 186, 53, 0.2);
+  color: #f0cc62;
 }
 
 .tag-memory {

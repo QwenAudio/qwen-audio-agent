@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>设置</title>
@@ -333,6 +333,18 @@
                 <input id="gateway-url" type="url" spellcheck="false" required />
               </div>
 
+              <div class="setting-row remote-access-row">
+                <span class="setting-label">远程访问</span>
+                <div class="remote-access-control">
+                  <span id="remote-access-status" class="setting-hint">未检查</span>
+                  <div class="manage-buttons" role="group" aria-label="管理远程访问">
+                    <button id="enable-remote-access" type="button">开启</button>
+                    <button id="invite-remote-client" type="button" disabled>邀请</button>
+                    <button id="disable-remote-access" type="button" disabled>关闭</button>
+                  </div>
+                </div>
+              </div>
+
               <div class="setting-row">
                 <label for="orb-style">外观</label>
                 <div class="setting-inline">
@@ -414,6 +426,18 @@
           <button class="apply-button" type="submit" aria-label="应用设置" disabled>应用</button>
         </footer>
       </form>
+      <dialog id="remote-invitation-dialog" class="remote-invitation-dialog">
+        <form method="dialog">
+          <h2>连接远程客户端</h2>
+          <img id="remote-invitation-qr" alt="远程客户端配对二维码" />
+          <p>在已登录同一 Tailscale 网络的设备上扫码。</p>
+          <input id="remote-invitation-url" type="text" readonly />
+          <div class="dialog-actions">
+            <button id="copy-remote-invitation" type="button">复制链接</button>
+            <button value="close" type="submit">完成</button>
+          </div>
+        </form>
+      </dialog>
     </main>
     <script src="./settings.js" type="module"></script>
   </body>

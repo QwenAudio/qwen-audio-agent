@@ -11,6 +11,11 @@ asarUnpack:
 extraMetadata:
   main: desktop/src/main.mjs
 
+protocols:
+  - name: Qwen Audio Gateway Invitation
+    schemes:
+      - qwaudio
+
 directories:
   output: dist/desktop
 

@@ -86,8 +86,10 @@ Connection Profile 只保存安全存储引用，不保存凭据正文：
 }
 ```
 
-原生 Client 使用 Authorization Header；浏览器在打开 WebSocket 前，把认证换成
-HttpOnly、SameSite Cookie。
+原生 Client 使用 Authorization Header；远程 WebUI 使用 HttpOnly、SameSite Cookie。
+移动端的本地 WebView 无法给 WebSocket Upgrade 设置 Header，因此在 TLS 内使用第二个
+WebSocket subprotocol 值承载可撤销设备凭据，服务端只选择并回显公开的 GCP subprotocol。
+凭据不进入 URL、GCP 消息、日志或模型上下文。
 
 ## RA0 — 固化远程接入契约
 
@@ -134,25 +136,26 @@ Tailscale 远程访问。
 
 ## RA4 — Mobile Client
 
-- [ ] 只复用公开 Gateway Client SDK 与 capability profile，不导入 Gateway、Realtime、
+- [x] 只复用公开 Gateway Client SDK 与 capability profile，不导入 Gateway、Realtime、
   ACP、A2A 或 Electron 内部实现。
-- [ ] 支持二维码/Deep Link 配对与安全凭据存储。
-- [ ] 支持实时麦克风、音频播放、语音打断、静音、文本、图片/文件、对话历史、Task
+- [x] 支持二维码/Deep Link 配对与安全凭据存储。
+- [x] 支持实时麦克风、音频播放、语音打断、静音、文本、图片/文件、对话历史、Task
   卡片、权限与后台追问响应、重连/回放和显式接管。
-- [ ] 语音与文字输入共用同一个对话模型。
-- [ ] 产出可复现的 iOS、Android 开发构建，并说明外部 Tailscale 前置条件。
+- [x] 语音与文字输入共用同一个对话模型。
+- [x] 产出可复现的 iOS、Android 开发构建，并说明外部 Tailscale 前置条件。
 
 完成条件：同一 tailnet 中的手机完成一次配对后，后续可自动重连，并完成与 WebUI 相同的
 核心对话和 Task 流程。
 
 ## RA5 — 加固与发版准备
 
-- [ ] 增加远程未认证、Origin 绕过、邀请过期/重放、设备撤销和旧租约的反例测试。
+- [x] 增加远程未认证、Origin 绕过、邀请过期/重放、设备撤销和旧租约的反例测试。
 - [ ] 测试 Tailscale 直连与中继、Wi-Fi/蜂窝切换、电脑休眠/唤醒、Gateway 重启，以及
   一小时 WebSocket/音频会话。
-- [ ] 对 Desktop、WebUI、TUI 与 Mobile 执行统一协议 Conformance。
-- [ ] 在具备平台工具链时增加 macOS、Windows、Linux、iOS 与 Android 构建检查。
-- [ ] 参考路径可复现后再更新用户手册。
+- [x] 对 Desktop、WebUI、TUI 与 Mobile 执行统一协议 Conformance。
+- [x] 增加 macOS、Windows、Linux、iOS 与 Android 构建检查；真实设备场景仍按上一项
+  执行。
+- [x] 参考路径可复现后更新中英文用户手册与开发构建说明。
 
 完成条件：远程路径安全失败、恢复后不重复输入或播报，并且不影响本机零配置体验。
 

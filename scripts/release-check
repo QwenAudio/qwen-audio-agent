@@ -20,6 +20,7 @@ const manifests = [
   'tui/package.json',
   'desktop/package.json',
   'cli/package.json',
+  'mobile/package.json',
 ]
 
 for (const file of manifests) {
@@ -47,6 +48,7 @@ for (const workspace of [
   'tui',
   'desktop',
   'cli',
+  'mobile',
 ]) {
   if (lock.packages?.[workspace]?.version !== expected) {
     throw new Error(`package-lock.json has the wrong version for ${workspace}`)
@@ -140,6 +142,7 @@ if (
 }
 for (const workflow of [
   '.github/workflows/ci.yml',
+  '.github/workflows/mobile.yml',
   '.github/workflows/release.yml',
 ]) {
   const content = readFileSync(workflow, 'utf8')

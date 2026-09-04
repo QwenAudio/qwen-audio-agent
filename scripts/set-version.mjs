@@ -11,7 +11,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const SCRIPT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const WORKSPACES = ['server', 'web', 'tui', 'desktop', 'cli']
+const WORKSPACES = ['server', 'web', 'tui', 'desktop', 'cli', 'mobile']
 const MANIFESTS = [
   'package.json',
   ...WORKSPACES.map(workspace => `${workspace}/package.json`),
@@ -40,6 +40,11 @@ export function nextVersion(current, requested) {
   if (requested === 'major') return `${major + 1}.0.0`
   if (requested === 'minor') return `${major}.${minor + 1}.0`
   return `${major}.${minor}.${patch + 1}`
+}
+
+function nativeBuildNumber(version) {
+  const [major, minor, patch] = version.split('-', 1)[0].split('.').map(Number)
+  return major * 1_000_000 + minor * 1_000 + patch
 }
 
 function readJson(path) {
@@ -92,6 +97,22 @@ export function updateVersions(root, requested) {
     lock.packages[workspace].version = version
   }
   updates.push({ path: lockPath, content: serializeJson(lock) })
+
+  const androidManifestPath = resolve(root, 'mobile/android/app/build.gradle')
+  if (existsSync(androidManifestPath)) {
+    const content = readFileSync(androidManifestPath, 'utf8')
+      .replace(/versionCode \d+/, `versionCode ${nativeBuildNumber(version)}`)
+      .replace(/versionName "[^"]+"/, `versionName "${version}"`)
+    updates.push({ path: androidManifestPath, content })
+  }
+
+  const iosProjectPath = resolve(root, 'mobile/ios/App/App.xcodeproj/project.pbxproj')
+  if (existsSync(iosProjectPath)) {
+    const content = readFileSync(iosProjectPath, 'utf8')
+      .replace(/CURRENT_PROJECT_VERSION = \d+;/g, `CURRENT_PROJECT_VERSION = ${nativeBuildNumber(version)};`)
+      .replace(/MARKETING_VERSION = [^;]+;/g, `MARKETING_VERSION = ${version};`)
+    updates.push({ path: iosProjectPath, content })
+  }
 
   for (const relativePath of ['README.md', 'README_ZH.md']) {
     const path = resolve(root, relativePath)

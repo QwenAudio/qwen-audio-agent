@@ -67,6 +67,27 @@ function harness({ ownsProcesses = false } = {}) {
         calls.push(['pair', url])
         return { code: 'PAIR-CODE', expiresAt: Date.now() + 60_000 }
       },
+      createRemotePublisher: () => ({
+        inspect: async () => ({
+          available: true,
+          connected: true,
+          published: true,
+          endpoint: { url: 'https://voice.example.ts.net:8443' },
+        }),
+        publish: async () => ({
+          url: 'https://voice.example.ts.net:8443',
+          secure: true,
+          publisher: 'tailscale',
+        }),
+        unpublish: async () => ({ changed: true, published: false }),
+      }),
+      listPairedDevices: async url => {
+        calls.push(['devices', url])
+        return { devices: [{ id: 'phone-one', label: 'Phone' }] }
+      },
+      revokePairedDevice: async (url, id) => {
+        calls.push(['revoke', url, id])
+      },
       manageService: async action => {
         calls.push(['service', action])
         return {
@@ -345,6 +366,31 @@ test('creates a one-time remote Client pairing code through the running Gateway'
   assert.deepEqual(target.calls.map(call => call[0]), ['pair', 'stdout'])
   assert.equal(target.calls[0][1], 'http://127.0.0.1:3101')
   assert.match(target.calls[1][1], /PAIR-CODE/)
+})
+
+test('manages a Tailscale endpoint and creates a portable invitation', async () => {
+  const enabled = harness()
+  assert.equal(await main(['gateway', 'remote', 'enable'], enabled.dependencies), 0)
+  assert.match(enabled.calls.at(-1)[1], /voice\.example\.ts\.net/)
+
+  const invited = harness()
+  assert.equal(await main(['gateway', 'remote', 'invite'], invited.dependencies), 0)
+  const output = invited.calls.at(-1)[1]
+  assert.match(output, /^远程客户端邀请：qwaudio:\/\/connect#/)
+  assert.match(output, /有效期至/)
+
+  const devices = harness()
+  assert.equal(await main(['gateway', 'remote', 'devices'], devices.dependencies), 0)
+  assert.match(devices.calls.at(-1)[1], /phone-one/)
+
+  const revoked = harness()
+  assert.equal(
+    await main(['gateway', 'remote', 'revoke', 'phone-one'], revoked.dependencies),
+    0,
+  )
+  assert.deepEqual(revoked.calls.find(call => call[0] === 'revoke'), [
+    'revoke', 'http://127.0.0.1:3101', 'phone-one',
+  ])
 })
 
 test('reports a configured frontend MCP failure in Gateway status', async () => {

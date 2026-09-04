@@ -97,6 +97,7 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `qwen-audio-agent/gateway-access-client` | 创建本机一次性配对码、换取远程设备令牌的 Client Helper |
 | `qwen-audio-agent/gateway-remote-access` | 带版本的端点描述、连接配置与邀请 Schema；配置仅保存安全存储引用，不保存凭据 |
 | `qwen-audio-agent/gateway-endpoint-publishers` | Provider Registry，以及内置 local、manual Endpoint Publisher |
+| `qwen-audio-agent/gateway-tailscale-publisher` | 仅宿主使用的 Tailscale Endpoint Publisher；Tailscale 细节不会进入 Gateway Core 与 GCP |
 | `qwen-audio-agent/gateway-connection-profiles` | 带版本的 Connection Profile 持久化与原生 Client Credential Store Port |
 | `qwen-audio-agent/client-events` | 供 Gateway 扩展使用的 Client Event Definition Registry、内置定义、路由 Policy 与 `GatewayEventRouter` |
 | `qwen-audio-agent/client-actions` | `ClientActionPort`、内置 Action 名称、capability 映射、请求/结果关联、deadline 与进行中请求去重 |

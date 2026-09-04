@@ -7,6 +7,20 @@ requests require a Gateway access credential before they can reach HTTP or WebSo
 APIs. Do not expose the port directly to the public Internet; use a trusted VPN or an HTTPS/WSS
 reverse proxy.
 
+For the reference private-network path, install and sign in to the Tailscale app on the Gateway
+host and remote device, then run:
+
+```bash
+qwenaudio gateway remote enable
+qwenaudio gateway remote invite
+```
+
+The first command publishes the loopback Gateway on a dedicated Tailscale Serve HTTPS port;
+the second prints a short-lived invitation for a remote Client. The adapter refuses to overwrite
+an unrelated Serve route. Use `gateway remote status`, `devices`, `revoke ID`, and `disable` to
+manage it. `--remote-mode tcp` is a native-Client fallback when tailnet HTTPS is unavailable;
+browser and Mobile microphone access should use the default HTTPS mode.
+
 For one personal access key:
 
 ```dotenv

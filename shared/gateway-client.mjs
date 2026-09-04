@@ -47,3 +47,37 @@ export async function pairGatewayDevice(
   }
   return payload
 }
+
+async function gatewayManagementRequest(baseUrl, path, options, fetchImpl) {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    ...options,
+    signal: AbortSignal.timeout(3000),
+  })
+  const payload = response.status === 204
+    ? null
+    : await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(payload?.error || `Gateway returned HTTP ${response.status}`)
+    error.code = payload?.code || 'gateway_management_failed'
+    throw error
+  }
+  return payload
+}
+
+export function listGatewayDevices(baseUrl, fetchImpl = fetch) {
+  return gatewayManagementRequest(
+    baseUrl,
+    '/api/access/devices',
+    { method: 'GET' },
+    fetchImpl,
+  )
+}
+
+export function revokeGatewayDevice(baseUrl, deviceId, fetchImpl = fetch) {
+  return gatewayManagementRequest(
+    baseUrl,
+    `/api/access/devices/${encodeURIComponent(deviceId)}`,
+    { method: 'DELETE' },
+    fetchImpl,
+  )
+}

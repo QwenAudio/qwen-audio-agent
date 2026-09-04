@@ -6,6 +6,19 @@ Gateway 默认只监听 loopback，并只信任字面量 loopback Host/Origin。
 通过 Gateway 访问认证，才能进入 HTTP 或 WebSocket 业务接口。不要把端口直接暴露到
 公网；请使用可信 VPN 或 HTTPS/WSS 反向代理。
 
+推荐的私有网络路径是在 Gateway 主机与远程设备上安装并登录 Tailscale，然后执行：
+
+```bash
+qwenaudio gateway remote enable
+qwenaudio gateway remote invite
+```
+
+第一条命令通过独立的 Tailscale Serve HTTPS 端口发布 loopback Gateway，第二条命令
+输出供远程 Client 使用的短时邀请。Adapter 不会覆盖其他 Serve 路由。可通过
+`gateway remote status`、`devices`、`revoke ID` 与 `disable` 管理。若 tailnet HTTPS
+不可用，原生 Client 可用 `--remote-mode tcp` 兜底；浏览器和 Mobile 的麦克风访问应
+使用默认 HTTPS 模式。
+
 配置一个个人访问密钥：
 
 ```dotenv

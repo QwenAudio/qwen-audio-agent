@@ -1,0 +1,5 @@
+.env.local
+.qwen-audio/
+.venv/
+__pycache__/
+*.py[cod]

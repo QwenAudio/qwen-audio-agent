@@ -2,6 +2,7 @@ node_modules/
 web/dist/
 dist/
 .venv/
+.qwen-audio/
 __pycache__/
 *.py[cod]
 .env

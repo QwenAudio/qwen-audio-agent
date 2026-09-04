@@ -1669,6 +1669,7 @@ export class ToolCallHandler {
     const newText = String(args.new_text || '')
     const hasNewText = Object.prototype.hasOwnProperty.call(args, 'new_text')
     const content = String(args.content || '').trim()
+    const query = String(args.query || '').trim()
     const proposedContent = action === 'append' ? content : newText
     let output
     if (!this.memoryService) {
@@ -1684,13 +1685,36 @@ export class ToolCallHandler {
         ), turnId, null, responseOptions)
         return
       }
-      const memories = scope
-        ? this.memoryService.list(this.ownerId, { scope })
-        : this.memoryService.list(this.ownerId)
-      output = {
-        status: memories.length ? 'ok' : 'not_found',
-        count: memories.length,
-        documents: memories,
+      try {
+        const result = query && typeof this.memoryService.query === 'function'
+          ? await this.memoryService.query(this.ownerId, query, {
+              ...(scope ? { scope } : {}),
+              limit: 8,
+            }, {
+              source: 'realtime-tool',
+              sessionId: this.sessionId,
+              turnId,
+              traceId: callId,
+            })
+          : {
+              memories: scope
+                ? this.memoryService.list(this.ownerId, { scope })
+                : this.memoryService.list(this.ownerId),
+              context: '',
+            }
+        const memories = result.memories
+        output = {
+          status: memories.length || result.context ? 'ok' : 'not_found',
+          count: memories.length,
+          documents: memories,
+          ...(result.context ? { context: result.context } : {}),
+        }
+      } catch {
+        output = failure(
+          'memory_read_failed',
+          '暂时无法读取记忆，请稍后再试。',
+          { retryable: true },
+        )
       }
     } else if (!isMemoryDocument(document)) {
       output = failure('invalid_memory_document', '写入记忆时必须指定 user 或 memory。')

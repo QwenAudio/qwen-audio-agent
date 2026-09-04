@@ -1,10 +1,12 @@
 # Long-Term Memory
 
-`MEMORY.md` is the long-term memory layer of the frontend context model: durable
-facts and decisions used to understand the user and answer questions, with no
-behavioral authority. For the full four-layer model, instruction conflict
-ordering, and the persona layers (`ASSISTANT.md` / `USER.md`), see
-[Assistant Profile and User Preferences](personalization.md).
+The Gateway exposes memory through two logical documents: `user` for explicit long-term
+personalization and `memory` for durable facts and decisions. The default provider stores them
+as `USER.md` and `MEMORY.md`; an external provider may use a different physical model while
+preserving the same public semantics. For the four context layers and conflict ordering, see
+[Personalization and Memory](personalization.md).
+
+## Default Markdown provider
 
 `MEMORY.md` stores durable facts and decisions about the user—such as location, habits,
 interests, relationships, projects, goals, and plans—in ordinary Markdown. It informs
@@ -30,12 +32,19 @@ patch outcomes, revisions, and errors without copying the full memory text. If s
 wrong, say "that one is wrong" or "forget it"; the assistant edits or removes the matching
 Markdown text.
 
-The frontend exposes one `memory` tool, with one atomic operation per call: `read` reads one or
-both documents, `append` adds Markdown, and `replace` replaces or removes a uniquely matching
-`old_text` fragment. Realtime may issue several calls in one turn when an utterance contains
-several durable changes; the Gateway still produces only one follow-up response. Each write
-starts from the latest document, and an exact replacement fails safely when its source fragment
-is missing or ambiguous.
+## The `memory` tool
+
+The frontend exposes one provider-independent `memory` tool, with one atomic operation per call:
+
+- `read` reads one or both logical documents. An optional natural-language `query` invokes
+  semantic recall when the selected provider supports it; otherwise it returns the current
+  bounded snapshot.
+- `append` adds content to `user` or `memory`.
+- `replace` replaces or deletes a uniquely matching `old_text` fragment.
+
+Realtime may issue several calls in one turn when an utterance contains several durable changes;
+the Gateway still produces only one follow-up response. Each write starts from the latest
+document, and an exact replacement fails safely when its source fragment is missing or ambiguous.
 
 ## Client Control Plane
 
@@ -61,9 +70,9 @@ Digests are **not injected** into `instructions`: they change every session, and
 injecting them would change the prompt prefix every session and invalidate the
 prefix cache. They are an on-demand tool, not part of the context.
 
-`recall` answers only "what we discussed" and "what work was dispatched". The
-user's own documents go through the `knowledge` tool — see
-[Knowledge Retrieval Provider](./knowledge.md).
+`recall` answers only "what we discussed" and "what work was dispatched". Personal facts and
+preferences are read through the `memory` tool; user-provided reference documents use the
+`knowledge` tool — see [Knowledge Retrieval Provider](./knowledge.md).
 
 A digest freezes the objective of dispatched work but **never its status**: status
 is live, and a stored copy silently becomes wrong within days. Status is always
@@ -86,6 +95,10 @@ const memoryProvider = {
     protocolVersion: MEMORY_PROVIDER_PROTOCOL_VERSION,
     key: 'company-memory',
     label: 'Company Memory',
+    capabilities: {
+      semanticQuery: true,
+      sessionObservation: true,
+    },
   }),
   list(ownerId, options) {
     return []
@@ -93,6 +106,11 @@ const memoryProvider = {
   async apply(ownerId, changes, context) {
     return { changed: 0, documents: [] }
   },
+  async query(ownerId, query, options, context) {
+    return { memories: [], context: '' }
+  },
+  async observe(ownerId, exchange, context) {},
+  async flush(ownerId, context) {},
   health: () => ({ ok: true }),
   async close() {},
 }
@@ -100,17 +118,32 @@ const memoryProvider = {
 const gateway = createGatewayApplication({ memoryProvider })
 ```
 
-`list()` must return a synchronous, bounded Realtime context snapshot. Remote providers should
-maintain a local cache inside their adapter. `apply()` may be asynchronous. Its Gateway-owned
-`context` identifies the source, Session, Turn, and Trace separately from model-controlled
-changes. Returned documents are bounded, their scopes are normalized, and invalid or duplicate
-documents are discarded.
+Protocol v2 keeps the startup path deterministic and makes the complete memory lifecycle
+replaceable:
+
+- `describe()` identifies the provider, protocol version, and optional capabilities.
+- `list()` is required and returns a synchronous, bounded Realtime snapshot. Remote providers
+  must maintain that small cache in their adapter; the prompt path never waits on remote I/O.
+- `apply()` receives explicit user-directed edits. The Gateway-owned `context` identifies the
+  source, Session, Turn, and Trace separately from model-controlled changes.
+- A provider advertising `semanticQuery` implements `query()` for natural-language recall.
+- A provider advertising `sessionObservation` implements `observe()` to receive completed
+  conversation exchanges. Optional `flush()` completes provider-owned session-boundary work.
+- Optional `health()` and `close()` integrate provider diagnostics and lifecycle cleanup.
+
+Capabilities are explicit. When `sessionObservation` is enabled, the built-in Markdown extractor
+and preference learner are disabled; a conversation is never learned by two systems in parallel.
+The provider then owns retention, sensitive-data filtering, deletion, and tenant isolation for
+the exchanges it receives.
+Protocol v1 providers remain accepted and keep their original `list()` / `apply()` behavior.
 
 Realtime, automatic extraction, and tool handling depend only on `FrontendMemoryRuntime`; they
 never access a vendor SDK, database, or Markdown file. Without an injected provider, the existing
 Markdown provider remains active, so current configuration and data require no migration.
 Third-party adapters own remote authentication, tenant mapping, cache refresh, and translation
-into the public `user` and `memory` document semantics.
+into the public `user` and `memory` context semantics. See the runnable
+[VoiceMem example](../scenarios/voicemem-memory.md) for a complete replacement using VoiceMem
+behind a Python sidecar.
 
 ## Logs
 

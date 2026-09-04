@@ -919,7 +919,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.deepEqual(memory.function.parameters.required, ['action'])
   assert.deepEqual(
     Object.keys(memory.function.parameters.properties),
-    ['action', 'document', 'old_text', 'new_text', 'content'],
+    ['action', 'document', 'old_text', 'new_text', 'content', 'query'],
   )
   assert.equal(
     memory.function.parameters.properties.old_text.type,

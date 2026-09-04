@@ -450,6 +450,10 @@ test('replaces Markdown memory through the public provider boundary', async () =
       protocolVersion: 1,
       key: 'external-memory',
       label: 'External Memory',
+      capabilities: {
+        semanticQuery: false,
+        sessionObservation: false,
+      },
     }),
     list: ownerId => [{
       id: `memory_${ownerId}`,
@@ -485,6 +489,10 @@ test('replaces Markdown memory through the public provider boundary', async () =
       protocolVersion: 1,
       key: 'external-memory',
       label: 'External Memory',
+      capabilities: {
+        semanticQuery: false,
+        sessionObservation: false,
+      },
     },
   })
   assert.match(
@@ -499,10 +507,49 @@ test('replaces Markdown memory through the public provider boundary', async () =
       protocolVersion: 1,
       key: 'external-memory',
       label: 'External Memory',
+      capabilities: {
+        semanticQuery: false,
+        sessionObservation: false,
+      },
     },
   })
   await application.close()
   assert.equal(closed, true)
+})
+
+test('lets a v2 provider exclusively own automatic memory learning', async () => {
+  const memoryProvider = {
+    describe: () => ({
+      protocolVersion: 2,
+      key: 'managed-memory',
+      label: 'Managed Memory',
+      capabilities: { semanticQuery: true, sessionObservation: true },
+    }),
+    list: () => [],
+    apply: async () => ({ changed: 0, documents: [] }),
+    query: async () => ({ memories: [], context: '' }),
+    observe: async () => ({ observed: true }),
+  }
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      preferenceLearningEnabled: true,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    memoryProvider,
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+  assert.equal(application.services.frontendMemory.ownsSessionObservation(), true)
+  assert.equal(application.services.preferenceCandidates, null)
+  assert.equal(application.services.preferencePromoter, null)
+  assert.equal(application.services.profileObserver, null)
+  await application.close()
 })
 
 test('can disable memory without constructing the default provider', async () => {

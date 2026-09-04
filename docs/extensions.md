@@ -41,12 +41,16 @@ Backend Adapter SDK, or a first-class backend with one-click install.
 
 ## Persona and Memory
 
-The assistant's name, personality, and voice live in `ASSISTANT.md`; durable
-user facts live in `USER.md` / `MEMORY.md`. All are plain Markdown in the
-config directory, editable while the gateway keeps its constrained write path.
+The assistant's name, personality, and voice live in `ASSISTANT.md`. The
+default personal-memory provider stores user preferences and durable facts in
+`USER.md` / `MEMORY.md`; replace the provider to use another memory engine
+without changing the voice runtime.
 
 → [Assistant Profile and User Preferences](reference/personalization.md) ·
 [Long-Term Memory](reference/memory.md)
+
+Runnable provider example:
+[`examples/voicemem-memory`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem-memory).
 
 ## Client: Build Your Own
 

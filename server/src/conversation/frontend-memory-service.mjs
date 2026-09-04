@@ -25,6 +25,10 @@ export class FrontendMemoryService {
       protocolVersion: MEMORY_PROVIDER_PROTOCOL_VERSION,
       key: 'markdown',
       label: 'Local Markdown memory',
+      capabilities: {
+        semanticQuery: false,
+        sessionObservation: false,
+      },
     }
   }
 

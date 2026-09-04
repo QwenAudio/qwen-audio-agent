@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { serviceAgentPrompt } from '../executor.mjs'
 import {
   A2ABackendAdapter,
 } from '../../../../server/src/backend/a2a-backend-adapter.mjs'
@@ -207,4 +208,60 @@ test('工具的业务拒绝直接返回，不走批准流程', async t => {
     service.snapshot('default').db.orders.find(o => o.orderId === '#W2378156').returnedItemIds,
     undefined,
   )
+})
+
+// ── 后台 Agent 的 prompt 必须域无关 ──
+
+test('prompt 里的业务名字跟着 CS_DOMAIN 走', () => {
+  // 【这条守着一个实测发现的遗漏】
+  // 第一版 prompt 写死「你是零售客服的后台 Agent」，而工具面是从
+  // /mcp/backend 动态拉的（service 按域挑）—— 航空组起来之后
+  // 工具对、话术全说错了域。那种错不报任何异常。
+  assert.match(serviceAgentPrompt('retail'), /零售客服/)
+  assert.match(serviceAgentPrompt('airline'), /航空客服/)
+  // 未知域退化成中性说法，不要抛错 —— 加第三个域时不该先炸在这里
+  assert.match(serviceAgentPrompt('hotel'), /客服的后台 Agent/)
+})
+
+test('prompt 不列举任何域特定的工具名', () => {
+  // 写「取消订单、退货、改地址是两段式」会漏掉航空那五个，
+  // 而漏掉的那些模型可能就不走批准链了。
+  for (const domain of ['retail', 'airline']) {
+    const prompt = serviceAgentPrompt(domain)
+    for (const name of [
+      'cancel_order', '取消订单', '退货', '改地址', '款式库存',
+      'cancel_reservation', '退票', '改签', '加行李',
+    ]) {
+      assert.ok(!prompt.includes(name),
+        `${domain} 的 prompt 里出现了域特定的工具名「${name}」`)
+    }
+  }
+})
+
+test('prompt 不抄工具的判定话术', () => {
+  // 判定话术是工具自己写的，prompt 里再抄一遍只会不一致，而且列不全：
+  // 航空有「已有航段执飞」「特价经济舱不可改签」「保险原因只认健康或天气」……
+  for (const domain of ['retail', 'airline']) {
+    const prompt = serviceAgentPrompt(domain)
+    for (const phrase of [
+      '超出退货时限', '未发货状态', '已有航段执飞', '特价经济舱不可改签',
+    ]) {
+      assert.ok(!prompt.includes(phrase),
+        `prompt 抄了工具的判定话术「${phrase}」—— 工具改了它就不一致`)
+    }
+  }
+})
+
+test('prompt 靠 approval_token 判断两段式，而不是靠工具名', () => {
+  const prompt = serviceAgentPrompt('airline')
+  assert.match(prompt, /approval_token/)
+  // 这是所有两段式工具的共同特征，加新工具不用改 prompt
+  assert.match(prompt, /有没有 approval_token/)
+})
+
+test('两个域的 prompt 只差业务名字', () => {
+  // 差异越小越好 —— 差异大就意味着有域特定的规则藏在里面，
+  // 而那些规则本该在工具或 guards 里。
+  const normalize = text => text.replace(/零售客服|航空客服/g, '「域」')
+  assert.equal(normalize(serviceAgentPrompt('retail')), normalize(serviceAgentPrompt('airline')))
 })

@@ -5,18 +5,47 @@ import { DashScopeServiceModel } from './model.mjs'
 
 const MAX_AGENT_ROUNDS = 8
 
-export const SERVICE_AGENT_PROMPT = `你是零售客服的后台 Agent，负责执行前台交给你的业务操作。
+// 【为什么这份 prompt 是域无关的】
+// 第一版写死成零售：「你是零售客服的后台 Agent」「查订单、查款式库存由前台处理」
+// 「工具返回『超出退货时限』『订单不是未发货状态』时……」。
+// 航空组起来之后这份 prompt 全说错了域 —— 而它的工具面是从 /mcp/backend
+// 动态拉的（service 按域挑），所以工具对、话术错，那种错最难察觉。
+//
+// 改法不是写两份，是把域特定的东西全拿掉：
+//
+//   一、不列举具体的判定结果。第一版列了零售的四种，而航空有「已有航段执飞」
+//      「特价经济舱不可改签」「保险退款原因只认健康或天气」「金额超上限」……
+//      列不全。改成「工具返回的判定照实转达」——
+//      判定话术是工具自己写的，prompt 里再抄一遍只会不一致。
+//
+//   二、不列举工具名。写「取消订单、退货、改地址是两段式」会漏掉航空那五个，
+//      而漏掉的那些模型可能就不走批准链了。改成按【返回里有没有 approval_token】
+//      判断，那是所有两段式工具的共同特征。
+//
+// 剩下的域特定信息只有一个业务名字，从 CS_DOMAIN 取。
+const DOMAIN_LABEL = Object.freeze({
+  retail: '零售客服',
+  airline: '航空客服',
+})
+
+export function serviceAgentPrompt(domain = process.env.CS_DOMAIN || 'retail') {
+  return `你是${DOMAIN_LABEL[domain] || '客服'}的后台 Agent，负责执行前台交给你的业务操作。
 
 规则：
-- 身份核验、查订单、查款式库存由前台低延迟处理。你收到的是需要改动数据的任务。
-- 必须用提供的工具真实执行，不得假装已完成，也不得凭常识判断退换时限或金额。
-- 改动数据的工具（取消订单、退货、改地址）是两段式：第一次调用会返回一段预览和
-  一个 approval_token，此时数据没有变化。你要把预览原样交给前台去向客户确认，
-  拿到客户同意后再带 approval_token 调用第二次。
-- 工具返回「超出退货时限」「订单不是未发货状态」「细则未覆盖」「金额超上限」时，
-  那是业务判定的结果，照实转达，不要换个说法再试一次，也不要自己估算天数或金额。
+- 身份核验和只读查询由前台低延迟处理。你收到的是需要改动数据的任务。
+- 必须用提供的工具真实执行，不得假装已完成，也不得凭常识判断时限、资格或金额。
+- 改动数据的工具是两段式：第一次调用会返回一段预览和一个 approval_token，
+  此时数据没有变化。你要把预览原样交给前台去向客户确认，拿到客户同意后
+  再带 approval_token 调用第二次。看返回里有没有 approval_token 就知道
+  这一步是不是预览。
+- 工具返回的业务判定（不符合条件、细则未覆盖、超出权限等）照实转达，
+  不要换个说法再试一次，也不要自己估算天数、差价或补偿金额。
 - 需要转人工时调用 transfer_to_human，并写清原因。
-- 最终回复要简短、自然，适合前台语音助手直接念给客户听。金额和订单号要写完整。`
+- 最终回复要简短、自然，适合前台语音助手直接念给客户听。金额和单号要写完整。`
+}
+
+// 兼容旧引用（测试里按这个名字取）。默认域的那一份。
+export const SERVICE_AGENT_PROMPT = serviceAgentPrompt()
 
 function textPart(text) {
   return {
@@ -98,7 +127,9 @@ async function runServiceAgent({ objective, model, tools, signal, onToolCall }) 
   const definitions = (await tools.list({ signal })).map(openAiTool)
   const allowed = new Set(definitions.map(tool => tool.function.name))
   const messages = [
-    { role: 'system', content: SERVICE_AGENT_PROMPT },
+    // 【运行时取，不用模块加载时的快照】SERVICE_AGENT_PROMPT 是导入那一刻
+    // 就定下的，而测试会在导入之后改 CS_DOMAIN 来验分域。
+    { role: 'system', content: serviceAgentPrompt() },
     { role: 'user', content: objective },
   ]
   let lastContent = ''

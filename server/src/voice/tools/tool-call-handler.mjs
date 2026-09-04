@@ -16,6 +16,8 @@ import {
   WEB_SEARCH_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
+  ANALYZE_VISUAL_SCENE_TOOL_NAME,
+  FRONTEND_VISION_ANALYSIS_CAPABILITY,
   frontendToolRegistry,
   RECALL_TOOL_NAME,
   FRONTEND_RECALL_CAPABILITY,
@@ -136,6 +138,7 @@ export class ToolCallHandler {
     getTurnGeneration,
     backendRuntime,
     backendAvailability = null,
+    visionRuntime = null,
     memoryService,
     notesStore,
     getClientContext = () => ({}),
@@ -164,6 +167,7 @@ export class ToolCallHandler {
     this.getTurnGeneration = getTurnGeneration
     this.backendRuntime = backendRuntime
     this.backendAvailability = backendAvailability
+    this.visionRuntime = visionRuntime
     this.memoryService = memoryService
     this.notesStore = notesStore
     this.getClientContext = getClientContext
@@ -187,6 +191,9 @@ export class ToolCallHandler {
     this.toolExecutor = frontendToolRegistry.createExecutor({
       [SPAWN_THINKING_TOOL_NAME]: context => (
         this.executeSpawnThinkingToolCall(context)
+      ),
+      [ANALYZE_VISUAL_SCENE_TOOL_NAME]: context => (
+        this.executeAnalyzeVisualSceneToolCall(context)
       ),
       [SCHEDULE_REMINDER_TOOL_NAME]: ({ callId, turnId, args }) => (
         this.handleScheduleReminder(callId, turnId, args)
@@ -775,6 +782,82 @@ export class ToolCallHandler {
     await this.getAgentTaskStatus(callId, turnId, args)
   }
 
+  async executeAnalyzeVisualSceneToolCall({
+    callId,
+    turnId,
+    args,
+  }) {
+    const query = String(args?.query || '').replace(/\s+/g, ' ').trim()
+    if (!query) {
+      await this.sendOutput(
+        callId,
+        failure(
+          'missing_visual_query',
+          '视觉分析需要一个具体问题，例如“分析最近发生了什么”。',
+          { retryable: true },
+        ),
+        turnId,
+      )
+      return
+    }
+    if (!this.visionRuntime) {
+      await this.sendOutput(
+        callId,
+        failure(
+          'vision_unavailable',
+          '当前没有可用的后台视觉分析能力。',
+          { retryable: false },
+        ),
+        turnId,
+      )
+      return
+    }
+
+    let request
+    try {
+      request = await this.visionRuntime.analyze({
+        query,
+        window: args?.window,
+        delivery: args?.delivery,
+        turnId,
+      })
+    } catch (error) {
+      await this.sendOutput(
+        callId,
+        failure(
+          error?.code || 'visual_analysis_failed',
+          error?.message || '暂时无法提交视觉分析。',
+          { retryable: error?.code !== 'backend_image_unsupported' },
+        ),
+        turnId,
+      )
+      return
+    }
+
+    const delivery = request.delivery || 'respond'
+    await this.sendOutput(
+      callId,
+      {
+        status: request.state === 'queued' ? 'accepted' : request.state,
+        analysis_id: request.analysisId,
+        task_id: request.taskId,
+        observation_id: request.observationId,
+        from_sequence: request.fromSequence,
+        to_sequence: request.toSequence,
+        delivery,
+      },
+      turnId,
+      request.taskId,
+      {
+        response: {
+          instructions: delivery === 'respond'
+            ? '视觉分析已提交。只向用户简短说明正在分析最近画面，不要声称已经得到结论，也不要再次调用工具。'
+            : '视觉分析已提交。只简短确认后台正在处理，不要声称已经得到结论，也不要再次调用工具。',
+        },
+      },
+    )
+  }
+
   async executeSpawnThinkingToolCall({
     callId,
     turnId,
@@ -1070,6 +1153,9 @@ export class ToolCallHandler {
           capabilities: [...new Set([
             ...(this.frontendRetrieval?.capabilities?.() || []),
             ...(this.frontendKnowledge?.capabilities?.() || []),
+            ...(this.visionRuntime
+              ? [FRONTEND_VISION_ANALYSIS_CAPABILITY]
+              : []),
             // 与 realtime-gateway 的 getAgentContext 同一个判据：两处必须一致，
             // 否则会出现「模型看得到工具但调用被策略拒掉」这种自相矛盾的状态。
             // 与 realtime-gateway 的 getAgentContext 必须同一个判据。资料检索

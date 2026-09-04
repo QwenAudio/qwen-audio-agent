@@ -166,6 +166,7 @@ export function persistedTask(task) {
     saved.status = task.recoveryPersistedStatus
   }
   saved.submissionKey = task.submissionKey || null
+  if (task.notify === false) saved.notify = false
   saved.delegation = task.delegation
     ? { ...task.delegation }
     : null

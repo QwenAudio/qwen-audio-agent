@@ -242,6 +242,11 @@ Gateway 采用扁平的 OpenAI Realtime 风格信封：
 
 Gateway 扩展包括 `turn.started`、`transcript.discard`、`playback.clear` 和播放回执。`input_file` 是 Gateway content part 扩展，不属于 OpenAI Realtime 标准字段。
 
+具备 `realtime.background-vision-v1` 能力时，Client 可以显式发送带有界 `query`、
+`window`（`latest` 或 `recent`）和 `delivery`（`display`、`context` 或 `respond`）的
+`observation.analyze`。Gateway 返回 `observation.analysis.state`，成功后返回
+`observation.insight`；后者是有界的 `VisualInsight`，不会包含原始图片字节。
+
 用户输入代表明确的用户意图，会开启或替代用户轮次。Client 语义事件不能伪装成用户输入。
 
 ### 5.2 Client 语义事件
@@ -384,6 +389,7 @@ Gateway 发布规范化状态，Client 不需要反向推导内部状态机：
 - `response.*`、转写和音频事件：对话输出；
 - `task.*`：Task 生命周期、活动、Artifact 与通知状态；
 - `task.permission.*`、`task.input.*`：权限与补充输入状态；
+- `observation.*`：显式摄像头分析状态和有界视觉结论；
 - `playback.clear` 等明确的展示控制。
 
 每个公开 Task 只有一个 Gateway `task_id`。ACP Session ID、A2A 远程 Task ID 和自定义 Adapter ID 留在 `BackendPort` Adapter 内部。

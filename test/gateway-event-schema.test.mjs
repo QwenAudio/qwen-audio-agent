@@ -63,6 +63,16 @@ test('validates client event envelopes and preserves extension fields', () => {
   assert.equal(GatewayClientMessageSchema.safeParse({
     type: 'playback.ended',
   }).success, false)
+  assert.equal(GatewayClientMessageSchema.safeParse({
+    type: 'observation.analyze',
+    query: '分析最近发生了什么',
+    window: 'recent',
+    delivery: 'respond',
+  }).success, true)
+  assert.equal(GatewayClientMessageSchema.safeParse({
+    type: 'observation.analyze',
+    query: '',
+  }).success, false)
 })
 
 test('validates voice and task messages in the server direction', () => {
@@ -109,6 +119,24 @@ test('validates voice and task messages in the server direction', () => {
     GatewayServerMessageSchema.safeParse({ type: 'connect' }).success,
     false,
   )
+  assert.equal(GatewayServerMessageSchema.safeParse({
+    type: 'observation.analysis.state',
+    analysisId: 'vision_1',
+    taskId: 'task_1',
+    state: 'running',
+    fromSequence: 1,
+    toSequence: 2,
+  }).success, true)
+  assert.equal(GatewayServerMessageSchema.safeParse({
+    type: 'observation.insight',
+    analysis: {
+      schema: 'qwen-audio-agent/visual-insight@1',
+      analysisId: 'vision_1',
+      summary: '画面中有一个杯子。',
+      confidence: 0.9,
+      entities: [{ name: '杯子' }],
+    },
+  }).success, true)
 
   const citation = {
     id: 'source_1',

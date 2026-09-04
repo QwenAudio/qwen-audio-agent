@@ -114,6 +114,33 @@ export const GatewayActivitySchema = z.object({
   total: z.number().int().nonnegative().optional(),
 }).passthrough()
 
+export const GatewayVisualEntitySchema = z.object({
+  name: z.string().min(1).max(500),
+  detail: z.string().max(500).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+}).passthrough()
+
+export const GatewayVisualInsightSchema = z.object({
+  schema: z.literal('qwen-audio-agent/visual-insight@1'),
+  analysisId: z.string().min(1).max(160),
+  observationId: z.string().max(160).optional(),
+  generation: z.number().int().nonnegative().nullable().optional(),
+  fromSequence: z.number().int().nonnegative().nullable().optional(),
+  toSequence: z.number().int().nonnegative().nullable().optional(),
+  capturedFrom: z.number().nonnegative().nullable().optional(),
+  capturedTo: z.number().nonnegative().nullable().optional(),
+  query: z.string().max(2_000).optional(),
+  summary: z.string().min(1).max(4_000),
+  entities: z.array(GatewayVisualEntitySchema).max(32).optional(),
+  changes: z.array(z.string().max(500)).max(32).optional(),
+  warnings: z.array(z.string().max(500)).max(32).optional(),
+  evidenceSequences: z.array(z.number().int().nonnegative()).max(32).optional(),
+  confidence: z.number().min(0).max(1).nullable().optional(),
+  delivery: z.enum(['display', 'context', 'respond']).optional(),
+  automatic: z.boolean().optional(),
+  stale: z.boolean().optional(),
+}).passthrough()
+
 export const GatewayTaskSchema = z.object({
   id: z.string().min(1),
   workState: z.enum([
@@ -174,6 +201,14 @@ const GatewayInputMessagePayloadSchema = z.object({
   message: 'a text or parts payload is required',
 })
 
+const GatewayObservationFramePayloadSchema = z.object({
+  // The browser sends the Base64 body rather than a data URL. Keeping the
+  // protocol bound close to the provider's 256 KiB encoded-image limit avoids
+  // accepting a large frame that would only be rejected downstream.
+  image: z.string().min(1).max(256 * 1024),
+  sequence: z.number().int().nonnegative().optional(),
+}).passthrough()
+
 const GatewayClientPayloadSchemas = Object.freeze({
   [GatewayClientEvent.CONNECT]: z.object({
     voiceEnabled: z.boolean().optional(),
@@ -192,6 +227,7 @@ const GatewayClientPayloadSchemas = Object.freeze({
       text: z.boolean().optional(),
       audio: z.boolean().optional(),
       image: z.boolean().optional(),
+      observation: z.boolean().optional(),
       resource: z.boolean().optional(),
     }).passthrough().optional(),
     clientStates: z.array(z.string().min(1)).optional(),
@@ -202,6 +238,20 @@ const GatewayClientPayloadSchemas = Object.freeze({
   }).passthrough(),
   [GatewayClientEvent.TEXT_MESSAGE]: GatewayInputMessagePayloadSchema,
   [GatewayClientEvent.INPUT_MESSAGE]: GatewayInputMessagePayloadSchema,
+  [GatewayClientEvent.OBSERVATION_START]: z.object({}).passthrough(),
+  [GatewayClientEvent.OBSERVATION_FRAME]: GatewayObservationFramePayloadSchema,
+  [GatewayClientEvent.OBSERVATION_STOP]: z.object({
+    reason: z.string().max(80).optional(),
+  }).passthrough(),
+  [GatewayClientEvent.OBSERVATION_ANALYZE]: z.object({
+    query: z.string().min(1).max(2_000),
+    window: z.enum(['latest', 'recent']).optional(),
+    delivery: z.enum(['display', 'context', 'respond']).optional(),
+    // The Gateway binds the observation to the authenticated session. This
+    // optional field is retained for forward-compatible clients and is not
+    // trusted for ownership or frame selection.
+    observationId: z.string().min(1).max(160).optional(),
+  }).passthrough(),
   [GatewayClientEvent.PLAYBACK_STARTED]: z.object({
     responseId: z.string().min(1),
   }).passthrough(),
@@ -269,6 +319,26 @@ const GatewayVoicePayloadSchemas = Object.freeze({
   }).passthrough(),
   [GatewayServerEvent.TRANSCRIPT_DISCARD]: z.object({
     role: z.enum(['user', 'assistant']),
+  }).passthrough(),
+  [GatewayServerEvent.OBSERVATION_STATE]: z.object({
+    state: z.enum(['idle', 'starting', 'active', 'unavailable']),
+    frames: z.number().int().nonnegative().optional(),
+    reason: z.string().max(80).optional(),
+  }).passthrough(),
+  [GatewayServerEvent.OBSERVATION_ANALYSIS_STATE]: z.object({
+    analysisId: z.string().min(1).max(160),
+    taskId: z.string().min(1),
+    observationId: z.string().max(160).optional(),
+    generation: z.number().int().nonnegative().nullable().optional(),
+    state: z.enum(['queued', 'running', 'completed', 'failed', 'cancelled', 'stale']),
+    fromSequence: z.number().int().nonnegative().nullable().optional(),
+    toSequence: z.number().int().nonnegative().nullable().optional(),
+    capturedFrom: z.number().nonnegative().nullable().optional(),
+    capturedTo: z.number().nonnegative().nullable().optional(),
+    error: z.string().max(1_000).optional(),
+  }).passthrough(),
+  [GatewayServerEvent.OBSERVATION_INSIGHT]: z.object({
+    analysis: GatewayVisualInsightSchema,
   }).passthrough(),
   [GatewayServerEvent.TOOL_CALL]: z.object({
     callId: z.string().min(1),

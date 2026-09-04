@@ -22,8 +22,11 @@
 Delivery、Client Action、参考 Client SDK 与有限回放均落在同一条 WebSocket 上。
 已实现行为仍以本契约索引为准。
 
-当前健康契约版本为 `5.7.0`。新增的 `5.7` 能力提供远程 Client 认证、一次性
-设备配对，以及按用户生效的活动 Client 接管与租约代次 fencing。`5.6` 能力为可替换客户端提供
+当前健康契约版本为 `5.8.0`。新增的 `5.8` 能力为用户显式触发的后台图片/最近帧分析：
+将有界观察帧只提交给当前配置的后台 Agent，返回有界的 `VisualInsight` 事件，并可通过
+`AgentDelivery` 静默注入前台上下文或触发一次回复；原始画面不写入日志或默认持久化。新增的 `5.7`
+能力提供远程 Client 认证、一次性设备配对、按用户接管活动 Client，并为支持视觉输入的 Realtime
+前台提供 WebUI 显式开启的摄像头画面观察，不会创建模型回复。新增的 `5.6` 能力为可替换客户端提供
 Provider 无关的前台记忆控制面。`5.5` 能力提供共享参考 Client SDK、有限 Task
 事件回放与断线状态恢复。第一方 WebUI、Desktop 和 TUI 已通过同一套一致性测试，
 Task 控制、权限决策和对话历史不再依赖内部 REST 路由。`5.4` 能力提供有关联关系的 Client Action 与共享
@@ -67,6 +70,8 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `messages.citations` | 最终助手 `transcript.final` 可以携带同一轮前台检索产生的规范化 Citation | `test/gateway-event-schema.test.mjs`、`server/test/realtime-presentation-runtime.test.mjs` |
 | `frontend.memory-control` | `GET/PATCH /api/memory` 供可替换客户端列出并精确编辑 Realtime 共用的 Provider 记忆文档，不暴露具体存储实现 | `server/test/gateway-application.test.mjs` |
 | `realtime.conversation-client-v1` | `WS /api/realtime`、公开事件常量与消息 Schema 共同构成可替换的文本/音频/多模态对话客户端边界 | `test/gateway-event-schema.test.mjs`、`test/custom-conversation-client.test.mjs` |
+| `realtime.camera-observation-v1` | WebUI 显式开启后，以约 1 FPS 发送最近最多 8 帧 JPEG 到支持视觉输入的 Realtime 前台；不自动创建模型响应，停止、断线、隐藏页面时释放相机 | `server/test/realtime-observation-runtime.test.mjs`、`web/test/camera-input.test.mjs` |
+| `realtime.background-vision-v1` | 用户显式发送 `observation.analyze` 或前台调用 `analyze_visual_scene` 后，冻结最新或最近的有界摄像头帧，仅以图片输入提交给当前配置后台 Agent，并返回 `observation.analysis.state` / `observation.insight`；原始画面不写入日志或默认持久化 | `server/test/background-vision-runtime.test.mjs`、`server/test/visual-insight.test.mjs`、`test/gateway-event-schema.test.mjs` |
 | `realtime.gateway-client-protocol-v6-handshake` | 同一 WebSocket 可选择以 6.0 `session.hello` 接入，返回有关联关系的 `session.ready`，协商已实现能力，并把 6.0 输入别名归一化到现有业务路径 | `test/gateway-client-protocol.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-runtime-commands` | 协商后的 6.0 Client 可以通过同一 WebSocket 发布已注册的语义 Client Event，并使用有关联结果的 Task、权限、对话历史和会话输出音色命令；现有 REST 路由调用同一命令服务作为兼容别名 | `test/gateway-client-protocol.test.mjs`、`server/test/client-event-router.test.mjs`、`server/test/client-command-runtime.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-agent-delivery` | Client Event、Task 结果与低频进展、权限请求统一跨越 Provider 无关 `AgentDelivery` 边界，并支持 `handle`、`context`、`respond`、`interrupt` 四种模式 | `server/test/agent-delivery.test.mjs`、`server/test/client-event-router.test.mjs`、`server/test/realtime-provider.test.mjs`、`server/test/announcement-manager.test.mjs` |

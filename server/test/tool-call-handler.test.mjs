@@ -14,6 +14,7 @@ function harness({
   notesStore = null,
   onMemoryChanged = () => {},
   backendAvailability = null,
+  visionRuntime = null,
   respondPermission,
   respondInput,
   permissionPolicy,
@@ -49,6 +50,7 @@ function harness({
       cancel: async taskId => ({ taskId, state: 'cancelled' }),
     },
     backendAvailability,
+    visionRuntime,
     memoryService: memoryStore,
     notesStore,
     onMemoryChanged,
@@ -475,6 +477,47 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
     receivedOptions.taskId,
     taskForId(kit.manager, kit.outputs[0][1].task_id).id,
   )
+})
+
+test('submits explicit visual analysis through the background vision runtime', async () => {
+  const calls = []
+  const kit = harness({
+    visionRuntime: {
+      analyze: async input => {
+        calls.push(input)
+        return {
+          analysisId: 'vision_1',
+          taskId: 'task_vision_1',
+          state: 'queued',
+          observationId: 'observation_1',
+          fromSequence: 4,
+          toSequence: 8,
+          delivery: 'respond',
+        }
+      },
+    },
+  })
+  const execution = await kit.handler.handle({
+    call_id: 'call-vision',
+    name: 'analyze_visual_scene',
+    arguments: JSON.stringify({
+      query: '分析最近发生了什么',
+      window: 'recent',
+      delivery: 'respond',
+    }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(execution.tool.policy.mode, 'background')
+  assert.deepEqual(calls, [{
+    query: '分析最近发生了什么',
+    window: 'recent',
+    delivery: 'respond',
+    turnId: 'turn-one',
+  }])
+  assert.equal(kit.outputs[0][1].status, 'accepted')
+  assert.equal(kit.outputs[0][1].analysis_id, 'vision_1')
+  assert.equal(kit.outputs[0][1].task_id, 'task_vision_1')
+  assert.match(kit.outputs[0][3].response.instructions, /正在分析/)
 })
 
 test('automatically carries current-turn attachments into spawned work', async () => {

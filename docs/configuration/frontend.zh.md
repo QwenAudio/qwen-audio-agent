@@ -44,14 +44,26 @@ qwenaudio gateway restart
 
 | 模型 | 模型输入 | 模型输出 | 当前客户端传输 |
 | --- | --- | --- | --- |
-| `qwen3.5-omni-flash-realtime` | 文本、音频、图片 | 文本、音频 | 文本、音频 |
-| `qwen3.5-omni-plus-realtime` | 文本、音频、图片 | 文本、音频 | 文本、音频 |
+| `qwen3.5-omni-flash-realtime` | 文本、音频、图片 | 文本、音频 | 文本、音频、JPEG 观察 |
+| `qwen3.5-omni-plus-realtime` | 文本、音频、图片 | 文本、音频 | 文本、音频、JPEG 观察 |
 | `qwen-audio-3.0-realtime-plus`（默认） | 文本、音频 | 文本、音频 | 文本、音频 |
 | `qwen-audio-3.0-realtime-flash` | 文本、音频 | 文本、音频 | 文本、音频 |
 
-四个档案都支持 Function Calling。模型能力不等于客户端已经实现的传输能力：本版本
-仍关闭 JPEG 观察帧和原生视频传输。WebUI 与 TUI 从 Gateway health 读取权威档案并
-只读展示；同一 Gateway 上的不同客户端不能选择互相冲突的模型。桌面版附着到借用的
+四个档案都支持 Function Calling。两个 Omni 档案支持 WebUI 显式开启的 JPEG 观察传输：
+约每秒发送一帧，内存中最多保留最近 8 帧，观察本身不会创建模型回复。原生视频以及
+旧版 Audio 档案的画面观察仍不可用。WebUI 与 TUI 从 Gateway health 读取权威档案，并据此
+限制或展示可用输入；同一 Gateway 上的不同客户端不能选择互相冲突的模型。桌面版附着到借用的
 Gateway 时，或后续 CLI 运行时使用了冲突的已配置模型时，会拒绝不一致，而不会静默
 修改运行中服务。回滚时设置上表的旧版模型 ID 并重启 Gateway。
 
+## 后台视觉分析
+
+摄像头观察和后台视觉分析是相互独立的能力。当前配置的后台 Agent 接受图片输入时，
+WebUI 会显示“深度分析”按钮，前台 Agent 也可以调用 `analyze_visual_scene`。Gateway
+会冻结最新一帧或最近的有界帧窗口（最多 8 帧），仅将本次请求所需的 JPEG 输入发送给
+当前配置后台，不把原始画面写入日志或默认持久化。
+
+结果会归一化为带观察会话、generation、帧范围、采集时间、摘要、不确定项和置信度的
+有界 `VisualInsight`。交付方式可以是 `display`（只显示卡片）、`context`（静默加入
+前台后续上下文）或 `respond`（触发一次前台自然回复）。后台未声明图片输入能力时会
+明确失败；前台仍可继续普通聊天。

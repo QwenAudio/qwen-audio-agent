@@ -24,6 +24,7 @@ const allowedDependencies = {
     'task',
     'transport',
     'voice',
+    'vision',
   ]),
   access: new Set(['access', 'core', 'shared']),
   process: new Set(['process', 'shared']),
@@ -51,7 +52,9 @@ const allowedDependencies = {
     'task',
     'transport',
     'voice',
+    'vision',
   ]),
+  vision: new Set(['delivery', 'shared', 'task', 'vision']),
 }
 
 function sourceFiles(directory) {

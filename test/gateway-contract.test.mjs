@@ -65,7 +65,17 @@ test('the contracted realtime events exist as shared constants', () => {
   assert.equal(GatewayServerEvent.INPUT_RESUME, 'input.resume')
   assert.equal(GatewayClientEvent.INPUT_SUSPEND_ACK, 'input.suspend.ack')
   assert.equal(GatewayTaskEvent.UPDATED, 'task.updated')
-  for (const event of ['input.suspend', 'input.resume', 'input.suspend.ack']) {
+  assert.equal(GatewayClientEvent.OBSERVATION_ANALYZE, 'observation.analyze')
+  assert.equal(GatewayServerEvent.OBSERVATION_ANALYSIS_STATE, 'observation.analysis.state')
+  assert.equal(GatewayServerEvent.OBSERVATION_INSIGHT, 'observation.insight')
+  for (const event of [
+    'input.suspend',
+    'input.resume',
+    'input.suspend.ack',
+    'observation.analyze',
+    'observation.analysis.state',
+    'observation.insight',
+  ]) {
     assert.ok(
       contractEn.includes(`\`${event}\``),
       `docs/contract.md must document the ${event} event`,

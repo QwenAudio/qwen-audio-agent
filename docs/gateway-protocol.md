@@ -271,6 +271,12 @@ Use OpenAI Realtime terminology where the semantics match:
 
 Gateway extensions include `turn.started`, `transcript.discard`, `playback.clear`, and playback receipts. `input_file` is a Gateway content-part extension, not an OpenAI Realtime standard part.
 
+With the `realtime.background-vision-v1` capability, an explicit Client may also send
+`observation.analyze` with a bounded `query`, `window` (`latest` or `recent`), and
+`delivery` (`display`, `context`, or `respond`). Gateway returns
+`observation.analysis.state` and, on success, `observation.insight`; the latter is a
+bounded `VisualInsight` and never contains the source image bytes.
+
 User input is authoritative user intent and opens or supersedes a user turn. Client semantic events never impersonate user input.
 
 ### 5.2 Client semantic events
@@ -417,6 +423,7 @@ Gateway publishes normalized state; the Client renders it without reconstructing
 - `response.*`, transcript, and audio events for conversation output;
 - `task.*` for Task lifecycle, activity, artifacts, and notification state;
 - `task.permission.*` and `task.input.*` for authorization and requested-input state;
+- `observation.*` for explicit camera analysis state and bounded visual insights;
 - `playback.clear` and other explicit presentation controls.
 
 Every public Task keeps one Gateway `task_id`. ACP Session IDs, A2A remote Task IDs, and custom-adapter identifiers remain private to `BackendPort` adapters.

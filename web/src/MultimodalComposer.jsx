@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MAX_INPUT_FILE_BYTES,
   createInputFilePart,
@@ -6,6 +6,16 @@ import {
   withAttachmentAnchors,
 } from '../../shared/input-parts.mjs'
 import { t } from './i18n.js'
+import {
+  CAMERA_IMAGE_TOO_LARGE,
+  OBSERVATION_INTERVAL_MS,
+  OBSERVATION_MAX_BYTES,
+  OBSERVATION_MAX_FRAMES,
+  appendRecentObservationFrame,
+  blobToBase64,
+  captureCameraFrame,
+  stopCameraStream,
+} from './camera-input.js'
 
 function filePart(file, index, sourceType = 'file') {
   return new Promise((resolve, reject) => {
@@ -32,14 +42,216 @@ function filePart(file, index, sourceType = 'file') {
 
 export default function MultimodalComposer({
   onSend,
+  onObservationStart,
+  onObservationFrame,
+  onObservationStop,
+  onObservationAnalyze,
+  observationAvailable = false,
+  liveObservationAvailable = false,
+  backgroundVisionAvailable = false,
+  observationState = 'idle',
+  observationAnalysisState = null,
+  visualInsights = [],
+  connectionState = 'connected',
   compact = false,
 }) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
+  const [cameraOpen, setCameraOpen] = useState(false)
+  const [cameraReady, setCameraReady] = useState(false)
+  const [observationRequested, setObservationRequested] = useState(false)
+  const [observationFrameCount, setObservationFrameCount] = useState(0)
   const picker = useRef(null)
+  const cameraVideo = useRef(null)
+  const cameraStream = useRef(null)
+  const observationRequestedRef = useRef(false)
+  const observationFramesRef = useRef([])
+  const observationSequenceRef = useRef(0)
+  const previousObservationStateRef = useRef(observationState)
+  const analysisBusy = ['queued', 'running'].includes(
+    observationAnalysisState?.state,
+  )
   const updateAttachments = useCallback(next => {
     setAttachments(next)
+  }, [])
+
+  const stopObservation = useCallback((reason = 'user') => {
+    if (observationRequestedRef.current) onObservationStop?.(reason)
+    observationRequestedRef.current = false
+    observationFramesRef.current = []
+    setObservationRequested(false)
+    setObservationFrameCount(0)
+  }, [onObservationStop])
+
+  const closeCamera = useCallback((reason = 'user') => {
+    stopObservation(reason)
+    stopCameraStream(cameraStream.current)
+    cameraStream.current = null
+    if (cameraVideo.current) {
+      cameraVideo.current.pause?.()
+      cameraVideo.current.srcObject = null
+    }
+    setCameraReady(false)
+    setCameraOpen(false)
+  }, [stopObservation])
+
+  useEffect(() => {
+    if (!cameraOpen || !cameraStream.current || !cameraVideo.current) return undefined
+    const video = cameraVideo.current
+    const stream = cameraStream.current
+    video.srcObject = stream
+    void video.play().catch(() => {})
+    return () => {
+      if (video.srcObject === stream) video.srcObject = null
+    }
+  }, [cameraOpen])
+
+  useEffect(() => {
+    if (!cameraOpen || !cameraStream.current) return undefined
+    const stream = cameraStream.current
+    const onTrackEnded = () => closeCamera('camera_disconnected')
+    const tracks = stream.getTracks?.() || []
+    tracks.forEach(track => track.addEventListener?.('ended', onTrackEnded))
+    return () => tracks.forEach(track => (
+      track.removeEventListener?.('ended', onTrackEnded)
+    ))
+  }, [cameraOpen, closeCamera])
+
+  useEffect(() => {
+    const onVisibilityChange = () => {
+      if (document.hidden) closeCamera('page_hidden')
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [closeCamera])
+
+  useEffect(() => () => {
+    if (observationRequestedRef.current) onObservationStop?.('unmount')
+    observationRequestedRef.current = false
+    observationFramesRef.current = []
+    stopCameraStream(cameraStream.current)
+  }, [onObservationStop])
+
+  const startObservation = useCallback(() => {
+    if (observationRequestedRef.current) return
+    if (!observationAvailable) {
+      setError(t('当前模型不支持画面观察'))
+      return
+    }
+    if (!cameraReady || !cameraVideo.current) return
+    if (onObservationStart && onObservationStart() === false) {
+      setError(t('画面观察连接不可用'))
+      return
+    }
+    observationRequestedRef.current = true
+    setObservationRequested(true)
+    setError('')
+  }, [cameraReady, observationAvailable, onObservationStart])
+
+  useEffect(() => {
+    const previous = previousObservationStateRef.current
+    previousObservationStateRef.current = observationState
+    if (!observationRequestedRef.current) return
+    if (!observationAvailable) {
+      setError(t('当前模型不支持画面观察'))
+      closeCamera('model_changed')
+      return
+    }
+    if (
+      connectionState === 'hidden'
+      || (connectionState === 'unavailable' && !backgroundVisionAvailable)
+    ) {
+      setError(t('画面观察连接不可用'))
+      closeCamera('gateway_disconnected')
+      return
+    }
+    if (observationState === 'unavailable') {
+      setError(t('画面观察连接不可用'))
+      closeCamera('provider_unavailable')
+      return
+    }
+    if (
+      observationState === 'idle'
+      && ['starting', 'active', 'unavailable'].includes(previous)
+    ) {
+      closeCamera('observation_stopped')
+    }
+  }, [
+    backgroundVisionAvailable,
+    closeCamera,
+    connectionState,
+    observationAvailable,
+    observationState,
+  ])
+
+  useEffect(() => {
+    if (
+      !observationRequested
+      || observationState !== 'active'
+      || !cameraReady
+    ) return undefined
+    let disposed = false
+    let capturing = false
+    const captureAndSend = async () => {
+      const video = cameraVideo.current
+      if (disposed || capturing || !video) return
+      capturing = true
+      try {
+        const blob = await captureCameraFrame(video, {
+          maxBytes: OBSERVATION_MAX_BYTES,
+        })
+        const image = await blobToBase64(blob)
+        if (disposed || !observationRequestedRef.current) return
+        const sequence = observationSequenceRef.current++
+        const recent = appendRecentObservationFrame(
+          observationFramesRef.current,
+          { image, sequence },
+          OBSERVATION_MAX_FRAMES,
+        )
+        observationFramesRef.current = recent
+        setObservationFrameCount(recent.length)
+        onObservationFrame?.(image, sequence)
+      } catch (reason) {
+        if (disposed) return
+        setError(reason?.message === CAMERA_IMAGE_TOO_LARGE
+          ? t('画面观察图片超过 256 KiB 限制')
+          : t('画面观察捕获失败'))
+        closeCamera('capture_error')
+      } finally {
+        capturing = false
+      }
+    }
+    void captureAndSend()
+    const timer = setInterval(captureAndSend, OBSERVATION_INTERVAL_MS)
+    return () => {
+      disposed = true
+      clearInterval(timer)
+    }
+  }, [cameraReady, closeCamera, observationRequested, observationState, onObservationFrame])
+
+  const openCamera = useCallback(async () => {
+    if (cameraStream.current) return
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError(t('相机不可用'))
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      })
+      cameraStream.current = stream
+      setCameraReady(false)
+      setCameraOpen(true)
+      setError('')
+    } catch {
+      setError(t('无法打开相机'))
+    }
   }, [])
 
   const addFiles = useCallback(async (fileList, sourceType = 'file') => {
@@ -51,10 +263,27 @@ export default function MultimodalComposer({
       )))
       updateAttachments([...attachments, ...next])
       setError('')
+      return true
     } catch (reason) {
       setError(reason?.message || String(reason))
+      return false
     }
   }, [attachments, updateAttachments])
+
+  const capturePhoto = useCallback(async () => {
+    if (!cameraReady || !cameraVideo.current) return
+    try {
+      const blob = await captureCameraFrame(cameraVideo.current)
+      const file = new File([blob], 'photo.jpg', { type: 'image/jpeg' })
+      if (await addFiles([file], 'camera') && !observationRequestedRef.current) {
+        closeCamera('photo_captured')
+      }
+    } catch (reason) {
+      setError(reason?.message === CAMERA_IMAGE_TOO_LARGE
+        ? t('照片超过 256 KiB 限制')
+        : t('无法拍摄照片'))
+    }
+  }, [addFiles, cameraReady, closeCamera])
 
   const submit = event => {
     event.preventDefault()
@@ -71,6 +300,20 @@ export default function MultimodalComposer({
     setText('')
     updateAttachments([])
     setError('')
+  }
+
+  const analyzeObservation = useCallback(() => {
+    if (!onObservationAnalyze || analysisBusy) return
+    const sent = onObservationAnalyze(
+      '请分析最近的摄像头画面，说明出现了什么以及发生了哪些变化。',
+      { window: 'recent', delivery: 'respond' },
+    )
+    if (!sent) setError(t('Gateway 尚未连接'))
+  }, [analysisBusy, onObservationAnalyze])
+
+  const insightTime = insight => {
+    if (!Number.isFinite(Number(insight?.capturedTo))) return ''
+    return new Date(Number(insight.capturedTo)).toLocaleTimeString()
   }
 
   return <form
@@ -100,6 +343,18 @@ export default function MultimodalComposer({
         aria-label={t('添加图片或文件')}
         onClick={() => picker.current?.click()}
       >＋</button>
+      <button
+        className="composer-camera"
+        type="button"
+        title={t('拍照')}
+        aria-label={t('拍照')}
+        onClick={() => void openCamera()}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 8.5h3l1.3-2h5.4l1.3 2h3v10H5z" />
+          <circle cx="12" cy="13.5" r="3.2" />
+        </svg>
+      </button>
       <input
         ref={picker}
         type="file"
@@ -129,6 +384,96 @@ export default function MultimodalComposer({
       />
       <button className="composer-send" type="submit">{t('发送')}</button>
     </div>
+      {cameraOpen && <div className="camera-capture" role="dialog" aria-modal="true" aria-label={t('拍照')}>
+      <video
+        ref={cameraVideo}
+        autoPlay
+        playsInline
+        muted
+        onLoadedMetadata={() => setCameraReady(true)}
+        aria-label={t('相机预览')}
+      />
+        {observationRequested && <small className="camera-observation-status">
+          {observationState !== 'active'
+            ? t('正在启动画面观察')
+            : liveObservationAvailable
+              ? t('连续观察中：最近 {count}/8 帧', { count: observationFrameCount })
+              : t('后台观察中：最近 {count}/8 帧', { count: observationFrameCount })}
+        </small>}
+      <div className="camera-actions">
+        <button
+          type="button"
+          className="ghost"
+          onClick={() => closeCamera('user')}
+        >{observationRequested ? t('关闭相机') : t('取消')}</button>
+        {!observationRequested && <button
+          type="button"
+          className="camera-observation"
+          disabled={!cameraReady || !observationAvailable}
+          title={observationAvailable ? t('连续观察') : t('当前模型不支持画面观察')}
+          onClick={startObservation}
+        >{t('连续观察')}</button>}
+        {observationRequested && <button
+          type="button"
+          className="camera-observation active"
+          onClick={() => stopObservation('user')}
+        >{t('停止观察')}</button>}
+        {observationRequested && <button
+          type="button"
+          className="camera-analysis"
+          disabled={!cameraReady || !backgroundVisionAvailable || analysisBusy}
+          title={backgroundVisionAvailable ? t('深度分析当前画面') : t('后台视觉分析不可用')}
+          onClick={analyzeObservation}
+        >{analysisBusy ? t('后台分析中') : t('深度分析')}</button>}
+        <button
+          type="button"
+          className="composer-send"
+          disabled={!cameraReady}
+          onClick={() => void capturePhoto()}
+        >
+          {t('拍摄')}
+        </button>
+      </div>
+      </div>}
+    {visualInsights.length > 0 && <section className="visual-insights" aria-live="polite">
+      <div className="visual-insights-heading">
+        <strong>{t('视觉分析结果')}</strong>
+        {observationAnalysisState?.state && <small>
+          {observationAnalysisState.state === 'queued'
+            ? t('排队中')
+            : observationAnalysisState.state === 'running'
+              ? t('后台分析中')
+              : observationAnalysisState.state === 'failed'
+                ? t('处理失败')
+                : t('处理完成')}
+        </small>}
+      </div>
+      {visualInsights.slice(0, 3).map(insight => <article
+        className="visual-insight-card"
+        key={insight.analysisId}
+      >
+        <div className="visual-insight-meta">
+          <span>{insight.delivery === 'respond' ? t('后台视觉') : t('画面观察')}</span>
+          <time>{insightTime(insight)}</time>
+        </div>
+        <p>{insight.summary}</p>
+        {insight.entities?.length > 0 && <small>
+          {t('识别对象')}：{insight.entities.map(item => item.name).join('、')}
+        </small>}
+        {insight.changes?.length > 0 && <small>
+          {t('变化')}：{insight.changes.join('；')}
+        </small>}
+        {insight.warnings?.length > 0 && <small className="visual-insight-warning">
+          {t('不确定项')}：{insight.warnings.join('；')}
+        </small>}
+        <small className="visual-insight-source">
+          {t('来源帧')} {insight.fromSequence ?? '?'}–{insight.toSequence ?? '?'}
+          {insight.confidence === null || insight.confidence === undefined
+            ? ''
+            : ` · ${t('置信度')} ${Math.round(insight.confidence * 100)}%`}
+        </small>
+      </article>)}
+    </section>}
     {error && <small className="composer-error" role="alert">{error}</small>}
   </form>
 }

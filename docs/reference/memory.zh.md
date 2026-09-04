@@ -82,6 +82,7 @@ const memoryProvider = {
     capabilities: {
       semanticQuery: true,
       sessionObservation: true,
+      audioStreamObservation: true,
     },
   }),
   list(ownerId, options) {
@@ -94,6 +95,7 @@ const memoryProvider = {
     return { memories: [], context: '' }
   },
   async observe(ownerId, exchange, context) {},
+  observeAudio(ownerId, event, context) {},
   async flush(ownerId, context) {},
   health: () => ({ ok: true }),
   async close() {},
@@ -112,6 +114,9 @@ const gateway = createGatewayApplication({ memoryProvider })
 - 声明 `semanticQuery` 的 Provider 实现 `query()`，用于自然语言召回。
 - 声明 `sessionObservation` 的 Provider 实现 `observe()`，接收已完成的会话交流；可选的
   `flush()` 完成 Provider 自己的会话边界整理。
+- 声明 `audioStreamObservation` 的 Provider 实现同步的 `observeAudio()`，接收已接受的
+  PCM16 音频块和语音/Session 边界事件。该方法处在音频输入热路径，只能做有界的内存
+  操作；文件、网络、模型及异步处理必须留到 `observe()` 或 `flush()`。
 - 可选的 `health()` 和 `close()` 分别接入健康诊断与生命周期清理。
 
 能力必须显式声明。开启 `sessionObservation` 后，内置 Markdown 自动整理器与偏好学习器
@@ -123,7 +128,7 @@ Realtime、自动整理器和工具处理器只依赖 `FrontendMemoryRuntime`，
 数据库或 Markdown 文件。未注入 Provider 时继续使用现有 Markdown 实现，现有配置和数据
 无需迁移。第三方 Adapter 自行负责远程认证、租户映射、缓存刷新和底层记录到 `user`、
 `memory` 两种公开上下文语义的转换。完整替换方式见
-[VoiceMem 示例](../scenarios/voicemem-memory.zh.md)：它通过 Python Sidecar 接入
+[VoiceMem 示例](../scenarios/voicemem.zh.md)：它通过 Python Sidecar 接入
 VoiceMem，核心代码不感知其内部模型与索引。
 
 ## 日志

@@ -118,6 +118,8 @@ A host application can inject a versioned `MemoryProvider` to replace the `user`
 layers. The provider may use Markdown, a database, a remote service, or a semantic memory
 engine. It owns storage and retrieval; when it declares `sessionObservation`, it also owns
 session-end learning and the built-in extractor and preference learner are disabled.
+Providers that need acoustic context may additionally opt into bounded PCM16 observation;
+transcript-only providers and the default Markdown implementation receive no microphone audio.
 
 This boundary deliberately excludes `PROMPT.md` and `ASSISTANT.md`. Core behavior and the
 instance-wide default persona therefore stay stable regardless of the selected memory system.
@@ -125,7 +127,7 @@ The Realtime Agent continues to use the same `memory` tool and the same logical 
 `memory` scopes.
 
 See [Long-Term Memory](memory.md) for the provider contract and the runnable
-[VoiceMem example](../scenarios/voicemem-memory.md) for a complete replacement.
+[VoiceMem example](../scenarios/voicemem.md) for a complete replacement.
 
 ## Read next
 

@@ -71,6 +71,10 @@ export class FrontendMemoryRuntime {
     return this.capabilities().sessionObservation
   }
 
+  ownsAudioStreamObservation() {
+    return this.capabilities().audioStreamObservation
+  }
+
   list(ownerId, options = {}) {
     const documents = this.provider.list(ownerId, options)
     if (documents && typeof documents.then === 'function') {
@@ -110,6 +114,19 @@ export class FrontendMemoryRuntime {
   async observe(ownerId, exchange = {}, context = {}) {
     if (!this.ownsSessionObservation()) return { observed: false }
     const result = await this.provider.observe(ownerId, exchange, context)
+    return result && typeof result === 'object'
+      ? { ...result, observed: result.observed !== false }
+      : { observed: true }
+  }
+
+  observeAudio(ownerId, event = {}, context = {}) {
+    if (!this.ownsAudioStreamObservation()) return { observed: false }
+    const result = this.provider.observeAudio(ownerId, event, context)
+    if (result && typeof result.then === 'function') {
+      throw new TypeError(
+        'MemoryProvider observeAudio() must be synchronous on the audio hot path',
+      )
+    }
     return result && typeof result === 'object'
       ? { ...result, observed: result.observed !== false }
       : { observed: true }

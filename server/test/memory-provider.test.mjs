@@ -44,6 +44,7 @@ test('validates one versioned provider-neutral memory contract', () => {
     capabilities: {
       semanticQuery: false,
       sessionObservation: false,
+      audioStreamObservation: false,
     },
   })
   assert.deepEqual(normalizeMemoryProviderHealth({ ok: false, warning: 'offline' }), {
@@ -63,6 +64,7 @@ test('validates advertised v2 capabilities without imposing vendor concepts', ()
   })).capabilities, {
     semanticQuery: false,
     sessionObservation: false,
+    audioStreamObservation: false,
   })
   assert.throws(() => assertMemoryProvider(provider({
     describe: () => ({
@@ -80,4 +82,12 @@ test('validates advertised v2 capabilities without imposing vendor concepts', ()
       capabilities: { sessionObservation: true },
     }),
   })), /no observe method/)
+  assert.throws(() => assertMemoryProvider(provider({
+    describe: () => ({
+      protocolVersion: 2,
+      key: 'audio',
+      label: 'Audio',
+      capabilities: { audioStreamObservation: true },
+    }),
+  })), /no observeAudio method/)
 })

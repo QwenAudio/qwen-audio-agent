@@ -354,6 +354,20 @@ export function attachRealtimeGateway(server, {
     const hasPendingBackendInput = () => activeSessionTasks().some(task => (
       task.inputRequest?.status === 'pending'
     ))
+    const observeMemoryAudio = event => {
+      if (!memoryService?.ownsAudioStreamObservation?.()) return
+      try {
+        memoryService.observeAudio(ownerId, event, {
+          source: 'voice-input',
+          sessionId,
+        })
+      } catch (error) {
+        connectionLogger.warn('memory.provider_audio_hook_failed', {
+          eventType: String(event?.type || ''),
+          error: String(error?.message || error),
+        })
+      }
+    }
     // Keep visible history intact while excluding only a provider-rejected turn
     // from future Realtime Session restoration.
     const realtimeRecoveryContext = new RealtimeRecoveryContext()
@@ -857,8 +871,12 @@ export function attachRealtimeGateway(server, {
       shouldEnsurePermissionResponse: context => responseTurnCandidate === context,
       ensurePermissionResponseFor,
       reportFrontendError,
+      onSpeechStarted: fields => {
+        observeMemoryAudio({ type: 'speech_started', ...fields })
+      },
       onSpeechStopped: fields => {
         connectionLogger.info('realtime.provider.speech_stopped', fields)
+        observeMemoryAudio({ type: 'speech_stopped', ...fields })
       },
     })
 
@@ -1623,6 +1641,11 @@ export function attachRealtimeGateway(server, {
           return
         }
         realtimeSession.appendAudio(event.audio)
+        observeMemoryAudio({
+          type: 'chunk',
+          audio: event.audio,
+          sampleRate: Number(realtimeSession.provider()?.inputSampleRate) || 16_000,
+        })
       } else if (
         event.type === GatewayClientEvent.TEXT_MESSAGE
         || event.type === GatewayClientEvent.INPUT_MESSAGE
@@ -1730,6 +1753,7 @@ export function attachRealtimeGateway(server, {
       sleepController?.close()
       presenceController.close()
       realtimeSession.close()
+      observeMemoryAudio({ type: 'session_ended' })
       // Invisible memory: distil durable personal facts from this session in
       // the background. All gating (debounce, minimum turns, disabled state)
       // lives inside the extractor; it never blocks or breaks the close path,

@@ -103,7 +103,7 @@ function sidebar(prefix = '') {
       text: t('示例', 'Examples'),
       items: [
         { text: t('智能座舱', 'Smart Cockpit'), link: `${prefix}/scenarios/smart-cockpit` },
-        { text: 'VoiceMem', link: `${prefix}/scenarios/voicemem-memory` },
+        { text: 'VoiceMem', link: `${prefix}/scenarios/voicemem` },
       ],
     },
     {

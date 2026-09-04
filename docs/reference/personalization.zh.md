@@ -102,13 +102,15 @@ Provider 提供。
 宿主应用可以注入带版本的 `MemoryProvider`，完整替换 `user` 与 `memory` 两层。Provider
 可以使用 Markdown、数据库、远程服务或语义记忆引擎。它负责存储与检索；声明
 `sessionObservation` 后还会接管会话结束后的自动学习，内置抽取器和偏好学习器会停用。
+需要声学上下文的 Provider 还可以显式订阅有界的 PCM16 音频观察；仅文本 Provider
+和默认 Markdown 实现不会收到麦克风音频。
 
 这个扩展边界刻意不包含 `PROMPT.md` 和 `ASSISTANT.md`，因此无论使用哪套记忆系统，
 核心行为和实例级默认人设都保持稳定。Realtime Agent 仍使用同一个 `memory` 工具以及
 `user` / `memory` 两种逻辑作用域。
 
 Provider 接口见[长期记忆](memory.zh.md)，完整替换方式见可运行的
-[VoiceMem 示例](../scenarios/voicemem-memory.zh.md)。
+[VoiceMem 示例](../scenarios/voicemem.zh.md)。
 
 ## 继续阅读
 

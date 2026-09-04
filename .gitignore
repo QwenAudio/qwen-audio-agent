@@ -17,6 +17,12 @@ Thumbs.db
 *.key
 *.cer
 *.mobileprovision
+
+# SwiftPM / Xcode local state
+.build/
+.swiftpm/
+xcuserdata/
+*.xcuserstate
 config/openclaw-workspace/
 config/openclaw.json5.last-good
 

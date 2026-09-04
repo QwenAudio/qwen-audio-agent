@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 新增原生 iOS Gateway Client 基础层：支持短时邀请深链校验、一次性设备配对、
+  Keychain 凭据隔离，以及携带设备凭据的 GCP 6.0 WebSocket 握手；远程地址默认要求
+  HTTPS，不包含公网 Relay、Provider API Key 或后台 Agent 配置。
 - 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
   `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
   模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。

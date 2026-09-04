@@ -134,7 +134,9 @@ Tailscale 远程访问。
 
 ## RA4 — Mobile Client
 
-- [ ] 只复用公开 Gateway Client SDK 与 capability profile，不导入 Gateway、Realtime、
+- [x] 增加原生 iOS 基础层，支持邀请校验、一次性配对、Keychain 凭据保存、
+  Connection Profile 与 GCP 6.0 握手。
+- [ ] 只复用公开 Gateway Client SDK 语义与 capability profile，不导入 Gateway、Realtime、
   ACP、A2A 或 Electron 内部实现。
 - [ ] 支持二维码/Deep Link 配对与安全凭据存储。
 - [ ] 支持实时麦克风、音频播放、语音打断、静音、文本、图片/文件、对话历史、Task

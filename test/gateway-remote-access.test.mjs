@@ -4,6 +4,7 @@ import {
   createGatewayInvitation,
   decodeGatewayInvitation,
   defineGatewayEndpointPublisher,
+  encodeGatewayBrowserInvitation,
   encodeGatewayInvitation,
   parseGatewayConnectionProfile,
   parseGatewayEndpointDescriptor,
@@ -87,6 +88,10 @@ test('invitations are versioned, bounded records without permanent credentials',
   assert.equal(invitation.version, 1)
   assert.equal('access_token' in invitation, false)
   assert.deepEqual(decodeGatewayInvitation(encodeGatewayInvitation(invitation)), invitation)
+  const browser = new URL(encodeGatewayBrowserInvitation(invitation))
+  assert.equal(browser.origin, invitation.gateway_url)
+  assert.equal(browser.pathname, '/connect')
+  assert.ok(browser.hash.length > 1)
   assert.throws(() => parseGatewayInvitation({ ...invitation, version: 2 }))
   assert.throws(() => parseGatewayInvitation({ ...invitation, backend: 'opencode' }))
 })

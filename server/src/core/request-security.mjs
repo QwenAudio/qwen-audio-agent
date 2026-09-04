@@ -43,6 +43,7 @@ export function isAllowedOrigin(
   {
     allowedOrigins = config.allowedOrigins,
     authenticatedRemote = false,
+    allowSecureSameOrigin = false,
   } = {},
 ) {
   const requestHost = parsedHost(req.headers.host)
@@ -64,6 +65,17 @@ export function isAllowedOrigin(
   const originUrl = new URL(origin)
   if (configured.includes(origin)) {
     return originUrl.host === requestHost.host
+  }
+
+  // An authenticated remote browser is already bound to a Gateway-issued
+  // credential. The unauthenticated pairing endpoint opts into this path
+  // separately because its one-time ticket is the credential being redeemed.
+  if (
+    (authenticatedRemote || allowSecureSameOrigin)
+    && originUrl.protocol === 'https:'
+    && originUrl.host === requestHost.host
+  ) {
+    return true
   }
 
   // Comparing arbitrary Origin and Host values is vulnerable to DNS rebinding.

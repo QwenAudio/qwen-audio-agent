@@ -112,6 +112,13 @@ export function encodeGatewayInvitation(invitation) {
   return `qwaudio://connect#${encodeURIComponent(JSON.stringify(parsed))}`
 }
 
+export function encodeGatewayBrowserInvitation(invitation) {
+  const parsed = parseGatewayInvitation(invitation)
+  const url = new URL('/connect', parsed.gateway_url)
+  url.hash = encodeURIComponent(JSON.stringify(parsed))
+  return url.toString()
+}
+
 export function decodeGatewayInvitation(value) {
   let url
   try {

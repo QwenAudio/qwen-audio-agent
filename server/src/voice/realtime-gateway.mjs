@@ -139,9 +139,10 @@ export {
 }
 
 function clientDescriptor(event = {}) {
-  const type = ['desktop', 'cli', 'web'].includes(event.clientType)
-    ? event.clientType
-    : 'web'
+  // Client type is descriptive metadata. Runtime behavior is negotiated from
+  // capabilities, so a new first- or third-party Client never needs a Gateway
+  // allowlist entry before it can speak GCP.
+  const type = String(event.clientType || '').trim().slice(0, 40) || 'unknown'
   const label = String(event.clientLabel || '').trim().slice(0, 40)
   return {
     type,

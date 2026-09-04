@@ -12,13 +12,14 @@
 //
 // 检查的三类东西：
 //   一、决策表的输入值域    表里出现的每个值，库里有没有对应的数据
+//   二、枚举               enums 里的值，库里用到没有
+//   三、区间边界           时限类规则，库里有没有落在边界两侧的样本
 //
 // 【顶层键叫 decisions 不叫 tables】我第一版凭记忆写成 guards.tables，
 // 于是整个检查一行都没跑到 —— 两个域都返回「全部覆盖」。
 // 那个「全绿」看起来像好消息，实际是检查压根没工作。
 // 反证的时候脚本自己抛 TypeError 才暴露出来。
-//   二、枚举               enums 里的值，库里用到没有
-//   三、区间边界           时限类规则，库里有没有落在边界两侧的样本
+// console/test/coverage.test.mjs 里有一条测试守着这个结构假设。
 
 const CATEGORY_FIELDS = Object.freeze(['category', 'status', 'cabin', 'memberTier'])
 

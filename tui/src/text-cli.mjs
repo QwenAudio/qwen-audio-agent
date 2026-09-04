@@ -22,7 +22,11 @@ const RST = `${ESC}[0m`
 export function parseArguments(argv, env = process.env) {
   const options = {
     url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
-    accessToken: String(env.QWEN_AUDIO_AGENT_ACCESS_TOKEN || '').trim(),
+    accessToken: String(
+      env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN
+      || env.QWEN_AUDIO_AGENT_ACCESS_TOKEN
+      || '',
+    ).trim(),
     sessionId: env.QWEN_AUDIO_AGENT_SESSION_ID || 'cli-main',
   }
   for (let index = 0; index < argv.length; index += 1) {

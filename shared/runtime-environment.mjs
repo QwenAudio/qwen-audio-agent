@@ -44,7 +44,7 @@ const USER_CONFIG_TEMPLATE = [
   '',
   '# 可选远程 Client 接入；Gateway 默认仍只监听 127.0.0.1',
   '# 远程部署请同时使用受信 VPN 或 HTTPS/WSS 反向代理',
-  '# QWEN_AUDIO_AGENT_ACCESS_TOKEN=至少24字符的随机密钥',
+  '# QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=至少24字符的随机密钥',
   '# QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com',
   '',
   '# 可选日志设置：默认 info、单文件 10 MiB、保留 5 份',

@@ -36,8 +36,11 @@ test('parses independent TUI and WebUI client commands', () => {
   assert.equal(tui.sessionId, 'project-one')
   assert.equal(tui.audioMode, 'full')
   assert.equal(parseArguments(['tui'], {
-    QWEN_AUDIO_AGENT_ACCESS_TOKEN: 'remote-token',
+    QWEN_AUDIO_GATEWAY_CLIENT_TOKEN: 'remote-token',
   }).accessToken, 'remote-token')
+  assert.equal(parseArguments(['tui'], {
+    QWEN_AUDIO_AGENT_ACCESS_TOKEN: 'legacy-token',
+  }).accessToken, 'legacy-token')
   assert.equal(
     parseArguments(['tui'], {
       QWEN_AUDIO_AGENT_TUI_AUDIO_MODE: 'FULL',

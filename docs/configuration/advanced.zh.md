@@ -9,7 +9,7 @@ Gateway 默认只监听 loopback，并只信任字面量 loopback Host/Origin。
 配置一个个人访问密钥：
 
 ```dotenv
-QWEN_AUDIO_AGENT_ACCESS_TOKEN=替换为至少24字符的随机密钥
+QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=替换为至少24字符的随机密钥
 ```
 
 可用 `openssl rand -base64 32` 生成随机密钥。该密钥只用于 Gateway 访问认证，
@@ -28,7 +28,7 @@ QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com
 
 ```bash
 QWEN_AUDIO_AGENT_URL=https://voice.example.com \
-QWEN_AUDIO_AGENT_ACCESS_TOKEN="$ACCESS_TOKEN" \
+QWEN_AUDIO_GATEWAY_CLIENT_TOKEN="$ACCESS_TOKEN" \
 qwenaudio tui
 ```
 
@@ -56,6 +56,9 @@ QWEN_AUDIO_AGENT_ACCESS_KEYS='[{"token":"替换为足够长的随机密钥","own
 
 `QWEN_AUDIO_AGENT_AUTH_SECRET` 只用于签署本地和远程会话身份，不是远程访问密码，
 绝不能发送给 Client。
+
+`QWEN_AUDIO_AGENT_ACCESS_TOKEN` 暂时保留为两种配置的旧别名。新配置应使用上面的宿主与
+Client 独立名称，避免把 Client 凭据误当作 Gateway 服务端配置。
 
 ## Gateway 运行方式
 

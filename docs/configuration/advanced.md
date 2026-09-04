@@ -10,7 +10,7 @@ reverse proxy.
 For one personal access key:
 
 ```dotenv
-QWEN_AUDIO_AGENT_ACCESS_TOKEN=replace-with-at-least-24-random-characters
+QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=replace-with-at-least-24-random-characters
 ```
 
 Generate one with `openssl rand -base64 32`. This token authenticates Gateway
@@ -29,7 +29,7 @@ For example, a native TUI can connect without putting the credential in its URL:
 
 ```bash
 QWEN_AUDIO_AGENT_URL=https://voice.example.com \
-QWEN_AUDIO_AGENT_ACCESS_TOKEN="$ACCESS_TOKEN" \
+QWEN_AUDIO_GATEWAY_CLIENT_TOKEN="$ACCESS_TOKEN" \
 qwenaudio tui
 ```
 
@@ -57,6 +57,10 @@ previous Client and generation-fences late messages from its socket.
 
 `QWEN_AUDIO_AGENT_AUTH_SECRET` only signs local and remote session identities. It is not a
 remote access password and must never be sent to a Client.
+
+`QWEN_AUDIO_AGENT_ACCESS_TOKEN` remains a deprecated alias for both settings. New setups use
+the separate host and Client names above so a Client credential is never mistaken for Gateway
+server configuration.
 
 ## Gateway Operation
 

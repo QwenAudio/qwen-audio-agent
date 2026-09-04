@@ -67,6 +67,7 @@ Connection Profile 只保存安全存储引用，不保存凭据正文：
 
 ```json
 {
+  "id": "phone",
   "gateway_url": "https://gateway.example.ts.net",
   "device_id": "device_example",
   "credential_ref": "platform-secure-store-key",
@@ -99,11 +100,11 @@ HttpOnly、SameSite Cookie。
 
 ## RA1 — Endpoint 发布与 Connection Profile
 
-- [ ] 增加宿主侧 `GatewayEndpointPublisher` 契约和 Registry。
-- [ ] 实现 local 与 manual Publisher。
-- [ ] 增加带版本的 Connection Profile Store 与 Credential Store Port。
-- [ ] 服务端访问配置和 Client 设备凭据分别管理。
-- [ ] 发布创建和消费邀请的共享 Helper。
+- [x] 增加宿主侧 `GatewayEndpointPublisher` 契约和 Registry。
+- [x] 实现 local 与 manual Publisher。
+- [x] 增加带版本的 Connection Profile Store 与 Credential Store Port。
+- [x] 服务端访问配置和 Client 设备凭据分别管理。
+- [x] 发布创建和消费邀请的共享 Helper。
 
 完成条件：任意宿主可以发布 Endpoint，任意原生 Client 可以通过 Provider 无关的
 Connection Profile 保存并重新连接。

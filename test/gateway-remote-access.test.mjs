@@ -60,6 +60,7 @@ test('remote endpoint descriptors reject contaminated or inconsistent URLs', () 
 
 test('connection profiles store a credential reference and never a credential', () => {
   const profile = parseGatewayConnectionProfile({
+    id: 'phone',
     gateway_url: 'https://gateway.example.test',
     device_id: 'device_phone',
     credential_ref: 'secure-store/device_phone',

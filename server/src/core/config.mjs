@@ -251,7 +251,9 @@ export const config = {
   ).toLowerCase() === 'browser' ? 'browser' : 'personal',
   personalOwnerId: process.env.QWEN_AUDIO_AGENT_PERSONAL_OWNER_ID || 'user_personal',
   gatewayAccessToken: String(
-    process.env.QWEN_AUDIO_AGENT_ACCESS_TOKEN || '',
+    process.env.QWEN_AUDIO_GATEWAY_ACCESS_TOKEN
+    || process.env.QWEN_AUDIO_AGENT_ACCESS_TOKEN
+    || '',
   ).trim(),
   gatewayAccessKeys: String(
     process.env.QWEN_AUDIO_AGENT_ACCESS_KEYS || '',

@@ -40,6 +40,8 @@
     "./gateway-client-profiles": "./shared/gateway-client-profiles.mjs",
     "./gateway-access-client": "./shared/gateway-access-client.mjs",
     "./gateway-remote-access": "./shared/gateway-remote-access.mjs",
+    "./gateway-endpoint-publishers": "./shared/gateway-endpoint-publishers.mjs",
+    "./gateway-connection-profiles": "./shared/gateway-connection-profiles.mjs",
     "./client-events": "./server/src/client/client-event-router.mjs",
     "./client-actions": "./server/src/client/client-action-port.mjs",
     "./agent-delivery": "./server/src/delivery/agent-delivery.mjs",

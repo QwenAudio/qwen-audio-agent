@@ -130,7 +130,7 @@ test('parses a custom gateway, session and audio mode', () => {
   assert.equal(options.sessionId, 'terminal-one')
   assert.equal(options.audioMode, 'full')
   assert.equal(parseArguments([], {
-    QWEN_AUDIO_AGENT_ACCESS_TOKEN: 'remote-token',
+    QWEN_AUDIO_GATEWAY_CLIENT_TOKEN: 'remote-token',
   }).accessToken, 'remote-token')
   assert.equal(
     parseArguments([], {

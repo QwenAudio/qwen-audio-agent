@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createGatewayPairingTicket,
+  pairGatewayInvitation,
   pairGatewayDevice,
 } from '../shared/gateway-access-client.mjs'
 
@@ -47,5 +48,37 @@ test('Gateway access Client helpers preserve structured errors', async () => {
       jsonResponse({ error: 'expired', code: 'pairing_invalid' }, { status: 401 })
     )),
     error => error.code === 'pairing_invalid' && error.message === 'expired',
+  )
+})
+
+test('a Gateway invitation pairs and persists through credential abstractions', async () => {
+  const saved = []
+  const result = await pairGatewayInvitation({
+    version: 1,
+    gateway_url: 'https://gateway.example.test',
+    pairing_code: 'temporary-code',
+    expires_at: 2_000,
+  }, {
+    device: { id: 'phone-one', type: 'mobile', label: 'Phone' },
+    clientInstanceId: 'mobile-one',
+    profileStore: { save: async (...args) => { saved.push(args); return args[0] } },
+    now: 1_000,
+    fetchImpl: async () => jsonResponse({
+      access_token: 'device-token',
+      owner_id: 'user_personal',
+      device: { id: 'phone-one' },
+    }),
+  })
+  assert.equal(result.profile.id, 'phone-one')
+  assert.equal(result.profile.client_instance_id, 'mobile-one')
+  assert.equal(saved[0][1], 'device-token')
+  await assert.rejects(
+    pairGatewayInvitation({
+      version: 1,
+      gateway_url: 'https://gateway.example.test',
+      pairing_code: 'expired',
+      expires_at: 999,
+    }, { profileStore: { save: async () => {} }, now: 1_000 }),
+    error => error.code === 'gateway_invitation_expired',
   )
 })

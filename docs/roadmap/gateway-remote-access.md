@@ -76,6 +76,7 @@ credential:
 
 ```json
 {
+  "id": "phone",
   "gateway_url": "https://gateway.example.ts.net",
   "device_id": "device_example",
   "credential_ref": "platform-secure-store-key",
@@ -110,11 +111,11 @@ Mobile branches to Gateway Core.
 
 ## RA1 — Endpoint publication and connection profiles
 
-- [ ] Add a host-side `GatewayEndpointPublisher` contract and registry.
-- [ ] Implement local and manual endpoint publishers.
-- [ ] Add a versioned connection-profile store with a credential-store port.
-- [ ] Keep server access configuration separate from Client credentials.
-- [ ] Publish shared helpers for invitation creation and consumption.
+- [x] Add a host-side `GatewayEndpointPublisher` contract and registry.
+- [x] Implement local and manual endpoint publishers.
+- [x] Add a versioned connection-profile store with a credential-store port.
+- [x] Keep server access configuration separate from Client credentials.
+- [x] Publish shared helpers for invitation creation and consumption.
 
 Exit criteria: any host can publish an endpoint and any native Client can save
 and reconnect through a provider-neutral connection profile.

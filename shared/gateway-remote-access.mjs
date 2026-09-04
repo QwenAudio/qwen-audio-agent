@@ -46,6 +46,7 @@ export const GatewayEndpointDescriptorSchema = z.object({
 
 export const GatewayConnectionProfileSchema = z.object({
   version: z.literal(GATEWAY_REMOTE_ACCESS_MODEL_VERSION).default(GATEWAY_REMOTE_ACCESS_MODEL_VERSION),
+  id: IdentifierSchema,
   gateway_url: GatewayUrlSchema,
   device_id: IdentifierSchema,
   credential_ref: IdentifierSchema,
@@ -94,4 +95,14 @@ export function createGatewayInvitation({ gatewayUrl, pairingCode, expiresAt }) 
     pairing_code: pairingCode,
     expires_at: expiresAt,
   })
+}
+
+export function assertGatewayInvitationActive(invitation, now = Date.now()) {
+  const parsed = parseGatewayInvitation(invitation)
+  if (parsed.expires_at <= now) {
+    const error = new Error('Gateway invitation has expired')
+    error.code = 'gateway_invitation_expired'
+    throw error
+  }
+  return parsed
 }

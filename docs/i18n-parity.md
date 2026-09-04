@@ -5,13 +5,13 @@
 
 ## Current baseline
 
-Updated 2026-09-03:
+Updated 2026-09-04:
 
 - Gateway health contract `5.7.0`;
 - stable Gateway Client Protocol wire version `6.0.0`;
 - GCP1–GCP5 complete;
 - Gateway remote access and Mobile Client roadmap tracked by issue #320;
-- WebUI, Desktop, and TUI on the shared reference Client SDK;
+- WebUI, Desktop, TUI, and Mobile on the shared reference Client SDK;
 - current BackendPort, knowledge, memory, personalization, and extension docs.
 
 There are no known English/Chinese content gaps in the published manual.

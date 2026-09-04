@@ -96,8 +96,11 @@ configuration:
 }
 ```
 
-Native Clients use an Authorization header. Browsers exchange authentication for
-an HttpOnly, SameSite cookie before opening WebSocket.
+Native Clients use an Authorization header, and remote WebUI uses an HttpOnly,
+SameSite cookie. A local mobile WebView cannot add a header to a WebSocket
+upgrade, so it carries its revocable device credential in a second WebSocket
+subprotocol value inside TLS. The server selects and echoes only the public GCP
+subprotocol. Credentials never enter URLs, GCP messages, logs, or model context.
 
 ## RA0 — Freeze the remote-access contract
 
@@ -152,14 +155,14 @@ and remotely.
 
 ## RA4 — Mobile Client
 
-- [ ] Reuse the public Gateway Client SDK and capability profiles; do not import
+- [x] Reuse the public Gateway Client SDK and capability profiles; do not import
   Gateway, Realtime, ACP, A2A, or Electron internals.
-- [ ] Provide QR/deep-link pairing and secure credential storage.
-- [ ] Support realtime microphone capture, audio playback, voice interruption,
+- [x] Provide QR/deep-link pairing and secure credential storage.
+- [x] Support realtime microphone capture, audio playback, voice interruption,
   mute, text, image/file input, history, Task cards, permission and backend-input
   responses, reconnect/replay, and explicit takeover.
-- [ ] Keep one conversation model across voice and typed input.
-- [ ] Produce reproducible iOS and Android development builds and document the
+- [x] Keep one conversation model across voice and typed input.
+- [x] Produce reproducible iOS and Android development builds and document the
   external Tailscale prerequisite.
 
 Exit criteria: a phone on the same tailnet pairs once, reconnects later, and
@@ -167,14 +170,15 @@ completes the same core conversation and Task flows as WebUI.
 
 ## RA5 — Hardening and release readiness
 
-- [ ] Add negative tests for unauthenticated remote requests, origin bypass,
+- [x] Add negative tests for unauthenticated remote requests, origin bypass,
   expired/replayed invitations, revoked devices, and stale leases.
 - [ ] Test direct and relayed Tailscale paths, Wi-Fi/cellular transitions,
   computer sleep/wake, Gateway restart, and one-hour WebSocket/audio sessions.
-- [ ] Run protocol conformance against Desktop, WebUI, TUI, and Mobile.
-- [ ] Add macOS, Windows, Linux, iOS, and Android build checks where toolchains
-  are available.
-- [ ] Update the user manual only after the reference path is reproducible.
+- [x] Run protocol conformance against Desktop, WebUI, TUI, and Mobile.
+- [x] Add macOS, Windows, Linux, iOS, and Android build checks; real-device
+  scenarios remain covered by the item above.
+- [x] Update the bilingual user manual and development-build guide after the
+  reference path is reproducible.
 
 Exit criteria: the remote path fails closed, recovers without duplicate input or
 playback, and does not regress local zero-configuration use.

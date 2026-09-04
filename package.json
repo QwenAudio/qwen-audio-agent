@@ -211,7 +211,8 @@
     "web",
     "tui",
     "desktop",
-    "cli"
+    "cli",
+    "mobile"
   ],
   "scripts": {
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev --workspace server\" \"npm run dev --workspace web\"",
@@ -227,6 +228,10 @@
     "desktop:build:local": "npm run build && electron-builder --config desktop/electron-builder.yml --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --mac dmg",
     "desktop:build:linux": "npm run build && electron-builder --config desktop/electron-builder.yml --linux AppImage deb",
     "desktop:build:win": "npm run build && electron-builder --config desktop/electron-builder.yml --win --x64 --publish never",
+    "mobile:build": "npm run build --workspace @qwen-audio-agent/mobile",
+    "mobile:sync": "npm run sync --workspace @qwen-audio-agent/mobile",
+    "mobile:ios": "npm run ios --workspace @qwen-audio-agent/mobile",
+    "mobile:android": "npm run android --workspace @qwen-audio-agent/mobile",
     "cli": "npm run start --workspace @qwen-audio-agent/cli --",
     "tui": "npm run start --workspace tui --",
     "backend": "node scripts/start.mjs",
@@ -249,7 +254,7 @@
     "predocs:preview": "node scripts/sync-docs-site.mjs",
     "docs:preview": "vitepress preview docs",
     "eval:frontend": "node server/eval/run-frontend-evaluations.mjs",
-    "test": "node --test test/*.test.mjs && npm run test --workspace server && npm run test --workspace web && npm run test --workspace tui && npm run test --workspace desktop && npm run test --workspace @qwen-audio-agent/cli && npm run test:smart-cockpit",
+    "test": "node --test test/*.test.mjs && npm run test --workspace server && npm run test --workspace web && npm run test --workspace tui && npm run test --workspace desktop && npm run test --workspace @qwen-audio-agent/cli && npm run test --workspace @qwen-audio-agent/mobile && npm run test:smart-cockpit",
     "pretest:smart-cockpit": "npm ci --prefix examples/smart-cockpit/service --ignore-scripts && npm ci --prefix examples/smart-cockpit/agent --ignore-scripts",
     "test:smart-cockpit": "npm test --prefix examples/smart-cockpit/service && npm test --prefix examples/smart-cockpit/agent && node --test examples/smart-cockpit/bootstrap/test/*.test.mjs examples/smart-cockpit/client/test/*.test.mjs examples/smart-cockpit/gateway/test/*.test.mjs examples/smart-cockpit/test/*.test.mjs",
     "audit:release": "node scripts/audit-dependencies.mjs",

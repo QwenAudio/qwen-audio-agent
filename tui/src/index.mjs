@@ -1519,6 +1519,7 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
         headers: { ...headers, ...socketOptions.headers },
       }),
       accessToken: options.accessToken,
+      takeover: options.takeover === true,
       clientType: 'cli',
       clientLabel: 'CLI',
       clientInstanceId: `tui-${process.pid}`,

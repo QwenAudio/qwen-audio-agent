@@ -128,7 +128,7 @@ Tailscale 远程访问。
 - [x] 远程 WebUI 使用 HttpOnly Session，并能安全重连。
 - [x] Desktop 与 TUI 可以消费邀请，并将可撤销凭据保存在普通设置之外（Desktop 使用
   操作系统保护存储；缺少跨平台系统钥匙串接口的终端 Client 使用仅当前用户可读文件）。
-- [ ] 统一 occupied、接管确认、replaced、revoked、offline 与 reconnecting 状态。
+- [x] 统一 occupied、接管确认、replaced、revoked、offline 与 reconnecting 状态。
 
 完成条件：Desktop、WebUI 与 TUI 在本机和远程模式下通过同一套 Conformance Suite。
 

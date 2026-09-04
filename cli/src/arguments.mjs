@@ -153,6 +153,7 @@ export function parseArguments(argv, env = process.env) {
     openBrowser: true,
     json: false,
     yes: false,
+    takeover: false,
     backendSpecified: false,
     gatewayConfigurationSpecified: false,
     invitation: command === 'connect' && args[0] && !args[0].startsWith('-')
@@ -200,6 +201,7 @@ export function parseArguments(argv, env = process.env) {
       options.audioMode = nextValue(args, index++, '--audio-mode').toLowerCase()
       audioModeSpecified = true
     } else if (argument === '--no-open') options.openBrowser = false
+    else if (argument === '--takeover') options.takeover = true
     else if (argument === '--skill') {
       options.skillNames.push(nextValue(args, index++, '--skill'))
     } else if (argument === '--list') options.skillList = true
@@ -275,6 +277,9 @@ export function parseArguments(argv, env = process.env) {
   }
   if (command !== 'tui' && audioModeSpecified) {
     throw new Error('--audio-mode 只适用于 tui')
+  }
+  if (command !== 'tui' && options.takeover) {
+    throw new Error('--takeover 只适用于 tui')
   }
   if (command === 'tui' && !TUI_AUDIO_MODES.has(options.audioMode)) {
     throw new Error(
@@ -382,6 +387,7 @@ export function helpText() {
     '界面选项：',
     '  --session ID           复用指定语音会话',
     '  --audio-mode MODE      Linux / Windows 使用 half（默认）或 full',
+    '  --takeover             显式接管同一用户的现有活动客户端（仅 TUI）',
     '  --no-open              WebUI 只打印地址，不打开浏览器',
     '  -h, --help             显示帮助',
     '',

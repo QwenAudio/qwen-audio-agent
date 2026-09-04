@@ -61,9 +61,11 @@ test('parses remote Gateway connection profile commands', () => {
   assert.equal(connected.urlSpecified, false)
   assert.equal(parseArguments(['disconnect'], {}).command, 'disconnect')
   assert.equal(
-    parseArguments(['tui', '--url', 'https://gateway.example.test'], {}).urlSpecified,
+    parseArguments(['tui', '--url', 'https://gateway.example.test', '--takeover'], {}).urlSpecified,
     true,
   )
+  assert.equal(parseArguments(['tui', '--takeover'], {}).takeover, true)
+  assert.throws(() => parseArguments(['webui', '--takeover'], {}), /只适用于 tui/)
 })
 
 test('parses read-only backend setup options', () => {
@@ -291,7 +293,7 @@ test('rejects client-only flags on unrelated commands', () => {
   )
   assert.throws(
     () => parseArguments(['webui', '--takeover'], {}),
-    /未知参数：--takeover/,
+    /只适用于 tui/,
   )
   assert.throws(
     () => parseArguments(['gateway', 'install', '--backend', 'openclaw'], {}),

@@ -144,7 +144,7 @@ configuration, copying a token, or exposing a LAN/public listener.
 - [x] Let Desktop and TUI consume invitations and store revocable credentials
   outside ordinary settings (OS-protected storage on Desktop; an owner-only
   file for terminal clients without a portable keychain API).
-- [ ] Add uniform occupied, takeover-confirmation, replaced, revoked, offline,
+- [x] Add uniform occupied, takeover-confirmation, replaced, revoked, offline,
   and reconnect states.
 
 Exit criteria: Desktop, WebUI, and TUI pass the same conformance suite locally

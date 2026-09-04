@@ -138,6 +138,7 @@ const translations = {
   'Gateway 正由另一个客户端使用': 'Gateway is in use by another client',
   '当前连接已被另一个客户端接管': 'This connection was taken over by another client',
   '当前设备的访问权限已被撤销，请重新配对': 'Access for this device was revoked. Pair it again.',
+  '另一个客户端正在使用语音助手，是否接管？': 'Another client is using the voice assistant. Take over?',
   '无法打开麦克风': 'Could not open the microphone',
   '正在切换麦克风': 'Switching microphone',
   '未检测到可用麦克风，连接设备后会自动恢复': 'No microphone detected. Input will recover automatically when a device is connected.',

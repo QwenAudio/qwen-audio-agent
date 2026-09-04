@@ -232,6 +232,7 @@ export default function useRealtimeVoice({
   const [inputReady, setInputReady] = useState(false)
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState(false)
+  const [connectionAttempt, setConnectionAttempt] = useState(0)
   const {
     connectionState,
     ownership,
@@ -244,6 +245,7 @@ export default function useRealtimeVoice({
   const wakeWordAudioRef = useRef(onWakeWordAudio)
   const wakeWordOnlyRef = useRef(wakeWordOnly)
   const socketRef = useRef(null)
+  const takeoverRef = useRef(false)
   const hasConnectedRef = useRef(false)
   const pendingManualInputsRef = useRef([])
   const audioRef = useRef(null)
@@ -645,6 +647,7 @@ export default function useRealtimeVoice({
       clientType,
       clientLabel,
       clientInstanceId: clientInstanceId.current,
+      takeover: takeoverRef.current,
       capabilities: gatewayClientCapabilities({ clientType }),
       locale: navigator.language,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -688,6 +691,8 @@ export default function useRealtimeVoice({
           const connectedEvent = { type: GatewayServerEvent.GATEWAY_CONNECTED }
           dispatchClientState(connectedEvent)
           eventRef.current?.(connectedEvent)
+        } else if (status.state === 'ready') {
+          takeoverRef.current = false
         } else if (status.state === 'unavailable') {
           dispatchClientState({
             type: GatewayServerEvent.VOICE_CONNECTION,
@@ -721,6 +726,13 @@ export default function useRealtimeVoice({
           ))
           setVisualError(true)
           eventRef.current?.(disconnectedEvent)
+          if (
+            status.state === 'occupied'
+            && globalThis.confirm?.(t('另一个客户端正在使用语音助手，是否接管？')) === true
+          ) {
+            takeoverRef.current = true
+            setConnectionAttempt(value => value + 1)
+          }
         }
       }
     })
@@ -741,6 +753,7 @@ export default function useRealtimeVoice({
     }
   }, [
     clientLabel,
+    connectionAttempt,
     clientStatesSignature,
     clientType,
     consumeMutedAudio,

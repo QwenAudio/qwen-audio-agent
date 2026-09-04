@@ -65,6 +65,7 @@ async function runMinimal(options) {
     accessToken: options.accessToken,
     sessionId: options.sessionId,
     audioMode: options.audioMode,
+    takeover: options.takeover,
   })
   return 0
 }

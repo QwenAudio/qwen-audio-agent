@@ -114,6 +114,7 @@ export async function runCli(options = parseArguments(process.argv.slice(2))) {
       headers: { ...headers, ...socketOptions.headers },
     }),
     accessToken: options.accessToken,
+    takeover: options.takeover === true,
     clientType: 'cli',
     clientLabel: 'Text CLI',
     clientInstanceId: `text-cli-${process.pid}`,

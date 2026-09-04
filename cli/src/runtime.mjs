@@ -23,6 +23,7 @@ import {
 } from '../../shared/gateway-instance-lock.mjs'
 
 export {
+  createGatewayPairingTicket,
   readGatewayHealth,
 } from '../../shared/gateway-client.mjs'
 

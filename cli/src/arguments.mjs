@@ -22,6 +22,7 @@ const GATEWAY_ACTIONS = new Set([
   'stop',
   'restart',
   'status',
+  'pair',
   'uninstall',
 ])
 const BACKEND_PERMISSION_MODES = new Set(['native', 'full'])
@@ -101,6 +102,7 @@ export function parseArguments(argv, env = process.env) {
     realtimeModel: '',
     gatewayAction,
     url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
+    accessToken: String(env.QWEN_AUDIO_AGENT_ACCESS_TOKEN || '').trim(),
     sessionId: env.QWEN_AUDIO_AGENT_SESSION_ID || createVoiceSessionId(),
     audioMode: String(
       env.QWEN_AUDIO_AGENT_TUI_AUDIO_MODE || 'half',
@@ -243,7 +245,7 @@ export function parseArguments(argv, env = process.env) {
   }
   if (
     command === 'gateway'
-    && !['run', 'status'].includes(options.gatewayAction)
+    && !['run', 'status', 'pair'].includes(options.gatewayAction)
     && options.gatewayConfigurationSpecified
   ) {
     throw new Error(
@@ -282,6 +284,7 @@ export function helpText() {
     '  qwenaudio gateway install         安装并启动后台常驻服务',
     '  qwenaudio gateway start           启动后台服务',
     '  qwenaudio gateway status          查看 Gateway 状态',
+    '  qwenaudio gateway pair            创建远程客户端一次性配对码',
     '  qwenaudio gateway stop            停止后台服务',
     '  qwenaudio gateway restart         重启后台服务',
     '  qwenaudio gateway uninstall       移除后台常驻服务',

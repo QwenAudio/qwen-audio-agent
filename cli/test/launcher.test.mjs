@@ -63,6 +63,10 @@ function harness({ ownsProcesses = false } = {}) {
       inspectGateway: async () => ({
         backend: { kind: 'opencode', ok: true },
       }),
+      createPairingTicket: async url => {
+        calls.push(['pair', url])
+        return { code: 'PAIR-CODE', expiresAt: Date.now() + 60_000 }
+      },
       manageService: async action => {
         calls.push(['service', action])
         return {
@@ -335,6 +339,14 @@ test('installs, stops and reports the background Gateway service', async () => {
   ])
 })
 
+test('creates a one-time remote Client pairing code through the running Gateway', async () => {
+  const target = harness()
+  assert.equal(await main(['gateway', 'pair'], target.dependencies), 0)
+  assert.deepEqual(target.calls.map(call => call[0]), ['pair', 'stdout'])
+  assert.equal(target.calls[0][1], 'http://127.0.0.1:3101')
+  assert.match(target.calls[1][1], /PAIR-CODE/)
+})
+
 test('reports a configured frontend MCP failure in Gateway status', async () => {
   const target = harness()
   target.dependencies.inspectGateway = async () => ({
@@ -466,6 +478,7 @@ test('does not confuse a foreground Gateway with the background service', async 
 
 test('connects TUI and WebUI without starting services', async () => {
   const tui = harness()
+  tui.dependencies.env.QWEN_AUDIO_AGENT_ACCESS_TOKEN = 'remote-token'
   assert.equal(
     await main(['tui', '--audio-mode', 'full'], tui.dependencies),
     11,
@@ -475,6 +488,7 @@ test('connects TUI and WebUI without starting services', async () => {
     'instance.release',
   ])
   assert.equal(tui.calls[0][1].audioMode, 'full')
+  assert.equal(tui.calls[0][1].accessToken, 'remote-token')
 
   const web = harness()
   assert.equal(await main(['webui'], web.dependencies), 13)

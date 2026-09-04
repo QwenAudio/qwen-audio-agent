@@ -9,6 +9,7 @@ const projectRoot = resolve(sourceRoot, '../..')
 const sharedRoot = resolve(sourceRoot, '../../shared')
 const allowedDependencies = {
   app: new Set([
+    'access',
     'agent',
     'app',
     'backend',
@@ -24,6 +25,7 @@ const allowedDependencies = {
     'transport',
     'voice',
   ]),
+  access: new Set(['access', 'core', 'shared']),
   process: new Set(['process', 'shared']),
   core: new Set(['core', 'shared']),
   frontend: new Set(['frontend']),

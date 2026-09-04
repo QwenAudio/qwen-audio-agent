@@ -35,6 +35,9 @@ test('parses independent TUI and WebUI client commands', () => {
   assert.equal(tui.url, 'https://voice.example.com')
   assert.equal(tui.sessionId, 'project-one')
   assert.equal(tui.audioMode, 'full')
+  assert.equal(parseArguments(['tui'], {
+    QWEN_AUDIO_AGENT_ACCESS_TOKEN: 'remote-token',
+  }).accessToken, 'remote-token')
   assert.equal(
     parseArguments(['tui'], {
       QWEN_AUDIO_AGENT_TUI_AUDIO_MODE: 'FULL',
@@ -229,6 +232,7 @@ test('parses foreground and service Gateway commands', () => {
   )
   assert.equal(parseArguments(['gateway', 'start'], {}).gatewayAction, 'start')
   assert.equal(parseArguments(['gateway', 'stop'], {}).gatewayAction, 'stop')
+  assert.equal(parseArguments(['gateway', 'pair'], {}).gatewayAction, 'pair')
   assert.equal(
     parseArguments(['gateway', 'restart'], {}).gatewayAction,
     'restart',
@@ -269,6 +273,7 @@ test('documents the service and client commands', () => {
   assert.match(text, /qwenaudio \[gateway\]/)
   assert.match(text, /gateway install/)
   assert.match(text, /gateway uninstall/)
+  assert.match(text, /gateway pair/)
   assert.match(text, /qwenaudio tui/)
   assert.match(text, /qwenaudio webui/)
   assert.match(text, /qwenaudio status/)

@@ -250,6 +250,16 @@ export const config = {
     process.env.QWEN_AUDIO_AGENT_IDENTITY_MODE || 'personal'
   ).toLowerCase() === 'browser' ? 'browser' : 'personal',
   personalOwnerId: process.env.QWEN_AUDIO_AGENT_PERSONAL_OWNER_ID || 'user_personal',
+  gatewayAccessToken: String(
+    process.env.QWEN_AUDIO_AGENT_ACCESS_TOKEN || '',
+  ).trim(),
+  gatewayAccessKeys: String(
+    process.env.QWEN_AUDIO_AGENT_ACCESS_KEYS || '',
+  ).trim(),
+  gatewayDeviceStatePath: resolve(
+    runtimeEnvironment.configDirectory,
+    'state/gateway-devices.json',
+  ),
   agentProtocol: requestedAgentProtocol,
   backendOwnership,
   backendPermissionMode,

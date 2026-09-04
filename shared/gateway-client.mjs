@@ -11,3 +11,39 @@ export async function readGatewayHealth(baseUrl, fetchImpl = fetch) {
     return null
   }
 }
+
+export async function createGatewayPairingTicket(baseUrl, fetchImpl = fetch) {
+  const response = await fetchImpl(`${baseUrl}/api/access/pairing-tickets`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+    signal: AbortSignal.timeout(3000),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || !payload.code) {
+    const error = new Error(payload.error || `Gateway returned HTTP ${response.status}`)
+    error.code = payload.code || 'pairing_ticket_failed'
+    throw error
+  }
+  return payload
+}
+
+export async function pairGatewayDevice(
+  baseUrl,
+  { code, device } = {},
+  fetchImpl = fetch,
+) {
+  const response = await fetchImpl(`${baseUrl}/api/access/pair`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code, device }),
+    signal: AbortSignal.timeout(5000),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || !payload.access_token) {
+    const error = new Error(payload.error || `Gateway returned HTTP ${response.status}`)
+    error.code = payload.code || 'gateway_pairing_failed'
+    throw error
+  }
+  return payload
+}

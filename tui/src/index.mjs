@@ -76,6 +76,7 @@ function normalizeGatewayUrl(value) {
 export function parseArguments(argv, env = process.env) {
   const options = {
     url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
+    accessToken: String(env.QWEN_AUDIO_AGENT_ACCESS_TOKEN || '').trim(),
     sessionId: env.QWEN_AUDIO_AGENT_SESSION_ID || 'tui-main',
     audioMode: env.QWEN_AUDIO_AGENT_TUI_AUDIO_MODE || 'half',
   }
@@ -155,12 +156,16 @@ export function assertInteractiveTerminal(stdin = process.stdin) {
 }
 
 export async function readTuiHealth(baseUrl, {
+  accessToken = '',
   fetchImpl = fetch,
   timeoutMs = 5000,
 } = {}) {
   let response
   try {
     response = await fetchImpl(`${baseUrl}/api/health`, {
+      headers: accessToken
+        ? { Authorization: `Bearer ${accessToken}` }
+        : {},
       signal: AbortSignal.timeout(timeoutMs),
     })
   } catch (error) {
@@ -1092,7 +1097,9 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
   }
 
   assertInteractiveTerminal()
-  const { cookie, health } = await readTuiHealth(options.url)
+  const { cookie, health } = await readTuiHealth(options.url, {
+    accessToken: options.accessToken,
+  })
 
   let headers = cookie ? { Cookie: cookie } : {}
   let inputSampleRate = health.realtimeInputSampleRate || 16000
@@ -1504,7 +1511,10 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     if (closed || bridgeExited) return
     const nextClient = new GatewayClient({
       url: websocketUrl(options.url, options.sessionId),
-      createSocket: url => new WebSocket(url, { headers }),
+      createSocket: (url, socketOptions = {}) => new WebSocket(url, {
+        headers: { ...headers, ...socketOptions.headers },
+      }),
+      accessToken: options.accessToken,
       clientType: 'cli',
       clientLabel: 'CLI',
       clientInstanceId: `tui-${process.pid}`,
@@ -1543,6 +1553,17 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
           if (!closed) print(`${style('[连接错误]', 'red')} ${status.error?.message || '连接失败'}`)
         } else if (status.state === 'recovery_failed') {
           print(style(`[任务状态] ${status.error.message}`, 'yellow'))
+        } else if (status.state === 'occupied') {
+          setStatus('Gateway 正由同一用户的另一个客户端使用')
+          print(style(
+            '[客户端占用] 请先断开当前活动客户端，或从支持接管的客户端显式接管',
+            'yellow',
+          ))
+          close()
+        } else if (status.state === 'replaced') {
+          setStatus('当前连接已被同一用户的另一个客户端接管')
+          print(style('[连接已被接管]', 'yellow'))
+          close()
         } else if (status.state === 'disconnected') {
           gatewayClientState = reduceGatewayClientState(gatewayClientState, {
             type: GatewayServerEvent.GATEWAY_DISCONNECTED,
@@ -1574,7 +1595,9 @@ export async function runTui(options = parseArguments(process.argv.slice(2))) {
     reconnectTimer = setTimeout(async () => {
       if (closed || bridgeExited) return
       try {
-        const refreshed = await readTuiHealth(options.url)
+        const refreshed = await readTuiHealth(options.url, {
+          accessToken: options.accessToken,
+        })
         const nextRate = Number(
           refreshed.health.realtimeInputSampleRate,
         ) || inputSampleRate

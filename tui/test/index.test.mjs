@@ -129,6 +129,9 @@ test('parses a custom gateway, session and audio mode', () => {
   assert.equal(options.url, 'https://voice.example.com')
   assert.equal(options.sessionId, 'terminal-one')
   assert.equal(options.audioMode, 'full')
+  assert.equal(parseArguments([], {
+    QWEN_AUDIO_AGENT_ACCESS_TOKEN: 'remote-token',
+  }).accessToken, 'remote-token')
   assert.equal(
     parseArguments([], {
       QWEN_AUDIO_AGENT_TUI_AUDIO_MODE: 'FULL',
@@ -225,6 +228,7 @@ test('requires an interactive terminal for reliable manual controls', () => {
 test('bounds and validates the Gateway health check', async () => {
   let request
   const result = await readTuiHealth('http://127.0.0.1:3101', {
+    accessToken: 'remote-token',
     fetchImpl: async (url, init) => {
       request = { url, init }
       return {
@@ -242,6 +246,9 @@ test('bounds and validates the Gateway health check', async () => {
     timeoutMs: 25,
   })
   assert.equal(request.url, 'http://127.0.0.1:3101/api/health')
+  assert.deepEqual(request.init.headers, {
+    Authorization: 'Bearer remote-token',
+  })
   assert.ok(request.init.signal)
   assert.equal(result.cookie, 'qwaudio=value')
   assert.equal(result.health.backend.ok, true)

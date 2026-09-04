@@ -40,7 +40,10 @@ function trustedOrigins(allowedOrigins) {
 
 export function isAllowedOrigin(
   req,
-  { allowedOrigins = config.allowedOrigins } = {},
+  {
+    allowedOrigins = config.allowedOrigins,
+    authenticatedRemote = false,
+  } = {},
 ) {
   const requestHost = parsedHost(req.headers.host)
   if (!requestHost) return false
@@ -53,7 +56,9 @@ export function isAllowedOrigin(
   // CLI and other non-browser clients do not send Origin. They are accepted
   // only through a loopback address or an explicitly trusted reverse proxy.
   if (!origin) {
-    return LOOPBACK_HOSTS.has(requestHost.hostname) || trustedHost
+    return LOOPBACK_HOSTS.has(requestHost.hostname)
+      || trustedHost
+      || authenticatedRemote === true
   }
 
   const originUrl = new URL(origin)
@@ -72,7 +77,9 @@ export function isAllowedOrigin(
 }
 
 export function enforceSameOrigin(req, res, next) {
-  if (!isAllowedOrigin(req)) {
+  if (!isAllowedOrigin(req, {
+    authenticatedRemote: req.identity?.access === 'remote',
+  })) {
     res.status(403).json({ error: 'origin not allowed' })
     return
   }

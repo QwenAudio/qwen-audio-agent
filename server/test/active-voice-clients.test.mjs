@@ -65,6 +65,18 @@ test('a live previous owner blocks a new claim', () => {
   assert.equal(clients.isActive('owner-one', live), true)
 })
 
+test('an admitted Client takeover can replace the live voice owner', () => {
+  const clients = new ActiveVoiceClients()
+  let deactivated = false
+  const live = { isAlive: () => true, deactivate: () => { deactivated = true } }
+  const next = { isAlive: () => true }
+  clients.activate('owner-one', live)
+  const result = clients.activate('owner-one', next, { replace: true })
+  assert.equal(result.granted, true)
+  assert.equal(deactivated, true)
+  assert.equal(clients.isActive('owner-one', next), true)
+})
+
 test('text-only clients receive output without taking voice ownership', () => {
   assert.deepEqual(clientVoiceCapabilities({
     voiceEnabled: true,

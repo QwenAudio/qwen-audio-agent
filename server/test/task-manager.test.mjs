@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
+import { TaskNotificationPolicy } from '../src/task/task-state.mjs'
 
 test('uses one short task id across the public and execution layers', () => {
   const manager = new TaskManager()
@@ -429,6 +430,36 @@ test('claims a completed result once and releases an unplayed claim', async () =
   assert.equal(claimed.length, 1)
   manager.releaseNotificationClaims([task.id], { claimantId: 'voice-one' })
   assert.equal(manager.get(task.id).notificationStatus, 'pending')
+})
+
+test('keeps UI-owned work queryable without creating a voice notification', async () => {
+  const manager = new TaskManager()
+  const events = []
+  manager.subscribe(event => events.push(event))
+  const task = manager.create({
+    objective: '转换资料',
+    ownerId: 'owner',
+    sessionId: 'voice',
+    notificationPolicy: TaskNotificationPolicy.SILENT,
+    runner: async () => ({ content: '已收录' }),
+  })
+
+  await manager.wait(task.id)
+
+  const completed = manager.get(task.id)
+  assert.equal(completed.status, 'completed')
+  assert.equal(completed.result, '已收录')
+  assert.equal(completed.notificationPolicy, 'silent')
+  assert.equal(completed.notificationStatus, 'none')
+  assert.equal(
+    events.some(event => event.type === 'task.notification.pending'),
+    false,
+  )
+  assert.deepEqual(manager.claimNotifications({
+    ownerId: 'owner',
+    sessionId: 'voice',
+    claimantId: 'voice-one',
+  }), [])
 })
 
 test('a new voice session can deliver unfinished results for the same owner', async () => {

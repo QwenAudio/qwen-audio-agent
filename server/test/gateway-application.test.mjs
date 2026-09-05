@@ -11,6 +11,45 @@ import { GATEWAY_CLIENT_REVOKED_CLOSE_CODE } from '../../shared/gateway-client-p
 import { config } from '../src/core/config.mjs'
 import { createRealtimeProviderRegistry } from '../src/voice/providers/provider-registry.mjs'
 import { openAiCompatibleProtocol } from '../src/voice/providers/openai-compatible-protocol.mjs'
+import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
+import { SessionJournalRegistry } from '../src/session/session-journal-registry.mjs'
+import { TaskManager } from '../src/task/task-manager.mjs'
+import { TaskStore } from '../src/task/task-store.mjs'
+
+function createTestGatewayApplication(options = {}) {
+  // Application tests must never inherit the process-wide production task
+  // state. Besides making tests order-dependent, that used to write fixture
+  // work into ~/.config/qwaudio and later announce it to real voice clients.
+  const runtimeDirectory = mkdtempSync(join(tmpdir(), 'qwaudio-app-runtime-'))
+  const taskStore = options.taskStore || new TaskStore({
+    filePath: join(runtimeDirectory, 'tasks.json'),
+  })
+  const sessionJournal = options.sessionJournal || new SessionJournalRegistry({
+    directory: join(runtimeDirectory, 'sessions'),
+  })
+  const taskManager = options.taskManager || new TaskManager({
+    store: taskStore,
+    sessionJournal,
+  })
+  const application = createGatewayApplication({
+    agent: disabledBackend(),
+    remoteAccess: null,
+    conversationSync: options.conversationSync || new ConversationSync(),
+    taskManager,
+    taskStore,
+    sessionJournal,
+    ...options,
+  })
+  const close = application.close
+  application.close = async () => {
+    try {
+      await close()
+    } finally {
+      rmSync(runtimeDirectory, { recursive: true, force: true })
+    }
+  }
+  return application
+}
 
 function requestJson({ port, path, method = 'GET', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
@@ -87,9 +126,36 @@ function customTaskAnnouncementRuntime() {
 test('protects remote HTTP access and completes one-time device pairing', async t => {
   const directory = mkdtempSync(join(tmpdir(), 'qwa-app-access-'))
   const accessToken = 'application-remote-access-token-over-24-characters'
-  const application = createGatewayApplication({
+  const remoteAccessCalls = []
+  let remoteAccessEnabled = false
+  const remoteAccess = {
+    status: () => ({
+      available: true,
+      enabled: remoteAccessEnabled,
+      connected: remoteAccessEnabled,
+      published: remoteAccessEnabled,
+      state: remoteAccessEnabled ? 'connected' : 'disabled',
+      endpoint: remoteAccessEnabled
+        ? { url: 'https://voice.example.ts.net', secure: true }
+        : null,
+    }),
+    resume: async url => remoteAccessCalls.push(['resume', url]),
+    enable: async url => {
+      remoteAccessCalls.push(['enable', url])
+      remoteAccessEnabled = true
+      return remoteAccess.status()
+    },
+    disable: async () => {
+      remoteAccessCalls.push(['disable'])
+      remoteAccessEnabled = false
+      return { ...remoteAccess.status(), changed: true }
+    },
+    close: async () => remoteAccessCalls.push(['close']),
+  }
+  const application = createTestGatewayApplication({
     config: {
       ...config,
+      host: '0.0.0.0',
       port: 0,
       webSearchProvider: 'none',
       webSearchMcpUrl: '',
@@ -102,6 +168,7 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     agent: disabledBackend(),
     frontendMcp: null,
     frontendOpenApi: null,
+    remoteAccess,
   })
   t.after(async () => {
     await application.close()
@@ -110,6 +177,24 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   application.start()
   if (!application.server.listening) await once(application.server, 'listening')
   const { port } = application.server.address()
+
+  const initialRemoteAccess = await requestJson({
+    port,
+    path: '/api/access/remote',
+    headers: { Host: `127.0.0.1:${port}` },
+  })
+  assert.equal(initialRemoteAccess.status, 200)
+  assert.equal(initialRemoteAccess.body.state, 'disabled')
+  const enabledRemoteAccess = await requestJson({
+    port,
+    path: '/api/access/remote',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: {},
+  })
+  assert.equal(enabledRemoteAccess.status, 200)
+  assert.equal(enabledRemoteAccess.body.endpoint.url, 'https://voice.example.ts.net')
+  assert.equal(remoteAccessCalls.at(-1)[1], `http://127.0.0.1:${port}`)
 
   const denied = await requestJson({
     port,
@@ -128,6 +213,15 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   })
   assert.equal(authenticated.status, 200)
   assert.match(authenticated.headers['set-cookie'][0], /HttpOnly/)
+  const deniedRemoteManagement = await requestJson({
+    port,
+    path: '/api/access/remote',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+  assert.equal(deniedRemoteManagement.status, 403)
 
   const ticket = await requestJson({
     port,
@@ -190,11 +284,25 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     },
   })
   assert.equal(deniedAfterRevocation.status, 401)
+  const disabledRemoteAccess = await requestJson({
+    port,
+    path: '/api/access/remote',
+    method: 'DELETE',
+    headers: { Host: `127.0.0.1:${port}` },
+  })
+  assert.equal(disabledRemoteAccess.status, 200)
+  assert.equal(disabledRemoteAccess.body.state, 'disabled')
+  assert.deepEqual(remoteAccessCalls.slice(0, 3).map(call => call[0]), [
+    'resume',
+    'enable',
+    'disable',
+  ])
 })
 
 test('passes the Task announcement factory through the application composition root', async () => {
   const calls = []
-  const application = createGatewayApplication({
+  let finishTask
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -211,6 +319,14 @@ test('passes the Task announcement factory through the application composition r
       return customTaskAnnouncementRuntime()
     },
   })
+  const task = application.services.taskManager.create({
+    objective: '验证实例级任务依赖',
+    ownerId: 'user_personal',
+    sessionId: 'announcement-factory',
+    notificationPolicy: 'silent',
+    runner: () => new Promise(resolve => { finishTask = resolve }),
+  })
+  await new Promise(resolve => setImmediate(resolve))
   application.start()
   if (!application.server.listening) await once(application.server, 'listening')
   const { port } = application.server.address()
@@ -222,7 +338,10 @@ test('passes the Task announcement factory through the application composition r
     assert.equal(calls.length, 1)
     assert.equal(typeof calls[0].resultOptions.getFrontend, 'function')
     assert.equal(typeof calls[0].progressOptions.isTaskActive, 'function')
+    assert.equal(calls[0].progressOptions.isTaskActive(task.id), true)
   } finally {
+    finishTask?.({ content: '完成' })
+    await application.services.taskManager.wait(task.id)
     socket.close()
     await application.close()
   }
@@ -284,7 +403,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
     }),
     close: async () => { openApiClosed = true },
   }
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -364,7 +483,7 @@ test('serves the bounded conversation projection without exposing journal record
     },
     close: () => { closed = true },
   }
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -413,7 +532,7 @@ test('enables knowledge only when an external provider is injected', async () =>
     retrieve: async () => ({ results: [] }),
     close: async () => { closed = true },
   }
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -467,7 +586,7 @@ test('replaces Markdown memory through the public provider boundary', async () =
     health: () => ({ ok: true, external: true }),
     close: async () => { closed = true },
   }
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -556,7 +675,7 @@ test('lets a v2 provider exclusively own automatic memory learning', async () =>
 })
 
 test('can disable memory without constructing the default provider', async () => {
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -604,7 +723,7 @@ test('serves and edits frontend memory through the generic client control plane'
     health: () => ({ ok: true, configured: true, provider: { key: 'test' } }),
     close: async () => {},
   }
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -679,7 +798,7 @@ test('serves and edits frontend memory through the generic client control plane'
 // config 是模块级单例（import 时已读完 env），所以这里注入伪 config
 // 而不是改 process.env —— 后者在同一进程内无效。
 test('leaves the new memory modules unwired unless explicitly enabled', async () => {
-  const app = createGatewayApplication({
+  const app = createTestGatewayApplication({
     config: { ...config, reminderSchedulerEnabled: false },
     autoStart: false,
   })
@@ -701,7 +820,7 @@ test('wires the domain library on its own switch and imports a local file', asyn
   const source = join(directory, '手册.md')
   writeFileSync(source, '# 信用卡业务手册\n\n## 年费规则\n普卡首年免年费。\n')
   const documents = join(directory, 'workspace', 'domain')
-  const app = createGatewayApplication({
+  const app = createTestGatewayApplication({
     config: {
       ...config,
       reminderSchedulerEnabled: false,
@@ -740,7 +859,7 @@ test('converts a PDF through the BackendPort and ingests what the backend wrote'
   writeFileSync(source, '%PDF-1.7 pretend this is a PDF')
   const documents = join(directory, 'workspace', 'domain')
   const submitted = []
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -792,6 +911,13 @@ test('converts a PDF through the BackendPort and ingests what the backend wrote'
     assert.ok(options.signal, 'signal 必须透传，否则取消传不到后端')
     assert.equal(typeof options.onEvent, 'function', 'onEvent 必须透传，否则没有进度')
 
+    // 资料库面板已经轮询并呈现导入结果；它仍是可查询/可取消的用户任务，
+    // 但不能在稍后连接的语音会话里再次播报。
+    const conversion = application.services.taskManager.get(accepted.task_id)
+    assert.equal(conversion.kind, 'domain_conversion')
+    assert.equal(conversion.notificationPolicy, 'silent')
+    assert.equal(conversion.notificationStatus, 'none')
+
     // 后端写下的文件被收录了
     const [entry] = application.services.domainLibrary.list(options.ownerId)
     assert.equal(entry.path, join(documents, 'manual.md'))
@@ -810,7 +936,7 @@ test('defaults the domain document directory into the shared backend workspace',
 // 会话摘要是独立开关：它不依赖偏好自更新，也不该被后者带起来。
 test('wires session digests and the summariser on their own switch', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-digest-wire-'))
-  const app = createGatewayApplication({
+  const app = createTestGatewayApplication({
     config: {
       ...config,
       reminderSchedulerEnabled: false,
@@ -854,7 +980,7 @@ test('wires session digests and the summariser on their own switch', async () =>
 
 test('wires rolling summary and preference learning when enabled', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-wire-'))
-  const app = createGatewayApplication({
+  const app = createTestGatewayApplication({
     config: {
       ...config,
       reminderSchedulerEnabled: false,

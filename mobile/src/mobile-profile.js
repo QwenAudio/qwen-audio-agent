@@ -39,7 +39,7 @@ export async function pairMobileGateway(invitationUrl, {
   const invitation = assertGatewayInvitationActive(decodeGatewayInvitation(invitationUrl))
   const gateway = new URL(invitation.gateway_url)
   if (gateway.protocol !== 'https:') {
-    const error = new Error('移动端只连接 HTTPS Gateway，请先启用 Tailscale HTTPS')
+    const error = new Error('移动端只连接 HTTPS Gateway，请先在电脑上开启远程访问')
     error.code = 'mobile_gateway_requires_https'
     throw error
   }

@@ -1,7 +1,10 @@
 export {
   createGatewayPairingTicket,
+  disableGatewayRemoteAccess,
+  enableGatewayRemoteAccess,
   listGatewayDevices,
   pairGatewayDevice,
+  readGatewayRemoteAccess,
   revokeGatewayDevice,
 } from './gateway-client.mjs'
 

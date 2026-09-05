@@ -4,22 +4,25 @@
 
 By default, the Gateway binds to loopback and trusts only literal loopback Host/Origin. Remote
 requests require a Gateway access credential before they can reach HTTP or WebSocket business
-APIs. Do not expose the port directly to the public Internet; use a trusted VPN or an HTTPS/WSS
-reverse proxy.
+APIs. Do not expose the Gateway's loopback port directly to the public Internet.
 
-For the reference private-network path, install and sign in to the Tailscale app on the Gateway
-host and remote device, then run:
+Built-in remote access is owned by the Gateway through an optional tsnet component. The
+Tailscale app is not required on either the host or the remote device:
 
 ```bash
 qwenaudio gateway remote enable
 qwenaudio gateway remote invite
 ```
 
-The first command publishes the loopback Gateway on a dedicated Tailscale Serve HTTPS port;
-the second prints a short-lived invitation for a remote Client. The adapter refuses to overwrite
-an unrelated Serve route. Use `gateway remote status`, `devices`, `revoke ID`, and `disable` to
-manage it. `--remote-mode tcp` is a native-Client fallback when tailnet HTTPS is unavailable;
-browser and Mobile microphone access should use the default HTTPS mode.
+On first use, the Gateway downloads a SHA-256-verified component and provides a one-time browser
+authorization flow. After authorization, tsnet publishes the loopback Gateway through Tailscale
+Funnel as an HTTPS/WSS endpoint; the second command prints a short-lived Client invitation. Use
+`gateway remote status`, `devices`, `revoke ID`, and `disable` to manage it. The Gateway owns this
+state; Desktop is only an optional graphical management surface.
+
+Funnel requires MagicDNS, HTTPS, and Funnel permission in the tailnet and is subject to Tailscale's
+bandwidth limits. Publishing the endpoint does not bypass Gateway authentication: every remote
+business request except the one-time pairing shell requires a paired-device credential.
 
 For one personal access key:
 

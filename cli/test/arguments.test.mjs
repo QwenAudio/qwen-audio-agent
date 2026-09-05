@@ -252,12 +252,10 @@ test('parses foreground and service Gateway commands', () => {
   assert.equal(parseArguments(['gateway', 'stop'], {}).gatewayAction, 'stop')
   assert.equal(parseArguments(['gateway', 'pair'], {}).gatewayAction, 'pair')
   const remote = parseArguments([
-    'gateway', 'remote', 'invite', '--remote-port', '9443', '--json',
+    'gateway', 'remote', 'invite', '--json',
   ], {})
   assert.equal(remote.gatewayAction, 'remote')
   assert.equal(remote.remoteAction, 'invite')
-  assert.equal(remote.remotePort, 9443)
-  assert.equal(remote.remoteMode, 'https')
   assert.equal(remote.json, true)
   assert.equal(
     parseArguments(['gateway', 'remote', 'revoke', 'phone-one'], {}).remoteDeviceId,

@@ -1,6 +1,7 @@
 import {
   isTaskActive,
   isUserWork,
+  shouldNotifyTaskCompletion,
   TaskStatus,
 } from './task-state.mjs'
 
@@ -43,7 +44,7 @@ export function taskRecoveryAction(task) {
 }
 
 export function recoveredNotificationStatus(task, action) {
-  if (!isUserWork(task)) return 'none'
+  if (!shouldNotifyTaskCompletion(task)) return 'none'
   if (action === TaskRecoveryAction.FAIL) return 'pending'
   if ([
     TaskRecoveryAction.RESCHEDULE,

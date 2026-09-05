@@ -25,9 +25,12 @@ import {
   isTaskCancellable,
   isTaskTerminal,
   isUserWork,
+  normalizeTaskNotificationPolicy,
   normalizeTaskScope,
   persistedTask,
   publicTask,
+  shouldNotifyTaskCompletion,
+  TaskNotificationPolicy,
   TaskScope,
   TaskStatus,
   transitionTask,
@@ -147,6 +150,9 @@ export class TaskManager {
     let recoveryChanged = false
     for (const saved of records) {
       saved.scope = normalizeTaskScope(saved.scope)
+      saved.notificationPolicy = normalizeTaskNotificationPolicy(
+        saved.notificationPolicy,
+      )
       if (isUserWork(saved) && !/^task_\d+$/u.test(String(saved.id || ''))) {
         const legacy = /^job_(\d+)$/u.exec(String(saved.jobId || ''))
         const candidate = legacy ? `task_${legacy[1]}` : ''
@@ -293,11 +299,11 @@ export class TaskManager {
         transitionTask(task, TaskStatus.FAILED)
         task.error = 'qwen-audio-agent 重启时这项项目任务失去连接，请重新提交。'
         task.completedAt = Date.now()
-        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
+        task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
         task.promise = Promise.resolve(publicTask(task))
         task.resolve = null
         this.emit(TaskDomainEvent.FAILED, task)
-        if (isUserWork(task)) {
+        if (shouldNotifyTaskCompletion(task)) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
         continue
@@ -422,6 +428,7 @@ export class TaskManager {
     scope,
     parentTaskId = null,
     priority = 0,
+    notificationPolicy = TaskNotificationPolicy.ANNOUNCE,
     runner,
     canceler,
   }) {
@@ -465,6 +472,7 @@ export class TaskManager {
       cancellation: null,
       authorization: null,
       inputRequest: null,
+      notificationPolicy: normalizeTaskNotificationPolicy(notificationPolicy),
       notificationStatus: 'none',
       notificationClaimantId: null,
       notificationClaimedAt: null,
@@ -523,6 +531,7 @@ export class TaskManager {
       cancellation: null,
       authorization: null,
       inputRequest: null,
+      notificationPolicy: TaskNotificationPolicy.ANNOUNCE,
       notificationStatus: 'none',
       notificationClaimantId: null,
       notificationClaimedAt: null,
@@ -705,12 +714,14 @@ export class TaskManager {
           task.completedAt = Date.now()
           task.elapsedMs = task.startedAt
             ? task.completedAt - task.startedAt : 0
-          task.notificationStatus = 'pending'
+          task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
           clearInterval(task.progressTimer)
           task.progressTimer = null
           this.releaseScheduler(task)
           this.emit(TaskDomainEvent.FAILED, task)
-          this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+          if (shouldNotifyTaskCompletion(task)) {
+            this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+          }
           this.persistDeferred()
           this.drain()
         }, 5000)
@@ -768,7 +779,7 @@ export class TaskManager {
         task.elapsedMs = task.startedAt
           ? task.completedAt - task.startedAt
           : 0
-        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
+        task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
         task.terminalHandled = true
         this.releaseScheduler(task)
         this.emit(
@@ -777,7 +788,7 @@ export class TaskManager {
             : TaskDomainEvent.FAILED,
           task,
         )
-        if (isUserWork(task)) {
+        if (shouldNotifyTaskCompletion(task)) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
         task.resolve?.(publicTask(task))
@@ -839,11 +850,11 @@ export class TaskManager {
         task.elapsedMs = task.startedAt
           ? task.completedAt - task.startedAt
           : 0
-        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
+        task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
         task.terminalHandled = true
         this.releaseScheduler(task)
         this.emit(TaskDomainEvent.FAILED, task)
-        if (isUserWork(task)) {
+        if (shouldNotifyTaskCompletion(task)) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
         task.resolve?.(publicTask(task))

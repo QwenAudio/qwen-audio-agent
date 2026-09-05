@@ -113,8 +113,6 @@ is unsupported and breaks without notice.
 | `qwen-audio-agent/gateway-client-profiles` | Reference capability profiles for WebUI, Desktop, and TUI |
 | `qwen-audio-agent/gateway-access-client` | Client helpers for creating a local one-time pairing ticket and exchanging it for a remote device token |
 | `qwen-audio-agent/gateway-remote-access` | Versioned endpoint-descriptor, connection-profile, and invitation schemas; profiles contain secure-store references rather than credentials |
-| `qwen-audio-agent/gateway-endpoint-publishers` | Provider registry plus built-in local and manual endpoint publishers |
-| `qwen-audio-agent/gateway-tailscale-publisher` | Host-only Tailscale endpoint publisher; Tailscale details remain outside Gateway Core and GCP |
 | `qwen-audio-agent/gateway-connection-profiles` | Versioned connection-profile persistence and the native Client credential-store port |
 | `qwen-audio-agent/client-events` | Client Event definition registry, built-in definitions, routing policies, and `GatewayEventRouter` for Gateway extensions |
 | `qwen-audio-agent/client-actions` | `ClientActionPort`, built-in action names, capability mapping, request/result correlation, deadlines, and in-flight deduplication |

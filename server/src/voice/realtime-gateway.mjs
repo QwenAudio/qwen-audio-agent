@@ -10,9 +10,9 @@ import {
   createTaskAnnouncementRuntime,
   resolveTaskAnnouncementRuntime,
 } from './announcement/task-announcement-runtime.mjs'
-import { config } from '../core/config.mjs'
-import { logger } from '../core/logger.mjs'
-import { conversationSync } from '../conversation/conversation-sync.mjs'
+import { config as defaultConfig } from '../core/config.mjs'
+import { logger as defaultLogger } from '../core/logger.mjs'
+import { conversationSync as defaultConversationSync } from '../conversation/conversation-sync.mjs'
 import { InputAssetRegistry } from './input-asset-registry.mjs'
 import { normalizeClientContext } from '../conversation/frontend-agent-context.mjs'
 import {
@@ -20,7 +20,7 @@ import {
   realtimeEventErrorMessage,
 } from './realtime-provider.mjs'
 import { isAllowedOrigin } from '../core/request-security.mjs'
-import { taskManager } from '../task/task-manager.mjs'
+import { taskManager as defaultTaskManager } from '../task/task-manager.mjs'
 import { TaskDomainEvent } from '../task/task-events.mjs'
 import { recordTaskResult } from '../conversation/task-result-projector.mjs'
 import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
@@ -169,6 +169,10 @@ export function attachRealtimeGateway(server, {
   permissionPolicy,
   inputAssets = new InputAssetRegistry(),
   inputArbitration = null,
+  taskManager = defaultTaskManager,
+  conversationSync = defaultConversationSync,
+  config = defaultConfig,
+  logger = defaultLogger,
   realtimeProviderRegistry = defaultRealtimeProviderRegistry,
   defaultRealtimeProvider = config.audioProvider,
   realtimeFrontendFactory = undefined,

@@ -55,10 +55,16 @@ export async function pairGatewayDevice(
   return payload
 }
 
-async function gatewayManagementRequest(baseUrl, path, options, fetchImpl) {
+async function gatewayManagementRequest(
+  baseUrl,
+  path,
+  options,
+  fetchImpl,
+  { timeoutMs = 3000 } = {},
+) {
   const response = await fetchImpl(`${baseUrl}${path}`, {
     ...options,
-    signal: AbortSignal.timeout(3000),
+    signal: AbortSignal.timeout(timeoutMs),
   })
   const payload = response.status === 204
     ? null
@@ -84,6 +90,34 @@ export function revokeGatewayDevice(baseUrl, deviceId, fetchImpl = fetch) {
   return gatewayManagementRequest(
     baseUrl,
     `/api/access/devices/${encodeURIComponent(deviceId)}`,
+    { method: 'DELETE' },
+    fetchImpl,
+  )
+}
+
+export function readGatewayRemoteAccess(baseUrl, fetchImpl = fetch) {
+  return gatewayManagementRequest(
+    baseUrl,
+    '/api/access/remote',
+    { method: 'GET' },
+    fetchImpl,
+  )
+}
+
+export function enableGatewayRemoteAccess(baseUrl, fetchImpl = fetch) {
+  return gatewayManagementRequest(
+    baseUrl,
+    '/api/access/remote',
+    { method: 'POST' },
+    fetchImpl,
+    { timeoutMs: 180_000 },
+  )
+}
+
+export function disableGatewayRemoteAccess(baseUrl, fetchImpl = fetch) {
+  return gatewayManagementRequest(
+    baseUrl,
+    '/api/access/remote',
     { method: 'DELETE' },
     fetchImpl,
   )

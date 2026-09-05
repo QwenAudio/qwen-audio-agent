@@ -75,20 +75,27 @@ function harness({ ownsProcesses = false } = {}) {
         calls.push(['pair', url])
         return { code: 'PAIR-CODE', expiresAt: Date.now() + 60_000 }
       },
-      createRemotePublisher: () => ({
-        inspect: async () => ({
-          available: true,
-          connected: true,
-          published: true,
-          endpoint: { url: 'https://voice.example.ts.net:8443' },
-        }),
-        publish: async () => ({
+      readRemoteAccess: async () => ({
+        available: true,
+        enabled: true,
+        connected: true,
+        published: true,
+        state: 'connected',
+        endpoint: { url: 'https://voice.example.ts.net:8443' },
+      }),
+      enableRemoteAccess: async () => ({
+        available: true,
+        enabled: true,
+        connected: true,
+        published: true,
+        state: 'connected',
+        endpoint: {
           url: 'https://voice.example.ts.net:8443',
           secure: true,
-          publisher: 'tailscale',
-        }),
-        unpublish: async () => ({ changed: true, published: false }),
+        },
       }),
+      disableRemoteAccess: async () => ({ changed: true, published: false }),
+      openExternal: async url => calls.push(['open', url]),
       listPairedDevices: async url => {
         calls.push(['devices', url])
         return { devices: [{ id: 'phone-one', label: 'Phone' }] }
@@ -376,7 +383,7 @@ test('creates a one-time remote Client pairing code through the running Gateway'
   assert.match(target.calls[1][1], /PAIR-CODE/)
 })
 
-test('manages a Tailscale endpoint and creates a portable invitation', async () => {
+test('manages a Gateway remote endpoint and creates a portable invitation', async () => {
   const enabled = harness()
   assert.equal(await main(['gateway', 'remote', 'enable'], enabled.dependencies), 0)
   assert.match(enabled.calls.at(-1)[1], /voice\.example\.ts\.net/)
@@ -400,6 +407,25 @@ test('manages a Tailscale endpoint and creates a portable invitation', async () 
   assert.deepEqual(revoked.calls.find(call => call[0] === 'revoke'), [
     'revoke', 'http://127.0.0.1:3101', 'phone-one',
   ])
+})
+
+test('opens the one-time remote network setup page when required', async () => {
+  const target = harness()
+  target.dependencies.enableRemoteAccess = async () => ({
+    available: true,
+    enabled: true,
+    connected: false,
+    published: false,
+    state: 'error',
+    actionUrl: 'https://tailscale.com/s/https',
+    error: { code: 'funnel_start_failed', message: 'HTTPS is required' },
+  })
+
+  assert.equal(await main(['gateway', 'remote', 'enable'], target.dependencies), 0)
+  assert.deepEqual(target.calls.find(call => call[0] === 'open'), [
+    'open', 'https://tailscale.com/s/https',
+  ])
+  assert.match(target.calls.at(-1)[1], /完成远程访问网络设置/)
 })
 
 test('reports a configured frontend MCP failure in Gateway status', async () => {

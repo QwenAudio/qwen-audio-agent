@@ -114,24 +114,38 @@ let updaterState = null
 let startupError = null
 let recordingWakeShortcut = false
 let realtimeVoiceDrafts = createRealtimeVoiceDrafts()
+let remoteAccessRefreshTimer = null
 const defaultWakeShortcut = 'CommandOrControl+Shift+Space'
 const defaultRealtimeBaseUrl = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
 const macPlatform = /Mac|iPhone|iPad/.test(navigator.platform)
 
 function renderRemoteAccess(value) {
-  const available = value?.available === true
-  const connected = value?.connected === true
+  const state = value?.state || 'disabled'
+  const enabled = value?.enabled === true
   const published = value?.published === true
-  remoteAccessStatus.textContent = !available
-    ? t('需要安装 Tailscale')
-    : !connected
-      ? t('请先登录 Tailscale')
-      : published
-        ? t('已开启')
-        : t('未开启')
-  enableRemoteAccess.disabled = !connected || published
+  remoteAccessStatus.textContent = published
+    ? t('已开启')
+    : state === 'installing'
+      ? t('正在准备远程访问…')
+      : state === 'starting'
+        ? t('正在连接远程网络…')
+        : state === 'auth_required'
+          ? t('等待网页授权')
+          : value?.actionUrl
+            ? t('需要完成网络设置')
+            : state === 'error'
+              ? localizeDesktopError(value?.error?.message || '远程访问异常', translate)
+              : t('未开启')
+  enableRemoteAccess.disabled = published || ['installing', 'starting'].includes(state)
   inviteRemoteClient.disabled = !published
-  disableRemoteAccess.disabled = !published
+  disableRemoteAccess.disabled = !enabled
+  clearTimeout(remoteAccessRefreshTimer)
+  remoteAccessRefreshTimer = null
+  if (['installing', 'starting', 'auth_required'].includes(state)) {
+    remoteAccessRefreshTimer = setTimeout(() => {
+      void refreshRemoteAccess()
+    }, 2_000)
+  }
 }
 
 async function refreshRemoteAccess() {

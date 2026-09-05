@@ -3,7 +3,6 @@ import test from 'node:test'
 import {
   createGatewayInvitation,
   decodeGatewayInvitation,
-  defineGatewayEndpointPublisher,
   encodeGatewayBrowserInvitation,
   encodeGatewayInvitation,
   parseGatewayConnectionProfile,
@@ -11,33 +10,21 @@ import {
   parseGatewayInvitation,
 } from '../shared/gateway-remote-access.mjs'
 
-test('endpoint publisher contract is small and provider-neutral', async () => {
-  const publisher = defineGatewayEndpointPublisher({
-    id: 'test-publisher',
-    inspect: async () => ({ available: true }),
-    publish: async () => ({ url: 'https://gateway.example.test' }),
-    unpublish: async () => ({ published: false }),
-  })
-  assert.equal(publisher.id, 'test-publisher')
-  assert.deepEqual(await publisher.inspect(), { available: true })
-  assert.throws(() => defineGatewayEndpointPublisher({
-    id: 'incomplete',
-    inspect: async () => ({}),
-  }), /requires publish/)
-})
-
-test('remote endpoint descriptors normalize an origin and preserve publisher neutrality', () => {
+test('remote endpoint descriptors expose only transport-neutral connection data', () => {
   assert.deepEqual(parseGatewayEndpointDescriptor({
     url: 'https://gateway.example.ts.net/',
     secure: true,
-    publisher: 'tailscale',
   }), {
     version: 1,
     url: 'https://gateway.example.ts.net',
     transport: 'websocket',
     secure: true,
-    publisher: 'tailscale',
   })
+  assert.throws(() => parseGatewayEndpointDescriptor({
+    url: 'https://gateway.example.test',
+    secure: true,
+    publisher: 'implementation-detail',
+  }))
 })
 
 test('remote endpoint descriptors reject contaminated or inconsistent URLs', () => {
@@ -51,13 +38,11 @@ test('remote endpoint descriptors reject contaminated or inconsistent URLs', () 
     assert.throws(() => parseGatewayEndpointDescriptor({
       url,
       secure: true,
-      publisher: 'manual',
     }))
   }
   assert.throws(() => parseGatewayEndpointDescriptor({
     url: 'http://gateway.example.test',
     secure: true,
-    publisher: 'manual',
   }))
 })
 

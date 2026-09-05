@@ -20,7 +20,7 @@ test('keeps the existing same-origin browser transport by default', () => {
 
 test('routes mobile HTTP and WebSocket traffic through a secure remote profile', async () => {
   configureGatewayTransport({
-    gatewayUrl: 'https://machine.tailnet.ts.net',
+    gatewayUrl: 'https://voice.example.test',
     accessToken: 'qwa_example-device-token_1234567890',
     clientType: 'mobile',
   })
@@ -29,14 +29,14 @@ test('routes mobile HTTP and WebSocket traffic through a secure remote profile',
     requests.push({ url, init })
     return { ok: true }
   })
-  assert.equal(requests[0].url, 'https://machine.tailnet.ts.net/api/health')
+  assert.equal(requests[0].url, 'https://voice.example.test/api/health')
   assert.equal(
     requests[0].init.headers.get('authorization'),
     'Bearer qwa_example-device-token_1234567890',
   )
   assert.equal(
     gatewayRealtimeUrl('mobile-session'),
-    'wss://machine.tailnet.ts.net/api/realtime?sessionId=mobile-session',
+    'wss://voice.example.test/api/realtime?sessionId=mobile-session',
   )
   const sockets = []
   class FakeWebSocket {

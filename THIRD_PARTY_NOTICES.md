@@ -23,6 +23,7 @@ qwen-audio-agent 使用并分发若干开源组件。项目自身使用 Apache L
 | Model Context Protocol TypeScript SDK | MIT | https://github.com/modelcontextprotocol/typescript-sdk |
 | Zod | MIT | https://github.com/colinhacks/zod |
 | concurrently | MIT | https://github.com/open-cli-tools/concurrently |
+| Tailscale tsnet | BSD-3-Clause | https://github.com/tailscale/tailscale |
 
 完整、可复现的依赖版本记录在 `package-lock.json`。npm 安装保留每个依赖包自带的
 许可证文件；Electron 安装包同时保留 Electron/Chromium 自带的许可证与 notices。

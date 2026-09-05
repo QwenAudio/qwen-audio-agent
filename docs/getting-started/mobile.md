@@ -10,17 +10,23 @@ TUI, without importing Realtime Provider or backend-protocol internals.
 
 ## Connect
 
-1. Install and sign in to [Tailscale](https://tailscale.com/download) on the
-   computer and phone, and join the same tailnet.
-2. Start the Gateway on the computer, then enable remote access:
+1. Start the Gateway on the computer, then enable remote access:
 
    ```bash
    qwenaudio gateway remote enable
+   ```
+
+   On first use, the Gateway prepares its optional remote component and prints
+   a browser authorization URL. Follow that page once; neither the computer nor
+   the phone needs an additional remote-network client installed.
+2. After authorization completes, create an invitation:
+
+   ```bash
    qwenaudio gateway remote invite
    ```
 
-3. Open Mobile and scan the pairing code shown by the command or Desktop
-   settings. You may also paste the `qwaudio://connect…` link.
+3. Open Mobile and scan the QR code shown in Desktop settings. When using the
+   CLI, paste the emitted `qwaudio://connect…` link.
 4. Grant microphone access for the first call. Later launches reconnect
    automatically. If Desktop, WebUI, or TUI is active, Mobile asks before taking
    over.
@@ -29,6 +35,10 @@ An invitation is short-lived and single-use. Pairing creates an independent,
 revocable device credential. Run `qwenaudio gateway remote devices` on the host
 to inspect devices and `qwenaudio gateway remote revoke <device-id>` to revoke
 one.
+
+The public HTTPS/WSS route remains protected by the paired-device credential.
+See [Remote Access Security](../configuration/advanced.md#remote-access-security)
+for implementation details, authorization requirements, and troubleshooting.
 
 ## Development builds
 

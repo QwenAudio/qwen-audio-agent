@@ -37,23 +37,22 @@ This family is where the model/transport distinction matters:
 
 | | Model | Current client transport |
 | --- | --- | --- |
-| Input | text, audio, **image** | text, audio |
+| Input | text, audio, **image** | text, audio, JPEG observation |
 | Output | text, audio | text, audio |
 
-The models accept images; this release of qwen-audio-agent does not ship
-the client and Gateway paths for them yet. JPEG observation frames and
-native video transport stay disabled until those paths land — clients
-show the image capability as unavailable rather than pretending to send
-pixels. The capability tables above are exactly what the Gateway reports
-to clients over the health endpoint, so UIs render the same boundary.
+The models accept images, and the WebUI can explicitly open the camera for
+continuous observation. It sends at most one bounded JPEG frame per second,
+keeps at most eight recent frames in memory, and never creates a response from
+observation alone. Native video and observation on the legacy Audio family
+remain unavailable. The capability tables above are exactly what the Gateway
+reports to clients over the health endpoint, so UIs render the same boundary.
 
 ## Which family should I pick?
 
 - **Audio** (`qwen-audio-3.0-realtime-*`) — the default; voice-first
   conversation, nothing else needed.
-- **Omni** (`qwen3.5-omni-*-realtime`) — pick when you want the
-  image-ready model family today, knowing image transport is still
-  gated off.
+- **Omni** (`qwen3.5-omni-*-realtime`) — pick when you want image-ready
+  models and explicit WebUI camera observation.
 
 ## Read next
 

@@ -4,6 +4,11 @@
 
 - 实现 `schedule_reminder` 的 `daily`、`weekly` 和 `weekdays` 重复触发；每次触发
   会生成下一周期的独立任务，并按客户端时区保留本地时间。
+- WebUI 新增用户主动触发的一次性拍照输入：照片会在浏览器本地压缩后作为附件发送，
+  不会自动调用模型或持久化摄像头画面。
+- WebUI 支持用户主动开启摄像头连续观察：约每秒发送一帧 JPEG，内存中最多保留最近
+  8 帧；不会因观察自动触发模型回复，页面隐藏、断线或停止时会释放摄像头。
+- 更新已修复的 `fast-uri`、`@xmldom/xmldom` 与 `qs` 传递依赖，恢复发布审计通过。
 - 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
   `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
   模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。

@@ -37,7 +37,7 @@ export function parseDataUrl(value) {
 
 function normalizeSource(source) {
   if (!source || typeof source !== 'object') return undefined
-  const type = ['clipboard', 'file', 'resource'].includes(source.type)
+  const type = ['clipboard', 'file', 'resource', 'camera'].includes(source.type)
     ? source.type
     : 'file'
   const text = source.text && typeof source.text === 'object'

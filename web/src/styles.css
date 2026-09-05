@@ -36,6 +36,7 @@
 }
 
 .composer-attach,
+.composer-camera,
 .composer-send {
   min-width: 42px;
   height: 42px;
@@ -44,6 +45,76 @@
   color: inherit;
   background: rgba(255, 255, 255, 0.1);
   cursor: pointer;
+}
+
+.composer-camera svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+  vertical-align: middle;
+}
+
+.camera-capture {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.camera-capture video {
+  width: 100%;
+  max-height: 320px;
+  border-radius: 10px;
+  background: #000;
+  object-fit: contain;
+}
+
+.camera-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.camera-observation-status {
+  color: #b8b0ff;
+  font-size: 12px;
+}
+
+.camera-observation {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(154, 139, 255, 0.45);
+  border-radius: 13px;
+  color: #e5e0ff;
+  background: rgba(109, 93, 252, 0.16);
+}
+
+.camera-observation.active {
+  border-color: rgba(126, 229, 197, 0.45);
+  color: #bff6e3;
+  background: rgba(48, 148, 117, 0.2);
+}
+
+.camera-actions .ghost {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 13px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.camera-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .composer-send {
@@ -227,6 +298,7 @@ html[data-desktop="orb"] #root {
 }
 
 .desktop-conversation-panel .composer-attach,
+.desktop-conversation-panel .composer-camera,
 .desktop-conversation-panel .composer-send {
   min-width: 38px;
   height: 38px;

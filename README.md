@@ -149,6 +149,17 @@ Quota and billing rules are subject to the current official Bailian documentatio
 
 > Uses DashScope realtime voice frontend by default; alternatively, switch to a local [speech-to-speech frontend](docs/voice-frontends/speech-to-speech.md), no cloud API Key needed.
 
+> `qwen3.5-omni-flash-realtime` and `qwen3.5-omni-plus-realtime` accept text,
+> audio, and image at the model level. The WebUI also supports explicit camera
+> observation for these Omni models: it sends one bounded JPEG frame per second,
+> keeps at most eight recent frames in memory, and never creates a response from
+> observation alone. Native video and observation on legacy Audio models remain
+> unavailable.
+
+The Desktop app or `qwenaudio config set --realtime-model <id>` configures the single
+Gateway-wide model. Restart the Gateway after a CLI change. WebUI and TUI display the active
+model but do not override it.
+
 2. Start the Gateway, then open another terminal to start the TUI (or use `qwenaudio webui` for the browser UI):
 
 ```bash

@@ -43,6 +43,7 @@ import {
 import { logger } from '../core/logger.mjs'
 import { BackendEventType } from '../core/backend-events.mjs'
 import { SessionJournalRegistry } from '../session/session-journal-registry.mjs'
+import { normalizeRecurrence, normalizeTimeZone } from './recurrence.mjs'
 
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
@@ -497,12 +498,13 @@ export class TaskManager {
     ownerId,
     sessionId,
     turnId,
-    schedule: { at, recurrence = 'once' } = {},
+    schedule: { at, recurrence = 'once', timeZone = null } = {},
     type = 'reminder',
     timeoutMs = null,
     runner = null,
   }) {
     const kind = type === 'task' ? 'scheduled_task' : 'reminder'
+    const normalizedRecurrence = normalizeRecurrence(recurrence)
     const task = {
       id: this.allocateTaskId(),
       status: 'scheduled',
@@ -514,7 +516,14 @@ export class TaskManager {
       turnId: turnId || null,
       priority: 0,
       parentTaskId: null,
-      schedule: { type: 'at', at: Number(at), recurrence },
+      schedule: {
+        type: 'at',
+        at: Number(at),
+        recurrence: normalizedRecurrence,
+        ...(normalizedRecurrence === 'once'
+          ? {}
+          : { timeZone: normalizeTimeZone(timeZone) }),
+      },
       timeoutMs: type === 'task'
         ? Number(timeoutMs) || config.scheduledTaskTimeoutMs
         : null,

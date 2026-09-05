@@ -1,5 +1,6 @@
 import { TaskDomainEvent } from './task-events.mjs'
 import { TaskStatus, transitionTask } from './task-state.mjs'
+import { nextOccurrenceAt, normalizeRecurrence } from './recurrence.mjs'
 
 /**
  * ReminderScheduler — setTimeout-driven scheduler for scheduled tasks.
@@ -68,14 +69,58 @@ export class ReminderScheduler {
     overdue.forEach((task, index) => {
       const delay = index * this.staggerMs
       const timer = setTimeout(() => {
-        if (task.status !== 'scheduled') return
-        transitionTask(task, TaskStatus.QUEUED)
-        this.taskManager.emit(TaskDomainEvent.SCHEDULED_FIRED, task)
+        if (!this.fireTask(task)) return
         this.taskManager.persistDeferred()
         this.taskManager.drain()
       }, delay)
       timer.unref?.()
     })
+  }
+
+  fireTask(task, now = Date.now()) {
+    if (task.status !== 'scheduled') return false
+    transitionTask(task, TaskStatus.QUEUED)
+    const recurrence = normalizeRecurrence(task.schedule?.recurrence)
+    const nextAt = nextOccurrenceAt(
+      task.schedule?.at,
+      recurrence,
+      {
+        now,
+        timeZone: task.schedule?.timeZone,
+      },
+    )
+    if (nextAt) this.scheduleNext(task, nextAt, recurrence)
+    this.taskManager.emit(TaskDomainEvent.SCHEDULED_FIRED, task)
+    return true
+  }
+
+  scheduleNext(task, at, recurrence) {
+    const runner = typeof task.runner === 'function'
+      ? task.runner
+      : task.kind === 'scheduled_task'
+        ? this.taskManager.scheduledTaskRunner
+        : null
+    const next = this.taskManager.createScheduled({
+      objective: task.objective,
+      ownerId: task.ownerId,
+      sessionId: task.sessionId,
+      turnId: task.turnId,
+      schedule: {
+        at,
+        recurrence,
+        timeZone: task.schedule?.timeZone,
+      },
+      type: task.kind === 'scheduled_task' ? 'task' : 'reminder',
+      timeoutMs: task.timeoutMs,
+      runner,
+    })
+    this.logger?.debug?.('reminder.rescheduled', {
+      taskId: task.id,
+      nextTaskId: next.id,
+      recurrence,
+      executeAt: new Date(at).toISOString(),
+    })
+    return next
   }
 
   /**
@@ -101,14 +146,11 @@ export class ReminderScheduler {
   /**
    * Fire all due scheduled tasks: status scheduled → queued, then drain.
    */
-  fire() {
-    const now = Date.now()
+  fire(now = Date.now()) {
     let fired = 0
     for (const task of this.taskManager.tasks.values()) {
       if (task.status === 'scheduled' && task.schedule?.at <= now) {
-        transitionTask(task, TaskStatus.QUEUED)
-        // Phase 3: recurrence handling (create next cycle's new scheduled task)
-        fired += 1
+        fired += this.fireTask(task, now) ? 1 : 0
       }
     }
     if (fired) {

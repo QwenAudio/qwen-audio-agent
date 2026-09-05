@@ -33,3 +33,25 @@ test('journal snapshot supersedes a stale compact task projection', () => {
   assert.equal(manager.restoreFromJournalSnapshots([snapshot]), 1)
   assert.equal(manager.get(created.id).status, 'completed')
 })
+
+test('journal reconciliation preserves the recurring series anchor', () => {
+  const manager = new TaskManager({
+    store: { load: () => [], save: () => {} },
+  })
+  const firstAt = Date.parse('2026-03-07T07:30:00.000Z')
+  const created = manager.createScheduled({
+    objective: '每日提醒',
+    ownerId: 'owner',
+    sessionId: 'voice',
+    turnId: 'turn-1',
+    schedule: {
+      at: Date.parse('2026-03-08T07:30:00.000Z'),
+      recurrence: 'daily',
+      timeZone: 'America/New_York',
+    },
+    recurrenceStartAt: firstAt,
+  })
+
+  assert.equal(manager.restoreFromJournalSnapshots([{ ...created }]), 1)
+  assert.equal(manager.tasks.get(created.id).recurrenceStartAt, firstAt)
+})

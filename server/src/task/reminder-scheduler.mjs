@@ -2,6 +2,12 @@ import { TaskDomainEvent } from './task-events.mjs'
 import { TaskStatus, transitionTask } from './task-state.mjs'
 import { nextOccurrenceAt, normalizeRecurrence } from './recurrence.mjs'
 
+function finiteTimestamp(value) {
+  if (value === null || value === undefined || value === '') return null
+  const timestamp = Number(value)
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
 /**
  * ReminderScheduler — setTimeout-driven scheduler for scheduled tasks.
  *
@@ -81,8 +87,11 @@ export class ReminderScheduler {
     if (task.status !== 'scheduled') return false
     transitionTask(task, TaskStatus.QUEUED)
     const recurrence = normalizeRecurrence(task.schedule?.recurrence)
+    const recurrenceStartAt = finiteTimestamp(task.recurrenceStartAt)
     const nextAt = nextOccurrenceAt(
-      task.schedule?.at,
+      Number.isFinite(recurrenceStartAt)
+        ? recurrenceStartAt
+        : task.schedule?.at,
       recurrence,
       {
         now,
@@ -113,6 +122,8 @@ export class ReminderScheduler {
       type: task.kind === 'scheduled_task' ? 'task' : 'reminder',
       timeoutMs: task.timeoutMs,
       runner,
+      recurrenceStartAt: finiteTimestamp(task.recurrenceStartAt)
+        ?? task.schedule?.at,
     })
     this.logger?.debug?.('reminder.rescheduled', {
       taskId: task.id,

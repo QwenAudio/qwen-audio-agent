@@ -85,6 +85,13 @@ function weekday(parts) {
   )).getUTCDay()
 }
 
+function calendarDayNumber(parts) {
+  const date = new Date(0)
+  date.setUTCFullYear(parts.year, parts.month - 1, parts.day)
+  date.setUTCHours(0, 0, 0, 0)
+  return date.getTime() / 86_400_000
+}
+
 function offsetsAround(at, timeZone) {
   const offsets = new Set()
   const dayMs = 86_400_000
@@ -152,16 +159,35 @@ export function nextOccurrenceAt(
 
   const zone = normalizeTimeZone(timeZone)
   const initial = new Date(start)
+  const currentDate = new Date(current)
+  if (
+    !Number.isFinite(initial.getTime())
+    || !Number.isFinite(currentDate.getTime())
+  ) return null
   const startParts = {
     ...localParts(start, zone),
     millisecond: initial.getUTCMilliseconds(),
   }
   const step = normalized === 'weekly' ? 7 : 1
-  let days = step
+  const currentParts = localParts(current, zone)
+  const dayDifference = (
+    calendarDayNumber(currentParts) - calendarDayNumber(startParts)
+  )
+  let days
+  if (start > current) {
+    days = 0
+  } else if (normalized === 'weekly') {
+    days = Math.max(
+      step,
+      Math.ceil(Math.max(0, dayDifference) / step) * step,
+    )
+  } else {
+    days = Math.max(step, dayDifference)
+  }
 
-  // A guard protects the scheduler if a future recurrence mode is added but
-  // its calendar rules are not wired here yet.
-  for (let attempt = 0; attempt < 3700; attempt += 1) {
+  // Weekday schedules can move over at most a weekend after the first
+  // candidate. Keep a small guard for malformed future recurrence modes.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
     const candidateParts = addCalendarDays(startParts, days)
     if (
       normalized !== 'weekdays'

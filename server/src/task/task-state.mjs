@@ -162,6 +162,14 @@ export function publicTask(task, { now = Date.now() } = {}) {
 export function persistedTask(task) {
   const saved = publicTask(task)
   delete saved.workState
+  if (
+    task.recurrenceStartAt !== null
+    && task.recurrenceStartAt !== undefined
+    && task.recurrenceStartAt !== ''
+    && Number.isFinite(Number(task.recurrenceStartAt))
+  ) {
+    saved.recurrenceStartAt = Number(task.recurrenceStartAt)
+  }
   if (task.recoveryPersistedStatus) {
     saved.status = task.recoveryPersistedStatus
   }

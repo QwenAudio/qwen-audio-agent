@@ -27,6 +27,30 @@ test('calculates the next daily and weekly occurrence in UTC', () => {
   )
 })
 
+test('returns the initial occurrence when it is still in the future', () => {
+  const at = Date.parse('2026-01-08T09:30:00.000Z')
+  const now = Date.parse('2026-01-01T10:00:00.000Z')
+
+  assert.equal(
+    nextOccurrenceAt(at, 'daily', { now, timeZone: 'UTC' }),
+    at,
+  )
+  assert.equal(
+    nextOccurrenceAt(at, 'weekly', { now, timeZone: 'UTC' }),
+    at,
+  )
+})
+
+test('locates a future daily occurrence after a long outage', () => {
+  const at = Date.parse('2010-01-01T09:30:00.000Z')
+  const now = Date.parse('2026-01-01T10:00:00.000Z')
+
+  assert.equal(
+    nextOccurrenceAt(at, 'daily', { now, timeZone: 'UTC' }),
+    Date.parse('2026-01-02T09:30:00.000Z'),
+  )
+})
+
 test('skips weekends for weekday recurrence and coalesces missed days', () => {
   const friday = Date.parse('2026-01-09T09:30:00.000Z')
   const mondayAfternoon = Date.parse('2026-01-12T15:00:00.000Z')

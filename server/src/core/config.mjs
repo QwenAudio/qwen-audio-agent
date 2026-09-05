@@ -543,8 +543,8 @@ export const config = {
     runtimeEnvironment.configDirectory,
     'session-digests.json',
   ),
-  // 领域资料库：用户导入的手册 / 规章 / 教材。资料本体落在后端共享 workspace 下，
-  // 后端拿到路径就能自己 grep / read —— 前端只维护一份带摘要的清单。
+  // 内置资料库：用户导入的手册 / 规章 / 教材。沿用共享 workspace 下的既有目录，
+  // 由本机 Knowledge Provider 管理和检索。
   // 默认关闭：它会把用户的文件复制到另一个位置，需要用户显式同意。
   domainLibraryEnabled: String(
     process.env.QWEN_AUDIO_DOMAIN_LIBRARY || 'off',

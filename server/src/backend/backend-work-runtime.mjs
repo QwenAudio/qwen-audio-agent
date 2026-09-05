@@ -26,12 +26,22 @@ export class BackendWorkRuntime {
       instruction: input?.instruction,
       objective: input?.objective,
       inputParts: input?.inputParts || [],
+      ...(options.continuity === 'isolated' ? { continuity: 'isolated' } : {}),
     }
     work.instruction = backendInstructionFromWork(work)
     return this.backend.submit(work, {
       signal: options.signal,
       onEvent: options.onEvent,
     })
+  }
+
+  /**
+   * Run system-owned utility work without placing it in the user's persistent
+   * coordinator context. ACP adapters open a fresh Session; task-oriented
+   * adapters such as A2A already provide isolation per submission.
+   */
+  runIsolated(input, options = {}) {
+    return this.run(input, { ...options, continuity: 'isolated' })
   }
 
   cancel(taskId, options = {}) {

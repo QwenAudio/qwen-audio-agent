@@ -1,13 +1,13 @@
-# Knowledge Retrieval Provider
+# Knowledge Provider
 
-qwen-audio-agent defines a small retrieval boundary instead of shipping a RAG
-stack. It does not choose a vector database, embedding model, document parser,
-chunker, index, or ingestion workflow. Applications can connect the knowledge
-system they already operate.
+qwen-audio-agent defines one small JavaScript Provider interface. It is not a
+wire protocol and does not prescribe a vector database, embedding model,
+parser, chunking policy, or index. An application can use the built-in local
+library or connect an existing RAG or enterprise knowledge system with a thin
+Adapter.
 
-Knowledge is optional. With no provider injected, the Gateway creates no
-knowledge directory, registers no `knowledge` tool, and reports the capability
-as unconfigured. CLI, TUI, WebUI, and Desktop therefore share the same behavior.
+Without an injected Provider, the Gateway does not register the `knowledge`
+tool and reports knowledge as unconfigured.
 
 ## Boundary
 
@@ -16,47 +16,43 @@ Realtime Voice Agent
         │ knowledge(query)
         ▼
 FrontendKnowledgeRuntime
-  - capability gating
-  - timeout and cancellation
-  - result bounds and normalization
-  - citations and untrusted-data notice
-        │ provider-neutral request
-        ▼
-KnowledgeRetrievalProvider
+  - capability gate, timeout, and cancellation
+  - result bounds, citations, and untrusted-data notice
         │
-        ├─ LangChain / LlamaIndex adapter
-        ├─ Haystack adapter
-        ├─ OpenAI File Search adapter
-        ├─ MCP or HTTP adapter
-        └─ private enterprise knowledge service
+        ▼
+KnowledgeProvider
+  - retrieve (used by the frontend model)
+  - ingest / list / remove (optional client management)
+        │
+        ├─ built-in LocalKnowledgeProvider
+        ├─ LlamaIndex / LangChain / Haystack Adapter
+        ├─ MCP / HTTP Adapter
+        └─ enterprise knowledge-service Adapter
 ```
 
-The core owns retrieval safety. The provider owns connection credentials,
-tenant mapping, document management, indexing, ranking, and vendor APIs.
+The model can access only `retrieve()`. A separate
+`KnowledgeLibraryService` exposes import, listing, and removal to clients.
+Implementing management methods never turns them into model tools.
 
-## Provider contract
+## Minimal interface
 
-Import the public contract from:
+A Provider must implement `describe()` and `retrieve()`:
 
 ```js
 import {
   KNOWLEDGE_PROVIDER_PROTOCOL_VERSION,
 } from 'qwen-audio-agent/knowledge-provider'
-```
 
-A provider requires only `describe()` and `retrieve()`:
-
-```js
 const provider = {
   describe() {
     return {
       protocolVersion: KNOWLEDGE_PROVIDER_PROTOCOL_VERSION,
-      key: 'company-search',
+      key: 'company-knowledge',
       label: 'Company Knowledge',
       capabilities: {
-        filters: true,
         scores: true,
         citations: true,
+        filters: true,
       },
     }
   },
@@ -65,31 +61,33 @@ const provider = {
     return { results: [] }
   },
 
+  // Optional: provide all three for document management.
+  async ingest(request, context) {},
+  async list(request, context) {},
+  async remove(request, context) {},
+
   // Optional lifecycle methods.
   async health({ signal }) {
     return { status: 'ready' }
   },
-
   async close() {},
 }
 ```
 
-`key` uses lowercase letters, digits, and hyphens. Protocol version `1` is
-required so incompatible providers fail during composition rather than during a
-voice turn. Capability values are descriptive booleans; they do not change the
-core request or response schema.
+The version constant is only a fast compatibility check for the npm code
+interface; it does not define a separate transport protocol. HTTP, MCP, or SDK
+details remain inside the Adapter.
 
-`health()` is optional and may return `ready`, `unconfigured`, `degraded`, or
-`unavailable`. If omitted, the provider is treated as ready. `close()` is also
-optional and is called once when the Gateway closes.
+A retrieval-only integration can omit `ingest/list/remove`. The Gateway opens
+the library-management surface only when all three are present.
 
-## Request and trusted context
+## Retrieval
 
-The two arguments are deliberately separate:
+Model-controlled input and trusted Gateway context stay separate:
 
 ```js
 request = {
-  query: 'What is the release policy?',
+  query: 'What is the release approval policy?',
   topK: 5,
   knowledgeBaseIds: ['engineering'],
   filters: {},
@@ -104,153 +102,99 @@ context = {
 }
 ```
 
-The model can propose the query, result count, and a previously disclosed
-knowledge-base ID. The Gateway injects owner, session, turn, trace, timeout, and
-cancellation context. A provider must never accept tenant identity from model
-arguments.
-
-`topK` is bounded to `1..8`. `knowledgeBaseIds` is bounded to eight values.
-Programmatic hosts may supply provider-specific filters; the default Realtime
-tool does not expose arbitrary filters to the model.
-
-## Response
-
-Return an array or `{ results: [...] }`:
+A Provider returns source excerpts that the frontend can use directly, not an
+instruction to ask the backend to read a file:
 
 ```js
 {
   results: [{
     id: 'chunk-42',
-    content: 'Releases require two reviewers.',
+    content: 'A release requires approval from two reviewers.',
     score: 0.91,
     source: {
       id: 'release-handbook',
-      title: 'Release handbook',
+      title: 'Release Handbook',
       uri: 'https://docs.example.com/releases',
       mimeType: 'text/markdown',
       locator: 'section=approvals',
     },
-    metadata: {
-      department: 'engineering',
-    },
+    metadata: { department: 'engineering' },
   }],
 }
 ```
 
-Only `id` and `content` are required. The Gateway truncates content, rejects
-empty results, deduplicates IDs, bounds primitive metadata, and normalizes the
-remaining fields. A public HTTP(S) source URI becomes a stable per-turn
-citation. Private or credential-bearing URIs are dropped; providers should use
-bounded `source.id` and `source.locator` fields for non-public locations.
+Only `id` and `content` are required. The Gateway bounds and deduplicates
+results, normalizes public citations, and marks knowledge as untrusted data.
+The Provider must never accept owner identity from model arguments.
 
-Knowledge content is always projected as untrusted data. It can supply facts,
-but cannot add tools or override system and user instructions.
+## Ingestion and management
 
-## Composition
+A complete Provider uses the same small set of semantics:
 
-Inject the provider at the application composition root:
+```js
+await provider.ingest({
+  source: {
+    type: 'file',
+    path: '/Users/me/manual.pdf',
+    name: 'manual.pdf',
+  },
+}, { ownerId, taskId, signal, onEvent })
+
+await provider.list({}, { ownerId })
+await provider.remove({ documentId: 'doc-42' }, { ownerId })
+```
+
+`ingest()` returns a Promise. The Gateway uses its own TaskManager for queueing,
+cancellation, and status, so a Provider does not need another ingestion-job
+protocol. If a remote service indexes asynchronously, its Adapter can wait or
+poll inside `ingest()` and stop when `signal` is aborted.
+
+## Built-in basic implementation
+
+The repository internally includes `LocalKnowledgeProvider`, enabled by
+`QWEN_AUDIO_DOMAIN_LIBRARY=on`. It is a useful basic implementation, not a full
+RAG stack:
+
+- Markdown, TXT, and similar text files are copied directly into the local library;
+- PDF, Word, PPT, and other rich documents are converted to Markdown by the one `AgentDocumentConverter`;
+- simple keyword retrieval scans Markdown headings and bounded text chunks;
+- `retrieve()` returns matching source excerpts directly;
+- import, list, and remove are supported without a vector database or embeddings.
+
+Rich-document conversion shares the configured backend Agent process, model,
+authentication, and tools, but opens a fresh isolated execution Session for
+every document. It does not use the coordinator or delegated Sessions, inherit
+voice-task context, or enter the automatic announcement queue. Whether
+conversion succeeds or fails, the Session is closed or cancelled and its local
+record is released, so the Gateway does not accumulate active Sessions across
+ingestions. The Agent is an internal converter for this basic Provider.
+
+Without a backend Agent or isolated execution, text files still work and rich
+documents report that no converter is available.
+
+## Switching knowledge systems
+
+Inject a Provider at the application composition root:
 
 ```js
 import { createGatewayApplication } from 'qwen-audio-agent/gateway-application'
 
-const gateway = createGatewayApplication({
-  knowledgeProvider: provider,
-})
+const gateway = createGatewayApplication({ knowledgeProvider: provider })
 ```
 
-This is the only required integration point. The runtime advertises the
-`knowledge` capability, registers the retrieval tool, and closes the provider
-with the Gateway. Provider-specific configuration stays in the embedding
-application or adapter.
+An Adapter only translates fields and calls:
 
-## Adapter guidance
-
-Mainstream systems map naturally to this boundary:
-
-| System | Adapter mapping |
+| System | Adapter responsibility |
 | --- | --- |
-| LangChain | Invoke a Retriever with `request.query`; map returned Documents to results. |
-| LlamaIndex | Call a Retriever; map retrieved nodes, scores, and node metadata. |
-| Haystack | Run a Retriever component; map scored Documents and metadata filters. |
-| OpenAI File Search | Map query, vector-store scope, result count, file citations, and content. |
-| MCP | Call one retrieval tool and translate its structured output. |
-| HTTP | POST the canonical request and translate the service response. |
+| LangChain | Call a Retriever and map Documents to results. |
+| LlamaIndex | Call a Retriever and map Nodes, scores, and metadata. |
+| Haystack | Run a Retriever and, when management is exposed, its indexing pipeline. |
+| RAGFlow / enterprise service | Map query, upload, document-list, and delete APIs. |
+| MCP / HTTP | Call the corresponding tool or endpoint and map its objects. |
 
-References: [LangChain retrievers](https://docs.langchain.com/oss/python/integrations/retrievers),
-[LlamaIndex retrievers](https://developers.llamaindex.ai/python/framework/module_guides/querying/retriever/),
-[Haystack retrievers](https://docs.haystack.deepset.ai/docs/retrievers), and
-[OpenAI File Search](https://developers.openai.com/api/docs/guides/tools-file-search).
+Vendor clients, remote job IDs, vector-store collection IDs, and raw responses
+stay inside the Adapter and never cross into the Gateway, Realtime, or clients.
 
-Adapters should translate vendor fields at their boundary. Vendor clients and
-response objects must not leak into Gateway, voice, or client code.
-
-## Built-in local document provider
-
-The repository ships one optional implementation,
-`LocalDomainKnowledgeProvider`, for the case "the user points at a file on this
-machine and expects the assistant to find it later". Set
-`QWEN_AUDIO_DOMAIN_LIBRARY=on` to enable it; when the host injects no other
-provider, this one becomes the provider.
-
-It splits along the boundary this document draws:
-
-| Part | Owner |
-| --- | --- |
-| Retrieval | `LocalDomainKnowledgeProvider`, implementing this protocol |
-| Import, list, delete, PDF and Word conversion | `DomainLibrary`, the separate management extension described below |
-
-### What it returns
-
-Never the body. `content` is "title, one-line summary, section headings, where the
-body lives", and the file path goes in `source.locator` — a local path is a private
-address, so the Gateway drops `uri` and issues no citation.
-
-Each document therefore costs the same at the frontend regardless of its size: a
-three-page memo and a three-hundred-page manual occupy the same space. When the
-body is needed, the `locator` goes to the backend, which reads the file itself.
-
-Section headings are copied **verbatim** because they are the backend's anchors; a
-rewritten heading no longer matches the source.
-
-### It cannot coexist with an external RAG provider
-
-One Gateway mounts one provider (`knowledgeProvider ||
-knowledgeRetrievalProvider ||` the local library as fallback). A user who has
-configured an enterprise knowledge service already has the more complete solution,
-and this lightweight implementation should not override it.
-
-When both are needed, the host composes them; the core does not need to help:
-
-```js
-const composite = {
-  describe: () => enterprise.describe(),
-  async retrieve(request, context) {
-    const [remote, local] = await Promise.all([
-      enterprise.retrieve(request, context),
-      localDomain.retrieve(request, context),
-    ])
-    return { results: [...remote.results, ...local.results] }
-  },
-}
-```
-
-### Two known limits
-
-- **Without memory credentials, retrieval matches only filenames and titles.**
-  Sections and the summary come from one model call; with no
-  `QWEN_AUDIO_MEMORY_API_KEY` they stay empty. A query for a term that
-  appears only in the body will not match, while a term in the filename will.
-- **It cannot answer "which documents do I have".** Retrieval requires a non-empty
-  `query` and always treats it as a filter; listing belongs to the management
-  extension (the Web panel already lists and deletes).
-
-## Document management is a separate extension
-
-Ingestion, listing, reading full documents, updating, and deleting are not part
-of protocol v1. They differ substantially across services and often require
-stronger authorization than retrieval. An application may expose a separate
-management UI or define its own `KnowledgeManagementProvider`; it should not
-extend the model-visible retrieval tool with vendor-specific actions.
-
-This separation keeps retrieval lightweight and lets each implementation use
-its native administration and configuration flow.
+For the matching concepts in established frameworks, see the
+[LlamaIndex Ingestion Pipeline](https://developers.llamaindex.ai/python/framework/module_guides/loading/ingestion_pipeline/)
+and [Haystack DocumentWriter](https://docs.haystack.deepset.ai/docs/documentwriter).

@@ -26,9 +26,7 @@ import { ProfileObserver } from '../conversation/profile-observer.mjs'
 import { SessionDigestPool } from '../conversation/session-digest.mjs'
 import { SessionSummariser } from '../conversation/session-summariser.mjs'
 import {
-  DomainImportError,
   DomainLibrary,
-  classifySource,
 } from '../domain/domain-library.mjs'
 import { DomainSummariser } from '../domain/domain-summariser.mjs'
 import { enforceSameOrigin, isAllowedOrigin } from '../core/request-security.mjs'
@@ -55,7 +53,6 @@ import {
   taskStore as defaultTaskStore,
   taskSessionJournal as defaultTaskSessionJournal,
 } from '../task/task-manager.mjs'
-import { TaskNotificationPolicy } from '../task/task-state.mjs'
 import { ReminderScheduler } from '../task/reminder-scheduler.mjs'
 import { webDistributionPath } from '../core/install-paths.mjs'
 import { installOfflineNotifications } from './offline-notifications.mjs'
@@ -64,7 +61,10 @@ import {
 } from '../frontend/retrieval/frontend-retrieval-runtime.mjs'
 import { createWebSearchProvider } from '../providers/search/factory.mjs'
 import { FrontendKnowledgeRuntime } from '../frontend/knowledge/knowledge-runtime.mjs'
-import { LocalDomainKnowledgeProvider } from '../frontend/knowledge/local-domain-provider.mjs'
+import { LocalKnowledgeProvider } from './knowledge/local-knowledge-provider.mjs'
+import { AgentDocumentConverter } from './knowledge/agent-document-converter.mjs'
+import { KnowledgeLibraryService } from './knowledge/knowledge-library-service.mjs'
+import { supportsKnowledgeManagement } from '../frontend/knowledge/retrieval-provider.mjs'
 import { assertFrontendToolSource } from '../frontend/tools/frontend-tool-source.mjs'
 import { FrontendMcpClient } from '../providers/mcp/frontend-mcp-client.mjs'
 import {
@@ -389,10 +389,9 @@ if (config.sessionDigestEnabled) {
       })
     : null
 }
-// 领域资料库：用户导入的手册 / 规章 / 教材。资料本体复制到后端共享 workspace
-// 下的 domain/，前端只留一份带摘要的清单 —— 检索与读原文由后端拿着路径自己做。
-// 摘要器没有 API key 时为 null：资料照样能导入并交给后端，只是清单里没有
-// 「这是什么」那一句，这是刻意的降级顺序。
+// 内置资料存储：用户导入的手册 / 规章 / 教材。资料本体保留在既有的 domain/
+// 目录，Provider 直接读取 Markdown 片段完成基础检索；后台 Agent 只可作为复杂
+// 文档入库时的隔离转换器。
 let domainLibrary = null
 let domainSummariser = null
 if (config.domainLibraryEnabled) {
@@ -412,90 +411,34 @@ if (config.domainLibraryEnabled) {
 }
 
 // 知识检索 Provider 的装配放在资料库之后，因为本机资料库可以直接作为一个
-// Provider 用（见 frontend/knowledge/local-domain-provider.mjs）。
+// Provider 使用（见 app/knowledge/local-knowledge-provider.mjs）。
 //
 // 优先级：宿主显式注入 > 本机资料库兜底。一个 Gateway 只挂一个 Provider ——
 // 这是 Provider 模式的正常语义：用户配了企业知识服务说明他已有更完整的方案，
 // 那时不该再用这个轻量实现去覆盖它。真要两者并存，宿主自己写一层把两个
 // Provider 包起来（按 knowledgeBaseIds 路由或合并结果），那是应用层的自由。
+const canConvertDocuments = typeof workBackend.runIsolated === 'function'
+  && (backendRuntime != null || agent.describe?.()?.enabled !== false)
 const knowledgeProviderRuntime = knowledgeProvider
   || knowledgeRetrievalProvider
-  || (domainLibrary ? new LocalDomainKnowledgeProvider({ library: domainLibrary }) : null)
+  || (domainLibrary ? new LocalKnowledgeProvider({
+      library: domainLibrary,
+      summariser: domainSummariser,
+      documentConverter: canConvertDocuments
+        ? new AgentDocumentConverter({ backendRuntime: workBackend })
+        : null,
+    }) : null)
 const frontendKnowledgeRuntime = frontendKnowledge || (knowledgeProviderRuntime
   ? new FrontendKnowledgeRuntime({ provider: knowledgeProviderRuntime })
   : null)
+const knowledgeLibrary = knowledgeProviderRuntime
+  && supportsKnowledgeManagement(knowledgeProviderRuntime)
+  ? new KnowledgeLibraryService({
+      provider: knowledgeProviderRuntime,
+      taskManager,
+    })
+  : null
 const app = express()
-// 资料条目对外的形状。fingerprint 是内部去重用的，不该出现在 API 里；
-// path 要给出来 —— 它就是交给后端 Agent 的那个地址，是这套机制的用处所在。
-const publicDomainEntry = entry => ({
-  id: entry.id,
-  title: entry.title,
-  gist: entry.gist,
-  sections: entry.sections,
-  path: entry.path,
-  filename: entry.filename,
-  bytes: entry.bytes,
-  imported_at: entry.importedAt,
-  source: entry.source,
-  summarised: entry.summarised,
-})
-
-// 派一次后台转换：后端把 PDF / Word 的文字提取出来写成 Markdown，写完由这里
-// 收录。走普通后台任务，因此进度、通知、取消全部复用既有机制。
-//
-// 收录这一步刻意放在 runner 里而不是任务完成事件里：这样「转换成功」与
-// 「已收录」是同一件事，不存在转好了但没收进来的中间态。
-function enqueueDomainConversion({ ownerId, sourcePath, target }) {
-  const objective = [
-    `把「${sourcePath}」里的文字内容完整提取出来，原样写入「${target.path}」。`,
-    '要求：保留原文措辞、标题层级与条目顺序，不要概括、不要改写、不要补充说明、不要翻译。',
-    '若文件是扫描件或加密件而无法提取文字，不要编造内容，直接说明原因。',
-    '写好之后只回复一句确认，不要把提取到的正文贴回来。',
-  ].join('\n')
-  return taskManager.create({
-    objective,
-    ownerId,
-    kind: 'domain_conversion',
-    // The library panel owns completion presentation for imports. The work
-    // remains a normal user task for status/cancellation, but must not later
-    // surface as an unrelated voice announcement in another client session.
-    notificationPolicy: TaskNotificationPolicy.SILENT,
-    // 与后台活共用一条泳道：转换是一次普通的后台执行，不该和用户派的活抢并发。
-    laneKey: `backend:${ownerId}`,
-    laneLimit: 1,
-    runner: async (_ignored, { onEvent, signal, taskId }) => {
-      // 必须经 BackendPort（workBackend）而不是直接摸具体后台实现 —— 换适配器时
-      // 这里不该跟着改。参数形状与上面的 configureScheduledTaskRunner 保持一致。
-      //
-      // 不传 workingDirectory：BackendPort 的 submit 契约只接受
-      // { id, ownerId, objective, instruction, inputParts }，没有工作目录这一项。
-      // 目标位置靠 objective 里的绝对路径表达（conversionTarget 返回的 path 是
-      // join(documentDirectory, filename)），所以后端不依赖 cwd 也能写对地方。
-      const result = await workBackend.run({
-        objective,
-      }, { ownerId, taskId, signal, onEvent })
-
-      // 后端说完成不等于真的写了 —— 以文件系统为准，不以它的回话为准。
-      let entry
-      try {
-        entry = domainLibrary.import({ ownerId, sourcePath: target.path })
-      } catch (error) {
-        throw new Error(
-          `后台没有产出可用的文本文件（${error.message}）。`
-          + '这个文件可能是扫描件或加密件，请先自行转成 Markdown 再导入。',
-        )
-      }
-      const summarised = domainSummariser
-        ? await domainSummariser.maybeRun({ ownerId, id: entry.id })
-        : null
-      const document = publicDomainEntry(summarised || entry)
-      return {
-        content: `已把《${document.title}》收进资料库。`,
-        metadata: { domainDocument: document, backendReply: result?.content || '' },
-      }
-    },
-  })
-}
 const permissionPolicy = new SessionPermissionPolicy({
   ttlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
@@ -883,76 +826,58 @@ app.get('/api/tasks', (req, res) => {
 // 资料库。入口是「给一条本机路径」而不是上传字节流 —— 这是本地服务，用户手上
 // 本来就有文件，复制一份比经 base64 中转再落盘简单得多。web 端的按钮只要把
 // 选中文件的路径 POST 过来即可。
-app.get('/api/domain', (req, res) => {
-  if (!domainLibrary) {
+app.get('/api/domain', async (req, res, next) => {
+  if (!knowledgeLibrary) {
     res.status(404).json({ error: 'domain_library_disabled' })
     return
   }
-  res.json({
-    documents: domainLibrary.list(req.identity.ownerId).map(publicDomainEntry),
-  })
+  try {
+    res.json({
+      documents: await knowledgeLibrary.list({ ownerId: req.identity.ownerId }),
+    })
+  } catch (error) {
+    next(error)
+  }
 })
 
-app.post('/api/domain/import', async (req, res, next) => {
-  if (!domainLibrary) {
+app.post('/api/domain/import', (req, res, next) => {
+  if (!knowledgeLibrary) {
     res.status(404).json({ error: 'domain_library_disabled' })
     return
   }
-  const ownerId = req.identity.ownerId
-  const sourcePath = req.body?.path
+  try {
+    const { task, target } = knowledgeLibrary.startIngestion({
+      ownerId: req.identity.ownerId,
+      sourcePath: req.body?.path,
+    })
+    res.status(202).json({
+      status: 'ingesting',
+      task_id: task.id,
+      target,
+    })
+  } catch (error) {
+    next(error)
+  }
+})
 
-  // PDF / Word 先交给后端提取文字。刻意不让它把全文回传：模型的输出上限装不下
-  // 一份手册，而且「原样复述」正是它最不可靠的事 —— 结果会是摘要或改写，而我们
-  // 要的恰恰是原文保真。后端的 cwd 就是这个 workspace，让它直接写文件，
-  // 回一句写好了即可。
-  if (classifySource(sourcePath) === 'convertible') {
-    let target
-    try {
-      target = domainLibrary.conversionTarget({ ownerId, sourcePath })
-    } catch (error) {
-      if (error instanceof DomainImportError) {
-        res.status(400).json({ error: error.code, message: error.message })
-        return
-      }
-      return next(error)
-    }
-    const task = enqueueDomainConversion({ ownerId, sourcePath, target })
-    res.status(202).json({ status: 'converting', task_id: task.id, target: target.filename })
+app.delete('/api/domain/:id', async (req, res, next) => {
+  if (!knowledgeLibrary) {
+    res.status(404).json({ error: 'domain_library_disabled' })
     return
   }
-
-  let entry
   try {
-    entry = domainLibrary.import({ ownerId, sourcePath })
-  } catch (error) {
-    if (error instanceof DomainImportError) {
-      res.status(400).json({ error: error.code, message: error.message })
+    const result = await knowledgeLibrary.remove({
+      ownerId: req.identity.ownerId,
+      documentId: req.params.id,
+    })
+    if (!result?.removed) {
+      res.status(404).json({ error: 'not_found' })
       return
     }
-    return next(error)
+    res.json({ removed: result.document })
+  } catch (error) {
+    next(error)
   }
-  // 摘要要等：导入是用户点一下按钮的动作，它愿意等一次模型调用换一句
-  // 「这是什么」，而且紧接着的问答就可能用到。失败也照常返回已收下的条目。
-  const summarised = domainSummariser
-    ? await domainSummariser.maybeRun({ ownerId, id: entry.id })
-    : null
-  res.json({ document: publicDomainEntry(summarised || entry) })
-})
-
-app.delete('/api/domain/:id', (req, res) => {
-  if (!domainLibrary) {
-    res.status(404).json({ error: 'domain_library_disabled' })
-    return
-  }
-  const removed = domainLibrary.remove({
-    ownerId: req.identity.ownerId,
-    id: req.params.id,
-  })
-  if (!removed) {
-    res.status(404).json({ error: 'not_found' })
-    return
-  }
-  res.json({ removed: publicDomainEntry(removed) })
 })
 
 app.get('/api/timeline', (req, res) => {
@@ -1252,6 +1177,7 @@ return {
     gatewayEventRouter,
     remoteAccess: remoteAccessRuntime,
     knowledgeProvider: knowledgeProviderRuntime,
+    knowledgeLibrary,
     identityManager,
     inputArbitration,
     inputAssets: inputAssetRegistry,

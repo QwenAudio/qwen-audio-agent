@@ -628,17 +628,30 @@ export class AcpProcessClient {
   }
 
   async closeSession(sessionId) {
-    await this.start()
-    if (!this.capabilities.sessionCapabilities?.close) {
-      await this.cancelSession(sessionId)
-      return
+    const id = String(sessionId)
+    try {
+      await this.start()
+      if (!this.capabilities.sessionCapabilities?.close) {
+        await this.cancelSession(id)
+        return
+      }
+      try {
+        await this.request(
+          acp.methods.agent.session.close,
+          { sessionId: id },
+          { timeoutMs: 5000 },
+        )
+      } catch (error) {
+        // A failed close must not leave an actively running utility Session.
+        // Preserve the close error, while making one best-effort cancellation.
+        await this.cancelSession(id).catch(() => {})
+        throw error
+      }
+    } finally {
+      // Session retention is a local implementation detail. Even an ACP Agent
+      // without session/close support must not grow this map indefinitely.
+      this.sessions.delete(id)
     }
-    await this.request(
-      acp.methods.agent.session.close,
-      { sessionId: String(sessionId) },
-      { timeoutMs: 5000 },
-    )
-    this.sessions.delete(String(sessionId))
   }
 
   async close() {

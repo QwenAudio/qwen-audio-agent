@@ -27,6 +27,37 @@ test('keeps session object identity stable across re-registration', () => {
   assert.equal(second.role, 'coordinator')
 })
 
+test('forgets a Session after cancelling when ACP close is unsupported', async () => {
+  const client = new AcpProcessClient({ label: 'Test Agent', command: 'unused' })
+  const cancelled = []
+  client.start = async () => {}
+  client.initializeResult = { agentCapabilities: { sessionCapabilities: {} } }
+  client.cancelSession = async sessionId => { cancelled.push(sessionId) }
+  client.rememberSession('sess-cancel')
+
+  await client.closeSession('sess-cancel')
+
+  assert.deepEqual(cancelled, ['sess-cancel'])
+  assert.equal(client.sessions.has('sess-cancel'), false)
+})
+
+test('forgets a Session and falls back to cancel when ACP close fails', async () => {
+  const client = new AcpProcessClient({ label: 'Test Agent', command: 'unused' })
+  const cancelled = []
+  client.start = async () => {}
+  client.initializeResult = {
+    agentCapabilities: { sessionCapabilities: { close: {} } },
+  }
+  client.request = async () => { throw new Error('close failed') }
+  client.cancelSession = async sessionId => { cancelled.push(sessionId) }
+  client.rememberSession('sess-failed-close')
+
+  await assert.rejects(client.closeSession('sess-failed-close'), /close failed/)
+
+  assert.deepEqual(cancelled, ['sess-failed-close'])
+  assert.equal(client.sessions.has('sess-failed-close'), false)
+})
+
 test('shares an in-flight ACP initialization across concurrent callers', async () => {
   const client = new AcpProcessClient({
     label: 'Test Agent',

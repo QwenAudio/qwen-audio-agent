@@ -10,6 +10,8 @@
  *   start(context?) -> idempotently make the backend ready
  *   health() -> current backend availability
  *   submit(task, context?) -> run one Task and return its final outcome
+ *     task.continuity may be "shared" (default) or "isolated". It is a
+ *     trusted Gateway hint, never a model-controlled field.
  *   status(taskId?, context?) -> runtime status without an ID, otherwise Task status
  *   cancel(taskId, context?) -> cancel one adapter-owned Task
  *   respondAuthorization(taskId, authorizationId, decision, context?)

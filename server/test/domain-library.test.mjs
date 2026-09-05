@@ -242,52 +242,6 @@ test('attaches a summary and caps its fields', () => {
   })
 })
 
-test('finds a document by title, section or gist', () => {
-  withDirs(({ root, docs }) => {
-    const shelf = library({ docs, root })
-    const entry = shelf.import({
-      ownerId: OWNER,
-      sourcePath: sourceFile(root, 'credit.md'),
-    })
-    shelf.attachSummary({
-      ownerId: OWNER,
-      id: entry.id,
-      title: '信用卡业务手册',
-      gist: '覆盖开卡、年费、挂失四类流程',
-      sections: ['年费规则', '挂失与补办'],
-    })
-    for (const keyword of ['信用卡', '年费规则', '挂失', 'credit']) {
-      assert.equal(
-        shelf.search({ ownerId: OWNER, keyword }).length,
-        1,
-        `关键词「${keyword}」应当命中`,
-      )
-    }
-    assert.deepEqual(shelf.search({ ownerId: OWNER, keyword: '房贷' }), [])
-  })
-})
-
-test('ranks a title hit above a section hit above a gist-only hit', () => {
-  withDirs(({ root, docs }) => {
-    const shelf = library({ docs, root })
-    const add = (name, summary) => {
-      const entry = shelf.import({
-        ownerId: OWNER,
-        sourcePath: sourceFile(root, name, `# ${name}\n`),
-      })
-      shelf.attachSummary({ ownerId: OWNER, id: entry.id, ...summary })
-      return entry
-    }
-    add('a.md', { title: '甲册', gist: '提到年费', sections: [] })
-    add('b.md', { title: '乙册', gist: '无关', sections: ['年费规则'] })
-    add('c.md', { title: '年费专册', gist: '无关', sections: [] })
-    assert.deepEqual(
-      shelf.search({ ownerId: OWNER, keyword: '年费' }).map(item => item.title),
-      ['年费专册', '乙册', '甲册'],
-    )
-  })
-})
-
 test('keeps owners apart', () => {
   withDirs(({ root, docs }) => {
     const shelf = library({ docs, root })

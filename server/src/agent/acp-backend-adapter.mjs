@@ -774,7 +774,7 @@ export class AcpBackendAdapter {
     if (delegation && this.profile.externalMcp) {
       this.rememberDelegationUpdate(delegation, activity)
     }
-    if (!this.profile.nativeDelegation) return
+    if (!this.profile.nativeDelegation || run.allowDelegation === false) return
     if (!['tool_call', 'tool_call_update'].includes(update?.sessionUpdate)) {
       return
     }
@@ -1346,7 +1346,7 @@ export class AcpBackendAdapter {
   async submit(work, { signal, onEvent } = {}) {
     const taskId = clean(work?.id)
     const ownerId = clean(work?.ownerId)
-    const objective = clean(work?.objective ?? work?.message)
+    const objective = clean(work?.objective ?? work?.message ?? work?.instruction)
     if (!taskId || !ownerId || !objective) {
       throw new AgentError('BackendPort submit requires task id, owner and input', {
         status: 400,
@@ -1365,6 +1365,15 @@ export class AcpBackendAdapter {
       : controller.signal
     this.workControllers.set(taskId, controller)
     try {
+      if (work?.continuity === 'isolated') {
+        return await this.submitIsolated(work, {
+          ownerId,
+          taskId,
+          objective,
+          signal: workSignal,
+          onEvent,
+        })
+      }
       const prompt = buildAcpCoordinatorInstruction({
         ...work,
         objective,
@@ -1393,6 +1402,91 @@ export class AcpBackendAdapter {
     } finally {
       if (this.workControllers.get(taskId) === controller) {
         this.workControllers.delete(taskId)
+      }
+    }
+  }
+
+  async submitIsolated(work, {
+    ownerId,
+    taskId,
+    objective,
+    signal,
+    onEvent,
+  } = {}) {
+    await this.start({ signal })
+    const session = await this.client.newSession({
+      cwd: this.directory,
+      mcpServers: this.builtinMcp,
+      ownerId,
+      role: 'utility',
+    })
+    const permissionScopeId = `prompt_${randomUUID()}`
+    const publish = event => this.publishWorkEvent(event, {
+      taskId,
+      ownerId,
+      onEvent,
+    })
+    const run = {
+      ownerId,
+      coordinationRunId: taskId,
+      coordinationRequestId: taskId,
+      onEvent: publish,
+      nativeToolCalls: new Map(),
+      toolCalls: new Map(),
+      messageStreams: {},
+      receivedUpdate: false,
+      allowDelegation: false,
+    }
+    session.ownerId = ownerId
+    session.coordinationRunId = taskId
+    session.onEvent = publish
+    session.permissionScopeId = permissionScopeId
+    try {
+      // Configuration is part of the Session lifetime. If a required option
+      // cannot be applied, the newly-created utility Session must still close.
+      await this.configureSession(session, 'project')
+      const result = assertCompletedAcpTurn(await this.client.prompt(
+        session.sessionId,
+        promptWithInputParts(
+          clean(work?.instruction) || objective,
+          work?.inputParts,
+        ),
+        {
+          signal,
+          timeoutMs: 0,
+          onUpdate: update => this.onSessionUpdate(run, update),
+        },
+      ), {
+        signal,
+        label: `${this.label} 隔离 Session`,
+        protocol: this.protocol,
+      })
+      const artifacts = artifactsFromAcpContentBlocks(result?.contentBlocks)
+      if (!clean(result?.content) && !artifacts.length) {
+        throw new AgentError('Isolated backend Session returned an empty response', {
+          status: 502,
+          protocol: this.protocol,
+        })
+      }
+      return {
+        content: clean(result?.content),
+        artifacts,
+        metadata: {
+          backendRef: {
+            provider: this.protocol,
+            role: 'utility',
+            sessionId: session.sessionId,
+            directory: session.cwd || this.directory,
+          },
+        },
+      }
+    } finally {
+      this.cancelPermissionsForScope(permissionScopeId)
+      if (session.permissionScopeId === permissionScopeId) {
+        session.permissionScopeId = null
+      }
+      if (typeof this.client.closeSession === 'function') {
+        await this.client.closeSession(session.sessionId).catch(() => {})
       }
     }
   }

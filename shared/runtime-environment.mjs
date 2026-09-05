@@ -25,7 +25,7 @@ const USER_CONFIG_TEMPLATE = [
   '# SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime',
   '',
   '# 可选：选择后台 Agent；留空时仅使用前台实时语音聊天',
-  '# 可选 openclaw、opencode、qoder、qwen、kimi、hermes、codebuddy、codex、claude、deepseek、pi、acp 或 none',
+  '# 可选 openclaw、opencode、qoder、qwen、minimax、kimi、hermes、codebuddy、codex、claude、deepseek、pi、acp 或 none',
   'AGENT_PROTOCOL=',
   '# 权限模式：native（后台自行询问）或 full（最高权限；仅支持安全映射的后端）',
   '# Pi 没有权限审批机制，无论配置什么都始终生效 full',
@@ -403,6 +403,7 @@ export function loadRuntimeEnvironment({
   const openClawWorkspace = workspace('openclaw')
   const qoderWorkspace = workspace('qoder')
   const qwenCodeWorkspace = workspace('qwen')
+  const minimaxWorkspace = workspace('minimax')
   const kimiWorkspace = workspace('kimi')
   const hermesWorkspace = workspace('hermes')
   const codeBuddyWorkspace = workspace('codebuddy')
@@ -459,6 +460,7 @@ export function loadRuntimeEnvironment({
     openClawWorkspace,
     qoderWorkspace,
     qwenCodeWorkspace,
+    minimaxWorkspace,
     kimiWorkspace,
     hermesWorkspace,
     codeBuddyWorkspace,

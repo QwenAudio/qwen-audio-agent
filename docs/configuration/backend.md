@@ -33,6 +33,7 @@ command:
 ```bash
 qwenaudio install codex
 qwenaudio install deepseek
+qwenaudio install minimax
 ```
 
 - Before installation, it detects and only fills in missing components: a native ACP backend is
@@ -108,10 +109,12 @@ several); run `--list` first to see what a source provides. Installing an
 entire large catalog at once is intentionally not supported — every skill
 description is injected into backend system prompts.
 
-Skills land in each backend CLI's own user-level directory
-(`~/.claude/skills/`, `~/.qwen/skills/`, `~/.openclaw/skills/`,
-`~/.agents/skills/`, …), so they also work when you use those CLIs directly,
-and the desktop app and CLI share the same skills.
+Skills land in the backend CLI's own user-level directory when that backend
+declares a skills.sh installer (`~/.claude/skills/`, `~/.qwen/skills/`,
+`~/.openclaw/skills/`, `~/.agents/skills/`, …), so they also work when you use
+those CLIs directly, and the desktop app and CLI share the same skills. MiniMax
+Code manages its own Skill/Plugin storage; `qwenaudio skill` does not write to
+that private store.
 
 When you switch to — or newly install — a backend that is missing previously
 installed skills, the gateway backfills them synchronously at startup: a
@@ -265,6 +268,48 @@ QWEN_CODE_WORKSPACE=
 
 The current integration intentionally supports the local ACP process only;
 Qwen Code's experimental network service is not treated as a remote backend.
+
+### MiniMax Code
+
+MiniMax Code ([official CLI documentation](https://agent.minimax.io/docs/cli/features))
+connects through the official `mcode acp` ACP v1/stdio entry point. The Gateway
+starts only this local ACP process; MiniMax Code owns its authentication,
+Provider, model, Session, and Skill/Plugin configuration.
+
+Install the official CLI with the unified command:
+
+```bash
+qwenaudio install minimax
+```
+
+Authenticate for the first time:
+
+```bash
+mcode login
+```
+
+For a Global account, use `mcode login --region global`; configure a custom
+Provider or API key with `mcode provider`. After configuring MiniMax Code itself,
+select it as the backend:
+
+```dotenv
+AGENT_PROTOCOL=minimax
+QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
+```
+
+Advanced options:
+
+```dotenv
+MINIMAX_CODE_BIN=
+MINIMAX_CODE_WORKSPACE=
+```
+
+Avoid setting `QWEN_AUDIO_AGENT_BACKEND_MODEL` for MiniMax Code. If it is set
+explicitly, the Gateway attempts an override only when MiniMax advertises a
+compatible standard ACP `configOptions` entry; otherwise it fails explicitly.
+MiniMax Code's public documentation does not declare a skills.sh-compatible user
+directory, so `qwenaudio skill` does not copy skills into its private Skill/Plugin
+store; use MiniMax Code's own management flow.
 
 ### Kimi Code
 
@@ -501,7 +546,7 @@ Pi. Gateway Session tools and independent third-layer delegation are therefore n
 available for this backend; Pi completes work in the current Session with its own
 tools.
 
-Kimi Code, Hermes, CodeBuddy, Codex, Claude Code, and Pi all have their ACP subprocesses
+MiniMax Code, Kimi Code, Hermes, CodeBuddy, Codex, Claude Code, and Pi all have their ACP subprocesses
 directly managed by the Gateway, and do not accept `--backend-url`.
 
 ## Backend Permission Modes
@@ -513,7 +558,7 @@ directly managed by the Gateway, and do not accept `--backend-url`.
 - `full`: Explicitly grants the highest permission at startup; the backend can directly execute
   commands, read and write files, without per-request confirmation.
 
-`full` currently supports OpenCode, Qoder, Qwen Code, Kimi Code, Hermes, CodeBuddy, Codex, and
+`full` currently supports OpenCode, Qoder, Qwen Code, MiniMax Code, Kimi Code, Hermes, CodeBuddy, Codex, and
 Claude Code. The Gateway automatically approves permission requests initiated by these ACP
 backends; in addition, Kimi Code switches to an Auto mode that does not ask again via ACP
 Session configuration, Qoder and CodeBuddy CLI use `--dangerously-skip-permissions`, OpenCode

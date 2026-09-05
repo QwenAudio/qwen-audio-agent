@@ -13,6 +13,15 @@ test('Pi declares the always-full-permission capability', () => {
   assert.equal(pi.supportsFullPermission, true)
 })
 
+test('declares MiniMax Code as a native ACP backend', () => {
+  const minimax = backendDefinition('minimax')
+  assert.equal(minimax.label, 'MiniMax Code')
+  assert.equal(minimax.setup.command, 'mcode')
+  assert.equal(minimax.setup.integration, 'native')
+  assert.equal(minimax.supportsFullPermission, true)
+  assert.equal(minimax.skills, null)
+})
+
 test('effective permission mode normalizes always-full backends', () => {
   assert.equal(effectiveBackendPermissionMode('pi', 'native'), 'full')
   assert.equal(effectiveBackendPermissionMode('pi', 'full'), 'full')

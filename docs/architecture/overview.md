@@ -25,7 +25,7 @@ protocol surfaces between them.
      backend.
 
 3. **Backend — the execution layer.** Anything behind the `BackendPort`:
-   an ACP agent (OpenCode, OpenClaw, Qoder, Qwen Code, Kimi Code, Claude
+   an ACP agent (OpenCode, OpenClaw, Qoder, Qwen Code, MiniMax Code, Kimi Code, Claude
    Code, Codex, DeepSeek, Pi, or your own), a remote A2A agent, or a
    custom adapter built with the Backend Adapter SDK. ACP integrations keep
    a persistent coordination Session for continuous work; the backend's

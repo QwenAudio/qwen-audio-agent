@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 新增 MiniMax Code 后台支持：通过官方 `mcode acp` 原生 ACP 接入并支持一键安装；
+  登录、模型与 Provider 配置仍由 MiniMax Code 自己管理。
 - 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
   `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
   模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。

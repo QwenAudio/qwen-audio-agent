@@ -60,6 +60,17 @@ export const localAcpBackendDrivers = [
     coordinatorMcpInstructions: true,
   }),
   localAcpBackend({
+    id: 'minimax',
+    label: 'MiniMax Code',
+    command: 'mcode',
+    args: () => ['acp'],
+    sessionConfigOptions: ({ permissionMode }) => (
+      permissionMode === 'full'
+        ? [{ id: 'permissionMode', value: 'bypassPermissions' }]
+        : []
+    ),
+  }),
+  localAcpBackend({
     id: 'kimi',
     label: 'Kimi Code',
     command: 'kimi',

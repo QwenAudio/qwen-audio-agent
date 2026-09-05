@@ -78,6 +78,16 @@ npm run example:smart-cockpit
 | `custom-skills` | 3 | 列出、创建和加载用户自定义座舱工作流。 |
 | **合计** | **38** | 覆盖前台低延迟操作与后台组合任务。 |
 
+Realtime 模型看到的是 Gateway 组装后的 function 工具面：除了上表中的前台
+MCP 工具，还包含 Gateway 内置工具和按能力动态启用的工具。
+
+| Function 工具来源 | 数量 | 工具 |
+|---|---:|---|
+| Gateway 内置默认工具 | 7 | `spawn_thinking`、`schedule_reminder`、`cancel_agent_task`、`get_agent_task_status`、`get_current_time`、`memory`、`notes` |
+| Gateway 内置条件工具 | 最多 +7 | `knowledge`、`recall`、`respond_permission`、`respond_agent_input`、`web_search`、`fetch_url`、`enter_sleep`；仅在对应知识库、会话摘要、检索、待确认权限、待补充输入或客户端休眠动作可用时暴露 |
+| 座舱前台 MCP 工具 | 34 | `vehicle`、`navigation`、`music`、`weather` 路由到前台的工具，模型中以 `mcp__cockpit__*` 名称出现 |
+| **默认 Realtime 合计** | **41** | 7 个 Gateway 内置工具 + 34 个座舱前台 MCP 工具 |
+
 默认情况下，`vehicle`、`navigation`、`music` 和 `weather` 走前台 Realtime 快路径，
 `flashbuy` 和 `custom-skills` 由后台 Agent 执行。通过
 [`surface-routing.json`](service/tools/surface-routing.json) 即可调整场景分流；扩展方式见

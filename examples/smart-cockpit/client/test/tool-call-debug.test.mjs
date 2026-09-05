@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   displayToolName,
   mergeToolCallDebug,
+  shouldRefreshMemoryForToolCall,
   toolCallFromGatewayEvent,
   toolCallFromTaskEvent,
 } from '../src/projections/tool-call-debug.js'
@@ -71,4 +72,24 @@ test('merges debug lifecycle events by call id', () => {
     status: 'completed',
     result: 'ok',
   }])
+})
+
+test('refreshes memory after the frontend memory tool completes', () => {
+  assert.equal(shouldRefreshMemoryForToolCall({
+    surface: 'frontend',
+    name: 'memory',
+    status: 'completed',
+  }), true)
+
+  assert.equal(shouldRefreshMemoryForToolCall({
+    surface: 'frontend',
+    name: 'memory',
+    status: 'received',
+  }), false)
+
+  assert.equal(shouldRefreshMemoryForToolCall({
+    surface: 'frontend',
+    name: 'mcp__cockpit__navigation_start',
+    status: 'completed',
+  }), false)
 })

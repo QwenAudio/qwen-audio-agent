@@ -50,6 +50,7 @@ const TOOL_TAGS = {
   music_source_control: { label: '媒体来源', cls: 'tag-music' },
   music_favorite_control: { label: '音乐收藏', cls: 'tag-music' },
   music_search: { label: '音乐搜索', cls: 'tag-music' },
+  memory: { label: '记忆', cls: 'tag-skill' },
   flashbuy: { label: '闪购', cls: 'tag-skill' },
   weather: { label: '天气', cls: 'tag-nav' },
   web_search: { label: '联网查询', cls: 'tag-skill' },

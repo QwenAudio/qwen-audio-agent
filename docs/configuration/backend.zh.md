@@ -62,6 +62,62 @@ DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
 
 仍可通过 `DEEPSEEK_API_KEY` 为单次运行显式覆盖凭据。
 
+### Windows 源码调试：DeepSeek 后台
+
+在仓库根目录的 PowerShell 中执行（需要 Node.js 和 npm）：
+
+```powershell
+npm ci
+# 将本次调试的配置、日志和任务数据留在已被 Git 忽略的 runtime/ 下。
+$env:QWAUDIO_CONFIG_DIR = Join-Path $PWD 'runtime/local'
+$env:QWAUDIO_DATA_DIR = $env:QWAUDIO_CONFIG_DIR
+node cli/bin/qwenaudio.mjs install deepseek
+```
+
+首次配置时复制 `.env.example` 为 `.env.local`；已有该文件时直接编辑，避免覆盖。
+将 `AGENT_PROTOCOL` 改为 `deepseek`，并填写以下配置，不要保留重复的同名变量：
+
+```dotenv
+AGENT_PROTOCOL=deepseek
+DEEPSEEK_API_KEY=
+DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
+QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
+DASHSCOPE_API_KEY=
+```
+
+把完整的 DeepSeek Key 填入 `DEEPSEEK_API_KEY`，或运行 `dsh web` 使用
+Harness 自己的凭据存储。带星号的掩码 Key 和 Tracking ID 都不能用于认证。
+`DASHSCOPE_API_KEY` 是默认实时语音前台的独立凭据，不能填 DeepSeek Key。
+DeepSeek 模型由 `DEEPSEEK_HARNESS_MODEL` 选择，不需要设置通用后台模型覆盖。
+
+```powershell
+node cli/bin/qwenaudio.mjs setup --backend deepseek
+node server/src/index.mjs
+```
+
+然后打开 <http://127.0.0.1:3101>。`setup` 检查安装和配置状态，不会发送模型请求；
+只有真实任务执行成功，才能确认 API 的认证、余额和模型可用性。
+
+尚无语音 Key 时，可以在同一个 PowerShell 中显式启用项目已有的界面调试模式：
+
+```powershell
+$env:QWEN_AUDIO_ALLOW_UNCONFIGURED = '1'
+$env:AGENT_PROTOCOL = 'none'
+node server/src/index.mjs
+```
+
+此模式仅用于界面及 Gateway 调试，不能进行语音对话或后台任务。
+停止进程后，清除临时覆盖再启动，即可使用 `.env.local` 中的真实配置：
+
+```powershell
+Remove-Item Env:QWEN_AUDIO_ALLOW_UNCONFIGURED -ErrorAction SilentlyContinue
+Remove-Item Env:AGENT_PROTOCOL -ErrorAction SilentlyContinue
+node server/src/index.mjs
+```
+
+Gateway 默认仅监听本机。`.env.local` 和 `runtime/` 已被 Git 忽略，提交 PR 前
+仍需检查 `git diff --cached`，确保没有凭据或运行数据。
+
 ## 技能管理
 
 后台 Agent 负责执行实际任务，因此标准 Agent Skills（开放格式的

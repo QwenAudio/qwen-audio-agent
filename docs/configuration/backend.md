@@ -75,6 +75,68 @@ DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
 
 `DEEPSEEK_API_KEY` may still be set as an explicit per-run override.
 
+### Windows source debugging with DeepSeek
+
+Run in PowerShell at the repository root with Node.js and npm installed:
+
+```powershell
+npm ci
+# Keep local configuration, logs and task data in the ignored runtime/ directory.
+$env:QWAUDIO_CONFIG_DIR = Join-Path $PWD 'runtime/local'
+$env:QWAUDIO_DATA_DIR = $env:QWAUDIO_CONFIG_DIR
+node cli/bin/qwenaudio.mjs install deepseek
+```
+
+For the first setup, copy `.env.example` to `.env.local`. Edit an existing file
+instead of overwriting it. Change `AGENT_PROTOCOL` to `deepseek` and configure
+the following values, keeping only one assignment for each variable:
+
+```dotenv
+AGENT_PROTOCOL=deepseek
+DEEPSEEK_API_KEY=
+DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
+QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
+DASHSCOPE_API_KEY=
+```
+
+Enter a complete DeepSeek key in `DEEPSEEK_API_KEY`, or run `dsh web` to use the
+Harness credential store. A masked key or Tracking ID cannot authenticate.
+`DASHSCOPE_API_KEY` is a separate credential for the default realtime voice
+frontend; a DeepSeek key cannot replace it. Select the DeepSeek model through
+`DEEPSEEK_HARNESS_MODEL`; no generic backend model override is needed.
+
+```powershell
+node cli/bin/qwenaudio.mjs setup --backend deepseek
+node server/src/index.mjs
+```
+
+Open <http://127.0.0.1:3101>. The `setup` command checks installation and
+configuration without making model requests. A successful real task is still
+needed to verify authentication, available balance and model access.
+
+Without a voice key, explicitly opt into the existing UI debugging mode in
+the same PowerShell session:
+
+```powershell
+$env:QWEN_AUDIO_ALLOW_UNCONFIGURED = '1'
+$env:AGENT_PROTOCOL = 'none'
+node server/src/index.mjs
+```
+
+This mode supports UI and Gateway debugging only, without voice conversations
+or backend tasks. Stop the process and remove the temporary overrides before
+restarting with the real configuration from `.env.local`:
+
+```powershell
+Remove-Item Env:QWEN_AUDIO_ALLOW_UNCONFIGURED -ErrorAction SilentlyContinue
+Remove-Item Env:AGENT_PROTOCOL -ErrorAction SilentlyContinue
+node server/src/index.mjs
+```
+
+The Gateway listens on loopback by default. Git ignores `.env.local` and
+`runtime/`; inspect `git diff --cached` before submitting a PR to ensure no
+credentials or runtime data were staged.
+
 ## Skill Management
 
 Backend agents execute the actual tasks, so standard Agent Skills

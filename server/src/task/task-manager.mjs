@@ -274,7 +274,24 @@ export class TaskManager {
         )
         this.tasks.delete(id)
       }
-      this.restore([{ ...snapshot }])
+      const journalAnchor = snapshot.recurrenceStartAt
+      const existingAnchor = existing?.recurrenceStartAt
+      const hasAnchor = value => (
+        value !== null
+        && value !== undefined
+        && value !== ''
+        && Number.isFinite(Number(value))
+      )
+      this.restore([{
+        ...snapshot,
+        ...(
+          hasAnchor(journalAnchor)
+            ? { recurrenceStartAt: Number(journalAnchor) }
+            : hasAnchor(existingAnchor)
+              ? { recurrenceStartAt: Number(existingAnchor) }
+              : {}
+        ),
+      }])
       restored += 1
     }
     return restored
@@ -502,9 +519,15 @@ export class TaskManager {
     type = 'reminder',
     timeoutMs = null,
     runner = null,
+    recurrenceStartAt = null,
   }) {
     const kind = type === 'task' ? 'scheduled_task' : 'reminder'
     const normalizedRecurrence = normalizeRecurrence(recurrence)
+    const scheduledAt = Number(at)
+    const recurrenceAnchor = recurrenceStartAt == null
+      || recurrenceStartAt === ''
+      ? NaN
+      : Number(recurrenceStartAt)
     const task = {
       id: this.allocateTaskId(),
       status: 'scheduled',
@@ -514,11 +537,19 @@ export class TaskManager {
       ownerId: String(ownerId || ''),
       sessionId: String(sessionId || 'main'),
       turnId: turnId || null,
+      // Keep the original instant outside the public task projection. A
+      // DST gap may move one occurrence forward; using that adjusted instant
+      // as the next series anchor would permanently shift later occurrences.
+      recurrenceStartAt: normalizedRecurrence === 'once'
+        ? null
+        : Number.isFinite(recurrenceAnchor)
+          ? recurrenceAnchor
+          : scheduledAt,
       priority: 0,
       parentTaskId: null,
       schedule: {
         type: 'at',
-        at: Number(at),
+        at: scheduledAt,
         recurrence: normalizedRecurrence,
         ...(normalizedRecurrence === 'once'
           ? {}

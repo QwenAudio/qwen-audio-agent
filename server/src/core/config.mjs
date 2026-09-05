@@ -15,6 +15,9 @@ import {
   resolveRealtimeFrontendConfiguration,
 } from '../../../shared/realtime-provider-catalog.mjs'
 import {
+  normalizeMemoryProviderSelection,
+} from '../../../shared/memory-provider-catalog.mjs'
+import {
   loadFrontendProfile,
   resolveFrontendProfileConfiguration,
 } from './frontend-profile.mjs'
@@ -250,6 +253,16 @@ export const config = {
     process.env.QWEN_AUDIO_AGENT_IDENTITY_MODE || 'personal'
   ).toLowerCase() === 'browser' ? 'browser' : 'personal',
   personalOwnerId: process.env.QWEN_AUDIO_AGENT_PERSONAL_OWNER_ID || 'user_personal',
+  memoryProvider: normalizeMemoryProviderSelection(
+    process.env.QWEN_AUDIO_MEMORY_PROVIDER,
+  ),
+  voiceMemStateDirectory: process.env.VOICEMEM_STATE_DIR
+    ? resolve(root, process.env.VOICEMEM_STATE_DIR)
+    : resolve(runtimeEnvironment.dataDirectory, 'memory/voicemem'),
+  voiceMemPython: String(process.env.VOICEMEM_PYTHON || '').trim(),
+  voiceMemSidecarPath: process.env.VOICEMEM_SIDECAR
+    ? resolve(root, process.env.VOICEMEM_SIDECAR)
+    : '',
   gatewayAccessToken: String(
     process.env.QWEN_AUDIO_GATEWAY_ACCESS_TOKEN
     || process.env.QWEN_AUDIO_AGENT_ACCESS_TOKEN

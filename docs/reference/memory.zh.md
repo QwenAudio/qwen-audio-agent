@@ -65,6 +65,28 @@ Realtime 与自动整理都通过同一个记忆服务提交受限 Markdown 变�
 且不会报错。状态一律在检索时从任务台账实时读；台账终态只保留 3 天，更早的活查不到
 记录，此时只回答「派过这件事」而不给状态。
 
+## 可选 VoiceMem 连接器
+
+核心 npm 包只提供 Node.js `MemoryProvider` 连接器，不包含 VoiceMem 本身、Python 依赖或
+Python Sidecar。按照配置示例在框架外安装后，在 `config.env` 选择即可：
+
+```dotenv
+QWEN_AUDIO_MEMORY_PROVIDER=voicemem
+VOICEMEM_PYTHON=/absolute/path/to/python
+VOICEMEM_SIDECAR=/absolute/path/to/voicemem-sidecar.py
+VOICEMEM_INPUT_MODE=text
+```
+
+`text` 复用 Realtime 转写，`audio` 则把按用户轮次截取的音频交给 VoiceMem 自己的 ASR
+和声学感知。VoiceMem 声明 `sessionObservation` 后，会完整接管 `user`、`memory`、语义
+召回与会话结束学习；默认 Markdown 自动整理不会并行运行。默认数据位于用户数据目录的
+`memory/voicemem/`。切回 `markdown` 不会删除 VoiceMem 数据，也不会自动把两套数据互相
+迁移。外部安装、Sidecar 和百炼推荐配置见
+[VoiceMem 配置示例](../scenarios/voicemem.zh.md)。
+
+嵌入式宿主也可以直接从 `qwen-audio-agent/voicemem-provider` 导入
+`VoiceMemProvider`，显式传给 `createGatewayApplication`。
+
 ## 替换记忆 Provider
 
 内置的 `USER.md` 和 `MEMORY.md` 是默认实现，不是 Gateway 的固定存储依赖。宿主应用
@@ -125,11 +147,11 @@ const gateway = createGatewayApplication({ memoryProvider })
 敏感信息过滤、删除策略和租户隔离。
 
 Realtime、自动整理器和工具处理器只依赖 `FrontendMemoryRuntime`，不会访问供应商 SDK、
-数据库或 Markdown 文件。未注入 Provider 时继续使用现有 Markdown 实现，现有配置和数据
-无需迁移。第三方 Adapter 自行负责远程认证、租户映射、缓存刷新和底层记录到 `user`、
+数据库或 Markdown 文件。默认配置继续使用现有 Markdown 实现，现有配置和数据无需迁移。
+第三方 Adapter 自行负责远程认证、租户映射、缓存刷新和底层记录到 `user`、
 `memory` 两种公开上下文语义的转换。完整替换方式见
-[VoiceMem 示例](../scenarios/voicemem.zh.md)：它通过 Python Sidecar 接入
-VoiceMem，核心代码不感知其内部模型与索引。
+[VoiceMem 配置示例](../scenarios/voicemem.zh.md)。框架连接器通过示例提供的 Python
+Sidecar 接入 VoiceMem，通用记忆运行时不感知其内部模型与索引。
 
 ## 日志
 

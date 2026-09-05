@@ -9,24 +9,61 @@ import json
 import sys
 from pathlib import Path
 
-from voicemem import VoiceMem, build_memory_context
+
+def load_voicemem():
+    """Load the optional dependency with one actionable startup failure."""
+    try:
+        from voicemem import VoiceMem, build_memory_context
+    except ModuleNotFoundError as error:
+        requirements = Path(__file__).with_name("requirements.txt").resolve()
+        if error.name == "voicemem":
+            reason = "VoiceMem is not installed for this Python interpreter"
+        else:
+            reason = (
+                "VoiceMem is installed but its dependencies are incomplete "
+                f"(missing module: {error.name})"
+            )
+        print(
+            f"{reason}. Install the example dependencies with: "
+            f"{sys.executable} -m pip install -r {requirements}",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise SystemExit(3) from None
+    except ImportError as error:
+        print(
+            "VoiceMem could not be imported by "
+            f"{sys.executable}: {error}",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise SystemExit(3) from None
+    return VoiceMem, build_memory_context
 
 
 class Runtime:
-    def __init__(self, state_dir: Path, input_mode: str = "text") -> None:
+    def __init__(
+        self,
+        state_dir: Path,
+        voice_mem_class,
+        build_memory_context,
+        input_mode: str = "text",
+    ) -> None:
         self.root = state_dir / "memory-spaces"
         self.root.mkdir(parents=True, exist_ok=True)
         self.input_mode = "audio" if input_mode == "audio" else "text"
-        self.instances: dict[str, VoiceMem] = {}
+        self.voice_mem_class = voice_mem_class
+        self.build_memory_context = build_memory_context
+        self.instances: dict[str, object] = {}
         self.seen_path = state_dir / "observed-messages.json"
         self.observed_order: list[str] = []
         if self.seen_path.exists():
             self.observed_order.extend(json.loads(self.seen_path.read_text("utf-8")))
         self.observed_messages: set[str] = set(self.observed_order)
 
-    def memory(self, owner_id: str) -> VoiceMem:
+    def memory(self, owner_id: str):
         if owner_id not in self.instances:
-            self.instances[owner_id] = VoiceMem(
+            self.instances[owner_id] = self.voice_mem_class(
                 user_id=owner_id,
                 memory_root=str(self.root / owner_id),
                 mode="multi_modal" if self.input_mode == "audio" else "text",
@@ -45,7 +82,7 @@ class Runtime:
             entities=classification.entities,
             top_k=int(params.get("topK", 5)),
         )
-        return build_memory_context(result)
+        return self.build_memory_context(result)
 
     def observe(self, params: dict) -> dict:
         owner_id = str(params["ownerId"])
@@ -127,7 +164,13 @@ def main() -> None:
         default="text",
     )
     args = parser.parse_args()
-    runtime = Runtime(args.state_dir, args.input_mode)
+    voice_mem_class, build_memory_context = load_voicemem()
+    runtime = Runtime(
+        args.state_dir,
+        voice_mem_class,
+        build_memory_context,
+        args.input_mode,
+    )
     methods = {
         "recall": runtime.recall,
         "observe": runtime.observe,

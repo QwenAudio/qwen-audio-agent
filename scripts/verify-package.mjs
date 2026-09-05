@@ -113,13 +113,9 @@ if (isMain) {
     'examples/backend-adapter/in-memory-backend.mjs',
     'examples/custom-conversation-client/README.md',
     'examples/custom-conversation-client/client.mjs',
-    'examples/voicemem/README.md',
-    'examples/voicemem/README_ZH.md',
-    'examples/voicemem/.env.example',
-    'examples/voicemem/gateway.mjs',
-    'examples/voicemem/voicemem-provider.mjs',
-    'examples/voicemem/sidecar/server.py',
-    'examples/voicemem/sidecar/requirements.txt',
+    'server/src/app/memory-provider-factory.mjs',
+    'server/src/conversation/providers/voicemem/voicemem-provider.mjs',
+    'shared/memory-provider-catalog.mjs',
     'CONTRIBUTING.md',
     'docs/architecture/deep-dive.md',
     'docs/architecture-overview.png',
@@ -153,6 +149,15 @@ if (isMain) {
   const missing = required.filter(file => !files.has(file))
   if (missing.length) {
     throw new Error(`npm 成品缺少必要文件：${missing.join(', ')}`)
+  }
+  const bundledVoiceMemPython = [...files].filter(file => (
+    file.toLowerCase().includes('voicemem')
+    && (file.endsWith('.py') || file.endsWith('requirements.txt'))
+  ))
+  if (bundledVoiceMemPython.length) {
+    throw new Error(
+      `npm 成品不应包含 VoiceMem Python 实现或依赖：${bundledVoiceMemPython.join(', ')}`,
+    )
   }
   // desktop/src 默认不发布；下列纯 Node 模块随包交付给嵌入宿主
   // （对应 package.json exports 的 ./settings、./skin-store、./orb/*）。

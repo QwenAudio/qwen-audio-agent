@@ -156,6 +156,24 @@ QWEN_AUDIO_MEMORY_API_KEY=        # 默认复用 DASHSCOPE_API_KEY
 两个 Key 都未配置时（如纯本地 speech-to-speech 前台），自动整理静默关闭，
 明确要求的记忆不受影响。
 
+### 记忆 Provider
+
+默认使用轻量 Markdown 记忆。要使用 VoiceMem，先在框架外安装其 Python 代码，再配置
+框架提供的 Node.js 连接器与示例 Sidecar：
+
+```bash
+QWEN_AUDIO_MEMORY_PROVIDER=markdown  # 默认；也可设为 voicemem
+VOICEMEM_PYTHON=/absolute/path/to/python
+VOICEMEM_SIDECAR=/absolute/path/to/voicemem-sidecar.py
+VOICEMEM_INPUT_MODE=text             # text 或 audio
+VOICEMEM_STATE_DIR=                  # 可选；默认位于用户数据目录
+```
+
+VoiceMem 接管用户偏好、长期事实、语义召回和会话结束学习，因此启用后不会再运行上面的
+Markdown 自动整理链路。切换 Provider 不会自动迁移或删除另一套 Provider 的数据。
+外部安装、Sidecar 和百炼推荐配置见 [VoiceMem 配置示例](scenarios/voicemem.zh.md)。核心
+npm 包不包含 VoiceMem Python 代码或依赖。
+
 
 ## 继续阅读
 

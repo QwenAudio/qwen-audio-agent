@@ -16,9 +16,8 @@ import {
   MemoryExtractor,
   createExtractorLlmCall,
 } from '../conversation/memory-extractor.mjs'
-import { FrontendMemoryService } from '../conversation/frontend-memory-service.mjs'
-import { MarkdownContextStore } from '../conversation/markdown-context-store.mjs'
 import { FrontendMemoryRuntime } from '../conversation/memory-runtime.mjs'
+import { createConfiguredMemoryProvider } from './memory-provider-factory.mjs'
 import { SessionConversationHistory } from './session-conversation-history.mjs'
 import { PreferenceCandidateStore } from '../conversation/preference-candidate-store.mjs'
 import { PreferenceCandidatePool } from '../conversation/preference-candidates.mjs'
@@ -252,30 +251,11 @@ conversationSync.configureRetention({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
 })
-// The built-in Markdown provider preserves the existing USER.md/MEMORY.md
-// behaviour. Embedders can replace the entire persistence boundary without
-// changing Realtime, extraction, or tool handling code.
 let defaultMemoryProvider = null
 if (memoryProvider === undefined && !frontendMemory) {
-  const userDocuments = new MarkdownContextStore({
-    filePath: config.userModelPath,
-    scope: 'user',
-    personalOwnerId: config.personalOwnerId,
-    maxChars: 6000,
-    template: '# USER',
-    onWarning: warning => logger.warn('user_model.persistence_warning', { warning }),
-  })
-  const memoryDocuments = new MarkdownContextStore({
-    filePath: config.frontendMemoryPath,
-    scope: 'memory',
-    personalOwnerId: config.personalOwnerId,
-    maxChars: 8000,
-    template: '# MEMORY',
-    onWarning: warning => logger.warn('memory.persistence_warning', { warning }),
-  })
-  defaultMemoryProvider = new FrontendMemoryService({
-    userStore: userDocuments,
-    memoryStore: memoryDocuments,
+  defaultMemoryProvider = createConfiguredMemoryProvider({
+    config,
+    logger,
   })
 }
 const memoryProviderRuntime = memoryProvider === undefined

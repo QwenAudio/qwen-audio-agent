@@ -58,7 +58,7 @@ https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 - Create multiple independent tasks executed asynchronously by the backend Agent, with continuous status tracking
 - Task results automatically return to the current conversation, supporting follow-up questions and modifications
 - WebUI, terminal TUI, and desktop floating orb (macOS / Windows / Linux)
-- Per-user long-term personalization and cross-session memory
+- Long-term per-user personalization and memory, with an optional VoiceMem connector
 
 ## Architecture
 
@@ -174,7 +174,7 @@ chat naturally and get real work done.
 | --- | --- | --- | --- |
 | Desktop | Voice chat, progress follow-up, tools, and background tasks. | [Docs][desktop-docs] | Available |
 | Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][smart-cockpit-example] | Available |
-| VoiceMem | Replace personal memory with semantic or audio-native memory. | [Example][voicemem-example] | Available |
+| VoiceMem | Optional semantic memory with transcript or native-audio input. | [Setup example][voicemem-example] | Available |
 | Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
 | Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |
 | Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Exploratory |
@@ -191,14 +191,14 @@ npm run example:smart-cockpit          # service + agent + gateway + client
 
 See [examples/smart-cockpit](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/smart-cockpit) for details.
 
-The [VoiceMem example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem)
-demonstrates how to replace user preferences, long-term facts, automatic learning, and semantic
-recall through the public `MemoryProvider` boundary. Its input can switch between Realtime
-transcripts and VoiceMem-native audio processing.
+The [VoiceMem setup example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem)
+shows how to install VoiceMem outside the framework, configure the connector, and switch between
+Realtime transcripts and VoiceMem-native audio. Lightweight Markdown memory remains the default;
+the core npm package contains no VoiceMem Python code or dependencies.
 
 [desktop-docs]: docs/desktop/overview.md
 [smart-cockpit-example]: examples/smart-cockpit
-[voicemem-example]: examples/voicemem
+[voicemem-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem
 
 ## Community
 

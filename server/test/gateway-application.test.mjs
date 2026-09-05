@@ -674,6 +674,37 @@ test('lets a v2 provider exclusively own automatic memory learning', async () =>
   await application.close()
 })
 
+test('selects the VoiceMem connector from Gateway configuration', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-gateway-voicemem-'))
+  const sidecarPath = join(directory, 'sidecar.py')
+  writeFileSync(sidecarPath, '')
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      memoryProvider: 'voicemem',
+      voiceMemStateDirectory: join(directory, 'voicemem'),
+      voiceMemPython: '',
+      voiceMemSidecarPath: sidecarPath,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+
+  assert.equal(
+    application.services.memoryProvider.describe().key,
+    'voicemem',
+  )
+  assert.equal(application.services.frontendMemory.ownsSessionObservation(), true)
+  assert.equal(application.services.preferenceCandidates, null)
+  await application.close()
+})
+
 test('can disable memory without constructing the default provider', async () => {
   const application = createTestGatewayApplication({
     config: {

@@ -1,8 +1,9 @@
 # VoiceMem
 
-这是一个可运行的记忆扩展示例，使用 [VoiceMem](https://github.com/xzf-thu/VoiceMem)
-替换 qwen-audio-agent 的完整用户记忆系统。语音前台继续使用相同的 `memory` 工具和
-上下文语义，VoiceMem 则负责存储、自动学习、整理和语义检索。
+qwen-audio-agent 提供 [VoiceMem](https://github.com/xzf-thu/VoiceMem) 的 Node.js
+连接器；本示例把 VoiceMem 与 Python Sidecar 安装在核心框架之外，再配置 Gateway 使用。
+语音前台继续使用相同的 `memory` 工具和上下文语义，VoiceMem 负责存储、自动学习、
+整理和语义检索。
 
 `PROMPT.md` 与 `ASSISTANT.md` 仍属于助手定义，不在替换范围内。
 
@@ -11,7 +12,7 @@
 - 同时替换用户偏好和长期事实两种逻辑记忆。
 - 通过现有 `memory` 工具保留明确读取、追加、替换和删除能力。
 - 在语音 Session 结束后观察对话，并在后台整理转写文本或原生音频。
-- 增加语义召回，Gateway 内不引入 VoiceMem 专用逻辑。
+- 增加语义召回；VoiceMem 专用逻辑集中在独立 Provider 内，不进入通用记忆运行时。
 - 按 Gateway owner 使用独立哈希空间隔离用户数据。
 - 自动停用内置抽取器和偏好学习器，避免一段对话被重复学习。
 
@@ -20,24 +21,30 @@
 | 组件 | 职责 |
 |---|---|
 | qwen-audio-agent Gateway | Realtime 对话、记忆工具和 Provider 生命周期 |
-| Node.js Adapter | `MemoryProvider` 接口、有界同步快照、用户隔离和进程托管 |
-| Python Sidecar | 通过 JSONL 对接 VoiceMem 的公开 Python API |
+| Node.js 连接器 | 框架内的 `MemoryProvider` 接口、有界同步快照、用户隔离和进程托管 |
+| 示例 Python Sidecar | 通过 JSONL 对接 VoiceMem 的公开 Python API |
 | VoiceMem | 记忆抽取、整理、结构化存储和语义检索 |
 | 模型服务 | VoiceMem 使用的文本模型与 Embedding 模型 |
 
-Gateway 按需启动一个长驻 Python Sidecar，并通过标准输入输出传输逐行 JSON。这样
-Python 依赖不会进入 Node.js 运行时，也不会污染框架公开的扩展接口。
+Gateway 连接器按需启动配置的外部 Python Sidecar，并通过标准输入输出传输逐行 JSON。
+核心 npm 包不包含任何 VoiceMem Python 代码或依赖。
 
 输入由 `VOICEMEM_INPUT_MODE` 切换：`text`（默认）复用 Realtime 转写；`audio`
 按有效用户轮次截取 PCM16 音频并调用 VoiceMem 的 `ingest(audio=...)`，使用 VoiceMem
 自己的 ASR、情绪、环境感知及可选声纹。键盘输入在两种模式下都按文本处理。
 
-## 运行示例
+## 安装与运行
 
 需要仓库支持的 Node.js 版本，以及 Python 3.10 或更高版本。
 
 ```bash
 npm ci
+```
+
+请先按照 [VoiceMem 官方说明](https://github.com/xzf-thu/VoiceMem)完成安装。
+本示例推荐使用独立 Python 环境和经过验证的依赖版本：
+
+```bash
 python3.12 -m venv examples/voicemem/.venv
 examples/voicemem/.venv/bin/pip install \
   --index-url https://mirrors.aliyun.com/pypi/simple/ \
@@ -48,13 +55,21 @@ cp examples/voicemem/.env.example \
 
 在 `.env.local` 中填写 `DASHSCOPE_API_KEY`，然后运行：
 
+```dotenv
+QWEN_AUDIO_MEMORY_PROVIDER=voicemem
+VOICEMEM_SIDECAR=/absolute/path/to/examples/voicemem/sidecar/server.py
+VOICEMEM_INPUT_MODE=text
+```
+
 ```bash
 cd examples/voicemem
 node --env-file=.env.local gateway.mjs
 ```
 
-打开 `http://127.0.0.1:3101`。端口已被占用时可设置 `PORT=3102`。Adapter 会自动发现
-示例目录中的 `.venv`。
+打开 `http://127.0.0.1:3101`。端口已被占用时可设置 `PORT=3102`。示例启动器优先使用
+本目录的 `.venv`，否则使用 `PATH` 中的 `python3`，并自动发现 Sidecar。若要让日常
+Gateway 使用 VoiceMem，把二者的绝对路径分别
+以 `VOICEMEM_PYTHON` 和 `VOICEMEM_SIDECAR` 写入 `config.env`。
 
 要体验原生音频记忆，在 `.env.local` 设置：
 
@@ -82,7 +97,7 @@ model；未安装时保持关闭，不影响 ASR 和记忆抽取。
 
 ## 数据存储
 
-示例将数据保存在工作目录的 `.qwen-audio/voicemem/`：
+隔离示例将数据保存在 `.qwen-audio/runtime/memory/voicemem/`：
 
 | 路径 | 内容 |
 |---|---|
@@ -103,4 +118,4 @@ model；未安装时保持关闭，不影响 ASR 和记忆抽取。
 
 - [Xie Zhifei](https://github.com/xzf-thu)：创建并开源 VoiceMem。
 - [Li Xu](https://github.com/x-lixu)：设计可替换的 `MemoryProvider` 边界，并实现
-  Node.js/Python 接入示例。
+  内置 Node.js/Python 接入。

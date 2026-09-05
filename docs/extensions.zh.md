@@ -39,14 +39,14 @@ Provider 注册表。
 
 ## 人设与记忆
 
-助手的名称、人格和声音在 `ASSISTANT.md` 里。默认个人记忆 Provider 用
-`USER.md` / `MEMORY.md` 保存用户偏好与长期事实；替换 Provider 即可接入
-其他记忆引擎，不需要改动语音运行时。
+助手的名称、人格和声音在 `ASSISTANT.md` 里。默认 Markdown Provider 用
+`USER.md` / `MEMORY.md` 保存用户偏好与长期事实；也可以配置可选 VoiceMem 连接器，
+或替换 Provider 接入其他记忆引擎，不需要改动语音运行时。
 
 → [助手画像与用户偏好](reference/personalization.zh.md) ·
 [长期记忆](reference/memory.zh.md)
 
-可运行的 Provider 示例：
+VoiceMem 安装与配置示例：
 [`examples/voicemem`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem)。
 
 ## 客户端：自己构建

@@ -9,11 +9,11 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { createInterface } from 'node:readline'
-import { MEMORY_PROVIDER_PROTOCOL_VERSION } from 'qwen-audio-agent/memory-provider'
+import {
+  MEMORY_PROVIDER_PROTOCOL_VERSION,
+} from '../../memory-provider.mjs'
 
-const EXAMPLE_DIRECTORY = dirname(fileURLToPath(import.meta.url))
 const SCOPES = new Set(['user', 'memory'])
 const SENSITIVE = /(?:api[_ -]?key|secret|token|password|passwd|credential|密码|密钥|验证码|令牌|证件号|身份证|详细住址|病史|病历|诊断|用药|\bsk-[a-z0-9_-]+|\b\d{11,19}\b)/iu
 const DEFAULT_SAMPLE_RATE = 16_000
@@ -78,12 +78,6 @@ function count(content, needle) {
 
 function defaultPythonCommand(env) {
   if (String(env.VOICEMEM_PYTHON || '').trim()) return env.VOICEMEM_PYTHON
-  const bundledEnvironment = join(
-    EXAMPLE_DIRECTORY,
-    '.venv',
-    process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python',
-  )
-  if (existsSync(bundledEnvironment)) return bundledEnvironment
   return process.platform === 'win32' ? 'python' : 'python3'
 }
 
@@ -166,7 +160,7 @@ class JsonLineSidecar {
 }
 
 /**
- * Example MemoryProvider backed by VoiceMem.
+ * Optional MemoryProvider connector for an externally installed VoiceMem.
  *
  * Stable user-authored preferences and facts stay in a tiny adapter-owned
  * control snapshot so list() remains synchronous. VoiceMem owns automatic
@@ -177,7 +171,7 @@ export class VoiceMemProvider {
   constructor({
     stateDirectory = resolve(process.cwd(), '.qwen-audio', 'voicemem'),
     python = null,
-    sidecarPath = join(EXAMPLE_DIRECTORY, 'sidecar', 'server.py'),
+    sidecarPath = null,
     timeoutMs = 30_000,
     backgroundTimeoutMs = 120_000,
     audioPreRollMs = 1_000,
@@ -205,17 +199,31 @@ export class VoiceMemProvider {
       mkdirSync(this.audioStagingDirectory, { recursive: true, mode: 0o700 })
     }
     this.backgroundTimeoutMs = Math.max(timeoutMs, backgroundTimeoutMs)
+    const sidecarEnvironment = { ...env }
+    applyRecommendedDashScopeConfiguration(sidecarEnvironment)
+    const configuredSidecar = String(
+      sidecarPath || sidecarEnvironment.VOICEMEM_SIDECAR || '',
+    ).trim()
+    if (!sidecar && !configuredSidecar) {
+      throw new Error(
+        'VoiceMem 需要外部 sidecar；请设置 VOICEMEM_SIDECAR 为其绝对路径',
+      )
+    }
+    const resolvedSidecar = configuredSidecar ? resolve(configuredSidecar) : ''
+    if (!sidecar && !existsSync(resolvedSidecar)) {
+      throw new Error(`VoiceMem sidecar 不存在：${resolvedSidecar}`)
+    }
     this.sidecar = sidecar || new JsonLineSidecar({
-      command: python || defaultPythonCommand(env),
+      command: python || defaultPythonCommand(sidecarEnvironment),
       args: [
-        sidecarPath,
+        resolvedSidecar,
         '--state-dir',
         this.stateDirectory,
         '--input-mode',
         this.inputMode,
       ],
-      cwd: EXAMPLE_DIRECTORY,
-      env: { ...env },
+      cwd: dirname(resolvedSidecar),
+      env: sidecarEnvironment,
       timeoutMs,
     })
   }
@@ -534,6 +542,7 @@ export class VoiceMemProvider {
   health() {
     return {
       ok: !this.sidecar.lastError,
+      inputMode: this.inputMode,
       ...(this.sidecar.lastError ? { warning: this.sidecar.lastError } : {}),
     }
   }

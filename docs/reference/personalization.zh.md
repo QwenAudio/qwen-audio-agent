@@ -17,7 +17,7 @@ Provider 提供。
 
 ## 默认实现
 
-没有注入 `MemoryProvider` 时，Gateway 使用内置 Markdown Provider。相关数据保存在配置目录下（CLI 为
+默认配置下，Gateway 使用内置 Markdown Provider。相关数据保存在配置目录下（CLI 为
 `~/.config/qwaudio/`）：
 
 | 文件 | 说明 |
@@ -109,8 +109,8 @@ Provider 提供。
 核心行为和实例级默认人设都保持稳定。Realtime Agent 仍使用同一个 `memory` 工具以及
 `user` / `memory` 两种逻辑作用域。
 
-Provider 接口见[长期记忆](memory.zh.md)，完整替换方式见可运行的
-[VoiceMem 示例](../scenarios/voicemem.zh.md)。
+Provider 接口见[长期记忆](memory.zh.md)，内置可选接入方式见
+[VoiceMem 配置示例](../scenarios/voicemem.zh.md)。
 
 ## 继续阅读
 

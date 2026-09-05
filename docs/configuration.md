@@ -178,6 +178,26 @@ QWEN_AUDIO_MEMORY_API_KEY=        # Defaults to reusing DASHSCOPE_API_KEY
 When neither Key is configured (e.g., a purely local speech-to-speech frontend), automatic
 reconciliation is silently disabled; explicitly requested memory is not affected.
 
+### Memory Provider
+
+Lightweight Markdown memory is the default. To use VoiceMem, install its Python code outside the
+framework and configure the bundled Node.js connector plus the example sidecar:
+
+```bash
+QWEN_AUDIO_MEMORY_PROVIDER=markdown  # default; may be set to voicemem
+VOICEMEM_PYTHON=/absolute/path/to/python
+VOICEMEM_SIDECAR=/absolute/path/to/voicemem-sidecar.py
+VOICEMEM_INPUT_MODE=text             # text or audio
+VOICEMEM_STATE_DIR=                  # optional; defaults under the user data directory
+```
+
+VoiceMem owns user preferences, durable facts, semantic recall, and session-end learning, so the
+Markdown reconciliation pipeline above does not run while it is selected. Switching providers
+does not migrate or delete the other provider's data. See the
+[VoiceMem setup example](scenarios/voicemem.md) for the external installation, sidecar, and
+recommended Model Studio configuration. The core npm package includes no VoiceMem Python code or
+dependencies.
+
 
 ## Read next
 

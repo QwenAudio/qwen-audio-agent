@@ -21,14 +21,14 @@ Desktop ─┐
 WebUI ───┤
 TUI ─────┼── GCP over WebSocket ── Gateway ── BackendPort
 Mobile ──┘               ▲
-                         └── local, Tailscale, manual, or future relay endpoint
+                         └── local endpoint or Gateway-owned tsnet Funnel
 ```
 
 ## Architectural boundaries
 
-1. **Endpoint publication** makes the local Gateway reachable and returns a
-   canonical HTTPS/WSS endpoint. Tailscale is the first publisher; manual
-   reverse proxies and a future hosted relay use the same port.
+1. **Remote access** is owned by the Gateway. An optional tsnet component
+   publishes the local Gateway as a canonical HTTPS/WSS endpoint and is not
+   downloaded or started while remote access is disabled.
 2. **Access authentication** runs before GCP. Literal loopback remains
    zero-configuration; every non-loopback HTTP or WebSocket request requires a
    configured or paired device credential.
@@ -38,15 +38,17 @@ Mobile ──┘               ▲
 4. **Client presentation** owns platform I/O and UI. Client type is diagnostic
    metadata; negotiated capabilities, rather than type checks, define behavior.
 
-Tailscale names, commands, identities, and headers must not enter Gateway Core,
-GCP envelopes, model context, Task state, or BackendPort. A host-side endpoint
-publisher may invoke Tailscale and return an ordinary Gateway endpoint.
+Tailscale names, identities, and internal events stay inside the remote-access
+module and never enter GCP envelopes, model context, Task state, or BackendPort.
+Clients see only an ordinary Gateway endpoint.
 
 ## User experience
 
 - Local Clients continue to connect to `http://127.0.0.1:3101` without setup.
-- A host management surface enables remote access and creates a short-lived
-  invitation. Desktop renders it as a QR code; CLI can print or export it.
+- A Gateway management surface enables remote access and opens a one-time
+  browser authorization flow. Desktop renders a short-lived invitation as a QR
+  code; CLI can print it. Clients do not install or integrate the underlying
+  remote-access implementation.
 - A remote Desktop, TUI, WebUI, or Mobile Client consumes the same invitation,
   exchanges it for a revocable device credential, and stores that credential in
   platform-secure storage.
@@ -66,8 +68,7 @@ An endpoint descriptor identifies a reachable Gateway without entering GCP:
 {
   "url": "https://gateway.example.ts.net",
   "transport": "websocket",
-  "secure": true,
-  "publisher": "tailscale"
+  "secure": true
 }
 ```
 
@@ -105,37 +106,35 @@ subprotocol. Credentials never enter URLs, GCP messages, logs, or model context.
 ## RA0 — Freeze the remote-access contract
 
 - [x] Merge this bilingual roadmap and link issue #320.
-- [x] Add endpoint, connection-profile, invitation, and publisher contracts.
+- [x] Add endpoint, connection-profile, and invitation contracts.
 - [x] Characterize existing loopback, token, pairing, lease, and takeover behavior.
 - [x] Record that management requests do not claim the active interactive lease.
 
-Exit criteria: remote access can be implemented without adding Tailscale or
-Mobile branches to Gateway Core.
+Exit criteria: Tailscale implementation details do not enter GCP, Realtime,
+Task, BackendPort, or Client code.
 
-## RA1 — Endpoint publication and connection profiles
+## RA1 — Endpoints and connection profiles
 
-- [x] Add a host-side `GatewayEndpointPublisher` contract and registry.
-- [x] Implement local and manual endpoint publishers.
 - [x] Add a versioned connection-profile store with a credential-store port.
 - [x] Keep server access configuration separate from Client credentials.
 - [x] Publish shared helpers for invitation creation and consumption.
 
-Exit criteria: any host can publish an endpoint and any native Client can save
-and reconnect through a provider-neutral connection profile.
+Exit criteria: any native Client can save and reconnect through one connection
+profile contract.
 
-## RA2 — Tailscale publisher
+## RA2 — Gateway-owned tsnet
 
-- [x] Implement one shared Tailscale adapter for Desktop and CLI.
-- [x] Detect installation, login, readiness, hostname, and publication state
-  from machine-readable output.
-- [x] Publish a dedicated Gateway endpoint without overwriting unrelated user
-  Tailscale Serve configuration, while keeping Gateway on loopback.
+- [x] Run tsnet as an optional Gateway remote-access process, independent of
+  Desktop and CLI lifecycles.
+- [x] Download and verify the platform component on first use, provide browser
+  authorization, and restore persisted state on later Gateway starts.
+- [x] Publish an HTTPS/WSS Funnel endpoint while keeping Gateway on loopback.
 - [x] Add CLI status, enable, disable, invite, device-list, and revoke commands.
-- [ ] Validate persistent GCP WebSocket behavior before selecting the final Serve
-  mode; retain a direct tailnet fallback.
+- [ ] Validate persistent GCP WebSocket and long-running audio on a physical phone.
 
 Exit criteria: a user enables Tailscale remote access without editing Gateway
-configuration, copying a token, or exposing a LAN/public listener.
+configuration, copying a token, installing a separate network client, or exposing
+the Gateway listener.
 
 ## RA3 — First-party remote Client parity
 
@@ -162,17 +161,16 @@ and remotely.
   mute, text, image/file input, history, Task cards, permission and backend-input
   responses, reconnect/replay, and explicit takeover.
 - [x] Keep one conversation model across voice and typed input.
-- [x] Produce reproducible iOS and Android development builds and document the
-  external Tailscale prerequisite.
+- [x] Produce reproducible iOS and Android development builds.
 
-Exit criteria: a phone on the same tailnet pairs once, reconnects later, and
+Exit criteria: a phone pairs through the public HTTPS endpoint, reconnects later, and
 completes the same core conversation and Task flows as WebUI.
 
 ## RA5 — Hardening and release readiness
 
 - [x] Add negative tests for unauthenticated remote requests, origin bypass,
   expired/replayed invitations, revoked devices, and stale leases.
-- [ ] Test direct and relayed Tailscale paths, Wi-Fi/cellular transitions,
+- [ ] Test Funnel, Wi-Fi/cellular transitions,
   computer sleep/wake, Gateway restart, and one-hour WebSocket/audio sessions.
 - [x] Run protocol conformance against Desktop, WebUI, TUI, and Mobile.
 - [x] Add macOS, Windows, Linux, iOS, and Android build checks; real-device
@@ -186,11 +184,11 @@ playback, and does not regress local zero-configuration use.
 ## PR policy
 
 - Each implementation PR references issue #320 and names its RA stage.
-- Protocol/core changes, Tailscale host integration, and Mobile UI do not land in
-  one review unit.
+- Protocol/core changes, the tsnet remote module, and Mobile UI should remain
+  separately reviewable.
 - Every public model ships with Schema, parser, negative tests, and bilingual
   documentation.
-- No endpoint publisher may change Gateway Task, Realtime, BackendPort, or GCP
+- The remote-access module must not change Gateway Task, Realtime, BackendPort, or GCP
   behavior.
 - No Client stores a raw credential in ordinary settings, logs, URLs, QR history,
   or model-visible context.

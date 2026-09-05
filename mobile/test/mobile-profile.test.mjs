@@ -5,7 +5,7 @@ import { pairMobileGateway, parseMobileGatewayProfile } from '../src/mobile-prof
 
 const invitation = encodeGatewayInvitation({
   version: 1,
-  gateway_url: 'https://machine.tailnet.ts.net',
+  gateway_url: 'https://voice.example.test',
   pairing_code: 'one-time-code',
   expires_at: Date.now() + 60_000,
 })
@@ -26,10 +26,10 @@ test('pairs a mobile profile without exposing backend configuration', async () =
       }
     },
   })
-  assert.equal(requests[0].url, 'https://machine.tailnet.ts.net/api/access/pair')
+  assert.equal(requests[0].url, 'https://voice.example.test/api/access/pair')
   assert.equal(requests[0].body.device.type, 'mobile')
   assert.deepEqual(profile, {
-    gatewayUrl: 'https://machine.tailnet.ts.net',
+    gatewayUrl: 'https://voice.example.test',
     accessToken: 'qwa_revocable-mobile-token',
     deviceId: 'phone-one',
     clientInstanceId: 'mobile-client-one',

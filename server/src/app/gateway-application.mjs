@@ -39,6 +39,7 @@ import {
   parseGatewayAccessKeys,
 } from '../access/gateway-access.mjs'
 import { gatewayBrowserPairingPage } from '../access/browser-pairing-page.mjs'
+import { GatewayRemoteAccessService } from '../access/gateway-remote-access-service.mjs'
 import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
@@ -55,6 +56,7 @@ import {
   taskStore as defaultTaskStore,
   taskSessionJournal as defaultTaskSessionJournal,
 } from '../task/task-manager.mjs'
+import { TaskNotificationPolicy } from '../task/task-state.mjs'
 import { ReminderScheduler } from '../task/reminder-scheduler.mjs'
 import { webDistributionPath } from '../core/install-paths.mjs'
 import { installOfflineNotifications } from './offline-notifications.mjs'
@@ -122,6 +124,7 @@ export function createGatewayApplication({
   clientEventDefinitions = [],
   spawnThinkingDescription = '',
   gatewayAccess = null,
+  remoteAccess = undefined,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
@@ -472,6 +475,11 @@ function enqueueDomainConversion({ ownerId, sourcePath, target }) {
   return taskManager.create({
     objective,
     ownerId,
+    kind: 'domain_conversion',
+    // The library panel owns completion presentation for imports. The work
+    // remains a normal user task for status/cancellation, but must not later
+    // surface as an unrelated voice announcement in another client session.
+    notificationPolicy: TaskNotificationPolicy.SILENT,
     // 与后台活共用一条泳道：转换是一次普通的后台执行，不该和用户派的活抢并发。
     laneKey: `backend:${ownerId}`,
     laneLimit: 1,
@@ -533,6 +541,12 @@ const gatewayEventRouter = clientEventRouter || new GatewayEventRouter({
     ],
   }),
 })
+const remoteAccessRuntime = remoteAccess === undefined
+  ? new GatewayRemoteAccessService({
+      configDirectory: config.configDirectory,
+      logger,
+    })
+  : remoteAccess
 
 app.disable('x-powered-by')
 app.use(express.json({ limit: '1mb' }))
@@ -641,6 +655,63 @@ app.delete('/api/access/devices/:id', (req, res) => {
   }
   realtimeGateway?.disconnectCredential(credentialId)
   return res.status(204).end()
+})
+
+function requireLocalGatewayHost(req, res) {
+  if (req.identity.access === 'local') return true
+  res.status(403).json({
+    error: 'remote access can only be managed from the Gateway host',
+    code: 'gateway_remote_host_required',
+  })
+  return false
+}
+
+function localGatewayOrigin(address) {
+  const configuredHost = String(config.host || '').trim().toLowerCase()
+  const host = ['localhost', '127.0.0.1', '::1'].includes(configuredHost)
+    ? configuredHost
+    : '127.0.0.1'
+  return new URL(`http://${host}:${address.port}`).origin
+}
+
+function respondRemoteAccessError(res, error) {
+  logger?.error?.('remote_access.management_failed', { error })
+  return res.status(500).json({
+    error: error?.message || 'Remote access failed',
+    code: error?.code || 'gateway_remote_access_failed',
+  })
+}
+
+app.get('/api/access/remote', (req, res) => {
+  if (!requireLocalGatewayHost(req, res)) return
+  return res.json(remoteAccessRuntime?.status?.() || {
+    available: false,
+    enabled: false,
+    connected: false,
+    published: false,
+    state: 'unavailable',
+  })
+})
+
+app.post('/api/access/remote', (req, res) => {
+  if (!requireLocalGatewayHost(req, res)) return
+  const address = server.address()
+  if (!address || typeof address !== 'object') {
+    return res.status(503).json({
+      error: 'Gateway is not listening',
+      code: 'gateway_not_ready',
+    })
+  }
+  Promise.resolve(remoteAccessRuntime.enable(localGatewayOrigin(address)))
+    .then(status => res.status(status.state === 'auth_required' ? 202 : 200).json(status))
+    .catch(error => respondRemoteAccessError(res, error))
+})
+
+app.delete('/api/access/remote', (req, res) => {
+  if (!requireLocalGatewayHost(req, res)) return
+  Promise.resolve(remoteAccessRuntime.disable())
+    .then(status => res.json(status))
+    .catch(error => respondRemoteAccessError(res, error))
 })
 
 app.delete('/api/access/session', (req, res) => {
@@ -1111,6 +1182,10 @@ realtimeGateway = attachRealtimeGateway(server, {
   taskAnnouncementFactory,
   clientCommandRuntime: runtimeCommands,
   clientEventRouter: gatewayEventRouter,
+  taskManager,
+  conversationSync,
+  config,
+  logger,
 })
 const start = ({ host = config.host, port = config.port } = {}) => {
   if (server.listening) return server
@@ -1135,6 +1210,7 @@ const start = ({ host = config.host, port = config.port } = {}) => {
       backend: agent.describe?.()?.protocol || config.agentProtocol || 'none',
       realtimeProvider,
     }, `qwen-audio-agent running at ${origin}`)
+    void remoteAccessRuntime?.resume?.(origin)
   })
   return server
 }
@@ -1154,6 +1230,7 @@ const close = () => {
     await frontendOpenApiRuntime?.close?.()
     await frontendKnowledgeRuntime?.close?.()
     await frontendMemoryRuntime?.close?.()
+    await remoteAccessRuntime?.close?.()
     unsubscribeSessionTaskJournal?.()
     conversationHistoryRuntime.close?.()
     await sessionJournalRuntime.flush()
@@ -1193,6 +1270,7 @@ return {
     frontendOpenApi: frontendOpenApiRuntime,
     runtimeCommands,
     gatewayEventRouter,
+    remoteAccess: remoteAccessRuntime,
     knowledgeProvider: knowledgeProviderRuntime,
     identityManager,
     inputArbitration,

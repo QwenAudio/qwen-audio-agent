@@ -40,7 +40,10 @@ import {
   effectiveDesktopLanguage,
 } from './i18n.mjs'
 import {
+  disableGatewayRemoteAccess,
+  enableGatewayRemoteAccess,
   readGatewayHealth,
+  readGatewayRemoteAccess,
 } from '../../shared/gateway-client.mjs'
 import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
 import { pairGatewayInvitation } from '../../shared/gateway-access-client.mjs'
@@ -111,7 +114,6 @@ import {
 } from './updater.mjs'
 import { createGracefulShutdown } from './graceful-shutdown.mjs'
 import { DesktopPresence } from './desktop-presence.mjs'
-import { createTailscaleGatewayEndpointPublisher } from '../../shared/gateway-tailscale-publisher.mjs'
 import { createGatewayPairingTicket } from '../../shared/gateway-access-client.mjs'
 import {
   createGatewayInvitation,
@@ -1009,13 +1011,12 @@ ipcMain.handle('qwen-audio-agent:open-logs', async event => {
   return logger.directory
 })
 
-function desktopRemotePublisher() {
+function assertLocalRemoteAccessHost() {
   if (!isLoopbackUrl(appOrigin)) {
     const error = new Error('只有运行本机 Gateway 时才能发布远程访问')
     error.code = 'gateway_remote_host_required'
     throw error
   }
-  return createTailscaleGatewayEndpointPublisher({ gatewayUrl: appOrigin })
 }
 
 function assertSettingsRequest(event) {
@@ -1026,7 +1027,8 @@ function assertSettingsRequest(event) {
 
 ipcMain.handle('qwen-audio-agent:remote-access-status', async event => {
   assertSettingsRequest(event)
-  return desktopRemotePublisher().inspect()
+  assertLocalRemoteAccessHost()
+  return readGatewayRemoteAccess(appOrigin)
 })
 
 ipcMain.handle('qwen-audio-agent:remote-access-enable', async event => {
@@ -1034,14 +1036,22 @@ ipcMain.handle('qwen-audio-agent:remote-access-enable', async event => {
   if (!await readDesktopGatewayHealth(appOrigin)) {
     throw new Error('Gateway 尚未启动')
   }
-  const endpoint = await desktopRemotePublisher().publish()
-  logger.info('gateway.remote_access_enabled', { endpoint: endpoint.url })
-  return endpoint
+  assertLocalRemoteAccessHost()
+  const status = await enableGatewayRemoteAccess(appOrigin)
+  if (status.authUrl || status.actionUrl) {
+    await shell.openExternal(status.authUrl || status.actionUrl)
+  }
+  logger.info('gateway.remote_access_enabled', {
+    endpoint: status.endpoint?.url,
+    state: status.state,
+  })
+  return status
 })
 
 ipcMain.handle('qwen-audio-agent:remote-access-disable', async event => {
   assertSettingsRequest(event)
-  const result = await desktopRemotePublisher().unpublish()
+  assertLocalRemoteAccessHost()
+  const result = await disableGatewayRemoteAccess(appOrigin)
   logger.info('gateway.remote_access_disabled', { changed: result.changed })
   return result
 })
@@ -1051,7 +1061,18 @@ ipcMain.handle('qwen-audio-agent:remote-access-invite', async event => {
   if (!await readDesktopGatewayHealth(appOrigin)) {
     throw new Error('Gateway 尚未启动')
   }
-  const endpoint = await desktopRemotePublisher().publish()
+  assertLocalRemoteAccessHost()
+  const status = await enableGatewayRemoteAccess(appOrigin)
+  if (status.authUrl || status.actionUrl) {
+    await shell.openExternal(status.authUrl || status.actionUrl)
+    const error = new Error('请在浏览器完成远程访问设置，然后重新生成邀请')
+    error.code = 'remote_access_auth_required'
+    throw error
+  }
+  if (!status.endpoint?.url) {
+    throw new Error(status.error?.message || '远程访问尚未就绪')
+  }
+  const endpoint = status.endpoint
   const ticket = await createGatewayPairingTicket(appOrigin)
   const invitation = createGatewayInvitation({
     gatewayUrl: endpoint.url,

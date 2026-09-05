@@ -40,8 +40,6 @@
     "./gateway-client-profiles": "./shared/gateway-client-profiles.mjs",
     "./gateway-access-client": "./shared/gateway-access-client.mjs",
     "./gateway-remote-access": "./shared/gateway-remote-access.mjs",
-    "./gateway-endpoint-publishers": "./shared/gateway-endpoint-publishers.mjs",
-    "./gateway-tailscale-publisher": "./shared/gateway-tailscale-publisher.mjs",
     "./gateway-connection-profiles": "./shared/gateway-connection-profiles.mjs",
     "./gateway-file-credential-store": "./shared/gateway-file-credential-store.mjs",
     "./gateway-websocket-auth": "./shared/gateway-websocket-auth.mjs",
@@ -235,6 +233,7 @@
     "mobile:sync": "npm run sync --workspace @qwen-audio-agent/mobile",
     "mobile:ios": "npm run ios --workspace @qwen-audio-agent/mobile",
     "mobile:android": "npm run android --workspace @qwen-audio-agent/mobile",
+    "remote:build": "node scripts/build-tsnet-components.mjs",
     "cli": "npm run start --workspace @qwen-audio-agent/cli --",
     "tui": "npm run start --workspace tui --",
     "backend": "node scripts/start.mjs",
@@ -297,6 +296,7 @@
     "@electron/asar": "4.2.1",
     "@electron/universal": "3.0.6",
     "fast-uri": "3.1.6",
-    "qs": "6.16.0"
+    "qs": "6.16.0",
+    "uuid": "11.1.1"
   }
 }

@@ -2,9 +2,12 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createGatewayPairingTicket,
+  disableGatewayRemoteAccess,
+  enableGatewayRemoteAccess,
   listGatewayDevices,
   pairGatewayInvitation,
   pairGatewayDevice,
+  readGatewayRemoteAccess,
   revokeGatewayDevice,
 } from '../shared/gateway-access-client.mjs'
 
@@ -101,4 +104,23 @@ test('Gateway device management helpers remain on the local host plane', async (
   assert.equal(requests[0].options.method, 'GET')
   assert.match(requests[1].url, /phone%2Fone$/)
   assert.equal(requests[1].options.method, 'DELETE')
+})
+
+test('remote access lifecycle helpers call only the local Gateway management plane', async () => {
+  const requests = []
+  const fetchImpl = async (url, options) => {
+    requests.push({ url, options })
+    return jsonResponse({
+      enabled: options.method !== 'DELETE',
+      state: options.method === 'POST' ? 'auth_required' : 'disabled',
+    }, { status: options.method === 'POST' ? 202 : 200 })
+  }
+  await readGatewayRemoteAccess('http://127.0.0.1:3101', fetchImpl)
+  await enableGatewayRemoteAccess('http://127.0.0.1:3101', fetchImpl)
+  await disableGatewayRemoteAccess('http://127.0.0.1:3101', fetchImpl)
+  assert.deepEqual(requests.map(request => [request.url, request.options.method]), [
+    ['http://127.0.0.1:3101/api/access/remote', 'GET'],
+    ['http://127.0.0.1:3101/api/access/remote', 'POST'],
+    ['http://127.0.0.1:3101/api/access/remote', 'DELETE'],
+  ])
 })

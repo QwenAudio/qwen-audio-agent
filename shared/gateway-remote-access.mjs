@@ -33,7 +33,6 @@ export const GatewayEndpointDescriptorSchema = z.object({
   url: GatewayUrlSchema,
   transport: z.literal('websocket').default('websocket'),
   secure: z.boolean(),
-  publisher: IdentifierSchema,
 }).strict().superRefine((value, context) => {
   if (value.secure !== value.url.startsWith('https://')) {
     context.addIssue({
@@ -60,21 +59,6 @@ export const GatewayInvitationSchema = z.object({
   pairing_code: z.string().trim().min(1).max(256),
   expires_at: z.number().int().positive(),
 }).strict()
-
-export function defineGatewayEndpointPublisher({
-  id,
-  inspect,
-  publish,
-  unpublish,
-}) {
-  const publisherId = IdentifierSchema.parse(id)
-  for (const [name, implementation] of Object.entries({ inspect, publish, unpublish })) {
-    if (typeof implementation !== 'function') {
-      throw new TypeError(`Gateway endpoint publisher ${publisherId} requires ${name}()`)
-    }
-  }
-  return Object.freeze({ id: publisherId, inspect, publish, unpublish })
-}
 
 export function parseGatewayEndpointDescriptor(value) {
   return GatewayEndpointDescriptorSchema.parse(value)

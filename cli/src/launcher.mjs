@@ -32,8 +32,11 @@ import {
   waitForGateway,
 } from './runtime.mjs'
 import {
+  disableGatewayRemoteAccess,
+  enableGatewayRemoteAccess,
   listGatewayDevices,
   pairGatewayInvitation,
+  readGatewayRemoteAccess,
   revokeGatewayDevice,
 } from '../../shared/gateway-access-client.mjs'
 import {
@@ -44,8 +47,7 @@ import {
 } from '../../shared/gateway-remote-access.mjs'
 import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
 import { createPrivateFileGatewayCredentialStore } from '../../shared/gateway-file-credential-store.mjs'
-import { createTailscaleGatewayEndpointPublisher } from '../../shared/gateway-tailscale-publisher.mjs'
-import { launchWebUi } from './webui.mjs'
+import { launchWebUi, openBrowser } from './webui.mjs'
 import { acquireCliInstance } from './instance-lock.mjs'
 import { manageGatewayService } from './gateway-service.mjs'
 import {
@@ -209,7 +211,10 @@ export async function main(argv, {
   createPairingTicket = url => createGatewayPairingTicket(url),
   listPairedDevices = url => listGatewayDevices(url),
   revokePairedDevice = (url, id) => revokeGatewayDevice(url, id),
-  createRemotePublisher = options => createTailscaleGatewayEndpointPublisher(options),
+  readRemoteAccess = url => readGatewayRemoteAccess(url),
+  enableRemoteAccess = url => enableGatewayRemoteAccess(url),
+  disableRemoteAccess = url => disableGatewayRemoteAccess(url),
+  openExternal = url => openBrowser(url),
   manageService = (action, options) => manageGatewayService(action, options),
   refreshPath = options => refreshProcessPath(options),
   waitForService = (url, { requireBackend = false } = {}) =>
@@ -393,11 +398,6 @@ export async function main(argv, {
   }
 
   if (options.command === 'gateway' && options.gatewayAction === 'remote') {
-    const publisher = createRemotePublisher({
-      gatewayUrl: options.url,
-      mode: options.remoteMode,
-      port: options.remotePort,
-    })
     if (options.remoteAction === 'devices') {
       const result = await listPairedDevices(options.url)
       if (options.json) stdout.write(`${JSON.stringify(result, null, 2)}\n`)
@@ -415,25 +415,53 @@ export async function main(argv, {
       return 0
     }
     if (options.remoteAction === 'disable') {
-      const result = await publisher.unpublish()
-      stdout.write(result.changed ? 'Tailscale 远程访问已关闭\n' : 'Tailscale 远程访问未开启\n')
+      const result = await disableRemoteAccess(options.url)
+      stdout.write(result.changed ? '远程访问已关闭\n' : '远程访问未开启\n')
       return 0
     }
     if (options.remoteAction === 'status') {
-      const status = await publisher.inspect()
+      const status = await readRemoteAccess(options.url)
       if (options.json) stdout.write(`${JSON.stringify(status, null, 2)}\n`)
-      else if (!status.available) stdout.write('Tailscale 未安装\n')
-      else if (!status.connected) stdout.write(`Tailscale 未连接（${status.backendState}）\n`)
-      else if (status.occupied) stdout.write(`端口 ${options.remotePort} 已被其他 Tailscale Serve 配置占用\n`)
+      else if (status.state === 'auth_required') {
+        stdout.write(`请完成一次远程访问授权：${status.authUrl}\n`)
+      }
       else if (status.published) stdout.write(`远程访问已开启：${status.endpoint.url}\n`)
-      else stdout.write('Tailscale 已连接，远程访问未开启\n')
+      else if (status.state === 'error') {
+        stdout.write(`远程访问异常：${status.error?.message || '未知错误'}\n`)
+        if (status.actionUrl) stdout.write(`请完成设置：${status.actionUrl}\n`)
+      }
+      else if (status.enabled) stdout.write(`远程访问正在启动（${status.state}）\n`)
+      else stdout.write('远程访问未开启\n')
       return status.published ? 0 : 1
     }
     const health = await inspectGateway(options.url)
     if (!health) throw new Error(`Gateway 未运行：${options.url}`)
-    const endpoint = await publisher.publish()
+    const status = await enableRemoteAccess(options.url)
+    if (status.state === 'auth_required') {
+      await openExternal(status.authUrl).catch(() => {})
+      stdout.write(
+        `请在浏览器完成一次远程访问授权：\n${status.authUrl}\n`
+        + '授权完成后，再次执行当前命令即可。\n',
+      )
+      return 0
+    }
+    if (status.actionUrl) {
+      await openExternal(status.actionUrl).catch(() => {})
+      stdout.write(
+        `请先完成远程访问网络设置：\n${status.actionUrl}\n`
+        + '完成后，再次执行当前命令即可。\n',
+      )
+      return 0
+    }
+    if (!status.published || !status.endpoint?.url) {
+      throw Object.assign(
+        new Error(status.error?.message || `远程访问尚未就绪（${status.state}）`),
+        { code: status.error?.code || 'remote_access_not_ready' },
+      )
+    }
+    const endpoint = status.endpoint
     if (options.remoteAction === 'enable') {
-      stdout.write(`Tailscale 远程访问已开启：${endpoint.url}\n`)
+      stdout.write(`远程访问已开启：${endpoint.url}\n`)
       return 0
     }
     const ticket = await createPairingTicket(options.url)

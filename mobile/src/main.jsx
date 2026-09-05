@@ -107,7 +107,7 @@ function MobileApp() {
   return <main className="mobile-onboarding">
     <div className="mobile-mark">Q</div>
     <h1>连接你的 Agent</h1>
-    <p>Gateway 和后台 Agent 继续运行在你的电脑上，手机通过 Tailscale 安全连接。</p>
+    <p>Gateway 和后台 Agent 继续运行在你的电脑上，手机通过安全连接与它对话。</p>
     <button className="mobile-primary" type="button" disabled={busy} onClick={scan}>
       {busy ? '正在连接…' : '扫描配对码'}
     </button>

@@ -27,6 +27,7 @@ let stopPromise
 let exitTimer
 let gatewayLease
 let gatewayHeartbeat
+let closeGatewayApplication
 
 function stop(signal = 'SIGTERM') {
   if (stopPromise) return stopPromise
@@ -34,6 +35,7 @@ function stop(signal = 'SIGTERM') {
   stopPromise = Promise.all([
     backendRuntime?.stop(signal),
     agentClient?.close(),
+    closeGatewayApplication?.(),
   ]).catch(error => {
     logger.error('backend.stop_failed', { error })
   }).finally(() => logger.flush())
@@ -87,10 +89,7 @@ try {
     if (stopPromise) return
     const reason = signal || code || 'unknown'
     logger.error('backend.exited', { code, signal, reason })
-    stopPromise = Promise.resolve(agentClient?.close()).catch(error => {
-      logger.error('backend.stop_failed', { error })
-    })
-    stopPromise.finally(() => process.exit(1))
+    stop('SIGTERM').finally(() => process.exit(1))
   }
   if (managedBackend?.exitCode != null || managedBackend?.signalCode != null) {
     onManagedBackendExit(
@@ -119,7 +118,9 @@ try {
     agentClient?.close()
     gatewayLease?.release()
   })
-  const { server } = await import('./app/bootstrap.mjs')
+  const gatewayApplication = await import('./app/bootstrap.mjs')
+  const { server } = gatewayApplication
+  closeGatewayApplication = gatewayApplication.close
   if (!server.listening) await once(server, 'listening')
   const address = server.address()
   const port = address && typeof address === 'object'

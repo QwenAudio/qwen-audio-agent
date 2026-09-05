@@ -19,6 +19,14 @@ export const TaskScope = Object.freeze({
   SYSTEM: 'system',
 })
 
+// Completion presentation is independent from execution scope. User work is
+// normally announced by the voice frontend, while UI-owned operations may
+// expose their state through cards/polling and remain silent.
+export const TaskNotificationPolicy = Object.freeze({
+  ANNOUNCE: 'announce',
+  SILENT: 'silent',
+})
+
 const ACTIVE = new Set([
   TaskStatus.QUEUED,
   TaskStatus.RUNNING,
@@ -94,6 +102,18 @@ export function isUserWork(task) {
   return normalizeTaskScope(task?.scope) === TaskScope.USER
 }
 
+export function normalizeTaskNotificationPolicy(policy) {
+  return policy === TaskNotificationPolicy.SILENT
+    ? TaskNotificationPolicy.SILENT
+    : TaskNotificationPolicy.ANNOUNCE
+}
+
+export function shouldNotifyTaskCompletion(task) {
+  return isUserWork(task)
+    && normalizeTaskNotificationPolicy(task?.notificationPolicy)
+      === TaskNotificationPolicy.ANNOUNCE
+}
+
 export function publicWorkState(task) {
   if (task?.authorization?.status === 'pending') return 'auth_required'
   if (task?.inputRequest?.status === 'pending') {
@@ -152,6 +172,7 @@ export function publicTask(task, { now = Date.now() } = {}) {
       : null,
     authorization: publicAuthorization(task.authorization, { taskId: task.id }),
     inputRequest: publicInputRequest(task.inputRequest, { taskId: task.id }),
+    notificationPolicy: normalizeTaskNotificationPolicy(task.notificationPolicy),
     notificationStatus: task.notificationStatus,
     notificationDeliveredAt: task.notificationDeliveredAt,
     schedule: task.schedule || null,

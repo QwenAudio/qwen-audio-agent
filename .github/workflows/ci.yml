@@ -59,19 +59,35 @@ jobs:
           # outage. The release workflow stays fail-closed.
           QWEN_AUDIO_AGENT_AUDIT_ALLOW_UNAVAILABLE: '1'
 
+  tsnet:
+    name: tsnet remote access
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: sidecars/tsnet/go.mod
+          cache-dependency-path: sidecars/tsnet/go.sum
+      - run: go test ./...
+        working-directory: sidecars/tsnet
+
   # One stable branch-protection context. The matrix job names change whenever
   # the supported OS/Node set changes; this aggregate keeps main protection
   # bound to the complete CI result instead of a fragile list of matrix names.
   required:
     name: required
     if: ${{ always() }}
-    needs: [test, release-check]
+    needs: [test, release-check, tsnet]
     runs-on: ubuntu-latest
     steps:
       - name: Verify all required jobs
         env:
           TEST_RESULT: ${{ needs.test.result }}
           RELEASE_CHECK_RESULT: ${{ needs.release-check.result }}
+          TSNET_RESULT: ${{ needs.tsnet.result }}
         run: |
           test "$TEST_RESULT" = success
           test "$RELEASE_CHECK_RESULT" = success
+          test "$TSNET_RESULT" = success

@@ -1,9 +1,10 @@
 # VoiceMem
 
-This runnable example replaces qwen-audio-agent's complete personal-memory subsystem with
-[VoiceMem](https://github.com/xzf-thu/VoiceMem). The voice frontend keeps the same `memory` tool
-and context semantics while VoiceMem owns storage, automatic learning, consolidation, and
-semantic retrieval.
+qwen-audio-agent provides a Node.js connector for
+[VoiceMem](https://github.com/xzf-thu/VoiceMem). This example installs VoiceMem and its Python
+sidecar outside the core framework, then configures the Gateway to use them. The voice frontend
+keeps the same `memory` tool and context semantics while VoiceMem owns storage, automatic
+learning, consolidation, and semantic retrieval.
 
 `PROMPT.md` and `ASSISTANT.md` remain part of the assistant definition and are not replaced.
 
@@ -14,7 +15,8 @@ semantic retrieval.
   `memory` tool.
 - Observes completed voice Sessions and consolidates transcripts or native audio in the
   background.
-- Adds semantic recall without introducing VoiceMem-specific code into the Gateway.
+- Adds semantic recall while keeping VoiceMem-specific code inside its provider rather than the
+  generic memory runtime.
 - Isolates each Gateway owner in a separately hashed VoiceMem space.
 - Disables the built-in extractor and preference learner, preventing duplicate learning.
 
@@ -23,14 +25,14 @@ semantic retrieval.
 | Component | Responsibility |
 |---|---|
 | qwen-audio-agent Gateway | Realtime conversation, memory tool, and provider lifecycle |
-| Node.js adapter | `MemoryProvider` contract, bounded synchronous snapshot, owner isolation, and process supervision |
-| Python sidecar | JSONL bridge to VoiceMem's public Python API |
+| Node.js connector | Framework-owned `MemoryProvider` interface, bounded synchronous snapshot, owner isolation, and process supervision |
+| Example Python sidecar | JSONL bridge to VoiceMem's public Python API |
 | VoiceMem | Extraction, consolidation, structured storage, and semantic retrieval |
 | Model provider | Chat model and embedding model used by VoiceMem |
 
-The Gateway starts a long-running Python sidecar on demand and communicates over newline-delimited
-JSON through standard input and output. Python dependencies therefore stay outside the Node.js
-runtime and the public extension contract.
+The Gateway connector starts the configured external Python sidecar on demand and communicates
+over newline-delimited JSON through standard input and output. No VoiceMem Python code or
+dependency is included in the core npm package.
 
 `VOICEMEM_INPUT_MODE` selects the input path. `text` (the default) reuses Realtime
 transcription. `audio` segments accepted PCM16 speech turns and invokes VoiceMem through
@@ -38,12 +40,19 @@ transcription. `audio` segments accepted PCM16 speech turns and invokes VoiceMem
 voiceprint.
 Typed messages use text in either mode.
 
-## Run the example
+## Install and run
 
 Requirements: the repository's supported Node.js version and Python 3.10 or later.
 
 ```bash
 npm ci
+```
+
+Install VoiceMem first by following its
+[official instructions](https://github.com/xzf-thu/VoiceMem). For an isolated setup
+with the tested dependency version, use:
+
+```bash
 python3.12 -m venv examples/voicemem/.venv
 examples/voicemem/.venv/bin/pip install \
   --index-url https://mirrors.aliyun.com/pypi/simple/ \
@@ -54,13 +63,22 @@ cp examples/voicemem/.env.example \
 
 Set `DASHSCOPE_API_KEY` in `.env.local`, then run:
 
+```dotenv
+QWEN_AUDIO_MEMORY_PROVIDER=voicemem
+VOICEMEM_SIDECAR=/absolute/path/to/examples/voicemem/sidecar/server.py
+VOICEMEM_INPUT_MODE=text
+```
+
 ```bash
 cd examples/voicemem
 node --env-file=.env.local gateway.mjs
 ```
 
-Open `http://127.0.0.1:3101`. Use `PORT=3102` if that port is already occupied. The adapter
-automatically discovers the example's `.venv`.
+Open `http://127.0.0.1:3101`. Use `PORT=3102` if that port is already occupied. The example
+launcher prefers its `.venv`, otherwise uses `python3` from `PATH`, and discovers its sidecar.
+To enable VoiceMem in the regular
+Gateway instead, copy their absolute paths into `config.env` as `VOICEMEM_PYTHON` and
+`VOICEMEM_SIDECAR`.
 
 To try native audio memory, set this in `.env.local`:
 
@@ -91,7 +109,7 @@ background and does not block foreground voice conversation.
 
 ## Storage
 
-The example stores state under `.qwen-audio/voicemem/` in its working directory:
+The isolated example stores state under `.qwen-audio/runtime/memory/voicemem/`:
 
 | Path | Content |
 |---|---|
@@ -113,4 +131,4 @@ vendor-specific changes. See [Long-Term Memory](../reference/memory.md) for the 
 
 - [Xie Zhifei](https://github.com/xzf-thu) created and open-sourced VoiceMem.
 - [Li Xu](https://github.com/x-lixu) designed the replaceable `MemoryProvider` boundary and
-  implemented the Node.js/Python integration example.
+  implemented the built-in Node.js/Python integration.

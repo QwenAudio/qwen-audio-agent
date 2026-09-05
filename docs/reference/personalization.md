@@ -20,7 +20,7 @@ the current turn.
 
 ## Default implementation
 
-Without an injected `MemoryProvider`, the Gateway uses its built-in Markdown provider. It keeps
+With the default configuration, the Gateway uses its built-in Markdown provider. It keeps
 the following files under the configuration directory (`~/.config/qwaudio/` for the CLI):
 
 | File | Description |
@@ -126,8 +126,8 @@ instance-wide default persona therefore stay stable regardless of the selected m
 The Realtime Agent continues to use the same `memory` tool and the same logical `user` /
 `memory` scopes.
 
-See [Long-Term Memory](memory.md) for the provider contract and the runnable
-[VoiceMem example](../scenarios/voicemem.md) for a complete replacement.
+See [Long-Term Memory](memory.md) for the provider contract and the
+[VoiceMem setup example](../scenarios/voicemem.md) for the optional built-in integration.
 
 ## Read next
 

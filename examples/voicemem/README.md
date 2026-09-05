@@ -1,9 +1,9 @@
-# Qwen Audio Agent VoiceMem Example
+# Qwen Audio Agent VoiceMem Setup Example
 
 English | [中文](README_ZH.md)
 
-This runnable example replaces qwen-audio-agent's complete personal-memory
-subsystem with [VoiceMem](https://github.com/xzf-thu/VoiceMem). Users can state
+This runnable configuration example installs [VoiceMem](https://github.com/xzf-thu/VoiceMem)
+outside qwen-audio-agent and enables it through the framework's Node.js connector. Users can state
 preferences and durable facts in natural conversation, start a new voice
 Session, and recall that information later.
 
@@ -13,8 +13,8 @@ session-boundary consolidation.
 
 ## Core features
 
-- **Replaceable memory:** the Gateway depends only on the versioned
-  `MemoryProvider` contract and contains no VoiceMem-specific logic.
+- **Replaceable memory:** the generic runtime depends only on the versioned `MemoryProvider`
+  contract; the Python integration stays in this example.
 - **Explicit preference updates:** the existing `memory` tool still supports
   precise reads, additions, replacements, and deletions.
 - **Two input paths:** use existing Realtime transcripts by default, or switch to
@@ -34,15 +34,14 @@ session-boundary consolidation.
 | Component | Responsibility |
 |---|---|
 | qwen-audio-agent Gateway | Realtime conversation, memory tools, and the provider lifecycle. |
-| [`voicemem-provider.mjs`](voicemem-provider.mjs) | Node.js `MemoryProvider`, synchronous preference snapshot, user isolation, and process supervision. |
-| [`sidecar/server.py`](sidecar/server.py) | Small JSONL process boundary around VoiceMem's public Python API. |
+| [VoiceMem connector](../../server/src/conversation/providers/voicemem/voicemem-provider.mjs) | Framework-owned Node.js `MemoryProvider` interface, synchronous preference snapshot, user isolation, and process supervision. |
+| [Example Python sidecar](sidecar/server.py) | Example-owned JSONL process boundary around VoiceMem's public Python API. |
 | VoiceMem | Memory extraction, consolidation, structured storage, and semantic retrieval. |
 | Alibaba Cloud Model Studio | Recommended inference provider: Qwen3.8-Flash for memory processing and text-embedding-v4 for retrieval vectors. |
 
 The Node.js Gateway starts one long-running Python sidecar on demand. Requests
 and responses use newline-delimited JSON over standard input and output, so
-Python dependencies do not leak into the Gateway runtime or its public
-extension contract.
+Python code and dependencies remain outside the core npm package.
 
 ## Quick start
 
@@ -51,6 +50,13 @@ From the repository root:
 
 ```bash
 npm ci
+```
+
+Install VoiceMem first by following its
+[official instructions](https://github.com/xzf-thu/VoiceMem).
+For an isolated setup, use:
+
+```bash
 python3 --version # must be 3.10 or later
 python3.12 -m venv examples/voicemem/.venv
 examples/voicemem/.venv/bin/pip install \
@@ -71,16 +77,19 @@ node --env-file=.env.local gateway.mjs
 
 Open `http://127.0.0.1:3101`. If another Gateway already uses that port, start
 this example with `PORT=3102` and open `http://127.0.0.1:3102` instead.
-The adapter discovers the example's `.venv` automatically. Set
-`VOICEMEM_PYTHON` only when using a different Python environment.
+The example launcher prefers its `.venv`, otherwise it uses `python3` from
+`PATH`; it also discovers the example sidecar automatically. Set
+`VOICEMEM_PYTHON` or `VOICEMEM_SIDECAR` only when using other locations.
 
 ## Recommended configuration
 
-The example automatically maps `DASHSCOPE_API_KEY` to VoiceMem's
+The framework connector automatically maps `DASHSCOPE_API_KEY` to VoiceMem's
 OpenAI-compatible client and applies these defaults:
 
 ```dotenv
 DASHSCOPE_API_KEY=your_dashscope_api_key
+QWEN_AUDIO_MEMORY_PROVIDER=voicemem
+VOICEMEM_SIDECAR=/absolute/path/to/examples/voicemem/sidecar/server.py
 OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 VOICEMEM_CHAT_MODEL=qwen3.8-flash
 VOICEMEM_EMBEDDING_MODEL=text-embedding-v4
@@ -137,7 +146,7 @@ waiting behind background work.
 
 ## Storage
 
-State is stored under `.qwen-audio/voicemem/` in the current working directory:
+The isolated example stores state under `.qwen-audio/runtime/memory/voicemem/`:
 
 | Path | Content |
 |---|---|
@@ -157,7 +166,8 @@ configure VoiceMem's `VOICE_SCENE` and retention policy for your privacy needs.
 | Goal | Change |
 |---|---|
 | Use another OpenAI-compatible inference provider | Set `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and the relevant `VOICEMEM_*` model variables. |
-| Move memory to another persistent location | Pass `stateDirectory` when creating `VoiceMemProvider`. |
+| Move memory to another persistent location | Set `VOICEMEM_STATE_DIR`, or pass `stateDirectory` when embedding `VoiceMemProvider`. |
+| Use the regular Gateway | Put the absolute `VOICEMEM_PYTHON` and `VOICEMEM_SIDECAR` paths in `config.env`. |
 | Replace VoiceMem with another memory system | Implement the same versioned `MemoryProvider` contract and inject it into `createGatewayApplication`. |
 | Switch between text and native audio | Set `VOICEMEM_INPUT_MODE=text` or `audio`. |
 
@@ -167,4 +177,4 @@ configure VoiceMem's `VOICE_SCENE` and retention policy for your privacy needs.
   which provides the memory extraction, consolidation, and retrieval engine
   used by this example.
 - [Li Xu](https://github.com/x-lixu): designed the replaceable `MemoryProvider`
-  boundary and implemented the Node.js/Python integration example.
+  boundary and implemented the built-in Node.js/Python integration.

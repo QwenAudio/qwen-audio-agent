@@ -1,13 +1,49 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import {
+  normalizeMemoryProviderSelection,
+} from '../../shared/memory-provider-catalog.mjs'
+import {
+  createConfiguredMemoryProvider,
+} from '../src/app/memory-provider-factory.mjs'
+import {
   applyRecommendedDashScopeConfiguration,
   normalizeVoiceMemInputMode,
   VoiceMemProvider,
-} from '../voicemem-provider.mjs'
+} from '../src/conversation/providers/voicemem/voicemem-provider.mjs'
+
+test('selects the optional VoiceMem connector through configuration', async () => {
+  assert.equal(normalizeMemoryProviderSelection(), 'markdown')
+  assert.equal(normalizeMemoryProviderSelection('VoiceMem'), 'voicemem')
+  assert.throws(
+    () => normalizeMemoryProviderSelection('unknown'),
+    /不支持的记忆 Provider/,
+  )
+  const stateDirectory = mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-built-in-'))
+  const sidecarPath = join(stateDirectory, 'sidecar.py')
+  writeFileSync(sidecarPath, '')
+  const provider = createConfiguredMemoryProvider({
+    config: {
+      memoryProvider: 'voicemem',
+      voiceMemStateDirectory: stateDirectory,
+      voiceMemPython: '',
+      voiceMemSidecarPath: sidecarPath,
+    },
+    logger: { warn() {} },
+    env: { VOICEMEM_INPUT_MODE: 'text' },
+  })
+  assert.equal(provider.describe().key, 'voicemem')
+  await provider.close()
+})
 
 test('defaults unknown input modes to text', () => {
   assert.equal(normalizeVoiceMemInputMode(), 'text')
@@ -44,7 +80,10 @@ test('maps Model Studio credentials without overriding explicit providers', () =
 
 test('keeps a synchronous control snapshot and applies exact edits', async () => {
   const stateDirectory = mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-'))
-  const provider = new VoiceMemProvider({ stateDirectory })
+  const provider = new VoiceMemProvider({
+    stateDirectory,
+    sidecar: { lastError: null, close() {} },
+  })
   assert.equal(provider.describe().capabilities.sessionObservation, true)
   assert.match(provider.list('owner')[0].content, /# USER/)
 
@@ -65,6 +104,16 @@ test('keeps a synchronous control snapshot and applies exact edits', async () =>
   assert.doesNotThrow(() => JSON.parse(readFileSync(
     join(stateDirectory, 'profiles', profile), 'utf8',
   )))
+})
+
+test('requires an external VoiceMem sidecar instead of bundling Python code', () => {
+  assert.throws(
+    () => new VoiceMemProvider({
+      stateDirectory: mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-external-')),
+      env: {},
+    }),
+    /VOICEMEM_SIDECAR/,
+  )
 })
 
 test('uses a longer timeout for background observation and consolidation', async () => {

@@ -1,9 +1,9 @@
-# Qwen Audio Agent VoiceMem 示例
+# Qwen Audio Agent VoiceMem 配置示例
 
 [English](README.md) | 中文
 
-这是一个可运行的 qwen-audio-agent 记忆扩展示例，使用
-[VoiceMem](https://github.com/xzf-thu/VoiceMem) 替换完整的用户记忆系统。用户可以在
+这是一个可运行的配置示例：在 qwen-audio-agent 外部安装
+[VoiceMem](https://github.com/xzf-thu/VoiceMem)，再通过框架的 Node.js 连接器启用。用户可以在
 自然对话中表达偏好和长期事实，并在新的语音 Session 中继续召回这些信息。
 
 `PROMPT.md` 与 `ASSISTANT.md` 仍属于系统指令；用户偏好、长期事实、语义召回、
@@ -11,8 +11,8 @@
 
 ## 核心特点
 
-- **记忆系统可替换：**Gateway 只依赖带版本的 `MemoryProvider` 接口，不包含 VoiceMem
-  专用逻辑。
+- **记忆系统可替换：**通用记忆运行时只依赖带版本的 `MemoryProvider` 接口，Python
+  接入逻辑留在本示例中。
 - **明确偏好即时更新：**原有 `memory` 工具继续支持精确读取、新增、替换和删除。
 - **两种输入：**默认使用 Realtime 转写文本；也可切换到 VoiceMem 原生音频处理，使用
   它自己的 ASR、情绪、环境感知及可选声纹能力。
@@ -27,13 +27,13 @@
 | 组件 | 职责 |
 |---|---|
 | qwen-audio-agent Gateway | 实时语音对话、记忆工具和 Provider 生命周期。 |
-| [`voicemem-provider.mjs`](voicemem-provider.mjs) | Node.js `MemoryProvider`、同步偏好快照、用户隔离和子进程管理。 |
-| [`sidecar/server.py`](sidecar/server.py) | 基于 JSONL 的轻量进程边界，调用 VoiceMem 公开 Python API。 |
+| [VoiceMem 连接器](../../server/src/conversation/providers/voicemem/voicemem-provider.mjs) | 框架内的 Node.js `MemoryProvider` 接口、同步偏好快照、用户隔离和子进程管理。 |
+| [示例 Python Sidecar](sidecar/server.py) | 示例自带的 JSONL 进程边界，调用 VoiceMem 公开 Python API。 |
 | VoiceMem | 记忆抽取、整理、结构化存储和语义检索。 |
 | 阿里云百炼 | 推荐推理服务：Qwen3.8-Flash 处理记忆，text-embedding-v4 生成检索向量。 |
 
 Node.js Gateway 按需启动一个长期运行的 Python Sidecar，通过标准输入输出传递逐行
-JSON 请求和响应。Python 依赖不会进入 Gateway 的 npm 依赖和公共扩展接口。
+JSON 请求和响应。Python 代码和依赖不会进入核心 npm 包。
 
 ## 快速开始
 
@@ -41,6 +41,12 @@ JSON 请求和响应。Python 依赖不会进入 Gateway 的 npm 依赖和公共
 
 ```bash
 npm ci
+```
+
+请先按照 [VoiceMem 官方说明](https://github.com/xzf-thu/VoiceMem)完成安装。
+本示例推荐使用独立 Python 环境：
+
+```bash
 python3 --version # 需要 3.10 或更高版本
 python3.12 -m venv examples/voicemem/.venv
 examples/voicemem/.venv/bin/pip install \
@@ -60,16 +66,18 @@ node --env-file=.env.local gateway.mjs
 
 浏览器打开 `http://127.0.0.1:3101`。如果该端口已有 Gateway，可以使用 `PORT=3102`
 启动，并打开 `http://127.0.0.1:3102`。
-Adapter 会自动发现示例目录中的 `.venv`；只有使用其他 Python 环境时才需要设置
-`VOICEMEM_PYTHON`。
+示例启动器优先使用本目录的 `.venv`，否则使用 `PATH` 中的 `python3`；Sidecar 也会
+自动发现。只有使用其他位置时才需要设置 `VOICEMEM_PYTHON` 或 `VOICEMEM_SIDECAR`。
 
 ## 推荐配置
 
-示例检测到 `DASHSCOPE_API_KEY` 后，会自动映射给 VoiceMem 的 OpenAI 兼容客户端，
+框架连接器检测到 `DASHSCOPE_API_KEY` 后，会自动映射给 VoiceMem 的 OpenAI 兼容客户端，
 并采用以下默认配置：
 
 ```dotenv
 DASHSCOPE_API_KEY=your_dashscope_api_key
+QWEN_AUDIO_MEMORY_PROVIDER=voicemem
+VOICEMEM_SIDECAR=/absolute/path/to/examples/voicemem/sidecar/server.py
 OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 VOICEMEM_CHAT_MODEL=qwen3.8-flash
 VOICEMEM_EMBEDDING_MODEL=text-embedding-v4
@@ -115,7 +123,7 @@ VOICEMEM_INPUT_MODE=audio
 
 ## 数据存储
 
-默认数据保存在当前工作目录的 `.qwen-audio/voicemem/`：
+隔离示例的数据保存在 `.qwen-audio/runtime/memory/voicemem/`：
 
 | 路径 | 内容 |
 |---|---|
@@ -133,7 +141,8 @@ VOICEMEM_INPUT_MODE=audio
 | 需求 | 修改位置 |
 |---|---|
 | 使用其他 OpenAI 兼容推理服务 | 设置 `OPENAI_API_KEY`、`OPENAI_BASE_URL` 和对应的 `VOICEMEM_*` 模型变量。 |
-| 修改记忆持久化位置 | 创建 `VoiceMemProvider` 时传入 `stateDirectory`。 |
+| 修改记忆持久化位置 | 设置 `VOICEMEM_STATE_DIR`，或嵌入时向 `VoiceMemProvider` 传入 `stateDirectory`。 |
+| 在日常 Gateway 中启用 | 把 `VOICEMEM_PYTHON` 和 `VOICEMEM_SIDECAR` 的绝对路径写入 `config.env`。 |
 | 替换为其他记忆系统 | 实现同一版本的 `MemoryProvider` 接口，并注入 `createGatewayApplication`。 |
 | 切换文本或原生音频输入 | 设置 `VOICEMEM_INPUT_MODE=text` 或 `audio`。 |
 
@@ -142,4 +151,4 @@ VOICEMEM_INPUT_MODE=audio
 - [Xie Zhifei](https://github.com/xzf-thu)：创建并开源 VoiceMem，为本示例提供记忆抽取、
   整理和检索能力。
 - [Li Xu](https://github.com/x-lixu)：设计可替换的 `MemoryProvider` 边界，并实现
-  Node.js/Python 接入示例。
+  内置 Node.js/Python 接入。

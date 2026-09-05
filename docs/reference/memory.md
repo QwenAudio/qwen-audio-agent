@@ -80,6 +80,30 @@ read from the task ledger at retrieval time. The ledger keeps terminal tasks for
 three days; for older work the answer states that it was dispatched without
 claiming a status.
 
+## Optional VoiceMem Connector
+
+The package ships only a Node.js `MemoryProvider` connector. VoiceMem itself, its Python
+dependencies, and the small integration sidecar stay outside the core npm package. After
+installing them through the setup example, select the connector in `config.env`:
+
+```dotenv
+QWEN_AUDIO_MEMORY_PROVIDER=voicemem
+VOICEMEM_PYTHON=/absolute/path/to/python
+VOICEMEM_SIDECAR=/absolute/path/to/voicemem-sidecar.py
+VOICEMEM_INPUT_MODE=text
+```
+
+`text` reuses Realtime transcripts. `audio` sends per-turn audio to VoiceMem's own ASR and
+acoustic perception. Because VoiceMem advertises `sessionObservation`, it exclusively owns the
+`user` and `memory` layers, semantic recall, and session-end learning; Markdown reconciliation
+does not run in parallel. State defaults to `memory/voicemem/` under the user data directory.
+Switching back to `markdown` neither deletes VoiceMem state nor migrates data between providers.
+See the [VoiceMem setup example](../scenarios/voicemem.md) for external installation, the sidecar,
+and recommended Model Studio configuration.
+
+Embedded hosts may also import `VoiceMemProvider` from
+`qwen-audio-agent/voicemem-provider` and inject it into `createGatewayApplication` explicitly.
+
 ## Replacing the Memory Provider
 
 The built-in `USER.md` and `MEMORY.md` files are the default implementation, not a fixed Gateway
@@ -144,12 +168,12 @@ the exchanges it receives.
 Protocol v1 providers remain accepted and keep their original `list()` / `apply()` behavior.
 
 Realtime, automatic extraction, and tool handling depend only on `FrontendMemoryRuntime`; they
-never access a vendor SDK, database, or Markdown file. Without an injected provider, the existing
-Markdown provider remains active, so current configuration and data require no migration.
+never access a vendor SDK, database, or Markdown file. The default configuration keeps the
+existing Markdown provider active, so current users require no migration.
 Third-party adapters own remote authentication, tenant mapping, cache refresh, and translation
-into the public `user` and `memory` context semantics. See the runnable
-[VoiceMem example](../scenarios/voicemem.md) for a complete replacement using VoiceMem
-behind a Python sidecar.
+into the public `user` and `memory` context semantics. The
+[VoiceMem setup example](../scenarios/voicemem.md) demonstrates the same boundary through the
+bundled connector and an example-owned Python sidecar.
 
 ## Logs
 

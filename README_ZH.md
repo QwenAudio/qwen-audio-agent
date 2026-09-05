@@ -51,7 +51,7 @@ https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 - 支持创建多个独立任务，由后台 Agent 异步执行，并持续追踪任务状态
 - 任务结果自动回到当前对话，支持继续追问和修改
 - 支持 WebUI、终端 TUI 和桌面悬浮球（macOS / Windows / Linux）
-- 支持当前用户的长期个性化覆盖与跨会话记忆
+- 支持当前用户的长期个性化覆盖与跨会话记忆，可选接入 VoiceMem
 
 ## 参考架构
 
@@ -160,7 +160,7 @@ npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 | --- | --- | --- | --- |
 | 桌面办公 | 实时语音交流、进度追问、工具调用和后台任务执行。 | [文档][desktop-docs-zh] | 已提供 |
 | 智能座舱 | 车控、导航、音乐、天气和生活服务。 | [示例][smart-cockpit-example] | 已提供 |
-| VoiceMem | 使用语义记忆或原生音频记忆替换用户记忆系统。 | [示例][voicemem-example] | 已提供 |
+| VoiceMem | 可选语义记忆，支持转写文本或原生音频输入。 | [配置示例][voicemem-example] | 已提供 |
 | 客服助手 | 问题澄清、订单查询、工单处理和人工转接。 | 待补充 | 规划中 |
 | 具身智能 | 语音指令、动作执行、巡检和异常反馈。 | 待补充 | 规划中 |
 | 直播助手 | 弹幕互动、商品讲解、优惠发放和风险提醒。 | 待补充 | 探索中 |
@@ -176,13 +176,14 @@ npm run example:smart-cockpit          # 同时启动 service、agent、gateway 
 
 详细说明见 [examples/smart-cockpit](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/smart-cockpit)。
 
-[VoiceMem 示例](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem)
-展示了如何通过公开的 `MemoryProvider` 边界替换用户偏好、长期事实、自动学习和语义召回，
-并可在 Realtime 转写文本与 VoiceMem 原生音频处理之间切换。
+[VoiceMem 配置示例](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem)
+展示了如何在框架外安装 VoiceMem、配置连接器，并在 Realtime 转写文本与 VoiceMem
+原生音频处理之间切换。默认仍使用轻量 Markdown 记忆；核心 npm 包不包含 VoiceMem
+Python 代码或依赖。
 
 [desktop-docs-zh]: docs/desktop/overview.zh.md
 [smart-cockpit-example]: examples/smart-cockpit
-[voicemem-example]: examples/voicemem
+[voicemem-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem
 
 ## 交流与分享
 

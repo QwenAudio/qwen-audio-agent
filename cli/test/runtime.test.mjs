@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import {
   assertGatewayCompatibility,
+  assertMemoryGatewayCompatibility,
   assertRealtimeGatewayCompatibility,
   ensureRuntime,
   ManagedRuntime,
@@ -13,6 +14,35 @@ import {
 import {
   resolveRealtimeFrontendConfiguration,
 } from '../../shared/realtime-provider-catalog.mjs'
+
+test('compares explicitly selected memory connector configuration', () => {
+  assert.equal(assertMemoryGatewayCompatibility({}, {}), 'markdown')
+  assert.equal(assertMemoryGatewayCompatibility({
+    frontendMemory: {
+      provider: { key: 'voicemem' },
+      inputMode: 'audio',
+    },
+  }, {
+    QWEN_AUDIO_MEMORY_PROVIDER: 'voicemem',
+    VOICEMEM_INPUT_MODE: 'audio',
+  }), 'voicemem')
+  assert.throws(() => assertMemoryGatewayCompatibility({
+    frontendMemory: {
+      provider: { key: 'markdown' },
+    },
+  }, {
+    QWEN_AUDIO_MEMORY_PROVIDER: 'voicemem',
+  }), /记忆 Provider.*不一致/)
+  assert.throws(() => assertMemoryGatewayCompatibility({
+    frontendMemory: {
+      provider: { key: 'voicemem' },
+      inputMode: 'text',
+    },
+  }, {
+    QWEN_AUDIO_MEMORY_PROVIDER: 'voicemem',
+    VOICEMEM_INPUT_MODE: 'audio',
+  }), /VoiceMem text 输入.*audio/)
+})
 
 const DEFAULT_FRONTEND_ENV = { DASHSCOPE_API_KEY: 'key' }
 const DEFAULT_FRONTEND = resolveRealtimeFrontendConfiguration(

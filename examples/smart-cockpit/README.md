@@ -93,6 +93,16 @@ definitions, executors, and foreground/backend routing remain independent.
 | `custom-skills` | 3 | List, create, and load user-defined cockpit workflows. |
 | **Total** | **38** | Foreground low-latency operations and backend composed tasks. |
 
+The Realtime model sees the function-tool surface assembled by the Gateway:
+the foreground MCP tools above, Gateway built-ins, and capability-gated tools.
+
+| Function tool source | Count | Tools |
+|---|---:|---|
+| Gateway built-ins, default | 7 | `spawn_thinking`, `schedule_reminder`, `cancel_agent_task`, `get_agent_task_status`, `get_current_time`, `memory`, `notes` |
+| Gateway built-ins, conditional | up to +7 | `knowledge`, `recall`, `respond_permission`, `respond_agent_input`, `web_search`, `fetch_url`, `enter_sleep`; visible only when the matching knowledge, session digest, retrieval, pending permission, pending input, or client sleep action capability exists |
+| Cockpit foreground MCP tools | 34 | `vehicle`, `navigation`, `music`, and `weather` tools routed to the foreground; model-visible names are `mcp__cockpit__*` |
+| **Default Realtime total** | **41** | 7 Gateway built-ins + 34 cockpit foreground MCP tools |
+
 By default, `vehicle`, `navigation`, `music`, and `weather` use the foreground
 Realtime fast path, while `flashbuy` and `custom-skills` run through the backend
 Agent. Change the scenario routing in

@@ -11,6 +11,10 @@ import {
 } from '../service/tools/registry.mjs'
 import { loadCockpitSurfaceRouting } from '../service/tools/surface-routing.mjs'
 import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from '../gateway/spawn-thinking-tool.mjs'
+import {
+  frontendToolRegistry,
+  frontendTools,
+} from '../../../server/src/voice/frontend-tools.mjs'
 
 test('routes complete cockpit domains to a single configured surface', () => {
   assert.deepEqual(COCKPIT_SURFACE_ROUTING.domains, {
@@ -80,6 +84,23 @@ test('binds the cockpit frontend profile to the scoped MCP configuration', () =>
   assert.match(config.servers.cockpit.tools.music_state_query.description, /不要把查询当成控制/u)
   assert.match(config.servers.cockpit.tools.music_search.description, /不自动播放/u)
   assert.match(config.servers.cockpit.tools.music_volume_control.description, /直接调用/u)
+})
+
+test('documents the Gateway function tools exposed around cockpit MCP tools', () => {
+  const readmes = [
+    readFileSync(new URL('../README.md', import.meta.url), 'utf8'),
+    readFileSync(new URL('../README_ZH.md', import.meta.url), 'utf8'),
+  ]
+  for (const name of frontendToolRegistry.names()) {
+    for (const readme of readmes) {
+      assert.match(readme, new RegExp(`\`${name}\``))
+    }
+  }
+  const defaultRealtimeTotal = frontendTools({}).length + FRONTEND_TOOL_NAMES.length
+  for (const readme of readmes) {
+    assert.match(readme, new RegExp(`\\*\\*${defaultRealtimeTotal}\\*\\*`))
+    assert.match(readme, new RegExp(`\\b${FRONTEND_TOOL_NAMES.length}\\b`))
+  }
 })
 
 test('keeps asynchronous cockpit acknowledgements natural and action-specific', () => {

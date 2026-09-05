@@ -36,6 +36,11 @@ export function mergeToolCallDebug(existing = [], incoming) {
   return next
 }
 
+export function shouldRefreshMemoryForToolCall(call) {
+  return displayToolName(call?.name) === 'memory'
+    && clean(call?.status).toLowerCase() === 'completed'
+}
+
 export function toolCallFromGatewayEvent(event) {
   if (event?.type !== 'tool.call') return null
   const name = clean(event.name)

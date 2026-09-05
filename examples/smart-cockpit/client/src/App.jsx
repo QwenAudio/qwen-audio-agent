@@ -19,7 +19,10 @@ import {
   voiceConversationMessageId,
   voiceEventBelongsToTurn,
 } from './projections/voice-transcript'
-import { mergeToolCallDebug } from './projections/tool-call-debug'
+import {
+  mergeToolCallDebug,
+  shouldRefreshMemoryForToolCall,
+} from './projections/tool-call-debug'
 import { cockpitScreenForProgress } from './projections/cockpit-activity'
 import {
   COCKPIT_VOICE_IDS,
@@ -290,6 +293,9 @@ export default function App() {
           ),
         },
       }))
+      if (shouldRefreshMemoryForToolCall(event.toolCall)) {
+        void loadMemories()
+      }
       return
     }
 
@@ -358,7 +364,7 @@ export default function App() {
         voiceAssistantMessageIdRef.current = null
       }
     }
-  }, [])
+  }, [loadMemories])
 
   const handleConversationRecovery = useCallback((messages) => {
     voiceAssistantMessageIdRef.current = null

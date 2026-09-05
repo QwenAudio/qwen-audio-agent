@@ -8,6 +8,7 @@
 Updated 2026-09-04:
 
 - Gateway health contract `5.7.0`;
+- WebUI explicit camera observation for vision-capable Realtime frontends;
 - stable Gateway Client Protocol wire version `6.0.0`;
 - GCP1–GCP5 complete;
 - Gateway remote access and Mobile Client roadmap tracked by issue #320;

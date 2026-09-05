@@ -165,6 +165,30 @@ test('does not report automatic fallback ready without Bailian setup', () => {
   }
 })
 
+test('reports automatic OpenClaw package setup with OrcaRouter', () => {
+  const openClaw = inspector({
+    backend: 'openclaw',
+    env: {
+      OPENCLAW_ORCAROUTER_API_KEY: 'sk-orca-test',
+      QWEN_AUDIO_AGENT_BACKEND_MODEL: 'openai/gpt-4o-mini',
+    },
+    commands: { npx: '/bin/npx' },
+  }).backends[0]
+  assert.equal(openClaw.ready, true)
+  assert.equal(openClaw.backend.source, 'managed')
+  assert.equal(openClaw.configuration, 'automatic-orcarouter')
+
+  const aliased = inspector({
+    backend: 'openclaw',
+    env: {
+      ORCAROUTER_API_KEY: 'sk-orca-test',
+      QWEN_AUDIO_AGENT_BACKEND_MODEL: 'openai/gpt-4o-mini',
+    },
+    commands: { npx: '/bin/npx' },
+  }).backends[0]
+  assert.equal(aliased.configuration, 'automatic-orcarouter')
+})
+
 test('checks explicit generic ACP commands and adapter binaries', () => {
   const generic = inspector({
     backend: 'acp',

@@ -88,7 +88,10 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
 OpenCode 和 OpenClaw 在以上配置下可以自动下载兼容版本并配置百炼模型，实现
-一键启动。若未指定后台模型，则优先使用用户已经安装和配置的 Agent，不覆盖其
+一键启动。OpenClaw 后台也可以改设 `OPENCLAW_ORCAROUTER_API_KEY`（或
+`ORCAROUTER_API_KEY`）代替 `DASHSCOPE_API_KEY`，让托管实例对接
+[OrcaRouter](https://www.orcarouter.ai)（`https://api.orcarouter.ai/v1`），
+一个面向模型与 Agent 的 OpenAI 兼容 AI 网关。若未指定后台模型，则优先使用用户已经安装和配置的 Agent，不覆盖其
 模型、Provider、工具、MCP、Skill 和认证。其他后台暂时需要用户自行安装配置。
 
 这是 qwen-audio-agent 唯一的后台 Session 模型覆盖入口。模型 ID 是后台通过 ACP

@@ -19,6 +19,23 @@
           },
         ],
       },
+      orcarouter: {
+        baseUrl: "https://api.orcarouter.ai/v1",
+        apiKey: { source: "env", provider: "default", id: "OPENCLAW_ORCAROUTER_API_KEY" },
+        api: "openai-completions",
+        models: [
+          {
+            id: "${QWEN_AUDIO_AGENT_OPENCLAW_MODEL_ID}",
+            name: "${QWEN_AUDIO_AGENT_OPENCLAW_MODEL_ID}",
+            reasoning: false,
+            input: ["text"],
+            contextWindow: 200000,
+            maxTokens: 8192,
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            compat: { thinkingFormat: "openai" },
+          },
+        ],
+      },
     },
   },
   agents: {

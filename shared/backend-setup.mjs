@@ -367,6 +367,16 @@ function inspectBackend(id, {
     && Boolean(clean(env.QWEN_AUDIO_AGENT_BACKEND_MODEL))
     && clean(env.QWEN_AUDIO_AGENT_BACKEND_MODEL).toLowerCase() !== 'auto'
   )
+  const automaticOrcaRouter = (
+    id === 'openclaw'
+    && Boolean(
+      clean(env.OPENCLAW_ORCAROUTER_API_KEY)
+      || (!clean(env.DASHSCOPE_API_KEY) && clean(env.ORCAROUTER_API_KEY)),
+    )
+    && Boolean(clean(env.QWEN_AUDIO_AGENT_BACKEND_MODEL))
+    && clean(env.QWEN_AUDIO_AGENT_BACKEND_MODEL).toLowerCase() !== 'auto'
+  )
+  const automaticManaged = automaticBailian || automaticOrcaRouter
   // 桌面版运行时不做 npx 自动部署，检测同样关闭 managed 回退分支。
   const installedOnly = clean(env.QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY) === '1'
   let backend = explicitRuntime(id, env, find)
@@ -393,7 +403,7 @@ function inspectBackend(id, {
       && runtime === 'auto'
     ) {
       const npx = find('npx')
-      if (npx && automaticBailian) {
+      if (npx && automaticManaged) {
         backend = {
           ready: true,
           source: 'managed',
@@ -401,7 +411,7 @@ function inspectBackend(id, {
         }
       } else if (npx) {
         backend.issue = `未找到 ${definition.label}；自动部署需要 `
-          + 'DASHSCOPE_API_KEY 和 QWEN_AUDIO_AGENT_BACKEND_MODEL'
+          + 'DASHSCOPE_API_KEY（或 OPENCLAW_ORCAROUTER_API_KEY）和 QWEN_AUDIO_AGENT_BACKEND_MODEL'
       }
     }
   }
@@ -415,7 +425,7 @@ function inspectBackend(id, {
     backend.version = version
     if (!versionAtLeast(version, spec.minimumVersion)) {
       const npx = !installedOnly && runtime === 'auto' ? find('npx') : ''
-      if (npx && automaticBailian) {
+      if (npx && automaticManaged) {
         backend = {
           ready: true,
           source: 'managed',
@@ -426,7 +436,7 @@ function inspectBackend(id, {
         backend.ready = false
         backend.issue = npx
           ? `OpenCode ${version || '版本未知'} 不兼容；自动部署需要 `
-            + 'DASHSCOPE_API_KEY 和 QWEN_AUDIO_AGENT_BACKEND_MODEL'
+            + 'DASHSCOPE_API_KEY（或 OPENCLAW_ORCAROUTER_API_KEY）和 QWEN_AUDIO_AGENT_BACKEND_MODEL'
           : version
             ? `OpenCode ${version} 低于最低版本 ${spec.minimumVersion}`
             : '无法确认 OpenCode 版本'
@@ -493,7 +503,9 @@ function inspectBackend(id, {
     integration: spec.integration,
     configuration: id === 'acp'
       ? 'command-managed'
-      : automaticBailian ? 'automatic-bailian' : 'preserved',
+      : automaticOrcaRouter
+        ? 'automatic-orcarouter'
+        : automaticBailian ? 'automatic-bailian' : 'preserved',
     authentication: 'backend-managed',
     issues,
     platform,
@@ -612,11 +624,13 @@ export function formatBackendSetup(report) {
       ? [
           backendText(item),
           integrationText(item),
-          item.configuration === 'automatic-bailian'
-            ? '自动配置百炼 API Key 与后台模型'
-            : item.configuration === 'preserved'
-              ? '复用用户级配置'
-              : '配置由 ACP Agent 管理',
+          item.configuration === 'automatic-orcarouter'
+            ? '自动配置 OrcaRouter API Key 与后台模型'
+            : item.configuration === 'automatic-bailian'
+              ? '自动配置百炼 API Key 与后台模型'
+              : item.configuration === 'preserved'
+                ? '复用用户级配置'
+                : '配置由 ACP Agent 管理',
         ]
       : item.issues
     lines.push(

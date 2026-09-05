@@ -97,7 +97,11 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
 With the above configuration, OpenCode and OpenClaw can automatically download compatible
-versions and configure the Bailian model, enabling one-click startup. If no backend model is
+versions and configure the Bailian model, enabling one-click startup. For the OpenClaw backend,
+setting `OPENCLAW_ORCAROUTER_API_KEY` (or `ORCAROUTER_API_KEY`) instead of `DASHSCOPE_API_KEY`
+provisions the managed instance against [OrcaRouter](https://www.orcarouter.ai)
+(`https://api.orcarouter.ai/v1`), an OpenAI-compatible AI gateway for models and agents.
+If no backend model is
 specified, the user's already installed and configured Agent is used preferentially, without
 overwriting its models, providers, tools, MCPs, Skills, and authentication. Other backends
 currently require users to install and configure them manually.

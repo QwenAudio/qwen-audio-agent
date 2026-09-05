@@ -81,10 +81,17 @@ export function resolveBackendModels(env = process.env) {
   ).trim()
   const common = configured.toLowerCase() === 'auto' ? '' : configured
   const name = backendModelName(common)
+  const orcarouter = Boolean(
+    String(env.OPENCLAW_ORCAROUTER_API_KEY || '').trim()
+    || (
+      !String(env.DASHSCOPE_API_KEY || '').trim()
+      && String(env.ORCAROUTER_API_KEY || '').trim()
+    ),
+  )
   return {
     common,
     openCode: common ? `alibaba-cn/${name}` : '',
-    openClaw: common ? `bailian/${name}` : '',
+    openClaw: common ? `${orcarouter ? 'orcarouter' : 'bailian'}/${name}` : '',
     qoder: common,
     qwen: common,
     kimi: common,
@@ -156,6 +163,19 @@ const managedOpenClawBailian = (
   && Boolean(process.env.DASHSCOPE_API_KEY)
   && !process.env.OPENCLAW_CONFIG_PATH
 )
+const managedOpenClawOrcaRouter = (
+  configuredAgentProtocol === 'openclaw'
+  && Boolean(backendModels.common)
+  && Boolean(
+    String(process.env.OPENCLAW_ORCAROUTER_API_KEY || '').trim()
+    || (
+      !String(process.env.DASHSCOPE_API_KEY || '').trim()
+      && String(process.env.ORCAROUTER_API_KEY || '').trim()
+    ),
+  )
+  && !process.env.OPENCLAW_CONFIG_PATH
+)
+const managedOpenClaw = managedOpenClawBailian || managedOpenClawOrcaRouter
 const requestedBackendPermissionMode = String(
   process.env.QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE || 'native',
 ).toLowerCase()
@@ -304,7 +324,7 @@ export const config = {
           process.env.OPENCLAW_COORDINATOR_AGENT,
           'voice-coordinator',
         )
-        || (managedOpenClawBailian ? 'qwen-audio-agent-backend' : '')
+        || (managedOpenClaw ? 'qwen-audio-agent-backend' : '')
       ),
     },
     qoder: {

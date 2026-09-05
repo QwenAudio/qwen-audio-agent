@@ -1886,9 +1886,6 @@ export class ToolCallHandler {
       })
   }
 
-  // 资料条目一定要给 path —— 那就是交给后端 Agent 的地址，模型要把它写进
-  // spawn_thinking 的 objective 里。sections 是原文章节标题，用来把 objective
-  // 说准（「去查《X》的『年费规则』一节」），不是让模型自己回答内容。
   recallHasAnything() {
     return (this.sessionDigests?.count(this.ownerId) || 0) > 0
   }

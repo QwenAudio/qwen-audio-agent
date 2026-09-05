@@ -92,7 +92,7 @@ test('swallows a malformed model reply and leaves the document usable', async ()
   const kit = harness({ reply: '这不是 JSON' })
   try {
     assert.equal(await kit.summariser.maybeRun({ ownerId: OWNER, id: kit.entry.id }), null)
-    // 摘要失败不影响资料本身：路径仍然可用，仍然能交给后端
+    // 摘要失败不影响资料本身：原文仍然可由知识 Provider 检索
     const entry = kit.library.get(OWNER, kit.entry.id)
     assert.equal(entry.summarised, false)
     assert.ok(entry.path)

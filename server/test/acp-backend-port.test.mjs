@@ -14,6 +14,8 @@ function fakeClient({
     ready: false,
     gate,
     prompts: [],
+    sessions: [],
+    closedSessions: [],
     async start() {
       this.ready = true
       return {
@@ -21,7 +23,9 @@ function fakeClient({
       }
     },
     async newSession(options) {
-      return { sessionId: 'coordinator-one', cwd: options.cwd, response: {} }
+      const sessionId = `session-${this.sessions.length + 1}`
+      this.sessions.push({ sessionId, options })
+      return { sessionId, cwd: options.cwd, response: {} }
     },
     async resumeSession(sessionId, options) {
       return { sessionId, cwd: options.cwd, response: {} }
@@ -43,6 +47,9 @@ function fakeClient({
       }
     },
     async close() {},
+    async closeSession(sessionId) {
+      this.closedSessions.push(sessionId)
+    },
   }
 }
 
@@ -207,5 +214,55 @@ test('ACP authorization decisions remain bound to their Work', async () => {
   assert.deepEqual(await requested, {
     outcome: { outcome: 'selected', optionId: 'allow' },
   })
+  await backend.close()
+})
+
+test('ACP isolated work uses a fresh one-shot Session without coordinator instructions', async () => {
+  const client = fakeClient()
+  const backend = adapter({ client })
+  const outcome = await backend.submit({
+    id: 'ingest-one',
+    ownerId: 'owner-one',
+    instruction: '把文件转换成 Markdown。',
+    continuity: 'isolated',
+  })
+
+  assert.equal(client.sessions.length, 1)
+  assert.equal(client.sessions[0].options.role, 'utility')
+  assert.equal(client.prompts.length, 1)
+  const prompt = Array.isArray(client.prompts[0])
+    ? client.prompts[0][0].text
+    : client.prompts[0]
+  assert.equal(prompt, '把文件转换成 Markdown。')
+  assert.doesNotMatch(prompt, /协调|session_start/u)
+  assert.deepEqual(client.closedSessions, ['session-1'])
+  assert.equal(outcome.metadata.backendRef.role, 'utility')
+  assert.equal(backend.coordinatorSessions.size, 0)
+  await backend.close()
+})
+
+test('ACP isolated work closes its Session when configuration fails', async () => {
+  const client = fakeClient()
+  const backend = adapter({
+    client,
+    profile: {
+      label: 'Test ACP',
+      capabilities: {},
+      acpConnection: { kind: 'process' },
+      externalMcp: false,
+      sessionMcp: false,
+      sessionConfigOptions: [{ id: 'approval-mode', value: 'strict' }],
+    },
+  })
+
+  await assert.rejects(backend.submit({
+    id: 'ingest-config-failure',
+    ownerId: 'owner-one',
+    instruction: '把文件转换成 Markdown。',
+    continuity: 'isolated',
+  }), /没有通过 ACP 提供必要的 Session 配置/u)
+
+  assert.deepEqual(client.closedSessions, ['session-1'])
+  assert.equal(client.prompts.length, 0)
   await backend.close()
 })

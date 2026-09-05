@@ -548,6 +548,7 @@ test('enables knowledge only when an external provider is injected', async () =>
   })
 
   assert.equal(application.services.knowledgeProvider, knowledgeProvider)
+  assert.equal(application.services.knowledgeLibrary, null)
   assert.deepEqual(application.services.frontendKnowledge.describe(), {
     configured: true,
     capabilities: ['knowledge'],
@@ -864,6 +865,7 @@ test('wires the domain library on its own switch and imports a local file', asyn
   try {
     const { domainLibrary } = app.services
     assert.ok(domainLibrary)
+    assert.equal(app.services.knowledgeProvider.documentConverter, null)
     // 会话摘要没开，两者互不牵连
     assert.equal(app.services.sessionDigests, null)
 
@@ -871,10 +873,7 @@ test('wires the domain library on its own switch and imports a local file', asyn
     // 落盘位置就是交给后端的地址
     assert.equal(entry.path, join(documents, '手册.md'))
     assert.match(readFileSync(entry.path, 'utf8'), /年费规则/)
-    assert.equal(
-      domainLibrary.search({ ownerId: 'user_personal', keyword: '手册' }).length,
-      1,
-    )
+    assert.equal(domainLibrary.list('user_personal').length, 1)
   } finally {
     await app.close()
     rmSync(directory, { recursive: true, force: true })
@@ -909,9 +908,9 @@ test('converts a PDF through the BackendPort and ingests what the backend wrote'
     // 最小 BackendPort 替身：把「提取文字」做成真的写文件 —— 收录那一步是以
     // 文件系统为准、不看后端的回话，所以只回一句话的替身过不了这条测试。
     backendRuntime: {
-      run: async (input, options) => {
+      runIsolated: async (input, options) => {
         submitted.push({ input, options })
-        const target = input.objective.match(/原样写入「(.+?)」/)[1]
+        const target = input.instruction.match(/原样写入「(.+?)」/)[1]
         mkdirSync(dirname(target), { recursive: true })
         writeFileSync(target, '# Manual\n\n## Warranty\nOne year.\n')
         return { content: 'done' }
@@ -936,16 +935,15 @@ test('converts a PDF through the BackendPort and ingests what the backend wrote'
     // 关键断言：请求真的经过了 BackendPort，而不是某个具体后台实现
     assert.equal(submitted.length, 1)
     const [{ input, options }] = submitted
-    assert.match(input.objective, /原样写入/, '目标路径要在 objective 里')
+    assert.match(input.instruction, /原样写入/, '目标路径要在隔离指令里')
     assert.ok(options.ownerId, 'ownerId 必须透传')
     assert.ok(options.taskId, 'taskId 必须透传，取消与状态查询都靠它')
     assert.ok(options.signal, 'signal 必须透传，否则取消传不到后端')
     assert.equal(typeof options.onEvent, 'function', 'onEvent 必须透传，否则没有进度')
 
-    // 资料库面板已经轮询并呈现导入结果；它仍是可查询/可取消的用户任务，
-    // 但不能在稍后连接的语音会话里再次播报。
+    // 资料库面板轮询一个静默的入库作业；它不会进入自动播报队列。
     const conversion = application.services.taskManager.get(accepted.task_id)
-    assert.equal(conversion.kind, 'domain_conversion')
+    assert.equal(conversion.kind, 'knowledge_ingestion')
     assert.equal(conversion.notificationPolicy, 'silent')
     assert.equal(conversion.notificationStatus, 'none')
 

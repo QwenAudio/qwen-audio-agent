@@ -69,6 +69,11 @@ export function describeKnowledgeRetrievalProvider(provider) {
  *   describe() -> { protocolVersion, key, label, capabilities? }
  *   retrieve(request, context) -> { results } | results[]
  *
+ * Optional library-management methods (all three enable client management):
+ *   ingest(request, context)
+ *   list(request, context)
+ *   remove(request, context)
+ *
  * Optional lifecycle methods:
  *   health({ signal }) -> { status, message? }
  *   close()
@@ -91,8 +96,24 @@ export function assertKnowledgeRetrievalProvider(
   if (value.close != null && typeof value.close !== 'function') {
     throw new TypeError(`${name} close must be a function when provided`)
   }
+  for (const method of ['ingest', 'list', 'remove']) {
+    if (value[method] != null && typeof value[method] !== 'function') {
+      throw new TypeError(`${name} ${method} must be a function when provided`)
+    }
+  }
   describeKnowledgeRetrievalProvider(value)
   return value
+}
+
+// Public aliases use the broader name now that a Provider may also expose the
+// optional library-management methods. The original exports remain valid for
+// retrieval-only integrations.
+export const assertKnowledgeProvider = assertKnowledgeRetrievalProvider
+export const describeKnowledgeProvider = describeKnowledgeRetrievalProvider
+
+export function supportsKnowledgeManagement(provider) {
+  return ['ingest', 'list', 'remove']
+    .every(method => typeof provider?.[method] === 'function')
 }
 
 export function normalizeKnowledgeProviderHealth(value) {

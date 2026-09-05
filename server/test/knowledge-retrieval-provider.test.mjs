@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   KNOWLEDGE_PROVIDER_PROTOCOL_VERSION,
+  assertKnowledgeProvider,
   assertKnowledgeRetrievalProvider,
   describeKnowledgeRetrievalProvider,
   knowledgeProviderHealth,
   normalizeKnowledgeProviderHealth,
   normalizeKnowledgeRetrievalResponse,
+  supportsKnowledgeManagement,
 } from '../src/frontend/knowledge/retrieval-provider.mjs'
 
 function provider(overrides = {}) {
@@ -39,6 +41,14 @@ test('validates the minimal versioned retrieval provider contract', () => {
   )
   const fixture = provider()
   assert.equal(assertKnowledgeRetrievalProvider(fixture), fixture)
+  assert.equal(assertKnowledgeProvider(fixture), fixture)
+  assert.equal(supportsKnowledgeManagement(fixture), false)
+  const managed = provider({
+    ingest: async () => {},
+    list: async () => [],
+    remove: async () => {},
+  })
+  assert.equal(supportsKnowledgeManagement(managed), true)
   assert.deepEqual(describeKnowledgeRetrievalProvider(fixture), {
     protocolVersion: 1,
     key: 'custom-rag',

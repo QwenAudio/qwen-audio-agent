@@ -1,13 +1,9 @@
-// 领域资料库 —— 用户给的 policy / 手册 / 教材落盘 + 一份带摘要的清单。
+// 内置资料存储 —— 用户给的 policy / 手册 / 教材落盘 + 一份带摘要的清单。
 //
-// 它解决的是「用户给我一份手册，助手要知道这份手册是什么、并且能让后端去查」。
-//
-// ★ 落盘位置刻意选在后端的共享 workspace 下。
-// defaultBackendWorkspace() 是所有后端默认的 cwd，文件放这里，后端拿到路径就能
-// 自己 grep / read —— 这正是「前端只知道有什么，细节丢给后端」的落点。后端有
-// 自己的文件索引能力（Claude Code 会 grep、OpenClaw 有 recall store），前端不该
-// 再造一套检索。external 模式的远程后端可能读不到本机路径，协调器 prompt 里
-// 已经交代了「若后台主机无法访问该路径，再如实说明」，走那条既有的降级。
+// 它只负责本地文件与索引，不知道 Realtime、KnowledgeProvider 或后台 Session。
+// LocalKnowledgeProvider 在应用层组合它，并直接读取 Markdown 片段完成基础检索。
+// 默认路径仍位于共享 workspace 下，以兼容现有安装和文件布局；这个存储位置不
+// 代表检索需要经过后台 Agent。
 //
 // ★ 资料不进 MEMORY.md。
 // 这是「knowledge ≠ memory」那条界线：手册是外部的、静态的、多用户共享的知识；
@@ -38,25 +34,22 @@ const MAX_TITLE_CHARS = 60
 const MAX_GIST_CHARS = 80
 const MAX_SECTIONS = 12
 const MAX_SECTION_CHARS = 24
-const DEFAULT_LIMIT = 5
-const MAX_LIMIT = 10
 
-// 只直接收文本。PDF / Word 这类要先转换，而转换交给后端 Agent 做 ——
-// 它有文件读写与命令执行能力，前端不该为此引一堆解析库。
+// 本地存储只直接接收文本。PDF / Word 这类文件必须先由上层转换成 Markdown。
 const TEXT_EXTENSIONS = new Set([
   '.md', '.markdown', '.txt', '.text',
   '.json', '.yaml', '.yml', '.csv', '.tsv',
   '.html', '.htm', '.xml', '.rst', '.org',
 ])
 
-// 能交给后端提取文字的格式。刻意不含图片与音视频：那不是「提取文字」，
-// 是另一件事，含糊地派出去只会得到一段模型编的描述。
+// 基础 Provider 可以提取文字的复杂文档格式。刻意不含图片与音视频：那是另一类
+// 多模态理解任务，不应该含糊地当作保真文字提取。
 const CONVERTIBLE_EXTENSIONS = new Set([
   '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.odt', '.rtf', '.epub',
 ])
 
 // text        → 直接收
-// convertible → 先派给后端转成文本，再收转换产物
+// convertible → 上层先转成文本，再收转换产物
 // unsupported → 明确拒收
 export function classifySource(sourcePath) {
   const extension = extname(String(sourcePath || '')).toLowerCase()
@@ -76,10 +69,6 @@ function text(value, maxChars) {
   return [...String(value || '').replace(/\s+/g, ' ').trim()]
     .slice(0, maxChars)
     .join('')
-}
-
-function bare(value) {
-  return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')
 }
 
 // 保留中文与字母数字，去掉路径分隔符与控制字符。刻意不做音译或哈希化 ——
@@ -177,8 +166,7 @@ export class DomainLibrary {
     return this.store.save({ owners })
   }
 
-  // 把一份本地文件收进资料库。同步完成，不调模型 —— 没配 API key 时资料仍然
-  // 能导入并交给后端，只是没有摘要，这是刻意的降级顺序。
+  // 把一份本地文本收进资料库。同步完成，不调用模型。
   import({ ownerId, sourcePath } = {}) {
     if (!this.configured()) {
       throw new DomainImportError('library_unavailable', '资料库未配置存放目录。')
@@ -224,7 +212,7 @@ export class DomainLibrary {
       throw new DomainImportError(
         classifySource(absolute) === 'convertible' ? 'needs_conversion' : 'unsupported_type',
         classifySource(absolute) === 'convertible'
-          ? `${extension} 需要先提取文字，这一步交给后台处理。`
+          ? `${extension} 需要先提取文字，再导入资料库。`
           : `不支持 ${extension} 这类文件。`,
       )
     }
@@ -242,7 +230,10 @@ export class DomainLibrary {
     const destination = join(this.documentDirectory, filename)
     try {
       mkdirSync(this.documentDirectory, { recursive: true, mode: 0o700 })
-      copyFileSync(absolute, destination)
+      // Agent conversion may already have written directly to the allocated
+      // library target. In that case the source is the destination and there
+      // is nothing left to copy.
+      if (absolute !== destination) copyFileSync(absolute, destination)
     } catch (error) {
       throw new DomainImportError('copy_failed', `无法复制到资料库：${error.message}`)
     }
@@ -287,10 +278,10 @@ export class DomainLibrary {
     return candidate
   }
 
-  // 为一份待转换的文件分配转换产物的落点。返回的路径直接写进给后端的 objective，
-  // 所以文件名要可读；防冲突复用 uniqueFilename，避免两次转换互相覆盖。
+  // 为一份待转换的文件分配转换产物的落点。文件名保持可读；防冲突规则与普通
+  // 导入一致，避免两次转换互相覆盖。
   //
-  // 注意这里只是「取一个名字」，不占位、不建文件 —— 后端可能转失败，留一个空
+  // 注意这里只是「取一个名字」，不占位、不建文件 —— 转换可能失败，留一个空
   // 文件在资料目录里比什么都没有更糟。真正的收录发生在转换成功之后。
   conversionTarget({ ownerId, sourcePath } = {}) {
     if (!this.configured()) {
@@ -298,7 +289,7 @@ export class DomainLibrary {
     }
     const absolute = resolve(String(sourcePath || '').trim())
     if (classifySource(absolute) !== 'convertible') {
-      throw new DomainImportError('not_convertible', '这类文件不需要、也无法交给后台提取文字。')
+      throw new DomainImportError('not_convertible', '这类文件不需要复杂文档转换。')
     }
     this.load()
     const stem = safeFilename(basename(absolute, extname(absolute)))
@@ -344,28 +335,6 @@ export class DomainLibrary {
 
   pendingSummary(ownerId) {
     return this.list(ownerId).filter(entry => !entry.summarised)
-  }
-
-  // 与会话摘要同一套浅检索：去标点后子串匹配，命中标题的排在前面。
-  search({ ownerId, keyword = '', limit = DEFAULT_LIMIT } = {}) {
-    const entries = this.list(ownerId)
-    const size = Math.min(Math.max(Number(limit) || DEFAULT_LIMIT, 1), MAX_LIMIT)
-    const needle = bare(keyword)
-    if (!needle) return entries.slice(0, size)
-    const scored = []
-    for (const entry of entries) {
-      const inTitle = bare(entry.title).includes(needle)
-        || bare(entry.filename).includes(needle)
-      const inSections = entry.sections.some(section => bare(section).includes(needle))
-      const inGist = bare(entry.gist).includes(needle)
-      if (!inTitle && !inSections && !inGist) continue
-      scored.push({ entry, rank: inTitle ? 0 : (inSections ? 1 : 2) })
-    }
-    return scored
-      .sort((left, right) => (left.rank - right.rank)
-        || (right.entry.importedAt - left.entry.importedAt))
-      .slice(0, size)
-      .map(item => item.entry)
   }
 
   // 移除时连文件一起删：这是用户显式要求的删除，不是容量回收。
@@ -415,7 +384,5 @@ export const DOMAIN_LIMITS = Object.freeze({
   MAX_GIST_CHARS,
   MAX_SECTIONS,
   MAX_SECTION_CHARS,
-  DEFAULT_LIMIT,
-  MAX_LIMIT,
   TEXT_EXTENSIONS,
 })

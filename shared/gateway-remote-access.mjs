@@ -93,13 +93,20 @@ export function assertGatewayInvitationActive(invitation, now = Date.now()) {
 
 export function encodeGatewayInvitation(invitation) {
   const parsed = parseGatewayInvitation(invitation)
-  return `qwaudio://connect#${encodeURIComponent(JSON.stringify(parsed))}`
+  const url = new URL('qwaudio://connect')
+  url.searchParams.set('v', String(parsed.version))
+  url.searchParams.set('gateway', parsed.gateway_url)
+  url.searchParams.set('code', parsed.pairing_code)
+  url.searchParams.set('expires', String(parsed.expires_at))
+  return url.toString()
 }
 
 export function encodeGatewayBrowserInvitation(invitation) {
   const parsed = parseGatewayInvitation(invitation)
   const url = new URL('/connect', parsed.gateway_url)
-  url.hash = encodeURIComponent(JSON.stringify(parsed))
+  url.searchParams.set('v', String(parsed.version))
+  url.searchParams.set('expires', String(parsed.expires_at))
+  url.hash = parsed.pairing_code
   return url.toString()
 }
 
@@ -112,13 +119,22 @@ export function decodeGatewayInvitation(value) {
       code: 'gateway_invitation_invalid',
     })
   }
-  if (url.protocol !== 'qwaudio:' || url.hostname !== 'connect' || !url.hash) {
+  const isAppInvitation = url.protocol === 'qwaudio:' && url.hostname === 'connect'
+  const isBrowserInvitation = url.protocol === 'https:' && url.pathname === '/connect'
+  if (!isAppInvitation && !isBrowserInvitation) {
     throw Object.assign(new Error('Invalid Gateway invitation URL'), {
       code: 'gateway_invitation_invalid',
     })
   }
   try {
-    return parseGatewayInvitation(JSON.parse(decodeURIComponent(url.hash.slice(1))))
+    return parseGatewayInvitation({
+      version: Number(url.searchParams.get('v')),
+      gateway_url: isAppInvitation ? url.searchParams.get('gateway') : url.origin,
+      pairing_code: isAppInvitation
+        ? url.searchParams.get('code')
+        : decodeURIComponent(url.hash.slice(1)),
+      expires_at: Number(url.searchParams.get('expires')),
+    })
   } catch (error) {
     throw Object.assign(new Error('Invalid Gateway invitation payload'), {
       code: 'gateway_invitation_invalid',

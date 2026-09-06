@@ -17,8 +17,9 @@ qwenaudio gateway remote invite
 On first use, the Gateway downloads a SHA-256-verified component and provides a one-time browser
 authorization flow. After authorization, tsnet publishes the loopback Gateway through Tailscale
 Funnel as an HTTPS/WSS endpoint; the second command prints a short-lived Client invitation. Use
-`gateway remote status`, `devices`, `revoke ID`, and `disable` to manage it. The Gateway owns this
-state; Desktop is only an optional graphical management surface.
+`gateway remote status`, `devices`, `revoke ID`, and `disable` to manage it. Remote-access state
+and invitation issuance belong exclusively to the Gateway CLI; Desktop, Mobile, and other Clients
+only import connection links.
 
 Funnel requires MagicDNS, HTTPS, and Funnel permission in the tailnet and is subject to Tailscale's
 bandwidth limits. Publishing the endpoint does not bypass Gateway authentication: every remote

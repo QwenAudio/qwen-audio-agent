@@ -355,7 +355,7 @@ export function helpText() {
     '',
     'Setup 选项：',
     '  --backend NAME         只检查指定后台；默认检查全部后台',
-    '  --json                 输出供桌面版或脚本使用的 JSON',
+    '  --json                 输出供脚本使用的 JSON',
     '',
     'Install 选项：',
     `  NAME                   可选：${backendNames().filter(name => name !== 'acp').join('、')}；不含通用 acp（需自行安装）`,

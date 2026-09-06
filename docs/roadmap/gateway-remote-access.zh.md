@@ -39,8 +39,9 @@ Task 状态或 BackendPort。Client 最终只看到普通 Gateway Endpoint。
 ## 用户体验
 
 - 本机 Client 继续零配置连接 `http://127.0.0.1:3101`。
-- Gateway 管理入口开启远程访问；首次打开网页完成授权。Desktop 展示二维码，CLI 打印
-  或导出短时邀请。Client 不安装、也不集成底层远程访问实现。
+- Gateway CLI 开启和管理远程访问；首次打开网页完成授权，并统一输出二维码、客户端
+  接入链接和浏览器访问链接。Desktop、Mobile 等 Client 只消费邀请，不安装、也不集成
+  底层远程访问实现。
 - 远程 Desktop、TUI、WebUI 或 Mobile 消费同一种邀请，换取可撤销设备凭据，并保存到
   平台安全存储。
 - 可以配对多台设备，但每个用户只有一个活动交互 Client。第二个 Client 必须询问用户，

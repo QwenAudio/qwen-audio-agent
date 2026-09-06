@@ -22,12 +22,13 @@ Client Protocol，不直接接触 Realtime Provider 或后台协议。
    qwenaudio gateway remote invite
    ```
 
-3. 打开移动端，扫描桌面设置页显示的二维码；使用 CLI 时，粘贴命令输出的
-   `qwaudio://connect…` 链接。
+3. 命令会同时输出二维码、客户端接入链接和浏览器访问链接。移动端可直接扫码或粘贴
+   接入链接；桌面版在设置中粘贴同一个接入链接；不安装客户端时可打开浏览器访问链接。
 4. 首次通话时允许麦克风权限。以后会自动重连；若 Desktop/WebUI/TUI 正在使用，移动端
    会先请求接管确认。
 
-邀请短时有效且只能使用一次。配对后使用独立、可撤销的设备凭据；可以在电脑端执行
+邀请短时有效且只能使用一次。远程访问的开启、邀请和设备管理统一由 Gateway CLI
+负责，客户端只消费邀请。配对后使用独立、可撤销的设备凭据；可以在电脑端执行
 `qwenaudio gateway remote devices` 查看设备，并用
 `qwenaudio gateway remote revoke <设备 ID>` 撤销。
 

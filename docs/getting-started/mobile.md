@@ -25,13 +25,17 @@ TUI, without importing Realtime Provider or backend-protocol internals.
    qwenaudio gateway remote invite
    ```
 
-3. Open Mobile and scan the QR code shown in Desktop settings. When using the
-   CLI, paste the emitted `qwaudio://connect…` link.
+3. The command prints a QR code, a native-client connection link, and a browser
+   access link. Mobile can scan the QR code or paste the connection link;
+   Desktop accepts the same connection link in Settings; without a native
+   client, open the browser link.
 4. Grant microphone access for the first call. Later launches reconnect
    automatically. If Desktop, WebUI, or TUI is active, Mobile asks before taking
    over.
 
-An invitation is short-lived and single-use. Pairing creates an independent,
+An invitation is short-lived and single-use. The Gateway CLI exclusively owns
+remote-access enablement, invitations, and device management; Clients only
+consume invitations. Pairing creates an independent,
 revocable device credential. Run `qwenaudio gateway remote devices` on the host
 to inspect devices and `qwenaudio gateway remote revoke <device-id>` to revoke
 one.

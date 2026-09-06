@@ -17,7 +17,8 @@ qwenaudio gateway remote invite
 第一次执行时会按需下载经过 SHA-256 校验的组件，并给出一次性网页授权入口。授权后，
 tsnet 使用 Tailscale Funnel 将 loopback Gateway 发布为 HTTPS/WSS 地址，第二条命令输出
 供远程 Client 使用的短时邀请。可通过 `gateway remote status`、`devices`、`revoke ID`
-与 `disable` 管理。远程设置归 Gateway 所有，Desktop 只是可选的图形管理入口。
+与 `disable` 管理。远程设置和邀请签发统一归 Gateway CLI 所有；Desktop、Mobile 等
+客户端只负责导入接入链接。
 
 Funnel 需要 Tailnet 开启 MagicDNS、HTTPS 和 Funnel 权限，且存在官方带宽限制。开启公网
 入口不会绕过 Gateway 认证：除一次性配对页外，远程业务请求必须携带已配对设备凭据。

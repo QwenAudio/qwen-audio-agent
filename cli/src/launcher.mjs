@@ -2,6 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import readline from 'node:readline'
+import QRCode from 'qrcode'
 import { loadRuntimeEnvironment } from '../../shared/runtime-environment.mjs'
 import { refreshProcessPath } from '../../shared/process-path.mjs'
 import {
@@ -230,6 +231,11 @@ export async function main(argv, {
     }),
   }),
   pairInvitation = pairGatewayInvitation,
+  renderInvitationQr = value => QRCode.toString(value, {
+    type: 'terminal',
+    small: true,
+    errorCorrectionLevel: 'L',
+  }),
 } = {}) {
   const processRealtimeModelOverride = String(
     env.QWEN_AUDIO_REALTIME_MODEL || '',
@@ -470,11 +476,22 @@ export async function main(argv, {
       pairingCode: ticket.code,
       expiresAt: ticket.expiresAt,
     })
-    if (options.json) stdout.write(`${JSON.stringify(invitation, null, 2)}\n`)
+    const appUrl = encodeGatewayInvitation(invitation)
+    const browserUrl = encodeGatewayBrowserInvitation(invitation)
+    if (options.json) {
+      stdout.write(`${JSON.stringify({
+        ...invitation,
+        app_url: appUrl,
+        browser_url: browserUrl,
+      }, null, 2)}\n`)
+    }
     else {
+      const qrCode = await renderInvitationQr(browserUrl)
       stdout.write(
-        `远程客户端邀请：${encodeGatewayInvitation(invitation)}\n`
-        + `远程 WebUI：${encodeGatewayBrowserInvitation(invitation)}\n`
+        '移动端扫码接入：\n'
+        + `${qrCode}\n`
+        + `接入链接（移动端 / 桌面端）：\n${appUrl}\n`
+        + `浏览器访问：\n${browserUrl}\n`
         + `有效期至：${new Date(invitation.expires_at).toLocaleString()}\n`,
       )
     }

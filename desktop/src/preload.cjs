@@ -105,17 +105,9 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
   checkUpdates: () => ipcRenderer.invoke('qwen-audio-agent:updater-check'),
   installUpdate: () => ipcRenderer.invoke('qwen-audio-agent:updater-install'),
   openLogs: () => ipcRenderer.invoke('qwen-audio-agent:open-logs'),
-  remoteAccessStatus: () => ipcRenderer.invoke(
-    'qwen-audio-agent:remote-access-status',
-  ),
-  enableRemoteAccess: () => ipcRenderer.invoke(
-    'qwen-audio-agent:remote-access-enable',
-  ),
-  disableRemoteAccess: () => ipcRenderer.invoke(
-    'qwen-audio-agent:remote-access-disable',
-  ),
-  createRemoteInvitation: () => ipcRenderer.invoke(
-    'qwen-audio-agent:remote-access-invite',
+  connectRemoteGateway: invitation => ipcRenderer.invoke(
+    'qwen-audio-agent:remote-gateway-connect',
+    invitation,
   ),
   onUpdaterStatus: callback => {
     if (typeof callback !== 'function') return () => {}

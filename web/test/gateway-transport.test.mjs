@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   configureGatewayTransport,
   createGatewayWebSocket,
+  gatewayClientInstanceId,
   gatewayFetch,
   gatewayHttpUrl,
   gatewayRealtimeUrl,
@@ -23,7 +24,9 @@ test('routes mobile HTTP and WebSocket traffic through a secure remote profile',
     gatewayUrl: 'https://voice.example.test',
     accessToken: 'qwa_example-device-token_1234567890',
     clientType: 'mobile',
+    clientInstanceId: 'mobile-stable-instance',
   })
+  assert.equal(gatewayClientInstanceId(), 'mobile-stable-instance')
   const requests = []
   await gatewayFetch('api/health', { cache: 'no-store' }, async (url, init) => {
     requests.push({ url, init })
@@ -47,6 +50,11 @@ test('routes mobile HTTP and WebSocket traffic through a secure remote profile',
   createGatewayWebSocket(gatewayRealtimeUrl('mobile-session'), {}, FakeWebSocket)
   assert.equal(sockets[0].protocols[0], 'qwaudio.gcp.v6')
   assert.match(sockets[0].protocols[1], /^qwaudio\.bearer\.qwa_/)
+})
+
+test('leaves browser client identity ephemeral unless a native host supplies one', () => {
+  assert.equal(gatewayClientInstanceId(), '')
+  assert.equal(gatewayClientInstanceId('browser-generated-instance'), 'browser-generated-instance')
 })
 
 test('never sends browser credentials over an insecure remote socket', () => {

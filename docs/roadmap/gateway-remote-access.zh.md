@@ -145,6 +145,7 @@ WebSocket subprotocol 值承载可撤销设备凭据，服务端只选择并回�
 ## RA5 — 加固与发版准备
 
 - [x] 增加远程未认证、Origin 绕过、邀请过期/重放、设备撤销和旧租约的反例测试。
+- [x] 移动端在 App 重启后复用配对时持久化的 Client 实例身份，避免被误判为新客户端。
 - [ ] 测试 Funnel、Wi-Fi/蜂窝切换、电脑休眠/唤醒、Gateway 重启，以及
   一小时 WebSocket/音频会话。
 - [x] 对 Desktop、WebUI、TUI 与 Mobile 执行统一协议 Conformance。

@@ -170,6 +170,8 @@ completes the same core conversation and Task flows as WebUI.
 
 - [x] Add negative tests for unauthenticated remote requests, origin bypass,
   expired/replayed invitations, revoked devices, and stale leases.
+- [x] Reuse the paired, persisted Client instance identity after a Mobile app
+  restart so it is not mistaken for a different client.
 - [ ] Test Funnel, Wi-Fi/cellular transitions,
   computer sleep/wake, Gateway restart, and one-hour WebSocket/audio sessions.
 - [x] Run protocol conformance against Desktop, WebUI, TUI, and Mobile.

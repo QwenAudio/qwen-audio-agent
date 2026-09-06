@@ -5,6 +5,7 @@ let runtime = Object.freeze({
   accessToken: '',
   clientType: '',
   clientLabel: '',
+  clientInstanceId: '',
 })
 
 function cleanGatewayUrl(value = '') {
@@ -25,6 +26,7 @@ export function configureGatewayTransport(options = {}) {
     accessToken: String(options.accessToken || '').trim(),
     clientType: String(options.clientType || '').trim(),
     clientLabel: String(options.clientLabel || '').trim(),
+    clientInstanceId: String(options.clientInstanceId || '').trim(),
   })
   return runtime
 }
@@ -39,6 +41,10 @@ export function gatewayClientType(fallback = 'web') {
 
 export function gatewayClientLabel(fallback = 'WebUI') {
   return runtime.clientLabel || fallback
+}
+
+export function gatewayClientInstanceId(fallback = '') {
+  return runtime.clientInstanceId || fallback
 }
 
 export function gatewayHttpUrl(path) {

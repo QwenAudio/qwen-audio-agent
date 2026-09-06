@@ -41,6 +41,8 @@ import { buildAcpCoordinatorInstruction } from './acp-coordinator-contract.mjs'
 const MAX_SESSION_RESULTS = 100
 const MAX_DELEGATION_RESULT_CHARS = 12_000
 const MAX_DELEGATION_RECENT_UPDATES = 5
+const QUICK_QUERY_PRIORITY = 10
+const QUICK_QUERY_MAX_CHARS = 4_000
 // Persistent coordinator Sessions are valid only for the contract that
 // created them. Project Sessions are user work and remain independent.
 const COORDINATOR_CONTRACT_VERSION = 6
@@ -110,6 +112,19 @@ function matchingOptionValue(entries, desired) {
 
 function bounded(value, max = 300) {
   return clean(value).replace(/\s+/g, ' ').slice(0, max)
+}
+
+function quickQueryPrompt(question) {
+  return [
+    '<qwen_audio_agent_quick_query>',
+    'Answer exactly one user question as a bounded, read-only lookup.',
+    'You may read current documentation or status when available.',
+    'Do not write, edit, delete, execute commands, control devices, request permissions, or delegate to another Session.',
+    'If the question needs any of those actions or needs multi-step work, explain that it must be handled as a normal Work instead.',
+    'Return a concise, directly useful answer and do not mention this wrapper.',
+    `Question: ${clean(question).slice(0, QUICK_QUERY_MAX_CHARS)}`,
+    '</qwen_audio_agent_quick_query>',
+  ].join('\n')
 }
 
 function optionValues(entries = []) {
@@ -316,6 +331,7 @@ export class AcpBackendAdapter {
         ...this.profile.capabilities,
         taskUpdates: 'activity',
         inputRequests: 'elicitation',
+        quickQuery: true,
       },
     }
   }
@@ -1125,6 +1141,7 @@ export class AcpBackendAdapter {
     coordinationRequestId,
     signal,
     onEvent,
+    allowDelegation = true,
   }) {
     const run = {
       ownerId: clean(ownerId),
@@ -1138,6 +1155,7 @@ export class AcpBackendAdapter {
       initialPromptDone: false,
       receivedUpdate: false,
       inputBlocks: nonTextPromptBlocks(message),
+      allowDelegation,
     }
     if (run.coordinationRunId) {
       this.coordinationRuns.set(run.coordinationRunId, run)
@@ -1343,6 +1361,37 @@ export class AcpBackendAdapter {
     }
   }
 
+  async quickLookup(input, {
+    ownerId,
+    signal,
+    onEvent,
+  } = {}) {
+    const normalizedQuestion = clean(input?.question ?? input)
+    if (!normalizedQuestion) {
+      throw new AgentError('快速查询缺少问题', {
+        status: 400,
+        protocol: this.protocol,
+      })
+    }
+    const result = await this.runCoordinator(
+      quickQueryPrompt(normalizedQuestion),
+      {
+        ownerId,
+        coordinationRunId: '',
+        coordinationRequestId: '',
+        workObjective: normalizedQuestion,
+        signal,
+        onEvent,
+        queuePriority: QUICK_QUERY_PRIORITY,
+        allowDelegation: false,
+      },
+    )
+    return {
+      content: clean(result?.content),
+      contentBlocks: result?.contentBlocks || [],
+    }
+  }
+
   async submit(work, { signal, onEvent } = {}) {
     const taskId = clean(work?.id)
     const ownerId = clean(work?.ownerId)
@@ -1498,6 +1547,8 @@ export class AcpBackendAdapter {
     workObjective,
     signal,
     onEvent,
+    queuePriority = 0,
+    allowDelegation = true,
   } = {}) {
     // Health polling and task dispatch share the ACP client's start promise.
     // The execution path additionally waits for an owned service endpoint, so
@@ -1519,7 +1570,9 @@ export class AcpBackendAdapter {
           coordinationRequestId,
           signal,
           onEvent: publish,
+          allowDelegation,
         }),
+        { priority: queuePriority, signal },
       )
       if (!initial.run.delegation) return this.resultEnvelope(initial)
       const delegation = initial.run.delegation
@@ -1552,8 +1605,10 @@ export class AcpBackendAdapter {
             coordinationRequestId,
             signal,
             onEvent: publish,
+            allowDelegation,
           },
         ),
+        { priority: queuePriority, signal },
       )
       return this.resultEnvelope(
         final,

@@ -16,6 +16,8 @@ import {
   WEB_SEARCH_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   KNOWLEDGE_TOOL_NAME,
+  QUICK_LOOKUP_TOOL_NAME,
+  FRONTEND_QUICK_QUERY_CAPABILITY,
   frontendToolRegistry,
   RECALL_TOOL_NAME,
   FRONTEND_RECALL_CAPABILITY,
@@ -37,6 +39,12 @@ import { isTaskCancellable } from '../../task/task-state.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
 const MAX_DEBUG_RESULT_CHARS = 180
+const DEFAULT_QUICK_QUERY_TIMEOUT_MS = 15_000
+
+const QUICK_QUERY_ACK_INSTRUCTIONS = [
+  '只用一句很短的自然话承接，例如“我查一下”。',
+  '这是一次只读快速查询，结果到达后会自动继续回答；不要猜答案、不要再次调用工具。',
+].join(' ')
 
 const CANCEL_RECEIPT_INSTRUCTIONS = [
   '根据本次响应中的全部取消结果，只作一次简短自然的确认。',
@@ -156,6 +164,10 @@ export class ToolCallHandler {
     frontendToolSources = [],
     turnCitations = null,
     sessionDigests = null,
+    onQuickQueryResult = async () => {},
+    onQuickQueryTimeout = async () => {},
+    onQuickQueryFailure = async () => {},
+    quickQueryTimeoutMs = DEFAULT_QUICK_QUERY_TIMEOUT_MS,
   }) {
     this.taskManager = taskManager
     this.ownerId = ownerId
@@ -183,6 +195,13 @@ export class ToolCallHandler {
     this.frontendKnowledge = frontendKnowledge
     this.frontendToolSources = frontendToolSources
     this.turnCitations = turnCitations
+    this.onQuickQueryResult = onQuickQueryResult
+    this.onQuickQueryTimeout = onQuickQueryTimeout
+    this.onQuickQueryFailure = onQuickQueryFailure
+    this.quickQueryTimeoutMs = Math.max(
+      1,
+      Number(quickQueryTimeoutMs) || DEFAULT_QUICK_QUERY_TIMEOUT_MS,
+    )
     this.activeToolEntries = new Map()
     this.activeToolDebugEntries = new Map()
     this.externalToolLoop = new FrontendToolLoop()
@@ -198,6 +217,9 @@ export class ToolCallHandler {
       ),
       [GET_AGENT_TASK_STATUS_TOOL_NAME]: context => (
         this.executeStatusToolCall(context)
+      ),
+      [QUICK_LOOKUP_TOOL_NAME]: context => (
+        this.executeQuickLookupToolCall(context)
       ),
       [GET_CURRENT_TIME_TOOL_NAME]: ({ callId, turnId }) => (
         this.getCurrentTime(callId, turnId)
@@ -228,6 +250,7 @@ export class ToolCallHandler {
     this.cancelResponseByTurn = new Map()
     this.terminalToolResponses = new Set()
     this.deferredToolResponses = new Map()
+    this.quickQueries = new Map()
     this.pendingBackendPermissions = new Map()
     this.submittedBackendPermissions = new Set()
   }
@@ -784,6 +807,179 @@ export class ToolCallHandler {
     await this.getAgentTaskStatus(callId, turnId, args)
   }
 
+  cancelQuickQueries(reason = 'user_interruption') {
+    const error = new Error(`快速查询已取消：${String(reason || 'user_interruption')}`)
+    for (const record of this.quickQueries.values()) {
+      record.cancelled = true
+      record.controller.abort(error)
+    }
+  }
+
+  async executeQuickLookupToolCall({
+    callId,
+    turnId,
+    generation,
+    args,
+    event,
+    callContext,
+  }) {
+    const query = String(args.query || '').replace(/\s+/g, ' ').trim()
+    if (!query) {
+      await this.sendOutput(
+        callId,
+        failure('missing_query', '需要提供要查询的完整问题。'),
+        turnId,
+      )
+      return
+    }
+    if (typeof this.backendRuntime?.quickLookup !== 'function') {
+      await this.sendOutput(
+        callId,
+        failure(
+          'quick_query_unavailable',
+          '当前后台不支持快速查询，请改用普通后台工作。',
+          { retryable: true },
+        ),
+        turnId,
+      )
+      return
+    }
+
+    const responseId = String(
+      callContext.responseId || event.response_id || '',
+    ).trim()
+    const requestId = `quick_${objectiveFingerprint(query)}_${generation}`
+    const record = {
+      requestId,
+      turnId,
+      generation,
+      query,
+      controller: new AbortController(),
+      cancelled: false,
+      timedOut: false,
+    }
+    this.quickQueries.set(requestId, record)
+    const deferred = this.beginDeferredToolResponse(responseId, {
+      turnId,
+      turnGeneration: generation,
+    }, { instructions: QUICK_QUERY_ACK_INSTRUCTIONS })
+    let outputFailed = false
+    try {
+      await this.sendOutput(
+        callId,
+        {
+          status: 'accepted',
+          request_id: requestId,
+        },
+        turnId,
+        null,
+        deferred
+          ? { createResponse: false }
+          : { response: { instructions: QUICK_QUERY_ACK_INSTRUCTIONS } },
+      )
+    } catch (error) {
+      outputFailed = true
+      record.cancelled = true
+      record.controller.abort(error)
+      this.quickQueries.delete(requestId)
+      throw error
+    } finally {
+      await this.completeDeferredToolResponse(deferred, {
+        failed: outputFailed,
+      })
+    }
+    void this.finishQuickLookup(record).catch(error => {
+      if (record.cancelled) return
+      Promise.resolve(this.onQuickQueryFailure({
+        requestId,
+        turnId,
+        generation,
+        query,
+        error,
+      })).catch(() => {})
+    })
+  }
+
+  async finishQuickLookup(record) {
+    const timer = setTimeout(() => {
+      record.timedOut = true
+      record.controller.abort(new Error('快速查询超过 15 秒'))
+    }, this.quickQueryTimeoutMs)
+    timer.unref?.()
+    try {
+      const result = await this.backendRuntime.quickLookup(record.query, {
+        ownerId: this.ownerId,
+        sessionId: this.sessionId,
+        turnId: record.turnId,
+        requestId: record.requestId,
+        signal: record.controller.signal,
+        onEvent: () => {},
+      })
+      if (record.cancelled || record.controller.signal.aborted) return
+      if (!String(result?.content || '').trim()) {
+        const error = new Error('快速查询返回了空结果')
+        error.code = 'quick_query_empty'
+        throw error
+      }
+      await this.onQuickQueryResult({
+        requestId: record.requestId,
+        turnId: record.turnId,
+        generation: record.generation,
+        query: record.query,
+        result,
+      })
+    } catch (error) {
+      if (record.cancelled || (!record.timedOut && record.controller.signal.aborted)) {
+        return
+      }
+      if (record.timedOut) {
+        let task
+        try {
+          task = this.createWork({
+            turnId: record.turnId,
+            objective: record.query,
+            submissionKey: [
+              'quick-query-timeout',
+              this.sessionId,
+              record.turnId || record.requestId,
+              objectiveFingerprint(record.query),
+            ].join(':'),
+          })
+        } catch (fallbackError) {
+          await this.onQuickQueryFailure({
+            requestId: record.requestId,
+            turnId: record.turnId,
+            generation: record.generation,
+            query: record.query,
+            error: fallbackError,
+            timedOut: true,
+          })
+          return
+        }
+        await this.onQuickQueryTimeout({
+          requestId: record.requestId,
+          turnId: record.turnId,
+          generation: record.generation,
+          query: record.query,
+          task,
+        })
+        return
+      }
+      await this.onQuickQueryFailure({
+        requestId: record.requestId,
+        turnId: record.turnId,
+        generation: record.generation,
+        query: record.query,
+        error,
+      })
+    } finally {
+      clearTimeout(timer)
+      if (this.quickQueries.get(record.requestId) === record) {
+        this.quickQueries.delete(record.requestId)
+      }
+    }
+  }
+
   async executeSpawnThinkingToolCall({
     callId,
     turnId,
@@ -1079,6 +1275,9 @@ export class ToolCallHandler {
           capabilities: [...new Set([
             ...(this.frontendRetrieval?.capabilities?.() || []),
             ...(this.frontendKnowledge?.capabilities?.() || []),
+            ...(this.backendRuntime?.supportsQuickLookup?.()
+              ? [FRONTEND_QUICK_QUERY_CAPABILITY]
+              : []),
             // 与 realtime-gateway 的 getAgentContext 同一个判据：两处必须一致，
             // 否则会出现「模型看得到工具但调用被策略拒掉」这种自相矛盾的状态。
             // 与 realtime-gateway 的 getAgentContext 必须同一个判据。资料检索

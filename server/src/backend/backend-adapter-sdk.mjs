@@ -45,6 +45,14 @@ export function createBackendAgentHost(adapter, options = {}) {
     status: (taskId, context) => backend.status(taskId, context),
     start: context => backend.start(context),
     submit: (task, context) => backend.submit(task, context),
+    quickLookup: (input, context) => {
+      if (typeof backend.quickLookup !== 'function') {
+        const error = new Error('Custom backend does not support quick lookup')
+        error.code = 'quick_query_unsupported'
+        return Promise.reject(error)
+      }
+      return backend.quickLookup(input, context)
+    },
     cancel: (taskId, context) => backend.cancel(taskId, context),
     respondAuthorization: (taskId, authorizationId, decision, context) => (
       backend.respondAuthorization(taskId, authorizationId, decision, context)

@@ -27,6 +27,9 @@ final ASR
    │
    ├─ immediately answerable ───────────────► Realtime speech
    │
+   ├─ 一个有边界的只读查询 ─────────────────► quick-query lane
+   │                                           （不创建可见 Task）
+   │
    └─ requires work
           │ spawn_thinking(objective)
           ▼
@@ -45,6 +48,10 @@ final ASR
       Realtime naturally speaks the result
 ```
 
+`quick_lookup` 是有边界的只读问题路径。它复用 owner 的持久协调 Session，立即返回
+承接回执，验证结果通过既有 Agent Delivery 路径交付。它有 15 秒预算；超时会取消
+查询，并将同一问题提升为普通 Task。用户开始新回合后，晚到的快速查询结果直接丢弃。
+
 `spawn_thinking` 永不等待所请求的工作完成。用户可以在多个 Task 项排队期间继续
 说话。对于每个 owner，一次只有一个 Task 项被发送到配置的 BackendPort。
 
@@ -54,6 +61,7 @@ final ASR
 
 ```text
 spawn_thinking
+quick_lookup
 schedule_reminder
 cancel_agent_task
 get_agent_task_status

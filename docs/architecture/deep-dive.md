@@ -36,6 +36,9 @@ final ASR
    │
    ├─ immediately answerable ───────────────► Realtime speech
    │
+   ├─ one bounded read-only lookup ─────────► quick-query lane
+   │                                           (no visible Task)
+   │
    └─ requires work
           │ spawn_thinking(objective)
           ▼
@@ -54,6 +57,12 @@ final ASR
       Realtime naturally speaks the result
 ```
 
+`quick_lookup` is a bounded read-only question path. It reuses the owner's
+persistent coordinator Session, acknowledges immediately, and delivers the
+verified answer through the normal Agent Delivery path. It has a 15-second
+budget; a timeout cancels the lookup and promotes the same question to a normal
+Task. A newer user turn drops any late quick-query result.
+
 `spawn_thinking` never waits for the requested work. The user can continue
 speaking while multiple Task items are queued. For each owner, only one Task
 item is sent into the configured BackendPort at a time.
@@ -65,6 +74,7 @@ multi-step orchestration. The base tools are:
 
 ```text
 spawn_thinking
+quick_lookup
 schedule_reminder
 cancel_agent_task
 get_agent_task_status

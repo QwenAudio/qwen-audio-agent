@@ -33,6 +33,7 @@ import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { BackendEventType } from '../../core/backend-events.mjs'
 import { normalizeRecurrence } from '../../task/recurrence.mjs'
+import { isTaskCancellable } from '../../task/task-state.mjs'
 
 const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
 const MAX_DEBUG_RESULT_CHARS = 180
@@ -651,6 +652,7 @@ export class ToolCallHandler {
       execute_at: args.execute_at,
       type,
       recurrence,
+      ...(task.seriesId ? { series_id: task.seriesId } : {}),
     }, turnId, task.id, {
       response: {
         instructions: [
@@ -1511,8 +1513,7 @@ export class ToolCallHandler {
       const targets = this.taskManager.list({
         ownerId: this.ownerId,
         sessionId: this.sessionId,
-        active: true,
-      })
+      }).filter(task => isTaskCancellable(task.status))
       if (!targets.length) {
         await this.sendOutput(callId, {
           status: 'not_found',
@@ -1536,19 +1537,44 @@ export class ToolCallHandler {
       }, turnId, null, responseOptions)
       return
     }
+    const requestedSeriesId = String(args.series_id || '').trim()
+    if (requestedSeriesId) {
+      const existing = this.taskManager.list({ ownerId: this.ownerId })
+        .filter(task => task.seriesId === requestedSeriesId)
+      if (!existing.length) {
+        await this.sendOutput(callId, {
+          status: 'not_found',
+          series_id: requestedSeriesId,
+          message: '没有找到这组循环提醒。',
+        }, turnId, null, responseOptions)
+        return
+      }
+      const results = await this.taskManager.cancelSeries(requestedSeriesId, {
+        ownerId: this.ownerId,
+      })
+      const cancelledCount = results.filter(result => (
+        result?.status === 'cancelled'
+      )).length
+      const taskId = results[0]?.id || existing[0].id
+      await this.sendOutput(callId, {
+        status: cancelledCount ? 'cancelled' : 'not_active',
+        series_id: requestedSeriesId,
+        task_id: taskId,
+        cancelled_count: cancelledCount,
+        requested_count: existing.filter(task => isTaskCancellable(task.status)).length,
+        message: cancelledCount
+          ? '已停止这组循环提醒。'
+          : '这组循环提醒已经结束，当前无法取消。',
+      }, turnId, taskId, responseOptions)
+      return
+    }
     const requestedTaskId = String(args.task_id || '').trim()
     const target = requestedTaskId
       ? this.taskManager.getByTaskId(requestedTaskId, { ownerId: this.ownerId })
       : this.taskManager.list({
-          ownerId: this.ownerId,
-          sessionId: this.sessionId,
-        }).find(task => [
-          'scheduled',
-          'queued',
-          'running',
-          'delegated',
-          'finalizing',
-        ].includes(task.status))
+        ownerId: this.ownerId,
+        sessionId: this.sessionId,
+        }).find(task => isTaskCancellable(task.status))
     if (!target) {
       await this.sendOutput(callId, {
         status: 'not_found',
@@ -1570,6 +1596,7 @@ export class ToolCallHandler {
     await this.sendOutput(callId, task.status === 'cancelled' ? {
       status: task.status,
       task_id: task.id,
+      ...(task.seriesId ? { series_id: task.seriesId } : {}),
       message: '已取消这项工作。',
     } : failure(
       'work_cancellation_failed',
@@ -1587,6 +1614,7 @@ export class ToolCallHandler {
         task_id: task.id,
         status: task.status,
         kind: task.kind,
+        ...(task.seriesId ? { series_id: task.seriesId } : {}),
         objective: String(task.objective || '').slice(0, 300),
         execute_at: task.schedule?.at
           ? new Date(task.schedule.at).toISOString()

@@ -587,6 +587,39 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   font-weight: 600;
   line-height: 1.3;
 }
+.desktop-task-card.scheduled strong,
+.desktop-task-card.scheduled small {
+  padding-right: 22px;
+}
+.desktop-task-cancel {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #b7aecf;
+  background: transparent;
+  font: inherit;
+  font-size: 16px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.desktop-task-cancel:hover {
+  color: #fff;
+  background: #ffffff18;
+}
+.desktop-task-card.scheduled .desktop-task-state i {
+  background: #efb569;
+  box-shadow: 0 0 8px #efb56980;
+}
+.desktop-task-card.scheduled .desktop-task-progress::after {
+  width: 100%;
+  animation: none;
+  background: #efb56980;
+}
 .desktop-task-card small {
   flex: 1 1 auto;
   color: inherit;

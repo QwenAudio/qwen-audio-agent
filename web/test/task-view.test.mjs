@@ -12,6 +12,7 @@ import {
   taskDetail,
   taskIsActive,
   taskNeedsPresentation,
+  taskScheduleDetail,
   taskLabel,
   taskView,
 } from '../src/task-view.js'
@@ -25,8 +26,13 @@ test('presents every active coordinator request as one frontend processing phase
     status: 'running',
     workState: 'working',
   }), 'running')
+  assert.equal(phaseForTask({
+    status: 'scheduled',
+    workState: 'submitted',
+  }), 'scheduled')
   assert.equal(taskLabel({ phase: 'queued' }), '排队中')
   assert.equal(taskLabel({ phase: 'running' }), '进行中')
+  assert.equal(taskLabel({ phase: 'scheduled' }), '已安排')
   assert.equal(taskLabel({ phase: 'delegated' }), '进行中')
   assert.equal(taskLabel({ phase: 'finalizing' }), '正在整理结果')
   assert.equal(taskLabel({ phase: 'cancelling' }), '正在取消')
@@ -60,6 +66,13 @@ test('presents every active coordinator request as one frontend processing phase
   }), 'cancelled')
   assert.equal(taskLabel({ phase: 'cancelled' }), '已取消')
   assert.equal(taskDetail({ phase: 'cancelled' }), '这项工作已停止')
+  assert.match(taskScheduleDetail({
+    phase: 'scheduled',
+    schedule: {
+      at: Date.parse('2026-09-06T14:30:00.000Z'),
+      recurrence: 'daily',
+    },
+  }), /下次触发：.* · 每天/u)
   assert.equal(taskIsActive({ workState: 'submitted' }), true)
   assert.equal(taskIsActive({ workState: 'working' }), true)
   assert.equal(taskIsActive({ workState: 'auth_required' }), true)

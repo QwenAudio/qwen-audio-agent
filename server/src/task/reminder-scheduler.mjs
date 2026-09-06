@@ -132,6 +132,7 @@ export class ReminderScheduler {
       type: task.kind === 'scheduled_task' ? 'task' : 'reminder',
       timeoutMs: task.timeoutMs,
       runner,
+      seriesId: task.seriesId,
       recurrenceStartAt: finiteTimestamp(task.recurrenceStartAt)
         ?? task.schedule?.at,
     })

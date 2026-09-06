@@ -340,6 +340,35 @@ export default function App() {
     }
   }, [])
 
+  const cancelDesktopTask = useCallback(async task => {
+    if (task?.phase !== 'scheduled' || !task.id) return
+    const cancelTask = gatewayCommandsRef.current?.cancelTask
+    if (typeof cancelTask !== 'function') return
+    setAgentTasks(items => upsertTask(
+      items,
+      task.id,
+      current => ({ ...current, phase: 'cancelling' }),
+    ))
+    try {
+      const cancelled = await cancelTask(task.id)
+      if (!cancelled) return
+      setAgentTasks(items => upsertTask(
+        items,
+        task.id,
+        current => taskView(cancelled, current),
+        taskView(cancelled),
+      ))
+    } catch {
+      setAgentTasks(items => upsertTask(
+        items,
+        task.id,
+        current => current.phase === 'cancelling'
+          ? { ...current, phase: 'scheduled' }
+          : current,
+      ))
+    }
+  }, [])
+
   useLayoutEffect(() => {
     const container = messagesRef.current
     if (container && stickToBottom.current) {
@@ -583,6 +612,15 @@ export default function App() {
           ? { ...message, interrupted: true, live: false }
           : message
       )))
+    }
+    if (event.type === 'task.scheduled') {
+      const task = event.task
+      setAgentTasks(items => upsertTask(
+        items,
+        task.id,
+        current => taskView(task, current),
+        taskView(task),
+      ))
     }
     if (event.type === 'task.accepted') {
       const task = event.task
@@ -1256,6 +1294,7 @@ export default function App() {
         {desktopCards.map(task => {
           const detail = taskDetail(task)
           const title = task.delegation?.title || task.objective || taskLabel(task)
+          const scheduled = task.phase === 'scheduled'
           const progress = ['completed', 'failed', 'cancelled'].includes(task.phase)
             ? taskLabel(task)
             : detail && detail !== title ? detail : taskLabel(task)
@@ -1273,6 +1312,16 @@ export default function App() {
               <i aria-hidden="true" />
               <small>{progress}</small>
             </span>
+            {scheduled && <button
+              className="desktop-task-cancel"
+              type="button"
+              aria-label={t(task.kind === 'reminder' ? '取消提醒' : '取消计划')}
+              title={t(task.kind === 'reminder' ? '取消提醒' : '取消计划')}
+              onClick={event => {
+                event.stopPropagation()
+                void cancelDesktopTask(task)
+              }}
+            >×</button>}
             <span
               className={`desktop-task-progress${progressRatio == null ? '' : ' determinate'}`}
               style={progressRatio == null ? undefined : {

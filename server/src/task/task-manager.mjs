@@ -167,6 +167,13 @@ export class TaskManager {
         saved.parentTaskId = saved.parentWorkId
       }
       delete saved.parentWorkId
+      if (
+        normalizeRecurrence(saved.schedule?.recurrence) !== 'once'
+        && !String(saved.seriesId || '').trim()
+      ) {
+        saved.seriesId = String(saved.id)
+        recoveryChanged = true
+      }
       delete saved.presentation
       delete saved.resultMetadata
       saved.artifacts = normalizeArtifacts(saved.artifacts)
@@ -520,6 +527,7 @@ export class TaskManager {
     timeoutMs = null,
     runner = null,
     recurrenceStartAt = null,
+    seriesId = null,
   }) {
     const kind = type === 'task' ? 'scheduled_task' : 'reminder'
     const normalizedRecurrence = normalizeRecurrence(recurrence)
@@ -528,11 +536,16 @@ export class TaskManager {
       || recurrenceStartAt === ''
       ? NaN
       : Number(recurrenceStartAt)
+    const taskId = this.allocateTaskId()
+    const normalizedSeriesId = normalizedRecurrence === 'once'
+      ? null
+      : String(seriesId || taskId).trim().slice(0, 128) || taskId
     const task = {
-      id: this.allocateTaskId(),
+      id: taskId,
       status: 'scheduled',
       scope: TaskScope.USER,
       kind,
+      seriesId: normalizedSeriesId,
       objective: String(objective || '').trim(),
       ownerId: String(ownerId || ''),
       sessionId: String(sessionId || 'main'),
@@ -903,6 +916,24 @@ export class TaskManager {
         return publicTask(task)
       })
     return task.cancelPromise
+  }
+
+  async cancelSeries(seriesId, { ownerId } = {}) {
+    const normalizedSeriesId = String(seriesId || '').trim()
+    if (!normalizedSeriesId) return []
+    const targets = [...this.tasks.values()]
+      .filter(task => (
+        task.seriesId === normalizedSeriesId
+        && (ownerId === undefined || task.ownerId === String(ownerId))
+        && isTaskCancellable(task.status)
+      ))
+      .sort((left, right) => left.createdAt - right.createdAt)
+    const cancelled = []
+    for (const task of targets) {
+      const result = await this.cancel(task.id, { ownerId })
+      if (result) cancelled.push(result)
+    }
+    return cancelled
   }
 
   finishCancellation(task) {

@@ -116,7 +116,7 @@ const cancelAgentTaskTool = {
   type: 'function',
   function: {
     name: CANCEL_AGENT_TASK_TOOL_NAME,
-    description: '取消用户此前开始、目前仍可取消的异步工作、定时任务或提醒。用户明确要求取消或停止时必须调用，不要只口头答应。同时存在多项且目标不能可靠确定时，先调用 get_agent_task_status 列出工作。不要重复取消已经处理的工作。',
+    description: '取消用户此前开始、目前仍可取消的异步工作、定时任务或提醒。用户明确要求取消或停止时必须调用，不要只口头答应。循环提醒优先使用回执中的 series_id 取消整组；普通工作使用 task_id。同时存在多项且目标不能可靠确定时，先调用 get_agent_task_status 列出工作。不要重复取消已经处理的工作。',
     parameters: {
       type: 'object',
       properties: {
@@ -124,9 +124,13 @@ const cancelAgentTaskTool = {
           type: 'string',
           description: '要取消的 task_id。仅使用系统返回的 ID，不得猜造；省略则取消当前语音会话最近创建且仍可取消的一项。',
         },
+        series_id: {
+          type: 'string',
+          description: '循环提醒创建回执返回的 series_id。用户要求停止整组循环提醒时使用；不得猜造，也不要与 task_id 同时填写。',
+        },
         all: {
           type: 'boolean',
-          description: '用户明确要求取消当前会话中的全部工作、定时任务和提醒时设为 true；此时不要填写 task_id。',
+          description: '用户明确要求取消当前会话中的全部工作、定时任务和提醒时设为 true；此时不要填写 task_id 或 series_id。',
         },
       },
       additionalProperties: false,

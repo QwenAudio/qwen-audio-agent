@@ -33,6 +33,81 @@ function boundedMetadata(value) {
   return entries.length ? Object.fromEntries(entries) : undefined
 }
 
+function cleanStringList(value, { maxItems = 32, maxChars = 300 } = {}) {
+  if (!Array.isArray(value)) return undefined
+  const items = value
+    .map(item => clean(item, maxChars))
+    .filter(Boolean)
+    .slice(0, maxItems)
+  return items.length ? items : undefined
+}
+
+/**
+ * Normalize the small document projection shared by built-in and external
+ * knowledge providers. Provider-specific jobs, graph objects, and transport
+ * responses deliberately stay behind the provider boundary.
+ */
+export function normalizeKnowledgeDocument(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const id = clean(value.id ?? value.documentId ?? value.document_id, 160)
+  if (!id) return null
+  const filename = clean(value.filename ?? value.fileName ?? value.file_path, 500)
+  const title = clean(value.title ?? value.name ?? value.content_summary, 300)
+    || filename
+    || id
+  const status = clean(value.status, 40).toLowerCase()
+  const gist = clean(value.gist ?? value.summary ?? value.content_summary, 1_000)
+  const path = clean(value.path ?? value.file_path, 1_000)
+  const source = clean(value.source, 500)
+  const sections = cleanStringList(value.sections)
+  const bytes = Number(value.bytes ?? value.size)
+  const importedAt = clean(value.imported_at ?? value.importedAt, 80)
+  const createdAt = clean(value.created_at ?? value.createdAt, 80)
+  const updatedAt = clean(value.updated_at ?? value.updatedAt, 80)
+  const metadata = boundedMetadata(value.metadata)
+  return {
+    id,
+    title,
+    ...(filename ? { filename } : {}),
+    ...(status ? { status } : {}),
+    ...(gist ? { gist } : {}),
+    ...(sections ? { sections } : {}),
+    ...(path ? { path } : {}),
+    ...(source ? { source } : {}),
+    ...(Number.isFinite(bytes) && bytes >= 0 ? { bytes } : {}),
+    ...(importedAt ? { imported_at: importedAt } : {}),
+    ...(createdAt ? { created_at: createdAt } : {}),
+    ...(updatedAt ? { updated_at: updatedAt } : {}),
+    ...(typeof value.summarised === 'boolean'
+      ? { summarised: value.summarised }
+      : {}),
+    ...(metadata ? { metadata } : {}),
+  }
+}
+
+export function normalizeKnowledgeIngestionResponse(value) {
+  return {
+    document: normalizeKnowledgeDocument(value?.document ?? value),
+  }
+}
+
+export function normalizeKnowledgeListResponse(value) {
+  const candidates = Array.isArray(value)
+    ? value
+    : Array.isArray(value?.documents) ? value.documents : []
+  return {
+    documents: candidates.map(normalizeKnowledgeDocument).filter(Boolean),
+  }
+}
+
+export function normalizeKnowledgeRemovalResponse(value) {
+  const document = normalizeKnowledgeDocument(value?.document)
+  return {
+    removed: Boolean(value?.removed),
+    ...(document ? { document } : {}),
+  }
+}
+
 function normalizeCapabilities(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return Object.fromEntries(

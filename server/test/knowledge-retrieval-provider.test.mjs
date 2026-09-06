@@ -6,6 +6,10 @@ import {
   assertKnowledgeRetrievalProvider,
   describeKnowledgeRetrievalProvider,
   knowledgeProviderHealth,
+  normalizeKnowledgeDocument,
+  normalizeKnowledgeIngestionResponse,
+  normalizeKnowledgeListResponse,
+  normalizeKnowledgeRemovalResponse,
   normalizeKnowledgeProviderHealth,
   normalizeKnowledgeRetrievalResponse,
   supportsKnowledgeManagement,
@@ -54,6 +58,47 @@ test('validates the minimal versioned retrieval provider contract', () => {
     key: 'custom-rag',
     label: 'Custom RAG',
     capabilities: { filters: true, scores: false },
+  })
+})
+
+test('normalizes provider-neutral knowledge management projections', () => {
+  assert.deepEqual(normalizeKnowledgeDocument({
+    document_id: ' doc-one ',
+    file_path: '/inputs/manual.pdf',
+    content_summary: ' Release guide ',
+    status: 'PROCESSED',
+    created_at: '2026-09-06T00:00:00Z',
+    size: 42,
+    sections: [' Intro ', '', 'Approvals'],
+    metadata: { category: 'guide', nested: { ignored: true } },
+  }), {
+    id: 'doc-one',
+    title: 'Release guide',
+    filename: '/inputs/manual.pdf',
+    status: 'processed',
+    gist: 'Release guide',
+    sections: ['Intro', 'Approvals'],
+    path: '/inputs/manual.pdf',
+    bytes: 42,
+    created_at: '2026-09-06T00:00:00Z',
+    metadata: { category: 'guide' },
+  })
+  assert.deepEqual(normalizeKnowledgeIngestionResponse({
+    document: { id: 'doc-one', title: 'Manual' },
+  }), {
+    document: { id: 'doc-one', title: 'Manual' },
+  })
+  assert.deepEqual(normalizeKnowledgeListResponse({
+    documents: [{ id: 'doc-one', title: 'Manual' }, { title: 'invalid' }],
+  }), {
+    documents: [{ id: 'doc-one', title: 'Manual' }],
+  })
+  assert.deepEqual(normalizeKnowledgeRemovalResponse({
+    removed: true,
+    document: { id: 'doc-one', title: 'Manual' },
+  }), {
+    removed: true,
+    document: { id: 'doc-one', title: 'Manual' },
   })
 })
 

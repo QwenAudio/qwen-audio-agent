@@ -175,6 +175,7 @@ chat naturally and get real work done.
 | Desktop | Voice chat, progress follow-up, tools, and background tasks. | [Docs][desktop-docs] | Available |
 | Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][smart-cockpit-example] | Available |
 | VoiceMem | Optional semantic memory with transcript or native-audio input. | [Setup example][voicemem-example] | Available |
+| LightRAG | Replaceable knowledge base with semantic retrieval, document indexing, and management. | [Integration example][lightrag-example] | Available |
 | Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
 | Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |
 | Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Exploratory |
@@ -196,9 +197,15 @@ shows how to install VoiceMem outside the framework, configure the connector, an
 Realtime transcripts and VoiceMem-native audio. Lightweight Markdown memory remains the default;
 the core npm package contains no VoiceMem Python code or dependencies.
 
+The [LightRAG integration example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag)
+connects an independently deployed knowledge base through the generic `KnowledgeProvider`.
+LightRAG keeps control of its LLM, embeddings, documents, and indexes; the core npm package does
+not include LightRAG or Python dependencies.
+
 [desktop-docs]: docs/desktop/overview.md
 [smart-cockpit-example]: examples/smart-cockpit
 [voicemem-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem
+[lightrag-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag
 
 ## Community
 

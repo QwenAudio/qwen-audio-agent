@@ -27,6 +27,9 @@ Provider 注册表。
 
 → [知识检索 Provider](reference/knowledge.zh.md)
 
+[LightRAG 接入示例](scenarios/lightrag.zh.md)展示了如何连接用户独立部署的完整知识库，
+同时让模型配置、索引和数据继续由 LightRAG 自己管理。
+
 ## 后台：接入新 Agent
 
 四条路径把后台接到协议中立的 `BackendPort` 之后：零代码的通用 ACP

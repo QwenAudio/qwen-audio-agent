@@ -104,6 +104,7 @@ function sidebar(prefix = '') {
       items: [
         { text: t('智能座舱', 'Smart Cockpit'), link: `${prefix}/scenarios/smart-cockpit` },
         { text: 'VoiceMem', link: `${prefix}/scenarios/voicemem` },
+        { text: 'LightRAG', link: `${prefix}/scenarios/lightrag` },
       ],
     },
     {

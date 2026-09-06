@@ -137,9 +137,30 @@ await provider.list({}, { ownerId })
 await provider.remove({ documentId: 'doc-42' }, { ownerId })
 ```
 
+三种管理方法使用稳定的最小返回结构：
+
+```js
+ingest() // { document: { id, title, ... } }
+list()   // { documents: [{ id, title, ... }] }
+remove() // { removed: true, document: { id, title, ... } }
+```
+
+Gateway 会统一规范化 `id`、`title`、`filename`、`status`、时间、摘要和有界元数据，
+客户端不需要理解供应商对象。Provider 的远程 Job ID、图谱对象和原始响应不能放进
+这些返回值。
+
 `ingest()` 返回 Promise。Gateway 使用自己的 TaskManager 提供排队、取消和状态，不要求
 Provider 再实现一套入库 Job 协议。远程知识服务自身若异步建索引，其 Adapter 在
 `ingest()` 内等待或轮询，收到 `signal` 后停止即可。
+
+远程 Provider 需要更长检索时间时，可在组合根设置通用运行时选项：
+
+```js
+createGatewayApplication({
+  knowledgeProvider: provider,
+  knowledgeRuntimeOptions: { timeoutMs: 60_000 },
+})
+```
 
 ## 内置基础实现
 
@@ -182,6 +203,10 @@ Adapter 只做字段和调用方式转换：
 
 供应商 Client、远程 Job ID、向量库 Collection ID 和原始响应对象都留在 Adapter 内，
 不能泄漏到 Gateway、Realtime 或客户端。
+
+仓库中的 [`examples/lightrag`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag)
+是完整的外部 Provider 示例：它使用 LightRAG REST API 完成检索、上传、列表和删除，
+并把异步索引状态收敛到上述接口。
 
 主流框架的对应概念可参考 [LlamaIndex Ingestion Pipeline](https://developers.llamaindex.ai/python/framework/module_guides/loading/ingestion_pipeline/)
 与 [Haystack DocumentWriter](https://docs.haystack.deepset.ai/docs/documentwriter)。

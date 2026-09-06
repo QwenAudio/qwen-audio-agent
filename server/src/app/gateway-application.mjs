@@ -113,6 +113,7 @@ export function createGatewayApplication({
   // Compatibility alias for embedders that adopted the original injection name.
   knowledgeRetrievalProvider = null,
   frontendKnowledge = null,
+  knowledgeRuntimeOptions = {},
   frontendMcp = undefined,
   frontendOpenApi = undefined,
   sessionJournal = null,
@@ -429,7 +430,12 @@ const knowledgeProviderRuntime = knowledgeProvider
         : null,
     }) : null)
 const frontendKnowledgeRuntime = frontendKnowledge || (knowledgeProviderRuntime
-  ? new FrontendKnowledgeRuntime({ provider: knowledgeProviderRuntime })
+  ? new FrontendKnowledgeRuntime({
+      ...(knowledgeRuntimeOptions && typeof knowledgeRuntimeOptions === 'object'
+        ? knowledgeRuntimeOptions
+        : {}),
+      provider: knowledgeProviderRuntime,
+    })
   : null)
 const knowledgeLibrary = knowledgeProviderRuntime
   && supportsKnowledgeManagement(knowledgeProviderRuntime)

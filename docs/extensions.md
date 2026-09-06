@@ -29,6 +29,10 @@ stack — connect the knowledge system you already operate.
 
 → [Knowledge Retrieval Provider](reference/knowledge.md)
 
+The [LightRAG integration example](scenarios/lightrag.md) shows how to connect a complete,
+independently deployed knowledge system while leaving its models, indexes, and data under
+LightRAG's control.
+
 ## Backend: Connect a New Agent
 
 Four paths put a backend behind the protocol-neutral `BackendPort`: the

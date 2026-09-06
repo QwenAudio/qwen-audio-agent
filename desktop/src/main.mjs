@@ -21,7 +21,6 @@ import {
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseEnv } from 'node:util'
-import QRCode from 'qrcode'
 import {
   loadRuntimeEnvironment,
   userConfigDirectory,
@@ -39,12 +38,7 @@ import {
   desktopTranslator,
   effectiveDesktopLanguage,
 } from './i18n.mjs'
-import {
-  disableGatewayRemoteAccess,
-  enableGatewayRemoteAccess,
-  readGatewayHealth,
-  readGatewayRemoteAccess,
-} from '../../shared/gateway-client.mjs'
+import { readGatewayHealth } from '../../shared/gateway-client.mjs'
 import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
 import { pairGatewayInvitation } from '../../shared/gateway-access-client.mjs'
 import { decodeGatewayInvitation } from '../../shared/gateway-remote-access.mjs'
@@ -114,12 +108,6 @@ import {
 } from './updater.mjs'
 import { createGracefulShutdown } from './graceful-shutdown.mjs'
 import { DesktopPresence } from './desktop-presence.mjs'
-import { createGatewayPairingTicket } from '../../shared/gateway-access-client.mjs'
-import {
-  createGatewayInvitation,
-  encodeGatewayBrowserInvitation,
-  encodeGatewayInvitation,
-} from '../../shared/gateway-remote-access.mjs'
 import { createElectronGatewayCredentialStore } from './gateway-credential-store.mjs'
 
 // macOS / Linux 图形界面应用的 PATH 只包含系统目录。在启动最早阶段
@@ -1009,84 +997,6 @@ ipcMain.handle('qwen-audio-agent:open-logs', async event => {
   const failure = await shell.openPath(logger.directory)
   if (failure) throw new Error(`无法打开日志目录：${failure}`)
   return logger.directory
-})
-
-function assertLocalRemoteAccessHost() {
-  if (!isLoopbackUrl(appOrigin)) {
-    const error = new Error('只有运行本机 Gateway 时才能发布远程访问')
-    error.code = 'gateway_remote_host_required'
-    throw error
-  }
-}
-
-function assertSettingsRequest(event) {
-  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
-    throw new Error('无权管理远程访问')
-  }
-}
-
-ipcMain.handle('qwen-audio-agent:remote-access-status', async event => {
-  assertSettingsRequest(event)
-  assertLocalRemoteAccessHost()
-  return readGatewayRemoteAccess(appOrigin)
-})
-
-ipcMain.handle('qwen-audio-agent:remote-access-enable', async event => {
-  assertSettingsRequest(event)
-  if (!await readDesktopGatewayHealth(appOrigin)) {
-    throw new Error('Gateway 尚未启动')
-  }
-  assertLocalRemoteAccessHost()
-  const status = await enableGatewayRemoteAccess(appOrigin)
-  if (status.authUrl || status.actionUrl) {
-    await shell.openExternal(status.authUrl || status.actionUrl)
-  }
-  logger.info('gateway.remote_access_enabled', {
-    endpoint: status.endpoint?.url,
-    state: status.state,
-  })
-  return status
-})
-
-ipcMain.handle('qwen-audio-agent:remote-access-disable', async event => {
-  assertSettingsRequest(event)
-  assertLocalRemoteAccessHost()
-  const result = await disableGatewayRemoteAccess(appOrigin)
-  logger.info('gateway.remote_access_disabled', { changed: result.changed })
-  return result
-})
-
-ipcMain.handle('qwen-audio-agent:remote-access-invite', async event => {
-  assertSettingsRequest(event)
-  if (!await readDesktopGatewayHealth(appOrigin)) {
-    throw new Error('Gateway 尚未启动')
-  }
-  assertLocalRemoteAccessHost()
-  const status = await enableGatewayRemoteAccess(appOrigin)
-  if (status.authUrl || status.actionUrl) {
-    await shell.openExternal(status.authUrl || status.actionUrl)
-    const error = new Error('请在浏览器完成远程访问设置，然后重新生成邀请')
-    error.code = 'remote_access_auth_required'
-    throw error
-  }
-  if (!status.endpoint?.url) {
-    throw new Error(status.error?.message || '远程访问尚未就绪')
-  }
-  const endpoint = status.endpoint
-  const ticket = await createGatewayPairingTicket(appOrigin)
-  const invitation = createGatewayInvitation({
-    gatewayUrl: endpoint.url,
-    pairingCode: ticket.code,
-    expiresAt: ticket.expiresAt,
-  })
-  const appUrl = encodeGatewayInvitation(invitation)
-  const webUrl = encodeGatewayBrowserInvitation(invitation)
-  return {
-    appUrl,
-    webUrl,
-    qrCode: await QRCode.toDataURL(appUrl, { width: 360, margin: 2 }),
-    expiresAt: invitation.expires_at,
-  }
 })
 
 // 与 `qwenaudio setup --json` 同款的只读检测，供设置页标注各后台

@@ -46,9 +46,9 @@ Clients see only an ordinary Gateway endpoint.
 
 - Local Clients continue to connect to `http://127.0.0.1:3101` without setup.
 - A Gateway management surface enables remote access and opens a one-time
-  browser authorization flow. Desktop renders a short-lived invitation as a QR
-  code; CLI can print it. Clients do not install or integrate the underlying
-  remote-access implementation.
+  browser authorization flow. The Gateway CLI can create a short-lived
+  invitation. Clients do not manage or integrate the underlying remote-access
+  implementation.
 - A remote Desktop, TUI, WebUI, or Mobile Client consumes the same invitation,
   exchanges it for a revocable device credential, and stores that credential in
   platform-secure storage.

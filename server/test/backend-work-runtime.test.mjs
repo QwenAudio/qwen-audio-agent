@@ -120,3 +120,46 @@ test('marks only trusted utility work as isolated', async () => {
   assert.equal(submitted.continuity, 'isolated')
   assert.equal(submitted.instruction, '转换文档')
 })
+
+test('routes a supported quick lookup without turning it into a Work', async () => {
+  let queried
+  let queryOptions
+  const runtime = new BackendWorkRuntime({
+    backend: backend({
+      describe() { return { capabilities: { quickQuery: true } } },
+      async quickLookup(input, options) {
+        queried = input
+        queryOptions = options
+        return { content: '查到的答案' }
+      },
+    }),
+  })
+  const signal = new AbortController().signal
+  const result = await runtime.quickLookup({ query: '如何配置 MCP？' }, {
+    ownerId: 'owner-one',
+    sessionId: 'voice-one',
+    turnId: 'turn-one',
+    requestId: 'quick-one',
+    signal,
+  })
+  assert.equal(runtime.supportsQuickLookup(), true)
+  assert.deepEqual(queried, { question: '如何配置 MCP？' })
+  assert.deepEqual(queryOptions, {
+    ownerId: 'owner-one',
+    sessionId: 'voice-one',
+    turnId: 'turn-one',
+    requestId: 'quick-one',
+    signal,
+    onEvent: undefined,
+  })
+  assert.deepEqual(result, { content: '查到的答案' })
+})
+
+test('fails closed when the backend does not advertise quick lookup', async () => {
+  const runtime = new BackendWorkRuntime({ backend: backend() })
+  assert.equal(runtime.supportsQuickLookup(), false)
+  await assert.rejects(
+    runtime.quickLookup({ query: 'status' }),
+    error => error.code === 'quick_query_unsupported',
+  )
+})

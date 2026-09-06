@@ -21,6 +21,8 @@ export { SPAWN_THINKING_TOOL_NAME } from './tools/spawn-thinking-tool.mjs'
 export const SCHEDULE_REMINDER_TOOL_NAME = 'schedule_reminder'
 export const CANCEL_AGENT_TASK_TOOL_NAME = 'cancel_agent_task'
 export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
+export const QUICK_LOOKUP_TOOL_NAME = 'quick_lookup'
+export const FRONTEND_QUICK_QUERY_CAPABILITY = 'quick-query'
 export const GET_CURRENT_TIME_TOOL_NAME = 'get_current_time'
 export const MEMORY_TOOL_NAME = 'memory'
 export const NOTES_TOOL_NAME = 'notes'
@@ -155,6 +157,25 @@ const getAgentTaskStatusTool = {
           description: '用户明确要求列出有哪些工作、定时任务或提醒时设为 true；查询“刚才那个”时不要设置。',
         },
       },
+      additionalProperties: false,
+    },
+  },
+}
+
+const quickLookupTool = {
+  type: 'function',
+  function: {
+    name: QUICK_LOOKUP_TOOL_NAME,
+    description: '查询一个单一、明确、只读的问题，并尽快返回后台当前资料或状态。适用于查资料、问用法、看状态；不要用于写文件、改代码、控制设备、请求权限、多步分析或任何需要持续执行的工作，这些请求必须调用 spawn_thinking。这个工具只返回查到的事实，不要根据未验证内容猜测答案。',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: '用户本轮要查询的一个完整问题，保留必要上下文，不要扩写成执行计划。',
+        },
+      },
+      required: ['query'],
       additionalProperties: false,
     },
   },
@@ -386,6 +407,13 @@ export const frontendToolRegistry = new FrontendToolRegistry([
   { definition: scheduleReminderTool, policy: { mode: 'inline' } },
   { definition: cancelAgentTaskTool, policy: { mode: 'control' } },
   { definition: getAgentTaskStatusTool, policy: { mode: 'control' } },
+  {
+    definition: quickLookupTool,
+    policy: {
+      mode: 'inline',
+      requiredCapabilities: [FRONTEND_QUICK_QUERY_CAPABILITY],
+    },
+  },
   { definition: getCurrentTimeTool, policy: { mode: 'inline' } },
   { definition: memoryTool, policy: { mode: 'inline' } },
   { definition: notesTool, policy: { mode: 'inline' } },

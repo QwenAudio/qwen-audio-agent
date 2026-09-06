@@ -5,7 +5,9 @@ import {
   BACKEND_INPUT_RESPONSE_CAPABILITY,
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
+  FRONTEND_QUICK_QUERY_CAPABILITY,
   KNOWLEDGE_TOOL_NAME,
+  QUICK_LOOKUP_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   frontendToolRegistry,
@@ -139,6 +141,27 @@ test('exposes retrieval tools only when the frontend advertises each capability'
   )
 })
 
+test('exposes quick lookup only when the backend advertises its capability', () => {
+  assert.equal(frontendToolRegistry.isEnabled(QUICK_LOOKUP_TOOL_NAME), false)
+  assert.deepEqual(
+    names(frontendTools({
+      frontend: { capabilities: [FRONTEND_QUICK_QUERY_CAPABILITY] },
+    })),
+    [
+      ...DEFAULT_TOOL_NAMES.slice(0, 4),
+      QUICK_LOOKUP_TOOL_NAME,
+      ...DEFAULT_TOOL_NAMES.slice(4),
+    ],
+  )
+  assert.deepEqual(
+    frontendToolRegistry.get(QUICK_LOOKUP_TOOL_NAME).policy,
+    {
+      mode: 'inline',
+      requiredCapabilities: [FRONTEND_QUICK_QUERY_CAPABILITY],
+    },
+  )
+})
+
 test('gates the backend permission response tool behind its capability', () => {
   assert.equal(
     frontendToolRegistry.isEnabled(RESPOND_PERMISSION_TOOL_NAME),
@@ -198,6 +221,7 @@ test('declares one background tool and classifies every other tool', () => {
     schedule_reminder: 'inline',
     cancel_agent_task: 'control',
     get_agent_task_status: 'control',
+    quick_lookup: 'inline',
     get_current_time: 'inline',
     memory: 'inline',
     notes: 'inline',

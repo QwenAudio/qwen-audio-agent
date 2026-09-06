@@ -93,18 +93,18 @@ Claude Code CLAUDE.md —— 都是 user-authored standing instructions。
 **先例**：`get_agent_task_status` 对 delegated Work 的 hidden high-priority
 control query（排在 running turn 之后、普通队列之前）已验证该模式，泛化即可。
 
-- [ ] **Q1** 设计：quick-query lane 语义定稿
+- [x] **Q1** 设计：quick-query lane 语义定稿
       - 不创建用户可见 Work，不进 FIFO 队尾
       - latency 上限（如 15s），超时降级为正式 Work 并告知用户
       - 仅只读型查询（查资料/问用法/看状态），写操作仍走 spawn_thinking
       - 前台先说半句承接，结果到达后经 Announcement 路径自然续上
-- [ ] **Q2** ACP adapter：control-query 机制泛化（复用协调 Session、优先级
+- [x] **Q2** ACP adapter：control-query 机制泛化（复用协调 Session、优先级
       插队、结果关联逻辑）
-- [ ] **Q3** 新前台工具（如 `quick_lookup`）+ PROMPT.md 路由规则（何时
+- [x] **Q3** 新前台工具（如 `quick_lookup`）+ PROMPT.md 路由规则（何时
       quick、何时 spawn_thinking）
-- [ ] **Q4** `architecture/deep-dive.md` §3 工具清单与 §2 流程图更新——**此项涉及
+- [x] **Q4** `architecture/deep-dive.md` §3 工具清单与 §2 流程图更新——**此项涉及
       架构不变量，需明确评审**
-- [ ] **Q5** 测试：插队优先级、超时降级、打断时丢弃悬空查询
+- [x] **Q5** 测试：插队优先级、超时降级、打断时丢弃悬空查询
 
 ### P2 - 提醒/定时
 

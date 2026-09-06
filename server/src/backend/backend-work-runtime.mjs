@@ -44,6 +44,29 @@ export class BackendWorkRuntime {
     return this.run(input, { ...options, continuity: 'isolated' })
   }
 
+  supportsQuickLookup() {
+    return this.backend.describe?.()?.capabilities?.quickQuery === true
+      && typeof this.backend.quickLookup === 'function'
+  }
+
+  quickLookup(input, options = {}) {
+    if (!this.supportsQuickLookup()) {
+      const error = new Error('当前后台 Agent 不支持快速查询')
+      error.code = 'quick_query_unsupported'
+      return Promise.reject(error)
+    }
+    return this.backend.quickLookup({
+      question: input?.question ?? input?.objective ?? input?.query,
+    }, {
+      ownerId: clean(options.ownerId),
+      sessionId: clean(options.sessionId),
+      turnId: clean(options.turnId),
+      requestId: clean(options.requestId),
+      signal: options.signal,
+      onEvent: options.onEvent,
+    })
+  }
+
   cancel(taskId, options = {}) {
     return this.backend.cancel(taskId, options)
   }

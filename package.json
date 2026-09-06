@@ -149,6 +149,8 @@
     "docs/reference/a2a-backend-adapter.zh.md",
     "docs/voice-frontends/speech-to-speech.md",
     "docs/voice-frontends/speech-to-speech.zh.md",
+    "docs/voice-frontends/minicpm-o.md",
+    "docs/voice-frontends/minicpm-o.zh.md",
     "docs/voice-frontends/custom-provider.md",
     "docs/voice-frontends/custom-provider.zh.md",
     "docs/voice-frontends/qwen-audio-realtime.md",

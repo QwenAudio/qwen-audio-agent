@@ -1,5 +1,7 @@
 {
   "_note": "裁剪自 τ²-bench retail 域的结构。5 用户 / 20 订单 / 12 类商品。用户与订单的引用关系必须自洽，改动后跑 service/test/db-integrity.test.mjs 校验。",
+  "_anchorDate": "2026-09-03T02:00:00+08:00",
+  "_anchorNote": "造这份数据时的「现在」。装载时所有日期按「距这一刻多久」平移到真实的现在，于是相对关系（哪笔在退货期限内、哪笔出票超过 24 小时、哪个航班已执飞）与写测试那天完全一致。不做这一步的话，过一周 7 天窗口内的订单就变成超期，演示和测试全部失效而代码一行没改。这个值是用测试断言反推的：退票测试要求几笔预订「超 24 小时」，而它们距库里最晚出票只有几小时，所以当时的「现在」比最晚出票晚一天多。见 service/state-store.mjs 的 anchorToToday。",
   "users": [
     {
       "userId": "li_ming_3021",
@@ -9,8 +11,17 @@
       "zip": "200120",
       "address": "上海市浦东新区世纪大道 100 号 2801 室",
       "paymentMethods": [
-        { "id": "credit_card_7719", "type": "credit_card", "brand": "招商银行", "last4": "7719" },
-        { "id": "gift_card_4402", "type": "gift_card", "balance": 350.0 }
+        {
+          "id": "credit_card_7719",
+          "type": "credit_card",
+          "brand": "招商银行",
+          "last4": "7719"
+        },
+        {
+          "id": "gift_card_4402",
+          "type": "gift_card",
+          "balance": 350.0
+        }
       ]
     },
     {
@@ -21,7 +32,11 @@
       "zip": "100085",
       "address": "北京市海淀区上园村 3 号",
       "paymentMethods": [
-        { "id": "alipay_8845", "type": "alipay", "account": "zhangwei@example.com" }
+        {
+          "id": "alipay_8845",
+          "type": "alipay",
+          "account": "zhangwei@example.com"
+        }
       ]
     },
     {
@@ -33,7 +48,12 @@
       "address": "广州市天河区天河路 228 号",
       "_note": "刻意没有邮箱：逼 agent 走 name+zip 那条核验分支",
       "paymentMethods": [
-        { "id": "credit_card_1180", "type": "credit_card", "brand": "工商银行", "last4": "1180" }
+        {
+          "id": "credit_card_1180",
+          "type": "credit_card",
+          "brand": "工商银行",
+          "last4": "1180"
+        }
       ]
     },
     {
@@ -44,7 +64,11 @@
       "zip": "610041",
       "address": "成都市武侯区人民南路四段 12 号",
       "paymentMethods": [
-        { "id": "gift_card_9931", "type": "gift_card", "balance": 80.0 }
+        {
+          "id": "gift_card_9931",
+          "type": "gift_card",
+          "balance": 80.0
+        }
       ]
     },
     {
@@ -55,7 +79,12 @@
       "zip": "518040",
       "address": "深圳市福田区福华三路 88 号",
       "paymentMethods": [
-        { "id": "credit_card_3355", "type": "credit_card", "brand": "建设银行", "last4": "3355" }
+        {
+          "id": "credit_card_3355",
+          "type": "credit_card",
+          "brand": "建设银行",
+          "last4": "3355"
+        }
       ]
     }
   ],
@@ -65,10 +94,46 @@
       "name": "机械键盘",
       "category": "digital",
       "variants": [
-        { "itemId": "KB_CLICKY_RGB_FULL", "options": { "switch": "clicky", "backlight": "RGB", "size": "full" }, "price": 799.0, "stock": 4 },
-        { "itemId": "KB_CLICKY_NONE_FULL", "options": { "switch": "clicky", "backlight": "none", "size": "full" }, "price": 699.0, "stock": 7 },
-        { "itemId": "KB_LINEAR_RGB_FULL", "options": { "switch": "linear", "backlight": "RGB", "size": "full" }, "price": 799.0, "stock": 0 },
-        { "itemId": "KB_TACTILE_RGB_TKL", "options": { "switch": "tactile", "backlight": "RGB", "size": "tkl" }, "price": 749.0, "stock": 3 }
+        {
+          "itemId": "KB_CLICKY_RGB_FULL",
+          "options": {
+            "switch": "clicky",
+            "backlight": "RGB",
+            "size": "full"
+          },
+          "price": 799.0,
+          "stock": 4
+        },
+        {
+          "itemId": "KB_CLICKY_NONE_FULL",
+          "options": {
+            "switch": "clicky",
+            "backlight": "none",
+            "size": "full"
+          },
+          "price": 699.0,
+          "stock": 7
+        },
+        {
+          "itemId": "KB_LINEAR_RGB_FULL",
+          "options": {
+            "switch": "linear",
+            "backlight": "RGB",
+            "size": "full"
+          },
+          "price": 799.0,
+          "stock": 0
+        },
+        {
+          "itemId": "KB_TACTILE_RGB_TKL",
+          "options": {
+            "switch": "tactile",
+            "backlight": "RGB",
+            "size": "tkl"
+          },
+          "price": 749.0,
+          "stock": 3
+        }
       ]
     },
     {
@@ -76,9 +141,30 @@
       "name": "智能恒温器",
       "category": "appliance",
       "variants": [
-        { "itemId": "TH_MIJIA", "options": { "ecosystem": "米家" }, "price": 499.0, "stock": 6 },
-        { "itemId": "TH_HOMEKIT", "options": { "ecosystem": "HomeKit" }, "price": 549.0, "stock": 2 },
-        { "itemId": "TH_TUYA", "options": { "ecosystem": "涂鸦" }, "price": 429.0, "stock": 0 }
+        {
+          "itemId": "TH_MIJIA",
+          "options": {
+            "ecosystem": "米家"
+          },
+          "price": 499.0,
+          "stock": 6
+        },
+        {
+          "itemId": "TH_HOMEKIT",
+          "options": {
+            "ecosystem": "HomeKit"
+          },
+          "price": 549.0,
+          "stock": 2
+        },
+        {
+          "itemId": "TH_TUYA",
+          "options": {
+            "ecosystem": "涂鸦"
+          },
+          "price": 429.0,
+          "stock": 0
+        }
       ]
     },
     {
@@ -86,9 +172,33 @@
       "name": "无线耳机",
       "category": "digital",
       "variants": [
-        { "itemId": "HP_BLACK_ANC", "options": { "color": "黑", "anc": true }, "price": 1299.0, "stock": 9 },
-        { "itemId": "HP_WHITE_ANC", "options": { "color": "白", "anc": true }, "price": 1299.0, "stock": 5 },
-        { "itemId": "HP_BLACK_PLAIN", "options": { "color": "黑", "anc": false }, "price": 899.0, "stock": 12 }
+        {
+          "itemId": "HP_BLACK_ANC",
+          "options": {
+            "color": "黑",
+            "anc": true
+          },
+          "price": 1299.0,
+          "stock": 9
+        },
+        {
+          "itemId": "HP_WHITE_ANC",
+          "options": {
+            "color": "白",
+            "anc": true
+          },
+          "price": 1299.0,
+          "stock": 5
+        },
+        {
+          "itemId": "HP_BLACK_PLAIN",
+          "options": {
+            "color": "黑",
+            "anc": false
+          },
+          "price": 899.0,
+          "stock": 12
+        }
       ]
     },
     {
@@ -96,8 +206,24 @@
       "name": "电热水壶",
       "category": "appliance",
       "variants": [
-        { "itemId": "KT_1L_STEEL", "options": { "capacity": "1L", "material": "不锈钢" }, "price": 199.0, "stock": 15 },
-        { "itemId": "KT_1_7L_GLASS", "options": { "capacity": "1.7L", "material": "玻璃" }, "price": 259.0, "stock": 8 }
+        {
+          "itemId": "KT_1L_STEEL",
+          "options": {
+            "capacity": "1L",
+            "material": "不锈钢"
+          },
+          "price": 199.0,
+          "stock": 15
+        },
+        {
+          "itemId": "KT_1_7L_GLASS",
+          "options": {
+            "capacity": "1.7L",
+            "material": "玻璃"
+          },
+          "price": 259.0,
+          "stock": 8
+        }
       ]
     },
     {
@@ -105,9 +231,33 @@
       "name": "纯棉 T 恤",
       "category": "apparel",
       "variants": [
-        { "itemId": "TS_M_WHITE", "options": { "size": "M", "color": "白" }, "price": 129.0, "stock": 30 },
-        { "itemId": "TS_L_WHITE", "options": { "size": "L", "color": "白" }, "price": 129.0, "stock": 22 },
-        { "itemId": "TS_L_NAVY", "options": { "size": "L", "color": "藏青" }, "price": 129.0, "stock": 0 }
+        {
+          "itemId": "TS_M_WHITE",
+          "options": {
+            "size": "M",
+            "color": "白"
+          },
+          "price": 129.0,
+          "stock": 30
+        },
+        {
+          "itemId": "TS_L_WHITE",
+          "options": {
+            "size": "L",
+            "color": "白"
+          },
+          "price": 129.0,
+          "stock": 22
+        },
+        {
+          "itemId": "TS_L_NAVY",
+          "options": {
+            "size": "L",
+            "color": "藏青"
+          },
+          "price": 129.0,
+          "stock": 0
+        }
       ]
     },
     {
@@ -115,8 +265,24 @@
       "name": "跑步鞋",
       "category": "apparel",
       "variants": [
-        { "itemId": "SN_42_GREY", "options": { "size": "42", "color": "灰" }, "price": 559.0, "stock": 6 },
-        { "itemId": "SN_43_GREY", "options": { "size": "43", "color": "灰" }, "price": 559.0, "stock": 4 }
+        {
+          "itemId": "SN_42_GREY",
+          "options": {
+            "size": "42",
+            "color": "灰"
+          },
+          "price": 559.0,
+          "stock": 6
+        },
+        {
+          "itemId": "SN_43_GREY",
+          "options": {
+            "size": "43",
+            "color": "灰"
+          },
+          "price": 559.0,
+          "stock": 4
+        }
       ]
     },
     {
@@ -124,8 +290,24 @@
       "name": "通勤背包",
       "category": "accessory",
       "variants": [
-        { "itemId": "BP_20L_BLACK", "options": { "capacity": "20L", "color": "黑" }, "price": 329.0, "stock": 11 },
-        { "itemId": "BP_28L_BLACK", "options": { "capacity": "28L", "color": "黑" }, "price": 399.0, "stock": 3 }
+        {
+          "itemId": "BP_20L_BLACK",
+          "options": {
+            "capacity": "20L",
+            "color": "黑"
+          },
+          "price": 329.0,
+          "stock": 11
+        },
+        {
+          "itemId": "BP_28L_BLACK",
+          "options": {
+            "capacity": "28L",
+            "color": "黑"
+          },
+          "price": 399.0,
+          "stock": 3
+        }
       ]
     },
     {
@@ -133,8 +315,24 @@
       "name": "显示器",
       "category": "digital",
       "variants": [
-        { "itemId": "MN_27_2K", "options": { "size": "27寸", "resolution": "2K" }, "price": 1599.0, "stock": 5 },
-        { "itemId": "MN_32_4K", "options": { "size": "32寸", "resolution": "4K" }, "price": 2899.0, "stock": 2 }
+        {
+          "itemId": "MN_27_2K",
+          "options": {
+            "size": "27寸",
+            "resolution": "2K"
+          },
+          "price": 1599.0,
+          "stock": 5
+        },
+        {
+          "itemId": "MN_32_4K",
+          "options": {
+            "size": "32寸",
+            "resolution": "4K"
+          },
+          "price": 2899.0,
+          "stock": 2
+        }
       ]
     },
     {
@@ -142,8 +340,22 @@
       "name": "护眼台灯",
       "category": "appliance",
       "variants": [
-        { "itemId": "LP_WARM", "options": { "temperature": "暖光" }, "price": 249.0, "stock": 14 },
-        { "itemId": "LP_DUAL", "options": { "temperature": "双色温" }, "price": 329.0, "stock": 7 }
+        {
+          "itemId": "LP_WARM",
+          "options": {
+            "temperature": "暖光"
+          },
+          "price": 249.0,
+          "stock": 14
+        },
+        {
+          "itemId": "LP_DUAL",
+          "options": {
+            "temperature": "双色温"
+          },
+          "price": 329.0,
+          "stock": 7
+        }
       ]
     },
     {
@@ -151,7 +363,15 @@
       "name": "保温杯",
       "category": "accessory",
       "variants": [
-        { "itemId": "BT_500_STEEL", "options": { "capacity": "500ml", "color": "银" }, "price": 159.0, "stock": 20 }
+        {
+          "itemId": "BT_500_STEEL",
+          "options": {
+            "capacity": "500ml",
+            "color": "银"
+          },
+          "price": 159.0,
+          "stock": 20
+        }
       ]
     },
     {
@@ -159,8 +379,24 @@
       "name": "无线鼠标",
       "category": "digital",
       "variants": [
-        { "itemId": "MS_ERGO_BLACK", "options": { "shape": "人体工学", "color": "黑" }, "price": 379.0, "stock": 10 },
-        { "itemId": "MS_FLAT_WHITE", "options": { "shape": "轻薄", "color": "白" }, "price": 229.0, "stock": 16 }
+        {
+          "itemId": "MS_ERGO_BLACK",
+          "options": {
+            "shape": "人体工学",
+            "color": "黑"
+          },
+          "price": 379.0,
+          "stock": 10
+        },
+        {
+          "itemId": "MS_FLAT_WHITE",
+          "options": {
+            "shape": "轻薄",
+            "color": "白"
+          },
+          "price": 229.0,
+          "stock": 16
+        }
       ]
     },
     {
@@ -168,7 +404,15 @@
       "name": "人体工学椅",
       "category": "furniture",
       "variants": [
-        { "itemId": "CH_MESH_GREY", "options": { "material": "网布", "color": "灰" }, "price": 1899.0, "stock": 3 }
+        {
+          "itemId": "CH_MESH_GREY",
+          "options": {
+            "material": "网布",
+            "color": "灰"
+          },
+          "price": 1899.0,
+          "stock": 3
+        }
       ]
     }
   ],
@@ -181,11 +425,29 @@
       "deliveredAt": "2026-08-10T15:40:00+08:00",
       "address": "上海市浦东新区世纪大道 100 号 2801 室",
       "items": [
-        { "itemId": "KB_LINEAR_RGB_FULL", "productId": "P_KEYBOARD", "quantity": 1, "price": 799.0 },
-        { "itemId": "TH_HOMEKIT", "productId": "P_THERMOSTAT", "quantity": 1, "price": 549.0 }
+        {
+          "itemId": "KB_LINEAR_RGB_FULL",
+          "productId": "P_KEYBOARD",
+          "quantity": 1,
+          "price": 799.0
+        },
+        {
+          "itemId": "TH_HOMEKIT",
+          "productId": "P_THERMOSTAT",
+          "quantity": 1,
+          "price": 549.0
+        }
       ],
       "total": 1348.0,
-      "payment": { "methodId": "credit_card_7719", "transactions": [{ "type": "payment", "amount": 1348.0 }] },
+      "payment": {
+        "methodId": "credit_card_7719",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 1348.0
+          }
+        ]
+      },
       "_note": "换货主场景：键盘要换 clicky 轴、恒温器要换米家。恒温器 category=appliance，已收货 22 天 —— 超出家电类 15 天窗口，是「资格判定」的关键用例"
     },
     {
@@ -195,10 +457,23 @@
       "placedAt": "2026-08-30T09:05:00+08:00",
       "address": "上海市浦东新区世纪大道 100 号 2801 室",
       "items": [
-        { "itemId": "HP_BLACK_PLAIN", "productId": "P_HEADPHONE", "quantity": 1, "price": 899.0 }
+        {
+          "itemId": "HP_BLACK_PLAIN",
+          "productId": "P_HEADPHONE",
+          "quantity": 1,
+          "price": 899.0
+        }
       ],
       "total": 899.0,
-      "payment": { "methodId": "credit_card_7719", "transactions": [{ "type": "payment", "amount": 899.0 }] },
+      "payment": {
+        "methodId": "credit_card_7719",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 899.0
+          }
+        ]
+      },
       "_note": "取消主场景：pending 可取消，899 元低于 2000 上限，不触发转人工"
     },
     {
@@ -209,10 +484,23 @@
       "deliveredAt": "2026-08-28T11:00:00+08:00",
       "address": "上海市浦东新区世纪大道 100 号 2801 室",
       "items": [
-        { "itemId": "TS_L_WHITE", "productId": "P_TSHIRT", "quantity": 2, "price": 129.0 }
+        {
+          "itemId": "TS_L_WHITE",
+          "productId": "P_TSHIRT",
+          "quantity": 2,
+          "price": 129.0
+        }
       ],
       "total": 258.0,
-      "payment": { "methodId": "gift_card_4402", "transactions": [{ "type": "payment", "amount": 258.0 }] },
+      "payment": {
+        "methodId": "gift_card_4402",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 258.0
+          }
+        ]
+      },
       "_note": "退货顺利路径：apparel 类 30 天窗口内（4 天前收货），礼品卡付款可即时退回"
     },
     {
@@ -222,10 +510,23 @@
       "placedAt": "2026-08-31T18:30:00+08:00",
       "address": "北京市海淀区上园村 3 号",
       "items": [
-        { "itemId": "MN_32_4K", "productId": "P_MONITOR", "quantity": 1, "price": 2899.0 }
+        {
+          "itemId": "MN_32_4K",
+          "productId": "P_MONITOR",
+          "quantity": 1,
+          "price": 2899.0
+        }
       ],
       "total": 2899.0,
-      "payment": { "methodId": "alipay_8845", "transactions": [{ "type": "payment", "amount": 2899.0 }] },
+      "payment": {
+        "methodId": "alipay_8845",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 2899.0
+          }
+        ]
+      },
       "_note": "转人工用例：2899 元超过 2000 元退款上限，取消时必须升级"
     },
     {
@@ -236,10 +537,23 @@
       "deliveredAt": "2026-06-16T16:20:00+08:00",
       "address": "北京市海淀区上园村 3 号",
       "items": [
-        { "itemId": "KT_1L_STEEL", "productId": "P_KETTLE", "quantity": 1, "price": 199.0 }
+        {
+          "itemId": "KT_1L_STEEL",
+          "productId": "P_KETTLE",
+          "quantity": 1,
+          "price": 199.0
+        }
       ],
       "total": 199.0,
-      "payment": { "methodId": "alipay_8845", "transactions": [{ "type": "payment", "amount": 199.0 }] },
+      "payment": {
+        "methodId": "alipay_8845",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 199.0
+          }
+        ]
+      },
       "_note": "超窗口用例：appliance 类 15 天窗口，已收货 2 个多月，必须拒绝退货"
     },
     {
@@ -250,10 +564,23 @@
       "deliveredAt": "2026-08-25T10:10:00+08:00",
       "address": "广州市天河区天河路 228 号",
       "items": [
-        { "itemId": "SN_42_GREY", "productId": "P_SNEAKER", "quantity": 1, "price": 559.0 }
+        {
+          "itemId": "SN_42_GREY",
+          "productId": "P_SNEAKER",
+          "quantity": 1,
+          "price": 559.0
+        }
       ],
       "total": 559.0,
-      "payment": { "methodId": "credit_card_1180", "transactions": [{ "type": "payment", "amount": 559.0 }] },
+      "payment": {
+        "methodId": "credit_card_1180",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 559.0
+          }
+        ]
+      },
       "_note": "换尺码用例。这个用户没有邮箱，必须走 name+zip 核验"
     },
     {
@@ -264,10 +591,27 @@
       "cancelledAt": "2026-08-15T14:20:00+08:00",
       "address": "广州市天河区天河路 228 号",
       "items": [
-        { "itemId": "BP_20L_BLACK", "productId": "P_BACKPACK", "quantity": 1, "price": 329.0 }
+        {
+          "itemId": "BP_20L_BLACK",
+          "productId": "P_BACKPACK",
+          "quantity": 1,
+          "price": 329.0
+        }
       ],
       "total": 329.0,
-      "payment": { "methodId": "credit_card_1180", "transactions": [{ "type": "payment", "amount": 329.0 }, { "type": "refund", "amount": 329.0 }] },
+      "payment": {
+        "methodId": "credit_card_1180",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 329.0
+          },
+          {
+            "type": "refund",
+            "amount": 329.0
+          }
+        ]
+      },
       "_note": "已取消：再次取消必须被工具内校验拒绝"
     },
     {
@@ -277,11 +621,33 @@
       "placedAt": "2026-09-01T07:45:00+08:00",
       "address": "成都市武侯区人民南路四段 12 号",
       "items": [
-        { "itemId": "LP_WARM", "productId": "P_LAMP", "quantity": 1, "price": 249.0 },
-        { "itemId": "BT_500_STEEL", "productId": "P_BOTTLE", "quantity": 1, "price": 159.0 }
+        {
+          "itemId": "LP_WARM",
+          "productId": "P_LAMP",
+          "quantity": 1,
+          "price": 249.0
+        },
+        {
+          "itemId": "BT_500_STEEL",
+          "productId": "P_BOTTLE",
+          "quantity": 1,
+          "price": 159.0
+        }
       ],
       "total": 408.0,
-      "payment": { "methodId": "gift_card_9931", "transactions": [{ "type": "payment", "amount": 80.0 }, { "type": "payment", "amount": 328.0 }] },
+      "payment": {
+        "methodId": "gift_card_9931",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 80.0
+          },
+          {
+            "type": "payment",
+            "amount": 328.0
+          }
+        ]
+      },
       "_note": "改地址主场景：pending 可改。礼品卡余额不足，混合支付"
     },
     {
@@ -292,10 +658,23 @@
       "shippedAt": "2026-08-30T08:30:00+08:00",
       "address": "成都市武侯区人民南路四段 12 号",
       "items": [
-        { "itemId": "MS_FLAT_WHITE", "productId": "P_MOUSE", "quantity": 1, "price": 229.0 }
+        {
+          "itemId": "MS_FLAT_WHITE",
+          "productId": "P_MOUSE",
+          "quantity": 1,
+          "price": 229.0
+        }
       ],
       "total": 229.0,
-      "payment": { "methodId": "gift_card_9931", "transactions": [{ "type": "payment", "amount": 229.0 }] },
+      "payment": {
+        "methodId": "gift_card_9931",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 229.0
+          }
+        ]
+      },
       "_note": "已发货：不能取消、不能改地址 —— 工具内校验的用例"
     },
     {
@@ -306,11 +685,29 @@
       "deliveredAt": "2026-08-29T17:00:00+08:00",
       "address": "深圳市福田区福华三路 88 号",
       "items": [
-        { "itemId": "HP_WHITE_ANC", "productId": "P_HEADPHONE", "quantity": 1, "price": 1299.0 },
-        { "itemId": "MS_ERGO_BLACK", "productId": "P_MOUSE", "quantity": 1, "price": 379.0 }
+        {
+          "itemId": "HP_WHITE_ANC",
+          "productId": "P_HEADPHONE",
+          "quantity": 1,
+          "price": 1299.0
+        },
+        {
+          "itemId": "MS_ERGO_BLACK",
+          "productId": "P_MOUSE",
+          "quantity": 1,
+          "price": 379.0
+        }
       ],
       "total": 1678.0,
-      "payment": { "methodId": "credit_card_3355", "transactions": [{ "type": "payment", "amount": 1678.0 }] },
+      "payment": {
+        "methodId": "credit_card_3355",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 1678.0
+          }
+        ]
+      },
       "_note": "部分退货用例：只退耳机不退鼠标，digital 类 7 天窗口内（3 天前收货）"
     },
     {
@@ -321,10 +718,23 @@
       "deliveredAt": "2026-08-05T14:00:00+08:00",
       "address": "深圳市福田区福华三路 88 号",
       "items": [
-        { "itemId": "CH_MESH_GREY", "productId": "P_CHAIR", "quantity": 1, "price": 1899.0 }
+        {
+          "itemId": "CH_MESH_GREY",
+          "productId": "P_CHAIR",
+          "quantity": 1,
+          "price": 1899.0
+        }
       ],
       "total": 1899.0,
-      "payment": { "methodId": "credit_card_3355", "transactions": [{ "type": "payment", "amount": 1899.0 }] },
+      "payment": {
+        "methodId": "credit_card_3355",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 1899.0
+          }
+        ]
+      },
       "_note": "furniture 类：policy 里没写这一类的窗口 —— 刻意留的空白，看 agent 会不会编造"
     },
     {
@@ -334,10 +744,23 @@
       "placedAt": "2026-09-01T20:10:00+08:00",
       "address": "深圳市福田区福华三路 88 号",
       "items": [
-        { "itemId": "TS_M_WHITE", "productId": "P_TSHIRT", "quantity": 3, "price": 129.0 }
+        {
+          "itemId": "TS_M_WHITE",
+          "productId": "P_TSHIRT",
+          "quantity": 3,
+          "price": 129.0
+        }
       ],
       "total": 387.0,
-      "payment": { "methodId": "credit_card_3355", "transactions": [{ "type": "payment", "amount": 387.0 }] }
+      "payment": {
+        "methodId": "credit_card_3355",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 387.0
+          }
+        ]
+      }
     },
     {
       "orderId": "#W5027341",
@@ -347,10 +770,23 @@
       "shippedAt": "2026-08-31T09:00:00+08:00",
       "address": "上海市浦东新区世纪大道 100 号 2801 室",
       "items": [
-        { "itemId": "BP_28L_BLACK", "productId": "P_BACKPACK", "quantity": 1, "price": 399.0 }
+        {
+          "itemId": "BP_28L_BLACK",
+          "productId": "P_BACKPACK",
+          "quantity": 1,
+          "price": 399.0
+        }
       ],
       "total": 399.0,
-      "payment": { "methodId": "credit_card_7719", "transactions": [{ "type": "payment", "amount": 399.0 }] }
+      "payment": {
+        "methodId": "credit_card_7719",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 399.0
+          }
+        ]
+      }
     },
     {
       "orderId": "#W7740018",
@@ -360,10 +796,23 @@
       "deliveredAt": "2026-08-31T12:00:00+08:00",
       "address": "北京市海淀区上园村 3 号",
       "items": [
-        { "itemId": "MN_27_2K", "productId": "P_MONITOR", "quantity": 1, "price": 1599.0 }
+        {
+          "itemId": "MN_27_2K",
+          "productId": "P_MONITOR",
+          "quantity": 1,
+          "price": 1599.0
+        }
       ],
       "total": 1599.0,
-      "payment": { "methodId": "alipay_8845", "transactions": [{ "type": "payment", "amount": 1599.0 }] }
+      "payment": {
+        "methodId": "alipay_8845",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 1599.0
+          }
+        ]
+      }
     },
     {
       "orderId": "#W9911274",
@@ -372,10 +821,23 @@
       "placedAt": "2026-09-01T08:15:00+08:00",
       "address": "广州市天河区天河路 228 号",
       "items": [
-        { "itemId": "KT_1_7L_GLASS", "productId": "P_KETTLE", "quantity": 1, "price": 259.0 }
+        {
+          "itemId": "KT_1_7L_GLASS",
+          "productId": "P_KETTLE",
+          "quantity": 1,
+          "price": 259.0
+        }
       ],
       "total": 259.0,
-      "payment": { "methodId": "credit_card_1180", "transactions": [{ "type": "payment", "amount": 259.0 }] }
+      "payment": {
+        "methodId": "credit_card_1180",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 259.0
+          }
+        ]
+      }
     },
     {
       "orderId": "#W4402963",
@@ -385,10 +847,23 @@
       "deliveredAt": "2026-08-23T16:45:00+08:00",
       "address": "成都市武侯区人民南路四段 12 号",
       "items": [
-        { "itemId": "TS_L_WHITE", "productId": "P_TSHIRT", "quantity": 1, "price": 129.0 }
+        {
+          "itemId": "TS_L_WHITE",
+          "productId": "P_TSHIRT",
+          "quantity": 1,
+          "price": 129.0
+        }
       ],
       "total": 129.0,
-      "payment": { "methodId": "gift_card_9931", "transactions": [{ "type": "payment", "amount": 129.0 }] }
+      "payment": {
+        "methodId": "gift_card_9931",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 129.0
+          }
+        ]
+      }
     },
     {
       "orderId": "#W6650188",
@@ -398,10 +873,27 @@
       "cancelledAt": "2026-08-22T11:40:00+08:00",
       "address": "深圳市福田区福华三路 88 号",
       "items": [
-        { "itemId": "LP_DUAL", "productId": "P_LAMP", "quantity": 1, "price": 329.0 }
+        {
+          "itemId": "LP_DUAL",
+          "productId": "P_LAMP",
+          "quantity": 1,
+          "price": 329.0
+        }
       ],
       "total": 329.0,
-      "payment": { "methodId": "credit_card_3355", "transactions": [{ "type": "payment", "amount": 329.0 }, { "type": "refund", "amount": 329.0 }] }
+      "payment": {
+        "methodId": "credit_card_3355",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 329.0
+          },
+          {
+            "type": "refund",
+            "amount": 329.0
+          }
+        ]
+      }
     },
     {
       "orderId": "#W8033476",
@@ -411,10 +903,23 @@
       "deliveredAt": "2026-07-14T13:30:00+08:00",
       "address": "上海市浦东新区世纪大道 100 号 2801 室",
       "items": [
-        { "itemId": "MS_ERGO_BLACK", "productId": "P_MOUSE", "quantity": 1, "price": 379.0 }
+        {
+          "itemId": "MS_ERGO_BLACK",
+          "productId": "P_MOUSE",
+          "quantity": 1,
+          "price": 379.0
+        }
       ],
       "total": 379.0,
-      "payment": { "methodId": "credit_card_7719", "transactions": [{ "type": "payment", "amount": 379.0 }] }
+      "payment": {
+        "methodId": "credit_card_7719",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 379.0
+          }
+        ]
+      }
     },
     {
       "orderId": "#W2287905",
@@ -423,10 +928,23 @@
       "placedAt": "2026-09-01T21:00:00+08:00",
       "address": "北京市海淀区上园村 3 号",
       "items": [
-        { "itemId": "BT_500_STEEL", "productId": "P_BOTTLE", "quantity": 2, "price": 159.0 }
+        {
+          "itemId": "BT_500_STEEL",
+          "productId": "P_BOTTLE",
+          "quantity": 2,
+          "price": 159.0
+        }
       ],
       "total": 318.0,
-      "payment": { "methodId": "alipay_8845", "transactions": [{ "type": "payment", "amount": 318.0 }] }
+      "payment": {
+        "methodId": "alipay_8845",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 318.0
+          }
+        ]
+      }
     },
     {
       "orderId": "#W5518830",
@@ -436,10 +954,23 @@
       "deliveredAt": "2026-09-01T10:20:00+08:00",
       "address": "广州市天河区天河路 228 号",
       "items": [
-        { "itemId": "HP_BLACK_ANC", "productId": "P_HEADPHONE", "quantity": 1, "price": 1299.0 }
+        {
+          "itemId": "HP_BLACK_ANC",
+          "productId": "P_HEADPHONE",
+          "quantity": 1,
+          "price": 1299.0
+        }
       ],
       "total": 1299.0,
-      "payment": { "methodId": "credit_card_1180", "transactions": [{ "type": "payment", "amount": 1299.0 }] }
+      "payment": {
+        "methodId": "credit_card_1180",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 1299.0
+          }
+        ]
+      }
     }
   ]
 }

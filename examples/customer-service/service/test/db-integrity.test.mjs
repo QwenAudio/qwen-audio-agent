@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { CustomerService } from '../service.mjs'
 
 // db.json 是手写的，20 个订单 × 每个订单多个 itemId 引用 —— 手写必然有错。
 // 这些断言不是「测代码」，是【测数据】：裁剪自 τ² 的库必须自洽，
@@ -146,4 +147,121 @@ test('场景覆盖：有缺货变体（库存校验用例）', () => {
     db.products.some(product => product.variants.some(variant => variant.stock === 0)),
     '所有变体都有货，库存校验测不到',
   )
+})
+
+// ── 日期锚定：这个 demo 不该随时间腐烂 ──
+
+test('两个域都声明了 _anchorDate', () => {
+  // 【这条守着一个真实的腐烂】
+  // db.json 里的 deliveredAt 是写死的。写它那天 #W2094558 是「3 天前签收」，
+  // 在 digital 类 7 天窗口内。一周之后它变成 8 天，退货测试就红了，
+  // 而代码一行没改 —— 我是在别的改动之后跑全量才发现两条早已在挂。
+  for (const domain of ['retail', 'airline']) {
+    const raw = JSON.parse(readFileSync(
+      new URL(`../../domains/${domain}/db.json`, import.meta.url), 'utf8',
+    ))
+    assert.ok(raw._anchorDate, `${domain} 缺 _anchorDate`)
+    assert.ok(!Number.isNaN(new Date(raw._anchorDate).getTime()),
+      `${domain} 的 _anchorDate 不是合法时间`)
+  }
+})
+
+test('装载之后没有「未来的过去事件」', () => {
+  // 平移量算错就会让 bookedAt / deliveredAt 跑到未来 ——
+  // 那时「出票 24 小时内可免费退」这类判定全乱，而且症状很怪：
+  // 客户刚下的单显示成负天数。
+  for (const domain of ['retail', 'airline']) {
+    const db = new CustomerService().snapshot(`anchor-${domain}`, domain).db
+    for (const order of db.orders || []) {
+      for (const field of ['placedAt', 'deliveredAt', 'shippedAt']) {
+        if (!order[field]) continue
+        assert.ok(new Date(order[field]).getTime() <= Date.now() + 60_000,
+          `${order.orderId} 的 ${field} 在未来`)
+      }
+    }
+    for (const reservation of db.reservations || []) {
+      assert.ok(new Date(reservation.bookedAt).getTime() <= Date.now() + 60_000,
+        `${reservation.reservationId} 的出票时间在未来`)
+    }
+  }
+})
+
+test('零售的签收天数分布跨过每一个退货时限', () => {
+  // 平移之后每个时限的两侧都要有样本，否则「可退」和「拒退」只能演一半。
+  // 这一条同时守着锚点没被改坏 —— 锚点偏一天，某个边界就可能空出来。
+  const db = new CustomerService().snapshot('anchor-window', 'retail').db
+  const daysOf = order => Math.floor(
+    (Date.now() - new Date(order.deliveredAt).getTime()) / 86_400_000,
+  )
+  const byCategory = new Map()
+  for (const order of db.orders) {
+    if (!order.deliveredAt) continue
+    for (const line of order.items || []) {
+      const product = db.products.find(item => item.productId === line.productId)
+      if (!product) continue
+      if (!byCategory.has(product.category)) byCategory.set(product.category, [])
+      byCategory.get(product.category).push(daysOf(order))
+    }
+  }
+  // digital 的窗口是 7 天：两侧都要有
+  const digital = byCategory.get('digital') || []
+  assert.ok(digital.some(days => days <= 7), `digital 没有 7 天内的样本：${digital}`)
+  assert.ok(digital.some(days => days > 7), `digital 没有超期样本：${digital}`)
+})
+
+test('航空的出票时长与航班状态都还原了写测试那天的事实', () => {
+  const db = new CustomerService().snapshot('anchor-air', 'airline').db
+  const hoursOf = iso => (Date.now() - new Date(iso).getTime()) / 3_600_000
+
+  // 退票测试要求这三笔「超 24 小时」—— 它们分别验特价舱不可退、
+  // 公务舱可退、有保险走保险。任一笔落进 24 小时内，那三条断言就测的是别的分支。
+  for (const id of ['CYR8806', 'CYR8807', 'CYR8808']) {
+    const reservation = db.reservations.find(item => item.reservationId === id)
+    assert.ok(hoursOf(reservation.bookedAt) > 24,
+      `${id} 出票只有 ${hoursOf(reservation.bookedAt).toFixed(1)} 小时，落进了 24 小时窗口`)
+  }
+  // 已飞、已取消、延误各要有至少一班 —— 三种状态分别支撑不同的判定
+  const statuses = new Set(db.flights.map(flight => flight.status))
+  for (const status of ['flown', 'cancelled', 'delayed']) {
+    assert.ok(statuses.has(status), `没有 status=${status} 的航班`)
+  }
+})
+
+test('航段指向的航班在平移之后仍然对得上', () => {
+  // 【这条的强度有限，如实记下来】
+  // 航段和航班用的是【同一个字段名】date，所以平移逻辑要么都作用要么都不作用，
+  // 两边永远一致。试过两个突变都没能让它变红：
+  //   从 DATE_FIELDS 里去掉 'date'       → 两边都不平移，仍然相等
+  //   让纯日期字段也带上时刻            → 两边都变 ISO，仍然相等
+  //
+  // 所以它守的不是「断链」，是「平移之后引用关系还在」这个更弱的性质 ——
+  // 真正能断链的改动是给两类字段用不同的平移量，而现在的实现结构上做不到。
+  // 留着它有价值：将来若有人把航班日期改成从别处算，这条会红。
+  const db = new CustomerService().snapshot('anchor-seg', 'airline').db
+  for (const reservation of db.reservations) {
+    for (const segment of reservation.segments) {
+      const flight = db.flights.find(item => (
+        item.flightNo === segment.flightNo && item.date === segment.date
+      ))
+      assert.ok(flight,
+        `${reservation.reservationId} 的航段 ${segment.flightNo}@${segment.date} 找不到航班`)
+    }
+  }
+})
+
+test('纯日期字段平移后仍是 YYYY-MM-DD', () => {
+  // 航班的 date 是纯日期。平移时若直接 toISOString() 会变成带时刻的长串，
+  // 而工具里到处按 YYYY-MM-DD 比较和显示（get_flight_status 的话术、
+  // search_flights 的候选列表）。这一条比上面那条更能测到格式问题。
+  const db = new CustomerService().snapshot('anchor-fmt', 'airline').db
+  for (const flight of db.flights) {
+    assert.match(flight.date, /^\d{4}-\d{2}-\d{2}$/,
+      `${flight.flightNo} 的 date 变成了 ${flight.date}`)
+  }
+  for (const reservation of db.reservations) {
+    for (const segment of reservation.segments) {
+      assert.match(segment.date, /^\d{4}-\d{2}-\d{2}$/,
+        `${reservation.reservationId} 的航段日期变成了 ${segment.date}`)
+    }
+  }
 })

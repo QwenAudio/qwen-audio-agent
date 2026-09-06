@@ -17,11 +17,64 @@ const DOMAIN_FILES = Object.freeze({
 // CS_DOMAIN=airline 起的那一组，默认就该是航空。
 export const DEFAULT_DOMAIN = DOMAIN_FILES[process.env.CS_DOMAIN] ? process.env.CS_DOMAIN : 'retail'
 
+// 【日期要锚到「现在」，不能用文件里的绝对日期】
+// db.json 里的 deliveredAt 是写死的。写它那天 #W2094558 是「3 天前签收」，
+// 在 digital 类 7 天窗口内；一个星期之后它变成 8 天，退货测试就红了，
+// 而代码一行没改。这个 demo 会随时间腐烂。
+//
+// 对照组：实测时库里十笔已签收订单的距今天数是
+//   5 / 6 / 8 / 9 / 12 / 14 / 27 / 32 / 54 / 82
+// 写他们那天本来是 3 / 4 / 6 / 7 / 10 / 12 / 25 / 30 / 52 / 80 ——
+// 每过一天全体向后滑一天，早晚跨过 7 天、30 天这些边界。
+//
+// 解法：在装载时把每个日期字段按「距基准日多少天」平移到今天。
+// 基准日写在 db.json 的 _anchorDate 里 —— 那是造这份数据时的「今天」。
+// 于是不管哪天跑，相对关系（哪笔在期限内、哪笔超期）都与当时一致。
+const DATE_FIELDS = Object.freeze(['placedAt', 'deliveredAt', 'shippedAt', 'bookedAt', 'date'])
+
+function shiftDates(value, offsetMs) {
+  if (Array.isArray(value)) return value.map(item => shiftDates(item, offsetMs))
+  if (!value || typeof value !== 'object') return value
+  const out = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (DATE_FIELDS.includes(key) && typeof item === 'string' && item) {
+      const parsed = new Date(item)
+      if (Number.isNaN(parsed.getTime())) {
+        out[key] = item
+      } else {
+        const shifted = new Date(parsed.getTime() + offsetMs)
+        // 只有日期的字段（航班的 date）保持 YYYY-MM-DD 形式，
+        // 否则航段指向航班的那个键会对不上。
+        out[key] = /^\d{4}-\d{2}-\d{2}$/.test(item)
+          ? shifted.toISOString().slice(0, 10)
+          : shifted.toISOString()
+      }
+    } else {
+      out[key] = shiftDates(item, offsetMs)
+    }
+  }
+  return out
+}
+
+function anchorToToday(db) {
+  const anchor = db._anchorDate
+  if (!anchor) return db
+  const base = new Date(anchor)
+  if (Number.isNaN(base.getTime())) return db
+  // 【不取整】按整天平移会让「基准日晚些时候」的时间戳跑到未来：
+  // bookedAt 是 9-02 18:00、锚点取 9-02 零点的话，平移五天变成 9-07 18:00，
+  // 而现在是 9-06 —— 出票时间在未来，24 小时免费退票那条判定就全乱了。
+  // 锚点取「最晚的过去时间戳」并且不取整，那一笔就正好落在「刚刚」。
+  const offset = Date.now() - base.getTime()
+  if (Math.abs(offset) < 60_000) return db
+  return shiftDates(db, offset)
+}
+
 function loadDomain(domain) {
   const url = DOMAIN_FILES[domain]
   if (!url) throw new Error(`Unknown domain: ${domain}`)
   try {
-    return JSON.parse(readFileSync(url, 'utf8'))
+    return anchorToToday(JSON.parse(readFileSync(url, 'utf8')))
   } catch (error) {
     if (error.code === 'ENOENT') {
       throw new Error(`Domain database is missing: ${domain}`)

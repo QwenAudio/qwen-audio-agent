@@ -209,9 +209,11 @@ test('预订编号大小写与空格不敏感', async () => {
 test('航班状态带出延误时长，但不算补偿', async () => {
   // 【判定不藏进查询】延误时长交回去，让模型按 delay_compensation 表确认。
   // 在只读工具里顺手算出「该赔 400」等于把 guards 的职责挪进了查询。
-  const { call } = air()
+  const { call, service, session } = air()
   await call('verify_identity', { memberId: 'CY10091455' })
-  const result = await call('get_flight_status', { flightNo: 'CY2310', date: '2026-09-18' })
+  const result = await call('get_flight_status', {
+    flightNo: 'CY2310', date: flightDate(service, session, 'CY2310'),
+  })
   assert.equal(result.data.status, 'delayed')
   assert.equal(result.data.delayHours, 5)
   assert.match(result.content, /延误 5 小时/)
@@ -238,19 +240,28 @@ test('同一航班号多天有班时，要求确认而不是猜一天', async ()
 
   const store = service.store.mutable(session, 'airline')
   const original = store.db.flights.find(item => item.flightNo === 'CY1201')
-  store.db.flights.push({ ...original, date: '2026-09-21' })
+  const nextDay = new Date(new Date(original.date).getTime() + 86_400_000)
+    .toISOString().slice(0, 10)
+  store.db.flights.push({ ...original, date: nextDay })
 
   const ambiguous = await call('get_flight_status', { flightNo: 'CY1201' })
   assert.equal(ambiguous.data.ambiguous, true)
-  assert.match(ambiguous.content, /2026-09-20、2026-09-21/)
+  assert.match(ambiguous.content, new RegExp(`${original.date}、${nextDay}`))
   assert.match(ambiguous.content, /请向客户确认是哪一天/)
 
   // 给了日期就能定位
-  const exact = await call('get_flight_status', { flightNo: 'CY1201', date: '2026-09-21' })
+  const exact = await call('get_flight_status', { flightNo: 'CY1201', date: nextDay })
   assert.equal(exact.data.found, true)
 })
 
 // ── 退票：五输入决策表 + 两段式批准 ──
+
+// 【日期不能写死】db.json 里的日期在装载时会按 _anchorDate 平移到今天
+// （见 service/state-store.mjs 的 anchorToToday），所以测试里写 '2026-09-20'
+// 过几天就对不上了。要从会话库里现查。
+const flightDate = (service, session, flightNo) => service
+  .snapshot(session, 'airline').db.flights
+  .find(item => item.flightNo === flightNo)?.date
 
 const tokenFrom = text => text.match(/approval_token="([^"]+)"/)?.[1] || null
 
@@ -561,10 +572,11 @@ test('改签后余量一加一减', async () => {
 })
 
 test('改到同一班会被拦', async () => {
-  const { call } = air()
+  const { call, service, session } = air()
   await call('verify_identity', { memberId: 'CY10023841' })
   const result = await call('update_flights', {
-    reservationId: 'CYR8801', flightNo: 'CY1201', date: '2026-09-20',
+    reservationId: 'CYR8801', flightNo: 'CY1201',
+    date: flightDate(service, session, 'CY1201'),
   })
   assert.equal(result.data.blocked, 'same_flight')
 })

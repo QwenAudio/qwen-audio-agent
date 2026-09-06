@@ -73,10 +73,16 @@ function writeCache(domain, runs, payload) {
 
 async function runExtraction(domain, runs, onProgress) {
   const policyPath = domainUrl(domain, 'policy.md')
+  // 【抽取时把数据库交给模型】
+  // 否则抽取是盲的：它不知道库里有什么，所以发现不了两类缺口 ——
+  // 「库里有 furniture 但细则没提这个类别」、
+  // 「有订单第 8 天签收而退货窗口是 7 天，超期样本存在但细则没说怎么处理」。
+  // 这两类以前靠 coverage.mjs 事后检，而那是另一份列表，管理员得自己对应。
+  const db = JSON.parse(readFileSync(domainUrl(domain, 'db.json'), 'utf8'))
   const results = []
   for (let index = 0; index < runs; index += 1) {
     onProgress?.({ done: index, total: runs })
-    const extracted = await extractPolicy(policyPath)
+    const extracted = await extractPolicy(policyPath, { db })
     results.push(partition(extracted))
   }
   onProgress?.({ done: runs, total: runs })

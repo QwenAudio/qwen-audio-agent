@@ -19,6 +19,7 @@
 
 import { readFileSync } from 'node:fs'
 import OpenAI from 'openai'
+import { TOOLS, runTool, summarize } from './extract-probe.mjs'
 
 const SCHEMA_HINT = `{
   "order_rules": [
@@ -116,17 +117,96 @@ export async function extractPolicy(policyPath, {
     || 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   model = process.env.CS_EXTRACT_MODEL || 'qwen-flash',
   client,
+  // 【抽取时给不给看数据库 —— 三种模式，默认 tools】
+  // blind    只看 policy 原文（原本的行为，留作对照组）
+  // summary  prompt 里带上库里实际存在的取值
+  // tools    多轮，模型自己调工具探查
+  //
+  // 【对照实验的结论】开工前我判断「摘要就够了，工具是过度设计」——
+  // 实测否证了这个判断。同一份插了两条落不了地规则的 policy：
+  //
+  //   blind    5 条 gaps，全是措辞模糊、判定标准不明，【零条数据缺口】
+  //   summary  5 条，提到了生鲜但说法绕（「因未提供代码，无法归类到已有类别」）
+  //            —— 摘要反而让模型困惑，仍然零条数据缺口
+  //   tools    7 条，其中两条是真正的数据缺口：
+  //              「库里存在 category: furniture，但细则未提及该类别的退货窗口」
+  //              「有订单在第 8 天签收，而退货窗口 7 天，超期样本存在
+  //                但细则未说明如何处理」
+  //
+  // 工具版找到的是【反方向】的缺口 —— 我原本只设计了「policy 提到但库里没有」，
+  // 而它发现的是「库里有但 policy 没提」，以及拿样本分布验证规则边界。
+  // 那两类摘要给不出：摘要只有取值，没有样本分布。
+  //
+  // 【稳定性也验过】连跑三次，类别时限完全一致（那一类要变成 guards.json
+  // 里的数字，必须稳）。工具调用序列三次几乎相同。阈值那一类有波动，
+  // 但 blind 版同样波动 —— 不是工具引入的，而那正是 consensus 要处理的。
+  //
+  // 代价：单次 9.5s → 17s。跑三次 28s → 51s。嫌慢可以设 CS_EXTRACT_PROBE=blind。
+  probe = process.env.CS_EXTRACT_PROBE || 'tools',
+  db = null,
+  maxRounds = 6,
 } = {}) {
   const text = readFileSync(policyPath, 'utf8')
   const lines = text.split('\n')
   const openai = client || new OpenAI({ apiKey, baseURL })
 
+  const useTools = probe === 'tools' && db
+  const system = probe === 'summary' && db
+    ? `${PROMPT}\n\n${summarize(db)}`
+    : PROMPT
+
+  const messages = [
+    { role: 'system', content: system },
+    { role: 'user', content: text },
+  ]
+
+  // 工具版要先跑探查轮。
+  // 【tools 和 response_format 不能同时上】实测过：强制 json_object 时
+  // 模型不会发工具调用，它直接输 JSON。所以分两段：
+  // 探查轮不约束格式，收尾那一轮才强制 JSON。
+  const probeCalls = []
+  if (useTools) {
+    for (let round = 0; round < maxRounds; round += 1) {
+      const step = await openai.chat.completions.create({
+        model,
+        messages,
+        tools: TOOLS,
+        tool_choice: 'auto',
+        temperature: 0,
+      })
+      const message = step.choices?.[0]?.message
+      if (!message) break
+      messages.push(message)
+      const calls = message.tool_calls || []
+      if (!calls.length) break
+      for (const call of calls) {
+        let args = {}
+        try {
+          args = JSON.parse(call.function?.arguments || '{}')
+        } catch {
+          args = {}
+        }
+        const output = runTool(db, call.function?.name, args)
+        probeCalls.push({ name: call.function?.name, args, output })
+        messages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: JSON.stringify(output),
+        })
+      }
+    }
+    // 探查完了再要结果。这一句必需 —— 不说的话模型可能停在
+    // 「我查完了」而不输出 JSON。
+    messages.push({
+      role: 'user',
+      content: '探查到此。现在按前面约定的 JSON 结构输出完整结果。'
+        + '库里不存在的取值不要当成正常规则，写进 gaps 并说明库里没有。',
+    })
+  }
+
   const completion = await openai.chat.completions.create({
     model,
-    messages: [
-      { role: 'system', content: PROMPT },
-      { role: 'user', content: text },
-    ],
+    messages,
     // 抽取要稳定：同一份 policy 反复抽应该得到同样的结果，
     // 否则每次打开配置台看到的待决定项都不一样，人就无从下手。
     temperature: 0,
@@ -141,7 +221,13 @@ export async function extractPolicy(policyPath, {
     throw new Error(`Policy extraction returned invalid JSON: ${raw.slice(0, 200)}`)
   }
 
-  return annotate(parsed, lines)
+  return {
+    ...annotate(parsed, lines),
+    // 【探查记录要带出来】不带的话看不到模型查了什么、查到了什么，
+    // 也就分不清「它没查」和「它查了但没用」—— 而这两种要改的地方完全不同。
+    probe,
+    probeCalls,
+  }
 }
 
 // 章节标题不是动作。模型很容易把文档的章节先后当成业务流程先后，

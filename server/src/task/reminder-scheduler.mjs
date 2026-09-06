@@ -31,6 +31,8 @@ export class ReminderScheduler {
     this.staggerMs = staggerMs
     this.logger = logger
     this.timer = null
+    this.overdueTimers = new Set()
+    this.closed = false
 
     // Re-arm whenever a new scheduled task is created or cancelled.
     this.unsubscribe = this.taskManager.subscribe(event => {
@@ -44,13 +46,17 @@ export class ReminderScheduler {
   }
 
   start() {
+    if (this.closed) return
     this.restoreOverdue()
     this.reschedule()
   }
 
   close() {
+    this.closed = true
     clearTimeout(this.timer)
     this.timer = null
+    for (const timer of this.overdueTimers) clearTimeout(timer)
+    this.overdueTimers.clear()
     this.unsubscribe?.()
     this.unsubscribe = null
   }
@@ -61,6 +67,7 @@ export class ReminderScheduler {
    * a single burst and avoids overwhelming the backend agent.
    */
   restoreOverdue() {
+    if (this.closed || this.overdueTimers.size) return
     const now = Date.now()
     const overdue = [...this.taskManager.tasks.values()]
       .filter(t => t.status === 'scheduled' && t.schedule?.at <= now)
@@ -75,10 +82,13 @@ export class ReminderScheduler {
     overdue.forEach((task, index) => {
       const delay = index * this.staggerMs
       const timer = setTimeout(() => {
+        this.overdueTimers.delete(timer)
+        if (this.closed) return
         if (!this.fireTask(task)) return
         this.taskManager.persistDeferred()
         this.taskManager.drain()
       }, delay)
+      this.overdueTimers.add(timer)
       timer.unref?.()
     })
   }
@@ -139,6 +149,7 @@ export class ReminderScheduler {
    * Called after every create, fire, or cancel.
    */
   reschedule() {
+    if (this.closed) return
     if (this.timer) {
       clearTimeout(this.timer)
       this.timer = null
@@ -158,6 +169,7 @@ export class ReminderScheduler {
    * Fire all due scheduled tasks: status scheduled → queued, then drain.
    */
   fire(now = Date.now()) {
+    if (this.closed) return
     let fired = 0
     for (const task of this.taskManager.tasks.values()) {
       if (task.status === 'scheduled' && task.schedule?.at <= now) {

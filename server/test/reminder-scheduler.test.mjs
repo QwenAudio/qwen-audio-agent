@@ -108,6 +108,25 @@ test('restoreOverdue staggers overdue tasks with increasing delays', async () =>
   resolveSecond?.({ content: 'done' })
 })
 
+test('close cancels pending overdue stagger timers', async () => {
+  const manager = new TaskManager()
+  const now = Date.now()
+  const first = createScheduledTask(manager, { at: now - 1000 })
+  const second = createScheduledTask(manager, { at: now - 500 })
+  const scheduler = new ReminderScheduler({ taskManager: manager, staggerMs: 50 })
+
+  scheduler.restoreOverdue()
+  scheduler.restoreOverdue()
+  assert.equal(scheduler.overdueTimers.size, 2)
+
+  scheduler.close()
+  assert.equal(scheduler.overdueTimers.size, 0)
+
+  await new Promise(resolve => setTimeout(resolve, 70))
+  assert.equal(manager.get(first.id).status, 'scheduled')
+  assert.equal(manager.get(second.id).status, 'scheduled')
+})
+
 test('reschedule re-arms when a scheduled task is cancelled', async () => {
   const manager = new TaskManager()
   const runner = async objective => ({

@@ -19,9 +19,13 @@ DASHSCOPE_API_KEY=your-key
 | `QWEN_AUDIO_REALTIME_BASE_URL` / `QWEN_AUDIO_REALTIME_URL` | 空 | 覆盖 DashScope Realtime 端点（私有部署或代理） |
 | `DASHSCOPE_WORKSPACE_ID` | 空 | 切换到百炼专属 workspace 端点 |
 
-完全本地化的前台可通过 `QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech` 启用，
-见 [Speech-to-Speech](../voice-frontends/speech-to-speech.zh.md)；自定义 Provider
-需实现 Provider 契约，见[自定义 Provider](../voice-frontends/custom-provider.zh.md)。
+本地前台可选择 [Speech-to-Speech](../voice-frontends/speech-to-speech.zh.md) 或
+[MiniCPM-o 4.5](../voice-frontends/minicpm-o.zh.md)；自定义 Provider 需实现
+Provider 契约，见[自定义 Provider](../voice-frontends/custom-provider.zh.md)。
+
+MiniCPM-o 当前公开的 Audio Realtime 传输支持连续音频输入及文本、音频输出，
+但不提供对话项、结构化 Function Calling 或输入转写。因此它目前定位为本地语音
+聊天前台，不用于编排后台 Agent。
 
 前台工具单独配置：Web 搜索（`QWEN_AUDIO_WEB_SEARCH_PROVIDER`，见
 [配置总览](../configuration.zh.md)）；通用对话工具见
@@ -54,4 +58,3 @@ qwenaudio gateway restart
 只读展示；同一 Gateway 上的不同客户端不能选择互相冲突的模型。桌面版附着到借用的
 Gateway 时，或后续 CLI 运行时使用了冲突的已配置模型时，会拒绝不一致，而不会静默
 修改运行中服务。回滚时设置上表的旧版模型 ID 并重启 Gateway。
-

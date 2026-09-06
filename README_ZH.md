@@ -121,7 +121,9 @@ AGENT_PROTOCOL=openclaw
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
-> 默认使用 DashScope 实时语音前台；也可切换为本地 [speech-to-speech 前台](docs/voice-frontends/speech-to-speech.zh.md)，无需云端 API Key。
+> 默认使用 DashScope 实时语音前台。本地方案可选择
+> [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) 或
+> [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md)，均无需云端 API Key。
 
 
 2. 启动 Gateway，另开终端启动 TUI（也可用 `qwenaudio webui` 启动浏览器界面）：
@@ -131,9 +133,9 @@ qwenaudio        # 终端 1：Gateway
 qwenaudio tui    # 终端 2：TUI
 ```
 
-完整配置项、speech-to-speech 前台接入和 TUI 平台注意事项见
+完整配置项、本地语音前台接入和 TUI 平台注意事项见
 [快速开始](docs/getting-started/quickstart.zh.md)、
-[语音前台](docs/voice-frontends/speech-to-speech.zh.md)与
+[语音前台](docs/configuration/frontend.zh.md)与
 [TUI 注意](docs/getting-started/tui.zh.md)。
 
 ## 桌面版

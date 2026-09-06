@@ -130,7 +130,9 @@ AGENT_PROTOCOL=openclaw
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
-> Uses DashScope realtime voice frontend by default; alternatively, switch to a local [speech-to-speech frontend](docs/voice-frontends/speech-to-speech.md), no cloud API Key needed.
+> Uses DashScope realtime voice by default. Local alternatives include
+> [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.md) and
+> [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.md); neither requires a cloud API Key.
 
 2. Start the Gateway, then open another terminal to start the TUI (or use `qwenaudio webui` for the browser UI):
 
@@ -139,9 +141,9 @@ qwenaudio        # Terminal 1: Gateway
 qwenaudio tui    # Terminal 2: TUI
 ```
 
-For full configuration options, speech-to-speech frontend setup, and TUI
-platform notes, see [quick start](docs/getting-started/quickstart.md),
-[voice frontends](docs/voice-frontends/speech-to-speech.md), and
+For full configuration options, local voice frontend setup, and TUI platform
+notes, see [quick start](docs/getting-started/quickstart.md),
+[voice frontends](docs/configuration/frontend.md), and
 [TUI notes](docs/getting-started/tui.md).
 
 ## Desktop App

@@ -21,6 +21,7 @@ test('uses compact realtime provider labels in the desktop status card', () => {
     realtimeStatusLabel('speech-to-speech'),
     'Speech-to-Speech',
   )
+  assert.equal(realtimeStatusLabel('minicpm-o'), 'MiniCPM-o')
 })
 
 test('uses compact gateway and realtime runtime identities', () => {
@@ -36,6 +37,7 @@ test('uses compact gateway and realtime runtime identities', () => {
     realtimeRuntimeLabel('speech-to-speech', ''),
     'Speech-to-Speech',
   )
+  assert.equal(realtimeRuntimeLabel('minicpm-o', ''), 'MiniCPM-o')
 })
 
 test('uses consistent product and version labels for known realtime models', () => {
@@ -64,7 +66,7 @@ test('uses the shared profile label and reports runtime model mismatch', () => {
   })
 })
 
-test('renders no DashScope model for missing metadata or Speech-to-Speech', () => {
+test('renders no DashScope model for missing metadata or local providers', () => {
   assert.deepEqual(realtimeModelRuntimeStatus({}, DEFAULT_DASHSCOPE_REALTIME_MODEL), {
     label: '',
     mismatch: false,
@@ -72,6 +74,13 @@ test('renders no DashScope model for missing metadata or Speech-to-Speech', () =
   assert.deepEqual(realtimeModelRuntimeStatus({
     realtimeProvider: 'speech-to-speech',
     realtimeModel: DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  }, DEFAULT_DASHSCOPE_REALTIME_MODEL), {
+    label: '',
+    mismatch: false,
+  })
+  assert.deepEqual(realtimeModelRuntimeStatus({
+    realtimeProvider: 'minicpm-o',
+    realtimeModel: 'openbmb/MiniCPM-o-4_5',
   }, DEFAULT_DASHSCOPE_REALTIME_MODEL), {
     label: '',
     mismatch: false,

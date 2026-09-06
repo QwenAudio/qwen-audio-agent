@@ -229,6 +229,8 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_OMNI_REALTIME_VOICE` | 空；Omni 模型族的可选覆盖，未设置时运行时使用 `Ethan` |
 | `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |
 | `SPEECH_TO_SPEECH_AUTH_TOKEN` | 空；仅用于带 Bearer 认证的代理 |
+| `MINICPM_O_REALTIME_URL` | `ws://127.0.0.1:8006/v1/realtime?mode=audio` |
+| `MINICPM_O_AUTH_TOKEN` | 空；仅用于带 Bearer 认证的代理 |
 | `QWEN_AUDIO_AGENT_IDENTITY_MODE` | `personal` |
 | `QWEN_AUDIO_AGENT_TUI_AUDIO_MODE` | `half` |
 | `AGENT_TIMEOUT_MS` | `300000`；ACP 连接初始化与有界控制请求的超时，不限制正在执行的 Agent 轮次 |

@@ -33,6 +33,9 @@ const CAPABILITY_FLAGS = [
   'perResponseInstructions',
   'conversationItemIdEcho',
   'sessionOutputVoice',
+  'conversationItems',
+  'clientResponses',
+  'mutableSession',
 ]
 
 const MODEL_CAPABILITY_FLAGS = [
@@ -167,6 +170,17 @@ export function validateRealtimeProvider(provider) {
   }
   if (!Number.isFinite(provider.outputSampleRate)) {
     throw new Error(`Realtime Provider ${provider.key} 缺少 outputSampleRate`)
+  }
+  if (
+    provider.connectTimeoutMs !== undefined
+    && (
+      !Number.isFinite(provider.connectTimeoutMs)
+      || provider.connectTimeoutMs <= 0
+    )
+  ) {
+    throw new Error(
+      `Realtime Provider ${provider.key} 的 connectTimeoutMs 必须是正数`,
+    )
   }
   if (
     provider.responseStartTimeoutMs !== undefined

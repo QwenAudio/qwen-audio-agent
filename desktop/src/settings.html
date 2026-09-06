@@ -108,6 +108,14 @@
                   />
                   <span>Speech-to-Speech</span>
                 </label>
+                <label class="provider-segment">
+                  <input
+                    type="radio"
+                    name="realtime-provider"
+                    value="minicpm-o"
+                  />
+                  <span>MiniCPM-o</span>
+                </label>
               </fieldset>
             </div>
             <div class="settings-card">
@@ -190,6 +198,37 @@
                 </div>
                 <p class="provider-attribution">
                   Speech-to-Speech · Hugging Face · 需单独启动本地服务
+                </p>
+              </div>
+
+              <div
+                class="provider-panel"
+                data-provider-panel="minicpm-o"
+                hidden
+              >
+                <div class="setting-row service-url-row">
+                  <label for="minicpm-o-url">服务地址</label>
+                  <input
+                    id="minicpm-o-url"
+                    type="url"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="ws://127.0.0.1:8006/v1/realtime?mode=audio"
+                  />
+                </div>
+
+                <div class="setting-row">
+                  <label for="minicpm-o-token">访问令牌</label>
+                  <input
+                    id="minicpm-o-token"
+                    type="password"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="可选，用于 Bearer 认证"
+                  />
+                </div>
+                <p class="provider-attribution">
+                  MiniCPM-o 4.5 · OpenBMB · 需单独启动本地服务
                 </p>
               </div>
             </div>

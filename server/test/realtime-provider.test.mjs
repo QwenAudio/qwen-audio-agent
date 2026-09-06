@@ -1937,6 +1937,9 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     perResponseInstructions: true,
     sessionOutputVoice: true,
     conversationItemIdEcho: true,
+    conversationItems: true,
+    clientResponses: true,
+    mutableSession: true,
   })
 })
 

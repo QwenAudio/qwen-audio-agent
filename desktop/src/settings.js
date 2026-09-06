@@ -50,6 +50,8 @@ const speechToSpeechRealtimeUrl = document.querySelector(
 const speechToSpeechAuthToken = document.querySelector(
   '#speech-to-speech-token',
 )
+const miniCpmORealtimeUrl = document.querySelector('#minicpm-o-url')
+const miniCpmOAuthToken = document.querySelector('#minicpm-o-token')
 const backendList = document.querySelector('#backend-list')
 const backendPicker = document.querySelector('.backend-picker')
 const backendPickerTrigger = document.querySelector('#backend-picker-trigger')
@@ -798,8 +800,8 @@ function renderRealtimeVoice() {
 }
 
 function renderRealtimeProvider(value, { populateDefault = false } = {}) {
-  const provider = value === 'speech-to-speech'
-    ? 'speech-to-speech'
+  const provider = ['speech-to-speech', 'minicpm-o'].includes(value)
+    ? value
     : 'dashscope'
   for (const input of realtimeProviderInputs) {
     input.checked = input.value === provider
@@ -816,6 +818,13 @@ function renderRealtimeProvider(value, { populateDefault = false } = {}) {
   }
   if (populateDefault && provider === 'dashscope' && !realtimeBaseUrl.value.trim()) {
     realtimeBaseUrl.value = defaultRealtimeBaseUrl
+  }
+  if (
+    populateDefault
+    && provider === 'minicpm-o'
+    && !miniCpmORealtimeUrl.value.trim()
+  ) {
+    miniCpmORealtimeUrl.value = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
   }
 }
 
@@ -836,6 +845,8 @@ function formSettings() {
     ...realtimeVoiceDrafts.settings(),
     speechToSpeechRealtimeUrl: speechToSpeechRealtimeUrl.value,
     speechToSpeechAuthToken: speechToSpeechAuthToken.value,
+    miniCpmORealtimeUrl: miniCpmORealtimeUrl.value,
+    miniCpmOAuthToken: miniCpmOAuthToken.value,
     backendModel: backendModel.value,
     backendOwnership: backendOwnership.value,
     backendUrl: backendUrl.value,
@@ -861,6 +872,8 @@ function fingerprint(value) {
     omniRealtimeVoice: value.omniRealtimeVoice,
     speechToSpeechRealtimeUrl: value.speechToSpeechRealtimeUrl,
     speechToSpeechAuthToken: value.speechToSpeechAuthToken,
+    miniCpmORealtimeUrl: value.miniCpmORealtimeUrl,
+    miniCpmOAuthToken: value.miniCpmOAuthToken,
     backendModel: value.backendModel,
     backendOwnership: value.backendOwnership,
     backendUrl: value.backendUrl,
@@ -1112,6 +1125,8 @@ function render() {
   renderRealtimeVoice()
   speechToSpeechRealtimeUrl.value = settings.speechToSpeechRealtimeUrl || ''
   speechToSpeechAuthToken.value = settings.speechToSpeechAuthToken || ''
+  miniCpmORealtimeUrl.value = settings.miniCpmORealtimeUrl || ''
+  miniCpmOAuthToken.value = settings.miniCpmOAuthToken || ''
   renderRealtimeProvider(settings.realtimeProvider)
   backendModel.value = settings.backendModel || ''
   backendOwnership.value = settings.backendOwnership || 'owned'
@@ -1132,6 +1147,8 @@ for (const control of [
   realtimeBaseUrl,
   speechToSpeechRealtimeUrl,
   speechToSpeechAuthToken,
+  miniCpmORealtimeUrl,
+  miniCpmOAuthToken,
   realtimeModel,
   realtimeVoice,
   backendModel,

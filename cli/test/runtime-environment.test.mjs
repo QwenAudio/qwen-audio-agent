@@ -117,6 +117,10 @@ test('generates and reuses a private stable local identity secret', () => {
     configContent,
     /SPEECH_TO_SPEECH_REALTIME_URL=ws:\/\/127\.0\.0\.1:8765\/v1\/realtime/,
   )
+  assert.match(
+    configContent,
+    /MINICPM_O_REALTIME_URL=ws:\/\/127\.0\.0\.1:8006\/v1\/realtime\?mode=audio/,
+  )
   assert.doesNotMatch(configContent, /S2S_REALTIME_URL=/)
   assertPrivateMode(result.configPath)
   assert.match(readFileSync(result.userModelPath, 'utf8'), /^# USER/m)
@@ -378,6 +382,15 @@ test('does not require a DashScope credential for speech-to-speech', () => {
     }),
     /不支持的 Realtime 前台/,
   )
+})
+
+test('does not require a DashScope credential for MiniCPM-o', () => {
+  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'minicpm-o',
+  }))
+  assert.doesNotThrow(() => requireRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'minicpmo',
+  }))
 })
 
 test('splits assets into QWAUDIO_DATA_DIR while runtime state stays put', () => {

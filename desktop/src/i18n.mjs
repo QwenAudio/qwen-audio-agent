@@ -42,6 +42,7 @@ const ENGLISH = {
   '访问令牌': 'Access token',
   '可选，用于 Bearer 认证': 'Optional, for Bearer authentication',
   'Speech-to-Speech · Hugging Face · 需单独启动本地服务': 'Speech-to-Speech · Hugging Face · Requires a separately started local service',
+  'MiniCPM-o 4.5 · OpenBMB · 需单独启动本地服务': 'MiniCPM-o 4.5 · OpenBMB · Requires a separately started local service',
   '无后台 Agent': 'No backend Agent',
   '不使用后台 Agent': 'No backend Agent',
   '搜索 Agent': 'Search Agents',

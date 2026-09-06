@@ -42,7 +42,7 @@ function classifyError(message) {
 
 export const miniCpmOProvider = {
   key: 'minicpm-o',
-  label: 'MiniCPM-o Realtime',
+  label: 'ModelBest',
   aliases: ['minicpmo'],
   inputSampleRate: 16000,
   outputSampleRate: 24000,
@@ -62,7 +62,7 @@ export const miniCpmOProvider = {
   voice: () => null,
   isConfigured: () => config.miniCpmOConfigured,
   missingConfigurationMessage: '请先配置 MINICPM_O_REALTIME_URL',
-  connectTimeoutMessage: '连接 MiniCPM-o Realtime 服务超时，请确认本地服务已启动',
+  connectTimeoutMessage: '连接面壁智能 Realtime 服务超时，请检查服务地址和运行状态',
   url: () => config.miniCpmORealtimeUrl,
   headers: () => config.miniCpmOAuthToken
     ? { Authorization: `Bearer ${config.miniCpmOAuthToken}` }

@@ -877,7 +877,7 @@ function renderRuntime() {
     t('已连接'),
   ].filter(Boolean).join(' · ')
   currentGateway.className = 'connection-status connected'
-  const realtimeLabel = realtimeStatusLabel(runtime.realtimeProvider)
+  const realtimeLabel = t(realtimeStatusLabel(runtime.realtimeProvider))
   if (!runtime.voiceConfigured) {
     setRealtimeStatus(`${realtimeLabel} · ${t('配置不完整')}`, 'disconnected')
   } else {
@@ -893,7 +893,7 @@ function renderRuntime() {
     }[state]
     setRealtimeStatus(
       [
-        realtimeRuntimeLabel(runtime.realtimeProvider, runtime.realtimeModel),
+        t(realtimeRuntimeLabel(runtime.realtimeProvider, runtime.realtimeModel)),
         stateLabel,
         state === 'unavailable'
           ? truncate(

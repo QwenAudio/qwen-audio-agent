@@ -123,6 +123,7 @@ test('maps the official MiniCPM-o lifecycle into the shared realtime runtime', (
 test('publishes truthful MiniCPM-o model and transport capabilities', () => {
   const active = describeActiveRealtime('minicpm-o')
 
+  assert.equal(active.label, 'ModelBest')
   assert.equal(active.model, 'openbmb/MiniCPM-o-4_5')
   assert.equal(active.modelCapabilities.audioInput, true)
   assert.equal(active.modelCapabilities.functionCalling, false)

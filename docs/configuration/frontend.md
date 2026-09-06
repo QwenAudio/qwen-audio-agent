@@ -20,14 +20,14 @@ DASHSCOPE_API_KEY=your-key
 | `QWEN_AUDIO_REALTIME_BASE_URL` / `QWEN_AUDIO_REALTIME_URL` | Empty | Override the DashScope Realtime endpoint (private deployment or proxy) |
 | `DASHSCOPE_WORKSPACE_ID` | Empty | Switch to a dedicated Model Studio workspace endpoint |
 
-Local frontends are available through
-[Speech-to-Speech](../voice-frontends/speech-to-speech.md) and
-[MiniCPM-o 4.5](../voice-frontends/minicpm-o.md). A custom provider implements
+Other frontends include [Speech-to-Speech](../voice-frontends/speech-to-speech.md) and
+[ModelBest](../voice-frontends/minicpm-o.md), whose MiniCPM-o 4.5 endpoint may be local or hosted.
+A custom provider implements
 the provider contract; see [Custom Provider](../voice-frontends/custom-provider.md).
 
 MiniCPM-o's public audio Realtime transport currently supports continuous
 audio input and text/audio output, but not conversation items, structured
-Function Calling, or input transcription. It is therefore a local voice-chat
+Function Calling, or input transcription. It is therefore a realtime voice-chat
 frontend rather than a frontend for backend-Agent orchestration.
 
 Frontend tools are configured separately: Web Search (`QWEN_AUDIO_WEB_SEARCH_PROVIDER`,

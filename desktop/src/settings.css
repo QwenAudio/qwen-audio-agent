@@ -422,6 +422,12 @@ input::placeholder {
   color: var(--text-note);
 }
 
+input.fixed-model {
+  color: var(--text-secondary);
+  background: var(--page);
+  cursor: default;
+}
+
 input[type="search"]::-webkit-search-cancel-button {
   opacity: .55;
 }

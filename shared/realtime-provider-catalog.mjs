@@ -28,12 +28,12 @@ const PROVIDERS = Object.freeze({
   }),
   'speech-to-speech': Object.freeze({
     key: 'speech-to-speech',
-    label: 'Hugging Face Speech-to-Speech',
+    label: 'Speech-to-Speech',
     aliases: Object.freeze(['s2s']),
   }),
   'minicpm-o': Object.freeze({
     key: 'minicpm-o',
-    label: 'MiniCPM-o Realtime',
+    label: 'ModelBest',
     aliases: Object.freeze(['minicpmo']),
   }),
 })

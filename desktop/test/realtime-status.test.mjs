@@ -21,7 +21,7 @@ test('uses compact realtime provider labels in the desktop status card', () => {
     realtimeStatusLabel('speech-to-speech'),
     'Speech-to-Speech',
   )
-  assert.equal(realtimeStatusLabel('minicpm-o'), 'MiniCPM-o')
+  assert.equal(realtimeStatusLabel('minicpm-o'), '面壁智能')
 })
 
 test('uses compact gateway and realtime runtime identities', () => {
@@ -39,7 +39,7 @@ test('uses compact gateway and realtime runtime identities', () => {
   )
   assert.equal(
     realtimeRuntimeLabel('minicpm-o', 'openbmb/MiniCPM-o-4_5'),
-    'MiniCPM-o',
+    'MiniCPM-o 4.5',
   )
 })
 

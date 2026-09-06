@@ -19,12 +19,12 @@ DASHSCOPE_API_KEY=your-key
 | `QWEN_AUDIO_REALTIME_BASE_URL` / `QWEN_AUDIO_REALTIME_URL` | 空 | 覆盖 DashScope Realtime 端点（私有部署或代理） |
 | `DASHSCOPE_WORKSPACE_ID` | 空 | 切换到百炼专属 workspace 端点 |
 
-本地前台可选择 [Speech-to-Speech](../voice-frontends/speech-to-speech.zh.md) 或
-[MiniCPM-o 4.5](../voice-frontends/minicpm-o.zh.md)；自定义 Provider 需实现
+其他前台可选择 [Speech-to-Speech](../voice-frontends/speech-to-speech.zh.md)，或通过
+[面壁智能](../voice-frontends/minicpm-o.zh.md)连接本地及云端 MiniCPM-o 4.5 服务；自定义 Provider 需实现
 Provider 契约，见[自定义 Provider](../voice-frontends/custom-provider.zh.md)。
 
 MiniCPM-o 当前公开的 Audio Realtime 传输支持连续音频输入及文本、音频输出，
-但不提供对话项、结构化 Function Calling 或输入转写。因此它目前定位为本地语音
+但不提供对话项、结构化 Function Calling 或输入转写。因此它目前定位为实时语音
 聊天前台，不用于编排后台 Agent。
 
 前台工具单独配置：Web 搜索（`QWEN_AUDIO_WEB_SEARCH_PROVIDER`，见

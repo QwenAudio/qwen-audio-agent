@@ -640,6 +640,8 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
   )
   assert.equal(REALTIME_PROVIDERS['speech-to-speech'].modelProfile, undefined)
   const s2s = describeActiveRealtime('speech-to-speech')
+  assert.equal(s2s.label, 'Speech-to-Speech')
+  assert.equal(s2s.model, 'default')
   assert.equal(s2s.modelProfile, null)
   assert.deepEqual(s2s.modelCatalog, [])
 })
@@ -2098,7 +2100,7 @@ test('retries immediately after a known automatic response becomes idle', async 
   frontend.settlePending(pending, { cancelled: true })
 })
 
-test('negotiates client audio rates without overriding speech-to-speech models', () => {
+test('negotiates client audio rates while keeping the server-selected speech-to-speech model', () => {
   const provider = REALTIME_PROVIDERS['speech-to-speech']
   const session = provider.buildSession({
     agentContext: {},
@@ -2110,7 +2112,7 @@ test('negotiates client audio rates without overriding speech-to-speech models',
   assert.equal(provider.outputSampleRate, 24000)
   assert.equal(provider.responseStartTimeoutMs, 60_000)
   assert.equal(createS2sFrontend().responseStartTimeoutMs, 60_000)
-  assert.equal(provider.model(), null)
+  assert.equal(provider.model(), 'default')
   assert.equal(provider.voice(), null)
   assert.equal(session.audio.input.format, undefined)
   assert.deepEqual(session.audio.output.format, {

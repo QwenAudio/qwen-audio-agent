@@ -12,7 +12,7 @@ export function gatewayStatusLabel(value) {
 
 export function realtimeStatusLabel(provider) {
   if (provider === 'speech-to-speech') return 'Speech-to-Speech'
-  if (provider === 'minicpm-o') return 'MiniCPM-o'
+  if (provider === 'minicpm-o') return '面壁智能'
   return 'DashScope'
 }
 
@@ -26,6 +26,7 @@ export function realtimeModelStatusLabel(model) {
 }
 
 export function realtimeRuntimeLabel(provider, model) {
+  if (provider === 'minicpm-o') return 'MiniCPM-o 4.5'
   if (provider !== 'dashscope') return realtimeStatusLabel(provider)
   return realtimeModelStatusLabel(model) || realtimeStatusLabel(provider)
 }

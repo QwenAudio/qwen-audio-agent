@@ -114,7 +114,7 @@
                     name="realtime-provider"
                     value="minicpm-o"
                   />
-                  <span>MiniCPM-o</span>
+                  <span>面壁智能</span>
                 </label>
               </fieldset>
             </div>
@@ -196,6 +196,17 @@
                     placeholder="可选，用于 Bearer 认证"
                   />
                 </div>
+
+                <div class="setting-row">
+                  <label for="speech-to-speech-model">模型</label>
+                  <input
+                    id="speech-to-speech-model"
+                    class="fixed-model"
+                    type="text"
+                    value="default"
+                    readonly
+                  />
+                </div>
                 <p class="provider-attribution">
                   Speech-to-Speech · Hugging Face · 需单独启动本地服务
                 </p>
@@ -227,8 +238,19 @@
                     placeholder="可选，用于 Bearer 认证"
                   />
                 </div>
+
+                <div class="setting-row">
+                  <label for="minicpm-o-model">模型</label>
+                  <input
+                    id="minicpm-o-model"
+                    class="fixed-model"
+                    type="text"
+                    value="MiniCPM-o 4.5"
+                    readonly
+                  />
+                </div>
                 <p class="provider-attribution">
-                  MiniCPM-o 4.5 · OpenBMB · 需单独启动本地服务
+                  MiniCPM-o 4.5 · 面壁智能 · 本地或云端服务
                 </p>
               </div>
             </div>

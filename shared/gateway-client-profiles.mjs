@@ -22,6 +22,7 @@ export function gatewayReferenceClientCapabilities(clientType = 'web') {
     GatewayClientCapability.CLIENT_EVENTS,
     GatewayClientCapability.SESSION_OUTPUT_VOICE,
     GatewayClientCapability.SESSION_REPLAY,
+    GatewayClientCapability.SESSION_HEARTBEAT,
     ...(clientType === GatewayReferenceClientType.DESKTOP
       ? [GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP]
       : []),

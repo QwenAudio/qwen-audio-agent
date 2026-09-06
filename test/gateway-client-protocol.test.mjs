@@ -39,6 +39,9 @@ test('publishes a frozen capability vocabulary and only advertises implemented s
   assert.ok(GATEWAY_CLIENT_KNOWN_CAPABILITIES.includes(
     GatewayClientCapability.SESSION_TAKEOVER,
   ))
+  assert.ok(GATEWAY_CLIENT_KNOWN_CAPABILITIES.includes(
+    GatewayClientCapability.SESSION_HEARTBEAT,
+  ))
   assert.equal(
     GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(GatewayClientCapability.CLIENT_EVENTS),
     true,
@@ -61,6 +64,29 @@ test('publishes a frozen capability vocabulary and only advertises implemented s
     ),
     true,
   )
+  assert.equal(
+    GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(
+      GatewayClientCapability.SESSION_HEARTBEAT,
+    ),
+    true,
+  )
+})
+
+test('validates correlated application heartbeat messages', () => {
+  const pong = createGatewayClientProtocolMessage(
+    GatewayClientProtocolEvent.SESSION_PONG,
+    { request_event_id: 'evt_gateway_ping' },
+    { eventId: 'evt_client_pong' },
+  )
+  assert.equal(pong.request_event_id, 'evt_gateway_ping')
+  assert.equal(parseGatewayServerProtocolMessage({
+    type: GatewayClientProtocolEvent.SESSION_PING,
+    event_id: 'evt_gateway_ping',
+  }).type, GatewayClientProtocolEvent.SESSION_PING)
+  assert.throws(() => parseGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.SESSION_PONG,
+    event_id: 'evt_client_pong',
+  }))
 })
 
 test('validates the 6.0 envelope and rejects duplicate capabilities', () => {

@@ -213,6 +213,7 @@ export default function useRealtimeVoice({
   wakeWordOnly = false,
   clientType = 'web',
   clientLabel = 'WebUI',
+  clientInstanceId: configuredClientInstanceId = '',
   clientStates = [],
   realtimeProvider = '',
   onEvent,
@@ -246,7 +247,9 @@ export default function useRealtimeVoice({
   const pendingManualInputsRef = useRef([])
   const audioRef = useRef(null)
   const currentTurnId = useRef('')
-  const clientInstanceId = useRef(crypto.randomUUID())
+  const clientInstanceId = useRef(
+    String(configuredClientInstanceId || '').trim() || crypto.randomUUID(),
+  )
   const inputSampleRate = useRef(DEFAULT_INPUT_RATE)
   const clientStatesSignature = [...new Set(
     (Array.isArray(clientStates) ? clientStates : [])

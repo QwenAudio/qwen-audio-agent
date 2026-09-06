@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { configureGatewayTransport } from '../../web/src/gateway-transport.js'
 import '../../web/src/styles.css'
 import './mobile.css'
-import { pairMobileGateway } from './mobile-profile.js'
+import { mobileGatewayTransport, pairMobileGateway } from './mobile-profile.js'
 import {
   loadMobileGatewayProfile,
   mobileDeviceId,
@@ -24,12 +24,7 @@ function MobileApp() {
   const pairing = useRef(false)
 
   const activateProfile = useCallback(async next => {
-    configureGatewayTransport({
-      gatewayUrl: next.gatewayUrl,
-      accessToken: next.accessToken,
-      clientType: 'mobile',
-      clientLabel: next.label || '移动端',
-    })
+    configureGatewayTransport(mobileGatewayTransport(next))
     const module = await import('../../web/src/App.jsx')
     setProfile(next)
     setWebApp(() => module.default)

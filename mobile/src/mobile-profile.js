@@ -29,6 +29,18 @@ export function parseMobileGatewayProfile(value) {
   }
 }
 
+export function mobileGatewayTransport(profile) {
+  const parsed = parseMobileGatewayProfile(profile)
+  if (!parsed) throw new TypeError('complete mobile Gateway profile is required')
+  return {
+    gatewayUrl: parsed.gatewayUrl,
+    accessToken: parsed.accessToken,
+    clientType: 'mobile',
+    clientLabel: parsed.label,
+    clientInstanceId: parsed.clientInstanceId,
+  }
+}
+
 export async function pairMobileGateway(invitationUrl, {
   request,
   deviceId,

@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { encodeGatewayInvitation } from '../../shared/gateway-remote-access.mjs'
-import { pairMobileGateway, parseMobileGatewayProfile } from '../src/mobile-profile.js'
+import {
+  mobileGatewayTransport,
+  pairMobileGateway,
+  parseMobileGatewayProfile,
+} from '../src/mobile-profile.js'
 
 const invitation = encodeGatewayInvitation({
   version: 1,
@@ -34,6 +38,25 @@ test('pairs a mobile profile without exposing backend configuration', async () =
     deviceId: 'phone-one',
     clientInstanceId: 'mobile-client-one',
     label: 'Mobile',
+  })
+})
+
+test('keeps the paired client instance stable across native app restarts', () => {
+  const stored = {
+    gatewayUrl: 'https://voice.example.test',
+    accessToken: 'qwa_revocable-mobile-token',
+    deviceId: 'mobile-device-one',
+    clientInstanceId: 'mobile-client-one',
+    label: 'Mobile',
+  }
+  assert.equal(parseMobileGatewayProfile(stored)?.clientInstanceId, 'mobile-client-one')
+  assert.equal(parseMobileGatewayProfile({ ...stored })?.clientInstanceId, 'mobile-client-one')
+  assert.deepEqual(mobileGatewayTransport(stored), {
+    gatewayUrl: 'https://voice.example.test',
+    accessToken: 'qwa_revocable-mobile-token',
+    clientType: 'mobile',
+    clientLabel: 'Mobile',
+    clientInstanceId: 'mobile-client-one',
   })
 })
 

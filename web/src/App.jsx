@@ -70,6 +70,7 @@ import {
   initialDesktopClientSettings,
 } from './desktop-client-settings.js'
 import {
+  gatewayClientInstanceId,
   gatewayClientLabel,
   gatewayClientType,
   gatewayFetch,
@@ -84,6 +85,7 @@ const initialDesktopSurfaceMode = (
     : 'orb'
 )
 const activeClientType = gatewayClientType(desktopOrbMode ? 'desktop' : 'web')
+const activeClientInstanceId = gatewayClientInstanceId()
 const composerEnabled = supportsComposerInput(activeClientType)
 
 function getSessionId() {
@@ -782,6 +784,7 @@ export default function App() {
     wakeWordOnly: voiceEnabledForWakeWord,
     clientType: activeClientType,
     clientLabel: gatewayClientLabel(desktopOrbMode ? t('桌面端') : 'WebUI'),
+    clientInstanceId: activeClientInstanceId,
     clientStates: desktopOrbMode ? ['sleeping'] : [],
     realtimeProvider: realtimeProviderForConnection(
       realtimeProvider,

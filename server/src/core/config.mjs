@@ -235,6 +235,10 @@ export const config = {
   // The upstream WebSocket does not require authentication. This optional
   // credential is useful only when users put it behind an authenticated proxy.
   speechToSpeechAuthToken: realtimeFrontend.speechToSpeechAuthToken,
+  // User-managed MiniCPM-o 4.5 audio full-duplex Realtime endpoint.
+  miniCpmORealtimeUrl: realtimeFrontend.miniCpmORealtimeUrl,
+  miniCpmOAuthToken: realtimeFrontend.miniCpmOAuthToken,
+  miniCpmOConfigured: realtimeFrontend.miniCpmOConfigured,
   audioModel: realtimeFrontend.dashscopeModel,
   audioVoice: realtimeFrontend.dashscopeVoice,
   webSearchProvider: webSearch.provider,

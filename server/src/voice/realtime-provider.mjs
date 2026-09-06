@@ -80,6 +80,12 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   // providers acknowledge the item but replace its id, so those providers
   // must opt out and use the single pending item waiter instead.
   conversationItemIdEcho: true,
+  // Accepts conversation.item.create and acknowledges created items.
+  conversationItems: true,
+  // Accepts response.create and response.cancel initiated by the client.
+  clientResponses: true,
+  // Allows session instructions to be refreshed after initial setup.
+  mutableSession: true,
 })
 const DEFAULT_RESPONSE_CANCEL_GRACE_MS = 1_000
 
@@ -162,7 +168,7 @@ export class RealtimeFrontend {
         const error = new Error(this.provider.connectTimeoutMessage)
         finish(error)
         ws.terminate()
-      }, 25000)
+      }, this.provider.connectTimeoutMs ?? 25000)
       const finish = error => {
         if (settled) return
         settled = true
@@ -251,6 +257,7 @@ export class RealtimeFrontend {
   }
 
   updateSession() {
+    if (this.sessionConfigured && !this.capabilities.mutableSession) return
     const session = this.provider.buildSession({
       configured: this.sessionConfigured,
       agentContext: this.agentContext,
@@ -262,6 +269,7 @@ export class RealtimeFrontend {
   restoreRecentConversation() {
     if (this.recentContextInjected) return
     this.recentContextInjected = true
+    if (!this.capabilities.conversationItems) return
     const recent = buildRecentConversationContext(
       this.agentContext.recentMessages,
     )
@@ -298,6 +306,11 @@ export class RealtimeFrontend {
   sendUserText(text, context = {}, { modalities } = {}) {
     const content = String(text || '').trim()
     if (!content) return Promise.resolve()
+    if (!this.capabilities.conversationItems || !this.capabilities.clientResponses) {
+      return Promise.reject(new Error(
+        `${this.provider.label} 不支持文本输入`,
+      ))
+    }
     return this.enqueueResponse('model', context, async () => {
       await this.createConversationItem(this.protocol.userTextItem(content))
       this.send(this.protocol.responseCreate(
@@ -333,6 +346,11 @@ export class RealtimeFrontend {
   }
 
   sendUserInput(parts, context = {}, { modalities } = {}) {
+    if (!this.capabilities.conversationItems || !this.capabilities.clientResponses) {
+      return Promise.reject(new Error(
+        `${this.provider.label} 不支持离散文本或文件输入`,
+      ))
+    }
     return this.enqueueResponse('model', context, async () => {
       if (!await this.applyUserInput(parts)) return false
       this.send(this.protocol.responseCreate(
@@ -342,18 +360,23 @@ export class RealtimeFrontend {
   }
 
   appendUserInputContext(parts, options = {}) {
+    if (!this.capabilities.conversationItems) return Promise.resolve(false)
     return this.enqueueAction(() => this.applyUserInput(parts, options))
   }
 
   appendUserContext(text) {
     const content = String(text || '').trim()
     if (!content) return Promise.resolve()
+    if (!this.capabilities.conversationItems) return Promise.resolve(false)
     return this.enqueueAction(() => this.createConversationItem(
       this.protocol.userTextItem(content),
     ))
   }
 
   ensureResponse(context = {}, { shouldCreate, response } = {}) {
+    if (!this.capabilities.clientResponses) {
+      return Promise.resolve({ skipped: true, unsupported: true })
+    }
     return this.enqueueResponse('agent', context, () => {
       if (shouldCreate && !shouldCreate()) return false
       this.send(this.protocol.responseCreate(response))
@@ -364,6 +387,11 @@ export class RealtimeFrontend {
     createResponse = true,
     response,
   } = {}) {
+    if (!this.capabilities.conversationItems) {
+      return Promise.reject(new Error(
+        `${this.provider.label} 不支持 Function Call 结果回注`,
+      ))
+    }
     const sendOutput = () => this.createConversationItem(
       this.protocol.functionOutputItem(callId, output),
     )
@@ -375,6 +403,11 @@ export class RealtimeFrontend {
   }
 
   createConversationItem(item) {
+    if (!this.capabilities.conversationItems) {
+      return Promise.reject(new Error(
+        `${this.provider.label} 不支持创建对话项`,
+      ))
+    }
     // Id namespaces are dialect-specific (the GA dialect derives them from the
     // item type), so the protocol adapter mints the id.
     const id = item.id || this.protocol.conversationItemId(item)
@@ -399,6 +432,9 @@ export class RealtimeFrontend {
   } = {}) {
     const content = String(text || '').trim()
     if (!content) return Promise.resolve()
+    if (!this.capabilities.clientResponses) {
+      return Promise.resolve({ skipped: true, unsupported: true })
+    }
     return this.enqueueResponse(origin, context, () => {
       if (shouldSpeak && !shouldSpeak()) return false
       this.send(this.protocol.responseCreate(
@@ -438,6 +474,15 @@ export class RealtimeFrontend {
   ) {
     const content = String(text || '').trim()
     if (!content) return
+    if (!this.capabilities.conversationItems || !this.capabilities.clientResponses) {
+      return {
+        completed: false,
+        skipped: true,
+        unsupported: true,
+        contextInjected: false,
+        route,
+      }
+    }
     if (route === 'handle') {
       return { completed: true, handled: true, route }
     }
@@ -486,6 +531,9 @@ export class RealtimeFrontend {
     shouldSpeak,
   } = {}) {
     if (!permission?.id || !permission?.summary) return
+    if (!this.capabilities.conversationItems || !this.capabilities.clientResponses) {
+      return { skipped: true, unsupported: true }
+    }
     const injection = this.provider.buildPermissionInjection(permission)
     // Make the permission identity available to the model immediately. The
     // spoken question may wait behind an active response, while the user can
@@ -509,7 +557,9 @@ export class RealtimeFrontend {
       this.settlePending(item, { cancelled: true, phase: 'completion' })
     })
     this.rejectConversationItemWaiters(new Error('Realtime 请求已取消'))
-    if (hasResponse) this.send(this.protocol.responseCancel())
+    if (hasResponse && this.capabilities.clientResponses) {
+      this.send(this.protocol.responseCancel())
+    }
     if (!cancelledResponseIds.length) {
       this.resolveIdle()
       return
@@ -550,7 +600,9 @@ export class RealtimeFrontend {
         phase: 'completion',
       })
     }
-    if (cancelledActive) this.send(this.protocol.responseCancel())
+    if (cancelledActive && this.capabilities.clientResponses) {
+      this.send(this.protocol.responseCancel())
+    }
     return cancelledActive
   }
 
@@ -887,6 +939,9 @@ export class RealtimeFrontend {
   }
 
   close() {
+    if (this.ws?.readyState === WebSocket.OPEN && this.protocol.sessionClose) {
+      this.send(this.protocol.sessionClose('client_closed'))
+    }
     this.ws?.close()
     this.ws = null
     this.ready = false
@@ -907,6 +962,7 @@ export class RealtimeFrontend {
         pending.responsePayload = outgoing
       }
       const body = this.protocol.encodeOutgoing(outgoing)
+      if (body == null) return
       this.ws.send(JSON.stringify(body))
     }
   }

@@ -22,8 +22,7 @@ Client Protocol，不直接接触 Realtime Provider 或后台协议。
    qwenaudio gateway remote invite
    ```
 
-3. 打开移动端，扫描桌面设置页显示的二维码；使用 CLI 时，粘贴命令输出的
-   `qwaudio://connect…` 链接。
+3. 打开移动端，使用 CLI 输出的 `qwaudio://connect…` 邀请链接完成连接。
 4. 首次通话时允许麦克风权限。以后会自动重连；若 Desktop/WebUI/TUI 正在使用，移动端
    会先请求接管确认。
 

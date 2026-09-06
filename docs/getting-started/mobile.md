@@ -25,8 +25,7 @@ TUI, without importing Realtime Provider or backend-protocol internals.
    qwenaudio gateway remote invite
    ```
 
-3. Open Mobile and scan the QR code shown in Desktop settings. When using the
-   CLI, paste the emitted `qwaudio://connect…` link.
+3. Open Mobile and use the `qwaudio://connect…` invitation emitted by the CLI.
 4. Grant microphone access for the first call. Later launches reconnect
    automatically. If Desktop, WebUI, or TUI is active, Mobile asks before taking
    over.

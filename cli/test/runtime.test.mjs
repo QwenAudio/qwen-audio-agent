@@ -174,6 +174,26 @@ test('rejects an existing Gateway using a stale speech-to-speech endpoint', () =
   }, requestedEnv), /前台参数.*不一致/)
 })
 
+test('reuses MiniCPM-o only when the running Gateway has the same endpoint', () => {
+  const runningEnv = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'minicpm-o',
+    MINICPM_O_REALTIME_URL: 'ws://127.0.0.1:8006/v1/realtime?mode=audio',
+  }
+  const running = resolveRealtimeFrontendConfiguration(runningEnv)
+
+  assert.doesNotThrow(() => assertRealtimeGatewayCompatibility({
+    realtimeProvider: running.provider,
+    realtimeConfigurationSignature: running.signature,
+  }, runningEnv))
+  assert.throws(() => assertRealtimeGatewayCompatibility({
+    realtimeProvider: running.provider,
+    realtimeConfigurationSignature: running.signature,
+  }, {
+    ...runningEnv,
+    MINICPM_O_REALTIME_URL: 'ws://127.0.0.1:9000/v1/realtime?mode=audio',
+  }), /前台参数.*不一致/)
+})
+
 test('does not reuse an older Gateway without a realtime configuration signature', () => {
   assert.throws(() => assertRealtimeGatewayCompatibility({
     realtimeProvider: 'dashscope',

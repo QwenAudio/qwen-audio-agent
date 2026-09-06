@@ -2,6 +2,9 @@ import { basename } from 'node:path'
 import { TaskNotificationPolicy } from '../../task/task-state.mjs'
 import {
   assertKnowledgeProvider,
+  normalizeKnowledgeIngestionResponse,
+  normalizeKnowledgeListResponse,
+  normalizeKnowledgeRemovalResponse,
   supportsKnowledgeManagement,
 } from '../../frontend/knowledge/retrieval-provider.mjs'
 
@@ -49,7 +52,10 @@ export class KnowledgeLibraryService {
           signal,
           onEvent,
         })
-        const document = result?.document || result
+        const { document } = normalizeKnowledgeIngestionResponse(result)
+        if (!document) {
+          throw new TypeError('KnowledgeProvider ingest() returned no document')
+        }
         return {
           content: document?.title
             ? `已把《${document.title}》收进资料库。`
@@ -63,12 +69,13 @@ export class KnowledgeLibraryService {
 
   async list({ ownerId } = {}) {
     const result = await this.provider.list({}, { ownerId: clean(ownerId) })
-    return Array.isArray(result) ? result : result?.documents || []
+    return normalizeKnowledgeListResponse(result).documents
   }
 
   async remove({ ownerId, documentId } = {}) {
-    return this.provider.remove({ documentId: clean(documentId) }, {
+    const result = await this.provider.remove({ documentId: clean(documentId) }, {
       ownerId: clean(ownerId),
     })
+    return normalizeKnowledgeRemovalResponse(result)
   }
 }

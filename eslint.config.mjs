@@ -13,7 +13,7 @@ export default [
       '**/coverage/**',
       'docs/.vitepress/cache/**',
       'docs/.vitepress/.site/**',
-      'examples/**',
+      'examples/!(lightrag)/**',
       'tui/native/**',
       'mobile/android/app/src/main/assets/public/**',
       'mobile/ios/App/App/public/**',

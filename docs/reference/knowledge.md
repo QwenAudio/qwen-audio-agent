@@ -144,10 +144,32 @@ await provider.list({}, { ownerId })
 await provider.remove({ documentId: 'doc-42' }, { ownerId })
 ```
 
+The three management methods use stable minimal response shapes:
+
+```js
+ingest() // { document: { id, title, ... } }
+list()   // { documents: [{ id, title, ... }] }
+remove() // { removed: true, document: { id, title, ... } }
+```
+
+The Gateway normalizes `id`, `title`, `filename`, `status`, timestamps, summaries, and bounded
+metadata. Clients never need to understand provider-native objects. Remote job IDs, graph
+objects, and raw responses must not enter these values.
+
 `ingest()` returns a Promise. The Gateway uses its own TaskManager for queueing,
 cancellation, and status, so a Provider does not need another ingestion-job
 protocol. If a remote service indexes asynchronously, its Adapter can wait or
 poll inside `ingest()` and stop when `signal` is aborted.
+
+A remote Provider that needs a longer retrieval window can configure the generic runtime at
+the composition root:
+
+```js
+createGatewayApplication({
+  knowledgeProvider: provider,
+  knowledgeRuntimeOptions: { timeoutMs: 60_000 },
+})
+```
 
 ## Built-in basic implementation
 
@@ -194,6 +216,11 @@ An Adapter only translates fields and calls:
 
 Vendor clients, remote job IDs, vector-store collection IDs, and raw responses
 stay inside the Adapter and never cross into the Gateway, Realtime, or clients.
+
+The repository's
+[`examples/lightrag`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag)
+is a complete external Provider example. It uses the LightRAG REST API for retrieval, upload,
+listing, and deletion, and collapses asynchronous indexing into this interface.
 
 For the matching concepts in established frameworks, see the
 [LlamaIndex Ingestion Pipeline](https://developers.llamaindex.ai/python/framework/module_guides/loading/ingestion_pipeline/)

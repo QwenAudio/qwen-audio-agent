@@ -543,12 +543,14 @@ test('enables knowledge only when an external provider is injected', async () =>
     autoStart: false,
     agent: disabledBackend(),
     knowledgeProvider,
+    knowledgeRuntimeOptions: { timeoutMs: 45_000 },
     frontendMcp: null,
     frontendOpenApi: null,
   })
 
   assert.equal(application.services.knowledgeProvider, knowledgeProvider)
   assert.equal(application.services.knowledgeLibrary, null)
+  assert.equal(application.services.frontendKnowledge.timeoutMs, 45_000)
   assert.deepEqual(application.services.frontendKnowledge.describe(), {
     configured: true,
     capabilities: ['knowledge'],

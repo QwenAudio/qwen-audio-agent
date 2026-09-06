@@ -157,6 +157,8 @@
     "docs/voice-frontends/qwen-omni-realtime.zh.md",
     "docs/scenarios/smart-cockpit.md",
     "docs/scenarios/smart-cockpit.zh.md",
+    "docs/scenarios/lightrag.md",
+    "docs/scenarios/lightrag.zh.md",
     "docs/scenarios/voicemem.md",
     "docs/scenarios/voicemem.zh.md",
     "docs/resources/papers.md",

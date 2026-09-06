@@ -26,6 +26,7 @@ export function realtimeModelStatusLabel(model) {
 }
 
 export function realtimeRuntimeLabel(provider, model) {
+  if (provider !== 'dashscope') return realtimeStatusLabel(provider)
   return realtimeModelStatusLabel(model) || realtimeStatusLabel(provider)
 }
 

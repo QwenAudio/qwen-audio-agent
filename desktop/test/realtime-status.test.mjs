@@ -37,7 +37,10 @@ test('uses compact gateway and realtime runtime identities', () => {
     realtimeRuntimeLabel('speech-to-speech', ''),
     'Speech-to-Speech',
   )
-  assert.equal(realtimeRuntimeLabel('minicpm-o', ''), 'MiniCPM-o')
+  assert.equal(
+    realtimeRuntimeLabel('minicpm-o', 'openbmb/MiniCPM-o-4_5'),
+    'MiniCPM-o',
+  )
 })
 
 test('uses consistent product and version labels for known realtime models', () => {

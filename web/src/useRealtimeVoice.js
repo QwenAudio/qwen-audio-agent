@@ -16,12 +16,16 @@ import {
 import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
 import { gatewayReferenceClientCapabilities } from '../../shared/gateway-client-profiles.mjs'
 import {
-  audioPlaybackLeadSeconds,
+  audioSchedulingLeadSeconds,
+  createPcmPlaybackQueue,
   decodePcm,
   pcmBase64,
   resample,
 } from './audio.js'
-import { createMicrophoneCaptureLifecycle } from './microphone-capture.js'
+import {
+  createMicrophoneCaptureLifecycle,
+  microphoneErrorKind,
+} from './microphone-capture.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
 import { t } from './i18n.js'
 import {
@@ -112,6 +116,17 @@ function sameCapabilities(left, right) {
   if (!left || !right) return false
   const keys = new Set([...Object.keys(left), ...Object.keys(right)])
   return [...keys].every(key => left[key] === right[key])
+}
+
+function microphoneErrorText(reason) {
+  return {
+    permission_denied: t('麦克风权限未开启，请在系统设置中允许后重试'),
+    device_missing: t('未检测到可用麦克风'),
+    device_unavailable: t('麦克风正被其他应用占用，请稍后重试'),
+    unsupported: t('当前环境不支持麦克风输入'),
+  }[microphoneErrorKind(reason)]
+    || reason?.message
+    || String(reason || t('无法打开麦克风'))
 }
 
 export function realtimeModelStatus(health = {}) {
@@ -278,6 +293,7 @@ export default function useRealtimeVoice({
     sourceCounts: new Map(),
     doneResponses: new Set(),
     failedResponses: new Set(),
+    queue: null,
   })
   eventRef.current = onEvent
   inputErrorRef.current = onInputError
@@ -358,6 +374,7 @@ export default function useRealtimeVoice({
       ...playback.endTimers.keys(),
       ...playback.startedResponses,
       ...playback.sourceCounts.keys(),
+      ...(playback.queue?.responseIds?.() || []),
     ])
     for (const timer of playback.startTimers.values()) {
       clearTimeout(timer)
@@ -375,6 +392,7 @@ export default function useRealtimeVoice({
         // Source already stopped.
       }
     })
+    playback.queue?.reset?.()
     playbackRef.current = {
       cursor: 0,
       sources: [],
@@ -385,6 +403,7 @@ export default function useRealtimeVoice({
       sourceCounts: new Map(),
       doneResponses: new Set(),
       failedResponses: new Set(),
+      queue: null,
     }
   }, [sendPlaybackEvent])
 
@@ -410,6 +429,7 @@ export default function useRealtimeVoice({
     if (!responseId) return
     const playback = playbackRef.current
     if (playback.failedResponses.delete(responseId)) return
+    playback.queue?.finish?.()
     playback.doneResponses.add(responseId)
     finishPlaybackIfReady(responseId)
     const responseEnd = playback.responseEnds.get(responseId)
@@ -449,6 +469,7 @@ export default function useRealtimeVoice({
 
   const failPlayback = useCallback((responseId, reason) => {
     const playback = playbackRef.current
+    playback.queue?.reset?.()
     if (responseId && !playback.failedResponses.has(responseId)) {
       playback.failedResponses.add(responseId)
       const timer = playback.startTimers.get(responseId)
@@ -483,7 +504,11 @@ export default function useRealtimeVoice({
     sendPlaybackEvent(GatewayClientEvent.PLAYBACK_ENDED, responseId)
   }, [sendPlaybackEvent])
 
-  const play = useCallback((base64, sampleRate = OUTPUT_RATE, responseId = '') => {
+  const scheduleAudioItem = useCallback(({
+    samples,
+    sampleRate = OUTPUT_RATE,
+    responseId = '',
+  }) => {
     const context = audioRef.current
     if (!context) {
       failPlayback(responseId, t('语音播放尚未启用'))
@@ -497,15 +522,14 @@ export default function useRealtimeVoice({
     let source
     let start
     try {
-      const samples = decodePcm(base64)
       const buffer = context.createBuffer(1, samples.length, sampleRate)
       buffer.copyToChannel(samples, 0)
       source = context.createBufferSource()
       source.buffer = buffer
       source.connect(context.destination)
-      const leadSeconds = audioPlaybackLeadSeconds({
-        remote: gatewayTransportIsRemote(),
-      })
+      // Remote playback has already accumulated real PCM in its jitter queue.
+      // This small Web Audio lead is only for stable source scheduling.
+      const leadSeconds = audioSchedulingLeadSeconds()
       start = Math.max(context.currentTime + leadSeconds, playback.cursor)
       playback.cursor = start + buffer.duration
       playback.sources.push(source)
@@ -572,6 +596,37 @@ export default function useRealtimeVoice({
       failPlayback(responseId, reason)
     }
   }, [failPlayback, finishPlaybackIfReady, sendPlaybackEvent])
+
+  const play = useCallback((base64, sampleRate = OUTPUT_RATE, responseId = '') => {
+    const context = audioRef.current
+    if (!context) {
+      failPlayback(responseId, t('语音播放尚未启用'))
+      return
+    }
+    let item
+    try {
+      const samples = decodePcm(base64)
+      item = {
+        samples,
+        sampleRate,
+        responseId,
+        duration: samples.length / sampleRate,
+      }
+    } catch (reason) {
+      failPlayback(responseId, reason)
+      return
+    }
+    const playback = playbackRef.current
+    if (!playback.queue) {
+      playback.queue = createPcmPlaybackQueue({
+        remote: gatewayTransportIsRemote(),
+        onFlush: items => items.forEach(scheduleAudioItem),
+      })
+    }
+    playback.queue.push(item, {
+      timelineAheadSeconds: Math.max(0, playback.cursor - context.currentTime),
+    })
+  }, [failPlayback, scheduleAudioItem])
 
   useEffect(() => {
     if (!suspended) return
@@ -811,7 +866,7 @@ export default function useRealtimeVoice({
       }))
     }
     const failInput = reason => {
-      const message = reason?.message || String(reason || t('无法打开麦克风'))
+      const message = microphoneErrorText(reason)
       inputReadyRef.current = false
       setInputReady(false)
       sendSocketEvent(microphoneControlEvent({
@@ -907,9 +962,16 @@ export default function useRealtimeVoice({
       onFatalError: failInput,
     })
     capture.start()
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !inputReadyRef.current) {
+        capture.restart('app-resume')
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
 
     return () => {
       disposed = true
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       inputReadyRef.current = false
       setInputReady(false)
       capture.stop()

@@ -9,6 +9,19 @@ export function recoverableMicrophoneError(error) {
   ].includes(String(error?.name || ''))
 }
 
+export function microphoneErrorKind(error) {
+  const name = String(error?.name || '')
+  const message = String(error?.message || error || '')
+  if (
+    ['NotAllowedError', 'SecurityError'].includes(name)
+    || /permission\s+denied|not\s+allowed/i.test(message)
+  ) return 'permission_denied'
+  if (name === 'NotFoundError') return 'device_missing'
+  if (name === 'NotReadableError') return 'device_unavailable'
+  if (name === 'NotSupportedError') return 'unsupported'
+  return 'unknown'
+}
+
 function audioTrack(capture) {
   return capture?.track || capture?.media?.getAudioTracks?.()[0] || null
 }

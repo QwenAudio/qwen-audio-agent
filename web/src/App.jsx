@@ -1038,6 +1038,10 @@ export default function App() {
     nativeVideo: t('原生视频'),
   }
   const modeList = modes => modes.map(mode => inputModeLabels[mode]).join(' / ')
+  const observationAvailable = (
+    modelStatus.metadataStatus === 'current'
+    && modelStatus.observationInputEnabled === true
+  )
 
   const resetSession = () => {
     taskDismissTimers.current.forEach(timer => clearTimeout(timer))
@@ -1498,6 +1502,12 @@ export default function App() {
 
       {composerEnabled && <MultimodalComposer
         onSend={sendComposerInput}
+        onObservationStart={voice.sendObservationStart}
+        onObservationFrame={voice.sendObservationFrame}
+        onObservationStop={voice.sendObservationStop}
+        observationAvailable={observationAvailable}
+        observationState={voice.observationState}
+        connectionState={voice.connectionState}
         compact={desktopOrbMode}
       />}
 

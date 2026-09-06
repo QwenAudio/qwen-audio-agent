@@ -25,6 +25,7 @@ function profile(id, label, {
   imageInput = false,
   videoInput = false,
   transportImageInput = false,
+  transportObservationInput = false,
 } = {}) {
   return {
     id,
@@ -40,7 +41,7 @@ function profile(id, label, {
       textInput: true,
       audioInput: true,
       imageInput: transportImageInput,
-      observationInput: false,
+      observationInput: transportObservationInput,
       nativeVideoInput: false,
     },
   }
@@ -68,6 +69,7 @@ for (const activeProfile of [flash, plus]) {
     assert.deepEqual(status.modelInputModes, ['text', 'audio', 'image'])
     assert.deepEqual(status.transportInputModes, ['text', 'audio'])
     assert.equal(status.imageInputEnabled, false)
+    assert.equal(status.observationInputEnabled, false)
   })
 }
 
@@ -82,6 +84,7 @@ test('shows the legacy model without claiming image support', () => {
   assert.deepEqual(status.modelInputModes, ['text', 'audio'])
   assert.deepEqual(status.transportInputModes, ['text', 'audio'])
   assert.equal(status.imageInputEnabled, false)
+  assert.equal(status.observationInputEnabled, false)
 })
 
 test('fails closed when model profile metadata is missing', () => {
@@ -96,6 +99,7 @@ test('fails closed when model profile metadata is missing', () => {
   assert.deepEqual(status.modelInputModes, [])
   assert.deepEqual(status.transportInputModes, [])
   assert.equal(status.imageInputEnabled, false)
+  assert.equal(status.observationInputEnabled, false)
 })
 
 test('rejects stale profile capabilities when the active model changed', () => {
@@ -115,6 +119,7 @@ test('rejects stale profile capabilities when the active model changed', () => {
   assert.deepEqual(status.modelInputModes, [])
   assert.deepEqual(status.transportInputModes, [])
   assert.equal(status.imageInputEnabled, false)
+  assert.equal(status.observationInputEnabled, false)
 })
 
 test('enables image controls only for current exact catalog transport truth', () => {
@@ -130,6 +135,22 @@ test('enables image controls only for current exact catalog transport truth', ()
 
   assert.equal(status.imageInputEnabled, true)
   assert.deepEqual(status.transportInputModes, ['text', 'audio', 'image'])
+  assert.equal(status.observationInputEnabled, false)
+})
+
+test('enables continuous observation only for current exact transport truth', () => {
+  const observable = profile('observable-model', 'Observable model', {
+    imageInput: true,
+    transportObservationInput: true,
+  })
+  const status = realtimeModelStatus({
+    realtimeModel: observable.id,
+    realtimeModelProfile: observable,
+    realtimeModelCatalog: [observable],
+  })
+
+  assert.equal(status.observationInputEnabled, true)
+  assert.deepEqual(status.transportInputModes, ['text', 'audio', 'observation'])
 })
 
 test('keeps an advertised provider selection separate from the model', () => {

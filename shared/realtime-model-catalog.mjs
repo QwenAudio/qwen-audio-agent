@@ -11,7 +11,7 @@ const OMNI_MODEL_CAPABILITIES = Object.freeze({
 })
 const OMNI_TRANSPORT_CAPABILITIES = Object.freeze({
   textInput: true, audioInput: true, imageInput: false,
-  observationInput: false, nativeVideoInput: false,
+  observationInput: true, nativeVideoInput: false,
 })
 const LEGACY_MODEL_CAPABILITIES = Object.freeze({
   textInput: true, audioInput: true, imageInput: false, videoInput: false,

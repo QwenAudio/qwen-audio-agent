@@ -501,7 +501,7 @@ test('prefers a per-session output voice over the process-wide default', t => {
   assert.equal(session.voice, 'longanlufeng')
 })
 
-test('advertises Omni model vision without admitting unsupported visual transport', t => {
+test('advertises Omni model vision and supported observation transport', t => {
   const originalModel = config.audioModel
   t.after(() => {
     config.audioModel = originalModel
@@ -514,7 +514,7 @@ test('advertises Omni model vision without admitting unsupported visual transpor
   assert.equal(profile.modelCapabilities.imageInput, true)
   assert.equal(profile.modelCapabilities.videoInput, false)
   assert.equal(profile.transportCapabilities.imageInput, false)
-  assert.equal(profile.transportCapabilities.observationInput, false)
+  assert.equal(profile.transportCapabilities.observationInput, true)
   assert.equal(profile.transportCapabilities.nativeVideoInput, false)
   assert.equal(frontend.modelProfile, profile)
   assert.equal(frontend.modelCapabilities, profile.modelCapabilities)

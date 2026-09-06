@@ -10,6 +10,7 @@ test('desktop connection supports the conversation panel inputs', () => {
     text: true,
     audio: true,
     image: true,
+    observation: true,
     resource: true,
   })
   assert.equal(supportsComposerInput('desktop'), true)

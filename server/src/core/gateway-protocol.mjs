@@ -12,6 +12,8 @@
 //
 // 5.7.0 adds authenticated remote Client access, one-time device pairing and
 // owner-scoped active Client takeover with generation fencing.
+// 5.7.0 also adds explicit WebUI camera observation for vision-capable
+// Realtime frontends without triggering model responses.
 // 5.6.0 adds a provider-neutral frontend memory control plane for replaceable
 // clients to list and edit the same documents used by Realtime.
 // 5.5.0 adds the GCP5 reference Client SDK, bounded Task-event replay, and
@@ -108,6 +110,9 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // replaceable Conversation Client boundary for audio, text, multimodal
   // input, transcripts, playback receipts, voice state and Task projections.
   'realtime.conversation-client-v1',
+  // The WebUI may explicitly open a camera and stream bounded JPEG snapshots
+  // to a vision-capable Realtime frontend without triggering responses.
+  'realtime.camera-observation-v1',
   // session.hello/session.ready negotiate the stable 6.0 Client protocol;
   // 5.x connect and event names remain compatibility aliases through one
   // normalization layer.

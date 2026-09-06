@@ -83,9 +83,25 @@
   gap: 8px;
 }
 
-.camera-observation-status {
+.camera-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   color: #b8b0ff;
   font-size: 12px;
+}
+
+.camera-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7f8798;
+  box-shadow: 0 0 0 3px rgba(127, 135, 152, 0.12);
+}
+
+.camera-status.active .camera-status-dot {
+  background: #7ee5c5;
+  box-shadow: 0 0 0 3px rgba(126, 229, 197, 0.14);
 }
 
 .camera-observation {
@@ -101,6 +117,15 @@
   border-color: rgba(126, 229, 197, 0.45);
   color: #bff6e3;
   background: rgba(48, 148, 117, 0.2);
+}
+
+.camera-ask {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid rgba(126, 229, 197, 0.45);
+  border-radius: 13px;
+  color: #c8f8e9;
+  background: rgba(48, 148, 117, 0.16);
 }
 
 .camera-actions .ghost {

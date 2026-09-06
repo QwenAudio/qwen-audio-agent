@@ -56,14 +56,17 @@ export default function MultimodalComposer({
   const [cameraOpen, setCameraOpen] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
   const [observationRequested, setObservationRequested] = useState(false)
+  const [observationMode, setObservationMode] = useState('')
   const [observationFrameCount, setObservationFrameCount] = useState(0)
   const picker = useRef(null)
   const cameraVideo = useRef(null)
   const cameraStream = useRef(null)
   const observationRequestedRef = useRef(false)
+  const oneShotQuestionRef = useRef('')
   const observationFramesRef = useRef([])
   const observationSequenceRef = useRef(0)
   const previousObservationStateRef = useRef(observationState)
+  const previousObservationAvailableRef = useRef(observationAvailable)
   const updateAttachments = useCallback(next => {
     setAttachments(next)
   }, [])
@@ -71,7 +74,9 @@ export default function MultimodalComposer({
   const stopObservation = useCallback((reason = 'user') => {
     if (observationRequestedRef.current) onObservationStop?.(reason)
     observationRequestedRef.current = false
+    oneShotQuestionRef.current = ''
     observationFramesRef.current = []
+    setObservationMode('')
     setObservationRequested(false)
     setObservationFrameCount(0)
   }, [onObservationStop])
@@ -102,7 +107,10 @@ export default function MultimodalComposer({
   useEffect(() => {
     if (!cameraOpen || !cameraStream.current) return undefined
     const stream = cameraStream.current
-    const onTrackEnded = () => closeCamera('camera_disconnected')
+    const onTrackEnded = () => {
+      setError(t('相机连接已断开'))
+      closeCamera('camera_disconnected')
+    }
     const tracks = stream.getTracks?.() || []
     tracks.forEach(track => track.addEventListener?.('ended', onTrackEnded))
     return () => tracks.forEach(track => (
@@ -112,7 +120,10 @@ export default function MultimodalComposer({
 
   useEffect(() => {
     const onVisibilityChange = () => {
-      if (document.hidden) closeCamera('page_hidden')
+      if (document.hidden) {
+        setError(t('页面已隐藏，相机已关闭'))
+        closeCamera('page_hidden')
+      }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => document.removeEventListener('visibilitychange', onVisibilityChange)
@@ -121,6 +132,7 @@ export default function MultimodalComposer({
   useEffect(() => () => {
     if (observationRequestedRef.current) onObservationStop?.('unmount')
     observationRequestedRef.current = false
+    oneShotQuestionRef.current = ''
     observationFramesRef.current = []
     stopCameraStream(cameraStream.current)
   }, [onObservationStop])
@@ -137,9 +149,50 @@ export default function MultimodalComposer({
       return
     }
     observationRequestedRef.current = true
+    setObservationMode('continuous')
     setObservationRequested(true)
     setError('')
   }, [cameraReady, observationAvailable, onObservationStart])
+
+  const startOneShotQuestion = useCallback(() => {
+    if (observationRequestedRef.current) return
+    const question = text.trim()
+    if (!question) {
+      setError(t('请先输入要回答的问题'))
+      return
+    }
+    if (!observationAvailable) {
+      setError(t('当前模型不支持相机提问'))
+      return
+    }
+    if (!cameraReady || !cameraVideo.current) return
+    if (onObservationStart && onObservationStart() === false) {
+      setError(t('画面观察连接不可用'))
+      return
+    }
+    oneShotQuestionRef.current = question
+    observationRequestedRef.current = true
+    setObservationMode('question')
+    setObservationRequested(true)
+    setError('')
+  }, [cameraReady, observationAvailable, onObservationStart, text])
+
+  useEffect(() => {
+    if (!cameraOpen) return undefined
+    if (['unavailable', 'hidden'].includes(connectionState)) {
+      setError(t('画面观察连接不可用'))
+      closeCamera('gateway_disconnected')
+    }
+    return undefined
+  }, [cameraOpen, closeCamera, connectionState])
+
+  useEffect(() => {
+    const previous = previousObservationAvailableRef.current
+    previousObservationAvailableRef.current = observationAvailable
+    if (!cameraOpen || !previous || observationAvailable) return
+    setError(t('切换后的模型不支持相机提问'))
+    closeCamera('model_changed')
+  }, [cameraOpen, closeCamera, observationAvailable])
 
   useEffect(() => {
     const previous = previousObservationStateRef.current
@@ -194,7 +247,27 @@ export default function MultimodalComposer({
         )
         observationFramesRef.current = recent
         setObservationFrameCount(recent.length)
-        onObservationFrame?.(image, sequence)
+        const sent = onObservationFrame?.(image, sequence) !== false
+        if (!sent) {
+          setError(t('画面观察连接不可用'))
+          closeCamera('gateway_disconnected')
+          return
+        }
+        if (observationMode === 'question') {
+          const question = oneShotQuestionRef.current
+          const parts = withAttachmentAnchors([
+            { type: 'text', text: question },
+            ...attachments.map(item => item.part),
+          ])
+          if (!onSend(parts)) {
+            setError(t('Gateway 尚未连接'))
+            closeCamera('gateway_disconnected')
+            return
+          }
+          setText('')
+          updateAttachments([])
+          closeCamera('photo_question_sent')
+        }
       } catch (reason) {
         if (disposed) return
         setError(reason?.message === CAMERA_IMAGE_TOO_LARGE
@@ -206,12 +279,27 @@ export default function MultimodalComposer({
       }
     }
     void captureAndSend()
+    if (observationMode !== 'continuous') {
+      return () => {
+        disposed = true
+      }
+    }
     const timer = setInterval(captureAndSend, OBSERVATION_INTERVAL_MS)
     return () => {
       disposed = true
       clearInterval(timer)
     }
-  }, [cameraReady, closeCamera, observationRequested, observationState, onObservationFrame])
+  }, [
+    attachments,
+    cameraReady,
+    closeCamera,
+    observationMode,
+    observationRequested,
+    observationState,
+    onObservationFrame,
+    onSend,
+    updateAttachments,
+  ])
 
   const openCamera = useCallback(async () => {
     if (cameraStream.current) return
@@ -362,11 +450,22 @@ export default function MultimodalComposer({
         onLoadedMetadata={() => setCameraReady(true)}
         aria-label={t('相机预览')}
       />
-      {observationRequested && <small className="camera-observation-status">
-        {observationState !== 'active'
-          ? t('正在启动画面观察')
-          : t('连续观察中：最近 {count}/8 帧', { count: observationFrameCount })}
-      </small>}
+      <small
+        className={`camera-status${observationRequested ? ' active' : ''}`}
+        role="status"
+        aria-live="polite"
+      >
+        <span className="camera-status-dot" aria-hidden="true" />
+        {observationMode === 'question'
+          ? observationState !== 'active'
+            ? t('正在准备拍照提问')
+            : t('正在拍照并回答问题')
+          : observationRequested
+            ? observationState !== 'active'
+              ? t('正在启动画面观察')
+              : t('连续观察中：最近 {count}/8 帧', { count: observationFrameCount })
+            : t('相机已启用：仅在你选择拍照或提问时发送画面')}
+      </small>
       <div className="camera-actions">
         <button
           type="button"
@@ -380,6 +479,13 @@ export default function MultimodalComposer({
           title={observationAvailable ? t('连续观察') : t('当前模型不支持画面观察')}
           onClick={startObservation}
         >{t('连续观察')}</button>}
+        {!observationRequested && <button
+          type="button"
+          className="camera-ask"
+          disabled={!cameraReady || !observationAvailable || !text.trim()}
+          title={observationAvailable ? t('拍一张并回答我的问题') : t('当前模型不支持相机提问')}
+          onClick={startOneShotQuestion}
+        >{t('拍一张并回答我的问题')}</button>}
         {observationRequested && <button
           type="button"
           className="camera-observation active"

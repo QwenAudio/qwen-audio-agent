@@ -52,7 +52,8 @@ The exact supported IDs are:
 
 All four profiles support Function Calling. The two Omni profiles support the WebUI's explicit
 JPEG observation transport; frames are sent at about 1 FPS, capped at eight recent in-memory
-frames, and do not create model responses by themselves. Native video and observation on the
+frames, and do not create model responses by themselves. The composer also offers a one-shot
+photo question that sends one frame and submits the question immediately. Native video and observation on the
 legacy Audio profiles remain unavailable. WebUI and TUI read the authoritative profile from
 Gateway health and use it to gate or display the available inputs. Separate
 clients cannot select conflicting models on one Gateway. A Desktop attached to a borrowed

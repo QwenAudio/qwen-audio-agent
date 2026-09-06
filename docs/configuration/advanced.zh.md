@@ -6,8 +6,9 @@ Gateway 默认只监听 loopback，并只信任字面量 loopback Host/Origin。
 通过 Gateway 访问认证，才能进入 HTTP 或 WebSocket 业务接口。不要把 Gateway 的
 loopback 端口直接暴露到公网。
 
-内置远程访问由 Gateway 自己管理一个可选的 tsnet 组件，不需要在电脑或远程设备上安装
-Tailscale 应用：
+内置远程访问由 Gateway 自己管理一个可选的 tsnet 组件。默认模式将 Gateway 加入私有
+Tailnet；电脑端不需要另外安装 Tailscale，但远程手机或电脑需要安装并登录官方
+Tailscale App，并加入同一 Tailnet：
 
 ```bash
 qwenaudio gateway remote enable
@@ -15,13 +16,22 @@ qwenaudio gateway remote invite
 ```
 
 第一次执行时会按需下载经过 SHA-256 校验的组件，并给出一次性网页授权入口。授权后，
-tsnet 使用 Tailscale Funnel 将 loopback Gateway 发布为 HTTPS/WSS 地址，第二条命令输出
-供远程 Client 使用的短时邀请。可通过 `gateway remote status`、`devices`、`revoke ID`
-与 `disable` 管理。远程设置和邀请签发统一归 Gateway CLI 所有；Desktop、Mobile 等
-客户端只负责导入接入链接。
+tsnet 通过 Tailnet 内的 HTTPS/WSS 地址代理 loopback Gateway，第二条命令输出供远程
+Client 使用的短时邀请。Tailscale 会优先建立点对点直连；受 NAT 或网络策略限制时可能
+自动回退到 DERP 中继。可通过 `gateway remote status`、`devices`、`revoke ID` 与
+`disable` 管理。远程设置和邀请签发统一归 Gateway CLI 所有；Desktop、Mobile 等客户端
+只负责导入接入链接。
 
-Funnel 需要 Tailnet 开启 MagicDNS、HTTPS 和 Funnel 权限，且存在官方带宽限制。开启公网
-入口不会绕过 Gateway 认证：除一次性配对页外，远程业务请求必须携带已配对设备凭据。
+需要不安装 Tailscale App 也能访问的临时公网入口时，显式使用：
+
+```bash
+qwenaudio gateway remote enable --mode funnel
+qwenaudio gateway remote invite --mode funnel
+```
+
+Funnel 需要 Tailnet 开启 MagicDNS、HTTPS 和 Funnel 权限，且存在官方带宽限制。无论私有
+通道还是 Funnel 都不会绕过 Gateway 认证：除一次性配对页外，远程业务请求必须携带已
+配对设备凭据。
 
 配置一个个人访问密钥：
 

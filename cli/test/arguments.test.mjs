@@ -318,9 +318,28 @@ test('documents the service and client commands', () => {
   assert.doesNotMatch(text, /--attach-openclaw/)
   assert.doesNotMatch(text, /--backend-mode/)
   assert.match(text, /--backend-permission-mode MODE/)
+  assert.match(text, /--mode private\|funnel/)
   assert.match(text, /--audio-mode MODE/)
   assert.match(text, /x\s+半双工模式下手动打断当前回复/)
-  assert.doesNotMatch(text, /--mode/)
+})
+
+test('uses private remote access by default and accepts explicit Funnel mode', () => {
+  assert.equal(
+    parseArguments(['gateway', 'remote', 'invite'], {}).remoteMode,
+    'private',
+  )
+  assert.equal(
+    parseArguments(['gateway', 'remote', 'invite', '--mode', 'funnel'], {}).remoteMode,
+    'funnel',
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'remote', 'status', '--mode', 'funnel'], {}),
+    /--mode 只适用于/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', '--mode', 'funnel'], {}),
+    /--mode 只适用于/,
+  )
 })
 
 test('parses config show and exact realtime model set commands', () => {

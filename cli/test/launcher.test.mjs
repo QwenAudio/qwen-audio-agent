@@ -81,6 +81,7 @@ function harness({ ownsProcesses = false } = {}) {
         connected: true,
         published: true,
         state: 'connected',
+        mode: 'private',
         endpoint: { url: 'https://voice.example.ts.net:8443' },
       }),
       enableRemoteAccess: async () => ({
@@ -89,6 +90,7 @@ function harness({ ownsProcesses = false } = {}) {
         connected: true,
         published: true,
         state: 'connected',
+        mode: 'private',
         endpoint: {
           url: 'https://voice.example.ts.net:8443',
           secure: true,
@@ -395,7 +397,8 @@ test('manages a Gateway remote endpoint and creates a portable invitation', asyn
   }
   assert.equal(await main(['gateway', 'remote', 'invite'], invited.dependencies), 0)
   const output = invited.calls.at(-1)[1]
-  assert.match(output, /^移动端扫码接入：/)
+  assert.match(output, /^请先在手机安装并连接官方 Tailscale App/)
+  assert.match(output, /移动端扫码接入：/)
   assert.match(invited.calls.find(call => call[0] === 'qr')[1], /^https:\/\//)
   assert.match(output, /\[compact QR\]/)
   assert.match(output, /接入链接（移动端 \/ 桌面端）：\nqwaudio:\/\/connect\?v=1&gateway=/)
@@ -410,6 +413,26 @@ test('manages a Gateway remote endpoint and creates a portable invitation', asyn
   const json = JSON.parse(machineReadable.calls.at(-1)[1])
   assert.match(json.app_url, /^qwaudio:\/\/connect\?v=1&gateway=/)
   assert.match(json.browser_url, /^https:\/\/voice\.example\.ts\.net:8443\/connect\?v=1&expires=\d+#/)
+
+  const funnel = harness()
+  funnel.dependencies.enableRemoteAccess = async (_url, mode) => {
+    assert.equal(mode, 'funnel')
+    return {
+      available: true,
+      enabled: true,
+      connected: true,
+      published: true,
+      state: 'connected',
+      mode: 'funnel',
+      endpoint: { url: 'https://voice.example.ts.net:8443', secure: true },
+    }
+  }
+  funnel.dependencies.renderInvitationQr = async () => '[compact QR]'
+  assert.equal(
+    await main(['gateway', 'remote', 'invite', '--mode', 'funnel'], funnel.dependencies),
+    0,
+  )
+  assert.match(funnel.calls.at(-1)[1], /^当前使用 Funnel 公网入口。/)
 
   const devices = harness()
   assert.equal(await main(['gateway', 'remote', 'devices'], devices.dependencies), 0)

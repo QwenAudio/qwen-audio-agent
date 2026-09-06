@@ -19,7 +19,7 @@ Desktop ─┐
 WebUI ───┤
 TUI ─────┼── GCP over WebSocket ── Gateway ── BackendPort
 Mobile ──┘               ▲
-                         └── 本机 Endpoint 或 Gateway 托管的 tsnet Funnel
+                         └── 本机 Endpoint 或 Gateway 托管的私有 Tailnet / Funnel
 ```
 
 ## 架构边界
@@ -40,8 +40,9 @@ Task 状态或 BackendPort。Client 最终只看到普通 Gateway Endpoint。
 
 - 本机 Client 继续零配置连接 `http://127.0.0.1:3101`。
 - Gateway CLI 开启和管理远程访问；首次打开网页完成授权，并统一输出二维码、客户端
-  接入链接和浏览器访问链接。Desktop、Mobile 等 Client 只消费邀请，不安装、也不集成
-  底层远程访问实现。
+  接入链接和浏览器访问链接。默认通过私有 Tailnet 连接，远程设备使用官方 Tailscale
+  App；Funnel 作为显式可选的公网入口保留。Desktop、Mobile 等 Client 只消费邀请，
+  不集成底层远程访问实现。
 - 远程 Desktop、TUI、WebUI 或 Mobile 消费同一种邀请，换取可撤销设备凭据，并保存到
   平台安全存储。
 - 可以配对多台设备，但每个用户只有一个活动交互 Client。第二个 Client 必须询问用户，
@@ -57,6 +58,7 @@ Endpoint 描述只表达可达地址，不进入 GCP：
 
 ```json
 {
+  "version": 1,
   "url": "https://gateway.example.ts.net",
   "transport": "websocket",
   "secure": true
@@ -67,6 +69,7 @@ Connection Profile 只保存安全存储引用，不保存凭据正文：
 
 ```json
 {
+  "version": 1,
   "id": "phone",
   "gateway_url": "https://gateway.example.ts.net",
   "device_id": "device_example",
@@ -112,12 +115,14 @@ WebSocket subprotocol 值承载可撤销设备凭据，服务端只选择并回�
 
 - [x] 将 tsnet 作为 Gateway 远程访问模块的可选进程，独立于 Desktop 与 CLI 生命周期。
 - [x] 首次开启时按平台下载并校验组件，通过网页完成一次授权，状态持久化后自动恢复。
-- [x] 使用 Funnel 发布 HTTPS/WSS Endpoint，同时保持 Gateway Listener 只监听 loopback。
+- [x] 默认发布 Tailnet 私有 HTTPS/WSS Endpoint，同时保留显式 Funnel 模式，并保持
+  Gateway Listener 只监听 loopback。
 - [x] 增加 CLI status、enable、disable、invite、设备列表与撤销命令。
 - [ ] 在真实手机上验证 GCP WebSocket 与长时间音频连接。
 
 完成条件：用户无需编辑 Gateway 配置、复制 Token 或暴露 LAN/公网 Listener，即可开启
-远程访问，电脑和手机都无需安装额外网络客户端。
+远程访问；Gateway 主机无需另装网络客户端，远程设备通过官方 Tailscale App 加入同一
+Tailnet。
 
 ## RA3 — 第一方远程 Client 对齐
 
@@ -140,14 +145,14 @@ WebSocket subprotocol 值承载可撤销设备凭据，服务端只选择并回�
 - [x] 语音与文字输入共用同一个对话模型。
 - [x] 产出可复现的 iOS、Android 开发构建。
 
-完成条件：手机通过公网 HTTPS Endpoint 完成一次配对后，后续可自动重连，并完成与 WebUI 相同的
-核心对话和 Task 流程。
+完成条件：手机通过私有 Tailnet HTTPS Endpoint 完成一次配对后，后续可自动重连，并
+完成与 WebUI 相同的核心对话和 Task 流程；显式 Funnel 模式保持可用。
 
 ## RA5 — 加固与发版准备
 
 - [x] 增加远程未认证、Origin 绕过、邀请过期/重放、设备撤销和旧租约的反例测试。
 - [x] 移动端在 App 重启后复用配对时持久化的 Client 实例身份，避免被误判为新客户端。
-- [ ] 测试 Funnel、Wi-Fi/蜂窝切换、电脑休眠/唤醒、Gateway 重启，以及
+- [ ] 测试 Tailnet 直连/DERP 回退、Funnel、Wi-Fi/蜂窝切换、电脑休眠/唤醒、Gateway 重启，以及
   一小时 WebSocket/音频会话。
 - [x] 对 Desktop、WebUI、TUI 与 Mobile 执行统一协议 Conformance。
 - [x] 增加 macOS、Windows、Linux、iOS 与 Android 构建检查；真实设备场景仍按上一项

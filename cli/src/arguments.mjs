@@ -29,6 +29,7 @@ const GATEWAY_ACTIONS = new Set([
   'uninstall',
 ])
 const REMOTE_ACTIONS = new Set(['status', 'enable', 'disable', 'invite', 'devices', 'revoke'])
+const REMOTE_ACCESS_MODES = new Set(['private', 'funnel'])
 const BACKEND_PERMISSION_MODES = new Set(['native', 'full'])
 const TUI_AUDIO_MODES = new Set(['half', 'full'])
 const SKILL_ACTIONS = new Set(['install', 'list', 'remove', 'update'])
@@ -123,6 +124,8 @@ export function parseArguments(argv, env = process.env) {
     realtimeModel: '',
     gatewayAction,
     remoteAction,
+    remoteMode: 'private',
+    remoteModeSpecified: false,
     remoteDeviceId,
     url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
     accessToken: String(
@@ -189,6 +192,9 @@ export function parseArguments(argv, env = process.env) {
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--realtime-model') {
       options.realtimeModel = nextValue(args, index++, '--realtime-model')
+    } else if (argument === '--mode') {
+      options.remoteMode = nextValue(args, index++, '--mode').toLowerCase()
+      options.remoteModeSpecified = true
     } else if (argument === '--session') {
       options.sessionId = nextValue(args, index++, '--session')
     } else if (argument === '--audio-mode') {
@@ -269,6 +275,18 @@ export function parseArguments(argv, env = process.env) {
   if (command !== 'setup' && gatewayAction !== 'remote' && options.json) {
     throw new Error('--json 只适用于 setup 或 gateway remote')
   }
+  if (
+    options.remoteModeSpecified
+    && (
+      gatewayAction !== 'remote'
+      || !['enable', 'invite'].includes(remoteAction)
+    )
+  ) {
+    throw new Error('--mode 只适用于 gateway remote enable 或 invite')
+  }
+  if (!REMOTE_ACCESS_MODES.has(options.remoteMode)) {
+    throw new Error(`不支持的远程访问模式：${options.remoteMode}（可选 private、funnel）`)
+  }
   if (command !== 'tui' && audioModeSpecified) {
     throw new Error('--audio-mode 只适用于 tui')
   }
@@ -321,7 +339,7 @@ export function helpText() {
     '  qwenaudio gateway start           启动后台服务',
     '  qwenaudio gateway status          查看 Gateway 状态',
     '  qwenaudio gateway pair            创建远程客户端一次性配对码',
-    '  qwenaudio gateway remote enable   开启远程访问（首次需网页授权）',
+    '  qwenaudio gateway remote enable   开启 Tailnet 私有远程访问（默认）',
     '  qwenaudio gateway remote status   查看远程访问状态',
     '  qwenaudio gateway remote invite   创建可导入的远程客户端邀请',
     '  qwenaudio gateway remote disable  关闭远程访问',
@@ -352,6 +370,7 @@ export function helpText() {
     '  --backend-permission-mode MODE  native（默认）或 full（最高权限）',
     '  --backend-url URL      后台 Server 地址',
     '  --backend-agent ID     指定协调 Agent',
+    '  --mode private|funnel  远程访问模式；默认 private，funnel 为显式公网入口',
     '',
     'Setup 选项：',
     '  --backend NAME         只检查指定后台；默认检查全部后台',

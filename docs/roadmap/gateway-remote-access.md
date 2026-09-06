@@ -21,7 +21,7 @@ Desktop ─┐
 WebUI ───┤
 TUI ─────┼── GCP over WebSocket ── Gateway ── BackendPort
 Mobile ──┘               ▲
-                         └── local endpoint or Gateway-owned tsnet Funnel
+                         └── local endpoint or Gateway-owned private tailnet / Funnel
 ```
 
 ## Architectural boundaries
@@ -47,8 +47,10 @@ Clients see only an ordinary Gateway endpoint.
 - Local Clients continue to connect to `http://127.0.0.1:3101` without setup.
 - The Gateway CLI enables and manages remote access, opens the one-time browser
   authorization flow, and emits a QR code, native-client connection link, and
-  browser access link. Desktop, Mobile, and other Clients only consume
-  invitations; they do not install or integrate the underlying implementation.
+  browser access link. Private-tailnet access is the default and remote devices
+  use the official Tailscale app; Funnel remains an explicit public option.
+  Desktop, Mobile, and other Clients only consume invitations and do not
+  integrate the underlying implementation.
 - A remote Desktop, TUI, WebUI, or Mobile Client consumes the same invitation,
   exchanges it for a revocable device credential, and stores that credential in
   platform-secure storage.
@@ -66,6 +68,7 @@ An endpoint descriptor identifies a reachable Gateway without entering GCP:
 
 ```json
 {
+  "version": 1,
   "url": "https://gateway.example.ts.net",
   "transport": "websocket",
   "secure": true
@@ -77,6 +80,7 @@ credential:
 
 ```json
 {
+  "version": 1,
   "id": "phone",
   "gateway_url": "https://gateway.example.ts.net",
   "device_id": "device_example",
@@ -128,13 +132,15 @@ profile contract.
   Desktop and CLI lifecycles.
 - [x] Download and verify the platform component on first use, provide browser
   authorization, and restore persisted state on later Gateway starts.
-- [x] Publish an HTTPS/WSS Funnel endpoint while keeping Gateway on loopback.
+- [x] Publish a private-tailnet HTTPS/WSS endpoint by default, retain an explicit
+  Funnel mode, and keep Gateway on loopback.
 - [x] Add CLI status, enable, disable, invite, device-list, and revoke commands.
 - [ ] Validate persistent GCP WebSocket and long-running audio on a physical phone.
 
-Exit criteria: a user enables Tailscale remote access without editing Gateway
-configuration, copying a token, installing a separate network client, or exposing
-the Gateway listener.
+Exit criteria: a user enables remote access without editing Gateway configuration,
+copying a token, or exposing the Gateway listener. The Gateway host needs no
+separate network client; remote devices join the same tailnet through the official
+Tailscale app.
 
 ## RA3 — First-party remote Client parity
 
@@ -163,8 +169,9 @@ and remotely.
 - [x] Keep one conversation model across voice and typed input.
 - [x] Produce reproducible iOS and Android development builds.
 
-Exit criteria: a phone pairs through the public HTTPS endpoint, reconnects later, and
-completes the same core conversation and Task flows as WebUI.
+Exit criteria: a phone pairs through the private-tailnet HTTPS endpoint, reconnects
+later, and completes the same core conversation and Task flows as WebUI; explicit
+Funnel mode remains available.
 
 ## RA5 — Hardening and release readiness
 
@@ -172,7 +179,7 @@ completes the same core conversation and Task flows as WebUI.
   expired/replayed invitations, revoked devices, and stale leases.
 - [x] Reuse the paired, persisted Client instance identity after a Mobile app
   restart so it is not mistaken for a different client.
-- [ ] Test Funnel, Wi-Fi/cellular transitions,
+- [ ] Test direct-tailnet/DERP fallback, Funnel, Wi-Fi/cellular transitions,
   computer sleep/wake, Gateway restart, and one-hour WebSocket/audio sessions.
 - [x] Run protocol conformance against Desktop, WebUI, TUI, and Mobile.
 - [x] Add macOS, Windows, Linux, iOS, and Android build checks; real-device

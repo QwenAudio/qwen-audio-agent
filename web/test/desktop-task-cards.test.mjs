@@ -6,21 +6,36 @@ import {
   desktopTaskElapsedSeconds,
 } from '../src/desktop-task-cards.js'
 
-test('shows ordinary work but excludes reminders, scheduled work and controls', () => {
+test('shows ordinary work and scheduled reminders but excludes controls', () => {
   const cards = desktopTaskCards([
-    { id: 'scheduled', kind: 'scheduled_task', phase: 'running' },
-    { id: 'reminder', kind: 'reminder', phase: 'running' },
+    {
+      id: 'scheduled',
+      kind: 'scheduled_task',
+      phase: 'scheduled',
+      schedule: { at: 3 },
+    },
+    {
+      id: 'reminder',
+      kind: 'reminder',
+      phase: 'scheduled',
+      schedule: { at: 2 },
+    },
     { id: 'control', kind: 'control', phase: 'running' },
-    { id: 'work-2', kind: 'work', phase: 'delegated', createdAt: 2 },
+    { id: 'work-2', kind: 'work', phase: 'delegated', createdAt: 4 },
     { id: 'work-1', kind: 'work', phase: 'running', createdAt: 1 },
   ])
-  assert.deepEqual(cards.map(task => task.id), ['work-1', 'work-2'])
+  assert.deepEqual(cards.map(task => task.id), [
+    'work-1',
+    'reminder',
+    'scheduled',
+    'work-2',
+  ])
 })
 
-test('supports legacy work events and ignores scheduled placeholders', () => {
+test('supports legacy work events and ignores scheduled placeholders without a card phase', () => {
   assert.deepEqual(desktopTaskCards([
     { id: 'legacy', phase: 'queued' },
-    { id: 'future', kind: 'work', phase: 'scheduled' },
+    { id: 'future', kind: 'control', phase: 'scheduled' },
   ]).map(task => task.id), ['legacy'])
 })
 

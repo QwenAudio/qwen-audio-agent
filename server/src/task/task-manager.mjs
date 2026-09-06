@@ -43,6 +43,7 @@ import {
 import { logger } from '../core/logger.mjs'
 import { BackendEventType } from '../core/backend-events.mjs'
 import { SessionJournalRegistry } from '../session/session-journal-registry.mjs'
+import { normalizeRecurrence, normalizeTimeZone } from './recurrence.mjs'
 
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
@@ -166,6 +167,13 @@ export class TaskManager {
         saved.parentTaskId = saved.parentWorkId
       }
       delete saved.parentWorkId
+      if (
+        normalizeRecurrence(saved.schedule?.recurrence) !== 'once'
+        && !String(saved.seriesId || '').trim()
+      ) {
+        saved.seriesId = String(saved.id)
+        recoveryChanged = true
+      }
       delete saved.presentation
       delete saved.resultMetadata
       saved.artifacts = normalizeArtifacts(saved.artifacts)
@@ -273,7 +281,24 @@ export class TaskManager {
         )
         this.tasks.delete(id)
       }
-      this.restore([{ ...snapshot }])
+      const journalAnchor = snapshot.recurrenceStartAt
+      const existingAnchor = existing?.recurrenceStartAt
+      const hasAnchor = value => (
+        value !== null
+        && value !== undefined
+        && value !== ''
+        && Number.isFinite(Number(value))
+      )
+      this.restore([{
+        ...snapshot,
+        ...(
+          hasAnchor(journalAnchor)
+            ? { recurrenceStartAt: Number(journalAnchor) }
+            : hasAnchor(existingAnchor)
+              ? { recurrenceStartAt: Number(existingAnchor) }
+              : {}
+        ),
+      }])
       restored += 1
     }
     return restored
@@ -497,24 +522,52 @@ export class TaskManager {
     ownerId,
     sessionId,
     turnId,
-    schedule: { at, recurrence = 'once' } = {},
+    schedule: { at, recurrence = 'once', timeZone = null } = {},
     type = 'reminder',
     timeoutMs = null,
     runner = null,
+    recurrenceStartAt = null,
+    seriesId = null,
   }) {
     const kind = type === 'task' ? 'scheduled_task' : 'reminder'
+    const normalizedRecurrence = normalizeRecurrence(recurrence)
+    const scheduledAt = Number(at)
+    const recurrenceAnchor = recurrenceStartAt == null
+      || recurrenceStartAt === ''
+      ? NaN
+      : Number(recurrenceStartAt)
+    const taskId = this.allocateTaskId()
+    const normalizedSeriesId = normalizedRecurrence === 'once'
+      ? null
+      : String(seriesId || taskId).trim().slice(0, 128) || taskId
     const task = {
-      id: this.allocateTaskId(),
+      id: taskId,
       status: 'scheduled',
       scope: TaskScope.USER,
       kind,
+      seriesId: normalizedSeriesId,
       objective: String(objective || '').trim(),
       ownerId: String(ownerId || ''),
       sessionId: String(sessionId || 'main'),
       turnId: turnId || null,
+      // Keep the original instant outside the public task projection. A
+      // DST gap may move one occurrence forward; using that adjusted instant
+      // as the next series anchor would permanently shift later occurrences.
+      recurrenceStartAt: normalizedRecurrence === 'once'
+        ? null
+        : Number.isFinite(recurrenceAnchor)
+          ? recurrenceAnchor
+          : scheduledAt,
       priority: 0,
       parentTaskId: null,
-      schedule: { type: 'at', at: Number(at), recurrence },
+      schedule: {
+        type: 'at',
+        at: scheduledAt,
+        recurrence: normalizedRecurrence,
+        ...(normalizedRecurrence === 'once'
+          ? {}
+          : { timeZone: normalizeTimeZone(timeZone) }),
+      },
       timeoutMs: type === 'task'
         ? Number(timeoutMs) || config.scheduledTaskTimeoutMs
         : null,
@@ -863,6 +916,24 @@ export class TaskManager {
         return publicTask(task)
       })
     return task.cancelPromise
+  }
+
+  async cancelSeries(seriesId, { ownerId } = {}) {
+    const normalizedSeriesId = String(seriesId || '').trim()
+    if (!normalizedSeriesId) return []
+    const targets = [...this.tasks.values()]
+      .filter(task => (
+        task.seriesId === normalizedSeriesId
+        && (ownerId === undefined || task.ownerId === String(ownerId))
+        && isTaskCancellable(task.status)
+      ))
+      .sort((left, right) => left.createdAt - right.createdAt)
+    const cancelled = []
+    for (const task of targets) {
+      const result = await this.cancel(task.id, { ownerId })
+      if (result) cancelled.push(result)
+    }
+    return cancelled
   }
 
   finishCancellation(task) {

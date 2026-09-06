@@ -1,6 +1,7 @@
 import { t } from './i18n.js'
 
 export function phaseForTask(task) {
+  if (task.status === 'scheduled') return 'scheduled'
   if (task.status === 'completed') {
     return ['pending', 'delivering'].includes(task.notificationStatus)
       ? 'responding'
@@ -50,6 +51,7 @@ export function removeTaskInPhase(tasks, taskId, phase) {
 
 export function taskLabel(task) {
   if (task.authorization?.status === 'pending') return t('等待你的确认')
+  if (task.phase === 'scheduled') return t('已安排')
   if (task.phase === 'failed') return t('处理失败')
   if (task.phase === 'cancelled') return t('已取消')
   if (task.phase === 'disconnected') return t('连接已中断')
@@ -85,6 +87,7 @@ export function taskDetail(task) {
   if (task.authorization?.status === 'pending') {
     return task.authorization.summary || t('后台正在请求执行权限')
   }
+  if (task.phase === 'scheduled') return taskScheduleDetail(task)
   if (task.error) return task.error
   if (task.phase === 'cancelled') return t('这项工作已停止')
   if (task.phase === 'queued') return task.objective
@@ -124,6 +127,44 @@ export function taskDetail(task) {
   return task.objective
 }
 
+const RECURRENCE_LABELS = Object.freeze({
+  once: '一次',
+  daily: '每天',
+  weekly: '每周',
+  weekdays: '工作日',
+})
+
+function scheduledTime(task) {
+  const at = Number(task.schedule?.at)
+  if (!Number.isFinite(at)) return t('时间待定')
+  const options = {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }
+  const timeZone = String(task.schedule?.timeZone || '').trim()
+  if (timeZone) options.timeZone = timeZone
+  try {
+    return new Intl.DateTimeFormat(undefined, options).format(new Date(at))
+  } catch {
+    delete options.timeZone
+    return new Intl.DateTimeFormat(undefined, options).format(new Date(at))
+  }
+}
+
+export function taskScheduleDetail(task) {
+  const recurrence = String(task.schedule?.recurrence || 'once')
+  const recurrenceLabel = RECURRENCE_LABELS[recurrence]
+    ? t(RECURRENCE_LABELS[recurrence])
+    : recurrence
+  return [
+    t('下次触发：{time}', { time: scheduledTime(task) }),
+    recurrenceLabel,
+  ].filter(Boolean).join(' · ')
+}
+
 export function taskView(task, previous = {}) {
   return {
     ...previous,
@@ -131,6 +172,15 @@ export function taskView(task, previous = {}) {
     ...(
       task.kind !== undefined || previous.kind !== undefined
         ? { kind: task.kind !== undefined ? task.kind : previous.kind }
+        : {}
+    ),
+    ...(
+      Object.hasOwn(task, 'seriesId') || Object.hasOwn(previous, 'seriesId')
+        ? {
+            seriesId: Object.hasOwn(task, 'seriesId')
+              ? task.seriesId
+              : previous.seriesId,
+          }
         : {}
     ),
     objective: task.objective,
@@ -155,6 +205,15 @@ export function taskView(task, previous = {}) {
     elapsedMs: task.elapsedMs || 0,
     phase: phaseForTask(task),
     turnId: task.turnId,
+    ...(
+      Object.hasOwn(task, 'schedule') || Object.hasOwn(previous, 'schedule')
+        ? {
+            schedule: Object.hasOwn(task, 'schedule')
+              ? task.schedule
+              : previous.schedule,
+          }
+        : {}
+    ),
     result: Object.hasOwn(task, 'result')
       ? task.result
       : previous.result,

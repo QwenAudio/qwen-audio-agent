@@ -8,6 +8,8 @@ let runtime = Object.freeze({
   clientInstanceId: '',
 })
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
+
 function cleanGatewayUrl(value = '') {
   if (!String(value).trim()) return ''
   const url = new URL(String(value))
@@ -45,6 +47,16 @@ export function gatewayClientLabel(fallback = 'WebUI') {
 
 export function gatewayClientInstanceId(fallback = '') {
   return runtime.clientInstanceId || fallback
+}
+
+export function gatewayTransportIsRemote(locationValue = globalThis.location) {
+  const value = runtime.gatewayUrl || locationValue?.href || ''
+  if (!value) return false
+  try {
+    return !LOOPBACK_HOSTS.has(new URL(value).hostname.toLowerCase())
+  } catch {
+    return false
+  }
 }
 
 export function gatewayHttpUrl(path) {

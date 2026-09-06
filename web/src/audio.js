@@ -35,3 +35,10 @@ export function decodePcm(base64) {
   }
   return output
 }
+
+// Local audio can start almost immediately. Remote Gateway transports need a
+// small jitter reserve so network variance does not leave gaps between PCM
+// chunks already scheduled on the Web Audio timeline.
+export function audioPlaybackLeadSeconds({ remote = false } = {}) {
+  return remote ? 0.16 : 0.02
+}

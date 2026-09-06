@@ -15,13 +15,19 @@ import {
 } from '../../shared/gateway-client-protocol.mjs'
 import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
 import { gatewayReferenceClientCapabilities } from '../../shared/gateway-client-profiles.mjs'
-import { decodePcm, pcmBase64, resample } from './audio.js'
+import {
+  audioPlaybackLeadSeconds,
+  decodePcm,
+  pcmBase64,
+  resample,
+} from './audio.js'
 import { createMicrophoneCaptureLifecycle } from './microphone-capture.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
 import { t } from './i18n.js'
 import {
   createGatewayWebSocket,
   gatewayRealtimeUrl,
+  gatewayTransportIsRemote,
 } from './gateway-transport.js'
 
 const DEFAULT_INPUT_RATE = 16000
@@ -497,7 +503,10 @@ export default function useRealtimeVoice({
       source = context.createBufferSource()
       source.buffer = buffer
       source.connect(context.destination)
-      start = Math.max(context.currentTime + 0.02, playback.cursor)
+      const leadSeconds = audioPlaybackLeadSeconds({
+        remote: gatewayTransportIsRemote(),
+      })
+      start = Math.max(context.currentTime + leadSeconds, playback.cursor)
       playback.cursor = start + buffer.duration
       playback.sources.push(source)
       if (responseId) {

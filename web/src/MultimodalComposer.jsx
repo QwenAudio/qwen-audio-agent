@@ -42,6 +42,7 @@ export default function MultimodalComposer({
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
+  const [visualPanelHost, setVisualPanelHost] = useState(null)
   const picker = useRef(null)
   const updateAttachments = useCallback(next => {
     setAttachments(next)
@@ -87,6 +88,10 @@ export default function MultimodalComposer({
       addFiles(event.dataTransfer.files)
     }}
   >
+    {visualStreamAvailable && <div
+      className="visual-stream-dock"
+      ref={setVisualPanelHost}
+    />}
     {attachments.length > 0 && <div className="composer-attachments">
       {attachments.map((item, index) => <span className="composer-attachment" key={item.id}>
         <span>{inputPartLabel(item.part, index)}</span>
@@ -110,6 +115,7 @@ export default function MultimodalComposer({
         inputEnabled={voiceInputEnabled}
         connectionState={connectionState}
         onFrame={onVisualFrame}
+        panelHost={visualPanelHost}
       />}
       <input
         ref={picker}

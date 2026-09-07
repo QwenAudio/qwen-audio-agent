@@ -72,12 +72,16 @@
   stroke-width: 1.7;
 }
 
+.visual-stream-dock:empty {
+  display: none;
+}
+
+.visual-stream-dock:not(:empty) {
+  margin-bottom: 10px;
+}
+
 .camera-stream {
-  position: absolute;
-  right: 0;
-  bottom: calc(100% + 12px);
-  z-index: 20;
-  width: min(520px, calc(100vw - 32px));
+  width: 100%;
   padding: 12px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 18px;
@@ -88,10 +92,28 @@
 .camera-stream video {
   display: block;
   width: 100%;
-  max-height: 52vh;
+  max-height: min(32vh, 280px);
   object-fit: contain;
   border-radius: 12px;
   background: #030405;
+}
+
+@media (min-width: 1400px) {
+  .visual-stream-dock:not(:empty) {
+    position: fixed;
+    top: 92px;
+    right: 24px;
+    left: calc(50% + 404px);
+    z-index: 20;
+    width: auto;
+    max-width: 360px;
+    margin: 0;
+  }
+
+  .camera-stream video {
+    max-height: 280px;
+    aspect-ratio: 16 / 9;
+  }
 }
 
 .camera-status {

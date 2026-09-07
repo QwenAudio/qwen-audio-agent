@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   CAMERA_FRAME_INTERVAL_MS,
   CAMERA_IMAGE_TOO_LARGE,
@@ -13,6 +14,7 @@ export default function VisualStreamControl({
   inputEnabled = false,
   connectionState = 'connected',
   onFrame,
+  panelHost = null,
 }) {
   const [cameraOpen, setCameraOpen] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
@@ -152,6 +154,46 @@ export default function VisualStreamControl({
     setError('')
   }, [available, cameraReady, inputEnabled])
 
+  const panel = cameraOpen && <div
+    className="camera-stream"
+    role="region"
+    aria-label={t('实时视觉')}
+  >
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      onLoadedMetadata={() => setCameraReady(true)}
+      aria-label={t('相机预览')}
+    />
+    <small className={`camera-status${streaming ? ' active' : ''}`} role="status">
+      <span className="camera-status-dot" aria-hidden="true" />
+      {streaming
+        ? t('实时视觉已开启 · 已发送 {count} 帧', { count: frameCount })
+        : inputEnabled
+          ? t('画面仅在开启实时视觉后发送')
+          : t('请先开启麦克风，再开始实时视觉')}
+    </small>
+    <div className="camera-actions">
+      <button type="button" className="ghost" onClick={closeCamera}>
+        {t('关闭相机')}
+      </button>
+      {streaming
+        ? <button type="button" className="camera-live active" onClick={stopStreaming}>
+            {t('停止实时视觉')}
+          </button>
+        : <button
+            type="button"
+            className="composer-send"
+            disabled={!cameraReady || !inputEnabled}
+            onClick={startStreaming}
+          >
+            {t('开始实时视觉')}
+          </button>}
+    </div>
+  </div>
+
   return <>
     <button
       className="composer-camera"
@@ -166,46 +208,7 @@ export default function VisualStreamControl({
         <circle cx="12" cy="13.5" r="3.2" />
       </svg>
     </button>
-    {cameraOpen && <div
-      className="camera-stream"
-      role="dialog"
-      aria-modal="true"
-      aria-label={t('实时视觉')}
-    >
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        onLoadedMetadata={() => setCameraReady(true)}
-        aria-label={t('相机预览')}
-      />
-      <small className={`camera-status${streaming ? ' active' : ''}`} role="status">
-        <span className="camera-status-dot" aria-hidden="true" />
-        {streaming
-          ? t('实时视觉已开启 · 已发送 {count} 帧', { count: frameCount })
-          : inputEnabled
-            ? t('画面仅在开启实时视觉后发送')
-            : t('请先开启麦克风，再开始实时视觉')}
-      </small>
-      <div className="camera-actions">
-        <button type="button" className="ghost" onClick={closeCamera}>
-          {t('关闭相机')}
-        </button>
-        {streaming
-          ? <button type="button" className="camera-live active" onClick={stopStreaming}>
-              {t('停止实时视觉')}
-            </button>
-          : <button
-              type="button"
-              className="composer-send"
-              disabled={!cameraReady}
-              onClick={startStreaming}
-            >
-              {t('开始实时视觉')}
-            </button>}
-      </div>
-    </div>}
+    {panel && (panelHost ? createPortal(panel, panelHost) : panel)}
     {error && <small className="composer-error" role="alert">{error}</small>}
   </>
 }

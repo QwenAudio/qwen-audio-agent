@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   A2ABackendAdapter,
-} from '../../../../server/src/backend/a2a-backend-adapter.mjs'
+} from '../../../../server/src/agent/a2a/backend-adapter.mjs'
 import {
   CockpitServiceServer,
 } from '../../service/server.mjs'

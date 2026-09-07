@@ -1,4 +1,4 @@
-import { AgentError } from '../backend-adapter.mjs'
+import { AgentError } from '../agent-error.mjs'
 import {
   COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
   COORDINATOR_STABLE_INSTRUCTIONS,

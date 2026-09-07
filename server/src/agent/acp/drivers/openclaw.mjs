@@ -1,5 +1,5 @@
 import { dirname, resolve } from 'node:path'
-import { OpenClawAcpDelegationAdapter } from '../openclaw-adapter.mjs'
+import { OpenClawAcpDelegationAdapter } from './openclaw-delegation.mjs'
 import { writePrivateFile } from './private-file.mjs'
 import {
   baseEnvironment,

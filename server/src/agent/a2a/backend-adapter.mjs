@@ -9,15 +9,15 @@ import {
   JsonRpcTransportFactory,
   RestTransportFactory,
 } from '@a2a-js/sdk/client'
-import { parseDataUrl } from '../../../shared/input-parts.mjs'
-import { defineBackendAdapter } from './backend-adapter-sdk.mjs'
-import { backendInstructionFromWork } from './backend-work-input.mjs'
-import { BackendEventType, backendEvent } from '../core/backend-events.mjs'
+import { parseDataUrl } from '../../../../shared/input-parts.mjs'
+import { defineBackendAdapter } from '../../backend/backend-adapter-sdk.mjs'
+import { backendInstructionFromWork } from '../../backend/backend-work-input.mjs'
+import { BackendEventType, backendEvent } from '../../core/backend-events.mjs'
 import {
   InputRequestStatus,
   normalizeInputRequest,
   resolveInputRequest,
-} from '../core/work-input-request.mjs'
+} from '../../core/work-input-request.mjs'
 
 const DEFAULT_POLL_INTERVAL_MS = 1_000
 const DEFAULT_TIMEOUT_MS = 0

@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto'
-import { AgentError } from './backend-adapter.mjs'
-import { BackendEventType, backendEvent } from '../core/backend-events.mjs'
+import { AgentError } from '../agent-error.mjs'
+import { BackendEventType, backendEvent } from '../../core/backend-events.mjs'
 import {
   InputRequestStatus,
   normalizeInputRequest,
   resolveInputRequest,
-} from '../core/work-input-request.mjs'
+} from '../../core/work-input-request.mjs'
 
 function clean(value) {
   return String(value || '').trim()

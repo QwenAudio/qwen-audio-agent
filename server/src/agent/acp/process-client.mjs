@@ -4,7 +4,8 @@ import { Readable, Writable } from 'node:stream'
 import { stripVTControlCharacters } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk'
 import { PACKAGE_VERSION } from '../../core/package-version.mjs'
-import { AgentError, requestSignal } from '../backend-adapter.mjs'
+import { AgentError } from '../agent-error.mjs'
+import { requestSignal } from './request-signal.mjs'
 import { logger } from '../../core/logger.mjs'
 import {
   assertPromptCapabilities,

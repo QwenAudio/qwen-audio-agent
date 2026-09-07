@@ -35,7 +35,7 @@ ACP 进程客户端（acp/process-client）
 
 ### 第二层：Backend Driver——一个 Agent 一个"驱动"
 
-接入一个新 Agent，只需要写一个 driver 对象（`server/src/agent/backends/`），
+接入一个新 Agent，只需要写一个 driver 对象（`server/src/agent/acp/drivers/`），
 描述它的"身份信息"：
 
 ```js

@@ -4,7 +4,7 @@ import test from 'node:test'
 import { PACKAGE_VERSION } from '../src/core/package-version.mjs'
 import {
   OpenClawAcpDelegationAdapter,
-} from '../src/agent/openclaw-adapter.mjs'
+} from '../src/agent/acp/drivers/openclaw-delegation.mjs'
 
 class FakeWebSocket extends EventEmitter {
   static CONNECTING = 0

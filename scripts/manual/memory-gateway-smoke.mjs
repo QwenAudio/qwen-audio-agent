@@ -4,7 +4,7 @@
 // WebSocket session, disconnects, and verifies that the session-end extractor
 // wrote inferred facts and audit records through the production code path.
 //
-//   node scripts/test/memory-gateway-smoke.mjs
+//   node scripts/manual/memory-gateway-smoke.mjs
 //
 // Requires a DASHSCOPE_API_KEY (environment or ~/.config/qwaudio/config.env,
 // never printed). All state lives in a temporary QWAUDIO_CONFIG_DIR; the real

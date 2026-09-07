@@ -188,7 +188,7 @@ if (isMain) {
     file.includes('/__pycache__/')
     || file.endsWith('.pyc')
     || file.includes('/node_modules/')
-    || file.startsWith('scripts/test/')
+    || file.startsWith('scripts/manual/')
     || (file.startsWith('desktop/src/') && !publishedDesktopModules.has(file))
   ))
   if (forbidden.length) {

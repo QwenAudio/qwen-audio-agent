@@ -302,6 +302,48 @@
         "business": 2500
       },
       "status": "on_time"
+    },
+    {
+      "flightNo": "CY2314",
+      "from": "CAN",
+      "to": "CTU",
+      "date": "2026-09-07",
+      "departure": "07:45",
+      "arrival": "10:20",
+      "seats": {
+        "basic_economy": 10,
+        "economy": 24,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 520,
+        "economy": 760,
+        "business": 1900
+      },
+      "status": "delayed",
+      "delayHours": 9,
+      "_note": "延误 9 小时 —— 覆盖 delay_compensation 的 >8 小时那一档（600 元）。库里原本最长延误 5 小时，600 元那一档演示不出来。"
+    },
+    {
+      "flightNo": "CY2316",
+      "from": "CAN",
+      "to": "CTU",
+      "date": "2026-09-08",
+      "departure": "07:45",
+      "arrival": "10:20",
+      "seats": {
+        "basic_economy": 10,
+        "economy": 24,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 520,
+        "economy": 760,
+        "business": 1900
+      },
+      "status": "delayed",
+      "delayHours": 3,
+      "_note": "延误 3 小时 —— 覆盖 delay_compensation 的 ]2..4] 那一档（200 元）。这一档是开闭区间，边界正好要有样本才验得出 2 小时不赔、3 小时赔 200。"
     }
   ],
   "reservations": [
@@ -572,6 +614,76 @@
         ]
       },
       "_note": "公务舱：超 24 小时也可全额退款。普通会员 + 公务舱 = 免费行李 2 件"
+    },
+    {
+      "reservationId": "CYR8809",
+      "status": "confirmed",
+      "userId": "CY10023841",
+      "cabin": "economy",
+      "tripType": "one_way",
+      "bookedAt": "2026-09-03T20:00:00+08:00",
+      "insurance": false,
+      "passengers": [
+        {
+          "name": "赵宇",
+          "idTail": "4182"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY1201",
+          "date": "2026-09-20"
+        }
+      ],
+      "checkedBags": 0,
+      "total": 980,
+      "payment": {
+        "methodId": "credit_card_5521",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 980
+          }
+        ]
+      },
+      "_note": "刚出票 6 小时 —— 覆盖 refundable 表的 hoursSinceBooking <= 24 那一行（出票 24 小时内可免费退票）。库里原本最新的一笔也超过 27 小时，那条规则零样本，是覆盖度检查泛化之后报出来的。"
+    },
+    {
+      "reservationId": "CYR8810",
+      "status": "confirmed",
+      "userId": "CY10058127",
+      "cabin": "business",
+      "tripType": "round_trip",
+      "bookedAt": "2026-08-30T02:00:00+08:00",
+      "insurance": true,
+      "passengers": [
+        {
+          "name": "赵宇",
+          "idTail": "4182"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY1203",
+          "date": "2026-09-20"
+        },
+        {
+          "flightNo": "CY4501",
+          "date": "2026-09-28"
+        }
+      ],
+      "checkedBags": 2,
+      "total": 5510,
+      "payment": {
+        "methodId": "credit_card_8842",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 5510
+          }
+        ]
+      },
+      "_note": "公务舱往返高价预订 —— 覆盖 refund_authority 的 >3000 那一行（超出客服权限，必须转人工主管）。库里原本最高 2600，那条上限规则演示不出来，而它是整套里最该演示的保护之一。总额是两段公务舱票价之和（CY1203 + CY4501），不是编的 —— airline.test.mjs 里有一条测试专门核对总额与票价，我第一版写 3600 被它抓到了。"
     }
   ]
 }

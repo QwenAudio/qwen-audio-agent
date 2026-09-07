@@ -971,6 +971,58 @@
           }
         ]
       }
+    },
+    {
+      "_note": "家电类近期样本 —— 覆盖 appliance 15 天窗口【内】那一行。库里原有的两笔家电是 23 和 78 天，全部超期，只能演示拒退这一半。",
+      "orderId": "#W6120355",
+      "userId": "li_ming_3021",
+      "status": "delivered",
+      "placedAt": "2026-08-27T02:00:00+08:00",
+      "deliveredAt": "2026-08-30T02:00:00+08:00",
+      "items": [
+        {
+          "itemId": "TH_MIJIA",
+          "productId": "P_THERMOSTAT",
+          "quantity": 1,
+          "price": 499.0
+        }
+      ],
+      "total": 499.0,
+      "payment": {
+        "methodId": "credit_card_7719",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 499.0
+          }
+        ]
+      }
+    },
+    {
+      "_note": "配件类【已签收】样本 —— 覆盖 accessory 30 天窗口内那一行。库里原有四笔配件订单，但状态分别是 cancelled / pending / shipped / pending，一笔都没签收 —— 而退货要先签收，所以那条规则走不到。这是覆盖度检查泛化之后报出来的缺口，报得对。",
+      "orderId": "#W6120344",
+      "userId": "li_ming_3021",
+      "status": "delivered",
+      "placedAt": "2026-08-25T02:00:00+08:00",
+      "deliveredAt": "2026-08-28T02:00:00+08:00",
+      "items": [
+        {
+          "itemId": "BP_20L_BLACK",
+          "productId": "P_BACKPACK",
+          "quantity": 1,
+          "price": 329.0
+        }
+      ],
+      "total": 329.0,
+      "payment": {
+        "methodId": "credit_card_7719",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 329.0
+          }
+        ]
+      }
     }
   ]
 }

@@ -158,15 +158,22 @@ test('未核验的调用留下红色审计', async () => {
 })
 
 test('列预订只列本人名下的', async () => {
-  const { call } = air()
+  // 【条数从库里现算，不写死】原本断言 count === 2（赵宇当时名下两笔）。
+  // 后来为了补覆盖度缺口给他加了一笔，这条就红了 ——
+  // 而它要守的是「只列本人的」，不是「恰好两笔」。
+  const { call, service, session } = air()
   await call('verify_identity', { memberId: 'CY10023841' })
+  const mine = service.snapshot(session, 'airline').db.reservations
+    .filter(item => item.userId === 'CY10023841')
   const result = await call('list_reservations', {})
-  // 赵宇名下两笔：CYR8801、CYR8805
-  assert.equal(result.data.count, 2)
-  assert.match(result.content, /CYR8801/)
-  assert.match(result.content, /CYR8805/)
-  // 别人的不该出现
-  assert.ok(!/CYR8802/.test(result.content), '列出了别人的预订')
+  assert.equal(result.data.count, mine.length)
+  // 别人的一笔都不能出现
+  const others = service.snapshot(session, 'airline').db.reservations
+    .filter(item => item.userId !== 'CY10023841')
+  for (const item of others) {
+    assert.ok(!result.content.includes(item.reservationId),
+      `列出了别人的预订 ${item.reservationId}`)
+  }
 })
 
 test('拿别人的预订号也查不出来', async () => {

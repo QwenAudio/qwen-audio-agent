@@ -21,6 +21,8 @@
 // 反证的时候脚本自己抛 TypeError 才暴露出来。
 // console/test/coverage.test.mjs 里有一条测试守着这个结构假设。
 
+import { matchesCondition } from '../service/decision-table.mjs'
+
 const CATEGORY_FIELDS = Object.freeze(['category', 'status', 'cabin', 'memberTier'])
 
 // 从库里收集某个字段实际出现过的值。
@@ -116,49 +118,109 @@ function checkEnums(guards, db) {
   return gaps
 }
 
-// 时限类规则的边界样本：库里要有落在边界两侧的数据，
-// 否则「30 天内可退 / 超过不可退」这条只能演示一半。
-function checkBoundaries(guards, db) {
-  const gaps = []
-  const table = guards.decisions?.return_window
-  if (!table) return gaps
-
-  const now = Date.now()
-  const daysSince = iso => (iso ? Math.floor((now - new Date(iso).getTime()) / 86_400_000) : null)
-
-  for (const [index, rule] of (table.rules || []).entries()) {
-    const category = literalOf(rule.when?.category)
-    if (!category) continue
-    const limit = Number(rule.then)
-    if (!Number.isFinite(limit) || limit <= 0) continue
-
-    // 找这个类别下的已签收订单，看签收天数分布在边界哪一侧。
-    const samples = []
+// 【样本从哪来 —— 决策表的输入字段到库里的取数方式】
+//
+// 第一版只硬编码了 return_window 一张表，于是航空的 refundable、
+// delay_compensation、change_fee 全都没检 —— 而「出票 24 小时内可免费退」
+// 这条实测库里【零笔样本】，检查却报「全部覆盖」。
+//
+// 泛化的判据换了：不再是「边界两侧有没有样本」，而是
+// 【这一行有没有任何样本能命中】。后者更强也更简单：
+// 一张表的每一行都该有数据能走到，走不到的那一行就是演示不出来的。
+const SAMPLE_SOURCES = Object.freeze({
+  // 订单签收天数 —— 退货时限那张表的输入。按类别分组，
+  // 因为 return_window 是「类别 + 天数」两个输入。
+  daysSinceDelivery: (db) => {
+    const now = Date.now()
+    const rows = []
     for (const order of db.orders || []) {
       if (!order.deliveredAt) continue
+      const days = Math.floor((now - new Date(order.deliveredAt).getTime()) / 86_400_000)
       for (const line of order.items || []) {
         const product = (db.products || []).find(item => item.productId === line.productId)
-        if (product?.category === category) samples.push(daysSince(order.deliveredAt))
+        rows.push({ daysSinceDelivery: days, category: product?.category })
       }
     }
-    if (!samples.length) continue
-    const within = samples.some(days => days <= limit)
-    const beyond = samples.some(days => days > limit)
-    if (!within || !beyond) {
-      gaps.push({
-        kind: 'boundary',
-        table: 'return_window',
-        ruleIndex: index,
-        field: 'category',
-        value: category,
-        detail: `${category} 的退货时限是 ${limit} 天，但库里的样本`
-          + (within ? '全部在期限内' : '全部已超期')
-          + `（签收天数：${samples.sort((a, b) => a - b).join('、')}）`
-          + ` —— 只能演示${within ? '可退' : '拒退'}这一半`,
-        fix: within
-          ? `加一笔 ${category} 类、签收超过 ${limit} 天的订单`
-          : `加一笔 ${category} 类、签收在 ${limit} 天内的订单`,
-      })
+    return rows
+  },
+
+  // 出票至今多少小时 —— refundable 表的 hoursSinceBooking。
+  hoursSinceBooking: (db) => {
+    const now = Date.now()
+    return (db.reservations || []).map(reservation => ({
+      hoursSinceBooking: (now - new Date(reservation.bookedAt).getTime()) / 3_600_000,
+      cabin: reservation.cabin,
+      hasInsurance: String(Boolean(reservation.insurance)),
+    }))
+  },
+
+  // 航班延误时长 —— delay_compensation 表的输入。
+  // 【只取延误的航班】正常航班的 delayHours 是 undefined，
+  // 拿它去匹配 '> 8' 会因为 Number(undefined) 得 NaN 而永远不命中，
+  // 于是每一行都报「没有样本」—— 假警报。
+  delayHours: (db) => (db.flights || [])
+    .filter(flight => flight.status === 'delayed')
+    .map(flight => ({ delayHours: flight.delayHours || 0 })),
+
+  // 金额 —— refund_authority 表的输入。订单和预订都算。
+  amount: (db) => [
+    ...(db.orders || []).map(order => ({ amount: order.total })),
+    ...(db.reservations || []).map(reservation => ({ amount: reservation.total })),
+  ],
+})
+
+// 这一行里有哪些字段是「能从库里取到样本」的。
+// 【一行可能混着能取和不能取的字段】refundable 那张表既有 hoursSinceBooking
+// （能取），也有 hasFlownSegment（算出来的，不是库里字段）。
+// 只要有一个能取的字段，这一行就值得检 —— 拿那个字段的样本去试整行。
+function sampleFieldsOf(rule) {
+  return Object.keys(rule.when || {}).filter(field => SAMPLE_SOURCES[field])
+}
+
+// 库里有没有样本能命中这一行。
+// 用 decision-table 的 matchesCondition —— 必须是同一套逻辑，
+// 各写一份的话区间开闭这些细节早晚分岔。
+function anySampleHits(rule, samples) {
+  return samples.some(sample => Object.entries(rule.when || {}).every(([field, condition]) => {
+    // 样本里没有这个字段就跳过 —— 那是算出来的输入（hasFlownSegment 之类），
+    // 不参与「有没有数据」的判断。
+    if (!(field in sample)) return true
+    return matchesCondition(condition, sample[field])
+  }))
+}
+
+function checkBoundaries(guards, db) {
+  const gaps = []
+  for (const [tableName, table] of Object.entries(guards.decisions || {})) {
+    if (tableName.startsWith('_')) continue
+    const rules = table.rules || []
+    for (const [index, rule] of rules.entries()) {
+      // 兜底行不检 —— 它就是为了「什么都没命中」而存在的。
+      if (!Object.keys(rule.when || {}).length) continue
+
+      const fields = sampleFieldsOf(rule)
+      if (!fields.length) continue
+
+      // 多个可取字段时合并样本：取第一个字段的样本集，
+      // 它里面已经带上了同一条记录的其他字段（见 SAMPLE_SOURCES 的返回结构）。
+      const samples = SAMPLE_SOURCES[fields[0]](db)
+      if (!samples.length) continue
+
+      if (!anySampleHits(rule, samples)) {
+        const shown = Object.entries(rule.when)
+          .map(([field, condition]) => `${field} ${condition}`)
+          .join('、')
+        gaps.push({
+          kind: 'no_sample',
+          table: tableName,
+          ruleIndex: index,
+          field: fields[0],
+          value: shown,
+          detail: `决策表 ${tableName} 第 ${index + 1} 行（${shown}）`
+            + '在库里找不到任何能命中它的记录 —— 这条规则演示不出来',
+          fix: `造一条满足「${shown}」的记录`,
+        })
+      }
     }
   }
   return gaps

@@ -3,12 +3,17 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { checkCoverage } from '../coverage.mjs'
 import { validateDatabase } from '../db-validate.mjs'
+import { CustomerService } from '../../service/service.mjs'
 
 const load = (domain, file) => JSON.parse(
   readFileSync(new URL(`../../domains/${domain}/${file}`, import.meta.url), 'utf8'),
 )
 const guardsOf = domain => load(domain, 'guards.json')
-const dbOf = domain => load(domain, 'db.json')
+// 【db 要用装载后的，不能用文件原文】
+// 文件里的 deliveredAt 是绝对日期，而 state-store 装载时会按 _anchorDate
+// 平移到今天（见 anchorToToday）。拿原文算天数得到的是「造数据那天」的天数，
+// 和运行时不一致 —— 覆盖度检查判的是运行时能不能走到，所以必须用装载后的。
+const dbOf = domain => new CustomerService().snapshot(`cov-${domain}`, domain).db
 
 // ── 覆盖度 ──
 
@@ -61,20 +66,25 @@ test('枚举里有库里用不到的取值时报缺口', () => {
   assert.equal(gap.kind, 'enum_value')
 })
 
-test('时限改大到样本全落在期限内时报「只能演示一半」', () => {
-  // 【这一类缺口最难自己发现】规则本身没错、数据也没错，
-  // 但两者搭不上：改成 90 天之后库里所有家电订单都在期限内，
-  // 于是「超期拒退」这条永远演示不出来。
+test('时限改成没有样本能落进去时报缺口', () => {
+  // 【泛化之后判据变了，这条测试跟着换】
+  // 旧判据是「边界两侧都要有样本」，所以把时限改大（样本全落在期限内）会红。
+  // 新判据是「这一行有没有样本能命中」—— 改大反而更容易命中，测不出来了。
+  //
+  // 真正能测到新判据的：把某个类别的时限改成一个窄到没有样本的区间。
+  // digital 类的签收天数是 1/2/4/4/23/50，把窗口改成 0 天就没有样本能落进去
+  //（<= 0 要求当天签收，而最小的是 1 天）。
   const guards = structuredClone(guardsOf('retail'))
   for (const rule of guards.decisions.return_window.rules) {
-    if (rule.when?.category === 'appliance') rule.then = 90
+    if (rule.when?.daysSinceDelivery && rule.when?.category === 'digital') {
+      rule.when.daysSinceDelivery = '<= 0'
+    }
   }
   const result = checkCoverage(guards, dbOf('retail'))
-  assert.equal(result.ok, false)
-  const gap = result.gaps.find(item => item.kind === 'boundary')
-  assert.ok(gap)
-  assert.match(gap.detail, /全部在期限内/)
-  assert.match(gap.fix, /签收超过 90 天/)
+  assert.equal(result.ok, false, '时限窄到没有样本时应该报缺口')
+  const gap = result.gaps.find(item => item.kind === 'no_sample')
+  assert.ok(gap, `没报出 no_sample：${result.gaps.map(g => g.kind).join('/')}`)
+  assert.match(gap.detail, /找不到任何能命中它的记录/)
 })
 
 test('缺口带修复建议，不只报问题', () => {

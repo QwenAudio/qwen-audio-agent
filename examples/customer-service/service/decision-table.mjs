@@ -54,7 +54,10 @@ function isWildcard(condition) {
   return !text || text === '-' || text === '*'
 }
 
-function matchesCondition(condition, value) {
+// 【导出给覆盖度检查用】console/coverage.mjs 要判断「库里有没有样本能命中这一行」，
+// 那必须用【同一套】匹配逻辑 —— 各写一份的话，区间开闭、类型转换这些细节
+// 早晚会分岔，然后覆盖度报告说「有样本」而运行时判定说「没命中」。
+export function matchesCondition(condition, value) {
   // 通配：字段缺省、写成 '-' 或空串，都表示「任意值」。
   // 兜底行就是所有列都通配的那一行。
   if (isWildcard(condition)) return true

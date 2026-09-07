@@ -229,13 +229,19 @@ test('fatal errors block later connection attempts and clear buffered audio', as
 })
 
 test('switching providers detaches the old frontend without losing queued audio', async () => {
-  const { runtime, frontends } = harness()
+  const { runtime, calls, frontends } = harness()
   const connecting = runtime.ensure()
   runtime.pendingAudio.push('queued')
+  runtime.pendingImage = 'stale-jpeg'
 
   assert.equal(runtime.switchProvider('s2s'), true)
   assert.equal(runtime.providerKey, 's2s')
   assert.deepEqual(runtime.pendingAudio, ['queued'])
+  assert.equal(runtime.pendingImage, null)
+  assert.equal(
+    calls.filter(([name]) => name === 'clearPendingImage').length,
+    1,
+  )
   assert.equal(runtime.ready, false)
 
   frontends[0].resolveConnect()

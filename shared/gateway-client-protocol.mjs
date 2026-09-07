@@ -21,6 +21,7 @@ export const GatewayClientProtocolEvent = Object.freeze({
   SESSION_OUTPUT_VOICE_UPDATED: 'session.output_voice.updated',
   INPUT_AUDIO_APPEND: 'input_audio_buffer.append',
   INPUT_IMAGE_APPEND: 'input_image_buffer.append',
+  INPUT_IMAGE_CLEAR: 'input_image_buffer.clear',
   CONVERSATION_ITEM_CREATE: 'conversation.item.create',
   RESPONSE_CANCEL: 'response.cancel',
   CLIENT_EVENT_PUBLISH: 'client.event.publish',
@@ -361,6 +362,7 @@ const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
 
 const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
   [GatewayClientProtocolEvent.INPUT_IMAGE_APPEND]: GatewayClientCapability.INPUT_IMAGE_BUFFER,
+  [GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR]: GatewayClientCapability.INPUT_IMAGE_BUFFER,
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientCapability.CLIENT_EVENTS,
   [GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE]: GatewayClientCapability.SESSION_OUTPUT_VOICE,
   [GatewayClientProtocolEvent.CLIENT_ACTION_RESULT]: GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
@@ -377,6 +379,7 @@ const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
 const V6_CLIENT_EVENT_ALIASES = Object.freeze({
   [GatewayClientProtocolEvent.INPUT_AUDIO_APPEND]: GatewayClientEvent.AUDIO_APPEND,
   [GatewayClientProtocolEvent.INPUT_IMAGE_APPEND]: GatewayClientEvent.IMAGE_APPEND,
+  [GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR]: GatewayClientEvent.IMAGE_CLEAR,
   [GatewayClientProtocolEvent.CONVERSATION_ITEM_CREATE]: GatewayClientEvent.INPUT_MESSAGE,
   [GatewayClientProtocolEvent.RESPONSE_CANCEL]: GatewayClientEvent.INTERRUPT,
 })

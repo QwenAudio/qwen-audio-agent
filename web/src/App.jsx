@@ -1490,6 +1490,7 @@ export default function App() {
       {composerEnabled && <MultimodalComposer
         onSend={sendComposerInput}
         onVisualFrame={voice.sendImageFrame}
+        onVisualStop={voice.clearImageBuffer}
         visualStreamSupported={!desktopOrbMode
           && modelStatus.transportInputModes.includes('video')}
         visualStreamAvailable={!desktopOrbMode && voice.imageBufferAvailable}

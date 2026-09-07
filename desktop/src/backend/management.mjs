@@ -1,11 +1,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { parseEnv } from 'node:util'
-import { mergeSearchPath } from '../../shared/path-environment.mjs'
-import { withBackendLifecycle } from '../../shared/backend-install.mjs'
-import { backendDefinition } from '../../shared/backend-catalog.mjs'
-import { detectBackendSetups } from './backend-detection.mjs'
-import { createBackendInstaller } from './backend-installer.mjs'
-import { openBackendConfiguration } from './backend-configuration.mjs'
+import { mergeSearchPath } from '../../../shared/path-environment.mjs'
+import { withBackendLifecycle } from '../../../shared/backend-install.mjs'
+import { backendDefinition } from '../../../shared/backend-catalog.mjs'
+import { detectBackendSetups } from './detection.mjs'
+import { createBackendInstaller } from './installer.mjs'
+import { openBackendConfiguration } from './configuration.mjs'
 
 const DEFAULT_REPORT_TTL_MS = 10 * 60 * 1000
 

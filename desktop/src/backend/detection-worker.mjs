@@ -1,8 +1,8 @@
 import { parentPort, workerData } from 'node:worker_threads'
 
-import { inspectBackendSetupsAsync } from '../../shared/backend-setup.mjs'
-import { inspectBackendAuthentication } from '../../shared/backend-auth-status.mjs'
-import { refreshProcessPath } from './process-path.mjs'
+import { inspectBackendSetupsAsync } from '../../../shared/backend-setup.mjs'
+import { inspectBackendAuthentication } from '../../../shared/backend-auth-status.mjs'
+import { refreshProcessPath } from '../process-path.mjs'
 
 function compactComponent(component) {
   if (!component || typeof component !== 'object') return undefined

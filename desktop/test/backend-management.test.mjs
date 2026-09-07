@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   createDesktopBackendManagement,
   desktopBackendEnvironment,
-} from '../src/backend-management.mjs'
+} from '../src/backend/management.mjs'
 
 test('builds backend environment from non-empty config values', () => {
   const result = desktopBackendEnvironment({

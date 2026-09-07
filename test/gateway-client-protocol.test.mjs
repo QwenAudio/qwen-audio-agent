@@ -252,6 +252,13 @@ test('normalizes 6.0 event names into the existing business event vocabulary', (
     image: '/9j/2Q==',
   })
   assert.deepEqual(normalizeGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    event_id: 'evt_client_image_clear',
+  }), {
+    type: 'image.clear',
+    event_id: 'evt_client_image_clear',
+  })
+  assert.deepEqual(normalizeGatewayClientProtocolMessage({
     type: GatewayClientProtocolEvent.CONVERSATION_ITEM_CREATE,
     event_id: 'evt_client_text',
     parts: [{ type: 'text', text: '你好' }],
@@ -431,6 +438,10 @@ test('requires the image buffer capability and supports provider-aware negotiati
     image: '/9j/2Q==',
     media_type: 'image/jpeg',
   }).event.type, 'image.append')
+  assert.equal(session.receive({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    event_id: 'evt_visual_clear',
+  }).event.type, 'image.clear')
 
   const unavailable = new GatewayClientProtocolSession({
     sessionId: 'audio-only',
@@ -450,6 +461,11 @@ test('requires the image buffer capability and supports provider-aware negotiati
   })
   assert.equal(rejected.reply.error.code, 'capability_not_negotiated')
   assert.equal(rejected.reply.request_event_id, 'evt_visual_rejected')
+  const rejectedClear = unavailable.receive({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    event_id: 'evt_visual_clear_rejected',
+  })
+  assert.equal(rejectedClear.reply.error.code, 'capability_not_negotiated')
 })
 
 test('bounds server events held while the client has not selected a protocol', () => {

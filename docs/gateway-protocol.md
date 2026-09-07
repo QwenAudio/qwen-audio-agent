@@ -263,6 +263,7 @@ Use OpenAI Realtime terminology where the semantics match:
 |---|---|---|
 | `input_audio_buffer.append` | C→G | Append input audio |
 | `input_image_buffer.append` | C→G | Append one JPEG frame to the live visual buffer |
+| `input_image_buffer.clear` | C→G | Discard any pending live visual frame |
 | `conversation.item.create` | C→G | Submit text, image, file, or mixed user input |
 | `response.cancel` | C→G | Interrupt the current response |
 | `response.created` | G→C | Response generation started |
@@ -293,9 +294,13 @@ Provider transport implements it.
 Version 1 accepts JPEG only, limits the Base64 body to 256 KiB, and admits at
 most one frame per second. Frames update live visual context; they do not
 create a user turn, trigger a response, enter conversation history, or become
-backend attachments. Stopping capture means stopping append events. Session
-disconnect, sleep, input suspension, and microphone mute clear Gateway-side
-pending visual state.
+backend attachments. A client sends `input_image_buffer.clear` when the user
+stops live vision or closes the camera so a provider cannot consume the last
+frame later. A transient disconnect or microphone state change only pauses
+client frame transmission; the client resumes it when transport is ready while
+preserving the user's live-vision intent. Session disconnect, sleep, input
+suspension, microphone mute, and provider replacement still clear Gateway-side
+pending visual state so a stale frame cannot survive the transport boundary.
 
 The Gateway event shape is provider-neutral. The Qwen Omni adapter maps it to
 the provider image buffer after audio has started; the MiniCPM-o adapter puts

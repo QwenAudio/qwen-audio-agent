@@ -84,6 +84,19 @@ test('attaches the latest visual frame to the next MiniCPM-o video input batch',
   assert.equal(withoutFrame.input.video_frames, undefined)
 })
 
+test('does not attach a visual frame cleared before the next audio batch', () => {
+  const protocol = createMiniCpmOProtocol()
+  const tenthSecond = pcm16Base64(new Array(1600).fill(0))
+
+  protocol.imageAppend('stale-jpeg')
+  protocol.clearImageBuffer()
+  let message
+  for (let index = 0; index < 10; index += 1) {
+    message = protocol.encodeOutgoing(protocol.audioAppend(tenthSecond))
+  }
+  assert.equal(message.input.video_frames, undefined)
+})
+
 test('maps the official MiniCPM-o lifecycle into the shared realtime runtime', () => {
   const protocol = createMiniCpmOProtocol()
 

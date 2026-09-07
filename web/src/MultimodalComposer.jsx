@@ -34,6 +34,7 @@ function filePart(file, index, sourceType = 'file') {
 export default function MultimodalComposer({
   onSend,
   onVisualFrame,
+  onVisualStop,
   visualStreamSupported = false,
   visualStreamAvailable = false,
   voiceInputEnabled = false,
@@ -116,6 +117,7 @@ export default function MultimodalComposer({
         inputEnabled={voiceInputEnabled}
         connectionState={connectionState}
         onFrame={onVisualFrame}
+        onStop={onVisualStop}
         panelHost={visualPanelHost}
       />}
       <input

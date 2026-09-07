@@ -991,6 +991,17 @@ export default function useRealtimeVoice({
     })
   }, [sendSocketEvent])
 
+  const clearImageBuffer = useCallback(() => {
+    const client = socketRef.current
+    if (
+      !client?.ready
+      || !client.supports?.(GatewayClientCapability.INPUT_IMAGE_BUFFER)
+    ) return false
+    return sendSocketEvent({
+      type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    })
+  }, [sendSocketEvent])
+
   return {
     state,
     visualState: visualVoiceState(state),
@@ -1007,6 +1018,7 @@ export default function useRealtimeVoice({
     publishClientEvent,
     sendInput,
     sendImageFrame,
+    clearImageBuffer,
     listTasks,
     getTask,
     cancelTask,

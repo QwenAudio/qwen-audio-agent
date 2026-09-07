@@ -16,6 +16,7 @@ export default function VisualStreamControl({
   inputEnabled = false,
   connectionState = 'connected',
   onFrame,
+  onStop,
   panelHost = null,
 }) {
   const [cameraOpen, setCameraOpen] = useState(false)
@@ -52,7 +53,8 @@ export default function VisualStreamControl({
     streamingRef.current = false
     setStreamRequested(false)
     setFrameCount(0)
-  }, [])
+    onStop?.()
+  }, [onStop])
 
   const closeCamera = useCallback(() => {
     stopStreaming()

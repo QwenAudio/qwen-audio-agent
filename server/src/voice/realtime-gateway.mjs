@@ -356,6 +356,10 @@ export function attachRealtimeGateway(server, {
     let permissionRetryTimer = null
     let realtimeSession
     let visualInput
+    const clearVisualInput = () => {
+      realtimeSession?.clearPendingImage?.()
+      visualInput?.reset?.()
+    }
     const agentDeliveries = new RealtimeAgentDeliveryRuntime({
       getFrontend: () => realtimeSession?.frontend,
       isDeliveryBlocked: () => (
@@ -649,7 +653,7 @@ export function attachRealtimeGateway(server, {
         }
       },
       onDisconnected: () => {
-        visualInput?.reset()
+        clearVisualInput()
         send(ws, {
           type: GatewayServerEvent.VOICE_STATE,
           state: 'idle',
@@ -691,8 +695,7 @@ export function attachRealtimeGateway(server, {
         if (suspend) {
           // Buffered audio predates the suspension and is no longer wanted.
           realtimeSession.clearPendingAudio()
-          realtimeSession.clearPendingImage()
-          visualInput.reset()
+          clearVisualInput()
           sleepController?.disable()
           realtimeSession.cancelResponse()
           send(ws, { type: GatewayServerEvent.PLAYBACK_CLEAR, reason: 'input_suspended' })
@@ -720,7 +723,7 @@ export function attachRealtimeGateway(server, {
         sleepController?.disable()
         inputEnabled = false
         outputEnabled = false
-        visualInput.reset()
+        clearVisualInput()
         announcementWindow.reset()
         announcements.pause()
         progressAnnouncements.clear()
@@ -1193,7 +1196,7 @@ export function attachRealtimeGateway(server, {
 
     const enterSleep = () => {
       if (sleeping) return
-      visualInput.reset()
+      clearVisualInput()
       sleeping = true
       waking = false
       announcementWindow.reset()
@@ -1698,6 +1701,9 @@ export function attachRealtimeGateway(server, {
             message: error.message,
           })
         }
+      } else if (event.type === GatewayClientEvent.IMAGE_CLEAR) {
+        if (!activeVoiceClients.isActive(ownerId, voiceClient)) return
+        clearVisualInput()
       } else if (
         event.type === GatewayClientEvent.TEXT_MESSAGE
         || event.type === GatewayClientEvent.INPUT_MESSAGE
@@ -1751,7 +1757,7 @@ export function attachRealtimeGateway(server, {
           })
         }
       } else if (event.type === GatewayClientEvent.MUTE) {
-        visualInput.reset()
+        clearVisualInput()
         releaseVoiceClient()
         sleeping = false
         waking = false
@@ -1764,8 +1770,7 @@ export function attachRealtimeGateway(server, {
       } else if (event.type === GatewayClientEvent.INPUT_MUTE) {
         inputEnabled = false
         realtimeSession.clearPendingAudio()
-        realtimeSession.clearPendingImage()
-        visualInput.reset()
+        clearVisualInput()
       } else if (event.type === GatewayClientEvent.SLEEP) {
         requestExplicitSleep('client')
       } else if (event.type === GatewayClientEvent.WAKE) {
@@ -1803,7 +1808,7 @@ export function attachRealtimeGateway(server, {
       presentationRuntime.clear()
       announcements.close()
       progressAnnouncements.close()
-      visualInput.reset()
+      clearVisualInput()
       clearTimeout(permissionRetryTimer)
       permissionRetryTimer = null
       sleepController?.close()

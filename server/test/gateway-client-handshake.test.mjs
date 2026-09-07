@@ -252,6 +252,7 @@ test('5.x connect and 6.0 session.hello share one Gateway business path', async 
 
 test('routes negotiated live visual frames through the provider-neutral Gateway path', async t => {
   const images = []
+  let clearedImages = 0
   const visualProvider = {
     key: 'visual-test',
     label: 'Visual Test',
@@ -274,7 +275,7 @@ test('routes negotiated live visual frames through the provider-neutral Gateway 
       close: () => { frontend.ready = false },
       appendAudio: () => {},
       appendImage: image => images.push(image),
-      clearPendingImage: () => {},
+      clearPendingImage: () => { clearedImages += 1 },
       cancel: () => {},
       updateAgentContext: () => {},
     }
@@ -324,6 +325,11 @@ test('routes negotiated live visual frames through the provider-neutral Gateway 
   }))
   await waitUntil(() => images.length === 1)
   assert.deepEqual(images, [jpeg])
+  client.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    event_id: 'evt-visual-clear',
+  }))
+  await waitUntil(() => clearedImages === 1)
   client.socket.close()
 })
 

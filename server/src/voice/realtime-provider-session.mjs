@@ -322,10 +322,11 @@ export class RealtimeProviderSession {
   }
 
   detach({ clearAudio = true, notifyDisconnected = false } = {}) {
-    if (clearAudio) {
-      this.clearPendingAudio()
-      this.clearPendingImage()
-    }
+    if (clearAudio) this.clearPendingAudio()
+    // Visual frames are point-in-time context. Never carry one across a
+    // provider rebuild, even when reconnecting preserves queued microphone
+    // audio.
+    this.clearPendingImage()
     this.cancelReconnect()
     const staleFrontend = this.frontend
     this.frontend = null

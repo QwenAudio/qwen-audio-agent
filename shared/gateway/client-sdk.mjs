@@ -8,7 +8,7 @@ import {
   createGatewayClientProtocolMessage,
   createGatewaySessionHello,
   parseGatewayServerProtocolMessage,
-} from './gateway-client-protocol.mjs'
+} from '../protocol/gateway-client-protocol.mjs'
 
 const RESULT_TYPES = new Set([
   GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT,

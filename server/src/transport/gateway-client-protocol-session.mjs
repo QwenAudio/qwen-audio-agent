@@ -11,7 +11,7 @@ import {
   normalizeGatewayClientProtocolMessage,
   parseGatewayClientProtocolMessage,
   supportsGatewayClientProtocol,
-} from '../../../shared/gateway-client-protocol.mjs'
+} from '../../../shared/protocol/gateway-client-protocol.mjs'
 import { parseGatewayClientMessage } from '../../../shared/protocol/gateway-events.mjs'
 import { isReplayableGatewayEvent } from './gateway-client-replay-buffer.mjs'
 

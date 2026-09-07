@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   GatewayClientProtocolEvent,
-} from '../../shared/gateway-client-protocol.mjs'
+} from '../../shared/protocol/gateway-client-protocol.mjs'
 import {
   GatewayClientCommandRuntime,
   RuntimeCommandError,

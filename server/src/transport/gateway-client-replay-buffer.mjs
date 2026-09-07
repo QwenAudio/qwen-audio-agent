@@ -1,4 +1,4 @@
-import { GatewayTaskEvent } from '../../../shared/realtime-events.mjs'
+import { GatewayTaskEvent } from '../../../shared/protocol/realtime-events.mjs'
 
 const REPLAYABLE_TYPES = new Set(Object.values(GatewayTaskEvent))
 

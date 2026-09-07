@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GatewayClient } from '../shared/gateway-client-sdk.mjs'
+import { GatewayClient } from '../shared/gateway/client-sdk.mjs'
 import {
   GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
   GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
   GATEWAY_CLIENT_REVOKED_CLOSE_CODE,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../shared/gateway-client-protocol.mjs'
+} from '../shared/protocol/gateway-client-protocol.mjs'
 
 class FakeSocket {
   constructor() {

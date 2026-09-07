@@ -7,12 +7,12 @@ import {
 } from 'node:fs'
 import { dirname } from 'node:path'
 import { z } from 'zod'
-import { replaceFileSync, withFileTransaction } from './file-transaction-lock.mjs'
+import { replaceFileSync, withFileTransaction } from '../file-transaction-lock.mjs'
 import {
   GATEWAY_CONNECTION_MODEL_VERSION,
   GatewayConnectionProfileSchema,
   parseGatewayConnectionProfile,
-} from './gateway-remote-access.mjs'
+} from './remote-access.mjs'
 
 const ProfileDocumentSchema = z.object({
   version: z.literal(GATEWAY_CONNECTION_MODEL_VERSION),

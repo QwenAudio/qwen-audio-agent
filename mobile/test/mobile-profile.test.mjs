@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   encodeGatewayBrowserPairingCode,
   encodeGatewayPairingCode,
-} from '../../shared/gateway-remote-access.mjs'
+} from '../../shared/gateway/remote-access.mjs'
 import {
   mobileGatewayTransport,
   pairMobileGateway,

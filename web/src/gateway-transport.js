@@ -1,4 +1,4 @@
-import { gatewayWebSocketProtocols } from '../../shared/gateway-websocket-auth.mjs'
+import { gatewayWebSocketProtocols } from '../../shared/gateway/websocket-auth.mjs'
 
 let runtime = Object.freeze({
   gatewayUrl: '',

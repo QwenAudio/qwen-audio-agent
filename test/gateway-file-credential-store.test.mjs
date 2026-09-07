@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import process from 'node:process'
 import test from 'node:test'
-import { createPrivateFileGatewayCredentialStore } from '../shared/gateway-file-credential-store.mjs'
+import { createPrivateFileGatewayCredentialStore } from '../shared/gateway/file-credential-store.mjs'
 
 test('terminal Gateway credentials use an owner-only revocable store', async t => {
   const directory = mkdtempSync(resolve(tmpdir(), 'qwaudio-cli-credential-'))

@@ -15,16 +15,16 @@ import { CockpitStateStore } from '../../service/state-store.mjs'
 import { COCKPIT_SURFACE_ROUTING } from '../../service/tools/registry.mjs'
 import {
   GatewayClient,
-} from '../../../../shared/gateway-client-sdk.mjs'
+} from '../../../../shared/gateway/client-sdk.mjs'
 import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../../../../shared/gateway-client-protocol.mjs'
+} from '../../../../shared/protocol/gateway-client-protocol.mjs'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
   GatewayTaskEvent,
-} from '../../../../shared/realtime-events.mjs'
+} from '../../../../shared/protocol/realtime-events.mjs'
 import { loadNavigationCases, routeCasesExpectedPaths } from '../evaluator/cases.mjs'
 import { scoreTrace, summarizeScores } from '../evaluator/score.mjs'
 

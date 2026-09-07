@@ -36,15 +36,15 @@ import {
   listGatewayDevices,
   pairGatewayConnectionCode,
   revokeGatewayDevice,
-} from '../../shared/gateway-access-client.mjs'
+} from '../../shared/gateway/access-client.mjs'
 import {
   createGatewayPairingCode,
   decodeGatewayPairingCode,
   encodeGatewayBrowserPairingCode,
   encodeGatewayPairingCode,
-} from '../../shared/gateway-remote-access.mjs'
-import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
-import { createPrivateFileGatewayCredentialStore } from '../../shared/gateway-file-credential-store.mjs'
+} from '../../shared/gateway/remote-access.mjs'
+import { GatewayConnectionProfileStore } from '../../shared/gateway/connection-profiles.mjs'
+import { createPrivateFileGatewayCredentialStore } from '../../shared/gateway/file-credential-store.mjs'
 import { launchWebUi } from './webui.mjs'
 import { acquireCliInstance } from './instance-lock.mjs'
 import { manageGatewayService } from './gateway-service.mjs'

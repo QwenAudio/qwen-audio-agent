@@ -9,7 +9,7 @@ import { main } from '../src/launcher.mjs'
 import {
   createGatewayPairingCode,
   encodeGatewayPairingCode,
-} from '../../shared/gateway-remote-access.mjs'
+} from '../../shared/gateway/remote-access.mjs'
 import {
   showConfig,
   updateRealtimeModelConfig,

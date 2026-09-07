@@ -1,4 +1,4 @@
-import { GatewayClientProtocolEvent } from '../../../shared/gateway-client-protocol.mjs'
+import { GatewayClientProtocolEvent } from '../../../shared/protocol/gateway-client-protocol.mjs'
 import { normalizeInputParts } from '../../../shared/input-parts.mjs'
 import { isTaskCancellable } from '../task/task-state.mjs'
 

@@ -24,7 +24,7 @@ import {
   replaceFileSync,
   withFileTransaction,
 } from '../../shared/file-transaction-lock.mjs'
-import { gatewaySetupStatus } from '../../shared/gateway-setup.mjs'
+import { gatewaySetupStatus } from '../../shared/gateway/setup.mjs'
 import {
   applySettingsEnvironment,
   parseSettings,

@@ -1,4 +1,4 @@
-import { GatewayServerEvent } from '../../../shared/realtime-events.mjs'
+import { GatewayServerEvent } from '../../../shared/protocol/realtime-events.mjs'
 import {
   ensureResponseContext,
   mergeResponseContext,

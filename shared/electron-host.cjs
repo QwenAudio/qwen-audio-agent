@@ -20,10 +20,10 @@ const { pathToFileURL } = require('node:url')
 // anywhere.
 const MODULES = {
   gatewayProtocol: '../server/src/core/gateway-protocol.mjs',
-  gatewaySetup: './gateway-setup.mjs',
-  gatewayProcess: './gateway-process.mjs',
-  gatewayLease: './gateway-instance-lock.mjs',
-  realtimeEvents: './realtime-events.mjs',
+  gatewaySetup: './gateway/setup.mjs',
+  gatewayProcess: './gateway/process.mjs',
+  gatewayLease: './gateway/lease.mjs',
+  realtimeEvents: './protocol/realtime-events.mjs',
   settings: '../desktop/src/settings-store.mjs',
   skinStore: '../desktop/src/skin-store.mjs',
   presence: '../desktop/src/desktop-presence.mjs',

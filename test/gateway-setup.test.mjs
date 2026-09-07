@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   assertGatewaySetup,
   gatewaySetupStatus,
-} from '../shared/gateway-setup.mjs'
+} from '../shared/gateway/setup.mjs'
 
 test('reports the missing DashScope credential with an actionable entry', () => {
   const status = gatewaySetupStatus({})

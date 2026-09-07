@@ -3,10 +3,10 @@ export {
   listGatewayDevices,
   pairGatewayDevice,
   revokeGatewayDevice,
-} from './gateway-client.mjs'
+} from './http-client.mjs'
 
-import { pairGatewayDevice } from './gateway-client.mjs'
-import { assertGatewayPairingCodeActive } from './gateway-remote-access.mjs'
+import { pairGatewayDevice } from './http-client.mjs'
+import { assertGatewayPairingCodeActive } from './remote-access.mjs'
 
 export async function pairGatewayConnectionCode(pairingCode, {
   device,

@@ -2,7 +2,7 @@ import { randomUUID } from '../../shared/runtime-crypto.mjs'
 import {
   assertGatewayPairingCodeActive,
   decodeGatewayPairingCode,
-} from '../../shared/gateway-remote-access.mjs'
+} from '../../shared/gateway/remote-access.mjs'
 
 export const MOBILE_GATEWAY_PROFILE_KEY = 'mobile-gateway-profile'
 export const MOBILE_DEVICE_ID_KEY = 'mobile-device-id'

@@ -3,19 +3,19 @@ import WebSocket from 'ws'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
-} from '../../shared/realtime-events.mjs'
+} from '../../shared/protocol/realtime-events.mjs'
 import {
   createGatewayClientState,
   reduceGatewayClientState,
-} from '../../shared/gateway-client-state.mjs'
+} from '../../shared/gateway/client-state.mjs'
 import {
   displayInputText,
   inputFileParts,
   inputText,
 } from '../../shared/input-parts.mjs'
 import { createLogger } from '../../shared/logger.mjs'
-import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
-import { gatewayReferenceClientCapabilities } from '../../shared/gateway-client-profiles.mjs'
+import { GatewayClient } from '../../shared/gateway/client-sdk.mjs'
+import { gatewayReferenceClientCapabilities } from '../../shared/gateway/client-profiles.mjs'
 import { formatCitationLines } from '../../shared/citation-display.mjs'
 import { startMacVoiceIO } from './macos-voice-io.mjs'
 import { startPortAudioVoiceIO } from './portaudio-voice-io.mjs'

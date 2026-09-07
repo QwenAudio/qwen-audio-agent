@@ -4,11 +4,11 @@ import { createInterface } from 'node:readline'
 import { pathToFileURL } from 'node:url'
 import WebSocket from 'ws'
 import { formatCitationLines } from '../../shared/citation-display.mjs'
-import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
+import { GatewayClient } from '../../shared/gateway/client-sdk.mjs'
 import {
   GatewayClientProtocolEvent,
-} from '../../shared/gateway-client-protocol.mjs'
-import { gatewayReferenceClientCapabilities } from '../../shared/gateway-client-profiles.mjs'
+} from '../../shared/protocol/gateway-client-protocol.mjs'
+import { gatewayReferenceClientCapabilities } from '../../shared/gateway/client-profiles.mjs'
 import { inputPartsFromText } from './input-parts.mjs'
 import { isExitCommand } from './terminal-commands.mjs'
 

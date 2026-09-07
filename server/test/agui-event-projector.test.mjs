@@ -4,7 +4,7 @@ import {
   AguiEventType,
   parseAguiGatewayEvent,
 } from '../../shared/protocol/agui-events.mjs'
-import { GatewayTaskEvent } from '../../shared/realtime-events.mjs'
+import { GatewayTaskEvent } from '../../shared/protocol/realtime-events.mjs'
 import {
   AGUI_TASK_ACTIVITY_TYPE,
   projectGatewayTaskEventForFormat,

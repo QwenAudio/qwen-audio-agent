@@ -20,7 +20,7 @@ export {
   createGatewayProcess,
   portInUse,
   validateGatewayOrigin,
-} from '../../shared/gateway-process.mjs'
+} from '../../shared/gateway/process.mjs'
 
 function uniquePath(entries, separator = ':') {
   return [...new Set(entries.filter(Boolean))].join(separator)

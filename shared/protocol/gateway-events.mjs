@@ -3,7 +3,7 @@ import {
   GatewayClientEvent,
   GatewayServerEvent,
   GatewayTaskEvent,
-} from '../realtime-events.mjs'
+} from './realtime-events.mjs'
 
 const values = object => Object.freeze(Object.values(object))
 

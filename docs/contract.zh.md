@@ -250,7 +250,7 @@ await orb.load()
 startedAt, heartbeatAt }`。定位实例的方式：读租约、探活 `origin`、并核对
 `/api/health` 回显的 `gatewayInstanceId` 是否一致——端口被其他进程复用时
 读到的是"未运行"，而不是别人的状态。干净退出会释放租约。锁定测试：
-`test/consumer-install.test.mjs`、`test/gateway-instance-lock.test.mjs`。
+`test/consumer-install.test.mjs`、`test/gateway-lease.test.mjs`。
 
 ## 启动门禁（setup gate）
 

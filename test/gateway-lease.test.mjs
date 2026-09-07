@@ -13,7 +13,7 @@ import {
   gatewayLockPath,
   GATEWAY_LOCK_SCHEMA,
   readGatewayLease,
-} from '../shared/gateway-instance-lock.mjs'
+} from '../shared/gateway/lease.mjs'
 
 function missingProcess() {
   throw Object.assign(new Error('missing'), { code: 'ESRCH' })

@@ -1,4 +1,4 @@
-import { GatewayClientEvent } from '../../shared/realtime-events.mjs'
+import { GatewayClientEvent } from '../../shared/protocol/realtime-events.mjs'
 import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
 
 const AUDIO_MODES = new Set(['half', 'full'])

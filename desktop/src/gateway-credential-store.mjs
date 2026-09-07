@@ -7,7 +7,7 @@ import {
 } from 'node:fs'
 import { dirname } from 'node:path'
 import { replaceFileSync, withFileTransaction } from '../../shared/file-transaction-lock.mjs'
-import { defineGatewayCredentialStore } from '../../shared/gateway-connection-profiles.mjs'
+import { defineGatewayCredentialStore } from '../../shared/gateway/connection-profiles.mjs'
 
 function readDocument(filePath) {
   try {

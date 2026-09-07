@@ -1,8 +1,8 @@
-import { GatewayServerEvent } from '../../../shared/realtime-events.mjs'
+import { GatewayServerEvent } from '../../../shared/protocol/realtime-events.mjs'
 import {
   GatewayClientActionName,
   GatewayClientProtocolEvent,
-} from '../../../shared/gateway-client-protocol.mjs'
+} from '../../../shared/protocol/gateway-client-protocol.mjs'
 
 const ACTIVE_TASK_PHASES = new Set([
   'queued',

@@ -38,13 +38,13 @@ import {
   desktopTranslator,
   effectiveDesktopLanguage,
 } from './i18n.mjs'
-import { readGatewayHealth } from '../../shared/gateway-client.mjs'
-import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
-import { pairGatewayConnectionCode } from '../../shared/gateway-access-client.mjs'
-import { decodeGatewayPairingCode } from '../../shared/gateway-remote-access.mjs'
+import { readGatewayHealth } from '../../shared/gateway/http-client.mjs'
+import { GatewayConnectionProfileStore } from '../../shared/gateway/connection-profiles.mjs'
+import { pairGatewayConnectionCode } from '../../shared/gateway/access-client.mjs'
+import { decodeGatewayPairingCode } from '../../shared/gateway/remote-access.mjs'
 import {
   findRunningGateway,
-} from '../../shared/gateway-instance-lock.mjs'
+} from '../../shared/gateway/lease.mjs'
 import {
   desktopGatewayCompatibility,
   desktopGatewayEnvironment,

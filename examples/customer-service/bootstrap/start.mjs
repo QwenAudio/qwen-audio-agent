@@ -27,6 +27,10 @@ const BASE = Object.freeze({
   agent: 3120,
   gateway: 18_889,
   client: 4620,
+  // 人工坐席台。转人工之后这一页会亮起来 ——
+  // 转接是四个「出口」里唯一没有可见结果的，有这一页才看得出
+  // 上下文真的交出去了。
+  desk: 4630,
 })
 
 // 【每个进程要哪些环境变量】写全而不是靠继承 ——
@@ -48,6 +52,7 @@ function environmentFor(domain) {
     CS_GATEWAY_PORT: String(port.gateway),
     CS_GATEWAY_ORIGIN: `http://127.0.0.1:${port.gateway}`,
     CS_CLIENT_PORT: String(port.client),
+    CS_DESK_PORT: String(port.desk),
     // 【运行时目录也要分开】两组共用 .runtime 会让对话历史串在一起 ——
     // 网关按 sessionId 分目录，而两组用的都是 default。
     QWAUDIO_CONFIG_DIR: `${ROOT}.runtime-${domain}`,
@@ -61,6 +66,7 @@ const PROCESSES = Object.freeze([
   { name: 'agent', cwd: 'agent', args: ['server.mjs'], color: '\u001B[36m' },
   { name: 'gateway', cwd: '.', args: ['gateway/server.mjs'], color: '\u001B[32m' },
   { name: 'client', cwd: 'client', args: ['server.mjs'], color: '\u001B[35m' },
+  { name: 'desk', cwd: 'desk', args: ['server.mjs'], color: '\u001B[34m' },
 ])
 
 const RESET = '\u001B[0m'
@@ -122,6 +128,7 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()
   for (const group of running) {
     console.log(`${group.domain}：`)
     console.log(`  客服工作台（用户）   http://127.0.0.1:${group.port.client}`)
+    console.log(`  人工坐席台           http://127.0.0.1:${group.port.desk}`)
     console.log(`  语音网关自带界面     http://127.0.0.1:${group.port.gateway}`)
     console.log(`  service              http://127.0.0.1:${group.port.service}`)
   }

@@ -62,8 +62,11 @@ test('航空前台白名单全是只读或核验', () => {
     const tool = definitions.find(item => item.name === name)
     assert.ok(tool, `${name} 没注册`)
     const { readOnlyHint, destructiveHint, monetaryHint } = tool.annotations
-    assert.ok(readOnlyHint || name === 'verify_identity',
-      `${name} 在前台但不是只读`)
+    // 前台允许两类非只读：verify_identity（只写会话级核验标记）
+    // 和 transfer_to_human（把会话交出去，没有可批准的内容）。
+    // 判据不是「只读」，是【不涉款且不可逆】—— 下面两条断言才是硬的。
+    assert.ok(readOnlyHint || ['verify_identity', 'transfer_to_human'].includes(name),
+      `${name} 在前台但既不只读也不在豁免名单里`)
     assert.equal(destructiveHint, false, `${name} 有不可逆后果，不该在前台`)
     assert.equal(monetaryHint, false, `${name} 涉款，不该在前台`)
   }

@@ -21,18 +21,29 @@ function tokenFrom(text) {
 
 test('写库工具只在后台面，不在前台面', () => {
   const frontend = toolDefinitions('frontend').map(tool => tool.name)
-  for (const name of ['cancel_order', 'return_items', 'modify_address', 'transfer_to_human']) {
+  // 【transfer_to_human 后来挪到前台了，所以不在这个清单里】
+  // 它曾在这里，理由是「不可逆」。但要走后台的真正判据是
+  // 「需要客户批准」—— 而转人工没有可批准的内容：客户说「我要人工」
+  // 本身就是授权。放后台只让他多等一个 A2A 往返。
+  for (const name of ['cancel_order', 'return_items', 'modify_address']) {
     assert.ok(!frontend.includes(name), `${name} 不该出现在前台面`)
   }
   const all = toolDefinitions('backend').map(tool => tool.name)
   for (const name of ['cancel_order', 'return_items', 'modify_address', 'transfer_to_human']) {
     assert.ok(all.includes(name), `${name} 应该在后台面`)
   }
+  // 转人工在【两个面】都有：前台让客户不用等，后台留着给
+  // Agent 在多步任务里兜底（金额超限时它要能自己转）。
+  assert.ok(frontend.includes('transfer_to_human'), '转人工该在前台面')
 })
 
-test('transfer_to_human 标不可逆但不涉款', () => {
+test('transfer_to_human 既不算不可逆也不涉款', () => {
+  // 【这条改判了】原本 destructiveHint 是 true，理由「会话交出去了」。
+  // 但 destructiveHint 在这套里的作用是「要不要走 auth_required 等批准」，
+  // 而转人工没有可批准的内容 —— 所以标 true 是把语义用错了地方，
+  // 代价是客户在最不耐烦的时候多等一个往返。
   const tool = toolDefinitions('backend').find(entry => entry.name === 'transfer_to_human')
-  assert.equal(tool.annotations.destructiveHint, true)
+  assert.equal(tool.annotations.destructiveHint, false)
   assert.equal(tool.annotations.monetaryHint, false)
 })
 

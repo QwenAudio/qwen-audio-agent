@@ -28,6 +28,10 @@ const FRONTEND_BY_DOMAIN = Object.freeze({
     'list_orders',
     'get_order',
     'check_variant',
+    // 【转人工放前台】客户说「我要人工」时最不该等 ——
+    // 而走后台要多一个 A2A 往返。它一次调用设完一件事，
+    // 没有可批准的内容（客户的话就是授权），也不涉款。
+    'transfer_to_human',
   ]),
   airline: Object.freeze([
     'verify_identity',
@@ -46,6 +50,8 @@ const FRONTEND_BY_DOMAIN = Object.freeze({
     //
     // 后台仍然有它（后台是全集），所以放前台不影响改签本身。
     'search_flights',
+    // 转人工两个域都在前台 —— 理由见零售那一段。
+    'transfer_to_human',
   ]),
 })
 
@@ -57,16 +63,21 @@ export const FRONTEND_TOOL_NAMES = FRONTEND_BY_DOMAIN.retail
 // MCP 标准标注 + 一个非标准的 monetaryHint。
 // destructiveHint 表达「不可逆」，monetaryHint 表达「涉及钱」——
 // 客服场景必须区分这两件事：
-//   transfer_to_human  不可逆（会话交出去了）但不涉款
 //   modify_address     可以再改回来，也不涉款，但错了货会寄丢
 //   cancel_order       不可逆 + 涉款
 // 配置台靠这两个字段自动给出「该不该前台直出」的建议。
+//
+// 【transfer_to_human 不再算 destructive】
+// 它曾经标成不可逆，理由是「会话交出去了」。但 destructiveHint 在这套里
+// 的作用是「要不要走 auth_required 等客户批准」，而转人工没有可批准的内容 ——
+// 客户说「我要人工」本身就是授权。把它当不可逆只会让客户多等一个
+// A2A 往返，而那正是他最不耐烦的时候。
 const READ_ONLY = new Set([
   'identity_status', 'list_orders', 'get_order', 'check_variant',
   'list_reservations', 'get_reservation', 'get_flight_status', 'search_flights',
 ])
 const DESTRUCTIVE = new Set([
-  'cancel_order', 'return_items', 'exchange_items', 'transfer_to_human',
+  'cancel_order', 'return_items', 'exchange_items',
   'cancel_reservation', 'update_flights', 'update_cabin',
 ])
 const MONETARY = new Set([

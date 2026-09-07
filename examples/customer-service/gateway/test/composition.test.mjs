@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { startCustomerServiceGateway } from '../server.mjs'
-import { frontendToolNames } from '../../service/tools/registry.mjs'
+import { frontendToolNames, toolDefinitions } from '../../service/tools/registry.mjs'
 
 // 网关装配的测试。它不起真实语音会话 —— 那要 API key 和三个进程。
 // 这里只断言【装配出来的能力面是对的】，因为出问题的恰恰是这一层：
@@ -72,15 +72,27 @@ test('policy 检索源装上了，且是当前域的', async () => {
   })
 })
 
-test('前台白名单只有五个只读或单步工具', async () => {
+test('前台白名单里没有需要客户批准的工具', async () => {
+  // 【按判据断言，不写死清单】
+  // 原本是 deepEqual 一个五个名字的数组，于是把 transfer_to_human 挪到前台
+  // 就红了 —— 而它要守的是「涉款和不可逆的不能在前台」，不是「恰好五个」。
+  //
+  // 判据来自 registry 的标注：monetaryHint 或 destructiveHint 为真的
+  // 必须走后台，那样才能用 auth_required 让任务挂起等客户批准。
   const mcp = JSON.parse(readFileSync(
     new URL('../frontend-mcp.json', import.meta.url), 'utf8',
   ))
   const tools = Object.keys(mcp.servers['customer-service'].tools)
-  assert.deepEqual(tools.sort(), [
-    'check_variant', 'get_order', 'identity_status', 'list_orders', 'verify_identity',
-  ])
-  // 写库类工具一个都不能在前台 —— 它们要走 auth_required 等客户批准
+  const definitions = toolDefinitions('backend', 'retail')
+  for (const name of tools) {
+    const tool = definitions.find(item => item.name === name)
+    assert.ok(tool, `${name} 在白名单里但 service 没实现`)
+    assert.equal(tool.annotations.monetaryHint, false,
+      `${name} 涉款，不该在前台 —— 它需要客户批准`)
+    assert.equal(tool.annotations.destructiveHint, false,
+      `${name} 不可逆，不该在前台`)
+  }
+  // 这几个是明确要走后台的，任何时候都不能出现在前台
   for (const forbidden of ['cancel_order', 'return_items', 'modify_address']) {
     assert.ok(!tools.includes(forbidden), `${forbidden} 不该在前台白名单里`)
   }
@@ -156,9 +168,12 @@ test('两个域的白名单确实不同 —— 否则上一条会因为共用一
   const retail = read('../frontend-mcp.json')
   const airline = read('../frontend-mcp.airline.json')
   assert.notDeepEqual(retail.slice().sort(), airline.slice().sort())
-  // 共用的只该是核验那两个
+  // 共用的三个：核验两个 + 转人工。
+  // 【transfer_to_human 是后来挪进前台的】客户说「我要人工」时最不该等，
+  // 而走后台要多一个 A2A 往返。它没有可批准的内容 —— 客户的话就是授权。
   const shared = retail.filter(name => airline.includes(name))
-  assert.deepEqual(shared.slice().sort(), ['identity_status', 'verify_identity'])
+  assert.deepEqual(shared.slice().sort(),
+    ['identity_status', 'transfer_to_human', 'verify_identity'])
 })
 
 test('航空白名单里的每个工具都带选用规则说明', () => {

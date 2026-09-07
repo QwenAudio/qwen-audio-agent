@@ -39,6 +39,27 @@ export function numberSetting(value, fallback, {
   return Math.min(max, Math.max(min, parsed))
 }
 
+function featureEnabled(value) {
+  return !['0', 'false', 'no', 'off'].includes(
+    String(value || '').trim().toLowerCase(),
+  )
+}
+
+export function resolveDisabledFrontendTools(env = process.env) {
+  return [
+    ...(!featureEnabled(env.QWEN_AUDIO_SCHEDULE_TOOL_ENABLED)
+      ? ['schedule_reminder'] : []),
+    ...(!featureEnabled(env.QWEN_AUDIO_WEB_TOOLS_ENABLED)
+      ? ['web_search', 'fetch_url'] : []),
+    ...(!featureEnabled(env.QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED)
+      ? ['knowledge'] : []),
+    ...(!featureEnabled(env.QWEN_AUDIO_NOTES_TOOL_ENABLED)
+      ? ['notes'] : []),
+    ...(!featureEnabled(env.QWEN_AUDIO_RECALL_TOOL_ENABLED)
+      ? ['recall'] : []),
+  ]
+}
+
 export function resolveBackendWorkspace(
   protocol,
   env = process.env,
@@ -246,6 +267,7 @@ export const config = {
   webSearchMcpUrl: webSearch.mcpUrl,
   webSearchMcpToken: webSearch.mcpToken,
   webSearchMcpTool: webSearch.mcpTool,
+  frontendDisabledTools: resolveDisabledFrontendTools(process.env),
   frontendProfile: frontendProfileConfiguration.frontendProfile,
   frontendMcpConfigPath: frontendProfileConfiguration.frontendMcpConfigPath,
   frontendOpenApiConfigPath: frontendProfileConfiguration.frontendOpenApiConfigPath,

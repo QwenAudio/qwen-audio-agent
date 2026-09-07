@@ -139,6 +139,24 @@ test('exposes retrieval tools only when the frontend advertises each capability'
   )
 })
 
+test('hides explicitly disabled optional tools after capability checks', () => {
+  assert.deepEqual(names(frontendTools({
+    frontend: {
+      capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall'],
+      disabledTools: [
+        'schedule_reminder',
+        'web_search',
+        'fetch_url',
+        'knowledge',
+        'recall',
+        'notes',
+      ],
+    },
+  })), DEFAULT_TOOL_NAMES.filter(name => (
+    name !== 'schedule_reminder' && name !== 'notes'
+  )))
+})
+
 test('gates the backend permission response tool behind its capability', () => {
   assert.equal(
     frontendToolRegistry.isEnabled(RESPOND_PERMISSION_TOOL_NAME),

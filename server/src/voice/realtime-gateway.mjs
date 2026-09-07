@@ -406,6 +406,7 @@ export function attachRealtimeGateway(server, {
       client: clientContext,
       frontend: {
         ...(spawnThinkingDescription ? { spawnThinkingDescription } : {}),
+        disabledTools: config.frontendDisabledTools || [],
         capabilities: [...new Set([
           ...(frontendRetrieval?.capabilities?.() || []),
           ...(frontendKnowledge?.capabilities?.() || []),
@@ -826,6 +827,7 @@ export function attachRealtimeGateway(server, {
       inputAssets,
       frontendRetrieval,
       frontendKnowledge,
+      disabledTools: config.frontendDisabledTools || [],
       frontendToolSources,
       turnCitations,
       sessionDigests,

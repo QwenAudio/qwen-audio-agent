@@ -4,6 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
   numberSetting,
+  resolveDisabledFrontendTools,
   resolveBackendModels,
   resolveBackendWorkspace,
   resolveOpenCodeCoordinatorAgent,
@@ -24,6 +25,24 @@ test('treats missing and blank numeric settings as unset', () => {
 test('preserves explicit zero numeric settings', () => {
   assert.equal(numberSetting('0', 120, { min: 0, max: 1000 }), 0)
   assert.equal(numberSetting(0, 120, { min: 0, max: 1000 }), 0)
+})
+
+test('keeps optional frontend tools enabled unless explicitly disabled', () => {
+  assert.deepEqual(resolveDisabledFrontendTools({}), [])
+  assert.deepEqual(resolveDisabledFrontendTools({
+    QWEN_AUDIO_SCHEDULE_TOOL_ENABLED: 'false',
+    QWEN_AUDIO_WEB_TOOLS_ENABLED: 'false',
+    QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED: 'off',
+    QWEN_AUDIO_NOTES_TOOL_ENABLED: '0',
+    QWEN_AUDIO_RECALL_TOOL_ENABLED: 'no',
+  }), [
+    'schedule_reminder',
+    'web_search',
+    'fetch_url',
+    'knowledge',
+    'notes',
+    'recall',
+  ])
 })
 
 test('uses a key-free fallback until the user configures a search provider', () => {

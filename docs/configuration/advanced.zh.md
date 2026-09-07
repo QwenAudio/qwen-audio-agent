@@ -225,6 +225,11 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_AUDIO_WEB_SEARCH_MCP_URL` | 空；`mcp` Provider 使用的自定义 Streamable HTTP 地址 |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | 显式选择 `bailian` 时复用 `DASHSCOPE_API_KEY`；自定义地址默认空 |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian` 为 `bailian_web_search`，其他地址为 `web_search` |
+| `QWEN_AUDIO_SCHEDULE_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `schedule_reminder` |
+| `QWEN_AUDIO_WEB_TOOLS_ENABLED` | `true`；设为 `false` 时不向前台 Agent 提供 `web_search` 和 `fetch_url` |
+| `QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `knowledge` |
+| `QWEN_AUDIO_NOTES_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `notes` |
+| `QWEN_AUDIO_RECALL_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `recall` |
 | `QWEN_AUDIO_FRONTEND_PROFILE` | 空；轻量 Frontend Profile JSON 文件路径 |
 | `QWEN_AUDIO_FRONTEND_MCP_CONFIG` | 空；前台 MCP 版本化 JSON 文件的绝对路径 |
 | `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | 空；前台 OpenAPI 版本化 JSON 配置文件的绝对路径 |

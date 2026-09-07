@@ -21,7 +21,7 @@ Desktop ─┐
 WebUI ───┤
 TUI ─────┼── GCP over WebSocket ── Gateway ── BackendPort
 Mobile ──┘               ▲
-                         └── local endpoint or Gateway-owned private tailnet / Funnel
+                         └── local endpoint or Gateway-owned private tailnet
 ```
 
 ## Architectural boundaries
@@ -47,8 +47,8 @@ Clients see only an ordinary Gateway endpoint.
 - Local Clients continue to connect to `http://127.0.0.1:3101` without setup.
 - The Gateway CLI enables and manages remote access, opens the one-time browser
   authorization flow, and emits a QR code, native-client connection link, and
-  browser access link. Private-tailnet access is the default and remote devices
-  use the official Tailscale app; Funnel remains an explicit public option.
+  browser access link. Remote devices join the same private tailnet through the
+  official Tailscale app.
   Desktop, Mobile, and other Clients only consume invitations and do not
   integrate the underlying implementation.
 - A remote Desktop, TUI, WebUI, or Mobile Client consumes the same invitation,
@@ -132,8 +132,7 @@ profile contract.
   Desktop and CLI lifecycles.
 - [x] Download and verify the platform component on first use, provide browser
   authorization, and restore persisted state on later Gateway starts.
-- [x] Publish a private-tailnet HTTPS/WSS endpoint by default, retain an explicit
-  Funnel mode, and keep Gateway on loopback.
+- [x] Publish a private-tailnet HTTPS/WSS endpoint and keep Gateway on loopback.
 - [x] Add CLI status, enable, disable, invite, device-list, and revoke commands.
 - [ ] Validate persistent GCP WebSocket and long-running audio on a physical phone.
 
@@ -170,8 +169,7 @@ and remotely.
 - [x] Produce reproducible iOS and Android development builds.
 
 Exit criteria: a phone pairs through the private-tailnet HTTPS endpoint, reconnects
-later, and completes the same core conversation and Task flows as WebUI; explicit
-Funnel mode remains available.
+later, and completes the same core conversation and Task flows as WebUI.
 
 ## RA5 — Hardening and release readiness
 
@@ -179,7 +177,7 @@ Funnel mode remains available.
   expired/replayed invitations, revoked devices, and stale leases.
 - [x] Reuse the paired, persisted Client instance identity after a Mobile app
   restart so it is not mistaken for a different client.
-- [ ] Test direct-tailnet/DERP fallback, Funnel, Wi-Fi/cellular transitions,
+- [ ] Test direct-tailnet/DERP fallback, Wi-Fi/cellular transitions,
   computer sleep/wake, Gateway restart, and one-hour WebSocket/audio sessions.
 - [x] Run protocol conformance against Desktop, WebUI, TUI, and Mobile.
 - [x] Add macOS, Windows, Linux, iOS, and Android build checks; real-device

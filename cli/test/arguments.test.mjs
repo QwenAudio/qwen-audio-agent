@@ -318,27 +318,16 @@ test('documents the service and client commands', () => {
   assert.doesNotMatch(text, /--attach-openclaw/)
   assert.doesNotMatch(text, /--backend-mode/)
   assert.match(text, /--backend-permission-mode MODE/)
-  assert.match(text, /--mode private\|funnel/)
+  assert.doesNotMatch(text, /--mode private/)
   assert.match(text, /--audio-mode MODE/)
   assert.match(text, /x\s+半双工模式下手动打断当前回复/)
 })
 
-test('uses private remote access by default and accepts explicit Funnel mode', () => {
-  assert.equal(
-    parseArguments(['gateway', 'remote', 'invite'], {}).remoteMode,
-    'private',
-  )
-  assert.equal(
-    parseArguments(['gateway', 'remote', 'invite', '--mode', 'funnel'], {}).remoteMode,
-    'funnel',
-  )
+test('keeps Gateway remote access private and exposes no mode selector', () => {
+  assert.equal('remoteMode' in parseArguments(['gateway', 'remote', 'invite'], {}), false)
   assert.throws(
-    () => parseArguments(['gateway', 'remote', 'status', '--mode', 'funnel'], {}),
-    /--mode 只适用于/,
-  )
-  assert.throws(
-    () => parseArguments(['gateway', '--mode', 'funnel'], {}),
-    /--mode 只适用于/,
+    () => parseArguments(['gateway', 'remote', 'invite', '--mode', 'public'], {}),
+    /未知参数：--mode/,
   )
 })
 

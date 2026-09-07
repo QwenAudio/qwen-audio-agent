@@ -44,9 +44,8 @@ one.
 
 By default, the remote HTTPS/WSS endpoint is reachable only inside the private
 tailnet and Tailscale prefers a direct device-to-device path. It may use a DERP
-relay on restrictive networks. For a temporary public endpoint, explicitly run
-`qwenaudio gateway remote invite --mode funnel`. Gateway business APIs remain
-protected by paired-device credentials in either mode. See
+relay on restrictive networks. Gateway business APIs remain protected by
+paired-device credentials. See
 [Remote Access Security](../configuration/advanced.md#remote-access-security)
 for implementation details, authorization requirements, and troubleshooting.
 

@@ -106,7 +106,6 @@ export function readGatewayRemoteAccess(baseUrl, fetchImpl = fetch) {
 
 export function enableGatewayRemoteAccess(
   baseUrl,
-  { mode = 'private' } = {},
   fetchImpl = fetch,
 ) {
   return gatewayManagementRequest(
@@ -114,8 +113,6 @@ export function enableGatewayRemoteAccess(
     '/api/access/remote',
     {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ mode }),
     },
     fetchImpl,
     { timeoutMs: 180_000 },

@@ -140,8 +140,8 @@ test('protects remote HTTP access and completes one-time device pairing', async 
         : null,
     }),
     resume: async url => remoteAccessCalls.push(['resume', url]),
-    enable: async (url, options) => {
-      remoteAccessCalls.push(['enable', url, options])
+    enable: async url => {
+      remoteAccessCalls.push(['enable', url])
       remoteAccessEnabled = true
       return remoteAccess.status()
     },
@@ -195,7 +195,7 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   assert.equal(enabledRemoteAccess.status, 200)
   assert.equal(enabledRemoteAccess.body.endpoint.url, 'https://voice.example.ts.net')
   assert.equal(remoteAccessCalls.at(-1)[1], `http://127.0.0.1:${port}`)
-  assert.deepEqual(remoteAccessCalls.at(-1)[2], { mode: 'private' })
+  assert.equal(remoteAccessCalls.at(-1).length, 2)
 
   const denied = await requestJson({
     port,

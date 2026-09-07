@@ -112,16 +112,12 @@ test('Gateway owns tsnet authorization, endpoint state, persistence, and shutdow
   const awaitingAuth = await enabling
   assert.equal(awaitingAuth.state, 'auth_required')
   assert.equal(awaitingAuth.published, false)
-  assert.equal(awaitingAuth.mode, 'private')
   assert.match(spawnCall.args.join(' '), /127\.0\.0\.1:3101/)
-  assert.deepEqual(spawnCall.args.slice(-2), ['--mode', 'private'])
+  assert.deepEqual(spawnCall.args.slice(-2), ['--port', '443'])
+  assert.equal(spawnCall.args.includes('--mode'), false)
   assert.equal(
     JSON.parse(readFileSync(join(directory, 'state', 'remote-access.json'))).enabled,
     true,
-  )
-  assert.equal(
-    JSON.parse(readFileSync(join(directory, 'state', 'remote-access.json'))).mode,
-    'private',
   )
 
   child.stdout.write(`${JSON.stringify({
@@ -142,7 +138,7 @@ test('Gateway owns tsnet authorization, endpoint state, persistence, and shutdow
   assert.equal(existsSync(join(directory, 'state', 'tsnet')), false)
 })
 
-test('preserves actionable Funnel setup errors after the component exits', async () => {
+test('preserves actionable private Tailnet setup errors after the component exits', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwa-tsnet-action-'))
   const child = fakeChild()
   const service = new GatewayRemoteAccessService({
@@ -150,32 +146,18 @@ test('preserves actionable Funnel setup errors after the component exits', async
     spawnImpl: () => child,
     ensureComponent: async () => ({ path: '/tmp/qwaudio-tsnet', source: 'test' }),
   })
-  const enabling = service.enable('http://127.0.0.1:3101', { mode: 'funnel' })
+  const enabling = service.enable('http://127.0.0.1:3101')
   await new Promise(resolve => setImmediate(resolve))
   child.stdout.write(`${JSON.stringify({
     type: 'error',
-    code: 'funnel_start_failed',
-    message: 'Funnel requires HTTPS',
+    code: 'private_listener_start_failed',
+    message: 'Tailnet HTTPS is not ready',
     action_url: 'https://tailscale.com/s/https',
   })}\n`)
   child.emit('exit', 1, null)
 
   const failed = await enabling
-  assert.equal(failed.mode, 'funnel')
   assert.equal(failed.state, 'error')
-  assert.equal(failed.error.code, 'funnel_start_failed')
+  assert.equal(failed.error.code, 'private_listener_start_failed')
   assert.equal(failed.actionUrl, 'https://tailscale.com/s/https')
-})
-
-test('rejects unsupported remote access modes before starting the component', async () => {
-  const directory = mkdtempSync(join(tmpdir(), 'qwa-tsnet-mode-'))
-  const service = new GatewayRemoteAccessService({
-    configDirectory: directory,
-    spawnImpl: () => { throw new Error('must not spawn') },
-    ensureComponent: async () => ({ path: '/tmp/qwaudio-tsnet', source: 'test' }),
-  })
-  await assert.rejects(
-    service.enable('http://127.0.0.1:3101', { mode: 'public' }),
-    error => error.code === 'remote_access_mode_invalid',
-  )
 })

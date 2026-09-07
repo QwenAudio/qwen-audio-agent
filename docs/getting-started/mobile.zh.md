@@ -34,9 +34,8 @@ Client Protocol，不直接接触 Realtime Provider 或后台协议。
 `qwenaudio gateway remote revoke <设备 ID>` 撤销。
 
 默认远程地址只在私有 Tailnet 内可达，并优先建立设备间直连；在受限网络下，Tailscale
-可能自动使用 DERP 中继。需要临时公网入口时，可显式使用
-`qwenaudio gateway remote invite --mode funnel`。两种模式下 Gateway 业务接口都受配对
-凭据保护。底层机制、授权要求和高级排障见
+可能自动使用 DERP 中继。Gateway 业务接口始终受配对凭据保护。底层机制、
+授权要求和高级排障见
 [远程访问安全](../configuration/advanced.zh.md#远程访问安全)。
 
 ## 开发构建

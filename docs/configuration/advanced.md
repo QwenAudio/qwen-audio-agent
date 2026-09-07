@@ -23,17 +23,8 @@ prevents it. Use `gateway remote status`, `devices`, `revoke ID`, and `disable` 
 Remote-access state and invitation issuance belong exclusively to the Gateway CLI; Desktop,
 Mobile, and other Clients only import connection links.
 
-For a temporary public endpoint that does not require the Tailscale app on the remote device,
-explicitly use:
-
-```bash
-qwenaudio gateway remote enable --mode funnel
-qwenaudio gateway remote invite --mode funnel
-```
-
-Funnel requires MagicDNS, HTTPS, and Funnel permission in the tailnet and is subject to Tailscale's
-bandwidth limits. Neither private access nor Funnel bypasses Gateway authentication: every remote
-business request except the one-time pairing shell requires a paired-device credential.
+Remote access does not bypass Gateway authentication: every remote business request except the
+one-time pairing shell requires a paired-device credential.
 
 For one personal access key:
 

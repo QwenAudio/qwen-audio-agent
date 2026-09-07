@@ -81,7 +81,6 @@ function harness({ ownsProcesses = false } = {}) {
         connected: true,
         published: true,
         state: 'connected',
-        mode: 'private',
         endpoint: { url: 'https://voice.example.ts.net:8443' },
       }),
       enableRemoteAccess: async () => ({
@@ -90,7 +89,6 @@ function harness({ ownsProcesses = false } = {}) {
         connected: true,
         published: true,
         state: 'connected',
-        mode: 'private',
         endpoint: {
           url: 'https://voice.example.ts.net:8443',
           secure: true,
@@ -417,26 +415,6 @@ test('manages a Gateway remote endpoint and creates a portable invitation', asyn
   assert.match(json.app_url, /^qwaudio:\/\/connect\?v=1&gateway=/)
   assert.match(json.browser_url, /^https:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/)
 
-  const funnel = harness()
-  funnel.dependencies.enableRemoteAccess = async (_url, mode) => {
-    assert.equal(mode, 'funnel')
-    return {
-      available: true,
-      enabled: true,
-      connected: true,
-      published: true,
-      state: 'connected',
-      mode: 'funnel',
-      endpoint: { url: 'https://voice.example.ts.net:8443', secure: true },
-    }
-  }
-  funnel.dependencies.renderInvitationQr = async () => '[compact QR]'
-  assert.equal(
-    await main(['gateway', 'remote', 'invite', '--mode', 'funnel'], funnel.dependencies),
-    0,
-  )
-  assert.match(funnel.calls.at(-1)[1], /^当前使用 Funnel 公网入口。/)
-
   const devices = harness()
   assert.equal(await main(['gateway', 'remote', 'devices'], devices.dependencies), 0)
   assert.match(devices.calls.at(-1)[1], /phone-one/)
@@ -460,7 +438,7 @@ test('opens the one-time remote network setup page when required', async () => {
     published: false,
     state: 'error',
     actionUrl: 'https://tailscale.com/s/https',
-    error: { code: 'funnel_start_failed', message: 'HTTPS is required' },
+    error: { code: 'private_listener_start_failed', message: 'HTTPS is required' },
   })
 
   assert.equal(await main(['gateway', 'remote', 'enable'], target.dependencies), 0)

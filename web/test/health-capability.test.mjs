@@ -25,6 +25,7 @@ function profile(id, label, {
   imageInput = false,
   videoInput = false,
   transportImageInput = false,
+  imageBufferInput = false,
 } = {}) {
   return {
     id,
@@ -40,17 +41,20 @@ function profile(id, label, {
       textInput: true,
       audioInput: true,
       imageInput: transportImageInput,
-      observationInput: false,
-      nativeVideoInput: false,
+      imageBufferInput,
     },
   }
 }
 
 const flash = profile(FLASH_ID, 'Qwen3.5 Omni Flash Realtime', {
   imageInput: true,
+  videoInput: true,
+  imageBufferInput: true,
 })
 const plus = profile(PLUS_ID, 'Qwen3.5 Omni Plus Realtime', {
   imageInput: true,
+  videoInput: true,
+  imageBufferInput: true,
 })
 const legacy = profile(LEGACY_ID, 'Qwen Audio 3.0 Realtime Plus')
 const catalog = [flash, plus, legacy]
@@ -65,8 +69,8 @@ for (const activeProfile of [flash, plus]) {
 
     assert.equal(status.label, activeProfile.label)
     assert.equal(status.metadataStatus, 'current')
-    assert.deepEqual(status.modelInputModes, ['text', 'audio', 'image'])
-    assert.deepEqual(status.transportInputModes, ['text', 'audio'])
+    assert.deepEqual(status.modelInputModes, ['text', 'audio', 'image', 'video'])
+    assert.deepEqual(status.transportInputModes, ['text', 'audio', 'video'])
     assert.equal(status.imageInputEnabled, false)
   })
 }

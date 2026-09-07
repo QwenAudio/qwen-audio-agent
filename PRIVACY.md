@@ -8,6 +8,9 @@ qwen-audio-agent 是本地运行的语音前台，不包含内置遥测、广告
 - 默认情况下，麦克风音频、实时转写上下文和模型回复请求会发送到阿里云
   DashScope 的 Qwen Audio Realtime 服务。若用户配置其他兼容服务，则数据发送到
   该服务。
+- WebUI 仅在用户主动打开相机并开启实时视觉后，才会将有界 JPEG 帧经 Gateway
+  发送给当前 Realtime Provider。停止实时视觉即停止发送；Gateway 不把这些帧写入
+  对话历史、任务状态或本地文件，Provider 的后续处理受其隐私政策约束。
 - 委派任务、必要的对话上下文和任务结果会发送给用户选择的后台 Agent，例如
   OpenCode、OpenClaw、Qoder、Kimi Code、Hermes、CodeBuddy、Codex、Claude
   Code、Pi 或用户配置的其他 ACP Agent。后台 Agent 还可能按照用户配置调用模型、工具、

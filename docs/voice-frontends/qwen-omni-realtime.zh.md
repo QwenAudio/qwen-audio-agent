@@ -29,26 +29,22 @@ QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-flash-realtime
 - 默认音色 `Ethan`，可用 `QWEN_OMNI_REALTIME_VOICE` 覆盖。
 - 话轮检测为 `semantic_vad`，由运行时配置。
 
-## 能力边界
+## 实时视觉
 
-这个系列正是"模型能力 ≠ 传输通道"差别体现的地方：
+WebUI 可以把摄像头画面采样为有界 JPEG 帧，并通过协商后的 GCP
+`input.image_buffer` 能力发送。Gateway 每秒最多接收一帧；Provider Adapter 会在
+音频已经建立实时会话时间线之后，通过 Qwen Omni 的
+`input_image_buffer.append` 发送，图像与音频缓冲区随正常话轮检测共同提交。
 
-| | 模型层 | 当前客户端传输层 |
-| --- | --- | --- |
-| 输入 | 文本、音频、**图像** | 文本、音频 |
-| 输出 | 文本、音频 | 文本、音频 |
-
-模型本身接受图像输入，但本版本的 qwen-audio-agent 尚未实现对应的客户端
-与网关链路：JPEG 观察帧与原生视频传输保持关闭，直到链路落地——客户端会
-把图像能力如实显示为不可用，而不是假装在发送画面。上表与网关通过健康
-检查接口下发给客户端的能力完全一致，UI 呈现的是同一个边界。
+这条链路提供的是实时视觉上下文，不是回合附件：它不会创建用户消息、主动触发回复、
+进入历史或成为后台 Agent 附件。普通上传图片仍使用 `conversation.item.create` 和既有
+附件/委托链路。本版本的 Desktop 与 TUI 不采集实时视觉帧。
 
 ## 两个系列怎么选？
 
 - **Audio**（`qwen-audio-3.0-realtime-*`）——默认选择；语音优先的对话，
   无其他依赖。
-- **Omni**（`qwen3.5-omni-*-realtime`）——想今天就站在具备图像能力的模型
-  系列上时选它，同时知晓图像传输仍处于关闭状态。
+- **Omni**（`qwen3.5-omni-*-realtime`）——需要前台结合实时画面与语音时选择。
 
 ## 继续阅读
 

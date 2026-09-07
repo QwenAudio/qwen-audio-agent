@@ -83,7 +83,10 @@ for (const clientType of Object.values(GatewayReferenceClientType)) {
       client.supports(GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP),
       clientType === GatewayReferenceClientType.DESKTOP,
     )
+    assert.equal(
+      client.supports(GatewayClientCapability.INPUT_IMAGE_BUFFER),
+      clientType === GatewayReferenceClientType.WEB,
+    )
     client.stop()
   })
 }
-

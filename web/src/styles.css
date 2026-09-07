@@ -6,6 +6,7 @@
 }
 
 .multimodal-composer {
+  position: relative;
   width: min(880px, calc(100% - 32px));
   margin: 0 auto 20px;
   padding: 10px;
@@ -36,6 +37,7 @@
 }
 
 .composer-attach,
+.composer-camera,
 .composer-send {
   min-width: 42px;
   height: 42px;
@@ -44,6 +46,94 @@
   color: inherit;
   background: rgba(255, 255, 255, 0.1);
   cursor: pointer;
+}
+
+.composer-camera {
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 13px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.composer-camera:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.composer-camera svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+
+.camera-stream {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 12px);
+  z-index: 20;
+  width: min(520px, calc(100vw - 32px));
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  background: rgba(13, 15, 21, 0.97);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
+}
+
+.camera-stream video {
+  display: block;
+  width: 100%;
+  max-height: 52vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #030405;
+}
+
+.camera-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 2px 4px;
+  color: #aaa7b4;
+}
+
+.camera-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6f6b79;
+}
+
+.camera-status.active .camera-status-dot {
+  background: #50dfab;
+  box-shadow: 0 0 10px #50dfab;
+}
+
+.camera-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.camera-actions button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 11px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.camera-actions .composer-send,
+.camera-actions .camera-live.active {
+  background: #6d5dfc;
+  color: white;
 }
 
 .composer-send {

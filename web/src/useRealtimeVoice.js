@@ -11,6 +11,7 @@ import {
 import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
 import {
   createGatewayProtocolEventId,
+  GatewayClientCapability,
   GatewayClientProtocolEvent,
 } from '../../shared/gateway-client-protocol.mjs'
 import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
@@ -92,8 +93,7 @@ const TRANSPORT_INPUT_CAPABILITIES = Object.freeze([
   ['textInput', 'text'],
   ['audioInput', 'audio'],
   ['imageInput', 'image'],
-  ['observationInput', 'observation'],
-  ['nativeVideoInput', 'nativeVideo'],
+  ['imageBufferInput', 'video'],
 ])
 
 function enabledModes(capabilities, definitions) {
@@ -227,6 +227,7 @@ export default function useRealtimeVoice({
     createGatewayClientState,
   )
   const [inputReady, setInputReady] = useState(false)
+  const [imageBufferAvailable, setImageBufferAvailable] = useState(false)
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState(false)
   const [connectionAttempt, setConnectionAttempt] = useState(0)
@@ -692,7 +693,13 @@ export default function useRealtimeVoice({
           eventRef.current?.(connectedEvent)
         } else if (status.state === 'ready') {
           takeoverRef.current = false
+          setImageBufferAvailable(
+            status.event?.capabilities?.includes(
+              GatewayClientCapability.INPUT_IMAGE_BUFFER,
+            ) === true,
+          )
         } else if (status.state === 'unavailable') {
+          setImageBufferAvailable(false)
           dispatchClientState({
             type: GatewayServerEvent.VOICE_CONNECTION,
             state: 'unavailable',
@@ -700,6 +707,7 @@ export default function useRealtimeVoice({
           setError(t('实时语音连接中断，正在重连'))
           setVisualError(true)
         } else if (status.state === 'disconnected') {
+          setImageBufferAvailable(false)
           releaseManualInputGuard()
           stopPlayback()
           const disconnectedEvent = {
@@ -710,6 +718,7 @@ export default function useRealtimeVoice({
           setVisualError(true)
           eventRef.current?.(disconnectedEvent)
         } else if (['occupied', 'replaced', 'revoked'].includes(status.state)) {
+          setImageBufferAvailable(false)
           releaseManualInputGuard()
           stopPlayback()
           const disconnectedEvent = {
@@ -747,6 +756,7 @@ export default function useRealtimeVoice({
       stopPlayback('connection_closed')
       client.stop()
       socketRef.current = null
+      setImageBufferAvailable(false)
       mutedResponses.clear()
       releaseManualInputGuard()
     }
@@ -1004,10 +1014,25 @@ export default function useRealtimeVoice({
     return false
   }, [holdManualInputGuard, releaseManualInputGuard, sendSocketEvent])
 
+  const sendImageFrame = useCallback((image, occurredAt = Date.now()) => {
+    const client = socketRef.current
+    if (
+      !client?.ready
+      || !client.supports?.(GatewayClientCapability.INPUT_IMAGE_BUFFER)
+    ) return false
+    return sendSocketEvent({
+      type: GatewayClientProtocolEvent.INPUT_IMAGE_APPEND,
+      occurred_at: occurredAt,
+      media_type: 'image/jpeg',
+      image,
+    })
+  }, [sendSocketEvent])
+
   return {
     state,
     visualState: visualVoiceState(state),
     inputReady,
+    imageBufferAvailable,
     error,
     visualError,
     connectionState,
@@ -1018,6 +1043,7 @@ export default function useRealtimeVoice({
     wake,
     publishClientEvent,
     sendInput,
+    sendImageFrame,
     listTasks,
     getTask,
     cancelTask,

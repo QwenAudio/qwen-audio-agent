@@ -10,6 +10,8 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.8.0 adds capability-negotiated realtime visual frames over GCP and keeps
+// provider-specific image/audio encoding inside Realtime Provider adapters.
 // 5.7.0 adds authenticated remote Client access, one-time device pairing and
 // owner-scoped active Client takeover with generation fencing.
 // 5.6.0 adds a provider-neutral frontend memory control plane for replaceable
@@ -45,7 +47,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.7.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.8.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -108,6 +110,10 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // replaceable Conversation Client boundary for audio, text, multimodal
   // input, transcripts, playback receipts, voice state and Task projections.
   'realtime.conversation-client-v1',
+  // Negotiated Web clients may append bounded JPEG visual frames alongside
+  // live audio. Gateway validates and throttles the provider-neutral stream;
+  // each Realtime Provider adapter owns its native image/audio wire shape.
+  'realtime.visual-input-buffer-v1',
   // session.hello/session.ready negotiate the stable 6.0 Client protocol;
   // 5.x connect and event names remain compatibility aliases through one
   // normalization layer.

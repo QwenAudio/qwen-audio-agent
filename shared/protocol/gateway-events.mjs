@@ -201,6 +201,11 @@ const GatewayClientPayloadSchemas = Object.freeze({
   [GatewayClientEvent.AUDIO_APPEND]: z.object({
     audio: z.string().min(1),
   }).passthrough(),
+  [GatewayClientEvent.IMAGE_APPEND]: z.object({
+    image: z.string().min(1).max(256 * 1024),
+    media_type: z.literal('image/jpeg').default('image/jpeg'),
+    occurred_at: z.number().int().nonnegative().optional(),
+  }).passthrough(),
   [GatewayClientEvent.TEXT_MESSAGE]: GatewayInputMessagePayloadSchema,
   [GatewayClientEvent.INPUT_MESSAGE]: GatewayInputMessagePayloadSchema,
   [GatewayClientEvent.PLAYBACK_STARTED]: z.object({

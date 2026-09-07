@@ -31,29 +31,27 @@ active model regardless of family; switch via Desktop settings or
 - Default voice: `Ethan` — override with `QWEN_OMNI_REALTIME_VOICE`.
 - Turn detection: `semantic_vad`, configured by the runtime.
 
-## Capability boundary
+## Live vision
 
-This family is where the model/transport distinction matters:
+WebUI can sample a camera as bounded JPEG
+frames and send them over the negotiated GCP `input.image_buffer` capability.
+The Gateway accepts at most one frame per second and the provider adapter sends
+it through Qwen Omni's `input_image_buffer.append` after audio has established
+the realtime timeline. Image and audio buffers are committed together by the
+provider's normal turn detection.
 
-| | Model | Current client transport |
-| --- | --- | --- |
-| Input | text, audio, **image** | text, audio |
-| Output | text, audio | text, audio |
-
-The models accept images; this release of qwen-audio-agent does not ship
-the client and Gateway paths for them yet. JPEG observation frames and
-native video transport stay disabled until those paths land — clients
-show the image capability as unavailable rather than pretending to send
-pixels. The capability tables above are exactly what the Gateway reports
-to clients over the health endpoint, so UIs render the same boundary.
+This path is live visual context, not a turn attachment: it does not create a
+user message, trigger a response, enter history, or become a backend-Agent
+attachment. Ordinary uploaded images still use `conversation.item.create` and
+the existing attachment/delegation path. Desktop and TUI do not capture live
+visual frames in this release.
 
 ## Which family should I pick?
 
 - **Audio** (`qwen-audio-3.0-realtime-*`) — the default; voice-first
   conversation, nothing else needed.
 - **Omni** (`qwen3.5-omni-*-realtime`) — pick when you want the
-  image-ready model family today, knowing image transport is still
-  gated off.
+  frontend to combine live visual frames with voice.
 
 ## Read next
 

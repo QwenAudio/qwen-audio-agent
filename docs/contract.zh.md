@@ -22,7 +22,8 @@
 Delivery、Client Action、参考 Client SDK 与有限回放均落在同一条 WebSocket 上。
 已实现行为仍以本契约索引为准。
 
-当前健康契约版本为 `5.7.0`。新增的 `5.7` 能力提供远程 Client 认证、一次性
+当前健康契约版本为 `5.8.0`。新增的 `5.8` 能力通过 capability 协商提供实时 JPEG
+视觉帧，并把厂商线协议保留在 Realtime Provider Adapter 内。`5.7` 能力提供远程 Client 认证、一次性
 设备配对，以及按用户生效的活动 Client 接管与租约代次 fencing。`5.6` 能力为可替换客户端提供
 Provider 无关的前台记忆控制面。`5.5` 能力提供共享参考 Client SDK、有限 Task
 事件回放与断线状态恢复。第一方 WebUI、Desktop 和 TUI 已通过同一套一致性测试，
@@ -67,6 +68,7 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `messages.citations` | 最终助手 `transcript.final` 可以携带同一轮前台检索产生的规范化 Citation | `test/gateway-event-schema.test.mjs`、`server/test/realtime-presentation-runtime.test.mjs` |
 | `frontend.memory-control` | `GET/PATCH /api/memory` 供可替换客户端列出并精确编辑 Realtime 共用的 Provider 记忆文档，不暴露具体存储实现 | `server/test/gateway-application.test.mjs` |
 | `realtime.conversation-client-v1` | `WS /api/realtime`、公开事件常量与消息 Schema 共同构成可替换的文本/音频/多模态对话客户端边界 | `test/gateway-event-schema.test.mjs`、`test/custom-conversation-client.test.mjs` |
+| `realtime.visual-input-buffer-v1` | 协商后的 Web Client 通过 GCP `input_image_buffer.append` 追加有界 JPEG 视觉帧；Gateway 负责校验与节流，Qwen Omni 和 MiniCPM-o Adapter 负责厂商原生编码 | `test/gateway-client-protocol.test.mjs`、`server/test/visual-input-buffer.test.mjs`、`server/test/realtime-provider.test.mjs`、`server/test/minicpm-o-provider.test.mjs`、`web/test/camera-input.test.mjs` |
 | `realtime.gateway-client-protocol-v6-handshake` | 同一 WebSocket 可选择以 6.0 `session.hello` 接入，返回有关联关系的 `session.ready`，协商已实现能力，并把 6.0 输入别名归一化到现有业务路径 | `test/gateway-client-protocol.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-runtime-commands` | 协商后的 6.0 Client 可以通过同一 WebSocket 发布已注册的语义 Client Event，并使用有关联结果的 Task、权限、对话历史和会话输出音色命令；现有 REST 路由调用同一命令服务作为兼容别名 | `test/gateway-client-protocol.test.mjs`、`server/test/client-event-router.test.mjs`、`server/test/client-command-runtime.test.mjs`、`server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-agent-delivery` | Client Event、Task 结果与低频进展、权限请求统一跨越 Provider 无关 `AgentDelivery` 边界，并支持 `handle`、`context`、`respond`、`interrupt` 四种模式 | `server/test/agent-delivery.test.mjs`、`server/test/client-event-router.test.mjs`、`server/test/realtime-provider.test.mjs`、`server/test/announcement-manager.test.mjs` |

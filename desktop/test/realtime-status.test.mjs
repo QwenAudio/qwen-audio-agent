@@ -96,8 +96,8 @@ test('derives truthful model and Desktop transport hints per profile', () => {
   assert.deepEqual(realtimeStatus.realtimeModelPresentation(
     resolveDashScopeRealtimeModelProfile(DASHSCOPE_OMNI_PLUS_REALTIME_MODEL),
   ), {
-    optionHint: '模型：文字 / 语音 / 图片',
-    selectedHint: '模型能力：文字 / 语音 / 图片 · Desktop 传输：文字 / 语音（图片 / 视频未启用）',
+    optionHint: '模型：文字 / 语音 / 图片 / 视频',
+    selectedHint: '模型能力：文字 / 语音 / 图片 / 视频 · Desktop 传输：文字 / 语音（图片 / 视频未启用）',
   })
   assert.deepEqual(realtimeStatus.realtimeModelPresentation(
     resolveDashScopeRealtimeModelProfile(DEFAULT_DASHSCOPE_REALTIME_MODEL),

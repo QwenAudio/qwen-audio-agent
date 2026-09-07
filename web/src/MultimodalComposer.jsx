@@ -6,6 +6,7 @@ import {
   withAttachmentAnchors,
 } from '../../shared/input-parts.mjs'
 import { t } from './i18n.js'
+import VisualStreamControl from './VisualStreamControl.jsx'
 
 function filePart(file, index, sourceType = 'file') {
   return new Promise((resolve, reject) => {
@@ -32,6 +33,10 @@ function filePart(file, index, sourceType = 'file') {
 
 export default function MultimodalComposer({
   onSend,
+  onVisualFrame,
+  visualStreamAvailable = false,
+  voiceInputEnabled = false,
+  connectionState = 'connected',
   compact = false,
 }) {
   const [text, setText] = useState('')
@@ -100,6 +105,12 @@ export default function MultimodalComposer({
         aria-label={t('添加图片或文件')}
         onClick={() => picker.current?.click()}
       >＋</button>
+      {visualStreamAvailable && <VisualStreamControl
+        available={visualStreamAvailable}
+        inputEnabled={voiceInputEnabled}
+        connectionState={connectionState}
+        onFrame={onVisualFrame}
+      />}
       <input
         ref={picker}
         type="file"

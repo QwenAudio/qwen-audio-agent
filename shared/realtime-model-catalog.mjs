@@ -6,12 +6,12 @@ export const DASHSCOPE_OMNI_FLASH_REALTIME_MODEL = 'qwen3.5-omni-flash-realtime'
 export const DASHSCOPE_OMNI_PLUS_REALTIME_MODEL = 'qwen3.5-omni-plus-realtime'
 
 const OMNI_MODEL_CAPABILITIES = Object.freeze({
-  textInput: true, audioInput: true, imageInput: true, videoInput: false,
+  textInput: true, audioInput: true, imageInput: true, videoInput: true,
   textOutput: true, audioOutput: true, functionCalling: true,
 })
 const OMNI_TRANSPORT_CAPABILITIES = Object.freeze({
   textInput: true, audioInput: true, imageInput: false,
-  observationInput: false, nativeVideoInput: false,
+  imageBufferInput: true,
 })
 const LEGACY_MODEL_CAPABILITIES = Object.freeze({
   textInput: true, audioInput: true, imageInput: false, videoInput: false,
@@ -19,7 +19,7 @@ const LEGACY_MODEL_CAPABILITIES = Object.freeze({
 })
 const LEGACY_TRANSPORT_CAPABILITIES = Object.freeze({
   textInput: true, audioInput: true, imageInput: false,
-  observationInput: false, nativeVideoInput: false,
+  imageBufferInput: false,
 })
 const UNKNOWN_MODEL_CAPABILITIES = Object.freeze({
   textInput: false, audioInput: false, imageInput: false, videoInput: false,
@@ -27,7 +27,7 @@ const UNKNOWN_MODEL_CAPABILITIES = Object.freeze({
 })
 const UNKNOWN_TRANSPORT_CAPABILITIES = Object.freeze({
   textInput: false, audioInput: false, imageInput: false,
-  observationInput: false, nativeVideoInput: false,
+  imageBufferInput: false,
 })
 const OMNI_SESSION_DEFAULTS = Object.freeze({
   voice: 'Ethan',

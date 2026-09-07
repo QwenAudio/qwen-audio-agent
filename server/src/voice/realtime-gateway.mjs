@@ -39,6 +39,7 @@ import {
   clientVoiceCapabilities,
 } from './active-voice-clients.mjs'
 import { RealtimeProviderSession } from './realtime-provider-session.mjs'
+import { VisualInputBuffer } from './visual-input-buffer.mjs'
 import { RealtimeRecoveryContext } from './realtime-recovery-context.mjs'
 import { SleepController } from './sleep-controller.mjs'
 import {
@@ -87,6 +88,17 @@ const REALTIME_STABLE_CONNECTION_MS = 10000
 const MAX_CLIENT_REPLAY_SESSIONS = 32
 const CLIENT_HEARTBEAT_MS = 30_000
 const clientProtocolSessions = new WeakMap()
+
+function providerSupportsImageBuffer(registry, providerName) {
+  try {
+    return registry.resolve(providerName)
+      .modelProfile?.()
+      ?.transportCapabilities
+      ?.imageBufferInput === true
+  } catch {
+    return false
+  }
+}
 
 function gatewayTurnId() {
   return `gateway_${randomUUID().replaceAll('-', '')}`
@@ -282,7 +294,13 @@ export function attachRealtimeGateway(server, {
     }
     const clientProtocol = new GatewayClientProtocolSession({
       sessionId,
-      supportedCapabilities: supportedClientCapabilities,
+      supportedCapabilities: hello => supportedClientCapabilities.filter(capability => (
+        capability !== GatewayClientCapability.INPUT_IMAGE_BUFFER
+        || providerSupportsImageBuffer(
+          realtimeProviderRegistry,
+          hello.connection?.provider || defaultRealtimeProvider,
+        )
+      )),
       replayBuffer,
     })
     clientProtocolSessions.set(ws, clientProtocol)
@@ -337,6 +355,7 @@ export function attachRealtimeGateway(server, {
     const announcedInputs = new Set()
     let permissionRetryTimer = null
     let realtimeSession
+    let visualInput
     const agentDeliveries = new RealtimeAgentDeliveryRuntime({
       getFrontend: () => realtimeSession?.frontend,
       isDeliveryBlocked: () => (
@@ -629,10 +648,13 @@ export function attachRealtimeGateway(server, {
           announcements.flush()
         }
       },
-      onDisconnected: () => send(ws, {
-        type: GatewayServerEvent.VOICE_STATE,
-        state: 'idle',
-      }),
+      onDisconnected: () => {
+        visualInput?.reset()
+        send(ws, {
+          type: GatewayServerEvent.VOICE_STATE,
+          state: 'idle',
+        })
+      },
       onReconnected: () => {
         announcements.flush()
         progressAnnouncements.flush()
@@ -653,6 +675,9 @@ export function attachRealtimeGateway(server, {
         ? { createFrontend: realtimeFrontendFactory }
         : {}),
     })
+    visualInput = new VisualInputBuffer({
+      onFrame: image => realtimeSession.appendImage(image),
+    })
     const voiceClient = {
       ws,
       descriptor,
@@ -666,6 +691,8 @@ export function attachRealtimeGateway(server, {
         if (suspend) {
           // Buffered audio predates the suspension and is no longer wanted.
           realtimeSession.clearPendingAudio()
+          realtimeSession.clearPendingImage()
+          visualInput.reset()
           sleepController?.disable()
           realtimeSession.cancelResponse()
           send(ws, { type: GatewayServerEvent.PLAYBACK_CLEAR, reason: 'input_suspended' })
@@ -693,6 +720,7 @@ export function attachRealtimeGateway(server, {
         sleepController?.disable()
         inputEnabled = false
         outputEnabled = false
+        visualInput.reset()
         announcementWindow.reset()
         announcements.pause()
         progressAnnouncements.clear()
@@ -1165,6 +1193,7 @@ export function attachRealtimeGateway(server, {
 
     const enterSleep = () => {
       if (sleeping) return
+      visualInput.reset()
       sleeping = true
       waking = false
       announcementWindow.reset()
@@ -1650,6 +1679,25 @@ export function attachRealtimeGateway(server, {
           audio: event.audio,
           sampleRate: Number(realtimeSession.provider()?.inputSampleRate) || 16_000,
         })
+      } else if (event.type === GatewayClientEvent.IMAGE_APPEND) {
+        if (
+          sleeping
+          || !inputEnabled
+          || inputSuspended
+          || !activeVoiceClients.isActive(ownerId, voiceClient)
+        ) return
+        try {
+          visualInput.append({
+            image: event.image,
+            mediaType: event.media_type,
+            occurredAt: event.occurred_at,
+          })
+        } catch (error) {
+          send(ws, {
+            type: GatewayServerEvent.ERROR,
+            message: error.message,
+          })
+        }
       } else if (
         event.type === GatewayClientEvent.TEXT_MESSAGE
         || event.type === GatewayClientEvent.INPUT_MESSAGE
@@ -1703,6 +1751,7 @@ export function attachRealtimeGateway(server, {
           })
         }
       } else if (event.type === GatewayClientEvent.MUTE) {
+        visualInput.reset()
         releaseVoiceClient()
         sleeping = false
         waking = false
@@ -1715,6 +1764,8 @@ export function attachRealtimeGateway(server, {
       } else if (event.type === GatewayClientEvent.INPUT_MUTE) {
         inputEnabled = false
         realtimeSession.clearPendingAudio()
+        realtimeSession.clearPendingImage()
+        visualInput.reset()
       } else if (event.type === GatewayClientEvent.SLEEP) {
         requestExplicitSleep('client')
       } else if (event.type === GatewayClientEvent.WAKE) {
@@ -1752,6 +1803,7 @@ export function attachRealtimeGateway(server, {
       presentationRuntime.clear()
       announcements.close()
       progressAnnouncements.close()
+      visualInput.reset()
       clearTimeout(permissionRetryTimer)
       permissionRetryTimer = null
       sleepController?.close()

@@ -19,7 +19,7 @@ qwen-audio-agent 是一个实时语音运行时，让 AI Agent 持续交流、�
      它掌管任务台账、权限裁决、播报策略，以及前后台之间的注入防线。
 
 3. **后台——执行层。** 任何 `BackendPort` 之后的执行体：ACP 智能体
-   （OpenCode、OpenClaw、Qoder、Qwen Code、Kimi Code、Claude Code、
+   （OpenCode、OpenClaw、Qoder、Qwen Code、MiniMax Code、Kimi Code、Claude Code、
    Codex、DeepSeek、Pi，或你自己的）、远程 A2A 智能体，或用 Backend
    Adapter SDK 编写的自定义适配器。ACP 接入通过固定协调 Session 保持工作的
    连续性；后台内部的工具、技能、子会话都是后台私有实现，不会变成新的层。

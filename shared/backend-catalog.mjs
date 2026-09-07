@@ -123,6 +123,36 @@ const definitions = new Map([
       prefixes: ['QWEN_CODE_'],
     },
   }],
+  ['minimax', {
+    id: 'minimax',
+    label: 'MiniMax Code',
+    workspaceEnvironment: 'MINIMAX_CODE_WORKSPACE',
+    // MiniMax Code manages its own Skills and Plugins; no public skills.sh
+    // compatible installation directory is declared here.
+    skills: null,
+    setup: {
+      command: 'mcode',
+      executableEnvironment: 'MINIMAX_CODE_BIN',
+      integration: 'native',
+      minimumVersion: '0.3.7',
+    },
+    lifecycle: {
+      installation: {
+        steps: [{
+          kind: 'npm',
+          package: '@minimax-ai/code@0.3.7',
+          packageEnv: 'MINIMAX_CODE_PACKAGE',
+        }],
+      },
+      configuration: { mode: 'backend-owned' },
+    },
+    onboarding: {
+      command: 'mcode login',
+      hint: '首次使用请运行 mcode login 完成 MiniMax Code 官方认证；如使用自定义 Provider，请运行 mcode provider。',
+    },
+    supportsFullPermission: true,
+    environment: { prefixes: ['MINIMAX_'] },
+  }],
   ['kimi', {
     id: 'kimi',
     label: 'Kimi Code',

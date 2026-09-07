@@ -22,7 +22,7 @@ layers:
    execution.
 
 The backend may be an ACP Agent such as OpenCode, OpenClaw, Qoder, Qwen Code,
-Kimi Code, or Pi; a remote A2A Agent; or a custom BackendPort adapter.
+MiniMax Code, Kimi Code, or Pi; a remote A2A Agent; or a custom BackendPort adapter.
 It may internally use tools, skills, agents, or other Sessions. Those are
 backend-private implementation details and do not create additional
 qwen-audio-agent layers. Protocol details remain inside ACP, A2A, or custom
@@ -313,7 +313,7 @@ call.
 ## 8. Backend-internal capabilities
 
 For ACP backends that accept client-supplied MCP servers, including OpenCode,
-Qoder, Qwen Code, and Kimi Code, the Gateway injects the same five tools into the
+Qoder, Qwen Code, MiniMax Code, and Kimi Code, the Gateway injects the same five tools into the
 coordinator: Session list, start, send, status, and cancel. OpenClaw ACP does
 not accept client-supplied MCP servers, so the same coordination contract maps
 to OpenClaw's native Session tools. `session_start` and `session_send` return an
@@ -425,7 +425,7 @@ use the thin bootstrap entry while tests and future clients may supply isolated
 Agent, task, conversation, configuration, and logging services.
 
 The shared adapter usually owns one ACP stdio child and stops it with Gateway.
-OpenCode, Qoder, Qwen Code, and Kimi Code run directly as ACP agents; OpenCode may also
+OpenCode, Qoder, Qwen Code, MiniMax Code, and Kimi Code run directly as ACP agents; OpenCode may also
 start its native local Session UI service. `OPENCODE_BASE_URL` currently names
 that UI service, not a remote ACP execution endpoint, so OpenCode remains
 `owned`.

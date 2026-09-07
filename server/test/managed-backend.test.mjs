@@ -280,7 +280,7 @@ test('generic ACP is managed as a Gateway child without a separate server', asyn
 })
 
 test('additional ACP backends run inside the Gateway without an HTTP server', async () => {
-  for (const protocol of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude', 'pi']) {
+  for (const protocol of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude', 'minimax', 'pi']) {
     assert.deepEqual(resolveManagedBackend({
       AGENT_PROTOCOL: protocol,
     }), {

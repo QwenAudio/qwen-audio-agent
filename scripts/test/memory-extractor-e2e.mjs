@@ -15,10 +15,10 @@ import { ConversationSync } from '../../server/src/conversation/conversation-syn
 import { FrontendMemoryService } from '../../server/src/conversation/frontend-memory-service.mjs'
 import { MarkdownContextStore } from '../../server/src/conversation/markdown-context-store.mjs'
 import { MemoryAudit } from '../../server/src/conversation/memory-audit.mjs'
+import { MemoryExtractor } from '../../server/src/conversation/memory-extractor.mjs'
 import {
-  MemoryExtractor,
-  createExtractorLlmCall,
-} from '../../server/src/conversation/memory-extractor.mjs'
+  createOpenAiCompatibleTextCall,
+} from '../../server/src/providers/llm/openai-compatible-chat.mjs'
 
 function resolveApiKey() {
   if (process.env.QWEN_AUDIO_MEMORY_API_KEY) return process.env.QWEN_AUDIO_MEMORY_API_KEY
@@ -166,7 +166,7 @@ for (const scenario of SCENARIOS) {
     memoryService,
     conversationSync: session(scenario.turns),
     audit: new MemoryAudit({ filePath: auditPath }),
-    llmCall: createExtractorLlmCall({
+    llmCall: createOpenAiCompatibleTextCall({
       baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       apiKey,
       model,

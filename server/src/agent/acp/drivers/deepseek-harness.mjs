@@ -34,7 +34,7 @@ export const deepSeekHarnessBackendDriver = {
           ELECTRON_RUN_AS_NODE: '1',
           DEEPSEEK_HARNESS_CONFIG: resolve(
             root,
-            'config/deepseek-harness/cordis.yml',
+            'config/backends/deepseek-harness/cordis.yml',
           ),
           DEEPSEEK_HARNESS_SESSION_ROOT: sessionRoot,
           DEEPSEEK_HARNESS_ACP_BIN: cliPath,

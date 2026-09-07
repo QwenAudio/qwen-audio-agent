@@ -93,4 +93,8 @@ test('DeepSeek Harness driver isolates its ACP limitations', () => {
   assert.equal(profile.nativeSessionHistory, false)
   assert.equal(profile.acpConnection.env.DSH_PERMISSION_MODE, 'workspace-write')
   assert.equal(profile.acpConnection.env.DSH_MODEL, 'deepseek-v4-pro')
+  assert.equal(
+    profile.acpConnection.env.DEEPSEEK_HARNESS_CONFIG,
+    resolve('/repo', 'config/backends/deepseek-harness/cordis.yml'),
+  )
 })

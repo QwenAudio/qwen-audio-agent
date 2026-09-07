@@ -1,6 +1,67 @@
 import { randomUUID } from 'node:crypto'
 import { createAgentDelivery } from '../../delivery/agent-delivery.mjs'
+import {
+  createGatewaySystemEventDelivery,
+  GatewaySystemEvent,
+} from '../../delivery/gateway-system-event.mjs'
 import { RealtimeAgentDeliveryRuntime } from '../realtime-agent-delivery-runtime.mjs'
+
+function isReminderDue(item) {
+  return item?.event === GatewaySystemEvent.REMINDER_DUE
+}
+
+function reminderDueData(announcements) {
+  return {
+    reminders: announcements.map(item => ({
+      content: item.objective,
+      scheduledAt: item.scheduledAt,
+      recurrence: item.recurrence,
+      timeZone: item.timeZone,
+    })),
+  }
+}
+
+function formatAnnouncements(announcements) {
+  if (announcements.length && announcements.every(isReminderDue)) {
+    return createGatewaySystemEventDelivery(
+      GatewaySystemEvent.REMINDER_DUE,
+      { id: 'reminder_due_preview', data: reminderDueData(announcements) },
+    ).text
+  }
+  return formatWorkResults(announcements)
+}
+
+function announcementDelivery(batch) {
+  const correlation = {
+    turnId: batch.deliveryTurnId,
+    taskId: batch.taskIds.length === 1 ? batch.taskIds[0] : null,
+    taskIds: batch.taskIds,
+  }
+  if (batch.announcements.every(isReminderDue)) {
+    const seriesIds = [...new Set(batch.announcements
+      .map(item => item.seriesId)
+      .filter(Boolean))]
+    return createGatewaySystemEventDelivery(
+      GatewaySystemEvent.REMINDER_DUE,
+      {
+        id: `reminder_due_${batch.deliveryTurnId}`,
+        data: reminderDueData(batch.announcements),
+        correlation: {
+          ...correlation,
+          ...(seriesIds.length === 1 ? { seriesId: seriesIds[0] } : {}),
+          ...(seriesIds.length > 1 ? { seriesIds } : {}),
+        },
+      },
+    )
+  }
+  return createAgentDelivery({
+    id: `task_result_${batch.deliveryTurnId}`,
+    mode: 'respond',
+    origin: 'announcement',
+    text: formatWorkResults(batch.announcements),
+    correlation,
+  })
+}
 
 export class AnnouncementManager {
   constructor({
@@ -70,11 +131,18 @@ export class AnnouncementManager {
 
   completed(task) {
     this.queue(task.id, {
-      event: 'task.completed',
+      event: task.kind === 'reminder'
+        ? GatewaySystemEvent.REMINDER_DUE
+        : 'task.completed',
       status: 'completed',
+      kind: task.kind,
       objective: task.objective,
       result: task.result,
       completedAt: task.completedAt,
+      scheduledAt: task.schedule?.at,
+      recurrence: task.schedule?.recurrence,
+      timeZone: task.schedule?.timeZone,
+      seriesId: task.seriesId,
     })
   }
 
@@ -246,9 +314,11 @@ export class AnnouncementManager {
       .sort((a, b) => a.sequence - b.sequence)
     if (!pending.length) return null
     const queued = []
+    const reminderBatch = isReminderDue(pending[0])
     for (const item of pending) {
+      if (queued.length && isReminderDue(item) !== reminderBatch) break
       const candidate = [...queued, item]
-      const candidateText = formatWorkResults(
+      const candidateText = formatAnnouncements(
         this.batchAnnouncements(candidate),
       )
       if (
@@ -301,24 +371,28 @@ export class AnnouncementManager {
     this.ensureLeaseRenewal()
     this.delivering = true
     try {
-      const eventText = truncateResult(
-        formatWorkResults(batch.announcements),
-        this.resultContextMaxChars,
-      )
-      const context = {
-        turnId: batch.deliveryTurnId,
-        taskId: batch.taskIds.length === 1 ? batch.taskIds[0] : null,
-        taskIds: batch.taskIds,
-      }
+      const formattedText = formatAnnouncements(batch.announcements)
+      // Gateway protocol envelopes must remain structurally complete. Their
+      // fields are bounded by the central event definition before this point.
+      const eventText = batch.announcements.every(isReminderDue)
+        ? formattedText
+        : truncateResult(formattedText, this.resultContextMaxChars)
+      const delivery = announcementDelivery(batch)
+      const boundedDelivery = eventText === delivery.text
+        ? delivery
+        : createAgentDelivery({ ...delivery, text: eventText })
       const outcome = this.announceIntoContext
-        ? await this.deliveryRuntime.deliver(createAgentDelivery({
-            id: `task_result_${batch.deliveryTurnId}`,
-            mode: 'respond',
-            origin: 'announcement',
-            text: eventText,
-            correlation: context,
-          }), { injectContext: !batch.contextInjected })
-        : await frontend.speak(eventText, 'announcement', context)
+        ? await this.deliveryRuntime.deliver(
+            boundedDelivery,
+            { injectContext: !batch.contextInjected },
+          )
+        : await frontend.speak(
+            batch.announcements.every(isReminderDue)
+              ? batch.announcements.map(item => item.objective).join('\n')
+              : eventText,
+            delivery.origin,
+            delivery.correlation,
+          )
       if (
         this.deliveryGeneration !== deliveryGeneration
         || this.activeBatch !== batch

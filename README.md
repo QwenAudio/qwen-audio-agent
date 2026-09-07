@@ -130,6 +130,11 @@ AGENT_PROTOCOL=openclaw
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
+Before starting, create a key from the [Bailian API Key page](https://bailian.console.aliyun.com/?tab=model#/api-key).
+Eligible new users can review the [new-user free quota](https://help.aliyun.com/zh/model-studio/new-free-quota)
+and check remaining usage on the [model usage page](https://help.aliyun.com/zh/model-studio/model-usage-statistics).
+Quota and billing rules are subject to the current official Bailian documentation.
+
 > Uses DashScope realtime voice by default. Alternatives include
 > [Speech-to-Speech](docs/voice-frontends/speech-to-speech.md) and
 > [ModelBest MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.md), with local or hosted endpoints

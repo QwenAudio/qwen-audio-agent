@@ -127,6 +127,7 @@ export const GatewayTaskSchema = z.object({
   ]),
   status: z.string().min(1),
   kind: z.string().min(1),
+  seriesId: z.string().min(1).optional(),
   parentTaskId: z.string().nullable().optional(),
   objective: z.string(),
   ownerId: z.string().optional(),

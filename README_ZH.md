@@ -121,6 +121,11 @@ AGENT_PROTOCOL=openclaw
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
+开始前请先在[百炼 API Key 页面](https://bailian.console.aliyun.com/?tab=model#/api-key)
+创建 Key；符合条件的新用户可在[新人免费额度说明](https://help.aliyun.com/zh/model-studio/new-free-quota)
+中查看额度规则，并在[模型用量页面](https://help.aliyun.com/zh/model-studio/model-usage-statistics)
+查看剩余额度。额度和计费规则以百炼官方页面为准。
+
 > 默认使用 DashScope 实时语音前台。本地方案可选择
 > [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) 或
 > [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md)，均无需云端 API Key。

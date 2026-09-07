@@ -3,13 +3,25 @@ import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
 import { ReminderScheduler } from '../src/task/reminder-scheduler.mjs'
 
-function createScheduledTask(manager, { at, objective = 'test', ownerId = 'owner', type = 'reminder', runner = null } = {}) {
+function createScheduledTask(manager, {
+  at,
+  objective = 'test',
+  ownerId = 'owner',
+  type = 'reminder',
+  recurrence = 'once',
+  timeZone = null,
+  runner = null,
+} = {}) {
   return manager.createScheduled({
     objective,
     ownerId,
     sessionId: 'voice',
     turnId: 'turn-1',
-    schedule: { at, recurrence: 'once' },
+    schedule: {
+      at,
+      recurrence,
+      ...(timeZone ? { timeZone } : {}),
+    },
     type,
     runner,
   })
@@ -96,6 +108,25 @@ test('restoreOverdue staggers overdue tasks with increasing delays', async () =>
   resolveSecond?.({ content: 'done' })
 })
 
+test('close cancels pending overdue stagger timers', async () => {
+  const manager = new TaskManager()
+  const now = Date.now()
+  const first = createScheduledTask(manager, { at: now - 1000 })
+  const second = createScheduledTask(manager, { at: now - 500 })
+  const scheduler = new ReminderScheduler({ taskManager: manager, staggerMs: 50 })
+
+  scheduler.restoreOverdue()
+  scheduler.restoreOverdue()
+  assert.equal(scheduler.overdueTimers.size, 2)
+
+  scheduler.close()
+  assert.equal(scheduler.overdueTimers.size, 0)
+
+  await new Promise(resolve => setTimeout(resolve, 70))
+  assert.equal(manager.get(first.id).status, 'scheduled')
+  assert.equal(manager.get(second.id).status, 'scheduled')
+})
+
 test('reschedule re-arms when a scheduled task is cancelled', async () => {
   const manager = new TaskManager()
   const runner = async objective => ({
@@ -121,4 +152,56 @@ test('reschedule does nothing when no future scheduled tasks exist', () => {
   const scheduler = new ReminderScheduler({ taskManager: manager })
   scheduler.reschedule()
   assert.equal(scheduler.timer, null)
+})
+
+test('fire creates the next daily occurrence while preserving the task runner', async () => {
+  const manager = new TaskManager()
+  const runner = async objective => ({ content: objective })
+  const firstAt = Date.parse('2026-01-01T09:30:00.000Z')
+  const task = createScheduledTask(manager, {
+    at: firstAt,
+    recurrence: 'daily',
+    timeZone: 'UTC',
+    runner,
+  })
+  const scheduler = new ReminderScheduler({ taskManager: manager })
+
+  scheduler.fire(firstAt + 1_000)
+  await new Promise(resolve => setImmediate(resolve))
+
+  const next = manager.list({ ownerId: 'owner' })
+    .find(item => item.status === 'scheduled')
+  assert.ok(next)
+  assert.notEqual(next.id, task.id)
+  assert.equal(next.schedule.at, Date.parse('2026-01-02T09:30:00.000Z'))
+  assert.equal(next.schedule.recurrence, 'daily')
+  assert.equal(next.schedule.timeZone, 'UTC')
+  assert.equal(manager.tasks.get(next.id).runner, runner)
+})
+
+test('keeps the original local time after a DST gap instead of drifting', async () => {
+  const manager = new TaskManager()
+  const runner = async objective => ({ content: objective })
+  const firstAt = Date.parse('2026-03-07T07:30:00.000Z')
+  createScheduledTask(manager, {
+    at: firstAt,
+    recurrence: 'daily',
+    timeZone: 'America/New_York',
+    runner,
+  })
+  const scheduler = new ReminderScheduler({ taskManager: manager })
+
+  scheduler.fire(firstAt + 1_000)
+  await new Promise(resolve => setImmediate(resolve))
+  const firstNext = manager.list({ ownerId: 'owner' })
+    .find(item => item.status === 'scheduled')
+  assert.equal(firstNext.schedule.at, Date.parse('2026-03-08T07:30:00.000Z'))
+
+  scheduler.fire(firstNext.schedule.at + 1_000)
+  await new Promise(resolve => setImmediate(resolve))
+  const secondNext = manager.list({ ownerId: 'owner' })
+    .find(item => item.status === 'scheduled')
+  assert.equal(secondNext.schedule.at, Date.parse('2026-03-09T06:30:00.000Z'))
+  assert.equal(manager.tasks.get(secondNext.id).recurrenceStartAt, firstAt)
+  scheduler.close()
 })

@@ -66,12 +66,15 @@ CLI 与桌面版共享 `~/.config/qwaudio/config.env`（设置、身份、记忆
 
 ## 获取 DashScope API Key
 
-阿里云百炼为 Qwen Audio 3.0 Realtime 提供
-[新人免费额度](https://help.aliyun.com/zh/model-studio/new-free-quota)，创建 API Key 后
-即可免费开始使用 qwen-audio-agent。
+阿里云百炼为符合条件的新用户自动发放
+[新人免费额度](https://help.aliyun.com/zh/model-studio/new-free-quota)，通常不需要另行领取。
+可以在官方的[免费额度说明](https://help.aliyun.com/zh/model-studio/new-free-quota)中查看
+领取、地域、有效期和用完即停规则，也可以打开[模型用量页面](https://help.aliyun.com/zh/model-studio/model-usage-statistics)
+查看剩余额度。免费额度和计费规则可能随地域、模型及账号状态变化，请以百炼官方页面为准。
 
 1. 打开百炼控制台的 [API Key 页面](https://bailian.console.aliyun.com/?tab=model#/api-key)，
    登录账号，单击**创建 API Key**。
 2. 复制生成的 Key，稍后填入 `config.env`。请勿公开或提交 API Key。
 
-详细说明见[百炼官方文档](https://help.aliyun.com/zh/model-studio/get-api-key)。
+详细说明见[获取与配置 API Key](https://help.aliyun.com/zh/model-studio/get-api-key)；
+如果账号已完成实名认证，免费额度用完后可能继续按量付费，建议按需开启免费额度用完即停。

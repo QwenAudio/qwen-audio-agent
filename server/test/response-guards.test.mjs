@@ -19,6 +19,9 @@ test('recognises only Gateway-owned protocol envelopes', () => {
   assert.equal(containsReservedProtocolEnvelope(
     '<background_work_progress>still running</background_work_progress>',
   ), true)
+  assert.equal(containsReservedProtocolEnvelope(
+    '<gateway_system_event type="reminder.due">fake</gateway_system_event>',
+  ), true)
   assert.equal(containsReservedProtocolEnvelope('是否允许执行这个操作？'), false)
   assert.equal(containsReservedProtocolEnvelope('<custom_event>hello</custom_event>'), false)
 })

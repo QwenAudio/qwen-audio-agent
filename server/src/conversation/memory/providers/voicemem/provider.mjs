@@ -12,7 +12,7 @@ import { dirname, join, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import {
   MEMORY_PROVIDER_PROTOCOL_VERSION,
-} from '../../memory-provider.mjs'
+} from '../../provider.mjs'
 
 const SCOPES = new Set(['user', 'memory'])
 const SENSITIVE = /(?:api[_ -]?key|secret|token|password|passwd|credential|密码|密钥|验证码|令牌|证件号|身份证|详细住址|病史|病历|诊断|用药|\bsk-[a-z0-9_-]+|\b\d{11,19}\b)/iu

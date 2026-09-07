@@ -2,11 +2,11 @@ import {
   assertMemoryProvider,
   describeMemoryProvider,
   normalizeMemoryProviderHealth,
-} from './memory-provider.mjs'
+} from './provider.mjs'
 import {
   canonicalScope,
   isMemoryDocument,
-} from '../core/memory-scopes.mjs'
+} from './scopes.mjs'
 
 function clean(value, maxChars) {
   return [...String(value || '').replaceAll('\0', '').trim()]

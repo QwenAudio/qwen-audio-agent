@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FrontendMemoryService } from '../src/conversation/frontend-memory-service.mjs'
+import { MarkdownMemoryProvider } from '../src/conversation/memory/providers/markdown/provider.mjs'
 
 function document(scope, content) {
   let value = content
@@ -35,7 +35,7 @@ function document(scope, content) {
 }
 
 test('lists user preferences and long-term memory as separate Markdown documents', () => {
-  const store = new FrontendMemoryService({
+  const store = new MarkdownMemoryProvider({
     userStore: document('user', '# USER\n\n- 称呼：船长'),
     memoryStore: document('memory', '# MEMORY\n\n- 喜欢篮球'),
   })
@@ -47,7 +47,7 @@ test('lists user preferences and long-term memory as separate Markdown documents
 test('applies one Markdown change to the selected document', () => {
   const userStore = document('user', '# USER')
   const memoryStore = document('memory', '# MEMORY')
-  const store = new FrontendMemoryService({ userStore, memoryStore })
+  const store = new MarkdownMemoryProvider({ userStore, memoryStore })
   const result = store.apply('owner', [{
     document: 'profile',
     append: '## 称呼\n\n- 船长',
@@ -58,7 +58,7 @@ test('applies one Markdown change to the selected document', () => {
 })
 
 test('rejects changes without a concrete document', () => {
-  const store = new FrontendMemoryService({
+  const store = new MarkdownMemoryProvider({
     userStore: document('user', '# USER'),
     memoryStore: document('memory', '# MEMORY'),
   })
@@ -66,7 +66,7 @@ test('rejects changes without a concrete document', () => {
 })
 
 test('prepares both documents before applying a cross-document change', () => {
-  const store = new FrontendMemoryService({
+  const store = new MarkdownMemoryProvider({
     userStore: document('user', '# USER'),
     memoryStore: document('memory', '# MEMORY\n\n- 用户希望被称呼为老板'),
   })

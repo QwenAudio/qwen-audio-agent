@@ -7,7 +7,7 @@ import {
   evaluateSlot,
   isSameFieldLabel,
   renderLabel,
-} from '../src/conversation/preference-candidates.mjs'
+} from '../src/conversation/memory/learning/preference-candidates.mjs'
 
 const DAY = 24 * 60 * 60_000
 

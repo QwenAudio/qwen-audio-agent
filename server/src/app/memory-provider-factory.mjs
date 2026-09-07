@@ -1,8 +1,8 @@
-import { MarkdownContextStore } from '../conversation/markdown-context-store.mjs'
-import { FrontendMemoryService } from '../conversation/frontend-memory-service.mjs'
+import { MarkdownContextStore } from '../conversation/memory/providers/markdown/context-store.mjs'
+import { MarkdownMemoryProvider } from '../conversation/memory/providers/markdown/provider.mjs'
 import {
   VoiceMemProvider,
-} from '../conversation/providers/voicemem/voicemem-provider.mjs'
+} from '../conversation/memory/providers/voicemem/provider.mjs'
 
 function createMarkdownProvider({ config, logger }) {
   const userDocuments = new MarkdownContextStore({
@@ -21,7 +21,7 @@ function createMarkdownProvider({ config, logger }) {
     template: '# MEMORY',
     onWarning: warning => logger.warn('memory.persistence_warning', { warning }),
   })
-  return new FrontendMemoryService({
+  return new MarkdownMemoryProvider({
     userStore: userDocuments,
     memoryStore: memoryDocuments,
   })

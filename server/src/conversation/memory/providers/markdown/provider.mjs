@@ -2,10 +2,10 @@ import {
   ALL_SCOPE,
   MEMORY_DOCUMENTS,
   canonicalScope,
-} from '../core/memory-scopes.mjs'
+} from '../../scopes.mjs'
 import {
   MEMORY_PROVIDER_PROTOCOL_VERSION,
-} from './memory-provider.mjs'
+} from '../../provider.mjs'
 
 function normalizeScope(value, fallback = ALL_SCOPE) {
   const scope = canonicalScope(String(value || fallback))
@@ -15,7 +15,7 @@ function normalizeScope(value, fallback = ALL_SCOPE) {
   return scope
 }
 
-export class FrontendMemoryService {
+export class MarkdownMemoryProvider {
   constructor({ userStore = null, memoryStore = null } = {}) {
     this.stores = { user: userStore, memory: memoryStore }
   }

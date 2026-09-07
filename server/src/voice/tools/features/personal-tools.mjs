@@ -1,5 +1,8 @@
-import { canonicalScope, isMemoryDocument } from '../../../core/memory-scopes.mjs'
-import { MEMORY_DOCUMENTS } from '../../../core/memory-scopes.mjs'
+import {
+  MEMORY_DOCUMENTS,
+  canonicalScope,
+  isMemoryDocument,
+} from '../../../conversation/memory/scopes.mjs'
 import { toolFailure } from '../tool-result.mjs'
 
 export const MEMORY_TOOL_NAME = 'memory'

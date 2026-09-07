@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { PreferenceCandidateStore } from '../src/conversation/preference-candidate-store.mjs'
-import { PreferenceCandidatePool } from '../src/conversation/preference-candidates.mjs'
+import { PreferenceCandidateStore } from '../src/conversation/memory/learning/preference-candidate-store.mjs'
+import { PreferenceCandidatePool } from '../src/conversation/memory/learning/preference-candidates.mjs'
 
 const DAY = 24 * 60 * 60_000
 

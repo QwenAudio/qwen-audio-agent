@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, relative, resolve, sep } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
@@ -68,6 +68,26 @@ function layerFor(path) {
   const first = relative(sourceRoot, path).split(sep)[0]
   return first.endsWith('.mjs') ? 'root' : first
 }
+
+test('server source relative module imports resolve to files', () => {
+  const missing = []
+  for (const file of sourceFiles(sourceRoot)) {
+    const imports = [
+      ...readFileSync(file, 'utf8').matchAll(
+        /(?:from\s+|import\s+)['"](\.{1,2}\/[^'"]+\.mjs)['"]/g,
+      ),
+    ]
+    for (const match of imports) {
+      const target = resolve(dirname(file), match[1])
+      if (!existsSync(target)) {
+        missing.push(
+          `${relative(sourceRoot, file)} -> ${relative(sourceRoot, target)}`,
+        )
+      }
+    }
+  }
+  assert.deepEqual(missing, [])
+})
 
 test('server source dependencies follow the documented layer direction', () => {
   const violations = []

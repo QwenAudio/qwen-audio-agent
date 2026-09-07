@@ -12,10 +12,10 @@ import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 import { ConversationSync } from '../../server/src/conversation/conversation-sync.mjs'
-import { FrontendMemoryService } from '../../server/src/conversation/frontend-memory-service.mjs'
-import { MarkdownContextStore } from '../../server/src/conversation/markdown-context-store.mjs'
+import { MemoryExtractor } from '../../server/src/conversation/memory/learning/extractor.mjs'
+import { MarkdownContextStore } from '../../server/src/conversation/memory/providers/markdown/context-store.mjs'
+import { MarkdownMemoryProvider } from '../../server/src/conversation/memory/providers/markdown/provider.mjs'
 import { MemoryAudit } from '../../server/src/conversation/memory-audit.mjs'
-import { MemoryExtractor } from '../../server/src/conversation/memory-extractor.mjs'
 import {
   createOpenAiCompatibleTextCall,
 } from '../../server/src/providers/llm/openai-compatible-chat.mjs'
@@ -154,7 +154,7 @@ for (const scenario of SCENARIOS) {
     scope: 'user',
     template: '# USER',
   })
-  const memoryService = new FrontendMemoryService({
+  const memoryService = new MarkdownMemoryProvider({
     userStore,
     memoryStore: store,
   })

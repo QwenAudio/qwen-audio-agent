@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { config } from '../core/config.mjs'
-import { canonicalScope, isDirectiveScope } from '../core/memory-scopes.mjs'
+import { canonicalScope, isDirectiveScope } from './memory/scopes.mjs'
 import { recentConversationMessages } from '../../../shared/conversation-history.mjs'
 
 const PROMPT_FILE = 'PROMPT.md'

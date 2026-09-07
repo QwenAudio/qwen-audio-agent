@@ -9,7 +9,7 @@
 // v2：槽位模型（field/value/confirm）取代了 v1 的自由文本 trait + 计数模型。
 // 版本号必须跟着升，否则 v1 文件会被当成 v2 解析、逐条校验失败、静默变成空池。
 
-import { JsonSnapshotStore } from '../core/json-snapshot-store.mjs'
+import { JsonSnapshotStore } from '../../../core/json-snapshot-store.mjs'
 
 const FILE_VERSION = 2
 const MAX_OWNERS = 200

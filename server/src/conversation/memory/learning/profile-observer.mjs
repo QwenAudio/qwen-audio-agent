@@ -17,7 +17,7 @@
 // 失败静默：与抽取器一致，绝不延迟或打断会话关闭，绝不发声。
 
 import { PROFILE_FIELDS } from './preference-candidates.mjs'
-import { containsSensitiveContent } from '../core/sensitive-content.mjs'
+import { containsSensitiveContent } from '../../../core/sensitive-content.mjs'
 
 const MAX_OBSERVATIONS_PER_RUN = 5
 const MAX_VALUE_CHARS = 120

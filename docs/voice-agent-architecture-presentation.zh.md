@@ -876,10 +876,10 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 <!--
 [Sources]
 - server/src/conversation/frontend-agent-context.mjs
-- server/src/conversation/frontend-memory-service.mjs
-- server/src/conversation/memory-extractor.mjs
-- server/src/conversation/profile-observer.mjs
-- server/src/conversation/preference-promoter.mjs
+- server/src/conversation/memory/providers/markdown/provider.mjs
+- server/src/conversation/memory/learning/extractor.mjs
+- server/src/conversation/memory/learning/profile-observer.mjs
+- server/src/conversation/memory/learning/preference-promoter.mjs
 -->
 
 ---
@@ -924,7 +924,7 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 </div>
 
-**三个入口最终调用同一个 FrontendMemoryService；模型和工具都不能直接改写 Markdown 文件。**
+**三个入口最终都经过统一的 MemoryProvider 运行时边界；模型和工具都不能绕过 Provider 直接写入存储。**
 
 ---
 
@@ -947,8 +947,8 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 <!--
 [Sources]
-- server/src/conversation/memory-extractor.mjs
-- server/src/conversation/frontend-memory-service.mjs
+- server/src/conversation/memory/learning/extractor.mjs
+- server/src/conversation/memory/providers/markdown/provider.mjs
 -->
 
 ---

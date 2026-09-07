@@ -9,12 +9,12 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { FrontendMemoryService } from '../src/conversation/frontend-memory-service.mjs'
-import { MarkdownContextStore } from '../src/conversation/markdown-context-store.mjs'
-import { PreferenceCandidateStore } from '../src/conversation/preference-candidate-store.mjs'
-import { PreferenceCandidatePool } from '../src/conversation/preference-candidates.mjs'
-import { PreferencePromoter } from '../src/conversation/preference-promoter.mjs'
-import { ProfileObserver } from '../src/conversation/profile-observer.mjs'
+import { PreferenceCandidateStore } from '../src/conversation/memory/learning/preference-candidate-store.mjs'
+import { PreferenceCandidatePool } from '../src/conversation/memory/learning/preference-candidates.mjs'
+import { PreferencePromoter } from '../src/conversation/memory/learning/preference-promoter.mjs'
+import { ProfileObserver } from '../src/conversation/memory/learning/profile-observer.mjs'
+import { MarkdownContextStore } from '../src/conversation/memory/providers/markdown/context-store.mjs'
+import { MarkdownMemoryProvider } from '../src/conversation/memory/providers/markdown/provider.mjs'
 
 const OWNER = 'user_personal'
 
@@ -37,7 +37,7 @@ function boot(directory, { messages, reply }) {
     template: '# USER',
     onWarning: () => {},
   })
-  const memoryService = new FrontendMemoryService({
+  const memoryService = new MarkdownMemoryProvider({
     userStore,
     memoryStore: new MarkdownContextStore({
       filePath: join(directory, 'MEMORY.md'),

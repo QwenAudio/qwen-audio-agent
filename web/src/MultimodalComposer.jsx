@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
   MAX_INPUT_FILE_BYTES,
   createInputFilePart,
@@ -16,6 +16,12 @@ import {
   captureCameraFrame,
   stopCameraStream,
 } from './camera-input.js'
+import {
+  CAMERA_OBSERVATION_MODE,
+  cameraCloseReason,
+  cameraLifecycleReducer,
+  INITIAL_CAMERA_STATE,
+} from './camera-lifecycle.js'
 
 function filePart(file, index, sourceType = 'file') {
   return new Promise((resolve, reject) => {
@@ -53,11 +59,17 @@ export default function MultimodalComposer({
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
-  const [cameraOpen, setCameraOpen] = useState(false)
-  const [cameraReady, setCameraReady] = useState(false)
-  const [observationRequested, setObservationRequested] = useState(false)
-  const [observationMode, setObservationMode] = useState('')
-  const [observationFrameCount, setObservationFrameCount] = useState(0)
+  const [cameraState, dispatchCamera] = useReducer(
+    cameraLifecycleReducer,
+    INITIAL_CAMERA_STATE,
+  )
+  const {
+    open: cameraOpen,
+    ready: cameraReady,
+    observationRequested,
+    observationMode,
+    observationFrameCount,
+  } = cameraState
   const picker = useRef(null)
   const cameraVideo = useRef(null)
   const cameraStream = useRef(null)
@@ -76,9 +88,7 @@ export default function MultimodalComposer({
     observationRequestedRef.current = false
     oneShotQuestionRef.current = ''
     observationFramesRef.current = []
-    setObservationMode('')
-    setObservationRequested(false)
-    setObservationFrameCount(0)
+    dispatchCamera({ type: 'observation_stopped' })
   }, [onObservationStop])
 
   const closeCamera = useCallback((reason = 'user') => {
@@ -89,8 +99,7 @@ export default function MultimodalComposer({
       cameraVideo.current.pause?.()
       cameraVideo.current.srcObject = null
     }
-    setCameraReady(false)
-    setCameraOpen(false)
+    dispatchCamera({ type: 'closed' })
   }, [stopObservation])
 
   useEffect(() => {
@@ -120,7 +129,7 @@ export default function MultimodalComposer({
 
   useEffect(() => {
     const onVisibilityChange = () => {
-      if (document.hidden) {
+      if (cameraCloseReason({ hidden: document.hidden }) === 'page_hidden') {
         setError(t('页面已隐藏，相机已关闭'))
         closeCamera('page_hidden')
       }
@@ -149,8 +158,10 @@ export default function MultimodalComposer({
       return
     }
     observationRequestedRef.current = true
-    setObservationMode('continuous')
-    setObservationRequested(true)
+    dispatchCamera({
+      type: 'observation_started',
+      mode: CAMERA_OBSERVATION_MODE.CONTINUOUS,
+    })
     setError('')
   }, [cameraReady, observationAvailable, onObservationStart])
 
@@ -172,16 +183,19 @@ export default function MultimodalComposer({
     }
     oneShotQuestionRef.current = question
     observationRequestedRef.current = true
-    setObservationMode('question')
-    setObservationRequested(true)
+    dispatchCamera({
+      type: 'observation_started',
+      mode: CAMERA_OBSERVATION_MODE.QUESTION,
+    })
     setError('')
   }, [cameraReady, observationAvailable, onObservationStart, text])
 
   useEffect(() => {
     if (!cameraOpen) return undefined
-    if (['unavailable', 'hidden'].includes(connectionState)) {
+    const reason = cameraCloseReason({ connectionState })
+    if (reason) {
       setError(t('画面观察连接不可用'))
-      closeCamera('gateway_disconnected')
+      closeCamera(reason)
     }
     return undefined
   }, [cameraOpen, closeCamera, connectionState])
@@ -189,36 +203,40 @@ export default function MultimodalComposer({
   useEffect(() => {
     const previous = previousObservationAvailableRef.current
     previousObservationAvailableRef.current = observationAvailable
-    if (!cameraOpen || !previous || observationAvailable) return
+    const reason = cameraCloseReason({
+      previousObservationAvailable: previous,
+      observationAvailable,
+    })
+    if (!cameraOpen || !reason) return
     setError(t('切换后的模型不支持相机提问'))
-    closeCamera('model_changed')
+    closeCamera(reason)
   }, [cameraOpen, closeCamera, observationAvailable])
 
   useEffect(() => {
     const previous = previousObservationStateRef.current
     previousObservationStateRef.current = observationState
-    if (!observationRequestedRef.current) return
-    if (!observationAvailable) {
-      setError(t('当前模型不支持画面观察'))
-      closeCamera('model_changed')
-      return
-    }
-    if (['unavailable', 'hidden'].includes(connectionState)) {
+    const reason = cameraCloseReason({
+      connectionState,
+      // Model changes are handled by the preceding effect so that the
+      // one-shot camera question gets its specific message.
+      previousObservationAvailable: observationAvailable,
+      observationAvailable,
+      observationRequested: observationRequestedRef.current,
+      observationState,
+      previousObservationState: previous,
+    })
+    if (!reason) return
+    if (reason === 'gateway_disconnected') {
       setError(t('画面观察连接不可用'))
-      closeCamera('gateway_disconnected')
+      closeCamera(reason)
       return
     }
-    if (observationState === 'unavailable') {
+    if (reason === 'provider_unavailable') {
       setError(t('画面观察连接不可用'))
-      closeCamera('provider_unavailable')
+      closeCamera(reason)
       return
     }
-    if (
-      observationState === 'idle'
-      && ['starting', 'active', 'unavailable'].includes(previous)
-    ) {
-      closeCamera('observation_stopped')
-    }
+    if (reason === 'observation_stopped') closeCamera(reason)
   }, [closeCamera, connectionState, observationAvailable, observationState])
 
   useEffect(() => {
@@ -246,7 +264,7 @@ export default function MultimodalComposer({
           OBSERVATION_MAX_FRAMES,
         )
         observationFramesRef.current = recent
-        setObservationFrameCount(recent.length)
+        dispatchCamera({ type: 'frame_count', count: recent.length })
         const sent = onObservationFrame?.(image, sequence) !== false
         if (!sent) {
           setError(t('画面观察连接不可用'))
@@ -317,8 +335,7 @@ export default function MultimodalComposer({
         },
       })
       cameraStream.current = stream
-      setCameraReady(false)
-      setCameraOpen(true)
+      dispatchCamera({ type: 'opened' })
       setError('')
     } catch {
       setError(t('无法打开相机'))
@@ -447,7 +464,7 @@ export default function MultimodalComposer({
         autoPlay
         playsInline
         muted
-        onLoadedMetadata={() => setCameraReady(true)}
+        onLoadedMetadata={() => dispatchCamera({ type: 'ready' })}
         aria-label={t('相机预览')}
       />
       <small

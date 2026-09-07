@@ -1023,11 +1023,12 @@ export default function App() {
     text: t('文字'),
     audio: t('语音'),
     image: t('图片'),
-    video: t('视频'),
-    observation: t('画面观察'),
-    nativeVideo: t('原生视频'),
+    video: t('实时视觉'),
   }
-  const modeList = modes => modes.map(mode => inputModeLabels[mode]).join(' / ')
+  const modeList = modes => modes.map(mode => inputModeLabels[mode]).join(' · ')
+  const modelLabel = (modelStatus.label || t('模型信息不可用'))
+    .replace(/\s+Realtime\b/gi, '')
+    .trim()
 
   const resetSession = () => {
     taskDismissTimers.current.forEach(timer => clearTimeout(timer))
@@ -1370,18 +1371,11 @@ export default function App() {
       </a>
       <div
         className="model-status"
-        title={`${frontend.label} · ${modelStatus.id}`}
+        title={`${frontend.label}\n${modelStatus.id}`}
       >
-        <b>{frontend.label} · {modelStatus.label || t('模型信息不可用')}</b>
+        <b>{modelLabel}</b>
         {modelStatus.metadataStatus === 'current'
-          ? <>
-              <small>{t('模型支持：{modes}', {
-                modes: modeList(modelStatus.modelInputModes),
-              })}</small>
-              <small>{t('Web 传输：{modes}', {
-                modes: modeList(modelStatus.transportInputModes),
-              })}</small>
-            </>
+          ? <small>{modeList(modelStatus.transportInputModes)}</small>
           : <small>{t('模型能力信息不可用')}</small>}
       </div>
       <div className="status">

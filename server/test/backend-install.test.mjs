@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
-import { backendNames } from '../../shared/backend-catalog.mjs'
+import { backendNames } from '../../shared/backend/catalog.mjs'
 import {
   authenticationSupport,
   installBackend,
   installSupport,
   withInstallSupport,
-} from '../../shared/backend-install.mjs'
+} from '../../shared/backend/install.mjs'
 
 function fakeChild(code = 0, { stdout = [], stderr = [] } = {}) {
   const child = new EventEmitter()

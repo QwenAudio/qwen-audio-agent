@@ -5,7 +5,7 @@ import { resolve } from 'node:path'
 import {
   backendSkillsSpec,
   skillsInstallerAgents,
-} from './backend-catalog.mjs'
+} from './backend/catalog.mjs'
 
 // qwenaudio skill 是 skills.sh（npm 包 skills）的 1:1 品牌化入口：技能的
 // 下载、落盘、lockfile 一致性全部由 skills.sh 自管，这里只负责组装参数、

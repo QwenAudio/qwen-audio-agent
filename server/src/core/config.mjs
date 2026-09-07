@@ -10,7 +10,7 @@ import {
   effectiveBackendPermissionMode,
   normalizeBackendProtocol,
   resolveBackendOwnership,
-} from '../../../shared/backend-catalog.mjs'
+} from '../../../shared/backend/catalog.mjs'
 import {
   resolveRealtimeFrontendConfiguration,
 } from '../../../shared/realtime-provider-catalog.mjs'

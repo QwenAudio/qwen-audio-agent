@@ -43,7 +43,7 @@ Backend Adapter SDK（`qwen-audio-agent/backend-adapter-sdk`）直接实现
 
 ### 原料一：目录条目（必填）
 
-`shared/backend-catalog.mjs` 保存静态元数据——身份、存储与引导。
+`shared/backend/catalog.mjs` 保存静态元数据——身份、存储与引导。
 一个条目描述：
 
 - `id` / `label`——`AGENT_PROTOCOL` 的取值与展示名。
@@ -106,7 +106,7 @@ runtime driver 的后台（外部服务支持、自定义拉起规则）。
 
 1. 选路径：ACP 智能体 → 路径一或四；A2A 智能体 → 路径二；
    其他 → 路径三。
-2. 一等公民后台：在 `shared/backend-catalog.mjs` 加目录条目，加 agent
+2. 一等公民后台：在 `shared/backend/catalog.mjs` 加目录条目，加 agent
    driver 并注册，按需加 runtime driver 处理自定义进程归属。
 3. 跑契约测试——它们是门禁：ACP driver 跑
    `node --test server/test/acp-driver-registry.test.mjs`，自定义

@@ -19,7 +19,7 @@ import {
   backendSkillsSpec,
   skillsInstallerAgents,
   validateBackendSkillsSpec,
-} from '../../shared/backend-catalog.mjs'
+} from '../../shared/backend/catalog.mjs'
 
 function fakeSpawn({ status = 0, stdout = '', stderr = '', error } = {}) {
   const calls = []

@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   backendDefinition,
   effectiveBackendPermissionMode,
-} from '../shared/backend-catalog.mjs'
+} from '../shared/backend/catalog.mjs'
 
 test('Pi declares the always-full-permission capability', () => {
   // Pi 没有内置沙箱与权限审批，任何配置下都等效 full；该能力必须显式声明，

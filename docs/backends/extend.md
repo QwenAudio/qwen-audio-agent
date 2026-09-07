@@ -48,7 +48,7 @@ by the registry at startup and in tests.
 
 ### Ingredient 1: catalog entry (required)
 
-`shared/backend-catalog.mjs` holds the static metadata — identity, storage,
+`shared/backend/catalog.mjs` holds the static metadata — identity, storage,
 and onboarding. One entry describes:
 
 - `id` / `label` — the `AGENT_PROTOCOL` value and the display name.
@@ -117,7 +117,7 @@ drivers (external-service support, custom spawn rules).
 1. Pick the path: ACP agent → Path 1 or 4; A2A agent → Path 2; anything
    else → Path 3.
 2. For a first-class backend: add the catalog entry in
-   `shared/backend-catalog.mjs`, add the agent driver and register it, and
+   `shared/backend/catalog.mjs`, add the agent driver and register it, and
    optionally add a runtime driver for custom process ownership.
 3. Run the contract tests — they are the gate:
    `node --test server/test/acp-driver-registry.test.mjs` for ACP

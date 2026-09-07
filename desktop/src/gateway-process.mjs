@@ -4,7 +4,7 @@ import {
   effectiveBackendPermissionMode,
   normalizeBackendProtocol,
   resolveBackendOwnership,
-} from '../../shared/backend-catalog.mjs'
+} from '../../shared/backend/catalog.mjs'
 import {
   resolveRealtimeFrontendConfiguration,
   resolveDashScopeRealtimeModelProfile,

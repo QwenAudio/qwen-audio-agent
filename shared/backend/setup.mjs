@@ -14,7 +14,7 @@ import { spawn, spawnSync } from 'node:child_process'
 import {
   backendDefinition,
   backendNames,
-} from './backend-catalog.mjs'
+} from './catalog.mjs'
 
 function clean(value) {
   return String(value || '').trim()

@@ -6,7 +6,7 @@ import {
   backendConfigurationSupport,
   backendLifecycleSpec,
   resolveBackendLifecycle,
-} from '../../shared/backend-lifecycle.mjs'
+} from '../../shared/backend/lifecycle.mjs'
 
 test('combines catalog installation with adapter-owned configuration', () => {
   const spec = backendLifecycleSpec('codebuddy')

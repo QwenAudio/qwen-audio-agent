@@ -6,8 +6,8 @@ import {
   normalizeBackendRuntimeProtocol,
 } from './backend-drivers/registry.mjs'
 import { serviceEndpointPort } from './backend-drivers/shared.mjs'
-import { backendEnvironment } from '../../../shared/backend-environment.mjs'
-import { effectiveBackendPermissionMode } from '../../../shared/backend-catalog.mjs'
+import { backendEnvironment } from '../../../shared/backend/environment.mjs'
+import { effectiveBackendPermissionMode } from '../../../shared/backend/catalog.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 

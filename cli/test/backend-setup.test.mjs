@@ -4,7 +4,7 @@ import {
   formatBackendSetup,
   inspectBackendSetups,
   inspectBackendSetupsAsync,
-} from '../../shared/backend-setup.mjs'
+} from '../../shared/backend/setup.mjs'
 
 function inspector({
   env = {},

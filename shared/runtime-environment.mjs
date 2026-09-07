@@ -13,7 +13,7 @@ import {
 import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { parseEnv } from 'node:util'
-import { backendDefinitions } from './backend-catalog.mjs'
+import { backendDefinitions } from './backend/catalog.mjs'
 import { resolveRealtimeFrontendConfiguration } from './realtime-provider-catalog.mjs'
 
 const SECRET_KEY = 'QWEN_AUDIO_AGENT_AUTH_SECRET'

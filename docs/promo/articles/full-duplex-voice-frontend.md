@@ -47,27 +47,22 @@ qwen-audio-agent 把系统切成两层：
 - **需要工具或长时间处理** → 打包成任务委派给后台 Agent，前台先用一句话
   确认（"我去查一下，你先忙别的"），对话不断线。
 
-这个"路由"决策由一个轻量的协调器完成（`server/src/agent/coordinator.mjs`），
-它的输出是一个强 schema 约束的决策对象：
+这个路由由前台模型基于系统规则和工具描述完成。需要后台执行时，模型调用
+`spawn_thinking`；Gateway 中的 `AgentTaskRuntime`
+（`server/src/voice/tools/agent-task-runtime.mjs`）立即创建 Task，并返回一张受理回执：
 
 ```js
-// 两种决策：respond（前台直接回答）/ delegate（委派后台）
 {
-  work_id: '…',
-  state: 'delegated',
-  mode: 'delegate',
-  delegation_id: '…',
-  target_session_id: '…',
-  presentation: {
-    speech: '我让后台去跑这个任务，你可以继续问我别的。',
-    inline: { title: '任务详情', format: 'markdown', content: '…' }
-  }
+  status: 'accepted',
+  task_id: '…',
+  message: '工作已受理，请自然确认一次，不要再次调用工具。'
 }
 ```
 
-注意 `presentation` 被拆成 **speech（说出来）** 和 **inline（展示出来）**
-两部分。语音通道信息密度低，长内容不该念出来；同一份结果，
-耳朵收摘要，眼睛收全文。这是语音前台和聊天窗口最大的交互差异。
+这张回执只确认任务已进入 Gateway，不等待后台往返。Task 的事实状态和结果由
+`TaskManager` 管理，客户端接收结构化 Task 事件；任务完成后，
+`AnnouncementManager` 再把结果转换成统一的 `AgentDelivery`，交给前台模型生成自然、
+简短的口语回复。后台不能自行注入一套面向 UI 的展示结构，执行与表达保持分离。
 
 ## 关键设计二：打断是状态机，不是一个事件
 
@@ -94,7 +89,8 @@ qwen-audio-agent 把系统切成两层：
 
 - 任务状态（`task.cancelling` / `task.cancelled` / 完成 / 失败）
   作为事件流进入前台；
-- 完成时由协调器生成一段自然的口语播报（"刚才那个任务好了，结果是……"）；
+- 完成时由 Gateway 把结果交回前台模型，生成自然的口语播报
+  （"刚才那个任务好了，结果是……"）；
 - 用户可以立刻追问、修改或再派一个新任务，上下文不丢失。
 
 这就是"Agent 始终在场"的具体含义：它不是一问一答的机器，
@@ -115,8 +111,9 @@ WebRTC/WebSocket 长连接在真实网络下一定会断。前台实现了
    协议层（我们用 ACP）是唯一可持续的边界。
 2. **打断的工程质量决定产品口碑**。用户对"打断没反应""打断后又冒出半句话"
    的容忍度是零。异步事件的生命周期管理要做成显式状态机。
-3. **speech 和 inline 分离**。所有"把聊天窗口的回答直接念出来"的设计
-   都会失败。语音输出要重写，不是截断。
+3. **结构化状态和口语表达分离**。客户端消费 Task 事件，前台模型负责把结果
+   说得自然。所有"把聊天窗口的回答直接念出来"的设计都会失败；语音输出要重写，
+   不是截断。
 
 ---
 

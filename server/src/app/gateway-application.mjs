@@ -36,10 +36,7 @@ import {
   parseGatewayAccessKeys,
 } from '../access/gateway-access.mjs'
 import { gatewayBrowserPairingPage } from '../access/browser-pairing-page.mjs'
-import {
-  GatewayRemoteAccessService,
-  normalizeRemoteAccessMode,
-} from '../access/gateway-remote-access-service.mjs'
+import { GatewayRemoteAccessService } from '../access/gateway-remote-access-service.mjs'
 import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
@@ -634,13 +631,7 @@ app.post('/api/access/remote', (req, res) => {
       code: 'gateway_not_ready',
     })
   }
-  let mode
-  try {
-    mode = normalizeRemoteAccessMode(req.body?.mode, 'private')
-  } catch (error) {
-    return res.status(400).json({ error: error.message, code: error.code })
-  }
-  Promise.resolve(remoteAccessRuntime.enable(localGatewayOrigin(address), { mode }))
+  Promise.resolve(remoteAccessRuntime.enable(localGatewayOrigin(address)))
     .then(status => res.status(status.state === 'auth_required' ? 202 : 200).json(status))
     .catch(error => respondRemoteAccessError(res, error))
 })

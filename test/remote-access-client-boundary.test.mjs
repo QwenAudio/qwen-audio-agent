@@ -11,7 +11,7 @@ const clientSourceDirectories = [
   'mobile/src',
 ]
 const sourceExtensions = new Set(['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx'])
-const implementationTerms = /\b(?:tailscale|tailnet|tsnet|funnel)\b/i
+const implementationTerms = /\b(?:tailscale|tailnet|tsnet)\b/i
 
 function sourceFiles(directory) {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {

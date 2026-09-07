@@ -213,7 +213,7 @@ export async function main(argv, {
   listPairedDevices = url => listGatewayDevices(url),
   revokePairedDevice = (url, id) => revokeGatewayDevice(url, id),
   readRemoteAccess = url => readGatewayRemoteAccess(url),
-  enableRemoteAccess = (url, mode) => enableGatewayRemoteAccess(url, { mode }),
+  enableRemoteAccess = url => enableGatewayRemoteAccess(url),
   disableRemoteAccess = url => disableGatewayRemoteAccess(url),
   openExternal = url => openBrowser(url),
   manageService = (action, options) => manageGatewayService(action, options),
@@ -432,8 +432,7 @@ export async function main(argv, {
         stdout.write(`请完成一次远程访问授权：${status.authUrl}\n`)
       }
       else if (status.published) {
-        const label = status.mode === 'funnel' ? 'Funnel 公网入口' : 'Tailnet 私有通道'
-        stdout.write(`远程访问已开启（${label}）：${status.endpoint.url}\n`)
+        stdout.write(`远程访问已开启（Tailnet 私有通道）：${status.endpoint.url}\n`)
       }
       else if (status.state === 'error') {
         stdout.write(`远程访问异常：${status.error?.message || '未知错误'}\n`)
@@ -445,7 +444,7 @@ export async function main(argv, {
     }
     const health = await inspectGateway(options.url)
     if (!health) throw new Error(`Gateway 未运行：${options.url}`)
-    const status = await enableRemoteAccess(options.url, options.remoteMode)
+    const status = await enableRemoteAccess(options.url)
     if (status.state === 'auth_required') {
       await openExternal(status.authUrl).catch(() => {})
       stdout.write(
@@ -470,8 +469,7 @@ export async function main(argv, {
     }
     const endpoint = status.endpoint
     if (options.remoteAction === 'enable') {
-      const label = status.mode === 'funnel' ? 'Funnel 公网入口' : 'Tailnet 私有通道'
-      stdout.write(`远程访问已开启（${label}）：${endpoint.url}\n`)
+      stdout.write(`远程访问已开启（Tailnet 私有通道）：${endpoint.url}\n`)
       return 0
     }
     const ticket = await createPairingTicket(options.url)
@@ -491,11 +489,8 @@ export async function main(argv, {
     }
     else {
       const qrCode = await renderInvitationQr(browserUrl)
-      const prerequisite = status.mode === 'funnel'
-        ? '当前使用 Funnel 公网入口。\n'
-        : '请先在手机安装并连接官方 Tailscale App，加入与 Gateway 相同的 Tailnet。\n'
       stdout.write(
-        prerequisite
+        '请先在手机安装并连接官方 Tailscale App，加入与 Gateway 相同的 Tailnet。\n'
         + '移动端扫码接入：\n'
         + `${qrCode}\n`
         + `接入链接（移动端 / 桌面端）：\n${appUrl}\n`

@@ -22,15 +22,7 @@ Client 使用的短时邀请。Tailscale 会优先建立点对点直连；受 NA
 `disable` 管理。远程设置和邀请签发统一归 Gateway CLI 所有；Desktop、Mobile 等客户端
 只负责导入接入链接。
 
-需要不安装 Tailscale App 也能访问的临时公网入口时，显式使用：
-
-```bash
-qwenaudio gateway remote enable --mode funnel
-qwenaudio gateway remote invite --mode funnel
-```
-
-Funnel 需要 Tailnet 开启 MagicDNS、HTTPS 和 Funnel 权限，且存在官方带宽限制。无论私有
-通道还是 Funnel 都不会绕过 Gateway 认证：除一次性配对页外，远程业务请求必须携带已
+远程访问不会绕过 Gateway 认证：除一次性配对页外，远程业务请求必须携带已
 配对设备凭据。
 
 配置一个个人访问密钥：

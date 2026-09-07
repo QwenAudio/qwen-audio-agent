@@ -12,10 +12,7 @@ import { InputAssetRegistry } from '../voice/input-asset-registry.mjs'
 import { IdentityManager } from '../core/identity.mjs'
 import { FrontendNotesStore } from '../conversation/frontend-notes.mjs'
 import { MemoryAudit } from '../conversation/memory-audit.mjs'
-import {
-  MemoryExtractor,
-  createExtractorLlmCall,
-} from '../conversation/memory-extractor.mjs'
+import { MemoryExtractor } from '../conversation/memory-extractor.mjs'
 import { FrontendMemoryRuntime } from '../conversation/memory-runtime.mjs'
 import { createConfiguredMemoryProvider } from './memory-provider-factory.mjs'
 import { SessionConversationHistory } from './session-conversation-history.mjs'
@@ -25,6 +22,9 @@ import { PreferencePromoter } from '../conversation/preference-promoter.mjs'
 import { ProfileObserver } from '../conversation/profile-observer.mjs'
 import { SessionDigestPool } from '../conversation/session-digest.mjs'
 import { SessionSummariser } from '../conversation/session-summariser.mjs'
+import {
+  createOpenAiCompatibleTextCall,
+} from '../providers/llm/openai-compatible-chat.mjs'
 import {
   KnowledgeLibrary,
 } from '../knowledge/local-library.mjs'
@@ -300,17 +300,17 @@ const notesStore = new FrontendNotesStore({
 // lightweight text model after a voice session closes. Providers advertising
 // sessionObservation own that lifecycle themselves, so two independent
 // learners can never write conflicting memories from the same conversation.
-// Without an API key createExtractorLlmCall returns null
+// Without an API key createOpenAiCompatibleTextCall returns null
 // and the extractor stays silently disabled; explicit memories are
 // unaffected. ASSISTANT.md is never exposed as a writable document.
 const memoryAudit = new MemoryAudit({
   filePath: config.memoryAuditPath,
   onWarning: warning => logger.warn('memory.audit_warning', { warning }),
 })
-// 记忆类模型调用共用一套凭据与轻量文本模型；没有 API key 时为 null，
-// 依赖它的模块各自静默禁用，本地纯语音链路不受影响。
-const memoryLlmCall = config.memoryAutoEnabled
-  ? createExtractorLlmCall({
+// 后台轻量分析共用一套文本模型调用；没有 API key 时为 null，依赖它的
+// 记忆学习、会话摘要和资料摘要模块各自静默禁用，本地纯语音链路不受影响。
+const textModelCall = config.memoryAutoEnabled
+  ? createOpenAiCompatibleTextCall({
       baseUrl: config.memoryBaseUrl,
       apiKey: config.memoryApiKey,
       model: config.memoryModel,
@@ -326,7 +326,7 @@ const memoryExtractor = providerOwnsSessionObservation
       memoryService: frontendMemoryRuntime,
       conversationSync,
       audit: memoryAudit,
-      llmCall: memoryLlmCall,
+      llmCall: textModelCall,
       logger,
     })
 // 偏好自更新：观察器从刚结束的会话里推断画像信号 → 槽位池积累跨会话确认 →
@@ -352,12 +352,12 @@ if (config.preferenceLearningEnabled && !providerOwnsSessionObservation) {
     audit: memoryAudit,
     logger,
   })
-  profileObserver = memoryLlmCall
+  profileObserver = textModelCall
     ? new ProfileObserver({
         candidatePool: preferenceCandidates,
         conversationSync,
         audit: memoryAudit,
-        llmCall: memoryLlmCall,
+        llmCall: textModelCall,
         logger,
       })
     : null
@@ -373,12 +373,12 @@ if (config.sessionDigestEnabled) {
     filePath: config.sessionDigestPath,
     onWarning: warning => logger.warn('session_digest.persistence_warning', { warning }),
   })
-  sessionSummariser = memoryLlmCall
+  sessionSummariser = textModelCall
     ? new SessionSummariser({
         digestPool: sessionDigests,
         conversationSync,
         audit: memoryAudit,
-        llmCall: memoryLlmCall,
+        llmCall: textModelCall,
         logger,
         // 把本场派过的活沉淀进摘要。排除 control（「查一下那个任务的进展」这个
         // 动作本身）与 reminder（未来要做的事，不属于「做过什么」）。
@@ -401,11 +401,11 @@ if (config.domainLibraryEnabled) {
     indexPath: config.domainIndexPath,
     onWarning: warning => logger.warn('domain.persistence_warning', { warning }),
   })
-  domainSummariser = memoryLlmCall
+  domainSummariser = textModelCall
     ? new KnowledgeSummariser({
         library: domainLibrary,
         audit: memoryAudit,
-        llmCall: memoryLlmCall,
+        llmCall: textModelCall,
         logger,
       })
     : null

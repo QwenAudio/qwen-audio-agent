@@ -86,6 +86,7 @@ const initialDesktopSurfaceMode = (
 )
 const activeClientType = gatewayClientType(desktopOrbMode ? 'desktop' : 'web')
 const activeClientInstanceId = gatewayClientInstanceId()
+const compactVoiceControl = desktopOrbMode || activeClientType === 'mobile'
 const composerEnabled = supportsComposerInput(activeClientType)
 
 function getSessionId() {
@@ -1424,7 +1425,7 @@ export default function App() {
         aria-label={voiceEnabled
           ? t('麦克风静音')
           : waitingForVoice ? t('取消等待') : t('开启麦克风')}
-        title={desktopOrbMode
+        title={compactVoiceControl
           ? voiceEnabled
             ? t('麦克风静音')
             : waitingForVoice ? t('取消等待') : t('开启麦克风')
@@ -1437,7 +1438,7 @@ export default function App() {
           enableVoice()
         }}
       >
-        {desktopOrbMode
+        {compactVoiceControl
           ? <OrbControlIcon type="microphone" muted={!voiceEnabled} />
           : voiceEnabled
             ? t('麦克风静音')

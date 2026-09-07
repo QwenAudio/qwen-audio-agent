@@ -103,9 +103,8 @@ export function encodeGatewayInvitation(invitation) {
 
 export function encodeGatewayBrowserInvitation(invitation) {
   const parsed = parseGatewayInvitation(invitation)
-  const url = new URL('/connect', parsed.gateway_url)
-  url.searchParams.set('v', String(parsed.version))
-  url.searchParams.set('expires', String(parsed.expires_at))
+  const url = new URL('/c', parsed.gateway_url)
+  url.searchParams.set('e', parsed.expires_at.toString(36))
   url.hash = parsed.pairing_code
   return url.toString()
 }
@@ -120,7 +119,7 @@ export function decodeGatewayInvitation(value) {
     })
   }
   const isAppInvitation = url.protocol === 'qwaudio:' && url.hostname === 'connect'
-  const isBrowserInvitation = url.protocol === 'https:' && url.pathname === '/connect'
+  const isBrowserInvitation = url.protocol === 'https:' && url.pathname === '/c'
   if (!isAppInvitation && !isBrowserInvitation) {
     throw Object.assign(new Error('Invalid Gateway invitation URL'), {
       code: 'gateway_invitation_invalid',
@@ -128,12 +127,16 @@ export function decodeGatewayInvitation(value) {
   }
   try {
     return parseGatewayInvitation({
-      version: Number(url.searchParams.get('v')),
+      version: isAppInvitation
+        ? Number(url.searchParams.get('v'))
+        : GATEWAY_REMOTE_ACCESS_MODEL_VERSION,
       gateway_url: isAppInvitation ? url.searchParams.get('gateway') : url.origin,
       pairing_code: isAppInvitation
         ? url.searchParams.get('code')
         : decodeURIComponent(url.hash.slice(1)),
-      expires_at: Number(url.searchParams.get('expires')),
+      expires_at: isAppInvitation
+        ? Number(url.searchParams.get('expires'))
+        : Number.parseInt(url.searchParams.get('e'), 36),
     })
   } catch (error) {
     throw Object.assign(new Error('Invalid Gateway invitation payload'), {

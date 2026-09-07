@@ -399,10 +399,13 @@ test('manages a Gateway remote endpoint and creates a portable invitation', asyn
   const output = invited.calls.at(-1)[1]
   assert.match(output, /^请先在手机安装并连接官方 Tailscale App/)
   assert.match(output, /移动端扫码接入：/)
-  assert.match(invited.calls.find(call => call[0] === 'qr')[1], /^https:\/\//)
+  assert.match(
+    invited.calls.find(call => call[0] === 'qr')[1],
+    /^https:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/,
+  )
   assert.match(output, /\[compact QR\]/)
   assert.match(output, /接入链接（移动端 \/ 桌面端）：\nqwaudio:\/\/connect\?v=1&gateway=/)
-  assert.match(output, /浏览器访问：\nhttps:\/\/voice\.example\.ts\.net:8443\/connect\?v=1&expires=\d+#/)
+  assert.match(output, /浏览器访问：\nhttps:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/)
   assert.match(output, /有效期至/)
 
   const machineReadable = harness()
@@ -412,7 +415,7 @@ test('manages a Gateway remote endpoint and creates a portable invitation', asyn
   )
   const json = JSON.parse(machineReadable.calls.at(-1)[1])
   assert.match(json.app_url, /^qwaudio:\/\/connect\?v=1&gateway=/)
-  assert.match(json.browser_url, /^https:\/\/voice\.example\.ts\.net:8443\/connect\?v=1&expires=\d+#/)
+  assert.match(json.browser_url, /^https:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/)
 
   const funnel = harness()
   funnel.dependencies.enableRemoteAccess = async (_url, mode) => {

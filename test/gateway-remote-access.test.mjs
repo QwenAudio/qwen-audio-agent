@@ -83,9 +83,8 @@ test('invitations are versioned, bounded records without permanent credentials',
   assert.deepEqual(decodeGatewayInvitation(appUrl), invitation)
   const browser = new URL(encodeGatewayBrowserInvitation(invitation))
   assert.equal(browser.origin, invitation.gateway_url)
-  assert.equal(browser.pathname, '/connect')
-  assert.equal(browser.searchParams.get('v'), '1')
-  assert.equal(browser.searchParams.get('expires'), String(invitation.expires_at))
+  assert.equal(browser.pathname, '/c')
+  assert.equal(browser.searchParams.get('e'), invitation.expires_at.toString(36))
   assert.equal(decodeURIComponent(browser.hash.slice(1)), invitation.pairing_code)
   assert.deepEqual(decodeGatewayInvitation(browser), invitation)
   assert.throws(

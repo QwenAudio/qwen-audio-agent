@@ -486,7 +486,7 @@ app.use(express.json({ limit: '1mb' }))
 // This shell contains no Gateway data. It is the only application page that
 // can load before authentication; the invitation remains in the URL fragment
 // and is therefore never sent in an HTTP request or access log.
-app.get('/connect', (_req, res) => {
+app.get('/c', (_req, res) => {
   res.setHeader('cache-control', 'no-store')
   res.setHeader('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
   res.setHeader('referrer-policy', 'no-referrer')

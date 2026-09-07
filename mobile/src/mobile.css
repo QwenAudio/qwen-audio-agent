@@ -62,4 +62,22 @@ body { background: #08090d; }
   .mobile-runtime header { padding-top: 2px; }
   .mobile-runtime .brand div { font-size: 12px; }
   .mobile-runtime .model-status { display: none; }
+  .mobile-runtime header .voice {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 10px;
+  }
+  .mobile-runtime header .voice svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
 }

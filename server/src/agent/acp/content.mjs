@@ -1,7 +1,7 @@
 import {
   inputFileParts,
   parseDataUrl,
-} from '../../../shared/input-parts.mjs'
+} from '../../../../shared/input-parts.mjs'
 
 function clean(value) {
   return String(value || '').trim()

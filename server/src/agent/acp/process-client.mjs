@@ -3,15 +3,15 @@ import { extname } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { stripVTControlCharacters } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk'
-import { PACKAGE_VERSION } from '../core/package-version.mjs'
-import { AgentError, requestSignal } from './backend-adapter.mjs'
-import { logger } from '../core/logger.mjs'
+import { PACKAGE_VERSION } from '../../core/package-version.mjs'
+import { AgentError, requestSignal } from '../backend-adapter.mjs'
+import { logger } from '../../core/logger.mjs'
 import {
   assertPromptCapabilities,
   normalizeAcpPrompt,
-} from './acp-content.mjs'
-import { assertMcpServerCapabilities } from './acp-capabilities.mjs'
-import { applySessionMetadataUpdate } from './acp-backend-session-utils.mjs'
+} from './content.mjs'
+import { assertMcpServerCapabilities } from './capabilities.mjs'
+import { applySessionMetadataUpdate } from './backend-session-utils.mjs'
 
 const MAX_STDERR_CHARS = 12_000
 // Gateway has a 2s hard shutdown deadline. Leave enough time for adapter and

@@ -9,7 +9,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { AcpSessionRegistry } from '../src/agent/acp-session-registry.mjs'
+import { AcpSessionRegistry } from '../src/agent/acp/session-registry.mjs'
 
 test('preserves legacy coordinator records while persisting project directories', () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-acp-registry-'))

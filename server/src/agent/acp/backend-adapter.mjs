@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto'
-import { AgentError } from './backend-adapter.mjs'
+import { AgentError } from '../backend-adapter.mjs'
 import {
   COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
   COORDINATOR_STABLE_INSTRUCTIONS,
-} from './acp-coordinator-instructions.mjs'
-import { BackendEventType, backendEvent } from '../core/backend-events.mjs'
+} from './coordinator-instructions.mjs'
+import { BackendEventType, backendEvent } from '../../core/backend-events.mjs'
 import {
   acpBackendProfile,
   endpointAvailable,
-} from './acp-backend-profile.mjs'
+} from './backend-profile.mjs'
 import {
   activityFromUpdate,
   coordinatorKey,
@@ -16,27 +16,27 @@ import {
   nativeToolOutput,
   projectSessionKey,
   sessionSummary,
-} from './acp-backend-session-utils.mjs'
-import { createAcpClient } from './acp-client-factory.mjs'
-import { AcpSessionRegistry } from './acp-session-registry.mjs'
-import { AcpSessionToolServer } from './acp-session-tools.mjs'
+} from './backend-session-utils.mjs'
+import { createAcpClient } from './client-factory.mjs'
+import { AcpSessionRegistry } from './session-registry.mjs'
+import { AcpSessionToolServer } from './session-tools.mjs'
 import {
   builtinMcpServers,
   createBuiltinMcpLifecycle,
-} from './builtin-mcp.mjs'
-import { BackendRuntimeState } from './backend-runtime-state.mjs'
-import { KeyedSerialExecutor } from './keyed-serial-executor.mjs'
-import { PermissionBroker } from './permission-broker.mjs'
-import { InputBroker } from './input-broker.mjs'
+} from '../builtin-mcp.mjs'
+import { BackendRuntimeState } from '../backend-runtime-state.mjs'
+import { KeyedSerialExecutor } from '../keyed-serial-executor.mjs'
+import { PermissionBroker } from '../permission-broker.mjs'
+import { InputBroker } from '../input-broker.mjs'
 import {
   appendPromptBlocks,
   artifactsFromAcpContentBlocks,
   nonTextPromptBlocks,
   promptWithInputParts,
   transformPromptText,
-} from './acp-content.mjs'
-import { assertMcpServerCapabilities } from './acp-capabilities.mjs'
-import { buildAcpCoordinatorInstruction } from './acp-coordinator-contract.mjs'
+} from './content.mjs'
+import { assertMcpServerCapabilities } from './capabilities.mjs'
+import { buildAcpCoordinatorInstruction } from './coordinator-contract.mjs'
 
 const MAX_SESSION_RESULTS = 100
 const MAX_DELEGATION_RESULT_CHARS = 12_000
@@ -45,7 +45,7 @@ const MAX_DELEGATION_RECENT_UPDATES = 5
 // created them. Project Sessions are user work and remain independent.
 const COORDINATOR_CONTRACT_VERSION = 6
 
-export { acpBackendProfile } from './acp-backend-profile.mjs'
+export { acpBackendProfile } from './backend-profile.mjs'
 
 function clean(value) {
   return String(value || '').trim()

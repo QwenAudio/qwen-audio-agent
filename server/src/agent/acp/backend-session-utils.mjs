@@ -1,3 +1,4 @@
+// Pure projections shared by the ACP process client and backend adapter.
 function clean(value) {
   return String(value || '').trim()
 }

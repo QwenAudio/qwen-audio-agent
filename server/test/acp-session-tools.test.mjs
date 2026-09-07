@@ -8,7 +8,7 @@ import {
 import {
   ACP_SESSION_TOOL_NAMES,
   AcpSessionToolServer,
-} from '../src/agent/acp-session-tools.mjs'
+} from '../src/agent/acp/session-tools.mjs'
 
 test('serves the shared Session tools over authenticated stateless MCP', async () => {
   const server = new AcpSessionToolServer()

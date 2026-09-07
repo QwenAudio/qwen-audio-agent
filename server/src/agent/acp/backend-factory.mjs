@@ -1,10 +1,10 @@
-import { config } from '../core/config.mjs'
-import { assertBackendPort } from '../backend/backend-port.mjs'
-import { AcpBackendAdapter } from './acp-backend-adapter.mjs'
+import { config } from '../../core/config.mjs'
+import { assertBackendPort } from '../../backend/backend-port.mjs'
+import { AcpBackendAdapter } from './backend-adapter.mjs'
 import {
   backendDriver,
   createBackendProfile,
-} from './backends/registry.mjs'
+} from '../backends/registry.mjs'
 
 /**
  * ACP composition belongs to the ACP boundary, not AgentClient. This factory

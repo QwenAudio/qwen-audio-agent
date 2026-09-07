@@ -1,5 +1,7 @@
 import { ServiceStateStore } from './state-store.mjs'
 import { executeTool } from './tools/registry.mjs'
+import { auditUtterance } from './output-audit.mjs'
+import { loadGuards } from './guards.mjs'
 
 // 唯一的执行入口。两个 MCP 面都调这里 —— 这是「同一个领域可以跨两个工具面，
 // 但只保留一份 executor 和状态源」的落点。
@@ -24,6 +26,21 @@ export class CustomerService {
   // 为什么是重绑而不是换 sessionId，见 state-store.mjs 里那段说明。
   newCustomer(sessionId, domain) {
     return this.store.newCustomer(sessionId, domain)
+  }
+
+  // 审计客服【说出去的话】。
+  //
+  // 【toolOutputs 从审计记录里取，不要让调用方传】
+  // 它用来判定「这个数字有没有出处」—— 工具真的返回过的数字不算编。
+  // 让界面传的话，它传什么都行 —— 那审计就形同虚设：
+  // 模型编了一个数，界面把那个数当成「工具说过的」传回来，就过了。
+  //
+  // 会话的 audit 里每条都有 summary，而 summary 就是工具当时返回的话。
+  auditOutput(sessionId, text) {
+    const session = this.store.snapshot(sessionId)
+    const guards = loadGuards(session.domain)
+    const toolOutputs = (session.audit || []).map(entry => entry.summary).filter(Boolean)
+    return auditUtterance(text, { session, guards, toolOutputs })
   }
 
   // surface 必须由调用方传，而且只能是这两个值。

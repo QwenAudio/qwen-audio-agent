@@ -57,6 +57,16 @@
   .cites { margin-top: 6px; font-size: 12px; color: var(--dim); }
   .cites b { color: var(--accent); font-weight: 500; }
 
+  /* 出口审计的标记。违规那一轮加一道红边 —— 演示时一眼能看到。 */
+  .turn.violation .bubble { border-left: 3px solid var(--bad); }
+  .audit-flag {
+    margin-top: 6px; padding: 5px 8px; border-radius: 5px;
+    background: #e06c5f18; border: 1px solid var(--bad);
+    color: var(--bad); font-size: 12px; line-height: 1.6;
+  }
+  .audit-flag b { margin-right: 4px; }
+  .audit-flag .muted { color: var(--dim); }
+
   h2 {
     font-size: 12px; color: var(--dim); text-transform: uppercase;
     letter-spacing: .06em; margin: 18px 0 8px; font-weight: 600;
@@ -176,6 +186,46 @@ function renderTurn({ role, content, source }) {
   }
   $('log').append(turn)
   $('log').scrollTop = $('log').scrollHeight
+  // 【只审客服说的话】客户说什么都行，禁止事项约束的是客服。
+  if (role !== 'user') auditTurn(turn, content)
+  return turn
+}
+
+// 出口审计 —— 把违规标在说过的话旁边。
+//
+// 【为什么要在这里做，而不是只存个日志】
+// guards 管「能不能办」，工具返回真实数据，但两者都管不了模型【怎么说】。
+// 工具说「超出时限」，模型可以说成「我帮您申请特批」—— 客户会当真。
+//
+// 标在这里而不是只记到后端：演示时能当场指出「刚才这句违规、依据细则第几行」，
+// 那比说「我们有约束」有说服力。
+//
+// 【它是事后审计，不是拦截】语音已经播出去了，拦不住。
+async function auditTurn(turn, content) {
+  if (!String(content || '').trim()) return
+  try {
+    const response = await fetch(`${API}/api/service/audit?sessionId=${SESSION}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: content }),
+    })
+    if (!response.ok) return
+    const result = await response.json()
+    if (result.ok) return
+    // 每条违规单独一行，带细则行号 ——
+    // 不带行号的话这只是一句「这话不对」，带了就能追到原文。
+    turn.classList.add('violation')
+    for (const violation of result.violations) {
+      turn.append(el('div', 'audit-flag',
+        `<b>违规</b> ${esc(violation.detail)}`
+        + (violation.policyLine
+          ? ` <span class="muted">（细则第 ${violation.policyLine} 行：${esc(violation.title)}）</span>`
+          : '')))
+    }
+    $('log').scrollTop = $('log').scrollHeight
+  } catch {
+    // 审计是旁路的 —— 它自己出错不该影响对话显示。
+  }
 }
 
 // 对话从 REST 拉，不从 WebSocket 拿。

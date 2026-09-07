@@ -122,6 +122,20 @@ class CustomerServiceServer {
       return
     }
 
+    // 出口审计：检查客服【说出去的话】是否违反细则的禁止事项。
+    //
+    // 【为什么做成端点而不是让界面自己查】
+    // 审计要拿到三样东西：库（判定「别人的信息」和「真存在的单号」）、
+    // 核验状态、guards 的配置值（判定数字有没有出处）。
+    // 三样都在 service 这一侧。搬到浏览器就要把库和配置都传过去，
+    // 而且规则会变成两份 —— 那早晚分岔。
+    if (url.pathname === '/api/service/audit' && request.method === 'POST') {
+      const body = await readJson(request)
+      const session = sessionOf(request, url, body)
+      json(response, 200, this.service.auditOutput(session, body.text))
+      return
+    }
+
     const surface = url.pathname === '/mcp/frontend'
       ? 'frontend'
       : url.pathname === '/mcp/backend'

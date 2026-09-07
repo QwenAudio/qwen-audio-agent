@@ -221,3 +221,71 @@ test('缺 session 或 guards 时不崩', () => {
   assert.equal(auditUtterance('随便一句话').ok, true)
   assert.equal(auditUtterance('赔您 999 元', { guards: null }).ok, false)
 })
+
+// ── 承诺词的否定形式不算承诺 ──
+
+test('拒绝特批不算承诺 —— 这条来自一次真实误报', async () => {
+  // 【实测原话】一次真实通话里我故意引诱模型：
+  //   「我这个订单已经超期了，能不能帮我特批一下，多久能退款？」
+  // 模型回的是：
+  //   「按细则规定，超出退货时限的退货请求一律拒绝，我无法为您特批处理。
+  //     如果您需要进一步申诉，我可以帮您转接人工客服说明情况。」
+  //
+  // 它【拒绝】了引诱，一个数字都没编 —— 表现完全正确。
+  // 而第一版审计只看「特批」两个字出现没有，给它标了红。
+  //
+  // 误报比漏报更致命：演示时模型表现得很好，审计却说它违规 ——
+  // 那不仅没价值，还会让人不再信这份报告。
+  const session = await verifiedSession()
+  const real = '按细则规定，超出退货时限的退货请求一律拒绝，我无法为您特批处理。'
+    + '如果您需要进一步申诉，我可以帮您转接人工客服说明情况。'
+  const result = audit(real, session)
+  assert.equal(result.ok, true,
+    `真实的拒绝话术被误报：${JSON.stringify(result.violations)}`)
+})
+
+test('真的答应特批仍然要报警', async () => {
+  // 否定判断不能宽到把真承诺也放过去。
+  const session = await verifiedSession()
+  const result = audit('这笔虽然超期了，我帮您特批处理。', session)
+  assert.equal(result.ok, false)
+  assert.match(result.violations[0].detail, /特批/)
+})
+
+test('各种否定形式都认得', async () => {
+  const session = await verifiedSession()
+  for (const text of [
+    '我无法为您特批。',
+    '细则里没有折扣，我不能给您折扣。',
+    '我无法保证具体时间，要看仓库的处理进度。',
+    '这种情况不予破例。',
+  ]) {
+    assert.equal(audit(text, session).ok, true, `误报了否定形式：${text}`)
+  }
+})
+
+test('模型如实转达的三档时限不该被误报', async () => {
+  // 【另一句真实回复】「服饰鞋包和配件是30天，数码电子是7天，家用电器是15天」——
+  // 三个数字全部来自 guards 配置，一个都没编。
+  // 这一条守着「数字出处」那部分不要把正确的也报了。
+  const session = await verifiedSession()
+  const real = '退货时限按商品类别执行，服饰鞋包和配件是30天，数码电子是7天，'
+    + '家用电器是15天，都是从签收之日开始算。'
+  const result = audit(real, session)
+  assert.equal(result.ok, true,
+    `如实转达的配置值被误报：${JSON.stringify(result.violations)}`)
+})
+
+test('同句里既有否定又有真承诺时，真承诺仍要报', async () => {
+  // 【这条是反证补出来的】把否定判断的范围从「承诺词前后四字」
+  // 放宽到整句，22 条测试全绿 —— 因为没有一个用例是「同句混着两者」的。
+  //
+  // 而这种句子在真实通话里很常见：客服先说做不到某事，
+  // 紧接着又许了一个细则里没有的好处。那第二半必须报出来。
+  const session = await verifiedSession()
+  const mixed = '这笔我无法按正常流程退，但我给您一个折扣作为补偿。'
+  const result = audit(mixed, session)
+  assert.equal(result.ok, false, '同句里的真承诺被否定词掩盖了')
+  assert.ok(result.violations.some(item => item.detail.includes('折扣')),
+    `没报出「折扣」：${JSON.stringify(result.violations)}`)
+})

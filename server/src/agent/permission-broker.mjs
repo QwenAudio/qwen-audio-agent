@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { redactLogValue } from '../../../shared/logger.mjs'
 import { AgentError } from './backend-adapter.mjs'
-import { ACP_SESSION_TOOL_NAMES } from './acp-session-tools.mjs'
+import { ACP_SESSION_TOOL_NAMES } from './acp/session-tools.mjs'
 import {
   AuthorizationStatus,
   normalizeAuthorization,

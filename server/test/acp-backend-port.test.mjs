@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { AcpBackendAdapter } from '../src/agent/acp-backend-adapter.mjs'
+import { AcpBackendAdapter } from '../src/agent/acp/backend-adapter.mjs'
 import { assertBackendPort } from '../src/backend/backend-port.mjs'
 
 function fakeClient({

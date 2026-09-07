@@ -6,7 +6,7 @@ import test from 'node:test'
 import {
   AcpBackendAdapter,
   acpBackendProfile,
-} from '../src/agent/acp-backend-adapter.mjs'
+} from '../src/agent/acp/backend-adapter.mjs'
 
 function completed(speech = '完成') {
   return speech

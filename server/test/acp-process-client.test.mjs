@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
-import { AcpProcessClient } from '../src/agent/acp-process-client.mjs'
+import { AcpProcessClient } from '../src/agent/acp/process-client.mjs'
 import { openClawBackendDriver } from '../src/agent/backends/openclaw.mjs'
 
 test('keeps session object identity stable across re-registration', () => {

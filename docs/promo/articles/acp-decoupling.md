@@ -21,14 +21,14 @@
       │  只认识"任务"和"事件"，不认识任何 Agent
 协调层（coordinator / session registry）
       │  统一的 ACP 会话抽象
-ACP 进程客户端（acp-process-client）
+ACP 进程客户端（acp/process-client）
       │  JSON-RPC over stdio
 后台 Agent 进程（opencode / claude / codex / …）
 ```
 
 ### 第一层：进程客户端
 
-`AcpProcessClient`（`server/src/agent/acp-process-client.mjs`）负责
+`AcpProcessClient`（`server/src/agent/acp/process-client.mjs`）负责
 把任意 ACP Agent 当作子进程管理：spawn 进程、用 stdio 建立 JSON-RPC
 双向通道、管理请求/响应/通知的生命周期。对上层来说，所有 Agent
 都长一个样：一个可以收发消息的会话。

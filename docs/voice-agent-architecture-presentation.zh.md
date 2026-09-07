@@ -516,8 +516,8 @@ objective 文本 + COORDINATOR_STABLE_INSTRUCTIONS 稳定指令块 + 用户原�
 [Sources]
 - server/src/task/task-manager.mjs
 - server/src/backend/backend-work-input.mjs
-- server/src/agent/acp-coordinator-contract.mjs
-- server/src/agent/acp-coordinator-instructions.mjs
+- server/src/agent/acp/coordinator-contract.mjs
+- server/src/agent/acp/coordinator-instructions.mjs
 -->
 
 ---
@@ -623,8 +623,8 @@ return `${protocol}:${encodeURIComponent(
 
 <!--
 [Sources]
-- server/src/agent/acp-backend-session-utils.mjs
-- server/src/agent/acp-backend-adapter.mjs
+- server/src/agent/acp/backend-session-utils.mjs
+- server/src/agent/acp/backend-adapter.mjs
 -->
 
 ---
@@ -802,7 +802,7 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 <!--
 [Sources]
-- server/src/agent/acp-session-tools.mjs
+- server/src/agent/acp/session-tools.mjs
 -->
 
 ---

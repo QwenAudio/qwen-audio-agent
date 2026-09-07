@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildAcpCoordinatorInstruction } from '../src/agent/acp-coordinator-contract.mjs'
+import { buildAcpCoordinatorInstruction } from '../src/agent/acp/coordinator-contract.mjs'
 import {
   COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
   COORDINATOR_STABLE_INSTRUCTIONS,
-} from '../src/agent/acp-coordinator-instructions.mjs'
+} from '../src/agent/acp/coordinator-instructions.mjs'
 
 test('projects Gateway Work into one natural ACP task instruction', () => {
   const prompt = buildAcpCoordinatorInstruction({

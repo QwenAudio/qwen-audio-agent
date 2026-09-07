@@ -96,8 +96,8 @@ test('server source dependencies follow the documented layer direction', () => {
 
 test('generic ACP and process cores do not bind to named backends', () => {
   const genericCoreFiles = [
-    resolve(sourceRoot, 'agent/acp-process-client.mjs'),
-    resolve(sourceRoot, 'agent/acp-backend-adapter.mjs'),
+    resolve(sourceRoot, 'agent/acp/process-client.mjs'),
+    resolve(sourceRoot, 'agent/acp/backend-adapter.mjs'),
     resolve(sourceRoot, 'process/managed-backend.mjs'),
     resolve(projectRoot, 'cli/src/runtime.mjs'),
     resolve(projectRoot, 'cli/src/launcher.mjs'),

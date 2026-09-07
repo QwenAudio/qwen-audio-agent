@@ -1,3 +1,4 @@
+// MCP surface used by the coordinator to manage independent ACP Sessions.
 import { randomUUID } from 'node:crypto'
 import { createServer as createHttpServer } from 'node:http'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'

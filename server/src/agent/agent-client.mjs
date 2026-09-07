@@ -1,7 +1,7 @@
 import { config } from '../core/config.mjs'
 import { assertBackendPort } from '../backend/backend-port.mjs'
 import { AgentError } from './backend-adapter.mjs'
-import { createAcpBackendAdapter } from './acp-backend-factory.mjs'
+import { createAcpBackendAdapter } from './acp/backend-factory.mjs'
 
 export { AgentError }
 

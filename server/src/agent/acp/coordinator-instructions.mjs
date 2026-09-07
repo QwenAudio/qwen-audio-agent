@@ -1,4 +1,4 @@
-// Claude Code currently imposes the strictest verified per-server budget.
+// Claude Code has the strictest verified per-server budget.
 // Keeping one portable payload avoids host-specific instruction variants.
 export const COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES = 2 * 1024
 

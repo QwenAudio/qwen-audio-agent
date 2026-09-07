@@ -1,5 +1,5 @@
 import test from 'node:test'
-import { AcpBackendAdapter } from '../src/agent/acp-backend-adapter.mjs'
+import { AcpBackendAdapter } from '../src/agent/acp/backend-adapter.mjs'
 import {
   verifyBackendAdapterConformance,
 } from '../src/backend/backend-adapter-conformance.mjs'

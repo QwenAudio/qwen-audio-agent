@@ -1,5 +1,5 @@
-import { logger } from '../core/logger.mjs'
-import { VersionedJsonStore } from '../core/versioned-json-store.mjs'
+import { logger } from '../../core/logger.mjs'
+import { VersionedJsonStore } from '../../core/versioned-json-store.mjs'
 
 const VERSION = 1
 const MAX_RECONCILIATIONS = 20

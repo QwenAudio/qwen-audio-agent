@@ -1,5 +1,5 @@
-import { createBackendProfile } from './backends/registry.mjs'
-export { endpointAvailable } from './backends/shared.mjs'
+import { createBackendProfile } from '../backends/registry.mjs'
+export { endpointAvailable } from '../backends/shared.mjs'
 
 export function acpBackendProfile({
   protocol,

@@ -4,7 +4,7 @@ import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
   GatewayClientActionResultSchema,
-} from '../../../shared/gateway-client-protocol.mjs'
+} from '../../../shared/protocol/gateway-client-protocol.mjs'
 
 export const ClientActionName = GatewayClientActionName
 

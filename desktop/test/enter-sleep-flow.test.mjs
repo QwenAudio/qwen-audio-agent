@@ -8,7 +8,7 @@ import { DesktopPresence } from '../src/desktop-presence.mjs'
 import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../../shared/gateway-client-protocol.mjs'
+} from '../../shared/protocol/gateway-client-protocol.mjs'
 
 test('an enter_sleep tool call hides the desktop orb end to end', async () => {
   const window = {

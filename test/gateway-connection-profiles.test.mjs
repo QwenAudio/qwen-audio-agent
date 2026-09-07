@@ -6,7 +6,7 @@ import test from 'node:test'
 import {
   createMemoryGatewayCredentialStore,
   GatewayConnectionProfileStore,
-} from '../shared/gateway-connection-profiles.mjs'
+} from '../shared/gateway/connection-profiles.mjs'
 
 function profile(id, overrides = {}) {
   return {

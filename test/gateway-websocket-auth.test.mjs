@@ -5,7 +5,7 @@ import {
   gatewayWebSocketBearer,
   gatewayWebSocketProtocols,
   selectGatewayWebSocketProtocol,
-} from '../shared/gateway-websocket-auth.mjs'
+} from '../shared/gateway/websocket-auth.mjs'
 
 const TOKEN = 'qwa_example-device-token_1234567890'
 

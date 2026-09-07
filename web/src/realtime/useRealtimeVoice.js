@@ -2,20 +2,20 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
-} from '../../../shared/realtime-events.mjs'
+} from '../../../shared/protocol/realtime-events.mjs'
 import {
   acceptsGatewayVoiceState,
   createGatewayClientState,
   reduceGatewayClientState,
-} from '../../../shared/gateway-client-state.mjs'
+} from '../../../shared/gateway/client-state.mjs'
 import { clientInputCapabilities } from '../../../shared/client-input-capabilities.mjs'
 import {
   createGatewayProtocolEventId,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../../../shared/gateway-client-protocol.mjs'
-import { GatewayClient } from '../../../shared/gateway-client-sdk.mjs'
-import { gatewayReferenceClientCapabilities } from '../../../shared/gateway-client-profiles.mjs'
+} from '../../../shared/protocol/gateway-client-protocol.mjs'
+import { GatewayClient } from '../../../shared/gateway/client-sdk.mjs'
+import { gatewayReferenceClientCapabilities } from '../../../shared/gateway/client-profiles.mjs'
 import {
   audioSchedulingLeadSeconds,
   createPcmPlaybackQueue,

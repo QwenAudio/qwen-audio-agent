@@ -6,7 +6,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto'
 import { VersionedJsonStore } from '../core/versioned-json-store.mjs'
-import { gatewayWebSocketBearer } from '../../../shared/gateway-websocket-auth.mjs'
+import { gatewayWebSocketBearer } from '../../../shared/gateway/websocket-auth.mjs'
 
 const ACCESS_COOKIE = 'qwen_audio_agent_access'
 const DEFAULT_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000

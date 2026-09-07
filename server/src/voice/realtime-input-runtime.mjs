@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { GatewayServerEvent } from '../../../shared/realtime-events.mjs'
+import { GatewayServerEvent } from '../../../shared/protocol/realtime-events.mjs'
 import {
   displayInputText,
   inputFileParts,

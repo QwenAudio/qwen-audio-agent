@@ -9,7 +9,7 @@
 // Each `missing` entry carries the settings `field`, its environment `key`
 // and a message fit for a UI, so both the CLI and an integrating platform can
 // present the same answer.
-import { resolveRealtimeFrontendConfiguration } from './realtime-provider-catalog.mjs'
+import { resolveRealtimeFrontendConfiguration } from '../realtime-provider-catalog.mjs'
 
 export function gatewaySetupStatus(env = process.env) {
   const frontend = resolveRealtimeFrontendConfiguration(env)

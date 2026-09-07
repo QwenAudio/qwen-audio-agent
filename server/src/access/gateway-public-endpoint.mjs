@@ -2,7 +2,7 @@ import { spawn as nodeSpawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { createInterface } from 'node:readline'
-import { GatewayUrlSchema } from '../../../shared/gateway-remote-access.mjs'
+import { GatewayUrlSchema } from '../../../shared/gateway/remote-access.mjs'
 
 const HTTPS_ORIGIN = /https:\/\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::\d+)?/i
 

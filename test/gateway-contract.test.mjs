@@ -17,7 +17,7 @@ import {
   GatewayClientEvent,
   GatewayServerEvent,
   GatewayTaskEvent,
-} from '../shared/realtime-events.mjs'
+} from '../shared/protocol/realtime-events.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const contractEn = readFileSync(resolve(projectRoot, 'docs/contract.md'), 'utf8')

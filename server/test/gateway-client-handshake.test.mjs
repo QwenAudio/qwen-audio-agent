@@ -8,11 +8,11 @@ import {
   GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
   GatewayClientProtocolEvent,
   createGatewaySessionHello,
-} from '../../shared/gateway-client-protocol.mjs'
+} from '../../shared/protocol/gateway-client-protocol.mjs'
 import {
   GATEWAY_WEBSOCKET_PROTOCOL,
   gatewayWebSocketProtocols,
-} from '../../shared/gateway-websocket-auth.mjs'
+} from '../../shared/gateway/websocket-auth.mjs'
 import {
   GatewayAccessManager,
   parseGatewayAccessKeys,

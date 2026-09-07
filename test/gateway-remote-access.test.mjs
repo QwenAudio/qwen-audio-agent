@@ -8,7 +8,7 @@ import {
   parseGatewayConnectionProfile,
   parseGatewayEndpointDescriptor,
   parseGatewayPairingCode,
-} from '../shared/gateway-remote-access.mjs'
+} from '../shared/gateway/remote-access.mjs'
 
 test('remote endpoint descriptors expose only transport-neutral connection data', () => {
   assert.deepEqual(parseGatewayEndpointDescriptor({

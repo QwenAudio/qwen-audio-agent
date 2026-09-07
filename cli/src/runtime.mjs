@@ -20,15 +20,15 @@ import {
 } from '../../shared/memory-provider-catalog.mjs'
 import {
   readGatewayHealth,
-} from '../../shared/gateway-client.mjs'
+} from '../../shared/gateway/http-client.mjs'
 import {
   findRunningGateway,
-} from '../../shared/gateway-instance-lock.mjs'
+} from '../../shared/gateway/lease.mjs'
 
 export {
   createGatewayPairingTicket,
   readGatewayHealth,
-} from '../../shared/gateway-client.mjs'
+} from '../../shared/gateway/http-client.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 

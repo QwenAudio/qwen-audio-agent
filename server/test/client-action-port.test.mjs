@@ -11,7 +11,7 @@ import {
 import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../../shared/gateway-client-protocol.mjs'
+} from '../../shared/protocol/gateway-client-protocol.mjs'
 
 test('correlates a supported Client Action request and result', async () => {
   const sent = []

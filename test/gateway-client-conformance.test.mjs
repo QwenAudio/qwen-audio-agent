@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GatewayClient } from '../shared/gateway-client-sdk.mjs'
+import { GatewayClient } from '../shared/gateway/client-sdk.mjs'
 import {
   GatewayReferenceClientType,
   gatewayReferenceClientCapabilities,
-} from '../shared/gateway-client-profiles.mjs'
+} from '../shared/gateway/client-profiles.mjs'
 import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../shared/gateway-client-protocol.mjs'
+} from '../shared/protocol/gateway-client-protocol.mjs'
 
 class ConformanceSocket {
   constructor() {

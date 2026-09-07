@@ -6,7 +6,7 @@ import {
   pairGatewayConnectionCode,
   pairGatewayDevice,
   revokeGatewayDevice,
-} from '../shared/gateway-access-client.mjs'
+} from '../shared/gateway/access-client.mjs'
 
 function jsonResponse(body, { status = 200 } = {}) {
   return new Response(JSON.stringify(body), {

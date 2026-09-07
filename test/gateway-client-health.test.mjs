@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { readGatewayHealth } from '../shared/gateway-client.mjs'
+import { readGatewayHealth } from '../shared/gateway/http-client.mjs'
 
 test('Gateway health helper sends a native Client credential when provided', async () => {
   let options

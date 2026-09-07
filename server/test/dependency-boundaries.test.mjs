@@ -69,9 +69,12 @@ function layerFor(path) {
   return first.endsWith('.mjs') ? 'root' : first
 }
 
-test('server source relative module imports resolve to files', () => {
+test('server and shared source relative module imports resolve to files', () => {
   const missing = []
-  for (const file of sourceFiles(sourceRoot)) {
+  for (const file of [
+    ...sourceFiles(sourceRoot),
+    ...sourceFiles(sharedRoot),
+  ]) {
     const imports = [
       ...readFileSync(file, 'utf8').matchAll(
         /(?:from\s+|import\s+)['"](\.{1,2}\/[^'"]+\.mjs)['"]/g,
@@ -81,7 +84,7 @@ test('server source relative module imports resolve to files', () => {
       const target = resolve(dirname(file), match[1])
       if (!existsSync(target)) {
         missing.push(
-          `${relative(sourceRoot, file)} -> ${relative(sourceRoot, target)}`,
+          `${relative(projectRoot, file)} -> ${relative(projectRoot, target)}`,
         )
       }
     }

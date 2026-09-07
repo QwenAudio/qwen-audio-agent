@@ -1,10 +1,10 @@
 import { WebSocket, WebSocketServer } from 'ws'
-import { selectGatewayWebSocketProtocol } from '../../../shared/gateway-websocket-auth.mjs'
+import { selectGatewayWebSocketProtocol } from '../../../shared/gateway/websocket-auth.mjs'
 import { randomUUID } from 'node:crypto'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
-} from '../../../shared/realtime-events.mjs'
+} from '../../../shared/protocol/realtime-events.mjs'
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import {
   createTaskAnnouncementRuntime,
@@ -65,7 +65,7 @@ import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
   GatewaySessionPongSchema,
-} from '../../../shared/gateway-client-protocol.mjs'
+} from '../../../shared/protocol/gateway-client-protocol.mjs'
 import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
 import {
   createGatewaySystemEventDelivery,

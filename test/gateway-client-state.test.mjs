@@ -4,7 +4,7 @@ import {
   acceptsGatewayVoiceState,
   createGatewayClientState,
   reduceGatewayClientState,
-} from '../shared/gateway-client-state.mjs'
+} from '../shared/gateway/client-state.mjs'
 
 function reduce(events, initial = createGatewayClientState()) {
   return events.reduce(reduceGatewayClientState, initial)

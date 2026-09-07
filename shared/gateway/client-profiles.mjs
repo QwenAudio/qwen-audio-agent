@@ -1,5 +1,5 @@
-import { clientInputCapabilities } from './client-input-capabilities.mjs'
-import { GatewayClientCapability } from './gateway-client-protocol.mjs'
+import { clientInputCapabilities } from '../client-input-capabilities.mjs'
+import { GatewayClientCapability } from '../protocol/gateway-client-protocol.mjs'
 
 export const GatewayReferenceClientType = Object.freeze({
   WEB: 'web',

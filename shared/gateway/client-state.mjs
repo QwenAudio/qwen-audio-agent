@@ -1,4 +1,4 @@
-import { GatewayServerEvent } from './realtime-events.mjs'
+import { GatewayServerEvent } from '../protocol/realtime-events.mjs'
 
 const DEFAULT_OWNERSHIP = Object.freeze({
   state: 'available',

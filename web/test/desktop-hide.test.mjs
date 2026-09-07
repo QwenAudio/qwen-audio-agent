@@ -15,7 +15,7 @@ import {
 } from '../src/desktop/desktop-hide.js'
 import {
   GatewayClientProtocolEvent,
-} from '../../shared/gateway-client-protocol.mjs'
+} from '../../shared/protocol/gateway-client-protocol.mjs'
 
 test('distinguishes active tasks from tasks waiting for authorization', () => {
   assert.equal(desktopTasksActive([]), false)

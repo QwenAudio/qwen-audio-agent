@@ -283,7 +283,7 @@ startedAt, heartbeatAt }`. Locate an instance by reading the lease, probing
 `gatewayInstanceId` — a port reused by another process then reads as "not
 running" instead of leaking a stranger's status. A clean shutdown releases
 the lease. Locked by `test/consumer-install.test.mjs` and
-`test/gateway-instance-lock.test.mjs`.
+`test/gateway-lease.test.mjs`.
 
 ## Setup gate
 

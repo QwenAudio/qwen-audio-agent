@@ -24,7 +24,7 @@ export const piBackendDriver = {
       label: this.label,
       acpConnection: processAcpConnection({
         command: process.execPath,
-        args: [resolve(root, 'scripts/pi-acp.mjs')],
+        args: [resolve(root, 'scripts/runtime/pi-acp.mjs')],
         cwd: directory,
         env: {
           ...baseEnvironment('pi'),

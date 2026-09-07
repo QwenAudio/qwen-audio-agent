@@ -1,6 +1,6 @@
 // Claude Code ACP adapter launcher (node module — cross-platform).
 // Replaces scripts/claude-code-acp shell script.
-import { spawnAndProxy, commandAvailable, findExecutable } from './lib/launcher.mjs'
+import { spawnAndProxy, commandAvailable, findExecutable } from './launcher.mjs'
 
 const RUNTIME = process.env.CLAUDE_CODE_ACP_RUNTIME || 'auto'
 const PKG = process.env.CLAUDE_CODE_ACP_PACKAGE || '@zed-industries/claude-code-acp@0.16.2'

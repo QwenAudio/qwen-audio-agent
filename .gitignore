@@ -8,7 +8,7 @@ __pycache__/
 .env
 .env.*
 !.env.example
-runtime/
+/runtime/
 *.log
 .DS_Store
 Thumbs.db

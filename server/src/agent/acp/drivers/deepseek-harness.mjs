@@ -27,7 +27,7 @@ export const deepSeekHarnessBackendDriver = {
       label: this.label,
       acpConnection: processAcpConnection({
         command: process.execPath,
-        args: [resolve(root, 'scripts/deepseek-harness-acp.mjs')],
+        args: [resolve(root, 'scripts/runtime/deepseek-harness-acp.mjs')],
         cwd: directory,
         env: {
           ...baseEnvironment('deepseek'),

@@ -14,3 +14,13 @@ test('builds and uploads both install and automatic-update macOS artifacts', () 
   assert.match(workflow, /dist\/desktop\/\*\.dmg/)
   assert.match(workflow, /dist\/desktop\/\*\.zip/)
 })
+
+test('copies only backend runtime scripts outside the desktop archive', () => {
+  const builder = readFileSync(new URL('desktop/electron-builder.yml', root), 'utf8')
+  const scriptsResource = builder.match(
+    /  - from: scripts\r?\n[\s\S]*?(?=\r?\n  - from:|$)/,
+  )?.[0]
+  assert.ok(scriptsResource)
+  assert.match(scriptsResource, /- "runtime\/\*\*\/\*"/)
+  assert.doesNotMatch(scriptsResource, /- "\*\*\/\*"/)
+})

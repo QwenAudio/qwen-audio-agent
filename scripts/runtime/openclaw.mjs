@@ -1,13 +1,13 @@
 // OpenClaw ACP / Gateway launcher (node module — cross-platform).
 // Replaces scripts/openclaw shell script.
-import { spawnAndProxy, commandAvailable, loadDotEnv } from './lib/launcher.mjs'
+import { spawnAndProxy, commandAvailable, loadDotEnv } from './launcher.mjs'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, copyFileSync, existsSync, writeFileSync, renameSync, readdirSync, statSync, symlinkSync } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomInt } from 'node:crypto'
 
-const ROOT = resolve(join(fileURLToPath(import.meta.url), '..', '..'))
+const ROOT = resolve(join(fileURLToPath(import.meta.url), '..', '..', '..'))
 const IS_WIN = process.platform === 'win32'
 const IS_DESKTOP = process.env.QWEN_AUDIO_AGENT_DESKTOP === '1'
 const DESKTOP_INSTALLED_ONLY = process.env.QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY
@@ -37,8 +37,8 @@ function runHelper(op, ...args) {
   const script = isDesktopHelper
     ? resolve(SOURCE_ROOT, 'server/src/process/openclaw-desktop-helper.mjs')
     : (op === 'prepare'
-        ? resolve(ROOT, 'scripts/prepare-openclaw-config.mjs')
-        : resolve(ROOT, 'scripts/sync-openclaw-gateway-token.mjs'))
+        ? resolve(ROOT, 'scripts/runtime/prepare-openclaw-config.mjs')
+        : resolve(ROOT, 'scripts/runtime/sync-openclaw-gateway-token.mjs'))
   const env = IS_DESKTOP ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : process.env
   // Desktop helper 接受 op 作为首参数；独立脚本（prepare/sync-token）不接受。
   const scriptArgs = isDesktopHelper ? [op, ...args] : args

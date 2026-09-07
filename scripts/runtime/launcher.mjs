@@ -1,4 +1,4 @@
-// Self-contained launcher utilities used by scripts/launcher .mjs files.
+// Self-contained launcher utilities used by backend runtime launchers.
 // These scripts live in extraResources (outside the asar archive) so they
 // cannot import from shared/.  The findExecutable implementation below is
 // kept in sync with shared/backend/setup.mjs.

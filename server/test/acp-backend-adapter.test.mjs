@@ -631,7 +631,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
       directory: '/work',
       permissionMode: 'native',
     })).args,
-    [resolve(root, 'scripts/opencode.mjs'), 'acp'],
+    [resolve(root, 'scripts/runtime/opencode.mjs'), 'acp'],
   )
   assert.deepEqual(
     connection(acpBackendProfile({
@@ -689,7 +689,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
   })
   assert.equal(openClaw.externalMcp, false)
   assert.deepEqual(connection(openClaw).args, [
-    resolve(root, 'scripts/openclaw.mjs'),
+    resolve(root, 'scripts/runtime/openclaw.mjs'),
     'acp',
     '--url',
     'ws://127.0.0.1:18789',
@@ -775,7 +775,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
     permissionMode: 'full',
   })
   assert.equal(connection(codex).command, process.execPath)
-  assert.equal(connection(codex).args[0], resolve(root, 'scripts/codex-acp.mjs'))
+  assert.equal(connection(codex).args[0], resolve(root, 'scripts/runtime/codex-acp.mjs'))
   assert.equal(connection(codex).env.INITIAL_AGENT_MODE, 'agent-full-access')
   const codexConfig = JSON.parse(connection(codex).env.CODEX_CONFIG)
   assert.equal(codexConfig.model, undefined)
@@ -791,7 +791,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
     permissionMode: 'native',
   })
   assert.equal(connection(nativeCodex).command, process.execPath)
-  assert.equal(connection(nativeCodex).args[0], resolve(root, 'scripts/codex-acp.mjs'))
+  assert.equal(connection(nativeCodex).args[0], resolve(root, 'scripts/runtime/codex-acp.mjs'))
   assert.equal(connection(nativeCodex).env.CODEX_ACP_BIN, '/opt/codex-acp')
   assert.equal(connection(nativeCodex).env.CODEX_CONFIG, undefined)
   assert.equal(connection(nativeCodex).env.MODEL_PROVIDER, undefined)
@@ -804,7 +804,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
     permissionMode: 'full',
   })
   assert.equal(connection(claude).command, process.execPath)
-  assert.equal(connection(claude).args[0], resolve(root, 'scripts/claude-code-acp.mjs'))
+  assert.equal(connection(claude).args[0], resolve(root, 'scripts/runtime/claude-code-acp.mjs'))
   assert.equal(connection(claude).cwd, '/work')
   assert.equal(connection(claude).env.CLAUDE_CODE_ACP_BIN, '/opt/claude-code-acp')
   assert.equal(connection(claude).env.CLAUDE_CODE_EXECUTABLE, '/opt/claude')
@@ -818,7 +818,7 @@ test('uses one ACP profile family while preserving backend differences', () => {
     permissionMode: 'full',
   })
   assert.equal(connection(pi).command, process.execPath)
-  assert.equal(connection(pi).args[0], resolve(root, 'scripts/pi-acp.mjs'))
+  assert.equal(connection(pi).args[0], resolve(root, 'scripts/runtime/pi-acp.mjs'))
   assert.equal(connection(pi).cwd, '/work')
   assert.equal(connection(pi).env.PI_ACP_BIN, '/opt/pi-acp')
   assert.equal(pi.externalMcp, false)

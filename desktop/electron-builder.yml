@@ -42,7 +42,7 @@ extraResources:
   - from: scripts
     to: runtime/scripts
     filter:
-      - "**/*"
+      - "runtime/**/*"
   - from: config
     to: runtime/config
     filter:

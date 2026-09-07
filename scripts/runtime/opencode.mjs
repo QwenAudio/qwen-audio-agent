@@ -3,11 +3,11 @@
 // Usage:  node opencode.mjs acp         (ACP entry)
 //         node opencode.mjs serve       (managed server)
 //         node opencode.mjs <command>   (arbitrary opencode subcommand)
-import { spawnAndProxy, commandAvailable } from './lib/launcher.mjs'
+import { spawnAndProxy, commandAvailable } from './launcher.mjs'
 import { resolve, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const ROOT = resolve(join(fileURLToPath(import.meta.url), '..', '..'))
+const ROOT = resolve(join(fileURLToPath(import.meta.url), '..', '..', '..'))
 const MODE = process.argv[2] || 'serve'
 const EXTRA = process.argv.slice(3)
 

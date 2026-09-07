@@ -1,6 +1,6 @@
 // Pi ACP adapter launcher (node module — cross-platform).
-// Mirrors scripts/codex-acp.mjs for the community pi-acp adapter.
-import { spawnAndProxy, commandAvailable, findExecutable } from './lib/launcher.mjs'
+// Mirrors codex-acp.mjs for the community pi-acp adapter.
+import { spawnAndProxy, commandAvailable, findExecutable } from './launcher.mjs'
 
 const RUNTIME = process.env.PI_ACP_RUNTIME || 'auto'
 const PKG = process.env.PI_ACP_PACKAGE || 'pi-acp@0.0.33'

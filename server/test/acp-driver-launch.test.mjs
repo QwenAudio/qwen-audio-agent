@@ -1,5 +1,5 @@
 // Tests that all ACP backend drivers use the unified cross-platform
-// launcher pattern: command = process.execPath, args = [scripts/*.mjs, ...],
+// launcher pattern: command = process.execPath, args = [scripts/runtime/*.mjs, ...],
 // env = { ELECTRON_RUN_AS_NODE: '1' }.
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
@@ -18,8 +18,8 @@ function assertLauncherPattern(profile, root, scriptName) {
     `command should be process.execPath for ${scriptName}`)
   assert.ok(connection.args.length >= 1,
     `args should contain at least the launcher script for ${scriptName}`)
-  assert.equal(connection.args[0], resolve(root, `scripts/${scriptName}`),
-    `args[0] should be scripts/${scriptName}`)
+  assert.equal(connection.args[0], resolve(root, `scripts/runtime/${scriptName}`),
+    `args[0] should be scripts/runtime/${scriptName}`)
   if (connection.env) {
     assert.equal(connection.env.ELECTRON_RUN_AS_NODE, '1',
       `${scriptName} driver must inject ELECTRON_RUN_AS_NODE`)

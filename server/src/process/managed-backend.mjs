@@ -118,7 +118,7 @@ function spawnSpec(root, platform, env, driver) {
   })
   return {
     command: process.execPath,
-    args: [resolve(root, `scripts/${driver.managedScript}`)],
+    args: [resolve(root, `scripts/runtime/${driver.managedScript}`)],
     options: {
       cwd: root,
       env: childEnvironment,

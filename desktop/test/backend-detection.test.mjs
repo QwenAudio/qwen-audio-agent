@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
 
-import { detectBackendSetups } from '../src/backend-detection.mjs'
+import { detectBackendSetups } from '../src/backend/detection.mjs'
 
 class SuccessfulWorker extends EventEmitter {
   constructor(url, options) {

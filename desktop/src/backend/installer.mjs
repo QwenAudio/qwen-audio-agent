@@ -5,7 +5,7 @@
 import {
   installBackend,
   installSupport,
-} from '../../shared/backend-install.mjs'
+} from '../../../shared/backend-install.mjs'
 
 export function createBackendInstaller({
   env = process.env,

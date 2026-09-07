@@ -4,7 +4,7 @@ import {
   backendRuntimePhase,
   backendRuntimeReady,
   initialBackendSelection,
-} from './backend-options.mjs'
+} from './backend/options.mjs'
 import {
   gatewayStatusLabel,
   realtimeConnectionStatus,

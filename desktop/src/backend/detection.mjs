@@ -1,6 +1,6 @@
 import { Worker } from 'node:worker_threads'
 
-const defaultWorkerUrl = new URL('./backend-detection-worker.mjs', import.meta.url)
+const defaultWorkerUrl = new URL('./detection-worker.mjs', import.meta.url)
 
 export function detectBackendSetups({
   env = process.env,

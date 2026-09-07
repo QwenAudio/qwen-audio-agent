@@ -63,7 +63,7 @@ import {
 import { createOrbPlacement } from './orb-placement.mjs'
 import { bindOrbShell, configureOrbWindow } from './orb-shell.mjs'
 import { createSettingsStore } from './settings-store.mjs'
-import { createDesktopBackendManagement } from './backend-management.mjs'
+import { createDesktopBackendManagement } from './backend/management.mjs'
 import {
   parseSettings,
   realtimeSettingsConfigured,

@@ -26,9 +26,9 @@ import { ProfileObserver } from '../conversation/profile-observer.mjs'
 import { SessionDigestPool } from '../conversation/session-digest.mjs'
 import { SessionSummariser } from '../conversation/session-summariser.mjs'
 import {
-  DomainLibrary,
-} from '../domain/domain-library.mjs'
-import { DomainSummariser } from '../domain/domain-summariser.mjs'
+  KnowledgeLibrary,
+} from '../knowledge/local-library.mjs'
+import { KnowledgeSummariser } from '../knowledge/local-summariser.mjs'
 import { enforceSameOrigin, isAllowedOrigin } from '../core/request-security.mjs'
 import {
   GatewayAccessManager,
@@ -60,11 +60,11 @@ import {
   FrontendRetrievalRuntime,
 } from '../frontend/retrieval/frontend-retrieval-runtime.mjs'
 import { createWebSearchProvider } from '../providers/search/factory.mjs'
-import { FrontendKnowledgeRuntime } from '../frontend/knowledge/knowledge-runtime.mjs'
-import { LocalKnowledgeProvider } from './knowledge/local-knowledge-provider.mjs'
-import { AgentDocumentConverter } from './knowledge/agent-document-converter.mjs'
-import { KnowledgeLibraryService } from './knowledge/knowledge-library-service.mjs'
-import { supportsKnowledgeManagement } from '../frontend/knowledge/retrieval-provider.mjs'
+import { FrontendKnowledgeRuntime } from '../frontend/knowledge/runtime.mjs'
+import { LocalKnowledgeProvider } from './knowledge/local-provider.mjs'
+import { AgentDocumentConverter } from './knowledge/document-converter.mjs'
+import { KnowledgeLibraryService } from './knowledge/library-service.mjs'
+import { supportsKnowledgeManagement } from '../frontend/knowledge/provider.mjs'
 import { assertFrontendToolSource } from '../frontend/tools/frontend-tool-source.mjs'
 import { FrontendMcpClient } from '../providers/mcp/frontend-mcp-client.mjs'
 import {
@@ -396,13 +396,13 @@ if (config.sessionDigestEnabled) {
 let domainLibrary = null
 let domainSummariser = null
 if (config.domainLibraryEnabled) {
-  domainLibrary = new DomainLibrary({
+  domainLibrary = new KnowledgeLibrary({
     documentDirectory: config.domainDocumentDirectory,
     indexPath: config.domainIndexPath,
     onWarning: warning => logger.warn('domain.persistence_warning', { warning }),
   })
   domainSummariser = memoryLlmCall
-    ? new DomainSummariser({
+    ? new KnowledgeSummariser({
         library: domainLibrary,
         audit: memoryAudit,
         llmCall: memoryLlmCall,
@@ -412,7 +412,7 @@ if (config.domainLibraryEnabled) {
 }
 
 // 知识检索 Provider 的装配放在资料库之后，因为本机资料库可以直接作为一个
-// Provider 使用（见 app/knowledge/local-knowledge-provider.mjs）。
+// Provider 使用（见 app/knowledge/local-provider.mjs）。
 //
 // 优先级：宿主显式注入 > 本机资料库兜底。一个 Gateway 只挂一个 Provider ——
 // 这是 Provider 模式的正常语义：用户配了企业知识服务说明他已有更完整的方案，

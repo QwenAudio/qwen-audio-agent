@@ -405,7 +405,7 @@ header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 header .ghost.active { color: white; border-color: #785cf480; background: #785cf42e; }
 
 /* 资料库面板：夹在 header 与主对话区之间，可折叠，不抢对话的位置 */
-.domain-panel {
+.knowledge-panel {
   flex: 0 0 auto;
   max-height: 44dvh;
   margin-bottom: 16px;
@@ -416,7 +416,7 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   background: rgba(18, 21, 27, 0.86);
 }
 
-.domain-panel > header {
+.knowledge-panel > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -426,15 +426,15 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   background: none;
 }
 
-.domain-panel > header button {
+.knowledge-panel > header button {
   padding: 2px 8px;
   font-size: 16px;
   line-height: 1;
 }
 
-.domain-panel form { display: flex; gap: 8px; }
+.knowledge-panel form { display: flex; gap: 8px; }
 
-.domain-panel input {
+.knowledge-panel input {
   flex: 1 1 auto;
   min-width: 0;
   padding: 8px 10px;
@@ -446,7 +446,7 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   font-size: 13px;
 }
 
-.domain-panel form button {
+.knowledge-panel form button {
   padding: 8px 12px;
   color: #ddd;
   border: 1px solid #ffffff18;
@@ -455,19 +455,19 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   white-space: nowrap;
 }
 
-.domain-panel form button:disabled { opacity: 0.45; }
+.knowledge-panel form button:disabled { opacity: 0.45; }
 
-.domain-hint, .domain-error, .domain-notice {
+.knowledge-hint, .knowledge-error, .knowledge-notice {
   margin: 8px 0 0;
   font-size: 12px;
   line-height: 1.5;
   color: #8f939c;
 }
 
-.domain-error { color: #f0928c; }
-.domain-notice { color: #8de5c6; }
+.knowledge-error { color: #f0928c; }
+.knowledge-notice { color: #8de5c6; }
 
-.domain-item {
+.knowledge-item {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -479,13 +479,13 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   background: #ffffff06;
 }
 
-.domain-item.pending { opacity: 0.7; }
-.domain-item b { font-size: 13px; }
-.domain-item small { font-size: 12px; color: #9a9ea7; }
-.domain-item .domain-sections { color: #7f8894; }
-.domain-item .domain-meta { color: #6d727c; font-size: 11px; }
+.knowledge-item.pending { opacity: 0.7; }
+.knowledge-item b { font-size: 13px; }
+.knowledge-item small { font-size: 12px; color: #9a9ea7; }
+.knowledge-item .knowledge-sections { color: #7f8894; }
+.knowledge-item .knowledge-meta { color: #6d727c; font-size: 11px; }
 
-.domain-item > button {
+.knowledge-item > button {
   position: absolute;
   top: 10px;
   right: 10px;
@@ -497,7 +497,7 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   background: #ffffff08;
 }
 
-.domain-item > button:disabled { opacity: 0.45; }
+.knowledge-item > button:disabled { opacity: 0.45; }
 
 .workspace {
   width: min(760px, calc(100% - 32px));

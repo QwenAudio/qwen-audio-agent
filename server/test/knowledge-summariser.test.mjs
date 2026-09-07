@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { DomainLibrary } from '../src/domain/domain-library.mjs'
-import { DomainSummariser } from '../src/domain/domain-summariser.mjs'
+import { KnowledgeLibrary } from '../src/knowledge/local-library.mjs'
+import { KnowledgeSummariser } from '../src/knowledge/local-summariser.mjs'
 
 const OWNER = 'user_personal'
 const MANUAL = [
@@ -25,13 +25,13 @@ function harness({
   const root = mkdtempSync(join(tmpdir(), 'qwaudio-domsum-'))
   const source = join(root, 'manual.md')
   writeFileSync(source, content)
-  const library = new DomainLibrary({
+  const library = new KnowledgeLibrary({
     documentDirectory: join(root, 'docs'),
     onWarning: () => {},
   })
   const entry = library.import({ ownerId: OWNER, sourcePath: source })
   const calls = []
-  const summariser = new DomainSummariser({
+  const summariser = new KnowledgeSummariser({
     library,
     audit: { record: item => audit.push(item) },
     llmCall: async payload => {
@@ -151,10 +151,10 @@ test('skips a document whose bytes turned out to be binary', async () => {
 })
 
 test('stays disabled without an llm call or a library', () => {
-  assert.equal(new DomainSummariser({ library: {} }).enabled(), false)
-  assert.equal(new DomainSummariser({ llmCall: async () => '' }).enabled(), false)
+  assert.equal(new KnowledgeSummariser({ library: {} }).enabled(), false)
+  assert.equal(new KnowledgeSummariser({ llmCall: async () => '' }).enabled(), false)
   assert.equal(
-    new DomainSummariser({ library: {}, llmCall: null })
+    new KnowledgeSummariser({ library: {}, llmCall: null })
       .maybeRun({ ownerId: OWNER, id: 'x' }),
     null,
   )

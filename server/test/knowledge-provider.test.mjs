@@ -13,7 +13,7 @@ import {
   normalizeKnowledgeProviderHealth,
   normalizeKnowledgeRetrievalResponse,
   supportsKnowledgeManagement,
-} from '../src/frontend/knowledge/retrieval-provider.mjs'
+} from '../src/frontend/knowledge/provider.mjs'
 
 function provider(overrides = {}) {
   return {

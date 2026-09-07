@@ -1,7 +1,7 @@
 import { loadFrontendPrompt } from '../src/conversation/frontend-agent-context.mjs'
 import {
   normalizeKnowledgeRetrievalResponse,
-} from '../src/frontend/knowledge/retrieval-provider.mjs'
+} from '../src/frontend/knowledge/provider.mjs'
 import {
   FrontendRetrievalRuntime,
 } from '../src/frontend/retrieval/frontend-retrieval-runtime.mjs'

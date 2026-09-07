@@ -3,7 +3,7 @@ import {
   describeKnowledgeRetrievalProvider,
   knowledgeProviderHealth,
   normalizeKnowledgeRetrievalResponse,
-} from './retrieval-provider.mjs'
+} from './provider.mjs'
 
 export const FRONTEND_KNOWLEDGE_CAPABILITY = 'knowledge'
 

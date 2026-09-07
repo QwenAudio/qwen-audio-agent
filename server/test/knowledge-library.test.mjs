@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os'
 import { join, posix, win32 } from 'node:path'
 import test from 'node:test'
 import {
-  DOMAIN_LIMITS,
-  DomainImportError,
-  DomainLibrary,
+  KNOWLEDGE_LIMITS,
+  KnowledgeImportError,
+  KnowledgeLibrary,
   classifySource,
-} from '../src/domain/domain-library.mjs'
+} from '../src/knowledge/local-library.mjs'
 
 const OWNER = 'user_personal'
 const NOW = Date.parse('2026-08-26T09:00:00Z')
@@ -33,7 +33,7 @@ function sourceFile(root, name, content = '# 手册\n\n## 第一节\n内容\n') 
 }
 
 function library({ docs, root, ...rest } = {}) {
-  return new DomainLibrary({
+  return new KnowledgeLibrary({
     documentDirectory: docs,
     indexPath: root ? join(root, 'domain-index.json') : null,
     now: () => NOW,
@@ -144,7 +144,7 @@ test('rejects what it cannot handle', () => {
     const reject = (sourcePath, code) => {
       assert.throws(
         () => shelf.import({ ownerId: OWNER, sourcePath }),
-        error => error instanceof DomainImportError && error.code === code,
+        error => error instanceof KnowledgeImportError && error.code === code,
         `${sourcePath} 应当以 ${code} 被拒`,
       )
     }
@@ -174,7 +174,7 @@ test('rejects a file over the size limit', () => {
     assert.throws(
       () => library({ docs, root, maxFileBytes: 100 })
         .import({ ownerId: OWNER, sourcePath: big }),
-      error => error instanceof DomainImportError && error.code === 'too_large',
+      error => error instanceof KnowledgeImportError && error.code === 'too_large',
     )
   })
 })
@@ -188,7 +188,7 @@ test('rejects an empty path with invalid_path rather than not_a_file', () => {
     for (const input of ['', '   ', null, undefined]) {
       assert.throws(
         () => shelf.import({ ownerId: OWNER, sourcePath: input }),
-        error => error instanceof DomainImportError && error.code === 'invalid_path',
+        error => error instanceof KnowledgeImportError && error.code === 'invalid_path',
         `输入 ${JSON.stringify(input)} 应当报 invalid_path`,
       )
     }
@@ -216,8 +216,8 @@ test('recognises a filesystem root on both path flavours', () => {
 
 test('reports a clear error when no document directory is configured', () => {
   assert.throws(
-    () => new DomainLibrary().import({ ownerId: OWNER, sourcePath: '/tmp/x.md' }),
-    error => error instanceof DomainImportError && error.code === 'library_unavailable',
+    () => new KnowledgeLibrary().import({ ownerId: OWNER, sourcePath: '/tmp/x.md' }),
+    error => error instanceof KnowledgeImportError && error.code === 'library_unavailable',
   )
 })
 
@@ -235,9 +235,9 @@ test('attaches a summary and caps its fields', () => {
       gist: '说'.repeat(200),
       sections: Array.from({ length: 30 }, (_, index) => `第 ${index} 节`),
     })
-    assert.equal([...updated.title].length, DOMAIN_LIMITS.MAX_TITLE_CHARS)
-    assert.equal([...updated.gist].length, DOMAIN_LIMITS.MAX_GIST_CHARS)
-    assert.equal(updated.sections.length, DOMAIN_LIMITS.MAX_SECTIONS)
+    assert.equal([...updated.title].length, KNOWLEDGE_LIMITS.MAX_TITLE_CHARS)
+    assert.equal([...updated.gist].length, KNOWLEDGE_LIMITS.MAX_GIST_CHARS)
+    assert.equal(updated.sections.length, KNOWLEDGE_LIMITS.MAX_SECTIONS)
     assert.equal(updated.summarised, true)
   })
 })

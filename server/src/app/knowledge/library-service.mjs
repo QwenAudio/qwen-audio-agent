@@ -6,7 +6,7 @@ import {
   normalizeKnowledgeListResponse,
   normalizeKnowledgeRemovalResponse,
   supportsKnowledgeManagement,
-} from '../../frontend/knowledge/retrieval-provider.mjs'
+} from '../../frontend/knowledge/provider.mjs'
 
 function clean(value) {
   return String(value || '').trim()

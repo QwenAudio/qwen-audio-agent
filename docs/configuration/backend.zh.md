@@ -235,7 +235,8 @@ QWEN_CODE_WORKSPACE=
 
 MiniMax Code（[官方 CLI 文档](https://agent.minimax.io/docs/cli/features)）通过官方
 `mcode acp` 以 ACP v1/stdio 接入。Gateway 只启动这个本地 ACP 进程；认证、Provider、
-模型、Session 和 Skill/Plugin 配置均由 MiniMax Code 自己管理。
+模型、Session 和 Skill/Plugin 配置均由 MiniMax Code 自己管理。当前集成要求 MiniMax
+Code `0.3.7` 或更高版本。
 
 可使用统一安装命令安装官方 CLI：
 

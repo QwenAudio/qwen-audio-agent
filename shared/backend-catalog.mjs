@@ -1,5 +1,4 @@
 const HERMES_INSTALL_COMMAND = 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash'
-const MINIMAX_CODE_INSTALL_COMMAND = 'curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash'
 
 // Static backend metadata lives here so CLI, desktop, runtime setup and the
 // Gateway do not maintain parallel lists. Executable behavior stays in backend
@@ -135,21 +134,15 @@ const definitions = new Map([
       command: 'mcode',
       executableEnvironment: 'MINIMAX_CODE_BIN',
       integration: 'native',
+      minimumVersion: '0.3.7',
     },
     lifecycle: {
       installation: {
-        steps: [
-          {
-            kind: 'script',
-            command: MINIMAX_CODE_INSTALL_COMMAND,
-            platforms: ['darwin', 'linux'],
-          },
-          {
-            kind: 'script',
-            command: 'irm https://filecdn.minimax.chat/public/install.ps1 | iex',
-            platforms: ['win32'],
-          },
-        ],
+        steps: [{
+          kind: 'npm',
+          package: '@minimax-ai/code@0.3.7',
+          packageEnv: 'MINIMAX_CODE_PACKAGE',
+        }],
       },
       configuration: { mode: 'backend-owned' },
     },

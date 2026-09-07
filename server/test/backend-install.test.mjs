@@ -90,10 +90,16 @@ test('npm steps report locked packages and honor package overrides', () => {
 
   const minimax = installSupport('minimax', { env: {}, platform: 'darwin' })
   assert.equal(minimax.supported, true)
-  assert.equal(minimax.requiresConfirmation, true)
-  assert.match(minimax.steps[0].display, /filecdn\.minimax\.chat\/public\/install\.sh/)
+  assert.equal(minimax.requiresConfirmation, false)
+  assert.deepEqual(
+    minimax.steps.map(step => step.display),
+    ['npm install -g @minimax-ai/code@0.3.7'],
+  )
   const minimaxWin = installSupport('minimax', { env: {}, platform: 'win32' })
-  assert.match(minimaxWin.steps[0].display, /filecdn\.minimax\.chat\/public\/install\.ps1/)
+  assert.deepEqual(
+    minimaxWin.steps.map(step => step.display),
+    ['npm install -g @minimax-ai/code@0.3.7'],
+  )
 
   const harness = installSupport('deepseek', {
     env: {},

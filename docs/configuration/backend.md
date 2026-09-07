@@ -274,7 +274,8 @@ Qwen Code's experimental network service is not treated as a remote backend.
 MiniMax Code ([official CLI documentation](https://agent.minimax.io/docs/cli/features))
 connects through the official `mcode acp` ACP v1/stdio entry point. The Gateway
 starts only this local ACP process; MiniMax Code owns its authentication,
-Provider, model, Session, and Skill/Plugin configuration.
+Provider, model, Session, and Skill/Plugin configuration. The current integration
+requires MiniMax Code `0.3.7` or later.
 
 Install the official CLI with the unified command:
 

@@ -18,6 +18,7 @@ test('declares MiniMax Code as a native ACP backend', () => {
   assert.equal(minimax.label, 'MiniMax Code')
   assert.equal(minimax.setup.command, 'mcode')
   assert.equal(minimax.setup.integration, 'native')
+  assert.equal(minimax.setup.minimumVersion, '0.3.7')
   assert.equal(minimax.supportsFullPermission, true)
   assert.equal(minimax.skills, null)
 })

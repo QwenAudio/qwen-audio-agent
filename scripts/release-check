@@ -76,23 +76,23 @@ if (manifest.main !== undefined) {
 if (readFileSync('.nvmrc', 'utf8').trim() !== '22.22.2') {
   throw new Error('.nvmrc does not match the minimum supported Node release')
 }
-if (!readFileSync('scripts/opencode.mjs', 'utf8').includes('opencode-ai@1.18.5')) {
+if (!readFileSync('scripts/runtime/opencode.mjs', 'utf8').includes('opencode-ai@1.18.5')) {
   throw new Error('OpenCode explicit package mode is not pinned')
 }
-if (!readFileSync('scripts/openclaw.mjs', 'utf8').includes('openclaw@2026.6.33')) {
+if (!readFileSync('scripts/runtime/openclaw.mjs', 'utf8').includes('openclaw@2026.6.33')) {
   throw new Error('OpenClaw explicit package mode is not pinned')
 }
-if (!readFileSync('scripts/codex-acp.mjs', 'utf8').includes(
+if (!readFileSync('scripts/runtime/codex-acp.mjs', 'utf8').includes(
   '@agentclientprotocol/codex-acp@1.1.7',
 )) {
   throw new Error('Codex ACP fallback package is not pinned')
 }
-if (!readFileSync('scripts/claude-code-acp.mjs', 'utf8').includes(
+if (!readFileSync('scripts/runtime/claude-code-acp.mjs', 'utf8').includes(
   '@zed-industries/claude-code-acp@0.16.2',
 )) {
   throw new Error('Claude Code ACP fallback package is not pinned')
 }
-if (!readFileSync('scripts/pi-acp.mjs', 'utf8').includes(
+if (!readFileSync('scripts/runtime/pi-acp.mjs', 'utf8').includes(
   'pi-acp@0.0.33',
 )) {
   throw new Error('Pi ACP fallback package is not pinned')
@@ -178,13 +178,13 @@ for (const file of trackedFiles) {
 
 NODE
 
-node --check scripts/opencode.mjs
-node --check scripts/openclaw.mjs
-node --check scripts/opencode-server.mjs
-node --check scripts/openclaw-gateway.mjs
-node --check scripts/codex-acp.mjs
-node --check scripts/claude-code-acp.mjs
-node --check scripts/pi-acp.mjs
+node --check scripts/runtime/opencode.mjs
+node --check scripts/runtime/openclaw.mjs
+node --check scripts/runtime/opencode-server.mjs
+node --check scripts/runtime/openclaw-gateway.mjs
+node --check scripts/runtime/codex-acp.mjs
+node --check scripts/runtime/claude-code-acp.mjs
+node --check scripts/runtime/pi-acp.mjs
 node --check shared/runtime-environment.mjs
 node --check cli/src/runtime.mjs
 git diff --check

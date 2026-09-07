@@ -1,5 +1,4 @@
-// Tests for scripts/lib/launcher.mjs — cross-platform launcher utilities.
-// Run with: node --test scripts/lib/launcher.test.mjs
+// Tests for scripts/runtime/launcher.mjs — cross-platform launcher utilities.
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -10,7 +9,7 @@ import {
   commandAvailable,
   loadDotEnv,
   spawnAndProxy,
-} from './launcher.mjs'
+} from '../scripts/runtime/launcher.mjs'
 
 // ── findExecutable ───────────────────────────────────────────────────────
 
@@ -88,11 +87,27 @@ test('commandAvailable returns false for nonexistent commands', () => {
 
 // ── loadDotEnv ───────────────────────────────────────────────────────────
 
-test('loadDotEnv sets QWEN_AUDIO_AGENT_ENV_LOADED guard', () => {
-  assert.equal(process.env.QWEN_AUDIO_AGENT_ENV_LOADED, undefined)
-  // loadDotEnv is idempotent — should not throw
-  loadDotEnv(process.cwd())
+test('loadDotEnv loads a runtime env file once', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'launcher-test-env-'))
+  const guard = process.env.QWEN_AUDIO_AGENT_ENV_LOADED
+  const value = process.env.QWEN_AUDIO_AGENT_LAUNCHER_TEST_VALUE
   delete process.env.QWEN_AUDIO_AGENT_ENV_LOADED
+  delete process.env.QWEN_AUDIO_AGENT_LAUNCHER_TEST_VALUE
+  writeFileSync(
+    join(directory, '.env'),
+    'QWEN_AUDIO_AGENT_LAUNCHER_TEST_VALUE=loaded\n',
+  )
+  try {
+    loadDotEnv(directory)
+    assert.equal(process.env.QWEN_AUDIO_AGENT_ENV_LOADED, '1')
+    assert.equal(process.env.QWEN_AUDIO_AGENT_LAUNCHER_TEST_VALUE, 'loaded')
+  } finally {
+    if (guard === undefined) delete process.env.QWEN_AUDIO_AGENT_ENV_LOADED
+    else process.env.QWEN_AUDIO_AGENT_ENV_LOADED = guard
+    if (value === undefined) delete process.env.QWEN_AUDIO_AGENT_LAUNCHER_TEST_VALUE
+    else process.env.QWEN_AUDIO_AGENT_LAUNCHER_TEST_VALUE = value
+    rmSync(directory, { recursive: true, force: true })
+  }
 })
 
 // ── spawnAndProxy ────────────────────────────────────────────────────────

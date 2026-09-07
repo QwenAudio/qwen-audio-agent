@@ -44,7 +44,7 @@ export const openCodeBackendDriver = {
       label: this.label,
       acpConnection: processAcpConnection({
         command: process.execPath,
-        args: [resolve(root, 'scripts/opencode.mjs'), 'acp'],
+        args: [resolve(root, 'scripts/runtime/opencode.mjs'), 'acp'],
         cwd: directory,
         env: { ...baseEnvironment('opencode'), ELECTRON_RUN_AS_NODE: '1' },
       }),

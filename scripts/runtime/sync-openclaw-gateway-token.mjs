@@ -2,7 +2,7 @@
 
 import {
   syncOpenClawGatewayTokenFile,
-} from '../server/src/process/backend-drivers/openclaw-auth.mjs'
+} from '../../server/src/process/backend-drivers/openclaw-auth.mjs'
 
 syncOpenClawGatewayTokenFile({
   targetPath: process.argv[2],

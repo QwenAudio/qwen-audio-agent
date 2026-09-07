@@ -74,7 +74,7 @@ export const openClawBackendDriver = {
         command: directBridge || process.execPath,
         args: directBridge
           ? bridgeArgs
-          : [resolve(root, 'scripts/openclaw.mjs'), ...bridgeArgs],
+          : [resolve(root, 'scripts/runtime/openclaw.mjs'), ...bridgeArgs],
         cwd: directory,
         env: {
           ...baseEnvironment('openclaw'),

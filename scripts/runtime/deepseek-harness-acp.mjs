@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path'
 import {
   commandAvailable,
   spawnAndProxy,
-} from './lib/launcher.mjs'
+} from './launcher.mjs'
 
 const binary = process.env.DEEPSEEK_HARNESS_ACP_BIN || 'dsh-acp-demo'
 const configPath = process.env.DEEPSEEK_HARNESS_CONFIG

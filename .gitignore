@@ -9,6 +9,8 @@ __pycache__/
 .env.*
 !.env.example
 runtime/
+!scripts/runtime/
+!scripts/runtime/**
 *.log
 .DS_Store
 Thumbs.db

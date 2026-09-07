@@ -28,7 +28,7 @@ export const codexBackendDriver = {
       label: this.label,
       acpConnection: processAcpConnection({
         command: process.execPath,
-        args: [resolve(root, 'scripts/codex-acp.mjs')],
+        args: [resolve(root, 'scripts/runtime/codex-acp.mjs')],
         cwd: directory,
         env: {
           ...baseEnvironment('codex'),

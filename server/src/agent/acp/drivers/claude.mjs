@@ -27,7 +27,7 @@ export const claudeBackendDriver = {
       label: this.label,
       acpConnection: processAcpConnection({
         command: process.execPath,
-        args: [resolve(root, 'scripts/claude-code-acp.mjs')],
+        args: [resolve(root, 'scripts/runtime/claude-code-acp.mjs')],
         cwd: directory,
         env: {
           ...baseEnvironment('claude'),

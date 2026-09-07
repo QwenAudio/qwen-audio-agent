@@ -1,6 +1,6 @@
 // Codex ACP adapter launcher (node module — cross-platform).
 // Replaces scripts/codex-acp shell script.
-import { spawnAndProxy, commandAvailable, findExecutable } from './lib/launcher.mjs'
+import { spawnAndProxy, commandAvailable, findExecutable } from './launcher.mjs'
 
 const RUNTIME = process.env.CODEX_ACP_RUNTIME || 'auto'
 const PKG = process.env.CODEX_ACP_PACKAGE || '@agentclientprotocol/codex-acp@1.1.7'

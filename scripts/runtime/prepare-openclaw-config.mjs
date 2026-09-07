@@ -2,7 +2,7 @@
 
 import {
   writeIsolatedOpenClawConfig,
-} from '../server/src/process/backend-drivers/openclaw-auth.mjs'
+} from '../../server/src/process/backend-drivers/openclaw-auth.mjs'
 
 const [, , sourcePath, targetPath] = process.argv
 if (!writeIsolatedOpenClawConfig({ sourcePath, targetPath })) {

@@ -110,6 +110,14 @@ test('generic ACP and process cores do not bind to named backends', () => {
   assert.deepEqual(violations, [])
 })
 
+test('protocol-neutral backend core does not import Agent protocol SDKs', () => {
+  const protocolSdk = /from\s+['"](?:@agentclientprotocol\/|@a2a-js\/)/
+  const violations = sourceFiles(resolve(sourceRoot, 'backend'))
+    .filter(file => protocolSdk.test(readFileSync(file, 'utf8')))
+    .map(file => relative(projectRoot, file))
+  assert.deepEqual(violations, [])
+})
+
 test('Gateway Work consumers use BackendPort instead of ACP coordinator APIs', () => {
   const consumers = [
     resolve(sourceRoot, 'backend/backend-work-runtime.mjs'),

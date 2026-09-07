@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto'
-import { redactLogValue } from '../../../shared/logger.mjs'
-import { AgentError } from './backend-adapter.mjs'
-import { ACP_SESSION_TOOL_NAMES } from './acp/session-tools.mjs'
+import { redactLogValue } from '../../../../shared/logger.mjs'
+import { AgentError } from '../agent-error.mjs'
+import { ACP_SESSION_TOOL_NAMES } from './session-tools.mjs'
 import {
   AuthorizationStatus,
   normalizeAuthorization,
   resolveAuthorization,
-} from '../core/work-authorization.mjs'
-import { BackendEventType, backendEvent } from '../core/backend-events.mjs'
+} from '../../core/work-authorization.mjs'
+import { BackendEventType, backendEvent } from '../../core/backend-events.mjs'
 
 function clean(value) {
   return String(value || '').trim()

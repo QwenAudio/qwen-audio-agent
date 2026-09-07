@@ -1,4 +1,4 @@
-import { AgentError } from '../backend-adapter.mjs'
+import { AgentError } from '../agent-error.mjs'
 
 const OPTIONAL_MCP_TRANSPORTS = new Set(['http', 'sse', 'acp'])
 

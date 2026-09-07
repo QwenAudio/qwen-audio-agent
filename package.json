@@ -55,7 +55,7 @@
     "./gateway-client-state": "./shared/gateway-client-state.mjs",
     "./gateway-application": "./server/src/app/gateway-application.mjs",
     "./backend-adapter-sdk": "./server/src/backend/backend-adapter-sdk.mjs",
-    "./a2a-backend-adapter": "./server/src/backend/a2a-backend-adapter.mjs",
+    "./a2a-backend-adapter": "./server/src/agent/a2a/backend-adapter.mjs",
     "./realtime-provider": "./server/src/voice/realtime-provider-extension.mjs",
     "./knowledge-provider": "./server/src/frontend/knowledge/provider.mjs",
     "./memory-provider": "./server/src/conversation/memory-provider.mjs",

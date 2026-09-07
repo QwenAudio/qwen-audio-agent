@@ -70,7 +70,7 @@ and onboarding. One entry describes:
 
 ### Ingredient 2: agent driver (required)
 
-`server/src/agent/backends/<id>.mjs`, plus one import line in
+`server/src/agent/acp/drivers/<id>.mjs`, plus one import line in
 `registry.mjs`. The driver declares the capability contract and builds the
 runtime profile:
 
@@ -100,7 +100,7 @@ export const myBackendDriver = {
 ```
 
 All eight capability flags are required booleans — the registry validates
-the contract, and `backend-driver-registry.test.mjs` asserts every
+the contract, and `acp-driver-registry.test.mjs` asserts every
 advertised backend has a complete driver. A half-registered backend fails
 loudly at startup, never silently at runtime.
 
@@ -120,7 +120,7 @@ drivers (external-service support, custom spawn rules).
    `shared/backend-catalog.mjs`, add the agent driver and register it, and
    optionally add a runtime driver for custom process ownership.
 3. Run the contract tests — they are the gate:
-   `node --test server/test/backend-driver-registry.test.mjs` for ACP
+   `node --test server/test/acp-driver-registry.test.mjs` for ACP
    drivers, `node --test server/test/backend-adapter-sdk.test.mjs` for
    custom adapters.
 

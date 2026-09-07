@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { AgentError } from '../backend-adapter.mjs'
+import { AgentError } from '../agent-error.mjs'
 import { BackendEventType, backendEvent } from '../../core/backend-events.mjs'
 import {
   acpBackendProfile,
@@ -19,11 +19,11 @@ import { AcpSessionToolServer } from './session-tools.mjs'
 import {
   builtinMcpServers,
   createBuiltinMcpLifecycle,
-} from '../builtin-mcp.mjs'
-import { BackendRuntimeState } from '../backend-runtime-state.mjs'
-import { KeyedSerialExecutor } from '../keyed-serial-executor.mjs'
-import { PermissionBroker } from '../permission-broker.mjs'
-import { InputBroker } from '../input-broker.mjs'
+} from './builtin-mcp.mjs'
+import { BackendRuntimeState } from './runtime-state.mjs'
+import { KeyedSerialExecutor } from './keyed-serial-executor.mjs'
+import { PermissionBroker } from './permission-broker.mjs'
+import { InputBroker } from './input-broker.mjs'
 import {
   appendPromptBlocks,
   artifactsFromAcpContentBlocks,

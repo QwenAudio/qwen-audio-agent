@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { WebSocket } from 'ws'
-import { PACKAGE_VERSION } from '../core/package-version.mjs'
-import { AgentError, requestSignal } from './backend-adapter.mjs'
+import { PACKAGE_VERSION } from '../../../core/package-version.mjs'
+import { AgentError } from '../../agent-error.mjs'
+import { requestSignal } from '../request-signal.mjs'
 
 const WAIT_SLICE_MS = 30_000
 const MIN_GATEWAY_PROTOCOL = 3

@@ -8,7 +8,7 @@ import {
 import {
   backendDriver,
   createBackendProfile,
-} from '../src/agent/backends/registry.mjs'
+} from '../src/agent/acp/drivers/registry.mjs'
 import {
   backendRuntimeDriver,
 } from '../src/process/backend-drivers/registry.mjs'

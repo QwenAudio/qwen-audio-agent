@@ -4,7 +4,7 @@ import { AcpBackendAdapter } from './backend-adapter.mjs'
 import {
   backendDriver,
   createBackendProfile,
-} from '../backends/registry.mjs'
+} from './drivers/registry.mjs'
 
 /**
  * ACP composition belongs to the ACP boundary, not AgentClient. This factory

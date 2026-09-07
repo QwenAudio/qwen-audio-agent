@@ -1,5 +1,5 @@
 import { createConnection } from 'node:net'
-import { backendEnvironment } from '../../../../shared/backend-environment.mjs'
+import { backendEnvironment } from '../../../../../shared/backend-environment.mjs'
 
 function serviceEndpointPort(target) {
   if (target.port) return Number(target.port)

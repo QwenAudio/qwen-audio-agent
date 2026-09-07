@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { BackendAvailability } from '../src/agent/backend-availability.mjs'
+import { BackendAvailability } from '../src/backend/availability.mjs'
 
 test('answers optimistically before the first probe completes', async () => {
   let resolveProbe

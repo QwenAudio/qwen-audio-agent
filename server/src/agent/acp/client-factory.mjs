@@ -1,4 +1,4 @@
-import { AgentError } from '../backend-adapter.mjs'
+import { AgentError } from '../agent-error.mjs'
 import { AcpProcessClient } from './process-client.mjs'
 
 export const ACP_CONNECTION_PROCESS = 'process'

@@ -109,6 +109,8 @@ if (isMain) {
   const files = new Set(packages[0].files.map(file => file.path))
   const required = [
     'cli/bin/qwenaudio.mjs',
+    'config/backends/deepseek-harness/cordis.yml',
+    'config/backends/openclaw/openclaw.json5',
     'examples/backend-adapter/README.md',
     'examples/backend-adapter/in-memory-backend.mjs',
     'examples/custom-conversation-client/README.md',

@@ -70,9 +70,11 @@ if (
 ) {
   managed = true
   const cfgDir = join(USER_DIR, 'backends', 'openclaw')
+  const templatePath = join(ROOT, 'config', 'backends', 'openclaw', 'openclaw.json5')
+  const configPath = join(cfgDir, 'openclaw.json5')
   mkdirSync(cfgDir, { recursive: true })
-  copyFileSync(join(ROOT, 'config', 'openclaw', 'openclaw.json5'), join(cfgDir, 'openclaw.json5'))
-  process.env.OPENCLAW_CONFIG_PATH = join(cfgDir, 'openclaw.json5')
+  if (templatePath !== configPath) copyFileSync(templatePath, configPath)
+  process.env.OPENCLAW_CONFIG_PATH = configPath
   const modelId = process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL.includes('/')
     ? process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL.split('/')[1] : process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL
   process.env.QWEN_AUDIO_AGENT_OPENCLAW_MODEL = `bailian/${modelId}`

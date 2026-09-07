@@ -114,7 +114,7 @@ if (isMain) {
     'examples/custom-conversation-client/README.md',
     'examples/custom-conversation-client/client.mjs',
     'server/src/app/memory-provider-factory.mjs',
-    'server/src/conversation/providers/voicemem/voicemem-provider.mjs',
+    'server/src/conversation/memory/providers/voicemem/provider.mjs',
     'shared/memory-provider-catalog.mjs',
     'CONTRIBUTING.md',
     'docs/architecture/deep-dive.md',

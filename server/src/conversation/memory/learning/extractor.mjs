@@ -6,8 +6,8 @@
 // correction, and the audit trail, never from asking the user.
 //
 // Code-level safety invariants (do not weaken):
-// - Every write goes through the same frontend context service as the realtime
-//   memory tool. The extractor never writes either Markdown file directly.
+// - Every write goes through the same MemoryProvider runtime as the Realtime
+//   memory tool. The extractor never writes either memory document directly.
 // - USER.md accepts only explicit interaction directives; MEMORY.md rejects
 //   directive-shaped content.
 // - Failures are silent: extraction must never delay or break session close,
@@ -67,7 +67,7 @@ const EXTRACTOR_SYSTEM_PROMPT = [
   '- 没有值得修改的内容时输出 {"changes":[]}。',
 ].join('\n')
 
-// 与 markdown-context-store 的 old_text 判定同口径：不重叠计数，必须恰好一次。
+// 与 MarkdownContextStore 的 old_text 判定同口径：不重叠计数，必须恰好一次。
 // 两处口径必须一致，否则这里放行的 edit 会在 prepareEdit 里再次被拒。
 function countOccurrences(content, needle) {
   if (!needle) return 0

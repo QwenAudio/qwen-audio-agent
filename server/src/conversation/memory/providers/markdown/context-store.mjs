@@ -9,7 +9,7 @@ import { basename, dirname, join } from 'node:path'
 import {
   replaceFileSync,
   withFileTransaction,
-} from '../../../shared/file-transaction-lock.mjs'
+} from '../../../../../../shared/file-transaction-lock.mjs'
 
 const MAX_EDIT_ITEMS = 20
 

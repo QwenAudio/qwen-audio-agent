@@ -5,7 +5,7 @@ import {
   assertMemoryProvider,
   describeMemoryProvider,
   normalizeMemoryProviderHealth,
-} from '../src/conversation/memory-provider.mjs'
+} from '../src/conversation/memory/provider.mjs'
 
 function provider(overrides = {}) {
   return {

@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { MarkdownContextStore } from '../src/conversation/markdown-context-store.mjs'
+import { MarkdownContextStore } from '../src/conversation/memory/providers/markdown/context-store.mjs'
 
 function store(scope = 'memory', options = {}) {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-markdown-memory-'))

@@ -4,9 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
-import { FrontendMemoryService } from '../src/conversation/frontend-memory-service.mjs'
-import { MarkdownContextStore } from '../src/conversation/markdown-context-store.mjs'
-import { MemoryExtractor } from '../src/conversation/memory-extractor.mjs'
+import { MemoryExtractor } from '../src/conversation/memory/learning/extractor.mjs'
+import { MarkdownContextStore } from '../src/conversation/memory/providers/markdown/context-store.mjs'
+import { MarkdownMemoryProvider } from '../src/conversation/memory/providers/markdown/provider.mjs'
 
 const OWNER = 'owner'
 const SESSION = 'main'
@@ -44,7 +44,7 @@ function extractor({
     scope: 'memory',
     template: '# MEMORY',
   })
-  const memoryService = new FrontendMemoryService({ userStore, memoryStore })
+  const memoryService = new MarkdownMemoryProvider({ userStore, memoryStore })
   const instance = new MemoryExtractor({
     memoryService,
     conversationSync: chattySession(turns, userText),

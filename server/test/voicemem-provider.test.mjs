@@ -19,7 +19,7 @@ import {
   applyRecommendedDashScopeConfiguration,
   normalizeVoiceMemInputMode,
   VoiceMemProvider,
-} from '../src/conversation/providers/voicemem/voicemem-provider.mjs'
+} from '../src/conversation/memory/providers/voicemem/provider.mjs'
 
 test('selects the optional VoiceMem connector through configuration', async () => {
   assert.equal(normalizeMemoryProviderSelection(), 'markdown')

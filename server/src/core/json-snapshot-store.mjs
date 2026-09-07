@@ -3,7 +3,7 @@
 // 它只负责「把一个 JSON 快照安全地存到磁盘、并在下次启动时读回来」，
 // 对快照内部的数据模型完全不透明 —— serialise / deserialise 由使用方自己做。
 //
-// 写入范式对齐 frontend-notes 与 markdown-context-store：
+// 写入范式对齐 FrontendNotesStore 与 MarkdownContextStore：
 //   · 原子写：tmp → replaceFileSync → chmod 600
 //   · 损坏隔离：JSON 解析失败搬到 .corrupt-<ts>，服务继续用空快照运行
 //   · I/O 失败降级：不阻塞主链路，setWarning + 关闭持久化

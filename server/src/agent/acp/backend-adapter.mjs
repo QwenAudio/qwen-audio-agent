@@ -1,9 +1,5 @@
 import { randomUUID } from 'node:crypto'
 import { AgentError } from '../backend-adapter.mjs'
-import {
-  COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES,
-  COORDINATOR_STABLE_INSTRUCTIONS,
-} from './coordinator-instructions.mjs'
 import { BackendEventType, backendEvent } from '../../core/backend-events.mjs'
 import {
   acpBackendProfile,
@@ -37,6 +33,13 @@ import {
 } from './content.mjs'
 import { assertMcpServerCapabilities } from './capabilities.mjs'
 import { buildAcpCoordinatorInstruction } from './coordinator-contract.mjs'
+import {
+  configureAcpSession,
+  coordinatorMeta,
+  coordinatorUsesMcpInstructions,
+  normalizeAcpModel,
+  stableCoordinatorInstructions,
+} from './session-configuration.mjs'
 
 const MAX_SESSION_RESULTS = 100
 const MAX_DELEGATION_RESULT_CHARS = 12_000
@@ -76,52 +79,8 @@ function assertCompletedAcpTurn(result, {
   })
 }
 
-function explicitModel(value) {
-  const model = clean(value)
-  return model.toLowerCase() === 'auto' ? '' : model
-}
-
-function modelKey(value) {
-  return clean(value).toLowerCase()
-}
-
-function optionChoices(entries = []) {
-  return entries.flatMap(entry => {
-    if (Array.isArray(entry?.options)) return optionChoices(entry.options)
-    const value = clean(entry?.value)
-    if (!value) return []
-    return [{
-      value,
-      names: [entry?.name, entry?.label]
-        .map(clean)
-        .filter(Boolean),
-    }]
-  })
-}
-
-function matchingOptionValue(entries, desired) {
-  const desiredKey = modelKey(desired)
-  const choice = optionChoices(entries).find(item => (
-    modelKey(item.value) === desiredKey
-    || item.names.some(name => modelKey(name) === desiredKey)
-  ))
-  return choice?.value || ''
-}
-
 function bounded(value, max = 300) {
   return clean(value).replace(/\s+/g, ' ').slice(0, max)
-}
-
-function optionValues(entries = []) {
-  return optionChoices(entries).map(entry => entry.value)
-}
-
-function modelConfigOption(options = []) {
-  return options.find(option => clean(option?.category).toLowerCase() === 'model')
-    || options.find(option => (
-      ['model', 'models'].includes(clean(option?.id).toLowerCase())
-    ))
-    || null
 }
 
 function deferred() {
@@ -187,7 +146,7 @@ export class AcpBackendAdapter {
     // An empty model means the Agent owns model selection for both new and
     // resumed Sessions. `auto` is retained only as a legacy configuration
     // spelling and is normalized to the same no-override state here.
-    this.model = explicitModel(model)
+    this.model = normalizeAcpModel(model)
     this.timeoutMs = timeoutMs
     this.directory = directory
     this.baseUrl = clean(baseUrl) || null
@@ -266,16 +225,11 @@ export class AcpBackendAdapter {
   }
 
   coordinatorUsesMcpInstructions() {
-    return this.profile.coordinatorMcpInstructions === true
-      && Buffer.byteLength(this.stableCoordinatorInstructions(), 'utf8')
-        <= COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES
+    return coordinatorUsesMcpInstructions(this.profile)
   }
 
   stableCoordinatorInstructions() {
-    return [
-      COORDINATOR_STABLE_INSTRUCTIONS,
-      clean(this.profile.sessionInstructions),
-    ].filter(Boolean).join('\n\n')
+    return stableCoordinatorInstructions(this.profile)
   }
 
   get lastHealthFailure() {
@@ -563,153 +517,18 @@ export class AcpBackendAdapter {
   }
 
   coordinatorMeta(ownerId) {
-    return this.profile.coordinatorMeta?.(ownerId) || null
+    return coordinatorMeta(this.profile, ownerId)
   }
 
   async configureSession(session, role) {
-    let options = Array.isArray(session?.response?.configOptions)
-      ? session.response.configOptions
-      : []
-    if (role === 'coordinator' && this.coordinatorAgent) {
-      const configId = 'mode'
-      const value = this.coordinatorAgent
-      const option = options.find(item => clean(item?.id) === configId)
-      const supported = option?.type !== 'select'
-        || option.options?.some(item => item.value === value)
-      if (option && supported && option.currentValue !== value) {
-        await this.client.setSessionConfigOption(
-          session.sessionId,
-          configId,
-          value,
-        )
-        option.currentValue = value
-      }
-    }
-    options = await this.applyProfileSessionConfig(session, options)
-    if (this.model && this.profile.sessionModelConfiguration !== false) {
-      await this.forceSessionModel(session, options)
-    }
-  }
-
-  async applyProfileSessionConfig(session, initialOptions) {
-    let options = initialOptions
-    for (const setting of this.profile.sessionConfigOptions || []) {
-      const id = clean(setting?.id)
-      const desired = clean(setting?.value)
-      const option = options.find(item => clean(item?.id) === id)
-      const selected = option?.type === 'select'
-        ? matchingOptionValue(option.options, desired)
-        : desired
-      if (!option || !selected) {
-        throw new AgentError(
-          `${this.label} 没有通过 ACP 提供必要的 Session 配置 ${id}=${desired}`,
-          { status: 422, protocol: 'acp' },
-        )
-      }
-      if (modelKey(option.currentValue) === modelKey(selected)) continue
-      let response
-      try {
-        response = await this.client.setSessionConfigOption(
-          session.sessionId,
-          id,
-          selected,
-        )
-      } catch (error) {
-        throw new AgentError(
-          `${this.label} 无法设置 Session 配置 ${id}=${desired}：${
-            clean(error?.message) || '未知错误'
-          }`,
-          { status: error.status || 502, protocol: 'acp' },
-        )
-      }
-      const updatedOptions = Array.isArray(response?.configOptions)
-        ? response.configOptions
-        : null
-      const updated = updatedOptions?.find(item => clean(item?.id) === id)
-      if (modelKey(updated?.currentValue) !== modelKey(selected)) {
-        throw new AgentError(
-          `${this.label} 未确认 Session 配置生效：要求 ${id}=${desired}，实际 ${
-            clean(updated?.currentValue) || '未知'
-          }`,
-          { status: 502, protocol: 'acp' },
-        )
-      }
-      options = updatedOptions
-      session.response = {
-        ...(session.response || {}),
-        configOptions: options,
-      }
-    }
-    return options
-  }
-
-  async forceSessionModel(session, options) {
-    const desired = this.model
-    const option = modelConfigOption(options)
-    if (!option) {
-      throw new AgentError(
-        `${this.label} 没有通过 ACP 提供 Session 模型配置，`
-        + `无法强制使用模型 ${desired}`,
-        { status: 422, protocol: 'acp' },
-      )
-    }
-    const values = optionValues(option.options)
-    const selected = option.type === 'select'
-      ? matchingOptionValue(option.options, desired)
-      : desired
-    if (option.type === 'select' && !selected) {
-      const available = values.length
-        ? `；可选模型：${values.slice(0, 12).join('、')}`
-        : ''
-      throw new AgentError(
-        `${this.label} 当前 Session 不支持模型 ${desired}${available}`,
-        { status: 422, protocol: 'acp' },
-      )
-    }
-    if (modelKey(option.currentValue) === modelKey(selected)) return
-    let response
-    try {
-      response = await this.client.setSessionConfigOption(
-        session.sessionId,
-        option.id,
-        selected,
-      )
-    } catch (error) {
-      throw new AgentError(
-        `${this.label} 无法把 Session 模型设置为 ${desired}：${
-          clean(error?.message) || '未知错误'
-        }`,
-        {
-          status: error.status || 502,
-          protocol: 'acp',
-        },
-      )
-    }
-    const updatedOptions = Array.isArray(response?.configOptions)
-      ? response.configOptions
-      : null
-    if (!updatedOptions) {
-      throw new AgentError(
-        `${this.label} 设置模型后没有返回 ACP configOptions，`
-        + `无法确认模型 ${desired} 已生效`,
-        { status: 502, protocol: 'acp' },
-      )
-    }
-    const updated = updatedOptions.find(item => (
-      clean(item?.id) === clean(option.id)
-    ))
-      || modelConfigOption(updatedOptions)
-    if (modelKey(updated?.currentValue) !== modelKey(selected)) {
-      throw new AgentError(
-        `${this.label} 未确认模型覆盖生效：要求 ${desired}，`
-        + `实际 ${clean(updated?.currentValue) || '未知'}`,
-        { status: 502, protocol: 'acp' },
-      )
-    }
-    session.response = {
-      ...(session.response || {}),
-      configOptions: updatedOptions,
-    }
+    return configureAcpSession({
+      client: this.client,
+      coordinatorAgent: this.coordinatorAgent,
+      label: this.label,
+      model: this.model,
+      profile: this.profile,
+      protocol: this.protocol,
+    }, session, role)
   }
 
   async handlePermission(params, { signal, session } = {}) {

@@ -54,10 +54,10 @@ test('parses independent TUI and WebUI client commands', () => {
 })
 
 test('parses remote Gateway connection profile commands', () => {
-  const invitation = 'qwaudio://connect?payload=abc'
-  const connected = parseArguments(['connect', invitation], {})
+  const pairingCode = 'qwaudio://connect?payload=abc'
+  const connected = parseArguments(['connect', pairingCode], {})
   assert.equal(connected.command, 'connect')
-  assert.equal(connected.invitation, invitation)
+  assert.equal(connected.pairingCode, pairingCode)
   assert.equal(connected.urlSpecified, false)
   assert.equal(parseArguments(['disconnect'], {}).command, 'disconnect')
   assert.equal(
@@ -251,18 +251,16 @@ test('parses foreground and service Gateway commands', () => {
   assert.equal(parseArguments(['gateway', 'start'], {}).gatewayAction, 'start')
   assert.equal(parseArguments(['gateway', 'stop'], {}).gatewayAction, 'stop')
   assert.equal(parseArguments(['gateway', 'pair'], {}).gatewayAction, 'pair')
-  const remote = parseArguments([
-    'gateway', 'remote', 'invite', '--json',
-  ], {})
-  assert.equal(remote.gatewayAction, 'remote')
-  assert.equal(remote.remoteAction, 'invite')
-  assert.equal(remote.json, true)
+  assert.equal(parseArguments([
+    'gateway', 'pair', '--json',
+  ], {}).json, true)
+  assert.equal(parseArguments(['gateway', 'devices'], {}).gatewayAction, 'devices')
   assert.equal(
-    parseArguments(['gateway', 'remote', 'revoke', 'phone-one'], {}).remoteDeviceId,
+    parseArguments(['gateway', 'revoke', 'phone-one'], {}).deviceId,
     'phone-one',
   )
   assert.throws(
-    () => parseArguments(['gateway', 'remote', 'revoke'], {}),
+    () => parseArguments(['gateway', 'revoke'], {}),
     /设备 ID/,
   )
   assert.equal(
@@ -306,7 +304,11 @@ test('documents the service and client commands', () => {
   assert.match(text, /gateway install/)
   assert.match(text, /gateway uninstall/)
   assert.match(text, /gateway pair/)
-  assert.match(text, /gateway remote invite/)
+  assert.match(text, /gateway devices/)
+  assert.match(text, /gateway revoke ID/)
+  assert.match(text, /--tailnet/)
+  assert.match(text, /--public-url HTTPS_URL/)
+  assert.doesNotMatch(text, /gateway remote/)
   assert.match(text, /qwenaudio tui/)
   assert.match(text, /qwenaudio webui/)
   assert.match(text, /qwenaudio status/)
@@ -323,11 +325,54 @@ test('documents the service and client commands', () => {
   assert.match(text, /x\s+半双工模式下手动打断当前回复/)
 })
 
-test('keeps Gateway remote access private and exposes no mode selector', () => {
-  assert.equal('remoteMode' in parseArguments(['gateway', 'remote', 'invite'], {}), false)
+test('selects Tailnet or externally managed HTTPS without a remote command layer', () => {
   assert.throws(
-    () => parseArguments(['gateway', 'remote', 'invite', '--mode', 'public'], {}),
-    /未知参数：--mode/,
+    () => parseArguments(['gateway', 'remote'], {}),
+    /未知 Gateway 命令：remote/,
+  )
+  assert.throws(
+    () => parseArguments([
+      'gateway', '--public-url', 'http://voice.example.com',
+    ], {}),
+    /必须使用 https/,
+  )
+  assert.throws(
+    () => parseArguments([
+      'gateway', '--public-url', 'https://voice.example.com/path',
+    ], {}),
+    /必须是无凭据、路径、查询参数和片段/,
+  )
+  assert.deepEqual(
+    {
+      tailnet: parseArguments(['gateway', '--tailnet'], {}).tailnet,
+      publicUrl: parseArguments(['gateway', '--tailnet'], {}).publicUrl,
+    },
+    { tailnet: true, publicUrl: '' },
+  )
+  const external = parseArguments([
+    'gateway', '--public-url', 'https://voice.example.com',
+  ], { QWEN_AUDIO_GATEWAY_TAILNET: '1' })
+  assert.equal(external.tailnet, false)
+  assert.equal(external.publicUrl, 'https://voice.example.com')
+  const tailnet = parseArguments(['gateway', '--tailnet'], {
+    QWEN_AUDIO_GATEWAY_PUBLIC_URL: 'https://voice.example.com',
+  })
+  assert.equal(tailnet.tailnet, true)
+  assert.equal(tailnet.publicUrl, '')
+  assert.throws(
+    () => parseArguments(['gateway'], {
+      QWEN_AUDIO_GATEWAY_TAILNET: '1',
+      QWEN_AUDIO_GATEWAY_PUBLIC_URL: 'https://voice.example.com',
+    }),
+    /不能同时使用/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'start', '--tailnet'], {}),
+    /只适用于 gateway run 或 gateway install/,
+  )
+  assert.equal(
+    parseArguments(['gateway', 'install', '--tailnet'], {}).tailnet,
+    true,
   )
 })
 

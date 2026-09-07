@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const GATEWAY_REMOTE_ACCESS_MODEL_VERSION = 1
+export const GATEWAY_CONNECTION_MODEL_VERSION = 1
 
 const IdentifierSchema = z.string().trim().min(1).max(128)
 
@@ -29,7 +29,7 @@ function normalizeGatewayUrl(value, context) {
 export const GatewayUrlSchema = z.string().trim().min(1).transform(normalizeGatewayUrl)
 
 export const GatewayEndpointDescriptorSchema = z.object({
-  version: z.literal(GATEWAY_REMOTE_ACCESS_MODEL_VERSION).default(GATEWAY_REMOTE_ACCESS_MODEL_VERSION),
+  version: z.literal(GATEWAY_CONNECTION_MODEL_VERSION).default(GATEWAY_CONNECTION_MODEL_VERSION),
   url: GatewayUrlSchema,
   transport: z.literal('websocket').default('websocket'),
   secure: z.boolean(),
@@ -44,7 +44,7 @@ export const GatewayEndpointDescriptorSchema = z.object({
 })
 
 export const GatewayConnectionProfileSchema = z.object({
-  version: z.literal(GATEWAY_REMOTE_ACCESS_MODEL_VERSION).default(GATEWAY_REMOTE_ACCESS_MODEL_VERSION),
+  version: z.literal(GATEWAY_CONNECTION_MODEL_VERSION).default(GATEWAY_CONNECTION_MODEL_VERSION),
   id: IdentifierSchema,
   gateway_url: GatewayUrlSchema,
   device_id: IdentifierSchema,
@@ -53,8 +53,8 @@ export const GatewayConnectionProfileSchema = z.object({
   label: z.string().trim().min(1).max(128).optional(),
 }).strict()
 
-export const GatewayInvitationSchema = z.object({
-  version: z.literal(GATEWAY_REMOTE_ACCESS_MODEL_VERSION),
+export const GatewayPairingCodeSchema = z.object({
+  version: z.literal(GATEWAY_CONNECTION_MODEL_VERSION),
   gateway_url: GatewayUrlSchema,
   pairing_code: z.string().trim().min(1).max(256),
   expires_at: z.number().int().positive(),
@@ -68,31 +68,31 @@ export function parseGatewayConnectionProfile(value) {
   return GatewayConnectionProfileSchema.parse(value)
 }
 
-export function parseGatewayInvitation(value) {
-  return GatewayInvitationSchema.parse(value)
+export function parseGatewayPairingCode(value) {
+  return GatewayPairingCodeSchema.parse(value)
 }
 
-export function createGatewayInvitation({ gatewayUrl, pairingCode, expiresAt }) {
-  return parseGatewayInvitation({
-    version: GATEWAY_REMOTE_ACCESS_MODEL_VERSION,
+export function createGatewayPairingCode({ gatewayUrl, pairingCode, expiresAt }) {
+  return parseGatewayPairingCode({
+    version: GATEWAY_CONNECTION_MODEL_VERSION,
     gateway_url: gatewayUrl,
     pairing_code: pairingCode,
     expires_at: expiresAt,
   })
 }
 
-export function assertGatewayInvitationActive(invitation, now = Date.now()) {
-  const parsed = parseGatewayInvitation(invitation)
+export function assertGatewayPairingCodeActive(pairingCode, now = Date.now()) {
+  const parsed = parseGatewayPairingCode(pairingCode)
   if (parsed.expires_at <= now) {
-    const error = new Error('Gateway invitation has expired')
-    error.code = 'gateway_invitation_expired'
+    const error = new Error('Gateway pairing code has expired')
+    error.code = 'gateway_pairing_code_expired'
     throw error
   }
   return parsed
 }
 
-export function encodeGatewayInvitation(invitation) {
-  const parsed = parseGatewayInvitation(invitation)
+export function encodeGatewayPairingCode(pairingCode) {
+  const parsed = parseGatewayPairingCode(pairingCode)
   const url = new URL('qwaudio://connect')
   url.searchParams.set('v', String(parsed.version))
   url.searchParams.set('gateway', parsed.gateway_url)
@@ -101,46 +101,46 @@ export function encodeGatewayInvitation(invitation) {
   return url.toString()
 }
 
-export function encodeGatewayBrowserInvitation(invitation) {
-  const parsed = parseGatewayInvitation(invitation)
+export function encodeGatewayBrowserPairingCode(pairingCode) {
+  const parsed = parseGatewayPairingCode(pairingCode)
   const url = new URL('/c', parsed.gateway_url)
   url.searchParams.set('e', parsed.expires_at.toString(36))
   url.hash = parsed.pairing_code
   return url.toString()
 }
 
-export function decodeGatewayInvitation(value) {
+export function decodeGatewayPairingCode(value) {
   let url
   try {
     url = new URL(String(value || ''))
   } catch {
-    throw Object.assign(new Error('Invalid Gateway invitation URL'), {
-      code: 'gateway_invitation_invalid',
+    throw Object.assign(new Error('Invalid Gateway pairing URL'), {
+      code: 'gateway_pairing_code_invalid',
     })
   }
-  const isAppInvitation = url.protocol === 'qwaudio:' && url.hostname === 'connect'
-  const isBrowserInvitation = url.protocol === 'https:' && url.pathname === '/c'
-  if (!isAppInvitation && !isBrowserInvitation) {
-    throw Object.assign(new Error('Invalid Gateway invitation URL'), {
-      code: 'gateway_invitation_invalid',
+  const isAppPairingCode = url.protocol === 'qwaudio:' && url.hostname === 'connect'
+  const isBrowserPairingCode = url.protocol === 'https:' && url.pathname === '/c'
+  if (!isAppPairingCode && !isBrowserPairingCode) {
+    throw Object.assign(new Error('Invalid Gateway pairing URL'), {
+      code: 'gateway_pairing_code_invalid',
     })
   }
   try {
-    return parseGatewayInvitation({
-      version: isAppInvitation
+    return parseGatewayPairingCode({
+      version: isAppPairingCode
         ? Number(url.searchParams.get('v'))
-        : GATEWAY_REMOTE_ACCESS_MODEL_VERSION,
-      gateway_url: isAppInvitation ? url.searchParams.get('gateway') : url.origin,
-      pairing_code: isAppInvitation
+        : GATEWAY_CONNECTION_MODEL_VERSION,
+      gateway_url: isAppPairingCode ? url.searchParams.get('gateway') : url.origin,
+      pairing_code: isAppPairingCode
         ? url.searchParams.get('code')
         : decodeURIComponent(url.hash.slice(1)),
-      expires_at: isAppInvitation
+      expires_at: isAppPairingCode
         ? Number(url.searchParams.get('expires'))
         : Number.parseInt(url.searchParams.get('e'), 36),
     })
   } catch (error) {
-    throw Object.assign(new Error('Invalid Gateway invitation payload'), {
-      code: 'gateway_invitation_invalid',
+    throw Object.assign(new Error('Invalid Gateway pairing payload'), {
+      code: 'gateway_pairing_code_invalid',
       cause: error,
     })
   }

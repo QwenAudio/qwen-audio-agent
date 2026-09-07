@@ -19,13 +19,14 @@ Desktop ─┐
 WebUI ───┤
 TUI ─────┼── GCP over WebSocket ── Gateway ── BackendPort
 Mobile ──┘               ▲
-                         └── 本机 Endpoint 或 Gateway 托管的私有 Tailnet
+                         └── 本机 Endpoint 或外部 HTTPS Endpoint
 ```
 
 ## 架构边界
 
-1. **远程访问模块**由 Gateway 持有，使用可选 tsnet 组件将本机 Gateway 发布为规范的
-   HTTPS/WSS Endpoint；不开启时不下载、不启动。
+1. **公开 Endpoint 模块**由 Gateway 持有：Tailnet 模式调用用户已安装并登录的系统
+   `tailscale serve`；外部 HTTPS 模式只记录用户维护的公开 Origin。项目不内嵌或下载
+   Tailscale 网络栈。
 2. **访问认证**发生在 GCP 之前。字面量 loopback 保持零配置；任何非 loopback 的
    HTTP 或 WebSocket 请求都必须携带配置密钥或已配对设备凭据。
 3. **GCP Session**承载媒体、输入、Task、权限、Client Event、Client Action、历史、
@@ -39,18 +40,17 @@ Task 状态或 BackendPort。Client 最终只看到普通 Gateway Endpoint。
 ## 用户体验
 
 - 本机 Client 继续零配置连接 `http://127.0.0.1:3101`。
-- Gateway CLI 开启和管理远程访问；首次打开网页完成授权，并统一输出二维码、客户端
-  接入链接和浏览器访问链接。远程设备通过官方 Tailscale App 加入同一私有 Tailnet。
-  Desktop、Mobile 等 Client 只消费邀请，
-  不集成底层远程访问实现。
-- 远程 Desktop、TUI、WebUI 或 Mobile 消费同一种邀请，换取可撤销设备凭据，并保存到
+- Gateway CLI 通过 `gateway --tailnet` 或 `gateway --public-url` 声明公开 Endpoint；
+  `gateway pair` 统一输出二维码、连接码和浏览器访问链接。Tailnet 模式下 Gateway 主机
+  与远程设备都使用官方 Tailscale 并加入同一 Tailnet。
+- 远程 Desktop、TUI、WebUI 或 Mobile 消费同一种配对码，换取可撤销设备凭据，并保存到
   平台安全存储。
 - 可以配对多台设备，但每个用户只有一个活动交互 Client。第二个 Client 必须询问用户，
   确认后才协商 `session.takeover`。
 - 相同 `client.instance_id` 的断线重连自动完成；不同 Client 接管后不得互相重连抢占。
 
-普通用户不需要复制 Token、编辑 URL 或执行网络命令；手动 Endpoint 与环境变量只作为
-高级逃生入口保留。
+Client 不需要理解 Tailscale 或反向代理实现，也不需要复制长期 Token。网络安装与登录
+留在网络层，Gateway 只消费最终 Endpoint。
 
 ## 共享公开模型
 
@@ -78,7 +78,7 @@ Connection Profile 只保存安全存储引用，不保存凭据正文：
 }
 ```
 
-邀请不包含永久 Token、模型密钥、用户记忆或后台配置：
+配对码不包含永久 Token、模型密钥、用户记忆或后台配置：
 
 ```json
 {
@@ -97,7 +97,7 @@ WebSocket subprotocol 值承载可撤销设备凭据，服务端只选择并回�
 ## RA0 — 固化远程接入契约
 
 - [x] 合并中英文 Roadmap，并关联 issue #320。
-- [x] 定义 Endpoint、Connection Profile 与邀请契约。
+- [x] 定义 Endpoint、Connection Profile 与配对码契约。
 - [x] 为已有 loopback、Token、配对、租约与接管行为补齐 characterization。
 - [x] 明确管理请求不占用活动交互 Client 租约。
 
@@ -107,28 +107,28 @@ WebSocket subprotocol 值承载可撤销设备凭据，服务端只选择并回�
 
 - [x] 增加带版本的 Connection Profile Store 与 Credential Store Port。
 - [x] 服务端访问配置和 Client 设备凭据分别管理。
-- [x] 发布创建和消费邀请的共享 Helper。
+- [x] 发布创建和消费配对码的共享 Helper。
 
 完成条件：任意原生 Client 可以通过统一 Connection Profile 保存并重新连接。
 
-## RA2 — Gateway 托管 tsnet
+## RA2 — Gateway 公开 Endpoint
 
-- [x] 将 tsnet 作为 Gateway 远程访问模块的可选进程，独立于 Desktop 与 CLI 生命周期。
-- [x] 首次开启时按平台下载并校验组件，通过网页完成一次授权，状态持久化后自动恢复。
-- [x] 发布 Tailnet 私有 HTTPS/WSS Endpoint，并保持 Gateway Listener 只监听 loopback。
-- [x] 增加 CLI status、enable、disable、invite、设备列表与撤销命令。
+- [x] 通过系统 `tailscale serve` 发布 Tailnet 私有 HTTPS/WSS Endpoint，并保持 Gateway
+  Listener 只监听 loopback。
+- [x] 支持声明由用户自行维护的外部 HTTPS Origin，不接管代理、证书或网络生命周期。
+- [x] 增加统一的 `gateway pair`、`devices` 与 `revoke` 命令，删除额外的 remote 命令层。
+- [x] 保持网络发布与 Gateway 配对/设备授权彼此独立。
 - [ ] 在真实手机上验证 GCP WebSocket 与长时间音频连接。
 
-完成条件：用户无需编辑 Gateway 配置、复制 Token 或暴露 LAN/公网 Listener，即可开启
-远程访问；Gateway 主机无需另装网络客户端，远程设备通过官方 Tailscale App 加入同一
-Tailnet。
+完成条件：用户无需复制长期 Token 或暴露 LAN/公网 Listener；Tailnet 用户在 Gateway
+主机和远程设备上安装官方 Tailscale，外部 HTTPS 用户自行维护可信代理。
 
 ## RA3 — 第一方远程 Client 对齐
 
 - [x] 给参考 Client Profile 增加 `mobile`，移除 Gateway 中驱动行为的 Client 类型白名单。
 - [x] 增加最小未认证浏览器配对壳；所有业务 API 与应用页面继续受保护。
 - [x] 远程 WebUI 使用 HttpOnly Session，并能安全重连。
-- [x] Desktop 与 TUI 可以消费邀请，并将可撤销凭据保存在普通设置之外（Desktop 使用
+- [x] Desktop 与 TUI 可以消费配对码，并将可撤销凭据保存在普通设置之外（Desktop 使用
   操作系统保护存储；缺少跨平台系统钥匙串接口的终端 Client 使用仅当前用户可读文件）。
 - [x] 统一 occupied、接管确认、replaced、revoked、offline 与 reconnecting 状态。
 
@@ -149,7 +149,7 @@ Tailnet。
 
 ## RA5 — 加固与发版准备
 
-- [x] 增加远程未认证、Origin 绕过、邀请过期/重放、设备撤销和旧租约的反例测试。
+- [x] 增加远程未认证、Origin 绕过、配对码过期/重放、设备撤销和旧租约的反例测试。
 - [x] 移动端在 App 重启后复用配对时持久化的 Client 实例身份，避免被误判为新客户端。
 - [ ] 测试 Tailnet 直连/DERP 回退、Wi-Fi/蜂窝切换、电脑休眠/唤醒、Gateway 重启，以及
   一小时 WebSocket/音频会话。
@@ -163,7 +163,7 @@ Tailnet。
 ## PR 规则
 
 - 每个实现 PR 关联 issue #320，并标注 RA 阶段。
-- 协议/Core、tsnet 远程模块与 Mobile UI 尽量保持独立评审。
+- 协议/Core、公开 Endpoint 网络适配器与 Mobile UI 尽量保持独立评审。
 - 每个公开模型同时提交 Schema、Parser、反例测试和中英文文档。
 - 远程访问模块不得改变 Gateway Task、Realtime、BackendPort 或 GCP 行为。
 - Client 不得把凭据正文存入普通设置、日志、URL、二维码历史或模型可见上下文。

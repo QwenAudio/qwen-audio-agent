@@ -40,8 +40,8 @@ import {
 } from './i18n.mjs'
 import { readGatewayHealth } from '../../shared/gateway-client.mjs'
 import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
-import { pairGatewayInvitation } from '../../shared/gateway-access-client.mjs'
-import { decodeGatewayInvitation } from '../../shared/gateway-remote-access.mjs'
+import { pairGatewayConnectionCode } from '../../shared/gateway-access-client.mjs'
+import { decodeGatewayPairingCode } from '../../shared/gateway-remote-access.mjs'
 import {
   findRunningGateway,
 } from '../../shared/gateway-instance-lock.mjs'
@@ -242,7 +242,7 @@ let gatewayAccessToken = String(
   || process.env.QWEN_AUDIO_AGENT_ACCESS_TOKEN
   || '',
 ).trim()
-let pendingGatewayInvitation = null
+let pendingGatewayPairingCode = null
 
 const desktopPresence = new DesktopPresence({
   getWindow: () => mainWindow,
@@ -1007,7 +1007,7 @@ function assertSettingsRequest(event) {
 
 ipcMain.handle('qwen-audio-agent:remote-gateway-connect', async (event, value) => {
   assertSettingsRequest(event)
-  const settings = await applyGatewayInvitation(value, { reloadSettings: false })
+  const settings = await applyGatewayPairingCode(value, { reloadSettings: false })
   return { gatewayUrl: settings.gatewayUrl }
 })
 
@@ -1430,13 +1430,13 @@ ipcMain.handle('qwen-audio-agent:skin-remove', async (event, id) => {
   return { removed }
 })
 
-function gatewayInvitationFromArguments(argv = []) {
+function gatewayPairingCodeFromArguments(argv = []) {
   return argv.find(value => String(value || '').startsWith('qwaudio://connect')) || null
 }
 
-async function applyGatewayInvitation(value, { reloadSettings = true } = {}) {
-  const invitation = decodeGatewayInvitation(value)
-  const paired = await pairGatewayInvitation(invitation, {
+async function applyGatewayPairingCode(value, { reloadSettings = true } = {}) {
+  const pairingCode = decodeGatewayPairingCode(value)
+  const paired = await pairGatewayConnectionCode(pairingCode, {
     device: {
       id: desktopGatewayClientInstanceId,
       type: 'desktop',
@@ -1478,10 +1478,10 @@ async function applyGatewayInvitation(value, { reloadSettings = true } = {}) {
   return settings
 }
 
-async function consumeGatewayInvitation(value) {
+async function consumeGatewayPairingCode(value) {
   if (!value) return
   try {
-    await applyGatewayInvitation(value)
+    await applyGatewayPairingCode(value)
     dialog.showMessageBox({
       type: 'info',
       title: desktopText('Gateway 已连接'),
@@ -1504,17 +1504,17 @@ if (process.defaultApp && process.argv[1]) {
 
 app.on('open-url', (event, value) => {
   event.preventDefault()
-  if (app.isReady()) void consumeGatewayInvitation(value)
-  else pendingGatewayInvitation = value
+  if (app.isReady()) void consumeGatewayPairingCode(value)
+  else pendingGatewayPairingCode = value
 })
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', (_event, argv) => {
-    const invitation = gatewayInvitationFromArguments(argv)
-    if (invitation) {
-      void consumeGatewayInvitation(invitation)
+    const pairingCode = gatewayPairingCodeFromArguments(argv)
+    if (pairingCode) {
+      void consumeGatewayPairingCode(pairingCode)
       return
     }
     if (setupRequired || !mainWindow) {
@@ -1530,11 +1530,11 @@ if (!app.requestSingleInstanceLock()) {
       app.dock?.hide()
     }
     createTray()
-    const launchInvitation = pendingGatewayInvitation
-      || gatewayInvitationFromArguments(process.argv)
-    pendingGatewayInvitation = null
-    if (launchInvitation) {
-      await consumeGatewayInvitation(launchInvitation)
+    const launchPairingCode = pendingGatewayPairingCode
+      || gatewayPairingCodeFromArguments(process.argv)
+    pendingGatewayPairingCode = null
+    if (launchPairingCode) {
+      await consumeGatewayPairingCode(launchPairingCode)
     }
     const refreshDesktopTaskSurface = () => {
       updateDesktopTaskSurface(desktopTaskCount)

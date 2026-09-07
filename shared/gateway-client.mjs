@@ -27,7 +27,7 @@ export async function createGatewayPairingTicket(baseUrl, fetchImpl = fetch) {
     signal: AbortSignal.timeout(3000),
   })
   const payload = await response.json().catch(() => ({}))
-  if (!response.ok || !payload.code) {
+  if (!response.ok || !payload.code || !payload.gatewayUrl) {
     const error = new Error(payload.error || `Gateway returned HTTP ${response.status}`)
     error.code = payload.code || 'pairing_ticket_failed'
     throw error
@@ -90,39 +90,6 @@ export function revokeGatewayDevice(baseUrl, deviceId, fetchImpl = fetch) {
   return gatewayManagementRequest(
     baseUrl,
     `/api/access/devices/${encodeURIComponent(deviceId)}`,
-    { method: 'DELETE' },
-    fetchImpl,
-  )
-}
-
-export function readGatewayRemoteAccess(baseUrl, fetchImpl = fetch) {
-  return gatewayManagementRequest(
-    baseUrl,
-    '/api/access/remote',
-    { method: 'GET' },
-    fetchImpl,
-  )
-}
-
-export function enableGatewayRemoteAccess(
-  baseUrl,
-  fetchImpl = fetch,
-) {
-  return gatewayManagementRequest(
-    baseUrl,
-    '/api/access/remote',
-    {
-      method: 'POST',
-    },
-    fetchImpl,
-    { timeoutMs: 180_000 },
-  )
-}
-
-export function disableGatewayRemoteAccess(baseUrl, fetchImpl = fetch) {
-  return gatewayManagementRequest(
-    baseUrl,
-    '/api/access/remote',
     { method: 'DELETE' },
     fetchImpl,
   )

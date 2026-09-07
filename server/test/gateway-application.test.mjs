@@ -33,7 +33,7 @@ function createTestGatewayApplication(options = {}) {
   })
   const application = createGatewayApplication({
     agent: disabledBackend(),
-    remoteAccess: null,
+    publicEndpoint: null,
     conversationSync: options.conversationSync || new ConversationSync(),
     taskManager,
     taskStore,
@@ -126,31 +126,16 @@ function customTaskAnnouncementRuntime() {
 test('protects remote HTTP access and completes one-time device pairing', async t => {
   const directory = mkdtempSync(join(tmpdir(), 'qwa-app-access-'))
   const accessToken = 'application-remote-access-token-over-24-characters'
-  const remoteAccessCalls = []
-  let remoteAccessEnabled = false
-  const remoteAccess = {
+  const publicEndpointCalls = []
+  const publicEndpoint = {
     status: () => ({
-      available: true,
-      enabled: remoteAccessEnabled,
-      connected: remoteAccessEnabled,
-      published: remoteAccessEnabled,
-      state: remoteAccessEnabled ? 'connected' : 'disabled',
-      endpoint: remoteAccessEnabled
-        ? { url: 'https://voice.example.ts.net', secure: true }
-        : null,
+      mode: 'external',
+      state: 'ready',
+      endpoint: { url: 'https://voice.example.ts.net', secure: true },
+      error: null,
     }),
-    resume: async url => remoteAccessCalls.push(['resume', url]),
-    enable: async url => {
-      remoteAccessCalls.push(['enable', url])
-      remoteAccessEnabled = true
-      return remoteAccess.status()
-    },
-    disable: async () => {
-      remoteAccessCalls.push(['disable'])
-      remoteAccessEnabled = false
-      return { ...remoteAccess.status(), changed: true }
-    },
-    close: async () => remoteAccessCalls.push(['close']),
+    start: async url => publicEndpointCalls.push(['start', url]),
+    close: async () => publicEndpointCalls.push(['close']),
   }
   const application = createTestGatewayApplication({
     config: {
@@ -168,7 +153,7 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     agent: disabledBackend(),
     frontendMcp: null,
     frontendOpenApi: null,
-    remoteAccess,
+    publicEndpoint,
   })
   t.after(async () => {
     await application.close()
@@ -178,24 +163,8 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   if (!application.server.listening) await once(application.server, 'listening')
   const { port } = application.server.address()
 
-  const initialRemoteAccess = await requestJson({
-    port,
-    path: '/api/access/remote',
-    headers: { Host: `127.0.0.1:${port}` },
-  })
-  assert.equal(initialRemoteAccess.status, 200)
-  assert.equal(initialRemoteAccess.body.state, 'disabled')
-  const enabledRemoteAccess = await requestJson({
-    port,
-    path: '/api/access/remote',
-    method: 'POST',
-    headers: { Host: `127.0.0.1:${port}` },
-    body: {},
-  })
-  assert.equal(enabledRemoteAccess.status, 200)
-  assert.equal(enabledRemoteAccess.body.endpoint.url, 'https://voice.example.ts.net')
-  assert.equal(remoteAccessCalls.at(-1)[1], `http://127.0.0.1:${port}`)
-  assert.equal(remoteAccessCalls.at(-1).length, 2)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(publicEndpointCalls[0], ['start', `http://127.0.0.1:${port}`])
 
   const denied = await requestJson({
     port,
@@ -214,16 +183,6 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   })
   assert.equal(authenticated.status, 200)
   assert.match(authenticated.headers['set-cookie'][0], /HttpOnly/)
-  const deniedRemoteManagement = await requestJson({
-    port,
-    path: '/api/access/remote',
-    headers: {
-      Host: 'gateway.example.test',
-      Authorization: `Bearer ${accessToken}`,
-    },
-  })
-  assert.equal(deniedRemoteManagement.status, 403)
-
   const ticket = await requestJson({
     port,
     path: '/api/access/pairing-tickets',
@@ -232,6 +191,7 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     body: {},
   })
   assert.equal(ticket.status, 201)
+  assert.equal(ticket.body.gatewayUrl, 'https://voice.example.ts.net')
   const paired = await requestJson({
     port,
     path: '/api/access/pair',
@@ -285,19 +245,40 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     },
   })
   assert.equal(deniedAfterRevocation.status, 401)
-  const disabledRemoteAccess = await requestJson({
-    port,
-    path: '/api/access/remote',
-    method: 'DELETE',
-    headers: { Host: `127.0.0.1:${port}` },
+  assert.equal(publicEndpointCalls.some(call => call[0] === 'close'), false)
+})
+
+test('requires a declared public endpoint before issuing a pairing code', async t => {
+  const application = createTestGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    frontendMcp: null,
+    frontendOpenApi: null,
+    publicEndpoint: {
+      status: () => ({ mode: 'none', state: 'disabled', endpoint: null }),
+      start: async () => {},
+      close: async () => {},
+    },
   })
-  assert.equal(disabledRemoteAccess.status, 200)
-  assert.equal(disabledRemoteAccess.body.state, 'disabled')
-  assert.deepEqual(remoteAccessCalls.slice(0, 3).map(call => call[0]), [
-    'resume',
-    'enable',
-    'disable',
-  ])
+  t.after(() => application.close())
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+  const response = await requestJson({
+    port,
+    path: '/api/access/pairing-tickets',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: {},
+  })
+  assert.equal(response.status, 409)
+  assert.equal(response.body.code, 'gateway_public_url_required')
 })
 
 test('passes the Task announcement factory through the application composition root', async () => {

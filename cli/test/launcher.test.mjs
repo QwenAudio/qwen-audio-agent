@@ -7,8 +7,8 @@ import { PassThrough } from 'node:stream'
 import test from 'node:test'
 import { main } from '../src/launcher.mjs'
 import {
-  createGatewayInvitation,
-  encodeGatewayInvitation,
+  createGatewayPairingCode,
+  encodeGatewayPairingCode,
 } from '../../shared/gateway-remote-access.mjs'
 import {
   showConfig,
@@ -73,29 +73,23 @@ function harness({ ownsProcesses = false } = {}) {
       }),
       createPairingTicket: async url => {
         calls.push(['pair', url])
-        return { code: 'PAIR-CODE', expiresAt: Date.now() + 60_000 }
+        return {
+          code: 'PAIR-CODE',
+          expiresAt: Date.now() + 60_000,
+          gatewayUrl: 'https://voice.example.ts.net',
+        }
       },
-      readRemoteAccess: async () => ({
-        available: true,
-        enabled: true,
-        connected: true,
-        published: true,
-        state: 'connected',
-        endpoint: { url: 'https://voice.example.ts.net:8443' },
-      }),
-      enableRemoteAccess: async () => ({
-        available: true,
-        enabled: true,
-        connected: true,
-        published: true,
-        state: 'connected',
-        endpoint: {
-          url: 'https://voice.example.ts.net:8443',
-          secure: true,
-        },
-      }),
-      disableRemoteAccess: async () => ({ changed: true, published: false }),
-      openExternal: async url => calls.push(['open', url]),
+      waitForEndpoint: async url => {
+        calls.push(['endpoint.ready', url])
+        return {
+          backend: { kind: 'opencode', ok: true },
+          publicEndpoint: {
+            mode: 'tailnet',
+            state: 'ready',
+            endpoint: { url: 'https://voice.example.ts.net', secure: true },
+          },
+        }
+      },
       listPairedDevices: async url => {
         calls.push(['devices', url])
         return { devices: [{ id: 'phone-one', label: 'Phone' }] }
@@ -375,77 +369,50 @@ test('installs, stops and reports the background Gateway service', async () => {
   ])
 })
 
-test('creates a one-time remote Client pairing code through the running Gateway', async () => {
+test('creates one portable Gateway connection code and QR', async () => {
   const target = harness()
-  assert.equal(await main(['gateway', 'pair'], target.dependencies), 0)
-  assert.deepEqual(target.calls.map(call => call[0]), ['pair', 'stdout'])
-  assert.equal(target.calls[0][1], 'http://127.0.0.1:3101')
-  assert.match(target.calls[1][1], /PAIR-CODE/)
-})
-
-test('manages a Gateway remote endpoint and creates a portable invitation', async () => {
-  const enabled = harness()
-  assert.equal(await main(['gateway', 'remote', 'enable'], enabled.dependencies), 0)
-  assert.match(enabled.calls.at(-1)[1], /voice\.example\.ts\.net/)
-
-  const invited = harness()
-  invited.dependencies.renderInvitationQr = async value => {
-    invited.calls.push(['qr', value])
+  target.dependencies.renderPairingQr = async value => {
+    target.calls.push(['qr', value])
     return '[compact QR]'
   }
-  assert.equal(await main(['gateway', 'remote', 'invite'], invited.dependencies), 0)
-  const output = invited.calls.at(-1)[1]
-  assert.match(output, /^请先在手机安装并连接官方 Tailscale App/)
-  assert.match(output, /移动端扫码接入：/)
-  assert.match(
-    invited.calls.find(call => call[0] === 'qr')[1],
-    /^https:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/,
-  )
+  assert.equal(await main(['gateway', 'pair'], target.dependencies), 0)
+  assert.equal(target.calls[0][0], 'pair')
+  const output = target.calls.at(-1)[1]
+  assert.match(output, /Gateway 对外地址：https:\/\/voice\.example\.ts\.net/)
+  assert.match(output, /客户端扫码配对：/)
   assert.match(output, /\[compact QR\]/)
-  assert.match(output, /接入链接（移动端 \/ 桌面端）：\nqwaudio:\/\/connect\?v=1&gateway=/)
-  assert.match(output, /浏览器访问：\nhttps:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/)
+  assert.match(output, /连接码（移动端 \/ 桌面端）：\nqwaudio:\/\/connect\?v=1&gateway=/)
+  assert.match(output, /浏览器访问：\nhttps:\/\/voice\.example\.ts\.net\/c\?e=[a-z0-9]+#/)
   assert.match(output, /有效期至/)
 
   const machineReadable = harness()
-  assert.equal(
-    await main(['gateway', 'remote', 'invite', '--json'], machineReadable.dependencies),
-    0,
-  )
+  assert.equal(await main(['gateway', 'pair', '--json'], machineReadable.dependencies), 0)
   const json = JSON.parse(machineReadable.calls.at(-1)[1])
   assert.match(json.app_url, /^qwaudio:\/\/connect\?v=1&gateway=/)
-  assert.match(json.browser_url, /^https:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/)
+  assert.match(json.browser_url, /^https:\/\/voice\.example\.ts\.net\/c\?e=[a-z0-9]+#/)
+})
 
+test('lists and revokes paired clients directly under gateway', async () => {
   const devices = harness()
-  assert.equal(await main(['gateway', 'remote', 'devices'], devices.dependencies), 0)
+  assert.equal(await main(['gateway', 'devices'], devices.dependencies), 0)
   assert.match(devices.calls.at(-1)[1], /phone-one/)
 
   const revoked = harness()
-  assert.equal(
-    await main(['gateway', 'remote', 'revoke', 'phone-one'], revoked.dependencies),
-    0,
-  )
+  assert.equal(await main(['gateway', 'revoke', 'phone-one'], revoked.dependencies), 0)
   assert.deepEqual(revoked.calls.find(call => call[0] === 'revoke'), [
     'revoke', 'http://127.0.0.1:3101', 'phone-one',
   ])
 })
 
-test('opens the one-time remote network setup page when required', async () => {
-  const target = harness()
-  target.dependencies.enableRemoteAccess = async () => ({
-    available: true,
-    enabled: true,
-    connected: false,
-    published: false,
-    state: 'error',
-    actionUrl: 'https://tailscale.com/s/https',
-    error: { code: 'private_listener_start_failed', message: 'HTTPS is required' },
-  })
-
-  assert.equal(await main(['gateway', 'remote', 'enable'], target.dependencies), 0)
-  assert.deepEqual(target.calls.find(call => call[0] === 'open'), [
-    'open', 'https://tailscale.com/s/https',
-  ])
-  assert.match(target.calls.at(-1)[1], /完成远程访问网络设置/)
+test('waits for the system Tailnet endpoint when starting a Gateway', async () => {
+  const target = harness({ ownsProcesses: true })
+  assert.equal(await main(['gateway', '--tailnet'], target.dependencies), 17)
+  assert.equal(target.dependencies.env.QWEN_AUDIO_GATEWAY_TAILNET, '1')
+  assert.ok(target.calls.some(call => call[0] === 'endpoint.ready'))
+  assert.match(
+    target.calls.find(call => call[0] === 'stdout')[1],
+    /对外地址：https:\/\/voice\.example\.ts\.net/,
+  )
 })
 
 test('reports a configured frontend MCP failure in Gateway status', async () => {
@@ -463,6 +430,24 @@ test('reports a configured frontend MCP failure in Gateway status', async () => 
   assert.equal(await main(['gateway', 'status'], target.dependencies), 0)
   const output = target.calls.find(call => call[0] === 'stdout')[1]
   assert.match(output, /前台 MCP 异常/)
+})
+
+test('reports the public endpoint through the unified Gateway status', async () => {
+  const target = harness()
+  target.dependencies.inspectGateway = async () => ({
+    backend: { kind: 'opencode', ok: true },
+    publicEndpoint: {
+      mode: 'tailnet',
+      state: 'ready',
+      endpoint: { url: 'https://voice.example.ts.net', secure: true },
+    },
+  })
+
+  assert.equal(await main(['gateway', 'status'], target.dependencies), 0)
+  assert.match(
+    target.calls.find(call => call[0] === 'stdout')[1],
+    /对外地址：https:\/\/voice\.example\.ts\.net/,
+  )
 })
 
 test('passes the configured local Gateway host and port to its service', async () => {
@@ -489,6 +474,24 @@ test('passes the configured local Gateway host and port to its service', async (
     PORT: '3200',
     QWAUDIO_DATA_DIR: '/home/user/.config/qwaudio',
   })
+})
+
+test('persists the selected public endpoint mode in the Gateway service', async () => {
+  const target = harness()
+  target.dependencies.manageService = async (action, options) => {
+    target.calls.push(['service', action, options])
+    return { installed: true, running: true, logPath: null }
+  }
+
+  assert.equal(
+    await main(['gateway', 'install', '--tailnet'], target.dependencies),
+    0,
+  )
+  const install = target.calls.find(call => (
+    call[0] === 'service' && call[1] === 'install'
+  ))
+  assert.equal(install[2].serviceEnvironment.QWEN_AUDIO_GATEWAY_TAILNET, '1')
+  assert.equal(install[2].serviceMetadata.tailnet, true)
 })
 
 test('refreshes the shared process PATH before starting a background service', async () => {
@@ -606,14 +609,14 @@ test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
     },
     remove: async id => profiles.delete(id),
   }
-  const invitation = encodeGatewayInvitation(createGatewayInvitation({
+  const pairingCode = encodeGatewayPairingCode(createGatewayPairingCode({
     gatewayUrl: 'https://voice.example.test',
     pairingCode: 'pair-once',
     expiresAt: Date.now() + 60_000,
   }))
   const connected = harness()
   connected.dependencies.createConnectionProfiles = () => profileStore
-  connected.dependencies.pairInvitation = async (decoded, options) => {
+  connected.dependencies.pairConnectionCode = async (decoded, options) => {
     assert.equal(decoded.gateway_url, 'https://voice.example.test')
     const profile = {
       id: options.profileId,
@@ -625,7 +628,7 @@ test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
     await options.profileStore.save(profile, 'paired-token')
     return { profile, owner_id: 'user_personal' }
   }
-  assert.equal(await main(['connect', invitation], connected.dependencies), 0)
+  assert.equal(await main(['connect', pairingCode], connected.dependencies), 0)
   assert.match(connected.calls.at(-1)[1], /voice\.example\.test/)
 
   const tui = harness()

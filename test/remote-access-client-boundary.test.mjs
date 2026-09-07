@@ -40,10 +40,10 @@ test('Desktop connects to Gateway without exposing remote-access management', ()
 
   assert.doesNotMatch(
     desktopSources,
-    /qwen-audio-agent:remote-access-(?:status|enable|disable|invite)/,
+    /qwen-audio-agent:remote-access-(?:status|enable|disable|pair)/,
   )
   assert.doesNotMatch(
     desktopSources,
-    /(?:enableRemoteAccess|disableRemoteAccess|createRemoteInvitation)/,
+    /(?:enableRemoteAccess|disableRemoteAccess|createRemotePairingCode)/,
   )
 })

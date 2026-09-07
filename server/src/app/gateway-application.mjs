@@ -36,7 +36,7 @@ import {
   parseGatewayAccessKeys,
 } from '../access/gateway-access.mjs'
 import { gatewayBrowserPairingPage } from '../access/browser-pairing-page.mjs'
-import { GatewayRemoteAccessService } from '../access/gateway-remote-access-service.mjs'
+import { GatewayPublicEndpointService } from '../access/gateway-public-endpoint.mjs'
 import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
@@ -124,7 +124,7 @@ export function createGatewayApplication({
   clientEventDefinitions = [],
   spawnThinkingDescription = '',
   gatewayAccess = null,
-  remoteAccess = undefined,
+  publicEndpoint = undefined,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
@@ -470,18 +470,19 @@ const gatewayEventRouter = clientEventRouter || new GatewayEventRouter({
     ],
   }),
 })
-const remoteAccessRuntime = remoteAccess === undefined
-  ? new GatewayRemoteAccessService({
-      configDirectory: config.configDirectory,
+const publicEndpointRuntime = publicEndpoint === undefined
+  ? new GatewayPublicEndpointService({
+      tailnet: config.tailnet,
+      publicUrl: config.gatewayPublicUrl,
       logger,
     })
-  : remoteAccess
+  : publicEndpoint
 
 app.disable('x-powered-by')
 app.use(express.json({ limit: '1mb' }))
 
 // This shell contains no Gateway data. It is the only application page that
-// can load before authentication; the invitation remains in the URL fragment
+// can load before authentication; the pairing code remains in the URL fragment
 // and is therefore never sent in an HTTP request or access log.
 app.get('/c', (_req, res) => {
   res.setHeader('cache-control', 'no-store')
@@ -562,9 +563,19 @@ app.post('/api/access/pairing-tickets', (req, res) => {
   if (req.identity.access !== 'local') {
     return res.status(403).json({ error: 'pairing tickets can only be created locally' })
   }
-  return res.status(201).json(gatewayAccessRuntime.createPairingTicket({
-    ownerId: req.identity.ownerId,
-  }))
+  const endpoint = publicEndpointRuntime?.status?.().endpoint?.url
+  if (!endpoint) {
+    return res.status(409).json({
+      error: 'Gateway 没有可供远程客户端访问的 HTTPS 地址；请使用 --tailnet 或 --public-url 启动',
+      code: 'gateway_public_url_required',
+    })
+  }
+  return res.status(201).json({
+    ...gatewayAccessRuntime.createPairingTicket({
+      ownerId: req.identity.ownerId,
+    }),
+    gatewayUrl: endpoint,
+  })
 })
 
 app.get('/api/access/devices', (req, res) => {
@@ -586,15 +597,6 @@ app.delete('/api/access/devices/:id', (req, res) => {
   return res.status(204).end()
 })
 
-function requireLocalGatewayHost(req, res) {
-  if (req.identity.access === 'local') return true
-  res.status(403).json({
-    error: 'remote access can only be managed from the Gateway host',
-    code: 'gateway_remote_host_required',
-  })
-  return false
-}
-
 function localGatewayOrigin(address) {
   const configuredHost = String(config.host || '').trim().toLowerCase()
   const host = ['localhost', '127.0.0.1', '::1'].includes(configuredHost)
@@ -602,46 +604,6 @@ function localGatewayOrigin(address) {
     : '127.0.0.1'
   return new URL(`http://${host}:${address.port}`).origin
 }
-
-function respondRemoteAccessError(res, error) {
-  logger?.error?.('remote_access.management_failed', { error })
-  return res.status(500).json({
-    error: error?.message || 'Remote access failed',
-    code: error?.code || 'gateway_remote_access_failed',
-  })
-}
-
-app.get('/api/access/remote', (req, res) => {
-  if (!requireLocalGatewayHost(req, res)) return
-  return res.json(remoteAccessRuntime?.status?.() || {
-    available: false,
-    enabled: false,
-    connected: false,
-    published: false,
-    state: 'unavailable',
-  })
-})
-
-app.post('/api/access/remote', (req, res) => {
-  if (!requireLocalGatewayHost(req, res)) return
-  const address = server.address()
-  if (!address || typeof address !== 'object') {
-    return res.status(503).json({
-      error: 'Gateway is not listening',
-      code: 'gateway_not_ready',
-    })
-  }
-  Promise.resolve(remoteAccessRuntime.enable(localGatewayOrigin(address)))
-    .then(status => res.status(status.state === 'auth_required' ? 202 : 200).json(status))
-    .catch(error => respondRemoteAccessError(res, error))
-})
-
-app.delete('/api/access/remote', (req, res) => {
-  if (!requireLocalGatewayHost(req, res)) return
-  Promise.resolve(remoteAccessRuntime.disable())
-    .then(status => res.json(status))
-    .catch(error => respondRemoteAccessError(res, error))
-})
 
 app.delete('/api/access/session', (req, res) => {
   gatewayAccessRuntime.clearCookie(res, req)
@@ -671,6 +633,12 @@ app.get('/api/health', (req, res) => {
     capabilities: GATEWAY_CAPABILITIES,
     gatewayInstanceId: process.env.QWEN_AUDIO_GATEWAY_INSTANCE_ID || null,
     gatewayStartedAt: process.env.QWEN_AUDIO_GATEWAY_STARTED_AT || null,
+    publicEndpoint: publicEndpointRuntime?.status?.() || {
+      mode: 'none',
+      state: 'disabled',
+      endpoint: null,
+      error: null,
+    },
     inputSuspension: inputArbitration.status(),
     voiceConfigured: realtime.configured,
     realtimeProvider: realtime.provider,
@@ -1121,7 +1089,7 @@ const start = ({ host = config.host, port = config.port } = {}) => {
       backend: agent.describe?.()?.protocol || config.agentProtocol || 'none',
       realtimeProvider,
     }, `qwen-audio-agent running at ${origin}`)
-    void remoteAccessRuntime?.resume?.(origin)
+    void publicEndpointRuntime?.start?.(localGatewayOrigin(address))
   })
   return server
 }
@@ -1141,7 +1109,7 @@ const close = () => {
     await frontendOpenApiRuntime?.close?.()
     await frontendKnowledgeRuntime?.close?.()
     await frontendMemoryRuntime?.close?.()
-    await remoteAccessRuntime?.close?.()
+    await publicEndpointRuntime?.close?.()
     unsubscribeSessionTaskJournal?.()
     conversationHistoryRuntime.close?.()
     await sessionJournalRuntime.flush()
@@ -1181,7 +1149,7 @@ return {
     frontendOpenApi: frontendOpenApiRuntime,
     runtimeCommands,
     gatewayEventRouter,
-    remoteAccess: remoteAccessRuntime,
+    publicEndpoint: publicEndpointRuntime,
     knowledgeProvider: knowledgeProviderRuntime,
     knowledgeLibrary,
     identityManager,

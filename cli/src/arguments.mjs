@@ -25,10 +25,10 @@ const GATEWAY_ACTIONS = new Set([
   'restart',
   'status',
   'pair',
-  'remote',
+  'devices',
+  'revoke',
   'uninstall',
 ])
-const REMOTE_ACTIONS = new Set(['status', 'enable', 'disable', 'invite', 'devices', 'revoke'])
 const BACKEND_PERMISSION_MODES = new Set(['native', 'full'])
 const TUI_AUDIO_MODES = new Set(['half', 'full'])
 const SKILL_ACTIONS = new Set(['install', 'list', 'remove', 'update'])
@@ -56,6 +56,26 @@ function cleanOrigin(value, label) {
   return url.origin
 }
 
+function cleanPublicGatewayUrl(value) {
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error(`无效的 Gateway 对外地址：${value}`)
+  }
+  if (url.protocol !== 'https:') {
+    throw new Error('Gateway 对外地址必须使用 https')
+  }
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('Gateway 对外地址必须是无凭据、路径、查询参数和片段的 HTTPS Origin')
+  }
+  return url.origin
+}
+
+function enabled(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
+}
+
 export function parseArguments(argv, env = process.env) {
   const args = [...argv]
   const first = args[0]
@@ -74,22 +94,13 @@ export function parseArguments(argv, env = process.env) {
   if (command === 'gateway' && !GATEWAY_ACTIONS.has(gatewayAction)) {
     throw new Error(`未知 Gateway 命令：${gatewayAction}`)
   }
-  const remoteAction = gatewayAction === 'remote'
-    && args[0]
-    && !args[0].startsWith('-')
-    ? args.shift()
-    : gatewayAction === 'remote' ? 'status' : ''
-  if (gatewayAction === 'remote' && !REMOTE_ACTIONS.has(remoteAction)) {
-    throw new Error(`未知远程访问命令：${remoteAction}`)
-  }
-  const remoteDeviceId = gatewayAction === 'remote'
-    && remoteAction === 'revoke'
+  const deviceId = gatewayAction === 'revoke'
     && args[0]
     && !args[0].startsWith('-')
     ? args.shift()
     : ''
-  if (gatewayAction === 'remote' && remoteAction === 'revoke' && !remoteDeviceId) {
-    throw new Error('gateway remote revoke 需要设备 ID')
+  if (gatewayAction === 'revoke' && !deviceId) {
+    throw new Error('gateway revoke 需要设备 ID')
   }
   const installTarget = command === 'install'
     && args[0]
@@ -122,8 +133,11 @@ export function parseArguments(argv, env = process.env) {
     configAction,
     realtimeModel: '',
     gatewayAction,
-    remoteAction,
-    remoteDeviceId,
+    deviceId,
+    tailnet: enabled(env.QWEN_AUDIO_GATEWAY_TAILNET),
+    tailnetSpecified: false,
+    publicUrl: String(env.QWEN_AUDIO_GATEWAY_PUBLIC_URL || '').trim(),
+    publicUrlSpecified: false,
     url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
     accessToken: String(
       env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN
@@ -154,7 +168,7 @@ export function parseArguments(argv, env = process.env) {
     takeover: false,
     backendSpecified: false,
     gatewayConfigurationSpecified: false,
-    invitation: command === 'connect' && args[0] && !args[0].startsWith('-')
+    pairingCode: command === 'connect' && args[0] && !args[0].startsWith('-')
       ? args.shift()
       : '',
     urlSpecified: Boolean(env.QWEN_AUDIO_AGENT_URL),
@@ -189,6 +203,16 @@ export function parseArguments(argv, env = process.env) {
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--realtime-model') {
       options.realtimeModel = nextValue(args, index++, '--realtime-model')
+    } else if (argument === '--tailnet') {
+      if (command !== 'gateway') throw new Error('--tailnet 只适用于 gateway')
+      options.tailnet = true
+      options.tailnetSpecified = true
+      options.publicUrl = ''
+    } else if (argument === '--public-url') {
+      if (command !== 'gateway') throw new Error('--public-url 只适用于 gateway')
+      options.publicUrl = nextValue(args, index++, '--public-url').trim()
+      options.publicUrlSpecified = true
+      options.tailnet = false
     } else if (argument === '--session') {
       options.sessionId = nextValue(args, index++, '--session')
     } else if (argument === '--audio-mode') {
@@ -266,14 +290,31 @@ export function parseArguments(argv, env = process.env) {
   if (command !== 'webui' && !options.openBrowser) {
     throw new Error('--no-open 只适用于 webui')
   }
-  if (command !== 'setup' && gatewayAction !== 'remote' && options.json) {
-    throw new Error('--json 只适用于 setup 或 gateway remote')
+  if (
+    command !== 'setup'
+    && !(command === 'gateway' && ['pair', 'devices'].includes(gatewayAction))
+    && options.json
+  ) {
+    throw new Error('--json 只适用于 setup、gateway pair 或 gateway devices')
   }
   if (command !== 'tui' && audioModeSpecified) {
     throw new Error('--audio-mode 只适用于 tui')
   }
   if (command !== 'tui' && options.takeover) {
     throw new Error('--takeover 只适用于 tui')
+  }
+  if (options.publicUrl) {
+    options.publicUrl = cleanPublicGatewayUrl(options.publicUrl)
+  }
+  if (options.tailnet && options.publicUrl) {
+    throw new Error('--tailnet 与 --public-url 不能同时使用')
+  }
+  if (
+    command === 'gateway'
+    && (options.tailnetSpecified || options.publicUrlSpecified)
+    && !['run', 'install'].includes(gatewayAction)
+  ) {
+    throw new Error('--tailnet 和 --public-url 只适用于 gateway run 或 gateway install')
   }
   if (command === 'tui' && !TUI_AUDIO_MODES.has(options.audioMode)) {
     throw new Error(
@@ -282,7 +323,7 @@ export function parseArguments(argv, env = process.env) {
   }
   if (
     command === 'gateway'
-    && !['run', 'status', 'pair', 'remote'].includes(options.gatewayAction)
+    && !['run', 'status', 'pair', 'devices', 'revoke'].includes(options.gatewayAction)
     && options.gatewayConfigurationSpecified
   ) {
     throw new Error(
@@ -320,19 +361,15 @@ export function helpText() {
     '  qwenaudio gateway install         安装并启动后台常驻服务',
     '  qwenaudio gateway start           启动后台服务',
     '  qwenaudio gateway status          查看 Gateway 状态',
-    '  qwenaudio gateway pair            创建远程客户端一次性配对码',
-    '  qwenaudio gateway remote enable   开启私有 Tailnet 远程访问',
-    '  qwenaudio gateway remote status   查看远程访问状态',
-    '  qwenaudio gateway remote invite   创建可导入的远程客户端邀请',
-    '  qwenaudio gateway remote disable  关闭远程访问',
-    '  qwenaudio gateway remote devices  列出已配对设备',
-    '  qwenaudio gateway remote revoke ID  撤销设备',
+    '  qwenaudio gateway pair            创建客户端连接码与二维码',
+    '  qwenaudio gateway devices         列出已配对客户端',
+    '  qwenaudio gateway revoke ID       撤销客户端',
     '  qwenaudio gateway stop            停止后台服务',
     '  qwenaudio gateway restart         重启后台服务',
     '  qwenaudio gateway uninstall       移除后台常驻服务',
     '  qwenaudio tui [选项]         连接现有 Gateway 的终端界面',
     '  qwenaudio webui [选项]       打开现有 Gateway 的 WebUI',
-    '  qwenaudio connect <邀请>      配对并保存远程 Gateway',
+    '  qwenaudio connect <连接码>    配对并保存远程 Gateway',
     '  qwenaudio disconnect          忘记已保存的远程 Gateway',
     '  qwenaudio status [选项]      gateway status 的兼容别名',
     '  qwenaudio config             显示用户配置文件位置',
@@ -352,6 +389,8 @@ export function helpText() {
     '  --backend-permission-mode MODE  native（默认）或 full（最高权限）',
     '  --backend-url URL      后台 Server 地址',
     '  --backend-agent ID     指定协调 Agent',
+    '  --tailnet              通过系统 Tailscale Serve 发布到私有 Tailnet',
+    '  --public-url HTTPS_URL 声明由外部代理提供的 Gateway 对外地址',
     '',
     'Setup 选项：',
     '  --backend NAME         只检查指定后台；默认检查全部后台',

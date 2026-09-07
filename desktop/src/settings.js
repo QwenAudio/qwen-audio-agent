@@ -80,7 +80,7 @@ const currentBackend = document.querySelector('#current-backend')
 const updaterStatus = document.querySelector('#updater-status')
 const checkUpdates = document.querySelector('#check-updates')
 const openLogs = document.querySelector('#open-logs')
-const remoteGatewayInvitation = document.querySelector('#remote-gateway-invitation')
+const gatewayPairingCode = document.querySelector('#gateway-pairing-code')
 const connectRemoteGateway = document.querySelector('#connect-remote-gateway')
 const submit = form.querySelector('button[type="submit"]')
 const settingsTabs = [...document.querySelectorAll('[data-settings-tab]')]
@@ -1144,17 +1144,17 @@ getApiKey.addEventListener('click', () => {
 })
 
 connectRemoteGateway.addEventListener('click', async () => {
-  const invitation = remoteGatewayInvitation.value.trim()
-  if (!invitation) {
-    showMessage(t('请粘贴 Gateway 接入链接'), 'error')
+  const pairingCode = gatewayPairingCode.value.trim()
+  if (!pairingCode) {
+    showMessage(t('请粘贴 Gateway 连接码'), 'error')
     return
   }
   connectRemoteGateway.disabled = true
   try {
-    const result = await window.qwenAudioAgentDesktop.connectRemoteGateway(invitation)
+    const result = await window.qwenAudioAgentDesktop.connectRemoteGateway(pairingCode)
     settings.gatewayUrl = result.gatewayUrl
     gatewayUrl.value = result.gatewayUrl
-    remoteGatewayInvitation.value = ''
+    gatewayPairingCode.value = ''
     appliedFingerprint = fingerprint(formSettings())
     updateApplyState()
     await refreshRuntime()

@@ -258,8 +258,7 @@ html[data-desktop="orb"] #root {
 
 .desktop-conversation-panel .brand small,
 .desktop-conversation-panel .backend,
-.desktop-conversation-panel .model-status,
-.desktop-conversation-panel .frontend-provider {
+.desktop-conversation-panel .model-status {
   display: none;
 }
 
@@ -391,7 +390,6 @@ header {
   white-space: nowrap;
 }
 .model-status small { overflow-wrap: anywhere; }
-.model-status .provider-notice { color: #f1c665; }
 .status i { width: 7px; height: 7px; border-radius: 50%; background: #555; }
 .status i.idle { background: #50dfab; box-shadow: 0 0 9px #50dfab80; }
 .status i.listening { background: #50dfab; box-shadow: 0 0 12px #50dfab; }
@@ -1476,19 +1474,4 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
     animation: none;
     transition: none;
   }
-}
-
-/* frontend provider selector */
-header select.frontend-provider {
-  background: transparent;
-  color: inherit;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-header select.frontend-provider option {
-  color: #111;
 }

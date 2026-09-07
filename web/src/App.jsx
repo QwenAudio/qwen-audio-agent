@@ -36,8 +36,6 @@ import {
 } from './task-view.js'
 import useRealtimeVoice, {
   realtimeModelStatus,
-  realtimeProviderForConnection,
-  realtimeProviderSelection,
   shouldClaimReleasedVoice,
 } from './useRealtimeVoice.js'
 import { requestedSessionId } from './session.js'
@@ -190,13 +188,7 @@ export default function App() {
   const [messages, setMessages] = useState([])
   const [activity, setActivity] = useState(t('正在检查后台 Agent'))
   const [frontend, setFrontend] = useState({ label: 'Realtime Agent' })
-  const [realtimeProviders, setRealtimeProviders] = useState([])
-  const [realtimeProvider, setRealtimeProvider] = useState(
-    () => localStorage.getItem('qwen-audio-agent.realtimeProvider') || '',
-  )
   const [modelStatus, setModelStatus] = useState(() => realtimeModelStatus())
-  const [providerNotice, setProviderNotice] = useState('')
-  const [healthValidated, setHealthValidated] = useState(false)
   const [gatewayRuntime, setGatewayRuntime] = useState('connecting')
   const [backend, setBackend] = useState({
     label: 'Agent',
@@ -397,22 +389,8 @@ export default function App() {
         setFrontend({
           label: payload.realtimeLabel || payload.realtimeProvider || 'Realtime Agent',
         })
-        setRealtimeProviders(payload.realtimeProviders || [])
         setModelStatus(realtimeModelStatus(payload))
-        // A front end persisted by an earlier visit may no longer exist on this
-        // server (removed provider, different deployment). Sending it would be
-        // refused on every connect, so the stale selection is dropped in favour
-        // of the server default instead of leaving the client stuck.
-        setRealtimeProvider(current => {
-          const selection = realtimeProviderSelection(current, payload)
-          setProviderNotice(selection.notice)
-          if (selection.provider !== current) {
-            localStorage.removeItem('qwen-audio-agent.realtimeProvider')
-          }
-          return selection.provider
-        })
         setGatewayRuntime(gatewayReady ? 'ready' : 'failed')
-        setHealthValidated(gatewayReady)
         setBackend({
           label,
           enabled: backendEnabled,
@@ -438,7 +416,6 @@ export default function App() {
       .catch(() => {
         if (cancelled) return
         setGatewayRuntime('failed')
-        setHealthValidated(false)
         setActivity(t('qwen-audio-agent Gateway 尚未连接'))
         if (desktopOrbMode) refreshTimer = setTimeout(refresh, 1000)
       })
@@ -824,10 +801,6 @@ export default function App() {
     clientLabel: gatewayClientLabel(desktopOrbMode ? t('桌面端') : 'WebUI'),
     clientInstanceId: activeClientInstanceId,
     clientStates: desktopOrbMode ? ['sleeping'] : [],
-    realtimeProvider: realtimeProviderForConnection(
-      realtimeProvider,
-      healthValidated,
-    ),
     onEvent: onRealtimeEvent,
     onInputError: message => {
       setVoiceEnabled(false)
@@ -1045,27 +1018,6 @@ export default function App() {
     check()
     return () => clearInterval(timer)
   }, [autoHideSeconds, publishClientEvent])
-
-  // Switching the front end reconnects on its own: realtimeProvider is part of
-  // the realtime effect's dependencies, so changing it tears the current socket
-  // down and connects again with the newly selected provider.
-  const selectRealtimeProvider = value => {
-    const selection = realtimeProviderSelection(value, {
-      realtimeModel: modelStatus.id,
-      realtimeModelProfile: modelStatus.id ? { id: modelStatus.id } : null,
-      realtimeProviders,
-    })
-    setRealtimeProvider(selection.provider)
-    setProviderNotice(selection.notice)
-    if (selection.provider) {
-      localStorage.setItem(
-        'qwen-audio-agent.realtimeProvider',
-        selection.provider,
-      )
-    } else {
-      localStorage.removeItem('qwen-audio-agent.realtimeProvider')
-    }
-  }
 
   const inputModeLabels = {
     text: t('文字'),
@@ -1416,8 +1368,11 @@ export default function App() {
         <i className={backend.ready ? 'ready' : ''} />
         {backend.label}
       </a>
-      <div className="model-status" title={modelStatus.id}>
-        <b>{modelStatus.label || t('模型信息不可用')}</b>
+      <div
+        className="model-status"
+        title={`${frontend.label} · ${modelStatus.id}`}
+      >
+        <b>{frontend.label} · {modelStatus.label || t('模型信息不可用')}</b>
         {modelStatus.metadataStatus === 'current'
           ? <>
               <small>{t('模型支持：{modes}', {
@@ -1428,22 +1383,7 @@ export default function App() {
               })}</small>
             </>
           : <small>{t('模型能力信息不可用')}</small>}
-        {providerNotice && <small className="provider-notice" role="status">
-          {t(providerNotice)}
-        </small>}
       </div>
-      {realtimeProviders.length > 1 && <select
-        className="ghost frontend-provider"
-        value={realtimeProvider}
-        onChange={event => selectRealtimeProvider(event.target.value)}
-        title={t('选择 Realtime 前台服务')}
-        aria-label={t('选择 Realtime 前台服务')}
-      >
-        <option value="">{t('前台服务：默认（{label}）', { label: frontend.label })}</option>
-        {realtimeProviders.map(item => <option key={item.key} value={item.key}>
-          {t('前台服务：{label}', { label: item.label })}
-        </option>)}
-      </select>}
       <div className="status">
         <i className={orbVisualState} /><span>{labelFor(orbVisualState)}</span>
       </div>

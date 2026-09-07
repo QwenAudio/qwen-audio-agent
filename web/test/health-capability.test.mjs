@@ -7,16 +7,6 @@ function realtimeModelStatus(...args) {
   return voice.realtimeModelStatus(...args)
 }
 
-function realtimeProviderSelection(...args) {
-  assert.equal(typeof voice.realtimeProviderSelection, 'function')
-  return voice.realtimeProviderSelection(...args)
-}
-
-function realtimeProviderForConnection(...args) {
-  assert.equal(typeof voice.realtimeProviderForConnection, 'function')
-  return voice.realtimeProviderForConnection(...args)
-}
-
 const FLASH_ID = 'qwen3.5-omni-flash-realtime'
 const PLUS_ID = 'qwen3.5-omni-plus-realtime'
 const LEGACY_ID = 'qwen-audio-3.0-realtime-plus'
@@ -134,65 +124,4 @@ test('enables image controls only for current exact catalog transport truth', ()
 
   assert.equal(status.imageInputEnabled, true)
   assert.deepEqual(status.transportInputModes, ['text', 'audio', 'image'])
-})
-
-test('keeps an advertised provider selection separate from the model', () => {
-  assert.deepEqual(realtimeProviderSelection('speech-to-speech', {
-    realtimeProvider: 'dashscope',
-    realtimeModelProfile: plus,
-    realtimeProviders: [
-      { key: 'dashscope', label: 'DashScope' },
-      { key: 'speech-to-speech', label: 'Speech-to-Speech' },
-    ],
-  }), {
-    provider: 'speech-to-speech',
-    recovered: false,
-    notice: '',
-  })
-})
-
-test('recovers stale and unadvertised providers to the server default', () => {
-  const health = {
-    realtimeProvider: 'dashscope',
-    realtimeModelProfile: plus,
-    realtimeProviders: [{ key: 'dashscope', label: 'DashScope' }],
-  }
-
-  const selection = realtimeProviderSelection('removed-provider', health)
-  assert.equal(selection.provider, '')
-  assert.equal(selection.recovered, true)
-  assert.equal(selection.notice, '已恢复为服务器默认前台')
-  assert.ok(selection.notice.length <= 32)
-})
-
-test('recovers an advertised provider that explicitly excludes the active model', () => {
-  const selection = realtimeProviderSelection('speech-to-speech', {
-    realtimeProvider: 'dashscope',
-    realtimeModelProfile: plus,
-    realtimeProviders: [
-      { key: 'dashscope', label: 'DashScope' },
-      {
-        key: 'speech-to-speech',
-        label: 'Speech-to-Speech',
-        realtimeModelIds: [LEGACY_ID],
-      },
-    ],
-  })
-
-  assert.deepEqual(selection, {
-    provider: '',
-    recovered: true,
-    notice: '已恢复为服务器默认前台',
-  })
-})
-
-test('does not connect with a persisted provider before fresh health validation', () => {
-  assert.equal(
-    realtimeProviderForConnection('speech-to-speech', false),
-    '',
-  )
-  assert.equal(
-    realtimeProviderForConnection('speech-to-speech', true),
-    'speech-to-speech',
-  )
 })

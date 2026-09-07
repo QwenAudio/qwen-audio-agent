@@ -19,6 +19,8 @@ const REALTIME_DEFAULTS = {
   omniRealtimeVoice: '',
   speechToSpeechRealtimeUrl: '',
   speechToSpeechAuthToken: '',
+  miniCpmORealtimeUrl: '',
+  miniCpmOAuthToken: '',
 }
 
 const BACKEND_CONNECTION_DEFAULTS = {
@@ -396,6 +398,43 @@ test('supports the compact S2S aliases when reading existing configuration', () 
   assert.equal(settings.speechToSpeechAuthToken, 'alias-token')
 })
 
+test('reads and updates the MiniCPM-o desktop configuration', () => {
+  const settings = parseSettings([
+    'QWEN_AUDIO_REALTIME_PROVIDER=minicpmo',
+    'MINICPM_O_REALTIME_URL=ws://127.0.0.1:9000/v1/realtime?mode=audio',
+    'MINICPM_O_AUTH_TOKEN=private-token',
+    '',
+  ].join('\n'))
+
+  assert.equal(settings.realtimeProvider, 'minicpm-o')
+  assert.equal(
+    settings.miniCpmORealtimeUrl,
+    'ws://127.0.0.1:9000/v1/realtime?mode=audio',
+  )
+  assert.equal(settings.miniCpmOAuthToken, 'private-token')
+  assert.equal(realtimeSettingsConfigured(settings), true)
+
+  const content = updateSettingsContent('', settings)
+  assert.match(content, /QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o/)
+  assert.match(
+    content,
+    /MINICPM_O_REALTIME_URL="ws:\/\/127\.0\.0\.1:9000\/v1\/realtime\?mode=audio"/,
+  )
+  assert.match(content, /MINICPM_O_AUTH_TOKEN=private-token/)
+})
+
+test('uses the official MiniCPM-o loopback endpoint as an effective default', () => {
+  const settings = parseSettings(
+    'QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o\n',
+  )
+
+  assert.equal(
+    settings.miniCpmORealtimeUrl,
+    'ws://127.0.0.1:8006/v1/realtime?mode=audio',
+  )
+  assert.equal(realtimeSettingsConfigured(settings), true)
+})
+
 test('requires the selected realtime provider configuration', () => {
   assert.equal(realtimeSettingsConfigured({
     realtimeProvider: 'dashscope',
@@ -413,6 +452,10 @@ test('requires the selected realtime provider configuration', () => {
   assert.equal(realtimeSettingsConfigured({
     realtimeProvider: 'speech-to-speech',
     speechToSpeechRealtimeUrl: 'not-a-websocket-url',
+  }), false)
+  assert.equal(realtimeSettingsConfigured({
+    realtimeProvider: 'minicpm-o',
+    miniCpmORealtimeUrl: 'http://127.0.0.1:8006/v1/realtime',
   }), false)
 })
 
@@ -463,6 +506,9 @@ test('desktop settings expose external backend connection controls', () => {
   assert.match(html, /value="speech-to-speech"/)
   assert.match(html, /id="speech-to-speech-url"/)
   assert.match(html, /id="speech-to-speech-token"/)
+  assert.match(html, /value="minicpm-o"/)
+  assert.match(html, /id="minicpm-o-url"/)
+  assert.match(html, /id="minicpm-o-token"/)
   assert.match(html, />语音前台</)
   assert.match(html, />后台 Agent</)
   assert.match(html, /for="backend-model">后台模型</)
@@ -477,6 +523,10 @@ test('desktop settings expose external backend connection controls', () => {
   assert.match(html, /DashScope/)
   assert.match(html, /Speech-to-Speech/)
   assert.match(html, /Hugging Face/)
+  assert.match(html, /id="speech-to-speech-model"[\s\S]*value="default"[\s\S]*readonly/)
+  assert.match(html, />面壁智能</)
+  assert.match(html, /MiniCPM-o 4\.5/)
+  assert.match(html, /id="minicpm-o-model"[\s\S]*value="MiniCPM-o 4\.5"[\s\S]*readonly/)
   assert.match(html, /id="get-api-key"/)
   assert.match(html, /id="realtime-base-url"/)
   assert.match(html, /id="realtime-model"/)
@@ -494,6 +544,12 @@ test('desktop settings expose external backend connection controls', () => {
   assert.match(html, /id="backend-ownership"/)
   assert.match(html, /id="backend-url"/)
   assert.match(html, /id="backend-credential"/)
+  assert.match(html, /id="gateway-url"/)
+  assert.doesNotMatch(html, /id="remote-access-status"/)
+  assert.doesNotMatch(html, /id="enable-remote-access"/)
+  assert.doesNotMatch(html, /id="invite-remote-client"/)
+  assert.doesNotMatch(html, /id="disable-remote-access"/)
+  assert.doesNotMatch(html, /id="remote-invitation-dialog"/)
   assert.match(html, /id="auto-hide-seconds"/)
   assert.match(html, /id="wake-shortcut"/)
   assert.match(html, /id="record-wake-shortcut"/)

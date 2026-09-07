@@ -135,7 +135,10 @@ Eligible new users can review the [new-user free quota](https://help.aliyun.com/
 and check remaining usage on the [model usage page](https://help.aliyun.com/zh/model-studio/model-usage-statistics).
 Quota and billing rules are subject to the current official Bailian documentation.
 
-> Uses DashScope realtime voice frontend by default; alternatively, switch to a local [speech-to-speech frontend](docs/voice-frontends/speech-to-speech.md), no cloud API Key needed.
+> Uses DashScope realtime voice by default. Alternatives include
+> [Speech-to-Speech](docs/voice-frontends/speech-to-speech.md) and
+> [ModelBest MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.md), with local or hosted endpoints
+> selected through their service URL.
 
 2. Start the Gateway, then open another terminal to start the TUI (or use `qwenaudio webui` for the browser UI):
 
@@ -144,9 +147,9 @@ qwenaudio        # Terminal 1: Gateway
 qwenaudio tui    # Terminal 2: TUI
 ```
 
-For full configuration options, speech-to-speech frontend setup, and TUI
-platform notes, see [quick start](docs/getting-started/quickstart.md),
-[voice frontends](docs/voice-frontends/speech-to-speech.md), and
+For full configuration options, local voice frontend setup, and TUI platform
+notes, see [quick start](docs/getting-started/quickstart.md),
+[voice frontends](docs/configuration/frontend.md), and
 [TUI notes](docs/getting-started/tui.md).
 
 ## Desktop App

@@ -32,3 +32,18 @@ test('Clients depend only on generic Gateway URLs and never on the remote-access
 
   assert.deepEqual(violations, [])
 })
+
+test('Desktop connects to Gateway without exposing remote-access management', () => {
+  const desktopSources = sourceFiles(join(root, 'desktop/src'))
+    .map(path => readFileSync(path, 'utf8'))
+    .join('\n')
+
+  assert.doesNotMatch(
+    desktopSources,
+    /qwen-audio-agent:remote-access-(?:status|enable|disable|invite)/,
+  )
+  assert.doesNotMatch(
+    desktopSources,
+    /(?:enableRemoteAccess|disableRemoteAccess|createRemoteInvitation)/,
+  )
+})

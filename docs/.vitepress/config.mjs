@@ -57,6 +57,7 @@ function sidebar(prefix = '') {
         { text: 'Qwen Audio 3.0 Realtime', link: `${prefix}/voice-frontends/qwen-audio-realtime` },
         { text: 'Qwen Omni Realtime', link: `${prefix}/voice-frontends/qwen-omni-realtime` },
         { text: 'Speech-to-Speech', link: `${prefix}/voice-frontends/speech-to-speech` },
+        { text: 'MiniCPM-o 4.5', link: `${prefix}/voice-frontends/minicpm-o` },
         { text: t('自定义 Provider', 'Custom Provider'), link: `${prefix}/voice-frontends/custom-provider` },
       ],
     },

@@ -108,6 +108,14 @@
                   />
                   <span>Speech-to-Speech</span>
                 </label>
+                <label class="provider-segment">
+                  <input
+                    type="radio"
+                    name="realtime-provider"
+                    value="minicpm-o"
+                  />
+                  <span>面壁智能</span>
+                </label>
               </fieldset>
             </div>
             <div class="settings-card">
@@ -188,8 +196,61 @@
                     placeholder="可选，用于 Bearer 认证"
                   />
                 </div>
+
+                <div class="setting-row">
+                  <label for="speech-to-speech-model">模型</label>
+                  <input
+                    id="speech-to-speech-model"
+                    class="fixed-model"
+                    type="text"
+                    value="default"
+                    readonly
+                  />
+                </div>
                 <p class="provider-attribution">
                   Speech-to-Speech · Hugging Face · 需单独启动本地服务
+                </p>
+              </div>
+
+              <div
+                class="provider-panel"
+                data-provider-panel="minicpm-o"
+                hidden
+              >
+                <div class="setting-row service-url-row">
+                  <label for="minicpm-o-url">服务地址</label>
+                  <input
+                    id="minicpm-o-url"
+                    type="url"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="ws://127.0.0.1:8006/v1/realtime?mode=audio"
+                  />
+                </div>
+
+                <div class="setting-row">
+                  <label for="minicpm-o-token">访问令牌</label>
+                  <input
+                    id="minicpm-o-token"
+                    type="password"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="可选，用于 Bearer 认证"
+                  />
+                </div>
+
+                <div class="setting-row">
+                  <label for="minicpm-o-model">模型</label>
+                  <input
+                    id="minicpm-o-model"
+                    class="fixed-model"
+                    type="text"
+                    value="MiniCPM-o 4.5"
+                    readonly
+                  />
+                </div>
+                <p class="provider-attribution">
+                  MiniCPM-o 4.5 · 面壁智能 · 本地或云端服务
                 </p>
               </div>
             </div>
@@ -333,18 +394,6 @@
                 <input id="gateway-url" type="url" spellcheck="false" required />
               </div>
 
-              <div class="setting-row remote-access-row">
-                <span class="setting-label">远程访问</span>
-                <div class="remote-access-control">
-                  <span id="remote-access-status" class="setting-hint">未检查</span>
-                  <div class="manage-buttons" role="group" aria-label="管理远程访问">
-                    <button id="enable-remote-access" type="button">开启</button>
-                    <button id="invite-remote-client" type="button" disabled>邀请</button>
-                    <button id="disable-remote-access" type="button" disabled>关闭</button>
-                  </div>
-                </div>
-              </div>
-
               <div class="setting-row">
                 <label for="orb-style">外观</label>
                 <div class="setting-inline">
@@ -426,18 +475,6 @@
           <button class="apply-button" type="submit" aria-label="应用设置" disabled>应用</button>
         </footer>
       </form>
-      <dialog id="remote-invitation-dialog" class="remote-invitation-dialog">
-        <form method="dialog">
-          <h2>连接远程客户端</h2>
-          <img id="remote-invitation-qr" alt="远程客户端配对二维码" />
-          <p>使用移动端扫描二维码，或复制配对链接。</p>
-          <input id="remote-invitation-url" type="text" readonly />
-          <div class="dialog-actions">
-            <button id="copy-remote-invitation" type="button">复制链接</button>
-            <button value="close" type="submit">完成</button>
-          </div>
-        </form>
-      </dialog>
     </main>
     <script src="./settings.js" type="module"></script>
   </body>

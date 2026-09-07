@@ -11,6 +11,7 @@ import {
 import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   DEFAULT_DASHSCOPE_REALTIME_URL,
+  DEFAULT_MINICPM_O_REALTIME_URL,
   DEFAULT_REALTIME_PROVIDER,
   DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL,
   normalizeRealtimeProvider,
@@ -33,6 +34,8 @@ const DEFAULTS = {
   omniRealtimeVoice: '',
   speechToSpeechRealtimeUrl: '',
   speechToSpeechAuthToken: '',
+  miniCpmORealtimeUrl: '',
+  miniCpmOAuthToken: '',
   backendModel: '',
   backendOwnership: 'owned',
   backendUrl: '',
@@ -57,6 +60,8 @@ const SETTING_KEYS = {
   omniRealtimeVoice: 'QWEN_OMNI_REALTIME_VOICE',
   speechToSpeechRealtimeUrl: 'SPEECH_TO_SPEECH_REALTIME_URL',
   speechToSpeechAuthToken: 'SPEECH_TO_SPEECH_AUTH_TOKEN',
+  miniCpmORealtimeUrl: 'MINICPM_O_REALTIME_URL',
+  miniCpmOAuthToken: 'MINICPM_O_AUTH_TOKEN',
   backendModel: 'QWEN_AUDIO_AGENT_BACKEND_MODEL',
   backendOwnership: 'QWEN_AUDIO_AGENT_BACKEND_OWNERSHIP',
   nodePath: 'QWEN_AUDIO_AGENT_NODE_PATH',
@@ -248,6 +253,16 @@ export function parseSettings(content = '', fallback = {}) {
       || DEFAULTS.speechToSpeechAuthToken,
     ),
   )
+  const configuredMiniCpmOUrl = configured(
+    values,
+    'MINICPM_O_REALTIME_URL',
+    fallback.MINICPM_O_REALTIME_URL || DEFAULTS.miniCpmORealtimeUrl,
+  )
+  const configuredMiniCpmOToken = configured(
+    values,
+    'MINICPM_O_AUTH_TOKEN',
+    fallback.MINICPM_O_AUTH_TOKEN || DEFAULTS.miniCpmOAuthToken,
+  )
   const realtimeModel = String(configured(
     values,
     'QWEN_AUDIO_REALTIME_MODEL',
@@ -315,6 +330,13 @@ export function parseSettings(content = '', fallback = {}) {
         : DEFAULTS.speechToSpeechRealtimeUrl),
     ).trim(),
     speechToSpeechAuthToken: String(configuredS2sToken || '').trim(),
+    miniCpmORealtimeUrl: String(
+      configuredMiniCpmOUrl
+      || (realtimeProvider === 'minicpm-o'
+        ? DEFAULT_MINICPM_O_REALTIME_URL
+        : DEFAULTS.miniCpmORealtimeUrl),
+    ).trim(),
+    miniCpmOAuthToken: String(configuredMiniCpmOToken || '').trim(),
     backendModel: String(configured(
       values,
       'QWEN_AUDIO_AGENT_BACKEND_MODEL',
@@ -343,6 +365,9 @@ export function normalizeSettings(settings = {}) {
   const requestedS2sUrl = String(
     settings.speechToSpeechRealtimeUrl
     ?? DEFAULTS.speechToSpeechRealtimeUrl,
+  ).trim()
+  const requestedMiniCpmOUrl = String(
+    settings.miniCpmORealtimeUrl ?? DEFAULTS.miniCpmORealtimeUrl,
   ).trim()
   const realtimeModel = String(
     settings.realtimeModel || DEFAULTS.realtimeModel,
@@ -411,6 +436,14 @@ export function normalizeSettings(settings = {}) {
       settings.speechToSpeechAuthToken
       ?? DEFAULTS.speechToSpeechAuthToken,
     ).trim(),
+    miniCpmORealtimeUrl: requestedMiniCpmOUrl
+      ? cleanRealtimeUrl(requestedMiniCpmOUrl, '')
+      : realtimeProvider === 'minicpm-o'
+        ? DEFAULT_MINICPM_O_REALTIME_URL
+        : '',
+    miniCpmOAuthToken: String(
+      settings.miniCpmOAuthToken ?? DEFAULTS.miniCpmOAuthToken,
+    ).trim(),
     backendModel: String(
       settings.backendModel ?? DEFAULTS.backendModel,
     ).trim(),
@@ -442,11 +475,14 @@ export function realtimeSettingsConfigured(settings = {}) {
       return false
     }
   }
+  const endpoint = provider === 'speech-to-speech'
+    ? settings.speechToSpeechRealtimeUrl
+    : settings.miniCpmORealtimeUrl
+  const fallback = provider === 'speech-to-speech'
+    ? DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL
+    : DEFAULT_MINICPM_O_REALTIME_URL
   try {
-    return Boolean(cleanRealtimeUrl(
-      settings.speechToSpeechRealtimeUrl,
-      DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL,
-    ))
+    return Boolean(cleanRealtimeUrl(endpoint, fallback))
   } catch {
     return false
   }

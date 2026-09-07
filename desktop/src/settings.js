@@ -50,6 +50,8 @@ const speechToSpeechRealtimeUrl = document.querySelector(
 const speechToSpeechAuthToken = document.querySelector(
   '#speech-to-speech-token',
 )
+const miniCpmORealtimeUrl = document.querySelector('#minicpm-o-url')
+const miniCpmOAuthToken = document.querySelector('#minicpm-o-token')
 const backendList = document.querySelector('#backend-list')
 const backendPicker = document.querySelector('.backend-picker')
 const backendPickerTrigger = document.querySelector('#backend-picker-trigger')
@@ -78,14 +80,6 @@ const currentBackend = document.querySelector('#current-backend')
 const updaterStatus = document.querySelector('#updater-status')
 const checkUpdates = document.querySelector('#check-updates')
 const openLogs = document.querySelector('#open-logs')
-const remoteAccessStatus = document.querySelector('#remote-access-status')
-const enableRemoteAccess = document.querySelector('#enable-remote-access')
-const inviteRemoteClient = document.querySelector('#invite-remote-client')
-const disableRemoteAccess = document.querySelector('#disable-remote-access')
-const remoteInvitationDialog = document.querySelector('#remote-invitation-dialog')
-const remoteInvitationQr = document.querySelector('#remote-invitation-qr')
-const remoteInvitationUrl = document.querySelector('#remote-invitation-url')
-const copyRemoteInvitation = document.querySelector('#copy-remote-invitation')
 const submit = form.querySelector('button[type="submit"]')
 const settingsTabs = [...document.querySelectorAll('[data-settings-tab]')]
 const settingsPanels = [...document.querySelectorAll('[data-settings-panel]')]
@@ -114,50 +108,9 @@ let updaterState = null
 let startupError = null
 let recordingWakeShortcut = false
 let realtimeVoiceDrafts = createRealtimeVoiceDrafts()
-let remoteAccessRefreshTimer = null
 const defaultWakeShortcut = 'CommandOrControl+Shift+Space'
 const defaultRealtimeBaseUrl = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
 const macPlatform = /Mac|iPhone|iPad/.test(navigator.platform)
-
-function renderRemoteAccess(value) {
-  const state = value?.state || 'disabled'
-  const enabled = value?.enabled === true
-  const published = value?.published === true
-  remoteAccessStatus.textContent = published
-    ? t('已开启')
-    : state === 'installing'
-      ? t('正在准备远程访问…')
-      : state === 'starting'
-        ? t('正在连接远程网络…')
-        : state === 'auth_required'
-          ? t('等待网页授权')
-          : value?.actionUrl
-            ? t('需要完成网络设置')
-            : state === 'error'
-              ? localizeDesktopError(value?.error?.message || '远程访问异常', translate)
-              : t('未开启')
-  enableRemoteAccess.disabled = published || ['installing', 'starting'].includes(state)
-  inviteRemoteClient.disabled = !published
-  disableRemoteAccess.disabled = !enabled
-  clearTimeout(remoteAccessRefreshTimer)
-  remoteAccessRefreshTimer = null
-  if (['installing', 'starting', 'auth_required'].includes(state)) {
-    remoteAccessRefreshTimer = setTimeout(() => {
-      void refreshRemoteAccess()
-    }, 2_000)
-  }
-}
-
-async function refreshRemoteAccess() {
-  try {
-    renderRemoteAccess(await window.qwenAudioAgentDesktop.remoteAccessStatus())
-  } catch (error) {
-    remoteAccessStatus.textContent = localizeDesktopError(error, translate)
-    enableRemoteAccess.disabled = true
-    inviteRemoteClient.disabled = true
-    disableRemoteAccess.disabled = true
-  }
-}
 
 function renderRealtimeModelOptions(selectedModel) {
   const profiles = listDashScopeRealtimeModelProfiles()
@@ -798,8 +751,8 @@ function renderRealtimeVoice() {
 }
 
 function renderRealtimeProvider(value, { populateDefault = false } = {}) {
-  const provider = value === 'speech-to-speech'
-    ? 'speech-to-speech'
+  const provider = ['speech-to-speech', 'minicpm-o'].includes(value)
+    ? value
     : 'dashscope'
   for (const input of realtimeProviderInputs) {
     input.checked = input.value === provider
@@ -816,6 +769,13 @@ function renderRealtimeProvider(value, { populateDefault = false } = {}) {
   }
   if (populateDefault && provider === 'dashscope' && !realtimeBaseUrl.value.trim()) {
     realtimeBaseUrl.value = defaultRealtimeBaseUrl
+  }
+  if (
+    populateDefault
+    && provider === 'minicpm-o'
+    && !miniCpmORealtimeUrl.value.trim()
+  ) {
+    miniCpmORealtimeUrl.value = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
   }
 }
 
@@ -836,6 +796,8 @@ function formSettings() {
     ...realtimeVoiceDrafts.settings(),
     speechToSpeechRealtimeUrl: speechToSpeechRealtimeUrl.value,
     speechToSpeechAuthToken: speechToSpeechAuthToken.value,
+    miniCpmORealtimeUrl: miniCpmORealtimeUrl.value,
+    miniCpmOAuthToken: miniCpmOAuthToken.value,
     backendModel: backendModel.value,
     backendOwnership: backendOwnership.value,
     backendUrl: backendUrl.value,
@@ -861,6 +823,8 @@ function fingerprint(value) {
     omniRealtimeVoice: value.omniRealtimeVoice,
     speechToSpeechRealtimeUrl: value.speechToSpeechRealtimeUrl,
     speechToSpeechAuthToken: value.speechToSpeechAuthToken,
+    miniCpmORealtimeUrl: value.miniCpmORealtimeUrl,
+    miniCpmOAuthToken: value.miniCpmOAuthToken,
     backendModel: value.backendModel,
     backendOwnership: value.backendOwnership,
     backendUrl: value.backendUrl,
@@ -913,7 +877,7 @@ function renderRuntime() {
     t('已连接'),
   ].filter(Boolean).join(' · ')
   currentGateway.className = 'connection-status connected'
-  const realtimeLabel = realtimeStatusLabel(runtime.realtimeProvider)
+  const realtimeLabel = t(realtimeStatusLabel(runtime.realtimeProvider))
   if (!runtime.voiceConfigured) {
     setRealtimeStatus(`${realtimeLabel} · ${t('配置不完整')}`, 'disconnected')
   } else {
@@ -929,7 +893,7 @@ function renderRuntime() {
     }[state]
     setRealtimeStatus(
       [
-        realtimeRuntimeLabel(runtime.realtimeProvider, runtime.realtimeModel),
+        t(realtimeRuntimeLabel(runtime.realtimeProvider, runtime.realtimeModel)),
         stateLabel,
         state === 'unavailable'
           ? truncate(
@@ -1112,6 +1076,8 @@ function render() {
   renderRealtimeVoice()
   speechToSpeechRealtimeUrl.value = settings.speechToSpeechRealtimeUrl || ''
   speechToSpeechAuthToken.value = settings.speechToSpeechAuthToken || ''
+  miniCpmORealtimeUrl.value = settings.miniCpmORealtimeUrl || ''
+  miniCpmOAuthToken.value = settings.miniCpmOAuthToken || ''
   renderRealtimeProvider(settings.realtimeProvider)
   backendModel.value = settings.backendModel || ''
   backendOwnership.value = settings.backendOwnership || 'owned'
@@ -1132,6 +1098,8 @@ for (const control of [
   realtimeBaseUrl,
   speechToSpeechRealtimeUrl,
   speechToSpeechAuthToken,
+  miniCpmORealtimeUrl,
+  miniCpmOAuthToken,
   realtimeModel,
   realtimeVoice,
   backendModel,
@@ -1170,53 +1138,6 @@ for (const control of [
 
 getApiKey.addEventListener('click', () => {
   window.qwenAudioAgentDesktop.openExternal(BAILIAN_API_KEY_URL)
-})
-
-enableRemoteAccess.addEventListener('click', async () => {
-  enableRemoteAccess.disabled = true
-  remoteAccessStatus.textContent = t('正在开启…')
-  try {
-    await window.qwenAudioAgentDesktop.enableRemoteAccess()
-    await refreshRemoteAccess()
-  } catch (error) {
-    showMessage(friendlyError(error, t('开启远程访问失败')), 'error')
-    await refreshRemoteAccess()
-  }
-})
-
-disableRemoteAccess.addEventListener('click', async () => {
-  disableRemoteAccess.disabled = true
-  try {
-    await window.qwenAudioAgentDesktop.disableRemoteAccess()
-    await refreshRemoteAccess()
-  } catch (error) {
-    showMessage(friendlyError(error, t('关闭远程访问失败')), 'error')
-    await refreshRemoteAccess()
-  }
-})
-
-inviteRemoteClient.addEventListener('click', async () => {
-  inviteRemoteClient.disabled = true
-  try {
-    const invitation = await window.qwenAudioAgentDesktop.createRemoteInvitation()
-    remoteInvitationQr.src = invitation.qrCode
-    remoteInvitationUrl.value = invitation.appUrl
-    remoteInvitationDialog.showModal()
-  } catch (error) {
-    showMessage(friendlyError(error, t('创建远程邀请失败')), 'error')
-  } finally {
-    await refreshRemoteAccess()
-  }
-})
-
-copyRemoteInvitation.addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText(remoteInvitationUrl.value)
-    copyRemoteInvitation.textContent = t('已复制')
-    setTimeout(() => { copyRemoteInvitation.textContent = t('复制链接') }, 1200)
-  } catch {
-    remoteInvitationUrl.select()
-  }
 })
 
 orbSkinSelect.addEventListener('change', updateRemoveSkinState)
@@ -1343,7 +1264,6 @@ window.qwenAudioAgentDesktop.loadSettings().then(value => {
   renderWakeShortcutStatus(value.wakeShortcutRegistered)
   render()
   void detectBackendOptions()
-  void refreshRemoteAccess()
   if (value.runtimeError) {
     startupError = value.runtimeError
     showMessage(t('当前配置启动失败：{error}', {

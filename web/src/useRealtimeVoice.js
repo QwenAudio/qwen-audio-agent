@@ -692,6 +692,13 @@ export default function useRealtimeVoice({
           eventRef.current?.(connectedEvent)
         } else if (status.state === 'ready') {
           takeoverRef.current = false
+          // The Gateway protocol can be ready even when the optional realtime
+          // provider is not configured. Text input should be allowed to reach
+          // the Gateway in that state so the UI can report the provider error
+          // (for example, a missing DASHSCOPE_API_KEY) instead of claiming the
+          // Gateway itself is disconnected.
+          hasConnectedRef.current = true
+          flushPendingManualInputs()
         } else if (status.state === 'unavailable') {
           dispatchClientState({
             type: GatewayServerEvent.VOICE_CONNECTION,

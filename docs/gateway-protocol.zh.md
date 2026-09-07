@@ -485,6 +485,10 @@ Gateway 自身产生且需要前台 Agent 感知的事件也使用同一边界�
 `realtime.content_rejected`。模型只会收到脱敏的“上一轮内容无法回复，请换个话题”，
 不会收到供应商错误对象、错误码或被拒绝的原始内容。
 
+提醒到期同样注册为 Gateway 自有系统事件 `reminder.due`。其有界载荷只包含提醒内容、
+计划时间、重复规则与时区；Task 和循环标识保留在 `AgentDelivery.correlation`，不会
+复制进模型可见文本。
+
 ## 7. Presence 与休眠
 
 两种休眠最终进入同一个 PresenceController 和 Client Action 链路，但只有用户主动休眠需要模型工具调用。

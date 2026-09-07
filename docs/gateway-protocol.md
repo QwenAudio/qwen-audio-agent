@@ -521,6 +521,11 @@ the failed turn, restores the connection, and then delivers
 ask the user to change topics; provider errors, error codes, and rejected source
 content never enter the replacement Session.
 
+A due reminder is likewise registered as the Gateway-owned system event
+`reminder.due`. Its bounded payload contains only the reminder content, scheduled
+time, recurrence, and timezone. Task and series identifiers remain in
+`AgentDelivery.correlation`; they are not copied into model-visible text.
+
 ## 7. Presence and sleep
 
 Both sleep modes converge on the same PresenceController and Client Action path, but only user-requested sleep requires a model Tool Call.

@@ -127,6 +127,7 @@ export const GatewayTaskSchema = z.object({
   ]),
   status: z.string().min(1),
   kind: z.string().min(1),
+  seriesId: z.string().min(1).optional(),
   parentTaskId: z.string().nullable().optional(),
   objective: z.string(),
   ownerId: z.string().optional(),
@@ -200,6 +201,12 @@ const GatewayClientPayloadSchemas = Object.freeze({
   [GatewayClientEvent.AUDIO_APPEND]: z.object({
     audio: z.string().min(1),
   }).passthrough(),
+  [GatewayClientEvent.IMAGE_APPEND]: z.object({
+    image: z.string().min(1).max(256 * 1024),
+    media_type: z.literal('image/jpeg').default('image/jpeg'),
+    occurred_at: z.number().int().nonnegative().optional(),
+  }).passthrough(),
+  [GatewayClientEvent.IMAGE_CLEAR]: z.object({}).passthrough(),
   [GatewayClientEvent.TEXT_MESSAGE]: GatewayInputMessagePayloadSchema,
   [GatewayClientEvent.INPUT_MESSAGE]: GatewayInputMessagePayloadSchema,
   [GatewayClientEvent.PLAYBACK_STARTED]: z.object({

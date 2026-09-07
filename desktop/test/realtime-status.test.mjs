@@ -21,6 +21,7 @@ test('uses compact realtime provider labels in the desktop status card', () => {
     realtimeStatusLabel('speech-to-speech'),
     'Speech-to-Speech',
   )
+  assert.equal(realtimeStatusLabel('minicpm-o'), '面壁智能')
 })
 
 test('uses compact gateway and realtime runtime identities', () => {
@@ -35,6 +36,10 @@ test('uses compact gateway and realtime runtime identities', () => {
   assert.equal(
     realtimeRuntimeLabel('speech-to-speech', ''),
     'Speech-to-Speech',
+  )
+  assert.equal(
+    realtimeRuntimeLabel('minicpm-o', 'openbmb/MiniCPM-o-4_5'),
+    'MiniCPM-o 4.5',
   )
 })
 
@@ -64,7 +69,7 @@ test('uses the shared profile label and reports runtime model mismatch', () => {
   })
 })
 
-test('renders no DashScope model for missing metadata or Speech-to-Speech', () => {
+test('renders no DashScope model for missing metadata or local providers', () => {
   assert.deepEqual(realtimeModelRuntimeStatus({}, DEFAULT_DASHSCOPE_REALTIME_MODEL), {
     label: '',
     mismatch: false,
@@ -72,6 +77,13 @@ test('renders no DashScope model for missing metadata or Speech-to-Speech', () =
   assert.deepEqual(realtimeModelRuntimeStatus({
     realtimeProvider: 'speech-to-speech',
     realtimeModel: DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  }, DEFAULT_DASHSCOPE_REALTIME_MODEL), {
+    label: '',
+    mismatch: false,
+  })
+  assert.deepEqual(realtimeModelRuntimeStatus({
+    realtimeProvider: 'minicpm-o',
+    realtimeModel: 'openbmb/MiniCPM-o-4_5',
   }, DEFAULT_DASHSCOPE_REALTIME_MODEL), {
     label: '',
     mismatch: false,
@@ -84,8 +96,8 @@ test('derives truthful model and Desktop transport hints per profile', () => {
   assert.deepEqual(realtimeStatus.realtimeModelPresentation(
     resolveDashScopeRealtimeModelProfile(DASHSCOPE_OMNI_PLUS_REALTIME_MODEL),
   ), {
-    optionHint: '模型：文字 / 语音 / 图片',
-    selectedHint: '模型能力：文字 / 语音 / 图片 · Desktop 传输：文字 / 语音（图片 / 视频未启用）',
+    optionHint: '模型：文字 / 语音 / 图片 / 视频',
+    selectedHint: '模型能力：文字 / 语音 / 图片 / 视频 · Desktop 传输：文字 / 语音（图片 / 视频未启用）',
   })
   assert.deepEqual(realtimeStatus.realtimeModelPresentation(
     resolveDashScopeRealtimeModelProfile(DEFAULT_DASHSCOPE_REALTIME_MODEL),

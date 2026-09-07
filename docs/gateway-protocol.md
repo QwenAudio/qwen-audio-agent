@@ -265,6 +265,8 @@ Use OpenAI Realtime terminology where the semantics match:
 | Event | Direction | Meaning |
 |---|---|---|
 | `input_audio_buffer.append` | C→G | Append input audio |
+| `input_image_buffer.append` | C→G | Append one JPEG frame to the live visual buffer |
+| `input_image_buffer.clear` | C→G | Discard any pending live visual frame |
 | `conversation.item.create` | C→G | Submit text, image, file, or mixed user input |
 | `response.cancel` | C→G | Interrupt the current response |
 | `response.created` | G→C | Response generation started |
@@ -275,6 +277,37 @@ Use OpenAI Realtime terminology where the semantics match:
 Gateway extensions include `turn.started`, `transcript.discard`, `playback.clear`, and playback receipts. `input_file` is a Gateway content-part extension, not an OpenAI Realtime standard part.
 
 User input is authoritative user intent and opens or supersedes a user turn. Client semantic events never impersonate user input.
+
+`input.image` and `input.image_buffer` are distinct negotiated capabilities.
+The former covers turn-bound image parts in `conversation.item.create`; the
+latter covers ephemeral visual frames aligned with the live audio session. A
+Gateway negotiates `input.image_buffer` only when the selected Realtime
+Provider transport implements it.
+
+```jsonc
+{
+  "type": "input_image_buffer.append",
+  "event_id": "evt_client_frame_18",
+  "occurred_at": 1787803060177,
+  "media_type": "image/jpeg",
+  "image": "<base64-jpeg>"
+}
+```
+
+Version 1 accepts JPEG only, limits the Base64 body to 256 KiB, and admits at
+most one frame per second. Frames update live visual context; they do not
+create a user turn, trigger a response, enter conversation history, or become
+backend attachments. A client sends `input_image_buffer.clear` when the user
+stops live vision or closes the camera so a provider cannot consume the last
+frame later. A transient disconnect or microphone state change only pauses
+client frame transmission; the client resumes it when transport is ready while
+preserving the user's live-vision intent. Session disconnect, sleep, input
+suspension, microphone mute, and provider replacement still clear Gateway-side
+pending visual state so a stale frame cannot survive the transport boundary.
+
+The Gateway event shape is provider-neutral. The Qwen Omni adapter maps it to
+the provider image buffer after audio has started; the MiniCPM-o adapter puts
+the latest frame in the next audio `input.append` as `video_frames`.
 
 ### 5.2 Client semantic events
 
@@ -523,6 +556,11 @@ the failed turn, restores the connection, and then delivers
 `realtime.content_rejected`. The model receives only a sanitized instruction to
 ask the user to change topics; provider errors, error codes, and rejected source
 content never enter the replacement Session.
+
+A due reminder is likewise registered as the Gateway-owned system event
+`reminder.due`. Its bounded payload contains only the reminder content, scheduled
+time, recurrence, and timezone. Task and series identifiers remain in
+`AgentDelivery.correlation`; they are not copied into model-visible text.
 
 ## 7. Presence and sleep
 

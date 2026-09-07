@@ -121,8 +121,17 @@ AGENT_PROTOCOL=openclaw
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 
-> 默认使用 DashScope 实时语音前台；也可切换为本地 [speech-to-speech 前台](docs/voice-frontends/speech-to-speech.zh.md)，无需云端 API Key。
+开始前请先在[百炼 API Key 页面](https://bailian.console.aliyun.com/?tab=model#/api-key)
+创建 Key；符合条件的新用户可在[新人免费额度说明](https://help.aliyun.com/zh/model-studio/new-free-quota)
+中查看额度规则，并在[模型用量页面](https://help.aliyun.com/zh/model-studio/model-usage-statistics)
+查看剩余额度。额度和计费规则以百炼官方页面为准。
 
+> 默认使用 DashScope 实时语音前台。本地方案可选择
+> [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) 或
+> [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md)，均无需云端 API Key。
+
+使用支持视觉的 Realtime 前台时，WebUI 可由用户显式开启相机，将有界画面帧与实时
+音频一同发送。详见[语音前台配置](docs/configuration/frontend.zh.md)。
 
 2. 启动 Gateway，另开终端启动 TUI（也可用 `qwenaudio webui` 启动浏览器界面）：
 
@@ -131,9 +140,9 @@ qwenaudio        # 终端 1：Gateway
 qwenaudio tui    # 终端 2：TUI
 ```
 
-完整配置项、speech-to-speech 前台接入和 TUI 平台注意事项见
+完整配置项、本地语音前台接入和 TUI 平台注意事项见
 [快速开始](docs/getting-started/quickstart.zh.md)、
-[语音前台](docs/voice-frontends/speech-to-speech.zh.md)与
+[语音前台](docs/configuration/frontend.zh.md)与
 [TUI 注意](docs/getting-started/tui.zh.md)。
 
 ## 桌面版

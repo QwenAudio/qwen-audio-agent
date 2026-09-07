@@ -38,13 +38,13 @@ test('renders active realtime profile and truthful visual transport support', ()
     realtimeModelProfile: {
       id: 'qwen3.5-omni-plus-realtime',
       label: 'Qwen3.5 Omni Plus Realtime',
-      transportCapabilities: { imageInput: false, nativeVideoInput: false },
+      transportCapabilities: { imageInput: false, imageBufferInput: false },
     },
   }), /Qwen3\.5 Omni Plus Realtime/)
   assert.match(realtimeModelStatusText({
     realtimeModelProfile: {
       label: 'Qwen3.5 Omni Plus Realtime',
-      transportCapabilities: { imageInput: false, nativeVideoInput: false },
+      transportCapabilities: { imageInput: false, imageBufferInput: false },
     },
   }), /视觉输入：未支持/)
   assert.match(realtimeModelStatusText({ realtimeLabel: 'Legacy Audio' }), /Legacy Audio/)

@@ -1,4 +1,5 @@
 const DESKTOP_TASK_PHASES = new Set([
+  'scheduled',
   'queued',
   'running',
   'delegated',
@@ -11,14 +12,26 @@ const DESKTOP_TASK_PHASES = new Set([
   'disconnected',
 ])
 
+const SCHEDULED_TASK_KINDS = new Set(['reminder', 'scheduled_task'])
+
+function desktopTaskSortKey(task) {
+  return Number(
+    task.phase === 'scheduled' ? task.schedule?.at : task.createdAt,
+  ) || 0
+}
+
 export function desktopTaskCards(tasks = []) {
   return tasks
     .filter(task => (
-      (task.kind === undefined || task.kind === 'work')
-      && DESKTOP_TASK_PHASES.has(task.phase)
+      DESKTOP_TASK_PHASES.has(task.phase)
+      && (
+        task.kind === undefined
+        || task.kind === 'work'
+        || SCHEDULED_TASK_KINDS.has(task.kind)
+      )
     ))
     .sort((left, right) => (
-      Number(left.createdAt || 0) - Number(right.createdAt || 0)
+      desktopTaskSortKey(left) - desktopTaskSortKey(right)
     ))
 }
 

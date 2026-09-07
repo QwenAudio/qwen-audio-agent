@@ -14,6 +14,7 @@ export function gatewayReferenceClientCapabilities(clientType = 'web') {
     GatewayClientCapability.INPUT_TEXT,
     ...(input.audio ? [GatewayClientCapability.INPUT_AUDIO] : []),
     ...(input.image ? [GatewayClientCapability.INPUT_IMAGE] : []),
+    ...(input.visualStream ? [GatewayClientCapability.INPUT_IMAGE_BUFFER] : []),
     ...(input.resource ? [GatewayClientCapability.INPUT_FILE] : []),
     GatewayClientCapability.PLAYBACK_RECEIPTS,
     GatewayClientCapability.TASK_COMMANDS,

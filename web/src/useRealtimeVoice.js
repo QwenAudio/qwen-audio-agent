@@ -11,6 +11,7 @@ import {
 import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
 import {
   createGatewayProtocolEventId,
+  GatewayClientCapability,
   GatewayClientProtocolEvent,
 } from '../../shared/gateway-client-protocol.mjs'
 import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
@@ -85,12 +86,6 @@ export function gatewayClientCapabilities({ clientType = 'web' } = {}) {
 // Keeps a persisted front end selection only while the server still offers it.
 // A stale key would be refused on every connect, so it degrades to the empty
 // value that means "use the server default".
-export function retainedRealtimeProvider(selected, providers) {
-  if (!selected) return ''
-  const offered = (providers || []).some(provider => provider.key === selected)
-  return offered ? selected : ''
-}
-
 const INPUT_CAPABILITIES = Object.freeze([
   ['textInput', 'text'],
   ['audioInput', 'audio'],
@@ -102,8 +97,7 @@ const TRANSPORT_INPUT_CAPABILITIES = Object.freeze([
   ['textInput', 'text'],
   ['audioInput', 'audio'],
   ['imageInput', 'image'],
-  ['observationInput', 'observation'],
-  ['nativeVideoInput', 'nativeVideo'],
+  ['imageBufferInput', 'video'],
 ])
 
 function enabledModes(capabilities, definitions) {
@@ -167,33 +161,6 @@ export function realtimeModelStatus(health = {}) {
   }
 }
 
-export function realtimeProviderSelection(selected, health = {}) {
-  if (!selected) return { provider: '', recovered: false, notice: '' }
-  const advertised = Array.isArray(health.realtimeProviders)
-    ? health.realtimeProviders.find(provider => provider?.key === selected)
-    : null
-  const activeModelId = health.realtimeModelProfile?.id
-    || health.realtimeModel
-    || ''
-  const explicitlySupportsModel = (
-    !Array.isArray(advertised?.realtimeModelIds)
-    || !activeModelId
-    || advertised.realtimeModelIds.includes(activeModelId)
-  )
-  if (advertised && explicitlySupportsModel) {
-    return { provider: selected, recovered: false, notice: '' }
-  }
-  return {
-    provider: '',
-    recovered: true,
-    notice: '已恢复为服务器默认前台',
-  }
-}
-
-export function realtimeProviderForConnection(selected, healthValidated) {
-  return healthValidated === true ? selected : ''
-}
-
 export function microphoneControlEvent({
   enabled,
   inputOnlyMute = false,
@@ -236,7 +203,6 @@ export default function useRealtimeVoice({
   clientLabel = 'WebUI',
   clientInstanceId: configuredClientInstanceId = '',
   clientStates = [],
-  realtimeProvider = '',
   onEvent,
   onInputError,
   onClientAction,
@@ -248,6 +214,7 @@ export default function useRealtimeVoice({
     createGatewayClientState,
   )
   const [inputReady, setInputReady] = useState(false)
+  const [imageBufferAvailable, setImageBufferAvailable] = useState(false)
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState(false)
   const [connectionAttempt, setConnectionAttempt] = useState(0)
@@ -737,8 +704,6 @@ export default function useRealtimeVoice({
             ? clientStatesSignature.split(',')
             : [],
           clientInstanceId: clientInstanceId.current,
-          // Empty means "keep the server default front end".
-          ...(realtimeProvider ? { provider: realtimeProvider } : {}),
         }
       },
       onEvent: handleEvent,
@@ -756,7 +721,13 @@ export default function useRealtimeVoice({
           eventRef.current?.(connectedEvent)
         } else if (status.state === 'ready') {
           takeoverRef.current = false
+          setImageBufferAvailable(
+            status.event?.capabilities?.includes(
+              GatewayClientCapability.INPUT_IMAGE_BUFFER,
+            ) === true,
+          )
         } else if (status.state === 'unavailable') {
+          setImageBufferAvailable(false)
           dispatchClientState({
             type: GatewayServerEvent.VOICE_CONNECTION,
             state: 'unavailable',
@@ -764,6 +735,7 @@ export default function useRealtimeVoice({
           setError(t('实时语音连接中断，正在重连'))
           setVisualError(true)
         } else if (status.state === 'disconnected') {
+          setImageBufferAvailable(false)
           releaseManualInputGuard()
           stopPlayback()
           const disconnectedEvent = {
@@ -774,6 +746,7 @@ export default function useRealtimeVoice({
           setVisualError(true)
           eventRef.current?.(disconnectedEvent)
         } else if (['occupied', 'replaced', 'revoked'].includes(status.state)) {
+          setImageBufferAvailable(false)
           releaseManualInputGuard()
           stopPlayback()
           const disconnectedEvent = {
@@ -811,6 +784,7 @@ export default function useRealtimeVoice({
       stopPlayback('connection_closed')
       client.stop()
       socketRef.current = null
+      setImageBufferAvailable(false)
       mutedResponses.clear()
       releaseManualInputGuard()
     }
@@ -824,7 +798,6 @@ export default function useRealtimeVoice({
     inputOnlyMute,
     markAudioDone,
     play,
-    realtimeProvider,
     releaseManualInputGuard,
     flushPendingManualInputs,
     sessionId,
@@ -1075,10 +1048,36 @@ export default function useRealtimeVoice({
     return false
   }, [holdManualInputGuard, releaseManualInputGuard, sendSocketEvent])
 
+  const sendImageFrame = useCallback((image, occurredAt = Date.now()) => {
+    const client = socketRef.current
+    if (
+      !client?.ready
+      || !client.supports?.(GatewayClientCapability.INPUT_IMAGE_BUFFER)
+    ) return false
+    return sendSocketEvent({
+      type: GatewayClientProtocolEvent.INPUT_IMAGE_APPEND,
+      occurred_at: occurredAt,
+      media_type: 'image/jpeg',
+      image,
+    })
+  }, [sendSocketEvent])
+
+  const clearImageBuffer = useCallback(() => {
+    const client = socketRef.current
+    if (
+      !client?.ready
+      || !client.supports?.(GatewayClientCapability.INPUT_IMAGE_BUFFER)
+    ) return false
+    return sendSocketEvent({
+      type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    })
+  }, [sendSocketEvent])
+
   return {
     state,
     visualState: visualVoiceState(state),
     inputReady,
+    imageBufferAvailable,
     error,
     visualError,
     connectionState,
@@ -1089,6 +1088,8 @@ export default function useRealtimeVoice({
     wake,
     publishClientEvent,
     sendInput,
+    sendImageFrame,
+    clearImageBuffer,
     listTasks,
     getTask,
     cancelTask,

@@ -89,6 +89,15 @@ test('validates correlated application heartbeat messages', () => {
   }))
 })
 
+test('publishes image input capability', () => {
+  assert.equal(
+    GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.includes(
+      GatewayClientCapability.INPUT_IMAGE_BUFFER,
+    ),
+    true,
+  )
+})
+
 test('validates the 6.0 envelope and rejects duplicate capabilities', () => {
   assert.equal(GatewayClientEnvelopeSchema.safeParse({
     type: 'response.cancel',
@@ -259,6 +268,26 @@ test('normalizes 6.0 event names into the existing business event vocabulary', (
     audio: 'YQ==',
   })
   assert.deepEqual(normalizeGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_APPEND,
+    event_id: 'evt_client_image',
+    occurred_at: 123,
+    media_type: 'image/jpeg',
+    image: '/9j/2Q==',
+  }), {
+    type: 'image.append',
+    event_id: 'evt_client_image',
+    occurred_at: 123,
+    media_type: 'image/jpeg',
+    image: '/9j/2Q==',
+  })
+  assert.deepEqual(normalizeGatewayClientProtocolMessage({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    event_id: 'evt_client_image_clear',
+  }), {
+    type: 'image.clear',
+    event_id: 'evt_client_image_clear',
+  })
+  assert.deepEqual(normalizeGatewayClientProtocolMessage({
     type: GatewayClientProtocolEvent.CONVERSATION_ITEM_CREATE,
     event_id: 'evt_client_text',
     parts: [{ type: 'text', text: '你好' }],
@@ -386,6 +415,11 @@ test('preserves the legacy silent-ignore behavior for malformed messages', () =>
   const session = new GatewayClientProtocolSession({ sessionId: 'legacy' })
   assert.equal(session.receive({ type: 'not-a-real-event' }).event, null)
   assert.equal(session.mode, 'pending')
+  assert.equal(session.receive({
+    type: 'image.append',
+    image: '/9j/2Q==',
+  }).event, null)
+  assert.equal(session.mode, 'pending')
 })
 
 test('requires runtime capabilities to be negotiated before accepting commands', () => {
@@ -405,6 +439,62 @@ test('requires runtime capabilities to be negotiated before accepting commands',
   assert.equal(rejected.runtimeMessage, undefined)
   assert.equal(rejected.reply.request_event_id, 'evt-client-list')
   assert.equal(rejected.reply.error.code, 'capability_not_negotiated')
+})
+
+test('requires the image buffer capability and supports provider-aware negotiation', () => {
+  const session = new GatewayClientProtocolSession({
+    sessionId: 'visual',
+    createEventId: ids(),
+    supportedCapabilities: hello => (
+      hello.connection?.provider === 'omni'
+        ? [GatewayClientCapability.INPUT_IMAGE_BUFFER]
+        : []
+    ),
+  })
+  const accepted = session.receive(createGatewaySessionHello({
+    eventId: 'evt_visual_hello',
+    clientInstanceId: 'web_visual',
+    capabilities: [GatewayClientCapability.INPUT_IMAGE_BUFFER],
+    connection: { provider: 'omni' },
+  }))
+  assert.deepEqual(accepted.reply.capabilities, [
+    GatewayClientCapability.INPUT_IMAGE_BUFFER,
+  ])
+  assert.equal(accepted.event.inputCapabilities.visualStream, true)
+  assert.equal(session.receive({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_APPEND,
+    event_id: 'evt_visual_frame',
+    image: '/9j/2Q==',
+    media_type: 'image/jpeg',
+  }).event.type, 'image.append')
+  assert.equal(session.receive({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    event_id: 'evt_visual_clear',
+  }).event.type, 'image.clear')
+
+  const unavailable = new GatewayClientProtocolSession({
+    sessionId: 'audio-only',
+    createEventId: ids(),
+    supportedCapabilities: () => [],
+  })
+  unavailable.receive(createGatewaySessionHello({
+    eventId: 'evt_audio_hello',
+    clientInstanceId: 'web_audio',
+    capabilities: [GatewayClientCapability.INPUT_IMAGE_BUFFER],
+  }))
+  const rejected = unavailable.receive({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_APPEND,
+    event_id: 'evt_visual_rejected',
+    image: '/9j/2Q==',
+    media_type: 'image/jpeg',
+  })
+  assert.equal(rejected.reply.error.code, 'capability_not_negotiated')
+  assert.equal(rejected.reply.request_event_id, 'evt_visual_rejected')
+  const rejectedClear = unavailable.receive({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    event_id: 'evt_visual_clear_rejected',
+  })
+  assert.equal(rejectedClear.reply.error.code, 'capability_not_negotiated')
 })
 
 test('bounds server events held while the client has not selected a protocol', () => {

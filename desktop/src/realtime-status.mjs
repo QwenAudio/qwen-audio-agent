@@ -11,9 +11,9 @@ export function gatewayStatusLabel(value) {
 }
 
 export function realtimeStatusLabel(provider) {
-  return provider === 'speech-to-speech'
-    ? 'Speech-to-Speech'
-    : 'DashScope'
+  if (provider === 'speech-to-speech') return 'Speech-to-Speech'
+  if (provider === 'minicpm-o') return '面壁智能'
+  return 'DashScope'
 }
 
 export function realtimeModelStatusLabel(model) {
@@ -26,11 +26,13 @@ export function realtimeModelStatusLabel(model) {
 }
 
 export function realtimeRuntimeLabel(provider, model) {
+  if (provider === 'minicpm-o') return 'MiniCPM-o 4.5'
+  if (provider !== 'dashscope') return realtimeStatusLabel(provider)
   return realtimeModelStatusLabel(model) || realtimeStatusLabel(provider)
 }
 
 export function realtimeModelRuntimeStatus(health, expectedModel = '') {
-  if (health?.realtimeProvider === 'speech-to-speech') {
+  if (['speech-to-speech', 'minicpm-o'].includes(health?.realtimeProvider)) {
     return { label: '', mismatch: false }
   }
   const actualModel = String(
@@ -54,10 +56,7 @@ function enabledInputs(capabilities, videoKey = 'videoInput') {
 
 export function realtimeModelPresentation(profile) {
   const modelInputs = enabledInputs(profile?.modelCapabilities)
-  const desktopInputs = enabledInputs(
-    profile?.transportCapabilities,
-    'nativeVideoInput',
-  )
+  const desktopInputs = enabledInputs(profile?.transportCapabilities)
   return {
     optionHint: `模型：${modelInputs}`,
     selectedHint: `模型能力：${modelInputs} · Desktop 传输：${desktopInputs}（图片 / 视频未启用）`,

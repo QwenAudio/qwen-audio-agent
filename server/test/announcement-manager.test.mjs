@@ -125,6 +125,86 @@ test('batches nearby completed work into one realtime response', async () => {
   manager.close()
 })
 
+test('delivers due reminders as registered Gateway system events', async () => {
+  const calls = []
+  const manager = new AnnouncementManager({
+    getFrontend: () => ({
+      ready: true,
+      injectResult: async (...args) => {
+        calls.push(args)
+        return { completed: true, contextInjected: true }
+      },
+    }),
+    isDeliveryBlocked: () => false,
+    batchWindowMs: 0,
+    createTurnId: () => 'gateway-reminder-turn',
+  })
+
+  manager.completed({
+    id: 'task-reminder-1',
+    kind: 'reminder',
+    seriesId: 'series-reminder-1',
+    objective: '吃药',
+    result: '吃药',
+    schedule: {
+      at: 1_788_825_600_000,
+      recurrence: 'daily',
+      timeZone: 'Asia/Shanghai',
+    },
+  })
+  await waitFor(() => calls.length === 1)
+
+  assert.match(calls[0][0], /^<gateway_system_event type="reminder\.due">/u)
+  assert.match(calls[0][0], /<content>吃药<\/content>/u)
+  assert.doesNotMatch(calls[0][0], /task-reminder-1|series-reminder-1|异步执行工作/u)
+  assert.equal(calls[0][1], 'gateway-system-event')
+  assert.deepEqual(calls[0][2], {
+    turnId: 'gateway-reminder-turn',
+    taskId: 'task-reminder-1',
+    taskIds: ['task-reminder-1'],
+    seriesId: 'series-reminder-1',
+    eventName: 'reminder.due',
+  })
+  assert.match(calls[0][3].instructions, /已经到期的提醒/u)
+  manager.close()
+})
+
+test('does not mix due reminders and backend results in one delivery', async () => {
+  const calls = []
+  const manager = new AnnouncementManager({
+    getFrontend: () => ({
+      ready: true,
+      injectResult: async (...args) => {
+        calls.push(args)
+        return { completed: true, contextInjected: true }
+      },
+    }),
+    isDeliveryBlocked: () => false,
+    batchWindowMs: 0,
+  })
+
+  manager.completed({
+    id: 'reminder-first',
+    kind: 'reminder',
+    objective: '站起来活动',
+    result: '站起来活动',
+    schedule: { at: Date.now(), recurrence: 'once' },
+  })
+  manager.completed({
+    id: 'task-second',
+    kind: 'work',
+    objective: '整理报告',
+    result: '报告已整理',
+  })
+  await waitFor(() => calls.length === 1)
+  assert.equal(calls[0][1], 'gateway-system-event')
+  manager.confirmMany(['reminder-first'])
+  await waitFor(() => calls.length === 2)
+  assert.equal(calls[1][1], 'announcement')
+  assert.match(calls[1][0], /报告已整理/u)
+  manager.close()
+})
+
 test('uses a new realtime turn while correlating results only by task id', async () => {
   const calls = []
   const manager = new AnnouncementManager({

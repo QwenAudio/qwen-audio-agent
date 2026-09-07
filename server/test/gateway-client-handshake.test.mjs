@@ -250,6 +250,89 @@ test('5.x connect and 6.0 session.hello share one Gateway business path', async 
   modern.socket.close()
 })
 
+test('routes negotiated live visual frames through the provider-neutral Gateway path', async t => {
+  const images = []
+  let clearedImages = 0
+  const visualProvider = {
+    key: 'visual-test',
+    label: 'Visual Test',
+    inputSampleRate: 16_000,
+    capabilities: {},
+    classifyError: () => 'other',
+    modelProfile: () => ({
+      transportCapabilities: { imageBufferInput: true },
+    }),
+  }
+  const realtimeProviderRegistry = {
+    resolve: () => visualProvider,
+  }
+  const realtimeFrontendFactory = () => {
+    const frontend = {
+      provider: visualProvider,
+      capabilities: visualProvider.capabilities,
+      ready: false,
+      connect: async () => { frontend.ready = true },
+      close: () => { frontend.ready = false },
+      appendAudio: () => {},
+      appendImage: image => images.push(image),
+      clearPendingImage: () => { clearedImages += 1 },
+      cancel: () => {},
+      updateAgentContext: () => {},
+    }
+    return frontend
+  }
+  const { server, gateway } = gatewayHarness({
+    defaultRealtimeProvider: visualProvider.key,
+    realtimeProviderRegistry,
+    realtimeFrontendFactory,
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const client = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-visual-hello',
+    clientType: 'web',
+    clientInstanceId: 'web-visual-test',
+    capabilities: [
+      GatewayClientCapability.INPUT_AUDIO,
+      GatewayClientCapability.INPUT_IMAGE_BUFFER,
+    ],
+    connection: {
+      provider: visualProvider.key,
+      voice_enabled: true,
+      input_enabled: true,
+      output_enabled: true,
+      text_only: false,
+    },
+  }))
+  const ready = await waitFor(client.received, event => event.type === 'session.ready')
+  assert.deepEqual(ready.capabilities, [
+    GatewayClientCapability.INPUT_AUDIO,
+    GatewayClientCapability.INPUT_IMAGE_BUFFER,
+  ])
+  await waitFor(client.received, event => event.type === 'voice.ready')
+
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64')
+  client.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_APPEND,
+    event_id: 'evt-visual-frame',
+    media_type: 'image/jpeg',
+    occurred_at: Date.now(),
+    image: jpeg,
+  }))
+  await waitUntil(() => images.length === 1)
+  assert.deepEqual(images, [jpeg])
+  client.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    event_id: 'evt-visual-clear',
+  }))
+  await waitUntil(() => clearedImages === 1)
+  client.socket.close()
+})
+
 test('routes negotiated GCP2 commands and Client Events with correlated results', async t => {
   const commands = []
   const routed = []

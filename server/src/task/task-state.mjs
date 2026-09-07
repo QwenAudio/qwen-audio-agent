@@ -148,6 +148,7 @@ export function publicTask(task, { now = Date.now() } = {}) {
     status: task.status,
     scope: normalizeTaskScope(task.scope),
     kind: task.kind || 'work',
+    ...(task.seriesId ? { seriesId: task.seriesId } : {}),
     parentTaskId: task.parentTaskId || null,
     objective: task.objective,
     ownerId: task.ownerId,
@@ -183,6 +184,14 @@ export function publicTask(task, { now = Date.now() } = {}) {
 export function persistedTask(task) {
   const saved = publicTask(task)
   delete saved.workState
+  if (
+    task.recurrenceStartAt !== null
+    && task.recurrenceStartAt !== undefined
+    && task.recurrenceStartAt !== ''
+    && Number.isFinite(Number(task.recurrenceStartAt))
+  ) {
+    saved.recurrenceStartAt = Number(task.recurrenceStartAt)
+  }
   if (task.recoveryPersistedStatus) {
     saved.status = task.recoveryPersistedStatus
   }

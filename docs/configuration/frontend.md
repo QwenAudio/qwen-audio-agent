@@ -20,9 +20,15 @@ DASHSCOPE_API_KEY=your-key
 | `QWEN_AUDIO_REALTIME_BASE_URL` / `QWEN_AUDIO_REALTIME_URL` | Empty | Override the DashScope Realtime endpoint (private deployment or proxy) |
 | `DASHSCOPE_WORKSPACE_ID` | Empty | Switch to a dedicated Model Studio workspace endpoint |
 
-A fully local frontend is available via `QWEN_AUDIO_REALTIME_PROVIDER=speech-to-speech`;
-see [Speech-to-Speech](../voice-frontends/speech-to-speech.md). A custom provider
-implements the provider contract; see [Custom Provider](../voice-frontends/custom-provider.md).
+Other frontends include [Speech-to-Speech](../voice-frontends/speech-to-speech.md) and
+[ModelBest](../voice-frontends/minicpm-o.md), whose MiniCPM-o 4.5 endpoint may be local or hosted.
+A custom provider implements
+the provider contract; see [Custom Provider](../voice-frontends/custom-provider.md).
+
+MiniCPM-o's public audio Realtime transport currently supports continuous
+audio input and text/audio output, but not conversation items, structured
+Function Calling, or input transcription. It is therefore a realtime voice-chat
+frontend rather than a frontend for backend-Agent orchestration.
 
 Frontend tools are configured separately: Web Search (`QWEN_AUDIO_WEB_SEARCH_PROVIDER`,
 see [Configuration](../configuration.md)), and general chatbot tools through the
@@ -43,18 +49,18 @@ qwenaudio gateway restart
 
 The exact supported IDs are:
 
-| Model | Model input | Model output | Current client transport |
+| Model | Model input | Model output | Realtime transport |
 | --- | --- | --- | --- |
-| `qwen3.5-omni-flash-realtime` | text, audio, image | text, audio | text, audio |
-| `qwen3.5-omni-plus-realtime` | text, audio, image | text, audio | text, audio |
+| `qwen3.5-omni-flash-realtime` | text, audio, image/video frames | text, audio | text, audio, live JPEG frames |
+| `qwen3.5-omni-plus-realtime` | text, audio, image/video frames | text, audio | text, audio, live JPEG frames |
 | `qwen-audio-3.0-realtime-plus` (default) | text, audio | text, audio | text, audio |
 | `qwen-audio-3.0-realtime-flash` | text, audio | text, audio | text, audio |
 
-All four profiles support Function Calling. Model capability is not the same as an implemented
-client transport: JPEG observation frames and native video are both disabled in this release.
-WebUI and TUI read the authoritative profile from Gateway health and only display it. Separate
+All four profiles support Function Calling. Model capability remains distinct from transport:
+Omni accepts the WebUI's capability-negotiated live JPEG stream, while ordinary uploaded images
+continue through the attachment path. Desktop and TUI do not capture live frames. Clients read
+the authoritative profile from Gateway health. Separate
 clients cannot select conflicting models on one Gateway. A Desktop attached to a borrowed
 Gateway, or a later CLI runtime using a conflicting configured model, refuses the mismatch
 instead of silently changing the running service. To roll back, set the legacy ID above and
 restart the Gateway.
-

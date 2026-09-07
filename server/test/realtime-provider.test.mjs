@@ -501,7 +501,7 @@ test('prefers a per-session output voice over the process-wide default', t => {
   assert.equal(session.voice, 'longanlufeng')
 })
 
-test('advertises Omni model vision without admitting unsupported visual transport', t => {
+test('advertises Omni realtime visual frame transport without claiming turn images', t => {
   const originalModel = config.audioModel
   t.after(() => {
     config.audioModel = originalModel
@@ -512,10 +512,9 @@ test('advertises Omni model vision without admitting unsupported visual transpor
   const frontend = createQwenFrontend()
 
   assert.equal(profile.modelCapabilities.imageInput, true)
-  assert.equal(profile.modelCapabilities.videoInput, false)
+  assert.equal(profile.modelCapabilities.videoInput, true)
   assert.equal(profile.transportCapabilities.imageInput, false)
-  assert.equal(profile.transportCapabilities.observationInput, false)
-  assert.equal(profile.transportCapabilities.nativeVideoInput, false)
+  assert.equal(profile.transportCapabilities.imageBufferInput, true)
   assert.equal(frontend.modelProfile, profile)
   assert.equal(frontend.modelCapabilities, profile.modelCapabilities)
   assert.equal(frontend.transportCapabilities, profile.transportCapabilities)
@@ -533,7 +532,7 @@ test('fails closed for an unknown DashScope model without inferring Omni behavio
 
   assert.equal(profile.family, 'unknown')
   assert.deepEqual(Object.values(profile.modelCapabilities), Array(7).fill(false))
-  assert.deepEqual(Object.values(profile.transportCapabilities), Array(5).fill(false))
+  assert.deepEqual(Object.values(profile.transportCapabilities), Array(4).fill(false))
   assert.deepEqual(session.modalities, [])
   assert.deepEqual(
     REALTIME_PROVIDERS.qwen.buildSpeakResponse('完成').modalities,
@@ -551,7 +550,7 @@ test('rejects an unknown DashScope model before opening its WebSocket', async t 
 
   await assert.rejects(
     frontend.connect(),
-    /不支持的 Realtime 模型.*qwen3\.5-omni-flash-realtime-future.*Qwen-Audio-Realtime/,
+    /不支持的 Realtime 模型.*qwen3\.5-omni-flash-realtime-future.*DashScope Realtime/,
   )
   assert.equal(frontend.ws, null)
 })
@@ -575,7 +574,7 @@ test('rejects malformed optional realtime model profiles', () => {
       ...valid,
       transportCapabilities: {
         ...valid.transportCapabilities,
-        observationInput: undefined,
+        imageBufferInput: undefined,
       },
     },
     { ...valid, sessionDefaults: null },
@@ -620,13 +619,13 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
   const active = describeActiveRealtime('dashscope')
 
   assert.equal(active.modelProfile.id, DASHSCOPE_OMNI_FLASH_REALTIME_MODEL)
-  assert.equal(active.label, 'Qwen-Audio-Realtime')
+  assert.equal(active.label, 'DashScope Realtime')
   assert.equal(active.modelProfile.label, 'Qwen3.5 Omni Flash Realtime')
   assert.equal(active.modelCapabilities.imageInput, true)
   assert.equal(active.transportCapabilities.imageInput, false)
   assert.equal(
     active.providers.find(provider => provider.key === 'dashscope')?.label,
-    'Qwen-Audio-Realtime',
+    'DashScope Realtime',
   )
   assert.deepEqual(
     active.providers.find(provider => provider.key === 'dashscope')
@@ -640,6 +639,8 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
   )
   assert.equal(REALTIME_PROVIDERS['speech-to-speech'].modelProfile, undefined)
   const s2s = describeActiveRealtime('speech-to-speech')
+  assert.equal(s2s.label, 'Speech-to-Speech')
+  assert.equal(s2s.model, 'default')
   assert.equal(s2s.modelProfile, null)
   assert.deepEqual(s2s.modelCatalog, [])
 })
@@ -743,6 +744,30 @@ test('adds an event id to realtime client events', () => {
   assert.match(sent.event_id, /^event_[a-f0-9]+$/)
   assert.equal(sent.type, 'input_audio_buffer.append')
   assert.equal(sent.audio, 'pcm')
+})
+
+test('sends an Omni image only after audio has established the realtime timeline', t => {
+  const originalModel = config.audioModel
+  t.after(() => {
+    config.audioModel = originalModel
+  })
+  config.audioModel = DASHSCOPE_OMNI_PLUS_REALTIME_MODEL
+  const frontend = createQwenFrontend()
+  const sent = []
+  frontend.ws = {
+    readyState: 1,
+    send: value => sent.push(JSON.parse(value)),
+  }
+
+  assert.equal(frontend.appendImage('jpeg-frame'), true)
+  assert.deepEqual(sent, [])
+  frontend.appendAudio('pcm')
+
+  assert.deepEqual(sent.map(event => event.type), [
+    'input_audio_buffer.append',
+    'input_image_buffer.append',
+  ])
+  assert.equal(sent[1].image, 'jpeg-frame')
 })
 
 test('isolates a provider with a different wire message shape', () => {
@@ -1937,6 +1962,9 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     perResponseInstructions: true,
     sessionOutputVoice: true,
     conversationItemIdEcho: true,
+    conversationItems: true,
+    clientResponses: true,
+    mutableSession: true,
   })
 })
 
@@ -2095,7 +2123,7 @@ test('retries immediately after a known automatic response becomes idle', async 
   frontend.settlePending(pending, { cancelled: true })
 })
 
-test('negotiates client audio rates without overriding speech-to-speech models', () => {
+test('negotiates client audio rates while keeping the server-selected speech-to-speech model', () => {
   const provider = REALTIME_PROVIDERS['speech-to-speech']
   const session = provider.buildSession({
     agentContext: {},
@@ -2107,7 +2135,7 @@ test('negotiates client audio rates without overriding speech-to-speech models',
   assert.equal(provider.outputSampleRate, 24000)
   assert.equal(provider.responseStartTimeoutMs, 60_000)
   assert.equal(createS2sFrontend().responseStartTimeoutMs, 60_000)
-  assert.equal(provider.model(), null)
+  assert.equal(provider.model(), 'default')
   assert.equal(provider.voice(), null)
   assert.equal(session.audio.input.format, undefined)
   assert.deepEqual(session.audio.output.format, {

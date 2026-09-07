@@ -32,6 +32,7 @@ test('translates desktop settings text while preserving product names', () => {
   const english = desktopTranslator('en')
   assert.equal(english('设置'), 'Settings')
   assert.equal(english('后台 Agent'), 'Backend Agent')
+  assert.equal(english('面壁智能'), 'ModelBest')
   assert.equal(english('应用程序'), 'Application')
   assert.equal(english('应用'), 'Apply')
   assert.equal(english('Qwen Audio'), 'Qwen Audio')

@@ -7,7 +7,7 @@ import {
   captureCameraFrame,
   stopCameraStream,
 } from './camera-input.js'
-import { t } from './i18n.js'
+import { t } from '../i18n.js'
 
 const WIDE_VISUAL_DOCK_QUERY = '(min-width: 1400px)'
 

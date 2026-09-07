@@ -4,7 +4,7 @@ import {
   createMicrophoneCaptureLifecycle,
   microphoneErrorKind,
   recoverableMicrophoneError,
-} from '../src/microphone-capture.js'
+} from '../src/realtime/microphone-capture.js'
 
 class FakeEventTarget {
   constructor() {

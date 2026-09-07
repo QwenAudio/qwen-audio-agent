@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { confirmTrackedPlaybackStart } from '../src/playback-lifecycle.js'
+import { confirmTrackedPlaybackStart } from '../src/realtime/playback-lifecycle.js'
 
 function playback() {
   return {

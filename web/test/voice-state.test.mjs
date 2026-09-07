@@ -9,7 +9,7 @@ import {
   shouldAdvertiseVoice,
   shouldClaimReleasedVoice,
   visualVoiceState,
-} from '../src/useRealtimeVoice.js'
+} from '../src/realtime/useRealtimeVoice.js'
 
 test('desktop microphone controls mute only input', () => {
   assert.deepEqual(microphoneControlEvent({

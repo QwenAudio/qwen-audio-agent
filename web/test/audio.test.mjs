@@ -5,7 +5,7 @@ import {
   createPcmPlaybackQueue,
   mergePcmPlaybackItems,
   resample,
-} from '../src/audio.js'
+} from '../src/realtime/audio.js'
 
 test('resamples audio to the requested approximate length', () => {
   const input = new Float32Array(480)

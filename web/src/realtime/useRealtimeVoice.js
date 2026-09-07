@@ -2,20 +2,20 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
-} from '../../shared/realtime-events.mjs'
+} from '../../../shared/realtime-events.mjs'
 import {
   acceptsGatewayVoiceState,
   createGatewayClientState,
   reduceGatewayClientState,
-} from '../../shared/gateway-client-state.mjs'
-import { clientInputCapabilities } from '../../shared/client-input-capabilities.mjs'
+} from '../../../shared/gateway-client-state.mjs'
+import { clientInputCapabilities } from '../../../shared/client-input-capabilities.mjs'
 import {
   createGatewayProtocolEventId,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../../shared/gateway-client-protocol.mjs'
-import { GatewayClient } from '../../shared/gateway-client-sdk.mjs'
-import { gatewayReferenceClientCapabilities } from '../../shared/gateway-client-profiles.mjs'
+} from '../../../shared/gateway-client-protocol.mjs'
+import { GatewayClient } from '../../../shared/gateway-client-sdk.mjs'
+import { gatewayReferenceClientCapabilities } from '../../../shared/gateway-client-profiles.mjs'
 import {
   audioSchedulingLeadSeconds,
   createPcmPlaybackQueue,
@@ -28,12 +28,12 @@ import {
   microphoneErrorKind,
 } from './microphone-capture.js'
 import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
-import { t } from './i18n.js'
+import { t } from '../i18n.js'
 import {
   createGatewayWebSocket,
   gatewayRealtimeUrl,
   gatewayTransportIsRemote,
-} from './gateway-transport.js'
+} from '../gateway-transport.js'
 
 const DEFAULT_INPUT_RATE = 16000
 const OUTPUT_RATE = 24000

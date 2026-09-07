@@ -5,7 +5,7 @@ import {
   desktopBackendRuntime,
   desktopRealtimeRuntime,
   resolveDesktopRuntime,
-} from '../src/desktop-runtime.js'
+} from '../src/desktop/desktop-runtime.js'
 
 test('treats front-end-only mode as a satisfied backend dependency', () => {
   assert.equal(desktopBackendRuntime({

@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   desktopOrbClassName,
   resolveOrbVisualState,
-} from '../src/orb-presentation.js'
+} from '../src/desktop/orb-presentation.js'
 
 test('keeps speaking animation active while microphone input is muted', () => {
   assert.equal(desktopOrbClassName({

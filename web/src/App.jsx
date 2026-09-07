@@ -14,11 +14,14 @@ import {
   upsertUserTranscript,
 } from './message-order.js'
 import MessageContent from './MessageContent.jsx'
-import MultimodalComposer from './MultimodalComposer.jsx'
-import DesktopFluidOrb from './DesktopFluidOrb.jsx'
-import DesktopSpriteOrb from './DesktopSpriteOrb.jsx'
+import MultimodalComposer from './composer/MultimodalComposer.jsx'
+import DesktopFluidOrb from './desktop/DesktopFluidOrb.jsx'
+import DesktopSpriteOrb from './desktop/DesktopSpriteOrb.jsx'
 import KnowledgeLibraryPanel from './KnowledgeLibraryPanel.jsx'
-import { desktopOrbClassName, resolveOrbVisualState } from './orb-presentation.js'
+import {
+  desktopOrbClassName,
+  resolveOrbVisualState,
+} from './desktop/orb-presentation.js'
 import {
   isBuiltinOrbSkin,
 } from '../../shared/orb-skin-catalog.mjs'
@@ -37,7 +40,7 @@ import {
 import useRealtimeVoice, {
   realtimeModelStatus,
   shouldClaimReleasedVoice,
-} from './useRealtimeVoice.js'
+} from './realtime/useRealtimeVoice.js'
 import { requestedSessionId } from './session.js'
 import { initialVoiceEnabled } from './voice-defaults.js'
 import {
@@ -49,24 +52,24 @@ import {
   desktopWorkSettled,
   desktopTasksWorking,
   performDesktopClientAction,
-} from './desktop-hide.js'
+} from './desktop/desktop-hide.js'
 import {
   desktopTaskCards,
-} from './desktop-task-cards.js'
+} from './desktop/desktop-task-cards.js'
 import {
   advanceDesktopRuntimePresentation,
   desktopBackendRuntime,
   desktopRealtimeRuntime,
   resolveDesktopRuntime,
-} from './desktop-runtime.js'
+} from './desktop/desktop-runtime.js'
 import {
   spriteAnimationEventForGatewayEvent,
   spriteAnimationForEvent,
-} from './sprite-orb.js'
+} from './desktop/sprite-orb.js'
 import {
   applyDesktopClientSettings,
   initialDesktopClientSettings,
-} from './desktop-client-settings.js'
+} from './desktop/desktop-client-settings.js'
 import {
   gatewayClientInstanceId,
   gatewayClientLabel,

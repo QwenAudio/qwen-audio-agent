@@ -4,7 +4,7 @@ import {
   desktopTaskCards,
   desktopTaskElapsedLabel,
   desktopTaskElapsedSeconds,
-} from '../src/desktop-task-cards.js'
+} from '../src/desktop/desktop-task-cards.js'
 
 test('shows ordinary work and scheduled reminders but excludes controls', () => {
   const cards = desktopTaskCards([

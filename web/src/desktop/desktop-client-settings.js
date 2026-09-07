@@ -1,4 +1,4 @@
-import { resolveOrbSkinId } from '../../shared/orb-skin-catalog.mjs'
+import { resolveOrbSkinId } from '../../../shared/orb-skin-catalog.mjs'
 import {
   desktopAutoHideSeconds,
   desktopWakeWordEnabled,

@@ -10,7 +10,7 @@ import {
   spriteAnimationForOrbState,
   spritePlaybackSelection,
   spriteGeometry,
-} from '../src/sprite-orb.js'
+} from '../src/desktop/sprite-orb.js'
 
 test('maps every orb visual state to a pet animation track', () => {
   const cases = {

@@ -4,8 +4,8 @@ import {
   createInputFilePart,
   inputPartLabel,
   withAttachmentAnchors,
-} from '../../shared/input-parts.mjs'
-import { t } from './i18n.js'
+} from '../../../shared/input-parts.mjs'
+import { t } from '../i18n.js'
 import VisualStreamControl from './VisualStreamControl.jsx'
 
 function filePart(file, index, sourceType = 'file') {

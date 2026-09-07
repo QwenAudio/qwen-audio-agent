@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import * as voice from '../src/useRealtimeVoice.js'
+import * as voice from '../src/realtime/useRealtimeVoice.js'
 
 function realtimeModelStatus(...args) {
   assert.equal(typeof voice.realtimeModelStatus, 'function')

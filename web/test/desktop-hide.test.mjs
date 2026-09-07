@@ -12,7 +12,7 @@ import {
   desktopWakeWordEnabled,
   desktopWorkSettled,
   performDesktopClientAction,
-} from '../src/desktop-hide.js'
+} from '../src/desktop/desktop-hide.js'
 import {
   GatewayClientProtocolEvent,
 } from '../../shared/gateway-client-protocol.mjs'

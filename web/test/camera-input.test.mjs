@@ -6,7 +6,7 @@ import {
   cameraFrameSize,
   encodeCameraCanvas,
   stopCameraStream,
-} from '../src/camera-input.js'
+} from '../src/composer/camera-input.js'
 
 test('sizes camera frames within the realtime visual limits', () => {
   assert.deepEqual(cameraFrameSize(1920, 1080), { width: 1280, height: 720 })

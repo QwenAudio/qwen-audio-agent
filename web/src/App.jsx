@@ -85,6 +85,21 @@ const initialDesktopSurfaceMode = (
 const activeClientType = gatewayClientType(desktopOrbMode ? 'desktop' : 'web')
 const activeClientInstanceId = gatewayClientInstanceId()
 const composerEnabled = supportsComposerInput(activeClientType)
+const MODEL_INPUT_MODE_ORDER = ['text', 'image', 'video', 'audio']
+const MODEL_INPUT_MODE_LABELS = {
+  text: 'Text',
+  image: 'Image',
+  video: 'Video',
+  audio: 'Audio',
+}
+
+function modelInputModeList(modes = []) {
+  const supported = new Set(modes)
+  return MODEL_INPUT_MODE_ORDER
+    .filter(mode => supported.has(mode))
+    .map(mode => MODEL_INPUT_MODE_LABELS[mode])
+    .join(' · ')
+}
 
 function getSessionId() {
   const requested = requestedSessionId(window.location.search)
@@ -1019,13 +1034,6 @@ export default function App() {
     return () => clearInterval(timer)
   }, [autoHideSeconds, publishClientEvent])
 
-  const inputModeLabels = {
-    text: t('文字'),
-    audio: t('语音'),
-    image: t('图片'),
-    video: t('实时视觉'),
-  }
-  const modeList = modes => modes.map(mode => inputModeLabels[mode]).join(' · ')
   const modelLabel = (modelStatus.label || t('模型信息不可用'))
     .replace(/\s+Realtime\b/gi, '')
     .trim()
@@ -1375,7 +1383,7 @@ export default function App() {
       >
         <b>{modelLabel}</b>
         {modelStatus.metadataStatus === 'current'
-          ? <small>{modeList(modelStatus.transportInputModes)}</small>
+          ? <small>{modelInputModeList(modelStatus.modelInputModes)}</small>
           : <small>{t('模型能力信息不可用')}</small>}
       </div>
       <div className="status">

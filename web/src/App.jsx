@@ -17,7 +17,7 @@ import MessageContent from './MessageContent.jsx'
 import MultimodalComposer from './MultimodalComposer.jsx'
 import DesktopFluidOrb from './DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './DesktopSpriteOrb.jsx'
-import DomainLibraryPanel from './DomainLibraryPanel.jsx'
+import KnowledgeLibraryPanel from './KnowledgeLibraryPanel.jsx'
 import { desktopOrbClassName, resolveOrbVisualState } from './orb-presentation.js'
 import {
   isBuiltinOrbSkin,
@@ -215,7 +215,7 @@ export default function App() {
   })
   const [agentTasks, setAgentTasks] = useState([])
   const [desktopTasksCollapsed, setDesktopTasksCollapsed] = useState(false)
-  const [showDomainLibrary, setShowDomainLibrary] = useState(false)
+  const [showKnowledgeLibrary, setShowKnowledgeLibrary] = useState(false)
   const [desktopTaskLayout, setDesktopTaskLayout] = useState({
     placement: 'below',
     orbOffsetX: 0,
@@ -1394,8 +1394,8 @@ export default function App() {
           压成一个「＋」，再塞一个文字按钮会挤掉语音按钮 */}
       {!desktopOrbMode && (
         <button
-          className={`ghost${showDomainLibrary ? ' active' : ''}`}
-          onClick={() => setShowDomainLibrary(value => !value)}
+          className={`ghost${showKnowledgeLibrary ? ' active' : ''}`}
+          onClick={() => setShowKnowledgeLibrary(value => !value)}
           title={t('把本机的手册、规章、教材交给助手')}
         >
           {t('资料库')}
@@ -1445,8 +1445,8 @@ export default function App() {
     </header>
 
     <section className="workspace">
-      {showDomainLibrary && <DomainLibraryPanel
-        onClose={() => setShowDomainLibrary(false)}
+      {showKnowledgeLibrary && <KnowledgeLibraryPanel
+        onClose={() => setShowKnowledgeLibrary(false)}
         getTask={voice.getTask}
       />}
       <div className="hero">

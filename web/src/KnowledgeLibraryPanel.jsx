@@ -21,7 +21,7 @@ function formatBytes(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
-export default function DomainLibraryPanel({ onClose, getTask }) {
+export default function KnowledgeLibraryPanel({ onClose, getTask }) {
   const [documents, setDocuments] = useState([])
   const [path, setPath] = useState('')
   const [busy, setBusy] = useState(false)
@@ -130,14 +130,14 @@ export default function DomainLibraryPanel({ onClose, getTask }) {
     }
   }
 
-  return <aside className="domain-panel" aria-label={t('资料库')}>
+  return <aside className="knowledge-panel" aria-label={t('资料库')}>
     <header>
       <b>{t('资料库')}</b>
       {onClose && <button type="button" onClick={onClose} aria-label={t('关闭')}>×</button>}
     </header>
 
     {disabled
-      ? <p className="domain-hint">{t('资料库功能未开启。')}</p>
+      ? <p className="knowledge-hint">{t('资料库功能未开启。')}</p>
       : <>
         <form onSubmit={submit}>
           <input
@@ -151,29 +151,29 @@ export default function DomainLibraryPanel({ onClose, getTask }) {
             {t('加入资料库')}
           </button>
         </form>
-        <p className="domain-hint">
+        <p className="knowledge-hint">
           {t('支持 Markdown、txt 等文本；复杂文档会先提取文字。')}
         </p>
 
-        {error && <p className="domain-error" role="alert">{error}</p>}
-        {notice && <p className="domain-notice">{notice}</p>}
+        {error && <p className="knowledge-error" role="alert">{error}</p>}
+        {notice && <p className="knowledge-notice">{notice}</p>}
 
-        {converting.map(item => <div key={item.taskId} className="domain-item pending">
+        {converting.map(item => <div key={item.taskId} className="knowledge-item pending">
           <b>{item.filename}</b>
           <small>{t('正在加入…')}</small>
         </div>)}
 
-        {!documents.length && !converting.length && <p className="domain-hint">
+        {!documents.length && !converting.length && <p className="knowledge-hint">
           {t('还没有资料。加进来之后，助手就知道该去查哪一份。')}
         </p>}
 
-        {documents.map(document => <div key={document.id} className="domain-item">
+        {documents.map(document => <div key={document.id} className="knowledge-item">
           <b>{document.title}</b>
           {document.gist && <small>{document.gist}</small>}
-          {document.sections?.length > 0 && <small className="domain-sections">
+          {document.sections?.length > 0 && <small className="knowledge-sections">
             {document.sections.join(' · ')}
           </small>}
-          <small className="domain-meta">
+          <small className="knowledge-meta">
             {[
               document.filename,
               formatBytes(document.bytes),

@@ -17,8 +17,8 @@ const allowedDependencies = {
     'conversation',
     'core',
     'delivery',
-    'domain',
     'frontend',
+    'knowledge',
     'providers',
     'session',
     'task',
@@ -29,15 +29,16 @@ const allowedDependencies = {
   process: new Set(['process', 'shared']),
   core: new Set(['core', 'shared']),
   frontend: new Set(['frontend']),
+  // Local knowledge storage is independent from conversation memory and
+  // transport. Frontend contracts and application orchestration depend on it,
+  // never the other way around.
+  knowledge: new Set(['core', 'knowledge', 'shared']),
   providers: new Set(['core', 'frontend', 'providers', 'shared']),
   agent: new Set(['agent', 'backend', 'core', 'shared']),
   backend: new Set(['backend', 'core', 'shared']),
   client: new Set(['client', 'delivery', 'shared', 'task']),
   delivery: new Set(['delivery']),
   conversation: new Set(['conversation', 'core', 'shared']),
-  // 资料库刻意不依赖 conversation：它复用的落盘与敏感闸门都在 core，
-  // 让「用户给的手册」去依赖「会话逻辑」是没有道理的耦合。
-  domain: new Set(['core', 'domain', 'shared']),
   session: new Set(['session', 'shared']),
   task: new Set(['agent', 'core', 'session', 'task']),
   transport: new Set(['shared', 'task', 'transport']),

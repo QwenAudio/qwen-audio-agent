@@ -8,7 +8,7 @@
 // 与会话摘要一致的纪律：失败静默、只读头部、逐条校验后才落盘。
 
 import { containsSensitiveContent } from '../core/sensitive-content.mjs'
-import { DOMAIN_LIMITS } from './domain-library.mjs'
+import { KNOWLEDGE_LIMITS } from './local-library.mjs'
 
 const MAX_HEAD_CHARS = 8000
 
@@ -18,16 +18,16 @@ const DOMAIN_SYSTEM_PROMPT = [
   '{"title":"资料标题","gist":"一句话说明","sections":["一级章节标题"]}',
   '',
   '规则：',
-  `- title 用资料自身的名称，不超过 ${DOMAIN_LIMITS.MAX_TITLE_CHARS} 字；正文里找不到就根据内容起一个准确的。`,
-  `- gist 一句话说清「这是什么资料、覆盖哪些范围」，不超过 ${DOMAIN_LIMITS.MAX_GIST_CHARS} 字。不要评价，不要写“本文档介绍了”这类套话。`,
-  `- sections 是资料的一级章节标题，最多 ${DOMAIN_LIMITS.MAX_SECTIONS} 个，每个不超过 ${DOMAIN_LIMITS.MAX_SECTION_CHARS} 字。`,
+  `- title 用资料自身的名称，不超过 ${KNOWLEDGE_LIMITS.MAX_TITLE_CHARS} 字；正文里找不到就根据内容起一个准确的。`,
+  `- gist 一句话说清「这是什么资料、覆盖哪些范围」，不超过 ${KNOWLEDGE_LIMITS.MAX_GIST_CHARS} 字。不要评价，不要写“本文档介绍了”这类套话。`,
+  `- sections 是资料的一级章节标题，最多 ${KNOWLEDGE_LIMITS.MAX_SECTIONS} 个，每个不超过 ${KNOWLEDGE_LIMITS.MAX_SECTION_CHARS} 字。`,
   '- sections 必须照抄资料里的原标题，不要改写、不要合并、不要自己编目录。这些标题是日后定位内容的锚点，改了就对不上原文。',
   '- 只看到开头一部分时，就只登记看到的章节，不要推测后面还有什么。',
   '- 没有明显章节结构时 sections 为空数组。',
   '- 不要摘录正文细节、条款内容或数字，那些留给需要时再查原文。',
 ].join('\n')
 
-export class DomainSummariser {
+export class KnowledgeSummariser {
   constructor({
     library,
     audit = null,

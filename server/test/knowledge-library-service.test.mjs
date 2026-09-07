@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { KnowledgeLibraryService } from '../src/app/knowledge/knowledge-library-service.mjs'
+import { KnowledgeLibraryService } from '../src/app/knowledge/library-service.mjs'
 import { TaskManager } from '../src/task/task-manager.mjs'
 
 function provider(overrides = {}) {

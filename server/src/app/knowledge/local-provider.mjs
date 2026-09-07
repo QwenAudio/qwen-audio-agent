@@ -1,5 +1,5 @@
-import { KNOWLEDGE_PROVIDER_PROTOCOL_VERSION } from '../../frontend/knowledge/retrieval-provider.mjs'
-import { classifySource } from '../../domain/domain-library.mjs'
+import { KNOWLEDGE_PROVIDER_PROTOCOL_VERSION } from '../../frontend/knowledge/provider.mjs'
+import { classifySource } from '../../knowledge/local-library.mjs'
 
 const MAX_SEARCH_DOCUMENT_CHARS = 240_000
 const MAX_CHUNK_CHARS = 1_600

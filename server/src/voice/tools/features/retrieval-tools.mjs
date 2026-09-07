@@ -4,7 +4,7 @@ import {
 } from '../../../frontend/retrieval/frontend-retrieval-runtime.mjs'
 import {
   FRONTEND_KNOWLEDGE_CAPABILITY,
-} from '../../../frontend/knowledge/knowledge-runtime.mjs'
+} from '../../../frontend/knowledge/runtime.mjs'
 import { toolFailure } from '../tool-result.mjs'
 
 export const WEB_SEARCH_TOOL_NAME = 'web_search'

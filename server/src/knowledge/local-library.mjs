@@ -58,7 +58,7 @@ export function classifySource(sourcePath) {
   return 'unsupported'
 }
 
-export class DomainImportError extends Error {
+export class KnowledgeImportError extends Error {
   constructor(code, message) {
     super(message)
     this.code = code
@@ -83,7 +83,7 @@ function safeFilename(name) {
   return [...(cleaned || fallback)].slice(0, 120).join('')
 }
 
-export class DomainLibrary {
+export class KnowledgeLibrary {
   constructor({
     // 资料本体落这里，必须是后端读得到的目录
     documentDirectory,
@@ -169,47 +169,47 @@ export class DomainLibrary {
   // 把一份本地文本收进资料库。同步完成，不调用模型。
   import({ ownerId, sourcePath } = {}) {
     if (!this.configured()) {
-      throw new DomainImportError('library_unavailable', '资料库未配置存放目录。')
+      throw new KnowledgeImportError('library_unavailable', '资料库未配置存放目录。')
     }
     const safeOwnerId = String(ownerId || '')
     if (!safeOwnerId) {
-      throw new DomainImportError('missing_owner', '缺少归属用户。')
+      throw new KnowledgeImportError('missing_owner', '缺少归属用户。')
     }
     // 空输入必须在 resolve 之前拦掉：resolve('') 返回的是进程 cwd，那是个存在的
     // 目录，会一路走到 statSync 才因为「不是文件」被拒，错误信息变成 not_a_file
     // —— 用户看到的提示就对不上他实际做错的事。
     const raw = String(sourcePath || '').trim()
     if (!raw) {
-      throw new DomainImportError('invalid_path', '需要一个具体的文件路径。')
+      throw new KnowledgeImportError('invalid_path', '需要一个具体的文件路径。')
     }
     const absolute = resolve(raw)
     // 用 parse().root 判断而不是比 '/'：Windows 上根是 'C:\\'，写死斜杠在那边
     // 永不生效。
     if (absolute === parse(absolute).root) {
-      throw new DomainImportError('invalid_path', '需要一个具体的文件路径。')
+      throw new KnowledgeImportError('invalid_path', '需要一个具体的文件路径。')
     }
 
     let stats
     try {
       stats = statSync(absolute)
     } catch {
-      throw new DomainImportError('not_found', `找不到这个文件：${absolute}`)
+      throw new KnowledgeImportError('not_found', `找不到这个文件：${absolute}`)
     }
     if (!stats.isFile()) {
-      throw new DomainImportError('not_a_file', '这个路径不是一个文件。')
+      throw new KnowledgeImportError('not_a_file', '这个路径不是一个文件。')
     }
     if (stats.size <= 0) {
-      throw new DomainImportError('empty_file', '这个文件是空的。')
+      throw new KnowledgeImportError('empty_file', '这个文件是空的。')
     }
     if (stats.size > this.maxFileBytes) {
-      throw new DomainImportError(
+      throw new KnowledgeImportError(
         'too_large',
         `文件超过 ${Math.floor(this.maxFileBytes / 1024 / 1024)} MB 上限。`,
       )
     }
     const extension = extname(absolute).toLowerCase()
     if (!TEXT_EXTENSIONS.has(extension)) {
-      throw new DomainImportError(
+      throw new KnowledgeImportError(
         classifySource(absolute) === 'convertible' ? 'needs_conversion' : 'unsupported_type',
         classifySource(absolute) === 'convertible'
           ? `${extension} 需要先提取文字，再导入资料库。`
@@ -235,7 +235,7 @@ export class DomainLibrary {
       // is nothing left to copy.
       if (absolute !== destination) copyFileSync(absolute, destination)
     } catch (error) {
-      throw new DomainImportError('copy_failed', `无法复制到资料库：${error.message}`)
+      throw new KnowledgeImportError('copy_failed', `无法复制到资料库：${error.message}`)
     }
 
     const entry = {
@@ -285,11 +285,11 @@ export class DomainLibrary {
   // 文件在资料目录里比什么都没有更糟。真正的收录发生在转换成功之后。
   conversionTarget({ ownerId, sourcePath } = {}) {
     if (!this.configured()) {
-      throw new DomainImportError('library_unavailable', '资料库未配置存放目录。')
+      throw new KnowledgeImportError('library_unavailable', '资料库未配置存放目录。')
     }
     const absolute = resolve(String(sourcePath || '').trim())
     if (classifySource(absolute) !== 'convertible') {
-      throw new DomainImportError('not_convertible', '这类文件不需要复杂文档转换。')
+      throw new KnowledgeImportError('not_convertible', '这类文件不需要复杂文档转换。')
     }
     this.load()
     const stem = safeFilename(basename(absolute, extname(absolute)))
@@ -377,7 +377,7 @@ export class DomainLibrary {
   }
 }
 
-export const DOMAIN_LIMITS = Object.freeze({
+export const KNOWLEDGE_LIMITS = Object.freeze({
   MAX_ENTRIES_PER_OWNER,
   MAX_FILE_BYTES,
   MAX_TITLE_CHARS,

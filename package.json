@@ -238,7 +238,6 @@
     "mobile:sync": "npm run sync --workspace @qwen-audio-agent/mobile",
     "mobile:ios": "npm run ios --workspace @qwen-audio-agent/mobile",
     "mobile:android": "npm run android --workspace @qwen-audio-agent/mobile",
-    "remote:build": "node scripts/build-tsnet-components.mjs",
     "cli": "npm run start --workspace @qwen-audio-agent/cli --",
     "tui": "npm run start --workspace tui --",
     "backend": "node scripts/start.mjs",

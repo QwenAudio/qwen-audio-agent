@@ -21,14 +21,15 @@ Desktop ─┐
 WebUI ───┤
 TUI ─────┼── GCP over WebSocket ── Gateway ── BackendPort
 Mobile ──┘               ▲
-                         └── local endpoint or Gateway-owned private tailnet
+                         └── local endpoint or external HTTPS endpoint
 ```
 
 ## Architectural boundaries
 
-1. **Remote access** is owned by the Gateway. An optional tsnet component
-   publishes the local Gateway as a canonical HTTPS/WSS endpoint and is not
-   downloaded or started while remote access is disabled.
+1. **Public endpoints** are owned by the Gateway. Tailnet mode invokes the
+   user-installed and authenticated system `tailscale serve`; External HTTPS
+   only records an operator-managed public origin. The project neither embeds
+   nor downloads the Tailscale network stack.
 2. **Access authentication** runs before GCP. Literal loopback remains
    zero-configuration; every non-loopback HTTP or WebSocket request requires a
    configured or paired device credential.
@@ -45,13 +46,11 @@ Clients see only an ordinary Gateway endpoint.
 ## User experience
 
 - Local Clients continue to connect to `http://127.0.0.1:3101` without setup.
-- The Gateway CLI enables and manages remote access, opens the one-time browser
-  authorization flow, and emits a QR code, native-client connection link, and
-  browser access link. Remote devices join the same private tailnet through the
-  official Tailscale app.
-  Desktop, Mobile, and other Clients only consume invitations and do not
-  integrate the underlying implementation.
-- A remote Desktop, TUI, WebUI, or Mobile Client consumes the same invitation,
+- The Gateway CLI declares a public endpoint through `gateway --tailnet` or
+  `gateway --public-url`; `gateway pair` emits the QR code, connection code, and
+  browser access link. In Tailnet mode, the Gateway host and remote devices all
+  use official Tailscale and join the same tailnet.
+- A remote Desktop, TUI, WebUI, or Mobile Client consumes the same pairing code,
   exchanges it for a revocable device credential, and stores that credential in
   platform-secure storage.
 - Multiple devices may be paired, but each owner has one active interactive
@@ -59,8 +58,9 @@ Clients see only an ordinary Gateway endpoint.
 - Reconnect by the same `client.instance_id` is automatic. Takeover by another
   Client never causes competing reconnect loops.
 
-Ordinary users must not copy tokens, edit URLs, or run network commands. Manual
-endpoint and environment-variable flows remain advanced escape hatches.
+Clients do not understand Tailscale or reverse-proxy details and never require a
+long-lived token to be copied. Network installation and authentication stay in
+the network layer; the Gateway consumes only the final endpoint.
 
 ## Shared public models
 
@@ -89,7 +89,7 @@ credential:
 }
 ```
 
-An invitation contains no permanent token, model credential, memory, or backend
+A pairing code contains no permanent token, model credential, memory, or backend
 configuration:
 
 ```json
@@ -110,7 +110,7 @@ subprotocol. Credentials never enter URLs, GCP messages, logs, or model context.
 ## RA0 — Freeze the remote-access contract
 
 - [x] Merge this bilingual roadmap and link issue #320.
-- [x] Add endpoint, connection-profile, and invitation contracts.
+- [x] Add endpoint, connection-profile, and pairing-code contracts.
 - [x] Characterize existing loopback, token, pairing, lease, and takeover behavior.
 - [x] Record that management requests do not claim the active interactive lease.
 
@@ -121,25 +121,25 @@ Task, BackendPort, or Client code.
 
 - [x] Add a versioned connection-profile store with a credential-store port.
 - [x] Keep server access configuration separate from Client credentials.
-- [x] Publish shared helpers for invitation creation and consumption.
+- [x] Publish shared helpers for pairing-code creation and consumption.
 
 Exit criteria: any native Client can save and reconnect through one connection
 profile contract.
 
-## RA2 — Gateway-owned tsnet
+## RA2 — Gateway public endpoints
 
-- [x] Run tsnet as an optional Gateway remote-access process, independent of
-  Desktop and CLI lifecycles.
-- [x] Download and verify the platform component on first use, provide browser
-  authorization, and restore persisted state on later Gateway starts.
-- [x] Publish a private-tailnet HTTPS/WSS endpoint and keep Gateway on loopback.
-- [x] Add CLI status, enable, disable, invite, device-list, and revoke commands.
+- [x] Publish a private-tailnet HTTPS/WSS endpoint through the system
+  `tailscale serve` command while keeping the Gateway listener on loopback.
+- [x] Allow an operator-managed External HTTPS origin without owning its proxy,
+  certificate, or network lifecycle.
+- [x] Add flat `gateway pair`, `devices`, and `revoke` commands and remove the
+  extra remote command layer.
+- [x] Keep network publication independent from Gateway pairing/device access.
 - [ ] Validate persistent GCP WebSocket and long-running audio on a physical phone.
 
-Exit criteria: a user enables remote access without editing Gateway configuration,
-copying a token, or exposing the Gateway listener. The Gateway host needs no
-separate network client; remote devices join the same tailnet through the official
-Tailscale app.
+Exit criteria: a user neither copies a long-lived token nor exposes the Gateway
+listener. Tailnet users install official Tailscale on both the Gateway host and
+remote device; External HTTPS users own the trusted proxy.
 
 ## RA3 — First-party remote Client parity
 
@@ -148,7 +148,7 @@ Tailscale app.
 - [x] Add a minimal unauthenticated browser pairing shell while keeping every
   business API and application page protected.
 - [x] Let remote WebUI persist an HttpOnly session and reconnect safely.
-- [x] Let Desktop and TUI consume invitations and store revocable credentials
+- [x] Let Desktop and TUI consume pairing codes and store revocable credentials
   outside ordinary settings (OS-protected storage on Desktop; an owner-only
   file for terminal clients without a portable keychain API).
 - [x] Add uniform occupied, takeover-confirmation, replaced, revoked, offline,
@@ -174,7 +174,7 @@ later, and completes the same core conversation and Task flows as WebUI.
 ## RA5 — Hardening and release readiness
 
 - [x] Add negative tests for unauthenticated remote requests, origin bypass,
-  expired/replayed invitations, revoked devices, and stale leases.
+  expired/replayed pairing codes, revoked devices, and stale leases.
 - [x] Reuse the paired, persisted Client instance identity after a Mobile app
   restart so it is not mistaken for a different client.
 - [ ] Test direct-tailnet/DERP fallback, Wi-Fi/cellular transitions,
@@ -191,7 +191,7 @@ playback, and does not regress local zero-configuration use.
 ## PR policy
 
 - Each implementation PR references issue #320 and names its RA stage.
-- Protocol/core changes, the tsnet remote module, and Mobile UI should remain
+- Protocol/core changes, public-endpoint network adapters, and Mobile UI should remain
   separately reviewable.
 - Every public model ships with Schema, parser, negative tests, and bilingual
   documentation.

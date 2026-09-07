@@ -2,12 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createGatewayPairingTicket,
-  disableGatewayRemoteAccess,
-  enableGatewayRemoteAccess,
   listGatewayDevices,
-  pairGatewayInvitation,
+  pairGatewayConnectionCode,
   pairGatewayDevice,
-  readGatewayRemoteAccess,
   revokeGatewayDevice,
 } from '../shared/gateway-access-client.mjs'
 
@@ -23,7 +20,11 @@ test('Gateway access Client helpers use the access control endpoints', async () 
   const fetchImpl = async (url, options) => {
     requests.push({ url, options })
     if (url.endsWith('/api/access/pairing-tickets')) {
-      return jsonResponse({ code: 'pair-code', expiresAt: 1234 }, { status: 201 })
+      return jsonResponse({
+        code: 'pair-code',
+        expiresAt: 1234,
+        gatewayUrl: 'https://gateway.example.test',
+      }, { status: 201 })
     }
     return jsonResponse({
       access_token: 'device-token',
@@ -56,9 +57,9 @@ test('Gateway access Client helpers preserve structured errors', async () => {
   )
 })
 
-test('a Gateway invitation pairs and persists through credential abstractions', async () => {
+test('a Gateway connection code pairs and persists through credential abstractions', async () => {
   const saved = []
-  const result = await pairGatewayInvitation({
+  const result = await pairGatewayConnectionCode({
     version: 1,
     gateway_url: 'https://gateway.example.test',
     pairing_code: 'temporary-code',
@@ -78,13 +79,13 @@ test('a Gateway invitation pairs and persists through credential abstractions', 
   assert.equal(result.profile.client_instance_id, 'mobile-one')
   assert.equal(saved[0][1], 'device-token')
   await assert.rejects(
-    pairGatewayInvitation({
+    pairGatewayConnectionCode({
       version: 1,
       gateway_url: 'https://gateway.example.test',
       pairing_code: 'expired',
       expires_at: 999,
     }, { profileStore: { save: async () => {} }, now: 1_000 }),
-    error => error.code === 'gateway_invitation_expired',
+    error => error.code === 'gateway_pairing_code_expired',
   )
 })
 
@@ -104,27 +105,4 @@ test('Gateway device management helpers remain on the local host plane', async (
   assert.equal(requests[0].options.method, 'GET')
   assert.match(requests[1].url, /phone%2Fone$/)
   assert.equal(requests[1].options.method, 'DELETE')
-})
-
-test('remote access lifecycle helpers call only the local Gateway management plane', async () => {
-  const requests = []
-  const fetchImpl = async (url, options) => {
-    requests.push({ url, options })
-    return jsonResponse({
-      enabled: options.method !== 'DELETE',
-      state: options.method === 'POST' ? 'auth_required' : 'disabled',
-    }, { status: options.method === 'POST' ? 202 : 200 })
-  }
-  await readGatewayRemoteAccess('http://127.0.0.1:3101', fetchImpl)
-  await enableGatewayRemoteAccess(
-    'http://127.0.0.1:3101',
-    fetchImpl,
-  )
-  await disableGatewayRemoteAccess('http://127.0.0.1:3101', fetchImpl)
-  assert.deepEqual(requests.map(request => [request.url, request.options.method]), [
-    ['http://127.0.0.1:3101/api/access/remote', 'GET'],
-    ['http://127.0.0.1:3101/api/access/remote', 'POST'],
-    ['http://127.0.0.1:3101/api/access/remote', 'DELETE'],
-  ])
-  assert.equal(requests[1].options.body, undefined)
 })

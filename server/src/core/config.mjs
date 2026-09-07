@@ -253,6 +253,12 @@ export const config = {
     .split(',')
     .map(value => value.trim())
     .filter(Boolean),
+  tailnet: ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.QWEN_AUDIO_GATEWAY_TAILNET || '').trim().toLowerCase(),
+  ),
+  gatewayPublicUrl: String(
+    process.env.QWEN_AUDIO_GATEWAY_PUBLIC_URL || '',
+  ).trim(),
   authSecret: process.env.QWEN_AUDIO_AGENT_AUTH_SECRET || '',
   identityMode: (
     process.env.QWEN_AUDIO_AGENT_IDENTITY_MODE || 'personal'

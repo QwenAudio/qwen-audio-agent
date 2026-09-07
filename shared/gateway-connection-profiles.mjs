@@ -9,13 +9,13 @@ import { dirname } from 'node:path'
 import { z } from 'zod'
 import { replaceFileSync, withFileTransaction } from './file-transaction-lock.mjs'
 import {
-  GATEWAY_REMOTE_ACCESS_MODEL_VERSION,
+  GATEWAY_CONNECTION_MODEL_VERSION,
   GatewayConnectionProfileSchema,
   parseGatewayConnectionProfile,
 } from './gateway-remote-access.mjs'
 
 const ProfileDocumentSchema = z.object({
-  version: z.literal(GATEWAY_REMOTE_ACCESS_MODEL_VERSION),
+  version: z.literal(GATEWAY_CONNECTION_MODEL_VERSION),
   profiles: z.array(GatewayConnectionProfileSchema),
 }).strict()
 
@@ -43,7 +43,7 @@ function writeProfiles(filePath, profiles) {
   mkdirSync(dirname(filePath), { recursive: true, mode: 0o700 })
   const temporary = `${filePath}.${process.pid}.${randomUUID()}.tmp`
   writeFileSync(temporary, `${JSON.stringify({
-    version: GATEWAY_REMOTE_ACCESS_MODEL_VERSION,
+    version: GATEWAY_CONNECTION_MODEL_VERSION,
     profiles,
   }, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 })
   replaceFileSync(temporary, filePath)

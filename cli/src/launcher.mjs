@@ -33,22 +33,19 @@ import {
   waitForGateway,
 } from './runtime.mjs'
 import {
-  disableGatewayRemoteAccess,
-  enableGatewayRemoteAccess,
   listGatewayDevices,
-  pairGatewayInvitation,
-  readGatewayRemoteAccess,
+  pairGatewayConnectionCode,
   revokeGatewayDevice,
 } from '../../shared/gateway-access-client.mjs'
 import {
-  createGatewayInvitation,
-  decodeGatewayInvitation,
-  encodeGatewayBrowserInvitation,
-  encodeGatewayInvitation,
+  createGatewayPairingCode,
+  decodeGatewayPairingCode,
+  encodeGatewayBrowserPairingCode,
+  encodeGatewayPairingCode,
 } from '../../shared/gateway-remote-access.mjs'
 import { GatewayConnectionProfileStore } from '../../shared/gateway-connection-profiles.mjs'
 import { createPrivateFileGatewayCredentialStore } from '../../shared/gateway-file-credential-store.mjs'
-import { launchWebUi, openBrowser } from './webui.mjs'
+import { launchWebUi } from './webui.mjs'
 import { acquireCliInstance } from './instance-lock.mjs'
 import { manageGatewayService } from './gateway-service.mjs'
 import {
@@ -104,6 +101,13 @@ function applyGatewayOptions(env, options) {
   if (definition?.baseUrlEnvironment) {
     env[definition.baseUrlEnvironment] = options.backendUrl
   }
+  if (options.tailnet) {
+    env.QWEN_AUDIO_GATEWAY_TAILNET = '1'
+    delete env.QWEN_AUDIO_GATEWAY_PUBLIC_URL
+  } else if (options.publicUrl) {
+    env.QWEN_AUDIO_GATEWAY_PUBLIC_URL = options.publicUrl
+    delete env.QWEN_AUDIO_GATEWAY_TAILNET
+  }
 }
 
 function gatewaySummary(health) {
@@ -135,15 +139,30 @@ function gatewaySummary(health) {
     .join(' · ')
 }
 
-function gatewayServiceEnvironment(url) {
+function publicEndpointSummary(health) {
+  const endpoint = health?.publicEndpoint
+  if (!endpoint || endpoint.mode === 'none') return ''
+  if (endpoint.endpoint?.url) return endpoint.endpoint.url
+  if (endpoint.state === 'error') {
+    return `异常：${endpoint.error?.message || '未知错误'}`
+  }
+  return endpoint.state === 'starting' ? '启动中' : '未就绪'
+}
+
+function gatewayServiceEnvironment(url, options = {}) {
   const target = new URL(url)
   if (target.protocol !== 'http:' || !isLocalGateway(url)) {
     throw new Error('Gateway 后台服务只支持本机 HTTP 地址')
   }
-  return {
+  const serviceEnvironment = {
     HOST: target.hostname.replace(/^\[(.*)\]$/, '$1'),
     PORT: target.port || '80',
   }
+  if (options.tailnet) serviceEnvironment.QWEN_AUDIO_GATEWAY_TAILNET = '1'
+  if (options.publicUrl) {
+    serviceEnvironment.QWEN_AUDIO_GATEWAY_PUBLIC_URL = options.publicUrl
+  }
+  return serviceEnvironment
 }
 
 async function waitForGatewayStop(url, {
@@ -157,6 +176,27 @@ async function waitForGatewayStop(url, {
     await new Promise(resolvePromise => setTimeout(resolvePromise, intervalMs))
   }
   throw new Error(`Gateway 停止超时：${url}`)
+}
+
+async function waitForPublicEndpoint(url, {
+  inspectGateway = value => readGatewayHealth(value),
+  timeoutMs = 35_000,
+  intervalMs = 200,
+} = {}) {
+  const deadline = Date.now() + timeoutMs
+  let health = null
+  while (Date.now() < deadline) {
+    health = await inspectGateway(url)
+    const endpoint = health?.publicEndpoint
+    if (endpoint?.state === 'ready' && endpoint.endpoint?.url) return health
+    if (endpoint?.state === 'error') break
+    await new Promise(resolvePromise => setTimeout(resolvePromise, intervalMs))
+  }
+  const error = new Error(
+    health?.publicEndpoint?.error?.message || '等待 Gateway 对外地址就绪超时',
+  )
+  error.code = health?.publicEndpoint?.error?.code || 'gateway_public_url_not_ready'
+  throw error
 }
 
 function askConfirmation(question, { stdin, stdout }) {
@@ -212,10 +252,7 @@ export async function main(argv, {
   createPairingTicket = url => createGatewayPairingTicket(url),
   listPairedDevices = url => listGatewayDevices(url),
   revokePairedDevice = (url, id) => revokeGatewayDevice(url, id),
-  readRemoteAccess = url => readGatewayRemoteAccess(url),
-  enableRemoteAccess = url => enableGatewayRemoteAccess(url),
-  disableRemoteAccess = url => disableGatewayRemoteAccess(url),
-  openExternal = url => openBrowser(url),
+  waitForEndpoint = url => waitForPublicEndpoint(url, { inspectGateway }),
   manageService = (action, options) => manageGatewayService(action, options),
   refreshPath = options => refreshProcessPath(options),
   waitForService = (url, { requireBackend = false } = {}) =>
@@ -230,8 +267,8 @@ export async function main(argv, {
       filePath: resolve(directory, 'state/gateway-client-credentials.json'),
     }),
   }),
-  pairInvitation = pairGatewayInvitation,
-  renderInvitationQr = value => QRCode.toString(value, {
+  pairConnectionCode = pairGatewayConnectionCode,
+  renderPairingQr = value => QRCode.toString(value, {
     type: 'terminal',
     small: true,
     errorCorrectionLevel: 'L',
@@ -267,10 +304,10 @@ export async function main(argv, {
     return 0
   }
   if (options.command === 'connect') {
-    if (!options.invitation) throw new Error('connect 需要远程 Gateway 邀请')
+    if (!options.pairingCode) throw new Error('connect 需要 Gateway 连接码')
     const instanceId = `cli_${randomUUID()}`
-    const paired = await pairInvitation(
-      decodeGatewayInvitation(options.invitation),
+    const paired = await pairConnectionCode(
+      decodeGatewayPairingCode(options.pairingCode),
       {
         device: { id: instanceId, type: 'cli', label: 'TUI' },
         clientInstanceId: instanceId,
@@ -396,108 +433,49 @@ export async function main(argv, {
 
   if (options.command === 'gateway' && options.gatewayAction === 'pair') {
     const ticket = await createPairingTicket(options.url)
-    stdout.write(
-      `远程客户端配对码：${ticket.code}\n`
-      + `有效期至：${new Date(ticket.expiresAt).toLocaleString()}\n`,
-    )
-    return 0
-  }
-
-  if (options.command === 'gateway' && options.gatewayAction === 'remote') {
-    if (options.remoteAction === 'devices') {
-      const result = await listPairedDevices(options.url)
-      if (options.json) stdout.write(`${JSON.stringify(result, null, 2)}\n`)
-      else if (!result.devices?.length) stdout.write('尚未配对远程设备\n')
-      else {
-        for (const device of result.devices) {
-          stdout.write(`${device.id}\t${device.label || device.type || 'Client'}\n`)
-        }
-      }
-      return 0
-    }
-    if (options.remoteAction === 'revoke') {
-      await revokePairedDevice(options.url, options.remoteDeviceId)
-      stdout.write(`已撤销远程设备：${options.remoteDeviceId}\n`)
-      return 0
-    }
-    if (options.remoteAction === 'disable') {
-      const result = await disableRemoteAccess(options.url)
-      stdout.write(result.changed ? '远程访问已关闭\n' : '远程访问未开启\n')
-      return 0
-    }
-    if (options.remoteAction === 'status') {
-      const status = await readRemoteAccess(options.url)
-      if (options.json) stdout.write(`${JSON.stringify(status, null, 2)}\n`)
-      else if (status.state === 'auth_required') {
-        stdout.write(`请完成一次远程访问授权：${status.authUrl}\n`)
-      }
-      else if (status.published) {
-        stdout.write(`远程访问已开启（Tailnet 私有通道）：${status.endpoint.url}\n`)
-      }
-      else if (status.state === 'error') {
-        stdout.write(`远程访问异常：${status.error?.message || '未知错误'}\n`)
-        if (status.actionUrl) stdout.write(`请完成设置：${status.actionUrl}\n`)
-      }
-      else if (status.enabled) stdout.write(`远程访问正在启动（${status.state}）\n`)
-      else stdout.write('远程访问未开启\n')
-      return status.published ? 0 : 1
-    }
-    const health = await inspectGateway(options.url)
-    if (!health) throw new Error(`Gateway 未运行：${options.url}`)
-    const status = await enableRemoteAccess(options.url)
-    if (status.state === 'auth_required') {
-      await openExternal(status.authUrl).catch(() => {})
-      stdout.write(
-        `请在浏览器完成一次远程访问授权：\n${status.authUrl}\n`
-        + '授权完成后，再次执行当前命令即可。\n',
-      )
-      return 0
-    }
-    if (status.actionUrl) {
-      await openExternal(status.actionUrl).catch(() => {})
-      stdout.write(
-        `请先完成远程访问网络设置：\n${status.actionUrl}\n`
-        + '完成后，再次执行当前命令即可。\n',
-      )
-      return 0
-    }
-    if (!status.published || !status.endpoint?.url) {
-      throw Object.assign(
-        new Error(status.error?.message || `远程访问尚未就绪（${status.state}）`),
-        { code: status.error?.code || 'remote_access_not_ready' },
-      )
-    }
-    const endpoint = status.endpoint
-    if (options.remoteAction === 'enable') {
-      stdout.write(`远程访问已开启（Tailnet 私有通道）：${endpoint.url}\n`)
-      return 0
-    }
-    const ticket = await createPairingTicket(options.url)
-    const invitation = createGatewayInvitation({
-      gatewayUrl: endpoint.url,
+    const pairingCode = createGatewayPairingCode({
+      gatewayUrl: ticket.gatewayUrl,
       pairingCode: ticket.code,
       expiresAt: ticket.expiresAt,
     })
-    const appUrl = encodeGatewayInvitation(invitation)
-    const browserUrl = encodeGatewayBrowserInvitation(invitation)
+    const appUrl = encodeGatewayPairingCode(pairingCode)
+    const browserUrl = encodeGatewayBrowserPairingCode(pairingCode)
     if (options.json) {
       stdout.write(`${JSON.stringify({
-        ...invitation,
+        ...pairingCode,
         app_url: appUrl,
         browser_url: browserUrl,
       }, null, 2)}\n`)
     }
     else {
-      const qrCode = await renderInvitationQr(browserUrl)
+      const qrCode = await renderPairingQr(browserUrl)
       stdout.write(
-        '请先在手机安装并连接官方 Tailscale App，加入与 Gateway 相同的 Tailnet。\n'
-        + '移动端扫码接入：\n'
+        `Gateway 对外地址：${ticket.gatewayUrl}\n`
+        + '客户端扫码配对：\n'
         + `${qrCode}\n`
-        + `接入链接（移动端 / 桌面端）：\n${appUrl}\n`
+        + `连接码（移动端 / 桌面端）：\n${appUrl}\n`
         + `浏览器访问：\n${browserUrl}\n`
-        + `有效期至：${new Date(invitation.expires_at).toLocaleString()}\n`,
+        + `有效期至：${new Date(pairingCode.expires_at).toLocaleString()}\n`,
       )
     }
+    return 0
+  }
+
+  if (options.command === 'gateway' && options.gatewayAction === 'devices') {
+    const result = await listPairedDevices(options.url)
+    if (options.json) stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+    else if (!result.devices?.length) stdout.write('尚未配对客户端\n')
+    else {
+      for (const device of result.devices) {
+        stdout.write(`${device.id}\t${device.label || device.type || 'Client'}\n`)
+      }
+    }
+    return 0
+  }
+
+  if (options.command === 'gateway' && options.gatewayAction === 'revoke') {
+    await revokePairedDevice(options.url, options.deviceId)
+    stdout.write(`已撤销客户端：${options.deviceId}\n`)
     return 0
   }
 
@@ -511,7 +489,7 @@ export async function main(argv, {
       'restart',
     ].includes(options.gatewayAction)
       ? {
-          ...gatewayServiceEnvironment(options.url),
+          ...gatewayServiceEnvironment(options.url, options),
           // A background service does not inherit the invoking shell. Preserve
           // the shared profile directory explicitly, including custom profiles.
           ...(environment.dataDirectory
@@ -525,12 +503,15 @@ export async function main(argv, {
       serviceEnvironment,
       serviceMetadata: {
         url: options.url,
+        ...(options.tailnet ? { tailnet: true } : {}),
+        ...(options.publicUrl ? { publicUrl: options.publicUrl } : {}),
       },
     }
     if (options.gatewayAction === 'status') {
       const service = await manageService('status', serviceOptions)
       const serviceUrl = service.installedMetadata?.url || options.url
       const health = await inspectGateway(serviceUrl)
+      const publicEndpoint = publicEndpointSummary(health)
       stdout.write(
         `Gateway 后台服务：${
           service.running
@@ -538,7 +519,8 @@ export async function main(argv, {
             : service.installed ? '已停止' : '未安装'
         }\n`
         + `连接状态：${health ? gatewaySummary(health) : '未连接'}\n`
-        + `地址：${serviceUrl}\n`,
+        + `地址：${serviceUrl}\n`
+        + (publicEndpoint ? `对外地址：${publicEndpoint}\n` : ''),
       )
       return service.running && health ? 0 : 1
     }
@@ -611,10 +593,27 @@ export async function main(argv, {
         runtime.close(shutdownSignal)
         return await stopped
       }
-      const health = await inspectGateway(options.url)
+      let health = await inspectGateway(options.url)
+      if (
+        !runtime.ownsProcesses
+        && options.tailnet
+        && health?.publicEndpoint?.mode !== 'tailnet'
+      ) {
+        throw new Error('现有 Gateway 未开启 Tailnet；请先停止后再使用 --tailnet 启动')
+      }
+      if (
+        !runtime.ownsProcesses
+        && options.publicUrl
+        && health?.publicEndpoint?.endpoint?.url !== options.publicUrl
+      ) {
+        throw new Error('现有 Gateway 的对外地址与 --public-url 不一致；请先停止后重新启动')
+      }
+      if (options.tailnet) health = await waitForEndpoint(options.url)
+      const publicEndpoint = health?.publicEndpoint?.endpoint?.url
       stdout.write(
         `Gateway ${runtime.ownsProcesses ? '已启动' : '已在运行'}：${options.url}\n`
         + `WebUI：${options.url}/\n`
+        + (publicEndpoint ? `对外地址：${publicEndpoint}\n` : '')
         + `${gatewaySummary(health)}\n`,
       )
       if (!runtime.ownsProcesses) return 0

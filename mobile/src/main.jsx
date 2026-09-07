@@ -12,13 +12,13 @@ import {
   onMobileUrlOpen,
   removeMobileGatewayProfile,
   saveMobileGatewayProfile,
-  scanGatewayInvitation,
+  scanGatewayPairingCode,
 } from './native-runtime.js'
 
 function MobileApp() {
   const [profile, setProfile] = useState(null)
   const [WebApp, setWebApp] = useState(null)
-  const [invitation, setInvitation] = useState('')
+  const [pairingCode, setPairingCode] = useState('')
   const [status, setStatus] = useState('正在读取连接配置…')
   const [busy, setBusy] = useState(false)
   const pairing = useRef(false)
@@ -46,10 +46,10 @@ function MobileApp() {
       await activateProfile(next)
     } catch (error) {
       setStatus(
-        error.code === 'gateway_invitation_invalid'
-          ? '接入链接无效，请在 Gateway 主机上重新生成'
-          : error.code === 'gateway_invitation_expired'
-            ? '接入链接已过期，请在 Gateway 主机上重新生成'
+        error.code === 'gateway_pairing_code_invalid'
+          ? '连接码无效，请在 Gateway 主机上重新生成'
+          : error.code === 'gateway_pairing_code_expired'
+            ? '连接码已过期，请在 Gateway 主机上重新生成'
             : error.message || '无法连接 Gateway',
       )
     } finally {
@@ -80,7 +80,7 @@ function MobileApp() {
   const scan = async () => {
     setBusy(true)
     try {
-      const value = await scanGatewayInvitation()
+      const value = await scanGatewayPairingCode()
       if (value) await pair(value)
     } catch (error) {
       setStatus(error.message || '没有读到配对码')
@@ -114,16 +114,16 @@ function MobileApp() {
     </button>
     <div className="mobile-divider"><span>或</span></div>
     <label>
-      配对链接
+      Gateway 连接码
       <textarea
-        value={invitation}
-        onChange={event => setInvitation(event.target.value)}
-        placeholder="粘贴 Gateway 接入链接"
+        value={pairingCode}
+        onChange={event => setPairingCode(event.target.value)}
+        placeholder="粘贴 Gateway 连接码"
         spellCheck={false}
       />
     </label>
-    <button type="button" disabled={busy || !invitation.trim()} onClick={() => pair(invitation)}>
-      使用链接连接
+    <button type="button" disabled={busy || !pairingCode.trim()} onClick={() => pair(pairingCode)}>
+      连接
     </button>
     <small role="status">{status}</small>
   </main>

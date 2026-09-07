@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  createGatewayInvitation,
-  decodeGatewayInvitation,
-  encodeGatewayBrowserInvitation,
-  encodeGatewayInvitation,
+  createGatewayPairingCode,
+  decodeGatewayPairingCode,
+  encodeGatewayBrowserPairingCode,
+  encodeGatewayPairingCode,
   parseGatewayConnectionProfile,
   parseGatewayEndpointDescriptor,
-  parseGatewayInvitation,
+  parseGatewayPairingCode,
 } from '../shared/gateway-remote-access.mjs'
 
 test('remote endpoint descriptors expose only transport-neutral connection data', () => {
@@ -63,36 +63,36 @@ test('connection profiles store a credential reference and never a credential', 
   }))
 })
 
-test('invitations are versioned, bounded records without permanent credentials', () => {
-  const invitation = createGatewayInvitation({
+test('pairing codes are versioned, bounded records without permanent credentials', () => {
+  const pairingCode = createGatewayPairingCode({
     gatewayUrl: 'https://gateway.example.test',
     pairingCode: 'temporary-code',
     expiresAt: 1_800_000_000_000,
   })
-  assert.deepEqual(parseGatewayInvitation(invitation), invitation)
-  assert.equal(invitation.version, 1)
-  assert.equal('access_token' in invitation, false)
-  const appUrl = new URL(encodeGatewayInvitation(invitation))
+  assert.deepEqual(parseGatewayPairingCode(pairingCode), pairingCode)
+  assert.equal(pairingCode.version, 1)
+  assert.equal('access_token' in pairingCode, false)
+  const appUrl = new URL(encodeGatewayPairingCode(pairingCode))
   assert.equal(appUrl.protocol, 'qwaudio:')
   assert.equal(appUrl.hostname, 'connect')
   assert.equal(appUrl.searchParams.get('v'), '1')
-  assert.equal(appUrl.searchParams.get('gateway'), invitation.gateway_url)
-  assert.equal(appUrl.searchParams.get('code'), invitation.pairing_code)
-  assert.equal(appUrl.searchParams.get('expires'), String(invitation.expires_at))
+  assert.equal(appUrl.searchParams.get('gateway'), pairingCode.gateway_url)
+  assert.equal(appUrl.searchParams.get('code'), pairingCode.pairing_code)
+  assert.equal(appUrl.searchParams.get('expires'), String(pairingCode.expires_at))
   assert.equal(appUrl.hash, '')
-  assert.deepEqual(decodeGatewayInvitation(appUrl), invitation)
-  const browser = new URL(encodeGatewayBrowserInvitation(invitation))
-  assert.equal(browser.origin, invitation.gateway_url)
+  assert.deepEqual(decodeGatewayPairingCode(appUrl), pairingCode)
+  const browser = new URL(encodeGatewayBrowserPairingCode(pairingCode))
+  assert.equal(browser.origin, pairingCode.gateway_url)
   assert.equal(browser.pathname, '/c')
-  assert.equal(browser.searchParams.get('e'), invitation.expires_at.toString(36))
-  assert.equal(decodeURIComponent(browser.hash.slice(1)), invitation.pairing_code)
-  assert.deepEqual(decodeGatewayInvitation(browser), invitation)
+  assert.equal(browser.searchParams.get('e'), pairingCode.expires_at.toString(36))
+  assert.equal(decodeURIComponent(browser.hash.slice(1)), pairingCode.pairing_code)
+  assert.deepEqual(decodeGatewayPairingCode(browser), pairingCode)
   assert.throws(
-    () => decodeGatewayInvitation(
-      `qwaudio://connect#${encodeURIComponent(JSON.stringify(invitation))}`,
+    () => decodeGatewayPairingCode(
+      `qwaudio://connect#${encodeURIComponent(JSON.stringify(pairingCode))}`,
     ),
-    error => error.code === 'gateway_invitation_invalid',
+    error => error.code === 'gateway_pairing_code_invalid',
   )
-  assert.throws(() => parseGatewayInvitation({ ...invitation, version: 2 }))
-  assert.throws(() => parseGatewayInvitation({ ...invitation, backend: 'opencode' }))
+  assert.throws(() => parseGatewayPairingCode({ ...pairingCode, version: 2 }))
+  assert.throws(() => parseGatewayPairingCode({ ...pairingCode, backend: 'opencode' }))
 })

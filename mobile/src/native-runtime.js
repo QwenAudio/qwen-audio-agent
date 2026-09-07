@@ -45,7 +45,7 @@ export async function mobilePairingRequest(url, data) {
   })
 }
 
-export async function scanGatewayInvitation() {
+export async function scanGatewayPairingCode() {
   const result = await CapacitorBarcodeScanner.scanBarcode({
     hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
     cameraDirection: CapacitorBarcodeScannerCameraDirection.BACK,

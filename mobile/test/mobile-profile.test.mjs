@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  encodeGatewayBrowserInvitation,
-  encodeGatewayInvitation,
+  encodeGatewayBrowserPairingCode,
+  encodeGatewayPairingCode,
 } from '../../shared/gateway-remote-access.mjs'
 import {
   mobileGatewayTransport,
@@ -10,7 +10,7 @@ import {
   parseMobileGatewayProfile,
 } from '../src/mobile-profile.js'
 
-const invitation = encodeGatewayInvitation({
+const pairingCode = encodeGatewayPairingCode({
   version: 1,
   gateway_url: 'https://voice.example.test',
   pairing_code: 'one-time-code',
@@ -19,7 +19,7 @@ const invitation = encodeGatewayInvitation({
 
 test('pairs a mobile profile without exposing backend configuration', async () => {
   const requests = []
-  const profile = await pairMobileGateway(invitation, {
+  const profile = await pairMobileGateway(pairingCode, {
     deviceId: 'phone-one',
     clientInstanceId: 'mobile-client-one',
     request: async (url, body) => {
@@ -45,13 +45,13 @@ test('pairs a mobile profile without exposing backend configuration', async () =
 })
 
 test('pairs from the compact browser link encoded in the CLI QR code', async () => {
-  const browserInvitation = encodeGatewayBrowserInvitation({
+  const browserPairingCode = encodeGatewayBrowserPairingCode({
     version: 1,
     gateway_url: 'https://voice.example.test',
     pairing_code: 'browser-code',
     expires_at: Date.now() + 60_000,
   })
-  const profile = await pairMobileGateway(browserInvitation, {
+  const profile = await pairMobileGateway(browserPairingCode, {
     deviceId: 'phone-browser-link',
     request: async (_url, body) => ({
       status: 200,
@@ -84,7 +84,7 @@ test('keeps the paired client instance stable across native app restarts', () =>
 })
 
 test('requires a secure remote endpoint and complete stored credentials', async () => {
-  const insecure = encodeGatewayInvitation({
+  const insecure = encodeGatewayPairingCode({
     version: 1,
     gateway_url: 'http://machine.test:3101',
     pairing_code: 'one-time-code',

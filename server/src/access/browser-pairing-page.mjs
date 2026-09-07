@@ -12,7 +12,7 @@ export function gatewayBrowserPairingPage() {
 <body><main class="card"><h1>Connect to Gateway</h1><p id="status">Ready to pair this browser.</p><button id="connect">Connect</button></main>
 <script>
 const statusNode=document.querySelector('#status');const button=document.querySelector('#connect');
-const code=decodeURIComponent(location.hash.slice(1));if(!code){statusNode.textContent='This invitation is invalid.';statusNode.className='error';button.disabled=true}
+const code=decodeURIComponent(location.hash.slice(1));if(!code){statusNode.textContent='This pairing code is invalid.';statusNode.className='error';button.disabled=true}
 button.addEventListener('click',async()=>{button.disabled=true;statusNode.textContent='Connecting…';try{const response=await fetch('/api/access/pair',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code,device:{type:'web',label:'Remote WebUI'}})});const body=await response.json().catch(()=>({}));if(!response.ok)throw new Error(body.error||'Pairing failed');history.replaceState(null,'',location.pathname);location.replace('/')}catch(error){statusNode.textContent=error.message;statusNode.className='error';button.disabled=false}})
 </script></body></html>`
 }

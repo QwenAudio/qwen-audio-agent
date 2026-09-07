@@ -6,21 +6,53 @@ Gateway 默认只监听 loopback，并只信任字面量 loopback Host/Origin。
 通过 Gateway 访问认证，才能进入 HTTP 或 WebSocket 业务接口。不要把 Gateway 的
 loopback 端口直接暴露到公网。
 
-内置远程访问由 Gateway 自己管理一个可选的 tsnet 组件。默认模式将 Gateway 加入私有
-Tailnet；电脑端不需要另外安装 Tailscale，但远程手机或电脑需要安装并登录官方
-Tailscale App，并加入同一 Tailnet：
+远程 Client 始终连接一个普通 HTTPS/WSS Gateway Endpoint。网络如何把这个 Endpoint
+转发到本机 Gateway，与 Gateway 的客户端配对和设备授权是两层独立能力。目前支持：
+
+- **Private Tailnet**：适合个人电脑。Gateway 主机和远程设备都安装官方 Tailscale，
+  登录同一 Tailnet；Gateway 调用系统 `tailscale serve` 发布私有 HTTPS 地址。
+- **外部 HTTPS**：适合有可信证书的服务器。用户自行配置反向代理、固定 IP 或域名，
+  Gateway 只记录它的公开 Origin，不接管网络、代理或证书。
+
+使用 Tailnet 前，先安装并登录官方 Tailscale。前台运行：
 
 ```bash
-qwenaudio gateway remote enable
-qwenaudio gateway remote invite
+qwenaudio gateway --tailnet
 ```
 
-第一次执行时会按需下载经过 SHA-256 校验的组件，并给出一次性网页授权入口。授权后，
-tsnet 通过 Tailnet 内的 HTTPS/WSS 地址代理 loopback Gateway，第二条命令输出供远程
-Client 使用的短时邀请。Tailscale 会优先建立点对点直连；受 NAT 或网络策略限制时可能
-自动回退到 DERP 中继。可通过 `gateway remote status`、`devices`、`revoke ID` 与
-`disable` 管理。远程设置和邀请签发统一归 Gateway CLI 所有；Desktop、Mobile 等客户端
-只负责导入接入链接。
+命令会等待 `tailscale serve` 输出私有 HTTPS 地址，并在 Gateway 退出时停止本次发布。
+需要后台常驻可执行 `qwenaudio gateway install --tailnet`，或写入 `config.env`：
+
+```dotenv
+QWEN_AUDIO_GATEWAY_TAILNET=1
+```
+
+外部 HTTPS 模式由用户先完成反向代理，再向 Gateway 声明准确的公开 Origin：
+
+```bash
+qwenaudio gateway --public-url https://voice.example.com
+```
+
+或写入 `config.env`：
+
+```dotenv
+QWEN_AUDIO_GATEWAY_PUBLIC_URL=https://voice.example.com
+```
+
+固定 IP 具备受信任的 IP 地址证书时，也可以直接填写 `https://<固定 IP>`。Endpoint 必须
+是 HTTPS Origin，不能包含凭据、路径、查询参数或片段。反向代理必须只接受 HTTPS、正确
+转发 WebSocket、保留公开 `Host`，并将流量转发至本机 `127.0.0.1:3101`。
+
+Endpoint 就绪后，在 Gateway 主机的另一个终端执行：
+
+```bash
+qwenaudio gateway pair
+```
+
+命令输出短时、一次性的二维码、连接码和浏览器地址。Desktop、Mobile 等客户端只消费
+同一种连接码，不感知 Endpoint 来自 Tailscale 还是外部代理。使用
+`qwenaudio gateway devices` 查看已配对客户端，使用
+`qwenaudio gateway revoke <设备 ID>` 撤销设备。
 
 远程访问不会绕过 Gateway 认证：除一次性配对页外，远程业务请求必须携带已
 配对设备凭据。
@@ -35,7 +67,7 @@ QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=替换为至少24字符的随机密钥
 不要写入 URL、GCP 消息或公开日志。
 
 原生 Client 使用 Bearer Token；浏览器 Client 可先发起一次带认证的 HTTP 请求，换取
-`HttpOnly`、`SameSite=Strict` 会话 Cookie。通过 HTTPS 反向代理提供浏览器界面时，
+`HttpOnly`、`SameSite=Strict` 会话 Cookie。通过外部 HTTPS 反向代理提供浏览器界面时，
 Gateway 保持监听 loopback，并精确配置公开 Origin：
 
 ```dotenv
@@ -51,14 +83,8 @@ QWEN_AUDIO_GATEWAY_CLIENT_TOKEN="$ACCESS_TOKEN" \
 qwenaudio tui
 ```
 
-反向代理必须：
-
-- 只接受 HTTPS，并正确转发 WebSocket；
-- 保留公开 `Host`；
-- 将流量转发至本机 `127.0.0.1:3101`。
-
-也可以在本机执行 `qwenaudio gateway pair`。命令会输出短时、一次性配对码，远程
-Client 通过 `POST /api/access/pair` 换取可撤销设备令牌。已配对设备可通过
+`qwenaudio gateway pair` 创建的连接码由远程 Client 通过 `POST /api/access/pair`
+换取可撤销设备令牌。已配对设备可通过
 `GET /api/access/devices` 列出，并通过 `DELETE /api/access/devices/:id` 撤销；
 管理接口仅允许本机访问。
 
@@ -214,6 +240,9 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | --- | --- |
 | `HOST` / `PORT` | `127.0.0.1` / `3101` |
 | `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS` | 空；只允许 loopback |
+| `QWEN_AUDIO_GATEWAY_TAILNET` | 空；设为 `1` 后使用系统 Tailscale Serve |
+| `QWEN_AUDIO_GATEWAY_PUBLIC_URL` | 空；用户自行维护的 HTTPS Origin |
+| `QWEN_AUDIO_TAILSCALE_BINARY` | 自动发现；系统 Tailscale CLI 的可选绝对路径 |
 | `OPENCODE_WORKSPACE` | 用户配置目录下的 `workspaces/opencode` |
 | `QODER_WORKSPACE` | 用户配置目录下的 `workspaces/qoder` |
 | `QWEN_AUDIO_AGENT_BACKEND_MODEL` | 空；显式值仅通过 ACP 标准覆盖 Session；OpenCode/OpenClaw 托管初始化除外 |

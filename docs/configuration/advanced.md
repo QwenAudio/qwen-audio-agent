@@ -6,22 +6,57 @@ By default, the Gateway binds to loopback and trusts only literal loopback Host/
 requests require a Gateway access credential before they can reach HTTP or WebSocket business
 APIs. Do not expose the Gateway's loopback port directly to the public Internet.
 
-Built-in remote access is owned by the Gateway through an optional tsnet component. By default,
-it joins the Gateway to a private tailnet. The computer does not need a separate Tailscale install,
-but each remote phone or computer must run the official Tailscale app and join the same tailnet:
+Remote Clients always connect to an ordinary HTTPS/WSS Gateway endpoint. Network publication and
+Gateway pairing/device authorization are independent layers. Two publication modes are supported:
+
+- **Private Tailnet** is intended for personal computers. Install official Tailscale on both the
+  Gateway host and remote device, and sign in to the same tailnet. The Gateway invokes the system
+  `tailscale serve` command to publish a private HTTPS endpoint.
+- **External HTTPS** is intended for a server with a trusted certificate. The operator owns the
+  reverse proxy, fixed IP or domain. The Gateway only records its public origin and does not own
+  networking, certificates, or proxy configuration.
+
+After installing and signing in to official Tailscale, run the Gateway in the foreground:
 
 ```bash
-qwenaudio gateway remote enable
-qwenaudio gateway remote invite
+qwenaudio gateway --tailnet
 ```
 
-On first use, the Gateway downloads a SHA-256-verified component and provides a one-time browser
-authorization flow. After authorization, tsnet proxies the loopback Gateway through an HTTPS/WSS
-endpoint inside the tailnet; the second command prints a short-lived Client invitation. Tailscale
-prefers a direct peer-to-peer path and may fall back to a DERP relay when NAT or network policy
-prevents it. Use `gateway remote status`, `devices`, `revoke ID`, and `disable` to manage it.
-Remote-access state and invitation issuance belong exclusively to the Gateway CLI; Desktop,
-Mobile, and other Clients only import connection links.
+The command waits for `tailscale serve` to print its private HTTPS endpoint and stops that
+publication when the Gateway exits. For a persistent user service, run
+`qwenaudio gateway install --tailnet`, or put this in `config.env`:
+
+```dotenv
+QWEN_AUDIO_GATEWAY_TAILNET=1
+```
+
+For External HTTPS, configure the reverse proxy first, then declare its exact public origin:
+
+```bash
+qwenaudio gateway --public-url https://voice.example.com
+```
+
+Or persist it in `config.env`:
+
+```dotenv
+QWEN_AUDIO_GATEWAY_PUBLIC_URL=https://voice.example.com
+```
+
+A fixed IP with a publicly trusted IP-address certificate can be used as `https://<fixed-ip>`.
+The endpoint must be an HTTPS origin without credentials, path, query, or fragment. The proxy must
+accept HTTPS only, forward WebSocket correctly, preserve the public `Host`, and forward traffic to
+the local `127.0.0.1:3101`.
+
+After the endpoint is ready, open another terminal on the Gateway host and run:
+
+```bash
+qwenaudio gateway pair
+```
+
+It prints a short-lived, single-use QR code, connection code, and browser URL. Desktop, Mobile,
+and other Clients consume the same connection code without knowing whether Tailscale or an
+external proxy published the endpoint. Use `qwenaudio gateway devices` to list paired Clients and
+`qwenaudio gateway revoke <device-id>` to revoke one.
 
 Remote access does not bypass Gateway authentication: every remote business request except the
 one-time pairing shell requires a paired-device credential.
@@ -36,8 +71,8 @@ Generate one with `openssl rand -base64 32`. This token authenticates Gateway
 access only; never put it in a URL, GCP message, or public log.
 
 Native clients send it as a Bearer token. Browser clients exchange one authenticated HTTP
-request for an `HttpOnly`, `SameSite=Strict` session cookie. To serve the browser UI through an
-HTTPS reverse proxy, keep the Gateway on loopback and allowlist the exact public Origin:
+request for an `HttpOnly`, `SameSite=Strict` session cookie. To serve the browser UI through a
+external HTTPS reverse proxy, keep the Gateway on loopback and allowlist the exact public Origin:
 
 ```dotenv
 HOST=127.0.0.1
@@ -52,14 +87,8 @@ QWEN_AUDIO_GATEWAY_CLIENT_TOKEN="$ACCESS_TOKEN" \
 qwenaudio tui
 ```
 
-The reverse proxy must:
-
-- Only accept HTTPS, and correctly forward WebSocket;
-- Preserve the public `Host`;
-- Forward traffic to the local `127.0.0.1:3101`.
-
-Alternatively, run `qwenaudio gateway pair` locally. It prints a short-lived, single-use code
-that a remote Client exchanges at `POST /api/access/pair` for a revocable device token. Paired
+The connection code created by `qwenaudio gateway pair` is exchanged by a remote Client at
+`POST /api/access/pair` for a revocable device token. Paired
 devices can be listed with `GET /api/access/devices` and revoked with
 `DELETE /api/access/devices/:id`; management is loopback-only.
 
@@ -235,6 +264,9 @@ them to the configuration file:
 | --- | --- |
 | `HOST` / `PORT` | `127.0.0.1` / `3101` |
 | `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS` | Empty; only loopback allowed |
+| `QWEN_AUDIO_GATEWAY_TAILNET` | Empty; set to `1` to use system Tailscale Serve |
+| `QWEN_AUDIO_GATEWAY_PUBLIC_URL` | Empty; operator-managed HTTPS origin |
+| `QWEN_AUDIO_TAILSCALE_BINARY` | Auto-detected; optional absolute path to the system Tailscale CLI |
 | `OPENCODE_WORKSPACE` | `workspaces/opencode` under the user config directory |
 | `QODER_WORKSPACE` | `workspaces/qoder` under the user config directory |
 | `QWEN_AUDIO_AGENT_BACKEND_MODEL` | Empty; explicit values override Sessions only through standard ACP, except managed OpenCode/OpenClaw provisioning |

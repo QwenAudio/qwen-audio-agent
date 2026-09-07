@@ -1,7 +1,7 @@
 import { randomUUID } from '../../shared/runtime-crypto.mjs'
 import {
-  assertGatewayInvitationActive,
-  decodeGatewayInvitation,
+  assertGatewayPairingCodeActive,
+  decodeGatewayPairingCode,
 } from '../../shared/gateway-remote-access.mjs'
 
 export const MOBILE_GATEWAY_PROFILE_KEY = 'mobile-gateway-profile'
@@ -41,15 +41,15 @@ export function mobileGatewayTransport(profile) {
   }
 }
 
-export async function pairMobileGateway(invitationUrl, {
+export async function pairMobileGateway(pairingUrl, {
   request,
   deviceId,
   clientInstanceId = randomUUID(),
   label = 'Mobile',
 } = {}) {
   if (typeof request !== 'function') throw new TypeError('pairing request is required')
-  const invitation = assertGatewayInvitationActive(decodeGatewayInvitation(invitationUrl))
-  const gateway = new URL(invitation.gateway_url)
+  const pairingCode = assertGatewayPairingCodeActive(decodeGatewayPairingCode(pairingUrl))
+  const gateway = new URL(pairingCode.gateway_url)
   if (gateway.protocol !== 'https:') {
     const error = new Error('移动端只连接 HTTPS Gateway，请先在电脑上开启远程访问')
     error.code = 'mobile_gateway_requires_https'
@@ -57,7 +57,7 @@ export async function pairMobileGateway(invitationUrl, {
   }
   const id = String(deviceId || '').trim() || `mobile_${randomUUID()}`
   const response = await request(`${gateway.origin}/api/access/pair`, {
-    code: invitation.pairing_code,
+    code: pairingCode.pairing_code,
     device: { id, type: 'mobile', label },
   })
   if (!response || response.status < 200 || response.status >= 300) {

@@ -2,6 +2,7 @@ import { dirname, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import readline from 'node:readline'
+import QRCode from 'qrcode'
 import { loadRuntimeEnvironment } from '../../shared/runtime-environment.mjs'
 import { refreshProcessPath } from '../../shared/process-path.mjs'
 import {
@@ -212,7 +213,7 @@ export async function main(argv, {
   listPairedDevices = url => listGatewayDevices(url),
   revokePairedDevice = (url, id) => revokeGatewayDevice(url, id),
   readRemoteAccess = url => readGatewayRemoteAccess(url),
-  enableRemoteAccess = url => enableGatewayRemoteAccess(url),
+  enableRemoteAccess = (url, mode) => enableGatewayRemoteAccess(url, { mode }),
   disableRemoteAccess = url => disableGatewayRemoteAccess(url),
   openExternal = url => openBrowser(url),
   manageService = (action, options) => manageGatewayService(action, options),
@@ -230,6 +231,11 @@ export async function main(argv, {
     }),
   }),
   pairInvitation = pairGatewayInvitation,
+  renderInvitationQr = value => QRCode.toString(value, {
+    type: 'terminal',
+    small: true,
+    errorCorrectionLevel: 'L',
+  }),
 } = {}) {
   const processRealtimeModelOverride = String(
     env.QWEN_AUDIO_REALTIME_MODEL || '',
@@ -425,7 +431,10 @@ export async function main(argv, {
       else if (status.state === 'auth_required') {
         stdout.write(`请完成一次远程访问授权：${status.authUrl}\n`)
       }
-      else if (status.published) stdout.write(`远程访问已开启：${status.endpoint.url}\n`)
+      else if (status.published) {
+        const label = status.mode === 'funnel' ? 'Funnel 公网入口' : 'Tailnet 私有通道'
+        stdout.write(`远程访问已开启（${label}）：${status.endpoint.url}\n`)
+      }
       else if (status.state === 'error') {
         stdout.write(`远程访问异常：${status.error?.message || '未知错误'}\n`)
         if (status.actionUrl) stdout.write(`请完成设置：${status.actionUrl}\n`)
@@ -436,7 +445,7 @@ export async function main(argv, {
     }
     const health = await inspectGateway(options.url)
     if (!health) throw new Error(`Gateway 未运行：${options.url}`)
-    const status = await enableRemoteAccess(options.url)
+    const status = await enableRemoteAccess(options.url, options.remoteMode)
     if (status.state === 'auth_required') {
       await openExternal(status.authUrl).catch(() => {})
       stdout.write(
@@ -461,7 +470,8 @@ export async function main(argv, {
     }
     const endpoint = status.endpoint
     if (options.remoteAction === 'enable') {
-      stdout.write(`远程访问已开启：${endpoint.url}\n`)
+      const label = status.mode === 'funnel' ? 'Funnel 公网入口' : 'Tailnet 私有通道'
+      stdout.write(`远程访问已开启（${label}）：${endpoint.url}\n`)
       return 0
     }
     const ticket = await createPairingTicket(options.url)
@@ -470,11 +480,26 @@ export async function main(argv, {
       pairingCode: ticket.code,
       expiresAt: ticket.expiresAt,
     })
-    if (options.json) stdout.write(`${JSON.stringify(invitation, null, 2)}\n`)
+    const appUrl = encodeGatewayInvitation(invitation)
+    const browserUrl = encodeGatewayBrowserInvitation(invitation)
+    if (options.json) {
+      stdout.write(`${JSON.stringify({
+        ...invitation,
+        app_url: appUrl,
+        browser_url: browserUrl,
+      }, null, 2)}\n`)
+    }
     else {
+      const qrCode = await renderInvitationQr(browserUrl)
+      const prerequisite = status.mode === 'funnel'
+        ? '当前使用 Funnel 公网入口。\n'
+        : '请先在手机安装并连接官方 Tailscale App，加入与 Gateway 相同的 Tailnet。\n'
       stdout.write(
-        `远程客户端邀请：${encodeGatewayInvitation(invitation)}\n`
-        + `远程 WebUI：${encodeGatewayBrowserInvitation(invitation)}\n`
+        prerequisite
+        + '移动端扫码接入：\n'
+        + `${qrCode}\n`
+        + `接入链接（移动端 / 桌面端）：\n${appUrl}\n`
+        + `浏览器访问：\n${browserUrl}\n`
         + `有效期至：${new Date(invitation.expires_at).toLocaleString()}\n`,
       )
     }

@@ -81,6 +81,7 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
     "client.events",
     "session.output_voice",
     "session.takeover",
+    "session.heartbeat",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ],
@@ -138,6 +139,7 @@ Gateway 返回协商后的版本与能力交集：
 - 相同 `client.instance_id` 的重连无需显式接管，会自动替换旧 Socket。
 - 不同用户彼此独立，但每个用户仍只有一个活动 Client。
 - WebSocket 关闭或心跳超时后释放租约；租约代次 fencing 会阻止旧 Socket 释放或修改新租约。
+- 协商了 `session.heartbeat` 的 Client 必须使用关联的 `session.pong` 回复 Gateway 的每个 `session.ping`；正常业务消息同样会续租。这避免依赖某些反向代理无法可靠保留的 WebSocket 控制帧。
 - 6.0 不提供 Observer 连接或同一用户下的并发多 Client 控制。
 - Client 必须依据协商后的 capabilities 判断能力，不能只比较产品版本。
 - 协议版本、Client 身份和能力不能在当前连接中改变；需要改变时重连。

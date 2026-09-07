@@ -93,13 +93,19 @@ export function assertGatewayInvitationActive(invitation, now = Date.now()) {
 
 export function encodeGatewayInvitation(invitation) {
   const parsed = parseGatewayInvitation(invitation)
-  return `qwaudio://connect#${encodeURIComponent(JSON.stringify(parsed))}`
+  const url = new URL('qwaudio://connect')
+  url.searchParams.set('v', String(parsed.version))
+  url.searchParams.set('gateway', parsed.gateway_url)
+  url.searchParams.set('code', parsed.pairing_code)
+  url.searchParams.set('expires', String(parsed.expires_at))
+  return url.toString()
 }
 
 export function encodeGatewayBrowserInvitation(invitation) {
   const parsed = parseGatewayInvitation(invitation)
-  const url = new URL('/connect', parsed.gateway_url)
-  url.hash = encodeURIComponent(JSON.stringify(parsed))
+  const url = new URL('/c', parsed.gateway_url)
+  url.searchParams.set('e', parsed.expires_at.toString(36))
+  url.hash = parsed.pairing_code
   return url.toString()
 }
 
@@ -112,13 +118,26 @@ export function decodeGatewayInvitation(value) {
       code: 'gateway_invitation_invalid',
     })
   }
-  if (url.protocol !== 'qwaudio:' || url.hostname !== 'connect' || !url.hash) {
+  const isAppInvitation = url.protocol === 'qwaudio:' && url.hostname === 'connect'
+  const isBrowserInvitation = url.protocol === 'https:' && url.pathname === '/c'
+  if (!isAppInvitation && !isBrowserInvitation) {
     throw Object.assign(new Error('Invalid Gateway invitation URL'), {
       code: 'gateway_invitation_invalid',
     })
   }
   try {
-    return parseGatewayInvitation(JSON.parse(decodeURIComponent(url.hash.slice(1))))
+    return parseGatewayInvitation({
+      version: isAppInvitation
+        ? Number(url.searchParams.get('v'))
+        : GATEWAY_REMOTE_ACCESS_MODEL_VERSION,
+      gateway_url: isAppInvitation ? url.searchParams.get('gateway') : url.origin,
+      pairing_code: isAppInvitation
+        ? url.searchParams.get('code')
+        : decodeURIComponent(url.hash.slice(1)),
+      expires_at: isAppInvitation
+        ? Number(url.searchParams.get('expires'))
+        : Number.parseInt(url.searchParams.get('e'), 36),
+    })
   } catch (error) {
     throw Object.assign(new Error('Invalid Gateway invitation payload'), {
       code: 'gateway_invitation_invalid',

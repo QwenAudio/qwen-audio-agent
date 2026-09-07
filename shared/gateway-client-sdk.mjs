@@ -330,6 +330,16 @@ export class GatewayClient {
       this.recover().catch(error => this.onStatus?.({ state: 'recovery_failed', error }))
       return
     }
+    if (
+      event.type === GatewayClientProtocolEvent.SESSION_PING
+      && this.supports(GatewayClientCapability.SESSION_HEARTBEAT)
+    ) {
+      this.send(createGatewayClientProtocolMessage(
+        GatewayClientProtocolEvent.SESSION_PONG,
+        { request_event_id: event.event_id },
+      ))
+      return
+    }
     if (event.type === GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST) {
       this.#handleAction(event)
       return

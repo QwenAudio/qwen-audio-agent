@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { encodeGatewayInvitation } from '../../shared/gateway-remote-access.mjs'
+import {
+  encodeGatewayBrowserInvitation,
+  encodeGatewayInvitation,
+} from '../../shared/gateway-remote-access.mjs'
 import {
   mobileGatewayTransport,
   pairMobileGateway,
@@ -39,6 +42,26 @@ test('pairs a mobile profile without exposing backend configuration', async () =
     clientInstanceId: 'mobile-client-one',
     label: 'Mobile',
   })
+})
+
+test('pairs from the compact browser link encoded in the CLI QR code', async () => {
+  const browserInvitation = encodeGatewayBrowserInvitation({
+    version: 1,
+    gateway_url: 'https://voice.example.test',
+    pairing_code: 'browser-code',
+    expires_at: Date.now() + 60_000,
+  })
+  const profile = await pairMobileGateway(browserInvitation, {
+    deviceId: 'phone-browser-link',
+    request: async (_url, body) => ({
+      status: 200,
+      data: {
+        access_token: 'qwa_revocable-browser-link-token',
+        device: { id: body.device.id },
+      },
+    }),
+  })
+  assert.equal(profile.gatewayUrl, 'https://voice.example.test')
 })
 
 test('keeps the paired client instance stable across native app restarts', () => {

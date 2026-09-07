@@ -41,3 +41,15 @@ test('settings renderer dependency graph stays browser-safe', () => {
 
   assert.ok(dependencies.size > 1)
 })
+
+test('desktop settings consumes Gateway invitations but does not issue them', () => {
+  const html = readFileSync(resolve(sourceDirectory, 'settings.html'), 'utf8')
+  const renderer = readFileSync(resolve(sourceDirectory, 'settings.js'), 'utf8')
+  const preload = readFileSync(resolve(sourceDirectory, 'preload.cjs'), 'utf8')
+
+  assert.match(html, /id="remote-gateway-invitation"/)
+  assert.match(renderer, /connectRemoteGateway\(invitation\)/)
+  assert.match(preload, /qwen-audio-agent:remote-gateway-connect/)
+  assert.doesNotMatch(html, /invite-remote-client/)
+  assert.doesNotMatch(preload, /remote-access-invite/)
+})

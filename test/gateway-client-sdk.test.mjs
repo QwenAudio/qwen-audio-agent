@@ -113,6 +113,37 @@ test('reference Client negotiates once and correlates runtime commands', async (
   client.stop()
 })
 
+test('reference Client answers negotiated application heartbeats without dispatching them', () => {
+  const socket = new FakeSocket()
+  const received = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    clientInstanceId: 'sdk-heartbeat-test',
+    capabilities: [GatewayClientCapability.SESSION_HEARTBEAT],
+    reconnect: false,
+    onEvent: event => received.push(event),
+  }).start()
+  socket.open()
+  socket.receive({
+    type: GatewayClientProtocolEvent.SESSION_READY,
+    event_id: 'evt_gateway_ready',
+    request_event_id: socket.sent[0].event_id,
+    protocol_version: '6.0.0',
+    session_id: 'main',
+    capabilities: [GatewayClientCapability.SESSION_HEARTBEAT],
+  })
+  socket.receive({
+    type: GatewayClientProtocolEvent.SESSION_PING,
+    event_id: 'evt_gateway_ping',
+  })
+
+  assert.equal(socket.sent.at(-1).type, GatewayClientProtocolEvent.SESSION_PONG)
+  assert.equal(socket.sent.at(-1).request_event_id, 'evt_gateway_ping')
+  assert.deepEqual(received, [])
+  client.stop()
+})
+
 test('reference Client envelopes direct runtime events with event_id', () => {
   const socket = new FakeSocket()
   const client = new GatewayClient({

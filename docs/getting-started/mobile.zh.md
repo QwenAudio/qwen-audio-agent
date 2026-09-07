@@ -14,24 +14,30 @@ Client Protocol，不直接接触 Realtime Provider 或后台协议。
    qwenaudio gateway remote enable
    ```
 
-   第一次开启时，Gateway 会准备可选远程组件并给出一个网页授权地址。按页面提示完成
-   一次授权即可；电脑和手机都不需要安装额外的远程网络客户端。
-2. 授权完成后创建邀请：
+   第一次开启时，Gateway 会准备可选远程组件并给出一个网页授权地址。按页面提示，将
+   Gateway 加入你的私有 Tailnet。电脑端不需要另外安装 Tailscale。
+2. 在手机安装并登录官方 Tailscale App，加入与 Gateway 相同的 Tailnet。
+3. 授权完成后创建邀请：
 
    ```bash
    qwenaudio gateway remote invite
    ```
 
-3. 打开移动端，使用 CLI 输出的 `qwaudio://connect…` 邀请链接完成连接。
-4. 首次通话时允许麦克风权限。以后会自动重连；若 Desktop/WebUI/TUI 正在使用，移动端
+4. 命令会同时输出二维码、客户端接入链接和浏览器访问链接。移动端可直接扫码或粘贴
+   接入链接；桌面版在设置中粘贴同一个接入链接；不安装客户端时可打开浏览器访问链接。
+5. 首次通话时允许麦克风权限。以后会自动重连；若 Desktop/WebUI/TUI 正在使用，移动端
    会先请求接管确认。
 
-邀请短时有效且只能使用一次。配对后使用独立、可撤销的设备凭据；可以在电脑端执行
+邀请短时有效且只能使用一次。远程访问的开启、邀请和设备管理统一由 Gateway CLI
+负责，客户端只消费邀请。配对后使用独立、可撤销的设备凭据；可以在电脑端执行
 `qwenaudio gateway remote devices` 查看设备，并用
 `qwenaudio gateway remote revoke <设备 ID>` 撤销。
 
-远程地址使用公网 HTTPS/WSS，但 Gateway 的业务接口仍受配对凭据保护。底层发布机制、
-授权要求和高级排障见[远程访问安全](../configuration/advanced.zh.md#远程访问安全)。
+默认远程地址只在私有 Tailnet 内可达，并优先建立设备间直连；在受限网络下，Tailscale
+可能自动使用 DERP 中继。需要临时公网入口时，可显式使用
+`qwenaudio gateway remote invite --mode funnel`。两种模式下 Gateway 业务接口都受配对
+凭据保护。底层机制、授权要求和高级排障见
+[远程访问安全](../configuration/advanced.zh.md#远程访问安全)。
 
 ## 开发构建
 

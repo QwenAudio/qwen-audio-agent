@@ -81,6 +81,7 @@ function harness({ ownsProcesses = false } = {}) {
         connected: true,
         published: true,
         state: 'connected',
+        mode: 'private',
         endpoint: { url: 'https://voice.example.ts.net:8443' },
       }),
       enableRemoteAccess: async () => ({
@@ -89,6 +90,7 @@ function harness({ ownsProcesses = false } = {}) {
         connected: true,
         published: true,
         state: 'connected',
+        mode: 'private',
         endpoint: {
           url: 'https://voice.example.ts.net:8443',
           secure: true,
@@ -389,11 +391,51 @@ test('manages a Gateway remote endpoint and creates a portable invitation', asyn
   assert.match(enabled.calls.at(-1)[1], /voice\.example\.ts\.net/)
 
   const invited = harness()
+  invited.dependencies.renderInvitationQr = async value => {
+    invited.calls.push(['qr', value])
+    return '[compact QR]'
+  }
   assert.equal(await main(['gateway', 'remote', 'invite'], invited.dependencies), 0)
   const output = invited.calls.at(-1)[1]
-  assert.match(output, /^远程客户端邀请：qwaudio:\/\/connect#/)
-  assert.match(output, /远程 WebUI：https:\/\/voice\.example\.ts\.net:8443\/connect#/)
+  assert.match(output, /^请先在手机安装并连接官方 Tailscale App/)
+  assert.match(output, /移动端扫码接入：/)
+  assert.match(
+    invited.calls.find(call => call[0] === 'qr')[1],
+    /^https:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/,
+  )
+  assert.match(output, /\[compact QR\]/)
+  assert.match(output, /接入链接（移动端 \/ 桌面端）：\nqwaudio:\/\/connect\?v=1&gateway=/)
+  assert.match(output, /浏览器访问：\nhttps:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/)
   assert.match(output, /有效期至/)
+
+  const machineReadable = harness()
+  assert.equal(
+    await main(['gateway', 'remote', 'invite', '--json'], machineReadable.dependencies),
+    0,
+  )
+  const json = JSON.parse(machineReadable.calls.at(-1)[1])
+  assert.match(json.app_url, /^qwaudio:\/\/connect\?v=1&gateway=/)
+  assert.match(json.browser_url, /^https:\/\/voice\.example\.ts\.net:8443\/c\?e=[a-z0-9]+#/)
+
+  const funnel = harness()
+  funnel.dependencies.enableRemoteAccess = async (_url, mode) => {
+    assert.equal(mode, 'funnel')
+    return {
+      available: true,
+      enabled: true,
+      connected: true,
+      published: true,
+      state: 'connected',
+      mode: 'funnel',
+      endpoint: { url: 'https://voice.example.ts.net:8443', secure: true },
+    }
+  }
+  funnel.dependencies.renderInvitationQr = async () => '[compact QR]'
+  assert.equal(
+    await main(['gateway', 'remote', 'invite', '--mode', 'funnel'], funnel.dependencies),
+    0,
+  )
+  assert.match(funnel.calls.at(-1)[1], /^当前使用 Funnel 公网入口。/)
 
   const devices = harness()
   assert.equal(await main(['gateway', 'remote', 'devices'], devices.dependencies), 0)

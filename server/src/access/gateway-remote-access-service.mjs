@@ -18,6 +18,7 @@ import { GatewayUrlSchema } from '../../../shared/gateway-remote-access.mjs'
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../../..')
 const PACKAGE_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
 const SUPPORTED_PORTS = new Set([443, 8443, 10000])
+const REMOTE_ACCESS_MODES = new Set(['private', 'funnel'])
 const AUTH_URL = /^https:\/\/login\.tailscale\.com\//
 const ACTION_URL = /^https:\/\/tailscale\.com\//
 
@@ -159,18 +160,32 @@ export async function ensureTsnetComponent({
   return { path: destination, source: 'downloaded' }
 }
 
-function readEnabled(path) {
+export function normalizeRemoteAccessMode(value, fallback = 'private') {
+  const mode = String(value || fallback).trim().toLowerCase()
+  if (!REMOTE_ACCESS_MODES.has(mode)) {
+    const error = new TypeError(`Unsupported remote access mode: ${mode}`)
+    error.code = 'remote_access_mode_invalid'
+    throw error
+  }
+  return mode
+}
+
+function readSettings(path, defaultMode) {
   try {
-    return JSON.parse(readFileSync(path, 'utf8'))?.enabled === true
+    const stored = JSON.parse(readFileSync(path, 'utf8'))
+    return {
+      enabled: stored?.enabled === true,
+      mode: normalizeRemoteAccessMode(stored?.mode, defaultMode),
+    }
   } catch {
-    return false
+    return { enabled: false, mode: defaultMode }
   }
 }
 
-function writeEnabled(path, enabled) {
+function writeSettings(path, { enabled, mode }) {
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
   const temporary = `${path}.${process.pid}.tmp`
-  writeFileSync(temporary, `${JSON.stringify({ version: 1, enabled }, null, 2)}\n`, {
+  writeFileSync(temporary, `${JSON.stringify({ version: 2, enabled, mode }, null, 2)}\n`, {
     mode: 0o600,
   })
   renameSync(temporary, path)
@@ -190,6 +205,14 @@ export class GatewayRemoteAccessService {
     if (!SUPPORTED_PORTS.has(port)) {
       throw new TypeError('Remote access port must be 443, 8443, or 10000')
     }
+    const defaultMode = normalizeRemoteAccessMode(
+      env.QWEN_AUDIO_REMOTE_ACCESS_MODE,
+      'private',
+    )
+    const settings = readSettings(
+      join(resolve(configDirectory), 'state', 'remote-access.json'),
+      defaultMode,
+    )
     this.configDirectory = resolve(configDirectory)
     this.settingsPath = join(this.configDirectory, 'state', 'remote-access.json')
     this.stateDirectory = join(this.configDirectory, 'state', 'tsnet')
@@ -199,7 +222,8 @@ export class GatewayRemoteAccessService {
     this.hostname = hostname
     this.spawnImpl = spawnImpl
     this.ensureComponent = ensureComponent
-    this.enabled = readEnabled(this.settingsPath)
+    this.enabled = settings.enabled
+    this.mode = settings.mode
     this.gatewayUrl = ''
     this.child = null
     this.startPromise = null
@@ -217,6 +241,7 @@ export class GatewayRemoteAccessService {
     return {
       available: true,
       enabled: this.enabled,
+      mode: this.mode,
       connected: this.state === 'connected',
       published: Boolean(this.endpoint),
       state: this.state,
@@ -230,9 +255,13 @@ export class GatewayRemoteAccessService {
     }
   }
 
-  async enable(gatewayUrl) {
+  async enable(gatewayUrl, { mode = 'private' } = {}) {
+    const nextMode = normalizeRemoteAccessMode(mode)
+    const modeChanged = nextMode !== this.mode
     this.enabled = true
-    writeEnabled(this.settingsPath, true)
+    this.mode = nextMode
+    writeSettings(this.settingsPath, { enabled: true, mode: this.mode })
+    if (modeChanged && (this.child || this.startPromise)) await this.stop()
     return this.start(gatewayUrl)
   }
 
@@ -268,6 +297,7 @@ export class GatewayRemoteAccessService {
         '--state-dir', this.stateDirectory,
         '--hostname', this.hostname,
         '--port', String(this.port),
+        '--mode', this.mode,
       ], {
         env: { ...this.env },
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -316,7 +346,7 @@ export class GatewayRemoteAccessService {
 
   async disable() {
     this.enabled = false
-    writeEnabled(this.settingsPath, false)
+    writeSettings(this.settingsPath, { enabled: false, mode: this.mode })
     await this.stop()
     this.state = 'disabled'
     return { ...this.status(), changed: true }
@@ -391,7 +421,7 @@ export class GatewayRemoteAccessService {
       this.authUrl = null
       this.actionUrl = null
       this.error = null
-      this.logger?.info?.('remote_access.ready', { endpoint })
+      this.logger?.info?.('remote_access.ready', { endpoint, mode: this.mode })
       this.#resolveWaiters()
     } else if (event.type === 'error') {
       this.actionUrl = ACTION_URL.test(event.action_url || '')

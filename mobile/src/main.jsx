@@ -45,7 +45,13 @@ function MobileApp() {
       await saveMobileGatewayProfile(next)
       await activateProfile(next)
     } catch (error) {
-      setStatus(error.message || '无法连接 Gateway')
+      setStatus(
+        error.code === 'gateway_invitation_invalid'
+          ? '接入链接无效，请在 Gateway 主机上重新生成'
+          : error.code === 'gateway_invitation_expired'
+            ? '接入链接已过期，请在 Gateway 主机上重新生成'
+            : error.message || '无法连接 Gateway',
+      )
     } finally {
       pairing.current = false
       setBusy(false)
@@ -60,7 +66,7 @@ function MobileApp() {
         if (next) return activateProfile(next)
         return mobileLaunchUrl().then(url => {
           if (url) return pair(url)
-          setStatus('请扫描电脑端显示的 Gateway 配对码')
+          setStatus('请扫描 Gateway CLI 输出的配对码')
         })
       })
       .catch(error => active && setStatus(error.message || '无法读取连接配置'))
@@ -112,7 +118,7 @@ function MobileApp() {
       <textarea
         value={invitation}
         onChange={event => setInvitation(event.target.value)}
-        placeholder="粘贴 qwaudio://connect…"
+        placeholder="粘贴 Gateway 接入链接"
         spellCheck={false}
       />
     </label>

@@ -999,6 +999,18 @@ ipcMain.handle('qwen-audio-agent:open-logs', async event => {
   return logger.directory
 })
 
+function assertSettingsRequest(event) {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权修改 Gateway 连接')
+  }
+}
+
+ipcMain.handle('qwen-audio-agent:remote-gateway-connect', async (event, value) => {
+  assertSettingsRequest(event)
+  const settings = await applyGatewayInvitation(value, { reloadSettings: false })
+  return { gatewayUrl: settings.gatewayUrl }
+})
+
 // 与 `qwenaudio setup --json` 同款的只读检测，供设置页标注各后台
 // Agent 在本机的可用状态。合并 config.env 是因为检测需要其中的
 // AGENT_PROTOCOL / DASHSCOPE_API_KEY / ACP_COMMAND 等配置。
@@ -1419,10 +1431,10 @@ ipcMain.handle('qwen-audio-agent:skin-remove', async (event, id) => {
 })
 
 function gatewayInvitationFromArguments(argv = []) {
-  return argv.find(value => String(value || '').startsWith('qwaudio://connect#')) || null
+  return argv.find(value => String(value || '').startsWith('qwaudio://connect')) || null
 }
 
-async function applyGatewayInvitation(value) {
+async function applyGatewayInvitation(value, { reloadSettings = true } = {}) {
   const invitation = decodeGatewayInvitation(value)
   const paired = await pairGatewayInvitation(invitation, {
     device: {
@@ -1456,7 +1468,7 @@ async function applyGatewayInvitation(value) {
     await loadQwenAudioAgent(mainWindow)
     desktopPresence.wake('remote-paired')
   }
-  if (settingsWindow && !settingsWindow.isDestroyed()) {
+  if (reloadSettings && settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.reload()
   }
   logger.info('gateway.remote_paired', {

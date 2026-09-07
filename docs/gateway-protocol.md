@@ -94,6 +94,7 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
     "client.events",
     "session.output_voice",
     "session.takeover",
+    "session.heartbeat",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ],
@@ -140,6 +141,7 @@ Gateway returns the selected version and capability intersection:
     "client.events",
     "session.output_voice",
     "session.takeover",
+    "session.heartbeat",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ]
@@ -153,6 +155,7 @@ Rules:
 - Reconnection from the same `client.instance_id` replaces its stale socket without requiring explicit takeover.
 - Owners are independent. Each owner still has exactly one active Client.
 - The lease is released when the socket closes or its heartbeat expires. Lease-generation fencing prevents a stale socket from releasing or mutating a newer lease.
+- A Client that negotiates `session.heartbeat` must answer each Gateway `session.ping` with a correlated `session.pong`. Application traffic also refreshes the lease. This avoids relying on WebSocket control frames that some reverse proxies do not preserve reliably.
 - No observer connection or concurrent multi-Client control exists in 6.0.
 - The Client must branch on negotiated capabilities, not product versions.
 - Protocol version, Client identity, and capabilities cannot change without reconnecting.

@@ -80,6 +80,8 @@ const currentBackend = document.querySelector('#current-backend')
 const updaterStatus = document.querySelector('#updater-status')
 const checkUpdates = document.querySelector('#check-updates')
 const openLogs = document.querySelector('#open-logs')
+const remoteGatewayInvitation = document.querySelector('#remote-gateway-invitation')
+const connectRemoteGateway = document.querySelector('#connect-remote-gateway')
 const submit = form.querySelector('button[type="submit"]')
 const settingsTabs = [...document.querySelectorAll('[data-settings-tab]')]
 const settingsPanels = [...document.querySelectorAll('[data-settings-panel]')]
@@ -1138,6 +1140,29 @@ for (const control of [
 
 getApiKey.addEventListener('click', () => {
   window.qwenAudioAgentDesktop.openExternal(BAILIAN_API_KEY_URL)
+})
+
+connectRemoteGateway.addEventListener('click', async () => {
+  const invitation = remoteGatewayInvitation.value.trim()
+  if (!invitation) {
+    showMessage(t('请粘贴 Gateway 接入链接'), 'error')
+    return
+  }
+  connectRemoteGateway.disabled = true
+  try {
+    const result = await window.qwenAudioAgentDesktop.connectRemoteGateway(invitation)
+    settings.gatewayUrl = result.gatewayUrl
+    gatewayUrl.value = result.gatewayUrl
+    remoteGatewayInvitation.value = ''
+    appliedFingerprint = fingerprint(formSettings())
+    updateApplyState()
+    await refreshRuntime()
+    showMessage(t('已连接远程 Gateway。'), 'success')
+  } catch (error) {
+    showMessage(friendlyError(error, t('连接远程 Gateway 失败')), 'error')
+  } finally {
+    connectRemoteGateway.disabled = false
+  }
 })
 
 orbSkinSelect.addEventListener('change', updateRemoveSkinState)

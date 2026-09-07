@@ -17,26 +17,37 @@ TUI, without importing Realtime Provider or backend-protocol internals.
    ```
 
    On first use, the Gateway prepares its optional remote component and prints
-   a browser authorization URL. Follow that page once; neither the computer nor
-   the phone needs an additional remote-network client installed.
-2. After authorization completes, create an invitation:
+   a browser authorization URL. Follow it once to join the Gateway to your
+   private tailnet. The computer does not need a separate Tailscale install.
+2. Install and sign in to the official Tailscale app on the phone, joining the
+   same tailnet as the Gateway.
+3. After authorization completes, create an invitation:
 
    ```bash
    qwenaudio gateway remote invite
    ```
 
-3. Open Mobile and use the `qwaudio://connect…` invitation emitted by the CLI.
-4. Grant microphone access for the first call. Later launches reconnect
+4. The command prints a QR code, a native-client connection link, and a browser
+   access link. Mobile can scan the QR code or paste the connection link;
+   Desktop accepts the same connection link in Settings; without a native
+   client, open the browser link.
+5. Grant microphone access for the first call. Later launches reconnect
    automatically. If Desktop, WebUI, or TUI is active, Mobile asks before taking
    over.
 
-An invitation is short-lived and single-use. Pairing creates an independent,
+An invitation is short-lived and single-use. The Gateway CLI exclusively owns
+remote-access enablement, invitations, and device management; Clients only
+consume invitations. Pairing creates an independent,
 revocable device credential. Run `qwenaudio gateway remote devices` on the host
 to inspect devices and `qwenaudio gateway remote revoke <device-id>` to revoke
 one.
 
-The public HTTPS/WSS route remains protected by the paired-device credential.
-See [Remote Access Security](../configuration/advanced.md#remote-access-security)
+By default, the remote HTTPS/WSS endpoint is reachable only inside the private
+tailnet and Tailscale prefers a direct device-to-device path. It may use a DERP
+relay on restrictive networks. For a temporary public endpoint, explicitly run
+`qwenaudio gateway remote invite --mode funnel`. Gateway business APIs remain
+protected by paired-device credentials in either mode. See
+[Remote Access Security](../configuration/advanced.md#remote-access-security)
 for implementation details, authorization requirements, and troubleshooting.
 
 ## Development builds

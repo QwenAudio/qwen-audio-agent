@@ -64,6 +64,7 @@ import {
   GATEWAY_CLIENT_REVOKED_CLOSE_CODE,
   GatewayClientCapability,
   GatewayClientProtocolEvent,
+  GatewaySessionPongSchema,
 } from '../../../shared/gateway-client-protocol.mjs'
 import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
 import {
@@ -1480,7 +1481,22 @@ export function attachRealtimeGateway(server, {
       } catch {
         return
       }
+      if (
+        event.type === GatewayClientProtocolEvent.SESSION_PONG
+        && clientProtocol.capabilities.includes(GatewayClientCapability.SESSION_HEARTBEAT)
+        && GatewaySessionPongSchema.safeParse(event).success
+      ) {
+        ws.isAlive = true
+        return
+      }
       const protocolOutcome = clientProtocol.receive(event)
+      // WebSocket control-frame pongs are not reliably observable after every
+      // reverse proxy. Any accepted application frame proves the Client is alive.
+      if (!protocolOutcome.close && (
+        protocolOutcome.event
+        || protocolOutcome.runtimeMessage
+        || protocolOutcome.reply?.type === GatewayClientProtocolEvent.SESSION_READY
+      )) ws.isAlive = true
       if (protocolOutcome.close) {
         if (protocolOutcome.reply) send(ws, protocolOutcome.reply)
         ws.close(1002, protocolOutcome.reply?.error?.code || 'protocol error')
@@ -1785,7 +1801,7 @@ export function attachRealtimeGateway(server, {
       }
     })
 
-    ws.on('close', () => {
+    ws.on('close', (code, reason) => {
       activeClientLeases.release(
         ownerId,
         leaseParticipant,
@@ -1794,6 +1810,8 @@ export function attachRealtimeGateway(server, {
       clientProtocolSessions.delete(ws)
       connectionLogger.info('voice_client.disconnected', {
         clientType: descriptor.type,
+        closeCode: Number(code),
+        closeReason: reason?.toString() || undefined,
       })
       releaseVoiceClient()
       const connections = voiceConnections.get(ownerId)
@@ -1916,7 +1934,12 @@ export function attachRealtimeGateway(server, {
         continue
       }
       ws.isAlive = false
-      ws.ping()
+      const protocol = clientProtocolSessions.get(ws)
+      if (protocol?.capabilities.includes(GatewayClientCapability.SESSION_HEARTBEAT)) {
+        send(ws, { type: GatewayClientProtocolEvent.SESSION_PING })
+      } else {
+        ws.ping()
+      }
     }
   }, CLIENT_HEARTBEAT_MS)
   heartbeat.unref?.()

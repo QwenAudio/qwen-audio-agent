@@ -1,6 +1,7 @@
-// qwaudio-tsnet publishes a loopback Qwen Audio Agent Gateway through
-// Tailscale Funnel. It is an implementation detail of Gateway remote access,
-// not a second Gateway and not a client-facing protocol endpoint.
+// qwaudio-tsnet publishes a loopback Qwen Audio Agent Gateway through a
+// private tailnet by default, with Funnel available as an explicit option. It
+// is an implementation detail of Gateway remote access, not a second Gateway
+// and not a client-facing protocol endpoint.
 package main
 
 import (
@@ -10,6 +11,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -50,15 +52,17 @@ func main() {
 	var gatewayURL string
 	var stateDir string
 	var hostname string
+	var mode string
 	var port int
 	flag.StringVar(&gatewayURL, "gateway", "http://127.0.0.1:3101", "loopback Gateway URL")
 	flag.StringVar(&stateDir, "state-dir", "", "persistent tsnet state directory")
 	flag.StringVar(&hostname, "hostname", "qwen-audio-agent", "Tailscale node hostname")
-	flag.IntVar(&port, "port", 443, "Funnel HTTPS port")
+	flag.StringVar(&mode, "mode", "private", "remote access mode: private or funnel")
+	flag.IntVar(&port, "port", 443, "remote HTTPS port")
 	flag.Parse()
 
 	events := new(eventWriter)
-	if err := run(gatewayURL, stateDir, hostname, port, events); err != nil {
+	if err := run(gatewayURL, stateDir, hostname, mode, port, events); err != nil {
 		fields := map[string]any{
 			"code":    errorCode(err),
 			"message": err.Error(),
@@ -71,7 +75,7 @@ func main() {
 	}
 }
 
-func run(gatewayURL, stateDir, hostname string, port int, events *eventWriter) error {
+func run(gatewayURL, stateDir, hostname, mode string, port int, events *eventWriter) error {
 	target, err := url.Parse(gatewayURL)
 	if err != nil || target.Scheme != "http" || !isLoopback(target.Hostname()) {
 		return fmt.Errorf("invalid_gateway: gateway must be a loopback HTTP URL")
@@ -79,8 +83,11 @@ func run(gatewayURL, stateDir, hostname string, port int, events *eventWriter) e
 	if stateDir == "" {
 		return fmt.Errorf("invalid_state_dir: state directory is required")
 	}
+	if mode != "private" && mode != "funnel" {
+		return fmt.Errorf("invalid_mode: mode must be private or funnel")
+	}
 	if port != 443 && port != 8443 && port != 10000 {
-		return fmt.Errorf("invalid_port: Funnel port must be 443, 8443, or 10000")
+		return fmt.Errorf("invalid_port: HTTPS port must be 443, 8443, or 10000")
 	}
 	if err := os.MkdirAll(stateDir, 0o700); err != nil {
 		return fmt.Errorf("state_dir_failed: %w", err)
@@ -113,15 +120,23 @@ func run(gatewayURL, stateDir, hostname string, port int, events *eventWriter) e
 		return fmt.Errorf("tailscale_start_failed: %w", err)
 	}
 
-	listener, err := server.ListenFunnel("tcp", fmt.Sprintf(":%d", port))
+	var listener net.Listener
+	if mode == "funnel" {
+		listener, err = server.ListenFunnel("tcp", fmt.Sprintf(":%d", port))
+	} else {
+		listener, err = server.ListenTLS("tcp", fmt.Sprintf(":%d", port))
+	}
 	if err != nil {
-		return fmt.Errorf("funnel_start_failed: %w", err)
+		if mode == "funnel" {
+			return fmt.Errorf("funnel_start_failed: %w", err)
+		}
+		return fmt.Errorf("private_listener_start_failed: %w", err)
 	}
 	defer listener.Close()
 
 	domains := server.CertDomains()
 	if len(domains) == 0 {
-		return fmt.Errorf("funnel_domain_unavailable: Tailscale did not provide an HTTPS domain")
+		return fmt.Errorf("remote_domain_unavailable: Tailscale did not provide an HTTPS domain")
 	}
 	endpoint := fmt.Sprintf("https://%s", strings.TrimSuffix(domains[0], "."))
 	if port != 443 {
@@ -138,7 +153,7 @@ func run(gatewayURL, stateDir, hostname string, port int, events *eventWriter) e
 		Handler:           proxy,
 		ReadHeaderTimeout: 15 * time.Second,
 	}
-	events.emit("endpoint_ready", map[string]any{"url": endpoint})
+	events.emit("endpoint_ready", map[string]any{"url": endpoint, "mode": mode})
 
 	serveError := make(chan error, 1)
 	go func() { serveError <- httpServer.Serve(listener) }()
@@ -152,7 +167,7 @@ func run(gatewayURL, stateDir, hostname string, port int, events *eventWriter) e
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
-		return fmt.Errorf("funnel_serve_failed: %w", err)
+		return fmt.Errorf("remote_serve_failed: %w", err)
 	}
 }
 

@@ -116,11 +116,16 @@ test('remote access lifecycle helpers call only the local Gateway management pla
     }, { status: options.method === 'POST' ? 202 : 200 })
   }
   await readGatewayRemoteAccess('http://127.0.0.1:3101', fetchImpl)
-  await enableGatewayRemoteAccess('http://127.0.0.1:3101', fetchImpl)
+  await enableGatewayRemoteAccess(
+    'http://127.0.0.1:3101',
+    { mode: 'funnel' },
+    fetchImpl,
+  )
   await disableGatewayRemoteAccess('http://127.0.0.1:3101', fetchImpl)
   assert.deepEqual(requests.map(request => [request.url, request.options.method]), [
     ['http://127.0.0.1:3101/api/access/remote', 'GET'],
     ['http://127.0.0.1:3101/api/access/remote', 'POST'],
     ['http://127.0.0.1:3101/api/access/remote', 'DELETE'],
   ])
+  assert.deepEqual(JSON.parse(requests[1].options.body), { mode: 'funnel' })
 })

@@ -17,6 +17,8 @@ export const GATEWAY_CLIENT_REVOKED_CLOSE_CODE = 4003
 export const GatewayClientProtocolEvent = Object.freeze({
   SESSION_HELLO: 'session.hello',
   SESSION_READY: 'session.ready',
+  SESSION_PING: 'session.ping',
+  SESSION_PONG: 'session.pong',
   SESSION_OUTPUT_VOICE_UPDATE: 'session.output_voice.update',
   SESSION_OUTPUT_VOICE_UPDATED: 'session.output_voice.updated',
   INPUT_AUDIO_APPEND: 'input_audio_buffer.append',
@@ -62,6 +64,7 @@ export const GatewayClientCapability = Object.freeze({
   CLIENT_ACTION_ENTER_SLEEP: 'client.actions.desktop.presence.enter_sleep',
   SESSION_REPLAY: 'session.replay',
   SESSION_TAKEOVER: 'session.takeover',
+  SESSION_HEARTBEAT: 'session.heartbeat',
 })
 
 export const GatewayClientActionName = Object.freeze({
@@ -92,6 +95,7 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
   GatewayClientCapability.SESSION_REPLAY,
   GatewayClientCapability.SESSION_TAKEOVER,
+  GatewayClientCapability.SESSION_HEARTBEAT,
 ])
 
 const IdentifierSchema = z.string().min(1).max(128)
@@ -169,6 +173,15 @@ export const GatewaySessionReadySchema = GatewayServerEnvelopeSchema.extend({
     lease_generation: z.number().int().positive(),
     replaced: z.boolean(),
   }).optional(),
+})
+
+export const GatewaySessionPingSchema = GatewayServerEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.SESSION_PING),
+})
+
+export const GatewaySessionPongSchema = GatewayClientEnvelopeSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.SESSION_PONG),
+  request_event_id: IdentifierSchema,
 })
 
 export const GatewayProtocolErrorSchema = GatewayServerEnvelopeSchema.extend({
@@ -540,6 +553,9 @@ export function parseGatewayClientProtocolMessage(value) {
   if (value?.type === GatewayClientProtocolEvent.SESSION_HELLO) {
     return GatewaySessionHelloSchema.parse(value)
   }
+  if (value?.type === GatewayClientProtocolEvent.SESSION_PONG) {
+    return GatewaySessionPongSchema.parse(value)
+  }
   if (GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS[value?.type]) {
     return GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS[value.type].parse(value)
   }
@@ -549,6 +565,9 @@ export function parseGatewayClientProtocolMessage(value) {
 export function parseGatewayServerProtocolMessage(value) {
   if (value?.type === GatewayClientProtocolEvent.SESSION_READY) {
     return GatewaySessionReadySchema.parse(value)
+  }
+  if (value?.type === GatewayClientProtocolEvent.SESSION_PING) {
+    return GatewaySessionPingSchema.parse(value)
   }
   if (value?.type === 'error' && value?.error) {
     return GatewayProtocolErrorSchema.parse(value)

@@ -36,7 +36,10 @@ import {
   parseGatewayAccessKeys,
 } from '../access/gateway-access.mjs'
 import { gatewayBrowserPairingPage } from '../access/browser-pairing-page.mjs'
-import { GatewayRemoteAccessService } from '../access/gateway-remote-access-service.mjs'
+import {
+  GatewayRemoteAccessService,
+  normalizeRemoteAccessMode,
+} from '../access/gateway-remote-access-service.mjs'
 import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
@@ -483,7 +486,7 @@ app.use(express.json({ limit: '1mb' }))
 // This shell contains no Gateway data. It is the only application page that
 // can load before authentication; the invitation remains in the URL fragment
 // and is therefore never sent in an HTTP request or access log.
-app.get('/connect', (_req, res) => {
+app.get('/c', (_req, res) => {
   res.setHeader('cache-control', 'no-store')
   res.setHeader('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'")
   res.setHeader('referrer-policy', 'no-referrer')
@@ -631,7 +634,13 @@ app.post('/api/access/remote', (req, res) => {
       code: 'gateway_not_ready',
     })
   }
-  Promise.resolve(remoteAccessRuntime.enable(localGatewayOrigin(address)))
+  let mode
+  try {
+    mode = normalizeRemoteAccessMode(req.body?.mode, 'private')
+  } catch (error) {
+    return res.status(400).json({ error: error.message, code: error.code })
+  }
+  Promise.resolve(remoteAccessRuntime.enable(localGatewayOrigin(address), { mode }))
     .then(status => res.status(status.state === 'auth_required' ? 202 : 200).json(status))
     .catch(error => respondRemoteAccessError(res, error))
 })

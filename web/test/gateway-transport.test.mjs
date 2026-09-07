@@ -7,6 +7,7 @@ import {
   gatewayFetch,
   gatewayHttpUrl,
   gatewayRealtimeUrl,
+  gatewayTransportIsRemote,
 } from '../src/gateway-transport.js'
 
 test.afterEach(() => configureGatewayTransport())
@@ -16,6 +17,22 @@ test('keeps the existing same-origin browser transport by default', () => {
   assert.equal(
     gatewayRealtimeUrl('voice one', new URL('https://example.test/app/index.html')),
     'wss://example.test/app/api/realtime?sessionId=voice%20one',
+  )
+})
+
+test('distinguishes local playback from a remote Gateway transport', () => {
+  assert.equal(
+    gatewayTransportIsRemote(new URL('http://127.0.0.1:3101/')),
+    false,
+  )
+  assert.equal(
+    gatewayTransportIsRemote(new URL('https://voice.example.test/')),
+    true,
+  )
+  configureGatewayTransport({ gatewayUrl: 'https://remote.example.test' })
+  assert.equal(
+    gatewayTransportIsRemote(new URL('http://127.0.0.1:3101/')),
+    true,
   )
 })
 

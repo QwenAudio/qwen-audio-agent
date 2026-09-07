@@ -72,11 +72,27 @@ test('invitations are versioned, bounded records without permanent credentials',
   assert.deepEqual(parseGatewayInvitation(invitation), invitation)
   assert.equal(invitation.version, 1)
   assert.equal('access_token' in invitation, false)
-  assert.deepEqual(decodeGatewayInvitation(encodeGatewayInvitation(invitation)), invitation)
+  const appUrl = new URL(encodeGatewayInvitation(invitation))
+  assert.equal(appUrl.protocol, 'qwaudio:')
+  assert.equal(appUrl.hostname, 'connect')
+  assert.equal(appUrl.searchParams.get('v'), '1')
+  assert.equal(appUrl.searchParams.get('gateway'), invitation.gateway_url)
+  assert.equal(appUrl.searchParams.get('code'), invitation.pairing_code)
+  assert.equal(appUrl.searchParams.get('expires'), String(invitation.expires_at))
+  assert.equal(appUrl.hash, '')
+  assert.deepEqual(decodeGatewayInvitation(appUrl), invitation)
   const browser = new URL(encodeGatewayBrowserInvitation(invitation))
   assert.equal(browser.origin, invitation.gateway_url)
-  assert.equal(browser.pathname, '/connect')
-  assert.ok(browser.hash.length > 1)
+  assert.equal(browser.pathname, '/c')
+  assert.equal(browser.searchParams.get('e'), invitation.expires_at.toString(36))
+  assert.equal(decodeURIComponent(browser.hash.slice(1)), invitation.pairing_code)
+  assert.deepEqual(decodeGatewayInvitation(browser), invitation)
+  assert.throws(
+    () => decodeGatewayInvitation(
+      `qwaudio://connect#${encodeURIComponent(JSON.stringify(invitation))}`,
+    ),
+    error => error.code === 'gateway_invitation_invalid',
+  )
   assert.throws(() => parseGatewayInvitation({ ...invitation, version: 2 }))
   assert.throws(() => parseGatewayInvitation({ ...invitation, backend: 'opencode' }))
 })

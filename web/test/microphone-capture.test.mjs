@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createMicrophoneCaptureLifecycle,
+  microphoneErrorKind,
   recoverableMicrophoneError,
 } from '../src/microphone-capture.js'
 
@@ -223,4 +224,14 @@ test('treats denied permission as terminal and device absence as recoverable', a
   assert.deepEqual(target.fatal, [denied])
   assert.equal(target.clock.size(), 0)
   target.lifecycle.stop()
+})
+
+test('normalizes native WebView microphone failures', () => {
+  assert.equal(
+    microphoneErrorKind({ name: 'NotAllowedError', message: 'Permission denied' }),
+    'permission_denied',
+  )
+  assert.equal(microphoneErrorKind(new Error('permission denied')), 'permission_denied')
+  assert.equal(microphoneErrorKind({ name: 'NotFoundError' }), 'device_missing')
+  assert.equal(microphoneErrorKind({ name: 'NotReadableError' }), 'device_unavailable')
 })

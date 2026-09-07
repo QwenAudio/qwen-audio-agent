@@ -6,8 +6,9 @@ By default, the Gateway binds to loopback and trusts only literal loopback Host/
 requests require a Gateway access credential before they can reach HTTP or WebSocket business
 APIs. Do not expose the Gateway's loopback port directly to the public Internet.
 
-Built-in remote access is owned by the Gateway through an optional tsnet component. The
-Tailscale app is not required on either the host or the remote device:
+Built-in remote access is owned by the Gateway through an optional tsnet component. By default,
+it joins the Gateway to a private tailnet. The computer does not need a separate Tailscale install,
+but each remote phone or computer must run the official Tailscale app and join the same tailnet:
 
 ```bash
 qwenaudio gateway remote enable
@@ -15,13 +16,23 @@ qwenaudio gateway remote invite
 ```
 
 On first use, the Gateway downloads a SHA-256-verified component and provides a one-time browser
-authorization flow. After authorization, tsnet publishes the loopback Gateway through Tailscale
-Funnel as an HTTPS/WSS endpoint; the second command prints a short-lived Client invitation. Use
-`gateway remote status`, `devices`, `revoke ID`, and `disable` to manage it. The Gateway owns this
-state; Desktop is only an optional graphical management surface.
+authorization flow. After authorization, tsnet proxies the loopback Gateway through an HTTPS/WSS
+endpoint inside the tailnet; the second command prints a short-lived Client invitation. Tailscale
+prefers a direct peer-to-peer path and may fall back to a DERP relay when NAT or network policy
+prevents it. Use `gateway remote status`, `devices`, `revoke ID`, and `disable` to manage it.
+Remote-access state and invitation issuance belong exclusively to the Gateway CLI; Desktop,
+Mobile, and other Clients only import connection links.
+
+For a temporary public endpoint that does not require the Tailscale app on the remote device,
+explicitly use:
+
+```bash
+qwenaudio gateway remote enable --mode funnel
+qwenaudio gateway remote invite --mode funnel
+```
 
 Funnel requires MagicDNS, HTTPS, and Funnel permission in the tailnet and is subject to Tailscale's
-bandwidth limits. Publishing the endpoint does not bypass Gateway authentication: every remote
+bandwidth limits. Neither private access nor Funnel bypasses Gateway authentication: every remote
 business request except the one-time pairing shell requires a paired-device credential.
 
 For one personal access key:

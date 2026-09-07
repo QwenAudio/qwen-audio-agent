@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 补充 DeepSeek API 与 Windows 本地调试配置说明，区分后台模型密钥和实时语音密钥。
+- 更新间接依赖 `fast-uri` 至 3.1.7、`@xmldom/xmldom` 至 0.8.15，并将
+  `qs` 覆盖为 6.16.0，修复 URI、XML 和查询字符串解析相关安全问题。
 - 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
   `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
   模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。

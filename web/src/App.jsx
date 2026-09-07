@@ -1436,12 +1436,12 @@ export default function App() {
         className="ghost frontend-provider"
         value={realtimeProvider}
         onChange={event => selectRealtimeProvider(event.target.value)}
-        title={t('选择前台语音引擎')}
-        aria-label={t('选择前台语音引擎')}
+        title={t('选择 Realtime 前台服务')}
+        aria-label={t('选择 Realtime 前台服务')}
       >
-        <option value="">{t('前台：默认（{label}）', { label: frontend.label })}</option>
+        <option value="">{t('前台服务：默认（{label}）', { label: frontend.label })}</option>
         {realtimeProviders.map(item => <option key={item.key} value={item.key}>
-          {t('前台：{label}', { label: item.label })}
+          {t('前台服务：{label}', { label: item.label })}
         </option>)}
       </select>}
       <div className="status">

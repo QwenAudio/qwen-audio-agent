@@ -77,10 +77,13 @@ export default function VisualStreamControl({
     if (!cameraOpen) return
     if (
       !available
-      || !inputEnabled
       || ['unavailable', 'disconnected', 'hidden'].includes(connectionState)
     ) closeCamera()
-  }, [available, cameraOpen, closeCamera, connectionState, inputEnabled])
+  }, [available, cameraOpen, closeCamera, connectionState])
+
+  useEffect(() => {
+    if (!inputEnabled && streamingRef.current) stopStreaming()
+  }, [inputEnabled, stopStreaming])
 
   useEffect(() => () => closeCamera(), [closeCamera])
 
@@ -153,9 +156,9 @@ export default function VisualStreamControl({
     <button
       className="composer-camera"
       type="button"
-      title={inputEnabled ? t('开启实时视觉') : t('请先开启麦克风')}
+      title={t('打开相机预览')}
       aria-label={t('开启实时视觉')}
-      disabled={!available || !inputEnabled}
+      disabled={!available}
       onClick={() => void openCamera()}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -181,7 +184,9 @@ export default function VisualStreamControl({
         <span className="camera-status-dot" aria-hidden="true" />
         {streaming
           ? t('实时视觉已开启 · 已发送 {count} 帧', { count: frameCount })
-          : t('画面仅在开启实时视觉后发送')}
+          : inputEnabled
+            ? t('画面仅在开启实时视觉后发送')
+            : t('请先开启麦克风，再开始实时视觉')}
       </small>
       <div className="camera-actions">
         <button type="button" className="ghost" onClick={closeCamera}>

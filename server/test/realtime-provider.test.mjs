@@ -550,7 +550,7 @@ test('rejects an unknown DashScope model before opening its WebSocket', async t 
 
   await assert.rejects(
     frontend.connect(),
-    /不支持的 Realtime 模型.*qwen3\.5-omni-flash-realtime-future.*Qwen-Audio-Realtime/,
+    /不支持的 Realtime 模型.*qwen3\.5-omni-flash-realtime-future.*DashScope Realtime/,
   )
   assert.equal(frontend.ws, null)
 })
@@ -619,13 +619,13 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
   const active = describeActiveRealtime('dashscope')
 
   assert.equal(active.modelProfile.id, DASHSCOPE_OMNI_FLASH_REALTIME_MODEL)
-  assert.equal(active.label, 'Qwen-Audio-Realtime')
+  assert.equal(active.label, 'DashScope Realtime')
   assert.equal(active.modelProfile.label, 'Qwen3.5 Omni Flash Realtime')
   assert.equal(active.modelCapabilities.imageInput, true)
   assert.equal(active.transportCapabilities.imageInput, false)
   assert.equal(
     active.providers.find(provider => provider.key === 'dashscope')?.label,
-    'Qwen-Audio-Realtime',
+    'DashScope Realtime',
   )
   assert.deepEqual(
     active.providers.find(provider => provider.key === 'dashscope')

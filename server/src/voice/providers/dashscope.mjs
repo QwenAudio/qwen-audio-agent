@@ -48,7 +48,7 @@ function responseModalities(profile) {
 
 export const dashscopeProvider = {
   key: 'dashscope',
-  label: 'Qwen-Audio-Realtime',
+  label: 'DashScope Realtime',
   aliases: ['qwen'],
   inputSampleRate: 16000,
   outputSampleRate: 24000,

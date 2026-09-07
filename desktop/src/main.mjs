@@ -53,12 +53,6 @@ import {
 } from './gateway-process.mjs'
 import { remoteRealtimeModelOutcome } from './realtime-status.mjs'
 import {
-  detectBackendSetups,
-} from './backend-detection.mjs'
-import {
-  backendDefinition,
-} from '../../shared/backend-catalog.mjs'
-import {
   DESKTOP_ORB_HEIGHT,
   DESKTOP_ORB_WIDTH,
   desktopConversationPanelBounds,
@@ -69,13 +63,7 @@ import {
 import { createOrbPlacement } from './orb-placement.mjs'
 import { bindOrbShell, configureOrbWindow } from './orb-shell.mjs'
 import { createSettingsStore } from './settings-store.mjs'
-import {
-  withBackendLifecycle,
-} from '../../shared/backend-install.mjs'
-import {
-  createBackendInstaller,
-} from './backend-installer.mjs'
-import { openBackendConfiguration } from './backend-configuration.mjs'
+import { createDesktopBackendManagement } from './backend-management.mjs'
 import {
   parseSettings,
   realtimeSettingsConfigured,
@@ -1011,93 +999,8 @@ ipcMain.handle('qwen-audio-agent:remote-gateway-connect', async (event, value) =
   return { gatewayUrl: settings.gatewayUrl }
 })
 
-// 与 `qwenaudio setup --json` 同款的只读检测，供设置页标注各后台
-// Agent 在本机的可用状态。合并 config.env 是因为检测需要其中的
-// AGENT_PROTOCOL / DASHSCOPE_API_KEY / ACP_COMMAND 等配置。
-// INSTALLED_ONLY 与 gateway-process.mjs 保持一致：桌面版运行时禁止
-// npx 按需回退，检测口径必须与运行时一致，只认已安装的组件。
-// 检测结果按会话缓存：重复打开设置页直接复用；“刷新”按钮（force）
-// 或缓存过期才真正重跑。登录 shell 与版本命令都在 Worker 中执行，
-// 避免设置页首次打开时阻塞 Electron 主进程。
-const BACKEND_REPORT_TTL_MS = 10 * 60 * 1000
-let backendReportCache = null
-let backendReportPending = null
-
-// 检测环境：config.env 叠加在进程环境之上，与 Gateway 运行时口径一致。
-function backendDetectionEnvironment() {
-  const configured = existsSync(runtimeEnvironment.configPath)
-    ? parseEnv(readFileSync(runtimeEnvironment.configPath, 'utf8'))
-    : {}
-  // 滤掉空值：config 文件中 KEY=（无值）会解析出 KEY: ''，
-  // 展开时会覆盖 process.env 的同名变量（如 PATH）。
-  const filtered = {}
-  for (const [key, value] of Object.entries(configured)) {
-    if (value !== '') filtered[key] = value
-  }
-  // Windows 上 npm 设置的是 Path（首字母大写）而非 PATH，
-  // { ...process.env } 展开会保留原始键名，导致 result.PATH 为 undefined。
-  // 归一化：将 Path 转为 PATH。
-  const result = {
-    ...process.env,
-    ...filtered,
-    QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY: '1',
-  }
-  if (result.Path && !result.PATH) {
-    result.PATH = result.Path
-  }
-  delete result.Path
-  return result
-}
-
-// 执行一次完整检测：主进程沿用 Worker 读取到的登录 shell PATH（只赋值，
-// 不再执行任何阻塞命令），并为每个后台附加一键安装能力——渲染层无法
-// 访问 Node 环境，安装规格只能由主进程查询后随报告一起下发。
-function runBackendDetection() {
-  return detectBackendSetups({ env: backendDetectionEnvironment() })
-    .then(result => {
-      if (result.path) {
-        // 合并 Worker 检测到的 PATH 到进程环境，只添加新目录，
-        // 不替换已有目录（保留 System32 等系统路径）。
-        process.env.PATH = mergeSearchPath(
-          process.env.PATH,
-          result.path,
-          { platform: process.platform },
-        )
-      }
-      return withBackendLifecycle(result.report, {
-        env: backendDetectionEnvironment(),
-      })
-    })
-}
-
-ipcMain.handle('qwen-audio-agent:settings-detect-backends', async (event, options) => {
-  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
-    throw new Error('无权检测后台 Agent')
-  }
-  const now = Date.now()
-  if (
-    options?.force !== true
-    && backendReportCache
-    && now - backendReportCache.time < BACKEND_REPORT_TTL_MS
-  ) {
-    return backendReportCache.report
-  }
-  if (backendReportPending) return backendReportPending
-  backendReportPending = runBackendDetection().then(report => {
-    backendReportCache = { report, time: Date.now() }
-    return report
-  }).finally(() => {
-    backendReportPending = null
-  })
-  return backendReportPending
-})
-
-// 后台 Agent 一键安装：规格与执行逻辑在 shared/backend-install.mjs，
-// 与 CLI `qwenaudio install` 同一份；这里只负责原生确认框、进度推送
-// 与安装后的整体重检。脚本类步骤的确认发生在可信主进程（原生对话框
-// 展示完整命令文本），渲染层无法绕过。
-const backendInstaller = createBackendInstaller({
-  env: backendDetectionEnvironment,
+const backendManagement = createDesktopBackendManagement({
+  configPath: runtimeEnvironment.configPath,
   confirmScript: async step => {
     if (!settingsWindow || settingsWindow.isDestroyed()) return false
     const { response } = await dialog.showMessageBox(settingsWindow, {
@@ -1114,63 +1017,41 @@ const backendInstaller = createBackendInstaller({
     })
     return response === 0
   },
+  onInstallProgress: progress => {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.webContents.send(
+        'qwen-audio-agent:backend-install-progress',
+        progress,
+      )
+    }
+  },
+  onConfigured: ({ backend, result }) => {
+    logger.info('backend.configuration_opened', {
+      backend,
+      action: result.action?.kind,
+    })
+  },
+})
+
+ipcMain.handle('qwen-audio-agent:settings-detect-backends', async (event, options) => {
+  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
+    throw new Error('无权检测后台 Agent')
+  }
+  return backendManagement.detectBackends({ force: options?.force === true })
 })
 
 ipcMain.handle('qwen-audio-agent:backend-install', async (event, payload) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权安装后台 Agent')
   }
-  // 渲染层只能传后台 id；安装规格从主进程目录白名单查询，
-  // 命令不拼接任何用户输入。
-  const id = typeof payload === 'string' ? payload : payload?.backend
-  const definition = backendDefinition(id)
-  if (!definition) {
-    throw new Error(`不支持的后台：${String(id || '')}`)
-  }
-  const support = backendInstaller.support(definition.id)
-  if (!support.supported) {
-    return {
-      ok: false,
-      error: { code: 'UNSUPPORTED', message: support.reason },
-    }
-  }
-  // 业务失败（含用户取消、npm 缺失、安装失败）以结构化结果返回，
-  // 保留 error.code 供渲染层区分提示；同一后台并发重入由 installer
-  // 守卫直接抛错拒绝。
-  return backendInstaller.install(definition.id, {
-    onProgress: progress => {
-      if (settingsWindow && !settingsWindow.isDestroyed()) {
-        settingsWindow.webContents.send(
-          'qwen-audio-agent:backend-install-progress',
-          { backend: definition.id, ...progress },
-        )
-      }
-    },
-    // 安装完成后整体重检：Worker 读取最新登录 shell PATH（主进程沿用），
-    // 并刷新设置页缓存，让报告立刻反映新安装的后台。
-    inspect: async () => {
-      const report = await runBackendDetection()
-      backendReportCache = { report, time: Date.now() }
-      return report
-    },
-  })
+  return backendManagement.install(payload)
 })
 
 ipcMain.handle('qwen-audio-agent:backend-configure', async (event, payload) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权启动后台 Agent 配置')
   }
-  const id = typeof payload === 'string' ? payload : payload?.backend
-  const definition = backendDefinition(id)
-  if (!definition) throw new Error(`不支持的后台：${String(id || '')}`)
-  const result = await openBackendConfiguration(definition.id, {
-    env: backendDetectionEnvironment(),
-  })
-  logger.info('backend.configuration_opened', {
-    backend: definition.id,
-    action: result.action?.kind,
-  })
-  return result
+  return backendManagement.configure(payload)
 })
 
 ipcMain.handle('qwen-audio-agent:updater-status', event => {

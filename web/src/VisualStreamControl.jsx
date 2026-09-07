@@ -9,6 +9,8 @@ import {
 } from './camera-input.js'
 import { t } from './i18n.js'
 
+const WIDE_VISUAL_DOCK_QUERY = '(min-width: 1400px)'
+
 export default function VisualStreamControl({
   available = false,
   inputEnabled = false,
@@ -21,9 +23,22 @@ export default function VisualStreamControl({
   const [streaming, setStreaming] = useState(false)
   const [frameCount, setFrameCount] = useState(0)
   const [error, setError] = useState('')
+  const [wideDock, setWideDock] = useState(() => (
+    typeof window !== 'undefined'
+      && window.matchMedia?.(WIDE_VISUAL_DOCK_QUERY).matches === true
+  ))
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const streamingRef = useRef(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined
+    const query = window.matchMedia(WIDE_VISUAL_DOCK_QUERY)
+    const update = event => setWideDock(event.matches)
+    setWideDock(query.matches)
+    query.addEventListener?.('change', update)
+    return () => query.removeEventListener?.('change', update)
+  }, [])
 
   const stopStreaming = useCallback(() => {
     streamingRef.current = false
@@ -52,7 +67,7 @@ export default function VisualStreamControl({
     return () => {
       if (video.srcObject === stream) video.srcObject = null
     }
-  }, [cameraOpen])
+  }, [cameraOpen, wideDock])
 
   useEffect(() => {
     if (!cameraOpen || !streamRef.current) return undefined
@@ -155,7 +170,7 @@ export default function VisualStreamControl({
   }, [available, cameraReady, inputEnabled])
 
   const panel = cameraOpen && <div
-    className="camera-stream"
+    className={`camera-stream${wideDock ? ' camera-stream-docked' : ''}`}
     role="region"
     aria-label={t('实时视觉')}
   >
@@ -208,7 +223,11 @@ export default function VisualStreamControl({
         <circle cx="12" cy="13.5" r="3.2" />
       </svg>
     </button>
-    {panel && (panelHost ? createPortal(panel, panelHost) : panel)}
+    {panel && (
+      wideDock && typeof document !== 'undefined'
+        ? createPortal(panel, document.body)
+        : panelHost ? createPortal(panel, panelHost) : panel
+    )}
     {error && <small className="composer-error" role="alert">{error}</small>}
   </>
 }

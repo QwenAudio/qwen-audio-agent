@@ -77,7 +77,8 @@
 }
 
 .visual-stream-dock:not(:empty) {
-  margin-bottom: 10px;
+  width: min(300px, 100%);
+  margin: 0 0 10px auto;
 }
 
 .camera-stream {
@@ -92,27 +93,28 @@
 .camera-stream video {
   display: block;
   width: 100%;
-  max-height: min(32vh, 280px);
+  max-height: 220px;
+  aspect-ratio: 16 / 9;
   object-fit: contain;
   border-radius: 12px;
   background: #030405;
 }
 
-@media (min-width: 1400px) {
-  .visual-stream-dock:not(:empty) {
-    position: fixed;
-    top: 92px;
-    right: 24px;
-    left: calc(50% + 404px);
-    z-index: 20;
-    width: auto;
-    max-width: 360px;
-    margin: 0;
+.camera-stream-docked {
+  position: fixed;
+  top: 92px;
+  left: calc(50vw + 404px);
+  z-index: 20;
+  width: min(360px, calc(50vw - 428px));
+}
+
+@media (max-width: 1399px) {
+  .workspace:has(.visual-stream-dock:not(:empty)) {
+    padding-top: 16px;
   }
 
-  .camera-stream video {
-    max-height: 280px;
-    aspect-ratio: 16 / 9;
+  .workspace:has(.visual-stream-dock:not(:empty)) .hero {
+    display: none;
   }
 }
 
@@ -144,12 +146,13 @@
 }
 
 .camera-actions button {
-  min-height: 38px;
-  padding: 0 14px;
+  min-height: 34px;
+  padding: 0 10px;
   border: 0;
   border-radius: 11px;
   color: inherit;
   background: rgba(255, 255, 255, 0.1);
+  font-size: 12px;
 }
 
 .camera-actions .composer-send,

@@ -61,10 +61,18 @@ export function validateSessionLog(records, { sessionId } = {}) {
     throw new TypeError('invalid session log header')
   }
   if (sessionId && header.sessionId !== sessionId) throw new TypeError('session id mismatch')
+  let previousSeq = 0
   events.forEach((event, index) => {
-    if (event.schema !== SESSION_LOG_SCHEMA || event.sessionId !== header.sessionId || event.seq !== index + 1) {
-      throw new TypeError(`invalid session event at sequence ${index + 1}`)
+    if (
+      event.schema !== SESSION_LOG_SCHEMA
+      || event.sessionId !== header.sessionId
+      || !Number.isInteger(event.seq)
+      || event.seq < 1
+      || event.seq <= previousSeq
+    ) {
+      throw new TypeError(`invalid session event at index ${index + 1}`)
     }
+    previousSeq = event.seq
   })
   return { header, events }
 }

@@ -69,7 +69,7 @@ export class SessionJournal {
       }
       const normalized = normalizeSessionEvent(event, {
         sessionId: this.sessionId,
-        seq: this.events.length + 1,
+        seq: (this.events.at(-1)?.seq || 0) + 1,
         time: this.now(),
       })
       await appendFile(this.filePath, line(normalized), { encoding: 'utf8', mode: 0o600 })

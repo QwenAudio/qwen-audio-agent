@@ -21,7 +21,7 @@ qwen-audio-agent 把系统切成两层：
 ```
 ┌────────────────────────────────────────────┐
 │  语音前台（Realtime Voice Runtime）          │
-│  · 全双工语音流（WebRTC/WebSocket）          │
+│  · 全双工语音流（WebSocket）                 │
 │  · 打断检测与播放队列管理                    │
 │  · 前台模型：能直接回答的立即回答            │
 └───────────────┬────────────────────────────┘
@@ -34,10 +34,11 @@ qwen-audio-agent 把系统切成两层：
 └────────────────────────────────────────────┘
 ```
 
-前台是一个实时语音运行时（核心实现在 `server/src/voice/realtime-gateway.mjs`，
-约 1900 行），后台复用用户已有的 Agent，通过统一的 ACP 协议接入
-（`server/src/agent/`）。两层之间没有强耦合：换任何一个后台 Agent，
-语音层完全不用动。
+前台的核心编排入口是 `server/src/voice/realtime-gateway.mjs`；输入、展示和连接
+生命周期分别由 `realtime-input-runtime.mjs`、`realtime-presentation-runtime.mjs`
+和 `realtime-provider-session.mjs` 管理。后台复用用户已有的 Agent，通过
+`server/src/agent/acp/` 中统一的 ACP 边界接入。两层没有产品级强耦合：
+换后台 Agent 时，语音层不用跟着改。
 
 ## 关键设计一：能答的立即答，要干活的交出去
 
@@ -69,14 +70,19 @@ qwen-audio-agent 把系统切成两层：
 全双工最难的点是打断（barge-in）。用户随时可能开口，此时系统里可能同时存在：
 正在合成的回复、排队中的播放片段、后台任务的进度播报。
 
-我们把打断处理做成一条明确的状态链（`realtime-gateway.mjs`）：
+我们把打断处理做成一条明确的状态链：
 
-1. 检测到用户语音输入 → 标记 `user_interruption`；
-2. `cancelQueuedPlayback()` 清空播放队列，已播完的保留、未播的丢弃；
-3. 对已开始播放的回复发 `response.interrupted`，被取消的回复保留为
-   短生命周期的"墓碑"（tombstone），防止迟到的异步事件把它复活；
-4. 前台 `cancelResponses()` 通知语音提供商停止生成，节省 token 和延迟；
+1. Provider 报告 `speech_started`，输入运行时确认这是一次用户打断；
+2. Gateway 发出 `playback.clear`（`reason=user_interruption`），WebUI、TUI 或桌面端
+   清空尚未播放的音频，并回传 `playback.cancelled`；
+3. `RealtimePresentationRuntime.cancelPlayback()` 把对应响应标记为 `suppressed`；
+   只有确实开始播放过的响应才产生 `response.interrupted`；
+4. `RealtimeProviderSession.cancelResponse()` 调用前台 Provider 的 `cancel()`，
+   向上游发送 `response.cancel`，停止继续生成；
 5. 打断后立刻进入新一轮对话——用户感知不到"系统在善后"。
+
+这条链分别落在 `realtime-input-runtime.mjs`、`realtime-presentation-runtime.mjs`
+和 `realtime-provider-session.mjs`，客户端只负责真实的音频播放状态。
 
 其中"墓碑"是个容易被忽略的细节：实时系统里到处是异步回调，
 一个被取消的响应如果在几百毫秒后被迟到的 `response.done` 事件触发，
@@ -87,7 +93,7 @@ qwen-audio-agent 把系统切成两层：
 
 后台任务完成后，不是弹一个通知，而是**回到当前对话里**：
 
-- 任务状态（`task.cancelling` / `task.cancelled` / 完成 / 失败）
+- 任务状态（`task.cancelling` / `task.cancelled` / `task.completed` / `task.failed`）
   作为事件流进入前台；
 - 完成时由 Gateway 把结果交回前台模型，生成自然的口语播报
   （"刚才那个任务好了，结果是……"）；
@@ -98,9 +104,10 @@ qwen-audio-agent 把系统切成两层：
 
 ## 关键设计四：连接是语音系统的生命线
 
-WebRTC/WebSocket 长连接在真实网络下一定会断。前台实现了
-带退避的重连机制（`reconnect-backoff.mjs`），并且重连与会话状态解耦：
-连接恢复后，会话上下文、任务状态从服务端恢复，用户几乎无感。
+WebSocket 长连接在真实网络下一定会断。Client → Gateway 的恢复由
+`shared/gateway/client-sdk.mjs` 管理，Gateway → Realtime Provider 的退避策略位于
+`server/src/voice/reconnect-backoff.mjs`。连接生命周期与持久化的对话、Task 状态
+相互解耦；连接恢复后再从服务端重放和校准，用户几乎无感。
 
 ## 经验总结
 

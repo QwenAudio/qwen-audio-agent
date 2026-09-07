@@ -1,8 +1,8 @@
 # ACP：让语音层与 Agent 彻底解耦的架构实践
 
-> 一个月内接入 9 个后台 Agent（OpenCode、OpenClaw、Qoder、Kimi Code、
-> Hermes、CodeBuddy、Codex、Claude Code、通用 ACP），语音层零改动。
-> 本文讲 qwen-audio-agent 是怎么做到的。
+> OpenCode、OpenClaw、Qoder、Qwen Code、MiniMax Code、Kimi Code、Hermes、
+> CodeBuddy、Codex、Claude Code、DeepSeek、Pi，以及用户自带的通用 ACP Agent，
+> 都通过同一边界接入。本文讲 qwen-audio-agent 是怎么做到的。
 
 ## 背景：Agent 生态快得离谱
 
@@ -19,24 +19,24 @@
 ```
 语音运行时（voice/）
       │  只认识"任务"和"事件"，不认识任何 Agent
-协调层（coordinator / session registry）
-      │  统一的 ACP 会话抽象
-ACP 进程客户端（acp/process-client）
+协议中立层（backend/ + task/）
+      │  BackendPort、Task 生命周期
+ACP 接入层（acp/backend-adapter + session-registry + process-client）
       │  JSON-RPC over stdio
 后台 Agent 进程（opencode / claude / codex / …）
 ```
 
-### 第一层：进程客户端
+### 组件一：进程客户端
 
 `AcpProcessClient`（`server/src/agent/acp/process-client.mjs`）负责
 把任意 ACP Agent 当作子进程管理：spawn 进程、用 stdio 建立 JSON-RPC
 双向通道、管理请求/响应/通知的生命周期。对上层来说，所有 Agent
 都长一个样：一个可以收发消息的会话。
 
-### 第二层：Backend Driver——一个 Agent 一个"驱动"
+### 组件二：Backend Driver——一个 Agent 一个"驱动"
 
-接入一个新 Agent，只需要写一个 driver 对象（`server/src/agent/acp/drivers/`），
-描述它的"身份信息"：
+每个产品的连接方式和能力差异由 driver 对象
+（`server/src/agent/acp/drivers/`）描述：
 
 ```js
 export const openCodeBackendDriver = {
@@ -54,6 +54,7 @@ export const openCodeBackendDriver = {
   },
   createProfile({ root, directory }) {
     return {
+      label: this.label,
       acpConnection: processAcpConnection({
         command: process.execPath,
         args: [resolve(root, 'scripts/runtime/opencode.mjs'), 'acp'],
@@ -73,36 +74,47 @@ export const openCodeBackendDriver = {
 
 ```js
 const drivers = new Map([
-  openCodeBackendDriver, openClawBackendDriver, qoderBackendDriver,
-  kimiBackendDriver, hermesBackendDriver, codeBuddyBackendDriver,
-  codexBackendDriver, claudeBackendDriver, genericAcpBackendDriver,
-].map(driver => [driver.id, driver]))
+  openCodeBackendDriver,
+  openClawBackendDriver,
+  ...localAcpBackendDrivers,
+  codeBuddyBackendDriver,
+  codexBackendDriver,
+  claudeBackendDriver,
+  deepSeekHarnessBackendDriver,
+  piBackendDriver,
+  genericAcpBackendDriver,
+].map(validateBackendDriver).map(driver => [driver.id, driver]))
 ```
 
-**新增一个 Agent = 新增一个文件 + 注册一行。** 语音层、会话管理、
-任务系统全都不用动。
+新增 Agent 时扩展对应 driver，并在 registry 与 `shared/backend/catalog.mjs`
+登记身份、安装和配置元数据；语音层、BackendPort 和 Task 生命周期不用改。
 
-### 第三层：适配器统一事件流
+### 组件三：适配器统一事件流
 
-不同 Agent 的行为差异（会话恢复规则、权限请求方式、工具调用格式）
-收敛在 `AcpBackendAdapter`（约 1500 行）里。例如 ACP 的会话更新事件：
+通用 ACP 会话与事件处理收敛在 `AcpBackendAdapter`，产品的连接和能力差异留在
+drivers；OpenClaw 的原生委托则封装在 `drivers/openclaw-delegation.mjs`。
+协议事件进入 Task 系统前会依次归一化：
 
-- `agent_message_chunk` → 转成前台的增量文本/语音流；
-- `tool_call` / `tool_call_update` → 转成任务进度事件，
-  驱动"正在查资料……"这类自然语言播报；
-- 权限请求 → 转成语音确认（"它想修改 xx 文件，同意吗？"）。
+- `agent_message_chunk` → `backend.message` → `task.updated`；
+- `tool_call` / `tool_call_update` → `backend.activity` →
+  `task.progress` / `task.updated`；
+- ACP 权限请求经 permission broker 转成 `backend.permission.requested`，再进入
+  `task.permission.requested`，由前台自然询问用户。
 
-## 两类接入方式
+## 四类接入方式
 
-实践中 Agent 分两种情况：
+共享 catalog 用四个 integration 类型描述安装和连接方式：
 
-1. **原生 ACP**（OpenCode、Qoder、Kimi Code 等）：Agent 自己说 ACP，
-   直接连。我们提供一键安装脚本，`npm install -g` 之后开箱即用。
-2. **外部适配**（Claude Code、Codex）：Agent 本身不说 ACP，
-   通过社区适配器（如 claude-code-acp）桥接。driver 里把"适配器本体
-   + 桥接进程"一起管理，对用户透明。
+1. **native**：OpenCode、Qoder、Qwen Code、MiniMax Code、Kimi Code、Hermes、
+   CodeBuddy、DeepSeek；
+2. **bridge**：OpenClaw 通过项目维护的桥接层对接 ACP；
+3. **adapter**：Codex、Claude Code、Pi 通过独立 ACP 适配器接入；
+4. **generic**：用户通过 `ACP_COMMAND` 连接任意兼容 Agent。
 
-对语音层来说，这两种没有任何区别——这就是协议边界的价值。
+桌面端和 CLI 读取同一 catalog，提供统一的按需安装与配置流程；具体认证仍由
+对应 Agent 自己完成。
+
+对语音层来说，这些接入方式没有任何区别——这就是协议边界的价值。
 
 ## 解耦带来的实际收益
 
@@ -110,7 +122,7 @@ const drivers = new Map([
   语音习惯、记忆、任务历史都不受影响；
 - **跟进生态**：新 Agent 发布后，接入工作通常在一天内完成；
 - **可测试**：协议层可以完全用 mock 进程做集成测试，
-  不需要真实 Agent 环境（仓库里有完整的 acp-process-client 测试）。
+  不需要真实 Agent 环境（见 `server/test/acp-process-client.test.mjs`）。
 
 ## 给同行的建议
 

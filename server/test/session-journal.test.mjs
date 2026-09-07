@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { appendFile, mkdtemp, readFile } from 'node:fs/promises'
+import { appendFile, mkdtemp, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -20,6 +20,23 @@ test('writes a DSH-shaped append-only session log and restores sequence', async 
   await restored.open()
   assert.deepEqual(restored.eventsSince().map(event => event.seq), [1, 2])
   assert.equal(JSON.parse((await readFile(journal.filePath, 'utf8')).split('\n')[0]).type, 'session')
+})
+
+test('restores historical journals with monotonic sequence gaps and appends after the last sequence', async () => {
+  const journal = await journalFixture()
+  await journal.append({ type: SessionEventType.USER_MESSAGE, payload: { text: 'hello' } })
+  await journal.append({ type: SessionEventType.TURN_END, payload: { reason: 'completed' } })
+  const records = (await readFile(journal.filePath, 'utf8')).trim().split('\n').map(JSON.parse)
+  records[1].seq = 127
+  records[2].seq = 136
+  await writeFile(journal.filePath, `${records.map(record => JSON.stringify(record)).join('\n')}\n`, 'utf8')
+
+  const restored = new SessionJournal({ filePath: journal.filePath, sessionId: 'session-1' })
+  await restored.open()
+  const appended = await restored.append({ type: SessionEventType.USER_MESSAGE, payload: { text: 'again' } })
+
+  assert.deepEqual(restored.eventsSince().map(event => event.seq), [127, 136, 137])
+  assert.equal(appended.seq, 137)
 })
 
 test('deduplicates retried writes by eventId', async () => {

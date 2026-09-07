@@ -1,8 +1,8 @@
-import { backendDefinition } from './backend-catalog.mjs'
+import { backendDefinition } from './catalog.mjs'
 import {
   backendOnboardingAdapter,
   resolveBackendOnboarding,
-} from './backend-onboarding.mjs'
+} from './onboarding.mjs'
 
 export function backendLifecycleSpec(id) {
   const definition = backendDefinition(id)

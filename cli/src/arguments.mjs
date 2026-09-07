@@ -3,7 +3,7 @@ import {
   backendDefinition,
   backendNames,
   normalizeBackendProtocol,
-} from '../../shared/backend-catalog.mjs'
+} from '../../shared/backend/catalog.mjs'
 
 const COMMANDS = new Set([
   'gateway',

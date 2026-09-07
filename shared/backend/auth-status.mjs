@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { readdir } from 'node:fs/promises'
 import { join } from 'node:path'
-import { backendOnboardingAdapter } from './backend-onboarding.mjs'
+import { backendOnboardingAdapter } from './onboarding.mjs'
 
 const ANSI_PATTERN = /\x1b\[[0-?]*[ -/]*[@-~]/g
 const MAX_OUTPUT = 256 * 1024

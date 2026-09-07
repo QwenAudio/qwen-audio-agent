@@ -1,7 +1,7 @@
 // Self-contained launcher utilities used by scripts/launcher .mjs files.
 // These scripts live in extraResources (outside the asar archive) so they
 // cannot import from shared/.  The findExecutable implementation below is
-// kept in sync with shared/backend-setup.mjs.
+// kept in sync with shared/backend/setup.mjs.
 import { accessSync, constants } from 'node:fs'
 import { delimiter, extname, isAbsolute, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
@@ -37,7 +37,7 @@ function executableFile(path, platform) {
 }
 
 /**
- * Find an executable on PATH.  Mirrors shared/backend-setup.mjs
+ * Find an executable on PATH.  Mirrors shared/backend/setup.mjs
  * findExecutable — keep the two implementations in sync.
  */
 export function findExecutable(command, {

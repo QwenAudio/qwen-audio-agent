@@ -1,4 +1,4 @@
-import { backendDefinition } from './backend-catalog.mjs'
+import { backendDefinition } from './catalog.mjs'
 
 function clean(value) {
   return String(value || '').trim()

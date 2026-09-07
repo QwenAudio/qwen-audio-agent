@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { backendConfigurationAction } from '../../../shared/backend-onboarding.mjs'
+import { backendConfigurationAction } from '../../../shared/backend/onboarding.mjs'
 
 function appleScriptString(value) {
   return `"${String(value).replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`

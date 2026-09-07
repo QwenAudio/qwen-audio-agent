@@ -5,7 +5,7 @@ import {
   configurationLaunch,
   openBackendConfiguration,
 } from '../src/backend/configuration.mjs'
-import { backendNames } from '../../shared/backend-catalog.mjs'
+import { backendNames } from '../../shared/backend/catalog.mjs'
 
 test('builds native terminal launches for macOS and Windows', () => {
   assert.equal(

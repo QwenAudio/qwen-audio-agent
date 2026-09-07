@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import test from 'node:test'
 
-import { inspectBackendAuthentication } from '../../shared/backend-auth-status.mjs'
+import { inspectBackendAuthentication } from '../../shared/backend/auth-status.mjs'
 
 function result(output) {
   return async () => ({ ok: true, output })

@@ -10,13 +10,13 @@ import {
   backendNames,
   normalizeBackendProtocol,
   resolveBackendOwnership,
-} from '../../shared/backend-catalog.mjs'
+} from '../../shared/backend/catalog.mjs'
 import {
   findExecutable,
   formatBackendSetup,
   inspectBackendSetups,
-} from '../../shared/backend-setup.mjs'
-import { installBackend } from '../../shared/backend-install.mjs'
+} from '../../shared/backend/setup.mjs'
+import { installBackend } from '../../shared/backend/install.mjs'
 import {
   addSkills,
   listSkills,

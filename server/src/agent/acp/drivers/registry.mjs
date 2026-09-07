@@ -7,7 +7,7 @@ import { localAcpBackendDrivers } from './local-acp.mjs'
 import { openClawBackendDriver } from './openclaw.mjs'
 import { openCodeBackendDriver } from './opencode.mjs'
 import { piBackendDriver } from './pi.mjs'
-import { backendDefinition, validateBackendSkillsSpec } from '../../../../../shared/backend-catalog.mjs'
+import { backendDefinition, validateBackendSkillsSpec } from '../../../../../shared/backend/catalog.mjs'
 
 const CAPABILITY_FLAGS = [
   'delegation',

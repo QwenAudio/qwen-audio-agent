@@ -4,7 +4,7 @@ import {
   backendDefinition,
   backendNames,
   resolveBackendOwnership,
-} from '../../shared/backend-catalog.mjs'
+} from '../../shared/backend/catalog.mjs'
 import {
   backendDriver,
   createBackendProfile,

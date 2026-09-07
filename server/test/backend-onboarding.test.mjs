@@ -4,8 +4,8 @@ import {
   backendConfigurationAction,
   backendOnboardingAdapter,
   resolveBackendOnboarding,
-} from '../../shared/backend-onboarding.mjs'
-import { backendNames } from '../../shared/backend-catalog.mjs'
+} from '../../shared/backend/onboarding.mjs'
+import { backendNames } from '../../shared/backend/catalog.mjs'
 
 const expectedCommands = new Map([
   ['opencode', 'opencode auth login'],

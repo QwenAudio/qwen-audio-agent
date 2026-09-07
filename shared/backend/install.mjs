@@ -15,21 +15,21 @@ import {
   commandDirectory,
   mergeSearchPath,
   pathDelimiter,
-} from './path-environment.mjs'
-import { inspectBackendAuthentication } from './backend-auth-status.mjs'
-import { backendDefinition } from './backend-catalog.mjs'
+} from '../path-environment.mjs'
+import { inspectBackendAuthentication } from './auth-status.mjs'
+import { backendDefinition } from './catalog.mjs'
 import {
   backendConfigurationAction,
   backendOnboardingAdapter,
   resolveBackendOnboarding,
-} from './backend-onboarding.mjs'
+} from './onboarding.mjs'
 import {
   backendAuthenticationSupport,
   backendConfigurationSupport,
   backendLifecycleSpec,
   resolveBackendLifecycle,
-} from './backend-lifecycle.mjs'
-import { findExecutable, inspectBackendSetups } from './backend-setup.mjs'
+} from './lifecycle.mjs'
+import { findExecutable, inspectBackendSetups } from './setup.mjs'
 
 const DEFAULT_STEP_TIMEOUT_MS = 10 * 60 * 1000
 const MAX_INSTALL_OUTPUT_CHARS = 64 * 1024
@@ -82,7 +82,7 @@ function stepTitle(step, index) {
   return step.label ? `步骤 ${index + 1}（${step.label}）` : `步骤 ${index + 1}`
 }
 
-// 兼容现有调用方；新代码应从 backend-lifecycle.mjs 使用生命周期能力。
+// 兼容现有调用方；新代码应从 lifecycle.mjs 使用生命周期能力。
 export const authenticationSupport = backendAuthenticationSupport
 
 function resolvedAuthentication(id, observed, options) {

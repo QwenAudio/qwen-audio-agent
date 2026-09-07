@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { backendEnvironment } from '../../shared/backend-environment.mjs'
+import { backendEnvironment } from '../../shared/backend/environment.mjs'
 
 const env = {
   PATH: '/usr/bin',

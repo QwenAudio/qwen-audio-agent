@@ -1,4 +1,4 @@
-import { backendDefinition } from './backend-catalog.mjs'
+import { backendDefinition } from './catalog.mjs'
 
 // Child Agents receive the operating-system context required to launch, plus
 // only the credentials and product options declared by their backend plugin.

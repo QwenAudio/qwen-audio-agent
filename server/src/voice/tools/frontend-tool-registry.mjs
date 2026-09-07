@@ -36,6 +36,14 @@ function frontendCapabilities(context) {
   )
 }
 
+function disabledTools(context) {
+  return new Set(
+    Array.isArray(context?.frontend?.disabledTools)
+      ? context.frontend.disabledTools.map(String)
+      : [],
+  )
+}
+
 function policyAllows(policy = {}, context = {}) {
   const availableStates = clientStates(context)
   const requiredStates = Array.isArray(policy.requiredClientStates)
@@ -149,7 +157,11 @@ export class FrontendToolRegistry {
 
   isEnabled(name, context = {}) {
     const entry = this.get(name)
-    return Boolean(entry && policyAllows(entry.policy, context))
+    return Boolean(
+      entry
+      && !disabledTools(context).has(entry.name)
+      && policyAllows(entry.policy, context),
+    )
   }
 
   definitions(context = {}) {

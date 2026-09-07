@@ -278,6 +278,11 @@ them to the configuration file:
 | `QWEN_AUDIO_WEB_SEARCH_MCP_URL` | Empty; custom Streamable HTTP endpoint used by the `mcp` provider |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | `DASHSCOPE_API_KEY` for explicit `bailian`; empty for custom endpoints unless set |
 | `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian_web_search` for `bailian`; otherwise `web_search` |
+| `QWEN_AUDIO_SCHEDULE_TOOL_ENABLED` | `true`; set to `false` to hide `schedule_reminder` |
+| `QWEN_AUDIO_WEB_TOOLS_ENABLED` | `true`; set to `false` to hide `web_search` and `fetch_url` from the frontend Agent |
+| `QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED` | `true`; set to `false` to hide `knowledge` |
+| `QWEN_AUDIO_NOTES_TOOL_ENABLED` | `true`; set to `false` to hide `notes` |
+| `QWEN_AUDIO_RECALL_TOOL_ENABLED` | `true`; set to `false` to hide `recall` |
 | `QWEN_AUDIO_FRONTEND_PROFILE` | Empty; path to a lightweight Frontend Profile JSON file |
 | `QWEN_AUDIO_FRONTEND_MCP_CONFIG` | Empty; absolute path to the versioned frontend MCP JSON file |
 | `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | Empty; absolute path to the versioned frontend OpenAPI JSON config file |

@@ -3,23 +3,16 @@ import { permissionReference } from './permission-reference.mjs'
 import {
   PERMISSION_RESPONSE_CAPABILITY,
   BACKEND_INPUT_RESPONSE_CAPABILITY,
-  CANCEL_AGENT_TASK_TOOL_NAME,
-  SCHEDULE_REMINDER_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
-  GET_AGENT_TASK_STATUS_TOOL_NAME,
-  GET_CURRENT_TIME_TOOL_NAME,
-  ENTER_SLEEP_TOOL_NAME,
-  NOTES_TOOL_NAME,
-  MEMORY_TOOL_NAME,
-  RESPOND_PERMISSION_TOOL_NAME,
-  RESPOND_AGENT_INPUT_TOOL_NAME,
-  WEB_SEARCH_TOOL_NAME,
-  FETCH_URL_TOOL_NAME,
-  KNOWLEDGE_TOOL_NAME,
   frontendToolRegistry,
-  RECALL_TOOL_NAME,
   FRONTEND_RECALL_CAPABILITY,
 } from '../frontend-tools.mjs'
+import { agentTaskToolHandlers } from './features/agent-task-tools.mjs'
+import { clientToolHandlers } from './features/client-tools.mjs'
+import { coreToolHandlers } from './features/core-tools.mjs'
+import { personalToolHandlers } from './features/personal-tools.mjs'
+import { retrievalToolHandlers } from './features/retrieval-tools.mjs'
+import { scheduleToolHandlers } from './features/schedule-tools.mjs'
 import {
   findFrontendSourceTool,
 } from '../../frontend/tools/frontend-tool-source.mjs'
@@ -27,15 +20,10 @@ import {
   boundFrontendToolResult,
   FrontendToolLoop,
 } from './frontend-tool-loop.mjs'
-import { currentTimeSnapshot } from '../../conversation/frontend-agent-context.mjs'
-import { describeWhen } from '../../conversation/session-digest.mjs'
-import { canonicalScope, isMemoryDocument } from '../../core/memory-scopes.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { BackendEventType } from '../../core/backend-events.mjs'
-import { normalizeRecurrence } from '../../task/recurrence.mjs'
 import { isTaskCancellable } from '../../task/task-state.mjs'
 
-const SENSITIVE_MEMORY = /(?:pass(?:word)?|secret|api[_ -]?key|access[_ -]?token|credential|验证码|密码|密钥|令牌|\bsk-[a-z0-9_-]+)/i
 const MAX_DEBUG_RESULT_CHARS = 180
 
 const CANCEL_RECEIPT_INSTRUCTIONS = [
@@ -153,6 +141,7 @@ export class ToolCallHandler {
     inputAssets = null,
     frontendRetrieval = null,
     frontendKnowledge = null,
+    disabledTools = [],
     frontendToolSources = [],
     turnCitations = null,
     sessionDigests = null,
@@ -181,46 +170,21 @@ export class ToolCallHandler {
     this.inputAssets = inputAssets
     this.frontendRetrieval = frontendRetrieval
     this.frontendKnowledge = frontendKnowledge
+    this.disabledTools = [...disabledTools]
     this.frontendToolSources = frontendToolSources
     this.turnCitations = turnCitations
     this.activeToolEntries = new Map()
     this.activeToolDebugEntries = new Map()
     this.externalToolLoop = new FrontendToolLoop()
-    this.toolExecutor = frontendToolRegistry.createExecutor({
-      [SPAWN_THINKING_TOOL_NAME]: context => (
-        this.executeSpawnThinkingToolCall(context)
-      ),
-      [SCHEDULE_REMINDER_TOOL_NAME]: ({ callId, turnId, args }) => (
-        this.handleScheduleReminder(callId, turnId, args)
-      ),
-      [CANCEL_AGENT_TASK_TOOL_NAME]: context => (
-        this.executeCancelToolCall(context)
-      ),
-      [GET_AGENT_TASK_STATUS_TOOL_NAME]: context => (
-        this.executeStatusToolCall(context)
-      ),
-      [GET_CURRENT_TIME_TOOL_NAME]: ({ callId, turnId }) => (
-        this.getCurrentTime(callId, turnId)
-      ),
-      [MEMORY_TOOL_NAME]: context => this.executeMemoryToolCall(context),
-      [NOTES_TOOL_NAME]: ({ callId, turnId, args }) => (
-        this.notes(callId, turnId, args)
-      ),
-      [RESPOND_PERMISSION_TOOL_NAME]: context => this.respondPermission(context),
-      [RESPOND_AGENT_INPUT_TOOL_NAME]: context => (
-        this.respondAgentInput(context)
-      ),
-      [ENTER_SLEEP_TOOL_NAME]: ({ callId, turnId }) => (
-        this.enterSleep(callId, turnId)
-      ),
-      [WEB_SEARCH_TOOL_NAME]: context => this.webSearch(context),
-      [FETCH_URL_TOOL_NAME]: context => this.fetchUrl(context),
-      [KNOWLEDGE_TOOL_NAME]: context => this.knowledge(context),
-      [RECALL_TOOL_NAME]: ({ callId, turnId, args }) => (
-        this.recall(callId, turnId, args)
-      ),
-    })
     this.sessionDigests = sessionDigests
+    this.toolExecutor = frontendToolRegistry.createExecutor({
+      ...agentTaskToolHandlers(this),
+      ...scheduleToolHandlers(this),
+      ...coreToolHandlers(this),
+      ...personalToolHandlers(this),
+      ...retrievalToolHandlers(this),
+      ...clientToolHandlers(this),
+    })
     this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
     this.spawnResponseByTurn = new Map()
@@ -597,94 +561,6 @@ export class ToolCallHandler {
     })
     taskId = task.id
     return task
-  }
-
-  async handleScheduleReminder(callId, turnId, args) {
-    const executeAt = Date.parse(args.execute_at)
-    if (!executeAt || executeAt <= Date.now()) {
-      await this.sendOutput(callId, {
-        status: 'error',
-        error: true,
-        error_code: 'invalid_time',
-        user_message: '触发时间无效或已过期，请提供一个未来的时间。',
-      }, turnId)
-      return
-    }
-
-    const type = args.type === 'task' ? 'task' : 'reminder'
-    const recurrence = normalizeRecurrence(args.recurrence)
-
-    // Scheduled work resolves through the same single-backend runtime as a
-    // live request. The runtime and owner identity outlive the voice session.
-    const backendRuntime = this.backendRuntime
-    const runner = type === 'task'
-      ? async (objective, context) => backendRuntime.run({
-          objective,
-        }, {
-          ownerId: context.ownerId,
-          sessionId: context.sessionId,
-          turnId: context.turnId,
-          taskId: context.taskId,
-          signal: context.signal,
-          onEvent: context.onEvent,
-        })
-      : null
-
-    const task = this.taskManager.createScheduled({
-      objective: args.reminder,
-      ownerId: this.ownerId,
-      sessionId: this.sessionId,
-      turnId,
-      schedule: {
-        at: executeAt,
-        recurrence,
-        ...(recurrence === 'once'
-          ? {}
-          : { timeZone: this.getClientContext()?.timeZone }),
-      },
-      type,
-      runner,
-    })
-
-    await this.sendOutput(callId, {
-      status: 'scheduled',
-      task_id: task.id,
-      execute_at: args.execute_at,
-      type,
-      recurrence,
-      ...(task.seriesId ? { series_id: task.seriesId } : {}),
-    }, turnId, task.id, {
-      response: {
-        instructions: [
-          '用一句自然的话确认已设好提醒，包含具体时间和内容。',
-          '不要调用工具，不要重复确认。',
-        ].join(' '),
-      },
-    })
-  }
-
-  async executeMemoryToolCall({
-    callId,
-    turnId,
-    generation,
-    args,
-    event,
-    callContext,
-  }) {
-    const responseId = callContext.responseId || event.response_id || ''
-    const deferred = this.beginDeferredToolResponse(responseId, {
-      turnId,
-      turnGeneration: generation,
-    })
-    try {
-      await this.memory(callId, turnId, args, deferred
-        ? { createResponse: false }
-        : undefined)
-    } catch (error) {
-      await this.completeDeferredToolResponse(deferred, { failed: true })
-      throw error
-    }
-    await this.completeDeferredToolResponse(deferred)
   }
 
   async executeCancelToolCall({
@@ -1076,6 +952,7 @@ export class ToolCallHandler {
         event,
         callContext,
         frontend: {
+          disabledTools: this.disabledTools,
           capabilities: [...new Set([
             ...(this.frontendRetrieval?.capabilities?.() || []),
             ...(this.frontendKnowledge?.capabilities?.() || []),
@@ -1133,143 +1010,6 @@ export class ToolCallHandler {
     } finally {
       this.activeToolEntries.delete(callId)
       this.activeToolDebugEntries.delete(callId)
-    }
-  }
-
-  async enterSleep(callId, turnId) {
-    if (!this.presenceController?.supportsSleep()) {
-      await this.sendOutput(
-        callId,
-        failure('client_action_unsupported', '当前入口不支持休眠。'),
-        turnId,
-        null,
-        { createResponse: true },
-      )
-      return
-    }
-    try {
-      await this.presenceController.requestSleep({ source: 'realtime_tool' })
-      await this.sendOutput(
-        callId,
-        { status: 'sleeping' },
-        turnId,
-        null,
-        { createResponse: false },
-      )
-    } catch (error) {
-      await this.sendOutput(
-        callId,
-        failure(
-          error.code || 'client_action_failed',
-          `休眠没有完成：${error.message}`,
-          { retryable: true },
-        ),
-        turnId,
-        null,
-        { createResponse: true },
-      )
-    }
-  }
-
-  async webSearch({ callId, turnId, args }) {
-    const query = String(args.query || '').trim()
-    if (!query) {
-      await this.sendOutput(
-        callId,
-        failure('missing_query', '需要提供要搜索的内容。'),
-        turnId,
-      )
-      return
-    }
-    try {
-      const result = await this.frontendRetrieval.search(query, {
-        limit: args.limit,
-      })
-      await this.sendOutput(callId, result, turnId)
-    } catch (error) {
-      await this.sendOutput(
-        callId,
-        failure(
-          error.code || 'web_search_failed',
-          '网页搜索暂时不可用，请稍后再试。',
-          { retryable: true },
-        ),
-        turnId,
-      )
-    }
-  }
-
-  async fetchUrl({ callId, turnId, args }) {
-    const url = String(args.url || '').trim()
-    if (!url) {
-      await this.sendOutput(
-        callId,
-        failure('missing_url', '需要提供要读取的网址。'),
-        turnId,
-      )
-      return
-    }
-    try {
-      const result = await this.frontendRetrieval.fetchUrl(url)
-      await this.sendOutput(callId, result, turnId)
-    } catch (error) {
-      const safeMessage = error.name === 'UrlFetchError'
-        ? error.message
-        : '网页暂时无法读取，请稍后再试。'
-      await this.sendOutput(
-        callId,
-        failure(
-          error.code || 'url_fetch_failed',
-          safeMessage,
-          { retryable: error.code !== 'private_network_forbidden' },
-        ),
-        turnId,
-      )
-    }
-  }
-
-  async knowledge({ callId, turnId, args }) {
-    if (!this.frontendKnowledge) {
-      await this.sendOutput(
-        callId,
-        failure('knowledge_unavailable', '前台知识库当前不可用。'),
-        turnId,
-      )
-      return
-    }
-    try {
-      const query = String(args.query || '').trim()
-      const output = query
-        ? await this.frontendKnowledge.search(query, {
-            ownerId: this.ownerId,
-            sessionId: this.sessionId,
-            turnId,
-            traceId: callId,
-            knowledgeBaseIds: Array.isArray(args.knowledge_base_ids)
-              ? args.knowledge_base_ids
-              : [],
-            topK: args.top_k,
-          })
-        : failure('missing_knowledge_query', '需要提供要检索的内容。')
-      await this.sendOutput(callId, output, turnId)
-    } catch (error) {
-      await this.sendOutput(
-        callId,
-        failure(
-          error?.code || 'knowledge_operation_failed',
-          '暂时无法完成知识检索，请稍后重试。',
-          { retryable: true },
-        ),
-        turnId,
-      )
-    }
-  }
-
-  notifyMemoryChanged() {
-    try {
-      this.onMemoryChanged()
-    } catch {
-      // Persistence succeeded even if a live prompt refresh did not.
     }
   }
 
@@ -1690,252 +1430,4 @@ export class ToolCallHandler {
     })
   }
 
-  async getCurrentTime(callId, turnId) {
-    await this.sendOutput(callId, {
-      status: 'ok',
-      ...currentTimeSnapshot(this.getClientContext()),
-    }, turnId)
-  }
-
-  async memory(callId, turnId, args, responseOptions) {
-    const action = String(args.action || '').trim().toLowerCase()
-    const document = canonicalScope(String(args.document || (action === 'read' ? 'all' : '')))
-    const oldText = String(args.old_text || '')
-    const newText = String(args.new_text || '')
-    const hasNewText = Object.prototype.hasOwnProperty.call(args, 'new_text')
-    const content = String(args.content || '').trim()
-    const query = String(args.query || '').trim()
-    const proposedContent = action === 'append' ? content : newText
-    let output
-    if (!this.memoryService) {
-      output = failure('memory_unavailable', '前台记忆功能当前不可用。')
-    } else if (!['read', 'append', 'replace'].includes(action)) {
-      output = failure('invalid_memory_action', '没有识别出要执行的记忆操作。')
-    } else if (action === 'read') {
-      const scope = document === 'all' ? null : document
-      if (scope && !isMemoryDocument(scope)) {
-        await this.sendOutput(callId, failure(
-          'invalid_memory_document',
-          '没有识别出要读取的记忆文档。',
-        ), turnId, null, responseOptions)
-        return
-      }
-      try {
-        const result = query && typeof this.memoryService.query === 'function'
-          ? await this.memoryService.query(this.ownerId, query, {
-              ...(scope ? { scope } : {}),
-              limit: 8,
-            }, {
-              source: 'realtime-tool',
-              sessionId: this.sessionId,
-              turnId,
-              traceId: callId,
-            })
-          : {
-              memories: scope
-                ? this.memoryService.list(this.ownerId, { scope })
-                : this.memoryService.list(this.ownerId),
-              context: '',
-            }
-        const memories = result.memories
-        output = {
-          status: memories.length || result.context ? 'ok' : 'not_found',
-          count: memories.length,
-          documents: memories,
-          ...(result.context ? { context: result.context } : {}),
-        }
-      } catch {
-        output = failure(
-          'memory_read_failed',
-          '暂时无法读取记忆，请稍后再试。',
-          { retryable: true },
-        )
-      }
-    } else if (!isMemoryDocument(document)) {
-      output = failure('invalid_memory_document', '写入记忆时必须指定 user 或 memory。')
-    } else if (action === 'append' && !content) {
-      output = failure('invalid_memory_edit', 'append 需要明确的 content。')
-    } else if (action === 'replace' && (!oldText || !hasNewText)) {
-      output = failure('invalid_memory_edit', 'replace 需要精确 old_text 和明确的 new_text。')
-    } else if (SENSITIVE_MEMORY.test(proposedContent)) {
-      output = failure(
-        'sensitive_memory',
-        '为了安全，不会保存密码、密钥、验证码或令牌。',
-        { status: 'rejected' },
-      )
-    } else {
-      try {
-        const change = {
-          document,
-          edits: action === 'replace' ? [{ old_text: oldText, new_text: newText }] : [],
-          append: action === 'append' ? content : '',
-        }
-        const changes = [change]
-        const result = await this.memoryService.apply(this.ownerId, changes, {
-          source: 'realtime-tool',
-          sessionId: this.sessionId,
-          turnId,
-          traceId: callId,
-        })
-        if (result.changed) this.notifyMemoryChanged()
-        output = {
-          status: result.changed ? 'updated' : 'unchanged',
-          changed: result.changed,
-          documents: result.documents,
-        }
-      } catch (error) {
-        if (['stale_document', 'edit_not_found', 'ambiguous_edit'].includes(error.code)) {
-          output = failure(
-            error.code,
-            '记忆文档已经变化或原文没有精确匹配，请重新读取后再修改。',
-            {
-              retryable: true,
-              documents: this.memoryService.list(this.ownerId),
-            },
-          )
-        } else {
-          output = failure(
-            'memory_write_failed',
-            '暂时无法修改记忆，请稍后再试。',
-            { retryable: true },
-          )
-        }
-      }
-    }
-    await this.sendOutput(callId, output, turnId, null, responseOptions)
-  }
-
-  async notes(callId, turnId, args) {
-    const action = String(args.action || '').trim().toLowerCase()
-    const listName = String(args.list || '').trim()
-    const items = Array.isArray(args.items)
-      ? args.items.map(item => String(item || '').trim()).filter(Boolean).slice(0, 20)
-      : []
-    let output
-    if (!this.notesStore) {
-      output = failure('notes_unavailable', '清单功能当前不可用。')
-    } else if (!['lists', 'show', 'add', 'remove', 'clear', 'drop'].includes(action)) {
-      output = failure('invalid_notes_action', '没有识别出要执行的清单操作。')
-    } else if (action === 'lists') {
-      const lists = this.notesStore.lists(this.ownerId)
-      output = {
-        status: lists.length ? 'ok' : 'empty',
-        lists,
-      }
-    } else if (!listName) {
-      output = failure('missing_notes_target', '需要明确要操作的清单名称。')
-    } else if (action === 'show') {
-      output = this.notesStore.show(this.ownerId, listName)
-    } else if (action === 'add' || action === 'remove') {
-      if (!items.length) {
-        output = failure('missing_notes_items', '需要明确要添加或划掉的内容。')
-      } else if (items.some(item => SENSITIVE_MEMORY.test(item))) {
-        output = failure(
-          'sensitive_notes',
-          '为了安全，不会保存密码、密钥、验证码或令牌。',
-          { status: 'rejected' },
-        )
-      } else {
-        try {
-          output = this.notesStore[action](this.ownerId, { list: listName, items })
-        } catch {
-          output = failure(
-            'notes_write_failed',
-            '暂时无法更新这条清单，请稍后再试。',
-            { retryable: true },
-          )
-        }
-      }
-    } else {
-      try {
-        output = this.notesStore[action](this.ownerId, listName)
-      } catch {
-        output = failure(
-          'notes_write_failed',
-          '暂时无法更新这条清单，请稍后再试。',
-          { retryable: true },
-        )
-      }
-    }
-    await this.sendOutput(callId, output, turnId)
-  }
-
-  // 只答「以前聊过什么、派过什么活」。用户自己的资料走 knowledge 工具 ——
-  // 那一侧由 KnowledgeRetrievalProvider 负责，本机资料库的实现见
-  // domain/domain-knowledge-provider.mjs。刻意不在这里兼管资料检索：
-  // 两个查询类工具的职责重叠会让模型难选，而 knowledge 已经是主线的统一入口。
-  async recall(callId, turnId, args) {
-    const query = String(args.query || '').trim()
-    const limit = Number(args.limit)
-    if (!this.sessionDigests) {
-      await this.sendOutput(
-        callId,
-        failure('recall_unavailable', '回顾以前记录的功能当前不可用。'),
-        turnId,
-      )
-      return
-    }
-
-    let sessions = []
-    let degraded = false
-    try {
-      sessions = this.recalledSessions(query, limit)
-    } catch {
-      degraded = true
-    }
-
-    let output
-    if (sessions.length) {
-      output = { status: 'found', sessions }
-    } else if (degraded) {
-      output = failure(
-        'recall_failed',
-        '暂时读不到以前的记录，请稍后再试。',
-        { retryable: true },
-      )
-    } else if (query && this.recallHasAnything()) {
-      output = { status: 'not_found', message: `没有找到和“${query}”有关的记录。` }
-    } else {
-      output = { status: 'empty', message: '还没有攒下以前的记录。' }
-    }
-    await this.sendOutput(callId, output, turnId)
-  }
-
-  recalledSessions(query, limit) {
-    if (!this.sessionDigests) return []
-    const timeZone = this.getClientContext()?.timeZone
-    const now = Date.now()
-    return this.sessionDigests
-      .search({ ownerId: this.ownerId, keyword: query, limit })
-      .map(digest => {
-        const work = this.describeRecalledWork(digest.work)
-        // 用条件展开而不是赋 undefined：后者仍会留下一个键，既让返回值多出
-        // 噪声，也会让「不泄漏内部字段」这类白名单断言失去意义。
-        return {
-          ...describeWhen(digest.at, { now, timeZone }),
-          topics: digest.topics,
-          gist: digest.gist,
-          ...(digest.turns ? { turns: digest.turns } : {}),
-          ...(work.length ? { work } : {}),
-        }
-      })
-  }
-
-  recallHasAnything() {
-    return (this.sessionDigests?.count(this.ownerId) || 0) > 0
-  }
-
-  // 摘要里只冻结了「派过什么活」，状态一律在这里从任务台账实时读 ——
-  // 存进摘要就会冻结，过几天那个值就是错的。台账终态只留 3 天，更早的活
-  // 查不到台账记录，此时不给 status，只报「派过」，这是刻意的降级。
-  describeRecalledWork(work = []) {
-    return work.map(item => {
-      const task = item.id
-        ? this.taskManager.get(item.id, { ownerId: this.ownerId })
-        : null
-      return task
-        ? { objective: item.objective, status: task.status }
-        : { objective: item.objective, status: 'unknown' }
-    })
-  }
 }

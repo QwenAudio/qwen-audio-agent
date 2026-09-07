@@ -6,6 +6,7 @@ import {
   withAttachmentAnchors,
 } from '../../shared/input-parts.mjs'
 import { t } from './i18n.js'
+import VisualStreamControl from './VisualStreamControl.jsx'
 
 function filePart(file, index, sourceType = 'file') {
   return new Promise((resolve, reject) => {
@@ -32,11 +33,17 @@ function filePart(file, index, sourceType = 'file') {
 
 export default function MultimodalComposer({
   onSend,
+  onVisualFrame,
+  visualStreamSupported = false,
+  visualStreamAvailable = false,
+  voiceInputEnabled = false,
+  connectionState = 'connected',
   compact = false,
 }) {
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
+  const [visualPanelHost, setVisualPanelHost] = useState(null)
   const picker = useRef(null)
   const updateAttachments = useCallback(next => {
     setAttachments(next)
@@ -82,6 +89,10 @@ export default function MultimodalComposer({
       addFiles(event.dataTransfer.files)
     }}
   >
+    {visualStreamSupported && <div
+      className="visual-stream-dock"
+      ref={setVisualPanelHost}
+    />}
     {attachments.length > 0 && <div className="composer-attachments">
       {attachments.map((item, index) => <span className="composer-attachment" key={item.id}>
         <span>{inputPartLabel(item.part, index)}</span>
@@ -100,6 +111,13 @@ export default function MultimodalComposer({
         aria-label={t('添加图片或文件')}
         onClick={() => picker.current?.click()}
       >＋</button>
+      {visualStreamSupported && <VisualStreamControl
+        available={visualStreamAvailable}
+        inputEnabled={voiceInputEnabled}
+        connectionState={connectionState}
+        onFrame={onVisualFrame}
+        panelHost={visualPanelHost}
+      />}
       <input
         ref={picker}
         type="file"

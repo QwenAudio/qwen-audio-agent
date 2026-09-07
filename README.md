@@ -140,6 +140,9 @@ Quota and billing rules are subject to the current official Bailian documentatio
 > [ModelBest MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.md), with local or hosted endpoints
 > selected through their service URL.
 
+With a visual-capable Realtime frontend, WebUI can explicitly stream bounded
+camera frames alongside live audio. See [Realtime frontend configuration](docs/configuration/frontend.md).
+
 2. Start the Gateway, then open another terminal to start the TUI (or use `qwenaudio webui` for the browser UI):
 
 ```bash

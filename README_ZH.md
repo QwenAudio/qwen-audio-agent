@@ -130,6 +130,8 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 > [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) 或
 > [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md)，均无需云端 API Key。
 
+使用支持视觉的 Realtime 前台时，WebUI 可由用户显式开启相机，将有界画面帧与实时
+音频一同发送。详见[语音前台配置](docs/configuration/frontend.zh.md)。
 
 2. 启动 Gateway，另开终端启动 TUI（也可用 `qwenaudio webui` 启动浏览器界面）：
 

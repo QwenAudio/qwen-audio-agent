@@ -6,6 +6,7 @@
 }
 
 .multimodal-composer {
+  position: relative;
   width: min(880px, calc(100% - 32px));
   margin: 0 auto 20px;
   padding: 10px;
@@ -36,6 +37,7 @@
 }
 
 .composer-attach,
+.composer-camera,
 .composer-send {
   min-width: 42px;
   height: 42px;
@@ -44,6 +46,119 @@
   color: inherit;
   background: rgba(255, 255, 255, 0.1);
   cursor: pointer;
+}
+
+.composer-camera {
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 13px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.composer-camera:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.composer-camera svg {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+}
+
+.visual-stream-dock:empty {
+  display: none;
+}
+
+.visual-stream-dock:not(:empty) {
+  width: min(300px, 100%);
+  margin: 0 0 10px auto;
+}
+
+.camera-stream {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  background: rgba(13, 15, 21, 0.97);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
+}
+
+.camera-stream video {
+  display: block;
+  width: 100%;
+  max-height: 220px;
+  aspect-ratio: 16 / 9;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #030405;
+}
+
+.camera-stream-docked {
+  position: fixed;
+  top: 92px;
+  left: calc(50vw + 404px);
+  z-index: 20;
+  width: min(360px, calc(50vw - 428px));
+}
+
+@media (max-width: 1399px) {
+  .workspace:has(.visual-stream-dock:not(:empty)) {
+    padding-top: 16px;
+  }
+
+  .workspace:has(.visual-stream-dock:not(:empty)) .hero {
+    display: none;
+  }
+}
+
+.camera-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 2px 4px;
+  color: #aaa7b4;
+}
+
+.camera-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6f6b79;
+}
+
+.camera-status.active .camera-status-dot {
+  background: #50dfab;
+  box-shadow: 0 0 10px #50dfab;
+}
+
+.camera-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.camera-actions button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 11px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+}
+
+.camera-actions .composer-send,
+.camera-actions .camera-live.active {
+  background: #6d5dfc;
+  color: white;
 }
 
 .composer-send {
@@ -143,8 +258,7 @@ html[data-desktop="orb"] #root {
 
 .desktop-conversation-panel .brand small,
 .desktop-conversation-panel .backend,
-.desktop-conversation-panel .model-status,
-.desktop-conversation-panel .frontend-provider {
+.desktop-conversation-panel .model-status {
   display: none;
 }
 
@@ -276,7 +390,6 @@ header {
   white-space: nowrap;
 }
 .model-status small { overflow-wrap: anywhere; }
-.model-status .provider-notice { color: #f1c665; }
 .status i { width: 7px; height: 7px; border-radius: 50%; background: #555; }
 .status i.idle { background: #50dfab; box-shadow: 0 0 9px #50dfab80; }
 .status i.listening { background: #50dfab; box-shadow: 0 0 12px #50dfab; }
@@ -1361,19 +1474,4 @@ article.user .message-body .inline-code { background: #5e44c9; color: #f0eaff; }
     animation: none;
     transition: none;
   }
-}
-
-/* frontend provider selector */
-header select.frontend-provider {
-  background: transparent;
-  color: inherit;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-header select.frontend-provider option {
-  color: #111;
 }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { WebSocketServer } from 'ws'
+import { config } from '../src/core/config.mjs'
 import { RealtimeFrontend } from '../src/voice/realtime-provider.mjs'
 import { miniCpmOProvider } from '../src/voice/providers/minicpm-o.mjs'
 import { describeActiveRealtime } from '../src/voice/providers/registry.mjs'
@@ -62,6 +63,25 @@ test('buffers client audio into the one-second chunks used by MiniCPM-o', () => 
   assert.equal(audio.length, 16000 * 4)
   assert.equal(audio.readFloatLE(0), 0.25)
   assert.equal(audio.readFloatLE(audio.length - 4), 0.25)
+})
+
+test('attaches the latest visual frame to the next MiniCPM-o video input batch', () => {
+  const protocol = createMiniCpmOProtocol()
+  const tenthSecond = pcm16Base64(new Array(1600).fill(0))
+
+  protocol.imageAppend('older-jpeg')
+  protocol.imageAppend('latest-jpeg')
+  for (let index = 0; index < 9; index += 1) {
+    assert.equal(protocol.encodeOutgoing(protocol.audioAppend(tenthSecond)), null)
+  }
+  const withFrame = protocol.encodeOutgoing(protocol.audioAppend(tenthSecond))
+  assert.deepEqual(withFrame.input.video_frames, ['latest-jpeg'])
+
+  let withoutFrame
+  for (let index = 0; index < 10; index += 1) {
+    withoutFrame = protocol.encodeOutgoing(protocol.audioAppend(tenthSecond))
+  }
+  assert.equal(withoutFrame.input.video_frames, undefined)
 })
 
 test('maps the official MiniCPM-o lifecycle into the shared realtime runtime', () => {
@@ -129,7 +149,20 @@ test('publishes truthful MiniCPM-o model and transport capabilities', () => {
   assert.equal(active.modelCapabilities.functionCalling, false)
   assert.equal(active.transportCapabilities.audioInput, true)
   assert.equal(active.transportCapabilities.textInput, false)
-  assert.equal(active.transportCapabilities.nativeVideoInput, false)
+  assert.equal(active.transportCapabilities.imageBufferInput, false)
+})
+
+test('negotiates live visual input only when MiniCPM-o runs in video mode', t => {
+  const previousUrl = config.miniCpmORealtimeUrl
+  t.after(() => {
+    config.miniCpmORealtimeUrl = previousUrl
+  })
+
+  config.miniCpmORealtimeUrl = 'ws://127.0.0.1:32550/api/v1/realtime?mode=video'
+  assert.equal(
+    describeActiveRealtime('minicpm-o').transportCapabilities.imageBufferInput,
+    true,
+  )
 })
 
 test('connects to an official-protocol MiniCPM-o mock service', async t => {

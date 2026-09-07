@@ -42,7 +42,7 @@ test('composes the public Gateway API with the replaceable A2A Agent', async t =
 
   assert.equal(response.status, 200)
   assert.equal(health.ok, true)
-  assert.equal(health.protocolVersion, '5.7.0')
+  assert.equal(health.protocolVersion, '5.8.0')
   assert.equal(health.frontendProfile.name, 'cockpit-example')
   assert.equal(health.backend.protocol, 'a2a')
   assert.equal(health.backend.status, 'ready')

@@ -16,6 +16,7 @@ const PROTOCOL_METHODS = [
   'normalizeIncoming',
   'sessionUpdate',
   'audioAppend',
+  'imageAppend',
   'conversationItemId',
   'conversationItemCreate',
   'responseCreate',
@@ -52,8 +53,7 @@ const TRANSPORT_CAPABILITY_FLAGS = [
   'textInput',
   'audioInput',
   'imageInput',
-  'observationInput',
-  'nativeVideoInput',
+  'imageBufferInput',
 ]
 
 const VISIBILITIES = new Set(['public', 'gateway-only'])

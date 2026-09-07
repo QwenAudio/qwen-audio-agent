@@ -44,6 +44,7 @@ function responseId(event) {
 export function createMiniCpmOProtocol() {
   let activeResponseId = ''
   let pendingPcm16 = Buffer.alloc(0)
+  let pendingVideoFrame = ''
   const inputChunkBytes = 16000 * 2
 
   const finishActiveResponse = (id = activeResponseId) => {
@@ -167,13 +168,25 @@ export function createMiniCpmOProtocol() {
       }
       const chunk = pendingPcm16.subarray(0, inputChunkBytes)
       pendingPcm16 = pendingPcm16.subarray(inputChunkBytes)
+      const videoFrame = pendingVideoFrame
+      pendingVideoFrame = ''
       return {
         type: 'input.append',
         input: {
           audio: pcm16Base64ToFloat32(chunk.toString('base64')),
+          ...(videoFrame ? { video_frames: [videoFrame] } : {}),
           force_listen: false,
         },
       }
+    },
+
+    imageAppend: image => {
+      pendingVideoFrame = String(image || '')
+      return { type: 'minicpm-o.unsupported' }
+    },
+
+    clearImageBuffer: () => {
+      pendingVideoFrame = ''
     },
 
     conversationItemId: () => `item_${randomUUID().replaceAll('-', '')}`,

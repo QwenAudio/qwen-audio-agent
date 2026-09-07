@@ -56,10 +56,7 @@ function enabledInputs(capabilities, videoKey = 'videoInput') {
 
 export function realtimeModelPresentation(profile) {
   const modelInputs = enabledInputs(profile?.modelCapabilities)
-  const desktopInputs = enabledInputs(
-    profile?.transportCapabilities,
-    'nativeVideoInput',
-  )
+  const desktopInputs = enabledInputs(profile?.transportCapabilities)
   return {
     optionHint: `模型：${modelInputs}`,
     selectedHint: `模型能力：${modelInputs} · Desktop 传输：${desktopInputs}（图片 / 视频未启用）`,

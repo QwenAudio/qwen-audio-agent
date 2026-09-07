@@ -4,31 +4,43 @@ import { createMiniCpmOProtocol } from './minicpm-o-protocol.mjs'
 
 const MODEL_ID = 'openbmb/MiniCPM-o-4_5'
 
-const MODEL_PROFILE = Object.freeze({
-  id: MODEL_ID,
-  label: 'MiniCPM-o 4.5',
-  family: 'minicpm-o',
-  sessionDefaults: Object.freeze({
-    voice: null,
-    turnDetection: null,
-  }),
-  modelCapabilities: Object.freeze({
-    textInput: true,
-    audioInput: true,
-    imageInput: true,
-    videoInput: true,
-    textOutput: true,
-    audioOutput: true,
-    functionCalling: false,
-  }),
-  transportCapabilities: Object.freeze({
-    textInput: false,
-    audioInput: true,
-    imageInput: false,
-    observationInput: false,
-    nativeVideoInput: false,
-  }),
+const MODEL_CAPABILITIES = Object.freeze({
+  textInput: true,
+  audioInput: true,
+  imageInput: true,
+  videoInput: true,
+  textOutput: true,
+  audioOutput: true,
+  functionCalling: false,
 })
+
+function videoModeEnabled(value = config.miniCpmORealtimeUrl) {
+  try {
+    return new URL(value).searchParams.get('mode') === 'video'
+  } catch {
+    return false
+  }
+}
+
+function modelProfile() {
+  const imageBufferInput = videoModeEnabled()
+  return Object.freeze({
+    id: MODEL_ID,
+    label: 'MiniCPM-o 4.5',
+    family: 'minicpm-o',
+    sessionDefaults: Object.freeze({
+      voice: null,
+      turnDetection: null,
+    }),
+    modelCapabilities: MODEL_CAPABILITIES,
+    transportCapabilities: Object.freeze({
+      textInput: false,
+      audioInput: true,
+      imageInput: false,
+      imageBufferInput,
+    }),
+  })
+}
 
 function classifyError(message) {
   if (/queue[_ -]?full|session.*queued|no available worker/i.test(message)) {
@@ -58,7 +70,7 @@ export const miniCpmOProvider = {
   },
 
   model: () => MODEL_ID,
-  modelProfile: () => MODEL_PROFILE,
+  modelProfile,
   voice: () => null,
   isConfigured: () => config.miniCpmOConfigured,
   missingConfigurationMessage: '请先配置 MINICPM_O_REALTIME_URL',

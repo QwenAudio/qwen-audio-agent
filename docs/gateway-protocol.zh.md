@@ -233,6 +233,7 @@ Gateway 采用扁平的 OpenAI Realtime 风格信封：
 | 事件 | 方向 | 语义 |
 |---|---|---|
 | `input_audio_buffer.append` | C→G | 追加输入音频 |
+| `input_image_buffer.append` | C→G | 向实时视觉缓冲区追加一张 JPEG 帧 |
 | `conversation.item.create` | C→G | 提交文本、图片、文件或混合用户输入 |
 | `response.cancel` | C→G | 打断当前回复 |
 | `response.created` | G→C | 回复开始生成 |
@@ -243,6 +244,30 @@ Gateway 采用扁平的 OpenAI Realtime 风格信封：
 Gateway 扩展包括 `turn.started`、`transcript.discard`、`playback.clear` 和播放回执。`input_file` 是 Gateway content part 扩展，不属于 OpenAI Realtime 标准字段。
 
 用户输入代表明确的用户意图，会开启或替代用户轮次。Client 语义事件不能伪装成用户输入。
+
+`input.image` 与 `input.image_buffer` 是两个独立协商的能力。前者表示
+`conversation.item.create` 中绑定回合的图片附件；后者表示与实时音频会话对齐的
+临时视觉帧。只有所选 Realtime Provider 的实际传输层已经实现视觉流时，Gateway
+才会协商 `input.image_buffer`。
+
+```jsonc
+{
+  "type": "input_image_buffer.append",
+  "event_id": "evt_client_frame_18",
+  "occurred_at": 1787803060177,
+  "media_type": "image/jpeg",
+  "image": "<base64-jpeg>"
+}
+```
+
+第一版只接受 JPEG，Base64 正文不超过 256 KiB，并且每秒最多接收一帧。视觉帧只
+更新实时视觉上下文：不创建用户回合、不主动触发回复、不进入对话历史，也不会成为
+后台附件。停止采集即停止追加事件；Session 断开、休眠、输入抢占和麦克风静音会清除
+Gateway 侧尚未消费的视觉状态。
+
+该 GCP 事件保持 Provider 无关。Qwen Omni Adapter 会在音频开始后写入服务端图像
+缓冲区；MiniCPM-o Adapter 则把最近一帧放入下一批音频 `input.append` 的
+`video_frames`。
 
 ### 5.2 Client 语义事件
 

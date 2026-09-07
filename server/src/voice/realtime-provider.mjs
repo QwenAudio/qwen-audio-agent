@@ -126,6 +126,8 @@ export class RealtimeFrontend {
     this.ready = false
     this.sessionConfigured = false
     this.recentContextInjected = false
+    this.audioInputStarted = false
+    this.pendingInitialImage = null
     this.activeResponses = new Set()
     this.pendingResponses = []
     this.responseWaiters = new Map()
@@ -301,6 +303,32 @@ export class RealtimeFrontend {
 
   appendAudio(audio) {
     this.send(this.protocol.audioAppend(audio))
+    this.audioInputStarted = true
+    if (this.pendingInitialImage) {
+      const image = this.pendingInitialImage
+      this.pendingInitialImage = null
+      this.send(this.protocol.imageAppend(image))
+    }
+  }
+
+  appendImage(image) {
+    if (this.transportCapabilities?.imageBufferInput !== true) {
+      return false
+    }
+    // DashScope requires at least one audio append before the first image.
+    // MiniCPM-o also consumes visual frames on its audio timeline, so the
+    // shared runtime can safely preserve only the latest pre-audio frame.
+    if (!this.audioInputStarted) {
+      this.pendingInitialImage = image
+      return true
+    }
+    this.send(this.protocol.imageAppend(image))
+    return true
+  }
+
+  clearPendingImage() {
+    this.pendingInitialImage = null
+    this.protocol.clearImageBuffer?.()
   }
 
   sendUserText(text, context = {}, { modalities } = {}) {
@@ -945,6 +973,8 @@ export class RealtimeFrontend {
     this.ws?.close()
     this.ws = null
     this.ready = false
+    this.audioInputStarted = false
+    this.pendingInitialImage = null
     this.resetResponses()
   }
 

@@ -5,11 +5,12 @@ import {
   supportsComposerInput,
 } from '../../shared/client-input-capabilities.mjs'
 
-test('WebUI advertises text, audio, image, and resource input', () => {
+test('WebUI advertises conversation inputs and live visual capture', () => {
   assert.deepEqual(clientInputCapabilities('web'), {
     text: true,
     audio: true,
     image: true,
+    visualStream: true,
     resource: true,
   })
   assert.equal(supportsComposerInput('web'), true)

@@ -20,6 +20,7 @@ export const GatewayClientProtocolEvent = Object.freeze({
   SESSION_OUTPUT_VOICE_UPDATE: 'session.output_voice.update',
   SESSION_OUTPUT_VOICE_UPDATED: 'session.output_voice.updated',
   INPUT_AUDIO_APPEND: 'input_audio_buffer.append',
+  INPUT_IMAGE_APPEND: 'input_image_buffer.append',
   CONVERSATION_ITEM_CREATE: 'conversation.item.create',
   RESPONSE_CANCEL: 'response.cancel',
   CLIENT_EVENT_PUBLISH: 'client.event.publish',
@@ -48,6 +49,7 @@ export const GatewayClientCapability = Object.freeze({
   INPUT_AUDIO: 'input.audio',
   INPUT_TEXT: 'input.text',
   INPUT_IMAGE: 'input.image',
+  INPUT_IMAGE_BUFFER: 'input.image_buffer',
   INPUT_FILE: 'input.file',
   PLAYBACK_RECEIPTS: 'playback.receipts',
   TASK_COMMANDS: 'tasks.commands',
@@ -77,6 +79,7 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.INPUT_AUDIO,
   GatewayClientCapability.INPUT_TEXT,
   GatewayClientCapability.INPUT_IMAGE,
+  GatewayClientCapability.INPUT_IMAGE_BUFFER,
   GatewayClientCapability.INPUT_FILE,
   GatewayClientCapability.PLAYBACK_RECEIPTS,
   GatewayClientCapability.TASK_COMMANDS,
@@ -357,6 +360,7 @@ const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
 })
 
 const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
+  [GatewayClientProtocolEvent.INPUT_IMAGE_APPEND]: GatewayClientCapability.INPUT_IMAGE_BUFFER,
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientCapability.CLIENT_EVENTS,
   [GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE]: GatewayClientCapability.SESSION_OUTPUT_VOICE,
   [GatewayClientProtocolEvent.CLIENT_ACTION_RESULT]: GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
@@ -372,6 +376,7 @@ const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
 
 const V6_CLIENT_EVENT_ALIASES = Object.freeze({
   [GatewayClientProtocolEvent.INPUT_AUDIO_APPEND]: GatewayClientEvent.AUDIO_APPEND,
+  [GatewayClientProtocolEvent.INPUT_IMAGE_APPEND]: GatewayClientEvent.IMAGE_APPEND,
   [GatewayClientProtocolEvent.CONVERSATION_ITEM_CREATE]: GatewayClientEvent.INPUT_MESSAGE,
   [GatewayClientProtocolEvent.RESPONSE_CANCEL]: GatewayClientEvent.INTERRUPT,
 })
@@ -446,6 +451,7 @@ export function gatewayHelloAsLegacyConnect(hello) {
       text: capabilities.has(GatewayClientCapability.INPUT_TEXT),
       audio: audioInput,
       image: capabilities.has(GatewayClientCapability.INPUT_IMAGE),
+      visualStream: capabilities.has(GatewayClientCapability.INPUT_IMAGE_BUFFER),
       resource: capabilities.has(GatewayClientCapability.INPUT_FILE),
     },
     ...(parsed.connection ? {

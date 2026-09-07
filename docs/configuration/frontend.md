@@ -49,16 +49,17 @@ qwenaudio gateway restart
 
 The exact supported IDs are:
 
-| Model | Model input | Model output | Current client transport |
+| Model | Model input | Model output | Realtime transport |
 | --- | --- | --- | --- |
-| `qwen3.5-omni-flash-realtime` | text, audio, image | text, audio | text, audio |
-| `qwen3.5-omni-plus-realtime` | text, audio, image | text, audio | text, audio |
+| `qwen3.5-omni-flash-realtime` | text, audio, image/video frames | text, audio | text, audio, live JPEG frames |
+| `qwen3.5-omni-plus-realtime` | text, audio, image/video frames | text, audio | text, audio, live JPEG frames |
 | `qwen-audio-3.0-realtime-plus` (default) | text, audio | text, audio | text, audio |
 | `qwen-audio-3.0-realtime-flash` | text, audio | text, audio | text, audio |
 
-All four profiles support Function Calling. Model capability is not the same as an implemented
-client transport: JPEG observation frames and native video are both disabled in this release.
-WebUI and TUI read the authoritative profile from Gateway health and only display it. Separate
+All four profiles support Function Calling. Model capability remains distinct from transport:
+Omni accepts the WebUI's capability-negotiated live JPEG stream, while ordinary uploaded images
+continue through the attachment path. Desktop and TUI do not capture live frames. Clients read
+the authoritative profile from Gateway health. Separate
 clients cannot select conflicting models on one Gateway. A Desktop attached to a borrowed
 Gateway, or a later CLI runtime using a conflicting configured model, refuses the mismatch
 instead of silently changing the running service. To roll back, set the legacy ID above and

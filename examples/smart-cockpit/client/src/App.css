@@ -263,21 +263,6 @@ button {
   opacity: 0.7;
 }
 
-.car-large,
-.car-top {
-  filter: drop-shadow(0 28px 22px rgba(45, 72, 82, 0.2));
-}
-
-.car-large {
-  width: min(82%, 360px);
-  max-height: 64%;
-}
-
-.car-top {
-  width: min(38%, 142px);
-  margin-top: 120px;
-}
-
 .voice-dock {
   position: absolute;
   left: 14px;
@@ -1047,12 +1032,6 @@ button {
 @keyframes poiLabelIn {
   0% { opacity: 0; transform: translateY(4px) scale(0.96); }
   100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.map-grid {
-  position: absolute;
-  inset: 0;
-  opacity: 0.82;
 }
 
 .map-label {

@@ -34,6 +34,7 @@ function filePart(file, index, sourceType = 'file') {
 export default function MultimodalComposer({
   onSend,
   onVisualFrame,
+  visualStreamSupported = false,
   visualStreamAvailable = false,
   voiceInputEnabled = false,
   connectionState = 'connected',
@@ -88,7 +89,7 @@ export default function MultimodalComposer({
       addFiles(event.dataTransfer.files)
     }}
   >
-    {visualStreamAvailable && <div
+    {visualStreamSupported && <div
       className="visual-stream-dock"
       ref={setVisualPanelHost}
     />}
@@ -110,7 +111,7 @@ export default function MultimodalComposer({
         aria-label={t('添加图片或文件')}
         onClick={() => picker.current?.click()}
       >＋</button>
-      {visualStreamAvailable && <VisualStreamControl
+      {visualStreamSupported && <VisualStreamControl
         available={visualStreamAvailable}
         inputEnabled={voiceInputEnabled}
         connectionState={connectionState}

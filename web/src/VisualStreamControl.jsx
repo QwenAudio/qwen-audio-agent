@@ -20,7 +20,7 @@ export default function VisualStreamControl({
 }) {
   const [cameraOpen, setCameraOpen] = useState(false)
   const [cameraReady, setCameraReady] = useState(false)
-  const [streaming, setStreaming] = useState(false)
+  const [streamRequested, setStreamRequested] = useState(false)
   const [frameCount, setFrameCount] = useState(0)
   const [error, setError] = useState('')
   const [wideDock, setWideDock] = useState(() => (
@@ -30,6 +30,14 @@ export default function VisualStreamControl({
   const videoRef = useRef(null)
   const streamRef = useRef(null)
   const streamingRef = useRef(false)
+  const transportReady = (
+    available
+    && inputEnabled
+    && connectionState === 'connected'
+  )
+  const streaming = streamRequested && transportReady
+
+  streamingRef.current = streaming
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return undefined
@@ -42,7 +50,7 @@ export default function VisualStreamControl({
 
   const stopStreaming = useCallback(() => {
     streamingRef.current = false
-    setStreaming(false)
+    setStreamRequested(false)
     setFrameCount(0)
   }, [])
 
@@ -81,27 +89,6 @@ export default function VisualStreamControl({
     return () => tracks.forEach(track => track.removeEventListener?.('ended', onEnded))
   }, [cameraOpen, closeCamera])
 
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (!document.hidden) return
-      closeCamera()
-    }
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
-  }, [closeCamera])
-
-  useEffect(() => {
-    if (!cameraOpen) return
-    if (
-      !available
-      || ['unavailable', 'disconnected', 'hidden'].includes(connectionState)
-    ) closeCamera()
-  }, [available, cameraOpen, closeCamera, connectionState])
-
-  useEffect(() => {
-    if (!inputEnabled && streamingRef.current) stopStreaming()
-  }, [inputEnabled, stopStreaming])
-
   useEffect(() => () => closeCamera(), [closeCamera])
 
   useEffect(() => {
@@ -117,7 +104,6 @@ export default function VisualStreamControl({
         if (disposed || !streamingRef.current) return
         if (onFrame?.(image, Date.now()) === false) {
           setError(t('视觉输入连接不可用'))
-          closeCamera()
           return
         }
         setFrameCount(value => value + 1)
@@ -137,6 +123,10 @@ export default function VisualStreamControl({
       clearInterval(timer)
     }
   }, [cameraReady, closeCamera, onFrame, streaming])
+
+  useEffect(() => {
+    if (streamRequested && transportReady) setError('')
+  }, [streamRequested, transportReady])
 
   const openCamera = useCallback(async () => {
     if (!available || streamRef.current) return
@@ -163,11 +153,11 @@ export default function VisualStreamControl({
   }, [available])
 
   const startStreaming = useCallback(() => {
-    if (!cameraReady || !available || !inputEnabled) return
+    if (!cameraReady || !transportReady) return
     streamingRef.current = true
-    setStreaming(true)
+    setStreamRequested(true)
     setError('')
-  }, [available, cameraReady, inputEnabled])
+  }, [cameraReady, transportReady])
 
   const panel = cameraOpen && <div
     className={`camera-stream${wideDock ? ' camera-stream-docked' : ''}`}
@@ -186,6 +176,10 @@ export default function VisualStreamControl({
       <span className="camera-status-dot" aria-hidden="true" />
       {streaming
         ? t('实时视觉已开启 · 已发送 {count} 帧', { count: frameCount })
+        : streamRequested
+          ? inputEnabled
+            ? t('实时视觉已暂停，连接恢复后将自动继续')
+            : t('实时视觉已暂停，请恢复麦克风')
         : inputEnabled
           ? t('画面仅在开启实时视觉后发送')
           : t('请先开启麦克风，再开始实时视觉')}
@@ -194,14 +188,14 @@ export default function VisualStreamControl({
       <button type="button" className="ghost" onClick={closeCamera}>
         {t('关闭相机')}
       </button>
-      {streaming
+      {streamRequested
         ? <button type="button" className="camera-live active" onClick={stopStreaming}>
             {t('停止实时视觉')}
           </button>
         : <button
             type="button"
             className="composer-send"
-            disabled={!cameraReady || !inputEnabled}
+            disabled={!cameraReady || !transportReady}
             onClick={startStreaming}
           >
             {t('开始实时视觉')}

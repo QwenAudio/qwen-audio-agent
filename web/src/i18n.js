@@ -91,6 +91,8 @@ const translations = {
   '相机预览': 'Camera preview',
   '画面仅在开启实时视觉后发送': 'Frames are sent only while live vision is enabled',
   '实时视觉已开启 · 已发送 {count} 帧': 'Live vision enabled · {count} frames sent',
+  '实时视觉已暂停，连接恢复后将自动继续': 'Live vision paused · reconnecting automatically',
+  '实时视觉已暂停，请恢复麦克风': 'Live vision paused · resume the microphone to continue',
   '请先开启麦克风': 'Enable the microphone first',
   '请先开启麦克风，再开始实时视觉': 'Enable the microphone before starting live vision',
   '当前浏览器无法使用相机': 'Camera access is unavailable in this browser',

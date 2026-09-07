@@ -38,22 +38,22 @@ function locateOrder(db, ownerId, raw) {
 }
 
 function describeOrder(order, db) {
-  const lines = [`${order.orderId}　${STATUS_TEXT[order.status]}　￥${order.total.toFixed(2)}`]
+  const lines = [`${order.orderId}  ${STATUS_TEXT[order.status]}  ￥${order.total.toFixed(2)}`]
   for (const item of order.items) {
     const product = db.products.find(entry => entry.productId === item.productId)
     const variant = product?.variants.find(entry => entry.itemId === item.itemId)
     const options = variant ? Object.values(variant.options).join('/') : ''
-    lines.push(`　· ${product?.name || item.productId}${options ? `（${options}）` : ''}`
-      + `　×${item.quantity}　￥${item.price.toFixed(2)}`
+    lines.push(`  · ${product?.name || item.productId}${options ? `（${options}）` : ''}`
+      + `  ×${item.quantity}  ￥${item.price.toFixed(2)}`
       // 类别与签收天数是【判定退换资格的两个必要输入】，
       // 所以在订单详情里直接给出，省掉一次「这是什么类别」的往返。
-      + `　类别：${CATEGORY_TEXT[product?.category] || product?.category || '未知'}`)
+      + `  类别：${CATEGORY_TEXT[product?.category] || product?.category || '未知'}`)
   }
   if (order.status === 'delivered') {
-    lines.push(`　签收于 ${order.deliveredAt.slice(0, 10)}，距今 ${daysSince(order.deliveredAt)} 天`)
+    lines.push(`  签收于 ${order.deliveredAt.slice(0, 10)}，距今 ${daysSince(order.deliveredAt)} 天`)
   }
-  if (order.status === 'shipped') lines.push(`　发货于 ${order.shippedAt.slice(0, 10)}`)
-  if (order.status === 'cancelled') lines.push(`　取消于 ${order.cancelledAt.slice(0, 10)}`)
+  if (order.status === 'shipped') lines.push(`  发货于 ${order.shippedAt.slice(0, 10)}`)
+  if (order.status === 'cancelled') lines.push(`  取消于 ${order.cancelledAt.slice(0, 10)}`)
   return lines.join('\n')
 }
 
@@ -95,8 +95,8 @@ export function executeOrdersTool(name, args, { store, sessionId, surface }) {
 
     const { shown, rest } = truncateForVoice(mine)
     const body = shown
-      .map(order => `${order.orderId}　${STATUS_TEXT[order.status]}　￥${order.total.toFixed(2)}`
-        + `　下单于 ${order.placedAt.slice(0, 10)}`)
+      .map(order => `${order.orderId}  ${STATUS_TEXT[order.status]}  ￥${order.total.toFixed(2)}`
+        + `  下单于 ${order.placedAt.slice(0, 10)}`)
       .join('\n')
     const content = rest
       ? `共 ${mine.length} 笔，先说最近三笔：\n${body}\n还有 ${rest} 笔，需要的话再往下报。`
@@ -146,9 +146,9 @@ export function executeOrdersTool(name, args, { store, sessionId, surface }) {
       return toolResult(content, session, false, { found: false })
     }
     const body = product.variants
-      .map(variant => `　· ${Object.values(variant.options).join('/')}`
-        + `　￥${variant.price.toFixed(2)}`
-        + `　${variant.stock > 0 ? `有货（${variant.stock}）` : '无货'}`)
+      .map(variant => `  · ${Object.values(variant.options).join('/')}`
+        + `  ￥${variant.price.toFixed(2)}`
+        + `  ${variant.stock > 0 ? `有货（${variant.stock}）` : '无货'}`)
       .join('\n')
     store.appendAudit(sessionId, {
       tool: name, surface, ok: true, summary: `查看 ${product.name} 的款式库存`,

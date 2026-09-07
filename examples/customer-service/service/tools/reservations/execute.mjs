@@ -124,13 +124,13 @@ function fareOf(db, reservation, cabin = reservation.cabin) {
 function describeSegments(db, reservation) {
   return reservation.segments.map(segment => {
     const { flight } = flightOf(db, segment.flightNo, segment.date)
-    if (!flight) return `　· ${segment.flightNo}　${segment.date}　（查不到航班信息）`
+    if (!flight) return `  · ${segment.flightNo}  ${segment.date}  （查不到航班信息）`
     const status = FLIGHT_STATUS_TEXT[flight.status] || flight.status
     const delay = flight.status === 'delayed' && flight.delayHours
       ? `，延误 ${flight.delayHours} 小时`
       : ''
-    return `　· ${flight.flightNo}　${flight.from} → ${flight.to}　${flight.date}`
-      + ` ${flight.departure}-${flight.arrival}　${status}${delay}`
+    return `  · ${flight.flightNo}  ${flight.from} → ${flight.to}  ${flight.date}`
+      + ` ${flight.departure}-${flight.arrival}  ${status}${delay}`
   }).join('\n')
 }
 
@@ -166,8 +166,8 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
       const first = item.segments[0]
       const { flight } = flightOf(db, first.flightNo, first.date)
       const route = flight ? `${flight.from} → ${flight.to}` : first.flightNo
-      return `${item.reservationId}　${route}　${first.date}`
-        + `　${CABIN_TEXT[item.cabin] || item.cabin}　￥${item.total.toFixed(2)}`
+      return `${item.reservationId}  ${route}  ${first.date}`
+        + `  ${CABIN_TEXT[item.cabin] || item.cabin}  ￥${item.total.toFixed(2)}`
     })
     const content = rest
       ? `${lines.join('\n')}\n还有 ${rest} 笔，共 ${mine.length} 笔。`
@@ -209,17 +209,17 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
     const flown = hasFlownSegment(db, reservation)
 
     const content = [
-      `${reservation.reservationId}　${CABIN_TEXT[reservation.cabin] || reservation.cabin}`
-      + `　￥${reservation.total.toFixed(2)}`,
+      `${reservation.reservationId}  ${CABIN_TEXT[reservation.cabin] || reservation.cabin}`
+      + `  ￥${reservation.total.toFixed(2)}`,
       describeSegments(db, reservation),
-      `　乘客：${reservation.passengers.map(item => item.name).join('、')}`,
-      `　托运行李：已订 ${reservation.checkedBags} 件`
+      `  乘客：${reservation.passengers.map(item => item.name).join('、')}`,
+      `  托运行李：已订 ${reservation.checkedBags} 件`
       + (allowance.available ? `，免费额度 ${allowance.outcome} 件`
         + `（${TIER_TEXT[user?.memberTier] || user?.memberTier}）` : ''),
-      `　旅行保险：${reservation.insurance ? '已购买' : '未购买'}`,
+      `  旅行保险：${reservation.insurance ? '已购买' : '未购买'}`,
       // 【已飞要显式说出来】它决定能不能改签、改舱位、退票三件事，
       // 而模型看不到 flight.status，只能靠这一行知道。
-      flown ? '　注意：本预订已有航段执飞完毕。' : '',
+      flown ? '  注意：本预订已有航段执飞完毕。' : '',
     ].filter(Boolean).join('\n')
 
     store.appendAudit(sessionId, {
@@ -259,11 +259,11 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
 
     const flight = found.flight
     const delay = flight.status === 'delayed' && flight.delayHours
-      ? `　延误 ${flight.delayHours} 小时`
+      ? `  延误 ${flight.delayHours} 小时`
       : ''
-    const content = `${flight.flightNo}　${flight.from} → ${flight.to}　${flight.date}`
-      + `　${flight.departure}-${flight.arrival}`
-      + `　${FLIGHT_STATUS_TEXT[flight.status] || flight.status}${delay}`
+    const content = `${flight.flightNo}  ${flight.from} → ${flight.to}  ${flight.date}`
+      + `  ${flight.departure}-${flight.arrival}`
+      + `  ${FLIGHT_STATUS_TEXT[flight.status] || flight.status}${delay}`
     store.appendAudit(sessionId, {
       tool: name,
       surface,
@@ -307,8 +307,8 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
     }
     const { shown, rest } = truncateForVoice(options)
     const lines = shown.map(flight => (
-      `${flight.flightNo}　${flight.date} ${flight.departure}-${flight.arrival}`
-      + `　￥${flight.prices[cabin].toFixed(2)}　余 ${flight.seats[cabin]} 座`
+      `${flight.flightNo}  ${flight.date} ${flight.departure}-${flight.arrival}`
+      + `  ￥${flight.prices[cabin].toFixed(2)}  余 ${flight.seats[cabin]} 座`
     ))
     const content = rest
       ? `${lines.join('\n')}\n还有 ${rest} 班，共 ${options.length} 班。`

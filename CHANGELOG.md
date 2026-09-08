@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Gateway Client 为 Socket 连接和 Session 握手增加超时与恢复；连接只有在收到
+  `session.ready` 后才会重置重连退避。
 - WebUI 与共享移动端现在会在后台任务卡片中展示类型化 Artifact；支持远程媒体
   的显式加载、内联图片预览、结构化数据和可打开或下载的文件产物，并在语音播报
   完成或 Gateway 重连后继续保留产物入口。

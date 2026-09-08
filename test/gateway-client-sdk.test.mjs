@@ -39,6 +39,10 @@ class FakeSocket {
   close() { this.readyState = 3 }
 }
 
+function wait(milliseconds) {
+  return new Promise(resolve => setTimeout(resolve, milliseconds))
+}
+
 test('passes remote credentials below GCP and requests takeover explicitly', () => {
   const socket = new FakeSocket()
   let socketOptions
@@ -110,6 +114,51 @@ test('reference Client negotiates once and correlates runtime commands', async (
     },
   })
   assert.equal((await pending).task.id, 'task-1')
+  client.stop()
+})
+
+test('reference Client times out a socket that never opens and retries', async () => {
+  const sockets = []
+  const statuses = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => {
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+    clientInstanceId: 'sdk-connect-timeout-test',
+    connectTimeoutMs: 100,
+    reconnectMinMs: 50,
+    reconnectMaxMs: 50,
+    onStatus: status => statuses.push(status),
+  }).start()
+
+  await wait(180)
+
+  assert.equal(sockets.length, 2)
+  assert.equal(statuses.find(status => status.phase === 'connection')?.error.code, 'connection_timeout')
+  client.stop()
+})
+
+test('reference Client times out an open socket that never completes the handshake', async () => {
+  const socket = new FakeSocket()
+  const statuses = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    clientInstanceId: 'sdk-handshake-timeout-test',
+    connectTimeoutMs: 100,
+    handshakeTimeoutMs: 100,
+    reconnect: false,
+    onStatus: status => statuses.push(status),
+  }).start()
+
+  socket.open()
+  await wait(130)
+
+  assert.equal(statuses.find(status => status.phase === 'handshake')?.error.code, 'handshake_timeout')
+  assert.equal(client.ready, false)
   client.stop()
 })
 

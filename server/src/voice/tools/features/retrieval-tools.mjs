@@ -106,35 +106,27 @@ const recallTool = {
 export const retrievalToolEntries = [
   {
     definition: knowledgeTool,
-    contract: 'optional',
     policy: {
-      mode: 'inline',
       maxResultBytes: 64 * 1024,
       requiredCapabilities: [FRONTEND_KNOWLEDGE_CAPABILITY],
     },
   },
   {
     definition: recallTool,
-    contract: 'optional',
     policy: {
-      mode: 'inline',
       requiredCapabilities: [FRONTEND_RECALL_CAPABILITY],
     },
   },
   {
     definition: webSearchTool,
-    contract: 'optional',
     policy: {
-      mode: 'inline',
       maxResultBytes: 48 * 1024,
       requiredCapabilities: [FRONTEND_RETRIEVAL_CAPABILITIES.WEB_SEARCH],
     },
   },
   {
     definition: fetchUrlTool,
-    contract: 'optional',
     policy: {
-      mode: 'inline',
       maxResultBytes: 64 * 1024,
       requiredCapabilities: [FRONTEND_RETRIEVAL_CAPABILITIES.URL_FETCH],
     },

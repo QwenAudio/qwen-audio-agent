@@ -13,10 +13,7 @@ import {
   buildFrontendInstructions,
   TOOLS,
 } from '../src/voice/frontend-tools.mjs'
-import {
-  FRONTEND_TOOL_MODES,
-  FrontendToolRegistry,
-} from '../src/voice/tools/frontend-tool-registry.mjs'
+import { FrontendToolRegistry } from '../src/voice/tools/frontend-tool-registry.mjs'
 import { FrontendToolLoop } from '../src/voice/tools/frontend-tool-loop.mjs'
 import { buildFrontendToolContext } from '../src/voice/tools/frontend-tool-context.mjs'
 import { loadFrontendPrompt } from '../src/conversation/frontend-agent-context.mjs'
@@ -35,28 +32,24 @@ function names(tools) {
   return tools.map(tool => tool.function.name)
 }
 
-function contractNames(contract) {
+// Prompt-maintenance convention, not a runtime tool classification.
+const CORE_PROMPT_TOOLS = new Set([
+  'spawn_thinking', 'get_agent_task_status', 'cancel_agent_task',
+  'respond_permission', 'respond_agent_input', 'get_current_time', 'memory',
+])
+
+function optionalToolNames() {
   return frontendToolRegistry.names().filter(name => (
-    frontendToolRegistry.get(name).contract === contract
+    !CORE_PROMPT_TOOLS.has(name)
   ))
 }
 
-test('classifies prompt ownership independently of execution mode and visibility', () => {
-  assert.deepEqual(contractNames('core').sort(), [
-    'spawn_thinking', 'get_agent_task_status', 'cancel_agent_task',
-    'respond_permission', 'respond_agent_input', 'get_current_time', 'memory',
-  ].sort())
-  assert.deepEqual(contractNames('optional').sort(), [
-    'web_search', 'fetch_url', 'knowledge', 'recall', 'notes',
-    'schedule_reminder', 'enter_sleep',
-  ].sort())
-  assert.equal(frontendToolRegistry.isEnabled('respond_permission'), false)
-  assert.equal(frontendToolRegistry.isEnabled('notes'), true)
-})
-
 test('fixed policy and tool definitions never depend on optional tool names', () => {
   const prompt = loadFrontendPrompt()
-  for (const optional of contractNames('optional')) {
+  for (const name of CORE_PROMPT_TOOLS) {
+    assert.equal(frontendToolRegistry.has(name), true, `stale core prompt tool: ${name}`)
+  }
+  for (const optional of optionalToolNames()) {
     const reference = new RegExp(`\\b${optional}\\b`, 'u')
     assert.doesNotMatch(prompt, reference, `fixed prompt references ${optional}`)
     for (const name of frontendToolRegistry.names()) {
@@ -81,7 +74,7 @@ test('disabling any optional tool removes its instructions without changing fixe
   }
   const tools = frontendTools(context)
   const prompt = buildFrontendInstructions(context)
-  for (const name of contractNames('optional')) {
+  for (const name of optionalToolNames()) {
     const disabledContext = {
       ...context,
       frontend: { ...context.frontend, disabledTools: [name] },
@@ -96,22 +89,21 @@ test('disabling any optional tool removes its instructions without changing fixe
   }
 })
 
-test('new tools default to optional and contract metadata stays off the model wire', () => {
+test('registers tools without classification or an explicit runtime policy', () => {
   const definition = {
     type: 'function',
     function: { name: 'extension', description: 'Extension.', parameters: { type: 'object' } },
   }
-  const registry = new FrontendToolRegistry([{ definition, policy: { mode: 'inline' } }])
-  assert.equal(registry.get('extension').contract, 'optional')
+  const registry = new FrontendToolRegistry([{ definition }])
+  assert.deepEqual(registry.get('extension'), {
+    name: 'extension', definition, policy: {},
+  })
   assert.deepEqual(registry.definitions(), [definition])
-  for (const contract of ['required', '', null]) {
-    assert.throws(() => new FrontendToolRegistry([
-      { definition, contract, policy: { mode: 'inline' } },
-    ]), /contract must be core or optional/)
-  }
   for (const name of frontendToolRegistry.names()) {
     const entry = frontendToolRegistry.get(name)
     assert.equal(Object.isFrozen(entry), true)
+    assert.equal(Object.hasOwn(entry, 'contract'), false)
+    assert.equal(Object.hasOwn(entry.policy, 'mode'), false)
     assert.equal(Object.hasOwn(entry.definition, 'contract'), false)
     assert.equal(Object.hasOwn(entry.definition.function, 'contract'), false)
   }
@@ -227,7 +219,6 @@ test('exposes retrieval tools only when the frontend advertises each capability'
   assert.deepEqual(
     frontendToolRegistry.get(WEB_SEARCH_TOOL_NAME).policy,
     {
-      mode: 'inline',
       maxResultBytes: 48 * 1024,
       requiredCapabilities: ['web-search'],
     },
@@ -348,7 +339,6 @@ test('exposes the knowledge tool only with the frontend knowledge capability', (
   assert.deepEqual(
     frontendToolRegistry.get(KNOWLEDGE_TOOL_NAME).policy,
     {
-      mode: 'inline',
       maxResultBytes: 64 * 1024,
       requiredCapabilities: ['knowledge'],
     },
@@ -358,40 +348,10 @@ test('exposes the knowledge tool only with the frontend knowledge capability', (
 test('keeps visibility policy separate from runtime execution checks', () => {
   const entry = frontendToolRegistry.get(ENTER_SLEEP_TOOL_NAME)
   assert.deepEqual(entry.policy, {
-    mode: 'control',
     requiredClientActions: ['desktop.presence.enter_sleep'],
   })
   assert.equal(Object.isFrozen(entry.policy), true)
   assert.equal(Object.isFrozen(entry.policy.requiredClientActions), true)
-})
-
-test('declares one background tool and classifies every other tool', () => {
-  assert.deepEqual(FRONTEND_TOOL_MODES, [
-    'inline',
-    'background',
-    'control',
-  ])
-  assert.deepEqual(Object.fromEntries(
-    frontendToolRegistry.names().map(name => [
-      name,
-      frontendToolRegistry.get(name).policy.mode,
-    ]),
-  ), {
-    spawn_thinking: 'background',
-    schedule_reminder: 'inline',
-    cancel_agent_task: 'control',
-    get_agent_task_status: 'control',
-    get_current_time: 'inline',
-    memory: 'inline',
-    notes: 'inline',
-    knowledge: 'inline',
-    recall: 'inline',
-    respond_permission: 'control',
-    respond_agent_input: 'control',
-    web_search: 'inline',
-    fetch_url: 'inline',
-    enter_sleep: 'control',
-  })
 })
 
 test('rejects unnamed and duplicate tool registrations', () => {
@@ -405,30 +365,20 @@ test('rejects unnamed and duplicate tool registrations', () => {
   }
   assert.throws(
     () => new FrontendToolRegistry([
-      { definition, policy: { mode: 'inline' } },
-      { definition, policy: { mode: 'inline' } },
+      { definition },
+      { definition },
     ]),
     /Duplicate frontend tool/,
   )
   assert.throws(
-    () => new FrontendToolRegistry([{ definition }]),
-    /requires a valid mode/,
-  )
-  assert.throws(
     () => new FrontendToolRegistry([
-      { definition, policy: { mode: 'deferred' } },
-    ]),
-    /requires a valid mode/,
-  )
-  assert.throws(
-    () => new FrontendToolRegistry([
-      { definition, policy: { mode: 'inline', repeatHandling: 'always' } },
+      { definition, policy: { repeatHandling: 'always' } },
     ]),
     /repeatHandling must be handler/,
   )
   assert.throws(
     () => new FrontendToolRegistry([
-      { definition, policy: { mode: 'inline', maxResultBytes: 0 } },
+      { definition, policy: { maxResultBytes: 0 } },
     ]),
     /maxResultBytes must be a positive integer/,
   )
@@ -440,8 +390,8 @@ test('binds one executor per registered tool and rejects incomplete maps', async
     function: { name, parameters: { type: 'object' } },
   })
   const registry = new FrontendToolRegistry([
-    { definition: definition('first'), policy: { mode: 'background' } },
-    { definition: definition('second'), policy: { mode: 'inline' } },
+    { definition: definition('first') },
+    { definition: definition('second') },
   ])
 
   assert.throws(
@@ -465,7 +415,7 @@ test('binds one executor per registered tool and rejects incomplete maps', async
   assert.equal(execution.handled, true)
   assert.equal(execution.executed, true)
   assert.equal(execution.tool.name, 'first')
-  assert.equal(execution.tool.policy.mode, 'background')
+  assert.deepEqual(execution.tool.policy, {})
   assert.equal(execution.value, 'first:1')
   assert.deepEqual(await executor.execute('unknown', {}), {
     handled: false,
@@ -481,7 +431,7 @@ test('enforces the tool loop before invoking a registered handler', async () => 
     function: { name: 'bounded', parameters: { type: 'object' } },
   }
   const registry = new FrontendToolRegistry([
-    { definition, policy: { mode: 'inline' } },
+    { definition },
   ])
   let calls = 0
   const executor = registry.createExecutor({

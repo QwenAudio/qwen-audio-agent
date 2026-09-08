@@ -95,7 +95,6 @@ test('executes discovered external tools through the shared boundary', async () 
         },
       },
       policy: {
-        mode: 'inline',
         maxCallsPerTurn: 1,
         maxResultBytes: 2_048,
       },
@@ -136,7 +135,6 @@ test('publishes frontend tool call debug lifecycle for external tools', async ()
         },
       },
       policy: {
-        mode: 'inline',
         maxCallsPerTurn: 1,
         maxResultBytes: 2_048,
       },
@@ -180,7 +178,6 @@ test('executes an explicitly enabled state-changing external tool inline', async
         },
       },
       policy: {
-        mode: 'inline',
         maxCallsPerTurn: 1,
         maxResultBytes: 2_048,
       },
@@ -458,7 +455,7 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
     arguments: JSON.stringify({ objective: '继续修改此前讨论的页面' }),
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  assert.equal(execution.tool.policy.mode, 'background')
+  assert.equal(execution.executed, true)
   assert.equal(kit.outputs[0][1].status, 'accepted')
   assert.equal(
     kit.outputs[0][1].message,

@@ -226,7 +226,6 @@ export class FrontendMcpClient {
             },
           },
           policy: {
-            mode: 'inline',
             timeoutMs: policy.timeoutMs,
             maxResultBytes: policy.maxResultBytes,
             maxCallsPerTurn: policy.maxCallsPerTurn,

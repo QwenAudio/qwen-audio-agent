@@ -37,7 +37,7 @@ const scheduleReminderTool = {
 }
 
 export const scheduleToolEntries = [
-  { definition: scheduleReminderTool, contract: 'optional', policy: { mode: 'inline' } },
+  { definition: scheduleReminderTool },
 ]
 
 const reminderOnlyTool = {

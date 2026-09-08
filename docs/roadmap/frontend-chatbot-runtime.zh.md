@@ -104,7 +104,6 @@ DashScope、OpenAI-compatible、Speech-to-Speech 和私有 Provider 都实现该
   inputSchema,
   outputSchema,
   policy: {
-    mode: 'inline' | 'background' | 'control',
     readOnly,
     requiresApproval,
     timeoutMs,
@@ -115,9 +114,9 @@ DashScope、OpenAI-compatible、Speech-to-Speech 和私有 Provider 都实现该
 }
 ```
 
-- `inline`：在当前对话轮次中返回，例如 Search、RAG、Time、Memory。
-- `background`：只返回受理回执，当前只有 `spawn_thinking`。
-- `control`：查询、取消和权限等控制操作，不创建新 Work。
+工具可以在当前轮次返回结果、返回异步受理回执，或操作已有工作。
+这些行为由具体执行实现决定，不另设执行模式标签；策略只承载实际参与运行的约束。
+核心与可选能力的提示词边界通过文档和测试维护，不加入工具运行时协议。
 
 ### 4.3 Work
 

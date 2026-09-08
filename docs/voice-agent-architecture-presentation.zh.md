@@ -422,26 +422,25 @@ style: |
 
 ```js
 export const frontendToolRegistry = new FrontendToolRegistry([
-  // ── 内置：始终存在 ──
-  { definition: spawnThinkingTool,       policy: { mode: 'background' } },
-  { definition: scheduleReminderTool,    policy: { mode: 'inline' } },
-  { definition: getCurrentTimeTool,      policy: { mode: 'inline' } },
-  { definition: memoryTool,              policy: { mode: 'inline' } },
-  { definition: notesTool,               policy: { mode: 'inline' } },
-  { definition: cancelAgentTaskTool,     policy: { mode: 'control' } },
-  { definition: getAgentTaskStatusTool,  policy: { mode: 'control' } },
-  // ── 可扩展：按能力或客户端动作出现 ──
-  { definition: webSearchTool,           policy: { mode: 'inline',  requiredCapabilities: […] } },
-  { definition: fetchUrlTool,            policy: { mode: 'inline',  requiredCapabilities: […] } },
-  { definition: knowledgeTool,           policy: { mode: 'inline',  requiredCapabilities: […] } },
-  { definition: recallTool,              policy: { mode: 'inline',  requiredCapabilities: […] } },
-  { definition: respondPermissionTool,   policy: { mode: 'control', requiredCapabilities: […] } },
-  { definition: respondAgentInputTool,   policy: { mode: 'control', requiredCapabilities: […] } },
-  { definition: enterSleepTool,          policy: { mode: 'control', requiredClientActions: […] } },
+  { definition: spawnThinkingTool, policy: { repeatHandling: 'handler' } },
+  { definition: scheduleReminderTool },
+  { definition: getCurrentTimeTool },
+  { definition: memoryTool },
+  { definition: notesTool },
+  { definition: cancelAgentTaskTool },
+  { definition: getAgentTaskStatusTool },
+  // 能力或客户端动作存在时才提供相应工具
+  { definition: webSearchTool,         policy: { requiredCapabilities: […] } },
+  { definition: fetchUrlTool,          policy: { requiredCapabilities: […] } },
+  { definition: knowledgeTool,         policy: { requiredCapabilities: […] } },
+  { definition: recallTool,            policy: { requiredCapabilities: […] } },
+  { definition: respondPermissionTool, policy: { requiredCapabilities: […] } },
+  { definition: respondAgentInputTool, policy: { requiredCapabilities: […] } },
+  { definition: enterSleepTool,        policy: { requiredClientActions: […] } },
 ])
 ```
 
-> <strong>前台工具集保持最小且有界：</strong> 每个工具携带策略：inline 快速读写、control 状态操作、background 异步任务。
+> <strong>前台工具集保持最小且有界：</strong> 仅声明实际生效的策略；注册后仍按配置和当前能力筛选，不靠分类标签决定执行方式。
 
 <!--
 [Sources]

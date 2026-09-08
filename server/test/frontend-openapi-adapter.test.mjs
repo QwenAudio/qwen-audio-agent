@@ -113,7 +113,6 @@ test('discovers only enabled operationIds with standard function schemas', async
     ['city', 'threshold'],
   )
   assert.deepEqual(tools[1].policy, {
-    mode: 'inline',
     timeoutMs: 8_000,
     maxResultBytes: 32 * 1024,
     maxCallsPerTurn: 2,

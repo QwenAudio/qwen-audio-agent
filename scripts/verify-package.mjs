@@ -37,6 +37,45 @@ export function parsePackOutput(stdout) {
   return entries.filter(Boolean)
 }
 
+/**
+ * Return exported package targets that are absent from an npm pack file list.
+ * Exact exports must name one packaged file; pattern exports must match at
+ * least one packaged file.
+ *
+ * @param {object} exportsMap The package.json exports map.
+ * @param {Set<string>} files Paths emitted by npm pack.
+ * @returns {string[]} Missing export targets.
+ */
+export function findMissingExportTargets(exportsMap, files) {
+  const targets = new Set()
+  const collect = (value) => {
+    if (typeof value === 'string') {
+      targets.add(value.replace(/^\.\//, ''))
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach(collect)
+      return
+    }
+    if (value && typeof value === 'object') {
+      Object.values(value).forEach(collect)
+    }
+  }
+  collect(exportsMap)
+
+  return [...targets].filter((target) => {
+    const wildcard = target.indexOf('*')
+    if (wildcard === -1) return !files.has(target)
+    const prefix = target.slice(0, wildcard)
+    const suffix = target.slice(wildcard + 1)
+    return ![...files].some(file => (
+      file.startsWith(prefix)
+      && file.endsWith(suffix)
+      && file.length >= prefix.length + suffix.length
+    ))
+  })
+}
+
 // npm 10 在 `npm pack` 时会触发 `prepare` 生命周期脚本,构建工具(vite 等)的
 // 日志会混入 stdout,污染 pack 的 JSON 输出(`--ignore-scripts` 不阻止 prepare)。
 // 这里从 stdout 末尾按括号配对提取最后一个 JSON 块,以兼容前导/尾部噪声,同时
@@ -107,6 +146,11 @@ if (isMain) {
   }
   if (packages.length !== 1) throw new Error('npm pack 返回了意外的包数量')
   const files = new Set(packages[0].files.map(file => file.path))
+  const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
+  const missingExports = findMissingExportTargets(manifest.exports, files)
+  if (missingExports.length) {
+    throw new Error(`npm 成品缺少公开导出目标：${missingExports.join(', ')}`)
+  }
   const required = [
     'cli/bin/qwenaudio.mjs',
     'config/backends/deepseek-harness/cordis.yml',

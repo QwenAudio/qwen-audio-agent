@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   audioSchedulingLeadSeconds,
   createPcmPlaybackQueue,
+  createStreamingResampler,
   mergePcmPlaybackItems,
   resample,
 } from '../src/realtime/audio.js'
@@ -11,6 +12,48 @@ test('resamples audio to the requested approximate length', () => {
   const input = new Float32Array(480)
   const output = resample(input, 48000, 16000)
   assert.equal(output.length, 160)
+})
+
+test('returns an empty result for empty input instead of NaN', () => {
+  const output = resample(new Float32Array(), 48000, 16000)
+  assert.equal(output.length, 0)
+  assert.equal(output.some(Number.isNaN), false)
+})
+
+test('streaming resampling matches one-shot resampling across chunk boundaries', () => {
+  const input = Float32Array.from(
+    { length: 12_345 },
+    (_, index) => Math.sin(index * 0.017) * 0.8,
+  )
+  const expected = resample(input, 44_100, 16_000)
+  const stream = createStreamingResampler()
+  const chunks = []
+  let offset = 0
+  for (const size of [17, 2048, 3, 701, 4096, 89, 5_391]) {
+    const end = Math.min(input.length, offset + size)
+    if (end === offset) break
+    chunks.push(stream.process(input.slice(offset, end), 44_100, 16_000))
+    offset = end
+  }
+  chunks.push(stream.flush())
+  const actual = new Float32Array(chunks.reduce((length, chunk) => length + chunk.length, 0))
+  let cursor = 0
+  for (const chunk of chunks) {
+    actual.set(chunk, cursor)
+    cursor += chunk.length
+  }
+
+  assert.equal(actual.length, expected.length)
+  assert.ok(actual.every((value, index) => Math.abs(value - expected[index]) < 1e-5))
+})
+
+test('streaming resampling resets its phase when the target rate changes', () => {
+  const stream = createStreamingResampler()
+  stream.process(new Float32Array([1, 2, 3]), 44_100, 16_000)
+  const output = stream.process(new Float32Array([4, 5, 6]), 44_100, 24_000)
+  const tail = stream.flush()
+  const expected = resample(new Float32Array([4, 5, 6]), 44_100, 24_000)
+  assert.deepEqual([...output, ...tail], [...expected])
 })
 
 test('keeps a small Web Audio scheduling lead outside transport buffering', () => {

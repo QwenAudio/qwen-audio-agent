@@ -1,13 +1,115 @@
-export function resample(input, from, to) {
-  if (from === to) return input
-  const ratio = from / to
-  const output = new Float32Array(Math.max(1, Math.round(input.length / ratio)))
-  for (let index = 0; index < output.length; index += 1) {
-    const position = index * ratio
-    const before = Math.floor(position)
-    const after = Math.min(input.length - 1, before + 1)
-    output[index] = input[before] * (1 - position + before) + input[after] * (position - before)
+function sampleRate(value, label) {
+  const rate = Number(value)
+  if (!Number.isFinite(rate) || rate <= 0) {
+    throw new RangeError(`${label} sample rate must be a positive number`)
   }
+  return rate
+}
+
+function appendSamples(previous, input) {
+  const samples = new Float32Array(previous.length + input.length)
+  samples.set(previous)
+  samples.set(input, previous.length)
+  return samples
+}
+
+/**
+ * Resamples one continuous PCM stream while retaining the interpolation phase
+ * between input chunks. The stream can be reset when a capture or target rate
+ * changes; flush() emits the final clamped sample and starts a new stream.
+ */
+export function createStreamingResampler() {
+  let inputRate = 0
+  let outputRate = 0
+  let pending = new Float32Array(0)
+  let position = 0
+  let totalInput = 0
+  let outputCount = 0
+
+  const reset = () => {
+    inputRate = 0
+    outputRate = 0
+    pending = new Float32Array(0)
+    position = 0
+    totalInput = 0
+    outputCount = 0
+  }
+
+  const configure = (from, to) => {
+    const sourceRate = sampleRate(from, 'input')
+    const targetRate = sampleRate(to, 'output')
+    if (sourceRate !== inputRate || targetRate !== outputRate) {
+      reset()
+      inputRate = sourceRate
+      outputRate = targetRate
+    }
+    return [sourceRate, targetRate]
+  }
+
+  const emit = final => {
+    const ratio = inputRate / outputRate
+    const targetCount = Math.max(1, Math.round(totalInput / ratio))
+    const values = []
+    while (position + 1 < pending.length && outputCount < targetCount) {
+      const before = Math.floor(position)
+      const fraction = position - before
+      const after = Math.min(pending.length - 1, before + 1)
+      values.push(pending[before] * (1 - fraction) + pending[after] * fraction)
+      position += ratio
+      outputCount += 1
+    }
+    if (final) {
+      while (position < pending.length && outputCount < targetCount) {
+        const before = Math.floor(position)
+        const fraction = position - before
+        const after = Math.min(pending.length - 1, before + 1)
+        values.push(pending[before] * (1 - fraction) + pending[after] * fraction)
+        position += ratio
+        outputCount += 1
+      }
+    }
+
+    const consumed = Math.min(pending.length, Math.floor(position))
+    if (consumed > 0) {
+      pending = pending.slice(consumed)
+      position -= consumed
+    }
+    return Float32Array.from(values)
+  }
+
+  return {
+    process(input, from, to) {
+      if (!input?.length) return new Float32Array(0)
+      const [sourceRate, targetRate] = configure(from, to)
+      if (sourceRate === targetRate) return input
+      pending = appendSamples(pending, input)
+      totalInput += input.length
+      return emit(false)
+    },
+    flush() {
+      if (!inputRate || !outputRate || inputRate === outputRate) {
+        reset()
+        return new Float32Array(0)
+      }
+      const output = emit(true)
+      reset()
+      return output
+    },
+    reset,
+  }
+}
+
+export function resample(input, from, to) {
+  if (!input?.length) return new Float32Array(0)
+  if (from === to) return input
+  const stream = createStreamingResampler()
+  const first = stream.process(input, from, to)
+  const last = stream.flush()
+  if (!first.length) return last
+  if (!last.length) return first
+  const output = new Float32Array(first.length + last.length)
+  output.set(first)
+  output.set(last, first.length)
   return output
 }
 

@@ -373,6 +373,7 @@ export class GatewayClient {
   }
 
   async #handleAction(event) {
+    const socket = this.socket
     let result
     try {
       result = await this.onAction?.(event)
@@ -389,6 +390,10 @@ export class GatewayClient {
         message: `Unsupported Client Action: ${String(event.name || '')}`,
       },
     }
+    // An Action may outlive the connection that delivered it. Never send its
+    // result through a replacement socket: the new session did not request it
+    // and may already have a different lease or client state.
+    if (this.stopped || this.socket !== socket || !socketOpen(socket)) return
     this.send(createGatewayClientProtocolMessage(
       GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
       {

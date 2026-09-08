@@ -105,6 +105,34 @@ test('a late delivery receipt cannot resurrect a removed task card', () => {
   assert.deepEqual(removeDeliveredTask([], 'delivered'), [])
 })
 
+test('keeps completed artifact cards available after voice delivery', () => {
+  const artifactTask = {
+    id: 'presentation',
+    phase: 'responding',
+    artifacts: [{
+      artifactId: 'deck',
+      parts: [{
+        url: 'https://example.com/deck.pptx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      }],
+    }],
+  }
+  assert.deepEqual(removeDeliveredTask([artifactTask], 'presentation'), [{
+    ...artifactTask,
+    phase: 'completed',
+  }])
+  assert.equal(taskDeliverySettled({
+    ...artifactTask,
+    status: 'completed',
+    notificationStatus: 'delivered',
+  }), false)
+  assert.equal(taskNeedsPresentation({
+    ...artifactTask,
+    status: 'completed',
+    notificationStatus: 'delivered',
+  }), true)
+})
+
 test('reconnect reconciliation recognizes terminal tasks already delivered', () => {
   assert.equal(taskDeliverySettled({
     status: 'completed',
@@ -307,4 +335,29 @@ test('preserves task kind and timing across partial progress events', () => {
   assert.equal(progress.kind, 'work')
   assert.equal(progress.createdAt, 1_000)
   assert.equal(progress.startedAt, null)
+})
+
+test('preserves task artifacts across partial progress events', () => {
+  const artifacts = [{
+    artifactId: 'preview',
+    parts: [{
+      url: 'https://example.com/slide-01.png',
+      mediaType: 'image/png',
+    }],
+  }]
+  const completed = taskView({
+    id: 'task-artifacts',
+    status: 'completed',
+    notificationStatus: 'pending',
+    objective: '制作演示文稿',
+    artifacts,
+  })
+  const delivering = taskView({
+    id: 'task-artifacts',
+    status: 'completed',
+    notificationStatus: 'delivering',
+    objective: '制作演示文稿',
+  }, completed)
+
+  assert.deepEqual(delivering.artifacts, artifacts)
 })

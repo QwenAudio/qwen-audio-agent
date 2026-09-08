@@ -15,6 +15,7 @@ import {
 } from './message-order.js'
 import MessageContent from './MessageContent.jsx'
 import MultimodalComposer from './composer/MultimodalComposer.jsx'
+import TaskArtifacts from './TaskArtifacts.jsx'
 import DesktopFluidOrb from './desktop/DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './desktop/DesktopSpriteOrb.jsx'
 import KnowledgeLibraryPanel from './KnowledgeLibraryPanel.jsx'
@@ -37,6 +38,7 @@ import {
   taskLabel,
   taskView,
 } from './task-view.js'
+import { taskHasArtifacts } from './task-artifacts.js'
 import useRealtimeVoice, {
   realtimeModelStatus,
   shouldClaimReleasedVoice,
@@ -786,6 +788,7 @@ export default function App() {
       )
       setAgentTasks(items => items.filter(task => (
         !presentedTaskIds.has(task.id)
+        || taskHasArtifacts(task)
         || !['responding', 'completed'].includes(task.phase)
       )))
     }
@@ -1298,12 +1301,15 @@ export default function App() {
 
   const renderTask = agentTask => <aside
     key={`task:${agentTask.id}`}
-    className={`agent-task ${agentTask.phase}`}
+    className={`agent-task ${agentTask.phase}${
+      taskHasArtifacts(agentTask) ? ' has-artifacts' : ''
+    }`}
   >
     <span className="task-spinner" aria-hidden="true" />
     <div>
       <b>{taskLabel(agentTask)}</b>
       <small>{taskDetail(agentTask)}</small>
+      <TaskArtifacts artifacts={agentTask.artifacts} />
     </div>
     {!['failed', 'disconnected'].includes(agentTask.phase) && <div className="task-controls">
       {agentTask.authorization?.status === 'pending' && <>

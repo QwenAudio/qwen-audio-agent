@@ -167,6 +167,9 @@ const translations = {
   '加载远程音频': 'Load remote audio',
   '加载远程视频': 'Load remote video',
   '打开链接': 'Open link',
+  '任务产物': 'Task artifacts',
+  '任务产物 {number}': 'Task artifact {number}',
+  '文件 {number}': 'File {number}',
 }
 
 let runtimeLanguage = ''

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- WebUI 与共享移动端现在会在后台任务卡片中展示类型化 Artifact；支持远程媒体
+  的显式加载、内联图片预览、结构化数据和可打开或下载的文件产物，并在语音播报
+  完成或 Gateway 重连后继续保留产物入口。
 - WebUI 新增实时视觉输入；GCP 通过 `input_image_buffer.append` 接收有界 JPEG
   帧，并分别适配 Qwen Omni Realtime 与 MiniCPM-o `mode=video`。
 - 实现 `schedule_reminder` 的 `daily`、`weekly` 和 `weekdays` 重复触发；每次触发

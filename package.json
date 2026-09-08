@@ -132,6 +132,8 @@
     "docs/getting-started/tui.zh.md",
     "docs/getting-started/webui.md",
     "docs/getting-started/webui.zh.md",
+    "docs/getting-started/mobile.md",
+    "docs/getting-started/mobile.zh.md",
     "docs/guides/",
     "docs/operations/",
     "docs/reference/memory.md",

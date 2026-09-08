@@ -28,7 +28,9 @@ active model regardless of family; switch via Desktop settings or
 
 ## Voice and turn detection
 
-- Default voice: `Ethan` — override with `QWEN_OMNI_REALTIME_VOICE`.
+- Default voice: `Tina` — override with `QWEN_OMNI_REALTIME_VOICE`.
+- `Cherry` is a Qwen3-Omni voice, not a Qwen3.5-Omni voice. If configured,
+  the runtime falls back to `Tina` to avoid a silent session close.
 - Turn detection: `semantic_vad`, configured by the runtime.
 
 ## Live vision

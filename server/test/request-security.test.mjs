@@ -18,6 +18,19 @@ test('allows loopback same-origin and non-browser requests', () => {
   }), false)
 })
 
+test('rejects explicit opaque and malformed origins without throwing', () => {
+  for (const origin of ['null', 'not-an-origin', ['null']]) {
+    assert.doesNotThrow(() => {
+      assert.equal(isAllowedOrigin({
+        headers: {
+          host: 'localhost:3101',
+          origin,
+        },
+      }), false)
+    })
+  }
+})
+
 test('rejects DNS rebinding and direct network access by default', () => {
   assert.equal(isAllowedOrigin({
     headers: {

@@ -59,9 +59,24 @@ export function resolveDashScopeRealtimeVoiceOverride(
   env = process.env,
 ) {
   const family = resolveDashScopeRealtimeModelProfile(model).family
-  if (family === 'audio') return clean(env.QWEN_AUDIO_REALTIME_VOICE)
-  if (family === 'omni') return clean(env.QWEN_OMNI_REALTIME_VOICE)
+  if (family === 'audio') {
+    return normalizeDashScopeRealtimeVoice(model, env.QWEN_AUDIO_REALTIME_VOICE)
+  }
+  if (family === 'omni') {
+    return normalizeDashScopeRealtimeVoice(model, env.QWEN_OMNI_REALTIME_VOICE)
+  }
   return ''
+}
+
+export function normalizeDashScopeRealtimeVoice(model, value) {
+  const voice = clean(value)
+  const family = resolveDashScopeRealtimeModelProfile(model).family
+  // Cherry belongs to the Qwen3-Omni voice catalog. DashScope may accept it
+  // in session.update for Qwen3.5-Omni-Realtime but then close silently after
+  // speech_stopped. Use the Qwen3.5 default instead of creating a session
+  // that cannot produce a response.
+  if (family === 'omni' && voice.toLowerCase() === 'cherry') return ''
+  return voice
 }
 
 export function realtimeProviderNames() {

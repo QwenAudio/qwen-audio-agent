@@ -31,7 +31,7 @@ const omniTransportCapabilities = {
 }
 
 const omniSessionDefaults = {
-  voice: 'Ethan',
+  voice: 'Tina',
   turnDetection: { type: 'semantic_vad' },
 }
 
@@ -144,6 +144,19 @@ test('selects only the explicit voice override for the active model family', () 
   assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_PLUS_ID, {}), '')
   assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_PLUS_ID, {}), '')
   assert.equal(resolveDashScopeRealtimeVoiceOverride('future-model', env), '')
+})
+
+test('falls back from the legacy Cherry voice for Qwen3.5 Omni', () => {
+  const env = {
+    QWEN_AUDIO_REALTIME_MODEL: OMNI_FLASH_ID,
+    QWEN_OMNI_REALTIME_VOICE: 'Cherry',
+  }
+
+  assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_FLASH_ID, env), '')
+  assert.equal(
+    resolveDashScopeRealtimeModelProfile(OMNI_FLASH_ID).sessionDefaults.voice,
+    'Tina',
+  )
 })
 
 test('exposes immutable catalog profiles and nested capabilities', () => {

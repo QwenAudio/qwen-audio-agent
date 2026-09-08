@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import {
   cpSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -13,7 +14,9 @@ import test from 'node:test'
 import {
   effectiveOrbSkin,
   importSkin,
+  legacySkinsDirectory,
   listSkins,
+  migrateLegacySkinsDirectory,
   removeSkin,
   skinsDirectory,
   validateSkinPackage,
@@ -82,6 +85,23 @@ test('parses WebP dimensions from VP8X, VP8, and VP8L headers', () => {
   assert.deepEqual(webpDimensions(lossless), { width: 1536, height: 1872 })
 
   assert.equal(webpDimensions(Buffer.from('not a webp file at all')), null)
+})
+
+test('uses pets as the canonical directory and migrates legacy skins', t => {
+  const root = temporaryRoot(t)
+  const config = join(root, 'config')
+  const legacy = legacySkinsDirectory(config)
+  writeSkin(join(legacy, 'firefly--lingxiaotian'))
+
+  assert.equal(skinsDirectory(config), join(config, 'pets'))
+  assert.deepEqual(migrateLegacySkinsDirectory(config), {
+    migrated: true,
+    conflicts: [],
+  })
+  assert.equal(existsSync(join(config, 'skins')), false)
+  assert.deepEqual(listSkins(skinsDirectory(config)).map(skin => skin.id), [
+    'firefly--lingxiaotian',
+  ])
 })
 
 test('validates Codex pet packages against the grid contract', t => {

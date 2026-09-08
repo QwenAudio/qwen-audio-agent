@@ -48,9 +48,13 @@ export function isAllowedOrigin(
     trustedNativeClient = false,
   } = {},
 ) {
-  const requestHost = parsedHost(req.headers.host)
+  const requestHost = parsedHost(req.headers?.host)
   if (!requestHost) return false
-  const origin = normalizedOrigin(req.headers.origin)
+  const rawOrigin = req.headers?.origin
+  const hasOrigin = rawOrigin !== undefined
+    && rawOrigin !== null
+    && String(rawOrigin).trim() !== ''
+  const origin = normalizedOrigin(rawOrigin)
   const configured = trustedOrigins(allowedOrigins)
   const trustedHost = configured.some(value => (
     new URL(value).host === requestHost.host
@@ -59,6 +63,10 @@ export function isAllowedOrigin(
   // CLI and other non-browser clients do not send Origin. They are accepted
   // only through a loopback address or an explicitly trusted reverse proxy.
   if (!origin) {
+    // `Origin: null` is an explicit opaque origin, not an omitted header. It
+    // must not fall through to the native-client exception, and it must not
+    // be passed to URL consumers as though it were a valid origin.
+    if (hasOrigin) return false
     return LOOPBACK_HOSTS.has(requestHost.hostname)
       || trustedHost
       || authenticatedRemote === true

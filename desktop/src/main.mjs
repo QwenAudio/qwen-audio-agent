@@ -75,6 +75,7 @@ import {
   effectiveOrbSkin as resolveEffectiveOrbSkin,
   importSkin,
   listSkins,
+  migrateLegacySkinsDirectory,
   removeSkin,
   skinsDirectory,
 } from './skin-store.mjs'
@@ -145,6 +146,12 @@ const logger = createLogger({
   component: 'desktop',
   fileName: 'desktop.log',
 })
+const skinMigration = migrateLegacySkinsDirectory(
+  runtimeEnvironment.configDirectory,
+)
+if (skinMigration.migrated || skinMigration.conflicts.length) {
+  logger.info('desktop.skins_migrated', skinMigration)
+}
 const skinsRoot = skinsDirectory(runtimeEnvironment.configDirectory)
 // 设置表单读写共享资产层的 config.env（与 CLI 同一份）；悬浮球摆位等
 // 窗口状态是桌面专属，经 ui-state.json 留在桌面版自己的数据目录。

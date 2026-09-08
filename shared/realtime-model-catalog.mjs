@@ -30,7 +30,10 @@ const UNKNOWN_TRANSPORT_CAPABILITIES = Object.freeze({
   imageBufferInput: false,
 })
 const OMNI_SESSION_DEFAULTS = Object.freeze({
-  voice: 'Ethan',
+  // Qwen3.5-Omni-Realtime uses Tina as its documented default. Cherry is a
+  // Qwen3-Omni voice and can be accepted by session.update while producing no
+  // response on Qwen3.5, so it is normalized before the session is sent.
+  voice: 'Tina',
   turnDetection: Object.freeze({ type: 'semantic_vad' }),
 })
 const AUDIO_SESSION_DEFAULTS = Object.freeze({

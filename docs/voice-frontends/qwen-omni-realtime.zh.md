@@ -26,7 +26,9 @@ QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-flash-realtime
 
 ## 音色与话轮检测
 
-- 默认音色 `Ethan`，可用 `QWEN_OMNI_REALTIME_VOICE` 覆盖。
+- 默认音色 `Tina`，可用 `QWEN_OMNI_REALTIME_VOICE` 覆盖。
+- `Cherry` 属于 Qwen3 Omni 音色，并非 Qwen3.5 Omni 音色；如果配置了该值，
+  运行时会回退到 `Tina`，避免会话静默关闭。
 - 话轮检测为 `semantic_vad`，由运行时配置。
 
 ## 实时视觉

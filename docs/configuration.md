@@ -16,7 +16,7 @@ memory documents (`USER.md`, `MEMORY.md`, `ASSISTANT.md`), frontend notes, and t
 `workspace/` — live in the CLI's user data directory (`~/.config/qwaudio`, overridable via
 `QWAUDIO_DATA_DIR`), so both editions act as the same assistant with one memory and one
 configuration. Runtime state — `gateway.lock`, `tasks.json`, ACP session state, logs, and desktop
-skins — stays in each edition's own directory: `~/.config/qwaudio` for the CLI and the system
+pet skins — stays in each edition's own directory: `~/.config/qwaudio` for the CLI and the system
 application data directory for the desktop edition (`~/Library/Application Support/Qwen Audio
 Agent` on macOS, `~/.config/Qwen Audio Agent` on Linux, `%APPDATA%\Qwen Audio Agent` on Windows).
 Both editions can therefore run simultaneously as independent Gateway processes, sessions, tasks,

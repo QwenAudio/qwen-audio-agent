@@ -424,14 +424,14 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
       DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
       'Qwen3.5 Omni Flash Realtime',
       'omni',
-      'Ethan',
+      'Tina',
       { type: 'semantic_vad' },
     ],
     [
       DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
       'Qwen3.5 Omni Plus Realtime',
       'omni',
-      'Ethan',
+      'Tina',
       { type: 'semantic_vad' },
     ],
     [
@@ -499,6 +499,25 @@ test('prefers a per-session output voice over the process-wide default', t => {
   })
 
   assert.equal(session.voice, 'longanlufeng')
+})
+
+test('falls back from a Cherry session voice on Qwen3.5 Omni', t => {
+  const originalModel = config.audioModel
+  const originalVoice = config.audioVoice
+  t.after(() => {
+    config.audioModel = originalModel
+    config.audioVoice = originalVoice
+  })
+
+  config.audioModel = DASHSCOPE_OMNI_FLASH_REALTIME_MODEL
+  config.audioVoice = ''
+
+  const session = REALTIME_PROVIDERS.qwen.buildSession({
+    configured: false,
+    sessionOptions: { voice: 'Cherry' },
+  })
+
+  assert.equal(session.voice, 'Tina')
 })
 
 test('advertises Omni realtime visual frame transport without claiming turn images', t => {

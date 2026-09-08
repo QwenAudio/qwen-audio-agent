@@ -39,9 +39,10 @@ describe each standard action's effective frames and speed. See the
 
 To import a skin you already downloaded, open "Settings → App →
 Appearance", click "Import Skin…", and select the skin folder, its
-`pet.json`, or a zip archive. Imported skins are stored under `skins/` in
+`pet.json`, or a zip archive. Imported skins are stored under `pets/` in
 the desktop data directory and appear in the appearance dropdown alongside
-the built-in styles. Selecting an imported skin enables the "Delete"
+the built-in styles. Existing installations migrate the former `skins/`
+directory on first launch. Selecting an imported skin enables the "Delete"
 button next to it; built-in appearances cannot be deleted.
 
 The desktop does not flatten every business signal into one "Agent state".

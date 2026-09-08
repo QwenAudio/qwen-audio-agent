@@ -1,6 +1,7 @@
 import { config, realtimeUrl } from '../../core/config.mjs'
 import {
   listDashScopeRealtimeModelProfiles,
+  normalizeDashScopeRealtimeVoice,
   resolveDashScopeRealtimeModelProfile,
 } from '../../../../shared/realtime-provider-catalog.mjs'
 import {
@@ -76,7 +77,10 @@ export const dashscopeProvider = {
 
   buildSession: ({ configured, agentContext, sessionOptions }) => {
     const profile = activeModelProfile()
-    const sessionVoice = String(sessionOptions?.voice || '').trim()
+    const sessionVoice = normalizeDashScopeRealtimeVoice(
+      config.audioModel,
+      sessionOptions?.voice,
+    )
     const session = {
       instructions: buildFrontendInstructions(agentContext),
     }

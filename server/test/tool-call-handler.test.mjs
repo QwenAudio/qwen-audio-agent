@@ -26,6 +26,7 @@ function harness({
   frontendRetrieval,
   frontendKnowledge,
   frontendToolSources,
+  disabledTools,
   getTurnId = () => 'turn-one',
 } = {}) {
   const outputs = []
@@ -67,6 +68,7 @@ function harness({
     frontendRetrieval,
     frontendKnowledge,
     frontendToolSources,
+    disabledTools,
     onToolResultReady: fields => toolResultsReady.push(fields),
     onToolCallDebug,
   })
@@ -771,11 +773,11 @@ test('rejects delegated work immediately when the backend is known to be down', 
 })
 
 test('accepts optimistically before the first health probe and fails via the task', async () => {
-  let probed = 0
+  let snapshotReads = 0
   const kit = harness({
     backendAvailability: {
       snapshot: () => {
-        probed += 1
+        snapshotReads += 1
         return { configured: true, ok: true, known: false }
       },
     },
@@ -794,7 +796,8 @@ test('accepts optimistically before the first health probe and fails via the tas
 
   // The receipt is optimistic; the dispatch failure surfaces on the task,
   // which the announcement path reports asynchronously.
-  assert.equal(probed, 1)
+  // Both schema availability and dispatch use the cached, synchronous snapshot.
+  assert.equal(snapshotReads, 2)
   assert.equal(kit.outputs[0][1].status, 'accepted')
   await waitForTask(kit.manager, kit.outputs[0][1].task_id)
   assert.equal(taskForId(kit.manager, kit.outputs[0][1].task_id).status, 'failed')
@@ -869,7 +872,7 @@ test('keeps the submitted objective even when later turns evict the transcript',
   assert.deepEqual(requests, ['堆积任务', '发送上周周报'])
 })
 
-test('explains that background work is unavailable without a configured backend', async () => {
+test('rejects an old spawn tool call without a configured backend', async () => {
   const kit = harness({
     backendAvailability: {
       snapshot: () => ({ configured: false, ok: false, known: true }),
@@ -882,13 +885,50 @@ test('explains that background work is unavailable without a configured backend'
     arguments: '{"objective":"修改项目"}',
   })
 
-  assert.equal(kit.outputs[0][1].error_code, 'backend_unavailable')
+  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
   assert.equal(kit.outputs[0][1].retryable, false)
-  assert.match(kit.outputs[0][1].user_message, /未配置后台 Agent/)
-  assert.match(
-    kit.outputs[0][3].response.instructions,
-    /未配置后台 Agent/,
-  )
+  assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 0)
+})
+
+test('does not execute a disabled tool even if the model still sends its call', async () => {
+  let calls = 0
+  const kit = harness({
+    disabledTools: ['notes'],
+    notesStore: { lists() { calls += 1; return [] } },
+  })
+  await kit.handler.handle({
+    call_id: 'disabled-notes', name: 'notes', arguments: '{"action":"lists"}',
+  })
+  assert.equal(calls, 0)
+  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+})
+
+test('search and page reading compose inline without a backend or created work', async () => {
+  const calls = []
+  const kit = harness({
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+    frontendRetrieval: {
+      capabilities: () => ['web-search', 'url-fetch'],
+      search: async query => {
+        calls.push(['search', query])
+        return { status: 'ok', results: [{ title: 'Source', url: 'https://example.com/source' }] }
+      },
+      fetchUrl: async url => {
+        calls.push(['fetch', url])
+        return { status: 'ok', content: 'Source text' }
+      },
+    },
+  })
+  await kit.handler.handle({
+    call_id: 'search', name: 'web_search', arguments: '{"query":"public information"}',
+  })
+  await kit.handler.handle({
+    call_id: 'fetch', name: 'fetch_url', arguments: '{"url":"https://example.com/source"}',
+  })
+  assert.deepEqual(calls, [
+    ['search', 'public information'], ['fetch', 'https://example.com/source'],
+  ])
+  assert.equal(kit.outputs.at(-1)[1].content, 'Source text')
   assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 0)
 })
 

@@ -12,6 +12,15 @@ export const FRONTEND_TOOL_MODES = Object.freeze([
 
 const FRONTEND_TOOL_MODE_SET = new Set(FRONTEND_TOOL_MODES)
 
+// Prompt ownership, not availability or permission policy. New tools are
+// optional unless explicitly made part of the stable frontend contract.
+function normalizedContract(contract = 'optional') {
+  if (contract !== 'core' && contract !== 'optional') {
+    throw new Error('Frontend tool contract must be core or optional')
+  }
+  return contract
+}
+
 function clientStates(context) {
   return new Set(
     Array.isArray(context?.client?.states)
@@ -53,15 +62,9 @@ function policyAllows(policy = {}, context = {}) {
   const requiredActions = Array.isArray(policy.requiredClientActions)
     ? policy.requiredClientActions
     : []
-  const availableCapabilities = frontendCapabilities(context)
-  const requiredCapabilities = Array.isArray(policy.requiredCapabilities)
-    ? policy.requiredCapabilities
-    : []
   return requiredStates.every(state => availableStates.has(state))
     && requiredActions.every(action => availableActions.has(action))
-    && requiredCapabilities.every(capability => (
-      availableCapabilities.has(capability)
-    ))
+    && capabilitiesAllow(policy, context)
 }
 
 function capabilitiesAllow(policy = {}, context = {}) {
@@ -120,7 +123,8 @@ function positivePolicyInteger(value) {
 /**
  * Declarative catalog for tools exposed to the realtime frontend model.
  *
- * Each entry declares its execution mode and optional visibility constraints.
+ * Each entry declares prompt ownership, execution mode and visibility constraints.
+ * Only core-contract tools may be named in the fixed frontend prompt.
  * Visibility never replaces permission or current-state validation inside the
  * tool implementation.
  */
@@ -137,6 +141,7 @@ export class FrontendToolRegistry {
       }
       this.#entriesByName.set(name, Object.freeze({
         name,
+        contract: normalizedContract(entry.contract),
         definition: entry.definition,
         policy: normalizedPolicy(entry.policy),
       }))
@@ -179,8 +184,9 @@ export class FrontendToolRegistry {
  * Exact dispatcher for the tools declared by one registry.
  *
  * Argument parsing, turn correlation and tool-specific policy remain outside
- * this generic boundary; the executor only guarantees that every registered
- * tool has exactly one callable implementation and unknown tools stay closed.
+ * this generic boundary. Disabled tools and unavailable service capabilities
+ * are rejected before loop admission; live client-action validation remains
+ * in the handler. Each registered tool has exactly one callable implementation.
  */
 export class FrontendToolExecutor {
   #registry
@@ -220,7 +226,7 @@ export class FrontendToolExecutor {
         value: undefined,
       }
     }
-    if (!capabilitiesAllow(entry.policy, context)) {
+    if (disabledTools(context).has(entry.name) || !capabilitiesAllow(entry.policy, context)) {
       return {
         handled: true,
         executed: false,

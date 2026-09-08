@@ -1,11 +1,9 @@
 import { permissionReference } from './permission-reference.mjs'
 import {
-  PERMISSION_RESPONSE_CAPABILITY,
-  BACKEND_INPUT_RESPONSE_CAPABILITY,
   SPAWN_THINKING_TOOL_NAME,
   frontendToolRegistry,
-  FRONTEND_RECALL_CAPABILITY,
 } from '../frontend-tools.mjs'
+import { buildFrontendToolContext } from './frontend-tool-context.mjs'
 import { agentTaskToolHandlers } from './features/agent-task-tools.mjs'
 import { clientToolHandlers } from './features/client-tools.mjs'
 import { coreToolHandlers } from './features/core-tools.mjs'
@@ -481,24 +479,15 @@ export class ToolCallHandler {
         args,
         event,
         callContext,
-        frontend: {
+        frontend: buildFrontendToolContext({
           disabledTools: this.disabledTools,
-          capabilities: [...new Set([
-            ...(this.frontendRetrieval?.capabilities?.() || []),
-            ...(this.frontendKnowledge?.capabilities?.() || []),
-            // 与 realtime-gateway 的 getAgentContext 同一个判据：两处必须一致，
-            // 否则会出现「模型看得到工具但调用被策略拒掉」这种自相矛盾的状态。
-            // 与 realtime-gateway 的 getAgentContext 必须同一个判据。资料检索
-            // 已归 knowledge 工具，所以这里只看会话摘要。
-            ...(this.sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
-            ...(this.hasPendingBackendPermission()
-              ? [PERMISSION_RESPONSE_CAPABILITY]
-              : []),
-            ...(this.hasPendingBackendInput()
-              ? [BACKEND_INPUT_RESPONSE_CAPABILITY]
-              : []),
-          ])],
-        },
+          backendAvailability: this.backendAvailability,
+          frontendRetrieval: this.frontendRetrieval,
+          frontendKnowledge: this.frontendKnowledge,
+          sessionDigests: this.sessionDigests,
+          permissionPending: this.hasPendingBackendPermission(),
+          inputPending: this.hasPendingBackendInput(),
+        }),
       })
       if (execution.handled && !execution.executed) {
         const responseId = String(

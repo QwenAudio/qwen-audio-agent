@@ -60,12 +60,17 @@ prefix cache. They are an on-demand tool, not part of the context.
 `recall` answers only "what we discussed" and "what work was dispatched". Personal facts and
 preferences are read through the `memory` tool; user-provided reference documents use the
 `knowledge` tool — see [Knowledge Retrieval Provider](./knowledge.md).
+Named lists use `notes`; they are neither long-term memories nor backend work state.
 
 A digest freezes the objective of dispatched work but **never its status**: status
 is live, and a stored copy silently becomes wrong within days. Status is always
 read from the task ledger at retrieval time. The ledger keeps terminal tasks for
 three days; for older work the answer states that it was dispatched without
 claiming a status.
+
+Work still in the ledger includes a `task_id` that `get_agent_task_status` can use to retrieve
+current details, including work from earlier sessions. Pruned or inaccessible records omit the ID;
+the assistant must not invent a query target from the summary.
 
 ## Optional VoiceMem Connector
 

@@ -9,6 +9,7 @@ function harness({
   manager = new TaskManager(),
   memoryStore = null,
   clientContext = {},
+  backendAvailability = null,
 } = {}) {
   const outputs = []
   const transcripts = new TurnTranscripts({ waitMs: 5 })
@@ -22,6 +23,7 @@ function harness({
     }),
     getTurnId: () => 'turn-1',
     getTurnGeneration: () => 1,
+    backendAvailability,
     backendRuntime: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
       cancel: async taskId => ({ taskId, state: 'cancelled' }),
@@ -124,6 +126,27 @@ test('handleScheduleReminder defaults type to reminder when not specified', asyn
 
   const [, output] = outputs[0]
   assert.equal(output.type, 'reminder')
+})
+
+test('frontend-only mode rejects scheduled execution but supports reminder query and cancellation', async () => {
+  const { handler, outputs, manager } = harness({
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+  })
+  const invoke = (name, args) => handler.handle({
+    call_id: `call-${outputs.length}`, name, arguments: JSON.stringify(args),
+  })
+  const args = { execute_at: new Date(Date.now() + 60_000).toISOString(), reminder: '开会' }
+  await invoke('schedule_reminder', { ...args, type: 'task' })
+  assert.equal(outputs.at(-1)[1].error_code, 'backend_unavailable')
+  assert.equal(manager.list({ ownerId: 'owner' }).length, 0)
+
+  await invoke('schedule_reminder', args)
+  const taskId = outputs.at(-1)[1].task_id
+  assert.equal(outputs.at(-1)[1].status, 'scheduled')
+  await invoke('get_agent_task_status', { task_id: taskId })
+  assert.equal(outputs.at(-1)[1].task_status, 'scheduled')
+  await invoke('cancel_agent_task', { task_id: taskId })
+  assert.equal(taskForId(manager, taskId).status, 'cancelled')
 })
 
 test('handleScheduleReminder preserves daily recurrence and client timezone', async () => {

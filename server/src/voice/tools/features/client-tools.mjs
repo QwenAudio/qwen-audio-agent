@@ -19,6 +19,7 @@ const enterSleepTool = {
 export const clientToolEntries = [
   {
     definition: enterSleepTool,
+    contract: 'optional',
     policy: {
       mode: 'control',
       requiredClientActions: [ClientActionName.ENTER_SLEEP],

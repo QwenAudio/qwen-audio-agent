@@ -6,7 +6,7 @@ const getCurrentTimeTool = {
   type: 'function',
   function: {
     name: GET_CURRENT_TIME_TOOL_NAME,
-    description: '获取用户本地时区中的准确当前日期、时间和星期。用户询问当前时间、今天日期、星期或相对日期判断，以及需要为 schedule_reminder 计算触发时间时调用。',
+    description: '获取用户本地时区中的准确当前日期、时间和星期，也可作为相对日期与时间计算的依据。',
     parameters: {
       type: 'object',
       properties: {},
@@ -16,7 +16,7 @@ const getCurrentTimeTool = {
 }
 
 export const coreToolEntries = [
-  { definition: getCurrentTimeTool, policy: { mode: 'inline' } },
+  { definition: getCurrentTimeTool, contract: 'core', policy: { mode: 'inline' } },
 ]
 
 export function coreToolHandlers(runtime) {

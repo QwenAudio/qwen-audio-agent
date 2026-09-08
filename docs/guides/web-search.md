@@ -38,5 +38,13 @@ WebUI and TUI show source links below the answer. Sources support the answer but
 accuracy or freshness; check the original page for important information. Opening a search result
 may also use `fetch_url`.
 
+Focused research and Q&A can combine search, page reading, and knowledge retrieval; multiple
+tool calls alone do not require backend work. Operations on the user's environment, ongoing
+execution, and deliverable creation are routed according to the backend's declared capabilities.
+
+To change search services, prefer configuring a Web Search Provider so the model keeps a single
+`web_search` entry point. Avoid enabling the same search capability again through general MCP
+configuration; the Gateway does not guess overlaps or merge tools based on names or descriptions.
+
 For tools beyond search, see [frontend MCP configuration](../reference/frontend-mcp.md).
 After changing settings, [restart the Gateway for your run mode](../operations/gateway.md#applying-configuration-changes).

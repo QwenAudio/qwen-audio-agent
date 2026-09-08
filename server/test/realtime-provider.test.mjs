@@ -13,6 +13,7 @@ import {
 } from '../src/voice/realtime-provider.mjs'
 import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
 import { permissionReference } from '../src/voice/tools/permission-reference.mjs'
+import { buildFrontendToolContext } from '../src/voice/tools/frontend-tool-context.mjs'
 import {
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
@@ -29,6 +30,28 @@ const FRONTEND_TOOL_NAMES = [
   'memory',
   'notes',
 ]
+
+test('both realtime schemas omit unavailable tools and keep frontend-only reminders', () => {
+  const agentContext = { frontend: buildFrontendToolContext({
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+    disabledTools: ['notes'],
+    frontendRetrieval: { capabilities: () => ['web-search', 'url-fetch'] },
+  }) }
+  for (const provider of [REALTIME_PROVIDERS.qwen, REALTIME_PROVIDERS.s2s]) {
+    const session = provider.buildSession({ configured: false, agentContext })
+    const definitions = session.tools.map(tool => tool.function || tool)
+    const names = definitions.map(tool => tool.name)
+    assert.equal(names.includes('spawn_thinking'), false)
+    assert.equal(names.includes('notes'), false)
+    for (const name of ['web_search', 'fetch_url', 'get_agent_task_status', 'cancel_agent_task']) {
+      assert.equal(names.includes(name), true, name)
+    }
+    assert.deepEqual(
+      definitions.find(tool => tool.name === 'schedule_reminder').parameters.properties.type.enum,
+      ['reminder'],
+    )
+  }
+})
 
 test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
   assert.equal(SPAWN_THINKING_TOOL_NAME, 'spawn_thinking')
@@ -406,8 +429,8 @@ test('configures Qwen Audio Realtime with Smart Turn only', () => {
     ['once', 'always', 'reject'],
   )
   assert.match(
-    permissionTool.function.description,
-    /普通肯定表达选择 once.*以后都允许时选择 always/,
+    permissionTool.function.parameters.properties.decision.description,
+    /只能选择请求列出的决定.*once.*普通肯定表达.*always.*用户明确要求.*reject/,
   )
 })
 
@@ -884,7 +907,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /不要只在当前对话中\s*临时遵从/)
   assert.match(prompt, /纠正本身就是\s*持久修改/)
   assert.match(prompt, /不要要求用户额外说“记住”或“以后”/)
-  assert.match(prompt, /“这次”、“今天”或“暂时”时才不保存/)
+  assert.match(prompt, /“这次”、“今天”或“暂时”[\s\S]*不保存为长期记忆/)
   assert.match(prompt, /清除冲突或归类错误的旧内容/)
   assert.match(prompt, /选择最直接且足够的处理方式/)
   assert.match(prompt, /`spawn_thinking` 声明能力范围[\s\S]*统一的执行入口/)
@@ -915,13 +938,11 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.doesNotMatch(prompt, /ASSISTANT\.md|USER\.md|MEMORY\.md/)
   assert.match(prompt, /# Voice interaction/)
   assert.match(prompt, /没有新信息时不要说话/)
-  assert.match(prompt, /不要规定用户未要求的具体工具/)
   assert.match(prompt, /最终结果会通过单独的结果上下文到达/)
   assert.doesNotMatch(prompt, /\[COMPLETE\]/)
   assert.doesNotMatch(prompt, /get_agent_tasks|reply_agent_permission/)
   assert.match(prompt, /respond_permission/)
   assert.match(prompt, /<permission_request>/)
-  assert.match(prompt, /原样使用请求中的 `permission_id`/)
   assert.match(prompt, /按 `respond_permission` 的契约处理/)
   assert.match(prompt, /调用前不要\s*口头确认/)
   assert.match(prompt, /不要仅凭对话历史推测当前状态/)
@@ -938,14 +959,15 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     ['user', 'memory', 'all'],
   )
   assert.doesNotMatch(memory.function.description, /ASSISTANT\.md|USER\.md|MEMORY\.md/)
-  assert.match(memory.function.description, /默认写入 user/)
-  assert.match(memory.function.description, /我叫张彬彬/)
-  assert.match(memory.function.description, /座舱场景/)
-  assert.match(memory.function.description, /常用目的地/)
-  assert.match(memory.function.description, /一次性的车控、导航、播放/)
-  assert.match(memory.function.description, /不要只口头说“记住了”/)
-  assert.match(memory.function.description, /每次调用执行一个 read、append 或 replace/)
-  assert.match(memory.function.description, /多项持久修改时逐项调用/)
+  assert.match(memory.function.description, /长期个性化偏好与稳定事实/)
+  assert.doesNotMatch(memory.function.description, /座舱|车控|导航|闪购|张彬彬/)
+  assert.match(memory.function.parameters.properties.document.description, /user 保存称呼/)
+  assert.match(memory.function.parameters.properties.document.description, /memory 保存[\s\S]*长期事实/)
+  assert.match(memory.function.parameters.properties.action.description, /read[\s\S]*append[\s\S]*replace/)
+  assert.match(prompt, /自我介绍、陈述稳定个人事实[\s\S]*必须调用 `memory`/)
+  assert.match(prompt, /多项需要持久化的信息时必须全部处理/)
+  assert.match(memory.function.description, /不确定要修改的旧内容时先读取/)
+  assert.match(memory.function.parameters.properties.action.description, /append 新增一项.*replace.*一项/)
   assert.deepEqual(memory.function.parameters.required, ['action'])
   assert.deepEqual(
     Object.keys(memory.function.parameters.properties),
@@ -963,7 +985,8 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     notes.function.parameters.properties.action.enum,
     ['lists', 'show', 'add', 'remove', 'clear', 'drop'],
   )
-  assert.match(notes.function.description, /破坏性操作/)
+  assert.match(notes.function.description, /清空或删除整个清单须由用户明确要求/)
+  assert.match(notes.function.parameters.properties.action.description, /clear[\s\S]*保留清单[\s\S]*drop 删除整个清单/)
   assert.deepEqual(notes.function.parameters.required, ['action'])
 
   const spawnThinking = REALTIME_PROVIDERS.qwen
@@ -972,6 +995,10 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
       tool.function.name === SPAWN_THINKING_TOOL_NAME
     ))
   assert.ok(spawnThinking.function.description.trim())
+  assert.match(
+    spawnThinking.function.parameters.properties.objective.description,
+    /保留执行方式及与既有工作的关系.*不要规定用户未要求的具体工具、Agent 或 Session/,
+  )
   assert.match(
     spawnThinking.function.parameters.properties.objective.description,
     /忠实、完整且自包含地转达用户要做什么及其明确约束/,
@@ -987,12 +1014,13 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     status.function.parameters.properties.list_all.type,
     'boolean',
   )
-  assert.match(status.function.description, /列出当前会话中的工作、定时任务和提醒/)
+  assert.match(status.function.description, /工作、定时任务或提醒/)
+  assert.match(status.function.parameters.properties.list_all.description, /当前用户[\s\S]*其他会话/)
   const cancel = REALTIME_PROVIDERS.qwen
     .buildSession({ configured: false })
     .tools.find(tool => tool.function.name === 'cancel_agent_task')
   assert.match(cancel.function.description, /定时任务或提醒/)
-  assert.match(cancel.function.description, /先调用 get_agent_task_status/)
+  assert.match(prompt, /先查询工作列表，再使用返回的准确 ID 取消/)
   assert.match(cancel.function.parameters.properties.task_id.description, /task_id/)
   assert.equal(cancel.function.parameters.properties.all.type, 'boolean')
   assert.match(

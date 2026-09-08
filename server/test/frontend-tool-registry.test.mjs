@@ -10,6 +10,7 @@ import {
   WEB_SEARCH_TOOL_NAME,
   frontendToolRegistry,
   frontendTools,
+  buildFrontendInstructions,
   TOOLS,
 } from '../src/voice/frontend-tools.mjs'
 import {
@@ -17,6 +18,8 @@ import {
   FrontendToolRegistry,
 } from '../src/voice/tools/frontend-tool-registry.mjs'
 import { FrontendToolLoop } from '../src/voice/tools/frontend-tool-loop.mjs'
+import { buildFrontendToolContext } from '../src/voice/tools/frontend-tool-context.mjs'
+import { loadFrontendPrompt } from '../src/conversation/frontend-agent-context.mjs'
 
 const DEFAULT_TOOL_NAMES = [
   'spawn_thinking',
@@ -31,6 +34,98 @@ const DEFAULT_TOOL_NAMES = [
 function names(tools) {
   return tools.map(tool => tool.function.name)
 }
+
+function contractNames(contract) {
+  return frontendToolRegistry.names().filter(name => (
+    frontendToolRegistry.get(name).contract === contract
+  ))
+}
+
+test('classifies prompt ownership independently of execution mode and visibility', () => {
+  assert.deepEqual(contractNames('core').sort(), [
+    'spawn_thinking', 'get_agent_task_status', 'cancel_agent_task',
+    'respond_permission', 'respond_agent_input', 'get_current_time', 'memory',
+  ].sort())
+  assert.deepEqual(contractNames('optional').sort(), [
+    'web_search', 'fetch_url', 'knowledge', 'recall', 'notes',
+    'schedule_reminder', 'enter_sleep',
+  ].sort())
+  assert.equal(frontendToolRegistry.isEnabled('respond_permission'), false)
+  assert.equal(frontendToolRegistry.isEnabled('notes'), true)
+})
+
+test('fixed policy and tool definitions never depend on optional tool names', () => {
+  const prompt = loadFrontendPrompt()
+  for (const optional of contractNames('optional')) {
+    const reference = new RegExp(`\\b${optional}\\b`, 'u')
+    assert.doesNotMatch(prompt, reference, `fixed prompt references ${optional}`)
+    for (const name of frontendToolRegistry.names()) {
+      if (name === optional) continue
+      const tool = frontendToolRegistry.get(name).definition.function
+      assert.doesNotMatch(
+        JSON.stringify({ description: tool.description, parameters: tool.parameters }),
+        reference,
+        `${name} references optional tool ${optional}`,
+      )
+    }
+  }
+  // Optional tools may use stable core contracts, without reverse coupling.
+  assert.match(frontendToolRegistry.get('schedule_reminder').definition.function.description, /get_current_time/)
+  assert.match(frontendToolRegistry.get('recall').definition.function.description, /get_agent_task_status/)
+})
+
+test('disabling any optional tool removes its instructions without changing fixed policy', () => {
+  const context = {
+    frontend: { capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall'] },
+    client: { actions: ['desktop.presence.enter_sleep'] },
+  }
+  const tools = frontendTools(context)
+  const prompt = buildFrontendInstructions(context)
+  for (const name of contractNames('optional')) {
+    const disabledContext = {
+      ...context,
+      frontend: { ...context.frontend, disabledTools: [name] },
+    }
+    assert.equal(names(tools).includes(name), true)
+    assert.deepEqual(frontendTools(disabledContext), tools.filter(tool => tool.function.name !== name))
+    assert.equal(buildFrontendInstructions(disabledContext), prompt)
+    assert.doesNotMatch(
+      `${prompt}\n${JSON.stringify(frontendTools(disabledContext))}`,
+      new RegExp(`\\b${name}\\b`, 'u'),
+    )
+  }
+})
+
+test('new tools default to optional and contract metadata stays off the model wire', () => {
+  const definition = {
+    type: 'function',
+    function: { name: 'extension', description: 'Extension.', parameters: { type: 'object' } },
+  }
+  const registry = new FrontendToolRegistry([{ definition, policy: { mode: 'inline' } }])
+  assert.equal(registry.get('extension').contract, 'optional')
+  assert.deepEqual(registry.definitions(), [definition])
+  for (const contract of ['required', '', null]) {
+    assert.throws(() => new FrontendToolRegistry([
+      { definition, contract, policy: { mode: 'inline' } },
+    ]), /contract must be core or optional/)
+  }
+  for (const name of frontendToolRegistry.names()) {
+    const entry = frontendToolRegistry.get(name)
+    assert.equal(Object.isFrozen(entry), true)
+    assert.equal(Object.hasOwn(entry.definition, 'contract'), false)
+    assert.equal(Object.hasOwn(entry.definition.function, 'contract'), false)
+  }
+})
+
+test('permission field semantics live in schema rather than fixed policy', () => {
+  const prompt = loadFrontendPrompt()
+  const tool = frontendToolRegistry.get('respond_permission').definition.function
+  assert.doesNotMatch(prompt, /`permission_id`|`series_id`|`input_refs`|spawn_thinking\.objective/)
+  assert.match(tool.parameters.properties.permission_id.description, /原样使用 Gateway.*不得猜造/)
+  assert.match(tool.parameters.properties.task_id.description, /请求中提供时原样传入/)
+  assert.match(tool.parameters.properties.decision.description, /只能选择请求列出的决定/)
+  assert.match(tool.description, /自然表达判断.*不得.*代替用户决定或要求固定口令/)
+})
 
 test('registers every default frontend tool once in stable order', () => {
   assert.deepEqual(names(TOOLS), DEFAULT_TOOL_NAMES)
@@ -168,6 +263,76 @@ test('gates the backend permission response tool behind its capability', () => {
     })),
     [...DEFAULT_TOOL_NAMES, RESPOND_PERMISSION_TOOL_NAME],
   )
+})
+
+test('frontend-only mode retains reminder controls but not backend execution', () => {
+  const context = { frontend: buildFrontendToolContext({
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+  }) }
+  const tools = frontendTools(context)
+  assert.deepEqual(names(tools), DEFAULT_TOOL_NAMES.filter(name => name !== 'spawn_thinking'))
+  const schedule = tools.find(tool => tool.function.name === 'schedule_reminder')
+  assert.deepEqual(schedule.function.parameters.properties.type.enum, ['reminder'])
+  // Filtering one session must not mutate another session's schemas.
+  const fullSchedule = frontendTools().find(tool => tool.function.name === 'schedule_reminder')
+  assert.deepEqual(fullSchedule.function.parameters.properties.type.enum, ['reminder', 'task'])
+})
+
+test('availability projection combines configured features and pending requests', () => {
+  const frontend = buildFrontendToolContext({
+    disabledTools: ['notes'],
+    backendAvailability: { snapshot: () => ({ configured: true, ok: false, known: true }) },
+    frontendRetrieval: { capabilities: () => ['web-search', 'url-fetch'] },
+    frontendKnowledge: { capabilities: () => ['knowledge'] },
+    sessionDigests: {},
+    permissionPending: true,
+    inputPending: true,
+  })
+  assert.deepEqual(frontend.capabilities, [
+    'web-search', 'url-fetch', 'knowledge', 'recall',
+    PERMISSION_RESPONSE_CAPABILITY, BACKEND_INPUT_RESPONSE_CAPABILITY,
+  ])
+  const visible = names(frontendTools({ frontend }))
+  assert.equal(visible.includes('notes'), false)
+  assert.equal(visible.includes('spawn_thinking'), true, 'temporary failure is not no-backend mode')
+  assert.equal(visible.includes('respond_permission'), true)
+  assert.equal(visible.includes('respond_agent_input'), true)
+})
+
+test('status query exposes only parameters the Gateway actually consumes', () => {
+  const tool = frontendToolRegistry.get('get_agent_task_status').definition.function
+  assert.deepEqual(Object.keys(tool.parameters.properties), ['task_id', 'list_all'])
+  assert.match(tool.parameters.properties.task_id.description, /当前对话或工具结果/)
+  assert.match(tool.parameters.properties.list_all.description, /20[\s\S]*其他会话/)
+})
+
+test('disabled tools cannot execute or consume the tool-loop budget', async () => {
+  const calls = []
+  const executor = frontendToolRegistry.createExecutor(Object.fromEntries(
+    frontendToolRegistry.names().map(name => [name, async () => calls.push(name)]),
+  ), { loop: new FrontendToolLoop({ maxCallsPerTurn: 1 }) })
+  const context = {
+    turnId: 'disabled-turn',
+    generation: 1,
+    frontend: {
+      capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall',
+        PERMISSION_RESPONSE_CAPABILITY, BACKEND_INPUT_RESPONSE_CAPABILITY],
+      disabledTools: frontendToolRegistry.names(),
+    },
+    client: { actions: ['desktop.presence.enter_sleep'] },
+  }
+  for (const name of frontendToolRegistry.names()) {
+    const result = await executor.execute(name, context)
+    assert.equal(result.executed, false, name)
+    assert.equal(result.limit.reason, 'tool_unavailable', name)
+  }
+  assert.deepEqual(calls, [])
+  const result = await executor.execute('get_current_time', {
+    ...context,
+    frontend: { disabledTools: [] },
+  })
+  assert.equal(result.executed, true)
+  assert.deepEqual(calls, ['get_current_time'])
 })
 
 test('exposes the knowledge tool only with the frontend knowledge capability', () => {

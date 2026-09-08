@@ -34,5 +34,11 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 WebUI 与 TUI 会在回答下方显示来源链接。来源是查询依据，不保证页面内容真实或足够新；
 重要信息仍应核对原文。读取搜索结果中的网页可能再次使用 `fetch_url`。
 
+范围明确的检索与问答可以组合搜索、网页读取和知识库检索，不会仅因需要多次调用就转为
+后台工作。操作用户环境、持续执行或制作交付物则按后台声明的能力处理。
+
+更换搜索服务优先配置 Web Search Provider，让模型仍只使用一个 `web_search` 入口。
+避免在通用 MCP 配置里再次启用同一搜索能力；Gateway 不会按工具名称或描述猜测并自动合并工具。
+
 如需通过 MCP 提供搜索以外的能力，见[前台 MCP 配置](../reference/frontend-mcp.zh.md)。
 修改配置后按[当前运行方式重启 Gateway](../operations/gateway.zh.md#修改配置后生效)。

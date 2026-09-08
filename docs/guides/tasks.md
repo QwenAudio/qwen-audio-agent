@@ -4,6 +4,10 @@ With a configured [Backend Agent](../backends/overview.md), ask the assistant to
 information, edit files, write software, or use the backend's tools and Skills. Execution capabilities,
 authentication, and accessible resources depend on that backend environment.
 
+Without a configured backend, the frontend does not expose `spawn_thinking` or support scheduled
+backend execution. Chat, available frontend tools, and scheduled reminders remain usable. Status
+and cancellation tools stay available to manage reminders and other existing records.
+
 ## Start and Continue
 
 - Start work: “Make a minimal web game.”

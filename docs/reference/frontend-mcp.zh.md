@@ -4,6 +4,9 @@
 Realtime Provider，也不绑定后台 Agent。它与专用 Web Search Provider
 相互独立；Web Search 保留一个简单内置兜底，通用 MCP Server 由用户配置。
 
+只启用需要的工具，描述应明确它处理的数据来源和操作范围。若只是替换联网搜索，优先
+配置 [Web Search Provider](../guides/web-search.zh.md)，避免给模型重复提供同一搜索能力。
+
 Gateway 在启动时发现显式启用的工具，为其分配稳定名称，并通过共用的前台工具
 注册表和执行器把它们加入每个 Realtime Session。
 

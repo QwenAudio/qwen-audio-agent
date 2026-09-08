@@ -1,4 +1,5 @@
 import { normalizeRecurrence } from '../../../task/recurrence.mjs'
+import { toolFailure } from '../tool-result.mjs'
 
 export const SCHEDULE_REMINDER_TOOL_NAME = 'schedule_reminder'
 
@@ -6,13 +7,13 @@ const scheduleReminderTool = {
   type: 'function',
   function: {
     name: SCHEDULE_REMINDER_TOOL_NAME,
-    description: '创建定时提醒或定时任务。用户说"X点提醒我""明天三点帮我查某事然后告诉我"等时间驱动的提醒或任务时调用。先调用 get_current_time 获取当前时间，计算目标时间后传入 execute_at。type=reminder 时到点直接播报 reminder 内容；type=task 时到点执行 reminder 描述的任务，执行完播报结果。',
+    description: '创建未来触发的提醒或后台任务，不用于仅记录清单条目。先调用 get_current_time 确定当前时间，再计算触发时间。',
     parameters: {
       type: 'object',
       properties: {
         execute_at: {
           type: 'string',
-          description: 'ISO 8601 时间戳，触发时间。基于 get_current_time 返回的时区计算。',
+          description: '基于用户本地时区计算的触发时间，使用包含时区偏移的 ISO 8601 时间戳。',
         },
         reminder: {
           type: 'string',
@@ -21,7 +22,7 @@ const scheduleReminderTool = {
         type: {
           type: 'string',
           enum: ['reminder', 'task'],
-          description: 'reminder=到点播报内容；task=到点执行任务后播报结果。用户只要求提醒用 reminder；要求执行某事再告知用 task。',
+          description: 'reminder=到点播报内容（默认）；task=到点由后台 Agent 执行后播报结果，需要已配置后台。用户只要求提醒用 reminder；要求执行某事再告知用 task。',
         },
         recurrence: {
           type: 'string',
@@ -36,8 +37,33 @@ const scheduleReminderTool = {
 }
 
 export const scheduleToolEntries = [
-  { definition: scheduleReminderTool, policy: { mode: 'inline' } },
+  { definition: scheduleReminderTool, contract: 'optional', policy: { mode: 'inline' } },
 ]
+
+const reminderOnlyTool = {
+  ...scheduleReminderTool,
+  function: {
+    ...scheduleReminderTool.function,
+    description: '创建未来触发的提醒，不执行后台任务。先调用 get_current_time 确定当前时间，再计算触发时间。',
+    parameters: {
+      ...scheduleReminderTool.function.parameters,
+      properties: {
+        ...scheduleReminderTool.function.parameters.properties,
+        type: {
+          type: 'string',
+          enum: ['reminder'],
+          description: '到点播报提醒内容（默认），不执行后台任务。',
+        },
+      },
+    },
+  },
+}
+
+export function scheduleToolForContext(context) {
+  return context?.frontend?.backendConfigured === false
+    ? reminderOnlyTool
+    : scheduleReminderTool
+}
 
 async function scheduleReminder(runtime, callId, turnId, args) {
   const executeAt = Date.parse(args.execute_at)
@@ -52,6 +78,13 @@ async function scheduleReminder(runtime, callId, turnId, args) {
   }
 
   const type = args.type === 'task' ? 'task' : 'reminder'
+  if (type === 'task' && runtime.backendAvailability?.snapshot()?.configured === false) {
+    await runtime.sendOutput(callId, toolFailure(
+      'backend_unavailable',
+      '当前未配置后台 Agent，无法创建定时执行任务；仍可创建到点播报的提醒。',
+    ), turnId)
+    return
+  }
   const recurrence = normalizeRecurrence(args.recurrence)
   const backendRuntime = runtime.backendRuntime
   const runner = type === 'task'

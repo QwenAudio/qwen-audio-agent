@@ -2,12 +2,23 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
 import {
   GatewayPublicEndpointService,
+} from '../src/access/gateway-public-endpoint.mjs'
+import {
   TailscaleServePublisher,
   endpointFromOutput,
+  confirmsServeEndpoint,
   tailscaleCommand,
-} from '../src/access/gateway-public-endpoint.mjs'
+} from '../src/access/tailscale-serve.mjs'
+
+function serveStatus(target = 'http://127.0.0.1:3101') {
+  return { Foreground: { session: {
+    TCP: { 443: { HTTPS: true } },
+    Web: { 'voice.example.ts.net:443': { Handlers: { '/': { Proxy: target } } } },
+  } } }
+}
 
 function fakeChild() {
   const child = new EventEmitter()
@@ -30,6 +41,109 @@ test('extracts the HTTPS origin printed by Tailscale Serve', () => {
     'https://voice.example.ts.net',
   )
   assert.equal(endpointFromOutput('http://127.0.0.1:3101'), null)
+  assert.equal(endpointFromOutput('To authenticate: https://login.tailscale.com/a/secret'), null)
+  assert.equal(endpointFromOutput('https://login.tailscale.com'), null)
+  assert.equal(endpointFromOutput('https://tailscale.com/docs'), null)
+})
+
+test('readiness requires a private foreground HTTPS root proxy to the right target', () => {
+  const endpoint = 'https://voice.example.ts.net'
+  const target = 'http://127.0.0.1:3101'
+  assert.equal(confirmsServeEndpoint(serveStatus(), endpoint, target), true)
+  assert.equal(confirmsServeEndpoint(serveStatus('http://127.0.0.1:9999'), endpoint, target), false)
+  assert.equal(confirmsServeEndpoint(serveStatus().Foreground.session, endpoint, target), false)
+  for (const field of ['TCP', 'Web']) {
+    const status = serveStatus()
+    delete status.Foreground.session[field]
+    assert.equal(confirmsServeEndpoint(status, endpoint, target), false)
+  }
+  const funnel = serveStatus()
+  funnel.AllowFunnel = { 'voice.example.ts.net:443': true }
+  assert.equal(confirmsServeEndpoint(funnel, endpoint, target), false)
+})
+
+test('a consent URL cannot make the publisher ready', async () => {
+  const child = fakeChild()
+  let queried = false
+  const publisher = new TailscaleServePublisher({
+    spawnImpl: () => child, readStatus: async () => { queried = true; return serveStatus() },
+  })
+  const starting = publisher.start('http://127.0.0.1:3101')
+  const cancelled = assert.rejects(starting, { code: 'tailscale_serve_cancelled' })
+  child.stderr.write('https://login.tailscale.com/a/secret\n')
+  await delay(1)
+  assert.equal(publisher.status().state, 'starting')
+  assert.equal(queried, false)
+  await publisher.close()
+  await cancelled
+})
+
+test('closing a pending start cancels its deadline and ignores late status replies', async () => {
+  const child = fakeChild()
+  let resolveStatus
+  const publisher = new TailscaleServePublisher({
+    spawnImpl: () => child, timeoutMs: 15,
+    readStatus: () => new Promise(resolve => { resolveStatus = resolve }),
+  })
+  const starting = publisher.start('http://127.0.0.1:3101')
+  const cancelled = assert.rejects(starting, { code: 'tailscale_serve_cancelled' })
+  child.stdout.write('https://voice.example.ts.net\n')
+  await publisher.close()
+  await cancelled
+  resolveStatus(serveStatus())
+  await delay(30)
+  assert.deepEqual(publisher.status(), { state: 'stopped', endpoint: null, error: null })
+})
+
+test('timeout preserves the original error and terminates an unresponsive Serve child', async () => {
+  const child = fakeChild()
+  const signals = []
+  child.kill = signal => {
+    signals.push(signal)
+    if (signal === 'SIGKILL') queueMicrotask(() => child.emit('exit', null, signal))
+    return true
+  }
+  const publisher = new TailscaleServePublisher({
+    spawnImpl: () => child, timeoutMs: 10, shutdownMs: 10,
+    readStatus: async () => serveStatus('http://127.0.0.1:9999'),
+  })
+  const rejected = assert.rejects(publisher.start('http://127.0.0.1:3101'), { code: 'tailscale_serve_timeout' })
+  child.stdout.write('https://voice.example.ts.net\n')
+  await Promise.all([rejected, delay(40)])
+  assert.deepEqual(signals, ['SIGTERM', 'SIGKILL'])
+  assert.equal(publisher.status().error.code, 'tailscale_serve_timeout')
+  await publisher.close()
+})
+
+test('retries transient status failures within one startup and stops probing after ready', async () => {
+  const child = fakeChild()
+  let calls = 0
+  const publisher = new TailscaleServePublisher({
+    spawnImpl: () => child, probeIntervalMs: 1,
+    readStatus: async () => {
+      if (++calls === 1) throw new Error('temporarily unavailable')
+      return serveStatus()
+    },
+  })
+  const starting = publisher.start('http://127.0.0.1:3101')
+  child.stdout.write('https://voice.example.ts.net\n')
+  const [endpoint] = await Promise.all([starting, delay(20)])
+  assert.equal(endpoint, 'https://voice.example.ts.net')
+  assert.equal(calls, 2)
+  await publisher.close()
+})
+
+test('the endpoint service cannot resurrect after closing during startup', async () => {
+  let resolveStart
+  const service = new GatewayPublicEndpointService({ tailnet: true, publisher: {
+    start: () => new Promise(resolve => { resolveStart = resolve }), close: async () => {},
+  } })
+  const starting = service.start('http://127.0.0.1:3101')
+  await service.close()
+  resolveStart('https://voice.example.ts.net')
+  await starting
+  assert.equal(service.status().state, 'stopped')
+  assert.equal(service.status().endpoint, null)
 })
 
 test('finds the CLI bundled in the official macOS Tailscale app', () => {
@@ -50,6 +164,7 @@ test('publishes a loopback Gateway through the installed Tailscale CLI', async (
   let invocation
   const publisher = new TailscaleServePublisher({
     command: '/usr/local/bin/tailscale',
+    readStatus: async () => serveStatus(),
     spawnImpl: (command, args, options) => {
       invocation = { command, args, options }
       return child
@@ -68,7 +183,7 @@ test('publishes a loopback Gateway through the installed Tailscale CLI', async (
 
 test('projects an unexpected Tailscale exit through the endpoint boundary', async () => {
   const child = fakeChild()
-  const publisher = new TailscaleServePublisher({ spawnImpl: () => child })
+  const publisher = new TailscaleServePublisher({ spawnImpl: () => child, readStatus: async () => serveStatus() })
   const endpoint = new GatewayPublicEndpointService({
     tailnet: true,
     publisher,

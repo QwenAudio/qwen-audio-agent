@@ -2,167 +2,25 @@
 
 ## Remote Access Security
 
-By default, the Gateway binds to loopback and trusts only literal loopback Host/Origin. Remote
-requests require a Gateway access credential before they can reach HTTP or WebSocket business
-APIs. Do not expose the Gateway's loopback port directly to the public Internet.
-
-Remote Clients always connect to an ordinary HTTPS/WSS Gateway endpoint. Network publication and
-Gateway pairing/device authorization are independent layers. Two publication modes are supported:
-
-- **Private Tailnet** is intended for personal computers. Install official Tailscale on both the
-  Gateway host and remote device, and sign in to the same tailnet. The Gateway invokes the system
-  `tailscale serve` command to publish a private HTTPS endpoint.
-- **External HTTPS** is intended for a server with a trusted certificate. The operator owns the
-  reverse proxy, fixed IP or domain. The Gateway only records its public origin and does not own
-  networking, certificates, or proxy configuration.
-
-After installing and signing in to official Tailscale, run the Gateway in the foreground:
-
-```bash
-qwenaudio gateway --tailnet
-```
-
-The command waits for `tailscale serve` to print its private HTTPS endpoint and stops that
-publication when the Gateway exits. For a persistent user service, run
-`qwenaudio gateway install --tailnet`, or put this in `config.env`:
-
-```dotenv
-QWEN_AUDIO_GATEWAY_TAILNET=1
-```
-
-For External HTTPS, configure the reverse proxy first, then declare its exact public origin:
-
-```bash
-qwenaudio gateway --public-url https://voice.example.com
-```
-
-Or persist it in `config.env`:
-
-```dotenv
-QWEN_AUDIO_GATEWAY_PUBLIC_URL=https://voice.example.com
-```
-
-A fixed IP with a publicly trusted IP-address certificate can be used as `https://<fixed-ip>`.
-The endpoint must be an HTTPS origin without credentials, path, query, or fragment. The proxy must
-accept HTTPS only, forward WebSocket correctly, preserve the public `Host`, and forward traffic to
-the local `127.0.0.1:3101`.
-
-After the endpoint is ready, open another terminal on the Gateway host and run:
-
-```bash
-qwenaudio gateway pair
-```
-
-It prints a short-lived, single-use QR code, connection code, and browser URL. Desktop, Mobile,
-and other Clients consume the same connection code without knowing whether Tailscale or an
-external proxy published the endpoint. Use `qwenaudio gateway devices` to list paired Clients and
-`qwenaudio gateway revoke <device-id>` to revoke one.
-
-Remote access does not bypass Gateway authentication: every remote business request except the
-one-time pairing shell requires a paired-device credential.
-
-For one personal access key:
-
-```dotenv
-QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=replace-with-at-least-24-random-characters
-```
-
-Generate one with `openssl rand -base64 32`. This token authenticates Gateway
-access only; never put it in a URL, GCP message, or public log.
-
-Native clients send it as a Bearer token. Browser clients exchange one authenticated HTTP
-request for an `HttpOnly`, `SameSite=Strict` session cookie. To serve the browser UI through a
-external HTTPS reverse proxy, keep the Gateway on loopback and allowlist the exact public Origin:
-
-```dotenv
-HOST=127.0.0.1
-QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com
-```
-
-For example, a native TUI can connect without putting the credential in its URL:
-
-```bash
-QWEN_AUDIO_AGENT_URL=https://voice.example.com \
-QWEN_AUDIO_GATEWAY_CLIENT_TOKEN="$ACCESS_TOKEN" \
-qwenaudio tui
-```
-
-The connection code created by `qwenaudio gateway pair` is exchanged by a remote Client at
-`POST /api/access/pair` for a revocable device token. Paired
-devices can be listed with `GET /api/access/devices` and revoked with
-`DELETE /api/access/devices/:id`; management is loopback-only.
-
-Multiple trusted Origins can be separated by commas. Advanced hosts can map separate access
-tokens to separate owner identities:
-
-```dotenv
-QWEN_AUDIO_AGENT_ACCESS_KEYS='[{"token":"replace-with-a-long-random-token","owner_id":"user_alice","label":"Alice"}]'
-```
-
-Each owner has one active Client lease. A second Client is rejected unless it reconnects with
-the same `client.instance_id` or explicitly negotiates `session.takeover`; takeover closes the
-previous Client and generation-fences late messages from its socket.
-
-`QWEN_AUDIO_AGENT_AUTH_SECRET` only signs local and remote session identities. It is not a
-remote access password and must never be sent to a Client.
-
-`QWEN_AUDIO_AGENT_ACCESS_TOKEN` remains a deprecated alias for both settings. New setups use
-the separate host and Client names above so a Client credential is never mistaken for Gateway
-server configuration.
+Connection methods, Tailnet, HTTPS reverse proxies, and pairing commands are covered in
+[Remote Connections](../operations/remote-access.md).
 
 ## Gateway Operation
 
-A single data directory only allows one local Gateway at any time. The CLI, TUI, and WebUI
-share `~/.config/qwaudio` and preferentially reuse the same instance; the desktop edition uses
-a separate directory and only reuses or manages the Gateway under its own directory. Multiple
-authenticated owners are isolated by identity; each owner has one active Client and all of them
-share this one Gateway process and backend service. The instance identity is recorded in a
-temporary `gateway.lock` file under the
-user configuration directory; it is deleted when the Gateway exits normally, and locks left by
-abnormal exits are automatically reclaimed after confirming the original process has ended. If
-the existing Gateway's Realtime, backend Agent, or permission configuration is inconsistent with
-the current request, startup will explicitly error rather than silently opening a random port.
-Remote Gateways do not participate in the local single-instance lease.
-
-By default, the Gateway starts and manages the selected Agent's ACP process. If the local
-service port of OpenCode or OpenClaw is already occupied by another process, it will select an
-idle port and will not take over or close the user's process. OpenClaw is always started as an
-independent Gateway by qwen-audio-agent, using isolated runtime state and Session storage; it
-can read the user's existing model and capability configuration, but does not share Sessions
-with the user's persistent Gateway, nor does it reconnect to the external messaging channels
-configured by the user. OpenCode's ACP process always reuses its native configuration and
-Session storage; the native interface being unavailable does not affect ACP task execution.
-
-`qwenaudio`, `qwenaudio gateway`, and `qwenaudio gateway run` all run in the foreground.
-When you need it to run persistently in the background, use:
-
-```bash
-qwenaudio gateway install    # Install and immediately start the user service
-qwenaudio gateway status
-qwenaudio gateway restart
-qwenaudio gateway stop
-qwenaudio gateway start
-qwenaudio gateway uninstall
-```
-
-The background service re-reads `config.env` each time it starts. After modifying configuration,
-run `qwenaudio gateway restart` to apply it. Service logs are located at
-`~/.config/qwaudio/logs/gateway.log`; on Linux, you can also view them via
-`journalctl --user -u qwen-audio-agent-gateway`.
-
-The Gateway, desktop app, backend Agents, and local stdio MCP servers share one
-user command search path. `gateway install`, `start`, and `restart` refresh the
-cached login-environment `PATH`, so commands installed through Homebrew, npm,
-uv, or a version manager become available after a restart. The service does not
-persist secrets from temporary shell exports; put persistent settings in the
-`config.env` printed by the CLI.
+For foreground runs, persistent services, Desktop's embedded Gateway, and restarts,
+see [Run the Gateway](../operations/gateway.md).
 
 ## Local Logs
 
-qwen-audio-agent uses a unified local structured log, written by default to:
+qwen-audio-agent uses unified local structured logs. CLI logs default to
+`~/.config/qwaudio/logs/`. Desktop logs use `logs/` under its
+[application data directory](../configuration.md#configuration-and-data-directories), for example
+`~/Library/Application Support/Qwen Audio Agent/logs/` on macOS.
+
+The file responsibilities below do not mean all files share the same directory:
 
 ```text
-~/.config/qwaudio/logs/
+logs/                       # Root depends on the run mode
 ├── gateway.log   # Gateway, Realtime, ACP, and task lifecycle
 ├── desktop.log   # Desktop main process and embedded Gateway lifecycle
 ├── cli.log       # CLI command lifecycle
@@ -200,6 +58,34 @@ Logs are only stored locally and are not automatically uploaded. Before reportin
 and share relevant snippets as needed; even though the system automatically desensitizes, you
 should re-confirm before sending that they do not contain local paths or business information
 you do not want to be public.
+
+### Read-only diagnostics
+
+For common connection, audio, and tool issues, start with [Troubleshooting](../operations/troubleshooting.md).
+
+```bash
+qwenaudio doctor
+qwenaudio doctor --json
+qwenaudio doctor --turn <turnId>
+```
+
+Check configuration, Gateway, voice frontend and MCP connections, backend readiness, and session files
+without starting a model, backend Agent, or microphone, changing configuration, or repairing files.
+Populated configuration does not prove that a key has remaining quota; without an active voice session,
+the report explicitly indicates that the connection is unverified. Use `--url https://<gateway>` for
+remote checks and `QWEN_AUDIO_GATEWAY_CLIENT_TOKEN` for credentials. Local files are not used to infer
+remote configuration.
+
+`--turn` assembles a timeline from existing log records matching `turnId`, showing identifiers and
+timing only, without conversation text, tool arguments, or results. It reads up to 2 MiB from each of
+the 5 most recent Gateway logs and returns at most 500 events. Rotation, missing instrumentation, or
+these limits can make the timeline incomplete. Run it on the Gateway host to inspect a remote timeline.
+
+Session files are separate from rotating logs: they retain recoverable history and are not deleted by
+log rotation. Diagnostics inspect up to 1,000 session files and 64 MiB in total, skip files over 8 MiB,
+and mark uninspected data. A partial final record left by an abnormal exit is reported as recoverable
+and repaired the next time that session is opened for writing. Corrupt committed records are never
+silently deleted.
 
 The TUI, WebUI, and desktop edition only connect to the Gateway and do not directly connect
 to, start, or stop any backend Agent. Core configuration in desktop settings is saved to the
@@ -240,8 +126,8 @@ compatible versions.
 The OpenCode started by qwen-audio-agent inherits the user's original global configuration by
 default (usually `~/.config/opencode/opencode.json`), so already installed MCPs, Skills,
 permissions, models, and plugins can continue to be used. The coordination rules and
-third-layer Session tools are dynamically provided by the Gateway through ACP in each request
-round, without additionally installing or overwriting the OpenCode Agent.
+available Session tools are provided through the Gateway's backend integration,
+without additionally installing or overwriting the OpenCode Agent.
 
 If the user's configuration or third-party plugins conflict with qwen-audio-agent, you can
 temporarily enable isolation mode for troubleshooting:
@@ -267,8 +153,8 @@ them to the configuration file:
 | `QWEN_AUDIO_GATEWAY_TAILNET` | Empty; set to `1` to use system Tailscale Serve |
 | `QWEN_AUDIO_GATEWAY_PUBLIC_URL` | Empty; operator-managed HTTPS origin |
 | `QWEN_AUDIO_TAILSCALE_BINARY` | Auto-detected; optional absolute path to the system Tailscale CLI |
-| `OPENCODE_WORKSPACE` | `workspaces/opencode` under the user config directory |
-| `QODER_WORKSPACE` | `workspaces/qoder` under the user config directory |
+| `OPENCODE_WORKSPACE` | `workspace` under the shared data directory |
+| `QODER_WORKSPACE` | `workspace` under the shared data directory |
 | `QWEN_AUDIO_AGENT_BACKEND_MODEL` | Empty; explicit values override Sessions only through standard ACP, except managed OpenCode/OpenClaw provisioning |
 | `QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE` | `native` |
 | `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV` | Empty; comma-separated opt-in environment names for generic ACP only |
@@ -301,7 +187,7 @@ The macOS TUI CoreAudio helper is compiled by default to
 continuously records audio during playback, and only supports voice interruption.
 The Linux and Windows minimal TUI uses the bundled Python audio bridge with
 `sounddevice`/PortAudio half-duplex; during reply playback the microphone is paused, only
-supporting manual interruption via the `x` key, and resumes after playback ends or is manually
+supporting manual interruption with `/interrupt`, and resumes after playback ends or is manually
 interrupted.
 
 On Linux and Windows, you can explicitly enable PortAudio full-duplex via

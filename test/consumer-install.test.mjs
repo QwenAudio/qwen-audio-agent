@@ -21,7 +21,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const projectRoot = resolve(fileURLToPath(import.meta.url), '../..')
 const enabled = process.env.QWEN_AUDIO_CONSUMER_PROBE === '1'
@@ -82,6 +82,15 @@ test('a consumer with only the declared dependencies can run the CLI and Gateway
   ], { cwd: consumer, encoding: 'utf8' })
   assert.equal(help.status, 0, `qwenaudio --help failed: ${help.stderr}`)
   assert.match(help.stdout, /qwenaudio/)
+
+  // TUI is loaded lazily by the CLI: --help alone cannot check its module
+  // graph. Import the installed entry without opening an audio device.
+  const tui = spawnSync(process.execPath, [
+    '--input-type=module',
+    '--eval',
+    `await import(${JSON.stringify(pathToFileURL(join(installedRoot(consumer), 'tui/src/index.mjs')).href)})`,
+  ], { cwd: consumer, encoding: 'utf8' })
+  assert.equal(tui.status, 0, `installed TUI import failed: ${tui.stderr}`)
 
   const sdk = spawnSync(process.execPath, [
     '--input-type=module',
@@ -265,6 +274,13 @@ main().then(() => process.exit(0), error => {
 `)
   const embed = spawnSync(process.execPath, ['embed-probe.cjs'], {
     cwd: consumer,
+    // The fixture starts unconfigured even when the developer shell has a key.
+    env: {
+      ...process.env,
+      QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
+      QWEN_AUDIO_REALTIME_API_KEY: '',
+      DASHSCOPE_API_KEY: '',
+    },
     encoding: 'utf8',
     timeout: 120_000,
   })

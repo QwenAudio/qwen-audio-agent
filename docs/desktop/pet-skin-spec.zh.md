@@ -94,4 +94,4 @@
 - 不生成 `loop` 或 `fallback`。
 - `idle` 表现自然待机，而不是睡眠；`running` 表现奔跑，而不是编程。
 
-完整清单可参考 [Firefly pet.json 示例](./examples/firefly.pet.json)。
+完整清单可参考 [Firefly pet.json 示例](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/desktop/examples/firefly.pet.json)。

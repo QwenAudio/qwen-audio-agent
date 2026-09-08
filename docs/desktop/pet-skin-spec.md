@@ -102,4 +102,4 @@ an action runs and which action follows it.
 - `idle` depicts natural idle motion rather than sleep; `running` depicts
   running rather than coding.
 
-See the complete [Firefly pet.json example](./examples/firefly.pet.json).
+See the complete [Firefly pet.json example](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/desktop/examples/firefly.pet.json).

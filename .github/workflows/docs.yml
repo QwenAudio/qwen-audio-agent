@@ -6,6 +6,7 @@ on:
     paths:
       - 'docs/**'
       - 'scripts/sync-docs-site.mjs'
+      - 'scripts/check-docs-site.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/docs.yml'
@@ -13,6 +14,7 @@ on:
     paths:
       - 'docs/**'
       - 'scripts/sync-docs-site.mjs'
+      - 'scripts/check-docs-site.mjs'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/docs.yml'

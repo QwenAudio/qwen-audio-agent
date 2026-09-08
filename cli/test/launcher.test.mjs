@@ -909,6 +909,23 @@ test('reports installer failures with a non-zero exit code', async () => {
   assert.match(output, /✗ Qoder 安装未完成：未找到 npm/)
 })
 
+test('doctor reads without starting runtime, installing backends or acquiring UI ownership', async () => {
+  const target = harness()
+  const prepare = target.dependencies.prepareEnvironment
+  target.dependencies.prepareEnvironment = options => {
+    assert.equal(options.readOnly, true)
+    return prepare(options)
+  }
+  target.dependencies.diagnose = async ({ options, environment }) => {
+    assert.equal(options.turnId, 'voice-1')
+    assert.ok(environment.configDirectory)
+    return { ok: false, checks: [{ id: 'gateway', status: 'error', summary: 'unavailable' }] }
+  }
+  assert.equal(await main(['doctor', '--json', '--turn', 'voice-1'], target.dependencies), 1)
+  assert.deepEqual(target.calls.map(call => call[0]), ['stdout'])
+  assert.equal(JSON.parse(target.calls[0][1]).ok, false)
+})
+
 test('prints a reusable read-only backend setup report', async () => {
   const target = harness()
   let preparation

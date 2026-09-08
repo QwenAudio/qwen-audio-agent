@@ -5,6 +5,8 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { SessionEventType } from '../../shared/session-events.mjs'
 import { SessionJournal } from '../src/session/session-journal.mjs'
+import { SessionJournalRegistry } from '../src/session/session-journal-registry.mjs'
+import { decodeSessionJournal } from '../src/session/session-journal-format.mjs'
 import { replaySession } from '../src/session/session-replay.mjs'
 
 async function journalFixture() {
@@ -65,6 +67,78 @@ test('drops only an incomplete final JSONL frame during recovery', async () => {
   const restored = new SessionJournal({ filePath: journal.filePath, sessionId: 'session-1' })
   await restored.open()
   assert.equal(restored.events.length, 1)
+  await restored.append({ type: SessionEventType.USER_MESSAGE, payload: { text: 'after recovery' } })
+  const restarted = new SessionJournal({ filePath: journal.filePath, sessionId: 'session-1' })
+  await restarted.open()
+  assert.deepEqual(restarted.events.map(event => event.seq), [1, 2])
+})
+
+test('repairs byte offsets correctly after multilingual records and an incomplete UTF-8 tail', async () => {
+  const journal = await journalFixture()
+  await journal.append({ type: SessionEventType.USER_MESSAGE, payload: { text: '你好 🌍' } })
+  const committed = await readFile(journal.filePath)
+  await appendFile(journal.filePath, Buffer.concat([Buffer.from('{"text":"'), Buffer.from([0xe4, 0xbd])]))
+  const decoded = decodeSessionJournal(await readFile(journal.filePath))
+  assert.equal(decoded.validBytes, committed.length)
+  const restored = new SessionJournal({ filePath: journal.filePath, sessionId: 'session-1' })
+  await restored.open()
+  assert.deepEqual(await readFile(journal.filePath), committed)
+})
+
+test('preserves a complete final record without a newline before appending', async () => {
+  const journal = await journalFixture()
+  await journal.append({ type: SessionEventType.USER_MESSAGE, payload: { text: 'hello' } })
+  await writeFile(journal.filePath, (await readFile(journal.filePath, 'utf8')).trimEnd())
+  const restored = new SessionJournal({ filePath: journal.filePath, sessionId: 'session-1' })
+  await restored.append({ type: SessionEventType.TURN_END, payload: {} })
+  assert.equal(decodeSessionJournal(await readFile(journal.filePath)).events.length, 2)
+})
+
+test('batch history recovery uses the same decoder without mutating files', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'qwaudio-session-registry-'))
+  const registry = new SessionJournalRegistry({ directory })
+  await registry.append({ ownerId: 'owner', sessionId: 'session-1', event: {
+    type: SessionEventType.USER_MESSAGE, payload: { text: 'hello' },
+  } })
+  const journal = registry.get('owner', 'session-1')
+  await appendFile(journal.filePath, '{"unfinished":')
+  const before = await readFile(journal.filePath)
+  assert.equal(registry.readAllSync()[0].records.length, 2)
+  assert.deepEqual(await readFile(journal.filePath), before)
+})
+
+test('never repairs corruption in a committed line or an invalid header', async () => {
+  for (const raw of ['{"broken":\n', '{"type":"wrong"}\n{"tail":']) {
+    const journal = await journalFixture()
+    await writeFile(journal.filePath, raw)
+    await assert.rejects(journal.open(), TypeError)
+    assert.equal(await readFile(journal.filePath, 'utf8'), raw)
+  }
+})
+
+test('concurrent opening and appending cannot duplicate the header', async () => {
+  const journal = await journalFixture()
+  await Promise.all([
+    journal.open(), journal.open(),
+    journal.append({ type: SessionEventType.USER_MESSAGE, payload: { text: 'hello' } }),
+  ])
+  assert.equal(decodeSessionJournal(await readFile(journal.filePath)).records.length, 2)
+})
+
+test('task recovery compares task lifetimes instead of sequence numbers from different sessions', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'qwaudio-session-revision-'))
+  const registry = new SessionJournalRegistry({ directory })
+  for (let seq = 0; seq < 4; seq += 1) {
+    await registry.append({ ownerId: 'owner', sessionId: 'old', event: {
+      type: SessionEventType.TASK_EVENT, time: '2026-01-01T00:00:00Z',
+      payload: { task: { id: 'task_1', createdAt: 100, status: 'completed' } },
+    } })
+  }
+  await registry.append({ ownerId: 'owner', sessionId: 'new', event: {
+    type: SessionEventType.TASK_EVENT, time: '2026-02-01T00:00:00Z',
+    payload: { task: { id: 'task_1', createdAt: 200, status: 'running' } },
+  } })
+  assert.equal(registry.taskSnapshotsSync()[0].status, 'running')
 })
 
 test('replays messages and latest task projection without side effects', async () => {

@@ -48,11 +48,9 @@ import {
 } from '../voice/realtime-provider.mjs'
 import { InputArbitration } from '../voice/input-arbitration.mjs'
 import { SessionPermissionPolicy } from '../voice/session-permission-policy.mjs'
-import {
-  taskManager as defaultTaskManager,
-  taskStore as defaultTaskStore,
-  taskSessionJournal as defaultTaskSessionJournal,
-} from '../task/task-manager.mjs'
+import { TaskManager } from '../task/task-manager.mjs'
+import { TaskStore } from '../task/task-store.mjs'
+import { SessionJournalRegistry } from '../session/session-journal-registry.mjs'
 import { ReminderScheduler } from '../task/reminder-scheduler.mjs'
 import { webDistributionPath } from '../core/install-paths.mjs'
 import { installOfflineNotifications } from './offline-notifications.mjs'
@@ -97,8 +95,8 @@ export function createGatewayApplication({
   backendRuntime = null,
   conversationSync = defaultConversationSync,
   inputAssets = null,
-  taskManager = defaultTaskManager,
-  taskStore = defaultTaskStore,
+  taskManager = null,
+  taskStore = null,
   logger = defaultLogger,
   parentPort = process.parentPort,
   autoStart = true,
@@ -127,7 +125,22 @@ export function createGatewayApplication({
   publicEndpoint = undefined,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
-const sessionJournalRuntime = sessionJournal || defaultTaskSessionJournal
+const sessionJournalRuntime = sessionJournal || new SessionJournalRegistry({
+  directory: resolve(config.configDirectory, 'sessions'), logger,
+})
+taskStore ||= taskManager?.repository?.store || new TaskStore({
+  filePath: config.taskStatePath,
+  onWarning: warning => logger.warn('task.persistence_warning', { warning }),
+})
+taskManager ||= new TaskManager({
+  store: taskStore, logger, sessionJournal: sessionJournalRuntime,
+  maxConcurrent: config.taskMaxConcurrent,
+  maxConcurrentPerOwner: config.taskMaxConcurrentPerOwner,
+  terminalTtlMs: config.taskTerminalTtlMs,
+  pendingNotificationTtlMs: config.taskPendingNotificationTtlMs,
+  maxTerminalTasksPerOwner: config.maxTerminalTasksPerOwner,
+  scheduledTaskTimeoutMs: config.scheduledTaskTimeoutMs,
+})
 const conversationHistoryRuntime = conversationHistory || new SessionConversationHistory({
   conversationSync,
   sessionJournal: sessionJournalRuntime,

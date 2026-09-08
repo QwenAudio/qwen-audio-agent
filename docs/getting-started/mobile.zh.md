@@ -6,6 +6,17 @@ Client Protocol，不直接接触 Realtime Provider 或后台协议。
 
 > 当前提供 iOS/Android 开发构建，尚未发布到应用商店。
 
+## 获取测试包
+
+打开 [GitHub Actions → Mobile](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/mobile.yml?query=branch%3Amain)，
+选择 `main` 上成功的构建，在 Artifacts 下载 `mobile-android-debug-apk`。
+解压后将 APK 传到 Android 手机安装；如系统询问，允许本次安装来源。
+下载 Actions 产物通常需要登录 GitHub，产物过期时需重新构建或使用下方的源码构建流程。
+
+`mobile-ios-simulator-app` 是 **iOS 模拟器** 产物，不能直接安装到 iPhone。
+iPhone 真机测试需使用 Xcode 与开发签名。当前没有应用商店正式包。
+配对步骤对应开发版，建议 Gateway 与 App 使用同一批代码。
+
 ## 连接
 
 1. 在电脑和手机上安装官方 Tailscale，登录同一 Tailnet，然后在电脑上启动：
@@ -30,7 +41,7 @@ Client Protocol，不直接接触 Realtime Provider 或后台协议。
 `qwenaudio gateway devices` 查看设备，使用 `qwenaudio gateway revoke <设备 ID>` 撤销。
 Private Tailnet 地址只在同一 Tailnet 内可达；外部 HTTPS 模式由用户负责证书、反向代理
 和防火墙。两种方式共用同一套配对与客户端协议。底层机制和高级排障见
-[远程访问安全](../configuration/advanced.zh.md#远程访问安全)。
+[远程访问安全](../operations/remote-access.zh.md)。
 
 ## 开发构建
 

@@ -8,6 +8,18 @@ TUI, without importing Realtime Provider or backend-protocol internals.
 > iOS and Android development builds are available. App-store distribution is
 > not available yet.
 
+## Get Development Builds
+
+Open [GitHub Actions → Mobile](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/mobile.yml?query=branch%3Amain),
+choose a successful `main` build, and download `mobile-android-debug-apk` under Artifacts.
+Unzip it, transfer the APK to an Android phone, and install it; allow this installation source if prompted.
+Actions downloads generally require signing in to GitHub. Expired artifacts require a new build
+or the source-build steps below.
+
+`mobile-ios-simulator-app` is for the **iOS Simulator**, not direct iPhone installation.
+Physical iPhone testing needs Xcode and development signing. There is no app-store release yet.
+The pairing steps target development builds; prefer App and Gateway builds from the same revision.
+
 ## Connect
 
 1. Install official Tailscale on the computer and phone, sign in to the same
@@ -37,7 +49,7 @@ Private Tailnet endpoints are reachable only inside the same tailnet. Operators
 own certificates, reverse proxies, and firewalls for External HTTPS. Both modes
 use the same pairing and Client protocol.
 See
-[Remote Access Security](../configuration/advanced.md#remote-access-security)
+[Remote Access Security](../operations/remote-access.md)
 for implementation details, authorization requirements, and troubleshooting.
 
 ## Development builds

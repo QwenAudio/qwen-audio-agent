@@ -38,8 +38,9 @@ qwenaudio install deepseek
 qwenaudio install minimax
 ```
 
-安装前先检测，**只补齐缺失的组件**：原生 ACP 后台装好即可用；本体缺失时装本体；
-本体已装、仅缺 ACP 适配器时只装适配器；全部就绪时直接提示已可用。桌面版设置页
+安装前先检测，**只补齐缺失的组件**：本体缺失时装本体；
+本体已装、仅缺 ACP 适配器时只装适配器；组件齐全时不重复安装。
+安装完成不等于配置就绪，仍需完成所选后台要求的登录与配置。桌面版设置页
 的“后台 Agent”列表中，未安装且支持一键安装的后台行尾会显示“安装”按钮，与 CLI
 使用同一份安装逻辑。
 
@@ -110,19 +111,6 @@ Session 工具和第三层独立任务委派；Pi 会使用自身工具在当前
 
 ## 后台常驻
 
-希望个人助理长期在线时，可以安装为用户后台服务：
-
-```bash
-qwenaudio gateway install    # 安装并立即启动
-qwenaudio gateway status
-qwenaudio gateway restart
-qwenaudio gateway stop
-qwenaudio gateway start
-qwenaudio gateway uninstall
-```
-
-后台服务每次启动都会重新读取 `config.env`，修改配置后执行 `gateway restart`
-即可生效。
-
-各后台的高级配置（可执行文件路径、工作目录、ACP 标准模型覆盖等）见
-[配置说明](../configuration.zh.md)。
+希望 Gateway 常驻时，见[Gateway 运行与常驻](../operations/gateway.zh.md)。
+后台配置与权限见[通用设置](../configuration/backend.zh.md)，模型、命令和目录等后端差异见
+[各后台详细配置](configuration.zh.md)。

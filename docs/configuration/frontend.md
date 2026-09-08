@@ -3,7 +3,7 @@
 The voice frontend is the realtime speech model the Gateway connects to. All
 settings on this page live in the user configuration file
 (`~/.config/qwaudio/config.env`, see [Configuration](../configuration.md));
-apply changes with `qwenaudio gateway restart`.
+[apply changes for your run mode](../operations/gateway.md#applying-configuration-changes): restart foreground runs, use `gateway restart` for an installed service, or click Apply in Desktop.
 
 ## Credentials and endpoint
 
@@ -44,6 +44,7 @@ for a locally owned Gateway, and the CLI provides the equivalent commands:
 ```bash
 qwenaudio config show
 qwenaudio config set --realtime-model qwen3.5-omni-flash-realtime
+# For an installed user background service only:
 qwenaudio gateway restart
 ```
 

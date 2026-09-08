@@ -2,7 +2,7 @@
 
 语音前台是 Gateway 连接的实时语音模型。本页设置都写在用户配置文件中
 （`~/.config/qwaudio/config.env`，见[配置总览](../configuration.zh.md)），
-修改后执行 `qwenaudio gateway restart` 生效。
+修改后按[实际运行方式应用设置](../operations/gateway.zh.md#修改配置后生效)：终端退出重启、后台服务执行 `gateway restart`，桌面版点击应用。
 
 ## 凭据与端点
 
@@ -41,6 +41,7 @@ Gateway 的模型，CLI 提供等价命令：
 ```bash
 qwenaudio config show
 qwenaudio config set --realtime-model qwen3.5-omni-flash-realtime
+# 以下仅用于已安装的用户后台服务：
 qwenaudio gateway restart
 ```
 

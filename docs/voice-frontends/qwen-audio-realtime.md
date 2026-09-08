@@ -31,6 +31,7 @@ page or from the CLI, then restart the Gateway:
 
 ```bash
 qwenaudio config set --realtime-model qwen-audio-3.0-realtime-flash
+# For an installed user background service only:
 qwenaudio gateway restart
 ```
 

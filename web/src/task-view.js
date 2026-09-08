@@ -37,7 +37,9 @@ export function taskNeedsPresentation(task) {
 export function removeDeliveredTask(tasks, taskId) {
   return tasks.flatMap(task => {
     if (task.id !== taskId) return [task]
-    return taskHasArtifacts(task) ? [{ ...task, phase: 'completed' }] : []
+    if (!taskHasArtifacts(task)) return []
+    // Playback completion settles presentation, not backend execution.
+    return [task.phase === 'responding' ? { ...task, phase: 'completed' } : task]
   })
 }
 

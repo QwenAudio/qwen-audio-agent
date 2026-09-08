@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { artifactsFromAcpContentBlocks } from '../../server/src/agent/acp/content.mjs'
+import { normalizeArtifacts } from '../../server/src/task/task-artifact.mjs'
 import {
   artifactPartView,
   taskArtifactViews,
@@ -61,6 +63,48 @@ test('keeps remote artifact navigation on credential-free HTTP URLs', () => {
     remote: true,
     index: 0,
   })
+})
+
+test('preserves inline ACP resource links through Gateway and client presentation', () => {
+  const url = 'data:image/png;base64,aGVsbG8='
+  const artifacts = normalizeArtifacts(artifactsFromAcpContentBlocks([{
+    type: 'resource_link',
+    uri: url,
+    name: 'preview.png',
+    mimeType: 'image/png',
+  }]))
+  const views = taskArtifactViews(artifacts)
+  assert.equal(views.length, 1)
+  assert.deepEqual(views[0].parts, [{
+    kind: 'image',
+    href: url,
+    mediaType: 'image/png',
+    filename: 'preview.png',
+    remote: false,
+    index: 0,
+  }])
+  assert.equal(taskHasArtifacts({ artifacts }), true)
+})
+
+test('keeps data URL files inline without enabling other URL schemes', () => {
+  for (const url of [
+    'data:application/pdf;base64,aGVsbG8=',
+    'data:text/plain;charset=utf-8,hello%20world',
+  ]) {
+    const part = artifactPartView({ url, mediaType: 'application/octet-stream' })
+    assert.equal(part.kind, 'file')
+    assert.equal(part.href, url)
+    assert.equal(part.remote, false)
+  }
+  for (const url of [
+    'file:///tmp/result.png',
+    'blob:https://example.com/private',
+    'javascript:alert(1)',
+    'data:image/png;base64',
+    'https://user:secret@example.com/result.png',
+  ]) {
+    assert.equal(artifactPartView({ url, mediaType: 'image/png' }), null)
+  }
 })
 
 test('drops empty artifacts and exposes only presentable artifacts', () => {

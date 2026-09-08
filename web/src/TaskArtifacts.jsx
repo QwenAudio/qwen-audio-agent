@@ -15,6 +15,7 @@ function ArtifactPart({ part, index }) {
   }
   if (part.remote && ['image', 'audio', 'video'].includes(part.kind)) {
     return <MediaEmbed
+      key={part.href}
       src={part.href}
       alt={partLabel(part, index)}
       type={part.kind}

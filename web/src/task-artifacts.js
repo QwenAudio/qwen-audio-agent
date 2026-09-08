@@ -4,14 +4,15 @@ function clean(value) {
   return String(value || '').trim()
 }
 
-function safeRemoteUrl(value) {
+function safeArtifactUrl(value) {
   try {
     const url = new URL(value)
-    if (!REMOTE_PROTOCOLS.has(url.protocol)) return ''
-    if (url.username || url.password) return ''
-    return url.href
+    if (!REMOTE_PROTOCOLS.has(url.protocol) && url.protocol !== 'data:') return null
+    if (url.protocol === 'data:' && !url.pathname.includes(',')) return null
+    if (url.username || url.password) return null
+    return url
   } catch {
-    return ''
+    return null
   }
 }
 
@@ -70,14 +71,14 @@ export function artifactPartView(part, index = 0) {
   }
 
   if (Object.hasOwn(part, 'url')) {
-    const href = safeRemoteUrl(part.url)
-    if (!href) return null
+    const url = safeArtifactUrl(part.url)
+    if (!url) return null
     return {
       kind: mediaKind(mediaType),
-      href,
+      href: url.href,
       mediaType,
       filename,
-      remote: true,
+      remote: url.protocol !== 'data:',
       index,
     }
   }

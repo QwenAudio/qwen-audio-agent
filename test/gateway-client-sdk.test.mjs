@@ -153,6 +153,42 @@ test('reference Client correlates task input response results', async () => {
   client.stop()
 })
 
+test('reference Client rejects task input response errors', async () => {
+  const socket = new FakeSocket()
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    clientInstanceId: 'sdk-input-response-error-test',
+    capabilities: [GatewayClientCapability.INPUT_RESPOND],
+    reconnect: false,
+  }).start()
+  socket.open()
+  socket.receive({
+    type: GatewayClientProtocolEvent.SESSION_READY,
+    event_id: 'evt_gateway_input_error_ready',
+    request_event_id: socket.sent[0].event_id,
+    protocol_version: '6.0.0',
+    session_id: 'main',
+    capabilities: [GatewayClientCapability.INPUT_RESPOND],
+  })
+
+  const pending = client.request(GatewayClientProtocolEvent.INPUT_RESPOND, {
+    task_id: 'task-1',
+    input_request_id: 'input-1',
+    action: 'decline',
+  })
+  const request = socket.sent.at(-1)
+  socket.receive({
+    type: 'error',
+    event_id: 'evt_input_response_error',
+    request_event_id: request.event_id,
+    error: { code: 'input_rejected', message: 'Input request was rejected' },
+  })
+
+  await assert.rejects(pending, error => error.code === 'input_rejected')
+  client.stop()
+})
+
 test('reference Client answers negotiated application heartbeats without dispatching them', () => {
   const socket = new FakeSocket()
   const received = []

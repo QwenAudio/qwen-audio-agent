@@ -1,10 +1,10 @@
-import { appendFile, mkdir, readFile } from 'node:fs/promises'
+import { appendFile, mkdir, readFile, truncate } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import {
   createSessionHeader,
   normalizeSessionEvent,
-  validateSessionLog,
 } from '../../../shared/session-events.mjs'
+import { decodeSessionJournal } from './session-journal-format.mjs'
 
 function line(value) { return `${JSON.stringify(value)}\n` }
 
@@ -25,37 +25,33 @@ export class SessionJournal {
     this.events = []
     this.eventIds = new Set()
     this.initialized = false
+    this.openPromise = null
     this.writeQueue = Promise.resolve()
   }
 
   async open() {
     if (this.initialized) return this
+    if (!this.openPromise) {
+      this.openPromise = this.openFile().finally(() => { this.openPromise = null })
+    }
+    return this.openPromise
+  }
+
+  async openFile() {
     await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 })
     let raw
-    try { raw = await readFile(this.filePath, 'utf8') } catch (error) {
+    try { raw = await readFile(this.filePath) } catch (error) {
       if (error.code !== 'ENOENT') throw error
       await appendFile(this.filePath, line(this.header), { encoding: 'utf8', mode: 0o600 })
       this.initialized = true
       return this
     }
-    const physicalLines = raw.split('\n')
-    const records = []
-    for (let index = 0; index < physicalLines.length; index += 1) {
-      const item = physicalLines[index]
-      if (!item) continue
-      try {
-        records.push(JSON.parse(item))
-      } catch (error) {
-        // A process crash can leave only the final JSONL frame incomplete.
-        // Discard that torn tail, but never hide corruption in a committed
-        // record earlier in the file.
-        if (index === physicalLines.length - 1) break
-        throw new TypeError(`invalid JSON at line ${index + 1}`, { cause: error })
-      }
-    }
-    const validated = validateSessionLog(records, { sessionId: this.sessionId })
+    const validated = decodeSessionJournal(raw, { sessionId: this.sessionId })
+    if (validated.discardedBytes) await truncate(this.filePath, validated.validBytes)
+    if (validated.needsNewline) await appendFile(this.filePath, '\n', 'utf8')
     this.header = validated.header
     this.events = validated.events
+    this.eventIds.clear()
     this.events.forEach(event => { if (event.eventId) this.eventIds.add(event.eventId) })
     this.initialized = true
     return this
@@ -72,7 +68,14 @@ export class SessionJournal {
         seq: (this.events.at(-1)?.seq || 0) + 1,
         time: this.now(),
       })
-      await appendFile(this.filePath, line(normalized), { encoding: 'utf8', mode: 0o600 })
+      try {
+        await appendFile(this.filePath, line(normalized), { encoding: 'utf8', mode: 0o600 })
+      } catch (error) {
+        // An unsuccessful write can still leave bytes behind. Re-read and
+        // repair before the next queued append instead of trusting memory.
+        this.initialized = false
+        throw error
+      }
       this.events.push(normalized)
       if (normalized.eventId) this.eventIds.add(normalized.eventId)
       return normalized

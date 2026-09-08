@@ -42,6 +42,12 @@ QWEN_AUDIO_GATEWAY_PUBLIC_URL=https://voice.example.com
 固定 IP 具备受信任的 IP 地址证书时，也可以直接填写 `https://<固定 IP>`。Endpoint 必须
 是 HTTPS Origin，不能包含凭据、路径、查询参数或片段。反向代理必须只接受 HTTPS、正确
 转发 WebSocket、保留公开 `Host`，并将流量转发至本机 `127.0.0.1:3101`。
+建议同时设置 `Forwarded` 或 `X-Forwarded-For`。带有转发头的请求不会获得本机免认证待遇，
+仍需配对或访问凭据；这些头不会用来推断用户身份。不要同时移除公开 `Host` 和所有转发头，
+否则 Gateway 无法将代理请求与真正的本机请求区分。
+
+Tailnet 只有在 `tailscale serve status --json` 确认私有 HTTPS 根路径指向当前 Gateway 后才会
+标记就绪；终端中的登录或授权链接不代表发布成功。首次授权请通过官方 Tailscale 完成。
 
 Endpoint 就绪后，在 Gateway 主机的另一个终端执行：
 
@@ -185,6 +191,27 @@ Authorization、Cookie、密码和 Secret 字段会在写入前脱敏；默认�
 
 日志仅保存在本机，不会自动上传。反馈问题前可按需检查并分享相关片段；即使系统会
 自动脱敏，也应在发送前再次确认其中没有不希望公开的本机路径或业务信息。
+
+### 只读诊断
+
+```bash
+qwenaudio doctor
+qwenaudio doctor --json
+qwenaudio doctor --turn <turnId>
+```
+
+检查配置、Gateway、语音前台与 MCP 连接、后台就绪情况及会话文件，不启动模型、后台 Agent
+或麦克风，也不修改配置或修复文件。配置已填写不代表密钥额度有效；没有活动语音会话时，
+会明确提示连接尚未验证。远程检查可加 `--url https://<gateway>`，凭据使用
+`QWEN_AUDIO_GATEWAY_CLIENT_TOKEN`；不会用本机文件推断远程配置。
+
+`--turn` 按已有日志的 `turnId` 整理事件时间线，只显示标识与耗时，不包含对话正文、
+工具参数或结果。最多读取最近 5 个 Gateway 日志各 2 MiB、返回 500 条事件；日志被轮转、
+未记录相关事件或超过限制时，时间线可能不完整。远程时间线需要在 Gateway 主机运行该命令。
+
+会话文件与轮转日志不同，保存可恢复的历史，不会因日志轮转被删除。诊断最多检查 1,000 个
+会话文件、总计 64 MiB，跳过超过 8 MiB 的文件，并标记未检查部分；异常退出留下的末尾残片
+会报告为可恢复问题，在该会话下次打开写入时修复，已提交记录损坏不会被静默删除。
 
 TUI、WebUI 和桌面版只连接 Gateway，不直接连接、启动或停止任何后台 Agent。
 桌面设置中的核心配置会保存到用户配置文件，在下次启动 Gateway 时生效；

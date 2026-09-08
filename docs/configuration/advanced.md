@@ -46,6 +46,14 @@ A fixed IP with a publicly trusted IP-address certificate can be used as `https:
 The endpoint must be an HTTPS origin without credentials, path, query, or fragment. The proxy must
 accept HTTPS only, forward WebSocket correctly, preserve the public `Host`, and forward traffic to
 the local `127.0.0.1:3101`.
+Also set `Forwarded` or `X-Forwarded-For`. Forwarded requests do not receive the local authentication
+exemption and still require pairing or access credentials; these headers never establish identity.
+Do not strip both the public `Host` and all forwarding headers, as the Gateway cannot then distinguish
+proxy traffic from genuinely local requests.
+
+Tailnet is marked ready only after `tailscale serve status --json` confirms a private HTTPS root proxy
+to the current Gateway. A login or consent URL printed by the CLI does not indicate readiness.
+Complete first-time authorization through official Tailscale.
 
 After the endpoint is ready, open another terminal on the Gateway host and run:
 
@@ -200,6 +208,32 @@ Logs are only stored locally and are not automatically uploaded. Before reportin
 and share relevant snippets as needed; even though the system automatically desensitizes, you
 should re-confirm before sending that they do not contain local paths or business information
 you do not want to be public.
+
+### Read-only diagnostics
+
+```bash
+qwenaudio doctor
+qwenaudio doctor --json
+qwenaudio doctor --turn <turnId>
+```
+
+Check configuration, Gateway, voice frontend and MCP connections, backend readiness, and session files
+without starting a model, backend Agent, or microphone, changing configuration, or repairing files.
+Populated configuration does not prove that a key has remaining quota; without an active voice session,
+the report explicitly indicates that the connection is unverified. Use `--url https://<gateway>` for
+remote checks and `QWEN_AUDIO_GATEWAY_CLIENT_TOKEN` for credentials. Local files are not used to infer
+remote configuration.
+
+`--turn` assembles a timeline from existing log records matching `turnId`, showing identifiers and
+timing only, without conversation text, tool arguments, or results. It reads up to 2 MiB from each of
+the 5 most recent Gateway logs and returns at most 500 events. Rotation, missing instrumentation, or
+these limits can make the timeline incomplete. Run it on the Gateway host to inspect a remote timeline.
+
+Session files are separate from rotating logs: they retain recoverable history and are not deleted by
+log rotation. Diagnostics inspect up to 1,000 session files and 64 MiB in total, skip files over 8 MiB,
+and mark uninspected data. A partial final record left by an abnormal exit is reported as recoverable
+and repaired the next time that session is opened for writing. Corrupt committed records are never
+silently deleted.
 
 The TUI, WebUI, and desktop edition only connect to the Gateway and do not directly connect
 to, start, or stop any backend Agent. Core configuration in desktop settings is saved to the

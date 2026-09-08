@@ -78,6 +78,21 @@ test('keeps loopback access zero-config and requires credentials remotely', () =
   assert.equal(access.resolveUpgrade(request()), null)
 })
 
+test('forwarded loopback requests never acquire local access, including WebSocket upgrades', () => {
+  const access = runtime()
+  for (const name of ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'via', 'x-real-ip']) {
+    const proxied = request({ host: '127.0.0.1:3101', remoteAddress: '127.0.0.1' })
+    proxied.headers[name] = 'proxy-metadata'
+    assert.equal(isLoopbackRequest(proxied), false, name)
+    assert.equal(access.resolveHttp(proxied, response()), null, name)
+    assert.equal(access.resolveUpgrade(proxied), null, name)
+    proxied.headers.authorization = `Bearer ${ACCESS_TOKEN}`
+    assert.equal(access.resolveHttp(proxied, response()).access, 'remote', name)
+    assert.equal(access.resolveUpgrade(proxied).access, 'remote', name)
+  }
+  assert.equal(isLoopbackRequest({ headers: { host: 'localhost:3101' } }), false)
+})
+
 test('exchanges a remote Bearer credential for a revocable HTTP-only session', () => {
   const access = runtime()
   const res = response()

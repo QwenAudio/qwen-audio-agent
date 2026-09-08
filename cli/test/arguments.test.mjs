@@ -88,6 +88,15 @@ test('parses read-only backend setup options', () => {
   )
 })
 
+test('parses read-only diagnostics and limits turn tracing to doctor', () => {
+  const options = parseArguments(['doctor', '--json', '--turn', 'voice-1'], {})
+  assert.equal(options.command, 'doctor')
+  assert.equal(options.json, true)
+  assert.equal(options.turnId, 'voice-1')
+  assert.throws(() => parseArguments(['gateway', '--turn', 'voice-1'], {}), /doctor/)
+  assert.match(helpText(), /qwenaudio doctor/)
+})
+
 test('parses Gateway backend settings', () => {
   const options = parseArguments([
     'gateway',

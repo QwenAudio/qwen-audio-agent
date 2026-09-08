@@ -1,9 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { config } from '../core/config.mjs'
 import { TaskScheduler } from './task-scheduler.mjs'
-import { TaskStore } from './task-store.mjs'
 import { TaskDomainEvent } from './task-events.mjs'
 import { TaskNotificationQueue } from './task-notification-queue.mjs'
 import { TaskRepository } from './task-repository.mjs'
@@ -40,9 +37,7 @@ import {
   TaskRecoveryAction,
   taskRecoveryAction,
 } from './task-recovery.mjs'
-import { logger } from '../core/logger.mjs'
 import { BackendEventType } from '../core/backend-events.mjs'
-import { SessionJournalRegistry } from '../session/session-journal-registry.mjs'
 import { normalizeRecurrence, normalizeTimeZone } from './recurrence.mjs'
 
 export function taskExecutionContext(task, { onEvent, signal }) {
@@ -75,6 +70,7 @@ export class TaskManager {
     notificationClaimTtlMs = 60_000,
     maxTerminalTasksPerOwner = 100,
     progressEventIntervalMs = 1_000,
+    scheduledTaskTimeoutMs = 1_800_000,
     logger: taskLogger = null,
     sessionJournal = null,
   } = {}) {
@@ -101,6 +97,7 @@ export class TaskManager {
     )
     this.logger = taskLogger
     this.sessionJournal = sessionJournal
+    this.scheduledTaskTimeoutMs = scheduledTaskTimeoutMs
     this.listeners = new Set()
     this.notifications = new TaskNotificationQueue({
       tasks: this.tasks,
@@ -272,6 +269,9 @@ export class TaskManager {
     for (const snapshot of candidates) {
       const id = String(snapshot.id)
       const existing = this.tasks.get(id)
+      // Short IDs can be reused. An older lifetime is not a revision of the
+      // current task, even if its journal has a larger local sequence number.
+      if (Number(existing?.createdAt) > Number(snapshot.createdAt)) continue
       // A journal event is the durable revision. Remove the compact snapshot
       // projection before replaying it so a terminal Journal state can repair
       // a stale/failed tasks.json state after a crash.
@@ -569,7 +569,7 @@ export class TaskManager {
           : { timeZone: normalizeTimeZone(timeZone) }),
       },
       timeoutMs: type === 'task'
-        ? Number(timeoutMs) || config.scheduledTaskTimeoutMs
+        ? Number(timeoutMs) || this.scheduledTaskTimeoutMs
         : null,
       createdAt: Date.now(),
       startedAt: null,
@@ -1065,24 +1065,3 @@ export class TaskManager {
     if (changed) this.persist()
   }
 }
-
-export const taskStore = new TaskStore({
-  filePath: config.taskStatePath,
-  onWarning: warning => logger.warn('task.persistence_warning', { warning }),
-})
-
-export const taskSessionJournal = new SessionJournalRegistry({
-  directory: resolve(config.configDirectory, 'sessions'),
-  logger,
-})
-
-export const taskManager = new TaskManager({
-  store: taskStore,
-  logger,
-  maxConcurrent: config.taskMaxConcurrent,
-  maxConcurrentPerOwner: config.taskMaxConcurrentPerOwner,
-  terminalTtlMs: config.taskTerminalTtlMs,
-  pendingNotificationTtlMs: config.taskPendingNotificationTtlMs,
-  maxTerminalTasksPerOwner: config.maxTerminalTasksPerOwner,
-  sessionJournal: taskSessionJournal,
-})

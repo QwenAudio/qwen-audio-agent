@@ -3,7 +3,7 @@
 // real DashScope endpoint (issue #92 P0). Not part of `npm test`: it needs
 // network access and a DASHSCOPE_API_KEY, and is run manually:
 //
-//   node scripts/test/memory-extractor-e2e.mjs
+//   node scripts/manual/memory-extractor-e2e.mjs
 //
 // The key is read from the environment or ~/.config/qwaudio/config.env and is
 // never printed. Every scenario uses temporary stores; nothing touches the

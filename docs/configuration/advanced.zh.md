@@ -2,162 +2,22 @@
 
 ## 远程访问安全
 
-Gateway 默认只监听 loopback，并只信任字面量 loopback Host/Origin。远程请求必须先
-通过 Gateway 访问认证，才能进入 HTTP 或 WebSocket 业务接口。不要把 Gateway 的
-loopback 端口直接暴露到公网。
-
-远程 Client 始终连接一个普通 HTTPS/WSS Gateway Endpoint。网络如何把这个 Endpoint
-转发到本机 Gateway，与 Gateway 的客户端配对和设备授权是两层独立能力。目前支持：
-
-- **Private Tailnet**：适合个人电脑。Gateway 主机和远程设备都安装官方 Tailscale，
-  登录同一 Tailnet；Gateway 调用系统 `tailscale serve` 发布私有 HTTPS 地址。
-- **外部 HTTPS**：适合有可信证书的服务器。用户自行配置反向代理、固定 IP 或域名，
-  Gateway 只记录它的公开 Origin，不接管网络、代理或证书。
-
-使用 Tailnet 前，先安装并登录官方 Tailscale。前台运行：
-
-```bash
-qwenaudio gateway --tailnet
-```
-
-命令会等待 `tailscale serve` 输出私有 HTTPS 地址，并在 Gateway 退出时停止本次发布。
-需要后台常驻可执行 `qwenaudio gateway install --tailnet`，或写入 `config.env`：
-
-```dotenv
-QWEN_AUDIO_GATEWAY_TAILNET=1
-```
-
-外部 HTTPS 模式由用户先完成反向代理，再向 Gateway 声明准确的公开 Origin：
-
-```bash
-qwenaudio gateway --public-url https://voice.example.com
-```
-
-或写入 `config.env`：
-
-```dotenv
-QWEN_AUDIO_GATEWAY_PUBLIC_URL=https://voice.example.com
-```
-
-固定 IP 具备受信任的 IP 地址证书时，也可以直接填写 `https://<固定 IP>`。Endpoint 必须
-是 HTTPS Origin，不能包含凭据、路径、查询参数或片段。反向代理必须只接受 HTTPS、正确
-转发 WebSocket、保留公开 `Host`，并将流量转发至本机 `127.0.0.1:3101`。
-建议同时设置 `Forwarded` 或 `X-Forwarded-For`。带有转发头的请求不会获得本机免认证待遇，
-仍需配对或访问凭据；这些头不会用来推断用户身份。不要同时移除公开 `Host` 和所有转发头，
-否则 Gateway 无法将代理请求与真正的本机请求区分。
-
-Tailnet 只有在 `tailscale serve status --json` 确认私有 HTTPS 根路径指向当前 Gateway 后才会
-标记就绪；终端中的登录或授权链接不代表发布成功。首次授权请通过官方 Tailscale 完成。
-
-Endpoint 就绪后，在 Gateway 主机的另一个终端执行：
-
-```bash
-qwenaudio gateway pair
-```
-
-命令输出短时、一次性的二维码、连接码和浏览器地址。Desktop、Mobile 等客户端只消费
-同一种连接码，不感知 Endpoint 来自 Tailscale 还是外部代理。使用
-`qwenaudio gateway devices` 查看已配对客户端，使用
-`qwenaudio gateway revoke <设备 ID>` 撤销设备。
-
-远程访问不会绕过 Gateway 认证：除一次性配对页外，远程业务请求必须携带已
-配对设备凭据。
-
-配置一个个人访问密钥：
-
-```dotenv
-QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=替换为至少24字符的随机密钥
-```
-
-可用 `openssl rand -base64 32` 生成随机密钥。该密钥只用于 Gateway 访问认证，
-不要写入 URL、GCP 消息或公开日志。
-
-原生 Client 使用 Bearer Token；浏览器 Client 可先发起一次带认证的 HTTP 请求，换取
-`HttpOnly`、`SameSite=Strict` 会话 Cookie。通过外部 HTTPS 反向代理提供浏览器界面时，
-Gateway 保持监听 loopback，并精确配置公开 Origin：
-
-```dotenv
-HOST=127.0.0.1
-QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com
-```
-
-例如，原生 TUI 可通过环境变量连接远程 Gateway，无需把密钥放进 URL：
-
-```bash
-QWEN_AUDIO_AGENT_URL=https://voice.example.com \
-QWEN_AUDIO_GATEWAY_CLIENT_TOKEN="$ACCESS_TOKEN" \
-qwenaudio tui
-```
-
-`qwenaudio gateway pair` 创建的连接码由远程 Client 通过 `POST /api/access/pair`
-换取可撤销设备令牌。已配对设备可通过
-`GET /api/access/devices` 列出，并通过 `DELETE /api/access/devices/:id` 撤销；
-管理接口仅允许本机访问。
-
-多个可信 Origin 使用英文逗号分隔。高级宿主可用 JSON 数组把不同访问密钥映射到
-不同用户身份：
-
-```dotenv
-QWEN_AUDIO_AGENT_ACCESS_KEYS='[{"token":"替换为足够长的随机密钥","owner_id":"user_alice","label":"Alice"}]'
-```
-
-每个用户只有一个活动 Client 租约。第二个 Client 默认被拒绝；相同
-`client.instance_id` 的重连，或显式协商 `session.takeover` 的接管可以替换旧 Client。
-接管会关闭旧连接，并用租约代次阻止旧 Socket 的迟到消息生效。
-
-`QWEN_AUDIO_AGENT_AUTH_SECRET` 只用于签署本地和远程会话身份，不是远程访问密码，
-绝不能发送给 Client。
-
-`QWEN_AUDIO_AGENT_ACCESS_TOKEN` 暂时保留为两种配置的旧别名。新配置应使用上面的宿主与
-Client 独立名称，避免把 Client 凭据误当作 Gateway 服务端配置。
+连接方式、Tailnet、HTTPS 反向代理与配对命令已集中在[远程连接与配对](../operations/remote-access.zh.md)。
 
 ## Gateway 运行方式
 
-同一数据目录在任意时刻只允许一个本地 Gateway。CLI、TUI 和 WebUI 共用
-`~/.config/qwaudio`，会优先复用同一个实例；桌面版使用独立目录，只复用或管理
-自己目录下的 Gateway。多个已认证用户按身份隔离；每个用户只有一个活动 Client，
-并共享同一个 Gateway 进程和后台服务。实例身份记录在
-用户配置目录下的临时 `gateway.lock` 中，Gateway 正常退出时会删除，异常退出留下的
-锁会在确认原进程已经结束后自动回收。若现有 Gateway 的 Realtime、后台 Agent 或
-权限配置与当前请求不一致，启动会明确报错，而不会静默另开随机端口。远程 Gateway
-不参与本地单实例租约。
-
-Gateway 默认启动并管理所选 Agent 的 ACP 进程。若 OpenCode 或 OpenClaw 的本地
-服务端口已被其他进程占用，会选择空闲端口，不会接管或关闭用户进程。OpenClaw
-始终由 qwen-audio-agent 启动独立 Gateway，并使用隔离的运行状态和 Session
-存储；它可以读取用户已有的模型与能力配置，但不会与用户常驻 Gateway 共享
-Session，也不会重复连接用户配置的外部消息渠道。OpenCode 的 ACP 进程始终
-复用其原生配置和 Session 存储，原生界面不可用不影响 ACP 任务执行。
-
-`qwenaudio`、`qwenaudio gateway` 和 `qwenaudio gateway run` 都在前台运行。
-需要后台常驻时使用：
-
-```bash
-qwenaudio gateway install    # 安装并立即启动用户服务
-qwenaudio gateway status
-qwenaudio gateway restart
-qwenaudio gateway stop
-qwenaudio gateway start
-qwenaudio gateway uninstall
-```
-
-后台服务每次启动都会重新读取 `config.env`。修改配置后执行
-`qwenaudio gateway restart` 即可生效。服务日志位于
-`~/.config/qwaudio/logs/gateway.log`；Linux 也可以通过
-`journalctl --user -u qwen-audio-agent-gateway` 查看。
-
-Gateway、桌面版、后台 Agent 和本地 stdio MCP 共用一份用户命令搜索路径。
-执行 `gateway install`、`start` 或 `restart` 时，CLI 会刷新登录环境中的
-`PATH` 缓存，因此通过 Homebrew、npm、uv 或版本管理器安装的新命令在重启后即可使用。
-后台服务不会保存终端临时 `export` 的密钥；持久配置请写入命令显示的
-`config.env`。
+终端运行、后台常驻、桌面内置 Gateway 与重启方式见[Gateway 运行与常驻](../operations/gateway.zh.md)。
 
 ## 本地日志
 
-qwen-audio-agent 使用统一的本地结构化日志，默认写入：
+qwen-audio-agent 使用统一的本地结构化日志。CLI 默认目录为
+`~/.config/qwaudio/logs/`；桌面版默认在其[应用数据目录](../configuration.zh.md#配置与数据目录)
+的 `logs/` 下，例如 macOS 的 `~/Library/Application Support/Qwen Audio Agent/logs/`。
+
+以下是日志文件职责；并非所有文件都在同一个目录：
 
 ```text
-~/.config/qwaudio/logs/
+logs/                       # 实际根目录取决于运行方式
 ├── gateway.log   # Gateway、Realtime、ACP 与任务生命周期
 ├── desktop.log   # 桌面主进程与内嵌 Gateway 生命周期
 ├── cli.log       # CLI 命令生命周期
@@ -193,6 +53,8 @@ Authorization、Cookie、密码和 Secret 字段会在写入前脱敏；默认�
 自动脱敏，也应在发送前再次确认其中没有不希望公开的本机路径或业务信息。
 
 ### 只读诊断
+
+常见连接、音频和工具问题先看[故障排查](../operations/troubleshooting.zh.md)。
 
 ```bash
 qwenaudio doctor
@@ -246,8 +108,7 @@ OpenCode ACP 接入当前要求 OpenCode `1.18.0` 或更高版本。`auto` 模�
 
 qwen-audio-agent 启动的 OpenCode 默认继承用户原有的全局配置（通常是
 `~/.config/opencode/opencode.json`），因此已经安装的 MCP、Skill、权限、模型和
-插件可以继续使用。协调规则和第三层 Session 工具由 Gateway 在每轮请求中通过
-ACP 动态提供，不会额外安装或覆盖 OpenCode Agent。
+插件可以继续使用。协调规则和可用的 Session 工具由 Gateway 通过后台接入层提供，不会额外安装或覆盖 OpenCode Agent。
 
 如果用户配置或第三方插件与 qwen-audio-agent 冲突，可以临时启用隔离模式排查：
 
@@ -270,8 +131,8 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | `QWEN_AUDIO_GATEWAY_TAILNET` | 空；设为 `1` 后使用系统 Tailscale Serve |
 | `QWEN_AUDIO_GATEWAY_PUBLIC_URL` | 空；用户自行维护的 HTTPS Origin |
 | `QWEN_AUDIO_TAILSCALE_BINARY` | 自动发现；系统 Tailscale CLI 的可选绝对路径 |
-| `OPENCODE_WORKSPACE` | 用户配置目录下的 `workspaces/opencode` |
-| `QODER_WORKSPACE` | 用户配置目录下的 `workspaces/qoder` |
+| `OPENCODE_WORKSPACE` | 共享数据目录下的 `workspace` |
+| `QODER_WORKSPACE` | 共享数据目录下的 `workspace` |
 | `QWEN_AUDIO_AGENT_BACKEND_MODEL` | 空；显式值仅通过 ACP 标准覆盖 Session；OpenCode/OpenClaw 托管初始化除外 |
 | `QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE` | `native` |
 | `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV` | 空；仅供通用 ACP 显式传递的环境变量名，逗号分隔 |
@@ -303,7 +164,7 @@ macOS TUI 的 CoreAudio 辅助程序默认编译到
 `~/Library/Caches/qwaudio/tui/macos-voice-io`，无需额外配置。它在播报期间
 持续收音，只支持语音打断。
 Linux 和 Windows 的 minimal TUI 通过随包提供的 Python 音频桥接使用
-`sounddevice`/PortAudio 半双工；播放回复时麦克风会暂停，只支持通过 `x` 键
+`sounddevice`/PortAudio 半双工；播放回复时麦克风会暂停，通过 `/interrupt`
 手动打断，播放结束或手动打断后恢复。
 
 Linux 和 Windows 可通过 `qwenaudio tui --audio-mode full` 或设置

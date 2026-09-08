@@ -28,6 +28,7 @@ QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 
 ```bash
 qwenaudio config set --realtime-model qwen-audio-3.0-realtime-flash
+# 以下仅用于已安装的用户后台服务：
 qwenaudio gateway restart
 ```
 

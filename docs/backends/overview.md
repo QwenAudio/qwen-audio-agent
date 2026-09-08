@@ -38,7 +38,7 @@ qwenaudio install deepseek
 qwenaudio install minimax
 ```
 
-Before installation, a detection step runs to **only fill in missing components**: native ACP backends are ready to use once installed; if the core is missing, the core is installed; if the core is already installed and only the ACP adapter is missing, only the adapter is installed; if everything is ready, a prompt confirms availability. In the desktop settings page's "Backend Agent" list, an "Install" button appears at the end of rows for uninstalled backends that support one-click install, using the same installation logic as the CLI.
+Before installation, a detection step runs to **only fill in missing components**: install the core if missing, or just the ACP adapter if the core is already present. Existing components are not reinstalled. Installation does not mean the backend is configured: complete any login and configuration required by the selected backend. In the desktop settings page's "Backend Agent" list, an "Install" button appears at the end of rows for uninstalled backends that support one-click install, using the same installation logic as the CLI.
 
 DeepSeek Harness is currently a Developer Preview. This initial integration
 supports voice-triggered tasks, permission decisions, cancellation of the current
@@ -99,18 +99,6 @@ Pi handles work in the current Session with its own tools.
 
 ## Backend Service
 
-To keep your personal assistant online long-term, you can install it as a user-level background service:
-
-```bash
-qwenaudio gateway install    # Install and start immediately
-qwenaudio gateway status
-qwenaudio gateway restart
-qwenaudio gateway stop
-qwenaudio gateway start
-qwenaudio gateway uninstall
-```
-
-The background service re-reads `config.env` on every startup; after modifying configuration, run `gateway restart` to apply changes.
-
-For advanced configuration of each backend (executable paths, working directories, standard ACP model overrides, etc.), see
-[Configuration Guide](../configuration.md).
+To keep the Gateway running, see [Run the Gateway](../operations/gateway.md).
+See [common settings](../configuration/backend.md) for configuration and permissions, and
+[backend-specific settings](configuration.md) for models, commands, and directories.

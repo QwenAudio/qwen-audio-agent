@@ -1,7 +1,7 @@
 # Extending qwen-audio-agent
 
-The runtime is generic; every scenario-specific behavior enters through a
-declared seam. This page maps the seams and points to the guide for each.
+This section is for developers integrating clients, voice services, Backend Agents, or knowledge systems through existing extension interfaces.
+To configure built-in capabilities, start with [Configuration](configuration.md) and [Quickstart](getting-started/quickstart.md).
 
 ## Frontend Tools: MCP, OpenAPI, Profiles
 
@@ -24,8 +24,8 @@ registry.
 
 ## Knowledge: Retrieval Provider
 
-The Gateway defines a small retrieval boundary instead of shipping a RAG
-stack — connect the knowledge system you already operate.
+The Gateway provides a basic knowledge library behind a small Provider interface.
+Use it directly, or connect the knowledge system you already operate.
 
 → [Knowledge Retrieval Provider](reference/knowledge.md)
 
@@ -45,13 +45,13 @@ Backend Adapter SDK, or a first-class backend with one-click install.
 
 ## Persona and Memory
 
-The assistant's name, personality, and voice live in `ASSISTANT.md`. The default
-Markdown provider stores user preferences and durable facts in `USER.md` /
+The default assistant name, personality, and expression style live in `ASSISTANT.md`; output voice is configured separately.
+The default Markdown provider stores user preferences and durable facts in `USER.md` /
 `MEMORY.md`; configure the optional VoiceMem connector, or replace the
 provider with another memory engine, without changing the voice runtime.
 
 → [Assistant Profile and User Preferences](reference/personalization.md) ·
-[Long-Term Memory](reference/memory.md)
+[Memory Provider](reference/memory-provider.md)
 
 VoiceMem installation and configuration example:
 [`examples/voicemem`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem).

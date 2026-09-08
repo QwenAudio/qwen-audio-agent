@@ -286,12 +286,14 @@ test('automatic fallback requires explicit Bailian setup', {
     command(resolve(openClaw.bin, 'npx'))
     const openCodeResult = execute('scripts/runtime/opencode-server.mjs', openCode, {
       OPENCODE_RUNTIME: 'auto',
+      DASHSCOPE_API_KEY: '',
     })
     assert.notEqual(openCodeResult.status, 0)
     assert.match(openCodeResult.stderr, /requires DASHSCOPE_API_KEY/)
 
     const openClawResult = execute('scripts/runtime/openclaw.mjs', openClaw, {
       OPENCLAW_RUNTIME: 'auto',
+      DASHSCOPE_API_KEY: '',
     }, ['acp'])
     assert.notEqual(openClawResult.status, 0)
     assert.match(openClawResult.stderr, /requires DASHSCOPE_API_KEY/)

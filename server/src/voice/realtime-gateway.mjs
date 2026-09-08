@@ -20,7 +20,7 @@ import {
   realtimeEventErrorMessage,
 } from './realtime-provider.mjs'
 import { isAllowedOrigin } from '../core/request-security.mjs'
-import { taskManager as defaultTaskManager } from '../task/task-manager.mjs'
+import { TaskManager } from '../task/task-manager.mjs'
 import { TaskDomainEvent } from '../task/task-events.mjs'
 import { recordTaskResult } from '../conversation/task-result-projector.mjs'
 import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
@@ -182,7 +182,7 @@ export function attachRealtimeGateway(server, {
   permissionPolicy,
   inputAssets = new InputAssetRegistry(),
   inputArbitration = null,
-  taskManager = defaultTaskManager,
+  taskManager = new TaskManager(),
   conversationSync = defaultConversationSync,
   config = defaultConfig,
   logger = defaultLogger,

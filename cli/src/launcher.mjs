@@ -47,6 +47,7 @@ import { GatewayConnectionProfileStore } from '../../shared/gateway/connection-p
 import { createPrivateFileGatewayCredentialStore } from '../../shared/gateway/file-credential-store.mjs'
 import { launchWebUi } from './webui.mjs'
 import { acquireCliInstance } from './instance-lock.mjs'
+import { collectDiagnostics, formatDiagnostics } from './diagnostics.mjs'
 import { manageGatewayService } from './gateway-service.mjs'
 import {
   GATEWAY_RESTART_FOLLOW_UP,
@@ -259,6 +260,7 @@ export async function main(argv, {
     waitForGateway(url, { requireBackend }),
   waitForServiceStop = url => waitForGatewayStop(url, { inspectGateway }),
   runWebUi = options => launchWebUi(options),
+  diagnose = collectDiagnostics,
   acquireInstance = directory => acquireCliInstance(directory),
   updateConfig = updateRealtimeModelConfig,
   createConnectionProfiles = directory => new GatewayConnectionProfileStore({
@@ -277,7 +279,8 @@ export async function main(argv, {
   const processRealtimeModelOverride = String(
     env.QWEN_AUDIO_REALTIME_MODEL || '',
   ).trim()
-  const readOnlyCommand = ['setup', 'install'].includes(argv[0])
+  const readOnlyCommand = ['setup', 'install', 'doctor'].includes(argv[0])
+    || argv.includes('--help') || argv.includes('-h')
     || (argv[0] === 'config' && argv[1] === 'show')
   const environment = prepareEnvironment({ readOnly: readOnlyCommand })
   const options = parseArguments(argv, env)
@@ -302,6 +305,11 @@ export async function main(argv, {
   if (options.help) {
     stdout.write(`${helpText()}\n`)
     return 0
+  }
+  if (options.command === 'doctor') {
+    const report = await diagnose({ options, environment, env })
+    stdout.write(`${options.json ? JSON.stringify(report, null, 2) : formatDiagnostics(report)}\n`)
+    return report.ok ? 0 : 1
   }
   if (options.command === 'connect') {
     if (!options.pairingCode) throw new Error('connect 需要 Gateway 连接码')

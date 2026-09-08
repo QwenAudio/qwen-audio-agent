@@ -67,6 +67,11 @@ function secureRequest(req) {
 }
 
 export function isLoopbackRequest(req = {}) {
+  // A loopback peer can be a reverse proxy. Forwarding metadata may only
+  // remove the local exemption, never grant an identity or trusted origin.
+  if (Object.keys(req.headers || {}).some(name => (
+    /^(?:forwarded|via|x-real-ip|x-forwarded-.*)$/i.test(name)
+  ))) return false
   let hostname = ''
   try {
     hostname = new URL(`http://${req.headers?.host || ''}`).hostname
@@ -75,8 +80,7 @@ export function isLoopbackRequest(req = {}) {
   }
   const remoteAddress = clean(req.socket?.remoteAddress).replace(/^::ffff:/, '')
   const loopbackHost = ['127.0.0.1', 'localhost', '::1', '[::1]'].includes(hostname)
-  const loopbackPeer = !remoteAddress
-    || remoteAddress === '127.0.0.1'
+  const loopbackPeer = remoteAddress === '127.0.0.1'
     || remoteAddress === '::1'
   return loopbackHost && loopbackPeer
 }

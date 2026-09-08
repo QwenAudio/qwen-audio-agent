@@ -10,6 +10,7 @@ const COMMANDS = new Set([
   'tui',
   'webui',
   'status',
+  'doctor',
   'config',
   'setup',
   'install',
@@ -164,6 +165,7 @@ export function parseArguments(argv, env = process.env) {
     skillList: false,
     openBrowser: true,
     json: false,
+    turnId: '',
     yes: false,
     takeover: false,
     backendSpecified: false,
@@ -224,6 +226,7 @@ export function parseArguments(argv, env = process.env) {
       options.skillNames.push(nextValue(args, index++, '--skill'))
     } else if (argument === '--list') options.skillList = true
     else if (argument === '--json') options.json = true
+    else if (argument === '--turn') options.turnId = nextValue(args, index++, '--turn')
     else if (argument === '--yes' || argument === '-y') options.yes = true
     else if (argument === '--help' || argument === '-h') options.help = true
     else throw new Error(`未知参数：${argument}`)
@@ -291,12 +294,13 @@ export function parseArguments(argv, env = process.env) {
     throw new Error('--no-open 只适用于 webui')
   }
   if (
-    command !== 'setup'
+    !['setup', 'doctor'].includes(command)
     && !(command === 'gateway' && ['pair', 'devices'].includes(gatewayAction))
     && options.json
   ) {
-    throw new Error('--json 只适用于 setup、gateway pair 或 gateway devices')
+    throw new Error('--json 只适用于 setup、doctor、gateway pair 或 gateway devices')
   }
+  if (options.turnId && command !== 'doctor') throw new Error('--turn 只适用于 doctor')
   if (command !== 'tui' && audioModeSpecified) {
     throw new Error('--audio-mode 只适用于 tui')
   }
@@ -372,6 +376,7 @@ export function helpText() {
     '  qwenaudio connect <连接码>    配对并保存远程 Gateway',
     '  qwenaudio disconnect          忘记已保存的远程 Gateway',
     '  qwenaudio status [选项]      gateway status 的兼容别名',
+    '  qwenaudio doctor [--json] [--turn ID]  只读诊断配置、连接、历史与交互时间线',
     '  qwenaudio config             显示用户配置文件位置',
     '  qwenaudio config show        显示有效 Realtime 模型（不含凭据）',
     '  qwenaudio config set --realtime-model ID  更新 Realtime 模型',

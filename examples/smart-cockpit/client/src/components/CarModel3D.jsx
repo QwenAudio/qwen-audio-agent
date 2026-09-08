@@ -81,6 +81,9 @@ function TeslaModel({ carState }) {
     }
   }, [scene])
 
+  // Three.js scene nodes are mutable runtime objects. Updating their transforms
+  // is the rendering API here, not mutation of React state or hook inputs.
+  /* eslint-disable react-hooks/immutability */
   useEffect(() => {
     Object.entries(model.windows).forEach(([key, node]) => {
       const ratio = openRatio(carState[key])
@@ -113,6 +116,7 @@ function TeslaModel({ carState }) {
       model.rearTrunk.position.z += 0.04
     }
   }, [carState, model])
+  /* eslint-enable react-hooks/immutability */
 
   useFrame(({ clock }) => {
     if (carState.flashLightsCount !== flashCount.current) {

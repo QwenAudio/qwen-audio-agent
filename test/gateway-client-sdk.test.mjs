@@ -113,6 +113,46 @@ test('reference Client negotiates once and correlates runtime commands', async (
   client.stop()
 })
 
+test('reference Client correlates task input response results', async () => {
+  const socket = new FakeSocket()
+  const received = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    clientInstanceId: 'sdk-input-response-test',
+    capabilities: [GatewayClientCapability.INPUT_RESPOND],
+    reconnect: false,
+    onEvent: event => received.push(event),
+  }).start()
+  socket.open()
+  socket.receive({
+    type: GatewayClientProtocolEvent.SESSION_READY,
+    event_id: 'evt_gateway_input_ready',
+    request_event_id: socket.sent[0].event_id,
+    protocol_version: '6.0.0',
+    session_id: 'main',
+    capabilities: [GatewayClientCapability.INPUT_RESPOND],
+  })
+
+  const pending = client.request(GatewayClientProtocolEvent.INPUT_RESPOND, {
+    task_id: 'task-1',
+    input_request_id: 'input-1',
+    action: 'accept',
+    text: '继续执行',
+  })
+  const request = socket.sent.at(-1)
+  socket.receive({
+    type: GatewayClientProtocolEvent.INPUT_RESPOND_RESULT,
+    event_id: 'evt_input_response_result',
+    request_event_id: request.event_id,
+    input: { accepted: true },
+  })
+
+  assert.deepEqual((await pending).input, { accepted: true })
+  assert.deepEqual(received, [])
+  client.stop()
+})
+
 test('reference Client answers negotiated application heartbeats without dispatching them', () => {
   const socket = new FakeSocket()
   const received = []

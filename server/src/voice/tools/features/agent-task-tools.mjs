@@ -122,24 +122,19 @@ const respondAgentInputTool = {
 export const agentTaskToolEntries = [
   {
     definition: spawnThinkingTool,
-    contract: 'core',
-    policy: { mode: 'background', repeatHandling: 'handler' },
+    policy: { repeatHandling: 'handler' },
   },
-  { definition: cancelAgentTaskTool, contract: 'core', policy: { mode: 'control' } },
-  { definition: getAgentTaskStatusTool, contract: 'core', policy: { mode: 'control' } },
+  { definition: cancelAgentTaskTool },
+  { definition: getAgentTaskStatusTool },
   {
     definition: respondPermissionTool,
-    contract: 'core',
     policy: {
-      mode: 'control',
       requiredCapabilities: [PERMISSION_RESPONSE_CAPABILITY],
     },
   },
   {
     definition: respondAgentInputTool,
-    contract: 'core',
     policy: {
-      mode: 'control',
       requiredCapabilities: [BACKEND_INPUT_RESPONSE_CAPABILITY],
     },
   },

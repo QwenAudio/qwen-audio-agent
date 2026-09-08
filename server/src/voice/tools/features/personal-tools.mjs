@@ -76,8 +76,8 @@ const notesTool = {
 }
 
 export const personalToolEntries = [
-  { definition: memoryTool, contract: 'core', policy: { mode: 'inline' } },
-  { definition: notesTool, contract: 'optional', policy: { mode: 'inline' } },
+  { definition: memoryTool },
+  { definition: notesTool },
 ]
 
 async function executeMemoryToolCall(runtime, {

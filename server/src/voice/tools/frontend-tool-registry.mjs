@@ -4,23 +4,6 @@ function toolName(entry) {
   return String(entry?.definition?.function?.name || '').trim()
 }
 
-export const FRONTEND_TOOL_MODES = Object.freeze([
-  'inline',
-  'background',
-  'control',
-])
-
-const FRONTEND_TOOL_MODE_SET = new Set(FRONTEND_TOOL_MODES)
-
-// Prompt ownership, not availability or permission policy. New tools are
-// optional unless explicitly made part of the stable frontend contract.
-function normalizedContract(contract = 'optional') {
-  if (contract !== 'core' && contract !== 'optional') {
-    throw new Error('Frontend tool contract must be core or optional')
-  }
-  return contract
-}
-
 function clientStates(context) {
   return new Set(
     Array.isArray(context?.client?.states)
@@ -78,12 +61,6 @@ function capabilitiesAllow(policy = {}, context = {}) {
 }
 
 function normalizedPolicy(policy = {}) {
-  const mode = String(policy.mode || '').trim()
-  if (!FRONTEND_TOOL_MODE_SET.has(mode)) {
-    throw new Error(
-      `Frontend tool policy requires a valid mode: ${FRONTEND_TOOL_MODES.join(', ')}`,
-    )
-  }
   if (
     policy.repeatHandling !== undefined
     && policy.repeatHandling !== 'handler'
@@ -96,7 +73,7 @@ function normalizedPolicy(policy = {}) {
   ) {
     throw new Error('Frontend tool maxResultBytes must be a positive integer')
   }
-  const normalized = { ...policy, mode }
+  const normalized = { ...policy }
   if (Array.isArray(policy.requiredClientStates)) {
     normalized.requiredClientStates = Object.freeze([
       ...policy.requiredClientStates.map(String),
@@ -123,8 +100,7 @@ function positivePolicyInteger(value) {
 /**
  * Declarative catalog for tools exposed to the realtime frontend model.
  *
- * Each entry declares prompt ownership, execution mode and visibility constraints.
- * Only core-contract tools may be named in the fixed frontend prompt.
+ * Entries contain a model definition and optional runtime constraints.
  * Visibility never replaces permission or current-state validation inside the
  * tool implementation.
  */
@@ -141,7 +117,6 @@ export class FrontendToolRegistry {
       }
       this.#entriesByName.set(name, Object.freeze({
         name,
-        contract: normalizedContract(entry.contract),
         definition: entry.definition,
         policy: normalizedPolicy(entry.policy),
       }))

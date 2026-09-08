@@ -32,21 +32,20 @@ test('defines one protocol-neutral frontend tool source contract', () => {
   )
 })
 
-function source(name, policy) {
+function source(name) {
   const tool = {
     name,
     definition: {
       type: 'function',
       function: { name, parameters: { type: 'object' } },
     },
-    policy,
   }
   return { tools: () => [tool], tool }
 }
 
 test('projects source tools and definitions without classifying side effects', () => {
-  const read = source('mcp__docs__search', { mode: 'inline' })
-  const write = source('mcp__docs__create', { mode: 'inline' })
+  const read = source('mcp__docs__search')
+  const write = source('mcp__docs__create')
   const sources = [read, write]
 
   assert.deepEqual(
@@ -61,8 +60,8 @@ test('projects source tools and definitions without classifying side effects', (
 })
 
 test('rejects duplicate tools without inspecting their execution semantics', () => {
-  const first = source('mcp__docs__search', { mode: 'inline' })
-  const duplicate = source('mcp__docs__search', { mode: 'inline' })
+  const first = source('mcp__docs__search')
+  const duplicate = source('mcp__docs__search')
 
   assert.throws(
     () => frontendSourceTools([first, duplicate]),

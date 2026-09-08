@@ -95,13 +95,15 @@ Each tool declares its name, description, input/output schemas, executor, and a
 policy:
 
 ```text
-mode: inline | background | control
 readOnly / requiresApproval
 timeoutMs / maxResultBytes / maxCallsPerTurn
 ```
 
-`inline` tools return within the turn; `background` tools return an intake
-receipt (`spawn_thinking`); `control` tools query or change existing work.
+Tools may return results within the turn, return an asynchronous intake receipt,
+or operate on existing work. Their executors implement these behaviors without
+an execution-mode label; policies contain effective runtime constraints only.
+Core versus optional prompt boundaries live in documentation and tests, not in
+the runtime tool protocol.
 
 ### Work
 

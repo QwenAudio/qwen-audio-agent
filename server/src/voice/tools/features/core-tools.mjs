@@ -16,7 +16,7 @@ const getCurrentTimeTool = {
 }
 
 export const coreToolEntries = [
-  { definition: getCurrentTimeTool, contract: 'core', policy: { mode: 'inline' } },
+  { definition: getCurrentTimeTool },
 ]
 
 export function coreToolHandlers(runtime) {

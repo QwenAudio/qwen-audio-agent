@@ -301,7 +301,6 @@ function discoverOperations(api, document) {
         },
       },
       policy: {
-        mode: 'inline',
         timeoutMs: policy.timeoutMs,
         maxResultBytes: policy.maxResultBytes,
         maxCallsPerTurn: policy.maxCallsPerTurn,

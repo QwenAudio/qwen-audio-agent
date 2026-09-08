@@ -77,12 +77,14 @@ Field meanings and input rules belong in tool schemas; receipt- or delivery-spec
 instructions belong to the corresponding event. The Gateway enforces availability,
 permissions, and execution validation independently of model compliance.
 
-Registry metadata `contract: core | optional` describes ownership only: it is not
-sent in model tool schemas and does not determine runtime availability. An unconfigured
+Core versus optional is a prompt-maintenance convention, not a runtime classification;
+the core-tool allowlist lives only in boundary tests. The registry stores tool definitions
+and optional, effective runtime policies such as capability requirements, result-size
+limits, and repeat handling. Tools need no group or execution-mode label. An unconfigured
 backend hides `spawn_thinking`; confirmation tools are exposed only for real pending
-requests. Even core-contract tools cannot be called when unavailable. Tests check
-the fixed prompt, tool references, and capability switches to keep new optional
-features out of core rules.
+requests. Even core-contract tools cannot be called when unavailable. Tests check the
+fixed prompt, tool references, and capability switches to keep new optional features
+out of core rules.
 
 The Gateway exposes one `respond_permission` tool for pending backend
 permissions and frontend external-tool approvals. The model answers the

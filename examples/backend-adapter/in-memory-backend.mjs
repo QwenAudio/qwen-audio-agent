@@ -1,6 +1,6 @@
 import {
   defineBackendAdapter,
-} from '../../server/src/backend/backend-adapter-sdk.mjs'
+} from 'qwen-audio-agent/backend-adapter-sdk'
 
 function clean(value) {
   return String(value || '').trim()

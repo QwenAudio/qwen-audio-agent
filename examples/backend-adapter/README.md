@@ -4,7 +4,8 @@
 shows lifecycle, Task submission, status, cancellation, events, bounded public
 results, and idempotent cleanup without exposing a private task graph.
 
-Run the same public conformance suite used by built-in adapters:
+From a source checkout, run the same public conformance suite used by built-in
+adapters:
 
 ```bash
 node --test server/test/backend-adapter-sdk.test.mjs

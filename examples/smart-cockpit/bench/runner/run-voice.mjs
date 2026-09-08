@@ -15,16 +15,16 @@ import { CockpitStateStore } from '../../service/state-store.mjs'
 import { COCKPIT_SURFACE_ROUTING } from '../../service/tools/registry.mjs'
 import {
   GatewayClient,
-} from '../../../../shared/gateway/client-sdk.mjs'
+} from 'qwen-audio-agent/gateway-client-sdk'
 import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../../../../shared/protocol/gateway-client-protocol.mjs'
+} from 'qwen-audio-agent/gateway-client-protocol'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
   GatewayTaskEvent,
-} from '../../../../shared/protocol/realtime-events.mjs'
+} from 'qwen-audio-agent/realtime-events'
 import { loadNavigationCases, routeCasesExpectedPaths } from '../evaluator/cases.mjs'
 import { scoreTrace, summarizeScores } from '../evaluator/score.mjs'
 

@@ -1,4 +1,5 @@
 import { t } from './i18n.js'
+import { taskHasArtifacts } from './task-artifacts.js'
 
 export function phaseForTask(task) {
   if (task.status === 'scheduled') return 'scheduled'
@@ -25,6 +26,7 @@ export function taskIsActive(task) {
 }
 
 export function taskNeedsPresentation(task) {
+  if (taskHasArtifacts(task)) return true
   if (taskIsActive(task)) return true
   return (
     ['completed', 'failed'].includes(task?.status)
@@ -33,12 +35,18 @@ export function taskNeedsPresentation(task) {
 }
 
 export function removeDeliveredTask(tasks, taskId) {
-  return tasks.filter(task => task.id !== taskId)
+  return tasks.flatMap(task => {
+    if (task.id !== taskId) return [task]
+    if (!taskHasArtifacts(task)) return []
+    // Playback completion settles presentation, not backend execution.
+    return [task.phase === 'responding' ? { ...task, phase: 'completed' } : task]
+  })
 }
 
 export function taskDeliverySettled(task) {
   return (
-    ['completed', 'failed'].includes(task?.status)
+    !taskHasArtifacts(task)
+    && ['completed', 'failed'].includes(task?.status)
     && task?.notificationStatus === 'delivered'
   )
 }
@@ -217,6 +225,15 @@ export function taskView(task, previous = {}) {
     result: Object.hasOwn(task, 'result')
       ? task.result
       : previous.result,
+    ...(
+      Object.hasOwn(task, 'artifacts') || Object.hasOwn(previous, 'artifacts')
+        ? {
+            artifacts: Object.hasOwn(task, 'artifacts')
+              ? task.artifacts
+              : previous.artifacts,
+          }
+        : {}
+    ),
     ...(
       Object.hasOwn(task, 'message') || Object.hasOwn(previous, 'message')
         ? {

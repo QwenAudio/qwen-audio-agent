@@ -16,7 +16,7 @@ function isSafeUrl(href) {
   }
 }
 
-function MediaEmbed({ src, alt, type }) {
+export function MediaEmbed({ src, alt, type }) {
   const [approved, setApproved] = useState(false)
   if (!src || !isSafeUrl(src)) return <span>{alt || src}</span>
   if (!approved) {

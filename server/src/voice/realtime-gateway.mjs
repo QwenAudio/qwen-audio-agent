@@ -25,6 +25,7 @@ import { TaskDomainEvent } from '../task/task-events.mjs'
 import { recordTaskResult } from '../conversation/task-result-projector.mjs'
 import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
 import { ToolCallHandler } from './tools/tool-call-handler.mjs'
+import { buildFrontendToolContext } from './tools/frontend-tool-context.mjs'
 import { TurnTranscripts } from './tools/turn-transcripts.mjs'
 import { TurnCitations } from './turn-citations.mjs'
 import { RealtimeInputRuntime } from './realtime-input-runtime.mjs'
@@ -50,9 +51,6 @@ import {
   frontendSourceToolDefinitions,
 } from '../frontend/tools/frontend-tool-source.mjs'
 import {
-  PERMISSION_RESPONSE_CAPABILITY,
-  BACKEND_INPUT_RESPONSE_CAPABILITY,
-  FRONTEND_RECALL_CAPABILITY,
   permissionResponseInstructions,
   inputRequestResponseInstructions,
 } from './frontend-tools.mjs'
@@ -406,21 +404,15 @@ export function attachRealtimeGateway(server, {
       client: clientContext,
       frontend: {
         ...(spawnThinkingDescription ? { spawnThinkingDescription } : {}),
-        disabledTools: config.frontendDisabledTools || [],
-        capabilities: [...new Set([
-          ...(frontendRetrieval?.capabilities?.() || []),
-          ...(frontendKnowledge?.capabilities?.() || []),
-          ...(hasPendingBackendPermission()
-            ? [PERMISSION_RESPONSE_CAPABILITY]
-            : []),
-          ...(hasPendingBackendInput()
-            ? [BACKEND_INPUT_RESPONSE_CAPABILITY]
-            : []),
-          // 会话摘要池与资料库都没启用时不暴露 recall —— 池子永远是空的，
-          // 暴露它只会让模型白调一次。会话摘要本身绝不注入 instructions：
-          // 它每场都在变，会让 prompt 前缀每场都变。
-          ...(sessionDigests ? [FRONTEND_RECALL_CAPABILITY] : []),
-        ])],
+        ...buildFrontendToolContext({
+          disabledTools: config.frontendDisabledTools || [],
+          backendAvailability,
+          frontendRetrieval,
+          frontendKnowledge,
+          sessionDigests,
+          permissionPending: hasPendingBackendPermission(),
+          inputPending: hasPendingBackendInput(),
+        }),
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
       memories: memoryService?.list(ownerId, { limit: 64 }) || [],

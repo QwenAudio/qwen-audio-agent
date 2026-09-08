@@ -14,7 +14,7 @@ const cancelAgentTaskTool = {
   type: 'function',
   function: {
     name: CANCEL_AGENT_TASK_TOOL_NAME,
-    description: '取消用户此前开始、目前仍可取消的异步工作、定时任务或提醒。用户明确要求取消或停止时必须调用，不要只口头答应。循环提醒优先使用回执中的 series_id 取消整组；普通工作使用 task_id。同时存在多项且目标不能可靠确定时，先调用 get_agent_task_status 列出工作。不要重复取消已经处理的工作。',
+    description: '取消用户此前开始、目前仍可取消的异步工作、定时任务或提醒，支持取消一项、整组循环提醒或当前会话全部工作。',
     parameters: {
       type: 'object',
       properties: {
@@ -40,21 +40,17 @@ const getAgentTaskStatusTool = {
   type: 'function',
   function: {
     name: GET_AGENT_TASK_STATUS_TOOL_NAME,
-    description: '仅当用户主动询问此前工作的状态、进度、阶段结果或列表时调用；不得因 spawn_thinking 的 accepted 或 duplicate 回执自动查询。用户询问此前工作时不要改用 spawn_thinking。可列出当前会话中的工作、定时任务和提醒。',
+    description: '查询已创建工作、定时任务或提醒的最新状态和结果，或列出近期记录以确定目标；不用于回顾聊天内容。',
     parameters: {
       type: 'object',
       properties: {
         task_id: {
           type: 'string',
-          description: '要查询的 task_id。仅在当前对话或先前工具结果已明确给出时填写，不得猜造；省略时查询当前语音会话最近的工作。',
-        },
-        question: {
-          type: 'string',
-          description: '用户本轮对任务状态、进度或阶段结果的原始问题。尽量忠实保留，不要自行改写成另一项任务；省略时系统会使用本轮语音转写。',
+          description: '系统返回的工作 ID，可来自当前对话或工具结果。不得猜造；省略时优先查询当前语音会话最近仍在进行的工作，没有时查询最近一项。',
         },
         list_all: {
           type: 'boolean',
-          description: '用户明确要求列出有哪些工作、定时任务或提醒时设为 true；查询“刚才那个”时不要设置。',
+          description: '列出当前用户最近的至多 20 项记录，包含其他会话中的工作、定时任务和提醒。需要列表或确定目标时设为 true；此时不填写 task_id。',
         },
       },
       additionalProperties: false,
@@ -66,13 +62,13 @@ const respondPermissionTool = {
   type: 'function',
   function: {
     name: RESPOND_PERMISSION_TOOL_NAME,
-    description: '回复当前正在等待用户决定的权限请求。结合刚提出的具体操作、请求允许的选项和用户本轮自然表达判断，不要依赖固定关键词：普通肯定表达选择 once；仅当请求允许且用户明确表示本会话以后都允许时选择 always；明确拒绝时选择 reject；意思不明确时不要调用并继续询问。不得猜测权限来源、代替用户决定或要求固定口令。',
+    description: '回复当前正在等待用户决定的权限请求。结合刚提出的具体操作和用户本轮自然表达判断；意思不明确时先询问。不得猜测权限来源、代替用户决定或要求固定口令。',
     parameters: {
       type: 'object',
       properties: {
         permission_id: {
           type: 'string',
-          description: '待确认权限请求的 ID，必须来自 Gateway 提供的当前权限请求。',
+          description: '原样使用 Gateway 提供的当前待确认权限请求中的 permission_id，不得猜造。',
         },
         task_id: {
           type: 'string',
@@ -81,7 +77,7 @@ const respondPermissionTool = {
         decision: {
           type: 'string',
           enum: ['once', 'always', 'reject'],
-          description: 'once 仅允许当前操作；always 仅在请求明确允许时表示本会话后续同类请求也允许；reject 拒绝当前操作。',
+          description: '只能选择请求列出的决定：once 仅允许当前操作，用于普通肯定表达；always 表示本会话后续同类请求也允许，仅在用户明确要求时选择；reject 拒绝当前操作。',
         },
       },
       required: ['permission_id', 'decision'],
@@ -94,7 +90,7 @@ const respondAgentInputTool = {
   type: 'function',
   function: {
     name: RESPOND_AGENT_INPUT_TOOL_NAME,
-    description: '把用户对当前后台追问的回答交回同一项工作，使其继续执行。仅在系统提供真实的后台输入请求时可用；不得新建工作或猜造 task_id。用户拒绝回答时选择 decline，要求取消这次交互时选择 cancel。',
+    description: '把用户对当前后台追问的回答交回同一项工作，使其继续执行，也可拒绝回答或取消这次交互。',
     parameters: {
       type: 'object',
       properties: {
@@ -126,12 +122,14 @@ const respondAgentInputTool = {
 export const agentTaskToolEntries = [
   {
     definition: spawnThinkingTool,
+    contract: 'core',
     policy: { mode: 'background', repeatHandling: 'handler' },
   },
-  { definition: cancelAgentTaskTool, policy: { mode: 'control' } },
-  { definition: getAgentTaskStatusTool, policy: { mode: 'control' } },
+  { definition: cancelAgentTaskTool, contract: 'core', policy: { mode: 'control' } },
+  { definition: getAgentTaskStatusTool, contract: 'core', policy: { mode: 'control' } },
   {
     definition: respondPermissionTool,
+    contract: 'core',
     policy: {
       mode: 'control',
       requiredCapabilities: [PERMISSION_RESPONSE_CAPABILITY],
@@ -139,6 +137,7 @@ export const agentTaskToolEntries = [
   },
   {
     definition: respondAgentInputTool,
+    contract: 'core',
     policy: {
       mode: 'control',
       requiredCapabilities: [BACKEND_INPUT_RESPONSE_CAPABILITY],

@@ -41,6 +41,7 @@ import {
 } from './tools/features/retrieval-tools.mjs'
 import {
   scheduleToolEntries,
+  scheduleToolForContext,
   SCHEDULE_REMINDER_TOOL_NAME,
 } from './tools/features/schedule-tools.mjs'
 
@@ -115,11 +116,15 @@ function dynamicFrontendTools(agentContext = {}) {
 
 export function frontendTools(agentContext = {}) {
   const spawnThinkingDescription = agentContext?.frontend?.spawnThinkingDescription
-  const tools = frontendToolRegistry.definitions(agentContext).map(tool => (
-    tool === spawnThinkingTool && spawnThinkingDescription
-      ? withSpawnThinkingDescription(spawnThinkingDescription)
-      : tool
-  ))
+  const tools = frontendToolRegistry.definitions(agentContext).map(tool => {
+    if (tool === spawnThinkingTool && spawnThinkingDescription) {
+      return withSpawnThinkingDescription(spawnThinkingDescription)
+    }
+    if (tool.function.name === SCHEDULE_REMINDER_TOOL_NAME) {
+      return scheduleToolForContext(agentContext)
+    }
+    return tool
+  })
   const dynamic = dynamicFrontendTools(agentContext)
   if (dynamic.length) return [...tools, ...dynamic]
   return tools.length === TOOLS.length

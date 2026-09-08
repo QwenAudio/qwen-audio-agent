@@ -5,6 +5,10 @@ chatbot tools without coupling them to a realtime provider or a backend Agent.
 It is separate from the dedicated Web Search provider: Web Search keeps its
 small built-in fallback, while general MCP servers are configured by the user.
 
+Enable only the tools you need and describe their data sources and scope clearly. To replace web
+search, prefer a [Web Search Provider](../guides/web-search.md) instead of exposing the same search
+capability twice to the model.
+
 The Gateway discovers the explicitly enabled tools at startup, gives them
 stable names, and adds them to each Realtime session through the shared
 frontend tool registry and executor.

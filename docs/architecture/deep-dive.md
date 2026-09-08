@@ -15,11 +15,11 @@ runtime behavior.
 The user talks to one qwen-audio assistant. Internally there are two qwen-audio-agent
 layers:
 
-1. **Realtime frontend** — full-duplex speech, simple direct answers, and basic
-   local time/memory tools.
+1. **Realtime frontend** — full-duplex speech, natural conversation, time and
+   memory, plus configurable lightweight tools such as retrieval.
 2. **Backend Agent** — one configured action Agent that handles requests
-   requiring tools, files, applications, code, device control, or multi-step
-   execution.
+   requiring operations in the user's environment, sustained execution, or
+   deliverable creation.
 
 The backend may be an ACP Agent such as OpenCode, OpenClaw, Qoder, Qwen Code,
 MiniMax Code, Kimi Code, or Pi; a remote A2A Agent; or a custom BackendPort adapter.
@@ -60,18 +60,29 @@ item is sent into the configured BackendPort at a time.
 
 ## 3. Realtime boundary
 
-Realtime keeps a deliberately small tool set — few tools, low latency, no
-multi-step orchestration. The base tools are:
+Realtime may combine available tools to fulfill a bounded request; multiple
+tool calls alone do not require backend execution. Tools have two prompt-ownership categories:
 
-```text
-spawn_thinking
-schedule_reminder
-cancel_agent_task
-get_agent_task_status
-get_current_time
-memory
-notes
-```
+| Contract | Tools |
+| --- | --- |
+| Core contract | `spawn_thinking`, `get_agent_task_status`, `cancel_agent_task`, `respond_permission`, `respond_agent_input`, `get_current_time`, `memory` |
+| Optional capabilities | `web_search`, `fetch_url`, `knowledge`, `recall`, `notes`, `schedule_reminder`, `enter_sleep`; dynamic MCP tools are also configuration-dependent |
+
+The fixed `config/frontend-agent/PROMPT.md` may name only core-contract tools.
+It owns stable dialogue, work acknowledgement and results, cancellation,
+confirmation, and memory-persistence workflows. Optional tools carry their own
+purposes and invocation conditions; neither the fixed prompt nor core tools
+may refer back to them. Optional tools must not hard-code each other's names either.
+Field meanings and input rules belong in tool schemas; receipt- or delivery-specific
+instructions belong to the corresponding event. The Gateway enforces availability,
+permissions, and execution validation independently of model compliance.
+
+Registry metadata `contract: core | optional` describes ownership only: it is not
+sent in model tool schemas and does not determine runtime availability. An unconfigured
+backend hides `spawn_thinking`; confirmation tools are exposed only for real pending
+requests. Even core-contract tools cannot be called when unavailable. Tests check
+the fixed prompt, tool references, and capability switches to keep new optional
+features out of core rules.
 
 The Gateway exposes one `respond_permission` tool for pending backend
 permissions and frontend external-tool approvals. The model answers the

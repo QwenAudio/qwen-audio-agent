@@ -11,8 +11,8 @@
 
 用户与一个 qwen-audio 助手对话。内部存在两个 qwen-audio-agent 层：
 
-1. **实时前端** — 全双工语音、简单直接回答，以及基本的本地时间/记忆工具。
-2. **后端 Agent** — 一个用户配置的办事 Agent，负责处理需要工具、文件、应用程序、代码、设备控制或多步执行的请求。
+1. **实时前端** — 全双工语音、自然对话、时间与记忆，以及按配置提供的检索等轻量工具。
+2. **后端 Agent** — 一个用户配置的办事 Agent，负责处理需要操作用户环境、持续执行或制作交付物的请求。
 
 后端可以是 OpenCode、OpenClaw、Qoder、Qwen Code、MiniMax Code、Kimi Code、Pi 等 ACP Agent，
 也可以是远程 A2A Agent 或自定义 BackendPort Adapter。
@@ -50,17 +50,24 @@ final ASR
 
 ## 3. 实时边界
 
-实时前端有意保持极小的工具集——工具少、延迟低、无多步编排。基础工具为：
+实时前端可组合调用当前可用的工具完成范围明确的请求；不会仅因调用次数多就转交后台。
+工具按提示词职责分为两类：
 
-```text
-spawn_thinking
-schedule_reminder
-cancel_agent_task
-get_agent_task_status
-get_current_time
-memory
-notes
-```
+| 契约 | 工具 |
+| --- | --- |
+| 核心契约 | `spawn_thinking`、`get_agent_task_status`、`cancel_agent_task`、`respond_permission`、`respond_agent_input`、`get_current_time`、`memory` |
+| 可选能力 | `web_search`、`fetch_url`、`knowledge`、`recall`、`notes`、`schedule_reminder`、`enter_sleep`；动态 MCP 工具同样随配置提供 |
+
+固定的 `config/frontend-agent/PROMPT.md` 只可点名核心契约工具，维护对话、工作受理与结果、
+取消、确认和记忆持久化等稳定流程。可选工具的用途与调用条件随工具提供，不能在固定
+Prompt 或核心工具中反向引用；可选工具之间也不写死对方的名称。
+字段含义与填写规则归工具 schema，当前回执或投递阶段的指令归对应事件，
+可用性、权限和执行校验由 Gateway 负责，不依赖模型遵守提示词。
+
+注册表的 `contract: core | optional` 仅声明上述职责，不进入模型工具 schema，
+也不决定运行时可用性。未配置后台时不提供 `spawn_thinking`，待确认工具仅在存在真实请求时
+提供；即使属于核心契约，未提供的工具也不能调用。测试检查固定 Prompt、工具引用和
+能力开关，防止新增可选能力重新耦合进核心规则。
 
 当 Gateway 存在待确认的后台权限或前台外部工具审批时，提供统一的
 `respond_permission`。模型只回答权限请求；Gateway 根据 `permission_id` 将决定路由到

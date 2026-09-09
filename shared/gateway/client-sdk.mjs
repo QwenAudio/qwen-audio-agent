@@ -78,6 +78,8 @@ export class GatewayClient {
     reconnectMinMs = 500,
     reconnectMaxMs = 5_000,
     requestTimeoutMs = 10_000,
+    connectTimeoutMs = 10_000,
+    handshakeTimeoutMs = 10_000,
     onEvent,
     onStatus,
     onAction,
@@ -106,6 +108,8 @@ export class GatewayClient {
     this.reconnectMinMs = Math.max(50, Number(reconnectMinMs) || 500)
     this.reconnectMaxMs = Math.max(this.reconnectMinMs, Number(reconnectMaxMs) || 5_000)
     this.requestTimeoutMs = Math.max(100, Number(requestTimeoutMs) || 10_000)
+    this.connectTimeoutMs = Math.max(100, Number(connectTimeoutMs) || 10_000)
+    this.handshakeTimeoutMs = Math.max(100, Number(handshakeTimeoutMs) || 10_000)
     this.onEvent = onEvent
     this.onStatus = onStatus
     this.onAction = onAction
@@ -116,6 +120,8 @@ export class GatewayClient {
     this.negotiatedCapabilities = []
     this.reconnectDelay = this.reconnectMinMs
     this.reconnectTimer = null
+    this.connectTimer = null
+    this.handshakeTimer = null
     this.pending = new Map()
     this.lastSequence = 0
   }
@@ -132,6 +138,7 @@ export class GatewayClient {
     this.ready = false
     clearTimeout(this.reconnectTimer)
     this.reconnectTimer = null
+    this.#clearConnectionTimers()
     this.#rejectPending('client_stopped', 'Gateway Client stopped')
     const socket = this.socket
     this.socket = null
@@ -254,9 +261,20 @@ export class GatewayClient {
         : {},
     })
     this.socket = socket
+    this.connectTimer = setTimeout(() => {
+      if (this.socket !== socket || this.stopped) return
+      this.#expireSocket(socket, 'connection', 'Gateway connection timed out')
+    }, this.connectTimeoutMs)
+    this.connectTimer.unref?.()
     addSocketListener(socket, 'open', () => {
       if (this.socket !== socket || this.stopped) return
-      this.reconnectDelay = this.reconnectMinMs
+      clearTimeout(this.connectTimer)
+      this.connectTimer = null
+      this.handshakeTimer = setTimeout(() => {
+        if (this.socket !== socket || this.stopped || this.ready) return
+        this.#expireSocket(socket, 'handshake', 'Gateway session handshake timed out')
+      }, this.handshakeTimeoutMs)
+      this.handshakeTimer.unref?.()
       this.onStatus?.({ state: 'connected' })
       const configured = typeof this.configure === 'function'
         ? this.configure()
@@ -291,6 +309,7 @@ export class GatewayClient {
     })
     addSocketListener(socket, 'close', eventOrCode => {
       if (this.socket !== socket) return
+      this.#clearConnectionTimers()
       this.socket = null
       this.ready = false
       this.negotiatedCapabilities = []
@@ -318,15 +337,49 @@ export class GatewayClient {
       }
       this.onStatus?.({ state: 'disconnected' })
       if (!this.reconnect) return
-      this.reconnectTimer = setTimeout(() => this.#connect(), this.reconnectDelay)
-      this.reconnectDelay = Math.min(this.reconnectMaxMs, this.reconnectDelay * 2)
+      this.#scheduleReconnect()
     })
+  }
+
+  #clearConnectionTimers() {
+    clearTimeout(this.connectTimer)
+    clearTimeout(this.handshakeTimer)
+    this.connectTimer = null
+    this.handshakeTimer = null
+  }
+
+  #scheduleReconnect() {
+    if (this.stopped || !this.reconnect || this.reconnectTimer !== null) return
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null
+      this.#connect()
+    }, this.reconnectDelay)
+    this.reconnectTimer.unref?.()
+    this.reconnectDelay = Math.min(this.reconnectMaxMs, this.reconnectDelay * 2)
+  }
+
+  #expireSocket(socket, phase, message) {
+    if (this.socket !== socket || this.stopped) return
+    const error = Object.assign(new Error(message), {
+      code: `${phase}_timeout`,
+    })
+    this.#clearConnectionTimers()
+    this.socket = null
+    this.ready = false
+    this.negotiatedCapabilities = []
+    this.#rejectPending('connection_closed', 'Gateway connection closed')
+    this.onStatus?.({ state: 'unavailable', phase, error })
+    try { socket.close?.() } catch { /* The timeout must still schedule recovery. */ }
+    this.#scheduleReconnect()
   }
 
   #receive(event) {
     if (event.type === GatewayClientProtocolEvent.SESSION_READY) {
+      clearTimeout(this.handshakeTimer)
+      this.handshakeTimer = null
       this.ready = true
       this.negotiatedCapabilities = [...event.capabilities]
+      this.reconnectDelay = this.reconnectMinMs
       this.onStatus?.({ state: 'ready', event })
       this.recover().catch(error => this.onStatus?.({ state: 'recovery_failed', error }))
       return

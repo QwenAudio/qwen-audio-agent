@@ -3,6 +3,7 @@ import test from 'node:test'
 import { GatewayClient } from '../shared/gateway/client-sdk.mjs'
 import {
   GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
+  GATEWAY_CLIENT_PROTOCOL_VERSION,
   GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
   GATEWAY_CLIENT_REVOKED_CLOSE_CODE,
   GatewayClientCapability,
@@ -37,6 +38,41 @@ class FakeSocket {
 
   send(value) { this.sent.push(JSON.parse(value)) }
   close() { this.readyState = 3 }
+}
+
+function createTimedClient(t, options = {}) {
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const sockets = []
+  const statuses = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => {
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+    clientInstanceId: 'sdk-timeout-test',
+    connectTimeoutMs: 100,
+    handshakeTimeoutMs: 100,
+    reconnectMinMs: 50,
+    reconnectMaxMs: 200,
+    onStatus: status => statuses.push(status),
+    ...options,
+  })
+  t.after(() => client.stop())
+  client.start()
+  return { client, sockets, statuses }
+}
+
+function completeHandshake(socket) {
+  socket.receive({
+    type: GatewayClientProtocolEvent.SESSION_READY,
+    event_id: 'evt_gateway_timeout_test_ready',
+    request_event_id: socket.sent[0].event_id,
+    protocol_version: GATEWAY_CLIENT_PROTOCOL_VERSION,
+    session_id: 'main',
+    capabilities: [],
+  })
 }
 
 test('passes remote credentials below GCP and requests takeover explicitly', () => {
@@ -112,6 +148,136 @@ test('reference Client negotiates once and correlates runtime commands', async (
   assert.equal((await pending).task.id, 'task-1')
   client.stop()
 })
+
+test('reference Client times out a socket that never opens and retries', t => {
+  const { client, sockets, statuses } = createTimedClient(t)
+
+  t.mock.timers.tick(99)
+  assert.equal(sockets.length, 1)
+  assert.equal(sockets[0].readyState, 0)
+  assert.deepEqual(statuses.map(status => status.state), ['connecting'])
+  t.mock.timers.tick(1)
+  assert.equal(sockets[0].readyState, 3)
+  assert.equal(statuses.at(-1).error.code, 'connection_timeout')
+  assert.equal(statuses.at(-1).phase, 'connection')
+  assert.equal(client.ready, false)
+  t.mock.timers.tick(49)
+  assert.equal(sockets.length, 1)
+  t.mock.timers.tick(1)
+  assert.equal(sockets.length, 2)
+
+  // Late events from the expired socket must not affect its replacement.
+  const statusCount = statuses.length
+  sockets[0].open()
+  sockets[0].receive({
+    type: GatewayClientProtocolEvent.SESSION_READY,
+    event_id: 'evt_expired_socket_ready',
+    protocol_version: GATEWAY_CLIENT_PROTOCOL_VERSION,
+    session_id: 'main',
+    capabilities: [],
+  })
+  sockets[0].emit('close', { code: 1006 })
+  assert.equal(sockets[0].sent.length, 0)
+  assert.equal(statuses.length, statusCount)
+  assert.equal(client.ready, false)
+  assert.equal(client.socket, sockets[1])
+  sockets[1].open()
+  completeHandshake(sockets[1])
+  t.mock.timers.tick(1_000)
+  assert.equal(client.ready, true)
+  assert.equal(sockets.length, 2)
+})
+
+test('reference Client starts the handshake timeout when the socket opens', t => {
+  const { client, sockets, statuses } = createTimedClient(t, { reconnect: false })
+  const socket = sockets[0]
+
+  t.mock.timers.tick(90)
+  socket.open()
+  t.mock.timers.tick(99)
+  assert.equal(socket.readyState, 1)
+  assert.equal(statuses.at(-1).state, 'connected')
+  assert.equal(socket.sent[0].type, GatewayClientProtocolEvent.SESSION_HELLO)
+  t.mock.timers.tick(1)
+  assert.equal(statuses.at(-1).error.code, 'handshake_timeout')
+  assert.equal(statuses.at(-1).phase, 'handshake')
+  assert.equal(socket.readyState, 3)
+  assert.equal(client.ready, false)
+  t.mock.timers.tick(1_000)
+  assert.equal(sockets.length, 1)
+})
+
+test('reference Client clears connection deadlines after a successful handshake', t => {
+  const { client, sockets, statuses } = createTimedClient(t)
+  const socket = sockets[0]
+
+  t.mock.timers.tick(90)
+  socket.open()
+  t.mock.timers.tick(90)
+  completeHandshake(socket)
+  t.mock.timers.tick(1_000)
+
+  assert.equal(client.ready, true)
+  assert.equal(socket.readyState, 1)
+  assert.equal(sockets.length, 1)
+  assert.equal(client.connectTimer, null)
+  assert.equal(client.handshakeTimer, null)
+  assert.deepEqual(statuses.map(status => status.state), ['connecting', 'connected', 'ready'])
+})
+
+test('reference Client resets reconnect backoff only after session readiness', t => {
+  const { client, sockets } = createTimedClient(t)
+  sockets[0].open()
+  t.mock.timers.tick(100)
+  t.mock.timers.tick(49)
+  assert.equal(sockets.length, 1)
+  t.mock.timers.tick(1)
+  assert.equal(sockets.length, 2)
+
+  sockets[1].open()
+  t.mock.timers.tick(100)
+  t.mock.timers.tick(99)
+  assert.equal(sockets.length, 2)
+  t.mock.timers.tick(1)
+  assert.equal(sockets.length, 3)
+
+  sockets[2].open()
+  completeHandshake(sockets[2])
+  assert.equal(client.ready, true)
+  sockets[2].close()
+  sockets[2].emit('close', { code: 1006 })
+  t.mock.timers.tick(49)
+  assert.equal(sockets.length, 3)
+  t.mock.timers.tick(1)
+  assert.equal(sockets.length, 4)
+})
+
+for (const phase of ['connection', 'handshake', 'reconnect']) {
+  test(`reference Client stop cancels pending ${phase} timers`, t => {
+    const { client, sockets, statuses } = createTimedClient(t)
+    const socket = sockets[0]
+    if (phase === 'handshake') socket.open()
+    if (phase === 'reconnect') t.mock.timers.tick(100)
+    const statusCount = statuses.length
+    const sentCount = socket.sent.length
+
+    client.stop()
+    assert.equal(socket.readyState, 3)
+    assert.equal(client.connectTimer, null)
+    assert.equal(client.handshakeTimer, null)
+    assert.equal(client.reconnectTimer, null)
+    socket.open()
+    if (phase === 'handshake') completeHandshake(socket)
+    socket.emit('close', { code: 1006 })
+    t.mock.timers.tick(1_000)
+
+    assert.equal(client.ready, false)
+    assert.equal(client.socket, null)
+    assert.equal(sockets.length, 1)
+    assert.equal(socket.sent.length, sentCount)
+    assert.equal(statuses.length, statusCount)
+  })
+}
 
 test('reference Client correlates task input response results', async () => {
   const socket = new FakeSocket()

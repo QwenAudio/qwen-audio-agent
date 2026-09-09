@@ -126,7 +126,7 @@ export function createGatewayApplication({
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || new SessionJournalRegistry({
-  directory: resolve(config.configDirectory, 'sessions'), logger,
+  directory: resolve(config.stateDirectory, 'sessions'), logger,
 })
 taskStore ||= taskManager?.repository?.store || new TaskStore({
   filePath: config.taskStatePath,
@@ -403,7 +403,7 @@ if (config.sessionDigestEnabled) {
       })
     : null
 }
-// 内置资料存储：用户导入的手册 / 规章 / 教材。资料本体保留在既有的 domain/
+// 内置资料存储：用户导入的手册 / 规章 / 教材。资料本体保存在共享 knowledge/documents/
 // 目录，Provider 直接读取 Markdown 片段完成基础检索；后台 Agent 只可作为复杂
 // 文档入库时的隔离转换器。
 let domainLibrary = null
@@ -1002,17 +1002,18 @@ app.get('/api/tasks/:id/events', (req, res) => {
 })
 
 const webDist = webDistributionPath()
-// Imported orb skins live under the config directory. The orb page fetches
-// `skins/<id>/...` relative to its own origin, so serving them here means a
-// host that points a window at the Gateway needs no separate asset server.
-// Static assets only, no fallback to index.html for missing files.
-app.use('/skins', express.static(resolve(config.configDirectory, 'skins'), {
-  index: false,
-  redirect: false,
-  dotfiles: 'ignore',
-  // Imports and removals must be visible on the next orb reload.
-  setHeaders: response => response.setHeader('cache-control', 'no-store'),
-}), (req, res) => res.status(404).json({ error: 'not found' }))
+// Desktop serves its own skins. An embedding host may explicitly share a
+// client-owned asset directory for read-only web hosting; Gateway never owns
+// or discovers skins in its data directories.
+if (config.webSkinsDirectory) {
+  app.use('/skins', express.static(config.webSkinsDirectory, {
+    index: false,
+    redirect: false,
+    dotfiles: 'ignore',
+    setHeaders: response => response.setHeader('cache-control', 'no-store'),
+  }))
+}
+app.use('/skins', (req, res) => res.status(404).json({ error: 'not found' }))
 app.use(express.static(webDist))
 app.get('*', (req, res) => res.sendFile(resolve(webDist, 'index.html')))
 app.use((error, req, res, next) => {

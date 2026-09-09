@@ -89,9 +89,9 @@ Outputs are in `dist/desktop/`. Local test builds are not equivalent to official
 
 ## Data Directory and Isolation
 
-Configuration, identity, memory, and workspace are shared with CLI. Gateway locks, tasks, sessions,
-logs, skins, and window state live in Desktop's application data directory. Both can run at once,
-but that does not mean they connect to the same Gateway.
+Desktop-hosted and CLI-hosted Gateways share configuration, identity, memory and workspace, but keep runtime state separate.
+Desktop preferences, window placement, skins, wake-word models and connection credentials stay in the client application directory.
+Both can run at once, but that does not mean they connect to the same Gateway.
 See [configuration directories](../configuration.md#configuration-and-data-directories) for paths and overrides.
 
 ## Auto Update and Logs

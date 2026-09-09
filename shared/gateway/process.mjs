@@ -59,6 +59,10 @@ export class GatewayProcess {
     // `backend: 'none'` or `wakeWord: false` cannot drift between launch
     // shapes. Unset options leave the environment's decision in place.
     configDir,
+    dataDir,
+    stateDir,
+    cacheDir,
+    workspace,
     backend,
     wakeWord,
     owner,
@@ -76,6 +80,10 @@ export class GatewayProcess {
     this.logger = logger
     this.hostEnvironment = gatewayOptionsEnvironment({
       configDir,
+      dataDir,
+      stateDir,
+      cacheDir,
+      workspace,
       backend,
       wakeWord,
       owner,

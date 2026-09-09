@@ -256,6 +256,17 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     },
   })
   assert.equal(directAuthenticated.status, 200)
+  for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test', 'https://untrusted.example']) {
+    const deniedSession = await requestJson({
+      port,
+      path: '/api/access/session',
+      method: 'POST',
+      headers: { Host: 'voice.example.ts.net', Origin },
+      body: { token: direct.access_token },
+    })
+    assert.equal(deniedSession.status, 403)
+    assert.equal(deniedSession.headers['set-cookie'], undefined)
+  }
   const browserSession = await requestJson({
     port,
     path: '/api/access/session',
@@ -310,6 +321,15 @@ test('protects remote HTTP access and completes one-time device pairing', async 
     },
   })
   assert.equal(directDeniedAfterRevocation.status, 401)
+  for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test', 'file:///tmp/test']) {
+    const deniedOrigin = await requestJson({
+      port,
+      path: '/api/health',
+      headers: { Host: 'gateway.example.test', Authorization: `Bearer ${accessToken}`, Origin },
+    })
+    assert.equal(deniedOrigin.status, 403)
+    assert.deepEqual(deniedOrigin.body, { error: 'origin not allowed' })
+  }
   const ticket = await requestJson({
     port,
     path: '/api/access/pairing-tickets',
@@ -319,6 +339,17 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   })
   assert.equal(ticket.status, 201)
   assert.equal(ticket.body.gatewayUrl, 'https://voice.example.ts.net')
+  for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test']) {
+    const deniedPairing = await requestJson({
+      port,
+      path: '/api/access/pair',
+      method: 'POST',
+      headers: { Host: 'gateway.example.test', Origin },
+      body: { code: ticket.body.code, device: { id: 'untrusted-browser', type: 'web' } },
+    })
+    assert.equal(deniedPairing.status, 403)
+  }
+  // Rejected origins must not consume the one-time ticket.
   const paired = await requestJson({
     port,
     path: '/api/access/pair',

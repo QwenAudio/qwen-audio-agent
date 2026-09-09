@@ -514,12 +514,11 @@ app.get('/c', (_req, res) => {
   return res.type('html').send(gatewayBrowserPairingPage())
 })
 
-// Pairing is the only unauthenticated remote operation. The short-lived,
-// one-time ticket is created by an already authenticated local Client. Native
-// clients may omit Origin; browsers still have to come from an allowlisted
-// public origin.
+// Legacy pairing authenticates with a short-lived, one-time ticket created by
+// a local Client. Native clients may omit Origin; browser Origins are checked
+// before the ticket is redeemed.
 app.post('/api/access/pair', (req, res) => {
-  if (req.headers.origin && !isAllowedOrigin(req, {
+  if (req.headers.origin !== undefined && !isAllowedOrigin(req, {
     allowedOrigins: config.allowedOrigins,
     allowSecureSameOrigin: true,
   })) {

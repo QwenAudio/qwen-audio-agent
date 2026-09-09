@@ -23,11 +23,16 @@ function readOwner(lockPath) {
   return null
 }
 
-function malformedLockIsStale(lockPath, now, staleMs) {
+function lockIsStale(lockPath, now, staleMs) {
   try {
     return now() - statSync(lockPath).mtimeMs >= staleMs
-  } catch {
-    return true
+  } catch (error) {
+    // A released lock is not a stale lock. Another process can acquire this
+    // path before we handle ENOENT; reclaiming it would delete that new lock.
+    // Retry acquisition instead. Other stat failures are not proof of expiry
+    // either, and must surface without touching a possibly live owner's lock.
+    if (error?.code === 'ENOENT') return false
+    throw error
   }
 }
 
@@ -86,7 +91,7 @@ function acquire(filePath, {
       // and containers and can make two live processes both believe they own
       // the same transaction. Transactions here are synchronous and short;
       // an abandoned lock is recovered after the bounded stale interval.
-      const stale = malformedLockIsStale(lockPath, now, staleMs)
+      const stale = lockIsStale(lockPath, now, staleMs)
       if (stale && reclaim(lockPath, token)) continue
       if (now() >= deadline) {
         const timeout = new Error(`timed out waiting for shared file lock: ${filePath}`)

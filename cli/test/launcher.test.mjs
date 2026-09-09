@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, statSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PassThrough } from 'node:stream'
@@ -30,7 +30,10 @@ function harness({ ownsProcesses = false } = {}) {
       signalSource: new EventEmitter(),
       prepareEnvironment: () => ({
         configDirectory: '/home/user/.config/qwaudio',
-        dataDirectory: '/home/user/.config/qwaudio',
+        stateDirectory: '/home/user/.config/qwaudio/state',
+        cacheDirectory: '/home/user/.config/qwaudio/cache',
+        sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
+        dataDirectory: '/home/user/.config/qwaudio/data',
         configPath: '/home/user/.config/qwaudio/config.env',
       }),
       refreshPath: () => {},
@@ -102,7 +105,7 @@ function harness({ ownsProcesses = false } = {}) {
         return {
           installed: true,
           running: action !== 'stop' && action !== 'uninstall',
-          logPath: '/home/user/.config/qwaudio/logs/gateway.log',
+          logPath: '/home/user/.config/qwaudio/state/logs/gateway.log',
         }
       },
       waitForService: async url => {
@@ -472,7 +475,11 @@ test('passes the configured local Gateway host and port to its service', async (
   assert.deepEqual(install[2].serviceEnvironment, {
     HOST: '127.0.0.1',
     PORT: '3200',
-    QWAUDIO_DATA_DIR: '/home/user/.config/qwaudio',
+    QWAUDIO_CONFIG_DIR: '/home/user/.config/qwaudio',
+    QWAUDIO_DATA_DIR: '/home/user/.config/qwaudio/data',
+    QWAUDIO_STATE_DIR: '/home/user/.config/qwaudio/state',
+    QWAUDIO_CACHE_DIR: '/home/user/.config/qwaudio/cache',
+    QWAUDIO_WORKSPACE: '/home/user/.config/qwaudio/data/workspace',
   })
 })
 
@@ -517,7 +524,10 @@ test('refreshes the shared process PATH before starting a background service', a
 test('passes a custom shared profile directory to the background service', async () => {
   const target = harness()
   target.dependencies.prepareEnvironment = () => ({
-    configDirectory: '/home/user/.config/qwaudio-runtime',
+    configDirectory: '/home/user/.config/qwaudio-config',
+    stateDirectory: '/home/user/.config/qwaudio-runtime',
+    cacheDirectory: '/home/user/.config/qwaudio-cache',
+    sharedWorkspace: '/home/user/workspace',
     dataDirectory: '/home/user/.config/qwaudio-profile',
     configPath: '/home/user/.config/qwaudio-profile/config.env',
   })
@@ -615,7 +625,11 @@ test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
     expiresAt: Date.now() + 60_000,
   }))
   const connected = harness()
-  connected.dependencies.createConnectionProfiles = () => profileStore
+  connected.dependencies.env.QWAUDIO_TUI_DIR = '/client-connections'
+  connected.dependencies.createConnectionProfiles = directory => {
+    assert.equal(directory, '/client-connections')
+    return profileStore
+  }
   connected.dependencies.pairConnectionCode = async (decoded, options) => {
     assert.equal(decoded.gateway_url, 'https://voice.example.test')
     const profile = {
@@ -632,7 +646,21 @@ test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
   assert.match(connected.calls.at(-1)[1], /voice\.example\.test/)
 
   const tui = harness()
-  tui.dependencies.createConnectionProfiles = () => profileStore
+  tui.dependencies.env.QWAUDIO_TUI_DIR = '/client-connections'
+  tui.dependencies.createConnectionProfiles = directory => {
+    assert.equal(directory, '/client-connections')
+    return profileStore
+  }
+  tui.dependencies.acquireInstance = (directory, instanceKey) => {
+    assert.equal(directory, '/client-connections')
+    assert.equal(instanceKey, '/home/user/.config/qwaudio/state')
+    return { release() {} }
+  }
+  const prepare = tui.dependencies.prepareEnvironment
+  tui.dependencies.prepareEnvironment = options => {
+    assert.equal(options.readOnly, true, 'connecting a client must not initialize Gateway data')
+    return prepare(options)
+  }
   let inspected = null
   tui.dependencies.inspectGateway = async (url, accessToken) => {
     inspected = { url, accessToken }
@@ -646,7 +674,11 @@ test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
   assert.equal(tui.calls[0][1].accessToken, 'paired-token')
 
   const disconnected = harness()
-  disconnected.dependencies.createConnectionProfiles = () => profileStore
+  disconnected.dependencies.env.QWAUDIO_TUI_DIR = '/client-connections'
+  disconnected.dependencies.createConnectionProfiles = directory => {
+    assert.equal(directory, '/client-connections')
+    return profileStore
+  }
   assert.equal(await main(['disconnect'], disconnected.dependencies), 0)
   assert.equal(profiles.size, 0)
 })
@@ -656,6 +688,47 @@ test('requires a running Gateway for client commands', async () => {
   target.dependencies.inspectGateway = async () => null
   await assert.rejects(main(['tui'], target.dependencies), /请先执行/)
   assert.deepEqual(target.calls, [])
+})
+
+test('client commands persist only in product-root/tui without initializing Gateway data', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-product-client-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const target = harness()
+  target.dependencies.env.QWAUDIO_CONFIG_DIR = directory
+  delete target.dependencies.prepareEnvironment
+  delete target.dependencies.createConnectionProfiles
+  delete target.dependencies.acquireInstance
+  const pairingCode = encodeGatewayPairingCode(createGatewayPairingCode({
+    gatewayUrl: 'https://voice.example.test',
+    pairingCode: 'fixture-ticket',
+    expiresAt: Date.now() + 60_000,
+  }))
+  target.dependencies.pairConnectionCode = async (decoded, options) => {
+    const profile = {
+      id: options.profileId,
+      gateway_url: decoded.gateway_url,
+      device_id: options.device.id,
+      credential_ref: `gateway/${options.device.id}`,
+      client_instance_id: options.clientInstanceId,
+    }
+    await options.profileStore.save(profile, 'fixture-credential')
+    return { profile, owner_id: 'user_personal' }
+  }
+
+  assert.equal(await main(['connect', pairingCode], target.dependencies), 0)
+  assert.deepEqual(readdirSync(directory), ['tui'])
+  const clientDirectory = join(directory, 'tui')
+  assert.deepEqual(readdirSync(clientDirectory).sort(), [
+    'gateway-client-credentials.json', 'gateway-connections.json',
+  ])
+  assert.equal(await main(['tui'], target.dependencies), 11)
+  assert.equal(readdirSync(clientDirectory).some(file => file.endsWith('.lock')), false)
+  assert.equal(await main(['disconnect'], target.dependencies), 0)
+  const connections = JSON.parse(readFileSync(join(clientDirectory, 'gateway-connections.json'), 'utf8'))
+  const credentials = JSON.parse(readFileSync(join(clientDirectory, 'gateway-client-credentials.json'), 'utf8'))
+  assert.deepEqual(connections.profiles, [])
+  assert.deepEqual(credentials.credentials, {})
+  assert.deepEqual(readdirSync(directory), ['tui'])
 })
 
 test('prints status and configuration without starting a service', async () => {
@@ -675,6 +748,9 @@ test('shows and sets the Gateway model without restarting it', async () => {
   const target = harness()
   target.dependencies.prepareEnvironment = () => ({
     configDirectory: '/home/user/.config/qwaudio',
+    stateDirectory: '/home/user/.config/qwaudio/state',
+    cacheDirectory: '/home/user/.config/qwaudio/cache',
+    sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
     configPath: '/home/user/.config/qwaudio/config.env',
   })
   target.dependencies.env = {
@@ -703,6 +779,9 @@ test('warns when an environment model overrides config set', async () => {
   const target = harness()
   target.dependencies.prepareEnvironment = () => ({
     configDirectory: '/home/user/.config/qwaudio',
+    stateDirectory: '/home/user/.config/qwaudio/state',
+    cacheDirectory: '/home/user/.config/qwaudio/cache',
+    sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
     configPath: '/home/user/.config/qwaudio/config.env',
   })
   target.dependencies.env = {
@@ -797,6 +876,9 @@ test('installs a backend through the injected installer', async () => {
     preparation = options
     return {
       configDirectory: '/home/user/.config/qwaudio',
+      stateDirectory: '/home/user/.config/qwaudio/state',
+      cacheDirectory: '/home/user/.config/qwaudio/cache',
+      sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
       configPath: '/home/user/.config/qwaudio/config.env',
     }
   }
@@ -933,6 +1015,9 @@ test('prints a reusable read-only backend setup report', async () => {
     preparation = options
     return {
       configDirectory: '/home/user/.config/qwaudio',
+      stateDirectory: '/home/user/.config/qwaudio/state',
+      cacheDirectory: '/home/user/.config/qwaudio/cache',
+      sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
       configPath: '/home/user/.config/qwaudio/config.env',
     }
   }

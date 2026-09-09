@@ -7,6 +7,7 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
+import { resolveRuntimePaths, runtimePathEnvironment } from '../../shared/runtime-paths.mjs'
 
 export const GATEWAY_SERVICE_LABEL = 'com.qwen-audio-agent.gateway'
 
@@ -47,6 +48,7 @@ export function gatewayServiceDefinition({
   xdgConfigHome = process.env.XDG_CONFIG_HOME
     || resolve(homeDirectory, '.config'),
   configDirectory,
+  stateDirectory,
   nodePath = process.execPath,
   gatewayPath,
   pathEnvironment = process.env.PATH || '',
@@ -55,16 +57,21 @@ export function gatewayServiceDefinition({
 } = {}) {
   if (!configDirectory) throw new Error('缺少 qwen-audio-agent 配置目录')
   if (!gatewayPath) throw new Error('缺少 qwen-audio-agent Gateway 路径')
-  const logsDirectory = resolve(configDirectory, 'logs')
-  const metadataPath = resolve(configDirectory, 'gateway-service.json')
+  const paths = resolveRuntimePaths({
+    env: { ...serviceEnvironment, QWAUDIO_CONFIG_DIR: configDirectory,
+      ...(stateDirectory ? { QWAUDIO_STATE_DIR: stateDirectory } : {}) },
+    homeDirectory,
+  })
+  const logsDirectory = resolve(paths.stateDirectory, 'logs')
+  const metadataPath = resolve(paths.stateDirectory, 'gateway-service.json')
   const command = [nodePath, gatewayPath]
   const workingDirectory = dirname(gatewayPath)
   const environment = {
-    QWAUDIO_CONFIG_DIR: configDirectory,
     QWEN_AUDIO_GATEWAY_OWNER: 'service',
     QWEN_AUDIO_LOG_CONSOLE: '0',
     PATH: pathEnvironment,
     ...serviceEnvironment,
+    ...runtimePathEnvironment(paths),
   }
 
   if (platform === 'darwin') {
@@ -357,6 +364,7 @@ export async function manageGatewayService(action, {
   xdgConfigHome = process.env.XDG_CONFIG_HOME
     || resolve(homeDirectory, '.config'),
   configDirectory,
+  stateDirectory,
   nodePath = process.execPath,
   gatewayPath,
   pathEnvironment = process.env.PATH || '',
@@ -370,6 +378,7 @@ export async function manageGatewayService(action, {
     homeDirectory,
     xdgConfigHome,
     configDirectory,
+    stateDirectory,
     nodePath,
     gatewayPath,
     pathEnvironment,

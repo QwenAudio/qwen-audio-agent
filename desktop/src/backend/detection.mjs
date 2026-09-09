@@ -5,6 +5,7 @@ const defaultWorkerUrl = new URL('./detection-worker.mjs', import.meta.url)
 export function detectBackendSetups({
   env = process.env,
   platform = process.platform,
+  pathCacheFile = '',
   WorkerImpl = Worker,
   workerUrl = defaultWorkerUrl,
   timeoutMs = 15_000,
@@ -14,6 +15,7 @@ export function detectBackendSetups({
       workerData: {
         env: { ...env },
         platform,
+        pathCacheFile,
       },
     })
     let settled = false

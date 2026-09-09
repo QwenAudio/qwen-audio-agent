@@ -68,10 +68,10 @@ below instead of assuming the old list.
 | Capability | Meaning | Locked by |
 | --- | --- | --- |
 | `web.same-origin-ui` | The Gateway statically hosts the web UI at its own origin; a webview pointed at the Gateway URL needs no extra configuration | `test/consumer-install.test.mjs` |
-| `web.skin-assets` | Imported orb skins are served at `/skins/<id>/` on the Gateway origin, so the orb page's same-origin asset fetches work without a separate static server | `test/consumer-install.test.mjs` |
+| `web.skin-assets` | Hosts can explicitly set `QWEN_AUDIO_WEB_SKINS_DIR` to serve client-owned assets read-only at `/skins/<id>/`; no Gateway data directory is scanned | `test/consumer-install.test.mjs` |
 | `gateway.instance-lease` | A lease in the config directory names the running instance; `/api/health` echoes `gatewayInstanceId` so a foreign process on the same port is never mistaken for this Gateway | `test/consumer-install.test.mjs` |
 | `gateway.setup-gate` | An unconfigured start is refused with `QWAUDIO_GATEWAY_SETUP_REQUIRED` and a `missing` list instead of serving an instance whose voice cannot work | `test/gateway-setup.test.mjs` |
-| `gateway.settings-store` | Configuration persistence is owned by this package: `createSettingsStore({ configDir })` — a host names no setting and no file of its own | `desktop/test/settings-store.test.mjs` |
+| `gateway.settings-store` | Configuration persistence is owned by this package: `createSettingsStore({ configDir, clientDir })` — a host names no setting and no file of its own | `desktop/test/settings-store.test.mjs` |
 | `gateway.remote-access-pairing` | Loopback stays zero-config; remote HTTP/WS access requires a configured or paired credential, and local operators can issue and revoke device tokens | `server/test/gateway-access.test.mjs`, `server/test/request-security.test.mjs` |
 | `host.electron-entry` | `qwen-audio-agent/electron`: a CommonJS entry an Electron main process can `require`, loading every ESM contract through one `load()` | `test/consumer-install.test.mjs` |
 | `host.gateway-process` | `GatewayProcess` ships: forking, port fallback, the readiness handshake, restart, and telling a planned exit from a crash — the desktop app runs the same implementation | `desktop/test/gateway-process.test.mjs` |
@@ -147,10 +147,15 @@ demand it.
 const audioAgent = require('qwen-audio-agent/electron')
 const api = await audioAgent.load()
 
-const settings = api.createSettingsStore({ configDir })
+// configDir is Gateway-owned; clientDir is the host's client data directory.
+const settings = api.createSettingsStore({ configDir, clientDir })
+const skinsRoot = api.skinsDirectory(clientDir)
 if (!settings.ready()) { /* collect settings.status().missing, settings.save(...) */ }
 
-const gateway = api.createGatewayProcess({ configDir, wakeWord: false })
+const gateway = api.createGatewayProcess({
+  configDir,
+  env: { ...process.env, QWEN_AUDIO_WEB_SKINS_DIR: skinsRoot },
+})
 const origin = await gateway.start()
 
 const placement = api.createOrbPlacement({
@@ -177,7 +182,7 @@ const shell = api.bindOrbShell({
 })
 
 // Applying an imported skin:
-api.importSkin({ source, skinsRoot: api.skinsDirectory(configDir) })
+await api.importSkin({ source, skinsRoot })
 settings.save({ orbSkin: 'firefly--lingxiaotian' })
 await orb.load()
 ```

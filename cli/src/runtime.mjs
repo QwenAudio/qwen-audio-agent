@@ -425,9 +425,9 @@ export async function ensureRuntime(options, {
     ? backendDefinition(backend.protocol)?.label || backend.protocol
     : '后台 Agent'
   let health = await readGatewayHealth(options.url, fetchImpl)
-  if (!health && local && runtimeEnvironment?.configDirectory) {
+  if (!health && local && runtimeEnvironment?.stateDirectory) {
     const active = await findRunningGateway(
-      runtimeEnvironment.configDirectory,
+      runtimeEnvironment.stateDirectory,
       {
         readHealth: origin => readGatewayHealth(origin, fetchImpl),
       },
@@ -469,8 +469,8 @@ export async function ensureRuntime(options, {
           'Gateway',
         )
       } catch (startupError) {
-        const winner = runtimeEnvironment?.configDirectory
-          ? await findRunningGateway(runtimeEnvironment.configDirectory, {
+        const winner = runtimeEnvironment?.stateDirectory
+          ? await findRunningGateway(runtimeEnvironment.stateDirectory, {
               readHealth: origin => readGatewayHealth(origin, fetchImpl),
               timeoutMs: 3000,
             })

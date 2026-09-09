@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import { join, posix, win32 } from 'node:path'
 import test from 'node:test'
+import { spawn } from 'node:child_process'
 import {
   KNOWLEDGE_LIMITS,
   KnowledgeImportError,
@@ -12,6 +13,37 @@ import {
 
 const OWNER = 'user_personal'
 const NOW = Date.parse('2026-08-26T09:00:00Z')
+
+test('concurrent Gateway imports preserve the shared index', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'qwaudio-shared-knowledge-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const docs = join(root, 'documents')
+  const indexPath = join(root, 'index.json')
+  const moduleUrl = new URL('../src/knowledge/local-library.mjs', import.meta.url).href
+  const workers = Array.from({ length: 4 }, (_, worker) => {
+    const source = join(root, `source-${worker}.md`)
+    writeFileSync(source, `# Document ${worker}`)
+    const script = `
+      import { KnowledgeLibrary } from ${JSON.stringify(moduleUrl)};
+      const library = new KnowledgeLibrary(${JSON.stringify({ documentDirectory: docs, indexPath })});
+      for (let i = 0; i < 8; i++) {
+        library.import({ ownerId: 'worker-' + ${worker} + '-' + i, sourcePath: ${JSON.stringify(source)} });
+      }
+    `
+    return new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, ['--input-type=module', '-e', script], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      })
+      let stderr = ''
+      child.stderr.on('data', data => { stderr += data })
+      child.on('error', reject)
+      child.on('exit', (code, signal) => code === 0 ? resolve() : reject(new Error(stderr || signal)))
+    })
+  })
+  await Promise.all(workers)
+  const persisted = JSON.parse(readFileSync(indexPath, 'utf8'))
+  assert.equal(Object.keys(persisted.owners).length, 32)
+})
 
 // 每个用例一套独立目录：source 放用户原始文件，docs 是资料库落盘目录
 function withDirs(run) {

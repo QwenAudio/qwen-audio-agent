@@ -51,10 +51,10 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | 能力位 | 含义 | 锁定测试 |
 | --- | --- | --- |
 | `web.same-origin-ui` | Gateway 在自己的 origin 上静态托管 Web UI，webview 指向 Gateway 地址即可，无需额外配置 | `test/consumer-install.test.mjs` |
-| `web.skin-assets` | 导入的悬浮球皮肤在 Gateway origin 的 `/skins/<id>/` 下提供，悬浮球页面的同源素材请求无需宿主另起静态服务 | `test/consumer-install.test.mjs` |
+| `web.skin-assets` | 宿主可显式设置 `QWEN_AUDIO_WEB_SKINS_DIR`，在 `/skins/<id>/` 只读提供客户端资源；不扫描网关数据目录 | `test/consumer-install.test.mjs` |
 | `gateway.instance-lease` | 配置目录中的租约标识运行中的实例；`/api/health` 回显 `gatewayInstanceId`，同端口的陌生进程不会被误认为本 Gateway | `test/consumer-install.test.mjs` |
 | `gateway.setup-gate` | 未配置的启动以 `QWAUDIO_GATEWAY_SETUP_REQUIRED` 拒绝并附带 `missing` 清单，而不是运行一个语音不可用的实例 | `test/gateway-setup.test.mjs` |
-| `gateway.settings-store` | 配置持久化由本包自持：`createSettingsStore({ configDir })`——宿主不认识任何配置项、不持有任何配置文件 | `desktop/test/settings-store.test.mjs` |
+| `gateway.settings-store` | 配置持久化由本包自持：`createSettingsStore({ configDir, clientDir })`——宿主不认识任何配置项、不持有任何配置文件 | `desktop/test/settings-store.test.mjs` |
 | `gateway.remote-access-pairing` | 本机访问保持零配置；远程 HTTP/WS 必须使用配置或配对凭据，本机操作者可签发和撤销设备令牌 | `server/test/gateway-access.test.mjs`、`server/test/request-security.test.mjs` |
 | `host.electron-entry` | `qwen-audio-agent/electron`：Electron 主进程可直接 `require` 的 CommonJS 入口，一次 `load()` 拿到全部契约 | `test/consumer-install.test.mjs` |
 | `host.gateway-process` | `GatewayProcess` 随包发布：fork、端口回退、就绪握手、重启、计划退出与崩溃分离——桌面版跑的是同一份实现 | `desktop/test/gateway-process.test.mjs` |
@@ -128,10 +128,15 @@ CommonJS（边界所需）外，其余均为 ESM。
 const audioAgent = require('qwen-audio-agent/electron')
 const api = await audioAgent.load()
 
-const settings = api.createSettingsStore({ configDir })
+// configDir 属于网关，clientDir 是宿主的客户端数据目录。
+const settings = api.createSettingsStore({ configDir, clientDir })
+const skinsRoot = api.skinsDirectory(clientDir)
 if (!settings.ready()) { /* 展示 settings.status().missing，settings.save(...) */ }
 
-const gateway = api.createGatewayProcess({ configDir, wakeWord: false })
+const gateway = api.createGatewayProcess({
+  configDir,
+  env: { ...process.env, QWEN_AUDIO_WEB_SKINS_DIR: skinsRoot },
+})
 const origin = await gateway.start()
 
 const placement = api.createOrbPlacement({
@@ -158,7 +163,7 @@ const shell = api.bindOrbShell({
 })
 
 // 导入皮肤并生效：
-api.importSkin({ source, skinsRoot: api.skinsDirectory(configDir) })
+await api.importSkin({ source, skinsRoot })
 settings.save({ orbSkin: 'firefly--lingxiaotian' })
 await orb.load()
 ```

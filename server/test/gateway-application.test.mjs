@@ -104,6 +104,39 @@ function disabledBackend() {
   }
 }
 
+for (const shareClientAssets of [false, true]) {
+  test(`Gateway serves only explicitly shared client skins (enabled=${shareClientAssets})`, async t => {
+    const directory = mkdtempSync(join(tmpdir(), 'qwaudio-skin-ownership-'))
+    const dataDirectory = join(directory, 'gateway/data')
+    const clientSkins = join(directory, 'client/skins')
+    for (const root of [join(dataDirectory, 'skins'), clientSkins]) {
+      mkdirSync(join(root, 'probe'), { recursive: true })
+      writeFileSync(join(root, 'probe/pet.json'), JSON.stringify({ clientOwned: root === clientSkins }))
+    }
+    const application = createTestGatewayApplication({
+      config: {
+        ...config, host: '127.0.0.1', port: 0, dataDirectory,
+        webSkinsDirectory: shareClientAssets ? clientSkins : '',
+        gatewayAccessToken: '', gatewayAccessKeys: '',
+        gatewayDeviceStatePath: join(directory, 'devices.json'),
+      },
+      parentPort: null, autoStart: false, frontendMcp: null, frontendOpenApi: null,
+    })
+    t.after(async () => {
+      await application.close()
+      rmSync(directory, { recursive: true, force: true })
+    })
+    application.start()
+    if (!application.server.listening) await once(application.server, 'listening')
+    const { port } = application.server.address()
+    const result = await requestJson({ port, path: '/skins/probe/pet.json' })
+    assert.equal(result.status, shareClientAssets ? 200 : 404)
+    if (shareClientAssets) assert.deepEqual(result.body, { clientOwned: true })
+    const missing = await requestJson({ port, path: '/skins/missing/pet.json' })
+    assert.equal(missing.status, 404)
+  })
+}
+
 function customTaskAnnouncementRuntime() {
   const methods = names => Object.fromEntries(
     names.map(name => [name, () => {}]),
@@ -941,9 +974,9 @@ test('converts a PDF through the BackendPort and ingests what the backend wrote'
   }
 })
 
-test('defaults the domain document directory into the shared backend workspace', () => {
-  // 后端默认 cwd 是 ${configDirectory}/workspace，资料放它下面后端才读得到
-  assert.match(config.domainDocumentDirectory, /workspace[/\\]domain$/)
+test('keeps knowledge documents and index in shared data, independent of the workspace', () => {
+  assert.equal(config.domainDocumentDirectory, join(config.dataDirectory, 'knowledge/documents'))
+  assert.equal(config.domainIndexPath, join(config.dataDirectory, 'knowledge/index.json'))
 })
 
 // 会话摘要是独立开关：它不依赖偏好自更新，也不该被后者带起来。

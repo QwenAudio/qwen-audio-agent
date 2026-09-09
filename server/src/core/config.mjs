@@ -1,9 +1,9 @@
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import {
-  defaultBackendWorkspace,
   loadRuntimeEnvironment,
 } from '../../../shared/runtime-environment.mjs'
+import { defaultBackendWorkspace } from '../../../shared/runtime-paths.mjs'
 import {
   backendDefinition,
   backendNames,
@@ -63,7 +63,7 @@ export function resolveDisabledFrontendTools(env = process.env) {
 export function resolveBackendWorkspace(
   protocol,
   env = process.env,
-  configDirectory = runtimeEnvironment.dataDirectory,
+  dataDirectory = runtimeEnvironment.dataDirectory,
 ) {
   const definition = backendDefinition(protocol)
   if (!definition?.workspaceEnvironment) {
@@ -72,7 +72,7 @@ export function resolveBackendWorkspace(
   const configured = env[definition.workspaceEnvironment]
   return configured
     ? resolve(root, configured)
-    : defaultBackendWorkspace(configDirectory)
+    : defaultBackendWorkspace(dataDirectory, env, root)
 }
 
 export function resolveAcpArgs(value) {
@@ -235,6 +235,12 @@ export const config = {
   root,
   configDirectory: runtimeEnvironment.configDirectory,
   dataDirectory: runtimeEnvironment.dataDirectory,
+  stateDirectory: runtimeEnvironment.stateDirectory,
+  cacheDirectory: runtimeEnvironment.cacheDirectory,
+  // Optional read-only hosting of assets owned by an embedding client.
+  webSkinsDirectory: process.env.QWEN_AUDIO_WEB_SKINS_DIR
+    ? resolve(process.env.QWEN_AUDIO_WEB_SKINS_DIR)
+    : '',
   host: process.env.HOST || '127.0.0.1',
   // PORT=0 lets an embedded host (e.g. the desktop app) fall back to a
   // random loopback port and learn it from the child process report.
@@ -305,8 +311,8 @@ export const config = {
     process.env.QWEN_AUDIO_AGENT_ACCESS_KEYS || '',
   ).trim(),
   gatewayDeviceStatePath: resolve(
-    runtimeEnvironment.configDirectory,
-    'state/gateway-devices.json',
+    runtimeEnvironment.stateDirectory,
+    'gateway-devices.json',
   ),
   agentProtocol: requestedAgentProtocol,
   backendOwnership,
@@ -415,7 +421,7 @@ export const config = {
       directory: resolveBackendWorkspace('deepseek'),
       cliPath: String(process.env.DEEPSEEK_HARNESS_ACP_BIN || '').trim(),
       sessionRoot: resolve(
-        runtimeEnvironment.configDirectory,
+        runtimeEnvironment.stateDirectory,
         'backends/deepseek-harness/sessions',
       ),
     },
@@ -489,7 +495,7 @@ export const config = {
     : runtimeEnvironment.taskStatePath,
   backendSessionStatePath: process.env.QWEN_AUDIO_AGENT_BACKEND_SESSION_STATE_PATH
     ? resolve(root, process.env.QWEN_AUDIO_AGENT_BACKEND_SESSION_STATE_PATH)
-    : resolve(runtimeEnvironment.configDirectory, 'state/acp-sessions.json'),
+    : resolve(runtimeEnvironment.stateDirectory, 'acp-sessions.json'),
   taskTerminalTtlMs: numberSetting(
     process.env.QWEN_AUDIO_AGENT_TASK_TERMINAL_TTL_MS,
     86_400_000,
@@ -558,7 +564,7 @@ export const config = {
     || process.env.DASHSCOPE_API_KEY
     || '',
   memoryAuditPath: resolve(
-    runtimeEnvironment.configDirectory,
+    runtimeEnvironment.stateDirectory,
     'memory-audit.jsonl',
   ),
   // 偏好自更新：从对话里观察反复出现的表达偏好，攒够跨会话确认后写入 USER.md
@@ -568,7 +574,7 @@ export const config = {
     process.env.QWEN_AUDIO_PREFERENCE_LEARNING || 'off',
   ).toLowerCase() === 'on',
   preferenceCandidatePath: resolve(
-    runtimeEnvironment.configDirectory,
+    runtimeEnvironment.stateDirectory,
     'preference-candidates.json',
   ),
   // 会话摘要：每场会话结束时记一条「聊了哪些话题 + 一句要点」，供用户日后问
@@ -578,22 +584,22 @@ export const config = {
     process.env.QWEN_AUDIO_SESSION_DIGEST || 'off',
   ).toLowerCase() === 'on',
   sessionDigestPath: resolve(
-    runtimeEnvironment.configDirectory,
+    runtimeEnvironment.stateDirectory,
     'session-digests.json',
   ),
-  // 内置资料库：用户导入的手册 / 规章 / 教材。沿用共享 workspace 下的既有目录，
+  // 用户导入的资料属于共享数据，不属于项目工作区或某个 Gateway 的状态。
   // 由本机 Knowledge Provider 管理和检索。
   // 默认关闭：它会把用户的文件复制到另一个位置，需要用户显式同意。
   domainLibraryEnabled: String(
     process.env.QWEN_AUDIO_DOMAIN_LIBRARY || 'off',
   ).toLowerCase() === 'on',
   domainDocumentDirectory: resolve(
-    defaultBackendWorkspace(runtimeEnvironment.configDirectory),
-    'domain',
+    runtimeEnvironment.dataDirectory,
+    'knowledge/documents',
   ),
   domainIndexPath: resolve(
-    runtimeEnvironment.configDirectory,
-    'domain-index.json',
+    runtimeEnvironment.dataDirectory,
+    'knowledge/index.json',
   ),
   reminderSchedulerEnabled: String(
     process.env.QWEN_AUDIO_AGENT_REMINDER_SCHEDULER || 'true'

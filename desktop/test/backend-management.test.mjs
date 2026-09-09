@@ -33,9 +33,11 @@ test('caches and coalesces backend detection', async () => {
   const pending = new Promise(resolve => { release = resolve })
   const management = createDesktopBackendManagement({
     env: { PATH: '/usr/bin' },
+    pathCacheFile: '/desktop/cache/path.json',
     now: () => clock,
     reportTtlMs: 50,
-    detect: async () => {
+    detect: async options => {
+      assert.equal(options.pathCacheFile, '/desktop/cache/path.json')
       detections += 1
       await pending
       return { report: [{ id: 'opencode' }], path: '/agent/bin' }

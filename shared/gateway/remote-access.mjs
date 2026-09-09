@@ -1,5 +1,8 @@
 import { z } from 'zod'
 import { randomUUID } from '../runtime-crypto.mjs'
+import { isLiteralIpv4GatewayUrl } from './url-policy.mjs'
+
+export { isLiteralIpv4GatewayUrl } from './url-policy.mjs'
 
 export const GATEWAY_CONNECTION_MODEL_VERSION = 1
 export const GATEWAY_DIRECT_CONNECTION_VERSION = 2
@@ -131,18 +134,6 @@ export function gatewayOriginFromWebSocketUrl(websocketUrl) {
   url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
   url.pathname = '/'
   return GatewayUrlSchema.parse(url.origin)
-}
-
-export function isLiteralIpv4GatewayUrl(value, { protocol = 'http:' } = {}) {
-  try {
-    const url = new URL(value)
-    const octets = url.hostname.split('.')
-    return url.protocol === protocol
-      && octets.length === 4
-      && octets.every(octet => /^\d{1,3}$/u.test(octet) && Number(octet) <= 255)
-  } catch {
-    return false
-  }
 }
 
 export function parseGatewayConnectionEndpoint(value) {

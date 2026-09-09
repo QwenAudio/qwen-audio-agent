@@ -28,7 +28,11 @@ function rendererDependencies(entry) {
         false,
         `${file} imports Node-only module ${specifier}`,
       )
-      if (!specifier.startsWith('.')) continue
+      assert.equal(
+        specifier.startsWith('.'),
+        true,
+        `${file} imports ${specifier}, which the unbundled renderer cannot resolve`,
+      )
       pending.push(resolve(dirname(file), specifier))
     }
   }

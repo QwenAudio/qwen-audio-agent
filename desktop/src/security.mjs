@@ -3,7 +3,7 @@ import {
   normalizeOrbSkinId,
 } from '../../shared/orb-skin-catalog.mjs'
 import { normalizeConversationSessionId } from '../../shared/conversation-session.mjs'
-import { isLiteralIpv4GatewayUrl } from '../../shared/gateway/remote-access.mjs'
+import { isLiteralIpv4GatewayUrl } from '../../shared/gateway/url-policy.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]'])
 

@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   audioSchedulingLeadSeconds,
   createPcmPlaybackQueue,
+  createStreamingResampler,
   mergePcmPlaybackItems,
   resample,
 } from '../src/realtime/audio.js'
@@ -11,6 +12,106 @@ test('resamples audio to the requested approximate length', () => {
   const input = new Float32Array(480)
   const output = resample(input, 48000, 16000)
   assert.equal(output.length, 160)
+})
+
+test('returns an empty result for empty input instead of NaN', () => {
+  const output = resample(new Float32Array(), 48000, 16000)
+  assert.equal(output.length, 0)
+  assert.equal(output.some(Number.isNaN), false)
+})
+
+for (const [from, to] of [
+  [44_100, 16_000], [44_100, 24_000], [48_000, 16_000], [48_000, 24_000],
+  [16_000, 24_000], [16_000, 48_000], [16_000, 16_000],
+]) {
+  test(`streaming resampling matches absolute sample positions (${from} to ${to})`, () => {
+    const input = Float32Array.from(
+      { length: 12_345 },
+      (_, index) => Math.sin(index * 0.017) * 0.8,
+    )
+    // Independent oracle: derive each position from the absolute output index,
+    // not from either resampler's incremental phase or chunk-local state.
+    const ratio = from / to
+    const expected = Float32Array.from(
+      { length: Math.round(input.length / ratio) },
+      (_, index) => {
+        const position = index * ratio
+        const before = Math.floor(position)
+        const after = Math.min(input.length - 1, before + 1)
+        const fraction = position - before
+        return input[before] * (1 - fraction) + input[after] * fraction
+      },
+    )
+    const oneShot = resample(input, from, to)
+    assert.equal(oneShot.length, expected.length)
+    assert.ok(oneShot.every((value, index) => Math.abs(value - expected[index]) < 1e-5))
+    const stream = createStreamingResampler()
+    const chunks = []
+    let offset = 0
+    for (const size of [17, 2048, 3, 701, 4096, 89, 5_391]) {
+      const end = Math.min(input.length, offset + size)
+      if (end === offset) break
+      chunks.push(stream.process(input.slice(offset, end), from, to))
+      offset = end
+    }
+    chunks.push(stream.flush())
+    const actual = new Float32Array(chunks.reduce((length, chunk) => length + chunk.length, 0))
+    let cursor = 0
+    for (const chunk of chunks) {
+      actual.set(chunk, cursor)
+      cursor += chunk.length
+    }
+
+    assert.equal(actual.length, expected.length)
+    assert.ok(actual.every((value, index) => Math.abs(value - expected[index]) < 1e-5))
+  })
+}
+
+test('streaming resampling has no cumulative sample-count drift over one minute', () => {
+  for (const from of [44_100, 48_000]) {
+    const stream = createStreamingResampler()
+    const sampleCount = from * 60
+    let outputCount = 0
+    for (let offset = 0; offset < sampleCount; offset += 2048) {
+      const input = new Float32Array(Math.min(2048, sampleCount - offset)).fill(0.25)
+      const output = stream.process(input, from, 16_000)
+      assert.ok(output.every(value => value === 0.25))
+      outputCount += output.length
+    }
+    outputCount += stream.flush().length
+    assert.equal(outputCount, 16_000 * 60)
+    assert.equal(stream.flush().length, 0)
+  }
+})
+
+test('streaming resampling preserves a pending sample across empty chunks', () => {
+  const stream = createStreamingResampler()
+  assert.equal(stream.flush().length, 0)
+  assert.equal(stream.process(new Float32Array([0.25]), 16_000, 48_000).length, 0)
+  assert.equal(stream.process(new Float32Array(), 16_000, 48_000).length, 0)
+  assert.deepEqual([...stream.flush()], [0.25, 0.25, 0.25])
+  assert.equal(stream.flush().length, 0)
+})
+
+test('streaming resampling discards previous audio on explicit reset or source-rate change', () => {
+  const input = new Float32Array([0.25, 0.5, 0.75, 1])
+  for (const resetExplicitly of [false, true]) {
+    const stream = createStreamingResampler()
+    stream.process(new Float32Array([-1, -0.5, -0.25]), 44_100, 16_000)
+    if (resetExplicitly) stream.reset()
+    const from = resetExplicitly ? 44_100 : 48_000
+    const output = stream.process(input, from, 16_000)
+    assert.deepEqual([...output, ...stream.flush()], [...resample(input, from, 16_000)])
+  }
+})
+
+test('streaming resampling resets its phase when the target rate changes', () => {
+  const stream = createStreamingResampler()
+  stream.process(new Float32Array([1, 2, 3]), 44_100, 16_000)
+  const output = stream.process(new Float32Array([4, 5, 6]), 44_100, 24_000)
+  const tail = stream.flush()
+  const expected = resample(new Float32Array([4, 5, 6]), 44_100, 24_000)
+  assert.deepEqual([...output, ...tail], [...expected])
 })
 
 test('keeps a small Web Audio scheduling lead outside transport buffering', () => {

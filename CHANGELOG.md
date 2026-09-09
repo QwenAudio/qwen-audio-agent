@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- WebUI 麦克风重采样现在会跨 PCM 分块保留插值相位，并对空输入安全返回空数据，
+  减少非整数采样率转换时的累计偏差。
 - Gateway Client 为 Socket 连接和 Session 握手增加超时与恢复；连接只有在收到
   `session.ready` 后才会重置重连退避。
 - Gateway Client 不再把旧连接中尚未完成的桌面 Action 结果发送到重连后的新连接。

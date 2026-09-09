@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Gateway 的 HTTP、设备配对与 WebSocket 入口统一拒绝空值、不透明或非法 Origin；
+  保留无 Origin 的原生客户端鉴权路径，避免非法来源被误当作原生客户端。
 - WebUI 麦克风重采样现在会跨 PCM 分块保留插值相位，并对空输入安全返回空数据，
   减少非整数采样率转换时的累计偏差。
 - Gateway Client 为 Socket 连接和 Session 握手增加超时与恢复；连接只有在收到

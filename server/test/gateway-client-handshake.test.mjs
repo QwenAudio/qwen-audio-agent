@@ -750,6 +750,38 @@ test('keeps active Client leases independent across authenticated owners', async
   second.socket.close()
 })
 
+test('rejects opaque and malformed origins before a WebSocket enters GCP', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+  const { port } = server.address()
+  for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test', 'file:///tmp/test']) {
+    const rejected = new WebSocket(`ws://127.0.0.1:${port}/api/realtime`, { headers: { Origin } })
+    const status = await new Promise((resolve, reject) => {
+      rejected.once('unexpected-response', (_request, response) => {
+        resolve(response.statusCode)
+        response.destroy()
+      })
+      rejected.once('error', reject)
+      rejected.once('open', () => {
+        rejected.close()
+        reject(new Error('Invalid Origin was accepted'))
+      })
+    })
+    assert.equal(status, 403)
+  }
+  // Bad upgrade requests must not crash or poison later valid connections.
+  const accepted = await connect(server, createGatewaySessionHello({
+    clientInstanceId: 'after-rejected-origins',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  }))
+  await waitFor(accepted.received, event => event.type === 'session.ready')
+  accepted.socket.close()
+})
+
 test('requires access authentication before a remote WebSocket can enter GCP', async t => {
   const access = new GatewayAccessManager({
     identityManager: new IdentityManager({

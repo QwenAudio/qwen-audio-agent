@@ -514,7 +514,7 @@ app.get('/c', (_req, res) => {
 // clients may omit Origin; browsers still have to come from an allowlisted
 // public origin.
 app.post('/api/access/pair', (req, res) => {
-  if (req.headers.origin && !isAllowedOrigin(req, {
+  if (req.headers.origin !== undefined && !isAllowedOrigin(req, {
     allowedOrigins: config.allowedOrigins,
     allowSecureSameOrigin: true,
   })) {

@@ -33,6 +33,44 @@ test('rejects DNS rebinding and direct network access by default', () => {
   }, { authenticatedRemote: true }), true)
 })
 
+test('rejects explicit invalid origins without granting the missing-header exception', () => {
+  const invalidOrigins = [
+    'null', '', ' ', null, 42, ['null'], ['http://localhost:3101'],
+    'not-an-origin', 'data:text/plain,test', 'file:///tmp/test',
+    'blob:http://localhost:3101/id', 'ftp://localhost:3101', 'ws://localhost:3101',
+    'http://localhost:3101/path', 'http://localhost:3101?query',
+    'http://localhost:3101#fragment', 'http://user:pass@localhost:3101',
+    'http://localhost:3101 https://attacker.example',
+  ]
+  for (const origin of invalidOrigins) {
+    for (const options of [
+      {}, { allowedOrigins: ['http://localhost:3101'] },
+      { authenticatedRemote: true }, { allowSecureSameOrigin: true },
+      { authenticatedRemote: true, trustedNativeClient: true },
+    ]) {
+      assert.equal(isAllowedOrigin({ headers: { host: 'localhost:3101', origin } }, options), false)
+    }
+  }
+})
+
+test('ignores malformed configured origins without throwing or trusting them', () => {
+  const options = { allowedOrigins: [
+    'null', 'not-an-origin', 'data:text/plain,test', 'file:///tmp/test',
+    'blob:https://voice.example.com/id', ['https://voice.example.com'],
+    'https://voice.example.com',
+  ] }
+  assert.equal(isAllowedOrigin({ headers: {
+    host: 'voice.example.com', origin: 'https://voice.example.com',
+  } }, options), true)
+  assert.equal(isAllowedOrigin({ headers: { host: 'attacker.example' } }, options), false)
+})
+
+test('requires a Host header even for authenticated native requests', () => {
+  for (const request of [{}, { headers: {} }, { headers: { host: '' } }]) {
+    assert.equal(isAllowedOrigin(request, { authenticatedRemote: true }), false)
+  }
+})
+
 test('allows only an explicitly configured reverse-proxy origin', () => {
   const options = { allowedOrigins: ['https://voice.example.com'] }
   assert.equal(isAllowedOrigin({

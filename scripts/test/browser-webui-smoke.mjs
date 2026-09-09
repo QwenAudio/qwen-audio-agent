@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
 
@@ -33,8 +32,9 @@ const MOCK_BROWSER_APIS = String.raw`
     socketCloses: 0,
     sessionReadyEvents: 0,
     nextEvent: 1,
-    serverDisconnected: false,
     processor: null,
+    activeSocket: null,
+    oldSocket: null,
   }
 
   const update = (name, value) => {
@@ -82,8 +82,11 @@ const MOCK_BROWSER_APIS = String.raw`
       this.readyState = MockWebSocket.CONNECTING
       eventListeners(this)
       increment('socketConnections')
+      this.id = state.socketConnections
       setTimeout(() => {
+        if (this.readyState !== MockWebSocket.CONNECTING) return
         this.readyState = MockWebSocket.OPEN
+        state.activeSocket = this
         this.emit('open')
       }, 0)
     }
@@ -94,21 +97,17 @@ const MOCK_BROWSER_APIS = String.raw`
       document.documentElement.dataset.lastSocketMessage = message.type
       if (message.type === 'session.hello') {
         setTimeout(() => {
+          if (this.readyState !== MockWebSocket.OPEN) return
           increment('sessionReadyEvents')
           serverEvent(this, {
             type: 'session.ready',
             request_event_id: message.event_id,
             protocol_version: '6.0.0',
             session_id: 'browser-smoke',
-            capabilities: [],
+            capabilities: ['session.heartbeat'],
           })
-          if (state.sessionReadyEvents > 1) {
-            setTimeout(() => state.processor?.onaudioprocess?.({
-              inputBuffer: {
-                getChannelData: () => Float32Array.from([0.4, 0.3, 0.2, 0.1]),
-              },
-            }), 0)
-          }
+          this.handshakeReady = true
+          serverEvent(this, { type: 'session.ping', event_id: 'ping-' + this.id })
         }, 0)
         setTimeout(() => serverEvent(this, {
           type: 'voice.ready',
@@ -118,26 +117,32 @@ const MOCK_BROWSER_APIS = String.raw`
       }
       if (message.type === 'audio.append') {
         increment('audioAppends')
+        document.documentElement.dataset.audioSocket = String(this.id)
         setTimeout(() => {
+          const responseId = 'response-browser-smoke-' + this.id
           serverEvent(this, {
             type: 'response.started',
-            responseId: 'response-browser-smoke',
+            responseId,
           })
           serverEvent(this, {
             type: 'audio.delta',
             audio: 'AAAAAA==',
             sampleRate: 24_000,
-            responseId: 'response-browser-smoke',
+            responseId,
           })
           serverEvent(this, {
             type: 'audio.done',
-            responseId: 'response-browser-smoke',
+            responseId,
           })
-          if (location.search.includes('browser-smoke=reconnect') && !state.serverDisconnected) {
-            state.serverDisconnected = true
-            setTimeout(() => this.close(), 5)
-          }
+          serverEvent(this, { type: 'transcript.final', role: 'assistant',
+            responseId, content: 'Reply from connection ' + this.id })
         }, 0)
+      }
+      if (message.type === 'playback.started') {
+        document.documentElement.dataset.playbackResponse = message.responseId
+      }
+      if (message.type === 'session.pong' && message.request_event_id === 'ping-' + this.id) {
+        document.documentElement.dataset.negotiatedSocket = String(this.id)
       }
     }
 
@@ -192,6 +197,7 @@ const MOCK_BROWSER_APIS = String.raw`
           }), 0)
         },
         disconnect() {
+          processor.connected = false
           increment('processorDisconnects')
         },
       }
@@ -211,7 +217,9 @@ const MOCK_BROWSER_APIS = String.raw`
         connect() {},
         start() {
           increment('playbackStarts')
-          setTimeout(() => source.onended?.(), 40)
+          if (!location.search.includes('browser-smoke=reconnect')) {
+            setTimeout(() => source.onended?.(), 40)
+          }
         },
         stop() {
           increment('playbackStops')
@@ -256,6 +264,22 @@ const MOCK_BROWSER_APIS = String.raw`
   window.WebSocket = MockWebSocket
   window.AudioContext = MockAudioContext
   window.webkitAudioContext = MockAudioContext
+  window.browserSmoke = {
+    connection: () => ({ id: state.activeSocket?.id, ready: state.activeSocket?.handshakeReady }),
+    disconnect() { state.oldSocket = state.activeSocket; state.oldSocket.close() },
+    input() {
+      if (state.processor?.connected) state.processor.onaudioprocess?.({
+        inputBuffer: { getChannelData: () => Float32Array.from([0.4, 0.3, 0.2, 0.1]) },
+      })
+    },
+    stale() {
+      // Deliberately bypass the mock transport guard to exercise the SDK's guard.
+      state.oldSocket.emit('message', { data: JSON.stringify({
+        type: 'transcript.final', event_id: 'stale-event', role: 'assistant',
+        responseId: 'stale-response', content: 'STALE CONNECTION REPLY',
+      }) })
+    },
+  }
 })()
 `
 
@@ -320,7 +344,16 @@ async function preparePage(context, path, diagnostics) {
   }))
   await page.addInitScript({ content: MOCK_BROWSER_APIS })
   await page.goto(`${baseUrl}/${path}`, { waitUntil: 'domcontentloaded' })
+  if (process.env.QWEN_BROWSER_SMOKE_INJECT_ERROR === '1') {
+    await page.evaluate(() => { setTimeout(() => { throw new Error('smoke diagnostic probe') }, 0) })
+  }
   return page
+}
+
+async function finishPage(page, diagnostics) {
+  assert.deepEqual(diagnostics.filter(item => item.type === 'pageerror' || item.type === 'console:error'), [],
+    'Browser reported an unexpected error')
+  await page.close()
 }
 
 async function testHappyPath(context, diagnostics) {
@@ -343,7 +376,7 @@ async function testHappyPath(context, diagnostics) {
   await waitForAttribute(page, 'data-track-stops', value => value === '1')
   await waitForAttribute(page, 'data-source-disconnects', value => value === '1')
   await waitForAttribute(page, 'data-processor-disconnects', value => value === '1')
-  await page.close()
+  await finishPage(page, diagnostics)
 }
 
 async function testReconnectInterruptsPlayback(context, diagnostics) {
@@ -353,10 +386,22 @@ async function testReconnectInterruptsPlayback(context, diagnostics) {
     .waitFor({ state: 'visible' })
   await waitForAttribute(page, 'data-media-requests', value => value === '1')
   await waitForAttribute(page, 'data-playback-starts', value => Number(value) >= 1)
-  await waitForAttribute(page, 'data-session-ready-events', value => Number(value) >= 2)
-  await waitForAttribute(page, 'data-audio-appends', value => Number(value) >= 2)
-  await waitForAttribute(page, 'data-playback-starts', value => Number(value) >= 2)
+  const first = await page.evaluate(() => window.browserSmoke.connection())
+  assert.equal(first.ready, true)
+  const previousStarts = Number(await page.locator('html').getAttribute('data-playback-starts'))
+  await page.evaluate(() => window.browserSmoke.disconnect())
   await waitForAttribute(page, 'data-playback-stops', value => Number(value) >= 1)
+  await page.waitForFunction(id => {
+    const connection = window.browserSmoke.connection()
+    return connection.ready && connection.id !== id
+  }, first.id)
+  const second = await page.evaluate(() => window.browserSmoke.connection())
+  await waitForAttribute(page, 'data-negotiated-socket', value => value === String(second.id))
+  await page.evaluate(() => { window.browserSmoke.stale(); window.browserSmoke.input() })
+  await waitForAttribute(page, 'data-audio-socket', value => value === String(second.id))
+  await waitForAttribute(page, 'data-playback-starts', value => Number(value) === previousStarts + 1)
+  await page.getByText('Reply from connection ' + second.id, { exact: true }).waitFor()
+  assert.equal(await page.getByText('STALE CONNECTION REPLY', { exact: true }).count(), 0)
 
   assert.equal(await page.locator('html').getAttribute('data-media-requests'), '1')
   assert.equal(await page.locator('html').getAttribute('data-processor-connects'), '1')
@@ -365,7 +410,7 @@ async function testReconnectInterruptsPlayback(context, diagnostics) {
 
   await page.getByRole('button', { name: '麦克风静音', exact: true }).click()
   await waitForAttribute(page, 'data-track-stops', value => value === '1')
-  await page.close()
+  await finishPage(page, diagnostics)
 }
 
 async function testEndedTrackIsReacquired(context, diagnostics) {
@@ -378,7 +423,7 @@ async function testEndedTrackIsReacquired(context, diagnostics) {
   await waitForAttribute(page, 'data-processor-connects', value => Number(value) >= 2)
 
   assert.equal(await page.locator('html').getAttribute('data-media-requests'), '2')
-  await page.close()
+  await finishPage(page, diagnostics)
 }
 
 async function testPermissionDenied(context, diagnostics) {
@@ -388,7 +433,7 @@ async function testPermissionDenied(context, diagnostics) {
     .waitFor({ state: 'visible' })
   assert.equal(await page.locator('html').getAttribute('data-media-requests'), '1')
   assert.equal(await page.locator('html').getAttribute('data-track-stops') || '0', '0')
-  await page.close()
+  await finishPage(page, diagnostics)
 }
 
 const server = startVite()
@@ -396,7 +441,7 @@ let browser
 let context
 let tracingActive = false
 const diagnostics = []
-const diagnosticsDirectory = resolve(projectRoot, 'output/playwright/browser-webui-smoke')
+const diagnosticsDirectory = resolve(projectRoot, 'output/playwright/browser-webui-smoke', String(Date.now()))
 try {
   await waitForServer(server.vite, server.getOutput)
   browser = await chromium.launch({ headless: true })

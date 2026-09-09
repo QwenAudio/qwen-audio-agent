@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { TaskManager } from '../src/task/task-manager.mjs'
+import { PermissionPolicy } from '../src/task/permission-policy.mjs'
 import {
   GatewayClientProtocolEvent,
 } from '../../shared/protocol/gateway-client-protocol.mjs'
@@ -210,8 +212,10 @@ test('rolls back session permission policy when the adapter rejects a response',
     },
     permissionPolicy: {
       mode: () => 'ask',
-      applyDecision: (...args) => changes.push(['apply', ...args]),
-      setMode: (...args) => changes.push(['restore', ...args]),
+      applyDecision: (...args) => {
+        changes.push(['apply', ...args])
+        return () => changes.push(['restore'])
+      },
     },
   })
   await assert.rejects(runtime.execute({
@@ -221,4 +225,60 @@ test('rolls back session permission policy when the adapter rejects a response',
     decision: 'always',
   }, { ownerId: 'owner-1' }), /adapter unavailable/u)
   assert.deepEqual(changes.map(change => change[0]), ['apply', 'restore'])
+})
+
+test('client card approval grants only its Task and drains its queued permissions', async () => {
+  const taskManager = new TaskManager()
+  const permissionPolicy = new PermissionPolicy({ taskManager })
+  const channels = new Map()
+  const approvals = []
+  const events = []
+  taskManager.subscribe(event => events.push(event))
+  const runtime = new GatewayClientCommandRuntime({
+    taskManager, permissionPolicy,
+    conversationHistory: { messages: () => [] },
+    backendRuntime: {
+      run: async (_input, { taskId, onEvent }) => new Promise(resolve => {
+        channels.set(taskId, { onEvent, resolve })
+      }),
+      cancel: async () => ({}),
+    },
+    respondAuthorization: async (taskId, id, decision) => {
+      approvals.push([taskId, id, decision])
+      const permission = { id, status: 'approved' }
+      channels.get(taskId).onEvent({ type: 'backend.permission.resolved', permission })
+      return permission
+    },
+  })
+  const owner = { ownerId: 'owner-1', sessionId: 'voice-1' }
+  const create = () => runtime.createTask({ message: { parts: [{ type: 'text', text: 'test' }] } }, owner)
+  const tick = () => new Promise(resolve => setImmediate(resolve))
+  const emit = (task, id) => channels.get(task.id).onEvent({
+    type: 'backend.permission.requested', permission: { id, status: 'pending', summary: 'test operation' },
+  })
+  const first = create()
+  await tick()
+  emit(first, 'auth-first')
+  emit(first, 'auth-queued')
+  await runtime.respondPermission({ permission_id: 'auth-queued', decision: 'task' }, owner)
+  await tick()
+  assert.deepEqual(approvals.map(item => item[1]).sort(), ['auth-first', 'auth-queued'])
+  assert.equal(taskManager.get(first.id).authorization, null)
+  emit(first, 'auth-next')
+  await tick()
+  assert.equal(approvals.length, 3)
+  assert.equal(events.filter(event => event.type === 'task.permission.requested').length, 2)
+  assert.ok(approvals.every(item => item[2] === 'once'))
+  channels.get(first.id).resolve({ content: 'done' })
+  await taskManager.wait(first.id)
+  assert.equal(permissionPolicy.tasks.size, 0)
+  const second = create()
+  await tick()
+  emit(second, 'auth-other-task')
+  await tick()
+  assert.equal(approvals.length, 3)
+  assert.equal(taskManager.get(second.id).authorization.id, 'auth-other-task')
+  channels.get(second.id).resolve({ content: 'done' })
+  await taskManager.wait(second.id)
+  permissionPolicy.close()
 })

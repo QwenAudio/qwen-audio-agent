@@ -30,7 +30,7 @@
 ## 四个独立进程
 
 ```text
-cockpit-client ── GCP 6.0 ──► cockpit-gateway ── A2A ──► cockpit-agent
+cockpit-client ── GCP 7.0 ──► cockpit-gateway ── A2A ──► cockpit-agent
       │                          │                         │
       │ HTTP/SSE                │ frontend MCP            │ backend MCP
       │ 业务状态                 │ 天气/车况/车窗/大灯       │ 完整工具面/自定义技能

@@ -1,3 +1,5 @@
+export { PERMISSION_DECISIONS } from '../../../shared/permission-decisions.mjs'
+
 export const AuthorizationStatus = Object.freeze({
   PENDING: 'pending',
   APPROVED: 'approved',

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
+import { PERMISSION_DECISIONS, backendPermissionDecision } from '../../../../shared/permission-decisions.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { BackendEventType } from '../../core/backend-events.mjs'
 import { isTaskCancellable } from '../../task/task-state.mjs'
-import { permissionReference } from './permission-reference.mjs'
 import { toolFailure as failure } from './tool-result.mjs'
 
 const CANCEL_RECEIPT_INSTRUCTIONS = [
@@ -61,31 +61,59 @@ function mergeInputParts(...groups) {
 export class AgentTaskRuntime {
   constructor(host) {
     this.host = host
+    this.permissionReceipts = new Map()
+  }
+
+  pendingPermissions() {
+    const tasks = new Map(this.host.taskManager.list({
+      ownerId: this.host.ownerId,
+      sessionId: this.host.sessionId,
+      active: true,
+    }).filter(task => task.status !== 'cancelling').map(task => [task.id, task]))
+    const permissions = new Map()
+    for (const [id, entry] of this.host.pendingBackendPermissions) {
+      const task = tasks.get(entry.taskId)
+      if (task && entry.permission.status === 'pending') {
+        permissions.set(id, { task, permission: entry.permission })
+      }
+    }
+    // A reconnected frontend may not have observed the original backend event.
+    for (const task of tasks.values()) {
+      if (task.authorization?.status === 'pending') {
+        permissions.set(task.authorization.id, { task, permission: task.authorization })
+      }
+    }
+    for (const id of this.host.submittedBackendPermissions) permissions.delete(id)
+    return permissions
+  }
+
+  rememberPermissionReceipt(id, receipt) {
+    this.permissionReceipts.set(id, receipt)
+    while (this.permissionReceipts.size > 200) {
+      this.permissionReceipts.delete(this.permissionReceipts.keys().next().value)
+    }
+  }
+
+  permissionReceipt(permissionId, turnId) {
+    const id = String(permissionId || '').trim()
+    if (id) return this.permissionReceipts.get(id)
+    const sameTurn = [...this.permissionReceipts.values()].find(item => item.turnId === turnId)
+    if (sameTurn) return sameTurn
+    // While the backend is still acknowledging the sole submitted decision,
+    // another user confirmation can read that receipt, not report it missing.
+    if (this.host.submittedBackendPermissions.size === 1 && this.pendingPermissions().size === 0) {
+      return this.permissionReceipts.get(this.host.submittedBackendPermissions.values().next().value)
+    }
+    return undefined
   }
 
   forwardBackendEvent(taskId, event, onEvent) {
-    const permission = event?.permission
-    if (
-      event?.type === BackendEventType.AUTHORIZATION_RESOLVED
-      && permission?.id
-    ) {
-      this.host.pendingBackendPermissions.delete(permission.id)
-      this.host.submittedBackendPermissions.delete(permission.id)
-    }
-    if (
-      event?.type === BackendEventType.AUTHORIZATION_RESOLVED
-      && permission?.id
-      && this.host.gatewayApprovedPermissions.delete(permission.id)
-    ) return
-    if (
-      event?.type !== BackendEventType.AUTHORIZATION_REQUESTED
-      || !permission?.id
-      || !this.host.respondAuthorization
-      || !this.host.permissionPolicy?.shouldAutoAllow(
-        this.host.ownerId,
-        this.host.sessionId,
-      )
-    ) {
+    const publish = event => {
+      const permission = event?.permission
+      if (event?.type === BackendEventType.AUTHORIZATION_RESOLVED && permission?.id) {
+        this.host.pendingBackendPermissions.delete(permission.id)
+        this.host.submittedBackendPermissions.delete(permission.id)
+      }
       if (
         event?.type === BackendEventType.AUTHORIZATION_REQUESTED
         && permission?.id
@@ -96,29 +124,14 @@ export class AgentTaskRuntime {
         })
       }
       onEvent(event)
-      return
     }
-    this.host.gatewayApprovedPermissions.add(permission.id)
-    let approval
-    try {
-      approval = this.host.respondAuthorization(
-        taskId,
-        permission.id,
-        'always',
-        { ownerId: this.host.ownerId },
-      )
-    } catch {
-      this.host.gatewayApprovedPermissions.delete(permission.id)
-      onEvent(event)
-      return
+    if (this.host.permissionPolicy) {
+      this.host.permissionPolicy.forwardBackendEvent({
+        taskId, ownerId: this.host.ownerId, sessionId: this.host.sessionId,
+      }, event, publish, this.host.respondAuthorization)
+    } else {
+      publish(event)
     }
-    Promise.resolve(approval)
-      .then(() => this.host.gatewayApprovedPermissions.delete(permission.id))
-      .catch(() => {
-        if (this.host.gatewayApprovedPermissions.delete(permission.id)) {
-          onEvent(event)
-        }
-      })
   }
 
   createWork({
@@ -506,13 +519,12 @@ export class AgentTaskRuntime {
     args,
     callContext,
   }) {
-    const taskId = String(args.task_id || '').trim()
     const requestedPermissionId = String(args.permission_id || '').trim()
     const decision = String(args.decision || '').trim()
     const responseId = String(
       callContext?.responseId || callContext?.event?.response_id || '',
     ).trim()
-    const response = ['once', 'always', 'reject'].includes(decision)
+    const response = PERMISSION_DECISIONS.includes(decision)
       ? {
           instructions: decision === 'reject'
             ? [
@@ -527,7 +539,7 @@ export class AgentTaskRuntime {
                 '不要重述操作，不要再次询问或调用工具。',
               ].join(' ')
               : [
-                '本次权限决定已提交。',
+                '该任务已获准继续执行，后续权限请求由网关自动处理。',
                 '只用一句简短自然口语确认“已允许，后台继续执行”。',
                 '不要重述操作，不要再次询问或调用工具。',
               ].join(' '),
@@ -549,9 +561,10 @@ export class AgentTaskRuntime {
       '简短说明这次授权没有生效，不要伪造权限请求、工作 ID 或执行状态，也不要调用工具。',
     ].join(' ')
     let failed = false
+    const pending = this.pendingPermissions()
     try {
       const transcript = String(await this.host.transcripts.transcript(turnId)).trim()
-      if (!requestedPermissionId || !response || !transcript) {
+      if (!response || !transcript) {
         await this.host.sendOutput(
           callId,
           failure('invalid_permission_response', '没有找到有效的权限请求或决定。'),
@@ -561,28 +574,43 @@ export class AgentTaskRuntime {
         )
         return
       }
-      const pendingTask = taskId
-        ? this.host.taskManager.getByTaskId(taskId, { ownerId: this.host.ownerId })
-        : this.host.taskManager.list({
-            ownerId: this.host.ownerId,
-            sessionId: this.host.sessionId,
-            active: true,
-          }).find(task => task.authorization?.id === requestedPermissionId)
-      const trackedAuthorization = [...this.host.pendingBackendPermissions.entries()]
-        .find(([id]) => permissionReference(id) === requestedPermissionId)
-      const trackedPermission = trackedAuthorization?.[1]
-      const trackedAuthorizationId = trackedAuthorization?.[0] || ''
-      const authorizationId = (
-        pendingTask
-        && trackedPermission?.taskId === pendingTask.id
-        && !this.host.submittedBackendPermissions.has(trackedAuthorizationId)
-      ) || (
-        pendingTask?.authorization?.status === 'pending'
-        && permissionReference(pendingTask.authorization.id) === requestedPermissionId
-      )
-        ? trackedAuthorizationId || pendingTask.authorization.id
-        : ''
-      if (!pendingTask || pendingTask.sessionId !== this.host.sessionId || !authorizationId) {
+      // An omitted ID binds to one request, not a queue-draining operation.
+      // Repeated model calls in the same user turn reuse that receipt even if
+      // the backend has since requested permission for its next operation.
+      const receipt = this.permissionReceipt(requestedPermissionId, turnId)
+      if (receipt) {
+        await this.host.sendOutput(callId, {
+          status: 'already_submitted',
+          permission_id: receipt.permissionId,
+          task_id: receipt.taskId,
+          decision: receipt.decision,
+        }, turnId, receipt.taskId, responseOptions(
+          '该权限决定已提交。按回执中的实际决定回答，不要重复授权或声称工作已经完成。',
+        ))
+        return
+      }
+      if (!requestedPermissionId && pending.size > 1) {
+        await this.host.sendOutput(callId, failure(
+          'permission_ambiguous',
+          '有多个待确认请求，请明确要处理哪一个。',
+          { permissions: [...pending.values()].map(({ task, permission }) => ({
+            permission_id: permission.id,
+            task_id: task.id,
+            operation: permission.summary,
+          })) },
+        ), turnId, null, responseOptions(
+          '有多个待确认请求，尚未授权。请向用户确认要处理哪项操作，不要猜测。',
+        ))
+        return
+      }
+      const selected = requestedPermissionId
+        ? pending.get(requestedPermissionId)
+        : pending.values().next().value
+      const pendingTask = selected?.task
+      const authorizationId = selected?.permission.id
+      // Never retarget an ID-less response if its original request disappeared
+      // while waiting for the current turn's transcript.
+      if (!pendingTask || !authorizationId || !this.pendingPermissions().has(authorizationId)) {
         await this.host.sendOutput(
           callId,
           failure(
@@ -606,30 +634,16 @@ export class AgentTaskRuntime {
         )
         return
       }
-      if (this.host.submittedBackendPermissions.has(authorizationId)) {
-        const outputOptions = responseOptions([
-          '该权限决定此前已经提交。',
-          '只用一句简短自然口语说明后台正在继续处理，不要再次调用工具。',
-        ].join(' '))
-        await this.host.sendOutput(callId, {
-          status: 'already_submitted',
-          task_id: pendingTask.id,
-        }, turnId, pendingTask.id, outputOptions)
-        return
-      }
-      const previousPermissionMode = this.host.permissionPolicy?.mode(
-        this.host.ownerId,
-        this.host.sessionId,
-      )
-      this.host.permissionPolicy?.applyDecision(
+      const rollbackPermission = this.host.permissionPolicy?.applyDecision(
         this.host.ownerId,
         this.host.sessionId,
         decision,
+        pendingTask.id,
       )
       // Receipt-based: the local policy takes effect immediately and the backend
-      // round trip must not delay the spoken confirmation. An "always" decision
-      // also settles permissions that arrived concurrently for this same task.
-      const permissions = decision === 'always'
+      // round trip must not delay the spoken confirmation. Task approval also
+      // settles permissions that arrived concurrently for this same task.
+      const permissions = decision !== 'reject'
         ? [...this.host.pendingBackendPermissions.entries()]
             .filter(([id, entry]) => (
               entry.taskId === pendingTask.id
@@ -642,17 +656,25 @@ export class AgentTaskRuntime {
       }
       permissions.forEach(permission => {
         this.host.submittedBackendPermissions.add(permission.id)
+        this.rememberPermissionReceipt(permission.id, {
+          permissionId: permission.id,
+          taskId: permission.taskId,
+          decision,
+          turnId,
+        })
       })
       Promise.all(permissions.map(async permission => {
         try {
           await this.host.respondAuthorization(
             permission.taskId,
             permission.id,
-            decision,
+            backendPermissionDecision(decision),
             { ownerId: this.host.ownerId },
           )
+          this.host.permissionPolicy?.settle(permission.id)
         } catch (error) {
           this.host.submittedBackendPermissions.delete(permission.id)
+          this.permissionReceipts.delete(permission.id)
           try {
             this.host.onPermissionDeliveryFailed({
               authorizationId: permission.id,
@@ -665,19 +687,15 @@ export class AgentTaskRuntime {
           }
           throw error
         }
-      })).catch(() => {
-        if (previousPermissionMode) {
-          this.host.permissionPolicy?.setMode(
-            this.host.ownerId,
-            this.host.sessionId,
-            previousPermissionMode,
-          )
-        }
-      })
+      })).then(() => {
+        this.host.permissionPolicy?.flushPending(this.host.ownerId, this.host.sessionId)
+      }).catch(() => rollbackPermission?.())
       const outputOptions = responseOptions(response.instructions)
       await this.host.sendOutput(callId, {
         status: 'submitted',
+        permission_id: authorizationId,
         task_id: pendingTask.id,
+        decision,
       }, turnId, pendingTask.id, outputOptions)
     } catch (error) {
       failed = true

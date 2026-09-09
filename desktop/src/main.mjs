@@ -37,8 +37,11 @@ import {
 } from './i18n.mjs'
 import { readGatewayHealth } from '../../shared/gateway/http-client.mjs'
 import { GatewayConnectionProfileStore } from '../../shared/gateway/connection-profiles.mjs'
-import { pairGatewayConnectionCode } from '../../shared/gateway/access-client.mjs'
-import { decodeGatewayPairingCode } from '../../shared/gateway/remote-access.mjs'
+import {
+  desktopGatewayCredential,
+  parseDesktopGatewayInput,
+  prepareDesktopGatewayConnection,
+} from './gateway-connection.mjs'
 import {
   findRunningGateway,
 } from '../../shared/gateway/lease.mjs'
@@ -48,7 +51,6 @@ import {
   EmbeddedGateway,
   resolveBorrowedGatewayAttachment,
 } from './gateway-process.mjs'
-import { remoteRealtimeModelOutcome } from './realtime-status.mjs'
 import {
   DESKTOP_ORB_HEIGHT,
   DESKTOP_ORB_WIDTH,
@@ -63,6 +65,7 @@ import { createSettingsStore } from './settings-store.mjs'
 import { desktopClientPaths } from './client-paths.mjs'
 import { createDesktopBackendManagement } from './backend/management.mjs'
 import {
+  clientSettingsPatch,
   realtimeSettingsConfigured,
   updateSettingsContent,
 } from './settings-config.mjs'
@@ -234,10 +237,9 @@ function configuredOrigin() {
 }
 
 async function selectDesktopGatewayCredential(origin) {
-  const resolved = await desktopGatewayProfiles.resolve('desktop')
-  gatewayAccessToken = resolved?.profile?.gateway_url === origin
-    ? String(resolved.credential || '').trim()
-    : String(process.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN || '').trim()
+  gatewayAccessToken = await desktopGatewayCredential(
+    origin, desktopGatewayProfiles, process.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN || '',
+  )
   return gatewayAccessToken
 }
 
@@ -296,9 +298,13 @@ function attachRunningGateway(active, environment, event = 'gateway.reused') {
   return attachment.origin
 }
 
-async function startLocalGateway(origin) {
+async function startLocalGateway(origin, accessToken = gatewayAccessToken) {
   if (!isLoopbackUrl(origin)) return origin
   if (embeddedGateway?.running) return embeddedGateway.start()
+  if (await readGatewayHealth(origin, fetch, { accessToken })) {
+    borrowedGatewayOrigin = origin
+    return origin
+  }
   const environment = configuredGatewayEnvironment()
   const active = await findRunningGateway(runtimeEnvironment.stateDirectory, {
     readHealth: readGatewayHealth,
@@ -921,18 +927,6 @@ ipcMain.handle('qwen-audio-agent:open-logs', async event => {
   return logger.directory
 })
 
-function assertSettingsRequest(event) {
-  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
-    throw new Error('无权修改 Gateway 连接')
-  }
-}
-
-ipcMain.handle('qwen-audio-agent:remote-gateway-connect', async (event, value) => {
-  assertSettingsRequest(event)
-  const settings = await applyGatewayPairingCode(value, { reloadSettings: false })
-  return { gatewayUrl: settings.gatewayUrl }
-})
-
 const backendManagement = createDesktopBackendManagement({
   configPath: runtimeEnvironment.configPath,
   pathCacheFile: clientPaths.pathCacheFile,
@@ -1017,34 +1011,30 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权保存设置')
   }
+  return applyDesktopSettings(settings)
+})
+
+async function applyDesktopSettings(settings) {
+  const target = parseDesktopGatewayInput(settings.gatewayUrl)
+  const { origin: nextOrigin, remote } = target
+  // Remote configuration belongs to its Gateway host. Only client preferences
+  // are applied here; stale local model/backend fields must not block pairing.
+  settings = { ...(remote ? clientSettingsPatch(settings) : settings), gatewayUrl: nextOrigin }
   const current = readFileSync(runtimeEnvironment.configPath, 'utf8')
   const previous = desktopSettingsStore.load()
   const content = updateSettingsContent(current, settings, { scope: 'gateway' })
   const normalized = desktopSettingsStore.preview(settings)
-  const nextOrigin = validateAppUrl(normalized.gatewayUrl)
-  const remote = !isLoopbackUrl(nextOrigin)
-  if (!remote && !realtimeSettingsConfigured(normalized)) {
+  const connection = await prepareDesktopGatewayConnection(target, {
+    profileStore: desktopGatewayProfiles,
+    clientInstanceId: desktopGatewayClientInstanceId,
+    label: app.getName(),
+    fallbackAccessToken: process.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN || '',
+  })
+  const credentialChanged = connection.credential !== gatewayAccessToken
+  if (!remote && !connection.connected && !realtimeSettingsConfigured(normalized)) {
     throw new Error(normalized.realtimeProvider === 'dashscope'
       ? '请先填写 DashScope API Key'
       : '请先填写 Speech-to-Speech 服务地址')
-  }
-  if (remote) {
-    await selectDesktopGatewayCredential(nextOrigin)
-    const remoteRuntime = await runtimeStatus(nextOrigin)
-    if (!remoteRuntime.gatewayConnected) {
-      throw new Error(`无法连接 Gateway：${nextOrigin}`)
-    }
-    const modelOutcome = remoteRealtimeModelOutcome(remoteRuntime, normalized)
-    if (modelOutcome) {
-      return {
-        ...modelOutcome,
-        settings: previous,
-        restarted: false,
-        restartRequired: false,
-        runtime: remoteRuntime,
-        wakeShortcutRegistered: desktopPresence.shortcutRegistered,
-      }
-    }
   }
   const gatewayChanged = nextOrigin !== configuredGatewayOrigin
   const apiKeyChanged = previous.dashscopeApiKey !== normalized.dashscopeApiKey
@@ -1093,7 +1083,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     || backendModelChanged
     || backendConnectionChanged
   )
-  if (!remote && borrowedGatewayOrigin && gatewayRuntimeChanged) {
+  if (!remote && nextOrigin === borrowedGatewayOrigin && gatewayRuntimeChanged) {
     const borrowedHealth = await readDesktopGatewayHealth(borrowedGatewayOrigin)
     if (borrowedHealth) {
       const nextEnvironment = desktopGatewayEnvironment({
@@ -1155,12 +1145,12 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   })
   let restarted = false
   configuredGatewayOrigin = nextOrigin
-  if (remote) {
+  if (remote || (connection.connected && gatewayChanged && nextOrigin !== embeddedGateway?.origin)) {
     if (embeddedGateway) {
       await embeddedGateway.stop()
       embeddedGateway = null
     }
-    borrowedGatewayOrigin = ''
+    borrowedGatewayOrigin = remote ? '' : nextOrigin
     appOrigin = nextOrigin
   } else if (
     embeddedGateway?.running
@@ -1171,17 +1161,18 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     })
     restarted = true
   } else if (!embeddedGateway?.running) {
-    appOrigin = await startLocalGateway(nextOrigin)
+    appOrigin = await startLocalGateway(nextOrigin, connection.credential)
     restarted = !borrowedGatewayOrigin
   }
   setupRequired = false
   lastRuntimeError = ''
+  gatewayAccessToken = connection.credential
   process.env.QWEN_AUDIO_AGENT_URL = appOrigin
   process.env.QWEN_AUDIO_ORB_STYLE = normalized.orbStyle
   process.env.QWEN_AUDIO_ORB_SKIN = normalized.orbSkin
   await ensureDesktopUi()
   const desktopRendererChanged = (
-    gatewayChanged
+    (gatewayChanged || credentialChanged)
     && mainWindow
     && !mainWindow.isDestroyed()
   )
@@ -1207,7 +1198,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     runtime,
     wakeShortcutRegistered: desktopPresence.shortcutRegistered,
   }
-})
+}
 
 ipcMain.handle('qwen-audio-agent:skin-import', async event => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
@@ -1243,46 +1234,16 @@ function gatewayPairingCodeFromArguments(argv = []) {
   return argv.find(value => String(value || '').startsWith('qwaudio://connect')) || null
 }
 
-async function applyGatewayPairingCode(value, { reloadSettings = true } = {}) {
-  const pairingCode = decodeGatewayPairingCode(value)
-  const paired = await pairGatewayConnectionCode(pairingCode, {
-    device: {
-      id: desktopGatewayClientInstanceId,
-      type: 'desktop',
-      label: app.getName(),
-    },
-    clientInstanceId: desktopGatewayClientInstanceId,
-    profileId: 'desktop',
-    label: 'Remote Gateway',
-    profileStore: desktopGatewayProfiles,
-  })
-  gatewayAccessToken = String(
-    (await desktopGatewayProfiles.resolve('desktop'))?.credential || '',
-  ).trim()
-  const settings = desktopSettingsStore.save({
+async function applyGatewayPairingCode(value) {
+  const { settings } = await applyDesktopSettings({
     ...desktopSettingsStore.load(),
-    gatewayUrl: paired.profile.gateway_url,
+    gatewayUrl: value,
   })
-  if (embeddedGateway) {
-    await embeddedGateway.stop()
-    embeddedGateway = null
-  }
-  borrowedGatewayOrigin = ''
-  setupRequired = false
-  configuredGatewayOrigin = paired.profile.gateway_url
-  appOrigin = paired.profile.gateway_url
-  process.env.QWEN_AUDIO_AGENT_URL = appOrigin
-  await ensureDesktopUi()
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    await loadQwenAudioAgent(mainWindow)
-    desktopPresence.wake('remote-paired')
-  }
-  if (reloadSettings && settingsWindow && !settingsWindow.isDestroyed()) {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.reload()
   }
   logger.info('gateway.remote_paired', {
-    gatewayUrl: paired.profile.gateway_url,
-    deviceId: paired.profile.device_id,
+    gatewayUrl: settings.gatewayUrl,
   })
   return settings
 }

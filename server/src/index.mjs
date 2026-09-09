@@ -126,7 +126,12 @@ try {
   const port = address && typeof address === 'object'
     ? address.port
     : Number(process.env.PORT || 3101)
-  const host = process.env.HOST || '127.0.0.1'
+  const configuredHost = process.env.HOST || '127.0.0.1'
+  // The lease is a local control-plane address. A wildcard listener is not a
+  // client destination, so keep local process discovery on loopback.
+  const host = ['0.0.0.0', '::', '[::]'].includes(configuredHost)
+    ? '127.0.0.1'
+    : configuredHost
   gatewayLease.update({
     state: 'ready',
     origin: `http://${host}:${port}`,

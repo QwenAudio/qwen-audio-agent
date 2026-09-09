@@ -66,7 +66,7 @@ function MobileApp() {
         if (next) return activateProfile(next)
         return mobileLaunchUrl().then(url => {
           if (url) return pair(url)
-          setStatus('请扫描 Gateway CLI 输出的配对码')
+          setStatus('请扫描 Gateway CLI 输出的连接码')
         })
       })
       .catch(error => active && setStatus(error.message || '无法读取连接配置'))

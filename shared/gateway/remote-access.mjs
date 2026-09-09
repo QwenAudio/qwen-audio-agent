@@ -1,6 +1,8 @@
 import { z } from 'zod'
+import { randomUUID } from '../runtime-crypto.mjs'
 
 export const GATEWAY_CONNECTION_MODEL_VERSION = 1
+export const GATEWAY_DIRECT_CONNECTION_VERSION = 2
 
 const IdentifierSchema = z.string().trim().min(1).max(128)
 
@@ -60,6 +62,47 @@ export const GatewayPairingCodeSchema = z.object({
   expires_at: z.number().int().positive(),
 }).strict()
 
+function normalizeGatewayWebSocketUrl(value, context) {
+  let url
+  try {
+    url = new URL(value)
+  } catch {
+    context.addIssue({ code: 'custom', message: 'websocket URL must be an absolute URL' })
+    return z.NEVER
+  }
+  if (!['ws:', 'wss:'].includes(url.protocol)) {
+    context.addIssue({ code: 'custom', message: 'websocket URL must use ws or wss' })
+    return z.NEVER
+  }
+  if (
+    url.username
+    || url.password
+    || url.pathname !== '/api/realtime'
+    || url.search
+    || url.hash
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'websocket URL must target /api/realtime without credentials, query, or fragment',
+    })
+    return z.NEVER
+  }
+  return url.toString()
+}
+
+export const GatewayWebSocketUrlSchema = z.string().trim().min(1)
+  .transform(normalizeGatewayWebSocketUrl)
+
+export const GatewayDirectConnectionSchema = z.object({
+  schema: z.literal('qwaudio.connection/v2'),
+  websocket_url: GatewayWebSocketUrlSchema,
+  device_id: IdentifierSchema,
+  credential_id: IdentifierSchema,
+  access_token: z.string().trim().min(16).max(512),
+  label: z.string().trim().min(1).max(128).optional(),
+  issued_at: z.number().int().positive(),
+}).strict()
+
 export function parseGatewayEndpointDescriptor(value) {
   return GatewayEndpointDescriptorSchema.parse(value)
 }
@@ -70,6 +113,120 @@ export function parseGatewayConnectionProfile(value) {
 
 export function parseGatewayPairingCode(value) {
   return GatewayPairingCodeSchema.parse(value)
+}
+
+export function parseGatewayDirectConnection(value) {
+  return GatewayDirectConnectionSchema.parse(value)
+}
+
+export function gatewayWebSocketUrl(gatewayUrl) {
+  const origin = new URL(GatewayUrlSchema.parse(gatewayUrl))
+  origin.protocol = origin.protocol === 'https:' ? 'wss:' : 'ws:'
+  origin.pathname = '/api/realtime'
+  return GatewayWebSocketUrlSchema.parse(origin.toString())
+}
+
+export function gatewayOriginFromWebSocketUrl(websocketUrl) {
+  const url = new URL(GatewayWebSocketUrlSchema.parse(websocketUrl))
+  url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:'
+  url.pathname = '/'
+  return GatewayUrlSchema.parse(url.origin)
+}
+
+export function isLiteralIpv4GatewayUrl(value, { protocol = 'http:' } = {}) {
+  try {
+    const url = new URL(value)
+    const octets = url.hostname.split('.')
+    return url.protocol === protocol
+      && octets.length === 4
+      && octets.every(octet => /^\d{1,3}$/u.test(octet) && Number(octet) <= 255)
+  } catch {
+    return false
+  }
+}
+
+export function parseGatewayConnectionEndpoint(value) {
+  const origin = GatewayUrlSchema.parse(value)
+  if (origin.startsWith('https://') || isLiteralIpv4GatewayUrl(origin)) return origin
+  const url = new URL(origin)
+  if (url.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
+    return origin
+  }
+  const error = new Error(
+    'Gateway connection endpoint must use HTTPS, or HTTP on localhost/a literal IPv4 address',
+  )
+  error.code = 'gateway_connection_endpoint_unsafe'
+  throw error
+}
+
+export function createGatewayDirectConnection({
+  gatewayUrl,
+  websocketUrl,
+  deviceId,
+  credentialId,
+  accessToken,
+  label,
+  issuedAt = Date.now(),
+}) {
+  return parseGatewayDirectConnection({
+    schema: 'qwaudio.connection/v2',
+    websocket_url: websocketUrl || gatewayWebSocketUrl(gatewayUrl),
+    device_id: deviceId,
+    credential_id: credentialId,
+    access_token: accessToken,
+    ...(String(label || '').trim() ? { label: String(label).trim() } : {}),
+    issued_at: issuedAt,
+  })
+}
+
+export function decodeGatewayDirectConnection(value) {
+  try {
+    const url = new URL(String(value || ''))
+    if (
+      ['http:', 'https:'].includes(url.protocol)
+      && url.pathname === '/c'
+      && !url.username
+      && !url.password
+      && !url.search
+      && url.hash.startsWith('#d.')
+    ) {
+      const accessToken = decodeURIComponent(url.hash.slice(3))
+      // Local profile identifiers are persisted outside the credential store;
+      // never derive them from any part of the device token.
+      const localId = randomUUID()
+      return createGatewayDirectConnection({
+        gatewayUrl: url.origin,
+        deviceId: `device_connection_${localId}`,
+        credentialId: `gateway/connection/${localId}`,
+        accessToken,
+        issuedAt: 1,
+      })
+    }
+    throw new Error()
+  } catch (error) {
+    throw Object.assign(new Error('Invalid Gateway direct connection code'), {
+      code: 'gateway_direct_connection_invalid',
+      cause: error,
+    })
+  }
+}
+
+export function encodeGatewayBrowserDirectConnection(connection) {
+  const parsed = parseGatewayDirectConnection(connection)
+  const gatewayUrl = gatewayOriginFromWebSocketUrl(parsed.websocket_url)
+  const url = new URL('/c', gatewayUrl)
+  // Fragment data is not included in the HTTP request or access logs. The
+  // browser shell exchanges this device token for an HttpOnly session cookie.
+  url.hash = `d.${parsed.access_token}`
+  return url.toString()
+}
+
+export function decodeGatewayConnectionCode(value) {
+  try {
+    return { kind: 'direct', connection: decodeGatewayDirectConnection(value) }
+  } catch {
+    return { kind: 'pairing', connection: decodeGatewayPairingCode(value) }
+  }
 }
 
 export function createGatewayPairingCode({ gatewayUrl, pairingCode, expiresAt }) {

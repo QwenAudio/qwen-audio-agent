@@ -7,7 +7,7 @@
 
 Updated 2026-09-04:
 
-- Gateway health contract `5.8.0`;
+- Gateway health contract `5.9.0`;
 - stable Gateway Client Protocol wire version `7.0.0`;
 - GCP1–GCP5 complete;
 - Gateway remote access and Mobile Client roadmap tracked by issue #320;

@@ -31,7 +31,9 @@ Wire 7.0 replaces the permission decision `once` with explicit Task-scoped `task
 Gateway and Clients must update together. Capability IDs keep their historical
 names; negotiate the actual wire version through `session.hello`.
 
-The current health-contract version is `5.8.0`. The additive `5.8` line adds
+The current health-contract version is `5.9.0`. The additive `5.9` line adds
+host-issued direct device connection codes: Conversation Clients authenticate and operate through
+one WS/WSS connection, while loopback HTTP remains a host management plane. The `5.8` line adds
 capability-negotiated realtime JPEG visual frames while keeping provider wire
 formats behind Realtime Provider adapters. The additive `5.7` line adds
 authenticated remote Client access, one-time device pairing, and owner-scoped
@@ -77,6 +79,7 @@ below instead of assuming the old list.
 | `gateway.setup-gate` | An unconfigured start is refused with `QWAUDIO_GATEWAY_SETUP_REQUIRED` and a `missing` list instead of serving an instance whose voice cannot work | `test/gateway-setup.test.mjs` |
 | `gateway.settings-store` | Configuration persistence is owned by this package: `createSettingsStore({ configDir, clientDir })` — a host names no setting and no file of its own | `desktop/test/settings-store.test.mjs` |
 | `gateway.remote-access-pairing` | Loopback stays zero-config; remote HTTP/WS access requires a configured or paired credential, and local operators can issue and revoke device tokens | `server/test/gateway-access.test.mjs`, `server/test/request-security.test.mjs` |
+| `gateway.direct-device-connection` | A loopback-only management call issues one short browser-compatible connection code containing a revocable per-device credential; native Clients import it without HTTP pairing or health preflight, while a browser exchanges its fragment token for an HttpOnly cookie | `server/test/gateway-application.test.mjs`, `test/gateway-remote-access.test.mjs`, `desktop/test/gateway-connection.test.mjs` |
 | `host.electron-entry` | `qwen-audio-agent/electron`: a CommonJS entry an Electron main process can `require`, loading every ESM contract through one `load()` | `test/consumer-install.test.mjs` |
 | `host.gateway-process` | `GatewayProcess` ships: forking, port fallback, the readiness handshake, restart, and telling a planned exit from a crash — the desktop app runs the same implementation | `desktop/test/gateway-process.test.mjs` |
 | `input.suspend-protocol` | `POST /api/input/suspend\|resume`, `GET /api/input`; the Gateway relays the suspension to clients through `input.suspend` / `input.resume` | `server/test/input-suspend-protocol.test.mjs` |
@@ -118,8 +121,8 @@ is unsupported and breaks without notice.
 | `qwen-audio-agent/gateway-client-protocol` | GCP 7.0 envelope, handshake and runtime-command schemas, parsers, capability constants, and reference Client helpers |
 | `qwen-audio-agent/gateway-client-sdk` | `GatewayClient`: WebSocket lifecycle, 7.0 handshake, request correlation, Client Actions, bounded replay, and reconnect recovery |
 | `qwen-audio-agent/gateway-client-profiles` | Reference capability profiles for WebUI, Desktop, and TUI |
-| `qwen-audio-agent/gateway-access-client` | Client helpers for creating a local one-time pairing ticket and exchanging it for a remote device token |
-| `qwen-audio-agent/gateway-remote-access` | Versioned endpoint-descriptor, connection-profile, and pairing-code schemas; profiles contain secure-store references rather than credentials |
+| `qwen-audio-agent/gateway-access-client` | Helpers to issue direct device connections, retain the legacy pairing exchange, and save credentials through a secure-store abstraction |
+| `qwen-audio-agent/gateway-remote-access` | Versioned endpoint, profile, direct connection-code, and legacy pairing schemas; profiles contain secure-store references rather than credentials |
 | `qwen-audio-agent/gateway-connection-profiles` | Versioned connection-profile persistence and the native Client credential-store port |
 | `qwen-audio-agent/client-events` | Client Event definition registry, built-in definitions, routing policies, and `GatewayEventRouter` for Gateway extensions |
 | `qwen-audio-agent/client-actions` | `ClientActionPort`, built-in action names, capability mapping, request/result correlation, deadlines, and in-flight deduplication |

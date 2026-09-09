@@ -152,8 +152,9 @@ them to the configuration file:
 | --- | --- |
 | `HOST` / `PORT` | `127.0.0.1` / `3101` |
 | `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS` | Empty; only loopback allowed |
+| `QWEN_AUDIO_GATEWAY_LAN` | Empty; set to `1` to listen on LAN (`0.0.0.0`) |
+| `QWEN_AUDIO_GATEWAY_LAN_HOST` | Auto-selected physical IPv4; optional explicit LAN endpoint host |
 | `QWEN_AUDIO_GATEWAY_TAILNET` | Empty; set to `1` to use system Tailscale Serve |
-| `QWEN_AUDIO_GATEWAY_PUBLIC_URL` | Empty; operator-managed HTTPS origin |
 | `QWEN_AUDIO_TAILSCALE_BINARY` | Auto-detected; optional absolute path to the system Tailscale CLI |
 | `OPENCODE_WORKSPACE` | `workspace` under the shared data directory |
 | `QODER_WORKSPACE` | `workspace` under the shared data directory |

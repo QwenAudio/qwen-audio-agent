@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Gateway 接入统一为本机、`--lan` 和 `--tailnet` 三种启动模式；对外连接地址
+  独立由 `gateway pair --endpoint` 指定，不再使用启动参数 `--public-url`。
+- `gateway pair` 默认只生成一个短连接码和二维码，浏览器、桌面端和移动端
+  共享 `http(s)://Gateway/c#d.TOKEN`；原生客户端直接通过单条 WebSocket 认证
+  并执行 GCP，浏览器将设备 Token 换为 HttpOnly 会话 Cookie。设备凭证可单独吊销，
+  不再输出冗长的直接连接码；本机和显式启用的 LAN 接入允许明文 HTTP/WS。
 - WebUI 与共享移动端现在会在后台任务卡片中展示类型化 Artifact；支持远程媒体
   的显式加载、内联图片预览、结构化数据和可打开或下载的文件产物，并在语音播报
   完成或 Gateway 重连后继续保留产物入口。

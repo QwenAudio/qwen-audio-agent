@@ -75,7 +75,7 @@ pairing link generated on its host into the same field. Desktop pairs automatica
 then displays the plain URL and reuses the saved credential for later connections.
 See [Remote Connections and Pairing](../operations/remote-access.md). The Gateway and Backend Agent
 stay on the remote host; Desktop only handles input and output, without its own relay service.
-Tailnet mode requires official Tailscale on both devices; external HTTPS does not.
+Tailnet mode requires official Tailscale on both devices; LAN and an external HTTPS endpoint do not.
 
 ## Installation
 

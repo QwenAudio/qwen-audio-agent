@@ -1,7 +1,9 @@
 import { randomUUID } from '../../shared/runtime-crypto.mjs'
 import {
   assertGatewayPairingCodeActive,
-  decodeGatewayPairingCode,
+  decodeGatewayConnectionCode,
+  gatewayOriginFromWebSocketUrl,
+  isLiteralIpv4GatewayUrl,
 } from '../../shared/gateway/remote-access.mjs'
 
 export const MOBILE_GATEWAY_PROFILE_KEY = 'mobile-gateway-profile'
@@ -15,7 +17,10 @@ export function parseMobileGatewayProfile(value) {
   const clientInstanceId = String(value.clientInstanceId || '').trim()
   try {
     const url = new URL(gatewayUrl)
-    if (url.protocol !== 'https:' || url.origin !== gatewayUrl) return null
+    if (
+      (url.protocol !== 'https:' && !isLiteralIpv4GatewayUrl(url.href))
+      || url.origin !== gatewayUrl
+    ) return null
   } catch {
     return null
   }
@@ -47,8 +52,25 @@ export async function pairMobileGateway(pairingUrl, {
   clientInstanceId = randomUUID(),
   label = 'Mobile',
 } = {}) {
+  const decoded = decodeGatewayConnectionCode(pairingUrl)
+  if (decoded.kind === 'direct') {
+    const direct = decoded.connection
+    const gatewayUrl = gatewayOriginFromWebSocketUrl(direct.websocket_url)
+    if (!gatewayUrl.startsWith('https://') && !isLiteralIpv4GatewayUrl(gatewayUrl)) {
+      const error = new Error('移动端只连接 HTTPS Gateway 或连接码指定的局域网 IPv4 Gateway')
+      error.code = 'mobile_gateway_endpoint_unsafe'
+      throw error
+    }
+    return parseMobileGatewayProfile({
+      gatewayUrl,
+      accessToken: direct.access_token,
+      deviceId: direct.device_id,
+      clientInstanceId,
+      label: direct.label || label,
+    })
+  }
   if (typeof request !== 'function') throw new TypeError('pairing request is required')
-  const pairingCode = assertGatewayPairingCodeActive(decodeGatewayPairingCode(pairingUrl))
+  const pairingCode = assertGatewayPairingCodeActive(decoded.connection)
   const gateway = new URL(pairingCode.gateway_url)
   if (gateway.protocol !== 'https:') {
     const error = new Error('移动端只连接 HTTPS Gateway，请先在电脑上开启远程访问')

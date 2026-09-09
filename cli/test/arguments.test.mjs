@@ -260,6 +260,11 @@ test('parses foreground and service Gateway commands', () => {
   assert.equal(parseArguments(['gateway', 'start'], {}).gatewayAction, 'start')
   assert.equal(parseArguments(['gateway', 'stop'], {}).gatewayAction, 'stop')
   assert.equal(parseArguments(['gateway', 'pair'], {}).gatewayAction, 'pair')
+  assert.equal(
+    parseArguments(['gateway', 'pair', '--name', 'AI Passport'], {}).deviceLabel,
+    'AI Passport',
+  )
+  assert.equal(parseArguments(['gateway', 'pair', '--legacy'], {}).legacyPairing, true)
   assert.equal(parseArguments([
     'gateway', 'pair', '--json',
   ], {}).json, true)
@@ -316,7 +321,9 @@ test('documents the service and client commands', () => {
   assert.match(text, /gateway devices/)
   assert.match(text, /gateway revoke ID/)
   assert.match(text, /--tailnet/)
-  assert.match(text, /--public-url HTTPS_URL/)
+  assert.match(text, /--lan/)
+  assert.match(text, /gateway pair --endpoint URL/)
+  assert.doesNotMatch(text, /--public-url/)
   assert.doesNotMatch(text, /gateway remote/)
   assert.match(text, /qwenaudio tui/)
   assert.match(text, /qwenaudio webui/)
@@ -334,50 +341,51 @@ test('documents the service and client commands', () => {
   assert.match(text, /x\s+半双工模式下手动打断当前回复/)
 })
 
-test('selects Tailnet or externally managed HTTPS without a remote command layer', () => {
+test('selects one of three Gateway run modes and keeps endpoint overrides on pair', () => {
   assert.throws(
     () => parseArguments(['gateway', 'remote'], {}),
     /未知 Gateway 命令：remote/,
   )
-  assert.throws(
-    () => parseArguments([
-      'gateway', '--public-url', 'http://voice.example.com',
-    ], {}),
-    /必须使用 https/,
+  assert.equal(parseArguments(['gateway', '--tailnet'], {}).tailnet, true)
+  const lan = parseArguments(['gateway', '--lan'], {})
+  assert.equal(lan.lan, true)
+  assert.equal(lan.tailnet, false)
+  assert.equal(
+    parseArguments([
+      'gateway', 'pair', '--endpoint', 'https://voice.example.com',
+    ], {}).endpoint,
+    'https://voice.example.com',
   )
   assert.throws(
-    () => parseArguments([
-      'gateway', '--public-url', 'https://voice.example.com/path',
-    ], {}),
-    /必须是无凭据、路径、查询参数和片段/,
+    () => parseArguments(['gateway', '--public-url', 'https://voice.example.com'], {}),
+    /未知参数/,
   )
-  assert.deepEqual(
-    {
-      tailnet: parseArguments(['gateway', '--tailnet'], {}).tailnet,
-      publicUrl: parseArguments(['gateway', '--tailnet'], {}).publicUrl,
-    },
-    { tailnet: true, publicUrl: '' },
-  )
-  const external = parseArguments([
-    'gateway', '--public-url', 'https://voice.example.com',
-  ], { QWEN_AUDIO_GATEWAY_TAILNET: '1' })
-  assert.equal(external.tailnet, false)
-  assert.equal(external.publicUrl, 'https://voice.example.com')
-  const tailnet = parseArguments(['gateway', '--tailnet'], {
-    QWEN_AUDIO_GATEWAY_PUBLIC_URL: 'https://voice.example.com',
-  })
-  assert.equal(tailnet.tailnet, true)
-  assert.equal(tailnet.publicUrl, '')
   assert.throws(
-    () => parseArguments(['gateway'], {
-      QWEN_AUDIO_GATEWAY_TAILNET: '1',
-      QWEN_AUDIO_GATEWAY_PUBLIC_URL: 'https://voice.example.com',
-    }),
-    /不能同时使用/,
+    () => parseArguments(['gateway', '--endpoint', 'https://voice.example.com'], {}),
+    /只适用于 gateway pair/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'pair', '--endpoint', 'http://voice.example.com'], {}),
+    /必须使用 HTTPS/,
   )
   assert.throws(
     () => parseArguments(['gateway', 'start', '--tailnet'], {}),
     /只适用于 gateway run 或 gateway install/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'start', '--lan'], {}),
+    /只适用于 gateway run 或 gateway install/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway'], {
+      QWEN_AUDIO_GATEWAY_LAN: '1',
+      QWEN_AUDIO_GATEWAY_TAILNET: '1',
+    }),
+    /不能同时使用/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', '--lan', '--tailnet'], {}),
+    /不能同时使用/,
   )
   assert.equal(
     parseArguments(['gateway', 'install', '--tailnet'], {}).tailnet,

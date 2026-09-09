@@ -1,4 +1,5 @@
 import { config } from './config.mjs'
+import { isIP } from 'node:net'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
 const TRUSTED_NATIVE_CLIENT_ORIGINS = new Set(['https://qwaudio.local'])
@@ -45,6 +46,7 @@ export function isAllowedOrigin(
     allowedOrigins = config.allowedOrigins,
     authenticatedRemote = false,
     allowSecureSameOrigin = false,
+    allowLanSameOrigin = false,
     trustedNativeClient = false,
   } = {},
 ) {
@@ -86,6 +88,16 @@ export function isAllowedOrigin(
     return true
   }
 
+  // An explicitly authenticated LAN browser may use cleartext HTTP when the
+  // operator deliberately started the Gateway in LAN mode. Host and Origin
+  // must still be the same literal IPv4 address to avoid DNS rebinding.
+  if (
+    (authenticatedRemote || allowLanSameOrigin)
+    && isIP(requestHost.hostname) === 4
+    && originUrl.protocol === 'http:'
+    && originUrl.host === requestHost.host
+  ) return true
+
   // Comparing arbitrary Origin and Host values is vulnerable to DNS rebinding.
   // The implicit same-origin path is therefore limited to literal loopback
   // hosts. Public hostnames must be explicitly allowlisted.
@@ -99,7 +111,7 @@ export function isAllowedOrigin(
 export function enforceSameOrigin(req, res, next) {
   if (!isAllowedOrigin(req, {
     authenticatedRemote: req.identity?.access === 'remote',
-    trustedNativeClient: req.identity?.clientType === 'mobile',
+    trustedNativeClient: ['client', 'mobile'].includes(req.identity?.clientType),
   })) {
     res.status(403).json({ error: 'origin not allowed' })
     return

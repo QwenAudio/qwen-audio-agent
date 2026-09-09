@@ -82,6 +82,13 @@ function harness({ ownsProcesses = false } = {}) {
           gatewayUrl: 'https://voice.example.ts.net',
         }
       },
+      issueDeviceCredential: async (url, label, endpoint) => {
+        calls.push(['pair', url, label, endpoint])
+        return {
+          device: { id: 'device-one', label: 'Conversation client' },
+          connection_code: 'https://voice.example.ts.net/c#d.DIRECT-TOKEN',
+        }
+      },
       waitForEndpoint: async url => {
         calls.push(['endpoint.ready', url])
         return {
@@ -378,21 +385,38 @@ test('creates one portable Gateway connection code and QR', async () => {
     target.calls.push(['qr', value])
     return '[compact QR]'
   }
-  assert.equal(await main(['gateway', 'pair'], target.dependencies), 0)
+  assert.equal(await main(['gateway', 'pair', '--name', 'AI Passport'], target.dependencies), 0)
   assert.equal(target.calls[0][0], 'pair')
+  assert.equal(target.calls[0][2], 'AI Passport')
   const output = target.calls.at(-1)[1]
-  assert.match(output, /Gateway 对外地址：https:\/\/voice\.example\.ts\.net/)
-  assert.match(output, /客户端扫码配对：/)
+  assert.match(output, /扫码或复制连接：/)
   assert.match(output, /\[compact QR\]/)
-  assert.match(output, /连接码（移动端 \/ 桌面端）：\nqwaudio:\/\/connect\?v=1&gateway=/)
-  assert.match(output, /浏览器访问：\nhttps:\/\/voice\.example\.ts\.net\/c\?e=[a-z0-9]+#/)
-  assert.match(output, /有效期至/)
+  assert.match(output, /连接码（只显示这一次）：\nhttps:\/\/voice\.example\.ts\.net\/c#d\.DIRECT-TOKEN/)
+  assert.doesNotMatch(output, /qwaudio:\/\/connect#DIRECT-CODE/)
+  assert.match(output, /设备 ID：device-one/)
+
+  const proxied = harness()
+  assert.equal(await main([
+    'gateway', 'pair', '--endpoint', 'https://voice.example.com',
+  ], proxied.dependencies), 0)
+  assert.equal(proxied.calls[0][3], 'https://voice.example.com')
 
   const machineReadable = harness()
   assert.equal(await main(['gateway', 'pair', '--json'], machineReadable.dependencies), 0)
   const json = JSON.parse(machineReadable.calls.at(-1)[1])
-  assert.match(json.app_url, /^qwaudio:\/\/connect\?v=1&gateway=/)
-  assert.match(json.browser_url, /^https:\/\/voice\.example\.ts\.net\/c\?e=[a-z0-9]+#/)
+  assert.equal(json.connection_code, 'https://voice.example.ts.net/c#d.DIRECT-TOKEN')
+  assert.equal('native_connection_code' in json, false)
+  assert.equal(json.device.id, 'device-one')
+})
+
+test('keeps the temporary v1 pairing code behind an explicit compatibility flag', async () => {
+  const target = harness()
+  target.dependencies.renderPairingQr = async () => '[legacy QR]'
+  assert.equal(await main(['gateway', 'pair', '--legacy'], target.dependencies), 0)
+  const output = target.calls.at(-1)[1]
+  assert.match(output, /旧版客户端扫码配对/)
+  assert.match(output, /qwaudio:\/\/connect\?v=1&gateway=/)
+  assert.match(output, /有效期至/)
 })
 
 test('lists and revokes paired clients directly under gateway', async () => {
@@ -499,6 +523,25 @@ test('persists the selected public endpoint mode in the Gateway service', async 
   ))
   assert.equal(install[2].serviceEnvironment.QWEN_AUDIO_GATEWAY_TAILNET, '1')
   assert.equal(install[2].serviceMetadata.tailnet, true)
+})
+
+test('persists LAN publication and binds the Gateway to all interfaces', async () => {
+  const target = harness()
+  target.dependencies.manageService = async (action, options) => {
+    target.calls.push(['service', action, options])
+    return { installed: true, running: true, logPath: null }
+  }
+
+  assert.equal(
+    await main(['gateway', 'install', '--lan'], target.dependencies),
+    0,
+  )
+  const install = target.calls.find(call => (
+    call[0] === 'service' && call[1] === 'install'
+  ))
+  assert.equal(install[2].serviceEnvironment.HOST, '0.0.0.0')
+  assert.equal(install[2].serviceEnvironment.QWEN_AUDIO_GATEWAY_LAN, '1')
+  assert.equal(install[2].serviceMetadata.lan, true)
 })
 
 test('refreshes the shared process PATH before starting a background service', async () => {

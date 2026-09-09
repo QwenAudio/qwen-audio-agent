@@ -56,9 +56,10 @@ qwenaudio setup
 
 ## 远程连接
 
-先确认两端官方 Tailscale 在线、同一 Tailnet 且访问策略允许，再检查 Gateway 的 HTTPS
-发布是否就绪。配对码是短时一次性的；失效后在主机重新生成，不要重复使用旧二维码。
-外部 HTTPS 模式则检查证书、反向代理与 WebSocket 转发。步骤见[远程连接](remote-access.zh.md)。
+Tailnet 连接先确认两端官方 Tailscale 在线、同一 Tailnet 且访问策略允许，再检查 Gateway
+的 HTTPS 发布是否就绪。LAN 连接检查网段、防火墙和 Gateway 是否用 `--lan` 启动。外部
+HTTPS Endpoint 检查证书、反向代理与 WebSocket 转发。连接码只显示一次；泄露时撤销对应
+设备并重新生成。步骤见[远程连接](remote-access.zh.md)。
 
 ## 日志与反馈
 

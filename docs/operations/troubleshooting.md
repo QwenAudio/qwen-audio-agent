@@ -57,10 +57,11 @@ See [MCP configuration](../reference/frontend-mcp.md) and [Knowledge Library](..
 
 ## Remote Connections
 
-First check that official Tailscale is online on both devices, they share a tailnet, and access
-policies allow the connection. Then check that Gateway HTTPS publication is ready. Pairing codes
-are short-lived and single-use; generate a new code on the host when needed. For external HTTPS,
-check certificates, reverse-proxy settings, and WebSocket forwarding.
+For Tailnet, check that official Tailscale is online on both devices, they share a tailnet, access
+policies allow the connection, and Gateway HTTPS publication is ready. For LAN, check the subnet,
+firewall, and that the Gateway was started with `--lan`. For an external HTTPS endpoint, check
+certificates, reverse-proxy settings, and WebSocket forwarding. A connection code is displayed once;
+if it leaks, revoke that device and generate another one.
 See [Remote Connections](remote-access.md).
 
 ## Logs and Reporting

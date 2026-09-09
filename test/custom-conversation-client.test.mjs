@@ -27,7 +27,7 @@ test('custom client builds messages accepted by the public Gateway schemas', () 
   assert.throws(() => parseGatewayClientMessage(createTextInputMessage('')))
 })
 
-test('custom client can opt into the 6.0 handshake and envelope', () => {
+test('custom client can opt into the 7.0 handshake and envelope', () => {
   const hello = createProtocolHello({
     eventId: 'evt_client_hello',
     clientInstanceId: 'custom_1',
@@ -50,7 +50,7 @@ test('custom client consumes public conversation and Task events', () => {
     type: 'session.ready',
     event_id: 'evt_gateway_ready',
     request_event_id: 'evt_client_hello',
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'custom-client',
     capabilities: ['input.text'],
   }, value => output.push(value))
@@ -59,7 +59,7 @@ test('custom client consumes public conversation and Task events', () => {
     role: 'assistant',
     content: '空调已打开。',
   }, value => output.push(value))
-  assert.deepEqual(output, ['session: 6.0.0', 'assistant: 空调已打开。'])
+  assert.deepEqual(output, ['session: 7.0.0', 'assistant: 空调已打开。'])
 
   assert.equal(parseGatewayServerMessage({
     type: 'voice.ready',

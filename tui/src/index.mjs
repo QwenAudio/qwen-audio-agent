@@ -14,6 +14,7 @@ import {
   inputText,
 } from '../../shared/input-parts.mjs'
 import { createLogger } from '../../shared/logger.mjs'
+import { tuiClientDirectory } from '../../shared/client-paths.mjs'
 import { GatewayClient } from '../../shared/gateway/client-sdk.mjs'
 import { gatewayReferenceClientCapabilities } from '../../shared/gateway/client-profiles.mjs'
 import { formatCitationLines } from '../../shared/citation-display.mjs'
@@ -718,6 +719,7 @@ if (isMain) {
   const logger = createLogger({
     component: 'tui',
     fileName: 'tui.log',
+    directory: `${tuiClientDirectory()}/logs`,
     consoleEnabled: false,
   })
   logger.info('tui.started')

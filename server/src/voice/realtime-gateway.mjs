@@ -1,4 +1,5 @@
 import { WebSocket, WebSocketServer } from 'ws'
+import { PERMISSION_DECISIONS } from '../../../shared/permission-decisions.mjs'
 import { selectGatewayWebSocketProtocol } from '../../../shared/gateway/websocket-auth.mjs'
 import { randomUUID } from 'node:crypto'
 import {
@@ -76,7 +77,6 @@ import {
 } from '../client/client-action-port.mjs'
 import { PresenceController } from '../client/presence-controller.mjs'
 import { GatewayClientReplayBuffer } from '../transport/gateway-client-replay-buffer.mjs'
-import { permissionReference } from './tools/permission-reference.mjs'
 import { ActiveClientLeases } from '../client/active-client-leases.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
@@ -449,10 +449,10 @@ export function attachRealtimeGateway(server, {
         origin: 'permission',
         text: [
           '<permission_request>',
-          `permission_id=${permissionReference(permission.id)}`,
+        `permission_id=${permission.id}`,
           `task_id=${task.id}`,
           `operation=${permission.summary}`,
-          'allowed_decisions=once,always,reject',
+          `allowed_decisions=${PERMISSION_DECISIONS.join(',')}`,
           '</permission_request>',
         ].join('\n'),
         // A permission prompt is a new model input and response. taskId keeps

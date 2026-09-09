@@ -17,6 +17,7 @@ import {
 } from '../../shared/realtime-model-catalog.mjs'
 import { updaterButtonState, updaterStatusText } from './update-status.mjs'
 import { createRealtimeVoiceDrafts } from './realtime-voice-settings.mjs'
+import { isLoopbackUrl } from './security.mjs'
 import {
   desktopTranslator,
   effectiveDesktopLanguage,
@@ -80,8 +81,6 @@ const currentBackend = document.querySelector('#current-backend')
 const updaterStatus = document.querySelector('#updater-status')
 const checkUpdates = document.querySelector('#check-updates')
 const openLogs = document.querySelector('#open-logs')
-const gatewayPairingCode = document.querySelector('#gateway-pairing-code')
-const connectRemoteGateway = document.querySelector('#connect-remote-gateway')
 const submit = form.querySelector('button[type="submit"]')
 const settingsTabs = [...document.querySelectorAll('[data-settings-tab]')]
 const settingsPanels = [...document.querySelectorAll('[data-settings-panel]')]
@@ -838,6 +837,18 @@ function fingerprint(value) {
 }
 
 function updateApplyState() {
+  const remote = !isLoopbackUrl(gatewayUrl.value)
+  for (const section of document.querySelectorAll('[data-local-gateway-settings]')) {
+    section.hidden = remote
+    // Hidden URL fields must not fail browser form validation on a remote connect.
+    section.querySelectorAll('input, select').forEach(input => {
+      if (input.closest('#backend-list')) return
+      input.disabled = remote
+    })
+  }
+  for (const note of document.querySelectorAll('[data-remote-gateway-note]')) {
+    note.hidden = !remote
+  }
   const backendAvailable = backendSelectionAvailable(
     backendReport,
     selectedBackend(),
@@ -845,7 +856,7 @@ function updateApplyState() {
   submit.disabled = (
     applying
     || recordingWakeShortcut
-    || !backendAvailable
+    || (!remote && gatewayUrl.value === settings?.gatewayUrl && !backendAvailable)
     || fingerprint(formSettings()) === appliedFingerprint
   )
 }
@@ -915,9 +926,9 @@ function renderRuntime() {
   }
   const label = runtime.backend.label
     || backendLabel(runtime.backend.protocol)
-  const state = backendOptionStates(backendReport).find(option => (
-    option.id === runtime.backend.protocol
-  ))
+  const state = isLoopbackUrl(runtime.gatewayUrl)
+    ? backendOptionStates(backendReport).find(option => option.id === runtime.backend.protocol)
+    : null
   const phase = backendRuntimePhase(state, runtime.backend)
   if (phase === 'configuration-required') {
     setBackendStatus(`${label} · ${t('待配置')}`, false)
@@ -1141,29 +1152,6 @@ for (const control of [
 
 getApiKey.addEventListener('click', () => {
   window.qwenAudioAgentDesktop.openExternal(BAILIAN_API_KEY_URL)
-})
-
-connectRemoteGateway.addEventListener('click', async () => {
-  const pairingCode = gatewayPairingCode.value.trim()
-  if (!pairingCode) {
-    showMessage(t('请粘贴 Gateway 连接码'), 'error')
-    return
-  }
-  connectRemoteGateway.disabled = true
-  try {
-    const result = await window.qwenAudioAgentDesktop.connectRemoteGateway(pairingCode)
-    settings.gatewayUrl = result.gatewayUrl
-    gatewayUrl.value = result.gatewayUrl
-    gatewayPairingCode.value = ''
-    appliedFingerprint = fingerprint(formSettings())
-    updateApplyState()
-    await refreshRuntime()
-    showMessage(t('已连接远程 Gateway。'), 'success')
-  } catch (error) {
-    showMessage(friendlyError(error, t('连接远程 Gateway 失败')), 'error')
-  } finally {
-    connectRemoteGateway.disabled = false
-  }
 })
 
 orbSkinSelect.addEventListener('change', updateRemoveSkinState)

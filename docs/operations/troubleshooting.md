@@ -66,7 +66,8 @@ See [Remote Connections](remote-access.md).
 ## Logs and Reporting
 
 Desktop exposes its log directory in Settings → App → Logs. CLI logs default to
-`~/.config/qwaudio/logs`; Desktop logs use the `logs` subdirectory of its application data directory.
+`~/.config/qwaudio/state/logs`; desktop-hosted Gateway logs use `~/.config/qwaudio/state/desktop/logs`.
+Desktop Client logs use the `logs/` subdirectory of its application data directory.
 
 Development builds can summarize a recorded turn:
 

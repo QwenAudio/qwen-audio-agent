@@ -69,6 +69,9 @@ qwenaudio gateway pair
 `qwenaudio gateway devices` 查看已配对客户端，使用
 `qwenaudio gateway revoke <设备 ID>` 撤销设备。
 
+桌面版在“设置 → 应用程序 → Gateway”粘贴完整连接链接，点击“应用”即可配对并连接。
+同一输入框也接受本机或已配对的远程 Gateway 地址，不需要另外设置“远程连接”。
+
 远程访问不会绕过 Gateway 认证：除一次性配对页外，远程业务请求必须携带已
 配对设备凭据。
 

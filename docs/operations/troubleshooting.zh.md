@@ -63,7 +63,8 @@ qwenaudio setup
 ## 日志与反馈
 
 桌面版从“设置 → 应用 → 日志”打开日志目录。CLI 默认日志在
-`~/.config/qwaudio/logs`；桌面版在其应用数据目录的 `logs` 下。
+`~/.config/qwaudio/state/logs`；桌面代管的 Gateway 在 `~/.config/qwaudio/state/desktop/logs`，
+桌面客户端日志在其应用数据目录的 `logs/` 下。
 
 开发版可按单轮记录整理时间线：
 

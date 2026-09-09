@@ -54,7 +54,7 @@ try {
   // Gateway that listens but cannot connect its voice is harder to diagnose
   // than a refusal the user can act on.
   assertGatewaySetup()
-  gatewayLease = acquireGatewayLease(runtimeEnvironment.configDirectory, {
+  gatewayLease = acquireGatewayLease(runtimeEnvironment.stateDirectory, {
     owner: process.env.QWEN_AUDIO_GATEWAY_OWNER
       || (process.env.QWEN_AUDIO_AGENT_DESKTOP === '1' ? 'desktop' : 'cli'),
   })

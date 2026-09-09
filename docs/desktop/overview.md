@@ -69,7 +69,10 @@ loops, and one-shot playback.
 
 ## Remote Connections
 
-Paste a connection code generated on the Gateway host into “Remote connection” in Settings.
+Enter a local or remote Gateway URL in Settings → Application → Gateway and click Apply.
+For the first connection to a remote Gateway requiring authentication, paste the complete
+pairing link generated on its host into the same field. Desktop pairs automatically,
+then displays the plain URL and reuses the saved credential for later connections.
 See [Remote Connections and Pairing](../operations/remote-access.md). The Gateway and Backend Agent
 stay on the remote host; Desktop only handles input and output, without its own relay service.
 Tailnet mode requires official Tailscale on both devices; external HTTPS does not.
@@ -89,9 +92,9 @@ Outputs are in `dist/desktop/`. Local test builds are not equivalent to official
 
 ## Data Directory and Isolation
 
-Configuration, identity, memory, and workspace are shared with CLI. Gateway locks, tasks, sessions,
-logs, skins, and window state live in Desktop's application data directory. Both can run at once,
-but that does not mean they connect to the same Gateway.
+Desktop-hosted and CLI-hosted Gateways share configuration, identity, memory and workspace, but keep runtime state separate.
+Desktop preferences, window placement, skins, wake-word models and connection credentials stay in the client application directory.
+Both can run at once, but that does not mean they connect to the same Gateway.
 See [configuration directories](../configuration.md#configuration-and-data-directories) for paths and overrides.
 
 ## Auto Update and Logs

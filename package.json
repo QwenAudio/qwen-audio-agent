@@ -34,6 +34,7 @@
     "./gateway-setup": "./shared/gateway/setup.mjs",
     "./gateway-process": "./shared/gateway/process.mjs",
     "./gateway-lease": "./shared/gateway/lease.mjs",
+    "./runtime-paths": "./shared/runtime-paths.mjs",
     "./realtime-events": "./shared/protocol/realtime-events.mjs",
     "./gateway-events": "./shared/protocol/gateway-events.mjs",
     "./gateway-client-protocol": "./shared/protocol/gateway-client-protocol.mjs",

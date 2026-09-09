@@ -76,6 +76,10 @@ and other Clients consume the same connection code without knowing whether Tails
 external proxy published the endpoint. Use `qwenaudio gateway devices` to list paired Clients and
 `qwenaudio gateway revoke <device-id>` to revoke one.
 
+In Desktop, paste the complete pairing link into Settings → Application → Gateway and click
+Apply to pair and connect. The same field accepts local or previously paired remote Gateway URLs;
+there is no separate remote-connection setting.
+
 Remote access does not bypass Gateway authentication: every remote business request except the
 one-time pairing shell requires a paired-device credential.
 

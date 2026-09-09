@@ -157,7 +157,7 @@ export function speakResponseInstructions(content) {
 
 export const permissionResponseInstructions = [
   '这是后台 Agent 的权限请求。',
-  '自然、简短地说明操作，并询问用户是否同意授权。',
+  '自然、简短地说明待执行的工作，并询问用户是否同意授权此任务及其后续操作。',
   '不要规定具体回答方式，也不要提供或要求复述固定口令。',
   '不要调用工具或朗读内部字段，等待用户回答。',
 ].join(' ')

@@ -24,7 +24,7 @@ const response = value => ({ ok: true, json: async () => value })
 test('diagnoses missing configuration without creating files or calling a model', async t => {
   const directory = await fixture(t)
   const report = await collectDiagnostics({
-    environment: { configDirectory: directory, configPath: join(directory, 'config.env') },
+    environment: { stateDirectory: directory, configPath: join(directory, 'config.env') },
     options: { url: 'http://127.0.0.1:3101', accessToken: 'private-token' }, env: {},
     fetchImpl: async (url, options) => {
       assert.equal(url, 'http://127.0.0.1:3101/api/health')
@@ -44,7 +44,7 @@ test('diagnoses missing configuration without creating files or calling a model'
 test('a configured key does not imply Realtime readiness; raw errors and secrets stay private', async t => {
   const directory = await fixture(t)
   const report = await collectDiagnostics({
-    environment: { configDirectory: directory, configPath: join(directory, 'config.env') },
+    environment: { stateDirectory: directory, configPath: join(directory, 'config.env') },
     options: { url: 'http://127.0.0.1:3101' },
     env: { DASHSCOPE_API_KEY: 'sk-private-key', QWEN_AUDIO_FRONTEND_MCP_CONFIG: join(directory, 'missing-secret.json') },
     fetchImpl: async () => response({ ...health,

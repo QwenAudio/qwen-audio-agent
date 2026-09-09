@@ -1198,29 +1198,60 @@ header .ghost.active { color: white; border-color: #785cf480; background: #785cf
   align-items: center;
   gap: 8px;
 }
-.agent-task .task-controls button {
-  padding: 5px 8px;
+.agent-task.awaiting-permission .task-controls {
+  display: contents;
+}
+.agent-task.awaiting-permission .permission-controls {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.agent-task.awaiting-permission time {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: start;
+  line-height: 16px;
+}
+.agent-task .permission-controls { gap: 6px; }
+.agent-task .permission-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  max-width: 360px;
+}
+.agent-task .permission-actions button {
+  min-width: 0;
+  min-height: 32px;
+  padding: 6px 4px;
   border: 1px solid #8171ca66;
   border-radius: 8px;
   color: #dcd6f7;
   background: #211d33;
-  font: inherit;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
   cursor: pointer;
 }
-.agent-task .task-controls button:disabled {
+.agent-task .permission-actions button:focus-visible {
+  outline: 2px solid #b7a8fa;
+  outline-offset: 2px;
+}
+.agent-task .permission-actions button:hover:not(:disabled) { filter: brightness(1.2); }
+.agent-task .permission-actions button:disabled {
   cursor: wait;
   opacity: .65;
 }
-.agent-task .task-controls .permission-error {
-  max-width: 180px;
+.agent-task .permission-controls .permission-error {
   color: #ffaaaa;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
-.agent-task .task-controls .permission-allow {
+.agent-task .permission-actions .permission-task {
   border-color: #4bc69466;
   color: #a9efd4;
   background: #142a23;
 }
-.agent-task .task-controls .permission-deny {
+.agent-task .permission-actions .permission-reject {
   border-color: #d76f7555;
   color: #f0b0b4;
   background: #2b181c;

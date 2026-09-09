@@ -10,9 +10,12 @@
 
 ## 本地日志
 
-qwen-audio-agent 使用统一的本地结构化日志。CLI 默认目录为
-`~/.config/qwaudio/logs/`；桌面版默认在其[应用数据目录](../configuration.zh.md#配置与数据目录)
-的 `logs/` 下，例如 macOS 的 `~/Library/Application Support/Qwen Audio Agent/logs/`。
+qwen-audio-agent 使用统一的本地结构化日志，各自保存：
+
+- CLI 启动的 Gateway：`~/.config/qwaudio/state/logs/`。
+- 桌面代管的 Gateway：`~/.config/qwaudio/state/desktop/logs/`。
+- 桌面客户端：[应用数据目录](../configuration.zh.md#配置与数据目录)下的 `logs/`。
+- TUI：`~/.config/qwaudio/tui/logs/`。
 
 以下是日志文件职责；并非所有文件都在同一个目录：
 
@@ -43,7 +46,7 @@ Authorization、Cookie、密码和 Secret 字段会在写入前脱敏；默认�
 | 设置 | 默认值 | 说明 |
 | --- | --- | --- |
 | `QWEN_AUDIO_LOG_LEVEL` | `info` | `trace`、`debug`、`info`、`warn`、`error`、`fatal` 或 `silent` |
-| `QWEN_AUDIO_LOG_DIR` | 用户配置目录下的 `logs` | 自定义日志目录 |
+| `QWEN_AUDIO_LOG_DIR` | 实例状态目录下的 `logs` | 自定义日志目录 |
 | `QWEN_AUDIO_LOG_MAX_BYTES` | `10485760` | 单个日志文件的轮转阈值 |
 | `QWEN_AUDIO_LOG_MAX_FILES` | `5` | 当前文件和轮转文件的总保留数量 |
 | `QWEN_AUDIO_LOG_FILE` | `1` | 设为 `0` 禁用文件日志 |

@@ -2,8 +2,7 @@
 //
 // 它只负责本地文件与索引，不知道 Realtime、KnowledgeProvider 或后台 Session。
 // LocalKnowledgeProvider 在应用层组合它，并直接读取 Markdown 片段完成基础检索。
-// 默认路径仍位于共享 workspace 下，以兼容现有安装和文件布局；这个存储位置不
-// 代表检索需要经过后台 Agent。
+// 资料与索引属于共享用户数据；目录由宿主注入，不依赖后台工作区布局。
 //
 // ★ 资料不进 MEMORY.md。
 // 这是「knowledge ≠ memory」那条界线：手册是外部的、静态的、多用户共享的知识；
@@ -25,6 +24,7 @@ import {
   statSync,
 } from 'node:fs'
 import { basename, extname, join, parse, resolve } from 'node:path'
+import { withFileTransaction } from '../../../shared/file-transaction-lock.mjs'
 import { JsonSnapshotStore } from '../core/json-snapshot-store.mjs'
 
 const FILE_VERSION = 1
@@ -167,7 +167,11 @@ export class KnowledgeLibrary {
   }
 
   // 把一份本地文本收进资料库。同步完成，不调用模型。
-  import({ ownerId, sourcePath } = {}) {
+  import(options = {}) {
+    return withFileTransaction(this.store?.filePath, () => this.#import(options))
+  }
+
+  #import({ ownerId, sourcePath } = {}) {
     if (!this.configured()) {
       throw new KnowledgeImportError('library_unavailable', '资料库未配置存放目录。')
     }
@@ -306,7 +310,11 @@ export class KnowledgeLibrary {
     return { filename, path: join(this.documentDirectory, filename), ownerId }
   }
 
-  attachSummary({ ownerId, id, title, gist, sections } = {}) {
+  attachSummary(options = {}) {
+    return withFileTransaction(this.store?.filePath, () => this.#attachSummary(options))
+  }
+
+  #attachSummary({ ownerId, id, title, gist, sections } = {}) {
     this.load()
     const entries = this.owners.get(String(ownerId || '')) || []
     const entry = entries.find(item => item.id === String(id || ''))
@@ -338,7 +346,11 @@ export class KnowledgeLibrary {
   }
 
   // 移除时连文件一起删：这是用户显式要求的删除，不是容量回收。
-  remove({ ownerId, id } = {}) {
+  remove(options = {}) {
+    return withFileTransaction(this.store?.filePath, () => this.#remove(options))
+  }
+
+  #remove({ ownerId, id } = {}) {
     this.load()
     const safeOwnerId = String(ownerId || '')
     const entries = this.owners.get(safeOwnerId) || []

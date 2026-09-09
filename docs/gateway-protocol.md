@@ -1,7 +1,7 @@
 # Gateway Client Protocol
 
 > Status: **Stable 6.0**<br>
-> Wire version: **6.0.0**<br>
+> Wire version: **7.0.0**<br>
 > Roadmap: [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > Current implementation sources of truth: `shared/protocol/gateway-client-protocol.mjs`, `server/src/client/client-event-router.mjs`, `server/src/client/client-command-runtime.mjs`, `shared/protocol/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
 
@@ -77,7 +77,7 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
 {
   "type": "session.hello",
   "event_id": "evt_client_1",
-  "protocol": { "min": "6.0.0", "max": "6.0.0" },
+  "protocol": { "min": "7.0.0", "max": "7.0.0" },
   "client": {
     "type": "desktop",
     "version": "1.12.0",
@@ -124,7 +124,7 @@ Gateway returns the selected version and capability intersection:
   "type": "session.ready",
   "event_id": "evt_gateway_1",
   "request_event_id": "evt_client_1",
-  "protocol_version": "6.0.0",
+  "protocol_version": "7.0.0",
   "session_id": "session_01",
   "connection": {
     "lease_generation": 7,
@@ -435,9 +435,12 @@ whether the Gateway is rebuilding the upstream Realtime Session with the new
 voice. A Provider without session-voice support returns the correlated
 `output_voice_unsupported` error, so the Client never branches on Provider name.
 
-`permission.respond.decision` accepts `once`, `always`, or `reject`: allow only
-the current operation, always allow during the current frontend session, or
-reject only the current operation.
+`permission.respond.decision` accepts `task`, `always`, or `reject`: allow the
+current Task and its subsequent operations until completion, failure, or cancellation;
+allow subsequent requests across Tasks in the current frontend session; or reject
+the current operation. Gateway owns these grants and sends per-operation decisions
+to BackendPort. Grants are not persisted across Gateway restarts. Wire 7.0 replaces
+`once` with `task`; clients must use the updated schema, not reinterpret “allow once.”
 
 `task.create` carries an A2A-aligned `message.parts` value rather than a second plain-text-only objective field, so an explicit integration may submit text, file, or structured parts without importing an A2A Message object.
 

@@ -1,0 +1,44 @@
+name: GitHub main hourly snapshot
+
+# Registered as a repository-YAML template in Aone CI, using GitLab main.
+# Scheduling and failure notifications are configured on the Aone task.
+# This file is not a GitHub Actions workflow.
+params:
+  dry_run:
+    type: boolean
+    default: true
+    description: Validate the snapshot and push permission without updating main.
+
+strategy:
+  concurrency:
+    group: github-main-snapshot
+    parallelism: 1
+
+jobs:
+  sync:
+    name: Sync GitHub main to GitLab main
+    timeout: 10m
+    steps:
+      - uses: checkout
+        inputs:
+          ref: main
+          # Keep checkout read-only. Its token option embeds credentials in
+          # remote URLs, which Git LFS can print in diagnostic messages.
+          lfs: false
+      # Aone's supported GitHub transport. The initial checkout is GitLab, so
+      # its automatic GitHub acceleration does not cover our subsequent fetch.
+      - uses: setup-github-proxy
+      - name: Validate baseline and synchronize snapshot
+        envs:
+          SYNC_DRY_RUN: '${{params.dry_run}}'
+          SYNC_SOURCE_URL: '${{vars.SYNC_SOURCE_URL}}'
+          SYNC_TARGET_URL: '${{vars.SYNC_TARGET_URL}}'
+          SYNC_GITLAB_USERNAME: '${{vars.SYNC_GITLAB_USERNAME}}'
+          SYNC_COMMIT_NAME: '${{vars.SYNC_COMMIT_NAME}}'
+          SYNC_COMMIT_EMAIL: '${{vars.SYNC_COMMIT_EMAIL}}'
+          SYNC_BOOTSTRAP_TARGET: '${{vars.SYNC_BOOTSTRAP_TARGET}}'
+          SYNC_BOOTSTRAP_SOURCE: '${{vars.SYNC_BOOTSTRAP_SOURCE}}'
+          SYNC_GITLAB_TOKEN: '${{secrets.GITLAB_SYNC_TOKEN}}'
+        run: |
+          test -n "$SYNC_GITLAB_TOKEN" || { echo 'GITLAB_SYNC_TOKEN is required' >&2; exit 1; }
+          bash .gitlab/sync-github.sh

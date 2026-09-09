@@ -94,7 +94,7 @@ async function scheduleReminder(runtime, callId, turnId, args) {
         turnId: context.turnId,
         taskId: context.taskId,
         signal: context.signal,
-        onEvent: context.onEvent,
+        onEvent: event => runtime.forwardBackendEvent(context.taskId, event, context.onEvent),
       })
     : null
 

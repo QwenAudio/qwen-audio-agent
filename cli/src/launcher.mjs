@@ -1,4 +1,6 @@
 import { dirname, resolve } from 'node:path'
+import { runtimePathEnvironment } from '../../shared/runtime-paths.mjs'
+import { tuiClientDirectory } from '../../shared/client-paths.mjs'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import readline from 'node:readline'
@@ -261,12 +263,12 @@ export async function main(argv, {
   waitForServiceStop = url => waitForGatewayStop(url, { inspectGateway }),
   runWebUi = options => launchWebUi(options),
   diagnose = collectDiagnostics,
-  acquireInstance = directory => acquireCliInstance(directory),
+  acquireInstance = (directory, instanceKey) => acquireCliInstance(directory, { instanceKey }),
   updateConfig = updateRealtimeModelConfig,
   createConnectionProfiles = directory => new GatewayConnectionProfileStore({
-    filePath: resolve(directory, 'state/gateway-connections.json'),
+    filePath: resolve(directory, 'gateway-connections.json'),
     credentialStore: createPrivateFileGatewayCredentialStore({
-      filePath: resolve(directory, 'state/gateway-client-credentials.json'),
+      filePath: resolve(directory, 'gateway-client-credentials.json'),
     }),
   }),
   pairConnectionCode = pairGatewayConnectionCode,
@@ -279,13 +281,13 @@ export async function main(argv, {
   const processRealtimeModelOverride = String(
     env.QWEN_AUDIO_REALTIME_MODEL || '',
   ).trim()
-  const readOnlyCommand = ['setup', 'install', 'doctor'].includes(argv[0])
+  const readOnlyCommand = ['setup', 'install', 'doctor', 'connect', 'disconnect', 'tui', 'webui'].includes(argv[0])
     || argv.includes('--help') || argv.includes('-h')
     || (argv[0] === 'config' && argv[1] === 'show')
   const environment = prepareEnvironment({ readOnly: readOnlyCommand })
   const options = parseArguments(argv, env)
   const connectionProfiles = ['connect', 'disconnect', 'tui'].includes(options.command)
-    ? createConnectionProfiles(environment.configDirectory)
+    ? createConnectionProfiles(tuiClientDirectory(env))
     : null
   if (!options.urlSpecified && options.command === 'tui') {
     const saved = await connectionProfiles.resolve('cli-default')
@@ -499,14 +501,13 @@ export async function main(argv, {
       ? {
           ...gatewayServiceEnvironment(options.url, options),
           // A background service does not inherit the invoking shell. Preserve
-          // the shared profile directory explicitly, including custom profiles.
-          ...(environment.dataDirectory
-            ? { QWAUDIO_DATA_DIR: environment.dataDirectory }
-            : {}),
+          // every resolved directory explicitly, including custom profiles.
+          ...runtimePathEnvironment(environment),
         }
       : {}
     const serviceOptions = {
       configDirectory: environment.configDirectory,
+      stateDirectory: environment.stateDirectory,
       gatewayPath,
       serviceEnvironment,
       serviceMetadata: {
@@ -643,7 +644,7 @@ export async function main(argv, {
   }
   if (options.command === 'webui') return runWebUi(options)
 
-  const instance = acquireInstance(environment.configDirectory)
+  const instance = acquireInstance(tuiClientDirectory(env), environment.stateDirectory)
   try {
     return await runMinimalTui(options)
   } finally {

@@ -114,8 +114,10 @@ test('permission field semantics live in schema rather than fixed policy', () =>
   const tool = frontendToolRegistry.get('respond_permission').definition.function
   assert.doesNotMatch(prompt, /`permission_id`|`series_id`|`input_refs`|spawn_thinking\.objective/)
   assert.match(tool.parameters.properties.permission_id.description, /原样使用 Gateway.*不得猜造/)
-  assert.match(tool.parameters.properties.task_id.description, /请求中提供时原样传入/)
-  assert.match(tool.parameters.properties.decision.description, /只能选择请求列出的决定/)
+  assert.equal(tool.parameters.properties.task_id, undefined)
+  assert.deepEqual(tool.parameters.required, ['decision'])
+  assert.match(tool.parameters.properties.permission_id.description, /只有一个待确认请求时可省略/)
+  assert.match(tool.parameters.properties.decision.description, /task.*always.*reject/)
   assert.match(tool.description, /自然表达判断.*不得.*代替用户决定或要求固定口令/)
 })
 

@@ -12,8 +12,8 @@ import { resolve } from 'node:path'
 
 export const GATEWAY_LOCK_SCHEMA = 'qwaudio.gateway-lock/v1'
 
-export function gatewayLockPath(configDirectory) {
-  return resolve(configDirectory, 'gateway.lock')
+export function gatewayLockPath(stateDirectory) {
+  return resolve(stateDirectory, 'gateway.lock')
 }
 
 function processIsAlive(pid, killImpl = process.kill) {
@@ -26,9 +26,9 @@ function processIsAlive(pid, killImpl = process.kill) {
   }
 }
 
-export function readGatewayLease(configDirectory) {
+export function readGatewayLease(stateDirectory) {
   try {
-    const lease = JSON.parse(readFileSync(gatewayLockPath(configDirectory), 'utf8'))
+    const lease = JSON.parse(readFileSync(gatewayLockPath(stateDirectory), 'utf8'))
     return lease?.schema === GATEWAY_LOCK_SCHEMA
       && typeof lease.instanceId === 'string'
       ? lease
@@ -89,15 +89,15 @@ function moveStaleLease(path, token) {
   return true
 }
 
-export function acquireGatewayLease(configDirectory, {
+export function acquireGatewayLease(stateDirectory, {
   pid = process.pid,
   owner = 'gateway',
   instanceId = randomUUID(),
   now = () => new Date(),
   killImpl = process.kill,
 } = {}) {
-  mkdirSync(configDirectory, { recursive: true, mode: 0o700 })
-  const path = gatewayLockPath(configDirectory)
+  mkdirSync(stateDirectory, { recursive: true, mode: 0o700 })
+  const path = gatewayLockPath(stateDirectory)
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const timestamp = now().toISOString()
     const lease = {
@@ -122,7 +122,7 @@ export function acquireGatewayLease(configDirectory, {
         },
         update(fields = {}) {
           if (released) return false
-          const current = readGatewayLease(configDirectory)
+          const current = readGatewayLease(stateDirectory)
           if (!sameLease(current, lease)) return false
           Object.assign(lease, fields, {
             schema: GATEWAY_LOCK_SCHEMA,
@@ -136,7 +136,7 @@ export function acquireGatewayLease(configDirectory, {
         release() {
           if (released) return false
           released = true
-          const current = readGatewayLease(configDirectory)
+          const current = readGatewayLease(stateDirectory)
           if (!sameLease(current, lease)) return false
           try {
             unlinkSync(path)
@@ -149,7 +149,7 @@ export function acquireGatewayLease(configDirectory, {
       })
     } catch (error) {
       if (error?.code !== 'EEXIST') throw error
-      const existing = readGatewayLease(configDirectory)
+      const existing = readGatewayLease(stateDirectory)
       if (existing && processIsAlive(Number(existing.pid), killImpl)) {
         const conflict = new Error(
           `已有 Gateway 正在运行${existing.origin ? `：${existing.origin}` : ''}`,
@@ -164,14 +164,14 @@ export function acquireGatewayLease(configDirectory, {
   throw new Error('无法获取 Gateway 实例租约')
 }
 
-export async function findRunningGateway(configDirectory, {
+export async function findRunningGateway(stateDirectory, {
   readHealth,
   timeoutMs = 3000,
   intervalMs = 100,
 } = {}) {
   const deadline = Date.now() + timeoutMs
   do {
-    const lease = readGatewayLease(configDirectory)
+    const lease = readGatewayLease(stateDirectory)
     if (!lease) return null
     if (lease.origin) {
       const health = await readHealth(lease.origin)

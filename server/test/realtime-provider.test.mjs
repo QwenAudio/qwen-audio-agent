@@ -12,7 +12,6 @@ import {
   TOOLS,
 } from '../src/voice/realtime-provider.mjs'
 import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
-import { permissionReference } from '../src/voice/tools/permission-reference.mjs'
 import { buildFrontendToolContext } from '../src/voice/tools/frontend-tool-context.mjs'
 import {
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
@@ -422,15 +421,15 @@ test('configures Qwen Audio Realtime with Smart Turn only', () => {
   )
   assert.deepEqual(
     permissionTool.function.parameters.required,
-    ['permission_id', 'decision'],
+    ['decision'],
   )
   assert.deepEqual(
     permissionTool.function.parameters.properties.decision.enum,
-    ['once', 'always', 'reject'],
+    ['task', 'always', 'reject'],
   )
   assert.match(
     permissionTool.function.parameters.properties.decision.description,
-    /只能选择请求列出的决定.*once.*普通肯定表达.*always.*用户明确要求.*reject/,
+    /task.*普通肯定表达.*always.*用户明确要求.*reject/,
   )
 })
 
@@ -1033,10 +1032,10 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     summary: '查看系统内存',
   })
   const permissionText = permission.item.content[0].text
-  assert.match(permissionText, new RegExp(`permission_id=${permissionReference('permission-one')}`))
+  assert.match(permissionText, /permission_id=permission-one/)
   assert.match(permissionText, /task_id=task_42/)
   assert.doesNotMatch(permissionText, /authorization_id/)
-  assert.match(permission.response.instructions, /自然、简短地说明操作/)
+  assert.match(permission.response.instructions, /自然、简短地说明待执行的工作/)
   assert.match(permission.response.instructions, /是否同意授权/)
   assert.doesNotMatch(permission.response.instructions, /用一句完整的话/)
   assert.match(permission.response.instructions, /不要提供或要求复述固定口令/)

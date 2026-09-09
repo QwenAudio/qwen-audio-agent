@@ -1,4 +1,5 @@
 import express from 'express'
+import { PERMISSION_DECISIONS } from '../core/work-authorization.mjs'
 import { createServer } from 'http'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'path'
@@ -47,7 +48,7 @@ import {
   describeActiveRealtime,
 } from '../voice/realtime-provider.mjs'
 import { InputArbitration } from '../voice/input-arbitration.mjs'
-import { SessionPermissionPolicy } from '../voice/session-permission-policy.mjs'
+import { PermissionPolicy } from '../task/permission-policy.mjs'
 import { TaskManager } from '../task/task-manager.mjs'
 import { TaskStore } from '../task/task-store.mjs'
 import { SessionJournalRegistry } from '../session/session-journal-registry.mjs'
@@ -126,7 +127,7 @@ export function createGatewayApplication({
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || new SessionJournalRegistry({
-  directory: resolve(config.configDirectory, 'sessions'), logger,
+  directory: resolve(config.stateDirectory, 'sessions'), logger,
 })
 taskStore ||= taskManager?.repository?.store || new TaskStore({
   filePath: config.taskStatePath,
@@ -141,6 +142,14 @@ taskManager ||= new TaskManager({
   maxTerminalTasksPerOwner: config.maxTerminalTasksPerOwner,
   scheduledTaskTimeoutMs: config.scheduledTaskTimeoutMs,
 })
+const permissionPolicy = new PermissionPolicy({
+  taskManager,
+  ttlMs: config.conversationSessionTtlMs,
+  maxSessions: config.maxConversationSessions,
+})
+const respondAuthorization = (taskId, id, decision, options) => (
+  agent.respondAuthorization(taskId, id, decision, options)
+)
 const conversationHistoryRuntime = conversationHistory || new SessionConversationHistory({
   conversationSync,
   sessionJournal: sessionJournalRuntime,
@@ -289,7 +298,9 @@ taskManager.configureScheduledTaskRunner(
     turnId: context.turnId,
     taskId: context.taskId,
     signal: context.signal,
-    onEvent: context.onEvent,
+    onEvent: event => permissionPolicy.forwardBackendEvent(
+      context, event, context.onEvent, respondAuthorization,
+    ),
   }),
 )
 // ReminderScheduler: setTimeout-driven, no polling. Handles overdue
@@ -403,7 +414,7 @@ if (config.sessionDigestEnabled) {
       })
     : null
 }
-// 内置资料存储：用户导入的手册 / 规章 / 教材。资料本体保留在既有的 domain/
+// 内置资料存储：用户导入的手册 / 规章 / 教材。资料本体保存在共享 knowledge/documents/
 // 目录，Provider 直接读取 Markdown 片段完成基础检索；后台 Agent 只可作为复杂
 // 文档入库时的隔离转换器。
 let domainLibrary = null
@@ -458,17 +469,11 @@ const knowledgeLibrary = knowledgeProviderRuntime
     })
   : null
 const app = express()
-const permissionPolicy = new SessionPermissionPolicy({
-  ttlMs: config.conversationSessionTtlMs,
-  maxSessions: config.maxConversationSessions,
-})
 const runtimeCommands = clientCommandRuntime || new GatewayClientCommandRuntime({
   taskManager,
   backendRuntime: workBackend,
   conversationHistory: conversationHistoryRuntime,
-  respondAuthorization: (taskId, id, decision, options) => (
-    agent.respondAuthorization(taskId, id, decision, options)
-  ),
+  respondAuthorization,
   respondInput: (taskId, id, response, options) => (
     agent.respondInput(taskId, id, response, options)
   ),
@@ -960,9 +965,9 @@ app.delete('/api/tasks/:id', async (req, res, next) => {
 
 app.post('/api/permissions/:id', async (req, res, next) => {
   const decision = String(req.body?.decision || '')
-  if (!['once', 'always', 'reject'].includes(decision)) {
+  if (!PERMISSION_DECISIONS.includes(decision)) {
     return res.status(400).json({
-      error: 'decision must be once, always, or reject',
+      error: 'decision must be task, always, or reject',
     })
   }
   try {
@@ -1002,17 +1007,18 @@ app.get('/api/tasks/:id/events', (req, res) => {
 })
 
 const webDist = webDistributionPath()
-// Imported orb skins live under the config directory. The orb page fetches
-// `skins/<id>/...` relative to its own origin, so serving them here means a
-// host that points a window at the Gateway needs no separate asset server.
-// Static assets only, no fallback to index.html for missing files.
-app.use('/skins', express.static(resolve(config.configDirectory, 'skins'), {
-  index: false,
-  redirect: false,
-  dotfiles: 'ignore',
-  // Imports and removals must be visible on the next orb reload.
-  setHeaders: response => response.setHeader('cache-control', 'no-store'),
-}), (req, res) => res.status(404).json({ error: 'not found' }))
+// Desktop serves its own skins. An embedding host may explicitly share a
+// client-owned asset directory for read-only web hosting; Gateway never owns
+// or discovers skins in its data directories.
+if (config.webSkinsDirectory) {
+  app.use('/skins', express.static(config.webSkinsDirectory, {
+    index: false,
+    redirect: false,
+    dotfiles: 'ignore',
+    setHeaders: response => response.setHeader('cache-control', 'no-store'),
+  }))
+}
+app.use('/skins', (req, res) => res.status(404).json({ error: 'not found' }))
 app.use(express.static(webDist))
 app.get('*', (req, res) => res.sendFile(resolve(webDist, 'index.html')))
 app.use((error, req, res, next) => {
@@ -1056,9 +1062,7 @@ realtimeGateway = attachRealtimeGateway(server, {
   notesStore,
   backendRuntime: workBackend,
   backendAvailability,
-  respondAuthorization: (taskId, id, decision, options) => (
-    agent.respondAuthorization(taskId, id, decision, options)
-  ),
+  respondAuthorization,
   respondInput: (taskId, id, response, options) => (
     agent.respondInput(taskId, id, response, options)
   ),
@@ -1114,6 +1118,7 @@ const close = () => {
     backendAvailability.close()
     unsubscribeOfflineNotifications?.()
     reminderScheduler?.close()
+    permissionPolicy.close()
     // A Gateway that stops serving cannot honour a resume, so held state must
     // not survive into the next run.
     inputArbitration.close()

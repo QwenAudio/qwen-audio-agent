@@ -33,6 +33,7 @@ export function desktopBackendEnvironment({
 
 export function createDesktopBackendManagement({
   configPath,
+  pathCacheFile = '',
   env = process.env,
   platform = process.platform,
   reportTtlMs = DEFAULT_REPORT_TTL_MS,
@@ -50,7 +51,7 @@ export function createDesktopBackendManagement({
   let reportPending = null
 
   async function runDetection() {
-    const result = await detect({ env: currentEnvironment() })
+    const result = await detect({ env: currentEnvironment(), pathCacheFile })
     if (result.path) {
       env.PATH = mergeSearchPath(env.PATH, result.path, { platform })
     }

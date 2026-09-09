@@ -25,7 +25,7 @@ function ids() {
 }
 
 test('publishes a frozen capability vocabulary and only advertises implemented stages', () => {
-  assert.equal(GATEWAY_CLIENT_PROTOCOL_VERSION, '6.0.0')
+  assert.equal(GATEWAY_CLIENT_PROTOCOL_VERSION, '7.0.0')
   assert.equal(Object.isFrozen(GATEWAY_CLIENT_KNOWN_CAPABILITIES), true)
   assert.equal(Object.isFrozen(GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES), true)
   assert.ok(GATEWAY_CLIENT_KNOWN_CAPABILITIES.includes(GatewayClientCapability.CLIENT_EVENTS))
@@ -98,7 +98,7 @@ test('publishes image input capability', () => {
   )
 })
 
-test('validates the 6.0 envelope and rejects duplicate capabilities', () => {
+test('validates the 7.0 envelope and rejects duplicate capabilities', () => {
   assert.equal(GatewayClientEnvelopeSchema.safeParse({
     type: 'response.cancel',
     event_id: 'evt_client_1',
@@ -134,11 +134,12 @@ test('validates the 6.0 envelope and rejects duplicate capabilities', () => {
   }).connection.takeover, true)
 })
 
-test('negotiates one supported 6.0 version and the capability intersection', () => {
-  assert.equal(supportsGatewayClientProtocol({ min: '6.0.0', max: '6.0.0' }), true)
-  assert.equal(supportsGatewayClientProtocol({ min: '5.9.0', max: '6.1.0' }), true)
+test('negotiates one supported 7.0 version and the capability intersection', () => {
+  assert.equal(supportsGatewayClientProtocol({ min: '7.0.0', max: '7.0.0' }), true)
+  assert.equal(supportsGatewayClientProtocol({ min: '6.0.0', max: '7.1.0' }), true)
   assert.equal(supportsGatewayClientProtocol({ min: '5.0.0', max: '5.9.9' }), false)
-  assert.equal(supportsGatewayClientProtocol({ min: '6.1.0', max: '7.0.0' }), false)
+  assert.equal(supportsGatewayClientProtocol({ min: '7.1.0', max: '8.0.0' }), false)
+  assert.equal(supportsGatewayClientProtocol({ min: '6.0.0', max: '6.0.0' }), false)
 
   assert.deepEqual(negotiateGatewayClientCapabilities([
     GatewayClientCapability.CLIENT_EVENTS,
@@ -164,11 +165,12 @@ test('validates runtime commands, Client Actions and correlated results', () => 
 
   const permission = parseGatewayClientProtocolMessage({
     type: GatewayClientProtocolEvent.PERMISSION_RESPOND,
-    event_id: 'evt_permission_once',
+    event_id: 'evt_permission_task',
     permission_id: 'permission_1',
-    decision: 'once',
+    decision: 'task',
   })
-  assert.equal(permission.decision, 'once')
+  assert.equal(permission.decision, 'task')
+  assert.throws(() => parseGatewayClientProtocolMessage({ ...permission, decision: 'once' }))
   assert.throws(() => parseGatewayClientProtocolMessage({
     ...permission,
     decision: 'reject_always',
@@ -257,7 +259,7 @@ test('validates runtime commands, Client Actions and correlated results', () => 
   assert.equal(voiceUpdated.request_event_id, voiceUpdate.event_id)
 })
 
-test('normalizes 6.0 event names into the existing business event vocabulary', () => {
+test('normalizes 7.0 event names into the existing business event vocabulary', () => {
   assert.deepEqual(normalizeGatewayClientProtocolMessage({
     type: GatewayClientProtocolEvent.INPUT_AUDIO_APPEND,
     event_id: 'evt_client_audio',
@@ -302,7 +304,7 @@ test('normalizes 6.0 event names into the existing business event vocabulary', (
   }), error => error.code === 'unknown_type')
 })
 
-test('6.0 hello and 5.x connect enter the same legacy business path', () => {
+test('7.0 hello and 5.x connect enter the same legacy business path', () => {
   const pendingEvent = { type: 'voice.state', state: 'idle' }
   const modern = new GatewayClientProtocolSession({
     sessionId: 'voice-modern',
@@ -379,14 +381,14 @@ test('6.0 hello and 5.x connect enter the same legacy business path', () => {
   assert.equal(legacy.encode(pendingEvent), pendingEvent)
 })
 
-test('returns correlated 6.0 errors and closes unsupported negotiations', () => {
+test('returns correlated 7.0 errors and closes unsupported negotiations', () => {
   const unsupported = new GatewayClientProtocolSession({
     sessionId: 'voice-unsupported',
     createEventId: ids(),
   }).receive(createGatewaySessionHello({
     eventId: 'evt_client_unsupported',
-    protocolMin: '7.0.0',
-    protocolMax: '7.0.0',
+    protocolMin: '6.0.0',
+    protocolMax: '6.0.0',
     clientInstanceId: 'client_7',
   }))
   assert.equal(unsupported.close, true)

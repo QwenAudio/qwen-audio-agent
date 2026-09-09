@@ -53,17 +53,31 @@ test('页面显示转接原因与审计，那是转接要交出去的东西', ()
 })
 
 test('service 路径走代理，其余 404', async () => {
-  await withServer(async (base) => {
-    // 【为什么要代理】浏览器直连 service 会被 DNS rebinding 防护拦下
-    // （origin host 必须等于请求 host，跨端口永远过不了）——
-    // client/server.mjs 那边踩过这个坑。
-    //
-    // 这里 service 没起，所以代理会 502。502 说明它【试图】转发了，
-    // 那正是要验的；404 才说明路由没配。
-    const proxied = await fetch(`${base}/api/service/state?sessionId=t`)
-    assert.equal(proxied.status, 502, '应该尝试转发到 service')
-    assert.equal((await fetch(`${base}/nope`)).status, 404)
-  })
+  // 【上游地址要自己指定，不能靠「本机恰好没起 service」】
+  // 原来这条测试依赖默认上游 3110 上没人监听。真跑着 demo 的时候它就红了 ——
+  // 代理转发成功拿到 200，而断言写的是 502。测试挂在一个环境条件上，
+  // 而那个条件恰好在「开发者正在用这个 demo」时不成立，最没用的时候最先坏。
+  //
+  // 指到 127.0.0.1:1：绑它需要 root，实际上永远不会有人在听，于是必定连不上。
+  // 这和 client/test/proxy.test.mjs 里那条 502 用例是同一个做法。
+  const saved = process.env.CS_SERVICE_ORIGIN
+  process.env.CS_SERVICE_ORIGIN = 'http://127.0.0.1:1'
+  try {
+    await withServer(async (base) => {
+      // 【为什么要代理】浏览器直连 service 会被 DNS rebinding 防护拦下
+      // （origin host 必须等于请求 host，跨端口永远过不了）——
+      // client/server.mjs 那边踩过这个坑。
+      //
+      // 上游连不上，所以代理会 502。502 说明它【试图】转发了，
+      // 那正是要验的；404 才说明路由没配。
+      const proxied = await fetch(`${base}/api/service/state?sessionId=t`)
+      assert.equal(proxied.status, 502, '应该尝试转发到 service')
+      assert.equal((await fetch(`${base}/nope`)).status, 404)
+    })
+  } finally {
+    if (saved === undefined) delete process.env.CS_SERVICE_ORIGIN
+    else process.env.CS_SERVICE_ORIGIN = saved
+  }
 })
 
 test('代理不转发 Origin', () => {

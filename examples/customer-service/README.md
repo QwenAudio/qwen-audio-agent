@@ -230,7 +230,8 @@ dropped. Our persona asks for the opposite: say "let me check that" before calli
 cd console && npm start          # http://127.0.0.1:4610
 ```
 
-Turns `policy.md` into `guards.json` and `frontend-mcp.json`.
+Turns `policy.md` into `guards.json`, `flows.json` and `frontend-mcp.json` — and
+lets an admin change the agent's behaviour without hand-editing any file.
 
 **Extraction runs three times, not once.** Measured: extracting the same policy
 three times at temperature 0, the model labels every item `certain`, yet the
@@ -245,14 +246,26 @@ agreement across runs:
 | Same topic, different conclusions | Variants shown side by side to pick from |
 | Only some runs produced it | Either a miss or a hallucination |
 
-Four things in the UI:
+Five things in the UI; the first four can be edited and applied:
 
 - **Needs your decision** — sorted by how much the runs disagreed. Each grey
   quote carries the policy line number; clicking it scrolls and highlights that
   line on the right. Items that cannot be traced back say so — usually meaning
   the model invented a rule the policy never stated.
+  Each candidate offers four verdicts: accept / reject / needs policy / needs
+  data, and you can edit a candidate before accepting it. Accepting an ordering
+  candidate turns it into a flow rule; accepting a threshold candidate updates
+  that threshold. Verdicts live in `review.json`, so reopening the console does
+  not mean reviewing everything again.
 - **Decision tables** — flattened into grids with the catch-all row shaded.
-  Change one cell and the executor behaves differently on its next call.
+  Conditions, outcomes and reasons are editable cell by cell; rows can be added,
+  removed and reordered, and whole tables created or deleted. Apply, and the
+  executor uses the new table on its next call.
+- **Flows** — "do A before B" ordering constraints, addable, editable and
+  switchable off. They are injected into the backend agent's prompt and take
+  effect on its next task. **This is not a workflow engine**: it only sequences
+  steps; eligibility, amounts and final outcomes still come from decision tables
+  and tools.
 - **Tool surfaces** — assignment derived by rules, no model involved, and
   overridable. Overriding shows the consequence: moving `cancel_order` to the
   frontend is flagged red because it bypasses `auth_required`; moving a
@@ -260,7 +273,23 @@ Four things in the UI:
 - **Search and filters** — one keyword filters rules, tables, tools and the
   policy text at once, plus "pending only" and "risky only" toggles.
 
-Exporting writes `domains/<domain>/guards.json` and `gateway/frontend-mcp.json`.
+Edits go into a draft rather than straight to disk. "Preview and apply"
+validates first, then shows a field-level diff (what changed, from what to
+what), the new tables' data coverage, and how each kind of change takes effect.
+Validation failures block the write — deleting a table's catch-all row is caught
+here rather than blowing up mid-call on some uncovered input. High-risk changes
+such as moving a protected tool need one extra confirmation.
+
+Applying writes four files per domain: `domains/<domain>/guards.json`,
+`flows.json`, `review.json` and `gateway/frontend-mcp{,.airline}.json`. Each
+write is preceded by a backup under `.runtime-console/backups/<stamp>-<domain>/`
+and appends a line to `audit.jsonl`. If a multi-file commit fails partway the
+written files are restored, so guards and flows never end up half-updated.
+
+The three kinds of change take effect differently: decision tables on the next
+tool call, flows on the next backend task, tool surfaces after restarting that
+domain's gateway (the preview spells this out).
+
 The console never takes part in execution — if it dies, calls keep working; you
 just cannot change configuration.
 

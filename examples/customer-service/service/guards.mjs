@@ -25,7 +25,9 @@ const EMPTY = Object.freeze({
   thresholds: Object.freeze({}),
 })
 
-const cache = new Map()
+// 不缓存：配置台应用 guards.json 后，下一次工具调用必须立刻看到新规则。
+// 文件只有几 KB，一通电话读几次的成本远小于「界面显示应用成功，实际仍跑旧规则」的风险。
+// 配置台使用原子 rename 写文件，因此这里不会读到半份 JSON。
 
 // 下划线开头的键是注释，不是配置项。JSON 不支持注释，而这些文件是给人读、
 // 给人改的 —— 每张表旁边说明「为什么这么排」比另开一份文档有用。
@@ -42,23 +44,12 @@ function withoutComments(source) {
   return out
 }
 
-export function loadGuards(domain) {
-  if (cache.has(domain)) return cache.get(domain)
-  const url = GUARD_FILES[domain]
-  if (!url) {
-    cache.set(domain, EMPTY)
-    return EMPTY
-  }
+export function loadGuardsFrom(url, domain) {
   let parsed
   try {
     parsed = JSON.parse(readFileSync(url, 'utf8'))
   } catch (error) {
-    if (error.code === 'ENOENT') {
-      // 没有 guards.json 就退化成「只有工具内的数据校验」——
-      // 和 τ²-bench 的形态一样。不该因为缺配置就起不来。
-      cache.set(domain, EMPTY)
-      return EMPTY
-    }
+    if (error.code === 'ENOENT') return EMPTY
     throw new Error(`guards.json for ${domain} is not valid JSON: ${error.message}`)
   }
   const decisions = withoutComments(parsed.decisions)
@@ -67,7 +58,7 @@ export function loadGuards(domain) {
   for (const [name, table] of Object.entries(decisions)) {
     validateTable(table, `${domain}.${name}`)
   }
-  const guards = Object.freeze({
+  return Object.freeze({
     version: parsed.version || 1,
     domain: parsed.domain || domain,
     preconditions: Object.freeze(withoutComments(parsed.preconditions)),
@@ -75,14 +66,15 @@ export function loadGuards(domain) {
     enums: Object.freeze(withoutComments(parsed.enums)),
     thresholds: Object.freeze(withoutComments(parsed.thresholds)),
   })
-  cache.set(domain, guards)
-  return guards
 }
 
-// 配置台重新导出之后要能生效，否则管理员得重启服务才看到效果。
-export function clearGuardCache() {
-  cache.clear()
+export function loadGuards(domain) {
+  const url = GUARD_FILES[domain]
+  return url ? loadGuardsFrom(url, domain) : EMPTY
 }
+
+// 兼容旧调用。loadGuards 已改成每次读文件，所以这里不需要做事。
+export function clearGuardCache() {}
 
 // 会话里已经成立的事实。preconditions 里的 requires 就是从这些名字里取。
 // 【名字要稳定】它们出现在 guards.json 里，改名等于让所有已有配置失效。

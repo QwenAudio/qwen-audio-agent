@@ -223,31 +223,34 @@ test('prompt 里的业务名字跟着 CS_DOMAIN 走', () => {
   assert.match(serviceAgentPrompt('hotel'), /客服的后台 Agent/)
 })
 
-test('prompt 不列举任何域特定的工具名', () => {
-  // 写「取消订单、退货、改地址是两段式」会漏掉航空那五个，
-  // 而漏掉的那些模型可能就不走批准链了。
+function basePrompt(domain) {
+  return serviceAgentPrompt(domain).split('\n\n管理员配置的流程约束：')[0]
+}
+
+test('基础 prompt 不列举任何域特定的工具名', () => {
+  // 域特定的顺序现在可以由管理员写进 flows.json；基础规则仍不能列举工具，
+  // 否则加新域时又会回到「工具对、固定 prompt 错」的问题。
   for (const domain of ['retail', 'airline']) {
-    const prompt = serviceAgentPrompt(domain)
+    const prompt = basePrompt(domain)
     for (const name of [
       'cancel_order', '取消订单', '退货', '改地址', '款式库存',
       'cancel_reservation', '退票', '改签', '加行李',
     ]) {
       assert.ok(!prompt.includes(name),
-        `${domain} 的 prompt 里出现了域特定的工具名「${name}」`)
+        `${domain} 的基础 prompt 里出现了域特定的工具名「${name}」`)
     }
   }
 })
 
-test('prompt 不抄工具的判定话术', () => {
-  // 判定话术是工具自己写的，prompt 里再抄一遍只会不一致，而且列不全：
-  // 航空有「已有航段执飞」「特价经济舱不可改签」「保险原因只认健康或天气」……
+test('基础 prompt 不抄工具的判定话术', () => {
+  // flows 只管顺序，可以提业务动作；资格与结果仍由工具返回，基础规则不能抄。
   for (const domain of ['retail', 'airline']) {
-    const prompt = serviceAgentPrompt(domain)
+    const prompt = basePrompt(domain)
     for (const phrase of [
       '超出退货时限', '未发货状态', '已有航段执飞', '特价经济舱不可改签',
     ]) {
       assert.ok(!prompt.includes(phrase),
-        `prompt 抄了工具的判定话术「${phrase}」—— 工具改了它就不一致`)
+        `基础 prompt 抄了工具的判定话术「${phrase}」—— 工具改了它就不一致`)
     }
   }
 })
@@ -259,9 +262,10 @@ test('prompt 靠 approval_token 判断两段式，而不是靠工具名', () => 
   assert.match(prompt, /有没有 approval_token/)
 })
 
-test('两个域的 prompt 只差业务名字', () => {
-  // 差异越小越好 —— 差异大就意味着有域特定的规则藏在里面，
-  // 而那些规则本该在工具或 guards 里。
+test('两个域的基础 prompt 只差业务名字，流程由配置产生差异', () => {
   const normalize = text => text.replace(/零售客服|航空客服/g, '「域」')
-  assert.equal(normalize(serviceAgentPrompt('retail')), normalize(serviceAgentPrompt('airline')))
+  assert.equal(normalize(basePrompt('retail')), normalize(basePrompt('airline')))
+  assert.match(serviceAgentPrompt('retail'), /复述新地址/)
+  assert.match(serviceAgentPrompt('airline'), /愿意升舱/)
+  assert.notEqual(serviceAgentPrompt('retail'), serviceAgentPrompt('airline'))
 })

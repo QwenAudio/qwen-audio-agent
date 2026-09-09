@@ -168,6 +168,63 @@ test('坏掉的 overrides 参数不会让服务崩', async () => {
   })
 })
 
+test('完整配置端点返回 canonical guards、flows 与人工裁决', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/configuration?domain=airline')
+    assert.ok(body.configuration.guards.decisions.refundable)
+    assert.ok(Array.isArray(body.configuration.flows.rules))
+    assert.equal(body.configuration.review.domain, 'airline')
+    assert.ok(body.configuration.frontendMcp.servers['customer-service'])
+    // 这里必须是 decisions{} 而不是供表格展示的 tables[]。
+    assert.equal(body.configuration.guards.tables, undefined)
+  })
+})
+
+test('工具面建议按域生成，航空不再拿到零售工具', async () => {
+  await withServer(async base => {
+    const retail = (await get(base, '/api/surfaces?domain=retail')).body
+    const airline = (await get(base, '/api/surfaces?domain=airline')).body
+    const names = value => value.suggestions.map(item => item.name)
+    assert.ok(names(retail).includes('return_items'))
+    assert.ok(!names(retail).includes('update_flights'))
+    assert.ok(names(airline).includes('update_flights'))
+    assert.ok(!names(airline).includes('return_items'))
+  })
+})
+
+test('完整配置预览会拒绝没有兜底行的表', async () => {
+  await withServer(async base => {
+    const configuration = (await get(base, '/api/configuration?domain=retail')).body.configuration
+    configuration.guards.decisions.refund_authority.rules = [
+      { when: { amount: '> 2000' }, then: 'escalate' },
+    ]
+    const response = await fetch(`${base}/api/configuration/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: 'retail', configuration }),
+    })
+    assert.equal(response.status, 422)
+    const result = await response.json()
+    assert.equal(result.ok, false)
+    assert.ok(result.errors.some(error => /catch-all/.test(error.message)))
+  })
+})
+
+test('没有变化时应用是 no-op，不创建无意义备份', async () => {
+  await withServer(async base => {
+    const configuration = (await get(base, '/api/configuration?domain=retail')).body.configuration
+    const response = await fetch(`${base}/api/configuration/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: 'retail', configuration }),
+    })
+    assert.equal(response.status, 200)
+    const result = await response.json()
+    assert.deepEqual(result.written, [])
+    assert.match(result.note, /没有变化/)
+  })
+})
+
 test('未知路由返回 404', async () => {
   await withServer(async base => {
     const { status } = await get(base, '/api/nope')

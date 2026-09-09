@@ -1,0 +1,30 @@
+{
+  "_note": "管理员在 Policy 配置台维护的流程约束。它们注入后台 Agent prompt，不是工作流引擎；资格与结果仍由 guards 和工具决定。",
+  "version": 1,
+  "domain": "retail",
+  "rules": [
+    {
+      "id": "identity-before-business",
+      "enabled": true,
+      "before": "完成身份核验",
+      "after": "查询订单或办理订单业务",
+      "instruction": "两种核验方式都不通过时停止办理并转人工。",
+      "policyLine": 14
+    },
+    {
+      "id": "confirm-new-address",
+      "enabled": true,
+      "before": "取得完整的新收货地址",
+      "after": "执行修改地址",
+      "instruction": "执行后向客户复述新地址全文确认。",
+      "policyLine": 76
+    },
+    {
+      "id": "explain-before-transfer",
+      "enabled": true,
+      "before": "向客户说明转人工原因",
+      "after": "执行转人工",
+      "policyLine": 88
+    }
+  ]
+}

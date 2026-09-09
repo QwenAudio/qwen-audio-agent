@@ -80,6 +80,9 @@ export function suggestSurfaces(tools = toolDefinitions(BACKEND)) {
     return Object.freeze({
       name: tool.name,
       title: tool.title,
+      // 导出时必须保留 manifest 的完整 description。第一版只写 title，
+      // 一旦管理员碰过开关，就会把「什么时候调用、怎么念结果」这些说明全抹掉。
+      description: tool.description || tool.title || tool.name,
       suggested: chosen.surface,
       ruleId: chosen.id,
       why: chosen.why,
@@ -107,7 +110,7 @@ export function buildFrontendMcp(suggestions, {
     if (surface !== FRONTEND) continue
     tools[item.name] = {
       enabled: true,
-      description: item.title || item.name,
+      description: item.description || item.title || item.name,
     }
   }
   return {

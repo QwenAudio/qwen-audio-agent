@@ -9,14 +9,28 @@
 // 不需要和 service 共享状态。
 
 import { createServer } from 'node:http'
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { extractPolicy, partition } from './extract.mjs'
 import { consense } from './consensus.mjs'
 import { checkCoverage } from './coverage.mjs'
 import { validateDatabase } from './db-validate.mjs'
 import { buildFrontendMcp, overrideWarnings, suggestSurfaces } from './surfaces.mjs'
+import {
+  configurationDiff,
+  formatJson,
+  frontendConfigName,
+  validateConfiguration,
+} from './configuration.mjs'
 import { loadGuards } from '../service/guards.mjs'
+import { toolDefinitions } from '../service/tools/registry.mjs'
 import { loadServiceEnvironment } from '../bootstrap/environment.mjs'
 
 const DOMAINS = Object.freeze(['retail', 'airline'])
@@ -27,6 +41,57 @@ const DEFAULT_RUNS = 3
 function domainUrl(domain, file) {
   if (!DOMAINS.includes(domain)) return null
   return new URL(`../domains/${domain}/${file}`, import.meta.url)
+}
+
+const CONSOLE_RUNTIME = new URL('../.runtime-console/', import.meta.url)
+
+function frontendMcpUrl(domain) {
+  return new URL(`../gateway/${frontendConfigName(domain)}`, import.meta.url)
+}
+
+function readJson(path, fallback) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'))
+  } catch (error) {
+    if (error.code === 'ENOENT') return structuredClone(fallback)
+    throw error
+  }
+}
+
+function emptyFlows(domain) {
+  return { version: 1, domain, rules: [] }
+}
+
+function emptyReview(domain) {
+  return { version: 1, domain, updatedAt: null, items: {} }
+}
+
+// 返回【磁盘上的 canonical 形状】，不是 /api/guards 为展示摊平后的 tables[]。
+// 编辑器如果把 tables[] 直接写回，service 会找不到 decisions —— 这是两种 schema，
+// 必须在边界上明确区分。
+export function loadConfiguration(domain, { targets = configurationTargets(domain) } = {}) {
+  if (!DOMAINS.includes(domain)) throw new Error(`unknown domain: ${domain}`)
+  return {
+    guards: readJson(targets.guards, {}),
+    flows: readJson(targets.flows, emptyFlows(domain)),
+    review: readJson(targets.review, emptyReview(domain)),
+    frontendMcp: readJson(targets.frontendMcp, {}),
+  }
+}
+
+function frontendNames(frontendMcp) {
+  return new Set(Object.keys(frontendMcp?.servers?.['customer-service']?.tools || {}))
+}
+
+function overridesFromFrontend(domain, frontendMcp) {
+  const enabled = frontendNames(frontendMcp)
+  const suggestions = suggestSurfaces(toolDefinitions('backend', domain))
+  const overrides = {}
+  for (const tool of suggestions) {
+    const current = enabled.has(tool.name) ? 'frontend' : 'backend'
+    if (current !== tool.suggested) overrides[tool.name] = current
+  }
+  return { suggestions, overrides }
 }
 
 function json(response, status, value) {
@@ -42,6 +107,11 @@ function text(response, status, body, type = 'text/plain; charset=utf-8') {
   response.writeHead(status, {
     'Content-Type': type,
     'Content-Length': Buffer.byteLength(body),
+    // 【必须禁缓存】页面每次都从磁盘读，但浏览器会缓存它。
+    // 实测代价：改完 index.html 后刷新拿到的还是旧页面，
+    // 于是「修好的 bug 看起来没修好」，白排查了两轮。
+    // 这是个开发期工具，少一次网络往返换不来什么。
+    'Cache-Control': 'no-store',
   })
   response.end(body)
 }
@@ -175,21 +245,42 @@ const routes = {
   },
 
   'GET /api/surfaces': (url) => {
+    const domain = url.searchParams.get('domain') || 'retail'
+    if (!DOMAINS.includes(domain)) return { error: 'unknown domain' }
+    const currentMcp = readJson(frontendMcpUrl(domain), {})
+    const current = overridesFromFrontend(domain, currentMcp)
     const overridesRaw = url.searchParams.get('overrides')
-    let overrides = {}
+    let overrides = current.overrides
     try {
-      overrides = overridesRaw ? JSON.parse(overridesRaw) : {}
+      if (overridesRaw) overrides = JSON.parse(overridesRaw)
     } catch {
-      overrides = {}
+      overrides = current.overrides
     }
-    const suggestions = suggestSurfaces()
+    const suggestions = suggestSurfaces(toolDefinitions('backend', domain))
+    const frontendMcp = buildFrontendMcp(suggestions, { overrides })
+    if (currentMcp._note) frontendMcp._note = currentMcp._note
+    // 没挪动的工具保留已有的完整调用说明。manifest 的 description 更短，
+    // 如果每碰一次开关就把详细说明降级，模型何时调用工具会悄悄变差。
+    const currentTools = currentMcp.servers?.['customer-service']?.tools || {}
+    const nextTools = frontendMcp.servers['customer-service'].tools
+    for (const [name, config] of Object.entries(nextTools)) {
+      if (currentTools[name]?.description) config.description = currentTools[name].description
+    }
     return {
+      domain,
       suggestions,
+      overrides,
       // 管理员把某个工具挪到前台会有什么后果 —— 这条必须显示出来，
       // 否则他只是在切一个开关，看不到代价。
       warnings: overrideWarnings(suggestions, overrides),
-      frontendMcp: buildFrontendMcp(suggestions, { overrides }),
+      frontendMcp,
     }
+  },
+
+  'GET /api/configuration': (url) => {
+    const domain = url.searchParams.get('domain')
+    if (!DOMAINS.includes(domain)) return { error: 'unknown domain' }
+    return { domain, configuration: loadConfiguration(domain) }
   },
 
   'GET /api/extract': (url) => {
@@ -241,27 +332,141 @@ async function handleExtractStream(request, response, url) {
   response.end()
 }
 
-// 导出：把界面上的决定写回 domains/<domain>/。
-// 【这是配置台唯一会写文件的地方】写之前先校验 JSON 能被 loadGuards 接受，
-// 否则一份写坏的 guards.json 会让 service 起不来。
-function handleExport(response, body) {
-  const { domain, guards, frontendMcp } = body || {}
+export function configurationTargets(domain) {
+  return {
+    guards: domainUrl(domain, 'guards.json'),
+    flows: domainUrl(domain, 'flows.json'),
+    review: domainUrl(domain, 'review.json'),
+    frontendMcp: frontendMcpUrl(domain),
+  }
+}
+
+function serialize(value) {
+  return formatJson(value)
+}
+
+function atomicWrite(target, content) {
+  const filename = target.pathname.split('/').pop()
+  const temporary = new URL(`./.${filename}.${process.pid}.${Date.now()}.tmp`, target)
+  writeFileSync(temporary, content, 'utf8')
+  renameSync(temporary, target)
+}
+
+// 预览是【应用的同一条校验路径】，不是浏览器自己猜一次。
+// 否则最糟的情况是预览说能写，真正写盘时用另一套规则才拒绝。
+export function previewConfiguration(domain, proposed, options = {}) {
   if (!DOMAINS.includes(domain)) {
+    return { ok: false, errors: [{ path: 'domain', message: `未知的域：${domain}` }] }
+  }
+  const verdict = validateConfiguration(domain, proposed)
+  if (!verdict.ok) return verdict
+  const current = options.current || loadConfiguration(domain, options)
+  const diff = configurationDiff(current, proposed)
+  const changed = Object.entries(diff)
+    .filter(([, changes]) => changes.length)
+    .map(([name, changes]) => ({ name, changes }))
+  const { suggestions, overrides } = overridesFromFrontend(domain, proposed.frontendMcp)
+  const warnings = overrideWarnings(suggestions, overrides)
+  const db = options.db || JSON.parse(readFileSync(domainUrl(domain, 'db.json'), 'utf8'))
+  const coverage = checkCoverage(proposed.guards, db)
+  return {
+    ok: true,
+    changed,
+    coverage,
+    changeCount: changed.reduce((total, entry) => total + entry.changes.length, 0),
+    warnings,
+    requiresRestart: diff.frontendMcp.length ? ['gateway'] : [],
+    effect: {
+      guards: diff.guards.length ? '下一次工具调用立即生效' : '未修改',
+      flows: diff.flows.length ? '后台 Agent 的下一个任务立即生效' : '未修改',
+      frontendMcp: diff.frontendMcp.length ? '重启对应域 gateway 后生效' : '未修改',
+    },
+  }
+}
+
+export function applyConfiguration(domain, proposed, options = {}) {
+  const { acknowledgeRisks = false } = options
+  const preview = previewConfiguration(domain, proposed, options)
+  if (!preview.ok) return preview
+  if (preview.warnings.some(item => item.severity === 'risk') && !acknowledgeRisks) {
+    return {
+      ...preview,
+      ok: false,
+      needsRiskAcknowledgement: true,
+      errors: [{ path: 'frontendMcp', message: '包含绕过批准链的高风险工具面改动，必须明确确认' }],
+    }
+  }
+  if (!preview.changed.length) return { ...preview, ok: true, written: [], note: '配置没有变化' }
+
+  const targets = options.targets || configurationTargets(domain)
+  const runtime = options.runtime || CONSOLE_RUNTIME
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const backupDir = new URL(`./backups/${stamp}-${domain}/`, runtime)
+  mkdirSync(backupDir, { recursive: true })
+  const originals = new Map()
+  const written = []
+  try {
+    for (const { name } of preview.changed) {
+      const target = targets[name]
+      const old = existsSync(target) ? readFileSync(target, 'utf8') : null
+      originals.set(name, old)
+      if (old !== null) writeFileSync(new URL(`./${name}.json`, backupDir), old, 'utf8')
+      atomicWrite(target, serialize(proposed[name]))
+      written.push(name === 'frontendMcp'
+        ? `gateway/${frontendConfigName(domain)}`
+        : `domains/${domain}/${name === 'review' ? 'review.json' : `${name}.json`}`)
+    }
+  } catch (error) {
+    // 多文件提交中途失败就恢复已经写过的文件，避免 guards 与 flows 半新半旧。
+    for (const name of [...originals.keys()].reverse()) {
+      const old = originals.get(name)
+      if (old !== null) atomicWrite(targets[name], old)
+    }
+    return { ok: false, errors: [{ path: 'write', message: error.message }] }
+  }
+
+  mkdirSync(runtime, { recursive: true })
+  appendFileSync(new URL('./audit.jsonl', runtime), `${JSON.stringify({
+    at: new Date().toISOString(),
+    domain,
+    written,
+    changedPaths: Object.fromEntries(preview.changed.map(entry => [
+      entry.name, entry.changes.map(change => change.path),
+    ])),
+  })}\n`, 'utf8')
+  return {
+    ...preview,
+    ok: true,
+    written,
+    backup: `.runtime-console/backups/${stamp}-${domain}`,
+    note: preview.requiresRestart.length
+      ? '业务规则与流程已生效；工具面变化需重启对应域 gateway。'
+      : '已应用；下一次工具调用或后台任务立即使用新配置。',
+  }
+}
+
+function handleConfigurationRequest(response, body, apply) {
+  const { domain, configuration, acknowledgeRisks } = body || {}
+  const result = apply
+    ? applyConfiguration(domain, configuration, { acknowledgeRisks })
+    : previewConfiguration(domain, configuration)
+  const status = result.ok ? 200 : result.needsRiskAcknowledgement ? 409 : 422
+  json(response, status, result)
+}
+
+// 兼容旧入口。旧界面只传 frontendMcp；合并进完整配置后仍走同一套校验与写盘。
+function handleExport(response, body) {
+  if (!DOMAINS.includes(body?.domain)) {
     json(response, 400, { error: 'unknown domain' })
     return
   }
-  const written = []
-  if (guards) {
-    const path = domainUrl(domain, 'guards.json')
-    writeFileSync(path, `${JSON.stringify(guards, null, 2)}\n`)
-    written.push(`domains/${domain}/guards.json`)
-  }
-  if (frontendMcp) {
-    const path = new URL('../gateway/frontend-mcp.json', import.meta.url)
-    writeFileSync(path, `${JSON.stringify(frontendMcp, null, 2)}\n`)
-    written.push('gateway/frontend-mcp.json')
-  }
-  json(response, 200, { ok: true, written })
+  const configuration = { ...loadConfiguration(body.domain), ...body }
+  delete configuration.domain
+  handleConfigurationRequest(response, {
+    domain: body.domain,
+    configuration,
+    acknowledgeRisks: true,
+  }, true)
 }
 
 async function readBody(request) {
@@ -329,6 +534,14 @@ export function createConsoleServer() {
       }
       if (key === 'GET /api/extract/stream') {
         await handleExtractStream(request, response, url)
+        return
+      }
+      if (key === 'POST /api/configuration/preview') {
+        handleConfigurationRequest(response, await readBody(request), false)
+        return
+      }
+      if (key === 'POST /api/configuration/apply') {
+        handleConfigurationRequest(response, await readBody(request), true)
         return
       }
       if (key === 'POST /api/export') {

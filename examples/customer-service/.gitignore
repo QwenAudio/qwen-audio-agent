@@ -10,5 +10,7 @@ console/.cache/
 
 # 双进程组各自的运行时目录（bootstrap/start.mjs 按域分开，否则两组的对话历史会串）
 .runtime-*/
+# 配置台的变更审计与自动备份；里面可能含管理员尚未提交的业务规则。
+.runtime-console/
 # 数据库编辑前的自动备份
 domains/*/db.backup.json

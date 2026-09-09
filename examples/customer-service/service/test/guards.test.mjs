@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import {
   DecisionTableError,
@@ -11,6 +14,7 @@ import {
   decide,
   enumValues,
   loadGuards,
+  loadGuardsFrom,
   sessionFacts,
 } from '../guards.mjs'
 
@@ -187,6 +191,33 @@ test('未知 domain 返回空 guards 而不是抛错', () => {
   const guards = loadGuards('nonexistent-domain')
   assert.deepEqual(guards.preconditions, {})
   assert.deepEqual(guards.decisions, {})
+})
+
+test('同一配置文件改写后下一次读取立即生效，不保留旧缓存', t => {
+  const dir = mkdtempSync(join(tmpdir(), 'customer-service-guards-'))
+  t.after(() => rmSync(dir, { recursive: true, force: true }))
+  const path = join(dir, 'guards.json')
+  const document = value => ({
+    version: 1,
+    domain: 'test',
+    preconditions: {},
+    decisions: {
+      fee: {
+        hitPolicy: 'first',
+        inputs: ['amount'],
+        rules: [
+          { when: { amount: '> 0' }, then: value },
+          { when: {}, then: 0 },
+        ],
+      },
+    },
+    enums: {},
+    thresholds: {},
+  })
+  writeFileSync(path, JSON.stringify(document(100)))
+  assert.equal(decide(loadGuardsFrom(path, 'test'), 'fee', { amount: 1 }).outcome, 100)
+  writeFileSync(path, JSON.stringify(document(200)))
+  assert.equal(decide(loadGuardsFrom(path, 'test'), 'fee', { amount: 1 }).outcome, 200)
 })
 
 test('preconditions 命中时给出缺什么与原文行号', () => {

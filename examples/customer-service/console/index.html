@@ -99,6 +99,22 @@
   .surface-toggle span.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
   .surface-toggle span.moved { border-color: var(--warn); color: var(--warn); background: #e0a33a18; }
   .row .grow { flex: 1; }
+  .actions { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+  .actions button { padding: 3px 9px; font-size: 12px; }
+  .actions button.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
+  .actions button.reject.on { border-color: var(--danger); color: var(--danger); background: #e05c5c18; }
+  .config-editor {
+    width: 100%; min-height: 170px; margin-top: 9px; padding: 9px;
+    background: #0f1115; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; font: 12px/1.55 var(--mono); resize: vertical;
+  }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .field-grid label { color: var(--dim); font-size: 11px; }
+  .field-grid input, .field-grid textarea { width: 100%; margin-top: 3px; }
+  .field-grid textarea { min-height: 58px; resize: vertical; }
+  .publish { border-left: 3px solid var(--accent); }
+  .diff-path { font-family: var(--mono); color: var(--accent); font-size: 12px; }
+  .decision-note { color: var(--dim); font-size: 12px; margin-top: 7px; }
 
   /* 【sticky header 会盖住可点元素 —— 这是实测抳到的】
      窗口窄的时候 header 里的控件会换行，它能高到 200px 以上。
@@ -113,6 +129,15 @@
        一、scroll-margin-top 让程序滚动给 header 留出位置（高度由 JS 同步）
        二、header 本身压矮，窄屏下不要撑到两三百 px */
   section { scroll-margin-top: calc(var(--header-h, 64px) + 12px); }
+
+  /* 措施二。之前只做了措施一，于是窄屏下仍有实测复现：header 换行到 234px，
+     常驻盖住内容顶部三分之一，最前面两张卡片的按钮永远点不到 ——
+     它们不是没绑事件，是被盖在不透明的 header 底下，点击命中了 header。
+
+     换行本身没法禁（控件就那么多），能做的是「太高就别再 sticky」：
+     一个高过两行的头，钉在屏幕上的代价大于它省下的那次滚动。
+     阈值由 JS 判定后加 .tall —— 纯 CSS 表达不了「高过 N 就取消 sticky」。 */
+  header.tall { position: static; }
 
   /* 首屏遮罩 */
   #gate {
@@ -165,14 +190,16 @@
   <span class="grow"></span>
   <span id="status" style="color:var(--dim);font-size:12.5px"></span>
   <button id="extract">抽取 policy（跑 3 次）</button>
-  <button id="export" class="primary" disabled>导出配置</button>
+  <button id="export" class="primary" disabled>预览并应用</button>
 </header>
 
 <main>
   <div class="col">
+    <section id="sec-publish"></section>
     <section id="sec-dispute"></section>
     <section id="sec-agreed"></section>
     <section id="sec-tables"></section>
+    <section id="sec-flows"></section>
     <section id="sec-surfaces"></section>
     <section id="sec-coverage"></section>
     <section id="sec-database"></section>
@@ -189,10 +216,18 @@ const $ = id => document.getElementById(id)
 // header 是 sticky 而且高度随窗口宽度变（控件会换行）。
 // 把它的实际高度同步到 CSS 变量，让 section 的 scroll-margin-top 跟着走 ——
 // 写死一个值在窄屏下仍然会被盖。
+//
+// 顺带判定「是否高得不该再 sticky」。单行约 44px、两行约 78px，
+// 取 96px 作界：超过就让它跟着页面滚走，否则它会常驻遮住内容并吃掉点击。
+// 切换 .tall 不改变 header 高度（sticky 与 static 都在文档流内），
+// 所以这里不会和 ResizeObserver 形成抖动回路。
+const HEADER_STICKY_MAX = 96
 const syncHeaderHeight = () => {
   const header = document.querySelector('header')
   if (header) {
-    document.documentElement.style.setProperty('--header-h', `${header.offsetHeight}px`)
+    const height = header.offsetHeight
+    document.documentElement.style.setProperty('--header-h', `${height}px`)
+    header.classList.toggle('tall', height > HEADER_STICKY_MAX)
   }
 }
 syncHeaderHeight()
@@ -212,7 +247,10 @@ const state = {
   query: '',
   extract: null,
   guards: null,
+  configuration: null,
   surfaces: null,
+  dirty: false,
+  preview: null,
   // 管理员把某个工具挪到另一面的记录。不直接改 suggestions ——
   // 「建议」和「决定」要分开存，否则改回来时不知道原建议是什么。
   overrides: {},
@@ -240,6 +278,103 @@ const DISPUTE_TEXT = {
   conflicting_values: '结论冲突', partial_agreement: '部分出现',
   stable_but_ambiguous: '稳定但需判断',
 }
+const REVIEW_TEXT = {
+  accepted: '已接受', rejected: '已拒绝',
+  policy_gap: 'Policy 缺口', data_gap: '数据缺口',
+}
+
+const clone = value => JSON.parse(JSON.stringify(value))
+
+function reviewKey(item) {
+  return item.topicKey || `${item.kind}:${labelOf(item)}`
+}
+
+function markDirty(note = '有尚未应用的修改') {
+  state.dirty = true
+  state.preview = null
+  $('export').disabled = false
+  $('status').textContent = note
+  renderPublish()
+}
+
+function canonicalToDisplay(guards) {
+  const tables = Object.entries(guards.decisions || {})
+    .filter(([name]) => !name.startsWith('_'))
+    .map(([name, table]) => ({
+      name,
+      hitPolicy: table.hitPolicy || 'first',
+      inputs: table.inputs || [],
+      policyLine: table.policyLine ?? null,
+      rules: (table.rules || []).map((rule, index) => ({
+        ...rule,
+        index: index + 1,
+        isCatchAll: !Object.keys(rule.when || {}).length
+          || Object.values(rule.when || {}).every(value => ['', '-', '*'].includes(String(value ?? '').trim())),
+      })),
+    }))
+  const preconditions = Object.entries(guards.preconditions || {})
+    .filter(([name]) => !name.startsWith('_'))
+    .map(([tool, rule]) => ({ tool, ...rule }))
+  return {
+    domain: guards.domain,
+    version: guards.version,
+    tables,
+    preconditions,
+    enums: guards.enums || {},
+    thresholds: guards.thresholds || {},
+  }
+}
+
+function shortHash(text) {
+  let hash = 2166136261
+  for (const char of String(text)) {
+    hash ^= char.codePointAt(0)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+function syncAcceptedCandidate(item, key) {
+  if (item.kind === 'order') {
+    const id = `review-${shortHash(key)}`
+    const rules = state.configuration.flows.rules
+    const existing = rules.find(rule => rule.sourceKey === key)
+    const value = {
+      id,
+      enabled: true,
+      before: item.before,
+      after: item.after,
+      instruction: item.quote || '',
+      policyLine: item.policyLine || undefined,
+      sourceKey: key,
+    }
+    if (existing) Object.assign(existing, value)
+    else rules.push(value)
+    return '已加入下方流程配置；应用后注入后台 Agent。'
+  }
+  if (item.kind === 'threshold' && Object.hasOwn(state.configuration.guards.thresholds || {}, item.name)) {
+    state.configuration.guards.thresholds[item.name] = Number(item.value)
+    return `已更新 guards.thresholds.${item.name}。`
+  }
+  if (item.kind === 'gap') return '已记录缺口；缺口不会自动变成业务规则。'
+  return '已记录裁决；请在下方决策表或执行配置中选择明确落点。'
+}
+
+function decideCandidate(item, status, key = reviewKey(item)) {
+  const review = state.configuration.review
+  review.items[key] = {
+    status,
+    item: clone(item),
+    updatedAt: new Date().toISOString(),
+  }
+  review.updatedAt = new Date().toISOString()
+  let note = `已标记为「${REVIEW_TEXT[status]}」；点击“预览并应用”才会写入。`
+  if (status === 'accepted') note += ` ${syncAcceptedCandidate(item, key)}`
+  markDirty(note)
+  renderExtract()
+  renderTables()
+  renderFlows()
+}
 
 // 搜索命中判定：把一条项目的所有可读字段拼起来搜。
 // 【要包含 quote】管理员常记得的是原文里的说法，而不是我们起的字段名。
@@ -254,6 +389,9 @@ function matches(item, query) {
 }
 
 function itemCard(item, { dispute = false } = {}) {
+  const key = reviewKey(item)
+  const saved = state.configuration?.review?.items?.[key]
+  if (saved?.item) item = saved.item
   const card = el('div', `card ${dispute ? 'dispute' : 'ok'}`)
   const row = el('div', 'row')
   if (item.agreement) {
@@ -286,6 +424,59 @@ function itemCard(item, { dispute = false } = {}) {
     variant.append(document.createTextNode(` 另一版本：${labelOf(other)}`))
     card.append(variant)
   }
+
+  if (dispute && state.configuration) {
+    const current = saved?.status
+    const actions = el('div', 'actions')
+    const choices = item.kind === 'gap'
+      ? [['policy_gap', '确认为 Policy 缺口'], ['data_gap', '确认为数据缺口'], ['rejected', '模型误判']]
+      : [['accepted', '接受'], ['rejected', '拒绝'], ['policy_gap', '需补 Policy'], ['data_gap', '需补数据']]
+    for (const [status, text] of choices) {
+      const button = document.createElement('button')
+      button.textContent = text
+      button.className = `${status === 'rejected' ? 'reject ' : ''}${current === status ? 'on' : ''}`
+      button.onclick = () => decideCandidate(item, status)
+      actions.append(button)
+    }
+
+    const edit = document.createElement('button')
+    edit.textContent = '编辑候选'
+    edit.onclick = () => {
+      if (card.querySelector('.candidate-editor')) return
+      const editor = document.createElement('textarea')
+      editor.className = 'config-editor candidate-editor'
+      editor.value = JSON.stringify(item, null, 2)
+      const save = document.createElement('button')
+      save.textContent = '保存修改并接受'
+      save.className = 'primary'
+      save.onclick = () => {
+        try {
+          const edited = JSON.parse(editor.value)
+          decideCandidate(edited, 'accepted', key)
+        } catch (error) {
+          $('status').textContent = `候选项 JSON 有误：${error.message}`
+        }
+      }
+      card.append(editor, save)
+    }
+    actions.append(edit)
+
+    if (current) {
+      const reset = document.createElement('button')
+      reset.textContent = '撤销裁决'
+      reset.onclick = () => {
+        delete state.configuration.review.items[key]
+        state.configuration.flows.rules = state.configuration.flows.rules
+          .filter(rule => rule.sourceKey !== key)
+        markDirty('已撤销这条裁决；点击“预览并应用”后落盘。')
+        renderExtract()
+        renderFlows()
+      }
+      actions.append(reset)
+      card.append(el('div', 'decision-note', `当前裁决：${esc(REVIEW_TEXT[current])}`))
+    }
+    card.append(actions)
+  }
   return card
 }
 
@@ -304,8 +495,12 @@ function renderExtract() {
   const disputed = state.extract.disputed.filter(item => matches(item, state.query))
   const stable = state.extract.agreed.filter(item => matches(item, state.query))
 
+  const reviewed = state.extract.disputed.filter(item =>
+    Boolean(state.configuration?.review?.items?.[reviewKey(item)]?.status)).length
   dispute.append(el('h2', null,
-    `待你决定 <span class="count">${disputed.length} / ${state.extract.disputed.length} 条</span>`))
+    `需人工裁决 <span class="count">未处理 ${state.extract.disputed.length - reviewed} · 已处理 ${reviewed} · 共 ${state.extract.disputed.length} 条</span>`))
+  dispute.append(el('div', 'decision-note',
+    '接受/拒绝只记录裁决；顺序规则接受后会进入流程配置。阈值与交叉表要在下方生效配置中确认落点。'))
   if (!disputed.length) dispute.append(el('div', 'empty', '没有命中的项。'))
   for (const item of disputed) dispute.append(itemCard(item, { dispute: true }))
 
@@ -319,10 +514,40 @@ function renderExtract() {
   agreed.append(details)
 }
 
+function appendObjectEditor(card, label, value, onSave) {
+  const button = document.createElement('button')
+  button.textContent = `编辑${label}`
+  button.onclick = () => {
+    if (card.querySelector('.config-editor')) return
+    const editor = document.createElement('textarea')
+    editor.className = 'config-editor'
+    editor.value = JSON.stringify(value, null, 2)
+    const actions = el('div', 'actions')
+    const save = document.createElement('button')
+    save.textContent = '更新草稿'
+    save.className = 'primary'
+    save.onclick = () => {
+      try {
+        onSave(JSON.parse(editor.value))
+        markDirty(`${label}已更新到草稿；尚未应用。`)
+        renderTables()
+      } catch (error) {
+        $('status').textContent = `${label} JSON 有误：${error.message}`
+      }
+    }
+    const cancel = document.createElement('button')
+    cancel.textContent = '取消'
+    cancel.onclick = () => { editor.remove(); actions.remove() }
+    actions.append(save, cancel)
+    card.append(editor, actions)
+  }
+  return button
+}
+
 function renderTables() {
   const host = $('sec-tables')
   host.innerHTML = ''
-  if (!state.guards) return
+  if (!state.guards || !state.configuration) return
   if (state.filter === 'dispute' || state.filter === 'risk') return
 
   const tables = state.guards.tables.filter(table => {
@@ -336,25 +561,60 @@ function renderTables() {
     return haystack.includes(state.query.toLowerCase())
   })
 
-  host.append(el('h2', null,
-    `决策表 <span class="count">${tables.length} / ${state.guards.tables.length} 张 · 改这里会真的改变行为</span>`))
+  const title = el('h2', null,
+    `决策表配置 <span class="count">${tables.length} / ${state.guards.tables.length} 张 · 草稿可编辑，应用后下一次工具调用生效</span>`)
+  const add = document.createElement('button')
+  add.textContent = '新增决策表'
+  add.style.marginLeft = '8px'
+  add.onclick = () => {
+    const name = prompt('新决策表名称（英文标识）')?.trim()
+    if (!name) return
+    if (state.configuration.guards.decisions[name]) {
+      $('status').textContent = `决策表 ${name} 已存在`
+      return
+    }
+    state.configuration.guards.decisions[name] = {
+      hitPolicy: 'first', inputs: [], policyLine: null,
+      rules: [{ when: {}, then: 'manual_review', reason: '兜底行' }],
+    }
+    state.guards = canonicalToDisplay(state.configuration.guards)
+    markDirty(`已新增决策表 ${name}；请编辑后再应用。`)
+    renderTables()
+  }
+  title.append(add)
+  host.append(title)
 
   for (const table of tables) {
     const card = el('div', 'card')
     const head = el('div', 'row')
     head.append(el('span', 'label', esc(table.name)))
     head.append(el('span', 'tag', `hit: ${esc(table.hitPolicy)}`))
-    if (table.inputs.length) {
-      head.append(el('span', 'tag', esc(table.inputs.join(' × ')))) 
-    }
+    if (table.inputs.length) head.append(el('span', 'tag', esc(table.inputs.join(' × '))))
     if (table.policyLine) {
       const link = el('span', 'tag', `policy 第 ${table.policyLine} 行`)
       link.style.cursor = 'pointer'
       link.onclick = () => highlightPolicy(table.policyLine)
       head.append(link)
     }
+    head.append(el('span', 'grow', ''))
+    head.append(appendObjectEditor(card, `决策表 ${table.name}`,
+      state.configuration.guards.decisions[table.name], value => {
+        state.configuration.guards.decisions[table.name] = value
+        state.guards = canonicalToDisplay(state.configuration.guards)
+      }))
+    const remove = document.createElement('button')
+    remove.textContent = '删除'
+    remove.onclick = () => {
+      if (!confirm(`删除决策表 ${table.name}？缺表时对应工具会转人工，不会默默放行。`)) return
+      delete state.configuration.guards.decisions[table.name]
+      state.guards = canonicalToDisplay(state.configuration.guards)
+      markDirty(`已从草稿删除决策表 ${table.name}。`)
+      renderTables()
+    }
+    head.append(remove)
     card.append(head)
 
+    const canonical = state.configuration.guards.decisions[table.name]
     const columns = table.inputs.length
       ? table.inputs
       : [...new Set(table.rules.flatMap(rule => Object.keys(rule.when)))]
@@ -364,41 +624,115 @@ function renderTables() {
     for (const column of columns) header.append(el('th', 'mono', esc(column)))
     header.append(el('th', null, '结果'))
     header.append(el('th', null, '理由'))
+    header.append(el('th', null, '操作'))
     grid.append(header)
-    for (const rule of table.rules) {
+    const typed = text => {
+      const trimmed = text.trim()
+      if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed)
+      if (trimmed === 'true') return true
+      if (trimmed === 'false') return false
+      return text
+    }
+    for (const [ruleIndex, rule] of table.rules.entries()) {
       const tr = el('tr', rule.isCatchAll ? 'catchall' : null)
       tr.append(el('td', null, String(rule.index)))
       for (const column of columns) {
-        const value = rule.when[column]
-        tr.append(el('td', 'mono', value === undefined || value === '' ? '–' : esc(value)))
+        const input = document.createElement('input')
+        input.className = 'mono'
+        input.style.width = '100%'
+        input.placeholder = '–（任意）'
+        input.value = rule.when[column] ?? ''
+        input.oninput = () => {
+          if (input.value.trim()) canonical.rules[ruleIndex].when[column] = input.value
+          else delete canonical.rules[ruleIndex].when[column]
+          markDirty(`决策表 ${table.name} 第 ${ruleIndex + 1} 行已修改。`)
+        }
+        const cell = document.createElement('td')
+        cell.append(input)
+        tr.append(cell)
       }
-      tr.append(el('td', 'mono', esc(rule.then)))
-      tr.append(el('td', null, esc(rule.reason || '')))
+      const outcome = document.createElement('input')
+      outcome.value = rule.then ?? ''
+      outcome.style.width = '100%'
+      outcome.oninput = () => {
+        canonical.rules[ruleIndex].then = typed(outcome.value)
+        markDirty(`决策表 ${table.name} 第 ${ruleIndex + 1} 行结果已修改。`)
+      }
+      const outcomeCell = document.createElement('td')
+      outcomeCell.append(outcome)
+      tr.append(outcomeCell)
+
+      const reason = document.createElement('input')
+      reason.value = rule.reason || ''
+      reason.style.width = '100%'
+      reason.oninput = () => {
+        if (reason.value) canonical.rules[ruleIndex].reason = reason.value
+        else delete canonical.rules[ruleIndex].reason
+        markDirty(`决策表 ${table.name} 第 ${ruleIndex + 1} 行理由已修改。`)
+      }
+      const reasonCell = document.createElement('td')
+      reasonCell.append(reason)
+      tr.append(reasonCell)
+
+      const operations = document.createElement('td')
+      for (const [text, delta] of [['↑', -1], ['↓', 1]]) {
+        const move = document.createElement('button')
+        move.textContent = text
+        move.disabled = ruleIndex + delta < 0 || ruleIndex + delta >= canonical.rules.length
+        move.onclick = () => {
+          const other = ruleIndex + delta
+          ;[canonical.rules[ruleIndex], canonical.rules[other]]
+            = [canonical.rules[other], canonical.rules[ruleIndex]]
+          state.guards = canonicalToDisplay(state.configuration.guards)
+          markDirty(`决策表 ${table.name} 的规则顺序已修改。`)
+          renderTables()
+        }
+        operations.append(move)
+      }
+      const removeRule = document.createElement('button')
+      removeRule.textContent = '删'
+      removeRule.onclick = () => {
+        canonical.rules.splice(ruleIndex, 1)
+        state.guards = canonicalToDisplay(state.configuration.guards)
+        markDirty(`已删除决策表 ${table.name} 第 ${ruleIndex + 1} 行。`)
+        renderTables()
+      }
+      operations.append(removeRule)
+      tr.append(operations)
       grid.append(tr)
     }
     card.append(grid)
+    const addRule = document.createElement('button')
+    addRule.textContent = '新增规则行'
+    addRule.onclick = () => {
+      const catchAll = canonical.rules.findIndex(rule => !Object.keys(rule.when || {}).length)
+      const at = catchAll < 0 ? canonical.rules.length : catchAll
+      canonical.rules.splice(at, 0, { when: {}, then: 'manual_review', reason: '' })
+      state.guards = canonicalToDisplay(state.configuration.guards)
+      markDirty(`已在决策表 ${table.name} 中新增规则行。`)
+      renderTables()
+    }
+    const ruleActions = el('div', 'actions')
+    ruleActions.append(addRule)
+    card.append(ruleActions)
     host.append(card)
   }
 
-  if (state.guards.preconditions.length) {
+  const extras = [
+    ['工具前置条件', 'preconditions', '没声明的工具缺省不拦；requires 是会话事实数组。'],
+    ['枚举', 'enums', '限制工具可以接受的业务取值。'],
+    ['单值阈值', 'thresholds', '供工具直接读取，例如每件行李费。'],
+  ]
+  for (const [label, key, hint] of extras) {
     const card = el('div', 'card')
-    card.append(el('div', 'row', '<span class="label">工具前置条件</span>'
-      + '<span class="tag">没在这里声明的工具缺省不拦</span>'))
-    const grid = el('table')
-    grid.append(el('tr', null,
-      '<th>工具</th><th>要求</th><th>不满足时</th><th>依据</th>'))
-    for (const rule of state.guards.preconditions) {
-      const tr = el('tr')
-      tr.append(el('td', 'mono', esc(rule.tool)))
-      tr.append(el('td', 'mono', esc(rule.requires.join(', '))))
-      tr.append(el('td', null, esc(rule.onMissing)))
-      const cell = el('td', null, rule.policyLine ? `第 ${rule.policyLine} 行` : '—')
-      cell.style.cursor = 'pointer'
-      cell.onclick = () => highlightPolicy(rule.policyLine)
-      tr.append(cell)
-      grid.append(tr)
-    }
-    card.append(grid)
+    const head = el('div', 'row')
+    head.append(el('span', 'label', label), el('span', 'tag', hint), el('span', 'grow', ''))
+    head.append(appendObjectEditor(card, label,
+      state.configuration.guards[key] || {}, value => {
+        state.configuration.guards[key] = value
+        state.guards = canonicalToDisplay(state.configuration.guards)
+      }))
+    card.append(head)
     host.append(card)
   }
 }
@@ -442,7 +776,7 @@ function renderSurfaces() {
         // 否则无法区分「没动过」和「改过又改回来了」。
         if (surface === tool.suggested) delete state.overrides[tool.name]
         else state.overrides[tool.name] = surface
-        refreshSurfaces()
+        refreshSurfaces({ dirty: true })
       }
       toggle.append(option)
     }
@@ -461,6 +795,171 @@ function renderSurfaces() {
     }
     host.append(card)
   }
+}
+
+function renderFlows() {
+  const host = $('sec-flows')
+  host.innerHTML = ''
+  if (!state.configuration || state.filter === 'risk') return
+  const flows = state.configuration.flows.rules
+  const title = el('h2', null,
+    `后台 Agent 流程 <span class="count">${flows.filter(rule => rule.enabled !== false).length} 条启用 · 修改后下一个后台任务生效</span>`)
+  const add = document.createElement('button')
+  add.textContent = '新增流程规则'
+  add.style.marginLeft = '8px'
+  add.onclick = () => {
+    flows.push({
+      id: `manual-${Date.now().toString(36)}`,
+      enabled: true,
+      before: '前置步骤',
+      after: '后续步骤',
+      instruction: '',
+    })
+    markDirty('已新增流程规则草稿。')
+    renderFlows()
+  }
+  title.append(add)
+  host.append(title)
+  host.append(el('div', 'decision-note',
+    '这些规则会注入后台 Agent 的 system prompt，只约束步骤先后；资格、金额和最终结果仍由工具与决策表硬判。'))
+
+  flows.forEach((rule, index) => {
+    const card = el('div', `card ${rule.enabled === false ? '' : 'ok'}`)
+    const row = el('div', 'row')
+    const enabled = document.createElement('input')
+    enabled.type = 'checkbox'
+    enabled.checked = rule.enabled !== false
+    enabled.onchange = () => {
+      rule.enabled = enabled.checked
+      markDirty(`流程规则 ${rule.id} 已${enabled.checked ? '启用' : '停用'}。`)
+    }
+    row.append(enabled, el('span', 'label', esc(rule.id)), el('span', 'grow', ''))
+    for (const [text, delta] of [['上移', -1], ['下移', 1]]) {
+      const move = document.createElement('button')
+      move.textContent = text
+      move.disabled = index + delta < 0 || index + delta >= flows.length
+      move.onclick = () => {
+        const other = index + delta
+        ;[flows[index], flows[other]] = [flows[other], flows[index]]
+        markDirty(`已调整流程规则 ${rule.id} 的顺序。`)
+        renderFlows()
+      }
+      row.append(move)
+    }
+    const remove = document.createElement('button')
+    remove.textContent = '删除'
+    remove.onclick = () => {
+      flows.splice(index, 1)
+      markDirty(`已删除流程规则 ${rule.id}。`)
+      renderFlows()
+    }
+    row.append(remove)
+    card.append(row)
+
+    const fields = el('div', 'field-grid')
+    const addField = (label, key, multiline = false) => {
+      const wrapper = document.createElement('label')
+      wrapper.textContent = label
+      const control = document.createElement(multiline ? 'textarea' : 'input')
+      control.value = rule[key] ?? ''
+      control.oninput = () => {
+        rule[key] = key === 'policyLine'
+          ? (control.value ? Number(control.value) : undefined)
+          : control.value
+        markDirty(`流程规则 ${rule.id} 已修改。`)
+      }
+      wrapper.append(control)
+      fields.append(wrapper)
+    }
+    addField('先做什么', 'before')
+    addField('再做什么', 'after')
+    addField('补充说明', 'instruction', true)
+    addField('Policy 行号', 'policyLine')
+    card.append(fields)
+    host.append(card)
+  })
+}
+
+function configurationPayload() {
+  const configuration = clone(state.configuration)
+  configuration.frontendMcp = clone(state.surfaces.frontendMcp)
+  return { domain: state.domain, configuration }
+}
+
+async function runConfigurationPreview() {
+  state.preview = await postJson('/api/configuration/preview', configurationPayload())
+  renderPublish()
+  return state.preview
+}
+
+function renderPublish() {
+  const host = $('sec-publish')
+  host.innerHTML = ''
+  if (!state.configuration) return
+  if (!state.preview) {
+    if (state.dirty) {
+      host.append(el('div', 'card publish',
+        '<b>草稿尚未应用</b><div class="decision-note">点击右上角“预览并应用”，先看逐项差异与校验结果；通过后才能真正写入。</div>'))
+    }
+    return
+  }
+
+  const result = state.preview
+  const card = el('div', `card ${result.ok ? 'publish' : 'risk'}`)
+  card.append(el('div', 'row', `<span class="label">${result.ok ? '配置预览通过' : '配置不能应用'}</span>`
+    + `<span class="tag">${result.changeCount || 0} 项变化</span>`))
+  for (const error of result.errors || []) {
+    card.append(el('div', 'why', `<span class="diff-path">${esc(error.path)}</span> — ${esc(error.message)}`))
+  }
+  for (const group of result.changed || []) {
+    const details = document.createElement('details')
+    details.open = true
+    details.append(el('summary', null, `${esc(group.name)} · ${group.changes.length} 项`))
+    for (const change of group.changes.slice(0, 30)) {
+      details.append(el('div', 'why', `<span class="diff-path">${esc(change.path)}</span>`
+        + `：${esc(change.before)} → ${esc(change.after)}`))
+    }
+    if (group.changes.length > 30) details.append(el('div', 'muted', `另有 ${group.changes.length - 30} 项`))
+    card.append(details)
+  }
+  for (const warning of result.warnings || []) {
+    card.append(el('div', 'why', `<span class="tag ${warning.severity === 'risk' ? 'bad' : 'warn'}">${esc(warning.severity)}</span> ${esc(warning.name)}：${esc(warning.detail)}`))
+  }
+  if (result.coverage) {
+    card.append(el('div', 'decision-note', result.coverage.ok
+      ? '新决策表的数据覆盖度：全部覆盖。'
+      : `新决策表的数据覆盖度：${result.coverage.gaps.length} 处缺口；可以应用，但这些分支暂时演示不到。`))
+  }
+  if (result.effect) {
+    card.append(el('div', 'decision-note',
+      `生效方式：规则 ${esc(result.effect.guards)}；流程 ${esc(result.effect.flows)}；工具面 ${esc(result.effect.frontendMcp)}。`))
+  }
+  if (result.ok && result.changeCount) {
+    const apply = document.createElement('button')
+    apply.className = 'primary'
+    apply.textContent = '确认应用这些变化'
+    apply.onclick = async () => {
+      const hasRisk = (result.warnings || []).some(item => item.severity === 'risk')
+      if (hasRisk && !confirm('这次修改会把受保护工具移到前台，可能绕过 auth_required。仍然应用？')) return
+      const outcome = await postJson('/api/configuration/apply', {
+        ...configurationPayload(), acknowledgeRisks: hasRisk,
+      })
+      if (!outcome.ok) {
+        state.preview = outcome
+        renderPublish()
+        return
+      }
+      state.dirty = false
+      state.preview = null
+      const note = `${outcome.note} 已备份到 ${outcome.backup || '—'}`
+      await loadDomain(state.domain, { keepStatus: true })
+      $('status').textContent = note
+    }
+    const applyActions = el('div', 'actions')
+    applyActions.append(apply)
+    card.append(applyActions)
+  }
+  host.append(card)
 }
 
 function highlightPolicy(line) {
@@ -511,28 +1010,40 @@ async function postJson(path, body) {
   return response.json()
 }
 
-async function refreshSurfaces() {
-  state.surfaces = await api(`/api/surfaces?overrides=${encodeURIComponent(JSON.stringify(state.overrides))}`)
+async function refreshSurfaces({ fromDisk = false, dirty = false } = {}) {
+  const query = fromDisk
+    ? `/api/surfaces?domain=${state.domain}`
+    : `/api/surfaces?domain=${state.domain}&overrides=${encodeURIComponent(JSON.stringify(state.overrides))}`
+  state.surfaces = await api(query)
+  state.overrides = state.surfaces.overrides || state.overrides
+  if (state.configuration) state.configuration.frontendMcp = clone(state.surfaces.frontendMcp)
   renderSurfaces()
-  $('export').disabled = false
+  if (dirty) markDirty('工具面草稿已修改；尚未应用。')
 }
 
 let policyLines = []
 
-async function loadDomain(domain) {
+async function loadDomain(domain, { keepStatus = false } = {}) {
   state.domain = domain
   state.extract = null
+  state.dirty = false
+  state.preview = null
+  state.overrides = {}
   $('domain').value = domain
-  $('status').textContent = '装载中…'
-  const [policy, guards] = await Promise.all([
+  if (!keepStatus) $('status').textContent = '装载中…'
+  const [policy, loaded] = await Promise.all([
     api(`/api/policy?domain=${domain}`),
-    api(`/api/guards?domain=${domain}`),
+    api(`/api/configuration?domain=${domain}`),
   ])
   policyLines = policy.lines
-  state.guards = guards
+  state.configuration = loaded.configuration
+  state.guards = canonicalToDisplay(state.configuration.guards)
   renderPolicy(policyLines)
   renderTables()
-  await refreshSurfaces()
+  renderFlows()
+  renderPublish()
+  await refreshSurfaces({ fromDisk: true })
+  $('export').disabled = true
   // 这两区不依赖抽取结果，可以先画出来。
   await refreshCoverage()
   await loadDatabase()
@@ -724,21 +1235,27 @@ for (const chip of document.querySelectorAll('.chip')) {
 }
 
 $('extract').onclick = () => startExtract(Boolean(state.extract))
-$('domain').onchange = event => loadDomain(event.target.value)
+$('domain').onchange = async event => {
+  const next = event.target.value
+  if (state.dirty && !confirm('当前域有尚未应用的草稿。切换系统会丢掉这些修改，继续吗？')) {
+    event.target.value = state.domain
+    return
+  }
+  await loadDomain(next)
+}
+window.addEventListener('beforeunload', event => {
+  if (!state.dirty) return
+  event.preventDefault()
+  event.returnValue = ''
+})
 
 $('export').onclick = async () => {
-  const response = await fetch('/api/export', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      domain: state.domain,
-      frontendMcp: state.surfaces.frontendMcp,
-    }),
-  })
-  const result = await response.json()
+  $('status').textContent = '正在校验并生成差异…'
+  const result = await runConfigurationPreview()
   $('status').textContent = result.ok
-    ? `已写入 ${result.written.join('、')}`
-    : `导出失败：${result.error}`
+    ? `预览完成：${result.changeCount} 项变化，请在页面顶部确认`
+    : `校验失败：${(result.errors || []).length} 处问题`
+  $('sec-publish').scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 const DOMAIN_BLURB = {

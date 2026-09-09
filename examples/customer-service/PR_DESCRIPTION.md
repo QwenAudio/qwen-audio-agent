@@ -14,7 +14,7 @@ Gateway（语音前台 + GCP）保持不变，业务逻辑收敛在示例自己�
 `client` | 4620 | 客服工作台。左侧「你正在演谁」给测试者看剧本，右侧「客服看到的」是模型视角 |
 `desk` | 4630 | 人工坐席台。转人工之后亮起，显示转接原因与已办事项 |
 
-外加一个域无关的 **Policy 配置台**（`console`，4610）：读 `policy.md`，抽出可机器执行的约束，管理员裁决后导出 `guards.json`。
+外加一个域无关的 **Policy 配置台**（`console`，4610）：读 `policy.md`，抽出可机器执行的约束，管理员在页面上裁决、编辑决策表、配置流程顺序，预览逐字段 diff 后按域写回 `guards.json` / `flows.json` / `review.json` / `frontend-mcp.json`。决策表下一次工具调用生效，流程下一个后台任务生效 —— 不需要手改文件，也不需要重启这两个进程。
 
 ### 一份代码，两份域配置
 
@@ -63,8 +63,8 @@ npm run test:customer-service              350 条测试
 ### 实际运行结果
 
 ```
-npm test                              全绿（含下面 350 条）
-  service  190   agent   10   console 108
+npm test                              全绿（含下面 370 条）
+  service  191   agent   12   console 125
   client    10   desk     8   gateway  24
 
 npm run lint                          零错误

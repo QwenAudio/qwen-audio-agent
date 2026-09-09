@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { Role, TaskState } from '@a2a-js/sdk'
 import { AgentEvent } from '@a2a-js/sdk/server'
 import { DashScopeServiceModel } from './model.mjs'
+import { flowPrompt } from './flows.mjs'
 
 const MAX_AGENT_ROUNDS = 8
 
@@ -41,7 +42,7 @@ export function serviceAgentPrompt(domain = process.env.CS_DOMAIN || 'retail') {
 - 工具返回的业务判定（不符合条件、细则未覆盖、超出权限等）照实转达，
   不要换个说法再试一次，也不要自己估算天数、差价或补偿金额。
 - 需要转人工时调用 transfer_to_human，并写清原因。
-- 最终回复要简短、自然，适合前台语音助手直接念给客户听。金额和单号要写完整。`
+- 最终回复要简短、自然，适合前台语音助手直接念给客户听。金额和单号要写完整。${flowPrompt(domain)}`
 }
 
 // 兼容旧引用（测试里按这个名字取）。默认域的那一份。

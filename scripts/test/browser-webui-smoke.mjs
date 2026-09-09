@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
@@ -29,6 +31,7 @@ const MOCK_BROWSER_APIS = String.raw`
     socketMessages: 0,
     socketConnections: 0,
     socketCloses: 0,
+    sessionReadyEvents: 0,
     nextEvent: 1,
     serverDisconnected: false,
     processor: null,
@@ -90,13 +93,23 @@ const MOCK_BROWSER_APIS = String.raw`
       state.socketMessages += 1
       document.documentElement.dataset.lastSocketMessage = message.type
       if (message.type === 'session.hello') {
-        setTimeout(() => serverEvent(this, {
-          type: 'session.ready',
-          request_event_id: message.event_id,
-          protocol_version: '6.0.0',
-          session_id: 'browser-smoke',
-          capabilities: [],
-        }), 0)
+        setTimeout(() => {
+          increment('sessionReadyEvents')
+          serverEvent(this, {
+            type: 'session.ready',
+            request_event_id: message.event_id,
+            protocol_version: '6.0.0',
+            session_id: 'browser-smoke',
+            capabilities: [],
+          })
+          if (state.sessionReadyEvents > 1) {
+            setTimeout(() => state.processor?.onaudioprocess?.({
+              inputBuffer: {
+                getChannelData: () => Float32Array.from([0.4, 0.3, 0.2, 0.1]),
+              },
+            }), 0)
+          }
+        }, 0)
         setTimeout(() => serverEvent(this, {
           type: 'voice.ready',
           inputSampleRate: 16_000,
@@ -285,8 +298,16 @@ async function waitForAttribute(page, name, predicate, timeoutMs = 5_000) {
   throw new Error(`Timed out waiting for ${name}`)
 }
 
-async function preparePage(context, path) {
+async function preparePage(context, path, diagnostics) {
   const page = await context.newPage()
+  page.on('pageerror', error => diagnostics.push({
+    type: 'pageerror',
+    message: error.stack || String(error),
+  }))
+  page.on('console', message => diagnostics.push({
+    type: `console:${message.type()}`,
+    message: message.text(),
+  }))
   await page.route('**/api/health', route => route.fulfill({
     status: 200,
     contentType: 'application/json',
@@ -302,8 +323,8 @@ async function preparePage(context, path) {
   return page
 }
 
-async function testHappyPath(context) {
-  const page = await preparePage(context, '?browser-smoke=happy')
+async function testHappyPath(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=happy', diagnostics)
   const enable = page.getByRole('button', { name: '开启麦克风', exact: true })
   await enable.waitFor({ state: 'visible' })
   await enable.click()
@@ -325,18 +346,21 @@ async function testHappyPath(context) {
   await page.close()
 }
 
-async function testReconnectInterruptsPlayback(context) {
-  const page = await preparePage(context, '?browser-smoke=reconnect')
+async function testReconnectInterruptsPlayback(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=reconnect', diagnostics)
   await page.getByRole('button', { name: '开启麦克风', exact: true }).click()
   await page.getByRole('button', { name: '麦克风静音', exact: true })
     .waitFor({ state: 'visible' })
   await waitForAttribute(page, 'data-media-requests', value => value === '1')
   await waitForAttribute(page, 'data-playback-starts', value => Number(value) >= 1)
-  await waitForAttribute(page, 'data-socket-connections', value => Number(value) >= 2)
+  await waitForAttribute(page, 'data-session-ready-events', value => Number(value) >= 2)
+  await waitForAttribute(page, 'data-audio-appends', value => Number(value) >= 2)
+  await waitForAttribute(page, 'data-playback-starts', value => Number(value) >= 2)
   await waitForAttribute(page, 'data-playback-stops', value => Number(value) >= 1)
 
   assert.equal(await page.locator('html').getAttribute('data-media-requests'), '1')
   assert.equal(await page.locator('html').getAttribute('data-processor-connects'), '1')
+  assert.ok(Number(await page.locator('html').getAttribute('data-socket-connections')) >= 2)
   assert.equal(await page.locator('html').getAttribute('data-track-stops') || '0', '0')
 
   await page.getByRole('button', { name: '麦克风静音', exact: true }).click()
@@ -344,8 +368,8 @@ async function testReconnectInterruptsPlayback(context) {
   await page.close()
 }
 
-async function testEndedTrackIsReacquired(context) {
-  const page = await preparePage(context, '?browser-smoke=track-ended')
+async function testEndedTrackIsReacquired(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=track-ended', diagnostics)
   await page.getByRole('button', { name: '开启麦克风', exact: true }).click()
   await page.getByRole('button', { name: '麦克风静音', exact: true })
     .waitFor({ state: 'visible' })
@@ -357,8 +381,8 @@ async function testEndedTrackIsReacquired(context) {
   await page.close()
 }
 
-async function testPermissionDenied(context) {
-  const page = await preparePage(context, '?browser-smoke=deny-microphone')
+async function testPermissionDenied(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=deny-microphone', diagnostics)
   await page.getByRole('button', { name: '开启麦克风', exact: true }).click()
   await page.getByText('麦克风权限未开启，请在系统设置中允许后重试', { exact: true })
     .waitFor({ state: 'visible' })
@@ -369,17 +393,59 @@ async function testPermissionDenied(context) {
 
 const server = startVite()
 let browser
+let context
+let tracingActive = false
+const diagnostics = []
+const diagnosticsDirectory = resolve(projectRoot, 'output/playwright/browser-webui-smoke')
 try {
   await waitForServer(server.vite, server.getOutput)
   browser = await chromium.launch({ headless: true })
-  const context = await browser.newContext({ locale: 'zh-CN' })
-  await testHappyPath(context)
-  await testReconnectInterruptsPlayback(context)
-  await testEndedTrackIsReacquired(context)
-  await testPermissionDenied(context)
+  context = await browser.newContext({ locale: 'zh-CN' })
+  await context.tracing.start({ screenshots: true, snapshots: true, sources: true })
+  tracingActive = true
+  await testHappyPath(context, diagnostics)
+  await testReconnectInterruptsPlayback(context, diagnostics)
+  await testEndedTrackIsReacquired(context, diagnostics)
+  await testPermissionDenied(context, diagnostics)
+  await context.tracing.stop()
+  tracingActive = false
   await context.close()
-  console.log('Browser WebUI voice smoke passed: happy path, reconnect, track recovery, and permission denial.')
+  context = null
+  console.log('Browser WebUI voice smoke passed: happy path, reconnect continuation, track recovery, and permission denial.')
+} catch (error) {
+  await mkdir(diagnosticsDirectory, { recursive: true })
+  const pages = context?.pages?.() || []
+  await Promise.all(pages.map((page, index) => page.screenshot({
+    path: join(diagnosticsDirectory, `failure-page-${index + 1}.png`),
+    fullPage: true,
+  }).catch(reason => diagnostics.push({
+    type: 'screenshot-error',
+    message: String(reason),
+  }))))
+  if (tracingActive) {
+    await context.tracing.stop({
+      path: join(diagnosticsDirectory, 'trace.zip'),
+    }).catch(reason => diagnostics.push({
+      type: 'trace-error',
+      message: String(reason),
+    }))
+    tracingActive = false
+  }
+  await writeFile(
+    join(diagnosticsDirectory, 'errors.log'),
+    [
+      `failure: ${error?.stack || error}`,
+      ...diagnostics.map(item => `[${item.type}] ${item.message}`),
+    ].join('\n'),
+    'utf8',
+  )
+  await writeFile(join(diagnosticsDirectory, 'vite.log'), server.getOutput(), 'utf8')
+  if (error instanceof Error) {
+    error.message = `${error.message} (diagnostics: ${diagnosticsDirectory})`
+  }
+  throw error
 } finally {
+  await context?.close()
   await browser?.close()
   if (server.vite.exitCode === null) server.vite.kill()
 }

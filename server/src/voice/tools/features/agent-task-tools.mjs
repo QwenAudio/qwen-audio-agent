@@ -1,3 +1,4 @@
+import { PERMISSION_DECISIONS } from '../../../../../shared/permission-decisions.mjs'
 import {
   spawnThinkingTool,
 } from '../spawn-thinking-tool.mjs'
@@ -68,19 +69,15 @@ const respondPermissionTool = {
       properties: {
         permission_id: {
           type: 'string',
-          description: '原样使用 Gateway 提供的当前待确认权限请求中的 permission_id，不得猜造。',
-        },
-        task_id: {
-          type: 'string',
-          description: '权限请求关联的工作 ID；仅当 Gateway 在请求中提供时原样传入。',
+          description: '只有一个待确认请求时可省略；有多个时，原样使用 Gateway 提供的 permission_id，不得猜造。',
         },
         decision: {
           type: 'string',
-          enum: ['once', 'always', 'reject'],
-          description: '只能选择请求列出的决定：once 仅允许当前操作，用于普通肯定表达；always 表示本会话后续同类请求也允许，仅在用户明确要求时选择；reject 拒绝当前操作。',
+          enum: PERMISSION_DECISIONS,
+          description: 'task：允许当前任务及其后续操作，用于普通肯定表达；always：本会话所有任务的后续权限请求自动允许，仅在用户明确要求时选择；reject：拒绝当前操作。',
         },
       },
-      required: ['permission_id', 'decision'],
+      required: ['decision'],
       additionalProperties: false,
     },
   },

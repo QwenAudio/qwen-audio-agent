@@ -18,14 +18,18 @@ a feature then degrades instead of failing.
 Versioning follows SemVer: the minor rises for an additive capability, the
 major for a breaking change to any endpoint or event named below.
 
-The stable 6.0 northbound boundary is documented in the
+The stable 7.0 northbound boundary is documented in the
 [Gateway Client Protocol](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/gateway-protocol.md) and its
 [completed roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/gateway-client-protocol.md), tracked by the closed
 [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251).
-GCP1–GCP5 are complete: the 6.0 handshake, Client Event ingress,
+GCP1–GCP5 are complete: the 7.0 handshake, Client Event ingress,
 runtime-command plane, Agent Delivery, Client Actions, reference Client SDK,
 and bounded replay all share the same WebSocket.
 This contract index remains authoritative for implemented behavior.
+
+Wire 7.0 replaces the permission decision `once` with explicit Task-scoped `task`.
+Gateway and Clients must update together. Capability IDs keep their historical
+names; negotiate the actual wire version through `session.hello`.
 
 The current health-contract version is `5.8.0`. The additive `5.8` line adds
 capability-negotiated realtime JPEG visual frames while keeping provider wire
@@ -68,10 +72,10 @@ below instead of assuming the old list.
 | Capability | Meaning | Locked by |
 | --- | --- | --- |
 | `web.same-origin-ui` | The Gateway statically hosts the web UI at its own origin; a webview pointed at the Gateway URL needs no extra configuration | `test/consumer-install.test.mjs` |
-| `web.skin-assets` | Imported orb skins are served at `/skins/<id>/` on the Gateway origin, so the orb page's same-origin asset fetches work without a separate static server | `test/consumer-install.test.mjs` |
+| `web.skin-assets` | Hosts can explicitly set `QWEN_AUDIO_WEB_SKINS_DIR` to serve client-owned assets read-only at `/skins/<id>/`; no Gateway data directory is scanned | `test/consumer-install.test.mjs` |
 | `gateway.instance-lease` | A lease in the config directory names the running instance; `/api/health` echoes `gatewayInstanceId` so a foreign process on the same port is never mistaken for this Gateway | `test/consumer-install.test.mjs` |
 | `gateway.setup-gate` | An unconfigured start is refused with `QWAUDIO_GATEWAY_SETUP_REQUIRED` and a `missing` list instead of serving an instance whose voice cannot work | `test/gateway-setup.test.mjs` |
-| `gateway.settings-store` | Configuration persistence is owned by this package: `createSettingsStore({ configDir })` — a host names no setting and no file of its own | `desktop/test/settings-store.test.mjs` |
+| `gateway.settings-store` | Configuration persistence is owned by this package: `createSettingsStore({ configDir, clientDir })` — a host names no setting and no file of its own | `desktop/test/settings-store.test.mjs` |
 | `gateway.remote-access-pairing` | Loopback stays zero-config; remote HTTP/WS access requires a configured or paired credential, and local operators can issue and revoke device tokens | `server/test/gateway-access.test.mjs`, `server/test/request-security.test.mjs` |
 | `host.electron-entry` | `qwen-audio-agent/electron`: a CommonJS entry an Electron main process can `require`, loading every ESM contract through one `load()` | `test/consumer-install.test.mjs` |
 | `host.gateway-process` | `GatewayProcess` ships: forking, port fallback, the readiness handshake, restart, and telling a planned exit from a crash — the desktop app runs the same implementation | `desktop/test/gateway-process.test.mjs` |
@@ -86,8 +90,8 @@ below instead of assuming the old list.
 | `frontend.memory-control` | `GET/PATCH /api/memory` lets replaceable clients list and exactly edit the same provider-backed USER/MEMORY documents used by Realtime, without depending on a storage implementation | `server/test/gateway-application.test.mjs` |
 | `realtime.conversation-client-v1` | `WS /api/realtime`, published event constants, and message schemas form the replaceable text/audio/multimodal Conversation Client boundary | `test/gateway-event-schema.test.mjs`, `test/custom-conversation-client.test.mjs` |
 | `realtime.visual-input-buffer-v1` | Negotiated Web clients append bounded JPEG visual frames through GCP `input_image_buffer.append` and clear pending context through `input_image_buffer.clear`; Gateway validates and throttles frames while Qwen Omni and MiniCPM-o adapters own provider-native encoding | `test/gateway-client-protocol.test.mjs`, `server/test/visual-input-buffer.test.mjs`, `server/test/realtime-provider.test.mjs`, `server/test/minicpm-o-provider.test.mjs`, `web/test/camera-input.test.mjs` |
-| `realtime.gateway-client-protocol-v6-handshake` | The same WebSocket accepts an opt-in 6.0 `session.hello`, returns correlated `session.ready`, negotiates implemented capabilities, and normalizes 6.0 input aliases into the existing business path | `test/gateway-client-protocol.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
-| `realtime.gateway-client-protocol-v6-runtime-commands` | Negotiated 6.0 Clients can publish registered semantic Client Events and use correlated Task, permission, conversation-history, and session output-voice commands over the same WebSocket; existing REST routes call the same command service as compatibility aliases | `test/gateway-client-protocol.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/client-command-runtime.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
+| `realtime.gateway-client-protocol-v6-handshake` | The same WebSocket accepts an opt-in 7.0 `session.hello`, returns correlated `session.ready`, negotiates implemented capabilities, and normalizes 7.0 input aliases into the existing business path | `test/gateway-client-protocol.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
+| `realtime.gateway-client-protocol-v6-runtime-commands` | Negotiated 7.0 Clients can publish registered semantic Client Events and use correlated Task, permission, conversation-history, and session output-voice commands over the same WebSocket; existing REST routes call the same command service as compatibility aliases | `test/gateway-client-protocol.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/client-command-runtime.test.mjs`, `server/test/gateway-client-handshake.test.mjs` |
 | `realtime.gateway-client-protocol-v6-agent-delivery` | Client Events, Task results and progress, and permission prompts cross one provider-neutral `AgentDelivery` boundary with `handle`, `context`, `respond`, and `interrupt` modes | `server/test/agent-delivery.test.mjs`, `server/test/client-event-router.test.mjs`, `server/test/realtime-provider.test.mjs`, `server/test/announcement-manager.test.mjs` |
 | `realtime.gateway-client-protocol-v6-client-actions` | Correlated `client.action.request/result` messages execute Client-owned environment operations; `enter_sleep` is capability-gated and sleeping commits only after Client success | `test/gateway-client-protocol.test.mjs`, `server/test/client-action-port.test.mjs`, `server/test/gateway-client-handshake.test.mjs`, `desktop/test/enter-sleep-flow.test.mjs` |
 | `realtime.gateway-client-protocol-v6-reference-client-replay` | The shared reference Client SDK owns handshake, command correlation, `updateOutputVoice()`, Client Actions, reconnect, and recovery; Task pushes use bounded `sequence` replay and WebUI, Desktop, and TUI share one conformance suite | `test/gateway-client-sdk.test.mjs`, `test/gateway-client-conformance.test.mjs`, `server/test/gateway-client-protocol-session.test.mjs`, `server/test/gateway-client-replay-buffer.test.mjs` |
@@ -111,8 +115,8 @@ is unsupported and breaks without notice.
 | --- | --- |
 | `qwen-audio-agent/electron` | **CJS**: `load()` (every contract in one namespace), `PRELOAD_PATH` |
 | `qwen-audio-agent/gateway-protocol` | `GATEWAY_PROTOCOL_VERSION`, `GATEWAY_CAPABILITIES` |
-| `qwen-audio-agent/gateway-client-protocol` | GCP 6.0 envelope, handshake and runtime-command schemas, parsers, capability constants, and reference Client helpers |
-| `qwen-audio-agent/gateway-client-sdk` | `GatewayClient`: WebSocket lifecycle, 6.0 handshake, request correlation, Client Actions, bounded replay, and reconnect recovery |
+| `qwen-audio-agent/gateway-client-protocol` | GCP 7.0 envelope, handshake and runtime-command schemas, parsers, capability constants, and reference Client helpers |
+| `qwen-audio-agent/gateway-client-sdk` | `GatewayClient`: WebSocket lifecycle, 7.0 handshake, request correlation, Client Actions, bounded replay, and reconnect recovery |
 | `qwen-audio-agent/gateway-client-profiles` | Reference capability profiles for WebUI, Desktop, and TUI |
 | `qwen-audio-agent/gateway-access-client` | Client helpers for creating a local one-time pairing ticket and exchanging it for a remote device token |
 | `qwen-audio-agent/gateway-remote-access` | Versioned endpoint-descriptor, connection-profile, and pairing-code schemas; profiles contain secure-store references rather than credentials |
@@ -147,10 +151,15 @@ demand it.
 const audioAgent = require('qwen-audio-agent/electron')
 const api = await audioAgent.load()
 
-const settings = api.createSettingsStore({ configDir })
+// configDir is Gateway-owned; clientDir is the host's client data directory.
+const settings = api.createSettingsStore({ configDir, clientDir })
+const skinsRoot = api.skinsDirectory(clientDir)
 if (!settings.ready()) { /* collect settings.status().missing, settings.save(...) */ }
 
-const gateway = api.createGatewayProcess({ configDir, wakeWord: false })
+const gateway = api.createGatewayProcess({
+  configDir,
+  env: { ...process.env, QWEN_AUDIO_WEB_SKINS_DIR: skinsRoot },
+})
 const origin = await gateway.start()
 
 const placement = api.createOrbPlacement({
@@ -177,7 +186,7 @@ const shell = api.bindOrbShell({
 })
 
 // Applying an imported skin:
-api.importSkin({ source, skinsRoot: api.skinsDirectory(configDir) })
+await api.importSkin({ source, skinsRoot })
 settings.save({ orbSkin: 'firefly--lingxiaotian' })
 await orb.load()
 ```
@@ -207,7 +216,7 @@ the default and existing clients receive no additional events.
 
 `/api/tasks`, `/api/permissions/:id`, `/api/conversations/:id/messages`, and
 `/api/sessions/:id/replay` are compatibility aliases as of health contract
-`5.5.0`: first-party clients use the 6.0 WebSocket commands and
+`5.5.0`: first-party clients use the 7.0 WebSocket commands and
 `session.replay`. The aliases will not be removed before health contract
 `6.0.0`. Other unlisted endpoints such as `/api/backend/ui` remain internal.
 
@@ -221,7 +230,7 @@ those package entries rather than internal module paths.
 helpers used by the shared state reducer; they are not WebSocket wire events.
 
 Legacy 5.x clients send `connect` first. That alias is deprecated as of health
-contract `5.5.0` and will not be removed before `6.0.0`. A 6.0 client sends
+contract `5.5.0` and will not be removed before `6.0.0`. A 7.0 client sends
 `session.hello`, includes its connection configuration in that envelope, waits
 for the correlated `session.ready`, and then uses the negotiated capabilities.
 The handshake declares input/output mode,

@@ -9,7 +9,6 @@ import { writeCockpitFrontendProfileBundle } from './profile-bundle.mjs'
 
 loadCockpitEnvironment()
 process.env.QWAUDIO_CONFIG_DIR ||= fileURLToPath(new URL('../.runtime', import.meta.url))
-process.env.QWAUDIO_DATA_DIR ||= process.env.QWAUDIO_CONFIG_DIR
 if (!process.env.COCKPIT_FRONTEND_MCP_URL) {
   const frontendMcpUrl = new URL(
     '/mcp/frontend',

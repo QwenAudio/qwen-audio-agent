@@ -87,7 +87,7 @@ function execute(script, target, env = {}, args = []) {
 
 function run(script, target, env = {}, args = []) {
   const result = execute(script, target, env, args)
-  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.status, 0, result.stderr || `Launcher terminated: ${result.signal || result.error || result.status}`)
   return readFileSync(target.capture, 'utf8').trim().split('\n')
 }
 
@@ -193,27 +193,27 @@ test('OpenClaw auto mode prefers the user-installed command', {
       readFileSync(target.capture, 'utf8').trim().split('\n').at(-2),
       `OPENCLAW_CONFIG_PATH=${resolve(
         target.directory,
-        'config/backends/openclaw/state/gateway-18789/openclaw.json',
+        'config/state/backends/openclaw/gateway-18789/openclaw.json',
       )}`,
     )
     assert.equal(
       readFileSync(target.capture, 'utf8').trim().split('\n').at(-1),
       `OPENCLAW_STATE_DIR=${resolve(
         target.directory,
-        'config/backends/openclaw/state/gateway-18789',
+        'config/state/backends/openclaw/gateway-18789',
       )}`,
     )
     assert.equal(
       existsSync(resolve(
         target.directory,
-        'config/backends/openclaw/openclaw.json5',
+        'config/state/backends/openclaw/config/openclaw.json5',
       )),
       false,
     )
     assert.equal(
       existsSync(resolve(
         target.directory,
-        'config/workspaces/openclaw/AGENTS.md',
+        'config/data/workspace/AGENTS.md',
       )),
       false,
     )
@@ -602,16 +602,16 @@ test('automatically configures explicit Bailian models for OpenCode and OpenClaw
       'OPENCLAW_MODEL_ID=qwen-custom',
       `OPENCLAW_CONFIG_PATH=${resolve(
         openClaw.directory,
-        'config/backends/openclaw/openclaw.json5',
+        'config/state/backends/openclaw/config/openclaw.json5',
       )}`,
       `OPENCLAW_STATE_DIR=${resolve(
         openClaw.directory,
-        'config/backends/openclaw/state/gateway-18789',
+        'config/state/backends/openclaw/gateway-18789',
       )}`,
     ])
     assert.equal(existsSync(resolve(
       openClaw.directory,
-      'config/backends/openclaw/openclaw.json5',
+      'config/state/backends/openclaw/config/openclaw.json5',
     )), true)
   } finally {
     openCode.close()
@@ -648,7 +648,7 @@ test('preserves native OpenCode and OpenClaw configuration without a model overr
       'OPENCLAW_CONFIG_PATH=',
       `OPENCLAW_STATE_DIR=${resolve(
         openClaw.directory,
-        'config/backends/openclaw/state/gateway-18789',
+        'config/state/backends/openclaw/gateway-18789',
       )}`,
     ])
   } finally {
@@ -679,7 +679,7 @@ test('isolates OpenClaw sessions while reusing user capability configuration', {
     }, ['gateway', 'run'])
     const runtimeState = resolve(
       target.directory,
-      'config/backends/openclaw/state/gateway-43210',
+      'config/state/backends/openclaw/gateway-43210',
     )
     assert.equal(
       output.at(-2),

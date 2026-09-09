@@ -33,8 +33,8 @@ const DEFAULT_FRAME_SPEC = Object.freeze({
   rows: 9,
 })
 const V2_DEFAULT_ROWS = 11
-export function skinsDirectory(configDirectory) {
-  return join(configDirectory, 'skins')
+export function skinsDirectory(clientDirectory) {
+  return join(clientDirectory, 'skins')
 }
 
 function readUInt24LE(buffer, offset) {

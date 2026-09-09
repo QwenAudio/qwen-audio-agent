@@ -382,7 +382,7 @@ PI_ACP_RUNTIME=auto
 
 - `PI_BIN` / `PI_ACP_BIN` override the pi core and pi-acp adapter executables.
 - `PI_WORKSPACE` overrides the working directory (default
-  `~/.config/qwaudio/workspace`, shared with the other managed backends).
+  `~/.config/qwaudio/data/workspace`, shared with the other managed backends).
 - `PI_ACP_RUNTIME` (`auto` / `binary` / `package`) controls whether the adapter uses
   a local binary or starts on demand via `npx`.
 

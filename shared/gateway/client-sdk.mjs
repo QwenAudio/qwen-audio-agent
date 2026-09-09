@@ -18,6 +18,7 @@ const RESULT_TYPES = new Set([
   GatewayClientProtocolEvent.TASK_LIST_RESULT,
   GatewayClientProtocolEvent.TASK_CANCEL_RESULT,
   GatewayClientProtocolEvent.PERMISSION_RESPOND_RESULT,
+  GatewayClientProtocolEvent.INPUT_RESPOND_RESULT,
   GatewayClientProtocolEvent.CONVERSATION_HISTORY_RESULT,
   GatewayClientProtocolEvent.SESSION_REPLAY_RESULT,
   'error',

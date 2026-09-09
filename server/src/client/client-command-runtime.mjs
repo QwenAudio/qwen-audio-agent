@@ -1,4 +1,5 @@
 import { GatewayClientProtocolEvent } from '../../../shared/protocol/gateway-client-protocol.mjs'
+import { backendPermissionDecision } from '../../../shared/permission-decisions.mjs'
 import { normalizeInputParts } from '../../../shared/input-parts.mjs'
 import { isTaskCancellable } from '../task/task-state.mjs'
 
@@ -141,7 +142,9 @@ export class GatewayClientCommandRuntime {
         sessionId,
         taskId,
         signal,
-        onEvent,
+        onEvent: event => this.permissionPolicy
+          ? this.permissionPolicy.forwardBackendEvent({ taskId, ownerId, sessionId }, event, onEvent, this.respondAuthorization)
+          : onEvent(event),
       }),
       canceler: async ({ abort }) => {
         const result = await this.backendRuntime.cancel(taskId, { ownerId })
@@ -193,33 +196,27 @@ export class GatewayClientCommandRuntime {
       ownerId,
       active: true,
     }).find(task => task.authorization?.id === permissionId)
-    if (!permissionTask) {
+    if (!permissionTask || permissionTask.status === 'cancelling') {
       throw new RuntimeCommandError('permission_not_found', 'permission request not found')
     }
-    const previousPermissionMode = this.permissionPolicy?.mode(
-      ownerId,
-      permissionTask.sessionId,
-    )
-    this.permissionPolicy?.applyDecision(
+    const rollbackPermission = this.permissionPolicy?.applyDecision(
       ownerId,
       permissionTask.sessionId,
       message.decision,
+      permissionTask.id,
     )
     try {
-      return await this.respondAuthorization(
+      const permission = await this.respondAuthorization(
         permissionTask.id,
         permissionId,
-        message.decision,
+        backendPermissionDecision(message.decision),
         { ownerId },
       )
+      this.permissionPolicy?.settle(permissionId)
+      this.permissionPolicy?.flushPending(ownerId, permissionTask.sessionId)
+      return permission
     } catch (error) {
-      if (previousPermissionMode) {
-        this.permissionPolicy?.setMode(
-          ownerId,
-          permissionTask.sessionId,
-          previousPermissionMode,
-        )
-      }
+      rollbackPermission?.()
       throw error
     }
   }

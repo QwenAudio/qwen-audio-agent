@@ -1,15 +1,6 @@
-// Component-owned settings and UI state persistence.
-//
-// An embedding host must not have to know which file this product keeps its
-// configuration in, nor where. It asks whether the Gateway can start, and if
-// it cannot, it asks this package to collect what is missing. So persistence
-// lives here — keyed by nothing but configDir — and every surface that needs
-// it (the Gateway's startup gate, the settings form, the orb's position) goes
-// through this one module rather than inventing its own.
-//
-// config.env is the carrier for settings, which keeps an embedded instance
-// readable by the same tooling as a standalone install. Window state that has
-// no meaning as an environment variable goes to ui-state.json beside it.
+// One settings form, two owners: Gateway configuration in configDir;
+// desktop preferences and UI state in clientDir. Hosts choose directories,
+// while this store owns the file format, validation and persistence.
 import { randomUUID } from 'node:crypto'
 import {
   chmodSync,
@@ -33,6 +24,7 @@ import {
 import { normalizeConversationSessionId } from '../../shared/conversation-session.mjs'
 
 export const SETTINGS_FILE = 'config.env'
+export const CLIENT_SETTINGS_FILE = 'settings.env'
 export const UI_STATE_FILE = 'ui-state.json'
 
 // Everything written here is user configuration, including credentials, so it
@@ -77,19 +69,16 @@ function writePrivateFile(path, content) {
 }
 
 /**
- * Settings and UI state for one instance, owned by this package.
+ * Settings for a Gateway and its desktop client.
  *
  * @param {object} options
- * @param {string} options.configDir Required. The instance data directory.
- * @param {string} [options.uiStateDir=options.configDir] Directory for
- *   ui-state.json. The desktop app shares config.env with the CLI's asset
- *   directory while window state stays in its own runtime directory; an
- *   embedding host keeps the default single directory.
+ * @param {string} options.configDir Required. The configuration directory.
+ * @param {string} options.clientDir Required. Client preferences and UI state.
  * @param {object} [options.env=process.env] Environment consulted for values
  *   the stored configuration leaves unset, and updated on save so an
  *   in-process restart observes what was just written.
  * @returns {{
- *   configDir: string, path: string, uiStatePath: string,
+ *   configDir: string, clientDir: string, path: string, clientSettingsPath: string, uiStatePath: string,
  *   load: () => object,
  *   save: (settings: object) => object,
  *   status: () => { ready: boolean, provider: string|null, missing: object[] },
@@ -102,18 +91,26 @@ function writePrivateFile(path, content) {
  */
 export function createSettingsStore({
   configDir,
-  uiStateDir = configDir,
+  clientDir,
   env = process.env,
 } = {}) {
   const directory = requiredConfigDirectory(configDir)
-  const uiStateDirectory = requiredConfigDirectory(uiStateDir)
+  if (!String(clientDir || '').trim()) {
+    throw new TypeError('createSettingsStore requires an explicit clientDir')
+  }
+  const clientDirectory = resolve(clientDir)
   const settingsPath = resolve(directory, SETTINGS_FILE)
-  const uiStatePath = resolve(uiStateDirectory, UI_STATE_FILE)
+  const clientSettingsPath = resolve(clientDirectory, CLIENT_SETTINGS_FILE)
+  const uiStatePath = resolve(clientDirectory, UI_STATE_FILE)
 
   // Reading must never create anything: the startup gate runs before a host
   // has decided to start, and answering "not configured yet" is not a reason
   // to materialise a directory in the host's data path.
-  const load = () => parseSettings(readTextFile(settingsPath), env)
+  const readContent = () => (
+    updateSettingsContent(readTextFile(settingsPath), {}, { scope: 'gateway' })
+    + updateSettingsContent(readTextFile(clientSettingsPath), {}, { scope: 'client' })
+  )
+  const load = () => parseSettings(readContent(), env)
 
   // The same readiness the startup gate reads: stored values first, then the
   // live environment for slots the file leaves unset — mirroring how the
@@ -122,10 +119,6 @@ export function createSettingsStore({
     ...parseEnv(readTextFile(settingsPath)),
     ...env,
   })
-
-  const ensureDirectory = () => {
-    mkdirSync(directory, { recursive: true, mode: PRIVATE_DIRECTORY_MODE })
-  }
 
   const loadUiState = () => {
     const content = readTextFile(uiStatePath)
@@ -141,7 +134,7 @@ export function createSettingsStore({
   }
 
   const saveUiState = patch => {
-    mkdirSync(uiStateDirectory, {
+    mkdirSync(clientDirectory, {
       recursive: true,
       mode: PRIVATE_DIRECTORY_MODE,
     })
@@ -152,22 +145,33 @@ export function createSettingsStore({
 
   return {
     configDir: directory,
+    clientDir: clientDirectory,
     path: settingsPath,
+    clientSettingsPath,
     uiStatePath,
     load,
+    preview: settings => parseSettings(updateSettingsContent(readContent(), settings), env),
 
     save(settings) {
-      ensureDirectory()
-      const content = withFileTransaction(settingsPath, () => {
-        const next = updateSettingsContent(readTextFile(settingsPath), settings)
-        writePrivateFile(settingsPath, next)
-        return next
-      })
+      // Validate the complete form before writing either owner's file.
+      updateSettingsContent('', settings)
+      for (const [path, root, scope] of [
+        [settingsPath, directory, 'gateway'],
+        [clientSettingsPath, clientDirectory, 'client'],
+      ]) {
+        withFileTransaction(path, () => {
+          const current = readTextFile(path)
+          const next = updateSettingsContent(current, settings, { scope })
+          if (next === current || (!current && !next.trim())) return
+          mkdirSync(root, { recursive: true, mode: PRIVATE_DIRECTORY_MODE })
+          writePrivateFile(path, next)
+        })
+      }
       // Keep this process consistent with what was just persisted, so a
       // subsequent in-process start does not keep serving the value the
       // environment happened to hold first.
       applySettingsEnvironment(settings, env)
-      return parseSettings(content, env)
+      return load()
     },
 
     status: () => gatewaySetupStatus(effectiveEnvironment()),

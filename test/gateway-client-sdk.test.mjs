@@ -82,7 +82,7 @@ test('reference Client negotiates once and correlates runtime commands', async (
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_gateway_ready',
     request_event_id: socket.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [GatewayClientCapability.TASK_COMMANDS],
   })
@@ -113,6 +113,82 @@ test('reference Client negotiates once and correlates runtime commands', async (
   client.stop()
 })
 
+test('reference Client correlates task input response results', async () => {
+  const socket = new FakeSocket()
+  const received = []
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    clientInstanceId: 'sdk-input-response-test',
+    capabilities: [GatewayClientCapability.INPUT_RESPOND],
+    reconnect: false,
+    onEvent: event => received.push(event),
+  }).start()
+  socket.open()
+  socket.receive({
+    type: GatewayClientProtocolEvent.SESSION_READY,
+    event_id: 'evt_gateway_input_ready',
+    request_event_id: socket.sent[0].event_id,
+    protocol_version: '6.0.0',
+    session_id: 'main',
+    capabilities: [GatewayClientCapability.INPUT_RESPOND],
+  })
+
+  const pending = client.request(GatewayClientProtocolEvent.INPUT_RESPOND, {
+    task_id: 'task-1',
+    input_request_id: 'input-1',
+    action: 'accept',
+    text: '继续执行',
+  })
+  const request = socket.sent.at(-1)
+  socket.receive({
+    type: GatewayClientProtocolEvent.INPUT_RESPOND_RESULT,
+    event_id: 'evt_input_response_result',
+    request_event_id: request.event_id,
+    input: { accepted: true },
+  })
+
+  assert.deepEqual((await pending).input, { accepted: true })
+  assert.deepEqual(received, [])
+  client.stop()
+})
+
+test('reference Client rejects task input response errors', async () => {
+  const socket = new FakeSocket()
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    clientInstanceId: 'sdk-input-response-error-test',
+    capabilities: [GatewayClientCapability.INPUT_RESPOND],
+    reconnect: false,
+  }).start()
+  socket.open()
+  socket.receive({
+    type: GatewayClientProtocolEvent.SESSION_READY,
+    event_id: 'evt_gateway_input_error_ready',
+    request_event_id: socket.sent[0].event_id,
+    protocol_version: '6.0.0',
+    session_id: 'main',
+    capabilities: [GatewayClientCapability.INPUT_RESPOND],
+  })
+
+  const pending = client.request(GatewayClientProtocolEvent.INPUT_RESPOND, {
+    task_id: 'task-1',
+    input_request_id: 'input-1',
+    action: 'decline',
+  })
+  const request = socket.sent.at(-1)
+  socket.receive({
+    type: 'error',
+    event_id: 'evt_input_response_error',
+    request_event_id: request.event_id,
+    error: { code: 'input_rejected', message: 'Input request was rejected' },
+  })
+
+  await assert.rejects(pending, error => error.code === 'input_rejected')
+  client.stop()
+})
+
 test('reference Client answers negotiated application heartbeats without dispatching them', () => {
   const socket = new FakeSocket()
   const received = []
@@ -129,7 +205,7 @@ test('reference Client answers negotiated application heartbeats without dispatc
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_gateway_ready',
     request_event_id: socket.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [GatewayClientCapability.SESSION_HEARTBEAT],
   })
@@ -185,7 +261,7 @@ test('reference Client initializes and updates the output voice through GCP', as
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_gateway_voice_ready',
     request_event_id: socket.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [GatewayClientCapability.SESSION_OUTPUT_VOICE],
   })
@@ -244,7 +320,7 @@ test('reference Client executes negotiated Actions and deduplicates replayed eve
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_gateway_ready',
     request_event_id: socket.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP],
   })
@@ -338,7 +414,7 @@ test('reference Client reconnects, replays from its cursor, then reconciles snap
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_ready_1',
     request_event_id: first.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [],
   })
@@ -353,7 +429,7 @@ test('reference Client reconnects, replays from its cursor, then reconciles snap
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_ready_2',
     request_event_id: second.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [
       GatewayClientCapability.SESSION_REPLAY,

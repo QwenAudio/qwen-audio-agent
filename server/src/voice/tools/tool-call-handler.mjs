@@ -1,5 +1,5 @@
-import { permissionReference } from './permission-reference.mjs'
 import {
+  RESPOND_PERMISSION_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
   frontendToolRegistry,
 } from '../frontend-tools.mjs'
@@ -129,7 +129,6 @@ export class ToolCallHandler {
       ...retrievalToolHandlers(this),
       ...clientToolHandlers(this),
     })
-    this.gatewayApprovedPermissions = new Set()
     this.processedCalls = new Set()
     this.spawnResponseByTurn = new Map()
     this.statusResponseByTurn = new Map()
@@ -222,23 +221,7 @@ export class ToolCallHandler {
   }
 
   async respondPermission(context) {
-    const permissionId = String(context.args?.permission_id || '').trim()
-    const backendPermissionPending = [...this.pendingBackendPermissions.keys()]
-      .some(id => permissionReference(id) === permissionId)
-      || this.taskManager?.list?.({
-        ownerId: this.ownerId,
-        sessionId: this.sessionId,
-        active: true,
-      }).some(task => (
-        task.authorization?.status === 'pending'
-        && permissionReference(task.authorization.id) === permissionId
-      ))
-    if (backendPermissionPending) return this.respondAgentPermission(context)
-    return this.sendOutput(
-      context.callId,
-      failure('permission_not_pending', '没有找到仍在等待决定的权限请求。'),
-      context.turnId,
-    )
+    return this.respondAgentPermission(context)
   }
 
   markTerminalToolResponse(responseId) {
@@ -485,7 +468,10 @@ export class ToolCallHandler {
           frontendRetrieval: this.frontendRetrieval,
           frontendKnowledge: this.frontendKnowledge,
           sessionDigests: this.sessionDigests,
-          permissionPending: this.hasPendingBackendPermission(),
+          permissionPending: this.hasPendingBackendPermission() || (
+            toolName === RESPOND_PERMISSION_TOOL_NAME
+            && Boolean(this.agentTaskRuntime.permissionReceipt(args.permission_id, turnId))
+          ),
           inputPending: this.hasPendingBackendInput(),
         }),
       })

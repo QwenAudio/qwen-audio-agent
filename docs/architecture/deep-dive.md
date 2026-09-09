@@ -86,10 +86,9 @@ requests. Even core-contract tools cannot be called when unavailable. Tests chec
 fixed prompt, tool references, and capability switches to keep new optional features
 out of core rules.
 
-The Gateway exposes one `respond_permission` tool for pending backend
-permissions and frontend external-tool approvals. The model answers the
-permission request; the Gateway routes `permission_id` to the backend Task or
-the frontend tool execution queue.
+The Gateway exposes `respond_permission` for pending backend permissions.
+The model answers the permission request; the Gateway resolves the request
+and its associated Task before forwarding the decision.
 
 `memory` maintains two ordinary Markdown documents through one flat interface. Each call is one
 atomic `read`, `append`, or `replace` operation. `replace` locates a unique source fragment, and
@@ -147,15 +146,21 @@ decision for a pending, owner-scoped permission request supplied by the
 Gateway. It may understand natural affirmative or negative wording such as
 “可以” or “不允许”, but it cannot invent consent without a current-turn user
 utterance, create a request, choose a tool, or modify a backend permission
-policy. The model replies with the Gateway-issued `permission_id`; backend
-requests also carry the public `task_id`. Raw backend authorization IDs and the
-permission source remain internal to the Gateway and Adapter.
-Replies use `once`, `always`, or `reject`: allow only the current operation,
-allow throughout the current frontend session, or reject only the current
-operation. `always` still uses the Gateway's frontend-session policy.
-The adapter selects the narrowest safe per-request backend option, and the
-Gateway automatically approves later requests in the same frontend session.
-This does not create a persistent backend authorization rule.
+policy. The model, cards, and Gateway share one short `permission_id`, without
+a separate model-facing alias. With one pending request, only `decision` is
+required; multiple requests require an explicit `permission_id`. An invalid ID
+never falls back to authorizing another request. Notifications retain `task_id`
+for context, but calls do not need to repeat it. Repeated confirmations in the
+same user turn reuse the receipt rather than expand its authorization scope.
+The Adapter privately maps raw ACP option IDs. The built-in ACP Adapter uses
+random short IDs instead of restarting a counter that could collide with old context.
+Replies use `task`, `always`, or `reject`: allow this Task and its subsequent
+operations, allow across Tasks in this frontend session, or reject the current
+operation. Gateway's task-layer PermissionPolicy is shared by voice, client commands,
+and scheduled work. It approves subsequent requests with BackendPort's per-operation
+`once` decision, including requests already queued for the approved Task. Task grants
+expire on completion, failure, or cancellation and never transfer to another Task.
+Neither scope creates a persistent backend rule or survives a Gateway restart.
 Protocol envelopes for permissions, progress, and restored context are owned
 exclusively by the Gateway. A model-authored lookalike is not an event, cannot
 enable its associated tool, and is not persisted into conversation history.

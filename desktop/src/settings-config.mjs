@@ -44,13 +44,25 @@ const DEFAULTS = {
   language: 'auto',
 }
 
-const SETTING_KEYS = {
+const CLIENT_SETTING_KEYS = {
   gatewayUrl: 'QWEN_AUDIO_AGENT_URL',
   orbStyle: 'QWEN_AUDIO_ORB_STYLE',
   orbSkin: 'QWEN_AUDIO_ORB_SKIN',
   autoHideSeconds: 'QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS',
   wakeShortcut: 'QWEN_AUDIO_DESKTOP_WAKE_SHORTCUT',
   wakeWordEnabled: 'QWEN_AUDIO_WAKE_WORD_ENABLED',
+  language: 'QWEN_AUDIO_DESKTOP_LANGUAGE',
+}
+
+const CLIENT_ENVIRONMENT_KEYS = new Set(Object.values(CLIENT_SETTING_KEYS))
+
+export function clientSettingsPatch(settings) {
+  return Object.fromEntries(Object.entries(settings)
+    .filter(([key]) => Object.hasOwn(CLIENT_SETTING_KEYS, key)))
+}
+
+const SETTING_KEYS = {
+  ...CLIENT_SETTING_KEYS,
   dashscopeApiKey: 'DASHSCOPE_API_KEY',
   realtimeBaseUrl: 'QWEN_AUDIO_REALTIME_BASE_URL',
   realtimeProvider: 'QWEN_AUDIO_REALTIME_PROVIDER',
@@ -65,7 +77,6 @@ const SETTING_KEYS = {
   backendModel: 'QWEN_AUDIO_AGENT_BACKEND_MODEL',
   backendOwnership: 'QWEN_AUDIO_AGENT_BACKEND_OWNERSHIP',
   nodePath: 'QWEN_AUDIO_AGENT_NODE_PATH',
-  language: 'QWEN_AUDIO_DESKTOP_LANGUAGE',
 }
 
 function configured(values, key, fallback) {
@@ -516,22 +527,27 @@ export function applySettingsEnvironment(settings = {}, env = process.env) {
   return env
 }
 
-export function updateSettingsContent(content = '', settings = {}) {
+// The form is unified; persistence is not. Gateway settings and client
+// preferences use separate files without duplicating validation or schemas.
+export function updateSettingsContent(content = '', settings = {}, { scope = 'all' } = {}) {
+  if (!['all', 'gateway', 'client'].includes(scope)) throw new TypeError('invalid settings scope')
+  const accepts = key => scope === 'all'
+    || (scope === 'client') === CLIENT_ENVIRONMENT_KEYS.has(key)
   const normalized = normalizeSettings(settings)
   const values = Object.fromEntries(
     Object.entries(SETTING_KEYS)
-      .filter(([field]) => settings[field] !== undefined)
+      .filter(([field, key]) => settings[field] !== undefined && accepts(key))
       .map(([field, key]) => [
         key,
         encoded(normalized[field]),
       ]),
   )
   const backend = backendDefinition(normalized.agentProtocol)
-  if (settings.backendUrl !== undefined && backend?.baseUrlEnvironment) {
+  if (scope !== 'client' && settings.backendUrl !== undefined && backend?.baseUrlEnvironment) {
     values[backend.baseUrlEnvironment] = encoded(normalized.backendUrl)
   }
   const credentialEnvironment = backend?.externalService?.credentialEnvironment
-  if (settings.backendCredential !== undefined && credentialEnvironment) {
+  if (scope !== 'client' && settings.backendCredential !== undefined && credentialEnvironment) {
     values[credentialEnvironment] = encoded(normalized.backendCredential)
   }
   const removed = new Set([
@@ -552,6 +568,7 @@ export function updateSettingsContent(content = '', settings = {}) {
   const lines = content.split(/\r?\n/).map(line => {
     const match = line.match(/^([A-Z][A-Z0-9_]*)\s*=/)
     const key = match?.[1]
+    if (key && !accepts(key)) return null
     if (key && legacy.has(key)) return null
     if (key && removed.has(key)) return null
     if (!key || !(key in values) || seen.has(key)) return line

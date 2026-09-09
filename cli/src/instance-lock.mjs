@@ -1,12 +1,13 @@
 import {
   closeSync,
+  mkdirSync,
   openSync,
   readFileSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { resolve } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 function processIsAlive(pid, killImpl) {
   if (!Number.isInteger(pid) || pid <= 0) return false
@@ -19,14 +20,21 @@ function processIsAlive(pid, killImpl) {
 }
 
 export function acquireCliInstance(
-  configDirectory,
+  clientDirectory,
   {
     pid = process.pid,
     killImpl = process.kill,
     token = randomUUID(),
+    instanceKey = '',
   } = {},
 ) {
-  const path = resolve(configDirectory, 'cli.lock')
+  // Preserve independent CLI instances for separate Gateway profiles, but
+  // keep their locks with the client rather than in Gateway state.
+  const suffix = instanceKey
+    ? `-${createHash('sha256').update(instanceKey).digest('hex').slice(0, 16)}`
+    : ''
+  mkdirSync(clientDirectory, { recursive: true, mode: 0o700 })
+  const path = resolve(clientDirectory, `cli${suffix}.lock`)
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const fd = openSync(path, 'wx', 0o600)

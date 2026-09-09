@@ -13,17 +13,14 @@ import {
   Tray,
 } from 'electron'
 import {
-  chmodSync,
   existsSync,
   readFileSync,
-  writeFileSync,
 } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parseEnv } from 'node:util'
 import {
   loadRuntimeEnvironment,
-  userConfigDirectory,
 } from '../../shared/runtime-environment.mjs'
 import { mergeSearchPath } from '../../shared/path-environment.mjs'
 import { createLogger } from '../../shared/logger.mjs'
@@ -40,8 +37,11 @@ import {
 } from './i18n.mjs'
 import { readGatewayHealth } from '../../shared/gateway/http-client.mjs'
 import { GatewayConnectionProfileStore } from '../../shared/gateway/connection-profiles.mjs'
-import { pairGatewayConnectionCode } from '../../shared/gateway/access-client.mjs'
-import { decodeGatewayPairingCode } from '../../shared/gateway/remote-access.mjs'
+import {
+  desktopGatewayCredential,
+  parseDesktopGatewayInput,
+  prepareDesktopGatewayConnection,
+} from './gateway-connection.mjs'
 import {
   findRunningGateway,
 } from '../../shared/gateway/lease.mjs'
@@ -51,7 +51,6 @@ import {
   EmbeddedGateway,
   resolveBorrowedGatewayAttachment,
 } from './gateway-process.mjs'
-import { remoteRealtimeModelOutcome } from './realtime-status.mjs'
 import {
   DESKTOP_ORB_HEIGHT,
   DESKTOP_ORB_WIDTH,
@@ -63,20 +62,20 @@ import {
 import { createOrbPlacement } from './orb-placement.mjs'
 import { bindOrbShell, configureOrbWindow } from './orb-shell.mjs'
 import { createSettingsStore } from './settings-store.mjs'
+import { desktopClientPaths } from './client-paths.mjs'
 import { createDesktopBackendManagement } from './backend/management.mjs'
 import {
-  parseSettings,
+  clientSettingsPatch,
   realtimeSettingsConfigured,
   updateSettingsContent,
-  applySettingsEnvironment,
 } from './settings-config.mjs'
+import { runtimePathEnvironment, userConfigDirectory } from '../../shared/runtime-paths.mjs'
 import { DesktopWakeWordRuntime } from './wake-word/runtime.mjs'
 import {
   effectiveOrbSkin as resolveEffectiveOrbSkin,
   importSkin,
   listSkins,
   removeSkin,
-  skinsDirectory,
 } from './skin-store.mjs'
 import {
   BUILTIN_ORB_SKINS,
@@ -88,43 +87,16 @@ import {
   expandProcessPath,
 } from './process-path.mjs'
 import {
-  backfillSharedAssets,
-  resolveDesktopConfigDirectory,
-} from './config-migration.mjs'
-import {
   createDesktopUpdater,
 } from './updater.mjs'
 import { createGracefulShutdown } from './graceful-shutdown.mjs'
 import { DesktopPresence } from './desktop-presence.mjs'
 import { createElectronGatewayCredentialStore } from './gateway-credential-store.mjs'
 
-// macOS / Linux 图形界面应用的 PATH 只包含系统目录。在启动最早阶段
-// 将其扩充为用户登录 shell 的 PATH，让 Gateway 子进程与后台可用性
-// 检测能找到通过 Homebrew、nvm 或官方脚本安装的 Agent 命令。
-expandProcessPath()
-
-// 桌面版与 CLI 的运行时状态（Gateway、锁、日志、皮肤）互相独立：桌面版
-// 默认走 Electron 应用数据目录；QWAUDIO_CONFIG_DIR 仍优先（高级用户 /
-// Profile 场景）。资产层（配置、身份、记忆、清单、workspace）则共享 CLI
-// 的用户数据目录（QWAUDIO_DATA_DIR），两种形态是同一个助手。
-// 统一应用名，让开发模式与打包版共用同一个 userData 目录（打包版
-// 的 productName 与单实例锁都基于它；开发模式默认会落到包名目录）。
+// Gateway paths belong to the Gateway; Electron's userData holds only client
+// preferences, credentials, presentation assets and local caches.
 app.setName('Qwen Audio Agent')
-const legacyConfigDirectory = userConfigDirectory(process.env)
-process.env.QWAUDIO_CONFIG_DIR = resolveDesktopConfigDirectory({
-  env: process.env,
-  userDataDirectory: app.getPath('userData'),
-})
-if (!process.env.QWAUDIO_DATA_DIR) {
-  // legacyConfigDirectory 在覆写 QWAUDIO_CONFIG_DIR 之前解析，显式配置的
-  // 目录（Profile 场景）会让资产与运行时落在同一处，保持完全隔离。
-  process.env.QWAUDIO_DATA_DIR = legacyConfigDirectory
-}
-// 旧版本桌面版持有各自演化的资产副本，切到共享资产层前先一次性回填。
-const assetBackfill = backfillSharedAssets({
-  desktopDir: process.env.QWAUDIO_CONFIG_DIR,
-  dataDir: process.env.QWAUDIO_DATA_DIR,
-})
+const clientPaths = desktopClientPaths(app.getPath('userData'))
 
 const here = dirname(fileURLToPath(import.meta.url))
 const sourceRoot = resolve(here, '../..')
@@ -132,32 +104,37 @@ const runtimeRoot = app.isPackaged
   ? resolve(process.resourcesPath, 'runtime')
   : sourceRoot
 const expectedConfigPath = resolve(
-  process.env.QWAUDIO_DATA_DIR,
+  userConfigDirectory(process.env),
   'config.env',
 )
 const configExistedAtLaunch = existsSync(expectedConfigPath)
 const runtimeEnvironment = loadRuntimeEnvironment({
   root: runtimeRoot,
+  defaultStateDirectory: 'state/desktop',
   prepareBackendRuntime: false,
   generateSecret: false,
 })
+// Child Gateway processes must use the selected Gateway state root.
+process.env.QWAUDIO_STATE_DIR = runtimeEnvironment.stateDirectory
+expandProcessPath({ cacheFile: clientPaths.pathCacheFile })
 const logger = createLogger({
   component: 'desktop',
   fileName: 'desktop.log',
+  directory: clientPaths.logDirectory,
 })
-const skinsRoot = skinsDirectory(runtimeEnvironment.configDirectory)
-// 设置表单读写共享资产层的 config.env（与 CLI 同一份）；悬浮球摆位等
+const skinsRoot = clientPaths.skinsDirectory
+// 设置表单读写共享配置目录的 config.env；悬浮球摆位等
 // 窗口状态是桌面专属，经 ui-state.json 留在桌面版自己的数据目录。
 const desktopSettingsStore = createSettingsStore({
-  configDir: runtimeEnvironment.dataDirectory,
-  uiStateDir: runtimeEnvironment.configDirectory,
+  configDir: runtimeEnvironment.configDirectory,
+  clientDir: clientPaths.directory,
 })
 const desktopGatewayCredentials = createElectronGatewayCredentialStore({
-  filePath: resolve(runtimeEnvironment.configDirectory, 'state/gateway-credentials.json'),
+  filePath: clientPaths.credentialsPath,
   safeStorage,
 })
 const desktopGatewayProfiles = new GatewayConnectionProfileStore({
-  filePath: resolve(runtimeEnvironment.configDirectory, 'state/gateway-connections.json'),
+  filePath: clientPaths.connectionsPath,
   credentialStore: desktopGatewayCredentials,
 })
 let desktopConversationSessionId = desktopSettingsStore.conversationSession.load()
@@ -179,21 +156,11 @@ logger.info('desktop.starting', {
   platform: process.platform,
   arch: process.arch,
 })
-if (assetBackfill.backfilled) {
-  logger.info('desktop.assets_backfilled', {
-    dataDir: process.env.QWAUDIO_DATA_DIR,
-    files: assetBackfill.copied,
-    skipped: assetBackfill.skipped,
-  })
-}
 const fallbackPage = resolve(here, 'orb-unavailable.html')
 const fallbackUrl = pathToFileURL(fallbackPage).href
 const settingsPage = resolve(here, 'settings.html')
 const webRoot = resolve(sourceRoot, 'web/dist')
-const initialSettings = parseSettings(
-  readFileSync(runtimeEnvironment.configPath, 'utf8'),
-  process.env,
-)
+const initialSettings = desktopSettingsStore.load()
 let desktopLanguage = initialSettings.language
 let desktopWakeWordEnabled = initialSettings.wakeWordEnabled
 const desktopText = (text, params) => desktopTranslator(
@@ -239,7 +206,7 @@ const desktopPresence = new DesktopPresence({
 })
 
 const desktopWakeWord = new DesktopWakeWordRuntime({
-  modelRoot: resolve(runtimeEnvironment.configDirectory, 'models/wake-word'),
+  modelRoot: clientPaths.wakeWordModelDirectory,
   onDetected: () => desktopPresence.wake('wake-word'),
   onError: error => logger.warn('wake_word.failed', { error }),
 })
@@ -262,10 +229,7 @@ ipcMain.on('qwen-audio-agent:wake-word-audio', (event, payload) => {
 const MAX_GATEWAY_CRASH_RESTARTS = 3
 
 function configuredOrigin() {
-  const settings = parseSettings(
-    readFileSync(runtimeEnvironment.configPath, 'utf8'),
-    process.env,
-  )
+  const settings = desktopSettingsStore.load()
   return {
     origin: validateAppUrl(settings.gatewayUrl),
     settings,
@@ -273,10 +237,9 @@ function configuredOrigin() {
 }
 
 async function selectDesktopGatewayCredential(origin) {
-  const resolved = await desktopGatewayProfiles.resolve('desktop')
-  gatewayAccessToken = resolved?.profile?.gateway_url === origin
-    ? String(resolved.credential || '').trim()
-    : String(process.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN || '').trim()
+  gatewayAccessToken = await desktopGatewayCredential(
+    origin, desktopGatewayProfiles, process.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN || '',
+  )
   return gatewayAccessToken
 }
 
@@ -293,14 +256,15 @@ function configuredGatewayEnvironment() {
   for (const [key, value] of Object.entries(configured)) {
     if (value !== '') configuredNonEmpty[key] = value
   }
-  // 自动休眠超时必须与 orb 前端一致：config.env 可能缺省（首次安装），
-  // 这里总是注入经 parseSettings 归一化后的有效值，避免前端 60 秒隐藏
+  // 自动休眠超时必须与 orb 前端一致：客户端配置可能缺省（首次安装），
+  // 这里总是注入归一化后的有效值，避免前端 60 秒隐藏
   // 而网关 sleepTimeoutMs=0 永不休眠的分歧。
-  const settings = parseSettings(raw, process.env)
+  const settings = desktopSettingsStore.load()
   return desktopGatewayEnvironment({
     env: process.env,
     configured: {
       ...configuredNonEmpty,
+      ...runtimePathEnvironment(runtimeEnvironment),
       QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS: String(settings.autoHideSeconds),
     },
     runtimeRoot,
@@ -334,11 +298,15 @@ function attachRunningGateway(active, environment, event = 'gateway.reused') {
   return attachment.origin
 }
 
-async function startLocalGateway(origin) {
+async function startLocalGateway(origin, accessToken = gatewayAccessToken) {
   if (!isLoopbackUrl(origin)) return origin
   if (embeddedGateway?.running) return embeddedGateway.start()
+  if (await readGatewayHealth(origin, fetch, { accessToken })) {
+    borrowedGatewayOrigin = origin
+    return origin
+  }
   const environment = configuredGatewayEnvironment()
-  const active = await findRunningGateway(runtimeEnvironment.configDirectory, {
+  const active = await findRunningGateway(runtimeEnvironment.stateDirectory, {
     readHealth: readGatewayHealth,
   })
   if (active) {
@@ -391,7 +359,7 @@ async function startLocalGateway(origin) {
     })
   } catch (error) {
     const winner = await findRunningGateway(
-      runtimeEnvironment.configDirectory,
+      runtimeEnvironment.stateDirectory,
       {
         readHealth: readGatewayHealth,
         timeoutMs: 3000,
@@ -518,10 +486,7 @@ async function showUnavailable(window) {
 async function loadQwenAudioAgent(window) {
   try {
     if (!rendererServer) throw new Error('desktop renderer is unavailable')
-    const settings = parseSettings(
-      readFileSync(runtimeEnvironment.configPath, 'utf8'),
-      process.env,
-    )
+    const settings = desktopSettingsStore.load()
     await window.loadURL(desktopOrbUrl(rendererServer.baseUrl, {
       orbSkin: effectiveOrbSkin(settings.orbSkin),
       autoHideSeconds: settings.autoHideSeconds,
@@ -889,10 +854,7 @@ ipcMain.handle('qwen-audio-agent:settings-load', async event => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权读取设置')
   }
-  const settings = parseSettings(
-    readFileSync(runtimeEnvironment.configPath, 'utf8'),
-    process.env,
-  )
+  const settings = desktopSettingsStore.load()
   return {
     settings,
     skins: [...BUILTIN_ORB_SKINS, ...listSkins(skinsRoot)],
@@ -927,30 +889,8 @@ ipcMain.handle('qwen-audio-agent:set-node-path', async (event, nodePath) => {
     throw new Error(`目录不存在：${trimmed}`)
   }
 
-  // 写入配置文件
-  const current = readFileSync(runtimeEnvironment.configPath, 'utf8')
-  const lines = current.split(/\r?\n/)
-  const key = 'QWEN_AUDIO_AGENT_NODE_PATH'
-  let found = false
-  const updated = lines.map(line => {
-    if (line.startsWith(`${key}=`)) {
-      found = true
-      return `${key}=${trimmed}`
-    }
-    return line
-  })
-  if (!found) updated.push(`${key}=${trimmed}`)
-  const content = updated.join('\n').replace(/\n+$/, '') + '\n'
-  writeFileSync(runtimeEnvironment.configPath, content, {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
-  // Windows 上 chmodSync 基本是 no-op，但保留兼容性
-  try {
-    chmodSync(runtimeEnvironment.configPath, 0o600)
-  } catch {
-    // Windows 上忽略
-  }
+  // Node discovery is a local Gateway launch setting, persisted by the store.
+  desktopSettingsStore.save({ nodePath: trimmed })
 
   // 立即生效：直接操作 PATH，不依赖 spawnSync（打包后可能不可用）
   process.env.QWEN_AUDIO_AGENT_NODE_PATH = trimmed
@@ -961,7 +901,7 @@ ipcMain.handle('qwen-audio-agent:set-node-path', async (event, nodePath) => {
 
   // 再跑 expandProcessPath 利用 where/reg 补充其他路径（失败不影响已设置的路径）
   try {
-    expandProcessPath()
+    expandProcessPath({ cacheFile: clientPaths.pathCacheFile })
   } catch {
     logger.warn('node-path.expand-failed', { path: trimmed })
   }
@@ -987,20 +927,9 @@ ipcMain.handle('qwen-audio-agent:open-logs', async event => {
   return logger.directory
 })
 
-function assertSettingsRequest(event) {
-  if (!settingsWindow || event.sender !== settingsWindow.webContents) {
-    throw new Error('无权修改 Gateway 连接')
-  }
-}
-
-ipcMain.handle('qwen-audio-agent:remote-gateway-connect', async (event, value) => {
-  assertSettingsRequest(event)
-  const settings = await applyGatewayPairingCode(value, { reloadSettings: false })
-  return { gatewayUrl: settings.gatewayUrl }
-})
-
 const backendManagement = createDesktopBackendManagement({
   configPath: runtimeEnvironment.configPath,
+  pathCacheFile: clientPaths.pathCacheFile,
   confirmScript: async step => {
     if (!settingsWindow || settingsWindow.isDestroyed()) return false
     const { response } = await dialog.showMessageBox(settingsWindow, {
@@ -1082,34 +1011,30 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权保存设置')
   }
+  return applyDesktopSettings(settings)
+})
+
+async function applyDesktopSettings(settings) {
+  const target = parseDesktopGatewayInput(settings.gatewayUrl)
+  const { origin: nextOrigin, remote } = target
+  // Remote configuration belongs to its Gateway host. Only client preferences
+  // are applied here; stale local model/backend fields must not block pairing.
+  settings = { ...(remote ? clientSettingsPatch(settings) : settings), gatewayUrl: nextOrigin }
   const current = readFileSync(runtimeEnvironment.configPath, 'utf8')
-  const previous = parseSettings(current, process.env)
-  const content = updateSettingsContent(current, settings)
-  const normalized = parseSettings(content)
-  const nextOrigin = validateAppUrl(normalized.gatewayUrl)
-  const remote = !isLoopbackUrl(nextOrigin)
-  if (!remote && !realtimeSettingsConfigured(normalized)) {
+  const previous = desktopSettingsStore.load()
+  const content = updateSettingsContent(current, settings, { scope: 'gateway' })
+  const normalized = desktopSettingsStore.preview(settings)
+  const connection = await prepareDesktopGatewayConnection(target, {
+    profileStore: desktopGatewayProfiles,
+    clientInstanceId: desktopGatewayClientInstanceId,
+    label: app.getName(),
+    fallbackAccessToken: process.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN || '',
+  })
+  const credentialChanged = connection.credential !== gatewayAccessToken
+  if (!remote && !connection.connected && !realtimeSettingsConfigured(normalized)) {
     throw new Error(normalized.realtimeProvider === 'dashscope'
       ? '请先填写 DashScope API Key'
       : '请先填写 Speech-to-Speech 服务地址')
-  }
-  if (remote) {
-    await selectDesktopGatewayCredential(nextOrigin)
-    const remoteRuntime = await runtimeStatus(nextOrigin)
-    if (!remoteRuntime.gatewayConnected) {
-      throw new Error(`无法连接 Gateway：${nextOrigin}`)
-    }
-    const modelOutcome = remoteRealtimeModelOutcome(remoteRuntime, normalized)
-    if (modelOutcome) {
-      return {
-        ...modelOutcome,
-        settings: previous,
-        restarted: false,
-        restartRequired: false,
-        runtime: remoteRuntime,
-        wakeShortcutRegistered: desktopPresence.shortcutRegistered,
-      }
-    }
   }
   const gatewayChanged = nextOrigin !== configuredGatewayOrigin
   const apiKeyChanged = previous.dashscopeApiKey !== normalized.dashscopeApiKey
@@ -1158,7 +1083,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     || backendModelChanged
     || backendConnectionChanged
   )
-  if (!remote && borrowedGatewayOrigin && gatewayRuntimeChanged) {
+  if (!remote && nextOrigin === borrowedGatewayOrigin && gatewayRuntimeChanged) {
     const borrowedHealth = await readDesktopGatewayHealth(borrowedGatewayOrigin)
     if (borrowedHealth) {
       const nextEnvironment = desktopGatewayEnvironment({
@@ -1186,15 +1111,11 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     throw new Error('这个显示快捷键已被其他应用占用，请选择另一个')
   }
   try {
-    writeFileSync(runtimeEnvironment.configPath, content, {
-      encoding: 'utf8',
-      mode: 0o600,
-    })
+    desktopSettingsStore.save(settings)
   } catch (error) {
     if (wakeShortcutChanged) desktopPresence.registerShortcut(previous.wakeShortcut)
     throw error
   }
-  chmodSync(runtimeEnvironment.configPath, 0o600)
   desktopLanguage = normalized.language
   desktopWakeWordEnabled = normalized.wakeWordEnabled
   desktopWakeWord.setEnabled(desktopWakeWordEnabled)
@@ -1224,12 +1145,12 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
   })
   let restarted = false
   configuredGatewayOrigin = nextOrigin
-  if (remote) {
+  if (remote || (connection.connected && gatewayChanged && nextOrigin !== embeddedGateway?.origin)) {
     if (embeddedGateway) {
       await embeddedGateway.stop()
       embeddedGateway = null
     }
-    borrowedGatewayOrigin = ''
+    borrowedGatewayOrigin = remote ? '' : nextOrigin
     appOrigin = nextOrigin
   } else if (
     embeddedGateway?.running
@@ -1240,20 +1161,18 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     })
     restarted = true
   } else if (!embeddedGateway?.running) {
-    appOrigin = await startLocalGateway(nextOrigin)
+    appOrigin = await startLocalGateway(nextOrigin, connection.credential)
     restarted = !borrowedGatewayOrigin
   }
   setupRequired = false
   lastRuntimeError = ''
-  // 把刚保存的设置同步进本进程环境：config.env 只填充未设置的槽位，
-  // 不写回的话本进程会继续沿用首次加载的旧值（如兼容性检查用的旧 Key）。
-  applySettingsEnvironment(settings)
+  gatewayAccessToken = connection.credential
   process.env.QWEN_AUDIO_AGENT_URL = appOrigin
   process.env.QWEN_AUDIO_ORB_STYLE = normalized.orbStyle
   process.env.QWEN_AUDIO_ORB_SKIN = normalized.orbSkin
   await ensureDesktopUi()
   const desktopRendererChanged = (
-    gatewayChanged
+    (gatewayChanged || credentialChanged)
     && mainWindow
     && !mainWindow.isDestroyed()
   )
@@ -1279,7 +1198,7 @@ ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
     runtime,
     wakeShortcutRegistered: desktopPresence.shortcutRegistered,
   }
-})
+}
 
 ipcMain.handle('qwen-audio-agent:skin-import', async event => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
@@ -1315,46 +1234,16 @@ function gatewayPairingCodeFromArguments(argv = []) {
   return argv.find(value => String(value || '').startsWith('qwaudio://connect')) || null
 }
 
-async function applyGatewayPairingCode(value, { reloadSettings = true } = {}) {
-  const pairingCode = decodeGatewayPairingCode(value)
-  const paired = await pairGatewayConnectionCode(pairingCode, {
-    device: {
-      id: desktopGatewayClientInstanceId,
-      type: 'desktop',
-      label: app.getName(),
-    },
-    clientInstanceId: desktopGatewayClientInstanceId,
-    profileId: 'desktop',
-    label: 'Remote Gateway',
-    profileStore: desktopGatewayProfiles,
-  })
-  gatewayAccessToken = String(
-    (await desktopGatewayProfiles.resolve('desktop'))?.credential || '',
-  ).trim()
-  const settings = desktopSettingsStore.save({
+async function applyGatewayPairingCode(value) {
+  const { settings } = await applyDesktopSettings({
     ...desktopSettingsStore.load(),
-    gatewayUrl: paired.profile.gateway_url,
+    gatewayUrl: value,
   })
-  if (embeddedGateway) {
-    await embeddedGateway.stop()
-    embeddedGateway = null
-  }
-  borrowedGatewayOrigin = ''
-  setupRequired = false
-  configuredGatewayOrigin = paired.profile.gateway_url
-  appOrigin = paired.profile.gateway_url
-  process.env.QWEN_AUDIO_AGENT_URL = appOrigin
-  await ensureDesktopUi()
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    await loadQwenAudioAgent(mainWindow)
-    desktopPresence.wake('remote-paired')
-  }
-  if (reloadSettings && settingsWindow && !settingsWindow.isDestroyed()) {
+  if (settingsWindow && !settingsWindow.isDestroyed()) {
     settingsWindow.webContents.reload()
   }
   logger.info('gateway.remote_paired', {
-    gatewayUrl: paired.profile.gateway_url,
-    deviceId: paired.profile.device_id,
+    gatewayUrl: settings.gatewayUrl,
   })
   return settings
 }

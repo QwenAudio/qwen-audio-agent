@@ -442,7 +442,7 @@ async function main() {
   const cockpitId = String(args.get('cockpit-id') || DEFAULT_COCKPIT_ID)
   const runtimeRoot = await mkdtemp(join(tmpdir(), 'qwen-cockpit-voice-bench-'))
   process.env.QWAUDIO_CONFIG_DIR = runtimeRoot
-  process.env.QWAUDIO_DATA_DIR = runtimeRoot
+  process.env.QWAUDIO_DATA_DIR = resolve(runtimeRoot, 'data')
   if (args.get('frontend-profile')) {
     process.env.QWEN_AUDIO_FRONTEND_PROFILE = String(args.get('frontend-profile'))
   } else {

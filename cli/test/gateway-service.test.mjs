@@ -13,6 +13,22 @@ function temporaryDirectory() {
   return mkdtempSync(resolve(tmpdir(), 'qwen-audio-agent-service-'))
 }
 
+test('service logs, metadata and child state always use the same resolved directory', () => {
+  const definition = gatewayServiceDefinition({
+    platform: 'linux',
+    homeDirectory: '/home/test',
+    configDirectory: '/profiles/shared-config',
+    stateDirectory: '/instances/selected',
+    gatewayPath: '/app/server.mjs',
+    serviceEnvironment: { QWAUDIO_STATE_DIR: '/instances/ignored', QWAUDIO_DATA_DIR: '/assets' },
+  })
+  assert.equal(definition.metadataPath, resolve('/instances/selected/gateway-service.json'))
+  assert.equal(definition.logsDirectory, resolve('/instances/selected/logs'))
+  assert.match(definition.content, /QWAUDIO_STATE_DIR=.*selected/)
+  assert.doesNotMatch(definition.content, /instances\/ignored/)
+  assert.match(definition.content, /QWAUDIO_DATA_DIR=.*assets/)
+})
+
 test('builds a launchd user service that runs the Gateway in foreground', () => {
   const root = temporaryDirectory()
   try {

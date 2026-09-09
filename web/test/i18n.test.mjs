@@ -36,8 +36,9 @@ test('non-Chinese locales get English', () => {
       t('等待{holder}释放语音', { holder: 'Desktop' }),
       'Waiting for Desktop to release voice',
     )
-    assert.equal(t('本次允许'), 'Allow once')
-    assert.equal(t('本会话始终允许'), 'Always allow in this session')
+    assert.equal(t('允许此任务'), 'Allow task')
+    assert.equal(t('始终允许'), 'Always allow')
+    assert.match(t('本会话后续权限请求自动允许'), /in this session$/)
   })
 })
 

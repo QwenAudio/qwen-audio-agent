@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add an embedded voice device ingress example with bounded audio chunking,
+  slow-reader backpressure tests, and microphone pause/resume guidance.
+
 - Gateway 接入统一为本机、`--lan` 和 `--tailnet` 三种启动模式；对外连接地址
   独立由 `gateway pair --endpoint` 指定，不再使用启动参数 `--public-url`。
 - `gateway pair` 默认只生成一个短连接码和二维码，浏览器、桌面端和移动端

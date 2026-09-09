@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import { mkdtempSync, readFileSync, statSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
@@ -610,6 +610,7 @@ test('connects TUI and WebUI without starting services', async () => {
 })
 
 test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
+  const clientDirectory = resolve('/client-connections')
   const profiles = new Map()
   const profileStore = {
     resolve: async id => profiles.get(id) || null,
@@ -625,9 +626,9 @@ test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
     expiresAt: Date.now() + 60_000,
   }))
   const connected = harness()
-  connected.dependencies.env.QWAUDIO_TUI_DIR = '/client-connections'
+  connected.dependencies.env.QWAUDIO_TUI_DIR = clientDirectory
   connected.dependencies.createConnectionProfiles = directory => {
-    assert.equal(directory, '/client-connections')
+    assert.equal(directory, clientDirectory)
     return profileStore
   }
   connected.dependencies.pairConnectionCode = async (decoded, options) => {
@@ -646,13 +647,13 @@ test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
   assert.match(connected.calls.at(-1)[1], /voice\.example\.test/)
 
   const tui = harness()
-  tui.dependencies.env.QWAUDIO_TUI_DIR = '/client-connections'
+  tui.dependencies.env.QWAUDIO_TUI_DIR = clientDirectory
   tui.dependencies.createConnectionProfiles = directory => {
-    assert.equal(directory, '/client-connections')
+    assert.equal(directory, clientDirectory)
     return profileStore
   }
   tui.dependencies.acquireInstance = (directory, instanceKey) => {
-    assert.equal(directory, '/client-connections')
+    assert.equal(directory, clientDirectory)
     assert.equal(instanceKey, '/home/user/.config/qwaudio/state')
     return { release() {} }
   }
@@ -674,9 +675,9 @@ test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
   assert.equal(tui.calls[0][1].accessToken, 'paired-token')
 
   const disconnected = harness()
-  disconnected.dependencies.env.QWAUDIO_TUI_DIR = '/client-connections'
+  disconnected.dependencies.env.QWAUDIO_TUI_DIR = clientDirectory
   disconnected.dependencies.createConnectionProfiles = directory => {
-    assert.equal(directory, '/client-connections')
+    assert.equal(directory, clientDirectory)
     return profileStore
   }
   assert.equal(await main(['disconnect'], disconnected.dependencies), 0)

@@ -30,6 +30,10 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
           registry-url: https://registry.npmjs.org/
+      # Test the GitLab-only synchronizer against disposable local repositories.
+      # GitHub Actions never runs the real synchronization job or needs its token.
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: node --test .gitlab/sync-github.test.mjs
       - run: npm ci
       - run: npm test
       - run: npm run build

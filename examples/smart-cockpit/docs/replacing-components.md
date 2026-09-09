@@ -7,7 +7,7 @@
 
 客户 UI 不需要继承框架 WebUI，也不需要复制本示例页面。它只需：
 
-1. 使用 `qwen-audio-agent/gateway-client-sdk` 或按 GCP 6.0 实现客户端。
+1. 使用 `qwen-audio-agent/gateway-client-sdk` 或按 GCP 7.0 实现客户端。
 2. 连接 Gateway 的 `/api/realtime`。
 3. 自行实现音频采集、播放和 GCP 播放回执。
 4. 按产品需要渲染 transcript、Task、权限和恢复的最近对话。

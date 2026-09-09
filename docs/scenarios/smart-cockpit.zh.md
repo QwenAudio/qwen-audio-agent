@@ -29,7 +29,7 @@ qwen-audio-agent 的基础边界是“前台对话 + 后台执行”。座舱客
 
 | 组件 | 示例实现 | 主要接口 |
 |---|---|---|
-| `client/` | React 座舱 UI + Browser Audio | GCP 6.0 / Gateway Client SDK |
+| `client/` | React 座舱 UI + Browser Audio | GCP 7.0 / Gateway Client SDK |
 | `gateway/` | qwen-audio-agent Gateway + 前台 Realtime Agent | GCP / MCP / BackendPort |
 | `agent/` | Qwen3.8-Flash 驱动的后台 Agent | A2A 1.0 / MCP |
 | `service/` | 座舱状态、规则、工具和外部服务适配 | HTTP/SSE / MCP |

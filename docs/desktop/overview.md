@@ -69,7 +69,10 @@ loops, and one-shot playback.
 
 ## Remote Connections
 
-Paste a connection code generated on the Gateway host into “Remote connection” in Settings.
+Enter a local or remote Gateway URL in Settings → Application → Gateway and click Apply.
+For the first connection to a remote Gateway requiring authentication, paste the complete
+pairing link generated on its host into the same field. Desktop pairs automatically,
+then displays the plain URL and reuses the saved credential for later connections.
 See [Remote Connections and Pairing](../operations/remote-access.md). The Gateway and Backend Agent
 stay on the remote host; Desktop only handles input and output, without its own relay service.
 Tailnet mode requires official Tailscale on both devices; external HTTPS does not.

@@ -38,7 +38,7 @@ and the tool execution environment.
 
 | Component | Example implementation | Main interfaces |
 |---|---|---|
-| `client/` | React cockpit UI + Browser Audio | GCP 6.0 / Gateway Client SDK |
+| `client/` | React cockpit UI + Browser Audio | GCP 7.0 / Gateway Client SDK |
 | `gateway/` | qwen-audio-agent Gateway + foreground Realtime Agent | GCP / MCP / BackendPort |
 | `agent/` | Qwen3.8-Flash backend Agent | A2A 1.0 / MCP |
 | `service/` | Cockpit state, rules, tools, and external integrations | HTTP/SSE / MCP |

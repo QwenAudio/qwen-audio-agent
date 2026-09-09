@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { redactLogValue } from '../../../../shared/logger.mjs'
 import { AgentError } from '../agent-error.mjs'
 import { ACP_SESSION_TOOL_NAMES } from './session-tools.mjs'
@@ -87,10 +87,9 @@ function deferred() {
 
 function optionFor(params, decision) {
   const options = Array.isArray(params?.options) ? params.options : []
-  // Product decisions are stable across BackendPort implementations. ACP
-  // option ids remain opaque and are selected by their standard kind here.
-  // Public `always` is scoped to the current frontend session, so prefer an
-  // ACP one-shot option and let the Gateway approve subsequent requests.
+  // BackendPort decisions select opaque ACP options by their standard kind.
+  // Gateway task/session grants arrive here as `once`; their lifetime is not
+  // delegated to a backend's persistent authorization configuration.
   const kinds = decision === 'once'
     ? ['allow_once']
     : decision === 'always'
@@ -123,7 +122,12 @@ export class PermissionBroker {
         ? { outcome: { outcome: 'selected', optionId: option.optionId } }
         : { outcome: { outcome: 'cancelled' } }
     }
-    const id = `auth_${randomUUID().replaceAll('-', '')}`
+    // One public/internal ID; random across broker instances and restarts so
+    // old conversation context cannot address a newly numbered request.
+    let id
+    do {
+      id = `auth_${randomBytes(9).toString('base64url')}`
+    } while (this.pending.has(id) || this.resolved.has(id))
     const pending = deferred()
     const operation = permissionOperation(params?.toolCall)
     const permission = normalizeAuthorization({

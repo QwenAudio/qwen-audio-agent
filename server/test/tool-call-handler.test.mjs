@@ -3,9 +3,8 @@ import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
 import { ToolCallHandler } from '../src/voice/tools/tool-call-handler.mjs'
 import { FrontendNotesStore } from '../src/conversation/frontend-notes.mjs'
-import { SessionPermissionPolicy } from '../src/voice/session-permission-policy.mjs'
+import { PermissionPolicy } from '../src/task/permission-policy.mjs'
 import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
-import { permissionReference } from '../src/voice/tools/permission-reference.mjs'
 
 function harness({
   coordinator,
@@ -395,17 +394,21 @@ test('blocks an exact repeated inline tool call within one turn', async () => {
 async function permissionHarness({
   answer,
   authorizationId = 'auth-one',
+  ownerId = 'owner',
+  sessionId = 'voice',
   respondPermission,
   permissionPolicy,
   onPermissionDeliveryFailed,
 }) {
   const manager = new TaskManager()
   let release
+  let backendEvent
   const task = manager.create({
     objective: '执行等待授权的操作',
-    ownerId: 'owner',
-    sessionId: 'voice',
+    ownerId,
+    sessionId,
     runner: async (_objective, { onEvent }) => {
+      backendEvent = onEvent
       onEvent({
         type: 'backend.permission.requested',
         permission: {
@@ -429,6 +432,12 @@ async function permissionHarness({
   return {
     ...kit,
     task,
+    onPermission: permission => {
+      kit.handler.forwardBackendEvent(task.id, {
+        type: `backend.permission.${permission.status === 'pending' ? 'requested' : 'resolved'}`,
+        permission,
+      }, backendEvent)
+    },
     finish: async () => {
       release({ content: '完成' })
       await manager.wait(task.id)
@@ -1369,10 +1378,10 @@ test('queries delegated status directly from the Gateway ledger', async () => {
   await manager.wait(delegated.id)
 })
 
-test('allows one realtime permission without enabling later automatic approval', async () => {
+test('allows the current task without enabling session-wide automatic approval', async () => {
   const calls = []
   const answer = '你按刚才说的处理就成'
-  const permissionPolicy = new SessionPermissionPolicy()
+  const permissionPolicy = new PermissionPolicy()
   const kit = await permissionHarness({
     answer,
     permissionPolicy,
@@ -1389,9 +1398,8 @@ test('allows one realtime permission without enabling later automatic approval',
     call_id: 'permission-semantic-allow',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: kit.task.id,
-      decision: 'once',
+      permission_id: 'auth-one',
+      decision: 'task',
     }),
   })
 
@@ -1408,12 +1416,182 @@ test('allows one realtime permission without enabling later automatic approval',
     /已允许，后台继续执行/,
   )
   assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), false)
+  assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice', kit.task.id), true)
+  await kit.finish()
+})
+
+test('a sole permission needs only a natural decision, not permission_id or task_id', async t => {
+  for (const decision of ['task', 'always', 'reject']) {
+    await t.test(decision, async () => {
+      const calls = []
+      const kit = await permissionHarness({
+        answer: decision === 'reject' ? '先别做了' : '嗯，就按这个办',
+        respondPermission: async (id, value) => calls.push([id, value]),
+      })
+      // Recovery path: this handler did not receive the original permission event.
+      assert.equal(kit.handler.pendingBackendPermissions.size, 0)
+      await kit.handler.handle({
+        call_id: 'decision-only', name: 'respond_permission',
+        arguments: JSON.stringify({ decision }),
+      })
+      assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
+      assert.equal(kit.outputs.at(-1)[1].permission_id, 'auth-one')
+      assert.deepEqual(calls, [['auth-one', decision === 'reject' ? 'reject' : 'once']])
+      await kit.finish()
+    })
+  }
+})
+
+test('duplicate confirmations cannot expand a task grant to a session grant', async () => {
+  const calls = []
+  const permissionPolicy = new PermissionPolicy()
+  const kit = await permissionHarness({
+    answer: '可以',
+    permissionPolicy,
+    respondPermission: async (id, decision) => {
+      calls.push([id, decision])
+      kit.onPermission({ id, status: 'approved', summary: '查看项目目录' })
+    },
+  })
+  const decide = (callId, args) => kit.handler.handle({
+    call_id: callId, name: 'respond_permission', arguments: JSON.stringify(args),
+  })
+  await decide('first', { decision: 'task' })
+  assert.equal(kit.manager.get(kit.task.id).authorization, null)
+  // Tool is no longer advertised, but an already-generated duplicate call can
+  // still read its receipt without enabling a new authorization.
+  await decide('same-id', { permission_id: 'auth-one', decision: 'always' })
+  assert.equal(kit.outputs.at(-1)[1].status, 'already_submitted')
+  assert.equal(kit.outputs.at(-1)[1].decision, 'task')
+  kit.onPermission({ id: 'auth-next', status: 'pending', summary: '修改项目文件' })
+  await decide('same-turn', { decision: 'always' })
+  assert.equal(kit.outputs.at(-1)[1].permission_id, 'auth-one')
+  assert.equal(kit.outputs.at(-1)[1].status, 'already_submitted')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(calls, [['auth-one', 'once'], ['auth-next', 'once']])
+  assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), false)
+  assert.equal(kit.manager.get(kit.task.id).authorization, null)
+  await kit.finish()
+})
+
+test('concurrent permissions require an ID and route even when the task card shows a newer request', async () => {
+  const calls = []
+  const policy = new PermissionPolicy()
+  const kit = await permissionHarness({
+    answer: '允许', permissionPolicy: policy,
+    respondPermission: async (id, decision) => calls.push([id, decision]),
+  })
+  kit.onPermission({ id: 'auth-one', status: 'pending', summary: '读文件' })
+  kit.onPermission({ id: 'auth-two', status: 'pending', summary: '运行命令' })
+  await kit.handler.handle({
+    call_id: 'ambiguous', name: 'respond_permission', arguments: '{"decision":"always"}',
+  })
+  const ambiguous = kit.outputs.at(-1)[1]
+  assert.equal(ambiguous.error_code, 'permission_ambiguous')
+  assert.deepEqual(ambiguous.permissions.map(item => item.permission_id), ['auth-one', 'auth-two'])
+  assert.ok(ambiguous.permissions.every(item => item.task_id === kit.task.id))
+  assert.equal(calls.length, 0)
+  assert.equal(policy.shouldAutoAllow('owner', 'voice'), false)
+  await kit.handler.handle({
+    call_id: 'specified', name: 'respond_permission',
+    arguments: '{"permission_id":"auth-one","decision":"task"}',
+  })
+  assert.deepEqual(calls, [['auth-one', 'once'], ['auth-two', 'once']])
+  // Both requests belong to the approved task; another confirmation is a receipt.
+  kit.handler.getTurnId = () => 'turn-two'
+  kit.transcripts.record('turn-two', '第二个也允许')
+  await kit.handler.handle({
+    call_id: 'remaining', name: 'respond_permission', arguments: '{"decision":"task"}',
+  })
+  assert.deepEqual(calls, [['auth-one', 'once'], ['auth-two', 'once']])
+  await kit.finish()
+})
+
+test('an ID-less response cannot switch requests while waiting for the transcript', async () => {
+  const calls = []
+  const kit = await permissionHarness({
+    answer: '可以', respondPermission: async (...args) => calls.push(args),
+  })
+  let finishTranscript
+  kit.transcripts.transcript = () => new Promise(resolve => { finishTranscript = resolve })
+  const execution = kit.handler.handle({
+    call_id: 'consent-race', name: 'respond_permission', arguments: '{"decision":"task"}',
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  kit.onPermission({ id: 'auth-one', status: 'cancelled', summary: '查看文件' })
+  kit.onPermission({ id: 'auth-new', status: 'pending', summary: '修改文件' })
+  finishTranscript('可以')
+  await execution
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_not_pending')
+  assert.equal(calls.length, 0)
+  await kit.finish()
+})
+
+test('another user confirmation reuses the sole in-flight permission receipt', async () => {
+  const calls = []
+  let finishDelivery
+  const kit = await permissionHarness({
+    answer: '可以',
+    respondPermission: async (id, decision) => {
+      calls.push([id, decision])
+      await new Promise(resolve => { finishDelivery = resolve })
+    },
+  })
+  await kit.handler.handle({
+    call_id: 'slow-delivery', name: 'respond_permission', arguments: '{"decision":"task"}',
+  })
+  kit.handler.getTurnId = () => 'turn-two'
+  kit.transcripts.record('turn-two', '我说可以')
+  await kit.handler.handle({
+    call_id: 'repeat-consent', name: 'respond_permission', arguments: '{"decision":"task"}',
+  })
+  assert.equal(kit.outputs.at(-1)[1].status, 'already_submitted')
+  assert.equal(kit.outputs.at(-1)[1].permission_id, 'auth-one')
+  assert.deepEqual(calls, [['auth-one', 'once']])
+  finishDelivery()
+  await kit.finish()
+})
+
+test('foreign owner or session permissions cannot be resolved through the tracker', async t => {
+  for (const scope of [{ ownerId: 'other' }, { sessionId: 'other' }]) {
+    await t.test(JSON.stringify(scope), async () => {
+      const calls = []
+      const kit = await permissionHarness({
+        ...scope, answer: '可以',
+        respondPermission: async (...args) => calls.push(args),
+      })
+      kit.onPermission({ id: 'auth-one', status: 'pending', summary: '查看项目' })
+      for (const args of [{ decision: 'task' }, { permission_id: 'auth-one', decision: 'task' }]) {
+        await kit.handler.handle({
+          call_id: JSON.stringify(args), name: 'respond_permission', arguments: JSON.stringify(args),
+        })
+        assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_not_pending')
+      }
+      assert.equal(calls.length, 0)
+      await kit.finish()
+    })
+  }
+})
+
+test('a cancelled permission ID never targets a newer pending request', async () => {
+  const calls = []
+  const kit = await permissionHarness({
+    answer: '可以', respondPermission: async (...args) => calls.push(args),
+  })
+  kit.onPermission({ id: 'auth-one', status: 'cancelled', summary: '读文件' })
+  kit.onPermission({ id: 'auth-new', status: 'pending', summary: '执行命令' })
+  await kit.handler.handle({
+    call_id: 'expired', name: 'respond_permission',
+    arguments: '{"permission_id":"auth-one","decision":"always"}',
+  })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_not_pending')
+  assert.equal(calls.length, 0)
   await kit.finish()
 })
 
 test('confirms a rejected realtime permission exactly once', async () => {
   const answer = '不允许'
-  const permissionPolicy = new SessionPermissionPolicy()
+  const permissionPolicy = new PermissionPolicy()
   permissionPolicy.applyDecision('owner', 'voice', 'always')
   const kit = await permissionHarness({
     answer,
@@ -1428,8 +1606,7 @@ test('confirms a rejected realtime permission exactly once', async () => {
     call_id: 'permission-semantic-reject',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: kit.task.id,
+      permission_id: 'auth-one',
       decision: 'reject',
     }),
   })
@@ -1445,7 +1622,7 @@ test('confirms a rejected realtime permission exactly once', async () => {
 
 test('rolls back the session policy when the permission delivery fails', async () => {
   const failures = []
-  const permissionPolicy = new SessionPermissionPolicy()
+  const permissionPolicy = new PermissionPolicy()
   const kit = await permissionHarness({
     answer: '可以',
     permissionPolicy,
@@ -1458,8 +1635,7 @@ test('rolls back the session policy when the permission delivery fails', async (
     call_id: 'permission-delivery-failed',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: kit.task.id,
+      permission_id: 'auth-one',
       decision: 'always',
     }),
   })
@@ -1478,7 +1654,7 @@ test('rolls back the session policy when the permission delivery fails', async (
 })
 
 test('auto-allows later permissions in the Gateway without publishing them', async () => {
-  const permissionPolicy = new SessionPermissionPolicy()
+  const permissionPolicy = new PermissionPolicy()
   permissionPolicy.applyDecision('owner', 'voice', 'always')
   const approvals = []
   const kit = harness({
@@ -1514,7 +1690,7 @@ test('auto-allows later permissions in the Gateway without publishing them', asy
 
   assert.deepEqual(approvals, [{
     id: 'auth-auto',
-    decision: 'always',
+    decision: 'once',
     options: { ownerId: 'owner' },
   }])
   assert.equal(
@@ -1523,12 +1699,12 @@ test('auto-allows later permissions in the Gateway without publishing them', asy
   )
 })
 
-test('one always decision settles every pending permission for the selected task', async () => {
+test('one task decision settles every pending permission for the selected task', async () => {
   const permissionIds = ['auth-news-1', 'auth-news-2', 'auth-news-3', 'auth-news-4']
   const approvals = []
   let release
   const kit = harness({
-    permissionPolicy: new SessionPermissionPolicy(),
+    permissionPolicy: new PermissionPolicy(),
     respondPermission: async (id, decision, options) => {
       approvals.push({ id, decision, options })
       return { id, status: 'approved' }
@@ -1557,15 +1733,13 @@ test('one always decision settles every pending permission for the selected task
   await new Promise(resolve => setImmediate(resolve))
 
   kit.transcripts.record('turn-one', '我同意')
-  const taskId = kit.manager.list({ ownerId: 'owner' })[0].id
   const decision = kit.handler.handle({
     call_id: 'allow-news',
     response_id: 'permission-response',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference(permissionIds[0]),
-      task_id: taskId,
-      decision: 'always',
+      permission_id: permissionIds[0],
+      decision: 'task',
     }),
   }, {
     turnId: 'turn-one',
@@ -1580,12 +1754,12 @@ test('one always decision settles every pending permission for the selected task
     approvals.map(call => call.id).sort(),
     [...permissionIds].sort(),
   )
-  assert.ok(approvals.every(call => call.decision === 'always'))
+  assert.ok(approvals.every(call => call.decision === 'once'))
   assert.ok(kit.outputs.slice(1).every(output => output[3].createResponse === false))
   assert.equal(kit.ensuredResponses.length, 1)
   assert.match(
     kit.ensuredResponses[0][1].response.instructions,
-    /已允许，后台继续执行/,
+    /该任务已获准继续执行/,
   )
 
   release({ content: '完成' })
@@ -1607,8 +1781,7 @@ test('accepts a semantic permission decision without an evidence field', async (
     call_id: 'permission-without-evidence',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: kit.task.id,
+      permission_id: 'auth-one',
       decision: 'always',
     }),
   })
@@ -1616,11 +1789,11 @@ test('accepts a semantic permission decision without an evidence field', async (
   // The verbatim delivery lands asynchronously behind the receipt.
   assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
   await new Promise(resolve => setImmediate(resolve))
-  assert.deepEqual(calls, [{ id: 'auth-one', decision: 'always' }])
+  assert.deepEqual(calls, [{ id: 'auth-one', decision: 'once' }])
   await kit.finish()
 })
 
-test('rejects a task id that has no pending permission', async () => {
+test('never falls back from an explicit wrong permission id to a pending request', async () => {
   let called = false
   const answer = '照你说的来'
   const kit = await permissionHarness({
@@ -1633,8 +1806,7 @@ test('rejects a task id that has no pending permission', async () => {
     call_id: 'permission-wrong-id',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: 'task-other',
+      permission_id: 'auth-wrong',
       decision: 'always',
     }),
   }, {

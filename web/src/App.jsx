@@ -16,6 +16,7 @@ import {
 import MessageContent from './MessageContent.jsx'
 import MultimodalComposer from './composer/MultimodalComposer.jsx'
 import TaskArtifacts from './TaskArtifacts.jsx'
+import PermissionActions from './PermissionActions.jsx'
 import DesktopFluidOrb from './desktop/DesktopFluidOrb.jsx'
 import DesktopSpriteOrb from './desktop/DesktopSpriteOrb.jsx'
 import KnowledgeLibraryPanel from './KnowledgeLibraryPanel.jsx'
@@ -1303,7 +1304,7 @@ export default function App() {
     key={`task:${agentTask.id}`}
     className={`agent-task ${agentTask.phase}${
       taskHasArtifacts(agentTask) ? ' has-artifacts' : ''
-    }`}
+    }${agentTask.authorization?.status === 'pending' ? ' awaiting-permission' : ''}`}
   >
     <span className="task-spinner" aria-hidden="true" />
     <div>
@@ -1312,46 +1313,12 @@ export default function App() {
       <TaskArtifacts artifacts={agentTask.artifacts} />
     </div>
     {!['failed', 'disconnected'].includes(agentTask.phase) && <div className="task-controls">
-      {agentTask.authorization?.status === 'pending' && <>
-        <button
-          className="permission-allow"
-          disabled={agentTask.authorization.submitting}
-          onClick={() => respondToPermission(
-            agentTask.id,
-            agentTask.authorization,
-            'once',
-          )}
-        >
-          {t('本次允许')}
-        </button>
-        <button
-          className="permission-allow"
-          disabled={agentTask.authorization.submitting}
-          onClick={() => respondToPermission(
-            agentTask.id,
-            agentTask.authorization,
-            'always',
-          )}
-        >
-          {agentTask.authorization.submitting
-            ? t('正在提交')
-            : t('本会话始终允许')}
-        </button>
-        <button
-          className="permission-deny"
-          disabled={agentTask.authorization.submitting}
-          onClick={() => respondToPermission(
-            agentTask.id,
-            agentTask.authorization,
-            'reject',
-          )}
-        >
-          {t('拒绝')}
-        </button>
-        {agentTask.authorization.error && <small className="permission-error">
-          {agentTask.authorization.error}
-        </small>}
-      </>}
+      {agentTask.authorization?.status === 'pending' && <PermissionActions
+        authorization={agentTask.authorization}
+        onRespond={decision => respondToPermission(
+          agentTask.id, agentTask.authorization, decision,
+        )}
+      />}
       <time>{Math.max(0, Math.round(agentTask.elapsedMs / 1000))}s</time>
     </div>}
   </aside>

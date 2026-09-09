@@ -1,7 +1,7 @@
 # Gateway Client Protocol
 
 > 状态：**Stable 6.0**<br>
-> 线协议版本：**6.0.0**<br>
+> 线协议版本：**7.0.0**<br>
 > Roadmap：[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > 当前实现事实源：`shared/protocol/gateway-client-protocol.mjs`、`server/src/client/client-event-router.mjs`、`server/src/client/client-command-runtime.mjs`、`shared/protocol/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
 
@@ -64,7 +64,7 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
 {
   "type": "session.hello",
   "event_id": "evt_client_1",
-  "protocol": { "min": "6.0.0", "max": "6.0.0" },
+  "protocol": { "min": "7.0.0", "max": "7.0.0" },
   "client": {
     "type": "desktop",
     "version": "1.12.0",
@@ -109,7 +109,7 @@ Gateway 返回协商后的版本与能力交集：
   "type": "session.ready",
   "event_id": "evt_gateway_1",
   "request_event_id": "evt_client_1",
-  "protocol_version": "6.0.0",
+  "protocol_version": "7.0.0",
   "session_id": "session_01",
   "connection": {
     "lease_generation": 7,
@@ -398,8 +398,11 @@ Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client 
 Realtime Session。Provider 不支持会话音色时返回关联错误
 `output_voice_unsupported`，Client 不需要识别具体 Provider。
 
-`permission.respond.decision` 支持 `once`、`always` 和 `reject`，分别表示
-仅允许当前操作、当前前端会话内始终允许，以及仅拒绝当前操作。
+`permission.respond.decision` 支持 `task`、`always` 和 `reject`，分别表示
+允许当前 Task 及其后续操作直到完成、失败或取消；当前前端会话内跨 Task
+始终允许；以及拒绝当前操作。授权策略由 Gateway 管理，BackendPort 仍接收逐次
+操作的决定。授权不跨 Gateway 重启保存。线协议 7.0 将 `once` 替换为 `task`，
+客户端须更新 schema，不能把“本次允许”悄悄解释成任务授权。
 
 `task.create` 使用与 A2A 语义对齐的 `message.parts`，而不是另设只能传纯文本的 objective 字段。这样显式集成可以提交文本、文件或结构化 Part，同时不引入 A2A Message 原生对象。
 

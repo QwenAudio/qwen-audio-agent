@@ -56,6 +56,11 @@ const CLIENT_SETTING_KEYS = {
 
 const CLIENT_ENVIRONMENT_KEYS = new Set(Object.values(CLIENT_SETTING_KEYS))
 
+export function clientSettingsPatch(settings) {
+  return Object.fromEntries(Object.entries(settings)
+    .filter(([key]) => Object.hasOwn(CLIENT_SETTING_KEYS, key)))
+}
+
 const SETTING_KEYS = {
   ...CLIENT_SETTING_KEYS,
   dashscopeApiKey: 'DASHSCOPE_API_KEY',

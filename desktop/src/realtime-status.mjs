@@ -63,34 +63,6 @@ export function realtimeModelPresentation(profile) {
   }
 }
 
-export function remoteRealtimeModelOutcome(runtime, settings) {
-  if (settings?.realtimeProvider !== 'dashscope') return null
-  const requestedRealtimeModel = String(settings.realtimeModel || '').trim()
-  const reportedModel = String(
-    runtime?.realtimeModelProfile?.id || runtime?.realtimeModel || '',
-  ).trim()
-  const actualRealtimeModel = reportedModel || null
-  if (!actualRealtimeModel) {
-    return {
-      applied: false,
-      reason: 'realtime-model-unverifiable',
-      message: '远程 Gateway 未报告 DashScope Realtime 模型；设置未应用',
-      requestedRealtimeModel,
-      actualRealtimeModel,
-    }
-  }
-  if (actualRealtimeModel !== requestedRealtimeModel) {
-    return {
-      applied: false,
-      reason: 'realtime-model-mismatch',
-      message: `远程 Gateway 报告的 Realtime 模型 ${actualRealtimeModel} 与请求模型 ${requestedRealtimeModel} 不一致；设置未应用`,
-      requestedRealtimeModel,
-      actualRealtimeModel,
-    }
-  }
-  return null
-}
-
 export function realtimeConnectionStatus(status) {
   if (!status) return 'configured'
   if (status.connected > 0) return 'connected'

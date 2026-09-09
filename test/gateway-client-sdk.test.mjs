@@ -82,7 +82,7 @@ test('reference Client negotiates once and correlates runtime commands', async (
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_gateway_ready',
     request_event_id: socket.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [GatewayClientCapability.TASK_COMMANDS],
   })
@@ -129,7 +129,7 @@ test('reference Client answers negotiated application heartbeats without dispatc
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_gateway_ready',
     request_event_id: socket.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [GatewayClientCapability.SESSION_HEARTBEAT],
   })
@@ -185,7 +185,7 @@ test('reference Client initializes and updates the output voice through GCP', as
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_gateway_voice_ready',
     request_event_id: socket.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [GatewayClientCapability.SESSION_OUTPUT_VOICE],
   })
@@ -244,7 +244,7 @@ test('reference Client executes negotiated Actions and deduplicates replayed eve
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_gateway_ready',
     request_event_id: socket.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP],
   })
@@ -292,7 +292,7 @@ test('reference Client reconnects, replays from its cursor, then reconciles snap
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_ready_1',
     request_event_id: first.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [],
   })
@@ -307,7 +307,7 @@ test('reference Client reconnects, replays from its cursor, then reconciles snap
     type: GatewayClientProtocolEvent.SESSION_READY,
     event_id: 'evt_ready_2',
     request_event_id: second.sent[0].event_id,
-    protocol_version: '6.0.0',
+    protocol_version: '7.0.0',
     session_id: 'main',
     capabilities: [
       GatewayClientCapability.SESSION_REPLAY,

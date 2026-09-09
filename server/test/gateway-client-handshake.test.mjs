@@ -208,7 +208,7 @@ test('recovers the client and excludes only the content-safety rejected turn', a
   client.socket.close()
 })
 
-test('5.x connect and 6.0 session.hello share one Gateway business path', async t => {
+test('5.x connect and 7.0 session.hello share one Gateway business path', async t => {
   const { server, gateway } = gatewayHarness()
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   t.after(async () => {
@@ -241,7 +241,7 @@ test('5.x connect and 6.0 session.hello share one Gateway business path', async 
   }))
   const ready = await waitFor(modern.received, event => event.type === 'session.ready')
   assert.equal(ready.request_event_id, 'evt_client_hello')
-  assert.equal(ready.protocol_version, '6.0.0')
+  assert.equal(ready.protocol_version, '7.0.0')
   assert.deepEqual(ready.capabilities, [GatewayClientCapability.INPUT_TEXT])
 
   const state = await waitFor(modern.received, event => event.type === 'voice.state')

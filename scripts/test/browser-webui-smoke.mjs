@@ -27,8 +27,10 @@ const MOCK_BROWSER_APIS = String.raw`
     playbackStarts: 0,
     playbackStops: 0,
     socketMessages: 0,
+    socketConnections: 0,
+    socketCloses: 0,
     nextEvent: 1,
-    lastSocket: null,
+    serverDisconnected: false,
     processor: null,
   }
 
@@ -76,7 +78,7 @@ const MOCK_BROWSER_APIS = String.raw`
       this.url = url
       this.readyState = MockWebSocket.CONNECTING
       eventListeners(this)
-      state.lastSocket = this
+      increment('socketConnections')
       setTimeout(() => {
         this.readyState = MockWebSocket.OPEN
         this.emit('open')
@@ -118,6 +120,10 @@ const MOCK_BROWSER_APIS = String.raw`
             type: 'audio.done',
             responseId: 'response-browser-smoke',
           })
+          if (location.search.includes('browser-smoke=reconnect') && !state.serverDisconnected) {
+            state.serverDisconnected = true
+            setTimeout(() => this.close(), 5)
+          }
         }, 0)
       }
     }
@@ -125,6 +131,7 @@ const MOCK_BROWSER_APIS = String.raw`
     close() {
       if (this.readyState === MockWebSocket.CLOSED) return
       this.readyState = MockWebSocket.CLOSED
+      increment('socketCloses')
       this.emit('close', { code: 1000 })
     }
   }
@@ -191,7 +198,7 @@ const MOCK_BROWSER_APIS = String.raw`
         connect() {},
         start() {
           increment('playbackStarts')
-          setTimeout(() => source.onended?.(), 0)
+          setTimeout(() => source.onended?.(), 40)
         },
         stop() {
           increment('playbackStops')
@@ -201,10 +208,7 @@ const MOCK_BROWSER_APIS = String.raw`
     }
   }
 
-  const track = eventListeners({
-    muted: false,
-    stop() { increment('trackStops') },
-  })
+  let trackNumber = 0
   const mediaDevices = eventListeners({
     async getUserMedia() {
       increment('mediaRequests')
@@ -212,6 +216,14 @@ const MOCK_BROWSER_APIS = String.raw`
         const error = new Error('Permission denied')
         error.name = 'NotAllowedError'
         throw error
+      }
+      trackNumber += 1
+      const track = eventListeners({
+        muted: false,
+        stop() { increment('trackStops') },
+      })
+      if (location.search.includes('browser-smoke=track-ended') && trackNumber === 1) {
+        setTimeout(() => track.emit('ended'), 10)
       }
       return {
         getAudioTracks: () => [track],
@@ -313,6 +325,38 @@ async function testHappyPath(context) {
   await page.close()
 }
 
+async function testReconnectInterruptsPlayback(context) {
+  const page = await preparePage(context, '?browser-smoke=reconnect')
+  await page.getByRole('button', { name: '开启麦克风', exact: true }).click()
+  await page.getByRole('button', { name: '麦克风静音', exact: true })
+    .waitFor({ state: 'visible' })
+  await waitForAttribute(page, 'data-media-requests', value => value === '1')
+  await waitForAttribute(page, 'data-playback-starts', value => Number(value) >= 1)
+  await waitForAttribute(page, 'data-socket-connections', value => Number(value) >= 2)
+  await waitForAttribute(page, 'data-playback-stops', value => Number(value) >= 1)
+
+  assert.equal(await page.locator('html').getAttribute('data-media-requests'), '1')
+  assert.equal(await page.locator('html').getAttribute('data-processor-connects'), '1')
+  assert.equal(await page.locator('html').getAttribute('data-track-stops') || '0', '0')
+
+  await page.getByRole('button', { name: '麦克风静音', exact: true }).click()
+  await waitForAttribute(page, 'data-track-stops', value => value === '1')
+  await page.close()
+}
+
+async function testEndedTrackIsReacquired(context) {
+  const page = await preparePage(context, '?browser-smoke=track-ended')
+  await page.getByRole('button', { name: '开启麦克风', exact: true }).click()
+  await page.getByRole('button', { name: '麦克风静音', exact: true })
+    .waitFor({ state: 'visible' })
+  await waitForAttribute(page, 'data-media-requests', value => Number(value) >= 2)
+  await waitForAttribute(page, 'data-track-stops', value => Number(value) >= 1)
+  await waitForAttribute(page, 'data-processor-connects', value => Number(value) >= 2)
+
+  assert.equal(await page.locator('html').getAttribute('data-media-requests'), '2')
+  await page.close()
+}
+
 async function testPermissionDenied(context) {
   const page = await preparePage(context, '?browser-smoke=deny-microphone')
   await page.getByRole('button', { name: '开启麦克风', exact: true }).click()
@@ -330,9 +374,11 @@ try {
   browser = await chromium.launch({ headless: true })
   const context = await browser.newContext({ locale: 'zh-CN' })
   await testHappyPath(context)
+  await testReconnectInterruptsPlayback(context)
+  await testEndedTrackIsReacquired(context)
   await testPermissionDenied(context)
   await context.close()
-  console.log('Browser WebUI voice smoke passed: happy path and permission denial.')
+  console.log('Browser WebUI voice smoke passed: happy path, reconnect, track recovery, and permission denial.')
 } finally {
   await browser?.close()
   if (server.vite.exitCode === null) server.vite.kill()

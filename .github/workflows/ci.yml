@@ -33,6 +33,10 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npx playwright install --with-deps chromium
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run test:web-browser
       # Smart Cockpit has its own Vite/ESLint toolchain outside the root
       # workspace graph. Exercise it once on the baseline Linux job instead of
       # duplicating the same frontend build across the full OS/Node matrix.

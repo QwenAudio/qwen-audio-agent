@@ -340,6 +340,52 @@ test('reference Client executes negotiated Actions and deduplicates replayed eve
   client.stop()
 })
 
+test('reference Client discards an Action result after the connection is replaced', async () => {
+  const sockets = []
+  let resolveAction
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => {
+      const socket = new FakeSocket()
+      sockets.push(socket)
+      return socket
+    },
+    clientInstanceId: 'sdk-stale-action-test',
+    capabilities: [GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP],
+    reconnect: false,
+    onAction: () => new Promise(resolve => { resolveAction = resolve }),
+  }).start()
+
+  const firstSocket = sockets[0]
+  firstSocket.open()
+  firstSocket.receive({
+    type: GatewayClientProtocolEvent.SESSION_READY,
+    event_id: 'evt_gateway_ready_stale_action',
+    request_event_id: firstSocket.sent[0].event_id,
+    protocol_version: '6.0.0',
+    session_id: 'main',
+    capabilities: [GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP],
+  })
+  firstSocket.receive({
+    type: GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
+    event_id: 'evt_gateway_stale_action',
+    name: 'desktop.presence.enter_sleep',
+  })
+
+  client.stop()
+  client.start()
+  const secondSocket = sockets[1]
+  secondSocket.open()
+  resolveAction({ status: 'completed' })
+  await new Promise(resolve => setImmediate(resolve))
+
+  assert.equal(
+    secondSocket.sent.some(event => event.type === GatewayClientProtocolEvent.CLIENT_ACTION_RESULT),
+    false,
+  )
+  client.stop()
+})
+
 test('reference Client reconnects, replays from its cursor, then reconciles snapshots', async () => {
   const sockets = []
   const received = []

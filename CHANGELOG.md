@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Gateway Client 不再把旧连接中尚未完成的桌面 Action 结果发送到重连后的新连接。
 - 修复回答后台 Agent 任务追问后，Gateway Client 仍等待并显示请求超时的问题。
 - WebUI 与共享移动端现在会在后台任务卡片中展示类型化 Artifact；支持远程媒体
   的显式加载、内联图片预览、结构化数据和可打开或下载的文件产物，并在语音播报

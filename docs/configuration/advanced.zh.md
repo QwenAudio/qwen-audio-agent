@@ -131,8 +131,9 @@ QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
 | --- | --- |
 | `HOST` / `PORT` | `127.0.0.1` / `3101` |
 | `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS` | 空；只允许 loopback |
+| `QWEN_AUDIO_GATEWAY_LAN` | 空；设为 `1` 后监听 LAN (`0.0.0.0`) |
+| `QWEN_AUDIO_GATEWAY_LAN_HOST` | 自动选择物理网卡 IPv4；可显式指定 LAN Endpoint 主机 |
 | `QWEN_AUDIO_GATEWAY_TAILNET` | 空；设为 `1` 后使用系统 Tailscale Serve |
-| `QWEN_AUDIO_GATEWAY_PUBLIC_URL` | 空；用户自行维护的 HTTPS Origin |
 | `QWEN_AUDIO_TAILSCALE_BINARY` | 自动发现；系统 Tailscale CLI 的可选绝对路径 |
 | `OPENCODE_WORKSPACE` | 共享数据目录下的 `workspace` |
 | `QODER_WORKSPACE` | 共享数据目录下的 `workspace` |

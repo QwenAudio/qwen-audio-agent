@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  createGatewayDirectConnection,
+  encodeGatewayBrowserDirectConnection,
   encodeGatewayBrowserPairingCode,
   encodeGatewayPairingCode,
 } from '../../shared/gateway/remote-access.mjs'
@@ -44,6 +46,29 @@ test('pairs a mobile profile without exposing backend configuration', async () =
   })
 })
 
+test('imports a direct connection code without an HTTPS pairing request', async () => {
+  const direct = createGatewayDirectConnection({
+    gatewayUrl: 'https://voice.example.test',
+    deviceId: 'direct-phone',
+    credentialId: 'device_key_direct',
+    accessToken: 'qwa_direct-mobile-device-token',
+    label: 'AI Passport',
+  })
+  const profile = await pairMobileGateway(encodeGatewayBrowserDirectConnection(direct), {
+    clientInstanceId: 'mobile-direct-one',
+    request: () => assert.fail('direct connection must not use HTTP'),
+  })
+  const { deviceId, ...profileData } = profile
+  assert.match(deviceId, /^device_connection_[0-9a-f-]{36}$/u)
+  assert.equal(deviceId.includes(direct.access_token), false)
+  assert.deepEqual(profileData, {
+    gatewayUrl: 'https://voice.example.test',
+    accessToken: 'qwa_direct-mobile-device-token',
+    clientInstanceId: 'mobile-direct-one',
+    label: 'Mobile',
+  })
+})
+
 test('pairs from the compact browser link encoded in the CLI QR code', async () => {
   const browserPairingCode = encodeGatewayBrowserPairingCode({
     version: 1,
@@ -62,6 +87,22 @@ test('pairs from the compact browser link encoded in the CLI QR code', async () 
     }),
   })
   assert.equal(profile.gatewayUrl, 'https://voice.example.test')
+})
+
+test('imports the short direct browser QR without an HTTP pairing request', async () => {
+  const direct = createGatewayDirectConnection({
+    gatewayUrl: 'https://voice.example.test',
+    deviceId: 'browser-direct-phone',
+    credentialId: 'device_key_browser_direct',
+    accessToken: 'qwa_direct-browser-device-token',
+  })
+  const profile = await pairMobileGateway(encodeGatewayBrowserDirectConnection(direct), {
+    clientInstanceId: 'mobile-browser-direct',
+    request: () => assert.fail('direct browser QR must not use HTTP pairing'),
+  })
+  assert.equal(profile.gatewayUrl, 'https://voice.example.test')
+  assert.equal(profile.accessToken, direct.access_token)
+  assert.equal(profile.clientInstanceId, 'mobile-browser-direct')
 })
 
 test('keeps the paired client instance stable across native app restarts', () => {
@@ -83,7 +124,7 @@ test('keeps the paired client instance stable across native app restarts', () =>
   })
 })
 
-test('requires a secure remote endpoint and complete stored credentials', async () => {
+test('requires a secure hostname endpoint and complete stored credentials', async () => {
   const insecure = encodeGatewayPairingCode({
     version: 1,
     gateway_url: 'http://machine.test:3101',
@@ -95,4 +136,16 @@ test('requires a secure remote endpoint and complete stored credentials', async 
     error => error.code === 'mobile_gateway_requires_https',
   )
   assert.equal(parseMobileGatewayProfile({ gatewayUrl: 'https://machine.test' }), null)
+})
+
+test('imports a tokenized direct LAN IPv4 connection', async () => {
+  const direct = createGatewayDirectConnection({
+    websocketUrl: 'ws://192.168.10.22:3101/api/realtime',
+    deviceId: 'lan-device',
+    credentialId: 'device_key_lan',
+    accessToken: 'qwa_direct-lan-device-secret',
+  })
+  const profile = await pairMobileGateway(encodeGatewayBrowserDirectConnection(direct))
+  assert.equal(profile.gatewayUrl, 'http://192.168.10.22:3101')
+  assert.equal(profile.accessToken, direct.access_token)
 })

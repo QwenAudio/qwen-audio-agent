@@ -50,7 +50,7 @@ export async function scanGatewayPairingCode() {
     hint: CapacitorBarcodeScannerTypeHint.QR_CODE,
     cameraDirection: CapacitorBarcodeScannerCameraDirection.BACK,
     scanOrientation: CapacitorBarcodeScannerScanOrientation.ADAPTIVE,
-    scanInstructions: '扫描 Gateway CLI 输出的配对码',
+    scanInstructions: '扫描 Gateway CLI 输出的连接码',
     cancelButtonAccessibilityLabel: '取消扫描',
   })
   return String(result.ScanResult || '').trim()

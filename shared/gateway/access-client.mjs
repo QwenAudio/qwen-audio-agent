@@ -1,12 +1,38 @@
 export {
   createGatewayPairingTicket,
+  issueGatewayDevice,
   listGatewayDevices,
   pairGatewayDevice,
   revokeGatewayDevice,
 } from './http-client.mjs'
 
 import { pairGatewayDevice } from './http-client.mjs'
-import { assertGatewayPairingCodeActive } from './remote-access.mjs'
+import {
+  assertGatewayPairingCodeActive,
+  gatewayOriginFromWebSocketUrl,
+  parseGatewayDirectConnection,
+} from './remote-access.mjs'
+
+export async function saveGatewayDirectConnection(connection, {
+  clientInstanceId,
+  profileId,
+  label,
+  profileStore,
+} = {}) {
+  const direct = parseGatewayDirectConnection(connection)
+  if (!profileStore?.save) {
+    throw new TypeError('saveGatewayDirectConnection requires a connection profile store')
+  }
+  const profile = await profileStore.save({
+    id: profileId || direct.device_id,
+    gateway_url: gatewayOriginFromWebSocketUrl(direct.websocket_url),
+    device_id: direct.device_id,
+    credential_ref: direct.credential_id,
+    client_instance_id: clientInstanceId || direct.device_id,
+    ...((label || direct.label) ? { label: label || direct.label } : {}),
+  }, direct.access_token)
+  return { profile }
+}
 
 export async function pairGatewayConnectionCode(pairingCode, {
   device,

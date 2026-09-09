@@ -25,7 +25,8 @@ Delivery、Client Action、参考 Client SDK 与有限回放均落在同一条 W
 线协议 7.0 将权限决定 `once` 替换为明确的 Task 级 `task`，Gateway 与客户端
 需要同步更新。Capability ID 保留历史名称，实际线协议版本通过 `session.hello` 协商。
 
-当前健康契约版本为 `5.8.0`。新增的 `5.8` 能力通过 capability 协商提供实时 JPEG
+当前健康契约版本为 `5.9.0`。新增的 `5.9` 能力允许网关主机直接签发设备连接码：
+对话客户端只用一条 WS/WSS 完成认证与业务，本机 HTTP 仅保留为宿主管理面。`5.8` 能力通过 capability 协商提供实时 JPEG
 视觉帧，并把厂商线协议保留在 Realtime Provider Adapter 内。`5.7` 能力提供远程 Client 认证、一次性
 设备配对，以及按用户生效的活动 Client 接管与租约代次 fencing。`5.6` 能力为可替换客户端提供
 Provider 无关的前台记忆控制面。`5.5` 能力提供共享参考 Client SDK、有限 Task
@@ -59,6 +60,7 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `gateway.setup-gate` | 未配置的启动以 `QWAUDIO_GATEWAY_SETUP_REQUIRED` 拒绝并附带 `missing` 清单，而不是运行一个语音不可用的实例 | `test/gateway-setup.test.mjs` |
 | `gateway.settings-store` | 配置持久化由本包自持：`createSettingsStore({ configDir, clientDir })`——宿主不认识任何配置项、不持有任何配置文件 | `desktop/test/settings-store.test.mjs` |
 | `gateway.remote-access-pairing` | 本机访问保持零配置；远程 HTTP/WS 必须使用配置或配对凭据，本机操作者可签发和撤销设备令牌 | `server/test/gateway-access.test.mjs`、`server/test/request-security.test.mjs` |
+| `gateway.direct-device-connection` | 仅本机可调用的管理接口签发一个包含可撤销独立设备凭证的短浏览器兼容连接码；原生客户端导入时不需要 HTTP 配对或健康预检，浏览器仅把 fragment Token 换成 HttpOnly Cookie | `server/test/gateway-application.test.mjs`、`test/gateway-remote-access.test.mjs`、`desktop/test/gateway-connection.test.mjs` |
 | `host.electron-entry` | `qwen-audio-agent/electron`：Electron 主进程可直接 `require` 的 CommonJS 入口，一次 `load()` 拿到全部契约 | `test/consumer-install.test.mjs` |
 | `host.gateway-process` | `GatewayProcess` 随包发布：fork、端口回退、就绪握手、重启、计划退出与崩溃分离——桌面版跑的是同一份实现 | `desktop/test/gateway-process.test.mjs` |
 | `input.suspend-protocol` | `POST /api/input/suspend\|resume`、`GET /api/input`；Gateway 通过 `input.suspend` / `input.resume` 把抢占传达给客户端 | `server/test/input-suspend-protocol.test.mjs` |
@@ -99,8 +101,8 @@ Task 事件提供与 A2A 对齐的 `submitted`、
 | `qwen-audio-agent/gateway-client-protocol` | GCP 7.0 信封、握手与运行时命令 Schema、解析器、能力常量和参考 Client Helper |
 | `qwen-audio-agent/gateway-client-sdk` | `GatewayClient`：WebSocket 生命周期、7.0 握手、请求关联、Client Action、有限回放和重连恢复 |
 | `qwen-audio-agent/gateway-client-profiles` | WebUI、Desktop、TUI 的参考 capability profile |
-| `qwen-audio-agent/gateway-access-client` | 创建本机一次性配对码、换取远程设备令牌的 Client Helper |
-| `qwen-audio-agent/gateway-remote-access` | 带版本的端点描述、连接配置与配对码 Schema；配置仅保存安全存储引用，不保存凭据 |
+| `qwen-audio-agent/gateway-access-client` | 直接签发设备连接、保留旧配对交换并通过安全存储抽象保存凭据的 Client Helper |
+| `qwen-audio-agent/gateway-remote-access` | 带版本的端点、连接配置、直接连接码与旧配对 Schema；配置仅保存安全存储引用，不保存凭据 |
 | `qwen-audio-agent/gateway-connection-profiles` | 带版本的 Connection Profile 持久化与原生 Client Credential Store Port |
 | `qwen-audio-agent/client-events` | 供 Gateway 扩展使用的 Client Event Definition Registry、内置定义、路由 Policy 与 `GatewayEventRouter` |
 | `qwen-audio-agent/client-actions` | `ClientActionPort`、内置 Action 名称、capability 映射、请求/结果关联、deadline 与进行中请求去重 |

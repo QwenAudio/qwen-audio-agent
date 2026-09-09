@@ -1,14 +1,59 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  createGatewayDirectConnection,
   createGatewayPairingCode,
+  decodeGatewayConnectionCode,
+  decodeGatewayDirectConnection,
   decodeGatewayPairingCode,
+  encodeGatewayBrowserDirectConnection,
   encodeGatewayBrowserPairingCode,
   encodeGatewayPairingCode,
+  gatewayOriginFromWebSocketUrl,
+  gatewayWebSocketUrl,
   parseGatewayConnectionProfile,
+  parseGatewayDirectConnection,
   parseGatewayEndpointDescriptor,
   parseGatewayPairingCode,
 } from '../shared/gateway/remote-access.mjs'
+
+test('one short browser-compatible code carries a direct connection', () => {
+  const connection = createGatewayDirectConnection({
+    gatewayUrl: 'https://voice.example.com',
+    deviceId: 'device_phone',
+    credentialId: 'device_key_123',
+    accessToken: 'qwa_device-secret-with-enough-entropy',
+    label: '客厅设备',
+    issuedAt: 1_800_000_000_000,
+  })
+  assert.equal(connection.websocket_url, 'wss://voice.example.com/api/realtime')
+  assert.equal(gatewayWebSocketUrl('http://127.0.0.1:3101'), 'ws://127.0.0.1:3101/api/realtime')
+  assert.equal(gatewayOriginFromWebSocketUrl(connection.websocket_url), 'https://voice.example.com')
+  assert.deepEqual(parseGatewayDirectConnection(connection), connection)
+  const browser = new URL(encodeGatewayBrowserDirectConnection(connection))
+  assert.equal(browser.toString(), 'https://voice.example.com/c#d.qwa_device-secret-with-enough-entropy')
+  const browserDecoded = decodeGatewayConnectionCode(browser)
+  assert.equal(browserDecoded.kind, 'direct')
+  assert.equal(browserDecoded.connection.websocket_url, connection.websocket_url)
+  assert.equal(browserDecoded.connection.access_token, connection.access_token)
+  assert.equal(decodeGatewayDirectConnection(browser).access_token, connection.access_token)
+  assert.throws(() => decodeGatewayDirectConnection('qwaudio://connect#legacy'))
+  assert.throws(() => parseGatewayDirectConnection({
+    ...connection,
+    websocket_url: 'wss://voice.example.com/another-path',
+  }))
+})
+
+test('short device tokens never become persisted profile identifiers', () => {
+  const accessToken = 'AbCdEfGhIjKlMnOpQrStUv'
+  const code = `https://voice.example.com/c#d.${accessToken}`
+  const { access_token: credential, ...metadata } = decodeGatewayDirectConnection(code)
+  assert.equal(credential, accessToken)
+  assert.equal(JSON.stringify(metadata).includes(accessToken), false)
+  assert.match(metadata.device_id, /^device_connection_[0-9a-f-]{36}$/u)
+  assert.match(metadata.credential_id, /^gateway\/connection\/[0-9a-f-]{36}$/u)
+  assert.notEqual(decodeGatewayDirectConnection(code).device_id, metadata.device_id)
+})
 
 test('remote endpoint descriptors expose only transport-neutral connection data', () => {
   assert.deepEqual(parseGatewayEndpointDescriptor({

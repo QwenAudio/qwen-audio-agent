@@ -1,6 +1,10 @@
 import { pairGatewayConnectionCode } from '../../shared/gateway/access-client.mjs'
 import { readGatewayHealth } from '../../shared/gateway/http-client.mjs'
-import { decodeGatewayPairingCode, parseGatewayConnectionProfile } from '../../shared/gateway/remote-access.mjs'
+import {
+  decodeGatewayConnectionCode,
+  gatewayOriginFromWebSocketUrl,
+  parseGatewayConnectionProfile,
+} from '../../shared/gateway/remote-access.mjs'
 import { isLoopbackUrl, validateAppUrl } from './security.mjs'
 
 // Pairing links are input, never persisted Gateway addresses. Decode before
@@ -12,13 +16,25 @@ export function parseDesktopGatewayInput(value) {
   } catch {
     throw new Error('请输入有效的 Gateway 地址或连接链接')
   }
-  const pairing = url.protocol === 'qwaudio:' || url.pathname === '/c'
-  const pairingCode = pairing ? decodeGatewayPairingCode(url.href) : null
-  if (!pairingCode && (url.username || url.password || url.search || url.hash || url.pathname !== '/')) {
+  const connectionLink = url.protocol === 'qwaudio:' || url.pathname === '/c'
+  const decoded = connectionLink ? decodeGatewayConnectionCode(url.href) : null
+  const pairingCode = decoded?.kind === 'pairing' ? decoded.connection : null
+  const directConnection = decoded?.kind === 'direct' ? decoded.connection : null
+  if (!decoded && (url.username || url.password || url.search || url.hash || url.pathname !== '/')) {
     throw new Error('请输入 Gateway 根地址或完整的连接链接')
   }
-  const origin = validateAppUrl(pairingCode?.gateway_url || url.href)
-  return { origin, remote: !isLoopbackUrl(origin), pairingCode }
+  const origin = validateAppUrl(
+    pairingCode?.gateway_url
+    || (directConnection
+      ? gatewayOriginFromWebSocketUrl(directConnection.websocket_url)
+      : url.href),
+  )
+  return {
+    origin,
+    remote: !isLoopbackUrl(origin),
+    pairingCode,
+    ...(directConnection ? { directConnection } : {}),
+  }
 }
 
 export async function desktopGatewayCredential(origin, profileStore, fallback = '') {
@@ -38,7 +54,20 @@ export async function prepareDesktopGatewayConnection(target, {
   fetchImpl = globalThis.fetch,
 } = {}) {
   let paired = null
-  if (target.pairingCode) {
+  if (target.directConnection) {
+    const direct = target.directConnection
+    paired = {
+      profile: parseGatewayConnectionProfile({
+        id: 'desktop',
+        gateway_url: target.origin,
+        device_id: direct.device_id,
+        credential_ref: direct.credential_id,
+        client_instance_id: clientInstanceId || direct.device_id,
+        label: label || direct.label,
+      }),
+      credential: direct.access_token,
+    }
+  } else if (target.pairingCode) {
     await pairGatewayConnectionCode(target.pairingCode, {
       device: { id: clientInstanceId, type: 'desktop', label },
       clientInstanceId,
@@ -59,27 +88,16 @@ export async function prepareDesktopGatewayConnection(target, {
     || await desktopGatewayCredential(target.origin, profileStore, fallbackAccessToken)
   // A local URL may point at an already running Gateway. Connecting to it
   // does not require configuring or installing another backend on this client.
-  if (!target.remote && !target.pairingCode) {
+  if (!target.remote && !target.pairingCode && !target.directConnection) {
     const health = await readGatewayHealth(target.origin, fetchImpl, { accessToken: credential })
     return { credential, connected: Boolean(health) }
   }
-  let response
-  try {
-    response = await fetchImpl(`${target.origin}/api/health`, {
-      headers: credential ? { Authorization: `Bearer ${credential}` } : {},
-      redirect: 'error',
-      signal: AbortSignal.timeout(5000),
-    })
-  } catch {
-    throw new Error(`无法连接 Gateway：${target.origin}`)
-  }
-  if ([401, 403].includes(response.status)) {
+  if (!credential) {
     throw new Error('Gateway 需要认证，请粘贴其主机生成的新连接链接')
   }
-  const health = await response.json().catch(() => null)
-  if (!response.ok || !health?.backend) {
-    throw new Error(`无法连接 Gateway：${target.origin}`)
-  }
   if (paired) await profileStore.save(paired.profile, paired.credential)
+  // Remote Conversation Clients authenticate and operate on their single
+  // WS/WSS channel. Connection failures are reported by GatewayClient instead
+  // of requiring a separate HTTPS health preflight here.
   return { credential, connected: true }
 }

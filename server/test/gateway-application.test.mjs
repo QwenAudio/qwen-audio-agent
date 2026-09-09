@@ -8,6 +8,7 @@ import test from 'node:test'
 import WebSocket from 'ws'
 import { createGatewayApplication } from '../src/app/gateway-application.mjs'
 import { GATEWAY_CLIENT_REVOKED_CLOSE_CODE } from '../../shared/protocol/gateway-client-protocol.mjs'
+import { decodeGatewayDirectConnection } from '../../shared/gateway/remote-access.mjs'
 import { config } from '../src/core/config.mjs'
 import { createRealtimeProviderRegistry } from '../src/voice/providers/provider-registry.mjs'
 import { openAiCompatibleProtocol } from '../src/voice/providers/openai-compatible-protocol.mjs'
@@ -162,7 +163,7 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   const publicEndpointCalls = []
   const publicEndpoint = {
     status: () => ({
-      mode: 'external',
+      mode: 'tailnet',
       state: 'ready',
       endpoint: { url: 'https://voice.example.ts.net', secure: true },
       error: null,
@@ -216,6 +217,110 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   })
   assert.equal(authenticated.status, 200)
   assert.match(authenticated.headers['set-cookie'][0], /HttpOnly/)
+  const remoteIssueDenied = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: { device: { label: 'must-not-exist' } },
+  })
+  assert.equal(remoteIssueDenied.status, 403)
+  const issued = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    // The CLI issues a generic native-client credential; the Capacitor shell
+    // still uses its fixed qwaudio.local origin with that connection code.
+    body: { device: { id: 'direct-phone', type: 'client', label: 'Direct Phone' } },
+  })
+  assert.equal(issued.status, 201)
+  assert.match(issued.body.device.id, /^device_/)
+  assert.equal('access_token' in issued.body, false)
+  const direct = decodeGatewayDirectConnection(issued.body.connection_code)
+  assert.equal(direct.websocket_url, 'wss://voice.example.ts.net/api/realtime')
+  assert.match(issued.body.connection_code, /^https:\/\/voice\.example\.ts\.net\/c#d\./)
+  assert.equal('browser_url' in issued.body, false)
+  assert.equal('native_connection_code' in issued.body, false)
+  const storedDevices = readFileSync(join(directory, 'gateway-devices.json'), 'utf8')
+  assert.equal(storedDevices.includes(direct.access_token), false)
+  const directAuthenticated = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${direct.access_token}`,
+    },
+  })
+  assert.equal(directAuthenticated.status, 200)
+  for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test', 'https://untrusted.example']) {
+    const deniedSession = await requestJson({
+      port,
+      path: '/api/access/session',
+      method: 'POST',
+      headers: { Host: 'voice.example.ts.net', Origin },
+      body: { token: direct.access_token },
+    })
+    assert.equal(deniedSession.status, 403)
+    assert.equal(deniedSession.headers['set-cookie'], undefined)
+  }
+  const browserSession = await requestJson({
+    port,
+    path: '/api/access/session',
+    method: 'POST',
+    headers: {
+      Host: 'voice.example.ts.net',
+      Origin: 'https://voice.example.ts.net',
+      'X-Forwarded-Proto': 'https',
+    },
+    body: { token: direct.access_token },
+  })
+  assert.equal(browserSession.status, 204)
+  assert.match(browserSession.headers['set-cookie'][0], /HttpOnly/)
+  assert.match(browserSession.headers['set-cookie'][0], /Secure/)
+  assert.doesNotMatch(browserSession.headers['set-cookie'][0], new RegExp(direct.access_token))
+  const browserAuthenticated = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'voice.example.ts.net',
+      Origin: 'https://voice.example.ts.net',
+      Cookie: browserSession.headers['set-cookie'][0].split(';')[0],
+    },
+  })
+  assert.equal(browserAuthenticated.status, 200)
+  const directSocket = new WebSocket(
+    `ws://127.0.0.1:${port}/api/realtime?sessionId=direct-device`,
+    {
+      headers: {
+        Host: 'gateway.example.test',
+        Authorization: `Bearer ${direct.access_token}`,
+        Origin: 'https://qwaudio.local',
+      },
+    },
+  )
+  await once(directSocket, 'open')
+  const directClosed = once(directSocket, 'close')
+  const directRevoked = await requestJson({
+    port,
+    path: `/api/access/devices/${issued.body.device.id}`,
+    method: 'DELETE',
+    headers: { Host: `127.0.0.1:${port}` },
+  })
+  assert.equal(directRevoked.status, 204)
+  assert.equal((await directClosed)[0], GATEWAY_CLIENT_REVOKED_CLOSE_CODE)
+  const directDeniedAfterRevocation = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${direct.access_token}`,
+    },
+  })
+  assert.equal(directDeniedAfterRevocation.status, 401)
   for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test', 'file:///tmp/test']) {
     const deniedOrigin = await requestJson({
       port,
@@ -301,7 +406,7 @@ test('protects remote HTTP access and completes one-time device pairing', async 
   assert.equal(publicEndpointCalls.some(call => call[0] === 'close'), false)
 })
 
-test('requires a declared public endpoint before issuing a pairing code', async t => {
+test('requires a declared public endpoint before issuing any connection code', async t => {
   const application = createTestGatewayApplication({
     config: {
       ...config,
@@ -332,6 +437,41 @@ test('requires a declared public endpoint before issuing a pairing code', async 
   })
   assert.equal(response.status, 409)
   assert.equal(response.body.code, 'gateway_public_url_required')
+  const direct = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: { device: { label: 'No endpoint' } },
+  })
+  assert.equal(direct.status, 409)
+  assert.equal(direct.body.code, 'gateway_connection_endpoint_required')
+
+  const overridden = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: {
+      endpoint: 'https://voice.example.com',
+      device: { label: 'Proxy endpoint' },
+    },
+  })
+  assert.equal(overridden.status, 201)
+  assert.equal(
+    decodeGatewayDirectConnection(overridden.body.connection_code).websocket_url,
+    'wss://voice.example.com/api/realtime',
+  )
+
+  const unsafe = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: { endpoint: 'http://voice.example.com' },
+  })
+  assert.equal(unsafe.status, 400)
+  assert.equal(unsafe.body.code, 'gateway_connection_endpoint_unsafe')
 })
 
 test('passes the Task announcement factory through the application composition root', async () => {

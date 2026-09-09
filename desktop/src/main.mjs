@@ -1255,12 +1255,12 @@ async function consumeGatewayPairingCode(value) {
     dialog.showMessageBox({
       type: 'info',
       title: desktopText('Gateway 已连接'),
-      message: desktopText('远程 Gateway 已配对并保存。'),
+      message: desktopText('远程 Gateway 连接凭证已保存。'),
     })
   } catch (error) {
     logger.warn('gateway.remote_pairing_failed', { error })
     dialog.showErrorBox(
-      desktopText('Gateway 配对失败'),
+      desktopText('Gateway 连接失败'),
       String(error?.message || error),
     )
   }

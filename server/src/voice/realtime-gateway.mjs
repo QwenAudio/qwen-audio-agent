@@ -261,7 +261,7 @@ export function attachRealtimeGateway(server, {
     }
     if (!isAllowedOrigin(request, {
       authenticatedRemote: identity.access === 'remote',
-      trustedNativeClient: identity.clientType === 'mobile',
+      trustedNativeClient: ['client', 'mobile'].includes(identity.clientType),
     })) {
       rejectUpgrade(socket, '403 Forbidden', 'origin not allowed')
       return

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Gateway 接入统一为本机、`--lan` 和 `--tailnet` 三种启动模式；对外连接地址
+  独立由 `gateway pair --endpoint` 指定，不再使用启动参数 `--public-url`。
+- `gateway pair` 默认只生成一个短连接码和二维码，浏览器、桌面端和移动端
+  共享 `http(s)://Gateway/c#d.TOKEN`；原生客户端直接通过单条 WebSocket 认证
+  并执行 GCP，浏览器将设备 Token 换为 HttpOnly 会话 Cookie。设备凭证可单独吊销，
+  不再输出冗长的直接连接码；本机和显式启用的 LAN 接入允许明文 HTTP/WS。
 - Gateway 的 HTTP、设备配对与 WebSocket 入口统一拒绝空值、不透明或非法 Origin；
   保留无 Origin 的原生客户端鉴权路径，避免非法来源被误当作原生客户端。
 - 修复共享文件锁在并发释放时误删新锁、导致清单记录丢失的问题；清单初始化和刷新

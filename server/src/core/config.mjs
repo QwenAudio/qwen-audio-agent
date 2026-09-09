@@ -284,8 +284,11 @@ export const config = {
   tailnet: ['1', 'true', 'yes', 'on'].includes(
     String(process.env.QWEN_AUDIO_GATEWAY_TAILNET || '').trim().toLowerCase(),
   ),
-  gatewayPublicUrl: String(
-    process.env.QWEN_AUDIO_GATEWAY_PUBLIC_URL || '',
+  lan: ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.QWEN_AUDIO_GATEWAY_LAN || '').trim().toLowerCase(),
+  ),
+  gatewayLanHost: String(
+    process.env.QWEN_AUDIO_GATEWAY_LAN_HOST || '',
   ).trim(),
   authSecret: process.env.QWEN_AUDIO_AGENT_AUTH_SECRET || '',
   identityMode: (

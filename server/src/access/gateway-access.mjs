@@ -2,7 +2,6 @@ import {
   createHmac,
   createHash,
   randomBytes,
-  randomUUID,
   timingSafeEqual,
 } from 'node:crypto'
 import { VersionedJsonStore } from '../core/versioned-json-store.mjs'
@@ -154,9 +153,12 @@ export class GatewayDeviceRegistry {
   }
 
   create({ ownerId, device = {} } = {}) {
-    const token = `qwa_${randomBytes(32).toString('base64url')}`
+    // 128 bits is sufficient for an online bearer credential and keeps the
+    // browser connection QR within a much smaller QR version.
+    const token = randomBytes(16).toString('base64url')
     const tokenHash = digest(token)
-    const id = clean(device.id).slice(0, 128) || `device_${randomUUID()}`
+    const id = clean(device.id).slice(0, 128)
+      || `device_${randomBytes(12).toString('base64url')}`
     const ownerIdValue = normalizeOwnerId(ownerId)
     const record = {
       id,
@@ -323,6 +325,13 @@ export class GatewayAccessManager {
     this.pairingTickets.set(record.codeHash, record)
     this.prunePairingTickets()
     return { code, expiresAt: record.expiresAt }
+  }
+
+  issueDeviceCredential({ ownerId = this.personalOwnerId, device = {} } = {}) {
+    return this.deviceRegistry.create({
+      ownerId: normalizeOwnerId(ownerId),
+      device,
+    })
   }
 
   redeemPairingTicket(code, { device } = {}) {

@@ -116,6 +116,27 @@ test('allows secure same-origin requests only for authenticated or pairing paths
   }, { allowSecureSameOrigin: true }), false)
 })
 
+test('allows authenticated same-origin LAN browsers without trusting LAN DNS names', () => {
+  assert.equal(isAllowedOrigin({
+    headers: {
+      host: '192.168.1.20:3101',
+      origin: 'http://192.168.1.20:3101',
+    },
+  }, { authenticatedRemote: true }), true)
+  assert.equal(isAllowedOrigin({
+    headers: {
+      host: '192.168.1.20:3101',
+      origin: 'http://192.168.1.20:3101',
+    },
+  }, { allowLanSameOrigin: true }), true)
+  assert.equal(isAllowedOrigin({
+    headers: {
+      host: 'gateway.lan:3101',
+      origin: 'http://gateway.lan:3101',
+    },
+  }, { authenticatedRemote: true }), false)
+})
+
 test('allows the fixed mobile app origin only for an authenticated mobile device', () => {
   const req = {
     headers: {

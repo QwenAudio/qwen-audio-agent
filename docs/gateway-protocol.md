@@ -46,11 +46,12 @@ model context, Task events, or logs.
 
 - Loopback access remains zero-config and the Gateway still binds to
   `127.0.0.1` by default.
+- Explicit `--lan` mode binds to `0.0.0.0` but advertises only the selected
+  physical-interface IPv4 `ws://` endpoint. It is for trusted LANs, never direct public exposure.
 - Remote HTTP and WebSocket access requires either a configured access token or
-  a revocable token issued by one-time device pairing.
-- A native Client sends `Authorization: Bearer <token>`. A browser can first
-  make an authenticated same-origin HTTP request; Gateway exchanges the Bearer
-  credential for an `HttpOnly`, `SameSite=Strict` session cookie.
+  a revocable device token issued by the Gateway host.
+- A native Client sends `Authorization: Bearer <token>` in the WebSocket handshake.
+  A browser carries the same token through the WebSocket subprotocol.
 - Remote browser origins must be explicitly listed in
   `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS`. Remote deployments should use a trusted
   VPN or an HTTPS/WSS reverse proxy; direct public exposure is unsupported.
@@ -59,12 +60,14 @@ model context, Task events, or logs.
   independent owners without changing GCP.
 
 The local operator can run `qwenaudio gateway pair` against a running Gateway.
-It creates a short-lived, one-time ticket. A remote Client redeems it with
-`POST /api/access/pair` and receives a revocable device token. Device tokens
-are persisted only as SHA-256 hashes. Local management endpoints list and
-revoke paired devices.
+It directly creates one short, browser-compatible connection code containing the exact Gateway
+endpoint and a revocable device token; the same code opens the WebUI. Device tokens are persisted
+only as SHA-256 hashes and plaintext credentials are shown once; a native remote Client does not need
+an HTTPS token exchange. The browser shell exchanges its fragment token for an HttpOnly cookie.
+Local management endpoints list and revoke devices. The one-time pairing endpoints remain as a
+compatibility path.
 
-Host-management requests, including endpoint publication, pairing-ticket
+Host-management requests, including endpoint publication, device credential
 creation, and device administration, are outside the interactive GCP Session.
 They authenticate independently and never claim or replace the active Client
 lease.

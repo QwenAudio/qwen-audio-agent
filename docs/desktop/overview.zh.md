@@ -68,7 +68,7 @@ Gateway，会复用该实例，否则由应用启动和管理。
 保存后显示普通地址，后续连接自动使用已保存的凭据。配对步骤见
 [远程连接与配对](../operations/remote-access.zh.md)。远程模式下，Gateway 与后台 Agent
 都在远端运行，桌面版只承担输入输出，不负责发布远端 Gateway。
-Tailnet 模式需要两端安装官方 Tailscale，外部 HTTPS 模式不需要。
+Tailnet 模式需要两端安装官方 Tailscale；LAN 和外部 HTTPS Endpoint 不需要。
 
 ## 安装
 

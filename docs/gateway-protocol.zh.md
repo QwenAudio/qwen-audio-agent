@@ -44,16 +44,21 @@ Gateway 访问认证与 GCP 明确分层。访问凭据在 `session.hello` 之�
 访问令牌不会进入 GCP 信封、模型上下文、Task 事件或日志。
 
 - 本机回环访问继续保持零配置，Gateway 默认仍只监听 `127.0.0.1`。
-- 远程 HTTP 与 WebSocket 必须使用配置的访问密钥，或一次性设备配对签发的可撤销令牌。
-- 原生 Client 使用 `Authorization: Bearer <token>`。浏览器可先发起一次带认证的同源 HTTP 请求；Gateway 会把 Bearer 凭据换成 `HttpOnly`、`SameSite=Strict` 的会话 Cookie。
+- 显式 `--lan` 模式监听 `0.0.0.0`，但仅发布自动选择的物理网卡 IPv4 `ws://` Endpoint；
+  该模式只面向可信局域网，不支持直接暴露到公网。
+- 远程 HTTP 与 WebSocket 必须使用配置的访问密钥，或网关主机签发的可撤销设备令牌。
+- 原生 Client 在 WebSocket 握手使用 `Authorization: Bearer <token>`；浏览器通过 WebSocket 子协议携带同一 Token。
 - 远程浏览器来源必须显式写入 `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS`。远程部署应使用可信 VPN 或 HTTPS/WSS 反向代理，不支持直接暴露到公网。
 - 一个配置密钥映射一个用户；可选的 `QWEN_AUDIO_AGENT_ACCESS_KEYS` JSON 数组可把不同密钥映射到不同用户，而无需修改 GCP。
 
-本机操作者可对运行中的 Gateway 执行 `qwenaudio gateway pair`，生成一个短时、
-一次性配对码。远程 Client 通过 `POST /api/access/pair` 换取可撤销设备令牌。
-设备令牌只以 SHA-256 摘要持久化；本机管理接口可列出和撤销已配对设备。
+本机操作者可对运行中的 Gateway 执行 `qwenaudio gateway pair`，直接生成一个包含准确
+Gateway 地址与可撤销设备令牌、并可直接打开 WebUI 的短浏览器兼容连接码。
+设备令牌只以 SHA-256 摘要持久化，明文凭据只显示一次；原生远程 Client 不需要再通过
+HTTPS 换取 Token。浏览器扫码页仅把 fragment 中的 Token 换成 HttpOnly Cookie。本机管理
+接口可列出和撤销设备。
+旧版一次性配对接口仍作为兼容路径保留。
 
-端点发布、配对码创建与设备管理等 Host 管理请求不属于交互式 GCP Session。
+端点发布、设备连接码签发与设备管理等 Host 管理请求不属于交互式 GCP Session。
 它们独立完成认证，也不会取得或替换活动 Client 租约。
 
 ## 3. 连接与能力协商

@@ -82,6 +82,10 @@ import {
 import {
   projectGatewayTaskEventForFormat,
 } from '../transport/agui-event-projector.mjs'
+import {
+  gatewayDeviceConnectionResponse,
+  parseGatewayConnectionEndpoint,
+} from '../access/device-connection.mjs'
 import { replaySession } from '../session/session-replay.mjs'
 import { GatewayClientCommandRuntime } from '../client/client-command-runtime.mjs'
 import {
@@ -490,8 +494,9 @@ const gatewayEventRouter = clientEventRouter || new GatewayEventRouter({
 })
 const publicEndpointRuntime = publicEndpoint === undefined
   ? new GatewayPublicEndpointService({
+      lan: config.lan,
+      lanHost: config.gatewayLanHost,
       tailnet: config.tailnet,
-      publicUrl: config.gatewayPublicUrl,
       logger,
     })
   : publicEndpoint
@@ -509,10 +514,9 @@ app.get('/c', (_req, res) => {
   return res.type('html').send(gatewayBrowserPairingPage())
 })
 
-// Pairing is the only unauthenticated remote operation. The short-lived,
-// one-time ticket is created by an already authenticated local Client. Native
-// clients may omit Origin; browsers still have to come from an allowlisted
-// public origin.
+// Legacy pairing authenticates with a short-lived, one-time ticket created by
+// a local Client. Native clients may omit Origin; browser Origins are checked
+// before the ticket is redeemed.
 app.post('/api/access/pair', (req, res) => {
   if (req.headers.origin !== undefined && !isAllowedOrigin(req, {
     allowedOrigins: config.allowedOrigins,
@@ -540,6 +544,36 @@ app.post('/api/access/pair', (req, res) => {
     owner_id: paired.device.ownerId,
     device: paired.device,
   })
+})
+
+// A direct connection QR opens the browser shell with the credential in the
+// fragment. Exchange it once for an HttpOnly cookie so the token never enters
+// browser storage, application URLs, or subsequent WebSocket messages.
+app.post('/api/access/session', (req, res) => {
+  if (!isAllowedOrigin(req, {
+    allowedOrigins: config.allowedOrigins,
+    allowSecureSameOrigin: true,
+    allowLanSameOrigin: true,
+  })) {
+    return res.status(403).json({ error: 'origin not allowed' })
+  }
+  const token = String(req.body?.token || '').trim()
+  const credential = token ? gatewayAccessRuntime.findCredential(token) : null
+  if (!credential) {
+    return res.status(401).json({
+      error: 'device credential is invalid or revoked',
+      code: 'device_credential_invalid',
+    })
+  }
+  const identity = {
+    ownerId: credential.ownerId,
+    access: 'remote',
+    credentialId: credential.tokenId || credential.id,
+    clientType: credential.type || '',
+  }
+  gatewayAccessRuntime.issueCookie(res, identity, req)
+  res.setHeader('cache-control', 'no-store')
+  return res.status(204).end()
 })
 
 app.use((req, res, next) => {
@@ -584,7 +618,7 @@ app.post('/api/access/pairing-tickets', (req, res) => {
   const endpoint = publicEndpointRuntime?.status?.().endpoint?.url
   if (!endpoint) {
     return res.status(409).json({
-      error: 'Gateway 没有可供远程客户端访问的 HTTPS 地址；请使用 --tailnet 或 --public-url 启动',
+      error: '旧版配对需要使用 --lan 或 --tailnet 启动 Gateway',
       code: 'gateway_public_url_required',
     })
   }
@@ -601,6 +635,39 @@ app.get('/api/access/devices', (req, res) => {
     return res.status(403).json({ error: 'paired devices can only be managed locally' })
   }
   return res.json({ devices: gatewayAccessRuntime.deviceRegistry.list() })
+})
+
+app.post('/api/access/devices', (req, res) => {
+  if (req.identity.access !== 'local') {
+    return res.status(403).json({ error: 'device credentials can only be issued locally' })
+  }
+  let endpoint
+  try {
+    endpoint = req.body?.endpoint
+      ? parseGatewayConnectionEndpoint(req.body.endpoint)
+      : publicEndpointRuntime?.status?.().endpoint?.url
+  } catch (error) {
+    return res.status(400).json({
+      error: error.message,
+      code: error.code || 'gateway_connection_endpoint_invalid',
+    })
+  }
+  if (!endpoint) {
+    return res.status(409).json({
+      error: 'Gateway 没有可供客户端访问的 Endpoint；请使用 --lan、--tailnet，或在 pair 时传入 --endpoint',
+      code: 'gateway_connection_endpoint_required',
+    })
+  }
+  const issued = gatewayAccessRuntime.issueDeviceCredential({
+    ownerId: req.identity.ownerId,
+    // Direct issuance always allocates a fresh device identity. A caller may
+    // describe the client, but cannot rotate an existing record by reusing ID.
+    device: {
+      type: req.body?.device?.type,
+      label: req.body?.device?.label,
+    },
+  })
+  return res.status(201).json(gatewayDeviceConnectionResponse({ endpoint, issued }))
 })
 
 app.delete('/api/access/devices/:id', (req, res) => {

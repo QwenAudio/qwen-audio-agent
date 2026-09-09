@@ -12,6 +12,8 @@ import { clientSettingsPatch } from '../src/settings-config.mjs'
 import { createSettingsStore } from '../src/settings-store.mjs'
 import { GatewayConnectionProfileStore } from '../../shared/gateway/connection-profiles.mjs'
 import {
+  createGatewayDirectConnection,
+  encodeGatewayBrowserDirectConnection,
   encodeGatewayBrowserPairingCode,
   encodeGatewayPairingCode,
 } from '../../shared/gateway/remote-access.mjs'
@@ -49,6 +51,62 @@ test('one field accepts local and remote origins', () => {
   })
 })
 
+test('imports a direct WSS connection code without an HTTP pairing or health request', async t => {
+  const { profiles } = stores(t)
+  const direct = createGatewayDirectConnection({
+    gatewayUrl: 'https://voice.example.com',
+    deviceId: 'direct-device',
+    credentialId: 'device_key_direct',
+    accessToken: 'AbCdEfGhIjKlMnOpQrStUv',
+    label: 'Phone',
+    issuedAt: 1_800_000_000_000,
+  })
+  const target = parseDesktopGatewayInput(encodeGatewayBrowserDirectConnection(direct))
+  assert.equal(target.origin, 'https://voice.example.com')
+  assert.equal(target.directConnection.access_token, direct.access_token)
+  const result = await prepareDesktopGatewayConnection(target, {
+    profileStore: profiles,
+    clientInstanceId: 'desktop-instance',
+    label: 'Desktop',
+    fetchImpl: () => assert.fail('direct connection must not use HTTP'),
+  })
+  assert.deepEqual(result, { credential: direct.access_token, connected: true })
+  const saved = await profiles.resolve('desktop')
+  assert.equal(saved.credential, direct.access_token)
+  assert.equal(saved.profile.gateway_url, 'https://voice.example.com')
+  assert.match(saved.profile.credential_ref, /^gateway\/connection\//)
+  assert.equal(JSON.stringify(saved.profile).includes(direct.access_token), false)
+  assert.equal(readFileSync(profiles.filePath, 'utf8').includes(direct.access_token), false)
+})
+
+test('imports a tokenized direct LAN connection code', async t => {
+  const { profiles } = stores(t)
+  const direct = createGatewayDirectConnection({
+    websocketUrl: 'ws://192.168.10.22:3101/api/realtime',
+    deviceId: 'lan-device',
+    credentialId: 'device_key_lan',
+    accessToken: 'qwa_direct-lan-device-secret',
+  })
+  const target = parseDesktopGatewayInput(encodeGatewayBrowserDirectConnection(direct))
+  assert.equal(target.origin, 'http://192.168.10.22:3101')
+  assert.equal((await prepareDesktopGatewayConnection(target, {
+    profileStore: profiles,
+    clientInstanceId: 'desktop-lan',
+  })).connected, true)
+})
+
+test('imports the short browser QR as a direct Gateway connection', () => {
+  const direct = createGatewayDirectConnection({
+    gatewayUrl: 'https://voice.example.com',
+    deviceId: 'browser-device',
+    credentialId: 'device_key_browser',
+    accessToken: 'qwa_direct-browser-device-token',
+  })
+  const target = parseDesktopGatewayInput(encodeGatewayBrowserDirectConnection(direct))
+  assert.equal(target.origin, 'https://voice.example.com')
+  assert.equal(target.directConnection.access_token, direct.access_token)
+})
+
 for (const encode of [encodeGatewayPairingCode, encodeGatewayBrowserPairingCode]) {
   test(`decodes ${encode.name} before stripping URL parameters`, () => {
     const pairing = code()
@@ -67,9 +125,7 @@ for (const encode of [encodeGatewayPairingCode, encodeGatewayBrowserPairingCode]
         assert.equal(JSON.parse(options.body).device.type, 'desktop')
         return Response.json({ device: { id: 'paired-device' }, access_token: 'private-device-token', owner_id: 'personal' })
       }
-      assert.equal(options.headers.Authorization, 'Bearer private-device-token')
-      // The remote model need not match any local setting.
-      return Response.json({ backend: { kind: 'qwen-code', ok: true }, realtimeProvider: 'speech-to-speech' })
+      assert.fail('remote connection must not perform an HTTP health preflight')
     }
     const target = parseDesktopGatewayInput(encode(code()))
     const options = { profileStore: profiles, clientInstanceId: 'desktop-device', label: 'Desktop', fetchImpl }
@@ -81,7 +137,7 @@ for (const encode of [encodeGatewayPairingCode, encodeGatewayBrowserPairingCode]
     assert.equal(settings.load().gatewayUrl, target.origin)
     await prepareDesktopGatewayConnection(parseDesktopGatewayInput(settings.load().gatewayUrl), options)
     assert.equal(calls.filter(call => call.url.endsWith('/pair')).length, 1)
-    assert.equal(calls.length, 3)
+    assert.equal(calls.length, 1)
   })
 }
 
@@ -128,29 +184,25 @@ test('credentials are matched to the exact Gateway origin, including a switch ba
   assert.equal(await desktopGatewayCredential('http://127.0.0.1:3101', profiles), '')
 })
 
-test('a failed health check after pairing preserves the previous saved connection', async t => {
+test('legacy pairing also transitions directly to the single WSS runtime', async t => {
   const { profiles } = stores(t)
   await profiles.save({ id: 'desktop', gateway_url: 'https://old.example', device_id: 'old', credential_ref: 'old', client_instance_id: 'desktop' }, 'old-secret')
-  await assert.rejects(prepareDesktopGatewayConnection(parseDesktopGatewayInput(encodeGatewayPairingCode(code())), {
+  const result = await prepareDesktopGatewayConnection(parseDesktopGatewayInput(encodeGatewayPairingCode(code())), {
     profileStore: profiles, clientInstanceId: 'desktop', label: 'Desktop',
     fetchImpl: async url => url.endsWith('/pair')
       ? Response.json({ device: { id: 'new' }, access_token: 'new-secret' })
-      : Response.json({ error: 'unavailable' }, { status: 503 }),
-  }), /无法连接 Gateway/)
-  assert.equal((await profiles.resolve('desktop')).credential, 'old-secret')
+      : assert.fail('legacy pairing must not add a health request'),
+  })
+  assert.deepEqual(result, { credential: 'new-secret', connected: true })
+  assert.equal((await profiles.resolve('desktop')).credential, 'new-secret')
 })
 
-test('remote connection failures surface authentication or connectivity errors', async () => {
+test('a bare remote origin requires a previously saved credential without probing HTTP', async () => {
   const target = parseDesktopGatewayInput('https://gateway.example')
-  for (const status of [401, 403, 500, 200]) {
-    await assert.rejects(prepareDesktopGatewayConnection(target, {
-      profileStore: emptyProfiles,
-      fetchImpl: async () => Response.json({ error: 'not a Gateway health response' }, { status }),
-    }), status === 401 || status === 403 ? /需要认证/ : /无法连接 Gateway/)
-  }
   await assert.rejects(prepareDesktopGatewayConnection(target, {
-    profileStore: emptyProfiles, fetchImpl: async () => { throw new Error('network timeout') },
-  }), /无法连接 Gateway/)
+    profileStore: emptyProfiles,
+    fetchImpl: () => assert.fail('must not probe HTTP'),
+  }), /需要认证/)
 })
 
 test('local Gateway detection distinguishes attaching from starting one', async () => {

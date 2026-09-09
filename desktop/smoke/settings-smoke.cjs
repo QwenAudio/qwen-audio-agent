@@ -40,6 +40,10 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
     },
   })
   const evaluate = source => window.webContents.executeJavaScript(source)
+  const rendererMessages = []
+  window.webContents.on('console-message', (_event, details) => {
+    if (details.message) rendererMessages.push(details.message)
+  })
   try {
     await window.loadFile(resolve(__dirname, '../src/settings.html'))
     await evaluate(`new Promise((resolve, reject) => {
@@ -52,8 +56,15 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       poll()
     })`)
     assert.equal(await evaluate(`document.querySelector('#gateway-pairing-code') === null`), true)
-    for (const encode of [encodeGatewayPairingCode, encodeGatewayBrowserPairingCode]) {
-      const link = encode({ version: 1, gateway_url: 'https://gateway.example', pairing_code: 'test-code', expires_at: Date.now() + 60_000 })
+    const legacyCode = { version: 1, gateway_url: 'https://gateway.example', pairing_code: 'test-code', expires_at: Date.now() + 60_000 }
+    const links = [
+      encodeGatewayPairingCode(legacyCode),
+      encodeGatewayBrowserPairingCode(legacyCode),
+      'https://gateway.example/c#d.AbCdEfGhIjKlMnOpQrStUv',
+      'http://192.168.1.20:3101/c#d.AbCdEfGhIjKlMnOpQrStUv',
+    ]
+    for (const link of links) {
+      const expectedOrigin = parseDesktopGatewayInput(link).origin
       assert.equal(await evaluate(`(() => {
         document.querySelector('#app-tab').click()
         const field = document.querySelector('#gateway-url')
@@ -65,14 +76,14 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
         document.querySelector('#settings-form').requestSubmit()
         const deadline = Date.now() + 5000
         const poll = () => {
-          if (document.querySelector('#gateway-url').value === 'https://gateway.example') return resolve()
+          if (document.querySelector('#gateway-url').value === ${JSON.stringify(expectedOrigin)}) return resolve()
           if (Date.now() > deadline) return reject(new Error('Settings were not applied'))
           setTimeout(poll, 20)
         }
         poll()
       })`)
     }
-    assert.equal(saves, 2)
+    assert.equal(saves, links.length)
     assert.equal(await evaluate(`document.querySelector('[data-local-gateway-settings]').hidden`), true)
     assert.equal(await evaluate(`document.querySelector('#current-backend').textContent.includes('待配置')`), false)
     assert.equal(await evaluate(`(() => {
@@ -82,6 +93,8 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       return !document.querySelector('[data-local-gateway-settings]').hidden
         && !document.querySelector('button[type=submit]').disabled
     })()`), true, 'Switching to a local address restores local configuration controls')
+  } catch (error) {
+    throw new Error(`${error.message}\n${rendererMessages.join('\n')}`, { cause: error })
   } finally {
     window.destroy()
     for (const name of Object.keys(handlers)) ipcMain.removeHandler(`qwen-audio-agent:${name}`)

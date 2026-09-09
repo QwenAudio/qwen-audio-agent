@@ -4,6 +4,7 @@ import {
   backendNames,
   normalizeBackendProtocol,
 } from '../../shared/backend/catalog.mjs'
+import { parseGatewayConnectionEndpoint } from '../../shared/gateway/remote-access.mjs'
 
 const COMMANDS = new Set([
   'gateway',
@@ -53,22 +54,6 @@ function cleanOrigin(value, label) {
   }
   if (!['http:', 'https:'].includes(url.protocol)) {
     throw new Error(`${label}只支持 http 或 https`)
-  }
-  return url.origin
-}
-
-function cleanPublicGatewayUrl(value) {
-  let url
-  try {
-    url = new URL(value)
-  } catch {
-    throw new Error(`无效的 Gateway 对外地址：${value}`)
-  }
-  if (url.protocol !== 'https:') {
-    throw new Error('Gateway 对外地址必须使用 https')
-  }
-  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new Error('Gateway 对外地址必须是无凭据、路径、查询参数和片段的 HTTPS Origin')
   }
   return url.origin
 }
@@ -135,10 +120,13 @@ export function parseArguments(argv, env = process.env) {
     realtimeModel: '',
     gatewayAction,
     deviceId,
+    deviceLabel: '',
+    legacyPairing: false,
+    lan: enabled(env.QWEN_AUDIO_GATEWAY_LAN),
+    lanSpecified: false,
     tailnet: enabled(env.QWEN_AUDIO_GATEWAY_TAILNET),
     tailnetSpecified: false,
-    publicUrl: String(env.QWEN_AUDIO_GATEWAY_PUBLIC_URL || '').trim(),
-    publicUrlSpecified: false,
+    endpoint: '',
     url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
     accessToken: String(
       env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN
@@ -205,16 +193,22 @@ export function parseArguments(argv, env = process.env) {
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--realtime-model') {
       options.realtimeModel = nextValue(args, index++, '--realtime-model')
+    } else if (argument === '--name') {
+      options.deviceLabel = nextValue(args, index++, '--name').trim()
+    } else if (argument === '--legacy') {
+      options.legacyPairing = true
+    } else if (argument === '--lan') {
+      if (command !== 'gateway') throw new Error('--lan 只适用于 gateway')
+      options.lan = true
+      options.lanSpecified = true
+      options.tailnet = false
     } else if (argument === '--tailnet') {
       if (command !== 'gateway') throw new Error('--tailnet 只适用于 gateway')
+      options.lan = false
       options.tailnet = true
       options.tailnetSpecified = true
-      options.publicUrl = ''
-    } else if (argument === '--public-url') {
-      if (command !== 'gateway') throw new Error('--public-url 只适用于 gateway')
-      options.publicUrl = nextValue(args, index++, '--public-url').trim()
-      options.publicUrlSpecified = true
-      options.tailnet = false
+    } else if (argument === '--endpoint') {
+      options.endpoint = nextValue(args, index++, '--endpoint').trim()
     } else if (argument === '--session') {
       options.sessionId = nextValue(args, index++, '--session')
     } else if (argument === '--audio-mode') {
@@ -234,6 +228,21 @@ export function parseArguments(argv, env = process.env) {
 
   if ((command !== 'config' || configAction !== 'set') && options.realtimeModel) {
     throw new Error('--realtime-model 只适用于 config set')
+  }
+  if (options.deviceLabel && !(command === 'gateway' && gatewayAction === 'pair')) {
+    throw new Error('--name 只适用于 gateway pair')
+  }
+  if (options.legacyPairing && !(command === 'gateway' && gatewayAction === 'pair')) {
+    throw new Error('--legacy 只适用于 gateway pair')
+  }
+  if (options.legacyPairing && options.deviceLabel) {
+    throw new Error('--legacy 与 --name 不能同时使用')
+  }
+  if (options.endpoint && !(command === 'gateway' && gatewayAction === 'pair')) {
+    throw new Error('--endpoint 只适用于 gateway pair')
+  }
+  if (options.endpoint && options.legacyPairing) {
+    throw new Error('--endpoint 不支持旧版 --legacy 配对')
   }
   if (command === 'config' && configAction === 'set' && !options.realtimeModel) {
     throw new Error('config set 需要 --realtime-model')
@@ -307,18 +316,25 @@ export function parseArguments(argv, env = process.env) {
   if (command !== 'tui' && options.takeover) {
     throw new Error('--takeover 只适用于 tui')
   }
-  if (options.publicUrl) {
-    options.publicUrl = cleanPublicGatewayUrl(options.publicUrl)
+  if (options.endpoint) {
+    try {
+      options.endpoint = parseGatewayConnectionEndpoint(options.endpoint)
+    } catch {
+      throw new Error('连接码 Endpoint 必须使用 HTTPS，或使用本机/IPv4 HTTP Origin')
+    }
   }
-  if (options.tailnet && options.publicUrl) {
-    throw new Error('--tailnet 与 --public-url 不能同时使用')
+  if (
+    (options.lan && options.tailnet)
+    || (options.lanSpecified && options.tailnetSpecified)
+  ) {
+    throw new Error('--lan 与 --tailnet 不能同时使用')
   }
   if (
     command === 'gateway'
-    && (options.tailnetSpecified || options.publicUrlSpecified)
+    && (options.lanSpecified || options.tailnetSpecified)
     && !['run', 'install'].includes(gatewayAction)
   ) {
-    throw new Error('--tailnet 和 --public-url 只适用于 gateway run 或 gateway install')
+    throw new Error('--lan 和 --tailnet 只适用于 gateway run 或 gateway install')
   }
   if (command === 'tui' && !TUI_AUDIO_MODES.has(options.audioMode)) {
     throw new Error(
@@ -365,7 +381,7 @@ export function helpText() {
     '  qwenaudio gateway install         安装并启动后台常驻服务',
     '  qwenaudio gateway start           启动后台服务',
     '  qwenaudio gateway status          查看 Gateway 状态',
-    '  qwenaudio gateway pair            创建客户端连接码与二维码',
+    '  qwenaudio gateway pair [--name 名称] [--endpoint URL]  创建直连码与二维码',
     '  qwenaudio gateway devices         列出已配对客户端',
     '  qwenaudio gateway revoke ID       撤销客户端',
     '  qwenaudio gateway stop            停止后台服务',
@@ -394,8 +410,9 @@ export function helpText() {
     '  --backend-permission-mode MODE  native（默认）或 full（最高权限）',
     '  --backend-url URL      后台 Server 地址',
     '  --backend-agent ID     指定协调 Agent',
+    '  --lan                  监听局域网并自动发布 ws://局域网IP:端口',
     '  --tailnet              通过系统 Tailscale Serve 发布到私有 Tailnet',
-    '  --public-url HTTPS_URL 声明由外部代理提供的 Gateway 对外地址',
+    '  gateway pair --endpoint URL  覆盖连接码中的地址（例如反向代理 HTTPS Origin）',
     '',
     'Setup 选项：',
     '  --backend NAME         只检查指定后台；默认检查全部后台',

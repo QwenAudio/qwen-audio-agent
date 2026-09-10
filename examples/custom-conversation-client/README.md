@@ -19,3 +19,6 @@ foreground Chatbot; the client owns only conversation I/O and presentation.
 座舱面板、客服工作台等自定义 UI 可以在同一协议上增加麦克风 PCM 输入、
 `audio.delta` 播放、多模态 `file` part 与 Task 卡片；Gateway 仍负责前台对话，
 客户端只负责对话输入输出与呈现。
+
+For native audio devices with limited memory, see the
+[embedded voice device ingress](../embedded-voice-device/README.md) example.

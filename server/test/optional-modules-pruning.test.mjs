@@ -136,10 +136,32 @@ async function smoke() {
 
 function omitEntry(path, name) {
   const source = readFileSync(path, 'utf8')
-    .replace(new RegExp(`^import \\{ ${name} \\} from .+\\n`, 'm'), '')
+    .replace(new RegExp(`^import \\{ ${name} \\} from .+\\r?\\n`, 'm'), '')
     .replace(new RegExp(`\\b${name},?\\s*`), '')
   writeFileSync(path, source)
 }
+
+test('prunes composition imports and entries with LF and CRLF line endings', t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-pruning-newlines-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const path = join(directory, 'modules.mjs')
+  for (const newline of ['\n', '\r\n']) {
+    writeFileSync(path, [
+      "import { createMemoryModule } from '../memory/module.mjs'",
+      "import { createKnowledgeModule } from '../knowledge/module.mjs'",
+      '',
+      'export const optionalModuleFactories = [createMemoryModule, createKnowledgeModule]',
+      '',
+    ].join(newline))
+    omitEntry(path, 'createMemoryModule')
+    const remaining = readFileSync(path, 'utf8')
+    assert.doesNotMatch(remaining, /memory|createMemoryModule/)
+    assert.match(remaining, /import \{ createKnowledgeModule \} from/)
+    assert.match(remaining, /\[createKnowledgeModule\]/)
+    omitEntry(path, 'createKnowledgeModule')
+    assert.equal(readFileSync(path, 'utf8').trim(), 'export const optionalModuleFactories = []')
+  }
+})
 
 for (const removed of [['memory'], ['knowledge'], ['memory', 'knowledge']]) {
   test(`Gateway can chat after deleting ${removed.join(' + ')} directories`, { timeout: 25_000 }, async t => {

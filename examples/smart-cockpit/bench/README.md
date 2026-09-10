@@ -15,32 +15,21 @@ domain.
 
 | Domain | Cases | Expected calls | Text pass rate | Text actual calls | Realtime pass rate | Realtime actual calls |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Vehicle | 24 | 23 | 95.83% | 23 | 100.00% | 23 |
-| Music | 18 | 17 | 100.00% | 17 | 94.44% | 18 |
-| Navigation | 36 | 44 | 97.22% | 46 | 94.44% | 46 |
+| Vehicle | 24 | 23 | 100.00% | 23 | 100.00% | 23 |
+| Music | 18 | 17 | 100.00% | 17 | 100.00% | 17 |
+| Navigation | 36 | 44 | 100.00% | 44 | 97.22% | 44 |
 | Weather | 8 | 8 | 100.00% | 8 | 100.00% | 8 |
-| Overall | 86 | 92 | 97.67% | 94 | 96.51% | 95 |
+| Overall | 86 | 92 | 100.00% | 92 | 98.84% | 92 |
 
 Gold replay passes all 86 cases with 92 expected and 92 actual tool calls,
 confirming the dataset, deterministic service, and scorer are internally
 consistent.
 
-Known failures in the latest full text report:
-
-- `veh_single_climate_start_003`: selected `vehicle_climate_control`, but used
-  `action: "open"` instead of the expected `action: "start"`.
-- `nav_context_change_destination_015`: made the expected navigation calls but
-  also emitted duplicate extra navigation calls.
-
-Known failures in the latest full Realtime report were tied to three case
-definitions that were later revised:
-
-- `mus_negative_unknown_source_018`
-- `nav_context_route_status_019`
-- `nav_chitchat_weather_then_search_029`
-
-Each revised case passes in both targeted text and targeted Realtime
-regression runs.
+The text run has no remaining short-suite failures. The single Realtime failure
+is `nav_chitchat_memory_then_favorite_031`, where ASR transcribed
+`阿里西溪园区` as `阿里西西园区`, so the tool was selected correctly but the
+address argument was wrong. This is a speech-recognition artifact, not a tool
+selection or dataset problem.
 
 ### Long-Context Suite
 
@@ -49,26 +38,35 @@ conversation turns, 250 expected tool calls, and 250 no-tool chitchat or
 background turns. Because every case is mixed-domain, the table only shows core
 overall metrics.
 
-These results were rescored from the existing traces after adding sequence
-alignment; no model rerun was performed for that rescoring.
-
-| Model | Calls exp/act | Pass | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Silent turns |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Text `qwen3.8-flash` | 250 / 250 | 30.00% | 75.60% | 98.80% | 78.80% | 96.80% | 3 / 3 | 80.00% | 90.00% |
-| Realtime `qwen-audio-3.0-realtime-plus` | 250 / 216 | 0.00% | 60.80% | 86.00% | 64.80% | 82.80% | 35 / 1 | 80.00% | 100.00% |
+| Model | Calls exp/act | Pass | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Text `qwen3.8-flash` | 250 / 252 | 80.00% | 88.80% | 100.00% | 91.20% | 100.00% | 0 / 2 | 100.00% | 100.00% | 90.00% |
+| Realtime `qwen-audio-3.0-realtime-plus` | 250 / 246 | 60.00% | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
 
 Gold replay passes the long suite with 10/10 cases and 250/250 tool calls. The
 combined `--suite all` gold replay passes 96/96 cases with 342/342 tool calls.
 
-The long-context text failures are mostly sequence drift after a missed or
-extra action: strict index-based tool selection is 75.60%, while same-tool
-sequence alignment recovers to 98.80%. One text case also triggered a tool on a
-turn marked `expect_no_tool`.
+All 10 Realtime cases now complete the full 50-turn script. Turn-timeout retry
+recovered `mixed_long_morning_commute_001` after a silent timeout at turn 40,
+and no case ended in `confirmed_failure_at_turn` or
+`unstable_infrastructure`.
 
-The long-context Realtime run shows stronger degradation: it did not trigger
-tools on silent turns, but alignment still reports 35 missing expected calls,
-lower argument accuracy, and several cases hit turn timeout before completing
-the full 50-turn script.
+Every one of the 4 remaining Realtime missing calls is the same test point:
+`navigation_add_waypoint` at turn 15 in 4 of the 10 cases. The model asks which
+destination to use instead of adding the waypoint, even though turn 9 already
+started navigation and the service still reports the destination. Text runs
+with full history execute this call 10/10. The gap is context retention across
+about 14-18 conversation items, not tool definition or model capability, so it
+should be read as a memory-system signal rather than a dataset defect.
+
+The two remaining text failures are genuine model errors: one spurious
+`vehicle_comfort_control` on a chitchat turn, and one duplicated
+`music_volume_control`.
+
+Because earlier Realtime runs aborted whole cases on the first turn timeout,
+their scores are not directly comparable to these numbers. Aborted runs never
+reached the later checkpoints, so the 60% long-suite pass rate here reflects
+complete 50-turn transcripts rather than a regression.
 
 ## Quick Run
 
@@ -99,6 +97,42 @@ node examples/smart-cockpit/bench/runner/run-realtime.mjs --realtime-model qwen-
 ```
 
 Reports are written under `reports/`.
+
+## Realtime Timeout Retry
+
+`Timed out waiting for realtime turn.` has several possible causes: audio
+streaming problems, provider connection silence, or generation stalls. The
+Realtime runner separates infrastructure flakiness from real defects instead of
+letting one timeout abort the rest of a case.
+
+| Level | Flag | Default | Behavior |
+| --- | --- | ---: | --- |
+| Turn retry | `--turn-retries` | 1 | Re-streams the same utterance audio on a timeout |
+| Case restart | `--case-attempts` | 2 | Reruns the whole case with a fresh connection and fresh state |
+
+A turn is only retried when the timed-out turn produced **no** tool call and
+**no** assistant text. Re-streaming audio after the model already acted would
+duplicate the tool call and corrupt the trace, so a timeout that follows real
+output is treated as a generation stall and escalated straight to a case
+restart.
+
+When every attempt fails, the runner classifies the case:
+
+- `confirmed_failure_at_turn`: all attempts failed at the same turn index. The
+  test point is reproducibly broken and worth investigating.
+- `unstable_infrastructure`: attempts failed at different turn indexes, which
+  points at connection flakiness rather than a specific test point.
+- `recovered`: a later attempt succeeded.
+
+Scoring uses the attempt that completed the most turns, and the chosen attempt
+is recorded in each trace as `selected_attempt` so the choice stays auditable.
+Report-level `retry_summary` aggregates turn retries, case retries, recovered
+cases, confirmed failures, unstable cases, and `ignored_calls`. Set
+`--turn-retries 0 --case-attempts 1` to reproduce the old fail-fast behavior.
+
+`ignored_calls` counts function calls that arrived outside a turn boundary and
+were therefore dropped. They used to be silently discarded, which inflated the
+missing-call count and made the cause invisible.
 
 ## Dataset
 
@@ -180,6 +214,19 @@ comparisons.
 `Aligned tool` first aligns same-name tool calls in order, then scores the
 matched pairs. It is less sensitive to one missed or extra call and better
 reflects whether the model chose the right tools somewhere in the sequence.
+
+Before comparing arguments, the scorer normalizes documented equivalences so a
+correct call is not marked wrong on formatting alone:
+
+- `vehicle_closure_control`: `trunk` and `rear_trunk` are the same target, as
+  are `fuel_port` and `charge_port`
+- `vehicle_comfort_control`: the retired `steering_wheel_heat_level` target maps
+  to `steering_wheel_heater`
+- `vehicle_window_control`: an omitted `window` becomes `windows`, matching the
+  service default of acting on every window
+
+The last rule still rejects a call that names one specific window, so it relaxes
+formatting without weakening the check.
 
 The evaluator accepts traces shaped like:
 

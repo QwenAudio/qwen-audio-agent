@@ -39,6 +39,13 @@ function normalizedArguments(toolName, args = {}) {
     }
     if (normalized.target in targetAliases) normalized.target = targetAliases[normalized.target]
   }
+  if (toolName === 'vehicle_comfort_control' && normalized.target === 'steering_wheel_heat_level') {
+    normalized.target = 'steering_wheel_heater'
+  }
+  // 服务层省略 window 时默认全车窗，两种写法等价；补齐默认值后仍能识别只控单扇窗的错误调用。
+  if (toolName === 'vehicle_window_control' && normalized.window === undefined) {
+    normalized.window = 'windows'
+  }
   return normalized
 }
 

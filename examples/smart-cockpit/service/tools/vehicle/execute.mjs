@@ -40,7 +40,6 @@ const PART_LABELS = Object.freeze({
   seat_cooler: '座椅通风',
   auto_seat_climate: '自动座椅温控',
   steering_wheel_heater: '方向盘加热',
-  steering_wheel_heat_level: '方向盘加热档位',
   auto_steering_wheel_heat: '自动方向盘加热',
 })
 
@@ -381,7 +380,9 @@ function setSeats(vehicle, target, seats, value) {
 
 function executeComfort(args, context) {
   const { cockpitId, snapshot, store } = context
-  const target = clean(args.target)
+  // steering_wheel_heat_level 已并入 steering_wheel_heater，旧调用静默兼容。
+  const rawTarget = clean(args.target)
+  const target = rawTarget === 'steering_wheel_heat_level' ? 'steering_wheel_heater' : rawTarget
   const action = clean(args.action)
   const current = snapshot()
   let seat = 'driver'
@@ -402,15 +403,14 @@ function executeComfort(args, context) {
       else if (action === 'set') value = args.enabled === false ? 0 : 1
       else throw new Error(`Unknown comfort action: ${action}`)
     } else if (target === 'steering_wheel_heater') {
-      if (action === 'open') value = 1
+      // 方向盘加热用档位表达开关：0=关，1~2=开并记录档位。
+      if (action === 'open') value = current.vehicle.steeringWheelHeatLevel || 2
       else if (action === 'close') value = 0
-      else if (action === 'set') value = args.enabled === false || Number(args.level) === 0 ? 0 : 1
-      else throw new Error(`Unknown comfort action: ${action}`)
-    } else if (target === 'steering_wheel_heat_level') {
-      if (action === 'open') value = 2
-      else if (action === 'close') value = 0
-      else if (action === 'set') value = integerInRange(args.level, { min: 0, max: 2 }, 'level')
-      else throw new Error(`Unknown comfort action: ${action}`)
+      else if (action === 'set') {
+        value = args.enabled === false
+          ? 0
+          : integerInRange(args.level ?? 2, { min: 0, max: 2 }, 'level')
+      } else throw new Error(`Unknown comfort action: ${action}`)
     } else {
       throw new Error(`Unknown comfort target: ${target}`)
     }
@@ -421,10 +421,6 @@ function executeComfort(args, context) {
     if (target === 'seat_heater' || target === 'seat_cooler' || target === 'auto_seat_climate') {
       setSeats(next.vehicle, target, seats, value)
     } else if (target === 'steering_wheel_heater') {
-      next.vehicle.steeringWheelHeater = value
-      if (!value) next.vehicle.steeringWheelHeatLevel = 0
-      else if (!next.vehicle.steeringWheelHeatLevel) next.vehicle.steeringWheelHeatLevel = 2
-    } else if (target === 'steering_wheel_heat_level') {
       next.vehicle.steeringWheelHeatLevel = value
       next.vehicle.steeringWheelHeater = value > 0 ? 1 : 0
     } else if (target === 'auto_steering_wheel_heat') {

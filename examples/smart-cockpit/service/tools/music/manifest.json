@@ -30,7 +30,7 @@
     {
       "name": "music_play",
       "label": "音乐播放",
-      "description": "播放或继续播放音乐，可按歌曲名、歌手或专辑点歌。当前歌单：晴天、七里香、稻香、夜曲、简单爱、青花瓷",
+      "description": "开始播放或继续播放音乐，可按歌曲名、歌手或专辑点歌。用户说“播放X”“放一首X”“来点音乐”“继续播放”时使用。当前歌单：晴天、七里香、稻香、夜曲、简单爱、青花瓷",
       "enabled": true,
       "parameters": {
         "type": "object",
@@ -44,8 +44,8 @@
     },
     {
       "name": "music_toggle_playback",
-      "label": "音乐播放切换",
-      "description": "切换当前媒体播放/暂停状态，也可显式指定播放或暂停；对应 Tesla media_toggle_playback 和语音中的 play/pause song。",
+      "label": "音乐播放暂停切换",
+      "description": "在播放与暂停之间翻转当前状态，不关心当前是哪一种。仅当用户没有指明要播放还是要暂停时使用，例如“切换一下播放状态”“播放暂停切一下”。用户明确要播放请用 music_play，明确要暂停请用 music_pause。对应 Tesla media_toggle_playback。",
       "enabled": true,
       "parameters": {
         "type": "object",
@@ -53,11 +53,9 @@
           "action": {
             "type": "string",
             "enum": [
-              "toggle",
-              "play",
-              "pause"
+              "toggle"
             ],
-            "description": "默认 toggle；play=继续播放，pause=暂停"
+            "description": "固定为 toggle，即翻转当前播放/暂停状态"
           }
         }
       }
@@ -65,7 +63,7 @@
     {
       "name": "music_pause",
       "label": "音乐暂停",
-      "description": "暂停当前音乐播放。",
+      "description": "暂停当前音乐播放。用户说“暂停”“暂停音乐”“music 先停一下”“别放了”时使用；这是表达暂停意图的唯一工具，不要改用 music_toggle_playback。",
       "enabled": true,
       "parameters": {
         "type": "object",

@@ -49,7 +49,7 @@
     {
       "name": "vehicle_climate_control",
       "label": "空调控制",
-      "description": "开启或关闭空调预处理/空调，并兼容设置制冷制热模式和风量。设置温度请优先使用 vehicle_temperature_control。",
+      "description": "开关空调本体，或开关空调预处理（远程预热/预冷），并兼容设置制冷制热模式和风量。预处理与本体是两个独立状态，务必按 action 说明区分。设置温度请优先使用 vehicle_temperature_control。",
       "enabled": true,
       "parameters": {
         "type": "object",
@@ -64,7 +64,7 @@
               "set_mode",
               "set_fan"
             ],
-            "description": "start/open=开启空调或预处理，stop/close=关闭空调或预处理，set_mode=设置制冷/制热模式，set_fan=设置风量"
+            "description": "start=开启空调预处理，用户提到“预处理”“提前开空调”“上车前先把车里弄暖/弄凉”时使用，会同时开启空调本体；stop=关闭空调预处理并同时关闭空调本体；open=仅开启空调本体，用户只说“打开空调”“开空调”“空调开一下”时使用，不进入预处理；close=仅关闭空调本体，不改动预处理状态；set_mode=设置制冷/制热模式；set_fan=设置风量。区分要点：只有用户明确表达“预处理/提前/上车前”这类远程预备语义才用 start/stop，否则用 open/close"
           },
           "mode": {
             "type": "string",
@@ -240,7 +240,7 @@
     {
       "name": "vehicle_comfort_control",
       "label": "舒适控制",
-      "description": "控制座椅加热、座椅通风/制冷、自动座椅温控、方向盘加热和方向盘自动加热。",
+      "description": "控制座椅加热、座椅通风/制冷、自动座椅温控、方向盘加热和方向盘自动加热。开关与档位都由同一个 target 承担：先用 target 选功能，再用 action 决定开、关还是设档位。",
       "enabled": true,
       "parameters": {
         "type": "object",
@@ -252,10 +252,9 @@
               "seat_cooler",
               "auto_seat_climate",
               "steering_wheel_heater",
-              "steering_wheel_heat_level",
               "auto_steering_wheel_heat"
             ],
-            "description": "要控制的舒适功能"
+            "description": "要控制的舒适功能。seat_heater=座椅加热（档位 0~3）；seat_cooler=座椅通风/制冷（档位 0~3）；auto_seat_climate=座椅自动温控开关；steering_wheel_heater=方向盘加热，开关和档位都用它，“打开方向盘加热”用 action=open，“方向盘加热开到二档”用 action=set 加 level=2（档位 0~2）；auto_steering_wheel_heat=方向盘自动加热开关"
           },
           "seat": {
             "type": "string",
@@ -277,11 +276,11 @@
               "close",
               "set"
             ],
-            "description": "open=开启，close=关闭，set=设置档位或开关"
+            "description": "open=开启并置为默认档位，close=关闭并置零档，set=按 level 设置具体档位（auto_* 目标改用 enabled）"
           },
           "level": {
             "type": "number",
-            "description": "档位。座椅加热/通风范围 0~3，方向盘加热范围 0~2"
+            "description": "档位，仅 action=set 使用。座椅加热/通风范围 0~3，方向盘加热范围 0~2；0 等同于关闭"
           },
           "enabled": {
             "type": "boolean",

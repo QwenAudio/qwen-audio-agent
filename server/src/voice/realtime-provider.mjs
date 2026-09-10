@@ -21,7 +21,6 @@ export {
   CANCEL_AGENT_TASK_TOOL_NAME,
   GET_AGENT_TASK_STATUS_TOOL_NAME,
   GET_CURRENT_TIME_TOOL_NAME,
-  MEMORY_TOOL_NAME,
   NOTES_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   ENTER_SLEEP_TOOL_NAME,
@@ -29,7 +28,7 @@ export {
   frontendToolRegistry,
   frontendTools,
   buildFrontendInstructions,
-} from './frontend-tools.mjs'
+} from '../frontend/frontend-tools.mjs'
 
 // Re-export registry symbols for backward compatibility.
 export {

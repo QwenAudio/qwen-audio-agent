@@ -55,12 +55,14 @@ final ASR
 
 | 契约 | 工具 |
 | --- | --- |
-| 核心契约 | `spawn_thinking`、`get_agent_task_status`、`cancel_agent_task`、`respond_permission`、`respond_agent_input`、`get_current_time`、`memory` |
-| 可选能力 | `web_search`、`fetch_url`、`knowledge`、`recall`、`notes`、`schedule_reminder`、`enter_sleep`；动态 MCP 工具同样随配置提供 |
+| 核心契约 | `spawn_thinking`、`get_agent_task_status`、`cancel_agent_task`、`respond_permission`、`respond_agent_input`、`get_current_time` |
+| 可选能力 | `memory`、`web_search`、`fetch_url`、`knowledge`、`recall`、`notes`、`schedule_reminder`、`enter_sleep`；动态 MCP 工具同样随配置提供 |
 
 固定的 `config/frontend-agent/PROMPT.md` 只可点名核心契约工具，维护对话、工作受理与结果、
-取消、确认和记忆持久化等稳定流程。可选工具的用途与调用条件随工具提供，不能在固定
+取消和确认等稳定流程。可选工具的用途与调用条件随工具提供，不能在固定
 Prompt 或核心工具中反向引用；可选工具之间也不写死对方的名称。
+记忆持久化规则放在 `server/src/memory/PROMPT.md`，仅在工具可用时注入；基础 Prompt
+保留用户偏好与事实上下文的一般信任边界。
 字段含义与填写规则归工具 schema，当前回执或投递阶段的指令归对应事件，
 可用性、权限和执行校验由 Gateway 负责，不依赖模型遵守提示词。
 
@@ -296,9 +298,34 @@ OpenCode ACP, OpenClaw ACP bridge, Qoder ACP,
 Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 ```
 
-后端特定的 API 细节仅属于 `server/src/agent`。实时工具不得导入后端适配器。
+后端特定的 API 细节仅属于 `server/src/backend/adapters`。前台工具不得导入后端适配器。
 UI 仅消费公共 Task 与对话事件。包级别的 `shared` 模块是基础运行时
 工具；server `core` 和 `process` 可以依赖它们，但它们不得依赖 server 层。
+
+### 源码目录
+
+服务端按功能归属组织目录，避免同一个功能分散在多个技术层目录中：
+
+- `memory/`：记忆接口、运行时、工具、提示与上下文、自动学习，以及 Markdown/VoiceMem Provider。
+- `knowledge/`：知识库接口、工具、检索运行时、入库服务与内置本地 Provider。
+- `frontend/`：核心前台指令、工具装配与执行、MCP/OpenAPI 工具，以及网页检索和搜索 Provider。
+- `voice/`：Realtime Provider 协议、连接、音频轮次、打断与播报投递。
+- `backend/`：协议无关的 BackendPort 与执行逻辑；`backend/adapters/` 管理 ACP/A2A 实现及适配器选择。
+- `conversation/` 与 `session/`：分别管理对话上下文与投影、持久化事件回放，不作为全部记忆能力的容器。
+
+`app/` 保持为组合根，负责跨模块接线；可选模块自行装配内部 Provider 和路由。
+操作审计、引用来源规范化、无状态文本模型调用等小型服务端公共能力放在 `core/`，
+具体 Provider 跟随所属功能模块。
+依赖测试区分模块核心与具体适配器：文件聚合不代表运行时可以导入具体 Provider，
+也不代表前台工具可以导入 Realtime 或后台 Adapter。内部文件移动时，公共包导出
+名称保持不变。详见[源码导航](https://github.com/QwenAudio/qwen-audio-agent/blob/main/server/src/README.md)。
+
+裁剪记忆或知识库时，删除模块目录，并取消 `app/optional-modules.mjs` 与
+`frontend/optional-features.mjs` 中对应的 import 和数组项；运行时服务、工具、路由和
+专属提示同步移除。这是两处显式装配入口，不是新的插件框架。精简发行包还应清理对应
+包导出、专属测试/文档和依赖。语音传输层只发布通用会话生命周期事实，记忆模块自行
+管理学习观察器，退出时先等待观察完成再关闭 Provider。测试会真实删除其中一个或
+两个模块，验证网关仍能完成对话。
 
 `server/src/client` 管理北向 Client Event Registry、运行时命令应用服务、
 `ClientActionPort` 与幂等 Presence 状态机。Client Action 描述一次环境操作并等待

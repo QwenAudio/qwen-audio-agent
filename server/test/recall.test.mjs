@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
-import { ToolCallHandler } from '../src/voice/tools/tool-call-handler.mjs'
+import { ToolCallHandler } from '../src/frontend/tools/tool-call-handler.mjs'
 import { SessionDigestPool } from '../src/conversation/session-digest.mjs'
 import {
   FRONTEND_RECALL_CAPABILITY,
   RECALL_TOOL_NAME,
   frontendTools,
-} from '../src/voice/frontend-tools.mjs'
-import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
+} from '../src/frontend/frontend-tools.mjs'
+import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
 
 // 相对「当下」构造：recall 处理器内部用的是真实 Date.now()，把基准写成固定
 // 日期的话，测试会在跨过那一天之后开始漂移（3 天前变成 4 天前）。
@@ -198,7 +198,8 @@ test('the tool description separates summaries from task details and other sourc
   assert.match(tool.function.description, /不检索资料文档/)
   assert.doesNotMatch(tool.function.description, /\bknowledge\b/)
   assert.match(tool.function.description, /不含原话和执行细节|不要编造/)
-  assert.match(tool.function.description, /个人长期事实与偏好用 memory/)
+  assert.match(tool.function.description, /个人长期事实与偏好应查询已提供的长期记忆能力/)
+  assert.doesNotMatch(tool.function.description, /\bmemory\b/)
 })
 
 // 用户不区分「聊过的」和「派过的活」，所以一次调用要都给到。

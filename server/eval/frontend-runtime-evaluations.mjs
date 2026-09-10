@@ -1,13 +1,13 @@
 import { loadFrontendPrompt } from '../src/conversation/frontend-agent-context.mjs'
 import {
   normalizeKnowledgeRetrievalResponse,
-} from '../src/frontend/knowledge/provider.mjs'
+} from '../src/knowledge/provider.mjs'
 import {
   FrontendRetrievalRuntime,
 } from '../src/frontend/retrieval/frontend-retrieval-runtime.mjs'
 import {
   frontendTools,
-} from '../src/voice/frontend-tools.mjs'
+} from '../src/frontend/frontend-tools.mjs'
 import {
   AnnouncementManager,
 } from '../src/voice/announcement/announcement-manager.mjs'

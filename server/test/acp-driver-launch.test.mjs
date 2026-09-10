@@ -4,12 +4,12 @@
 import assert from 'node:assert/strict'
 import { resolve } from 'node:path'
 import test from 'node:test'
-import { openCodeBackendDriver } from '../src/agent/acp/drivers/opencode.mjs'
-import { openClawBackendDriver } from '../src/agent/acp/drivers/openclaw.mjs'
-import { codexBackendDriver } from '../src/agent/acp/drivers/codex.mjs'
-import { claudeBackendDriver } from '../src/agent/acp/drivers/claude.mjs'
-import { piBackendDriver } from '../src/agent/acp/drivers/pi.mjs'
-import { deepSeekHarnessBackendDriver } from '../src/agent/acp/drivers/deepseek-harness.mjs'
+import { openCodeBackendDriver } from '../src/backend/adapters/acp/drivers/opencode.mjs'
+import { openClawBackendDriver } from '../src/backend/adapters/acp/drivers/openclaw.mjs'
+import { codexBackendDriver } from '../src/backend/adapters/acp/drivers/codex.mjs'
+import { claudeBackendDriver } from '../src/backend/adapters/acp/drivers/claude.mjs'
+import { piBackendDriver } from '../src/backend/adapters/acp/drivers/pi.mjs'
+import { deepSeekHarnessBackendDriver } from '../src/backend/adapters/acp/drivers/deepseek-harness.mjs'
 
 function assertLauncherPattern(profile, root, scriptName) {
   const connection = profile.acpConnection

@@ -6,7 +6,7 @@ import {
   resultResponseInstructions,
   speakResponseInstructions,
   permissionResponseInstructions,
-} from '../frontend-tools.mjs'
+} from '../../frontend/frontend-tools.mjs'
 import { gaRealtimeProtocol } from './ga-protocol.mjs'
 
 const INPUT_SAMPLE_RATE = 16000

@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FrontendKnowledgeRuntime } from '../src/frontend/knowledge/runtime.mjs'
+import { FrontendKnowledgeRuntime } from '../src/knowledge/runtime.mjs'
 import {
   LocalKnowledgeProvider,
-} from '../src/app/knowledge/local-provider.mjs'
+} from '../src/knowledge/providers/local/provider.mjs'
 
 const manual = {
   id: 'doc1',

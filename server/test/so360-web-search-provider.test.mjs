@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   So360WebSearchProvider,
   parseSo360Results,
-} from '../src/providers/search/so360.mjs'
+} from '../src/frontend/retrieval/providers/so360.mjs'
 
 const SEARCH_HTML = `<html><ol id="main">
 <li class="res-list"><h3 class="res-title " >

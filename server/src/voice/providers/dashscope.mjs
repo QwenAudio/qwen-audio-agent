@@ -10,7 +10,7 @@ import {
   resultResponseInstructions,
   speakResponseInstructions,
   permissionResponseInstructions,
-} from '../frontend-tools.mjs'
+} from '../../frontend/frontend-tools.mjs'
 import { isRecoverableRealtimeInactivityError } from '../realtime-errors.mjs'
 import { openAiCompatibleProtocol } from './openai-compatible-protocol.mjs'
 

@@ -12,13 +12,13 @@ import { mkdtempSync, readFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 import { ConversationSync } from '../../server/src/conversation/conversation-sync.mjs'
-import { MemoryExtractor } from '../../server/src/conversation/memory/learning/extractor.mjs'
-import { MarkdownContextStore } from '../../server/src/conversation/memory/providers/markdown/context-store.mjs'
-import { MarkdownMemoryProvider } from '../../server/src/conversation/memory/providers/markdown/provider.mjs'
-import { MemoryAudit } from '../../server/src/conversation/memory-audit.mjs'
+import { MemoryExtractor } from '../../server/src/memory/learning/extractor.mjs'
+import { MarkdownContextStore } from '../../server/src/memory/providers/markdown/context-store.mjs'
+import { MarkdownMemoryProvider } from '../../server/src/memory/providers/markdown/provider.mjs'
+import { OperationAudit } from '../../server/src/core/operation-audit.mjs'
 import {
   createOpenAiCompatibleTextCall,
-} from '../../server/src/providers/llm/openai-compatible-chat.mjs'
+} from '../../server/src/core/llm/openai-compatible-chat.mjs'
 
 function resolveApiKey() {
   if (process.env.QWEN_AUDIO_MEMORY_API_KEY) return process.env.QWEN_AUDIO_MEMORY_API_KEY
@@ -165,7 +165,7 @@ for (const scenario of SCENARIOS) {
   const extractor = new MemoryExtractor({
     memoryService,
     conversationSync: session(scenario.turns),
-    audit: new MemoryAudit({ filePath: auditPath }),
+    audit: new OperationAudit({ filePath: auditPath }),
     llmCall: createOpenAiCompatibleTextCall({
       baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
       apiKey,

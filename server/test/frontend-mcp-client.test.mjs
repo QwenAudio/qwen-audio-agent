@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { FrontendMcpClient } from '../src/providers/mcp/frontend-mcp-client.mjs'
-import { normalizeFrontendMcpConfiguration } from '../src/providers/mcp/frontend-mcp-config.mjs'
+import { FrontendMcpClient } from '../src/frontend/tools/mcp/frontend-mcp-client.mjs'
+import { normalizeFrontendMcpConfiguration } from '../src/frontend/tools/mcp/frontend-mcp-config.mjs'
 
 function configuration(tools = {
   search: {

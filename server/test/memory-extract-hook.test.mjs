@@ -3,6 +3,7 @@ import { createServer } from 'node:http'
 import test from 'node:test'
 import WebSocket from 'ws'
 import { attachRealtimeGateway } from '../src/voice/realtime-gateway.mjs'
+import { MemorySessionObserver } from '../src/memory/session-observer.mjs'
 
 // End-to-end wiring of the invisible-memory close hook: a real WebSocket
 // client connects to the gateway endpoint and disconnects; the gateway must
@@ -15,7 +16,7 @@ function gatewayHarness({ memoryExtractor, memoryService = { list: () => [] } })
       resolveUpgrade: () => ({ ownerId: 'owner-hook' }),
     },
     memoryService,
-    memoryExtractor,
+    sessionObservers: [new MemorySessionObserver({ memoryService, memoryExtractor })],
     notesStore: null,
     backendRuntime: {},
     respondAuthorization: async () => ({}),

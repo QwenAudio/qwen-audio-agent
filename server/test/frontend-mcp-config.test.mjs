@@ -6,7 +6,7 @@ import test from 'node:test'
 import {
   loadFrontendMcpConfiguration,
   normalizeFrontendMcpConfiguration,
-} from '../src/providers/mcp/frontend-mcp-config.mjs'
+} from '../src/frontend/tools/mcp/frontend-mcp-config.mjs'
 
 function configuration(overrides = {}) {
   return {

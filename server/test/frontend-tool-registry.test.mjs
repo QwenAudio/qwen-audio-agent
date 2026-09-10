@@ -5,17 +5,17 @@ import {
   BACKEND_INPUT_RESPONSE_CAPABILITY,
   ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
-  KNOWLEDGE_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   frontendToolRegistry,
   frontendTools,
   buildFrontendInstructions,
   TOOLS,
-} from '../src/voice/frontend-tools.mjs'
-import { FrontendToolRegistry } from '../src/voice/tools/frontend-tool-registry.mjs'
-import { FrontendToolLoop } from '../src/voice/tools/frontend-tool-loop.mjs'
-import { buildFrontendToolContext } from '../src/voice/tools/frontend-tool-context.mjs'
+} from '../src/frontend/frontend-tools.mjs'
+import { KNOWLEDGE_TOOL_NAME } from '../src/knowledge/tools.mjs'
+import { FrontendToolRegistry } from '../src/frontend/tools/frontend-tool-registry.mjs'
+import { FrontendToolLoop } from '../src/frontend/tools/frontend-tool-loop.mjs'
+import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-context.mjs'
 import { loadFrontendPrompt } from '../src/conversation/frontend-agent-context.mjs'
 
 const DEFAULT_TOOL_NAMES = [
@@ -24,7 +24,6 @@ const DEFAULT_TOOL_NAMES = [
   'cancel_agent_task',
   'get_agent_task_status',
   'get_current_time',
-  'memory',
   'notes',
 ]
 
@@ -35,7 +34,7 @@ function names(tools) {
 // Prompt-maintenance convention, not a runtime tool classification.
 const CORE_PROMPT_TOOLS = new Set([
   'spawn_thinking', 'get_agent_task_status', 'cancel_agent_task',
-  'respond_permission', 'respond_agent_input', 'get_current_time', 'memory',
+  'respond_permission', 'respond_agent_input', 'get_current_time',
 ])
 
 function optionalToolNames() {
@@ -69,7 +68,7 @@ test('fixed policy and tool definitions never depend on optional tool names', ()
 
 test('disabling any optional tool removes its instructions without changing fixed policy', () => {
   const context = {
-    frontend: { capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall'] },
+    frontend: { capabilities: ['web-search', 'url-fetch', 'knowledge', 'recall', 'memory'] },
     client: { actions: ['desktop.presence.enter_sleep'] },
   }
   const tools = frontendTools(context)
@@ -81,9 +80,11 @@ test('disabling any optional tool removes its instructions without changing fixe
     }
     assert.equal(names(tools).includes(name), true)
     assert.deepEqual(frontendTools(disabledContext), tools.filter(tool => tool.function.name !== name))
-    assert.equal(buildFrontendInstructions(disabledContext), prompt)
+    const disabledPrompt = buildFrontendInstructions(disabledContext)
+    if (name !== 'memory') assert.equal(disabledPrompt, prompt)
+    else assert.doesNotMatch(disabledPrompt, /# Personalization and memory/)
     assert.doesNotMatch(
-      `${prompt}\n${JSON.stringify(frontendTools(disabledContext))}`,
+      `${disabledPrompt}\n${JSON.stringify(frontendTools(disabledContext))}`,
       new RegExp(`\\b${name}\\b`, 'u'),
     )
   }

@@ -1,5 +1,5 @@
 import { config } from '../../core/config.mjs'
-import { buildFrontendInstructions } from '../frontend-tools.mjs'
+import { buildFrontendInstructions } from '../../frontend/frontend-tools.mjs'
 import { createMiniCpmOProtocol } from './minicpm-o-protocol.mjs'
 
 const MODEL_ID = 'openbmb/MiniCPM-o-4_5'

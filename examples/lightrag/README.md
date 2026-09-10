@@ -138,7 +138,7 @@ after a real terminal state. Deletion likewise waits for remote completion inste
 |---|---|---|
 | `LIGHTRAG_URL` | `http://127.0.0.1:9621` | LightRAG Server endpoint |
 | `LIGHTRAG_API_KEY` | empty | LightRAG access key sent as `X-API-Key` |
-| `LIGHTRAG_WORKSPACE` | empty | Fixed workspace; never derived from model input or owner data |
+| `LIGHTRAG_WORKSPACE` | empty | Optional workspace selector sent as `LIGHTRAG-WORKSPACE`; leave empty unless the operator provisioned one |
 | `LIGHTRAG_QUERY_MODE` | `mix` | `local`, `global`, `hybrid`, `naive`, or `mix` |
 | `LIGHTRAG_RETRIEVAL_TIMEOUT_MS` | `60000` | Maximum time the Gateway waits for retrieval |
 | `LIGHTRAG_REQUEST_TIMEOUT_MS` | `30000` | Timeout for one HTTP request |
@@ -150,11 +150,18 @@ Cancelling a Gateway ingestion task stops the provider's local wait. It delibera
 call LightRAG's global `cancel_pipeline`, which could cancel unrelated documents in the same
 instance.
 
+Leave `LIGHTRAG_WORKSPACE` empty unless a LightRAG operator has provisioned a workspace for this
+key. Today LightRAG reads the `LIGHTRAG-WORKSPACE` header only on its status route; the retrieval
+and document endpoints ignore it, so a value here does not isolate data — everything lands in the
+server's configured workspace. Once server-side multi-workspace support lands, a selector without
+a catalog record whose member table includes this key is rejected rather than silently falling
+back, so an unset selector is the correct configuration before and after that change.
+
 ## Replace and extend
 
 | Goal | Change |
 |---|---|
-| Use an existing LightRAG service | Set `LIGHTRAG_URL`, `LIGHTRAG_API_KEY`, and `LIGHTRAG_WORKSPACE`. |
+| Use an existing LightRAG service | Set `LIGHTRAG_URL` and `LIGHTRAG_API_KEY`. |
 | Tune retrieval | Set `LIGHTRAG_QUERY_MODE` and the retrieval timeout. |
 | Embed in another host | Create the provider and inject it through `knowledgeProvider` in `createGatewayApplication`. |
 | Replace LightRAG | Implement the same versioned `KnowledgeProvider` contract. |

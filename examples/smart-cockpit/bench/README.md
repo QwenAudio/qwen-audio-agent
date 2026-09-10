@@ -38,10 +38,10 @@ conversation turns, 250 expected tool calls, and 250 no-tool chitchat or
 background turns. Because every case is mixed-domain, the table only shows core
 overall metrics.
 
-| Model | Calls exp/act | Pass | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Text `qwen3.8-flash` | 250 / 252 | 80.00% | 88.80% | 100.00% | 91.20% | 100.00% | 0 / 2 | 100.00% | 100.00% | 90.00% |
-| Realtime `qwen-audio-3.0-realtime-plus` | 250 / 246 | 60.00% | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
+| Model | Calls exp/act | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Text `qwen3.8-flash` | 250 / 252 | 88.80% | 100.00% | 91.20% | 100.00% | 0 / 2 | 100.00% | 100.00% | 90.00% |
+| Realtime `qwen-audio-3.0-realtime-plus` | 250 / 246 | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
 
 Gold replay passes the long suite with 10/10 cases and 250/250 tool calls. The
 combined `--suite all` gold replay passes 96/96 cases with 342/342 tool calls.
@@ -65,8 +65,9 @@ The two remaining text failures are genuine model errors: one spurious
 
 Because earlier Realtime runs aborted whole cases on the first turn timeout,
 their scores are not directly comparable to these numbers. Aborted runs never
-reached the later checkpoints, so the 60% long-suite pass rate here reflects
-complete 50-turn transcripts rather than a regression.
+reached the later checkpoints, while the current long-context numbers are based
+on complete 50-turn transcripts and should be read through call-level,
+state-checkpoint, and silent-turn metrics instead of a task-completion rate.
 
 ## Quick Run
 
@@ -191,7 +192,7 @@ Each case records:
 
 `evaluator/score.mjs` scores a collected trace on:
 
-- full case pass rate for tool/state behavior
+- optional full-case pass rate for short-suite sanity checks
 - total expected and actual tool calls
 - expected and actual tool calls by tool domain
 - per-case-domain summaries for vehicle, music, navigation, and weather

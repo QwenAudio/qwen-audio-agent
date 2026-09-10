@@ -14,6 +14,44 @@
 
 https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
 
+## 架构
+
+![智能座舱框架架构图](docs/framework-architecture.svg)
+
+qwen-audio-agent 的基础边界是“前台对话 + 后台执行”。座舱客户端与 Gateway 组成前台，
+座舱 Agent 负责后台任务，Service 提供场景状态、业务规则和工具执行环境。
+
+完整的边界与数据流见[架构文档](docs/architecture.md)。
+
+## 评测结果
+
+评测使用同一套工具、Prompt、确定性状态和评分器，对比 Text 与 Realtime 模型的座舱
+工具调用能力。
+
+### 短用例集
+
+86 个标准用例，覆盖车控、音乐、导航和天气。
+
+| 领域 | 用例数 | 预期调用数 | Text 通过率 | Text 实际调用 | Realtime 通过率 | Realtime 实际调用 |
+|---|---:|---:|---:|---:|---:|---:|
+| Vehicle | 24 | 23 | 100.00% | 23 | 100.00% | 23 |
+| Music | 18 | 17 | 100.00% | 17 | 100.00% | 17 |
+| Navigation | 36 | 44 | 100.00% | 44 | 97.22% | 44 |
+| Weather | 8 | 8 | 100.00% | 8 | 100.00% | 8 |
+| Overall | 86 | 92 | 100.00% | 92 | 98.84% | 92 |
+
+### 长上下文集
+
+10 段混合领域对话，共 500 轮、250 次预期工具调用和 250 个无工具闲聊/背景轮次。
+长上下文评测关注工具调用、状态和无工具判断，不使用端到端任务通过率。
+
+| 模型 | 调用 预期/实际 | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Text `qwen3.8-flash` | 250 / 252 | 88.80% | 100.00% | 91.20% | 100.00% | 0 / 2 | 100.00% | 100.00% | 90.00% |
+| Realtime `qwen-audio-3.0-realtime-plus` | 250 / 246 | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
+
+数据集、运行命令、alignment 指标、超时重试和评分规则见 [Benchmark 说明](bench/README.md)。
+
 ## 核心特点
 
 - **实时语音对话：**支持连续交流、自然打断、多轮上下文、音色和人设切换。
@@ -22,23 +60,6 @@ https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
 - **标准后台接入：**示例 Agent 通过 A2A 1.0 连接 Gateway，可替换为客户自己的 A2A、ACP 或定制后台。
 - **场景状态联动：**座舱 UI 通过场景 HTTP/SSE 通道展示车辆、路线、音乐和订单状态。
 - **组件可替换：**客户可以独立替换座舱客户端、后台 Agent 或场景 Service，无需修改框架核心。
-
-## 架构
-
-![智能座舱框架架构图](docs/framework-architecture.svg)
-
-qwen-audio-agent 的基础边界是“前台对话 + 后台执行”。座舱客户端与 Gateway 组成前台，
-座舱 Agent 负责后台任务，Service 提供场景状态、业务规则和工具执行环境。
-
-| 目录 / 进程 | 默认地址 | 职责 |
-|---|---|---|
-| [`client/`](client/) / cockpit-client | `http://127.0.0.1:5173` | 可替换的座舱客户端；负责音频 I/O、对话交互和业务面板。 |
-| [`gateway/`](gateway/) / cockpit-gateway | `http://127.0.0.1:18888` | 前台 Agent 与 Gateway 场景装配；处理实时对话、前台工具和后台任务提交。 |
-| [`agent/`](agent/) / cockpit-agent | `http://127.0.0.1:3020` | 可替换的 A2A 后台 Agent；Qwen3.8-Flash 负责理解和编排任务。 |
-| [`service/`](service/) / cockpit-service | `http://127.0.0.1:3010` | 座舱环境与基础设施；管理状态、规则、外部服务适配和 MCP 工具。 |
-| [`bootstrap/`](bootstrap/) | — | 四个进程共用的环境加载和启动预检。 |
-
-完整的边界与数据流见[架构文档](docs/architecture.md)。
 
 ## 快速开始
 
@@ -92,24 +113,6 @@ MCP 工具，还包含 Gateway 内置工具和按能力动态启用的工具。
 `flashbuy` 和 `custom-skills` 由后台 Agent 执行。通过
 [`surface-routing.json`](service/tools/surface-routing.json) 即可调整场景分流；扩展方式见
 [工具目录说明](service/tools/README.md)。
-
-## Benchmark
-
-示例内置可复现的座舱工具调用评测，使用同一套工具、Prompt、确定性状态和评分器，
-验证模型在单轮及长上下文对话中的工具选择、参数生成与无工具判断：
-
-- 短用例集：86 个座舱指令。
-- 长上下文集：10 段对话、500 轮，其中包含 250 次预期工具调用和 250 个无工具轮次。
-- 支持 Gold、文本模型、受控 Realtime 和完整语音链路四种运行方式。
-
-```bash
-node examples/smart-cockpit/bench/runner/run-gold.mjs
-node examples/smart-cockpit/bench/runner/run-text.mjs
-node examples/smart-cockpit/bench/runner/run-realtime.mjs
-node examples/smart-cockpit/bench/runner/run-voice.mjs
-```
-
-数据集、运行参数和评分规则见 [Benchmark 说明](bench/README.md)。
 
 ## 替换和扩展
 

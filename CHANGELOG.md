@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- 移除 `backend-adapter` 与 `custom-conversation-client` 示例目录及文档入口，保留后台 SDK 与客户端协议能力。
+
 - 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，
   提供局域网配置、麦克风暂停恢复说明及慢速客户端回归测试，不改动 Gateway 核心。
 

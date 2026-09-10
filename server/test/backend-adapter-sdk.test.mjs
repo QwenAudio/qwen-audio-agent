@@ -12,7 +12,7 @@ import { config } from '../src/core/config.mjs'
 import {
   createConformanceFixture,
   createInMemoryBackend,
-} from '../../examples/backend-adapter/in-memory-backend.mjs'
+} from './fixtures/in-memory-backend.mjs'
 
 test('exports one stable Backend Adapter SDK entry point', () => {
   assert.equal(BACKEND_ADAPTER_SDK_VERSION, '3.0.0')
@@ -25,7 +25,7 @@ test('exports one stable Backend Adapter SDK entry point', () => {
   assert.equal(host.status().status, 'stopped')
 })
 
-test('the non-ACP SDK example passes the public conformance suite', async () => {
+test('a non-ACP adapter passes the public conformance suite', async () => {
   await verifyBackendAdapterConformance({
     createFixture: createConformanceFixture,
   })

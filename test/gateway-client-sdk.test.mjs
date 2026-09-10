@@ -103,6 +103,21 @@ test('passes remote credentials below GCP and requests takeover explicitly', () 
   client.stop()
 })
 
+test('exposes the underlying transport buffered amount for flow control', () => {
+  const socket = new FakeSocket()
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    reconnect: false,
+  }).start()
+
+  socket.open()
+  socket.bufferedAmount = 4096
+  assert.equal(client.bufferedAmount, 4096)
+  client.stop()
+  assert.equal(client.bufferedAmount, 0)
+})
+
 test('reference Client negotiates once and correlates runtime commands', async () => {
   const socket = new FakeSocket()
   const client = new GatewayClient({

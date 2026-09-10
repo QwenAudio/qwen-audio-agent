@@ -13,6 +13,8 @@ function appendSamples(previous, input) {
   return samples
 }
 
+const textEncoder = new TextEncoder()
+
 /**
  * Resamples one continuous PCM stream while retaining the interpolation phase
  * between input chunks. The stream can be reset when a capture or target rate
@@ -136,6 +138,97 @@ export function decodePcm(base64) {
     output[index] = view.getInt16(index * 2, true) / 0x8000
   }
   return output
+}
+
+export const REALTIME_AUDIO_SEND_HIGH_WATER_BYTES = 64 * 1024
+export const REALTIME_AUDIO_SEND_LOW_WATER_BYTES = 16 * 1024
+
+function serializedByteLength(value) {
+  const serialized = typeof value === 'string' ? value : JSON.stringify(value)
+  return typeof serialized === 'string'
+    ? textEncoder.encode(serialized).byteLength
+    : 0
+}
+
+/**
+ * Limits realtime microphone sends to the transport buffer's high-water mark.
+ * Audio is a live stream, so dropping a chunk while the socket is congested is
+ * preferable to retaining seconds of stale audio and increasing turn latency.
+ * Control messages continue to use GatewayClient.send directly.
+ */
+export function createRealtimeAudioSendController({
+  send,
+  getBufferedAmount = () => 0,
+  highWaterMarkBytes = REALTIME_AUDIO_SEND_HIGH_WATER_BYTES,
+  lowWaterMarkBytes = REALTIME_AUDIO_SEND_LOW_WATER_BYTES,
+  onDrop,
+} = {}) {
+  if (typeof send !== 'function') throw new TypeError('send is required')
+
+  const highWater = Math.max(1, Number(highWaterMarkBytes) || 0)
+  const lowWater = Math.max(
+    0,
+    Math.min(highWater, Number(lowWaterMarkBytes) || 0),
+  )
+  let congested = false
+  let droppedCount = 0
+
+  const bufferedAmount = () => {
+    try {
+      const value = Number(getBufferedAmount())
+      return Number.isFinite(value) && value > 0 ? value : 0
+    } catch {
+      return 0
+    }
+  }
+
+  const drop = (buffered, payloadBytes) => {
+    droppedCount += 1
+    try {
+      onDrop?.({
+        bufferedAmount: buffered,
+        payloadBytes,
+        droppedCount,
+      })
+    } catch {
+      // A telemetry callback must never interrupt microphone processing.
+    }
+  }
+
+  return {
+    send(event) {
+      const buffered = bufferedAmount()
+      const payloadBytes = serializedByteLength(event)
+      if (congested && buffered > lowWater) {
+        drop(buffered, payloadBytes)
+        return false
+      }
+      congested = false
+
+      if (buffered + payloadBytes > highWater) {
+        congested = true
+        drop(buffered, payloadBytes)
+        return false
+      }
+
+      if (!send(event)) return false
+      if (bufferedAmount() >= highWater) congested = true
+      return true
+    },
+
+    reset() {
+      congested = false
+      droppedCount = 0
+    },
+
+    get congested() {
+      return congested
+    },
+
+    get droppedCount() {
+      return droppedCount
+    },
+  }
 }
 
 // Leaves enough Web Audio timeline headroom for a source to be scheduled. The

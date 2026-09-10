@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   audioSchedulingLeadSeconds,
   createPcmPlaybackQueue,
+  createRealtimeAudioSendController,
   createStreamingResampler,
   mergePcmPlaybackItems,
   resample,
@@ -12,6 +13,51 @@ test('resamples audio to the requested approximate length', () => {
   const input = new Float32Array(480)
   const output = resample(input, 48000, 16000)
   assert.equal(output.length, 160)
+})
+
+test('drops live audio while the transport buffer is congested', () => {
+  let bufferedAmount = 0
+  const sent = []
+  const drops = []
+  const controller = createRealtimeAudioSendController({
+    highWaterMarkBytes: 100,
+    lowWaterMarkBytes: 20,
+    getBufferedAmount: () => bufferedAmount,
+    send: event => {
+      sent.push(event)
+      bufferedAmount = 100
+      return true
+    },
+    onDrop: details => drops.push(details),
+  })
+
+  assert.equal(controller.send({ type: 'audio.append', audio: 'pcm' }), true)
+  assert.equal(controller.congested, true)
+  assert.equal(controller.send({ type: 'audio.append', audio: 'stale' }), false)
+  assert.equal(sent.length, 1)
+  assert.equal(controller.droppedCount, 1)
+  assert.equal(drops[0].bufferedAmount, 100)
+
+  bufferedAmount = 10
+  assert.equal(controller.send({ type: 'audio.append', audio: 'fresh' }), true)
+  assert.equal(sent.length, 2)
+})
+
+test('resets audio send congestion and drop accounting', () => {
+  let bufferedAmount = 90
+  const controller = createRealtimeAudioSendController({
+    highWaterMarkBytes: 100,
+    lowWaterMarkBytes: 20,
+    getBufferedAmount: () => bufferedAmount,
+    send: () => true,
+  })
+
+  assert.equal(controller.send({ type: 'audio.append', audio: 'pcm' }), false)
+  assert.equal(controller.congested, true)
+  assert.equal(controller.droppedCount, 1)
+  controller.reset()
+  assert.equal(controller.congested, false)
+  assert.equal(controller.droppedCount, 0)
 })
 
 test('returns an empty result for empty input instead of NaN', () => {

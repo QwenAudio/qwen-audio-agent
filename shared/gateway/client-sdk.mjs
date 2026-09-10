@@ -153,6 +153,12 @@ export class GatewayClient {
     return this.socket?.readyState ?? 3
   }
 
+  // Expose the browser WebSocket send buffer so live audio clients can apply
+  // backpressure without reaching through the SDK's socket abstraction.
+  get bufferedAmount() {
+    return this.socket?.bufferedAmount ?? 0
+  }
+
   close() {
     this.stop()
   }

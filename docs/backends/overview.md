@@ -19,11 +19,12 @@ The Backend Agent handles tasks that require tools, file operations, or sustaine
 | Claude Code | External ACP adapter | Supports one-click install of both the core and adapter, requires user configuration | `~/.claude/skills/` | ★★★★☆ |
 | DeepSeek | Native ACP | Supports one-click install, requires a DeepSeek API key | `~/.agents/skills/` | ★★★★☆ |
 | Pi | External ACP adapter | Supports one-click install of both the core and adapter, requires user configuration | `~/.pi/agent/skills/` | ★★★★☆ |
+| Muse Code | Native MSP adapter | One-click install on macOS/Linux, requires user configuration | Managed by Muse Code | ★★★★☆ |
 
 Skills install once through `qwenaudio skill install` (a branded entry point
 for the standard skills.sh installer) and land automatically in the user-level
 directories of backends that declare a skills.sh installer above. MiniMax Code
-manages its own Skills and Plugins. See
+and Muse Code manage their own extension systems. See
 [Skill Management](../configuration/backend.md#skill-management).
 
 The recommendation rating reflects the current integration completeness, compatibility, and extent of real-world verification: five stars indicates a fully tested and recommended integration, while four stars indicates ongoing development or incomplete verification of the same scope.
@@ -36,9 +37,10 @@ Uninstalled backend agents can be installed locally with a unified command:
 qwenaudio install codex
 qwenaudio install deepseek
 qwenaudio install minimax
+qwenaudio install muse
 ```
 
-Before installation, a detection step runs to **only fill in missing components**: install the core if missing, or just the ACP adapter if the core is already present. Existing components are not reinstalled. Installation does not mean the backend is configured: complete any login and configuration required by the selected backend. In the desktop settings page's "Backend Agent" list, an "Install" button appears at the end of rows for uninstalled backends that support one-click install, using the same installation logic as the CLI.
+Before installation, a detection step runs to **only fill in missing components**: it installs the backend core and, where required, its adapter. Existing components are not reinstalled. Installation does not mean the backend is configured: complete any login and configuration required by the selected backend. In the desktop settings page's "Backend Agent" list, an "Install" button appears at the end of rows for uninstalled backends that support one-click install, using the same installation logic as the CLI.
 
 DeepSeek Harness is currently a Developer Preview. This initial integration
 supports voice-triggered tasks, permission decisions, cancellation of the current
@@ -70,7 +72,7 @@ qwenaudio setup --json
 AGENT_PROTOCOL=openclaw
 ```
 
-OpenCode and OpenClaw support automatic download and installation; after configuring `DASHSCOPE_API_KEY` and `QWEN_AUDIO_AGENT_BACKEND_MODEL`, they can automatically connect to Bailian models. Other backends require prior installation and native configuration; qwen-audio-agent will reuse their user-level models, tools, MCPs, Skills, and authentication. MiniMax Code keeps its model, Provider, authentication, and Skill/Plugin configuration under its own control.
+OpenCode and OpenClaw support automatic download and installation; after configuring `DASHSCOPE_API_KEY` and `QWEN_AUDIO_AGENT_BACKEND_MODEL`, they can automatically connect to Bailian models. Other backends require prior installation and native configuration; qwen-audio-agent will reuse their user-level models, tools, MCPs, Skills, and authentication where the selected protocol exposes them. MiniMax Code and Muse Code keep their own model, provider, authentication, and extension configuration under their control.
 
 To use other agents that support ACP stdio:
 
@@ -89,7 +91,7 @@ The command, arguments, display name, and working directory can be configured vi
 - `native` (default): Permissions are determined and prompted by the backend agent itself; the Gateway only forwards requests as-is.
 - `full`: Grants the highest permissions at startup, allowing the backend to directly execute commands, read and write files without per-action confirmation.
 
-`full` currently supports OpenCode, Qoder, Qwen Code, MiniMax Code, Kimi Code, Hermes, CodeBuddy, Codex, and Claude Code; the Gateway will automatically approve permission requests from these backends. OpenClaw's execution authorization is constrained by exec approvals, elevated, and other configuration settings, and cannot be expressed via a single toggle — when `full` is selected, the Gateway will explicitly refuse to start. The highest permissions amplify the risk of accidental operations and should only be enabled in trusted projects.
+`full` currently supports OpenCode, Qoder, Qwen Code, MiniMax Code, Kimi Code, Hermes, CodeBuddy, Codex, Claude Code, and Muse Code; the Gateway will automatically approve permission requests from these backends. OpenClaw's execution authorization is constrained by exec approvals, elevated, and other configuration settings, and cannot be expressed via a single toggle — when `full` is selected, the Gateway will explicitly refuse to start. The highest permissions amplify the risk of accidental operations and should only be enabled in trusted projects.
 
 Pi is a special case: it has no built-in sandbox or permission approval mechanism, and its adapter pi-acp does not implement ACP `session/request_permission`. Pi therefore always runs with the equivalent of `full` permissions regardless of the configured mode — there is no approval step at all, and no permission confirmation appears in the voice session. Use it only in trusted projects and trusted prompt environments.
 

@@ -399,5 +399,48 @@ Pi. Gateway Session tools and independent third-layer delegation are therefore n
 available for this backend; Pi completes work in the current Session with its own
 tools.
 
-MiniMax Code, Kimi Code, Hermes, CodeBuddy, Codex, Claude Code, and Pi all have their ACP subprocesses
+## Muse Code
+
+Muse Code connects through Meta's official
+[`@muse-code/sdk`](https://github.com/meta-models/muse-code-sdk) and the Muse
+Session Protocol (MSP). The Gateway owns `muse serve`, keeps one Muse Session per
+frontend owner for its lifetime, and normalizes MSP items, approvals, user-input
+requests, cancellation, and final messages through `BackendPort`.
+
+Install on macOS or Linux and complete Muse Code's native login/configuration:
+
+```bash
+qwenaudio install muse
+muse
+```
+
+Then select it:
+
+```dotenv
+AGENT_PROTOCOL=muse
+QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
+```
+
+Optional settings:
+
+```dotenv
+MUSE_CODE_BIN=muse
+MUSE_CODE_WORKSPACE=
+QWEN_AUDIO_AGENT_BACKEND_MODEL=
+```
+
+An explicit backend model is passed as the MSP `modelId`; leave it empty to use
+Muse Code's own configuration. `native` forwards Muse's server-offered approvals
+to the voice/client permission flow. `full` starts the Session in Muse's
+preconfigured `allowAll` mode and should be used only in a trusted workspace.
+Gateway task/session grants select only a one-shot Muse choice and never create a
+provider-persistent approval rule.
+
+This integration pins the experimental Muse SDK `0.1.1`. The first version does
+not persist Muse Session IDs across Gateway restarts, inject Gateway MCP servers,
+or fetch full bytes behind MSP `outputRef`; file changes remain in the configured
+workspace and final text is returned normally. MSP currently accepts inline image
+attachments through this adapter; other attachment types are rejected clearly.
+
+Muse Code, MiniMax Code, Kimi Code, Hermes, CodeBuddy, Codex, Claude Code, and Pi all have their subprocesses
 directly managed by the Gateway, and do not accept `--backend-url`.

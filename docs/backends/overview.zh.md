@@ -20,9 +20,10 @@
 | Claude Code | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | `~/.claude/skills/` | ★★★★☆ |
 | DeepSeek | 原生 ACP | 支持一键安装，需 DeepSeek API Key | `~/.agents/skills/` | ★★★★☆ |
 | Pi | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | `~/.pi/agent/skills/` | ★★★★☆ |
+| Muse Code | 原生 MSP 适配 | macOS/Linux 支持一键安装，需用户配置 | 由 Muse Code 自行管理 | ★★★★☆ |
 
 通过 `qwenaudio skill install` 安装一次标准 Agent Skill 后，会自动写入上表中声明
-skills.sh 安装器的后台用户级目录；MiniMax Code 的 Skill/Plugin 由自身管理。详见
+skills.sh 安装器的后台用户级目录；MiniMax Code 和 Muse Code 的扩展由自身管理。详见
 [技能管理](../configuration/backend.zh.md#技能管理)。
 
 推荐指数综合反映当前集成完整度、兼容性和实际验证程度：五星表示已经过充分测试的
@@ -36,10 +37,11 @@ skills.sh 安装器的后台用户级目录；MiniMax Code 的 Skill/Plugin 由�
 qwenaudio install codex
 qwenaudio install deepseek
 qwenaudio install minimax
+qwenaudio install muse
 ```
 
-安装前先检测，**只补齐缺失的组件**：本体缺失时装本体；
-本体已装、仅缺 ACP 适配器时只装适配器；组件齐全时不重复安装。
+安装前先检测，**只补齐缺失的组件**：本体缺失时装本体；需要独立适配器的后台
+仅缺适配器时只装适配器；组件齐全时不重复安装。
 安装完成不等于配置就绪，仍需完成所选后台要求的登录与配置。桌面版设置页
 的“后台 Agent”列表中，未安装且支持一键安装的后台行尾会显示“安装”按钮，与 CLI
 使用同一份安装逻辑。
@@ -75,8 +77,8 @@ AGENT_PROTOCOL=openclaw
 
 OpenCode 和 OpenClaw 支持自动下载安装；配置 `DASHSCOPE_API_KEY` 和
 `QWEN_AUDIO_AGENT_BACKEND_MODEL` 后即可自动接入百炼模型。其他后台需先安装并完成
-原生配置，qwen-audio-agent 会复用其用户级模型、工具、MCP、Skill 和认证；MiniMax Code
-的模型、Provider、认证和 Skill/Plugin 配置仍由其自身管理。
+原生配置；所选协议支持时，qwen-audio-agent 会复用其用户级模型、工具、MCP、Skill
+和认证。MiniMax Code 与 Muse Code 的模型、Provider、认证和扩展配置仍由其自身管理。
 
 使用其他支持 ACP stdio 的 Agent：
 
@@ -97,7 +99,7 @@ ACP_ARGS=["--acp"]
 - `full`：启动时明确授予最高权限，后台可直接执行命令、读写文件，不再逐次确认。
 
 `full` 当前支持 OpenCode、Qoder、Qwen Code、MiniMax Code、Kimi Code、Hermes、CodeBuddy、
-Codex 和 Claude Code，Gateway 会自动批准这些后台发起的权限请求。OpenClaw 的执行授权受
+Codex、Claude Code 和 Muse Code，Gateway 会自动批准这些后台发起的权限请求。OpenClaw 的执行授权受
 exec approvals、elevated 等配置约束，无法由统一开关表达，选择 `full` 时
 Gateway 会明确拒绝启动。最高权限会放大误操作风险，只应在可信项目中启用。
 

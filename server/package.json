@@ -11,6 +11,7 @@
   "dependencies": {
     "@agentclientprotocol/sdk": "1.4.0",
     "@modelcontextprotocol/sdk": "1.30.0",
+    "@muse-code/sdk": "0.1.1",
     "@qwen-code/open-computer-use": "^0.2.3",
     "express": "^4.22.2",
     "ws": "^8.21.3",

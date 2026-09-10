@@ -94,6 +94,7 @@ For the full design and module breakdown, see the [architecture document](docs/a
 | Claude Code | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
 | DeepSeek | Native ACP | One-click install, DeepSeek API key required | ★★★★☆ |
 | Pi | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
+| Muse Code | Native MSP adapter | One-click install on macOS/Linux, user config required | ★★★★☆ |
 
 Ratings reflect current integration completeness, compatibility, and
 verification level: five stars indicate a thoroughly tested recommended
@@ -127,7 +128,7 @@ DASHSCOPE_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # Backend Agent: optional, leave empty or set to none for frontend-only mode
 AGENT_PROTOCOL=openclaw
-# Backend model: optional; explicit values use standard ACP, empty reuses Agent config
+# Backend model: optional; passed through the selected backend protocol
 QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 ```
 

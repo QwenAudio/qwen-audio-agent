@@ -121,6 +121,7 @@ export function resolveBackendModels(env = process.env) {
       env.DEEPSEEK_HARNESS_MODEL || '',
     ).trim(),
     pi: common,
+    muse: common,
     acp: common,
   }
 }
@@ -432,6 +433,11 @@ export const config = {
       model: String(backendModels.pi).trim(),
       directory: resolveBackendWorkspace('pi'),
       cliPath: String(process.env.PI_ACP_BIN || '').trim(),
+    },
+    muse: {
+      model: String(backendModels.muse).trim(),
+      directory: resolveBackendWorkspace('muse'),
+      museBin: String(process.env.MUSE_CODE_BIN || 'muse').trim() || 'muse',
     },
     acp: {
       model: String(backendModels.acp).trim(),

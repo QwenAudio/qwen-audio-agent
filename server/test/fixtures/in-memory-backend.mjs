@@ -1,6 +1,6 @@
 import {
   defineBackendAdapter,
-} from 'qwen-audio-agent/backend-adapter-sdk'
+} from '../../src/backend/backend-adapter-sdk.mjs'
 
 function clean(value) {
   return String(value || '').trim()
@@ -13,9 +13,8 @@ function cancellationError(taskId) {
 }
 
 /**
- * Minimal non-ACP adapter used as an SDK example and conformance fixture.
- * Replace the result construction with a call to a phone, hardware, HTTP, or
- * other action runtime while preserving the public BackendPort boundary.
+ * Test-only non-ACP adapter for Backend Adapter SDK conformance and Gateway
+ * composition tests. No external service or model calls are performed.
  */
 export class InMemoryBackendAdapter {
   constructor({ hold = false } = {}) {

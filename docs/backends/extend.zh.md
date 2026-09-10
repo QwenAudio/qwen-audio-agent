@@ -30,9 +30,7 @@ Task、取消与 Artifact 都由适配器内的官方 A2A SDK 处理。这是面
 
 电话 Agent、硬件 Agent、HTTP 服务或任何非 ACP 的任务运行时，都可以用
 Backend Adapter SDK（`qwen-audio-agent/backend-adapter-sdk`）直接实现
-`BackendPort`。SDK 附带与内置适配器共用的公共一致性测试套件；
-[`examples/backend-adapter/`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/backend-adapter)
-是一个最小可运行实现。
+`BackendPort`。SDK 附带与内置适配器共用的公共一致性测试套件。
 
 → [Backend Adapter SDK](../reference/backend-adapter-sdk.zh.md)
 

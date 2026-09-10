@@ -81,8 +81,6 @@
     "config/frontend-agent/",
     "config/backends/openclaw/openclaw.json5",
     "config/backends/deepseek-harness/cordis.yml",
-    "examples/backend-adapter/",
-    "examples/custom-conversation-client/",
     "examples/ai-passport/",
     "docs/architecture/overview.md",
     "docs/architecture/overview.zh.md",

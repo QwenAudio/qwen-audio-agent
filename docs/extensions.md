@@ -61,8 +61,6 @@ VoiceMem installation and configuration example:
 The Gateway speaks typed events over a single WebSocket. Build a custom client
 against the client protocol, or embed the assistant into a host page through
 the stability contract — the same channel the desktop orb, TUI, and WebUI use.
-[`examples/custom-conversation-client/`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/custom-conversation-client)
-is a minimal starting point.
 
 The [AI Passport voice client example](scenarios/ai-passport.md) connects Qwen
 Voice Bean to the Gateway through a LAN relay. It currently supports half-duplex

@@ -817,6 +817,44 @@ test('replaces Markdown memory through the public provider boundary', async () =
   assert.equal(closed, true)
 })
 
+test('shutdown drains memory session observation and flush before closing its provider', async t => {
+  const observed = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  const calls = []
+  const application = createTestGatewayApplication({
+    config: {
+      ...config, port: 0, host: '127.0.0.1',
+      memoryAutoEnabled: false, preferenceLearningEnabled: false,
+      webSearchProvider: 'none',
+    },
+    autoStart: false, parentPort: null,
+    frontendMcp: null, frontendOpenApi: null,
+    frontendMemory: {
+      list: () => [],
+      ownsSessionObservation: () => true,
+      observe: async () => { calls.push('observe'); observed.resolve(); await release.promise },
+      flush: () => calls.push('flush'),
+      close: () => calls.push('close'),
+    },
+  })
+  let socket
+  t.after(async () => {
+    release.resolve()
+    socket?.terminate()
+    await application.close()
+  })
+  application.start()
+  await once(application.server, 'listening')
+  socket = new WebSocket(`ws://127.0.0.1:${application.server.address().port}/api/realtime?sessionId=drain-memory`)
+  await once(socket, 'open')
+  const closing = application.close()
+  await observed.promise
+  assert.deepEqual(calls, ['observe'])
+  release.resolve()
+  await closing
+  assert.deepEqual(calls, ['observe', 'flush', 'close'])
+})
+
 test('lets a v2 provider exclusively own automatic memory learning', async () => {
   const memoryProvider = {
     describe: () => ({

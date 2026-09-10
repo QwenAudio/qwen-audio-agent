@@ -99,7 +99,7 @@ try {
   } else {
     managedBackend?.once('exit', onManagedBackendExit)
   }
-  const agentModule = await import('./agent/agent-client.mjs')
+  const agentModule = await import('./backend/adapters/agent-client.mjs')
   agentClient = agentModule.agent
   process.once('SIGINT', () => {
     stopAndExit('SIGINT')

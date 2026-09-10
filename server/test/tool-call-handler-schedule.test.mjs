@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
-import { ToolCallHandler } from '../src/voice/tools/tool-call-handler.mjs'
-import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
+import { ToolCallHandler } from '../src/frontend/tools/tool-call-handler.mjs'
+import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
 
 function harness({
   coordinator = null,

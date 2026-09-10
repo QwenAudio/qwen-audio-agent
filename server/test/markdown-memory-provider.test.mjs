@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { MarkdownMemoryProvider } from '../src/conversation/memory/providers/markdown/provider.mjs'
+import { MarkdownMemoryProvider } from '../src/memory/providers/markdown/provider.mjs'
 
 function document(scope, content) {
   let value = content

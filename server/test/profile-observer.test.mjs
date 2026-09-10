@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PreferenceCandidatePool } from '../src/conversation/memory/learning/preference-candidates.mjs'
-import { ProfileObserver } from '../src/conversation/memory/learning/profile-observer.mjs'
+import { PreferenceCandidatePool } from '../src/memory/learning/preference-candidates.mjs'
+import { ProfileObserver } from '../src/memory/learning/profile-observer.mjs'
 
 function conversationStub(messages) {
   return { list() { return messages } }

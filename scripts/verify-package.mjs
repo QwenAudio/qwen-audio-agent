@@ -155,9 +155,6 @@ if (isMain) {
     'cli/bin/qwenaudio.mjs',
     'config/backends/deepseek-harness/cordis.yml',
     'config/backends/openclaw/openclaw.json5',
-    'server/src/app/memory-provider-factory.mjs',
-    'server/src/conversation/memory/providers/voicemem/provider.mjs',
-    'shared/memory-provider-catalog.mjs',
     'CONTRIBUTING.md',
     'docs/architecture/deep-dive.md',
     'docs/architecture-overview.png',
@@ -180,10 +177,10 @@ if (isMain) {
     'scripts/runtime/sync-openclaw-gateway-token.mjs',
     'scripts/install-global.mjs',
     'scripts/prepare-build.mjs',
-    'server/src/agent/acp/backend-adapter.mjs',
-    'server/src/agent/acp/process-client.mjs',
-    'server/src/agent/acp/session-registry.mjs',
-    'server/src/agent/acp/session-tools.mjs',
+    'server/src/backend/adapters/acp/backend-adapter.mjs',
+    'server/src/backend/adapters/acp/process-client.mjs',
+    'server/src/backend/adapters/acp/session-registry.mjs',
+    'server/src/backend/adapters/acp/session-tools.mjs',
     'server/src/backend/backend-adapter-sdk.mjs',
     'server/src/backend/backend-adapter-conformance.mjs',
     'server/src/core/package-version.mjs',
@@ -199,6 +196,15 @@ if (isMain) {
     'tui/src/portaudio-voice-io.mjs',
     'web/dist/index.html',
   ]
+  // Custom distributions may omit optional domains and their public exports.
+  // For distributions retaining memory, verify its non-exported runtime assets.
+  if (manifest.exports?.['./memory-provider']) {
+    required.push(
+      'server/src/memory/provider-factory.mjs',
+      'server/src/memory/PROMPT.md',
+      'shared/memory-provider-catalog.mjs',
+    )
+  }
   const missing = required.filter(file => !files.has(file))
   if (missing.length) {
     throw new Error(`npm 成品缺少必要文件：${missing.join(', ')}`)

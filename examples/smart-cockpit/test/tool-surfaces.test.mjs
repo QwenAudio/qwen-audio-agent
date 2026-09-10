@@ -14,7 +14,7 @@ import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from '../gateway/spawn-thinking-to
 import {
   frontendToolRegistry,
   frontendTools,
-} from '../../../server/src/voice/frontend-tools.mjs'
+} from '../../../server/src/frontend/frontend-tools.mjs'
 
 test('routes complete cockpit domains to a single configured surface', () => {
   assert.deepEqual(COCKPIT_SURFACE_ROUTING.domains, {
@@ -96,7 +96,9 @@ test('documents the Gateway function tools exposed around cockpit MCP tools', ()
       assert.match(readme, new RegExp(`\`${name}\``))
     }
   }
-  const defaultRealtimeTotal = frontendTools({}).length + FRONTEND_TOOL_NAMES.length
+  // The default Gateway supplies memory; a bare registry context does not.
+  const defaultRealtimeTotal = frontendTools({ frontend: { capabilities: ['memory'] } }).length
+    + FRONTEND_TOOL_NAMES.length
   for (const readme of readmes) {
     assert.match(readme, new RegExp(`\\*\\*${defaultRealtimeTotal}\\*\\*`))
     assert.match(readme, new RegExp(`\\b${FRONTEND_TOOL_NAMES.length}\\b`))

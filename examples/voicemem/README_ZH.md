@@ -27,7 +27,7 @@
 | 组件 | 职责 |
 |---|---|
 | qwen-audio-agent Gateway | 实时语音对话、记忆工具和 Provider 生命周期。 |
-| [VoiceMem 连接器](../../server/src/conversation/memory/providers/voicemem/provider.mjs) | 框架内的 Node.js `MemoryProvider` 接口、同步偏好快照、用户隔离和子进程管理。 |
+| [VoiceMem 连接器](../../server/src/memory/providers/voicemem/provider.mjs) | 框架内的 Node.js `MemoryProvider` 接口、同步偏好快照、用户隔离和子进程管理。 |
 | [示例 Python Sidecar](sidecar/server.py) | 示例自带的 JSONL 进程边界，调用 VoiceMem 公开 Python API。 |
 | VoiceMem | 记忆抽取、整理、结构化存储和语义检索。 |
 | 阿里云百炼 | 推荐推理服务：Qwen3.8-Flash 处理记忆，text-embedding-v4 生成检索向量。 |

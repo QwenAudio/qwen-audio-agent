@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { PermissionBroker } from '../src/agent/acp/permission-broker.mjs'
+import { PermissionBroker } from '../src/backend/adapters/acp/permission-broker.mjs'
 
 test('permission IDs stay short and distinct across independent broker lifetimes', async () => {
   const ids = new Set()

@@ -14,12 +14,12 @@ import {
 } from '../../shared/memory-provider-catalog.mjs'
 import {
   createConfiguredMemoryProvider,
-} from '../src/app/memory-provider-factory.mjs'
+} from '../src/memory/provider-factory.mjs'
 import {
   applyRecommendedDashScopeConfiguration,
   normalizeVoiceMemInputMode,
   VoiceMemProvider,
-} from '../src/conversation/memory/providers/voicemem/provider.mjs'
+} from '../src/memory/providers/voicemem/provider.mjs'
 
 test('selects the optional VoiceMem connector through configuration', async () => {
   assert.equal(normalizeMemoryProviderSelection(), 'markdown')

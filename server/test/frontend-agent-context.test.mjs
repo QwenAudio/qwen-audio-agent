@@ -8,6 +8,8 @@ import {
   loadAssistantProfile,
   normalizeClientContext,
 } from '../src/conversation/frontend-agent-context.mjs'
+import { buildMemoryContext } from '../src/memory/context.mjs'
+import { buildFrontendInstructions } from '../src/frontend/frontend-tools.mjs'
 
 test('uses a valid client timezone and returns an exact local clock snapshot', () => {
   const snapshot = currentTimeSnapshot({
@@ -97,13 +99,15 @@ test('loads one canonical frontend policy separately from runtime context', () =
 
   assert.match(prompt, /# Instruction hierarchy/)
   assert.match(prompt, /# Background work/)
-  assert.match(prompt, /# Personalization and memory/)
+  assert.doesNotMatch(prompt, /# Personalization and memory|`memory`/)
+  const withMemory = buildFrontendInstructions({ frontend: { capabilities: ['memory'] } })
+  assert.match(withMemory, /# Personalization and memory/)
   assert.match(prompt, /专用工具/)
   assert.match(prompt, /符合 `spawn_thinking` description 声明的[\s\S]*能力范围/)
   assert.match(prompt, /可组合使用本轮提供的工具完成请求/)
   assert.match(prompt, /不要仅因需要多次工具调用就转为后台工作/)
   assert.match(prompt, /仅使用本轮实际提供的工具/)
-  assert.match(prompt, /用户询问个人长期事实或交互偏好[\s\S]*不足以回答时/)
+  assert.match(withMemory, /用户询问个人长期事实或交互偏好[\s\S]*不足以回答时/)
   assert.doesNotMatch(prompt, /询问你记得什么[\s\S]*必须调用 `memory`/)
   assert.match(prompt, /依赖附件的请求同样按实际工具能力处理/)
   assert.match(prompt, /需要准确的当前日期或时间时，调用 `get_current_time`/)
@@ -153,7 +157,7 @@ test('keeps mutable task state out of persistent frontend instructions', () => {
 })
 
 test('canonicalizes legacy profile content into user preferences', () => {
-  const context = buildFrontendContext({
+  const context = buildMemoryContext({
     memories: [{
       id: 'user_model',
       scope: 'profile',
@@ -167,7 +171,7 @@ test('canonicalizes legacy profile content into user preferences', () => {
 })
 
 test('injects user preferences as directives separate from factual memory', () => {
-  const context = buildFrontendContext({
+  const context = buildMemoryContext({
     memories: [
       {
         id: 'mem_rule',
@@ -198,7 +202,7 @@ test('injects user preferences as directives separate from factual memory', () =
 })
 
 test('omits user preferences when the user has only factual memory', () => {
-  const context = buildFrontendContext({
+  const context = buildMemoryContext({
     memories: [{
       id: 'mem_fact',
       scope: 'memory',

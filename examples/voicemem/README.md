@@ -34,7 +34,7 @@ session-boundary consolidation.
 | Component | Responsibility |
 |---|---|
 | qwen-audio-agent Gateway | Realtime conversation, memory tools, and the provider lifecycle. |
-| [VoiceMem connector](../../server/src/conversation/memory/providers/voicemem/provider.mjs) | Framework-owned Node.js `MemoryProvider` interface, synchronous preference snapshot, user isolation, and process supervision. |
+| [VoiceMem connector](../../server/src/memory/providers/voicemem/provider.mjs) | Framework-owned Node.js `MemoryProvider` interface, synchronous preference snapshot, user isolation, and process supervision. |
 | [Example Python sidecar](sidecar/server.py) | Example-owned JSONL process boundary around VoiceMem's public Python API. |
 | VoiceMem | Memory extraction, consolidation, structured storage, and semantic retrieval. |
 | Alibaba Cloud Model Studio | Recommended inference provider: Qwen3.8-Flash for memory processing and text-embedding-v4 for retrieval vectors. |

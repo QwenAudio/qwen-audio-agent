@@ -6,7 +6,7 @@ import { defaultLogDirectory, LOG_SCHEMA } from '../../shared/logger.mjs'
 import { resolveRealtimeFrontendConfiguration } from '../../shared/realtime-provider-catalog.mjs'
 import { readGatewayLease } from '../../shared/gateway/lease.mjs'
 import { GatewayUrlSchema } from '../../shared/gateway/remote-access.mjs'
-import { loadFrontendMcpConfiguration } from '../../server/src/providers/mcp/frontend-mcp-config.mjs'
+import { loadFrontendMcpConfiguration } from '../../server/src/frontend/tools/mcp/frontend-mcp-config.mjs'
 import { inspectSessionJournals } from '../../server/src/session/session-journal-inspection.mjs'
 
 function localUrl(value) {

@@ -3,12 +3,12 @@ import test from 'node:test'
 import {
   PreferenceCandidatePool,
   renderLabel,
-} from '../src/conversation/memory/learning/preference-candidates.mjs'
+} from '../src/memory/learning/preference-candidates.mjs'
 import {
   PROMOTER_MARKERS,
   PreferencePromoter,
   splitObservedSection,
-} from '../src/conversation/memory/learning/preference-promoter.mjs'
+} from '../src/memory/learning/preference-promoter.mjs'
 
 // 最小可用的 memoryService 替身：只实现晋升器用到的 list / apply
 function memoryStub(initial = '') {

@@ -1,9 +1,11 @@
+import { optionalModuleFactories } from './optional-modules.mjs'
+import { OperationAudit } from '../core/operation-audit.mjs'
 import express from 'express'
 import { PERMISSION_DECISIONS } from '../core/work-authorization.mjs'
 import { createServer } from 'http'
 import { randomUUID } from 'node:crypto'
 import { resolve } from 'path'
-import { agent as defaultAgent } from '../agent/agent-client.mjs'
+import { agent as defaultAgent } from '../backend/adapters/agent-client.mjs'
 import { BackendAvailability } from '../backend/availability.mjs'
 import { BackendWorkRuntime } from '../backend/backend-work-runtime.mjs'
 import { config as defaultConfig } from '../core/config.mjs'
@@ -12,24 +14,12 @@ import { conversationSync as defaultConversationSync } from '../conversation/con
 import { InputAssetRegistry } from '../voice/input-asset-registry.mjs'
 import { IdentityManager } from '../core/identity.mjs'
 import { FrontendNotesStore } from '../conversation/frontend-notes.mjs'
-import { MemoryAudit } from '../conversation/memory-audit.mjs'
-import { MemoryExtractor } from '../conversation/memory/learning/extractor.mjs'
-import { PreferenceCandidateStore } from '../conversation/memory/learning/preference-candidate-store.mjs'
-import { PreferenceCandidatePool } from '../conversation/memory/learning/preference-candidates.mjs'
-import { PreferencePromoter } from '../conversation/memory/learning/preference-promoter.mjs'
-import { ProfileObserver } from '../conversation/memory/learning/profile-observer.mjs'
-import { FrontendMemoryRuntime } from '../conversation/memory/runtime.mjs'
-import { createConfiguredMemoryProvider } from './memory-provider-factory.mjs'
 import { SessionConversationHistory } from './session-conversation-history.mjs'
 import { SessionDigestPool } from '../conversation/session-digest.mjs'
 import { SessionSummariser } from '../conversation/session-summariser.mjs'
 import {
   createOpenAiCompatibleTextCall,
-} from '../providers/llm/openai-compatible-chat.mjs'
-import {
-  KnowledgeLibrary,
-} from '../knowledge/local-library.mjs'
-import { KnowledgeSummariser } from '../knowledge/local-summariser.mjs'
+} from '../core/llm/openai-compatible-chat.mjs'
 import { enforceSameOrigin, isAllowedOrigin } from '../core/request-security.mjs'
 import {
   GatewayAccessManager,
@@ -58,23 +48,18 @@ import { installOfflineNotifications } from './offline-notifications.mjs'
 import {
   FrontendRetrievalRuntime,
 } from '../frontend/retrieval/frontend-retrieval-runtime.mjs'
-import { createWebSearchProvider } from '../providers/search/factory.mjs'
-import { FrontendKnowledgeRuntime } from '../frontend/knowledge/runtime.mjs'
-import { LocalKnowledgeProvider } from './knowledge/local-provider.mjs'
-import { AgentDocumentConverter } from './knowledge/document-converter.mjs'
-import { KnowledgeLibraryService } from './knowledge/library-service.mjs'
-import { supportsKnowledgeManagement } from '../frontend/knowledge/provider.mjs'
+import { createWebSearchProvider } from '../frontend/retrieval/providers/factory.mjs'
 import { assertFrontendToolSource } from '../frontend/tools/frontend-tool-source.mjs'
-import { FrontendMcpClient } from '../providers/mcp/frontend-mcp-client.mjs'
+import { FrontendMcpClient } from '../frontend/tools/mcp/frontend-mcp-client.mjs'
 import {
   loadFrontendMcpConfiguration,
-} from '../providers/mcp/frontend-mcp-config.mjs'
+} from '../frontend/tools/mcp/frontend-mcp-config.mjs'
 import {
   FrontendOpenApiAdapter,
-} from '../providers/openapi/frontend-openapi-adapter.mjs'
+} from '../frontend/tools/openapi/frontend-openapi-adapter.mjs'
 import {
   loadFrontendOpenApiConfiguration,
-} from '../providers/openapi/frontend-openapi-config.mjs'
+} from '../frontend/tools/openapi/frontend-openapi-config.mjs'
 import {
   projectGatewayTaskEvent,
   projectGatewayTaskSnapshot,
@@ -278,19 +263,6 @@ conversationSync.configureRetention({
   sessionTtlMs: config.conversationSessionTtlMs,
   maxSessions: config.maxConversationSessions,
 })
-let defaultMemoryProvider = null
-if (memoryProvider === undefined && !frontendMemory) {
-  defaultMemoryProvider = createConfiguredMemoryProvider({
-    config,
-    logger,
-  })
-}
-const memoryProviderRuntime = memoryProvider === undefined
-  ? defaultMemoryProvider
-  : memoryProvider
-const frontendMemoryRuntime = frontendMemory || (memoryProviderRuntime
-  ? new FrontendMemoryRuntime({ provider: memoryProviderRuntime })
-  : null)
 // Restored scheduled tasks submit the same self-contained Work input as live
 // requests. Frontend conversation history and memory stay at the frontend.
 taskManager.configureScheduledTaskRunner(
@@ -324,16 +296,11 @@ const notesStore = new FrontendNotesStore({
   ownerTtlMs: config.frontendMemoryOwnerTtlMs,
   onWarning: warning => logger.warn('notes.persistence_warning', { warning }),
 })
-// Invisible memory (issue #92): the default Markdown provider uses a
-// lightweight text model after a voice session closes. Providers advertising
-// sessionObservation own that lifecycle themselves, so two independent
-// learners can never write conflicting memories from the same conversation.
-// Without an API key createOpenAiCompatibleTextCall returns null
-// and the extractor stays silently disabled; explicit memories are
-// unaffected. ASSISTANT.md is never exposed as a writable document.
-const memoryAudit = new MemoryAudit({
+// Audit and stateless text calls are shared infrastructure for independent
+// memory learning, conversation summaries and document summaries.
+const operationAudit = new OperationAudit({
   filePath: config.memoryAuditPath,
-  onWarning: warning => logger.warn('memory.audit_warning', { warning }),
+  onWarning: warning => logger.warn('background.audit_warning', { warning }),
 })
 // 后台轻量分析共用一套文本模型调用；没有 API key 时为 null，依赖它的
 // 记忆学习、会话摘要和资料摘要模块各自静默禁用，本地纯语音链路不受影响。
@@ -344,52 +311,17 @@ const textModelCall = config.memoryAutoEnabled
       model: config.memoryModel,
     })
   : null
-const providerOwnsSessionObservation = (
-  typeof frontendMemoryRuntime?.ownsSessionObservation === 'function'
-  && frontendMemoryRuntime.ownsSessionObservation() === true
-)
-const memoryExtractor = providerOwnsSessionObservation
-  ? null
-  : new MemoryExtractor({
-      memoryService: frontendMemoryRuntime,
-      conversationSync,
-      audit: memoryAudit,
-      llmCall: textModelCall,
-      logger,
-    })
-// 偏好自更新：观察器从刚结束的会话里推断画像信号 → 槽位池积累跨会话确认 →
-// 攒够后由晋升器写入 USER.md 的观察推断段。槽位池必须落盘，否则重启即清零、
-// 跨会话确认永远攒不满。观察器需要模型，没有 API key 时它为 null，
-// 链路退化成「只有明说路径」——槽位池与晋升器照常空转，不报错。
-let preferenceCandidates = null
-let preferencePromoter = null
-let profileObserver = null
-if (config.preferenceLearningEnabled && !providerOwnsSessionObservation) {
-  preferenceCandidates = new PreferenceCandidatePool({
-    store: new PreferenceCandidateStore({
-      filePath: config.preferenceCandidatePath,
-      onWarning: warning => logger.warn('preference.persistence_warning', { warning }),
-    }),
-  })
-  preferencePromoter = new PreferencePromoter({
-    // #238 把记忆层抽成 MemoryProvider 之后，同步 Markdown 接口的载体改名为
-    // memoryProviderRuntime；晋升器要的正是那套同步 list/apply。
-    // 注意它可能为 null（没配 provider 时），promoter 内部靠 enabled() 静默禁用。
-    memoryService: memoryProviderRuntime,
-    candidatePool: preferenceCandidates,
-    audit: memoryAudit,
-    logger,
-  })
-  profileObserver = textModelCall
-    ? new ProfileObserver({
-        candidatePool: preferenceCandidates,
-        conversationSync,
-        audit: memoryAudit,
-        llmCall: textModelCall,
-        logger,
-      })
-    : null
-}
+const optionalModules = optionalModuleFactories.map(create => create({
+  config, logger, conversationSync, textModelCall, audit: operationAudit,
+  workBackend, agent, backendRuntime, taskManager,
+  memoryProvider, frontendMemory, knowledgeProvider, knowledgeRetrievalProvider,
+  frontendKnowledge, knowledgeRuntimeOptions,
+}))
+const optionalServices = Object.assign({}, ...optionalModules.map(module => module.services))
+const {
+  frontendMemory: frontendMemoryRuntime = null,
+  frontendKnowledge: frontendKnowledgeRuntime = null,
+} = optionalServices
 // 会话摘要：只记「聊了哪些话题 + 一句要点」，是 recall 工具的唯一
 // 数据来源。刻意不注入 instructions —— 这类数据每场都在变，注进去会让 prompt
 // 前缀每场都变、前缀缓存大面积失效。没有 API key 时摘要器为 null，池子空转，
@@ -405,7 +337,7 @@ if (config.sessionDigestEnabled) {
     ? new SessionSummariser({
         digestPool: sessionDigests,
         conversationSync,
-        audit: memoryAudit,
+        audit: operationAudit,
         llmCall: textModelCall,
         logger,
         // 把本场派过的活沉淀进摘要。排除 control（「查一下那个任务的进展」这个
@@ -418,60 +350,6 @@ if (config.sessionDigestEnabled) {
       })
     : null
 }
-// 内置资料存储：用户导入的手册 / 规章 / 教材。资料本体保存在共享 knowledge/documents/
-// 目录，Provider 直接读取 Markdown 片段完成基础检索；后台 Agent 只可作为复杂
-// 文档入库时的隔离转换器。
-let domainLibrary = null
-let domainSummariser = null
-if (config.domainLibraryEnabled) {
-  domainLibrary = new KnowledgeLibrary({
-    documentDirectory: config.domainDocumentDirectory,
-    indexPath: config.domainIndexPath,
-    onWarning: warning => logger.warn('domain.persistence_warning', { warning }),
-  })
-  domainSummariser = textModelCall
-    ? new KnowledgeSummariser({
-        library: domainLibrary,
-        audit: memoryAudit,
-        llmCall: textModelCall,
-        logger,
-      })
-    : null
-}
-
-// 知识检索 Provider 的装配放在资料库之后，因为本机资料库可以直接作为一个
-// Provider 使用（见 app/knowledge/local-provider.mjs）。
-//
-// 优先级：宿主显式注入 > 本机资料库兜底。一个 Gateway 只挂一个 Provider ——
-// 这是 Provider 模式的正常语义：用户配了企业知识服务说明他已有更完整的方案，
-// 那时不该再用这个轻量实现去覆盖它。真要两者并存，宿主自己写一层把两个
-// Provider 包起来（按 knowledgeBaseIds 路由或合并结果），那是应用层的自由。
-const canConvertDocuments = typeof workBackend.runIsolated === 'function'
-  && (backendRuntime != null || agent.describe?.()?.enabled !== false)
-const knowledgeProviderRuntime = knowledgeProvider
-  || knowledgeRetrievalProvider
-  || (domainLibrary ? new LocalKnowledgeProvider({
-      library: domainLibrary,
-      summariser: domainSummariser,
-      documentConverter: canConvertDocuments
-        ? new AgentDocumentConverter({ backendRuntime: workBackend })
-        : null,
-    }) : null)
-const frontendKnowledgeRuntime = frontendKnowledge || (knowledgeProviderRuntime
-  ? new FrontendKnowledgeRuntime({
-      ...(knowledgeRuntimeOptions && typeof knowledgeRuntimeOptions === 'object'
-        ? knowledgeRuntimeOptions
-        : {}),
-      provider: knowledgeProviderRuntime,
-    })
-  : null)
-const knowledgeLibrary = knowledgeProviderRuntime
-  && supportsKnowledgeManagement(knowledgeProviderRuntime)
-  ? new KnowledgeLibraryService({
-      provider: knowledgeProviderRuntime,
-      taskManager,
-    })
-  : null
 const app = express()
 const runtimeCommands = clientCommandRuntime || new GatewayClientCommandRuntime({
   taskManager,
@@ -784,46 +662,7 @@ app.get('/api/health', (req, res) => {
   })
 })
 
-// Provider-neutral memory control plane for replaceable Conversation Clients.
-// It exposes the same bounded documents used by Realtime without leaking the
-// Markdown default or any injected provider's persistence details.
-app.get('/api/memory', (req, res, next) => {
-  if (!frontendMemoryRuntime) {
-    return res.status(404).json({ error: 'frontend memory is not configured' })
-  }
-  try {
-    return res.json({
-      documents: frontendMemoryRuntime.list(req.identity.ownerId),
-    })
-  } catch (error) {
-    return next(error)
-  }
-})
-
-app.patch('/api/memory', async (req, res, next) => {
-  if (!frontendMemoryRuntime) {
-    return res.status(404).json({ error: 'frontend memory is not configured' })
-  }
-  const changes = req.body?.changes
-  if (!Array.isArray(changes) || changes.length === 0) {
-    return res.status(400).json({ error: 'changes must be a non-empty array' })
-  }
-  try {
-    return res.json(await frontendMemoryRuntime.apply(
-      req.identity.ownerId,
-      changes,
-      { source: 'gateway-memory-api' },
-    ))
-  } catch (error) {
-    if (error?.code === 'stale_document') {
-      return res.status(409).json({ error: error.message, code: error.code })
-    }
-    if (['invalid_edit', 'ambiguous_edit', 'edit_not_found'].includes(error?.code)) {
-      return res.status(400).json({ error: error.message, code: error.code })
-    }
-    return next(error)
-  }
-})
+for (const module of optionalModules) module.mountRoutes?.(app)
 
 // Host control plane for microphone arbitration. The host announces that it is
 // taking the microphone and the Gateway commands its clients to stop capturing.
@@ -877,66 +716,6 @@ app.get('/api/tasks', (req, res) => {
       limit: Number.MAX_SAFE_INTEGER,
     }, { ownerId: req.identity.ownerId, allSessions: true }),
   })
-})
-
-// Durable session facts are intentionally exposed separately from UI state.
-// Clients may use this for reconnect/recovery; projections should not need to
-// understand the on-disk JSONL format.
-// 资料库。入口是「给一条本机路径」而不是上传字节流 —— 这是本地服务，用户手上
-// 本来就有文件，复制一份比经 base64 中转再落盘简单得多。web 端的按钮只要把
-// 选中文件的路径 POST 过来即可。
-app.get('/api/domain', async (req, res, next) => {
-  if (!knowledgeLibrary) {
-    res.status(404).json({ error: 'domain_library_disabled' })
-    return
-  }
-  try {
-    res.json({
-      documents: await knowledgeLibrary.list({ ownerId: req.identity.ownerId }),
-    })
-  } catch (error) {
-    next(error)
-  }
-})
-
-app.post('/api/domain/import', (req, res, next) => {
-  if (!knowledgeLibrary) {
-    res.status(404).json({ error: 'domain_library_disabled' })
-    return
-  }
-  try {
-    const { task, target } = knowledgeLibrary.startIngestion({
-      ownerId: req.identity.ownerId,
-      sourcePath: req.body?.path,
-    })
-    res.status(202).json({
-      status: 'ingesting',
-      task_id: task.id,
-      target,
-    })
-  } catch (error) {
-    next(error)
-  }
-})
-
-app.delete('/api/domain/:id', async (req, res, next) => {
-  if (!knowledgeLibrary) {
-    res.status(404).json({ error: 'domain_library_disabled' })
-    return
-  }
-  try {
-    const result = await knowledgeLibrary.remove({
-      ownerId: req.identity.ownerId,
-      documentId: req.params.id,
-    })
-    if (!result?.removed) {
-      res.status(404).json({ error: 'not_found' })
-      return
-    }
-    res.json({ removed: result.document })
-  } catch (error) {
-    next(error)
-  }
 })
 
 app.get('/api/timeline', (req, res) => {
@@ -1073,6 +852,9 @@ app.get('/api/tasks/:id/events', (req, res) => {
   res.on('close', unsubscribe)
 })
 
+// Omitted feature routes stay absent; unknown API paths must not serve the SPA.
+app.use('/api', (_req, res) => res.status(404).json({ error: 'not found' }))
+
 const webDist = webDistributionPath()
 // Desktop serves its own skins. An embedding host may explicitly share a
 // client-owned asset directory for read-only web hosting; Gateway never owns
@@ -1120,12 +902,13 @@ backendAvailability.refresh()
 realtimeGateway = attachRealtimeGateway(server, {
   identityManager: gatewayAccessRuntime,
   memoryService: frontendMemoryRuntime,
-  memoryExtractor,
-  preferencePromoter,
-  profileObserver,
   sessionDigests,
-  sessionSummariser,
-  domainLibrary,
+  sessionObservers: [
+    ...optionalModules.flatMap(module => module.sessionObservers || []),
+    ...(sessionSummariser ? [{
+      onSessionClosed: ({ ownerId, sessionId }) => sessionSummariser.maybeRun({ ownerId, sessionId }),
+    }] : []),
+  ],
   notesStore,
   backendRuntime: workBackend,
   backendAvailability,
@@ -1192,8 +975,7 @@ const close = () => {
     await realtimeGateway?.close?.()
     await frontendMcpRuntime?.close?.()
     await frontendOpenApiRuntime?.close?.()
-    await frontendKnowledgeRuntime?.close?.()
-    await frontendMemoryRuntime?.close?.()
+    for (const module of [...optionalModules].reverse()) await module.close?.()
     await publicEndpointRuntime?.close?.()
     unsubscribeSessionTaskJournal?.()
     conversationHistoryRuntime.close?.()
@@ -1223,33 +1005,21 @@ return {
     conversationSync,
     conversationHistory: conversationHistoryRuntime,
     backendRuntime: workBackend,
-    // Preserve the original service handle for embedders using the built-in
-    // synchronous Markdown API. New integrations should use frontendMemory.
-    frontendMemoryService: memoryProviderRuntime,
-    frontendMemory: frontendMemoryRuntime,
-    memoryProvider: memoryProviderRuntime,
+    ...optionalServices,
     frontendRetrieval: retrievalRuntime,
-    frontendKnowledge: frontendKnowledgeRuntime,
     frontendMcp: frontendMcpRuntime,
     frontendOpenApi: frontendOpenApiRuntime,
     runtimeCommands,
     gatewayEventRouter,
     publicEndpoint: publicEndpointRuntime,
-    knowledgeProvider: knowledgeProviderRuntime,
-    knowledgeLibrary,
     identityManager,
     inputArbitration,
     inputAssets: inputAssetRegistry,
     notesStore,
     permissionPolicy,
-    preferenceCandidates,
-    preferencePromoter,
-    profileObserver,
     realtimeGateway,
     sessionDigests,
     sessionSummariser,
-    domainLibrary,
-    domainSummariser,
     taskManager,
     taskStore,
     sessionJournal: sessionJournalRuntime,

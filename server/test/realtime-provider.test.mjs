@@ -12,7 +12,7 @@ import {
   TOOLS,
 } from '../src/voice/realtime-provider.mjs'
 import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
-import { buildFrontendToolContext } from '../src/voice/tools/frontend-tool-context.mjs'
+import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-context.mjs'
 import {
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
@@ -26,7 +26,6 @@ const FRONTEND_TOOL_NAMES = [
   'cancel_agent_task',
   'get_agent_task_status',
   'get_current_time',
-  'memory',
   'notes',
 ]
 
@@ -882,6 +881,7 @@ test('uses a trusted session Assistant Profile without changing core policy', ()
 
 test('builds cache-friendly policy, identity, memory and reconnect context', () => {
   const prompt = buildFrontendInstructions({
+    frontend: { capabilities: ['memory'] },
     client: { timeZone: 'Asia/Shanghai', locale: 'zh-CN' },
     now: new Date('2026-07-23T04:00:00.000Z'),
     memories: [{
@@ -947,7 +947,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /不要仅凭对话历史推测当前状态/)
   assert.doesNotMatch(prompt, /<active_work>/)
   const memory = REALTIME_PROVIDERS.qwen
-    .buildSession({ configured: false })
+    .buildSession({ configured: false, agentContext: { frontend: { capabilities: ['memory'] } } })
     .tools.find(tool => tool.function.name === 'memory')
   assert.deepEqual(
     memory.function.parameters.properties.action.enum,

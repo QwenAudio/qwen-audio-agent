@@ -68,7 +68,7 @@ and onboarding. One entry describes:
 
 ### Ingredient 2: agent driver (required)
 
-`server/src/agent/acp/drivers/<id>.mjs`, plus one import line in
+`server/src/backend/adapters/acp/drivers/<id>.mjs`, plus one import line in
 `registry.mjs`. The driver declares the capability contract and builds the
 runtime profile:
 

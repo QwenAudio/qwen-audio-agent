@@ -4,10 +4,10 @@ import { CockpitService } from '../../service/cockpit-service.mjs'
 import { CockpitServiceServer } from '../../service/server.mjs'
 import { FRONTEND_TOOL_NAMES } from '../../service/tools/registry.mjs'
 import { createCockpitFrontendMcpConfiguration } from '../profile-bundle.mjs'
-import { FrontendMcpClient } from '../../../../server/src/providers/mcp/frontend-mcp-client.mjs'
+import { FrontendMcpClient } from '../../../../server/src/frontend/tools/mcp/frontend-mcp-client.mjs'
 import {
   normalizeFrontendMcpConfiguration,
-} from '../../../../server/src/providers/mcp/frontend-mcp-config.mjs'
+} from '../../../../server/src/frontend/tools/mcp/frontend-mcp-config.mjs'
 
 test('calls selected cockpit tools inline through the frontend MCP client', async t => {
   const service = new CockpitService({

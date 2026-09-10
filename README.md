@@ -186,6 +186,7 @@ chat naturally and get real work done.
 | --- | --- | --- | --- |
 | Desktop | Voice chat, progress follow-up, tools, and background tasks. | [Docs][desktop-docs] | Available |
 | Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][smart-cockpit-example] | Available |
+| AI Passport | Qwen Voice Bean on a hardware card; voice conversation and backend tasks through a LAN relay. Currently half-duplex only. | [Example][ai-passport-example] | Experimental |
 | VoiceMem | Optional semantic memory with transcript or native-audio input. | [Setup example][voicemem-example] | Available |
 | LightRAG | Replaceable knowledge base with semantic retrieval, document indexing, and management. | [Integration example][lightrag-example] | Available |
 | Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
@@ -216,6 +217,7 @@ not include LightRAG or Python dependencies.
 
 [desktop-docs]: docs/desktop/overview.md
 [smart-cockpit-example]: examples/smart-cockpit
+[ai-passport-example]: examples/ai-passport
 [voicemem-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem
 [lightrag-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-/* Native-device LAN ingress. The original Gateway remains loopback-only. */
+/* AI Passport LAN relay. The upstream Gateway remains loopback-only. */
 import http from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-export function createDeviceGateway({
+export function createDeviceRelay({
   WebSocket,
   WebSocketServer,
   upstream,
@@ -256,7 +256,7 @@ if (
   if (!Number.isInteger(port) || port < 1 || port > 65535)
     throw Error('Invalid DEVICE_PORT')
   const requireToken = process.env.DEVICE_ALLOW_TOKEN_FREE !== '1'
-  const server = createDeviceGateway({
+  const server = createDeviceRelay({
     WebSocket,
     WebSocketServer,
     upstream: process.env.GATEWAY_URL || 'http://127.0.0.1:18888',
@@ -265,7 +265,7 @@ if (
   })
   server.listen(port, host, () =>
     console.log(
-      `Device ingress listening on ${host}:${port}; token required: ${requireToken}`,
+      `Device relay listening on ${host}:${port}; token required: ${requireToken}`,
     ),
   )
   for (const signal of ['SIGTERM', 'SIGINT'])

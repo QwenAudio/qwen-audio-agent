@@ -60,6 +60,9 @@ VoiceMem 安装与配置示例：
 [`examples/custom-conversation-client/`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/custom-conversation-client)
 是最小起点。
 
+[AI Passport 语音客户端示例](scenarios/ai-passport.zh.md)展示了千问语音豆通过局域网转发器
+接入 Gateway 的方式；当前仅开放半双工，固件和音频驱动在外部项目维护。
+
 → [Gateway 客户端协议](gateway-protocol.zh.md) ·
 [稳定性契约](contract.zh.md)
 

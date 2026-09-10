@@ -10,7 +10,7 @@ import {
   parseGatewayClientProtocolMessage,
   parseGatewayServerProtocolMessage,
 } from '../../shared/protocol/gateway-client-protocol.mjs'
-import { createDeviceGateway } from './gateway.mjs'
+import { createDeviceRelay } from './device-relay.mjs'
 
 const token = 'test-device-access-token-0123456789'
 
@@ -39,7 +39,7 @@ async function fixture(t, { congested = false } = {}) {
   const backend = new WebSocketServer({ server: upstream })
   upstream.listen(0, '127.0.0.1')
   await once(upstream, 'listening')
-  const server = createDeviceGateway({
+  const server = createDeviceRelay({
     WebSocket: RelaySocket,
     WebSocketServer: DeviceServer,
     upstream: `http://127.0.0.1:${upstream.address().port}`,
@@ -147,7 +147,7 @@ test('keeps transport and GCP heartbeats alive during congestion, then drains au
   const received = once(device, 'message')
   provider.send(JSON.stringify(ping))
   assert.deepEqual(JSON.parse((await received)[0]), ping)
-  // The ingress must forward, not impersonate the client's application pong.
+  // The relay must forward, not impersonate the client's application pong.
   assert.deepEqual(upstreamEvents, [])
   const pong = createGatewayClientProtocolMessage('session.pong', { request_event_id: 'ping-1' })
   parseGatewayClientProtocolMessage(pong)

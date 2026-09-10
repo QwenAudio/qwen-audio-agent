@@ -64,6 +64,10 @@ the stability contract — the same channel the desktop orb, TUI, and WebUI use.
 [`examples/custom-conversation-client/`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/custom-conversation-client)
 is a minimal starting point.
 
+The [AI Passport voice client example](scenarios/ai-passport.md) connects Qwen
+Voice Bean to the Gateway through a LAN relay. It currently supports half-duplex
+only; firmware and audio drivers are maintained in the external project.
+
 → [Gateway Client Protocol](gateway-protocol.md) ·
 [Gateway Contract](contract.md)
 

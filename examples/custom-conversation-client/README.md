@@ -20,5 +20,5 @@ foreground Chatbot; the client owns only conversation I/O and presentation.
 `audio.delta` 播放、多模态 `file` part 与 Task 卡片；Gateway 仍负责前台对话，
 客户端只负责对话输入输出与呈现。
 
-For native audio devices with limited memory, see the
-[embedded voice device ingress](../embedded-voice-device/README.md) example.
+For a hardware client with limited memory, see the
+[AI Passport voice client](../ai-passport/README.md) and its device relay.

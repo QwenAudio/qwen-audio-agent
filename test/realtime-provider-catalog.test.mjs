@@ -35,6 +35,19 @@ const omniSessionDefaults = {
   turnDetection: { type: 'semantic_vad' },
 }
 
+const omniVoiceCapabilities = {
+  supportedVoices: [
+    'Tina',
+    'Cindy',
+    'Liora Mira',
+    'Sunnybobi',
+    'Raymond',
+    'Ethan',
+    'Theo Calm',
+    'Serena',
+  ],
+}
+
 const legacySessionDefaults = {
   voice: 'longanqian',
   turnDetection: { type: 'smart_turn' },
@@ -47,6 +60,7 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
       label: 'Qwen3.5 Omni Flash Realtime',
       family: 'omni',
       sessionDefaults: omniSessionDefaults,
+      voiceCapabilities: omniVoiceCapabilities,
       modelCapabilities: omniModelCapabilities,
       transportCapabilities: omniTransportCapabilities,
     },
@@ -55,6 +69,7 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
       label: 'Qwen3.5 Omni Plus Realtime',
       family: 'omni',
       sessionDefaults: omniSessionDefaults,
+      voiceCapabilities: omniVoiceCapabilities,
       modelCapabilities: omniModelCapabilities,
       transportCapabilities: omniTransportCapabilities,
     },
@@ -154,6 +169,10 @@ test('exposes immutable catalog profiles and nested capabilities', () => {
     assert.equal(Object.isFrozen(profile.sessionDefaults.turnDetection), true)
     assert.equal(Object.isFrozen(profile.modelCapabilities), true)
     assert.equal(Object.isFrozen(profile.transportCapabilities), true)
+    if (profile.voiceCapabilities) {
+      assert.equal(Object.isFrozen(profile.voiceCapabilities), true)
+      assert.equal(Object.isFrozen(profile.voiceCapabilities.supportedVoices), true)
+    }
   }
   assert.throws(() => {
     listDashScopeRealtimeModelProfiles()[0].modelCapabilities.videoInput = false

@@ -129,6 +129,28 @@ function validateModelProfile(provider) {
       `Realtime Provider ${provider.key} modelProfile.sessionDefaults 不完整`,
     )
   }
+  if (profile.voiceCapabilities !== undefined) {
+    const supportedVoices = profile.voiceCapabilities?.supportedVoices
+    if (
+      !profile.voiceCapabilities
+      || typeof profile.voiceCapabilities !== 'object'
+      || Array.isArray(profile.voiceCapabilities)
+      || !Array.isArray(supportedVoices)
+      || supportedVoices.length === 0
+      || supportedVoices.some(voice => (
+        typeof voice !== 'string' || !voice.trim()
+      ))
+      || new Set(supportedVoices).size !== supportedVoices.length
+      || (
+        profile.sessionDefaults.voice !== null
+        && !supportedVoices.includes(profile.sessionDefaults.voice)
+      )
+    ) {
+      throw new Error(
+        `Realtime Provider ${provider.key} modelProfile.voiceCapabilities 不完整`,
+      )
+    }
+  }
 }
 
 export function validateRealtimeProtocol(protocol, providerKey = 'unknown') {
@@ -201,6 +223,14 @@ export function validateRealtimeProvider(provider) {
     }
   } else {
     validateRealtimeProtocol(provider.protocol, provider.key)
+  }
+  if (
+    provider.validateSessionOptions !== undefined
+    && typeof provider.validateSessionOptions !== 'function'
+  ) {
+    throw new Error(
+      `Realtime Provider ${provider.key} validateSessionOptions 必须是函数`,
+    )
   }
   for (const flag of Object.keys(provider.capabilities || {})) {
     if (!CAPABILITY_FLAGS.includes(flag)) {

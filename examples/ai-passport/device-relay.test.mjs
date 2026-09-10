@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import http from 'node:http'
-import { createDeviceGateway } from './gateway.mjs'
+import { createDeviceRelay } from './device-relay.mjs'
 import { WebSocket, WebSocketServer } from 'ws'
 const deadline = setTimeout(() => {
-  console.error('Device gateway test timed out')
+  console.error('Device relay test timed out')
   process.exit(1)
 }, 15000)
 const token = 'test-upstream-access-token-0123456789'
@@ -28,7 +28,7 @@ upstream.listen(0, '127.0.0.1')
 await once(upstream, 'listening')
 const target = `http://127.0.0.1:${upstream.address().port}`
 for (const requireToken of [false, true]) {
-  const server = createDeviceGateway({
+  const server = createDeviceRelay({
     WebSocket,
     WebSocketServer,
     upstream: target,
@@ -63,7 +63,7 @@ for (const requireToken of [false, true]) {
   const message = once(ws, 'message')
   ws.send('{"type":"session.hello"}')
   assert.equal((await message)[0].toString(), '{"type":"session.hello"}')
-  // Pause/resume controls must cross the device ingress unchanged and in order.
+  // Pause/resume controls must cross the device relay unchanged and in order.
   for (let cycle = 0; cycle < 3; cycle++) {
     for (const type of [
       'response.cancel',
@@ -172,5 +172,5 @@ remote.close()
 await new Promise((resolve) => upstream.close(resolve))
 clearTimeout(deadline)
 console.log(
-  'Device gateway: optional/required token, private upstream auth, origin rejection, route isolation, and bidirectional relay PASS',
+  'Device relay: optional/required token, private upstream auth, origin rejection, route isolation, and bidirectional relay PASS',
 )

@@ -170,6 +170,7 @@ npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 | --- | --- | --- | --- |
 | 桌面办公 | 实时语音交流、进度追问、工具调用和后台任务执行。 | [文档][desktop-docs-zh] | 已提供 |
 | 智能座舱 | 车控、导航、音乐、天气和生活服务。 | [示例][smart-cockpit-example] | 已提供 |
+| AI Passport | 在硬件卡片上运行千问语音豆，经局域网转发器进行语音对话与后台任务交互；目前仅开放半双工。 | [示例][ai-passport-example] | 实验性 |
 | VoiceMem | 可选语义记忆，支持转写文本或原生音频输入。 | [配置示例][voicemem-example] | 已提供 |
 | LightRAG | 可替换知识库，支持语义检索、文档索引和管理。 | [接入示例][lightrag-example] | 已提供 |
 | 客服助手 | 问题澄清、订单查询、工单处理和人工转接。 | 待补充 | 规划中 |
@@ -198,6 +199,7 @@ Python 代码或依赖。
 
 [desktop-docs-zh]: docs/desktop/overview.zh.md
 [smart-cockpit-example]: examples/smart-cockpit
+[ai-passport-example]: examples/ai-passport/README_ZH.md
 [voicemem-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem
 [lightrag-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag
 

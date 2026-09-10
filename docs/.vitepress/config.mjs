@@ -100,6 +100,7 @@ function sidebar(prefix = '') {
       text: t('示例与参考', 'Examples & Resources'), collapsed: true,
       items: [
         page('智能座舱', 'Smart Cockpit', 'scenarios/smart-cockpit'),
+        page('AI Passport 语音客户端', 'AI Passport Voice Client', 'scenarios/ai-passport'),
         page('VoiceMem', 'VoiceMem', 'scenarios/voicemem'),
         page('LightRAG', 'LightRAG', 'scenarios/lightrag'),
         page('演示文稿', 'Presentations', 'resources/presentations'),

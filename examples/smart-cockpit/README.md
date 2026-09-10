@@ -18,6 +18,49 @@ work together.
 
 https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
 
+## Architecture
+
+![Smart cockpit framework architecture](docs/framework-architecture.svg)
+
+The base qwen-audio-agent boundary is foreground conversation plus backend
+execution. The cockpit client and Gateway form the foreground, the cockpit
+Agent handles backend tasks, and the Service supplies scenario state, business
+rules, and the tool execution environment.
+
+See the [architecture document](docs/architecture.md) for complete boundaries
+and data flows.
+
+## Benchmark Results
+
+The benchmark evaluates cockpit tool calling with the same tools, prompt,
+deterministic state, and scorer for Text and Realtime models.
+
+### Short Suite
+
+86 canonical cases across vehicle control, music, navigation, and weather.
+
+| Domain | Cases | Expected calls | Text pass rate | Text actual calls | Realtime pass rate | Realtime actual calls |
+|---|---:|---:|---:|---:|---:|---:|
+| Vehicle | 24 | 23 | 100.00% | 23 | 100.00% | 23 |
+| Music | 18 | 17 | 100.00% | 17 | 100.00% | 17 |
+| Navigation | 36 | 44 | 100.00% | 44 | 97.22% | 44 |
+| Weather | 8 | 8 | 100.00% | 8 | 100.00% | 8 |
+| Overall | 86 | 92 | 100.00% | 92 | 98.84% | 92 |
+
+### Long-Context Suite
+
+10 mixed-domain conversations, 500 total turns, 250 expected tool calls, and
+250 no-tool chitchat/background turns. Long-context results focus on call-level,
+state, and no-tool behavior instead of task pass rate.
+
+| Model | Calls exp/act | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Text `qwen3.8-flash` | 250 / 252 | 88.80% | 100.00% | 91.20% | 100.00% | 0 / 2 | 100.00% | 100.00% | 90.00% |
+| Realtime `qwen-audio-3.0-realtime-plus` | 250 / 246 | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
+
+See the [Benchmark guide](bench/README.md) for datasets, commands, alignment
+metrics, timeout retry behavior, and scoring rules.
+
 ## Core features
 
 - **Realtime voice conversation:** continuous dialogue, natural interruption,
@@ -32,26 +75,6 @@ https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
   and order state through scenario-owned HTTP/SSE channels.
 - **Replaceable components:** the client, backend Agent, and scenario service can
   each be replaced without changing the framework core.
-
-## Architecture
-
-![Smart cockpit framework architecture](docs/framework-architecture.svg)
-
-The base qwen-audio-agent boundary is foreground conversation plus backend
-execution. The cockpit client and Gateway form the foreground, the cockpit Agent
-handles backend tasks, and the Service supplies scenario state, business rules,
-and the tool execution environment.
-
-| Directory / process | Default address | Responsibility |
-|---|---|---|
-| [`client/`](client/) / cockpit-client | `http://127.0.0.1:5173` | Replaceable cockpit client responsible for audio I/O, conversation interaction, and business panels. |
-| [`gateway/`](gateway/) / cockpit-gateway | `http://127.0.0.1:18888` | Foreground Agent and Gateway composition for realtime conversation, foreground tools, and backend task submission. |
-| [`agent/`](agent/) / cockpit-agent | `http://127.0.0.1:3020` | Replaceable A2A backend Agent; Qwen3.8-Flash interprets and orchestrates tasks. |
-| [`service/`](service/) / cockpit-service | `http://127.0.0.1:3010` | Cockpit environment and infrastructure for state, rules, external integrations, and MCP tools. |
-| [`bootstrap/`](bootstrap/) | — | Shared environment loading and startup preflight for all four processes. |
-
-See the [architecture document](docs/architecture.md) for complete boundaries
-and data flows.
 
 ## Quick start
 
@@ -108,28 +131,6 @@ Realtime fast path, while `flashbuy` and `custom-skills` run through the backend
 Agent. Change the scenario routing in
 [`surface-routing.json`](service/tools/surface-routing.json); see the
 [tool directory guide](service/tools/README.md) for extension details.
-
-## Benchmark
-
-The example includes a reproducible cockpit tool-calling benchmark. It uses the
-same tools, prompt, deterministic state, and scorer to evaluate tool selection,
-argument generation, and no-tool decisions in both single-turn and long-context
-conversations:
-
-- Short suite: 86 cockpit instructions.
-- Long-context suite: 10 conversations and 500 turns, including 250 expected
-  tool calls and 250 no-tool turns.
-- Four runners: Gold, text model, controlled Realtime, and full voice pipeline.
-
-```bash
-node examples/smart-cockpit/bench/runner/run-gold.mjs
-node examples/smart-cockpit/bench/runner/run-text.mjs
-node examples/smart-cockpit/bench/runner/run-realtime.mjs
-node examples/smart-cockpit/bench/runner/run-voice.mjs
-```
-
-See the [Benchmark guide](bench/README.md) for datasets, runtime options, and
-scoring rules.
 
 ## Replace and extend
 

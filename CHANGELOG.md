@@ -2,8 +2,8 @@
 
 ## Unreleased
 
-- Add an embedded voice device ingress example with bounded audio chunking,
-  slow-reader backpressure tests, and microphone pause/resume guidance.
+- 新增嵌入式语音设备接入示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，
+  提供局域网配置、麦克风暂停恢复说明及慢速客户端回归测试，不改动 Gateway 核心。
 
 - Gateway 接入统一为本机、`--lan` 和 `--tailnet` 三种启动模式；对外连接地址
   独立由 `gateway pair --endpoint` 指定，不再使用启动参数 `--public-url`。

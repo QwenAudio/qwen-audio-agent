@@ -3,14 +3,15 @@
 [简体中文](README_ZH.md)
 
 This example connects a memory-constrained native voice device to the public
-Gateway WebSocket protocol. It splits large `audio.delta` messages and applies
-backpressure when playback is slower than generation. It does not replace the
+Gateway WebSocket protocol. It splits large `audio.delta` messages and bounds
+outbound buffering for slow devices. It does not replace the
 Gateway, change its providers, or implement a hardware audio driver.
 
 Hardware-specific firmware belongs in a separate project. This ingress was
 extracted from a small ESP32-C3 voice companion, but repeated microphone
 pause/resume and long-running network behavior still need hardware acceptance.
-Automated tests are not a claim of production reliability.
+Automated tests are not a claim of production reliability. See the original
+[Qwen Voice Bean firmware and hardware integration](https://ai-passport.folotoy.cn/plays/233/).
 
 ## Run
 
@@ -67,19 +68,27 @@ use the provider's announced input and output sample rates.
 - On a transient provider outage, wait for `voice.ready` on the retained Gateway
   connection. Do not confuse provider recovery with Wi-Fi disconnection.
 
-The relay pauses upstream reads while the device drains. The application queue
-is bounded to 2 MiB and WebSocket messages to 1 MiB; excessive traffic closes the
+The relay keeps reading upstream during congestion so WebSocket Ping/Pong still
+works. GCP `session.ping` bypasses the audio queue unchanged; a device advertising
+`session.heartbeat` must send its own correlated `session.pong`. The relay does
+not answer application heartbeats on the device's behalf. Other queued events
+retain their order. Valid upstream close codes and reasons are preserved; clients
+must not automatically retry `4001` (replaced), `4002` (occupied), or `4003` (revoked).
+
+The application queue is bounded to 2 MiB and WebSocket messages to 1 MiB; excessive traffic closes the
 connection rather than growing memory without a bound. These are example limits,
 not a throughput or real-time guarantee. Status logs contain no audio or tokens.
 
 ## Test
 
 ```sh
-node --test examples/embedded-voice-device/gateway.test.mjs
+npm run test:embedded-voice-device
 ```
 
 Tests use a local fake upstream with no provider key or model calls. They cover
 required/optional authentication, route and Origin rejection, ordered pause/resume
 controls, exact PCM reconstruction after chunking, and a 600,000-byte burst to a
-paused reader. Real microphones, speaker echo, Wi-Fi loss, and firmware recovery
+paused reader. Regression tests also cover heartbeats during simulated congestion,
+queue overflow, close-code forwarding, and the public Gateway client's terminal
+reconnect behavior. Real microphones, speaker echo, Wi-Fi loss, and firmware recovery
 must be tested on the target hardware.

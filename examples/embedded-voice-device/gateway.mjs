@@ -143,7 +143,8 @@ export function createDeviceGateway({
         }
         peer.on('message', (data, binary) => forward(remote, data, binary))
         // A voice provider can generate audio faster than real-time playback.
-        // Apply TCP backpressure instead of treating a slow device as a disconnect.
+        // Bound downstream buffering without pausing upstream reads: WebSocket
+        // control-frame pings must still be consumed and answered during congestion.
         const outbound = []
         let queuedBytes = 0,
           pumpTimer = null
@@ -167,9 +168,8 @@ export function createDeviceGateway({
             })
           }
           if (outbound.length || peer.bufferedAmount > 16384) {
-            remote.pause()
             pumpTimer = setTimeout(pump, 10)
-          } else if (remote.readyState === WebSocket.OPEN) remote.resume()
+          }
         }
         const enqueue = (data) => {
           const bytes = Buffer.byteLength(data)
@@ -191,11 +191,16 @@ export function createDeviceGateway({
             return
           }
           if (peer.readyState !== WebSocket.OPEN) return
-          remote.pause()
           let event
           try {
             event = JSON.parse(data.toString())
           } catch {}
+          // Negotiated GCP heartbeats must not wait behind the audio backlog.
+          // Forward the ping unchanged; only the actual device may answer it.
+          if (event?.type === 'session.ping') {
+            forward(peer, data, false)
+            return
+          }
           if (
             event?.type === 'audio.delta' &&
             typeof event.audio === 'string' &&
@@ -219,9 +224,15 @@ export function createDeviceGateway({
           console.info('Device socket closed: code=' + code)
           remote.close()
         })
-        remote.on('close', (code) => {
+        remote.on('close', (code, reason) => {
           console.info('Upstream socket closed: code=' + code)
-          peer.close(code === 1000 ? 1000 : 1011, 'Gateway disconnected')
+          clearOutbound()
+          // 1005/1006 are local observations, not valid close-frame status codes.
+          // Preserve GCP codes (including 4001/4002/4003) and their reasons so
+          // clients can distinguish terminal lease/auth states from transport loss.
+          if (code === 1005) peer.close()
+          else if (code === 1006) peer.close(1011, 'Gateway disconnected')
+          else peer.close(code, reason)
         })
       })
     })

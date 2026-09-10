@@ -19,7 +19,7 @@
         },
         "vehicle_climate_control": {
           "enabled": true,
-          "description": "立即开启或关闭空调/空调预处理，或设置制冷制热模式和风量；设置温度优先使用 vehicle_temperature_control。不要把状态查询当成控制指令，也不要再通过 spawn_thinking 重复执行同一操作。"
+          "description": "立即开关空调本体或空调预处理：用户提到“预处理/提前开空调/上车前弄暖弄凉”用 action=start 或 stop，单纯“打开/关闭空调”用 action=open 或 close，两者状态互不等价；也可设置制冷制热模式和风量。设置温度优先使用 vehicle_temperature_control。不要把状态查询当成控制指令，也不要再通过 spawn_thinking 重复执行同一操作。"
         },
         "vehicle_temperature_control": {
           "enabled": true,
@@ -39,7 +39,7 @@
         },
         "vehicle_comfort_control": {
           "enabled": true,
-          "description": "立即控制座椅加热、座椅通风/制冷、自动座椅温控、方向盘加热和方向盘自动加热；用户指定座位或档位时写入参数。"
+          "description": "立即控制座椅加热、座椅通风/制冷、自动座椅温控、方向盘加热和方向盘自动加热；用户指定座位或档位时写入参数。方向盘加热的开关和档位共用 target=steering_wheel_heater，档位用 action=set 加 level（0~2）。"
         },
         "vehicle_light_control": {
           "enabled": true,
@@ -111,7 +111,7 @@
         },
         "music_toggle_playback": {
           "enabled": true,
-          "description": "立即切换播放/暂停，或显式执行播放、暂停。用户说“暂停/继续一下”“播放暂停切一下”时直接调用。"
+          "description": "立即翻转播放/暂停状态。仅当用户没说清是要播还是要停（如“播放暂停切一下”“切换播放状态”）时调用；明确要播放用 music_play，明确要暂停用 music_pause。"
         },
         "music_pause": {
           "enabled": true,

@@ -240,10 +240,18 @@ test('scopes MCP tools according to domain surface routing', async t => {
 
   const comfort = await frontend.callTool({
     name: 'vehicle_comfort_control',
-    arguments: { target: 'steering_wheel_heat_level', action: 'set', level: 2 },
+    arguments: { target: 'steering_wheel_heater', action: 'set', level: 2 },
   })
   assert.equal(comfort.isError, undefined)
   assert.equal(comfort.structuredContent.vehicle.steeringWheelHeatLevel, 2)
+  assert.equal(comfort.structuredContent.vehicle.steeringWheelHeater, 1)
+
+  const legacyComfort = await frontend.callTool({
+    name: 'vehicle_comfort_control',
+    arguments: { target: 'steering_wheel_heat_level', action: 'set', level: 1 },
+  })
+  assert.equal(legacyComfort.isError, undefined)
+  assert.equal(legacyComfort.structuredContent.vehicle.steeringWheelHeatLevel, 1)
 
   await frontend.callTool({
     name: 'navigation_start',

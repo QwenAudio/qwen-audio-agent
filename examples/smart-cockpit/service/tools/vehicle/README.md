@@ -30,9 +30,9 @@
 | Function | 什么时候调用 | 关键参数 | 状态影响 | 内部对应能力 |
 | --- | --- | --- | --- | --- |
 | `vehicle_state_query` | 用户问“当前状态”“空调多少度”“车窗开了吗”“还在充电吗”等 | `part?` | 只读 | Tesla `vehicle_data` / 本地车辆状态 |
-| `vehicle_climate_control` | 用户要打开/关闭空调、开启预处理、关闭预处理 | `action` | 更新 climate 开关/预处理状态 | Tesla `auto_conditioning_start`, `auto_conditioning_stop` |
+| `vehicle_climate_control` | 用户要打开/关闭空调本体（`open`/`close`），或开启/关闭空调预处理（`start`/`stop`） | `action` | `open`/`close` 只改 `ac`；`start`/`stop` 同时改 `ac` 与 `preconditioning` | Tesla `auto_conditioning_start`, `auto_conditioning_stop` |
 | `vehicle_temperature_control` | 用户要把温度调到某值，或调高/调低温度 | `zone?`, `action`, `temperature?`, `delta?` | 更新座舱温度 | Tesla `set_temps` |
-| `vehicle_comfort_control` | 用户要控制座椅加热、座椅通风/制冷、自动座椅温控、方向盘加热 | `target`, `seat?`, `action`, `level?`, `enabled?` | 更新座椅/方向盘舒适状态 | Tesla seat / steering wheel climate commands |
+| `vehicle_comfort_control` | 用户要控制座椅加热、座椅通风/制冷、自动座椅温控、方向盘加热（开关与档位同一 target） | `target`, `seat?`, `action`, `level?`, `enabled?` | 更新座椅/方向盘舒适状态 | Tesla seat / steering wheel climate commands |
 | `vehicle_window_control` | 用户要通风、关闭车窗、打开/关闭某个车窗或全车车窗 | `action`, `window?`, `level?` | 更新车窗状态 | Tesla `window_control` |
 | `vehicle_sunroof_control` | 用户要关闭天窗、打开通风/翘起、停止天窗动作 | `action`, `position?` | 更新天窗状态 | Tesla `sun_roof_control` |
 | `vehicle_closure_control` | 用户要打开/关闭前备箱、后备箱、尾门、充电口/加油口 | `target`, `action` | 更新开闭件状态 | Tesla `actuate_trunk`, `charge_port_door_open`, `charge_port_door_close` |
@@ -66,7 +66,7 @@
 | `remote_seat_cooler_request` | 设置座椅制冷/通风 | `vehicle_comfort_control` |
 | `remote_auto_seat_climate_request` | 设置自动座椅温控 | `vehicle_comfort_control` |
 | `remote_steering_wheel_heater_request` | 开关方向盘加热 | `vehicle_comfort_control` |
-| `remote_steering_wheel_heat_level_request` | 设置方向盘加热档位 | `vehicle_comfort_control` |
+| `remote_steering_wheel_heat_level_request` | 设置方向盘加热档位 | `vehicle_comfort_control`（`target=steering_wheel_heater` + `action=set` + `level`） |
 | `remote_auto_steering_wheel_heat_climate_request` | 设置自动方向盘加热 | `vehicle_comfort_control` |
 
 ### 车窗/天窗/开闭件
@@ -134,7 +134,8 @@
 - 用户明确要改变车辆状态时调用对应控制工具。
 - 不按固定话术、固定值或开关状态拆工具；话术写入 description/examples，固定值做成枚举参数。
 - 一次性动作和持久状态要区分：`flash_lights`、`honk_horn`、`remote_boombox` 更像触发动作，不一定需要长期写入状态。
-- `vehicle_climate_control` 负责空调预处理开关，`vehicle_temperature_control` 负责温度数值调节，避免单个 schema 过宽。
+- `vehicle_climate_control` 负责空调本体与预处理两组开关，`vehicle_temperature_control` 负责温度数值调节，避免单个 schema 过宽。
+- 方向盘加热的开关和档位合并到 `target=steering_wheel_heater`，与座椅加热保持同一 `(target, action, level)` 形状；旧的 `steering_wheel_heat_level` 目标由服务层静默兼容，不再对模型暴露。
 - `vehicle_closure_control` 用于前/后备箱和充电口这类开闭件；车窗和天窗保留独立工具，因为它们有通风、开度、停止等更细行为。
 - 充电计划类能力优先映射到 `add_charge_schedule` / `remove_charge_schedule`；`set_scheduled_charging` 仅作为兼容能力。
 - 底层厂商 API 由服务层编排，不直接暴露给模型。

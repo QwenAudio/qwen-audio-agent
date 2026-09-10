@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | 状态查询 | `music_state_query` | 查询当前播放、音量、来源、收藏或搜索结果 |
 | 播放/搜索 | `music_play`, `music_search` | 点播/继续播放，或只搜索不播放 |
-| 播放控制 | `music_toggle_playback`, `music_pause`, `music_next`, `music_previous` | 播放暂停切换、暂停、上一首、下一首 |
+| 播放控制 | `music_pause`, `music_next`, `music_previous`, `music_toggle_playback` | 暂停、上一首、下一首、播放暂停翻转 |
 | 音量控制 | `music_volume_control` | 设置、调高、调低、静音或取消静音媒体音量 |
 | 来源控制 | `music_source_control` | 切换广播、蓝牙、USB、QQ音乐、Spotify、Apple Music 等媒体来源 |
 | 收藏控制 | `music_favorite_control` | 收藏/取消收藏歌曲，或切换上一首/下一首收藏 |
@@ -32,8 +32,8 @@
 | `music_state_query` | 用户问“现在放的什么”“音量多少”“当前音乐来源”“收藏了哪些” | `part?` | 只读 | Tesla Fleet Telemetry `media_info.*` |
 | `music_play` | 用户明确说“播放”“听某首歌/某个歌手/某张专辑”或“继续播放” | `query?` | `playing=true`，可更新当前曲目 | Tesla 语音 `Listen to [song name]` / Grok media search and play |
 | `music_search` | 用户只是搜索歌曲、歌手、专辑，不要求播放 | `query` | 更新最近搜索结果 | Tesla 媒体搜索 / 语音搜索 |
-| `music_toggle_playback` | 用户说“播放/暂停一下”“切换播放状态” | `action?` | 切换或显式设置播放状态 | Tesla `media_toggle_playback` |
-| `music_pause` | 用户明确要求暂停 | 无 | `playing=false` | Tesla `media_toggle_playback` 的暂停语义 |
+| `music_toggle_playback` | 用户只说“切换播放状态”“播放暂停切一下”，没指明播还是停 | `action?`（仅 `toggle`） | 翻转当前播放状态 | Tesla `media_toggle_playback` |
+| `music_pause` | 用户明确要求暂停，这是表达暂停意图的唯一工具 | 无 | `playing=false` | Tesla `media_toggle_playback` 的暂停语义 |
 | `music_next` | 用户说“下一首”“切歌” | 无 | 切到下一首并播放 | Tesla `media_next_track` |
 | `music_previous` | 用户说“上一首” | 无 | 切到上一首并播放 | Tesla `media_prev_track` |
 | `music_volume_control` | 用户说“音量大一点/小一点/调到 6/静音/取消静音” | `action`, `volume?`, `delta?` | 更新 `volume` / `muted` | Tesla `adjust_volume`, `media_volume_up`, `media_volume_down` |
@@ -51,7 +51,7 @@
 | Listen to song | 播放指定歌曲 | `music_play` |
 | Lower/raise volume | 调低/调高媒体音量 | `music_volume_control` |
 | Skip to next | 切到下一首 | `music_next` |
-| Pause/play song | 暂停或继续播放 | `music_toggle_playback`, `music_pause` |
+| Pause/play song | 暂停用 `music_pause`，继续播放用 `music_play` | `music_pause`, `music_play` |
 | Change source | 切换媒体来源 | `music_source_control` |
 | Search and play media content | 搜索并播放媒体内容 | `music_play`；只搜索时用 `music_search` |
 
@@ -120,7 +120,7 @@
 
 - 用户问状态时调用 `music_state_query`，不要用控制工具代替查询。
 - 用户明确要听某首歌、某个歌手或某张专辑时调用 `music_play`；只是找歌时调用 `music_search`。
-- 暂停、继续、上一首、下一首保留快捷函数，便于前台低延迟执行；“播放暂停切一下”使用 `music_toggle_playback`。
+- 暂停、继续、上一首、下一首保留快捷函数，便于前台低延迟执行。三个播放相关工具按意图明确度分工，避免重叠：明确要播放用 `music_play`，明确要暂停用 `music_pause`，只有意图没指明播还是停时才用 `music_toggle_playback`（其 `action` 枚举已收窄为仅 `toggle`）。
 - 音量、媒体来源、收藏分别使用独立控制工具，避免把所有媒体设置塞进播放工具。
 - 收藏切歌和普通上下首不同：普通切歌使用 `music_next` / `music_previous`，收藏切歌使用 `music_favorite_control`。
 - 底层厂商 API 或真实播放器 SDK 由服务层编排，不直接暴露给模型。

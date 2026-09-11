@@ -7,7 +7,7 @@ export function desktopClientPaths(userDataDirectory) {
   const directory = resolve(userDataDirectory)
   return {
     directory,
-    skinsDirectory: resolve(directory, 'skins'),
+    skinsDirectory: resolve(directory, 'pets'),
     wakeWordModelDirectory: resolve(directory, 'cache/models/wake-word'),
     pathCacheFile: resolve(directory, 'cache/login-shell-path.json'),
     logDirectory: resolve(directory, 'logs'),

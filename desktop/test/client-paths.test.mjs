@@ -9,7 +9,7 @@ test('all desktop assets, caches, credentials and logs belong to Electron userDa
   const paths = desktopClientPaths(directory)
   assert.deepEqual(paths, {
     directory,
-    skinsDirectory: resolve(directory, 'skins'),
+    skinsDirectory: resolve(directory, 'pets'),
     wakeWordModelDirectory: resolve(directory, 'cache/models/wake-word'),
     pathCacheFile: resolve(directory, 'cache/login-shell-path.json'),
     logDirectory: resolve(directory, 'logs'),

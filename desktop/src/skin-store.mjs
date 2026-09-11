@@ -10,6 +10,7 @@ import {
   readdirSync,
   readFileSync,
   renameSync,
+  rmdirSync,
   rmSync,
   statSync,
 } from 'node:fs'
@@ -34,7 +35,41 @@ const DEFAULT_FRAME_SPEC = Object.freeze({
 })
 const V2_DEFAULT_ROWS = 11
 export function skinsDirectory(clientDirectory) {
+  return join(clientDirectory, 'pets')
+}
+
+export function legacySkinsDirectory(clientDirectory) {
   return join(clientDirectory, 'skins')
+}
+
+// The first desktop releases called this directory `skins`. Keep existing
+// installs intact while converging on `pets`, which matches the Codex pet
+// package ecosystem and the cross-platform user-facing name.
+export function migrateLegacySkinsDirectory(clientDirectory) {
+  const legacy = legacySkinsDirectory(clientDirectory)
+  const target = skinsDirectory(clientDirectory)
+  if (legacy === target || !existsSync(legacy)) {
+    return { migrated: false, conflicts: [] }
+  }
+  if (!existsSync(target)) {
+    renameSync(legacy, target)
+    return { migrated: true, conflicts: [] }
+  }
+
+  const conflicts = []
+  let moved = 0
+  for (const entry of readdirSync(legacy, { withFileTypes: true })) {
+    const source = join(legacy, entry.name)
+    const destination = join(target, entry.name)
+    if (existsSync(destination)) {
+      conflicts.push(entry.name)
+      continue
+    }
+    renameSync(source, destination)
+    moved += 1
+  }
+  if (readdirSync(legacy).length === 0) rmdirSync(legacy)
+  return { migrated: moved > 0, conflicts }
 }
 
 function readUInt24LE(buffer, offset) {

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "customer-service-example",
+  "description": "零售客服的前台语音助手：说话短、一次问一件事，业务规则查细则不凭印象。",
+  "assistant": "assistant/retail.md",
+  "toolSources": {
+    "mcp": "frontend-mcp.json"
+  }
+}

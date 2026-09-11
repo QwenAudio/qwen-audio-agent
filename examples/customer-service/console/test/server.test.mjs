@@ -1,0 +1,302 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import { createConsoleServer, refreshCachedEvidence } from '../server.mjs'
+
+// 配置台的路由测试。【刻意不覆盖抽取】那条路径要调模型，
+// 一次一分钟，不适合放进单测 —— 它的逻辑已经在 consensus.test.mjs
+// 用固定数据覆盖过了。这里测的是「界面拿到的数据形状对不对」，
+// 因为浏览器实测抓到的两个 bug 都是字段名对不上，而不是逻辑错。
+
+async function withServer(probe) {
+  const server = createConsoleServer()
+  await new Promise(resolve => server.listen(0, resolve))
+  const base = `http://127.0.0.1:${server.address().port}`
+  try {
+    await probe(base)
+  } finally {
+    await new Promise(resolve => server.close(resolve))
+  }
+}
+
+const get = async (base, path) => {
+  const response = await fetch(`${base}${path}`)
+  return { status: response.status, body: await response.json() }
+}
+
+test('旧缓存的错误金额证据被撤销并降级，抽取次数不变', () => {
+  const item = {
+    kind: 'threshold', name: 'refund_ceiling', value: 20, unit: '元',
+    applies_to: '单笔退款', quote: '单笔退款上限2000元',
+    policyLine: 1, evidenceVerified: true, quoteVerified: true, agreement: '3/3',
+  }
+  const cached = { agreed: [item], disputed: [] }
+  const updated = refreshCachedEvidence(cached, ['单笔退款上限2000元'])
+  assert.equal(updated.agreed.length, 0)
+  assert.equal(updated.disputed[0].evidenceVerified, false)
+  assert.equal(updated.disputed[0].policyLine, null)
+  assert.equal(updated.disputed[0].agreement, '3/3')
+  assert.equal(cached.agreed[0].evidenceVerified, true, '不能修改原始缓存对象')
+})
+
+test('缓存补证据不提升部分共识，其他数值版本也重新核对', () => {
+  const item = {
+    kind: 'threshold', name: 'change_fee_economy', value: 200, unit: '元',
+    applies_to: '经济舱改签手续费', quote: '经济舱改签手续费为200元。',
+    agreement: '1/3', evidenceVerified: false,
+  }
+  const cached = { agreed: [], disputed: [{ ...item, variants: [{
+    ...item, value: 20, evidenceVerified: true, policyLine: 1,
+  }] }] }
+  const updated = refreshCachedEvidence(cached, ['| 经济舱 | economy | 200 元 |'])
+  assert.equal(updated.agreed.length, 0)
+  assert.equal(updated.disputed[0].evidenceVerified, true)
+  assert.equal(updated.disputed[0].agreement, '1/3')
+  assert.equal(updated.disputed[0].variants[0].evidenceVerified, false)
+  assert.equal(updated.disputed[0].variants[0].policyLine, null)
+})
+
+test('首页返回 HTML', async () => {
+  await withServer(async base => {
+    const response = await fetch(`${base}/`)
+    assert.equal(response.status, 200)
+    assert.match(response.headers.get('content-type'), /text\/html/)
+    const html = await response.text()
+    assert.match(html, /Policy 配置台/)
+  })
+})
+
+test('首页解释候选后果，并提供数据库快捷入口和独立滚动容器', async () => {
+  await withServer(async base => {
+    const response = await fetch(`${base}/`)
+    const html = await response.text()
+    assert.match(html, /id="workspace"/)
+    assert.match(html, /id="jump-database"/)
+    assert.match(html, /不处理不会改变当前 Agent/)
+    assert.match(html, /不处理会怎样/)
+    assert.match(html, /次抽取/)
+    // 点击 policy 来源必须只滚右栏，不能再用 scrollIntoView 带着左栏跳。
+    assert.match(html, /scrollPanelTo\(\$\('policy'\), target/)
+  })
+})
+
+test('两个配置区块开头都说明上移下移调整的是什么', async () => {
+  // 【为什么值得一条测试】上移下移在两个区块里是两种东西：决策表是硬优先级
+  // （兜底行挪上去会短路整张表），流程规则只是 prompt 里的先后。
+  // 界面上不讲清，管理员会以为两边一样。
+  await withServer(async base => {
+    const html = await (await fetch(`${base}/`)).text()
+    assert.match(html, /行序 = 优先级/)
+    assert.match(html, /必须留在最后一行/)
+    assert.match(html, /写进 prompt 的先后顺序/)
+  })
+})
+
+test('域列表两个都在', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/domains')
+    assert.deepEqual(body.domains.map(item => item.id), ['retail', 'airline'])
+  })
+})
+
+test('policy 原文按行返回，行号从 1 开始', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/policy?domain=retail')
+    assert.ok(body.lines.length > 50)
+    assert.equal(body.lines[0].line, 1)
+    // 界面靠 line 字段做跳转，行号必须连续
+    assert.equal(body.lines[17].line, 18)
+  })
+})
+
+test('未知域不返回文件内容', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/policy?domain=../../../etc/passwd')
+    assert.ok(body.error, '未知域必须被拒绝')
+    assert.equal(body.lines, undefined)
+  })
+})
+
+test('决策表摊平后带兜底行标记', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/guards?domain=airline')
+    assert.equal(body.tables.length, 7)
+    const baggage = body.tables.find(table => table.name === 'free_baggage_allowance')
+    assert.deepEqual(baggage.inputs, ['memberTier', 'cabin'])
+    assert.equal(baggage.rules.length, 10)
+    // 【兜底行必须能被界面识别】它决定「未覆盖的输入怎么办」，
+    // 是这张表里最该被人确认的一行。
+    const catchAll = baggage.rules.filter(rule => rule.isCatchAll)
+    assert.equal(catchAll.length, 1)
+    assert.equal(catchAll[0].index, 10, '兜底行应是最后一行')
+  })
+})
+
+test('注释键不会被当成决策表送到界面', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/guards?domain=airline')
+    for (const table of body.tables) {
+      assert.ok(!table.name.startsWith('_'), `${table.name} 是注释键`)
+    }
+  })
+})
+
+test('前置条件带 policy 行号，界面才能跳转', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/guards?domain=retail')
+    assert.ok(body.preconditions.length >= 5)
+    for (const rule of body.preconditions) {
+      assert.equal(typeof rule.policyLine, 'number', `${rule.tool} 缺行号`)
+      assert.ok(rule.requires.length)
+    }
+  })
+})
+
+test('工具面建议带 suggested 与 ifOverridden 两个字段', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/surfaces')
+    assert.equal(body.suggestions.length, 9)
+    for (const tool of body.suggestions) {
+      // 【这两个字段名是浏览器实测抓过的坑】
+      // UI 里凭记忆写成 surface / message，结果界面上一片 undefined。
+      assert.ok(['frontend', 'backend'].includes(tool.suggested), `${tool.name} 缺 suggested`)
+      assert.equal(typeof tool.why, 'string')
+      assert.equal(typeof tool.ifOverridden, 'string', `${tool.name} 缺 ifOverridden`)
+    }
+  })
+})
+
+test('把写库工具挪到前台会给出 risk 级警告', async () => {
+  await withServer(async base => {
+    const overrides = encodeURIComponent(JSON.stringify({ cancel_order: 'frontend' }))
+    const { body } = await get(base, `/api/surfaces?overrides=${overrides}`)
+    assert.equal(body.warnings.length, 1)
+    const warning = body.warnings[0]
+    assert.equal(warning.name, 'cancel_order')
+    assert.equal(warning.severity, 'risk')
+    // 界面读的是 detail，不是 message
+    assert.equal(typeof warning.detail, 'string')
+    assert.match(warning.detail, /auth_required|批准|确认/)
+  })
+})
+
+test('把只读工具挪到后台只是 slowdown，不是 risk', async () => {
+  await withServer(async base => {
+    const overrides = encodeURIComponent(JSON.stringify({ identity_status: 'backend' }))
+    const { body } = await get(base, `/api/surfaces?overrides=${overrides}`)
+    assert.equal(body.warnings[0].severity, 'slowdown')
+    assert.match(body.warnings[0].detail, /延迟|静默|拖慢/)
+  })
+})
+
+test('掩盖会反映到导出的白名单里', async () => {
+  await withServer(async base => {
+    const plain = (await get(base, '/api/surfaces')).body
+    const overrides = encodeURIComponent(JSON.stringify({ cancel_order: 'frontend' }))
+    const moved = (await get(base, `/api/surfaces?overrides=${overrides}`)).body
+    // frontend-mcp.json 的结构是 servers['customer-service'].tools，
+    // 白名单不在顶层 —— 这个形状由上游的 gateway 决定，不是我们能选的。
+    const listOf = mcp => Object.keys(mcp.servers['customer-service'].tools)
+    assert.ok(!listOf(plain.frontendMcp).includes('cancel_order'))
+    assert.ok(listOf(moved.frontendMcp).includes('cancel_order'),
+      '挪到前台后必须出现在白名单里，否则开关是假的')
+  })
+})
+
+test('导出的白名单结构与 gateway 期望的一致', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/surfaces')
+    const mcp = body.frontendMcp
+    assert.equal(mcp.version, 1)
+    const server = mcp.servers['customer-service']
+    assert.equal(server.enabled, true)
+    // url 留成占位符，由 .env 注入 —— 导出的配置不该把本机端口写死
+    assert.match(server.url, /\$\{[A-Z_]+\}/)
+    for (const [name, entry] of Object.entries(server.tools)) {
+      assert.equal(entry.enabled, true, `${name} 没启用`)
+      assert.ok(entry.description, `${name} 缺描述`)
+    }
+  })
+})
+
+test('坏掉的 overrides 参数不会让服务崩', async () => {
+  await withServer(async base => {
+    const { status, body } = await get(base, '/api/surfaces?overrides=not-json')
+    assert.equal(status, 200)
+    assert.equal(body.suggestions.length, 9)
+  })
+})
+
+test('完整配置端点返回 canonical guards、flows 与人工裁决', async () => {
+  await withServer(async base => {
+    const { body } = await get(base, '/api/configuration?domain=airline')
+    assert.ok(body.configuration.guards.decisions.refundable)
+    assert.ok(Array.isArray(body.configuration.flows.rules))
+    assert.equal(body.configuration.review.domain, 'airline')
+    assert.ok(body.configuration.frontendMcp.servers['customer-service'])
+    // 这里必须是 decisions{} 而不是供表格展示的 tables[]。
+    assert.equal(body.configuration.guards.tables, undefined)
+  })
+})
+
+test('工具面建议按域生成，航空不再拿到零售工具', async () => {
+  await withServer(async base => {
+    const retail = (await get(base, '/api/surfaces?domain=retail')).body
+    const airline = (await get(base, '/api/surfaces?domain=airline')).body
+    const names = value => value.suggestions.map(item => item.name)
+    assert.ok(names(retail).includes('return_items'))
+    assert.ok(!names(retail).includes('update_flights'))
+    assert.ok(names(airline).includes('update_flights'))
+    assert.ok(!names(airline).includes('return_items'))
+  })
+})
+
+test('完整配置预览会拒绝没有兜底行的表', async () => {
+  await withServer(async base => {
+    const configuration = (await get(base, '/api/configuration?domain=retail')).body.configuration
+    configuration.guards.decisions.refund_authority.rules = [
+      { when: { amount: '> 2000' }, then: 'escalate' },
+    ]
+    const response = await fetch(`${base}/api/configuration/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: 'retail', configuration }),
+    })
+    assert.equal(response.status, 422)
+    const result = await response.json()
+    assert.equal(result.ok, false)
+    assert.ok(result.errors.some(error => /catch-all/.test(error.message)))
+  })
+})
+
+test('没有变化时应用是 no-op，不创建无意义备份', async () => {
+  await withServer(async base => {
+    const configuration = (await get(base, '/api/configuration?domain=retail')).body.configuration
+    const response = await fetch(`${base}/api/configuration/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: 'retail', configuration }),
+    })
+    assert.equal(response.status, 200)
+    const result = await response.json()
+    assert.deepEqual(result.written, [])
+    assert.match(result.note, /没有变化/)
+  })
+})
+
+test('未知路由返回 404', async () => {
+  await withServer(async base => {
+    const { status } = await get(base, '/api/nope')
+    assert.equal(status, 404)
+  })
+})
+
+test('导出拒绝未知域，不写任何文件', async () => {
+  await withServer(async base => {
+    const response = await fetch(`${base}/api/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ domain: 'nope', guards: { hacked: true } }),
+    })
+    assert.equal(response.status, 400)
+  })
+})

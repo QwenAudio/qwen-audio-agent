@@ -1,0 +1,11 @@
+{
+  "name": "customer-service-desk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "description": "人工坐席台 —— 转接之后显示上下文，不回复客户"
+}

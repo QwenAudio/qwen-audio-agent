@@ -1,0 +1,1190 @@
+{
+  "_note": "裁剪自 τ²-bench airline 域的结构。4 用户 / 8 预订 / 12 航班。会员等级 × 舱位的组合要能覆盖免费行李额那张 3×3 表，否则那条规则演示不到。",
+  "_anchorDate": "2026-09-04T02:00:00+08:00",
+  "_anchorNote": "造这份数据时的「现在」。装载时所有日期按「距这一刻多久」平移到真实的现在，于是相对关系（哪笔在退货期限内、哪笔出票超过 24 小时、哪个航班已执飞）与写测试那天完全一致。不做这一步的话，过一周 7 天窗口内的订单就变成超期，演示和测试全部失效而代码一行没改。这个值是用测试断言反推的：退票测试要求几笔预订「超 24 小时」，而它们距库里最晚出票只有几小时，所以当时的「现在」比最晚出票晚一天多。见 service/state-store.mjs 的 anchorToToday。",
+  "users": [
+    {
+      "userId": "CY10023841",
+      "name": "赵宇",
+      "idTail": "4182",
+      "phone": "13800004182",
+      "memberTier": "gold",
+      "paymentMethods": [
+        {
+          "id": "credit_card_5521",
+          "type": "credit_card",
+          "brand": "招商银行",
+          "last4": "5521"
+        },
+        {
+          "id": "gift_card_7730",
+          "type": "gift_card",
+          "balance": 1200.0
+        }
+      ]
+    },
+    {
+      "userId": "CY10058127",
+      "name": "孙丽",
+      "idTail": "9036",
+      "phone": "13900009036",
+      "memberTier": "silver",
+      "paymentMethods": [
+        {
+          "id": "credit_card_8842",
+          "type": "credit_card",
+          "brand": "工商银行",
+          "last4": "8842"
+        }
+      ]
+    },
+    {
+      "userId": "CY10091455",
+      "name": "周涛",
+      "idTail": "6673",
+      "phone": "13700006673",
+      "memberTier": "regular",
+      "paymentMethods": [
+        {
+          "id": "gift_card_2214",
+          "type": "gift_card",
+          "balance": 300.0
+        }
+      ]
+    },
+    {
+      "userId": "CY10077390",
+      "name": "吴敏",
+      "idTail": "5508",
+      "phone": "13600005508",
+      "memberTier": "regular",
+      "paymentMethods": [
+        {
+          "id": "credit_card_3367",
+          "type": "credit_card",
+          "brand": "建设银行",
+          "last4": "3367"
+        }
+      ]
+    }
+  ],
+  "flights": [
+    {
+      "flightNo": "CY1201",
+      "from": "PVG",
+      "to": "PEK",
+      "date": "2026-09-20",
+      "departure": "08:30",
+      "arrival": "11:15",
+      "seats": {
+        "basic_economy": 12,
+        "economy": 30,
+        "business": 6
+      },
+      "prices": {
+        "basic_economy": 680,
+        "economy": 980,
+        "business": 2600
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY1203",
+      "from": "PVG",
+      "to": "PEK",
+      "date": "2026-09-20",
+      "departure": "14:00",
+      "arrival": "16:45",
+      "seats": {
+        "basic_economy": 0,
+        "economy": 18,
+        "business": 3
+      },
+      "prices": {
+        "basic_economy": 720,
+        "economy": 1080,
+        "business": 2800
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY1205",
+      "from": "PVG",
+      "to": "PEK",
+      "date": "2026-09-25",
+      "departure": "09:10",
+      "arrival": "11:55",
+      "seats": {
+        "basic_economy": 8,
+        "economy": 22,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 640,
+        "economy": 900,
+        "business": 2400
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY1207",
+      "from": "PVG",
+      "to": "PEK",
+      "date": "2026-09-25",
+      "departure": "19:30",
+      "arrival": "22:15",
+      "seats": {
+        "basic_economy": 15,
+        "economy": 26,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 560,
+        "economy": 820,
+        "business": 2200
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY2310",
+      "from": "CAN",
+      "to": "CTU",
+      "date": "2026-09-03",
+      "departure": "07:45",
+      "arrival": "10:20",
+      "seats": {
+        "basic_economy": 10,
+        "economy": 24,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 520,
+        "economy": 760,
+        "business": 1900
+      },
+      "status": "delayed",
+      "delayHours": 5,
+      "_note": "延误 5 小时 —— 落在细则第七条「4 至 8 小时 → 400 元」那一档"
+    },
+    {
+      "flightNo": "CY2312",
+      "from": "CAN",
+      "to": "CTU",
+      "date": "2026-09-03",
+      "departure": "15:20",
+      "arrival": "17:55",
+      "seats": {
+        "basic_economy": 6,
+        "economy": 20,
+        "business": 2
+      },
+      "prices": {
+        "basic_economy": 540,
+        "economy": 790,
+        "business": 1950
+      },
+      "status": "delayed",
+      "delayHours": 1,
+      "_note": "延误 1 小时 —— 2 小时以内无补偿"
+    },
+    {
+      "flightNo": "CY3405",
+      "from": "SZX",
+      "to": "XIY",
+      "date": "2026-09-22",
+      "departure": "11:00",
+      "arrival": "13:40",
+      "seats": {
+        "basic_economy": 9,
+        "economy": 28,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 600,
+        "economy": 880,
+        "business": 2100
+      },
+      "status": "cancelled",
+      "_note": "航司取消 —— 无条件全额退款"
+    },
+    {
+      "flightNo": "CY3407",
+      "from": "SZX",
+      "to": "XIY",
+      "date": "2026-09-22",
+      "departure": "16:30",
+      "arrival": "19:10",
+      "seats": {
+        "basic_economy": 11,
+        "economy": 25,
+        "business": 3
+      },
+      "prices": {
+        "basic_economy": 620,
+        "economy": 900,
+        "business": 2150
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY4501",
+      "from": "PEK",
+      "to": "PVG",
+      "date": "2026-09-28",
+      "departure": "10:15",
+      "arrival": "12:50",
+      "seats": {
+        "basic_economy": 14,
+        "economy": 32,
+        "business": 6
+      },
+      "prices": {
+        "basic_economy": 700,
+        "economy": 1000,
+        "business": 2650
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY5602",
+      "from": "CTU",
+      "to": "CAN",
+      "date": "2026-09-19",
+      "departure": "13:00",
+      "arrival": "15:35",
+      "seats": {
+        "basic_economy": 7,
+        "economy": 19,
+        "business": 3
+      },
+      "prices": {
+        "basic_economy": 530,
+        "economy": 770,
+        "business": 1920
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY6703",
+      "from": "PVG",
+      "to": "SZX",
+      "date": "2026-08-28",
+      "departure": "08:00",
+      "arrival": "10:50",
+      "seats": {
+        "basic_economy": 5,
+        "economy": 15,
+        "business": 2
+      },
+      "prices": {
+        "basic_economy": 580,
+        "economy": 850,
+        "business": 2050
+      },
+      "status": "flown",
+      "_note": "已飞 —— 用于「已飞航段不能改签/改舱位/取消」的用例"
+    },
+    {
+      "flightNo": "CY7801",
+      "from": "XIY",
+      "to": "PVG",
+      "date": "2026-09-30",
+      "departure": "17:40",
+      "arrival": "20:25",
+      "seats": {
+        "basic_economy": 13,
+        "economy": 27,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 660,
+        "economy": 950,
+        "business": 2500
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY2314",
+      "from": "CAN",
+      "to": "CTU",
+      "date": "2026-09-02",
+      "departure": "07:45",
+      "arrival": "10:20",
+      "seats": {
+        "basic_economy": 10,
+        "economy": 24,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 520,
+        "economy": 760,
+        "business": 1900
+      },
+      "status": "delayed",
+      "delayHours": 9,
+      "_note": "延误 9 小时 —— 覆盖 delay_compensation 的 >8 小时那一档（600 元）。库里原本最长延误 5 小时，600 元那一档演示不出来。"
+    },
+    {
+      "flightNo": "CY2316",
+      "from": "CAN",
+      "to": "CTU",
+      "date": "2026-09-02",
+      "departure": "07:45",
+      "arrival": "10:20",
+      "seats": {
+        "basic_economy": 10,
+        "economy": 24,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 520,
+        "economy": 760,
+        "business": 1900
+      },
+      "status": "delayed",
+      "delayHours": 3,
+      "_note": "延误 3 小时 —— 覆盖 delay_compensation 的 ]2..4] 那一档（200 元）。这一档是开闭区间，边界正好要有样本才验得出 2 小时不赔、3 小时赔 200。"
+    },
+    {
+      "flightNo": "CY2318",
+      "from": "CAN",
+      "to": "CTU",
+      "date": "2026-09-16",
+      "departure": "08:15",
+      "arrival": "10:50",
+      "seats": {
+        "basic_economy": 11,
+        "economy": 26,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 525,
+        "economy": 765,
+        "business": 1910
+      },
+      "status": "on_time",
+      "_note": "CAN→CTU 上四班延误航班全部落在过去（延误是已发生的事），于是这条航线一班可订的都没有了 —— 而 CYR8803 和 CYR8807 都挂在这条线上，改签会搜不到目标。这三班（CY2318/2320/2322）就是它们的改签目标。"
+    },
+    {
+      "flightNo": "CY2320",
+      "from": "CAN",
+      "to": "CTU",
+      "date": "2026-09-19",
+      "departure": "12:40",
+      "arrival": "15:15",
+      "seats": {
+        "basic_economy": 8,
+        "economy": 21,
+        "business": 3
+      },
+      "prices": {
+        "basic_economy": 535,
+        "economy": 780,
+        "business": 1935
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY2322",
+      "from": "CAN",
+      "to": "CTU",
+      "date": "2026-09-21",
+      "departure": "17:05",
+      "arrival": "19:40",
+      "seats": {
+        "basic_economy": 6,
+        "economy": 18,
+        "business": 2
+      },
+      "prices": {
+        "basic_economy": 550,
+        "economy": 810,
+        "business": 1980
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY4503",
+      "from": "PEK",
+      "to": "PVG",
+      "date": "2026-09-28",
+      "departure": "07:20",
+      "arrival": "09:55",
+      "seats": {
+        "basic_economy": 10,
+        "economy": 28,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 720,
+        "economy": 1020,
+        "business": 2680
+      },
+      "status": "on_time",
+      "_note": "PEK→PVG 原先只有 CY4501 一班，而 CYR8810 的第二段正是它 —— 只有一班的航线演示不了改签（改签不能改航线，没有别的班次可换）。这一班和 CY4505 是给它准备的备选。"
+    },
+    {
+      "flightNo": "CY4505",
+      "from": "PEK",
+      "to": "PVG",
+      "date": "2026-09-29",
+      "departure": "16:05",
+      "arrival": "18:40",
+      "seats": {
+        "basic_economy": 6,
+        "economy": 20,
+        "business": 3
+      },
+      "prices": {
+        "basic_economy": 690,
+        "economy": 960,
+        "business": 2550
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY7803",
+      "from": "XIY",
+      "to": "PVG",
+      "date": "2026-09-30",
+      "departure": "08:50",
+      "arrival": "11:35",
+      "seats": {
+        "basic_economy": 12,
+        "economy": 24,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 640,
+        "economy": 920,
+        "business": 2450
+      },
+      "status": "on_time",
+      "_note": "CYR8808 是公务舱、订的 CY7801（XIY→PVG）。公务舱改签费是 0，只补票价差 —— 这两班的公务舱价格一低一高，正好能演示「改到便宜的不退差价、改到贵的要补差价」。"
+    },
+    {
+      "flightNo": "CY7805",
+      "from": "XIY",
+      "to": "PVG",
+      "date": "2026-10-01",
+      "departure": "13:25",
+      "arrival": "16:10",
+      "seats": {
+        "basic_economy": 9,
+        "economy": 18,
+        "business": 2
+      },
+      "prices": {
+        "basic_economy": 620,
+        "economy": 890,
+        "business": 2380
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY5604",
+      "from": "CTU",
+      "to": "CAN",
+      "date": "2026-09-19",
+      "departure": "07:30",
+      "arrival": "10:05",
+      "seats": {
+        "basic_economy": 8,
+        "economy": 22,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 510,
+        "economy": 750,
+        "business": 1880
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY5606",
+      "from": "CTU",
+      "to": "CAN",
+      "date": "2026-09-20",
+      "departure": "18:45",
+      "arrival": "21:20",
+      "seats": {
+        "basic_economy": 5,
+        "economy": 0,
+        "business": 3
+      },
+      "prices": {
+        "basic_economy": 545,
+        "economy": 800,
+        "business": 1960
+      },
+      "status": "on_time",
+      "_note": "economy 余量刻意为 0。原先只有 CY1203 的 basic_economy 是满舱，经济舱一直没有满舱样本 —— 而「搜到的航班客户想改，结果没座」是最常见的一种失败路径，得有数据才演示得出来。"
+    },
+    {
+      "flightNo": "CY6705",
+      "from": "PVG",
+      "to": "SZX",
+      "date": "2026-09-21",
+      "departure": "09:15",
+      "arrival": "12:05",
+      "seats": {
+        "basic_economy": 11,
+        "economy": 26,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 590,
+        "economy": 860,
+        "business": 2080
+      },
+      "status": "on_time",
+      "_note": "PVG→SZX 原先只有 CY6703，而它是已执飞的（status=flown，给 CYR8805「已飞不能改」那条规则用）。已飞的航班不会出现在搜索结果里，所以这条航线等于一个可订班次都没有。"
+    },
+    {
+      "flightNo": "CY6707",
+      "from": "PVG",
+      "to": "SZX",
+      "date": "2026-09-23",
+      "departure": "14:30",
+      "arrival": "17:20",
+      "seats": {
+        "basic_economy": 7,
+        "economy": 17,
+        "business": 2
+      },
+      "prices": {
+        "basic_economy": 610,
+        "economy": 890,
+        "business": 2120
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY8101",
+      "from": "HGH",
+      "to": "PEK",
+      "date": "2026-09-22",
+      "departure": "08:05",
+      "arrival": "10:40",
+      "seats": {
+        "basic_economy": 13,
+        "economy": 29,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 650,
+        "economy": 940,
+        "business": 2480
+      },
+      "status": "on_time",
+      "_note": "杭州（HGH）是新增的第七个通航点。前六个（PVG/PEK/CAN/CTU/SZX/XIY）都已经有预订挂在上面，只有这条是干净的 —— 用来演示「客户问的航线库里根本没有对应订单」和纯查询场景。"
+    },
+    {
+      "flightNo": "CY8103",
+      "from": "HGH",
+      "to": "PEK",
+      "date": "2026-09-24",
+      "departure": "16:20",
+      "arrival": "18:55",
+      "seats": {
+        "basic_economy": 8,
+        "economy": 21,
+        "business": 3
+      },
+      "prices": {
+        "basic_economy": 670,
+        "economy": 970,
+        "business": 2560
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY8102",
+      "from": "PEK",
+      "to": "HGH",
+      "date": "2026-09-23",
+      "departure": "11:30",
+      "arrival": "14:05",
+      "seats": {
+        "basic_economy": 10,
+        "economy": 25,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 660,
+        "economy": 950,
+        "business": 2500
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY8201",
+      "from": "HGH",
+      "to": "CTU",
+      "date": "2026-09-26",
+      "departure": "09:40",
+      "arrival": "12:30",
+      "seats": {
+        "basic_economy": 9,
+        "economy": 23,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 680,
+        "economy": 980,
+        "business": 2200
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY8301",
+      "from": "SZX",
+      "to": "HGH",
+      "date": "2026-09-25",
+      "departure": "13:10",
+      "arrival": "15:20",
+      "seats": {
+        "basic_economy": 12,
+        "economy": 27,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 570,
+        "economy": 830,
+        "business": 1980
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY8302",
+      "from": "HGH",
+      "to": "SZX",
+      "date": "2026-09-27",
+      "departure": "10:00",
+      "arrival": "12:10",
+      "seats": {
+        "basic_economy": 11,
+        "economy": 24,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 580,
+        "economy": 840,
+        "business": 2000
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY9101",
+      "from": "SZX",
+      "to": "PEK",
+      "date": "2026-09-24",
+      "departure": "07:55",
+      "arrival": "11:10",
+      "seats": {
+        "basic_economy": 14,
+        "economy": 30,
+        "business": 6
+      },
+      "prices": {
+        "basic_economy": 780,
+        "economy": 1150,
+        "business": 2900
+      },
+      "status": "on_time",
+      "_note": "深圳→北京是库里最长的航线，票价刻意定得最高。改签补差价那条路径需要「便宜航线换到贵航线」的价差样本，同城同价的数据看不出差额是怎么算的。"
+    },
+    {
+      "flightNo": "CY9103",
+      "from": "SZX",
+      "to": "PEK",
+      "date": "2026-09-26",
+      "departure": "19:00",
+      "arrival": "22:15",
+      "seats": {
+        "basic_economy": 9,
+        "economy": 22,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 810,
+        "economy": 1190,
+        "business": 2980
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY9102",
+      "from": "PEK",
+      "to": "SZX",
+      "date": "2026-09-25",
+      "departure": "12:40",
+      "arrival": "15:55",
+      "seats": {
+        "basic_economy": 12,
+        "economy": 26,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 790,
+        "economy": 1160,
+        "business": 2920
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY9201",
+      "from": "CTU",
+      "to": "PEK",
+      "date": "2026-09-21",
+      "departure": "08:20",
+      "arrival": "10:55",
+      "seats": {
+        "basic_economy": 13,
+        "economy": 28,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 720,
+        "economy": 1050,
+        "business": 2600
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY9202",
+      "from": "PEK",
+      "to": "CTU",
+      "date": "2026-09-27",
+      "departure": "17:15",
+      "arrival": "19:50",
+      "seats": {
+        "basic_economy": 10,
+        "economy": 24,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 700,
+        "economy": 1030,
+        "business": 2560
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY9301",
+      "from": "SZX",
+      "to": "CTU",
+      "date": "2026-09-23",
+      "departure": "09:30",
+      "arrival": "11:40",
+      "seats": {
+        "basic_economy": 11,
+        "economy": 25,
+        "business": 4
+      },
+      "prices": {
+        "basic_economy": 560,
+        "economy": 810,
+        "business": 1900
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY9302",
+      "from": "CTU",
+      "to": "SZX",
+      "date": "2026-09-29",
+      "departure": "14:50",
+      "arrival": "17:00",
+      "seats": {
+        "basic_economy": 8,
+        "economy": 20,
+        "business": 3
+      },
+      "prices": {
+        "basic_economy": 570,
+        "economy": 820,
+        "business": 1920
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY9401",
+      "from": "PVG",
+      "to": "CTU",
+      "date": "2026-09-22",
+      "departure": "10:10",
+      "arrival": "13:05",
+      "seats": {
+        "basic_economy": 12,
+        "economy": 27,
+        "business": 5
+      },
+      "prices": {
+        "basic_economy": 690,
+        "economy": 1000,
+        "business": 2450
+      },
+      "status": "on_time"
+    },
+    {
+      "flightNo": "CY9402",
+      "from": "CTU",
+      "to": "PVG",
+      "date": "2026-09-28",
+      "departure": "15:30",
+      "arrival": "18:25",
+      "seats": {
+        "basic_economy": 9,
+        "economy": 21,
+        "business": 3
+      },
+      "prices": {
+        "basic_economy": 700,
+        "economy": 1010,
+        "business": 2470
+      },
+      "status": "on_time"
+    }
+  ],
+  "reservations": [
+    {
+      "reservationId": "CYR8801",
+      "status": "confirmed",
+      "userId": "CY10023841",
+      "cabin": "business",
+      "tripType": "one_way",
+      "bookedAt": "2026-09-01T10:20:00+08:00",
+      "insurance": false,
+      "passengers": [
+        {
+          "name": "赵宇",
+          "idTail": "4182"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY1201",
+          "date": "2026-09-20"
+        }
+      ],
+      "checkedBags": 2,
+      "total": 2600.0,
+      "payment": {
+        "methodId": "credit_card_5521",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 2600.0
+          }
+        ]
+      },
+      "_note": "公务舱改签主场景：手续费免费。金卡 + 公务舱 = 免费行李 4 件"
+    },
+    {
+      "reservationId": "CYR8802",
+      "status": "confirmed",
+      "userId": "CY10058127",
+      "cabin": "basic_economy",
+      "tripType": "one_way",
+      "bookedAt": "2026-09-01T15:40:00+08:00",
+      "insurance": false,
+      "passengers": [
+        {
+          "name": "孙丽",
+          "idTail": "9036"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY1203",
+          "date": "2026-09-20"
+        }
+      ],
+      "checkedBags": 1,
+      "total": 720.0,
+      "payment": {
+        "methodId": "credit_card_8842",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 720.0
+          }
+        ]
+      },
+      "_note": "特价经济舱：不可改签，但可以改舱位。银卡 + 特价经济 = 免费行李 1 件"
+    },
+    {
+      "reservationId": "CYR8803",
+      "status": "confirmed",
+      "userId": "CY10091455",
+      "cabin": "economy",
+      "tripType": "one_way",
+      "bookedAt": "2026-09-02T09:10:00+08:00",
+      "insurance": false,
+      "passengers": [
+        {
+          "name": "周涛",
+          "idTail": "6673"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY2310",
+          "date": "2026-09-03"
+        }
+      ],
+      "checkedBags": 1,
+      "total": 760.0,
+      "payment": {
+        "methodId": "gift_card_2214",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 300.0
+          },
+          {
+            "type": "payment",
+            "amount": 460.0
+          }
+        ]
+      },
+      "_note": "延误 5 小时 → 400 元旅行券。普通会员 + 经济舱 = 免费行李 1 件"
+    },
+    {
+      "reservationId": "CYR8804",
+      "status": "confirmed",
+      "userId": "CY10077390",
+      "cabin": "economy",
+      "tripType": "one_way",
+      "bookedAt": "2026-09-02T11:30:00+08:00",
+      "insurance": false,
+      "passengers": [
+        {
+          "name": "吴敏",
+          "idTail": "5508"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY3405",
+          "date": "2026-09-22"
+        }
+      ],
+      "checkedBags": 0,
+      "total": 880.0,
+      "payment": {
+        "methodId": "credit_card_3367",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 880.0
+          }
+        ]
+      },
+      "_note": "航班被航司取消 → 无条件全额退款"
+    },
+    {
+      "reservationId": "CYR8805",
+      "status": "confirmed",
+      "userId": "CY10023841",
+      "cabin": "economy",
+      "tripType": "one_way",
+      "bookedAt": "2026-08-25T08:00:00+08:00",
+      "insurance": false,
+      "passengers": [
+        {
+          "name": "赵宇",
+          "idTail": "4182"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY6703",
+          "date": "2026-08-28"
+        }
+      ],
+      "checkedBags": 3,
+      "total": 850.0,
+      "payment": {
+        "methodId": "credit_card_5521",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 850.0
+          }
+        ]
+      },
+      "_note": "已飞：不能改签、不能改舱位、不能取消"
+    },
+    {
+      "reservationId": "CYR8806",
+      "status": "confirmed",
+      "userId": "CY10058127",
+      "cabin": "economy",
+      "tripType": "one_way",
+      "bookedAt": "2026-09-02T20:15:00+08:00",
+      "insurance": true,
+      "passengers": [
+        {
+          "name": "孙丽",
+          "idTail": "9036"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY5602",
+          "date": "2026-09-19"
+        }
+      ],
+      "checkedBags": 2,
+      "total": 830.0,
+      "payment": {
+        "methodId": "credit_card_8842",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 830.0
+          }
+        ]
+      },
+      "_note": "买了保险的经济舱：因健康或天气原因可全额退款。总额含 60 元保险"
+    },
+    {
+      "reservationId": "CYR8807",
+      "status": "confirmed",
+      "userId": "CY10091455",
+      "cabin": "basic_economy",
+      "tripType": "one_way",
+      "bookedAt": "2026-09-02T18:00:00+08:00",
+      "insurance": false,
+      "passengers": [
+        {
+          "name": "周涛",
+          "idTail": "6673"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY2312",
+          "date": "2026-09-03"
+        }
+      ],
+      "checkedBags": 0,
+      "total": 540.0,
+      "payment": {
+        "methodId": "gift_card_2214",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 540.0
+          }
+        ]
+      },
+      "_note": "特价经济舱无保险且超 24 小时：不可退款。延误 1 小时也不够补偿门槛。普通会员 + 特价经济 = 免费行李 0 件"
+    },
+    {
+      "reservationId": "CYR8808",
+      "status": "confirmed",
+      "userId": "CY10077390",
+      "cabin": "business",
+      "tripType": "one_way",
+      "bookedAt": "2026-09-02T22:50:00+08:00",
+      "insurance": false,
+      "passengers": [
+        {
+          "name": "吴敏",
+          "idTail": "5508"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY7801",
+          "date": "2026-09-30"
+        }
+      ],
+      "checkedBags": 1,
+      "total": 2500.0,
+      "payment": {
+        "methodId": "credit_card_3367",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 2500.0
+          }
+        ]
+      },
+      "_note": "公务舱：超 24 小时也可全额退款。普通会员 + 公务舱 = 免费行李 2 件"
+    },
+    {
+      "reservationId": "CYR8809",
+      "status": "confirmed",
+      "userId": "CY10023841",
+      "cabin": "economy",
+      "tripType": "one_way",
+      "bookedAt": "2026-09-03T20:00:00+08:00",
+      "insurance": false,
+      "passengers": [
+        {
+          "name": "赵宇",
+          "idTail": "4182"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY1201",
+          "date": "2026-09-20"
+        }
+      ],
+      "checkedBags": 0,
+      "total": 980,
+      "payment": {
+        "methodId": "credit_card_5521",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 980
+          }
+        ]
+      },
+      "_note": "刚出票 6 小时 —— 覆盖 refundable 表的 hoursSinceBooking <= 24 那一行（出票 24 小时内可免费退票）。库里原本最新的一笔也超过 27 小时，那条规则零样本，是覆盖度检查泛化之后报出来的。"
+    },
+    {
+      "reservationId": "CYR8810",
+      "status": "confirmed",
+      "userId": "CY10058127",
+      "cabin": "business",
+      "tripType": "round_trip",
+      "bookedAt": "2026-08-30T02:00:00+08:00",
+      "insurance": true,
+      "passengers": [
+        {
+          "name": "孙丽",
+          "idTail": "9036"
+        }
+      ],
+      "segments": [
+        {
+          "flightNo": "CY1203",
+          "date": "2026-09-20"
+        },
+        {
+          "flightNo": "CY4501",
+          "date": "2026-09-28"
+        }
+      ],
+      "checkedBags": 2,
+      "total": 5510,
+      "payment": {
+        "methodId": "credit_card_8842",
+        "transactions": [
+          {
+            "type": "payment",
+            "amount": 5510
+          }
+        ]
+      },
+      "_note": "公务舱往返高价预订 —— 覆盖 refund_authority 的 >3000 那一行（超出客服权限，必须转人工主管）。库里原本最高 2600，那条上限规则演示不出来，而它是整套里最该演示的保护之一。总额是两段公务舱票价之和（CY1203 + CY4501），不是编的 —— airline.test.mjs 里有一条测试专门核对总额与票价，我第一版写 3600 被它抓到了。"
+    }
+  ]
+}

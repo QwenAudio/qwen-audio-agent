@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GatewayServerEvent } from 'qwen-audio-agent/realtime-events'
+import * as realtimeEvents from '../../../../shared/protocol/realtime-events.mjs'
+import * as gatewayClientProtocol from '../../../../shared/protocol/gateway-client-protocol.mjs'
 import { createHookHarness, deferred, mockHookImports } from './helpers/hook-harness.mjs'
+
+const { GatewayServerEvent } = realtimeEvents
 
 function memoryResponse(text) {
   return {
@@ -51,6 +54,8 @@ async function fixture(t, { voice = false } = {}) {
   const load = mockHookImports(t, {
     react: harness.react,
     'qwen-audio-agent/gateway-client-sdk': { GatewayClient: FakeGatewayClient },
+    'qwen-audio-agent/realtime-events': realtimeEvents,
+    'qwen-audio-agent/gateway-client-protocol': gatewayClientProtocol,
     '../config/gateway': {
       gatewayHttpUrl: path => `http://gateway.invalid${path}`,
       gatewayWebSocketUrl: path => new URL(path, 'ws://gateway.invalid'),

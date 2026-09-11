@@ -60,7 +60,10 @@ These are animation examples of the built-in appearances:
 ## Skins
 
 In Settings → App → Appearance, click “Import Skin…” and select a skin directory, `pet.json`,
-or a zip archive. Imported skins can be selected or deleted; built-in appearances cannot be deleted.
+or a zip archive. Imported skins are stored under `pets/` in the desktop data directory.
+Existing installations migrate the former `skins/` directory on first launch; conflicting
+entries are left in place for manual resolution. Imported skins can be selected or deleted;
+built-in appearances cannot be deleted.
 
 Codex pet packages and optional animation-frame descriptions are supported; Codex is not required.
 See the [Pet Skin Protocol](pet-skin-spec.md) for resource creation and

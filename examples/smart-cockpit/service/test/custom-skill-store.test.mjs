@@ -59,3 +59,57 @@ test('contains identifiers and ignores damaged records', async t => {
   assert.equal((await store.list('../../escape')).length, 1)
   assert.equal(await store.get('../../escape', '../../not-a-file'), null)
 })
+
+test('persists structured event rules and returns their fields to the catalog', async t => {
+  const store = await fixture(t)
+  const rule = await store.upsert('car-one', {
+    name: '低温提醒',
+    description: '主驾空调低温时提醒保暖',
+    trigger: { type: 'vehicle_temperature', max: 19 },
+    reminder: '当前温度较低，请注意保暖',
+    instructions: 'arbitrary user code is never evaluated',
+  })
+  assert.equal(rule.trigger.field, 'acTemp')
+  assert.match(rule.instructions, /19°C及以下/u)
+  assert.doesNotMatch(rule.instructions, /arbitrary user code/u)
+  const reloaded = new CustomSkillStore({ root: store.root })
+  assert.deepEqual((await reloaded.list('car-one'))[0].trigger, rule.trigger)
+  assert.equal((await reloaded.get('car-one', rule.id)).reminder, rule.reminder)
+  assert.equal((await reloaded.list('car-one'))[0].kind, 'event')
+  assert.deepEqual(await reloaded.list('car-two'), [])
+})
+
+test('bounds event rules instead of accepting arbitrary predicates or user code', async t => {
+  const store = await fixture(t)
+  const base = {
+    name: '低温提醒', description: '规则验证', kind: 'event', reminder: '注意保暖',
+  }
+  for (const trigger of [
+    { type: 'javascript', max: 19 },
+    { type: 'vehicle_temperature', field: 'vehicle.engine', max: 19 },
+    { type: 'vehicle_temperature' },
+    { type: 'vehicle_temperature', max: '19' },
+    { type: 'vehicle_temperature', min: 21, max: 19 },
+    { type: 'vehicle_temperature', max: 40 },
+    { type: 'vehicle_temperature', max: 19, evaluate: 'return true' },
+  ]) {
+    await assert.rejects(store.upsert('car-one', { ...base, trigger }), TypeError)
+  }
+  await assert.rejects(store.upsert('car-one', {
+    ...base, trigger: { type: 'vehicle_temperature', max: 19 }, reminder: '',
+  }), /skill reminder is required/u)
+  assert.deepEqual(await store.list('car-one'), [])
+})
+
+test('keeps legacy workflow records readable without an explicit kind', async t => {
+  const store = await fixture(t)
+  const skill = await store.upsert('car-one', {
+    name: '舒适出发', description: '温度和音乐', instructions: '空调22度，然后音乐音量3。',
+  })
+  const [directory] = await readdir(store.root)
+  delete skill.kind
+  await writeFile(resolve(store.root, directory, `${skill.id}.json`), JSON.stringify(skill))
+  assert.equal((await store.get('car-one', skill.id)).kind, 'workflow')
+  assert.equal((await store.list('car-one'))[0].kind, 'workflow')
+  assert.equal((await store.get('car-one', skill.id)).instructions, skill.instructions)
+})

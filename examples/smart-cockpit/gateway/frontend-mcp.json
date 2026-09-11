@@ -5,6 +5,18 @@
       "enabled": true,
       "url": "${COCKPIT_FRONTEND_MCP_URL}",
       "tools": {
+        "custom_skill_list": {
+          "enabled": true,
+          "description": "列出用户保存的座舱技能，包括可按名称运行的工作流和由座舱状态变化触发的提醒。"
+        },
+        "custom_skill_load": {
+          "enabled": true,
+          "description": "按技能名称读取完整定义。运行工作流时先读取，再按指令调用当前可用工具；温度提醒由服务自动触发，不手动反复执行。"
+        },
+        "custom_skill_create": {
+          "enabled": true,
+          "description": "创建或更新座舱技能。工作流保存 instructions；温度提醒使用 kind=event、trigger 与 reminder。用户未指明分区时观察主驾 acTemp。创建只保存，不立即执行或播报提醒内容。"
+        },
         "weather": {
           "enabled": true,
           "description": "查询指定城市的当日天气、温度和出行提示。这是可由前台语音助手直接调用的座舱示例工具。"
@@ -83,7 +95,7 @@
         },
         "navigation_search_place": {
           "enabled": true,
-          "description": "直接搜索地点或周边 POI，但不开始导航。用户只说“找一下”“附近有没有”“查一下哪里有”时调用；如果用户明确要去某地，应使用 navigation_start。"
+          "description": "直接搜索地点或周边 POI，但不开始导航。用户询问附近餐厅或按口味推荐时，根据当前请求和已知饮食偏好选择菜系或食物类别关键词：已有相关偏好就必须落实到 query，不用泛泛的“餐厅”替代，再仅在回复里提偏好；没有相关偏好才按餐厅搜索。附近搜索设 nearby=true。不把口味要求拼成店名或目的地。只推荐返回的真实店名，结合实际返回的地址、距离和类别说明；不编造菜品、环境、评分或口味匹配依据，没有菜品依据时不保证辣度或其他饮食要求。无结果时可简化关键词再查一次，仍无结果就如实说明，不自行扩大范围或换成不相关菜系。只有用户明确要求前往时才使用 navigation_start。"
         },
         "navigation_to_favorite": {
           "enabled": true,

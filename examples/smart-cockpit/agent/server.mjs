@@ -18,6 +18,7 @@ import express from 'express'
 import { pathToFileURL } from 'node:url'
 import { CockpitAgentExecutor } from './executor.mjs'
 import { CockpitMcpTools } from './mcp-client.mjs'
+import { CockpitAgentTools } from './tools.mjs'
 import { DashScopeCockpitModel } from './model.mjs'
 import { loadCockpitEnvironment } from '../bootstrap/environment.mjs'
 
@@ -49,8 +50,8 @@ function agentCard(origin) {
     skills: [{
       id: 'cockpit_operations',
       name: 'Cockpit operations',
-      description: 'Cockpit controls, navigation, music, flash-buy and user-defined cockpit workflows.',
-      tags: ['cockpit', 'vehicle', 'navigation', 'music', 'custom-workflows'],
+      description: 'Cockpit controls, navigation, music, flash-buy, user-defined workflows and source-grounded news research reports.',
+      tags: ['cockpit', 'vehicle', 'navigation', 'music', 'custom-workflows', 'news-research'],
       examples: ['空调调到二十二度', '导航到西湖', '播放晴天', '创建一个下班回家技能'],
       inputModes: ['text/plain'],
       outputModes: ['text/plain', 'application/json'],
@@ -66,7 +67,9 @@ export async function startCockpitAgentServer({
   port = 3020,
   serviceOrigin = 'http://127.0.0.1:3010',
   cockpitId = 'default',
-  tools = new CockpitMcpTools({ origin: serviceOrigin, cockpitId }),
+  tools = new CockpitAgentTools({
+    cockpit: new CockpitMcpTools({ origin: serviceOrigin, cockpitId }),
+  }),
   model = new DashScopeCockpitModel(),
 } = {}) {
   const card = agentCard(`http://${host}:${port}`)

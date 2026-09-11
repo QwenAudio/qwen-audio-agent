@@ -14,6 +14,7 @@ function fixture() {
   const store = new CockpitStateStore({ now: () => timestamp++ })
   const service = new CockpitService({
     store,
+    customSkills: { async list() { return [] } },
     now: () => timestamp++,
     random: () => 0.25,
     services: {

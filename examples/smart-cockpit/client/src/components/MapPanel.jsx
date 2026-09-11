@@ -36,20 +36,13 @@ const STRATEGIES = [
   { value: 2, label: '时间优先' },
 ]
 
-const DESTINATION_SHORTCUTS = [
-  { type: 'home', label: '家', title: '回家' },
-  { type: 'office', label: '公司', title: '去公司' },
-]
-
 export default function MapPanel({
   navState,
   navProgress,
   mapActions,
   routeStrategy,
+  strategyPending = false,
   onStrategyChange,
-  onFavoriteNavigate,
-  onFavoriteSetup,
-  onSearchDestination,
 }) {
   const mapRef = useRef(null)
   const mapInstance = useRef(null)
@@ -421,16 +414,6 @@ export default function MapPanel({
     if (navState?.voice?.broadcastMode === 'brief') return '简洁播报'
     return '标准播报'
   }, [navState?.voice?.broadcastMode, navState?.voice?.muted])
-  const destinationShortcuts = useMemo(() => DESTINATION_SHORTCUTS.map(item => {
-    const favorite = navState?.favorites?.[item.type]
-    const subtitle = favorite?.address || favorite?.name || '点击设置'
-    return {
-      ...item,
-      subtitle,
-      configured: Boolean(favorite?.location),
-    }
-  }), [navState?.favorites])
-
   const activeNavProgress = useMemo(() => (
     navProgress?.domain === 'navigation' && navProgress.message ? navProgress : null
   ), [navProgress])
@@ -838,37 +821,6 @@ export default function MapPanel({
           <div className="route-progress"><span></span></div>
         </div>
       )}
-      {!routeInfo && !activeNavProgress && (
-        <div className="destination-search-panel" aria-label="目的地搜索">
-          <button className="destination-search-field" onClick={onSearchDestination} aria-label="搜索目的地">
-            <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M10.8 4a6.8 6.8 0 0 1 5.43 10.9l3.44 3.43-1.42 1.42-3.43-3.44A6.8 6.8 0 1 1 10.8 4Zm0 2a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6Z" fill="currentColor" />
-            </svg>
-            <span>搜索目的地</span>
-          </button>
-          <div className="destination-shortcuts">
-            {destinationShortcuts.map(item => (
-              <div className={`destination-shortcut${item.configured ? ' is-configured' : ''}`} key={item.type}>
-                <div className="destination-shortcut-icon" aria-hidden="true">{item.label.slice(0, 1)}</div>
-                <div className="destination-shortcut-text">
-                  <strong>{item.title}</strong>
-                  <span>{item.subtitle}</span>
-                </div>
-                <button
-                  className="destination-shortcut-action"
-                  onClick={() => (
-                    item.configured
-                      ? onFavoriteNavigate?.(item.type)
-                      : onFavoriteSetup?.(item.type)
-                  )}
-                >
-                  {item.configured ? '导航' : '设置'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
       <div className="map-bottom-bar">
         <div className="map-bottom-left">
           <button className="map-fab" aria-label="定位" onClick={handleLocate}><svg className="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4Zm-1-8v2.07A8.001 8.001 0 0 0 4.07 11H2v2h2.07A8.001 8.001 0 0 0 11 19.93V22h2v-2.07A8.001 8.001 0 0 0 19.93 13H22v-2h-2.07A8.001 8.001 0 0 0 13 4.07V2h-2Zm1 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12Z" fill="currentColor" /></svg></button>
@@ -885,6 +837,8 @@ export default function MapPanel({
             <button
               key={s.value}
               className={`strategy-chip${routeStrategy === s.value ? ' active' : ''}`}
+              disabled={strategyPending}
+              aria-pressed={routeStrategy === s.value}
               onClick={() => onStrategyChange(s.value)}
             >
               {s.label}

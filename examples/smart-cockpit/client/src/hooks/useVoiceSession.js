@@ -29,6 +29,7 @@ import {
 } from '../config/personas'
 import { activateAudioContext } from '../audio/activation'
 import { gatewayWebSocketUrl } from '../config/gateway'
+import { CockpitEnvironmentOutbox } from '../projections/environment-events'
 
 const INPUT_SAMPLE_RATE = 16000
 const OUTPUT_SAMPLE_RATE = 24000
@@ -117,6 +118,7 @@ export default function useVoiceSession({
   voice,
   onVoiceMessage,
   onConversationRecovery,
+  onMemoryChanged,
 }) {
   const [voiceState, setVoiceState] = useState('idle')
   const [inputLevel, setInputLevel] = useState(0)
@@ -135,8 +137,11 @@ export default function useVoiceSession({
   const voiceRef = useRef(voice)
   const personaSyncRef = useRef({ generation: 0, pending: '', published: '' })
   const voiceSyncRef = useRef({ generation: 0, pending: '', published: '' })
+  const environmentOutboxRef = useRef(new CockpitEnvironmentOutbox())
+  const realtimeReadyRef = useRef(false)
   const onVoiceMessageRef = useRef(onVoiceMessage)
   const onConversationRecoveryRef = useRef(onConversationRecovery)
+  const onMemoryChangedRef = useRef(onMemoryChanged)
   const taskProgressSeenRef = useRef(new Map())
   const currentProgressFingerprintRef = useRef('')
   const progressTimerRef = useRef(null)
@@ -164,6 +169,7 @@ export default function useVoiceSession({
   useEffect(() => {
     onConversationRecoveryRef.current = onConversationRecovery
   }, [onConversationRecovery])
+  useEffect(() => { onMemoryChangedRef.current = onMemoryChanged }, [onMemoryChanged])
 
   const sendPlaybackReceipt = useCallback((type, responseId, reason = '') => {
     if (!responseId) return
@@ -173,6 +179,28 @@ export default function useVoiceSession({
       ...(reason ? { reason } : {}),
     })
   }, [])
+
+  const flushEnvironmentEvents = useCallback(() => {
+    const isReady = () => realtimeReadyRef.current && !mutedRef.current
+      && clientRef.current?.ready
+      && clientRef.current.supports(GatewayClientCapability.CLIENT_EVENTS)
+    return environmentOutboxRef.current.flush(async event => {
+      try {
+        const result = await clientRef.current.request(
+          GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH, event,
+        )
+        return result?.accepted === true
+      } catch (reason) {
+        console.warn('Cockpit environment sync failed', reason)
+        return false
+      }
+    }, isReady)
+  }, [])
+
+  const publishEnvironmentEvent = useCallback(event => {
+    environmentOutboxRef.current.enqueue(event)
+    void flushEnvironmentEvents()
+  }, [flushEnvironmentEvents])
 
   const publishAssistantProfile = useCallback((client = clientRef.current) => {
     const profile = cockpitPersonaId(personaRef.current)
@@ -371,8 +399,13 @@ export default function useVoiceSession({
     const handleEvent = (event) => {
       const state = gatewayVoiceState(event)
       if (state) setVoiceState(state)
-      if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
+      if (event.type === GatewayServerEvent.MEMORY_CHANGED) {
+        onMemoryChangedRef.current?.()
+      } else if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
         inputSampleRateRef.current = event.inputSampleRate
+        realtimeReadyRef.current = true
+        environmentOutboxRef.current.restoreContext()
+        void flushEnvironmentEvents()
         setError(null)
       } else if (event.type === GatewayServerEvent.AUDIO_DELTA) {
         playPcmAudio(event.audio, event.sampleRate, event.responseId)
@@ -467,10 +500,12 @@ export default function useVoiceSession({
       },
       onStatus: status => {
         if (status.state === 'ready') {
+          onMemoryChangedRef.current?.()
           publishedMutedRef.current = mutedRef.current
           publishAssistantProfile(client)
           syncOutputVoice(client)
         } else if (['connecting', 'disconnected', 'unavailable'].includes(status.state)) {
+          realtimeReadyRef.current = false
           publishedMutedRef.current = null
           for (const sync of [personaSyncRef.current, voiceSyncRef.current]) {
             sync.generation += 1
@@ -494,9 +529,14 @@ export default function useVoiceSession({
       clearTimeout(progressTimerRef.current)
       clearPlayback('connection_closed')
       client.stop()
+      realtimeReadyRef.current = false
       if (clientRef.current === client) clientRef.current = null
     }
-  }, [clearPlayback, clientId, finishResponsePlayback, playPcmAudio, publishAssistantProfile, sendPlaybackReceipt, syncOutputVoice])
+  }, [clearPlayback, clientId, finishResponsePlayback, flushEnvironmentEvents, playPcmAudio, publishAssistantProfile, sendPlaybackReceipt, syncOutputVoice])
+
+  useEffect(() => {
+    if (!muted) void flushEnvironmentEvents()
+  }, [muted, flushEnvironmentEvents])
 
   useEffect(() => {
     personaRef.current = persona
@@ -632,5 +672,6 @@ export default function useVoiceSession({
     activateVoice,
     deactivateVoice,
     sendInput,
+    publishEnvironmentEvent,
   }
 }

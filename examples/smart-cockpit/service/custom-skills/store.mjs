@@ -8,6 +8,10 @@ import {
 } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  normalizeTemperatureTrigger,
+  temperatureRuleInstructions,
+} from './temperature-rules.mjs'
 
 const DEFAULT_ROOT = fileURLToPath(
   new URL('../../.runtime/custom-skills/', import.meta.url),
@@ -37,17 +41,32 @@ function publicSummary(skill) {
     id: skill.id,
     name: skill.name,
     description: skill.description,
+    kind: skill.kind || 'workflow',
+    ...(skill.kind === 'event' ? {
+      trigger: structuredClone(skill.trigger),
+      reminder: skill.reminder,
+    } : {}),
     createdAt: skill.createdAt,
     updatedAt: skill.updatedAt,
   }
 }
 function validRecord(value) {
-  return value
+  const valid = value
     && value.version === 1
     && SKILL_ID_PATTERN.test(value.id)
     && typeof value.name === 'string'
     && typeof value.description === 'string'
     && typeof value.instructions === 'string'
+  if (!valid) return false
+  if (!value.kind || value.kind === 'workflow') return true
+  if (value.kind !== 'event') return false
+  try {
+    normalizeTemperatureTrigger(value.trigger)
+    normalizedText(value.reminder, 'skill reminder', { maxLength: 400 })
+    return true
+  } catch {
+    return false
+  }
 }
 
 export class CustomSkillStore {
@@ -70,7 +89,7 @@ export class CustomSkillStore {
     const skill = skills.find(item => (
       item.id === value || item.name.toLocaleLowerCase('zh-CN') === normalizedName
     ))
-    return skill ? structuredClone(skill) : null
+    return skill ? { ...structuredClone(skill), kind: skill.kind || 'workflow' } : null
   }
 
   async upsert(cockpitId = 'default', input = {}) {
@@ -78,9 +97,18 @@ export class CustomSkillStore {
     const description = normalizedText(input.description, 'skill description', {
       maxLength: 200,
     })
-    const instructions = normalizedText(input.instructions, 'skill instructions', {
-      maxLength: 8_000,
-    })
+    const kind = input.kind ?? (input.trigger ? 'event' : 'workflow')
+    if (!['workflow', 'event'].includes(kind)) throw new TypeError('unsupported skill kind')
+    if (kind === 'workflow' && (input.trigger !== undefined || input.reminder !== undefined)) {
+      throw new TypeError('workflow skills cannot contain an event trigger or reminder')
+    }
+    const trigger = kind === 'event' ? normalizeTemperatureTrigger(input.trigger) : null
+    const reminder = kind === 'event'
+      ? normalizedText(input.reminder, 'skill reminder', { maxLength: 400 })
+      : null
+    const instructions = kind === 'event'
+      ? temperatureRuleInstructions(trigger, reminder)
+      : normalizedText(input.instructions, 'skill instructions', { maxLength: 8_000 })
     const directory = cockpitDirectory(this.root, cockpitId)
     const existing = (await this.#readAll(cockpitId)).find(
       item => item.name.toLocaleLowerCase('zh-CN') === name.toLocaleLowerCase('zh-CN'),
@@ -91,7 +119,9 @@ export class CustomSkillStore {
       id: existing?.id || randomUUID(),
       name,
       description,
+      kind,
       instructions,
+      ...(kind === 'event' ? { trigger, reminder } : {}),
       createdAt: existing?.createdAt || timestamp,
       updatedAt: timestamp,
     }
@@ -127,7 +157,11 @@ export class CustomSkillStore {
       if (!entry.isFile() || !entry.name.endsWith('.json')) continue
       try {
         const value = JSON.parse(await readFile(resolve(directory, entry.name), 'utf8'))
-        if (validRecord(value)) skills.push(value)
+        if (validRecord(value)) {
+          skills.push(value.kind === 'event'
+            ? { ...value, trigger: normalizeTemperatureTrigger(value.trigger) }
+            : value)
+        }
       } catch {
         // One damaged user skill must not make the whole cockpit unavailable.
       }

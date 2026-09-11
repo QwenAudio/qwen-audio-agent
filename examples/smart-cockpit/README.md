@@ -68,13 +68,32 @@ metrics, timeout retry behavior, and scoring rules.
 - **Standard tool calling:** vehicle control, navigation, music, weather,
   flash-buy, and custom workflows are exposed as MCP tools.
 - **Foreground/backend routing:** low-latency operations run directly in the
-  foreground Realtime path; flash-buy and custom workflows go to the backend Agent.
+  foreground Realtime path, including custom-skill creation and loading;
+  flash-buy and multi-source news research go to the backend Agent.
 - **Standard backend integration:** the example Agent connects through A2A 1.0
   and can be replaced by a customer-owned A2A, ACP, or custom backend.
 - **Scenario-state projection:** the cockpit UI receives vehicle, route, music,
   and order state through scenario-owned HTTP/SSE channels.
 - **Replaceable components:** the client, backend Agent, and scenario service can
   each be replaced without changing the framework core.
+
+## Interaction paths
+
+- Several foreground tool calls in one model response finish before one combined
+  spoken response. Foreground MCP calls default to a 10-second timeout; a failure
+  is reported rather than treated as a completed operation.
+- Screen route-preference changes silently enter conversation context through a
+  scenario event. The assistant can explain the selected preference without
+  confusing it with the road the vehicle is actually on.
+- Users can save a temperature-reminder rule by voice, then change the climate
+  setpoint with the UI `−` / `+` controls. A reminder fires only when the value
+  enters the saved range from outside, not repeatedly while it stays inside.
+- Memory uses the standard Markdown memory tools and prompt policy; no separate
+  cockpit-specific memory protocol is introduced.
+- A news-report request runs asynchronously while conversation continues. The
+  backend searches and reads sources, returns the full report as an A2A text
+  artifact and a short spoken summary, and preserves dates and verification
+  limits. Missing evidence is not replaced with model-generated “latest news”.
 
 ## Quick start
 
@@ -101,6 +120,8 @@ npm run example:smart-cockpit
 
 Open `http://localhost:5173`. Press `Ctrl+C` to stop all example processes.
 
+See the [recording checklist (Chinese)](docs/demo-recording.zh.md) for six voice, context, skill, and memory scenarios and their acceptance criteria.
+
 ## Tool calling
 
 The cockpit Service provides 38 tools across six scenario domains. Tool
@@ -113,7 +134,7 @@ definitions, executors, and foreground/backend routing remain independent.
 | `music` | 10 | Search and playback, previous/next track, volume, media source, and favorites. |
 | `weather` | 1 | City weather lookup. |
 | `flashbuy` | 1 | Flash-buy product search and ordering demonstration. |
-| `custom-skills` | 3 | List, create, and load user-defined cockpit workflows. |
+| `custom-skills` | 3 | List, create/update, and load user workflows or structured temperature-reminder rules. |
 | **Total** | **38** | Foreground low-latency operations and backend composed tasks. |
 
 The Realtime model sees the function-tool surface assembled by the Gateway:
@@ -123,14 +144,22 @@ the foreground MCP tools above, Gateway built-ins, and capability-gated tools.
 |---|---:|---|
 | Gateway built-ins, default | 7 | `spawn_thinking`, `schedule_reminder`, `cancel_agent_task`, `get_agent_task_status`, `get_current_time`, `memory`, `notes` |
 | Gateway built-ins, conditional | up to +7 | `knowledge`, `recall`, `respond_permission`, `respond_agent_input`, `web_search`, `fetch_url`, `enter_sleep`; visible only when the matching knowledge, session digest, retrieval, pending permission, pending input, or client sleep action capability exists |
-| Cockpit foreground MCP tools | 34 | `vehicle`, `navigation`, `music`, and `weather` tools routed to the foreground; model-visible names are `mcp__cockpit__*` |
-| **Default Realtime total** | **41** | 7 Gateway built-ins + 34 cockpit foreground MCP tools |
+| Cockpit foreground MCP tools | 37 | `vehicle`, `navigation`, `music`, `weather`, and the 3 `custom-skills` tools; model-visible names are `mcp__cockpit__*` |
+| **Default Realtime base total** | **44** | 7 Gateway built-ins + 37 cockpit foreground MCP tools, before conditional tools |
 
-By default, `vehicle`, `navigation`, `music`, and `weather` use the foreground
-Realtime fast path, while `flashbuy` and `custom-skills` run through the backend
-Agent. Change the scenario routing in
+By default, `vehicle`, `navigation`, `music`, `weather`, and `custom-skills` use
+the foreground Realtime path; only `flashbuy` uses the backend Service surface.
+The foreground loads workflows and executes their foreground steps directly,
+delegating only steps that need backend capabilities. Change domain routing in
 [`surface-routing.json`](service/tools/surface-routing.json); see the
 [tool directory guide](service/tools/README.md) for extension details.
+
+The backend Agent additionally composes the framework's `web_search` and
+`fetch_url` through `qwen-audio-agent/web-retrieval`: 1 Service tool + 2 retrieval
+tools by default. These two retrieval tools are not part of the 38 scenario
+tools. Search uses the same provider configuration as the frontend; the default
+keyless search is an experimental fallback, so verify provider access before a
+live demo. See [web-search configuration](../../docs/guides/web-search.md).
 
 ## Replace and extend
 

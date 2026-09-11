@@ -208,18 +208,18 @@
     {
       "name": "navigation_search_place",
       "label": "地点搜索",
-      "description": "搜索地点或周边 POI，但不开始导航。用户只说“找一下”“附近有没有”“查一下哪里有”时使用；如果用户明确要去某地，应使用 navigation_start。",
+      "description": "搜索地点或周边 POI，但不开始导航。用户询问附近餐厅或按口味推荐时，根据当前请求和已知饮食偏好选择菜系或食物类别关键词：已有相关偏好就必须落实到 query，不用泛泛的“餐厅”替代，再仅在回复里提偏好；没有相关偏好才按餐厅搜索。附近搜索设 nearby=true。不把口味要求拼成店名或目的地。只推荐返回的真实店名，结合实际返回的地址、距离和类别说明；不编造菜品、环境、评分或口味匹配依据，没有菜品依据时不保证辣度或其他饮食要求。无结果时可简化关键词再查一次，仍无结果就如实说明，不自行扩大范围或换成不相关菜系。只有用户明确要求前往时才使用 navigation_start。",
       "enabled": true,
       "parameters": {
         "type": "object",
         "properties": {
           "query": {
             "type": "string",
-            "description": "搜索关键词，例如充电站、加油站、餐厅或具体地点名称"
+            "description": "地点类别、菜系、食物类别或具体店名等简洁搜索词；不是自然语言需求，不拼入不辣、适合我口味等筛选要求"
           },
           "category": {
             "type": "string",
-            "description": "POI 类别；当用户表达“我饿了”等隐含需求时可归一为 restaurant"
+            "description": "query 未提供时使用的地点类别关键词，如餐厅、咖啡店、充电站；兼容 restaurant 表示餐厅，不是供应商分类码或口味筛选条件"
           },
           "nearby": {
             "type": "boolean",

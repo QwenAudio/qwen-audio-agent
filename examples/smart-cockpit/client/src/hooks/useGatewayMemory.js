@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { gatewayHttpUrl } from '../config/gateway'
 import { memoryItemsFromDocuments } from '../projections/memory-items'
 
@@ -10,19 +10,23 @@ export default function useGatewayMemory() {
   const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const loadGenerationRef = useRef(0)
 
   const load = useCallback(async () => {
+    const generation = ++loadGenerationRef.current
     setLoading(true)
     try {
       const response = await fetch(gatewayHttpUrl('/api/memory'))
       const payload = await responsePayload(response)
       if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`)
+      if (generation !== loadGenerationRef.current) return
       setDocuments(Array.isArray(payload.documents) ? payload.documents : [])
       setError(null)
     } catch (reason) {
+      if (generation !== loadGenerationRef.current) return
       setError(reason?.message || '记忆服务不可用')
     } finally {
-      setLoading(false)
+      if (generation === loadGenerationRef.current) setLoading(false)
     }
   }, [])
 

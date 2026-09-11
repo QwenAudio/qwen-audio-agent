@@ -6,6 +6,6 @@
     "navigation": "frontend",
     "weather": "frontend",
     "flashbuy": "backend",
-    "custom-skills": "backend"
+    "custom-skills": "frontend"
   }
 }

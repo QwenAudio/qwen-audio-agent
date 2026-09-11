@@ -1,5 +1,6 @@
 import { CockpitStateStore } from './state-store.mjs'
 import { CustomSkillStore } from './custom-skills/store.mjs'
+import { TemperatureSkillRules } from './custom-skills/temperature-rules.mjs'
 import {
   COCKPIT_TOOL_NAMES,
   executeCockpitTool,
@@ -47,6 +48,11 @@ export class CockpitService {
     this.now = now
     this.random = random
     this.activityListeners = new Map()
+    this.skillRules = new TemperatureSkillRules({
+      store,
+      listSkills: cockpitId => this.customSkills.list(cockpitId),
+      onTriggered: event => this.#publishActivity(event.cockpitId, event),
+    })
   }
 
   snapshot(cockpitId = 'default') {
@@ -73,7 +79,8 @@ export class CockpitService {
     return this.store.reset(cockpitId)
   }
 
-  listSkills(cockpitId = 'default') {
+  async listSkills(cockpitId = 'default') {
+    await this.skillRules.prepare(cockpitId)
     return this.customSkills.list(cockpitId)
   }
 
@@ -84,6 +91,7 @@ export class CockpitService {
   async deleteSkill(cockpitId = 'default', reference) {
     const skill = await this.customSkills.delete(cockpitId, reference)
     if (skill) {
+      await this.skillRules.refresh(cockpitId)
       this.#publishActivity(cockpitId, {
         kind: 'status',
         category: 'custom_skills',
@@ -117,6 +125,8 @@ export class CockpitService {
     if (!COCKPIT_TOOL_NAMES.includes(name)) {
       throw new Error(`Unknown cockpit tool: ${name}`)
     }
+    // Load persisted rules before an authoritative mutation can occur.
+    await this.skillRules.prepare(cockpitId)
     if (LOCATION_AWARE_TOOLS.has(name)) {
       await this.#refreshVehicleLocation(cockpitId)
     }
@@ -131,6 +141,7 @@ export class CockpitService {
     return executeCockpitTool(name, args, {
       cockpitId,
       customSkills: this.customSkills,
+      onCustomSkillsChanged: () => this.skillRules.refresh(cockpitId),
       now: this.now,
       onActivity: reportActivity,
       random: this.random,

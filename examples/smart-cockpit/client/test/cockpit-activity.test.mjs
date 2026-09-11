@@ -42,6 +42,9 @@ test('projects supported scenario activity into UI progress', () => {
 test('recognizes terminal scenario progress stages', () => {
   assert.equal(isTerminalCockpitProgress({ stage: 'planning_route' }), false)
   assert.equal(isTerminalCockpitProgress({ stage: 'navigation_started' }), true)
+  assert.equal(isTerminalCockpitProgress({ stage: 'place_searching' }), false)
+  assert.equal(isTerminalCockpitProgress({ stage: 'place_results_ready' }), true)
+  assert.equal(isTerminalCockpitProgress({ stage: 'place_search_failed' }), true)
   assert.equal(isTerminalCockpitProgress({ stage: 'flashbuy_preview_ready' }), true)
   assert.equal(isTerminalCockpitProgress({ stage: 'music_started' }), true)
   assert.equal(isTerminalCockpitProgress({ stage: 'music_volume_changed' }), true)

@@ -7,6 +7,8 @@ import {
 } from '../../../shared/input-parts.mjs'
 import { t } from '../i18n.js'
 import VisualStreamControl from './VisualStreamControl.jsx'
+import DictationControl from './DictationControl.jsx'
+import { applyDictationCommand } from './dictation.js'
 
 function filePart(file, index, sourceType = 'file') {
   return new Promise((resolve, reject) => {
@@ -64,22 +66,57 @@ export default function MultimodalComposer({
     }
   }, [attachments, updateAttachments])
 
-  const submit = event => {
-    event.preventDefault()
-    const content = text.trim()
-    if (!content && !attachments.length) return
+  const submitCurrent = useCallback((draft = text) => {
+    const content = draft.trim()
+    if (!content && !attachments.length) return { submitted: false }
     const parts = withAttachmentAnchors([
       ...(content ? [{ type: 'text', text: content }] : []),
       ...attachments.map(item => item.part),
     ])
     if (!onSend(parts)) {
       setError(t('Gateway 尚未连接'))
-      return
+      return { submitted: false }
     }
     setText('')
     updateAttachments([])
     setError('')
+    return { submitted: true }
+  }, [attachments, onSend, text, updateAttachments])
+
+  const submit = event => {
+    event.preventDefault()
+    submitCurrent()
   }
+
+  const handleDictationText = useCallback(value => {
+    const outcome = applyDictationCommand(text, value)
+    if (outcome.type === 'send') {
+      const submission = submitCurrent(outcome.draft)
+      return {
+        action: 'send',
+        submitted: submission.submitted,
+        notice: submission.submitted ? t('听写已发送') : t('没有可发送的草稿'),
+      }
+    }
+    if (outcome.type === 'replace' && !outcome.changed) {
+      setError(t('没有找到要修改的文字'))
+      return { action: 'replace', notice: t('没有找到要修改的文字') }
+    }
+    if (outcome.type === 'delete-last-sentence' && !outcome.changed) {
+      setError(t('草稿中没有可删除的句子'))
+      return { action: 'delete-last-sentence', notice: t('草稿中没有可删除的句子') }
+    }
+    setText(outcome.draft)
+    setError('')
+    return {
+      action: outcome.type,
+      notice: outcome.type === 'replace'
+        ? t('听写已修改草稿')
+        : outcome.type === 'delete-last-sentence'
+          ? t('听写已删除最后一句')
+          : t('听写已加入草稿'),
+    }
+  }, [submitCurrent, text])
 
   return <form
     className="multimodal-composer"
@@ -149,6 +186,10 @@ export default function MultimodalComposer({
       />
       <button className="composer-send" type="submit">{t('发送')}</button>
     </div>
+    <DictationControl
+      disabled={voiceInputEnabled}
+      onFinalText={handleDictationText}
+    />
     {error && <small className="composer-error" role="alert">{error}</small>}
   </form>
 }

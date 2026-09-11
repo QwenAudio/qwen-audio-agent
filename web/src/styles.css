@@ -167,6 +167,68 @@
   color: white;
 }
 
+.dictation-control {
+  display: grid;
+  gap: 6px;
+  padding: 8px 2px 0;
+  color: #aaa7b4;
+  font-size: 12px;
+}
+
+.dictation-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dictation-actions button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 10px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
+.dictation-actions button.active {
+  color: #fff;
+  background: #6d5dfc;
+}
+
+.dictation-actions button:disabled {
+  cursor: not-allowed;
+  opacity: .45;
+}
+
+.dictation-actions small {
+  margin-left: auto;
+  color: #85818e;
+}
+
+.dictation-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 16px;
+}
+
+.dictation-status i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6f6b79;
+}
+
+.dictation-status.active i {
+  background: #50dfab;
+  box-shadow: 0 0 9px #50dfab;
+}
+
+.dictation-error {
+  color: #ff8c8c;
+}
+
 .composer-attachments {
   display: flex;
   flex-wrap: wrap;

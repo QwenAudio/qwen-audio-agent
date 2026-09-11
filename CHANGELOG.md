@@ -19,6 +19,8 @@
   现在与写入共用跨进程锁，避免读取撞上 Windows 文件替换过程。
 - WebUI 麦克风重采样现在会跨 PCM 分块保留插值相位，并对空输入安全返回空数据，
   减少非整数采样率转换时的累计偏差。
+- WebUI 麦克风采集改用 AudioWorklet 在音频线程处理采样块，主线程继续负责流式重采样
+  和发送；不支持 AudioWorklet 的浏览器会明确报告不支持，而不是静默退回旧处理器。
 - Gateway Client 为 Socket 连接和 Session 握手增加超时与恢复；连接只有在收到
   `session.ready` 后才会重置重连退避。
 - Gateway Client 不再把旧连接中尚未完成的桌面 Action 结果发送到重连后的新连接。

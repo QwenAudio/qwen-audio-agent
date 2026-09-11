@@ -1,4 +1,5 @@
 node_modules/
+output/playwright/browser-webui-smoke/
 web/dist/
 dist/
 .venv/

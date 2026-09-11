@@ -399,6 +399,21 @@ MUSE_CODE_WORKSPACE=
 QWEN_AUDIO_AGENT_BACKEND_MODEL=
 ```
 
+如果 Muse Code 部署在 Windows 的 WSL2 中，请把适配器指向 `wsl.exe`，并将
+Windows 进程目录与 Linux 工作区分开：
+
+```dotenv
+MUSE_CODE_BIN=C:\\Windows\\System32\\wsl.exe
+MUSE_CODE_ARGS=["--distribution","Ubuntu-24.04","--user","muse","--","env","HOME=/home/muse","PATH=/home/muse/.local/bin:/usr/local/bin:/usr/bin:/bin","/home/muse/.local/bin/muse","serve"]
+MUSE_CODE_HOST_WORKSPACE=E:\\qwen-audio-agent
+MUSE_CODE_WORKSPACE=/home/muse/workspace
+```
+
+`MUSE_CODE_HOST_WORKSPACE` 是用于启动 WSL 的 Windows 工作目录；
+`MUSE_CODE_WORKSPACE` 是 Muse 在 Linux 内看到的路径。WSL 工作区应放在 E
+盘对应的 Linux 文件系统中，而不是 `/mnt/e`，这样 Muse 才能创建 Session
+锁和日志。
+
 显式后台模型会作为 MSP `modelId` 传入；留空则沿用 Muse Code 自身配置。
 `native` 会把 Muse 提供的权限选项转交给语音/客户端确认流程；`full` 会用 Muse
 预配置的 `allowAll` 模式创建 Session，仅应在可信工作区启用。Gateway 的单任务/

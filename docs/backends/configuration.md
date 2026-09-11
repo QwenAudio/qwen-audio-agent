@@ -429,6 +429,21 @@ MUSE_CODE_WORKSPACE=
 QWEN_AUDIO_AGENT_BACKEND_MODEL=
 ```
 
+On Windows with Muse Code installed in WSL2, point the adapter at `wsl.exe` and
+keep the Windows process directory separate from the Linux workspace:
+
+```dotenv
+MUSE_CODE_BIN=C:\\Windows\\System32\\wsl.exe
+MUSE_CODE_ARGS=["--distribution","Ubuntu-24.04","--user","muse","--","env","HOME=/home/muse","PATH=/home/muse/.local/bin:/usr/local/bin:/usr/bin:/bin","/home/muse/.local/bin/muse","serve"]
+MUSE_CODE_HOST_WORKSPACE=E:\\qwen-audio-agent
+MUSE_CODE_WORKSPACE=/home/muse/workspace
+```
+
+`MUSE_CODE_HOST_WORKSPACE` is the Windows working directory used to spawn WSL;
+`MUSE_CODE_WORKSPACE` is the path Muse sees inside Linux. The WSL workspace
+should live in the E-disk WSL filesystem rather than under `/mnt/e`, so Muse can
+create its session locks and logs.
+
 An explicit backend model is passed as the MSP `modelId`; leave it empty to use
 Muse Code's own configuration. `native` forwards Muse's server-offered approvals
 to the voice/client permission flow. `full` starts the Session in Muse's

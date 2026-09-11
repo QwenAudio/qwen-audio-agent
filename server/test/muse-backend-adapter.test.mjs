@@ -216,6 +216,20 @@ test('submits MSP turns and returns the final agent message', async () => {
   await backend.close()
 })
 
+test('keeps the host working directory separate from the MSP workspace root', async () => {
+  const runtime = fakeRuntime()
+  const backend = new MuseBackendAdapter({
+    clientFactory: runtime.clientFactory,
+    directory: 'E:\\qwen-audio-agent',
+    workspaceRoot: '/home/muse/workspace',
+    timeoutMs: 0,
+  })
+  await backend.submit(work())
+  const start = runtime.calls.find(call => call.method === 'session/start')
+  assert.equal(start.options.workspaceRoot, '/home/muse/workspace')
+  await backend.close()
+})
+
 test('maps Gateway permission decisions to server-offered Muse choices', async () => {
   const runtime = fakeRuntime({ approval: true })
   const backend = createMuseBackendAdapter({

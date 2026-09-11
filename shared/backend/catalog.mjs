@@ -405,7 +405,9 @@ const definitions = new Map([
   ['muse', {
     id: 'muse',
     label: 'Muse Code',
-    workspaceEnvironment: 'MUSE_CODE_WORKSPACE',
+    // Keep the Windows host cwd separate from the Linux path sent over MSP;
+    // MUSE_CODE_WORKSPACE is intentionally left as a protocol-native value.
+    workspaceEnvironment: 'MUSE_CODE_HOST_WORKSPACE',
     // Muse Code owns its extensions and does not currently declare a
     // skills.sh-compatible installer target.
     skills: null,

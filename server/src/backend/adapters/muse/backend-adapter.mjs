@@ -267,6 +267,7 @@ export async function createOfficialMuseClient({
 export class MuseBackendAdapter {
   constructor({
     directory = process.cwd(),
+    workspaceRoot = directory,
     model = '',
     museBin = 'muse',
     args = DEFAULT_MUSE_ARGS,
@@ -279,6 +280,7 @@ export class MuseBackendAdapter {
     this.protocol = 'muse'
     this.label = 'Muse Code'
     this.directory = directory
+    this.workspaceRoot = clean(workspaceRoot) || directory
     this.model = clean(model)
     this.museBin = clean(museBin) || 'muse'
     this.args = Array.isArray(args) ? [...args] : [...DEFAULT_MUSE_ARGS]
@@ -316,6 +318,7 @@ export class MuseBackendAdapter {
       transport: 'msp-stdio',
       model: this.model || null,
       directory: this.directory,
+      workspaceRoot: this.workspaceRoot,
       permissionMode: this.permissionMode,
       sessionDurability: this.initializeResult?.sessionDurability || null,
       capabilities: {
@@ -439,7 +442,7 @@ export class MuseBackendAdapter {
     if (this.sessionPromises.has(ownerId)) return this.sessionPromises.get(ownerId)
     const pending = (async () => {
       const session = await this.client.startSession({
-        workspaceRoot: this.directory,
+        workspaceRoot: this.workspaceRoot,
         ...(this.model ? { modelId: this.model } : {}),
         ...(this.permissionMode === 'full' ? { approvalMode: 'allowAll' } : {}),
       })

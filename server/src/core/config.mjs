@@ -76,6 +76,10 @@ export function resolveBackendWorkspace(
 }
 
 export function resolveAcpArgs(value) {
+  return resolveCommandArgs(value, 'ACP_ARGS')
+}
+
+export function resolveCommandArgs(value, label = 'ARGS') {
   const source = String(value || '').trim()
   if (!source) return []
   if (source.startsWith('[')) {
@@ -83,10 +87,10 @@ export function resolveAcpArgs(value) {
     try {
       parsed = JSON.parse(source)
     } catch {
-      throw new Error('ACP_ARGS 不是有效的 JSON 数组')
+      throw new Error(`${label} 不是有效的 JSON 数组`)
     }
     if (!Array.isArray(parsed) || parsed.some(item => typeof item !== 'string')) {
-      throw new Error('ACP_ARGS 必须是字符串组成的 JSON 数组')
+      throw new Error(`${label} 必须是字符串组成的 JSON 数组`)
     }
     return parsed
   }
@@ -176,6 +180,16 @@ const backendOwnership = configuredAgentProtocol
     })
   : 'owned'
 const backendModels = resolveBackendModels()
+const museArgs = resolveCommandArgs(process.env.MUSE_CODE_ARGS, 'MUSE_CODE_ARGS')
+const museConfiguredWorkspace = String(
+  process.env.MUSE_CODE_WORKSPACE || '',
+).trim()
+const museHostWorkspace = resolveBackendWorkspace('muse')
+const museWorkspaceRoot = museConfiguredWorkspace
+  ? process.platform === 'win32'
+    ? museConfiguredWorkspace
+    : resolve(root, museConfiguredWorkspace)
+  : museHostWorkspace
 const managedOpenClawBailian = (
   configuredAgentProtocol === 'openclaw'
   && Boolean(backendModels.common)
@@ -436,8 +450,10 @@ export const config = {
     },
     muse: {
       model: String(backendModels.muse).trim(),
-      directory: resolveBackendWorkspace('muse'),
+      directory: museHostWorkspace,
+      workspaceRoot: museWorkspaceRoot,
       museBin: String(process.env.MUSE_CODE_BIN || 'muse').trim() || 'muse',
+      ...(museArgs.length ? { args: museArgs } : {}),
     },
     acp: {
       model: String(backendModels.acp).trim(),

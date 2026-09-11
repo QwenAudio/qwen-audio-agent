@@ -343,3 +343,104 @@ node examples/smart-cockpit/bench/runner/run-voice.mjs --say-voice Ting-Ting
 Reports are written to `reports/navigation-voice-realtime-latest.json` by
 default and include the raw Gateway voice events for debugging ASR/realtime
 failures.
+
+### 前后端工具时延评测（真实音频输入）
+
+本节仅汇报时延，与上文原有的功能正确性评测分开。使用真实 Gateway、realtime 模型和 A2A Agent，
+通过语音输入比较同一套 short 用例走前端工具或后端工具的响应时间。
+
+保留辅助脚本 `run-surface-compare.mjs` 和 `surface-latency-worker.mjs`，用于无语音的
+进程内（`--mode direct`）、真实传输加 stub 模型（`--mode transport`）及模型跳数（`--mode model`）测量。
+其 `cases/surface-compare.jsonl` 为 46 条单轮辅助用例，不与本次 86 条 short 实测混算。
+
+#### 采集与统计口径
+
+依赖：仓库根目录 `npm ci`、`npm run example:smart-cockpit:install`，以及 macOS `say` / `ffmpeg`。
+凭据通过环境变量或 `examples/smart-cockpit/.env.local` 配置：`DASHSCOPE_API_KEY`；导航、天气另需 `AMAP_MCP_KEY`。
+
+```bash
+node examples/smart-cockpit/bench/runner/run-voice-surface-compare.mjs \
+  --suite short --service-mode example --silence-ms 2200 --timeout-ms 120000 --settle-ms 1200
+```
+
+- 语音由 `say`（`Tingting`）合成，转换为 16 kHz 单声道 s16le PCM，按 20 ms 分片推给 `/api/realtime`。
+- 原样使用 `cases/vehicle.jsonl`、`music.jsonl`、`navigation.jsonl`、`weather.jsonl`：86 条、111 轮。
+  保留 setup、原话术和多轮上下文。每条 case 新会话，首轮冷启保留，不做额外预热；不运行 long。
+- 前端模型直接调用座舱工具；后端模型经 `spawn_thinking` → A2A Agent → MCP 执行。
+  两种路由各自独立进程、串行测量，不争抢同一模型配额。
+- `example` 使用真实高德 MCP（地点/天气）及 REST（驾车路线），车控/音乐为 example 本地实现；
+  需要高德的领域先做真实 MCP 预检，不回退模拟数据。`controlled` 仅作显式模拟对照，不能与本次数据混算。
+- 两项零点都是本轮语音 PCM 推送结束（静音尾巴之前）。执行前为本轮最晚工具开始；执行后为
+  全部已调用工具结束后的最晚返回/抛错。不包含工具返回后的 MCP 传输、音频结束或后台任务终态。
+  车控/音乐是 handler 返回时间，不是实车动作或歌曲播放完成时间。
+- 每轮独立统计；多工具取最晚开始及最晚结束，不累加，两终点可能来自不同并发工具。
+  每端对自身全部有时间戳的任务轮取算术平均，保留失败返回、误调用及长尾，不筛选正确性。
+  缺失不填零；未结束不填结束时间。两端有效样本集合可能不同，表中分别列出数量。
+- 92 个任务轮进入均值；14 轮闲聊和 5 轮澄清/拒绝保留在数据中，但不进入任务时延统计。
+- `timing_schema: 2` 在 bench 实例的 `service.execute` 前后计时，不修改业务 handler。
+  旧 `completed_ms` 仅为执行入口，不能当作完成指标，也不能混入本次数据。
+- 采集时等待每轮收尾再推下一轮，等待不计入两项工具时延；异常后仍有异步任务则停止后续采样，防止串轮。
+  过程诊断和检查点留在本地被忽略的 `reports/voice-surface-*`，发布时使用下方纯计时导出。
+
+可用 `--domain vehicle,music` / `--domain navigation,weather` 分批采集，再离线合并：
+
+```bash
+node examples/smart-cockpit/bench/runner/run-voice-surface-compare.mjs \
+  --from-reports <车控音乐报告.json>,<导航天气报告.json> --out <新的四领域报告.json>
+```
+
+合并要求模型、计时、业务模式及参数一致且 case 不重复，按原始响应重算总均值，不平均批次均值。
+本次没有补测；若使用 `--retry-errors-from`，仅重试连接/观测错误，保留原尝试并标记来源。
+
+#### 当前实测：四领域双指标汇总（2026-09-11）
+
+模型：`qwen-audio-3.0-realtime-plus` / `qwen3.8-flash`。
+车控/音乐与导航/天气分两批实测，配置相同，非同一次连续运行；合计每端 86 条、111 轮，含 92 个任务轮。
+以下单位均为毫秒，起点均为每轮语音 PCM 推送结束。
+
+##### 执行前
+
+| 领域 | 任务轮数 | 前端均值/ms | 后端均值/ms | 差值（后−前）/ms | 前端有效数 | 后端有效数 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 车控 | 23 | 1539.0 | 3276.6 | 1737.6 | 23 | 22 |
+| 音乐 | 17 | 1153.3 | 2505.8 | 1352.5 | 17 | 15 |
+| 导航 | 44 | 1302.9 | 3859.5 | 2556.6 | 44 | 30 |
+| 天气 | 8 | 1034.5 | 3209.0 | 2174.5 | 6 | 1 |
+| 合计 | 92 | 1317.1 | 3362.7 | 2045.6 | 90 | 68 |
+
+##### 执行后
+
+| 领域 | 任务轮数 | 前端均值/ms | 后端均值/ms | 差值（后−前）/ms | 前端有效数 | 后端有效数 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 车控 | 23 | 1539.3 | 3276.8 | 1737.5 | 23 | 22 |
+| 音乐 | 17 | 1153.6 | 2506.1 | 1352.5 | 17 | 15 |
+| 导航 | 44 | 1615.7 | 4300.9 | 2685.2 | 44 | 30 |
+| 天气 | 8 | 1187.0 | 3361.0 | 2174.0 | 6 | 1 |
+| 合计 | 92 | 1480.3 | 3559.9 | 2079.6 | 90 | 68 |
+
+天气后端只有 1 个有效响应，不宜据此推断稳定性能；两端均值并非同一配对样本集合。
+导航包含本地设置，不是每轮都联网。真实业务等待计入执行后；长尾及失败返回不剔除。
+
+- [评测结果（两张时间表）](results/voice-surface-short-20260911.json.md)
+- [HTML 结果](results/voice-surface-short-20260911.json.html)
+- [执行前逐轮 CSV](results/voice-surface-short-20260911.json.before.csv)
+- [执行后逐轮 CSV](results/voice-surface-short-20260911.json.after.csv)
+- [可重算的评测数据 JSON](results/voice-surface-short-20260911.json)
+
+#### 离线复现发布结果
+
+提交的计时数据保留 86 条用例、每端 111 轮的逐调用 `started_ms`、`ended_ms`、`duration_ms`，
+以及模型、音频、时间参数、路由和分批来源；不含过程事件、转写、工具返回、评分或本机绝对路径。
+原始诊断文件仅留在本地 `reports/`，不作为 PR 附件。
+
+安装根目录及 example 的依赖后，从仓库根目录执行（不需要凭据，不调用外部服务）：
+
+```bash
+node examples/smart-cockpit/bench/runner/run-voice-surface-compare.mjs \
+  --from-report examples/smart-cockpit/bench/results/voice-surface-short-20260911.json \
+  --timing-only --out examples/smart-cockpit/bench/reports/voice-surface-reproduced.json
+```
+
+输出新的计时 JSON，以及执行前、执行后各自的汇总 CSV 和逐轮 CSV、两张汇总表的 Markdown/HTML。
+输出路径必须未占用，不覆盖来源。`--timing-only` 仅支持 short 双时间戳数据；旧埋点不能补算执行后。
+发布数据支持再次离线导出，时延及样本数保持一致；不需要过程日志。

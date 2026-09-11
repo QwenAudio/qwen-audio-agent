@@ -6,3 +6,6 @@ dist/
 server/data/
 server/custom-skills/
 .runtime/
+
+# 评测过程文件仅本地保留；发布数据和结果放在 bench/results/。
+bench/reports/voice-surface-*

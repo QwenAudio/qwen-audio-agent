@@ -62,6 +62,11 @@ async function evaluateRoutingContract() {
     }).find(tool => tool.function.name === 'knowledge').function.description),
     'Knowledge no longer routes to the configured knowledge library.',
   )
+  requireCondition(
+    /用户说[“"'](?:你刚才说什么|再说一遍|刚才没听清|重复一下)[”"'][\s\S]*?(?:重述|复述)/u.test(prompt)
+      && /不要调用[\s\S]*`spawn_thinking`/u.test(prompt),
+    'The frontend prompt does not route replay or restating requests directly.',
+  )
   return { visibleTools: names }
 }
 

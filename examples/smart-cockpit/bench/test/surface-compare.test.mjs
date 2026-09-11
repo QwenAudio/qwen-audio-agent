@@ -650,8 +650,10 @@ test('提交的实测数据无需凭据即可离线重算，所有发布表与�
     await execFileAsync(process.execPath, [runner, '--from-report', source, '--timing-only', '--out', out], {
       env: { ...process.env, DASHSCOPE_API_KEY: '', AMAP_MCP_KEY: '' },
     })
+    // 归一化换行：core.autocrlf 会把签出的发布文件转成 CRLF，而导出始终写 LF。
+    const text = async path => (await readFile(path, 'utf8')).replaceAll('\r\n', '\n')
     for (const suffix of ['', '.md', '.html', '.before.csv', '.after.csv', '.before.summary.csv', '.after.summary.csv']) {
-      assert.equal(await readFile(`${out}${suffix}`, 'utf8'), await readFile(`${source}${suffix}`, 'utf8'), suffix)
+      assert.equal(await text(`${out}${suffix}`), await text(`${source}${suffix}`), suffix)
     }
     await assert.rejects(reanalyzeReport(source, out, { timingOnly: true }), /EEXIST/u)
   } finally {

@@ -296,7 +296,7 @@ async function runModelMode(cases, { repeats = 1, requestTimeoutMs = 60_000 }) {
 
   const { DashScopeCockpitModel } = await import('../../agent/model.mjs')
   const { COCKPIT_AGENT_PROMPT } = await import('../../agent/executor.mjs')
-  const { spawnThinkingTool } = await import('../../../../server/src/voice/tools/spawn-thinking-tool.mjs')
+  const { spawnThinkingTool } = await import('../../../../server/src/frontend/tools/spawn-thinking-tool.mjs')
   const { COCKPIT_SPAWN_THINKING_DESCRIPTION } = await import('../../gateway/spawn-thinking-tool.mjs')
   const service = await createBenchmarkService()
   const model = new DashScopeCockpitModel()

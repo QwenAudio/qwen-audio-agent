@@ -396,6 +396,7 @@ node examples/smart-cockpit/bench/runner/run-voice-surface-compare.mjs \
 
 模型：`qwen-audio-3.0-realtime-plus` / `qwen3.8-flash`。
 车控/音乐与导航/天气分两批实测，配置相同，非同一次连续运行；合计每端 86 条、111 轮，含 92 个任务轮。
+本次整理保留已有实测时间戳，只离线重算；脚本已适配最新主线，但没有对 rebase 后的工具定义重新实测。
 以下单位均为毫秒，起点均为每轮语音 PCM 推送结束。
 
 ##### 执行前

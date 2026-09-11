@@ -167,6 +167,18 @@ test('Muse backend adapter satisfies the public BackendPort contract', async () 
   })
 })
 
+test('reports a missing Muse executable before the MSP handshake', async () => {
+  const backend = new MuseBackendAdapter({
+    museBin: 'E:\\qwen-audio-agent\\.missing-muse\\muse.exe',
+    env: { PATH: process.env.PATH },
+    timeoutMs: 0,
+  })
+  const health = await backend.health()
+  assert.equal(health.ok, false)
+  assert.match(health.error, /未找到 Muse Code 可执行文件/)
+  await backend.close()
+})
+
 test('submits MSP turns and returns the final agent message', async () => {
   const runtime = fakeRuntime()
   const backend = new MuseBackendAdapter({

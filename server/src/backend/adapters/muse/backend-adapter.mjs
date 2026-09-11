@@ -6,6 +6,7 @@ import {
 } from '@muse-code/sdk'
 import { parseDataUrl } from '../../../../../shared/input-parts.mjs'
 import { backendEnvironment } from '../../../../../shared/backend/environment.mjs'
+import { findExecutable } from '../../../../../shared/backend/setup.mjs'
 import { defineBackendAdapter } from '../../backend-adapter-sdk.mjs'
 import { backendInstructionFromWork } from '../../backend-work-input.mjs'
 import { BackendEventType, backendEvent } from '../../../core/backend-events.mjs'
@@ -350,6 +351,20 @@ export class MuseBackendAdapter {
     if (this.startPromise) return this.startPromise
     this.startPromise = (async () => {
       try {
+        if (this.clientFactory === createOfficialMuseClient) {
+          const executable = findExecutable(this.museBin, {
+            env: this.env,
+            platform: process.platform,
+          })
+          if (!executable) {
+            const error = new AgentError(
+              `未找到 Muse Code 可执行文件：${this.museBin}`,
+              { status: 503, protocol: this.protocol },
+            )
+            error.code = 'MUSE_CODE_NOT_FOUND'
+            throw error
+          }
+        }
         const created = await this.clientFactory({
           museBin: this.museBin,
           args: this.args,

@@ -1104,126 +1104,6 @@ button {
   transform: scale(1.08);
 }
 
-.destination-search-panel {
-  position: absolute;
-  top: 22px;
-  left: 24px;
-  z-index: 4;
-  width: min(360px, calc(100% - 48px));
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 12px 28px rgba(80, 111, 123, 0.14);
-  backdrop-filter: blur(14px);
-  overflow: hidden;
-}
-
-.destination-search-field {
-  min-height: 52px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 18px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 0;
-  border-bottom: 1px solid rgba(95, 124, 134, 0.12);
-  color: #7a8991;
-  font-size: 14px;
-  font-weight: 800;
-  text-align: left;
-  transition: background 140ms ease, color 140ms ease;
-}
-
-.destination-search-field:hover {
-  background: rgba(255, 255, 255, 0.94);
-  color: #40515a;
-}
-
-.destination-search-field .icon {
-  width: 19px;
-  height: 19px;
-  flex-shrink: 0;
-}
-
-.destination-shortcuts {
-  display: grid;
-  grid-template-columns: 1fr;
-}
-
-.destination-shortcut {
-  min-height: 58px;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 56px;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px 9px 14px;
-  border-bottom: 1px solid rgba(95, 124, 134, 0.1);
-}
-
-.destination-shortcut:last-child {
-  border-bottom: 0;
-}
-
-.destination-shortcut-icon {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(95, 124, 134, 0.12);
-  color: #40515a;
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.destination-shortcut.is-configured .destination-shortcut-icon {
-  background: rgba(53, 214, 194, 0.14);
-  color: #168b81;
-}
-
-.destination-shortcut-text {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.destination-shortcut-text strong {
-  color: #26333a;
-  font-size: 14px;
-  line-height: 1.1;
-}
-
-.destination-shortcut-text span {
-  max-width: 100%;
-  color: #6b7980;
-  font-size: 12px;
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.destination-shortcut-action {
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid rgba(53, 214, 194, 0.34);
-  background: rgba(53, 214, 194, 0.14);
-  color: #168b81;
-  font-size: 12px;
-  font-weight: 800;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-}
-
-.destination-shortcut-action:hover {
-  background: #35d6c2;
-  border-color: #35d6c2;
-  color: #fff;
-}
-
 .map-overview-btn {
   flex-shrink: 0;
   height: 40px;
@@ -1942,6 +1822,45 @@ button {
   justify-content: space-evenly;
 }
 
+.temperature-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.32);
+  padding: 3px;
+}
+
+.temperature-control button {
+  width: 30px;
+  height: 38px;
+  border-radius: 18px;
+  color: #26333a;
+  font-size: 21px;
+  background: transparent;
+}
+
+.temperature-control button:hover,
+.temperature-control button:focus-visible {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.temperature-control button:disabled,
+.strategy-chip:disabled { opacity: 0.45; cursor: wait; }
+
+.cockpit-command-error {
+  position: absolute;
+  z-index: 10;
+  bottom: 70px;
+  left: 24px;
+  max-width: 70%;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: #fff4e9;
+  color: #8b421f;
+  font-size: 14px;
+}
+
 .dock-btn {
   width: 44px;
   height: 44px;
@@ -2536,7 +2455,7 @@ button {
 .memory-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   min-height: 32px;
   color: #7f8d93;
   font-size: 13px;

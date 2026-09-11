@@ -11,6 +11,8 @@ const TERMINAL_STAGES = new Set([
   'destination_not_found',
   'waypoint_not_found',
   'route_failed',
+  'place_results_ready',
+  'place_search_failed',
   'flashbuy_results_ready',
   'flashbuy_preview_ready',
   'flashbuy_cart_updated',

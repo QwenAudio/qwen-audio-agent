@@ -21,8 +21,8 @@ export class DashScopeCockpitModel {
     const completion = await this.client.chat.completions.create({
       model: this.model,
       messages,
-      tools,
-      tool_choice: tools.length ? 'auto' : undefined,
+      ...(tools.length ? { tools } : {}),
+      tool_choice: tools.length ? 'auto' : 'none',
       enable_thinking: true,
     }, signal ? { signal } : undefined)
     const message = completion.choices?.[0]?.message

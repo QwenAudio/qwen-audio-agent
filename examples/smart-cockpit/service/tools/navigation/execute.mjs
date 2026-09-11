@@ -399,32 +399,67 @@ async function setRouteStrategy(args, context) {
 async function searchPlace(args, context) {
   const { onActivity, services, snapshot } = context
   const state = snapshot()
-  const query = clean(args.query) || clean(args.category)
+  const category = clean(args.category)
+  const query = clean(args.query) || (category === 'restaurant' ? '餐厅' : category)
   if (!query) return toolResult('请告诉我要搜索什么地点', state, [], { results: [] })
   reportActivity(onActivity, 'navigation', 'place_searching', `正在搜索${query}`)
   const radius = Number(args.radius) > 0 ? Number(args.radius) : 3000
-  let results = []
-  if (args.nearby && typeof services.searchNearbyPlaces === 'function') {
-    results = await services.searchNearbyPlaces({
-      keywords: query,
-      location: currentOrigin(state),
-      radius,
-    })
-  } else if (typeof services.searchPlaces === 'function') {
-    results = await services.searchPlaces(query, {
-      city: DEFAULT_ORIGIN.city,
-      types: clean(args.category),
+  const unavailable = () => {
+    const content = `${args.nearby ? '附近' : ''}地点搜索服务暂不可用，请稍后重试`
+    reportActivity(onActivity, 'navigation', 'place_search_failed', content)
+    return toolResult(content, state, [], {
+      results: [], status: 'error', error_code: 'place_search_unavailable',
     })
   }
-  if (!results.length) {
-    const location = await resolvePlace(query, DEFAULT_ORIGIN.city, services)
-    if (location) results = [{ name: query, location }]
+  let candidates
+  try {
+    if (args.nearby) {
+      if (typeof services.searchNearbyPlaces !== 'function') return unavailable()
+      candidates = await services.searchNearbyPlaces({
+        keywords: query,
+        location: currentOrigin(state),
+        radius,
+      })
+    } else {
+      if (typeof services.searchPlaces !== 'function') return unavailable()
+      candidates = await services.searchPlaces(query, {
+        city: DEFAULT_ORIGIN.city,
+      })
+    }
+  } catch {
+    return unavailable()
   }
+  if (!Array.isArray(candidates)) return unavailable()
+  const results = candidates.filter(isUsablePlace)
   reportActivity(onActivity, 'navigation', 'place_results_ready', results.length ? '地点搜索完成' : '没有找到相关地点')
   const content = results.length
-    ? `找到${results.length}个地点：${results.slice(0, 3).map(item => item.name || item.location).join('、')}`
+    ? `找到${results.length}个地点：${results.slice(0, 3).map(describePlace).join('、')}`
     : `没有找到“${query}”相关地点`
-  return toolResult(content, state, [], { results })
+  return toolResult(content, state, [], { results, status: results.length ? 'ok' : 'empty' })
+}
+
+function isUsablePlace(place) {
+  if (!place || typeof place.name !== 'string' || !place.name.trim()) return false
+  const coordinates = typeof place.location === 'string' ? place.location.split(',') : []
+  const hasLocation = coordinates.length === 2
+    && coordinates.every(value => value.trim() && Number.isFinite(Number(value)))
+    && Math.abs(Number(coordinates[0])) <= 180
+    && Math.abs(Number(coordinates[1])) <= 90
+  const hasAddress = typeof place.address === 'string' && Boolean(place.address.trim())
+  const hasId = typeof place.id === 'string' && Boolean(place.id.trim())
+  return hasId || hasLocation || hasAddress
+}
+
+function describePlace(place) {
+  const details = []
+  if (typeof place.address === 'string' && place.address.trim()) details.push(place.address.trim())
+  if ((typeof place.distance === 'number' || typeof place.distance === 'string')
+    && String(place.distance).trim()
+    && Number.isFinite(Number(place.distance))
+    && Number(place.distance) >= 0) {
+    details.push(`距离${Number(place.distance)}米`)
+  }
+  return `${place.name}${details.length ? `（${details.join('，')}）` : ''}`
 }
 
 async function navigateToFavorite(args, context) {

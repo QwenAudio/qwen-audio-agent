@@ -58,7 +58,9 @@ function SkillDetail({ skillId, onLoad, onClose }) {
             </svg>
           </button>
         </div>
-        <pre className="skill-detail-content">{error || skill?.instructions || '加载中...'}</pre>
+        <pre className="skill-detail-content">{error || (skill?.kind === 'event'
+          ? `${skill.trigger.field === 'acTemp' ? '主驾' : skill.trigger.field === 'passengerTemp' ? '副驾' : '后排'}温度${skill.trigger.min != null ? ` ≥ ${skill.trigger.min}℃` : ''}${skill.trigger.max != null ? ` ≤ ${skill.trigger.max}℃` : ''}\n\n提醒：${skill.reminder}\n\n进入条件范围时提醒一次；退出后再次进入可重新触发。`
+          : skill?.instructions) || '加载中...'}</pre>
       </div>
     </div>
   )

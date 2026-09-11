@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   cockpitProgressFromActivity,
   isTerminalCockpitProgress,
@@ -13,11 +13,13 @@ function serviceOrigin() {
   return import.meta.env.VITE_COCKPIT_SERVICE_ORIGIN || 'http://127.0.0.1:3010'
 }
 
-export default function useCockpitState(cockpitId) {
+export default function useCockpitState(cockpitId, { onActivity } = {}) {
   const [state, setState] = useState(null)
   const [progress, setProgress] = useState(null)
   const [activity, setActivity] = useState(null)
   const [error, setError] = useState(null)
+  const onActivityRef = useRef(onActivity)
+  useEffect(() => { onActivityRef.current = onActivity }, [onActivity])
 
   useEffect(() => {
     let disposed = false
@@ -85,6 +87,8 @@ export default function useCockpitState(cockpitId) {
     events.addEventListener('activity', event => {
       if (disposed) return
       const value = JSON.parse(event.data)
+      // Forward every event, not only React's last batched activity state.
+      onActivityRef.current?.(value)
       setActivity(value)
       const next = cockpitProgressFromActivity(value)
       if (!next) return

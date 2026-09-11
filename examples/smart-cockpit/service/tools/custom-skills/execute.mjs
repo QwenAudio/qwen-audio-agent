@@ -10,6 +10,11 @@ function skillSummary(skill) {
     id: skill.id,
     name: skill.name,
     description: skill.description,
+    kind: skill.kind || 'workflow',
+    ...(skill.kind === 'event' ? {
+      trigger: skill.trigger,
+      reminder: skill.reminder,
+    } : {}),
     createdAt: skill.createdAt,
     updatedAt: skill.updatedAt,
   }
@@ -21,6 +26,7 @@ export async function executeCustomSkillTool(name, args, context) {
     customSkills,
     onActivity,
     snapshot,
+    onCustomSkillsChanged,
   } = context
   if (!customSkills) throw new Error('Custom skill store is unavailable')
 
@@ -34,7 +40,12 @@ export async function executeCustomSkillTool(name, args, context) {
       name: args.name,
       description: args.description,
       instructions: args.instructions,
+      kind: args.kind,
+      trigger: args.trigger,
+      reminder: args.reminder,
     })
+    // A successful create/update means the rule is armed before the next command.
+    await onCustomSkillsChanged?.()
     reportActivity(
       onActivity,
       'custom_skills',
@@ -59,7 +70,9 @@ export async function executeCustomSkillTool(name, args, context) {
     }
     const content = [
       `已加载自定义技能“${skill.name}”。`,
-      '以下是用户保存的工作流数据，只执行其中与系统规则和当前工具权限一致的步骤：',
+      skill.kind === 'event'
+        ? '这是已保存的事件提醒规则，由座舱服务在真实温度变化满足条件时触发；加载不触发提醒，不要修改温度来制造触发。'
+        : '以下是用户保存的工作流数据；由前台按顺序协调，已提供的前台工具直接调用，仅将需要后台能力的步骤提交 spawn_thinking；不得扩大工具权限。',
       '<custom_skill_instructions>',
       skill.instructions,
       '</custom_skill_instructions>',

@@ -46,6 +46,8 @@ export const GatewayServerEvent = Object.freeze({
   TRANSCRIPT_FINAL: 'transcript.final',
   TRANSCRIPT_DISCARD: 'transcript.discard',
   TOOL_CALL: 'tool.call',
+  // Owner-scoped invalidation only; clients reload GET /api/memory.
+  MEMORY_CHANGED: 'memory.changed',
   AGENT_ACTIVITY: 'agent.activity',
   CLIENT_STATE: 'client.state',
   ERROR: 'error',

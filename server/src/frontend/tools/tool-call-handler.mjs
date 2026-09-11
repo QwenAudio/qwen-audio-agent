@@ -1,4 +1,6 @@
 import {
+  CANCEL_AGENT_TASK_TOOL_NAME,
+  ENTER_SLEEP_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
   frontendToolRegistry,
@@ -57,6 +59,21 @@ function compactDebugResult(output) {
 
 function debugSurface(toolName) {
   return toolName === SPAWN_THINKING_TOOL_NAME ? 'backend' : 'frontend'
+}
+
+function needsToolResultSummary(toolName, args) {
+  // Memory writes and lifecycle receipts may accompany an already-spoken
+  // answer. Ordinary reads/actions need their actual result even in that case.
+  for (const feature of optionalFrontendFeatures) {
+    const required = feature.requiresToolResultSummary?.(toolName, args)
+    if (typeof required === 'boolean') return required
+  }
+  return ![
+    SPAWN_THINKING_TOOL_NAME,
+    RESPOND_PERMISSION_TOOL_NAME,
+    CANCEL_AGENT_TASK_TOOL_NAME,
+    ENTER_SLEEP_TOOL_NAME,
+  ].includes(toolName)
 }
 
 export class ToolCallHandler {
@@ -256,6 +273,22 @@ export class ToolCallHandler {
     } = options || {}
     const tool = this.activeToolEntries.get(callId)
     const debug = this.activeToolDebugEntries.get(callId)
+    const batch = this.deferredToolResponses.get(debug?.responseId)
+    if (batch && frontendOptions.createResponse !== false) {
+      // Return every result first. One response may contain several concurrent
+      // calls, including a mix of built-in and external tools.
+      batch.responseRequested = true
+      batch.requiresResultSummary = true
+      Object.assign(batch.responseContext, taskId ? { taskId } : {}, responseContext)
+      if (responseContext?.consumesTaskNotification && taskId && !batch.taskIds.includes(taskId)) {
+        batch.taskIds.push(taskId)
+      }
+      this.addDeferredToolResponseInstructions(
+        debug.responseId,
+        frontendOptions.response?.instructions,
+      )
+      frontendOptions.createResponse = false
+    }
     try {
       this.onToolResultReady({
         callId,
@@ -300,6 +333,8 @@ export class ToolCallHandler {
   beginDeferredToolResponse(responseId, {
     turnId,
     turnGeneration,
+    requestResponse = true,
+    requiresResultSummary = false,
   } = {}, response = null) {
     const key = String(responseId || '')
     if (!key) return null
@@ -308,14 +343,21 @@ export class ToolCallHandler {
       sourceDone: false,
       failed: false,
       suppressResponse: false,
+      sourceHasSpeech: false,
+      responseRequested: false,
+      requiresResultSummary: false,
       turnId,
       turnGeneration,
       responseInstructions: [],
+      responseContext: {},
+      taskIds: [],
     }
     if (!this.deferredToolResponses.has(key) && this.deferredToolResponses.size >= 100) {
       this.deferredToolResponses.delete(this.deferredToolResponses.keys().next().value)
     }
     batch.pending += 1
+    batch.responseRequested ||= requestResponse
+    batch.requiresResultSummary ||= requiresResultSummary
     const instructions = String(response?.instructions || '').trim()
     if (instructions && !batch.responseInstructions.includes(instructions)) {
       batch.responseInstructions.push(instructions)
@@ -339,31 +381,54 @@ export class ToolCallHandler {
     await this.flushDeferredToolResponse(responseId, batch)
   }
 
-  async finishToolResponse(responseId, { suppressResponse = false } = {}) {
+  requiresToolResultSummary(responseId) {
+    const batch = this.deferredToolResponses.get(String(responseId || ''))
+    return batch?.requiresResultSummary === true
+  }
+
+  async finishToolResponse(responseId, {
+    suppressResponse = false,
+    sourceHasSpeech = false,
+  } = {}) {
     const key = String(responseId || '')
     const batch = this.deferredToolResponses.get(key)
     if (!batch) return
     batch.sourceDone = true
     batch.suppressResponse ||= suppressResponse
+    batch.sourceHasSpeech ||= sourceHasSpeech
     await this.flushDeferredToolResponse(key, batch)
   }
 
   async flushDeferredToolResponse(responseId, batch) {
     if (!batch.sourceDone || batch.pending > 0) return
     this.deferredToolResponses.delete(responseId)
-    if (batch.failed || batch.suppressResponse) return
+    if (
+      batch.failed || batch.suppressResponse || !batch.responseRequested
+      || (batch.sourceHasSpeech && !batch.requiresResultSummary)
+      || this.isStale(batch.turnId, batch.turnGeneration)
+    ) return
+    const instructions = [...batch.responseInstructions]
+    if (batch.requiresResultSummary && instructions.length) {
+      instructions.push(
+        '以上针对单项工具的回执说明仅约束该工具；请将本次响应中全部工具的实际结果合并回复，不要遗漏其他工具的成功或失败，也不要把后台受理说成任务已完成。',
+      )
+    }
     await this.getFrontend()?.ensureResponse?.(
       {
         turnId: batch.turnId,
         turnGeneration: batch.turnGeneration,
+        ...batch.responseContext,
+        ...(batch.taskIds.length ? {
+          taskId: batch.taskIds[0],
+          taskIds: batch.taskIds,
+        } : {}),
       },
-      batch.responseInstructions.length
-        ? {
-            response: {
-              instructions: batch.responseInstructions.join(' '),
-            },
-          }
-        : undefined,
+      {
+        shouldCreate: () => !this.isStale(batch.turnId, batch.turnGeneration),
+        ...(instructions.length ? {
+          response: { instructions: instructions.join(' ') },
+        } : {}),
+      },
     )
   }
 
@@ -446,6 +511,15 @@ export class ToolCallHandler {
     }
     this.activeToolDebugEntries.set(callId, debug)
     this.emitToolCallDebug(debug)
+    // Register before any asynchronous execution, so response.done cannot
+    // close a batch while another call is still preparing its result.
+    const deferred = this.beginDeferredToolResponse(responseId, {
+      turnId,
+      turnGeneration: generation,
+      requestResponse: false,
+      requiresResultSummary: needsToolResultSummary(toolName, args),
+    })
+    let failed = false
     try {
       if (external) {
         return await this.executeExternalToolCall(external, {
@@ -515,9 +589,13 @@ export class ToolCallHandler {
         )
       }
       return execution
+    } catch (error) {
+      failed = true
+      throw error
     } finally {
       this.activeToolEntries.delete(callId)
       this.activeToolDebugEntries.delete(callId)
+      await this.completeDeferredToolResponse(deferred, { failed })
     }
   }
 

@@ -7,6 +7,7 @@ function harness({
   nonVoiceClient = false,
   turnCitations = null,
   terminalToolResponses = [],
+  resultSummaryResponses = [],
   perResponseInstructions = false,
 } = {}) {
   const events = []
@@ -40,6 +41,7 @@ function harness({
       flush: () => calls.push(['flush']),
     },
     toolCalls: {
+      requiresToolResultSummary: id => resultSummaryResponses.includes(id),
       consumeTerminalToolResponse: id => {
         calls.push(['consumeTerminalToolResponse', id])
         return terminalResponses.delete(id)
@@ -322,7 +324,10 @@ test('releases a spoken function-call turn when its tool follow-up is suppressed
   assert.equal(events.at(-1).state, 'idle')
   assert.deepEqual(
     calls.find(([name]) => name === 'finishToolResponse'),
-    ['finishToolResponse', 'response-1', { suppressResponse: true }],
+    ['finishToolResponse', 'response-1', {
+      suppressResponse: false,
+      sourceHasSpeech: true,
+    }],
   )
   assert.deepEqual(
     calls.find(([name]) => name === 'responseDone'),
@@ -336,6 +341,43 @@ test('releases a spoken function-call turn when its tool follow-up is suppressed
     }],
   )
 })
+
+test('keeps a spoken inline-tool turn open until its results can be summarized', () => {
+  const { runtime, calls } = harness({ resultSummaryResponses: ['response-1'] })
+  deliver(runtime, {
+    type: 'response.audio.delta',
+    response_id: 'response-1',
+    delta: 'audio',
+    __voiceContext: { turnId: 'turn-1', turnGeneration: 1 },
+  })
+  runtime.markFunctionCall('response-1')
+  deliver(runtime, {
+    type: 'response.done',
+    response: { id: 'response-1', status: 'completed' },
+  })
+
+  assert.deepEqual(calls.find(([name]) => name === 'finishToolResponse'), [
+    'finishToolResponse', 'response-1', { suppressResponse: false, sourceHasSpeech: true },
+  ])
+  assert.equal(calls.find(([name]) => name === 'responseDone')[1].awaitsToolFollowUp, true)
+})
+
+for (const status of ['failed', 'cancelled', 'incomplete']) {
+  test(`suppresses even an inline result summary when the source response is ${status}`, () => {
+    const { runtime, calls } = harness({ resultSummaryResponses: ['response-1'] })
+    deliver(runtime, {
+      type: 'response.created',
+      response: { id: 'response-1' },
+      __voiceContext: { turnId: 'turn-1', turnGeneration: 1 },
+    })
+    runtime.markFunctionCall('response-1')
+    deliver(runtime, { type: 'response.done', response: { id: 'response-1', status } })
+    assert.deepEqual(calls.find(([name]) => name === 'finishToolResponse'), [
+      'finishToolResponse', 'response-1', { suppressResponse: true, sourceHasSpeech: false },
+    ])
+    assert.equal(calls.find(([name]) => name === 'responseDone')[1].awaitsToolFollowUp, false)
+  })
+}
 
 test('user interruption confirms an announcement and suppresses late output', () => {
   const { runtime, events, calls } = harness()

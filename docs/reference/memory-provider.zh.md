@@ -38,6 +38,23 @@ Provider 提供。
 这是一层文档控制面，不是第二套记忆存储。Gateway 负责 owner 隔离，写入统一经过
 `FrontendMemoryRuntime`，所以默认 Markdown Provider 与外部注入 Provider 使用同一协议。
 客户端只应展示自己理解的格式，删除或替换时必须保留并提交精确原文。
+模型上下文投影会去掉 Markdown 的模板与编辑注释，避免把示例当成已保存事实；
+原有的推断优先级说明和截断提示保留原文。API、工具读取和 revision 仍保留原文以支持
+精确编辑。Provider 的纯文本格式不按 Markdown 解释。
+
+编辑成功后，Runtime 会通知同一 owner 的活动对话。支持动态会话更新的 Realtime
+Provider 会在下一个空闲点刷新记忆指令，无需重连，避免模型继续把已删除的信息视为
+已保存。当前会话的记忆工具写入已经通过工具结果返回新文档，仍保留仅刷新缓存的路径。
+变更通知属于 Runtime 包装层，不要求自定义 Provider 增加协议方法。
+
+Runtime 写入持久化且实际产生变更后，还会向同一 owner 的已连接客户端发送
+`memory.changed`，涵盖记忆工具、API 和自动提取写入。事件只含
+`type: "memory.changed"` 与正常协议 envelope，不携带记忆正文或 owner 标识。
+客户端收到后重新请求 `GET /api/memory`，并在 Gateway 会话 ready 时（包括重连后）
+重新读取。这与模型指令刷新独立：当前会话工具写入仍会通知界面；无变更或失败的写入
+不通知。现有 Gateway Client SDK 通过 `onEvent` 透传，无需增加 capability 或 Provider
+方法。不要从助手回复推断已保存，也不要只监听 `memory` 工具完成，否则会漏掉自动提取
+和 API 写入。
 
 ## 替换记忆 Provider
 

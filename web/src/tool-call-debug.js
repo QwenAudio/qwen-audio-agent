@@ -1,4 +1,4 @@
-import { GatewayServerEvent } from '../../shared/realtime-events.mjs'
+import { GatewayServerEvent } from '../../shared/protocol/realtime-events.mjs'
 
 export const MAX_TOOL_CALLS = 64
 

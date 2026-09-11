@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GatewayServerEvent } from '../../shared/realtime-events.mjs'
+import { GatewayServerEvent } from '../../shared/protocol/realtime-events.mjs'
 import {
   cancelToolCallsForResponse,
   displayToolName,

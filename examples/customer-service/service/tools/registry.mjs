@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { logToolCall } from '../tool-log.mjs'
 import { executeIdentityTool } from './identity/execute.mjs'
 import { executeOrdersTool } from './orders/execute.mjs'
 import { executeReturnsTool } from './returns/execute.mjs'
@@ -90,12 +91,23 @@ function loadManifest(name) {
   return JSON.parse(readFileSync(new URL(`./${name}/manifest.json`, import.meta.url), 'utf8'))
 }
 
-function definition(tool) {
+// 【schema 必须按域生成】identity 组被两个域共用，而 verify_identity 的
+// 参数在两个域里不一样（零售=邮箱/姓名+邮编，航空=会员号/姓名+证件后四位）。
+// 起先这里不传 domain，两个域拿到的都是零售那套 —— 模型照 schema 只能填
+// email，航空域的核验因此【必然失败】，而客服还会照着 description
+// 向客户索要「收货地址邮编」。实测复现过，日志里是 args={"email":"CY10023841"}。
+function definition(tool, domain) {
+  const scoped = tool.byDomain?.[domain]
+  if (tool.byDomain && !scoped) {
+    // 【加新域时要立刻炸】静默回落到零售就是上面那个 bug 的成因：
+    // 表面上工具齐全、调用成功，只有参数是错的，很难往这里查。
+    throw new Error(`${tool.name} 没有为域 ${domain} 定义参数（manifest 的 byDomain 缺这一项）`)
+  }
   return Object.freeze({
     name: tool.name,
     title: tool.label,
-    description: tool.description,
-    inputSchema: tool.parameters,
+    description: scoped?.description ?? tool.description,
+    inputSchema: scoped?.parameters ?? tool.parameters,
     annotations: {
       readOnlyHint: READ_ONLY.has(tool.name),
       destructiveHint: DESTRUCTIVE.has(tool.name),
@@ -114,13 +126,24 @@ function toolGroup(name, execute) {
   if (typeof execute !== 'function') {
     throw new TypeError(`Customer-service tool group ${name} requires an executor`)
   }
+  const enabled = manifest.functions.filter(tool => tool.enabled !== false)
   return Object.freeze({
     name,
     manifest,
     execute,
-    definitions: Object.freeze(
-      manifest.functions.filter(tool => tool.enabled !== false).map(definition),
-    ),
+    // 【按域各存一份】同一个 group 实例被多个域共用（identity 就是），
+    // 所以定义不能在这里固化成一套 —— 那正是航空拿到零售 schema 的原因。
+    definitionsFor(domain) {
+      return this.definitionsByDomain[domain] || this.definitionsByDomain.retail
+    },
+    definitionsByDomain: Object.freeze(Object.fromEntries(
+      Object.keys(FRONTEND_BY_DOMAIN).map(domain => [
+        domain,
+        Object.freeze(enabled.map(tool => definition(tool, domain))),
+      ]),
+    )),
+    // 工具【名】与域无关，构建索引时用哪一份都一样 —— 只有 schema 分域。
+    names: Object.freeze(enabled.map(tool => tool.name)),
   })
 }
 
@@ -143,11 +166,11 @@ const BY_NAME_BY_DOMAIN = new Map()
 for (const [domain, groups] of Object.entries(GROUPS_BY_DOMAIN)) {
   const byName = new Map()
   for (const group of groups) {
-    for (const tool of group.definitions) {
-      if (byName.has(tool.name)) {
-        throw new Error(`Duplicate tool name in ${domain}: ${tool.name}`)
+    for (const name of group.names) {
+      if (byName.has(name)) {
+        throw new Error(`Duplicate tool name in ${domain}: ${name}`)
       }
-      byName.set(tool.name, group)
+      byName.set(name, group)
     }
   }
   // 白名单里写了却没实现的工具名，是最容易悄悄留下的错：
@@ -178,21 +201,68 @@ export const ALL_TOOL_NAMES = allToolNames('retail')
 // 不是两个互斥列表。已实测：两个面读写的是同一份状态。
 export function toolDefinitions(surface, domain = 'retail') {
   const groups = GROUPS_BY_DOMAIN[domain] || GROUPS_BY_DOMAIN.retail
-  const all = groups.flatMap(group => group.definitions)
+  // 【必须传 domain】用 group 上固化的那一份会让航空拿到零售的参数 schema。
+  const all = groups.flatMap(group => group.definitionsFor(domain))
   const whitelist = frontendToolNames(domain)
   return surface === 'frontend'
     ? all.filter(tool => whitelist.includes(tool.name))
     : all
 }
 
+// 【出口审计的取证就在这里落地】审计要判「模型说的这个数字有没有出处」，
+// 依据是工具真正返回过什么。这一处是所有工具调用的唯一出口，所以记在这里
+// 就覆盖全部工具，不必去改二十多个 appendAudit 调用点。
+//
+// 起初审计读的是 audit 的 summary —— 那是给界面看的动作摘要（"查看 CYR8809"）
+// 且截到 200 字，里面从来没有金额。后果是模型说出【任何】金额都被判违规，
+// 而满屏误报之后真违规也就没人看了。
+function recordOutput(context, result) {
+  const content = result?.content
+  if (!content || !context?.store?.recordToolOutput) return
+  context.store.recordToolOutput(context.sessionId, content)
+}
+
 export function executeTool(name, args, context) {
   const domain = context?.domain || 'retail'
   const byName = BY_NAME_BY_DOMAIN.get(domain) || BY_NAME_BY_DOMAIN.get('retail')
   const group = byName.get(name)
+  const startedAt = Date.now()
+  const payload = args || {}
   if (!group) {
     // 【报错要说清是哪个域没有】否则「Unknown tool: return_items」
     // 会让人以为工具没实现，而实际是航空域压根不该有它。
-    throw new Error(`${domain} 域没有这个工具：${name}`)
+    const error = new Error(`${domain} 域没有这个工具：${name}`)
+    // 【这条尤其要记】模型调了一个本域不该有的工具，说明工具面配错了
+    // 或者模型在凭印象猜工具名 —— 而这种调用查表阶段就抛，
+    // 不记的话它在日志里完全没有痕迹，只能从异常堆栈里翻。
+    logToolCall({ name, args: payload, context, error, startedAt })
+    throw error
   }
-  return group.execute(name, args || {}, context)
+  // 【日志包在最外层】所有工具调用都过这里，所以这一处就够。
+  // 记的是【模型传进来的原始参数】—— audit 只有工具返回的那句话，
+  // 排查"工具被调了却说缺参数"时，看不到参数等于看不到原因。
+  let outcome
+  try {
+    outcome = group.execute(name, payload, context)
+  } catch (error) {
+    logToolCall({ name, args: payload, context, error, startedAt })
+    throw error
+  }
+  // 【必须原样返回同步值】有工具是同步的，把它包成 Promise 会改变调用语义。
+  if (!outcome || typeof outcome.then !== 'function') {
+    logToolCall({ name, args: payload, context, result: outcome, startedAt })
+    recordOutput(context, outcome)
+    return outcome
+  }
+  return outcome.then(
+    result => {
+      logToolCall({ name, args: payload, context, result, startedAt })
+      recordOutput(context, result)
+      return result
+    },
+    error => {
+      logToolCall({ name, args: payload, context, error, startedAt })
+      throw error
+    },
+  )
 }

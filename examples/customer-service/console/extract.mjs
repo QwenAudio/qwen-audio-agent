@@ -254,44 +254,85 @@ function looksLikeSectionOrder(before, after) {
 
 // 【把 quote 落回行号】模型给的 quote 是文本，人在配置台上要能点回原文。
 // 落不回去的 quote 说明模型改写了原句 —— 那条要标出来，不能当证据用。
-export function annotate(parsed, lines) {
-  // 半角标点也要去掉。模型输出中文时常把「，」写成「,」、把「。」写成「.」——
-  // 只清中文标点的话，一句只差标点形态的 quote 就落不回原文，
-  // 会被误判成幻觉而降级。
-  const strip = value => String(value || '')
-    .replace(/[，。、；：「」（）(),.;:*\s|]/g, '')
+const stripPolicyText = value => String(value || '')
+  .replace(/[，。、；：「」（）(),.;:*\s|]/g, '')
 
-  const locate = quote => {
-    const needle = String(quote || '').trim()
-    if (!needle) return null
-    const index = lines.findIndex(line => line.includes(needle))
-    if (index >= 0) return index + 1
+function longestCommonRun(left, right) {
+  let best = 0
+  const previous = new Array(right.length + 1).fill(0)
+  for (const l of left) {
+    let diagonal = 0
+    for (let index = 0; index < right.length; index += 1) {
+      const saved = previous[index + 1]
+      previous[index + 1] = l === right[index] ? diagonal + 1 : 0
+      if (previous[index + 1] > best) best = previous[index + 1]
+      diagonal = saved
+    }
+  }
+  return best
+}
+
+// 数值取证保留小数点，按完整数字及紧随其后的单位比对。
+// 不能复用去标点后的文本，否则 20.50 会变成 2050，2000 也能命中 200。
+function matchesPolicyValue(item, line) {
+  if (typeof item?.value !== 'number' || !Number.isFinite(item.value)) return false
+  const unit = String(item.unit || '').trim()
+  const text = String(line).replace(/\*+/g, '')
+  if (item.value === 0 && (!unit || unit === '元') && /免费|免收/.test(text)) return true
+  const numbers = text.matchAll(/(?<![\w.,])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?![\d.,])/g)
+  for (const match of numbers) {
+    if (Number(match[0].replaceAll(',', '')) !== item.value) continue
+    if (!unit || text.slice(match.index + match[0].length).trimStart().startsWith(unit)) return true
+  }
+  return false
+}
+
+export function locatePolicyEvidence(item, lines) {
+  const numeric = typeof item?.value === 'number'
+  const supportsValue = line => !numeric || matchesPolicyValue(item, line)
+  const needle = String(item?.quote || '').trim()
+  if (needle) {
+    const index = lines.findIndex(line => line.includes(needle) && supportsValue(line))
+    if (index >= 0) return { line: index + 1, method: 'quote' }
     // 退一步：去掉标点与 markdown 符号再找。模型常把中文标点换成半角，
     // 也常把表格里的 ** 与 | 带进 quote。
-    const loose = strip(needle)
-    if (!loose) return null
-    const fuzzy = lines.findIndex(line => strip(line).includes(loose))
-    if (fuzzy >= 0) return fuzzy + 1
-    // 再退一步：markdown 表格里一条信息跨多行，模型会把表头说明和
-    // 表体行拼成一句（「经济舱 改签手续费 200 元」）。拆开后只要有
-    // 一段能落回去，就把那一行当作依据 —— 宁可定到表头行，
-    // 也比完全落不回去强。切分符包括空白，因为表格拼接只靠空格分隔。
-    for (const piece of needle.split(/[：:，。\s]/).map(strip).filter(part => part.length >= 4)) {
-      const partial = lines.findIndex(line => strip(line).includes(piece))
-      if (partial >= 0) return partial + 1
+    const loose = stripPolicyText(needle)
+    if (loose) {
+      const fuzzy = lines.findIndex(line => stripPolicyText(line).includes(loose) && supportsValue(line))
+      if (fuzzy >= 0) return { line: fuzzy + 1, method: 'quote' }
     }
-    return null
   }
 
+  // 【表格里的数值不能只靠整句 quote】
+  // policy 是「| 经济舱 | economy | 200 元 |」，模型常改写成
+  // 「经济舱改签手续费为 200 元」。整句当然匹配不上，但“经济舱 + 200 元”
+  // 是足够严格、可复核的结构化证据。这里同时要求：
+  //   1. 数值（0 元也接受“免费”）命中；2. 适用范围至少连续命中两个字；
+  // 若最高分并列则不猜，仍返回 null。
+  if (typeof item?.value !== 'number' || !Number.isFinite(item.value) || !item.applies_to) return null
+  const scope = stripPolicyText(item.applies_to)
+  const candidates = lines.map((line, index) => {
+    const normalized = stripPolicyText(line)
+    const hasValue = matchesPolicyValue(item, line)
+    return { index, score: hasValue ? longestCommonRun(scope, normalized) : 0 }
+  }).filter(candidate => candidate.score >= 2)
+    .sort((left, right) => right.score - left.score)
+  if (!candidates.length || candidates[0].score === candidates[1]?.score) return null
+  return { line: candidates[0].index + 1, method: 'structured' }
+}
+
+export function annotate(parsed, lines) {
   const withLine = item => {
-    const line = locate(item.quote)
+    const evidence = locatePolicyEvidence(item, lines)
     return {
       ...item,
-      policyLine: line,
-      // quote 落不回原文 = 模型改写了句子。这类不能算 certain，
-      // 否则一条被改写过的「规则」会以确定项的身份进配置。
-      quoteVerified: line !== null,
-      confidence: line === null ? 'ambiguous' : (item.confidence || 'ambiguous'),
+      policyLine: evidence?.line ?? null,
+      evidenceMethod: evidence?.method ?? null,
+      // quoteVerified 仍只表示「模型给的整句能落回原文」；结构化匹配单列出来，
+      // 避免把模型改写过的句子伪装成逐字引用。
+      quoteVerified: evidence?.method === 'quote',
+      evidenceVerified: Boolean(evidence),
+      confidence: evidence ? (item.confidence || 'ambiguous') : 'ambiguous',
     }
   }
 
@@ -370,7 +411,8 @@ export function partition(extracted) {
       undecided.push(entry)
       return
     }
-    if (typeof value === 'number' && Number.isFinite(value) && item.quoteVerified) {
+    if (typeof value === 'number' && Number.isFinite(value)
+      && (item.evidenceVerified ?? item.quoteVerified)) {
       determined.push(entry)
     } else {
       undecided.push(entry)

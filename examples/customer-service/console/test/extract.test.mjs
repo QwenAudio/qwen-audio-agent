@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { annotate, partition } from '../extract.mjs'
+import { annotate, locatePolicyEvidence, partition } from '../extract.mjs'
 
 // 这些测试不调模型 —— 喂固定的「模型输出」，锁住 annotate 与 partition 的判据。
 // 抽取质量本身靠 runtime 探针观察，那个每次结果不同，不适合当断言。
@@ -56,6 +56,93 @@ test('markdown 表格里的 quote 带 ** 与 | 也能落回', () => {
     }],
   }, LINES)
   assert.equal(out.thresholds[0].policyLine, 7)
+})
+
+test('模型把表格行改写成句子时，按适用范围和数值落回表体行', () => {
+  const lines = [
+    '改签手续费按舱位收取：',
+    '| 舱位 | 代码 | 改签手续费 |',
+    '|---|---|---|',
+    '| 特价经济舱 | basic_economy | 不可改签 |',
+    '| 经济舱 | economy | 200 元 |',
+    '| 公务舱 | business | 免费 |',
+  ]
+  assert.deepEqual(locatePolicyEvidence({
+    value: 200,
+    unit: '元',
+    applies_to: '经济舱改签手续费',
+    quote: '经济舱改签手续费为 200 元。',
+  }, lines), { line: 5, method: 'structured' })
+  assert.deepEqual(locatePolicyEvidence({
+    value: 0,
+    unit: '元',
+    applies_to: '公务舱改签手续费',
+    quote: '公务舱改签手续费为免费。',
+  }, lines), { line: 6, method: 'structured' })
+})
+
+test('结构化证据能支撑数值候选，但不伪装成逐字 quote', () => {
+  const lines = ['| 经济舱 | economy | 200 元 |']
+  const out = annotate({
+    thresholds: [{
+      name: 'change_fee_economy', value: 200, unit: '元',
+      applies_to: '经济舱改签手续费', quote: '经济舱改签手续费为 200 元。',
+      confidence: 'certain',
+    }],
+  }, lines)
+  assert.equal(out.thresholds[0].policyLine, 1)
+  assert.equal(out.thresholds[0].evidenceMethod, 'structured')
+  assert.equal(out.thresholds[0].evidenceVerified, true)
+  assert.equal(out.thresholds[0].quoteVerified, false)
+  assert.equal(partition(out).determined.length, 1)
+})
+
+test('数值相同但适用范围对不上时不猜行号', () => {
+  const lines = ['| 延误 2 至 4 小时 | 200 元 |']
+  assert.equal(locatePolicyEvidence({
+    value: 200,
+    unit: '元',
+    applies_to: '经济舱改签手续费',
+    quote: '经济舱改签手续费为 200 元。',
+  }, lines), null)
+})
+
+test('数字必须完整且单位一致，不能把子串或小数拼接当证据', () => {
+  for (const [line, value, unit] of [
+    ['| 单笔退款 | 2000 元 |', 200, '元'],
+    ['| 单笔退款 | 2000 元 |', 0, '元'],
+    ['| 单笔退款 | 20.50 元 |', 2050, '元'],
+    ['| 单笔退款 | 2000 天 |', 2000, '元'],
+    ['| 单笔退款 | 2000 美元 |', 2000, '元'],
+  ]) {
+    const out = annotate({ thresholds: [{
+      name: 'refund_ceiling', value, unit, applies_to: '单笔退款',
+      quote: `单笔退款：上限为${value}${unit}。`, confidence: 'certain',
+    }] }, [line])
+    assert.equal(out.thresholds[0].evidenceVerified, false, line)
+    assert.equal(partition(out).determined.length, 0, line)
+  }
+})
+
+test('引用原句也不能替不同数值背书', () => {
+  const quote = '**单笔退款金额超过 2000 元的，客服不得自行处理，须转人工主管审批。**'
+  const out = annotate({ thresholds: [{
+    name: 'refund_ceiling', value: 20, unit: '元', quote, confidence: 'certain',
+  }] }, LINES)
+  assert.equal(out.thresholds[0].evidenceVerified, false)
+  assert.equal(partition(out).determined.length, 0)
+})
+
+test('完整小数、千位分隔与免费金额仍可定位', () => {
+  for (const [line, value] of [
+    ['| 单笔退款 | 20.50 元 |', 20.5],
+    ['| 单笔退款 | 2,000 元 |', 2000],
+    ['| 单笔退款 | 免费 |', 0],
+  ]) {
+    assert.deepEqual(locatePolicyEvidence({
+      value, unit: '元', applies_to: '单笔退款上限', quote: '',
+    }, [line]), { line: 1, method: 'structured' })
+  }
 })
 
 test('两端都是章节名的顺序规则被标记出来', () => {

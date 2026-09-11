@@ -269,3 +269,21 @@ test('两个域的基础 prompt 只差业务名字，流程由配置产生差异
   assert.match(serviceAgentPrompt('airline'), /愿意升舱/)
   assert.notEqual(serviceAgentPrompt('retail'), serviceAgentPrompt('airline'))
 })
+
+test('基础 prompt 明令不得向客户暴露内部结构', () => {
+  // 【实测撞到的】客户要退票，后台 Agent 汇报里说「我需要提交后台客服处理」，
+  // 而这句话会被【原话念给客户】。「后台客服」在客户听来是另一个人 ——
+  // 他会以为要换人接手，实际从头到尾就是同一个客服。
+  //
+  // 起因是 prompt 第一行就告诉它「你是客服的后台 Agent」，同时又要它写
+  // 「适合直接念给客户听」的话 —— 两句放在一起，它自然会向客户解释内部流程。
+  for (const domain of ['retail', 'airline']) {
+    const prompt = basePrompt(domain)
+    assert.match(prompt, /客户只知道一个客服/, `${domain} 少了这条约束`)
+    assert.match(prompt, /不要说"后台"/, `${domain} 没有列出禁用的内部词`)
+    // 只有真转人类坐席时才允许提人工 —— 这个例外必须写清，
+    // 否则模型会连 transfer_to_human 那句也不敢说。
+    assert.match(prompt, /transfer_to_human/)
+    assert.match(prompt, /人工客服/)
+  }
+})

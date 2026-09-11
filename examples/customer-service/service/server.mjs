@@ -1,7 +1,7 @@
 // 场景自有的业务基础设施：把客服状态投影给 UI，并暴露两个 MCP 工具面。
 // 它不属于 Gateway，也不是 qwen-audio-agent 的额外一层。
 import { createServer } from 'node:http'
-import { pathToFileURL } from 'node:url'
+import { pathToFileURL, fileURLToPath } from 'node:url'
 import {
   StreamableHTTPServerTransport,
 } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
@@ -199,11 +199,22 @@ export async function startCustomerServiceServer(options = {}) {
 const entry = process.argv[1] ? pathToFileURL(process.argv[1]).href : ''
 if (entry === import.meta.url) {
   loadServiceEnvironment()
+  // 【工具调用日志只在这里开】库被 import 时（单元测试）不写盘，
+  // 真正跑成服务进程才留。按域分文件，否则两个域的调用混在一起看不出谁是谁。
+  //
+  // 落点在 .runtime-logs/ 下 —— .gitignore 的 .runtime-*/ 已经挡住它，
+  // 不会随 commit 出去。看的时候：
+  //   tail -f examples/customer-service/.runtime-logs/tools-airline.jsonl
+  process.env.CS_TOOL_LOG ||= fileURLToPath(new URL(
+    `../.runtime-logs/tools-${process.env.CS_DOMAIN || 'retail'}.jsonl`,
+    import.meta.url,
+  ))
   const server = await startCustomerServiceServer({
     host: process.env.CS_SERVICE_HOST || '127.0.0.1',
     port: Number(process.env.CS_SERVICE_PORT) || 3110,
   })
   console.log(`Customer service listening on ${server.origin}`)
+  console.log(`  工具调用日志 → ${process.env.CS_TOOL_LOG}`)
   const close = async () => {
     await server.close()
     process.exit(0)

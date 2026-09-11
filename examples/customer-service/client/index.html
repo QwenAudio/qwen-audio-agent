@@ -38,8 +38,6 @@
   @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
   .chat { display: flex; flex-direction: column; min-height: 0; }
   .log { flex: 1; overflow-y: auto; padding: 16px 18px; }
-  .composer { display: flex; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--line); }
-  .composer input { flex: 1; }
   aside {
     border-left: 1px solid var(--line); overflow-y: auto; padding: 14px 16px 40px;
   }
@@ -56,16 +54,6 @@
   .turn.user .bubble { background: #1d2836; border-color: #2c3a4d; }
   .cites { margin-top: 6px; font-size: 12px; color: var(--dim); }
   .cites b { color: var(--accent); font-weight: 500; }
-
-  /* 出口审计的标记。违规那一轮加一道红边 —— 演示时一眼能看到。 */
-  .turn.violation .bubble { border-left: 3px solid var(--bad); }
-  .audit-flag {
-    margin-top: 6px; padding: 5px 8px; border-radius: 5px;
-    background: #e06c5f18; border: 1px solid var(--bad);
-    color: var(--bad); font-size: 12px; line-height: 1.6;
-  }
-  .audit-flag b { margin-right: 4px; }
-  .audit-flag .muted { color: var(--dim); }
 
   h2 {
     font-size: 12px; color: var(--dim); text-transform: uppercase;
@@ -88,6 +76,25 @@
   .tag.bad { background: #e05c5c22; color: var(--danger); }
   .tag.warn { background: #e0a33a22; color: var(--warn); }
   .muted { color: var(--dim); font-size: 12.5px; }
+  /* 【客户选择器必须有边框和间距】原先这里只写了 class="surface-toggle"，
+     而这个类的样式只存在于 console/index.html —— 客服工作台里它等于没有样式。
+     四个客户名字于是裸着挨在一起（"赵宇孙丽周涛吴敏"），实测被当成了一个人名。 */
+  .picker { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+  .picker span {
+    padding: 4px 11px; border: 1px solid var(--line); border-radius: 999px;
+    cursor: pointer; color: var(--dim); font-size: 13px; user-select: none;
+  }
+  .picker span:hover { border-color: var(--accent); }
+  .picker span.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
+
+  /* 语音通话按钮。通话中给一个呼吸效果 —— 麦克风开着这件事必须一眼可见，
+     否则演示完忘记关，下一段对话会被无意中录进去。 */
+  button.talking { border-color: var(--ok); color: var(--ok); background: #4caf7d18; }
+  .mic-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
+    display: inline-block; margin-right: 5px; animation: pulse 1.4s infinite;
+  }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
   .mono { font-family: var(--mono); font-size: 12.5px; }
   .empty { color: var(--dim); font-size: 13px; padding: 4px 0; }
   .hint { color: var(--dim); font-size: 12.5px; margin-bottom: 10px; line-height: 1.5; }
@@ -100,6 +107,7 @@
   <span class="dot" id="dot"></span>
   <span class="muted" id="status">连接中…</span>
   <span class="grow"></span>
+  <button id="talk">开始语音通话</button>
   <button id="new-customer">换一位客户</button>
   <button id="reset">重置本位客户</button>
 </header>
@@ -110,14 +118,13 @@
       <div class="hint">
         这是客户侧的视角。右侧三个面板显示同一通话在服务端留下的痕迹 ——
         身份核验状态、订单数据、以及每一次工具调用的审计记录。<br>
-        试试：「你好，我想退货」 / 「我的邮箱是 liming3021@example.com」 /
-        「订单 #W2378156 的键盘想换 clicky 轴」
+        点右上角「开始语音通话」，允许麦克风后直接说话。<br>
+        先报会员号或姓名加证件后四位核验身份，核验通过才能查订单、办业务。
       </div>
     </div>
-    <div class="composer">
-      <input id="say" placeholder="替客户说一句话…" autocomplete="off">
-      <button id="send" class="primary">发送</button>
-    </div>
+    <!-- 【客户页不提供文字输入】客户打电话不会打字。留一个输入框会让演示走上
+         "打字也能办成"的岔路，而这个示例要证的恰恰是语音链路能办成业务。
+         排查用的文字通道以后放到独立的开发者观察区，不放在客户看到的页面上。 -->
   </div>
 
   <aside>
@@ -132,6 +139,8 @@
 </main>
 
 <script type="module">
+import { createMicrophoneStream, createPlaybackQueue, VOICE_DEFAULTS } from './voice.mjs'
+
 const $ = id => document.getElementById(id)
 const el = (tag, cls, html) => {
   const node = document.createElement(tag)
@@ -186,46 +195,7 @@ function renderTurn({ role, content, source }) {
   }
   $('log').append(turn)
   $('log').scrollTop = $('log').scrollHeight
-  // 【只审客服说的话】客户说什么都行，禁止事项约束的是客服。
-  if (role !== 'user') auditTurn(turn, content)
   return turn
-}
-
-// 出口审计 —— 把违规标在说过的话旁边。
-//
-// 【为什么要在这里做，而不是只存个日志】
-// guards 管「能不能办」，工具返回真实数据，但两者都管不了模型【怎么说】。
-// 工具说「超出时限」，模型可以说成「我帮您申请特批」—— 客户会当真。
-//
-// 标在这里而不是只记到后端：演示时能当场指出「刚才这句违规、依据细则第几行」，
-// 那比说「我们有约束」有说服力。
-//
-// 【它是事后审计，不是拦截】语音已经播出去了，拦不住。
-async function auditTurn(turn, content) {
-  if (!String(content || '').trim()) return
-  try {
-    const response = await fetch(`${API}/api/service/audit?sessionId=${SESSION}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: content }),
-    })
-    if (!response.ok) return
-    const result = await response.json()
-    if (result.ok) return
-    // 每条违规单独一行，带细则行号 ——
-    // 不带行号的话这只是一句「这话不对」，带了就能追到原文。
-    turn.classList.add('violation')
-    for (const violation of result.violations) {
-      turn.append(el('div', 'audit-flag',
-        `<b>违规</b> ${esc(violation.detail)}`
-        + (violation.policyLine
-          ? ` <span class="muted">（细则第 ${violation.policyLine} 行：${esc(violation.title)}）</span>`
-          : '')))
-    }
-    $('log').scrollTop = $('log').scrollHeight
-  } catch {
-    // 审计是旁路的 —— 它自己出错不该影响对话显示。
-  }
 }
 
 // 对话从 REST 拉，不从 WebSocket 拿。
@@ -280,10 +250,9 @@ function renderScript(state) {
   const me = users.find(user => user.userId === playing)
 
   const picker = el('div', 'card')
-  picker.append(el('div', 'muted', '选一位客户来演（客服看不到这一区）'))
-  const row = el('div', 'surface-toggle')
-  row.style.flexWrap = 'wrap'
-  row.style.marginTop = '6px'
+  picker.append(el('div', 'muted',
+    `选一位客户来演，共 ${users.length} 位（客服看不到这一区）`))
+  const row = el('div', 'picker')
   for (const user of users) {
     const option = el('span', user.userId === playing ? 'on' : null, esc(user.name))
     option.onclick = () => {
@@ -511,34 +480,50 @@ function subscribeState() {
   return events
 }
 
-// ── 语音会话（文字通道）──
+// ── 语音会话 ──
+//
+// 【文字和语音是同一条 WebSocket】区别只在建连时 connect 事件里声明的能力。
+// 协议没有"运行时打开麦克风"这种事件（shared/realtime-events.mjs 只有
+// mute/unmute），所以点「开始语音通话」是带着 voiceEnabled=true 重连一次。
+// 重连不丢对话历史 —— 那份历史在网关的 .runtime 里，和这条连接无关。
 
 let socket = null
+let voiceWanted = false
+let mic = null
+let playback = null
+// 重连是有意的（切换语音模式）还是网络断的？前者不该弹"连接已断开"。
+let reconnecting = false
+let reconnectTimer = null
+let voiceRequest = 0
 
 function connect() {
   const url = new URL('/api/realtime', location.origin)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   url.searchParams.set('sessionId', SESSION)
   socket = new WebSocket(url)
+  const opened = socket
 
   socket.addEventListener('open', () => {
+    if (opened !== socket) return
     // 建连后必须先声明会话形态。
-    // 这里只走文字：客服工作台的用途是看清链路，音频采集与播放留给
-    // 框架自带的 web 界面（同一个网关的 / 路径）。
     socket.send(JSON.stringify({
       type: 'connect',
-      voiceEnabled: false,
+      voiceEnabled: voiceWanted,
       inputEnabled: true,
       outputEnabled: true,
       clientType: 'web',
       clientLabel: '客服工作台',
-      inputCapabilities: { text: true, audio: false },
+      inputCapabilities: { text: true, audio: voiceWanted },
     }))
-    $('status').textContent = '已连接'
+    $('status').textContent = voiceWanted ? '语音已连接' : '已连接'
     $('dot').className = 'dot on'
+    if (voiceWanted) startCapture().catch(error => {
+      if (opened === socket && voiceWanted) reportVoiceError(error)
+    })
   })
 
   socket.addEventListener('message', event => {
+    if (opened !== socket) return
     let payload
     try {
       payload = JSON.parse(event.data)
@@ -564,11 +549,35 @@ function connect() {
       return
     }
 
+    // 采样率由服务端定，不能假设是 16k。不改的话上行是变调的话，
+    // 识别结果会莫名其妙地差 —— 而且听起来像"模型不行"，很难归因。
+    if (type === 'voice.ready' && payload.inputSampleRate) {
+      mic?.setTargetRate(payload.inputSampleRate)
+    }
     if (type === 'voice.state') {
       const busy = payload.state === 'processing' || payload.state === 'speaking'
       $('dot').className = `dot ${busy ? 'busy' : 'on'}`
-      $('status').textContent = busy ? '客服正在应答…' : '已连接'
+      $('status').textContent = busy
+        ? '客服正在应答…'
+        : voiceWanted ? '在听客户说话' : '已连接'
+      // 客户一开口就闭嘴。缺这一句的表现是：客户已经在说下一句，
+      // 客服还在念上一句，两个声音叠着。
+      if (payload.state === 'listening') playback?.stop()
     }
+    if (type === 'playback.clear') playback?.stop()
+    if (type === 'audio.delta' && payload.audio) {
+      try {
+        // 【responseId 必须带上】播放进度是按 responseId 回报给网关的，
+        // 不带它这一句的 playback.started 就发不出去 —— 而网关正是靠那条
+        // 回报才把客服这句话写进对话记录。
+        playback?.play(payload.audio, payload.sampleRate, payload.responseId || '')
+      } catch (error) {
+        reportVoiceError(error)
+      }
+    }
+    // 网关说这一句的音频发完了。在此之前不能报 ended，否则等于告诉它
+    // "客户听完了"，而后半句还排在队列里没播。
+    if (type === 'audio.done') playback?.markDone(payload.responseId || '')
     // 任务状态：后台在办事时让它可见。挂起等批准是最要紧的一种 ——
     // 客户此时会被口头问一次，界面上要能对上。
     if (type === 'task.input.requested' || payload.task?.workState === 'auth_required') {
@@ -576,7 +585,7 @@ function connect() {
       $('dot').className = 'dot busy'
     }
     if (['task.completed', 'task.failed', 'task.cancelled'].includes(type)) {
-      $('status').textContent = '已连接'
+      $('status').textContent = voiceWanted ? '语音已连接' : '已连接'
       $('dot').className = 'dot on'
     }
     // 有新回复就去拉一次对话 —— 助手的话在 REST 那边。
@@ -586,27 +595,119 @@ function connect() {
   })
 
   socket.addEventListener('close', () => {
+    if (opened !== socket) return
+    if (reconnecting) return
+    mic?.stop()
+    playback?.stop()
     $('status').textContent = '连接已断开'
     $('dot').className = 'dot'
-    setTimeout(connect, 3_000)
+    clearTimeout(reconnectTimer)
+    reconnectTimer = setTimeout(connect, 3_000)
   })
 }
 
-function say(text) {
-  if (!text.trim() || socket?.readyState !== WebSocket.OPEN) return
-  socket.send(JSON.stringify({
-    type: 'text.message',
-    parts: [{ type: 'text', text }],
-  }))
-  $('say').value = ''
-  // 立刻回显，不等服务端 —— 语音场景里客户说完就该看到自己说了什么
-  setTimeout(pullMessages, 200)
+function reportVoiceError(error) {
+  const name = String(error?.name || '')
+  $('status').textContent = name === 'NotAllowedError'
+    ? '麦克风被拒绝，请在浏览器地址栏允许后重试'
+    : `语音出错：${error?.message || error}`
+  $('dot').className = 'dot'
+  // 【出错一定要退回文字模式，不能只关麦克风】否则会留下一条向服务端
+  // 声明了 audio 能力、却永远不发音频的连接 —— 它会一直等客户开口。
+  stopVoice()
 }
 
-$('send').onclick = () => say($('say').value)
-$('say').onkeydown = event => {
-  if (event.key === 'Enter') say($('say').value)
+// 播放进度回报。网关按 responseId 认这句话（realtime-gateway.mjs 读的就是
+// event.responseId），没有它就 acceptsPlaybackReceipt 不过、直接丢弃。
+function sendPlayback(type, responseId, reason = '') {
+  if (!responseId || socket?.readyState !== WebSocket.OPEN) return
+  socket.send(JSON.stringify({ type, responseId, ...(reason ? { reason } : {}) }))
+  // 转写是在 playback.started 之后才落库的，所以这时候再去拉一次才拉得到。
+  if (type === 'playback.started') setTimeout(pullMessages, 250)
 }
+
+async function startCapture() {
+  // 【AudioContext 必须在这条用户手势路径上创建】非手势里创建会被浏览器
+  // 挂成 suspended，表现是"连上了、麦克风也在传，但一点声音都听不到"。
+  playback ??= createPlaybackQueue({
+    contextFactory: () => new AudioContext(),
+    // 【这三条回报不是可选的】网关把客服的转写压在 pendingTranscripts 里，
+    // 等的就是 playback.started；收到才 flush，flush 才写进对话记录。
+    // 少了它，客服的声音照样播，但对话记录里一条 assistant 都没有 ——
+    // 页面上只看得到客户说了什么，出口审计也没有原话可审。实测过。
+    onStarted: responseId => sendPlayback('playback.started', responseId),
+    onEnded: responseId => sendPlayback('playback.ended', responseId),
+    onCancelled: (responseId, started) => {
+      // 没开始播就被打断的，网关那边压根没进过 speaking 状态，
+      // 报 cancelled 才对得上；已经在播的同样报 cancelled，它据此回收上下文。
+      sendPlayback('playback.cancelled', responseId, started ? 'user_interruption' : 'discarded')
+    },
+  })
+  playback.prepare()
+  mic ??= createMicrophoneStream({
+    mediaDevices: navigator.mediaDevices,
+    contextFactory: () => new AudioContext(),
+    targetRate: VOICE_DEFAULTS.inputRate,
+    onChunk: audio => {
+      if (!voiceWanted || reconnecting || socket?.readyState !== WebSocket.OPEN) return
+      socket.send(JSON.stringify({ type: 'audio.append', audio }))
+    },
+    onError: reportVoiceError,
+  })
+  const capture = mic
+  if (!await capture.start() || capture !== mic || !voiceWanted) return false
+  $('talk').innerHTML = '<span class="mic-dot"></span>结束语音通话'
+  $('talk').className = 'talking'
+  return true
+}
+
+// 切换语音模式要重连：形态在 connect 事件里声明，之后改不了。
+function reconnectWith(voice) {
+  voiceWanted = voice
+  reconnecting = true
+  try {
+    socket?.close()
+  } catch {}
+  socket = null
+  clearTimeout(reconnectTimer)
+  reconnectTimer = setTimeout(() => {
+    reconnecting = false
+    connect()
+  }, 120)
+}
+
+function stopVoice() {
+  voiceRequest += 1
+  voiceWanted = false
+  mic?.stop()
+  mic = null
+  playback?.close()
+  playback = null
+  $('talk').innerHTML = '开始语音通话'
+  $('talk').className = ''
+  reconnectWith(false)
+}
+
+$('talk').onclick = async () => {
+  if (voiceWanted) {
+    stopVoice()
+    return
+  }
+  // 先要到麦克风权限再重连：反过来的话，用户拒绝授权时会留下一条
+  // 声明了 audio 能力却没有音频上行的连接，服务端一直等输入。
+  voiceWanted = true
+  const request = ++voiceRequest
+  $('status').textContent = '正在请求麦克风…'
+  $('talk').textContent = '取消语音通话'
+  try {
+    if (!await startCapture() || request !== voiceRequest || !voiceWanted) return
+  } catch (error) {
+    if (request === voiceRequest) reportVoiceError(error)
+    return
+  }
+  reconnectWith(true)
+}
+
 $('reset').onclick = async () => {
   await fetch(`${API}/api/service/reset?sessionId=${SESSION}`, { method: 'POST' })
   // 只重置业务状态。对话历史在网关的 .runtime 里，清它要重启网关 ——

@@ -114,6 +114,16 @@ export class ServiceStateStore {
         // 每次工具调用一条，给 ActionLog 面板用。它是审计证据，
         // 所以连失败的调用也要记 —— 「未核验身份就查订单」正是靠这个发现的。
         audit: [],
+        // 工具返回给模型的【完整原文】，出口审计判「这个数字有没有出处」时用。
+        //
+        // 【为什么不能用 audit 的 summary】summary 是给界面看的动作摘要
+        // （"查看 CYR8809"、"列出 3 笔预订"），而且被截到 200 字。
+        // 审计却把它当成"工具当时返回的话"—— 于是 toolOutputs 里从来没有金额，
+        // 模型说出【任何】金额都会被判「没有出处」。实测复现：get_reservation
+        // 返回过 ￥980.00，客服说"980元"照样报违规。
+        //
+        // 这条误报比漏报更坏：满屏红字之后没人再当真，真违规也就淹了。
+        toolOutputs: [],
       }
       this.#sessions.set(id, session)
     }
@@ -163,6 +173,28 @@ export class ServiceStateStore {
   // audit 记录里刻意保留 surface（frontend / backend）：
   // 「这个不可逆动作是从哪个面调进来的」是 §9 配置台要回答的问题，
   // 事后从日志里推不出来，只能在调用时记下。
+
+  // 记下工具返回给模型的完整原文，供出口审计取证。
+  //
+  // 【和 appendAudit 分开存】audit 的 summary 是给界面看的动作摘要、还截到
+  // 200 字；审计要的是模型真正读到的那段话。两个用途对长度和内容的要求相反，
+  // 合在一个字段里必然有一方将就 —— 而将就的那一方是审计，代价是系统性误报。
+  recordToolOutput(sessionId, content) {
+    const text = String(content || '').trim()
+    if (!text) return
+    const session = this.#session(sessionId)
+    // 单条限长防止一次超长返回把内存吃掉；4000 字远大于任何工具的实际返回，
+    // 200 字那个上限就是审计取证失败的原因之一，这里不能再犯。
+    session.toolOutputs.push(text.slice(0, 4000))
+    // 只留最近这些 —— 审计判的是「这通电话里工具说过什么」，
+    // 一通电话不会有上百次工具调用。
+    while (session.toolOutputs.length > 80) session.toolOutputs.shift()
+  }
+
+  toolOutputs(sessionId) {
+    return [...(this.#session(sessionId).toolOutputs || [])]
+  }
+
   appendAudit(sessionId, entry) {
     const session = this.#session(sessionId)
     session.audit.push(Object.freeze({

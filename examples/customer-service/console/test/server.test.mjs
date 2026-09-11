@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createConsoleServer } from '../server.mjs'
+import { createConsoleServer, refreshCachedEvidence } from '../server.mjs'
 
 // 配置台的路由测试。【刻意不覆盖抽取】那条路径要调模型，
 // 一次一分钟，不适合放进单测 —— 它的逻辑已经在 consensus.test.mjs
@@ -23,6 +23,38 @@ const get = async (base, path) => {
   return { status: response.status, body: await response.json() }
 }
 
+test('旧缓存的错误金额证据被撤销并降级，抽取次数不变', () => {
+  const item = {
+    kind: 'threshold', name: 'refund_ceiling', value: 20, unit: '元',
+    applies_to: '单笔退款', quote: '单笔退款上限2000元',
+    policyLine: 1, evidenceVerified: true, quoteVerified: true, agreement: '3/3',
+  }
+  const cached = { agreed: [item], disputed: [] }
+  const updated = refreshCachedEvidence(cached, ['单笔退款上限2000元'])
+  assert.equal(updated.agreed.length, 0)
+  assert.equal(updated.disputed[0].evidenceVerified, false)
+  assert.equal(updated.disputed[0].policyLine, null)
+  assert.equal(updated.disputed[0].agreement, '3/3')
+  assert.equal(cached.agreed[0].evidenceVerified, true, '不能修改原始缓存对象')
+})
+
+test('缓存补证据不提升部分共识，其他数值版本也重新核对', () => {
+  const item = {
+    kind: 'threshold', name: 'change_fee_economy', value: 200, unit: '元',
+    applies_to: '经济舱改签手续费', quote: '经济舱改签手续费为200元。',
+    agreement: '1/3', evidenceVerified: false,
+  }
+  const cached = { agreed: [], disputed: [{ ...item, variants: [{
+    ...item, value: 20, evidenceVerified: true, policyLine: 1,
+  }] }] }
+  const updated = refreshCachedEvidence(cached, ['| 经济舱 | economy | 200 元 |'])
+  assert.equal(updated.agreed.length, 0)
+  assert.equal(updated.disputed[0].evidenceVerified, true)
+  assert.equal(updated.disputed[0].agreement, '1/3')
+  assert.equal(updated.disputed[0].variants[0].evidenceVerified, false)
+  assert.equal(updated.disputed[0].variants[0].policyLine, null)
+})
+
 test('首页返回 HTML', async () => {
   await withServer(async base => {
     const response = await fetch(`${base}/`)
@@ -30,6 +62,32 @@ test('首页返回 HTML', async () => {
     assert.match(response.headers.get('content-type'), /text\/html/)
     const html = await response.text()
     assert.match(html, /Policy 配置台/)
+  })
+})
+
+test('首页解释候选后果，并提供数据库快捷入口和独立滚动容器', async () => {
+  await withServer(async base => {
+    const response = await fetch(`${base}/`)
+    const html = await response.text()
+    assert.match(html, /id="workspace"/)
+    assert.match(html, /id="jump-database"/)
+    assert.match(html, /不处理不会改变当前 Agent/)
+    assert.match(html, /不处理会怎样/)
+    assert.match(html, /次抽取/)
+    // 点击 policy 来源必须只滚右栏，不能再用 scrollIntoView 带着左栏跳。
+    assert.match(html, /scrollPanelTo\(\$\('policy'\), target/)
+  })
+})
+
+test('两个配置区块开头都说明上移下移调整的是什么', async () => {
+  // 【为什么值得一条测试】上移下移在两个区块里是两种东西：决策表是硬优先级
+  // （兜底行挪上去会短路整张表），流程规则只是 prompt 里的先后。
+  // 界面上不讲清，管理员会以为两边一样。
+  await withServer(async base => {
+    const html = await (await fetch(`${base}/`)).text()
+    assert.match(html, /行序 = 优先级/)
+    assert.match(html, /必须留在最后一行/)
+    assert.match(html, /写进 prompt 的先后顺序/)
   })
 })
 

@@ -199,6 +199,37 @@ const RULES = Object.freeze([
       return hits
     },
   },
+  {
+    id: 'internal_architecture',
+    policyLine: { retail: 97, airline: 119 },
+    title: '不得向客户提及内部处理环节',
+    // 【为什么要机检这一条】实测撞到的：客户要退票，客服说
+    // 「退票涉及金额操作，我需要提交后台客服处理」——「后台客服」在客户听来
+    // 是另一个人，他会以为要换人接手，而实际上从头到尾就是同一个客服。
+    // 这条约束写进了 Agent 的 prompt，但 prompt 是软约束；说漏了要能看见。
+    //
+    // 【难点是「人工」两个字合法】真要转人类坐席时说「我帮您转接人工客服」
+    // 是对的，所以不能把「人工」一律当违规 —— 只查那些无论如何都不该
+    // 出现在客户耳朵里的内部词。
+    check({ text }) {
+      const hits = []
+      // 【逐句判，不整段判】整段里出现「后台」有可能是客户自己的话被复述，
+      // 而逐句能把违规定位到具体那一句，报告里也更有用。
+      const INTERNAL = [
+        '后台客服', '后台处理', '后台的客服', '提交后台', '转给后台', '后台系统',
+        '前台系统', '工单', '接口', 'Agent', 'agent',
+      ]
+      for (const sentence of text.split(/[。！？\n]/)) {
+        for (const word of INTERNAL) {
+          if (sentence.includes(word)) {
+            hits.push(`向客户提到了内部环节「${word}」：「${sentence.trim().slice(0, 40)}」`)
+            break
+          }
+        }
+      }
+      return hits
+    },
+  },
 ])
 
 // 【为什么把「主观评价」那条排除在外，写在代码里而不只写在注释里】

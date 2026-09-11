@@ -119,6 +119,18 @@ test('spawn_thinking 描述里写了「提交后不要承诺结果」', async ()
   // 客户随后又被问一次要不要办，两句话对不上。
   assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /不要向客户承诺结果|不要说「已经帮您办好了」/)
   assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /取消订单|退货/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /我来为您处理，请稍等/)
+  assert.doesNotMatch(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /后台客服|我提交处理了/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /spawn_thinking 不代表转人工/)
+})
+
+test('两个域的语音人设都区分业务执行与转人工', () => {
+  for (const domain of ['retail', 'airline']) {
+    const prompt = readFileSync(new URL(`../assistant/${domain}.md`, import.meta.url), 'utf8')
+    assert.match(prompt, /客户只面对你这一位客服/)
+    assert.match(prompt, /spawn_thinking 不代表转人工/)
+    assert.match(prompt, /只有调用 transfer_to_human 真的转人工时/)
+  }
 })
 
 test('前台 MCP 地址由环境变量注入，不写死端口', async () => {

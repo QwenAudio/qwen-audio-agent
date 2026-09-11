@@ -71,6 +71,18 @@ function hoursSince(iso) {
   return (Date.now() - new Date(iso).getTime()) / 3_600_000
 }
 
+// 今天，YYYY-MM-DD。航班的 date 就是这个格式，所以直接字符串比较即可 ——
+// 这个格式按字典序排就是按时间排。
+//
+// 【用本地时区，不用 toISOString】toISOString 给的是 UTC 日期，
+// 北京时间早上八点之前它还是"昨天"，于是当天的航班会被当成过去的滤掉。
+function today() {
+  const now = new Date()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${now.getFullYear()}-${month}-${day}`
+}
+
 // 退款到账时间按支付方式说，不编数字 —— 细则第九条写的就这两种。
 function refundNarrative(user, reservation, amount) {
   const method = user?.paymentMethods?.find(item => item.id === reservation.payment.methodId)
@@ -299,6 +311,11 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
       // 已飞和已取消的不能作为改签目标
       && flight.status !== 'flown'
       && flight.status !== 'cancelled'
+      // 【已经过去的日期也不能作为改签目标】
+      // status 只标到 flown/cancelled，而延误航班保留 delayed —— 它们的日期
+      // 在过去（延误是已发生的事），status 却不是 flown。只靠 status 过滤会把
+      // 昨天那班延误的航班列成"可改签目标"，客户选了才发现根本改不过去。
+      && flight.date >= today()
     ))
     if (!options.length) {
       return finish(store, sessionId, surface, name,

@@ -11,17 +11,16 @@
     --ok: #4caf7d; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6
     -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
   }
   header {
     display: flex; align-items: center; gap: 10px; padding: 10px 20px;
     border-bottom: 1px solid var(--line); background: var(--panel);
-    position: sticky; top: 0; z-index: 10; flex-wrap: wrap;
-    /* 窄屏下换行可以，但不能撑到两三百 px —— 它是 sticky，
-       多高一分就多盖住一分内容。row-gap 单独调小。 */
-    row-gap: 6px;
+    position: relative; z-index: 10; flex: 0 0 auto; flex-wrap: wrap; row-gap: 6px;
   }
   h1 { font-size: 15px; margin: 0; font-weight: 600; }
   .grow { flex: 1; }
@@ -40,10 +39,24 @@
   }
   .chip.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
 
-  main { display: grid; grid-template-columns: 1fr 380px; gap: 0; align-items: start; }
-  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  main {
+    display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 0;
+    flex: 1 1 auto; min-height: 0; overflow: hidden;
+  }
   .col { padding: 16px 20px 60px; }
-  aside { border-left: 1px solid var(--line); min-height: calc(100vh - 56px); }
+  .workspace { min-width: 0; min-height: 0; overflow-y: auto; }
+  aside {
+    border-left: 1px solid var(--line); min-height: 0; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  @media (max-width: 1100px) {
+    html, body { height: auto; }
+    body { overflow: auto; }
+    main { display: block; overflow: visible; }
+    .workspace { overflow: visible; }
+    aside { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+    .policy { max-height: 62vh; }
+  }
 
   section { margin-bottom: 22px; }
   h2 {
@@ -83,10 +96,24 @@
   tr.catchall td { background: #e0a33a10; }
   tr.catchall td:first-child::after { content: ' 兜底'; color: var(--warn); font-size: 11px; }
 
-  .policy { font-family: var(--mono); font-size: 12.5px; max-height: 62vh; overflow: auto; }
+  .policy {
+    font-family: var(--mono); font-size: 12.5px;
+    flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto;
+  }
   .policy div { display: flex; gap: 10px; padding: 0 4px; white-space: pre-wrap; }
   .policy .ln { color: #4a5262; min-width: 30px; text-align: right; user-select: none; }
   .policy div.hit { background: #5b9dff22; }
+  .quick-nav { display: flex; align-items: center; gap: 5px; }
+  .quick-nav > span { color: var(--dim); font-size: 12px; }
+  .quick-nav button { padding: 4px 8px; font-size: 12px; }
+  .candidate-help {
+    margin-top: 7px; padding: 7px 9px; border-radius: 6px;
+    background: #11151d; color: var(--dim); font-size: 12.5px;
+  }
+  .candidate-help strong { color: var(--text); }
+  .candidate-help.covered { border-left: 2px solid var(--ok); }
+  .candidate-help.pending { border-left: 2px solid var(--warn); }
+  .quote.unverified { cursor: default; border-color: var(--warn); color: var(--warn); }
   .empty { color: var(--dim); font-size: 13px; padding: 8px 0; }
   .bar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 8px; }
   .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
@@ -116,28 +143,10 @@
   .diff-path { font-family: var(--mono); color: var(--accent); font-size: 12px; }
   .decision-note { color: var(--dim); font-size: 12px; margin-top: 7px; }
 
-  /* 【sticky header 会盖住可点元素 —— 这是实测抳到的】
-     窗口窄的时候 header 里的控件会换行，它能高到 200px 以上。
-     而它是 position: sticky + z-index: 10，于是滞留在顶部盖在内容上。
-
-     实测现象：数据库区的「校验」按钮被 scrollIntoView 滚到 top:132px，
-     而 header 的 bottom 是 205.7px —— elementFromPoint(按钮中心) 返回 HEADER。
-     点击全打在 header 上，JS 完全正确但一个 fetch 也没发出，零报错。
-
-     这个坑不是新区域引入的 —— 头部的 chips、工具面开关同样会中招，
-     只是之前没人把它们滚到那个位置去点。两道一起上：
-       一、scroll-margin-top 让程序滚动给 header 留出位置（高度由 JS 同步）
-       二、header 本身压矮，窄屏下不要撑到两三百 px */
-  section { scroll-margin-top: calc(var(--header-h, 64px) + 12px); }
-
-  /* 措施二。之前只做了措施一，于是窄屏下仍有实测复现：header 换行到 234px，
-     常驻盖住内容顶部三分之一，最前面两张卡片的按钮永远点不到 ——
-     它们不是没绑事件，是被盖在不透明的 header 底下，点击命中了 header。
-
-     换行本身没法禁（控件就那么多），能做的是「太高就别再 sticky」：
-     一个高过两行的头，钉在屏幕上的代价大于它省下的那次滚动。
-     阈值由 JS 判定后加 .tall —— 纯 CSS 表达不了「高过 N 就取消 sticky」。 */
-  header.tall { position: static; }
+  /* 桌面端不让整个页面滚：header 固定占自己的布局空间，下面左右两栏各滚各的。
+     这样点击右侧 policy 行只动右栏，不会把左边正在编辑的卡片带走。
+     窄屏由上面的 media query 恢复普通页面滚动，避免两个很矮的滚动框。 */
+  section { scroll-margin-top: 12px; }
 
   /* 首屏遮罩 */
   #gate {
@@ -187,6 +196,13 @@
   <span class="chip on" data-filter="all">全部</span>
   <span class="chip" data-filter="dispute">只看待决定</span>
   <span class="chip" data-filter="risk">只看有风险</span>
+  <nav class="quick-nav" aria-label="快速跳转">
+    <span>跳转：</span>
+    <button type="button" data-jump="sec-dispute">候选裁决</button>
+    <button type="button" data-jump="sec-tables">决策表</button>
+    <button type="button" data-jump="sec-flows">Agent 流程</button>
+    <button type="button" data-jump="sec-database" id="jump-database">数据库</button>
+  </nav>
   <span class="grow"></span>
   <span id="status" style="color:var(--dim);font-size:12.5px"></span>
   <button id="extract">抽取 policy（跑 3 次）</button>
@@ -194,7 +210,7 @@
 </header>
 
 <main>
-  <div class="col">
+  <div class="col workspace" id="workspace">
     <section id="sec-publish"></section>
     <section id="sec-dispute"></section>
     <section id="sec-agreed"></section>
@@ -213,25 +229,6 @@
 <script type="module">
 const $ = id => document.getElementById(id)
 
-// header 是 sticky 而且高度随窗口宽度变（控件会换行）。
-// 把它的实际高度同步到 CSS 变量，让 section 的 scroll-margin-top 跟着走 ——
-// 写死一个值在窄屏下仍然会被盖。
-//
-// 顺带判定「是否高得不该再 sticky」。单行约 44px、两行约 78px，
-// 取 96px 作界：超过就让它跟着页面滚走，否则它会常驻遮住内容并吃掉点击。
-// 切换 .tall 不改变 header 高度（sticky 与 static 都在文档流内），
-// 所以这里不会和 ResizeObserver 形成抖动回路。
-const HEADER_STICKY_MAX = 96
-const syncHeaderHeight = () => {
-  const header = document.querySelector('header')
-  if (header) {
-    const height = header.offsetHeight
-    document.documentElement.style.setProperty('--header-h', `${height}px`)
-    header.classList.toggle('tall', height > HEADER_STICKY_MAX)
-  }
-}
-syncHeaderHeight()
-new ResizeObserver(syncHeaderHeight).observe(document.querySelector('header'))
 const el = (tag, cls, html) => {
   const node = document.createElement(tag)
   if (cls) node.className = cls
@@ -260,7 +257,9 @@ const state = {
 
 function labelOf(item) {
   switch (item.kind) {
-    case 'threshold': return `${item.name} = ${item.value} ${item.unit || ''}`
+    // name 是机器键（如 change_fee_economy），管理员先看到的应该是业务含义。
+    // 机器键仍会在下面的说明里保留，方便和 guards.json 对照。
+    case 'threshold': return `${item.applies_to || item.name} = ${item.value} ${item.unit || ''}`
     case 'window': return `${item.category} = ${item.days} 天`
     case 'escalation': return item.trigger
     case 'order': return `${item.before} → ${item.after}`
@@ -275,12 +274,100 @@ const KIND_TEXT = {
   order: '顺序', lookup: '交叉表', gap: 'policy 缺口',
 }
 const DISPUTE_TEXT = {
-  conflicting_values: '结论冲突', partial_agreement: '部分出现',
-  stable_but_ambiguous: '稳定但需判断',
+  conflicting_values: '不同轮次结论冲突', partial_agreement: '仅部分轮次出现',
+  stable_but_ambiguous: '每轮都出现，但证据不足',
 }
 const REVIEW_TEXT = {
   accepted: '已接受', rejected: '已拒绝',
   policy_gap: 'Policy 缺口', data_gap: '数据缺口',
+}
+
+const FIELD_TEXT = {
+  cabin: '舱位', memberTier: '会员等级', amount: '金额', status: '状态',
+  basic_economy: '特价经济舱', economy: '经济舱', business: '公务舱',
+}
+
+function agreementExplanation(item) {
+  const [seen, total] = String(item.agreement || '').split('/').map(Number)
+  if (!Number.isFinite(seen) || !Number.isFinite(total)) return ''
+  if (item.disputeKind === 'conflicting_values') {
+    return `同一份 Policy 共抽取 ${total} 次，其中 ${seen} 次得到当前结论；其他轮次给出了不同结论。`
+  }
+  if (item.disputeKind === 'stable_but_ambiguous') {
+    return `${total} 次抽取都发现了这个问题，但每次都缺少足够证据，不能自动变成规则。`
+  }
+  if (seen < total) {
+    return `同一份 Policy 共抽取 ${total} 次，仅 ${seen} 次抽到这条；它可能是其他轮次漏抽，也可能是这一次多抽。`
+  }
+  return `${total} 次抽取都得到相同结论，并且能落回 Policy 原文。`
+}
+
+function configuredLanding(item) {
+  if (!state.configuration) return null
+  if (item.kind === 'threshold') {
+    const thresholds = state.configuration.guards.thresholds || {}
+    if (Object.hasOwn(thresholds, item.name)) {
+      return {
+        kind: 'threshold',
+        same: Number(thresholds[item.name]) === Number(item.value),
+        detail: `单值阈值 ${item.name} 当前为 ${thresholds[item.name]}${item.unit || ''}`,
+      }
+    }
+    const tables = state.guards?.tables || []
+    const table = [...tables]
+      .sort((left, right) => right.name.length - left.name.length)
+      .find(candidate => item.name === candidate.name || item.name.startsWith(`${candidate.name}_`))
+    if (table) {
+      const suffix = item.name.slice(table.name.length + 1)
+      const rule = table.rules.find(candidate => {
+        const values = Object.values(candidate.when || {}).map(String)
+        return Number(candidate.then) === Number(item.value)
+          && (!suffix || values.includes(suffix))
+      })
+      if (rule) {
+        const when = Object.entries(rule.when || {})
+          .map(([name, value]) => `${FIELD_TEXT[name] || name}=${FIELD_TEXT[value] || value}`)
+          .join('、') || '兜底'
+        return {
+          kind: 'decision', same: true, policyLine: table.policyLine,
+          detail: `决策表 ${table.name} 已配置「${when} → ${rule.then}${item.unit || ''}」`,
+        }
+      }
+    }
+  }
+  if (item.kind === 'order') {
+    const rule = state.configuration.flows.rules.find(candidate =>
+      candidate.before === item.before && candidate.after === item.after)
+    if (rule) return { kind: 'flow', same: true, policyLine: rule.policyLine, detail: `流程规则 ${rule.id} 已包含相同顺序` }
+  }
+  return null
+}
+
+function candidateMeaning(item) {
+  if (item.kind === 'threshold') {
+    const machineKey = item.name ? `（机器键：${item.name}）` : ''
+    const extra = String(item.name || '').startsWith('change_fee_')
+      ? '这里指固定的改签手续费，不含新旧航班的票价差额。'
+      : '这是工具或决策表会读取的单个数值。'
+    return `含义：${item.applies_to || item.name}取值为 ${item.value}${item.unit || ''}${machineKey}。${extra}`
+  }
+  if (item.kind === 'order') return `含义：后台 Agent 应先完成「${item.before}」，再做「${item.after}」。`
+  if (item.kind === 'gap') return '含义：模型认为 Policy 或演示数据存在空白；确认缺口不会自动创造业务规则。'
+  return ''
+}
+
+function candidateConsequence(item) {
+  const landing = configuredLanding(item)
+  if (landing?.same) {
+    return `当前运行配置已覆盖：${landing.detail}。即使暂不处理，Agent 仍按这份已有配置运行；处理只会留下审核记录。`
+  }
+  if (item.kind === 'order') {
+    return '当前运行配置没有这条顺序。不处理不会改变 Agent；接受并应用后，它才会进入后台 Agent 的流程提示。'
+  }
+  if (item.kind === 'threshold' && landing) {
+    return `当前运行配置是：${landing.detail}。不处理会继续使用旧值；接受并应用后才改成候选值。`
+  }
+  return '不处理不会改变 Agent：运行时继续使用上一次已应用的 guards.json / flows.json；这条候选只会留在“未处理”列表。'
 }
 
 const clone = value => JSON.parse(JSON.stringify(value))
@@ -335,6 +422,8 @@ function shortHash(text) {
 }
 
 function syncAcceptedCandidate(item, key) {
+  const landing = configuredLanding(item)
+  if (landing?.same) return `当前运行配置已覆盖（${landing.detail}）；本次只记录审核结论。`
   if (item.kind === 'order') {
     const id = `review-${shortHash(key)}`
     const rules = state.configuration.flows.rules
@@ -354,6 +443,7 @@ function syncAcceptedCandidate(item, key) {
   }
   if (item.kind === 'threshold' && Object.hasOwn(state.configuration.guards.thresholds || {}, item.name)) {
     state.configuration.guards.thresholds[item.name] = Number(item.value)
+    state.guards = canonicalToDisplay(state.configuration.guards)
     return `已更新 guards.thresholds.${item.name}。`
   }
   if (item.kind === 'gap') return '已记录缺口；缺口不会自动变成业务规则。'
@@ -396,7 +486,9 @@ function itemCard(item, { dispute = false } = {}) {
   const row = el('div', 'row')
   if (item.agreement) {
     const bad = Number(String(item.agreement).split('/')[0]) < Number(String(item.agreement).split('/')[1])
-    row.append(el('span', `tag ${bad ? 'warn' : 'agree'}`, esc(item.agreement)))
+    const agreement = el('span', `tag ${bad ? 'warn' : 'agree'}`, `${esc(item.agreement)} 次抽取`)
+    agreement.title = agreementExplanation(item)
+    row.append(agreement)
   }
   row.append(el('span', 'tag', esc(KIND_TEXT[item.kind] || item.kind)))
   if (item.disputeKind) row.append(el('span', 'tag warn', esc(DISPUTE_TEXT[item.disputeKind])))
@@ -404,23 +496,39 @@ function itemCard(item, { dispute = false } = {}) {
   row.append(el('span', 'label', esc(labelOf(item))))
   card.append(row)
 
+  if (dispute && item.agreement) {
+    card.append(el('div', 'why', esc(agreementExplanation(item))))
+  }
   if (item.why) card.append(el('div', 'why', esc(item.why)))
 
   if (item.quote) {
-    // 【字段名是 policyLine，不是 line】第一版写成 item.line，
-    // 于是每条都显示「落不回原文」、点下去也不跳 ——
-    // 而行号校验本身是这套东西里最核心的防幻觉机制，它得能被看见。
+    // quote 有两种证据强度：逐字匹配，或「适用范围 + 数值」匹配到表格行。
+    // 后者能把“经济舱改签手续费为 200 元”落回 policy 的表格第 35 行，
+    // 但不能假装模型给的是逐字引用，所以界面明确标出定位方式。
     const line = item.policyLine
-    const quote = el('div', 'quote',
-      `${line ? `第 ${line} 行` : '落不回原文'} · ${esc(item.quote)}`)
-    // 点 quote 跳到 policy 原文那一行。
-    quote.onclick = () => highlightPolicy(line)
+    const source = line
+      ? item.evidenceMethod === 'structured'
+        ? `第 ${line} 行（按适用范围 + 数值定位）`
+        : `第 ${line} 行`
+      : '未找到 Policy 原文证据'
+    const quote = el('div', `quote ${line ? '' : 'unverified'}`,
+      `${source} · ${line ? '' : '模型给出的说法：'}${esc(item.quote)}`)
+    if (line) quote.onclick = () => highlightPolicy(line)
     card.append(quote)
+  }
+
+  if (dispute) {
+    const meaning = candidateMeaning(item)
+    const landing = configuredLanding(item)
+    const help = el('div', `candidate-help ${landing?.same ? 'covered' : 'pending'}`)
+    if (meaning) help.append(el('div', null, `<strong>这是什么：</strong>${esc(meaning.replace(/^含义：/, ''))}`))
+    help.append(el('div', null, `<strong>不处理会怎样：</strong>${esc(candidateConsequence(item))}`))
+    card.append(help)
   }
 
   for (const other of item.variants || []) {
     const variant = el('div', 'variant')
-    variant.append(el('span', 'tag warn', esc(other.agreement || '')))
+    variant.append(el('span', 'tag warn', `${esc(other.agreement || '')} 次抽取`))
     variant.append(document.createTextNode(` 另一版本：${labelOf(other)}`))
     card.append(variant)
   }
@@ -499,8 +607,11 @@ function renderExtract() {
     Boolean(state.configuration?.review?.items?.[reviewKey(item)]?.status)).length
   dispute.append(el('h2', null,
     `需人工裁决 <span class="count">未处理 ${state.extract.disputed.length - reviewed} · 已处理 ${reviewed} · 共 ${state.extract.disputed.length} 条</span>`))
-  dispute.append(el('div', 'decision-note',
-    '接受/拒绝只记录裁决；顺序规则接受后会进入流程配置。阈值与交叉表要在下方生效配置中确认落点。'))
+  dispute.append(el('div', 'candidate-help pending',
+    '<strong>不处理不会改变当前 Agent。</strong>'
+    + '这些是模型从 Policy 抽出的候选，不是正在执行的规则；运行时继续使用上一次已应用的配置。'
+    + '接受顺序候选会加入流程草稿；guards.thresholds 中已有同名键的阈值会更新草稿；其他候选只记录审核结论。'
+    + '无论选择哪项，都要点“预览并应用”才会写入。'))
   if (!disputed.length) dispute.append(el('div', 'empty', '没有命中的项。'))
   for (const item of disputed) dispute.append(itemCard(item, { dispute: true }))
 
@@ -583,6 +694,17 @@ function renderTables() {
   }
   title.append(add)
   host.append(title)
+  // 【为什么要在这里讲一遍行序】
+  // 「上移／下移」按钮看起来像排版功能，但在 hit: first 的表里它就是优先级 ——
+  // 把兜底行挪到第一行，整张表会被安静地短路成只返回兜底结果，不报任何错。
+  host.append(el('div', 'decision-note',
+    '<strong>行序 = 优先级。</strong>'
+    + 'hit: first 的表自上而下扫，第一条命中即返回，后面的行不再执行；'
+    + '「上移／下移」就是调整这个优先级，条件有重叠时它决定谁生效。'
+    + '带底色的兜底行匹配任意输入，<strong>必须留在最后一行</strong> —— '
+    + '把它上移会让下面的规则永远不被命中。'
+    + 'hit: unique / collect 的表不靠顺序消歧，调序只影响可读性。'
+    + '所有改动都只写草稿，要点“预览并应用”才生效。'))
 
   for (const table of tables) {
     const card = el('div', 'card')
@@ -821,7 +943,10 @@ function renderFlows() {
   title.append(add)
   host.append(title)
   host.append(el('div', 'decision-note',
-    '这些规则会注入后台 Agent 的 system prompt，只约束步骤先后；资格、金额和最终结果仍由工具与决策表硬判。'))
+    '这些规则会注入后台 Agent 的 system prompt，只约束步骤先后；资格、金额和最终结果仍由工具与决策表硬判。'
+    + '<strong>「上移／下移」调整的是它们写进 prompt 的先后顺序</strong>，'
+    + '也就是希望 Agent 优先遵循哪一条 —— 但这是 prompt 层的软约束，'
+    + '不像决策表那样是硬判定；停用（取消勾选）的规则不会进 prompt。'))
 
   flows.forEach((rule, index) => {
     const card = el('div', `card ${rule.enabled === false ? '' : 'ok'}`)
@@ -962,22 +1087,48 @@ function renderPublish() {
   host.append(card)
 }
 
+function scrollPanelTo(panel, target, { center = false } = {}) {
+  const panelRect = panel.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const top = panel.scrollTop + targetRect.top - panelRect.top
+    - (center ? (panel.clientHeight - targetRect.height) / 2 : 12)
+  panel.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+}
+
+function jumpToSection(id) {
+  const target = $(id)
+  const workspace = $('workspace')
+  if (!target || !workspace) return
+  // 桌面端只滚左栏；窄屏恢复普通页面布局时，才滚浏览器页面。
+  if (getComputedStyle(workspace).overflowY === 'auto') scrollPanelTo(workspace, target)
+  else target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+}
+
 function highlightPolicy(line) {
   if (!line) return
   for (const node of document.querySelectorAll('.policy div.hit')) node.classList.remove('hit')
-  const target = document.querySelector(`.policy div[data-line="${line}"]`)
+  let target = document.querySelector(`.policy div[data-line="${line}"]`)
+  if (!target && state.query) {
+    // 搜机器键（如 change_fee_economy）时，右侧原文没有这个词，目标行会被过滤掉。
+    // 点击来源时临时展开完整原文；不清空左侧搜索，避免候选卡片也突然跳走。
+    renderPolicy(policyLines, { ignoreQuery: true })
+    target = document.querySelector(`.policy div[data-line="${line}"]`)
+    $('policy-count').textContent += ' · 为显示引用行已临时展开全部'
+  }
   if (!target) return
   target.classList.add('hit')
-  target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  // 不用 scrollIntoView：它会把所有可滚动祖先一起滚，左边正在看的卡片也会跳走。
+  // 右栏本来就是独立滚动容器，只改它自己的 scrollTop。
+  scrollPanelTo($('policy'), target, { center: true })
 }
 
-function renderPolicy(lines) {
+function renderPolicy(lines, { ignoreQuery = false } = {}) {
   const host = $('policy')
   host.innerHTML = ''
   let shown = 0
   for (const { line, content } of lines) {
-    // 搜索时原文也跟着筛 —— 管理员搜一个词，要能同时看到规则和原文出处。
-    if (state.query && !content.toLowerCase().includes(state.query.toLowerCase())) continue
+    // 搜索时原文也跟着筛；点击某条来源时可临时展开完整原文。
+    if (!ignoreQuery && state.query && !content.toLowerCase().includes(state.query.toLowerCase())) continue
     shown += 1
     const row = el('div')
     row.dataset.line = line
@@ -985,7 +1136,7 @@ function renderPolicy(lines) {
     row.append(el('span', null, esc(content)))
     host.append(row)
   }
-  $('policy-count').textContent = state.query
+  $('policy-count').textContent = state.query && !ignoreQuery
     ? `${shown} / ${lines.length} 行命中`
     : `${lines.length} 行`
   if (!shown) host.append(el('div', 'empty', '原文里没有命中的行。'))
@@ -1141,7 +1292,7 @@ async function loadDatabase() {
       domain: state.domain, text: editor.value,
     })
     verdict.textContent = outcome.summary || (outcome.ok ? '通过' : '有问题')
-    verdict.style.color = outcome.ok ? 'var(--ok)' : 'var(--bad)'
+    verdict.style.color = outcome.ok ? 'var(--ok)' : 'var(--danger)'
     // 只有校过了才能写 —— 这是界面上的第一道，
     // 服务端那道（422）是真正拦住它的。
     applyButton.disabled = !outcome.ok
@@ -1234,6 +1385,10 @@ for (const chip of document.querySelectorAll('.chip')) {
   }
 }
 
+for (const jump of document.querySelectorAll('[data-jump]')) {
+  jump.onclick = () => jumpToSection(jump.dataset.jump)
+}
+
 $('extract').onclick = () => startExtract(Boolean(state.extract))
 $('domain').onchange = async event => {
   const next = event.target.value
@@ -1255,7 +1410,7 @@ $('export').onclick = async () => {
   $('status').textContent = result.ok
     ? `预览完成：${result.changeCount} 项变化，请在页面顶部确认`
     : `校验失败：${(result.errors || []).length} 处问题`
-  $('sec-publish').scrollIntoView({ behavior: 'smooth', block: 'start' })
+  jumpToSection('sec-publish')
 }
 
 const DOMAIN_BLURB = {

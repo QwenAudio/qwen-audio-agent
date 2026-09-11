@@ -35,12 +35,23 @@ export class CustomerService {
   // 让界面传的话，它传什么都行 —— 那审计就形同虚设：
   // 模型编了一个数，界面把那个数当成「工具说过的」传回来，就过了。
   //
-  // 会话的 audit 里每条都有 summary，而 summary 就是工具当时返回的话。
+  // 【取证用 store.toolOutputs，不是 audit 的 summary】
+  // 这里原先写的是 (session.audit || []).map(entry => entry.summary)，
+  // 注释还断言「summary 就是工具当时返回的话」—— 那句话是错的：
+  // summary 是给界面看的动作摘要（"查看 CYR8809"、"列出 3 笔预订"），
+  // 而且 appendAudit 把它截到 200 字。
+  //
+  // 于是 toolOutputs 里从来没有金额，模型说出【任何】金额都被判「没有出处」。
+  // 实测：get_reservation 返回过 ￥980.00，客服照实说"980元"仍然报违规。
+  // 误报比漏报更坏 —— 满屏红字之后没人再当真，真违规也就淹了。
   auditOutput(sessionId, text) {
     const session = this.store.snapshot(sessionId)
     const guards = loadGuards(session.domain)
-    const toolOutputs = (session.audit || []).map(entry => entry.summary).filter(Boolean)
-    return auditUtterance(text, { session, guards, toolOutputs })
+    return auditUtterance(text, {
+      session,
+      guards,
+      toolOutputs: this.store.toolOutputs(sessionId),
+    })
   }
 
   // surface 必须由调用方传，而且只能是这两个值。

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { decide, enumValues, loadGuards, threshold } from '../guards.mjs'
+import { toolDefinitions } from '../tools/registry.mjs'
+import { CustomerService } from '../service.mjs'
 
 const db = JSON.parse(readFileSync(
   new URL('../../domains/airline/db.json', import.meta.url), 'utf8',
@@ -87,6 +89,65 @@ test('场景覆盖：延误落在补偿的不同档位', () => {
 test('场景覆盖：有被航司取消的航班、有已飞的航班', () => {
   assert.ok(db.flights.some(f => f.status === 'cancelled'), '缺少取消的航班')
   assert.ok(db.flights.some(f => f.status === 'flown'), '缺少已飞的航班')
+})
+
+test('预订的乘客信息和持有人对得上', () => {
+  // 【这条抓的是"复制数据块忘改名"】CYR8810 是后来补的高价预订，
+  // passengers 块从赵宇那笔复制过来没改 —— 于是孙丽核验通过、查自己的机票，
+  // 页面显示"乘客：赵宇"。这种错不报异常，只在真人念出来时才暴露，
+  // 而它恰好落在「退票超权限转人工」这条主演示路径上。
+  //
+  // 如果以后真要做「替他人订票」的场景，那笔数据得显式写 _note 说明，
+  // 并把这条断言改成按 _note 放行 —— 而不是默默让它不一致。
+  for (const item of db.reservations) {
+    const holder = db.users.find(user => user.userId === item.userId)
+    const names = item.passengers.map(passenger => passenger.name)
+    assert.ok(names.includes(holder.name),
+      `${item.reservationId} 的持有人是 ${holder.name}，乘客却只有 ${names.join('、')}`)
+    const self = item.passengers.find(passenger => passenger.name === holder.name)
+    assert.equal(self.idTail, holder.idTail,
+      `${item.reservationId} 里 ${holder.name} 的证件后四位和用户档案不一致`)
+  }
+})
+
+test('延误航班的日期都在锚点之前，也就是「已经发生过」', () => {
+  // 【为什么这条要守】延误是既成事实：未来的航班不可能已知延误了几小时。
+  // 原先四班 delayed 的日期都在锚点之后，平移到真实时间后落在未来两周 ——
+  // 客服会念出"您 9 月 24 号那班延误了 5 小时"，而那天还没到。
+  //
+  // 日期直接和 _anchorDate 比，不和 Date.now() 比：库里存的是平移前的原始
+  // 日期，跑测试的时间和锚点差多少都不影响这条断言。
+  const anchor = db._anchorDate.slice(0, 10)
+  for (const flight of db.flights.filter(item => item.status === 'delayed')) {
+    assert.ok(flight.date < anchor,
+      `${flight.flightNo} 标着延误 ${flight.delayHours} 小时，日期 ${flight.date} 却不早于锚点 ${anchor}`)
+  }
+})
+
+test('每条有预订挂着的航线都还有未来的可订航班', () => {
+  // 【这条守着上一条的副作用】把延误航班挪到过去之后，CAN→CTU 四班全在过去，
+  // 于是这条航线一班可订的都没有 —— 而 CYR8803 / CYR8807 都挂在上面，
+  // 客服搜改签目标会搜到空。数据自洽不等于场景可用，两件事都要有断言。
+  const anchor = db._anchorDate.slice(0, 10)
+  const routes = new Set()
+  for (const item of db.reservations) {
+    for (const segment of item.segments) {
+      const flight = db.flights.find(candidate => candidate.flightNo === segment.flightNo
+        && candidate.date === segment.date)
+      if (flight) routes.add(`${flight.from}-${flight.to}`)
+    }
+  }
+  for (const route of routes) {
+    const [from, to] = route.split('-')
+    const future = db.flights.filter(flight => flight.from === from
+      && flight.to === to
+      && flight.date >= anchor
+      && flight.status !== 'flown'
+      && flight.status !== 'cancelled'
+      && (flight.seats?.economy ?? 0) > 0)
+    assert.ok(future.length > 0,
+      `航线 ${route} 上有预订，但没有未来的可订航班 —— 改签会搜到空`)
+  }
 })
 
 test('场景覆盖：有买了保险的订单，也有没买的', () => {
@@ -257,4 +318,70 @@ test('每个订单都能算出免费行李额', () => {
     assert.equal(typeof out.outcome, 'number', `${item.reservationId} 算不出行李额`)
     assert.equal(out.viaCatchAll, false, `${item.reservationId} 走了兜底，说明组合没覆盖`)
   }
+})
+
+// ── 工具 schema 与实现必须对得上 ──────────────────────────
+// 【为什么补这一组】原来所有测试都直接调 service.execute('verify_identity',
+// { memberId }) —— 那是【绕过 schema 这一层】测的，所以 191 条全绿，
+// 而真实语音里航空核验一次都没成功过：模型看到的 schema 是零售那套
+// （email / name+zip），它照着填，工具当然认不出。
+//
+// 判据：模型只能填 schema 里声明的字段，所以 schema 的字段名必须是
+// 实现真正认的那些。这一组把两边对起来，而不是各自单独正确。
+
+test('航空的 verify_identity schema 声明的是实现真正认的字段', () => {
+  const tool = toolDefinitions('frontend', 'airline')
+    .find(item => item.name === 'verify_identity')
+  const fields = Object.keys(tool.inputSchema.properties)
+  assert.deepEqual(fields.sort(), ['idTail', 'memberId', 'name'],
+    `航空核验的参数不对：${fields.join('/')} —— 模型只会填 schema 里有的字段`)
+  // 【零售的字段绝不能出现在航空 schema 里】它们出现过，后果是模型把
+  // 会员号填进 email，核验必然失败。
+  assert.ok(!fields.includes('email'), 'schema 里还有零售的 email')
+  assert.ok(!fields.includes('zip'), 'schema 里还有零售的 zip')
+})
+
+test('航空的核验描述不提邮箱和邮编', () => {
+  // 【描述是会被念出来的】模型照 description 向客户索要信息 ——
+  // 实测它说过"请问您的收货地址邮编是多少"，而航空客户没有收货地址。
+  const tool = toolDefinitions('frontend', 'airline')
+    .find(item => item.name === 'verify_identity')
+  assert.ok(!/邮箱|邮编/.test(tool.description),
+    `航空的核验描述里还有零售话术：${tool.description}`)
+  assert.match(tool.description, /会员号/)
+  for (const [field, spec] of Object.entries(tool.inputSchema.properties)) {
+    assert.ok(!/邮箱|邮编/.test(spec.description),
+      `参数 ${field} 的说明里还有零售话术：${spec.description}`)
+  }
+})
+
+test('schema 里声明的字段，实现拿它真能核验成功', async () => {
+  // 【这条把两层焊在一起】schema 自己正确、实现自己正确，但两边对不上
+  // 就是这次的 bug。所以要照 schema 声明的字段名真调一次。
+  const service = new CustomerService()
+  const call = (args) => service.execute('verify_identity', args,
+    { sessionId: 'schema-check', surface: 'frontend', domain: 'airline' })
+  const tool = toolDefinitions('frontend', 'airline')
+    .find(item => item.name === 'verify_identity')
+  const fields = Object.keys(tool.inputSchema.properties)
+
+  const user = db.users[0]
+  const byMember = await call({ [fields.find(f => f === 'memberId')]: user.userId })
+  assert.equal(byMember.data.verified, true,
+    '照 schema 填 memberId 却核验不过 —— schema 与实现对不上')
+
+  const service2 = new CustomerService()
+  const byName = await service2.execute('verify_identity',
+    { name: user.name, idTail: user.idTail },
+    { sessionId: 'schema-check-2', surface: 'frontend', domain: 'airline' })
+  assert.equal(byName.data.verified, true,
+    '照 schema 填 name+idTail 却核验不过')
+})
+
+test('零售那一套没被航空的改动带坏', () => {
+  const tool = toolDefinitions('frontend', 'retail')
+    .find(item => item.name === 'verify_identity')
+  const fields = Object.keys(tool.inputSchema.properties)
+  assert.deepEqual(fields.sort(), ['email', 'name', 'zip'])
+  assert.match(tool.description, /邮箱/)
 })

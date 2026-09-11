@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import { CustomerService } from '../service.mjs'
 import { loadGuards } from '../guards.mjs'
 import { CHECKED_RULE_IDS, UNCHECKED_RULES, auditUtterance } from '../output-audit.mjs'
@@ -195,11 +196,12 @@ test('没做机检的那条要显式报出来', async () => {
   assert.match(skipped.why, /语义/)
 })
 
-test('做了机检的是四条，不是五条', () => {
+test('做了机检的是五条，没做的是一条', () => {
   // 明确记下覆盖范围。加了新规则要同步改这里 ——
   // 那正是要提醒的：新增规则必须同时更新「没做的那些」清单。
-  assert.equal(CHECKED_RULE_IDS.length, 4)
+  assert.equal(CHECKED_RULE_IDS.length, 5)
   assert.deepEqual(CHECKED_RULE_IDS.slice().sort(), [
+    'internal_architecture',
     'order_existence_before_verify',
     'other_customer_info',
     'promise_beyond_policy',
@@ -288,4 +290,112 @@ test('同句里既有否定又有真承诺时，真承诺仍要报', async () =>
   assert.equal(result.ok, false, '同句里的真承诺被否定词掩盖了')
   assert.ok(result.violations.some(item => item.detail.includes('折扣')),
     `没报出「折扣」：${JSON.stringify(result.violations)}`)
+})
+
+// ── 取证基础：工具返回的原文 ────────────────────────────
+// 【这一组守的是审计的地基】判「数字有没有出处」要拿工具真正返回的话来比。
+// 原先 auditOutput 拿的是 audit 的 summary —— 那是给界面看的动作摘要
+// （"查看 CYR8809"、"列出 3 笔预订"），还被截到 200 字，里面从来没有金额。
+// 后果：模型照实说出工具刚返回的金额，也被判「没有出处」。
+//
+// 这类误报比漏报更坏 —— 满屏红字之后没人再看报告，真违规也就淹了。
+// 之所以一直没被发现，是因为既有测试都直接给 auditUtterance 传 toolOutputs，
+// 绕过了线上那条取证路径。
+
+test('照实说出工具刚返回的金额，不该报违规', async () => {
+  const service = new CustomerService()
+  const call = (name, args) => service.execute(name, args,
+    { sessionId: 'sourced', surface: 'frontend', domain: 'airline' })
+  await call('verify_identity', { memberId: 'CY10023841' })
+  await call('get_reservation', { reservationId: 'CYR8809' })
+
+  // 【走 auditOutput，不走 auditUtterance】要验的正是取证这一段。
+  const result = service.auditOutput('sourced',
+    '订单 CYR8809 是 9 月 26 日上海浦东到北京的航班，经济舱，金额 980元。')
+  assert.equal(result.ok, true,
+    `照实说金额被误判：${result.violations.map(item => item.detail).join(' / ')}`)
+})
+
+test('工具没返回过的金额仍然要报 —— 修误报不能变成漏报', async () => {
+  const service = new CustomerService()
+  await service.execute('verify_identity', { memberId: 'CY10023841' },
+    { sessionId: 'unsourced', surface: 'frontend', domain: 'airline' })
+  const result = service.auditOutput('unsourced',
+    '这笔我给您退 1234元，另外补偿 50元 代金券。')
+  assert.equal(result.ok, false, '编造的金额漏报了')
+  assert.match(result.violations.map(item => item.detail).join(' '), /1234/)
+})
+
+test('取证记的是工具原文，不是 audit 的动作摘要', async () => {
+  const service = new CustomerService()
+  const call = (name, args) => service.execute(name, args,
+    { sessionId: 'evidence', surface: 'frontend', domain: 'airline' })
+  // 【必须先核验】不核验的话工具返回的是"需要先核验客户身份"，
+  // 那条同样会被记下来，但里面没有航班信息 —— 用例前提就不成立了。
+  await call('verify_identity', { memberId: 'CY10023841' })
+  await call('get_flight_status', { flightNo: 'CY1201' })
+  const outputs = service.store.toolOutputs('evidence')
+  assert.equal(outputs.length, 2)
+  // 动作摘要长这样："查看 CYR8809"。原文里有航班号、机场、时刻。
+  assert.match(outputs[1], /CY1201/)
+  assert.match(outputs[1], /PVG|PEK/)
+  // audit 那一份仍然是短摘要 —— 两个用途各取所需，这正是分开存的理由。
+  const summaries = service.store.snapshot('evidence').audit.map(item => item.summary)
+  assert.ok(summaries.every(item => item.length < 60),
+    `audit 的 summary 变长了，说明两份存串了：${summaries.join(' | ')}`)
+})
+
+// ── 不得向客户提及内部处理环节 ──────────────────────────
+// 【实测撞到的】客户要退票，客服说「退票涉及金额操作，我需要提交后台客服处理」。
+// 「后台客服」在客户听来是另一个人 —— 他会以为要换人接手，而实际上从头到尾
+// 就是同一个客服。这条写进了 Agent 的 prompt，但 prompt 是软约束，说漏要能看见。
+
+test('说「提交后台客服处理」要报违规', () => {
+  const { verified } = sessions()
+  const result = auditUtterance(
+    '退票涉及金额操作，我需要提交后台客服处理。您确定要取消这笔订单吗？',
+    { session: verified, guards },
+  )
+  assert.equal(result.ok, false, '把内部环节说给客户听了却没报')
+  assert.ok(result.violations.some(item => item.rule === 'internal_architecture'))
+})
+
+test('真的转人类坐席时说「人工客服」不算违规', () => {
+  // 【这条是防误报的】「人工」两个字在转接场景里完全合法，
+  // 把它一律当违规会让每次转人工都报警 —— 而转人工正是主演示路径之一。
+  const { verified } = sessions()
+  const result = auditUtterance(
+    '这笔金额超出我的处理权限，我帮您转接人工客服。',
+    { session: verified, guards },
+  )
+  assert.equal(result.ok, true,
+    `转人工被误判：${result.violations.map(item => item.detail).join(' / ')}`)
+})
+
+test('正常的确认话术不报警', () => {
+  const { verified } = sessions()
+  for (const text of [
+    '这笔 CYR8809 退票会退还 980元，确认为您办理吗？',
+    '我这就为您办理，办好之后短信通知您。',
+    '好的，我先帮您查一下这笔订单的状态。',
+  ]) {
+    const result = auditUtterance(text, { session: verified, guards })
+    assert.ok(
+      !result.violations.some(item => item.rule === 'internal_architecture'),
+      `正常话术被误判：${text}`,
+    )
+  }
+})
+
+test('policyLine 指向的是 policy 里真的那一条', () => {
+  // 【行号必须能对上】审计报告里给出「细则第 N 行」，对不上就等于没有依据。
+  // 往禁止事项末尾追加时不会挪动既有行号，但改动 policy 中段会 ——
+  // 这条测试就是那时候用来提醒的。
+  for (const [domain, expected] of [['retail', 97], ['airline', 119]]) {
+    const lines = readFileSync(
+      new URL(`../../domains/${domain}/policy.md`, import.meta.url), 'utf8',
+    ).split('\n')
+    assert.match(lines[expected - 1] || '', /不得向客户提及内部处理环节/,
+      `${domain} policy 第 ${expected} 行不是这一条，审计报的行号会对不上`)
+  }
 })

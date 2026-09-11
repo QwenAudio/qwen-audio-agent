@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
+import { createServer as createRawServer } from 'node:net'
 import { createDeskServer } from '../server.mjs'
 
 // 坐席台的测试。它不起真实会话 —— 只验「代理和页面装配是对的」，
@@ -99,4 +100,44 @@ test('接手只改本地标记，不写回 service', () => {
   // 一个假的接手记录，而那个记录对不上任何一通实际通话。
   const html = page()
   assert.match(html, /不写回 service/)
+})
+
+test('上游中途断开时代理不会把进程带走', async () => {
+  // 【这条复现的是真实崩溃，不是假想】实测航空坐席台就是这样死的：
+  // headers 转发出去之后上游断开，reader.read() reject，异常冒泡到
+  // 外层 catch，那里再 writeHead(502) —— headers 已发送，于是抛
+  // ERR_HTTP_HEADERS_SENT，而这一次没有 catch 接，进程退出 code=1。
+  //
+  // service 重启、或坐席关掉标签页，都会走到这一步。
+  // 修复前这条测试会因为未捕获异常变红；修复后代理只掐断这一条连接。
+  const upstream = createRawServer(socket => {
+    socket.on('data', () => {
+      // 回一个正常的响应头和一帧数据，然后【不告而别】—— 既不 end 也不
+      // 发结束块，直接销毁。这正是进程被 kill 时对端看到的样子。
+      socket.write('HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\n'
+        + 'transfer-encoding: chunked\r\n\r\n')
+      socket.write('11\r\ndata: {"a":1}\n\n\r\n')
+      setTimeout(() => socket.destroy(), 30)
+    })
+  })
+  await new Promise(resolve => upstream.listen(0, '127.0.0.1', resolve))
+  const saved = process.env.CS_SERVICE_ORIGIN
+  process.env.CS_SERVICE_ORIGIN = `http://127.0.0.1:${upstream.address().port}`
+  try {
+    await withServer(async (base) => {
+      // 这个请求注定失败 —— 要验的不是它的结果，而是失败之后代理还活着。
+      await fetch(`${base}/api/service/state?sessionId=t`)
+        .then(response => response.text())
+        .catch(() => 'aborted')
+      // 【真正的断言】进程没死、服务器还能接下一个请求。
+      // 崩溃的话这里会连不上，或者整个测试文件被未捕获异常带走。
+      const after = await fetch(base)
+      assert.equal(after.status, 200, '上游断开之后坐席台自己也挂了')
+      assert.match(await after.text(), /人工坐席台/)
+    })
+  } finally {
+    if (saved === undefined) delete process.env.CS_SERVICE_ORIGIN
+    else process.env.CS_SERVICE_ORIGIN = saved
+    await new Promise(resolve => upstream.close(resolve))
+  }
 })

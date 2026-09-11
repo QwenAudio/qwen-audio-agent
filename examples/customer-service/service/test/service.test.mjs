@@ -2,10 +2,95 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CustomerService } from '../service.mjs'
 import { FRONTEND_TOOL_NAMES, toolDefinitions } from '../tools/registry.mjs'
+import { startCustomerServiceServer } from '../server.mjs'
+import { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
 function fresh() {
   return new CustomerService()
 }
+
+// 用真实 HTTP/MCP 协议回归，不绕过模型看到的 tools/list schema。
+async function retailMcp(t, sessionId) {
+  const service = fresh()
+  const server = await startCustomerServiceServer({ port: 0, service })
+  const clients = []
+  t.after(async () => {
+    await Promise.all(clients.map(client => client.close()))
+    await server.close()
+  })
+  const connect = async surface => {
+    const client = new Client({ name: 'retail-regression', version: '1.0.0' })
+    clients.push(client)
+    const url = new URL(`/mcp/${surface}`, server.origin)
+    url.searchParams.set('sessionId', sessionId)
+    await client.connect(new StreamableHTTPClientTransport(url))
+    return client
+  }
+  const frontend = await connect('frontend')
+  const backend = await connect('backend')
+  return { service, frontend, backend }
+}
+
+test('零售 MCP 暴露正确核验字段，两种核验方式均能查询且金额不误报', async t => {
+  const { service, frontend, backend } = await retailMcp(t, 'retail-schema')
+  for (const client of [frontend, backend]) {
+    const identity = (await client.listTools()).tools.find(tool => tool.name === 'verify_identity')
+    assert.deepEqual(Object.keys(identity.inputSchema.properties).sort(), ['email', 'name', 'zip'])
+    assert.doesNotMatch(identity.description, /会员号|证件/)
+  }
+  const call = (name, args) => frontend.callTool({ name, arguments: args })
+  const verified = await call('verify_identity', { email: 'liming3021@example.com' })
+  assert.equal(verified.structuredContent.verified, true)
+  const detail = await call('get_order', { orderId: '#W1082334' })
+  assert.match(detail.content[0].text, /899\.00/)
+  assert.equal(service.auditOutput('retail-schema', '这笔订单金额899元。').ok, true)
+  assert.equal(service.auditOutput('retail-schema', '可以退款1234元。').ok, false)
+  assert.ok(service.store.toolOutputs('retail-schema').some(text => text.includes('899.00')))
+  assert.deepEqual(service.store.toolOutputs('unrelated'), [])
+  service.reset('retail-schema')
+  assert.deepEqual(service.store.toolOutputs('retail-schema'), [])
+  const second = await call('verify_identity', { name: '陈静', zip: '510620' })
+  assert.equal(second.structuredContent.verified, true)
+  assert.equal(second.structuredContent.customerName, '陈静')
+  const orders = await call('list_orders', {})
+  assert.ok(orders.structuredContent.count > 0)
+})
+
+test('零售 MCP 前台不能取消，后台先预览、确认后才退款', async t => {
+  const { service, frontend, backend } = await retailMcp(t, 'retail-approval')
+  await frontend.callTool({ name: 'verify_identity', arguments: { email: 'liming3021@example.com' } })
+  const args = { orderId: '#W1082334', reason: '不需要了' }
+  const rejected = await frontend.callTool({ name: 'cancel_order', arguments: args })
+  assert.equal(rejected.isError, true)
+  const preview = await backend.callTool({ name: 'cancel_order', arguments: args })
+  assert.equal(preview.structuredContent.needsApproval, true)
+  const order = () => service.snapshot('retail-approval').db.orders.find(o => o.orderId === args.orderId)
+  assert.equal(order().status, 'pending')
+  const token = preview.content[0].text.match(/approval_token="([^"]+)"/)?.[1]
+  assert.ok(token)
+  const done = await backend.callTool({ name: 'cancel_order', arguments: { ...args, approval_token: token } })
+  assert.equal(done.structuredContent.cancelled, true)
+  assert.equal(done.structuredContent.refund, 899)
+  assert.equal(order().status, 'cancelled')
+})
+
+test('零售 MCP 超额退款不发令牌，转人工后状态可见', async t => {
+  const { service, frontend, backend } = await retailMcp(t, 'retail-escalation')
+  await frontend.callTool({ name: 'verify_identity', arguments: { email: 'zhangwei@example.com' } })
+  const blocked = await backend.callTool({
+    name: 'cancel_order', arguments: { orderId: '#W3301887', reason: '不需要了' },
+  })
+  assert.equal(blocked.structuredContent.blocked, 'over_ceiling')
+  assert.equal(blocked.structuredContent.needsApproval, undefined)
+  assert.doesNotMatch(blocked.content[0].text, /approval_token=/)
+  const transfer = await frontend.callTool({
+    name: 'transfer_to_human', arguments: { reason: '退款2899元超过权限上限' },
+  })
+  assert.notEqual(transfer.isError, true)
+  assert.ok(service.snapshot('retail-escalation').transferred)
+  assert.equal(service.snapshot('retail-escalation').db.orders.find(o => o.orderId === '#W3301887').status, 'pending')
+})
 
 test('前台工具面是后台的子集，不是互斥的两个列表', () => {
   const frontend = toolDefinitions('frontend').map(tool => tool.name)

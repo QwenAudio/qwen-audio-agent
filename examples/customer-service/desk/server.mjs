@@ -54,13 +54,25 @@ async function forward(request, response, url, origin) {
     return
   }
   // SSE 要逐块转发，不能等 body 读完 —— 它永远不会结束。
+  //
+  // 【转发循环的错误必须在这里就地处理】headers 在上面已经发出去了，
+  // 一旦坐席关掉标签页，write 就写到已断开的 socket 上、reader.read() 抛错。
+  // 如果让它冒泡到外层 catch，那里会再 writeHead(502) —— 而 headers 已发送，
+  // 于是抛 ERR_HTTP_HEADERS_SENT，这一次没人接，整个进程退出。
+  // 实测就是这样死的：打开航空坐席台再关掉，4730 就没了（cs-both.log 里
+  // 「[airline/desk] 退出，code=1」）。演示中途坐席台会突然打不开。
   const reader = upstream.body.getReader()
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    response.write(value)
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      response.write(value)
+    }
+    response.end()
+  } catch {
+    // 客户端走了，没有对象可以回报错误，掐断连接就是全部要做的事。
+    response.destroy()
   }
-  response.end()
 }
 
 export function createDeskServer() {
@@ -80,6 +92,13 @@ export function createDeskServer() {
       response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
       response.end('not found')
     } catch (error) {
+      // 【必须先看 headersSent】兜底的 502 只有在还没回过任何东西时才发得出去。
+      // 上面 forward 已经就地吞掉了转发中途的错误，但代理之外还有别的路径，
+      // 这一层保证任何漏网的异常都不会把进程带走。
+      if (response.headersSent) {
+        response.destroy()
+        return
+      }
       response.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' })
       response.end(`upstream error: ${error.message}`)
     }

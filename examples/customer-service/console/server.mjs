@@ -18,7 +18,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { extractPolicy, partition } from './extract.mjs'
+import { extractPolicy, locatePolicyEvidence, partition } from './extract.mjs'
 import { consense } from './consensus.mjs'
 import { checkCoverage } from './coverage.mjs'
 import { validateDatabase } from './db-validate.mjs'
@@ -130,10 +130,38 @@ function readCache(domain, runs) {
     // policy 改了缓存就失效 —— 否则管理员改完 policy 看到的还是旧结论。
     const current = readFileSync(domainUrl(domain, 'policy.md'), 'utf8')
     if (cached.policyLength !== current.length) return null
-    return cached
+
+    // 行号定位算法可以独立于模型结果改进。旧缓存里航空改签费的 quote
+    // 是模型改写句，曾经显示「落不回原文」；但 policy 表格第 35/36 行
+    // 明明有“舱位 + 金额”。每次读缓存时重新补证据，修定位不需要逼用户
+    // 再花一分钟重跑模型，也不篡改 agreement（1/3 仍然是 1/3）。
+    return refreshCachedEvidence(cached, current.split('\n'))
   } catch {
     return null
   }
+}
+
+// 重新取证也必须能撤销旧的成功标记，否则修正数值匹配后旧缓存仍会假绿。
+export function refreshCachedEvidence(cached, lines) {
+  const enrich = item => {
+    const evidence = locatePolicyEvidence(item.kind === 'window'
+      ? { ...item, value: item.days, unit: '天' } : item, lines)
+    return {
+      ...item,
+      policyLine: evidence?.line ?? null,
+      evidenceMethod: evidence?.method ?? null,
+      evidenceVerified: Boolean(evidence),
+      quoteVerified: evidence?.method === 'quote',
+      variants: (item.variants || []).map(enrich),
+    }
+  }
+  const agreed = []
+  const disputed = (cached.disputed || []).map(enrich)
+  for (const item of (cached.agreed || []).map(enrich)) {
+    if (item.evidenceVerified) agreed.push(item)
+    else disputed.push({ ...item, confidence: 'ambiguous', disputeKind: 'stable_but_ambiguous' })
+  }
+  return { ...cached, agreed, disputed }
 }
 
 function writeCache(domain, runs, payload) {

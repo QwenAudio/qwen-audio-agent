@@ -23,6 +23,12 @@ import { pathToFileURL } from 'node:url'
 import { connect } from 'node:net'
 
 const PAGE = new URL('./index.html', import.meta.url)
+// 【必须显式列出来】下面那条"其余路径一律发同一页"的兜底会把 /voice.mjs
+// 也回成 HTML，浏览器于是报 "Expected a JavaScript module but got text/html"，
+// 而页面其他部分照常工作 —— 只有语音按钮点了没反应。
+const MODULES = Object.freeze({
+  '/voice.mjs': new URL('./voice.mjs', import.meta.url),
+})
 
 const GATEWAY = process.env.CS_GATEWAY_ORIGIN || 'http://127.0.0.1:18889'
 const SERVICE = process.env.CS_SERVICE_ORIGIN || 'http://127.0.0.1:3110'
@@ -124,6 +130,24 @@ export function createClientServer() {
     }
     if (request.method !== 'GET') {
       response.writeHead(405).end()
+      return
+    }
+    const moduleUrl = MODULES[url.pathname]
+    if (moduleUrl) {
+      let source
+      try {
+        source = readFileSync(moduleUrl)
+      } catch (error) {
+        response.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
+        response.end(`读不到模块 ${url.pathname}：${error.message}`)
+        return
+      }
+      response.writeHead(200, {
+        'Content-Type': 'text/javascript; charset=utf-8',
+        'Content-Length': source.length,
+        'Cache-Control': 'no-store',
+      })
+      response.end(source)
       return
     }
     // 其余路径一律发同一页 —— 没有路由，刷新任何地址都能进。

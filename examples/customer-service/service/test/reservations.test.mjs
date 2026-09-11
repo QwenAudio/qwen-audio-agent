@@ -686,6 +686,31 @@ test('没有延误的预订不发补偿', async () => {
   assert.match(result.content, /没有延误记录/)
 })
 
+test('搜航班排除已经过去的日期', async () => {
+  // 【只靠 status 过滤不够】延误航班保留 status=delayed（补偿判定要读它），
+  // 但它们的日期在过去 —— 延误是已经发生的事。不加日期过滤的话，
+  // CAN→CTU 会把昨天那班延误的航班列成"可改签目标"，客户选了才发现改不过去。
+  const { call, service, session } = air()
+  await call('verify_identity', { memberId: 'CY10091455' })
+  const result = await call('search_flights', { from: 'CAN', to: 'CTU', cabin: 'economy' })
+  const flights = service.snapshot(session, 'airline').db.flights
+  // 【本地日期，不用 toISOString】后者给的是 UTC 日期，北京时间早上八点前
+  // 它还是"昨天" —— 那样这条断言会在每天固定的时段里假红。实现里同理。
+  const now = new Date()
+  const todayLocal = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    + `-${String(now.getDate()).padStart(2, '0')}`
+  const past = flights.filter(flight => flight.from === 'CAN'
+    && flight.to === 'CTU'
+    && flight.date < todayLocal)
+  assert.ok(past.length > 0, '用例前提不成立：CAN→CTU 上没有已经过去的航班')
+  for (const flight of past) {
+    assert.ok(!result.content.includes(flight.flightNo),
+      `列出了已经过去的航班 ${flight.flightNo}（${flight.date}）`)
+  }
+  // 同时这条航线必须还搜得到东西，否则改签演示就断了。
+  assert.ok(result.data.count > 0, 'CAN→CTU 没有可订航班，改签会搜到空')
+})
+
 // ── 搜航班 ──
 
 test('搜航班只返回有余量且可订的', async () => {

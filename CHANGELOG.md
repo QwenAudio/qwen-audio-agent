@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- WebUI 实时麦克风发送现在遵循 WebSocket 缓冲高水位；网络拥塞时丢弃过期音频块，
+  并在缓冲恢复后继续发送，避免旧音频无限积压。
+
 - 移除 `backend-adapter` 与 `custom-conversation-client` 示例目录及文档入口，保留后台 SDK 与客户端协议能力。
 
 - 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，

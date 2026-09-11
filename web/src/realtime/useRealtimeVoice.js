@@ -19,6 +19,7 @@ import { gatewayReferenceClientCapabilities } from '../../../shared/gateway/clie
 import {
   audioSchedulingLeadSeconds,
   createPcmPlaybackQueue,
+  createRealtimeAudioSendController,
   createStreamingResampler,
   decodePcm,
   pcmBase64,
@@ -875,6 +876,7 @@ export default function useRealtimeVoice({
         const wakeWordResampler = createStreamingResampler()
         const inputResampler = createStreamingResampler()
         let inputResamplerSocket = null
+        let inputAudioSender = null
         let source
         let processor
         try {
@@ -888,6 +890,8 @@ export default function useRealtimeVoice({
             if (wakeWordOnlyRef.current) {
               inputResampler.reset()
               inputResamplerSocket = null
+              inputAudioSender?.reset()
+              inputAudioSender = null
               const wakeAudio = wakeWordResampler.process(samples, context.sampleRate, 16_000)
               if (wakeAudio.length) wakeWordAudioRef.current?.(pcmBase64(wakeAudio), 16_000)
               return
@@ -897,11 +901,17 @@ export default function useRealtimeVoice({
             if (socket?.readyState !== WebSocket.OPEN) {
               inputResampler.reset()
               inputResamplerSocket = null
+              inputAudioSender?.reset()
+              inputAudioSender = null
               return
             }
             if (socket !== inputResamplerSocket) {
               inputResampler.reset()
               inputResamplerSocket = socket
+              inputAudioSender = createRealtimeAudioSendController({
+                send: event => socket.send(event),
+                getBufferedAmount: () => socket.bufferedAmount,
+              })
             }
             const audio = inputResampler.process(
               samples,
@@ -909,7 +919,7 @@ export default function useRealtimeVoice({
               inputSampleRate.current,
             )
             if (audio.length) {
-              socket.send({
+              inputAudioSender.send({
                 type: GatewayClientEvent.AUDIO_APPEND,
                 audio: pcmBase64(audio),
               })
@@ -925,6 +935,8 @@ export default function useRealtimeVoice({
               wakeWordResampler.reset()
               inputResampler.reset()
               inputResamplerSocket = null
+              inputAudioSender?.reset()
+              inputAudioSender = null
               processor?.disconnect()
               source?.disconnect()
             },

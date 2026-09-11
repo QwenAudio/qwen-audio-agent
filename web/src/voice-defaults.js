@@ -1,3 +1,3 @@
-export function initialVoiceEnabled({ desktopOrbMode = false } = {}) {
-  return desktopOrbMode === true
+export function initialVoiceEnabled({ desktopOrbMode = false, clientType = 'web' } = {}) {
+  return desktopOrbMode === true || clientType === 'mobile'
 }

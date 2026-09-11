@@ -6,7 +6,7 @@ import {
   inputPartsToAcpBlocks,
   promptWithInputParts,
   transformPromptText,
-} from '../src/agent/acp-content.mjs'
+} from '../src/backend/adapters/acp/content.mjs'
 
 const image = {
   type: 'file',

@@ -1,4 +1,5 @@
 import { config, realtimeUrl } from '../../core/config.mjs'
+import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mjs'
 import {
   listDashScopeRealtimeModelProfiles,
   resolveDashScopeRealtimeModelProfile,
@@ -9,8 +10,7 @@ import {
   resultResponseInstructions,
   speakResponseInstructions,
   permissionResponseInstructions,
-} from '../frontend-tools.mjs'
-import { permissionReference } from '../tools/permission-reference.mjs'
+} from '../../frontend/frontend-tools.mjs'
 import { isRecoverableRealtimeInactivityError } from '../realtime-errors.mjs'
 import { openAiCompatibleProtocol } from './openai-compatible-protocol.mjs'
 
@@ -48,7 +48,7 @@ function responseModalities(profile) {
 
 export const dashscopeProvider = {
   key: 'dashscope',
-  label: 'Qwen-Audio-Realtime',
+  label: 'DashScope Realtime',
   aliases: ['qwen'],
   inputSampleRate: 16000,
   outputSampleRate: 24000,
@@ -126,10 +126,10 @@ export const dashscopeProvider = {
         type: 'input_text',
         text: [
           '<permission_request>',
-          `permission_id=${permissionReference(permission.id)}`,
+          `permission_id=${permission.id}`,
           `task_id=${permission.taskId}`,
           `operation=${permission.summary}`,
-          'allowed_decisions=once,always,reject',
+          `allowed_decisions=${PERMISSION_DECISIONS.join(',')}`,
           '</permission_request>',
         ].join('\n'),
       }],

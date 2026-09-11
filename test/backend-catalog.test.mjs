@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   backendDefinition,
   effectiveBackendPermissionMode,
-} from '../shared/backend-catalog.mjs'
+} from '../shared/backend/catalog.mjs'
 
 test('Pi declares the always-full-permission capability', () => {
   // Pi 没有内置沙箱与权限审批，任何配置下都等效 full；该能力必须显式声明，
@@ -11,6 +11,16 @@ test('Pi declares the always-full-permission capability', () => {
   const pi = backendDefinition('pi')
   assert.equal(pi.alwaysFullPermission, true)
   assert.equal(pi.supportsFullPermission, true)
+})
+
+test('declares MiniMax Code as a native ACP backend', () => {
+  const minimax = backendDefinition('minimax')
+  assert.equal(minimax.label, 'MiniMax Code')
+  assert.equal(minimax.setup.command, 'mcode')
+  assert.equal(minimax.setup.integration, 'native')
+  assert.equal(minimax.setup.minimumVersion, '0.3.7')
+  assert.equal(minimax.supportsFullPermission, true)
+  assert.equal(minimax.skills, null)
 })
 
 test('effective permission mode normalizes always-full backends', () => {

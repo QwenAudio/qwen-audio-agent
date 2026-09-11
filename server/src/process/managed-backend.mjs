@@ -6,8 +6,8 @@ import {
   normalizeBackendRuntimeProtocol,
 } from './backend-drivers/registry.mjs'
 import { serviceEndpointPort } from './backend-drivers/shared.mjs'
-import { backendEnvironment } from '../../../shared/backend-environment.mjs'
-import { effectiveBackendPermissionMode } from '../../../shared/backend-catalog.mjs'
+import { backendEnvironment } from '../../../shared/backend/environment.mjs'
+import { effectiveBackendPermissionMode } from '../../../shared/backend/catalog.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 
@@ -118,7 +118,7 @@ function spawnSpec(root, platform, env, driver) {
   })
   return {
     command: process.execPath,
-    args: [resolve(root, `scripts/${driver.managedScript}`)],
+    args: [resolve(root, `scripts/runtime/${driver.managedScript}`)],
     options: {
       cwd: root,
       env: childEnvironment,

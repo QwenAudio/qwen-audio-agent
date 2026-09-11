@@ -1,0 +1,22 @@
+.manual-version {
+  margin: 0 0 24px;
+  padding: 10px 14px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-bg-soft);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.manual-version a {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.VPHero .manual-version {
+  margin: 24px 0 0;
+  max-width: 620px;
+}
+.manual-version code {
+  font-size: inherit;
+}

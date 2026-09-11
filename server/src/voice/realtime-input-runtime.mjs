@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { GatewayServerEvent } from '../../../shared/realtime-events.mjs'
+import { GatewayServerEvent } from '../../../shared/protocol/realtime-events.mjs'
 import {
   displayInputText,
   inputFileParts,
@@ -45,6 +45,8 @@ export class RealtimeInputRuntime {
     shouldEnsurePermissionResponse,
     ensurePermissionResponseFor,
     reportFrontendError,
+    onSpeechStarted = () => {},
+    onSpeechStopped = () => {},
     createInputTurnId = () => `text_${randomUUID().replaceAll('-', '')}`,
   }) {
     this.ownerId = ownerId
@@ -63,6 +65,8 @@ export class RealtimeInputRuntime {
     this.shouldEnsurePermissionResponse = shouldEnsurePermissionResponse
     this.ensurePermissionResponseFor = ensurePermissionResponseFor
     this.reportFrontendError = reportFrontendError
+    this.onSpeechStarted = onSpeechStarted
+    this.onSpeechStopped = onSpeechStopped
     this.createInputTurnId = createInputTurnId
   }
 
@@ -104,6 +108,10 @@ export class RealtimeInputRuntime {
     const started = this.turns.beginVoice(event.item_id)
     if (!started.accepted) return
     this.clearResponseCandidate()
+    this.onSpeechStarted({
+      turnId: started.context.turnId,
+      source: 'realtime_provider',
+    })
     this.announcementWindow.beginTurn(started.context.turnId)
     this.announcements.dismissActive()
     this.send({
@@ -131,6 +139,11 @@ export class RealtimeInputRuntime {
       this.turns.invalidateInput(event.item_id)
       return
     }
+    this.onSpeechStopped({
+      turnId: stoppedTurn.turnId,
+      source: 'realtime_provider',
+      ...(event.reason ? { reason: String(event.reason) } : {}),
+    })
     this.turns.endSpeech()
     this.announcementWindow.endSpeech()
     if (event.reason === 'turn_invalid') {

@@ -11,7 +11,7 @@ import {
   normalizeGatewayClientProtocolMessage,
   parseGatewayClientProtocolMessage,
   supportsGatewayClientProtocol,
-} from '../../../shared/gateway-client-protocol.mjs'
+} from '../../../shared/protocol/gateway-client-protocol.mjs'
 import { parseGatewayClientMessage } from '../../../shared/protocol/gateway-events.mjs'
 import { isReplayableGatewayEvent } from './gateway-client-replay-buffer.mjs'
 
@@ -28,7 +28,7 @@ export class GatewayClientProtocolSession {
     replayBuffer = null,
   } = {}) {
     this.sessionId = String(sessionId || 'main')
-    this.supportedCapabilities = [...supportedCapabilities]
+    this.supportedCapabilities = supportedCapabilities
     this.createEventId = createEventId
     this.maxPendingServerEvents = Math.max(1, Number(maxPendingServerEvents) || 128)
     this.mode = 'pending'
@@ -74,15 +74,16 @@ export class GatewayClientProtocolSession {
       })
     }
 
+    const requiredCapability = gatewayClientProtocolCapabilityFor(value?.type)
+    if (requiredCapability && !this.capabilities.includes(requiredCapability)) {
+      return this.#error(
+        'capability_not_negotiated',
+        `${requiredCapability} was not negotiated`,
+        { requestEventId: value?.event_id },
+      )
+    }
+
     if (isGatewayClientRuntimeMessage(value?.type)) {
-      const requiredCapability = gatewayClientProtocolCapabilityFor(value.type)
-      if (!this.capabilities.includes(requiredCapability)) {
-        return this.#error(
-          'capability_not_negotiated',
-          `${requiredCapability} was not negotiated`,
-          { requestEventId: value?.event_id },
-        )
-      }
       try {
         if (value.type === GatewayClientProtocolEvent.SESSION_REPLAY) {
           return { event: null, reply: this.#replay(value) }
@@ -141,12 +142,19 @@ export class GatewayClientProtocolSession {
 
     this.mode = 'v6'
     this.protocolVersion = GATEWAY_CLIENT_PROTOCOL_VERSION
+    const supported = typeof this.supportedCapabilities === 'function'
+      ? this.supportedCapabilities(parsed.data)
+      : this.supportedCapabilities
     this.capabilities = negotiateGatewayClientCapabilities(
       parsed.data.capabilities,
-      this.supportedCapabilities,
+      supported,
     )
+    const negotiatedHello = {
+      ...parsed.data,
+      capabilities: this.capabilities,
+    }
     return {
-      event: gatewayHelloAsLegacyConnect(parsed.data),
+      event: gatewayHelloAsLegacyConnect(negotiatedHello),
       reply: {
         type: GatewayClientProtocolEvent.SESSION_READY,
         event_id: this.createEventId(),
@@ -182,6 +190,9 @@ export class GatewayClientProtocolSession {
   }
 
   #parseLegacy(value) {
+    // Live visual frames are a GCP 6 capability-negotiated input. Do not
+    // expose the internal business-event alias to 5.x clients.
+    if (value?.type === 'image.append') return null
     try {
       return parseGatewayClientMessage(value)
     } catch {

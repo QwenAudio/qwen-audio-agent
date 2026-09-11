@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GatewayClient } from '../shared/gateway-client-sdk.mjs'
+import { GatewayClient } from '../shared/gateway/client-sdk.mjs'
 import {
   GatewayReferenceClientType,
   gatewayReferenceClientCapabilities,
-} from '../shared/gateway-client-profiles.mjs'
+} from '../shared/gateway/client-profiles.mjs'
 import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../shared/gateway-client-protocol.mjs'
+} from '../shared/protocol/gateway-client-protocol.mjs'
 
 class ConformanceSocket {
   constructor() {
@@ -55,7 +55,7 @@ for (const clientType of Object.values(GatewayReferenceClientType)) {
       type: GatewayClientProtocolEvent.SESSION_READY,
       event_id: `evt_${clientType}_ready`,
       request_event_id: hello.event_id,
-      protocol_version: '6.0.0',
+      protocol_version: '7.0.0',
       session_id: 'main',
       capabilities: hello.capabilities,
     })
@@ -83,7 +83,10 @@ for (const clientType of Object.values(GatewayReferenceClientType)) {
       client.supports(GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP),
       clientType === GatewayReferenceClientType.DESKTOP,
     )
+    assert.equal(
+      client.supports(GatewayClientCapability.INPUT_IMAGE_BUFFER),
+      clientType === GatewayReferenceClientType.WEB,
+    )
     client.stop()
   })
 }
-

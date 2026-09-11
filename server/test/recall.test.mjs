@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
-import { ToolCallHandler } from '../src/voice/tools/tool-call-handler.mjs'
+import { ToolCallHandler } from '../src/frontend/tools/tool-call-handler.mjs'
 import { SessionDigestPool } from '../src/conversation/session-digest.mjs'
 import {
   FRONTEND_RECALL_CAPABILITY,
   RECALL_TOOL_NAME,
   frontendTools,
-} from '../src/voice/frontend-tools.mjs'
-import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
+} from '../src/frontend/frontend-tools.mjs'
+import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
 
 // 相对「当下」构造：recall 处理器内部用的是真实 Date.now()，把基准写成固定
 // 日期的话，测试会在跨过那一天之后开始漂移（3 天前变成 4 天前）。
@@ -187,27 +187,28 @@ test('the tool is only exposed when session digests are enabled', () => {
   assert.ok(both.includes('enter_sleep'))
 })
 
-test('the tool description points detail questions at the backend', () => {
+test('the tool description separates summaries from task details and other sources', () => {
   const [tool] = frontendTools({
     frontend: { capabilities: [FRONTEND_RECALL_CAPABILITY] },
   })
     .filter(item => item.function.name === RECALL_TOOL_NAME)
   // 「最多一层」的边界必须写在 description 里，否则模型会拿这几行当全部事实
   assert.match(tool.function.description, /get_agent_task_status/)
-  // 资料检索归 knowledge 工具，description 要把模型指过去，否则它会拿 recall 硬试
-  assert.match(tool.function.description, /knowledge/)
+  // 说明数据边界，但不假定另一个可选工具已启用。
+  assert.match(tool.function.description, /不检索资料文档/)
+  assert.doesNotMatch(tool.function.description, /\bknowledge\b/)
   assert.match(tool.function.description, /不含原话和执行细节|不要编造/)
-  // 要细节全文时该改用哪个工具，也得写清楚，否则模型会拿这里的简写当结果
-  assert.match(tool.function.description, /get_agent_task_status/)
+  assert.match(tool.function.description, /个人长期事实与偏好应查询已提供的长期记忆能力/)
+  assert.doesNotMatch(tool.function.description, /\bmemory\b/)
 })
 
 // 用户不区分「聊过的」和「派过的活」，所以一次调用要都给到。
-test('reports the work dispatched in a recalled session', async () => {
+test('a recalled task can be queried across sessions by its returned reference', async () => {
   const manager = new TaskManager()
   const task = manager.create({
     objective: '把压缩评测跑一遍',
     ownerId: 'owner',
-    sessionId: 'voice',
+    sessionId: 'past-voice',
     runner: async () => ({ content: 'done', metadata: {} }),
   })
   const { handler, lastOutput } = harness({
@@ -225,6 +226,7 @@ test('reports the work dispatched in a recalled session', async () => {
   const [session] = lastOutput().sessions
   assert.equal(session.work.length, 1)
   assert.equal(session.work[0].objective, '把压缩评测跑一遍')
+  assert.equal(session.work[0].task_id, task.id)
   // 状态是从台账实时读的，不是摘要里存的。这里不锁具体值 —— 任务在后台自行
   // 流转（queued → running → …），锁死取值会让测试跟调度时序赛跑。
   assert.notEqual(session.work[0].status, 'unknown', '应当从台账读到了状态')
@@ -234,6 +236,16 @@ test('reports the work dispatched in a recalled session', async () => {
     ),
     `台账状态不在预期集合内：${session.work[0].status}`,
   )
+  manager.create({
+    objective: '另一个新工作', ownerId: 'owner', sessionId: 'voice',
+    runner: async () => ({ content: 'other', metadata: {} }),
+  })
+  await handler.handle({
+    call_id: 'status-after-recall', name: 'get_agent_task_status',
+    arguments: JSON.stringify({ task_id: session.work[0].task_id }),
+  })
+  assert.equal(lastOutput().task_id, task.id)
+  assert.equal(lastOutput().objective, task.objective)
 })
 
 test('falls back to unknown status once the task ledger has pruned the work', async () => {
@@ -253,6 +265,24 @@ test('falls back to unknown status once the task ledger has pruned the work', as
   // 仍答得上「派过这件活」，只是给不出状态 —— 刻意的降级，不是错误
   assert.equal(session.work[0].objective, '很久以前那件事')
   assert.equal(session.work[0].status, 'unknown')
+  assert.equal(session.work[0].task_id, undefined)
+})
+
+test('recall does not expose another owner\'s task reference', async () => {
+  const manager = new TaskManager()
+  const task = manager.create({
+    objective: 'private', ownerId: 'other', sessionId: 'other',
+    runner: async () => ({ content: 'private', metadata: {} }),
+  })
+  const { handler, lastOutput } = harness({
+    manager,
+    sessionDigests: digestPool([{
+      session: 'past', at: NOW - DAY, turns: 1, topics: ['旧工作'], gist: '摘要',
+      work: [{ id: task.id, objective: '旧工作' }],
+    }]),
+  })
+  await handler.handle(call({}))
+  assert.deepEqual(lastOutput().sessions[0].work, [{ objective: '旧工作', status: 'unknown' }])
 })
 
 test('finds a session by the objective of the work it dispatched', async () => {

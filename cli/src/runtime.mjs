@@ -6,7 +6,7 @@ import {
   effectiveBackendPermissionMode,
   normalizeBackendProtocol,
   resolveBackendOwnership,
-} from '../../shared/backend-catalog.mjs'
+} from '../../shared/backend/catalog.mjs'
 import {
   loadRuntimeEnvironment,
   requireRealtimeFrontendConfiguration,
@@ -16,15 +16,19 @@ import {
   resolveRealtimeFrontendConfiguration,
 } from '../../shared/realtime-provider-catalog.mjs'
 import {
+  normalizeMemoryProviderSelection,
+} from '../../shared/memory-provider-catalog.mjs'
+import {
   readGatewayHealth,
-} from '../../shared/gateway-client.mjs'
+} from '../../shared/gateway/http-client.mjs'
 import {
   findRunningGateway,
-} from '../../shared/gateway-instance-lock.mjs'
+} from '../../shared/gateway/lease.mjs'
 
 export {
+  createGatewayPairingTicket,
   readGatewayHealth,
-} from '../../shared/gateway-client.mjs'
+} from '../../shared/gateway/http-client.mjs'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 
@@ -200,6 +204,37 @@ export function assertRealtimeGatewayCompatibility(health, env = process.env) {
       ? `现有 Gateway 使用 ${actualProvider} Realtime 前台，与当前配置 ${expected.provider} 不一致`
       : `现有 Gateway 的 ${expected.provider} Realtime 前台参数与当前配置不一致`
     throw new Error(`${mismatch}；请关闭旧 Gateway 后重试`)
+  }
+  return expected
+}
+
+export function assertMemoryGatewayCompatibility(health, env = process.env) {
+  const configured = String(env.QWEN_AUDIO_MEMORY_PROVIDER || '').trim()
+  if (!configured) return 'markdown'
+  const expected = normalizeMemoryProviderSelection(configured)
+  const actual = String(health?.frontendMemory?.provider?.key || '').trim()
+  if (!actual) {
+    throw new Error('现有 Gateway 未报告完整的记忆 Provider 配置，无法安全复用')
+  }
+  if (actual !== expected) {
+    throw new Error(
+      `现有 Gateway 使用 ${actual} 记忆 Provider，`
+      + `与当前配置 ${expected} 不一致；请关闭旧 Gateway 后重试`,
+    )
+  }
+  if (expected === 'voicemem') {
+    const expectedInput = String(env.VOICEMEM_INPUT_MODE || 'text')
+      .trim().toLowerCase() === 'audio' ? 'audio' : 'text'
+    const actualInput = String(health.frontendMemory.inputMode || '').trim()
+    if (!actualInput) {
+      throw new Error('现有 Gateway 未报告完整的 VoiceMem 输入配置，无法安全复用')
+    }
+    if (actualInput !== expectedInput) {
+      throw new Error(
+        `现有 Gateway 使用 VoiceMem ${actualInput} 输入，`
+        + `与当前配置 ${expectedInput} 不一致；请关闭旧 Gateway 后重试`,
+      )
+    }
   }
   return expected
 }
@@ -390,9 +425,9 @@ export async function ensureRuntime(options, {
     ? backendDefinition(backend.protocol)?.label || backend.protocol
     : '后台 Agent'
   let health = await readGatewayHealth(options.url, fetchImpl)
-  if (!health && local && runtimeEnvironment?.configDirectory) {
+  if (!health && local && runtimeEnvironment?.stateDirectory) {
     const active = await findRunningGateway(
-      runtimeEnvironment.configDirectory,
+      runtimeEnvironment.stateDirectory,
       {
         readHealth: origin => readGatewayHealth(origin, fetchImpl),
       },
@@ -434,8 +469,8 @@ export async function ensureRuntime(options, {
           'Gateway',
         )
       } catch (startupError) {
-        const winner = runtimeEnvironment?.configDirectory
-          ? await findRunningGateway(runtimeEnvironment.configDirectory, {
+        const winner = runtimeEnvironment?.stateDirectory
+          ? await findRunningGateway(runtimeEnvironment.stateDirectory, {
               readHealth: origin => readGatewayHealth(origin, fetchImpl),
               timeoutMs: 3000,
             })
@@ -470,6 +505,7 @@ export async function ensureRuntime(options, {
     const realtime = local
       ? assertRealtimeGatewayCompatibility(health, env)
       : null
+    if (local) assertMemoryGatewayCompatibility(health, env)
     if (
       health.voiceConfigured === false
       && options.allowMissingCredential !== true

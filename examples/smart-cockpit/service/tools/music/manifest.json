@@ -1,13 +1,36 @@
 {
   "domain": "music",
   "label": "音乐",
-  "description": "座舱示例的音乐播放、暂停、切歌和搜索能力。",
+  "description": "座舱示例的媒体播放、搜索、音量、来源、收藏和状态查询能力。",
   "enabled": true,
   "functions": [
     {
+      "name": "music_state_query",
+      "label": "音乐状态查询",
+      "description": "查询当前媒体播放状态、曲目信息、音量、媒体来源、收藏或最近搜索结果；只读，不改变播放状态。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "part": {
+            "type": "string",
+            "enum": [
+              "all",
+              "playback",
+              "volume",
+              "source",
+              "favorites",
+              "results"
+            ],
+            "description": "查询范围，默认 all"
+          }
+        }
+      }
+    },
+    {
       "name": "music_play",
       "label": "音乐播放",
-      "description": "播放或继续播放音乐，可按歌曲名、歌手或专辑点歌。当前歌单：晴天、七里香、稻香、夜曲、简单爱、青花瓷",
+      "description": "开始播放或继续播放音乐，可按歌曲名、歌手或专辑点歌。用户说“播放X”“放一首X”“来点音乐”“继续播放”时使用。当前歌单：晴天、七里香、稻香、夜曲、简单爱、青花瓷",
       "enabled": true,
       "parameters": {
         "type": "object",
@@ -20,9 +43,27 @@
       }
     },
     {
+      "name": "music_toggle_playback",
+      "label": "音乐播放暂停切换",
+      "description": "在播放与暂停之间翻转当前状态，不关心当前是哪一种。仅当用户没有指明要播放还是要暂停时使用，例如“切换一下播放状态”“播放暂停切一下”。用户明确要播放请用 music_play，明确要暂停请用 music_pause。对应 Tesla media_toggle_playback。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "toggle"
+            ],
+            "description": "固定为 toggle，即翻转当前播放/暂停状态"
+          }
+        }
+      }
+    },
+    {
       "name": "music_pause",
       "label": "音乐暂停",
-      "description": "暂停当前音乐播放。",
+      "description": "暂停当前音乐播放。用户说“暂停”“暂停音乐”“music 先停一下”“别放了”时使用；这是表达暂停意图的唯一工具，不要改用 music_toggle_playback。",
       "enabled": true,
       "parameters": {
         "type": "object",
@@ -47,6 +88,99 @@
       "parameters": {
         "type": "object",
         "properties": {}
+      }
+    },
+    {
+      "name": "music_volume_control",
+      "label": "音乐音量控制",
+      "description": "设置、调高、调低、静音或取消静音媒体音量；音量范围采用 Tesla 媒体遥测常见 0~11 档。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "increase",
+              "decrease",
+              "set",
+              "mute",
+              "unmute"
+            ],
+            "description": "increase/decrease=升降音量，set=设置指定音量，mute/unmute=静音/取消静音"
+          },
+          "volume": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 11,
+            "description": "目标音量，仅 action=set 时需要"
+          },
+          "delta": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 11,
+            "description": "升降幅度，默认 1 档"
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    {
+      "name": "music_source_control",
+      "label": "音乐来源控制",
+      "description": "切换媒体来源，例如 QQ音乐、广播、蓝牙、USB、Spotify、Apple Music、TuneIn、YouTube Music、Caraoke 或浏览器音频。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "qq_music",
+              "radio",
+              "bluetooth",
+              "usb",
+              "spotify",
+              "apple_music",
+              "tunein",
+              "youtube_music",
+              "caraoke",
+              "browser"
+            ],
+            "description": "要切换到的媒体来源"
+          }
+        },
+        "required": [
+          "source"
+        ]
+      }
+    },
+    {
+      "name": "music_favorite_control",
+      "label": "音乐收藏控制",
+      "description": "收藏/取消收藏当前或指定歌曲，也可切换到上一首/下一首收藏歌曲；对应 Tesla media_next_fav/media_prev_fav 和媒体收藏行为。",
+      "enabled": true,
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "add",
+              "remove",
+              "toggle",
+              "next",
+              "previous"
+            ],
+            "description": "收藏动作，默认 toggle"
+          },
+          "query": {
+            "type": "string",
+            "description": "歌曲名、歌手或专辑关键词；不填表示当前歌曲"
+          }
+        }
       }
     },
     {

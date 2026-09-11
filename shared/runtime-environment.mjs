@@ -1,19 +1,15 @@
 import { randomBytes } from 'node:crypto'
 import {
   chmodSync,
-  constants,
-  copyFileSync,
-  linkSync,
-  lstatSync,
   mkdirSync,
   readFileSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 import { parseEnv } from 'node:util'
-import { backendDefinitions } from './backend-catalog.mjs'
+import { resolveRuntimePaths, runtimePathEnvironment, userConfigDirectory } from './runtime-paths.mjs'
+import { backendDefinitions } from './backend/catalog.mjs'
 import { resolveRealtimeFrontendConfiguration } from './realtime-provider-catalog.mjs'
 
 const SECRET_KEY = 'QWEN_AUDIO_AGENT_AUTH_SECRET'
@@ -23,9 +19,15 @@ const USER_CONFIG_TEMPLATE = [
   'QWEN_AUDIO_REALTIME_PROVIDER=dashscope',
   '# Hugging Face speech-to-speech：将上一行改为 speech-to-speech，并设置服务地址',
   '# SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime',
+  '# MiniCPM-o 4.5：将 Provider 改为 minicpm-o，并先启动本地 Realtime 服务',
+  '# MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=audio',
+  '# MINICPM_O_AUTH_TOKEN=',
+  '',
+  '# 可选目录：QWAUDIO_DATA_DIR / QWAUDIO_STATE_DIR / QWAUDIO_CACHE_DIR',
+  '# 所有后台默认工作区：QWAUDIO_WORKSPACE=/absolute/path/to/projects',
   '',
   '# 可选：选择后台 Agent；留空时仅使用前台实时语音聊天',
-  '# 可选 openclaw、opencode、qoder、qwen、kimi、hermes、codebuddy、codex、claude、deepseek、pi、acp 或 none',
+  '# 可选 openclaw、opencode、qoder、qwen、minimax、kimi、hermes、codebuddy、codex、claude、deepseek、pi、acp 或 none',
   'AGENT_PROTOCOL=',
   '# 权限模式：native（后台自行询问）或 full（最高权限；仅支持安全映射的后端）',
   '# Pi 没有权限审批机制，无论配置什么都始终生效 full',
@@ -38,6 +40,21 @@ const USER_CONFIG_TEMPLATE = [
   '# DeepSeek（Harness Developer Preview）：DEEPSEEK_API_KEY=your-key',
   '# 通用 ACP：ACP_COMMAND=your-agent，ACP_ARGS=["--acp"]',
   '# 通用 ACP 如需额外环境变量：QWEN_AUDIO_AGENT_ACP_FORWARD_ENV=NAME_A,NAME_B',
+  '',
+  '# 可选：前台 MCP 配置文件的绝对路径；MCP 引用的持久变量也写在本文件中',
+  '# QWEN_AUDIO_FRONTEND_MCP_CONFIG=/absolute/path/to/frontend-mcp.json',
+  '',
+  '# 可选记忆 Provider：markdown（默认）或 voicemem；VoiceMem 需先安装 Python 依赖',
+  '# QWEN_AUDIO_MEMORY_PROVIDER=voicemem',
+  '# VOICEMEM_INPUT_MODE=text',
+  '# VOICEMEM_PYTHON=/absolute/path/to/voicemem-python',
+  '# VOICEMEM_SIDECAR=/absolute/path/to/voicemem-sidecar.py',
+  '',
+  '# 可选远程 Client 接入；Gateway 默认仍只监听 127.0.0.1',
+  '# 开放同一局域网访问：QWEN_AUDIO_GATEWAY_LAN=1',
+  '# 使用已安装并登录的系统 Tailscale Serve：QWEN_AUDIO_GATEWAY_TAILNET=1',
+  '# QWEN_AUDIO_GATEWAY_ACCESS_TOKEN=至少24字符的随机密钥',
+  '# QWEN_AUDIO_AGENT_ALLOWED_ORIGINS=https://voice.example.com',
   '',
   '# 可选日志设置：默认 info、单文件 10 MiB、保留 5 份',
   '# QWEN_AUDIO_LOG_LEVEL=info',
@@ -89,62 +106,39 @@ function loadFile(path, env) {
   return true
 }
 
-export function userConfigDirectory(
-  env = process.env,
-  homeDirectory = homedir(),
-) {
-  if (env.QWAUDIO_CONFIG_DIR) return resolve(env.QWAUDIO_CONFIG_DIR)
-  const base = env.XDG_CONFIG_HOME
-    ? resolve(env.XDG_CONFIG_HOME)
-    : resolve(homeDirectory, '.config')
-  return resolve(base, 'qwaudio')
-}
-
-// 资产目录：配置、身份、记忆、清单与共享 workspace 等"用户资产"的归属地。
-// 默认与运行时目录（configDirectory）相同；桌面版把它指向 CLI 的用户目录，
-// 让两种形态共享同一份资产，而 tasks/logs/锁等运行时状态仍按形态隔离
-// （参照 Qoder IDE 与 qodercli 的目录分层）。
-export function userDataDirectory(
-  env = process.env,
-  homeDirectory = homedir(),
-) {
-  if (env.QWAUDIO_DATA_DIR) return resolve(env.QWAUDIO_DATA_DIR)
-  return userConfigDirectory(env, homeDirectory)
-}
-
 function ensureGeneratedSecret(env, configDirectory) {
-  if (env[SECRET_KEY]) return { generated: false, statePath: null }
-  const statePath = resolve(configDirectory, 'state.env')
+  if (env[SECRET_KEY]) return { generated: false, identityPath: null }
+  const identityPath = resolve(configDirectory, 'identity.env')
   // An empty shell assignment must not mask the persisted local identity.
   delete env[SECRET_KEY]
-  loadFile(statePath, env)
+  loadFile(identityPath, env)
   if (env[SECRET_KEY]) {
     try {
-      chmodSync(statePath, 0o600)
+      chmodSync(identityPath, 0o600)
     } catch (error) {
       if (error.code !== 'ENOENT') throw error
     }
-    return { generated: false, statePath }
+    return { generated: false, identityPath }
   }
 
   mkdirSync(configDirectory, { recursive: true, mode: 0o700 })
   const secret = randomBytes(32).toString('hex')
   try {
-    writeFileSync(statePath, `${SECRET_KEY}=${secret}\n`, {
+    writeFileSync(identityPath, `${SECRET_KEY}=${secret}\n`, {
       encoding: 'utf8',
       flag: 'wx',
       mode: 0o600,
     })
   } catch (error) {
     if (error.code !== 'EEXIST') throw error
-    loadFile(statePath, env)
+    loadFile(identityPath, env)
     if (!env[SECRET_KEY]) {
-      throw new Error(`自动生成的本地认证配置无效：${statePath}`)
+      throw new Error(`自动生成的本地认证配置无效：${identityPath}`)
     }
-    return { generated: false, statePath }
+    return { generated: false, identityPath }
   }
   env[SECRET_KEY] = secret
-  return { generated: true, statePath }
+  return { generated: true, identityPath }
 }
 
 function ensureUserConfig(configDirectory) {
@@ -166,8 +160,8 @@ function ensureUserConfig(configDirectory) {
   return configPath
 }
 
-function ensureUserModel(configDirectory) {
-  const userModelPath = resolve(configDirectory, 'USER.md')
+function ensureUserModel(dataDirectory) {
+  const userModelPath = resolve(dataDirectory, 'USER.md')
   try {
     writeFileSync(userModelPath, USER_MODEL_TEMPLATE, {
       encoding: 'utf8',
@@ -211,8 +205,8 @@ function ensureAssistantProfile(configDirectory, templatePath) {
   return targetPath
 }
 
-function ensureLongTermMemory(configDirectory) {
-  const memoryPath = resolve(configDirectory, 'MEMORY.md')
+function ensureLongTermMemory(dataDirectory) {
+  const memoryPath = resolve(dataDirectory, 'MEMORY.md')
   try {
     writeFileSync(memoryPath, MEMORY_TEMPLATE, {
       encoding: 'utf8',
@@ -230,64 +224,7 @@ function ensureLongTermMemory(configDirectory) {
   return memoryPath
 }
 
-function migrateLegacyMemory({
-  legacyPath,
-  memoryPath,
-  userModelPath,
-  ownerId,
-  configDirectory,
-}) {
-  const markerPath = resolve(configDirectory, 'state/frontend-memory-markdown-v1')
-  try {
-    lstatSync(markerPath)
-    return false
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error
-  }
-  let parsed
-  try {
-    parsed = JSON.parse(readFileSync(legacyPath, 'utf8'))
-  } catch (error) {
-    if (error.code === 'ENOENT' || error instanceof SyntaxError) return false
-    throw error
-  }
-  const users = parsed?.users && typeof parsed.users === 'object' ? parsed.users : {}
-  const selected = users[ownerId] || Object.values(users)[0] || {}
-  const values = Object.values(selected).filter(entry => String(entry?.value || '').trim())
-  const memory = values.filter(entry => !['user', 'profile', 'rules'].includes(entry.scope))
-  const user = values.filter(entry => ['user', 'profile', 'rules'].includes(entry.scope))
-  const appendMigrated = (path, heading, entries) => {
-    if (!entries.length) return
-    const current = readFileSync(path, 'utf8').trimEnd()
-    if (current.includes(heading)) return
-    const block = [
-      '',
-      heading,
-      '',
-      ...entries.map(entry => `- ${String(entry.value).replace(/\s+/g, ' ').trim()}`),
-      '',
-    ].join('\n')
-    writeFileSync(path, `${current}${block}`, { encoding: 'utf8', mode: 0o600 })
-    chmodSync(path, 0o600)
-  }
-  appendMigrated(userModelPath, '## 从旧版本迁移的用户信息', user)
-  appendMigrated(memoryPath, '## 从旧版本迁移的长期记忆', memory)
-  mkdirSync(dirname(markerPath), { recursive: true, mode: 0o700 })
-  writeFileSync(markerPath, `${new Date().toISOString()}\n`, {
-    encoding: 'utf8',
-    mode: 0o600,
-  })
-  return Boolean(user.length || memory.length)
-}
-
-// 所有后台 Agent 共享同一个默认 workspace。历史上按后台隔离（workspaces/<id>）
-// 是为了各自的 AGENTS.md 指令模板，该机制已被 session 级指令注入取代；共享目录
-// 让用户切换后台时能无缝继续同一份工作，也让 SKILL 等资产只需同步到一处。
-export function defaultBackendWorkspace(configDirectory) {
-  return resolve(configDirectory, 'workspace')
-}
-
-function resolveBackendWorkspaces(env, root, configDirectory) {
+function resolveBackendWorkspaces(env, root, sharedWorkspace) {
   return Object.fromEntries(backendDefinitions()
     .filter(definition => definition.workspaceEnvironment)
     .map(definition => {
@@ -295,100 +232,77 @@ function resolveBackendWorkspaces(env, root, configDirectory) {
       return [definition.id, {
         directory: configured
           ? resolve(root, configured)
-          : defaultBackendWorkspace(configDirectory),
+          : sharedWorkspace,
         environment: definition.workspaceEnvironment,
         managed: !configured,
       }]
     }))
 }
 
-function migratePrivateFile(legacyPath, targetPath) {
-  try {
-    lstatSync(targetPath)
-    return false
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error
-  }
-
-  try {
-    if (!lstatSync(legacyPath).isFile()) return false
-  } catch (error) {
-    if (error.code === 'ENOENT') return false
-    throw error
-  }
-
-  try {
-    linkSync(legacyPath, targetPath)
-    unlinkSync(legacyPath)
-  } catch (error) {
-    if (['EEXIST', 'ENOENT'].includes(error.code)) return false
-    if (error.code !== 'EXDEV') throw error
-    try {
-      copyFileSync(legacyPath, targetPath, constants.COPYFILE_EXCL)
-      unlinkSync(legacyPath)
-    } catch (copyError) {
-      if (copyError.code === 'EEXIST') return false
-      throw copyError
-    }
-  }
-  chmodSync(targetPath, 0o600)
-  return true
-}
-
 export function loadRuntimeEnvironment({
   root,
   env = process.env,
   homeDirectory = homedir(),
+  defaultStateDirectory,
   generateSecret = true,
   prepareBackendRuntime = true,
   readOnly = false,
 } = {}) {
   if (!root) throw new Error('loadRuntimeEnvironment requires root')
   const configDirectory = userConfigDirectory(env, homeDirectory)
-  // 资产（配置/身份/记忆/清单/workspace）从资产目录读写；tasks、logs、
-  // 实例锁等运行时状态留在 configDirectory。两者默认相同，桌面版分离。
-  const dataDirectory = userDataDirectory(env, homeDirectory)
   const candidates = [
     resolve(root, '.env.local'),
     resolve(root, '.env'),
-    resolve(dataDirectory, 'config.env'),
+    resolve(configDirectory, 'config.env'),
   ]
   const loadedFiles = candidates.filter(path => loadFile(path, env))
+  // Config location is bootstrap input; directory settings inside that file
+  // are resolved only after loading it, then forwarded as absolute paths.
+  const paths = resolveRuntimePaths({
+    env: { ...env, QWAUDIO_CONFIG_DIR: configDirectory },
+    homeDirectory,
+    baseDirectory: root,
+    defaultStateDirectory,
+  })
+  const { dataDirectory, stateDirectory, sharedWorkspace } = paths
+  // Normalize only explicit settings. Do not turn defaults into sticky process
+  // overrides: another embedded instance may use a different config directory.
+  for (const [key, value] of Object.entries(runtimePathEnvironment(paths))) {
+    if (env[key]) env[key] = value
+  }
   if (!readOnly) {
-    mkdirSync(configDirectory, { recursive: true, mode: 0o700 })
-    if (dataDirectory !== configDirectory) {
-      mkdirSync(dataDirectory, { recursive: true, mode: 0o700 })
+    for (const directory of new Set([configDirectory, dataDirectory, stateDirectory])) {
+      mkdirSync(directory, { recursive: true, mode: 0o700 })
     }
   }
   const configPath = readOnly
-    ? resolve(dataDirectory, 'config.env')
-    : ensureUserConfig(dataDirectory)
+    ? resolve(configDirectory, 'config.env')
+    : ensureUserConfig(configDirectory)
   const userModelPath = readOnly
     ? resolve(dataDirectory, 'USER.md')
     : ensureUserModel(dataDirectory)
   const assistantProfilePath = readOnly
-    ? resolve(dataDirectory, 'ASSISTANT.md')
+    ? resolve(configDirectory, 'ASSISTANT.md')
     : ensureAssistantProfile(
-        dataDirectory,
+        configDirectory,
         resolve(root, 'config/frontend-agent/ASSISTANT.md'),
       )
   const frontendMemoryPath = readOnly
     ? resolve(dataDirectory, 'MEMORY.md')
     : ensureLongTermMemory(dataDirectory)
-  const legacyFrontendMemoryPath = resolve(dataDirectory, 'frontend-memory.json')
   const frontendNotesPath = resolve(dataDirectory, 'frontend-notes.json')
-  const taskStatePath = resolve(configDirectory, 'tasks.json')
+  const taskStatePath = resolve(stateDirectory, 'tasks.json')
   const backendWorkspaces = resolveBackendWorkspaces(
     env,
     root,
-    dataDirectory,
+    sharedWorkspace,
   )
-  const sharedWorkspace = defaultBackendWorkspace(dataDirectory)
   const workspace = id => backendWorkspaces[id]?.directory || ''
   const openCodeWorkspace = workspace('opencode')
   const openClawWorkspace = workspace('openclaw')
   const qoderWorkspace = workspace('qoder')
   const qwenCodeWorkspace = workspace('qwen')
+  const minimaxWorkspace = workspace('minimax')
   const kimiWorkspace = workspace('kimi')
   const hermesWorkspace = workspace('hermes')
   const codeBuddyWorkspace = workspace('codebuddy')
@@ -398,22 +312,8 @@ export function loadRuntimeEnvironment({
   const acpWorkspace = workspace('acp')
   const openClawStateDirectory = env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR
     ? resolve(root, env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR)
-    : resolve(configDirectory, 'backends/openclaw/state')
-  let migratedFiles = []
+    : resolve(stateDirectory, 'backends/openclaw')
   if (prepareBackendRuntime && !readOnly) {
-    migratePrivateFile(
-      resolve(root, 'runtime/frontend-memory.json'),
-      legacyFrontendMemoryPath,
-    )
-    if (migrateLegacyMemory({
-      legacyPath: legacyFrontendMemoryPath,
-      memoryPath: frontendMemoryPath,
-      userModelPath,
-      ownerId: env.QWEN_AUDIO_AGENT_PERSONAL_OWNER_ID || 'user_personal',
-      configDirectory: dataDirectory,
-    })) {
-      migratedFiles.push(frontendMemoryPath, userModelPath)
-    }
     for (const entry of Object.values(backendWorkspaces)) {
       if (entry.managed) {
         mkdirSync(entry.directory, { recursive: true, mode: 0o700 })
@@ -422,18 +322,12 @@ export function loadRuntimeEnvironment({
     }
     mkdirSync(openClawStateDirectory, { recursive: true, mode: 0o700 })
     env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR = openClawStateDirectory
-    migratedFiles.push(...[
-      [resolve(root, 'runtime/tasks.json'), taskStatePath],
-    ].filter(([legacyPath, targetPath]) => (
-      migratePrivateFile(legacyPath, targetPath)
-    )).map(([, targetPath]) => targetPath))
   }
   const secret = generateSecret && !readOnly
-    ? ensureGeneratedSecret(env, dataDirectory)
-    : { generated: false, statePath: null }
+    ? ensureGeneratedSecret(env, configDirectory)
+    : { generated: false, identityPath: null }
   return {
-    configDirectory,
-    dataDirectory,
+    ...paths,
     configPath,
     assistantProfilePath,
     userModelPath,
@@ -445,6 +339,7 @@ export function loadRuntimeEnvironment({
     openClawWorkspace,
     qoderWorkspace,
     qwenCodeWorkspace,
+    minimaxWorkspace,
     kimiWorkspace,
     hermesWorkspace,
     codeBuddyWorkspace,
@@ -453,10 +348,9 @@ export function loadRuntimeEnvironment({
     piWorkspace,
     acpWorkspace,
     openClawStateDirectory,
-    migratedFiles,
     loadedFiles,
     generatedSecret: secret.generated,
-    statePath: secret.statePath,
+    identityPath: secret.identityPath,
   }
 }
 

@@ -1,8 +1,8 @@
 import {
   DEFAULT_DELIVERY_ADDRESS,
 } from './tools/flashbuy/catalog.mjs'
-import { SONGS } from './tools/music/catalog.mjs'
-import { DEFAULT_ORIGIN } from './tools/navigation/catalog.mjs'
+import { MUSIC_SOURCES, SONGS } from './tools/music/catalog.mjs'
+import { DEFAULT_VEHICLE_LOCATION } from './vehicle-location.mjs'
 
 const DEFAULT_COCKPIT_ID = 'default'
 
@@ -27,11 +27,48 @@ export function createInitialCockpitState(now = Date.now()) {
       windowRR: 0,
       sunroof: 0,
       headlights: 0,
+      flashLightsCount: 0,
+      lastSoundAction: null,
+      hornCount: 0,
+      boomboxSound: null,
       ac: 1,
       acTemp: 25,
+      passengerTemp: 25,
+      rearTemp: 25,
       acMode: 'cool',
       acFan: 3,
+      preconditioning: 0,
+      frontTrunk: 0,
+      rearTrunk: 0,
+      chargePort: 0,
+      charging: 0,
+      chargeLimit: 80,
+      chargingAmps: 16,
+      chargeMode: 'standard',
+      chargeSchedules: [],
+      seatHeating: {
+        driver: 0,
+        passenger: 0,
+        rearLeft: 0,
+        rearRight: 0,
+      },
+      seatCooling: {
+        driver: 0,
+        passenger: 0,
+        rearLeft: 0,
+        rearRight: 0,
+      },
+      autoSeatClimate: {
+        driver: 0,
+        passenger: 0,
+        rearLeft: 0,
+        rearRight: 0,
+      },
+      steeringWheelHeater: 0,
+      steeringWheelHeatLevel: 0,
+      autoSteeringWheelHeat: 0,
     },
+    location: clone(DEFAULT_VEHICLE_LOCATION),
     navigation: {
       status: 'idle',
       destination: null,
@@ -52,11 +89,17 @@ export function createInitialCockpitState(now = Date.now()) {
         broadcastMode: 'standard',
       },
       viewMode: 'follow',
-      currentLocation: DEFAULT_ORIGIN.location,
     },
     music: {
       playing: false,
       currentIndex: 0,
+      source: 'qq_music',
+      sources: clone(MUSIC_SOURCES),
+      volume: 5,
+      volumeMax: 11,
+      volumeStep: 1,
+      muted: false,
+      favoriteIds: [],
       results: [],
       playlist: clone(SONGS),
     },
@@ -136,7 +179,7 @@ export class CockpitStateStore {
       type: 'cockpit.state.updated',
       cockpitId: id,
       version: state.version,
-      changed: Object.freeze(['vehicle', 'navigation', 'music', 'flashbuy', 'weather']),
+      changed: Object.freeze(['vehicle', 'location', 'navigation', 'music', 'flashbuy', 'weather']),
       state: this.snapshot(id),
     })
     for (const listener of this.listeners.get(id) || []) {

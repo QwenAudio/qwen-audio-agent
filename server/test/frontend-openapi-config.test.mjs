@@ -6,7 +6,7 @@ import test from 'node:test'
 import {
   loadFrontendOpenApiConfiguration,
   normalizeFrontendOpenApiConfiguration,
-} from '../src/providers/openapi/frontend-openapi-config.mjs'
+} from '../src/frontend/tools/openapi/frontend-openapi-config.mjs'
 
 function configuration(overrides = {}) {
   return {

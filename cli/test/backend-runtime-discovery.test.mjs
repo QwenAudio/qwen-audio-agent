@@ -87,7 +87,7 @@ function execute(script, target, env = {}, args = []) {
 
 function run(script, target, env = {}, args = []) {
   const result = execute(script, target, env, args)
-  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.status, 0, result.stderr || `Launcher terminated: ${result.signal || result.error || result.status}`)
   return readFileSync(target.capture, 'utf8').trim().split('\n')
 }
 
@@ -98,7 +98,7 @@ test('OpenCode auto mode prefers the user-installed command', {
   try {
     command(resolve(target.bin, 'opencode'), { version: '1.20.0' })
     command(resolve(target.bin, 'npx'))
-    assert.deepEqual(run('scripts/opencode-server.mjs', target, {
+    assert.deepEqual(run('scripts/runtime/opencode-server.mjs', target, {
       OPENCODE_RUNTIME: 'auto',
       OPENCODE_PORT: '4321',
     }), [
@@ -120,7 +120,7 @@ test('OpenCode auto mode downloads a pinned package when missing', {
   const target = fixture()
   try {
     command(resolve(target.bin, 'npx'))
-    assert.deepEqual(run('scripts/opencode-server.mjs', target, {
+    assert.deepEqual(run('scripts/runtime/opencode-server.mjs', target, {
       OPENCODE_RUNTIME: 'auto',
       OPENCODE_PORT: '4321',
       DASHSCOPE_API_KEY: 'test-key',
@@ -147,7 +147,7 @@ test('OpenCode auto mode replaces an incompatible version with the pinned packag
   try {
     command(resolve(target.bin, 'opencode'), { version: '1.1.53' })
     command(resolve(target.bin, 'npx'))
-    assert.deepEqual(run('scripts/opencode-server.mjs', target, {
+    assert.deepEqual(run('scripts/runtime/opencode-server.mjs', target, {
       OPENCODE_RUNTIME: 'auto',
       OPENCODE_PORT: '4321',
       DASHSCOPE_API_KEY: 'test-key',
@@ -181,7 +181,7 @@ test('OpenClaw auto mode prefers the user-installed command', {
     writeFileSync(userConfig, JSON.stringify({
       models: { providers: {} },
     }))
-    assert.deepEqual(run('scripts/openclaw.mjs', target, {
+    assert.deepEqual(run('scripts/runtime/openclaw.mjs', target, {
       OPENCLAW_RUNTIME: 'auto',
       OPENCLAW_CONFIG_PATH: userConfig,
     }, ['gateway', 'run']).slice(0, 3), [
@@ -193,27 +193,27 @@ test('OpenClaw auto mode prefers the user-installed command', {
       readFileSync(target.capture, 'utf8').trim().split('\n').at(-2),
       `OPENCLAW_CONFIG_PATH=${resolve(
         target.directory,
-        'config/backends/openclaw/state/gateway-18789/openclaw.json',
+        'config/state/backends/openclaw/gateway-18789/openclaw.json',
       )}`,
     )
     assert.equal(
       readFileSync(target.capture, 'utf8').trim().split('\n').at(-1),
       `OPENCLAW_STATE_DIR=${resolve(
         target.directory,
-        'config/backends/openclaw/state/gateway-18789',
+        'config/state/backends/openclaw/gateway-18789',
       )}`,
     )
     assert.equal(
       existsSync(resolve(
         target.directory,
-        'config/backends/openclaw/openclaw.json5',
+        'config/state/backends/openclaw/config/openclaw.json5',
       )),
       false,
     )
     assert.equal(
       existsSync(resolve(
         target.directory,
-        'config/workspaces/openclaw/AGENTS.md',
+        'config/data/workspace/AGENTS.md',
       )),
       false,
     )
@@ -232,7 +232,7 @@ test('OpenClaw auto mode prefers an explicit enterprise bundle', {
     command(resolve(target.bin, 'openclaw'), {
       version: 'OpenClaw 2026.6.33',
     })
-    assert.deepEqual(run('scripts/openclaw.mjs', target, {
+    assert.deepEqual(run('scripts/runtime/openclaw.mjs', target, {
       OPENCLAW_RUNTIME: 'auto',
       OPENCLAW_BUNDLE_BIN: bundle,
     }, ['acp']), [
@@ -260,7 +260,7 @@ test('OpenClaw auto mode preserves the user-installed version', {
       '',
     ].join('\n'))
     chmodSync(resolve(target.bin, 'npx'), 0o755)
-    assert.deepEqual(run('scripts/openclaw.mjs', target, {
+    assert.deepEqual(run('scripts/runtime/openclaw.mjs', target, {
       OPENCLAW_RUNTIME: 'auto',
       FAKE_OPENCLAW_PACKAGE_BIN: packageBinary,
       DASHSCOPE_API_KEY: 'test-key',
@@ -284,14 +284,16 @@ test('automatic fallback requires explicit Bailian setup', {
   try {
     command(resolve(openCode.bin, 'npx'))
     command(resolve(openClaw.bin, 'npx'))
-    const openCodeResult = execute('scripts/opencode-server.mjs', openCode, {
+    const openCodeResult = execute('scripts/runtime/opencode-server.mjs', openCode, {
       OPENCODE_RUNTIME: 'auto',
+      DASHSCOPE_API_KEY: '',
     })
     assert.notEqual(openCodeResult.status, 0)
     assert.match(openCodeResult.stderr, /requires DASHSCOPE_API_KEY/)
 
-    const openClawResult = execute('scripts/openclaw.mjs', openClaw, {
+    const openClawResult = execute('scripts/runtime/openclaw.mjs', openClaw, {
       OPENCLAW_RUNTIME: 'auto',
+      DASHSCOPE_API_KEY: '',
     }, ['acp'])
     assert.notEqual(openClawResult.status, 0)
     assert.match(openClawResult.stderr, /requires DASHSCOPE_API_KEY/)
@@ -314,7 +316,7 @@ test('OpenClaw auto mode downloads a pinned package when missing', {
       '',
     ].join('\n'))
     chmodSync(resolve(target.bin, 'npx'), 0o755)
-    assert.deepEqual(run('scripts/openclaw.mjs', target, {
+    assert.deepEqual(run('scripts/runtime/openclaw.mjs', target, {
       OPENCLAW_RUNTIME: 'auto',
       FAKE_OPENCLAW_PACKAGE_BIN: packageBinary,
       DASHSCOPE_API_KEY: 'test-key',
@@ -345,7 +347,7 @@ test('package mode uses pinned, configurable npm package versions', {
       '',
     ].join('\n'))
     chmodSync(resolve(openClaw.bin, 'npx'), 0o755)
-    assert.deepEqual(run('scripts/opencode-server.mjs', openCode, {
+    assert.deepEqual(run('scripts/runtime/opencode-server.mjs', openCode, {
       OPENCODE_RUNTIME: 'package',
       OPENCODE_PORT: '4321',
     }), [
@@ -358,7 +360,7 @@ test('package mode uses pinned, configurable npm package versions', {
       '--port',
       '4321',
     ])
-    assert.deepEqual(run('scripts/openclaw.mjs', openClaw, {
+    assert.deepEqual(run('scripts/runtime/openclaw.mjs', openClaw, {
       OPENCLAW_RUNTIME: 'package',
       RESOLVE_CAPTURE: resolverCapture,
       FAKE_OPENCLAW_PACKAGE_BIN: packageBinary,
@@ -397,7 +399,7 @@ test('Codex ACP prefers an installed adapter and pins its package fallback', {
     })
     command(resolve(packageRuntime.bin, 'codex'))
     command(resolve(packageRuntime.bin, 'npx'))
-    const installed = run('scripts/codex-acp.mjs', binary, {
+    const installed = run('scripts/runtime/codex-acp.mjs', binary, {
       CODEX_ACP_RUNTIME: 'auto',
     }, ['--help'])
     assert.deepEqual(installed.slice(0, 2), [
@@ -408,7 +410,7 @@ test('Codex ACP prefers an installed adapter and pins its package fallback', {
       installed.at(-2),
       `CODEX_PATH=${resolve(binary.bin, 'codex')}`,
     )
-    assert.deepEqual(run('scripts/codex-acp.mjs', packageRuntime, {
+    assert.deepEqual(run('scripts/runtime/codex-acp.mjs', packageRuntime, {
       CODEX_ACP_RUNTIME: 'package',
     }, ['--help']), [
       'npx',
@@ -434,7 +436,7 @@ test('Claude Code ACP prefers an installed adapter and pins its package fallback
     })
     command(resolve(packageRuntime.bin, 'claude'))
     command(resolve(packageRuntime.bin, 'npx'))
-    const installed = run('scripts/claude-code-acp.mjs', binary, {
+    const installed = run('scripts/runtime/claude-code-acp.mjs', binary, {
       CLAUDE_CODE_ACP_RUNTIME: 'auto',
     }, ['--help'])
     assert.deepEqual(installed.slice(0, 2), [
@@ -445,7 +447,7 @@ test('Claude Code ACP prefers an installed adapter and pins its package fallback
       installed.at(-1),
       `CLAUDE_CODE_EXECUTABLE=${resolve(binary.bin, 'claude')}`,
     )
-    assert.deepEqual(run('scripts/claude-code-acp.mjs', packageRuntime, {
+    assert.deepEqual(run('scripts/runtime/claude-code-acp.mjs', packageRuntime, {
       CLAUDE_CODE_ACP_RUNTIME: 'package',
     }, ['--help']), [
       'npx',
@@ -471,7 +473,7 @@ test('Pi ACP prefers an installed adapter and pins its package fallback', {
     })
     command(resolve(packageRuntime.bin, 'pi'))
     command(resolve(packageRuntime.bin, 'npx'))
-    const installed = run('scripts/pi-acp.mjs', binary, {
+    const installed = run('scripts/runtime/pi-acp.mjs', binary, {
       PI_ACP_RUNTIME: 'auto',
     }, ['--help'])
     assert.deepEqual(installed.slice(0, 2), [
@@ -485,7 +487,7 @@ test('Pi ACP prefers an installed adapter and pins its package fallback', {
       `PI_ACP_PI_COMMAND=${resolve(binary.bin, 'pi')}`,
     ])
     // An explicit PI_BIN outside PATH is forwarded to the adapter verbatim.
-    const explicit = run('scripts/pi-acp.mjs', binary, {
+    const explicit = run('scripts/runtime/pi-acp.mjs', binary, {
       PI_ACP_RUNTIME: 'auto',
       PI_BIN: '/opt/pi/bin/pi',
     }, ['--help'])
@@ -494,7 +496,7 @@ test('Pi ACP prefers an installed adapter and pins its package fallback', {
       'PI_ACP_PI_COMMAND=/opt/pi/bin/pi',
     ])
     // A user-provided PI_ACP_PI_COMMAND takes precedence over PI_BIN.
-    const overridden = run('scripts/pi-acp.mjs', binary, {
+    const overridden = run('scripts/runtime/pi-acp.mjs', binary, {
       PI_ACP_RUNTIME: 'auto',
       PI_BIN: '/opt/pi/bin/pi',
       PI_ACP_PI_COMMAND: '/usr/local/bin/pi',
@@ -503,7 +505,7 @@ test('Pi ACP prefers an installed adapter and pins its package fallback', {
       overridden.at(-1),
       'PI_ACP_PI_COMMAND=/usr/local/bin/pi',
     )
-    assert.deepEqual(run('scripts/pi-acp.mjs', packageRuntime, {
+    assert.deepEqual(run('scripts/runtime/pi-acp.mjs', packageRuntime, {
       PI_ACP_RUNTIME: 'package',
     }, ['--help']), [
       'npx',
@@ -523,7 +525,7 @@ test('Pi ACP accepts its adapter-native Pi command without PATH discovery', {
   const target = fixture()
   try {
     command(resolve(target.bin, 'pi-acp'), { capturePiBin: true })
-    const result = run('scripts/pi-acp.mjs', target, {
+    const result = run('scripts/runtime/pi-acp.mjs', target, {
       PI_ACP_RUNTIME: 'auto',
       PI_ACP_PI_COMMAND: '/opt/custom/pi',
     }, ['--help'])
@@ -548,17 +550,17 @@ test('external ACP adapters require the user backend to be installed', {
     command(resolve(codex.bin, 'codex-acp'))
     command(resolve(claude.bin, 'claude-code-acp'))
     command(resolve(pi.bin, 'pi-acp'))
-    const codexResult = execute('scripts/codex-acp.mjs', codex, {
+    const codexResult = execute('scripts/runtime/codex-acp.mjs', codex, {
       CODEX_ACP_RUNTIME: 'auto',
     })
     assert.notEqual(codexResult.status, 0)
     assert.match(codexResult.stderr, /Codex is not installed/)
-    const claudeResult = execute('scripts/claude-code-acp.mjs', claude, {
+    const claudeResult = execute('scripts/runtime/claude-code-acp.mjs', claude, {
       CLAUDE_CODE_ACP_RUNTIME: 'auto',
     })
     assert.notEqual(claudeResult.status, 0)
     assert.match(claudeResult.stderr, /Claude Code is not installed/)
-    const piResult = execute('scripts/pi-acp.mjs', pi, {
+    const piResult = execute('scripts/runtime/pi-acp.mjs', pi, {
       PI_ACP_RUNTIME: 'auto',
     })
     assert.notEqual(piResult.status, 0)
@@ -584,13 +586,13 @@ test('automatically configures explicit Bailian models for OpenCode and OpenClaw
       version: 'OpenClaw 2026.6.33',
       captureModels: true,
     })
-    const openCodeOutput = run('scripts/opencode-server.mjs', openCode, {
+    const openCodeOutput = run('scripts/runtime/opencode-server.mjs', openCode, {
       DASHSCOPE_API_KEY: 'test-key',
       QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen-custom',
     })
     assert.equal(openCodeOutput.at(-5), 'OPENCODE_MODEL=alibaba-cn/qwen-custom')
 
-    const openClawOutput = run('scripts/openclaw.mjs', openClaw, {
+    const openClawOutput = run('scripts/runtime/openclaw.mjs', openClaw, {
       DASHSCOPE_API_KEY: 'test-key',
       QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen-custom',
     }, ['gateway', 'run'])
@@ -600,16 +602,16 @@ test('automatically configures explicit Bailian models for OpenCode and OpenClaw
       'OPENCLAW_MODEL_ID=qwen-custom',
       `OPENCLAW_CONFIG_PATH=${resolve(
         openClaw.directory,
-        'config/backends/openclaw/openclaw.json5',
+        'config/state/backends/openclaw/config/openclaw.json5',
       )}`,
       `OPENCLAW_STATE_DIR=${resolve(
         openClaw.directory,
-        'config/backends/openclaw/state/gateway-18789',
+        'config/state/backends/openclaw/gateway-18789',
       )}`,
     ])
     assert.equal(existsSync(resolve(
       openClaw.directory,
-      'config/backends/openclaw/openclaw.json5',
+      'config/state/backends/openclaw/config/openclaw.json5',
     )), true)
   } finally {
     openCode.close()
@@ -632,12 +634,12 @@ test('preserves native OpenCode and OpenClaw configuration without a model overr
       captureModels: true,
     })
     assert.equal(
-      run('scripts/opencode-server.mjs', openCode, {
+      run('scripts/runtime/opencode-server.mjs', openCode, {
         DASHSCOPE_API_KEY: 'test-key',
       }).at(-5),
       'OPENCODE_MODEL=',
     )
-    assert.deepEqual(run('scripts/openclaw.mjs', openClaw, {
+    assert.deepEqual(run('scripts/runtime/openclaw.mjs', openClaw, {
       DASHSCOPE_API_KEY: 'test-key',
     }, ['gateway', 'run']).slice(-5), [
       'OPENCODE_MODEL=',
@@ -646,7 +648,7 @@ test('preserves native OpenCode and OpenClaw configuration without a model overr
       'OPENCLAW_CONFIG_PATH=',
       `OPENCLAW_STATE_DIR=${resolve(
         openClaw.directory,
-        'config/backends/openclaw/state/gateway-18789',
+        'config/state/backends/openclaw/gateway-18789',
       )}`,
     ])
   } finally {
@@ -671,13 +673,13 @@ test('isolates OpenClaw sessions while reusing user capability configuration', {
       models: { providers: { user: { models: [] } } },
     }))
 
-    const output = run('scripts/openclaw.mjs', target, {
+    const output = run('scripts/runtime/openclaw.mjs', target, {
       DASHSCOPE_API_KEY: 'test-key',
       OPENCLAW_PORT: '43210',
     }, ['gateway', 'run'])
     const runtimeState = resolve(
       target.directory,
-      'config/backends/openclaw/state/gateway-43210',
+      'config/state/backends/openclaw/gateway-43210',
     )
     assert.equal(
       output.at(-2),

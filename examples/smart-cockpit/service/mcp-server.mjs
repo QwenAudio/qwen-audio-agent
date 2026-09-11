@@ -17,6 +17,8 @@ export function createCockpitMcpServer({
   service,
   cockpitId = 'default',
   tools,
+  surface = 'unknown',
+  onToolCall,
 } = {}) {
   if (!service?.execute) throw new TypeError('Cockpit MCP server requires a cockpit service')
   if (!Array.isArray(tools)) throw new TypeError('Cockpit MCP server requires a scoped tool list')
@@ -34,6 +36,13 @@ export function createCockpitMcpServer({
       if (!tools.some(tool => tool.name === request.params.name)) {
         throw new Error(`Tool is not available on this MCP surface: ${request.params.name}`)
       }
+      onToolCall?.({
+        cockpitId,
+        surface,
+        name: request.params.name,
+        arguments: structuredClone(request.params.arguments || {}),
+        at: new Date().toISOString(),
+      })
       const output = await service.execute(
         request.params.name,
         request.params.arguments || {},

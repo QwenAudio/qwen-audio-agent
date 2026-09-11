@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { mkdtempSync, readFileSync, statSync, writeFileSync, readdirSync, rmSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
 import { main } from '../src/launcher.mjs'
+import {
+  createGatewayPairingCode,
+  encodeGatewayPairingCode,
+} from '../../shared/gateway/remote-access.mjs'
 import {
   showConfig,
   updateRealtimeModelConfig,
@@ -26,9 +30,13 @@ function harness({ ownsProcesses = false } = {}) {
       signalSource: new EventEmitter(),
       prepareEnvironment: () => ({
         configDirectory: '/home/user/.config/qwaudio',
-        dataDirectory: '/home/user/.config/qwaudio',
+        stateDirectory: '/home/user/.config/qwaudio/state',
+        cacheDirectory: '/home/user/.config/qwaudio/cache',
+        sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
+        dataDirectory: '/home/user/.config/qwaudio/data',
         configPath: '/home/user/.config/qwaudio/config.env',
       }),
+      refreshPath: () => {},
       inspectSetups: options => {
         calls.push(['setup', options])
         return {
@@ -55,6 +63,10 @@ function harness({ ownsProcesses = false } = {}) {
       acquireInstance: () => ({
         release: () => calls.push(['instance.release']),
       }),
+      createConnectionProfiles: () => ({
+        resolve: async () => null,
+        remove: async () => false,
+      }),
       prepareRuntime: async options => {
         calls.push(['runtime', options])
         return runtime
@@ -62,12 +74,45 @@ function harness({ ownsProcesses = false } = {}) {
       inspectGateway: async () => ({
         backend: { kind: 'opencode', ok: true },
       }),
+      createPairingTicket: async url => {
+        calls.push(['pair', url])
+        return {
+          code: 'PAIR-CODE',
+          expiresAt: Date.now() + 60_000,
+          gatewayUrl: 'https://voice.example.ts.net',
+        }
+      },
+      issueDeviceCredential: async (url, label, endpoint) => {
+        calls.push(['pair', url, label, endpoint])
+        return {
+          device: { id: 'device-one', label: 'Conversation client' },
+          connection_code: 'https://voice.example.ts.net/c#d.DIRECT-TOKEN',
+        }
+      },
+      waitForEndpoint: async url => {
+        calls.push(['endpoint.ready', url])
+        return {
+          backend: { kind: 'opencode', ok: true },
+          publicEndpoint: {
+            mode: 'tailnet',
+            state: 'ready',
+            endpoint: { url: 'https://voice.example.ts.net', secure: true },
+          },
+        }
+      },
+      listPairedDevices: async url => {
+        calls.push(['devices', url])
+        return { devices: [{ id: 'phone-one', label: 'Phone' }] }
+      },
+      revokePairedDevice: async (url, id) => {
+        calls.push(['revoke', url, id])
+      },
       manageService: async action => {
         calls.push(['service', action])
         return {
           installed: true,
           running: action !== 'stop' && action !== 'uninstall',
-          logPath: '/home/user/.config/qwaudio/logs/gateway.log',
+          logPath: '/home/user/.config/qwaudio/state/logs/gateway.log',
         }
       },
       waitForService: async url => {
@@ -334,6 +379,104 @@ test('installs, stops and reports the background Gateway service', async () => {
   ])
 })
 
+test('creates one portable Gateway connection code and QR', async () => {
+  const target = harness()
+  target.dependencies.renderPairingQr = async value => {
+    target.calls.push(['qr', value])
+    return '[compact QR]'
+  }
+  assert.equal(await main(['gateway', 'pair', '--name', 'AI Passport'], target.dependencies), 0)
+  assert.equal(target.calls[0][0], 'pair')
+  assert.equal(target.calls[0][2], 'AI Passport')
+  const output = target.calls.at(-1)[1]
+  assert.match(output, /扫码或复制连接：/)
+  assert.match(output, /\[compact QR\]/)
+  assert.match(output, /连接码（只显示这一次）：\nhttps:\/\/voice\.example\.ts\.net\/c#d\.DIRECT-TOKEN/)
+  assert.doesNotMatch(output, /qwaudio:\/\/connect#DIRECT-CODE/)
+  assert.match(output, /设备 ID：device-one/)
+
+  const proxied = harness()
+  assert.equal(await main([
+    'gateway', 'pair', '--endpoint', 'https://voice.example.com',
+  ], proxied.dependencies), 0)
+  assert.equal(proxied.calls[0][3], 'https://voice.example.com')
+
+  const machineReadable = harness()
+  assert.equal(await main(['gateway', 'pair', '--json'], machineReadable.dependencies), 0)
+  const json = JSON.parse(machineReadable.calls.at(-1)[1])
+  assert.equal(json.connection_code, 'https://voice.example.ts.net/c#d.DIRECT-TOKEN')
+  assert.equal('native_connection_code' in json, false)
+  assert.equal(json.device.id, 'device-one')
+})
+
+test('keeps the temporary v1 pairing code behind an explicit compatibility flag', async () => {
+  const target = harness()
+  target.dependencies.renderPairingQr = async () => '[legacy QR]'
+  assert.equal(await main(['gateway', 'pair', '--legacy'], target.dependencies), 0)
+  const output = target.calls.at(-1)[1]
+  assert.match(output, /旧版客户端扫码配对/)
+  assert.match(output, /qwaudio:\/\/connect\?v=1&gateway=/)
+  assert.match(output, /有效期至/)
+})
+
+test('lists and revokes paired clients directly under gateway', async () => {
+  const devices = harness()
+  assert.equal(await main(['gateway', 'devices'], devices.dependencies), 0)
+  assert.match(devices.calls.at(-1)[1], /phone-one/)
+
+  const revoked = harness()
+  assert.equal(await main(['gateway', 'revoke', 'phone-one'], revoked.dependencies), 0)
+  assert.deepEqual(revoked.calls.find(call => call[0] === 'revoke'), [
+    'revoke', 'http://127.0.0.1:3101', 'phone-one',
+  ])
+})
+
+test('waits for the system Tailnet endpoint when starting a Gateway', async () => {
+  const target = harness({ ownsProcesses: true })
+  assert.equal(await main(['gateway', '--tailnet'], target.dependencies), 17)
+  assert.equal(target.dependencies.env.QWEN_AUDIO_GATEWAY_TAILNET, '1')
+  assert.ok(target.calls.some(call => call[0] === 'endpoint.ready'))
+  assert.match(
+    target.calls.find(call => call[0] === 'stdout')[1],
+    /对外地址：https:\/\/voice\.example\.ts\.net/,
+  )
+})
+
+test('reports a configured frontend MCP failure in Gateway status', async () => {
+  const target = harness()
+  target.dependencies.inspectGateway = async () => ({
+    backend: { kind: 'opencode', ok: true },
+    frontendMcp: {
+      ok: false,
+      initialized: true,
+      tools: 0,
+      servers: [{ key: 'files', enabled: true, status: 'error' }],
+    },
+  })
+
+  assert.equal(await main(['gateway', 'status'], target.dependencies), 0)
+  const output = target.calls.find(call => call[0] === 'stdout')[1]
+  assert.match(output, /前台 MCP 异常/)
+})
+
+test('reports the public endpoint through the unified Gateway status', async () => {
+  const target = harness()
+  target.dependencies.inspectGateway = async () => ({
+    backend: { kind: 'opencode', ok: true },
+    publicEndpoint: {
+      mode: 'tailnet',
+      state: 'ready',
+      endpoint: { url: 'https://voice.example.ts.net', secure: true },
+    },
+  })
+
+  assert.equal(await main(['gateway', 'status'], target.dependencies), 0)
+  assert.match(
+    target.calls.find(call => call[0] === 'stdout')[1],
+    /对外地址：https:\/\/voice\.example\.ts\.net/,
+  )
+})
+
 test('passes the configured local Gateway host and port to its service', async () => {
   const target = harness()
   target.dependencies.env.QWEN_AUDIO_AGENT_URL = 'http://127.0.0.1:3200'
@@ -356,14 +499,78 @@ test('passes the configured local Gateway host and port to its service', async (
   assert.deepEqual(install[2].serviceEnvironment, {
     HOST: '127.0.0.1',
     PORT: '3200',
-    QWAUDIO_DATA_DIR: '/home/user/.config/qwaudio',
+    QWAUDIO_CONFIG_DIR: '/home/user/.config/qwaudio',
+    QWAUDIO_DATA_DIR: '/home/user/.config/qwaudio/data',
+    QWAUDIO_STATE_DIR: '/home/user/.config/qwaudio/state',
+    QWAUDIO_CACHE_DIR: '/home/user/.config/qwaudio/cache',
+    QWAUDIO_WORKSPACE: '/home/user/.config/qwaudio/data/workspace',
   })
+})
+
+test('persists the selected public endpoint mode in the Gateway service', async () => {
+  const target = harness()
+  target.dependencies.manageService = async (action, options) => {
+    target.calls.push(['service', action, options])
+    return { installed: true, running: true, logPath: null }
+  }
+
+  assert.equal(
+    await main(['gateway', 'install', '--tailnet'], target.dependencies),
+    0,
+  )
+  const install = target.calls.find(call => (
+    call[0] === 'service' && call[1] === 'install'
+  ))
+  assert.equal(install[2].serviceEnvironment.QWEN_AUDIO_GATEWAY_TAILNET, '1')
+  assert.equal(install[2].serviceMetadata.tailnet, true)
+})
+
+test('persists LAN publication and binds the Gateway to all interfaces', async () => {
+  const target = harness()
+  target.dependencies.manageService = async (action, options) => {
+    target.calls.push(['service', action, options])
+    return { installed: true, running: true, logPath: null }
+  }
+
+  assert.equal(
+    await main(['gateway', 'install', '--lan'], target.dependencies),
+    0,
+  )
+  const install = target.calls.find(call => (
+    call[0] === 'service' && call[1] === 'install'
+  ))
+  assert.equal(install[2].serviceEnvironment.HOST, '0.0.0.0')
+  assert.equal(install[2].serviceEnvironment.QWEN_AUDIO_GATEWAY_LAN, '1')
+  assert.equal(install[2].serviceMetadata.lan, true)
+})
+
+test('refreshes the shared process PATH before starting a background service', async () => {
+  const target = harness()
+  let refreshedEnv = null
+  target.dependencies.refreshPath = ({ env }) => {
+    refreshedEnv = env
+    env.PATH = '/stable/user/bin:/usr/bin'
+  }
+  target.dependencies.manageService = async (action, options) => {
+    target.calls.push(['service', action, options])
+    return { installed: true, running: true, logPath: null }
+  }
+
+  assert.equal(await main(['gateway', 'restart'], target.dependencies), 0)
+  assert.equal(refreshedEnv, target.dependencies.env)
+  const restart = target.calls.find(call => (
+    call[0] === 'service' && call[1] === 'restart'
+  ))
+  assert.equal(restart[2].serviceEnvironment.HOST, '127.0.0.1')
 })
 
 test('passes a custom shared profile directory to the background service', async () => {
   const target = harness()
   target.dependencies.prepareEnvironment = () => ({
-    configDirectory: '/home/user/.config/qwaudio-runtime',
+    configDirectory: '/home/user/.config/qwaudio-config',
+    stateDirectory: '/home/user/.config/qwaudio-runtime',
+    cacheDirectory: '/home/user/.config/qwaudio-cache',
+    sharedWorkspace: '/home/user/workspace',
     dataDirectory: '/home/user/.config/qwaudio-profile',
     configPath: '/home/user/.config/qwaudio-profile/config.env',
   })
@@ -428,6 +635,7 @@ test('does not confuse a foreground Gateway with the background service', async 
 
 test('connects TUI and WebUI without starting services', async () => {
   const tui = harness()
+  tui.dependencies.env.QWEN_AUDIO_AGENT_ACCESS_TOKEN = 'remote-token'
   assert.equal(
     await main(['tui', '--audio-mode', 'full'], tui.dependencies),
     11,
@@ -437,10 +645,86 @@ test('connects TUI and WebUI without starting services', async () => {
     'instance.release',
   ])
   assert.equal(tui.calls[0][1].audioMode, 'full')
+  assert.equal(tui.calls[0][1].accessToken, 'remote-token')
 
   const web = harness()
   assert.equal(await main(['webui'], web.dependencies), 13)
   assert.deepEqual(web.calls.map(call => call[0]), ['webui'])
+})
+
+test('pairs, reuses and forgets a remote TUI Gateway profile', async () => {
+  const clientDirectory = resolve('/client-connections')
+  const profiles = new Map()
+  const profileStore = {
+    resolve: async id => profiles.get(id) || null,
+    save: async (profile, credential) => {
+      profiles.set(profile.id, { profile, credential })
+      return profile
+    },
+    remove: async id => profiles.delete(id),
+  }
+  const pairingCode = encodeGatewayPairingCode(createGatewayPairingCode({
+    gatewayUrl: 'https://voice.example.test',
+    pairingCode: 'pair-once',
+    expiresAt: Date.now() + 60_000,
+  }))
+  const connected = harness()
+  connected.dependencies.env.QWAUDIO_TUI_DIR = clientDirectory
+  connected.dependencies.createConnectionProfiles = directory => {
+    assert.equal(directory, clientDirectory)
+    return profileStore
+  }
+  connected.dependencies.pairConnectionCode = async (decoded, options) => {
+    assert.equal(decoded.gateway_url, 'https://voice.example.test')
+    const profile = {
+      id: options.profileId,
+      gateway_url: decoded.gateway_url,
+      device_id: options.device.id,
+      credential_ref: `gateway/${options.device.id}`,
+      client_instance_id: options.clientInstanceId,
+    }
+    await options.profileStore.save(profile, 'paired-token')
+    return { profile, owner_id: 'user_personal' }
+  }
+  assert.equal(await main(['connect', pairingCode], connected.dependencies), 0)
+  assert.match(connected.calls.at(-1)[1], /voice\.example\.test/)
+
+  const tui = harness()
+  tui.dependencies.env.QWAUDIO_TUI_DIR = clientDirectory
+  tui.dependencies.createConnectionProfiles = directory => {
+    assert.equal(directory, clientDirectory)
+    return profileStore
+  }
+  tui.dependencies.acquireInstance = (directory, instanceKey) => {
+    assert.equal(directory, clientDirectory)
+    assert.equal(instanceKey, '/home/user/.config/qwaudio/state')
+    return { release() {} }
+  }
+  const prepare = tui.dependencies.prepareEnvironment
+  tui.dependencies.prepareEnvironment = options => {
+    assert.equal(options.readOnly, true, 'connecting a client must not initialize Gateway data')
+    return prepare(options)
+  }
+  let inspected = null
+  tui.dependencies.inspectGateway = async (url, accessToken) => {
+    inspected = { url, accessToken }
+    return { backend: { enabled: false } }
+  }
+  assert.equal(await main(['tui'], tui.dependencies), 11)
+  assert.deepEqual(inspected, {
+    url: 'https://voice.example.test',
+    accessToken: 'paired-token',
+  })
+  assert.equal(tui.calls[0][1].accessToken, 'paired-token')
+
+  const disconnected = harness()
+  disconnected.dependencies.env.QWAUDIO_TUI_DIR = clientDirectory
+  disconnected.dependencies.createConnectionProfiles = directory => {
+    assert.equal(directory, clientDirectory)
+    return profileStore
+  }
+  assert.equal(await main(['disconnect'], disconnected.dependencies), 0)
+  assert.equal(profiles.size, 0)
 })
 
 test('requires a running Gateway for client commands', async () => {
@@ -448,6 +732,47 @@ test('requires a running Gateway for client commands', async () => {
   target.dependencies.inspectGateway = async () => null
   await assert.rejects(main(['tui'], target.dependencies), /请先执行/)
   assert.deepEqual(target.calls, [])
+})
+
+test('client commands persist only in product-root/tui without initializing Gateway data', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-product-client-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const target = harness()
+  target.dependencies.env.QWAUDIO_CONFIG_DIR = directory
+  delete target.dependencies.prepareEnvironment
+  delete target.dependencies.createConnectionProfiles
+  delete target.dependencies.acquireInstance
+  const pairingCode = encodeGatewayPairingCode(createGatewayPairingCode({
+    gatewayUrl: 'https://voice.example.test',
+    pairingCode: 'fixture-ticket',
+    expiresAt: Date.now() + 60_000,
+  }))
+  target.dependencies.pairConnectionCode = async (decoded, options) => {
+    const profile = {
+      id: options.profileId,
+      gateway_url: decoded.gateway_url,
+      device_id: options.device.id,
+      credential_ref: `gateway/${options.device.id}`,
+      client_instance_id: options.clientInstanceId,
+    }
+    await options.profileStore.save(profile, 'fixture-credential')
+    return { profile, owner_id: 'user_personal' }
+  }
+
+  assert.equal(await main(['connect', pairingCode], target.dependencies), 0)
+  assert.deepEqual(readdirSync(directory), ['tui'])
+  const clientDirectory = join(directory, 'tui')
+  assert.deepEqual(readdirSync(clientDirectory).sort(), [
+    'gateway-client-credentials.json', 'gateway-connections.json',
+  ])
+  assert.equal(await main(['tui'], target.dependencies), 11)
+  assert.equal(readdirSync(clientDirectory).some(file => file.endsWith('.lock')), false)
+  assert.equal(await main(['disconnect'], target.dependencies), 0)
+  const connections = JSON.parse(readFileSync(join(clientDirectory, 'gateway-connections.json'), 'utf8'))
+  const credentials = JSON.parse(readFileSync(join(clientDirectory, 'gateway-client-credentials.json'), 'utf8'))
+  assert.deepEqual(connections.profiles, [])
+  assert.deepEqual(credentials.credentials, {})
+  assert.deepEqual(readdirSync(directory), ['tui'])
 })
 
 test('prints status and configuration without starting a service', async () => {
@@ -467,6 +792,9 @@ test('shows and sets the Gateway model without restarting it', async () => {
   const target = harness()
   target.dependencies.prepareEnvironment = () => ({
     configDirectory: '/home/user/.config/qwaudio',
+    stateDirectory: '/home/user/.config/qwaudio/state',
+    cacheDirectory: '/home/user/.config/qwaudio/cache',
+    sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
     configPath: '/home/user/.config/qwaudio/config.env',
   })
   target.dependencies.env = {
@@ -495,6 +823,9 @@ test('warns when an environment model overrides config set', async () => {
   const target = harness()
   target.dependencies.prepareEnvironment = () => ({
     configDirectory: '/home/user/.config/qwaudio',
+    stateDirectory: '/home/user/.config/qwaudio/state',
+    cacheDirectory: '/home/user/.config/qwaudio/cache',
+    sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
     configPath: '/home/user/.config/qwaudio/config.env',
   })
   target.dependencies.env = {
@@ -589,6 +920,9 @@ test('installs a backend through the injected installer', async () => {
     preparation = options
     return {
       configDirectory: '/home/user/.config/qwaudio',
+      stateDirectory: '/home/user/.config/qwaudio/state',
+      cacheDirectory: '/home/user/.config/qwaudio/cache',
+      sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
       configPath: '/home/user/.config/qwaudio/config.env',
     }
   }
@@ -701,6 +1035,23 @@ test('reports installer failures with a non-zero exit code', async () => {
   assert.match(output, /✗ Qoder 安装未完成：未找到 npm/)
 })
 
+test('doctor reads without starting runtime, installing backends or acquiring UI ownership', async () => {
+  const target = harness()
+  const prepare = target.dependencies.prepareEnvironment
+  target.dependencies.prepareEnvironment = options => {
+    assert.equal(options.readOnly, true)
+    return prepare(options)
+  }
+  target.dependencies.diagnose = async ({ options, environment }) => {
+    assert.equal(options.turnId, 'voice-1')
+    assert.ok(environment.configDirectory)
+    return { ok: false, checks: [{ id: 'gateway', status: 'error', summary: 'unavailable' }] }
+  }
+  assert.equal(await main(['doctor', '--json', '--turn', 'voice-1'], target.dependencies), 1)
+  assert.deepEqual(target.calls.map(call => call[0]), ['stdout'])
+  assert.equal(JSON.parse(target.calls[0][1]).ok, false)
+})
+
 test('prints a reusable read-only backend setup report', async () => {
   const target = harness()
   let preparation
@@ -708,6 +1059,9 @@ test('prints a reusable read-only backend setup report', async () => {
     preparation = options
     return {
       configDirectory: '/home/user/.config/qwaudio',
+      stateDirectory: '/home/user/.config/qwaudio/state',
+      cacheDirectory: '/home/user/.config/qwaudio/cache',
+      sharedWorkspace: '/home/user/.config/qwaudio/data/workspace',
       configPath: '/home/user/.config/qwaudio/config.env',
     }
   }

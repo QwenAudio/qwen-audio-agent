@@ -21,7 +21,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const projectRoot = resolve(fileURLToPath(import.meta.url), '../..')
 const enabled = process.env.QWEN_AUDIO_CONSUMER_PROBE === '1'
@@ -34,7 +34,7 @@ async function waitForLease(configDir, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
-      const lease = JSON.parse(readFileSync(join(configDir, 'gateway.lock'), 'utf8'))
+      const lease = JSON.parse(readFileSync(join(configDir, 'state/gateway.lock'), 'utf8'))
       if (lease.origin) return lease
     } catch {
       // Not written yet.
@@ -82,6 +82,15 @@ test('a consumer with only the declared dependencies can run the CLI and Gateway
   ], { cwd: consumer, encoding: 'utf8' })
   assert.equal(help.status, 0, `qwenaudio --help failed: ${help.stderr}`)
   assert.match(help.stdout, /qwenaudio/)
+
+  // TUI is loaded lazily by the CLI: --help alone cannot check its module
+  // graph. Import the installed entry without opening an audio device.
+  const tui = spawnSync(process.execPath, [
+    '--input-type=module',
+    '--eval',
+    `await import(${JSON.stringify(pathToFileURL(join(installedRoot(consumer), 'tui/src/index.mjs')).href)})`,
+  ], { cwd: consumer, encoding: 'utf8' })
+  assert.equal(tui.status, 0, `installed TUI import failed: ${tui.stderr}`)
 
   const sdk = spawnSync(process.execPath, [
     '--input-type=module',
@@ -166,7 +175,7 @@ test('a consumer with only the declared dependencies can run the CLI and Gateway
   gateway.kill('SIGTERM')
   await exited
   assert.throws(
-    () => readFileSync(join(configDir, 'gateway.lock')),
+    () => readFileSync(join(configDir, 'state/gateway.lock')),
     'a clean shutdown must release the lease',
   )
 
@@ -200,7 +209,7 @@ async function main() {
   const api = await audioAgent.load()
   assert.equal(typeof audioAgent.PRELOAD_PATH, 'string')
   for (const name of [
-    'createGatewayProcess', 'createSettingsStore', 'gatewaySetupStatus',
+    'createGatewayProcess', 'createSettingsStore', 'gatewaySetupStatus', 'resolveRuntimePaths',
     'importSkin', 'listSkins', 'effectiveOrbSkin', 'skinsDirectory',
     'bindOrbShell', 'createOrbWindow', 'createOrbPlacement',
     'desktopOrbUrl', 'DesktopPresence',
@@ -212,12 +221,13 @@ async function main() {
   // Settings are collected through the store, never through a file the host
   // names itself.
   const configDir = mkdtempSync(join(tmpdir(), 'qwaudio-embed-'))
-  const settings = api.createSettingsStore({ configDir })
+  const clientDir = mkdtempSync(join(tmpdir(), 'qwaudio-client-'))
+  const settings = api.createSettingsStore({ configDir, clientDir })
   assert.equal(settings.ready(), false)
   settings.save({ dashscopeApiKey: 'sk-embed-probe' })
   assert.equal(settings.ready(), true)
 
-  // Import a skin before the Gateway starts; the Gateway then serves it.
+  // The client owns skins; an embedding host can opt into read-only hosting.
   const skinSource = mkdtempSync(join(tmpdir(), 'qwaudio-skin-'))
   mkdirSync(join(skinSource, 'probe--host'), { recursive: true })
   writeFileSync(join(skinSource, 'probe--host', 'pet.json'), JSON.stringify({
@@ -229,7 +239,7 @@ async function main() {
     join(skinSource, 'probe--host', 'spritesheet.webp'),
     makeWebp(1536, 1872),
   )
-  const skinsRoot = api.skinsDirectory(configDir)
+  const skinsRoot = api.skinsDirectory(clientDir)
   const imported = await api.importSkin({
     source: join(skinSource, 'probe--host'),
     skinsRoot,
@@ -240,6 +250,7 @@ async function main() {
   // Host the Gateway as a child process; a plain Node host injects fork.
   const gateway = api.createGatewayProcess({
     configDir,
+    env: { ...process.env, QWEN_AUDIO_WEB_SKINS_DIR: skinsRoot },
     backend: 'none',
     preferredPort: 0,
     forkImpl: (entry, args, options) => fork(entry, args, {
@@ -251,7 +262,7 @@ async function main() {
   const health = await fetch(origin + '/api/health').then(res => res.json())
   assert.ok(health.capabilities.includes('web.skin-assets'))
   const petManifest = await fetch(origin + '/skins/probe--host/pet.json')
-  assert.equal(petManifest.status, 200, 'the Gateway must serve imported skins')
+  assert.equal(petManifest.status, 200, 'the Gateway must serve only the explicitly supplied client assets')
   const skinUrl = new URL(api.desktopOrbUrl(origin, { orbSkin: 'probe--host' }))
   assert.equal(skinUrl.searchParams.get('orbSkin'), 'probe--host')
   await gateway.stop()
@@ -265,6 +276,13 @@ main().then(() => process.exit(0), error => {
 `)
   const embed = spawnSync(process.execPath, ['embed-probe.cjs'], {
     cwd: consumer,
+    // The fixture starts unconfigured even when the developer shell has a key.
+    env: {
+      ...process.env,
+      QWEN_AUDIO_REALTIME_PROVIDER: 'dashscope',
+      QWEN_AUDIO_REALTIME_API_KEY: '',
+      DASHSCOPE_API_KEY: '',
+    },
     encoding: 'utf8',
     timeout: 120_000,
   })

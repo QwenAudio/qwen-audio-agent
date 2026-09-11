@@ -1,11 +1,11 @@
 # Gateway Client Protocol
 
 > Status: **Stable 6.0**<br>
-> Wire version: **6.0.0**<br>
+> Wire version: **7.0.0**<br>
 > Roadmap: [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
-> Current implementation sources of truth: `shared/gateway-client-protocol.mjs`, `server/src/client/client-event-router.mjs`, `server/src/client/client-command-runtime.mjs`, `shared/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
+> Current implementation sources of truth: `shared/protocol/gateway-client-protocol.mjs`, `server/src/client/client-event-router.mjs`, `server/src/client/client-command-runtime.mjs`, `shared/protocol/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
 
-This specification defines the implemented northbound boundary between qwen-audio-agent's Gateway and one active Client Environment. Current first-party clients use the 6.0 wire protocol; health-contract 5.x aliases remain temporarily available for compatibility.
+This specification defines the implemented northbound boundary between qwen-audio-agent's Gateway and one active Client Environment per authenticated owner. Current first-party clients use the 6.0 wire protocol; health-contract 5.x aliases remain temporarily available for compatibility.
 
 ## 1. Product boundary
 
@@ -23,11 +23,11 @@ The three roles are intentionally independent:
 - **Backend Agent** is the user's execution environment. Gateway reaches it only through `BackendPort`, implemented by ACP, A2A, or a custom adapter.
 - **Client Environment** owns I/O, rendering, playback, local UX, sensors, client state, user behavior, and actions available in the surrounding environment.
 
-TUI, WebUI, and Desktop Orb are first-party reference clients. OpenCode, Qwen Code, Pi, OpenClaw, remote A2A agents, and other integrations are reference backends. Neither list limits the framework.
+TUI, WebUI, and Desktop Orb are first-party reference clients. OpenCode, Qwen Code, MiniMax Code, Pi, OpenClaw, remote A2A agents, and other integrations are reference backends. Neither list limits the framework.
 
 ## 2. Invariants
 
-1. One Gateway instance accepts only one active Client connection at a time.
+1. One authenticated owner has only one active Client connection at a time. The default personal deployment has one owner, so its behavior remains single-Client.
 2. One WebSocket carries the Client's business traffic. A second context or observer socket is not introduced.
 3. Raw audio stays on the media fast path. Only committed semantic inputs enter semantic routing.
 4. Client **Events** describe what happened. Client **Actions** request that the environment do something and return a result.
@@ -38,6 +38,40 @@ TUI, WebUI, and Desktop Orb are first-party reference clients. OpenCode, Qwen Co
 9. Local mute, window layout, wake mechanism, and rendering remain client concerns unless they affect shared Gateway state.
 10. Existing behavior remains available through compatibility aliases until every first-party client has migrated and conformance coverage exists.
 
+### 2.1 Access boundary
+
+Gateway access is deliberately separate from GCP. Credentials authenticate a
+principal before `session.hello`; access tokens never appear in GCP envelopes,
+model context, Task events, or logs.
+
+- Loopback access remains zero-config and the Gateway still binds to
+  `127.0.0.1` by default.
+- Explicit `--lan` mode binds to `0.0.0.0` but advertises only the selected
+  physical-interface IPv4 `ws://` endpoint. It is for trusted LANs, never direct public exposure.
+- Remote HTTP and WebSocket access requires either a configured access token or
+  a revocable device token issued by the Gateway host.
+- A native Client sends `Authorization: Bearer <token>` in the WebSocket handshake.
+  A browser carries the same token through the WebSocket subprotocol.
+- Remote browser origins must be explicitly listed in
+  `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS`. Remote deployments should use a trusted
+  VPN or an HTTPS/WSS reverse proxy; direct public exposure is unsupported.
+- A configured token maps to one owner. The optional
+  `QWEN_AUDIO_AGENT_ACCESS_KEYS` JSON array can map independent tokens to
+  independent owners without changing GCP.
+
+The local operator can run `qwenaudio gateway pair` against a running Gateway.
+It directly creates one short, browser-compatible connection code containing the exact Gateway
+endpoint and a revocable device token; the same code opens the WebUI. Device tokens are persisted
+only as SHA-256 hashes and plaintext credentials are shown once; a native remote Client does not need
+an HTTPS token exchange. The browser shell exchanges its fragment token for an HttpOnly cookie.
+Local management endpoints list and revoke devices. The one-time pairing endpoints remain as a
+compatibility path.
+
+Host-management requests, including endpoint publication, device credential
+creation, and device administration, are outside the interactive GCP Session.
+They authenticate independently and never claim or replace the active Client
+lease.
+
 ## 3. Connection and negotiation
 
 The Client connects to `ws://<gateway>/api/realtime`. The first message is `session.hello`.
@@ -46,7 +80,7 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
 {
   "type": "session.hello",
   "event_id": "evt_client_1",
-  "protocol": { "min": "6.0.0", "max": "6.0.0" },
+  "protocol": { "min": "7.0.0", "max": "7.0.0" },
   "client": {
     "type": "desktop",
     "version": "1.12.0",
@@ -62,6 +96,8 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
     "conversation.history",
     "client.events",
     "session.output_voice",
+    "session.takeover",
+    "session.heartbeat",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ],
@@ -91,8 +127,12 @@ Gateway returns the selected version and capability intersection:
   "type": "session.ready",
   "event_id": "evt_gateway_1",
   "request_event_id": "evt_client_1",
-  "protocol_version": "6.0.0",
+  "protocol_version": "7.0.0",
   "session_id": "session_01",
+  "connection": {
+    "lease_generation": 7,
+    "replaced": false
+  },
   "capabilities": [
     "input.audio",
     "input.text",
@@ -103,6 +143,8 @@ Gateway returns the selected version and capability intersection:
     "conversation.history",
     "client.events",
     "session.output_voice",
+    "session.takeover",
+    "session.heartbeat",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ]
@@ -111,9 +153,13 @@ Gateway returns the selected version and capability intersection:
 
 Rules:
 
-- With an active Client, a new connection receives `client_occupied` and is closed.
-- The owner is released when the socket closes or its heartbeat expires.
-- No takeover, kick, concurrent observer, or multi-client arbitration exists in 6.0.
+- With an active Client, another Client for the same owner receives `client_occupied` and is closed by default.
+- A Client that negotiated `session.takeover` may set `connection.takeover: true` in `session.hello`. Gateway closes the previous Client and grants a new, monotonically increasing lease generation.
+- Reconnection from the same `client.instance_id` replaces its stale socket without requiring explicit takeover.
+- Owners are independent. Each owner still has exactly one active Client.
+- The lease is released when the socket closes or its heartbeat expires. Lease-generation fencing prevents a stale socket from releasing or mutating a newer lease.
+- A Client that negotiates `session.heartbeat` must answer each Gateway `session.ping` with a correlated `session.pong`. Application traffic also refreshes the lease. This avoids relying on WebSocket control frames that some reverse proxies do not preserve reliably.
+- No observer connection or concurrent multi-Client control exists in 6.0.
 - The Client must branch on negotiated capabilities, not product versions.
 - Protocol version, Client identity, and capabilities cannot change without reconnecting.
 - Version 6.0 defines no `context_source`, `integration`, or observer connection role. Vehicle buses, CRM feeds, sensors, and other context sources attach to the active Client Environment through client-side adapters; that Client validates and relays registered semantic events.
@@ -222,6 +268,8 @@ Use OpenAI Realtime terminology where the semantics match:
 | Event | Direction | Meaning |
 |---|---|---|
 | `input_audio_buffer.append` | C→G | Append input audio |
+| `input_image_buffer.append` | C→G | Append one JPEG frame to the live visual buffer |
+| `input_image_buffer.clear` | C→G | Discard any pending live visual frame |
 | `conversation.item.create` | C→G | Submit text, image, file, or mixed user input |
 | `response.cancel` | C→G | Interrupt the current response |
 | `response.created` | G→C | Response generation started |
@@ -232,6 +280,37 @@ Use OpenAI Realtime terminology where the semantics match:
 Gateway extensions include `turn.started`, `transcript.discard`, `playback.clear`, and playback receipts. `input_file` is a Gateway content-part extension, not an OpenAI Realtime standard part.
 
 User input is authoritative user intent and opens or supersedes a user turn. Client semantic events never impersonate user input.
+
+`input.image` and `input.image_buffer` are distinct negotiated capabilities.
+The former covers turn-bound image parts in `conversation.item.create`; the
+latter covers ephemeral visual frames aligned with the live audio session. A
+Gateway negotiates `input.image_buffer` only when the selected Realtime
+Provider transport implements it.
+
+```jsonc
+{
+  "type": "input_image_buffer.append",
+  "event_id": "evt_client_frame_18",
+  "occurred_at": 1787803060177,
+  "media_type": "image/jpeg",
+  "image": "<base64-jpeg>"
+}
+```
+
+Version 1 accepts JPEG only, limits the Base64 body to 256 KiB, and admits at
+most one frame per second. Frames update live visual context; they do not
+create a user turn, trigger a response, enter conversation history, or become
+backend attachments. A client sends `input_image_buffer.clear` when the user
+stops live vision or closes the camera so a provider cannot consume the last
+frame later. A transient disconnect or microphone state change only pauses
+client frame transmission; the client resumes it when transport is ready while
+preserving the user's live-vision intent. Session disconnect, sleep, input
+suspension, microphone mute, and provider replacement still clear Gateway-side
+pending visual state so a stale frame cannot survive the transport boundary.
+
+The Gateway event shape is provider-neutral. The Qwen Omni adapter maps it to
+the provider image buffer after audio has started; the MiniCPM-o adapter puts
+the latest frame in the next audio `input.append` as `video_frames`.
 
 ### 5.2 Client semantic events
 
@@ -359,9 +438,12 @@ whether the Gateway is rebuilding the upstream Realtime Session with the new
 voice. A Provider without session-voice support returns the correlated
 `output_voice_unsupported` error, so the Client never branches on Provider name.
 
-`permission.respond.decision` accepts `once`, `always`, or `reject`: allow only
-the current operation, always allow during the current frontend session, or
-reject only the current operation.
+`permission.respond.decision` accepts `task`, `always`, or `reject`: allow the
+current Task and its subsequent operations until completion, failure, or cancellation;
+allow subsequent requests across Tasks in the current frontend session; or reject
+the current operation. Gateway owns these grants and sends per-operation decisions
+to BackendPort. Grants are not persisted across Gateway restarts. Wire 7.0 replaces
+`once` with `task`; clients must use the updated schema, not reinterpret “allow once.”
 
 `task.create` carries an A2A-aligned `message.parts` value rather than a second plain-text-only objective field, so an explicit integration may submit text, file, or structured parts without importing an A2A Message object.
 
@@ -474,6 +556,18 @@ Routing modes are:
 
 `AgentDeliveryRuntime` owns user-speech blocking, response serialization, sleep deferral, retry, and playback acknowledgement. Realtime Provider adapters translate the delivery into their own wire protocol. Raw Client JSON is never pasted into a model prompt.
 
+Gateway-originated events that the frontend Agent must perceive use the same
+boundary. For example, after Realtime content is rejected, the Gateway excludes
+the failed turn, restores the connection, and then delivers
+`realtime.content_rejected`. The model receives only a sanitized instruction to
+ask the user to change topics; provider errors, error codes, and rejected source
+content never enter the replacement Session.
+
+A due reminder is likewise registered as the Gateway-owned system event
+`reminder.due`. Its bounded payload contains only the reminder content, scheduled
+time, recurrence, and timezone. Task and series identifiers remain in
+`AgentDelivery.correlation`; they are not copied into model-visible text.
+
 ## 7. Presence and sleep
 
 Both sleep modes converge on the same PresenceController and Client Action path, but only user-requested sleep requires a model Tool Call.
@@ -584,7 +678,7 @@ Health checks, static assets, installation, and settings remain host/operations 
 
 The stable 6.0 behavior is locked by tests covering:
 
-- global single-Client ownership, release, and heartbeat expiry;
+- owner-scoped single-Client ownership, explicit takeover, generation fencing, release, and heartbeat expiry;
 - version and capability negotiation;
 - `event_id`, `request_event_id`, and replay `sequence` semantics;
 - user input versus Client Event authority;
@@ -600,7 +694,7 @@ The stable 6.0 behavior is locked by tests covering:
 
 ## 13. Non-goals
 
-- Multi-user or multi-Client concurrency, observers, takeover, and kick semantics.
+- Concurrent controlling Clients for the same owner, observers, and arbitrary kick semantics.
 - Exposing Electron, React, CoreAudio, or a specific Client implementation in Gateway Core.
 - Treating ACP as the only backend protocol.
 - Allowing arbitrary Client data to become model instructions.

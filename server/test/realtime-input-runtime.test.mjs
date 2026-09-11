@@ -3,12 +3,14 @@ import test from 'node:test'
 import { InputAssetRegistry } from '../src/voice/input-asset-registry.mjs'
 import { RealtimeInputRuntime } from '../src/voice/realtime-input-runtime.mjs'
 import { RealtimeTurnState } from '../src/voice/realtime-turn-state.mjs'
-import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
+import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
 
 function harness({ responseOutcome } = {}) {
   const events = []
   const records = []
   const calls = []
+  const speechStarts = []
+  const speechStops = []
   const frontend = {
     cancel: () => calls.push(['cancel']),
     sendUserInput: async (parts, context) => {
@@ -48,9 +50,11 @@ function harness({ responseOutcome } = {}) {
       context,
     ]),
     reportFrontendError: error => calls.push(['reportFrontendError', error]),
+    onSpeechStarted: fields => speechStarts.push(fields),
+    onSpeechStopped: fields => speechStops.push(fields),
     createInputTurnId: () => 'text-1',
   })
-  return { runtime, turns, events, records, calls }
+  return { runtime, turns, events, records, calls, speechStarts, speechStops }
 }
 
 test('handles only provider input lifecycle events', () => {
@@ -64,7 +68,15 @@ test('handles only provider input lifecycle events', () => {
 })
 
 test('projects one voice turn from speech start through final transcript', () => {
-  const { runtime, turns, events, records, calls } = harness()
+  const {
+    runtime,
+    turns,
+    events,
+    records,
+    calls,
+    speechStarts,
+    speechStops,
+  } = harness()
 
   runtime.handleProviderEvent({
     type: 'input_audio_buffer.speech_started',
@@ -101,6 +113,14 @@ test('projects one voice turn from speech start through final transcript', () =>
   assert.equal(records.length, 1)
   assert.equal(records[0].content, '你好')
   assert.equal(records[0].source, 'voice-user')
+  assert.deepEqual(speechStops, [{
+    turnId: 'voice-1',
+    source: 'realtime_provider',
+  }])
+  assert.deepEqual(speechStarts, [{
+    turnId: 'voice-1',
+    source: 'realtime_provider',
+  }])
   assert.equal(
     calls.some(([name]) => name === 'ensurePermissionResponseFor'),
     true,

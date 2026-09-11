@@ -12,7 +12,7 @@ import {
   TOOLS,
 } from '../src/voice/realtime-provider.mjs'
 import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
-import { permissionReference } from '../src/voice/tools/permission-reference.mjs'
+import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-context.mjs'
 import {
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
@@ -26,9 +26,30 @@ const FRONTEND_TOOL_NAMES = [
   'cancel_agent_task',
   'get_agent_task_status',
   'get_current_time',
-  'memory',
   'notes',
 ]
+
+test('both realtime schemas omit unavailable tools and keep frontend-only reminders', () => {
+  const agentContext = { frontend: buildFrontendToolContext({
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+    disabledTools: ['notes'],
+    frontendRetrieval: { capabilities: () => ['web-search', 'url-fetch'] },
+  }) }
+  for (const provider of [REALTIME_PROVIDERS.qwen, REALTIME_PROVIDERS.s2s]) {
+    const session = provider.buildSession({ configured: false, agentContext })
+    const definitions = session.tools.map(tool => tool.function || tool)
+    const names = definitions.map(tool => tool.name)
+    assert.equal(names.includes('spawn_thinking'), false)
+    assert.equal(names.includes('notes'), false)
+    for (const name of ['web_search', 'fetch_url', 'get_agent_task_status', 'cancel_agent_task']) {
+      assert.equal(names.includes(name), true, name)
+    }
+    assert.deepEqual(
+      definitions.find(tool => tool.name === 'schedule_reminder').parameters.properties.type.enum,
+      ['reminder'],
+    )
+  }
+})
 
 test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
   assert.equal(SPAWN_THINKING_TOOL_NAME, 'spawn_thinking')
@@ -399,15 +420,15 @@ test('configures Qwen Audio Realtime with Smart Turn only', () => {
   )
   assert.deepEqual(
     permissionTool.function.parameters.required,
-    ['permission_id', 'decision'],
+    ['decision'],
   )
   assert.deepEqual(
     permissionTool.function.parameters.properties.decision.enum,
-    ['once', 'always', 'reject'],
+    ['task', 'always', 'reject'],
   )
   assert.match(
-    permissionTool.function.description,
-    /普通肯定表达选择 once.*以后都允许时选择 always/,
+    permissionTool.function.parameters.properties.decision.description,
+    /task.*普通肯定表达.*always.*用户明确要求.*reject/,
   )
 })
 
@@ -501,7 +522,7 @@ test('prefers a per-session output voice over the process-wide default', t => {
   assert.equal(session.voice, 'longanlufeng')
 })
 
-test('advertises Omni model vision without admitting unsupported visual transport', t => {
+test('advertises Omni realtime visual frame transport without claiming turn images', t => {
   const originalModel = config.audioModel
   t.after(() => {
     config.audioModel = originalModel
@@ -512,10 +533,9 @@ test('advertises Omni model vision without admitting unsupported visual transpor
   const frontend = createQwenFrontend()
 
   assert.equal(profile.modelCapabilities.imageInput, true)
-  assert.equal(profile.modelCapabilities.videoInput, false)
+  assert.equal(profile.modelCapabilities.videoInput, true)
   assert.equal(profile.transportCapabilities.imageInput, false)
-  assert.equal(profile.transportCapabilities.observationInput, false)
-  assert.equal(profile.transportCapabilities.nativeVideoInput, false)
+  assert.equal(profile.transportCapabilities.imageBufferInput, true)
   assert.equal(frontend.modelProfile, profile)
   assert.equal(frontend.modelCapabilities, profile.modelCapabilities)
   assert.equal(frontend.transportCapabilities, profile.transportCapabilities)
@@ -533,7 +553,7 @@ test('fails closed for an unknown DashScope model without inferring Omni behavio
 
   assert.equal(profile.family, 'unknown')
   assert.deepEqual(Object.values(profile.modelCapabilities), Array(7).fill(false))
-  assert.deepEqual(Object.values(profile.transportCapabilities), Array(5).fill(false))
+  assert.deepEqual(Object.values(profile.transportCapabilities), Array(4).fill(false))
   assert.deepEqual(session.modalities, [])
   assert.deepEqual(
     REALTIME_PROVIDERS.qwen.buildSpeakResponse('完成').modalities,
@@ -551,7 +571,7 @@ test('rejects an unknown DashScope model before opening its WebSocket', async t 
 
   await assert.rejects(
     frontend.connect(),
-    /不支持的 Realtime 模型.*qwen3\.5-omni-flash-realtime-future.*Qwen-Audio-Realtime/,
+    /不支持的 Realtime 模型.*qwen3\.5-omni-flash-realtime-future.*DashScope Realtime/,
   )
   assert.equal(frontend.ws, null)
 })
@@ -575,7 +595,7 @@ test('rejects malformed optional realtime model profiles', () => {
       ...valid,
       transportCapabilities: {
         ...valid.transportCapabilities,
-        observationInput: undefined,
+        imageBufferInput: undefined,
       },
     },
     { ...valid, sessionDefaults: null },
@@ -620,13 +640,13 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
   const active = describeActiveRealtime('dashscope')
 
   assert.equal(active.modelProfile.id, DASHSCOPE_OMNI_FLASH_REALTIME_MODEL)
-  assert.equal(active.label, 'Qwen-Audio-Realtime')
+  assert.equal(active.label, 'DashScope Realtime')
   assert.equal(active.modelProfile.label, 'Qwen3.5 Omni Flash Realtime')
   assert.equal(active.modelCapabilities.imageInput, true)
   assert.equal(active.transportCapabilities.imageInput, false)
   assert.equal(
     active.providers.find(provider => provider.key === 'dashscope')?.label,
-    'Qwen-Audio-Realtime',
+    'DashScope Realtime',
   )
   assert.deepEqual(
     active.providers.find(provider => provider.key === 'dashscope')
@@ -640,6 +660,8 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
   )
   assert.equal(REALTIME_PROVIDERS['speech-to-speech'].modelProfile, undefined)
   const s2s = describeActiveRealtime('speech-to-speech')
+  assert.equal(s2s.label, 'Speech-to-Speech')
+  assert.equal(s2s.model, 'default')
   assert.equal(s2s.modelProfile, null)
   assert.deepEqual(s2s.modelCatalog, [])
 })
@@ -745,6 +767,30 @@ test('adds an event id to realtime client events', () => {
   assert.equal(sent.audio, 'pcm')
 })
 
+test('sends an Omni image only after audio has established the realtime timeline', t => {
+  const originalModel = config.audioModel
+  t.after(() => {
+    config.audioModel = originalModel
+  })
+  config.audioModel = DASHSCOPE_OMNI_PLUS_REALTIME_MODEL
+  const frontend = createQwenFrontend()
+  const sent = []
+  frontend.ws = {
+    readyState: 1,
+    send: value => sent.push(JSON.parse(value)),
+  }
+
+  assert.equal(frontend.appendImage('jpeg-frame'), true)
+  assert.deepEqual(sent, [])
+  frontend.appendAudio('pcm')
+
+  assert.deepEqual(sent.map(event => event.type), [
+    'input_audio_buffer.append',
+    'input_image_buffer.append',
+  ])
+  assert.equal(sent[1].image, 'jpeg-frame')
+})
+
 test('isolates a provider with a different wire message shape', () => {
   const events = []
   let sent
@@ -835,6 +881,7 @@ test('uses a trusted session Assistant Profile without changing core policy', ()
 
 test('builds cache-friendly policy, identity, memory and reconnect context', () => {
   const prompt = buildFrontendInstructions({
+    frontend: { capabilities: ['memory'] },
     client: { timeZone: 'Asia/Shanghai', locale: 'zh-CN' },
     now: new Date('2026-07-23T04:00:00.000Z'),
     memories: [{
@@ -859,7 +906,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /不要只在当前对话中\s*临时遵从/)
   assert.match(prompt, /纠正本身就是\s*持久修改/)
   assert.match(prompt, /不要要求用户额外说“记住”或“以后”/)
-  assert.match(prompt, /“这次”、“今天”或“暂时”时才不保存/)
+  assert.match(prompt, /“这次”、“今天”或“暂时”[\s\S]*不保存为长期记忆/)
   assert.match(prompt, /清除冲突或归类错误的旧内容/)
   assert.match(prompt, /选择最直接且足够的处理方式/)
   assert.match(prompt, /`spawn_thinking` 声明能力范围[\s\S]*统一的执行入口/)
@@ -890,19 +937,17 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.doesNotMatch(prompt, /ASSISTANT\.md|USER\.md|MEMORY\.md/)
   assert.match(prompt, /# Voice interaction/)
   assert.match(prompt, /没有新信息时不要说话/)
-  assert.match(prompt, /不要规定用户未要求的具体工具/)
   assert.match(prompt, /最终结果会通过单独的结果上下文到达/)
   assert.doesNotMatch(prompt, /\[COMPLETE\]/)
   assert.doesNotMatch(prompt, /get_agent_tasks|reply_agent_permission/)
   assert.match(prompt, /respond_permission/)
   assert.match(prompt, /<permission_request>/)
-  assert.match(prompt, /原样使用请求中的 `permission_id`/)
   assert.match(prompt, /按 `respond_permission` 的契约处理/)
   assert.match(prompt, /调用前不要\s*口头确认/)
   assert.match(prompt, /不要仅凭对话历史推测当前状态/)
   assert.doesNotMatch(prompt, /<active_work>/)
   const memory = REALTIME_PROVIDERS.qwen
-    .buildSession({ configured: false })
+    .buildSession({ configured: false, agentContext: { frontend: { capabilities: ['memory'] } } })
     .tools.find(tool => tool.function.name === 'memory')
   assert.deepEqual(
     memory.function.parameters.properties.action.enum,
@@ -913,13 +958,19 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     ['user', 'memory', 'all'],
   )
   assert.doesNotMatch(memory.function.description, /ASSISTANT\.md|USER\.md|MEMORY\.md/)
-  assert.match(memory.function.description, /默认写入 user/)
-  assert.match(memory.function.description, /每次调用执行一个 read、append 或 replace/)
-  assert.match(memory.function.description, /多项持久修改时逐项调用/)
+  assert.match(memory.function.description, /长期个性化偏好与稳定事实/)
+  assert.doesNotMatch(memory.function.description, /座舱|车控|导航|闪购|张彬彬/)
+  assert.match(memory.function.parameters.properties.document.description, /user 保存称呼/)
+  assert.match(memory.function.parameters.properties.document.description, /memory 保存[\s\S]*长期事实/)
+  assert.match(memory.function.parameters.properties.action.description, /read[\s\S]*append[\s\S]*replace/)
+  assert.match(prompt, /自我介绍、陈述稳定个人事实[\s\S]*必须调用 `memory`/)
+  assert.match(prompt, /多项需要持久化的信息时必须全部处理/)
+  assert.match(memory.function.description, /不确定要修改的旧内容时先读取/)
+  assert.match(memory.function.parameters.properties.action.description, /append 新增一项.*replace.*一项/)
   assert.deepEqual(memory.function.parameters.required, ['action'])
   assert.deepEqual(
     Object.keys(memory.function.parameters.properties),
-    ['action', 'document', 'old_text', 'new_text', 'content'],
+    ['action', 'document', 'old_text', 'new_text', 'content', 'query'],
   )
   assert.equal(
     memory.function.parameters.properties.old_text.type,
@@ -933,7 +984,8 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     notes.function.parameters.properties.action.enum,
     ['lists', 'show', 'add', 'remove', 'clear', 'drop'],
   )
-  assert.match(notes.function.description, /破坏性操作/)
+  assert.match(notes.function.description, /清空或删除整个清单须由用户明确要求/)
+  assert.match(notes.function.parameters.properties.action.description, /clear[\s\S]*保留清单[\s\S]*drop 删除整个清单/)
   assert.deepEqual(notes.function.parameters.required, ['action'])
 
   const spawnThinking = REALTIME_PROVIDERS.qwen
@@ -942,6 +994,10 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
       tool.function.name === SPAWN_THINKING_TOOL_NAME
     ))
   assert.ok(spawnThinking.function.description.trim())
+  assert.match(
+    spawnThinking.function.parameters.properties.objective.description,
+    /保留执行方式及与既有工作的关系.*不要规定用户未要求的具体工具、Agent 或 Session/,
+  )
   assert.match(
     spawnThinking.function.parameters.properties.objective.description,
     /忠实、完整且自包含地转达用户要做什么及其明确约束/,
@@ -957,12 +1013,13 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     status.function.parameters.properties.list_all.type,
     'boolean',
   )
-  assert.match(status.function.description, /列出当前会话中的工作、定时任务和提醒/)
+  assert.match(status.function.description, /工作、定时任务或提醒/)
+  assert.match(status.function.parameters.properties.list_all.description, /当前用户[\s\S]*其他会话/)
   const cancel = REALTIME_PROVIDERS.qwen
     .buildSession({ configured: false })
     .tools.find(tool => tool.function.name === 'cancel_agent_task')
   assert.match(cancel.function.description, /定时任务或提醒/)
-  assert.match(cancel.function.description, /先调用 get_agent_task_status/)
+  assert.match(prompt, /先查询工作列表，再使用返回的准确 ID 取消/)
   assert.match(cancel.function.parameters.properties.task_id.description, /task_id/)
   assert.equal(cancel.function.parameters.properties.all.type, 'boolean')
   assert.match(
@@ -975,10 +1032,10 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
     summary: '查看系统内存',
   })
   const permissionText = permission.item.content[0].text
-  assert.match(permissionText, new RegExp(`permission_id=${permissionReference('permission-one')}`))
+  assert.match(permissionText, /permission_id=permission-one/)
   assert.match(permissionText, /task_id=task_42/)
   assert.doesNotMatch(permissionText, /authorization_id/)
-  assert.match(permission.response.instructions, /自然、简短地说明操作/)
+  assert.match(permission.response.instructions, /自然、简短地说明待执行的工作/)
   assert.match(permission.response.instructions, /是否同意授权/)
   assert.doesNotMatch(permission.response.instructions, /用一句完整的话/)
   assert.match(permission.response.instructions, /不要提供或要求复述固定口令/)
@@ -1932,6 +1989,9 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     perResponseInstructions: true,
     sessionOutputVoice: true,
     conversationItemIdEcho: true,
+    conversationItems: true,
+    clientResponses: true,
+    mutableSession: true,
   })
 })
 
@@ -2090,7 +2150,7 @@ test('retries immediately after a known automatic response becomes idle', async 
   frontend.settlePending(pending, { cancelled: true })
 })
 
-test('negotiates client audio rates without overriding speech-to-speech models', () => {
+test('negotiates client audio rates while keeping the server-selected speech-to-speech model', () => {
   const provider = REALTIME_PROVIDERS['speech-to-speech']
   const session = provider.buildSession({
     agentContext: {},
@@ -2102,7 +2162,7 @@ test('negotiates client audio rates without overriding speech-to-speech models',
   assert.equal(provider.outputSampleRate, 24000)
   assert.equal(provider.responseStartTimeoutMs, 60_000)
   assert.equal(createS2sFrontend().responseStartTimeoutMs, 60_000)
-  assert.equal(provider.model(), null)
+  assert.equal(provider.model(), 'default')
   assert.equal(provider.voice(), null)
   assert.equal(session.audio.input.format, undefined)
   assert.deepEqual(session.audio.output.format, {

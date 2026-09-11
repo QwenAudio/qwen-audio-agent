@@ -10,6 +10,15 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.9.0 adds host-issued direct WSS device connection codes. Conversation
+// Clients authenticate and run on one WS/WSS connection; the loopback HTTP
+// management plane remains available to the Gateway operator.
+// 5.8.0 adds capability-negotiated realtime visual frames over GCP and keeps
+// provider-specific image/audio encoding inside Realtime Provider adapters.
+// 5.7.0 adds authenticated remote Client access, one-time device pairing and
+// owner-scoped active Client takeover with generation fencing.
+// 5.6.0 adds a provider-neutral frontend memory control plane for replaceable
+// clients to list and edit the same documents used by Realtime.
 // 5.5.0 adds the GCP5 reference Client SDK, bounded Task-event replay, and
 // migrates first-party task/history/permission recovery to the WebSocket.
 // 5.4.0 adds GCP4 ClientActionPort request/result correlation and the shared
@@ -41,7 +50,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.5.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.9.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -64,6 +73,13 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // settings in the config directory, and a host names no setting and no file
   // of its own.
   'gateway.settings-store',
+  // Remote HTTP/WS access requires a configured or paired credential. Local
+  // access stays zero-config; pairing issues revocable device tokens without
+  // putting secrets into the Gateway Client Protocol.
+  'gateway.remote-access-pairing',
+  // A local operator can issue a revocable per-device token already wrapped
+  // with the exact WS/WSS endpoint. Clients need no HTTP pairing exchange.
+  'gateway.direct-device-connection',
   // qwen-audio-agent/electron: a CommonJS entry an Electron main process can
   // require, which loads every ESM contract.
   'host.electron-entry',
@@ -93,10 +109,17 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // Final assistant transcript events may carry bounded, normalized citations
   // collected from frontend retrieval tools during the same user turn.
   'messages.citations',
+  // GET/PATCH /api/memory lists and edits the provider-backed frontend memory
+  // documents used by Realtime; no storage implementation leaks to clients.
+  'frontend.memory-control',
   // WS /api/realtime plus the published event constants and schemas form the
   // replaceable Conversation Client boundary for audio, text, multimodal
   // input, transcripts, playback receipts, voice state and Task projections.
   'realtime.conversation-client-v1',
+  // Negotiated Web clients may append bounded JPEG visual frames alongside
+  // live audio. Gateway validates and throttles the provider-neutral stream;
+  // each Realtime Provider adapter owns its native image/audio wire shape.
+  'realtime.visual-input-buffer-v1',
   // session.hello/session.ready negotiate the stable 6.0 Client protocol;
   // 5.x connect and event names remain compatibility aliases through one
   // normalization layer.
@@ -117,6 +140,10 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // reconnection recovery. Replayable Task pushes carry monotonic sequence
   // numbers and session.replay provides a bounded page after a cursor.
   'realtime.gateway-client-protocol-v6-reference-client-replay',
+  // Active Client ownership is scoped by authenticated owner. A negotiated
+  // Client may explicitly replace that owner's current Client; monotonically
+  // increasing lease generations fence late messages and stale releases.
+  'realtime.gateway-client-protocol-v6-owner-takeover',
   // The orb shell contract ships: qwen-audio-agent/orb/preload plus
   // orb/main's bindOrbShell, so a host may run the floating orb form.
   'desktop.orb-shell',

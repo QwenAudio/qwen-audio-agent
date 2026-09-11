@@ -53,6 +53,7 @@ export class RealtimeProviderSession {
     this.frontend = null
     this.connectPromise = null
     this.pendingAudio = []
+    this.pendingImage = null
     this.scheduledReconnect = null
     this.connectedAt = 0
     this.blockedError = ''
@@ -108,11 +109,17 @@ export class RealtimeProviderSession {
   block(errorMessage) {
     this.blockedError = String(errorMessage || '')
     this.clearPendingAudio()
+    this.clearPendingImage()
     this.detach()
   }
 
   clearPendingAudio() {
     this.pendingAudio = []
+  }
+
+  clearPendingImage() {
+    this.pendingImage = null
+    this.frontend?.clearPendingImage?.()
   }
 
   cancelResponse() {
@@ -141,6 +148,15 @@ export class RealtimeProviderSession {
     if (!this.connectPromise && !this.scheduledReconnect) {
       this.ensure().catch(error => this.reportError(error))
     }
+  }
+
+  appendImage(image) {
+    if (this.ready) return this.frontend.appendImage(image)
+    this.pendingImage = image
+    if (!this.connectPromise && !this.scheduledReconnect) {
+      this.ensure().catch(error => this.reportError(error))
+    }
+    return true
   }
 
   ensure() {
@@ -189,6 +205,8 @@ export class RealtimeProviderSession {
         this.onConnected(createdFrontend)
         this.pendingAudio.forEach(audio => createdFrontend.appendAudio(audio))
         this.pendingAudio = []
+        if (this.pendingImage) createdFrontend.appendImage(this.pendingImage)
+        this.pendingImage = null
         this.onReady(createdFrontend)
       })
       .catch(error => {
@@ -202,6 +220,7 @@ export class RealtimeProviderSession {
         if (classification === 'fatal') {
           this.blockedError = error.message
           this.clearPendingAudio()
+          this.clearPendingImage()
         }
         if (classification !== 'capacity_busy') {
           this.onConnectionState({
@@ -234,6 +253,7 @@ export class RealtimeProviderSession {
     if (classification === 'fatal') {
       this.blockedError = error.message
       this.clearPendingAudio()
+      this.clearPendingImage()
       error.realtimeConnectionReported = true
     }
     if (classification !== 'inactivity' && classification !== 'capacity_busy') {
@@ -303,6 +323,10 @@ export class RealtimeProviderSession {
 
   detach({ clearAudio = true, notifyDisconnected = false } = {}) {
     if (clearAudio) this.clearPendingAudio()
+    // Visual frames are point-in-time context. Never carry one across a
+    // provider rebuild, even when reconnecting preserves queued microphone
+    // audio.
+    this.clearPendingImage()
     this.cancelReconnect()
     const staleFrontend = this.frontend
     this.frontend = null

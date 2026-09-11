@@ -3,7 +3,7 @@ import test from 'node:test'
 import { serviceAgentPrompt } from '../executor.mjs'
 import {
   A2ABackendAdapter,
-} from '../../../../server/src/backend/a2a-backend-adapter.mjs'
+} from '../../../../server/src/backend/adapters/a2a/backend-adapter.mjs'
 import { startCustomerServiceServer } from '../../service/server.mjs'
 import { CustomerService } from '../../service/service.mjs'
 import { startServiceAgentServer } from '../server.mjs'

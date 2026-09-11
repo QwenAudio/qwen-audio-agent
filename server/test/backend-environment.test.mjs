@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { backendEnvironment } from '../../shared/backend-environment.mjs'
+import { backendEnvironment } from '../../shared/backend/environment.mjs'
 
 const env = {
   PATH: '/usr/bin',
@@ -45,6 +45,19 @@ test('keeps each backend credential namespace isolated', () => {
     backendEnvironment('claude', { env }).DEEPSEEK_API_KEY,
     undefined,
   )
+})
+
+test('projects MiniMax Code variables without importing unrelated credentials', () => {
+  const projected = backendEnvironment('minimax', {
+    env: {
+      ...env,
+      MINIMAX_API_KEY: 'minimax-secret',
+    },
+  })
+  assert.equal(projected.MINIMAX_API_KEY, 'minimax-secret')
+  assert.equal(projected.ANTHROPIC_API_KEY, undefined)
+  assert.equal(projected.DEEPSEEK_API_KEY, undefined)
+  assert.equal(projected.QWEN_AUDIO_AGENT_AUTH_SECRET, undefined)
 })
 
 test('generic ACP forwards additional names only when explicitly requested', () => {

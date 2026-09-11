@@ -3,7 +3,7 @@ import {
   GatewayClientEvent,
   GatewayServerEvent,
   GatewayTaskEvent,
-} from '../realtime-events.mjs'
+} from './realtime-events.mjs'
 
 const values = object => Object.freeze(Object.values(object))
 
@@ -127,6 +127,7 @@ export const GatewayTaskSchema = z.object({
   ]),
   status: z.string().min(1),
   kind: z.string().min(1),
+  seriesId: z.string().min(1).optional(),
   parentTaskId: z.string().nullable().optional(),
   objective: z.string(),
   ownerId: z.string().optional(),
@@ -195,10 +196,17 @@ const GatewayClientPayloadSchemas = Object.freeze({
       resource: z.boolean().optional(),
     }).passthrough().optional(),
     clientStates: z.array(z.string().min(1)).optional(),
+    takeoverRequested: z.boolean().optional(),
   }).passthrough(),
   [GatewayClientEvent.AUDIO_APPEND]: z.object({
     audio: z.string().min(1),
   }).passthrough(),
+  [GatewayClientEvent.IMAGE_APPEND]: z.object({
+    image: z.string().min(1).max(256 * 1024),
+    media_type: z.literal('image/jpeg').default('image/jpeg'),
+    occurred_at: z.number().int().nonnegative().optional(),
+  }).passthrough(),
+  [GatewayClientEvent.IMAGE_CLEAR]: z.object({}).passthrough(),
   [GatewayClientEvent.TEXT_MESSAGE]: GatewayInputMessagePayloadSchema,
   [GatewayClientEvent.INPUT_MESSAGE]: GatewayInputMessagePayloadSchema,
   [GatewayClientEvent.PLAYBACK_STARTED]: z.object({
@@ -268,6 +276,18 @@ const GatewayVoicePayloadSchemas = Object.freeze({
   }).passthrough(),
   [GatewayServerEvent.TRANSCRIPT_DISCARD]: z.object({
     role: z.enum(['user', 'assistant']),
+  }).passthrough(),
+  [GatewayServerEvent.TOOL_CALL]: z.object({
+    callId: z.string().min(1),
+    name: z.string().min(1),
+    surface: z.enum(['frontend', 'backend']),
+    status: z.string().min(1),
+    arguments: z.unknown().optional(),
+    result: z.string().optional(),
+    durationMs: z.number().nonnegative().optional(),
+    responseId: z.string().optional(),
+    turnId: z.string().optional(),
+    taskId: z.string().optional(),
   }).passthrough(),
   [GatewayServerEvent.AGENT_ACTIVITY]: z.object({
     activity: z.string().min(1),

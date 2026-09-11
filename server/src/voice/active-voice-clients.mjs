@@ -3,7 +3,7 @@ export class ActiveVoiceClients {
     this.clients = new Map()
   }
 
-  activate(ownerId, client) {
+  activate(ownerId, client, { replace = false } = {}) {
     const key = String(ownerId || '')
     const previous = this.clients.get(key)
     if (previous === client) {
@@ -15,7 +15,7 @@ export class ActiveVoiceClients {
     // one is treated as absent. isAlive() is optional, so callers/tests that
     // omit it keep the original "previous always blocks" behaviour.
     const previousAlive = previous ? previous.isAlive?.() !== false : false
-    if (previous && previousAlive) {
+    if (previous && previousAlive && !replace) {
       return { granted: false, previous }
     }
     previous?.deactivate?.(client)

@@ -34,9 +34,7 @@ custom Gateway launchers; it does not add an `AGENT_PROTOCOL` value.
 Phone agents, hardware agents, HTTP services, or any non-ACP task runtime can
 implement `BackendPort` directly with the Backend Adapter SDK
 (`qwen-audio-agent/backend-adapter-sdk`). The SDK ships a shared conformance
-suite — the same one the built-in adapters run — and
-[`examples/backend-adapter/`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/backend-adapter)
-is a minimal working implementation.
+suite — the same one the built-in adapters run.
 
 → [Backend Adapter SDK](../reference/backend-adapter-sdk.md)
 
@@ -48,7 +46,7 @@ by the registry at startup and in tests.
 
 ### Ingredient 1: catalog entry (required)
 
-`shared/backend-catalog.mjs` holds the static metadata — identity, storage,
+`shared/backend/catalog.mjs` holds the static metadata — identity, storage,
 and onboarding. One entry describes:
 
 - `id` / `label` — the `AGENT_PROTOCOL` value and the display name.
@@ -70,7 +68,7 @@ and onboarding. One entry describes:
 
 ### Ingredient 2: agent driver (required)
 
-`server/src/agent/backends/<id>.mjs`, plus one import line in
+`server/src/backend/adapters/acp/drivers/<id>.mjs`, plus one import line in
 `registry.mjs`. The driver declares the capability contract and builds the
 runtime profile:
 
@@ -100,7 +98,7 @@ export const myBackendDriver = {
 ```
 
 All eight capability flags are required booleans — the registry validates
-the contract, and `backend-driver-registry.test.mjs` asserts every
+the contract, and `acp-driver-registry.test.mjs` asserts every
 advertised backend has a complete driver. A half-registered backend fails
 loudly at startup, never silently at runtime.
 
@@ -117,10 +115,10 @@ drivers (external-service support, custom spawn rules).
 1. Pick the path: ACP agent → Path 1 or 4; A2A agent → Path 2; anything
    else → Path 3.
 2. For a first-class backend: add the catalog entry in
-   `shared/backend-catalog.mjs`, add the agent driver and register it, and
+   `shared/backend/catalog.mjs`, add the agent driver and register it, and
    optionally add a runtime driver for custom process ownership.
 3. Run the contract tests — they are the gate:
-   `node --test server/test/backend-driver-registry.test.mjs` for ACP
+   `node --test server/test/acp-driver-registry.test.mjs` for ACP
    drivers, `node --test server/test/backend-adapter-sdk.test.mjs` for
    custom adapters.
 

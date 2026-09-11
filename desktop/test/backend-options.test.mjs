@@ -6,7 +6,7 @@ import {
   backendRuntimePhase,
   backendRuntimeReady,
   initialBackendSelection,
-} from '../src/backend-options.mjs'
+} from '../src/backend/options.mjs'
 
 function report(backends) {
   return { selected: '', readOnly: true, backends }

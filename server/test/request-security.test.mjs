@@ -28,6 +28,47 @@ test('rejects DNS rebinding and direct network access by default', () => {
   assert.equal(isAllowedOrigin({
     headers: { host: '192.168.1.20:3101' },
   }), false)
+  assert.equal(isAllowedOrigin({
+    headers: { host: '192.168.1.20:3101' },
+  }, { authenticatedRemote: true }), true)
+})
+
+test('rejects explicit invalid origins without granting the missing-header exception', () => {
+  const invalidOrigins = [
+    'null', '', ' ', null, 42, ['null'], ['http://localhost:3101'],
+    'not-an-origin', 'data:text/plain,test', 'file:///tmp/test',
+    'blob:http://localhost:3101/id', 'ftp://localhost:3101', 'ws://localhost:3101',
+    'http://localhost:3101/path', 'http://localhost:3101?query',
+    'http://localhost:3101#fragment', 'http://user:pass@localhost:3101',
+    'http://localhost:3101 https://attacker.example',
+  ]
+  for (const origin of invalidOrigins) {
+    for (const options of [
+      {}, { allowedOrigins: ['http://localhost:3101'] },
+      { authenticatedRemote: true }, { allowSecureSameOrigin: true },
+      { authenticatedRemote: true, trustedNativeClient: true },
+    ]) {
+      assert.equal(isAllowedOrigin({ headers: { host: 'localhost:3101', origin } }, options), false)
+    }
+  }
+})
+
+test('ignores malformed configured origins without throwing or trusting them', () => {
+  const options = { allowedOrigins: [
+    'null', 'not-an-origin', 'data:text/plain,test', 'file:///tmp/test',
+    'blob:https://voice.example.com/id', ['https://voice.example.com'],
+    'https://voice.example.com',
+  ] }
+  assert.equal(isAllowedOrigin({ headers: {
+    host: 'voice.example.com', origin: 'https://voice.example.com',
+  } }, options), true)
+  assert.equal(isAllowedOrigin({ headers: { host: 'attacker.example' } }, options), false)
+})
+
+test('requires a Host header even for authenticated native requests', () => {
+  for (const request of [{}, { headers: {} }, { headers: { host: '' } }]) {
+    assert.equal(isAllowedOrigin(request, { authenticatedRemote: true }), false)
+  }
 })
 
 test('allows only an explicitly configured reverse-proxy origin', () => {
@@ -54,5 +95,61 @@ test('allows only an explicitly configured reverse-proxy origin', () => {
     },
   }, {
     allowedOrigins: ['http://voice.example.com'],
+  }), false)
+})
+
+test('allows secure same-origin requests only for authenticated or pairing paths', () => {
+  const request = {
+    headers: {
+      host: 'voice.example.ts.net',
+      origin: 'https://voice.example.ts.net',
+    },
+  }
+  assert.equal(isAllowedOrigin(request), false)
+  assert.equal(isAllowedOrigin(request, { authenticatedRemote: true }), true)
+  assert.equal(isAllowedOrigin(request, { allowSecureSameOrigin: true }), true)
+  assert.equal(isAllowedOrigin({
+    headers: {
+      host: 'voice.example.ts.net',
+      origin: 'http://voice.example.ts.net',
+    },
+  }, { allowSecureSameOrigin: true }), false)
+})
+
+test('allows authenticated same-origin LAN browsers without trusting LAN DNS names', () => {
+  assert.equal(isAllowedOrigin({
+    headers: {
+      host: '192.168.1.20:3101',
+      origin: 'http://192.168.1.20:3101',
+    },
+  }, { authenticatedRemote: true }), true)
+  assert.equal(isAllowedOrigin({
+    headers: {
+      host: '192.168.1.20:3101',
+      origin: 'http://192.168.1.20:3101',
+    },
+  }, { allowLanSameOrigin: true }), true)
+  assert.equal(isAllowedOrigin({
+    headers: {
+      host: 'gateway.lan:3101',
+      origin: 'http://gateway.lan:3101',
+    },
+  }, { authenticatedRemote: true }), false)
+})
+
+test('allows the fixed mobile app origin only for an authenticated mobile device', () => {
+  const req = {
+    headers: {
+      host: 'gateway.example.test',
+      origin: 'https://qwaudio.local',
+    },
+  }
+  assert.equal(isAllowedOrigin(req, {
+    authenticatedRemote: true,
+    trustedNativeClient: true,
+  }), true)
+  assert.equal(isAllowedOrigin(req, {
+    authenticatedRemote: true,
+    trustedNativeClient: false,
   }), false)
 })

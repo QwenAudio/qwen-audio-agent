@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
-import { backendNames } from '../../shared/backend-catalog.mjs'
+import { backendNames } from '../../shared/backend/catalog.mjs'
 import {
   authenticationSupport,
   installBackend,
   installSupport,
   withInstallSupport,
-} from '../../shared/backend-install.mjs'
+} from '../../shared/backend/install.mjs'
 
 function fakeChild(code = 0, { stdout = [], stderr = [] } = {}) {
   const child = new EventEmitter()
@@ -86,6 +86,19 @@ test('npm steps report locked packages and honor package overrides', () => {
   assert.deepEqual(
     qwen.steps.map(step => step.display),
     ['npm install -g @qwen-code/qwen-code@0.21.6'],
+  )
+
+  const minimax = installSupport('minimax', { env: {}, platform: 'darwin' })
+  assert.equal(minimax.supported, true)
+  assert.equal(minimax.requiresConfirmation, false)
+  assert.deepEqual(
+    minimax.steps.map(step => step.display),
+    ['npm install -g @minimax-ai/code@0.3.7'],
+  )
+  const minimaxWin = installSupport('minimax', { env: {}, platform: 'win32' })
+  assert.deepEqual(
+    minimaxWin.steps.map(step => step.display),
+    ['npm install -g @minimax-ai/code@0.3.7'],
   )
 
   const harness = installSupport('deepseek', {

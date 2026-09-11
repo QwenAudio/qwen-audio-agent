@@ -17,7 +17,7 @@ const omniModelCapabilities = {
   textInput: true,
   audioInput: true,
   imageInput: true,
-  videoInput: false,
+  videoInput: true,
   textOutput: true,
   audioOutput: true,
   functionCalling: true,
@@ -27,8 +27,7 @@ const omniTransportCapabilities = {
   textInput: true,
   audioInput: true,
   imageInput: false,
-  observationInput: false,
-  nativeVideoInput: false,
+  imageBufferInput: true,
 }
 
 const omniSessionDefaults = {
@@ -77,8 +76,7 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
         textInput: true,
         audioInput: true,
         imageInput: false,
-        observationInput: false,
-        nativeVideoInput: false,
+        imageBufferInput: false,
       },
     },
     {
@@ -99,8 +97,7 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
         textInput: true,
         audioInput: true,
         imageInput: false,
-        observationInput: false,
-        nativeVideoInput: false,
+        imageBufferInput: false,
       },
     },
   ])
@@ -117,12 +114,12 @@ test('resolves Omni and Audio Flash and Plus profiles by exact model id', () => 
   }
   assert.equal(
     resolveDashScopeRealtimeModelProfile(OMNI_PLUS_ID).modelCapabilities.videoInput,
-    false,
+    true,
   )
   assert.equal(
     resolveDashScopeRealtimeModelProfile(OMNI_PLUS_ID)
-      .transportCapabilities.nativeVideoInput,
-    false,
+      .transportCapabilities.imageBufferInput,
+    true,
   )
 })
 
@@ -187,8 +184,7 @@ test('fails closed for unknown model ids without name-based capability inference
     textInput: false,
     audioInput: false,
     imageInput: false,
-    observationInput: false,
-    nativeVideoInput: false,
+    imageBufferInput: false,
   })
   assert.equal(Object.isFrozen(profile.modelCapabilities), true)
   assert.equal(Object.isFrozen(profile.transportCapabilities), true)

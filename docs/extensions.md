@@ -1,7 +1,7 @@
 # Extending qwen-audio-agent
 
-The runtime is generic; every scenario-specific behavior enters through a
-declared seam. This page maps the seams and points to the guide for each.
+This section is for developers integrating clients, voice services, Backend Agents, or knowledge systems through existing extension interfaces.
+To configure built-in capabilities, start with [Configuration](configuration.md) and [Quickstart](getting-started/quickstart.md).
 
 ## Frontend Tools: MCP, OpenAPI, Profiles
 
@@ -24,10 +24,14 @@ registry.
 
 ## Knowledge: Retrieval Provider
 
-The Gateway defines a small retrieval boundary instead of shipping a RAG
-stack — connect the knowledge system you already operate.
+The Gateway provides a basic knowledge library behind a small Provider interface.
+Use it directly, or connect the knowledge system you already operate.
 
 → [Knowledge Retrieval Provider](reference/knowledge.md)
+
+The [LightRAG integration example](scenarios/lightrag.md) shows how to connect a complete,
+independently deployed knowledge system while leaving its models, indexes, and data under
+LightRAG's control.
 
 ## Backend: Connect a New Agent
 
@@ -41,20 +45,26 @@ Backend Adapter SDK, or a first-class backend with one-click install.
 
 ## Persona and Memory
 
-The assistant's name, personality, and voice live in `ASSISTANT.md`; durable
-user facts live in `USER.md` / `MEMORY.md`. All are plain Markdown in the
-config directory, editable while the gateway keeps its constrained write path.
+The default assistant name, personality, and expression style live in `ASSISTANT.md`; output voice is configured separately.
+The default Markdown provider stores user preferences and durable facts in `USER.md` /
+`MEMORY.md`; configure the optional VoiceMem connector, or replace the
+provider with another memory engine, without changing the voice runtime.
 
 → [Assistant Profile and User Preferences](reference/personalization.md) ·
-[Long-Term Memory](reference/memory.md)
+[Memory Provider](reference/memory-provider.md)
+
+VoiceMem installation and configuration example:
+[`examples/voicemem`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem).
 
 ## Client: Build Your Own
 
 The Gateway speaks typed events over a single WebSocket. Build a custom client
 against the client protocol, or embed the assistant into a host page through
 the stability contract — the same channel the desktop orb, TUI, and WebUI use.
-[`examples/custom-conversation-client/`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/custom-conversation-client)
-is a minimal starting point.
+
+The [AI Passport voice client example](scenarios/ai-passport.md) connects Qwen
+Voice Bean to the Gateway through a LAN relay. It currently supports half-duplex
+only; firmware and audio drivers are maintained in the external project.
 
 → [Gateway Client Protocol](gateway-protocol.md) ·
 [Gateway Contract](contract.md)

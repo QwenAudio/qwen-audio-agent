@@ -1,14 +1,85 @@
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
 import WebSocket from 'ws'
 import { createGatewayApplication } from '../src/app/gateway-application.mjs'
+import { GATEWAY_CLIENT_REVOKED_CLOSE_CODE } from '../../shared/protocol/gateway-client-protocol.mjs'
+import { decodeGatewayDirectConnection } from '../../shared/gateway/remote-access.mjs'
 import { config } from '../src/core/config.mjs'
 import { createRealtimeProviderRegistry } from '../src/voice/providers/provider-registry.mjs'
 import { openAiCompatibleProtocol } from '../src/voice/providers/openai-compatible-protocol.mjs'
+import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
+import { SessionJournalRegistry } from '../src/session/session-journal-registry.mjs'
+import { TaskManager } from '../src/task/task-manager.mjs'
+import { TaskStore } from '../src/task/task-store.mjs'
+
+function createTestGatewayApplication(options = {}) {
+  // Application tests must never inherit the process-wide production task
+  // state. Besides making tests order-dependent, that used to write fixture
+  // work into ~/.config/qwaudio and later announce it to real voice clients.
+  const runtimeDirectory = mkdtempSync(join(tmpdir(), 'qwaudio-app-runtime-'))
+  const taskStore = options.taskStore || new TaskStore({
+    filePath: join(runtimeDirectory, 'tasks.json'),
+  })
+  const sessionJournal = options.sessionJournal || new SessionJournalRegistry({
+    directory: join(runtimeDirectory, 'sessions'),
+  })
+  const taskManager = options.taskManager || new TaskManager({
+    store: taskStore,
+    sessionJournal,
+  })
+  const application = createGatewayApplication({
+    agent: disabledBackend(),
+    publicEndpoint: null,
+    conversationSync: options.conversationSync || new ConversationSync(),
+    taskManager,
+    taskStore,
+    sessionJournal,
+    ...options,
+  })
+  const close = application.close
+  application.close = async () => {
+    try {
+      await close()
+    } finally {
+      rmSync(runtimeDirectory, { recursive: true, force: true })
+    }
+  }
+  return application
+}
+
+function requestJson({ port, path, method = 'GET', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      hostname: '127.0.0.1',
+      port,
+      path,
+      method,
+      headers: {
+        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        ...headers,
+      },
+    }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.on('end', () => {
+        const text = Buffer.concat(chunks).toString()
+        resolve({
+          status: response.statusCode,
+          headers: response.headers,
+          body: text ? JSON.parse(text) : null,
+        })
+      })
+    })
+    request.once('error', reject)
+    if (body !== undefined) request.write(JSON.stringify(body))
+    request.end()
+  })
+}
 
 function disabledBackend() {
   return {
@@ -34,6 +105,39 @@ function disabledBackend() {
   }
 }
 
+for (const shareClientAssets of [false, true]) {
+  test(`Gateway serves only explicitly shared client skins (enabled=${shareClientAssets})`, async t => {
+    const directory = mkdtempSync(join(tmpdir(), 'qwaudio-skin-ownership-'))
+    const dataDirectory = join(directory, 'gateway/data')
+    const clientSkins = join(directory, 'client/skins')
+    for (const root of [join(dataDirectory, 'skins'), clientSkins]) {
+      mkdirSync(join(root, 'probe'), { recursive: true })
+      writeFileSync(join(root, 'probe/pet.json'), JSON.stringify({ clientOwned: root === clientSkins }))
+    }
+    const application = createTestGatewayApplication({
+      config: {
+        ...config, host: '127.0.0.1', port: 0, dataDirectory,
+        webSkinsDirectory: shareClientAssets ? clientSkins : '',
+        gatewayAccessToken: '', gatewayAccessKeys: '',
+        gatewayDeviceStatePath: join(directory, 'devices.json'),
+      },
+      parentPort: null, autoStart: false, frontendMcp: null, frontendOpenApi: null,
+    })
+    t.after(async () => {
+      await application.close()
+      rmSync(directory, { recursive: true, force: true })
+    })
+    application.start()
+    if (!application.server.listening) await once(application.server, 'listening')
+    const { port } = application.server.address()
+    const result = await requestJson({ port, path: '/skins/probe/pet.json' })
+    assert.equal(result.status, shareClientAssets ? 200 : 404)
+    if (shareClientAssets) assert.deepEqual(result.body, { clientOwned: true })
+    const missing = await requestJson({ port, path: '/skins/missing/pet.json' })
+    assert.equal(missing.status, 404)
+  })
+}
+
 function customTaskAnnouncementRuntime() {
   const methods = names => Object.fromEntries(
     names.map(name => [name, () => {}]),
@@ -53,9 +157,327 @@ function customTaskAnnouncementRuntime() {
   }
 }
 
+test('protects remote HTTP access and completes one-time device pairing', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwa-app-access-'))
+  const accessToken = 'application-remote-access-token-over-24-characters'
+  const publicEndpointCalls = []
+  const publicEndpoint = {
+    status: () => ({
+      mode: 'tailnet',
+      state: 'ready',
+      endpoint: { url: 'https://voice.example.ts.net', secure: true },
+      error: null,
+    }),
+    start: async url => publicEndpointCalls.push(['start', url]),
+    close: async () => publicEndpointCalls.push(['close']),
+  }
+  const application = createTestGatewayApplication({
+    config: {
+      ...config,
+      host: '0.0.0.0',
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+      gatewayAccessToken: accessToken,
+      gatewayAccessKeys: '',
+      gatewayDeviceStatePath: join(directory, 'gateway-devices.json'),
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMcp: null,
+    frontendOpenApi: null,
+    publicEndpoint,
+  })
+  t.after(async () => {
+    await application.close()
+    rmSync(directory, { recursive: true, force: true })
+  })
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(publicEndpointCalls[0], ['start', `http://127.0.0.1:${port}`])
+
+  const denied = await requestJson({
+    port,
+    path: '/api/health',
+    headers: { Host: 'gateway.example.test' },
+  })
+  assert.equal(denied.status, 401)
+
+  const authenticated = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${accessToken}`,
+    },
+  })
+  assert.equal(authenticated.status, 200)
+  assert.match(authenticated.headers['set-cookie'][0], /HttpOnly/)
+  const remoteIssueDenied = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: { device: { label: 'must-not-exist' } },
+  })
+  assert.equal(remoteIssueDenied.status, 403)
+  const issued = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    // The CLI issues a generic native-client credential; the Capacitor shell
+    // still uses its fixed qwaudio.local origin with that connection code.
+    body: { device: { id: 'direct-phone', type: 'client', label: 'Direct Phone' } },
+  })
+  assert.equal(issued.status, 201)
+  assert.match(issued.body.device.id, /^device_/)
+  assert.equal('access_token' in issued.body, false)
+  const direct = decodeGatewayDirectConnection(issued.body.connection_code)
+  assert.equal(direct.websocket_url, 'wss://voice.example.ts.net/api/realtime')
+  assert.match(issued.body.connection_code, /^https:\/\/voice\.example\.ts\.net\/c#d\./)
+  assert.equal('browser_url' in issued.body, false)
+  assert.equal('native_connection_code' in issued.body, false)
+  const storedDevices = readFileSync(join(directory, 'gateway-devices.json'), 'utf8')
+  assert.equal(storedDevices.includes(direct.access_token), false)
+  const directAuthenticated = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${direct.access_token}`,
+    },
+  })
+  assert.equal(directAuthenticated.status, 200)
+  for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test', 'https://untrusted.example']) {
+    const deniedSession = await requestJson({
+      port,
+      path: '/api/access/session',
+      method: 'POST',
+      headers: { Host: 'voice.example.ts.net', Origin },
+      body: { token: direct.access_token },
+    })
+    assert.equal(deniedSession.status, 403)
+    assert.equal(deniedSession.headers['set-cookie'], undefined)
+  }
+  const browserSession = await requestJson({
+    port,
+    path: '/api/access/session',
+    method: 'POST',
+    headers: {
+      Host: 'voice.example.ts.net',
+      Origin: 'https://voice.example.ts.net',
+      'X-Forwarded-Proto': 'https',
+    },
+    body: { token: direct.access_token },
+  })
+  assert.equal(browserSession.status, 204)
+  assert.match(browserSession.headers['set-cookie'][0], /HttpOnly/)
+  assert.match(browserSession.headers['set-cookie'][0], /Secure/)
+  assert.doesNotMatch(browserSession.headers['set-cookie'][0], new RegExp(direct.access_token))
+  const browserAuthenticated = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'voice.example.ts.net',
+      Origin: 'https://voice.example.ts.net',
+      Cookie: browserSession.headers['set-cookie'][0].split(';')[0],
+    },
+  })
+  assert.equal(browserAuthenticated.status, 200)
+  const directSocket = new WebSocket(
+    `ws://127.0.0.1:${port}/api/realtime?sessionId=direct-device`,
+    {
+      headers: {
+        Host: 'gateway.example.test',
+        Authorization: `Bearer ${direct.access_token}`,
+        Origin: 'https://qwaudio.local',
+      },
+    },
+  )
+  await once(directSocket, 'open')
+  const directClosed = once(directSocket, 'close')
+  const directRevoked = await requestJson({
+    port,
+    path: `/api/access/devices/${issued.body.device.id}`,
+    method: 'DELETE',
+    headers: { Host: `127.0.0.1:${port}` },
+  })
+  assert.equal(directRevoked.status, 204)
+  assert.equal((await directClosed)[0], GATEWAY_CLIENT_REVOKED_CLOSE_CODE)
+  const directDeniedAfterRevocation = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${direct.access_token}`,
+    },
+  })
+  assert.equal(directDeniedAfterRevocation.status, 401)
+  for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test', 'file:///tmp/test']) {
+    const deniedOrigin = await requestJson({
+      port,
+      path: '/api/health',
+      headers: { Host: 'gateway.example.test', Authorization: `Bearer ${accessToken}`, Origin },
+    })
+    assert.equal(deniedOrigin.status, 403)
+    assert.deepEqual(deniedOrigin.body, { error: 'origin not allowed' })
+  }
+  const ticket = await requestJson({
+    port,
+    path: '/api/access/pairing-tickets',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: {},
+  })
+  assert.equal(ticket.status, 201)
+  assert.equal(ticket.body.gatewayUrl, 'https://voice.example.ts.net')
+  for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test']) {
+    const deniedPairing = await requestJson({
+      port,
+      path: '/api/access/pair',
+      method: 'POST',
+      headers: { Host: 'gateway.example.test', Origin },
+      body: { code: ticket.body.code, device: { id: 'untrusted-browser', type: 'web' } },
+    })
+    assert.equal(deniedPairing.status, 403)
+  }
+  // Rejected origins must not consume the one-time ticket.
+  const paired = await requestJson({
+    port,
+    path: '/api/access/pair',
+    method: 'POST',
+    headers: { Host: 'gateway.example.test' },
+    body: {
+      code: ticket.body.code,
+      device: { id: 'phone-one', type: 'mobile', label: 'Phone' },
+    },
+  })
+  assert.equal(paired.status, 200)
+  assert.equal(paired.body.device.id, 'phone-one')
+  assert.equal(typeof paired.body.access_token, 'string')
+  const replay = await requestJson({
+    port,
+    path: '/api/access/pair',
+    method: 'POST',
+    headers: { Host: 'gateway.example.test' },
+    body: { code: ticket.body.code },
+  })
+  assert.equal(replay.status, 401)
+
+  const remoteSocket = new WebSocket(
+    `ws://127.0.0.1:${port}/api/realtime?sessionId=paired-device`,
+    {
+      headers: {
+        Host: 'gateway.example.test',
+        Authorization: `Bearer ${paired.body.access_token}`,
+        Origin: 'https://qwaudio.local',
+      },
+    },
+  )
+  await once(remoteSocket, 'open')
+  const remoteClosed = once(remoteSocket, 'close')
+  const revoked = await requestJson({
+    port,
+    path: '/api/access/devices/phone-one',
+    method: 'DELETE',
+    headers: { Host: `127.0.0.1:${port}` },
+  })
+  assert.equal(revoked.status, 204)
+  const [closeCode] = await remoteClosed
+  assert.equal(closeCode, GATEWAY_CLIENT_REVOKED_CLOSE_CODE)
+
+  const deniedAfterRevocation = await requestJson({
+    port,
+    path: '/api/health',
+    headers: {
+      Host: 'gateway.example.test',
+      Authorization: `Bearer ${paired.body.access_token}`,
+    },
+  })
+  assert.equal(deniedAfterRevocation.status, 401)
+  assert.equal(publicEndpointCalls.some(call => call[0] === 'close'), false)
+})
+
+test('requires a declared public endpoint before issuing any connection code', async t => {
+  const application = createTestGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    frontendMcp: null,
+    frontendOpenApi: null,
+    publicEndpoint: {
+      status: () => ({ mode: 'none', state: 'disabled', endpoint: null }),
+      start: async () => {},
+      close: async () => {},
+    },
+  })
+  t.after(() => application.close())
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+  const response = await requestJson({
+    port,
+    path: '/api/access/pairing-tickets',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: {},
+  })
+  assert.equal(response.status, 409)
+  assert.equal(response.body.code, 'gateway_public_url_required')
+  const direct = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: { device: { label: 'No endpoint' } },
+  })
+  assert.equal(direct.status, 409)
+  assert.equal(direct.body.code, 'gateway_connection_endpoint_required')
+
+  const overridden = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: {
+      endpoint: 'https://voice.example.com',
+      device: { label: 'Proxy endpoint' },
+    },
+  })
+  assert.equal(overridden.status, 201)
+  assert.equal(
+    decodeGatewayDirectConnection(overridden.body.connection_code).websocket_url,
+    'wss://voice.example.com/api/realtime',
+  )
+
+  const unsafe = await requestJson({
+    port,
+    path: '/api/access/devices',
+    method: 'POST',
+    headers: { Host: `127.0.0.1:${port}` },
+    body: { endpoint: 'http://voice.example.com' },
+  })
+  assert.equal(unsafe.status, 400)
+  assert.equal(unsafe.body.code, 'gateway_connection_endpoint_unsafe')
+})
+
 test('passes the Task announcement factory through the application composition root', async () => {
   const calls = []
-  const application = createGatewayApplication({
+  let finishTask
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -72,6 +494,14 @@ test('passes the Task announcement factory through the application composition r
       return customTaskAnnouncementRuntime()
     },
   })
+  const task = application.services.taskManager.create({
+    objective: '验证实例级任务依赖',
+    ownerId: 'user_personal',
+    sessionId: 'announcement-factory',
+    notificationPolicy: 'silent',
+    runner: () => new Promise(resolve => { finishTask = resolve }),
+  })
+  await new Promise(resolve => setImmediate(resolve))
   application.start()
   if (!application.server.listening) await once(application.server, 'listening')
   const { port } = application.server.address()
@@ -83,7 +513,10 @@ test('passes the Task announcement factory through the application composition r
     assert.equal(calls.length, 1)
     assert.equal(typeof calls[0].resultOptions.getFrontend, 'function')
     assert.equal(typeof calls[0].progressOptions.isTaskActive, 'function')
+    assert.equal(calls[0].progressOptions.isTaskActive(task.id), true)
   } finally {
+    finishTask?.({ content: '完成' })
+    await application.services.taskManager.wait(task.id)
     socket.close()
     await application.close()
   }
@@ -145,7 +578,7 @@ test('constructs an injectable Gateway without binding a port on import', async 
     }),
     close: async () => { openApiClosed = true },
   }
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -225,7 +658,7 @@ test('serves the bounded conversation projection without exposing journal record
     },
     close: () => { closed = true },
   }
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -274,7 +707,7 @@ test('enables knowledge only when an external provider is injected', async () =>
     retrieve: async () => ({ results: [] }),
     close: async () => { closed = true },
   }
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -285,11 +718,14 @@ test('enables knowledge only when an external provider is injected', async () =>
     autoStart: false,
     agent: disabledBackend(),
     knowledgeProvider,
+    knowledgeRuntimeOptions: { timeoutMs: 45_000 },
     frontendMcp: null,
     frontendOpenApi: null,
   })
 
   assert.equal(application.services.knowledgeProvider, knowledgeProvider)
+  assert.equal(application.services.knowledgeLibrary, null)
+  assert.equal(application.services.frontendKnowledge.timeoutMs, 45_000)
   assert.deepEqual(application.services.frontendKnowledge.describe(), {
     configured: true,
     capabilities: ['knowledge'],
@@ -311,6 +747,11 @@ test('replaces Markdown memory through the public provider boundary', async () =
       protocolVersion: 1,
       key: 'external-memory',
       label: 'External Memory',
+      capabilities: {
+        semanticQuery: false,
+        sessionObservation: false,
+        audioStreamObservation: false,
+      },
     }),
     list: ownerId => [{
       id: `memory_${ownerId}`,
@@ -323,7 +764,7 @@ test('replaces Markdown memory through the public provider boundary', async () =
     health: () => ({ ok: true, external: true }),
     close: async () => { closed = true },
   }
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -346,6 +787,11 @@ test('replaces Markdown memory through the public provider boundary', async () =
       protocolVersion: 1,
       key: 'external-memory',
       label: 'External Memory',
+      capabilities: {
+        semanticQuery: false,
+        sessionObservation: false,
+        audioStreamObservation: false,
+      },
     },
   })
   assert.match(
@@ -360,14 +806,123 @@ test('replaces Markdown memory through the public provider boundary', async () =
       protocolVersion: 1,
       key: 'external-memory',
       label: 'External Memory',
+      capabilities: {
+        semanticQuery: false,
+        sessionObservation: false,
+        audioStreamObservation: false,
+      },
     },
   })
   await application.close()
   assert.equal(closed, true)
 })
 
-test('can disable memory without constructing the default provider', async () => {
+test('shutdown drains memory session observation and flush before closing its provider', async t => {
+  const observed = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  const calls = []
+  const application = createTestGatewayApplication({
+    config: {
+      ...config, port: 0, host: '127.0.0.1',
+      memoryAutoEnabled: false, preferenceLearningEnabled: false,
+      webSearchProvider: 'none',
+    },
+    autoStart: false, parentPort: null,
+    frontendMcp: null, frontendOpenApi: null,
+    frontendMemory: {
+      list: () => [],
+      ownsSessionObservation: () => true,
+      observe: async () => { calls.push('observe'); observed.resolve(); await release.promise },
+      flush: () => calls.push('flush'),
+      close: () => calls.push('close'),
+    },
+  })
+  let socket
+  t.after(async () => {
+    release.resolve()
+    socket?.terminate()
+    await application.close()
+  })
+  application.start()
+  await once(application.server, 'listening')
+  socket = new WebSocket(`ws://127.0.0.1:${application.server.address().port}/api/realtime?sessionId=drain-memory`)
+  await once(socket, 'open')
+  const closing = application.close()
+  await observed.promise
+  assert.deepEqual(calls, ['observe'])
+  release.resolve()
+  await closing
+  assert.deepEqual(calls, ['observe', 'flush', 'close'])
+})
+
+test('lets a v2 provider exclusively own automatic memory learning', async () => {
+  const memoryProvider = {
+    describe: () => ({
+      protocolVersion: 2,
+      key: 'managed-memory',
+      label: 'Managed Memory',
+      capabilities: { semanticQuery: true, sessionObservation: true },
+    }),
+    list: () => [],
+    apply: async () => ({ changed: 0, documents: [] }),
+    query: async () => ({ memories: [], context: '' }),
+    observe: async () => ({ observed: true }),
+  }
   const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      preferenceLearningEnabled: true,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    memoryProvider,
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+  assert.equal(application.services.frontendMemory.ownsSessionObservation(), true)
+  assert.equal(application.services.preferenceCandidates, null)
+  assert.equal(application.services.preferencePromoter, null)
+  assert.equal(application.services.profileObserver, null)
+  await application.close()
+})
+
+test('selects the VoiceMem connector from Gateway configuration', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-gateway-voicemem-'))
+  const sidecarPath = join(directory, 'sidecar.py')
+  writeFileSync(sidecarPath, '')
+  const application = createGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      memoryProvider: 'voicemem',
+      voiceMemStateDirectory: join(directory, 'voicemem'),
+      voiceMemPython: '',
+      voiceMemSidecarPath: sidecarPath,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+
+  assert.equal(
+    application.services.memoryProvider.describe().key,
+    'voicemem',
+  )
+  assert.equal(application.services.frontendMemory.ownsSessionObservation(), true)
+  assert.equal(application.services.preferenceCandidates, null)
+  await application.close()
+})
+
+test('can disable memory without constructing the default provider', async () => {
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -388,11 +943,109 @@ test('can disable memory without constructing the default provider', async () =>
   await application.close()
 })
 
+test('serves and edits frontend memory through the generic client control plane', async () => {
+  const calls = []
+  const documents = [{
+    id: 'memory_document',
+    scope: 'memory',
+    content: '# MEMORY\n\n- 用户喜欢茶',
+    format: 'markdown',
+    revision: 'revision-one',
+    editable: true,
+  }]
+  const frontendMemory = {
+    list: ownerId => {
+      calls.push({ kind: 'list', ownerId })
+      return documents
+    },
+    apply: async (ownerId, changes, context) => {
+      calls.push({ kind: 'apply', ownerId, changes, context })
+      if (changes[0]?.expectedRevision === 'stale') {
+        throw Object.assign(new Error('memory document changed'), {
+          code: 'stale_document',
+        })
+      }
+      return { changed: 1, documents: [] }
+    },
+    health: () => ({ ok: true, configured: true, provider: { key: 'test' } }),
+    close: async () => {},
+  }
+  const application = createTestGatewayApplication({
+    config: {
+      ...config,
+      port: 0,
+      memoryAutoEnabled: false,
+      webSearchProvider: 'none',
+      webSearchMcpUrl: '',
+    },
+    parentPort: null,
+    autoStart: false,
+    agent: disabledBackend(),
+    frontendMemory,
+    frontendMcp: null,
+    frontendOpenApi: null,
+  })
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+  const origin = `http://127.0.0.1:${port}`
+  try {
+    const listed = await fetch(`${origin}/api/memory`)
+    assert.equal(listed.status, 200)
+    assert.deepEqual(await listed.json(), { documents })
+
+    const invalid = await fetch(`${origin}/api/memory`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ changes: [] }),
+    })
+    assert.equal(invalid.status, 400)
+
+    const stale = await fetch(`${origin}/api/memory`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        changes: [{
+          document: 'memory',
+          expectedRevision: 'stale',
+          edits: [{ old_text: '- 用户喜欢茶', new_text: '' }],
+        }],
+      }),
+    })
+    assert.equal(stale.status, 409)
+    assert.deepEqual(await stale.json(), {
+      error: 'memory document changed',
+      code: 'stale_document',
+    })
+
+    const changes = [{
+      document: 'memory',
+      expectedRevision: 'revision-one',
+      edits: [{ old_text: '- 用户喜欢茶', new_text: '' }],
+    }]
+    const edited = await fetch(`${origin}/api/memory`, {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ changes }),
+    })
+    assert.equal(edited.status, 200)
+    assert.deepEqual(await edited.json(), { changed: 1, documents: [] })
+    assert.deepEqual(calls.at(-1), {
+      kind: 'apply',
+      ownerId: config.personalOwnerId,
+      changes,
+      context: { source: 'gateway-memory-api' },
+    })
+  } finally {
+    await application.close()
+  }
+})
+
 // 接线契约：新增的记忆模块默认关闭，显式开启时才装配。
 // config 是模块级单例（import 时已读完 env），所以这里注入伪 config
 // 而不是改 process.env —— 后者在同一进程内无效。
 test('leaves the new memory modules unwired unless explicitly enabled', async () => {
-  const app = createGatewayApplication({
+  const app = createTestGatewayApplication({
     config: { ...config, reminderSchedulerEnabled: false },
     autoStart: false,
   })
@@ -414,7 +1067,7 @@ test('wires the domain library on its own switch and imports a local file', asyn
   const source = join(directory, '手册.md')
   writeFileSync(source, '# 信用卡业务手册\n\n## 年费规则\n普卡首年免年费。\n')
   const documents = join(directory, 'workspace', 'domain')
-  const app = createGatewayApplication({
+  const app = createTestGatewayApplication({
     config: {
       ...config,
       reminderSchedulerEnabled: false,
@@ -427,6 +1080,7 @@ test('wires the domain library on its own switch and imports a local file', asyn
   try {
     const { domainLibrary } = app.services
     assert.ok(domainLibrary)
+    assert.equal(app.services.knowledgeProvider.documentConverter, null)
     // 会话摘要没开，两者互不牵连
     assert.equal(app.services.sessionDigests, null)
 
@@ -434,10 +1088,7 @@ test('wires the domain library on its own switch and imports a local file', asyn
     // 落盘位置就是交给后端的地址
     assert.equal(entry.path, join(documents, '手册.md'))
     assert.match(readFileSync(entry.path, 'utf8'), /年费规则/)
-    assert.equal(
-      domainLibrary.search({ ownerId: 'user_personal', keyword: '手册' }).length,
-      1,
-    )
+    assert.equal(domainLibrary.list('user_personal').length, 1)
   } finally {
     await app.close()
     rmSync(directory, { recursive: true, force: true })
@@ -453,7 +1104,7 @@ test('converts a PDF through the BackendPort and ingests what the backend wrote'
   writeFileSync(source, '%PDF-1.7 pretend this is a PDF')
   const documents = join(directory, 'workspace', 'domain')
   const submitted = []
-  const application = createGatewayApplication({
+  const application = createTestGatewayApplication({
     config: {
       ...config,
       port: 0,
@@ -472,9 +1123,9 @@ test('converts a PDF through the BackendPort and ingests what the backend wrote'
     // 最小 BackendPort 替身：把「提取文字」做成真的写文件 —— 收录那一步是以
     // 文件系统为准、不看后端的回话，所以只回一句话的替身过不了这条测试。
     backendRuntime: {
-      run: async (input, options) => {
+      runIsolated: async (input, options) => {
         submitted.push({ input, options })
-        const target = input.objective.match(/原样写入「(.+?)」/)[1]
+        const target = input.instruction.match(/原样写入「(.+?)」/)[1]
         mkdirSync(dirname(target), { recursive: true })
         writeFileSync(target, '# Manual\n\n## Warranty\nOne year.\n')
         return { content: 'done' }
@@ -499,11 +1150,17 @@ test('converts a PDF through the BackendPort and ingests what the backend wrote'
     // 关键断言：请求真的经过了 BackendPort，而不是某个具体后台实现
     assert.equal(submitted.length, 1)
     const [{ input, options }] = submitted
-    assert.match(input.objective, /原样写入/, '目标路径要在 objective 里')
+    assert.match(input.instruction, /原样写入/, '目标路径要在隔离指令里')
     assert.ok(options.ownerId, 'ownerId 必须透传')
     assert.ok(options.taskId, 'taskId 必须透传，取消与状态查询都靠它')
     assert.ok(options.signal, 'signal 必须透传，否则取消传不到后端')
     assert.equal(typeof options.onEvent, 'function', 'onEvent 必须透传，否则没有进度')
+
+    // 资料库面板轮询一个静默的入库作业；它不会进入自动播报队列。
+    const conversion = application.services.taskManager.get(accepted.task_id)
+    assert.equal(conversion.kind, 'knowledge_ingestion')
+    assert.equal(conversion.notificationPolicy, 'silent')
+    assert.equal(conversion.notificationStatus, 'none')
 
     // 后端写下的文件被收录了
     const [entry] = application.services.domainLibrary.list(options.ownerId)
@@ -515,15 +1172,15 @@ test('converts a PDF through the BackendPort and ingests what the backend wrote'
   }
 })
 
-test('defaults the domain document directory into the shared backend workspace', () => {
-  // 后端默认 cwd 是 ${configDirectory}/workspace，资料放它下面后端才读得到
-  assert.match(config.domainDocumentDirectory, /workspace[/\\]domain$/)
+test('keeps knowledge documents and index in shared data, independent of the workspace', () => {
+  assert.equal(config.domainDocumentDirectory, join(config.dataDirectory, 'knowledge/documents'))
+  assert.equal(config.domainIndexPath, join(config.dataDirectory, 'knowledge/index.json'))
 })
 
 // 会话摘要是独立开关：它不依赖偏好自更新，也不该被后者带起来。
 test('wires session digests and the summariser on their own switch', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-digest-wire-'))
-  const app = createGatewayApplication({
+  const app = createTestGatewayApplication({
     config: {
       ...config,
       reminderSchedulerEnabled: false,
@@ -567,7 +1224,7 @@ test('wires session digests and the summariser on their own switch', async () =>
 
 test('wires rolling summary and preference learning when enabled', async () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-wire-'))
-  const app = createGatewayApplication({
+  const app = createTestGatewayApplication({
     config: {
       ...config,
       reminderSchedulerEnabled: false,

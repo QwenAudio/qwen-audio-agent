@@ -25,6 +25,15 @@ import {
 } from '../src/index.mjs'
 import { isExitCommand } from '../src/terminal-commands.mjs'
 
+function readBufferedText(stream) {
+  const chunks = []
+  let chunk
+  while ((chunk = stream.read()) !== null) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)))
+  }
+  return Buffer.concat(chunks).toString()
+}
+
 test('supports /exit and keeps existing exit aliases', () => {
   assert.equal(isExitCommand('/exit'), true)
   assert.equal(isExitCommand('/quit'), true)
@@ -38,13 +47,13 @@ test('renders active realtime profile and truthful visual transport support', ()
     realtimeModelProfile: {
       id: 'qwen3.5-omni-plus-realtime',
       label: 'Qwen3.5 Omni Plus Realtime',
-      transportCapabilities: { imageInput: false, nativeVideoInput: false },
+      transportCapabilities: { imageInput: false, imageBufferInput: false },
     },
   }), /Qwen3\.5 Omni Plus Realtime/)
   assert.match(realtimeModelStatusText({
     realtimeModelProfile: {
       label: 'Qwen3.5 Omni Plus Realtime',
-      transportCapabilities: { imageInput: false, nativeVideoInput: false },
+      transportCapabilities: { imageInput: false, imageBufferInput: false },
     },
   }), /视觉输入：未支持/)
   assert.match(realtimeModelStatusText({ realtimeLabel: 'Legacy Audio' }), /Legacy Audio/)
@@ -129,6 +138,9 @@ test('parses a custom gateway, session and audio mode', () => {
   assert.equal(options.url, 'https://voice.example.com')
   assert.equal(options.sessionId, 'terminal-one')
   assert.equal(options.audioMode, 'full')
+  assert.equal(parseArguments([], {
+    QWEN_AUDIO_GATEWAY_CLIENT_TOKEN: 'remote-token',
+  }).accessToken, 'remote-token')
   assert.equal(
     parseArguments([], {
       QWEN_AUDIO_AGENT_TUI_AUDIO_MODE: 'FULL',
@@ -225,6 +237,7 @@ test('requires an interactive terminal for reliable manual controls', () => {
 test('bounds and validates the Gateway health check', async () => {
   let request
   const result = await readTuiHealth('http://127.0.0.1:3101', {
+    accessToken: 'remote-token',
     fetchImpl: async (url, init) => {
       request = { url, init }
       return {
@@ -242,6 +255,9 @@ test('bounds and validates the Gateway health check', async () => {
     timeoutMs: 25,
   })
   assert.equal(request.url, 'http://127.0.0.1:3101/api/health')
+  assert.deepEqual(request.init.headers, {
+    Authorization: 'Bearer remote-token',
+  })
   assert.ok(request.init.signal)
   assert.equal(result.cookie, 'qwaudio=value')
   assert.equal(result.health.backend.ok, true)
@@ -336,7 +352,7 @@ test('keeps a fixed composer active while asynchronous output arrives', async ()
   assert.deepEqual(submitted, ['你好'])
   assert.equal(closeRequests, 1)
   assert.deepEqual(rawModes, [true, false])
-  const output = stdout.read().toString()
+  const output = readBufferedText(stdout)
   assert.match(output, /\u001b\[\?1049h/)
   assert.match(output, /后台处理中/)
   assert.match(output, /Gateway 已连接 · 麦克风已开启/)
@@ -378,7 +394,7 @@ test('replaces a bracketed pasted path with an attachment anchor', async () => {
   assert.equal(applied, 2)
   assert.equal(changes.at(-1), '[Image 1] [Image 2]')
   assert.deepEqual(submitted, ['[Image 1] [Image 2]'])
-  const output = stdout.read().toString()
+  const output = readBufferedText(stdout)
   assert.match(output, /你 > \[Image 1\] \[Image 2\]/)
   assert.match(output, /\u001b\[\?2004h/)
   assert.match(output, /\u001b\[\?2004l/)

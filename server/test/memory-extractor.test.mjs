@@ -4,12 +4,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
-import { FrontendMemoryService } from '../src/conversation/frontend-memory-service.mjs'
-import { MarkdownContextStore } from '../src/conversation/markdown-context-store.mjs'
-import {
-  MemoryExtractor,
-  createExtractorLlmCall,
-} from '../src/conversation/memory-extractor.mjs'
+import { MemoryExtractor } from '../src/memory/learning/extractor.mjs'
+import { MarkdownContextStore } from '../src/memory/providers/markdown/context-store.mjs'
+import { MarkdownMemoryProvider } from '../src/memory/providers/markdown/provider.mjs'
 
 const OWNER = 'owner'
 const SESSION = 'main'
@@ -47,7 +44,7 @@ function extractor({
     scope: 'memory',
     template: '# MEMORY',
   })
-  const memoryService = new FrontendMemoryService({ userStore, memoryStore })
+  const memoryService = new MarkdownMemoryProvider({ userStore, memoryStore })
   const instance = new MemoryExtractor({
     memoryService,
     conversationSync: chattySession(turns, userText),
@@ -318,29 +315,4 @@ test('survives provider and malformed-output failures without throwing', async (
     await instance.maybeRun({ ownerId: OWNER, sessionId: SESSION })
     assert.equal(events.at(-1).op, 'error')
   }
-})
-
-test('createExtractorLlmCall posts to chat completions and surfaces errors', async () => {
-  assert.equal(createExtractorLlmCall({ baseUrl: 'https://example.com/v1', apiKey: '' }), null)
-  const requests = []
-  const llmCall = createExtractorLlmCall({
-    baseUrl: 'https://example.com/v1',
-    apiKey: 'test-key',
-    model: 'qwen-flash',
-    fetchImpl: async (url, options) => {
-      requests.push({ url, options })
-      return { ok: true, json: async () => ({ choices: [{ message: { content: '{}' } }] }) }
-    },
-  })
-  assert.equal(await llmCall({ system: 's', user: 'u' }), '{}')
-  assert.equal(requests[0].url, 'https://example.com/v1/chat/completions')
-  assert.equal(requests[0].options.headers.Authorization, 'Bearer test-key')
-
-  const failing = createExtractorLlmCall({
-    baseUrl: 'https://example.com/v1',
-    apiKey: 'test-key',
-    model: 'qwen-flash',
-    fetchImpl: async () => ({ ok: false, status: 429 }),
-  })
-  await assert.rejects(() => failing({ system: 's', user: 'u' }), /request failed: 429/)
 })

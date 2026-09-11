@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   boundFrontendToolResult,
   FrontendToolLoop,
-} from '../src/voice/tools/frontend-tool-loop.mjs'
+} from '../src/frontend/tools/frontend-tool-loop.mjs'
 
 const tool = { name: 'example' }
 

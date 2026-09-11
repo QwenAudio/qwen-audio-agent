@@ -5,10 +5,10 @@ import { join } from 'node:path'
 import test from 'node:test'
 import {
   FrontendOpenApiAdapter,
-} from '../src/providers/openapi/frontend-openapi-adapter.mjs'
+} from '../src/frontend/tools/openapi/frontend-openapi-adapter.mjs'
 import {
   normalizeFrontendOpenApiConfiguration,
-} from '../src/providers/openapi/frontend-openapi-config.mjs'
+} from '../src/frontend/tools/openapi/frontend-openapi-config.mjs'
 
 const DOCUMENT = `
 openapi: 3.1.0
@@ -113,7 +113,6 @@ test('discovers only enabled operationIds with standard function schemas', async
     ['city', 'threshold'],
   )
   assert.deepEqual(tools[1].policy, {
-    mode: 'inline',
     timeoutMs: 8_000,
     maxResultBytes: 32 * 1024,
     maxCallsPerTurn: 2,

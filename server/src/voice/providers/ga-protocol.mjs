@@ -60,6 +60,10 @@ export const gaRealtimeProtocol = Object.freeze({
     audio,
   }),
 
+  imageAppend: () => null,
+
+  clearImageBuffer: () => {},
+
   conversationItemId: item => {
     const prefix = ID_PREFIXES[item?.type] || 'item'
     return `${prefix}_${randomUUID().replaceAll('-', '')}`

@@ -4,6 +4,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import {
   numberSetting,
+  resolveDisabledFrontendTools,
   resolveBackendModels,
   resolveBackendWorkspace,
   resolveOpenCodeCoordinatorAgent,
@@ -24,6 +25,24 @@ test('treats missing and blank numeric settings as unset', () => {
 test('preserves explicit zero numeric settings', () => {
   assert.equal(numberSetting('0', 120, { min: 0, max: 1000 }), 0)
   assert.equal(numberSetting(0, 120, { min: 0, max: 1000 }), 0)
+})
+
+test('keeps optional frontend tools enabled unless explicitly disabled', () => {
+  assert.deepEqual(resolveDisabledFrontendTools({}), [])
+  assert.deepEqual(resolveDisabledFrontendTools({
+    QWEN_AUDIO_SCHEDULE_TOOL_ENABLED: 'false',
+    QWEN_AUDIO_WEB_TOOLS_ENABLED: 'false',
+    QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED: 'off',
+    QWEN_AUDIO_NOTES_TOOL_ENABLED: '0',
+    QWEN_AUDIO_RECALL_TOOL_ENABLED: 'no',
+  }), [
+    'schedule_reminder',
+    'web_search',
+    'fetch_url',
+    'knowledge',
+    'notes',
+    'recall',
+  ])
 })
 
 test('uses a key-free fallback until the user configures a search provider', () => {
@@ -119,7 +138,7 @@ test('uses the shared user data workspace for the default Qoder workspace', () =
 
 test('shares one default workspace across additional ACP backends', () => {
   const directory = resolve('/home/user/.config/qwaudio')
-  for (const backend of ['hermes', 'kimi', 'codebuddy', 'codex', 'qwen', 'pi']) {
+  for (const backend of ['hermes', 'kimi', 'codebuddy', 'codex', 'qwen', 'minimax', 'pi']) {
     assert.equal(
       resolveBackendWorkspace(backend, {}, directory),
       resolve(directory, 'workspace'),
@@ -136,6 +155,7 @@ test('maps managed provider IDs while preserving standard ACP model IDs', () => 
     openClaw: 'bailian/qwen3.7-plus',
     qoder: 'qwen3.7-plus',
     qwen: 'qwen3.7-plus',
+    minimax: 'qwen3.7-plus',
     kimi: 'qwen3.7-plus',
     hermes: 'qwen3.7-plus',
     codeBuddy: 'qwen3.7-plus',
@@ -157,6 +177,7 @@ test('ignores backend-native model variables as Gateway overrides', () => {
     openClaw: '',
     qoder: '',
     qwen: '',
+    minimax: '',
     kimi: '',
     hermes: '',
     codeBuddy: '',
@@ -177,6 +198,7 @@ test('treats legacy auto as no backend model override', () => {
     openClaw: '',
     qoder: '',
     qwen: '',
+    minimax: '',
     kimi: '',
     hermes: '',
     codeBuddy: '',
@@ -198,6 +220,7 @@ test('uses only the unified backend model override', () => {
     openClaw: 'bailian/qwen3.7-max',
     qoder: 'qwen3.7-max',
     qwen: 'qwen3.7-max',
+    minimax: 'qwen3.7-max',
     kimi: 'qwen3.7-max',
     hermes: 'qwen3.7-max',
     codeBuddy: 'qwen3.7-max',
@@ -216,7 +239,7 @@ test('preserves opaque ACP model IDs outside managed provisioning', () => {
   assert.equal(models.openCode, 'alibaba-cn/model-id')
   assert.equal(models.openClaw, 'bailian/model-id')
   for (const backend of [
-    'qoder', 'qwen', 'kimi', 'hermes', 'codeBuddy', 'codex', 'claude', 'pi', 'acp',
+    'qoder', 'qwen', 'minimax', 'kimi', 'hermes', 'codeBuddy', 'codex', 'claude', 'pi', 'acp',
   ]) {
     assert.equal(models[backend], 'provider/model-id')
   }

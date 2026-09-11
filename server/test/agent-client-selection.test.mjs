@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   AgentClient,
   createAgentClient,
-} from '../src/agent/agent-client.mjs'
+} from '../src/backend/adapters/agent-client.mjs'
 
 function fakeAcpClient() {
   return {
@@ -97,6 +97,7 @@ for (const protocol of [
   'openclaw',
   'qoder',
   'qwen',
+  'minimax',
   'kimi',
   'hermes',
   'codebuddy',
@@ -115,6 +116,7 @@ for (const protocol of [
         },
         qoder: { directory: '/qoder' },
         qwen: { directory: '/qwen' },
+        minimax: { directory: '/minimax' },
         kimi: { directory: '/kimi' },
         hermes: { directory: '/hermes' },
         codebuddy: { directory: '/codebuddy', model: 'qwen3.7-max' },

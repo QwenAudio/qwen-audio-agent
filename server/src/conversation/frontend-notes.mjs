@@ -101,7 +101,7 @@ export class FrontendNotesStore {
     this.persistenceDisabled = false
     this.loadedMtimeMs = 0
     this.loadedContentHash = ''
-    if (filePath) this.load()
+    if (filePath) withFileTransaction(filePath, () => this.load())
   }
 
   fileMtimeMs() {
@@ -113,18 +113,20 @@ export class FrontendNotesStore {
     }
   }
 
-  // 桌面版与 CLI 共享同一份清单文件，两个 Gateway 极少同时运行，但一旦
-  // 并发，各自的内存缓存会把对方的写入整份冲掉。读写入口先对比磁盘
-  // mtime，被其它实例更新过就重载，把覆盖窗口缩到单次读改写之内。
+  // 桌面版与 CLI 共享同一份清单文件，读写都使用同一把跨进程锁，避免
+  // 读到 Windows 文件替换过程中的临时缺失或访问错误。锁内对比磁盘
+  // mtime，被其它实例更新过就重载。
   // mtime 相等不代表内容相等：部分文件系统（NTFS）与快速连续写入可能
   // 落在同一时间刻度，所以 mtime 命中时再以内容哈希兜底确认。
   refreshIfChanged() {
     if (!this.filePath || this.persistenceDisabled) return
-    const mtimeMs = this.fileMtimeMs()
-    if (mtimeMs === this.loadedMtimeMs && this.fileContentHash() === this.loadedContentHash) return
-    this.users = new Map()
-    this.ownerAccess = new Map()
-    this.load()
+    return withFileTransaction(this.filePath, () => {
+      const mtimeMs = this.fileMtimeMs()
+      if (mtimeMs === this.loadedMtimeMs && this.fileContentHash() === this.loadedContentHash) return
+      this.users = new Map()
+      this.ownerAccess = new Map()
+      this.load()
+    })
   }
 
   writeTransaction(action) {

@@ -1,7 +1,7 @@
 # 扩展 qwen-audio-agent
 
-运行时是通用的；一切场景相关的行为都通过声明好的接缝进入。本页列出全部
-接缝，并指向对应的指南。
+本节面向开发者：通过已有扩展接口接入不同客户端、语音服务、后台 Agent 或知识系统。
+只想配置现成能力时，先看[配置总览](configuration.zh.md)与[快速开始](getting-started/quickstart.zh.md)。
 
 ## 前台工具：MCP、OpenAPI、Profile
 
@@ -22,10 +22,13 @@ Provider 注册表。
 
 ## 知识：检索 Provider
 
-网关只定义一个很小的检索边界，不自带 RAG 栈——接入你已经在运营的
+网关通过简洁的 Provider 接口提供基础资料库。可以直接使用，也可以接入你已经在运营的
 知识系统。
 
 → [知识检索 Provider](reference/knowledge.zh.md)
+
+[LightRAG 接入示例](scenarios/lightrag.zh.md)展示了如何连接用户独立部署的完整知识库，
+同时让模型配置、索引和数据继续由 LightRAG 自己管理。
 
 ## 后台：接入新 Agent
 
@@ -39,20 +42,24 @@ Provider 注册表。
 
 ## 人设与记忆
 
-助手的名称、人格和声音在 `ASSISTANT.md` 里；用户的长期事实在
-`USER.md` / `MEMORY.md` 里。都是配置目录下的普通 Markdown，可以直接
-编辑，网关自己则走受约束的写入路径。
+助手的默认名称、人格与表达风格在 `ASSISTANT.md` 里；输出音色由语音配置决定。默认 Markdown Provider 用
+`USER.md` / `MEMORY.md` 保存用户偏好与长期事实；也可以配置可选 VoiceMem 连接器，
+或替换 Provider 接入其他记忆引擎，不需要改动语音运行时。
 
 → [助手画像与用户偏好](reference/personalization.zh.md) ·
-[长期记忆](reference/memory.zh.md)
+[Memory Provider](reference/memory-provider.zh.md)
+
+VoiceMem 安装与配置示例：
+[`examples/voicemem`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem)。
 
 ## 客户端：自己构建
 
 网关在单条 WebSocket 上讲类型化事件。按客户端协议构建自定义客户端，
 或通过稳定性契约把助手嵌入宿主页面——桌面悬浮球、TUI、WebUI 用的都是
 同一条通道。
-[`examples/custom-conversation-client/`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/custom-conversation-client)
-是最小起点。
+
+[AI Passport 语音客户端示例](scenarios/ai-passport.zh.md)展示了千问语音豆通过局域网转发器
+接入 Gateway 的方式；当前仅开放半双工，固件和音频驱动在外部项目维护。
 
 → [Gateway 客户端协议](gateway-protocol.zh.md) ·
 [稳定性契约](contract.zh.md)

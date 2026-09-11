@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
-import { ToolCallHandler } from '../src/voice/tools/tool-call-handler.mjs'
-import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
+import { ToolCallHandler } from '../src/frontend/tools/tool-call-handler.mjs'
+import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
 
 function harness({
   coordinator = null,
   manager = new TaskManager(),
   memoryStore = null,
+  clientContext = {},
+  backendAvailability = null,
 } = {}) {
   const outputs = []
   const transcripts = new TurnTranscripts({ waitMs: 5 })
@@ -21,6 +23,7 @@ function harness({
     }),
     getTurnId: () => 'turn-1',
     getTurnGeneration: () => 1,
+    backendAvailability,
     backendRuntime: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
       cancel: async taskId => ({ taskId, state: 'cancelled' }),
@@ -28,7 +31,7 @@ function harness({
     memoryService: memoryStore,
     notesStore: null,
     onMemoryChanged: () => {},
-    getClientContext: () => ({}),
+    getClientContext: () => clientContext,
   })
   return { outputs, manager, handler }
 }
@@ -125,8 +128,31 @@ test('handleScheduleReminder defaults type to reminder when not specified', asyn
   assert.equal(output.type, 'reminder')
 })
 
-test('handleScheduleReminder defaults recurrence to once', async () => {
-  const { outputs, handler } = harness()
+test('frontend-only mode rejects scheduled execution but supports reminder query and cancellation', async () => {
+  const { handler, outputs, manager } = harness({
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+  })
+  const invoke = (name, args) => handler.handle({
+    call_id: `call-${outputs.length}`, name, arguments: JSON.stringify(args),
+  })
+  const args = { execute_at: new Date(Date.now() + 60_000).toISOString(), reminder: '开会' }
+  await invoke('schedule_reminder', { ...args, type: 'task' })
+  assert.equal(outputs.at(-1)[1].error_code, 'backend_unavailable')
+  assert.equal(manager.list({ ownerId: 'owner' }).length, 0)
+
+  await invoke('schedule_reminder', args)
+  const taskId = outputs.at(-1)[1].task_id
+  assert.equal(outputs.at(-1)[1].status, 'scheduled')
+  await invoke('get_agent_task_status', { task_id: taskId })
+  assert.equal(outputs.at(-1)[1].task_status, 'scheduled')
+  await invoke('cancel_agent_task', { task_id: taskId })
+  assert.equal(taskForId(manager, taskId).status, 'cancelled')
+})
+
+test('handleScheduleReminder preserves daily recurrence and client timezone', async () => {
+  const { outputs, manager, handler } = harness({
+    clientContext: { timeZone: 'Asia/Shanghai' },
+  })
   const future = new Date(Date.now() + 60_000).toISOString()
 
   await handler.handle({
@@ -141,6 +167,58 @@ test('handleScheduleReminder defaults recurrence to once', async () => {
 
   const [, output] = outputs[0]
   assert.equal(output.recurrence, 'daily')
+  assert.equal(output.series_id, taskForId(manager, output.task_id).seriesId)
+  assert.equal(
+    taskForId(manager, output.task_id).schedule.timeZone,
+    'Asia/Shanghai',
+  )
+})
+
+test('cancels every cancellable occurrence through a recurring series id', async () => {
+  const { outputs, manager, handler } = harness({
+    clientContext: { timeZone: 'Asia/Shanghai' },
+  })
+  const future = new Date(Date.now() + 60_000).toISOString()
+
+  await handler.handle({
+    call_id: 'call-create-recurring',
+    name: 'schedule_reminder',
+    arguments: JSON.stringify({
+      execute_at: future,
+      reminder: '循环提醒',
+      recurrence: 'daily',
+    }),
+  }, { turnId: 'turn-1', turnGeneration: 1 })
+  const created = outputs.at(-1)[1]
+  const task = taskForId(manager, created.task_id)
+
+  await handler.handle({
+    call_id: 'call-cancel-recurring',
+    name: 'cancel_agent_task',
+    arguments: JSON.stringify({ series_id: created.series_id }),
+  }, { turnId: 'turn-1', turnGeneration: 1 })
+
+  const cancelled = outputs.at(-1)[1]
+  assert.equal(cancelled.status, 'cancelled')
+  assert.equal(cancelled.series_id, created.series_id)
+  assert.equal(taskForId(manager, task.id).status, 'cancelled')
+})
+
+test('handleScheduleReminder defaults recurrence to once', async () => {
+  const { outputs, handler } = harness()
+  const future = new Date(Date.now() + 60_000).toISOString()
+
+  await handler.handle({
+    call_id: 'call-6',
+    name: 'schedule_reminder',
+    arguments: JSON.stringify({
+      execute_at: future,
+      reminder: '一次性提醒',
+    }),
+  }, { turnId: 'turn-1', turnGeneration: 1 })
+
+  const [, output] = outputs[0]
+  assert.equal(output.recurrence, 'once')
 })
 
 test('lists scheduled reminders and cancels the latest one without an id', async () => {

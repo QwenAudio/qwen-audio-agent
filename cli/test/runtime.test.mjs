@@ -4,6 +4,7 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 import {
   assertGatewayCompatibility,
+  assertMemoryGatewayCompatibility,
   assertRealtimeGatewayCompatibility,
   ensureRuntime,
   ManagedRuntime,
@@ -13,6 +14,35 @@ import {
 import {
   resolveRealtimeFrontendConfiguration,
 } from '../../shared/realtime-provider-catalog.mjs'
+
+test('compares explicitly selected memory connector configuration', () => {
+  assert.equal(assertMemoryGatewayCompatibility({}, {}), 'markdown')
+  assert.equal(assertMemoryGatewayCompatibility({
+    frontendMemory: {
+      provider: { key: 'voicemem' },
+      inputMode: 'audio',
+    },
+  }, {
+    QWEN_AUDIO_MEMORY_PROVIDER: 'voicemem',
+    VOICEMEM_INPUT_MODE: 'audio',
+  }), 'voicemem')
+  assert.throws(() => assertMemoryGatewayCompatibility({
+    frontendMemory: {
+      provider: { key: 'markdown' },
+    },
+  }, {
+    QWEN_AUDIO_MEMORY_PROVIDER: 'voicemem',
+  }), /记忆 Provider.*不一致/)
+  assert.throws(() => assertMemoryGatewayCompatibility({
+    frontendMemory: {
+      provider: { key: 'voicemem' },
+      inputMode: 'text',
+    },
+  }, {
+    QWEN_AUDIO_MEMORY_PROVIDER: 'voicemem',
+    VOICEMEM_INPUT_MODE: 'audio',
+  }), /VoiceMem text 输入.*audio/)
+})
 
 const DEFAULT_FRONTEND_ENV = { DASHSCOPE_API_KEY: 'key' }
 const DEFAULT_FRONTEND = resolveRealtimeFrontendConfiguration(
@@ -142,6 +172,26 @@ test('rejects an existing Gateway using a stale speech-to-speech endpoint', () =
     realtimeProvider: running.provider,
     realtimeConfigurationSignature: running.signature,
   }, requestedEnv), /前台参数.*不一致/)
+})
+
+test('reuses MiniCPM-o only when the running Gateway has the same endpoint', () => {
+  const runningEnv = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'minicpm-o',
+    MINICPM_O_REALTIME_URL: 'ws://127.0.0.1:8006/v1/realtime?mode=audio',
+  }
+  const running = resolveRealtimeFrontendConfiguration(runningEnv)
+
+  assert.doesNotThrow(() => assertRealtimeGatewayCompatibility({
+    realtimeProvider: running.provider,
+    realtimeConfigurationSignature: running.signature,
+  }, runningEnv))
+  assert.throws(() => assertRealtimeGatewayCompatibility({
+    realtimeProvider: running.provider,
+    realtimeConfigurationSignature: running.signature,
+  }, {
+    ...runningEnv,
+    MINICPM_O_REALTIME_URL: 'ws://127.0.0.1:9000/v1/realtime?mode=audio',
+  }), /前台参数.*不一致/)
 })
 
 test('does not reuse an older Gateway without a realtime configuration signature', () => {
@@ -440,7 +490,7 @@ test('derives generic ACP without an HTTP backend', () => {
 })
 
 test('derives named local ACP backends without an HTTP URL', () => {
-  for (const backend of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude']) {
+  for (const backend of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude', 'minimax']) {
     assert.deepEqual(resolveBackend({
       backend,
     }, {}), {

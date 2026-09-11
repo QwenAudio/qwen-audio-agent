@@ -132,7 +132,7 @@ test('Gateway-owned backend moves away from occupied ports', async () => {
   assert.equal(env.OPENCLAW_BASE_URL, 'http://127.0.0.1:45678')
   assert.equal(env.OPENCLAW_PORT, '45678')
   assert.equal(calls[0][0], process.execPath)
-  assert.equal(calls[0][1][0], resolve('/repo', 'scripts/openclaw-gateway.mjs'))
+  assert.equal(calls[0][1][0], resolve('/repo', 'scripts/runtime/openclaw-gateway.mjs'))
   assert.equal(calls[0][2].env.QWEN_AUDIO_AGENT_ENV_LOADED, '1')
   assert.equal(calls[0][2].env.DASHSCOPE_API_KEY, 'test-key')
   assert.equal(calls[0][2].env.QWEN_AUDIO_AGENT_AUTH_SECRET, undefined)
@@ -280,7 +280,7 @@ test('generic ACP is managed as a Gateway child without a separate server', asyn
 })
 
 test('additional ACP backends run inside the Gateway without an HTTP server', async () => {
-  for (const protocol of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude', 'pi']) {
+  for (const protocol of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude', 'minimax', 'pi']) {
     assert.deepEqual(resolveManagedBackend({
       AGENT_PROTOCOL: protocol,
     }), {

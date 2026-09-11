@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -53,4 +53,20 @@ test('recovers a stale CLI lock without deleting a replacement lock', () => {
   writeFileSync(path, JSON.stringify({ pid: 404, token: 'replacement' }))
   lock.release()
   assert.equal(JSON.parse(readFileSync(path, 'utf8')).token, 'replacement')
+})
+
+test('client-owned locks retain separate instances for separate Gateway profiles', t => {
+  const root = mkdtempSync(join(tmpdir(), 'qwenaudio-client-locks-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const clientDir = join(root, 'client')
+  const first = acquireCliInstance(clientDir, { instanceKey: '/gateway-a/state' })
+  const second = acquireCliInstance(clientDir, { instanceKey: '/gateway-b/state' })
+  assert.notEqual(first.path, second.path)
+  assert.equal(existsSync(first.path), true)
+  assert.equal(existsSync(second.path), true)
+  assert.throws(() => acquireCliInstance(clientDir, { instanceKey: '/gateway-a/state' }), /CLI/)
+  first.release()
+  second.release()
+  assert.equal(existsSync(first.path), false)
+  assert.equal(existsSync(second.path), false)
 })

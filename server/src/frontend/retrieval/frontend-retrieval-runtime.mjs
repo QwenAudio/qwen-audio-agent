@@ -1,7 +1,7 @@
 import {
   normalizeCitation,
   normalizeSearchResponse,
-} from './citation.mjs'
+} from '../../core/citation.mjs'
 import { SafeUrlFetcher } from './safe-url-fetcher.mjs'
 import { validateWebSearchProvider } from './web-search-provider.mjs'
 

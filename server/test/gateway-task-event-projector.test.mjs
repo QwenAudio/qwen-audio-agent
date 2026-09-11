@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { GatewayTaskEvent } from '../../shared/realtime-events.mjs'
+import { GatewayTaskEvent } from '../../shared/protocol/realtime-events.mjs'
 import { TaskDomainEvent } from '../src/task/task-events.mjs'
 import {
   projectGatewayTaskEvent,

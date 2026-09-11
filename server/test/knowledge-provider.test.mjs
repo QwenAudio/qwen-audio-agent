@@ -1,0 +1,179 @@
+import assert from 'node:assert/strict'
+import test from 'node:test'
+import {
+  KNOWLEDGE_PROVIDER_PROTOCOL_VERSION,
+  assertKnowledgeProvider,
+  assertKnowledgeRetrievalProvider,
+  describeKnowledgeRetrievalProvider,
+  knowledgeProviderHealth,
+  normalizeKnowledgeDocument,
+  normalizeKnowledgeIngestionResponse,
+  normalizeKnowledgeListResponse,
+  normalizeKnowledgeRemovalResponse,
+  normalizeKnowledgeProviderHealth,
+  normalizeKnowledgeRetrievalResponse,
+  supportsKnowledgeManagement,
+} from '../src/knowledge/provider.mjs'
+
+function provider(overrides = {}) {
+  return {
+    describe: () => ({
+      protocolVersion: KNOWLEDGE_PROVIDER_PROTOCOL_VERSION,
+      key: 'custom-rag',
+      label: 'Custom RAG',
+      capabilities: { filters: true, 'bad key': true, scores: false },
+    }),
+    retrieve: async () => ({ results: [] }),
+    ...overrides,
+  }
+}
+
+test('validates the minimal versioned retrieval provider contract', () => {
+  assert.throws(
+    () => assertKnowledgeRetrievalProvider({ describe: () => ({}) }),
+    /retrieve/,
+  )
+  assert.throws(
+    () => assertKnowledgeRetrievalProvider(provider({
+      describe: () => ({ protocolVersion: 2, key: 'future', label: 'Future' }),
+    })),
+    /protocol version/,
+  )
+  assert.throws(
+    () => assertKnowledgeRetrievalProvider(provider({ health: true })),
+    /health must be a function/,
+  )
+  const fixture = provider()
+  assert.equal(assertKnowledgeRetrievalProvider(fixture), fixture)
+  assert.equal(assertKnowledgeProvider(fixture), fixture)
+  assert.equal(supportsKnowledgeManagement(fixture), false)
+  const managed = provider({
+    ingest: async () => {},
+    list: async () => [],
+    remove: async () => {},
+  })
+  assert.equal(supportsKnowledgeManagement(managed), true)
+  assert.deepEqual(describeKnowledgeRetrievalProvider(fixture), {
+    protocolVersion: 1,
+    key: 'custom-rag',
+    label: 'Custom RAG',
+    capabilities: { filters: true, scores: false },
+  })
+})
+
+test('normalizes provider-neutral knowledge management projections', () => {
+  assert.deepEqual(normalizeKnowledgeDocument({
+    document_id: ' doc-one ',
+    file_path: '/inputs/manual.pdf',
+    content_summary: ' Release guide ',
+    status: 'PROCESSED',
+    created_at: '2026-09-06T00:00:00Z',
+    size: 42,
+    sections: [' Intro ', '', 'Approvals'],
+    metadata: { category: 'guide', nested: { ignored: true } },
+  }), {
+    id: 'doc-one',
+    title: 'Release guide',
+    filename: '/inputs/manual.pdf',
+    status: 'processed',
+    gist: 'Release guide',
+    sections: ['Intro', 'Approvals'],
+    path: '/inputs/manual.pdf',
+    bytes: 42,
+    created_at: '2026-09-06T00:00:00Z',
+    metadata: { category: 'guide' },
+  })
+  assert.deepEqual(normalizeKnowledgeIngestionResponse({
+    document: { id: 'doc-one', title: 'Manual' },
+  }), {
+    document: { id: 'doc-one', title: 'Manual' },
+  })
+  assert.deepEqual(normalizeKnowledgeListResponse({
+    documents: [{ id: 'doc-one', title: 'Manual' }, { title: 'invalid' }],
+  }), {
+    documents: [{ id: 'doc-one', title: 'Manual' }],
+  })
+  assert.deepEqual(normalizeKnowledgeRemovalResponse({
+    removed: true,
+    document: { id: 'doc-one', title: 'Manual' },
+  }), {
+    removed: true,
+    document: { id: 'doc-one', title: 'Manual' },
+  })
+})
+
+test('normalizes optional provider health without coupling to transport', async () => {
+  assert.deepEqual(await knowledgeProviderHealth(provider()), {
+    status: 'ready',
+    ok: true,
+  })
+  assert.deepEqual(await knowledgeProviderHealth(provider({
+    health: async () => ({ status: 'degraded', message: 'slow upstream' }),
+  })), {
+    status: 'degraded',
+    ok: true,
+    message: 'slow upstream',
+  })
+  assert.throws(
+    () => normalizeKnowledgeProviderHealth({ status: 'starting' }),
+    /invalid status/,
+  )
+})
+
+test('bounds, deduplicates, and normalizes provider results and citations', () => {
+  const normalized = normalizeKnowledgeRetrievalResponse({
+    results: [
+      {
+        id: 'result_one',
+        content: 'A'.repeat(40),
+        score: '0.85',
+        source: {
+          id: 'doc_one',
+          title: ' One  title ',
+          uri: 'https://example.com/guide#section',
+          mimeType: 'text/markdown',
+          locator: 'page=3',
+        },
+        metadata: {
+          category: 'guide',
+          nested: { rejected: true },
+          rank: 2,
+        },
+      },
+      { id: 'result_one', content: 'duplicate' },
+      { id: 'missing-content' },
+      {
+        id: 'private-source',
+        content: 'Private fact',
+        source: { uri: 'file:///private/document.txt' },
+      },
+    ],
+  }, {
+    query: '  question  ',
+    limit: 3,
+    maxContentChars: 12,
+  })
+
+  assert.equal(normalized.status, 'ok')
+  assert.equal(normalized.query, 'question')
+  assert.equal(normalized.results.length, 2)
+  assert.deepEqual(normalized.results[0], {
+    id: 'result_one',
+    content: 'A'.repeat(12),
+    score: 0.85,
+    source: {
+      id: 'doc_one',
+      title: 'One title',
+      uri: 'https://example.com/guide',
+      mime_type: 'text/markdown',
+      locator: 'page=3',
+    },
+    metadata: { category: 'guide', rank: 2 },
+    url: 'https://example.com/guide',
+    citation_id: 'source_1',
+  })
+  assert.equal(normalized.citations.length, 1)
+  assert.equal(normalized.results[1].source, undefined)
+  assert.equal(normalized.results[1].citation_id, undefined)
+  assert.match(normalized.notice, /不可信/)
+})

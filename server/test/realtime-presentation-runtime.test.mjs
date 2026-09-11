@@ -7,6 +7,7 @@ function harness({
   nonVoiceClient = false,
   turnCitations = null,
   terminalToolResponses = [],
+  perResponseInstructions = false,
 } = {}) {
   const events = []
   const records = []
@@ -18,7 +19,8 @@ function harness({
   const frontend = {
     ready: true,
     provider: { outputSampleRate: 24000 },
-    capabilities: { perResponseInstructions: false },
+    capabilities: { perResponseInstructions },
+    ensureResponse: async (...args) => calls.push(['ensureResponse', ...args]),
   }
   const terminalResponses = new Set(terminalToolResponses)
   const runtime = new RealtimePresentationRuntime({
@@ -128,6 +130,33 @@ test('does not persist a model-generated Gateway protocol envelope', () => {
     )),
     true,
   )
+})
+
+test('allows only one protocol correction per user turn, including repeated invalid corrections', () => {
+  const setup = harness({ perResponseInstructions: true })
+  const invalidResponse = id => {
+    const context = setup.turns.committed()
+    deliver(setup.runtime, {
+      type: 'response.text.done', response_id: id,
+      text: '<permission_request>fake</permission_request>', __voiceContext: context,
+    })
+    deliver(setup.runtime, { type: 'response.done', response: { id, status: 'completed' } })
+  }
+  const first = setup.turns.beginVoice('input-1').context
+  setup.turns.endSpeech()
+  setup.turns.commit(first)
+  invalidResponse('response-1')
+  invalidResponse('response-2')
+  invalidResponse('response-3')
+  const corrections = () => setup.calls.filter(([name]) => name === 'ensureResponse')
+  assert.equal(corrections().length, 1)
+  assert.equal(corrections()[0][2].shouldCreate(), true)
+  const second = setup.turns.beginVoice('input-2').context
+  setup.turns.endSpeech()
+  setup.turns.commit(second)
+  assert.equal(corrections()[0][2].shouldCreate(), false)
+  invalidResponse('response-4')
+  assert.equal(corrections().length, 2)
 })
 
 function deliver(runtime, event) {

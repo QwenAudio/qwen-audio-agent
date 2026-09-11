@@ -60,6 +60,8 @@ function harness({
         })
       },
       appendAudio: audio => calls.push(['appendAudio', audio]),
+      appendImage: image => calls.push(['appendImage', image]),
+      clearPendingImage: () => calls.push(['clearPendingImage']),
       cancel: () => calls.push(['cancel']),
       close: () => calls.push(['close', options.providerName]),
       // 记下第二个参数：这一层曾经只转发 context，把 options 静默吞掉，
@@ -167,6 +169,23 @@ test('shares one connection attempt and flushes bounded audio before ready', asy
   )
 })
 
+test('keeps only the latest visual frame while connecting', async () => {
+  const { runtime, calls, frontends } = harness()
+
+  runtime.appendImage('older-jpeg')
+  runtime.appendImage('latest-jpeg')
+  assert.equal(frontends.length, 1)
+
+  frontends[0].resolveConnect()
+  await runtime.connectPromise
+
+  assert.deepEqual(
+    calls.filter(([name]) => name === 'appendImage'),
+    [['appendImage', 'latest-jpeg']],
+  )
+  assert.equal(runtime.pendingImage, null)
+})
+
 test('unexpected close reconnects once through the shared backoff', async () => {
   const { runtime, calls, frontends } = harness({
     connectMode: 'resolve',
@@ -193,11 +212,13 @@ test('fatal errors block later connection attempts and clear buffered audio', as
   const { runtime, frontends } = harness({ connectMode: 'resolve' })
   await runtime.ensure()
   runtime.appendAudio('buffered-directly')
+  runtime.appendImage('buffered-image')
 
   runtime.block('invalid api key')
 
   assert.equal(runtime.ready, false)
   assert.equal(runtime.pendingAudio.length, 0)
+  assert.equal(runtime.pendingImage, null)
   await assert.rejects(runtime.ensure(), /invalid api key/)
   assert.deepEqual(runtime.status(), {
     provider: 'dashscope',
@@ -208,13 +229,19 @@ test('fatal errors block later connection attempts and clear buffered audio', as
 })
 
 test('switching providers detaches the old frontend without losing queued audio', async () => {
-  const { runtime, frontends } = harness()
+  const { runtime, calls, frontends } = harness()
   const connecting = runtime.ensure()
   runtime.pendingAudio.push('queued')
+  runtime.pendingImage = 'stale-jpeg'
 
   assert.equal(runtime.switchProvider('s2s'), true)
   assert.equal(runtime.providerKey, 's2s')
   assert.deepEqual(runtime.pendingAudio, ['queued'])
+  assert.equal(runtime.pendingImage, null)
+  assert.equal(
+    calls.filter(([name]) => name === 'clearPendingImage').length,
+    1,
+  )
   assert.equal(runtime.ready, false)
 
   frontends[0].resolveConnect()

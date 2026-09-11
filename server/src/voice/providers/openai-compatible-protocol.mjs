@@ -28,6 +28,13 @@ export const openAiCompatibleProtocol = Object.freeze({
     audio,
   }),
 
+  imageAppend: image => ({
+    type: 'input_image_buffer.append',
+    image,
+  }),
+
+  clearImageBuffer: () => {},
+
   // Client-assigned id for a conversation item. The beta dialect accepts one
   // opaque namespace for every item type.
   conversationItemId: () => `item_${randomUUID().replaceAll('-', '')}`,

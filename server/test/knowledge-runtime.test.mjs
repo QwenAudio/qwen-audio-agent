@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { FrontendKnowledgeRuntime } from '../src/frontend/knowledge/knowledge-runtime.mjs'
+import { FrontendKnowledgeRuntime } from '../src/knowledge/runtime.mjs'
 
 function fixture({ retrieve, health, close } = {}) {
   return {

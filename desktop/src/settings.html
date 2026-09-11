@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>设置</title>
@@ -84,7 +84,8 @@
             aria-labelledby="voice-tab"
             data-settings-panel="voice"
           >
-            <div class="settings-group-heading provider-heading">
+            <p class="setting-hint" data-remote-gateway-note hidden>语音和后台 Agent 由远端 Gateway 配置。</p>
+            <div class="settings-group-heading provider-heading" data-local-gateway-settings>
               <fieldset
                 id="realtime-provider"
                 class="provider-segmented"
@@ -108,9 +109,17 @@
                   />
                   <span>Speech-to-Speech</span>
                 </label>
+                <label class="provider-segment">
+                  <input
+                    type="radio"
+                    name="realtime-provider"
+                    value="minicpm-o"
+                  />
+                  <span>面壁智能</span>
+                </label>
               </fieldset>
             </div>
-            <div class="settings-card">
+            <div class="settings-card" data-local-gateway-settings>
               <div class="provider-panel" data-provider-panel="dashscope">
                 <div class="setting-row service-url-row">
                   <label for="realtime-base-url">服务地址</label>
@@ -188,8 +197,61 @@
                     placeholder="可选，用于 Bearer 认证"
                   />
                 </div>
+
+                <div class="setting-row">
+                  <label for="speech-to-speech-model">模型</label>
+                  <input
+                    id="speech-to-speech-model"
+                    class="fixed-model"
+                    type="text"
+                    value="default"
+                    readonly
+                  />
+                </div>
                 <p class="provider-attribution">
                   Speech-to-Speech · Hugging Face · 需单独启动本地服务
+                </p>
+              </div>
+
+              <div
+                class="provider-panel"
+                data-provider-panel="minicpm-o"
+                hidden
+              >
+                <div class="setting-row service-url-row">
+                  <label for="minicpm-o-url">服务地址</label>
+                  <input
+                    id="minicpm-o-url"
+                    type="url"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="ws://127.0.0.1:8006/v1/realtime?mode=audio"
+                  />
+                </div>
+
+                <div class="setting-row">
+                  <label for="minicpm-o-token">访问令牌</label>
+                  <input
+                    id="minicpm-o-token"
+                    type="password"
+                    autocomplete="off"
+                    spellcheck="false"
+                    placeholder="可选，用于 Bearer 认证"
+                  />
+                </div>
+
+                <div class="setting-row">
+                  <label for="minicpm-o-model">模型</label>
+                  <input
+                    id="minicpm-o-model"
+                    class="fixed-model"
+                    type="text"
+                    value="MiniCPM-o 4.5"
+                    readonly
+                  />
+                </div>
+                <p class="provider-attribution">
+                  MiniCPM-o 4.5 · 面壁智能 · 本地或云端服务
                 </p>
               </div>
             </div>
@@ -203,7 +265,8 @@
             data-settings-panel="backend"
             hidden
           >
-            <div class="settings-card backend-settings-card">
+            <p class="setting-hint" data-remote-gateway-note hidden>语音和后台 Agent 由远端 Gateway 配置。</p>
+            <div class="settings-card backend-settings-card" data-local-gateway-settings>
               <div class="setting-row backend-list-row">
                 <span class="setting-label" id="backend-list-label">后台 Agent</span>
                 <div class="field-with-action backend-list-action">
@@ -330,7 +393,7 @@
             <div class="settings-card">
               <div class="setting-row">
                 <label for="gateway-url">Gateway</label>
-                <input id="gateway-url" type="url" spellcheck="false" required />
+                <input id="gateway-url" type="url" autocomplete="off" spellcheck="false" placeholder="输入 Gateway 地址或连接链接" required />
               </div>
 
               <div class="setting-row">

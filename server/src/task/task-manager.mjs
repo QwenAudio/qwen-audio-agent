@@ -1,9 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { config } from '../core/config.mjs'
 import { TaskScheduler } from './task-scheduler.mjs'
-import { TaskStore } from './task-store.mjs'
 import { TaskDomainEvent } from './task-events.mjs'
 import { TaskNotificationQueue } from './task-notification-queue.mjs'
 import { TaskRepository } from './task-repository.mjs'
@@ -25,9 +22,12 @@ import {
   isTaskCancellable,
   isTaskTerminal,
   isUserWork,
+  normalizeTaskNotificationPolicy,
   normalizeTaskScope,
   persistedTask,
   publicTask,
+  shouldNotifyTaskCompletion,
+  TaskNotificationPolicy,
   TaskScope,
   TaskStatus,
   transitionTask,
@@ -37,9 +37,8 @@ import {
   TaskRecoveryAction,
   taskRecoveryAction,
 } from './task-recovery.mjs'
-import { logger } from '../core/logger.mjs'
 import { BackendEventType } from '../core/backend-events.mjs'
-import { SessionJournalRegistry } from '../session/session-journal-registry.mjs'
+import { normalizeRecurrence, normalizeTimeZone } from './recurrence.mjs'
 
 export function taskExecutionContext(task, { onEvent, signal }) {
   return Object.freeze({
@@ -71,6 +70,7 @@ export class TaskManager {
     notificationClaimTtlMs = 60_000,
     maxTerminalTasksPerOwner = 100,
     progressEventIntervalMs = 1_000,
+    scheduledTaskTimeoutMs = 1_800_000,
     logger: taskLogger = null,
     sessionJournal = null,
   } = {}) {
@@ -97,6 +97,7 @@ export class TaskManager {
     )
     this.logger = taskLogger
     this.sessionJournal = sessionJournal
+    this.scheduledTaskTimeoutMs = scheduledTaskTimeoutMs
     this.listeners = new Set()
     this.notifications = new TaskNotificationQueue({
       tasks: this.tasks,
@@ -147,6 +148,9 @@ export class TaskManager {
     let recoveryChanged = false
     for (const saved of records) {
       saved.scope = normalizeTaskScope(saved.scope)
+      saved.notificationPolicy = normalizeTaskNotificationPolicy(
+        saved.notificationPolicy,
+      )
       if (isUserWork(saved) && !/^task_\d+$/u.test(String(saved.id || ''))) {
         const legacy = /^job_(\d+)$/u.exec(String(saved.jobId || ''))
         const candidate = legacy ? `task_${legacy[1]}` : ''
@@ -160,6 +164,13 @@ export class TaskManager {
         saved.parentTaskId = saved.parentWorkId
       }
       delete saved.parentWorkId
+      if (
+        normalizeRecurrence(saved.schedule?.recurrence) !== 'once'
+        && !String(saved.seriesId || '').trim()
+      ) {
+        saved.seriesId = String(saved.id)
+        recoveryChanged = true
+      }
       delete saved.presentation
       delete saved.resultMetadata
       saved.artifacts = normalizeArtifacts(saved.artifacts)
@@ -258,6 +269,9 @@ export class TaskManager {
     for (const snapshot of candidates) {
       const id = String(snapshot.id)
       const existing = this.tasks.get(id)
+      // Short IDs can be reused. An older lifetime is not a revision of the
+      // current task, even if its journal has a larger local sequence number.
+      if (Number(existing?.createdAt) > Number(snapshot.createdAt)) continue
       // A journal event is the durable revision. Remove the compact snapshot
       // projection before replaying it so a terminal Journal state can repair
       // a stale/failed tasks.json state after a crash.
@@ -267,7 +281,24 @@ export class TaskManager {
         )
         this.tasks.delete(id)
       }
-      this.restore([{ ...snapshot }])
+      const journalAnchor = snapshot.recurrenceStartAt
+      const existingAnchor = existing?.recurrenceStartAt
+      const hasAnchor = value => (
+        value !== null
+        && value !== undefined
+        && value !== ''
+        && Number.isFinite(Number(value))
+      )
+      this.restore([{
+        ...snapshot,
+        ...(
+          hasAnchor(journalAnchor)
+            ? { recurrenceStartAt: Number(journalAnchor) }
+            : hasAnchor(existingAnchor)
+              ? { recurrenceStartAt: Number(existingAnchor) }
+              : {}
+        ),
+      }])
       restored += 1
     }
     return restored
@@ -293,11 +324,11 @@ export class TaskManager {
         transitionTask(task, TaskStatus.FAILED)
         task.error = 'qwen-audio-agent 重启时这项项目任务失去连接，请重新提交。'
         task.completedAt = Date.now()
-        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
+        task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
         task.promise = Promise.resolve(publicTask(task))
         task.resolve = null
         this.emit(TaskDomainEvent.FAILED, task)
-        if (isUserWork(task)) {
+        if (shouldNotifyTaskCompletion(task)) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
         continue
@@ -422,6 +453,7 @@ export class TaskManager {
     scope,
     parentTaskId = null,
     priority = 0,
+    notificationPolicy = TaskNotificationPolicy.ANNOUNCE,
     runner,
     canceler,
   }) {
@@ -465,6 +497,7 @@ export class TaskManager {
       cancellation: null,
       authorization: null,
       inputRequest: null,
+      notificationPolicy: normalizeTaskNotificationPolicy(notificationPolicy),
       notificationStatus: 'none',
       notificationClaimantId: null,
       notificationClaimedAt: null,
@@ -489,26 +522,54 @@ export class TaskManager {
     ownerId,
     sessionId,
     turnId,
-    schedule: { at, recurrence = 'once' } = {},
+    schedule: { at, recurrence = 'once', timeZone = null } = {},
     type = 'reminder',
     timeoutMs = null,
     runner = null,
+    recurrenceStartAt = null,
+    seriesId = null,
   }) {
     const kind = type === 'task' ? 'scheduled_task' : 'reminder'
+    const normalizedRecurrence = normalizeRecurrence(recurrence)
+    const scheduledAt = Number(at)
+    const recurrenceAnchor = recurrenceStartAt == null
+      || recurrenceStartAt === ''
+      ? NaN
+      : Number(recurrenceStartAt)
+    const taskId = this.allocateTaskId()
+    const normalizedSeriesId = normalizedRecurrence === 'once'
+      ? null
+      : String(seriesId || taskId).trim().slice(0, 128) || taskId
     const task = {
-      id: this.allocateTaskId(),
+      id: taskId,
       status: 'scheduled',
       scope: TaskScope.USER,
       kind,
+      seriesId: normalizedSeriesId,
       objective: String(objective || '').trim(),
       ownerId: String(ownerId || ''),
       sessionId: String(sessionId || 'main'),
       turnId: turnId || null,
+      // Keep the original instant outside the public task projection. A
+      // DST gap may move one occurrence forward; using that adjusted instant
+      // as the next series anchor would permanently shift later occurrences.
+      recurrenceStartAt: normalizedRecurrence === 'once'
+        ? null
+        : Number.isFinite(recurrenceAnchor)
+          ? recurrenceAnchor
+          : scheduledAt,
       priority: 0,
       parentTaskId: null,
-      schedule: { type: 'at', at: Number(at), recurrence },
+      schedule: {
+        type: 'at',
+        at: scheduledAt,
+        recurrence: normalizedRecurrence,
+        ...(normalizedRecurrence === 'once'
+          ? {}
+          : { timeZone: normalizeTimeZone(timeZone) }),
+      },
       timeoutMs: type === 'task'
-        ? Number(timeoutMs) || config.scheduledTaskTimeoutMs
+        ? Number(timeoutMs) || this.scheduledTaskTimeoutMs
         : null,
       createdAt: Date.now(),
       startedAt: null,
@@ -523,6 +584,7 @@ export class TaskManager {
       cancellation: null,
       authorization: null,
       inputRequest: null,
+      notificationPolicy: TaskNotificationPolicy.ANNOUNCE,
       notificationStatus: 'none',
       notificationClaimantId: null,
       notificationClaimedAt: null,
@@ -705,12 +767,14 @@ export class TaskManager {
           task.completedAt = Date.now()
           task.elapsedMs = task.startedAt
             ? task.completedAt - task.startedAt : 0
-          task.notificationStatus = 'pending'
+          task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
           clearInterval(task.progressTimer)
           task.progressTimer = null
           this.releaseScheduler(task)
           this.emit(TaskDomainEvent.FAILED, task)
-          this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+          if (shouldNotifyTaskCompletion(task)) {
+            this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
+          }
           this.persistDeferred()
           this.drain()
         }, 5000)
@@ -768,7 +832,7 @@ export class TaskManager {
         task.elapsedMs = task.startedAt
           ? task.completedAt - task.startedAt
           : 0
-        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
+        task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
         task.terminalHandled = true
         this.releaseScheduler(task)
         this.emit(
@@ -777,7 +841,7 @@ export class TaskManager {
             : TaskDomainEvent.FAILED,
           task,
         )
-        if (isUserWork(task)) {
+        if (shouldNotifyTaskCompletion(task)) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
         task.resolve?.(publicTask(task))
@@ -839,11 +903,11 @@ export class TaskManager {
         task.elapsedMs = task.startedAt
           ? task.completedAt - task.startedAt
           : 0
-        task.notificationStatus = isUserWork(task) ? 'pending' : 'none'
+        task.notificationStatus = shouldNotifyTaskCompletion(task) ? 'pending' : 'none'
         task.terminalHandled = true
         this.releaseScheduler(task)
         this.emit(TaskDomainEvent.FAILED, task)
-        if (isUserWork(task)) {
+        if (shouldNotifyTaskCompletion(task)) {
           this.emit(TaskDomainEvent.NOTIFICATION_PENDING, task)
         }
         task.resolve?.(publicTask(task))
@@ -852,6 +916,24 @@ export class TaskManager {
         return publicTask(task)
       })
     return task.cancelPromise
+  }
+
+  async cancelSeries(seriesId, { ownerId } = {}) {
+    const normalizedSeriesId = String(seriesId || '').trim()
+    if (!normalizedSeriesId) return []
+    const targets = [...this.tasks.values()]
+      .filter(task => (
+        task.seriesId === normalizedSeriesId
+        && (ownerId === undefined || task.ownerId === String(ownerId))
+        && isTaskCancellable(task.status)
+      ))
+      .sort((left, right) => left.createdAt - right.createdAt)
+    const cancelled = []
+    for (const task of targets) {
+      const result = await this.cancel(task.id, { ownerId })
+      if (result) cancelled.push(result)
+    }
+    return cancelled
   }
 
   finishCancellation(task) {
@@ -983,24 +1065,3 @@ export class TaskManager {
     if (changed) this.persist()
   }
 }
-
-export const taskStore = new TaskStore({
-  filePath: config.taskStatePath,
-  onWarning: warning => logger.warn('task.persistence_warning', { warning }),
-})
-
-export const taskSessionJournal = new SessionJournalRegistry({
-  directory: resolve(config.configDirectory, 'sessions'),
-  logger,
-})
-
-export const taskManager = new TaskManager({
-  store: taskStore,
-  logger,
-  maxConcurrent: config.taskMaxConcurrent,
-  maxConcurrentPerOwner: config.taskMaxConcurrentPerOwner,
-  terminalTtlMs: config.taskTerminalTtlMs,
-  pendingNotificationTtlMs: config.taskPendingNotificationTtlMs,
-  maxTerminalTasksPerOwner: config.maxTerminalTasksPerOwner,
-  sessionJournal: taskSessionJournal,
-})

@@ -49,7 +49,8 @@ button:disabled {
 
 button:focus-visible,
 input:focus-visible,
-select:focus-visible {
+select:focus-visible,
+dialog:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -319,7 +320,7 @@ h2 {
 
 .provider-segmented {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   min-width: 0;
   padding: 0;
@@ -419,6 +420,12 @@ select {
 
 input::placeholder {
   color: var(--text-note);
+}
+
+input.fixed-model {
+  color: var(--text-secondary);
+  background: var(--page);
+  cursor: default;
 }
 
 input[type="search"]::-webkit-search-cancel-button {

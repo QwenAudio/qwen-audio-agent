@@ -102,3 +102,21 @@ test('uses only BackendPort status and cancellation operations', async () => {
     ['cancel', 'work-one', { ownerId: 'owner' }],
   ])
 })
+
+test('marks only trusted utility work as isolated', async () => {
+  let submitted
+  const runtime = new BackendWorkRuntime({
+    backend: backend({
+      async submit(work) {
+        submitted = work
+        return { content: '完成', artifacts: [] }
+      },
+    }),
+  })
+  await runtime.runIsolated({ instruction: '转换文档' }, {
+    ownerId: 'owner-one',
+    taskId: 'ingest-one',
+  })
+  assert.equal(submitted.continuity, 'isolated')
+  assert.equal(submitted.instruction, '转换文档')
+})

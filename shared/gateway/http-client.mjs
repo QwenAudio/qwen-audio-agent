@@ -1,0 +1,116 @@
+export async function readGatewayHealth(
+  baseUrl,
+  fetchImpl = fetch,
+  { accessToken = '' } = {},
+) {
+  try {
+    const response = await fetchImpl(`${baseUrl}/api/health`, {
+      headers: accessToken
+        ? { Authorization: `Bearer ${String(accessToken).trim()}` }
+        : {},
+      signal: AbortSignal.timeout(1500),
+    })
+    const payload = await response.json()
+    return payload && typeof payload === 'object' && payload.backend
+      ? payload
+      : null
+  } catch {
+    return null
+  }
+}
+
+export async function createGatewayPairingTicket(baseUrl, fetchImpl = fetch) {
+  const response = await fetchImpl(`${baseUrl}/api/access/pairing-tickets`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+    signal: AbortSignal.timeout(3000),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || !payload.code || !payload.gatewayUrl) {
+    const error = new Error(payload.error || `Gateway returned HTTP ${response.status}`)
+    error.code = payload.code || 'pairing_ticket_failed'
+    throw error
+  }
+  return payload
+}
+
+export async function pairGatewayDevice(
+  baseUrl,
+  { code, device } = {},
+  fetchImpl = fetch,
+) {
+  const response = await fetchImpl(`${baseUrl}/api/access/pair`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code, device }),
+    signal: AbortSignal.timeout(5000),
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok || !payload.access_token) {
+    const error = new Error(payload.error || `Gateway returned HTTP ${response.status}`)
+    error.code = payload.code || 'gateway_pairing_failed'
+    throw error
+  }
+  return payload
+}
+
+async function gatewayManagementRequest(
+  baseUrl,
+  path,
+  options,
+  fetchImpl,
+  { timeoutMs = 3000 } = {},
+) {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    ...options,
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  const payload = response.status === 204
+    ? null
+    : await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const error = new Error(payload?.error || `Gateway returned HTTP ${response.status}`)
+    error.code = payload?.code || 'gateway_management_failed'
+    throw error
+  }
+  return payload
+}
+
+export function listGatewayDevices(baseUrl, fetchImpl = fetch) {
+  return gatewayManagementRequest(
+    baseUrl,
+    '/api/access/devices',
+    { method: 'GET' },
+    fetchImpl,
+  )
+}
+
+export function issueGatewayDevice(baseUrl, { device, endpoint } = {}, fetchImpl = fetch) {
+  return gatewayManagementRequest(
+    baseUrl,
+    '/api/access/devices',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ device, ...(endpoint ? { endpoint } : {}) }),
+    },
+    fetchImpl,
+  ).then(payload => {
+    if (!payload?.connection_code || !payload?.device?.id) {
+      const error = new Error('Gateway returned an invalid device connection')
+      error.code = 'gateway_device_issue_failed'
+      throw error
+    }
+    return payload
+  })
+}
+
+export function revokeGatewayDevice(baseUrl, deviceId, fetchImpl = fetch) {
+  return gatewayManagementRequest(
+    baseUrl,
+    `/api/access/devices/${encodeURIComponent(deviceId)}`,
+    { method: 'DELETE' },
+    fetchImpl,
+  )
+}

@@ -4,7 +4,7 @@ import test from 'node:test'
 import {
   applyDesktopClientSettings,
   initialDesktopClientSettings,
-} from '../src/desktop-client-settings.js'
+} from '../src/desktop/desktop-client-settings.js'
 
 test('desktop client settings initialize from the desktop URL', () => {
   assert.deepEqual(initialDesktopClientSettings(

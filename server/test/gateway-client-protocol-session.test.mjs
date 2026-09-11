@@ -4,7 +4,7 @@ import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
   createGatewaySessionHello,
-} from '../../shared/gateway-client-protocol.mjs'
+} from '../../shared/protocol/gateway-client-protocol.mjs'
 import { GatewayClientProtocolSession } from '../src/transport/gateway-client-protocol-session.mjs'
 import { GatewayClientReplayBuffer } from '../src/transport/gateway-client-replay-buffer.mjs'
 

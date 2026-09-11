@@ -422,31 +422,30 @@ style: |
 
 ```js
 export const frontendToolRegistry = new FrontendToolRegistry([
-  // ── 内置：始终存在 ──
-  { definition: spawnThinkingTool,       policy: { mode: 'background' } },
-  { definition: scheduleReminderTool,    policy: { mode: 'inline' } },
-  { definition: getCurrentTimeTool,      policy: { mode: 'inline' } },
-  { definition: memoryTool,              policy: { mode: 'inline' } },
-  { definition: notesTool,               policy: { mode: 'inline' } },
-  { definition: cancelAgentTaskTool,     policy: { mode: 'control' } },
-  { definition: getAgentTaskStatusTool,  policy: { mode: 'control' } },
-  // ── 可扩展：按能力或客户端动作出现 ──
-  { definition: webSearchTool,           policy: { mode: 'inline',  requiredCapabilities: […] } },
-  { definition: fetchUrlTool,            policy: { mode: 'inline',  requiredCapabilities: […] } },
-  { definition: knowledgeTool,           policy: { mode: 'inline',  requiredCapabilities: […] } },
-  { definition: recallTool,              policy: { mode: 'inline',  requiredCapabilities: […] } },
-  { definition: respondPermissionTool,   policy: { mode: 'control', requiredCapabilities: […] } },
-  { definition: respondAgentInputTool,   policy: { mode: 'control', requiredCapabilities: […] } },
-  { definition: enterSleepTool,          policy: { mode: 'control', requiredClientActions: […] } },
+  { definition: spawnThinkingTool, policy: { repeatHandling: 'handler' } },
+  { definition: scheduleReminderTool },
+  { definition: getCurrentTimeTool },
+  { definition: memoryTool },
+  { definition: notesTool },
+  { definition: cancelAgentTaskTool },
+  { definition: getAgentTaskStatusTool },
+  // 能力或客户端动作存在时才提供相应工具
+  { definition: webSearchTool,         policy: { requiredCapabilities: […] } },
+  { definition: fetchUrlTool,          policy: { requiredCapabilities: […] } },
+  { definition: knowledgeTool,         policy: { requiredCapabilities: […] } },
+  { definition: recallTool,            policy: { requiredCapabilities: […] } },
+  { definition: respondPermissionTool, policy: { requiredCapabilities: […] } },
+  { definition: respondAgentInputTool, policy: { requiredCapabilities: […] } },
+  { definition: enterSleepTool,        policy: { requiredClientActions: […] } },
 ])
 ```
 
-> <strong>前台工具集保持最小且有界：</strong> 每个工具携带策略：inline 快速读写、control 状态操作、background 异步任务。
+> <strong>前台工具集保持最小且有界：</strong> 仅声明实际生效的策略；注册后仍按配置和当前能力筛选，不靠分类标签决定执行方式。
 
 <!--
 [Sources]
-- server/src/voice/frontend-tools.mjs
-- server/src/voice/tools/spawn-thinking-tool.mjs
+- server/src/frontend/frontend-tools.mjs
+- server/src/frontend/tools/spawn-thinking-tool.mjs
 -->
 
 ---
@@ -516,8 +515,8 @@ objective 文本 + COORDINATOR_STABLE_INSTRUCTIONS 稳定指令块 + 用户原�
 [Sources]
 - server/src/task/task-manager.mjs
 - server/src/backend/backend-work-input.mjs
-- server/src/agent/acp-coordinator-contract.mjs
-- server/src/agent/acp-coordinator-instructions.mjs
+- server/src/backend/adapters/acp/coordinator-contract.mjs
+- server/src/backend/adapters/acp/coordinator-instructions.mjs
 -->
 
 ---
@@ -623,8 +622,8 @@ return `${protocol}:${encodeURIComponent(
 
 <!--
 [Sources]
-- server/src/agent/acp-backend-session-utils.mjs
-- server/src/agent/acp-backend-adapter.mjs
+- server/src/backend/adapters/acp/backend-session-utils.mjs
+- server/src/backend/adapters/acp/backend-adapter.mjs
 -->
 
 ---
@@ -802,7 +801,7 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 <!--
 [Sources]
-- server/src/agent/acp-session-tools.mjs
+- server/src/backend/adapters/acp/session-tools.mjs
 -->
 
 ---
@@ -876,10 +875,10 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 <!--
 [Sources]
 - server/src/conversation/frontend-agent-context.mjs
-- server/src/conversation/frontend-memory-service.mjs
-- server/src/conversation/memory-extractor.mjs
-- server/src/conversation/profile-observer.mjs
-- server/src/conversation/preference-promoter.mjs
+- server/src/memory/providers/markdown/provider.mjs
+- server/src/memory/learning/extractor.mjs
+- server/src/memory/learning/profile-observer.mjs
+- server/src/memory/learning/preference-promoter.mjs
 -->
 
 ---
@@ -924,7 +923,7 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 </div>
 
-**三个入口最终调用同一个 FrontendMemoryService；模型和工具都不能直接改写 Markdown 文件。**
+**三个入口最终都经过统一的 MemoryProvider 运行时边界；模型和工具都不能绕过 Provider 直接写入存储。**
 
 ---
 
@@ -947,8 +946,8 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 <!--
 [Sources]
-- server/src/conversation/memory-extractor.mjs
-- server/src/conversation/frontend-memory-service.mjs
+- server/src/memory/learning/extractor.mjs
+- server/src/memory/providers/markdown/provider.mjs
 -->
 
 ---

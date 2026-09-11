@@ -7,6 +7,7 @@ const logger = createLogger({
   component: 'cli',
   fileName: 'cli.log',
   consoleEnabled: false,
+  fileEnabled: process.argv[2] !== 'doctor',
 })
 const startedAt = Date.now()
 logger.info('cli.started', {

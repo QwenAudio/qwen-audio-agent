@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
 import { TaskStore } from '../src/task/task-store.mjs'
+import { TaskNotificationPolicy } from '../src/task/task-state.mjs'
 
 test('persists final work and notification delivery state', async () => {
   const filePath = join(mkdtempSync(join(tmpdir(), 'qwen-audio-agent-')), 'tasks.json')
@@ -26,6 +27,27 @@ test('persists final work and notification delivery state', async () => {
   const restored = new TaskManager({ store: new TaskStore({ filePath }) })
   assert.equal(restored.get(work.id).result, '完成')
   assert.equal(restored.get(work.id).notificationStatus, 'delivered')
+})
+
+test('persists silent completion policy across restart', async () => {
+  const filePath = join(mkdtempSync(join(tmpdir(), 'qwen-audio-agent-')), 'tasks.json')
+  const first = new TaskManager({ store: new TaskStore({ filePath }) })
+  const work = first.create({
+    objective: '转换资料',
+    ownerId: 'owner',
+    notificationPolicy: TaskNotificationPolicy.SILENT,
+    runner: async () => ({ content: '完成' }),
+  })
+  await first.wait(work.id)
+
+  const restored = new TaskManager({ store: new TaskStore({ filePath }) })
+  assert.equal(restored.get(work.id).notificationPolicy, 'silent')
+  assert.equal(restored.get(work.id).notificationStatus, 'none')
+  assert.deepEqual(restored.claimNotifications({
+    ownerId: 'owner',
+    includeOtherSessions: true,
+    claimantId: 'replacement',
+  }), [])
 })
 
 test('continues short task numbering after restart', () => {

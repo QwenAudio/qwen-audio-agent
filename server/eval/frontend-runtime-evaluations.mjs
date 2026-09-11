@@ -1,13 +1,13 @@
 import { loadFrontendPrompt } from '../src/conversation/frontend-agent-context.mjs'
 import {
   normalizeKnowledgeRetrievalResponse,
-} from '../src/frontend/knowledge/retrieval-provider.mjs'
+} from '../src/knowledge/provider.mjs'
 import {
   FrontendRetrievalRuntime,
 } from '../src/frontend/retrieval/frontend-retrieval-runtime.mjs'
 import {
   frontendTools,
-} from '../src/voice/frontend-tools.mjs'
+} from '../src/frontend/frontend-tools.mjs'
 import {
   AnnouncementManager,
 } from '../src/voice/announcement/announcement-manager.mjs'
@@ -48,16 +48,19 @@ async function evaluateRoutingContract() {
     { names },
   )
   requireCondition(
-    /公开网页搜索、网址读取和已保存知识[\s\S]*单次[\s\S]*属于该工具声明能力范围/u.test(prompt),
-    'The frontend prompt no longer keeps Search and Knowledge in the frontend.',
+    /可组合使用本轮提供的工具完成请求/u.test(prompt)
+      && /不要仅因需要多次工具调用就转为后台工作/u.test(prompt),
+    'The frontend prompt no longer permits composing available tools.',
   )
   requireCondition(
     /符合 `spawn_thinking` description 声明的[\s\S]*能力范围/u.test(prompt),
     'The frontend prompt no longer routes declared backend capabilities.',
   )
   requireCondition(
-    /`knowledge` 只检索[\s\S]*外部知识服务/u.test(prompt),
-    'Knowledge is no longer kept behind an external retrieval provider.',
+    /检索用户已配置的知识库文档/u.test(frontendTools({
+      frontend: { capabilities: ['knowledge'] },
+    }).find(tool => tool.function.name === 'knowledge').function.description),
+    'Knowledge no longer routes to the configured knowledge library.',
   )
   return { visibleTools: names }
 }

@@ -1,35 +1,32 @@
-# Assistant Profile and User Preferences
+# Personalization and Memory
 
-Frontend context is split into four layers with non-overlapping responsibilities:
+Set long-term names and communication preferences in conversation, without editing source code:
 
-| Layer | Source | Responsibility |
-| --- | --- | --- |
-| Core policy | `config/frontend-agent/PROMPT.md` | Tool protocol, permission, safety, and task boundaries; user memory cannot override it |
-| Assistant profile | `ASSISTANT.md` | Instance-wide default identity, personality, relationship stance, and expression style; configured by users or downstream products |
-| User preferences | `USER.md` / `user` | Explicit long-term personalization for the current user; overrides the default persona |
-| Long-term memory | `MEMORY.md` / `memory` | Durable facts and decisions used to understand the user and answer questions; no behavioral authority |
+- “Call me Captain from now on.”
+- “Keep replies more concise from now on.”
+- “Remember that I currently live in Hangzhou.”
+- “Forget the address you just recorded.”
 
-Instruction conflicts resolve in this order: core policy, the user's current explicit request,
-the user preferences, then the assistant profile. Long-term memory is not part of the instruction
-hierarchy; it is evidence only, and the user's current statement wins when facts conflict.
-Saying “keep replies shorter from now on” or “call yourself Skiff from now on” updates the
-current user's `USER.md`, not instance-wide `ASSISTANT.md`; a temporary request applies only to
-the current turn.
+Names and communication style are preferences; addresses and project facts belong in long-term
+memory. Temporary requests apply to the current turn and should not automatically become lasting
+settings. Edit `ASSISTANT.md` for the default persona; conversational changes update user preferences
+or memory, not the application's default persona.
 
-User data is stored under the configuration directory (`~/.config/qwaudio/` for the CLI):
+## Default implementation
+
+With the default configuration, the Gateway uses its built-in Markdown provider. Its default files
+are listed below; see [directory settings](../configuration.md#configuration-and-data-directories) for overrides:
 
 | File | Description |
 | --- | --- |
 | `ASSISTANT.md` | Instance-wide default persona: identity, personality, relationship stance, and expression style |
-| `USER.md` | Long-term personalization overlay for the current user |
-| `MEMORY.md` | Durable facts and decisions about the user |
-| `memory-audit.jsonl` | Diagnostic log for automatic memory patches, skips, and failures |
-| `tasks.json` | Background task results and pending notification states |
-| `state.env` | Local identity key (auto-generated on first launch, readable and writable only by the current user) |
-| `logs/` | Credential-redacted, auto-rotated local runtime logs |
+| `data/USER.md` | Long-term personalization overlay for the current user |
+| `data/MEMORY.md` | Durable facts and decisions about the user |
+| `<state-dir>/memory-audit.jsonl` | Diagnostic log for automatic memory patches, skips, and failures |
 
-These files are stored only on the local machine, are never committed to the source
-repository, and have file permissions restricted to the current user only.
+These files remain local and are never committed to the source repository. `USER.md` and
+`MEMORY.md` are the default provider's physical representation, not a requirement imposed on
+other providers.
 
 ## Assistant Profile
 
@@ -64,52 +61,33 @@ Do not store passwords, API Keys, verification codes, or tokens in this file.
 Legacy `profile`, `rules`, and `user` records from `frontend-memory.json` are migrated into
 `USER.md` on first launch.
 
-## Preference Self-Update (off by default)
+## Preference self-update (default provider only, off by default)
 
-With `QWEN_AUDIO_PREFERENCE_LEARNING=on`, the Gateway observes user traits from a
-finished session and writes them to `USER.md` only after enough cross-session
-confirmation. It is off by default because it adds one model call per session.
-
-Four fields only, with deliberately narrow value spaces:
-
-| Field | Meaning |
-| --- | --- |
-| `occupation` | Occupation |
-| `special_skills` | Technologies or domains the user is strong in, capped at 6 |
-| `response_length` | Reply length; only `brief`, `normal`, or `detailed` |
-| `response_style` | Reply style |
-
-Writes land in the `## 观察推断` (observed) section of `USER.md`, kept
-**physically separate** from `## 用户明确要求` (explicitly stated). An explicit
-statement always wins on conflict. The split prevents inferred content from
-polluting what the user wrote: the user can see which lines came from their own
-words and which the system guessed, and can edit or delete the latter.
+Set `QWEN_AUDIO_PREFERENCE_LEARNING=on` to observe a small set of traits after a session and
+write them to the observed section of `USER.md` only after cross-session confirmation.
+It is off by default and adds text-model calls. Explicit preferences always override inferences;
+you can inspect or delete the observed section.
 
 ### Promotion gate
 
-An observation reaches the document only when `confirm ≥ 2` **and** the
-confirmations come from **≥ 2 distinct sessions**. `confirm` resets after 90 days
-with no new confirmation.
+See [Preference Learning](preference-learning.md#promotion-gate) for counts and expiry.
 
 ### Four structural guards
 
-A model sometimes supplies a genuine quote while the inference from that quote
-does not hold. Repeated sampling cannot filter this class out — the user says the
-same sentence every session, the model makes the same wrong inference, and the
-counter climbs to the threshold anyway. The guards therefore apply at admission
-time:
+See [Preference Learning](preference-learning.md#four-structural-guards) for evidence checks and diagnostics.
 
-| Guard | What it blocks |
-| --- | --- |
-| `quote_not_from_user` | The quote must appear verbatim in a user turn: blocks fabricated evidence, assistant speech treated as user preference, and self-reinforcement |
-| `value_not_anchored` | The literal parts of the conclusion must be findable in the quote |
-| `value_parrots_quote` | Value equals the quote — that is repetition, not feature extraction |
-| `quote_not_about_interaction` | For interaction-preference fields the quote must address the assistant: blocks "how long the content should be" being read as "how long the reply should be" |
+## Replacing the memory implementation
 
-Diagnostics land in `memory-audit.jsonl`, so a rejected observation can be
-explained after the fact.
+Markdown memory is the default; [VoiceMem](../scenarios/voicemem.md) is an optional alternative.
+Developer interfaces and the four context layers are documented in [Memory Provider](memory-provider.md).
+
+## Data and Privacy
+
+Files are stored on the Gateway host. With cloud models, relevant preferences and memories are
+still supplied as context; processing is not entirely offline. Do not store passwords, keys, or
+verification codes. See [Memory](memory.md) for automatic reconciliation, optional model settings,
+and removal.
 
 ## Read next
 
-- [Long-Term Memory](memory.md) — `MEMORY.md` mechanics, the `memory` tool,
-  session digests and recall, and the replaceable Memory Provider
+- [Memory](memory.md): automatic reconciliation, session recall, and optional connectors.

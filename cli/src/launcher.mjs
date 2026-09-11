@@ -1,19 +1,24 @@
 import { dirname, resolve } from 'node:path'
+import { runtimePathEnvironment } from '../../shared/runtime-paths.mjs'
+import { tuiClientDirectory } from '../../shared/client-paths.mjs'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import readline from 'node:readline'
+import QRCode from 'qrcode'
 import { loadRuntimeEnvironment } from '../../shared/runtime-environment.mjs'
+import { refreshProcessPath } from '../../shared/process-path.mjs'
 import {
   backendDefinition,
   backendNames,
   normalizeBackendProtocol,
   resolveBackendOwnership,
-} from '../../shared/backend-catalog.mjs'
+} from '../../shared/backend/catalog.mjs'
 import {
   findExecutable,
   formatBackendSetup,
   inspectBackendSetups,
-} from '../../shared/backend-setup.mjs'
-import { installBackend } from '../../shared/backend-install.mjs'
+} from '../../shared/backend/setup.mjs'
+import { installBackend } from '../../shared/backend/install.mjs'
 import {
   addSkills,
   listSkills,
@@ -23,13 +28,30 @@ import {
 } from '../../shared/skill-library.mjs'
 import { helpText, parseArguments } from './arguments.mjs'
 import {
+  createGatewayPairingTicket,
   ensureRuntime,
   isLocalGateway,
   readGatewayHealth,
   waitForGateway,
 } from './runtime.mjs'
+import {
+  listGatewayDevices,
+  issueGatewayDevice,
+  pairGatewayConnectionCode,
+  revokeGatewayDevice,
+  saveGatewayDirectConnection,
+} from '../../shared/gateway/access-client.mjs'
+import {
+  createGatewayPairingCode,
+  decodeGatewayConnectionCode,
+  encodeGatewayBrowserPairingCode,
+  encodeGatewayPairingCode,
+} from '../../shared/gateway/remote-access.mjs'
+import { GatewayConnectionProfileStore } from '../../shared/gateway/connection-profiles.mjs'
+import { createPrivateFileGatewayCredentialStore } from '../../shared/gateway/file-credential-store.mjs'
 import { launchWebUi } from './webui.mjs'
 import { acquireCliInstance } from './instance-lock.mjs'
+import { collectDiagnostics, formatDiagnostics } from './diagnostics.mjs'
 import { manageGatewayService } from './gateway-service.mjs'
 import {
   GATEWAY_RESTART_FOLLOW_UP,
@@ -45,8 +67,10 @@ async function runMinimal(options) {
   const { runTui } = await import(moduleUrl)
   await runTui({
     url: options.url,
+    accessToken: options.accessToken,
     sessionId: options.sessionId,
     audioMode: options.audioMode,
+    takeover: options.takeover,
   })
   return 0
 }
@@ -82,6 +106,14 @@ function applyGatewayOptions(env, options) {
   if (definition?.baseUrlEnvironment) {
     env[definition.baseUrlEnvironment] = options.backendUrl
   }
+  if (options.lan) {
+    env.QWEN_AUDIO_GATEWAY_LAN = '1'
+    delete env.QWEN_AUDIO_GATEWAY_TAILNET
+  } else if (options.tailnet) {
+    env.QWEN_AUDIO_GATEWAY_TAILNET = '1'
+    delete env.QWEN_AUDIO_GATEWAY_LAN
+  }
+  if (options.lan) options.listenHost = '0.0.0.0'
 }
 
 function gatewaySummary(health) {
@@ -89,26 +121,52 @@ function gatewaySummary(health) {
     || health?.realtimeLabel
     || health?.realtimeModel
   const modelSummary = model ? `Realtime：${model}` : ''
+  const frontendMcp = health?.frontendMcp
+  const mcpConfigured = frontendMcp?.servers?.some(server => server.enabled)
+  const mcpSummary = !mcpConfigured
+    ? ''
+    : frontendMcp.ok === false
+      ? '前台 MCP 异常'
+      : frontendMcp.initialized === false
+        ? '前台 MCP 连接中'
+        : `前台 MCP ${frontendMcp.tools || 0} 个工具`
   if (health?.backend?.enabled === false) {
-    return [modelSummary, '仅前台聊天模式'].filter(Boolean).join(' · ')
+    return [modelSummary, '仅前台聊天模式', mcpSummary]
+      .filter(Boolean)
+      .join(' · ')
   }
   const label = health?.backend?.label
     || health?.backend?.kind
     || health?.backend?.protocol
     || '后台 Agent'
   const state = health?.backend?.ok ? '已连接' : '未连接'
-  return [modelSummary, `${label} ${state}`].filter(Boolean).join(' · ')
+  return [modelSummary, `${label} ${state}`, mcpSummary]
+    .filter(Boolean)
+    .join(' · ')
 }
 
-function gatewayServiceEnvironment(url) {
+function publicEndpointSummary(health) {
+  const endpoint = health?.publicEndpoint
+  if (!endpoint || endpoint.mode === 'none') return ''
+  if (endpoint.endpoint?.url) return endpoint.endpoint.url
+  if (endpoint.state === 'error') {
+    return `异常：${endpoint.error?.message || '未知错误'}`
+  }
+  return endpoint.state === 'starting' ? '启动中' : '未就绪'
+}
+
+function gatewayServiceEnvironment(url, options = {}) {
   const target = new URL(url)
   if (target.protocol !== 'http:' || !isLocalGateway(url)) {
     throw new Error('Gateway 后台服务只支持本机 HTTP 地址')
   }
-  return {
-    HOST: target.hostname.replace(/^\[(.*)\]$/, '$1'),
+  const serviceEnvironment = {
+    HOST: options.lan ? '0.0.0.0' : target.hostname.replace(/^\[(.*)\]$/, '$1'),
     PORT: target.port || '80',
   }
+  if (options.lan) serviceEnvironment.QWEN_AUDIO_GATEWAY_LAN = '1'
+  if (options.tailnet) serviceEnvironment.QWEN_AUDIO_GATEWAY_TAILNET = '1'
+  return serviceEnvironment
 }
 
 async function waitForGatewayStop(url, {
@@ -122,6 +180,27 @@ async function waitForGatewayStop(url, {
     await new Promise(resolvePromise => setTimeout(resolvePromise, intervalMs))
   }
   throw new Error(`Gateway 停止超时：${url}`)
+}
+
+async function waitForPublicEndpoint(url, {
+  inspectGateway = value => readGatewayHealth(value),
+  timeoutMs = 35_000,
+  intervalMs = 200,
+} = {}) {
+  const deadline = Date.now() + timeoutMs
+  let health = null
+  while (Date.now() < deadline) {
+    health = await inspectGateway(url)
+    const endpoint = health?.publicEndpoint
+    if (endpoint?.state === 'ready' && endpoint.endpoint?.url) return health
+    if (endpoint?.state === 'error') break
+    await new Promise(resolvePromise => setTimeout(resolvePromise, intervalMs))
+  }
+  const error = new Error(
+    health?.publicEndpoint?.error?.message || '等待 Gateway 对外地址就绪超时',
+  )
+  error.code = health?.publicEndpoint?.error?.code || 'gateway_public_url_not_ready'
+  throw error
 }
 
 function askConfirmation(question, { stdin, stdout }) {
@@ -169,24 +248,97 @@ export async function main(argv, {
   },
   runMinimalTui = runMinimal,
   prepareRuntime = options => ensureRuntime(options, { root, env }),
-  inspectGateway = url => readGatewayHealth(url),
+  inspectGateway = (url, accessToken = '') => readGatewayHealth(
+    url,
+    fetch,
+    { accessToken },
+  ),
+  issueDeviceCredential = (url, label, endpoint) => issueGatewayDevice(url, {
+    device: { type: 'client', label: label || 'Conversation client' },
+    endpoint,
+  }),
+  createPairingTicket = url => createGatewayPairingTicket(url),
+  listPairedDevices = url => listGatewayDevices(url),
+  revokePairedDevice = (url, id) => revokeGatewayDevice(url, id),
+  waitForEndpoint = url => waitForPublicEndpoint(url, { inspectGateway }),
   manageService = (action, options) => manageGatewayService(action, options),
+  refreshPath = options => refreshProcessPath(options),
   waitForService = (url, { requireBackend = false } = {}) =>
     waitForGateway(url, { requireBackend }),
   waitForServiceStop = url => waitForGatewayStop(url, { inspectGateway }),
   runWebUi = options => launchWebUi(options),
-  acquireInstance = directory => acquireCliInstance(directory),
+  diagnose = collectDiagnostics,
+  acquireInstance = (directory, instanceKey) => acquireCliInstance(directory, { instanceKey }),
   updateConfig = updateRealtimeModelConfig,
+  createConnectionProfiles = directory => new GatewayConnectionProfileStore({
+    filePath: resolve(directory, 'gateway-connections.json'),
+    credentialStore: createPrivateFileGatewayCredentialStore({
+      filePath: resolve(directory, 'gateway-client-credentials.json'),
+    }),
+  }),
+  pairConnectionCode = pairGatewayConnectionCode,
+  saveDirectConnection = saveGatewayDirectConnection,
+  renderPairingQr = value => QRCode.toString(value, {
+    type: 'terminal',
+    small: true,
+    errorCorrectionLevel: 'L',
+  }),
 } = {}) {
   const processRealtimeModelOverride = String(
     env.QWEN_AUDIO_REALTIME_MODEL || '',
   ).trim()
-  const readOnlyCommand = ['setup', 'install'].includes(argv[0])
+  const readOnlyCommand = ['setup', 'install', 'doctor', 'connect', 'disconnect', 'tui', 'webui'].includes(argv[0])
+    || argv.includes('--help') || argv.includes('-h')
     || (argv[0] === 'config' && argv[1] === 'show')
   const environment = prepareEnvironment({ readOnly: readOnlyCommand })
   const options = parseArguments(argv, env)
+  const connectionProfiles = ['connect', 'disconnect', 'tui'].includes(options.command)
+    ? createConnectionProfiles(tuiClientDirectory(env))
+    : null
+  if (!options.urlSpecified && options.command === 'tui') {
+    const saved = await connectionProfiles.resolve('cli-default')
+    if (saved?.credential) {
+      options.url = saved.profile.gateway_url
+      options.accessToken = saved.credential
+    }
+  }
+  if (
+    options.command === 'gateway'
+    && ['install', 'start', 'restart'].includes(options.gatewayAction)
+  ) {
+    // A persistent service cannot inherit later changes from the invoking
+    // shell. Refresh the shared, non-secret PATH cache before it starts.
+    refreshPath({ env })
+  }
   if (options.help) {
     stdout.write(`${helpText()}\n`)
+    return 0
+  }
+  if (options.command === 'doctor') {
+    const report = await diagnose({ options, environment, env })
+    stdout.write(`${options.json ? JSON.stringify(report, null, 2) : formatDiagnostics(report)}\n`)
+    return report.ok ? 0 : 1
+  }
+  if (options.command === 'connect') {
+    if (!options.pairingCode) throw new Error('connect 需要 Gateway 连接码')
+    const instanceId = `cli_${randomUUID()}`
+    const decoded = decodeGatewayConnectionCode(options.pairingCode)
+    const connectionOptions = {
+        device: { id: instanceId, type: 'cli', label: 'TUI' },
+        clientInstanceId: instanceId,
+        profileId: 'cli-default',
+        label: 'Remote Gateway',
+        profileStore: connectionProfiles,
+    }
+    const paired = decoded.kind === 'direct'
+      ? await saveDirectConnection(decoded.connection, connectionOptions)
+      : await pairConnectionCode(decoded.connection, connectionOptions)
+    stdout.write(`已连接远程 Gateway：${paired.profile.gateway_url}\n`)
+    return 0
+  }
+  if (options.command === 'disconnect') {
+    const removed = await connectionProfiles.remove('cli-default')
+    stdout.write(removed ? '已忘记远程 Gateway\n' : '没有已保存的远程 Gateway\n')
     return 0
   }
   if (options.command === 'config') {
@@ -296,6 +448,76 @@ export async function main(argv, {
     return 0
   }
 
+  if (options.command === 'gateway' && options.gatewayAction === 'pair') {
+    if (options.legacyPairing) {
+      const ticket = await createPairingTicket(options.url)
+      const pairingCode = createGatewayPairingCode({
+        gatewayUrl: ticket.gatewayUrl,
+        pairingCode: ticket.code,
+        expiresAt: ticket.expiresAt,
+      })
+      const appUrl = encodeGatewayPairingCode(pairingCode)
+      const browserUrl = encodeGatewayBrowserPairingCode(pairingCode)
+      if (options.json) {
+        stdout.write(`${JSON.stringify({
+          ...pairingCode,
+          app_url: appUrl,
+          browser_url: browserUrl,
+        }, null, 2)}\n`)
+      } else {
+        const qrCode = await renderPairingQr(browserUrl)
+        stdout.write(
+          '旧版客户端扫码配对：\n'
+          + `${qrCode}\n`
+          + `临时连接码：\n${appUrl}\n`
+          + `浏览器访问：\n${browserUrl}\n`
+          + `有效期至：${new Date(pairingCode.expires_at).toLocaleString()}\n`,
+        )
+      }
+      return 0
+    }
+    const issued = await issueDeviceCredential(
+      options.url,
+      options.deviceLabel,
+      options.endpoint,
+    )
+    const connectionCode = issued.connection_code
+    if (options.json) {
+      stdout.write(`${JSON.stringify({
+        device: issued.device,
+        connection_code: connectionCode,
+      }, null, 2)}\n`)
+    }
+    else {
+      const qrCode = await renderPairingQr(connectionCode)
+      stdout.write(
+        '扫码或复制连接：\n'
+        + `${qrCode}\n`
+        + `连接码（只显示这一次）：\n${connectionCode}\n`
+        + `设备 ID：${issued.device.id}\n`,
+      )
+    }
+    return 0
+  }
+
+  if (options.command === 'gateway' && options.gatewayAction === 'devices') {
+    const result = await listPairedDevices(options.url)
+    if (options.json) stdout.write(`${JSON.stringify(result, null, 2)}\n`)
+    else if (!result.devices?.length) stdout.write('尚无已授权客户端\n')
+    else {
+      for (const device of result.devices) {
+        stdout.write(`${device.id}\t${device.label || device.type || 'Client'}\n`)
+      }
+    }
+    return 0
+  }
+
+  if (options.command === 'gateway' && options.gatewayAction === 'revoke') {
+    await revokePairedDevice(options.url, options.deviceId)
+    stdout.write(`已撤销客户端：${options.deviceId}\n`)
+    return 0
+  }
+
   if (
     (options.command === 'gateway' && options.gatewayAction !== 'run')
     || options.command === 'status'
@@ -306,26 +528,28 @@ export async function main(argv, {
       'restart',
     ].includes(options.gatewayAction)
       ? {
-          ...gatewayServiceEnvironment(options.url),
+          ...gatewayServiceEnvironment(options.url, options),
           // A background service does not inherit the invoking shell. Preserve
-          // the shared profile directory explicitly, including custom profiles.
-          ...(environment.dataDirectory
-            ? { QWAUDIO_DATA_DIR: environment.dataDirectory }
-            : {}),
+          // every resolved directory explicitly, including custom profiles.
+          ...runtimePathEnvironment(environment),
         }
       : {}
     const serviceOptions = {
       configDirectory: environment.configDirectory,
+      stateDirectory: environment.stateDirectory,
       gatewayPath,
       serviceEnvironment,
       serviceMetadata: {
         url: options.url,
+        ...(options.lan ? { lan: true } : {}),
+        ...(options.tailnet ? { tailnet: true } : {}),
       },
     }
     if (options.gatewayAction === 'status') {
       const service = await manageService('status', serviceOptions)
       const serviceUrl = service.installedMetadata?.url || options.url
       const health = await inspectGateway(serviceUrl)
+      const publicEndpoint = publicEndpointSummary(health)
       stdout.write(
         `Gateway 后台服务：${
           service.running
@@ -333,7 +557,8 @@ export async function main(argv, {
             : service.installed ? '已停止' : '未安装'
         }\n`
         + `连接状态：${health ? gatewaySummary(health) : '未连接'}\n`
-        + `地址：${serviceUrl}\n`,
+        + `地址：${serviceUrl}\n`
+        + (publicEndpoint ? `对外地址：${publicEndpoint}\n` : ''),
       )
       return service.running && health ? 0 : 1
     }
@@ -406,10 +631,27 @@ export async function main(argv, {
         runtime.close(shutdownSignal)
         return await stopped
       }
-      const health = await inspectGateway(options.url)
+      let health = await inspectGateway(options.url)
+      if (
+        !runtime.ownsProcesses
+        && options.lan
+        && health?.publicEndpoint?.mode !== 'lan'
+      ) {
+        throw new Error('现有 Gateway 未开启局域网访问；请先停止后再使用 --lan 启动')
+      }
+      if (
+        !runtime.ownsProcesses
+        && options.tailnet
+        && health?.publicEndpoint?.mode !== 'tailnet'
+      ) {
+        throw new Error('现有 Gateway 未开启 Tailnet；请先停止后再使用 --tailnet 启动')
+      }
+      if (options.lan || options.tailnet) health = await waitForEndpoint(options.url)
+      const publicEndpoint = health?.publicEndpoint?.endpoint?.url
       stdout.write(
         `Gateway ${runtime.ownsProcesses ? '已启动' : '已在运行'}：${options.url}\n`
         + `WebUI：${options.url}/\n`
+        + (publicEndpoint ? `对外地址：${publicEndpoint}\n` : '')
         + `${gatewaySummary(health)}\n`,
       )
       if (!runtime.ownsProcesses) return 0
@@ -423,7 +665,7 @@ export async function main(argv, {
     }
   }
 
-  const health = await inspectGateway(options.url)
+  const health = await inspectGateway(options.url, options.accessToken)
   if (!health) {
     throw new Error(
       `Gateway 未运行：${options.url}。请先执行 qwenaudio gateway`,
@@ -431,7 +673,7 @@ export async function main(argv, {
   }
   if (options.command === 'webui') return runWebUi(options)
 
-  const instance = acquireInstance(environment.configDirectory)
+  const instance = acquireInstance(tuiClientDirectory(env), environment.stateDirectory)
   try {
     return await runMinimalTui(options)
   } finally {

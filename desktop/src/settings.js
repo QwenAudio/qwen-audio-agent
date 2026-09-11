@@ -4,7 +4,7 @@ import {
   backendRuntimePhase,
   backendRuntimeReady,
   initialBackendSelection,
-} from './backend-options.mjs'
+} from './backend/options.mjs'
 import {
   gatewayStatusLabel,
   realtimeConnectionStatus,
@@ -17,6 +17,7 @@ import {
 } from '../../shared/realtime-model-catalog.mjs'
 import { updaterButtonState, updaterStatusText } from './update-status.mjs'
 import { createRealtimeVoiceDrafts } from './realtime-voice-settings.mjs'
+import { isLoopbackUrl } from './security.mjs'
 import {
   desktopTranslator,
   effectiveDesktopLanguage,
@@ -50,6 +51,8 @@ const speechToSpeechRealtimeUrl = document.querySelector(
 const speechToSpeechAuthToken = document.querySelector(
   '#speech-to-speech-token',
 )
+const miniCpmORealtimeUrl = document.querySelector('#minicpm-o-url')
+const miniCpmOAuthToken = document.querySelector('#minicpm-o-token')
 const backendList = document.querySelector('#backend-list')
 const backendPicker = document.querySelector('.backend-picker')
 const backendPickerTrigger = document.querySelector('#backend-picker-trigger')
@@ -726,6 +729,7 @@ function backendLabel(value) {
   if (value === 'openclaw') return 'OpenClaw'
   if (value === 'qoder') return 'Qoder'
   if (value === 'qwen') return 'Qwen Code'
+  if (value === 'minimax') return 'MiniMax Code'
   if (value === 'kimi') return 'Kimi Code'
   if (value === 'hermes') return 'Hermes'
   if (value === 'codebuddy') return 'CodeBuddy'
@@ -749,8 +753,8 @@ function renderRealtimeVoice() {
 }
 
 function renderRealtimeProvider(value, { populateDefault = false } = {}) {
-  const provider = value === 'speech-to-speech'
-    ? 'speech-to-speech'
+  const provider = ['speech-to-speech', 'minicpm-o'].includes(value)
+    ? value
     : 'dashscope'
   for (const input of realtimeProviderInputs) {
     input.checked = input.value === provider
@@ -767,6 +771,13 @@ function renderRealtimeProvider(value, { populateDefault = false } = {}) {
   }
   if (populateDefault && provider === 'dashscope' && !realtimeBaseUrl.value.trim()) {
     realtimeBaseUrl.value = defaultRealtimeBaseUrl
+  }
+  if (
+    populateDefault
+    && provider === 'minicpm-o'
+    && !miniCpmORealtimeUrl.value.trim()
+  ) {
+    miniCpmORealtimeUrl.value = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
   }
 }
 
@@ -787,6 +798,8 @@ function formSettings() {
     ...realtimeVoiceDrafts.settings(),
     speechToSpeechRealtimeUrl: speechToSpeechRealtimeUrl.value,
     speechToSpeechAuthToken: speechToSpeechAuthToken.value,
+    miniCpmORealtimeUrl: miniCpmORealtimeUrl.value,
+    miniCpmOAuthToken: miniCpmOAuthToken.value,
     backendModel: backendModel.value,
     backendOwnership: backendOwnership.value,
     backendUrl: backendUrl.value,
@@ -812,6 +825,8 @@ function fingerprint(value) {
     omniRealtimeVoice: value.omniRealtimeVoice,
     speechToSpeechRealtimeUrl: value.speechToSpeechRealtimeUrl,
     speechToSpeechAuthToken: value.speechToSpeechAuthToken,
+    miniCpmORealtimeUrl: value.miniCpmORealtimeUrl,
+    miniCpmOAuthToken: value.miniCpmOAuthToken,
     backendModel: value.backendModel,
     backendOwnership: value.backendOwnership,
     backendUrl: value.backendUrl,
@@ -822,6 +837,18 @@ function fingerprint(value) {
 }
 
 function updateApplyState() {
+  const remote = !isLoopbackUrl(gatewayUrl.value)
+  for (const section of document.querySelectorAll('[data-local-gateway-settings]')) {
+    section.hidden = remote
+    // Hidden URL fields must not fail browser form validation on a remote connect.
+    section.querySelectorAll('input, select').forEach(input => {
+      if (input.closest('#backend-list')) return
+      input.disabled = remote
+    })
+  }
+  for (const note of document.querySelectorAll('[data-remote-gateway-note]')) {
+    note.hidden = !remote
+  }
   const backendAvailable = backendSelectionAvailable(
     backendReport,
     selectedBackend(),
@@ -829,7 +856,7 @@ function updateApplyState() {
   submit.disabled = (
     applying
     || recordingWakeShortcut
-    || !backendAvailable
+    || (!remote && gatewayUrl.value === settings?.gatewayUrl && !backendAvailable)
     || fingerprint(formSettings()) === appliedFingerprint
   )
 }
@@ -864,7 +891,7 @@ function renderRuntime() {
     t('已连接'),
   ].filter(Boolean).join(' · ')
   currentGateway.className = 'connection-status connected'
-  const realtimeLabel = realtimeStatusLabel(runtime.realtimeProvider)
+  const realtimeLabel = t(realtimeStatusLabel(runtime.realtimeProvider))
   if (!runtime.voiceConfigured) {
     setRealtimeStatus(`${realtimeLabel} · ${t('配置不完整')}`, 'disconnected')
   } else {
@@ -880,7 +907,7 @@ function renderRuntime() {
     }[state]
     setRealtimeStatus(
       [
-        realtimeRuntimeLabel(runtime.realtimeProvider, runtime.realtimeModel),
+        t(realtimeRuntimeLabel(runtime.realtimeProvider, runtime.realtimeModel)),
         stateLabel,
         state === 'unavailable'
           ? truncate(
@@ -899,9 +926,9 @@ function renderRuntime() {
   }
   const label = runtime.backend.label
     || backendLabel(runtime.backend.protocol)
-  const state = backendOptionStates(backendReport).find(option => (
-    option.id === runtime.backend.protocol
-  ))
+  const state = isLoopbackUrl(runtime.gatewayUrl)
+    ? backendOptionStates(backendReport).find(option => option.id === runtime.backend.protocol)
+    : null
   const phase = backendRuntimePhase(state, runtime.backend)
   if (phase === 'configuration-required') {
     setBackendStatus(`${label} · ${t('待配置')}`, false)
@@ -1063,6 +1090,8 @@ function render() {
   renderRealtimeVoice()
   speechToSpeechRealtimeUrl.value = settings.speechToSpeechRealtimeUrl || ''
   speechToSpeechAuthToken.value = settings.speechToSpeechAuthToken || ''
+  miniCpmORealtimeUrl.value = settings.miniCpmORealtimeUrl || ''
+  miniCpmOAuthToken.value = settings.miniCpmOAuthToken || ''
   renderRealtimeProvider(settings.realtimeProvider)
   backendModel.value = settings.backendModel || ''
   backendOwnership.value = settings.backendOwnership || 'owned'
@@ -1083,6 +1112,8 @@ for (const control of [
   realtimeBaseUrl,
   speechToSpeechRealtimeUrl,
   speechToSpeechAuthToken,
+  miniCpmORealtimeUrl,
+  miniCpmOAuthToken,
   realtimeModel,
   realtimeVoice,
   backendModel,

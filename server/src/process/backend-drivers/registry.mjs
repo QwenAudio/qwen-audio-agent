@@ -1,4 +1,4 @@
-import { backendDefinition } from '../../../../shared/backend-catalog.mjs'
+import { backendDefinition } from '../../../../shared/backend/catalog.mjs'
 import { openClawRuntimeDriver } from './openclaw.mjs'
 import { openCodeRuntimeDriver } from './opencode.mjs'
 import { managedOnlyBackend } from './shared.mjs'

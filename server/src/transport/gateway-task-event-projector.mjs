@@ -1,7 +1,7 @@
 import {
   GatewayTaskEventMessageSchema,
 } from '../../../shared/protocol/gateway-events.mjs'
-import { GatewayTaskEvent } from '../../../shared/realtime-events.mjs'
+import { GatewayTaskEvent } from '../../../shared/protocol/realtime-events.mjs'
 import { TaskDomainEvent } from '../task/task-events.mjs'
 import { TaskScope } from '../task/task-state.mjs'
 

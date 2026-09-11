@@ -37,6 +37,45 @@ export function parsePackOutput(stdout) {
   return entries.filter(Boolean)
 }
 
+/**
+ * Return exported package targets that are absent from an npm pack file list.
+ * Exact exports must name one packaged file; pattern exports must match at
+ * least one packaged file.
+ *
+ * @param {object} exportsMap The package.json exports map.
+ * @param {Set<string>} files Paths emitted by npm pack.
+ * @returns {string[]} Missing export targets.
+ */
+export function findMissingExportTargets(exportsMap, files) {
+  const targets = new Set()
+  const collect = (value) => {
+    if (typeof value === 'string') {
+      targets.add(value.replace(/^\.\//, ''))
+      return
+    }
+    if (Array.isArray(value)) {
+      value.forEach(collect)
+      return
+    }
+    if (value && typeof value === 'object') {
+      Object.values(value).forEach(collect)
+    }
+  }
+  collect(exportsMap)
+
+  return [...targets].filter((target) => {
+    const wildcard = target.indexOf('*')
+    if (wildcard === -1) return !files.has(target)
+    const prefix = target.slice(0, wildcard)
+    const suffix = target.slice(wildcard + 1)
+    return ![...files].some(file => (
+      file.startsWith(prefix)
+      && file.endsWith(suffix)
+      && file.length >= prefix.length + suffix.length
+    ))
+  })
+}
+
 // npm 10 在 `npm pack` 时会触发 `prepare` 生命周期脚本,构建工具(vite 等)的
 // 日志会混入 stdout,污染 pack 的 JSON 输出(`--ignore-scripts` 不阻止 prepare)。
 // 这里从 stdout 末尾按括号配对提取最后一个 JSON 块,以兼容前导/尾部噪声,同时
@@ -107,12 +146,15 @@ if (isMain) {
   }
   if (packages.length !== 1) throw new Error('npm pack 返回了意外的包数量')
   const files = new Set(packages[0].files.map(file => file.path))
+  const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
+  const missingExports = findMissingExportTargets(manifest.exports, files)
+  if (missingExports.length) {
+    throw new Error(`npm 成品缺少公开导出目标：${missingExports.join(', ')}`)
+  }
   const required = [
     'cli/bin/qwenaudio.mjs',
-    'examples/backend-adapter/README.md',
-    'examples/backend-adapter/in-memory-backend.mjs',
-    'examples/custom-conversation-client/README.md',
-    'examples/custom-conversation-client/client.mjs',
+    'config/backends/deepseek-harness/cordis.yml',
+    'config/backends/openclaw/openclaw.json5',
     'CONTRIBUTING.md',
     'docs/architecture/deep-dive.md',
     'docs/architecture-overview.png',
@@ -122,30 +164,59 @@ if (isMain) {
     'THIRD_PARTY_NOTICES.md',
     'scripts/audit-dependencies.mjs',
     'scripts/check-desktop-release-env.mjs',
-    'scripts/codex-acp.mjs',
-    'scripts/claude-code-acp.mjs',
-    'scripts/pi-acp.mjs',
+    'scripts/runtime/claude-code-acp.mjs',
+    'scripts/runtime/codex-acp.mjs',
+    'scripts/runtime/deepseek-harness-acp.mjs',
+    'scripts/runtime/launcher.mjs',
+    'scripts/runtime/openclaw-gateway.mjs',
+    'scripts/runtime/openclaw.mjs',
+    'scripts/runtime/opencode-server.mjs',
+    'scripts/runtime/opencode.mjs',
+    'scripts/runtime/pi-acp.mjs',
+    'scripts/runtime/prepare-openclaw-config.mjs',
+    'scripts/runtime/sync-openclaw-gateway-token.mjs',
     'scripts/install-global.mjs',
-    'scripts/opencode.mjs',
     'scripts/prepare-build.mjs',
-    'server/src/agent/acp-backend-adapter.mjs',
-    'server/src/agent/acp-process-client.mjs',
-    'server/src/agent/acp-session-registry.mjs',
-    'server/src/agent/acp-session-tools.mjs',
+    'server/src/backend/adapters/acp/backend-adapter.mjs',
+    'server/src/backend/adapters/acp/process-client.mjs',
+    'server/src/backend/adapters/acp/session-registry.mjs',
+    'server/src/backend/adapters/acp/session-tools.mjs',
     'server/src/backend/backend-adapter-sdk.mjs',
     'server/src/backend/backend-adapter-conformance.mjs',
     'server/src/core/package-version.mjs',
     'server/src/index.mjs',
     'shared/runtime-environment.mjs',
     'tui/src/index.mjs',
+    'tui/src/input-parts.mjs',
+    'tui/src/playback.mjs',
+    'tui/src/runtime-configuration.mjs',
+    'tui/src/terminal-renderers.mjs',
     'tui/src/macos-voice-io.mjs',
     'tui/src/pcm-audio.mjs',
     'tui/src/portaudio-voice-io.mjs',
     'web/dist/index.html',
   ]
+  // Custom distributions may omit optional domains and their public exports.
+  // For distributions retaining memory, verify its non-exported runtime assets.
+  if (manifest.exports?.['./memory-provider']) {
+    required.push(
+      'server/src/memory/provider-factory.mjs',
+      'server/src/memory/PROMPT.md',
+      'shared/memory-provider-catalog.mjs',
+    )
+  }
   const missing = required.filter(file => !files.has(file))
   if (missing.length) {
     throw new Error(`npm 成品缺少必要文件：${missing.join(', ')}`)
+  }
+  const bundledVoiceMemPython = [...files].filter(file => (
+    file.toLowerCase().includes('voicemem')
+    && (file.endsWith('.py') || file.endsWith('requirements.txt'))
+  ))
+  if (bundledVoiceMemPython.length) {
+    throw new Error(
+      `npm 成品不应包含 VoiceMem Python 实现或依赖：${bundledVoiceMemPython.join(', ')}`,
+    )
   }
   // desktop/src 默认不发布；下列纯 Node 模块随包交付给嵌入宿主
   // （对应 package.json exports 的 ./settings、./skin-store、./orb/*）。
@@ -167,6 +238,7 @@ if (isMain) {
     file.includes('/__pycache__/')
     || file.endsWith('.pyc')
     || file.includes('/node_modules/')
+    || file.startsWith('scripts/manual/')
     || (file.startsWith('desktop/src/') && !publishedDesktopModules.has(file))
   ))
   if (forbidden.length) {

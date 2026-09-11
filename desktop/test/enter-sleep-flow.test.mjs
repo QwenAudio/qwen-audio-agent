@@ -2,13 +2,13 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ClientActionPort } from '../../server/src/client/client-action-port.mjs'
 import { PresenceController } from '../../server/src/client/presence-controller.mjs'
-import { ToolCallHandler } from '../../server/src/voice/tools/tool-call-handler.mjs'
-import { performDesktopClientAction } from '../../web/src/desktop-hide.js'
+import { ToolCallHandler } from '../../server/src/frontend/tools/tool-call-handler.mjs'
+import { performDesktopClientAction } from '../../web/src/desktop/desktop-hide.js'
 import { DesktopPresence } from '../src/desktop-presence.mjs'
 import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
-} from '../../shared/gateway-client-protocol.mjs'
+} from '../../shared/protocol/gateway-client-protocol.mjs'
 
 test('an enter_sleep tool call hides the desktop orb end to end', async () => {
   const window = {

@@ -28,6 +28,7 @@ QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 
 ```bash
 qwenaudio config set --realtime-model qwen-audio-3.0-realtime-flash
+# 以下仅用于已安装的用户后台服务：
 qwenaudio gateway restart
 ```
 
@@ -65,5 +66,6 @@ WebUI 和 TUI 只展示当前生效模型，不单独覆盖。
 ## 继续阅读
 
 - [Speech-to-Speech](speech-to-speech.zh.md)——全本地前台，无需云端 Key
+- [MiniCPM-o 4.5](minicpm-o.zh.md)——本地端到端实时语音前台
 - [自定义 Provider](custom-provider.zh.md)——接入其他实时语音服务
 - [前台配置参考](../configuration/frontend.zh.md)

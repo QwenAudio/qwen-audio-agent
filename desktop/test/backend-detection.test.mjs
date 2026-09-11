@@ -2,13 +2,14 @@ import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
 
-import { detectBackendSetups } from '../src/backend-detection.mjs'
+import { detectBackendSetups } from '../src/backend/detection.mjs'
 
 class SuccessfulWorker extends EventEmitter {
   constructor(url, options) {
     super()
     this.url = url
     this.options = options
+    assert.equal(options.workerData.pathCacheFile, '/desktop/cache/path.json')
     queueMicrotask(() => this.emit('message', {
       ok: true,
       path: '/usr/bin:/agent/bin',
@@ -45,6 +46,7 @@ test('runs backend detection outside the caller and returns its compact report',
   const result = await detectBackendSetups({
     env: { PATH: '/usr/bin' },
     platform: 'darwin',
+    pathCacheFile: '/desktop/cache/path.json',
     WorkerImpl: SuccessfulWorker,
     workerUrl: new URL('file:///worker.mjs'),
   })

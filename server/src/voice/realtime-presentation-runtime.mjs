@@ -1,4 +1,4 @@
-import { GatewayServerEvent } from '../../../shared/realtime-events.mjs'
+import { GatewayServerEvent } from '../../../shared/protocol/realtime-events.mjs'
 import {
   ensureResponseContext,
   mergeResponseContext,
@@ -96,6 +96,7 @@ export class RealtimePresentationRuntime {
     this.turnCitations = turnCitations
     this.contexts = new Map()
     this.playbackTurns = new Map()
+    this.lastCorrectionTurn = null
   }
 
   has(id) {
@@ -441,19 +442,25 @@ export class RealtimePresentationRuntime {
       || !frontend.capabilities.perResponseInstructions
     ) return
     const generation = context?.turnGeneration
+    const isCurrent = () => isResponseGuardTurnCurrent({
+      sameFrontend: this.getFrontend() === frontend,
+      outputEnabled: this.getOutputEnabled(),
+      userSpeaking: this.turns.userSpeaking,
+      responseTurnId,
+      responseTurnGeneration: generation,
+      committedTurnId: this.turns.committedTurnId,
+      committedTurnGeneration: this.turns.committedTurnGeneration,
+    })
+    const turnKey = JSON.stringify([responseTurnId, generation])
+    if (!isCurrent() || this.lastCorrectionTurn === turnKey) return
+    // The budget belongs to the user turn, not a Response. A correction may
+    // itself be invalid; it must never become a self-sustaining response loop.
+    this.lastCorrectionTurn = turnKey
     frontend.ensureResponse({
       turnId: responseTurnId,
       turnGeneration: generation,
     }, {
-      shouldCreate: () => isResponseGuardTurnCurrent({
-        sameFrontend: this.getFrontend() === frontend,
-        outputEnabled: this.getOutputEnabled(),
-        userSpeaking: this.turns.userSpeaking,
-        responseTurnId,
-        responseTurnGeneration: generation,
-        committedTurnId: this.turns.committedTurnId,
-        committedTurnGeneration: this.turns.committedTurnGeneration,
-      }),
+      shouldCreate: isCurrent,
       response: { instructions: decision.instructions },
     }).catch(error => this.send({
       type: GatewayServerEvent.ERROR,

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Qwen Audio Agent</string>
+    <string name="title_activity_main">Qwen Audio Agent</string>
+    <string name="package_name">com.qwenaudio.agent</string>
+    <string name="custom_url_scheme">com.qwenaudio.agent</string>
+</resources>

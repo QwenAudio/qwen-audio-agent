@@ -33,9 +33,10 @@ export class SessionConversationHistory {
   }
 
   restoreAll() {
-    if (typeof this.sessionJournal.readAllSync !== 'function') return 0
+    const read = this.sessionJournal.iterateSync || this.sessionJournal.readAllSync
+    if (typeof read !== 'function') return 0
     let restored = 0
-    for (const entry of this.sessionJournal.readAllSync()) {
+    for (const entry of read.call(this.sessionJournal)) {
       try {
         const replay = replaySession(entry.records)
         const ownerId = String(replay.header.ownerId || '')

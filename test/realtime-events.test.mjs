@@ -8,7 +8,7 @@ import {
   GatewayTaskEvent,
   isGatewayClientEvent,
   isGatewayServerEvent,
-} from '../shared/realtime-events.mjs'
+} from '../shared/protocol/realtime-events.mjs'
 
 test('keeps Gateway realtime event names unique within each direction', () => {
   assert.equal(

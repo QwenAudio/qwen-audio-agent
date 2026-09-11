@@ -21,6 +21,11 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         node: [22.22.2, 24.15.0]
+        # The package advertises Node 26 support. Validate the new major on
+        # Linux without multiplying the full cross-platform matrix.
+        include:
+          - os: ubuntu-latest
+            node: 26.0.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,9 +35,22 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
           registry-url: https://registry.npmjs.org/
+      # Test the GitLab-only synchronizer against disposable local repositories.
+      # GitHub Actions never runs the real synchronization job or needs its token.
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: node --test .gitlab/sync-github.test.mjs
       - run: npm ci
       - run: npm test
       - run: npm run build
+      # Smart Cockpit has its own Vite/ESLint toolchain outside the root
+      # workspace graph. Exercise it once on the baseline Linux job instead of
+      # duplicating the same frontend build across the full OS/Node matrix.
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm ci --prefix examples/smart-cockpit/client --ignore-scripts
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run example:smart-cockpit:lint
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run example:smart-cockpit:build
       - if: ${{ matrix.os == 'macos-latest' && matrix.node == '22.22.2' }}
         run: npm run test:desktop-smoke
       # 真实消费者验收：打包 → 装进只含已声明依赖的裸消费者 → CLI 与
@@ -54,6 +72,10 @@ jobs:
           registry-url: https://registry.npmjs.org/
       - run: npm ci
       - run: npm run release:check
+        env:
+          # Pull requests remain deterministic during a transient npm audit
+          # outage. The release workflow stays fail-closed.
+          QWEN_AUDIO_AGENT_AUDIT_ALLOW_UNAVAILABLE: '1'
 
   # One stable branch-protection context. The matrix job names change whenever
   # the supported OS/Node set changes; this aggregate keeps main protection

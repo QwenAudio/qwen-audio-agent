@@ -9,7 +9,7 @@ import {
   updateVersions,
 } from '../scripts/set-version.mjs'
 
-const WORKSPACES = ['server', 'web', 'tui', 'desktop', 'cli']
+const WORKSPACES = ['server', 'web', 'tui', 'desktop', 'cli', 'mobile']
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`)

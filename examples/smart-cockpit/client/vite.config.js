@@ -15,6 +15,9 @@ export default defineConfig(({ mode }) => {
           target: `http://${env.COCKPIT_GATEWAY_HOST || '127.0.0.1'}:${Number(env.COCKPIT_GATEWAY_PORT) || 18888}`,
           ws: true,
         },
+        '/api/memory': {
+          target: `http://${env.COCKPIT_GATEWAY_HOST || '127.0.0.1'}:${Number(env.COCKPIT_GATEWAY_PORT) || 18888}`,
+        },
         '/api': {
           target: env.COCKPIT_SERVICE_ORIGIN || 'http://127.0.0.1:3010',
           ws: true,

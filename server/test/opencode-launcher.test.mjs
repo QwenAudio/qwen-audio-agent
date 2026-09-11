@@ -4,11 +4,11 @@ import { resolve } from 'node:path'
 import test from 'node:test'
 
 const launcher = readFileSync(
-  resolve(import.meta.dirname, '../../scripts/opencode.mjs'),
+  resolve(import.meta.dirname, '../../scripts/runtime/opencode.mjs'),
   'utf8',
 )
 const serverWrapper = readFileSync(
-  resolve(import.meta.dirname, '../../scripts/opencode-server.mjs'),
+  resolve(import.meta.dirname, '../../scripts/runtime/opencode-server.mjs'),
   'utf8',
 )
 
@@ -19,7 +19,7 @@ test('isolates XDG_CONFIG_HOME when explicitly enabled or auto-managed', () => {
 })
 
 test('managed-backend wrapper delegates to opencode.mjs serve via process.execPath', () => {
-  assert.match(serverWrapper, /scripts\/opencode\.mjs/)
+  assert.match(serverWrapper, /scripts\/runtime\/opencode\.mjs/)
   assert.match(serverWrapper, /process\.execPath/)
   assert.match(serverWrapper, /'serve'/)
 })

@@ -11,6 +11,11 @@ asarUnpack:
 extraMetadata:
   main: desktop/src/main.mjs
 
+protocols:
+  - name: Qwen Audio Gateway Pairing
+    schemes:
+      - qwaudio
+
 directories:
   output: dist/desktop
 
@@ -34,10 +39,13 @@ files:
   - THIRD_PARTY_NOTICES.md
 
 extraResources:
+  # Pure path policy is also used by backend launchers outside app.asar.
+  - from: shared/runtime-paths.mjs
+    to: runtime/shared/runtime-paths.mjs
   - from: scripts
     to: runtime/scripts
     filter:
-      - "**/*"
+      - "runtime/**/*"
   - from: config
     to: runtime/config
     filter:

@@ -4,14 +4,28 @@ import test from 'node:test'
 import WebSocket from 'ws'
 import {
   GatewayClientCapability,
+  GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
+  GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
   GatewayClientProtocolEvent,
   createGatewaySessionHello,
-} from '../../shared/gateway-client-protocol.mjs'
+} from '../../shared/protocol/gateway-client-protocol.mjs'
+import {
+  GATEWAY_WEBSOCKET_PROTOCOL,
+  gatewayWebSocketProtocols,
+} from '../../shared/gateway/websocket-auth.mjs'
+import {
+  GatewayAccessManager,
+  parseGatewayAccessKeys,
+} from '../src/access/gateway-access.mjs'
 import {
   ClientEventDefinitionRegistry,
   GatewayEventRouter,
 } from '../src/client/client-event-router.mjs'
 import { attachRealtimeGateway } from '../src/voice/realtime-gateway.mjs'
+import { IdentityManager } from '../src/core/identity.mjs'
+
+const ACCESS_SECRET = 'gateway-client-access-test-secret-over-thirty-two-characters'
+const REMOTE_ACCESS_TOKEN = 'gateway-client-remote-token-over-twenty-four-chars'
 
 function gatewayHarness(overrides = {}) {
   const server = createServer()
@@ -35,11 +49,12 @@ function gatewayHarness(overrides = {}) {
   return { server, gateway }
 }
 
-async function connect(server, firstMessage) {
+async function connect(server, firstMessage, { headers, protocols } = {}) {
   const { port } = server.address()
-  const socket = new WebSocket(
-    `ws://127.0.0.1:${port}/api/realtime?sessionId=protocol-test`,
-  )
+  const url = `ws://127.0.0.1:${port}/api/realtime?sessionId=protocol-test`
+  const socket = protocols?.length
+    ? new WebSocket(url, protocols, { headers })
+    : new WebSocket(url, { headers })
   const received = []
   socket.on('message', raw => received.push(JSON.parse(raw.toString())))
   await new Promise((resolve, reject) => {
@@ -115,6 +130,11 @@ test('recovers the client and excludes only the content-safety rejected turn', a
       updateAgentContext: () => {},
       ensureResponse: async () => {},
       injectContext: async () => {},
+      deliveries: [],
+      injectDelivery: async (text, origin, context, deliveryOptions) => {
+        frontend.deliveries.push({ text, origin, context, deliveryOptions })
+        return { completed: true, route: deliveryOptions.route }
+      },
       whenIdle: async () => {},
       sendUserInput: async (parts, context) => {
         frontend.inputs.push({ parts, context })
@@ -177,10 +197,18 @@ test('recovers the client and excludes only the content-safety rejected turn', a
     frontends[1].agentContext.recentMessages.map(message => message.content),
     ['正常问题'],
   )
+  await waitUntil(() => frontends[1].frontend.deliveries.length === 1)
+  const [recovery] = frontends[1].frontend.deliveries
+  assert.match(recovery.text, /上一轮内容无法回复，请换个话题/u)
+  assert.equal(recovery.origin, 'gateway-system-event')
+  assert.equal(recovery.context.eventName, 'realtime.content_rejected')
+  assert.equal(recovery.deliveryOptions.route, 'respond')
+  assert.equal(recovery.deliveryOptions.allowTools, false)
+  assert.equal(recovery.deliveryOptions.contextTiming, 'immediate')
   client.socket.close()
 })
 
-test('5.x connect and 6.0 session.hello share one Gateway business path', async t => {
+test('5.x connect and 7.0 session.hello share one Gateway business path', async t => {
   const { server, gateway } = gatewayHarness()
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   t.after(async () => {
@@ -213,13 +241,96 @@ test('5.x connect and 6.0 session.hello share one Gateway business path', async 
   }))
   const ready = await waitFor(modern.received, event => event.type === 'session.ready')
   assert.equal(ready.request_event_id, 'evt_client_hello')
-  assert.equal(ready.protocol_version, '6.0.0')
+  assert.equal(ready.protocol_version, '7.0.0')
   assert.deepEqual(ready.capabilities, [GatewayClientCapability.INPUT_TEXT])
 
   const state = await waitFor(modern.received, event => event.type === 'voice.state')
   assert.match(state.event_id, /^evt_gateway_/)
   assert.equal(modern.received[0].type, 'session.ready')
   modern.socket.close()
+})
+
+test('routes negotiated live visual frames through the provider-neutral Gateway path', async t => {
+  const images = []
+  let clearedImages = 0
+  const visualProvider = {
+    key: 'visual-test',
+    label: 'Visual Test',
+    inputSampleRate: 16_000,
+    capabilities: {},
+    classifyError: () => 'other',
+    modelProfile: () => ({
+      transportCapabilities: { imageBufferInput: true },
+    }),
+  }
+  const realtimeProviderRegistry = {
+    resolve: () => visualProvider,
+  }
+  const realtimeFrontendFactory = () => {
+    const frontend = {
+      provider: visualProvider,
+      capabilities: visualProvider.capabilities,
+      ready: false,
+      connect: async () => { frontend.ready = true },
+      close: () => { frontend.ready = false },
+      appendAudio: () => {},
+      appendImage: image => images.push(image),
+      clearPendingImage: () => { clearedImages += 1 },
+      cancel: () => {},
+      updateAgentContext: () => {},
+    }
+    return frontend
+  }
+  const { server, gateway } = gatewayHarness({
+    defaultRealtimeProvider: visualProvider.key,
+    realtimeProviderRegistry,
+    realtimeFrontendFactory,
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+
+  const client = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-visual-hello',
+    clientType: 'web',
+    clientInstanceId: 'web-visual-test',
+    capabilities: [
+      GatewayClientCapability.INPUT_AUDIO,
+      GatewayClientCapability.INPUT_IMAGE_BUFFER,
+    ],
+    connection: {
+      provider: visualProvider.key,
+      voice_enabled: true,
+      input_enabled: true,
+      output_enabled: true,
+      text_only: false,
+    },
+  }))
+  const ready = await waitFor(client.received, event => event.type === 'session.ready')
+  assert.deepEqual(ready.capabilities, [
+    GatewayClientCapability.INPUT_AUDIO,
+    GatewayClientCapability.INPUT_IMAGE_BUFFER,
+  ])
+  await waitFor(client.received, event => event.type === 'voice.ready')
+
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64')
+  client.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_APPEND,
+    event_id: 'evt-visual-frame',
+    media_type: 'image/jpeg',
+    occurred_at: Date.now(),
+    image: jpeg,
+  }))
+  await waitUntil(() => images.length === 1)
+  assert.deepEqual(images, [jpeg])
+  client.socket.send(JSON.stringify({
+    type: GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR,
+    event_id: 'evt-visual-clear',
+  }))
+  await waitUntil(() => clearedImages === 1)
+  client.socket.close()
 })
 
 test('routes negotiated GCP2 commands and Client Events with correlated results', async t => {
@@ -532,12 +643,190 @@ test('allows only one active Gateway Client connection', async t => {
     clientInstanceId: 'second-client',
     capabilities: [GatewayClientCapability.INPUT_TEXT],
   }))
+  const secondClosed = new Promise(resolve => second.socket.once('close', code => resolve(code)))
   const occupied = await waitFor(
     second.received,
     event => event.error?.code === 'client_occupied',
   )
   assert.equal(occupied.type, 'error')
-  await new Promise(resolve => second.socket.once('close', resolve))
+  await waitUntil(() => second.socket.readyState === WebSocket.CLOSED)
+  assert.equal(await secondClosed, GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE)
   assert.equal(first.socket.readyState, WebSocket.OPEN)
   first.socket.close()
+})
+
+test('replaces a stale socket after the same logical Client reconnects', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+  const hello = () => createGatewaySessionHello({
+    clientInstanceId: 'same-client',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  })
+  const first = await connect(server, hello())
+  await waitFor(first.received, event => event.type === 'session.ready')
+  const firstClosed = new Promise(resolve => {
+    first.socket.once('close', (code, reason) => resolve({
+      code,
+      reason: reason.toString(),
+    }))
+  })
+
+  const second = await connect(server, hello())
+  await waitFor(second.received, event => event.type === 'session.ready')
+  assert.deepEqual(await firstClosed, {
+    code: GATEWAY_CLIENT_REPLACED_CLOSE_CODE,
+    reason: 'client_replaced',
+  })
+  await waitUntil(() => gateway.status().connected === 1)
+  assert.equal(second.socket.readyState, WebSocket.OPEN)
+  second.socket.close()
+})
+
+test('allows an explicit same-owner takeover and fences the replaced Client', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+  const first = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-desktop-hello',
+    clientInstanceId: 'desktop-client',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  }))
+  const firstReady = await waitFor(first.received, event => event.type === 'session.ready')
+  assert.equal(firstReady.connection.lease_generation, 1)
+  assert.equal(firstReady.connection.replaced, false)
+  const firstClosed = new Promise(resolve => first.socket.once('close', code => resolve(code)))
+
+  const phone = await connect(server, createGatewaySessionHello({
+    eventId: 'evt-phone-hello',
+    clientInstanceId: 'phone-client',
+    capabilities: [
+      GatewayClientCapability.INPUT_TEXT,
+      GatewayClientCapability.SESSION_TAKEOVER,
+    ],
+    takeover: true,
+  }))
+  const phoneReady = await waitFor(phone.received, event => event.type === 'session.ready')
+  assert.equal(phoneReady.connection.lease_generation, 2)
+  assert.equal(phoneReady.connection.replaced, true)
+  assert.equal(await firstClosed, GATEWAY_CLIENT_REPLACED_CLOSE_CODE)
+  assert.equal(phone.socket.readyState, WebSocket.OPEN)
+  phone.socket.close()
+})
+
+test('keeps active Client leases independent across authenticated owners', async t => {
+  const { server, gateway } = gatewayHarness({
+    identityManager: {
+      resolveUpgrade: request => ({
+        ownerId: String(request.headers['x-test-owner'] || ''),
+      }),
+    },
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+  const first = await connect(server, createGatewaySessionHello({
+    clientInstanceId: 'first-client',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  }), { headers: { 'x-test-owner': 'user_one' } })
+  const second = await connect(server, createGatewaySessionHello({
+    clientInstanceId: 'second-client',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  }), { headers: { 'x-test-owner': 'user_two' } })
+  await waitFor(first.received, event => event.type === 'session.ready')
+  await waitFor(second.received, event => event.type === 'session.ready')
+  assert.equal(first.socket.readyState, WebSocket.OPEN)
+  assert.equal(second.socket.readyState, WebSocket.OPEN)
+  assert.equal(gateway.status().activeClients, 2)
+  first.socket.close()
+  second.socket.close()
+})
+
+test('rejects opaque and malformed origins before a WebSocket enters GCP', async t => {
+  const { server, gateway } = gatewayHarness()
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+  const { port } = server.address()
+  for (const Origin of ['null', '', 'not-an-origin', 'data:text/plain,test', 'file:///tmp/test']) {
+    const rejected = new WebSocket(`ws://127.0.0.1:${port}/api/realtime`, { headers: { Origin } })
+    const status = await new Promise((resolve, reject) => {
+      rejected.once('unexpected-response', (_request, response) => {
+        resolve(response.statusCode)
+        response.destroy()
+      })
+      rejected.once('error', reject)
+      rejected.once('open', () => {
+        rejected.close()
+        reject(new Error('Invalid Origin was accepted'))
+      })
+    })
+    assert.equal(status, 403)
+  }
+  // Bad upgrade requests must not crash or poison later valid connections.
+  const accepted = await connect(server, createGatewaySessionHello({
+    clientInstanceId: 'after-rejected-origins',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  }))
+  await waitFor(accepted.received, event => event.type === 'session.ready')
+  accepted.socket.close()
+})
+
+test('requires access authentication before a remote WebSocket can enter GCP', async t => {
+  const access = new GatewayAccessManager({
+    identityManager: new IdentityManager({
+      secret: ACCESS_SECRET,
+      mode: 'personal',
+      personalOwnerId: 'user_personal',
+    }),
+    secret: ACCESS_SECRET,
+    configuredKeys: parseGatewayAccessKeys({
+      accessToken: REMOTE_ACCESS_TOKEN,
+      personalOwnerId: 'user_personal',
+    }),
+  })
+  const { server, gateway } = gatewayHarness({ identityManager: access })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => {
+    await gateway.close()
+    await new Promise(resolve => server.close(resolve))
+  })
+  const { port } = server.address()
+  const rejected = new WebSocket(
+    `ws://127.0.0.1:${port}/api/realtime?sessionId=remote-access-test`,
+    { headers: { Host: 'gateway.example.test' } },
+  )
+  const rejectedStatus = await new Promise((resolve, reject) => {
+    rejected.once('unexpected-response', (_request, response) => {
+      resolve(response.statusCode)
+      response.destroy()
+    })
+    rejected.once('error', error => {
+      if (error.message.includes('Unexpected server response: 401')) resolve(401)
+      else reject(error)
+    })
+  })
+  assert.equal(rejectedStatus, 401)
+
+  const accepted = await connect(server, createGatewaySessionHello({
+    clientInstanceId: 'remote-phone',
+    capabilities: [GatewayClientCapability.INPUT_TEXT],
+  }), {
+    headers: { Host: 'gateway.example.test' },
+    protocols: gatewayWebSocketProtocols(REMOTE_ACCESS_TOKEN),
+  })
+  await waitFor(accepted.received, event => event.type === 'session.ready')
+  assert.equal(accepted.socket.readyState, WebSocket.OPEN)
+  assert.equal(accepted.socket.protocol, GATEWAY_WEBSOCKET_PROTOCOL)
+  accepted.socket.close()
 })

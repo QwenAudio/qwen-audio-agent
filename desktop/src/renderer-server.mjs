@@ -44,15 +44,21 @@ function targetUrl(target) {
   return new URL(value)
 }
 
-function gatewayHeaders(headers, target) {
+function accessTokenValue(accessToken) {
+  return String(typeof accessToken === 'function' ? accessToken() : accessToken || '').trim()
+}
+
+function gatewayHeaders(headers, target, accessToken) {
+  const credential = accessTokenValue(accessToken)
   return {
     ...headers,
     host: target.host,
     origin: target.origin,
+    ...(credential ? { authorization: `Bearer ${credential}` } : {}),
   }
 }
 
-function proxyHttp(request, response, target) {
+function proxyHttp(request, response, target, accessToken) {
   const url = targetUrl(target)
   const requestImpl = url.protocol === 'https:' ? httpsRequest : httpRequest
   const upstream = requestImpl({
@@ -61,7 +67,7 @@ function proxyHttp(request, response, target) {
     port: url.port || undefined,
     method: request.method,
     path: request.url,
-    headers: gatewayHeaders(request.headers, url),
+    headers: gatewayHeaders(request.headers, url, accessToken),
   }, upstreamResponse => {
     response.writeHead(
       upstreamResponse.statusCode || 502,
@@ -100,13 +106,16 @@ function relayWebSocket({
   socket,
   head,
   target,
+  accessToken,
 }) {
   localSockets.handleUpgrade(request, socket, head, client => {
     const gatewayUrl = gatewayWebSocketUrl(target, request.url)
+    const credential = accessTokenValue(accessToken)
     const upstream = new WebSocket(gatewayUrl, {
       headers: {
         ...(request.headers.cookie ? { cookie: request.headers.cookie } : {}),
         origin: targetUrl(target).origin,
+        ...(credential ? { authorization: `Bearer ${credential}` } : {}),
         ...(request.headers['user-agent']
           ? { 'user-agent': request.headers['user-agent'] }
           : {}),
@@ -259,6 +268,7 @@ export async function startDesktopRendererServer({
   target,
   skinsRoot = '',
   token = randomBytes(24).toString('hex'),
+  accessToken = '',
 } = {}) {
   if (!webRoot) throw new Error('desktop renderer web root is required')
   targetUrl(target)
@@ -281,7 +291,7 @@ export async function startDesktopRendererServer({
         return
       }
       request.url = `/${pathname}${url.search}`
-      proxyHttp(request, response, target)
+      proxyHttp(request, response, target, accessToken)
       return
     }
     if (pathname.startsWith('skins/')) {
@@ -314,6 +324,7 @@ export async function startDesktopRendererServer({
       socket,
       head,
       target,
+      accessToken,
     })
   })
 

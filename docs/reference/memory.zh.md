@@ -1,8 +1,11 @@
 # 长期记忆
 
-`MEMORY.md` 是前台上下文模型中的长期记忆层：用于理解用户和回答问题的长期事实与决定，
-不具有行为权威。完整的四层模型、指令冲突顺序，以及人设层（`ASSISTANT.md` /
-`USER.md`）见[助手画像与用户偏好](personalization.zh.md)。
+Gateway 通过两个逻辑文档提供记忆能力：`user` 保存用户明确设定的长期个性化，
+`memory` 保存长期事实与决定。默认 Provider 将它们存为 `USER.md` 与 `MEMORY.md`；
+外部 Provider 可以采用其他物理模型，但必须保持相同的公开语义。四层上下文和冲突顺序见
+[个性化与记忆](personalization.zh.md)。
+
+## 默认 Markdown Provider
 
 `MEMORY.md` 使用普通 Markdown 保存关于用户的长期事实与决定，例如所在地、习惯、兴趣、
 关系、项目、目标和计划。它只帮助理解和回答，不直接支配行为。内容来源有两种：
@@ -23,10 +26,19 @@ Realtime 与自动整理都通过同一个记忆服务提交受限 Markdown 变�
 错误等诊断信息，不保存完整记忆正文。觉得内容不对，直接在对话中说“那条记错了”
 或“忘掉它”即可；助手会修改或删除对应 Markdown 原文。
 
-前台只暴露一个 `memory` 工具，每次调用执行一个原子操作：`read` 读取文档，
-`append` 追加 Markdown，`replace` 用文档中唯一匹配的 `old_text` 替换或删除内容。
-一句话包含多项持久修改时，Realtime 可在同一轮逐项调用，Gateway 只生成一次
-后续回应。写入前会重新读取最新文档，精确替换找不到或匹配多处时安全失败。
+## 查看、修改与删除
+
+直接问“你记住了我哪些信息？”查看内容；说“把我的住址改成……”或“忘掉那条记录”
+进行修改。默认实现也可直接编辑共享数据目录里的 `USER.md` 和 `MEMORY.md`，
+文件编辑在下次语音会话生效，工具修改立即生效。新建对话不会清空长期记忆。
+
+## `memory` 工具
+
+工具操作与开发者参数见[Memory Provider](memory-provider.zh.md#memory-工具)。
+
+## 客户端控制面
+
+自定义客户端读写接口见[Memory Provider](memory-provider.zh.md#客户端控制面)。
 
 ## 会话摘要与回溯（默认关闭）
 
@@ -36,50 +48,43 @@ Realtime 与自动整理都通过同一个记忆服务提交受限 Markdown 变�
 摘要**不注入** `instructions`：它每场都在变，注入会让 prompt 前缀每场都变、前缀缓存
 失效。所以它是一个按需调用的工具，而不是上下文的一部分。
 
-`recall` 只回答「以前聊过什么、派过什么活」。用户自己的资料走 `knowledge` 工具
-（见 [知识检索 Provider](./knowledge.zh.md)）。
+`recall` 只回答「以前聊过什么、派过什么活」。个人事实与偏好由 `memory` 工具读取；
+用户提供的参考资料走 `knowledge` 工具（见[知识检索 Provider](./knowledge.zh.md)）。
+命名清单由 `notes` 管理，不写入长期记忆，也不代表后台工作状态。
 
 摘要里只冻结派过的活的目标，**不存状态**：状态是活的，存进摘要过几天那个值就是错的
 且不会报错。状态一律在检索时从任务台账实时读；台账终态只保留 3 天，更早的活查不到
 记录，此时只回答「派过这件事」而不给状态。
 
-## 替换记忆 Provider
+台账仍保留的工作会返回 `task_id`；需要最新详情时，可用它调用 `get_agent_task_status`，
+包括之前会话中的工作。已清理或不可访问的记录不返回 ID，不能凭摘要猜造查询目标。
 
-内置的 `USER.md` 和 `MEMORY.md` 是默认实现，不是 Gateway 的固定存储依赖。宿主应用
-可以从公开入口实现版本化的 `MemoryProvider`，并在 Composition Root 注入：
+## 可选 VoiceMem 连接器
 
-```js
-import { MEMORY_PROVIDER_PROTOCOL_VERSION } from 'qwen-audio-agent/memory-provider'
-import { createGatewayApplication } from 'qwen-audio-agent/gateway-application'
+核心 npm 包只提供 Node.js `MemoryProvider` 连接器，不包含 VoiceMem 本身、Python 依赖或
+Python Sidecar。按照配置示例在框架外安装后，在 `config.env` 选择即可：
 
-const memoryProvider = {
-  describe: () => ({
-    protocolVersion: MEMORY_PROVIDER_PROTOCOL_VERSION,
-    key: 'company-memory',
-    label: 'Company Memory',
-  }),
-  list(ownerId, options) {
-    return []
-  },
-  async apply(ownerId, changes, context) {
-    return { changed: 0, documents: [] }
-  },
-  health: () => ({ ok: true }),
-  async close() {},
-}
-
-const gateway = createGatewayApplication({ memoryProvider })
+```dotenv
+QWEN_AUDIO_MEMORY_PROVIDER=voicemem
+VOICEMEM_PYTHON=/absolute/path/to/python
+VOICEMEM_SIDECAR=/absolute/path/to/voicemem-sidecar.py
+VOICEMEM_INPUT_MODE=text
 ```
 
-`list()` 必须返回同步、有界的 Realtime 上下文快照；远程 Provider 应在 Adapter 内维护
-本地缓存。`apply()` 可以异步，`context` 中的来源、Session、Turn 和 Trace 由 Gateway
-提供，不属于模型可控的修改内容。Provider 返回的文档会统一限制长度、规范 scope，并
-丢弃重复或无效文档。
+`text` 复用 Realtime 转写，`audio` 则把按用户轮次截取的音频交给 VoiceMem 自己的 ASR
+和声学感知。VoiceMem 声明 `sessionObservation` 后，会完整接管 `user`、`memory`、语义
+召回与会话结束学习；默认 Markdown 自动整理不会并行运行。默认数据位于用户数据目录的
+`memory/voicemem/`。切回 `markdown` 不会删除 VoiceMem 数据，也不会自动把两套数据互相
+迁移。外部安装、Sidecar 和百炼推荐配置见
+[VoiceMem 配置示例](../scenarios/voicemem.zh.md)。
 
-Realtime、自动整理器和工具处理器只依赖 `FrontendMemoryRuntime`，不会访问供应商 SDK、
-数据库或 Markdown 文件。未注入 Provider 时继续使用现有 Markdown 实现，现有配置和数据
-无需迁移。第三方 Adapter 自行负责远程认证、租户映射、缓存刷新和底层记录到 `user`、
-`memory` 两种公开文档语义的转换。
+嵌入式宿主也可以直接从 `qwen-audio-agent/voicemem-provider` 导入
+`VoiceMemProvider`，显式传给 `createGatewayApplication`。
+
+## 替换记忆 Provider
+
+接口、生命周期和可选音频观察见[Memory Provider](memory-provider.zh.md)。
+Provider 切换不会自动迁移另一套存储；操作前按对应系统要求备份。
 
 ## 日志
 

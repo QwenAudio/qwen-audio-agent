@@ -1,12 +1,12 @@
 import { config } from '../../core/config.mjs'
+import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mjs'
 import {
   buildFrontendInstructions,
   frontendTools,
   resultResponseInstructions,
   speakResponseInstructions,
   permissionResponseInstructions,
-} from '../frontend-tools.mjs'
-import { permissionReference } from '../tools/permission-reference.mjs'
+} from '../../frontend/frontend-tools.mjs'
 import { gaRealtimeProtocol } from './ga-protocol.mjs'
 
 const INPUT_SAMPLE_RATE = 16000
@@ -30,7 +30,7 @@ function classifyError(message) {
  */
 export const s2sProvider = {
   key: 'speech-to-speech',
-  label: 'Hugging Face Speech-to-Speech',
+  label: 'Speech-to-Speech',
   aliases: ['s2s'],
   inputSampleRate: INPUT_SAMPLE_RATE,
   outputSampleRate: OUTPUT_SAMPLE_RATE,
@@ -53,7 +53,7 @@ export const s2sProvider = {
     perResponseInstructions: true,
   },
 
-  model: () => null,
+  model: () => 'default',
   voice: () => null,
   isConfigured: () => config.speechToSpeechConfigured,
   missingConfigurationMessage: '请先配置 SPEECH_TO_SPEECH_REALTIME_URL',
@@ -124,10 +124,10 @@ export const s2sProvider = {
         type: 'input_text',
         text: [
           '<permission_request>',
-          `permission_id=${permissionReference(permission.id)}`,
+          `permission_id=${permission.id}`,
           `task_id=${permission.taskId}`,
           `operation=${permission.summary}`,
-          'allowed_decisions=once,always,reject',
+          `allowed_decisions=${PERMISSION_DECISIONS.join(',')}`,
           '</permission_request>',
         ].join('\n'),
       }],

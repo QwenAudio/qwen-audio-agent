@@ -18,6 +18,7 @@ export {
 export const DEFAULT_REALTIME_PROVIDER = 'dashscope'
 export const DEFAULT_DASHSCOPE_REALTIME_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
 export const DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL = 'ws://127.0.0.1:8765/v1/realtime'
+export const DEFAULT_MINICPM_O_REALTIME_URL = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
 
 const PROVIDERS = Object.freeze({
   dashscope: Object.freeze({
@@ -27,8 +28,13 @@ const PROVIDERS = Object.freeze({
   }),
   'speech-to-speech': Object.freeze({
     key: 'speech-to-speech',
-    label: 'Hugging Face Speech-to-Speech',
+    label: 'Speech-to-Speech',
     aliases: Object.freeze(['s2s']),
+  }),
+  'minicpm-o': Object.freeze({
+    key: 'minicpm-o',
+    label: 'ModelBest',
+    aliases: Object.freeze(['minicpmo']),
   }),
 })
 
@@ -116,9 +122,19 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
     || clean(env.S2S_REALTIME_URL)
     || provider === 'speech-to-speech'
   )
+  const miniCpmORealtimeUrl = withoutTrailing(
+    env.MINICPM_O_REALTIME_URL || DEFAULT_MINICPM_O_REALTIME_URL,
+    /\/+$/,
+  )
+  const miniCpmOAuthToken = clean(env.MINICPM_O_AUTH_TOKEN)
+  const miniCpmOConfigured = Boolean(
+    clean(env.MINICPM_O_REALTIME_URL) || provider === 'minicpm-o'
+  )
   const configured = provider === 'dashscope'
     ? Boolean(dashscopeApiKey)
-    : speechToSpeechConfigured
+    : provider === 'speech-to-speech'
+      ? speechToSpeechConfigured
+      : miniCpmOConfigured
   const identity = provider === 'dashscope'
     ? {
         provider,
@@ -127,11 +143,17 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
         voice: dashscopeVoice,
         credential: dashscopeApiKey,
       }
-    : {
-        provider,
-        endpoint: speechToSpeechRealtimeUrl,
-        credential: speechToSpeechAuthToken,
-      }
+    : provider === 'speech-to-speech'
+      ? {
+          provider,
+          endpoint: speechToSpeechRealtimeUrl,
+          credential: speechToSpeechAuthToken,
+        }
+      : {
+          provider,
+          endpoint: miniCpmORealtimeUrl,
+          credential: miniCpmOAuthToken,
+        }
   const signature = createHash('sha256')
     .update(JSON.stringify(identity))
     .digest('hex')
@@ -148,6 +170,9 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
     speechToSpeechRealtimeUrl,
     speechToSpeechAuthToken,
     speechToSpeechConfigured,
+    miniCpmORealtimeUrl,
+    miniCpmOAuthToken,
+    miniCpmOConfigured,
     missingConfigurationMessage: provider === 'dashscope'
       ? '缺少 DASHSCOPE_API_KEY。请运行 qwenaudio config 查看配置文件位置。'
       : `无法使用 ${PROVIDERS[provider].label} 前台，请检查其服务地址和配置。`,

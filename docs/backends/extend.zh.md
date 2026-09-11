@@ -30,9 +30,7 @@ Task、取消与 Artifact 都由适配器内的官方 A2A SDK 处理。这是面
 
 电话 Agent、硬件 Agent、HTTP 服务或任何非 ACP 的任务运行时，都可以用
 Backend Adapter SDK（`qwen-audio-agent/backend-adapter-sdk`）直接实现
-`BackendPort`。SDK 附带与内置适配器共用的公共一致性测试套件；
-[`examples/backend-adapter/`](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/backend-adapter)
-是一个最小可运行实现。
+`BackendPort`。SDK 附带与内置适配器共用的公共一致性测试套件。
 
 → [Backend Adapter SDK](../reference/backend-adapter-sdk.zh.md)
 
@@ -43,7 +41,7 @@ Backend Adapter SDK（`qwen-audio-agent/backend-adapter-sdk`）直接实现
 
 ### 原料一：目录条目（必填）
 
-`shared/backend-catalog.mjs` 保存静态元数据——身份、存储与引导。
+`shared/backend/catalog.mjs` 保存静态元数据——身份、存储与引导。
 一个条目描述：
 
 - `id` / `label`——`AGENT_PROTOCOL` 的取值与展示名。
@@ -63,7 +61,7 @@ Backend Adapter SDK（`qwen-audio-agent/backend-adapter-sdk`）直接实现
 
 ### 原料二：Agent Driver（必填）
 
-`server/src/agent/backends/<id>.mjs`，外加 `registry.mjs` 里的一行
+`server/src/backend/adapters/acp/drivers/<id>.mjs`，外加 `registry.mjs` 里的一行
 导入。Driver 声明能力契约并构建运行时档案：
 
 ```js
@@ -92,7 +90,7 @@ export const myBackendDriver = {
 ```
 
 八个能力标志都是必填布尔值——注册中心会校验契约，
-`backend-driver-registry.test.mjs` 会断言每个对外宣称的后台都有完整的
+`acp-driver-registry.test.mjs` 会断言每个对外宣称的后台都有完整的
 driver。注册了一半的后台会在启动时响亮地失败，而不是在运行时静默出错。
 
 ### 原料三：Runtime Driver（按需）
@@ -106,10 +104,10 @@ runtime driver 的后台（外部服务支持、自定义拉起规则）。
 
 1. 选路径：ACP 智能体 → 路径一或四；A2A 智能体 → 路径二；
    其他 → 路径三。
-2. 一等公民后台：在 `shared/backend-catalog.mjs` 加目录条目，加 agent
+2. 一等公民后台：在 `shared/backend/catalog.mjs` 加目录条目，加 agent
    driver 并注册，按需加 runtime driver 处理自定义进程归属。
 3. 跑契约测试——它们是门禁：ACP driver 跑
-   `node --test server/test/backend-driver-registry.test.mjs`，自定义
+   `node --test server/test/acp-driver-registry.test.mjs`，自定义
    适配器跑 `node --test server/test/backend-adapter-sdk.test.mjs`。
 
 ## 继续阅读

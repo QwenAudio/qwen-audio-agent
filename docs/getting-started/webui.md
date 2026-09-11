@@ -26,16 +26,17 @@ Options:
 ## What you can do
 
 - **Full-duplex voice** — speak and interrupt naturally, with live transcripts.
-- **Text and images** — type messages or attach images when the selected
-  realtime model supports image input.
+- **Text and attachments** — type messages or add images and files. Ordinary attachments can be handled by the backend; the voice model need not understand images directly.
 - **Task view** — follow background tasks dispatched to the backend agent,
   including progress and final results.
+
+See [Conversation & Attachments](../guides/conversation.md) for the difference between ordinary files and realtime visual capture.
+The top “Knowledge Library” button [imports host documents](../guides/knowledge.md), not chat attachments.
 
 ## Relationship to other clients
 
 The TUI, WebUI, and desktop orb all use the same Gateway Client Protocol. A
-Gateway accepts **one active Client connection at a time**; close the current
-client before connecting another one. The desktop app can also run its own
+Gateway accepts **one active Client connection per user**; another client can take over after confirmation, disconnecting the previous one. The desktop app can also run its own
 Gateway process while sharing user configuration with the CLI. The same WebUI
 page powers the desktop conversation window, so presentation behavior stays
 consistent across surfaces.

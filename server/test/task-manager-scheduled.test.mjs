@@ -77,6 +77,47 @@ test('createScheduled with type=task sets a timeout', () => {
   assert.ok(task.timeoutMs > 0)
 })
 
+test('recurring scheduled tasks keep a stable series id across occurrences', () => {
+  const manager = new TaskManager()
+  const first = manager.createScheduled({
+    objective: '每天提醒',
+    ownerId: 'owner',
+    sessionId: 'voice',
+    turnId: 'turn-1',
+    schedule: {
+      at: Date.now() + 60_000,
+      recurrence: 'daily',
+    },
+    type: 'reminder',
+    runner: trivialRunner,
+  })
+  const next = manager.createScheduled({
+    objective: '每天提醒',
+    ownerId: 'owner',
+    sessionId: 'voice',
+    turnId: 'turn-1',
+    schedule: {
+      at: Date.now() + 120_000,
+      recurrence: 'daily',
+    },
+    type: 'reminder',
+    seriesId: first.seriesId,
+    runner: trivialRunner,
+  })
+
+  assert.match(first.seriesId, /^task_\d+$/u)
+  assert.equal(next.seriesId, first.seriesId)
+  assert.equal('seriesId' in manager.createScheduled({
+    objective: '一次提醒',
+    ownerId: 'owner',
+    sessionId: 'voice',
+    turnId: 'turn-1',
+    schedule: { at: Date.now() + 180_000, recurrence: 'once' },
+    type: 'reminder',
+    runner: trivialRunner,
+  }), false)
+})
+
 test('createScheduled emits task.scheduled event', () => {
   const manager = new TaskManager()
   const events = []

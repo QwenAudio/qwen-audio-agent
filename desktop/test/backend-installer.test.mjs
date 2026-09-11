@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { createBackendInstaller } from '../src/backend-installer.mjs'
+import { createBackendInstaller } from '../src/backend/installer.mjs'
 
 test('delegates support queries to the shared install specs', () => {
   const installer = createBackendInstaller({ env: {}, platform: 'darwin' })

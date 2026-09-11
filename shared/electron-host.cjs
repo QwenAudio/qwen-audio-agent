@@ -10,7 +10,7 @@
 //
 //   const audioAgent = require('qwen-audio-agent/electron')
 //   const api = await audioAgent.load()
-//   if (!api.createSettingsStore({ configDir }).ready()) { … }
+//   if (!api.createSettingsStore({ configDir, clientDir }).ready()) { … }
 //   const gateway = api.createGatewayProcess({ configDir, wakeWord: false })
 //   await gateway.start()
 
@@ -20,10 +20,11 @@ const { pathToFileURL } = require('node:url')
 // anywhere.
 const MODULES = {
   gatewayProtocol: '../server/src/core/gateway-protocol.mjs',
-  gatewaySetup: './gateway-setup.mjs',
-  gatewayProcess: './gateway-process.mjs',
-  gatewayLease: './gateway-instance-lock.mjs',
-  realtimeEvents: './realtime-events.mjs',
+  gatewaySetup: './gateway/setup.mjs',
+  gatewayProcess: './gateway/process.mjs',
+  gatewayLease: './gateway/lease.mjs',
+  runtimePaths: './runtime-paths.mjs',
+  realtimeEvents: './protocol/realtime-events.mjs',
   settings: '../desktop/src/settings-store.mjs',
   skinStore: '../desktop/src/skin-store.mjs',
   presence: '../desktop/src/desktop-presence.mjs',
@@ -90,6 +91,7 @@ async function load() {
 
       // Component-owned configuration.
       createSettingsStore: modules.settings.createSettingsStore,
+      resolveRuntimePaths: modules.runtimePaths.resolveRuntimePaths,
 
       // Orb skins.
       importSkin: modules.skinStore.importSkin,

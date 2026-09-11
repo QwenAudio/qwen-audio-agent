@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { parsePackOutput } from '../scripts/verify-package.mjs'
+import {
+  findMissingExportTargets,
+  parsePackOutput,
+} from '../scripts/verify-package.mjs'
 
 // npm <=10 emits `npm pack --json` as an array of package entries.
 const ARRAY_FORMAT = JSON.stringify([
@@ -92,4 +95,29 @@ test('throws on empty output', () => {
 
 test('throws on non-JSON output', () => {
   assert.throws(() => parsePackOutput('this is not json'), /JSON/)
+})
+
+test('finds missing exact and wildcard package export targets', () => {
+  const exportsMap = {
+    './exact': './shared/exact.mjs',
+    './conditional': {
+      import: './shared/import.mjs',
+      require: './shared/require.cjs',
+    },
+    './assets/*': './dist/*',
+  }
+  const complete = new Set([
+    'shared/exact.mjs',
+    'shared/import.mjs',
+    'shared/require.cjs',
+    'dist/index.js',
+  ])
+  assert.deepEqual(findMissingExportTargets(exportsMap, complete), [])
+
+  const incomplete = new Set(['shared/exact.mjs'])
+  assert.deepEqual(findMissingExportTargets(exportsMap, incomplete), [
+    'shared/import.mjs',
+    'shared/require.cjs',
+    'dist/*',
+  ])
 })

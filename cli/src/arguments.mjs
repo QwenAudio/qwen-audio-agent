@@ -3,17 +3,21 @@ import {
   backendDefinition,
   backendNames,
   normalizeBackendProtocol,
-} from '../../shared/backend-catalog.mjs'
+} from '../../shared/backend/catalog.mjs'
+import { parseGatewayConnectionEndpoint } from '../../shared/gateway/remote-access.mjs'
 
 const COMMANDS = new Set([
   'gateway',
   'tui',
   'webui',
   'status',
+  'doctor',
   'config',
   'setup',
   'install',
   'skill',
+  'connect',
+  'disconnect',
 ])
 const GATEWAY_ACTIONS = new Set([
   'run',
@@ -22,6 +26,9 @@ const GATEWAY_ACTIONS = new Set([
   'stop',
   'restart',
   'status',
+  'pair',
+  'devices',
+  'revoke',
   'uninstall',
 ])
 const BACKEND_PERMISSION_MODES = new Set(['native', 'full'])
@@ -51,6 +58,10 @@ function cleanOrigin(value, label) {
   return url.origin
 }
 
+function enabled(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
+}
+
 export function parseArguments(argv, env = process.env) {
   const args = [...argv]
   const first = args[0]
@@ -68,6 +79,14 @@ export function parseArguments(argv, env = process.env) {
     : command === 'status' ? 'status' : 'run'
   if (command === 'gateway' && !GATEWAY_ACTIONS.has(gatewayAction)) {
     throw new Error(`未知 Gateway 命令：${gatewayAction}`)
+  }
+  const deviceId = gatewayAction === 'revoke'
+    && args[0]
+    && !args[0].startsWith('-')
+    ? args.shift()
+    : ''
+  if (gatewayAction === 'revoke' && !deviceId) {
+    throw new Error('gateway revoke 需要设备 ID')
   }
   const installTarget = command === 'install'
     && args[0]
@@ -100,7 +119,20 @@ export function parseArguments(argv, env = process.env) {
     configAction,
     realtimeModel: '',
     gatewayAction,
+    deviceId,
+    deviceLabel: '',
+    legacyPairing: false,
+    lan: enabled(env.QWEN_AUDIO_GATEWAY_LAN),
+    lanSpecified: false,
+    tailnet: enabled(env.QWEN_AUDIO_GATEWAY_TAILNET),
+    tailnetSpecified: false,
+    endpoint: '',
     url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
+    accessToken: String(
+      env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN
+      || env.QWEN_AUDIO_AGENT_ACCESS_TOKEN
+      || '',
+    ).trim(),
     sessionId: env.QWEN_AUDIO_AGENT_SESSION_ID || createVoiceSessionId(),
     audioMode: String(
       env.QWEN_AUDIO_AGENT_TUI_AUDIO_MODE || 'half',
@@ -121,9 +153,15 @@ export function parseArguments(argv, env = process.env) {
     skillList: false,
     openBrowser: true,
     json: false,
+    turnId: '',
     yes: false,
+    takeover: false,
     backendSpecified: false,
     gatewayConfigurationSpecified: false,
+    pairingCode: command === 'connect' && args[0] && !args[0].startsWith('-')
+      ? args.shift()
+      : '',
+    urlSpecified: Boolean(env.QWEN_AUDIO_AGENT_URL),
   }
   let audioModeSpecified = false
 
@@ -131,6 +169,7 @@ export function parseArguments(argv, env = process.env) {
     const argument = args[index]
     if (argument === '--url') {
       options.url = nextValue(args, index++, '--url')
+      options.urlSpecified = true
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--backend') {
       options.backend = normalizeBackendProtocol(
@@ -154,16 +193,34 @@ export function parseArguments(argv, env = process.env) {
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--realtime-model') {
       options.realtimeModel = nextValue(args, index++, '--realtime-model')
+    } else if (argument === '--name') {
+      options.deviceLabel = nextValue(args, index++, '--name').trim()
+    } else if (argument === '--legacy') {
+      options.legacyPairing = true
+    } else if (argument === '--lan') {
+      if (command !== 'gateway') throw new Error('--lan 只适用于 gateway')
+      options.lan = true
+      options.lanSpecified = true
+      options.tailnet = false
+    } else if (argument === '--tailnet') {
+      if (command !== 'gateway') throw new Error('--tailnet 只适用于 gateway')
+      options.lan = false
+      options.tailnet = true
+      options.tailnetSpecified = true
+    } else if (argument === '--endpoint') {
+      options.endpoint = nextValue(args, index++, '--endpoint').trim()
     } else if (argument === '--session') {
       options.sessionId = nextValue(args, index++, '--session')
     } else if (argument === '--audio-mode') {
       options.audioMode = nextValue(args, index++, '--audio-mode').toLowerCase()
       audioModeSpecified = true
     } else if (argument === '--no-open') options.openBrowser = false
+    else if (argument === '--takeover') options.takeover = true
     else if (argument === '--skill') {
       options.skillNames.push(nextValue(args, index++, '--skill'))
     } else if (argument === '--list') options.skillList = true
     else if (argument === '--json') options.json = true
+    else if (argument === '--turn') options.turnId = nextValue(args, index++, '--turn')
     else if (argument === '--yes' || argument === '-y') options.yes = true
     else if (argument === '--help' || argument === '-h') options.help = true
     else throw new Error(`未知参数：${argument}`)
@@ -171,6 +228,21 @@ export function parseArguments(argv, env = process.env) {
 
   if ((command !== 'config' || configAction !== 'set') && options.realtimeModel) {
     throw new Error('--realtime-model 只适用于 config set')
+  }
+  if (options.deviceLabel && !(command === 'gateway' && gatewayAction === 'pair')) {
+    throw new Error('--name 只适用于 gateway pair')
+  }
+  if (options.legacyPairing && !(command === 'gateway' && gatewayAction === 'pair')) {
+    throw new Error('--legacy 只适用于 gateway pair')
+  }
+  if (options.legacyPairing && options.deviceLabel) {
+    throw new Error('--legacy 与 --name 不能同时使用')
+  }
+  if (options.endpoint && !(command === 'gateway' && gatewayAction === 'pair')) {
+    throw new Error('--endpoint 只适用于 gateway pair')
+  }
+  if (options.endpoint && options.legacyPairing) {
+    throw new Error('--endpoint 不支持旧版 --legacy 配对')
   }
   if (command === 'config' && configAction === 'set' && !options.realtimeModel) {
     throw new Error('config set 需要 --realtime-model')
@@ -230,11 +302,39 @@ export function parseArguments(argv, env = process.env) {
   if (command !== 'webui' && !options.openBrowser) {
     throw new Error('--no-open 只适用于 webui')
   }
-  if (command !== 'setup' && options.json) {
-    throw new Error('--json 只适用于 setup')
+  if (
+    !['setup', 'doctor'].includes(command)
+    && !(command === 'gateway' && ['pair', 'devices'].includes(gatewayAction))
+    && options.json
+  ) {
+    throw new Error('--json 只适用于 setup、doctor、gateway pair 或 gateway devices')
   }
+  if (options.turnId && command !== 'doctor') throw new Error('--turn 只适用于 doctor')
   if (command !== 'tui' && audioModeSpecified) {
     throw new Error('--audio-mode 只适用于 tui')
+  }
+  if (command !== 'tui' && options.takeover) {
+    throw new Error('--takeover 只适用于 tui')
+  }
+  if (options.endpoint) {
+    try {
+      options.endpoint = parseGatewayConnectionEndpoint(options.endpoint)
+    } catch {
+      throw new Error('连接码 Endpoint 必须使用 HTTPS，或使用本机/IPv4 HTTP Origin')
+    }
+  }
+  if (
+    (options.lan && options.tailnet)
+    || (options.lanSpecified && options.tailnetSpecified)
+  ) {
+    throw new Error('--lan 与 --tailnet 不能同时使用')
+  }
+  if (
+    command === 'gateway'
+    && (options.lanSpecified || options.tailnetSpecified)
+    && !['run', 'install'].includes(gatewayAction)
+  ) {
+    throw new Error('--lan 和 --tailnet 只适用于 gateway run 或 gateway install')
   }
   if (command === 'tui' && !TUI_AUDIO_MODES.has(options.audioMode)) {
     throw new Error(
@@ -243,14 +343,13 @@ export function parseArguments(argv, env = process.env) {
   }
   if (
     command === 'gateway'
-    && !['run', 'status'].includes(options.gatewayAction)
+    && !['run', 'status', 'pair', 'devices', 'revoke'].includes(options.gatewayAction)
     && options.gatewayConfigurationSpecified
   ) {
     throw new Error(
       'Gateway 后台服务从 config.env 读取配置；请先修改配置，再执行服务命令',
     )
   }
-
   options.url = cleanOrigin(options.url, ' Gateway URL')
   const configuredBackendUrl = definition?.baseUrlEnvironment
     ? env[definition.baseUrlEnvironment] || definition.defaultBaseUrl
@@ -282,12 +381,18 @@ export function helpText() {
     '  qwenaudio gateway install         安装并启动后台常驻服务',
     '  qwenaudio gateway start           启动后台服务',
     '  qwenaudio gateway status          查看 Gateway 状态',
+    '  qwenaudio gateway pair [--name 名称] [--endpoint URL]  创建直连码与二维码',
+    '  qwenaudio gateway devices         列出已配对客户端',
+    '  qwenaudio gateway revoke ID       撤销客户端',
     '  qwenaudio gateway stop            停止后台服务',
     '  qwenaudio gateway restart         重启后台服务',
     '  qwenaudio gateway uninstall       移除后台常驻服务',
     '  qwenaudio tui [选项]         连接现有 Gateway 的终端界面',
     '  qwenaudio webui [选项]       打开现有 Gateway 的 WebUI',
+    '  qwenaudio connect <连接码>    配对并保存远程 Gateway',
+    '  qwenaudio disconnect          忘记已保存的远程 Gateway',
     '  qwenaudio status [选项]      gateway status 的兼容别名',
+    '  qwenaudio doctor [--json] [--turn ID]  只读诊断配置、连接、历史与交互时间线',
     '  qwenaudio config             显示用户配置文件位置',
     '  qwenaudio config show        显示有效 Realtime 模型（不含凭据）',
     '  qwenaudio config set --realtime-model ID  更新 Realtime 模型',
@@ -305,10 +410,13 @@ export function helpText() {
     '  --backend-permission-mode MODE  native（默认）或 full（最高权限）',
     '  --backend-url URL      后台 Server 地址',
     '  --backend-agent ID     指定协调 Agent',
+    '  --lan                  监听局域网并自动发布 ws://局域网IP:端口',
+    '  --tailnet              通过系统 Tailscale Serve 发布到私有 Tailnet',
+    '  gateway pair --endpoint URL  覆盖连接码中的地址（例如反向代理 HTTPS Origin）',
     '',
     'Setup 选项：',
     '  --backend NAME         只检查指定后台；默认检查全部后台',
-    '  --json                 输出供桌面版或脚本使用的 JSON',
+    '  --json                 输出供脚本使用的 JSON',
     '',
     'Install 选项：',
     `  NAME                   可选：${backendNames().filter(name => name !== 'acp').join('、')}；不含通用 acp（需自行安装）`,
@@ -322,6 +430,7 @@ export function helpText() {
     '界面选项：',
     '  --session ID           复用指定语音会话',
     '  --audio-mode MODE      Linux / Windows 使用 half（默认）或 full',
+    '  --takeover             显式接管同一用户的现有活动客户端（仅 TUI）',
     '  --no-open              WebUI 只打印地址，不打开浏览器',
     '  -h, --help             显示帮助',
     '',

@@ -31,6 +31,7 @@ page or from the CLI, then restart the Gateway:
 
 ```bash
 qwenaudio config set --realtime-model qwen-audio-3.0-realtime-flash
+# For an installed user background service only:
 qwenaudio gateway restart
 ```
 
@@ -73,5 +74,6 @@ the model level, see [Qwen Omni Realtime](qwen-omni-realtime.md).
 ## Read next
 
 - [Speech-to-Speech](speech-to-speech.md) — fully local frontend, no cloud key
+- [MiniCPM-o 4.5](minicpm-o.md) — local end-to-end realtime voice
 - [Custom Provider](custom-provider.md) — bring another realtime service
 - [Frontend configuration reference](../configuration/frontend.md)

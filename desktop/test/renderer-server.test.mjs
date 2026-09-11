@@ -34,6 +34,7 @@ test('serves bundled assets and proxies only the protected API path', async t =>
   let proxyRequest
   const gateway = createServer((request, response) => {
     proxyRequest = {
+      authorization: request.headers.authorization,
       host: request.headers.host,
       origin: request.headers.origin,
       url: request.url,
@@ -48,6 +49,7 @@ test('serves bundled assets and proxies only the protected API path', async t =>
     webRoot,
     target: gatewayOrigin,
     token: 'test-token',
+    accessToken: () => 'remote-device-token',
   })
   t.after(() => renderer.close())
 
@@ -66,6 +68,7 @@ test('serves bundled assets and proxies only the protected API path', async t =>
   const healthResponse = await fetch(`${renderer.baseUrl}api/health`)
   assert.deepEqual(await healthResponse.json(), { ok: true })
   assert.deepEqual(proxyRequest, {
+    authorization: 'Bearer remote-device-token',
     host: new URL(gatewayOrigin).host,
     origin: gatewayOrigin,
     url: '/api/health',
@@ -156,6 +159,7 @@ test('relays the protected realtime WebSocket to the Gateway', async t => {
   const gatewaySockets = new WebSocketServer({ noServer: true })
   gateway.on('upgrade', (request, socket, head) => {
     upgradeRequest = {
+      authorization: request.headers.authorization,
       origin: request.headers.origin,
       url: request.url,
     }
@@ -176,6 +180,7 @@ test('relays the protected realtime WebSocket to the Gateway', async t => {
     webRoot,
     target: gatewayOrigin,
     token: 'test-token',
+    accessToken: 'remote-device-token',
   })
   t.after(() => renderer.close())
 
@@ -198,6 +203,7 @@ test('relays the protected realtime WebSocket to the Gateway', async t => {
   const [attachmentEcho] = await once(websocket, 'message')
   assert.equal(attachmentEcho.toString(), `echo:${attachmentMessage}`)
   assert.deepEqual(upgradeRequest, {
+    authorization: 'Bearer remote-device-token',
     origin: gatewayOrigin,
     url: '/api/realtime?sessionId=desktop-test',
   })

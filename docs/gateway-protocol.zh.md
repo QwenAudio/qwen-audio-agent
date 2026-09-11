@@ -1,11 +1,11 @@
 # Gateway Client Protocol
 
 > 状态：**Stable 6.0**<br>
-> 线协议版本：**6.0.0**<br>
+> 线协议版本：**7.0.0**<br>
 > Roadmap：[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
-> 当前实现事实源：`shared/gateway-client-protocol.mjs`、`server/src/client/client-event-router.mjs`、`server/src/client/client-command-runtime.mjs`、`shared/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
+> 当前实现事实源：`shared/protocol/gateway-client-protocol.mjs`、`server/src/client/client-event-router.mjs`、`server/src/client/client-command-runtime.mjs`、`shared/protocol/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
 
-本文档定义 qwen-audio-agent Gateway 与唯一活动 Client Environment 之间已经落地的北向协议。当前第一方客户端使用 6.0 线协议；健康契约 5.x 的旧入口仅作为临时兼容别名保留。
+本文档定义 qwen-audio-agent Gateway 与每个已认证用户的一个活动 Client Environment 之间已经落地的北向协议。当前第一方客户端使用 6.0 线协议；健康契约 5.x 的旧入口仅作为临时兼容别名保留。
 
 ## 1. 产品边界
 
@@ -23,11 +23,11 @@ Backend Agent
 - **Backend Agent** 是用户提供的执行环境。Gateway 只通过 `BackendPort` 访问，由 ACP、A2A 或自定义 Adapter 实现。
 - **Client Environment** 负责 I/O、显示、播放、本地 UX、传感器、客户端状态、用户行为和外部环境动作。
 
-TUI、WebUI 和桌面悬浮球是第一方参考客户端；OpenCode、Qwen Code、Pi、OpenClaw、远程 A2A Agent 等是参考后台。两者都不限制框架可接入的实现。
+TUI、WebUI 和桌面悬浮球是第一方参考客户端；OpenCode、Qwen Code、MiniMax Code、Pi、OpenClaw、远程 A2A Agent 等是参考后台。两者都不限制框架可接入的实现。
 
 ## 2. 架构不变量
 
-1. 同一个 Gateway 实例同一时刻只接受一个活动 Client 连接。
+1. 每个已认证用户同一时刻只有一个活动 Client 连接。默认个人部署只有一个用户，因此仍表现为单 Client。
 2. Client 的业务流量使用一条 WebSocket，不额外建立 context 或 observer 连接。
 3. 原始音频走媒体快速路径，只有已经提交的语义输入进入语义路由。
 4. Client **Event** 描述发生了什么；Client **Action** 要求环境执行操作并返回结果。
@@ -38,6 +38,29 @@ TUI、WebUI 和桌面悬浮球是第一方参考客户端；OpenCode、Qwen Code
 9. 本地静音、窗口布局、唤醒手段和渲染属于 Client；只有影响共享状态的部分进入协议。
 10. 在全部第一方客户端完成迁移并具备 conformance coverage 前，现有行为通过兼容别名继续可用。
 
+### 2.1 访问边界
+
+Gateway 访问认证与 GCP 明确分层。访问凭据在 `session.hello` 之前完成身份认证；
+访问令牌不会进入 GCP 信封、模型上下文、Task 事件或日志。
+
+- 本机回环访问继续保持零配置，Gateway 默认仍只监听 `127.0.0.1`。
+- 显式 `--lan` 模式监听 `0.0.0.0`，但仅发布自动选择的物理网卡 IPv4 `ws://` Endpoint；
+  该模式只面向可信局域网，不支持直接暴露到公网。
+- 远程 HTTP 与 WebSocket 必须使用配置的访问密钥，或网关主机签发的可撤销设备令牌。
+- 原生 Client 在 WebSocket 握手使用 `Authorization: Bearer <token>`；浏览器通过 WebSocket 子协议携带同一 Token。
+- 远程浏览器来源必须显式写入 `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS`。远程部署应使用可信 VPN 或 HTTPS/WSS 反向代理，不支持直接暴露到公网。
+- 一个配置密钥映射一个用户；可选的 `QWEN_AUDIO_AGENT_ACCESS_KEYS` JSON 数组可把不同密钥映射到不同用户，而无需修改 GCP。
+
+本机操作者可对运行中的 Gateway 执行 `qwenaudio gateway pair`，直接生成一个包含准确
+Gateway 地址与可撤销设备令牌、并可直接打开 WebUI 的短浏览器兼容连接码。
+设备令牌只以 SHA-256 摘要持久化，明文凭据只显示一次；原生远程 Client 不需要再通过
+HTTPS 换取 Token。浏览器扫码页仅把 fragment 中的 Token 换成 HttpOnly Cookie。本机管理
+接口可列出和撤销设备。
+旧版一次性配对接口仍作为兼容路径保留。
+
+端点发布、设备连接码签发与设备管理等 Host 管理请求不属于交互式 GCP Session。
+它们独立完成认证，也不会取得或替换活动 Client 租约。
+
 ## 3. 连接与能力协商
 
 Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.hello`。
@@ -46,7 +69,7 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
 {
   "type": "session.hello",
   "event_id": "evt_client_1",
-  "protocol": { "min": "6.0.0", "max": "6.0.0" },
+  "protocol": { "min": "7.0.0", "max": "7.0.0" },
   "client": {
     "type": "desktop",
     "version": "1.12.0",
@@ -62,6 +85,8 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
     "conversation.history",
     "client.events",
     "session.output_voice",
+    "session.takeover",
+    "session.heartbeat",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ],
@@ -89,8 +114,12 @@ Gateway 返回协商后的版本与能力交集：
   "type": "session.ready",
   "event_id": "evt_gateway_1",
   "request_event_id": "evt_client_1",
-  "protocol_version": "6.0.0",
+  "protocol_version": "7.0.0",
   "session_id": "session_01",
+  "connection": {
+    "lease_generation": 7,
+    "replaced": false
+  },
   "capabilities": [
     "input.audio",
     "input.text",
@@ -101,6 +130,7 @@ Gateway 返回协商后的版本与能力交集：
     "conversation.history",
     "client.events",
     "session.output_voice",
+    "session.takeover",
     "client.actions.desktop.presence.enter_sleep",
     "session.replay"
   ]
@@ -109,9 +139,13 @@ Gateway 返回协商后的版本与能力交集：
 
 规则：
 
-- 已有活动 Client 时，新连接收到 `client_occupied` 后关闭。
-- WebSocket 关闭或心跳超时后释放连接所有权。
-- 6.0 不提供接管、踢出、并发观察或多 Client 仲裁。
+- 同一用户已有活动 Client 时，另一个 Client 默认收到 `client_occupied` 后关闭。
+- 协商了 `session.takeover` 的 Client 可在 `session.hello` 中设置 `connection.takeover: true`。Gateway 会关闭原 Client，并授予单调递增的新租约代次。
+- 相同 `client.instance_id` 的重连无需显式接管，会自动替换旧 Socket。
+- 不同用户彼此独立，但每个用户仍只有一个活动 Client。
+- WebSocket 关闭或心跳超时后释放租约；租约代次 fencing 会阻止旧 Socket 释放或修改新租约。
+- 协商了 `session.heartbeat` 的 Client 必须使用关联的 `session.pong` 回复 Gateway 的每个 `session.ping`；正常业务消息同样会续租。这避免依赖某些反向代理无法可靠保留的 WebSocket 控制帧。
+- 6.0 不提供 Observer 连接或同一用户下的并发多 Client 控制。
 - Client 必须依据协商后的 capabilities 判断能力，不能只比较产品版本。
 - 协议版本、Client 身份和能力不能在当前连接中改变；需要改变时重连。
 - 6.0 不定义 `context_source`、`integration` 或 Observer 连接角色。车辆总线、CRM、传感器等上下文来源通过客户端侧 Adapter 接入当前活动 Client Environment，再由该 Client 校验并转发已注册的语义事件。
@@ -206,6 +240,8 @@ Gateway 采用扁平的 OpenAI Realtime 风格信封：
 | 事件 | 方向 | 语义 |
 |---|---|---|
 | `input_audio_buffer.append` | C→G | 追加输入音频 |
+| `input_image_buffer.append` | C→G | 向实时视觉缓冲区追加一张 JPEG 帧 |
+| `input_image_buffer.clear` | C→G | 丢弃尚未消费的实时视觉帧 |
 | `conversation.item.create` | C→G | 提交文本、图片、文件或混合用户输入 |
 | `response.cancel` | C→G | 打断当前回复 |
 | `response.created` | G→C | 回复开始生成 |
@@ -216,6 +252,33 @@ Gateway 采用扁平的 OpenAI Realtime 风格信封：
 Gateway 扩展包括 `turn.started`、`transcript.discard`、`playback.clear` 和播放回执。`input_file` 是 Gateway content part 扩展，不属于 OpenAI Realtime 标准字段。
 
 用户输入代表明确的用户意图，会开启或替代用户轮次。Client 语义事件不能伪装成用户输入。
+
+`input.image` 与 `input.image_buffer` 是两个独立协商的能力。前者表示
+`conversation.item.create` 中绑定回合的图片附件；后者表示与实时音频会话对齐的
+临时视觉帧。只有所选 Realtime Provider 的实际传输层已经实现视觉流时，Gateway
+才会协商 `input.image_buffer`。
+
+```jsonc
+{
+  "type": "input_image_buffer.append",
+  "event_id": "evt_client_frame_18",
+  "occurred_at": 1787803060177,
+  "media_type": "image/jpeg",
+  "image": "<base64-jpeg>"
+}
+```
+
+第一版只接受 JPEG，Base64 正文不超过 256 KiB，并且每秒最多接收一帧。视觉帧只
+更新实时视觉上下文：不创建用户回合、不主动触发回复、不进入对话历史，也不会成为
+后台附件。用户主动停止实时视觉或关闭相机时，Client 发送
+`input_image_buffer.clear`，避免 Provider 在之后消费最后一帧。短暂断线或麦克风状态
+切换只暂停 Client 传帧；传输恢复后继续，并保留用户已经开启实时视觉的意图。Session
+断开、休眠、输入抢占、麦克风静音和 Provider 切换仍会清除 Gateway 侧尚未消费的视觉
+状态，避免旧帧跨越传输生命周期残留。
+
+该 GCP 事件保持 Provider 无关。Qwen Omni Adapter 会在音频开始后写入服务端图像
+缓冲区；MiniCPM-o Adapter 则把最近一帧放入下一批音频 `input.append` 的
+`video_frames`。
 
 ### 5.2 Client 语义事件
 
@@ -340,8 +403,11 @@ Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client 
 Realtime Session。Provider 不支持会话音色时返回关联错误
 `output_voice_unsupported`，Client 不需要识别具体 Provider。
 
-`permission.respond.decision` 支持 `once`、`always` 和 `reject`，分别表示
-仅允许当前操作、当前前端会话内始终允许，以及仅拒绝当前操作。
+`permission.respond.decision` 支持 `task`、`always` 和 `reject`，分别表示
+允许当前 Task 及其后续操作直到完成、失败或取消；当前前端会话内跨 Task
+始终允许；以及拒绝当前操作。授权策略由 Gateway 管理，BackendPort 仍接收逐次
+操作的决定。授权不跨 Gateway 重启保存。线协议 7.0 将 `once` 替换为 `task`，
+客户端须更新 schema，不能把“本次允许”悄悄解释成任务授权。
 
 `task.create` 使用与 A2A 语义对齐的 `message.parts`，而不是另设只能传纯文本的 objective 字段。这样显式集成可以提交文本、文件或结构化 Part，同时不引入 A2A Message 原生对象。
 
@@ -453,6 +519,15 @@ Provider 的 response 对象。
 
 `AgentDeliveryRuntime` 管理用户说话阻塞、回复串行化、休眠暂存、重试和播放确认。Realtime Provider Adapter 再转换成自己的线协议。不能把 Client 原始 JSON 直接粘贴进模型 Prompt。
 
+Gateway 自身产生且需要前台 Agent 感知的事件也使用同一边界。例如 Realtime
+内容被拒绝后，Gateway 先排除失败轮次并恢复连接，再投递
+`realtime.content_rejected`。模型只会收到脱敏的“上一轮内容无法回复，请换个话题”，
+不会收到供应商错误对象、错误码或被拒绝的原始内容。
+
+提醒到期同样注册为 Gateway 自有系统事件 `reminder.due`。其有界载荷只包含提醒内容、
+计划时间、重复规则与时区；Task 和循环标识保留在 `AgentDelivery.correlation`，不会
+复制进模型可见文本。
+
 ## 7. Presence 与休眠
 
 两种休眠最终进入同一个 PresenceController 和 Client Action 链路，但只有用户主动休眠需要模型工具调用。
@@ -561,7 +636,7 @@ Gateway 协议定义自己的类型。下表是刻意且非规范性的语义对
 
 6.0 的稳定行为由以下测试范围锁定：
 
-- 全局单 Client 占用、释放和心跳超时；
+- 按用户单 Client 占用、显式接管、租约代次 fencing、释放与心跳超时；
 - 版本与 capability 协商；
 - `event_id`、`request_event_id` 和回放 `sequence`；
 - 用户输入与 Client Event 的权限差异；
@@ -577,7 +652,7 @@ Gateway 协议定义自己的类型。下表是刻意且非规范性的语义对
 
 ## 13. 明确不做
 
-- 多用户、多 Client 并发、Observer、接管或踢出。
+- 同一用户下的并发控制 Client、Observer 与任意踢出语义。
 - 在 Gateway Core 中依赖 Electron、React、CoreAudio 或具体 Client。
 - 将 ACP 规定为唯一后台协议。
 - 允许任意 Client 数据成为模型指令。

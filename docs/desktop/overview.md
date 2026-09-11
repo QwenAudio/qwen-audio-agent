@@ -1,102 +1,106 @@
 # Desktop
 
-The desktop app provides a persistent on-screen voice orb and includes a built-in Gateway, eliminating the need to start a service beforehand. If a local Gateway already exists in the same user configuration directory, it will connect directly and use the Gateway's current runtime configuration; otherwise, the desktop app will start and manage it automatically. On first run, the app creates a configuration file and guides you to fill in the DashScope API Key on the settings page and select a backend agent (frontend-only mode is also available).
+Desktop provides a voice orb and conversation panel with an embedded Gateway; no terminal service
+needs to be started first. Configuration, memory, and workspace are shared with CLI by default,
+but runtime directories are separate. A Gateway already running in the same Desktop runtime
+directory is reused; otherwise the app starts and manages one.
+
+## First Run
+
+1. Download an installer from the [release page](https://github.com/QwenAudio/qwen-audio-agent/releases/latest) and open the app.
+2. The first launch creates `config.env`. Open Settings and enter credentials for your voice frontend.
+   For the default DashScope service, Settings links to the Bailian API Key page.
+3. Select a Backend Agent, or start in frontend-only mode. Installed Agents reuse their authentication
+   and model settings. If missing, use an available Install action and complete the backend's setup.
+4. Click Apply and check Gateway, voice-frontend, and Backend Agent status.
+5. Allow microphone permission, say “Hello”, and confirm you see a transcript and hear a reply.
+
+Existing configuration is reused on startup. Filled settings or an installed backend do not prove
+valid credentials or quota. See [Troubleshooting](../operations/troubleshooting.md) for errors.
+
+## Orb and Conversation Panel
+
+Use the “Open conversation” button beside the orb to open the panel. It shows conversation and
+work cards and accepts text, images, and files. The panel and orb are two views of the same client,
+not separate voice connections. The panel's collapse button returns to the orb.
+
+Clicking the orb itself does not toggle mute. Use the microphone button instead; muting does not
+stop current or future replies. See [Conversation & Attachments](../guides/conversation.md) for
+manual input behavior.
 
 ## Backend Agent Connection
 
-The app manages the selected backend Agent by default. For Agents that expose
-an external-service capability, the Backend Agent settings also allow connecting
-to an existing service by address and optional access token. OpenClaw currently
-supports this mode; Agents without that capability continue to use their managed
-ACP process and do not show irrelevant connection fields.
+The app manages the selected backend by default. Agents supporting an external service can offer
+“Connect to existing service” with an address and optional token; OpenClaw currently supports this.
+This selects a **Backend Agent service**, not another Gateway for the Desktop client.
+See [backend settings](../configuration/backend.md).
 
 ## Orb and Auto Sleep
 
-When idle, the orb automatically hides and disconnects real-time voice; you can also say "可以退下了" (you may step down) to hide it. The app remains in the menu bar and can be re-summoned from the menu bar or via a show shortcut. The default shortcut is `⇧⌘ Space` and can be changed in app settings.
+After the configured idle period, the orb can hide automatically. You can also ask it to step down.
+Sleep **hides the UI and stops microphone input to the voice frontend while retaining the Realtime
+connection and conversation context**. The app stays in the menu bar; backend work is not cancelled,
+and pending announcements continue after waking.
 
-The sleep timeout and auto-hide are unified into a single "Auto Sleep" setting: during sleep, the microphone continues local listening, and saying the wake word "你好千问" (hello Qianwen) will resume the conversation. Backend agents and submitted tasks are not stopped by sleep; task results will be announced after wake-up. When the wake word is enabled for the first time, it automatically downloads and validates approximately 33 MB of the [`sherpa-onnx`](https://github.com/k2-fsa/sherpa-onnx) Chinese-English KWS model, and uses the local cache thereafter. Detection runs entirely in an isolated Desktop Client worker; wake-word audio is not sent to Gateway, and a successful detection emits only the standard `wake` event.
+Wake it from the menu bar or show shortcut. The macOS default is `⇧⌘ Space`; view or change the
+actual binding in Settings. If wake-word detection is enabled, the microphone is used only for local
+keyword detection during sleep. Say “你好千问” to wake it. The first enable downloads and verifies
+an approximately 33 MB [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) model, then reuses its cache.
+Detection runs in an isolated Desktop worker; wake-word audio is not uploaded.
 
 ## Appearance
 
-The desktop app supports two appearance styles: the Aurora Soundwave Orb and the Liquid Gradient Orb. The following shows their raw animations in the thinking / breathing state:
+Settings offers the built-in Aurora Soundwave Orb, Liquid Gradient Orb, and imported pet skins.
+These are animation examples of the built-in appearances:
 
 | Aurora Soundwave Orb | Liquid Gradient Orb |
 | --- | --- |
-| ![Aurora Soundwave Orb thinking animation](../desktop-fluid-orb-thinking.gif) | ![Liquid Gradient Orb thinking animation](../desktop-goo-orb-thinking.gif) |
+| ![Aurora Soundwave Orb animation](../desktop-fluid-orb-thinking.gif) | ![Liquid Gradient Orb animation](../desktop-goo-orb-thinking.gif) |
 
 ## Skins
 
-Beyond the built-in appearances, the orb supports sprite skins in the
-[Codex pet](https://github.com/legeling/awesome-codex-pet) package format:
-a directory containing `pet.json` and `spritesheet.webp` (8-column grid,
-v1 is 1536x1872 with 9 rows, v2 is 1536x2288 with 11 rows). Assets from the
-Codex pet ecosystem work without any conversion, and no Codex installation
-is required.
+In Settings → App → Appearance, click “Import Skin…” and select a skin directory, `pet.json`,
+or a zip archive. Imported skins can be selected or deleted; built-in appearances cannot be deleted.
 
-Generated skins may use the optional `animations.frames/fps` extension to
-describe each standard action's effective frames and speed. See the
-[desktop pet skin protocol](./pet-skin-spec.md).
+Codex pet packages and optional animation-frame descriptions are supported; Codex is not required.
+See the [Pet Skin Protocol](pet-skin-spec.md) for resource creation and
+[Desktop Animation Integration](../reference/desktop-animations.md) for state mappings,
+loops, and one-shot playback.
 
-To import a skin you already downloaded, open "Settings → App →
-Appearance", click "Import Skin…", and select the skin folder, its
-`pet.json`, or a zip archive. Imported skins are stored under `skins/` in
-the desktop data directory and appear in the appearance dropdown alongside
-the built-in styles. Selecting an imported skin enables the "Delete"
-button next to it; built-in appearances cannot be deleted.
+## Remote Connections
 
-The desktop does not flatten every business signal into one "Agent state".
-Lifecycle, runtime readiness, voice interaction, and background work remain
-separate; skins consume only stable presentation states and one-shot events.
-
-| Standard animation | Meaning | Agent state or event | Playback |
-| --- | --- | --- | --- |
-| `idle` | Resting | `idle`, `connecting`, `occupied` | Loop while the state persists |
-| `running-right` | Moving right | The user drags the pet right | Loop while dragging |
-| `running-left` | Moving left | The user drags the pet left | Loop while dragging |
-| `waving` | Speaking | `speaking` | Loop for the full `speaking` state |
-| `jumping` | Success / wake | `waking`, first startup readiness, successful task completion, pointer enter | Play once per event |
-| `failed` | Failure | `error`, desktop runtime failure, task failure | Play once per event |
-| `waiting` | Listening | `listening` | Loop for the full `listening` state |
-| `running` | Working / startup | `working`, `starting` | Loop while the state persists |
-| `review` | Foreground turn processing | `processing` | Play once per processing phase |
-
-Sustained states and one-shot events are arbitrated separately: startup,
-listening, speaking, and background work retain their looping tracks, while
-first readiness, wake, task results, foreground processing, and pointer entry
-play once. A one-shot action restores the current base track: `running` while
-work remains active, otherwise `idle`. Every active background task uses
-`working` → `running`, including backend thinking; a pending authorization does
-not select an Agent animation and remains visible in the Task UI until its
-spoken request naturally enters `speaking`. Every task kind uses the same
-start, completion, and failure rules. Front-end-only mode skips backend readiness.
-Skin packages are static assets only (JSON + WebP) and are validated on
-import; if a selected skin package is removed, the orb falls back to the
-built-in appearance.
+Enter a local or remote Gateway URL in Settings → Application → Gateway and click Apply.
+For the first connection to a remote Gateway requiring authentication, paste the complete
+pairing link generated on its host into the same field. Desktop pairs automatically,
+then displays the plain URL and reuses the saved credential for later connections.
+See [Remote Connections and Pairing](../operations/remote-access.md). The Gateway and Backend Agent
+stay on the remote host; Desktop only handles input and output, without its own relay service.
+Tailnet mode requires official Tailscale on both devices; LAN and an external HTTPS endpoint do not.
 
 ## Installation
 
-Download the installer for your platform from the releases page:
-
-- **macOS**: Download the `.dmg`, open it, and drag **Qwen Audio Agent** into "Applications".
-- **Windows**: Download the `.exe` installer, double-click to run, and follow the wizard to complete installation.
-
-To build a local test version from source:
+For stable packages and updates, see [Install & Update](../getting-started/install.md#desktop-installation).
+From a source checkout with dependencies installed, build a local test package:
 
 ```bash
 npm run desktop:build:local      # macOS
 npm run desktop:build:win        # Windows
-npm run desktop:build:linux      # Linux (AppImage + deb, no signing required)
+npm run desktop:build:linux      # Linux: AppImage + deb
 ```
 
-The output is located in `dist/desktop/`.
+Outputs are in `dist/desktop/`. Local test builds are not equivalent to officially signed releases.
 
 ## Data Directory and Isolation
 
-The desktop app shares the CLI's user directory (`~/.config/qwaudio`): settings, identity, memory, and the shared workspace are the same across both. Only runtime state — the Gateway process, locks, logs, task records, and skins — lives in the desktop app's own application data directory (`~/Library/Application Support/Qwen Audio Agent` on macOS, `%APPDATA%/Qwen Audio Agent` on Windows, and `~/.config/Qwen Audio Agent` on Linux), so the two can run simultaneously. On first launch, configuration from an older desktop build is migrated into the shared CLI directory (the CLI retains the originals).
+Desktop-hosted and CLI-hosted Gateways share configuration, identity, memory and workspace, but keep runtime state separate.
+Desktop preferences, window placement, skins, wake-word models and connection credentials stay in the client application directory.
+Both can run at once, but that does not mean they connect to the same Gateway.
+See [configuration directories](../configuration.md#configuration-and-data-directories) for paths and overrides.
 
 ## Auto Update and Logs
 
-The settings page displays the current version and allows manual update checks. When a new version is found, the background downloads a delta update, and once complete, a one-click restart installs it.
+Check for updates in Settings, then restart after download. Quitting stops the Gateway and backend
+processes started by this app, not borrowed or remote services.
 
-The desktop app can open the log directory from "Settings → App → Logs". Along with the Gateway, it records structured JSONL logs with automatic credential redaction and log rotation. For log configuration details, see
-[Configuration Guide](../configuration/advanced.md#local-logs).
+Open this Desktop runtime's log directory through Settings → App → Logs. Logs are redacted and
+rotated. See [local logs](../configuration/advanced.md#local-logs) for configuration.

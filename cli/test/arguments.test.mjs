@@ -35,6 +35,12 @@ test('parses independent TUI and WebUI client commands', () => {
   assert.equal(tui.url, 'https://voice.example.com')
   assert.equal(tui.sessionId, 'project-one')
   assert.equal(tui.audioMode, 'full')
+  assert.equal(parseArguments(['tui'], {
+    QWEN_AUDIO_GATEWAY_CLIENT_TOKEN: 'remote-token',
+  }).accessToken, 'remote-token')
+  assert.equal(parseArguments(['tui'], {
+    QWEN_AUDIO_AGENT_ACCESS_TOKEN: 'legacy-token',
+  }).accessToken, 'legacy-token')
   assert.equal(
     parseArguments(['tui'], {
       QWEN_AUDIO_AGENT_TUI_AUDIO_MODE: 'FULL',
@@ -45,6 +51,21 @@ test('parses independent TUI and WebUI client commands', () => {
   const web = parseArguments(['webui', '--no-open'], {})
   assert.equal(web.command, 'webui')
   assert.equal(web.openBrowser, false)
+})
+
+test('parses remote Gateway connection profile commands', () => {
+  const pairingCode = 'qwaudio://connect?payload=abc'
+  const connected = parseArguments(['connect', pairingCode], {})
+  assert.equal(connected.command, 'connect')
+  assert.equal(connected.pairingCode, pairingCode)
+  assert.equal(connected.urlSpecified, false)
+  assert.equal(parseArguments(['disconnect'], {}).command, 'disconnect')
+  assert.equal(
+    parseArguments(['tui', '--url', 'https://gateway.example.test', '--takeover'], {}).urlSpecified,
+    true,
+  )
+  assert.equal(parseArguments(['tui', '--takeover'], {}).takeover, true)
+  assert.throws(() => parseArguments(['webui', '--takeover'], {}), /只适用于 tui/)
 })
 
 test('parses read-only backend setup options', () => {
@@ -65,6 +86,15 @@ test('parses read-only backend setup options', () => {
     () => parseArguments(['status', '--json'], {}),
     /只适用于 setup/,
   )
+})
+
+test('parses read-only diagnostics and limits turn tracing to doctor', () => {
+  const options = parseArguments(['doctor', '--json', '--turn', 'voice-1'], {})
+  assert.equal(options.command, 'doctor')
+  assert.equal(options.json, true)
+  assert.equal(options.turnId, 'voice-1')
+  assert.throws(() => parseArguments(['gateway', '--turn', 'voice-1'], {}), /doctor/)
+  assert.match(helpText(), /qwenaudio doctor/)
 })
 
 test('parses Gateway backend settings', () => {
@@ -96,7 +126,7 @@ test('accepts a generic ACP backend without an HTTP URL', () => {
 })
 
 test('accepts named local ACP backends without an HTTP URL', () => {
-  for (const backend of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude', 'pi']) {
+  for (const backend of ['kimi', 'hermes', 'codebuddy', 'codex', 'claude', 'minimax', 'pi']) {
     const options = parseArguments(['gateway', '--backend', backend], {})
     assert.equal(options.backend, backend)
     assert.equal(options.backendUrl, '')
@@ -229,6 +259,24 @@ test('parses foreground and service Gateway commands', () => {
   )
   assert.equal(parseArguments(['gateway', 'start'], {}).gatewayAction, 'start')
   assert.equal(parseArguments(['gateway', 'stop'], {}).gatewayAction, 'stop')
+  assert.equal(parseArguments(['gateway', 'pair'], {}).gatewayAction, 'pair')
+  assert.equal(
+    parseArguments(['gateway', 'pair', '--name', 'AI Passport'], {}).deviceLabel,
+    'AI Passport',
+  )
+  assert.equal(parseArguments(['gateway', 'pair', '--legacy'], {}).legacyPairing, true)
+  assert.equal(parseArguments([
+    'gateway', 'pair', '--json',
+  ], {}).json, true)
+  assert.equal(parseArguments(['gateway', 'devices'], {}).gatewayAction, 'devices')
+  assert.equal(
+    parseArguments(['gateway', 'revoke', 'phone-one'], {}).deviceId,
+    'phone-one',
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'revoke'], {}),
+    /设备 ID/,
+  )
   assert.equal(
     parseArguments(['gateway', 'restart'], {}).gatewayAction,
     'restart',
@@ -255,7 +303,7 @@ test('rejects client-only flags on unrelated commands', () => {
   )
   assert.throws(
     () => parseArguments(['webui', '--takeover'], {}),
-    /未知参数：--takeover/,
+    /只适用于 tui/,
   )
   assert.throws(
     () => parseArguments(['gateway', 'install', '--backend', 'openclaw'], {}),
@@ -269,6 +317,14 @@ test('documents the service and client commands', () => {
   assert.match(text, /qwenaudio \[gateway\]/)
   assert.match(text, /gateway install/)
   assert.match(text, /gateway uninstall/)
+  assert.match(text, /gateway pair/)
+  assert.match(text, /gateway devices/)
+  assert.match(text, /gateway revoke ID/)
+  assert.match(text, /--tailnet/)
+  assert.match(text, /--lan/)
+  assert.match(text, /gateway pair --endpoint URL/)
+  assert.doesNotMatch(text, /--public-url/)
+  assert.doesNotMatch(text, /gateway remote/)
   assert.match(text, /qwenaudio tui/)
   assert.match(text, /qwenaudio webui/)
   assert.match(text, /qwenaudio status/)
@@ -280,9 +336,61 @@ test('documents the service and client commands', () => {
   assert.doesNotMatch(text, /--attach-openclaw/)
   assert.doesNotMatch(text, /--backend-mode/)
   assert.match(text, /--backend-permission-mode MODE/)
+  assert.doesNotMatch(text, /--mode private/)
   assert.match(text, /--audio-mode MODE/)
   assert.match(text, /x\s+半双工模式下手动打断当前回复/)
-  assert.doesNotMatch(text, /--mode/)
+})
+
+test('selects one of three Gateway run modes and keeps endpoint overrides on pair', () => {
+  assert.throws(
+    () => parseArguments(['gateway', 'remote'], {}),
+    /未知 Gateway 命令：remote/,
+  )
+  assert.equal(parseArguments(['gateway', '--tailnet'], {}).tailnet, true)
+  const lan = parseArguments(['gateway', '--lan'], {})
+  assert.equal(lan.lan, true)
+  assert.equal(lan.tailnet, false)
+  assert.equal(
+    parseArguments([
+      'gateway', 'pair', '--endpoint', 'https://voice.example.com',
+    ], {}).endpoint,
+    'https://voice.example.com',
+  )
+  assert.throws(
+    () => parseArguments(['gateway', '--public-url', 'https://voice.example.com'], {}),
+    /未知参数/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', '--endpoint', 'https://voice.example.com'], {}),
+    /只适用于 gateway pair/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'pair', '--endpoint', 'http://voice.example.com'], {}),
+    /必须使用 HTTPS/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'start', '--tailnet'], {}),
+    /只适用于 gateway run 或 gateway install/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'start', '--lan'], {}),
+    /只适用于 gateway run 或 gateway install/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway'], {
+      QWEN_AUDIO_GATEWAY_LAN: '1',
+      QWEN_AUDIO_GATEWAY_TAILNET: '1',
+    }),
+    /不能同时使用/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', '--lan', '--tailnet'], {}),
+    /不能同时使用/,
+  )
+  assert.equal(
+    parseArguments(['gateway', 'install', '--tailnet'], {}).tailnet,
+    true,
+  )
 })
 
 test('parses config show and exact realtime model set commands', () => {

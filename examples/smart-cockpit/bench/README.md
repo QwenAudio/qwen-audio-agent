@@ -344,97 +344,136 @@ Reports are written to `reports/navigation-voice-realtime-latest.json` by
 default and include the raw Gateway voice events for debugging ASR/realtime
 failures.
 
-### 前后端工具时延评测（真实音频输入）
+### Frontend/backend tool latency (real audio input)
 
-本节仅汇报时延，与上文原有的功能正确性评测分开。使用真实 Gateway、realtime 模型和 A2A Agent，
-通过语音输入比较同一套 short 用例走前端工具或后端工具的响应时间。
+This section reports latency only and stays separate from the correctness
+benchmarks above. It drives the real Gateway, realtime model and A2A Agent, then
+compares how long the same short cases take when their tools run on the frontend
+surface versus the backend surface.
 
-保留辅助脚本 `run-surface-compare.mjs` 和 `surface-latency-worker.mjs`，用于无语音的
-进程内（`--mode direct`）、真实传输加 stub 模型（`--mode transport`）及模型跳数（`--mode model`）测量。
-其 `cases/surface-compare.jsonl` 为 46 条单轮辅助用例，不与本次 86 条 short 实测混算。
+`run-surface-compare.mjs` and `surface-latency-worker.mjs` remain available for
+voiceless measurements: in-process (`--mode direct`), real transport with a stub
+model (`--mode transport`) and model hops (`--mode model`). Their
+`cases/surface-compare.jsonl` holds 46 single-turn helper cases and is never
+mixed into the 86 short cases measured here.
 
-#### 采集与统计口径
+#### Measurement and statistics
 
-依赖：仓库根目录 `npm ci`、`npm run example:smart-cockpit:install`，以及 macOS `say` / `ffmpeg`。
-凭据通过环境变量或 `examples/smart-cockpit/.env.local` 配置：`DASHSCOPE_API_KEY`；导航、天气另需 `AMAP_MCP_KEY`。
+Prerequisites: `npm ci` and `npm run example:smart-cockpit:install` in the
+repository root, plus macOS `say` and `ffmpeg`. Credentials come from the
+environment or `examples/smart-cockpit/.env.local`: `DASHSCOPE_API_KEY`, and
+`AMAP_MCP_KEY` for navigation and weather.
 
 ```bash
 node examples/smart-cockpit/bench/runner/run-voice-surface-compare.mjs \
   --suite short --service-mode example --silence-ms 2200 --timeout-ms 120000 --settle-ms 1200
 ```
 
-- 语音由 `say`（`Tingting`）合成，转换为 16 kHz 单声道 s16le PCM，按 20 ms 分片推给 `/api/realtime`。
-- 原样使用 `cases/vehicle.jsonl`、`music.jsonl`、`navigation.jsonl`、`weather.jsonl`：86 条、111 轮。
-  保留 setup、原话术和多轮上下文。每条 case 新会话，首轮冷启保留，不做额外预热；不运行 long。
-- 前端模型直接调用座舱工具；后端模型经 `spawn_thinking` → A2A Agent → MCP 执行。
-  两种路由各自独立进程、串行测量，不争抢同一模型配额。
-- `example` 使用真实高德 MCP（地点/天气）及 REST（驾车路线），车控/音乐为 example 本地实现；
-  需要高德的领域先做真实 MCP 预检，不回退模拟数据。`controlled` 仅作显式模拟对照，不能与本次数据混算。
-- 两项零点都是本轮语音 PCM 推送结束（静音尾巴之前）。执行前为本轮最晚工具开始；执行后为
-  全部已调用工具结束后的最晚返回/抛错。不包含工具返回后的 MCP 传输、音频结束或后台任务终态。
-  车控/音乐是 handler 返回时间，不是实车动作或歌曲播放完成时间。
-- 每轮独立统计；多工具取最晚开始及最晚结束，不累加，两终点可能来自不同并发工具。
-  每端对自身全部有时间戳的任务轮取算术平均，保留失败返回、误调用及长尾，不筛选正确性。
-  缺失不填零；未结束不填结束时间。两端有效样本集合可能不同，表中分别列出数量。
-- 92 个任务轮进入均值；14 轮闲聊和 5 轮澄清/拒绝保留在数据中，但不进入任务时延统计。
-- `timing_schema: 2` 在 bench 实例的 `service.execute` 前后计时，不修改业务 handler。
-  旧 `completed_ms` 仅为执行入口，不能当作完成指标，也不能混入本次数据。
-- 采集时等待每轮收尾再推下一轮，等待不计入两项工具时延；异常后仍有异步任务则停止后续采样，防止串轮。
-  过程诊断和检查点留在本地被忽略的 `reports/voice-surface-*`，发布时使用下方纯计时导出。
+- Speech is synthesized with `say` (`Tingting`), converted to 16 kHz mono s16le
+  PCM and streamed to `/api/realtime` in 20 ms chunks.
+- `cases/vehicle.jsonl`, `music.jsonl`, `navigation.jsonl` and `weather.jsonl`
+  are used unchanged: 86 cases, 111 turns, with their setup calls, original
+  utterances and multi-turn context. Every case opens a new session and keeps its
+  cold first turn; there is no extra warmup and the long suite is not run.
+- On the frontend surface the realtime model calls cockpit tools directly; on the
+  backend surface it delegates through `spawn_thinking` → A2A Agent → MCP. Each
+  routing runs in its own process, measured serially so the two never compete for
+  the same model quota.
+- `example` uses the real Amap MCP (places, weather) and REST (driving routes),
+  while vehicle and music keep the example's local handlers. Domains that need
+  Amap are preflighted against the live MCP instead of falling back to simulated
+  data. `controlled` is an explicit simulation baseline and must not be mixed
+  into these numbers.
+- Both metrics share one zero point: the moment this turn's speech PCM finishes
+  streaming, before the trailing silence. *Before* is the latest tool start in
+  the turn; *after* is the latest resolve/reject once every tool already invoked
+  has finished. Neither includes the MCP response transport, the reply audio or
+  backend task terminal states. For vehicle and music these are handler return
+  times, not real vehicle actuation or playback completion.
+- Every turn is counted independently. With several tools in one turn the latest
+  start and the latest end are taken rather than summed, so the two endpoints may
+  belong to different concurrent tools. Each surface averages all of its own
+  timestamped task turns — failed returns, wrong tools and long tails included —
+  without filtering on correctness. Missing values are never treated as zero and
+  an unfinished tool yields no *after* value. The two surfaces may end up with
+  different valid samples, so both counts are listed.
+- 92 task turns feed the means. 14 chitchat turns and 5 clarification/refusal
+  turns stay in the data but never enter the task latency statistics.
+- `timing_schema: 2` wraps `service.execute` on the bench instance; business
+  handlers are untouched. The legacy `completed_ms` marks only the execution
+  entry, so it is not a completion metric and cannot be mixed in here.
+- Collection waits for each turn to settle before the next one, and that wait is
+  excluded from both metrics. If an observation error leaves async work pending,
+  sampling stops instead of bleeding into later turns. Process diagnostics and
+  checkpoints stay in the ignored `reports/voice-surface-*`; publication uses the
+  timing-only export below.
 
-可用 `--domain vehicle,music` / `--domain navigation,weather` 分批采集，再离线合并：
+Domains can be measured in batches with `--domain vehicle,music` and
+`--domain navigation,weather`, then merged offline:
 
 ```bash
 node examples/smart-cockpit/bench/runner/run-voice-surface-compare.mjs \
-  --from-reports <车控音乐报告.json>,<导航天气报告.json> --out <新的四领域报告.json>
+  --from-reports <vehicle-music-report.json>,<navigation-weather-report.json> --out <merged-report.json>
 ```
 
-合并要求模型、计时、业务模式及参数一致且 case 不重复，按原始响应重算总均值，不平均批次均值。
-本次没有补测；若使用 `--retry-errors-from`，仅重试连接/观测错误，保留原尝试并标记来源。
+Merging requires identical models, timing schema, service mode and parameters
+with no duplicate cases, and recomputes the overall means from the raw responses
+instead of averaging batch means. No recovery run was needed here; with
+`--retry-errors-from` only connection/observation errors are retried, and the
+original attempt is kept and marked with its source.
 
-#### 当前实测：四领域双指标汇总（2026-09-11）
+#### Measured results: four domains, two metrics
 
-模型：`qwen-audio-3.0-realtime-plus` / `qwen3.8-flash`。
-车控/音乐与导航/天气分两批实测，配置相同，非同一次连续运行；合计每端 86 条、111 轮，含 92 个任务轮。
-本次整理保留已有实测时间戳，只离线重算；脚本已适配最新主线，但没有对 rebase 后的工具定义重新实测。
-以下单位均为毫秒，起点均为每轮语音 PCM 推送结束。
+Models: `qwen-audio-3.0-realtime-plus` and `qwen3.8-flash`. Vehicle/music and
+navigation/weather were measured in two batches with identical configuration
+rather than one continuous run: 86 cases and 111 turns per surface, including 92
+task turns. These numbers are the recorded measurements recomputed offline; the
+scripts were realigned with the current main, but the tool definitions after that
+rebase were not measured again. All values are milliseconds from the end of each
+turn's speech PCM.
 
-##### 执行前
+##### Before execution
 
-| 领域 | 任务轮数 | 前端均值/ms | 后端均值/ms | 差值（后−前）/ms | 前端有效数 | 后端有效数 |
+| Domain | Task turns | Frontend mean/ms | Backend mean/ms | Difference (backend − frontend)/ms | Frontend valid | Backend valid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 车控 | 23 | 1539.0 | 3276.6 | 1737.6 | 23 | 22 |
-| 音乐 | 17 | 1153.3 | 2505.8 | 1352.5 | 17 | 15 |
-| 导航 | 44 | 1302.9 | 3859.5 | 2556.6 | 44 | 30 |
-| 天气 | 8 | 1034.5 | 3209.0 | 2174.5 | 6 | 1 |
-| 合计 | 92 | 1317.1 | 3362.7 | 2045.6 | 90 | 68 |
+| vehicle | 23 | 1539.0 | 3276.6 | 1737.6 | 23 | 22 |
+| music | 17 | 1153.3 | 2505.8 | 1352.5 | 17 | 15 |
+| navigation | 44 | 1302.9 | 3859.5 | 2556.6 | 44 | 30 |
+| weather | 8 | 1034.5 | 3209.0 | 2174.5 | 6 | 1 |
+| all | 92 | 1317.1 | 3362.7 | 2045.6 | 90 | 68 |
 
-##### 执行后
+##### After execution
 
-| 领域 | 任务轮数 | 前端均值/ms | 后端均值/ms | 差值（后−前）/ms | 前端有效数 | 后端有效数 |
+| Domain | Task turns | Frontend mean/ms | Backend mean/ms | Difference (backend − frontend)/ms | Frontend valid | Backend valid |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 车控 | 23 | 1539.3 | 3276.8 | 1737.5 | 23 | 22 |
-| 音乐 | 17 | 1153.6 | 2506.1 | 1352.5 | 17 | 15 |
-| 导航 | 44 | 1615.7 | 4300.9 | 2685.2 | 44 | 30 |
-| 天气 | 8 | 1187.0 | 3361.0 | 2174.0 | 6 | 1 |
-| 合计 | 92 | 1480.3 | 3559.9 | 2079.6 | 90 | 68 |
+| vehicle | 23 | 1539.3 | 3276.8 | 1737.5 | 23 | 22 |
+| music | 17 | 1153.6 | 2506.1 | 1352.5 | 17 | 15 |
+| navigation | 44 | 1615.7 | 4300.9 | 2685.2 | 44 | 30 |
+| weather | 8 | 1187.0 | 3361.0 | 2174.0 | 6 | 1 |
+| all | 92 | 1480.3 | 3559.9 | 2079.6 | 90 | 68 |
 
-天气后端只有 1 个有效响应，不宜据此推断稳定性能；两端均值并非同一配对样本集合。
-导航包含本地设置，不是每轮都联网。真实业务等待计入执行后；长尾及失败返回不剔除。
+The backend weather mean rests on a single valid response and says nothing about
+stable performance; the two surfaces are not averaged over the same paired
+samples. Navigation includes local settings, so not every turn hits the network.
+Real business waits land in the *after* metric, and long tails and failed returns
+are not trimmed.
 
-- [评测结果（两张时间表）](results/voice-surface-short-20260911.json.md)
-- [HTML 结果](results/voice-surface-short-20260911.json.html)
-- [执行前逐轮 CSV](results/voice-surface-short-20260911.json.before.csv)
-- [执行后逐轮 CSV](results/voice-surface-short-20260911.json.after.csv)
-- [可重算的评测数据 JSON](results/voice-surface-short-20260911.json)
+- [Results, two timing tables](results/voice-surface-short-20260911.json.md)
+- [HTML results](results/voice-surface-short-20260911.json.html)
+- [Per-turn CSV, before execution](results/voice-surface-short-20260911.json.before.csv)
+- [Per-turn CSV, after execution](results/voice-surface-short-20260911.json.after.csv)
+- [Recomputable timing data](results/voice-surface-short-20260911.json)
 
-#### 离线复现发布结果
+#### Reproducing the published results offline
 
-提交的计时数据保留 86 条用例、每端 111 轮的逐调用 `started_ms`、`ended_ms`、`duration_ms`，
-以及模型、音频、时间参数、路由和分批来源；不含过程事件、转写、工具返回、评分或本机绝对路径。
-原始诊断文件仅留在本地 `reports/`，不作为 PR 附件。
+The committed timing data keeps `started_ms`, `ended_ms` and `duration_ms` for
+every call across 86 cases and 111 turns per surface, together with the models,
+audio settings, timing parameters, routing and batch sources. It carries no
+process events, transcripts, tool payloads, scores or local absolute paths. The
+raw diagnostics stay in the local `reports/` and are not part of this change.
 
-安装根目录及 example 的依赖后，从仓库根目录执行（不需要凭据，不调用外部服务）：
+With the root and example dependencies installed, run this from the repository
+root; it needs no credentials and calls no external service:
 
 ```bash
 node examples/smart-cockpit/bench/runner/run-voice-surface-compare.mjs \
@@ -442,6 +481,9 @@ node examples/smart-cockpit/bench/runner/run-voice-surface-compare.mjs \
   --timing-only --out examples/smart-cockpit/bench/reports/voice-surface-reproduced.json
 ```
 
-输出新的计时 JSON，以及执行前、执行后各自的汇总 CSV 和逐轮 CSV、两张汇总表的 Markdown/HTML。
-输出路径必须未占用，不覆盖来源。`--timing-only` 仅支持 short 双时间戳数据；旧埋点不能补算执行后。
-发布数据支持再次离线导出，时延及样本数保持一致；不需要过程日志。
+It writes a fresh timing JSON plus, for each phase, a summary CSV, a per-turn CSV
+and the two summary tables as Markdown and HTML. The output path must be unused;
+the source is never overwritten. `--timing-only` accepts short dual-timestamp
+data only — the legacy instrumentation cannot reconstruct an *after* value.
+Published data can be exported again with identical latencies and sample counts,
+without any process log.

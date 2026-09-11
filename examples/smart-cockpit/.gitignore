@@ -7,5 +7,5 @@ server/data/
 server/custom-skills/
 .runtime/
 
-# 评测过程文件仅本地保留；发布数据和结果放在 bench/results/。
+# Benchmark process files stay local; published data and results live in bench/results/.
 bench/reports/voice-surface-*

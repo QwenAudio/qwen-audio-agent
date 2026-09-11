@@ -1,43 +1,43 @@
-# Short 前后端工具时延
+# Short frontend/backend tool latency
 
-与 example 正常运行一致：导航地点与天气使用真实高德 MCP，驾车路线使用真实高德 REST；音乐与车控沿用 example 本地实现。未注入固定路线或预置天气。
+Same business path as a normal example run: navigation places and weather use the real Amap MCP, driving routes use the real Amap REST API, while music and vehicle keep the example handlers. No fixed route or canned weather was injected.
 
-实时模型：qwen-audio-3.0-realtime-plus；后台模型：qwen3.8-flash。
+Realtime model: qwen-audio-3.0-realtime-plus; backend model: qwen3.8-flash.
 
-单位：秒。执行前 = 语音 PCM 推送结束到本轮最晚一次 service.execute 开始；执行后 = 同一零点到全部已调用工具结束后的最晚 resolve/reject。不含之后的 MCP 返回传输、应答音频或后台任务终态，也不代表实车动作完成。
+Unit: seconds. Before = speech PCM end to the latest service.execute start in the turn; after = the same zero point to the latest resolve/reject once every invoked tool has finished. Neither includes the following MCP response transport, the reply audio or backend task terminal states, and neither means the physical action completed.
 
-多轮独立计入，首轮冷启保留；一轮多个工具取最晚开始和最晚结束，不累加，两个终点可能属于不同并发工具。两端各自取有时间戳响应的算术平均，不筛选工具匹配或执行结果；差值为后端减前端。
+Turns count independently and the cold first turn is kept. With several tools in one turn the latest start and latest end are used rather than summed, so the two endpoints may belong to different concurrent tools. Each surface averages its own timestamped responses without filtering on tool match or outcome; the difference is backend minus frontend.
 
-未调用工具或缺时间戳为 —，不按零计算；失败返回仍计时，执行后不等同于业务成功。两端样本可能不同，请同时查看有效数，尤其注意小样本领域。
+A turn with no tool call or a missing timestamp shows — and is never counted as zero. Failed returns are still timed, so an after value does not imply business success. The surfaces may hold different samples, so read the valid counts as well, especially for small domains.
 
-任务 92 轮；闲聊 14 轮、澄清/拒绝 5 轮保留在评测数据中，不计任务均值。不展示评分、转写、工具返回或过程日志。
+92 task turns; 14 chitchat turns and 5 clarification/refusal turns stay in the data without entering the task means. Scores, transcripts, tool payloads and process logs are not shown.
 
-分批来源：这是分领域、分时段实测的离线汇总，不是同一次连续运行；均值按响应重算，不平均批次均值。
+Batch sources: this is an offline merge of per-domain runs measured at different times, not one continuous run. Means are recomputed from the responses instead of averaging batch means.
 
-voice-surface-short-vehicle-music-20260911-example-dual.json；2026-09-11T04:57:06.459Z；42 条用例；未补测。
+voice-surface-short-vehicle-music-20260911-example-dual.json; 2026-09-11T04:57:06.459Z; 42 cases; no recovery.
 
-voice-surface-short-navigation-weather-20260911-example-dual.json；2026-09-11T05:32:18.376Z；44 条用例；未补测。
+voice-surface-short-navigation-weather-20260911-example-dual.json; 2026-09-11T05:32:18.376Z; 44 cases; no recovery.
 
-## 执行前
+## Before execution
 
-| 领域 | 任务轮数 | 前端执行前/秒 | 后端执行前/秒 | 差值（后−前）/秒 | 前端有效数 | 后端有效数 |
+| Domain | Task turns | Frontend before/s | Backend before/s | Difference (backend − frontend)/s | Frontend valid | Backend valid |
 | --- | --- | --- | --- | --- | --- | --- |
-| 合计 | 92 | 1.317 | 3.363 | 2.046 | 90 | 68 |
-| 车控 | 23 | 1.539 | 3.277 | 1.738 | 23 | 22 |
-| 音乐 | 17 | 1.153 | 2.506 | 1.353 | 17 | 15 |
-| 导航 | 44 | 1.303 | 3.860 | 2.557 | 44 | 30 |
-| 天气 | 8 | 1.034 | 3.209 | 2.175 | 6 | 1 |
+| all | 92 | 1.317 | 3.363 | 2.046 | 90 | 68 |
+| vehicle | 23 | 1.539 | 3.277 | 1.738 | 23 | 22 |
+| music | 17 | 1.153 | 2.506 | 1.353 | 17 | 15 |
+| navigation | 44 | 1.303 | 3.860 | 2.557 | 44 | 30 |
+| weather | 8 | 1.034 | 3.209 | 2.175 | 6 | 1 |
 
-[执行前逐轮数据 CSV](voice-surface-short-20260911.json.before.csv)
+[Per-turn CSV, before execution](voice-surface-short-20260911.json.before.csv)
 
-## 执行后
+## After execution
 
-| 领域 | 任务轮数 | 前端执行后/秒 | 后端执行后/秒 | 差值（后−前）/秒 | 前端有效数 | 后端有效数 |
+| Domain | Task turns | Frontend after/s | Backend after/s | Difference (backend − frontend)/s | Frontend valid | Backend valid |
 | --- | --- | --- | --- | --- | --- | --- |
-| 合计 | 92 | 1.480 | 3.560 | 2.080 | 90 | 68 |
-| 车控 | 23 | 1.539 | 3.277 | 1.738 | 23 | 22 |
-| 音乐 | 17 | 1.154 | 2.506 | 1.353 | 17 | 15 |
-| 导航 | 44 | 1.616 | 4.301 | 2.685 | 44 | 30 |
-| 天气 | 8 | 1.187 | 3.361 | 2.174 | 6 | 1 |
+| all | 92 | 1.480 | 3.560 | 2.080 | 90 | 68 |
+| vehicle | 23 | 1.539 | 3.277 | 1.738 | 23 | 22 |
+| music | 17 | 1.154 | 2.506 | 1.353 | 17 | 15 |
+| navigation | 44 | 1.616 | 4.301 | 2.685 | 44 | 30 |
+| weather | 8 | 1.187 | 3.361 | 2.174 | 6 | 1 |
 
-[执行后逐轮数据 CSV](voice-surface-short-20260911.json.after.csv)
+[Per-turn CSV, after execution](voice-surface-short-20260911.json.after.csv)

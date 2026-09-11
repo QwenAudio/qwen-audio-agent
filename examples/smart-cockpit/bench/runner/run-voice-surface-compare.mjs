@@ -1,17 +1,20 @@
 #!/usr/bin/env node
-// 音频输入下的前后端时延对比：同一批语音指令，分别让
-//   frontend —— realtime-api 直接调用座舱工具
-//   backend  —— realtime-api 经 spawn_thinking 委派给 A2A Agent 执行
-// 两次运行使用同一套用例、同一音频仿真器（macOS say + ffmpeg）、同一零点（说完话）。
+// Frontend/backend latency comparison under audio input. The same spoken
+// commands are routed twice:
+//   frontend — realtime-api calls the cockpit tools directly
+//   backend  — realtime-api delegates to the A2A Agent through spawn_thinking
+// Both runs share the same cases, the same audio simulator (macOS say + ffmpeg)
+// and the same zero point (the end of the utterance).
 //
-// 用法：
+// Usage:
 //   export DASHSCOPE_API_KEY=...
-//   node run-voice-surface-compare.mjs                       # 全部 46 条用例
-//   node run-voice-surface-compare.mjs --domain vehicle       # 仅车控
+//   node run-voice-surface-compare.mjs                       # all 46 cases
+//   node run-voice-surface-compare.mjs --domain vehicle       # vehicle only
 //   node run-voice-surface-compare.mjs --limit 8 --per-session 4
 //
-// 注意：两个表面**串行**执行，不并行。并行会让两条链路争抢同一个 realtime
-// 配额与本机 CPU，测出来的差值就不再是架构差异而是资源竞争。
+// The two surfaces run *serially*, never in parallel: in parallel they would
+// compete for the same realtime quota and local CPU, so the measured difference
+// would reflect resource contention instead of the architecture.
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { summarizeScores } from '../evaluator/score.mjs'
 import { summarize, toolTiming, loadCases, assertVoiceCredentials } from './voice-surface-worker.mjs'
@@ -38,7 +41,8 @@ function parseArgs(argv) {
 
 function runWorker(surface, passthrough) {
   const args = [fileURLToPath(WORKER_URL), '--surface', surface, ...passthrough]
-  // 领域整体翻转：表面路由按领域生效，要让车控/音乐/导航走后台必须整域改。
+  // Surfaces are routed per domain, so vehicle/music/navigation can only move to
+  // the backend by flipping the whole domain.
   const domains = Object.fromEntries(COMPARED_DOMAINS.map(domain => [domain, surface]))
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, args, {
@@ -226,30 +230,32 @@ export async function writeCanonicalTables(report, absolute) {
   const table = (headers, rows) => `<table><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join('')}</tr></thead>`
     + `<tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${esc(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table>`
   const seconds = value => Number.isFinite(value) ? (value / 1000).toFixed(3) : '—'
-  const domains = { all: '合计', vehicle: '车控', navigation: '导航', music: '音乐', weather: '天气' }
-  const taskHeaders = ['ID', '领域', '轮次', '指令', '前端工具响应/秒', '后端工具响应/秒', '前端实际工具', '后端实际工具', '观测异常']
-  const taskRows = comparison.tasks.map(row => [row.id, domains[row.domain] || row.domain, `第 ${row.turn_index + 1} 轮`, row.task,
+  const taskHeaders = ['ID', 'Domain', 'Turn', 'Utterance', 'Frontend tool response/s', 'Backend tool response/s',
+    'Frontend tools called', 'Backend tools called', 'Observation error']
+  const taskRows = comparison.tasks.map(row => [row.id, row.domain, `turn ${row.turn_index + 1}`, row.task,
     seconds(row.frontend_ms), seconds(row.backend_ms), row.frontend_tools.join(', '), row.backend_tools.join(', '),
-    [row.frontend_error && `前端：${row.frontend_error}`, row.backend_error && `后端：${row.backend_error}`].filter(Boolean).join('；')])
-  const controlHeaders = ['ID/轮次', '话术', '前端座舱工具', '后端座舱工具', '前端网关工具', '后端网关工具']
+    [row.frontend_error && `frontend: ${row.frontend_error}`, row.backend_error && `backend: ${row.backend_error}`]
+      .filter(Boolean).join('; ')])
+  const controlHeaders = ['ID/turn', 'Utterance', 'Frontend cockpit tools', 'Backend cockpit tools',
+    'Frontend gateway tools', 'Backend gateway tools']
   const controlRows = rows => rows.map(row => [`${row.id}/T${row.turn_index + 1}`, row.user,
     row.frontend_tools.join(', '), row.backend_tools.join(', '),
     row.frontend_gateway_tools.join(', '), row.backend_gateway_tools.join(', ')])
-  const summary = comparison.groups.map(g => [domains[g.domain] || g.domain, g.total,
+  const summary = comparison.groups.map(g => [g.domain, g.total,
     g.frontend_count, g.backend_count, seconds(g.frontend_mean_ms), seconds(g.backend_mean_ms)])
-  const html = '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Short 逐轮工具响应时延</title>'
+  const html = '<!doctype html><html lang="en"><meta charset="utf-8"><title>Short per-turn tool response latency</title>'
     + '<style>body{font:15px system-ui;margin:32px;color:#18212f}table{border-collapse:collapse;margin:20px 0;width:100%}td,th{border:1px solid #ddd;padding:8px;text-align:left}th{background:#edf2f7}tr:nth-child(even){background:#fafafa}td:first-child{font:12px monospace}</style>'
-    + '<h1>仓库自带 short：逐轮座舱工具响应时延</h1>'
-    + '<p>每轮独立计时：本轮最后一次座舱工具执行时间 − 本轮语音 PCM 推送完的时间。不取 audio.done、后台任务终态或确认窗口时间。同一 case 的多轮共享原上下文，但每个任务轮单独一行、独立计入均值，不再累计成 case 耗时；首轮冷启保留。</p>'
-    + '<p>只统计时间，不按工具调用正确性或 case 评分筛选。前后端分别对各自所有可计时响应取算术平均值，未要求另一端也有时间戳；可计时样本可能不同，分别列出数量，保留真实长尾。领域按原任务所属领域归类，不随实际调用的工具改变。</p>'
-    + '<p>工具误调用、参数错误和重复调用均保留实际工具执行时延；未调用或缺失工具时间戳记为 —，不当作零时延，也不回退到音频结束时间。观测异常保留；已有工具时间戳不因等待音频超时而消失。</p>'
-    + '<p>闲聊与澄清/拒绝单列原始调用记录，不计入任务时延均值。原始评分仍保存在 JSON 中，不在本时延表展示，也不参与时间筛选。</p>'
-    + (report.reanalysis ? `<p>离线重算来源：${esc(report.reanalysis.source)}。复用原始音频实测时间戳，未重新调用模型；原始报告不变。</p>` : '')
-    + (report.recovery ? `<p>来源含连接/超时补测：${esc(report.recovery.frontend_ids.join(', ')) || '无'}（前端）；${esc(report.recovery.backend_ids.join(', ')) || '无'}（后端）。原始尝试保留，未重试普通评分失败。</p>` : '')
-    + '<h2>每次响应的平均工具时延</h2>' + table(['领域', '任务轮数', '前端可计时数', '后端可计时数', '前端均值/秒', '后端均值/秒'], summary)
-    + '<h2>逐轮响应</h2>' + table(taskHeaders, taskRows)
-    + '<h2>闲聊（应由前端直接回答）</h2>' + table(controlHeaders, controlRows(comparison.chitchat))
-    + '<h2>澄清/拒绝：不应执行工具</h2>' + table(controlHeaders, controlRows(comparison.no_tool_controls)) + '</html>'
+    + '<h1>Bundled short suite: per-turn cockpit tool response latency</h1>'
+    + '<p>Every turn is timed on its own: the last cockpit tool execution in the turn minus the moment its speech PCM finished streaming. audio.done, backend task terminal states and confirmation windows are excluded. Turns of one case share the original context, but each task turn is a separate row and enters the mean independently instead of being summed into a case duration; the cold first turn is kept.</p>'
+    + '<p>Only time is reported. Nothing is filtered by tool-call correctness or case score. Each surface averages all of its own timeable responses without requiring the other surface to have a timestamp, so the timeable samples may differ and both counts are listed, preserving the real long tail. Domains follow the original task domain and do not change with the tools actually called.</p>'
+    + '<p>Wrong tools, bad arguments and repeated calls keep their real execution latency. A tool that was never called, or whose timestamp is missing, shows — instead of a zero and never falls back to the audio end. Observation errors are kept, and an existing tool timestamp survives an audio wait timeout.</p>'
+    + '<p>Chitchat and clarification/refusal turns list their raw calls separately and never enter the task latency mean. The original scores stay in the JSON; they are neither shown in this latency table nor used to filter it.</p>'
+    + (report.reanalysis ? `<p>Offline recomputation of ${esc(report.reanalysis.source)}. The measured audio timestamps are reused, no model was called again and the source report is unchanged.</p>` : '')
+    + (report.recovery ? `<p>Source includes connection/timeout recovery: ${esc(report.recovery.frontend_ids.join(', ')) || 'none'} (frontend); ${esc(report.recovery.backend_ids.join(', ')) || 'none'} (backend). Original attempts are kept and plain scoring failures were not retried.</p>` : '')
+    + '<h2>Mean tool latency per response</h2>' + table(['Domain', 'Task turns', 'Frontend timeable', 'Backend timeable', 'Frontend mean/s', 'Backend mean/s'], summary)
+    + '<h2>Per-turn responses</h2>' + table(taskHeaders, taskRows)
+    + '<h2>Chitchat (frontend should answer directly)</h2>' + table(controlHeaders, controlRows(comparison.chitchat))
+    + '<h2>Clarification/refusal: no tool expected</h2>' + table(controlHeaders, controlRows(comparison.no_tool_controls)) + '</html>'
   const csv = rows => '\ufeff' + rows.map(row => row.map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n') + '\n'
   await writeFile(`${absolute}.html`, html)
   await writeFile(`${absolute}.tasks.csv`, csv([taskHeaders, ...taskRows]))
@@ -259,7 +265,6 @@ export async function writeCanonicalTables(report, absolute) {
 
 async function writeDualTables(report, absolute) {
   const c = report.comparison
-  const domains = { all: '合计', vehicle: '车控', navigation: '导航', music: '音乐', weather: '天气' }
   const seconds = ms => Number.isFinite(ms) ? (ms / 1000).toFixed(3) : '—'
   const esc = value => String(value ?? '').replace(/[&<>"']/gu,
     char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char])
@@ -267,42 +272,44 @@ async function writeDualTables(report, absolute) {
     + '</tr></thead><tbody>' + rows.map(row => '<tr>' + row.map(v => `<td>${esc(v)}</td>`).join('') + '</tr>').join('') + '</tbody></table>'
   const csv = (heads, rows) => '\ufeff' + [heads, ...rows].map(row => row
     .map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n') + '\n'
-  const phases = [['before', '执行前'], ['after', '执行后']].map(([key, label]) => ({
+  const phases = [['before', 'Before execution'], ['after', 'After execution']].map(([key, label]) => ({
     key, label,
-    summaryHeads: ['领域', '任务轮数', `前端${label}/秒`, `后端${label}/秒`, '差值（后−前）/秒', '前端有效数', '后端有效数'],
-    summaryRows: c.groups.map(g => [domains[g.domain] || g.domain, g.total,
+    summaryHeads: ['Domain', 'Task turns', `Frontend ${key}/s`, `Backend ${key}/s`,
+      'Difference (backend − frontend)/s', 'Frontend valid', 'Backend valid'],
+    summaryRows: c.groups.map(g => [g.domain, g.total,
       seconds(g[`frontend_${key}_mean_ms`]), seconds(g[`backend_${key}_mean_ms`]), seconds(g[`${key}_difference_ms`]),
       g[`frontend_${key}_count`], g[`backend_${key}_count`]]),
-    taskHeads: ['ID', '领域', '轮次', '指令', `前端${label}/秒`, `后端${label}/秒`, '差值（后−前）/秒'],
-    taskRows: c.tasks.map(r => [r.id, domains[r.domain] || r.domain, `第 ${r.turn_index + 1} 轮`, r.task,
+    taskHeads: ['ID', 'Domain', 'Turn', 'Utterance', `Frontend ${key}/s`, `Backend ${key}/s`,
+      'Difference (backend − frontend)/s'],
+    taskRows: c.tasks.map(r => [r.id, r.domain, `turn ${r.turn_index + 1}`, r.task,
       seconds(r[`frontend_${key}_ms`]), seconds(r[`backend_${key}_ms`]), seconds(r[`${key}_difference_ms`])]),
   }))
   const markdownTable = (heads, rows) => [heads, heads.map(() => '---'), ...rows]
     .map(row => '| ' + row.map(value => String(value ?? '').replaceAll('|', '\\|').replaceAll('\n', ' ')).join(' | ') + ' |').join('\n')
   const source = c.service_mode === 'example'
-    ? '与 example 正常运行一致：导航地点与天气使用真实高德 MCP，驾车路线使用真实高德 REST；音乐与车控沿用 example 本地实现。未注入固定路线或预置天气。'
-    : '本报告使用 controlled 模拟业务数据，不代表真实高德服务。'
+    ? 'Same business path as a normal example run: navigation places and weather use the real Amap MCP, driving routes use the real Amap REST API, while music and vehicle keep the example handlers. No fixed route or canned weather was injected.'
+    : 'This report uses controlled simulated business data and does not represent the real Amap service.'
   const notes = [source,
-    `实时模型：${report.realtime_model}；后台模型：${report.agent_model}。`,
-    '单位：秒。执行前 = 语音 PCM 推送结束到本轮最晚一次 service.execute 开始；执行后 = 同一零点到全部已调用工具结束后的最晚 resolve/reject。不含之后的 MCP 返回传输、应答音频或后台任务终态，也不代表实车动作完成。',
-    '多轮独立计入，首轮冷启保留；一轮多个工具取最晚开始和最晚结束，不累加，两个终点可能属于不同并发工具。两端各自取有时间戳响应的算术平均，不筛选工具匹配或执行结果；差值为后端减前端。',
-    '未调用工具或缺时间戳为 —，不按零计算；失败返回仍计时，执行后不等同于业务成功。两端样本可能不同，请同时查看有效数，尤其注意小样本领域。',
-    `任务 ${c.tasks.length} 轮；闲聊 ${c.chitchat.length} 轮、澄清/拒绝 ${c.no_tool_controls.length} 轮保留在评测数据中，不计任务均值。不展示评分、转写、工具返回或过程日志。`,
+    `Realtime model: ${report.realtime_model}; backend model: ${report.agent_model}.`,
+    'Unit: seconds. Before = speech PCM end to the latest service.execute start in the turn; after = the same zero point to the latest resolve/reject once every invoked tool has finished. Neither includes the following MCP response transport, the reply audio or backend task terminal states, and neither means the physical action completed.',
+    'Turns count independently and the cold first turn is kept. With several tools in one turn the latest start and latest end are used rather than summed, so the two endpoints may belong to different concurrent tools. Each surface averages its own timestamped responses without filtering on tool match or outcome; the difference is backend minus frontend.',
+    'A turn with no tool call or a missing timestamp shows — and is never counted as zero. Failed returns are still timed, so an after value does not imply business success. The surfaces may hold different samples, so read the valid counts as well, especially for small domains.',
+    `${c.tasks.length} task turns; ${c.chitchat.length} chitchat turns and ${c.no_tool_controls.length} clarification/refusal turns stay in the data without entering the task means. Scores, transcripts, tool payloads and process logs are not shown.`,
   ]
-  if (report.recovery) notes.push('本报告含连接/超时补测，原始计时尝试保留在数据中。')
+  if (report.recovery) notes.push('This report includes connection/timeout recovery; the original timing attempts are kept in the data.')
   if (report.batch_sources) {
-    notes.push('分批来源：这是分领域、分时段实测的离线汇总，不是同一次连续运行；均值按响应重算，不平均批次均值。')
-    for (const batch of report.batch_sources) notes.push(`${basename(batch.source)}；${batch.created_at}；${batch.case_ids.length} 条用例；${batch.recovery ? '含补测' : '未补测'}。`)
+    notes.push('Batch sources: this is an offline merge of per-domain runs measured at different times, not one continuous run. Means are recomputed from the responses instead of averaging batch means.')
+    for (const batch of report.batch_sources) notes.push(`${basename(batch.source)}; ${batch.created_at}; ${batch.case_ids.length} cases; ${batch.recovery ? 'with recovery' : 'no recovery'}.`)
   }
   const stem = basename(absolute)
-  const html = '<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>Short 前后端工具时延</title>'
+  const html = '<!doctype html><html lang="en"><meta charset="utf-8"><title>Short frontend/backend tool latency</title>'
     + '<style>body{font:15px system-ui;margin:32px;color:#18212f}table{border-collapse:collapse;margin:20px 0;width:100%}th,td{border:1px solid #ddd;padding:8px;text-align:left}th{background:#edf2f7}</style>'
-    + '<h1>Short 前后端工具时延</h1>' + notes.map(note => `<p>${esc(note)}</p>`).join('')
+    + '<h1>Short frontend/backend tool latency</h1>' + notes.map(note => `<p>${esc(note)}</p>`).join('')
     + phases.map(p => `<h2>${p.label}</h2>` + table(p.summaryHeads, p.summaryRows)
-      + `<p><a href="${esc(encodeURIComponent(`${stem}.${p.key}.csv`))}">${p.label}逐轮数据 CSV</a></p>`).join('') + '</html>\n'
-  const markdown = '# Short 前后端工具时延\n\n' + notes.join('\n\n') + '\n\n'
+      + `<p><a href="${esc(encodeURIComponent(`${stem}.${p.key}.csv`))}">Per-turn CSV, ${p.label.toLowerCase()}</a></p>`).join('') + '</html>\n'
+  const markdown = '# Short frontend/backend tool latency\n\n' + notes.join('\n\n') + '\n\n'
     + phases.map(p => `## ${p.label}\n\n${markdownTable(p.summaryHeads, p.summaryRows)}\n\n`
-      + `[${p.label}逐轮数据 CSV](${encodeURIComponent(`${stem}.${p.key}.csv`)})`).join('\n\n') + '\n'
+      + `[Per-turn CSV, ${p.label.toLowerCase()}](${encodeURIComponent(`${stem}.${p.key}.csv`)})`).join('\n\n') + '\n'
   await writeFile(`${absolute}.html`, html)
   await writeFile(`${absolute}.md`, markdown)
   for (const phase of phases) {
@@ -318,51 +325,51 @@ function fmt(value, unit = 'ms') {
 function printComparison(frontend, backend) {
   const line = '─'.repeat(78)
   console.log(`\n┌${line}┐`)
-  console.log('│  音频输入下的前后端时延对比（零点 = 说完话）'.padEnd(72) + '│')
+  console.log('│  Frontend/backend latency under audio input (zero = end of utterance)'.padEnd(79) + '│')
   console.log(`├${line}┤`)
-  console.log(`│  输入: ${frontend.input.engine} / ${frontend.input.voice} / ${frontend.input.sample_rate}Hz`.padEnd(79) + '│')
+  console.log(`│  input: ${frontend.input.engine} / ${frontend.input.voice} / ${frontend.input.sample_rate}Hz`.padEnd(79) + '│')
   console.log(`│  realtime: ${frontend.realtime_model || 'default'}   agent: ${frontend.agent_model || 'default'}`.padEnd(79) + '│')
   console.log(`└${line}┘`)
 
   const rows = [
-    ['说完话 → ASR 终稿', 'user_transcript_ms'],
-    ['说完话 → 首帧回应音频', 'first_audio_ms'],
-    ['说完话 → 座舱动作执行', 'cockpit_tool_ms'],
-    ['说完话 → 本轮彻底结束', 'turn_settled_ms'],
-    ['↑ 仅成功用例', 'turn_settled_ms_success_only'],
-    ['说完话 → 后台任务完成', 'task_completed_ms'],
+    ['utterance end → final ASR', 'user_transcript_ms'],
+    ['utterance end → first reply audio', 'first_audio_ms'],
+    ['utterance end → cockpit action', 'cockpit_tool_ms'],
+    ['utterance end → turn fully settled', 'turn_settled_ms'],
+    ['↑ successful cases only', 'turn_settled_ms_success_only'],
+    ['utterance end → backend task done', 'task_completed_ms'],
   ]
 
-  console.log('\n热轮（已排除每会话首句的 VAD/ASR 预热）:')
-  console.log('┌────────────────────────────────┬────────────┬────────────┬────────────┐')
-  console.log('│ 指标                           │  Frontend  │  Backend   │     Δ      │')
-  console.log('├────────────────────────────────┼────────────┼────────────┼────────────┤')
+  console.log('\nHot turns (the first utterance of each session is excluded as VAD/ASR warmup):')
+  console.log('┌───────────────────────────────────┬────────────┬────────────┬────────────┐')
+  console.log('│ Metric                            │  Frontend  │  Backend   │     Δ      │')
+  console.log('├───────────────────────────────────┼────────────┼────────────┼────────────┤')
   for (const [label, key] of rows) {
     const a = frontend.hot[key]?.median_ms
     const b = backend.hot[key]?.median_ms
     const delta = a != null && b != null ? b - a : null
     const sign = delta != null && delta >= 0 ? '+' : ''
     console.log(
-      `│ ${label.padEnd(30 - (label.length - [...label].length))} │ ${fmt(a).padStart(10)} │ ${fmt(b).padStart(10)} │ `
+      `│ ${label.padEnd(33 - (label.length - [...label].length))} │ ${fmt(a).padStart(10)} │ ${fmt(b).padStart(10)} │ `
       + `${(delta == null ? '—' : sign + fmt(delta)).padStart(10)} │`,
     )
   }
-  console.log('└────────────────────────────────┴────────────┴────────────┴────────────┘')
+  console.log('└───────────────────────────────────┴────────────┴────────────┴────────────┘')
 
   const toolA = frontend.hot.cockpit_tool_ms?.median_ms
   const toolB = backend.hot.cockpit_tool_ms?.median_ms
   if (toolA && toolB) {
-    console.log(`\n  座舱动作时延比: ${(toolB / toolA).toFixed(2)}x（后台 / 前台）`)
+    console.log(`\n  cockpit action latency ratio: ${(toolB / toolA).toFixed(2)}x (backend / frontend)`)
   }
   const settleA = frontend.hot.turn_settled_ms?.median_ms
   const settleB = backend.hot.turn_settled_ms?.median_ms
   if (settleA && settleB) {
-    console.log(`  本轮结束时延比: ${(settleB / settleA).toFixed(2)}x（后台 / 前台）`)
+    console.log(`  turn settle latency ratio: ${(settleB / settleA).toFixed(2)}x (backend / frontend)`)
   }
 
-  console.log('\n准确率（热轮）:')
+  console.log('\nAccuracy (hot turns):')
   console.log('┌────────────┬────────┬────────────┬────────────┬────────────┬────────────┐')
-  console.log('│ Surface    │  样本  │  工具名对  │  参数对    │ 终态对(写) │ 任务达成   │')
+  console.log('│ Surface    │ Sample │ Tool match │ Args match │ State (wr) │ Task done  │')
   console.log('├────────────┼────────┼────────────┼────────────┼────────────┼────────────┤')
   for (const report of [frontend, backend]) {
     const a = report.accuracy
@@ -376,13 +383,15 @@ function printComparison(frontend, backend) {
     )
   }
   console.log('└────────────┴────────┴────────────┴────────────┴────────────┴────────────┘')
-  console.log('  任务达成 = 调对工具 且 终态与金标一致。金标由用例声明的 explicit_calls')
-  console.log('  打在干净 service 上构造而来，不是人工标注的期望态。')
-  console.log('  终态对(写) 只统计写操作用例：只读工具改不动状态，算进去会虚高。')
+  console.log('  Task done = the right tool was called and the final state matches the gold')
+  console.log('  state, which is built by replaying the case\'s explicit_calls on a clean')
+  console.log('  service rather than hand-annotated.')
+  console.log('  State (wr) covers write cases only: read-only tools cannot change state and')
+  console.log('  would inflate the rate.')
 
-  console.log('\n执行可靠性:')
+  console.log('\nExecution reliability:')
   console.log('┌────────────┬────────────┬────────────┬────────────┬────────────┐')
-  console.log('│ Surface    │  用例数    │  已执行    │  未触发    │  已委派    │')
+  console.log('│ Surface    │ Cases      │ Executed   │ Not fired  │ Delegated  │')
   console.log('├────────────┼────────────┼────────────┼────────────┼────────────┤')
   for (const report of [frontend, backend]) {
     console.log(
@@ -394,20 +403,22 @@ function printComparison(frontend, backend) {
   }
   console.log('└────────────┴────────────┴────────────┴────────────┴────────────┘')
 
-  console.log('\n冷启对比（每会话首句，含 VAD/ASR 预热）:')
+  console.log('\nCold start (first utterance of each session, VAD/ASR warmup included):')
   for (const report of [frontend, backend]) {
     console.log(
-      `  ${report.surface.padEnd(9)} 动作=${fmt(report.cold.cockpit_tool_ms?.median_ms)}`
-      + `  首音频=${fmt(report.cold.first_audio_ms?.median_ms)}`,
+      `  ${report.surface.padEnd(9)} action=${fmt(report.cold.cockpit_tool_ms?.median_ms)}`
+      + `  first audio=${fmt(report.cold.first_audio_ms?.median_ms)}`,
     )
   }
 
-  console.log('\n  注: backend 的"首帧回应"通常比 frontend 更早——它先播"好的，正在处理"的')
-  console.log('  占位应答再去执行；但"动作真正发生"要等 A2A Agent 完成一次独立推理，')
-  console.log('  所以听感上快、实际上慢。判断放前台还是后台应看座舱动作时延。')
+  console.log('\n  Note: the backend usually starts replying earlier than the frontend because')
+  console.log('  it plays a placeholder such as "working on it" before executing, while the')
+  console.log('  action itself waits for a separate A2A Agent inference. It sounds faster and')
+  console.log('  acts slower, so surface placement should be judged on the action latency.')
 }
 
-// 分领域分批实测的离线汇总：保留来源，不混合旧埋点或不同运行配置。
+// Offline merge of per-domain batches: sources are kept, and legacy
+// instrumentation or different run configurations are never mixed in.
 export function combineReports(batches) {
   if (batches.length < 2) throw new Error('At least two batch reports are required')
   const metadata = ['suite', 'timing_schema', 'service_mode', 'business_services', 'timing_definition',
@@ -439,7 +450,8 @@ export function combineReports(batches) {
       batch_preflights: batches.map(({ report: batch }) => batch[surface].preflight || null) }
   }
   for (const key of ['input', 'zero_point', 'realtime_model', 'agent_model']) report[key] = report.frontend[key]
-  // 同一 case 不得跨批次重复，不能把两次实测悄悄当成独立响应。
+  // A case must not repeat across batches: two measurements of the same case
+  // cannot be passed off as independent responses.
   report.comparison = buildCanonicalComparison(report.frontend, report.backend)
   return report
 }
@@ -459,7 +471,8 @@ export async function combineReportFiles(sourcePaths, outPath) {
   return report
 }
 
-// 发布数据采用字段白名单；不复制事件、转写、返回内容、凭据或本机路径。
+// Published data uses a field whitelist: events, transcripts, tool payloads,
+// credentials and local paths are never copied.
 export function buildTimingReport(previous) {
   if (previous.suite !== 'short' || ['frontend', 'backend'].some(surface => previous[surface]?.timing_schema !== 2)) {
     throw new Error('Timing-only export requires short dual-timing measurements')
@@ -526,7 +539,7 @@ export async function reanalyzeReport(sourcePath, outPath, { timingOnly = false 
   await writeFile(absolute, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' })
   await writeCanonicalTables(report, absolute)
   console.table(report.comparison.groups)
-  console.log(`任务响应 ${comparison.tasks.length} 轮；闲聊 ${comparison.chitchat.length} 轮；澄清/拒绝 ${comparison.no_tool_controls.length} 轮`)
+  console.log(`${comparison.tasks.length} task turns; ${comparison.chitchat.length} chitchat turns; ${comparison.no_tool_controls.length} clarification/refusal turns`)
   console.log(`\nreport: ${absolute}`)
   return report
 }
@@ -557,7 +570,7 @@ async function main() {
     process.exitCode = 1
     return
   }
-  // 让报告自描述实际使用的模型，而不是留空。
+  // Pin the models so the report states what actually ran instead of leaving it blank.
   process.env.QWEN_AUDIO_REALTIME_MODEL ||= 'qwen-audio-3.0-realtime-plus'
   process.env.DASHSCOPE_MODEL ||= 'qwen3.8-flash'
 
@@ -600,10 +613,10 @@ async function main() {
     const measured = await runWorker(surface, [...options, '--checkpoint', `${absolute}.${runId}.${surface}.jsonl`])
     return old ? mergeRecovery(old, measured) : measured
   }
-  process.stderr.write('━━━ 表面 1/2: frontend (realtime-api 直接执行) ━━━\n')
+  process.stderr.write('━━━ surface 1/2: frontend (realtime-api executes directly) ━━━\n')
   const frontend = await runSurface('frontend')
   await writeFile(`${absolute}.frontend.json`, `${JSON.stringify(frontend, null, 2)}\n`)
-  process.stderr.write('\n━━━ 表面 2/2: backend (spawn_thinking → A2A Agent) ━━━\n')
+  process.stderr.write('\n━━━ surface 2/2: backend (spawn_thinking → A2A Agent) ━━━\n')
   const backend = await runSurface('backend')
   await writeFile(`${absolute}.backend.json`, `${JSON.stringify(backend, null, 2)}\n`)
 
@@ -627,7 +640,7 @@ async function main() {
   if (suite === 'short') {
     report.comparison = buildCanonicalComparison(frontend, backend)
     console.table(report.comparison.groups)
-    console.log(`逐轮工具响应 ${report.comparison.tasks.length} 条；闲聊单列，不计工具时延均值`)
+    console.log(`${report.comparison.tasks.length} per-turn tool responses; chitchat is listed separately and excluded from the latency means`)
     await writeCanonicalTables(report, absolute)
   }
   await writeFile(absolute, `${JSON.stringify(report, null, 2)}\n`)

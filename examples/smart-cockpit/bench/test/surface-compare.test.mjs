@@ -25,8 +25,9 @@ const execFileAsync = promisify(execFile)
 const CASES_URL = new URL('../cases/surface-compare.jsonl', import.meta.url)
 const WORKER_PATH = fileURLToPath(new URL('../runner/surface-latency-worker.mjs', import.meta.url))
 
-// 前后端对比用例只覆盖这些领域；flashbuy 与 custom-skills 依赖多轮确认，
-// 不属于"同一原子指令换表面执行"的对比范围。
+// The comparison cases cover these domains only. flashbuy and custom-skills need
+// multi-turn confirmation, so they fall outside "the same atomic command executed
+// on a different surface".
 const COMPARED_DOMAINS = Object.freeze(['vehicle', 'music', 'navigation', 'weather'])
 
 function loadSurfaceCompareCases() {
@@ -71,7 +72,8 @@ test('surface-compare cases are well formed', () => {
 })
 
 test('surface-compare cases cover every tool in the compared domains', () => {
-  // 新增车控/音乐/导航工具时必须同步补用例，否则对比结果会漏掉该能力。
+  // A new vehicle/music/navigation tool needs a case as well, otherwise the
+  // comparison silently misses that capability.
   const expected = COCKPIT_TOOL_DEFINITIONS
     .map(tool => tool.name)
     .filter(name => (
@@ -85,8 +87,9 @@ test('surface-compare cases cover every tool in the compared domains', () => {
   assert.deepEqual(missing, [], `surface-compare cases miss tools: ${missing.join(', ')}`)
 })
 
-// 两条链路各跑一次最小用例，确认测量 harness 端到端可用：
-// frontend 走 MCP/HTTP，backend 走 A2A -> Agent -> MCP/HTTP，模型为零耗时 stub。
+// Run one minimal case on each route to prove the measurement harness works end to
+// end: frontend over MCP/HTTP, backend over A2A -> Agent -> MCP/HTTP, with a
+// zero-latency stub model.
 async function runWorker(surface) {
   const domains = Object.fromEntries(COMPARED_DOMAINS.map(domain => [domain, surface]))
   const { stdout } = await execFileAsync(
@@ -182,7 +185,7 @@ function toolReport(surface, caseId) {
   })) }
 }
 
-test('逐轮统计保留全部 92 个响应，不累计多轮，也不引用音频结束时间', () => {
+test('per-turn stats keep all 92 responses without summing turns or using the audio end', () => {
   const f = toolReport('frontend')
   const b = toolReport('backend')
   const before = structuredClone([f, b])
@@ -207,7 +210,7 @@ test('逐轮统计保留全部 92 个响应，不累计多轮，也不引用音�
   assert.deepEqual([f, b], before)
 })
 
-test('各端独立平均并保留长尾，缺失不影响另一端，评分失败不筛掉工具时延', () => {
+test('each surface averages independently, keeps long tails, and scoring failures never drop tool latency', () => {
   const f = toolReport('frontend', 'nav_context_add_waypoint_014')
   const b = toolReport('backend', 'nav_context_add_waypoint_014')
   b.results[0].score.passed = false
@@ -223,7 +226,7 @@ test('各端独立平均并保留长尾，缺失不影响另一端，评分失�
   assert.throws(() => buildCanonicalComparison(f, { results: [] }), /IDs differ/u)
 })
 
-test('一轮多次工具执行取最后时间，音频超时不改变已观测到的工具时延', () => {
+test('several executions in one turn take the last time and an audio timeout keeps observed latency', () => {
   const f = toolReport('frontend', 'veh_single_climate_start_003')
   const b = toolReport('backend', 'veh_single_climate_start_003')
   for (const report of [f, b]) {
@@ -244,7 +247,7 @@ test('一轮多次工具执行取最后时间，音频超时不改变已观测�
   assert.equal(comparison.groups[0].frontend_count, 1)
 })
 
-test('误调用、参数错误和重复调用均参与时间均值，领域保持原任务归属', () => {
+test('wrong tools, bad arguments and repeats stay in the means while domains keep their task', () => {
   for (const actual of [
     [{ name: 'music_play', arguments: {}, completed_ms: 1234 }],
     [{ name: 'vehicle_climate_control', arguments: { unexpected: true }, completed_ms: 1234 }],
@@ -265,7 +268,7 @@ test('误调用、参数错误和重复调用均参与时间均值，领域保�
   }
 })
 
-test('缺失时间不回退到音频时延，不影响另一端计时，真实零时延参与均值', () => {
+test('missing times never fall back to audio latency, never affect the other surface, and real zeros count', () => {
   const f = toolReport('frontend', 'veh_single_climate_start_003')
   const b = toolReport('backend', 'veh_single_climate_start_003')
   b.results[0].turns[0].executed_calls = [{ ...b.results[0].expected_calls[0] }]
@@ -283,7 +286,7 @@ test('缺失时间不回退到音频时延，不影响另一端计时，真实�
   assert.equal(comparison.groups[0].backend_mean_ms, 0)
 })
 
-test('拒绝不同轮次内容或重复 case 的不公平配对', () => {
+test('rejects unfair pairing from differing turn content or duplicate cases', () => {
   const f = toolReport('frontend', 'veh_single_climate_start_003')
   const b = toolReport('backend', 'veh_single_climate_start_003')
   b.results[0].user_turns = [{ user: '另一句指令' }]
@@ -318,7 +321,7 @@ function batchFixtures() {
   })
 }
 
-test('分批汇总保留来源和原始轮次，按响应重新计算均值而非平均各批均值', () => {
+test('batch merges keep sources and original turns, recomputing means from responses rather than batch means', () => {
   const batches = batchFixtures()
   for (const result of batches[1].report.frontend.results) {
     for (const turn of result.turns) for (const call of turn.executed_calls) {
@@ -342,7 +345,7 @@ test('分批汇总保留来源和原始轮次，按响应重新计算均值而�
   assert.deepEqual(batches, before)
 })
 
-test('分批汇总拒绝重复 case、旧 schema 和不一致的模型、参数、服务', () => {
+test('batch merges reject duplicate cases, legacy schema and mismatched models, parameters or services', () => {
   const batches = batchFixtures()
   assert.throws(() => combineReports([batches[0]]), /At least two/u)
   assert.throws(() => combineReports([batches[0], batches[0]]), /duplicates/u)
@@ -354,11 +357,11 @@ test('分批汇总拒绝重复 case、旧 schema 和不一致的模型、参数�
   }
 })
 
-test('分批汇总不允许覆盖任何来源文件', async () => {
+test('batch merges never overwrite a source file', async () => {
   await assert.rejects(combineReportFiles(['/batch-a.json', '/batch-b.json'], '/batch-a.json'), /new output path/u)
 })
 
-test('双指标按原领域拆分全部任务轮，保持上下文且不修改输入', () => {
+test('dual metrics split every task turn by its original domain, keeping context and leaving input untouched', () => {
   const f = dualReport('frontend'); const b = dualReport('backend')
   const before = structuredClone([f, b])
   const c = buildCanonicalComparison(f, b)
@@ -378,7 +381,7 @@ test('双指标按原领域拆分全部任务轮，保持上下文且不修改�
   assert.deepEqual([f, b], before)
 })
 
-test('双指标独立计数，含误调用、失败返回、长尾和零时延，不回退音频或旧埋点', () => {
+test('dual metrics count independently across wrong tools, failed returns, long tails and zero latency', () => {
   const f = dualReport('frontend', 'nav_context_add_waypoint_014')
   const b = dualReport('backend', 'nav_context_add_waypoint_014')
   f.results[0].turns[1].executed_calls = [{ name: 'navigation_add_waypoint', started_ms: 0, ended_ms: null }]
@@ -409,7 +412,7 @@ test('双指标独立计数，含误调用、失败返回、长尾和零时延�
   assert.deepEqual(toolTiming([{ completed_ms: 500 }]), { before_ms: null, after_ms: null })
 })
 
-test('并发调用分别取最晚开始和最晚结束，未结束的调用不能生成结束均值', () => {
+test('concurrent calls take the latest start and latest end, and an unfinished call yields no after mean', () => {
   assert.deepEqual(toolTiming([
     { started_ms: 100, ended_ms: 900 }, { started_ms: 500, ended_ms: 600 },
   ]), { before_ms: 500, after_ms: 900 })
@@ -419,7 +422,7 @@ test('并发调用分别取最晚开始和最晚结束，未结束的调用不�
   assert.deepEqual(toolTiming([]), { before_ms: null, after_ms: null })
 })
 
-test('异常后尚有后台任务或异步工具时必须停止后续采样，防止跨 case 污染', () => {
+test('sampling stops when an error leaves background tasks or async tools pending, preventing cross-case bleed', () => {
   const running = { type: 'task.running', task: { id: 'a' } }
   const done = { type: 'task.completed', task: { id: 'a' } }
   assert.equal(hasUnfinishedWork([running], []), true)
@@ -432,14 +435,14 @@ test('异常后尚有后台任务或异步工具时必须停止后续采样，�
   ], []), false)
 })
 
-test('不允许把旧执行入口埋点或模拟业务报告与新真实服务合并', () => {
+test('refuses to merge legacy entry-point instrumentation or simulated reports with the real service', () => {
   const f = dualReport('frontend'); const b = dualReport('backend')
   assert.throws(() => buildCanonicalComparison(f, toolReport('backend')), /schemas or business service modes differ/u)
   assert.throws(() => buildCanonicalComparison(f, { ...b, service_mode: 'controlled' }), /schemas or business service modes differ/u)
   assert.throws(() => mergeRecovery(f, toolReport('frontend')), /schemas or business service modes differ/u)
 })
 
-test('观测包装等待实际异步返回、保持返回值和并发业务请求归属', async () => {
+test('the observation wrapper awaits the real async return, preserves results and attributes concurrent requests', async () => {
   let now = 100
   const pending = new Map()
   const output = { content: '已完成', data: { ok: true } }
@@ -469,7 +472,7 @@ test('观测包装等待实际异步返回、保持返回值和并发业务请�
   assert.ok(calls.every(c => !('completed_ms' in c)))
 })
 
-test('抛出异常和业务失败也记录执行结束，返回内容不被观测包装改变', async () => {
+test('thrown errors and business failures still record an end time, and payloads pass through unchanged', async () => {
   let now = 100
   const failure = new Error('网络故障')
   const output = { content: '天气查询失败' }
@@ -487,8 +490,9 @@ test('抛出异常和业务失败也记录执行结束，返回内容不被观�
   assert.deepEqual(toolTiming(measuredToolCalls(log, 100, 0)), { before_ms: 50, after_ms: 100 })
 })
 
-// 仅在自动化测试中拦截外网响应；生产 worker 不安装此拦截，也不使用这些数据。
-test('example 默认实现经 MCP HTTP 进入高德请求，车控音乐保持本地原实现', async t => {
+// Outbound responses are stubbed for automated tests only; the production worker
+// installs no such interception and never uses this data.
+test('example defaults reach Amap over MCP HTTP while vehicle and music keep their local handlers', async t => {
   const originalFetch = globalThis.fetch
   const requests = []
   let failWeather = false
@@ -535,7 +539,7 @@ test('example 默认实现经 MCP HTTP 进入高德请求，车控音乐保持�
   }
 })
 
-test('车控音乐仅需模型凭据，天气导航或 setup 依赖仍需高德凭据', () => {
+test('vehicle and music need only the model credential while weather, navigation and setup need Amap', () => {
   const local = loadCases({ domain: 'vehicle,music' })
   assert.equal(local.length, 42)
   assert.deepEqual(liveDomainsFor(local), [])
@@ -550,7 +554,7 @@ test('车控音乐仅需模型凭据，天气导航或 setup 依赖仍需高德�
   assert.throws(() => assertVoiceCredentials(local, 'example', {}), /DASHSCOPE_API_KEY is required/u)
 })
 
-test('缺少高德凭据可执行原车控音乐，误调天气明确失败且不发外网请求', async t => {
+test('without the Amap credential vehicle and music still run while weather fails without any network call', async t => {
   t.mock.method(globalThis, 'fetch', () => { throw new Error('unexpected network request') })
   const service = createVoiceService('example', { amapAvailable: false })
   const climate = await service.execute('vehicle_climate_control', { action: 'start' })
@@ -562,7 +566,7 @@ test('缺少高德凭据可执行原车控音乐，误调天气明确失败且�
   assert.equal(globalThis.fetch.mock.callCount(), 0)
 })
 
-test('完整真实服务入口缺少任一凭据都拒绝运行，不回退预置服务', async () => {
+test('the full live-service entry point refuses to run when any credential is missing', async () => {
   const runner = fileURLToPath(new URL('../runner/run-voice-surface-compare.mjs', import.meta.url))
   for (const [modelKey, expected] of [['', /DASHSCOPE_API_KEY is required/u], ['test-only-not-a-key', /AMAP_MCP_KEY is required/u]]) {
     await assert.rejects(execFileAsync(process.execPath, [runner, '--suite', 'short'], {
@@ -571,7 +575,7 @@ test('完整真实服务入口缺少任一凭据都拒绝运行，不回退预�
   }
 })
 
-test('双指标 HTML/CSV 包含领域、前后端差值与缺失值，不展示匹配评分', async () => {
+test('dual-metric HTML and CSV carry domains, differences and missing values without match scores', async () => {
   const root = await mkdtemp(join(tmpdir(), 'cockpit-dual-table-test-'))
   try {
     const f = dualReport('frontend', 'nav_context_add_waypoint_014')
@@ -581,25 +585,25 @@ test('双指标 HTML/CSV 包含领域、前后端差值与缺失值，不展示�
     const out = join(root, 'report.json')
     await writeCanonicalTables({ comparison, realtime_model: 'test', agent_model: 'test' }, out)
     const html = await readFile(`${out}.html`, 'utf8')
-    assert.match(html, /高德 MCP/u)
+    assert.match(html, /Amap MCP/u)
     assert.equal((html.match(/<table>/gu) || []).length, 2)
-    assert.match(html, /<h2>执行前<\/h2>/u)
-    assert.match(html, /<h2>执行后<\/h2>/u)
-    assert.doesNotMatch(html, /前端工具匹配|case 级准确率|<th>.*执行结果/u)
-    for (const [phase, label, other] of [['before', '执行前', '执行后'], ['after', '执行后', '执行前']]) {
+    assert.match(html, /<h2>Before execution<\/h2>/u)
+    assert.match(html, /<h2>After execution<\/h2>/u)
+    assert.doesNotMatch(html, /<th>[^<]*(match|score|accuracy|outcome)/iu)
+    for (const [phase, other] of [['before', 'after'], ['after', 'before']]) {
       const csv = await readFile(`${out}.${phase}.csv`, 'utf8')
       assert.equal(csv.trim().split('\n').length, 3)
-      assert.match(csv, /"导航"/u)
+      assert.match(csv, /"navigation"/u)
       assert.match(csv, /"—"/u)
-      assert.match(csv, /第 2 轮/u)
-      assert.ok(csv.includes(label))
-      assert.ok(!csv.includes(other))
-      assert.ok((await readFile(`${out}.${phase}.summary.csv`, 'utf8')).includes(label))
+      assert.match(csv, /turn 2/u)
+      assert.ok(csv.includes(`${phase}/s`))
+      assert.ok(!csv.includes(`${other}/s`))
+      assert.ok((await readFile(`${out}.${phase}.summary.csv`, 'utf8')).includes(`${phase}/s`))
     }
     await writeCanonicalTables(combineReports(batchFixtures()), out)
     const mergedHtml = await readFile(`${out}.html`, 'utf8')
-    assert.match(mergedHtml, /分批来源/u)
-    assert.match(mergedHtml, /不是同一次连续运行/u)
+    assert.match(mergedHtml, /Batch sources/u)
+    assert.match(mergedHtml, /not one continuous run/u)
     assert.match(mergedHtml, /batch-0\.json/u)
     assert.match(mergedHtml, /batch-1\.json/u)
     assert.equal((await readFile(`${out}.before.csv`, 'utf8')).trim().split('\n').length, 93)
@@ -610,7 +614,7 @@ test('双指标 HTML/CSV 包含领域、前后端差值与缺失值，不展示�
   }
 })
 
-test('纯计时发布保留逐调用数据，可重算且不泄漏过程日志或评分', () => {
+test('the timing-only export keeps per-call data, recomputes, and leaks no process log or score', () => {
   const raw = combineReports(batchFixtures())
   raw.batch_sources[0].source = '/private/local/batch-0.json'
   const result = raw.frontend.results[0]
@@ -633,7 +637,7 @@ test('纯计时发布保留逐调用数据，可重算且不泄漏过程日志�
   assert.throws(() => buildTimingReport({ suite: 'short', frontend: toolReport('frontend'), backend: toolReport('backend') }), /dual-timing/u)
 })
 
-test('提交的实测数据无需凭据即可离线重算，所有发布表与原始计时一致', async () => {
+test('committed measurements recompute offline without credentials and match every published table', async () => {
   const source = fileURLToPath(new URL('../results/voice-surface-short-20260911.json', import.meta.url))
   const data = JSON.parse(await readFile(source, 'utf8'))
   assert.deepEqual(buildTimingReport(data), data)
@@ -650,7 +654,8 @@ test('提交的实测数据无需凭据即可离线重算，所有发布表与�
     await execFileAsync(process.execPath, [runner, '--from-report', source, '--timing-only', '--out', out], {
       env: { ...process.env, DASHSCOPE_API_KEY: '', AMAP_MCP_KEY: '' },
     })
-    // 归一化换行：core.autocrlf 会把签出的发布文件转成 CRLF，而导出始终写 LF。
+    // Normalize line endings: core.autocrlf checks the published files out as
+    // CRLF, while the export always writes LF.
     const text = async path => (await readFile(path, 'utf8')).replaceAll('\r\n', '\n')
     for (const suffix of ['', '.md', '.html', '.before.csv', '.after.csv', '.before.summary.csv', '.after.summary.csv']) {
       assert.equal(await text(`${out}${suffix}`), await text(`${source}${suffix}`), suffix)
@@ -661,7 +666,7 @@ test('提交的实测数据无需凭据即可离线重算，所有发布表与�
   }
 })
 
-test('离线重算禁止覆盖原始报告', async () => {
+test('offline recomputation refuses to overwrite the source report', async () => {
   const source = fileURLToPath(new URL('../reports/source.json', import.meta.url))
   await assert.rejects(reanalyzeReport(source, source), /new output path/u)
 })

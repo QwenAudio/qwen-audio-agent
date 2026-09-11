@@ -1,26 +1,31 @@
 #!/usr/bin/env node
-// 前后端工具执行速度对比评测
+// Frontend/backend tool execution speed comparison.
 //
-// 三个测量维度，从"纯执行"逐层叠加到"完整链路"：
-//   1. direct    —— 绕过模型与网络，进程内直接调用 CockpitService.execute()，
-//                   作为基线证明前后台共用同一执行器、执行本身没有快慢之分。
-//   2. transport —— 同一工具分别走真实的前台链路与后台链路，模型被替换为零耗时
-//                   stub，因此差值就是链路开销本身（A2A + Agent 编排 + MCP）：
-//                     frontend: 客户端 --MCP/HTTP--> /mcp/frontend --> Service
-//                     backend : 客户端 --A2A--> Agent --MCP/HTTP--> /mcp/backend --> Service
-//                   后台链路需要把领域路由翻转到 backend，而表面路由在模块加载期
-//                   固化，故本模式为每种路由各启动一个子进程 worker。
-//   3. model     —— 叠加真实模型推理：前台是 1 跳（模型直接选工具），后台是 2 跳
-//                   （网关模型先决定 spawn_thinking 委派，Agent 模型再选工具）。
-//                   需要 DASHSCOPE_API_KEY。
+// Three measurement modes, layering from "pure execution" up to "the full route":
+//   1. direct    — bypasses the model and the network, calling
+//                  CockpitService.execute() in process. It is the baseline proving
+//                  both surfaces share one executor, so execution itself is neither
+//                  faster nor slower on either side.
+//   2. transport — the same tool over the real frontend and backend routes with the
+//                  model replaced by a zero-latency stub, so the difference is the
+//                  route cost itself (A2A + Agent orchestration + MCP):
+//                    frontend: client --MCP/HTTP--> /mcp/frontend --> Service
+//                    backend : client --A2A--> Agent --MCP/HTTP--> /mcp/backend --> Service
+//                  The backend route needs the domain routing flipped to backend, and
+//                  surface routing is frozen at module load, so this mode spawns one
+//                  worker process per routing.
+//   3. model     — adds real model inference: the frontend is one hop (the model picks
+//                  the tool directly) while the backend is two (the gateway model
+//                  decides to delegate through spawn_thinking, then the Agent model
+//                  picks the tool). Requires DASHSCOPE_API_KEY.
 //
-// 用法：
-//   node run-surface-compare.mjs                        # direct + transport（有 key 时再跑 model）
-//   node run-surface-compare.mjs --mode direct          # 仅进程内执行基线
-//   node run-surface-compare.mjs --mode transport       # 仅链路对比（无需 API key）
-//   node run-surface-compare.mjs --mode model           # 仅模型跳数对比（需 API key）
-//   node run-surface-compare.mjs --domain vehicle       # 仅车控域
-//   node run-surface-compare.mjs --repeats 5            # 每条用例重复 5 次取中位数
+// Usage:
+//   node run-surface-compare.mjs                        # direct + transport, plus model when a key is set
+//   node run-surface-compare.mjs --mode direct          # in-process execution baseline only
+//   node run-surface-compare.mjs --mode transport       # route comparison only, no API key needed
+//   node run-surface-compare.mjs --mode model           # model hop comparison only, API key needed
+//   node run-surface-compare.mjs --domain vehicle       # vehicle domain only
+//   node run-surface-compare.mjs --repeats 5            # repeat each case 5 times and take the median
 import { readFileSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
@@ -33,7 +38,7 @@ import {
   BACKEND_TOOL_NAMES,
 } from '../../service/tools/registry.mjs'
 
-// ─── CLI 参数 ────────────────────────────────────────────────────────────────
+// ─── CLI arguments ───────────────────────────────────────────────────────────
 function parseArgs(argv) {
   const args = new Map()
   for (let i = 0; i < argv.length; i += 1) {
@@ -47,7 +52,7 @@ function parseArgs(argv) {
   return args
 }
 
-// ─── 工具集构建 ──────────────────────────────────────────────────────────────
+// ─── Tool set construction ───────────────────────────────────────────────────
 function openAiTool(tool) {
   return {
     type: 'function',
@@ -63,7 +68,7 @@ function buildAllToolSet() {
   return COCKPIT_TOOL_DEFINITIONS.map(openAiTool)
 }
 
-// ─── 用例加载 ────────────────────────────────────────────────────────────────
+// ─── Case loading ────────────────────────────────────────────────────────────
 const CASES_URL = new URL('../cases/surface-compare.jsonl', import.meta.url)
 
 function parseJsonl(text) {
@@ -80,7 +85,7 @@ function loadCases({ domain } = {}) {
   return all.filter(c => domains.has(c.domain))
 }
 
-// ─── 确定性 benchmark service（复用 controlled-harness 逻辑） ────────────────
+// ─── Deterministic benchmark service (reuses controlled-harness) ─────────────
 async function createBenchmarkService() {
   const { createBenchmarkService: create } = await import('./controlled-harness.mjs')
   return create()
@@ -92,7 +97,7 @@ async function setupCase(caseItem, service, cockpitId) {
   }
 }
 
-// ─── 高精度计时 ──────────────────────────────────────────────────────────────
+// ─── High-resolution timing ──────────────────────────────────────────────────
 function hrtimeMs() {
   const [s, ns] = process.hrtime()
   return s * 1000 + ns / 1_000_000
@@ -105,9 +110,9 @@ async function measureToolExecution(service, cockpitId, name, args) {
   return { elapsed, result }
 }
 
-// ─── Phase 1: 直接工具执行延迟 ───────────────────────────────────────────────
+// ─── Phase 1: direct tool execution latency ──────────────────────────────────
 async function runDirectMode(cases, { repeats = 3 }) {
-  process.stderr.write('\n━━━ Phase 1: 直接工具执行延迟 ━━━\n')
+  process.stderr.write('\n━━━ Phase 1: direct tool execution latency ━━━\n')
   const service = await createBenchmarkService()
   const results = []
 
@@ -122,7 +127,7 @@ async function runDirectMode(cases, { repeats = 3 }) {
     for (const call of caseItem.explicit_calls || []) {
       const callTimings = []
       for (let r = 0; r < repeats; r += 1) {
-        // 每条重复前重置状态，避免状态污染
+        // Reset the state before each repeat so runs cannot contaminate each other
         const cockpitId = `${caseItem.id}_${r}`
         await setupCase(caseItem, service, cockpitId)
         const { elapsed } = await measureToolExecution(
@@ -146,7 +151,7 @@ async function runDirectMode(cases, { repeats = 3 }) {
     process.stderr.write(`  ✓ ${caseItem.id} (${caseResult.calls.map(c => `${c.median_ms}ms`).join(', ')})\n`)
   }
 
-  // 按域汇总
+  // Per-domain summary
   const domainSummary = {}
   for (const r of results) {
     const key = r.domain
@@ -165,11 +170,12 @@ async function runDirectMode(cases, { repeats = 3 }) {
   return { results, domainSummary }
 }
 
-// ─── Phase 2: 真实链路延迟（前台 MCP vs 后台 A2A+MCP，无模型） ───────────────
+// ─── Phase 2: real route latency (frontend MCP vs backend A2A+MCP, no model) ─
 const WORKER_URL = new URL('./surface-latency-worker.mjs', import.meta.url)
 
-// 把领域整体翻转到某一表面。表面路由按领域生效，不支持单工具粒度，
-// 因此要让车控/音乐/导航跑后台链路，必须整域改到 backend。
+// Flip a whole domain onto one surface. Surface routing works per domain and has no
+// per-tool granularity, so running vehicle/music/navigation over the backend route
+// means moving the entire domain to backend.
 function domainSurfaceOverride(surface) {
   return JSON.stringify({
     domains: {
@@ -214,7 +220,7 @@ function runWorker({ surface, repeats, warmup, domain }) {
 }
 
 async function runTransportMode(cases, { repeats = 5, warmup = 2, domain = null }) {
-  process.stderr.write('\n━━━ Phase 2: 真实链路延迟（无模型） ━━━\n')
+  process.stderr.write('\n━━━ Phase 2: real route latency (no model) ━━━\n')
   const [frontend, backend] = await Promise.all([
     runWorker({ surface: 'frontend', repeats, warmup, domain }),
     runWorker({ surface: 'backend', repeats, warmup, domain }),
@@ -244,7 +250,7 @@ async function runTransportMode(cases, { repeats = 5, warmup = 2, domain = null 
 function printTransportSummary(phase2) {
   const { frontend, backend, comparison } = phase2
   console.log('\n┌──────────────────────────────────────────────────────────────────────────┐')
-  console.log('│  Phase 2: 同一工具走真实前台链路 vs 后台链路（模型已剔除）              │')
+  console.log('│  Phase 2: one tool over the real frontend vs backend route (no model)    │')
   console.log('├──────────────────────────────────────────────────────────────────────────┤')
   console.log(`│  frontend: ${frontend.path}`.padEnd(75) + '│')
   console.log(`│  backend : ${backend.path}`.padEnd(75) + '│')
@@ -276,20 +282,21 @@ function printTransportSummary(phase2) {
     + `${(overallBackend / overallFrontend).toFixed(2).padStart(6)}x │`,
   )
   console.log('└────────────┴────────┴─────────────┴─────────────┴─────────────┴─────────┘')
-  console.log('\n  注: 两条链路调用同一工具、同一 CockpitService，模型为零耗时 stub，')
-  console.log('  因此 Δ 是纯链路成本：A2A JSON-RPC 往返 + Agent 每任务的 tools.list 与')
-  console.log('  custom_skill_list 探测 + Agent 编排轮次。这是"放后台"的固定入场费，')
-  console.log('  真实部署中还要再叠加一次模型推理（见 Phase 3）。')
+  console.log('\n  Note: both routes call the same tool on the same CockpitService with a')
+  console.log('  zero-latency stub model, so Δ is the pure route cost: the A2A JSON-RPC round')
+  console.log('  trip, the Agent\'s per-task tools.list and custom_skill_list probes, and its')
+  console.log('  orchestration rounds. That is the fixed entry fee for "put it in the backend";')
+  console.log('  a real deployment adds one more model inference on top (see Phase 3).')
   if (frontend.skipped.length || backend.skipped.length) {
-    console.log(`\n  跳过: frontend ${frontend.skipped.length} 条 / backend ${backend.skipped.length} 条`)
+    console.log(`\n  skipped: frontend ${frontend.skipped.length} / backend ${backend.skipped.length}`)
   }
 }
 
-// ─── Phase 3: 模型推理 + 工具执行延迟 ────────────────────────────────────────
+// ─── Phase 3: model inference plus tool execution latency ────────────────────
 async function runModelMode(cases, { repeats = 1, requestTimeoutMs = 60_000 }) {
   if (!process.env.DASHSCOPE_API_KEY) {
-    process.stderr.write('\n⚠ 跳过 Phase 3: 未设置 DASHSCOPE_API_KEY\n')
-    process.stderr.write('  如需测试模型推理延迟，请先设置环境变量：\n')
+    process.stderr.write('\n⚠ skipping Phase 3: DASHSCOPE_API_KEY is not set\n')
+    process.stderr.write('  to measure model inference latency, set the environment variable first:\n')
     process.stderr.write('    export DASHSCOPE_API_KEY=your-key\n')
     return { skipped: true, reason: 'DASHSCOPE_API_KEY not set' }
   }
@@ -301,13 +308,15 @@ async function runModelMode(cases, { repeats = 1, requestTimeoutMs = 60_000 }) {
   const service = await createBenchmarkService()
   const model = new DashScopeCockpitModel()
 
-  process.stderr.write('\n━━━ Phase 3: 模型推理跳数对比 ━━━\n')
+  process.stderr.write('\n━━━ Phase 3: model inference hop comparison ━━━\n')
   process.stderr.write(`  model: ${model.model}\n`)
 
-  // 前台链路：模型直接看到领域工具，一次推理即可选中并执行。
+  // Frontend route: the model sees the domain tools directly and one inference is
+  // enough to pick and execute.
   const domainTools = buildAllToolSet()
     .filter(tool => !tool.function.name.startsWith('custom_skill'))
-  // 后台链路第一跳：网关只看到委派工具，必须先决定 spawn_thinking。
+  // First backend hop: the gateway only sees the delegation tool, so it has to decide
+  // on spawn_thinking first.
   const delegationTools = [{
     ...spawnThinkingTool,
     function: {
@@ -361,7 +370,7 @@ async function runModelMode(cases, { repeats = 1, requestTimeoutMs = 60_000 }) {
 
     for (let iteration = 0; iteration < repeats; iteration += 1) {
       try {
-        // ── 前台：1 跳 ──
+        // ── frontend: 1 hop ──
         const frontendCockpitId = `${caseItem.id}_frontend_${iteration}`
         await setupCase(caseItem, service, frontendCockpitId)
         const frontendHop = await completeOnce({
@@ -375,7 +384,7 @@ async function runModelMode(cases, { repeats = 1, requestTimeoutMs = 60_000 }) {
           allowed: domainToolNames,
         })
 
-        // ── 后台：2 跳（网关委派 + Agent 选工具）──
+        // ── backend: 2 hops (gateway delegation + Agent tool choice) ──
         const backendCockpitId = `${caseItem.id}_backend_${iteration}`
         await setupCase(caseItem, service, backendCockpitId)
         const delegationHop = await completeOnce({
@@ -462,9 +471,9 @@ async function runModelMode(cases, { repeats = 1, requestTimeoutMs = 60_000 }) {
   }
 }
 
-// ─── 汇总打印 ────────────────────────────────────────────────────────────────
+// ─── Summary output ──────────────────────────────────────────────────────────
 async function printDirectSummary(phase1) {
-  // 导入 surface 信息
+  // Import the surface information
   let surfaceForTool
   try {
     const registry = await import('../../service/tools/registry.mjs')
@@ -472,7 +481,7 @@ async function printDirectSummary(phase1) {
   } catch { surfaceForTool = () => null }
 
   console.log('\n┌──────────────────────────────────────────────────────────────────────────┐')
-  console.log('│        Phase 1: 工具直接执行延迟 (CockpitService.execute)                │')
+  console.log('│        Phase 1: direct tool execution latency (CockpitService.execute)   │')
   console.log('├────────────────────────────┬───────────┬──────────┬──────────┬───────────┤')
   console.log('│ Tool                       │ Surface   │  Median  │   Min    │   Max     │')
   console.log('├────────────────────────────┼───────────┼──────────┼──────────┼───────────┤')
@@ -489,8 +498,8 @@ async function printDirectSummary(phase1) {
 
   console.log('├────────────────────────────┴───────────┴──────────┴──────────┴───────────┤')
 
-  // 域汇总
-  console.log('│ 按域汇总:                                                            │')
+  // Per-domain summary
+  console.log('│ By domain:                                                           │')
   for (const [domain, summary] of Object.entries(phase1.domainSummary)) {
     const allMedians = phase1.results
       .filter(r => r.domain === domain)
@@ -509,19 +518,20 @@ async function printDirectSummary(phase1) {
     `│  TOTAL: ${allMedians.length} tools  avg=${overallAvg}ms  range=${Math.min(...allMedians).toFixed(3)}~${Math.max(...allMedians).toFixed(3)}ms`.padEnd(72) + '│',
   )
   console.log('└──────────────────────────────────────────────────────────────────────────┘')
-  console.log('\n  注: 这是进程内基线，前后台数字必然相同，因为两个表面共享同一个')
-  console.log('  CockpitService executor —— "执行"本身不存在快慢之分。真正的差异是')
-  console.log('  链路成本（Phase 2）与模型跳数（Phase 3）。')
+  console.log('\n  Note: this is the in-process baseline, so both surfaces must report the same')
+  console.log('  numbers: they share one CockpitService executor and "execution" itself is')
+  console.log('  neither faster nor slower. The real differences are the route cost (Phase 2)')
+  console.log('  and the model hops (Phase 3).')
 }
 
 function printModelSummary(phase3) {
   if (phase3.skipped) {
-    console.log(`\n  Phase 3 已跳过: ${phase3.reason}`)
+    console.log(`\n  Phase 3 skipped: ${phase3.reason}`)
     return
   }
   console.log('\n┌──────────────────────────────────────────────────────────────────────────┐')
-  console.log(`│  Phase 3: 模型推理跳数对比  (model: ${phase3.model})`.padEnd(75) + '│')
-  console.log('│  frontend = 1 跳（直接选工具）  backend = 2 跳（委派 + Agent 选工具）    │')
+  console.log(`│  Phase 3: model inference hop comparison  (model: ${phase3.model})`.padEnd(75) + '│')
+  console.log('│  frontend = 1 hop (direct tool choice)  backend = 2 hops (delegate + Agent) │')
   console.log('├────────────┬────────┬──────────────┬──────────────┬──────────────────────┤')
   console.log('│ Domain     │  Cases │  Frontend    │   Backend    │      Δ               │')
   console.log('├────────────┼────────┼──────────────┼──────────────┼──────────────────────┤')
@@ -553,10 +563,11 @@ function printModelSummary(phase3) {
   console.log('└────────────┴────────┴──────────────┴──────────────┴──────────────────────┘')
 
   const delegated = phase3.results.filter(result => result.delegation_rate > 0).length
-  console.log(`\n  委派判定: ${delegated}/${phase3.results.length} 条用例中网关模型确实调用了 spawn_thinking。`)
-  console.log('  委派率低说明这些原子指令按架构判据本就应该留在前台，不该走后台。')
-  console.log('  注: Phase 3 只计模型推理与本地执行，未含 Phase 2 的链路成本；')
-  console.log('  真实后台端到端 ≈ Phase 3 backend + Phase 2 Δ。')
+  console.log(`\n  Delegation: the gateway model actually called spawn_thinking in ${delegated}/${phase3.results.length} cases.`)
+  console.log('  A low delegation rate means these atomic commands belong on the frontend by')
+  console.log('  the architecture criteria and should not be routed to the backend.')
+  console.log('  Note: Phase 3 covers model inference and local execution only, without the')
+  console.log('  Phase 2 route cost; real backend end-to-end ≈ Phase 3 backend + Phase 2 Δ.')
 }
 
 // ─── main ────────────────────────────────────────────────────────────────────
@@ -600,7 +611,8 @@ async function main() {
     printTransportSummary(report.phase2_transport)
   }
 
-  // all 模式下没有 API key 就静默跳过，避免默认路径需要凭据。
+  // In all mode a missing API key skips silently, so the default path needs no
+  // credentials.
   if (mode === 'model' || (mode === 'all' && process.env.DASHSCOPE_API_KEY)) {
     report.phase3_model = await runModelMode(cases, {
       repeats: mode === 'all' ? 1 : repeats,

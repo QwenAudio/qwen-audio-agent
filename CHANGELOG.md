@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- WebUI 展示前台与后台工具调用的有界生命周期，按工具调用 ID 合并状态，并默认不保留
+  原始参数与结果内容。
 - 移除 `backend-adapter` 与 `custom-conversation-client` 示例目录及文档入口，保留后台 SDK 与客户端协议能力。
 
 - 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，

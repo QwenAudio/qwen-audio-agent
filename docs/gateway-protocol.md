@@ -277,7 +277,7 @@ Use OpenAI Realtime terminology where the semantics match:
 | `response.output_audio_transcript.delta` / `.done` | G→C | Assistant transcript |
 | `response.done` | G→C | Final response state; cancellation is `response.status = "cancelled"` |
 
-Gateway extensions include `turn.started`, `transcript.discard`, `playback.clear`, and playback receipts. `input_file` is a Gateway content-part extension, not an OpenAI Realtime standard part.
+Gateway extensions include `turn.started`, `transcript.discard`, `tool.call`, `playback.clear`, and playback receipts. `tool.call` is a bounded, presentation-only lifecycle event for a Realtime Tool Call; it is not an execution request, is not replayed, and clients must not infer private Gateway or backend state from it. `input_file` is a Gateway content-part extension, not an OpenAI Realtime standard part.
 
 User input is authoritative user intent and opens or supersedes a user turn. Client semantic events never impersonate user input.
 

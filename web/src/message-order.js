@@ -80,6 +80,7 @@ export function upsertUserTranscript(items, {
   id,
   content,
   turnId,
+  createdAt,
   final = false,
 }) {
   const normalized = normalizeTranscript(content)
@@ -89,6 +90,7 @@ export function upsertUserTranscript(items, {
     role: 'user',
     content: normalized,
     turnId,
+    ...(Number.isFinite(createdAt) && createdAt > 0 ? { createdAt } : {}),
     voice: true,
     final,
     live: !final,
@@ -100,7 +102,15 @@ export function upsertUserTranscript(items, {
   // utterance that may replace it.
   if (items[index].final) return items
   const next = [...items]
-  next[index] = { ...next[index], ...message }
+  next[index] = {
+    ...next[index],
+    ...message,
+    ...(
+      Number.isFinite(next[index].createdAt) && next[index].createdAt > 0
+        ? { createdAt: next[index].createdAt }
+        : {}
+    ),
+  }
   return next
 }
 
@@ -112,6 +122,7 @@ export function upsertAssistantTranscript(items, {
   taskIds,
   origin,
   citations,
+  createdAt,
   final = false,
 }) {
   const index = items.findIndex(item => item.id === id)
@@ -125,6 +136,7 @@ export function upsertAssistantTranscript(items, {
       taskIds,
       origin,
       ...(citations?.length ? { citations } : {}),
+      ...(Number.isFinite(createdAt) && createdAt > 0 ? { createdAt } : {}),
       live: !final,
     })
   }
@@ -140,6 +152,13 @@ export function upsertAssistantTranscript(items, {
     taskIds: taskIds || existing.taskIds,
     origin: origin || existing.origin,
     ...(citations?.length ? { citations } : {}),
+    ...(
+      Number.isFinite(existing.createdAt) && existing.createdAt > 0
+        ? { createdAt: existing.createdAt }
+        : Number.isFinite(createdAt) && createdAt > 0
+          ? { createdAt }
+          : {}
+    ),
     live: !final,
   }
   return next
@@ -151,19 +170,25 @@ export function discardUserTranscript(items, turnId) {
   return items.filter(item => item.id !== id || item.final)
 }
 
-export function buildConversationTimeline(messages, tasks) {
-  return buildConversationTurns(messages, tasks).flatMap(turn => [
-    ...turn.beforeActivities.map(value => ({ type: 'message', value })),
+export function buildConversationTimeline(messages, tasks, toolCalls = []) {
+  return buildConversationTurns(messages, tasks, toolCalls).flatMap(turn => [
+    ...turn.beforeEvents,
     ...turn.tasks.map(value => ({ type: 'task', value })),
     ...turn.afterActivities.map(value => ({ type: 'message', value })),
   ])
 }
 
-export function buildConversationTurns(messages, tasks) {
+export function buildConversationTurns(messages, tasks, toolCalls = []) {
   const turns = []
   const byTurnId = new Map()
   const createTurn = (id, standalone = false) => {
-    const turn = { id, standalone, messages: [], tasks: [] }
+    const turn = {
+      id,
+      standalone,
+      messages: [],
+      tasks: [],
+      toolCalls: [],
+    }
     turns.push(turn)
     if (!standalone) byTurnId.set(id, turn)
     return turn
@@ -185,6 +210,14 @@ export function buildConversationTurns(messages, tasks) {
       ? byTurnId.get(id) || createTurn(id)
       : createTurn(id, true)
     turn.tasks.push(task)
+  })
+
+  toolCalls.forEach(toolCall => {
+    const id = toolCall.turnId || `tool:${toolCall.callId}`
+    const turn = toolCall.turnId
+      ? byTurnId.get(id) || createTurn(id)
+      : createTurn(id, true)
+    turn.toolCalls.push(toolCall)
   })
 
   const orderedTurns = turns.filter(turn => turn.messages.length)
@@ -213,9 +246,32 @@ export function buildConversationTurns(messages, tasks) {
         message.taskId,
       ].some(taskId => taskIds.has(taskId))
     )
+    const beforeActivities = turn.messages.filter(message => !afterTaskCard(message))
+    const beforeEvents = [
+      ...beforeActivities.map((value, index) => ({
+        type: 'message',
+        value,
+        order: index,
+      })),
+      ...turn.toolCalls.map((value, index) => ({
+        type: 'tool-call',
+        value,
+        order: beforeActivities.length + index,
+      })),
+    ].sort((left, right) => {
+      const leftTime = Number(left.value.createdAt)
+      const rightTime = Number(right.value.createdAt)
+      const leftHasTime = Number.isFinite(leftTime) && leftTime > 0
+      const rightHasTime = Number.isFinite(rightTime) && rightTime > 0
+      if (leftHasTime && rightHasTime && leftTime !== rightTime) {
+        return leftTime - rightTime
+      }
+      return left.order - right.order
+    }).map(({ type, value }) => ({ type, value }))
     return {
       ...turn,
-      beforeActivities: turn.messages.filter(message => !afterTaskCard(message)),
+      beforeActivities,
+      beforeEvents,
       afterActivities: turn.messages.filter(afterTaskCard),
     }
   })
@@ -225,6 +281,7 @@ function turnChronologicalTime(turn) {
   const itemTimes = [
     ...turn.messages.map(item => Number(item.createdAt || 0)),
     ...turn.tasks.map(item => Number(item.createdAt || 0)),
+    ...turn.toolCalls.map(item => Number(item.createdAt || 0)),
   ].filter(value => value > 0)
   if (itemTimes.length) return Math.min(...itemTimes)
   const timestamp = turnTimestamp(turn.id)

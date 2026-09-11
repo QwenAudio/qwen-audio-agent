@@ -27,6 +27,7 @@ Options:
 
 - **Full-duplex voice** — speak and interrupt naturally, with live transcripts.
 - **Text and attachments** — type messages or add images and files. Ordinary attachments can be handled by the backend; the voice model need not understand images directly.
+- **Draft dictation (MVP)** — use the Dictation control or `Ctrl/⌘+Shift+Space` to put browser speech recognition into the composer draft. Final speech is editable and does not reach the main Agent until you send it. Say “发送”, “提交”, “send”, or “submit” as a standalone sentence to submit; continuous mode keeps listening after each send.
 - **Task view** — follow background tasks dispatched to the backend agent,
   including progress and final results.
 
@@ -44,3 +45,7 @@ consistent across surfaces.
 > Exposing the WebUI beyond your own machine crosses a trust boundary: put an
 > HTTPS reverse proxy with authentication in front and follow
 > [Remote Access Security](../configuration/advanced.md#remote-access-security).
+
+The MVP is scoped to the active WebUI composer. It uses the browser's speech
+recognition implementation and its microphone permission; it does not capture
+other applications, install a system-wide shortcut, or persist raw audio.

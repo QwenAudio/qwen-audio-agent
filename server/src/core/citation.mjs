@@ -66,6 +66,7 @@ export function normalizeSearchResponse(response, { query, limit = 5 } = {}) {
       url: citation.url,
       snippet: citation.snippet || '',
       citation_id: citation.id,
+      ...(candidate.from_query ? { from_query: cleanText(candidate.from_query, 200) } : {}),
       ...(citation.source ? { source: citation.source } : {}),
       ...(citation.published_at
         ? { published_at: citation.published_at }
@@ -80,4 +81,45 @@ export function normalizeSearchResponse(response, { query, limit = 5 } = {}) {
     results,
     citations,
   }
+}
+
+/**
+ * Merges multi-query search results using round-robin interleaving with global
+ * URL deduplication (inspired by DeepSeek Harness).
+ *
+ * It draws Rank 0 of Q1, Rank 0 of Q2, ..., then Rank 1 of Q1, Rank 1 of Q2...
+ * until maxResults is satisfied, ensuring fair representation across sub-queries.
+ *
+ * @param {Array<[string, Array<object>]>} resultsByQuery - Array of [query, items] tuples
+ * @param {object} [options]
+ * @param {number} [options.maxResults=5] - Maximum total items to return
+ * @returns {Array<object>} Merged items with from_query attribution
+ */
+export function roundRobinMerge(resultsByQuery = [], { maxResults = 5 } = {}) {
+  const merged = []
+  const seenUrls = new Set()
+  const boundedLimit = Math.max(1, Math.trunc(Number(maxResults) || 5))
+  const queries = Array.isArray(resultsByQuery) ? resultsByQuery : []
+  const maxDepth = Math.max(0, ...queries.map(([, items]) => (Array.isArray(items) ? items.length : 0)))
+
+  for (let rank = 0; rank < maxDepth; rank += 1) {
+    for (const [query, items] of queries) {
+      if (!Array.isArray(items) || rank >= items.length) continue
+      const item = items[rank]
+      const rawUrl = item?.url
+      const url = normalizePublicUrl(rawUrl) || String(rawUrl || '').trim()
+      if (!url || seenUrls.has(url)) continue
+
+      seenUrls.add(url)
+      merged.push({
+        ...item,
+        url,
+        ...(query ? { from_query: query } : {}),
+      })
+      if (merged.length >= boundedLimit) {
+        return merged
+      }
+    }
+  }
+  return merged
 }

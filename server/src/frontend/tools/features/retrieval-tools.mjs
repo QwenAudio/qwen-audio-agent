@@ -17,7 +17,13 @@ const webSearchTool = {
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: '简洁、完整的搜索查询。' },
+        query: { type: 'string', description: '单一检索词或主要搜索内容。' },
+        queries: {
+          type: 'array',
+          items: { type: 'string' },
+          maxItems: 4,
+          description: '当需要比较不同对象、或问题包含多个独立子目标时，可提供多个聚焦的子查询词。系统将采用轮询交错算法均衡合并结果。',
+        },
         limit: {
           type: 'integer',
           minimum: 1,
@@ -25,7 +31,6 @@ const webSearchTool = {
           description: '最多返回多少条结果，默认 5。',
         },
       },
-      required: ['query'],
       additionalProperties: false,
     },
   },
@@ -95,8 +100,15 @@ export const retrievalToolEntries = [
 ]
 
 async function webSearch(runtime, { callId, turnId, args }) {
-  const query = String(args.query || '').trim()
-  if (!query) {
+  const queryList = Array.isArray(args.queries)
+    ? args.queries.map(q => String(q || '').trim()).filter(Boolean).slice(0, 4)
+    : []
+  const singleQuery = String(args.query || '').trim()
+  const target = queryList.length > 0
+    ? (queryList.length === 1 ? queryList[0] : queryList)
+    : singleQuery
+
+  if (!target || (Array.isArray(target) && !target.length)) {
     await runtime.sendOutput(callId, toolFailure(
       'missing_query',
       '需要提供要搜索的内容。',
@@ -104,7 +116,7 @@ async function webSearch(runtime, { callId, turnId, args }) {
     return
   }
   try {
-    const result = await runtime.frontendRetrieval.search(query, {
+    const result = await runtime.frontendRetrieval.search(target, {
       limit: args.limit,
     })
     await runtime.sendOutput(callId, result, turnId)

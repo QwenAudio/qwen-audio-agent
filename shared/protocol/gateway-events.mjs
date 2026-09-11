@@ -289,6 +289,7 @@ const GatewayVoicePayloadSchemas = Object.freeze({
     turnId: z.string().optional(),
     taskId: z.string().optional(),
   }).passthrough(),
+  [GatewayServerEvent.MEMORY_CHANGED]: z.object({}).passthrough(),
   [GatewayServerEvent.AGENT_ACTIVITY]: z.object({
     activity: z.string().min(1),
   }).passthrough(),

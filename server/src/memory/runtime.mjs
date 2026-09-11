@@ -54,6 +54,7 @@ export class FrontendMemoryRuntime {
   constructor({ provider } = {}) {
     this.provider = assertMemoryProvider(provider)
     this.closePromise = null
+    this.changeListeners = new Set()
   }
 
   describe() {
@@ -85,17 +86,40 @@ export class FrontendMemoryRuntime {
     return normalizeDocuments(documents)
   }
 
+  subscribe(listener) {
+    if (typeof listener !== 'function') throw new TypeError('listener must be a function')
+    if (this.closePromise) return () => {}
+    this.changeListeners.add(listener)
+    return () => this.changeListeners.delete(listener)
+  }
+
   async apply(ownerId, changes = [], context = {}) {
+    const event = Object.freeze({
+      ownerId,
+      source: context?.source || '',
+      sessionId: context?.sessionId || null,
+    })
     const result = await this.provider.apply(ownerId, changes, context)
     if (!result || typeof result !== 'object' || !Array.isArray(result.documents)) {
       throw new TypeError(
         'MemoryProvider apply() must return changed and documents',
       )
     }
-    return {
+    const normalized = {
       changed: Math.max(0, Math.trunc(Number(result.changed) || 0)),
       documents: normalizeDocuments(result.documents),
     }
+    if (normalized.changed > 0) {
+      for (const listener of this.changeListeners) {
+        try {
+          const pending = listener(event)
+          pending?.catch?.(() => {})
+        } catch {
+          // Observers must not turn a successful persisted write into a failure.
+        }
+      }
+    }
+    return normalized
   }
 
   async query(ownerId, query, options = {}, context = {}) {
@@ -154,6 +178,7 @@ export class FrontendMemoryRuntime {
 
   async close() {
     if (!this.closePromise) {
+      this.changeListeners.clear()
       this.closePromise = Promise.resolve().then(() => this.provider.close?.())
     }
     await this.closePromise

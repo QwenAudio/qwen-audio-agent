@@ -522,8 +522,12 @@ export class RealtimeFrontend {
       injection.response.instructions = String(instructions)
     }
     let contextInjected = false
+    if (contextTiming === 'immediate' && injectContext) {
+      await this.createConversationItem(injection.item)
+      contextInjected = true
+    }
     if (route === 'context') {
-      if (injectContext) {
+      if (injectContext && !contextInjected) {
         await this.enqueueAction(async () => {
           await this.createConversationItem(injection.item)
           contextInjected = true
@@ -534,10 +538,6 @@ export class RealtimeFrontend {
         contextInjected,
         route,
       }
-    }
-    if (contextTiming === 'immediate' && injectContext) {
-      await this.createConversationItem(injection.item)
-      contextInjected = true
     }
     const outcome = await this.enqueueResponse(origin, context, async () => {
       if (shouldRespond && !shouldRespond()) return false

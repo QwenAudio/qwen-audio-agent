@@ -5,6 +5,7 @@ import { ToolCallHandler } from '../src/frontend/tools/tool-call-handler.mjs'
 import { FrontendNotesStore } from '../src/conversation/frontend-notes.mjs'
 import { PermissionPolicy } from '../src/task/permission-policy.mjs'
 import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
+import { REALTIME_PROVIDERS, RealtimeFrontend } from '../src/voice/realtime-provider.mjs'
 
 function harness({
   coordinator,
@@ -27,6 +28,7 @@ function harness({
   frontendToolSources,
   disabledTools,
   getTurnId = () => 'turn-one',
+  getTurnGeneration = () => 1,
 } = {}) {
   const outputs = []
   const toolResultsReady = []
@@ -43,7 +45,7 @@ function harness({
     transcripts,
     getFrontend: () => frontend,
     getTurnId,
-    getTurnGeneration: () => 1,
+    getTurnGeneration,
     backendRuntime: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
       cancel: async taskId => ({ taskId, state: 'cancelled' }),
@@ -205,6 +207,304 @@ test('executes an explicitly enabled state-changing external tool inline', async
     turnId: 'turn-one',
     toolName: 'mcp__cockpit__vehicle_window_control',
   }])
+})
+
+function responseToolSource(names, execute) {
+  return {
+    tools: () => names.map(name => ({
+      name,
+      definition: {
+        type: 'function',
+        function: { name, parameters: { type: 'object', properties: {} } },
+      },
+      policy: { maxCallsPerTurn: 4, maxResultBytes: 2_048 },
+    })),
+    execute,
+  }
+}
+
+function responseToolCall(handler, callId, name, responseId = 'response-tools', args = {}) {
+  return handler.handle({
+    call_id: callId,
+    name,
+    response_id: responseId,
+    arguments: JSON.stringify(args),
+  }, { turnId: 'turn-one', turnGeneration: 1, responseId })
+}
+
+test('waits for all external results and response.done before one follow-up', async () => {
+  const slow = Promise.withResolvers()
+  const names = ['mcp__car__climate', 'mcp__car__window', 'mcp__car__light']
+  const completed = []
+  const kit = harness({ frontendToolSources: [responseToolSource(names, async name => {
+    if (name === names[0]) await slow.promise
+    completed.push(name)
+    if (name === names[2]) throw new Error('device unavailable')
+    return { status: 'ok', name }
+  })] })
+
+  const first = responseToolCall(kit.handler, 'slow', names[0])
+  await Promise.all([
+    responseToolCall(kit.handler, 'fast', names[1]),
+    responseToolCall(kit.handler, 'failed', names[2]),
+  ])
+  await kit.handler.finishToolResponse('response-tools')
+  assert.deepEqual(completed, [names[1], names[2]])
+  assert.equal(kit.outputs.length, 2)
+  assert.equal(kit.outputs[1][1].error_code, 'external_tool_unavailable')
+  assert.equal(kit.ensuredResponses.length, 0)
+
+  slow.resolve()
+  await first
+  assert.deepEqual(kit.outputs.map(output => output[0]), ['fast', 'failed', 'slow'])
+  assert.ok(kit.outputs.every(output => output[3].createResponse === false))
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('a single external result waits for source completion without changing uncorrelated calls', async () => {
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async () => ({ status: 'ok' }))] })
+  await responseToolCall(kit.handler, 'single', name)
+  assert.equal(kit.outputs[0][3].createResponse, false)
+  assert.equal(kit.ensuredResponses.length, 0)
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.ensuredResponses.length, 1)
+
+  await responseToolCall(kit.handler, 'legacy', name, '', { action: 'close' })
+  assert.equal(kit.outputs[1][3].createResponse, undefined)
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('batches normal built-ins, deferred memory tools and MCP in the same response', async () => {
+  const slow = Promise.withResolvers()
+  const name = 'mcp__car__window'
+  const kit = harness({
+    frontendToolSources: [responseToolSource([name], () => slow.promise)],
+    memoryStore: { apply: () => ({ changed: 1, documents: [] }) },
+  })
+  // A normal built-in can arrive first, before MCP or an existing deferred tool.
+  await responseToolCall(kit.handler, 'time', 'get_current_time')
+  const external = responseToolCall(kit.handler, 'window', name)
+  await responseToolCall(kit.handler, 'memory', 'memory', 'response-tools', {
+    action: 'append', document: 'memory', content: '- 喜欢安静',
+  })
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.ensuredResponses.length, 0)
+  slow.resolve({ status: 'ok' })
+  await external
+  assert.equal(kit.outputs.length, 3)
+  assert.ok(kit.outputs.every(output => output[3].createResponse === false))
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('an early spoken acknowledgement does not swallow pending external results', async () => {
+  const slow = Promise.withResolvers()
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], () => slow.promise)] })
+  const pending = responseToolCall(kit.handler, 'window', name)
+  assert.equal(kit.handler.requiresToolResultSummary('response-tools'), true)
+  await kit.handler.finishToolResponse('response-tools', { sourceHasSpeech: true })
+  slow.resolve({ status: 'ok' })
+  await pending
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('slow built-in searches are marked as result-bearing before response.done', async () => {
+  const result = Promise.withResolvers()
+  const kit = harness({ frontendRetrieval: {
+    capabilities: () => ['web-search'],
+    search: () => result.promise,
+  } })
+  const pending = responseToolCall(kit.handler, 'search', 'web_search', 'response-tools', { query: '天气' })
+  assert.equal(kit.handler.requiresToolResultSummary('response-tools'), true)
+  await kit.handler.finishToolResponse('response-tools', { sourceHasSpeech: true })
+  assert.equal(kit.ensuredResponses.length, 0)
+  result.resolve({ status: 'ok', text: '晴天' })
+  await pending
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('memory reads need their results even after speech, but automatic writes stay quiet', async () => {
+  const result = Promise.withResolvers()
+  const kit = harness({ memoryStore: {
+    query: () => result.promise,
+    apply: () => ({ changed: 1, documents: [] }),
+  } })
+  const pending = responseToolCall(kit.handler, 'read', 'memory', 'response-read', {
+    action: 'read', query: '我的偏好',
+  })
+  assert.equal(kit.handler.requiresToolResultSummary('response-read'), true)
+  await kit.handler.finishToolResponse('response-read', { sourceHasSpeech: true })
+  result.resolve({ memories: [], context: '用户喜欢安静' })
+  await pending
+  assert.equal(kit.ensuredResponses.length, 1)
+
+  await responseToolCall(kit.handler, 'write', 'memory', 'response-write', {
+    action: 'append', document: 'memory', content: '- 喜欢安静',
+  })
+  assert.equal(kit.handler.requiresToolResultSummary('response-write'), false)
+  await kit.handler.finishToolResponse('response-write', { sourceHasSpeech: true })
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('mixed cancellation receipts retain their constraints without hiding other tool results', async () => {
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async () => ({ status: 'ok' }))] })
+  await Promise.all([
+    responseToolCall(kit.handler, 'cancel', 'cancel_agent_task'),
+    responseToolCall(kit.handler, 'window', name),
+  ])
+  await kit.handler.finishToolResponse('response-tools', { sourceHasSpeech: true })
+  assert.equal(kit.ensuredResponses.length, 1)
+  const instructions = kit.ensuredResponses[0][1].response.instructions
+  assert.match(instructions, /不要再次查询或取消/)
+  assert.match(instructions, /单项工具的回执说明仅约束该工具/)
+  assert.match(instructions, /全部工具的实际结果合并回复/)
+})
+
+test('explicitly silent tools remain silent after their source response completes', async () => {
+  const kit = harness({ presenceController: {
+    supportsSleep: () => true,
+    requestSleep: async () => {},
+  } })
+  await responseToolCall(kit.handler, 'sleep', 'enter_sleep')
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.outputs[0][1].status, 'sleeping')
+  assert.equal(kit.outputs[0][3].createResponse, false)
+  assert.equal(kit.ensuredResponses.length, 0)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+})
+
+test('cancelled source responses backfill results but never start a follow-up', async () => {
+  const slow = Promise.withResolvers()
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], () => slow.promise)] })
+  const pending = responseToolCall(kit.handler, 'window', name)
+  await kit.handler.finishToolResponse('response-tools', { suppressResponse: true })
+  slow.resolve({ status: 'ok' })
+  await pending
+  assert.equal(kit.outputs.length, 1)
+  assert.equal(kit.ensuredResponses.length, 0)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+})
+
+test('old-turn results cannot start or retain a queued follow-up after interruption', async () => {
+  let generation = 1
+  const slow = Promise.withResolvers()
+  const name = 'mcp__car__window'
+  const kit = harness({
+    getTurnGeneration: () => generation,
+    frontendToolSources: [responseToolSource([name], (_name, args) => (
+      args.slow ? slow.promise : { status: 'ok' }
+    ))],
+  })
+  await responseToolCall(kit.handler, 'first', name)
+  await kit.handler.finishToolResponse('response-tools')
+  const queuedGuard = kit.ensuredResponses[0][1].shouldCreate
+  assert.equal(queuedGuard(), true)
+  const pending = responseToolCall(kit.handler, 'slow', name, 'response-later', { slow: true })
+  await kit.handler.finishToolResponse('response-later')
+  generation = 2
+  slow.resolve({ status: 'ok' })
+  await pending
+  assert.equal(queuedGuard(), false)
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('failed result delivery closes the batch instead of replying with missing results', async () => {
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async () => ({ status: 'ok' }))] })
+  kit.handler.getFrontend = () => ({
+    sendFunctionOutput: async () => { throw new Error('connection closed') },
+    ensureResponse: async () => { assert.fail('must not request a response') },
+  })
+  await assert.rejects(responseToolCall(kit.handler, 'window', name), /connection closed/)
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+})
+
+test('later model responses get their own result batch while duplicate call IDs remain ignored', async () => {
+  const executed = []
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async (_name, args) => {
+    executed.push(args.action)
+    return { status: 'ok' }
+  })] })
+  await responseToolCall(kit.handler, 'open', name, 'response-open', { action: 'open' })
+  await kit.handler.finishToolResponse('response-open')
+  await responseToolCall(kit.handler, 'close', name, 'response-close', { action: 'close' })
+  await responseToolCall(kit.handler, 'close', name, 'response-close', { action: 'close' })
+  await kit.handler.finishToolResponse('response-close')
+  assert.deepEqual(executed, ['open', 'close'])
+  assert.equal(kit.outputs.length, 2)
+  assert.equal(kit.ensuredResponses.length, 2)
+})
+
+test('the provider sends every function output before the single result response', async () => {
+  const slow = Promise.withResolvers()
+  const names = ['mcp__car__climate', 'mcp__car__window']
+  const kit = harness({ frontendToolSources: [responseToolSource(names, async name => {
+    if (name === names[0]) await slow.promise
+    return { status: 'ok', name }
+  })] })
+  const frontend = new RealtimeFrontend({ provider: REALTIME_PROVIDERS.qwen })
+  const sent = []
+  frontend.ready = true
+  // A local wire-level peer acknowledges items and the final response; no
+  // socket, cloud service or paid model is involved.
+  frontend.send = payload => {
+    sent.push(payload)
+    queueMicrotask(() => {
+      if (payload.type === 'conversation.item.create') {
+        frontend.handleLifecycle({ type: 'conversation.item.created', item: payload.item })
+      } else if (payload.type === 'response.create') {
+        frontend.handleLifecycle({ type: 'response.created', response: { id: 'summary' } })
+        frontend.handleLifecycle({ type: 'response.done', response: { id: 'summary', status: 'completed' } })
+      }
+    })
+  }
+  kit.handler.getFrontend = () => frontend
+  frontend.handleLifecycle({ type: 'response.created', response: { id: 'response-tools' } })
+  const pending = [
+    responseToolCall(kit.handler, 'slow', names[0]),
+    responseToolCall(kit.handler, 'fast', names[1]),
+  ]
+  await kit.handler.finishToolResponse('response-tools')
+  frontend.handleLifecycle({ type: 'response.done', response: { id: 'response-tools', status: 'completed' } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+  assert.equal(sent[0].item.call_id, 'fast')
+  slow.resolve()
+  await Promise.all(pending)
+  assert.deepEqual(sent.map(event => event.type), [
+    'conversation.item.create', 'conversation.item.create', 'response.create',
+  ])
+  assert.equal(sent[1].item.call_id, 'slow')
+  assert.equal(frontend.conversationItemWaiters.size, 0)
+  assert.equal(frontend.pendingResponses.length, 0)
+})
+
+test('batched status results retain task-notification acknowledgement context', async () => {
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async () => ({ status: 'ok' }))] })
+  const task = kit.manager.create({
+    objective: '查询内存', ownerId: 'owner', sessionId: 'voice',
+    runner: async () => ({ content: '24 GB' }),
+  })
+  await kit.manager.wait(task.id)
+  await Promise.all([
+    responseToolCall(kit.handler, 'status', 'get_agent_task_status'),
+    responseToolCall(kit.handler, 'window', name),
+  ])
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.deepEqual(kit.ensuredResponses[0][0], {
+    turnId: 'turn-one', turnGeneration: 1,
+    taskId: task.id, taskIds: [task.id], consumesTaskNotification: true,
+  })
 })
 
 function taskForId(manager, taskId) {
@@ -588,7 +888,7 @@ test('suppresses the receipt reply when the original response already spoke', as
     responseId: 'response-spoken-before-tool',
   })
   await kit.handler.finishToolResponse('response-spoken-before-tool', {
-    suppressResponse: true,
+    sourceHasSpeech: true,
   })
 
   assert.equal(kit.outputs[0][1].status, 'accepted')
@@ -629,7 +929,8 @@ test('accepts distinct spawn_thinking calls from one realtime response', async (
     output[1].message === '工作已受理，请自然确认一次，不要再次调用工具。'
   )))
   assert.equal(kit.ensuredResponses.length, 1)
-  assert.equal(kit.ensuredResponses[0][1], undefined)
+  assert.equal(kit.ensuredResponses[0][1].response, undefined)
+  assert.equal(kit.ensuredResponses[0][1].shouldCreate(), true)
   await Promise.all(kit.manager.list({ ownerId: 'owner' }).map(task => (
     kit.manager.wait(task.id)
   )))
@@ -907,6 +1208,29 @@ test('does not execute a disabled tool even if the model still sends its call', 
   })
   assert.equal(calls, 0)
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+})
+
+test('rejects unavailable memory with null arguments and clears call tracking', async () => {
+  const kit = harness()
+  const responseId = 'response-unavailable-memory'
+  const execution = await kit.handler.handle({
+    call_id: 'memory-null-arguments',
+    response_id: responseId,
+    name: 'memory',
+    arguments: 'null',
+  })
+
+  assert.equal(execution.executed, false)
+  assert.equal(execution.limit.reason, 'tool_unavailable')
+  assert.equal(kit.outputs.length, 1)
+  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+  assert.equal(kit.outputs[0][1].retryable, false)
+  assert.equal(kit.handler.activeToolEntries.size, 0)
+  assert.equal(kit.handler.activeToolDebugEntries.size, 0)
+
+  await kit.handler.finishToolResponse(responseId)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+  assert.equal(kit.ensuredResponses.length, 1)
 })
 
 test('search and page reading compose inline without a backend or created work', async () => {

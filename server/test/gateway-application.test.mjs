@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
-import { once } from 'node:events'
+import { EventEmitter, once } from 'node:events'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import test from 'node:test'
-import WebSocket from 'ws'
+import WebSocket, { WebSocketServer } from 'ws'
 import { createGatewayApplication } from '../src/app/gateway-application.mjs'
 import { GATEWAY_CLIENT_REVOKED_CLOSE_CODE } from '../../shared/protocol/gateway-client-protocol.mjs'
+import { GatewayClient } from '../../shared/gateway/client-sdk.mjs'
 import { decodeGatewayDirectConnection } from '../../shared/gateway/remote-access.mjs'
 import { config } from '../src/core/config.mjs'
 import { createRealtimeProviderRegistry } from '../src/voice/providers/provider-registry.mjs'
@@ -16,6 +17,10 @@ import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
 import { SessionJournalRegistry } from '../src/session/session-journal-registry.mjs'
 import { TaskManager } from '../src/task/task-manager.mjs'
 import { TaskStore } from '../src/task/task-store.mjs'
+import { FrontendMemoryRuntime } from '../src/memory/runtime.mjs'
+import { MarkdownMemoryProvider } from '../src/memory/providers/markdown/provider.mjs'
+import { MarkdownContextStore } from '../src/memory/providers/markdown/context-store.mjs'
+import { buildMemoryContext } from '../src/memory/context.mjs'
 
 function createTestGatewayApplication(options = {}) {
   // Application tests must never inherit the process-wide production task
@@ -1039,6 +1044,228 @@ test('serves and edits frontend memory through the generic client control plane'
   } finally {
     await application.close()
   }
+})
+
+test('API memory edits refresh only the owning live Realtime session without reconnecting', { timeout: 10_000 }, async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-live-memory-'))
+  const ownerId = 'live-memory-owner'
+  const sessionId = 'live-memory-session'
+  const preference = '- 用户找餐厅时优先推荐川菜'
+  const userStore = new MarkdownContextStore({
+    filePath: join(directory, 'USER.md'), scope: 'user', personalOwnerId: ownerId,
+  })
+  userStore.persist(ownerId, `# USER\n\n${preference}\n`)
+  const frontendMemory = new FrontendMemoryRuntime({
+    provider: new MarkdownMemoryProvider({ userStore }),
+  })
+  let subscriptions = 0
+  const subscribe = frontendMemory.subscribe.bind(frontendMemory)
+  t.mock.method(frontendMemory, 'subscribe', listener => {
+    subscriptions += 1
+    const unsubscribe = subscribe(listener)
+    let active = true
+    return () => {
+      if (active) subscriptions -= 1
+      active = false
+      unsubscribe()
+    }
+  })
+
+  const upstream = new WebSocketServer({ host: '127.0.0.1', port: 0 })
+  const upstreamEvents = new EventEmitter()
+  const updates = []
+  const upstreamConnections = []
+  let socket
+  let memoryPanel
+  let application
+  t.after(async () => {
+    socket?.terminate()
+    memoryPanel?.stop()
+    await application?.close()
+    for (const client of upstream.clients) client.terminate()
+    await new Promise(resolve => upstream.close(resolve))
+    rmSync(directory, { recursive: true, force: true })
+  })
+  await once(upstream, 'listening', { signal: t.signal })
+  upstream.on('connection', client => {
+    upstreamConnections.push(client)
+    client.on('message', raw => {
+      const message = JSON.parse(raw.toString())
+      if (message.type !== 'session.update') return
+      updates.push({ client, message })
+      client.send(JSON.stringify({ type: 'session.updated' }))
+      upstreamEvents.emit('session.update', message)
+    })
+    client.send(JSON.stringify({ type: 'session.created' }))
+  })
+  const provider = {
+    key: 'memory-test', label: 'Memory Test', visibility: 'gateway-only',
+    inputSampleRate: 16000, outputSampleRate: 24000,
+    protocol: openAiCompatibleProtocol,
+    model: () => 'memory-fixture', voice: () => null,
+    isConfigured: () => true,
+    url: () => `ws://127.0.0.1:${upstream.address().port}/realtime`,
+    headers: () => ({}), classifyError: () => 'other',
+    buildSession: ({ agentContext }) => ({ instructions: buildMemoryContext(agentContext) }),
+    buildSpeakResponse: () => ({}), buildResultInjection: () => ({}),
+    buildPermissionInjection: () => ({}),
+  }
+  application = createTestGatewayApplication({
+    config: {
+      ...config, host: '127.0.0.1', port: 0, personalOwnerId: ownerId,
+      dataDirectory: directory, stateDirectory: join(directory, 'state'),
+      gatewayDeviceStatePath: join(directory, 'devices.json'),
+      gatewayAccessToken: '', gatewayAccessKeys: '',
+      memoryAutoEnabled: false, preferenceLearningEnabled: false,
+      sessionDigestEnabled: false, domainLibraryEnabled: false,
+      reminderSchedulerEnabled: false, sleepTimeoutMs: 0,
+      webSearchProvider: 'none', webSearchMcpUrl: '',
+    },
+    parentPort: null, autoStart: false,
+    frontendMemory, frontendMcp: null, frontendOpenApi: null,
+    realtimeProviderRegistry: createRealtimeProviderRegistry({ providers: [provider] }),
+    realtimeProvider: provider.key,
+  })
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening', { signal: t.signal })
+  const { port } = application.server.address()
+  socket = new WebSocket(`ws://127.0.0.1:${port}/api/realtime?sessionId=${sessionId}`)
+  const clientEvents = new EventEmitter()
+  const memoryNotifications = []
+  socket.on('message', raw => {
+    const event = JSON.parse(raw.toString())
+    if (event.type === 'memory.changed') memoryNotifications.push(event)
+    clientEvents.emit(event.type, event)
+  })
+  await once(socket, 'open', { signal: t.signal })
+  const ready = once(clientEvents, 'voice.ready', { signal: t.signal })
+  socket.send(JSON.stringify({ type: 'connect', inputEnabled: true, outputEnabled: true }))
+  await ready
+  assert.equal(subscriptions, 1)
+  assert.equal(updates.length, 1)
+  assert.match(updates[0].message.session.instructions, /优先推荐川菜/u)
+
+  const listed = await requestJson({ port, path: '/api/memory' })
+  const userDocument = listed.body.documents.find(document => document.scope === 'user')
+  const refreshed = once(upstreamEvents, 'session.update', { signal: t.signal })
+  const memoryDeleted = once(clientEvents, 'memory.changed', { signal: t.signal })
+  const removed = await requestJson({
+    port, path: '/api/memory', method: 'PATCH',
+    body: { changes: [{
+      document: 'user', expectedRevision: userDocument.revision,
+      edits: [{ old_text: preference, new_text: '' }],
+    }] },
+  })
+  assert.equal(removed.status, 200)
+  assert.equal(removed.body.changed, 1)
+  assert.deepEqual((await memoryDeleted)[0], { type: 'memory.changed' })
+  const [updated] = await refreshed
+  assert.doesNotMatch(updated.session.instructions, /优先推荐川菜/u)
+  assert.match(updated.session.instructions, /<user_preferences revision=/u)
+  assert.equal(updates.length, 2)
+  assert.equal(updates[1].client, upstreamConnections[0])
+  assert.equal(upstreamConnections.length, 1)
+
+  // A pong is an ordered transport barrier, avoiding arbitrary sleeps when
+  // checking that these changes did not produce a session.update frame.
+  const flushUpstream = async () => {
+    const pong = once(upstreamConnections[0], 'pong', { signal: t.signal })
+    upstreamConnections[0].ping()
+    await pong
+    const clientPong = once(socket, 'pong', { signal: t.signal })
+    socket.ping()
+    await clientPong
+  }
+  await frontendMemory.apply('another-owner', [{
+    document: 'user', append: '- 另一个用户喜欢粤菜',
+  }], { source: 'gateway-memory-api' })
+  await flushUpstream()
+  assert.equal(updates.length, 2, 'another owner must not refresh this session')
+  assert.equal(memoryNotifications.length, 1, 'another owner must not invalidate this client')
+
+  const noOp = await requestJson({
+    port, path: '/api/memory', method: 'PATCH',
+    body: { changes: [{ document: 'user', edits: [{ old_text: '# USER', new_text: '# USER' }] }] },
+  })
+  assert.equal(noOp.status, 200)
+  assert.equal(noOp.body.changed, 0)
+  await flushUpstream()
+  assert.equal(updates.length, 2, 'a no-op must not refresh the session')
+  assert.equal(memoryNotifications.length, 1, 'a no-op must not invalidate the client')
+
+  const stale = await requestJson({
+    port, path: '/api/memory', method: 'PATCH',
+    body: { changes: [{ document: 'user', expectedRevision: userDocument.revision, append: preference }] },
+  })
+  assert.equal(stale.status, 409)
+  await flushUpstream()
+  assert.equal(memoryNotifications.length, 1, 'a rejected write must not invalidate the client')
+
+  const memoryRestored = once(clientEvents, 'memory.changed', { signal: t.signal })
+  const restored = await frontendMemory.apply(ownerId, [{
+    document: 'user', append: preference,
+  }], { source: 'realtime-tool', sessionId })
+  assert.equal(restored.changed, 1)
+  await memoryRestored
+  await flushUpstream()
+  assert.equal(updates.length, 2, 'same-session tool writes must remain cache-only')
+  assert.equal(memoryNotifications.length, 2, 'cache-only tool writes must still invalidate the client')
+
+  const nextRefresh = once(upstreamEvents, 'session.update', { signal: t.signal })
+  const editedAgain = await requestJson({
+    port, path: '/api/memory', method: 'PATCH',
+    body: { changes: [{ document: 'user', append: '- 用户希望回答简短' }] },
+  })
+  assert.equal(editedAgain.status, 200)
+  const [latest] = await nextRefresh
+  assert.match(latest.session.instructions, /优先推荐川菜/u)
+  assert.match(latest.session.instructions, /回答简短/u)
+  assert.equal(upstreamConnections.length, 1, 'memory refresh must not restart the provider connection')
+  assert.equal(socket.readyState, WebSocket.OPEN)
+
+  await flushUpstream()
+  assert.equal(memoryNotifications.length, 3)
+  const automaticWrite = once(clientEvents, 'memory.changed', { signal: t.signal })
+  await frontendMemory.apply(ownerId, [{
+    document: 'user', append: '- 用户通常周末外出就餐',
+  }], { source: 'automatic-extraction' })
+  await automaticWrite
+  const latestMemory = await requestJson({ port, path: '/api/memory' })
+  assert.match(latestMemory.body.documents[0].content, /周末外出就餐/u)
+  assert.equal(memoryNotifications.length, 4, 'automatic extraction must invalidate without a tool.call event')
+  assert.ok(memoryNotifications.every(event => Object.keys(event).join(',') === 'type'),
+    'invalidation notifications must not contain private memory content or owner identifiers')
+  const disconnected = once(socket, 'close', { signal: t.signal })
+  socket.close()
+  await disconnected
+
+  // Reconnect as a muted client through the real GCP/SDK path. The Gateway
+  // leases only one Client per owner, so close the legacy connection first.
+  const panelEvents = new EventEmitter()
+  memoryPanel = new GatewayClient({
+    url: `ws://127.0.0.1:${port}/api/realtime?sessionId=memory-panel-session`,
+    createSocket: url => new WebSocket(url),
+    clientType: 'web', clientInstanceId: 'memory-panel', reconnect: false,
+    configure: () => ({ inputEnabled: false, outputEnabled: false, textOnly: false }),
+    onStatus: status => panelEvents.emit(status.state),
+    onEvent: event => panelEvents.emit(event.type, event),
+  })
+  const panelReady = once(panelEvents, 'ready', { signal: t.signal })
+  memoryPanel.start()
+  await panelReady
+  assert.equal(subscriptions, 1)
+  const panelChanged = once(panelEvents, 'memory.changed', { signal: t.signal })
+  await frontendMemory.apply(ownerId, [{
+    document: 'user', append: '- 用户喜欢步行可达的餐厅',
+  }], { source: 'automatic-extraction' })
+  const [notification] = await panelChanged
+  assert.equal(notification.type, 'memory.changed')
+  assert.ok(notification.event_id)
+  assert.deepEqual(Object.keys(notification).sort(), ['event_id', 'type'])
+  assert.equal(upstreamConnections.length, 1, 'a muted memory panel must not start a model session')
+  memoryPanel.stop()
+  await application.close()
+  assert.equal(subscriptions, 0, 'closing the session must release its memory subscription')
 })
 
 // 接线契约：新增的记忆模块默认关闭，显式开启时才装配。

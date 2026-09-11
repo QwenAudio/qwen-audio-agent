@@ -744,6 +744,23 @@ export function attachRealtimeGateway(server, {
       }
     }
     const toolCallTimings = new Map()
+    // Client-side edits are not present in the model's conversation. Refresh
+    // the owner's live memory snapshot after persistence, including deletion.
+    // Same-session tool writes already return the new documents to the model;
+    // retain their existing cache-only path to avoid a redundant prompt update.
+    const unsubscribeMemory = typeof memoryService?.subscribe === 'function'
+      ? memoryService.subscribe(event => {
+          if (event.ownerId !== ownerId) return
+          // Persistence changes invalidate the client view regardless of their
+          // source or whether this session needs a model-instruction refresh.
+          send(ws, { type: GatewayServerEvent.MEMORY_CHANGED })
+          realtimeSession.updateAgentContext({
+            memories: memoryService.list(ownerId, { limit: 64 }),
+          }, {
+            refreshSession: event.source !== 'realtime-tool' || event.sessionId !== sessionId,
+          })
+        })
+      : () => {}
     const toolCalls = new ToolCallHandler({
       taskManager,
       ownerId,
@@ -762,9 +779,14 @@ export function attachRealtimeGateway(server, {
       // 记忆写入只刷新缓存，不重发 session.update：改 instructions 等于改 prompt
       // 前缀，会让整场会话的前缀缓存失效，而用户刚说过的内容本来就在上下文里，
       // 不必靠 instructions 再讲一遍。新值在下一个新会话生效。
-      onMemoryChanged: () => realtimeSession.updateAgentContext({
-        memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-      }, { refreshSession: false }),
+      onMemoryChanged: () => {
+        realtimeSession.updateAgentContext({
+          memories: memoryService?.list(ownerId, { limit: 64 }) || [],
+        }, { refreshSession: false })
+        if (typeof memoryService?.subscribe !== 'function') {
+          send(ws, { type: GatewayServerEvent.MEMORY_CHANGED })
+        }
+      },
       backendRuntime,
       backendAvailability,
       respondAuthorization,
@@ -1800,6 +1822,7 @@ export function attachRealtimeGateway(server, {
       connections?.delete(voiceClient)
       if (!connections?.size) voiceConnections.delete(ownerId)
       unsubscribeTasks()
+      unsubscribeMemory()
       clearResponseCandidate()
       turns.close()
       transcripts.close()

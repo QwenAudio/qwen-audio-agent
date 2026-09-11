@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { GatewayServerEvent } from '../shared/protocol/realtime-events.mjs'
 import {
   AguiEventType,
   parseAguiGatewayEvent,
@@ -135,6 +136,13 @@ test('validates voice and task messages in the server direction', () => {
     content: 'Answer',
     citations: [{ ...citation, url: 'https://user:secret@example.com/' }],
   }).success, false)
+})
+
+test('memory changes are payload-free server invalidations, not client commands', () => {
+  assert.equal(GatewayServerEvent.MEMORY_CHANGED, 'memory.changed')
+  const notification = { type: GatewayServerEvent.MEMORY_CHANGED }
+  assert.deepEqual(parseGatewayServerMessage(notification), notification)
+  assert.equal(GatewayClientMessageSchema.safeParse(notification).success, false)
 })
 
 test('preserves protocol-neutral backend observations and safe permission details', () => {

@@ -228,6 +228,29 @@ test('projects navigation progress and route state separately', async () => {
     'planning_route',
     'navigation_started',
   ])
+  assert.deepEqual(activities[1].item, {
+    role: 'destination',
+    name: '西湖',
+    location: '120.1,30.2',
+  })
+  assert.deepEqual(activities[3].item, {
+    role: 'waypoint',
+    index: 0,
+    name: '黄龙体育中心',
+    location: '120.2,30.3',
+  })
+  assert.deepEqual(activities[5].item, {
+    role: 'waypoint',
+    index: 1,
+    name: '城西银泰',
+    location: '120.2,30.3',
+  })
+  assert.deepEqual(activities[7].route, {
+    destination: '西湖',
+    destinationLocation: '120.1,30.2',
+    waypoints: ['黄龙体育中心', '城西银泰'],
+    waypointLocations: ['120.2,30.3', '120.2,30.3'],
+  })
 })
 
 test('persists a route preference before a destination is selected', async () => {

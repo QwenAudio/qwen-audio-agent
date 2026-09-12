@@ -160,23 +160,35 @@ async function createRoutePlan({
 }) {
   const { cockpitId, onActivity, services, snapshot, store } = context
   const origin = currentOrigin(snapshot())
-  reportActivity(onActivity, 'navigation', 'searching_destination', '正在查找目的地')
+  reportActivity(onActivity, 'navigation', 'searching_destination', '正在查找目的地', {
+    item: { role: 'destination', name: destination },
+  })
   const destinationLocation = await resolvePlace(destination, DEFAULT_ORIGIN.city, services)
   if (!destinationLocation) {
-    reportActivity(onActivity, 'navigation', 'destination_not_found', `没有找到${destination}`)
+    reportActivity(onActivity, 'navigation', 'destination_not_found', `没有找到${destination}`, {
+      item: { role: 'destination', name: destination },
+    })
     return toolResult(`无法找到“${destination}”的位置信息`, snapshot(), [])
   }
-  reportActivity(onActivity, 'navigation', 'destination_locked', `已找到${destination}`)
+  reportActivity(onActivity, 'navigation', 'destination_locked', `已找到${destination}`, {
+    item: { role: 'destination', name: destination, location: destinationLocation },
+  })
   const waypointLocations = []
-  for (const waypoint of waypoints) {
-    reportActivity(onActivity, 'navigation', 'searching_waypoint', `正在查找途经点${waypoint}`)
+  for (const [index, waypoint] of waypoints.entries()) {
+    reportActivity(onActivity, 'navigation', 'searching_waypoint', `正在查找途经点${waypoint}`, {
+      item: { role: 'waypoint', index, name: waypoint },
+    })
     const location = await resolvePlace(waypoint, DEFAULT_ORIGIN.city, services)
     if (!location) {
-      reportActivity(onActivity, 'navigation', 'waypoint_not_found', `没有找到${waypoint}`)
+      reportActivity(onActivity, 'navigation', 'waypoint_not_found', `没有找到${waypoint}`, {
+        item: { role: 'waypoint', index, name: waypoint },
+      })
       return toolResult(`无法找到途经点“${waypoint}”的位置信息`, snapshot(), [])
     }
     waypointLocations.push(location)
-    reportActivity(onActivity, 'navigation', 'waypoint_locked', `已找到途经点${waypoint}`)
+    reportActivity(onActivity, 'navigation', 'waypoint_locked', `已找到途经点${waypoint}`, {
+      item: { role: 'waypoint', index, name: waypoint, location },
+    })
   }
   reportActivity(onActivity, 'navigation', 'planning_route', '正在规划路线')
   const route = await planRoute(origin, destinationLocation, waypointLocations, strategy, context)
@@ -194,7 +206,14 @@ async function createRoutePlan({
     route,
   })
   const activityStatus = name === 'navigation_start' ? 'navigation_started' : 'route_ready'
-  reportActivity(onActivity, 'navigation', activityStatus, name === 'navigation_start' ? '开始导航' : '路线规划好了')
+  reportActivity(onActivity, 'navigation', activityStatus, name === 'navigation_start' ? '开始导航' : '路线规划好了', {
+    route: {
+      destination,
+      destinationLocation,
+      waypoints,
+      waypointLocations,
+    },
+  })
   const prefix = name === 'navigation_start' ? '已开始导航到' : '已规划到'
   return toolResult(
     routeContent(prefix, destination, waypoints, route),
@@ -230,7 +249,14 @@ async function replanExistingRoute({
     strategy,
     route,
   })
-  reportActivity(onActivity, 'navigation', 'route_ready', '路线已更新')
+  reportActivity(onActivity, 'navigation', 'route_ready', '路线已更新', {
+    route: {
+      destination,
+      destinationLocation,
+      waypoints,
+      waypointLocations,
+    },
+  })
   return { state, route }
 }
 
@@ -247,14 +273,20 @@ async function addWaypoint(args, context) {
   const existing = await resolveExistingRouteLocations(state.navigation, services)
   if (!existing) return toolResult('当前路线信息不完整，请重新发起导航', state, [], { navigation: state.navigation })
 
-  reportActivity(onActivity, 'navigation', 'searching_waypoint', `正在查找途经点${waypoint}`)
+  const insertIndex = args.insertPosition === 'before_destination' ? state.navigation.waypoints.length : 0
+  reportActivity(onActivity, 'navigation', 'searching_waypoint', `正在查找途经点${waypoint}`, {
+    item: { role: 'waypoint', index: insertIndex, name: waypoint },
+  })
   const waypointLocation = await resolvePlace(waypoint, DEFAULT_ORIGIN.city, services)
   if (!waypointLocation) {
-    reportActivity(onActivity, 'navigation', 'waypoint_not_found', `没有找到${waypoint}`)
+    reportActivity(onActivity, 'navigation', 'waypoint_not_found', `没有找到${waypoint}`, {
+      item: { role: 'waypoint', index: insertIndex, name: waypoint },
+    })
     return toolResult(`无法找到途经点“${waypoint}”的位置信息`, snapshot(), [])
   }
-  reportActivity(onActivity, 'navigation', 'waypoint_locked', `已找到途经点${waypoint}`)
-  const insertIndex = args.insertPosition === 'before_destination' ? state.navigation.waypoints.length : 0
+  reportActivity(onActivity, 'navigation', 'waypoint_locked', `已找到途经点${waypoint}`, {
+    item: { role: 'waypoint', index: insertIndex, name: waypoint, location: waypointLocation },
+  })
   const waypoints = [...state.navigation.waypoints]
   const waypointLocations = [...existing.waypointLocations]
   waypoints.splice(insertIndex, 0, waypoint)
@@ -332,13 +364,19 @@ async function changeDestination(args, context) {
   const destination = clean(args.destination)
   if (!destination) return toolResult('请告诉我要把目的地改成哪里', state, [], { navigation: state.navigation })
 
-  reportActivity(onActivity, 'navigation', 'searching_destination', '正在查找目的地')
+  reportActivity(onActivity, 'navigation', 'searching_destination', '正在查找目的地', {
+    item: { role: 'destination', name: destination },
+  })
   const destinationLocation = await resolvePlace(destination, DEFAULT_ORIGIN.city, services)
   if (!destinationLocation) {
-    reportActivity(onActivity, 'navigation', 'destination_not_found', `没有找到${destination}`)
+    reportActivity(onActivity, 'navigation', 'destination_not_found', `没有找到${destination}`, {
+      item: { role: 'destination', name: destination },
+    })
     return toolResult(`无法找到“${destination}”的位置信息`, snapshot(), [])
   }
-  reportActivity(onActivity, 'navigation', 'destination_locked', `已找到${destination}`)
+  reportActivity(onActivity, 'navigation', 'destination_locked', `已找到${destination}`, {
+    item: { role: 'destination', name: destination, location: destinationLocation },
+  })
   const existing = await resolveExistingRouteLocations(state.navigation, services)
   if (!existing) return toolResult('当前路线信息不完整，请重新发起导航', state, [], { navigation: state.navigation })
   const strategy = normalizeStrategy(args.strategy, state.navigation.strategy)

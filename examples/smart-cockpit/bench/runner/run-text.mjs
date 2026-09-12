@@ -59,18 +59,27 @@ async function runCase(caseItem, {
         for (const toolCall of toolCalls) {
           const name = String(toolCall?.function?.name || '')
           const args = harness.parseToolArguments(toolCall)
-          const output = await harness.executeBenchmarkTool({
-            service,
-            cockpitId,
-            calls,
-            turnIndex,
-            name,
-            args,
-          })
+          // A hallucinated or failing tool call must not abort the case: the
+          // call stays recorded for scoring, and the error goes back to the
+          // model like a real tool result, so the remaining turns still run.
+          let content = '座舱操作已完成'
+          try {
+            const output = await harness.executeBenchmarkTool({
+              service,
+              cockpitId,
+              calls,
+              turnIndex,
+              name,
+              args,
+            })
+            content = output.content || content
+          } catch (error) {
+            content = `工具调用失败：${error.message || String(error)}`
+          }
           messages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
-            content: output.content || '座舱操作已完成',
+            content,
           })
         }
         if (round === harness.MAX_MODEL_ROUNDS_PER_TURN - 1) {

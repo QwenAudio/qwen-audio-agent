@@ -215,11 +215,11 @@
         "properties": {
           "query": {
             "type": "string",
-            "description": "地点类别、菜系、食物类别或具体店名等简洁搜索词；不是自然语言需求，不拼入不辣、适合我口味等筛选要求"
+            "description": "地点类别、菜系、食物类别或具体店名等简洁搜索词；地点类别词（餐厅、咖啡店、充电站等）一律填入本字段；不是自然语言需求，不拼入不辣、适合我口味等筛选要求"
           },
           "category": {
             "type": "string",
-            "description": "query 未提供时使用的地点类别关键词，如餐厅、咖啡店、充电站；兼容 restaurant 表示餐厅，不是供应商分类码或口味筛选条件"
+            "description": "兼容后备字段，仅在 query 缺失时使用；新调用一律使用 query。如餐厅、咖啡店、充电站；兼容 restaurant 表示餐厅，不是供应商分类码或口味筛选条件"
           },
           "nearby": {
             "type": "boolean",

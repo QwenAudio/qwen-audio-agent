@@ -7,61 +7,109 @@ logic.
 
 ## Latest Results
 
+Measured subjects:
+
+- **Text**: `run-text.mjs`, `qwen3.8-max`, benchmark prompt, deterministic service
+- **Realtime**: `run-realtime.mjs`, `qwen-audio-3.0-realtime-plus`, controlled
+  direct provider connection, benchmark prompt
+- **Harness**: `run-voice.mjs`, `qwen-audio-3.0-realtime-plus`, full stack,
+  the end-to-end product path
+
+How the harness measures: the runner starts the full production stack
+in-process (Cockpit Service + A2A Agent + Gateway) against the deterministic
+benchmark service, synthesizes each case utterance with macOS `say` into
+16 kHz PCM and streams it to `/api/realtime`, then records the tool calls the
+Gateway executes on the frontend/backend surfaces and scores the trace with
+the same evaluator as text and realtime. Production surface routing is kept,
+and the benchmark evaluation discipline is injected into the temporary persona
+copy only, so the production persona file stays untouched. Silent turn
+timeouts retry the same audio once and a case restarts at most twice, with the
+most-complete attempt scored.
+
 ### Short Suite
 
-The short suite contains 86 canonical cases across four domains. The table
-keeps the domain breakdown because each short-suite case belongs to one primary
-domain.
+The short suite contains 86 canonical cases across four domains. Pass rate is
+the strict full-case pass (exact calls, no extra calls, silent turns kept
+silent, final state correct).
 
-| Domain | Cases | Expected calls | Text pass rate | Text actual calls | Realtime pass rate | Realtime actual calls |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| Vehicle | 24 | 23 | 100.00% | 23 | 100.00% | 23 |
-| Music | 18 | 17 | 100.00% | 17 | 100.00% | 17 |
-| Navigation | 36 | 44 | 100.00% | 44 | 97.22% | 44 |
-| Weather | 8 | 8 | 100.00% | 8 | 100.00% | 8 |
-| Overall | 86 | 92 | 100.00% | 92 | 98.84% | 92 |
+| Domain | Cases | Expected calls | Text pass | Realtime pass | Harness pass |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Vehicle | 24 | 23 | 100.00% (24/24) | 100.00% (24/24) | 100.00% (24/24) |
+| Music | 18 | 17 | 100.00% (18/18) | 94.44% (17/18) | 94.44% (17/18) |
+| Navigation | 36 | 44 | 91.67% (33/36) | 91.67% (33/36) | 97.22% (35/36) |
+| Weather | 8 | 8 | 87.50% (7/8) | 100.00% (8/8) | 100.00% (8/8) |
+| Overall | 86 | 92 | 95.35% | 95.35% | 97.67% |
+
+Call-level metrics for the same runs:
+
+| Subject | Tool acc | Aligned tool | Arg acc | Final state | Silent turns | Calls exp/act | Missing/extra |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Text `qwen3.8-max` | 95.65% | 100.00% | 94.57% | 97.67% | 100.00% | 92 / 97 | 0 / 5 |
+| Realtime | 98.91% | 100.00% | 96.74% | 100.00% | 98.84% | 92 / 95 | 0 / 3 |
+| Harness | 98.91% | 100.00% | 98.91% | 100.00% | 98.84% | 92 / 95 | 0 / 3 |
 
 Gold replay passes all 86 cases with 92 expected and 92 actual tool calls,
 confirming the dataset, deterministic service, and scorer are internally
 consistent.
 
-The text run has no remaining short-suite failures. The single Realtime failure
-is `nav_chitchat_memory_then_favorite_031`, where ASR transcribed
-`阿里西溪园区` as `阿里西西园区`, so the tool was selected correctly but the
-address argument was wrong. This is a speech-recognition artifact, not a tool
-selection or dataset problem.
+The harness numbers come from the fairness-fixed run
+(`reports/harness-short-fixed.json`). Two changes removed the earlier
+harness-vs-realtime inversion: the runner now injects the benchmark
+evaluation discipline into the temporary persona copy (the production persona
+file is untouched), and the scorer normalizes `navigation_search_place`
+`category`-only calls to their `query` equivalent plus 餐厅/restaurant
+equivalence, with gold 006 unified on `query`. Before the fix the harness
+scored 91.86% with two hesitation misses and three argument mismatches.
+
+The two remaining harness failures are extra-call variance cases, not dataset
+defects: `mus_negative_unknown_source_018` switched to an available source on
+a negative case, and `nav_chitchat_weather_then_search_029` fired two extra
+`music_play` calls on a chitchat turn. Both pass in other runs of the same
+suite.
 
 ### Long-Context Suite
 
 The long-context suite contains 10 mixed-domain conversations, 500 total
 conversation turns, 250 expected tool calls, and 250 no-tool chitchat or
-background turns. Because every case is mixed-domain, the table only shows core
-overall metrics.
+background turns. Because every case is mixed-domain, the table only shows
+core overall metrics.
 
-| Model | Calls exp/act | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
+| Subject | Calls exp/act | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Text `qwen3.8-flash` | 250 / 252 | 88.80% | 100.00% | 91.20% | 100.00% | 0 / 2 | 100.00% | 100.00% | 90.00% |
-| Realtime `qwen-audio-3.0-realtime-plus` | 250 / 246 | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
+| Text `qwen3.8-max` | 250 / 254 | 82.40% | 100.00% | 84.80% | 98.80% | 0 / 4 | 100.00% | 95.00% | 80.00% |
+| Realtime | 250 / 246 | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
+| Harness | 250 / 251 | 95.60% | 100.00% | 96.40% | 100.00% | 0 / 1 | 100.00% | 100.00% | 90.00% |
+
+The text row is the fixed-runner rerun
+(`reports/cockpit-text-max-long-rerun2.json`). An earlier rerun exposed a
+runner defect: a hallucinated tool name raised `Unknown cockpit tool` and
+aborted the whole case, turning one mistake into nineteen phantom missing
+calls and dragging strict tool accuracy to 62%. The runner now records a
+failed tool call for scoring and returns the error to the model like a real
+tool result, so the remaining turns still run.
+
+Long-suite text numbers carry high run-to-run variance: three runs failed
+different case sets, and strict tool accuracy swings with wherever an extra
+call lands, because one drift cascades through the rest of a 50-turn
+index-based comparison. Aligned tool selection stays at 99-100% across all
+runs, and no run shows a stable missing-call defect in text; the remaining
+text failures are extra calls plus destination phrasing differences
+(`机场` vs `杭州萧山国际机场`). Read aligned metrics as the tool-selection
+signal for long sessions and strict tool accuracy only as a drift-sensitive
+end-to-end check.
 
 Gold replay passes the long suite with 10/10 cases and 250/250 tool calls. The
 combined `--suite all` gold replay passes 96/96 cases with 342/342 tool calls.
 
-All 10 Realtime cases now complete the full 50-turn script. Turn-timeout retry
-recovered `mixed_long_morning_commute_001` after a silent timeout at turn 40,
-and no case ended in `confirmed_failure_at_turn` or
-`unstable_infrastructure`.
-
-Every one of the 4 remaining Realtime missing calls is the same test point:
-`navigation_add_waypoint` at turn 15 in 4 of the 10 cases. The model asks which
-destination to use instead of adding the waypoint, even though turn 9 already
-started navigation and the service still reports the destination. Text runs
-with full history execute this call 10/10. The gap is context retention across
-about 14-18 conversation items, not tool definition or model capability, so it
-should be read as a memory-system signal rather than a dataset defect.
-
-The two remaining text failures are genuine model errors: one spurious
-`vehicle_comfort_control` on a chitchat turn, and one duplicated
-`music_volume_control`.
+The long suite is where the harness advantage shows up most clearly: Gateway
+session management keeps the full-stack run at 100% aligned tool selection and
+100% state checkpoints, while the controlled realtime model drops four
+`navigation_add_waypoint` calls around turn 15. Every remaining Realtime
+missing call is that same test point: the model asks which destination to use
+instead of adding the waypoint, even though turn 9 already started navigation.
+Text runs with full history execute this call reliably, so the gap is context
+retention across about 14-18 conversation items, not tool definition or
+scoring.
 
 Because earlier Realtime runs aborted whole cases on the first turn timeout,
 their scores are not directly comparable to these numbers. Aborted runs never

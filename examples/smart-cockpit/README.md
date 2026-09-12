@@ -185,3 +185,6 @@ complete migration path.
 - [Peng Zhendong](https://github.com/pengzhendong): provided the original
   cockpit UI and visual assets, including the overall interface design,
   interaction patterns, and related visual materials.
+- [Kong Yuxiang](https://github.com/usionkong): ran the accuracy and timing
+  benchmarks, including the short/long suite measurements across the text,
+  realtime, and full-stack harness paths.

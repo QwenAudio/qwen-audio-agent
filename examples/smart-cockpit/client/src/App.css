@@ -743,6 +743,17 @@ button {
   font-size: 14px;
 }
 
+.route-waypoints {
+  max-width: 250px;
+  margin-top: 4px;
+  color: #7a6a2e;
+  font-size: 13px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .route-destination-title {
   max-width: 230px;
   color: #202a31;
@@ -923,6 +934,29 @@ button {
   animation: poiLabelIn 420ms cubic-bezier(0.2, 0.9, 0.2, 1) 180ms both;
 }
 
+.waypoint-pin {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+}
+
+.waypoint-pin > span {
+  max-width: 112px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.82);
+  box-shadow: 0 6px 14px rgba(109, 98, 47, 0.13);
+  color: #67591f;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: poiLabelIn 380ms cubic-bezier(0.2, 0.9, 0.2, 1) calc(var(--marker-delay, 0ms) + 140ms) both;
+}
+
 .camera-tracking .destination-pin > span {
   opacity: 0.42;
   transform: scale(0.94);
@@ -959,6 +993,7 @@ button {
 
 .marker-pop {
   animation: markerPop 0.52s cubic-bezier(0.2, 1.2, 0.2, 1) both;
+  animation-delay: var(--marker-delay, 0ms);
 }
 
 @keyframes markerPop {

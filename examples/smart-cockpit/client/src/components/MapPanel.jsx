@@ -1,6 +1,11 @@
 import { useRef, useEffect, useMemo, useCallback, useState } from 'react'
 import AMapLoader from '@amap/amap-jsapi-loader'
-import { navigationRouteKey, navigationRouteView } from '../projections/navigation-route'
+import {
+  navigationProgressMarker,
+  navigationRouteCompletionViewMode,
+  navigationRouteKey,
+  navigationRouteView,
+} from '../projections/navigation-route'
 import { routeFlowFrame } from '../projections/route-flow'
 
 window._AMapSecurityConfig = {
@@ -60,6 +65,7 @@ export default function MapPanel({
   const markersRef = useRef([])
   const previewPolylinesRef = useRef([])
   const previewMarkersRef = useRef([])
+  const progressMarkerKeysRef = useRef(new Set())
   const queueRef = useRef([])
   const processingRef = useRef(false)
   const processedCountRef = useRef(0)
@@ -68,7 +74,6 @@ export default function MapPanel({
   const flowRafRef = useRef(null)
   const cameraRafRef = useRef(null)
   const cameraTimersRef = useRef([])
-  const currentViewModeRef = useRef(navState?.viewMode || 'follow')
   const lastAppliedViewModeRef = useRef(navState?.viewMode || 'follow')
   const [cameraStage, setCameraStage] = useState('idle')
   const [mapReady, setMapReady] = useState(false)
@@ -439,14 +444,15 @@ export default function MapPanel({
     if (cameraStage === 'focus' || cameraStage === 'expand') return '查找目的地'
     if (cameraStage === 'destination') return '目的地已锁定'
     if (cameraStage === 'draw') return '路线生成中'
-    if (cameraStage === 'settle') return '准备进入导航'
+    if (cameraStage === 'settle') return '路线全览'
     if (cameraStage === 'tracking') return '导航中'
     return '路线规划'
   }, [cameraStage])
 
   const progressStageLabel = useMemo(() => {
     if (activeNavProgress?.stage === 'searching_destination' || activeNavProgress?.stage === 'searching_waypoint') return '查找目的地'
-    if (activeNavProgress?.stage === 'destination_locked' || activeNavProgress?.stage === 'waypoint_locked') return '目的地已锁定'
+    if (activeNavProgress?.stage === 'waypoint_locked') return '途经点已锁定'
+    if (activeNavProgress?.stage === 'destination_locked') return '目的地已锁定'
     if (activeNavProgress?.stage === 'planning_route') return '路线生成中'
     if (activeNavProgress?.stage === 'route_ready' || activeNavProgress?.stage === 'navigation_started') return '准备进入导航'
     return '路线规划'
@@ -461,8 +467,12 @@ export default function MapPanel({
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;'), [])
 
-  const getDestinationMarkerContent = useCallback((name) => (
-    `<div class="destination-pin"><div class="dest-marker target-lock marker-pop"></div><span>${escapeHtml(name)}</span></div>`
+  const getDestinationMarkerContent = useCallback((name, delayMs = 0) => (
+    `<div class="destination-pin" style="--marker-delay:${delayMs}ms"><div class="dest-marker target-lock marker-pop"></div><span>${escapeHtml(name)}</span></div>`
+  ), [escapeHtml])
+
+  const getWaypointMarkerContent = useCallback((name, index, delayMs = 0) => (
+    `<div class="waypoint-pin" style="--marker-delay:${delayMs}ms"><div class="waypoint-marker marker-pop"></div><span>${escapeHtml(name || `途经点${index + 1}`)}</span></div>`
   ), [escapeHtml])
 
   const applyRouteViewMode = useCallback((viewMode) => {
@@ -504,6 +514,7 @@ export default function MapPanel({
     previewPolylinesRef.current = []
     previewMarkersRef.current.forEach(m => map.remove(m))
     previewMarkersRef.current = []
+    progressMarkerKeysRef.current = new Set()
     queueRef.current = []
     processingRef.current = false
     processedCountRef.current = 0
@@ -531,12 +542,14 @@ export default function MapPanel({
 
       if (next.action === 'add_marker') {
         const [lng, lat] = next.location.split(',').map(Number)
-        const cls = next.role === 'waypoint' ? 'waypoint-marker' : 'dest-marker'
-        const offset = next.role === 'waypoint' ? new AMap.Pixel(-8, -8) : new AMap.Pixel(-10, -10)
+        const content = next.role === 'waypoint'
+          ? getWaypointMarkerContent(next.name, Number(next.index) || 0)
+          : getDestinationMarkerContent(next.name)
+        const offset = next.role === 'waypoint' ? new AMap.Pixel(-24, -28) : new AMap.Pixel(-18, -36)
         const marker = new AMap.Marker({
           position: new AMap.LngLat(lng, lat),
           map,
-          content: `<div class="${cls} marker-pop"></div>`,
+          content,
           offset,
         })
         previewMarkersRef.current.push(marker)
@@ -642,24 +655,25 @@ export default function MapPanel({
           }, CAMERA_FOCUS_DURATION)
 
           scheduleCameraStep(() => {
-            const endMarker = new AMap.Marker({
-              position: points[points.length - 1],
-              map,
-              content: getDestinationMarkerContent(route.destination),
-              offset: new AMap.Pixel(-18, -36),
-            })
-            markersRef.current.push(endMarker)
-
-            for (const location of route.waypointLocations || []) {
+            for (const [index, location] of (route.waypointLocations || []).entries()) {
               const [vLng, vLat] = location.split(',').map(Number)
               const waypointMarker = new AMap.Marker({
                 position: new AMap.LngLat(vLng, vLat),
                 map,
-                content: '<div class="waypoint-marker marker-pop"></div>',
-                offset: new AMap.Pixel(-8, -8),
+                content: getWaypointMarkerContent(route.waypoints?.[index], index, index * 180),
+                offset: new AMap.Pixel(-24, -28),
               })
               markersRef.current.push(waypointMarker)
             }
+
+            const destinationDelayMs = (route.waypointLocations || []).length * 180 + 140
+            const endMarker = new AMap.Marker({
+              position: points[points.length - 1],
+              map,
+              content: getDestinationMarkerContent(route.destination, destinationDelayMs),
+              offset: new AMap.Pixel(-18, -36),
+            })
+            markersRef.current.push(endMarker)
 
             tweenCamera({
               center: points[points.length - 1],
@@ -681,25 +695,16 @@ export default function MapPanel({
                 animateRoute(routeLayers.animated, points, () => {
                   startRouteFlow(points)
                   setCameraStage('settle')
-                  const viewMode = currentViewModeRef.current
-                  if (viewMode === 'overview') {
+                  if (navigationRouteCompletionViewMode(route) === 'overview') {
                     tweenCamera(getFullRouteCamera(points), CAMERA_SETTLE_DURATION)
-                    return
                   }
-                  if (route.status !== 'navigating') return
-                  const followCamera = getFollowCamera(points)
-                  rotateVehiclePuck(followCamera.rotation)
-                  tweenCamera({
-                    ...followCamera,
-                    rotation: viewMode === 'north_up' ? 0 : followCamera.rotation,
-                  }, CAMERA_SETTLE_DURATION, () => setCameraStage('tracking'))
                 })
               }
             }, CAMERA_EXPAND_DURATION + CAMERA_DESTINATION_HOLD)
           }, CAMERA_FOCUS_DURATION + CAMERA_MASK_LEAD)
         }
-      } else if (route.destLocation) {
-        const [lng, lat] = route.destLocation.split(',').map(Number)
+      } else if (route.destinationLocation) {
+        const [lng, lat] = route.destinationLocation.split(',').map(Number)
         const destPos = new AMap.LngLat(lng, lat)
 
         scheduleCameraStep(() => {
@@ -733,10 +738,9 @@ export default function MapPanel({
       scheduleCameraStep(() => setCameraStage('idle'), 0)
       tweenCamera({ center: DEFAULT_CENTER, zoom: 14, pitch: 42, rotation: 0 }, 520)
     }
-  }, [navState?.status, routeInfo, mapReady, clearPreview, clearRouteLayers, createRouteLayers, animateRoute, parsePolyline, clearCameraTimeline, stopRouteFlow, scheduleCameraStep, tweenCamera, calculateBearing, getRouteCamera, getFollowCamera, getFullRouteCamera, getDestinationMarkerContent, startRouteFlow, rotateVehiclePuck])
+  }, [navState?.status, routeInfo, mapReady, clearPreview, clearRouteLayers, createRouteLayers, animateRoute, parsePolyline, clearCameraTimeline, stopRouteFlow, scheduleCameraStep, tweenCamera, calculateBearing, getRouteCamera, getFollowCamera, getFullRouteCamera, getDestinationMarkerContent, getWaypointMarkerContent, startRouteFlow, rotateVehiclePuck])
 
   useEffect(() => {
-    currentViewModeRef.current = navigationViewMode
     if (lastAppliedViewModeRef.current === navigationViewMode) return
     lastAppliedViewModeRef.current = navigationViewMode
     applyRouteViewMode(navigationViewMode)
@@ -746,6 +750,27 @@ export default function MapPanel({
     if (!mapReady || routeInfo || !activeNavProgress) return undefined
 
     const frame = requestAnimationFrame(() => {
+      const marker = navigationProgressMarker(activeNavProgress)
+      if (marker) {
+        const markerKey = `${marker.role}:${marker.index ?? 'destination'}:${marker.location}`
+        if (!progressMarkerKeysRef.current.has(markerKey)) {
+          progressMarkerKeysRef.current.add(markerKey)
+          const [lng, lat] = marker.location.split(',').map(Number)
+          const map = mapInstance.current
+          const AMap = amapRef.current
+          if (Number.isFinite(lng) && Number.isFinite(lat) && map && AMap) {
+            const previewMarker = new AMap.Marker({
+              position: new AMap.LngLat(lng, lat),
+              map,
+              content: marker.role === 'waypoint'
+                ? getWaypointMarkerContent(marker.name, marker.index)
+                : getDestinationMarkerContent(marker.name),
+              offset: marker.role === 'waypoint' ? new AMap.Pixel(-24, -28) : new AMap.Pixel(-18, -36),
+            })
+            previewMarkersRef.current.push(previewMarker)
+          }
+        }
+      }
       if (activeNavProgress.stage === 'searching_destination' || activeNavProgress.stage === 'searching_waypoint') {
         clearCameraTimeline()
         setCameraStage('focus')
@@ -760,7 +785,7 @@ export default function MapPanel({
     })
 
     return () => cancelAnimationFrame(frame)
-  }, [activeNavProgress, clearCameraTimeline, mapReady, routeInfo, tweenCamera])
+  }, [activeNavProgress, clearCameraTimeline, getDestinationMarkerContent, getWaypointMarkerContent, mapReady, routeInfo, tweenCamera])
 
   useEffect(() => {
     if (!mapReady) return
@@ -812,6 +837,9 @@ export default function MapPanel({
                 <div className="route-destination-title">{routeInfo.destination}</div>
               )}
               {showRouteMetrics && <div className="route-road">{routeInfo.destination}</div>}
+              {routeInfo.waypoints?.length > 0 && (
+                <div className="route-waypoints">途经：{routeInfo.waypoints.join('、')}</div>
+              )}
             </div>
           </div>
           <div className="route-progress"><span></span></div>

@@ -30,12 +30,19 @@ export function cockpitProgressFromActivity(activity) {
   const stage = String(activity?.status || '').trim()
   const message = String(activity?.message || '').trim()
   if (!SUPPORTED_DOMAINS.has(domain) || !stage || !message) return null
-  return {
+  const progress = {
     domain,
     stage,
     message,
     source: 'cockpit-service',
   }
+  if (activity.item && typeof activity.item === 'object') {
+    progress.item = { ...activity.item }
+  }
+  if (activity.route && typeof activity.route === 'object') {
+    progress.route = { ...activity.route }
+  }
+  return progress
 }
 
 export function isTerminalCockpitProgress(progress) {

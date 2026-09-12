@@ -39,6 +39,39 @@ test('projects supported scenario activity into UI progress', () => {
   }), null)
 })
 
+test('preserves navigation semantic anchors for synchronized map feedback', () => {
+  assert.deepEqual(cockpitProgressFromActivity({
+    category: 'navigation',
+    status: 'waypoint_locked',
+    message: '途经点已锁定：黄龙体育中心',
+    item: {
+      role: 'waypoint',
+      index: 0,
+      name: '黄龙体育中心',
+      location: '120.2,30.3',
+    },
+    route: {
+      destination: '西湖',
+      waypoints: ['黄龙体育中心'],
+    },
+  }), {
+    domain: 'navigation',
+    stage: 'waypoint_locked',
+    message: '途经点已锁定：黄龙体育中心',
+    source: 'cockpit-service',
+    item: {
+      role: 'waypoint',
+      index: 0,
+      name: '黄龙体育中心',
+      location: '120.2,30.3',
+    },
+    route: {
+      destination: '西湖',
+      waypoints: ['黄龙体育中心'],
+    },
+  })
+})
+
 test('recognizes terminal scenario progress stages', () => {
   assert.equal(isTerminalCockpitProgress({ stage: 'planning_route' }), false)
   assert.equal(isTerminalCockpitProgress({ stage: 'navigation_started' }), true)

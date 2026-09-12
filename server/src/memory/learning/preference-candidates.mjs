@@ -429,6 +429,24 @@ export class PreferenceCandidatePool {
     return slot
   }
 
+  // 手工修改记忆后，丢弃修改前尚未生效的证据；这不是否决，后续新对话仍可重新学习。
+  discardPending(ownerId) {
+    const ownerKey = String(ownerId || '')
+    const bucket = this.owners.get(ownerKey)
+    if (!bucket) return 0
+    let discarded = 0
+    for (const [key, slot] of bucket) {
+      if (slot.state !== 'tentative') continue
+      bucket.delete(key)
+      discarded += 1
+    }
+    if (discarded) {
+      if (!bucket.size) this.owners.delete(ownerKey)
+      this.persist()
+    }
+    return discarded
+  }
+
   // 用户否决：状态置 rejected 并进黑名单，此后不再被自动晋升。
   reject({ ownerId, field = '', value = '', key = '' }) {
     const bucket = this.bucket(ownerId)

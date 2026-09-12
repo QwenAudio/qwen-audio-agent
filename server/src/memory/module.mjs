@@ -67,6 +67,16 @@ export function createMemoryModule({ config, logger, conversationSync, textModel
         })
       : null
   }
+  // A successful explicit edit establishes a new learning boundary. Do not
+  // clear chat history: only pre-edit evidence and in-flight learning expire.
+  const unsubscribeLearning = (memoryExtractor?.enabled() || preferencePromoter?.enabled()
+    || providerOwnsSessionObservation)
+    ? frontendMemoryRuntime?.subscribe?.(event => {
+        if (!['gateway-memory-api', 'realtime-tool'].includes(event.source)) return
+        conversationSync?.discardRecorded?.(event.ownerId)
+        preferenceCandidates?.discardPending(event.ownerId)
+      })
+    : null
   return {
     services: {
       frontendMemory: frontendMemoryRuntime,
@@ -78,7 +88,10 @@ export function createMemoryModule({ config, logger, conversationSync, textModel
       memoryService: frontendMemoryRuntime, memoryExtractor, preferencePromoter,
       profileObserver, conversationSync,
     })],
-    close: () => frontendMemoryRuntime?.close?.(),
+    close: () => {
+      unsubscribeLearning?.()
+      return frontendMemoryRuntime?.close?.()
+    },
     mountRoutes(app) {
       // Provider-neutral memory control plane for replaceable Conversation Clients.
       // It exposes the same bounded documents used by Realtime without leaking the

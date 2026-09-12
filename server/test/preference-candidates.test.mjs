@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
+import { PreferenceCandidateStore } from '../src/memory/learning/preference-candidate-store.mjs'
 import {
   CANDIDATE_DEFAULTS,
   PROFILE_FIELDS,
@@ -224,6 +228,64 @@ test('rejecting one skill leaves the other skills alone', () => {
   assert.equal(pool.blocked('u1', 'special_skills', 'AEC'), true)
   assert.equal(pool.blocked('u1', 'special_skills', 'SDK'), false)
   assert.equal(pool.list('u1', { state: 'tentative' }).length, 1)
+})
+
+test('discardPending persists only pending evidence removal and preserves other owners and resolved slots', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-discard-pending-'))
+  t.after(() => rmSync(directory, { recursive: true, force: true }))
+  const filePath = join(directory, 'candidates.json')
+  const pool = new PreferenceCandidatePool({ store: new PreferenceCandidateStore({ filePath }) })
+  pool.observe({ ownerId: 'u1', sessionId: 's1', field: 'occupation', value: '老师' })
+  pool.markPromoted('u1', 'occupation')
+  pool.observe({ ownerId: 'u1', sessionId: 's1', field: 'special_skills', value: 'AEC' })
+  pool.reject({ ownerId: 'u1', field: 'special_skills', value: 'AEC' })
+  pool.observe({ ownerId: 'u1', sessionId: 's1', field: 'response_length', value: 'brief', quote: '简短点' })
+  pool.observe({ ownerId: 'u1', sessionId: 's1', field: 'special_skills', value: 'SDK' })
+  pool.observe({ ownerId: 'u2', sessionId: 's1', field: 'response_length', value: 'brief' })
+  const active = pool.list('u1', { state: 'active' })
+  const rejected = pool.list('u1', { state: 'rejected' })
+  const otherOwner = pool.list('u2')
+  const blocklist = pool.serialise().blocklist
+
+  assert.equal(pool.discardPending('u1'), 2)
+  pool.reload()
+  const restarted = new PreferenceCandidatePool({ store: new PreferenceCandidateStore({ filePath }) })
+  for (const restored of [pool, restarted]) {
+    assert.deepEqual(restored.list('u1', { state: 'tentative' }), [])
+    assert.deepEqual(restored.list('u1', { state: 'active' }), active)
+    assert.deepEqual(restored.list('u1', { state: 'rejected' }), rejected)
+    assert.deepEqual(restored.list('u2'), otherOwner)
+    assert.deepEqual(restored.serialise().blocklist, blocklist)
+    assert.equal(restored.blocked('u1', 'response_length', 'brief'), false)
+  }
+
+  const fresh = restarted.observe({ ownerId: 'u1', sessionId: 's2', field: 'response_length', value: 'brief', quote: '说重点' })
+  assert.equal(fresh.confirm, 1)
+  assert.deepEqual(fresh.sessions, ['s2'])
+  assert.deepEqual(fresh.evidence.map(item => item.quote), ['说重点'])
+  assert.equal(restarted.promotable('u1').length, 0)
+  restarted.observe({ ownerId: 'u1', sessionId: 's3', field: 'response_length', value: 'brief' })
+  assert.equal(restarted.promotable('u1').length, 1, 'new evidence can qualify again without pre-edit confirmations')
+})
+
+test('discardPending persists only when it removes evidence and does not create missing owners', (t) => {
+  const { pool } = build()
+  pool.observe({ ownerId: 'u1', sessionId: 's1', field: 'occupation', value: '老师' })
+  const persist = t.mock.method(pool, 'persist')
+  assert.equal(pool.discardPending('missing'), 0)
+  assert.equal(pool.owners.has('missing'), false)
+  assert.equal(persist.mock.callCount(), 0)
+  assert.equal(pool.discardPending('u1'), 1)
+  assert.equal(persist.mock.callCount(), 1)
+  assert.equal(pool.owners.has('u1'), false)
+  assert.equal(pool.discardPending('u1'), 0)
+  assert.equal(persist.mock.callCount(), 1)
+
+  pool.observe({ ownerId: 'u1', sessionId: 's2', field: 'occupation', value: '老师' })
+  pool.markPromoted('u1', 'occupation')
+  const callsBeforeNoop = persist.mock.callCount()
+  assert.equal(pool.discardPending('u1'), 0)
+  assert.equal(persist.mock.callCount(), callsBeforeNoop)
 })
 
 test('caps evidence at three quotes of fifty characters', () => {

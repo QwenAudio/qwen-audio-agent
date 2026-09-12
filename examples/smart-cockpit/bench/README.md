@@ -74,11 +74,19 @@ conversation turns, 250 expected tool calls, and 250 no-tool chitchat or
 background turns. Because every case is mixed-domain, the table only shows
 core overall metrics.
 
-| Subject | Calls exp/act | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Text `qwen3.8-max` | 250 / 254 | 82.40% | 100.00% | 84.80% | 98.80% | 0 / 4 | 100.00% | 95.00% | 80.00% |
-| Realtime | 250 / 246 | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
-| Harness | 250 / 251 | 95.60% | 100.00% | 96.40% | 100.00% | 0 / 1 | 100.00% | 100.00% | 90.00% |
+| Subject | Pass | Calls exp/act | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Text `qwen3.8-max` | 50.00% (5/10) | 250 / 254 | 82.40% | 100.00% | 84.80% | 98.80% | 0 / 4 | 100.00% | 95.00% | 80.00% |
+| Realtime | 60.00% (6/10) | 250 / 246 | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
+| Harness | 90.00% (9/10) | 250 / 251 | 95.60% | 100.00% | 96.40% | 100.00% | 0 / 1 | 100.00% | 100.00% | 90.00% |
+
+Pass is the strict full-case pass: all 25 expected calls exact, no extra
+calls, silent turns kept silent, and every state checkpoint correct. It is
+harsh on 50-turn cases — one extra call or one argument phrasing difference
+fails the whole case — so read it together with the call-level metrics: the
+harness lead is one missed-call cluster (four `navigation_add_waypoint`
+calls around turn 15 in Realtime) plus fewer extra calls, while aligned tool
+selection stays within 1.6 points across all three subjects.
 
 The text row is the fixed-runner rerun
 (`reports/cockpit-text-max-long-rerun2.json`). An earlier rerun exposed a

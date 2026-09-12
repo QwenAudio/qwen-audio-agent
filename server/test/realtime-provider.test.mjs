@@ -8,6 +8,7 @@ import {
   REALTIME_PROVIDERS,
   RealtimeFrontend,
   realtimeEventErrorMessage,
+  realtimeProviderStartupError,
   SPAWN_THINKING_TOOL_NAME,
   TOOLS,
 } from '../src/voice/realtime-provider.mjs'
@@ -120,9 +121,39 @@ test('rejects a provider error before the realtime session becomes ready', () =>
         message: 'Invalid API-key provided.',
       },
     }),
-    /InvalidApiKey: Invalid API-key provided/,
+    error => {
+      assert.equal(error.code, 'InvalidApiKey')
+      assert.match(error.message, /DashScope Realtime 启动失败/)
+      assert.match(error.message, /模型 qwen-audio-3\.0-realtime-plus/)
+      assert.match(error.message, /音色 longanqian/)
+      assert.match(error.message, /InvalidApiKey: Invalid API-key provided/)
+      return true
+    },
   )
   assert.equal(frontend.ready, false)
+})
+
+test('formats provider startup errors with model and voice context', () => {
+  const cause = Object.assign(new Error('voice rejected by provider'), {
+    code: 'voice_not_supported',
+    supportedVoices: ['Ethan', 'Serena'],
+  })
+  const error = realtimeProviderStartupError(cause, {
+    key: 'dashscope',
+    label: 'DashScope Realtime',
+    model: () => 'qwen3.5-omni-flash-realtime',
+    voice: () => 'Cherry',
+  })
+
+  assert.equal(error.code, 'voice_not_supported')
+  assert.equal(error.provider, 'dashscope')
+  assert.equal(error.model, 'qwen3.5-omni-flash-realtime')
+  assert.equal(error.voice, 'Cherry')
+  assert.deepEqual(error.supportedVoices, ['Ethan', 'Serena'])
+  assert.match(
+    error.message,
+    /DashScope Realtime 启动失败（模型 qwen3\.5-omni-flash-realtime，音色 Cherry）：voice rejected by provider/,
+  )
 })
 
 test('preserves provider error codes in the user-facing realtime error', () => {
@@ -487,6 +518,35 @@ test('resolves exact DashScope model profiles for sessions and responses', t => 
   }
 })
 
+test('rejects a model-incompatible DashScope voice before opening a provider socket', async t => {
+  const originalModel = config.audioModel
+  const originalVoice = config.audioVoice
+  const originalApiKey = config.dashscopeApiKey
+  t.after(() => {
+    config.audioModel = originalModel
+    config.audioVoice = originalVoice
+    config.dashscopeApiKey = originalApiKey
+  })
+
+  config.audioModel = DASHSCOPE_OMNI_FLASH_REALTIME_MODEL
+  config.audioVoice = 'Cherry'
+  config.dashscopeApiKey = 'configured-for-voice-validation-test'
+  const frontend = createQwenFrontend()
+
+  await assert.rejects(
+    frontend.connect(),
+    error => {
+      assert.equal(error.code, 'voice_not_supported')
+      assert.equal(error.model, DASHSCOPE_OMNI_FLASH_REALTIME_MODEL)
+      assert.equal(error.voice, 'Cherry')
+      assert.match(error.message, /启动失败.*模型 qwen3\.5-omni-flash-realtime.*音色 Cherry/)
+      assert.match(error.message, /可选音色：Tina、Cindy、Liora Mira/)
+      return true
+    },
+  )
+  assert.equal(frontend.ws, null)
+})
+
 test('prefers the selected DashScope family voice override over the profile default', t => {
   const originalModel = config.audioModel
   const originalVoice = config.audioVoice
@@ -603,6 +663,8 @@ test('rejects malformed optional realtime model profiles', () => {
     { ...valid, sessionDefaults: { voice: '  ', turnDetection: null } },
     { ...valid, sessionDefaults: { voice: null, turnDetection: {} } },
     { ...valid, sessionDefaults: { voice: null, turnDetection: { type: '  ' } } },
+    { ...valid, voiceCapabilities: { supportedVoices: [] } },
+    { ...valid, voiceCapabilities: { supportedVoices: ['Ethan', 1] } },
   ]
 
   for (const profile of malformedProfiles) {
@@ -620,6 +682,11 @@ test('rejects malformed optional realtime model profiles', () => {
     key: 'null-profile',
     modelProfile: () => null,
   }))
+  assert.throws(() => validateRealtimeProvider({
+    ...base,
+    key: 'invalid-session-validator',
+    validateSessionOptions: true,
+  }), /validateSessionOptions/)
   const { modelProfile: _modelProfile, ...withoutProfile } = base
   assert.doesNotThrow(() => validateRealtimeProvider({
     ...withoutProfile,

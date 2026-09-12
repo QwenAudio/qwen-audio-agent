@@ -65,6 +65,10 @@ test('PORT=0 binds a random port and reports the origin to the parent host', asy
     assert.equal(health.realtimeModelProfile.family, 'omni')
     assert.equal(health.realtimeModelProfile.modelCapabilities.imageInput, true)
     assert.equal(health.realtimeModelProfile.transportCapabilities.imageInput, false)
+    assert.equal(
+      health.realtimeModelProfile.voiceCapabilities.supportedVoices.includes('Ethan'),
+      true,
+    )
     assert.deepEqual(
       health.realtimeModelCatalog.map(profile => profile.id),
       [
@@ -75,14 +79,16 @@ test('PORT=0 binds a random port and reports the origin to the parent host', asy
       ],
     )
     for (const profile of health.realtimeModelCatalog) {
-      assert.deepEqual(Object.keys(profile).sort(), [
+      const expectedKeys = [
         'family',
         'id',
         'label',
         'modelCapabilities',
         'sessionDefaults',
         'transportCapabilities',
-      ])
+      ]
+      if (profile.family === 'omni') expectedKeys.push('voiceCapabilities')
+      assert.deepEqual(Object.keys(profile).sort(), expectedKeys.sort())
     }
     const serialized = JSON.stringify(health)
     assert.doesNotMatch(serialized, /health-secret-api-key/)

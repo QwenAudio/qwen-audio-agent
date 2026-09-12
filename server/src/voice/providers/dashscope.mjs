@@ -46,6 +46,26 @@ function responseModalities(profile) {
   ].filter(Boolean)
 }
 
+function validateSessionOptions({ sessionOptions } = {}) {
+  const profile = activeModelProfile()
+  const supportedVoices = profile.voiceCapabilities?.supportedVoices
+  if (!supportedVoices) return
+  const selectedVoice = String(
+    sessionOptions?.voice || dashscopeProvider.voice() || '',
+  ).trim()
+  if (!selectedVoice || supportedVoices.includes(selectedVoice)) return
+
+  const error = new Error(
+    `音色 ${selectedVoice} 不支持模型 ${profile.id}`
+    + `；可选音色：${supportedVoices.join('、')}`,
+  )
+  error.code = 'voice_not_supported'
+  error.model = profile.id
+  error.voice = selectedVoice
+  error.supportedVoices = [...supportedVoices]
+  throw error
+}
+
 export const dashscopeProvider = {
   key: 'dashscope',
   label: 'DashScope Realtime',
@@ -73,6 +93,7 @@ export const dashscopeProvider = {
   url: () => realtimeUrl(config.audioRealtimeBaseUrl, config.audioModel),
   headers: () => ({ Authorization: `Bearer ${config.dashscopeApiKey}` }),
   classifyError,
+  validateSessionOptions,
 
   buildSession: ({ configured, agentContext, sessionOptions }) => {
     const profile = activeModelProfile()

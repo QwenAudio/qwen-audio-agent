@@ -41,6 +41,18 @@ const UNKNOWN_SESSION_DEFAULTS = Object.freeze({
   voice: null,
   turnDetection: null,
 })
+const OMNI_REALTIME_VOICE_CAPABILITIES = Object.freeze({
+  supportedVoices: Object.freeze([
+    'Tina',
+    'Cindy',
+    'Liora Mira',
+    'Sunnybobi',
+    'Raymond',
+    'Ethan',
+    'Theo Calm',
+    'Serena',
+  ]),
+})
 
 export const DASHSCOPE_REALTIME_MODEL_PROFILES = Object.freeze([
   Object.freeze({
@@ -48,6 +60,7 @@ export const DASHSCOPE_REALTIME_MODEL_PROFILES = Object.freeze([
     label: 'Qwen3.5 Omni Flash Realtime',
     family: 'omni',
     sessionDefaults: OMNI_SESSION_DEFAULTS,
+    voiceCapabilities: OMNI_REALTIME_VOICE_CAPABILITIES,
     modelCapabilities: OMNI_MODEL_CAPABILITIES,
     transportCapabilities: OMNI_TRANSPORT_CAPABILITIES,
   }),
@@ -56,6 +69,7 @@ export const DASHSCOPE_REALTIME_MODEL_PROFILES = Object.freeze([
     label: 'Qwen3.5 Omni Plus Realtime',
     family: 'omni',
     sessionDefaults: OMNI_SESSION_DEFAULTS,
+    voiceCapabilities: OMNI_REALTIME_VOICE_CAPABILITIES,
     modelCapabilities: OMNI_MODEL_CAPABILITIES,
     transportCapabilities: OMNI_TRANSPORT_CAPABILITIES,
   }),

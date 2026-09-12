@@ -26,9 +26,13 @@ The extension boundary is:
 - `url()`, `headers()`, and `model()` can read the service URL, token, and model from host-owned configuration closures. The Gateway does not require product-specific environment variables.
 - `createProtocol()` runs once for each Realtime connection, so connection IDs and mutable state remain isolated.
 - `connectionMessages()` emits raw handshake frames after the WebSocket opens and before `session.update`.
+- An optional `validateSessionOptions()` runs before opening the upstream WebSocket. Providers
+  should throw an error with a stable `code` and actionable message when the model or voice
+  selection is incompatible, so an invalid Session never reaches the provider.
 - All later events pass through `encodeOutgoing()` and `normalizeIncoming()`, leaving Gateway tools, tasks, and client protocols unchanged.
 - `visibility: 'gateway-only'` lets the host select a Provider without exposing it in desktop settings or the public Provider list.
 
 A Provider must implement the full contract — `model()`, `voice()`, `isConfigured()`, `url()`, `headers()`, `classifyError()`, `buildSession()`, `buildSpeakResponse()`, `buildResultInjection()`, `buildPermissionInjection()` — plus numeric `inputSampleRate` and `outputSampleRate` fields; registration throws on any missing member.
 
 Provider and Protocol contracts are validated during registration and connection setup, so missing methods or invalid values fail immediately.
+Connection-time Provider errors are passed to the Gateway with Provider, model, and voice context.

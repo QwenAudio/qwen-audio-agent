@@ -213,8 +213,11 @@ test('projects navigation progress and route state separately', async () => {
   }, options)
 
   assert.equal(output.data.navigation.status, 'navigating')
-  assert.match(output.content, /已开始导航到西湖/u)
+  assert.equal(output.content, '全程36.9公里，约75分钟')
   assert.deepEqual(output.data.navigation.waypoints, ['黄龙体育中心', '城西银泰'])
+  assert.equal(output.data.navigation.route.legs.length, 3)
+  assert.equal(output.data.navigation.route.distKm, '36.9')
+  assert.equal(output.data.navigation.route.durationMin, 75)
   assert.equal(output.data.navigation.map.markers.length, 3)
   assert.equal(output.data.navigation.map.polylines.length, 3)
   assert.equal(routeOrigins[0], '121.1,31.2')
@@ -251,6 +254,80 @@ test('projects navigation progress and route state separately', async () => {
     waypoints: ['黄龙体育中心', '城西银泰'],
     waypointLocations: ['120.2,30.3', '120.2,30.3'],
   })
+})
+
+test('summarizes only route totals while preserving all places for explicit queries', async () => {
+  for (const stopCount of [1, 5, 8]) {
+    const { service, options, routeOrigins } = fixture()
+    const waypoints = Array.from({ length: stopCount - 1 }, (_, index) => `途经地点${index + 1}`)
+    const started = await service.execute('navigation_start', { destination: '西湖', waypoints }, options)
+    assert.equal(started.content,
+      `全程${started.data.navigation.route.distKm}公里，约${started.data.navigation.route.durationMin}分钟`)
+    assert.equal(started.data.navigation.destination, '西湖')
+    assert.deepEqual(started.data.navigation.waypoints, waypoints)
+    assert.equal(started.data.navigation.route.legs.length, stopCount)
+    assert.equal(started.data.navigation.map.markers.length, stopCount)
+    assert.equal(started.data.navigation.map.polylines.length, stopCount)
+
+    const current = await service.execute('navigation_route_query', {}, options)
+    assert.match(current.content, /当前正导航到西湖/u)
+    if (waypoints.length) assert.ok(current.content.includes(`途经${waypoints.join('、')}`))
+    assert.ok(current.content.includes(`全程${started.data.navigation.route.distKm}公里`))
+    assert.ok(current.content.includes(`约${started.data.navigation.route.durationMin}分钟`))
+    assert.deepEqual(current.changed, [])
+    assert.equal(routeOrigins.length, stopCount, 'querying current route must not replan')
+  }
+})
+
+test('returns only totals after planning and replanning while preserving navigation and preview state', async () => {
+  for (const name of ['navigation_start', 'navigation_route_query']) {
+    const { service, options } = fixture()
+    const initial = await service.execute(name, {
+      destination: '西湖',
+      waypoints: ['黄龙体育中心', '五常地铁站'],
+    }, options)
+    const expectedStatus = name === 'navigation_start' ? 'navigating' : 'preview'
+    assert.equal(initial.content, '全程36.9公里，约75分钟')
+    assert.deepEqual(initial.data.navigation.waypoints, ['黄龙体育中心', '五常地铁站'])
+    const updates = [
+      ['navigation_add_waypoint', { waypoint: '城西银泰' }],
+      ['navigation_change_destination', { destination: '萧山机场' }],
+      ['navigation_set_route_strategy', { strategy: 5 }],
+      ['navigation_remove_waypoint', { waypoint: '城西银泰' }],
+    ]
+    for (const [tool, args] of updates) {
+      const updated = await service.execute(tool, args, options)
+      assert.equal(updated.content,
+        `全程${updated.data.navigation.route.distKm}公里，约${updated.data.navigation.route.durationMin}分钟`)
+      assert.equal(updated.data.navigation.status, expectedStatus)
+      assert.ok(updated.data.navigation.waypoints.includes('黄龙体育中心'))
+      assert.ok(updated.data.navigation.waypoints.includes('五常地铁站'))
+      assert.equal(updated.data.navigation.map.markers.length, updated.data.navigation.waypoints.length + 1)
+    }
+  }
+})
+
+test('preserves navigation failure details without claiming success', async () => {
+  const { service, options } = fixture()
+  for (const args of [
+    { destination: '不存在' },
+    { destination: '西湖', waypoints: ['不存在'] },
+  ]) {
+    const failed = await service.execute('navigation_start', args, options)
+    assert.match(failed.content, /无法找到.*不存在/u)
+    assert.deepEqual(failed.changed, [])
+    assert.equal(service.snapshot('car-one').navigation.status, 'idle')
+  }
+  const unavailable = new CockpitService({
+    services: {
+      async resolvePlace() { return '120.1,30.2' },
+      async drivingRoute() { return null },
+    },
+  })
+  const failed = await unavailable.execute('navigation_start', { destination: '西湖' })
+  assert.equal(failed.content, '路线规划失败，请稍后重试')
+  assert.deepEqual(failed.changed, [])
+  assert.equal(unavailable.snapshot().navigation.status, 'idle')
 })
 
 test('persists a route preference before a destination is selected', async () => {
@@ -311,7 +388,7 @@ test('updates an active navigation route with waypoints destination and strategy
   const added = await service.execute('navigation_add_waypoint', {
     waypoint: '城西银泰',
   }, options)
-  assert.match(added.content, /已增加途经点城西银泰/u)
+  assert.equal(added.content, '全程24.6公里，约50分钟')
   assert.deepEqual(added.data.navigation.waypoints, ['城西银泰'])
   assert.equal(added.data.navigation.map.markers.length, 2)
   assert.equal(added.data.navigation.map.polylines.length, 2)
@@ -319,20 +396,20 @@ test('updates an active navigation route with waypoints destination and strategy
   const changed = await service.execute('navigation_change_destination', {
     destination: '萧山机场',
   }, options)
-  assert.match(changed.content, /已将目的地改为萧山机场/u)
+  assert.equal(changed.content, '全程24.6公里，约50分钟')
   assert.equal(changed.data.navigation.destination, '萧山机场')
   assert.deepEqual(changed.data.navigation.waypoints, ['城西银泰'])
 
   const strategy = await service.execute('navigation_set_route_strategy', {
     strategy: 5,
   }, options)
-  assert.match(strategy.content, /不走高速/u)
+  assert.equal(strategy.content, '全程24.6公里，约50分钟')
   assert.equal(strategy.data.navigation.strategy, 5)
 
   const removed = await service.execute('navigation_remove_waypoint', {
     waypoint: '城西银泰',
   }, options)
-  assert.match(removed.content, /已删除途经点城西银泰/u)
+  assert.equal(removed.content, '全程12.3公里，约25分钟')
   assert.deepEqual(removed.data.navigation.waypoints, [])
   assert.equal(removed.data.navigation.map.markers.length, 1)
 })
@@ -359,7 +436,7 @@ test('supports place search favorites voice and view navigation tools', async ()
   const home = await service.execute('navigation_to_favorite', {
     favoriteType: 'home',
   }, options)
-  assert.match(home.content, /已开始导航到西湖/u)
+  assert.equal(home.content, '全程12.3公里，约25分钟')
   assert.equal(home.data.navigation.status, 'navigating')
 
   const voice = await service.execute('navigation_set_voice', {

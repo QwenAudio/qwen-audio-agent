@@ -41,6 +41,25 @@ test('calls selected cockpit tools inline through the frontend MCP client', asyn
     tools.map(tool => tool.name),
     FRONTEND_TOOL_NAMES.map(name => `mcp__cockpit__${name}`),
   )
+  const navigationTool = tools.find(tool => tool.name === 'mcp__cockpit__navigation_start')
+  assert.match(navigationTool.definition.function.description, /调用前先用一句简短自然口语/u)
+  assert.match(navigationTool.definition.function.description, /随后在同一轮立即调用工具/u)
+  assert.match(navigationTool.definition.function.description, /同一请求只衔接一次/u)
+  assert.match(navigationTool.definition.function.description, /规划过程中可以复述地点列表/u)
+  assert.match(navigationTool.definition.function.description, /最终语音回复只播报总里程和预计耗时/u)
+  assert.match(navigationTool.definition.function.description, /不复述目的地或途经点/u)
+  assert.match(navigationTool.definition.function.description, /用户明确询问路线详情时再展开/u)
+  const navigation = await client.execute('mcp__cockpit__navigation_start', {
+    destination: '西湖',
+    waypoints: ['五常地铁站', '城西银泰'],
+  })
+  assert.equal(navigation.text, '全程3.0公里，约6分钟')
+  assert.equal(navigation.structured_content.navigation.destination, '西湖')
+  assert.deepEqual(navigation.structured_content.navigation.waypoints, ['五常地铁站', '城西银泰'])
+  assert.equal(navigation.structured_content.navigation.map.markers.length, 3)
+  assert.equal(navigation.structured_content.navigation.map.polylines.length, 3)
+  const route = await client.execute('mcp__cockpit__navigation_route_query', {})
+  assert.match(route.text, /途经五常地铁站、城西银泰，全程3\.0公里，约6分钟/u)
   const output = await client.execute('mcp__cockpit__weather', { city: '杭州' })
   assert.match(output.text, /杭州，晴，27°/u)
   const location = await client.execute('mcp__cockpit__vehicle_location_query', {})

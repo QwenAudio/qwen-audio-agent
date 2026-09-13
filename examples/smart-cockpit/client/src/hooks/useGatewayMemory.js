@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { gatewayHttpUrl } from '../config/gateway'
-import { memoryItemsFromDocuments } from '../projections/memory-items'
+import { memoryDeletionChange, memoryItemsFromDocuments } from '../projections/memory-items'
 
 async function responsePayload(response) {
   return response.json().catch(() => ({}))
@@ -32,15 +32,12 @@ export default function useGatewayMemory() {
 
   const remove = useCallback(async (item) => {
     try {
+      const change = memoryDeletionChange(documents, item)
       const response = await fetch(gatewayHttpUrl('/api/memory'), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          changes: [{
-            document: item.scope,
-            expectedRevision: item.revision,
-            edits: [{ old_text: item.oldText, new_text: '' }],
-          }],
+          changes: [change],
         }),
       })
       const payload = await responsePayload(response)
@@ -53,11 +50,11 @@ export default function useGatewayMemory() {
       await load()
       return true
     } catch (reason) {
-      setError(reason?.message || '删除记忆失败')
       if (reason?.stale) await load()
+      setError(reason?.stale ? '记忆已更新，请重新选择要删除的条目。' : reason?.message || '删除记忆失败')
       return false
     }
-  }, [load])
+  }, [documents, load])
 
   return {
     items: useMemo(() => memoryItemsFromDocuments(documents), [documents]),

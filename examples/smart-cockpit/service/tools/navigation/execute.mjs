@@ -144,10 +144,8 @@ function commitRoute(store, cockpitId, {
   })
 }
 
-function routeContent(prefix, destination, waypoints, route, strategy = null) {
-  const waypointText = waypoints.length ? `，途经${waypoints.join('、')}` : ''
-  const strategyText = strategy === null ? '' : `，${STRATEGY_LABELS.get(strategy) || '已更新偏好'}`
-  return `${prefix}${destination}${waypointText}${strategyText}，全程${route.distKm}公里，约${route.durationMin}分钟`
+function routeSummary(route) {
+  return `全程${route.distKm}公里，约${route.durationMin}分钟`
 }
 
 async function createRoutePlan({
@@ -214,9 +212,8 @@ async function createRoutePlan({
       waypointLocations,
     },
   })
-  const prefix = name === 'navigation_start' ? '已开始导航到' : '已规划到'
   return toolResult(
-    routeContent(prefix, destination, waypoints, route),
+    routeSummary(route),
     state,
     ['navigation'],
     { navigation: state.navigation },
@@ -303,7 +300,7 @@ async function addWaypoint(args, context) {
   })
   if (output.content) return output
   return toolResult(
-    routeContent(`已增加途经点${waypoint}，继续${routeStatusText(output.state.navigation.status)}到`, output.state.navigation.destination, waypoints, output.route),
+    routeSummary(output.route),
     output.state,
     ['navigation'],
     { navigation: output.state.navigation },
@@ -332,7 +329,6 @@ async function removeWaypoint(args, context) {
   const existing = await resolveExistingRouteLocations(state.navigation, services)
   if (!existing) return toolResult('当前路线信息不完整，请重新发起导航', state, [], { navigation: state.navigation })
 
-  const removed = state.navigation.waypoints[index]
   const waypoints = state.navigation.waypoints.filter((_, itemIndex) => itemIndex !== index)
   const waypointLocations = existing.waypointLocations.filter((_, itemIndex) => itemIndex !== index)
   const output = await replanExistingRoute({
@@ -346,7 +342,7 @@ async function removeWaypoint(args, context) {
   })
   if (output.content) return output
   return toolResult(
-    routeContent(`已删除途经点${removed}，继续${routeStatusText(output.state.navigation.status)}到`, output.state.navigation.destination, waypoints, output.route),
+    routeSummary(output.route),
     output.state,
     ['navigation'],
     { navigation: output.state.navigation },
@@ -391,7 +387,7 @@ async function changeDestination(args, context) {
   })
   if (output.content) return output
   return toolResult(
-    routeContent('已将目的地改为', destination, output.state.navigation.waypoints, output.route),
+    routeSummary(output.route),
     output.state,
     ['navigation'],
     { navigation: output.state.navigation },
@@ -427,7 +423,7 @@ async function setRouteStrategy(args, context) {
   })
   if (output.content) return output
   return toolResult(
-    routeContent('已切换路线偏好，继续到', output.state.navigation.destination, output.state.navigation.waypoints, output.route, strategy),
+    routeSummary(output.route),
     output.state,
     ['navigation'],
     { navigation: output.state.navigation },

@@ -134,6 +134,57 @@ test('keeps asynchronous cockpit acknowledgements natural and action-specific', 
   assert.match(addWaypoint.description, /不要调用本工具探测状态/u)
 })
 
+test('limits completed route speech to distance and duration across scene tool descriptions', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../service/tools/navigation/manifest.json', import.meta.url), 'utf8'))
+  const config = JSON.parse(readFileSync(new URL('../gateway/frontend-mcp.json', import.meta.url), 'utf8'))
+  const names = [
+    'navigation_start', 'navigation_route_query', 'navigation_add_waypoint', 'navigation_remove_waypoint',
+    'navigation_change_destination', 'navigation_set_route_strategy', 'navigation_to_favorite',
+  ]
+  const descriptions = names.flatMap(name => [
+    manifest.functions.find(tool => tool.name === name).description,
+    config.servers.cockpit.tools[name].description,
+  ])
+  for (const description of [...descriptions, COCKPIT_SPAWN_THINKING_DESCRIPTION]) {
+    assert.match(description, /路线规划或重规划成功后/u)
+    assert.match(description, /最终语音回复只播报总里程和预计耗时/u)
+    assert.match(description, /不复述目的地或途经点/u)
+    assert.match(description, /不要从结构化结果补读地点列表/u)
+    assert.match(description, /用户明确询问路线详情时再展开/u)
+    assert.match(description, /失败或未完成需如实说明/u)
+  }
+})
+
+test('allows places during route planning while keeping one short preamble and backend acceptance', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../service/tools/navigation/manifest.json', import.meta.url), 'utf8'))
+  const config = JSON.parse(readFileSync(new URL('../gateway/frontend-mcp.json', import.meta.url), 'utf8'))
+  const names = [
+    'navigation_start', 'navigation_route_query', 'navigation_add_waypoint',
+    'navigation_remove_waypoint', 'navigation_change_destination',
+    'navigation_set_route_strategy', 'navigation_to_favorite',
+  ]
+  for (const name of names) {
+    for (const description of [
+      manifest.functions.find(tool => tool.name === name).description,
+      config.servers.cockpit.tools[name].description,
+    ]) {
+      assert.match(description, /作为前台工具使用且意图明确、信息齐全、需要规划或重规划路线时/u)
+      assert.match(description, /调用前先用一句简短自然口语/u)
+      assert.match(description, /规划过程中可以复述地点列表/u)
+      assert.doesNotMatch(description, /约10字|不复述地点列表/u)
+      assert.match(description, /随后在同一轮立即调用工具/u)
+      assert.match(description, /同一请求只衔接一次，不固定话术，不等待再次确认/u)
+      assert.match(description, /不以口头回应代替执行，也不把尚未完成说成成功/u)
+    }
+  }
+  assert.doesNotMatch(COCKPIT_SPAWN_THINKING_DESCRIPTION, /调用前先/u)
+  assert.match(COCKPIT_SPAWN_THINKING_DESCRIPTION, /工作受理后只作一次/u)
+  assert.doesNotMatch(config.servers.cockpit.tools.navigation_stop.description, /调用前先/u)
+  assert.doesNotMatch(config.servers.cockpit.tools.vehicle_window_control.description, /调用前先/u)
+  assert.match(config.servers.cockpit.tools.navigation_route_query.description,
+    /不带 destination 查询当前路线时，按用户问题提供路线详情/u)
+})
+
 test('keeps preference-based nearby recommendations grounded in actual POIs on both tool surfaces', () => {
   const manifest = JSON.parse(readFileSync(new URL('../service/tools/navigation/manifest.json', import.meta.url), 'utf8'))
   const config = JSON.parse(readFileSync(new URL('../gateway/frontend-mcp.json', import.meta.url), 'utf8'))

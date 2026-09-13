@@ -86,6 +86,21 @@ test('recognizes an escaped Windows path inside a prompt', () => {
   }])
 })
 
+test('attaches an existing path whose separator precedes an escapable character', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'qaa-tui-input-'))
+  // Windows 路径分隔符后紧跟 ( 时，形如 shell 转义的 \( 实际是目录分隔。
+  const folder = await mkdtemp(join(directory, '(draft)'))
+  const path = join(folder, 'notes.md')
+  await writeFile(path, '# notes')
+
+  const pasted = await inputPartsFromText(path)
+  assert.equal(pasted[1]?.source.path, path)
+
+  const inline = await inputPartsFromText(`总结 ${path}`)
+  assert.equal(inline[0].text, `总结 @${path}`)
+  assert.equal(inline[1]?.source.path, path)
+})
+
 test('adds a staged attachment reference to the submitted text', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'qaa-tui-input-'))
   const path = join(directory, 'screen.png')

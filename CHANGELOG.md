@@ -9,6 +9,8 @@
 
 - Gateway 接入统一为本机、`--lan` 和 `--tailnet` 三种启动模式；对外连接地址
   独立由 `gateway pair --endpoint` 指定，不再使用启动参数 `--public-url`。
+- 修复 `qwenaudio install --help`、`skill --help`、`config set --help` 与
+  `gateway revoke --help` 等子命令在缺少必需参数时报错、不显示帮助的问题。
 - `gateway pair` 默认只生成一个短连接码和二维码，浏览器、桌面端和移动端
   共享 `http(s)://Gateway/c#d.TOKEN`；原生客户端直接通过单条 WebSocket 认证
   并执行 GCP，浏览器将设备 Token 换为 HttpOnly 会话 Cookie。设备凭证可单独吊销，

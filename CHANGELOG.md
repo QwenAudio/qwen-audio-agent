@@ -41,6 +41,9 @@
   校验 ACP MCP 描述的后台无法创建 Session 的问题。
 - 新增 Pi 后台支持：通过社区 `pi-acp` 适配器接入，并支持一键安装。Pi 没有
   内置沙箱与权限审批机制，始终等效于 `full` 权限，请仅在可信环境中使用。
+- 修复 Windows 上 `qwenaudio skill` 各子命令与 Gateway 启动时的技能补装因直接启动
+  `npx` 报 `spawnSync npx ENOENT` 而失败的问题；现在与 `npx.cmd` 一致，用 node 运行
+  npm 自带的 `npx-cli.js`，来源参数不经 cmd.exe 解释。
 
 ## 1.11.0
 

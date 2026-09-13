@@ -1,11 +1,12 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { resolve } from 'node:path'
+import { resolve, win32 } from 'node:path'
 import {
   backendSkillsSpec,
   skillsInstallerAgents,
 } from './backend/catalog.mjs'
+import { findExecutable } from './backend/setup.mjs'
 
 // qwenaudio skill 是 skills.sh（npm 包 skills）的 1:1 品牌化入口：技能的
 // 下载、落盘、lockfile 一致性全部由 skills.sh 自管，这里只负责组装参数、
@@ -22,8 +23,34 @@ export function skillsCliPackage(env = process.env) {
     || DEFAULT_SKILLS_CLI_PACKAGE
 }
 
+// Windows 上 npx 是 npx.cmd 批处理：不经 shell 无法启动（ENOENT），经 cmd.exe
+// 又会重新解释来源 URL 里的 &、% 等字符。与 npx.cmd 自身一致，直接用 node
+// 运行 npm 自带的 npx-cli.js，参数原样传递。
+export function skillsCliInvocation(args, {
+  env = process.env,
+  platform = process.platform,
+  find = findExecutable,
+  exists = existsSync,
+} = {}) {
+  if (platform !== 'win32') return { command: 'npx', args }
+  const npx = find('npx.cmd', { env, platform })
+  const directory = npx ? win32.dirname(npx) : ''
+  const cli = directory
+    ? win32.join(directory, 'node_modules', 'npm', 'bin', 'npx-cli.js')
+    : ''
+  if (!cli || !exists(cli)) return { command: 'npx', args }
+  const bundledNode = win32.join(directory, 'node.exe')
+  return {
+    command: exists(bundledNode)
+      ? bundledNode
+      : find('node', { env, platform }) || 'node',
+    args: [cli, ...args],
+  }
+}
+
 function defaultSpawn(args) {
-  return spawnSync('npx', args, {
+  const invocation = skillsCliInvocation(args)
+  return spawnSync(invocation.command, invocation.args, {
     encoding: 'utf8',
     windowsHide: true,
     // skills.sh 需要克隆仓库并按需下载，慢网络下留足时间。

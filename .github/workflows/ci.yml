@@ -42,6 +42,17 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npx playwright install --with-deps chromium
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run test:web-browser
+      - if: ${{ failure() && matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-voice-diagnostics
+          path: output/playwright/browser-webui-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
       # Smart Cockpit has its own Vite/ESLint toolchain outside the root
       # workspace graph. Exercise it once on the baseline Linux job instead of
       # duplicating the same frontend build across the full OS/Node matrix.

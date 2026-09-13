@@ -310,7 +310,7 @@ test('allows research past three minutes and fails at exactly ten minutes', asyn
   const executor = new CockpitAgentExecutor({
     tools: { list: async () => [], call: async () => {} },
     model: { complete: async ({ messages, signal }) => new Promise((_resolve, reject) => {
-      assert.match(messages[0].content, /24 轮模型响应、32 次工具调用及 10 分钟/u)
+      assert.match(messages[0].content, /10 轮模型响应、32 次工具调用及 10 分钟/u)
       taskSignal = signal
       signal.addEventListener('abort', () => reject(signal.reason), { once: true })
       started()
@@ -389,21 +389,26 @@ test('publishes working immediately and cancels an in-flight research request wi
   assert.equal(events.length, eventCount)
 })
 
-test('stops offering tools at the scenario round budget and summarizes existing work', async () => {
+test('reserves the tenth model round for summarizing existing work without tools', async () => {
   let completedRounds = 0
   let calls = 0
   const events = []
   const executor = new CockpitAgentExecutor({
     tools: { list: async () => [TEMPERATURE_TOOL], call: async () => { calls++; return { content: '操作结果' } } },
-    model: { complete: async ({ tools }) => {
+    model: { complete: async ({ messages, tools }) => {
       completedRounds++
-      if (!tools.length) return { content: '已完成的操作结果已整理。' }
+      if (!tools.length) {
+        assert.equal(completedRounds, 10)
+        assert.equal(messages.filter(message => message.role === 'tool').length, 9)
+        assert.match(messages.at(-1).content, /停止工具调用/u)
+        return { content: '已完成的操作结果已整理。' }
+      }
       return { tool_calls: [{ id: `call-${completedRounds}`, function: { name: TEMPERATURE_TOOL.name, arguments: '{}' } }] }
     } },
   })
   await executor.execute(requestContext('一项持续任务'), { publish: event => events.push(event) })
-  assert.equal(completedRounds, 24)
-  assert.equal(calls, 23)
+  assert.equal(completedRounds, 10)
+  assert.equal(calls, 9)
   assert.equal(events.at(-1).data.status.state, TaskState.TASK_STATE_COMPLETED)
   assert.match(events.at(-1).data.status.message.parts[0].content.value, /操作结果已整理/u)
   assert.doesNotMatch(events.at(-1).data.status.message.parts[0].content.value, /预算|次数|轮次|失败|超时/u)
@@ -507,10 +512,10 @@ for (const invalidSummary of ['tool-calls', 'empty']) {
       } },
     })
     await executor.execute(requestContext('整理新闻报告'), { publish: event => events.push(event) })
-    assert.equal(modelCalls, 24)
-    assert.equal(executed, 23)
+    assert.equal(modelCalls, 10)
+    assert.equal(executed, 9)
     const artifact = events.find(event => event.kind === 'artifactUpdate').data.artifact
-    assert.equal(artifact.metadata.sources.length, 23)
+    assert.equal(artifact.metadata.sources.length, 9)
     assert.match(artifact.parts[0].content.value, /已整理检索到的来源/u)
     assert.doesNotMatch(artifact.parts[0].content.value, /预算|次数|轮次|超时/u)
     assert.doesNotMatch(artifact.parts[0].content.value, /RAW_TOOL_JSON|未经执行的操作已全部完成/u)

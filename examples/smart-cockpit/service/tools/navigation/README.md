@@ -118,6 +118,9 @@
 
 ## 调用原则
 
+- 前台直接执行路线规划或重规划、且意图明确和信息齐全时，调用前用一句简短自然口语说明本次规划动作，随后在同一轮立即调用工具；规划过程中可以按需说明地点和顺序，不等待再次确认，同一请求只作一次开场衔接。缺少必要信息时仍先追问；快速本地操作和只读当前路线不强加前置回应，后台任务仍在受理后衔接。
+- 新路线规划（包括预览）或重规划成功后，工具文本只返回总里程和预计耗时，例如“全程36.9公里，约75分钟”，不包含目的地或途经点。完整路线、导航/预览状态仍保留在 `data.navigation`（MCP 的 `structuredContent.navigation`）及状态/进度事件中，地图展示不变。
+- 座舱工具 description 同时约束最终语音只报里程和耗时，不从结构化数据补读地点。用户主动询问路线详情时仍可展开：不带目的地的 `navigation_route_query` 返回完整当前路线，失败或未完成仍如实说明。前台直调和后台结果播报使用相同原则，不固定话术，不修改通用系统 Prompt 或协议。
 - 高德驾车路线请求在 Service 进程内统一保持至少 600ms 的发起间隔（包含重试），避免多途经点连续查询触发 QPS 限流；首次请求不额外等待，其他地图能力不进入此队列。
 - 用户给新目的地时，调用 `navigation_start` 或 `navigation_route_query`。
 - 用户在已有导航中修改路线时，调用 `navigation_add_waypoint`、`navigation_remove_waypoint`、`navigation_change_destination` 或 `navigation_set_route_strategy`。

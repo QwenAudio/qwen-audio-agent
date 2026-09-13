@@ -33,8 +33,10 @@ timestamps, and failed retrievals. No-source reports are replaced with an explic
 verification failure, not invented current news. The foreground can keep chatting
 throughout, using the existing Gateway task and announcement lifecycle.
 
-Scenario limits are 24 model rounds, 32 model-requested tool calls, 10 minutes
-per task, and 16,000 characters of page context per read. Provider/search and URL
+Scenario limits are 10 model rounds (up to 9 tool-enabled rounds, with the final
+round reserved for summarizing), 32 model-requested tool calls, 10 minutes
+per task, and 16,000 characters of page context per read. Finish earlier when
+enough evidence is available; these are ceilings, not targets. Provider/search and URL
 fetch timeouts, DNS pinning, private-network/credential URL rejection, redirect
 checks, and response-size limits reuse the framework implementation. Cancellation
 propagates to model, retrieval, and MCP requests. The task deadline belongs to

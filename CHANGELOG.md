@@ -39,6 +39,8 @@
   模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。
 - 修复内置 `open-computer-use` MCP 缺少 `stdio` 传输类型，导致 Kimi Code 等严格
   校验 ACP MCP 描述的后台无法创建 Session 的问题。
+- 修复 Windows 上位于含空格目录的 `.cmd` / `.bat` ACP 后台命令被 cmd.exe 截断而
+  无法启动，以及含空格的 ACP 参数被拆开的问题。
 - 新增 Pi 后台支持：通过社区 `pi-acp` 适配器接入，并支持一键安装。Pi 没有
   内置沙箱与权限审批机制，始终等效于 `full` 权限，请仅在可信环境中使用。
 

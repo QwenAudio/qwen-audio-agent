@@ -1,9 +1,45 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 import test from 'node:test'
 import { AcpProcessClient } from '../src/backend/adapters/acp/process-client.mjs'
 import { openClawBackendDriver } from '../src/backend/adapters/acp/drivers/openclaw.mjs'
+
+test('starts a Windows batch ACP command from a directory containing spaces', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'qwen-audio-acp-'))
+  try {
+    const directory = join(root, 'Agent Tools')
+    mkdirSync(directory)
+    const argsPath = join(directory, 'args.json')
+    writeFileSync(join(directory, 'agent.mjs'), [
+      "import { writeFileSync } from 'node:fs'",
+      `writeFileSync(${JSON.stringify(argsPath)}, JSON.stringify(process.argv.slice(2)))`,
+      "process.stderr.write('spaced agent stopped\\n')",
+      'process.exit(1)',
+      '',
+    ].join('\n'))
+    const command = join(directory, 'agent.cmd')
+    writeFileSync(command, `@"${process.execPath}" "%~dp0agent.mjs" %*\r\n`)
+    const args = ['--acp', '--config', join(root, 'Agent Config', 'agent.json')]
+    const client = new AcpProcessClient({ label: 'Spaced Agent', command, args })
+
+    await assert.rejects(client.start(), /Spaced Agent ACP .*spaced agent stopped/)
+    assert.deepEqual(JSON.parse(readFileSync(argsPath, 'utf8')), args)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
 
 test('keeps session object identity stable across re-registration', () => {
   const client = new AcpProcessClient({

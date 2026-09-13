@@ -34,6 +34,9 @@
   会生成下一周期的独立任务，并按客户端时区保留本地时间。
 - 新增 MiniMax Code 后台支持：通过官方 `mcode acp` 原生 ACP 接入并支持一键安装；
   登录、模型与 Provider 配置仍由 MiniMax Code 自己管理。
+- 修复 Windows 上 Node.js 位于含空格目录（如默认的 `C:\Program Files\nodejs`）时，
+  一键安装后台的 npm 步骤被 cmd.exe 截断命令路径而失败的问题；安装后也会正确读取
+  npm 全局前缀。
 - 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
   `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
   模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。

@@ -43,6 +43,15 @@ function environmentPath(env) {
   return key ? String(env[key] || '') : ''
 }
 
+// Windows 上 npm.cmd 必须经 cmd.exe 执行；cmd.exe 会在第一个空格处截断未加
+// 引号的命令路径（如 C:\Program Files\nodejs\npm.cmd）。
+function windowsShellCommand(command, platform) {
+  const value = String(command || '')
+  return platform === 'win32' && /\s/.test(value) && !/^".*"$/.test(value)
+    ? `"${value}"`
+    : value
+}
+
 function specSteps(id, platform) {
   const onboarding = backendOnboardingAdapter(id, { platform })
   const spec = onboarding.installation
@@ -248,7 +257,7 @@ function runStep(command, args, {
     let child
     let output = ''
     try {
-      child = spawnImpl(command, args, {
+      child = spawnImpl(windowsShellCommand(command, platform), args, {
         env: { ...env },
         windowsHide: true,
         shell: platform === 'win32',
@@ -623,10 +632,17 @@ export async function installBackend(id, {
     if (step.kind === 'npm' && npmCommand) {
       // npm install -g 成功后，把全局 bin 目录加入 resolvedEnv.PATH，
       // 否则后续验证步骤找不到刚安装的二进制。
-      const prefixResult = spawnSync(npmCommand, ['config', 'get', 'prefix'], {
-        env: npmRunEnv(resolvedEnv, npmCommand, platform),
-        encoding: 'utf8',
-      })
+      const prefixResult = spawnSync(
+        windowsShellCommand(npmCommand, platform),
+        ['config', 'get', 'prefix'],
+        {
+          env: npmRunEnv(resolvedEnv, npmCommand, platform),
+          encoding: 'utf8',
+          // 与安装步骤一致：Node 拒绝不经 shell 直接启动 .cmd（EINVAL）。
+          shell: platform === 'win32',
+          windowsHide: true,
+        },
+      )
       const rawPrefix = (prefixResult.stdout || '').trim()
       const npmGlobalBin = rawPrefix
         ? platform === 'win32'

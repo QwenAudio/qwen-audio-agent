@@ -55,6 +55,7 @@ export class FrontendMemoryRuntime {
     this.provider = assertMemoryProvider(provider)
     this.closePromise = null
     this.changeListeners = new Set()
+    this.ownerWrites = new Map()
   }
 
   describe() {
@@ -93,13 +94,53 @@ export class FrontendMemoryRuntime {
     return () => this.changeListeners.delete(listener)
   }
 
-  async apply(ownerId, changes = [], context = {}) {
+  // Internal commit lane shared with silent learning writes. Start an idle lane
+  // synchronously, including its success observers, and never poison the next
+  // write when a provider rejects. Other owners retain independent lanes.
+  withOwnerWrite(ownerId, write) {
+    const key = String(ownerId || '')
+    const previous = this.ownerWrites.get(key)
+    const pending = Promise.withResolvers()
+    this.ownerWrites.set(key, pending.promise)
+    const settle = (complete, value) => {
+      if (this.ownerWrites.get(key) === pending.promise) this.ownerWrites.delete(key)
+      complete(value)
+    }
+    const start = () => {
+      try {
+        const result = write()
+        if (result && typeof result.then === 'function') {
+          Promise.resolve(result).then(
+            value => settle(pending.resolve, value),
+            error => settle(pending.reject, error),
+          )
+        } else settle(pending.resolve, result)
+      } catch (error) {
+        settle(pending.reject, error)
+      }
+    }
+    if (previous) previous.then(start, start)
+    else start()
+    return pending.promise
+  }
+
+  // isCurrent is a local learning guard, not part of the provider protocol.
+  async apply(ownerId, changes = [], context = {}, isCurrent = () => true) {
     const event = Object.freeze({
       ownerId,
       source: context?.source || '',
       sessionId: context?.sessionId || null,
     })
-    const result = await this.provider.apply(ownerId, changes, context)
+    return this.withOwnerWrite(ownerId, () => {
+      if (!isCurrent()) return null
+      const result = this.provider.apply(ownerId, changes, context)
+      return result && typeof result.then === 'function'
+        ? Promise.resolve(result).then(value => this.#applied(value, event))
+        : this.#applied(result, event)
+    })
+  }
+
+  #applied(result, event) {
     if (!result || typeof result !== 'object' || !Array.isArray(result.documents)) {
       throw new TypeError(
         'MemoryProvider apply() must return changed and documents',

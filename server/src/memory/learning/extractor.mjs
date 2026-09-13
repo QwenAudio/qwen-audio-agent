@@ -234,19 +234,21 @@ export class MemoryExtractor {
     if (!this.enabled()) return null
     const safeOwnerId = String(ownerId || '')
     if (!safeOwnerId) return null
-    // Debounce only after a previous run; the first close always qualifies.
+    // Debounce actual new learning batches, never restored conversation history.
     const lastRunAt = this.lastRunAt.get(safeOwnerId)
     if (lastRunAt !== undefined && this.now() - lastRunAt < this.debounceMs) {
       return null
     }
-    const messages = this.conversationSync?.list({
+    const batch = this.conversationSync?.pendingRecords?.({
       ownerId: safeOwnerId,
       sessionId,
-    }) || []
+    }, this)
+    const messages = batch?.messages || []
     const userMessages = messages.filter(message => message.role === 'user')
     if (userMessages.length < this.minUserMessages) return null
+    batch.consume()
     this.lastRunAt.set(safeOwnerId, this.now())
-    return this.run({ ownerId: safeOwnerId, messages }).catch(error => {
+    return this.run({ ownerId: safeOwnerId, messages, isCurrent: batch.isCurrent }).catch(error => {
       this.audit?.record({
         op: 'error',
         ownerId: safeOwnerId,
@@ -258,7 +260,7 @@ export class MemoryExtractor {
     })
   }
 
-  async run({ ownerId, messages }) {
+  async run({ ownerId, messages, isCurrent = () => true }) {
     const lines = transcriptLines(messages, this.maxTranscriptChars)
     if (!lines.length) return
     const existing = this.memoryService.list(ownerId)
@@ -273,9 +275,12 @@ export class MemoryExtractor {
       '## 对话转写',
       lines.join('\n'),
     ].join('\n')
-    const changes = parsePatch(
-      await this.llmCall({ system: EXTRACTOR_SYSTEM_PROMPT, user }),
-    )
+    const response = await this.llmCall({ system: EXTRACTOR_SYSTEM_PROMPT, user })
+    if (!isCurrent()) {
+      this.audit?.record({ op: 'skip', ownerId, reason: 'stale_observation' })
+      return
+    }
+    const changes = parsePatch(response)
     if (!changes.length) {
       this.audit?.record({ op: 'skip', ownerId, reason: 'no_change' })
       return
@@ -351,7 +356,11 @@ export class MemoryExtractor {
     try {
       const result = await this.memoryService.apply(ownerId, prepared, {
         source: 'automatic-extraction',
-      })
+      }, isCurrent)
+      if (!result) {
+        this.audit?.record({ op: 'skip', ownerId, reason: 'stale_observation' })
+        return
+      }
       this.audit?.record({
         op: 'patch',
         ownerId,

@@ -8,6 +8,17 @@ function clean(value) {
   return String(value || '').replace(/\s+/g, ' ').trim()
 }
 
+function recordedSnapshot(message) {
+  return {
+    ...message,
+    taskIds: [...(message.taskIds || [])],
+    inputs: (message.inputs || []).map(input => ({ ...input })),
+    ...(message.citations
+      ? { citations: message.citations.map(citation => ({ ...citation })) }
+      : {}),
+  }
+}
+
 function speechKey(value) {
   return clean(value)
     .toLocaleLowerCase()
@@ -69,7 +80,16 @@ export class ConversationSync {
     let state = this.sessions.get(key)
     if (!state) {
       this.enforceSessionLimit()
-      state = { messages: [], byId: new Map(), lastAccessedAt: Date.now() }
+      state = {
+        ownerId: String(ownerId),
+        messages: [],
+        byId: new Map(),
+        lastAccessedAt: Date.now(),
+        recorded: new Map(),
+        recordSequence: 0,
+        recordEpoch: 0,
+        consumers: new WeakMap(),
+      }
       this.sessions.set(key, state)
     }
     state.lastAccessedAt = Date.now()
@@ -116,6 +136,7 @@ export class ConversationSync {
     const state = this.state(ownerId, sessionId)
     const existing = state.byId.get(id)
     if (existing) {
+      const changed = existing.role !== role || existing.content !== normalized
       Object.assign(existing, {
         role,
         content: normalized,
@@ -130,6 +151,7 @@ export class ConversationSync {
       }
       const snapshot = { ...existing }
       if (notify) {
+        if (changed) this.#recordPending(state, snapshot)
         try { this.onRecord?.(snapshot, { ownerId, sessionId }) } catch { /* observers must not affect sync */ }
       }
       return snapshot
@@ -154,9 +176,11 @@ export class ConversationSync {
     while (state.messages.length > this.maxMessages) {
       const removed = state.messages.shift()
       state.byId.delete(removed.id)
+      state.recorded.delete(removed.id)
     }
     const snapshot = { ...message }
     if (notify) {
+      this.#recordPending(state, snapshot)
       try { this.onRecord?.(snapshot, { ownerId, sessionId }) } catch { /* observers must not affect sync */ }
     }
     return snapshot
@@ -164,6 +188,56 @@ export class ConversationSync {
 
   record(message) {
     return this.upsert(message)
+  }
+
+  #recordPending(state, message) {
+    if (!state.byId.has(message.id)) return
+    state.recorded.delete(message.id)
+    state.recorded.set(message.id, {
+      version: ++state.recordSequence,
+      message: recordedSnapshot(message),
+    })
+    while (state.recorded.size > this.maxMessages) {
+      state.recorded.delete(state.recorded.keys().next().value)
+    }
+  }
+
+  // Durable history is presentation context, not new learning evidence. Each
+  // consumer independently claims only live records, before awaiting its work.
+  pendingRecords({ ownerId, sessionId }, consumer) {
+    if ((!consumer || typeof consumer !== 'object') && typeof consumer !== 'function') {
+      throw new TypeError('a record consumer object is required')
+    }
+    this.prune()
+    const key = sessionKey(ownerId, sessionId)
+    const state = this.peek(ownerId, sessionId)
+    if (!state) return { messages: [], consume() {}, isCurrent: () => false }
+    const cursor = state.consumers.get(consumer) || 0
+    const version = state.recordSequence
+    const epoch = state.recordEpoch
+    const isCurrent = () => {
+      this.prune()
+      return this.sessions.get(key) === state && state.recordEpoch === epoch
+    }
+    return {
+      messages: [...state.recorded.values()]
+        .filter(record => record.version > cursor)
+        .map(record => recordedSnapshot(record.message)),
+      consume: () => {
+        if (!isCurrent()) return
+        state.consumers.set(consumer, Math.max(state.consumers.get(consumer) || 0, version))
+      },
+      isCurrent,
+    }
+  }
+
+  discardRecorded(ownerId) {
+    this.prune()
+    for (const state of this.sessions.values()) {
+      if (state.ownerId !== String(ownerId)) continue
+      state.recorded.clear()
+      state.recordEpoch += 1
+    }
   }
 
   restore({ ownerId, sessionId, messages = [] }) {
@@ -200,8 +274,8 @@ export class ConversationSync {
     ))
   }
 
-  frontendContext({ ownerId, sessionId }) {
-    return projectFrontendConversation(this.list({ ownerId, sessionId }))
+  frontendContext({ ownerId, sessionId }, messages = this.list({ ownerId, sessionId })) {
+    return projectFrontendConversation(messages)
   }
 
 }

@@ -118,7 +118,9 @@ replaceable:
   source, Session, Turn, and Trace separately from model-controlled changes.
 - A provider advertising `semanticQuery` implements `query()` for natural-language recall.
 - A provider advertising `sessionObservation` implements `observe()` to receive completed
-  conversation exchanges. Optional `flush()` completes provider-owned session-boundary work.
+  conversation exchanges recorded since its previous observation, excluding restored history.
+  No new user messages means no observation; optional `flush()` still completes provider-owned
+  session-boundary work. Providers own concurrency between their asynchronous learning and edits.
 - A provider advertising `audioStreamObservation` implements synchronous `observeAudio()`.
   It receives accepted PCM16 chunks plus speech/session boundary events. Because this hook is on
   the input hot path, it must only perform bounded in-memory work; file, network, model, and

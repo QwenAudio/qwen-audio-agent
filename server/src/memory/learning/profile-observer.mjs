@@ -328,13 +328,21 @@ export class ProfileObserver {
     if (!this.enabled()) return null
     const safeOwnerId = String(ownerId || '')
     if (!safeOwnerId) return null
-    const messages = this.conversationSync?.list({
+    if (typeof this.conversationSync?.pendingRecords !== 'function') return null
+    const batch = this.conversationSync.pendingRecords({
       ownerId: safeOwnerId,
       sessionId,
-    }) || []
-    const userMessages = messages.filter(message => message.role === 'user')
+    }, this)
+    const userMessages = batch.messages.filter(message => message.role === 'user')
     if (userMessages.length < this.minUserMessages) return null
-    return this.run({ ownerId: safeOwnerId, sessionId, messages }).catch(error => {
+    // Claim fresh evidence before yielding so repeated close hooks cannot reuse it.
+    batch.consume()
+    return this.run({
+      ownerId: safeOwnerId,
+      sessionId,
+      messages: batch.messages,
+      isCurrent: batch.isCurrent,
+    }).catch(error => {
       this.audit?.record({
         op: 'error',
         ownerId: safeOwnerId,
@@ -346,7 +354,7 @@ export class ProfileObserver {
     })
   }
 
-  async run({ ownerId, sessionId, messages }) {
+  async run({ ownerId, sessionId, messages, isCurrent = () => true }) {
     const { lines, userText } = buildTranscript(messages, this.maxTranscriptChars)
     if (!lines.length) return []
     const user = [
@@ -357,9 +365,12 @@ export class ProfileObserver {
       lines.join('\n'),
     ].join('\n')
 
-    const observations = parseObservations(
-      await this.llmCall({ system: OBSERVER_SYSTEM_PROMPT, user }),
-    )
+    const response = await this.llmCall({ system: OBSERVER_SYSTEM_PROMPT, user })
+    if (!isCurrent()) {
+      this.audit?.record({ op: 'skip', ownerId, reason: 'stale_observation' })
+      return []
+    }
+    const observations = parseObservations(response)
     if (!observations.length) {
       this.audit?.record({ op: 'skip', ownerId, reason: 'no_observation' })
       return []

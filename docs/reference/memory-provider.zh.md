@@ -103,8 +103,9 @@ const gateway = createGatewayApplication({ memoryProvider })
 - `apply()` 接收用户明确要求的修改；`context` 中的来源、Session、Turn 和 Trace 由
   Gateway 提供，不属于模型可控内容。
 - 声明 `semanticQuery` 的 Provider 实现 `query()`，用于自然语言召回。
-- 声明 `sessionObservation` 的 Provider 实现 `observe()`，接收已完成的会话交流；可选的
-  `flush()` 完成 Provider 自己的会话边界整理。
+- 声明 `sessionObservation` 的 Provider 实现 `observe()`，接收上次观察后新记录的会话
+  交流，不包含恢复的历史；没有新用户消息时不观察，但仍调用可选的 `flush()` 完成
+  Provider 自己的会话边界整理。Provider 自己负责异步学习与编辑之间的并发一致性。
 - 声明 `audioStreamObservation` 的 Provider 实现同步的 `observeAudio()`，接收已接受的
   PCM16 音频块和语音/Session 边界事件。该方法处在音频输入热路径，只能做有界的内存
   操作；文件、网络、模型及异步处理必须留到 `observe()` 或 `flush()`。

@@ -52,6 +52,62 @@ test('applies multiple exact edits atomically for updates and deletion', () => {
   assert.doesNotMatch(result.document.content, /喜欢篮球/)
 })
 
+for (const append of ['', '- 相同条目']) {
+  test(`exact deletion preserves unrelated Markdown${append ? ' when combined with append' : ''}`, () => {
+    const { store: memory, filePath } = store()
+    const source = [
+      '# MEMORY',
+      '<!-- 保留模板', '- 相同条目', '- ', '-->',
+      '## 第一组', '- 相同条目', '', '', '',
+      '## 第二组', '- 相同条目',
+      '## 第三组', '- 相同条目', '- ', '- 保留条目',
+    ].join('\n')
+    memory.persist('user_personal', `${source}\n`)
+    const original = memory.list('user_personal')[0]
+    const expected = source.replace('## 第二组\n- 相同条目\n', '## 第二组\n')
+      + (append ? `\n\n${append}` : '')
+
+    const result = memory.edit('user_personal', {
+      expectedRevision: original.revision,
+      edits: [{ old_text: '## 第二组\n- 相同条目\n', new_text: '## 第二组\n' }],
+      append,
+    })
+
+    assert.equal(result.changed, append ? 2 : 1)
+    assert.equal(result.document.content, expected)
+    assert.equal(readFileSync(filePath, 'utf8'), `${expected}\n`)
+    assert.equal(result.document.revision, memory.list('user_personal')[0].revision)
+  })
+}
+
+test('exact edits keep revision checks and failed multi-edit requests atomic', () => {
+  const { store: memory, filePath } = store()
+  const source = '# MEMORY\n- 相同条目\n- 相同条目\n- 保留条目'
+  memory.persist('user_personal', `${source}\n`)
+  const original = memory.list('user_personal')[0]
+  assert.throws(() => memory.edit('user_personal', {
+    expectedRevision: 'stale',
+    edits: [{ old_text: '- 保留条目', new_text: '- 新条目' }],
+  }), error => error.code === 'stale_document')
+  assert.throws(() => memory.edit('user_personal', {
+    expectedRevision: original.revision,
+    edits: [
+      { old_text: '- 保留条目', new_text: '- 新条目' },
+      { old_text: '- 不存在', new_text: '' },
+    ],
+    append: '- 不应写入',
+  }), error => error.code === 'edit_not_found')
+  assert.equal(readFileSync(filePath, 'utf8'), `${source}\n`)
+  assert.deepEqual(memory.list('user_personal')[0], original)
+
+  const result = memory.edit('user_personal', {
+    expectedRevision: original.revision,
+    edits: [{ old_text: '- 保留条目', new_text: '' }],
+  })
+  assert.equal(result.document.content, '# MEMORY\n- 相同条目\n- 相同条目')
+  assert.equal(result.document.revision, memory.list('user_personal')[0].revision)
+})
+
 test('rejects stale revisions and removes duplicate or empty bullet placeholders', () => {
   const { store: memory, filePath } = store()
   const first = memory.edit('user_personal', { append: '- \n- 相同\n- 相同' })

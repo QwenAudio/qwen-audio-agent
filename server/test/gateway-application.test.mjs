@@ -826,6 +826,7 @@ test('shutdown drains memory session observation and flush before closing its pr
   const observed = Promise.withResolvers()
   const release = Promise.withResolvers()
   const calls = []
+  const conversationSync = new ConversationSync()
   const application = createTestGatewayApplication({
     config: {
       ...config, port: 0, host: '127.0.0.1',
@@ -834,6 +835,7 @@ test('shutdown drains memory session observation and flush before closing its pr
     },
     autoStart: false, parentPort: null,
     frontendMcp: null, frontendOpenApi: null,
+    conversationSync,
     frontendMemory: {
       list: () => [],
       ownsSessionObservation: () => true,
@@ -852,6 +854,14 @@ test('shutdown drains memory session observation and flush before closing its pr
   await once(application.server, 'listening')
   socket = new WebSocket(`ws://127.0.0.1:${application.server.address().port}/api/realtime?sessionId=drain-memory`)
   await once(socket, 'open')
+  conversationSync.record({
+    ownerId: config.personalOwnerId,
+    sessionId: 'drain-memory',
+    id: 'fresh-user-before-shutdown',
+    role: 'user',
+    source: 'voice-user',
+    content: 'A fresh user message before shutdown.',
+  })
   const closing = application.close()
   await observed.promise
   assert.deepEqual(calls, ['observe'])

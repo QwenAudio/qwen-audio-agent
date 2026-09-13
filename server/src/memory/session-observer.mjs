@@ -14,14 +14,21 @@ export class MemorySessionObserver {
   }
 
   onSessionClosed({ ownerId, sessionId, logger }) {
+    const batch = this.conversationSync?.pendingRecords?.({ ownerId, sessionId }, this)
+    const hasNewUserMessages = batch?.messages.some(message => message.role === 'user') === true
+    if (hasNewUserMessages) batch.consume()
     const pending = [this.#run(logger, 'memory.extract_hook_failed', () => (
       this.memoryExtractor?.maybeRun({ ownerId, sessionId })
     ))]
     if (this.memoryService?.ownsSessionObservation?.()) {
       pending.push(this.#run(logger, 'memory.provider_observe_hook_failed', async () => {
-        await this.memoryService.observe(ownerId, {
-          messages: this.conversationSync.frontendContext({ ownerId, sessionId }),
-        }, { source: 'session-close', sessionId })
+        if (hasNewUserMessages) {
+          await this.memoryService.observe(ownerId, {
+            messages: this.conversationSync.frontendContext({ ownerId, sessionId }, batch.messages),
+          }, { source: 'session-close', sessionId })
+        }
+        // Streaming/audio providers may still need to flush an ended session,
+        // even when there is no new text to observe.
         await this.memoryService.flush(ownerId, { source: 'session-close', sessionId })
       }))
     }
@@ -30,9 +37,11 @@ export class MemorySessionObserver {
     const observing = this.#run(logger, 'preference.observe_hook_failed', () => (
       this.profileObserver?.maybeRun({ ownerId, sessionId })
     ))
-    const promote = () => this.#run(logger, 'preference.promote_hook_failed', () => (
-      this.preferencePromoter?.run({ ownerId })
-    ))
+    const promote = () => hasNewUserMessages && batch.isCurrent()
+      ? this.#run(logger, 'preference.promote_hook_failed', () => (
+          this.preferencePromoter?.run({ ownerId })
+        ))
+      : undefined
     pending.push(observing?.then ? observing.then(promote) : promote())
     return Promise.all(pending)
   }

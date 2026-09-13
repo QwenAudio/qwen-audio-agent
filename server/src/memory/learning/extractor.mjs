@@ -356,7 +356,11 @@ export class MemoryExtractor {
     try {
       const result = await this.memoryService.apply(ownerId, prepared, {
         source: 'automatic-extraction',
-      })
+      }, isCurrent)
+      if (!result) {
+        this.audit?.record({ op: 'skip', ownerId, reason: 'stale_observation' })
+        return
+      }
       this.audit?.record({
         op: 'patch',
         ownerId,

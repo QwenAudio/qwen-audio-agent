@@ -53,6 +53,9 @@ export function createMemoryModule({ config, logger, conversationSync, textModel
       // Promotion uses the provider’s synchronous snapshot; without a provider
       // the promoter stays disabled.
       memoryService: memoryProviderRuntime,
+      // Keep promotions silent, but serialize their complete read/write/confirm
+      // transaction with explicit edits through the runtime's owner lane.
+      withOwnerWrite: frontendMemoryRuntime?.withOwnerWrite?.bind(frontendMemoryRuntime),
       candidatePool: preferenceCandidates,
       audit,
       logger,

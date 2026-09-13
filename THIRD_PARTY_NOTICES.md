@@ -18,6 +18,7 @@ qwen-audio-agent 使用并分发若干开源组件。项目自身使用 Apache L
 | electron-builder | MIT | https://github.com/electron-userland/electron-builder |
 | Agent2Agent Protocol JavaScript SDK | Apache-2.0 | https://github.com/a2aproject/a2a-js |
 | Agent Client Protocol TypeScript SDK | Apache-2.0 | https://github.com/agentclientprotocol/typescript-sdk |
+| Muse Code SDK | MIT | https://github.com/meta-models/muse-code-sdk |
 | Codex ACP adapter | Apache-2.0 | https://github.com/agentclientprotocol/codex-acp |
 | Claude Code ACP adapter | Apache-2.0 | https://github.com/zed-industries/claude-code-acp |
 | Model Context Protocol TypeScript SDK | MIT | https://github.com/modelcontextprotocol/typescript-sdk |

@@ -40,8 +40,44 @@ jobs:
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: node --test .gitlab/sync-github.test.mjs
       - run: npm ci
-      - run: npm test
+      # windows-latest occasionally kills a whole test file's child process: the
+      # runner reports the file as `✖ <file> ... 'test failed'` with a non-zero
+      # exit and no diagnostics, and it lands on a different heavyweight example
+      # suite each time (smart-cockpit gateway composition, AI Passport relay).
+      # It fails the same way on main, never reproduced in ~120 targeted reruns
+      # on windows-latest, and is unrelated to the change under test, so retry
+      # the Windows suite once before failing the job. The retry is announced as
+      # a warning annotation so a flaky pass stays visible instead of silently
+      # swallowing a real regression.
+      - if: ${{ runner.os != 'Windows' }}
+        run: npm test
+      - name: Run the test suite (Windows, one retry on silent process exits)
+        if: ${{ runner.os == 'Windows' }}
+        shell: bash
+        run: |
+          for attempt in 1 2; do
+            if npm test; then
+              if [ "$attempt" -gt 1 ]; then
+                echo "::warning::npm test only passed on attempt $attempt; the first attempt hit the known Windows test-process exit."
+              fi
+              exit 0
+            fi
+            echo "::warning::npm test failed on attempt $attempt on Windows; retrying once."
+          done
+          echo "::error::npm test failed on both attempts on Windows."
+          exit 1
       - run: npm run build
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npx playwright install --with-deps chromium
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run test:web-browser
+      - if: ${{ failure() && matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: browser-voice-diagnostics
+          path: output/playwright/browser-webui-smoke/
+          if-no-files-found: ignore
+          retention-days: 7
       # Smart Cockpit has its own Vite/ESLint toolchain outside the root
       # workspace graph. Exercise it once on the baseline Linux job instead of
       # duplicating the same frontend build across the full OS/Node matrix.

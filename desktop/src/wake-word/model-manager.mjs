@@ -5,7 +5,6 @@ import {
   existsSync,
   mkdirSync,
   renameSync,
-  rmSync,
   writeFileSync,
 } from 'node:fs'
 import { basename, dirname, resolve } from 'node:path'
@@ -13,6 +12,10 @@ import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import tar from 'tar-stream'
 import unbzip2 from 'unbzip2-stream'
+import {
+  removeFileSync,
+  removeTreeSync,
+} from '../../../shared/file-transaction-lock.mjs'
 
 export const WAKE_WORD_MODEL_NAME = 'sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20'
 export const WAKE_WORD_MODEL_URL = `https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/${WAKE_WORD_MODEL_NAME}.tar.bz2`
@@ -98,12 +101,12 @@ async function prepare(directory, { fetchImpl }) {
     if (!complete(stagingDirectory)) {
       throw new Error('唤醒词模型缺少必需文件')
     }
-    rmSync(directory, { recursive: true, force: true })
+    removeTreeSync(directory)
     renameSync(stagingDirectory, directory)
     return directory
   } finally {
-    rmSync(archivePath, { force: true })
-    rmSync(stagingDirectory, { recursive: true, force: true })
+    removeFileSync(archivePath)
+    removeTreeSync(stagingDirectory)
   }
 }
 

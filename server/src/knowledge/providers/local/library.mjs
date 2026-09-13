@@ -20,8 +20,8 @@ import {
   copyFileSync,
   mkdirSync,
   readFileSync,
-  rmSync,
   statSync,
+  unlinkSync,
 } from 'node:fs'
 import { basename, extname, join, parse, resolve } from 'node:path'
 import { withFileTransaction } from '../../../../../shared/file-transaction-lock.mjs'
@@ -358,7 +358,12 @@ export class KnowledgeLibrary {
     if (!entry) return null
     this.owners.set(safeOwnerId, entries.filter(item => item.id !== entry.id))
     try {
-      rmSync(entry.path, { force: true })
+      // 刻意不用 rmSync({ force: true })：Windows 上 Node 24 的 fs.rmSync 走 C++
+      // 绑定（binding.rmSync），路径是按当前 ANSI 代码页而不是 UTF-8 解释的 ——
+      // 中文文件名会变成另一个名字：轻则删不掉（force 把 ENOENT 吞了），重则删掉
+      // 同目录下恰好叫那个乱码名的文件。unlinkSync 走 libuv 的 UTF-8 → UTF-16
+      // 转换，中文名删得准（Node 22 的 rmSync 也正常，这是按 Node 24 行为写的防御）。
+      unlinkSync(entry.path)
     } catch {
       // 文件删不掉不该阻止索引移除：清单里看不见就是用户要的效果。
     }

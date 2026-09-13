@@ -13,8 +13,12 @@ import {
   backendRuntimeDriver,
 } from '../src/process/backend-drivers/registry.mjs'
 
-test('every advertised backend has Agent and Runtime drivers', () => {
-  for (const protocol of backendNames()) {
+const acpBackendNames = () => backendNames().filter(protocol => (
+  backendDefinition(protocol)?.setup?.integration !== 'msp'
+))
+
+test('every advertised ACP backend has Agent and Runtime drivers', () => {
+  for (const protocol of acpBackendNames()) {
     assert.equal(backendDriver(protocol).id, protocol)
     const runtime = backendRuntimeDriver(protocol)
     const definition = backendDefinition(protocol)
@@ -29,7 +33,7 @@ test('every advertised backend has Agent and Runtime drivers', () => {
 })
 
 test('every Agent driver publishes one validated capability contract', () => {
-  for (const protocol of backendNames()) {
+  for (const protocol of acpBackendNames()) {
     const driver = backendDriver(protocol)
     for (const capability of [
       'delegation',
@@ -75,7 +79,7 @@ test('enables MCP coordinator instructions only for verified Agent hosts', () =>
       true,
     )
   }
-  for (const protocol of backendNames().filter(
+  for (const protocol of acpBackendNames().filter(
     value => !['opencode', 'qoder', 'qwen', 'claude'].includes(value),
   )) {
     assert.equal(
@@ -96,4 +100,9 @@ test('external ownership is available only to declared backend services', () => 
   assert.throws(() => resolveBackendOwnership('opencode', {
     requestedOwnership: 'external',
   }), /不支持连接外部后台服务/)
+})
+
+test('keeps Muse on its MSP adapter instead of the ACP driver registry', () => {
+  assert.equal(backendRuntimeDriver('muse').id, 'muse')
+  assert.throws(() => backendDriver('muse'), /不支持的后台 Agent/)
 })

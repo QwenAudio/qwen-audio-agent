@@ -24,7 +24,8 @@
     "kimi-code",
     "claude-code",
     "deepseek",
-    "minimax-code"
+    "minimax-code",
+    "muse-code"
   ],
   "type": "module",
   "exports": {
@@ -243,6 +244,7 @@
     "gateway": "npm run start --workspace server",
     "desktop": "npm run start --workspace desktop",
     "test:desktop-smoke": "node scripts/electron-smoke.mjs",
+    "test:web-browser": "node scripts/test/browser-webui-smoke.mjs",
     "desktop:build": "node scripts/check-desktop-release-env.mjs && npm run build && electron-builder --config desktop/electron-builder.yml --mac dmg zip",
     "desktop:build:local": "npm run build && electron-builder --config desktop/electron-builder.yml --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --mac dmg",
     "desktop:build:linux": "npm run build && electron-builder --config desktop/electron-builder.yml --linux AppImage deb",
@@ -290,6 +292,7 @@
     "@a2a-js/sdk": "1.1.0",
     "@agentclientprotocol/sdk": "1.4.0",
     "@modelcontextprotocol/sdk": "1.30.0",
+    "@muse-code/sdk": "0.1.1",
     "@qwen-code/open-computer-use": "^0.2.3",
     "electron-updater": "6.8.9",
     "express": "^4.22.2",
@@ -307,6 +310,7 @@
     "eslint": "10.9.1",
     "eslint-plugin-react-hooks": "7.1.1",
     "globals": "17.12.0",
+    "playwright": "^1.63.0",
     "vitepress": "^1.6.4"
   },
   "overrides": {

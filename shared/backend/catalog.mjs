@@ -1,4 +1,5 @@
 const HERMES_INSTALL_COMMAND = 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash'
+const MUSE_INSTALL_COMMAND = 'curl -fsSL https://dev.meta.ai/install.sh | bash'
 
 // Static backend metadata lives here so CLI, desktop, runtime setup and the
 // Gateway do not maintain parallel lists. Executable behavior stays in backend
@@ -400,6 +401,37 @@ const definitions = new Map([
       ],
       prefixes: ['PI_'],
     },
+  }],
+  ['muse', {
+    id: 'muse',
+    label: 'Muse Code',
+    // Keep the Windows host cwd separate from the Linux path sent over MSP;
+    // MUSE_CODE_WORKSPACE is intentionally left as a protocol-native value.
+    workspaceEnvironment: 'MUSE_CODE_HOST_WORKSPACE',
+    // Muse Code owns its extensions and does not currently declare a
+    // skills.sh-compatible installer target.
+    skills: null,
+    setup: {
+      command: 'muse',
+      executableEnvironment: 'MUSE_CODE_BIN',
+      integration: 'msp',
+    },
+    lifecycle: {
+      installation: {
+        steps: [{
+          kind: 'script',
+          command: MUSE_INSTALL_COMMAND,
+          platforms: ['darwin', 'linux'],
+        }],
+      },
+      configuration: { mode: 'backend-owned' },
+    },
+    onboarding: {
+      command: 'muse',
+      hint: '首次使用请启动 Muse Code，并完成 Meta Developer 账号登录或 API Key 配置。',
+    },
+    supportsFullPermission: true,
+    environment: { prefixes: ['MUSE_'] },
   }],
   ['acp', {
     id: 'acp',

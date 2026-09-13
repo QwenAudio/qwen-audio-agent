@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 新增 Muse Code 后台支持：通过官方 `@muse-code/sdk` 和 Muse Session Protocol
+  接入，支持任务进度、权限确认、补充输入、取消、内联图片与最终结果回传。
+
 - 移除 `backend-adapter` 与 `custom-conversation-client` 示例目录及文档入口，保留后台 SDK 与客户端协议能力。
 
 - 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，

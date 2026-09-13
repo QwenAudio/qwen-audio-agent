@@ -19,6 +19,7 @@ const expectedCommands = new Map([
   ['codex', 'codex login'],
   ['claude', 'claude'],
   ['pi', 'pi'],
+  ['muse', 'muse'],
   ['deepseek', 'dsh web'],
 ])
 

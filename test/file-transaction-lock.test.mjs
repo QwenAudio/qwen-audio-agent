@@ -4,7 +4,11 @@ import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { withFileTransaction } from '../shared/file-transaction-lock.mjs'
+import {
+  removeFileSync,
+  removeTreeSync,
+  withFileTransaction,
+} from '../shared/file-transaction-lock.mjs'
 
 function fixture(t) {
   const root = fs.mkdtempSync(join(tmpdir(), 'qwa-file-transaction-'))
@@ -96,3 +100,24 @@ for (const kind of ['directory', 'legacy file']) {
     assert.equal(fs.existsSync(lockPath), false)
   })
 }
+
+// Windows + Node 24 的 fs.rmSync 会把非 ASCII 路径按当前代码页重新解释：中文名目标
+// 要么删不掉（force 吞掉 ENOENT），要么落到同目录下恰好叫那个乱码名的另一个文件上。
+// 这两个删除入口走 libuv 的 unlink/rmdir，中文名是最容易踩到的场景，这里钉住行为。
+test('removes non-ASCII paths instead of mangling them', t => {
+  const root = fs.mkdtempSync(join(tmpdir(), 'qwa-file-transaction-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const file = join(root, '手册.md')
+  fs.writeFileSync(file, '# 手册')
+  const directory = join(root, '资料库')
+  fs.mkdirSync(join(directory, 'nested'), { recursive: true })
+  fs.writeFileSync(join(directory, 'nested', '二册.md'), '# 二册')
+
+  assert.equal(removeFileSync(file), true)
+  assert.equal(fs.existsSync(file), false)
+  assert.equal(removeTreeSync(directory), true)
+  assert.equal(fs.existsSync(directory), false)
+  // 已经不在了算成功 —— 与 rmSync({ force: true }) 的语义一致
+  assert.equal(removeFileSync(file), false)
+  assert.equal(removeTreeSync(directory), false)
+})

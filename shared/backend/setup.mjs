@@ -581,6 +581,7 @@ export async function inspectBackendSetupsAsync({
 }
 
 function integrationText(item) {
+  if (item.integration === 'msp') return '原生 Muse Session Protocol'
   if (item.integration === 'native') return '原生 ACP'
   if (item.integration === 'bridge') return '内置 ACP Bridge'
   if (item.integration === 'generic') return '用户提供的 ACP 命令'

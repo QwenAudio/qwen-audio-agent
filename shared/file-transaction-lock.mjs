@@ -1,13 +1,16 @@
 import { randomUUID } from 'node:crypto'
 import {
+  lstatSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
-  rmSync,
+  rmdirSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const sleepBuffer = new Int32Array(new SharedArrayBuffer(4))
 
@@ -43,7 +46,7 @@ function reclaim(lockPath, token) {
   } catch {
     return false
   }
-  rmSync(stalePath, { recursive: true, force: true })
+  removeTreeSync(stalePath)
   return true
 }
 
@@ -77,7 +80,7 @@ function acquire(filePath, {
         // initialization race like a lost acquire attempt instead of failing
         // the caller's transaction.
         if (error?.code === 'ENOENT') continue
-        rmSync(lockPath, { recursive: true, force: true })
+        removeTreeSync(lockPath)
         throw error
       }
       return () => {
@@ -176,5 +179,38 @@ export function replaceFileSync(temporaryPath, targetPath, {
     }
     throw error
   }
-  rmSync(backupPath, { force: true })
+  removeFileSync(backupPath)
+}
+
+// Windows + Node 24 上 fs.rmSync 走的是 C++ 绑定（binding.rmSync），路径是按当前
+// ANSI 代码页而不是 UTF-8 解释的：非 ASCII 目标会变成另一个名字 —— 删除要么静默
+// 无效（force 把 ENOENT 吞了），要么作用到同目录下恰好叫那个乱码名的文件上。下面
+// 两个删除入口走 libuv 的 unlinkSync / rmdirSync（UTF-8 → UTF-16 转换，名字不会
+// 走样），语义与 rmSync({ force: true }) / rmSync({ recursive: true, force: true })
+// 对齐：目标本来就不在算成功，其它失败照旧抛出。
+export function removeFileSync(target) {
+  try {
+    unlinkSync(target)
+    return true
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+}
+
+// 逐层自己走目录，而不是 rmSync({ recursive: true })：递归删除同样按代码页解释
+// 路径，非 ASCII 目录会整个留在原地。符号链接按链接本身删除，不跟随进目标
+// —— 与 rmSync 一致。
+export function removeTreeSync(target) {
+  let stats
+  try {
+    stats = lstatSync(target)
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false
+    throw error
+  }
+  if (!stats.isDirectory()) return removeFileSync(target)
+  for (const name of readdirSync(target)) removeTreeSync(join(target, name))
+  rmdirSync(target)
+  return true
 }

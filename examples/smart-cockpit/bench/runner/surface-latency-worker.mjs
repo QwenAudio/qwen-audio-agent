@@ -1,16 +1,18 @@
 #!/usr/bin/env node
-// 单表面（前台 / 后台）工具链路延迟测量 worker。
+// Single-surface (frontend / backend) tool route latency worker.
 //
-// 为什么要独立进程：表面路由（COCKPIT_DOMAIN_SURFACES）在 registry.mjs 模块加载期
-// 固化成 FRONTEND_TOOL_NAMES / BACKEND_TOOL_NAMES，同一进程内无法加载两套路由。
-// 因此 run-surface-compare.mjs 为每种路由各启动一个 worker，本文件只负责一种。
+// Why a separate process: surface routing (COCKPIT_DOMAIN_SURFACES) is frozen into
+// FRONTEND_TOOL_NAMES / BACKEND_TOOL_NAMES when registry.mjs loads, so one process
+// cannot hold two routings. run-surface-compare.mjs therefore starts one worker per
+// routing and this file handles exactly one of them.
 //
-// 测量口径（不依赖任何 LLM，模型被替换为零耗时 stub）：
-//   frontend —— 客户端 --MCP/HTTP--> /mcp/frontend --> CockpitService
-//   backend  —— 客户端 --A2A/JSON-RPC--> Agent --MCP/HTTP--> /mcp/backend --> CockpitService
-// 两条链路执行的是同一个工具、同一个 CockpitService 实例，因此差值即链路开销本身。
+// What is measured (no LLM involved; the model is a zero-latency stub):
+//   frontend — client --MCP/HTTP--> /mcp/frontend --> CockpitService
+//   backend  — client --A2A/JSON-RPC--> Agent --MCP/HTTP--> /mcp/backend --> CockpitService
+// Both routes execute the same tool on the same CockpitService instance, so the
+// difference is the route overhead itself.
 //
-// 用法（一般由 run-surface-compare.mjs 调用）：
+// Usage (normally invoked by run-surface-compare.mjs):
 //   COCKPIT_DOMAIN_SURFACES='{"domains":{"vehicle":"backend"}}' \
 //     node surface-latency-worker.mjs --surface backend --repeats 5
 import { readFileSync } from 'node:fs'
@@ -36,7 +38,7 @@ function loadCases({ domain } = {}) {
   return all.filter(caseItem => domains.has(caseItem.domain))
 }
 
-// ─── 统计 ────────────────────────────────────────────────────────────────────
+// ─── Statistics ──────────────────────────────────────────────────────────────
 function quantile(sorted, ratio) {
   if (!sorted.length) return null
   const position = (sorted.length - 1) * ratio
@@ -60,8 +62,9 @@ function summarize(samples) {
   }
 }
 
-// ─── 零耗时 stub 模型：把用户话术直接映射为用例声明的工具调用 ────────────────
-// 目的是把模型推理时间从测量中剔除，只保留链路（A2A + MCP + Agent 编排）开销。
+// ─── Zero-latency stub model: maps an utterance to the case's declared calls ──
+// This removes model inference from the measurement, leaving only the route cost
+// (A2A + MCP + Agent orchestration).
 function scriptedModel(cases) {
   const script = new Map(cases.map(caseItem => [
     caseItem.turns[0].user,
@@ -81,13 +84,13 @@ function scriptedModel(cases) {
       if (last?.role === 'tool') return { content: String(last.content || '') }
       const objective = String(last?.content || '')
       const calls = script.get(objective)
-      if (!calls?.length) return { content: '无对应工具' }
+      if (!calls?.length) return { content: 'no matching tool' }
       return { content: null, tool_calls: calls }
     },
   }
 }
 
-// ─── frontend 链路：MCP over HTTP ────────────────────────────────────────────
+// ─── frontend route: MCP over HTTP ───────────────────────────────────────────
 async function createFrontendDriver({ serviceOrigin }) {
   const url = new URL('/mcp/frontend', serviceOrigin)
   url.searchParams.set('cockpitId', COCKPIT_ID)
@@ -98,7 +101,8 @@ async function createFrontendDriver({ serviceOrigin }) {
     label: 'MCP/HTTP -> /mcp/frontend',
     supports: name => available.has(name),
     async run(caseItem) {
-      // 前台链路一次话术对应一次工具调用，与 Gateway 直连 MCP 的行为一致。
+      // On the frontend route one utterance maps to one tool call, matching how the
+      // Gateway talks to MCP directly.
       for (const call of caseItem.explicit_calls || []) {
         const result = await client.callTool({
           name: call.name,
@@ -113,7 +117,7 @@ async function createFrontendDriver({ serviceOrigin }) {
   }
 }
 
-// ─── backend 链路：A2A -> Agent -> MCP over HTTP ─────────────────────────────
+// ─── backend route: A2A -> Agent -> MCP over HTTP ────────────────────────────
 async function createBackendDriver({ serviceOrigin, cases }) {
   const agent = await startCockpitAgentServer({
     port: 0,
@@ -167,7 +171,8 @@ async function main() {
   const skipped = []
 
   for (const caseItem of cases) {
-    // 该表面上不存在这些工具时跳过，避免把 "工具不可见" 记成延迟。
+    // Skip tools that do not exist on this surface, so "tool not visible" is never
+    // recorded as latency.
     const unavailable = (caseItem.explicit_calls || [])
       .map(call => call.name)
       .filter(name => !driver.supports(name))
@@ -178,7 +183,7 @@ async function main() {
 
     const samples = []
     for (let iteration = 0; iteration < warmup + repeats; iteration += 1) {
-      // setup 走进程内 service，不计入测量窗口。
+      // Setup goes through the in-process service and stays outside the measured window.
       for (const call of caseItem.setup_calls || []) {
         await service.execute(call.name, call.arguments || {}, { cockpitId: COCKPIT_ID })
       }

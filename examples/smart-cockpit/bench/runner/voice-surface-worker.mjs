@@ -1,22 +1,25 @@
 #!/usr/bin/env node
-// 音频输入下的单表面（前台 realtime-api / 后台 A2A Agent）时延测量 worker。
+// Single-surface latency worker (frontend realtime-api / backend A2A Agent) under
+// audio input.
 //
-// 与 surface-latency-worker.mjs 的区别：这里是**真实音频输入 + 真实模型**。
-// 用 macOS `say` + ffmpeg 把用例话术合成 16kHz PCM（沿用 run-voice.mjs 的音频
-// 仿真器口径），按 20ms 分片推给 Gateway 的 /api/realtime，再由真实 realtime
-// 模型决定调用工具。
+// Unlike surface-latency-worker.mjs this drives *real audio and real models*: the
+// case utterance is synthesized to 16 kHz PCM with macOS `say` plus ffmpeg (the
+// same audio simulator as run-voice.mjs), streamed to the Gateway's /api/realtime
+// in 20 ms chunks, and the live realtime model decides which tools to call.
 //
-// 零点：**说完话的瞬间**（有效语音推流结束、静音尾巴开始之前）。
-// 这一点必须如此取——若以 session.created 或首帧为零点，VAD 的静音等待成本
-// 会被隐藏，导致把等待误判成模型或 TTS 的耗时。
+// Zero point: *the instant the utterance ends*, when the speech stream is done and
+// before the trailing silence. It has to be measured there: anchoring on
+// session.created or the first frame would hide the VAD silence wait and make that
+// wait look like model or TTS time.
 //
-// 关键指标（全部相对零点）：
-//   tool_before_ms —— 本轮最后一次 service.execute 开始，相对语音推流结束
-//   tool_after_ms  —— 本轮所有已调用工具结束后，最晚 resolve/reject 的相对时间
-//   first_audio_ms —— 客户端收到第一帧音频，不代表实际扬声器播放
+// Key metrics, all relative to the zero point:
+//   tool_before_ms — the latest service.execute start in the turn
+//   tool_after_ms  — the latest resolve/reject once every invoked tool has finished
+//   first_audio_ms — the client received the first audio frame, which is not
+//                    actual speaker playback
 //
-// 表面路由在 registry.mjs 模块加载期固化，故每种路由必须独立进程；
-// 本文件只跑一种，由 run-voice-surface-compare.mjs 负责起两个子进程。
+// Surface routing is frozen when registry.mjs loads, so each routing needs its own
+// process. This file runs one of them; run-voice-surface-compare.mjs spawns both.
 import { once } from 'node:events'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { appendFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
@@ -54,7 +57,7 @@ import { createBenchmarkService, parseRunnerArgs, numberArg, sleep } from './con
 const CASES_URL = new URL('../cases/surface-compare.jsonl', import.meta.url)
 const SAMPLE_RATE = 16_000
 const CHUNK_MS = 20
-// Agent 每个任务都会探测技能目录，这不是被测的座舱动作。
+// The Agent probes its skill catalog on every task; that is not a cockpit action under test.
 const IGNORED_TOOLS = new Set(['custom_skill_list'])
 const TASK_TERMINAL = new Set([
   GatewayTaskEvent.COMPLETED,
@@ -94,7 +97,8 @@ export function createVoiceService(mode = 'example', {
   if (mode === 'example') {
     const services = createAmapCockpitServices()
     if (!amapAvailable) {
-      // 车控音乐可独立测试；误调用高德业务时明确失败，不发无凭据请求或返回样例。
+      // Vehicle and music stay testable on their own. A misrouted Amap call fails loudly
+      // instead of firing a credential-less request or returning sample data.
       for (const name of Object.keys(services)) {
         services[name] = async () => { throw new Error(`AMAP_MCP_KEY is required for ${name}; no mock fallback`) }
       }
@@ -105,8 +109,9 @@ export function createVoiceService(mode = 'example', {
   throw new Error(`Unknown service mode: ${mode}`)
 }
 
-// 仅给 bench 实例加观测包装，不修改 example 的 handler、MCP 协议或返回值。
-// AsyncLocalStorage 将并发的真实业务请求归属到各自工具，避免串轮误记。
+// Only the bench instance is wrapped for observation; the example handlers, the MCP
+// protocol and the returned payloads are untouched. AsyncLocalStorage attributes
+// concurrent business requests to their own tool so turns cannot be mixed up.
 export function observeToolExecution(service, { surface, toolLog, clock = () => performance.now() }) {
   const scope = new AsyncLocalStorage()
   const execute = service.execute.bind(service)
@@ -181,7 +186,8 @@ export function toolTiming(calls) {
   return { before_ms: latest('started_ms'), after_ms: latest('ended_ms') }
 }
 
-// 通过实际 MCP 端点探测高德配置；失败立即停止，不把错误或空结果替换成样例数据。
+// Probe the Amap configuration through the real MCP endpoint. A failure stops the run
+// instead of substituting sample data for an error or an empty result.
 export async function verifyLiveService(origin, surface, domains = ['weather', 'navigation']) {
   const requests = [{ name: 'weather', arguments: { city: '杭州' } },
     { name: 'navigation_start', arguments: { destination: '西湖' } }]
@@ -230,7 +236,7 @@ export function loadCases({ domain, limit, suite = 'short', caseId } = {}) {
   return limit > 0 ? all.slice(0, limit) : all
 }
 
-// ─── 音频仿真器（沿用 run-voice.mjs 口径） ──────────────────────────────────
+// ─── Audio simulator (same settings as run-voice.mjs) ────────────────────────
 function runProcess(command, args, options = {}) {
   const result = spawnSync(command, args, {
     encoding: options.encoding,
@@ -270,10 +276,11 @@ function silencePcm(ms, sampleRate = SAMPLE_RATE) {
   return Buffer.alloc(Math.ceil((sampleRate * ms) / 1000) * 2)
 }
 
-// ─── 准确率：以"构造法金标"为参照 ──────────────────────────────────────────
-// 不手写 46 条 expected_final_state，而是把用例声明的 explicit_calls 直接打在一个
-// 干净的 service 上，得到的状态即金标。这样"正确"的定义是可执行的：
-// "如果声明的工具带声明的参数被执行，状态应该长这样"。
+// ─── Accuracy: gold state built by construction ──────────────────────────────
+// Instead of hand-writing 46 expected_final_state blobs, the case's declared
+// explicit_calls are replayed on a clean service and the resulting state is the gold
+// state. "Correct" then has an executable definition: if the declared tools ran with
+// the declared arguments, the state should look like this.
 const VOLATILE_STATE_KEYS = new Set(['version', 'updatedAt'])
 
 function canonical(value) {
@@ -299,9 +306,10 @@ async function goldStateFor(caseItem, goldService) {
   for (const call of caseItem.setup_calls || []) {
     await goldService.execute(call.name, call.arguments || {}, { cockpitId })
   }
-  // 先取"什么都不做"的基线，再叠加声明调用得到金标。
-  // 两者若相同，说明这条用例的终态断言没有区分力（做与不做状态一样），
-  // 必须据此判定而不是靠工具名猜——否则漏执行也会被记成终态正确。
+  // Take a do-nothing baseline first, then apply the declared calls to get the gold
+  // state. If the two match, this case cannot discriminate on final state (doing the
+  // work looks the same as skipping it). That has to be decided here rather than
+  // guessed from tool names, otherwise a missed execution scores as a state match.
   const baseline = goldService.snapshot(cockpitId)
   for (const call of caseItem.explicit_calls || []) {
     await goldService.execute(call.name, call.arguments || {}, { cockpitId })
@@ -310,7 +318,8 @@ async function goldStateFor(caseItem, goldService) {
   return { baseline, gold, discriminating: !sameState(baseline, gold) }
 }
 
-// 声明的参数必须都出现且相等；模型额外补的可选参数不算错。
+// Every declared argument must be present and equal; extra optional arguments the
+// model fills in are not errors.
 function argsCoverDeclared(declared, actual) {
   for (const [key, expected] of Object.entries(declared || {})) {
     if (JSON.stringify(canonical(expected)) !== JSON.stringify(canonical(actual?.[key]))) {
@@ -333,7 +342,7 @@ async function streamPcm(client, pcm, { sampleRate = SAMPLE_RATE, chunkMs = CHUN
   }
 }
 
-// ─── Gateway 语音会话 ────────────────────────────────────────────────────────
+// ─── Gateway voice session ───────────────────────────────────────────────────
 async function openVoiceSession({ gatewayOrigin, sessionId, outputVoice }) {
   const events = []
   const playbackStarted = new Set()
@@ -380,7 +389,7 @@ async function openVoiceSession({ gatewayOrigin, sessionId, outputVoice }) {
       }
     },
     onEvent(event) {
-      // 每个事件都打上本地墙钟，供相对零点换算。
+      // Stamp every event with the local clock so it can be offset from the zero point.
       events.push({ ...event, at: performance.now() })
       if (event.type === GatewayServerEvent.VOICE_READY) resolveVoice(event)
       if (event.type === GatewayServerEvent.ERROR) {
@@ -420,7 +429,7 @@ async function openVoiceSession({ gatewayOrigin, sessionId, outputVoice }) {
   }
 }
 
-// ─── 单次话术测量 ────────────────────────────────────────────────────────────
+// ─── Single utterance measurement ────────────────────────────────────────────
 async function measureUtterance({
   caseItem, turnIndex = 0, client, events, inputSampleRate, toolLog,
   silenceMs, turnTimeoutMs, settleMs, sayVoice,
@@ -433,7 +442,8 @@ async function measureUtterance({
   const toolStart = toolLog.length
 
   await streamPcm(client, speech, { sampleRate: inputSampleRate, chunkMs: CHUNK_MS })
-  // 零点：说完话。静音尾巴之后才推，让服务端 VAD 自行判定断句。
+  // Zero point: the utterance end. The trailing silence is streamed afterwards so the
+  // server-side VAD decides the segmentation itself.
   const speechEndAt = performance.now()
   let observationError = null
   try {
@@ -442,7 +452,8 @@ async function measureUtterance({
       chunkMs: CHUNK_MS,
     })
   } catch (error) {
-    // 零点已知时保留已观测工具时间，连接错误不能抹去已有记录。
+    // With the zero point known, observed tool times are kept: a connection error must
+    // not erase records that already exist.
     observationError = safeMessage(error)
   }
 
@@ -478,7 +489,8 @@ async function measureUtterance({
         activeTasks.delete(taskId)
       }
     }
-    // 后台链路里工具执行发生在应答音频之后，必须等到任务终态。
+    // On the backend route the tool runs after the reply audio, so the task terminal
+    // state has to be awaited.
     const delegated = events.slice(eventStart).some(event => (
       event.type === GatewayServerEvent.TOOL_CALL
       && String(event.name || event.tool || '') === 'spawn_thinking'
@@ -504,8 +516,9 @@ async function measureUtterance({
   const timing = toolTiming(executedCalls)
   const cockpitTool = executedCalls[0]
 
-  // 表面中立的"这一轮彻底结束"：取本轮最后一个还在动的东西——
-  // 应答音频播完、后台任务终态、或工具执行，三者中最晚的一个。
+  // A surface-neutral "this turn is fully done": the last thing still moving in the
+  // turn, whichever of reply audio completion, backend task terminal state or tool
+  // execution comes last.
   const lastAudioDone = slice.filter(event => event.type === GatewayServerEvent.AUDIO_DONE).at(-1)
   const lastTaskTerminal = slice.filter(event => TASK_TERMINAL.has(event.type)).at(-1)
   const settledCandidates = [
@@ -535,7 +548,7 @@ async function measureUtterance({
       .map(event => ({ type: event.type, task_id: event.task?.id || event.task?.taskId,
         at_ms: Math.round((event.at - speechEndAt) * 10) / 10 })),
     last_cockpit_tool_ms: timing.before_ms,
-    // 全部相对"说完话"
+    // All offsets are relative to the utterance end
     user_transcript_ms: offsetOf(event => (
       event.type === GatewayServerEvent.TRANSCRIPT_FINAL && event.role === 'user'
     )),
@@ -555,7 +568,8 @@ async function measureUtterance({
       event.type === GatewayServerEvent.TOOL_CALL
       && String(event.name || event.tool || '') === 'spawn_thinking'
     )),
-    // 漏动作时要能区分"模型没调任何工具"和"调了别的工具"，否则归因只能靠猜。
+    // A missed action must distinguish "the model called nothing" from "it called
+    // something else", otherwise attribution is guesswork.
     gateway_tools: slice
       .filter(event => event.type === GatewayServerEvent.TOOL_CALL)
       .map(event => String(event.name || event.tool || event.toolName || 'unknown')),
@@ -563,7 +577,7 @@ async function measureUtterance({
   }
 }
 
-// ─── 统计 ────────────────────────────────────────────────────────────────────
+// ─── Statistics ──────────────────────────────────────────────────────────────
 function quantile(sorted, ratio) {
   if (!sorted.length) return null
   const position = (sorted.length - 1) * ratio
@@ -611,7 +625,8 @@ export function scoreCanonicalResult(caseItem, trace, turns, error = null) {
     kind: caseItem.expected_calls.length ? 'task' : 'no_tool_control',
     error,
     task_success: success,
-    // 多轮 case 累计各任务轮的等待；不含用户说话、闲聊和 harness 静默确认时间。
+    // Multi-turn cases sum the wait of their task turns, excluding user speech,
+    // chitchat and the harness silence confirmation.
     task_turn_wait_sum_ms: allObserved ? sum(taskTurns, 'turn_settled_ms') : null,
     successful_task_wait_ms: success ? sum(taskTurns, 'turn_settled_ms') : null,
     task_action_wait_sum_ms: allObserved ? sum(taskTurns, 'last_cockpit_tool_ms') : null,
@@ -652,7 +667,8 @@ async function runCanonicalCases({ cases, surface, serviceMode, serviceServer, g
       for (const call of caseItem.setup_calls || []) {
         await serviceServer.service.execute(call.name, call.arguments || {}, { cockpitId })
       }
-      // 与原始语音 bench 一致：每 case 独立会话，多轮共享本 case 的上下文与状态。
+      // Same as the original voice bench: one session per case, with its turns sharing
+      // that case's context and state.
       session = await openVoiceSession({ gatewayOrigin, sessionId,
         outputVoice: args.get('voice') || process.env.QWEN_AUDIO_REALTIME_VOICE })
       for (const [turnIndex] of caseItem.turns.entries()) {
@@ -684,7 +700,8 @@ async function runCanonicalCases({ cases, surface, serviceMode, serviceServer, g
     } catch (failure) {
       error = safeMessage(failure)
     } finally {
-      // 异常后仍有工具或后台任务运行时停止后续采样，避免污染共享座舱状态。
+      // If an error leaves tools or background tasks running, stop sampling so the
+      // shared cockpit state is not polluted.
       if (error && hasUnfinishedWork(session?.events || [], toolLog.slice(caseToolStart))) {
         blockedBy ||= caseItem.id
       }
@@ -779,8 +796,8 @@ async function main() {
     const preflight = serviceMode === 'example' && liveDomains.length
       ? await verifyLiveService(serviceServer.origin, surface, liveDomains) : null
     const preflightCalls = measuredToolCalls(toolLog, null, 0)
-    if (preflight) process.stderr.write(`[${surface}] 真实高德预检通过：${liveDomains.join(', ')}\n`)
-    else if (serviceMode === 'example') process.stderr.write(`[${surface}] 所选领域不依赖高德，跳过高德预检\n`)
+    if (preflight) process.stderr.write(`[${surface}] live Amap preflight passed: ${liveDomains.join(', ')}\n`)
+    else if (serviceMode === 'example') process.stderr.write(`[${surface}] selected domains do not need Amap; skipping the Amap preflight\n`)
 
     const agentModel = new DashScopeCockpitModel({
       model: args.get('agent-model') || process.env.DASHSCOPE_MODEL,
@@ -803,11 +820,13 @@ async function main() {
       report.selected_domains = [...new Set(cases.map(item => item.domain))]
       report.preflight = preflight ? { status: 'passed', domains: liveDomains, results: preflight, calls: preflightCalls }
         : { status: 'skipped', reason: serviceMode === 'example' ? 'selected cases do not require Amap' : 'controlled mode' }
-      // 清理阶段可能有日志；在 main 返回值中交给入口最后输出。
+      // Teardown may still log; the entry point prints the report last from main's
+      // return value.
       return report
     }
 
-    // 金标状态用独立的干净 service 构造，绝不共用被测实例。
+    // The gold state is built on a separate clean service, never on the instance under
+    // measurement.
     const goldService = createBenchmarkService()
 
     for (let index = 0; index < cases.length; index += perSession) {
@@ -840,7 +859,8 @@ async function main() {
           } catch (error) {
             measurement = { id: caseItem.id, domain: caseItem.domain, error: error.message }
           }
-          // 准确率：工具名 / 声明参数 / 终态，三个独立维度分开记，不合成单一分数。
+          // Accuracy is recorded on three independent axes — tool name, declared
+          // arguments and final state — and never collapsed into one score.
           if (!measurement.error) {
             const { gold, discriminating } = await goldStateFor(caseItem, goldService)
             const actualState = serviceServer.service.snapshot(cockpitId)
@@ -850,12 +870,15 @@ async function main() {
             measurement.args_match = actualArgs != null
               && argsCoverDeclared(declaredArgs, actualArgs)
             measurement.state_match = sameState(gold, actualState)
-            // 做与不做状态一样的用例，终态断言无区分力，单独标记后从终态口径剔除。
+            // Cases where doing and skipping look identical cannot discriminate on
+            // final state, so they are flagged and excluded from that metric.
             measurement.state_discriminating = discriminating
-            // 任务真正达成 = 调对了工具，且世界状态与金标一致。
+            // A task truly succeeded when the right tool ran and the world state matches
+            // the gold state.
             measurement.task_success = measurement.tool_match && measurement.state_match
           }
-          // 每个会话的首句要付 VAD/ASR 预热，必须与热轮分开统计。
+          // The first utterance of a session pays for VAD/ASR warmup and must be
+          // counted separately from the hot turns.
           measurement.cold_start = position === 0
           measurement.session_id = sessionId
           results.push(measurement)
@@ -908,7 +931,8 @@ async function main() {
       tool_match_rate: rate(hot.filter(result => result.tool_match).length, hot.length),
       args_match_rate: rate(hot.filter(result => result.args_match).length, hot.length),
       task_success_rate: rate(hot.filter(result => result.task_success).length, hot.length),
-      // 只读用例的 state_match 无区分力，单列一份写操作口径。
+      // state_match cannot discriminate for read-only cases, so writes get their own
+      // figure.
       state_discriminating_count: discriminating.length,
       state_match_on_writes: discriminating.filter(result => result.state_match).length,
       state_match_rate_on_writes: rate(
@@ -922,7 +946,8 @@ async function main() {
       user_transcript_ms: summarize(hot.map(result => result.user_transcript_ms)),
       task_completed_ms: summarize(hot.map(result => result.task_completed_ms)),
       turn_settled_ms: summarize(hot.map(result => result.turn_settled_ms)),
-      // 只在"任务真正达成"的用例上再算一遍，排除失败样本压低时延的偏差。
+      // Recompute over successful tasks only, so failed samples cannot pull the latency
+      // down.
       cockpit_tool_ms_success_only: summarize(
         hot.filter(result => result.task_success).map(result => result.cockpit_tool_ms),
       ),

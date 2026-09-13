@@ -9,7 +9,8 @@ logic.
 
 Measured subjects:
 
-- **Text**: `run-text.mjs`, `qwen3.8-max`, benchmark prompt, deterministic service
+- **Text `qwen3.8-flash` / `qwen3.8-max`**: `run-text.mjs`, benchmark prompt,
+  deterministic service
 - **Realtime**: `run-realtime.mjs`, `qwen-audio-3.0-realtime-plus`, controlled
   direct provider connection, benchmark prompt
 - **Harness**: `run-voice.mjs`, `qwen-audio-3.0-realtime-plus`, full stack,
@@ -32,18 +33,19 @@ The short suite contains 86 canonical cases across four domains. Pass rate is
 the strict full-case pass (exact calls, no extra calls, silent turns kept
 silent, final state correct).
 
-| Domain | Cases | Expected calls | Text pass | Realtime pass | Harness pass |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Vehicle | 24 | 23 | 100.00% (24/24) | 100.00% (24/24) | 100.00% (24/24) |
-| Music | 18 | 17 | 100.00% (18/18) | 94.44% (17/18) | 94.44% (17/18) |
-| Navigation | 36 | 44 | 91.67% (33/36) | 91.67% (33/36) | 97.22% (35/36) |
-| Weather | 8 | 8 | 87.50% (7/8) | 100.00% (8/8) | 100.00% (8/8) |
-| Overall | 86 | 92 | 95.35% | 95.35% | 97.67% |
+| Domain | Cases | Expected calls | Text `flash` pass | Text `max` pass | Realtime pass | Harness pass |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Vehicle | 24 | 23 | 100.00% (24/24) | 100.00% (24/24) | 100.00% (24/24) | 100.00% (24/24) |
+| Music | 18 | 17 | 94.44% (17/18) | 100.00% (18/18) | 94.44% (17/18) | 94.44% (17/18) |
+| Navigation | 36 | 44 | 100.00% (36/36) | 91.67% (33/36) | 91.67% (33/36) | 97.22% (35/36) |
+| Weather | 8 | 8 | 100.00% (8/8) | 87.50% (7/8) | 100.00% (8/8) | 100.00% (8/8) |
+| Overall | 86 | 92 | 98.84% | 95.35% | 95.35% | 97.67% |
 
 Call-level metrics for the same runs:
 
 | Subject | Tool acc | Aligned tool | Arg acc | Final state | Silent turns | Calls exp/act | Missing/extra |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Text `qwen3.8-flash` | 98.91% | 98.91% | 98.91% | 98.84% | 100.00% | 92 / 91 | 1 / 0 |
 | Text `qwen3.8-max` | 95.65% | 100.00% | 94.57% | 97.67% | 100.00% | 92 / 97 | 0 / 5 |
 | Realtime | 98.91% | 100.00% | 96.74% | 100.00% | 98.84% | 92 / 95 | 0 / 3 |
 | Harness | 98.91% | 100.00% | 98.91% | 100.00% | 98.84% | 92 / 95 | 0 / 3 |
@@ -76,6 +78,7 @@ core overall metrics.
 
 | Subject | Pass | Calls exp/act | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Text `qwen3.8-flash` | 60.00% (6/10) | 250 / 256 | 71.60% | 100.00% | 76.00% | 99.60% | 0 / 6 | 90.00% | 100.00% | 70.00% |
 | Text `qwen3.8-max` | 50.00% (5/10) | 250 / 254 | 82.40% | 100.00% | 84.80% | 98.80% | 0 / 4 | 100.00% | 95.00% | 80.00% |
 | Realtime | 60.00% (6/10) | 250 / 246 | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
 | Harness | 90.00% (9/10) | 250 / 251 | 95.60% | 100.00% | 96.40% | 100.00% | 0 / 1 | 100.00% | 100.00% | 90.00% |
@@ -88,8 +91,9 @@ harness lead is one missed-call cluster (four `navigation_add_waypoint`
 calls around turn 15 in Realtime) plus fewer extra calls, while aligned tool
 selection stays within 1.6 points across all three subjects.
 
-The text row is the fixed-runner rerun
-(`reports/cockpit-text-max-long-rerun2.json`). An earlier rerun exposed a
+The text rows come from fixed-runner reruns
+(`reports/cockpit-text-flash-short.json`, `cockpit-text-flash-long.json`,
+`reports/cockpit-text-max-long-rerun2.json`). An earlier rerun exposed a
 runner defect: a hallucinated tool name raised `Unknown cockpit tool` and
 aborted the whole case, turning one mistake into nineteen phantom missing
 calls and dragging strict tool accuracy to 62%. The runner now records a

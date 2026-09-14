@@ -19,6 +19,8 @@ function tableRows(markdown) {
 }
 
 function section(markdown, heading) {
+  // Git checkouts can use CRLF on Windows; section boundaries are logical lines.
+  markdown = markdown.replace(/\r\n?/gu, '\n')
   const marker = `${heading}\n`
   const start = markdown.indexOf(marker)
   assert.ok(start >= 0, `missing section: ${heading}`)
@@ -27,6 +29,18 @@ function section(markdown, heading) {
   const next = new RegExp(`^#{1,${level}} `, 'mu').exec(body)
   return next ? body.slice(0, next.index) : body
 }
+
+test('Markdown sections accept platform line endings without consuming adjacent sections', () => {
+  const lines = ['# Results', '', '## Short cases — full-case pass', '',
+    '| Subject | Rate |', '|---|---:|', '| Example | 97.67% |', '',
+    '### Details', 'Counts stay in this section.', '', '## 长对话', 'Next section.']
+  const expected = lines.slice(3, 11).join('\n') + '\n'
+  for (const ending of ['\n', '\r\n', '\r']) {
+    const markdown = lines.join(ending)
+    assert.equal(section(markdown, '## Short cases — full-case pass'), expected)
+    assert.equal(section(markdown, '## 长对话'), 'Next section.')
+  }
+})
 
 function suiteCounts(cases) {
   const perTurn = cases.flatMap(c => c.turns.map((_, i) => (

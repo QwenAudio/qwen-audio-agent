@@ -69,6 +69,7 @@ import {
   realtimeSettingsConfigured,
   updateSettingsContent,
 } from './settings-config.mjs'
+import { mergeSettingsSection } from './settings-sections.mjs'
 import { runtimePathEnvironment, userConfigDirectory } from '../../shared/runtime-paths.mjs'
 import { DesktopWakeWordRuntime } from './wake-word/runtime.mjs'
 import {
@@ -1007,10 +1008,15 @@ ipcMain.handle('qwen-audio-agent:updater-install', event => {
   }
 })
 
-ipcMain.handle('qwen-audio-agent:settings-save', async (event, settings) => {
+ipcMain.handle('qwen-audio-agent:settings-save', async (event, payload) => {
   if (!settingsWindow || event.sender !== settingsWindow.webContents) {
     throw new Error('无权保存设置')
   }
+  const settings = mergeSettingsSection(
+    desktopSettingsStore.load(),
+    payload?.settings,
+    payload?.section,
+  )
   return applyDesktopSettings(settings)
 })
 

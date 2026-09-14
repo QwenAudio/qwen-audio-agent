@@ -5,10 +5,12 @@ const { resolve } = require('node:path')
 // accessing user configuration, or connecting to any external service.
 module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
   const { parseSettings, clientSettingsPatch } = await import('../src/settings-config.mjs')
+  const { mergeSettingsSection } = await import('../src/settings-sections.mjs')
   const { parseDesktopGatewayInput } = await import('../src/gateway-connection.mjs')
   const { encodeGatewayPairingCode, encodeGatewayBrowserPairingCode } = await import('../../shared/gateway/remote-access.mjs')
   let settings = { ...parseSettings('', {}), agentProtocol: 'qwen' }
   let saves = 0
+  const savePayloads = []
   const runtime = () => ({
     gatewayConnected: true, gatewayUrl: settings.gatewayUrl,
     realtimeProvider: 'speech-to-speech', realtimeModel: 'default', voiceConfigured: true,
@@ -22,9 +24,15 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       onboarding: { configuration: { required: true, status: 'unauthenticated' } },
     }] }),
     'updater-status': () => ({ phase: 'idle' }),
-    'settings-save': (_event, draft) => {
+    'settings-save': (_event, payload) => {
+      const draft = mergeSettingsSection(
+        settings,
+        payload.settings,
+        payload.section,
+      )
       const target = parseDesktopGatewayInput(draft.gatewayUrl)
       settings = { ...settings, ...(target.remote ? clientSettingsPatch(draft) : draft), gatewayUrl: target.origin }
+      savePayloads.push(payload)
       saves += 1
       return { settings, runtime: runtime(), wakeShortcutRegistered: true }
     },
@@ -56,6 +64,27 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       poll()
     })`)
     assert.equal(await evaluate(`document.querySelector('#gateway-pairing-code') === null`), true)
+    await evaluate(`new Promise((resolve, reject) => {
+      document.querySelector('#voice-tab').click()
+      document.querySelector('input[name="realtime-provider"][value="minicpm-o"]').click()
+      document.querySelector('#backend-tab').click()
+      document.querySelector('input[name="agent-protocol"][value="none"]').click()
+      document.querySelector('#settings-form').requestSubmit()
+      const deadline = Date.now() + 5000
+      const poll = () => {
+        const backendTab = document.querySelector('#backend-tab')
+        const submit = document.querySelector('button[type=submit]')
+        if (!backendTab.classList.contains('dirty') && submit.disabled) return resolve()
+        if (Date.now() > deadline) return reject(new Error('Backend settings were not applied'))
+        setTimeout(poll, 20)
+      }
+      poll()
+    })`)
+    assert.equal(savePayloads[0].section, 'backend')
+    assert.equal(settings.agentProtocol, 'none')
+    assert.equal(settings.realtimeProvider, 'dashscope')
+    assert.equal(await evaluate(`document.querySelector('input[name="realtime-provider"][value="minicpm-o"]').checked`), true)
+    assert.equal(await evaluate(`document.querySelector('#voice-tab').classList.contains('dirty')`), true)
     const legacyCode = { version: 1, gateway_url: 'https://gateway.example', pairing_code: 'test-code', expires_at: Date.now() + 60_000 }
     const links = [
       encodeGatewayPairingCode(legacyCode),
@@ -83,7 +112,7 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
         poll()
       })`)
     }
-    assert.equal(saves, links.length)
+    assert.equal(saves, links.length + 1)
     assert.equal(await evaluate(`document.querySelector('[data-local-gateway-settings]').hidden`), true)
     assert.equal(await evaluate(`document.querySelector('#current-backend').textContent.includes('待配置')`), false)
     assert.equal(await evaluate(`(() => {

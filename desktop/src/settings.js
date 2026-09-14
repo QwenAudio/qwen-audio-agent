@@ -24,6 +24,11 @@ import {
   localizeDesktopDocument,
   localizeDesktopError,
 } from './i18n.mjs'
+import {
+  mergeSettingsSection,
+  preserveSettingsDrafts,
+  settingsSectionChanged,
+} from './settings-sections.mjs'
 
 const form = document.querySelector('#settings-form')
 const gatewayUrl = document.querySelector('#gateway-url')
@@ -97,12 +102,12 @@ function applyLanguage(value) {
 
 applyLanguage('auto')
 
+let activeSettingsTab = 'voice'
 let settings
 let skins = []
 let runtime
 let backendReport = null
 let pendingBackendConfiguration = ''
-let appliedFingerprint = ''
 let applying = false
 let refreshingRuntime = false
 let updaterState = null
@@ -148,6 +153,7 @@ function selectSettingsTab(value, { focus = false } = {}) {
   const selected = settingsTabs.some(tab => tab.dataset.settingsTab === value)
     ? value
     : 'voice'
+  activeSettingsTab = selected
   for (const tab of settingsTabs) {
     const active = tab.dataset.settingsTab === selected
     tab.classList.toggle('active', active)
@@ -162,7 +168,10 @@ function selectSettingsTab(value, { focus = false } = {}) {
 }
 
 for (const tab of settingsTabs) {
-  tab.addEventListener('click', () => selectSettingsTab(tab.dataset.settingsTab))
+  tab.addEventListener('click', () => {
+    selectSettingsTab(tab.dataset.settingsTab)
+    updateApplyState()
+  })
   tab.addEventListener('keydown', event => {
     if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return
     event.preventDefault()
@@ -170,6 +179,7 @@ for (const tab of settingsTabs) {
     const offset = event.key === 'ArrowRight' ? 1 : -1
     const next = (current + offset + settingsTabs.length) % settingsTabs.length
     selectSettingsTab(settingsTabs[next].dataset.settingsTab, { focus: true })
+    updateApplyState()
   })
 }
 selectSettingsTab(localStorage.getItem('qwen-audio-agent.settings-tab'))
@@ -809,35 +819,30 @@ function formSettings() {
   }
 }
 
-function fingerprint(value) {
-  return JSON.stringify({
-    gatewayUrl: value.gatewayUrl,
-    orbSkin: value.orbSkin,
-    autoHideSeconds: value.autoHideSeconds,
-    wakeShortcut: value.wakeShortcut,
-    wakeWordEnabled: value.wakeWordEnabled,
-    dashscopeApiKey: value.dashscopeApiKey,
-    realtimeBaseUrl: value.realtimeBaseUrl,
-    realtimeProvider: value.realtimeProvider,
-    agentProtocol: value.agentProtocol,
-    realtimeModel: value.realtimeModel,
-    audioRealtimeVoice: value.audioRealtimeVoice,
-    omniRealtimeVoice: value.omniRealtimeVoice,
-    speechToSpeechRealtimeUrl: value.speechToSpeechRealtimeUrl,
-    speechToSpeechAuthToken: value.speechToSpeechAuthToken,
-    miniCpmORealtimeUrl: value.miniCpmORealtimeUrl,
-    miniCpmOAuthToken: value.miniCpmOAuthToken,
-    backendModel: value.backendModel,
-    backendOwnership: value.backendOwnership,
-    backendUrl: value.backendUrl,
-    backendCredential: value.backendCredential,
-    nodePath: value.nodePath,
-    language: value.language,
-  })
+function renderSettingsTabState(draft) {
+  for (const tab of settingsTabs) {
+    const dirty = Boolean(settings) && settingsSectionChanged(
+      settings,
+      draft,
+      tab.dataset.settingsTab,
+    )
+    tab.classList.toggle('dirty', dirty)
+    tab.title = dirty ? t('有未应用更改') : ''
+    const label = tab.textContent.trim()
+    tab.setAttribute(
+      'aria-label',
+      dirty ? t('{label}，有未应用更改', { label }) : label,
+    )
+  }
 }
 
 function updateApplyState() {
-  const remote = !isLoopbackUrl(gatewayUrl.value)
+  const draft = formSettings()
+  renderSettingsTabState(draft)
+  const effectiveGatewayUrl = activeSettingsTab === 'app'
+    ? gatewayUrl.value
+    : settings?.gatewayUrl || gatewayUrl.value
+  const remote = !isLoopbackUrl(effectiveGatewayUrl)
   for (const section of document.querySelectorAll('[data-local-gateway-settings]')) {
     section.hidden = remote
     // Hidden URL fields must not fail browser form validation on a remote connect.
@@ -853,11 +858,23 @@ function updateApplyState() {
     backendReport,
     selectedBackend(),
   )
+  const activeSectionChanged = Boolean(settings) && settingsSectionChanged(
+    settings,
+    draft,
+    activeSettingsTab,
+  )
+  const remoteManagedSection = remote && activeSettingsTab !== 'app'
+  const unavailableBackend = (
+    activeSettingsTab === 'backend'
+    && !remote
+    && !backendAvailable
+  )
   submit.disabled = (
     applying
     || recordingWakeShortcut
-    || (!remote && gatewayUrl.value === settings?.gatewayUrl && !backendAvailable)
-    || fingerprint(formSettings()) === appliedFingerprint
+    || !activeSectionChanged
+    || remoteManagedSection
+    || unavailableBackend
   )
 }
 
@@ -1059,10 +1076,10 @@ function renderSkinOptions(selected) {
   updateRemoveSkinState()
 }
 
-function render() {
-  gatewayUrl.value = settings.gatewayUrl
-  renderSkinOptions(settings.orbSkin)
-  const hideValue = String(settings.autoHideSeconds ?? 120)
+function render(draft = settings) {
+  gatewayUrl.value = draft.gatewayUrl
+  renderSkinOptions(draft.orbSkin)
+  const hideValue = String(draft.autoHideSeconds ?? 120)
   autoHideSeconds.querySelector('[data-custom]')?.remove()
   if (![...autoHideSeconds.options].some(option => option.value === hideValue)) {
     const custom = document.createElement('option')
@@ -1074,33 +1091,32 @@ function render() {
     autoHideSeconds.append(custom)
   }
   autoHideSeconds.value = hideValue
-  wakeShortcut.value = settings.wakeShortcut
-  wakeWordEnabled.checked = settings.wakeWordEnabled || false
-  desktopLanguage.value = settings.language || 'auto'
+  wakeShortcut.value = draft.wakeShortcut
+  wakeWordEnabled.checked = draft.wakeWordEnabled || false
+  desktopLanguage.value = draft.language || 'auto'
   applyLanguage(desktopLanguage.value)
   recordingWakeShortcut = false
   renderWakeShortcut()
-  dashscopeApiKey.value = settings.dashscopeApiKey || ''
-  realtimeBaseUrl.value = settings.realtimeBaseUrl || defaultRealtimeBaseUrl
-  renderBackendOptions(settings.agentProtocol || 'none')
+  dashscopeApiKey.value = draft.dashscopeApiKey || ''
+  realtimeBaseUrl.value = draft.realtimeBaseUrl || defaultRealtimeBaseUrl
+  renderBackendOptions(draft.agentProtocol || 'none')
   renderRealtimeModelOptions(
-    settings.realtimeModel || DEFAULT_DASHSCOPE_REALTIME_MODEL,
+    draft.realtimeModel || DEFAULT_DASHSCOPE_REALTIME_MODEL,
   )
-  realtimeVoiceDrafts = createRealtimeVoiceDrafts(settings)
+  realtimeVoiceDrafts = createRealtimeVoiceDrafts(draft)
   renderRealtimeVoice()
-  speechToSpeechRealtimeUrl.value = settings.speechToSpeechRealtimeUrl || ''
-  speechToSpeechAuthToken.value = settings.speechToSpeechAuthToken || ''
-  miniCpmORealtimeUrl.value = settings.miniCpmORealtimeUrl || ''
-  miniCpmOAuthToken.value = settings.miniCpmOAuthToken || ''
-  renderRealtimeProvider(settings.realtimeProvider)
-  backendModel.value = settings.backendModel || ''
-  backendOwnership.value = settings.backendOwnership || 'owned'
-  backendUrl.value = settings.backendUrl || ''
-  backendCredential.value = settings.backendCredential || ''
+  speechToSpeechRealtimeUrl.value = draft.speechToSpeechRealtimeUrl || ''
+  speechToSpeechAuthToken.value = draft.speechToSpeechAuthToken || ''
+  miniCpmORealtimeUrl.value = draft.miniCpmORealtimeUrl || ''
+  miniCpmOAuthToken.value = draft.miniCpmOAuthToken || ''
+  renderRealtimeProvider(draft.realtimeProvider)
+  backendModel.value = draft.backendModel || ''
+  backendOwnership.value = draft.backendOwnership || 'owned'
+  backendUrl.value = draft.backendUrl || ''
+  backendCredential.value = draft.backendCredential || ''
   renderBackendConnection()
-  nodePathInput.value = settings.nodePath || ''
+  nodePathInput.value = draft.nodePath || ''
   renderRuntime()
-  appliedFingerprint = fingerprint(formSettings())
   updateApplyState()
 }
 
@@ -1232,17 +1248,47 @@ applyNodePath.addEventListener('click', async () => {
   }
 })
 
+function activeSettingsPanelValid() {
+  const panel = settingsPanels.find(
+    item => item.dataset.settingsPanel === activeSettingsTab,
+  )
+  const invalid = [...panel.querySelectorAll('input, select, textarea')]
+    .find(control => !control.disabled && !control.checkValidity())
+  if (!invalid) return true
+  invalid.reportValidity()
+  return false
+}
+
 form.addEventListener('submit', async event => {
   event.preventDefault()
+  if (!activeSettingsPanelValid()) return
+  const appliedSection = activeSettingsTab
+  const submittedDraft = formSettings()
   applying = true
   updateApplyState()
   showMessage(t('正在应用…'))
   try {
-    const result = await window.qwenAudioAgentDesktop.saveSettings(formSettings())
+    const result = await window.qwenAudioAgentDesktop.saveSettings(
+      appliedSection,
+      submittedDraft,
+    )
+    const latestDraft = formSettings()
     settings = result.settings
     runtime = result.runtime
     renderWakeShortcutStatus(result.wakeShortcutRegistered)
-    render()
+    let nextDraft = preserveSettingsDrafts(
+      settings,
+      latestDraft,
+      appliedSection,
+    )
+    if (settingsSectionChanged(submittedDraft, latestDraft, appliedSection)) {
+      nextDraft = mergeSettingsSection(
+        nextDraft,
+        latestDraft,
+        appliedSection,
+      )
+    }
+    render(nextDraft)
     if (!runtime.gatewayConnected) {
       showMessage(t('配置已保存，Gateway 正在启动…'), 'notice')
     } else if (runtime.backend && !runtime.backend.connected) {
@@ -1269,14 +1315,17 @@ form.addEventListener('submit', async event => {
 
 window.qwenAudioAgentDesktop.loadSettings().then(value => {
   settings = value.settings
-  settings.agentProtocol = initialBackendSelection({
-    configuredBackend: settings.agentProtocol,
-    firstRun: value.firstRun,
-  })
+  const initialDraft = {
+    ...settings,
+    agentProtocol: initialBackendSelection({
+      configuredBackend: settings.agentProtocol,
+      firstRun: value.firstRun,
+    }),
+  }
   skins = value.skins || []
   runtime = value.runtime
   renderWakeShortcutStatus(value.wakeShortcutRegistered)
-  render()
+  render(initialDraft)
   void detectBackendOptions()
   if (value.runtimeError) {
     startupError = value.runtimeError

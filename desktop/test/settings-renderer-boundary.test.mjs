@@ -53,10 +53,14 @@ test('desktop settings consumes Gateway pairing codes but does not issue them', 
 
   assert.match(html, /id="gateway-url"[^>]+placeholder="输入 Gateway 地址或连接链接"/)
   assert.doesNotMatch(html, /id="gateway-pairing-code"|id="connect-remote-gateway"/)
-  assert.match(renderer, /saveSettings\(formSettings\(\)\)/)
+  assert.match(
+    renderer,
+    /saveSettings\(\s*appliedSection,\s*submittedDraft,?\s*\)/,
+  )
   assert.doesNotMatch(preload, /remote-gateway-connect/)
   const main = readFileSync(resolve(sourceDirectory, 'main.mjs'), 'utf8')
   assert.match(main, /return applyDesktopSettings\(settings\)/)
+  assert.match(main, /mergeSettingsSection\(\s*desktopSettingsStore\.load\(\)/)
   assert.match(main, /async function applyGatewayPairingCode[\s\S]*await applyDesktopSettings/)
   assert.match(main, /\(gatewayChanged \|\| credentialChanged\)/)
   assert.doesNotMatch(html, /create-gateway-pairing-code/)

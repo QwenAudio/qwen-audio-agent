@@ -114,9 +114,9 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
       listener,
     )
   },
-  saveSettings: settings => ipcRenderer.invoke(
+  saveSettings: (section, settings) => ipcRenderer.invoke(
     'qwen-audio-agent:settings-save',
-    settings,
+    { section, settings },
   ),
   importSkin: () => ipcRenderer.invoke('qwen-audio-agent:skin-import'),
   removeSkin: id => ipcRenderer.invoke('qwen-audio-agent:skin-remove', id),

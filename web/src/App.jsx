@@ -58,6 +58,7 @@ import {
 } from './desktop/desktop-hide.js'
 import {
   desktopTaskCards,
+  desktopTaskElapsedSeconds,
 } from './desktop/desktop-task-cards.js'
 import {
   advanceDesktopRuntimePresentation,
@@ -220,6 +221,7 @@ export default function App() {
     code: null,
   })
   const [agentTasks, setAgentTasks] = useState([])
+  const [taskClock, setTaskClock] = useState(Date.now)
   const [desktopTasksCollapsed, setDesktopTasksCollapsed] = useState(false)
   const [showKnowledgeLibrary, setShowKnowledgeLibrary] = useState(false)
   const [desktopTaskLayout, setDesktopTaskLayout] = useState({
@@ -931,6 +933,12 @@ export default function App() {
   const tasksActive = desktopTasksActive(agentTasks)
 
   useEffect(() => {
+    if (!tasksActive) return undefined
+    const timer = setInterval(() => setTaskClock(Date.now()), 1_000)
+    return () => clearInterval(timer)
+  }, [tasksActive])
+
+  useEffect(() => {
     if (!desktopOrbMode) return
     if (!tasksActive && previousTasksActive.current) {
       const settledAt = Date.now()
@@ -1319,7 +1327,7 @@ export default function App() {
           agentTask.id, agentTask.authorization, decision,
         )}
       />}
-      <time>{Math.max(0, Math.round(agentTask.elapsedMs / 1000))}s</time>
+      <time>{desktopTaskElapsedSeconds(agentTask, taskClock)}s</time>
     </div>}
   </aside>
 

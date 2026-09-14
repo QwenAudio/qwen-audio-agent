@@ -69,6 +69,8 @@ export class TaskManager {
     pendingNotificationTtlMs = 604_800_000,
     notificationClaimTtlMs = 60_000,
     maxTerminalTasksPerOwner = 100,
+    // Coalesce real backend updates without turning Task progress into a
+    // transport heartbeat. Client connections own their own liveness signals.
     progressEventIntervalMs = 1_000,
     scheduledTaskTimeoutMs = 1_800_000,
     logger: taskLogger = null,
@@ -407,8 +409,8 @@ export class TaskManager {
     if (message) task.messageChanged = true
   }
 
-  flushProgress(task, { heartbeat = false } = {}) {
-    if (!heartbeat && !task.progressChanged) return false
+  flushProgress(task) {
+    if (!task.progressChanged) return false
     const messageChanged = task.messageChanged === true
     task.progressChanged = false
     task.messageChanged = false
@@ -628,7 +630,7 @@ export class TaskManager {
     this.emit(TaskDomainEvent.RUNNING, task)
     task.progressTimer = setInterval(() => {
       if (isTaskActive(task.status)) {
-        this.flushProgress(task, { heartbeat: true })
+        this.flushProgress(task)
       }
     }, this.progressEventIntervalMs)
     task.progressTimer.unref?.()

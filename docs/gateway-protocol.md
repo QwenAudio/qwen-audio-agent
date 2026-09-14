@@ -486,6 +486,12 @@ The Gateway owns the state vocabulary and event lifecycle. The nested `status.st
 
 Task progress may be pushed to the Client without being sent to the Realtime model. Gateway's event policy selects only meaningful progress, permission, requested input, completion, and failure events for model delivery. `input_required` remains an active Task state; answering it resumes the same Task rather than creating another one.
 
+`task.progress` is change-driven and coalesces backend activity; it is not a
+connection heartbeat. WebSocket Clients use `session.ping` / `session.pong` (or
+WebSocket control frames for legacy clients), while the compatibility Task SSE
+route writes transport-only comment heartbeats. Those comments do not enter
+Task replay or the Session Journal.
+
 ### 5.6 Receipts and decisions
 
 | Event | Direction | Meaning |

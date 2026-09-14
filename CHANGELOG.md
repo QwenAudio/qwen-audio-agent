@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 后台任务进展改为仅在状态实际变化时合并推送，不再用每秒完整 Task 快照承担连接
+  保活；WebSocket 沿用 Session 心跳，兼容性的 Task SSE 使用不进入回放与 Session
+  Journal 的轻量注释心跳，避免长任务重复写入旧进度文本。
+
 - 移除 `backend-adapter` 与 `custom-conversation-client` 示例目录及文档入口，保留后台 SDK 与客户端协议能力。
 
 - 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，

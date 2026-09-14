@@ -35,6 +35,21 @@ jobs:
           node-version: ${{ matrix.node }}
           cache: npm
           registry-url: https://registry.npmjs.org/
+      # windows-latest / Node 24 intermittently reports a bare `test failed` at
+      # <file>:1:1 with no assertion, i.e. a test-file subprocess dies with a
+      # non-zero exit rather than an assertion failing (issue #413). Enable
+      # Node's diagnostic report so the next natural occurrence dumps a full
+      # stack instead of an undiagnosable red. The report notice is emitted only
+      # on an actual fatal error or uncaught exception, so passing runs are
+      # unchanged; reports are auto-named per pid, so parallel test subprocesses
+      # never collide.
+      - if: ${{ matrix.os == 'windows-latest' }}
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/diagnostic-reports"
+          {
+            echo "NODE_OPTIONS=--report-on-fatalerror --report-uncaught-exception --report-directory=$GITHUB_WORKSPACE/diagnostic-reports"
+          } >> "$GITHUB_ENV"
       # Test the GitLab-only synchronizer against disposable local repositories.
       # GitHub Actions never runs the real synchronization job or needs its token.
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
@@ -58,6 +73,15 @@ jobs:
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: QWEN_AUDIO_CONSUMER_PROBE=1 node --test test/consumer-install.test.mjs
       - run: node scripts/verify-package.mjs
+      # Surface any Node diagnostic report captured from the issue #413 flake.
+      # Normal runs produce none, so a missing directory is not a failure.
+      - if: ${{ always() && matrix.os == 'windows-latest' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: win-diagnostic-reports-node${{ matrix.node }}
+          path: diagnostic-reports/
+          if-no-files-found: ignore
+          retention-days: 7
 
   release-check:
     runs-on: ubuntu-latest

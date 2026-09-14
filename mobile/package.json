@@ -18,8 +18,8 @@
     "@capacitor/core": "8.5.1",
     "@capacitor/preferences": "8.0.1",
     "@vitejs/plugin-react": "^4.7.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "vite": "^7.0.0"

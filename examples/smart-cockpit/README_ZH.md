@@ -193,3 +193,5 @@ Realtime 路径，Service 只有 `flashbuy` 暴露给后台。前台加载工作
   包括客户端、Gateway、后台 Agent 的边界，实时语音链路以及 A2A/MCP 接入。
 - [Peng Zhendong](https://github.com/pengzhendong)：提供原始座舱 UI 与视觉资源，包括整体界面设计、
   交互形态和相关视觉素材。
+- [Kong Yuxiang](https://github.com/usionkong)：负责准确性与时延评测，包括文本、Realtime
+  和完整 Harness 链路的短用例与长对话测试。

@@ -4,7 +4,7 @@ English | [中文](README_ZH.md)
 
 This runnable smart-cockpit Agent example is built with qwen-audio-agent. Users
 can naturally control the vehicle, plan routes, play music, check the weather,
-place flash-buy orders, and run custom workflows while the cockpit UI reflects
+place flash-buy orders, and use custom skills while the cockpit UI reflects
 vehicle and task state. It shows how to combine foreground realtime conversation,
 tool calling, and a replaceable backend Agent with the framework.
 
@@ -113,7 +113,7 @@ Earlier runs and sequence/alignment diagnostics remain in the
 - **Realtime voice conversation:** continuous dialogue, natural interruption,
   multi-turn context, and runtime voice and persona switching.
 - **Standard tool calling:** vehicle control, navigation, music, weather,
-  flash-buy, and custom workflows are exposed as MCP tools.
+  flash-buy, and custom skills are exposed as MCP tools.
 - **Foreground/backend routing:** low-latency operations run directly in the
   foreground Realtime path, including custom-skill creation and loading;
   flash-buy and multi-source news research go to the backend Agent.

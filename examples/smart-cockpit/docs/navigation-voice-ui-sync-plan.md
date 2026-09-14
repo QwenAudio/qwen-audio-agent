@@ -1,5 +1,10 @@
 # Navigation Voice/UI Sync Goals and Test Plan
 
+Historical implementation note. The verification counts below describe that
+implementation pass, not the current test suite or model benchmark. Use the
+[architecture](architecture.md), [tool routing](../service/tools/README.md),
+and [test matrix](test-matrix.md) for current behavior and validation commands.
+
 ## Goals
 
 The navigation experience should make voice narration the primary timeline and
@@ -81,7 +86,7 @@ Review 3: Verification Coverage
 
 ## Test Report
 
-Latest local verification:
+Verification recorded during the original implementation pass:
 
 - `node --test examples/smart-cockpit/client/test/navigation-route.test.mjs examples/smart-cockpit/client/test/cockpit-activity.test.mjs examples/smart-cockpit/service/test/cockpit-service.test.mjs`
   - 25 passed, 0 failed.
@@ -103,7 +108,7 @@ because no TTS timestamp stream is consumed here. That is acceptable for this
 stage: the UI contract now has stable anchors, and a future realtime/TTS layer
 can map phrase timings onto the same anchors.
 
-For benchmark interpretation, this supports the hybrid-harness thesis: the
-foreground can react quickly to low-risk semantic events, while the backend
-harness remains responsible for route planning and longer-horizon navigation
-state.
+Semantic UI synchronization does not determine tool placement or prove a
+benchmark speed/accuracy advantage. Navigation, including route planning, is
+foreground-routed by default; the Service remains the authoritative navigation
+state source for either configured route.

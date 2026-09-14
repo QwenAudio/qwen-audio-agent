@@ -10,9 +10,8 @@ tool calling, and a replaceable backend Agent with the framework.
 
 ## Demo
 
-Use natural voice to start vehicle-control and navigation tasks, showing how
-realtime foreground conversation, backend Agent execution, and cockpit UI state
-work together.
+Use natural voice for vehicle control and navigation, with cockpit UI updates.
+Long-running background work can continue alongside foreground conversation.
 
 > Turn on sound for the full experience.
 
@@ -22,44 +21,92 @@ https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
 
 ![Smart cockpit framework architecture](docs/framework-architecture.svg)
 
-The base qwen-audio-agent boundary is foreground conversation plus backend
-execution. The cockpit client and Gateway form the foreground, the cockpit
-Agent handles backend tasks, and the Service supplies scenario state, business
-rules, and the tool execution environment.
+The foreground supports both realtime conversation and direct tool calls;
+long-running or backend-routed work goes to the cockpit Agent without blocking
+conversation. The Service supplies shared scenario state, business rules, and
+tool execution for both paths.
 
 See the [architecture document](docs/architecture.md) for complete boundaries
 and data flows.
 
 ## Benchmark Results
 
-The benchmark evaluates cockpit tool calling with the same tools, prompt,
-deterministic state, and scorer for Text and Realtime models.
+The accuracy benchmark covers vehicle control, music, navigation, and weather.
+Flash-buy and custom skills are demonstrated separately, not scored by these suites.
 
-### Short Suite
+| Suite | Test cases | Dialogue turns | Turns requiring tools | Tools covered by expected calls | Reported metric |
+|---|---:|---:|---:|---:|---|
+| Short | 86 | 111 (1–3 per case) | 92 | 34 | Full-case pass rate |
+| Long dialogue | 10 | 500 (50 per case) | 250 | 22 | Per-turn tool-behavior accuracy |
 
-86 canonical cases across vehicle control, music, navigation, and weather.
+The long suite uses separately designed conversations and a subset of the same
+tool catalog. Its 500 turns include 250 no-tool turns. A dialogue turn is one
+user input and its processing, not the number of steps needed to finish a task.
 
-| Domain | Cases | Expected calls | Text pass rate | Text actual calls | Realtime pass rate | Realtime actual calls |
-|---|---:|---:|---:|---:|---:|---:|
-| Vehicle | 24 | 23 | 100.00% | 23 | 100.00% | 23 |
-| Music | 18 | 17 | 100.00% | 17 | 100.00% | 17 |
-| Navigation | 36 | 44 | 100.00% | 44 | 97.22% | 44 |
-| Weather | 8 | 8 | 100.00% | 8 | 100.00% | 8 |
-| Overall | 86 | 92 | 100.00% | 92 | 98.84% | 92 |
+`Realtime-plus` means `qwen-audio-3.0-realtime-plus`; `+ Harness` evaluates the
+complete Gateway/tool path with its production prompt and runtime guards,
+not an identical-prompt model ablation.
 
-### Long-Context Suite
+### Short cases: full-case pass rate
 
-10 mixed-domain conversations, 500 total turns, 250 expected tool calls, and
-250 no-tool chitchat/background turns. Long-context results focus on call-level,
-state, and no-tool behavior instead of task pass rate.
+A case passes only when its tool calls, parameters, turn/path assignments,
+no-tool behavior, and specified state assertions all pass.
 
-| Model | Calls exp/act | Tool acc | Aligned tool | Arg acc | Aligned arg | Missing/extra | Final state | Checkpoints | Silent turns |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| Text `qwen3.8-flash` | 250 / 252 | 88.80% | 100.00% | 91.20% | 100.00% | 0 / 2 | 100.00% | 100.00% | 90.00% |
-| Realtime `qwen-audio-3.0-realtime-plus` | 250 / 246 | 71.20% | 98.40% | 76.00% | 98.40% | 4 / 0 | 100.00% | 80.00% | 100.00% |
+| Subject | Full-case pass rate |
+|---|---:|
+| Realtime-plus + Harness | 97.67% (84/86) |
+| Realtime-plus | 95.35% (82/86) |
+| Text qwen3.7-plus | 97.67% (84/86) |
+| Text qwen3.8-flash | 98.84% (85/86) |
+| Text qwen3.8-max | 95.35% (82/86) |
 
-See the [Benchmark guide](bench/README.md) for datasets, commands, alignment
-metrics, timeout retry behavior, and scoring rules.
+Source: the September 13 recorded results plus a separate qwen3.7-plus run.
+See [domain scores and provenance](bench/results/accuracy.md#short-cases--full-case-pass).
+
+### Long dialogue: per-turn tool behavior
+
+Each turn is scored independently within its conversation: tool calls and
+parameters must match without missing/extra calls; no-tool turns must make
+zero calls. This metric excludes state assertions and spoken-response quality.
+
+| Subject | Overall turn accuracy | Tool-required turn pass | No-tool turn correctness |
+|---|---:|---:|---:|
+| Realtime-plus + Harness | 99.80% (499/500) | 100.00% (250/250) | 99.60% (249/250) |
+| Realtime-plus | 99.20% (496/500) | 98.40% (246/250) | 100.00% (250/250) |
+| Text qwen3.7-plus | 98.40% (492/500) | 97.60% (244/250) | 99.20% (248/250) |
+| Text qwen3.8-flash | 98.60% (493/500) | 98.80% (247/250) | 98.40% (246/250) |
+| Text qwen3.8-max | 98.60% (493/500) | 98.00% (245/250) | 99.20% (248/250) |
+
+Source: team-provided per-turn counts received on September 14; qwen3.7-plus
+was rescored from its local trace. These are not converted legacy sequence
+scores. The suite repeats utterances and alternates tool/no-tool turns at fixed
+positions; it measures controlled scenario behavior. See
+[run provenance](bench/results/accuracy.md#long-dialogue--per-turn-tool-behavior)
+and [coverage limits](bench/README.md#coverage-limits).
+
+### Tool-return latency: foreground vs. backend placement
+
+Both routes keep `qwen-audio-3.0-realtime-plus` in the foreground; the delegated
+route uses `qwen3.8-flash` in the backend. Time runs from the end of user speech
+PCM to the last tool return, excluding subsequent MCP delivery, reply audio,
+and physical vehicle actions.
+
+| Tool placement | Mean tool-return latency (s) | Valid timing samples |
+|---|---:|---:|
+| Foreground direct | 1.480 | 90 |
+| Backend delegated | 3.560 | 68 |
+
+Source: the [September 11 timing report](bench/results/voice-surface-short-20260911.json.md).
+Both routes use the same 92 tool-required test turns, but their valid samples
+are counted separately and include failed returns. This is an unpaired
+tool-placement comparison, not a comparison of standalone model speed.
+
+These summaries mirror the [accuracy results](bench/results/accuracy.md) and
+timing report, with consistency checked by tests. Some accuracy runs still lack
+published raw traces and complete settings; see the results page for provenance
+and the [Benchmark guide](bench/README.md) for definitions and reproduction.
+Earlier runs and sequence/alignment diagnostics remain in the
+[history archive](bench/results/accuracy-history.md), not the headline tables.
 
 ## Core features
 

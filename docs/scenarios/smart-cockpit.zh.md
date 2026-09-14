@@ -6,7 +6,7 @@
 
 ## 演示
 
-通过自然语音发起车控和导航任务，展示前台实时对话、后台 Agent 执行与座舱 UI 状态联动。
+通过自然语音完成车控和导航，座舱 UI 同步更新；长时间任务在后台执行时，前台仍可继续交流。
 
 <video controls preload="metadata" style="width: 100%; border-radius: 12px;">
   <source src="https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d" type="video/mp4">
@@ -29,8 +29,8 @@
 
 ![智能座舱框架架构图](https://raw.githubusercontent.com/QwenAudio/qwen-audio-agent/main/examples/smart-cockpit/docs/framework-architecture.svg)
 
-qwen-audio-agent 的基础边界是“前台对话 + 后台执行”。座舱客户端与 Gateway 组成前台，
-座舱 Agent 负责后台任务，Service 提供场景状态、业务规则和工具执行环境。
+前台既负责实时对话，也能直接调用工具；长时间任务及配置为后台执行的业务交给
+座舱 Agent，期间前台仍可交流。Service 为前后台提供共享的场景状态、业务规则和工具执行环境。
 
 | 组件 | 示例实现 | 主要接口 |
 |---|---|---|
@@ -77,22 +77,20 @@ npm run example:smart-cockpit
 
 ## Benchmark
 
-座舱 Benchmark 使用相同的工具集、Prompt、确定性座舱状态和评分器，对比文本模型与
-Realtime 模型的工具选择、参数、执行路径和最终状态。
+准确性评测覆盖车控、导航、音乐和天气；闪购、自定义技能和后台长时间任务不计入这两套题。
 
-- 短用例集：86 个用例，覆盖车控、导航、音乐和天气。
-- 长上下文集：10 段混合领域对话，共 500 轮，包含 250 次预期工具调用和 250 个无工具轮次。
-- Runner：Gold Replay、文本模型、受控 Realtime 模型和完整 Realtime 语音链路。
+- **短用例：**86 个 case、共 111 轮，预期调用覆盖 34 种工具，按整例统计通过率。
+- **长对话：**独立设计的 10 组 50 轮对话，预期调用覆盖其中 22 种工具；250 个需工具
+  轮次与 250 个无工具轮次，结果页按轮统计工具行为。
+- **评测路径：**文本模型、受控 Realtime 与完整 Harness。Harness 使用生产前台装配，
+  Prompt、工具返回与执行防护并不与受控直连完全相同。
+- **工具放置时延：**同一套工具前台直调或后台委托，两侧都经过 Realtime 前台；
+  “测试轮数（需工具）”不是任务完成步骤数，也不是有效计时样本数。
 
-```bash
-node examples/smart-cockpit/bench/runner/run-gold.mjs
-node examples/smart-cockpit/bench/runner/run-text.mjs
-node examples/smart-cockpit/bench/runner/run-realtime.mjs
-node examples/smart-cockpit/bench/runner/run-voice.mjs
-```
-
-最新结果、数据集和评分方法见
-[`examples/smart-cockpit/bench/README.md`](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/smart-cockpit/bench/README.md)。
+成绩统一维护在[准确性结果页](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/smart-cockpit/bench/results/accuracy.md)，
+时延沿用[原始记录](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/smart-cockpit/bench/results/voice-surface-short-20260911.json.md)。
+统计口径、数据来源、限制及复现命令见
+[Benchmark 说明](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/smart-cockpit/bench/README.md)。
 
 ## 替换和扩展
 

@@ -12,10 +12,14 @@ does, users can attach it with configuration alone:
 
 ```dotenv
 AGENT_PROTOCOL=acp
-ACP_COMMAND=your-agent --acp
+ACP_COMMAND=your-agent
+ACP_ARGS=["--acp"]
 # Optional: comma-separated environment names forwarded to the agent process
 QWEN_AUDIO_AGENT_ACP_FORWARD_ENV=MY_AGENT_API_KEY
 ```
+
+`ACP_COMMAND` is the executable itself; subcommands and flags belong in
+`ACP_ARGS` as a JSON array of strings.
 
 This is the full integration for many agents.
 

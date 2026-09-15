@@ -406,7 +406,9 @@ function renderBackendConnection() {
 // 不可用也保留可选，避免列表丢值。
 function renderBackendOptions(currentValue) {
   const states = backendOptionStates(backendReport)
-  const requestedValue = currentValue === 'acp' ? 'none' : currentValue
+  const requestedValue = initialBackendSelection({
+    configuredBackend: currentValue,
+  })
   if (requestedValue && !states.some(state => state.id === requestedValue)) {
     states.push({
       id: requestedValue,

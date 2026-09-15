@@ -260,6 +260,11 @@ test('does not expose the generic ACP backend in desktop options', () => {
   assert.equal(states[0].id, 'none')
 })
 
+test('preserves a generic ACP selection configured outside the picker', () => {
+  assert.equal(initialBackendSelection({ configuredBackend: 'acp' }), 'acp')
+  assert.equal(initialBackendSelection({ configuredBackend: '' }), 'none')
+})
+
 test('missing install information falls back to not installable', () => {
   const states = backendOptionStates(report([
     {

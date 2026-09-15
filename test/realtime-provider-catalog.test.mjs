@@ -6,12 +6,36 @@ import {
   resolveDashScopeRealtimeVoiceOverride,
   listDashScopeRealtimeModelProfiles,
   resolveDashScopeRealtimeModelProfile,
+  resolveRealtimeFrontendConfiguration,
+  resolveRealtimeModelProfile,
 } from '../shared/realtime-provider-catalog.mjs'
 
 const OMNI_FLASH_ID = 'qwen3.5-omni-flash-realtime'
 const OMNI_PLUS_ID = 'qwen3.5-omni-plus-realtime'
 const AUDIO_PLUS_ID = 'qwen-audio-3.0-realtime-plus'
 const AUDIO_FLASH_ID = 'qwen-audio-3.0-realtime-flash'
+
+test('StepFun configuration is independent and exposes an explicit model profile', () => {
+  const env = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
+    STEPFUN_API_KEY: 'step-test',
+    QWEN_AUDIO_REALTIME_MODEL: AUDIO_PLUS_ID,
+    QWEN_AUDIO_REALTIME_VOICE: 'qwen-voice',
+  }
+  const configuration = resolveRealtimeFrontendConfiguration(env)
+  assert.equal(configuration.configured, true)
+  assert.equal(configuration.model, 'stepaudio-3-realtime-preview')
+  assert.equal(configuration.stepfunVoice, '')
+  assert.equal(configuration.endpoint, 'wss://api.stepfun.com/v1/realtime')
+  assert.equal(configuration.signature, resolveRealtimeFrontendConfiguration({
+    ...env, QWEN_AUDIO_REALTIME_MODEL: OMNI_PLUS_ID, DASHSCOPE_API_KEY: 'unrelated',
+  }).signature)
+  assert.notEqual(configuration.signature, resolveRealtimeFrontendConfiguration({
+    ...env, STEPFUN_REALTIME_URL: 'wss://proxy.example/v1/realtime',
+  }).signature)
+  assert.equal(resolveRealtimeModelProfile(configuration.model, 'stepfun').modelCapabilities.functionCalling, true)
+  assert.equal(resolveRealtimeModelProfile('stepaudio-future', 'stepfun').family, 'unknown')
+})
 
 const omniModelCapabilities = {
   textInput: true,

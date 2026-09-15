@@ -189,6 +189,24 @@ test('rejects a model-mismatched borrowed Gateway before attachment', () => {
   )
 })
 
+test('validates the StepFun model without inheriting the DashScope selection', () => {
+  const env = {
+    AGENT_PROTOCOL: 'opencode',
+    QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
+    STEPFUN_API_KEY: 'step-test',
+    STEPFUN_REALTIME_MODEL: 'stepaudio-3-realtime-preview',
+    QWEN_AUDIO_REALTIME_MODEL: DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
+  }
+  const health = {
+    ...compatibleHealth(env),
+    realtimeModel: 'stepaudio-3-realtime-preview',
+  }
+  assert.equal(desktopGatewayCompatibility(health, env).compatible, true)
+  assert.equal(desktopGatewayCompatibility({
+    ...health, realtimeModel: 'stepaudio-2.5-realtime',
+  }, env).code, 'realtime-model')
+})
+
 test('keeps non-model compatibility warnings attachable', () => {
   const healthEnv = {
     DASHSCOPE_API_KEY: 'desktop-key',

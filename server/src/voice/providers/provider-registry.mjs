@@ -143,6 +143,12 @@ export function validateRealtimeProtocol(protocol, providerKey = 'unknown') {
     }
   }
   if (
+    protocol.responseInstructionsItem !== undefined
+    && typeof protocol.responseInstructionsItem !== 'function'
+  ) {
+    throw new Error(`Realtime Provider ${providerKey} protocol.responseInstructionsItem 必须是函数`)
+  }
+  if (
     protocol.connectionMessages !== undefined
     && typeof protocol.connectionMessages !== 'function'
   ) {

@@ -127,7 +127,7 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 中查看额度规则，并在[模型用量页面](https://help.aliyun.com/zh/model-studio/model-usage-statistics)
 查看剩余额度。额度和计费规则以百炼官方页面为准。
 
-> 默认使用 DashScope 实时语音前台。本地方案可选择
+> 默认使用 DashScope 实时语音前台，也支持 [StepAudio 3 Realtime](docs/voice-frontends/stepfun.zh.md)。本地方案可选择
 > [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) 或
 > [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md)，均无需云端 API Key。
 

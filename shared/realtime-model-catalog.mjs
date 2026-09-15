@@ -4,6 +4,7 @@ export const DEFAULT_DASHSCOPE_REALTIME_VOICE = 'longanqian'
 export const DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL = 'qwen-audio-3.0-realtime-flash'
 export const DASHSCOPE_OMNI_FLASH_REALTIME_MODEL = 'qwen3.5-omni-flash-realtime'
 export const DASHSCOPE_OMNI_PLUS_REALTIME_MODEL = 'qwen3.5-omni-plus-realtime'
+export const DEFAULT_STEPFUN_REALTIME_MODEL = 'stepaudio-3-realtime-preview'
 
 const OMNI_MODEL_CAPABILITIES = Object.freeze({
   textInput: true, audioInput: true, imageInput: true, videoInput: true,
@@ -89,7 +90,11 @@ export function resolveDashScopeRealtimeModelProfile(
   model = DEFAULT_DASHSCOPE_REALTIME_MODEL,
 ) {
   const id = String(model || '').trim() || DEFAULT_DASHSCOPE_REALTIME_MODEL
-  return PROFILES_BY_ID.get(id) || Object.freeze({
+  return PROFILES_BY_ID.get(id) || unknownModelProfile(id)
+}
+
+function unknownModelProfile(id) {
+  return Object.freeze({
     id,
     label: id,
     family: 'unknown',
@@ -97,4 +102,42 @@ export function resolveDashScopeRealtimeModelProfile(
     modelCapabilities: UNKNOWN_MODEL_CAPABILITIES,
     transportCapabilities: UNKNOWN_TRANSPORT_CAPABILITIES,
   })
+}
+
+const STEPFUN_PROFILES = Object.freeze([
+  Object.freeze({
+    id: DEFAULT_STEPFUN_REALTIME_MODEL,
+    label: 'StepAudio 3 Realtime Preview',
+    family: 'stepaudio',
+    sessionDefaults: Object.freeze({
+      // Omit voice to use the service default; never inherit a Qwen voice.
+      voice: null,
+      turnDetection: Object.freeze({ type: 'server_vad' }),
+    }),
+    modelCapabilities: LEGACY_MODEL_CAPABILITIES,
+    transportCapabilities: LEGACY_TRANSPORT_CAPABILITIES,
+  }),
+])
+
+const MODEL_CATALOGS = Object.freeze({
+  dashscope: Object.freeze({
+    environment: 'QWEN_AUDIO_REALTIME_MODEL',
+    defaultModel: DEFAULT_DASHSCOPE_REALTIME_MODEL,
+    profiles: DASHSCOPE_REALTIME_MODEL_PROFILES,
+  }),
+  stepfun: Object.freeze({
+    environment: 'STEPFUN_REALTIME_MODEL',
+    defaultModel: DEFAULT_STEPFUN_REALTIME_MODEL,
+    profiles: STEPFUN_PROFILES,
+  }),
+})
+
+export function realtimeModelCatalog(provider = 'dashscope') {
+  return MODEL_CATALOGS[provider] || null
+}
+
+export function resolveRealtimeModelProfile(model, provider = 'dashscope') {
+  const catalog = realtimeModelCatalog(provider)
+  const id = String(model || catalog?.defaultModel || '').trim()
+  return catalog?.profiles.find(profile => profile.id === id) || unknownModelProfile(id)
 }

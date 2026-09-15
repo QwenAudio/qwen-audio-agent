@@ -340,9 +340,9 @@ export class RealtimeFrontend {
     }
     return this.enqueueResponse('model', context, async () => {
       await this.createConversationItem(this.protocol.userTextItem(content))
-      this.send(this.protocol.responseCreate(
+      return this.sendResponse(
         modalities ? { modalities } : undefined,
-      ))
+      )
     })
   }
 
@@ -380,9 +380,9 @@ export class RealtimeFrontend {
     }
     return this.enqueueResponse('model', context, async () => {
       if (!await this.applyUserInput(parts)) return false
-      this.send(this.protocol.responseCreate(
+      return this.sendResponse(
         modalities ? { modalities } : undefined,
-      ))
+      )
     })
   }
 
@@ -406,7 +406,7 @@ export class RealtimeFrontend {
     }
     return this.enqueueResponse('agent', context, () => {
       if (shouldCreate && !shouldCreate()) return false
-      this.send(this.protocol.responseCreate(response))
+      return this.sendResponse(response)
     })
   }
 
@@ -425,7 +425,7 @@ export class RealtimeFrontend {
     if (!createResponse) return this.enqueueAction(sendOutput)
     return this.enqueueResponse('agent', context, async () => {
       await sendOutput()
-      this.send(this.protocol.responseCreate(response))
+      return this.sendResponse(response)
     })
   }
 
@@ -464,9 +464,9 @@ export class RealtimeFrontend {
     }
     return this.enqueueResponse(origin, context, () => {
       if (shouldSpeak && !shouldSpeak()) return false
-      this.send(this.protocol.responseCreate(
+      return this.sendResponse(
         this.provider.buildSpeakResponse(content),
-      ))
+      )
     })
   }
 
@@ -545,7 +545,7 @@ export class RealtimeFrontend {
         await this.createConversationItem(injection.item)
         contextInjected = true
       }
-      this.send(this.protocol.responseCreate(injection.response))
+      return this.sendResponse(injection.response)
     })
     return {
       ...(outcome || {}),
@@ -568,8 +568,16 @@ export class RealtimeFrontend {
     await this.createConversationItem(injection.item)
     return this.enqueueResponse('permission', context, pending => {
       if (pending.settled || (shouldSpeak && !shouldSpeak())) return false
-      this.send(this.protocol.responseCreate(injection.response))
+      return this.sendResponse(injection.response)
     })
+  }
+
+  async sendResponse(response) {
+    // A dialect may need a conversation item instead of transient response
+    // instructions. Wait for its acknowledgement before triggering inference.
+    const item = this.protocol.responseInstructionsItem?.(response)
+    if (item) await this.createConversationItem(item)
+    this.send(this.protocol.responseCreate(response))
   }
 
   cancel() {

@@ -20,7 +20,8 @@ DASHSCOPE_API_KEY=your-key
 | `QWEN_AUDIO_REALTIME_BASE_URL` / `QWEN_AUDIO_REALTIME_URL` | Empty | Override the DashScope Realtime endpoint (private deployment or proxy) |
 | `DASHSCOPE_WORKSPACE_ID` | Empty | Switch to a dedicated Model Studio workspace endpoint |
 
-Other frontends include [Speech-to-Speech](../voice-frontends/speech-to-speech.md) and
+Other frontends include [StepAudio 3 Realtime](../voice-frontends/stepfun.md)
+(with its own StepFun API key), [Speech-to-Speech](../voice-frontends/speech-to-speech.md), and
 [ModelBest](../voice-frontends/minicpm-o.md), whose MiniCPM-o 4.5 endpoint may be local or hosted.
 A custom provider implements
 the provider contract; see [Custom Provider](../voice-frontends/custom-provider.md).

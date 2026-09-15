@@ -7,7 +7,6 @@ import {
 } from '../../shared/backend/catalog.mjs'
 import {
   resolveRealtimeFrontendConfiguration,
-  resolveDashScopeRealtimeModelProfile,
 } from '../../shared/realtime-provider-catalog.mjs'
 
 // Gateway 子进程托管器随包发布（宿主与桌面版共用同一份实现，防漂移）；
@@ -87,10 +86,8 @@ export function desktopGatewayCompatibility(health, env = process.env) {
     const actualModel = String(
       health.realtimeModelProfile?.id || health.realtimeModel,
     ).trim()
-    const expectedModel = resolveDashScopeRealtimeModelProfile(
-      expectedRealtime.dashscopeModel,
-    ).id
-    if (expectedRealtime.provider === 'dashscope' && actualModel !== expectedModel) {
+    const expectedModel = expectedRealtime.model
+    if (expectedModel && actualModel !== expectedModel) {
       return {
         compatible: false,
         code: 'realtime-model',

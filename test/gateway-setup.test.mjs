@@ -21,6 +21,15 @@ test('is ready once the realtime credential is present', () => {
   assert.deepEqual(status.missing, [])
 })
 
+test('StepFun requires its own key and reports the correct settings field', () => {
+  const env = { QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun', DASHSCOPE_API_KEY: 'unrelated' }
+  const missing = gatewaySetupStatus(env)
+  assert.equal(missing.ready, false)
+  assert.equal(missing.missing[0].field, 'stepfunApiKey')
+  assert.equal(missing.missing[0].key, 'STEPFUN_API_KEY')
+  assert.equal(gatewaySetupStatus({ ...env, STEPFUN_API_KEY: 'test' }).ready, true)
+})
+
 test('names the service address for the speech-to-speech provider', () => {
   const status = gatewaySetupStatus({
     QWEN_AUDIO_REALTIME_PROVIDER: 'speech-to-speech',

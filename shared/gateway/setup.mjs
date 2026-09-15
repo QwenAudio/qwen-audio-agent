@@ -15,17 +15,10 @@ export function gatewaySetupStatus(env = process.env) {
   const frontend = resolveRealtimeFrontendConfiguration(env)
   const missing = []
   if (!frontend.configured) {
-    missing.push(frontend.provider === 'dashscope'
-      ? {
-          field: 'dashscopeApiKey',
-          key: 'DASHSCOPE_API_KEY',
-          message: frontend.missingConfigurationMessage,
-        }
-      : {
-          field: 'speechToSpeechRealtimeUrl',
-          key: 'SPEECH_TO_SPEECH_REALTIME_URL',
-          message: frontend.missingConfigurationMessage,
-        })
+    missing.push({
+      ...frontend.requiredConfiguration,
+      message: frontend.missingConfigurationMessage,
+    })
   }
   return {
     ready: missing.length === 0,

@@ -19,7 +19,8 @@ DASHSCOPE_API_KEY=your-key
 | `QWEN_AUDIO_REALTIME_BASE_URL` / `QWEN_AUDIO_REALTIME_URL` | 空 | 覆盖 DashScope Realtime 端点（私有部署或代理） |
 | `DASHSCOPE_WORKSPACE_ID` | 空 | 切换到百炼专属 workspace 端点 |
 
-其他前台可选择 [Speech-to-Speech](../voice-frontends/speech-to-speech.zh.md)，或通过
+其他前台可选择 [StepAudio 3 Realtime](../voice-frontends/stepfun.zh.md)（使用独立的 StepFun API Key）、
+[Speech-to-Speech](../voice-frontends/speech-to-speech.zh.md)，或通过
 [面壁智能](../voice-frontends/minicpm-o.zh.md)连接本地及云端 MiniCPM-o 4.5 服务；自定义 Provider 需实现
 Provider 契约，见[自定义 Provider](../voice-frontends/custom-provider.zh.md)。
 

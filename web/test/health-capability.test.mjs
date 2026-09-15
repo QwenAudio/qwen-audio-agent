@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import * as voice from '../src/realtime/useRealtimeVoice.js'
+import { setRuntimeLanguage } from '../src/i18n.js'
 
 function realtimeModelStatus(...args) {
   assert.equal(typeof voice.realtimeModelStatus, 'function')
@@ -154,19 +155,29 @@ test('fails closed when voice capability metadata drifts', () => {
   assert.deepEqual(status.transportInputModes, [])
 })
 
-test('turns structured realtime errors into actionable localized prompts', () => {
+test('turns structured realtime errors into actionable localized prompts', t => {
   assert.equal(typeof voice.realtimeErrorMessage, 'function')
-  const message = voice.realtimeErrorMessage({
+  const error = {
     code: 'voice_not_supported',
     model: PLUS_ID,
     voice: 'Cherry',
     supportedVoices: ['Tina', 'Serena'],
     supportsClonedVoices: true,
     customVoicePrefixes: ['qwen3.5-omni-plus-realtime-'],
-  })
+  }
+  t.after(() => setRuntimeLanguage(''))
+
+  setRuntimeLanguage('zh-CN')
+  const message = voice.realtimeErrorMessage(error)
 
   assert.match(message, /模型 qwen3\.5-omni-plus-realtime 不支持音色 Cherry/)
   assert.match(message, /可选音色：Tina、Serena/)
   assert.match(message, /复刻音色/)
   assert.match(message, /复刻音色 ID 前缀：qwen3\.5-omni-plus-realtime-/)
+
+  setRuntimeLanguage('en-US')
+  const english = voice.realtimeErrorMessage(error)
+  assert.match(english, /Model qwen3\.5-omni-plus-realtime does not support voice Cherry/)
+  assert.match(english, /Available voices: Tina、Serena/)
+  assert.match(english, /Cloned voice ID prefixes: qwen3\.5-omni-plus-realtime-/)
 })

@@ -534,8 +534,8 @@ test('desktop settings expose external backend connection controls', () => {
   assert.match(html, />DashScope</)
   assert.doesNotMatch(html, /value="qwen-audio-3\.0-realtime-flash"/)
   assert.match(html, /id="realtime-voice"/)
-  assert.doesNotMatch(html, /id="realtime-voice-options"/)
-  assert.doesNotMatch(html, /id="realtime-voice"[\s\S]{0,160}\blist=/)
+  assert.match(html, /id="realtime-voice-options"/)
+  assert.match(html, /id="realtime-voice"[\s\S]{0,400}\blist=/)
   assert.match(
     html,
     /data-provider-panel="dashscope"[\s\S]*id="realtime-voice"[\s\S]*data-provider-panel="speech-to-speech"/,

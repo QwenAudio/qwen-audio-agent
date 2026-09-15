@@ -77,12 +77,54 @@ function validateCapabilitySet(provider, profile, property, requiredFlags) {
   }
 }
 
-function validateModelProfile(provider) {
-  if (provider.modelProfile === undefined) return
-  if (typeof provider.modelProfile !== 'function') {
-    throw new Error(`Realtime Provider ${provider.key} modelProfile 必须是函数`)
+function validateVoiceCapabilities(provider, profile) {
+  if (profile.voiceCapabilities === undefined) return
+  const capabilities = profile.voiceCapabilities
+  const supportedVoices = capabilities?.supportedVoices
+  const customVoicePrefixes = capabilities?.customVoicePrefixes
+  const validKeys = new Set([
+    'supportedVoices',
+    'supportsClonedVoices',
+    'customVoicePrefixes',
+  ])
+  if (
+    !capabilities
+    || typeof capabilities !== 'object'
+    || Array.isArray(capabilities)
+    || Object.keys(capabilities).some(key => !validKeys.has(key))
+    || !Array.isArray(supportedVoices)
+    || supportedVoices.length === 0
+    || supportedVoices.some(voice => (
+      typeof voice !== 'string' || !voice.trim()
+    ))
+    || new Set(supportedVoices).size !== supportedVoices.length
+    || (
+      capabilities.supportsClonedVoices !== undefined
+      && typeof capabilities.supportsClonedVoices !== 'boolean'
+    )
+    || (
+      customVoicePrefixes !== undefined
+      && (
+        !Array.isArray(customVoicePrefixes)
+        || customVoicePrefixes.length === 0
+        || customVoicePrefixes.some(prefix => (
+          typeof prefix !== 'string' || !prefix.trim()
+        ))
+        || new Set(customVoicePrefixes).size !== customVoicePrefixes.length
+      )
+    )
+    || (
+      profile.sessionDefaults.voice !== null
+      && !supportedVoices.includes(profile.sessionDefaults.voice)
+    )
+  ) {
+    throw new Error(
+      `Realtime Provider ${provider.key} modelProfile.voiceCapabilities 不完整`,
+    )
   }
-  const profile = provider.modelProfile()
+}
+
+function validateModelProfile(provider, profile) {
   if (profile === null) return
   if (
     !profile
@@ -128,6 +170,39 @@ function validateModelProfile(provider) {
     throw new Error(
       `Realtime Provider ${provider.key} modelProfile.sessionDefaults 不完整`,
     )
+  }
+  validateVoiceCapabilities(provider, profile)
+}
+
+function validateModelProfileContract(provider) {
+  if (provider.modelProfile === undefined) return
+  if (typeof provider.modelProfile !== 'function') {
+    throw new Error(`Realtime Provider ${provider.key} modelProfile 必须是函数`)
+  }
+  validateModelProfile(provider, provider.modelProfile())
+}
+
+function validateModelCatalog(provider) {
+  if (provider.modelCatalog === undefined) return
+  if (typeof provider.modelCatalog !== 'function') {
+    throw new Error(`Realtime Provider ${provider.key} modelCatalog 必须是函数`)
+  }
+  const catalog = provider.modelCatalog()
+  if (!Array.isArray(catalog) || catalog.length === 0) {
+    throw new Error(`Realtime Provider ${provider.key} modelCatalog 无效`)
+  }
+  const ids = new Set()
+  for (const profile of catalog) {
+    if (profile === null) {
+      throw new Error(`Realtime Provider ${provider.key} modelCatalog 含有空档案`)
+    }
+    validateModelProfile(provider, profile)
+    if (ids.has(profile.id)) {
+      throw new Error(
+        `Realtime Provider ${provider.key} modelCatalog 存在重复模型：${profile.id}`,
+      )
+    }
+    ids.add(profile.id)
   }
 }
 
@@ -202,6 +277,14 @@ export function validateRealtimeProvider(provider) {
   } else {
     validateRealtimeProtocol(provider.protocol, provider.key)
   }
+  if (
+    provider.validateSessionOptions !== undefined
+    && typeof provider.validateSessionOptions !== 'function'
+  ) {
+    throw new Error(
+      `Realtime Provider ${provider.key} validateSessionOptions 必须是函数`,
+    )
+  }
   for (const flag of Object.keys(provider.capabilities || {})) {
     if (!CAPABILITY_FLAGS.includes(flag)) {
       throw new Error(
@@ -229,7 +312,8 @@ export function validateRealtimeProvider(provider) {
   ) {
     throw new Error(`Realtime Provider ${provider.key} aliases 无效`)
   }
-  validateModelProfile(provider)
+  validateModelProfileContract(provider)
+  validateModelCatalog(provider)
   return provider
 }
 

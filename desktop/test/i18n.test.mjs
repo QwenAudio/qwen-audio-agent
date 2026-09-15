@@ -26,6 +26,20 @@ test('localizes common main-process errors for the English settings UI', () => {
     localizeDesktopError('请先填写 DashScope API Key', english),
     'Enter a DashScope API Key first',
   )
+  assert.match(
+    localizeDesktopError(
+      'DashScope Realtime 启动失败（模型 qwen3.5-omni-flash-realtime，音色 Cherry）：音色 Cherry 不支持模型 qwen3.5-omni-flash-realtime（Qwen3.5 Omni Flash Realtime）；可选音色：Tina、Serena',
+      english,
+    ),
+    /voice Cherry is not supported by model qwen3\.5-omni-flash-realtime/,
+  )
+  assert.match(
+    localizeDesktopError(
+      'DashScope Realtime 启动失败（模型 qwen3.5-omni-flash-realtime，音色 Tina）：不支持的 Realtime 模型：future（DashScope Realtime）；可选模型：qwen3.5-omni-flash-realtime',
+      english,
+    ),
+    /unsupported Realtime model future\. Available models:/,
+  )
 })
 
 test('translates desktop settings text while preserving product names', () => {

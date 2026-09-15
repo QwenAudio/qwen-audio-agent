@@ -31,8 +31,89 @@ const omniTransportCapabilities = {
 }
 
 const omniSessionDefaults = {
-  voice: 'Ethan',
+  voice: 'Tina',
   turnDetection: { type: 'semantic_vad' },
+}
+
+const omniVoiceCapabilities = {
+  supportedVoices: [
+    'Tina',
+    'Cindy',
+    'Liora Mira',
+    'Sunnybobi',
+    'Raymond',
+    'Ethan',
+    'Theo Calm',
+    'Serena',
+    'Harvey',
+    'Maia',
+    'Evan',
+    'Qiao',
+    'Momo',
+    'Wil',
+    'Angel',
+    'Li Cassian',
+    'Mia',
+    'Joyner',
+    'Gold',
+    'Katerina',
+    'Ryan',
+    'Jennifer',
+    'Aiden',
+    'Mione',
+    'Sunny',
+    'Dylan',
+    'Eric',
+    'Peter',
+    'Joseph Chen',
+    'Marcus',
+    'Li',
+    'Kiki',
+    'Rocky',
+    'Sohee',
+    'Lenn',
+    'Ono Anna',
+    'Sonrisa',
+    'Bodega',
+    'Emilien',
+    'Andre',
+    'Radio Gol',
+    'Alek',
+    'Rizky',
+    'Roya',
+    'Arda',
+    'Hana',
+    'Dolce',
+    'Jakub',
+    'Griet',
+    'Eliška',
+    'Marina',
+    'Siiri',
+    'Ingrid',
+    'Sigga',
+    'Bea',
+    'Chloe',
+  ],
+  supportsClonedVoices: true,
+  customVoicePrefixes: [
+    `${OMNI_FLASH_ID}-`,
+    `${OMNI_PLUS_ID}-`,
+  ],
+}
+
+const audioVoiceCapabilities = {
+  supportedVoices: [
+    'longanqian',
+    'longanlingxin',
+    'longanlingxi',
+    'longanxiaoxin',
+    'longanlufeng',
+  ],
+  supportsClonedVoices: true,
+  customVoicePrefixes: [
+    `${AUDIO_PLUS_ID}-`,
+    `${AUDIO_FLASH_ID}-`,
+  ],
 }
 
 const legacySessionDefaults = {
@@ -47,6 +128,7 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
       label: 'Qwen3.5 Omni Flash Realtime',
       family: 'omni',
       sessionDefaults: omniSessionDefaults,
+      voiceCapabilities: omniVoiceCapabilities,
       modelCapabilities: omniModelCapabilities,
       transportCapabilities: omniTransportCapabilities,
     },
@@ -55,6 +137,7 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
       label: 'Qwen3.5 Omni Plus Realtime',
       family: 'omni',
       sessionDefaults: omniSessionDefaults,
+      voiceCapabilities: omniVoiceCapabilities,
       modelCapabilities: omniModelCapabilities,
       transportCapabilities: omniTransportCapabilities,
     },
@@ -63,6 +146,7 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
       label: 'Qwen Audio 3.0 Realtime Plus',
       family: 'audio',
       sessionDefaults: legacySessionDefaults,
+      voiceCapabilities: audioVoiceCapabilities,
       modelCapabilities: {
         textInput: true,
         audioInput: true,
@@ -84,6 +168,7 @@ test('lists the exact DashScope realtime model catalog in product order', () => 
       label: 'Qwen Audio 3.0 Realtime Flash',
       family: 'audio',
       sessionDefaults: legacySessionDefaults,
+      voiceCapabilities: audioVoiceCapabilities,
       modelCapabilities: {
         textInput: true,
         audioInput: true,
@@ -154,6 +239,11 @@ test('exposes immutable catalog profiles and nested capabilities', () => {
     assert.equal(Object.isFrozen(profile.sessionDefaults.turnDetection), true)
     assert.equal(Object.isFrozen(profile.modelCapabilities), true)
     assert.equal(Object.isFrozen(profile.transportCapabilities), true)
+    if (profile.voiceCapabilities) {
+      assert.equal(Object.isFrozen(profile.voiceCapabilities), true)
+      assert.equal(Object.isFrozen(profile.voiceCapabilities.supportedVoices), true)
+      assert.equal(Object.isFrozen(profile.voiceCapabilities.customVoicePrefixes), true)
+    }
   }
   assert.throws(() => {
     listDashScopeRealtimeModelProfiles()[0].modelCapabilities.videoInput = false

@@ -58,6 +58,84 @@ export function realtimeEventErrorMessage(event, fallback = '实时语音服务�
   return [...new Set(details)].join(': ') || fallback
 }
 
+function providerValue(provider, method, fallback = '') {
+  try {
+    return String(provider?.[method]?.() || '').trim() || fallback
+  } catch {
+    return fallback
+  }
+}
+
+function safeList(value, limit = 100) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value
+    .map(item => String(item || '').trim())
+    .filter(Boolean))].slice(0, limit)
+}
+
+function providerModelIds(provider) {
+  try {
+    return safeList(provider?.modelCatalog?.().map(profile => profile?.id), 50)
+  } catch {
+    return []
+  }
+}
+
+export function realtimeProviderErrorFields(error, provider) {
+  const model = String(error?.model || '').trim() || providerValue(provider, 'model')
+  const voice = String(error?.voice || '').trim() || providerValue(provider, 'voice')
+  const code = String(error?.code || '').trim() || 'realtime_provider_error'
+  return {
+    code,
+    ...(provider?.key ? { provider: provider.key } : {}),
+    ...(model ? { model } : {}),
+    ...(voice ? { voice } : {}),
+    ...(safeList(error?.supportedModels, 50).length
+      ? { supportedModels: safeList(error.supportedModels, 50) }
+      : {}),
+    ...(safeList(error?.supportedVoices).length
+      ? { supportedVoices: safeList(error.supportedVoices) }
+      : {}),
+    ...(safeList(error?.customVoicePrefixes, 20).length
+      ? { customVoicePrefixes: safeList(error.customVoicePrefixes, 20) }
+      : {}),
+    ...(typeof error?.supportsClonedVoices === 'boolean'
+      ? { supportsClonedVoices: error.supportsClonedVoices }
+      : {}),
+  }
+}
+
+export function realtimeProviderStartupError(error, provider) {
+  const cause = error instanceof Error ? error : new Error(String(error || '未知错误'))
+  const fields = realtimeProviderErrorFields(cause, provider)
+  const model = fields.model || ''
+  const voice = fields.voice || ''
+  const context = [
+    model ? `模型 ${model}` : '',
+    voice ? `音色 ${voice}` : '',
+  ].filter(Boolean)
+  const wrapped = new Error(
+    `${provider?.label || 'Realtime Provider'} 启动失败`
+    + (context.length ? `（${context.join('，')}）` : '')
+    + `：${cause.message || '未知错误'}`,
+  )
+  wrapped.code = cause.code || 'realtime_provider_startup_failed'
+  wrapped.provider = fields.provider || ''
+  if (model) wrapped.model = model
+  if (voice) wrapped.voice = voice
+  if (cause.realtimeEvent) wrapped.realtimeEvent = cause.realtimeEvent
+  for (const field of [
+    'supportedModels',
+    'supportedVoices',
+    'customVoicePrefixes',
+    'supportsClonedVoices',
+  ]) {
+    if (field in fields) wrapped[field] = fields[field]
+  }
+  wrapped.cause = cause
+  return wrapped
+}
+
 // Behavioural capabilities of a provider's Realtime implementation. Defaults
 // encode the shared protocol baseline; optional features require opt-in and
 // providers declare known constraints, without the frontend ever branching on
@@ -151,13 +229,36 @@ export class RealtimeFrontend {
 
   connect() {
     if (this.modelProfile?.family === 'unknown') {
-      return Promise.reject(new Error(
+      const supportedModels = providerModelIds(this.provider)
+      const error = new Error(
         `不支持的 Realtime 模型：${this.modelProfile.id}`
-        + `（${this.provider.label}）`,
-      ))
+        + `（${this.provider.label}）`
+        + (supportedModels.length
+          ? `；可选模型：${supportedModels.join('、')}`
+          : ''),
+      )
+      error.code = 'realtime_model_not_supported'
+      error.model = this.modelProfile.id
+      error.supportedModels = supportedModels
+      return Promise.reject(realtimeProviderStartupError(error, this.provider))
     }
     if (!this.provider.isConfigured()) {
-      return Promise.reject(new Error(this.provider.missingConfigurationMessage))
+      const error = new Error(this.provider.missingConfigurationMessage)
+      error.code = 'realtime_configuration_missing'
+      return Promise.reject(realtimeProviderStartupError(
+        error,
+        this.provider,
+      ))
+    }
+    try {
+      this.provider.validateSessionOptions?.({
+        model: this.provider.model?.(),
+        voice: this.provider.voice?.(),
+        modelProfile: this.modelProfile,
+        sessionOptions: this.sessionOptions,
+      })
+    } catch (error) {
+      return Promise.reject(realtimeProviderStartupError(error, this.provider))
     }
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.provider.url(), {
@@ -167,7 +268,8 @@ export class RealtimeFrontend {
       let settled = false
       const timeout = setTimeout(() => {
         const error = new Error(this.provider.connectTimeoutMessage)
-        finish(error)
+        error.code = 'realtime_connect_timeout'
+        finish(realtimeProviderStartupError(error, this.provider))
         ws.terminate()
       }, this.provider.connectTimeoutMs ?? 25000)
       const finish = error => {
@@ -189,21 +291,36 @@ export class RealtimeFrontend {
             ws.send(JSON.stringify(message))
           }
         } catch (error) {
-          this.onError?.(error)
-          finish(error)
+          const startupError = realtimeProviderStartupError(error, this.provider)
+          this.onError?.(startupError)
+          finish(startupError)
           ws.terminate()
         }
       })
       ws.on('error', error => {
-        this.onError?.(error)
-        finish(error)
+        if (this.ready) {
+          this.onError?.(error)
+          return
+        }
+        const startupError = realtimeProviderStartupError(error, this.provider)
+        this.onError?.(startupError)
+        finish(startupError)
       })
       ws.on('close', () => {
+        const wasReady = this.ready
         this.ready = false
         this.sessionConfigured = false
         this.recentContextInjected = false
         this.resetResponses()
-        finish(new Error(`${this.provider.label} 连接已关闭`))
+        if (!wasReady) {
+          finish(realtimeProviderStartupError(
+            Object.assign(
+              new Error(`${this.provider.label} 连接在 Session 就绪前关闭`),
+              { code: 'realtime_session_not_ready' },
+            ),
+            this.provider,
+          ))
+        }
         this.onClose?.()
       })
       ws.on('message', raw => {
@@ -233,8 +350,9 @@ export class RealtimeFrontend {
     for (const event of events) {
       if (event.type === 'error' && !this.ready) {
         const error = new Error(realtimeEventErrorMessage(event))
+        error.code = event.error?.code || 'realtime_provider_startup_failed'
         error.realtimeEvent = true
-        throw error
+        throw realtimeProviderStartupError(error, this.provider)
       }
       if (event.type === 'session.created') {
         this.updateSession()

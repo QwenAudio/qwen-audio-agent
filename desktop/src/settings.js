@@ -14,6 +14,7 @@ import {
 import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   listDashScopeRealtimeModelProfiles,
+  resolveDashScopeRealtimeModelProfile,
 } from '../../shared/realtime-model-catalog.mjs'
 import { updaterButtonState, updaterStatusText } from './update-status.mjs'
 import { createRealtimeVoiceDrafts } from './realtime-voice-settings.mjs'
@@ -39,6 +40,8 @@ const desktopLanguage = document.querySelector('#desktop-language')
 const dashscopeApiKey = document.querySelector('#dashscope-api-key')
 const realtimeBaseUrl = document.querySelector('#realtime-base-url')
 const realtimeVoice = document.querySelector('#realtime-voice')
+const realtimeVoiceOptions = document.querySelector('#realtime-voice-options')
+const realtimeVoiceHint = document.querySelector('#realtime-voice-hint')
 const realtimeProviderInputs = [
   ...document.querySelectorAll('input[name="realtime-provider"]'),
 ]
@@ -748,9 +751,26 @@ function selectedRealtimeProvider() {
 }
 
 function renderRealtimeVoice() {
-  const voice = realtimeVoiceDrafts.selectModel(realtimeModel.value)
+  const model = realtimeModel.value
+  const profile = resolveDashScopeRealtimeModelProfile(model)
+  const voice = realtimeVoiceDrafts.selectModel(model)
   realtimeVoice.value = voice.value
   realtimeVoice.placeholder = voice.placeholder
+  const capabilities = profile.voiceCapabilities
+  realtimeVoiceOptions?.replaceChildren(...(
+    capabilities?.supportedVoices || []
+  ).map(value => {
+    const option = document.createElement('option')
+    option.value = value
+    return option
+  }))
+  if (realtimeVoiceHint) {
+    realtimeVoiceHint.textContent = capabilities
+      ? capabilities.supportsClonedVoices
+        ? t('系统音色可从列表选择；也可填写该模型生成的复刻音色 ID')
+        : t('系统音色可从列表选择')
+      : t('当前模型没有可用的音色矩阵，请确认模型 ID')
+  }
 }
 
 function renderRealtimeProvider(value, { populateDefault = false } = {}) {

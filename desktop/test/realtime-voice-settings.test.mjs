@@ -13,7 +13,7 @@ test('preserves independent Audio and Omni voice drafts across model switches', 
   })
   drafts.update('audio-two')
   assert.deepEqual(drafts.selectModel('qwen3.5-omni-plus-realtime'), {
-    family: 'omni', value: 'omni-one', placeholder: 'Ethan',
+    family: 'omni', value: 'omni-one', placeholder: 'Tina',
   })
   drafts.update('omni-two')
   assert.equal(

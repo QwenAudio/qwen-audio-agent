@@ -26,7 +26,10 @@ QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-flash-realtime
 
 ## 音色与话轮检测
 
-- 默认音色 `Ethan`，可用 `QWEN_OMNI_REALTIME_VOICE` 覆盖。
+- 默认音色 `Tina`，可用 `QWEN_OMNI_REALTIME_VOICE` 覆盖。
+- 模型能力矩阵会向客户端发布完整的系统音色列表。音色必须与所选模型匹配；
+  不兼容的显式配置会在连接上游 Session 前直接报错，不会静默替换。两个模型也
+  支持使用为对应模型生成的复刻 `voice_id`。
 - 话轮检测为 `semantic_vad`，由运行时配置。
 
 ## 实时视觉

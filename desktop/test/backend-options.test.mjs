@@ -352,3 +352,24 @@ test('classifies issue texts into short reasons', () => {
     assert.equal(states[1].reason, reason, issue)
   }
 })
+
+test('preserves an env-selected ACP backend without claiming it is ready', () => {
+  for (const ready of [true, false]) {
+    const detection = report([backend({
+      id: 'acp', label: 'ACP Agent', selected: true, ready,
+      issues: ready ? [] : ['ACP_COMMAND 指定的命令不可用：missing-agent'],
+    })])
+    const state = backendOptionStates(detection).find(item => item.id === 'acp')
+    assert.ok(state)
+    assert.equal(state.selectable, true)
+    assert.equal(state.ready, ready)
+    assert.equal(state.installable, false)
+    assert.equal(backendSelectionAvailable(detection, 'acp'), ready)
+  }
+})
+
+test('does not offer unselected generic ACP even when its command is available', () => {
+  const detection = report([backend({ id: 'acp', ready: true })])
+  assert.equal(backendOptionStates(detection).some(item => item.id === 'acp'), false)
+  assert.equal(backendSelectionAvailable(detection, 'acp'), false)
+})

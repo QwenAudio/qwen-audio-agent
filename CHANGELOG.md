@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 桌面设置保留通过环境配置选择的通用 ACP 后台，并显示实际可用状态；
+  应用其他设置不再将 `AGENT_PROTOCOL=acp` 静默覆盖为 `none`。
+
 - 移除 `backend-adapter` 与 `custom-conversation-client` 示例目录及文档入口，保留后台 SDK 与客户端协议能力。
 
 - 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，

@@ -59,7 +59,9 @@ export function backendOptionStates(report) {
     title: '',
   }]
   for (const item of report?.backends || []) {
-    if (item.id === 'acp') continue
+    // Generic ACP is configured outside this picker. Keep an existing selection,
+    // including its unavailable state, without offering an unconfigured command.
+    if (item.id === 'acp' && item.selected !== true) continue
     const ready = item.ready === true
     const install = item.install || {}
     const configuration = item.onboarding?.configuration || {}

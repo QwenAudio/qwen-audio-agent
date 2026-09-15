@@ -86,8 +86,8 @@ test('PORT=0 binds a random port and reports the origin to the parent host', asy
         'modelCapabilities',
         'sessionDefaults',
         'transportCapabilities',
+        'voiceCapabilities',
       ]
-      if (profile.family === 'omni') expectedKeys.push('voiceCapabilities')
       assert.deepEqual(Object.keys(profile).sort(), expectedKeys.sort())
     }
     const serialized = JSON.stringify(health)

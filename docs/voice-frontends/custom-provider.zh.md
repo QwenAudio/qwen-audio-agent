@@ -28,10 +28,13 @@ createGatewayApplication({
 - `connectionMessages()` 在 WebSocket 打开后、`session.update` 之前发送原始握手帧。
 - 可选的 `validateSessionOptions()` 在打开上游 WebSocket 前运行；模型或音色不兼容时
   应抛出带稳定 `code` 和可操作说明的错误，避免让无效 Session 进入 Provider。
+- 可选的 `modelCatalog()` 返回 Provider 的完整模型能力矩阵。每个档案会在注册时校验；
+  `voiceCapabilities` 可以发布系统音色、`supportsClonedVoices` 与 JSON 安全的
+  `customVoicePrefixes`，供客户端提示和选择。
 - 其余事件通过 `encodeOutgoing()` 与 `normalizeIncoming()` 转换，Gateway 的工具调用、任务和客户端协议保持不变。
 - `visibility: 'gateway-only'` 可让 Provider 仅供宿主选择，不出现在桌面设置和公共 Provider 列表中。
 
 Provider 必须实现完整契约——`model()`、`voice()`、`isConfigured()`、`url()`、`headers()`、`classifyError()`、`buildSession()`、`buildSpeakResponse()`、`buildResultInjection()`、`buildPermissionInjection()`——并提供数值字段 `inputSampleRate` 与 `outputSampleRate`；缺少任一成员会在注册时抛错。
 
 Provider 和 Protocol 会在注册与建连时校验；缺少方法或返回无效结构会立即报错。
-建连阶段的 Provider 错误会附带 Provider、模型和音色上下文后交给 Gateway。
+建连阶段的 Provider 错误会附带 Provider、模型、音色及安全的能力列表上下文后交给 Gateway。

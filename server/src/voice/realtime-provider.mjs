@@ -67,10 +67,50 @@ function providerValue(provider, method, fallback = '') {
   }
 }
 
+function safeList(value, limit = 100) {
+  if (!Array.isArray(value)) return []
+  return [...new Set(value
+    .map(item => String(item || '').trim())
+    .filter(Boolean))].slice(0, limit)
+}
+
+function providerModelIds(provider) {
+  try {
+    return safeList(provider?.modelCatalog?.().map(profile => profile?.id), 50)
+  } catch {
+    return []
+  }
+}
+
+export function realtimeProviderErrorFields(error, provider) {
+  const model = String(error?.model || '').trim() || providerValue(provider, 'model')
+  const voice = String(error?.voice || '').trim() || providerValue(provider, 'voice')
+  const code = String(error?.code || '').trim() || 'realtime_provider_error'
+  return {
+    code,
+    ...(provider?.key ? { provider: provider.key } : {}),
+    ...(model ? { model } : {}),
+    ...(voice ? { voice } : {}),
+    ...(safeList(error?.supportedModels, 50).length
+      ? { supportedModels: safeList(error.supportedModels, 50) }
+      : {}),
+    ...(safeList(error?.supportedVoices).length
+      ? { supportedVoices: safeList(error.supportedVoices) }
+      : {}),
+    ...(safeList(error?.customVoicePrefixes, 20).length
+      ? { customVoicePrefixes: safeList(error.customVoicePrefixes, 20) }
+      : {}),
+    ...(typeof error?.supportsClonedVoices === 'boolean'
+      ? { supportsClonedVoices: error.supportsClonedVoices }
+      : {}),
+  }
+}
+
 export function realtimeProviderStartupError(error, provider) {
   const cause = error instanceof Error ? error : new Error(String(error || '未知错误'))
-  const model = providerValue(provider, 'model')
-  const voice = providerValue(provider, 'voice')
+  const fields = realtimeProviderErrorFields(cause, provider)
+  const model = fields.model || ''
+  const voice = fields.voice || ''
   const context = [
     model ? `模型 ${model}` : '',
     voice ? `音色 ${voice}` : '',
@@ -81,12 +121,17 @@ export function realtimeProviderStartupError(error, provider) {
     + `：${cause.message || '未知错误'}`,
   )
   wrapped.code = cause.code || 'realtime_provider_startup_failed'
-  wrapped.provider = provider?.key || ''
+  wrapped.provider = fields.provider || ''
   if (model) wrapped.model = model
   if (voice) wrapped.voice = voice
   if (cause.realtimeEvent) wrapped.realtimeEvent = cause.realtimeEvent
-  if (Array.isArray(cause.supportedVoices)) {
-    wrapped.supportedVoices = [...cause.supportedVoices]
+  for (const field of [
+    'supportedModels',
+    'supportedVoices',
+    'customVoicePrefixes',
+    'supportsClonedVoices',
+  ]) {
+    if (field in fields) wrapped[field] = fields[field]
   }
   wrapped.cause = cause
   return wrapped
@@ -185,16 +230,23 @@ export class RealtimeFrontend {
 
   connect() {
     if (this.modelProfile?.family === 'unknown') {
-      return Promise.reject(realtimeProviderStartupError(new Error(
+      const supportedModels = providerModelIds(this.provider)
+      const error = new Error(
         `不支持的 Realtime 模型：${this.modelProfile.id}`
-        + `（${this.provider.label}）`,
-      ), this.provider))
+        + `（${this.provider.label}）`
+        + (supportedModels.length
+          ? `；可选模型：${supportedModels.join('、')}`
+          : ''),
+      )
+      error.code = 'realtime_model_not_supported'
+      error.model = this.modelProfile.id
+      error.supportedModels = supportedModels
+      return Promise.reject(realtimeProviderStartupError(error, this.provider))
     }
     if (!this.provider.isConfigured()) {
-      return Promise.reject(realtimeProviderStartupError(
-        new Error(this.provider.missingConfigurationMessage),
-        this.provider,
-      ))
+      const error = new Error(this.provider.missingConfigurationMessage)
+      error.code = 'realtime_configuration_missing'
+      return Promise.reject(realtimeProviderStartupError(error, this.provider))
     }
     try {
       this.provider.validateSessionOptions?.({
@@ -214,7 +266,8 @@ export class RealtimeFrontend {
       let settled = false
       const timeout = setTimeout(() => {
         const error = new Error(this.provider.connectTimeoutMessage)
-        finish(error)
+        error.code = 'realtime_connect_timeout'
+        finish(realtimeProviderStartupError(error, this.provider))
         ws.terminate()
       }, this.provider.connectTimeoutMs ?? 25000)
       const finish = error => {
@@ -259,7 +312,10 @@ export class RealtimeFrontend {
         this.resetResponses()
         if (!wasReady) {
           finish(realtimeProviderStartupError(
-            new Error(`${this.provider.label} 连接在 Session 就绪前关闭`),
+            Object.assign(
+              new Error(`${this.provider.label} 连接在 Session 就绪前关闭`),
+              { code: 'realtime_session_not_ready' },
+            ),
             this.provider,
           ))
         }

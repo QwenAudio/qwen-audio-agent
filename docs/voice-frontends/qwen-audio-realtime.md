@@ -40,6 +40,10 @@ WebUI and TUI only display the active model; they never override it.
 ## Voice and turn detection
 
 - Default voice: `longanqian` — override with `QWEN_AUDIO_REALTIME_VOICE`.
+- System voices are `longanqian`, `longanlingxin`, `longanlingxi`,
+  `longanxiaoxin`, and `longanlufeng`. A cloned `voice_id` generated for the
+  selected model is also accepted; a voice from another model is rejected
+  before the upstream Session starts.
 - A GCP client may provide a session-scoped voice in
   `connection.output_voice` on its initial `session.hello`. It takes precedence
   over the environment default. At runtime, call

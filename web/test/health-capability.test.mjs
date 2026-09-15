@@ -125,3 +125,48 @@ test('enables image controls only for current exact catalog transport truth', ()
   assert.equal(status.imageInputEnabled, true)
   assert.deepEqual(status.transportInputModes, ['text', 'audio', 'image'])
 })
+
+test('fails closed when voice capability metadata drifts', () => {
+  const current = {
+    ...plus,
+    voiceCapabilities: {
+      supportedVoices: ['Tina', 'Serena'],
+      supportsClonedVoices: true,
+      customVoicePrefixes: ['qwen3.5-omni-plus-realtime-'],
+    },
+  }
+  const stale = {
+    ...current,
+    voiceCapabilities: {
+      ...current.voiceCapabilities,
+      supportedVoices: ['Tina'],
+    },
+  }
+
+  const status = realtimeModelStatus({
+    realtimeModel: current.id,
+    realtimeModelProfile: stale,
+    realtimeModelCatalog: [current],
+  })
+
+  assert.equal(status.metadataStatus, 'stale')
+  assert.deepEqual(status.modelInputModes, [])
+  assert.deepEqual(status.transportInputModes, [])
+})
+
+test('turns structured realtime errors into actionable localized prompts', () => {
+  assert.equal(typeof voice.realtimeErrorMessage, 'function')
+  const message = voice.realtimeErrorMessage({
+    code: 'voice_not_supported',
+    model: PLUS_ID,
+    voice: 'Cherry',
+    supportedVoices: ['Tina', 'Serena'],
+    supportsClonedVoices: true,
+    customVoicePrefixes: ['qwen3.5-omni-plus-realtime-'],
+  })
+
+  assert.match(message, /模型 qwen3\.5-omni-plus-realtime 不支持音色 Cherry/)
+  assert.match(message, /可选音色：Tina、Serena/)
+  assert.match(message, /复刻音色/)
+  assert.match(message, /复刻音色 ID 前缀：qwen3\.5-omni-plus-realtime-/)
+})

@@ -107,9 +107,19 @@ function enabledModes(capabilities, definitions) {
 }
 
 function sameCapabilities(left, right) {
-  if (!left || !right) return false
+  if (left === right) return true
+  if (left == null || right == null) return false
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left)
+      && Array.isArray(right)
+      && left.length === right.length
+      && left.every((value, index) => sameCapabilities(value, right[index]))
+  }
+  if (typeof left !== 'object' || typeof right !== 'object') {
+    return left === right
+  }
   const keys = new Set([...Object.keys(left), ...Object.keys(right)])
-  return [...keys].every(key => left[key] === right[key])
+  return [...keys].every(key => sameCapabilities(left[key], right[key]))
 }
 
 function microphoneErrorText(reason) {
@@ -144,6 +154,10 @@ export function realtimeModelStatus(health = {}) {
       catalogProfile.transportCapabilities,
       profile.transportCapabilities,
     )
+    && sameCapabilities(
+      catalogProfile.voiceCapabilities,
+      profile.voiceCapabilities,
+    )
   )
   const modelCapabilities = current ? profile.modelCapabilities : null
   const transportCapabilities = current ? profile.transportCapabilities : null
@@ -159,6 +173,47 @@ export function realtimeModelStatus(health = {}) {
     ),
     imageInputEnabled: transportCapabilities?.imageInput === true,
   }
+}
+
+function compactErrorList(values, limit = 12) {
+  const items = [...new Set((Array.isArray(values) ? values : [])
+    .map(value => String(value || '').trim())
+    .filter(Boolean))]
+  if (items.length <= limit) return items.join('、')
+  return `${items.slice(0, limit).join('、')} 等 ${items.length} 项`
+}
+
+export function realtimeErrorMessage(event = {}) {
+  const code = String(event.code || '').trim()
+  if (code === 'voice_not_supported' && event.model && event.voice) {
+    const voices = compactErrorList(event.supportedVoices)
+    const cloned = event.supportsClonedVoices === true
+      ? t('也可使用该模型生成的复刻音色 ID')
+      : ''
+    const prefixes = event.supportsClonedVoices === true
+      && compactErrorList(event.customVoicePrefixes, 4)
+      ? t('复刻音色 ID 前缀：{prefixes}', {
+        prefixes: compactErrorList(event.customVoicePrefixes, 4),
+      })
+      : ''
+    return [
+      t('模型 {model} 不支持音色 {voice}', {
+        model: event.model,
+        voice: event.voice,
+      }),
+      voices ? t('可选音色：{voices}', { voices }) : '',
+      cloned,
+      prefixes,
+    ].filter(Boolean).join('；')
+  }
+  if (code === 'realtime_model_not_supported' && event.model) {
+    const models = compactErrorList(event.supportedModels, 6)
+    return [
+      t('不支持的 Realtime 模型：{model}', { model: event.model }),
+      models ? t('可选模型：{models}', { models }) : '',
+    ].filter(Boolean).join('；')
+  }
+  return String(event.message || '').trim() || t('语音前台连接异常，正在重试')
 }
 
 export function microphoneControlEvent({
@@ -628,7 +683,7 @@ export default function useRealtimeVoice({
           setVisualError(false)
           flushPendingManualInputs()
         } else if (event.state === 'unavailable') {
-          setError(event.message || t('语音前台连接异常，正在重试'))
+          setError(realtimeErrorMessage(event))
           setVisualError(true)
         }
       }
@@ -668,7 +723,9 @@ export default function useRealtimeVoice({
           markAudioDone(event.responseId)
         }
       }
-      if (event.type === GatewayServerEvent.ERROR) setError(event.message)
+      if (event.type === GatewayServerEvent.ERROR) {
+        setError(realtimeErrorMessage(event))
+      }
       eventRef.current?.(event)
     }
     const client = new GatewayClient({

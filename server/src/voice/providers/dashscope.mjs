@@ -30,6 +30,7 @@ function classifyError(message) {
     || /allocationquota\.freetieronly|free allocated quota exceeded|free tier .* exhausted/i
       .test(message)
     || /model(?:\.|_)?accessdenied|model[_ -]?not[_ -]?found/i.test(message)
+    || /不支持的 Realtime 模型|音色 .* 不支持模型|请先配置 DASHSCOPE_API_KEY/.test(message)
   ) return 'fatal'
   return 'other'
 }
@@ -48,21 +49,33 @@ function responseModalities(profile) {
 
 function validateSessionOptions({ sessionOptions } = {}) {
   const profile = activeModelProfile()
-  const supportedVoices = profile.voiceCapabilities?.supportedVoices
-  if (!supportedVoices) return
+  const voiceCapabilities = profile.voiceCapabilities
+  const supportedVoices = voiceCapabilities?.supportedVoices
+  const customVoicePrefixes = voiceCapabilities?.customVoicePrefixes || []
+  if (!voiceCapabilities || !supportedVoices) return
   const selectedVoice = String(
     sessionOptions?.voice || dashscopeProvider.voice() || '',
   ).trim()
   if (!selectedVoice || supportedVoices.includes(selectedVoice)) return
+  const clonedVoice = voiceCapabilities.supportsClonedVoices === true
+    && customVoicePrefixes.some(prefix => (
+      selectedVoice.startsWith(prefix)
+    ))
+  if (clonedVoice) return
 
   const error = new Error(
-    `音色 ${selectedVoice} 不支持模型 ${profile.id}`
-    + `；可选音色：${supportedVoices.join('、')}`,
+    `音色 ${selectedVoice} 不支持模型 ${profile.id}（${profile.label}）`
+    + `；可选音色：${supportedVoices.join('、')}`
+    + (voiceCapabilities.supportsClonedVoices && customVoicePrefixes.length
+      ? `；复刻音色需使用该模型生成的 voice_id（前缀：${customVoicePrefixes.join('、')}）`
+      : ''),
   )
   error.code = 'voice_not_supported'
   error.model = profile.id
   error.voice = selectedVoice
   error.supportedVoices = [...supportedVoices]
+  error.supportsClonedVoices = voiceCapabilities.supportsClonedVoices === true
+  error.customVoicePrefixes = [...customVoicePrefixes]
   throw error
 }
 

@@ -28,11 +28,11 @@ active model regardless of family; switch via Desktop settings or
 
 ## Voice and turn detection
 
-- Default voice: `Ethan` — override with `QWEN_OMNI_REALTIME_VOICE`.
-- Supported voices are `Tina`, `Cindy`, `Liora Mira`, `Sunnybobi`, `Raymond`,
-  `Ethan`, `Theo Calm`, and `Serena`. The selected voice must match the active
-  model; an incompatible explicit value fails before the upstream Session starts
-  instead of being silently replaced.
+- Default voice: `Tina` — override with `QWEN_OMNI_REALTIME_VOICE`.
+- The model matrix publishes the complete system-voice list to clients. An
+  incompatible explicit voice fails before the upstream Session starts instead
+  of being silently replaced. Both models also accept a cloned `voice_id`
+  generated for that model.
 - Turn detection: `semantic_vad`, configured by the runtime.
 
 ## Live vision

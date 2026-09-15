@@ -19,6 +19,7 @@ import { normalizeClientContext } from '../conversation/frontend-agent-context.m
 import {
   defaultRealtimeProviderRegistry,
   realtimeEventErrorMessage,
+  realtimeProviderErrorFields,
 } from './realtime-provider.mjs'
 import { isAllowedOrigin } from '../core/request-security.mjs'
 import { TaskManager } from '../task/task-manager.mjs'
@@ -605,7 +606,11 @@ export function attachRealtimeGateway(server, {
     const reportFrontendError = error => {
       if (error?.realtimeConnectionReported) return
       if (error) error.realtimeConnectionReported = true
-      send(ws, { type: GatewayServerEvent.ERROR, message: error?.message || String(error) })
+      send(ws, {
+        type: GatewayServerEvent.ERROR,
+        message: error?.message || String(error),
+        ...realtimeProviderErrorFields(error, realtimeSession?.provider?.()),
+      })
     }
     realtimeSession = new RealtimeProviderSession({
       providerRegistry: realtimeProviderRegistry,
@@ -665,6 +670,7 @@ export function attachRealtimeGateway(server, {
       onReconnectError: error => send(ws, {
         type: GatewayServerEvent.ERROR,
         message: `实时语音连接恢复失败：${error.message}`,
+        ...realtimeProviderErrorFields(error, realtimeSession?.provider?.()),
       }),
       logger: connectionLogger,
       maxPendingAudioChunks: MAX_PENDING_AUDIO_CHUNKS,
@@ -1096,6 +1102,15 @@ export function attachRealtimeGateway(server, {
         // frontend transparently; nothing user-facing happened.
         if (event.__voiceRetried) return
         const errorMessage = realtimeEventErrorMessage(event)
+        const providerErrorFields = realtimeProviderErrorFields({
+          code: event.error?.code,
+          model: event.error?.model,
+          voice: event.error?.voice,
+          supportedModels: event.error?.supportedModels,
+          supportedVoices: event.error?.supportedVoices,
+          customVoicePrefixes: event.error?.customVoicePrefixes,
+          supportsClonedVoices: event.error?.supportsClonedVoices,
+        }, realtimeSession?.provider?.())
         const providerError = realtimeSession.classifyError(errorMessage)
         const recoverableInactivity = providerError === 'inactivity'
         // A local or otherwise capacity-bounded provider can still be draining
@@ -1139,6 +1154,7 @@ export function attachRealtimeGateway(server, {
           send(ws, {
             type: 'error',
             message: '这次内容未能处理，语音会话已自动恢复，请换个说法再试。',
+            ...providerErrorFields,
           })
           const recoveryTurnId = gatewayTurnId()
           const recoveryDelivery = createGatewaySystemEventDelivery(
@@ -1176,6 +1192,7 @@ export function attachRealtimeGateway(server, {
             state: 'unavailable',
             provider: realtimeSession.providerKey,
             message: errorMessage,
+            ...providerErrorFields,
           })
         }
         presentationRuntime.failResponse(event)
@@ -1184,7 +1201,11 @@ export function attachRealtimeGateway(server, {
         // pending announcement has already returned to the retry queue, so this
         // provider housekeeping event is not user-facing.
         if (!recoverableInactivity && providerError !== 'fatal') {
-          send(ws, { type: 'error', message: errorMessage })
+          send(ws, {
+            type: 'error',
+            message: errorMessage,
+            ...providerErrorFields,
+          })
         }
       }
     }

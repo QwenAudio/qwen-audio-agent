@@ -1,4 +1,7 @@
-import { createRealtimeFrontend } from './realtime-provider.mjs'
+import {
+  createRealtimeFrontend,
+  realtimeProviderErrorFields,
+} from './realtime-provider.mjs'
 import { ReconnectBackoff } from './reconnect-backoff.mjs'
 import { realtimeConnectionStatus } from './realtime-connection-status.mjs'
 
@@ -227,6 +230,7 @@ export class RealtimeProviderSession {
             state: 'unavailable',
             provider: createdFrontend.provider.key,
             message: error.message,
+            ...realtimeProviderErrorFields(error, createdFrontend.provider),
           })
         }
         throw error

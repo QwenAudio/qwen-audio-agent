@@ -37,6 +37,9 @@ WebUI 和 TUI 只展示当前生效模型，不单独覆盖。
 ## 音色与话轮检测
 
 - 默认音色 `longanqian`，可用 `QWEN_AUDIO_REALTIME_VOICE` 覆盖。
+- 系统音色包括 `longanqian`、`longanlingxin`、`longanlingxi`、`longanxiaoxin` 和
+  `longanlufeng`。也可以填写为所选模型生成的复刻 `voice_id`；来自其他模型的音色
+  会在连接上游 Session 前被拒绝。
 - GCP 客户端可在首次 `session.hello` 的 `connection.output_voice` 中提供会话级音色；
   它优先于环境变量。运行时调用 `GatewayClient.updateOutputVoice(voice)`，Gateway 会
   重建上游 Realtime Session，客户端连接和 Gateway 会话保持不变。

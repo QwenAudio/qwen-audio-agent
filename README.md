@@ -48,7 +48,9 @@ tells you:
 Conversation doesn't stop for background tasks; when a task completes, the
 result naturally returns to the current conversation:
 
-https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
+| 办公 | 智能座舱 |
+| --- | --- |
+| https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05 | https://github.com/user-attachments/assets/ae9f55c6-73e5-4aeb-b078-c033f3797600 |
 
 ### Core Features
 

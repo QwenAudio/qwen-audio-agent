@@ -43,7 +43,7 @@
 
 | 办公 | 智能座舱 |
 | --- | --- |
-| https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05 | https://github.com/user-attachments/assets/ae9f55c6-73e5-4aeb-b078-c033f3797600 |
+| https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05 | https://github.com/user-attachments/assets/680b80b7-f167-4a91-bffe-e2cc5d5f5ceb |
 
 ### 核心特色
 

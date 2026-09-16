@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  DEFAULT_GPT_LIVE_REALTIME_MODEL,
+  DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
   DEFAULT_STEPFUN_REALTIME_MODEL,
   resolveDashScopeRealtimeModelProfile,
 } from './realtime-model-catalog.mjs'
@@ -12,6 +14,8 @@ export {
   DASHSCOPE_REALTIME_MODEL_PROFILES,
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   DEFAULT_DASHSCOPE_REALTIME_VOICE,
+  DEFAULT_GPT_LIVE_REALTIME_MODEL,
+  DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
   DEFAULT_STEPFUN_REALTIME_MODEL,
   realtimeModelCatalog,
   resolveRealtimeModelProfile,
@@ -22,6 +26,8 @@ export {
 import {
   DEFAULT_REALTIME_PROVIDER,
   DEFAULT_DASHSCOPE_REALTIME_URL,
+  DEFAULT_GPT_LIVE_REALTIME_URL,
+  DEFAULT_GOOGLE_LIVE_REALTIME_URL,
   DEFAULT_STEPFUN_REALTIME_URL,
   DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL,
   DEFAULT_MINICPM_O_REALTIME_URL,
@@ -30,6 +36,8 @@ import {
 export {
   DEFAULT_REALTIME_PROVIDER,
   DEFAULT_DASHSCOPE_REALTIME_URL,
+  DEFAULT_GPT_LIVE_REALTIME_URL,
+  DEFAULT_GOOGLE_LIVE_REALTIME_URL,
   DEFAULT_STEPFUN_REALTIME_URL,
   DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL,
   DEFAULT_MINICPM_O_REALTIME_URL,
@@ -114,6 +122,34 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
   )
   const stepfunModel = clean(env.STEPFUN_REALTIME_MODEL) || DEFAULT_STEPFUN_REALTIME_MODEL
   const stepfunVoice = clean(env.STEPFUN_REALTIME_VOICE)
+  const openaiApiKey = clean(env.OPENAI_API_KEY || env.GPT_LIVE_API_KEY)
+  const gptLiveRealtimeUrl = withoutTrailing(
+    env.GPT_LIVE_REALTIME_URL
+    || env.OPENAI_REALTIME_URL
+    || DEFAULT_GPT_LIVE_REALTIME_URL,
+    /\?+$/,
+  )
+  const gptLiveModel = clean(
+    env.GPT_LIVE_REALTIME_MODEL || env.OPENAI_REALTIME_MODEL,
+  ) || DEFAULT_GPT_LIVE_REALTIME_MODEL
+  const gptLiveVoice = clean(
+    env.GPT_LIVE_REALTIME_VOICE || env.OPENAI_REALTIME_VOICE,
+  )
+  const googleApiKey = clean(
+    env.GOOGLE_API_KEY || env.GEMINI_API_KEY || env.GOOGLE_LIVE_API_KEY,
+  )
+  const googleLiveRealtimeUrl = withoutTrailing(
+    env.GOOGLE_LIVE_REALTIME_URL
+    || env.GEMINI_LIVE_REALTIME_URL
+    || DEFAULT_GOOGLE_LIVE_REALTIME_URL,
+    /\?+$/,
+  )
+  const googleLiveModel = clean(
+    env.GOOGLE_LIVE_REALTIME_MODEL || env.GEMINI_LIVE_REALTIME_MODEL,
+  ) || DEFAULT_GOOGLE_LIVE_REALTIME_MODEL
+  const googleLiveVoice = clean(
+    env.GOOGLE_LIVE_REALTIME_VOICE || env.GEMINI_LIVE_REALTIME_VOICE,
+  )
   const speechToSpeechRealtimeUrl = withoutTrailing(
     env.SPEECH_TO_SPEECH_REALTIME_URL
     || env.S2S_REALTIME_URL
@@ -155,6 +191,24 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
         credential: stepfunApiKey,
       },
     },
+    'gpt-live': {
+      configured: Boolean(openaiApiKey),
+      identity: {
+        endpoint: gptLiveRealtimeUrl,
+        model: gptLiveModel,
+        voice: gptLiveVoice,
+        credential: openaiApiKey,
+      },
+    },
+    'google-live': {
+      configured: Boolean(googleApiKey),
+      identity: {
+        endpoint: googleLiveRealtimeUrl,
+        model: googleLiveModel,
+        voice: googleLiveVoice,
+        credential: googleApiKey,
+      },
+    },
     'speech-to-speech': {
       configured: speechToSpeechConfigured,
       identity: { endpoint: speechToSpeechRealtimeUrl, credential: speechToSpeechAuthToken },
@@ -183,6 +237,14 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
     stepfunRealtimeUrl,
     stepfunModel,
     stepfunVoice,
+    openaiApiKey,
+    gptLiveRealtimeUrl,
+    gptLiveModel,
+    gptLiveVoice,
+    googleApiKey,
+    googleLiveRealtimeUrl,
+    googleLiveModel,
+    googleLiveVoice,
     model: activeIdentity.model || null,
     endpoint: activeIdentity.endpoint,
     speechToSpeechRealtimeUrl,

@@ -65,6 +65,8 @@ WebUI 和 TUI 只展示当前生效模型，不单独覆盖。
 
 ## 继续阅读
 
+- [GPT-Live / OpenAI Realtime](gpt-live.zh.md)——OpenAI 云端实时语音前台
+- [Google Gemini Live](google-live.zh.md)——Google 云端实时语音前台
 - [Speech-to-Speech](speech-to-speech.zh.md)——全本地前台，无需云端 Key
 - [MiniCPM-o 4.5](minicpm-o.zh.md)——本地端到端实时语音前台
 - [自定义 Provider](custom-provider.zh.md)——接入其他实时语音服务

@@ -73,6 +73,8 @@ the model level, see [Qwen Omni Realtime](qwen-omni-realtime.md).
 
 ## Read next
 
+- [GPT-Live / OpenAI Realtime](gpt-live.md) — OpenAI cloud realtime frontend
+- [Google Gemini Live](google-live.md) — Google cloud realtime frontend
 - [Speech-to-Speech](speech-to-speech.md) — fully local frontend, no cloud key
 - [MiniCPM-o 4.5](minicpm-o.md) — local end-to-end realtime voice
 - [Custom Provider](custom-provider.md) — bring another realtime service

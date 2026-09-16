@@ -3,6 +3,8 @@ import {
   listDashScopeRealtimeModelProfiles,
 } from '../../../../shared/realtime-provider-catalog.mjs'
 import { dashscopeProvider } from './dashscope.mjs'
+import { gptLiveProvider } from './gpt-live.mjs'
+import { googleLiveProvider } from './google-live.mjs'
 import { s2sProvider } from './s2s.mjs'
 import { miniCpmOProvider } from './minicpm-o.mjs'
 import { stepfunProvider } from './stepfun.mjs'
@@ -16,7 +18,14 @@ export {
 } from './provider-registry.mjs'
 
 export const defaultRealtimeProviderRegistry = createRealtimeProviderRegistry({
-  providers: [dashscopeProvider, stepfunProvider, s2sProvider, miniCpmOProvider],
+  providers: [
+    dashscopeProvider,
+    stepfunProvider,
+    gptLiveProvider,
+    googleLiveProvider,
+    s2sProvider,
+    miniCpmOProvider,
+  ],
 })
 
 export function resolveRealtimeProvider(requested) {
@@ -78,6 +87,13 @@ export function describeActiveRealtime(requested, {
 export const REALTIME_PROVIDERS = Object.freeze({
   dashscope: dashscopeProvider,
   stepfun: stepfunProvider,
+  'gpt-live': gptLiveProvider,
+  openai: gptLiveProvider,
+  gptlive: gptLiveProvider,
+  'gpt-realtime': gptLiveProvider,
+  'google-live': googleLiveProvider,
+  google: googleLiveProvider,
+  'gemini-live': googleLiveProvider,
   'speech-to-speech': s2sProvider,
   qwen: dashscopeProvider,
   s2s: s2sProvider,

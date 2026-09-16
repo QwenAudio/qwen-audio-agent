@@ -79,6 +79,10 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   // providers acknowledge the item but replace its id, so those providers
   // must opt out and use the single pending item waiter instead.
   conversationItemIdEcho: true,
+  // Acknowledges conversation.item.create with conversation.item.created.
+  acknowledgesConversationItems: true,
+  // Allows the Gateway to inject pre-connection context as a conversation item.
+  restoreConversationContext: true,
   // Accepts conversation.item.create and acknowledges created items.
   conversationItems: true,
   // Accepts response.create and response.cancel initiated by the client.
@@ -183,6 +187,13 @@ export class RealtimeFrontend {
             this.protocol.connectionMessages?.({
               connectionId: this.connectionId,
               provider: this.provider,
+              agentContext: this.agentContext,
+              sessionOptions: this.sessionOptions,
+              session: this.provider.buildSession({
+                configured: false,
+                agentContext: this.agentContext,
+                sessionOptions: this.sessionOptions,
+              }),
             }),
           )
           for (const message of messages) {
@@ -271,6 +282,7 @@ export class RealtimeFrontend {
     if (this.recentContextInjected) return
     this.recentContextInjected = true
     if (!this.capabilities.conversationItems) return
+    if (!this.capabilities.restoreConversationContext) return
     const recent = buildRecentConversationContext(
       this.agentContext.recentMessages,
     )
@@ -451,6 +463,11 @@ export class RealtimeFrontend {
       }
       this.conversationItemWaiters.set(id, waiter)
       this.send(this.protocol.conversationItemCreate({ id, ...item }))
+      if (!this.capabilities.acknowledgesConversationItems) {
+        clearTimeout(waiter.timer)
+        this.conversationItemWaiters.delete(id)
+        resolve({ id, ...item })
+      }
     })
   }
 
@@ -986,6 +1003,7 @@ export class RealtimeFrontend {
   }
 
   send(payload) {
+    if (!payload) return
     if (this.ws?.readyState === WebSocket.OPEN) {
       let outgoing = payload
       if (payload.type === 'response.create' && this.pendingResponses.length) {

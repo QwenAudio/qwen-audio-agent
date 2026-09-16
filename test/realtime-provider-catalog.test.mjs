@@ -37,6 +37,30 @@ test('StepFun configuration is independent and exposes an explicit model profile
   assert.equal(resolveRealtimeModelProfile('stepaudio-future', 'stepfun').family, 'unknown')
 })
 
+test('GPT-Live and Google Live resolve independent credentials and models', () => {
+  const gpt = resolveRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'openai',
+    OPENAI_API_KEY: 'openai-test',
+    GPT_LIVE_REALTIME_URL: 'wss://api.openai.com/v1/realtime?region=test',
+  })
+  assert.equal(gpt.provider, 'gpt-live')
+  assert.equal(gpt.configured, true)
+  assert.equal(gpt.model, 'gpt-realtime-2.1')
+  assert.equal(gpt.endpoint, 'wss://api.openai.com/v1/realtime?region=test')
+  assert.equal(resolveRealtimeModelProfile(gpt.model, 'gpt-live').family, 'gpt-live')
+
+  const google = resolveRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'gemini-live',
+    GEMINI_API_KEY: 'google-test',
+    GEMINI_LIVE_REALTIME_MODEL: 'gemini-3.8-live',
+  })
+  assert.equal(google.provider, 'google-live')
+  assert.equal(google.configured, true)
+  assert.equal(google.googleApiKey, 'google-test')
+  assert.equal(google.model, 'gemini-3.8-live')
+  assert.equal(resolveRealtimeModelProfile(google.model, 'google-live').family, 'google-live')
+})
+
 const omniModelCapabilities = {
   textInput: true,
   audioInput: true,

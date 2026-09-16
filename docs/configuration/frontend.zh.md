@@ -20,6 +20,8 @@ DASHSCOPE_API_KEY=your-key
 | `DASHSCOPE_WORKSPACE_ID` | 空 | 切换到百炼专属 workspace 端点 |
 
 其他前台可选择 [StepAudio 3 Realtime](../voice-frontends/stepfun.zh.md)（使用独立的 StepFun API Key）、
+[GPT-Live / OpenAI Realtime](../voice-frontends/gpt-live.zh.md)、
+[Google Gemini Live](../voice-frontends/google-live.zh.md)、
 [Speech-to-Speech](../voice-frontends/speech-to-speech.zh.md)，或通过
 [面壁智能](../voice-frontends/minicpm-o.zh.md)连接本地及云端 MiniCPM-o 4.5 服务；自定义 Provider 需实现
 Provider 契约，见[自定义 Provider](../voice-frontends/custom-provider.zh.md)。
@@ -46,7 +48,7 @@ qwenaudio config set --realtime-model qwen3.5-omni-flash-realtime
 qwenaudio gateway restart
 ```
 
-精确支持的模型 ID 如下：
+精确支持的 DashScope 模型 ID 如下：
 
 | 模型 | 模型输入 | 模型输出 | Realtime 传输 |
 | --- | --- | --- | --- |
@@ -54,6 +56,11 @@ qwenaudio gateway restart
 | `qwen3.5-omni-plus-realtime` | 文本、音频、图像/视频帧 | 文本、音频 | 文本、音频、实时 JPEG 帧 |
 | `qwen-audio-3.0-realtime-plus`（默认） | 文本、音频 | 文本、音频 | 文本、音频 |
 | `qwen-audio-3.0-realtime-flash` | 文本、音频 | 文本、音频 | 文本、音频 |
+
+其他云端前台的模型 ID 见各自页面：
+[StepAudio 3 Realtime](../voice-frontends/stepfun.zh.md)、
+[GPT-Live](../voice-frontends/gpt-live.zh.md)、
+[Google Gemini Live](../voice-frontends/google-live.zh.md)。
 
 四个档案都支持 Function Calling。模型能力仍与传输能力分离：Omni 可以接收 WebUI
 经过 capability 协商的实时 JPEG 帧，普通上传图片继续走附件链路；Desktop 与 TUI

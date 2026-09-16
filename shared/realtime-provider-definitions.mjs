@@ -2,6 +2,8 @@
 // stay in the Gateway; clients only consume these public field descriptions.
 import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  DEFAULT_GPT_LIVE_REALTIME_MODEL,
+  DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
   DEFAULT_STEPFUN_REALTIME_MODEL,
 } from './realtime-model-catalog.mjs'
 
@@ -10,6 +12,8 @@ export const DEFAULT_DASHSCOPE_REALTIME_URL = 'wss://dashscope.aliyuncs.com/api-
 export const DEFAULT_STEPFUN_REALTIME_URL = 'wss://api.stepfun.com/v1/realtime'
 export const DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL = 'ws://127.0.0.1:8765/v1/realtime'
 export const DEFAULT_MINICPM_O_REALTIME_URL = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
+export const DEFAULT_GPT_LIVE_REALTIME_URL = 'wss://api.openai.com/v1/realtime'
+export const DEFAULT_GOOGLE_LIVE_REALTIME_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'
 
 // The desktop always presents these four slots, in this order. Providers
 // only bind the slots they can configure; absent bindings render disabled.
@@ -59,6 +63,38 @@ export const REALTIME_PROVIDERS = Object.freeze([
       { key: 'stepfunRealtimeModel', env: 'STEPFUN_REALTIME_MODEL', slot: 'model', default: DEFAULT_STEPFUN_REALTIME_MODEL },
       { key: 'stepfunRealtimeVoice', env: 'STEPFUN_REALTIME_VOICE', slot: 'voice', placeholder: '留空使用服务默认音色' },
       { key: 'stepfunRealtimeUrl', env: 'STEPFUN_REALTIME_URL', slot: 'endpoint', default: DEFAULT_STEPFUN_REALTIME_URL },
+    ],
+  }),
+  defineProvider({
+    key: 'gpt-live', label: 'GPT-Live', aliases: ['openai', 'gptlive', 'gpt-realtime'],
+    description: 'GPT-Live · OpenAI Realtime',
+    requiredConfiguration: { field: 'openaiApiKey', key: 'OPENAI_API_KEY' },
+    settings: [
+      { key: 'openaiApiKey', env: 'OPENAI_API_KEY', aliases: ['GPT_LIVE_API_KEY'],
+        slot: 'credential', placeholder: 'sk-…',
+        helpUrl: 'https://platform.openai.com/api-keys' },
+      { key: 'gptLiveRealtimeModel', env: 'GPT_LIVE_REALTIME_MODEL', aliases: ['OPENAI_REALTIME_MODEL'],
+        slot: 'model', default: DEFAULT_GPT_LIVE_REALTIME_MODEL },
+      { key: 'gptLiveRealtimeVoice', env: 'GPT_LIVE_REALTIME_VOICE', aliases: ['OPENAI_REALTIME_VOICE'],
+        slot: 'voice', placeholder: '留空使用服务默认音色' },
+      { key: 'gptLiveRealtimeUrl', env: 'GPT_LIVE_REALTIME_URL', aliases: ['OPENAI_REALTIME_URL'],
+        slot: 'endpoint', default: DEFAULT_GPT_LIVE_REALTIME_URL },
+    ],
+  }),
+  defineProvider({
+    key: 'google-live', label: 'Google Live', aliases: ['google', 'gemini-live', 'googlelive'],
+    description: 'Gemini Live API · Google AI',
+    requiredConfiguration: { field: 'googleApiKey', key: 'GOOGLE_API_KEY' },
+    settings: [
+      { key: 'googleApiKey', env: 'GOOGLE_API_KEY', aliases: ['GEMINI_API_KEY', 'GOOGLE_LIVE_API_KEY'],
+        slot: 'credential', placeholder: 'AIza…',
+        helpUrl: 'https://aistudio.google.com/apikey' },
+      { key: 'googleLiveRealtimeModel', env: 'GOOGLE_LIVE_REALTIME_MODEL', aliases: ['GEMINI_LIVE_REALTIME_MODEL'],
+        slot: 'model', default: DEFAULT_GOOGLE_LIVE_REALTIME_MODEL },
+      { key: 'googleLiveRealtimeVoice', env: 'GOOGLE_LIVE_REALTIME_VOICE', aliases: ['GEMINI_LIVE_REALTIME_VOICE'],
+        slot: 'voice', placeholder: '留空使用服务默认音色' },
+      { key: 'googleLiveRealtimeUrl', env: 'GOOGLE_LIVE_REALTIME_URL', aliases: ['GEMINI_LIVE_REALTIME_URL'],
+        slot: 'endpoint', default: DEFAULT_GOOGLE_LIVE_REALTIME_URL },
     ],
   }),
   defineProvider({

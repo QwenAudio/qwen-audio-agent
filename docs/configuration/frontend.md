@@ -21,7 +21,9 @@ DASHSCOPE_API_KEY=your-key
 | `DASHSCOPE_WORKSPACE_ID` | Empty | Switch to a dedicated Model Studio workspace endpoint |
 
 Other frontends include [StepAudio 3 Realtime](../voice-frontends/stepfun.md)
-(with its own StepFun API key), [Speech-to-Speech](../voice-frontends/speech-to-speech.md), and
+(with its own StepFun API key), [GPT-Live / OpenAI Realtime](../voice-frontends/gpt-live.md),
+[Google Gemini Live](../voice-frontends/google-live.md),
+[Speech-to-Speech](../voice-frontends/speech-to-speech.md), and
 [ModelBest](../voice-frontends/minicpm-o.md), whose MiniCPM-o 4.5 endpoint may be local or hosted.
 A custom provider implements
 the provider contract; see [Custom Provider](../voice-frontends/custom-provider.md).
@@ -49,7 +51,7 @@ qwenaudio config set --realtime-model qwen3.5-omni-flash-realtime
 qwenaudio gateway restart
 ```
 
-The exact supported IDs are:
+The exact supported DashScope IDs are:
 
 | Model | Model input | Model output | Realtime transport |
 | --- | --- | --- | --- |
@@ -57,6 +59,11 @@ The exact supported IDs are:
 | `qwen3.5-omni-plus-realtime` | text, audio, image/video frames | text, audio | text, audio, live JPEG frames |
 | `qwen-audio-3.0-realtime-plus` (default) | text, audio | text, audio | text, audio |
 | `qwen-audio-3.0-realtime-flash` | text, audio | text, audio | text, audio |
+
+Provider-specific pages list the corresponding non-DashScope IDs:
+[StepAudio 3 Realtime](../voice-frontends/stepfun.md),
+[GPT-Live](../voice-frontends/gpt-live.md), and
+[Google Gemini Live](../voice-frontends/google-live.md).
 
 All four profiles support Function Calling. Model capability remains distinct from transport:
 Omni accepts the WebUI's capability-negotiated live JPEG stream, while ordinary uploaded images

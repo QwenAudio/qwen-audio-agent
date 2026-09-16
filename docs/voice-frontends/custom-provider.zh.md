@@ -30,6 +30,8 @@ createGatewayApplication({
 - 不支持临时回复指令的协议可实现 `responseInstructionsItem(response)`，将内部回复指令转为普通对话项。Gateway 等待确认后调用 `responseCreate(response)`，后者负责去掉上游不支持的参数。此时 `perResponseInstructions` 为 `false`，指令会进入会话历史。
 - 只表示响应仍在进行的事件可转换为带 `response_id` 的 `response.activity`，无需转发原始思考内容。
 - 服务端确认对话项时会重分配 ID 的 Provider，应声明 `conversationItemIdEcho: false`；网关按唯一待确认项关联，无需增加延时或跳过确认。
+- 服务接受输入或工具结果但不返回 conversation-item 确认事件时，应声明 `acknowledgesConversationItems: false`；Gateway 写出 frame 后即完成本次发送。
+- 注入的历史会被服务解释为实时用户输入而非被动上下文时，应声明 `restoreConversationContext: false`。
 - `visibility: 'gateway-only'` 可让 Provider 仅供宿主选择，不出现在桌面设置和公共 Provider 列表中。
 
 Provider 必须实现完整契约——`model()`、`voice()`、`isConfigured()`、`url()`、`headers()`、`classifyError()`、`buildSession()`、`buildSpeakResponse()`、`buildResultInjection()`、`buildPermissionInjection()`——并提供数值字段 `inputSampleRate` 与 `outputSampleRate`；缺少任一成员会在注册时抛错。

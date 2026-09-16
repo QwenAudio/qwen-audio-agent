@@ -30,6 +30,8 @@ The extension boundary is:
 - Protocols without transient response instructions can implement `responseInstructionsItem(response)`. Gateway creates and awaits that conversation item before calling `responseCreate(response)`, which strips unsupported wire parameters. Set `perResponseInstructions: false`; these instructions remain in history.
 - Normalize events that only prove liveness to `response.activity` with a `response_id`, without forwarding thinking text.
 - Set `conversationItemIdEcho: false` when the service assigns new IDs to acknowledged conversation items. Gateway correlates the single pending item without delays or skipping acknowledgment.
+- Set `acknowledgesConversationItems: false` when the service accepts input or tool-response messages without sending a conversation-item acknowledgment. Gateway resolves the send after writing the frame.
+- Set `restoreConversationContext: false` when injected history would be interpreted as live user input instead of passive context.
 - `visibility: 'gateway-only'` lets the host select a Provider without exposing it in desktop settings or the public Provider list.
 
 A Provider must implement the full contract — `model()`, `voice()`, `isConfigured()`, `url()`, `headers()`, `classifyError()`, `buildSession()`, `buildSpeakResponse()`, `buildResultInjection()`, `buildPermissionInjection()` — plus numeric `inputSampleRate` and `outputSampleRate` fields; registration throws on any missing member.

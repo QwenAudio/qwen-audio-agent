@@ -95,6 +95,8 @@
 | [Qwen Audio 3.0 Realtime](docs/voice-frontends/qwen-audio-realtime.zh.md) | 云端 | 百炼 API Key | 默认前台 |
 | [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.zh.md) | 云端 | 百炼 API Key | 支持视频输入 |
 | [StepAudio 3 Realtime](docs/voice-frontends/stepfun.zh.md) | 云端 | StepFun API Key | 预览模型 |
+| [GPT-Live / OpenAI Realtime](docs/voice-frontends/gpt-live.zh.md) | 云端 | OpenAI API Key | OpenAI GA Realtime 协议 |
+| [Google Gemini Live](docs/voice-frontends/google-live.zh.md) | 云端 | Google API Key | 原生 Gemini Live WebSocket |
 | [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) | 本地 | 启动服务并填写地址 | 可自由配置组件 |
 | [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md) | 本地或云端 | 提供兼容服务地址 | 暂不支持后台委托 |
 

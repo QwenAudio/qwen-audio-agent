@@ -1,5 +1,7 @@
 export const DEFAULT_DASHSCOPE_REALTIME_MODEL = 'qwen-audio-3.0-realtime-plus'
 export const DEFAULT_DASHSCOPE_REALTIME_VOICE = 'longanqian'
+export const DEFAULT_GPT_LIVE_REALTIME_MODEL = 'gpt-realtime-2.1'
+export const DEFAULT_GOOGLE_LIVE_REALTIME_MODEL = 'gemini-3.8-live'
 
 export const DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL = 'qwen-audio-3.0-realtime-flash'
 export const DASHSCOPE_OMNI_FLASH_REALTIME_MODEL = 'qwen3.5-omni-flash-realtime'
@@ -119,6 +121,34 @@ const STEPFUN_PROFILES = Object.freeze([
   }),
 ])
 
+const GPT_LIVE_PROFILES = Object.freeze([
+  Object.freeze({
+    id: DEFAULT_GPT_LIVE_REALTIME_MODEL,
+    label: 'GPT Realtime 2.1',
+    family: 'gpt-live',
+    sessionDefaults: Object.freeze({
+      voice: null,
+      turnDetection: Object.freeze({ type: 'server_vad' }),
+    }),
+    modelCapabilities: LEGACY_MODEL_CAPABILITIES,
+    transportCapabilities: LEGACY_TRANSPORT_CAPABILITIES,
+  }),
+])
+
+const GOOGLE_LIVE_PROFILES = Object.freeze([
+  Object.freeze({
+    id: DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
+    label: 'Gemini 3.8 Live',
+    family: 'google-live',
+    sessionDefaults: Object.freeze({
+      voice: null,
+      turnDetection: Object.freeze({ type: 'server_vad' }),
+    }),
+    modelCapabilities: OMNI_MODEL_CAPABILITIES,
+    transportCapabilities: OMNI_TRANSPORT_CAPABILITIES,
+  }),
+])
+
 const MODEL_CATALOGS = Object.freeze({
   dashscope: Object.freeze({
     environment: 'QWEN_AUDIO_REALTIME_MODEL',
@@ -129,6 +159,16 @@ const MODEL_CATALOGS = Object.freeze({
     environment: 'STEPFUN_REALTIME_MODEL',
     defaultModel: DEFAULT_STEPFUN_REALTIME_MODEL,
     profiles: STEPFUN_PROFILES,
+  }),
+  'gpt-live': Object.freeze({
+    environment: 'GPT_LIVE_REALTIME_MODEL',
+    defaultModel: DEFAULT_GPT_LIVE_REALTIME_MODEL,
+    profiles: GPT_LIVE_PROFILES,
+  }),
+  'google-live': Object.freeze({
+    environment: 'GOOGLE_LIVE_REALTIME_MODEL',
+    defaultModel: DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
+    profiles: GOOGLE_LIVE_PROFILES,
   }),
 })
 

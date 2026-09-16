@@ -30,6 +30,31 @@ test('StepFun requires its own key and reports the correct settings field', () =
   assert.equal(gatewaySetupStatus({ ...env, STEPFUN_API_KEY: 'test' }).ready, true)
 })
 
+test('GPT-Live and Google Live require their provider-specific keys', () => {
+  const gpt = gatewaySetupStatus({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'gpt-live',
+    DASHSCOPE_API_KEY: 'unrelated',
+  })
+  assert.equal(gpt.ready, false)
+  assert.equal(gpt.missing[0].field, 'openaiApiKey')
+  assert.equal(gpt.missing[0].key, 'OPENAI_API_KEY')
+  assert.equal(gatewaySetupStatus({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'gpt-live',
+    OPENAI_API_KEY: 'test',
+  }).ready, true)
+
+  const google = gatewaySetupStatus({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'google-live',
+  })
+  assert.equal(google.ready, false)
+  assert.equal(google.missing[0].field, 'googleApiKey')
+  assert.equal(google.missing[0].key, 'GOOGLE_API_KEY')
+  assert.equal(gatewaySetupStatus({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'google-live',
+    GEMINI_API_KEY: 'test',
+  }).ready, true)
+})
+
 test('names the service address for the speech-to-speech provider', () => {
   const status = gatewaySetupStatus({
     QWEN_AUDIO_REALTIME_PROVIDER: 'speech-to-speech',

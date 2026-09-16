@@ -53,12 +53,13 @@ https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 ### Core Features
 
 - Full-duplex realtime voice interaction, natural interruption, and sustained multi-turn conversation
+- Replaceable realtime voice frontends, with cloud services and local deployment options
 - One-click integration with your preferred Agent, reusing its model configuration, tools, MCP, Skills, and authentication
 - Frontend conversation and background tasks run in parallel; ask about progress or cancel at any time
 - Create multiple independent tasks executed asynchronously by the backend Agent, with continuous status tracking
 - Task results automatically return to the current conversation, supporting follow-up questions and modifications
 - WebUI, terminal TUI, and desktop floating orb (macOS / Windows / Linux)
-- Long-term per-user personalization and memory, with an optional VoiceMem connector
+- Long-term per-user personalization and cross-session memory
 
 ## Architecture
 
@@ -77,11 +78,30 @@ For the full design and module breakdown, see the [architecture document](docs/a
 
 </details>
 
-## Agent Support
+## Frontend and Backend Support
+
+The voice frontend handles realtime conversation; the backend Agent executes
+tasks. They integrate independently and can be combined as needed.
+
+### Voice Frontends
+
+| Voice frontend | Deployment | Setup | Features |
+| --- | --- | --- | --- |
+| [Qwen Audio 3.0 Realtime](docs/voice-frontends/qwen-audio-realtime.md) | Cloud | Bailian API Key | Default frontend |
+| [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.md) | Cloud | Bailian API Key | Video input |
+| [StepAudio 3 Realtime](docs/voice-frontends/stepfun.md) | Cloud | StepFun API Key | Preview model |
+| [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.md) | Local | Start the service and set its URL | Configurable components |
+| [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.md) | Local or cloud | Compatible service URL | Backend delegation not yet supported |
+
+To connect another voice service, implement the
+[Realtime Provider interface](docs/voice-frontends/custom-provider.md) without
+changing the Gateway's core voice-session or backend-task logic.
+
+### Backend Agents
 
 | Backend Agent | Integration | Setup | Rating |
 | --- | --- | --- | --- |
-| None | N/A | Frontend-only mode, no config needed | ★★★★★ |
+| None | N/A | Frontend-only mode, no backend config needed | ★★★★★ |
 | Qwen Code | Native ACP | One-click install, user config required | ★★★★★ |
 | OpenCode | Native ACP | One-click install + Bailian config | ★★★★★ |
 | OpenClaw | Built-in ACP bridge | One-click install + Bailian config | ★★★★★ |
@@ -92,7 +112,7 @@ For the full design and module breakdown, see the [architecture document](docs/a
 | CodeBuddy | Native ACP | One-click install, user config required | ★★★★☆ |
 | Codex | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
 | Claude Code | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
-| DeepSeek | Native ACP | One-click install, DeepSeek API key required | ★★★★☆ |
+| DeepSeek Harness | Native ACP | One-click install, DeepSeek API key required | ★★★★☆ |
 | Pi | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
 
 Ratings reflect current integration completeness, compatibility, and
@@ -123,7 +143,7 @@ qwenaudio config
 
 ```dotenv
 DASHSCOPE_API_KEY=your-key
-# Voice frontend model: Audio Flash/Plus or Omni Flash/Plus (Audio Plus is default)
+# Voice frontend model: optional, defaults to Qwen Audio 3.0 Realtime Plus
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # Backend Agent: optional, leave empty or set to none for frontend-only mode
 AGENT_PROTOCOL=openclaw
@@ -136,11 +156,8 @@ Eligible new users can review the [new-user free quota](https://help.aliyun.com/
 and check remaining usage on the [model usage page](https://help.aliyun.com/zh/model-studio/model-usage-statistics).
 Quota and billing rules are subject to the current official Bailian documentation.
 
-> Uses DashScope realtime voice by default. Alternatives include
-> [StepAudio 3 Realtime](docs/voice-frontends/stepfun.md),
-> [Speech-to-Speech](docs/voice-frontends/speech-to-speech.md) and
-> [ModelBest MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.md), with local or hosted endpoints
-> selected through their service URL.
+> The example above uses the default DashScope voice frontend. See
+> [Voice Frontends](#voice-frontends) for other cloud and self-hosted options.
 
 With a visual-capable Realtime frontend, WebUI can explicitly stream bounded
 camera frames alongside live audio. See [Realtime frontend configuration](docs/configuration/frontend.md).
@@ -187,40 +204,14 @@ chat naturally and get real work done.
 | --- | --- | --- | --- |
 | Desktop | Voice chat, progress follow-up, tools, and background tasks. | [Docs][desktop-docs] | Available |
 | Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][smart-cockpit-example] | Available |
-| AI Passport | Qwen Voice Bean on a hardware card; voice conversation and backend tasks through a LAN relay. Currently half-duplex only. | [Example][ai-passport-example] | Experimental |
-| VoiceMem | Optional semantic memory with transcript or native-audio input. | [Setup example][voicemem-example] | Available |
-| LightRAG | Replaceable knowledge base with semantic retrieval, document indexing, and management. | [Integration example][lightrag-example] | Available |
+| AI Passport | Qwen Voice Bean on a hardware card, with voice conversation and backend tasks. Currently half-duplex only. | [Example][ai-passport-example] | Available |
 | Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
 | Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |
-| Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Exploratory |
-
-This repository includes a smart-cockpit reference scenario built on the
-foreground-conversation and backend-execution boundary. Its cockpit UI, small
-A2A Agent, and cockpit service are customer-replaceable examples:
-
-```bash
-cp examples/smart-cockpit/.env.example examples/smart-cockpit/.env.local
-npm run example:smart-cockpit:install
-npm run example:smart-cockpit          # service + agent + gateway + client
-```
-
-See [examples/smart-cockpit](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/smart-cockpit) for details.
-
-The [VoiceMem setup example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem)
-shows how to install VoiceMem outside the framework, configure the connector, and switch between
-Realtime transcripts and VoiceMem-native audio. Lightweight Markdown memory remains the default;
-the core npm package contains no VoiceMem Python code or dependencies.
-
-The [LightRAG integration example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag)
-connects an independently deployed knowledge base through the generic `KnowledgeProvider`.
-LightRAG keeps control of its LLM, embeddings, documents, and indexes; the core npm package does
-not include LightRAG or Python dependencies.
+| Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Planned |
 
 [desktop-docs]: docs/desktop/overview.md
 [smart-cockpit-example]: examples/smart-cockpit
 [ai-passport-example]: examples/ai-passport
-[voicemem-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem
-[lightrag-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag
 
 ## Community
 

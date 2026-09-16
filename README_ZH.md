@@ -46,12 +46,13 @@ https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 ### 核心特色
 
 - 全双工实时语音交互、自然打断和持续多轮对话
+- 可替换的实时语音前台，支持云端服务与本地部署
 - 一键接入你喜欢的办事 Agent，复用其模型配置、工具、MCP、Skill 和认证
 - 前台对话与后台任务并驾齐驱，可随时追问任务进度或取消任务
 - 支持创建多个独立任务，由后台 Agent 异步执行，并持续追踪任务状态
 - 任务结果自动回到当前对话，支持继续追问和修改
 - 支持 WebUI、终端 TUI 和桌面悬浮球（macOS / Windows / Linux）
-- 支持当前用户的长期个性化覆盖与跨会话记忆，可选接入 VoiceMem
+- 支持当前用户的长期个性化覆盖与跨会话记忆
 
 ## 参考架构
 
@@ -70,11 +71,28 @@ https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 
 </details>
 
-## Agent 支持
+## 前台与后台支持
+
+语音前台负责实时交流，后台 Agent 负责执行任务，两者独立接入、按需组合。
+
+### 语音前台
+
+| 语音前台 | 部署方式 | 接入准备 | 特点 |
+| --- | --- | --- | --- |
+| [Qwen Audio 3.0 Realtime](docs/voice-frontends/qwen-audio-realtime.zh.md) | 云端 | 百炼 API Key | 默认前台 |
+| [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.zh.md) | 云端 | 百炼 API Key | 支持视频输入 |
+| [StepAudio 3 Realtime](docs/voice-frontends/stepfun.zh.md) | 云端 | StepFun API Key | 预览模型 |
+| [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) | 本地 | 启动服务并填写地址 | 可自由配置组件 |
+| [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md) | 本地或云端 | 提供兼容服务地址 | 暂不支持后台委托 |
+
+需要接入其他语音服务时，可实现 [Realtime Provider 接口](docs/voice-frontends/custom-provider.zh.md)，
+无需修改 Gateway 的核心语音会话与后台任务逻辑。
+
+### 后台 Agent
 
 | 后台 Agent | 接入方式 | 接入准备 | 推荐指数 |
 | --- | --- | --- | --- |
-| 无 | N/A | 仅前台模式，无需配置 | ★★★★★ |
+| 无 | N/A | 仅前台模式，无需后台配置 | ★★★★★ |
 | Qwen Code | 原生 ACP | 支持一键安装，需用户配置 | ★★★★★ |
 | OpenCode | 原生 ACP | 支持一键安装和百炼配置 | ★★★★★ |
 | OpenClaw | 内置 ACP 桥接 | 支持一键安装和百炼配置 | ★★★★★ |
@@ -85,7 +103,7 @@ https://github.com/user-attachments/assets/ab570531-8da9-4af4-93fa-244bb6614c05
 | CodeBuddy | 原生 ACP | 支持一键安装，需用户配置 | ★★★★☆ |
 | Codex | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
 | Claude Code | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
-| DeepSeek | 原生 ACP | 支持一键安装，需 DeepSeek API Key | ★★★★☆ |
+| DeepSeek Harness | 原生 ACP | 支持一键安装，需 DeepSeek API Key | ★★★★☆ |
 | Pi | 外部 ACP 适配 | 支持一键安装本体与适配器，需用户配置 | ★★★★☆ |
 
 推荐指数综合反映当前集成完整度、兼容性和实际验证程度：五星表示已经过充分测试的
@@ -114,7 +132,7 @@ qwenaudio config
 
 ```dotenv
 DASHSCOPE_API_KEY=your-key
-# 语音前台模型：Audio Flash/Plus 或 Omni Flash/Plus（默认 Audio Plus）
+# 语音前台模型：可选，默认 Qwen Audio 3.0 Realtime Plus
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 # 后台Agent：可选，不设置或设置为 none 时，启动仅前台模式
 AGENT_PROTOCOL=openclaw
@@ -127,9 +145,7 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
 中查看额度规则，并在[模型用量页面](https://help.aliyun.com/zh/model-studio/model-usage-statistics)
 查看剩余额度。额度和计费规则以百炼官方页面为准。
 
-> 默认使用 DashScope 实时语音前台，也支持 [StepAudio 3 Realtime](docs/voice-frontends/stepfun.zh.md)。本地方案可选择
-> [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) 或
-> [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md)，均无需云端 API Key。
+> 以上使用默认的 DashScope 语音前台。其他云端或自部署方案见[语音前台](#语音前台)。
 
 使用支持视觉的 Realtime 前台时，WebUI 可由用户显式开启相机，将有界画面帧与实时
 音频一同发送。详见[语音前台配置](docs/configuration/frontend.zh.md)。
@@ -170,38 +186,14 @@ npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 | --- | --- | --- | --- |
 | 桌面办公 | 实时语音交流、进度追问、工具调用和后台任务执行。 | [文档][desktop-docs-zh] | 已提供 |
 | 智能座舱 | 车控、导航、音乐、天气和生活服务。 | [示例][smart-cockpit-example] | 已提供 |
-| AI Passport | 在硬件卡片上运行千问语音豆，经局域网转发器进行语音对话与后台任务交互；目前仅开放半双工。 | [示例][ai-passport-example] | 实验性 |
-| VoiceMem | 可选语义记忆，支持转写文本或原生音频输入。 | [配置示例][voicemem-example] | 已提供 |
-| LightRAG | 可替换知识库，支持语义检索、文档索引和管理。 | [接入示例][lightrag-example] | 已提供 |
+| AI Passport | 在硬件卡片上运行千问语音豆，进行语音对话与后台任务交互；目前仅开放半双工。 | [示例][ai-passport-example] | 已提供 |
 | 客服助手 | 问题澄清、订单查询、工单处理和人工转接。 | 待补充 | 规划中 |
 | 具身智能 | 语音指令、动作执行、巡检和异常反馈。 | 待补充 | 规划中 |
-| 直播助手 | 弹幕互动、商品讲解、优惠发放和风险提醒。 | 待补充 | 探索中 |
-
-仓库内已提供基于“前台对话 + 后台执行”边界的智能座舱参考场景，座舱 UI、
-轻量 A2A Agent 和座舱 Service 均可由客户替换：
-
-```bash
-cp examples/smart-cockpit/.env.example examples/smart-cockpit/.env.local
-npm run example:smart-cockpit:install
-npm run example:smart-cockpit          # 同时启动 service、agent、gateway 和 client
-```
-
-详细说明见 [examples/smart-cockpit](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/smart-cockpit)。
-
-[VoiceMem 配置示例](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem)
-展示了如何在框架外安装 VoiceMem、配置连接器，并在 Realtime 转写文本与 VoiceMem
-原生音频处理之间切换。默认仍使用轻量 Markdown 记忆；核心 npm 包不包含 VoiceMem
-Python 代码或依赖。
-
-[LightRAG 接入示例](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag)
-展示了如何通过通用 `KnowledgeProvider` 连接用户独立部署的知识库。LightRAG 继续管理
-自己的 LLM、Embedding、文档和索引，核心 npm 包不包含 LightRAG 或 Python 依赖。
+| 直播助手 | 弹幕互动、商品讲解、优惠发放和风险提醒。 | 待补充 | 规划中 |
 
 [desktop-docs-zh]: docs/desktop/overview.zh.md
 [smart-cockpit-example]: examples/smart-cockpit
 [ai-passport-example]: examples/ai-passport/README_ZH.md
-[voicemem-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/voicemem
-[lightrag-example]: https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/lightrag
 
 ## 交流与分享
 

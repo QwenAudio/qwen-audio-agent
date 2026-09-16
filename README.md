@@ -50,8 +50,8 @@ result naturally returns to the current conversation:
 
 <table>
   <tr>
-    <th width="50%">办公</th>
-    <th width="50%">智能座舱</th>
+    <th width="50%">Office</th>
+    <th width="50%">Smart Cockpit</th>
   </tr>
   <tr>
     <td width="50%">

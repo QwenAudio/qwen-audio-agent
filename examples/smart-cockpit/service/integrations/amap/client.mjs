@@ -2,6 +2,21 @@ let callListener = null
 
 const REQUEST_TIMEOUT_MS = 8_000
 const REQUEST_ATTEMPTS = 2
+const DRIVING_REQUEST_INTERVAL_MS = 600
+let drivingRequestQueue = Promise.resolve()
+let lastDrivingRequestAt = -Infinity
+
+// A multi-stop route makes several driving queries. Share their start-time
+// spacing across this service process, including overlapping routes and retries.
+function waitForDrivingRequest() {
+  const slot = drivingRequestQueue.then(async () => {
+    const waitMs = DRIVING_REQUEST_INTERVAL_MS - (Date.now() - lastDrivingRequestAt)
+    if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs))
+    lastDrivingRequestAt = Date.now()
+  })
+  drivingRequestQueue = slot.catch(() => {})
+  return slot
+}
 
 export function setCallListener(listener) {
   callListener = listener
@@ -31,9 +46,11 @@ function retryableStatus(status) {
 async function fetchWithRetry(url, init = {}, {
   attempts = REQUEST_ATTEMPTS,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  beforeAttempt,
 } = {}) {
   let lastError
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await beforeAttempt?.()
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
@@ -82,6 +99,7 @@ async function callMcp(toolName, args) {
       if (!line.startsWith('data:')) continue
       try {
         const data = JSON.parse(line.slice(5).trim())
+        if (data.error) break
         if (data.result) {
           result = data.result
           break
@@ -90,8 +108,10 @@ async function callMcp(toolName, args) {
     }
   } else {
     const data = await response.json()
-    if (!data.result?.isError) result = data.result || null
+    if (!data.error && !data.result?.isError) result = data.result || null
   }
+  // Streamed tool errors follow the same contract as JSON responses.
+  if (result?.isError) result = null
   emitCall({
     name: toolName,
     arguments: args,
@@ -121,14 +141,42 @@ export async function searchPlace(keywords, city) {
 }
 
 function normalizePoi(poi) {
-  if (!poi) return null
+  if (!poi || typeof poi.name !== 'string' || !poi.name.trim()) return null
+  const distance = typeof poi.distance === 'number'
+    || (typeof poi.distance === 'string' && poi.distance.trim())
+    ? Number(poi.distance)
+    : NaN
   return {
-    id: poi.id || '',
-    name: poi.name || '',
+    id: typeof poi.id === 'string' ? poi.id : '',
+    name: poi.name.trim(),
     type: poi.type || poi.typecode || '',
     address: Array.isArray(poi.address) ? poi.address.join('') : poi.address || '',
-    distance: poi.distance ? Number(poi.distance) || null : null,
-    location: poi.location || '',
+    distance: Number.isFinite(distance) && distance >= 0 ? distance : null,
+    location: typeof poi.location === 'string' ? poi.location : '',
+  }
+}
+
+async function searchPoiResults(toolName, args, { limit, fillLocation = false }) {
+  try {
+    const text = extractText(await callMcp(toolName, args))
+    const parsed = text ? JSON.parse(text) : null
+    if (!parsed || !Array.isArray(parsed.pois)
+      || parsed.error || parsed.isError
+      || (parsed.status !== undefined && String(parsed.status) !== '1')) {
+      throw new Error('Invalid POI response')
+    }
+    const places = parsed.pois.map(normalizePoi).filter(Boolean)
+    if (parsed.pois.length && !places.length) throw new Error('Invalid POI entries')
+    const selected = places.slice(0, limit)
+    if (fillLocation) {
+      for (const place of selected) {
+        if (!place.location && place.id) place.location = await getPoiLocation(place.id) || ''
+      }
+    }
+    return selected
+  } catch {
+    // Never expose upstream payloads, request URLs, or credentials to callers.
+    throw new Error('地点搜索服务返回异常，请稍后重试')
   }
 }
 
@@ -140,20 +188,7 @@ export async function searchPlaces(keywords, {
   const args = { keywords }
   if (city) args.city = city
   if (types) args.types = types
-  const text = extractText(await callMcp('maps_text_search', args))
-  if (!text) return []
-  try {
-    const pois = JSON.parse(text).pois || []
-    const places = []
-    for (const poi of pois.slice(0, limit)) {
-      const place = normalizePoi(poi)
-      if (!place) continue
-      if (!place.location && place.id) place.location = await getPoiLocation(place.id) || ''
-      places.push(place)
-    }
-    return places
-  } catch {}
-  return []
+  return searchPoiResults('maps_text_search', args, { limit, fillLocation: true })
 }
 
 export async function searchNearbyPlaces({
@@ -165,13 +200,7 @@ export async function searchNearbyPlaces({
   const args = { location }
   if (keywords) args.keywords = keywords
   if (radius) args.radius = String(radius)
-  const text = extractText(await callMcp('maps_around_search', args))
-  if (!text) return []
-  try {
-    const pois = JSON.parse(text).pois || []
-    return pois.slice(0, limit).map(normalizePoi).filter(Boolean)
-  } catch {}
-  return []
+  return searchPoiResults('maps_around_search', args, { limit })
 }
 
 async function getPoiLocation(id) {
@@ -192,7 +221,7 @@ export async function drivingRoute(origin, destination, strategy = 0) {
   url.searchParams.set('key', key())
   url.searchParams.set('extensions', 'all')
   url.searchParams.set('strategy', String(strategy))
-  const response = await fetchWithRetry(url)
+  const response = await fetchWithRetry(url, {}, { beforeAttempt: waitForDrivingRequest })
   assertSuccessfulResponse(response, '路线服务')
   const data = await response.json()
   if (data.status !== '1') {

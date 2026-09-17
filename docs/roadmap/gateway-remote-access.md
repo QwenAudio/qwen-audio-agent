@@ -21,15 +21,16 @@ Desktop ─┐
 WebUI ───┤
 TUI ─────┼── GCP over WebSocket ── Gateway ── BackendPort
 Mobile ──┘               ▲
-                         └── local endpoint or external HTTPS endpoint
+                         └── local, LAN, Tailnet, or connection-code endpoint
 ```
 
 ## Architectural boundaries
 
-1. **Public endpoints** are owned by the Gateway. Tailnet mode invokes the
-   user-installed and authenticated system `tailscale serve`; External HTTPS
-   only records an operator-managed public origin. The project neither embeds
-   nor downloads the Tailscale network stack.
+1. **Network modes** are owned by the Gateway. Local binds to loopback, LAN
+   explicitly binds to `0.0.0.0`, and Tailnet invokes the user-installed and
+   authenticated system `tailscale serve`. An external reverse proxy is deployed
+   independently and only overrides the endpoint when issuing a connection code.
+   The project neither embeds nor downloads the Tailscale network stack.
 2. **Access authentication** runs before GCP. Literal loopback remains
    zero-configuration; every non-loopback HTTP or WebSocket request requires a
    configured or paired device credential.
@@ -46,20 +47,20 @@ Clients see only an ordinary Gateway endpoint.
 ## User experience
 
 - Local Clients continue to connect to `http://127.0.0.1:3101` without setup.
-- The Gateway CLI declares a public endpoint through `gateway --tailnet` or
-  `gateway --public-url`; `gateway pair` emits the QR code, connection code, and
-  browser access link. In Tailnet mode, the Gateway host and remote devices all
-  use official Tailscale and join the same tailnet.
-- A remote Desktop, TUI, WebUI, or Mobile Client consumes the same pairing code,
-  exchanges it for a revocable device credential, and stores that credential in
-  platform-secure storage.
+- The Gateway CLI has only local, `gateway --lan`, and `gateway --tailnet` run modes.
+  `gateway pair` directly issues a revocable device credential and emits one QR/connection
+  code; use `gateway pair --endpoint` to override it with an external proxy address. In
+  Tailnet mode, the Gateway host and remote devices all use official Tailscale and join the
+  same tailnet.
+- A remote Desktop, TUI, WebUI, or Mobile Client consumes the same direct connection code
+  and stores its per-device credential in platform-secure storage without an HTTP exchange.
 - Multiple devices may be paired, but each owner has one active interactive
   Client. A second Client asks the user before negotiating `session.takeover`.
 - Reconnect by the same `client.instance_id` is automatic. Takeover by another
   Client never causes competing reconnect loops.
 
 Clients do not understand Tailscale or reverse-proxy details and never require a
-long-lived token to be copied. Network installation and authentication stay in
+shared host-wide token. Network installation and authentication stay in
 the network layer; the Gateway consumes only the final endpoint.
 
 ## Shared public models
@@ -89,20 +90,20 @@ credential:
 }
 ```
 
-A pairing code contains no permanent token, model credential, memory, or backend
-configuration:
+A direct connection code is a one-time-display transport envelope. After decoding it contains:
 
 ```json
 {
-  "version": 1,
-  "gateway_url": "https://gateway.example.ts.net",
-  "pairing_code": "short-lived-one-time-code",
-  "expires_at": 1780000000000
+  "schema": "qwaudio.connection/v2",
+  "websocket_url": "wss://gateway.example.ts.net/api/realtime",
+  "device_id": "device_example",
+  "credential_id": "device_key_example",
+  "access_token": "per-device-secret",
+  "issued_at": 1780000000000
 }
 ```
 
-Native Clients use an Authorization header, and remote WebUI uses an HttpOnly,
-SameSite cookie. A local mobile WebView cannot add a header to a WebSocket
+Native Clients use an Authorization header. A local mobile WebView cannot add a header to a WebSocket
 upgrade, so it carries its revocable device credential in a second WebSocket
 subprotocol value inside TLS. The server selects and echoes only the public GCP
 subprotocol. Credentials never enter URLs, GCP messages, logs, or model context.
@@ -130,16 +131,16 @@ profile contract.
 
 - [x] Publish a private-tailnet HTTPS/WSS endpoint through the system
   `tailscale serve` command while keeping the Gateway listener on loopback.
-- [x] Allow an operator-managed External HTTPS origin without owning its proxy,
-  certificate, or network lifecycle.
+- [x] Allow an operator-managed external HTTPS origin through `gateway pair --endpoint`
+  without modeling the reverse proxy as a Gateway run mode.
 - [x] Add flat `gateway pair`, `devices`, and `revoke` commands and remove the
   extra remote command layer.
 - [x] Keep network publication independent from Gateway pairing/device access.
 - [ ] Validate persistent GCP WebSocket and long-running audio on a physical phone.
 
-Exit criteria: a user neither copies a long-lived token nor exposes the Gateway
-listener. Tailnet users install official Tailscale on both the Gateway host and
-remote device; External HTTPS users own the trusted proxy.
+Exit criteria: a user never copies a long-lived shared token. LAN users explicitly
+control the listener scope, Tailnet users install official Tailscale on both the
+Gateway host and remote device, and external HTTPS users own the trusted proxy.
 
 ## RA3 — First-party remote Client parity
 

@@ -55,12 +55,14 @@ final ASR
 
 | 契约 | 工具 |
 | --- | --- |
-| 核心契约 | `spawn_thinking`、`get_agent_task_status`、`cancel_agent_task`、`respond_permission`、`respond_agent_input`、`get_current_time`、`memory` |
-| 可选能力 | `web_search`、`fetch_url`、`knowledge`、`recall`、`notes`、`schedule_reminder`、`enter_sleep`；动态 MCP 工具同样随配置提供 |
+| 核心契约 | `spawn_thinking`、`get_agent_task_status`、`cancel_agent_task`、`respond_permission`、`respond_agent_input`、`get_current_time` |
+| 可选能力 | `memory`、`web_search`、`fetch_url`、`knowledge`、`recall`、`notes`、`schedule_reminder`、`enter_sleep`；动态 MCP 工具同样随配置提供 |
 
 固定的 `config/frontend-agent/PROMPT.md` 只可点名核心契约工具，维护对话、工作受理与结果、
-取消、确认和记忆持久化等稳定流程。可选工具的用途与调用条件随工具提供，不能在固定
+取消和确认等稳定流程。可选工具的用途与调用条件随工具提供，不能在固定
 Prompt 或核心工具中反向引用；可选工具之间也不写死对方的名称。
+记忆持久化规则放在 `server/src/memory/PROMPT.md`，仅在工具可用时注入；基础 Prompt
+保留用户偏好与事实上下文的一般信任边界。
 字段含义与填写规则归工具 schema，当前回执或投递阶段的指令归对应事件，
 可用性、权限和执行校验由 Gateway 负责，不依赖模型遵守提示词。
 
@@ -70,9 +72,8 @@ Prompt 或核心工具中反向引用；可选工具之间也不写死对方的�
 存在真实请求时提供；即使属于核心契约，未提供的工具也不能调用。测试检查固定 Prompt、
 工具引用和能力开关，防止新增可选能力重新耦合进核心规则。
 
-当 Gateway 存在待确认的后台权限或前台外部工具审批时，提供统一的
-`respond_permission`。模型只回答权限请求；Gateway 根据 `permission_id` 将决定路由到
-后台 Task 或前台工具执行队列。
+当 Gateway 存在待确认的后台权限时，提供 `respond_permission`。
+模型只回答权限请求；Gateway 负责查找请求及其关联 Task，再转发决定。
 
 `memory` 通过一个扁平接口维护两份普通 Markdown 文档。每次调用只执行一个
 原子操作：`read`、`append` 或 `replace`；`replace` 使用唯一匹配的原文定位，
@@ -117,12 +118,16 @@ Gateway 直接读取自身持有的 Task 记录，包括 Adapter 归一化后的
 它只能转发由 Gateway 提供的、针对待处理的、owner 作用域权限请求的明确当前轮次
 用户决策。它可以理解自然的肯定或否定措辞，如"可以"或"不允许"，但不能在没有
 当前轮次用户话语的情况下虚构同意、创建请求、选择工具或修改后端权限策略。
-模型使用 Gateway 提供的 `permission_id` 精确回复请求；后台请求同时带有公开
-`task_id`。原始后台授权 ID 与权限来源只在 Gateway 和 Adapter 内部流转。
-回复分为 `once`、`always` 和 `reject`：分别表示仅允许当前操作、在当前前端会话中
-始终允许，以及仅拒绝当前操作。`always` 仍由 Gateway 当前前端会话的策略实现，
-Adapter 选择最窄的单次后端权限选项，
-后续请求由 Gateway 在同一前端会话内自动允许，不会创建持久的后端授权规则。
+权限请求使用同一个短 `permission_id` 贯穿模型、卡片和 Gateway，不另设模型别名。
+只有一个待确认请求时，工具只需 `decision`；多个请求时需明确 `permission_id`，
+指定了无效 ID 时不会改为授权其他请求。通知保留 `task_id` 供理解上下文，调用时不必重复传入。
+同一用户轮次的重复确认复用回执，不会扩大授权范围。ACP 原始选项 ID 由 Adapter 私下映射。
+内置 ACP Adapter 使用随机短 ID，避免进程重启后从头编号而与旧上下文碰撞。
+回复分为 `task`、`always` 和 `reject`：分别表示允许当前 Task 及其后续操作、
+在当前前端会话中跨 Task 始终允许，以及拒绝当前操作。Gateway 的任务层
+PermissionPolicy 由语音、客户端命令和定时工作共用，以 BackendPort 的逐次
+`once` 决定放行后续请求，也处理同一 Task 已经排队的请求。Task 授权在完成、失败
+或取消时失效，不传递给其他 Task。两种授权都不会写入后端持久规则，也不跨 Gateway 重启保存。
 权限、进度和恢复上下文的协议标签由 Gateway 独占。模型生成的同名标签不构成事件，
 不能启用相应工具，也不会写入持久对话。
 
@@ -293,9 +298,34 @@ OpenCode ACP, OpenClaw ACP bridge, Qoder ACP,
 Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 ```
 
-后端特定的 API 细节仅属于 `server/src/agent`。实时工具不得导入后端适配器。
+后端特定的 API 细节仅属于 `server/src/backend/adapters`。前台工具不得导入后端适配器。
 UI 仅消费公共 Task 与对话事件。包级别的 `shared` 模块是基础运行时
 工具；server `core` 和 `process` 可以依赖它们，但它们不得依赖 server 层。
+
+### 源码目录
+
+服务端按功能归属组织目录，避免同一个功能分散在多个技术层目录中：
+
+- `memory/`：记忆接口、运行时、工具、提示与上下文、自动学习，以及 Markdown/VoiceMem Provider。
+- `knowledge/`：知识库接口、工具、检索运行时、入库服务与内置本地 Provider。
+- `frontend/`：核心前台指令、工具装配与执行、MCP/OpenAPI 工具，以及网页检索和搜索 Provider。
+- `voice/`：Realtime Provider 协议、连接、音频轮次、打断与播报投递。
+- `backend/`：协议无关的 BackendPort 与执行逻辑；`backend/adapters/` 管理 ACP/A2A 实现及适配器选择。
+- `conversation/` 与 `session/`：分别管理对话上下文与投影、持久化事件回放，不作为全部记忆能力的容器。
+
+`app/` 保持为组合根，负责跨模块接线；可选模块自行装配内部 Provider 和路由。
+操作审计、引用来源规范化、无状态文本模型调用等小型服务端公共能力放在 `core/`，
+具体 Provider 跟随所属功能模块。
+依赖测试区分模块核心与具体适配器：文件聚合不代表运行时可以导入具体 Provider，
+也不代表前台工具可以导入 Realtime 或后台 Adapter。内部文件移动时，公共包导出
+名称保持不变。详见[源码导航](https://github.com/QwenAudio/qwen-audio-agent/blob/main/server/src/README.md)。
+
+裁剪记忆或知识库时，删除模块目录，并取消 `app/optional-modules.mjs` 与
+`frontend/optional-features.mjs` 中对应的 import 和数组项；运行时服务、工具、路由和
+专属提示同步移除。这是两处显式装配入口，不是新的插件框架。精简发行包还应清理对应
+包导出、专属测试/文档和依赖。语音传输层只发布通用会话生命周期事实，记忆模块自行
+管理学习观察器，退出时先等待观察完成再关闭 Provider。测试会真实删除其中一个或
+两个模块，验证网关仍能完成对话。
 
 `server/src/client` 管理北向 Client Event Registry、运行时命令应用服务、
 `ClientActionPort` 与幂等 Presence 状态机。Client Action 描述一次环境操作并等待

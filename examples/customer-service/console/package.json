@@ -1,0 +1,13 @@
+{
+  "name": "qwen-audio-agent-customer-service-console",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "openai": "^6.39.0"
+  }
+}

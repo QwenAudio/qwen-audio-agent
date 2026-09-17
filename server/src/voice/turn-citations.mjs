@@ -1,7 +1,7 @@
 import {
   normalizeCitation,
   normalizePublicUrl,
-} from '../frontend/retrieval/citation.mjs'
+} from '../core/citation.mjs'
 
 /**
  * Correlates frontend retrieval sources with one user turn. Provider-local

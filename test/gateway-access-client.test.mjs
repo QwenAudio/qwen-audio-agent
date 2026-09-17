@@ -2,11 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createGatewayPairingTicket,
+  issueGatewayDevice,
   listGatewayDevices,
   pairGatewayConnectionCode,
   pairGatewayDevice,
   revokeGatewayDevice,
+  saveGatewayDirectConnection,
 } from '../shared/gateway/access-client.mjs'
+import { createGatewayDirectConnection } from '../shared/gateway/remote-access.mjs'
 
 function jsonResponse(body, { status = 200 } = {}) {
   return new Response(JSON.stringify(body), {
@@ -89,20 +92,53 @@ test('a Gateway connection code pairs and persists through credential abstractio
   )
 })
 
+test('a direct Gateway connection persists without a network exchange', async () => {
+  const saved = []
+  const direct = createGatewayDirectConnection({
+    gatewayUrl: 'https://voice.example.test',
+    deviceId: 'direct-device',
+    credentialId: 'device_key_direct',
+    accessToken: 'qwa_direct-device-secret-token',
+  })
+  const result = await saveGatewayDirectConnection(direct, {
+    profileId: 'cli-default',
+    clientInstanceId: 'cli-one',
+    profileStore: { save: async (...args) => { saved.push(args); return args[0] } },
+  })
+  assert.equal(result.profile.gateway_url, 'https://voice.example.test')
+  assert.equal(result.profile.credential_ref, 'device_key_direct')
+  assert.equal(saved[0][1], 'qwa_direct-device-secret-token')
+})
+
 test('Gateway device management helpers remain on the local host plane', async () => {
   const requests = []
   const fetchImpl = async (url, options) => {
     requests.push({ url, options })
     return url.endsWith('/devices')
-      ? jsonResponse({ devices: [{ id: 'phone-one' }] })
+      ? options.method === 'POST'
+        ? jsonResponse({
+            device: { id: 'direct-one' },
+            connection_code: 'qwaudio://connect#DIRECT',
+          }, { status: 201 })
+        : jsonResponse({ devices: [{ id: 'phone-one' }] })
       : new Response(null, { status: 204 })
   }
   assert.equal(
     (await listGatewayDevices('http://127.0.0.1:3101', fetchImpl)).devices[0].id,
     'phone-one',
   )
+  const issued = await issueGatewayDevice('http://127.0.0.1:3101', {
+    device: { type: 'mobile', label: 'Phone' },
+    endpoint: 'https://voice.example.com',
+  }, fetchImpl)
+  assert.equal(issued.device.id, 'direct-one')
   await revokeGatewayDevice('http://127.0.0.1:3101', 'phone/one', fetchImpl)
   assert.equal(requests[0].options.method, 'GET')
-  assert.match(requests[1].url, /phone%2Fone$/)
-  assert.equal(requests[1].options.method, 'DELETE')
+  assert.equal(requests[1].options.method, 'POST')
+  assert.deepEqual(JSON.parse(requests[1].options.body), {
+    device: { type: 'mobile', label: 'Phone' },
+    endpoint: 'https://voice.example.com',
+  })
+  assert.match(requests[2].url, /phone%2Fone$/)
+  assert.equal(requests[2].options.method, 'DELETE')
 })

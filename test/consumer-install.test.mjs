@@ -34,7 +34,7 @@ async function waitForLease(configDir, timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
     try {
-      const lease = JSON.parse(readFileSync(join(configDir, 'gateway.lock'), 'utf8'))
+      const lease = JSON.parse(readFileSync(join(configDir, 'state/gateway.lock'), 'utf8'))
       if (lease.origin) return lease
     } catch {
       // Not written yet.
@@ -175,7 +175,7 @@ test('a consumer with only the declared dependencies can run the CLI and Gateway
   gateway.kill('SIGTERM')
   await exited
   assert.throws(
-    () => readFileSync(join(configDir, 'gateway.lock')),
+    () => readFileSync(join(configDir, 'state/gateway.lock')),
     'a clean shutdown must release the lease',
   )
 
@@ -209,7 +209,7 @@ async function main() {
   const api = await audioAgent.load()
   assert.equal(typeof audioAgent.PRELOAD_PATH, 'string')
   for (const name of [
-    'createGatewayProcess', 'createSettingsStore', 'gatewaySetupStatus',
+    'createGatewayProcess', 'createSettingsStore', 'gatewaySetupStatus', 'resolveRuntimePaths',
     'importSkin', 'listSkins', 'effectiveOrbSkin', 'skinsDirectory',
     'bindOrbShell', 'createOrbWindow', 'createOrbPlacement',
     'desktopOrbUrl', 'DesktopPresence',
@@ -221,12 +221,13 @@ async function main() {
   // Settings are collected through the store, never through a file the host
   // names itself.
   const configDir = mkdtempSync(join(tmpdir(), 'qwaudio-embed-'))
-  const settings = api.createSettingsStore({ configDir })
+  const clientDir = mkdtempSync(join(tmpdir(), 'qwaudio-client-'))
+  const settings = api.createSettingsStore({ configDir, clientDir })
   assert.equal(settings.ready(), false)
   settings.save({ dashscopeApiKey: 'sk-embed-probe' })
   assert.equal(settings.ready(), true)
 
-  // Import a skin before the Gateway starts; the Gateway then serves it.
+  // The client owns skins; an embedding host can opt into read-only hosting.
   const skinSource = mkdtempSync(join(tmpdir(), 'qwaudio-skin-'))
   mkdirSync(join(skinSource, 'probe--host'), { recursive: true })
   writeFileSync(join(skinSource, 'probe--host', 'pet.json'), JSON.stringify({
@@ -238,7 +239,7 @@ async function main() {
     join(skinSource, 'probe--host', 'spritesheet.webp'),
     makeWebp(1536, 1872),
   )
-  const skinsRoot = api.skinsDirectory(configDir)
+  const skinsRoot = api.skinsDirectory(clientDir)
   const imported = await api.importSkin({
     source: join(skinSource, 'probe--host'),
     skinsRoot,
@@ -249,6 +250,7 @@ async function main() {
   // Host the Gateway as a child process; a plain Node host injects fork.
   const gateway = api.createGatewayProcess({
     configDir,
+    env: { ...process.env, QWEN_AUDIO_WEB_SKINS_DIR: skinsRoot },
     backend: 'none',
     preferredPort: 0,
     forkImpl: (entry, args, options) => fork(entry, args, {
@@ -260,7 +262,7 @@ async function main() {
   const health = await fetch(origin + '/api/health').then(res => res.json())
   assert.ok(health.capabilities.includes('web.skin-assets'))
   const petManifest = await fetch(origin + '/skins/probe--host/pet.json')
-  assert.equal(petManifest.status, 200, 'the Gateway must serve imported skins')
+  assert.equal(petManifest.status, 200, 'the Gateway must serve only the explicitly supplied client assets')
   const skinUrl = new URL(api.desktopOrbUrl(origin, { orbSkin: 'probe--host' }))
   assert.equal(skinUrl.searchParams.get('orbSkin'), 'probe--host')
   await gateway.stop()

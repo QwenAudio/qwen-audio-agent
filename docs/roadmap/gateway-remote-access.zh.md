@@ -19,14 +19,14 @@ Desktop ─┐
 WebUI ───┤
 TUI ─────┼── GCP over WebSocket ── Gateway ── BackendPort
 Mobile ──┘               ▲
-                         └── 本机 Endpoint 或外部 HTTPS Endpoint
+                         └── 本机、LAN、Tailnet 或连接码覆盖的 Endpoint
 ```
 
 ## 架构边界
 
-1. **公开 Endpoint 模块**由 Gateway 持有：Tailnet 模式调用用户已安装并登录的系统
-   `tailscale serve`；外部 HTTPS 模式只记录用户维护的公开 Origin。项目不内嵌或下载
-   Tailscale 网络栈。
+1. **网络模式**由 Gateway 持有：本机默认监听 loopback，LAN 显式监听 `0.0.0.0`，Tailnet
+   调用用户已安装并登录的系统 `tailscale serve`。外部反向代理独立部署，只在生成连接码时
+   覆盖 Endpoint。项目不内嵌或下载 Tailscale 网络栈。
 2. **访问认证**发生在 GCP 之前。字面量 loopback 保持零配置；任何非 loopback 的
    HTTP 或 WebSocket 请求都必须携带配置密钥或已配对设备凭据。
 3. **GCP Session**承载媒体、输入、Task、权限、Client Event、Client Action、历史、
@@ -40,16 +40,17 @@ Task 状态或 BackendPort。Client 最终只看到普通 Gateway Endpoint。
 ## 用户体验
 
 - 本机 Client 继续零配置连接 `http://127.0.0.1:3101`。
-- Gateway CLI 通过 `gateway --tailnet` 或 `gateway --public-url` 声明公开 Endpoint；
-  `gateway pair` 统一输出二维码、连接码和浏览器访问链接。Tailnet 模式下 Gateway 主机
-  与远程设备都使用官方 Tailscale 并加入同一 Tailnet。
-- 远程 Desktop、TUI、WebUI 或 Mobile 消费同一种配对码，换取可撤销设备凭据，并保存到
-  平台安全存储。
+- Gateway CLI 只提供本机、`gateway --lan` 和 `gateway --tailnet` 三种启动模式；
+  `gateway pair` 直接签发可撤销设备凭据并统一输出二维码和连接码，外部代理地址通过
+  `gateway pair --endpoint` 覆盖。Tailnet 模式下 Gateway 主机与远程设备都使用官方
+  Tailscale 并加入同一 Tailnet。
+- 远程 Desktop、TUI、WebUI 或 Mobile 消费同一种直接连接码，无需 HTTP 交换即可将独立
+  设备凭据保存到平台安全存储。
 - 可以配对多台设备，但每个用户只有一个活动交互 Client。第二个 Client 必须询问用户，
   确认后才协商 `session.takeover`。
 - 相同 `client.instance_id` 的断线重连自动完成；不同 Client 接管后不得互相重连抢占。
 
-Client 不需要理解 Tailscale 或反向代理实现，也不需要复制长期 Token。网络安装与登录
+Client 不需要理解 Tailscale 或反向代理实现，也不需要共享宿主级长期 Token。网络安装与登录
 留在网络层，Gateway 只消费最终 Endpoint。
 
 ## 共享公开模型
@@ -78,19 +79,20 @@ Connection Profile 只保存安全存储引用，不保存凭据正文：
 }
 ```
 
-配对码不包含永久 Token、模型密钥、用户记忆或后台配置：
+直接连接码是只展示一次的传输信封，解码后包含：
 
 ```json
 {
-  "version": 1,
-  "gateway_url": "https://gateway.example.ts.net",
-  "pairing_code": "short-lived-one-time-code",
-  "expires_at": 1780000000000
+  "schema": "qwaudio.connection/v2",
+  "websocket_url": "wss://gateway.example.ts.net/api/realtime",
+  "device_id": "device_example",
+  "credential_id": "device_key_example",
+  "access_token": "per-device-secret",
+  "issued_at": 1780000000000
 }
 ```
 
-原生 Client 使用 Authorization Header；远程 WebUI 使用 HttpOnly、SameSite Cookie。
-移动端的本地 WebView 无法给 WebSocket Upgrade 设置 Header，因此在 TLS 内使用第二个
+原生 Client 使用 Authorization Header。移动端的本地 WebView 无法给 WebSocket Upgrade 设置 Header，因此在 TLS 内使用第二个
 WebSocket subprotocol 值承载可撤销设备凭据，服务端只选择并回显公开的 GCP subprotocol。
 凭据不进入 URL、GCP 消息、日志或模型上下文。
 
@@ -115,12 +117,13 @@ WebSocket subprotocol 值承载可撤销设备凭据，服务端只选择并回�
 
 - [x] 通过系统 `tailscale serve` 发布 Tailnet 私有 HTTPS/WSS Endpoint，并保持 Gateway
   Listener 只监听 loopback。
-- [x] 支持声明由用户自行维护的外部 HTTPS Origin，不接管代理、证书或网络生命周期。
+- [x] 支持在 `gateway pair --endpoint` 中使用用户维护的外部 HTTPS Origin，不把反向代理
+  建模为 Gateway 启动模式。
 - [x] 增加统一的 `gateway pair`、`devices` 与 `revoke` 命令，删除额外的 remote 命令层。
 - [x] 保持网络发布与 Gateway 配对/设备授权彼此独立。
 - [ ] 在真实手机上验证 GCP WebSocket 与长时间音频连接。
 
-完成条件：用户无需复制长期 Token 或暴露 LAN/公网 Listener；Tailnet 用户在 Gateway
+完成条件：用户无需复制长期 Token；LAN 用户主动控制监听范围，Tailnet 用户在 Gateway
 主机和远程设备上安装官方 Tailscale，外部 HTTPS 用户自行维护可信代理。
 
 ## RA3 — 第一方远程 Client 对齐

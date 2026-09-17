@@ -9,6 +9,7 @@ import {
 } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { resolve } from 'node:path'
+import { resolveRuntimePaths } from './runtime-paths.mjs'
 
 export const LOG_SCHEMA = 'qwaudio.log/v1'
 export const LOG_LEVELS = Object.freeze({
@@ -49,11 +50,7 @@ export function defaultLogDirectory(
   homeDirectory = homedir(),
 ) {
   if (env.QWEN_AUDIO_LOG_DIR) return resolve(env.QWEN_AUDIO_LOG_DIR)
-  if (env.QWAUDIO_CONFIG_DIR) return resolve(env.QWAUDIO_CONFIG_DIR, 'logs')
-  const base = env.XDG_CONFIG_HOME
-    ? resolve(env.XDG_CONFIG_HOME)
-    : resolve(homeDirectory, '.config')
-  return resolve(base, 'qwaudio/logs')
+  return resolve(resolveRuntimePaths({ env, homeDirectory }).stateDirectory, 'logs')
 }
 
 function scrubString(value) {

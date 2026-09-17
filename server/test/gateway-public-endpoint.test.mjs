@@ -5,6 +5,7 @@ import test from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
   GatewayPublicEndpointService,
+  selectLanAddress,
 } from '../src/access/gateway-public-endpoint.mjs'
 import {
   TailscaleServePublisher,
@@ -215,16 +216,40 @@ test('reports a missing system Tailscale installation clearly', async () => {
   )
 })
 
-test('uses an explicit HTTPS endpoint without owning its proxy', async () => {
+test('selects a physical private IPv4 address ahead of virtual interfaces', () => {
+  assert.equal(selectLanAddress({
+    tailscale0: [{ address: '100.64.0.8', family: 'IPv4', internal: false }],
+    en0: [{ address: '192.168.10.22', family: 'IPv4', internal: false }],
+    lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
+  }), '192.168.10.22')
+})
+
+test('publishes an insecure direct endpoint only in explicit LAN mode', async () => {
   const endpoint = new GatewayPublicEndpointService({
-    publicUrl: 'https://voice.example.com',
+    lan: true,
+    interfaces: {
+      en0: [{ address: '192.168.10.22', family: 'IPv4', internal: false }],
+    },
   })
   assert.deepEqual(await endpoint.start('http://127.0.0.1:3101'), {
-    mode: 'external',
+    mode: 'lan',
     state: 'ready',
-    endpoint: { url: 'https://voice.example.com', secure: true },
+    endpoint: { url: 'http://192.168.10.22:3101', secure: false },
     error: null,
   })
+})
+
+test('fails LAN publication instead of advertising an unreachable address', async () => {
+  const endpoint = new GatewayPublicEndpointService({
+    lan: true,
+    interfaces: {
+      lo0: [{ address: '127.0.0.1', family: 'IPv4', internal: true }],
+    },
+  })
+  const status = await endpoint.start('http://127.0.0.1:3101')
+  assert.equal(status.state, 'error')
+  assert.equal(status.endpoint, null)
+  assert.equal(status.error.code, 'gateway_lan_address_unavailable')
 })
 
 test('normalizes Tailnet publication behind the public endpoint boundary', async () => {

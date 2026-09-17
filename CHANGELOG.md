@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- 移除 `backend-adapter` 与 `custom-conversation-client` 示例目录及文档入口，保留后台 SDK 与客户端协议能力。
+
+- 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，
+  提供局域网配置、麦克风暂停恢复说明及慢速客户端回归测试，不改动 Gateway 核心。
+
+- Gateway 接入统一为本机、`--lan` 和 `--tailnet` 三种启动模式；对外连接地址
+  独立由 `gateway pair --endpoint` 指定，不再使用启动参数 `--public-url`。
+- `gateway pair` 默认只生成一个短连接码和二维码，浏览器、桌面端和移动端
+  共享 `http(s)://Gateway/c#d.TOKEN`；原生客户端直接通过单条 WebSocket 认证
+  并执行 GCP，浏览器将设备 Token 换为 HttpOnly 会话 Cookie。设备凭证可单独吊销，
+  不再输出冗长的直接连接码；本机和显式启用的 LAN 接入允许明文 HTTP/WS。
+- Gateway 的 HTTP、设备配对与 WebSocket 入口统一拒绝空值、不透明或非法 Origin；
+  保留无 Origin 的原生客户端鉴权路径，避免非法来源被误当作原生客户端。
+- 修复共享文件锁在并发释放时误删新锁、导致清单记录丢失的问题；清单初始化和刷新
+  现在与写入共用跨进程锁，避免读取撞上 Windows 文件替换过程。
+- WebUI 麦克风重采样现在会跨 PCM 分块保留插值相位，并对空输入安全返回空数据，
+  减少非整数采样率转换时的累计偏差。
+- Gateway Client 为 Socket 连接和 Session 握手增加超时与恢复；连接只有在收到
+  `session.ready` 后才会重置重连退避。
+- Gateway Client 不再把旧连接中尚未完成的桌面 Action 结果发送到重连后的新连接。
+- 修复回答后台 Agent 任务追问后，Gateway Client 仍等待并显示请求超时的问题。
 - WebUI 与共享移动端现在会在后台任务卡片中展示类型化 Artifact；支持远程媒体
   的显式加载、内联图片预览、结构化数据和可打开或下载的文件产物，并在语音播报
   完成或 Gateway 重连后继续保留产物入口。

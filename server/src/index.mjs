@@ -54,7 +54,7 @@ try {
   // Gateway that listens but cannot connect its voice is harder to diagnose
   // than a refusal the user can act on.
   assertGatewaySetup()
-  gatewayLease = acquireGatewayLease(runtimeEnvironment.configDirectory, {
+  gatewayLease = acquireGatewayLease(runtimeEnvironment.stateDirectory, {
     owner: process.env.QWEN_AUDIO_GATEWAY_OWNER
       || (process.env.QWEN_AUDIO_AGENT_DESKTOP === '1' ? 'desktop' : 'cli'),
   })
@@ -99,7 +99,7 @@ try {
   } else {
     managedBackend?.once('exit', onManagedBackendExit)
   }
-  const agentModule = await import('./agent/agent-client.mjs')
+  const agentModule = await import('./backend/adapters/agent-client.mjs')
   agentClient = agentModule.agent
   process.once('SIGINT', () => {
     stopAndExit('SIGINT')
@@ -126,7 +126,12 @@ try {
   const port = address && typeof address === 'object'
     ? address.port
     : Number(process.env.PORT || 3101)
-  const host = process.env.HOST || '127.0.0.1'
+  const configuredHost = process.env.HOST || '127.0.0.1'
+  // The lease is a local control-plane address. A wildcard listener is not a
+  // client destination, so keep local process discovery on loopback.
+  const host = ['0.0.0.0', '::', '[::]'].includes(configuredHost)
+    ? '127.0.0.1'
+    : configuredHost
   gatewayLease.update({
     state: 'ready',
     origin: `http://${host}:${port}`,

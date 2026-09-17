@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { config } from '../core/config.mjs'
-import { canonicalScope, isDirectiveScope } from './memory/scopes.mjs'
 import { recentConversationMessages } from '../../../shared/conversation-history.mjs'
 
 const PROMPT_FILE = 'PROMPT.md'
@@ -89,36 +88,6 @@ export function resolveAssistantProfile(agentContext = {}) {
   return [...sessionProfile].slice(0, MAX_ASSISTANT_CHARS).join('')
 }
 
-function userPreferencesSection(memories = []) {
-  const document = memories.find(memory => (
-    isDirectiveScope(clean(memory.scope))
-  ))
-  if (!document?.content) return ''
-  const opening = document.revision
-    ? `<user_preferences revision="${clean(document.revision)}">`
-    : '<user_preferences>'
-  return [
-    opening,
-    String(document.content).trim(),
-    '</user_preferences>',
-  ].join('\n')
-}
-
-function memorySection(memories = []) {
-  const document = memories.find(memory => (
-    canonicalScope(clean(memory.scope)) === 'memory'
-  ))
-  if (!document?.content) return ''
-  const opening = document.revision
-    ? `<user_memory revision="${clean(document.revision)}">`
-    : '<user_memory>'
-  return [
-    opening,
-    String(document.content).trim(),
-    '</user_memory>',
-  ].join('\n')
-}
-
 export function buildRecentConversationContext(messages = []) {
   const candidates = recentConversationMessages(messages)
   const selected = []
@@ -150,7 +119,6 @@ export function buildRecentConversationContext(messages = []) {
 
 export function buildFrontendContext({
   client = {},
-  memories = [],
 } = {}) {
   const normalizedClient = normalizeClientContext(client)
   const runtimeContext = [
@@ -163,9 +131,5 @@ export function buildFrontendContext({
       : []),
     '</runtime_context>',
   ].join('\n')
-  return [
-    userPreferencesSection(memories),
-    memorySection(memories),
-    runtimeContext,
-  ].filter(Boolean).join('\n\n')
+  return runtimeContext
 }

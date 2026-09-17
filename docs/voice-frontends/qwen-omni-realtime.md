@@ -28,7 +28,7 @@ active model regardless of family; switch via Desktop settings or
 
 ## Voice and turn detection
 
-- Default voice: `Ethan` — override with `QWEN_OMNI_REALTIME_VOICE`.
+- Default voice: `Ethan` — override with `QWEN_AUDIO_REALTIME_VOICE`.
 - Turn detection: `semantic_vad`, configured by the runtime.
 
 ## Live vision
@@ -56,4 +56,6 @@ visual frames in this release.
 ## Read next
 
 - [Qwen Audio 3.0 Realtime](qwen-audio-realtime.md) — the default family
+- [GPT-Live / OpenAI Realtime](gpt-live.md) — OpenAI cloud realtime frontend
+- [Google Gemini Live](google-live.md) — Google cloud realtime frontend
 - [Frontend configuration reference](../configuration/frontend.md)

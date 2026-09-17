@@ -55,7 +55,7 @@ for (const clientType of Object.values(GatewayReferenceClientType)) {
       type: GatewayClientProtocolEvent.SESSION_READY,
       event_id: `evt_${clientType}_ready`,
       request_event_id: hello.event_id,
-      protocol_version: '6.0.0',
+      protocol_version: '7.0.0',
       session_id: 'main',
       capabilities: hello.capabilities,
     })

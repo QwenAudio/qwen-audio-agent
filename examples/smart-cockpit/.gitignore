@@ -6,3 +6,6 @@ dist/
 server/data/
 server/custom-skills/
 .runtime/
+
+# Benchmark process files stay local; published data and results live in bench/results/.
+bench/reports/voice-surface-*

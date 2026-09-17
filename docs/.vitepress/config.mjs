@@ -55,6 +55,7 @@ function sidebar(prefix = '') {
           items: [
             page('Qwen Audio Realtime', 'Qwen Audio Realtime', 'voice-frontends/qwen-audio-realtime'),
             page('Qwen Omni Realtime', 'Qwen Omni Realtime', 'voice-frontends/qwen-omni-realtime'),
+            page('StepAudio 3 Realtime', 'StepAudio 3 Realtime', 'voice-frontends/stepfun'),
             page('Speech-to-Speech', 'Speech-to-Speech', 'voice-frontends/speech-to-speech'),
             page('MiniCPM-o', 'MiniCPM-o', 'voice-frontends/minicpm-o'),
           ],
@@ -100,6 +101,7 @@ function sidebar(prefix = '') {
       text: t('示例与参考', 'Examples & Resources'), collapsed: true,
       items: [
         page('智能座舱', 'Smart Cockpit', 'scenarios/smart-cockpit'),
+        page('AI Passport 语音客户端', 'AI Passport Voice Client', 'scenarios/ai-passport'),
         page('VoiceMem', 'VoiceMem', 'scenarios/voicemem'),
         page('LightRAG', 'LightRAG', 'scenarios/lightrag'),
         page('演示文稿', 'Presentations', 'resources/presentations'),

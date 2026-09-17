@@ -13,15 +13,14 @@
 
 ## 默认实现
 
-默认配置下，Gateway 使用内置 Markdown Provider。相关数据保存在配置目录下（CLI 为
-`~/.config/qwaudio/`）：
+默认配置下，Gateway 使用内置 Markdown Provider。默认文件布局如下（目录可覆盖，见[配置与数据目录](../configuration.zh.md#配置与数据目录)）：
 
 | 文件 | 说明 |
 | --- | --- |
 | `ASSISTANT.md` | 实例级默认人设；名称、人格、关系定位和表达风格 |
-| `USER.md` | 当前用户的长期个性化覆盖 |
-| `MEMORY.md` | 关于用户的长期事实与决定 |
-| `memory-audit.jsonl` | 自动记忆的诊断日志（补丁、跳过、失败逐条追加，仅供事后查阅） |
+| `data/USER.md` | 当前用户的长期个性化覆盖 |
+| `data/MEMORY.md` | 关于用户的长期事实与决定 |
+| `<state-dir>/memory-audit.jsonl` | 自动记忆的诊断日志（补丁、跳过、失败逐条追加，仅供事后查阅） |
 
 这些文件只保存在本机，不会写入源码仓库。`USER.md` 与 `MEMORY.md` 只是默认 Provider
 的物理实现，不是其他 Provider 必须采用的格式。

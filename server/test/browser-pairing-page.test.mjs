@@ -6,6 +6,8 @@ test('browser pairing shell keeps credentials in the URL fragment', () => {
   const html = gatewayBrowserPairingPage()
   assert.match(html, /location\.hash/)
   assert.match(html, /\/api\/access\/pair/)
+  assert.match(html, /\/api\/access\/session/)
+  assert.match(html, /startsWith\('d\.'\)/)
   assert.match(html, /location\.replace\('\/'\)/)
   assert.doesNotMatch(html, /access_token/)
   assert.doesNotMatch(html, /localStorage/)

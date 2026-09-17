@@ -170,7 +170,7 @@ export function assertGatewayCompatibility(health, backend) {
 
 export function assertRealtimeGatewayCompatibility(health, env = process.env) {
   const expected = resolveRealtimeFrontendConfiguration(env)
-  const requestedModel = String(env.QWEN_AUDIO_REALTIME_MODEL || '').trim()
+  const requestedModel = String(expected.active.model || '').trim()
   const actualModel = String(health?.realtimeModelProfile?.id || health?.realtimeModel || '').trim()
   if (requestedModel && actualModel && requestedModel !== actualModel) {
     throw new Error(`现有 Gateway Realtime 模型 ${actualModel} 与请求 ${requestedModel} 不一致；请关闭旧 Gateway 后重试`)
@@ -197,12 +197,12 @@ export function assertRealtimeGatewayCompatibility(health, env = process.env) {
     )
   }
   if (
-    actualProvider !== expected.provider
-    || actualSignature !== expected.signature
+    actualProvider !== expected.active.provider
+    || actualSignature !== expected.active.signature
   ) {
-    const mismatch = actualProvider !== expected.provider
-      ? `现有 Gateway 使用 ${actualProvider} Realtime 前台，与当前配置 ${expected.provider} 不一致`
-      : `现有 Gateway 的 ${expected.provider} Realtime 前台参数与当前配置不一致`
+    const mismatch = actualProvider !== expected.active.provider
+      ? `现有 Gateway 使用 ${actualProvider} Realtime 前台，与当前配置 ${expected.active.provider} 不一致`
+      : `现有 Gateway 的 ${expected.active.provider} Realtime 前台参数与当前配置不一致`
     throw new Error(`${mismatch}；请关闭旧 Gateway 后重试`)
   }
   return expected
@@ -425,9 +425,9 @@ export async function ensureRuntime(options, {
     ? backendDefinition(backend.protocol)?.label || backend.protocol
     : '后台 Agent'
   let health = await readGatewayHealth(options.url, fetchImpl)
-  if (!health && local && runtimeEnvironment?.configDirectory) {
+  if (!health && local && runtimeEnvironment?.stateDirectory) {
     const active = await findRunningGateway(
-      runtimeEnvironment.configDirectory,
+      runtimeEnvironment.stateDirectory,
       {
         readHealth: origin => readGatewayHealth(origin, fetchImpl),
       },
@@ -469,8 +469,8 @@ export async function ensureRuntime(options, {
           'Gateway',
         )
       } catch (startupError) {
-        const winner = runtimeEnvironment?.configDirectory
-          ? await findRunningGateway(runtimeEnvironment.configDirectory, {
+        const winner = runtimeEnvironment?.stateDirectory
+          ? await findRunningGateway(runtimeEnvironment.stateDirectory, {
               readHealth: origin => readGatewayHealth(origin, fetchImpl),
               timeoutMs: 3000,
             })

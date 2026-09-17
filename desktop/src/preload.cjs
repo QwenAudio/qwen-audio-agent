@@ -105,10 +105,6 @@ contextBridge.exposeInMainWorld('qwenAudioAgentDesktop', {
   checkUpdates: () => ipcRenderer.invoke('qwen-audio-agent:updater-check'),
   installUpdate: () => ipcRenderer.invoke('qwen-audio-agent:updater-install'),
   openLogs: () => ipcRenderer.invoke('qwen-audio-agent:open-logs'),
-  connectRemoteGateway: pairingCode => ipcRenderer.invoke(
-    'qwen-audio-agent:remote-gateway-connect',
-    pairingCode,
-  ),
   onUpdaterStatus: callback => {
     if (typeof callback !== 'function') return () => {}
     const listener = (_event, status) => callback(status)

@@ -144,10 +144,8 @@ function commitRoute(store, cockpitId, {
   })
 }
 
-function routeContent(prefix, destination, waypoints, route, strategy = null) {
-  const waypointText = waypoints.length ? `，途经${waypoints.join('、')}` : ''
-  const strategyText = strategy === null ? '' : `，${STRATEGY_LABELS.get(strategy) || '已更新偏好'}`
-  return `${prefix}${destination}${waypointText}${strategyText}，全程${route.distKm}公里，约${route.durationMin}分钟`
+function routeSummary(route) {
+  return `全程${route.distKm}公里，约${route.durationMin}分钟`
 }
 
 async function createRoutePlan({
@@ -160,23 +158,35 @@ async function createRoutePlan({
 }) {
   const { cockpitId, onActivity, services, snapshot, store } = context
   const origin = currentOrigin(snapshot())
-  reportActivity(onActivity, 'navigation', 'searching_destination', '正在查找目的地')
+  reportActivity(onActivity, 'navigation', 'searching_destination', '正在查找目的地', {
+    item: { role: 'destination', name: destination },
+  })
   const destinationLocation = await resolvePlace(destination, DEFAULT_ORIGIN.city, services)
   if (!destinationLocation) {
-    reportActivity(onActivity, 'navigation', 'destination_not_found', `没有找到${destination}`)
+    reportActivity(onActivity, 'navigation', 'destination_not_found', `没有找到${destination}`, {
+      item: { role: 'destination', name: destination },
+    })
     return toolResult(`无法找到“${destination}”的位置信息`, snapshot(), [])
   }
-  reportActivity(onActivity, 'navigation', 'destination_locked', `已找到${destination}`)
+  reportActivity(onActivity, 'navigation', 'destination_locked', `已找到${destination}`, {
+    item: { role: 'destination', name: destination, location: destinationLocation },
+  })
   const waypointLocations = []
-  for (const waypoint of waypoints) {
-    reportActivity(onActivity, 'navigation', 'searching_waypoint', `正在查找途经点${waypoint}`)
+  for (const [index, waypoint] of waypoints.entries()) {
+    reportActivity(onActivity, 'navigation', 'searching_waypoint', `正在查找途经点${waypoint}`, {
+      item: { role: 'waypoint', index, name: waypoint },
+    })
     const location = await resolvePlace(waypoint, DEFAULT_ORIGIN.city, services)
     if (!location) {
-      reportActivity(onActivity, 'navigation', 'waypoint_not_found', `没有找到${waypoint}`)
+      reportActivity(onActivity, 'navigation', 'waypoint_not_found', `没有找到${waypoint}`, {
+        item: { role: 'waypoint', index, name: waypoint },
+      })
       return toolResult(`无法找到途经点“${waypoint}”的位置信息`, snapshot(), [])
     }
     waypointLocations.push(location)
-    reportActivity(onActivity, 'navigation', 'waypoint_locked', `已找到途经点${waypoint}`)
+    reportActivity(onActivity, 'navigation', 'waypoint_locked', `已找到途经点${waypoint}`, {
+      item: { role: 'waypoint', index, name: waypoint, location },
+    })
   }
   reportActivity(onActivity, 'navigation', 'planning_route', '正在规划路线')
   const route = await planRoute(origin, destinationLocation, waypointLocations, strategy, context)
@@ -194,10 +204,16 @@ async function createRoutePlan({
     route,
   })
   const activityStatus = name === 'navigation_start' ? 'navigation_started' : 'route_ready'
-  reportActivity(onActivity, 'navigation', activityStatus, name === 'navigation_start' ? '开始导航' : '路线规划好了')
-  const prefix = name === 'navigation_start' ? '已开始导航到' : '已规划到'
+  reportActivity(onActivity, 'navigation', activityStatus, name === 'navigation_start' ? '开始导航' : '路线规划好了', {
+    route: {
+      destination,
+      destinationLocation,
+      waypoints,
+      waypointLocations,
+    },
+  })
   return toolResult(
-    routeContent(prefix, destination, waypoints, route),
+    routeSummary(route),
     state,
     ['navigation'],
     { navigation: state.navigation },
@@ -230,7 +246,14 @@ async function replanExistingRoute({
     strategy,
     route,
   })
-  reportActivity(onActivity, 'navigation', 'route_ready', '路线已更新')
+  reportActivity(onActivity, 'navigation', 'route_ready', '路线已更新', {
+    route: {
+      destination,
+      destinationLocation,
+      waypoints,
+      waypointLocations,
+    },
+  })
   return { state, route }
 }
 
@@ -247,14 +270,20 @@ async function addWaypoint(args, context) {
   const existing = await resolveExistingRouteLocations(state.navigation, services)
   if (!existing) return toolResult('当前路线信息不完整，请重新发起导航', state, [], { navigation: state.navigation })
 
-  reportActivity(onActivity, 'navigation', 'searching_waypoint', `正在查找途经点${waypoint}`)
+  const insertIndex = args.insertPosition === 'before_destination' ? state.navigation.waypoints.length : 0
+  reportActivity(onActivity, 'navigation', 'searching_waypoint', `正在查找途经点${waypoint}`, {
+    item: { role: 'waypoint', index: insertIndex, name: waypoint },
+  })
   const waypointLocation = await resolvePlace(waypoint, DEFAULT_ORIGIN.city, services)
   if (!waypointLocation) {
-    reportActivity(onActivity, 'navigation', 'waypoint_not_found', `没有找到${waypoint}`)
+    reportActivity(onActivity, 'navigation', 'waypoint_not_found', `没有找到${waypoint}`, {
+      item: { role: 'waypoint', index: insertIndex, name: waypoint },
+    })
     return toolResult(`无法找到途经点“${waypoint}”的位置信息`, snapshot(), [])
   }
-  reportActivity(onActivity, 'navigation', 'waypoint_locked', `已找到途经点${waypoint}`)
-  const insertIndex = args.insertPosition === 'before_destination' ? state.navigation.waypoints.length : 0
+  reportActivity(onActivity, 'navigation', 'waypoint_locked', `已找到途经点${waypoint}`, {
+    item: { role: 'waypoint', index: insertIndex, name: waypoint, location: waypointLocation },
+  })
   const waypoints = [...state.navigation.waypoints]
   const waypointLocations = [...existing.waypointLocations]
   waypoints.splice(insertIndex, 0, waypoint)
@@ -271,7 +300,7 @@ async function addWaypoint(args, context) {
   })
   if (output.content) return output
   return toolResult(
-    routeContent(`已增加途经点${waypoint}，继续${routeStatusText(output.state.navigation.status)}到`, output.state.navigation.destination, waypoints, output.route),
+    routeSummary(output.route),
     output.state,
     ['navigation'],
     { navigation: output.state.navigation },
@@ -300,7 +329,6 @@ async function removeWaypoint(args, context) {
   const existing = await resolveExistingRouteLocations(state.navigation, services)
   if (!existing) return toolResult('当前路线信息不完整，请重新发起导航', state, [], { navigation: state.navigation })
 
-  const removed = state.navigation.waypoints[index]
   const waypoints = state.navigation.waypoints.filter((_, itemIndex) => itemIndex !== index)
   const waypointLocations = existing.waypointLocations.filter((_, itemIndex) => itemIndex !== index)
   const output = await replanExistingRoute({
@@ -314,7 +342,7 @@ async function removeWaypoint(args, context) {
   })
   if (output.content) return output
   return toolResult(
-    routeContent(`已删除途经点${removed}，继续${routeStatusText(output.state.navigation.status)}到`, output.state.navigation.destination, waypoints, output.route),
+    routeSummary(output.route),
     output.state,
     ['navigation'],
     { navigation: output.state.navigation },
@@ -332,13 +360,19 @@ async function changeDestination(args, context) {
   const destination = clean(args.destination)
   if (!destination) return toolResult('请告诉我要把目的地改成哪里', state, [], { navigation: state.navigation })
 
-  reportActivity(onActivity, 'navigation', 'searching_destination', '正在查找目的地')
+  reportActivity(onActivity, 'navigation', 'searching_destination', '正在查找目的地', {
+    item: { role: 'destination', name: destination },
+  })
   const destinationLocation = await resolvePlace(destination, DEFAULT_ORIGIN.city, services)
   if (!destinationLocation) {
-    reportActivity(onActivity, 'navigation', 'destination_not_found', `没有找到${destination}`)
+    reportActivity(onActivity, 'navigation', 'destination_not_found', `没有找到${destination}`, {
+      item: { role: 'destination', name: destination },
+    })
     return toolResult(`无法找到“${destination}”的位置信息`, snapshot(), [])
   }
-  reportActivity(onActivity, 'navigation', 'destination_locked', `已找到${destination}`)
+  reportActivity(onActivity, 'navigation', 'destination_locked', `已找到${destination}`, {
+    item: { role: 'destination', name: destination, location: destinationLocation },
+  })
   const existing = await resolveExistingRouteLocations(state.navigation, services)
   if (!existing) return toolResult('当前路线信息不完整，请重新发起导航', state, [], { navigation: state.navigation })
   const strategy = normalizeStrategy(args.strategy, state.navigation.strategy)
@@ -353,7 +387,7 @@ async function changeDestination(args, context) {
   })
   if (output.content) return output
   return toolResult(
-    routeContent('已将目的地改为', destination, output.state.navigation.waypoints, output.route),
+    routeSummary(output.route),
     output.state,
     ['navigation'],
     { navigation: output.state.navigation },
@@ -389,7 +423,7 @@ async function setRouteStrategy(args, context) {
   })
   if (output.content) return output
   return toolResult(
-    routeContent('已切换路线偏好，继续到', output.state.navigation.destination, output.state.navigation.waypoints, output.route, strategy),
+    routeSummary(output.route),
     output.state,
     ['navigation'],
     { navigation: output.state.navigation },
@@ -399,32 +433,67 @@ async function setRouteStrategy(args, context) {
 async function searchPlace(args, context) {
   const { onActivity, services, snapshot } = context
   const state = snapshot()
-  const query = clean(args.query) || clean(args.category)
+  const category = clean(args.category)
+  const query = clean(args.query) || (category === 'restaurant' ? '餐厅' : category)
   if (!query) return toolResult('请告诉我要搜索什么地点', state, [], { results: [] })
   reportActivity(onActivity, 'navigation', 'place_searching', `正在搜索${query}`)
   const radius = Number(args.radius) > 0 ? Number(args.radius) : 3000
-  let results = []
-  if (args.nearby && typeof services.searchNearbyPlaces === 'function') {
-    results = await services.searchNearbyPlaces({
-      keywords: query,
-      location: currentOrigin(state),
-      radius,
-    })
-  } else if (typeof services.searchPlaces === 'function') {
-    results = await services.searchPlaces(query, {
-      city: DEFAULT_ORIGIN.city,
-      types: clean(args.category),
+  const unavailable = () => {
+    const content = `${args.nearby ? '附近' : ''}地点搜索服务暂不可用，请稍后重试`
+    reportActivity(onActivity, 'navigation', 'place_search_failed', content)
+    return toolResult(content, state, [], {
+      results: [], status: 'error', error_code: 'place_search_unavailable',
     })
   }
-  if (!results.length) {
-    const location = await resolvePlace(query, DEFAULT_ORIGIN.city, services)
-    if (location) results = [{ name: query, location }]
+  let candidates
+  try {
+    if (args.nearby) {
+      if (typeof services.searchNearbyPlaces !== 'function') return unavailable()
+      candidates = await services.searchNearbyPlaces({
+        keywords: query,
+        location: currentOrigin(state),
+        radius,
+      })
+    } else {
+      if (typeof services.searchPlaces !== 'function') return unavailable()
+      candidates = await services.searchPlaces(query, {
+        city: DEFAULT_ORIGIN.city,
+      })
+    }
+  } catch {
+    return unavailable()
   }
+  if (!Array.isArray(candidates)) return unavailable()
+  const results = candidates.filter(isUsablePlace)
   reportActivity(onActivity, 'navigation', 'place_results_ready', results.length ? '地点搜索完成' : '没有找到相关地点')
   const content = results.length
-    ? `找到${results.length}个地点：${results.slice(0, 3).map(item => item.name || item.location).join('、')}`
+    ? `找到${results.length}个地点：${results.slice(0, 3).map(describePlace).join('、')}`
     : `没有找到“${query}”相关地点`
-  return toolResult(content, state, [], { results })
+  return toolResult(content, state, [], { results, status: results.length ? 'ok' : 'empty' })
+}
+
+function isUsablePlace(place) {
+  if (!place || typeof place.name !== 'string' || !place.name.trim()) return false
+  const coordinates = typeof place.location === 'string' ? place.location.split(',') : []
+  const hasLocation = coordinates.length === 2
+    && coordinates.every(value => value.trim() && Number.isFinite(Number(value)))
+    && Math.abs(Number(coordinates[0])) <= 180
+    && Math.abs(Number(coordinates[1])) <= 90
+  const hasAddress = typeof place.address === 'string' && Boolean(place.address.trim())
+  const hasId = typeof place.id === 'string' && Boolean(place.id.trim())
+  return hasId || hasLocation || hasAddress
+}
+
+function describePlace(place) {
+  const details = []
+  if (typeof place.address === 'string' && place.address.trim()) details.push(place.address.trim())
+  if ((typeof place.distance === 'number' || typeof place.distance === 'string')
+    && String(place.distance).trim()
+    && Number.isFinite(Number(place.distance))
+    && Number(place.distance) >= 0) {
+    details.push(`距离${Number(place.distance)}米`)
+  }
+  return `${place.name}${details.length ? `（${details.join('，')}）` : ''}`
 }
 
 async function navigateToFavorite(args, context) {

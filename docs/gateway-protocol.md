@@ -1,7 +1,7 @@
 # Gateway Client Protocol
 
 > Status: **Stable 6.0**<br>
-> Wire version: **6.0.0**<br>
+> Wire version: **7.0.0**<br>
 > Roadmap: [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > Current implementation sources of truth: `shared/protocol/gateway-client-protocol.mjs`, `server/src/client/client-event-router.mjs`, `server/src/client/client-command-runtime.mjs`, `shared/protocol/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
 
@@ -46,11 +46,12 @@ model context, Task events, or logs.
 
 - Loopback access remains zero-config and the Gateway still binds to
   `127.0.0.1` by default.
+- Explicit `--lan` mode binds to `0.0.0.0` but advertises only the selected
+  physical-interface IPv4 `ws://` endpoint. It is for trusted LANs, never direct public exposure.
 - Remote HTTP and WebSocket access requires either a configured access token or
-  a revocable token issued by one-time device pairing.
-- A native Client sends `Authorization: Bearer <token>`. A browser can first
-  make an authenticated same-origin HTTP request; Gateway exchanges the Bearer
-  credential for an `HttpOnly`, `SameSite=Strict` session cookie.
+  a revocable device token issued by the Gateway host.
+- A native Client sends `Authorization: Bearer <token>` in the WebSocket handshake.
+  A browser carries the same token through the WebSocket subprotocol.
 - Remote browser origins must be explicitly listed in
   `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS`. Remote deployments should use a trusted
   VPN or an HTTPS/WSS reverse proxy; direct public exposure is unsupported.
@@ -59,12 +60,14 @@ model context, Task events, or logs.
   independent owners without changing GCP.
 
 The local operator can run `qwenaudio gateway pair` against a running Gateway.
-It creates a short-lived, one-time ticket. A remote Client redeems it with
-`POST /api/access/pair` and receives a revocable device token. Device tokens
-are persisted only as SHA-256 hashes. Local management endpoints list and
-revoke paired devices.
+It directly creates one short, browser-compatible connection code containing the exact Gateway
+endpoint and a revocable device token; the same code opens the WebUI. Device tokens are persisted
+only as SHA-256 hashes and plaintext credentials are shown once; a native remote Client does not need
+an HTTPS token exchange. The browser shell exchanges its fragment token for an HttpOnly cookie.
+Local management endpoints list and revoke devices. The one-time pairing endpoints remain as a
+compatibility path.
 
-Host-management requests, including endpoint publication, pairing-ticket
+Host-management requests, including endpoint publication, device credential
 creation, and device administration, are outside the interactive GCP Session.
 They authenticate independently and never claim or replace the active Client
 lease.
@@ -77,7 +80,7 @@ The Client connects to `ws://<gateway>/api/realtime`. The first message is `sess
 {
   "type": "session.hello",
   "event_id": "evt_client_1",
-  "protocol": { "min": "6.0.0", "max": "6.0.0" },
+  "protocol": { "min": "7.0.0", "max": "7.0.0" },
   "client": {
     "type": "desktop",
     "version": "1.12.0",
@@ -124,7 +127,7 @@ Gateway returns the selected version and capability intersection:
   "type": "session.ready",
   "event_id": "evt_gateway_1",
   "request_event_id": "evt_client_1",
-  "protocol_version": "6.0.0",
+  "protocol_version": "7.0.0",
   "session_id": "session_01",
   "connection": {
     "lease_generation": 7,
@@ -435,9 +438,12 @@ whether the Gateway is rebuilding the upstream Realtime Session with the new
 voice. A Provider without session-voice support returns the correlated
 `output_voice_unsupported` error, so the Client never branches on Provider name.
 
-`permission.respond.decision` accepts `once`, `always`, or `reject`: allow only
-the current operation, always allow during the current frontend session, or
-reject only the current operation.
+`permission.respond.decision` accepts `task`, `always`, or `reject`: allow the
+current Task and its subsequent operations until completion, failure, or cancellation;
+allow subsequent requests across Tasks in the current frontend session; or reject
+the current operation. Gateway owns these grants and sends per-operation decisions
+to BackendPort. Grants are not persisted across Gateway restarts. Wire 7.0 replaces
+`once` with `task`; clients must use the updated schema, not reinterpret “allow once.”
 
 `task.create` carries an A2A-aligned `message.parts` value rather than a second plain-text-only objective field, so an explicit integration may submit text, file, or structured parts without importing an A2A Message object.
 

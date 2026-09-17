@@ -1,9 +1,9 @@
 import { dirname, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import {
-  defaultBackendWorkspace,
   loadRuntimeEnvironment,
 } from '../../../shared/runtime-environment.mjs'
+import { defaultBackendWorkspace } from '../../../shared/runtime-paths.mjs'
 import {
   backendDefinition,
   backendNames,
@@ -15,12 +15,19 @@ import {
   resolveRealtimeFrontendConfiguration,
 } from '../../../shared/realtime-provider-catalog.mjs'
 import {
+  REALTIME_PROVIDERS,
+  realtimeSettingsFromEnvironment,
+  realtimeSettingsConnection,
+} from '../../../shared/realtime-provider-definitions.mjs'
+import {
   normalizeMemoryProviderSelection,
 } from '../../../shared/memory-provider-catalog.mjs'
 import {
   loadFrontendProfile,
   resolveFrontendProfileConfiguration,
 } from './frontend-profile.mjs'
+import { resolveWebSearchConfiguration } from '../../../shared/web-search-configuration.mjs'
+export { resolveWebSearchConfiguration } from '../../../shared/web-search-configuration.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const sourceRoot = resolve(here, '../../..')
@@ -63,7 +70,7 @@ export function resolveDisabledFrontendTools(env = process.env) {
 export function resolveBackendWorkspace(
   protocol,
   env = process.env,
-  configDirectory = runtimeEnvironment.dataDirectory,
+  dataDirectory = runtimeEnvironment.dataDirectory,
 ) {
   const definition = backendDefinition(protocol)
   if (!definition?.workspaceEnvironment) {
@@ -72,7 +79,7 @@ export function resolveBackendWorkspace(
   const configured = env[definition.workspaceEnvironment]
   return configured
     ? resolve(root, configured)
-    : defaultBackendWorkspace(configDirectory)
+    : defaultBackendWorkspace(dataDirectory, env, root)
 }
 
 export function resolveAcpArgs(value) {
@@ -122,34 +129,6 @@ export function resolveBackendModels(env = process.env) {
     ).trim(),
     pi: common,
     acp: common,
-  }
-}
-
-export function resolveWebSearchConfiguration(env = process.env) {
-  const bailianMcpUrl = 'https://dashscope.aliyuncs.com/api/v1/mcps/WebSearch/mcp'
-  const explicitMcpUrl = String(env.QWEN_AUDIO_WEB_SEARCH_MCP_URL || '').trim()
-  const dashscopeApiKey = String(env.DASHSCOPE_API_KEY || '').trim()
-  const requestedProvider = String(
-    env.QWEN_AUDIO_WEB_SEARCH_PROVIDER || '',
-  ).trim().toLowerCase()
-  const provider = requestedProvider || (explicitMcpUrl ? 'mcp' : 'so360')
-  if (!['bailian', 'bing', 'mcp', 'none', 'so360'].includes(provider)) {
-    throw new Error(
-      '不支持的 Web Search Provider：'
-      + `${provider}（可选 bailian、bing、mcp、none、so360）`,
-    )
-  }
-  const mcpUrl = provider === 'bailian' ? bailianMcpUrl : explicitMcpUrl
-  const usesBailianMcp = provider === 'bailian'
-  return {
-    provider,
-    mcpUrl,
-    mcpToken: String(
-      env.QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN
-      || (usesBailianMcp ? dashscopeApiKey : ''),
-    ).trim(),
-    mcpTool: String(env.QWEN_AUDIO_WEB_SEARCH_MCP_TOOL || '').trim()
-      || (usesBailianMcp ? 'bailian_web_search' : 'web_search'),
   }
 }
 
@@ -231,38 +210,66 @@ const frontendProfileConfiguration = resolveFrontendProfileConfiguration({
   baseDirectory: root,
 })
 
+const realtimeSettings = realtimeSettingsFromEnvironment(process.env)
+const realtimeConnections = Object.fromEntries(REALTIME_PROVIDERS.map(provider => [
+  provider.key,
+  realtimeSettingsConnection({ ...realtimeSettings, realtimeProvider: provider.key }),
+]))
+
 export const config = {
   root,
   configDirectory: runtimeEnvironment.configDirectory,
   dataDirectory: runtimeEnvironment.dataDirectory,
+  stateDirectory: runtimeEnvironment.stateDirectory,
+  cacheDirectory: runtimeEnvironment.cacheDirectory,
+  // Optional read-only hosting of assets owned by an embedding client.
+  webSkinsDirectory: process.env.QWEN_AUDIO_WEB_SKINS_DIR
+    ? resolve(process.env.QWEN_AUDIO_WEB_SKINS_DIR)
+    : '',
   host: process.env.HOST || '127.0.0.1',
   // PORT=0 lets an embedded host (e.g. the desktop app) fall back to a
   // random loopback port and learn it from the child process report.
   port: String(process.env.PORT || '').trim() === '0'
     ? 0
     : numberSetting(process.env.PORT, 3101, { min: 1, max: 65535 }),
-  audioProvider: realtimeFrontend.provider,
-  realtimeConfigSignature: realtimeFrontend.signature,
-  dashscopeApiKey: realtimeFrontend.dashscopeApiKey,
-  audioRealtimeBaseUrl: realtimeFrontend.dashscopeRealtimeUrl,
+  audioProvider: realtimeFrontend.active.provider,
+  realtimeConfigSignature: realtimeFrontend.active.signature,
+  realtimeCredential: realtimeFrontend.credential,
+  realtimeEndpoint: realtimeFrontend.active.endpoint,
+  realtimeModel: realtimeFrontend.active.model,
+  realtimeVoice: realtimeFrontend.active.voice,
   // User-managed huggingface/speech-to-speech OpenAI Realtime endpoint. The
   // pipeline owns its STT, LLM, TTS and voice configuration; Gateway only
   // connects to the endpoint and supplies the shared frontend instructions and
   // tools for each realtime Session.
-  speechToSpeechRealtimeUrl: realtimeFrontend.speechToSpeechRealtimeUrl,
+  speechToSpeechRealtimeUrl: realtimeConnections['speech-to-speech'].endpoint,
   // Do not advertise a local service merely because a default endpoint
   // exists. It becomes selectable when the user explicitly configures it or
   // chooses it as the active frontend.
-  speechToSpeechConfigured: realtimeFrontend.speechToSpeechConfigured,
+  speechToSpeechConfigured: Boolean(realtimeSettings.speechToSpeechRealtimeUrl) || realtimeFrontend.active.provider === 'speech-to-speech',
   // The upstream WebSocket does not require authentication. This optional
   // credential is useful only when users put it behind an authenticated proxy.
-  speechToSpeechAuthToken: realtimeFrontend.speechToSpeechAuthToken,
+  speechToSpeechAuthToken: realtimeConnections['speech-to-speech'].credential,
   // User-managed MiniCPM-o 4.5 audio full-duplex Realtime endpoint.
-  miniCpmORealtimeUrl: realtimeFrontend.miniCpmORealtimeUrl,
-  miniCpmOAuthToken: realtimeFrontend.miniCpmOAuthToken,
-  miniCpmOConfigured: realtimeFrontend.miniCpmOConfigured,
-  audioModel: realtimeFrontend.dashscopeModel,
-  audioVoice: realtimeFrontend.dashscopeVoice,
+  miniCpmORealtimeUrl: realtimeConnections['minicpm-o'].endpoint,
+  miniCpmOAuthToken: realtimeConnections['minicpm-o'].credential,
+  miniCpmOConfigured: Boolean(realtimeSettings.miniCpmORealtimeUrl) || realtimeFrontend.active.provider === 'minicpm-o',
+  audioModel: realtimeConnections['dashscope'].model,
+  audioVoice: realtimeConnections['dashscope'].voice,
+  dashscopeApiKey: realtimeConnections['dashscope'].credential,
+  audioRealtimeBaseUrl: realtimeConnections['dashscope'].endpoint,
+  stepfunApiKey: realtimeConnections['stepfun'].credential,
+  stepfunRealtimeUrl: realtimeConnections['stepfun'].endpoint,
+  stepfunModel: realtimeConnections['stepfun'].model,
+  stepfunVoice: realtimeConnections['stepfun'].voice,
+  openaiApiKey: realtimeConnections['gpt-live'].credential,
+  gptLiveRealtimeUrl: realtimeConnections['gpt-live'].endpoint,
+  gptLiveModel: realtimeConnections['gpt-live'].model,
+  gptLiveVoice: realtimeConnections['gpt-live'].voice,
+  googleApiKey: realtimeConnections['google-live'].credential,
+  googleLiveRealtimeUrl: realtimeConnections['google-live'].endpoint,
+  googleLiveModel: realtimeConnections['google-live'].model,
+  googleLiveVoice: realtimeConnections['google-live'].voice,
   webSearchProvider: webSearch.provider,
   webSearchMcpUrl: webSearch.mcpUrl,
   webSearchMcpToken: webSearch.mcpToken,
@@ -278,8 +285,11 @@ export const config = {
   tailnet: ['1', 'true', 'yes', 'on'].includes(
     String(process.env.QWEN_AUDIO_GATEWAY_TAILNET || '').trim().toLowerCase(),
   ),
-  gatewayPublicUrl: String(
-    process.env.QWEN_AUDIO_GATEWAY_PUBLIC_URL || '',
+  lan: ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.QWEN_AUDIO_GATEWAY_LAN || '').trim().toLowerCase(),
+  ),
+  gatewayLanHost: String(
+    process.env.QWEN_AUDIO_GATEWAY_LAN_HOST || '',
   ).trim(),
   authSecret: process.env.QWEN_AUDIO_AGENT_AUTH_SECRET || '',
   identityMode: (
@@ -305,8 +315,8 @@ export const config = {
     process.env.QWEN_AUDIO_AGENT_ACCESS_KEYS || '',
   ).trim(),
   gatewayDeviceStatePath: resolve(
-    runtimeEnvironment.configDirectory,
-    'state/gateway-devices.json',
+    runtimeEnvironment.stateDirectory,
+    'gateway-devices.json',
   ),
   agentProtocol: requestedAgentProtocol,
   backendOwnership,
@@ -415,7 +425,7 @@ export const config = {
       directory: resolveBackendWorkspace('deepseek'),
       cliPath: String(process.env.DEEPSEEK_HARNESS_ACP_BIN || '').trim(),
       sessionRoot: resolve(
-        runtimeEnvironment.configDirectory,
+        runtimeEnvironment.stateDirectory,
         'backends/deepseek-harness/sessions',
       ),
     },
@@ -489,7 +499,7 @@ export const config = {
     : runtimeEnvironment.taskStatePath,
   backendSessionStatePath: process.env.QWEN_AUDIO_AGENT_BACKEND_SESSION_STATE_PATH
     ? resolve(root, process.env.QWEN_AUDIO_AGENT_BACKEND_SESSION_STATE_PATH)
-    : resolve(runtimeEnvironment.configDirectory, 'state/acp-sessions.json'),
+    : resolve(runtimeEnvironment.stateDirectory, 'acp-sessions.json'),
   taskTerminalTtlMs: numberSetting(
     process.env.QWEN_AUDIO_AGENT_TASK_TERMINAL_TTL_MS,
     86_400_000,
@@ -558,7 +568,7 @@ export const config = {
     || process.env.DASHSCOPE_API_KEY
     || '',
   memoryAuditPath: resolve(
-    runtimeEnvironment.configDirectory,
+    runtimeEnvironment.stateDirectory,
     'memory-audit.jsonl',
   ),
   // 偏好自更新：从对话里观察反复出现的表达偏好，攒够跨会话确认后写入 USER.md
@@ -568,7 +578,7 @@ export const config = {
     process.env.QWEN_AUDIO_PREFERENCE_LEARNING || 'off',
   ).toLowerCase() === 'on',
   preferenceCandidatePath: resolve(
-    runtimeEnvironment.configDirectory,
+    runtimeEnvironment.stateDirectory,
     'preference-candidates.json',
   ),
   // 会话摘要：每场会话结束时记一条「聊了哪些话题 + 一句要点」，供用户日后问
@@ -578,22 +588,22 @@ export const config = {
     process.env.QWEN_AUDIO_SESSION_DIGEST || 'off',
   ).toLowerCase() === 'on',
   sessionDigestPath: resolve(
-    runtimeEnvironment.configDirectory,
+    runtimeEnvironment.stateDirectory,
     'session-digests.json',
   ),
-  // 内置资料库：用户导入的手册 / 规章 / 教材。沿用共享 workspace 下的既有目录，
+  // 用户导入的资料属于共享数据，不属于项目工作区或某个 Gateway 的状态。
   // 由本机 Knowledge Provider 管理和检索。
   // 默认关闭：它会把用户的文件复制到另一个位置，需要用户显式同意。
   domainLibraryEnabled: String(
     process.env.QWEN_AUDIO_DOMAIN_LIBRARY || 'off',
   ).toLowerCase() === 'on',
   domainDocumentDirectory: resolve(
-    defaultBackendWorkspace(runtimeEnvironment.configDirectory),
-    'domain',
+    runtimeEnvironment.dataDirectory,
+    'knowledge/documents',
   ),
   domainIndexPath: resolve(
-    runtimeEnvironment.configDirectory,
-    'domain-index.json',
+    runtimeEnvironment.dataDirectory,
+    'knowledge/index.json',
   ),
   reminderSchedulerEnabled: String(
     process.env.QWEN_AUDIO_AGENT_REMINDER_SCHEDULER || 'true'

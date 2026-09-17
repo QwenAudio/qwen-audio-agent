@@ -1,12 +1,12 @@
 import { config } from '../../core/config.mjs'
+import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mjs'
 import {
   buildFrontendInstructions,
   frontendTools,
   resultResponseInstructions,
   speakResponseInstructions,
   permissionResponseInstructions,
-} from '../frontend-tools.mjs'
-import { permissionReference } from '../tools/permission-reference.mjs'
+} from '../../frontend/frontend-tools.mjs'
 import { gaRealtimeProtocol } from './ga-protocol.mjs'
 
 const INPUT_SAMPLE_RATE = 16000
@@ -124,10 +124,10 @@ export const s2sProvider = {
         type: 'input_text',
         text: [
           '<permission_request>',
-          `permission_id=${permissionReference(permission.id)}`,
+          `permission_id=${permission.id}`,
           `task_id=${permission.taskId}`,
           `operation=${permission.summary}`,
-          'allowed_decisions=once,always,reject',
+          `allowed_decisions=${PERMISSION_DECISIONS.join(',')}`,
           '</permission_request>',
         ].join('\n'),
       }],

@@ -1,4 +1,6 @@
 import { WebSocket, WebSocketServer } from 'ws'
+import { SessionObservers } from './session-observers.mjs'
+import { PERMISSION_DECISIONS } from '../../../shared/permission-decisions.mjs'
 import { selectGatewayWebSocketProtocol } from '../../../shared/gateway/websocket-auth.mjs'
 import { randomUUID } from 'node:crypto'
 import {
@@ -24,9 +26,9 @@ import { TaskManager } from '../task/task-manager.mjs'
 import { TaskDomainEvent } from '../task/task-events.mjs'
 import { recordTaskResult } from '../conversation/task-result-projector.mjs'
 import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
-import { ToolCallHandler } from './tools/tool-call-handler.mjs'
-import { buildFrontendToolContext } from './tools/frontend-tool-context.mjs'
-import { TurnTranscripts } from './tools/turn-transcripts.mjs'
+import { ToolCallHandler } from '../frontend/tools/tool-call-handler.mjs'
+import { buildFrontendToolContext } from '../frontend/tools/frontend-tool-context.mjs'
+import { TurnTranscripts } from '../frontend/tools/turn-transcripts.mjs'
 import { TurnCitations } from './turn-citations.mjs'
 import { RealtimeInputRuntime } from './realtime-input-runtime.mjs'
 import {
@@ -53,7 +55,7 @@ import {
 import {
   permissionResponseInstructions,
   inputRequestResponseInstructions,
-} from './frontend-tools.mjs'
+} from '../frontend/frontend-tools.mjs'
 import { GatewayClientProtocolSession } from '../transport/gateway-client-protocol-session.mjs'
 import {
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
@@ -76,7 +78,6 @@ import {
 } from '../client/client-action-port.mjs'
 import { PresenceController } from '../client/presence-controller.mjs'
 import { GatewayClientReplayBuffer } from '../transport/gateway-client-replay-buffer.mjs'
-import { permissionReference } from './tools/permission-reference.mjs'
 import { ActiveClientLeases } from '../client/active-client-leases.mjs'
 
 const MAX_PENDING_AUDIO_CHUNKS = 30
@@ -167,11 +168,8 @@ function clientDescriptor(event = {}) {
 export function attachRealtimeGateway(server, {
   identityManager,
   memoryService,
-  memoryExtractor = null,
-  preferencePromoter = null,
-  profileObserver = null,
+  sessionObservers = [],
   sessionDigests = null,
-  sessionSummariser = null,
   notesStore,
   backendRuntime,
   backendAvailability = null,
@@ -217,7 +215,7 @@ export function attachRealtimeGateway(server, {
   const activeClientLeases = new ActiveClientLeases()
   const voiceConnections = new Map()
   const replayBuffers = new Map()
-  const pendingMemoryOperations = new Set()
+  const observers = new SessionObservers(sessionObservers)
   const frontendToolSourcesReady = Promise.all(
     frontendToolSources.map(source => source.initialize()),
   ).catch(error => {
@@ -261,7 +259,7 @@ export function attachRealtimeGateway(server, {
     }
     if (!isAllowedOrigin(request, {
       authenticatedRemote: identity.access === 'remote',
-      trustedNativeClient: identity.clientType === 'mobile',
+      trustedNativeClient: ['client', 'mobile'].includes(identity.clientType),
     })) {
       rejectUpgrade(socket, '403 Forbidden', 'origin not allowed')
       return
@@ -380,20 +378,9 @@ export function attachRealtimeGateway(server, {
     const hasPendingBackendInput = () => activeSessionTasks().some(task => (
       task.inputRequest?.status === 'pending'
     ))
-    const observeMemoryAudio = event => {
-      if (!memoryService?.ownsAudioStreamObservation?.()) return
-      try {
-        memoryService.observeAudio(ownerId, event, {
-          source: 'voice-input',
-          sessionId,
-        })
-      } catch (error) {
-        connectionLogger.warn('memory.provider_audio_hook_failed', {
-          eventType: String(event?.type || ''),
-          error: String(error?.message || error),
-        })
-      }
-    }
+    const observeSessionAudio = event => observers.emit('onAudio', {
+      ownerId, sessionId, event, logger: connectionLogger,
+    })
     // Keep visible history intact while excluding only a provider-rejected turn
     // from future Realtime Session restoration.
     const realtimeRecoveryContext = new RealtimeRecoveryContext()
@@ -409,6 +396,7 @@ export function attachRealtimeGateway(server, {
           backendAvailability,
           frontendRetrieval,
           frontendKnowledge,
+          memoryService,
           sessionDigests,
           permissionPending: hasPendingBackendPermission(),
           inputPending: hasPendingBackendInput(),
@@ -449,10 +437,10 @@ export function attachRealtimeGateway(server, {
         origin: 'permission',
         text: [
           '<permission_request>',
-          `permission_id=${permissionReference(permission.id)}`,
+        `permission_id=${permission.id}`,
           `task_id=${task.id}`,
           `operation=${permission.summary}`,
-          'allowed_decisions=once,always,reject',
+          `allowed_decisions=${PERMISSION_DECISIONS.join(',')}`,
           '</permission_request>',
         ].join('\n'),
         // A permission prompt is a new model input and response. taskId keeps
@@ -756,6 +744,23 @@ export function attachRealtimeGateway(server, {
       }
     }
     const toolCallTimings = new Map()
+    // Client-side edits are not present in the model's conversation. Refresh
+    // the owner's live memory snapshot after persistence, including deletion.
+    // Same-session tool writes already return the new documents to the model;
+    // retain their existing cache-only path to avoid a redundant prompt update.
+    const unsubscribeMemory = typeof memoryService?.subscribe === 'function'
+      ? memoryService.subscribe(event => {
+          if (event.ownerId !== ownerId) return
+          // Persistence changes invalidate the client view regardless of their
+          // source or whether this session needs a model-instruction refresh.
+          send(ws, { type: GatewayServerEvent.MEMORY_CHANGED })
+          realtimeSession.updateAgentContext({
+            memories: memoryService.list(ownerId, { limit: 64 }),
+          }, {
+            refreshSession: event.source !== 'realtime-tool' || event.sessionId !== sessionId,
+          })
+        })
+      : () => {}
     const toolCalls = new ToolCallHandler({
       taskManager,
       ownerId,
@@ -774,9 +779,14 @@ export function attachRealtimeGateway(server, {
       // 记忆写入只刷新缓存，不重发 session.update：改 instructions 等于改 prompt
       // 前缀，会让整场会话的前缀缓存失效，而用户刚说过的内容本来就在上下文里，
       // 不必靠 instructions 再讲一遍。新值在下一个新会话生效。
-      onMemoryChanged: () => realtimeSession.updateAgentContext({
-        memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-      }, { refreshSession: false }),
+      onMemoryChanged: () => {
+        realtimeSession.updateAgentContext({
+          memories: memoryService?.list(ownerId, { limit: 64 }) || [],
+        }, { refreshSession: false })
+        if (typeof memoryService?.subscribe !== 'function') {
+          send(ws, { type: GatewayServerEvent.MEMORY_CHANGED })
+        }
+      },
       backendRuntime,
       backendAvailability,
       respondAuthorization,
@@ -902,11 +912,12 @@ export function attachRealtimeGateway(server, {
       ensurePermissionResponseFor,
       reportFrontendError,
       onSpeechStarted: fields => {
-        observeMemoryAudio({ type: 'speech_started', ...fields })
+        connectionLogger.info('realtime.provider.speech_started', fields)
+        observeSessionAudio({ type: 'speech_started', ...fields })
       },
       onSpeechStopped: fields => {
         connectionLogger.info('realtime.provider.speech_stopped', fields)
-        observeMemoryAudio({ type: 'speech_stopped', ...fields })
+        observeSessionAudio({ type: 'speech_stopped', ...fields })
       },
     })
 
@@ -1062,6 +1073,18 @@ export function attachRealtimeGateway(server, {
       if (isSleepActivityEvent(event)) sleepController?.recordActivity()
       if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
       if (inputs.handleProviderEvent(event)) return
+      if (event.type === 'response.done') {
+        const responseId = realtimeResponseId(event)
+        const context = presentationRuntime.get(responseId)
+        connectionLogger.info('realtime.response.done', {
+          responseId,
+          turnId: context?.turnId || '',
+          status: event.response?.status || '',
+          hasAudio: Boolean(context?.hasAudio),
+          hasFunctionCall: Boolean(context?.hasFunctionCall),
+          suppressed: Boolean(context?.suppressed),
+        })
+      }
       if (event.type === 'response.function_call_arguments.done') {
         const id = realtimeResponseId(event)
         const callContext = presentationRuntime.get(id)
@@ -1085,6 +1108,7 @@ export function attachRealtimeGateway(server, {
             connectionLogger.warn('realtime.tool_call.failed', {
               ...callFields,
               durationMs: Math.max(0, Date.now() - startedAt),
+              error,
             })
             send(ws, { type: 'error', message: error.message })
           })
@@ -1687,7 +1711,7 @@ export function attachRealtimeGateway(server, {
           return
         }
         realtimeSession.appendAudio(event.audio)
-        observeMemoryAudio({
+        observeSessionAudio({
           type: 'chunk',
           audio: event.audio,
           sampleRate: Number(realtimeSession.provider()?.inputSampleRate) || 16_000,
@@ -1750,18 +1774,24 @@ export function attachRealtimeGateway(server, {
         }
       } else if (event.type === GatewayClientEvent.PLAYBACK_ENDED) {
         const id = String(event.responseId || '')
-        if (acceptsPlaybackReceipt({
+        const accepted = acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
           responseKnown: presentationRuntime.has(id),
-        })) presentationRuntime.finishPlayback(id)
+        })
+        connectionLogger.info('realtime.playback.ended', { responseId: id, accepted })
+        if (accepted) presentationRuntime.finishPlayback(id)
       } else if (event.type === GatewayClientEvent.PLAYBACK_CANCELLED) {
         const id = String(event.responseId || '')
-        if (acceptsPlaybackReceipt({
+        const accepted = acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
           responseKnown: presentationRuntime.has(id),
-        })) {
+        })
+        connectionLogger.info('realtime.playback.cancelled', {
+          responseId: id, accepted, reason: String(event.reason || ''),
+        })
+        if (accepted) {
           presentationRuntime.cancelPlayback(id, {
             reason: String(event.reason || ''),
           })
@@ -1812,6 +1842,7 @@ export function attachRealtimeGateway(server, {
       connections?.delete(voiceClient)
       if (!connections?.size) voiceConnections.delete(ownerId)
       unsubscribeTasks()
+      unsubscribeMemory()
       clearResponseCandidate()
       turns.close()
       transcripts.close()
@@ -1826,98 +1857,8 @@ export function attachRealtimeGateway(server, {
       sleepController?.close()
       presenceController.close()
       realtimeSession.close()
-      observeMemoryAudio({ type: 'session_ended' })
-      // Invisible memory: distil durable personal facts from this session in
-      // the background. All gating (debounce, minimum turns, disabled state)
-      // lives inside the extractor; it never blocks or breaks the close path,
-      // and even a misbehaving extractor must not disturb the disconnect.
-      try {
-        memoryExtractor?.maybeRun({ ownerId, sessionId })
-      } catch (error) {
-        connectionLogger.warn('memory.extract_hook_failed', {
-          error: String(error?.message || error),
-        })
-      }
-      // A provider-managed memory engine receives the complete bounded
-      // exchange instead of the built-in Markdown extractor. This is the only
-      // automatic-learning hook exposed by the Gateway; vendor-specific
-      // indexing, consolidation and storage stay inside the provider.
-      if (memoryService?.ownsSessionObservation?.()) {
-        const exchange = {
-          messages: conversationSync.frontendContext({ ownerId, sessionId }),
-        }
-        const observing = Promise.resolve(memoryService.observe(ownerId, exchange, {
-          source: 'session-close',
-          sessionId,
-        })).then(
-          () => memoryService.flush(ownerId, {
-            source: 'session-close',
-            sessionId,
-          }),
-        ).catch(error => {
-          connectionLogger.warn('memory.provider_observe_hook_failed', {
-            error: String(error?.message || error),
-          })
-        })
-        pendingMemoryOperations.add(observing)
-        observing.finally(() => pendingMemoryOperations.delete(observing))
-      }
-      // 画像观察 → 晋升扫描。观察器要调模型所以是异步的，晋升必须排在它之后：
-      // 否则本场刚攒到的确认要等下一场会话结束才被扫到，白等一轮。观察器未启用
-      // 或未达门槛时走同步分支，保持原有行为。晋升本身是纯本地计算、无模型调用，
-      // 写入只在下一个新会话生效，不触碰当前会话的 instructions（保护前缀缓存）。
-      // promoter.run() 是 async 的（写入要等 MemoryProvider 落地才销账），所以
-      // 同步 try/catch 抓不到它内部的失败 —— 必须挂 .catch()，否则一次写入失败
-      // 就变成未处理的 rejection：没有日志，也看不出是哪条偏好没写进去。
-      //
-      // 刻意不 await：这里是连接关闭路径，后面还有会话摘要等链路。远程 provider
-      // 一次超时不该拖住整条关闭流程 —— 用户已经挂断了，资源该释放。写入失败时
-      // 候选留在池子里，下一场会话结束自动重试。
-      const promotePreferences = () => {
-        try {
-          const promoting = preferencePromoter?.run({ ownerId })
-          if (promoting?.catch) {
-            promoting.catch(error => {
-              connectionLogger.warn('preference.promote_hook_failed', {
-                error: String(error?.message || error),
-              })
-            })
-          }
-        } catch (error) {
-          connectionLogger.warn('preference.promote_hook_failed', {
-            error: String(error?.message || error),
-          })
-        }
-      }
-      try {
-        const observing = profileObserver?.maybeRun({ ownerId, sessionId })
-        // 观察失败也要照常扫描：池子里可能还有前几场攒下的确认。
-        if (observing?.then) observing.then(promotePreferences, promotePreferences)
-        else promotePreferences()
-      } catch (error) {
-        connectionLogger.warn('preference.observe_hook_failed', {
-          error: String(error?.message || error),
-        })
-        promotePreferences()
-      }
-      // 会话摘要：记下本场聊了什么，供以后 recall 查。
-      // 与抽取器、观察器彼此独立 —— 三条链路读同一份转写，但任何一条失败都不该
-      // 连带丢掉另外两条的产出，所以各自 try 各自 catch。
-      try {
-        sessionSummariser?.maybeRun({ ownerId, sessionId })
-      } catch (error) {
-        connectionLogger.warn('session_digest.summarise_hook_failed', {
-          error: String(error?.message || error),
-        })
-      }
-      // 滚动摘要取走即删：本场摘要已被上面的下游消费，留着等于悄悄开启了
-      // 「每场会话长期留存完整摘要」，那需要用户显式同意。
-      try {
-      } catch (error) {
-        connectionLogger.warn('rolling_summary.drop_failed', {
-          error: String(error?.message || error),
-        })
-      }
+      observeSessionAudio({ type: 'session_ended' })
+      observers.emit('onSessionClosed', { ownerId, sessionId, logger: connectionLogger })
     })
   })
 
@@ -1956,7 +1897,7 @@ export function attachRealtimeGateway(server, {
       await new Promise(resolveClose => {
         wss.close(() => resolveClose())
       })
-      await Promise.allSettled([...pendingMemoryOperations])
+      await observers.drain()
     },
     status() {
       const byType = { desktop: 0, cli: 0, web: 0 }

@@ -1,7 +1,7 @@
 # Gateway Client Protocol
 
 > 状态：**Stable 6.0**<br>
-> 线协议版本：**6.0.0**<br>
+> 线协议版本：**7.0.0**<br>
 > Roadmap：[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > 当前实现事实源：`shared/protocol/gateway-client-protocol.mjs`、`server/src/client/client-event-router.mjs`、`server/src/client/client-command-runtime.mjs`、`shared/protocol/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
 
@@ -44,16 +44,21 @@ Gateway 访问认证与 GCP 明确分层。访问凭据在 `session.hello` 之�
 访问令牌不会进入 GCP 信封、模型上下文、Task 事件或日志。
 
 - 本机回环访问继续保持零配置，Gateway 默认仍只监听 `127.0.0.1`。
-- 远程 HTTP 与 WebSocket 必须使用配置的访问密钥，或一次性设备配对签发的可撤销令牌。
-- 原生 Client 使用 `Authorization: Bearer <token>`。浏览器可先发起一次带认证的同源 HTTP 请求；Gateway 会把 Bearer 凭据换成 `HttpOnly`、`SameSite=Strict` 的会话 Cookie。
+- 显式 `--lan` 模式监听 `0.0.0.0`，但仅发布自动选择的物理网卡 IPv4 `ws://` Endpoint；
+  该模式只面向可信局域网，不支持直接暴露到公网。
+- 远程 HTTP 与 WebSocket 必须使用配置的访问密钥，或网关主机签发的可撤销设备令牌。
+- 原生 Client 在 WebSocket 握手使用 `Authorization: Bearer <token>`；浏览器通过 WebSocket 子协议携带同一 Token。
 - 远程浏览器来源必须显式写入 `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS`。远程部署应使用可信 VPN 或 HTTPS/WSS 反向代理，不支持直接暴露到公网。
 - 一个配置密钥映射一个用户；可选的 `QWEN_AUDIO_AGENT_ACCESS_KEYS` JSON 数组可把不同密钥映射到不同用户，而无需修改 GCP。
 
-本机操作者可对运行中的 Gateway 执行 `qwenaudio gateway pair`，生成一个短时、
-一次性配对码。远程 Client 通过 `POST /api/access/pair` 换取可撤销设备令牌。
-设备令牌只以 SHA-256 摘要持久化；本机管理接口可列出和撤销已配对设备。
+本机操作者可对运行中的 Gateway 执行 `qwenaudio gateway pair`，直接生成一个包含准确
+Gateway 地址与可撤销设备令牌、并可直接打开 WebUI 的短浏览器兼容连接码。
+设备令牌只以 SHA-256 摘要持久化，明文凭据只显示一次；原生远程 Client 不需要再通过
+HTTPS 换取 Token。浏览器扫码页仅把 fragment 中的 Token 换成 HttpOnly Cookie。本机管理
+接口可列出和撤销设备。
+旧版一次性配对接口仍作为兼容路径保留。
 
-端点发布、配对码创建与设备管理等 Host 管理请求不属于交互式 GCP Session。
+端点发布、设备连接码签发与设备管理等 Host 管理请求不属于交互式 GCP Session。
 它们独立完成认证，也不会取得或替换活动 Client 租约。
 
 ## 3. 连接与能力协商
@@ -64,7 +69,7 @@ Client 连接 `ws://<gateway>/api/realtime`，第一条消息必须是 `session.
 {
   "type": "session.hello",
   "event_id": "evt_client_1",
-  "protocol": { "min": "6.0.0", "max": "6.0.0" },
+  "protocol": { "min": "7.0.0", "max": "7.0.0" },
   "client": {
     "type": "desktop",
     "version": "1.12.0",
@@ -109,7 +114,7 @@ Gateway 返回协商后的版本与能力交集：
   "type": "session.ready",
   "event_id": "evt_gateway_1",
   "request_event_id": "evt_client_1",
-  "protocol_version": "6.0.0",
+  "protocol_version": "7.0.0",
   "session_id": "session_01",
   "connection": {
     "lease_generation": 7,
@@ -398,8 +403,11 @@ Client Action 不替代 MCP、OpenAPI、ACP 或 A2A。它只用于当前 Client 
 Realtime Session。Provider 不支持会话音色时返回关联错误
 `output_voice_unsupported`，Client 不需要识别具体 Provider。
 
-`permission.respond.decision` 支持 `once`、`always` 和 `reject`，分别表示
-仅允许当前操作、当前前端会话内始终允许，以及仅拒绝当前操作。
+`permission.respond.decision` 支持 `task`、`always` 和 `reject`，分别表示
+允许当前 Task 及其后续操作直到完成、失败或取消；当前前端会话内跨 Task
+始终允许；以及拒绝当前操作。授权策略由 Gateway 管理，BackendPort 仍接收逐次
+操作的决定。授权不跨 Gateway 重启保存。线协议 7.0 将 `once` 替换为 `task`，
+客户端须更新 schema，不能把“本次允许”悄悄解释成任务授权。
 
 `task.create` 使用与 A2A 语义对齐的 `message.parts`，而不是另设只能传纯文本的 objective 字段。这样显式集成可以提交文本、文件或结构化 Part，同时不引入 A2A Message 原生对象。
 

@@ -10,6 +10,9 @@
 // Every capability listed here is locked by a test (see docs/contract.md);
 // anything not listed is internal and may change in any release.
 //
+// 5.9.0 adds host-issued direct WSS device connection codes. Conversation
+// Clients authenticate and run on one WS/WSS connection; the loopback HTTP
+// management plane remains available to the Gateway operator.
 // 5.8.0 adds capability-negotiated realtime visual frames over GCP and keeps
 // provider-specific image/audio encoding inside Realtime Provider adapters.
 // 5.7.0 adds authenticated remote Client access, one-time device pairing and
@@ -47,7 +50,7 @@
 // desktop.settings-window, …) are not part of this contract, and a removed
 // capability is a breaking change. Hosts migrating from the fork must branch
 // on the capability list below, never on the version number.
-export const GATEWAY_PROTOCOL_VERSION = '5.8.0'
+export const GATEWAY_PROTOCOL_VERSION = '5.9.0'
 
 export const GATEWAY_CAPABILITIES = Object.freeze([
   // The Gateway statically hosts web/dist at its own origin, so a client may
@@ -74,6 +77,9 @@ export const GATEWAY_CAPABILITIES = Object.freeze([
   // access stays zero-config; pairing issues revocable device tokens without
   // putting secrets into the Gateway Client Protocol.
   'gateway.remote-access-pairing',
+  // A local operator can issue a revocable per-device token already wrapped
+  // with the exact WS/WSS endpoint. Clients need no HTTP pairing exchange.
+  'gateway.direct-device-connection',
   // qwen-audio-agent/electron: a CommonJS entry an Electron main process can
   // require, which loads every ESM contract.
   'host.electron-entry',

@@ -32,6 +32,7 @@ try {
   refreshProcessPath({
     env,
     platform: workerData.platform,
+    cacheFile: workerData.pathCacheFile || '',
   })
   const detected = await inspectBackendSetupsAsync({
     env,

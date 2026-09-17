@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   createOpenAiCompatibleTextCall,
-} from '../src/providers/llm/openai-compatible-chat.mjs'
+} from '../src/core/llm/openai-compatible-chat.mjs'
 
 test('posts to OpenAI-compatible chat completions and surfaces errors', async () => {
   assert.equal(createOpenAiCompatibleTextCall({

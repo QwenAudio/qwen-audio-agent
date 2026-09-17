@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   AgentClient,
   createAgentClient,
-} from '../src/agent/agent-client.mjs'
+} from '../src/backend/adapters/agent-client.mjs'
 
 function fakeAcpClient() {
   return {

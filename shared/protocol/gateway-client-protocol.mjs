@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PERMISSION_DECISIONS } from '../permission-decisions.mjs'
 import {
   GatewayClientEvent,
   GATEWAY_CLIENT_EVENT_TYPES,
@@ -9,7 +10,7 @@ import {
   parseGatewayClientMessage,
 } from './gateway-events.mjs'
 
-export const GATEWAY_CLIENT_PROTOCOL_VERSION = '6.0.0'
+export const GATEWAY_CLIENT_PROTOCOL_VERSION = '7.0.0'
 export const GATEWAY_CLIENT_REPLACED_CLOSE_CODE = 4001
 export const GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE = 4002
 export const GATEWAY_CLIENT_REVOKED_CLOSE_CODE = 4003
@@ -278,7 +279,7 @@ export const GatewayTaskCancelSchema = GatewayClientEnvelopeSchema.extend({
 export const GatewayPermissionRespondSchema = GatewayClientEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.PERMISSION_RESPOND),
   permission_id: IdentifierSchema,
-  decision: z.enum(['once', 'always', 'reject']),
+  decision: z.enum(PERMISSION_DECISIONS),
 })
 
 export const GatewayInputRespondSchema = GatewayClientEnvelopeSchema.extend({

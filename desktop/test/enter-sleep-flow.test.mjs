@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ClientActionPort } from '../../server/src/client/client-action-port.mjs'
 import { PresenceController } from '../../server/src/client/presence-controller.mjs'
-import { ToolCallHandler } from '../../server/src/voice/tools/tool-call-handler.mjs'
+import { ToolCallHandler } from '../../server/src/frontend/tools/tool-call-handler.mjs'
 import { performDesktopClientAction } from '../../web/src/desktop/desktop-hide.js'
 import { DesktopPresence } from '../src/desktop-presence.mjs'
 import {

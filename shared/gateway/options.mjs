@@ -13,6 +13,10 @@
  */
 export function gatewayOptionsEnvironment({
   configDir,
+  dataDir,
+  stateDir,
+  cacheDir,
+  workspace,
   host,
   port,
   backend,
@@ -21,6 +25,10 @@ export function gatewayOptionsEnvironment({
 } = {}) {
   const env = {}
   if (configDir !== undefined) env.QWAUDIO_CONFIG_DIR = String(configDir)
+  if (dataDir !== undefined) env.QWAUDIO_DATA_DIR = String(dataDir)
+  if (stateDir !== undefined) env.QWAUDIO_STATE_DIR = String(stateDir)
+  if (cacheDir !== undefined) env.QWAUDIO_CACHE_DIR = String(cacheDir)
+  if (workspace !== undefined) env.QWAUDIO_WORKSPACE = String(workspace)
   if (host !== undefined) env.HOST = String(host)
   if (port !== undefined) env.PORT = String(port)
   if (backend !== undefined) {

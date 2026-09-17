@@ -338,7 +338,7 @@ test('a service-style environment reads the shared config-directory PATH cache',
     )
     const env = {
       PATH: '/usr/bin',
-      QWAUDIO_CONFIG_DIR: dir,
+      QWAUDIO_CACHE_DIR: dir,
     }
     assert.equal(expandProcessPath({
       env,

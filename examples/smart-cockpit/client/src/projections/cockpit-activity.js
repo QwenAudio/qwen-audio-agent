@@ -11,6 +11,8 @@ const TERMINAL_STAGES = new Set([
   'destination_not_found',
   'waypoint_not_found',
   'route_failed',
+  'place_results_ready',
+  'place_search_failed',
   'flashbuy_results_ready',
   'flashbuy_preview_ready',
   'flashbuy_cart_updated',
@@ -30,12 +32,19 @@ export function cockpitProgressFromActivity(activity) {
   const stage = String(activity?.status || '').trim()
   const message = String(activity?.message || '').trim()
   if (!SUPPORTED_DOMAINS.has(domain) || !stage || !message) return null
-  return {
+  const progress = {
     domain,
     stage,
     message,
     source: 'cockpit-service',
   }
+  if (activity.item && typeof activity.item === 'object') {
+    progress.item = { ...activity.item }
+  }
+  if (activity.route && typeof activity.route === 'object') {
+    progress.route = { ...activity.route }
+  }
+  return progress
 }
 
 export function isTerminalCockpitProgress(progress) {

@@ -8,6 +8,9 @@ import {
   loadAssistantProfile,
   normalizeClientContext,
 } from '../src/conversation/frontend-agent-context.mjs'
+import { buildMemoryContext } from '../src/memory/context.mjs'
+import { renderObservedSection, PROMOTER_MARKERS } from '../src/memory/learning/preference-promoter.mjs'
+import { buildFrontendInstructions } from '../src/frontend/frontend-tools.mjs'
 
 test('uses a valid client timezone and returns an exact local clock snapshot', () => {
   const snapshot = currentTimeSnapshot({
@@ -97,13 +100,15 @@ test('loads one canonical frontend policy separately from runtime context', () =
 
   assert.match(prompt, /# Instruction hierarchy/)
   assert.match(prompt, /# Background work/)
-  assert.match(prompt, /# Personalization and memory/)
+  assert.doesNotMatch(prompt, /# Personalization and memory|`memory`/)
+  const withMemory = buildFrontendInstructions({ frontend: { capabilities: ['memory'] } })
+  assert.match(withMemory, /# Personalization and memory/)
   assert.match(prompt, /专用工具/)
   assert.match(prompt, /符合 `spawn_thinking` description 声明的[\s\S]*能力范围/)
   assert.match(prompt, /可组合使用本轮提供的工具完成请求/)
   assert.match(prompt, /不要仅因需要多次工具调用就转为后台工作/)
   assert.match(prompt, /仅使用本轮实际提供的工具/)
-  assert.match(prompt, /用户询问个人长期事实或交互偏好[\s\S]*不足以回答时/)
+  assert.match(withMemory, /用户询问个人长期事实或交互偏好[\s\S]*不足以回答时/)
   assert.doesNotMatch(prompt, /询问你记得什么[\s\S]*必须调用 `memory`/)
   assert.match(prompt, /依赖附件的请求同样按实际工具能力处理/)
   assert.match(prompt, /需要准确的当前日期或时间时，调用 `get_current_time`/)
@@ -153,7 +158,7 @@ test('keeps mutable task state out of persistent frontend instructions', () => {
 })
 
 test('canonicalizes legacy profile content into user preferences', () => {
-  const context = buildFrontendContext({
+  const context = buildMemoryContext({
     memories: [{
       id: 'user_model',
       scope: 'profile',
@@ -167,7 +172,7 @@ test('canonicalizes legacy profile content into user preferences', () => {
 })
 
 test('injects user preferences as directives separate from factual memory', () => {
-  const context = buildFrontendContext({
+  const context = buildMemoryContext({
     memories: [
       {
         id: 'mem_rule',
@@ -198,7 +203,7 @@ test('injects user preferences as directives separate from factual memory', () =
 })
 
 test('omits user preferences when the user has only factual memory', () => {
-  const context = buildFrontendContext({
+  const context = buildMemoryContext({
     memories: [{
       id: 'mem_fact',
       scope: 'memory',
@@ -209,4 +214,75 @@ test('omits user preferences when the user has only factual memory', () => {
 
   assert.doesNotMatch(context, /<user_preferences>/)
   assert.match(context, /<user_memory>/)
+})
+
+test('projects visible Markdown facts without treating template comments as saved preferences', () => {
+  const document = {
+    scope: 'user', format: 'markdown', revision: 'raw-revision',
+    content: [
+      '# USER',
+      '<!-- 例如：- 助手称呼用户：老大 -->',
+      '<!-- 多行示例',
+      '- 当前用户称呼助手：小舟',
+      '-->',
+      '- 默认称呼：朋友 <!-- 编写提示 -->',
+      '## 观察推断',
+      '<!-- 推断权威说明 -->',
+      '- 通常偏好简短回复',
+      '<!-- 未闭合的编辑提示',
+      '- 不属于已保存事实',
+    ].join('\n'),
+  }
+  const original = structuredClone(document)
+  const context = buildMemoryContext({ memories: [document] })
+  assert.match(context, /<user_preferences revision="raw-revision">/u)
+  assert.match(context, /默认称呼：朋友/u)
+  assert.match(context, /## 观察推断\n\n- 通常偏好简短回复/u)
+  assert.doesNotMatch(context, /老大|小舟|示例|提示|不属于已保存事实|<!--/u)
+  assert.deepEqual(document, original, 'projection must not change API/edit content or revision')
+})
+
+test('filters comments in factual Markdown but preserves an injected plain-text provider format', () => {
+  assert.equal(buildMemoryContext({ memories: [{
+    scope: 'memory', format: 'markdown', content: '<!-- 例如：喜欢吃烧烤 -->',
+  }] }), '')
+  const content = '用户偏好保留文本标记 <!-- literal -->'
+  const context = buildMemoryContext({ memories: [{ scope: 'memory', format: 'text', content }] })
+  assert.ok(context.includes(content))
+})
+
+test('preserves the existing observed-preference notice without extending system instructions', () => {
+  const document = {
+    scope: 'user', format: 'markdown', revision: 'raw-revision',
+    content: [
+      '<!-- 例如：- 助手称呼用户：老大 -->',
+      '## 用户明确要求',
+      '- 回答需完整',
+      renderObservedSection(['通常偏好简短回复']),
+    ].join('\n'),
+  }
+  const original = structuredClone(document)
+  const context = buildMemoryContext({ memories: [document] })
+  assert.ok(context.includes(PROMOTER_MARKERS.OBSERVED_NOTICE))
+  assert.ok(context.indexOf('回答需完整') < context.indexOf(PROMOTER_MARKERS.OBSERVED_NOTICE))
+  assert.match(context, /通常偏好简短回复/u)
+  assert.doesNotMatch(context, /老大|例如/u)
+  assert.deepEqual(document, original)
+})
+
+test('retains the existing truncation warning even when a template comment was cut short', () => {
+  const notice = '<!-- 内容过长，已截断；精确编辑前请缩小文档 -->'
+  for (const comment of ['<!-- 示例：未保存的偏好 -->', '<!-- 示例：未保存的偏好']) {
+    const document = {
+      scope: 'memory', format: 'markdown', revision: 'full-document-revision',
+      content: `- 用户喜欢散步\n${comment}\n\n${notice}`,
+    }
+    const original = structuredClone(document)
+    const context = buildMemoryContext({ memories: [document] })
+    assert.match(context, /用户喜欢散步/u)
+    assert.doesNotMatch(context, /示例|未保存的偏好/u)
+    assert.ok(context.includes(notice))
+    assert.match(context, /revision="full-document-revision"/u)
+    assert.deepEqual(document, original)
+  }
 })

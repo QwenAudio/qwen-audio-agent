@@ -8,7 +8,7 @@ import {
 } from 'node:fs'
 import { dirname, resolve, win32 } from 'node:path'
 
-import { userConfigDirectory } from './runtime-environment.mjs'
+import { resolveRuntimePaths } from './runtime-paths.mjs'
 
 const PATH_MARK = 'QWEN_AUDIO_AGENT_PATH'
 
@@ -45,7 +45,7 @@ export function fallbackPathDirectories(home) {
 }
 
 export function pathCacheFile(env = process.env) {
-  return resolve(userConfigDirectory(env), 'login-shell-path.json')
+  return resolve(resolveRuntimePaths({ env }).cacheDirectory, 'login-shell-path.json')
 }
 
 export function readPathCache(file) {

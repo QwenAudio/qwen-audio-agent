@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { InputBroker } from '../src/agent/acp/input-broker.mjs'
+import { InputBroker } from '../src/backend/adapters/acp/input-broker.mjs'
 
 test('ACP elicitation pauses and resumes the same backend work', async () => {
   const events = []

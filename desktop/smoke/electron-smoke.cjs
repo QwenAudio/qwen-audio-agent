@@ -1,10 +1,12 @@
-const { app, BrowserWindow, Menu, nativeImage, Tray } = require('electron')
+const { app, BrowserWindow, ipcMain, Menu, nativeImage, Tray } = require('electron')
 const { resolve } = require('node:path')
 
 let tray
 
 app.whenReady().then(async () => {
   app.dock?.hide()
+  await require('./settings-smoke.cjs')({ BrowserWindow, ipcMain })
+  await require('./permission-smoke.cjs')({ BrowserWindow })
   const window = new BrowserWindow({
     width: 120,
     height: 120,

@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 const examples = [
-  '../examples/backend-adapter/in-memory-backend.mjs',
   '../examples/smart-cockpit/bench/runner/run-voice.mjs',
 ]
 

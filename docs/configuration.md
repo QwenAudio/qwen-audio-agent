@@ -45,34 +45,62 @@ restart foreground runs, use `gateway restart` for installed services, or click 
 
 ## Configuration and Data Directories
 
-Default locations are below. CLI and Desktop are different entry points to the same assistant,
-but can run independent Gateways.
+The product root defaults to `~/.config/qwaudio`. Gateway and TUI manage their own files
+within it; ownership does not require a separate top-level directory for every process:
 
-| Data | CLI | Desktop |
+| Content | Default path, relative to root | Desktop and CLI |
 | --- | --- | --- |
-| Configuration, identity, memory, notes, shared workspace | `~/.config/qwaudio` | Shared with CLI |
-| Gateway lock, task state, sessions, logs | `~/.config/qwaudio` | System application data directory |
-| Pet skins and window state | Not applicable | System application data directory |
+| Settings, default persona, local identity | `config.env`, `ASSISTANT.md`, `identity.env` | Shared |
+| Preferences, memory, notes | `data/USER.md`, `data/MEMORY.md`, `data/frontend-notes.json` | Shared |
+| Default backend workspace | `data/workspace/` | Shared; separately configurable |
+| Imported documents and index | `data/knowledge/` | Shared |
+| Tasks, sessions, logs, locks, managed backend state | `state/` | Per Gateway |
+| Rebuildable Gateway cache | `cache/` | Disposable |
+| TUI connection profiles, credentials, instance locks and logs | `tui/` | Terminal Client only |
 
-Desktop application data directories:
+CLI-hosted Gateways default to `state/`; desktop-hosted Gateways use `state/desktop/`.
+They share configuration, memory and workspace, but keep tasks, sessions and runtime logs separate.
+Native backend sessions belong to the backend, not to the workspace's project files.
+
+| Environment variable | Purpose | Default |
+| --- | --- | --- |
+| `QWAUDIO_CONFIG_DIR` | Product root; set before startup | `$XDG_CONFIG_HOME/qwaudio`, or `~/.config/qwaudio` |
+| `QWAUDIO_DATA_DIR` | Shared user data | `<config-dir>/data` |
+| `QWAUDIO_STATE_DIR` | Current Gateway's persistent state | CLI: `<config-dir>/state`; desktop-hosted: `<config-dir>/state/desktop` |
+| `QWAUDIO_CACHE_DIR` | Rebuildable cache | `<config-dir>/cache` |
+| `QWAUDIO_WORKSPACE` | Default workspace for all backends | `<data-dir>/workspace` |
+
+Except for the product root itself, the Gateway directory options above can also be set in `config.env`.
+Prefer absolute paths. A backend-specific workspace, such as `QODER_WORKSPACE`, takes precedence.
+Independent Gateways must not share state directories. State is not cache: deleting it loses task
+and session history. Keep `identity.env` private; back up configuration, data and any needed state.
+
+Startup does not discover, merge or migrate old layouts. To retain existing projects and memory,
+explicitly configure their locations or arrange files while stopped. Old files are never deleted automatically.
+
+### Client Directories
+
+Desktop uses the platform application data directory:
 
 - macOS: `~/Library/Application Support/Qwen Audio Agent`
 - Windows: `%APPDATA%/Qwen Audio Agent`
-- Linux: `~/.config/Qwen Audio Agent`
+- Linux: `$XDG_CONFIG_HOME/Qwen Audio Agent`, defaulting to `~/.config/Qwen Audio Agent`
 
-The shared directory contains `config.env` for settings, `ASSISTANT.md` for the default persona,
-`USER.md` for preferences, and `MEMORY.md` for facts. The automatically generated `state.env`
-contains local identity secrets; do not share it. See [Personalization](reference/personalization.md)
-and [Memory](reference/memory.md).
+`settings.env` stores the Gateway connection address, language, appearance and wake preferences;
+`ui-state.json` stores window placement and client session identifiers. Connection credentials,
+`skins/`, `cache/` (including wake-word models) and `logs/` also belong to the client.
+Electron manages browser storage. Voice service and backend settings from the same settings page
+are still written to the Gateway's `config.env`.
 
-Advanced users can set `QWAUDIO_DATA_DIR` for shared assets. `QWAUDIO_CONFIG_DIR` explicitly
-overrides the runtime directory and also isolates assets unless a separate data directory is set.
-`XDG_CONFIG_HOME` affects the CLI default. Overrides change the default isolation; do not share task
-or identity files between unrelated instances.
+TUI connection profiles and credentials live in `<config-dir>/tui/`, defaulting to
+`~/.config/qwaudio/tui/`, alongside instance locks and diagnostic logs. The CLI's
+`connect`, `disconnect` and `tui` commands manage these files; Gateway never reads or writes them.
 
-Upgrades only backfill missing shared assets from older Desktop installations. Existing files on
-both sides are not automatically overwritten or merged. Stop applications using these directories
-before backing up configuration and data. Log rotation is not conversation-history management.
+Changing `QWAUDIO_CONFIG_DIR` also relocates TUI state. Changing Gateway-only
+`QWAUDIO_DATA_DIR`, `QWAUDIO_STATE_DIR` or `QWAUDIO_CACHE_DIR` does not.
+Set `QWAUDIO_TUI_DIR` before startup only when a separate location is needed.
+None of these variables relocate the Desktop application directory.
+WebUI authentication, language and session identifiers use browser cookies and local storage.
 
 ## Configure by Need
 

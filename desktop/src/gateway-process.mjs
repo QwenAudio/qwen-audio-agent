@@ -7,8 +7,9 @@ import {
 } from '../../shared/backend/catalog.mjs'
 import {
   resolveRealtimeFrontendConfiguration,
-  resolveDashScopeRealtimeModelProfile,
 } from '../../shared/realtime-provider-catalog.mjs'
+
+import { migrateRealtimeFileEnvironment, mergeRealtimeEnvironment } from '../../shared/realtime-provider-definitions.mjs'
 
 // Gateway 子进程托管器随包发布（宿主与桌面版共用同一份实现，防漂移）；
 // 本文件只保留桌面特有的环境构建与兼容性检查。
@@ -53,13 +54,7 @@ export function desktopGatewayEnvironment({
   sourceRoot = '',
   platform = process.platform,
 } = {}) {
-  const merged = {
-    ...env,
-    ...configured,
-  }
-  if (Object.hasOwn(configured, 'DASHSCOPE_API_KEY')) {
-    merged.QWEN_AUDIO_REALTIME_API_KEY = configured.DASHSCOPE_API_KEY
-  }
+  const merged = mergeRealtimeEnvironment(env, migrateRealtimeFileEnvironment(configured))
   // Wake-word capture and inference belong to the Desktop Client. Do not leak
   // that client preference or its model path into the Gateway child process.
   delete merged.QWEN_AUDIO_WAKE_WORD_ENABLED
@@ -87,10 +82,8 @@ export function desktopGatewayCompatibility(health, env = process.env) {
     const actualModel = String(
       health.realtimeModelProfile?.id || health.realtimeModel,
     ).trim()
-    const expectedModel = resolveDashScopeRealtimeModelProfile(
-      expectedRealtime.dashscopeModel,
-    ).id
-    if (expectedRealtime.provider === 'dashscope' && actualModel !== expectedModel) {
+    const expectedModel = expectedRealtime.active.model
+    if (expectedModel && actualModel !== expectedModel) {
       return {
         compatible: false,
         code: 'realtime-model',
@@ -99,8 +92,8 @@ export function desktopGatewayCompatibility(health, env = process.env) {
     }
   }
   if (
-    health?.realtimeProvider !== expectedRealtime.provider
-    || health?.realtimeConfigurationSignature !== expectedRealtime.signature
+    health?.realtimeProvider !== expectedRealtime.active.provider
+    || health?.realtimeConfigurationSignature !== expectedRealtime.active.signature
   ) {
     return {
       compatible: false,

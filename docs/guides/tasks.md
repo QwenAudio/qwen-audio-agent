@@ -36,9 +36,12 @@ can ask for your decision. Express it naturally:
 
 | Decision | Effect |
 | --- | --- |
-| Allow once | Allows the current request only. |
+| Allow task | Allows this task and its subsequent operations until completion, failure, or cancellation; other tasks require their own approval. |
 | Always allow | Allows subsequent Gateway-managed permission requests in the current frontend session, not a permanent change to every backend. |
 | Reject | Rejects the current request. |
+
+Ordinary consent means “Allow task,” including subsequent write or delete operations within that task.
+Grants live only in the current Gateway process; restarting it requires fresh approval.
 
 If multiple work items await authorization, identify which one you mean. Not every backend exposes
 permission events. The frontend cannot create a sandbox for a backend that lacks approval support.

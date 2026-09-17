@@ -14,8 +14,9 @@ import {
   loadRuntimeEnvironment,
   requireDashScopeCredential,
   requireRealtimeFrontendConfiguration,
-  userConfigDirectory,
 } from '../../shared/runtime-environment.mjs'
+
+import { userConfigDirectory } from '../../shared/runtime-paths.mjs'
 
 function fixture() {
   const base = mkdtempSync(resolve(tmpdir(), 'qwaudio-config-'))
@@ -94,7 +95,7 @@ test('generates and reuses a private stable local identity secret', () => {
   })
   assert.equal(result.generatedSecret, true)
   assert.equal(first.QWEN_AUDIO_AGENT_AUTH_SECRET.length, 64)
-  assertPrivateMode(result.statePath)
+  assertPrivateMode(result.identityPath)
 
   const second = {}
   loadRuntimeEnvironment({
@@ -106,7 +107,7 @@ test('generates and reuses a private stable local identity secret', () => {
     second.QWEN_AUDIO_AGENT_AUTH_SECRET,
     first.QWEN_AUDIO_AGENT_AUTH_SECRET,
   )
-  assert.match(readFileSync(result.statePath, 'utf8'), /AUTH_SECRET=/)
+  assert.match(readFileSync(result.identityPath, 'utf8'), /AUTH_SECRET=/)
   const configContent = readFileSync(result.configPath, 'utf8')
   assert.match(configContent, /DASHSCOPE_API_KEY=/)
   assert.match(
@@ -153,7 +154,8 @@ test('does not overwrite an existing user model', () => {
   const target = fixture()
   const configDirectory = resolve(target.homeDirectory, '.config/qwaudio')
   mkdirSync(configDirectory, { recursive: true })
-  const userModelPath = resolve(configDirectory, 'USER.md')
+  mkdirSync(resolve(configDirectory, 'data'), { recursive: true })
+  const userModelPath = resolve(configDirectory, 'data/USER.md')
   writeFileSync(userModelPath, '# USER\n\n- 称呼：老大\n')
 
   const result = loadRuntimeEnvironment({
@@ -218,7 +220,7 @@ test('keeps managed backend data outside the installation directory', () => {
   // 所有后台默认共享同一个托管 workspace，均在安装目录之外。
   assert.equal(
     result.sharedWorkspace,
-    resolve(result.configDirectory, 'workspace'),
+    resolve(result.dataDirectory, 'workspace'),
   )
   for (const workspace of [
     result.openCodeWorkspace,
@@ -238,7 +240,7 @@ test('keeps managed backend data outside the installation directory', () => {
   }
   assert.equal(
     result.openClawStateDirectory,
-    resolve(result.configDirectory, 'backends/openclaw/state'),
+    resolve(result.stateDirectory, 'backends/openclaw'),
   )
   assert.equal(env.OPENCODE_WORKSPACE, result.openCodeWorkspace)
   assert.equal(
@@ -316,52 +318,6 @@ test('desktop client setup does not require packaged backend templates', () => {
   assert.equal(env.ACP_WORKSPACE, undefined)
 })
 
-test('migrates private runtime data into the user config directory', () => {
-  const target = fixture()
-  const legacyDirectory = resolve(target.root, 'runtime')
-  mkdirSync(legacyDirectory, { recursive: true })
-  const legacyMemory = resolve(legacyDirectory, 'frontend-memory.json')
-  const legacyTasks = resolve(legacyDirectory, 'tasks.json')
-  writeFileSync(legacyMemory, JSON.stringify({
-    version: 1,
-    users: {
-      user_personal: {
-        old_memory: { value: '用户喜欢篮球', scope: 'memory' },
-        old_user: { value: '称呼用户为船长', scope: 'user' },
-      },
-    },
-  }))
-  writeFileSync(legacyTasks, '{\"tasks\":true}')
-
-  const result = loadRuntimeEnvironment({
-    root: target.root,
-    homeDirectory: target.homeDirectory,
-    env: {},
-    generateSecret: false,
-  })
-
-  assert.equal(
-    result.frontendMemoryPath,
-    resolve(result.configDirectory, 'MEMORY.md'),
-  )
-  assert.equal(
-    result.taskStatePath,
-    resolve(result.configDirectory, 'tasks.json'),
-  )
-  assert.match(readFileSync(result.frontendMemoryPath, 'utf8'), /用户喜欢篮球/)
-  assert.match(readFileSync(result.userModelPath, 'utf8'), /称呼用户为船长/)
-  assert.equal(readFileSync(result.taskStatePath, 'utf8'), '{\"tasks\":true}')
-  assertPrivateMode(result.frontendMemoryPath)
-  assertPrivateMode(result.taskStatePath)
-  assert.equal(existsSync(legacyMemory), false)
-  assert.equal(existsSync(legacyTasks), false)
-  assert.deepEqual(new Set(result.migratedFiles), new Set([
-    result.frontendMemoryPath,
-    result.userModelPath,
-    result.taskStatePath,
-  ]))
-})
-
 test('requires only a DashScope credential from the user', () => {
   assert.doesNotThrow(() => requireDashScopeCredential({
     DASHSCOPE_API_KEY: 'key',
@@ -397,12 +353,13 @@ test('does not require a DashScope credential for MiniCPM-o', () => {
   }))
 })
 
-test('splits assets into QWAUDIO_DATA_DIR while runtime state stays put', () => {
+test('separates configuration, shared data and instance state', () => {
   const target = fixture()
   const runtimeDir = resolve(target.base, 'desktop-runtime')
   const dataDir = resolve(target.homeDirectory, '.config/qwaudio')
   const env = {
-    QWAUDIO_CONFIG_DIR: runtimeDir,
+    QWAUDIO_CONFIG_DIR: resolve(target.base, 'config'),
+    QWAUDIO_STATE_DIR: runtimeDir,
     QWAUDIO_DATA_DIR: dataDir,
   }
   const result = loadRuntimeEnvironment({
@@ -410,26 +367,27 @@ test('splits assets into QWAUDIO_DATA_DIR while runtime state stays put', () => 
     homeDirectory: target.homeDirectory,
     env,
   })
-  assert.equal(result.configDirectory, runtimeDir)
+  assert.equal(result.configDirectory, resolve(target.base, 'config'))
+  assert.equal(result.stateDirectory, runtimeDir)
   assert.equal(result.dataDirectory, dataDir)
-  // 资产（配置、身份、记忆、清单、workspace）落共享资产目录。
-  assert.equal(result.configPath, resolve(dataDir, 'config.env'))
+  // Configuration stays in configDirectory; memory and workspace are data.
+  assert.equal(result.configPath, resolve(result.configDirectory, 'config.env'))
   assert.equal(result.userModelPath, resolve(dataDir, 'USER.md'))
   assert.equal(result.frontendMemoryPath, resolve(dataDir, 'MEMORY.md'))
   assert.equal(result.frontendNotesPath, resolve(dataDir, 'frontend-notes.json'))
   assert.equal(result.sharedWorkspace, resolve(dataDir, 'workspace'))
-  assert.equal(result.statePath, resolve(dataDir, 'state.env'))
+  assert.equal(result.identityPath, resolve(result.configDirectory, 'identity.env'))
   // 运行时状态留在各形态自己的目录，双实例互不干扰。
   assert.equal(result.taskStatePath, resolve(runtimeDir, 'tasks.json'))
   assert.equal(
     result.openClawStateDirectory,
-    resolve(runtimeDir, 'backends/openclaw/state'),
+    resolve(runtimeDir, 'backends/openclaw'),
   )
   assertPrivateMode(result.configPath)
-  assertPrivateMode(result.statePath)
+  assertPrivateMode(result.identityPath)
 })
 
-test('keeps assets beside runtime state without QWAUDIO_DATA_DIR', () => {
+test('uses separate data and state subdirectories by default', () => {
   const target = fixture()
   const env = {}
   const result = loadRuntimeEnvironment({
@@ -437,13 +395,14 @@ test('keeps assets beside runtime state without QWAUDIO_DATA_DIR', () => {
     homeDirectory: target.homeDirectory,
     env,
   })
-  assert.equal(result.dataDirectory, result.configDirectory)
+  assert.equal(result.dataDirectory, resolve(result.configDirectory, 'data'))
+  assert.equal(result.stateDirectory, resolve(result.configDirectory, 'state'))
   assert.equal(
     result.configPath,
     resolve(result.configDirectory, 'config.env'),
   )
   assert.equal(
     result.taskStatePath,
-    resolve(result.configDirectory, 'tasks.json'),
+    resolve(result.stateDirectory, 'tasks.json'),
   )
 })

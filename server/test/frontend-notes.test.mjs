@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import {
   existsSync,
   mkdtempSync,
@@ -167,18 +169,41 @@ test('reloads from disk when another instance updated the shared file', t => {
 
 test('serializes concurrent writes from independent Gateway processes', async t => {
   const root = mkdtempSync(join(tmpdir(), 'frontend-notes-processes-'))
-  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const children = []
+  t.after(async () => {
+    await Promise.all(children.filter(child => child.pid && child.exitCode === null && !child.signalCode)
+      .map(child => new Promise(resolvePromise => {
+        child.once('exit', resolvePromise)
+        child.kill()
+      })))
+    rmSync(root, { recursive: true, force: true })
+  })
   const filePath = join(root, 'frontend-notes.json')
   const moduleUrl = new URL('../src/conversation/frontend-notes.mjs', import.meta.url).href
   const items = Array.from({ length: 12 }, (_, index) => `item-${index}`)
+  const rounds = 4
+  let ready = 0
   const script = `
     import { FrontendNotesStore } from ${JSON.stringify(moduleUrl)}
     const store = new FrontendNotesStore({ filePath: process.argv[1] })
-    store.add('owner-a', { list: 'shared', items: [process.argv[2]] })
+    process.once('message', () => {
+      for (let round = 0; round < ${rounds}; round += 1) {
+        store.add('owner-a', { list: 'shared', items: [process.argv[2] + '-' + round] })
+        store.show('owner-a', 'shared')
+      }
+      process.disconnect()
+    })
+    process.send('ready')
   `
   await Promise.all(items.map(item => new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, ['--input-type=module', '-e', script, filePath, item], {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    })
+    children.push(child)
+    // Start every writer together, rather than relying on process launch timing.
+    child.once('message', () => {
+      ready += 1
+      if (ready === items.length) children.forEach(writer => writer.send('start'))
     })
     let stderr = ''
     child.stderr.setEncoding('utf8')
@@ -191,5 +216,52 @@ test('serializes concurrent writes from independent Gateway processes', async t 
   })))
 
   const result = new FrontendNotesStore({ filePath }).show('owner-a', 'shared')
-  assert.deepEqual(result.items.map(item => item.text).sort(), items.sort())
+  const expected = items.flatMap(item => Array.from({ length: rounds }, (_, round) => `${item}-${round}`))
+  assert.deepEqual(result.items.map(item => item.text).sort(), expected.sort())
 })
+
+for (const operation of ['initialize', 'refresh']) {
+  test(`holds the shared lock while reading notes to ${operation}`, t => {
+    const root = mkdtempSync(join(tmpdir(), 'frontend-notes-read-lock-'))
+    t.after(() => rmSync(root, { recursive: true, force: true }))
+    const filePath = join(root, 'frontend-notes.json')
+    const first = new FrontendNotesStore({ filePath })
+    first.add('owner-a', { list: 'shared', items: ['first'] })
+    const reader = operation === 'refresh' ? new FrontendNotesStore({ filePath }) : null
+    first.add('owner-a', { list: 'shared', items: ['second'] })
+
+    const originalRead = fs.readFileSync
+    let reads = 0
+    const mocked = t.mock.method(fs, 'readFileSync', (path, ...args) => {
+      if (path === filePath) {
+        reads += 1
+        // Model the Windows replacement window: an unlocked reader can get
+        // EPERM rather than a valid snapshot. Locked readers cannot overlap it.
+        if (!existsSync(`${filePath}.lock`)) {
+          throw Object.assign(new Error('file is being replaced'), { code: 'EPERM' })
+        }
+      }
+      return originalRead(path, ...args)
+    })
+    syncBuiltinESMExports()
+    t.after(() => {
+      mocked.mock.restore()
+      syncBuiltinESMExports()
+    })
+    const warnings = []
+    const store = reader || new FrontendNotesStore({
+      filePath,
+      onWarning: warning => warnings.push(warning),
+    })
+    if (reader) reader.onWarning = warning => warnings.push(warning)
+    const result = store.show('owner-a', 'shared')
+    assert.equal(result.status, 'ok')
+    assert.deepEqual(result.items.map(item => item.text), [
+      'first', 'second',
+    ])
+    assert.ok(reads > 0)
+    assert.equal(store.health().persistenceEnabled, true)
+    assert.deepEqual(warnings, [])
+    assert.equal(existsSync(`${filePath}.lock`), false)
+  })
+}

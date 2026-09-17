@@ -25,22 +25,25 @@ iPhone 真机测试需使用 Xcode 与开发签名。当前没有应用商店正
    qwenaudio gateway --tailnet
    ```
 
-   服务器也可以自行配置带可信证书的 HTTPS 反向代理，再用
-   `qwenaudio gateway --public-url https://voice.example.com` 声明公开地址。
+   服务器也可以自行配置带可信证书的 HTTPS 反向代理；代理在另一台机器时，Gateway
+   使用 `--lan` 启动。
 2. 在电脑的另一个终端生成连接码：
 
    ```bash
    qwenaudio gateway pair
    ```
 
+   使用反向代理时执行 `qwenaudio gateway pair --endpoint https://voice.example.com`。
+
    移动端扫描二维码或粘贴连接码；桌面版也可以使用同一个连接码。
 3. 首次通话时允许麦克风权限。以后会自动重连；若其他客户端正在使用，移动端会先请求
    接管确认。
 
-连接码短时有效且只能使用一次，配对后换成独立、可撤销的设备凭据。使用
+连接码包含独立、可撤销的设备凭据，只在网关主机显示一次；移动端导入后直接通过同一条
+WSS 完成认证与业务，不再调用 HTTPS 配对接口。使用
 `qwenaudio gateway devices` 查看设备，使用 `qwenaudio gateway revoke <设备 ID>` 撤销。
-Private Tailnet 地址只在同一 Tailnet 内可达；外部 HTTPS 模式由用户负责证书、反向代理
-和防火墙。两种方式共用同一套配对与客户端协议。底层机制和高级排障见
+Private Tailnet 地址只在同一 Tailnet 内可达；使用外部 HTTPS Endpoint 时由用户负责证书、
+反向代理和防火墙。所有方式共用同一套配对与客户端协议。底层机制和高级排障见
 [远程访问安全](../operations/remote-access.zh.md)。
 
 ## 开发构建
@@ -54,8 +57,8 @@ npm run mobile:android
 ```
 
 iOS 构建需要完整 Xcode；Android 构建需要 JDK 21 和 Android SDK。`mobile:sync` 会先构建
-本地 Web 资源，再同步到 Capacitor 原生工程。Gateway 地址必须是 HTTPS；移动端不会把
-设备凭据降级发送到明文 WebSocket。
+本地 Web 资源，再同步到 Capacitor 原生工程。公网 Gateway 地址必须是 HTTPS；显式 LAN
+连接允许使用带 Token 的 `ws://局域网IP`。
 
 GitHub 的 `Mobile` 工作流会保存 Android debug APK 和 iOS Simulator App，便于在没有
 本地原生工具链时下载验收。iOS 真机安装仍需要 Apple 开发签名。

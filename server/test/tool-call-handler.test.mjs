@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { TaskManager } from '../src/task/task-manager.mjs'
-import { ToolCallHandler } from '../src/voice/tools/tool-call-handler.mjs'
+import { ToolCallHandler } from '../src/frontend/tools/tool-call-handler.mjs'
 import { FrontendNotesStore } from '../src/conversation/frontend-notes.mjs'
-import { SessionPermissionPolicy } from '../src/voice/session-permission-policy.mjs'
-import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
-import { permissionReference } from '../src/voice/tools/permission-reference.mjs'
+import { PermissionPolicy } from '../src/task/permission-policy.mjs'
+import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
+import { REALTIME_PROVIDERS, RealtimeFrontend } from '../src/voice/realtime-provider.mjs'
 
 function harness({
   coordinator,
@@ -28,6 +28,7 @@ function harness({
   frontendToolSources,
   disabledTools,
   getTurnId = () => 'turn-one',
+  getTurnGeneration = () => 1,
 } = {}) {
   const outputs = []
   const toolResultsReady = []
@@ -44,7 +45,7 @@ function harness({
     transcripts,
     getFrontend: () => frontend,
     getTurnId,
-    getTurnGeneration: () => 1,
+    getTurnGeneration,
     backendRuntime: coordinator || {
       run: async () => ({ content: '完成', metadata: {} }),
       cancel: async taskId => ({ taskId, state: 'cancelled' }),
@@ -206,6 +207,304 @@ test('executes an explicitly enabled state-changing external tool inline', async
     turnId: 'turn-one',
     toolName: 'mcp__cockpit__vehicle_window_control',
   }])
+})
+
+function responseToolSource(names, execute) {
+  return {
+    tools: () => names.map(name => ({
+      name,
+      definition: {
+        type: 'function',
+        function: { name, parameters: { type: 'object', properties: {} } },
+      },
+      policy: { maxCallsPerTurn: 4, maxResultBytes: 2_048 },
+    })),
+    execute,
+  }
+}
+
+function responseToolCall(handler, callId, name, responseId = 'response-tools', args = {}) {
+  return handler.handle({
+    call_id: callId,
+    name,
+    response_id: responseId,
+    arguments: JSON.stringify(args),
+  }, { turnId: 'turn-one', turnGeneration: 1, responseId })
+}
+
+test('waits for all external results and response.done before one follow-up', async () => {
+  const slow = Promise.withResolvers()
+  const names = ['mcp__car__climate', 'mcp__car__window', 'mcp__car__light']
+  const completed = []
+  const kit = harness({ frontendToolSources: [responseToolSource(names, async name => {
+    if (name === names[0]) await slow.promise
+    completed.push(name)
+    if (name === names[2]) throw new Error('device unavailable')
+    return { status: 'ok', name }
+  })] })
+
+  const first = responseToolCall(kit.handler, 'slow', names[0])
+  await Promise.all([
+    responseToolCall(kit.handler, 'fast', names[1]),
+    responseToolCall(kit.handler, 'failed', names[2]),
+  ])
+  await kit.handler.finishToolResponse('response-tools')
+  assert.deepEqual(completed, [names[1], names[2]])
+  assert.equal(kit.outputs.length, 2)
+  assert.equal(kit.outputs[1][1].error_code, 'external_tool_unavailable')
+  assert.equal(kit.ensuredResponses.length, 0)
+
+  slow.resolve()
+  await first
+  assert.deepEqual(kit.outputs.map(output => output[0]), ['fast', 'failed', 'slow'])
+  assert.ok(kit.outputs.every(output => output[3].createResponse === false))
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('a single external result waits for source completion without changing uncorrelated calls', async () => {
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async () => ({ status: 'ok' }))] })
+  await responseToolCall(kit.handler, 'single', name)
+  assert.equal(kit.outputs[0][3].createResponse, false)
+  assert.equal(kit.ensuredResponses.length, 0)
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.ensuredResponses.length, 1)
+
+  await responseToolCall(kit.handler, 'legacy', name, '', { action: 'close' })
+  assert.equal(kit.outputs[1][3].createResponse, undefined)
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('batches normal built-ins, deferred memory tools and MCP in the same response', async () => {
+  const slow = Promise.withResolvers()
+  const name = 'mcp__car__window'
+  const kit = harness({
+    frontendToolSources: [responseToolSource([name], () => slow.promise)],
+    memoryStore: { apply: () => ({ changed: 1, documents: [] }) },
+  })
+  // A normal built-in can arrive first, before MCP or an existing deferred tool.
+  await responseToolCall(kit.handler, 'time', 'get_current_time')
+  const external = responseToolCall(kit.handler, 'window', name)
+  await responseToolCall(kit.handler, 'memory', 'memory', 'response-tools', {
+    action: 'append', document: 'memory', content: '- 喜欢安静',
+  })
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.ensuredResponses.length, 0)
+  slow.resolve({ status: 'ok' })
+  await external
+  assert.equal(kit.outputs.length, 3)
+  assert.ok(kit.outputs.every(output => output[3].createResponse === false))
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('an early spoken acknowledgement does not swallow pending external results', async () => {
+  const slow = Promise.withResolvers()
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], () => slow.promise)] })
+  const pending = responseToolCall(kit.handler, 'window', name)
+  assert.equal(kit.handler.requiresToolResultSummary('response-tools'), true)
+  await kit.handler.finishToolResponse('response-tools', { sourceHasSpeech: true })
+  slow.resolve({ status: 'ok' })
+  await pending
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('slow built-in searches are marked as result-bearing before response.done', async () => {
+  const result = Promise.withResolvers()
+  const kit = harness({ frontendRetrieval: {
+    capabilities: () => ['web-search'],
+    search: () => result.promise,
+  } })
+  const pending = responseToolCall(kit.handler, 'search', 'web_search', 'response-tools', { query: '天气' })
+  assert.equal(kit.handler.requiresToolResultSummary('response-tools'), true)
+  await kit.handler.finishToolResponse('response-tools', { sourceHasSpeech: true })
+  assert.equal(kit.ensuredResponses.length, 0)
+  result.resolve({ status: 'ok', text: '晴天' })
+  await pending
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('memory reads need their results even after speech, but automatic writes stay quiet', async () => {
+  const result = Promise.withResolvers()
+  const kit = harness({ memoryStore: {
+    query: () => result.promise,
+    apply: () => ({ changed: 1, documents: [] }),
+  } })
+  const pending = responseToolCall(kit.handler, 'read', 'memory', 'response-read', {
+    action: 'read', query: '我的偏好',
+  })
+  assert.equal(kit.handler.requiresToolResultSummary('response-read'), true)
+  await kit.handler.finishToolResponse('response-read', { sourceHasSpeech: true })
+  result.resolve({ memories: [], context: '用户喜欢安静' })
+  await pending
+  assert.equal(kit.ensuredResponses.length, 1)
+
+  await responseToolCall(kit.handler, 'write', 'memory', 'response-write', {
+    action: 'append', document: 'memory', content: '- 喜欢安静',
+  })
+  assert.equal(kit.handler.requiresToolResultSummary('response-write'), false)
+  await kit.handler.finishToolResponse('response-write', { sourceHasSpeech: true })
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('mixed cancellation receipts retain their constraints without hiding other tool results', async () => {
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async () => ({ status: 'ok' }))] })
+  await Promise.all([
+    responseToolCall(kit.handler, 'cancel', 'cancel_agent_task'),
+    responseToolCall(kit.handler, 'window', name),
+  ])
+  await kit.handler.finishToolResponse('response-tools', { sourceHasSpeech: true })
+  assert.equal(kit.ensuredResponses.length, 1)
+  const instructions = kit.ensuredResponses[0][1].response.instructions
+  assert.match(instructions, /不要再次查询或取消/)
+  assert.match(instructions, /单项工具的回执说明仅约束该工具/)
+  assert.match(instructions, /全部工具的实际结果合并回复/)
+})
+
+test('explicitly silent tools remain silent after their source response completes', async () => {
+  const kit = harness({ presenceController: {
+    supportsSleep: () => true,
+    requestSleep: async () => {},
+  } })
+  await responseToolCall(kit.handler, 'sleep', 'enter_sleep')
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.outputs[0][1].status, 'sleeping')
+  assert.equal(kit.outputs[0][3].createResponse, false)
+  assert.equal(kit.ensuredResponses.length, 0)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+})
+
+test('cancelled source responses backfill results but never start a follow-up', async () => {
+  const slow = Promise.withResolvers()
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], () => slow.promise)] })
+  const pending = responseToolCall(kit.handler, 'window', name)
+  await kit.handler.finishToolResponse('response-tools', { suppressResponse: true })
+  slow.resolve({ status: 'ok' })
+  await pending
+  assert.equal(kit.outputs.length, 1)
+  assert.equal(kit.ensuredResponses.length, 0)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+})
+
+test('old-turn results cannot start or retain a queued follow-up after interruption', async () => {
+  let generation = 1
+  const slow = Promise.withResolvers()
+  const name = 'mcp__car__window'
+  const kit = harness({
+    getTurnGeneration: () => generation,
+    frontendToolSources: [responseToolSource([name], (_name, args) => (
+      args.slow ? slow.promise : { status: 'ok' }
+    ))],
+  })
+  await responseToolCall(kit.handler, 'first', name)
+  await kit.handler.finishToolResponse('response-tools')
+  const queuedGuard = kit.ensuredResponses[0][1].shouldCreate
+  assert.equal(queuedGuard(), true)
+  const pending = responseToolCall(kit.handler, 'slow', name, 'response-later', { slow: true })
+  await kit.handler.finishToolResponse('response-later')
+  generation = 2
+  slow.resolve({ status: 'ok' })
+  await pending
+  assert.equal(queuedGuard(), false)
+  assert.equal(kit.ensuredResponses.length, 1)
+})
+
+test('failed result delivery closes the batch instead of replying with missing results', async () => {
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async () => ({ status: 'ok' }))] })
+  kit.handler.getFrontend = () => ({
+    sendFunctionOutput: async () => { throw new Error('connection closed') },
+    ensureResponse: async () => { assert.fail('must not request a response') },
+  })
+  await assert.rejects(responseToolCall(kit.handler, 'window', name), /connection closed/)
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+})
+
+test('later model responses get their own result batch while duplicate call IDs remain ignored', async () => {
+  const executed = []
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async (_name, args) => {
+    executed.push(args.action)
+    return { status: 'ok' }
+  })] })
+  await responseToolCall(kit.handler, 'open', name, 'response-open', { action: 'open' })
+  await kit.handler.finishToolResponse('response-open')
+  await responseToolCall(kit.handler, 'close', name, 'response-close', { action: 'close' })
+  await responseToolCall(kit.handler, 'close', name, 'response-close', { action: 'close' })
+  await kit.handler.finishToolResponse('response-close')
+  assert.deepEqual(executed, ['open', 'close'])
+  assert.equal(kit.outputs.length, 2)
+  assert.equal(kit.ensuredResponses.length, 2)
+})
+
+test('the provider sends every function output before the single result response', async () => {
+  const slow = Promise.withResolvers()
+  const names = ['mcp__car__climate', 'mcp__car__window']
+  const kit = harness({ frontendToolSources: [responseToolSource(names, async name => {
+    if (name === names[0]) await slow.promise
+    return { status: 'ok', name }
+  })] })
+  const frontend = new RealtimeFrontend({ provider: REALTIME_PROVIDERS.qwen })
+  const sent = []
+  frontend.ready = true
+  // A local wire-level peer acknowledges items and the final response; no
+  // socket, cloud service or paid model is involved.
+  frontend.send = payload => {
+    sent.push(payload)
+    queueMicrotask(() => {
+      if (payload.type === 'conversation.item.create') {
+        frontend.handleLifecycle({ type: 'conversation.item.created', item: payload.item })
+      } else if (payload.type === 'response.create') {
+        frontend.handleLifecycle({ type: 'response.created', response: { id: 'summary' } })
+        frontend.handleLifecycle({ type: 'response.done', response: { id: 'summary', status: 'completed' } })
+      }
+    })
+  }
+  kit.handler.getFrontend = () => frontend
+  frontend.handleLifecycle({ type: 'response.created', response: { id: 'response-tools' } })
+  const pending = [
+    responseToolCall(kit.handler, 'slow', names[0]),
+    responseToolCall(kit.handler, 'fast', names[1]),
+  ]
+  await kit.handler.finishToolResponse('response-tools')
+  frontend.handleLifecycle({ type: 'response.done', response: { id: 'response-tools', status: 'completed' } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+  assert.equal(sent[0].item.call_id, 'fast')
+  slow.resolve()
+  await Promise.all(pending)
+  assert.deepEqual(sent.map(event => event.type), [
+    'conversation.item.create', 'conversation.item.create', 'response.create',
+  ])
+  assert.equal(sent[1].item.call_id, 'slow')
+  assert.equal(frontend.conversationItemWaiters.size, 0)
+  assert.equal(frontend.pendingResponses.length, 0)
+})
+
+test('batched status results retain task-notification acknowledgement context', async () => {
+  const name = 'mcp__car__window'
+  const kit = harness({ frontendToolSources: [responseToolSource([name], async () => ({ status: 'ok' }))] })
+  const task = kit.manager.create({
+    objective: '查询内存', ownerId: 'owner', sessionId: 'voice',
+    runner: async () => ({ content: '24 GB' }),
+  })
+  await kit.manager.wait(task.id)
+  await Promise.all([
+    responseToolCall(kit.handler, 'status', 'get_agent_task_status'),
+    responseToolCall(kit.handler, 'window', name),
+  ])
+  await kit.handler.finishToolResponse('response-tools')
+  assert.equal(kit.ensuredResponses.length, 1)
+  assert.deepEqual(kit.ensuredResponses[0][0], {
+    turnId: 'turn-one', turnGeneration: 1,
+    taskId: task.id, taskIds: [task.id], consumesTaskNotification: true,
+  })
 })
 
 function taskForId(manager, taskId) {
@@ -395,17 +694,21 @@ test('blocks an exact repeated inline tool call within one turn', async () => {
 async function permissionHarness({
   answer,
   authorizationId = 'auth-one',
+  ownerId = 'owner',
+  sessionId = 'voice',
   respondPermission,
   permissionPolicy,
   onPermissionDeliveryFailed,
 }) {
   const manager = new TaskManager()
   let release
+  let backendEvent
   const task = manager.create({
     objective: '执行等待授权的操作',
-    ownerId: 'owner',
-    sessionId: 'voice',
+    ownerId,
+    sessionId,
     runner: async (_objective, { onEvent }) => {
+      backendEvent = onEvent
       onEvent({
         type: 'backend.permission.requested',
         permission: {
@@ -429,6 +732,12 @@ async function permissionHarness({
   return {
     ...kit,
     task,
+    onPermission: permission => {
+      kit.handler.forwardBackendEvent(task.id, {
+        type: `backend.permission.${permission.status === 'pending' ? 'requested' : 'resolved'}`,
+        permission,
+      }, backendEvent)
+    },
     finish: async () => {
       release({ content: '完成' })
       await manager.wait(task.id)
@@ -579,7 +888,7 @@ test('suppresses the receipt reply when the original response already spoke', as
     responseId: 'response-spoken-before-tool',
   })
   await kit.handler.finishToolResponse('response-spoken-before-tool', {
-    suppressResponse: true,
+    sourceHasSpeech: true,
   })
 
   assert.equal(kit.outputs[0][1].status, 'accepted')
@@ -620,7 +929,8 @@ test('accepts distinct spawn_thinking calls from one realtime response', async (
     output[1].message === '工作已受理，请自然确认一次，不要再次调用工具。'
   )))
   assert.equal(kit.ensuredResponses.length, 1)
-  assert.equal(kit.ensuredResponses[0][1], undefined)
+  assert.equal(kit.ensuredResponses[0][1].response, undefined)
+  assert.equal(kit.ensuredResponses[0][1].shouldCreate(), true)
   await Promise.all(kit.manager.list({ ownerId: 'owner' }).map(task => (
     kit.manager.wait(task.id)
   )))
@@ -898,6 +1208,29 @@ test('does not execute a disabled tool even if the model still sends its call', 
   })
   assert.equal(calls, 0)
   assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+})
+
+test('rejects unavailable memory with null arguments and clears call tracking', async () => {
+  const kit = harness()
+  const responseId = 'response-unavailable-memory'
+  const execution = await kit.handler.handle({
+    call_id: 'memory-null-arguments',
+    response_id: responseId,
+    name: 'memory',
+    arguments: 'null',
+  })
+
+  assert.equal(execution.executed, false)
+  assert.equal(execution.limit.reason, 'tool_unavailable')
+  assert.equal(kit.outputs.length, 1)
+  assert.equal(kit.outputs[0][1].error_code, 'tool_unavailable')
+  assert.equal(kit.outputs[0][1].retryable, false)
+  assert.equal(kit.handler.activeToolEntries.size, 0)
+  assert.equal(kit.handler.activeToolDebugEntries.size, 0)
+
+  await kit.handler.finishToolResponse(responseId)
+  assert.equal(kit.handler.deferredToolResponses.size, 0)
+  assert.equal(kit.ensuredResponses.length, 1)
 })
 
 test('search and page reading compose inline without a backend or created work', async () => {
@@ -1369,10 +1702,10 @@ test('queries delegated status directly from the Gateway ledger', async () => {
   await manager.wait(delegated.id)
 })
 
-test('allows one realtime permission without enabling later automatic approval', async () => {
+test('allows the current task without enabling session-wide automatic approval', async () => {
   const calls = []
   const answer = '你按刚才说的处理就成'
-  const permissionPolicy = new SessionPermissionPolicy()
+  const permissionPolicy = new PermissionPolicy()
   const kit = await permissionHarness({
     answer,
     permissionPolicy,
@@ -1389,9 +1722,8 @@ test('allows one realtime permission without enabling later automatic approval',
     call_id: 'permission-semantic-allow',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: kit.task.id,
-      decision: 'once',
+      permission_id: 'auth-one',
+      decision: 'task',
     }),
   })
 
@@ -1408,12 +1740,182 @@ test('allows one realtime permission without enabling later automatic approval',
     /已允许，后台继续执行/,
   )
   assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), false)
+  assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice', kit.task.id), true)
+  await kit.finish()
+})
+
+test('a sole permission needs only a natural decision, not permission_id or task_id', async t => {
+  for (const decision of ['task', 'always', 'reject']) {
+    await t.test(decision, async () => {
+      const calls = []
+      const kit = await permissionHarness({
+        answer: decision === 'reject' ? '先别做了' : '嗯，就按这个办',
+        respondPermission: async (id, value) => calls.push([id, value]),
+      })
+      // Recovery path: this handler did not receive the original permission event.
+      assert.equal(kit.handler.pendingBackendPermissions.size, 0)
+      await kit.handler.handle({
+        call_id: 'decision-only', name: 'respond_permission',
+        arguments: JSON.stringify({ decision }),
+      })
+      assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
+      assert.equal(kit.outputs.at(-1)[1].permission_id, 'auth-one')
+      assert.deepEqual(calls, [['auth-one', decision === 'reject' ? 'reject' : 'once']])
+      await kit.finish()
+    })
+  }
+})
+
+test('duplicate confirmations cannot expand a task grant to a session grant', async () => {
+  const calls = []
+  const permissionPolicy = new PermissionPolicy()
+  const kit = await permissionHarness({
+    answer: '可以',
+    permissionPolicy,
+    respondPermission: async (id, decision) => {
+      calls.push([id, decision])
+      kit.onPermission({ id, status: 'approved', summary: '查看项目目录' })
+    },
+  })
+  const decide = (callId, args) => kit.handler.handle({
+    call_id: callId, name: 'respond_permission', arguments: JSON.stringify(args),
+  })
+  await decide('first', { decision: 'task' })
+  assert.equal(kit.manager.get(kit.task.id).authorization, null)
+  // Tool is no longer advertised, but an already-generated duplicate call can
+  // still read its receipt without enabling a new authorization.
+  await decide('same-id', { permission_id: 'auth-one', decision: 'always' })
+  assert.equal(kit.outputs.at(-1)[1].status, 'already_submitted')
+  assert.equal(kit.outputs.at(-1)[1].decision, 'task')
+  kit.onPermission({ id: 'auth-next', status: 'pending', summary: '修改项目文件' })
+  await decide('same-turn', { decision: 'always' })
+  assert.equal(kit.outputs.at(-1)[1].permission_id, 'auth-one')
+  assert.equal(kit.outputs.at(-1)[1].status, 'already_submitted')
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(calls, [['auth-one', 'once'], ['auth-next', 'once']])
+  assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), false)
+  assert.equal(kit.manager.get(kit.task.id).authorization, null)
+  await kit.finish()
+})
+
+test('concurrent permissions require an ID and route even when the task card shows a newer request', async () => {
+  const calls = []
+  const policy = new PermissionPolicy()
+  const kit = await permissionHarness({
+    answer: '允许', permissionPolicy: policy,
+    respondPermission: async (id, decision) => calls.push([id, decision]),
+  })
+  kit.onPermission({ id: 'auth-one', status: 'pending', summary: '读文件' })
+  kit.onPermission({ id: 'auth-two', status: 'pending', summary: '运行命令' })
+  await kit.handler.handle({
+    call_id: 'ambiguous', name: 'respond_permission', arguments: '{"decision":"always"}',
+  })
+  const ambiguous = kit.outputs.at(-1)[1]
+  assert.equal(ambiguous.error_code, 'permission_ambiguous')
+  assert.deepEqual(ambiguous.permissions.map(item => item.permission_id), ['auth-one', 'auth-two'])
+  assert.ok(ambiguous.permissions.every(item => item.task_id === kit.task.id))
+  assert.equal(calls.length, 0)
+  assert.equal(policy.shouldAutoAllow('owner', 'voice'), false)
+  await kit.handler.handle({
+    call_id: 'specified', name: 'respond_permission',
+    arguments: '{"permission_id":"auth-one","decision":"task"}',
+  })
+  assert.deepEqual(calls, [['auth-one', 'once'], ['auth-two', 'once']])
+  // Both requests belong to the approved task; another confirmation is a receipt.
+  kit.handler.getTurnId = () => 'turn-two'
+  kit.transcripts.record('turn-two', '第二个也允许')
+  await kit.handler.handle({
+    call_id: 'remaining', name: 'respond_permission', arguments: '{"decision":"task"}',
+  })
+  assert.deepEqual(calls, [['auth-one', 'once'], ['auth-two', 'once']])
+  await kit.finish()
+})
+
+test('an ID-less response cannot switch requests while waiting for the transcript', async () => {
+  const calls = []
+  const kit = await permissionHarness({
+    answer: '可以', respondPermission: async (...args) => calls.push(args),
+  })
+  let finishTranscript
+  kit.transcripts.transcript = () => new Promise(resolve => { finishTranscript = resolve })
+  const execution = kit.handler.handle({
+    call_id: 'consent-race', name: 'respond_permission', arguments: '{"decision":"task"}',
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  kit.onPermission({ id: 'auth-one', status: 'cancelled', summary: '查看文件' })
+  kit.onPermission({ id: 'auth-new', status: 'pending', summary: '修改文件' })
+  finishTranscript('可以')
+  await execution
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_not_pending')
+  assert.equal(calls.length, 0)
+  await kit.finish()
+})
+
+test('another user confirmation reuses the sole in-flight permission receipt', async () => {
+  const calls = []
+  let finishDelivery
+  const kit = await permissionHarness({
+    answer: '可以',
+    respondPermission: async (id, decision) => {
+      calls.push([id, decision])
+      await new Promise(resolve => { finishDelivery = resolve })
+    },
+  })
+  await kit.handler.handle({
+    call_id: 'slow-delivery', name: 'respond_permission', arguments: '{"decision":"task"}',
+  })
+  kit.handler.getTurnId = () => 'turn-two'
+  kit.transcripts.record('turn-two', '我说可以')
+  await kit.handler.handle({
+    call_id: 'repeat-consent', name: 'respond_permission', arguments: '{"decision":"task"}',
+  })
+  assert.equal(kit.outputs.at(-1)[1].status, 'already_submitted')
+  assert.equal(kit.outputs.at(-1)[1].permission_id, 'auth-one')
+  assert.deepEqual(calls, [['auth-one', 'once']])
+  finishDelivery()
+  await kit.finish()
+})
+
+test('foreign owner or session permissions cannot be resolved through the tracker', async t => {
+  for (const scope of [{ ownerId: 'other' }, { sessionId: 'other' }]) {
+    await t.test(JSON.stringify(scope), async () => {
+      const calls = []
+      const kit = await permissionHarness({
+        ...scope, answer: '可以',
+        respondPermission: async (...args) => calls.push(args),
+      })
+      kit.onPermission({ id: 'auth-one', status: 'pending', summary: '查看项目' })
+      for (const args of [{ decision: 'task' }, { permission_id: 'auth-one', decision: 'task' }]) {
+        await kit.handler.handle({
+          call_id: JSON.stringify(args), name: 'respond_permission', arguments: JSON.stringify(args),
+        })
+        assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_not_pending')
+      }
+      assert.equal(calls.length, 0)
+      await kit.finish()
+    })
+  }
+})
+
+test('a cancelled permission ID never targets a newer pending request', async () => {
+  const calls = []
+  const kit = await permissionHarness({
+    answer: '可以', respondPermission: async (...args) => calls.push(args),
+  })
+  kit.onPermission({ id: 'auth-one', status: 'cancelled', summary: '读文件' })
+  kit.onPermission({ id: 'auth-new', status: 'pending', summary: '执行命令' })
+  await kit.handler.handle({
+    call_id: 'expired', name: 'respond_permission',
+    arguments: '{"permission_id":"auth-one","decision":"always"}',
+  })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_not_pending')
+  assert.equal(calls.length, 0)
   await kit.finish()
 })
 
 test('confirms a rejected realtime permission exactly once', async () => {
   const answer = '不允许'
-  const permissionPolicy = new SessionPermissionPolicy()
+  const permissionPolicy = new PermissionPolicy()
   permissionPolicy.applyDecision('owner', 'voice', 'always')
   const kit = await permissionHarness({
     answer,
@@ -1428,8 +1930,7 @@ test('confirms a rejected realtime permission exactly once', async () => {
     call_id: 'permission-semantic-reject',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: kit.task.id,
+      permission_id: 'auth-one',
       decision: 'reject',
     }),
   })
@@ -1445,7 +1946,7 @@ test('confirms a rejected realtime permission exactly once', async () => {
 
 test('rolls back the session policy when the permission delivery fails', async () => {
   const failures = []
-  const permissionPolicy = new SessionPermissionPolicy()
+  const permissionPolicy = new PermissionPolicy()
   const kit = await permissionHarness({
     answer: '可以',
     permissionPolicy,
@@ -1458,8 +1959,7 @@ test('rolls back the session policy when the permission delivery fails', async (
     call_id: 'permission-delivery-failed',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: kit.task.id,
+      permission_id: 'auth-one',
       decision: 'always',
     }),
   })
@@ -1478,7 +1978,7 @@ test('rolls back the session policy when the permission delivery fails', async (
 })
 
 test('auto-allows later permissions in the Gateway without publishing them', async () => {
-  const permissionPolicy = new SessionPermissionPolicy()
+  const permissionPolicy = new PermissionPolicy()
   permissionPolicy.applyDecision('owner', 'voice', 'always')
   const approvals = []
   const kit = harness({
@@ -1514,7 +2014,7 @@ test('auto-allows later permissions in the Gateway without publishing them', asy
 
   assert.deepEqual(approvals, [{
     id: 'auth-auto',
-    decision: 'always',
+    decision: 'once',
     options: { ownerId: 'owner' },
   }])
   assert.equal(
@@ -1523,12 +2023,12 @@ test('auto-allows later permissions in the Gateway without publishing them', asy
   )
 })
 
-test('one always decision settles every pending permission for the selected task', async () => {
+test('one task decision settles every pending permission for the selected task', async () => {
   const permissionIds = ['auth-news-1', 'auth-news-2', 'auth-news-3', 'auth-news-4']
   const approvals = []
   let release
   const kit = harness({
-    permissionPolicy: new SessionPermissionPolicy(),
+    permissionPolicy: new PermissionPolicy(),
     respondPermission: async (id, decision, options) => {
       approvals.push({ id, decision, options })
       return { id, status: 'approved' }
@@ -1557,15 +2057,13 @@ test('one always decision settles every pending permission for the selected task
   await new Promise(resolve => setImmediate(resolve))
 
   kit.transcripts.record('turn-one', '我同意')
-  const taskId = kit.manager.list({ ownerId: 'owner' })[0].id
   const decision = kit.handler.handle({
     call_id: 'allow-news',
     response_id: 'permission-response',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference(permissionIds[0]),
-      task_id: taskId,
-      decision: 'always',
+      permission_id: permissionIds[0],
+      decision: 'task',
     }),
   }, {
     turnId: 'turn-one',
@@ -1580,12 +2078,12 @@ test('one always decision settles every pending permission for the selected task
     approvals.map(call => call.id).sort(),
     [...permissionIds].sort(),
   )
-  assert.ok(approvals.every(call => call.decision === 'always'))
+  assert.ok(approvals.every(call => call.decision === 'once'))
   assert.ok(kit.outputs.slice(1).every(output => output[3].createResponse === false))
   assert.equal(kit.ensuredResponses.length, 1)
   assert.match(
     kit.ensuredResponses[0][1].response.instructions,
-    /已允许，后台继续执行/,
+    /该任务已获准继续执行/,
   )
 
   release({ content: '完成' })
@@ -1607,8 +2105,7 @@ test('accepts a semantic permission decision without an evidence field', async (
     call_id: 'permission-without-evidence',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: kit.task.id,
+      permission_id: 'auth-one',
       decision: 'always',
     }),
   })
@@ -1616,11 +2113,11 @@ test('accepts a semantic permission decision without an evidence field', async (
   // The verbatim delivery lands asynchronously behind the receipt.
   assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
   await new Promise(resolve => setImmediate(resolve))
-  assert.deepEqual(calls, [{ id: 'auth-one', decision: 'always' }])
+  assert.deepEqual(calls, [{ id: 'auth-one', decision: 'once' }])
   await kit.finish()
 })
 
-test('rejects a task id that has no pending permission', async () => {
+test('never falls back from an explicit wrong permission id to a pending request', async () => {
   let called = false
   const answer = '照你说的来'
   const kit = await permissionHarness({
@@ -1633,8 +2130,7 @@ test('rejects a task id that has no pending permission', async () => {
     call_id: 'permission-wrong-id',
     name: 'respond_permission',
     arguments: JSON.stringify({
-      permission_id: permissionReference('auth-one'),
-      task_id: 'task-other',
+      permission_id: 'auth-wrong',
       decision: 'always',
     }),
   }, {

@@ -2,8 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   McpWebSearchProvider,
-} from '../src/providers/search/mcp.mjs'
-import { createWebSearchProvider } from '../src/providers/search/factory.mjs'
+} from '../src/frontend/retrieval/providers/mcp.mjs'
+import { createWebSearchProvider } from '../src/frontend/retrieval/providers/factory.mjs'
 
 function fakeClient({ tools, result }, calls) {
   return {

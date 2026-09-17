@@ -36,7 +36,7 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
       "tools": {
         "search": {
           "enabled": true,
-          "timeoutMs": 8000,
+          "timeoutMs": 10000,
           "maxResultBytes": 32768,
           "maxCallsPerTurn": 2,
           "description": "检索用户配置的文档来源。"
@@ -88,6 +88,7 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 
 - 支持 Streamable HTTP 和 stdio Transport；不支持旧版独立 SSE Transport。
 - 工具发现和连接有超时边界，默认 8 秒。
+- 每次前台 MCP 工具执行默认超时 10 秒，可通过该工具的 `timeoutMs` 调整。
 - 远端服务必须使用 HTTPS；回环地址可以使用 HTTP，但不能携带 Header。
 - Server URL 可以用 `${MCP_URL}` 精确引用一个环境变量。
 - Header 值可以用 `${VARIABLE}` 精确引用一个环境变量；变量缺失即配置错误。
@@ -98,6 +99,8 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
   如果填写，必须是绝对路径。子进程只继承 SDK 的安全基础环境和显式配置的 `env`。
 - `tools` 是显式白名单；启用的工具由 Gateway 在当前对话轮次内直接调用，不再根据
   读写类型插入一轮通用确认。
+- 同一模型响应中的工具可并发执行；全部结果回填且该响应结束后，再统一请求一次结果回复。
+  后续响应仍可继续调用工具，既有轮次预算与去重规则不变。
 - `readOnlyHint`、`destructiveHint` 等行为信息由 MCP Server 按标准 Tool Annotations
   提供。它们是元信息，不是 Gateway 的执行策略。
 - 需要确认、鉴权或业务安全校验的操作由 MCP Server 在自己的能力边界内强制执行。

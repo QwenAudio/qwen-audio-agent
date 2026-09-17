@@ -86,6 +86,26 @@ export function listGatewayDevices(baseUrl, fetchImpl = fetch) {
   )
 }
 
+export function issueGatewayDevice(baseUrl, { device, endpoint } = {}, fetchImpl = fetch) {
+  return gatewayManagementRequest(
+    baseUrl,
+    '/api/access/devices',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ device, ...(endpoint ? { endpoint } : {}) }),
+    },
+    fetchImpl,
+  ).then(payload => {
+    if (!payload?.connection_code || !payload?.device?.id) {
+      const error = new Error('Gateway returned an invalid device connection')
+      error.code = 'gateway_device_issue_failed'
+      throw error
+    }
+    return payload
+  })
+}
+
 export function revokeGatewayDevice(baseUrl, deviceId, fetchImpl = fetch) {
   return gatewayManagementRequest(
     baseUrl,

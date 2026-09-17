@@ -1,17 +1,21 @@
 import { config } from './config.mjs'
+import { isIP } from 'node:net'
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '[::1]', '::1'])
 const TRUSTED_NATIVE_CLIENT_ORIGINS = new Set(['https://qwaudio.local'])
 
 function normalizedOrigin(value) {
+  if (typeof value !== 'string' || !value.trim()) return ''
   try {
-    return new URL(value).origin
+    const url = new URL(value)
+    return ['http:', 'https:'].includes(url.protocol) ? url.origin : ''
   } catch {
     return ''
   }
 }
 
 function parsedHost(value) {
+  if (typeof value !== 'string' || !value.trim()) return null
   try {
     const url = new URL(`http://${value}`)
     return {
@@ -45,12 +49,18 @@ export function isAllowedOrigin(
     allowedOrigins = config.allowedOrigins,
     authenticatedRemote = false,
     allowSecureSameOrigin = false,
+    allowLanSameOrigin = false,
     trustedNativeClient = false,
   } = {},
 ) {
-  const requestHost = parsedHost(req.headers.host)
+  const requestHost = parsedHost(req.headers?.host)
   if (!requestHost) return false
-  const origin = normalizedOrigin(req.headers.origin)
+  const rawOrigin = req.headers?.origin
+  const origin = normalizedOrigin(rawOrigin)
+  // An Origin header carries a serialized origin, not an arbitrary URL.
+  // Never treat opaque, malformed or empty values as a native client's
+  // omitted header, even when that request has valid credentials.
+  if (rawOrigin !== undefined && (!origin || origin !== rawOrigin.trim())) return false
   const configured = trustedOrigins(allowedOrigins)
   const trustedHost = configured.some(value => (
     new URL(value).host === requestHost.host
@@ -58,7 +68,7 @@ export function isAllowedOrigin(
 
   // CLI and other non-browser clients do not send Origin. They are accepted
   // only through a loopback address or an explicitly trusted reverse proxy.
-  if (!origin) {
+  if (rawOrigin === undefined) {
     return LOOPBACK_HOSTS.has(requestHost.hostname)
       || trustedHost
       || authenticatedRemote === true
@@ -86,6 +96,16 @@ export function isAllowedOrigin(
     return true
   }
 
+  // An explicitly authenticated LAN browser may use cleartext HTTP when the
+  // operator deliberately started the Gateway in LAN mode. Host and Origin
+  // must still be the same literal IPv4 address to avoid DNS rebinding.
+  if (
+    (authenticatedRemote || allowLanSameOrigin)
+    && isIP(requestHost.hostname) === 4
+    && originUrl.protocol === 'http:'
+    && originUrl.host === requestHost.host
+  ) return true
+
   // Comparing arbitrary Origin and Host values is vulnerable to DNS rebinding.
   // The implicit same-origin path is therefore limited to literal loopback
   // hosts. Public hostnames must be explicitly allowlisted.
@@ -99,7 +119,7 @@ export function isAllowedOrigin(
 export function enforceSameOrigin(req, res, next) {
   if (!isAllowedOrigin(req, {
     authenticatedRemote: req.identity?.access === 'remote',
-    trustedNativeClient: req.identity?.clientType === 'mobile',
+    trustedNativeClient: ['client', 'mobile'].includes(req.identity?.clientType),
   })) {
     res.status(403).json({ error: 'origin not allowed' })
     return

@@ -10,7 +10,7 @@ export const DEFAULT_COCKPIT_DOMAIN_SURFACES = Object.freeze({
   navigation: SURFACE_FRONTEND,
   weather: SURFACE_FRONTEND,
   flashbuy: SURFACE_BACKEND,
-  'custom-skills': SURFACE_BACKEND,
+  'custom-skills': SURFACE_FRONTEND,
 })
 
 const VALID_SURFACES = new Set([SURFACE_FRONTEND, SURFACE_BACKEND])

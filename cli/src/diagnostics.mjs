@@ -6,7 +6,7 @@ import { defaultLogDirectory, LOG_SCHEMA } from '../../shared/logger.mjs'
 import { resolveRealtimeFrontendConfiguration } from '../../shared/realtime-provider-catalog.mjs'
 import { readGatewayLease } from '../../shared/gateway/lease.mjs'
 import { GatewayUrlSchema } from '../../shared/gateway/remote-access.mjs'
-import { loadFrontendMcpConfiguration } from '../../server/src/providers/mcp/frontend-mcp-config.mjs'
+import { loadFrontendMcpConfiguration } from '../../server/src/frontend/tools/mcp/frontend-mcp-config.mjs'
 import { inspectSessionJournals } from '../../server/src/session/session-journal-inspection.mjs'
 
 function localUrl(value) {
@@ -69,7 +69,7 @@ export async function readTurnTimeline(directory, turnId, { maxFileBytes = 2 * 1
 export async function collectDiagnostics({ options, environment, env = process.env, fetchImpl = fetch } = {}) {
   const checks = []
   const add = (id, status, summary, details) => checks.push({ id, status, summary, ...(details ? { details } : {}) })
-  const lease = !options.urlSpecified ? readGatewayLease(environment.configDirectory) : null
+  const lease = !options.urlSpecified ? readGatewayLease(environment.stateDirectory) : null
   const url = GatewayUrlSchema.parse(lease?.origin || options.url)
   const local = localUrl(url)
   if (local) {
@@ -77,14 +77,14 @@ export async function collectDiagnostics({ options, environment, env = process.e
       existsSync(environment.configPath) ? '找到配置文件' : '尚未创建配置文件')
     try {
       const realtime = resolveRealtimeFrontendConfiguration(env)
-      add('realtime.configuration', realtime.configured ? 'ok' : 'error',
-        realtime.configured ? '语音前台配置已填写；此检查不验证密钥额度' : '语音前台缺少必要配置')
+      add('realtime.configuration', realtime.active.configured ? 'ok' : 'error',
+        realtime.active.configured ? '语音前台配置已填写；此检查不验证密钥额度' : '语音前台缺少必要配置')
     } catch { add('realtime.configuration', 'error', '语音前台配置无效') }
     try {
       loadFrontendMcpConfiguration({ filePath: env.QWEN_AUDIO_FRONTEND_MCP_CONFIG || '', env })
       add('mcp.configuration', 'ok', '前台 MCP 配置结构有效；未启动 MCP 进程')
     } catch { add('mcp.configuration', 'error', '前台 MCP 配置或引用的环境变量无效') }
-    const journals = await inspectSessionJournals(resolve(environment.configDirectory, 'sessions'))
+    const journals = await inspectSessionJournals(resolve(environment.stateDirectory, 'sessions'))
     add('session.journals', journals.damaged || journals.unreadable ? 'error' : journals.tornTails || journals.skipped || journals.partial ? 'warning' : 'ok',
       '会话历史检查（只读，不修改文件）', journals)
   }
@@ -116,7 +116,7 @@ export async function collectDiagnostics({ options, environment, env = process.e
       endpoint.state === 'ready' ? '远程发布已就绪；尚未验证客户端到此地址的连通性' : '远程发布尚未就绪')
   }
   const timeline = options.turnId && local
-    ? await readTurnTimeline(defaultLogDirectory({ ...env, QWAUDIO_CONFIG_DIR: environment.configDirectory }), options.turnId)
+    ? await readTurnTimeline(defaultLogDirectory({ ...env, QWAUDIO_STATE_DIR: environment.stateDirectory }), options.turnId)
     : null
   if (options.turnId && !local) add('timeline', 'skipped', '远程 Gateway 的日志需在对应主机上检查')
   return { schema: 'qwaudio.diagnostics/v1', ok: checks.every(check => check.status !== 'error'), checks, ...(timeline ? { timeline } : {}) }

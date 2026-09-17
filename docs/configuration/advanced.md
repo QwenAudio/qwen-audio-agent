@@ -12,10 +12,12 @@ see [Run the Gateway](../operations/gateway.md).
 
 ## Local Logs
 
-qwen-audio-agent uses unified local structured logs. CLI logs default to
-`~/.config/qwaudio/logs/`. Desktop logs use `logs/` under its
-[application data directory](../configuration.md#configuration-and-data-directories), for example
-`~/Library/Application Support/Qwen Audio Agent/logs/` on macOS.
+qwen-audio-agent uses unified structured logs, stored by their respective owners:
+
+- CLI-hosted Gateway: `~/.config/qwaudio/state/logs/`.
+- Desktop-hosted Gateway: `~/.config/qwaudio/state/desktop/logs/`.
+- Desktop Client: `logs/` under its [application data directory](../configuration.md#configuration-and-data-directories).
+- TUI: `~/.config/qwaudio/tui/logs/`.
 
 The file responsibilities below do not mean all files share the same directory:
 
@@ -48,7 +50,7 @@ retained. These can be adjusted via the following environment variables:
 | Setting | Default | Description |
 | --- | --- | --- |
 | `QWEN_AUDIO_LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error`, `fatal`, or `silent` |
-| `QWEN_AUDIO_LOG_DIR` | `logs` under the user config directory | Custom log directory |
+| `QWEN_AUDIO_LOG_DIR` | `logs` under the instance state directory | Custom log directory |
 | `QWEN_AUDIO_LOG_MAX_BYTES` | `10485760` | Rotation threshold for a single log file |
 | `QWEN_AUDIO_LOG_MAX_FILES` | `5` | Total number of current and rotated files to retain |
 | `QWEN_AUDIO_LOG_FILE` | `1` | Set to `0` to disable file logging |
@@ -150,8 +152,9 @@ them to the configuration file:
 | --- | --- |
 | `HOST` / `PORT` | `127.0.0.1` / `3101` |
 | `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS` | Empty; only loopback allowed |
+| `QWEN_AUDIO_GATEWAY_LAN` | Empty; set to `1` to listen on LAN (`0.0.0.0`) |
+| `QWEN_AUDIO_GATEWAY_LAN_HOST` | Auto-selected physical IPv4; optional explicit LAN endpoint host |
 | `QWEN_AUDIO_GATEWAY_TAILNET` | Empty; set to `1` to use system Tailscale Serve |
-| `QWEN_AUDIO_GATEWAY_PUBLIC_URL` | Empty; operator-managed HTTPS origin |
 | `QWEN_AUDIO_TAILSCALE_BINARY` | Auto-detected; optional absolute path to the system Tailscale CLI |
 | `OPENCODE_WORKSPACE` | `workspace` under the shared data directory |
 | `QODER_WORKSPACE` | `workspace` under the shared data directory |

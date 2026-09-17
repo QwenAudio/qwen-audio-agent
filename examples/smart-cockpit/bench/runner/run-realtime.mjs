@@ -14,6 +14,22 @@ const DEFAULT_SILENCE_MS = 2_200
 const DEFAULT_TURN_TIMEOUT_MS = 60_000
 const DEFAULT_SETTLE_MS = 1_200
 const DEFAULT_BETWEEN_CASE_MS = 1_000
+const DEFAULT_TURN_RETRIES = 1
+const DEFAULT_CASE_ATTEMPTS = 2
+const DEFAULT_RETRY_BACKOFF_MS = 2_000
+
+const TURN_TIMEOUT_PATTERN = /Timed out waiting for realtime turn/u
+
+function isTurnTimeout(error) {
+  return TURN_TIMEOUT_PATTERN.test(String(error?.message || error || ''))
+}
+
+// harness.numberArg 只接受正数，重试次数需要允许 0 来完整关闭重试。
+function countArg(args, key, fallback) {
+  if (!args.has(key)) return fallback
+  const value = Number(args.get(key))
+  return Number.isInteger(value) && value >= 0 ? value : fallback
+}
 
 function parseRunnerArgs(argv) {
   const args = new Map()
@@ -278,7 +294,7 @@ async function waitForTurn(events, startIndex, {
   throw new Error(`Timed out waiting for realtime turn. Recent events: ${recent.join(' | ')}`)
 }
 
-async function runCase(caseItem, {
+async function attemptCase(caseItem, {
   provider,
   RealtimeFrontend,
   harness,
@@ -291,6 +307,7 @@ async function runCase(caseItem, {
   turnTimeoutMs,
   settleMs,
   betweenCaseMs,
+  turnRetries,
 }) {
   const service = harness.createBenchmarkService()
   const cockpitId = caseItem.id
@@ -302,6 +319,7 @@ async function runCase(caseItem, {
   const stateSnapshots = []
   const events = []
   const errors = []
+  const turnRetryLog = []
   const pendingTools = new Set()
   let activeTurnIndex = null
   let frontend
@@ -325,7 +343,16 @@ async function runCase(caseItem, {
       const content = String(assistantText(event) || '').trim()
       if (content) assistantMessages.push(content)
       const call = realtimeFunctionCall(event)
-      if (!call || activeTurnIndex === null) return
+      if (!call) return
+      if (activeTurnIndex === null) {
+        // 落在轮次边界之外的调用会被丢弃，记录下来避免被误读成模型漏调。
+        ignoredCalls.push({
+          name: call.name,
+          arguments: call.arguments,
+          reason: 'no_active_turn',
+        })
+        return
+      }
       const task = (async () => {
         try {
           const output = await harness.executeBenchmarkTool({
@@ -367,27 +394,51 @@ async function runCase(caseItem, {
   await frontend.connect()
   try {
     const inputSampleRate = provider.inputSampleRate || DEFAULT_SAMPLE_RATE
+    let failedTurnIndex = null
     try {
       for (const [turnIndex, turn] of caseItem.turns.entries()) {
-        const startIndex = events.length
         activeTurnIndex = turnIndex
         const speech = await synthesizeSpeechPcm(turn.user, {
           sampleRate: inputSampleRate,
           sayVoice,
         })
-        await streamPcm(frontend, speech, { sampleRate: inputSampleRate, chunkMs })
-        await streamPcm(frontend, silencePcm(silenceMs, inputSampleRate), {
-          sampleRate: inputSampleRate,
-          chunkMs,
-        })
-        await waitForTurn(events, startIndex, {
-          frontend,
-          pendingTools,
-          errors,
-          sleep: harness.sleep,
-          timeoutMs: turnTimeoutMs,
-          settleMs,
-        })
+        for (let attempt = 0; ; attempt += 1) {
+          const startIndex = events.length
+          const callsBefore = calls.length
+          const messagesBefore = assistantMessages.length
+          await streamPcm(frontend, speech, { sampleRate: inputSampleRate, chunkMs })
+          await streamPcm(frontend, silencePcm(silenceMs, inputSampleRate), {
+            sampleRate: inputSampleRate,
+            chunkMs,
+          })
+          try {
+            await waitForTurn(events, startIndex, {
+              frontend,
+              pendingTools,
+              errors,
+              sleep: harness.sleep,
+              timeoutMs: turnTimeoutMs,
+              settleMs,
+            })
+            break
+          } catch (error) {
+            // 只重试“死寂型”超时：这一轮既没有工具调用也没有文本，重发音频不会造成重复调用。
+            // 已经有产出却超时属于生成卡顿，重发会污染 trace，直接上抛给 case 级重启。
+            const silent = calls.length === callsBefore
+              && assistantMessages.length === messagesBefore
+            if (!isTurnTimeout(error) || !silent || attempt >= turnRetries) {
+              failedTurnIndex = turnIndex
+              throw error
+            }
+            turnRetryLog.push({
+              turn_index: turnIndex,
+              attempt: attempt + 1,
+              reason: 'silent_turn_timeout',
+            })
+            process.stderr.write(`  turn ${turnIndex} silent timeout, retrying audio\n`)
+            await harness.sleep(DEFAULT_RETRY_BACKOFF_MS)
+          }
+        }
         stateSnapshots.push({
           turn_index: turnIndex,
           state: service.snapshot(cockpitId),
@@ -403,8 +454,12 @@ async function runCase(caseItem, {
         assistant_messages: assistantMessages,
         state_snapshots: stateSnapshots,
         realtime_events: events,
+        turn_retries: turnRetryLog,
+        completed_turns: stateSnapshots.length,
+        failed_turn_index: failedTurnIndex,
         error: {
           message: error.message || String(error),
+          kind: isTurnTimeout(error) ? 'turn_timeout' : 'provider_error',
         },
         final_state: service.snapshot(cockpitId),
       }
@@ -416,12 +471,62 @@ async function runCase(caseItem, {
       assistant_messages: assistantMessages,
       state_snapshots: stateSnapshots,
       realtime_events: events,
+      turn_retries: turnRetryLog,
+      completed_turns: stateSnapshots.length,
       final_state: service.snapshot(cockpitId),
     }
   } finally {
     activeTurnIndex = null
     frontend.close()
     await harness.sleep(betweenCaseMs)
+  }
+}
+
+// 超时可能来自推流、provider 连接或生成停顿。整条 case 最多跑 caseAttempts 次；
+// 若每次都在同一轮失败，判定为该测点的稳定缺陷，否则记为基础设施抖动。
+async function runCase(caseItem, options) {
+  const maxAttempts = Math.max(1, options.caseAttempts)
+  const attempts = []
+  let selected = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (attempt > 1) {
+      process.stderr.write(`  retrying whole case (attempt ${attempt}/${maxAttempts})\n`)
+      await options.harness.sleep(DEFAULT_RETRY_BACKOFF_MS)
+    }
+    const trace = await attemptCase(caseItem, options)
+    attempts.push({
+      attempt,
+      completed_turns: trace.completed_turns,
+      failed_turn_index: trace.failed_turn_index ?? null,
+      turn_retries: trace.turn_retries.length,
+      error: trace.error?.message ?? null,
+      error_kind: trace.error?.kind ?? null,
+    })
+    // 取推进最远的一次作为记分依据，并在报告中标注，避免隐式挑选好成绩。
+    if (!selected || trace.completed_turns > selected.completed_turns) selected = trace
+    if (!trace.error) break
+  }
+
+  const failedTurns = attempts
+    .filter(item => item.failed_turn_index !== null)
+    .map(item => item.failed_turn_index)
+  const allFailed = attempts.every(item => item.error)
+  const sameTurn = failedTurns.length >= 2
+    && failedTurns.every(index => index === failedTurns[0])
+
+  return {
+    ...selected,
+    attempts,
+    selected_attempt: attempts.find(item => (
+      item.completed_turns === selected.completed_turns
+    ))?.attempt ?? 1,
+    retry_diagnosis: !allFailed
+      ? 'recovered'
+      : sameTurn
+        ? 'confirmed_failure_at_turn'
+        : 'unstable_infrastructure',
+    confirmed_failure_turn: allFailed && sameTurn ? failedTurns[0] : null,
   }
 }
 
@@ -473,10 +578,29 @@ async function main() {
       turnTimeoutMs: harness.numberArg(args, 'timeout-ms', DEFAULT_TURN_TIMEOUT_MS),
       settleMs: harness.numberArg(args, 'settle-ms', DEFAULT_SETTLE_MS),
       betweenCaseMs: harness.numberArg(args, 'between-case-ms', DEFAULT_BETWEEN_CASE_MS),
+      turnRetries: countArg(args, 'turn-retries', DEFAULT_TURN_RETRIES),
+      caseAttempts: countArg(args, 'case-attempts', DEFAULT_CASE_ATTEMPTS),
     }))
   }
 
   const scores = cases.map((caseItem, index) => scoreTrace(caseItem, traces[index]))
+  const retrySummary = {
+    turn_retries: traces.reduce((count, trace) => count + (trace.turn_retries?.length || 0), 0),
+    case_retries: traces.reduce((count, trace) => count + ((trace.attempts?.length || 1) - 1), 0),
+    recovered_cases: traces.filter(trace => (
+      trace.retry_diagnosis === 'recovered' && (trace.attempts?.length || 1) > 1
+    )).map(trace => trace.id),
+    confirmed_failures: traces
+      .filter(trace => trace.retry_diagnosis === 'confirmed_failure_at_turn')
+      .map(trace => ({ id: trace.id, turn_index: trace.confirmed_failure_turn })),
+    unstable_cases: traces
+      .filter(trace => trace.retry_diagnosis === 'unstable_infrastructure')
+      .map(trace => ({
+        id: trace.id,
+        failed_turns: trace.attempts.map(item => item.failed_turn_index),
+      })),
+    ignored_calls: traces.reduce((count, trace) => count + (trace.ignored_calls?.length || 0), 0),
+  }
   const report = {
     suite: 'smart-cockpit/cockpit',
     mode: 'realtime',
@@ -486,6 +610,12 @@ async function main() {
     realtime_model: provider.model(),
     output_mode: outputMode,
     routing: COCKPIT_SURFACE_ROUTING.domains,
+    retry_policy: {
+      turn_retries: countArg(args, 'turn-retries', DEFAULT_TURN_RETRIES),
+      case_attempts: countArg(args, 'case-attempts', DEFAULT_CASE_ATTEMPTS),
+      note: 'Silent turn timeouts retry the same audio; other failures restart the case. Scoring uses the attempt that completed the most turns.',
+    },
+    retry_summary: retrySummary,
     input_tts: {
       engine: 'macos_say',
       voice: args.get('say-voice') === true ? null : args.get('say-voice') || 'Ting-Ting',
@@ -502,6 +632,7 @@ async function main() {
   await mkdir(dirname(absolute), { recursive: true })
   await writeFile(absolute, `${JSON.stringify(report, null, 2)}\n`)
   console.log(JSON.stringify(report.summary, null, 2))
+  console.log(JSON.stringify({ retry_summary: report.retry_summary }, null, 2))
   console.log(`report: ${absolute}`)
 }
 

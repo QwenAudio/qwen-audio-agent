@@ -39,6 +39,9 @@ files:
   - THIRD_PARTY_NOTICES.md
 
 extraResources:
+  # Pure path policy is also used by backend launchers outside app.asar.
+  - from: shared/runtime-paths.mjs
+    to: runtime/shared/runtime-paths.mjs
   - from: scripts
     to: runtime/scripts
     filter:

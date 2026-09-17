@@ -105,8 +105,8 @@ try {
   await closed
   console.log('✅ 会话已断开，等待后台提取…')
 
-  const memoryPath = join(configDir, 'MEMORY.md')
-  const auditPath = join(configDir, 'memory-audit.jsonl')
+  const memoryPath = join(configDir, 'data/MEMORY.md')
+  const auditPath = join(configDir, 'state/memory-audit.jsonl')
   await waitFor(
     () => existsSync(memoryPath),
     { timeoutMs: 20000, label: '提取器写入 MEMORY.md' },

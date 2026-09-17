@@ -6,6 +6,7 @@ import { mkdirSync, copyFileSync, existsSync, writeFileSync, renameSync, readdir
 import { resolve, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomInt } from 'node:crypto'
+import { resolveRuntimePaths } from '../../shared/runtime-paths.mjs'
 
 const ROOT = resolve(join(fileURLToPath(import.meta.url), '..', '..', '..'))
 const IS_WIN = process.platform === 'win32'
@@ -17,16 +18,6 @@ const CLI_ARGS = process.argv.slice(2)
 loadDotEnv(resolve(ROOT))
 
 function fatal(msg) { console.error(msg); process.exit(1) }
-
-// ── config dir ───────────────────────────────────────────────────────────────
-
-function userConfigDir() {
-  if (process.env.QWAUDIO_CONFIG_DIR) return process.env.QWAUDIO_CONFIG_DIR
-  if (process.env.XDG_CONFIG_HOME) return join(process.env.XDG_CONFIG_HOME, 'qwaudio')
-  const home = process.env.HOME || process.env.USERPROFILE
-  if (home) return join(home, '.config', 'qwaudio')
-  fatal('OpenClaw requires QWAUDIO_CONFIG_DIR, XDG_CONFIG_HOME, or HOME.')
-}
 
 // ── run Node helper scripts ──────────────────────────────────────────────────
 
@@ -47,9 +38,9 @@ function runHelper(op, ...args) {
 
 // ── directory setup ──────────────────────────────────────────────────────────
 
-const USER_DIR = userConfigDir()
-const STATE_DIR = process.env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR || join(USER_DIR, 'backends', 'openclaw', 'state')
-const WORKSPACE = process.env.QWEN_AUDIO_AGENT_OPENCLAW_WORKSPACE || join(USER_DIR, 'workspaces', 'openclaw')
+const paths = resolveRuntimePaths({ baseDirectory: ROOT })
+const STATE_DIR = process.env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR || join(paths.stateDirectory, 'backends', 'openclaw')
+const WORKSPACE = process.env.QWEN_AUDIO_AGENT_OPENCLAW_WORKSPACE || paths.sharedWorkspace
 process.env.QWEN_AUDIO_AGENT_OPENCLAW_STATE_DIR = STATE_DIR
 process.env.QWEN_AUDIO_AGENT_OPENCLAW_WORKSPACE = WORKSPACE
 mkdirSync(STATE_DIR, { recursive: true })
@@ -69,7 +60,7 @@ if (
   && MODEL !== 'auto'
 ) {
   managed = true
-  const cfgDir = join(USER_DIR, 'backends', 'openclaw')
+  const cfgDir = join(STATE_DIR, 'config')
   const templatePath = join(ROOT, 'config', 'backends', 'openclaw', 'openclaw.json5')
   const configPath = join(cfgDir, 'openclaw.json5')
   mkdirSync(cfgDir, { recursive: true })

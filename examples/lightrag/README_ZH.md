@@ -130,7 +130,7 @@ node --env-file=examples/lightrag/.env.local examples/lightrag/gateway.mjs
 |---|---|---|
 | `LIGHTRAG_URL` | `http://127.0.0.1:9621` | LightRAG Server 地址 |
 | `LIGHTRAG_API_KEY` | 空 | 通过 `X-API-Key` 发送的 LightRAG 访问密钥 |
-| `LIGHTRAG_WORKSPACE` | 空 | 固定 workspace；不会从模型输入或 owner 动态生成 |
+| `LIGHTRAG_WORKSPACE` | 空 | 可选的 workspace 选择器，通过 `LIGHTRAG-WORKSPACE` 发送；除运维已开通外请留空 |
 | `LIGHTRAG_QUERY_MODE` | `mix` | `local`、`global`、`hybrid`、`naive` 或 `mix` |
 | `LIGHTRAG_RETRIEVAL_TIMEOUT_MS` | `60000` | Gateway 等待一次检索的最长时间 |
 | `LIGHTRAG_REQUEST_TIMEOUT_MS` | `30000` | 单次 HTTP 请求超时 |
@@ -141,11 +141,16 @@ node --env-file=examples/lightrag/.env.local examples/lightrag/gateway.mjs
 Gateway 取消入库任务时，Provider 会停止本地等待，但不会调用 LightRAG 的全局
 `cancel_pipeline`，以免取消同一实例中的其他文档。
 
+除 LightRAG 运维已为该密钥开通 workspace 外，`LIGHTRAG_WORKSPACE` 请留空。当前 LightRAG 只在
+状态路由读取 `LIGHTRAG-WORKSPACE`，检索与文档端点并不读取，因此在此填值不会带来数据隔离，数据
+仍会落到服务端配置的那个 workspace。等服务端多 workspace 支持落地后，未登记 catalog 记录、或
+成员表中不含该密钥的选择器会被直接拒绝而非静默回退，所以留空在改动前后都是正确配置。
+
 ## 替换和扩展
 
 | 需求 | 修改位置 |
 |---|---|
-| 使用已有 LightRAG 服务 | 设置 `LIGHTRAG_URL`、`LIGHTRAG_API_KEY` 和 `LIGHTRAG_WORKSPACE`。 |
+| 使用已有 LightRAG 服务 | 设置 `LIGHTRAG_URL` 和 `LIGHTRAG_API_KEY`。 |
 | 调整检索策略 | 设置 `LIGHTRAG_QUERY_MODE` 和检索超时。 |
 | 在其他宿主中接入 | 创建 Provider 后，通过 `knowledgeProvider` 注入 `createGatewayApplication`。 |
 | 替换为其他知识系统 | 实现同一版本的 `KnowledgeProvider` 接口。 |

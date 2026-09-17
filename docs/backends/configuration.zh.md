@@ -354,7 +354,7 @@ PI_ACP_RUNTIME=auto
 ```
 
 - `PI_BIN` / `PI_ACP_BIN` 分别覆盖 pi 本体与 pi-acp 适配器的可执行文件路径。
-- `PI_WORKSPACE` 覆盖工作目录（默认 `~/.config/qwaudio/workspace`，与其他托管后台共享）。
+- `PI_WORKSPACE` 覆盖工作目录（默认 `~/.config/qwaudio/data/workspace`，与其他托管后台共享）。
 - `PI_ACP_RUNTIME`（`auto` / `binary` / `package`）控制适配器使用本地二进制
   还是通过 `npx` 按需启动。
 

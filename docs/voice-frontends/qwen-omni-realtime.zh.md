@@ -26,7 +26,7 @@ QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-flash-realtime
 
 ## 音色与话轮检测
 
-- 默认音色 `Ethan`，可用 `QWEN_OMNI_REALTIME_VOICE` 覆盖。
+- 默认音色 `Ethan`，可用 `QWEN_AUDIO_REALTIME_VOICE` 覆盖。
 - 话轮检测为 `semantic_vad`，由运行时配置。
 
 ## 实时视觉
@@ -49,4 +49,6 @@ WebUI 可以把摄像头画面采样为有界 JPEG 帧，并通过协商后的 G
 ## 继续阅读
 
 - [Qwen Audio 3.0 Realtime](qwen-audio-realtime.zh.md)——默认系列
+- [GPT-Live / OpenAI Realtime](gpt-live.zh.md)——OpenAI 云端实时语音前台
+- [Google Gemini Live](google-live.zh.md)——Google 云端实时语音前台
 - [前台配置参考](../configuration/frontend.zh.md)

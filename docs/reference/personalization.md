@@ -14,15 +14,15 @@ or memory, not the application's default persona.
 
 ## Default implementation
 
-With the default configuration, the Gateway uses its built-in Markdown provider. It keeps
-the following files under the configuration directory (`~/.config/qwaudio/` for the CLI):
+With the default configuration, the Gateway uses its built-in Markdown provider. Its default files
+are listed below; see [directory settings](../configuration.md#configuration-and-data-directories) for overrides:
 
 | File | Description |
 | --- | --- |
 | `ASSISTANT.md` | Instance-wide default persona: identity, personality, relationship stance, and expression style |
-| `USER.md` | Long-term personalization overlay for the current user |
-| `MEMORY.md` | Durable facts and decisions about the user |
-| `memory-audit.jsonl` | Diagnostic log for automatic memory patches, skips, and failures |
+| `data/USER.md` | Long-term personalization overlay for the current user |
+| `data/MEMORY.md` | Durable facts and decisions about the user |
+| `<state-dir>/memory-audit.jsonl` | Diagnostic log for automatic memory patches, skips, and failures |
 
 These files remain local and are never committed to the source repository. `USER.md` and
 `MEMORY.md` are the default provider's physical representation, not a requirement imposed on

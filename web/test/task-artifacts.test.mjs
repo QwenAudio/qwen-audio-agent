@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { artifactsFromAcpContentBlocks } from '../../server/src/agent/acp/content.mjs'
+import { artifactsFromAcpContentBlocks } from '../../server/src/backend/adapters/acp/content.mjs'
 import { normalizeArtifacts } from '../../server/src/task/task-artifact.mjs'
 import {
   artifactPartView,

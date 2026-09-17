@@ -744,6 +744,23 @@ export function attachRealtimeGateway(server, {
       }
     }
     const toolCallTimings = new Map()
+    // Client-side edits are not present in the model's conversation. Refresh
+    // the owner's live memory snapshot after persistence, including deletion.
+    // Same-session tool writes already return the new documents to the model;
+    // retain their existing cache-only path to avoid a redundant prompt update.
+    const unsubscribeMemory = typeof memoryService?.subscribe === 'function'
+      ? memoryService.subscribe(event => {
+          if (event.ownerId !== ownerId) return
+          // Persistence changes invalidate the client view regardless of their
+          // source or whether this session needs a model-instruction refresh.
+          send(ws, { type: GatewayServerEvent.MEMORY_CHANGED })
+          realtimeSession.updateAgentContext({
+            memories: memoryService.list(ownerId, { limit: 64 }),
+          }, {
+            refreshSession: event.source !== 'realtime-tool' || event.sessionId !== sessionId,
+          })
+        })
+      : () => {}
     const toolCalls = new ToolCallHandler({
       taskManager,
       ownerId,
@@ -762,9 +779,14 @@ export function attachRealtimeGateway(server, {
       // 记忆写入只刷新缓存，不重发 session.update：改 instructions 等于改 prompt
       // 前缀，会让整场会话的前缀缓存失效，而用户刚说过的内容本来就在上下文里，
       // 不必靠 instructions 再讲一遍。新值在下一个新会话生效。
-      onMemoryChanged: () => realtimeSession.updateAgentContext({
-        memories: memoryService?.list(ownerId, { limit: 64 }) || [],
-      }, { refreshSession: false }),
+      onMemoryChanged: () => {
+        realtimeSession.updateAgentContext({
+          memories: memoryService?.list(ownerId, { limit: 64 }) || [],
+        }, { refreshSession: false })
+        if (typeof memoryService?.subscribe !== 'function') {
+          send(ws, { type: GatewayServerEvent.MEMORY_CHANGED })
+        }
+      },
       backendRuntime,
       backendAvailability,
       respondAuthorization,
@@ -890,6 +912,7 @@ export function attachRealtimeGateway(server, {
       ensurePermissionResponseFor,
       reportFrontendError,
       onSpeechStarted: fields => {
+        connectionLogger.info('realtime.provider.speech_started', fields)
         observeSessionAudio({ type: 'speech_started', ...fields })
       },
       onSpeechStopped: fields => {
@@ -1050,6 +1073,18 @@ export function attachRealtimeGateway(server, {
       if (isSleepActivityEvent(event)) sleepController?.recordActivity()
       if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
       if (inputs.handleProviderEvent(event)) return
+      if (event.type === 'response.done') {
+        const responseId = realtimeResponseId(event)
+        const context = presentationRuntime.get(responseId)
+        connectionLogger.info('realtime.response.done', {
+          responseId,
+          turnId: context?.turnId || '',
+          status: event.response?.status || '',
+          hasAudio: Boolean(context?.hasAudio),
+          hasFunctionCall: Boolean(context?.hasFunctionCall),
+          suppressed: Boolean(context?.suppressed),
+        })
+      }
       if (event.type === 'response.function_call_arguments.done') {
         const id = realtimeResponseId(event)
         const callContext = presentationRuntime.get(id)
@@ -1073,6 +1108,7 @@ export function attachRealtimeGateway(server, {
             connectionLogger.warn('realtime.tool_call.failed', {
               ...callFields,
               durationMs: Math.max(0, Date.now() - startedAt),
+              error,
             })
             send(ws, { type: 'error', message: error.message })
           })
@@ -1738,18 +1774,24 @@ export function attachRealtimeGateway(server, {
         }
       } else if (event.type === GatewayClientEvent.PLAYBACK_ENDED) {
         const id = String(event.responseId || '')
-        if (acceptsPlaybackReceipt({
+        const accepted = acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
           responseKnown: presentationRuntime.has(id),
-        })) presentationRuntime.finishPlayback(id)
+        })
+        connectionLogger.info('realtime.playback.ended', { responseId: id, accepted })
+        if (accepted) presentationRuntime.finishPlayback(id)
       } else if (event.type === GatewayClientEvent.PLAYBACK_CANCELLED) {
         const id = String(event.responseId || '')
-        if (acceptsPlaybackReceipt({
+        const accepted = acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
           responseKnown: presentationRuntime.has(id),
-        })) {
+        })
+        connectionLogger.info('realtime.playback.cancelled', {
+          responseId: id, accepted, reason: String(event.reason || ''),
+        })
+        if (accepted) {
           presentationRuntime.cancelPlayback(id, {
             reason: String(event.reason || ''),
           })
@@ -1800,6 +1842,7 @@ export function attachRealtimeGateway(server, {
       connections?.delete(voiceClient)
       if (!connections?.size) voiceConnections.delete(ownerId)
       unsubscribeTasks()
+      unsubscribeMemory()
       clearResponseCandidate()
       turns.close()
       transcripts.close()

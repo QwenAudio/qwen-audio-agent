@@ -194,7 +194,7 @@ function normalizedPolicy(value = {}) {
   }
   return {
     enabled,
-    timeoutMs: boundedInteger(value.timeoutMs, 8_000, 100, 30_000),
+    timeoutMs: boundedInteger(value.timeoutMs, 10_000, 100, 30_000),
     maxResultBytes: boundedInteger(
       value.maxResultBytes,
       32 * 1024,

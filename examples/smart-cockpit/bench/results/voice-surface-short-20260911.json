@@ -1,0 +1,7169 @@
+{
+  "kind": "voice-surface-timing",
+  "suite": "short",
+  "created_at": "2026-09-11T05:33:48.493Z",
+  "realtime_model": "qwen-audio-3.0-realtime-plus",
+  "agent_model": "qwen3.8-flash",
+  "zero_point": "speech_end (end of speech PCM, before silence tail)",
+  "input": {
+    "engine": "macos_say + ffmpeg",
+    "voice": "Tingting",
+    "sample_rate": 16000
+  },
+  "batch_sources": [
+    {
+      "source": "voice-surface-short-vehicle-music-20260911-example-dual.json",
+      "created_at": "2026-09-11T04:57:06.459Z",
+      "case_ids": [
+        "veh_single_location_001",
+        "veh_single_state_windows_002",
+        "veh_single_climate_start_003",
+        "veh_single_climate_heat_004",
+        "veh_single_climate_fan_005",
+        "veh_single_temperature_all_006",
+        "veh_single_temperature_passenger_down_007",
+        "veh_single_window_front_half_008",
+        "veh_single_window_rear_vent_009",
+        "veh_single_sunroof_vent_010",
+        "veh_single_trunk_open_011",
+        "veh_single_charge_port_open_012",
+        "veh_single_seat_heater_driver_013",
+        "veh_single_rear_seat_cooler_014",
+        "veh_single_steering_heat_015",
+        "veh_single_auto_seat_climate_016",
+        "veh_single_headlights_open_017",
+        "veh_single_flash_lights_018",
+        "veh_single_honk_019",
+        "veh_single_boombox_020",
+        "veh_single_charge_limit_021",
+        "veh_single_charge_amps_022",
+        "veh_chitchat_then_window_023",
+        "veh_negative_ambiguous_open_024",
+        "mus_single_state_001",
+        "mus_single_play_song_002",
+        "mus_single_play_artist_003",
+        "mus_single_search_004",
+        "mus_single_pause_005",
+        "mus_single_toggle_006",
+        "mus_single_next_007",
+        "mus_single_previous_008",
+        "mus_single_volume_up_009",
+        "mus_single_volume_set_010",
+        "mus_single_mute_011",
+        "mus_single_source_radio_012",
+        "mus_single_source_bluetooth_013",
+        "mus_single_favorite_add_014",
+        "mus_context_next_favorite_015",
+        "mus_chitchat_then_play_016",
+        "mus_chitchat_volume_017",
+        "mus_negative_unknown_source_018"
+      ],
+      "recovery": null
+    },
+    {
+      "source": "voice-surface-short-navigation-weather-20260911-example-dual.json",
+      "created_at": "2026-09-11T05:32:18.376Z",
+      "case_ids": [
+        "nav_single_start_001",
+        "nav_single_start_strategy_002",
+        "nav_single_start_waypoint_003",
+        "nav_single_route_query_004",
+        "nav_single_search_nearby_005",
+        "nav_single_search_food_006",
+        "nav_single_favorite_home_007",
+        "nav_single_set_favorite_008",
+        "nav_single_set_current_home_009",
+        "nav_single_strategy_default_010",
+        "nav_single_voice_brief_011",
+        "nav_single_view_overview_012",
+        "nav_single_stop_013",
+        "nav_context_add_waypoint_014",
+        "nav_context_change_destination_015",
+        "nav_context_remove_named_waypoint_016",
+        "nav_context_remove_index_waypoint_017",
+        "nav_context_strategy_active_018",
+        "nav_context_route_status_019",
+        "nav_context_voice_mute_020",
+        "nav_context_view_follow_021",
+        "nav_context_favorite_after_set_022",
+        "nav_context_search_then_start_023",
+        "nav_context_preview_then_start_024",
+        "nav_chitchat_entity_distractor_025",
+        "nav_chitchat_emotion_then_start_026",
+        "nav_chitchat_music_distractor_027",
+        "nav_chitchat_place_not_destination_028",
+        "nav_chitchat_weather_then_search_029",
+        "nav_chitchat_joke_then_start_030",
+        "nav_chitchat_memory_then_favorite_031",
+        "nav_chitchat_repair_then_strategy_032",
+        "nav_negative_missing_destination_033",
+        "nav_negative_add_waypoint_without_route_034",
+        "nav_negative_unknown_favorite_035",
+        "nav_negative_ambiguous_search_or_route_036",
+        "wea_single_current_001",
+        "wea_single_shanghai_rain_002",
+        "wea_single_beijing_temp_003",
+        "wea_single_hangzhou_wind_004",
+        "wea_single_umbrella_005",
+        "wea_chitchat_then_shenzhen_006",
+        "wea_chitchat_hot_then_current_007",
+        "wea_single_shenzhen_hot_008"
+      ],
+      "recovery": null
+    }
+  ],
+  "frontend": {
+    "suite": "short",
+    "timing_schema": 2,
+    "service_mode": "example",
+    "realtime_model": "qwen-audio-3.0-realtime-plus",
+    "agent_model": "qwen3.8-flash",
+    "zero_point": "speech_end (end of speech PCM, before silence tail)",
+    "session_policy": "fresh session per case; first turn cold; no synthetic warmup",
+    "surface": "frontend",
+    "input": {
+      "engine": "macos_say + ffmpeg",
+      "voice": "Tingting",
+      "sample_rate": 16000
+    },
+    "parameters": {
+      "silence_ms": 2200,
+      "timeout_ms": 120000,
+      "settle_ms": 1200
+    },
+    "routing": {
+      "vehicle": "frontend",
+      "music": "frontend",
+      "navigation": "frontend",
+      "weather": "frontend"
+    },
+    "results": [
+      {
+        "id": "veh_single_location_001",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "我现在在哪个位置？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_location_query",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_location_query",
+                "started_ms": 1294.8,
+                "ended_ms": 1295.3,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_state_windows_002",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "帮我看看车窗现在是不是都关着。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_state_query",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_state_query",
+                "started_ms": 1552.5,
+                "ended_ms": 1552.7,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_climate_start_003",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "提前把空调打开预处理一下。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_climate_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_climate_control",
+                "started_ms": 1534.2,
+                "ended_ms": 1534.6,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_climate_heat_004",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "空调切到制热模式。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_climate_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_climate_control",
+                "started_ms": 1724.3,
+                "ended_ms": 1724.5,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_climate_fan_005",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把空调风量调到 5 档。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_climate_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_climate_control",
+                "started_ms": 1670.6,
+                "ended_ms": 1670.9,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_temperature_all_006",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "全车温度设到 23 度。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_temperature_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_temperature_control",
+                "started_ms": 1849.8,
+                "ended_ms": 1850.2,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_temperature_passenger_down_007",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "副驾温度调低两度。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_temperature_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_temperature_control",
+                "started_ms": 1907.3,
+                "ended_ms": 1907.6,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_window_front_half_008",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把前排车窗开到一半。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_window_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_window_control",
+                "started_ms": 1575.9,
+                "ended_ms": 1576.1,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_window_rear_vent_009",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "后排车窗留条缝通风。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_window_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_window_control",
+                "started_ms": 1707.8,
+                "ended_ms": 1708.1,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_sunroof_vent_010",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把天窗调成通风模式。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_sunroof_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_sunroof_control",
+                "started_ms": 1065.9,
+                "ended_ms": 1066.2,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_trunk_open_011",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "打开后备箱。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_closure_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_closure_control",
+                "started_ms": 1352.7,
+                "ended_ms": 1353,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_charge_port_open_012",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把充电口打开。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_closure_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_closure_control",
+                "started_ms": 1280.4,
+                "ended_ms": 1280.5,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_seat_heater_driver_013",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "主驾座椅加热开到二档。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_comfort_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_comfort_control",
+                "started_ms": 2098.4,
+                "ended_ms": 2099,
+                "duration_ms": 0.6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_rear_seat_cooler_014",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "打开后排座椅通风。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_comfort_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_comfort_control",
+                "started_ms": 1554.4,
+                "ended_ms": 1554.6,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_steering_heat_015",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "打开方向盘加热。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_comfort_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_comfort_control",
+                "started_ms": 1312.9,
+                "ended_ms": 1313.1,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_auto_seat_climate_016",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "副驾自动座椅温控打开。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_comfort_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_comfort_control",
+                "started_ms": 1728.9,
+                "ended_ms": 1729,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_headlights_open_017",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "打开大灯。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_light_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_light_control",
+                "started_ms": 1483.9,
+                "ended_ms": 1484.2,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_flash_lights_018",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "帮我闪一下灯找车。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_light_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_light_control",
+                "started_ms": 1203.6,
+                "ended_ms": 1203.7,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_honk_019",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "鸣笛一下，我找不到车了。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_sound_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_sound_control",
+                "started_ms": 2145.7,
+                "ended_ms": 2146,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_boombox_020",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "播放外放定位提示音。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_sound_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_sound_control",
+                "started_ms": 1239.3,
+                "ended_ms": 1239.5,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_charge_limit_021",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "充电上限设到 90%。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_charging_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_charging_control",
+                "started_ms": 1410.2,
+                "ended_ms": 1410.7,
+                "duration_ms": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_charge_amps_022",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "充电电流调到 32A。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_charging_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_charging_control",
+                "started_ms": 1329.9,
+                "ended_ms": 1330,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_chitchat_then_window_023",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "今天风吹着挺舒服的。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "把右侧车窗打开。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_window_control",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_window_control",
+                "started_ms": 1374.5,
+                "ended_ms": 1374.6,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_negative_ambiguous_open_024",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把它打开。"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "mus_single_state_001",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "现在放的什么歌？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_state_query",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_state_query",
+                "started_ms": 1196.9,
+                "ended_ms": 1197.3,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_play_song_002",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "播放七里香。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_play",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_play",
+                "started_ms": 1170.9,
+                "ended_ms": 1171.4,
+                "duration_ms": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_play_artist_003",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "放一首周杰伦的歌。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_play",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_play",
+                "started_ms": 987.6,
+                "ended_ms": 987.8,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_search_004",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "搜一下青花瓷，先别播放。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_search",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_search",
+                "started_ms": 1048.8,
+                "ended_ms": 1049.2,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_pause_005",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "暂停音乐。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_pause",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_pause",
+                "started_ms": 875.8,
+                "ended_ms": 876.1,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_toggle_006",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "切换一下播放暂停状态。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_toggle_playback",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_toggle_playback",
+                "started_ms": 1067,
+                "ended_ms": 1067.1,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_next_007",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "下一首。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_next",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_next",
+                "started_ms": 979.4,
+                "ended_ms": 979.6,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_previous_008",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "上一首。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_previous",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_previous",
+                "started_ms": 867.2,
+                "ended_ms": 867.4,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_volume_up_009",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "音乐音量调高两格。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_volume_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_volume_control",
+                "started_ms": 1363.2,
+                "ended_ms": 1363.5,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_volume_set_010",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "媒体音量设到 8。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_volume_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_volume_control",
+                "started_ms": 1347.1,
+                "ended_ms": 1347.3,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_mute_011",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把音乐静音。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_volume_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_volume_control",
+                "started_ms": 1154.4,
+                "ended_ms": 1154.5,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_source_radio_012",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "切到广播。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_source_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_source_control",
+                "started_ms": 1610.2,
+                "ended_ms": 1610.6,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_source_bluetooth_013",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "切换到蓝牙播放。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_source_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_source_control",
+                "started_ms": 1133.2,
+                "ended_ms": 1133.4,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_favorite_add_014",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "收藏当前这首歌。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_favorite_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_favorite_control",
+                "started_ms": 1162.7,
+                "ended_ms": 1163.1,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_context_next_favorite_015",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "播放下一首收藏。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_favorite_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_favorite_control",
+                "started_ms": 1030.1,
+                "ended_ms": 1030.3,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_chitchat_then_play_016",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "周杰伦的歌陪了我很多年。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "播放稻香。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_play",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_play",
+                "started_ms": 1047,
+                "ended_ms": 1047.2,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_chitchat_volume_017",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "这首歌以前在电台总能听到。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "把音乐音量调低一点。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_volume_control",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_volume_control",
+                "started_ms": 1564.8,
+                "ended_ms": 1565,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_negative_unknown_source_018",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "切到网易云音乐。"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_source_control",
+                "started_ms": 1142.8,
+                "ended_ms": 1142.9,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_start_001",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去西湖"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1033,
+                "ended_ms": 1481.2,
+                "duration_ms": 448.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_start_strategy_002",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "带我去灵隐寺，少走高速"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1374.5,
+                "ended_ms": 1736.2,
+                "duration_ms": 361.8
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_start_waypoint_003",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去杭州东站，中途经过黄龙体育中心"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1482.6,
+                "ended_ms": 2410,
+                "duration_ms": 927.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_route_query_004",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "先帮我看看去萧山机场要多久，不要开始导航"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_route_query",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_route_query",
+                "started_ms": 1403.2,
+                "ended_ms": 1781.7,
+                "duration_ms": 378.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_search_nearby_005",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "附近有没有充电站？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_search_place",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_search_place",
+                "started_ms": 1455.2,
+                "ended_ms": 1580.9,
+                "duration_ms": 125.7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_search_food_006",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "有点饿了，找个附近能吃饭的地方"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_search_place",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_search_place",
+                "started_ms": 1595.2,
+                "ended_ms": 1761.5,
+                "duration_ms": 166.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_favorite_home_007",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "回家，走最快的路"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_to_favorite",
+                "started_ms": 1787.9,
+                "ended_ms": 1905,
+                "duration_ms": 117
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_set_favorite_008",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "把龙湖滨江天街设置成公司地址"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_favorite",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_favorite",
+                "started_ms": 1409.1,
+                "ended_ms": 1747,
+                "duration_ms": 337.9
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_set_current_home_009",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "把当前位置设为家"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_favorite",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_favorite",
+                "started_ms": 1322.6,
+                "ended_ms": 1322.7,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_strategy_default_010",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "以后导航都尽量不走高速"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_route_strategy",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_route_strategy",
+                "started_ms": 1483,
+                "ended_ms": 1483.3,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_voice_brief_011",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航播报简洁一点"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_voice",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_voice",
+                "started_ms": 1567.6,
+                "ended_ms": 1567.9,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_view_overview_012",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "切到路线全览"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_view",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_view",
+                "started_ms": 1173.8,
+                "ended_ms": 1174.3,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_stop_013",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "停止导航"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_stop",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_stop",
+                "started_ms": 882.6,
+                "ended_ms": 883,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_add_waypoint_014",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "先带我去西湖"
+          },
+          {
+            "user": "中途去一下黄龙体育中心"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_add_waypoint",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1059.3,
+                "ended_ms": 1531.3,
+                "duration_ms": 472
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_add_waypoint",
+                "started_ms": 1149.6,
+                "ended_ms": 1625,
+                "duration_ms": 475.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_change_destination_015",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去西湖"
+          },
+          {
+            "user": "别去西湖了，改去灵隐寺"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_change_destination",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1246.4,
+                "ended_ms": 1735.7,
+                "duration_ms": 489.4
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_change_destination",
+                "started_ms": 1226.1,
+                "ended_ms": 1590.5,
+                "duration_ms": 364.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_remove_named_waypoint_016",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去杭州东站，途经西湖和黄龙体育中心"
+          },
+          {
+            "user": "黄龙体育中心不去了"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_remove_waypoint",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1461.1,
+                "ended_ms": 2708.1,
+                "duration_ms": 1247
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_remove_waypoint",
+                "started_ms": 1375.5,
+                "ended_ms": 1511.5,
+                "duration_ms": 136
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_remove_index_waypoint_017",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去机场，先经过西湖，再经过黄龙体育中心"
+          },
+          {
+            "user": "删掉第一个途经点"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_remove_waypoint",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1349.7,
+                "ended_ms": 3346,
+                "duration_ms": 1996.3
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_remove_waypoint",
+                "started_ms": 1269,
+                "ended_ms": 1452.9,
+                "duration_ms": 183.8
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_strategy_active_018",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去杭州东站"
+          },
+          {
+            "user": "改成躲避拥堵"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_set_route_strategy",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1022,
+                "ended_ms": 1481.6,
+                "duration_ms": 459.6
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_route_strategy",
+                "started_ms": 1150.6,
+                "ended_ms": 1231.3,
+                "duration_ms": 80.7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_route_status_019",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "上次去西溪湿地那边停车挺麻烦的。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "先帮我查一下去灵隐寺怎么走，只看路线，先别导航。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_route_query",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_route_query",
+                "started_ms": 1053.6,
+                "ended_ms": 1520.4,
+                "duration_ms": 466.8
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_voice_mute_020",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航到杭州东站"
+          },
+          {
+            "user": "导航声音先静音"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_set_voice",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1174.5,
+                "ended_ms": 1605.3,
+                "duration_ms": 430.8
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_voice",
+                "started_ms": 1264.9,
+                "ended_ms": 1265.4,
+                "duration_ms": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_view_follow_021",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "带我去机场"
+          },
+          {
+            "user": "看一下全程"
+          },
+          {
+            "user": "回到车头跟随视角"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_set_view",
+            "turn_index": 1
+          },
+          {
+            "name": "navigation_set_view",
+            "turn_index": 2
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1166.8,
+                "ended_ms": 1511.1,
+                "duration_ms": 344.3
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_view",
+                "started_ms": 1197.5,
+                "ended_ms": 1197.8,
+                "duration_ms": 0.3
+              }
+            ]
+          },
+          {
+            "turn_index": 2,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_view",
+                "started_ms": 1302.2,
+                "ended_ms": 1302.4,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_favorite_after_set_022",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "把阿里西溪园区设为公司"
+          },
+          {
+            "user": "现在去公司"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_favorite",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_favorite",
+                "started_ms": 1408.6,
+                "ended_ms": 1746.1,
+                "duration_ms": 337.5
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_to_favorite",
+                "started_ms": 1368.7,
+                "ended_ms": 1495.3,
+                "duration_ms": 126.6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_search_then_start_023",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "找一下附近的充电站"
+          },
+          {
+            "user": "就去第一个搜索结果：充电站1号店"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_search_place",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_search_place",
+                "started_ms": 1435.6,
+                "ended_ms": 1630,
+                "duration_ms": 194.3
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1282.2,
+                "ended_ms": 1682.5,
+                "duration_ms": 400.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_preview_then_start_024",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "先看看去灵隐寺怎么走"
+          },
+          {
+            "user": "可以，就开始导航吧"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_route_query",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_route_query",
+                "started_ms": 1131.6,
+                "ended_ms": 1502.1,
+                "duration_ms": 370.4
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1169.4,
+                "ended_ms": 1574.2,
+                "duration_ms": 404.8
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_entity_distractor_025",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "昨天朋友说西湖周末特别堵，停车也麻烦。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "算了，先导航去公司吧。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_to_favorite",
+                "started_ms": 1061.1,
+                "ended_ms": 1148.3,
+                "duration_ms": 87.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_emotion_then_start_026",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天开会开到头大，路上别再折腾我了。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "带我回家，少收费。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_to_favorite",
+                "started_ms": 1277.8,
+                "ended_ms": 1398.4,
+                "duration_ms": 120.6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_music_distractor_027",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "刚才那首歌还挺适合夜里开车的。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "先去杭州东站接人。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1264.7,
+                "ended_ms": 1715.2,
+                "duration_ms": 450.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_place_not_destination_028",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "上次去灵隐寺那条路风景不错。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "今天还是去西溪湿地吧。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1348.1,
+                "ended_ms": 1761.3,
+                "duration_ms": 413.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_weather_then_search_029",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "天气热得有点犯困，开车得提提神。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "附近有没有咖啡店？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_search_place",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_climate_control",
+                "started_ms": 1434.3,
+                "ended_ms": 1434.8,
+                "duration_ms": 0.5
+              },
+              {
+                "name": "music_play",
+                "started_ms": 3633.1,
+                "ended_ms": 3633.7,
+                "duration_ms": 0.6
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_search_place",
+                "started_ms": 1521.2,
+                "ended_ms": 1696.4,
+                "duration_ms": 175.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_joke_then_start_030",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "要是这车能飞就好了。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "还是老实导航去机场吧。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 1128,
+                "ended_ms": 1491.1,
+                "duration_ms": 363.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_memory_then_favorite_031",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "以后我可能经常去这个地方。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "把阿里西溪园区设成公司。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_favorite",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_favorite",
+                "started_ms": 1398.8,
+                "ended_ms": 1705,
+                "duration_ms": 306.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_repair_then_strategy_032",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天高速上施工太多了，烦死了。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "后面路线都尽量避开高速。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_route_strategy",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_route_strategy",
+                "started_ms": 1964.1,
+                "ended_ms": 1964.4,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_negative_missing_destination_033",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "带我去那个地方"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_negative_add_waypoint_without_route_034",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "中途去一下黄龙体育中心"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_add_waypoint",
+                "started_ms": 1163.3,
+                "ended_ms": 1163.6,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_negative_unknown_favorite_035",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "去公司"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_to_favorite",
+                "started_ms": 1128.9,
+                "ended_ms": 1129,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_negative_ambiguous_search_or_route_036",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "找个好点的地方"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_single_current_001",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天天气怎么样？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "weather",
+                "started_ms": 881.3,
+                "ended_ms": 1052.1,
+                "duration_ms": 170.7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wea_single_shanghai_rain_002",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "上海今天会下雨吗？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "weather",
+                "started_ms": 1157.8,
+                "ended_ms": 1299,
+                "duration_ms": 141.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wea_single_beijing_temp_003",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "北京现在几度？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "weather",
+                "started_ms": 1031.8,
+                "ended_ms": 1212.5,
+                "duration_ms": 180.7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wea_single_hangzhou_wind_004",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "杭州今天风大吗？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "weather",
+                "started_ms": 990.2,
+                "ended_ms": 1129.3,
+                "duration_ms": 139.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wea_single_umbrella_005",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天出门要带伞吗？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_chitchat_then_shenzhen_006",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天云看起来挺漂亮。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "查一下深圳天气。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "weather",
+                "started_ms": 1090.1,
+                "ended_ms": 1242.3,
+                "duration_ms": 152.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wea_chitchat_hot_then_current_007",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天人有点困，脑子发闷。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "顺便看看现在天气。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_single_shenzhen_hot_008",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "深圳今天热不热？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "weather",
+                "started_ms": 1056,
+                "ended_ms": 1186.6,
+                "duration_ms": 130.6
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "backend": {
+    "suite": "short",
+    "timing_schema": 2,
+    "service_mode": "example",
+    "realtime_model": "qwen-audio-3.0-realtime-plus",
+    "agent_model": "qwen3.8-flash",
+    "zero_point": "speech_end (end of speech PCM, before silence tail)",
+    "session_policy": "fresh session per case; first turn cold; no synthetic warmup",
+    "surface": "backend",
+    "input": {
+      "engine": "macos_say + ffmpeg",
+      "voice": "Tingting",
+      "sample_rate": 16000
+    },
+    "parameters": {
+      "silence_ms": 2200,
+      "timeout_ms": 120000,
+      "settle_ms": 1200
+    },
+    "routing": {
+      "vehicle": "backend",
+      "music": "backend",
+      "navigation": "backend",
+      "weather": "backend"
+    },
+    "results": [
+      {
+        "id": "veh_single_location_001",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "我现在在哪个位置？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_location_query",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "veh_single_state_windows_002",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "帮我看看车窗现在是不是都关着。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_state_query",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_state_query",
+                "started_ms": 3792.7,
+                "ended_ms": 3793.1,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_climate_start_003",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "提前把空调打开预处理一下。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_climate_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_climate_control",
+                "started_ms": 3020.5,
+                "ended_ms": 3021,
+                "duration_ms": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_climate_heat_004",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "空调切到制热模式。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_climate_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_climate_control",
+                "started_ms": 2925.7,
+                "ended_ms": 2925.9,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_climate_fan_005",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把空调风量调到 5 档。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_climate_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_climate_control",
+                "started_ms": 2627.2,
+                "ended_ms": 2627.5,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_temperature_all_006",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "全车温度设到 23 度。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_temperature_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_temperature_control",
+                "started_ms": 3514,
+                "ended_ms": 3514.4,
+                "duration_ms": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_temperature_passenger_down_007",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "副驾温度调低两度。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_temperature_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_temperature_control",
+                "started_ms": 3320.3,
+                "ended_ms": 3320.5,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_window_front_half_008",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把前排车窗开到一半。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_window_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_window_control",
+                "started_ms": 3222.5,
+                "ended_ms": 3223.1,
+                "duration_ms": 0.6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_window_rear_vent_009",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "后排车窗留条缝通风。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_window_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_window_control",
+                "started_ms": 2921.6,
+                "ended_ms": 2921.8,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_sunroof_vent_010",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把天窗调成通风模式。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_sunroof_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_sunroof_control",
+                "started_ms": 2360.6,
+                "ended_ms": 2360.8,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_trunk_open_011",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "打开后备箱。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_closure_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_closure_control",
+                "started_ms": 2565.6,
+                "ended_ms": 2565.9,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_charge_port_open_012",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把充电口打开。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_closure_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_closure_control",
+                "started_ms": 2606.4,
+                "ended_ms": 2606.5,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_seat_heater_driver_013",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "主驾座椅加热开到二档。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_comfort_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_comfort_control",
+                "started_ms": 3371.6,
+                "ended_ms": 3372,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_rear_seat_cooler_014",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "打开后排座椅通风。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_comfort_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_comfort_control",
+                "started_ms": 4025.3,
+                "ended_ms": 4025.5,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_steering_heat_015",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "打开方向盘加热。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_comfort_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_comfort_control",
+                "started_ms": 2727.5,
+                "ended_ms": 2727.6,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_auto_seat_climate_016",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "副驾自动座椅温控打开。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_comfort_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_comfort_control",
+                "started_ms": 3087.4,
+                "ended_ms": 3087.5,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_headlights_open_017",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "打开大灯。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_light_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_light_control",
+                "started_ms": 2696.1,
+                "ended_ms": 2696.4,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_flash_lights_018",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "帮我闪一下灯找车。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_light_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_light_control",
+                "started_ms": 2638.4,
+                "ended_ms": 2638.6,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_honk_019",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "鸣笛一下，我找不到车了。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_sound_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_sound_control",
+                "started_ms": 3729.2,
+                "ended_ms": 3729.5,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_boombox_020",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "播放外放定位提示音。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_sound_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_sound_control",
+                "started_ms": 3407.8,
+                "ended_ms": 3408,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_charge_limit_021",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "充电上限设到 90%。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_charging_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_charging_control",
+                "started_ms": 2579.9,
+                "ended_ms": 2580.3,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_single_charge_amps_022",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "充电电流调到 32A。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_charging_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_charging_control",
+                "started_ms": 2417.4,
+                "ended_ms": 2417.5,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_chitchat_then_window_023",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "今天风吹着挺舒服的。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "把右侧车窗打开。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "vehicle_window_control",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_window_control",
+                "started_ms": 8527,
+                "ended_ms": 8527.1,
+                "duration_ms": 0.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "veh_negative_ambiguous_open_024",
+        "domain": "vehicle",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把它打开。"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "mus_single_state_001",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "现在放的什么歌？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_state_query",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "mus_single_play_song_002",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "播放七里香。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_play",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_play",
+                "started_ms": 2263,
+                "ended_ms": 2263.5,
+                "duration_ms": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_play_artist_003",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "放一首周杰伦的歌。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_play",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_play",
+                "started_ms": 2847.3,
+                "ended_ms": 2847.6,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_search_004",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "搜一下青花瓷，先别播放。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_search",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "mus_single_pause_005",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "暂停音乐。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_pause",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_pause",
+                "started_ms": 1946,
+                "ended_ms": 1946.3,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_toggle_006",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "切换一下播放暂停状态。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_toggle_playback",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_toggle_playback",
+                "started_ms": 2809.6,
+                "ended_ms": 2809.8,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_next_007",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "下一首。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_next",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_next",
+                "started_ms": 2205.6,
+                "ended_ms": 2205.8,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_previous_008",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "上一首。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_previous",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_previous",
+                "started_ms": 2452.3,
+                "ended_ms": 2452.5,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_volume_up_009",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "音乐音量调高两格。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_volume_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_volume_control",
+                "started_ms": 2390.7,
+                "ended_ms": 2391.1,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_volume_set_010",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "媒体音量设到 8。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_volume_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_volume_control",
+                "started_ms": 2273.6,
+                "ended_ms": 2273.8,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_mute_011",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "把音乐静音。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_volume_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_volume_control",
+                "started_ms": 2325.3,
+                "ended_ms": 2325.5,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_source_radio_012",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "切到广播。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_source_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_source_control",
+                "started_ms": 2667.7,
+                "ended_ms": 2668.2,
+                "duration_ms": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_source_bluetooth_013",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "切换到蓝牙播放。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_source_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_source_control",
+                "started_ms": 2639.3,
+                "ended_ms": 2639.6,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_single_favorite_add_014",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "收藏当前这首歌。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_favorite_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_favorite_control",
+                "started_ms": 2959.7,
+                "ended_ms": 2960.1,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_context_next_favorite_015",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "播放下一首收藏。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_favorite_control",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_favorite_control",
+                "started_ms": 2444.8,
+                "ended_ms": 2445.1,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_chitchat_then_play_016",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "周杰伦的歌陪了我很多年。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "播放稻香。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_play",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_play",
+                "started_ms": 2287.7,
+                "ended_ms": 2287.8,
+                "duration_ms": 0.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_chitchat_volume_017",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "这首歌以前在电台总能听到。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "把音乐音量调低一点。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "music_volume_control",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "music_volume_control",
+                "started_ms": 3074.4,
+                "ended_ms": 3074.7,
+                "duration_ms": 0.3
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "mus_negative_unknown_source_018",
+        "domain": "music",
+        "batch_index": 0,
+        "user_turns": [
+          {
+            "user": "切到网易云音乐。"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_single_start_001",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去西湖"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 3207.5,
+                "ended_ms": 3625.6,
+                "duration_ms": 418.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_start_strategy_002",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "带我去灵隐寺，少走高速"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 3340.7,
+                "ended_ms": 3758.5,
+                "duration_ms": 417.8
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_start_waypoint_003",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去杭州东站，中途经过黄龙体育中心"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2563.6,
+                "ended_ms": 3461,
+                "duration_ms": 897.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_route_query_004",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "先帮我看看去萧山机场要多久，不要开始导航"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_route_query",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_route_query",
+                "started_ms": 2241.9,
+                "ended_ms": 2692,
+                "duration_ms": 450.1
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_search_nearby_005",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "附近有没有充电站？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_search_place",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_single_search_food_006",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "有点饿了，找个附近能吃饭的地方"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_search_place",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_single_favorite_home_007",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "回家，走最快的路"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_to_favorite",
+                "started_ms": 2947.2,
+                "ended_ms": 3083.8,
+                "duration_ms": 136.7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_set_favorite_008",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "把龙湖滨江天街设置成公司地址"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_favorite",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_single_set_current_home_009",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "把当前位置设为家"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_favorite",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_single_strategy_default_010",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "以后导航都尽量不走高速"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_route_strategy",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_single_voice_brief_011",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航播报简洁一点"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_voice",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_single_view_overview_012",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "切到路线全览"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_view",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_view",
+                "started_ms": 2229.6,
+                "ended_ms": 2230,
+                "duration_ms": 0.4
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_single_stop_013",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "停止导航"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_stop",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_stop",
+                "started_ms": 2508.9,
+                "ended_ms": 2509.4,
+                "duration_ms": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_add_waypoint_014",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "先带我去西湖"
+          },
+          {
+            "user": "中途去一下黄龙体育中心"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_add_waypoint",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2174.6,
+                "ended_ms": 2703.6,
+                "duration_ms": 529
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_add_waypoint",
+                "started_ms": 6071.8,
+                "ended_ms": 6566.3,
+                "duration_ms": 494.6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_change_destination_015",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去西湖"
+          },
+          {
+            "user": "别去西湖了，改去灵隐寺"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_change_destination",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2524.1,
+                "ended_ms": 2992.5,
+                "duration_ms": 468.4
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2621.9,
+                "ended_ms": 3040.8,
+                "duration_ms": 418.9
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_remove_named_waypoint_016",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去杭州东站，途经西湖和黄龙体育中心"
+          },
+          {
+            "user": "黄龙体育中心不去了"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_remove_waypoint",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2577,
+                "ended_ms": 3908.7,
+                "duration_ms": 1331.7
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 11944.2,
+                "ended_ms": 12952.9,
+                "duration_ms": 1008.7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_remove_index_waypoint_017",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去机场，先经过西湖，再经过黄龙体育中心"
+          },
+          {
+            "user": "删掉第一个途经点"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_remove_waypoint",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2657,
+                "ended_ms": 3994.3,
+                "duration_ms": 1337.3
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_remove_waypoint",
+                "started_ms": 3083.6,
+                "ended_ms": 3243.3,
+                "duration_ms": 159.6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_strategy_active_018",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航去杭州东站"
+          },
+          {
+            "user": "改成躲避拥堵"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_set_route_strategy",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2167,
+                "ended_ms": 2625.6,
+                "duration_ms": 458.6
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_route_strategy",
+                "started_ms": 3075.4,
+                "ended_ms": 3151.1,
+                "duration_ms": 75.7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_route_status_019",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "上次去西溪湿地那边停车挺麻烦的。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "先帮我查一下去灵隐寺怎么走，只看路线，先别导航。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_route_query",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_context_voice_mute_020",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "导航到杭州东站"
+          },
+          {
+            "user": "导航声音先静音"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_set_voice",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2497.3,
+                "ended_ms": 2939.4,
+                "duration_ms": 442.2
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_voice",
+                "started_ms": 2806.9,
+                "ended_ms": 2807.3,
+                "duration_ms": 0.5
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_view_follow_021",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "带我去机场"
+          },
+          {
+            "user": "看一下全程"
+          },
+          {
+            "user": "回到车头跟随视角"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_set_view",
+            "turn_index": 1
+          },
+          {
+            "name": "navigation_set_view",
+            "turn_index": 2
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 3379.1,
+                "ended_ms": 3986.9,
+                "duration_ms": 607.8
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 2,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_context_favorite_after_set_022",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "把阿里西溪园区设为公司"
+          },
+          {
+            "user": "现在去公司"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_favorite",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_favorite",
+                "started_ms": 10179.1,
+                "ended_ms": 10508.5,
+                "duration_ms": 329.4
+              },
+              {
+                "name": "navigation_to_favorite",
+                "started_ms": 12011.1,
+                "ended_ms": 12151.7,
+                "duration_ms": 140.6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_search_then_start_023",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "找一下附近的充电站"
+          },
+          {
+            "user": "就去第一个搜索结果：充电站1号店"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_search_place",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_search_place",
+                "started_ms": 2566.8,
+                "ended_ms": 2700.8,
+                "duration_ms": 134
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2747.8,
+                "ended_ms": 3103.7,
+                "duration_ms": 355.9
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_context_preview_then_start_024",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "先看看去灵隐寺怎么走"
+          },
+          {
+            "user": "可以，就开始导航吧"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_route_query",
+            "turn_index": 0
+          },
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_route_query",
+                "started_ms": 2880.8,
+                "ended_ms": 3247.9,
+                "duration_ms": 367
+              }
+            ]
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 3222.1,
+                "ended_ms": 3783.9,
+                "duration_ms": 561.8
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_entity_distractor_025",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "昨天朋友说西湖周末特别堵，停车也麻烦。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "算了，先导航去公司吧。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_set_favorite",
+                "started_ms": 5478.8,
+                "ended_ms": 5796.4,
+                "duration_ms": 317.7
+              },
+              {
+                "name": "navigation_to_favorite",
+                "started_ms": 6629.6,
+                "ended_ms": 6775.2,
+                "duration_ms": 145.6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_emotion_then_start_026",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天开会开到头大，路上别再折腾我了。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "带我回家，少收费。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_music_distractor_027",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "刚才那首歌还挺适合夜里开车的。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "先去杭州东站接人。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 4839.6,
+                "ended_ms": 5342.8,
+                "duration_ms": 503.2
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_place_not_destination_028",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "上次去灵隐寺那条路风景不错。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "今天还是去西溪湿地吧。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_route_query",
+                "started_ms": 3593.8,
+                "ended_ms": 4096.4,
+                "duration_ms": 502.7
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_weather_then_search_029",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "天气热得有点犯困，开车得提提神。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "附近有没有咖啡店？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_search_place",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_joke_then_start_030",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "要是这车能飞就好了。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "还是老实导航去机场吧。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_start",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_start",
+                "started_ms": 2539.4,
+                "ended_ms": 2936.2,
+                "duration_ms": 396.9
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_memory_then_favorite_031",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "以后我可能经常去这个地方。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "把阿里西溪园区设成公司。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_favorite",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_chitchat_repair_then_strategy_032",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天高速上施工太多了，烦死了。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "后面路线都尽量避开高速。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_set_route_strategy",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_negative_missing_destination_033",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "带我去那个地方"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_negative_add_waypoint_without_route_034",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "中途去一下黄龙体育中心"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "nav_negative_unknown_favorite_035",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "去公司"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "navigation_to_favorite",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "navigation_to_favorite",
+                "started_ms": 4366.2,
+                "ended_ms": 4366.3,
+                "duration_ms": 0.1
+              },
+              {
+                "name": "navigation_start",
+                "started_ms": 8135.9,
+                "ended_ms": 8615.6,
+                "duration_ms": 479.6
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "nav_negative_ambiguous_search_or_route_036",
+        "domain": "navigation",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "找个好点的地方"
+          }
+        ],
+        "expected_calls": [],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_single_current_001",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天天气怎么样？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": [
+              {
+                "name": "vehicle_location_query",
+                "started_ms": 3203.8,
+                "ended_ms": 3204.1,
+                "duration_ms": 0.3
+              },
+              {
+                "name": "weather",
+                "started_ms": 3209,
+                "ended_ms": 3361,
+                "duration_ms": 152
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "wea_single_shanghai_rain_002",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "上海今天会下雨吗？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_single_beijing_temp_003",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "北京现在几度？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_single_hangzhou_wind_004",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "杭州今天风大吗？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_single_umbrella_005",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天出门要带伞吗？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_chitchat_then_shenzhen_006",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天云看起来挺漂亮。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "查一下深圳天气。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_chitchat_hot_then_current_007",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "今天人有点困，脑子发闷。",
+            "expect_no_tool": true
+          },
+          {
+            "user": "顺便看看现在天气。"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 1
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          },
+          {
+            "turn_index": 1,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      },
+      {
+        "id": "wea_single_shenzhen_hot_008",
+        "domain": "weather",
+        "batch_index": 1,
+        "user_turns": [
+          {
+            "user": "深圳今天热不热？"
+          }
+        ],
+        "expected_calls": [
+          {
+            "name": "weather",
+            "turn_index": 0
+          }
+        ],
+        "turns": [
+          {
+            "turn_index": 0,
+            "timed_out": false,
+            "executed_calls": []
+          }
+        ]
+      }
+    ]
+  },
+  "comparison": {
+    "timing_schema": 2,
+    "service_mode": "example",
+    "unit": "task_turn",
+    "metric": "speech_end_to_tool_start_and_end",
+    "mean_policy": "all finite per-surface timestamps independently, including failed returns; no tool-matching or audio gate",
+    "before_definition": "latest service.execute start within the turn",
+    "after_definition": "latest service.execute resolve/reject, only if all invoked tools ended; not audio or A2A completion",
+    "tasks": [
+      {
+        "id": "veh_single_location_001",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "我现在在哪个位置？",
+        "frontend_before_ms": 1294.8,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1295.3,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "veh_single_state_windows_002",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "帮我看看车窗现在是不是都关着。",
+        "frontend_before_ms": 1552.5,
+        "backend_before_ms": 3792.7,
+        "frontend_after_ms": 1552.7,
+        "backend_after_ms": 3793.1,
+        "before_difference_ms": 2240.2,
+        "after_difference_ms": 2240.4
+      },
+      {
+        "id": "veh_single_climate_start_003",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "提前把空调打开预处理一下。",
+        "frontend_before_ms": 1534.2,
+        "backend_before_ms": 3020.5,
+        "frontend_after_ms": 1534.6,
+        "backend_after_ms": 3021,
+        "before_difference_ms": 1486.3,
+        "after_difference_ms": 1486.4
+      },
+      {
+        "id": "veh_single_climate_heat_004",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "空调切到制热模式。",
+        "frontend_before_ms": 1724.3,
+        "backend_before_ms": 2925.7,
+        "frontend_after_ms": 1724.5,
+        "backend_after_ms": 2925.9,
+        "before_difference_ms": 1201.4,
+        "after_difference_ms": 1201.4
+      },
+      {
+        "id": "veh_single_climate_fan_005",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "把空调风量调到 5 档。",
+        "frontend_before_ms": 1670.6,
+        "backend_before_ms": 2627.2,
+        "frontend_after_ms": 1670.9,
+        "backend_after_ms": 2627.5,
+        "before_difference_ms": 956.6,
+        "after_difference_ms": 956.6
+      },
+      {
+        "id": "veh_single_temperature_all_006",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "全车温度设到 23 度。",
+        "frontend_before_ms": 1849.8,
+        "backend_before_ms": 3514,
+        "frontend_after_ms": 1850.2,
+        "backend_after_ms": 3514.4,
+        "before_difference_ms": 1664.2,
+        "after_difference_ms": 1664.2
+      },
+      {
+        "id": "veh_single_temperature_passenger_down_007",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "副驾温度调低两度。",
+        "frontend_before_ms": 1907.3,
+        "backend_before_ms": 3320.3,
+        "frontend_after_ms": 1907.6,
+        "backend_after_ms": 3320.5,
+        "before_difference_ms": 1413,
+        "after_difference_ms": 1412.9
+      },
+      {
+        "id": "veh_single_window_front_half_008",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "把前排车窗开到一半。",
+        "frontend_before_ms": 1575.9,
+        "backend_before_ms": 3222.5,
+        "frontend_after_ms": 1576.1,
+        "backend_after_ms": 3223.1,
+        "before_difference_ms": 1646.6,
+        "after_difference_ms": 1647
+      },
+      {
+        "id": "veh_single_window_rear_vent_009",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "后排车窗留条缝通风。",
+        "frontend_before_ms": 1707.8,
+        "backend_before_ms": 2921.6,
+        "frontend_after_ms": 1708.1,
+        "backend_after_ms": 2921.8,
+        "before_difference_ms": 1213.8,
+        "after_difference_ms": 1213.7
+      },
+      {
+        "id": "veh_single_sunroof_vent_010",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "把天窗调成通风模式。",
+        "frontend_before_ms": 1065.9,
+        "backend_before_ms": 2360.6,
+        "frontend_after_ms": 1066.2,
+        "backend_after_ms": 2360.8,
+        "before_difference_ms": 1294.7,
+        "after_difference_ms": 1294.6
+      },
+      {
+        "id": "veh_single_trunk_open_011",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "打开后备箱。",
+        "frontend_before_ms": 1352.7,
+        "backend_before_ms": 2565.6,
+        "frontend_after_ms": 1353,
+        "backend_after_ms": 2565.9,
+        "before_difference_ms": 1212.9,
+        "after_difference_ms": 1212.9
+      },
+      {
+        "id": "veh_single_charge_port_open_012",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "把充电口打开。",
+        "frontend_before_ms": 1280.4,
+        "backend_before_ms": 2606.4,
+        "frontend_after_ms": 1280.5,
+        "backend_after_ms": 2606.5,
+        "before_difference_ms": 1326,
+        "after_difference_ms": 1326
+      },
+      {
+        "id": "veh_single_seat_heater_driver_013",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "主驾座椅加热开到二档。",
+        "frontend_before_ms": 2098.4,
+        "backend_before_ms": 3371.6,
+        "frontend_after_ms": 2099,
+        "backend_after_ms": 3372,
+        "before_difference_ms": 1273.2,
+        "after_difference_ms": 1273
+      },
+      {
+        "id": "veh_single_rear_seat_cooler_014",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "打开后排座椅通风。",
+        "frontend_before_ms": 1554.4,
+        "backend_before_ms": 4025.3,
+        "frontend_after_ms": 1554.6,
+        "backend_after_ms": 4025.5,
+        "before_difference_ms": 2470.9,
+        "after_difference_ms": 2470.9
+      },
+      {
+        "id": "veh_single_steering_heat_015",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "打开方向盘加热。",
+        "frontend_before_ms": 1312.9,
+        "backend_before_ms": 2727.5,
+        "frontend_after_ms": 1313.1,
+        "backend_after_ms": 2727.6,
+        "before_difference_ms": 1414.6,
+        "after_difference_ms": 1414.5
+      },
+      {
+        "id": "veh_single_auto_seat_climate_016",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "副驾自动座椅温控打开。",
+        "frontend_before_ms": 1728.9,
+        "backend_before_ms": 3087.4,
+        "frontend_after_ms": 1729,
+        "backend_after_ms": 3087.5,
+        "before_difference_ms": 1358.5,
+        "after_difference_ms": 1358.5
+      },
+      {
+        "id": "veh_single_headlights_open_017",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "打开大灯。",
+        "frontend_before_ms": 1483.9,
+        "backend_before_ms": 2696.1,
+        "frontend_after_ms": 1484.2,
+        "backend_after_ms": 2696.4,
+        "before_difference_ms": 1212.2,
+        "after_difference_ms": 1212.2
+      },
+      {
+        "id": "veh_single_flash_lights_018",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "帮我闪一下灯找车。",
+        "frontend_before_ms": 1203.6,
+        "backend_before_ms": 2638.4,
+        "frontend_after_ms": 1203.7,
+        "backend_after_ms": 2638.6,
+        "before_difference_ms": 1434.8,
+        "after_difference_ms": 1434.9
+      },
+      {
+        "id": "veh_single_honk_019",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "鸣笛一下，我找不到车了。",
+        "frontend_before_ms": 2145.7,
+        "backend_before_ms": 3729.2,
+        "frontend_after_ms": 2146,
+        "backend_after_ms": 3729.5,
+        "before_difference_ms": 1583.5,
+        "after_difference_ms": 1583.5
+      },
+      {
+        "id": "veh_single_boombox_020",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "播放外放定位提示音。",
+        "frontend_before_ms": 1239.3,
+        "backend_before_ms": 3407.8,
+        "frontend_after_ms": 1239.5,
+        "backend_after_ms": 3408,
+        "before_difference_ms": 2168.5,
+        "after_difference_ms": 2168.5
+      },
+      {
+        "id": "veh_single_charge_limit_021",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "充电上限设到 90%。",
+        "frontend_before_ms": 1410.2,
+        "backend_before_ms": 2579.9,
+        "frontend_after_ms": 1410.7,
+        "backend_after_ms": 2580.3,
+        "before_difference_ms": 1169.7,
+        "after_difference_ms": 1169.6
+      },
+      {
+        "id": "veh_single_charge_amps_022",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "充电电流调到 32A。",
+        "frontend_before_ms": 1329.9,
+        "backend_before_ms": 2417.4,
+        "frontend_after_ms": 1330,
+        "backend_after_ms": 2417.5,
+        "before_difference_ms": 1087.5,
+        "after_difference_ms": 1087.5
+      },
+      {
+        "id": "veh_chitchat_then_window_023",
+        "domain": "vehicle",
+        "turn_index": 1,
+        "task": "把右侧车窗打开。",
+        "frontend_before_ms": 1374.5,
+        "backend_before_ms": 8527,
+        "frontend_after_ms": 1374.6,
+        "backend_after_ms": 8527.1,
+        "before_difference_ms": 7152.5,
+        "after_difference_ms": 7152.5
+      },
+      {
+        "id": "mus_single_state_001",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "现在放的什么歌？",
+        "frontend_before_ms": 1196.9,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1197.3,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "mus_single_play_song_002",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "播放七里香。",
+        "frontend_before_ms": 1170.9,
+        "backend_before_ms": 2263,
+        "frontend_after_ms": 1171.4,
+        "backend_after_ms": 2263.5,
+        "before_difference_ms": 1092.1,
+        "after_difference_ms": 1092.1
+      },
+      {
+        "id": "mus_single_play_artist_003",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "放一首周杰伦的歌。",
+        "frontend_before_ms": 987.6,
+        "backend_before_ms": 2847.3,
+        "frontend_after_ms": 987.8,
+        "backend_after_ms": 2847.6,
+        "before_difference_ms": 1859.7,
+        "after_difference_ms": 1859.8
+      },
+      {
+        "id": "mus_single_search_004",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "搜一下青花瓷，先别播放。",
+        "frontend_before_ms": 1048.8,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1049.2,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "mus_single_pause_005",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "暂停音乐。",
+        "frontend_before_ms": 875.8,
+        "backend_before_ms": 1946,
+        "frontend_after_ms": 876.1,
+        "backend_after_ms": 1946.3,
+        "before_difference_ms": 1070.2,
+        "after_difference_ms": 1070.2
+      },
+      {
+        "id": "mus_single_toggle_006",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "切换一下播放暂停状态。",
+        "frontend_before_ms": 1067,
+        "backend_before_ms": 2809.6,
+        "frontend_after_ms": 1067.1,
+        "backend_after_ms": 2809.8,
+        "before_difference_ms": 1742.6,
+        "after_difference_ms": 1742.7
+      },
+      {
+        "id": "mus_single_next_007",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "下一首。",
+        "frontend_before_ms": 979.4,
+        "backend_before_ms": 2205.6,
+        "frontend_after_ms": 979.6,
+        "backend_after_ms": 2205.8,
+        "before_difference_ms": 1226.2,
+        "after_difference_ms": 1226.2
+      },
+      {
+        "id": "mus_single_previous_008",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "上一首。",
+        "frontend_before_ms": 867.2,
+        "backend_before_ms": 2452.3,
+        "frontend_after_ms": 867.4,
+        "backend_after_ms": 2452.5,
+        "before_difference_ms": 1585.1,
+        "after_difference_ms": 1585.1
+      },
+      {
+        "id": "mus_single_volume_up_009",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "音乐音量调高两格。",
+        "frontend_before_ms": 1363.2,
+        "backend_before_ms": 2390.7,
+        "frontend_after_ms": 1363.5,
+        "backend_after_ms": 2391.1,
+        "before_difference_ms": 1027.5,
+        "after_difference_ms": 1027.6
+      },
+      {
+        "id": "mus_single_volume_set_010",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "媒体音量设到 8。",
+        "frontend_before_ms": 1347.1,
+        "backend_before_ms": 2273.6,
+        "frontend_after_ms": 1347.3,
+        "backend_after_ms": 2273.8,
+        "before_difference_ms": 926.5,
+        "after_difference_ms": 926.5
+      },
+      {
+        "id": "mus_single_mute_011",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "把音乐静音。",
+        "frontend_before_ms": 1154.4,
+        "backend_before_ms": 2325.3,
+        "frontend_after_ms": 1154.5,
+        "backend_after_ms": 2325.5,
+        "before_difference_ms": 1170.9,
+        "after_difference_ms": 1171
+      },
+      {
+        "id": "mus_single_source_radio_012",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "切到广播。",
+        "frontend_before_ms": 1610.2,
+        "backend_before_ms": 2667.7,
+        "frontend_after_ms": 1610.6,
+        "backend_after_ms": 2668.2,
+        "before_difference_ms": 1057.5,
+        "after_difference_ms": 1057.6
+      },
+      {
+        "id": "mus_single_source_bluetooth_013",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "切换到蓝牙播放。",
+        "frontend_before_ms": 1133.2,
+        "backend_before_ms": 2639.3,
+        "frontend_after_ms": 1133.4,
+        "backend_after_ms": 2639.6,
+        "before_difference_ms": 1506.1,
+        "after_difference_ms": 1506.2
+      },
+      {
+        "id": "mus_single_favorite_add_014",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "收藏当前这首歌。",
+        "frontend_before_ms": 1162.7,
+        "backend_before_ms": 2959.7,
+        "frontend_after_ms": 1163.1,
+        "backend_after_ms": 2960.1,
+        "before_difference_ms": 1797,
+        "after_difference_ms": 1797
+      },
+      {
+        "id": "mus_context_next_favorite_015",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "播放下一首收藏。",
+        "frontend_before_ms": 1030.1,
+        "backend_before_ms": 2444.8,
+        "frontend_after_ms": 1030.3,
+        "backend_after_ms": 2445.1,
+        "before_difference_ms": 1414.7,
+        "after_difference_ms": 1414.8
+      },
+      {
+        "id": "mus_chitchat_then_play_016",
+        "domain": "music",
+        "turn_index": 1,
+        "task": "播放稻香。",
+        "frontend_before_ms": 1047,
+        "backend_before_ms": 2287.7,
+        "frontend_after_ms": 1047.2,
+        "backend_after_ms": 2287.8,
+        "before_difference_ms": 1240.7,
+        "after_difference_ms": 1240.6
+      },
+      {
+        "id": "mus_chitchat_volume_017",
+        "domain": "music",
+        "turn_index": 1,
+        "task": "把音乐音量调低一点。",
+        "frontend_before_ms": 1564.8,
+        "backend_before_ms": 3074.4,
+        "frontend_after_ms": 1565,
+        "backend_after_ms": 3074.7,
+        "before_difference_ms": 1509.6,
+        "after_difference_ms": 1509.7
+      },
+      {
+        "id": "nav_single_start_001",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "导航去西湖",
+        "frontend_before_ms": 1033,
+        "backend_before_ms": 3207.5,
+        "frontend_after_ms": 1481.2,
+        "backend_after_ms": 3625.6,
+        "before_difference_ms": 2174.5,
+        "after_difference_ms": 2144.4
+      },
+      {
+        "id": "nav_single_start_strategy_002",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "带我去灵隐寺，少走高速",
+        "frontend_before_ms": 1374.5,
+        "backend_before_ms": 3340.7,
+        "frontend_after_ms": 1736.2,
+        "backend_after_ms": 3758.5,
+        "before_difference_ms": 1966.2,
+        "after_difference_ms": 2022.3
+      },
+      {
+        "id": "nav_single_start_waypoint_003",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "导航去杭州东站，中途经过黄龙体育中心",
+        "frontend_before_ms": 1482.6,
+        "backend_before_ms": 2563.6,
+        "frontend_after_ms": 2410,
+        "backend_after_ms": 3461,
+        "before_difference_ms": 1081,
+        "after_difference_ms": 1051
+      },
+      {
+        "id": "nav_single_route_query_004",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "先帮我看看去萧山机场要多久，不要开始导航",
+        "frontend_before_ms": 1403.2,
+        "backend_before_ms": 2241.9,
+        "frontend_after_ms": 1781.7,
+        "backend_after_ms": 2692,
+        "before_difference_ms": 838.7,
+        "after_difference_ms": 910.3
+      },
+      {
+        "id": "nav_single_search_nearby_005",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "附近有没有充电站？",
+        "frontend_before_ms": 1455.2,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1580.9,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_single_search_food_006",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "有点饿了，找个附近能吃饭的地方",
+        "frontend_before_ms": 1595.2,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1761.5,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_single_favorite_home_007",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "回家，走最快的路",
+        "frontend_before_ms": 1787.9,
+        "backend_before_ms": 2947.2,
+        "frontend_after_ms": 1905,
+        "backend_after_ms": 3083.8,
+        "before_difference_ms": 1159.3,
+        "after_difference_ms": 1178.8
+      },
+      {
+        "id": "nav_single_set_favorite_008",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "把龙湖滨江天街设置成公司地址",
+        "frontend_before_ms": 1409.1,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1747,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_single_set_current_home_009",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "把当前位置设为家",
+        "frontend_before_ms": 1322.6,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1322.7,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_single_strategy_default_010",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "以后导航都尽量不走高速",
+        "frontend_before_ms": 1483,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1483.3,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_single_voice_brief_011",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "导航播报简洁一点",
+        "frontend_before_ms": 1567.6,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1567.9,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_single_view_overview_012",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "切到路线全览",
+        "frontend_before_ms": 1173.8,
+        "backend_before_ms": 2229.6,
+        "frontend_after_ms": 1174.3,
+        "backend_after_ms": 2230,
+        "before_difference_ms": 1055.8,
+        "after_difference_ms": 1055.7
+      },
+      {
+        "id": "nav_single_stop_013",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "停止导航",
+        "frontend_before_ms": 882.6,
+        "backend_before_ms": 2508.9,
+        "frontend_after_ms": 883,
+        "backend_after_ms": 2509.4,
+        "before_difference_ms": 1626.3,
+        "after_difference_ms": 1626.4
+      },
+      {
+        "id": "nav_context_add_waypoint_014",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "先带我去西湖",
+        "frontend_before_ms": 1059.3,
+        "backend_before_ms": 2174.6,
+        "frontend_after_ms": 1531.3,
+        "backend_after_ms": 2703.6,
+        "before_difference_ms": 1115.3,
+        "after_difference_ms": 1172.3
+      },
+      {
+        "id": "nav_context_add_waypoint_014",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "中途去一下黄龙体育中心",
+        "frontend_before_ms": 1149.6,
+        "backend_before_ms": 6071.8,
+        "frontend_after_ms": 1625,
+        "backend_after_ms": 6566.3,
+        "before_difference_ms": 4922.2,
+        "after_difference_ms": 4941.3
+      },
+      {
+        "id": "nav_context_change_destination_015",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "导航去西湖",
+        "frontend_before_ms": 1246.4,
+        "backend_before_ms": 2524.1,
+        "frontend_after_ms": 1735.7,
+        "backend_after_ms": 2992.5,
+        "before_difference_ms": 1277.7,
+        "after_difference_ms": 1256.8
+      },
+      {
+        "id": "nav_context_change_destination_015",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "别去西湖了，改去灵隐寺",
+        "frontend_before_ms": 1226.1,
+        "backend_before_ms": 2621.9,
+        "frontend_after_ms": 1590.5,
+        "backend_after_ms": 3040.8,
+        "before_difference_ms": 1395.8,
+        "after_difference_ms": 1450.3
+      },
+      {
+        "id": "nav_context_remove_named_waypoint_016",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "导航去杭州东站，途经西湖和黄龙体育中心",
+        "frontend_before_ms": 1461.1,
+        "backend_before_ms": 2577,
+        "frontend_after_ms": 2708.1,
+        "backend_after_ms": 3908.7,
+        "before_difference_ms": 1115.9,
+        "after_difference_ms": 1200.6
+      },
+      {
+        "id": "nav_context_remove_named_waypoint_016",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "黄龙体育中心不去了",
+        "frontend_before_ms": 1375.5,
+        "backend_before_ms": 11944.2,
+        "frontend_after_ms": 1511.5,
+        "backend_after_ms": 12952.9,
+        "before_difference_ms": 10568.7,
+        "after_difference_ms": 11441.4
+      },
+      {
+        "id": "nav_context_remove_index_waypoint_017",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "导航去机场，先经过西湖，再经过黄龙体育中心",
+        "frontend_before_ms": 1349.7,
+        "backend_before_ms": 2657,
+        "frontend_after_ms": 3346,
+        "backend_after_ms": 3994.3,
+        "before_difference_ms": 1307.3,
+        "after_difference_ms": 648.3
+      },
+      {
+        "id": "nav_context_remove_index_waypoint_017",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "删掉第一个途经点",
+        "frontend_before_ms": 1269,
+        "backend_before_ms": 3083.6,
+        "frontend_after_ms": 1452.9,
+        "backend_after_ms": 3243.3,
+        "before_difference_ms": 1814.6,
+        "after_difference_ms": 1790.4
+      },
+      {
+        "id": "nav_context_strategy_active_018",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "导航去杭州东站",
+        "frontend_before_ms": 1022,
+        "backend_before_ms": 2167,
+        "frontend_after_ms": 1481.6,
+        "backend_after_ms": 2625.6,
+        "before_difference_ms": 1145,
+        "after_difference_ms": 1144
+      },
+      {
+        "id": "nav_context_strategy_active_018",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "改成躲避拥堵",
+        "frontend_before_ms": 1150.6,
+        "backend_before_ms": 3075.4,
+        "frontend_after_ms": 1231.3,
+        "backend_after_ms": 3151.1,
+        "before_difference_ms": 1924.8,
+        "after_difference_ms": 1919.8
+      },
+      {
+        "id": "nav_context_route_status_019",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "先帮我查一下去灵隐寺怎么走，只看路线，先别导航。",
+        "frontend_before_ms": 1053.6,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1520.4,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_context_voice_mute_020",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "导航到杭州东站",
+        "frontend_before_ms": 1174.5,
+        "backend_before_ms": 2497.3,
+        "frontend_after_ms": 1605.3,
+        "backend_after_ms": 2939.4,
+        "before_difference_ms": 1322.8,
+        "after_difference_ms": 1334.1
+      },
+      {
+        "id": "nav_context_voice_mute_020",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "导航声音先静音",
+        "frontend_before_ms": 1264.9,
+        "backend_before_ms": 2806.9,
+        "frontend_after_ms": 1265.4,
+        "backend_after_ms": 2807.3,
+        "before_difference_ms": 1542,
+        "after_difference_ms": 1541.9
+      },
+      {
+        "id": "nav_context_view_follow_021",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "带我去机场",
+        "frontend_before_ms": 1166.8,
+        "backend_before_ms": 3379.1,
+        "frontend_after_ms": 1511.1,
+        "backend_after_ms": 3986.9,
+        "before_difference_ms": 2212.3,
+        "after_difference_ms": 2475.8
+      },
+      {
+        "id": "nav_context_view_follow_021",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "看一下全程",
+        "frontend_before_ms": 1197.5,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1197.8,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_context_view_follow_021",
+        "domain": "navigation",
+        "turn_index": 2,
+        "task": "回到车头跟随视角",
+        "frontend_before_ms": 1302.2,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1302.4,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_context_favorite_after_set_022",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "把阿里西溪园区设为公司",
+        "frontend_before_ms": 1408.6,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1746.1,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_context_favorite_after_set_022",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "现在去公司",
+        "frontend_before_ms": 1368.7,
+        "backend_before_ms": 12011.1,
+        "frontend_after_ms": 1495.3,
+        "backend_after_ms": 12151.7,
+        "before_difference_ms": 10642.4,
+        "after_difference_ms": 10656.4
+      },
+      {
+        "id": "nav_context_search_then_start_023",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "找一下附近的充电站",
+        "frontend_before_ms": 1435.6,
+        "backend_before_ms": 2566.8,
+        "frontend_after_ms": 1630,
+        "backend_after_ms": 2700.8,
+        "before_difference_ms": 1131.2,
+        "after_difference_ms": 1070.8
+      },
+      {
+        "id": "nav_context_search_then_start_023",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "就去第一个搜索结果：充电站1号店",
+        "frontend_before_ms": 1282.2,
+        "backend_before_ms": 2747.8,
+        "frontend_after_ms": 1682.5,
+        "backend_after_ms": 3103.7,
+        "before_difference_ms": 1465.6,
+        "after_difference_ms": 1421.2
+      },
+      {
+        "id": "nav_context_preview_then_start_024",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "先看看去灵隐寺怎么走",
+        "frontend_before_ms": 1131.6,
+        "backend_before_ms": 2880.8,
+        "frontend_after_ms": 1502.1,
+        "backend_after_ms": 3247.9,
+        "before_difference_ms": 1749.2,
+        "after_difference_ms": 1745.8
+      },
+      {
+        "id": "nav_context_preview_then_start_024",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "可以，就开始导航吧",
+        "frontend_before_ms": 1169.4,
+        "backend_before_ms": 3222.1,
+        "frontend_after_ms": 1574.2,
+        "backend_after_ms": 3783.9,
+        "before_difference_ms": 2052.7,
+        "after_difference_ms": 2209.7
+      },
+      {
+        "id": "nav_chitchat_entity_distractor_025",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "算了，先导航去公司吧。",
+        "frontend_before_ms": 1061.1,
+        "backend_before_ms": 6629.6,
+        "frontend_after_ms": 1148.3,
+        "backend_after_ms": 6775.2,
+        "before_difference_ms": 5568.5,
+        "after_difference_ms": 5626.9
+      },
+      {
+        "id": "nav_chitchat_emotion_then_start_026",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "带我回家，少收费。",
+        "frontend_before_ms": 1277.8,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1398.4,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_music_distractor_027",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "先去杭州东站接人。",
+        "frontend_before_ms": 1264.7,
+        "backend_before_ms": 4839.6,
+        "frontend_after_ms": 1715.2,
+        "backend_after_ms": 5342.8,
+        "before_difference_ms": 3574.9,
+        "after_difference_ms": 3627.6
+      },
+      {
+        "id": "nav_chitchat_place_not_destination_028",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "今天还是去西溪湿地吧。",
+        "frontend_before_ms": 1348.1,
+        "backend_before_ms": 3593.8,
+        "frontend_after_ms": 1761.3,
+        "backend_after_ms": 4096.4,
+        "before_difference_ms": 2245.7,
+        "after_difference_ms": 2335.1
+      },
+      {
+        "id": "nav_chitchat_weather_then_search_029",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "附近有没有咖啡店？",
+        "frontend_before_ms": 1521.2,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1696.4,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_joke_then_start_030",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "还是老实导航去机场吧。",
+        "frontend_before_ms": 1128,
+        "backend_before_ms": 2539.4,
+        "frontend_after_ms": 1491.1,
+        "backend_after_ms": 2936.2,
+        "before_difference_ms": 1411.4,
+        "after_difference_ms": 1445.1
+      },
+      {
+        "id": "nav_chitchat_memory_then_favorite_031",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "把阿里西溪园区设成公司。",
+        "frontend_before_ms": 1398.8,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1705,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_repair_then_strategy_032",
+        "domain": "navigation",
+        "turn_index": 1,
+        "task": "后面路线都尽量避开高速。",
+        "frontend_before_ms": 1964.1,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1964.4,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_negative_unknown_favorite_035",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "去公司",
+        "frontend_before_ms": 1128.9,
+        "backend_before_ms": 8135.9,
+        "frontend_after_ms": 1129,
+        "backend_after_ms": 8615.6,
+        "before_difference_ms": 7007,
+        "after_difference_ms": 7486.6
+      },
+      {
+        "id": "wea_single_current_001",
+        "domain": "weather",
+        "turn_index": 0,
+        "task": "今天天气怎么样？",
+        "frontend_before_ms": 881.3,
+        "backend_before_ms": 3209,
+        "frontend_after_ms": 1052.1,
+        "backend_after_ms": 3361,
+        "before_difference_ms": 2327.7,
+        "after_difference_ms": 2308.9
+      },
+      {
+        "id": "wea_single_shanghai_rain_002",
+        "domain": "weather",
+        "turn_index": 0,
+        "task": "上海今天会下雨吗？",
+        "frontend_before_ms": 1157.8,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1299,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "wea_single_beijing_temp_003",
+        "domain": "weather",
+        "turn_index": 0,
+        "task": "北京现在几度？",
+        "frontend_before_ms": 1031.8,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1212.5,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "wea_single_hangzhou_wind_004",
+        "domain": "weather",
+        "turn_index": 0,
+        "task": "杭州今天风大吗？",
+        "frontend_before_ms": 990.2,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1129.3,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "wea_single_umbrella_005",
+        "domain": "weather",
+        "turn_index": 0,
+        "task": "今天出门要带伞吗？",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "wea_chitchat_then_shenzhen_006",
+        "domain": "weather",
+        "turn_index": 1,
+        "task": "查一下深圳天气。",
+        "frontend_before_ms": 1090.1,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1242.3,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "wea_chitchat_hot_then_current_007",
+        "domain": "weather",
+        "turn_index": 1,
+        "task": "顺便看看现在天气。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "wea_single_shenzhen_hot_008",
+        "domain": "weather",
+        "turn_index": 0,
+        "task": "深圳今天热不热？",
+        "frontend_before_ms": 1056,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1186.6,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      }
+    ],
+    "chitchat": [
+      {
+        "id": "veh_chitchat_then_window_023",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "今天风吹着挺舒服的。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "mus_chitchat_then_play_016",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "周杰伦的歌陪了我很多年。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "mus_chitchat_volume_017",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "这首歌以前在电台总能听到。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_context_route_status_019",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "上次去西溪湿地那边停车挺麻烦的。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_entity_distractor_025",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "昨天朋友说西湖周末特别堵，停车也麻烦。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_emotion_then_start_026",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "今天开会开到头大，路上别再折腾我了。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_music_distractor_027",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "刚才那首歌还挺适合夜里开车的。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_place_not_destination_028",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "上次去灵隐寺那条路风景不错。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_weather_then_search_029",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "天气热得有点犯困，开车得提提神。",
+        "frontend_before_ms": 3633.1,
+        "backend_before_ms": null,
+        "frontend_after_ms": 3633.7,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_joke_then_start_030",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "要是这车能飞就好了。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_memory_then_favorite_031",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "以后我可能经常去这个地方。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_chitchat_repair_then_strategy_032",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "今天高速上施工太多了，烦死了。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "wea_chitchat_then_shenzhen_006",
+        "domain": "weather",
+        "turn_index": 0,
+        "task": "今天云看起来挺漂亮。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "wea_chitchat_hot_then_current_007",
+        "domain": "weather",
+        "turn_index": 0,
+        "task": "今天人有点困，脑子发闷。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      }
+    ],
+    "no_tool_controls": [
+      {
+        "id": "veh_negative_ambiguous_open_024",
+        "domain": "vehicle",
+        "turn_index": 0,
+        "task": "把它打开。",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "mus_negative_unknown_source_018",
+        "domain": "music",
+        "turn_index": 0,
+        "task": "切到网易云音乐。",
+        "frontend_before_ms": 1142.8,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1142.9,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_negative_missing_destination_033",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "带我去那个地方",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_negative_add_waypoint_without_route_034",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "中途去一下黄龙体育中心",
+        "frontend_before_ms": 1163.3,
+        "backend_before_ms": null,
+        "frontend_after_ms": 1163.6,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      },
+      {
+        "id": "nav_negative_ambiguous_search_or_route_036",
+        "domain": "navigation",
+        "turn_index": 0,
+        "task": "找个好点的地方",
+        "frontend_before_ms": null,
+        "backend_before_ms": null,
+        "frontend_after_ms": null,
+        "backend_after_ms": null,
+        "before_difference_ms": null,
+        "after_difference_ms": null
+      }
+    ],
+    "groups": [
+      {
+        "domain": "all",
+        "total": 92,
+        "frontend_before_count": 90,
+        "frontend_before_mean_ms": 1317.1,
+        "frontend_after_count": 90,
+        "frontend_after_mean_ms": 1480.3,
+        "backend_before_count": 68,
+        "backend_before_mean_ms": 3362.7,
+        "backend_after_count": 68,
+        "backend_after_mean_ms": 3559.9,
+        "before_difference_ms": 2045.6,
+        "after_difference_ms": 2079.6
+      },
+      {
+        "domain": "vehicle",
+        "total": 23,
+        "frontend_before_count": 23,
+        "frontend_before_mean_ms": 1539,
+        "frontend_after_count": 23,
+        "frontend_after_mean_ms": 1539.3,
+        "backend_before_count": 22,
+        "backend_before_mean_ms": 3276.6,
+        "backend_after_count": 22,
+        "backend_after_mean_ms": 3276.8,
+        "before_difference_ms": 1737.6,
+        "after_difference_ms": 1737.5
+      },
+      {
+        "domain": "music",
+        "total": 17,
+        "frontend_before_count": 17,
+        "frontend_before_mean_ms": 1153.3,
+        "frontend_after_count": 17,
+        "frontend_after_mean_ms": 1153.6,
+        "backend_before_count": 15,
+        "backend_before_mean_ms": 2505.8,
+        "backend_after_count": 15,
+        "backend_after_mean_ms": 2506.1,
+        "before_difference_ms": 1352.5,
+        "after_difference_ms": 1352.5
+      },
+      {
+        "domain": "navigation",
+        "total": 44,
+        "frontend_before_count": 44,
+        "frontend_before_mean_ms": 1302.9,
+        "frontend_after_count": 44,
+        "frontend_after_mean_ms": 1615.7,
+        "backend_before_count": 30,
+        "backend_before_mean_ms": 3859.5,
+        "backend_after_count": 30,
+        "backend_after_mean_ms": 4300.9,
+        "before_difference_ms": 2556.6,
+        "after_difference_ms": 2685.2
+      },
+      {
+        "domain": "weather",
+        "total": 8,
+        "frontend_before_count": 6,
+        "frontend_before_mean_ms": 1034.5,
+        "frontend_after_count": 6,
+        "frontend_after_mean_ms": 1187,
+        "backend_before_count": 1,
+        "backend_before_mean_ms": 3209,
+        "backend_after_count": 1,
+        "backend_after_mean_ms": 3361,
+        "before_difference_ms": 2174.5,
+        "after_difference_ms": 2174
+      }
+    ]
+  }
+}

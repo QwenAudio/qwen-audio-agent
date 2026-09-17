@@ -39,7 +39,7 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
       "tools": {
         "search": {
           "enabled": true,
-          "timeoutMs": 8000,
+          "timeoutMs": 10000,
           "maxResultBytes": 32768,
           "maxCallsPerTurn": 2,
           "description": "Search the user's configured document source."
@@ -92,6 +92,7 @@ Each exposed tool receives a stable model-visible name:
 - Streamable HTTP and stdio transports are supported. The legacy standalone SSE
   transport is not supported.
 - Discovery and connection have a bounded timeout (8 seconds by default).
+- Each frontend MCP tool execution times out after 10 seconds by default; set the tool's `timeoutMs` to override it.
 - Remote servers require HTTPS. Loopback HTTP is allowed only without headers.
 - A server URL may be one exact environment reference such as `${MCP_URL}`.
 - Header values may reference one exact environment variable with
@@ -106,6 +107,9 @@ Each exposed tool receives a stable model-visible name:
 - `tools` is an explicit allowlist. Enabled tools execute inline in the current
   conversation turn; the Gateway does not insert a generic confirmation turn
   based on whether a tool reads or writes.
+- Calls in one model response can execute concurrently. After all results are
+  returned and that response ends, the Gateway requests one result summary.
+  Later responses may call tools again, within the existing turn limits and deduplication rules.
 - Behavioral metadata such as `readOnlyHint` and `destructiveHint` belongs to
   the MCP server's standard Tool Annotations. It is metadata, not Gateway policy.
 - MCP servers must enforce any required confirmation, authorization, or business

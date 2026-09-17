@@ -186,7 +186,10 @@ export class MarkdownContextStore {
       next = `${next.trimEnd()}\n\n${addition}\n`
       changed += 1
     }
-    next = normalizeMarkdown(next)
+    // Exact edits must not rewrite unrelated rows, comments, or placeholders.
+    // Keep append-only cleanup for compatibility and the existing trailing
+    // whitespace convention so returned revisions still match persisted reads.
+    next = operations.length ? next.trimEnd() : normalizeMarkdown(next)
     if (!changed || next === current.trimEnd()) {
       return {
         changed: 0,

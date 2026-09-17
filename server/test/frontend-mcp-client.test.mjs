@@ -104,7 +104,7 @@ test('discovers only explicitly enabled tools under stable namespaced names', as
     parameters: { type: 'object', properties: {} },
   })
   assert.deepEqual(tools[0].policy, {
-    timeoutMs: 8_000,
+    timeoutMs: 10_000,
     maxResultBytes: 32 * 1024,
     maxCallsPerTurn: 1,
   })
@@ -152,7 +152,7 @@ test('preserves standard MCP annotations without turning them into execution pol
     destructiveHint: false,
   })
   assert.deepEqual(tool.policy, {
-    timeoutMs: 8_000,
+    timeoutMs: 10_000,
     maxResultBytes: 32 * 1024,
     maxCallsPerTurn: 2,
   })

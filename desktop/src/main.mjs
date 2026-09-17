@@ -67,6 +67,7 @@ import { createDesktopBackendManagement } from './backend/management.mjs'
 import {
   clientSettingsPatch,
   realtimeSettingsConfigured,
+  realtimeSettingsConfiguration,
   updateSettingsContent,
 } from './settings-config.mjs'
 import { runtimePathEnvironment, userConfigDirectory } from '../../shared/runtime-paths.mjs'
@@ -1032,30 +1033,15 @@ async function applyDesktopSettings(settings) {
   })
   const credentialChanged = connection.credential !== gatewayAccessToken
   if (!remote && !connection.connected && !realtimeSettingsConfigured(normalized)) {
-    throw new Error(normalized.realtimeProvider === 'dashscope'
-      ? '请先填写 DashScope API Key'
-      : '请先填写 Speech-to-Speech 服务地址')
+    throw new Error(realtimeSettingsConfiguration(normalized).missingConfigurationMessage)
   }
   const gatewayChanged = nextOrigin !== configuredGatewayOrigin
-  const apiKeyChanged = previous.dashscopeApiKey !== normalized.dashscopeApiKey
-  const realtimeBaseUrlChanged = (
-    previous.realtimeBaseUrl !== normalized.realtimeBaseUrl
-  )
+  const realtimeChanged = realtimeSettingsConfiguration(previous).signature
+    !== realtimeSettingsConfiguration(normalized).signature
   const realtimeProviderChanged = (
     previous.realtimeProvider !== normalized.realtimeProvider
   )
   const backendChanged = previous.agentProtocol !== normalized.agentProtocol
-  const realtimeModelChanged = previous.realtimeModel !== normalized.realtimeModel
-  const realtimeVoiceChanged = (
-    previous.audioRealtimeVoice !== normalized.audioRealtimeVoice
-    || previous.omniRealtimeVoice !== normalized.omniRealtimeVoice
-  )
-  const speechToSpeechChanged = (
-    previous.speechToSpeechRealtimeUrl
-      !== normalized.speechToSpeechRealtimeUrl
-    || previous.speechToSpeechAuthToken
-      !== normalized.speechToSpeechAuthToken
-  )
   const backendModelChanged = previous.backendModel !== normalized.backendModel
   const backendConnectionChanged = (
     previous.backendOwnership !== normalized.backendOwnership
@@ -1073,13 +1059,8 @@ async function applyDesktopSettings(settings) {
   const languageChanged = previous.language !== normalized.language
   const gatewayRuntimeChanged = (
     gatewayChanged
-    || apiKeyChanged
-    || realtimeBaseUrlChanged
-    || realtimeProviderChanged
+    || realtimeChanged
     || backendChanged
-    || realtimeModelChanged
-    || realtimeVoiceChanged
-    || speechToSpeechChanged
     || backendModelChanged
     || backendConnectionChanged
   )
@@ -1129,11 +1110,9 @@ async function applyDesktopSettings(settings) {
     remoteGateway: remote,
     changes: {
       gateway: gatewayChanged,
-      apiKey: apiKeyChanged,
+      realtime: realtimeChanged,
       realtimeProvider: realtimeProviderChanged,
       backend: backendChanged,
-      realtimeModel: realtimeModelChanged,
-      speechToSpeech: speechToSpeechChanged,
       backendModel: backendModelChanged,
       backendConnection: backendConnectionChanged,
       orbSkin: orbSkinChanged,

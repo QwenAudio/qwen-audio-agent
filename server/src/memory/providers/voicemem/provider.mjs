@@ -245,13 +245,14 @@ export class VoiceMemProvider {
     return `${ownerKey(ownerId)}\0${clean(sessionId, 200)}`
   }
 
-  #audioSession(ownerId, context) {
+  #audioSession(ownerId, context, eventType) {
     const sessionId = clean(context?.sessionId, 200)
     if (!sessionId) return null
     const key = this.#audioSessionKey(ownerId, sessionId)
     let state = this.audioSessions.get(key)
-    if (!state) {
+    if (!state || (state.ended && eventType !== 'session_ended')) {
       state = {
+        ended: false,
         sampleRate: DEFAULT_SAMPLE_RATE,
         preRoll: [],
         preRollBytes: 0,
@@ -297,9 +298,9 @@ export class VoiceMemProvider {
 
   observeAudio(ownerId, event = {}, context = {}) {
     if (this.inputMode !== 'audio') return { observed: false }
-    const state = this.#audioSession(ownerId, context)
-    if (!state) return { observed: false }
     const type = String(event.type || '')
+    const state = this.#audioSession(ownerId, context, type)
+    if (!state) return { observed: false }
 
     if (type === 'chunk') {
       const sampleRate = Number(event.sampleRate)
@@ -342,6 +343,7 @@ export class VoiceMemProvider {
     }
 
     if (type === 'session_ended') {
+      state.ended = true
       state.active = null
       state.preRoll = []
       state.preRollBytes = 0
@@ -527,6 +529,14 @@ export class VoiceMemProvider {
   }
 
   async flush(ownerId, context = {}) {
+    if (this.inputMode === 'audio') {
+      const key = this.#audioSessionKey(ownerId, context.sessionId)
+      // Observation takes its audio before awaiting the sidecar. If there was
+      // no new transcript, release the ended session here instead. Detach it
+      // before async work so failure or a same-id reconnect cannot retain old
+      // PCM or make this flush clear the new session's audio later.
+      if (this.audioSessions.get(key)?.ended) this.audioSessions.delete(key)
+    }
     const owner = ownerKey(ownerId)
     this.#beginBackground(owner)
     try {

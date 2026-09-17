@@ -205,6 +205,14 @@ if (isMain) {
       'shared/memory-provider-catalog.mjs',
     )
   }
+  if (manifest.exports?.['./web-retrieval']) {
+    required.push(
+      'shared/web-search-configuration.mjs',
+      'server/src/frontend/retrieval/frontend-retrieval-runtime.mjs',
+      'server/src/frontend/retrieval/safe-url-fetcher.mjs',
+      'server/src/frontend/retrieval/providers/factory.mjs',
+    )
+  }
   const missing = required.filter(file => !files.has(file))
   if (missing.length) {
     throw new Error(`npm 成品缺少必要文件：${missing.join(', ')}`)

@@ -11,12 +11,9 @@ import {
   realtimeRuntimeLabel,
   realtimeStatusLabel,
 } from './realtime-status.mjs'
-import {
-  DEFAULT_DASHSCOPE_REALTIME_MODEL,
-  listDashScopeRealtimeModelProfiles,
-} from '../../shared/realtime-model-catalog.mjs'
+import { realtimeSettingsValues } from '../../shared/realtime-provider-definitions.mjs'
+import { createRealtimeSettingsForm } from './realtime-settings-form.mjs'
 import { updaterButtonState, updaterStatusText } from './update-status.mjs'
-import { createRealtimeVoiceDrafts } from './realtime-voice-settings.mjs'
 import { isLoopbackUrl } from './security.mjs'
 import {
   desktopTranslator,
@@ -36,23 +33,6 @@ const recordWakeShortcut = document.querySelector('#record-wake-shortcut')
 const resetWakeShortcut = document.querySelector('#reset-wake-shortcut')
 const wakeWordEnabled = document.querySelector('#wake-word-enabled')
 const desktopLanguage = document.querySelector('#desktop-language')
-const dashscopeApiKey = document.querySelector('#dashscope-api-key')
-const realtimeBaseUrl = document.querySelector('#realtime-base-url')
-const realtimeVoice = document.querySelector('#realtime-voice')
-const realtimeProviderInputs = [
-  ...document.querySelectorAll('input[name="realtime-provider"]'),
-]
-const providerPanels = [
-  ...document.querySelectorAll('[data-provider-panel]'),
-]
-const speechToSpeechRealtimeUrl = document.querySelector(
-  '#speech-to-speech-url',
-)
-const speechToSpeechAuthToken = document.querySelector(
-  '#speech-to-speech-token',
-)
-const miniCpmORealtimeUrl = document.querySelector('#minicpm-o-url')
-const miniCpmOAuthToken = document.querySelector('#minicpm-o-token')
 const backendList = document.querySelector('#backend-list')
 const backendPicker = document.querySelector('.backend-picker')
 const backendPickerTrigger = document.querySelector('#backend-picker-trigger')
@@ -62,7 +42,6 @@ const backendPickerStatus = document.querySelector('#backend-picker-status')
 const backendPickerEmpty = document.querySelector('#backend-picker-empty')
 const backendSearch = document.querySelector('#backend-search')
 const refreshBackends = document.querySelector('#refresh-backends')
-const realtimeModel = document.querySelector('#realtime-model')
 const backendModel = document.querySelector('#backend-model')
 const backendOwnership = document.querySelector('#backend-ownership')
 const backendUrl = document.querySelector('#backend-url')
@@ -73,7 +52,6 @@ const backendCredentialRow = document.querySelector('.backend-credential-row')
 const nodePathInput = document.querySelector('#node-path')
 const applyNodePath = document.querySelector('#apply-node-path')
 const nodePathRow = document.querySelector('.node-path-row')
-const getApiKey = document.querySelector('#get-api-key')
 const message = document.querySelector('#message')
 const currentRealtime = document.querySelector('#current-realtime')
 const currentGateway = document.querySelector('#current-gateway')
@@ -108,41 +86,16 @@ let refreshingRuntime = false
 let updaterState = null
 let startupError = null
 let recordingWakeShortcut = false
-let realtimeVoiceDrafts = createRealtimeVoiceDrafts()
 const defaultWakeShortcut = 'CommandOrControl+Shift+Space'
-const defaultRealtimeBaseUrl = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
 const macPlatform = /Mac|iPhone|iPad/.test(navigator.platform)
 
-function renderRealtimeModelOptions(selectedModel) {
-  const profiles = listDashScopeRealtimeModelProfiles()
-  const families = [
-    ['omni', 'Qwen Omni'],
-    ['audio', 'Qwen Audio'],
-  ]
-  const children = families.map(([family, label]) => {
-    const group = document.createElement('optgroup')
-    group.label = label
-    for (const profile of profiles.filter(item => item.family === family)) {
-      const option = document.createElement('option')
-      option.value = profile.id
-      option.textContent = profile.label
-      group.append(option)
-    }
-    return group
-  })
-  const known = profiles.some(profile => profile.id === selectedModel)
-  if (selectedModel && !known) {
-    const custom = document.createElement('optgroup')
-    custom.label = t('自定义')
-    const option = document.createElement('option')
-    option.value = selectedModel
-    option.textContent = selectedModel
-    custom.append(option)
-    children.push(custom)
-  }
-  realtimeModel.replaceChildren(...children)
-  realtimeModel.value = selectedModel || DEFAULT_DASHSCOPE_REALTIME_MODEL
-}
+const realtimeForm = createRealtimeSettingsForm({
+  pickerRoot: document.querySelector('#realtime-provider'),
+  panel: document.querySelector('#realtime-settings-panel'),
+  translate: t,
+  openExternal: url => window.qwenAudioAgentDesktop.openExternal(url),
+  onChange: () => { showMessage(''); updateApplyState() },
+})
 
 function selectSettingsTab(value, { focus = false } = {}) {
   const selected = settingsTabs.some(tab => tab.dataset.settingsTab === value)
@@ -741,48 +694,6 @@ function backendLabel(value) {
   return value
 }
 
-function selectedRealtimeProvider() {
-  return realtimeProviderInputs.find(input => input.checked)?.value
-    || 'dashscope'
-}
-
-function renderRealtimeVoice() {
-  const voice = realtimeVoiceDrafts.selectModel(realtimeModel.value)
-  realtimeVoice.value = voice.value
-  realtimeVoice.placeholder = voice.placeholder
-}
-
-function renderRealtimeProvider(value, { populateDefault = false } = {}) {
-  const provider = ['speech-to-speech', 'minicpm-o'].includes(value)
-    ? value
-    : 'dashscope'
-  for (const input of realtimeProviderInputs) {
-    input.checked = input.value === provider
-  }
-  for (const panel of providerPanels) {
-    panel.hidden = panel.dataset.providerPanel !== provider
-  }
-  if (
-    populateDefault
-    && provider === 'speech-to-speech'
-    && !speechToSpeechRealtimeUrl.value.trim()
-  ) {
-    speechToSpeechRealtimeUrl.value = 'ws://127.0.0.1:8765/v1/realtime'
-  }
-  if (populateDefault && provider === 'dashscope' && !realtimeBaseUrl.value.trim()) {
-    realtimeBaseUrl.value = defaultRealtimeBaseUrl
-  }
-  if (
-    populateDefault
-    && provider === 'minicpm-o'
-    && !miniCpmORealtimeUrl.value.trim()
-  ) {
-    miniCpmORealtimeUrl.value = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
-  }
-}
-
-const BAILIAN_API_KEY_URL = 'https://bailian.console.aliyun.com/?tab=model#/api-key'
-
 function formSettings() {
   return {
     gatewayUrl: gatewayUrl.value,
@@ -790,16 +701,8 @@ function formSettings() {
     autoHideSeconds: Number(autoHideSeconds.value),
     wakeShortcut: wakeShortcut.value,
     wakeWordEnabled: wakeWordEnabled.checked,
-    dashscopeApiKey: dashscopeApiKey.value,
-    realtimeBaseUrl: realtimeBaseUrl.value,
-    realtimeProvider: selectedRealtimeProvider(),
+    ...realtimeForm.values(),
     agentProtocol: selectedBackend(),
-    realtimeModel: realtimeModel.value,
-    ...realtimeVoiceDrafts.settings(),
-    speechToSpeechRealtimeUrl: speechToSpeechRealtimeUrl.value,
-    speechToSpeechAuthToken: speechToSpeechAuthToken.value,
-    miniCpmORealtimeUrl: miniCpmORealtimeUrl.value,
-    miniCpmOAuthToken: miniCpmOAuthToken.value,
     backendModel: backendModel.value,
     backendOwnership: backendOwnership.value,
     backendUrl: backendUrl.value,
@@ -816,17 +719,8 @@ function fingerprint(value) {
     autoHideSeconds: value.autoHideSeconds,
     wakeShortcut: value.wakeShortcut,
     wakeWordEnabled: value.wakeWordEnabled,
-    dashscopeApiKey: value.dashscopeApiKey,
-    realtimeBaseUrl: value.realtimeBaseUrl,
-    realtimeProvider: value.realtimeProvider,
+    ...realtimeSettingsValues(value),
     agentProtocol: value.agentProtocol,
-    realtimeModel: value.realtimeModel,
-    audioRealtimeVoice: value.audioRealtimeVoice,
-    omniRealtimeVoice: value.omniRealtimeVoice,
-    speechToSpeechRealtimeUrl: value.speechToSpeechRealtimeUrl,
-    speechToSpeechAuthToken: value.speechToSpeechAuthToken,
-    miniCpmORealtimeUrl: value.miniCpmORealtimeUrl,
-    miniCpmOAuthToken: value.miniCpmOAuthToken,
     backendModel: value.backendModel,
     backendOwnership: value.backendOwnership,
     backendUrl: value.backendUrl,
@@ -843,7 +737,7 @@ function updateApplyState() {
     // Hidden URL fields must not fail browser form validation on a remote connect.
     section.querySelectorAll('input, select').forEach(input => {
       if (input.closest('#backend-list')) return
-      input.disabled = remote
+      input.disabled = remote || input.hasAttribute('data-setting-unavailable')
     })
   }
   for (const note of document.querySelectorAll('[data-remote-gateway-note]')) {
@@ -1080,19 +974,8 @@ function render() {
   applyLanguage(desktopLanguage.value)
   recordingWakeShortcut = false
   renderWakeShortcut()
-  dashscopeApiKey.value = settings.dashscopeApiKey || ''
-  realtimeBaseUrl.value = settings.realtimeBaseUrl || defaultRealtimeBaseUrl
+  realtimeForm.load(settings)
   renderBackendOptions(settings.agentProtocol || 'none')
-  renderRealtimeModelOptions(
-    settings.realtimeModel || DEFAULT_DASHSCOPE_REALTIME_MODEL,
-  )
-  realtimeVoiceDrafts = createRealtimeVoiceDrafts(settings)
-  renderRealtimeVoice()
-  speechToSpeechRealtimeUrl.value = settings.speechToSpeechRealtimeUrl || ''
-  speechToSpeechAuthToken.value = settings.speechToSpeechAuthToken || ''
-  miniCpmORealtimeUrl.value = settings.miniCpmORealtimeUrl || ''
-  miniCpmOAuthToken.value = settings.miniCpmOAuthToken || ''
-  renderRealtimeProvider(settings.realtimeProvider)
   backendModel.value = settings.backendModel || ''
   backendOwnership.value = settings.backendOwnership || 'owned'
   backendUrl.value = settings.backendUrl || ''
@@ -1108,51 +991,31 @@ for (const control of [
   gatewayUrl,
   orbSkinSelect,
   autoHideSeconds,
-  dashscopeApiKey,
-  realtimeBaseUrl,
-  speechToSpeechRealtimeUrl,
-  speechToSpeechAuthToken,
-  miniCpmORealtimeUrl,
-  miniCpmOAuthToken,
-  realtimeModel,
-  realtimeVoice,
   backendModel,
   backendUrl,
   backendCredential,
   nodePathInput,
-  ...realtimeProviderInputs,
   wakeWordEnabled,
   desktopLanguage,
 ]) {
   control.addEventListener('input', () => {
     showMessage('')
-    if (control === realtimeVoice) realtimeVoiceDrafts.update(realtimeVoice.value)
     updateApplyState()
   })
   control.addEventListener('change', () => {
     showMessage('')
-    if (realtimeProviderInputs.includes(control)) {
-      renderRealtimeProvider(control.value, { populateDefault: true })
-    }
-    if (control === realtimeModel) {
-      renderRealtimeVoice()
-    }
     if (control === desktopLanguage) {
       applyLanguage(control.value)
       renderWakeShortcut()
       renderUpdater(updaterState)
       renderBackendOptions(selectedBackend())
       renderSkinOptions(orbSkinSelect.value)
-      renderRealtimeModelOptions(realtimeModel.value)
+      realtimeForm.render()
       renderRuntime()
     }
     updateApplyState()
   })
 }
-
-getApiKey.addEventListener('click', () => {
-  window.qwenAudioAgentDesktop.openExternal(BAILIAN_API_KEY_URL)
-})
 
 orbSkinSelect.addEventListener('change', updateRemoveSkinState)
 

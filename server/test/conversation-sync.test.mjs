@@ -214,3 +214,208 @@ test('recognizes a detailed delegated acknowledgement as the same action preview
     content: '好的老大，我已经开始检查你当前这个 qwen-audio-agent 项目的进度了，会看一下 git 分支、未提交改动和最近提交。',
   }), true)
 })
+
+const recordedContext = { ownerId: 'owner', sessionId: 'voice' }
+
+function liveRecord(sync, id, options = {}) {
+  return sync.record({
+    ...recordedContext,
+    id,
+    role: 'user',
+    content: `message ${id}`,
+    source: 'voice-user',
+    ...options,
+  })
+}
+
+test('pending records exclude restored history and unchanged replayed messages', () => {
+  const observed = []
+  const sync = new ConversationSync({ onRecord: message => observed.push(message) })
+  const consumer = {}
+  const restored = { id: 'old', role: 'user', content: 'old preference', source: 'voice-user' }
+  sync.restore({ ...recordedContext, messages: [restored] })
+  sync.upsert({ ...recordedContext, ...restored, id: 'silent' }, { notify: false })
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages, [])
+  assert.equal(observed.length, 0)
+
+  sync.record({ ...recordedContext, ...restored })
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages, [])
+  assert.equal(observed.length, 1, 'existing record observer behavior is unchanged')
+
+  const recorded = liveRecord(sync, 'new', { createdAt: 123 })
+  const [pending] = sync.pendingRecords(recordedContext, consumer).messages
+  assert.deepEqual(pending, recorded)
+  assert.equal(pending.seq, 3, 'learning versions do not alter public sequence numbers')
+  assert.equal(pending.createdAt, 123)
+  assert.deepEqual(Object.keys(pending).sort(), [
+    'seq', 'id', 'role', 'content', 'source', 'turnId', 'taskId', 'taskIds', 'inputs', 'createdAt',
+  ].sort())
+  assert.equal(sync.frontendContext(recordedContext).length, 3)
+})
+
+test('record consumers independently consume a batch once across repeated closes', () => {
+  const sync = new ConversationSync()
+  const extractor = {}
+  const observer = {}
+  liveRecord(sync, 'one')
+  const batch = sync.pendingRecords(recordedContext, extractor)
+  assert.equal(batch.messages.length, 1)
+  assert.equal(batch.isCurrent(), true)
+  batch.consume()
+  batch.consume()
+  assert.deepEqual(sync.pendingRecords(recordedContext, extractor).messages, [])
+  assert.equal(sync.pendingRecords(recordedContext, observer).messages.length, 1)
+  sync.pendingRecords(recordedContext, observer).consume()
+  assert.deepEqual(sync.pendingRecords(recordedContext, observer).messages, [])
+  assert.equal(sync.list(recordedContext).length, 1)
+})
+
+test('consuming an earlier snapshot leaves new records pending and cannot rewind a cursor', () => {
+  const sync = new ConversationSync()
+  const consumer = {}
+  liveRecord(sync, 'one')
+  const first = sync.pendingRecords(recordedContext, consumer)
+  liveRecord(sync, 'two')
+  first.consume()
+  assert.equal(first.isCurrent(), true, 'new input does not invalidate ongoing work')
+  const second = sync.pendingRecords(recordedContext, consumer)
+  assert.deepEqual(second.messages.map(message => message.id), ['two'])
+  second.consume()
+  first.consume()
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages, [])
+  liveRecord(sync, 'three')
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages.map(message => message.id), ['three'])
+})
+
+test('unchanged records do not repeat evidence while content and role corrections do', () => {
+  const observed = []
+  const sync = new ConversationSync({ onRecord: message => observed.push(message) })
+  const consumer = {}
+  liveRecord(sync, 'one', { content: 'original words' })
+  liveRecord(sync, 'one', { content: '  original\nwords  ', source: 'text-user' })
+  assert.equal(sync.pendingRecords(recordedContext, consumer).messages.length, 1)
+  sync.pendingRecords(recordedContext, consumer).consume()
+  liveRecord(sync, 'one', { content: 'original words', turnId: 'final-turn' })
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages, [])
+
+  liveRecord(sync, 'one', { content: 'corrected words' })
+  const corrected = sync.pendingRecords(recordedContext, consumer)
+  assert.deepEqual(corrected.messages.map(message => [message.seq, message.content]), [[1, 'corrected words']])
+  corrected.consume()
+  liveRecord(sync, 'one', { content: 'corrected words', role: 'assistant' })
+  assert.equal(sync.pendingRecords(recordedContext, consumer).messages[0].role, 'assistant')
+  assert.equal(observed.length, 5)
+  assert.equal(sync.list(recordedContext).length, 1)
+})
+
+test('pending snapshots are isolated and a same-id correction after a snapshot stays pending', () => {
+  const sync = new ConversationSync()
+  const consumer = {}
+  liveRecord(sync, 'one', {
+    inputs: [{ ref: 'image-one' }],
+    citations: [{ id: 'citation-one' }],
+    taskIds: ['task-one'],
+  })
+  const batch = sync.pendingRecords(recordedContext, consumer)
+  batch.messages[0].inputs[0].ref = 'changed'
+  batch.messages[0].citations[0].id = 'changed'
+  batch.messages[0].taskIds[0] = 'changed'
+  const [independent] = sync.pendingRecords(recordedContext, {}).messages
+  assert.equal(independent.inputs[0].ref, 'image-one')
+  assert.equal(independent.citations[0].id, 'citation-one')
+  assert.equal(independent.taskIds[0], 'task-one')
+  assert.deepEqual(independent, sync.list(recordedContext)[0])
+
+  liveRecord(sync, 'one', { content: 'corrected' })
+  assert.equal(batch.messages[0].content, 'message one')
+  batch.consume()
+  const next = sync.pendingRecords(recordedContext, consumer)
+  assert.deepEqual(next.messages.map(message => message.content), ['corrected'])
+  assert.equal(next.messages[0].seq, 1)
+})
+
+test('discard invalidates in-flight batches for only the owner without clearing history', () => {
+  const sync = new ConversationSync()
+  const consumer = {}
+  const secondSession = { ...recordedContext, sessionId: 'second' }
+  const otherOwner = { ...recordedContext, ownerId: 'other' }
+  liveRecord(sync, 'one')
+  liveRecord(sync, 'two', secondSession)
+  liveRecord(sync, 'three', otherOwner)
+  const scopes = [recordedContext, secondSession, otherOwner]
+  const history = scopes.map(scope => sync.frontendContext(scope))
+  const batches = scopes.map(scope => sync.pendingRecords(scope, consumer))
+  sync.discardRecorded(recordedContext.ownerId)
+  assert.deepEqual(batches.map(batch => batch.isCurrent()), [false, false, true])
+  assert.deepEqual(scopes.map(scope => sync.pendingRecords(scope, consumer).messages.length), [0, 0, 1])
+  assert.deepEqual(scopes.map(scope => sync.frontendContext(scope)), history)
+
+  liveRecord(sync, 'one')
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages, [], 'duplicate old input stays discarded')
+  liveRecord(sync, 'new')
+  batches[0].consume()
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages.map(message => message.id), ['new'])
+  assert.equal(sync.pendingRecords(recordedContext, consumer).isCurrent(), true)
+  assert.equal(batches[0].isCurrent(), false)
+})
+
+test('pending records stay within message retention and retain only the latest correction', () => {
+  const sync = new ConversationSync({ maxMessages: 2 })
+  const consumer = {}
+  liveRecord(sync, 'one')
+  for (let index = 0; index < 20; index += 1) {
+    liveRecord(sync, 'one', { content: `correction ${index}` })
+  }
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages.map(message => message.content), ['correction 19'])
+  liveRecord(sync, 'two')
+  liveRecord(sync, 'three')
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages.map(message => [message.seq, message.id]), [[2, 'two'], [3, 'three']])
+  sync.restore({
+    ...recordedContext,
+    messages: [{ id: 'restored', role: 'user', content: 'old persisted input' }],
+  })
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages.map(message => message.id), ['three'])
+})
+
+test('session-count eviction drops records and invalidates issued batches', () => {
+  const sync = new ConversationSync({ maxSessions: 2 })
+  const consumer = {}
+  liveRecord(sync, 'one')
+  const first = sync.pendingRecords(recordedContext, consumer)
+  liveRecord(sync, 'two', { sessionId: 'second' })
+  sync.peek(recordedContext.ownerId, recordedContext.sessionId).lastAccessedAt -= 1000
+  liveRecord(sync, 'three', { sessionId: 'third' })
+  assert.equal(first.isCurrent(), false)
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages, [])
+  assert.equal(sync.sessions.size, 2, 'reading absent records must not create a session')
+  liveRecord(sync, 'new')
+  assert.equal(first.isCurrent(), false, 'reusing an evicted session key cannot revive its batch')
+  first.consume()
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages.map(message => message.id), ['new'])
+})
+
+test('session TTL expires pending records and invalidates in-flight snapshots', () => {
+  const sync = new ConversationSync({ sessionTtlMs: 1000 })
+  const consumer = {}
+  liveRecord(sync, 'one')
+  const batch = sync.pendingRecords(recordedContext, consumer)
+  sync.peek(recordedContext.ownerId, recordedContext.sessionId).lastAccessedAt -= 2000
+  assert.equal(batch.isCurrent(), false)
+  batch.consume()
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages, [])
+  assert.equal(sync.sessions.size, 0)
+  liveRecord(sync, 'new')
+  assert.deepEqual(sync.pendingRecords(recordedContext, consumer).messages.map(message => message.id), ['new'])
+})
+
+test('pending records require an object consumer and do not allocate absent sessions', () => {
+  const sync = new ConversationSync()
+  for (const invalid of [undefined, null, 'consumer', 1]) {
+    assert.throws(() => sync.pendingRecords(recordedContext, invalid), /consumer object/)
+  }
+  const batch = sync.pendingRecords(recordedContext, {})
+  assert.deepEqual(batch.messages, [])
+  assert.equal(batch.isCurrent(), false)
+  batch.consume()
+  assert.equal(sync.sessions.size, 0)
+})

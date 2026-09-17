@@ -6,12 +6,60 @@ import {
   resolveDashScopeRealtimeVoiceOverride,
   listDashScopeRealtimeModelProfiles,
   resolveDashScopeRealtimeModelProfile,
+  resolveRealtimeFrontendConfiguration,
+  resolveRealtimeModelProfile,
 } from '../shared/realtime-provider-catalog.mjs'
 
 const OMNI_FLASH_ID = 'qwen3.5-omni-flash-realtime'
 const OMNI_PLUS_ID = 'qwen3.5-omni-plus-realtime'
 const AUDIO_PLUS_ID = 'qwen-audio-3.0-realtime-plus'
 const AUDIO_FLASH_ID = 'qwen-audio-3.0-realtime-flash'
+
+test('StepFun configuration is independent and exposes an explicit model profile', () => {
+  const env = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
+    STEPFUN_API_KEY: 'step-test',
+    QWEN_AUDIO_REALTIME_MODEL: AUDIO_PLUS_ID,
+    QWEN_AUDIO_REALTIME_VOICE: 'qwen-voice',
+  }
+  const configuration = resolveRealtimeFrontendConfiguration(env)
+  assert.equal(configuration.configured, true)
+  assert.equal(configuration.model, 'stepaudio-3-realtime-preview')
+  assert.equal(configuration.stepfunVoice, '')
+  assert.equal(configuration.endpoint, 'wss://api.stepfun.com/v1/realtime')
+  assert.equal(configuration.signature, resolveRealtimeFrontendConfiguration({
+    ...env, QWEN_AUDIO_REALTIME_MODEL: OMNI_PLUS_ID, DASHSCOPE_API_KEY: 'unrelated',
+  }).signature)
+  assert.notEqual(configuration.signature, resolveRealtimeFrontendConfiguration({
+    ...env, STEPFUN_REALTIME_URL: 'wss://proxy.example/v1/realtime',
+  }).signature)
+  assert.equal(resolveRealtimeModelProfile(configuration.model, 'stepfun').modelCapabilities.functionCalling, true)
+  assert.equal(resolveRealtimeModelProfile('stepaudio-future', 'stepfun').family, 'unknown')
+})
+
+test('GPT-Live and Google Live resolve independent credentials and models', () => {
+  const gpt = resolveRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'openai',
+    OPENAI_API_KEY: 'openai-test',
+    GPT_LIVE_REALTIME_URL: 'wss://api.openai.com/v1/realtime?region=test',
+  })
+  assert.equal(gpt.provider, 'gpt-live')
+  assert.equal(gpt.configured, true)
+  assert.equal(gpt.model, 'gpt-realtime-2.1')
+  assert.equal(gpt.endpoint, 'wss://api.openai.com/v1/realtime?region=test')
+  assert.equal(resolveRealtimeModelProfile(gpt.model, 'gpt-live').family, 'gpt-live')
+
+  const google = resolveRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'gemini-live',
+    GEMINI_API_KEY: 'google-test',
+    GEMINI_LIVE_REALTIME_MODEL: 'gemini-3.8-live',
+  })
+  assert.equal(google.provider, 'google-live')
+  assert.equal(google.configured, true)
+  assert.equal(google.googleApiKey, 'google-test')
+  assert.equal(google.model, 'gemini-3.8-live')
+  assert.equal(resolveRealtimeModelProfile(google.model, 'google-live').family, 'google-live')
+})
 
 const omniModelCapabilities = {
   textInput: true,

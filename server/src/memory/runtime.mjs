@@ -54,6 +54,8 @@ export class FrontendMemoryRuntime {
   constructor({ provider } = {}) {
     this.provider = assertMemoryProvider(provider)
     this.closePromise = null
+    this.changeListeners = new Set()
+    this.ownerWrites = new Map()
   }
 
   describe() {
@@ -85,17 +87,80 @@ export class FrontendMemoryRuntime {
     return normalizeDocuments(documents)
   }
 
-  async apply(ownerId, changes = [], context = {}) {
-    const result = await this.provider.apply(ownerId, changes, context)
+  subscribe(listener) {
+    if (typeof listener !== 'function') throw new TypeError('listener must be a function')
+    if (this.closePromise) return () => {}
+    this.changeListeners.add(listener)
+    return () => this.changeListeners.delete(listener)
+  }
+
+  // Internal commit lane shared with silent learning writes. Start an idle lane
+  // synchronously, including its success observers, and never poison the next
+  // write when a provider rejects. Other owners retain independent lanes.
+  withOwnerWrite(ownerId, write) {
+    const key = String(ownerId || '')
+    const previous = this.ownerWrites.get(key)
+    const pending = Promise.withResolvers()
+    this.ownerWrites.set(key, pending.promise)
+    const settle = (complete, value) => {
+      if (this.ownerWrites.get(key) === pending.promise) this.ownerWrites.delete(key)
+      complete(value)
+    }
+    const start = () => {
+      try {
+        const result = write()
+        if (result && typeof result.then === 'function') {
+          Promise.resolve(result).then(
+            value => settle(pending.resolve, value),
+            error => settle(pending.reject, error),
+          )
+        } else settle(pending.resolve, result)
+      } catch (error) {
+        settle(pending.reject, error)
+      }
+    }
+    if (previous) previous.then(start, start)
+    else start()
+    return pending.promise
+  }
+
+  // isCurrent is a local learning guard, not part of the provider protocol.
+  async apply(ownerId, changes = [], context = {}, isCurrent = () => true) {
+    const event = Object.freeze({
+      ownerId,
+      source: context?.source || '',
+      sessionId: context?.sessionId || null,
+    })
+    return this.withOwnerWrite(ownerId, () => {
+      if (!isCurrent()) return null
+      const result = this.provider.apply(ownerId, changes, context)
+      return result && typeof result.then === 'function'
+        ? Promise.resolve(result).then(value => this.#applied(value, event))
+        : this.#applied(result, event)
+    })
+  }
+
+  #applied(result, event) {
     if (!result || typeof result !== 'object' || !Array.isArray(result.documents)) {
       throw new TypeError(
         'MemoryProvider apply() must return changed and documents',
       )
     }
-    return {
+    const normalized = {
       changed: Math.max(0, Math.trunc(Number(result.changed) || 0)),
       documents: normalizeDocuments(result.documents),
     }
+    if (normalized.changed > 0) {
+      for (const listener of this.changeListeners) {
+        try {
+          const pending = listener(event)
+          pending?.catch?.(() => {})
+        } catch {
+          // Observers must not turn a successful persisted write into a failure.
+        }
+      }
+    }
+    return normalized
   }
 
   async query(ownerId, query, options = {}, context = {}) {
@@ -154,6 +219,7 @@ export class FrontendMemoryRuntime {
 
   async close() {
     if (!this.closePromise) {
+      this.changeListeners.clear()
       this.closePromise = Promise.resolve().then(() => this.provider.close?.())
     }
     await this.closePromise

@@ -15,10 +15,10 @@ export class CockpitMcpTools {
     this.definitions = null
   }
 
-  async list() {
-    await this.start()
+  async list({ signal } = {}) {
+    await this.start({ signal })
     if (!this.definitions) {
-      const output = await this.client.listTools()
+      const output = await this.client.listTools(undefined, { signal })
       this.definitions = Object.freeze((output.tools || []).map(tool => Object.freeze({
         name: tool.name,
         title: tool.title,
@@ -29,7 +29,8 @@ export class CockpitMcpTools {
     return this.definitions
   }
 
-  async start() {
+  async start({ signal } = {}) {
+    signal?.throwIfAborted()
     if (this.client) return this
     if (this.connecting) return this.connecting
     this.connecting = (async () => {
@@ -37,7 +38,13 @@ export class CockpitMcpTools {
         name: 'qwen-audio-agent-cockpit-agent',
         version: '1.0.0',
       })
-      await client.connect(new StreamableHTTPClientTransport(this.url))
+      try {
+        await client.connect(new StreamableHTTPClientTransport(this.url), { signal })
+        signal?.throwIfAborted()
+      } catch (error) {
+        await client.close().catch(() => {})
+        throw error
+      }
       this.client = client
       return this
     })().finally(() => {
@@ -47,7 +54,7 @@ export class CockpitMcpTools {
   }
 
   async call(name, args = {}, { signal } = {}) {
-    await this.start()
+    await this.start({ signal })
     const output = await this.client.callTool({
       name,
       arguments: args,

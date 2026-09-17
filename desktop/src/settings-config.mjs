@@ -9,13 +9,12 @@ import {
   resolveOrbSkinId,
 } from '../../shared/orb-skin-catalog.mjs'
 import {
-  DEFAULT_DASHSCOPE_REALTIME_MODEL,
-  DEFAULT_DASHSCOPE_REALTIME_URL,
-  DEFAULT_MINICPM_O_REALTIME_URL,
-  DEFAULT_REALTIME_PROVIDER,
-  DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL,
   normalizeRealtimeProvider,
+  resolveRealtimeFrontendConfiguration,
 } from '../../shared/realtime-provider-catalog.mjs'
+import {
+  REALTIME_PROVIDERS, REALTIME_SETTING_KEYS, realtimeSettingsValues,
+} from '../../shared/realtime-provider-definitions.mjs'
 import { normalizeDesktopLanguage } from './i18n.mjs'
 
 const DEFAULTS = {
@@ -25,17 +24,8 @@ const DEFAULTS = {
   autoHideSeconds: 60,
   wakeShortcut: 'CommandOrControl+Shift+Space',
   wakeWordEnabled: false,
-  dashscopeApiKey: '',
-  realtimeBaseUrl: DEFAULT_DASHSCOPE_REALTIME_URL,
-  realtimeProvider: DEFAULT_REALTIME_PROVIDER,
+  ...realtimeSettingsValues(),
   agentProtocol: 'none',
-  realtimeModel: DEFAULT_DASHSCOPE_REALTIME_MODEL,
-  audioRealtimeVoice: '',
-  omniRealtimeVoice: '',
-  speechToSpeechRealtimeUrl: '',
-  speechToSpeechAuthToken: '',
-  miniCpmORealtimeUrl: '',
-  miniCpmOAuthToken: '',
   backendModel: '',
   backendOwnership: 'owned',
   backendUrl: '',
@@ -63,17 +53,8 @@ export function clientSettingsPatch(settings) {
 
 const SETTING_KEYS = {
   ...CLIENT_SETTING_KEYS,
-  dashscopeApiKey: 'DASHSCOPE_API_KEY',
-  realtimeBaseUrl: 'QWEN_AUDIO_REALTIME_BASE_URL',
-  realtimeProvider: 'QWEN_AUDIO_REALTIME_PROVIDER',
+  ...REALTIME_SETTING_KEYS,
   agentProtocol: 'AGENT_PROTOCOL',
-  realtimeModel: 'QWEN_AUDIO_REALTIME_MODEL',
-  audioRealtimeVoice: 'QWEN_AUDIO_REALTIME_VOICE',
-  omniRealtimeVoice: 'QWEN_OMNI_REALTIME_VOICE',
-  speechToSpeechRealtimeUrl: 'SPEECH_TO_SPEECH_REALTIME_URL',
-  speechToSpeechAuthToken: 'SPEECH_TO_SPEECH_AUTH_TOKEN',
-  miniCpmORealtimeUrl: 'MINICPM_O_REALTIME_URL',
-  miniCpmOAuthToken: 'MINICPM_O_AUTH_TOKEN',
   backendModel: 'QWEN_AUDIO_AGENT_BACKEND_MODEL',
   backendOwnership: 'QWEN_AUDIO_AGENT_BACKEND_OWNERSHIP',
   nodePath: 'QWEN_AUDIO_AGENT_NODE_PATH',
@@ -170,6 +151,33 @@ function encoded(value) {
   return `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }
 
+function parseRealtimeSettings(values, fallback, realtimeProvider) {
+  const fields = REALTIME_PROVIDERS.flatMap(provider => provider.settings.map(field => {
+    const keys = [field.env, ...(field.aliases || [])]
+    const key = keys.find(key => Object.hasOwn(values, key))
+    const value = key !== undefined ? values[key]
+      : keys.map(key => fallback[key]).find(Boolean) || field.fallback?.(fallback)
+    return [field.key, String(value || field.default
+      || (provider.key === realtimeProvider ? field.activeDefault : '') || '').trim()]
+  }))
+  return { realtimeProvider, ...Object.fromEntries(fields) }
+}
+
+function normalizeRealtimeSettings(settings, realtimeProvider) {
+  const values = realtimeSettingsValues(settings)
+  for (const provider of REALTIME_PROVIDERS) {
+    for (const field of provider.settings) {
+      const active = provider.key === realtimeProvider
+      const value = values[field.key].trim() || field.default || (active ? field.activeDefault : '') || ''
+      // Inactive providers retain their drafts but cannot block applying the
+      // selected provider. The active endpoint is validated at the IPC boundary.
+      values[field.key] = active && field.type === 'url'
+        ? cleanRealtimeUrl(value, '') : value
+    }
+  }
+  return { ...values, realtimeProvider }
+}
+
 export function parseSettings(content = '', fallback = {}) {
   const values = parseEnv(content)
   const agentProtocol = cleanAgentProtocol(configured(
@@ -208,30 +216,6 @@ export function parseSettings(content = '', fallback = {}) {
     'QWEN_AUDIO_REALTIME_PROVIDER',
     fallback.QWEN_AUDIO_REALTIME_PROVIDER || DEFAULTS.realtimeProvider,
   ))
-  const configuredApiKey = configured(
-    values,
-    'DASHSCOPE_API_KEY',
-    configured(
-      values,
-      'QWEN_AUDIO_REALTIME_API_KEY',
-      fallback.DASHSCOPE_API_KEY
-      || fallback.QWEN_AUDIO_REALTIME_API_KEY
-      || DEFAULTS.dashscopeApiKey,
-    ),
-  )
-  const configuredRealtimeBaseUrl = configured(
-    values,
-    'QWEN_AUDIO_REALTIME_BASE_URL',
-    configured(
-      values,
-      'QWEN_AUDIO_REALTIME_URL',
-      fallback.QWEN_AUDIO_REALTIME_BASE_URL
-      || fallback.QWEN_AUDIO_REALTIME_URL
-      || (fallback.DASHSCOPE_WORKSPACE_ID
-        ? `wss://${fallback.DASHSCOPE_WORKSPACE_ID}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime`
-        : DEFAULTS.realtimeBaseUrl),
-    ),
-  )
   const configuredOrbStyle = configured(
     values,
     'QWEN_AUDIO_ORB_STYLE',
@@ -242,53 +226,6 @@ export function parseSettings(content = '', fallback = {}) {
     'QWEN_AUDIO_ORB_SKIN',
     fallback.QWEN_AUDIO_ORB_SKIN || '',
   )
-  const configuredS2sUrl = configured(
-    values,
-    'SPEECH_TO_SPEECH_REALTIME_URL',
-    configured(
-      values,
-      'S2S_REALTIME_URL',
-      fallback.SPEECH_TO_SPEECH_REALTIME_URL
-      || fallback.S2S_REALTIME_URL
-      || DEFAULTS.speechToSpeechRealtimeUrl,
-    ),
-  )
-  const configuredS2sToken = configured(
-    values,
-    'SPEECH_TO_SPEECH_AUTH_TOKEN',
-    configured(
-      values,
-      'S2S_API_KEY',
-      fallback.SPEECH_TO_SPEECH_AUTH_TOKEN
-      || fallback.S2S_API_KEY
-      || DEFAULTS.speechToSpeechAuthToken,
-    ),
-  )
-  const configuredMiniCpmOUrl = configured(
-    values,
-    'MINICPM_O_REALTIME_URL',
-    fallback.MINICPM_O_REALTIME_URL || DEFAULTS.miniCpmORealtimeUrl,
-  )
-  const configuredMiniCpmOToken = configured(
-    values,
-    'MINICPM_O_AUTH_TOKEN',
-    fallback.MINICPM_O_AUTH_TOKEN || DEFAULTS.miniCpmOAuthToken,
-  )
-  const realtimeModel = String(configured(
-    values,
-    'QWEN_AUDIO_REALTIME_MODEL',
-    fallback.QWEN_AUDIO_REALTIME_MODEL || DEFAULTS.realtimeModel,
-  ) || DEFAULTS.realtimeModel).trim()
-  const audioRealtimeVoice = String(configured(
-    values,
-    'QWEN_AUDIO_REALTIME_VOICE',
-    fallback.QWEN_AUDIO_REALTIME_VOICE || DEFAULTS.audioRealtimeVoice,
-  ) || '').trim()
-  const omniRealtimeVoice = String(configured(
-    values,
-    'QWEN_OMNI_REALTIME_VOICE',
-    fallback.QWEN_OMNI_REALTIME_VOICE || DEFAULTS.omniRealtimeVoice,
-  ) || '').trim()
   return {
     gatewayUrl: configured(
       values,
@@ -326,28 +263,8 @@ export function parseSettings(content = '', fallback = {}) {
         fallback.QWEN_AUDIO_WAKE_WORD_ENABLED || '',
       ),
     ).toLowerCase() === 'true',
-    dashscopeApiKey: String(configuredApiKey || '').trim(),
-    realtimeBaseUrl: String(configuredRealtimeBaseUrl || '').trim()
-      || DEFAULTS.realtimeBaseUrl,
-    realtimeProvider,
+    ...parseRealtimeSettings(values, fallback, realtimeProvider),
     agentProtocol,
-    realtimeModel,
-    audioRealtimeVoice,
-    omniRealtimeVoice,
-    speechToSpeechRealtimeUrl: String(
-      configuredS2sUrl
-      || (realtimeProvider === 'speech-to-speech'
-        ? DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL
-        : DEFAULTS.speechToSpeechRealtimeUrl),
-    ).trim(),
-    speechToSpeechAuthToken: String(configuredS2sToken || '').trim(),
-    miniCpmORealtimeUrl: String(
-      configuredMiniCpmOUrl
-      || (realtimeProvider === 'minicpm-o'
-        ? DEFAULT_MINICPM_O_REALTIME_URL
-        : DEFAULTS.miniCpmORealtimeUrl),
-    ).trim(),
-    miniCpmOAuthToken: String(configuredMiniCpmOToken || '').trim(),
     backendModel: String(configured(
       values,
       'QWEN_AUDIO_AGENT_BACKEND_MODEL',
@@ -373,22 +290,6 @@ export function normalizeSettings(settings = {}) {
   const realtimeProvider = normalizeRealtimeProvider(
     settings.realtimeProvider ?? DEFAULTS.realtimeProvider,
   )
-  const requestedS2sUrl = String(
-    settings.speechToSpeechRealtimeUrl
-    ?? DEFAULTS.speechToSpeechRealtimeUrl,
-  ).trim()
-  const requestedMiniCpmOUrl = String(
-    settings.miniCpmORealtimeUrl ?? DEFAULTS.miniCpmORealtimeUrl,
-  ).trim()
-  const realtimeModel = String(
-    settings.realtimeModel || DEFAULTS.realtimeModel,
-  ).trim() || DEFAULTS.realtimeModel
-  const audioRealtimeVoice = String(
-    settings.audioRealtimeVoice ?? DEFAULTS.audioRealtimeVoice,
-  ).trim()
-  const omniRealtimeVoice = String(
-    settings.omniRealtimeVoice ?? DEFAULTS.omniRealtimeVoice,
-  ).trim()
   const agentProtocol = cleanAgentProtocol(
     settings.agentProtocol ?? DEFAULTS.agentProtocol,
   )
@@ -425,36 +326,8 @@ export function normalizeSettings(settings = {}) {
       settings.wakeShortcut ?? DEFAULTS.wakeShortcut,
     ),
     wakeWordEnabled: Boolean(settings.wakeWordEnabled),
-    dashscopeApiKey: String(
-      settings.dashscopeApiKey ?? DEFAULTS.dashscopeApiKey,
-    ).trim(),
-    realtimeBaseUrl: cleanRealtimeUrl(
-      settings.realtimeBaseUrl,
-      DEFAULTS.realtimeBaseUrl,
-      'Qwen Audio 服务地址',
-    ),
-    realtimeProvider,
+    ...normalizeRealtimeSettings(settings, realtimeProvider),
     agentProtocol,
-    realtimeModel,
-    audioRealtimeVoice,
-    omniRealtimeVoice,
-    speechToSpeechRealtimeUrl: requestedS2sUrl
-      ? cleanRealtimeUrl(requestedS2sUrl, '')
-      : realtimeProvider === 'speech-to-speech'
-        ? DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL
-        : '',
-    speechToSpeechAuthToken: String(
-      settings.speechToSpeechAuthToken
-      ?? DEFAULTS.speechToSpeechAuthToken,
-    ).trim(),
-    miniCpmORealtimeUrl: requestedMiniCpmOUrl
-      ? cleanRealtimeUrl(requestedMiniCpmOUrl, '')
-      : realtimeProvider === 'minicpm-o'
-        ? DEFAULT_MINICPM_O_REALTIME_URL
-        : '',
-    miniCpmOAuthToken: String(
-      settings.miniCpmOAuthToken ?? DEFAULTS.miniCpmOAuthToken,
-    ).trim(),
     backendModel: String(
       settings.backendModel ?? DEFAULTS.backendModel,
     ).trim(),
@@ -470,30 +343,16 @@ export function normalizeSettings(settings = {}) {
   }
 }
 
+export function realtimeSettingsConfiguration(settings = {}) {
+  return resolveRealtimeFrontendConfiguration(Object.fromEntries(
+    Object.entries(REALTIME_SETTING_KEYS).map(([field, key]) => [key, settings[field]]),
+  ))
+}
+
 export function realtimeSettingsConfigured(settings = {}) {
-  const provider = normalizeRealtimeProvider(
-    settings.realtimeProvider ?? DEFAULTS.realtimeProvider,
-  )
-  if (provider === 'dashscope') {
-    try {
-      cleanRealtimeUrl(
-        settings.realtimeBaseUrl,
-        DEFAULTS.realtimeBaseUrl,
-        'Qwen Audio 服务地址',
-      )
-      return Boolean(String(settings.dashscopeApiKey || '').trim())
-    } catch {
-      return false
-    }
-  }
-  const endpoint = provider === 'speech-to-speech'
-    ? settings.speechToSpeechRealtimeUrl
-    : settings.miniCpmORealtimeUrl
-  const fallback = provider === 'speech-to-speech'
-    ? DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL
-    : DEFAULT_MINICPM_O_REALTIME_URL
   try {
-    return Boolean(cleanRealtimeUrl(endpoint, fallback))
+    const frontend = realtimeSettingsConfiguration(settings)
+    return frontend.configured && Boolean(cleanRealtimeUrl(frontend.endpoint, ''))
   } catch {
     return false
   }

@@ -49,4 +49,6 @@ WebUI 可以把摄像头画面采样为有界 JPEG 帧，并通过协商后的 G
 ## 继续阅读
 
 - [Qwen Audio 3.0 Realtime](qwen-audio-realtime.zh.md)——默认系列
+- [GPT-Live / OpenAI Realtime](gpt-live.zh.md)——OpenAI 云端实时语音前台
+- [Google Gemini Live](google-live.zh.md)——Google 云端实时语音前台
 - [前台配置参考](../configuration/frontend.zh.md)

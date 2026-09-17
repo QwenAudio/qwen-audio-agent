@@ -19,11 +19,9 @@ import {
   voiceConversationMessageId,
   voiceEventBelongsToTurn,
 } from './projections/voice-transcript'
-import {
-  mergeToolCallDebug,
-  shouldRefreshMemoryForToolCall,
-} from './projections/tool-call-debug'
+import { mergeToolCallDebug } from './projections/tool-call-debug'
 import { cockpitScreenForProgress } from './projections/cockpit-activity'
+import { navigationPreferenceEvent, navigationPreferenceSnapshot, skillTriggeredEvent } from './projections/environment-events'
 import {
   COCKPIT_VOICE_IDS,
   DEFAULT_COCKPIT_VOICE,
@@ -112,13 +110,19 @@ function parseHash() {
 export default function App() {
   const [clientId, setClientId] = useState(() => getClientId())
   const cockpitId = cockpitIdFromLocation()
+  const environmentEventSinkRef = useRef(null)
+  const navigationContextRef = useRef('')
+  const handleEnvironmentActivity = useCallback(activity => {
+    const event = skillTriggeredEvent(activity, cockpitId)
+    if (event) environmentEventSinkRef.current?.(event)
+  }, [cockpitId])
   const {
     state: cockpitState,
     progress: cockpitProgress,
     activity: cockpitActivity,
     execute: executeCockpitCommand,
     reset: resetCockpitState,
-  } = useCockpitState(cockpitId)
+  } = useCockpitState(cockpitId, { onActivity: handleEnvironmentActivity })
   const {
     skills: customSkills,
     error: customSkillsError,
@@ -155,12 +159,18 @@ export default function App() {
   const flashBuyState = cockpitState?.flashbuy || INITIAL_FLASH_BUY_STATE
   const weatherState = cockpitState?.weather || INITIAL_WEATHER_STATE
   const [voiceMuted, setVoiceMuted] = useState(true)
+  const [routeStrategyPending, setRouteStrategyPending] = useState(false)
+  const [temperaturePending, setTemperaturePending] = useState(false)
+  const [commandError, setCommandError] = useState('')
   const voiceAssistantMessageIdRef = useRef(null)
   const voiceTurnIdRef = useRef('')
 
   const runCockpitCommand = useCallback((name, args = {}) => {
-    executeCockpitCommand(name, args).catch(error => {
+    setCommandError('')
+    return executeCockpitCommand(name, args).catch(error => {
       console.warn(`Cockpit command ${name} failed`, error)
+      setCommandError(error.message || '座舱操作失败')
+      return null
     })
   }, [executeCockpitCommand])
 
@@ -172,17 +182,32 @@ export default function App() {
     runCockpitCommand('music_play', { query: PLAYLIST[index]?.title })
   }, [runCockpitCommand])
 
-  const navigateToFavorite = useCallback((favoriteType) => {
-    runCockpitCommand('navigation_to_favorite', { favoriteType })
-  }, [runCockpitCommand])
+  const changeRouteStrategy = useCallback(async (strategy) => {
+    if (routeStrategyPending || strategy === routeStrategy) return
+    setRouteStrategyPending(true)
+    try {
+      const result = await runCockpitCommand('navigation_set_route_strategy', { strategy })
+      const event = navigationPreferenceEvent(result, cockpitId)
+      // The authoritative SSE snapshot also covers changes made by voice tools.
+      if (!event && result) setCommandError(result.content || '路线偏好未更新')
+    } finally {
+      setRouteStrategyPending(false)
+    }
+  }, [cockpitId, routeStrategy, routeStrategyPending, runCockpitCommand])
 
-  const changeRouteStrategy = useCallback((strategy) => {
-    runCockpitCommand('navigation_set_route_strategy', { strategy })
-  }, [runCockpitCommand])
-
-  const openDestinationInput = useCallback(() => {
-    setShowChat(true)
-  }, [])
+  const changeTemperature = useCallback(async (delta) => {
+    if (temperaturePending) return
+    setTemperaturePending(true)
+    try {
+      await runCockpitCommand('vehicle_temperature_control', {
+        action: delta < 0 ? 'decrease' : 'increase',
+        zone: 'driver',
+        delta: Math.abs(delta),
+      })
+    } finally {
+      setTemperaturePending(false)
+    }
+  }, [temperaturePending, runCockpitCommand])
 
   useEffect(() => {
     localStorage.setItem(PERSONA_STORAGE_KEY, selectedPersona)
@@ -293,9 +318,6 @@ export default function App() {
           ),
         },
       }))
-      if (shouldRefreshMemoryForToolCall(event.toolCall)) {
-        void loadMemories()
-      }
       return
     }
 
@@ -364,7 +386,7 @@ export default function App() {
         voiceAssistantMessageIdRef.current = null
       }
     }
-  }, [loadMemories])
+  }, [])
 
   const handleConversationRecovery = useCallback((messages) => {
     voiceAssistantMessageIdRef.current = null
@@ -387,6 +409,7 @@ export default function App() {
     activateVoice,
     deactivateVoice,
     sendInput,
+    publishEnvironmentEvent,
   } = useVoiceSession({
     muted: voiceMuted,
     clientId,
@@ -394,7 +417,23 @@ export default function App() {
     voice: selectedVoice,
     onVoiceMessage: handleVoiceMessage,
     onConversationRecovery: handleConversationRecovery,
+    onMemoryChanged: loadMemories,
   })
+  useEffect(() => {
+    environmentEventSinkRef.current = publishEnvironmentEvent
+    return () => { environmentEventSinkRef.current = null }
+  }, [publishEnvironmentEvent])
+
+  useEffect(() => {
+    const event = navigationPreferenceSnapshot(cockpitState, cockpitId)
+    if (!event) return
+    // Keep reconnect context authoritative after voice commands or a reset too.
+    // Vehicle-only changes must not inject duplicate navigation snapshots.
+    const signature = JSON.stringify([cockpitId, event.data.strategy, event.data.status, event.data.destination])
+    if (navigationContextRef.current === signature) return
+    navigationContextRef.current = signature
+    publishEnvironmentEvent(event)
+  }, [cockpitId, cockpitState, publishEnvironmentEvent])
   const toggleVoiceMute = useCallback(() => {
     if (!voiceMuted) {
       deactivateVoice()
@@ -473,9 +512,7 @@ export default function App() {
                 mapActions={mapActions}
                 routeStrategy={routeStrategy}
                 onStrategyChange={changeRouteStrategy}
-                onFavoriteNavigate={navigateToFavorite}
-                onFavoriteSetup={openDestinationInput}
-                onSearchDestination={openDestinationInput}
+                strategyPending={routeStrategyPending}
               />
             )}
             {screen === 'music' && (
@@ -505,7 +542,8 @@ export default function App() {
           {showChat && <ChatPanel onClose={toggleChat} onClear={handleClearDebug} messages={chatMessages} onMessagesChange={setChatMessages} onSendMessage={handleTextMessage} voiceActive={!voiceMuted} />}
         </div>
 
-        <Dock screen={screen} onNavigateHome={navigateHome} onOpenSettings={() => openSettings('persona')} onToggleChat={toggleChat} carState={carState} musicState={musicState} onTogglePlay={musicState.playing ? musicPause : musicPlay} onOpenMusic={openMusic} onOpenFlashBuy={openFlashBuy} />
+        {commandError && <p className="cockpit-command-error" role="status">{commandError}</p>}
+        <Dock screen={screen} onNavigateHome={navigateHome} onOpenSettings={() => openSettings('persona')} onToggleChat={toggleChat} carState={carState} musicState={musicState} onTogglePlay={musicState.playing ? musicPause : musicPlay} onOpenMusic={openMusic} onOpenFlashBuy={openFlashBuy} onChangeTemperature={changeTemperature} temperaturePending={temperaturePending} />
       </section>
     </main>
   )

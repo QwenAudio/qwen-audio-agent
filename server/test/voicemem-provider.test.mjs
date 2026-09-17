@@ -4,11 +4,15 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
+import { FrontendMemoryRuntime } from '../src/memory/runtime.mjs'
+import { MemorySessionObserver } from '../src/memory/session-observer.mjs'
 import {
   normalizeMemoryProviderSelection,
 } from '../../shared/memory-provider-catalog.mjs'
@@ -234,6 +238,7 @@ test('captures bounded PCM turns and passes real WAV files only in audio mode', 
     turnId: 'voice-1',
   }, context)
   provider.observeAudio('owner', { type: 'session_ended' }, context)
+  provider.observeAudio('owner', { type: 'session_ended' }, context)
 
   await provider.observe('owner', {
     messages: [{
@@ -309,4 +314,138 @@ test('discards invalid audio turns and keeps text mode audio-free', async () => 
     }],
   }, context)
   assert.equal(calls.at(-1).params.messages[0].audioPath, undefined)
+})
+
+function audioProviderFixture(t, request) {
+  const stateDirectory = mkdtempSync(join(tmpdir(), 'qwaudio-voicemem-lifecycle-'))
+  const provider = new VoiceMemProvider({
+    stateDirectory,
+    env: { VOICEMEM_INPUT_MODE: 'audio' },
+    sidecar: { request, close() {} },
+  })
+  t.after(async () => {
+    await provider.close()
+    rmSync(stateDirectory, { recursive: true, force: true })
+  })
+  return provider
+}
+
+function completedAudioTurn(provider, context, turnId, audio = Buffer.from([1, 2, 3, 4])) {
+  provider.observeAudio(context.ownerId, { type: 'speech_started', turnId }, context)
+  provider.observeAudio(context.ownerId, {
+    type: 'chunk', audio: audio.toString('base64'), sampleRate: 24_000,
+  }, context)
+  provider.observeAudio(context.ownerId, { type: 'speech_stopped', turnId }, context)
+}
+
+for (const discardedEvidence of [false, true]) {
+  test(`flush releases closed audio sessions without fresh text (discarded=${discardedEvidence})`, async t => {
+    const calls = []
+    const provider = audioProviderFixture(t, async method => { calls.push(method) })
+    const sync = new ConversationSync()
+    const observer = new MemorySessionObserver({
+      memoryService: new FrontendMemoryRuntime({ provider }), conversationSync: sync,
+    })
+    for (let index = 0; index < 3; index++) {
+      const context = { ownerId: 'owner', sessionId: `closed-${index}` }
+      completedAudioTurn(provider, context, `turn-${index}`)
+      if (discardedEvidence) {
+        sync.record({ ...context, id: `user-${index}`, role: 'user', source: 'voice-user', content: 'Old evidence' })
+        sync.discardRecorded(context.ownerId)
+      }
+      observer.onAudio({ ...context, event: { type: 'session_ended' } })
+      assert.equal(provider.audioSessions.size, 1)
+      await observer.onSessionClosed(context)
+      assert.equal(provider.audioSessions.size, 0)
+    }
+    assert.deepEqual(calls, ['flush', 'flush', 'flush'])
+  })
+}
+
+test('failed flush releases ended audio without clearing a same-id reconnect', async t => {
+  const deferred = Promise.withResolvers()
+  const provider = audioProviderFixture(t, () => deferred.promise)
+  const context = { ownerId: 'owner', sessionId: 'reconnected' }
+  completedAudioTurn(provider, context, 'old-turn')
+  provider.observeAudio(context.ownerId, { type: 'session_ended' }, context)
+  const flushing = provider.flush(context.ownerId, context)
+  assert.equal(provider.audioSessions.size, 0, 'cleanup does not wait for remote consolidation')
+  completedAudioTurn(provider, context, 'new-turn')
+  const [reconnected] = provider.audioSessions.values()
+  deferred.reject(new Error('flush failed'))
+  await assert.rejects(flushing, /flush failed/u)
+  assert.equal(provider.audioSessions.size, 1)
+  assert.equal([...provider.audioSessions.values()][0], reconnected)
+  assert.deepEqual([...reconnected.completed.keys()], ['new-turn'])
+  assert.equal(provider.backgroundOperations.size, 0)
+})
+
+test('synchronous flush failure still releases closed audio', async t => {
+  const provider = audioProviderFixture(t, () => { throw new Error('sidecar unavailable') })
+  const context = { ownerId: 'owner', sessionId: 'closed' }
+  completedAudioTurn(provider, context, 'old-turn')
+  provider.observeAudio(context.ownerId, { type: 'session_ended' }, context)
+  await assert.rejects(provider.flush(context.ownerId, context), /sidecar unavailable/u)
+  assert.equal(provider.audioSessions.size, 0)
+  assert.equal(provider.backgroundOperations.size, 0)
+})
+
+test('observation takes ended audio before flush and delayed close preserves reconnected audio', async t => {
+  const deferred = Promise.withResolvers()
+  const observed = []
+  const calls = []
+  const provider = audioProviderFixture(t, (method, params) => {
+    calls.push(method)
+    if (method === 'observe') {
+      const { audioPath, turnId } = params.messages[0]
+      observed.push({ audioPath, turnId, pcm: readFileSync(audioPath).subarray(44) })
+      return observed.length === 1 ? deferred.promise : Promise.resolve({})
+    }
+    return Promise.resolve({})
+  })
+  const context = { ownerId: 'owner', sessionId: 'same-session' }
+  const sync = new ConversationSync()
+  const observer = new MemorySessionObserver({
+    memoryService: new FrontendMemoryRuntime({ provider }), conversationSync: sync,
+  })
+  const closeTurn = (turnId, audio) => {
+    completedAudioTurn(provider, context, turnId, audio)
+    sync.record({ ...context, id: turnId, turnId, role: 'user', source: 'voice-user', content: `Message ${turnId}` })
+    observer.onAudio({ ...context, event: { type: 'session_ended' } })
+    return observer.onSessionClosed(context)
+  }
+  const firstAudio = Buffer.from([1, 2, 3, 4])
+  const secondAudio = Buffer.from([5, 6, 7, 8])
+  const closing = closeTurn('first', firstAudio)
+  assert.equal(provider.audioSessions.size, 0, 'observe detaches its audio before awaiting')
+  assert.deepEqual(observed[0].pcm, firstAudio)
+  assert.equal(existsSync(observed[0].audioPath), true)
+
+  completedAudioTurn(provider, context, 'second', secondAudio)
+  const [reconnected] = provider.audioSessions.values()
+  deferred.resolve({})
+  await closing
+  assert.equal([...provider.audioSessions.values()][0], reconnected, 'old flush must not clear active reconnect')
+  assert.equal(existsSync(observed[0].audioPath), false)
+
+  sync.record({ ...context, id: 'second', turnId: 'second', role: 'user', source: 'voice-user', content: 'Message second' })
+  observer.onAudio({ ...context, event: { type: 'session_ended' } })
+  await observer.onSessionClosed(context)
+  assert.deepEqual(observed.map(item => item.turnId), ['first', 'second'])
+  assert.deepEqual(observed[1].pcm, secondAudio)
+  assert.equal(existsSync(observed[1].audioPath), false)
+  assert.equal(provider.audioSessions.size, 0)
+  assert.deepEqual(calls, ['observe', 'flush', 'observe', 'flush'])
+})
+
+test('reconnecting before flush replaces ended audio instead of merging sessions', async t => {
+  const provider = audioProviderFixture(t, async () => ({}))
+  const context = { ownerId: 'owner', sessionId: 'same-session' }
+  completedAudioTurn(provider, context, 'old-turn')
+  provider.observeAudio(context.ownerId, { type: 'session_ended' }, context)
+  completedAudioTurn(provider, context, 'new-turn')
+  const [reconnected] = provider.audioSessions.values()
+  assert.deepEqual([...reconnected.completed.keys()], ['new-turn'])
+  await provider.flush(context.ownerId, context)
+  assert.equal([...provider.audioSessions.values()][0], reconnected)
 })

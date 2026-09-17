@@ -69,6 +69,7 @@ export class PreferencePromoter {
   constructor({
     memoryService,
     candidatePool,
+    withOwnerWrite = (_ownerId, write) => write(),
     audit = null,
     logger = console,
     now = () => Date.now(),
@@ -77,6 +78,7 @@ export class PreferencePromoter {
   } = {}) {
     this.memoryService = memoryService
     this.candidatePool = candidatePool
+    this.withOwnerWrite = withOwnerWrite
     this.audit = audit
     this.logger = logger
     this.now = now
@@ -107,7 +109,9 @@ export class PreferencePromoter {
     const safeOwnerId = String(ownerId || '')
     if (!safeOwnerId) return []
     try {
-      return await this.promote(safeOwnerId)
+      const promotable = this.candidatePool.promotable(safeOwnerId)
+      if (!promotable.length) return []
+      return await this.withOwnerWrite(safeOwnerId, () => this.promote(safeOwnerId, promotable))
     } catch (error) {
       this.audit?.record({
         op: 'error',
@@ -121,8 +125,10 @@ export class PreferencePromoter {
     }
   }
 
-  async promote(ownerId) {
-    const promotable = this.candidatePool.promotable(ownerId)
+  async promote(ownerId, candidates = this.candidatePool.promotable(ownerId)) {
+    // An explicit edit or fresh observation may replace a candidate while this
+    // run waits behind another write. Never submit a superseded snapshot.
+    const promotable = candidates.filter(slot => this.candidatePool.isCurrent(ownerId, slot))
     if (!promotable.length) return []
 
     const document = this.currentUserDocument(ownerId)
@@ -139,12 +145,12 @@ export class PreferencePromoter {
       const label = slot.label.trim()
       const key = label.toLocaleLowerCase()
       if (kept.some(item => item.trim().toLocaleLowerCase() === key)) {
-        this.candidatePool.markPromoted(ownerId, slot.key)
+        this.candidatePool.markPromoted(ownerId, slot)
         continue
       }
       // 明说区已经表达过同一件事：不重复写进观察区，直接标记完成。
       if (explicitText.includes(key)) {
-        this.candidatePool.markPromoted(ownerId, slot.key)
+        this.candidatePool.markPromoted(ownerId, slot)
         this.audit?.record({
           op: 'skip',
           ownerId,
@@ -185,7 +191,7 @@ export class PreferencePromoter {
 
     // 只有写入成功才销账。顺序不能反 —— 反了就是评审指出的那个数据丢失路径。
     for (const slot of accepted) {
-      this.candidatePool.markPromoted(ownerId, slot.key)
+      this.candidatePool.markPromoted(ownerId, slot)
       this.audit?.record({
         op: 'append',
         ownerId,

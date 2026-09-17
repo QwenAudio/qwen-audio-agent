@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { once } from 'node:events'
+import { appendFileSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -9,9 +10,7 @@ import WebSocket from 'ws'
 import { DashScopeCockpitModel } from '../../agent/model.mjs'
 import { startCockpitAgentServer } from '../../agent/server.mjs'
 import { loadCockpitEnvironment } from '../../bootstrap/environment.mjs'
-import { CockpitService } from '../../service/cockpit-service.mjs'
 import { startCockpitServiceServer } from '../../service/server.mjs'
-import { CockpitStateStore } from '../../service/state-store.mjs'
 import { COCKPIT_SURFACE_ROUTING } from '../../service/tools/registry.mjs'
 import {
   GatewayClient,
@@ -25,8 +24,14 @@ import {
   GatewayServerEvent,
   GatewayTaskEvent,
 } from 'qwen-audio-agent/realtime-events'
-import { loadNavigationCases, routeCasesExpectedPaths } from '../evaluator/cases.mjs'
+import { loadBenchmarkCases, routeCasesExpectedPaths } from '../evaluator/cases.mjs'
 import { scoreTrace, summarizeScores } from '../evaluator/score.mjs'
+// One deterministic service for every measured subject: the text, realtime and
+// harness runs must see identical places, routes and weather, or the gold state
+// assertions stop being comparable.
+import { createBenchmarkService } from './controlled-harness.mjs'
+
+const BENCHMARK_DOMAINS = Object.freeze(['vehicle', 'music', 'navigation', 'weather'])
 
 const DEFAULT_COCKPIT_ID = 'voice-bench'
 const DEFAULT_SAMPLE_RATE = 16_000
@@ -35,23 +40,19 @@ const DEFAULT_SILENCE_MS = 2_200
 const DEFAULT_TURN_TIMEOUT_MS = 60_000
 const DEFAULT_SETTLE_MS = 1_200
 const DEFAULT_BETWEEN_CASE_MS = 1_000
+const DEFAULT_RETRY_BACKOFF_MS = 2_000
+// Matched to the realtime runner so both subjects recover from the same faults.
+const DEFAULT_TURN_RETRIES = 1
+const DEFAULT_CASE_ATTEMPTS = 2
+
+const TURN_TIMEOUT_PATTERN = /Timed out waiting for realtime turn/u
+
+function isTurnTimeout(error) {
+  return TURN_TIMEOUT_PATTERN.test(String(error?.message || error || ''))
+}
+
 const TRACE_IGNORED_TOOLS = new Set([
   'custom_skill_list',
-])
-
-const PLACES = new Map([
-  ['西湖', '120.151,30.254'],
-  ['灵隐寺', '120.102,30.241'],
-  ['杭州东站', '120.212,30.291'],
-  ['黄龙体育中心', '120.137,30.272'],
-  ['城西银泰', '120.092,30.307'],
-  ['萧山机场', '120.432,30.236'],
-  ['机场', '120.432,30.236'],
-  ['西溪湿地', '120.064,30.266'],
-  ['滨江家', '120.205,30.188'],
-  ['滨江公司', '120.215,30.211'],
-  ['龙湖滨江天街', '120.210,30.208'],
-  ['阿里西溪园区', '120.030,30.286'],
 ])
 
 function parseArgs(argv) {
@@ -76,49 +77,16 @@ function numberArg(args, key, fallback) {
   return Number.isFinite(value) && value > 0 ? value : fallback
 }
 
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms))
+// numberArg only accepts positive numbers; a retry count has to allow 0 so
+// retries can be switched off completely.
+function countArg(args, key, fallback) {
+  if (!args.has(key)) return fallback
+  const value = Number(args.get(key))
+  return Number.isInteger(value) && value >= 0 ? value : fallback
 }
 
-function createBenchmarkService() {
-  let timestamp = 1_700_000_000_000
-  return new CockpitService({
-    store: new CockpitStateStore({ now: () => timestamp++ }),
-    now: () => timestamp++,
-    services: {
-      async vehicleLocation() {
-        return {
-          name: 'benchmark origin',
-          city: '杭州市',
-          district: '西湖区',
-          address: '文三路',
-          lng: 120.120,
-          lat: 30.270,
-        }
-      },
-      async resolvePlace(name) {
-        return PLACES.get(name)
-          || `120.${Math.max(100, String(name).length * 17)},30.${Math.max(100, String(name).length * 13)}`
-      },
-      async searchPlaces(query) {
-        return [{ name: `${query}1号店`, location: '120.188,30.266' }]
-      },
-      async searchNearbyPlaces({ keywords }) {
-        return [{ name: `${keywords}1号店`, location: '120.188,30.266', distance: 700 }]
-      },
-      async drivingRoute(origin, destination, strategy) {
-        return {
-          origin,
-          destination,
-          strategy,
-          distance: 12_000,
-          duration: 1_200,
-          polyline: `${origin};${destination}`,
-          trafficSegments: [],
-        }
-      },
-    },
-  })
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 function runProcess(command, args, options = {}) {
@@ -351,7 +319,7 @@ async function fetchState(origin, cockpitId) {
   return response.json()
 }
 
-async function runCase(caseItem, {
+async function attemptCase(caseItem, {
   serviceServer,
   gatewayOrigin,
   cockpitId,
@@ -362,6 +330,7 @@ async function runCase(caseItem, {
   turnTimeoutMs,
   settleMs,
   betweenCaseMs,
+  turnRetries,
 }) {
   serviceServer.service.reset(cockpitId)
   for (const call of caseItem.setup_calls || []) {
@@ -370,7 +339,11 @@ async function runCase(caseItem, {
 
   const calls = []
   const ignoredCalls = []
+  const stateSnapshots = []
+  const turnRetryLog = []
   let activeTurnIndex = null
+  let completedTurns = 0
+  let failedTurnIndex = null
   const unsubscribe = serviceServer.subscribeToolCalls(event => {
     if (event.cockpitId !== cockpitId || activeTurnIndex === null) return
     const call = {
@@ -388,22 +361,7 @@ async function runCase(caseItem, {
     sessionId,
     outputVoice,
   })
-  try {
-    for (const [turnIndex, turn] of caseItem.turns.entries()) {
-      const startIndex = events.length
-      activeTurnIndex = turnIndex
-      const speech = await synthesizeSpeechPcm(turn.user, {
-        sampleRate: inputSampleRate,
-        sayVoice,
-      })
-      await streamPcm(client, speech, { sampleRate: inputSampleRate, chunkMs })
-      await streamPcm(client, silencePcm(silenceMs, inputSampleRate), {
-        sampleRate: inputSampleRate,
-        chunkMs,
-      })
-      await waitForTurn(events, startIndex, { timeoutMs: turnTimeoutMs, settleMs })
-      activeTurnIndex = null
-    }
+  const collect = error => {
     const assistantMessages = events
       .filter(event => (
         event.type === GatewayServerEvent.TRANSCRIPT_FINAL
@@ -416,14 +374,129 @@ async function runCase(caseItem, {
       calls,
       ignored_calls: ignoredCalls,
       assistant_messages: assistantMessages,
+      state_snapshots: stateSnapshots,
       voice_events: events,
+      completed_turns: completedTurns,
+      failed_turn_index: failedTurnIndex,
+      turn_retries: turnRetryLog,
+      ...(error ? { error: { message: error.message || String(error) } } : {}),
+    }
+  }
+  try {
+    for (const [turnIndex, turn] of caseItem.turns.entries()) {
+      activeTurnIndex = turnIndex
+      const speech = await synthesizeSpeechPcm(turn.user, {
+        sampleRate: inputSampleRate,
+        sayVoice,
+      })
+      for (let attempt = 0; ; attempt += 1) {
+        const startIndex = events.length
+        const callsBefore = calls.length
+        const messagesBefore = events.filter(event => (
+          event.type === GatewayServerEvent.TRANSCRIPT_FINAL && event.role === 'assistant'
+        )).length
+        await streamPcm(client, speech, { sampleRate: inputSampleRate, chunkMs })
+        await streamPcm(client, silencePcm(silenceMs, inputSampleRate), {
+          sampleRate: inputSampleRate,
+          chunkMs,
+        })
+        try {
+          await waitForTurn(events, startIndex, { timeoutMs: turnTimeoutMs, settleMs })
+          break
+        } catch (error) {
+          // Only a silent timeout is retried: this turn produced neither a tool
+          // call nor a reply, so resending the audio cannot duplicate work.
+          // A timeout after output is a generation stall; resending would
+          // pollute the trace, so it goes up to the case-level retry.
+          const silent = calls.length === callsBefore
+            && events.filter(event => (
+              event.type === GatewayServerEvent.TRANSCRIPT_FINAL && event.role === 'assistant'
+            )).length === messagesBefore
+          if (!isTurnTimeout(error) || !silent || attempt >= turnRetries) {
+            failedTurnIndex = turnIndex
+            return collect(error)
+          }
+          turnRetryLog.push({
+            turn_index: turnIndex,
+            attempt: attempt + 1,
+            reason: 'silent_turn_timeout',
+          })
+          process.stderr.write(`  turn ${turnIndex} silent timeout, retrying audio\n`)
+          await sleep(DEFAULT_RETRY_BACKOFF_MS)
+        }
+      }
+      // The scorer needs one snapshot per turn, otherwise every long-suite
+      // state checkpoint is counted as a failure.
+      stateSnapshots.push({
+        turn_index: turnIndex,
+        state: serviceServer.service.snapshot(cockpitId),
+      })
+      completedTurns = turnIndex + 1
+      activeTurnIndex = null
+    }
+    return {
+      ...collect(null),
       final_state: await fetchState(serviceServer.origin, cockpitId),
+    }
+  } catch (error) {
+    return {
+      ...collect(error),
+      final_state: serviceServer.service.snapshot(cockpitId),
     }
   } finally {
     activeTurnIndex = null
     unsubscribe()
     client.stop()
     await sleep(betweenCaseMs)
+  }
+}
+
+// A timeout can come from streaming, the provider connection or a generation
+// stall. A case runs at most caseAttempts times; failing at the same turn every
+// time is a stable defect of that case, otherwise it is infrastructure jitter.
+async function runCase(caseItem, options) {
+  const maxAttempts = Math.max(1, options.caseAttempts)
+  const attempts = []
+  let selected = null
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (attempt > 1) {
+      process.stderr.write(`  retrying whole case (attempt ${attempt}/${maxAttempts})\n`)
+      await sleep(DEFAULT_RETRY_BACKOFF_MS)
+    }
+    const trace = await attemptCase(caseItem, options)
+    attempts.push({
+      attempt,
+      completed_turns: trace.completed_turns,
+      failed_turn_index: trace.failed_turn_index ?? null,
+      turn_retries: trace.turn_retries.length,
+      error: trace.error?.message ?? null,
+    })
+    // The attempt that got furthest is scored, and the report says which one,
+    // so no good result is picked silently.
+    if (!selected || trace.completed_turns > selected.completed_turns) selected = trace
+    if (!trace.error) break
+  }
+
+  const failedTurns = attempts
+    .filter(item => item.failed_turn_index !== null)
+    .map(item => item.failed_turn_index)
+  const allFailed = attempts.every(item => item.error)
+  const sameTurn = failedTurns.length >= 2
+    && failedTurns.every(index => index === failedTurns[0])
+
+  return {
+    ...selected,
+    attempts,
+    selected_attempt: attempts.find(item => (
+      item.completed_turns === selected.completed_turns
+    ))?.attempt ?? 1,
+    retry_diagnosis: !allFailed
+      ? 'recovered'
+      : sameTurn
+        ? 'confirmed_failure_at_turn'
+        : 'unstable_infrastructure',
+    confirmed_failure_turn: allFailed && sameTurn ? failedTurns[0] : null,
   }
 }
 
@@ -471,6 +544,16 @@ async function main() {
       model: agentModel,
     })
     const { startCockpitGateway } = await import('../../gateway/server.mjs')
+    // Benchmark-only persona discipline: importing the Gateway just copied
+    // healer.md into the temp config dir, so appending here never touches the
+    // production persona. Without it the gentle production persona hesitates
+    // on clear intents (asking which airport instead of calling
+    // navigation_start), while the text and realtime runners' benchmark
+    // prompt already carries this rule.
+    appendFileSync(
+      join(runtimeRoot, 'assistant', 'healer.md'),
+      '\n# 评测纪律\n\n普通闲聊、背景讨论、情绪表达、玩笑或没有可执行意图的感叹不要触发工具；等用户给出明确车控、音乐、导航或天气意图时立即调用对应工具，不要反问已经给出的信息。跨领域干扰时只执行用户当前明确要求的领域。\n',
+    )
     gatewayRuntime = startCockpitGateway({
       port: 0,
       agentCardUrl: agentServer.agentCardUrl,
@@ -482,7 +565,17 @@ async function main() {
 
     const limit = Number(args.get('limit') || 0)
     const caseId = args.get('case-id')
-    let cases = routeCasesExpectedPaths(loadNavigationCases(), COCKPIT_SURFACE_ROUTING)
+    // Same suite selection as the text and realtime runners, so the three
+    // measured subjects cover the same cases.
+    const suite = String(args.get('suite') || 'short')
+    const requestedDomains = args.get('domain')
+      ? String(args.get('domain')).split(',').map(item => item.trim()).filter(Boolean)
+      : BENCHMARK_DOMAINS
+    const domains = suite === 'short' ? requestedDomains : BENCHMARK_DOMAINS
+    let cases = routeCasesExpectedPaths(
+      loadBenchmarkCases({ domains: requestedDomains, suite }),
+      COCKPIT_SURFACE_ROUTING,
+    )
     if (caseId) cases = cases.filter(item => item.id === caseId)
     if (limit > 0) cases = cases.slice(0, limit)
     if (!cases.length) throw new Error('No benchmark cases selected')
@@ -501,13 +594,17 @@ async function main() {
         turnTimeoutMs: numberArg(args, 'timeout-ms', DEFAULT_TURN_TIMEOUT_MS),
         settleMs: numberArg(args, 'settle-ms', DEFAULT_SETTLE_MS),
         betweenCaseMs: numberArg(args, 'between-case-ms', DEFAULT_BETWEEN_CASE_MS),
+        turnRetries: countArg(args, 'turn-retries', DEFAULT_TURN_RETRIES),
+        caseAttempts: countArg(args, 'case-attempts', DEFAULT_CASE_ATTEMPTS),
       }))
     }
 
     const scores = cases.map((caseItem, index) => scoreTrace(caseItem, traces[index]))
     const report = {
-      suite: 'smart-cockpit/navigation',
+      suite: 'smart-cockpit/cockpit',
       mode: 'voice-realtime',
+      benchmark_suite: suite,
+      domains,
       realtime_model: process.env.QWEN_AUDIO_REALTIME_MODEL || null,
       agent_model: agentModel.model,
       routing: COCKPIT_SURFACE_ROUTING.domains,
@@ -515,6 +612,8 @@ async function main() {
         engine: 'macos_say',
         voice: args.get('say-voice') === true ? null : args.get('say-voice') || 'Ting-Ting',
       },
+      turn_retries: countArg(args, 'turn-retries', DEFAULT_TURN_RETRIES),
+      case_attempts: countArg(args, 'case-attempts', DEFAULT_CASE_ATTEMPTS),
       created_at: new Date().toISOString(),
       summary: summarizeScores(scores),
       scores,
@@ -522,7 +621,7 @@ async function main() {
     }
 
     const outPath = args.get('out')
-      || 'examples/smart-cockpit/bench/reports/navigation-voice-realtime-latest.json'
+      || 'examples/smart-cockpit/bench/reports/cockpit-voice-realtime-latest.json'
     const absolute = resolve(String(outPath))
     await mkdir(dirname(absolute), { recursive: true })
     await writeFile(absolute, `${JSON.stringify(report, null, 2)}\n`)

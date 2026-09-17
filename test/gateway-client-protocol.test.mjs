@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { GatewayServerEvent } from '../shared/protocol/realtime-events.mjs'
 import {
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
   GATEWAY_CLIENT_KNOWN_CAPABILITIES,
@@ -87,6 +88,18 @@ test('validates correlated application heartbeat messages', () => {
     type: GatewayClientProtocolEvent.SESSION_PONG,
     event_id: 'evt_client_pong',
   }))
+})
+
+test('transports a memory invalidation using the existing server envelope', () => {
+  const protocol = new GatewayClientProtocolSession({ sessionId: 'memory-view', createEventId: ids() })
+  protocol.receive(createGatewaySessionHello({
+    clientInstanceId: 'memory-view-client', capabilities: [],
+  }))
+  const encoded = protocol.encode({ type: GatewayServerEvent.MEMORY_CHANGED })
+  assert.deepEqual(parseGatewayServerProtocolMessage(encoded), {
+    type: 'memory.changed', event_id: 'evt_gateway_2',
+  })
+  assert.deepEqual(protocol.capabilities, [])
 })
 
 test('publishes image input capability', () => {

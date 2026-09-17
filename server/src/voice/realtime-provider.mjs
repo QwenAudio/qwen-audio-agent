@@ -79,6 +79,10 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   // providers acknowledge the item but replace its id, so those providers
   // must opt out and use the single pending item waiter instead.
   conversationItemIdEcho: true,
+  // Acknowledges conversation.item.create with conversation.item.created.
+  acknowledgesConversationItems: true,
+  // Allows the Gateway to inject pre-connection context as a conversation item.
+  restoreConversationContext: true,
   // Accepts conversation.item.create and acknowledges created items.
   conversationItems: true,
   // Accepts response.create and response.cancel initiated by the client.
@@ -183,6 +187,13 @@ export class RealtimeFrontend {
             this.protocol.connectionMessages?.({
               connectionId: this.connectionId,
               provider: this.provider,
+              agentContext: this.agentContext,
+              sessionOptions: this.sessionOptions,
+              session: this.provider.buildSession({
+                configured: false,
+                agentContext: this.agentContext,
+                sessionOptions: this.sessionOptions,
+              }),
             }),
           )
           for (const message of messages) {
@@ -271,6 +282,7 @@ export class RealtimeFrontend {
     if (this.recentContextInjected) return
     this.recentContextInjected = true
     if (!this.capabilities.conversationItems) return
+    if (!this.capabilities.restoreConversationContext) return
     const recent = buildRecentConversationContext(
       this.agentContext.recentMessages,
     )
@@ -340,9 +352,9 @@ export class RealtimeFrontend {
     }
     return this.enqueueResponse('model', context, async () => {
       await this.createConversationItem(this.protocol.userTextItem(content))
-      this.send(this.protocol.responseCreate(
+      return this.sendResponse(
         modalities ? { modalities } : undefined,
-      ))
+      )
     })
   }
 
@@ -380,9 +392,9 @@ export class RealtimeFrontend {
     }
     return this.enqueueResponse('model', context, async () => {
       if (!await this.applyUserInput(parts)) return false
-      this.send(this.protocol.responseCreate(
+      return this.sendResponse(
         modalities ? { modalities } : undefined,
-      ))
+      )
     })
   }
 
@@ -406,7 +418,7 @@ export class RealtimeFrontend {
     }
     return this.enqueueResponse('agent', context, () => {
       if (shouldCreate && !shouldCreate()) return false
-      this.send(this.protocol.responseCreate(response))
+      return this.sendResponse(response)
     })
   }
 
@@ -425,7 +437,7 @@ export class RealtimeFrontend {
     if (!createResponse) return this.enqueueAction(sendOutput)
     return this.enqueueResponse('agent', context, async () => {
       await sendOutput()
-      this.send(this.protocol.responseCreate(response))
+      return this.sendResponse(response)
     })
   }
 
@@ -451,6 +463,11 @@ export class RealtimeFrontend {
       }
       this.conversationItemWaiters.set(id, waiter)
       this.send(this.protocol.conversationItemCreate({ id, ...item }))
+      if (!this.capabilities.acknowledgesConversationItems) {
+        clearTimeout(waiter.timer)
+        this.conversationItemWaiters.delete(id)
+        resolve({ id, ...item })
+      }
     })
   }
 
@@ -464,9 +481,9 @@ export class RealtimeFrontend {
     }
     return this.enqueueResponse(origin, context, () => {
       if (shouldSpeak && !shouldSpeak()) return false
-      this.send(this.protocol.responseCreate(
+      return this.sendResponse(
         this.provider.buildSpeakResponse(content),
-      ))
+      )
     })
   }
 
@@ -522,8 +539,12 @@ export class RealtimeFrontend {
       injection.response.instructions = String(instructions)
     }
     let contextInjected = false
+    if (contextTiming === 'immediate' && injectContext) {
+      await this.createConversationItem(injection.item)
+      contextInjected = true
+    }
     if (route === 'context') {
-      if (injectContext) {
+      if (injectContext && !contextInjected) {
         await this.enqueueAction(async () => {
           await this.createConversationItem(injection.item)
           contextInjected = true
@@ -535,17 +556,13 @@ export class RealtimeFrontend {
         route,
       }
     }
-    if (contextTiming === 'immediate' && injectContext) {
-      await this.createConversationItem(injection.item)
-      contextInjected = true
-    }
     const outcome = await this.enqueueResponse(origin, context, async () => {
       if (shouldRespond && !shouldRespond()) return false
       if (injectContext && !contextInjected) {
         await this.createConversationItem(injection.item)
         contextInjected = true
       }
-      this.send(this.protocol.responseCreate(injection.response))
+      return this.sendResponse(injection.response)
     })
     return {
       ...(outcome || {}),
@@ -568,8 +585,16 @@ export class RealtimeFrontend {
     await this.createConversationItem(injection.item)
     return this.enqueueResponse('permission', context, pending => {
       if (pending.settled || (shouldSpeak && !shouldSpeak())) return false
-      this.send(this.protocol.responseCreate(injection.response))
+      return this.sendResponse(injection.response)
     })
+  }
+
+  async sendResponse(response) {
+    // A dialect may need a conversation item instead of transient response
+    // instructions. Wait for its acknowledgement before triggering inference.
+    const item = this.protocol.responseInstructionsItem?.(response)
+    if (item) await this.createConversationItem(item)
+    this.send(this.protocol.responseCreate(response))
   }
 
   cancel() {
@@ -978,6 +1003,7 @@ export class RealtimeFrontend {
   }
 
   send(payload) {
+    if (!payload) return
     if (this.ws?.readyState === WebSocket.OPEN) {
       let outgoing = payload
       if (payload.type === 'response.create' && this.pendingResponses.length) {

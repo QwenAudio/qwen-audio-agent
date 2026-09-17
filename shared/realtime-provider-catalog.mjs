@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto'
 import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  DEFAULT_GPT_LIVE_REALTIME_MODEL,
+  DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
+  DEFAULT_STEPFUN_REALTIME_MODEL,
   resolveDashScopeRealtimeModelProfile,
 } from './realtime-model-catalog.mjs'
 
@@ -11,32 +14,36 @@ export {
   DASHSCOPE_REALTIME_MODEL_PROFILES,
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   DEFAULT_DASHSCOPE_REALTIME_VOICE,
+  DEFAULT_GPT_LIVE_REALTIME_MODEL,
+  DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
+  DEFAULT_STEPFUN_REALTIME_MODEL,
+  realtimeModelCatalog,
+  resolveRealtimeModelProfile,
   listDashScopeRealtimeModelProfiles,
   resolveDashScopeRealtimeModelProfile,
 } from './realtime-model-catalog.mjs'
 
-export const DEFAULT_REALTIME_PROVIDER = 'dashscope'
-export const DEFAULT_DASHSCOPE_REALTIME_URL = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime'
-export const DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL = 'ws://127.0.0.1:8765/v1/realtime'
-export const DEFAULT_MINICPM_O_REALTIME_URL = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
+import {
+  DEFAULT_REALTIME_PROVIDER,
+  DEFAULT_DASHSCOPE_REALTIME_URL,
+  DEFAULT_GPT_LIVE_REALTIME_URL,
+  DEFAULT_GOOGLE_LIVE_REALTIME_URL,
+  DEFAULT_STEPFUN_REALTIME_URL,
+  DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL,
+  DEFAULT_MINICPM_O_REALTIME_URL,
+  REALTIME_PROVIDERS,
+} from './realtime-provider-definitions.mjs'
+export {
+  DEFAULT_REALTIME_PROVIDER,
+  DEFAULT_DASHSCOPE_REALTIME_URL,
+  DEFAULT_GPT_LIVE_REALTIME_URL,
+  DEFAULT_GOOGLE_LIVE_REALTIME_URL,
+  DEFAULT_STEPFUN_REALTIME_URL,
+  DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL,
+  DEFAULT_MINICPM_O_REALTIME_URL,
+} from './realtime-provider-definitions.mjs'
 
-const PROVIDERS = Object.freeze({
-  dashscope: Object.freeze({
-    key: 'dashscope',
-    label: 'DashScope',
-    aliases: Object.freeze(['qwen']),
-  }),
-  'speech-to-speech': Object.freeze({
-    key: 'speech-to-speech',
-    label: 'Speech-to-Speech',
-    aliases: Object.freeze(['s2s']),
-  }),
-  'minicpm-o': Object.freeze({
-    key: 'minicpm-o',
-    label: 'ModelBest',
-    aliases: Object.freeze(['minicpmo']),
-  }),
-})
+const PROVIDERS = Object.fromEntries(REALTIME_PROVIDERS.map(provider => [provider.key, provider]))
 
 const PROVIDER_ALIASES = new Map()
 for (const provider of Object.values(PROVIDERS)) {
@@ -108,6 +115,41 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
     dashscopeModel,
     env,
   )
+  const stepfunApiKey = clean(env.STEPFUN_API_KEY)
+  const stepfunRealtimeUrl = withoutTrailing(
+    env.STEPFUN_REALTIME_URL || DEFAULT_STEPFUN_REALTIME_URL,
+    /\?+$/,
+  )
+  const stepfunModel = clean(env.STEPFUN_REALTIME_MODEL) || DEFAULT_STEPFUN_REALTIME_MODEL
+  const stepfunVoice = clean(env.STEPFUN_REALTIME_VOICE)
+  const openaiApiKey = clean(env.OPENAI_API_KEY || env.GPT_LIVE_API_KEY)
+  const gptLiveRealtimeUrl = withoutTrailing(
+    env.GPT_LIVE_REALTIME_URL
+    || env.OPENAI_REALTIME_URL
+    || DEFAULT_GPT_LIVE_REALTIME_URL,
+    /\?+$/,
+  )
+  const gptLiveModel = clean(
+    env.GPT_LIVE_REALTIME_MODEL || env.OPENAI_REALTIME_MODEL,
+  ) || DEFAULT_GPT_LIVE_REALTIME_MODEL
+  const gptLiveVoice = clean(
+    env.GPT_LIVE_REALTIME_VOICE || env.OPENAI_REALTIME_VOICE,
+  )
+  const googleApiKey = clean(
+    env.GOOGLE_API_KEY || env.GEMINI_API_KEY || env.GOOGLE_LIVE_API_KEY,
+  )
+  const googleLiveRealtimeUrl = withoutTrailing(
+    env.GOOGLE_LIVE_REALTIME_URL
+    || env.GEMINI_LIVE_REALTIME_URL
+    || DEFAULT_GOOGLE_LIVE_REALTIME_URL,
+    /\?+$/,
+  )
+  const googleLiveModel = clean(
+    env.GOOGLE_LIVE_REALTIME_MODEL || env.GEMINI_LIVE_REALTIME_MODEL,
+  ) || DEFAULT_GOOGLE_LIVE_REALTIME_MODEL
+  const googleLiveVoice = clean(
+    env.GOOGLE_LIVE_REALTIME_VOICE || env.GEMINI_LIVE_REALTIME_VOICE,
+  )
   const speechToSpeechRealtimeUrl = withoutTrailing(
     env.SPEECH_TO_SPEECH_REALTIME_URL
     || env.S2S_REALTIME_URL
@@ -130,30 +172,54 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
   const miniCpmOConfigured = Boolean(
     clean(env.MINICPM_O_REALTIME_URL) || provider === 'minicpm-o'
   )
-  const configured = provider === 'dashscope'
-    ? Boolean(dashscopeApiKey)
-    : provider === 'speech-to-speech'
-      ? speechToSpeechConfigured
-      : miniCpmOConfigured
-  const identity = provider === 'dashscope'
-    ? {
-        provider,
+  const configurations = {
+    dashscope: {
+      configured: Boolean(dashscopeApiKey),
+      identity: {
         endpoint: dashscopeRealtimeUrl,
         model: dashscopeModel,
         voice: dashscopeVoice,
         credential: dashscopeApiKey,
-      }
-    : provider === 'speech-to-speech'
-      ? {
-          provider,
-          endpoint: speechToSpeechRealtimeUrl,
-          credential: speechToSpeechAuthToken,
-        }
-      : {
-          provider,
-          endpoint: miniCpmORealtimeUrl,
-          credential: miniCpmOAuthToken,
-        }
+      },
+    },
+    stepfun: {
+      configured: Boolean(stepfunApiKey),
+      identity: {
+        endpoint: stepfunRealtimeUrl,
+        model: stepfunModel,
+        voice: stepfunVoice,
+        credential: stepfunApiKey,
+      },
+    },
+    'gpt-live': {
+      configured: Boolean(openaiApiKey),
+      identity: {
+        endpoint: gptLiveRealtimeUrl,
+        model: gptLiveModel,
+        voice: gptLiveVoice,
+        credential: openaiApiKey,
+      },
+    },
+    'google-live': {
+      configured: Boolean(googleApiKey),
+      identity: {
+        endpoint: googleLiveRealtimeUrl,
+        model: googleLiveModel,
+        voice: googleLiveVoice,
+        credential: googleApiKey,
+      },
+    },
+    'speech-to-speech': {
+      configured: speechToSpeechConfigured,
+      identity: { endpoint: speechToSpeechRealtimeUrl, credential: speechToSpeechAuthToken },
+    },
+    'minicpm-o': {
+      configured: miniCpmOConfigured,
+      identity: { endpoint: miniCpmORealtimeUrl, credential: miniCpmOAuthToken },
+    },
+  }
+  const { configured, identity: activeIdentity } = configurations[provider]
+  const identity = { provider, ...activeIdentity }
   const signature = createHash('sha256')
     .update(JSON.stringify(identity))
     .digest('hex')
@@ -167,14 +233,27 @@ export function resolveRealtimeFrontendConfiguration(env = process.env) {
     dashscopeRealtimeUrl,
     dashscopeModel,
     dashscopeVoice,
+    stepfunApiKey,
+    stepfunRealtimeUrl,
+    stepfunModel,
+    stepfunVoice,
+    openaiApiKey,
+    gptLiveRealtimeUrl,
+    gptLiveModel,
+    gptLiveVoice,
+    googleApiKey,
+    googleLiveRealtimeUrl,
+    googleLiveModel,
+    googleLiveVoice,
+    model: activeIdentity.model || null,
+    endpoint: activeIdentity.endpoint,
     speechToSpeechRealtimeUrl,
     speechToSpeechAuthToken,
     speechToSpeechConfigured,
     miniCpmORealtimeUrl,
     miniCpmOAuthToken,
     miniCpmOConfigured,
-    missingConfigurationMessage: provider === 'dashscope'
-      ? '缺少 DASHSCOPE_API_KEY。请运行 qwenaudio config 查看配置文件位置。'
-      : `无法使用 ${PROVIDERS[provider].label} 前台，请检查其服务地址和配置。`,
+    requiredConfiguration: PROVIDERS[provider].requiredConfiguration,
+    missingConfigurationMessage: `缺少 ${PROVIDERS[provider].requiredConfiguration.key}。请运行 qwenaudio config 查看配置文件位置。`,
   }
 }

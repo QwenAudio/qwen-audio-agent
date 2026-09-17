@@ -17,6 +17,7 @@ import {
 
 function serviceFixture() {
   return new CockpitService({
+    customSkills: { async list() { return [] } },
     services: {
       async resolvePlace() { return '120.1,30.2' },
       async drivingRoute() {
@@ -187,7 +188,7 @@ test('scopes MCP tools according to domain surface routing', async t => {
   const backendTools = await backend.listTools()
   assert.deepEqual(backendTools.tools.map(tool => tool.name), BACKEND_TOOL_NAMES)
   assert.ok(backendTools.tools.some(tool => tool.name === 'flashbuy'))
-  assert.ok(backendTools.tools.some(tool => tool.name === 'custom_skill_create'))
+  assert.ok(!backendTools.tools.some(tool => tool.name === 'custom_skill_create'))
   assert.ok(!backendTools.tools.some(tool => tool.name === 'navigation_start'))
   assert.ok(!backendTools.tools.some(tool => tool.name === 'weather'))
   assert.ok(!backendTools.tools.some(tool => tool.name === 'vehicle_window_control'))
@@ -195,6 +196,8 @@ test('scopes MCP tools according to domain surface routing', async t => {
 
   const frontendTools = await frontend.listTools()
   assert.deepEqual(frontendTools.tools.map(tool => tool.name), FRONTEND_TOOL_NAMES)
+  assert.ok(frontendTools.tools.some(tool => tool.name === 'custom_skill_create'))
+  assert.ok(frontendTools.tools.some(tool => tool.name === 'custom_skill_load'))
 
   const output = await frontend.callTool({
     name: 'vehicle_temperature_control',
@@ -329,12 +332,12 @@ test('serves persistent custom skill management to the scenario UI', async t => 
   await server.start()
   t.after(() => server.close())
 
-  const backend = new Client({ name: 'cockpit-skill-test', version: '1.0.0' })
-  await backend.connect(new StreamableHTTPClientTransport(
-    new URL(`${server.origin}/mcp/backend?cockpitId=skill-car`),
+  const frontend = new Client({ name: 'cockpit-skill-test', version: '1.0.0' })
+  await frontend.connect(new StreamableHTTPClientTransport(
+    new URL(`${server.origin}/mcp/frontend?cockpitId=skill-car`),
   ))
-  t.after(() => backend.close())
-  await backend.callTool({
+  t.after(() => frontend.close())
+  await frontend.callTool({
     name: 'custom_skill_create',
     arguments: {
       name: '下班回家',
@@ -352,6 +355,23 @@ test('serves persistent custom skill management to the scenario UI', async t => 
     `${server.origin}/api/cockpit/skills/${skills[0].id}?cockpitId=skill-car`,
   ).then(response => response.json())
   assert.match(detail.instructions, /调节空调/u)
+  const loaded = await frontend.callTool({
+    name: 'custom_skill_load', arguments: { skill_name: '下班回家' },
+  })
+  assert.equal(loaded.isError, undefined)
+  assert.match(loaded.content[0].text, /前台按顺序协调/u)
+  // Use the same actual MCP surface as skill loading, not an injected tool list.
+  for (const [name, args] of [
+    ['navigation_start', { destination: '西湖' }],
+    ['music_volume_control', { action: 'set', volume: 3 }],
+    ['vehicle_temperature_control', { action: 'set', temperature: 22 }],
+  ]) {
+    const result = await frontend.callTool({ name, arguments: args })
+    assert.equal(result.isError, undefined, `${name} must remain available with skill tools`)
+  }
+  assert.equal(service.snapshot('skill-car').navigation.status, 'navigating')
+  assert.equal(service.snapshot('skill-car').music.volume, 3)
+  assert.equal(service.snapshot('skill-car').vehicle.acTemp, 22)
 
   const deleted = await fetch(
     `${server.origin}/api/cockpit/skills/${skills[0].id}?cockpitId=skill-car`,
@@ -363,6 +383,45 @@ test('serves persistent custom skill management to the scenario UI', async t => 
       .then(response => response.json()),
     [],
   )
+})
+
+test('exposes temperature-rule fields and emits a structured activity after a real HTTP change', async t => {
+  const root = await mkdtemp(resolve(tmpdir(), 'qwen-cockpit-http-rules-'))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const service = serviceFixture()
+  service.customSkills = new CustomSkillStore({ root })
+  const server = new CockpitServiceServer({ service, port: 0 })
+  await server.start()
+  t.after(() => server.close())
+  const command = (name, args) => fetch(`${server.origin}/api/cockpit/commands`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cockpitId: 'rule-car', name, arguments: args }),
+  }).then(response => response.json())
+  const created = await command('custom_skill_create', {
+    name: '低温提醒', description: '低温时注意保暖', kind: 'event',
+    trigger: { type: 'vehicle_temperature', max: 19 }, reminder: '请注意保暖',
+  })
+  const catalog = await fetch(`${server.origin}/api/cockpit/skills?cockpitId=rule-car`)
+    .then(response => response.json())
+  assert.equal(catalog[0].kind, 'event')
+  assert.deepEqual(catalog[0].trigger, { type: 'vehicle_temperature', field: 'acTemp', max: 19 })
+  assert.equal(catalog[0].reminder, '请注意保暖')
+  const response = await fetch(`${server.origin}/api/cockpit/events?cockpitId=rule-car`)
+  const reader = response.body.getReader()
+  t.after(() => reader.cancel().catch(() => {}))
+  const nextActivity = readSseEvent(reader, 'activity')
+  await command('vehicle_temperature_control', { action: 'set', temperature: 19 })
+  const activity = await nextActivity
+  assert.equal(activity.status, 'skill_triggered')
+  assert.equal(activity.skillId, created.data.skill.id)
+  assert.equal(activity.cockpitId, 'rule-car')
+  assert.equal(activity.temperature, 19)
+  assert.equal(activity.previousTemperature, 25)
+  assert.equal(activity.stateVersion, service.snapshot('rule-car').version)
+  assert.equal(activity.message, '请注意保暖')
+  assert.match(activity.eventId, /^[0-9a-f-]{36}$/u)
+  await reader.cancel()
 })
 
 test('publishes MCP tool call traces with scoped surface names', async t => {
@@ -385,8 +444,8 @@ test('publishes MCP tool call traces with scoped surface names', async t => {
   t.after(() => frontend.close())
 
   await backend.callTool({
-    name: 'custom_skill_list',
-    arguments: {},
+    name: 'flashbuy',
+    arguments: { action: 'search', query: '奶茶' },
   })
   await frontend.callTool({
     name: 'weather',
@@ -402,8 +461,8 @@ test('publishes MCP tool call traces with scoped surface names', async t => {
     {
       cockpitId: 'trace-car',
       surface: 'backend',
-      name: 'custom_skill_list',
-      arguments: {},
+      name: 'flashbuy',
+      arguments: { action: 'search', query: '奶茶' },
     },
     {
       cockpitId: 'trace-car',

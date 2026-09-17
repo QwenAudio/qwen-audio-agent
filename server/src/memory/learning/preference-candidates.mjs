@@ -202,6 +202,9 @@ export class PreferenceCandidatePool {
     this.owners = new Map()
     // ownerId → Set<slotKey>：用户否决过的不再晋升
     this.blocklist = new Map()
+    // Runtime-only versions: do not change the persisted candidate format.
+    this.slotVersions = new WeakMap()
+    this.snapshots = new WeakMap()
     if (store) this.reload()
   }
 
@@ -362,6 +365,7 @@ export class PreferenceCandidatePool {
       }
     }
     existing.lastAt = at
+    this.slotVersions.set(existing, (this.slotVersions.get(existing) || 0) + 1)
     if (quote) {
       existing.evidence.push({
         sessionId: String(sessionId || ''),
@@ -402,13 +406,17 @@ export class PreferenceCandidatePool {
     return [...this.bucket(ownerId).values()]
       .filter(slot => (!state || slot.state === state))
       .filter(slot => (!field || slot.field === field))
-      .map(slot => ({
-        ...slot,
-        sessions: [...slot.sessions],
-        evidence: slot.evidence.map(item => ({ ...item })),
-        label: renderLabel(slot.field, slot.value),
-        ...evaluateSlot(slot),
-      }))
+      .map(slot => {
+        const snapshot = {
+          ...slot,
+          sessions: [...slot.sessions],
+          evidence: slot.evidence.map(item => ({ ...item })),
+          label: renderLabel(slot.field, slot.value),
+          ...evaluateSlot(slot),
+        }
+        this.snapshots.set(snapshot, { slot, version: this.slotVersions.get(slot) })
+        return snapshot
+      })
       .sort((left, right) => (
         (right.confirm - left.confirm) || (right.lastAt - left.lastAt)
       ))
@@ -420,13 +428,41 @@ export class PreferenceCandidatePool {
       .filter(slot => slot.ready && !this.blocked(ownerId, slot.field, slot.value))
   }
 
-  markPromoted(ownerId, key) {
+  isCurrent(ownerId, snapshot) {
+    const expected = this.snapshots.get(snapshot)
+    return Boolean(expected
+      && this.owners.get(String(ownerId || ''))?.get(snapshot.key) === expected.slot
+      && this.slotVersions.get(expected.slot) === expected.version)
+  }
+
+  markPromoted(ownerId, candidate) {
+    const key = typeof candidate === 'string' ? candidate : candidate?.key
+    if (typeof candidate !== 'string' && !this.isCurrent(ownerId, candidate)) return null
     const slot = this.bucket(ownerId).get(key)
     if (!slot) return null
     slot.state = 'active'
     slot.resolvedAt = this.now()
+    this.slotVersions.set(slot, (this.slotVersions.get(slot) || 0) + 1)
     this.persist()
     return slot
+  }
+
+  // 手工修改记忆后，丢弃修改前尚未生效的证据；这不是否决，后续新对话仍可重新学习。
+  discardPending(ownerId) {
+    const ownerKey = String(ownerId || '')
+    const bucket = this.owners.get(ownerKey)
+    if (!bucket) return 0
+    let discarded = 0
+    for (const [key, slot] of bucket) {
+      if (slot.state !== 'tentative') continue
+      bucket.delete(key)
+      discarded += 1
+    }
+    if (discarded) {
+      if (!bucket.size) this.owners.delete(ownerKey)
+      this.persist()
+    }
+    return discarded
   }
 
   // 用户否决：状态置 rejected 并进黑名单，此后不再被自动晋升。
@@ -442,6 +478,7 @@ export class PreferenceCandidatePool {
     if (slot) {
       slot.state = 'rejected'
       slot.resolvedAt = this.now()
+      this.slotVersions.set(slot, (this.slotVersions.get(slot) || 0) + 1)
       // 否决后不再需要保留原话
       slot.evidence = []
     }

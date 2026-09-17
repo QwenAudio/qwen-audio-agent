@@ -15,6 +15,7 @@ import { PreferencePromoter } from '../src/memory/learning/preference-promoter.m
 import { ProfileObserver } from '../src/memory/learning/profile-observer.mjs'
 import { MarkdownContextStore } from '../src/memory/providers/markdown/context-store.mjs'
 import { MarkdownMemoryProvider } from '../src/memory/providers/markdown/provider.mjs'
+import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
 
 const OWNER = 'user_personal'
 
@@ -27,8 +28,21 @@ function transcript(userLines) {
   ])
 }
 
+function recordedConversation(messages, sessionId) {
+  const sync = new ConversationSync()
+  for (const [index, message] of messages.entries()) {
+    sync.record({
+      ownerId: OWNER, sessionId, id: `${sessionId}-${index}`,
+      source: message.role === 'user' ? 'voice-user' : 'realtime-direct',
+      ...message,
+    })
+  }
+  return sync
+}
+
 // 每次调用都重新装配全部模块，等价于一次进程重启：只有落盘文件是共享的。
-function boot(directory, { messages, reply }) {
+// messages 是重启后当前会话中新说的话，不是恢复的历史。
+function boot(directory, { messages, reply, sessionId = 's_a' }) {
   const userStore = new MarkdownContextStore({
     filePath: join(directory, 'USER.md'),
     scope: 'user',
@@ -57,7 +71,7 @@ function boot(directory, { messages, reply }) {
   const audit = []
   const observer = new ProfileObserver({
     candidatePool: pool,
-    conversationSync: { list: () => messages },
+    conversationSync: recordedConversation(messages, sessionId),
     audit: { record: entry => audit.push(entry) },
     llmCall: async () => reply,
     logger: { warn() {}, debug() {} },
@@ -101,7 +115,7 @@ test('observation accumulates across a restart and only then reaches USER.md', a
     assert.deepEqual(await first.promoter.run({ ownerId: OWNER }), [])
 
     // ── 重启：新对象只能从 candidates.json 恢复证据
-    const second = boot(directory, { messages, reply: OCCUPATION_REPLY })
+    const second = boot(directory, { messages, reply: OCCUPATION_REPLY, sessionId: 's_b' })
     const restored = second.pool.list(OWNER)
     assert.equal(restored.length, 1, '槽位必须穿越重启存活')
     assert.equal(restored[0].confirm, 1)
@@ -168,6 +182,7 @@ test('a value already promoted cannot be re-confirmed from the injected profile'
     const { observer, pool } = boot(directory, {
       messages: transcript(['今天天气不错', '嗯', '那就这样', '再见']),
       reply: OCCUPATION_REPLY,
+      sessionId: 's_c',
     })
     const accepted = await observer.maybeRun({ ownerId: OWNER, sessionId: 's_c' })
     assert.deepEqual(accepted, [], '没有本场用户证据就不得再确认一次')
@@ -181,7 +196,7 @@ test('a short session never reaches the model', () => {
   let calls = 0
   const observer = new ProfileObserver({
     candidatePool: new PreferenceCandidatePool(),
-    conversationSync: { list: () => transcript(['一', '二']) },
+    conversationSync: recordedConversation(transcript(['一', '二']), 's_a'),
     llmCall: async () => { calls += 1; return OCCUPATION_REPLY },
     logger: { warn() {}, debug() {} },
   })

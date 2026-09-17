@@ -2,9 +2,20 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { PreferenceCandidatePool } from '../src/memory/learning/preference-candidates.mjs'
 import { ProfileObserver } from '../src/memory/learning/profile-observer.mjs'
+import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
 
 function conversationStub(messages) {
-  return { list() { return messages } }
+  const sync = new ConversationSync()
+  const list = sync.list.bind(sync)
+  sync.list = (scope = { ownerId: 'u1', sessionId: 's1' }) => list(scope)
+  for (const [index, message] of messages.entries()) {
+    sync.record({
+      ownerId: 'u1', sessionId: 's1', id: `initial-${index}`,
+      source: message.role === 'user' ? 'voice-user' : 'realtime-direct',
+      ...message,
+    })
+  }
+  return sync
 }
 
 // 四轮用户发言刚好达到 minUserMessages 门槛
@@ -756,6 +767,120 @@ test('leaves a single-sentence quote untouched', async () => {
 
 test('skips a session with too few user turns', () => {
   const { observer, calls } = harness({ messages: transcript(['一', '二', '三']) })
+  assert.equal(observer.maybeRun({ ownerId: 'u1', sessionId: 's1' }), null)
+  assert.equal(calls.length, 0)
+})
+
+test('restored conversation history never starts a new profile observation', () => {
+  const { observer, calls, pool } = harness({ messages: [] })
+  observer.conversationSync.restore({
+    ownerId: 'u1', sessionId: 's1',
+    messages: transcript(['我平时写 Rust', '历史二', '历史三', '历史四'])
+      .map((message, index) => ({ ...message, id: `restored-${index}`, source: 'voice-user' })),
+  })
+
+  assert.equal(observer.conversationSync.list().length, 4)
+  assert.equal(observer.maybeRun({ ownerId: 'u1', sessionId: 's1' }), null)
+  assert.equal(calls.length, 0)
+  assert.deepEqual(pool.list('u1'), [])
+})
+
+test('repeated session close consumes a fresh batch once without increasing confirmations', async () => {
+  const { observer, calls, pool } = harness({
+    messages: transcript(['我平时写 Rust', '二', '三', '四']),
+    reply: JSON.stringify({ observations: [{
+      field: 'special_skills', value: 'Rust', relation: 'same', quote: '我平时写 Rust',
+    }] }),
+  })
+
+  const pending = observer.maybeRun({ ownerId: 'u1', sessionId: 's1' })
+  assert.equal(observer.maybeRun({ ownerId: 'u1', sessionId: 's1' }), null,
+    'the batch must be consumed before the asynchronous observation completes')
+  await pending
+  assert.equal(observer.maybeRun({ ownerId: 'u1', sessionId: 's1' }), null)
+
+  assert.equal(calls.length, 1)
+  assert.equal(pool.list('u1')[0].confirm, 1)
+})
+
+test('new observations exclude both restored history and previously consumed records', async () => {
+  const { observer, calls } = harness({
+    messages: transcript(['旧记录一', '旧记录二', '旧记录三', '旧记录四']),
+  })
+  observer.conversationSync.restore({
+    ownerId: 'u1', sessionId: 's1',
+    messages: [{ id: 'restored', source: 'voice-user', role: 'user', content: '恢复的旧对话' }],
+  })
+  await observer.maybeRun({ ownerId: 'u1', sessionId: 's1' })
+  for (let index = 1; index <= 4; index += 1) {
+    observer.conversationSync.record({
+      ownerId: 'u1', sessionId: 's1', id: `new-${index}`,
+      source: 'voice-user', role: 'user', content: `新记录${index}`,
+    })
+  }
+
+  await observer.maybeRun({ ownerId: 'u1', sessionId: 's1' })
+
+  assert.equal(calls.length, 2)
+  assert.doesNotMatch(calls[0].user, /恢复的旧对话/)
+  assert.doesNotMatch(calls[1].user, /旧记录|恢复的旧对话/)
+  for (let index = 1; index <= 4; index += 1) assert.match(calls[1].user, new RegExp(`新记录${index}`))
+})
+
+test('discarding recorded evidence invalidates an in-flight observation before it writes candidates', async () => {
+  let finish
+  const { observer, calls, pool, auditRecords } = harness({
+    messages: transcript(['我平时写 Rust', '二', '三', '四']),
+    reply: () => new Promise(resolve => { finish = resolve }),
+  })
+  const pending = observer.maybeRun({ ownerId: 'u1', sessionId: 's1' })
+  assert.equal(calls.length, 1)
+
+  observer.conversationSync.discardRecorded('u1')
+  finish(JSON.stringify({ observations: [{
+    field: 'special_skills', value: 'Rust', relation: 'same', quote: '我平时写 Rust',
+  }] }))
+
+  assert.deepEqual(await pending, [])
+  assert.deepEqual(pool.list('u1'), [])
+  assert.deepEqual(reasons(auditRecords), ['stale_observation'])
+  assert.equal(observer.maybeRun({ ownerId: 'u1', sessionId: 's1' }), null)
+  assert.equal(observer.conversationSync.list().length, 4, 'invalidation must leave visible history intact')
+})
+
+test('fresh user turns accumulate below the threshold without consuming or reusing older batches', async () => {
+  const { observer, calls } = harness({ messages: transcript(['新一', '新二', '新三']) })
+  const scope = { ownerId: 'u1', sessionId: 's1' }
+  assert.equal(observer.maybeRun(scope), null)
+  observer.conversationSync.record({
+    ...scope, id: 'assistant', role: 'assistant', source: 'realtime-direct', content: '助手不能凑用户轮数',
+  })
+  assert.equal(observer.maybeRun(scope), null)
+  observer.conversationSync.record({
+    ...scope, id: 'fourth', role: 'user', source: 'voice-user', content: '新四',
+  })
+  await observer.maybeRun(scope)
+  assert.equal(calls.length, 1)
+  for (const content of ['新一', '新二', '新三', '新四']) assert.match(calls[0].user, new RegExp(content))
+  for (let index = 1; index <= 3; index += 1) {
+    observer.conversationSync.record({
+      ...scope, id: `next-${index}`, role: 'user', source: 'voice-user', content: `下一批${index}`,
+    })
+  }
+  assert.equal(observer.maybeRun(scope), null, 'already consumed user turns must not satisfy the next threshold')
+  assert.equal(calls.length, 1)
+  observer.conversationSync.record({
+    ...scope, id: 'next-4', role: 'user', source: 'voice-user', content: '下一批4',
+  })
+  await observer.maybeRun(scope)
+  assert.equal(calls.length, 2)
+  assert.doesNotMatch(calls[1].user, /新一|新二|新三|新四/)
+})
+
+test('fails closed when a conversation adapter cannot distinguish fresh evidence from history', () => {
+  const { observer, calls } = harness()
+  observer.conversationSync = { list() { assert.fail('must not fall back to all historical messages') } }
+
   assert.equal(observer.maybeRun({ ownerId: 'u1', sessionId: 's1' }), null)
   assert.equal(calls.length, 0)
 })

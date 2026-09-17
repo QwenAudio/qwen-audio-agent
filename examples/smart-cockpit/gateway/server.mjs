@@ -3,6 +3,7 @@
 // runtime logic or move cockpit business state into the Gateway.
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { cockpitAssistantProfileEventDefinition } from './assistant/event.mjs'
+import { cockpitEnvironmentEventDefinitions } from './environment-events.mjs'
 import { loadCockpitEnvironment } from '../bootstrap/environment.mjs'
 import { COCKPIT_SPAWN_THINKING_DESCRIPTION } from './spawn-thinking-tool.mjs'
 import { writeCockpitFrontendProfileBundle } from './profile-bundle.mjs'
@@ -76,7 +77,7 @@ export function startCockpitGateway({
   const application = createGatewayApplication({
     agent,
     autoStart: false,
-    clientEventDefinitions: [cockpitAssistantProfileEventDefinition],
+    clientEventDefinitions: [cockpitAssistantProfileEventDefinition, ...cockpitEnvironmentEventDefinitions],
     spawnThinkingDescription: COCKPIT_SPAWN_THINKING_DESCRIPTION,
   })
   const server = application.start({ host, port: listenPort })

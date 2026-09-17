@@ -748,6 +748,7 @@ function updateApplyState() {
   const backendAvailable = backendSelectionAvailable(
     backendReport,
     selectedBackend(),
+    { configuredBackend: settings?.agentProtocol },
   )
   submit.disabled = (
     applying

@@ -21,8 +21,14 @@ export function initialBackendSelection({
     : configured
 }
 
-export function backendSelectionAvailable(report, id) {
+export function backendSelectionAvailable(report, id, {
+  configuredBackend,
+} = {}) {
   if (id === NONE_OPTION_ID) return true
+  // Generic ACP remains intentionally absent from the picker catalog. Treat it
+  // as available only when preserving an existing external configuration, so
+  // changing unrelated settings can never erase it or expose it as a new choice.
+  if (id === 'acp') return configuredBackend === 'acp'
   const state = backendOptionStates(report).find(option => option.id === id)
   return Boolean(state?.ready && !state.configurationRequired)
 }

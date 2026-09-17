@@ -77,8 +77,8 @@ export async function collectDiagnostics({ options, environment, env = process.e
       existsSync(environment.configPath) ? '找到配置文件' : '尚未创建配置文件')
     try {
       const realtime = resolveRealtimeFrontendConfiguration(env)
-      add('realtime.configuration', realtime.configured ? 'ok' : 'error',
-        realtime.configured ? '语音前台配置已填写；此检查不验证密钥额度' : '语音前台缺少必要配置')
+      add('realtime.configuration', realtime.active.configured ? 'ok' : 'error',
+        realtime.active.configured ? '语音前台配置已填写；此检查不验证密钥额度' : '语音前台缺少必要配置')
     } catch { add('realtime.configuration', 'error', '语音前台配置无效') }
     try {
       loadFrontendMcpConfiguration({ filePath: env.QWEN_AUDIO_FRONTEND_MCP_CONFIG || '', env })

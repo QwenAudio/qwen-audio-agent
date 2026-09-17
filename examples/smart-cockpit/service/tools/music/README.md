@@ -2,6 +2,9 @@
 
 本文记录 smart-cockpit 示例中的音乐 / 媒体 function call 设计。参考 Tesla Fleet API 的媒体命令、Fleet Telemetry 的媒体状态字段，以及 Tesla 车主手册中的语音媒体控制说明，但工具粒度保持本项目的车机业务语义。
 
+以下厂商映射是设计参考，当前执行器使用示例媒体状态，不代表已接入这些厂商服务。
+当前 schema 以 [`manifest.json`](manifest.json) 为准，默认分流见[工具目录说明](../README.md)。
+
 ## 设计定位
 
 音乐工具保持“状态查询独立、播放控制保留常用快捷函数、音量/来源/收藏按能力域聚合”的粒度。

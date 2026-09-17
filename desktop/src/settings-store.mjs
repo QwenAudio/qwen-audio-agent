@@ -18,14 +18,18 @@ import {
 import { gatewaySetupStatus } from '../../shared/gateway/setup.mjs'
 import {
   applySettingsEnvironment,
+  hasRealtimeSettingsPatch,
+  normalizeSettings,
   parseSettings,
   updateSettingsContent,
 } from './settings-config.mjs'
 import { normalizeConversationSessionId } from '../../shared/conversation-session.mjs'
+import { migrateRealtimeFileEnvironment, mergeRealtimeEnvironment, realtimeSettingsProfileState, realtimeSettingsFromProfileState, realtimeSettingsValues } from '../../shared/realtime-provider-definitions.mjs'
 
 export const SETTINGS_FILE = 'config.env'
 export const CLIENT_SETTINGS_FILE = 'settings.env'
 export const UI_STATE_FILE = 'ui-state.json'
+export const REALTIME_PROFILES_FILE = 'realtime-profiles.json'
 
 // Everything written here is user configuration, including credentials, so it
 // stays readable by its owner alone.
@@ -101,6 +105,7 @@ export function createSettingsStore({
   const clientDirectory = resolve(clientDir)
   const settingsPath = resolve(directory, SETTINGS_FILE)
   const clientSettingsPath = resolve(clientDirectory, CLIENT_SETTINGS_FILE)
+  const realtimeProfilesPath = resolve(directory, REALTIME_PROFILES_FILE)
   const uiStatePath = resolve(clientDirectory, UI_STATE_FILE)
 
   // Reading must never create anything: the startup gate runs before a host
@@ -110,15 +115,28 @@ export function createSettingsStore({
     updateSettingsContent(readTextFile(settingsPath), {}, { scope: 'gateway' })
     + updateSettingsContent(readTextFile(clientSettingsPath), {}, { scope: 'client' })
   )
-  const load = () => parseSettings(readContent(), env)
+  const load = () => {
+    const raw = readTextFile(realtimeProfilesPath)
+    let drafts = {}
+    if (raw) {
+      try {
+        const state = JSON.parse(raw)
+        if (!state || typeof state !== 'object' || !state.profiles || typeof state.profiles !== 'object') throw new Error()
+        drafts = realtimeSettingsFromProfileState(state)
+      } catch {
+        throw new Error('Invalid realtime-profiles.json; restore or correct the profile file before saving settings')
+      }
+    }
+    return parseSettings(readContent(), env, drafts)
+  }
 
   // The same readiness the startup gate reads: stored values first, then the
   // live environment for slots the file leaves unset — mirroring how the
   // Gateway itself loads config.env.
-  const effectiveEnvironment = () => ({
-    ...parseEnv(readTextFile(settingsPath)),
-    ...env,
-  })
+  const effectiveEnvironment = () => mergeRealtimeEnvironment(
+    env,
+    migrateRealtimeFileEnvironment(parseEnv(readTextFile(settingsPath))),
+  )
 
   const loadUiState = () => {
     const content = readTextFile(uiStatePath)
@@ -148,20 +166,27 @@ export function createSettingsStore({
     clientDir: clientDirectory,
     path: settingsPath,
     clientSettingsPath,
+    realtimeProfilesPath,
     uiStatePath,
     load,
-    preview: settings => parseSettings(updateSettingsContent(readContent(), settings), env),
+    preview: settings => normalizeSettings({ ...load(), ...settings }),
 
     save(settings) {
-      // Validate the complete form before writing either owner's file.
-      updateSettingsContent('', settings)
+      // Keep provider drafts separate from the five active runtime variables.
+      const realtimeChanged = hasRealtimeSettingsPatch(settings)
+      let nextSettings = normalizeSettings({ ...load(), ...settings })
       for (const [path, root, scope] of [
         [settingsPath, directory, 'gateway'],
         [clientSettingsPath, clientDirectory, 'client'],
       ]) {
         withFileTransaction(path, () => {
           const current = readTextFile(path)
-          const next = updateSettingsContent(current, settings, { scope })
+          if (scope === 'gateway' && realtimeChanged) {
+            nextSettings = normalizeSettings({ ...load(), ...settings })
+            mkdirSync(root, { recursive: true, mode: PRIVATE_DIRECTORY_MODE })
+            writePrivateFile(realtimeProfilesPath, JSON.stringify(realtimeSettingsProfileState(nextSettings), null, 2) + '\n')
+          }
+          const next = updateSettingsContent(current, settings, { scope, realtimeDrafts: nextSettings })
           if (next === current || (!current && !next.trim())) return
           mkdirSync(root, { recursive: true, mode: PRIVATE_DIRECTORY_MODE })
           writePrivateFile(path, next)
@@ -170,7 +195,7 @@ export function createSettingsStore({
       // Keep this process consistent with what was just persisted, so a
       // subsequent in-process start does not keep serving the value the
       // environment happened to hold first.
-      applySettingsEnvironment(settings, env)
+      applySettingsEnvironment(realtimeChanged ? { ...settings, ...realtimeSettingsValues(nextSettings) } : settings, env)
       return load()
     },
 

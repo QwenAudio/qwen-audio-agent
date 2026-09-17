@@ -589,6 +589,9 @@ test('dual-metric HTML and CSV carry domains, differences and missing values wit
     assert.equal((html.match(/<table>/gu) || []).length, 2)
     assert.match(html, /<h2>Before execution<\/h2>/u)
     assert.match(html, /<h2>After execution<\/h2>/u)
+    assert.match(html, /<th>Test turns \(tool-required\)<\/th>/u)
+    assert.match(html, /not case count or steps to complete one task/u)
+    assert.doesNotMatch(html, /<th>Task turns<\/th>/u)
     assert.doesNotMatch(html, /<th>[^<]*(match|score|accuracy|outcome)/iu)
     for (const [phase, other] of [['before', 'after'], ['after', 'before']]) {
       const csv = await readFile(`${out}.${phase}.csv`, 'utf8')
@@ -598,7 +601,9 @@ test('dual-metric HTML and CSV carry domains, differences and missing values wit
       assert.match(csv, /turn 2/u)
       assert.ok(csv.includes(`${phase}/s`))
       assert.ok(!csv.includes(`${other}/s`))
-      assert.ok((await readFile(`${out}.${phase}.summary.csv`, 'utf8')).includes(`${phase}/s`))
+      const summaryCsv = await readFile(`${out}.${phase}.summary.csv`, 'utf8')
+      assert.ok(summaryCsv.includes(`${phase}/s`))
+      assert.ok(summaryCsv.includes('"Test turns (tool-required)"'))
     }
     await writeCanonicalTables(combineReports(batchFixtures()), out)
     const mergedHtml = await readFile(`${out}.html`, 'utf8')
@@ -608,7 +613,10 @@ test('dual-metric HTML and CSV carry domains, differences and missing values wit
     assert.match(mergedHtml, /batch-1\.json/u)
     assert.equal((await readFile(`${out}.before.csv`, 'utf8')).trim().split('\n').length, 93)
     assert.equal((await readFile(`${out}.after.csv`, 'utf8')).trim().split('\n').length, 93)
-    assert.equal((await readFile(`${out}.md`, 'utf8')).match(/^## /gmu).length, 2)
+    const markdown = await readFile(`${out}.md`, 'utf8')
+    assert.equal(markdown.match(/^## /gmu).length, 2)
+    assert.match(markdown, /Test turns \(tool-required\)/u)
+    assert.doesNotMatch(markdown, /\| Task turns \|/u)
   } finally {
     await rm(root, { recursive: true, force: true })
   }

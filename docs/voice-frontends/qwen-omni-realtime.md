@@ -29,6 +29,10 @@ active model regardless of family; switch via Desktop settings or
 ## Voice and turn detection
 
 - Default voice: `Ethan` — override with `QWEN_AUDIO_REALTIME_VOICE`.
+- The known-incompatible `Cherry` selection is rejected before connecting, with a
+  suggestion to use this project's model default. Unknown and cloned voice IDs
+  are passed to the provider; no allowlist, ID-prefix inference, or automatic
+  fallback is applied. See the [official voice list](https://help.aliyun.com/zh/model-studio/omni-voice-list).
 - Turn detection: `semantic_vad`, configured by the runtime.
 
 ## Live vision

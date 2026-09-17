@@ -25,6 +25,7 @@ createGatewayApplication({
 - 每个 Provider 都是独立适配器，完整拥有自己的 URL、认证、模型、Session 和错误分类语义；不要通过改造另一个 Provider 来承载业务差异。
 - `url()`、`headers()`、`model()` 可从宿主配置闭包读取服务地址、令牌和模型；Gateway 不要求为业务 Provider 增加环境变量。
 - `createProtocol()` 每条 Realtime 连接调用一次，适合生成连接级 ID 和隔离状态。
+- 可选的同步 `validateSessionOptions({ sessionOptions })` 在上游连接前执行；只拒绝已确认无效的配置，未知值交给服务端验证。
 - `connectionMessages()` 在 WebSocket 打开后、`session.update` 之前发送原始握手帧。
 - 其余事件通过 `encodeOutgoing()` 与 `normalizeIncoming()` 转换，Gateway 的工具调用、任务和客户端协议保持不变。
 - 不支持临时回复指令的协议可实现 `responseInstructionsItem(response)`，将内部回复指令转为普通对话项。Gateway 等待确认后调用 `responseCreate(response)`，后者负责去掉上游不支持的参数。此时 `perResponseInstructions` 为 `false`，指令会进入会话历史。

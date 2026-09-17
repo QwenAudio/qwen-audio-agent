@@ -210,6 +210,9 @@ export function validateRealtimeProvider(provider) {
   } else {
     validateRealtimeProtocol(provider.protocol, provider.key)
   }
+  if (provider.validateSessionOptions !== undefined && typeof provider.validateSessionOptions !== 'function') {
+    throw new Error(`Realtime Provider ${provider.key} validateSessionOptions 必须是函数`)
+  }
   for (const flag of Object.keys(provider.capabilities || {})) {
     if (!CAPABILITY_FLAGS.includes(flag)) {
       throw new Error(

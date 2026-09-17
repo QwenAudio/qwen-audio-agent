@@ -25,6 +25,8 @@ The extension boundary is:
 - Each Provider is an independent adapter that owns its URL, authentication, model, session, and error-classification semantics. Product differences should not be carried by reshaping another Provider.
 - `url()`, `headers()`, and `model()` can read the service URL, token, and model from host-owned configuration closures. The Gateway does not require product-specific environment variables.
 - `createProtocol()` runs once for each Realtime connection, so connection IDs and mutable state remain isolated.
+- Optional synchronous `validateSessionOptions({ sessionOptions })` runs before opening the
+  upstream connection. Only reject known-invalid selections; leave unknown values to the service.
 - `connectionMessages()` emits raw handshake frames after the WebSocket opens and before `session.update`.
 - All later events pass through `encodeOutgoing()` and `normalizeIncoming()`, leaving Gateway tools, tasks, and client protocols unchanged.
 - Protocols without transient response instructions can implement `responseInstructionsItem(response)`. Gateway creates and awaits that conversation item before calling `responseCreate(response)`, which strips unsupported wire parameters. Set `perResponseInstructions: false`; these instructions remain in history.

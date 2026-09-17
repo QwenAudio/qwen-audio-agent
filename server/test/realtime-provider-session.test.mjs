@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { RealtimeProviderSession } from '../src/voice/realtime-provider-session.mjs'
+import { RealtimeConfigurationError } from '../src/voice/realtime-errors.mjs'
 
 function deferred() {
   let resolve
@@ -250,6 +251,25 @@ test('switching providers detaches the old frontend without losing queued audio'
   frontends[1].resolveConnect()
   await replacement
   assert.equal(frontends[1].provider.key, 's2s')
+})
+
+test('configuration validation errors use the existing fatal path without reconnecting', async () => {
+  const { runtime, calls, frontends } = harness({ shouldReconnect: true })
+  const error = new RealtimeConfigurationError('音色 Cherry 不支持模型 omni；请改用该模型的默认音色 Ethan')
+  const connecting = runtime.ensure()
+  runtime.pendingAudio.push('queued')
+  runtime.pendingImage = 'queued-image'
+  frontends[0].rejectConnect(error)
+  await assert.rejects(connecting, failure => failure === error)
+  await assert.rejects(runtime.ensure(), /音色 Cherry/)
+  assert.equal(frontends.length, 1)
+  assert.deepEqual(runtime.pendingAudio, [])
+  assert.equal(runtime.pendingImage, null)
+  assert.equal(runtime.scheduledReconnect, null)
+  assert.deepEqual(calls.find(([name, state]) => name === 'state' && state.state === 'unavailable'), [
+    'state', { state: 'unavailable', provider: 'dashscope', message: error.message },
+  ])
+  runtime.detach()
 })
 
 test('capacity-busy connection failures stay silent and retryable', async () => {

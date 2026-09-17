@@ -164,6 +164,11 @@ export class RealtimeFrontend {
     if (!this.provider.isConfigured()) {
       return Promise.reject(new RealtimeConfigurationError(this.provider.missingConfigurationMessage))
     }
+    try {
+      this.provider.validateSessionOptions?.({ sessionOptions: this.sessionOptions })
+    } catch (error) {
+      return Promise.reject(error)
+    }
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.provider.url(), {
         headers: this.provider.headers(),

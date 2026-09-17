@@ -27,6 +27,9 @@ QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-flash-realtime
 ## 音色与话轮检测
 
 - 默认音色 `Ethan`，可用 `QWEN_AUDIO_REALTIME_VOICE` 覆盖。
+- 已确认不兼容的 `Cherry` 会在连接前被拒绝，并提示改用项目为该模型配置的默认音色。
+  未知和复刻音色仍交给供应商验证，不使用完整白名单或 ID 前缀推断，不自动替换配置。
+  参见[官方音色列表](https://help.aliyun.com/zh/model-studio/omni-voice-list)。
 - 话轮检测为 `semantic_vad`，由运行时配置。
 
 ## 实时视觉

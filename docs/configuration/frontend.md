@@ -13,12 +13,35 @@ The default provider is DashScope (`QWEN_AUDIO_REALTIME_PROVIDER=dashscope`):
 DASHSCOPE_API_KEY=your-key
 ```
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `DASHSCOPE_API_KEY` | — | Model Studio API key, shared by the realtime frontend and other gateway features |
-| `QWEN_AUDIO_REALTIME_API_KEY` | Empty | Higher-priority alias of `DASHSCOPE_API_KEY` for the realtime frontend only |
-| `QWEN_AUDIO_REALTIME_BASE_URL` / `QWEN_AUDIO_REALTIME_URL` | Empty | Override the DashScope Realtime endpoint (private deployment or proxy) |
-| `DASHSCOPE_WORKSPACE_ID` | Empty | Switch to a dedicated Model Studio workspace endpoint |
+| Provider | Credential | Endpoint | Model / voice |
+| --- | --- | --- | --- |
+| DashScope (default, alias `qwen`) | `DASHSCOPE_API_KEY` | `QWEN_AUDIO_REALTIME_BASE_URL` (alias `QWEN_AUDIO_REALTIME_URL`) | `QWEN_AUDIO_REALTIME_MODEL`; Audio: `QWEN_AUDIO_REALTIME_VOICE`; Omni: `QWEN_OMNI_REALTIME_VOICE` |
+| StepFun | `STEPFUN_API_KEY` | `STEPFUN_REALTIME_URL` | `STEPFUN_REALTIME_MODEL`, `STEPFUN_REALTIME_VOICE` |
+| GPT-Live | `OPENAI_API_KEY` (alias `GPT_LIVE_API_KEY`) | `GPT_LIVE_REALTIME_URL` (alias `OPENAI_REALTIME_URL`) | `GPT_LIVE_REALTIME_MODEL`, `GPT_LIVE_REALTIME_VOICE` (aliases `OPENAI_REALTIME_*`) |
+| Google Live | `GOOGLE_API_KEY` (aliases `GEMINI_API_KEY`, `GOOGLE_LIVE_API_KEY`) | `GOOGLE_LIVE_REALTIME_URL` (alias `GEMINI_LIVE_REALTIME_URL`) | `GOOGLE_LIVE_REALTIME_MODEL`, `GOOGLE_LIVE_REALTIME_VOICE` (aliases `GEMINI_LIVE_REALTIME_*`) |
+| speech-to-speech (alias `s2s`) | `SPEECH_TO_SPEECH_AUTH_TOKEN` (alias `S2S_API_KEY`) | `SPEECH_TO_SPEECH_REALTIME_URL` (alias `S2S_REALTIME_URL`) | Managed by the service |
+| minicpm-o (alias `minicpmo`) | `MINICPM_O_AUTH_TOKEN` | `MINICPM_O_REALTIME_URL` | Managed by the service |
+
+Only `QWEN_AUDIO_REALTIME_PROVIDER` is shared. Configure each provider once, then change
+only the selector to switch. Credentials, endpoints, models and voices never cross providers.
+An explicitly empty credential clears it. Empty models/endpoints use provider defaults;
+empty voices use service/model defaults. Primary names take precedence over aliases.
+
+There is no global runtime override. `QWEN_AUDIO_REALTIME_MODEL` and
+`QWEN_AUDIO_REALTIME_VOICE` belong to DashScope only. The removed
+`QWEN_AUDIO_REALTIME_API_KEY` and `QWEN_AUDIO_REALTIME_ENDPOINT` are ignored in process environments.
+
+CLI source priority remains process environment, project `.env.local`, project `.env`,
+then user `config.env`. Desktop saves provider-owned fields together in `config.env`;
+`realtime-profiles.json` remains a private draft fallback. Explicit file fields win over drafts,
+including cleared credentials and inactive providers edited with the CLI.
+
+Transitional saved files containing removed unified fields are imported using the provider
+recorded in that file, before merging other sources. The next Desktop realtime settings save
+writes provider fields and removes the retired names. Different legacy/native credentials
+for the same provider cause a migration error rather than silently replacing a key; keep the
+intended native credential and remove the retired field. Reading configuration never rewrites files.
+
 
 Other frontends include [StepAudio 3 Realtime](../voice-frontends/stepfun.md)
 (with its own StepFun API key), [GPT-Live / OpenAI Realtime](../voice-frontends/gpt-live.md),

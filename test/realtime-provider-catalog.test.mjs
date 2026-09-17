@@ -15,25 +15,27 @@ const OMNI_PLUS_ID = 'qwen3.5-omni-plus-realtime'
 const AUDIO_PLUS_ID = 'qwen-audio-3.0-realtime-plus'
 const AUDIO_FLASH_ID = 'qwen-audio-3.0-realtime-flash'
 
-test('StepFun configuration is independent and exposes an explicit model profile', () => {
+test('resolves one provider-neutral active realtime profile', () => {
   const env = {
     QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
     STEPFUN_API_KEY: 'step-test',
-    QWEN_AUDIO_REALTIME_MODEL: AUDIO_PLUS_ID,
-    QWEN_AUDIO_REALTIME_VOICE: 'qwen-voice',
+    STEPFUN_REALTIME_URL: 'wss://api.stepfun.com/v1/realtime',
+    STEPFUN_REALTIME_MODEL: 'stepaudio-3-realtime-preview',
+    STEPFUN_REALTIME_VOICE: 'step-voice',
   }
   const configuration = resolveRealtimeFrontendConfiguration(env)
-  assert.equal(configuration.configured, true)
-  assert.equal(configuration.model, 'stepaudio-3-realtime-preview')
-  assert.equal(configuration.stepfunVoice, '')
-  assert.equal(configuration.endpoint, 'wss://api.stepfun.com/v1/realtime')
-  assert.equal(configuration.signature, resolveRealtimeFrontendConfiguration({
-    ...env, QWEN_AUDIO_REALTIME_MODEL: OMNI_PLUS_ID, DASHSCOPE_API_KEY: 'unrelated',
-  }).signature)
-  assert.notEqual(configuration.signature, resolveRealtimeFrontendConfiguration({
+  assert.equal(configuration.active.provider, 'stepfun')
+  assert.equal(configuration.active.model, 'stepaudio-3-realtime-preview')
+  assert.equal(configuration.active.voice, 'step-voice')
+  assert.equal(configuration.active.endpoint, 'wss://api.stepfun.com/v1/realtime')
+  assert.equal(configuration.active.credentialConfigured, true)
+  assert.equal(Object.hasOwn(configuration.active, 'credential'), false)
+  assert.equal(Object.isFrozen(configuration.active), true)
+  assert.equal(configuration.credential, 'step-test')
+  assert.notEqual(configuration.active.signature, resolveRealtimeFrontendConfiguration({
     ...env, STEPFUN_REALTIME_URL: 'wss://proxy.example/v1/realtime',
-  }).signature)
-  assert.equal(resolveRealtimeModelProfile(configuration.model, 'stepfun').modelCapabilities.functionCalling, true)
+  }).active.signature)
+  assert.equal(resolveRealtimeModelProfile(configuration.active.model, 'stepfun').modelCapabilities.functionCalling, true)
   assert.equal(resolveRealtimeModelProfile('stepaudio-future', 'stepfun').family, 'unknown')
 })
 
@@ -43,22 +45,22 @@ test('GPT-Live and Google Live resolve independent credentials and models', () =
     OPENAI_API_KEY: 'openai-test',
     GPT_LIVE_REALTIME_URL: 'wss://api.openai.com/v1/realtime?region=test',
   })
-  assert.equal(gpt.provider, 'gpt-live')
-  assert.equal(gpt.configured, true)
-  assert.equal(gpt.model, 'gpt-realtime-2.1')
-  assert.equal(gpt.endpoint, 'wss://api.openai.com/v1/realtime?region=test')
-  assert.equal(resolveRealtimeModelProfile(gpt.model, 'gpt-live').family, 'gpt-live')
+  assert.equal(gpt.active.provider, 'gpt-live')
+  assert.equal(gpt.active.configured, true)
+  assert.equal(gpt.active.model, 'gpt-realtime-2.1')
+  assert.equal(gpt.active.endpoint, 'wss://api.openai.com/v1/realtime?region=test')
+  assert.equal(resolveRealtimeModelProfile(gpt.active.model, 'gpt-live').family, 'gpt-live')
 
   const google = resolveRealtimeFrontendConfiguration({
     QWEN_AUDIO_REALTIME_PROVIDER: 'gemini-live',
     GEMINI_API_KEY: 'google-test',
     GEMINI_LIVE_REALTIME_MODEL: 'gemini-3.8-live',
   })
-  assert.equal(google.provider, 'google-live')
-  assert.equal(google.configured, true)
-  assert.equal(google.googleApiKey, 'google-test')
-  assert.equal(google.model, 'gemini-3.8-live')
-  assert.equal(resolveRealtimeModelProfile(google.model, 'google-live').family, 'google-live')
+  assert.equal(google.active.provider, 'google-live')
+  assert.equal(google.active.configured, true)
+  assert.equal(google.credential, 'google-test')
+  assert.equal(google.active.model, 'gemini-3.8-live')
+  assert.equal(resolveRealtimeModelProfile(google.active.model, 'google-live').family, 'google-live')
 })
 
 const omniModelCapabilities = {
@@ -181,14 +183,14 @@ test('keeps the legacy model as the default', () => {
 
 test('selects only the explicit voice override for the active model family', () => {
   const env = {
-    QWEN_AUDIO_REALTIME_VOICE: 'custom-audio',
-    QWEN_OMNI_REALTIME_VOICE: 'custom-omni',
+    QWEN_AUDIO_REALTIME_VOICE: 'custom-voice',
+    QWEN_OMNI_REALTIME_VOICE: 'custom-voice',
   }
 
-  assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_PLUS_ID, env), 'custom-audio')
-  assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_FLASH_ID, env), 'custom-audio')
-  assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_PLUS_ID, env), 'custom-omni')
-  assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_FLASH_ID, env), 'custom-omni')
+  assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_PLUS_ID, env), 'custom-voice')
+  assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_FLASH_ID, env), 'custom-voice')
+  assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_PLUS_ID, env), 'custom-voice')
+  assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_FLASH_ID, env), 'custom-voice')
   assert.equal(resolveDashScopeRealtimeVoiceOverride(AUDIO_PLUS_ID, {}), '')
   assert.equal(resolveDashScopeRealtimeVoiceOverride(OMNI_PLUS_ID, {}), '')
   assert.equal(resolveDashScopeRealtimeVoiceOverride('future-model', env), '')

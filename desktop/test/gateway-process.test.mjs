@@ -71,8 +71,8 @@ function harness({
 function compatibleHealth(env) {
   const realtime = resolveRealtimeFrontendConfiguration(env)
   return {
-    realtimeProvider: realtime.provider,
-    realtimeConfigurationSignature: realtime.signature,
+    realtimeProvider: realtime.active.provider,
+    realtimeConfigurationSignature: realtime.active.signature,
     backend: {
       enabled: true,
       kind: 'opencode',
@@ -85,8 +85,8 @@ function compatibleHealth(env) {
 function openClawHealth(env, overrides = {}) {
   const realtime = resolveRealtimeFrontendConfiguration(env)
   return {
-    realtimeProvider: realtime.provider,
-    realtimeConfigurationSignature: realtime.signature,
+    realtimeProvider: realtime.active.provider,
+    realtimeConfigurationSignature: realtime.active.signature,
     backend: {
       enabled: true,
       kind: 'openclaw',
@@ -189,13 +189,12 @@ test('rejects a model-mismatched borrowed Gateway before attachment', () => {
   )
 })
 
-test('validates the StepFun model without inheriting the DashScope selection', () => {
+test('validates the StepFun model through the provider-owned model field', () => {
   const env = {
     AGENT_PROTOCOL: 'opencode',
     QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
     STEPFUN_API_KEY: 'step-test',
     STEPFUN_REALTIME_MODEL: 'stepaudio-3-realtime-preview',
-    QWEN_AUDIO_REALTIME_MODEL: DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
   }
   const health = {
     ...compatibleHealth(env),
@@ -477,7 +476,7 @@ test('desktop gateway environment applies saved settings and packaged roots', ()
   const environment = desktopGatewayEnvironment({
     env: {
       PATH: '/usr/bin',
-      QWEN_AUDIO_REALTIME_API_KEY: 'stale',
+      DASHSCOPE_API_KEY: 'stale',
     },
     configured: {
       DASHSCOPE_API_KEY: 'saved',
@@ -490,7 +489,7 @@ test('desktop gateway environment applies saved settings and packaged roots', ()
     platform: 'linux',
   })
   assert.equal(environment.DASHSCOPE_API_KEY, 'saved')
-  assert.equal(environment.QWEN_AUDIO_REALTIME_API_KEY, 'saved')
+  assert.equal(environment.DASHSCOPE_API_KEY, 'saved')
   assert.equal(environment.AGENT_PROTOCOL, 'none')
   assert.equal(environment.QWEN_AUDIO_AGENT_DESKTOP, '1')
   assert.equal(environment.QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY, '1')

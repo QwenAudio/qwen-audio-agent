@@ -28,7 +28,7 @@ active model regardless of family; switch via Desktop settings or
 
 ## Voice and turn detection
 
-- Default voice: `Ethan` — override with `QWEN_OMNI_REALTIME_VOICE`.
+- Default voice: `Ethan` — override with `QWEN_AUDIO_REALTIME_VOICE`.
 - Turn detection: `semantic_vad`, configured by the runtime.
 
 ## Live vision

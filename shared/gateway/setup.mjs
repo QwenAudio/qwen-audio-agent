@@ -9,20 +9,31 @@
 // Each `missing` entry carries the settings `field`, its environment `key`
 // and a message fit for a UI, so both the CLI and an integrating platform can
 // present the same answer.
-import { resolveRealtimeFrontendConfiguration } from '../realtime-provider-catalog.mjs'
+import { assertRealtimeFrontendModel, realtimeProviderDefinition, resolveRealtimeFrontendConfiguration } from '../realtime-provider-catalog.mjs'
 
 export function gatewaySetupStatus(env = process.env) {
   const frontend = resolveRealtimeFrontendConfiguration(env)
   const missing = []
-  if (!frontend.configured) {
+  try {
+    assertRealtimeFrontendModel(frontend.active)
+  } catch (error) {
+    const modelField = realtimeProviderDefinition(frontend.active.provider).settings
+      .find(field => field.slot === 'model')
     missing.push({
-      ...frontend.requiredConfiguration,
+      field: modelField?.key,
+      key: modelField?.environment[0],
+      message: error.message,
+    })
+  }
+  if (!frontend.active.configured) {
+    missing.push({
+      ...frontend.active.requiredConfiguration,
       message: frontend.missingConfigurationMessage,
     })
   }
   return {
     ready: missing.length === 0,
-    provider: frontend.provider,
+    provider: frontend.active.provider,
     missing,
   }
 }

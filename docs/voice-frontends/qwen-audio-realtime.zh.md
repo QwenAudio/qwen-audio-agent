@@ -20,8 +20,6 @@ DASHSCOPE_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 ```
 
-当语音前台需要独立凭据时，`DASHSCOPE_API_KEY` 可以被更高优先级的别名
-`QWEN_AUDIO_REALTIME_API_KEY` 替代。
 
 一个 Gateway 同一时刻只生效一个模型。在桌面版设置页或 CLI 切换后，
 重启 Gateway 生效：

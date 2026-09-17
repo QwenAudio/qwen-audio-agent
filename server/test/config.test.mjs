@@ -270,7 +270,7 @@ test('changes the realtime configuration signature when only the model changes',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
   })
 
-  assert.notEqual(first.signature, second.signature)
+  assert.notEqual(first.active.signature, second.active.signature)
 })
 
 test('selects only the explicit voice override for the active model family', () => {
@@ -278,12 +278,10 @@ test('selects only the explicit voice override for the active model family', () 
     DASHSCOPE_API_KEY: 'same-key',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen-audio-3.0-realtime-plus',
     QWEN_AUDIO_REALTIME_VOICE: 'Cherry',
-    QWEN_OMNI_REALTIME_VOICE: 'Ethan-custom',
   })
   const omni = resolveRealtimeFrontendConfiguration({
     DASHSCOPE_API_KEY: 'same-key',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
-    QWEN_AUDIO_REALTIME_VOICE: 'Cherry',
     QWEN_OMNI_REALTIME_VOICE: 'Ethan-custom',
   })
   const defaults = resolveRealtimeFrontendConfiguration({
@@ -291,7 +289,7 @@ test('selects only the explicit voice override for the active model family', () 
     QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
   })
 
-  assert.equal(legacy.dashscopeVoice, 'Cherry')
-  assert.equal(omni.dashscopeVoice, 'Ethan-custom')
-  assert.equal(defaults.dashscopeVoice, '')
+  assert.equal(legacy.active.voice, 'Cherry')
+  assert.equal(omni.active.voice, 'Ethan-custom')
+  assert.equal(defaults.active.voice, '')
 })

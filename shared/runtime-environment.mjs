@@ -10,15 +10,18 @@ import { resolve } from 'node:path'
 import { parseEnv } from 'node:util'
 import { resolveRuntimePaths, runtimePathEnvironment, userConfigDirectory } from './runtime-paths.mjs'
 import { backendDefinitions } from './backend/catalog.mjs'
-import { resolveRealtimeFrontendConfiguration } from './realtime-provider-catalog.mjs'
+import { assertRealtimeFrontendModel, resolveRealtimeFrontendConfiguration } from './realtime-provider-catalog.mjs'
+import { migrateRealtimeFileEnvironment, mergeRealtimeEnvironment } from './realtime-provider-definitions.mjs'
 
 const SECRET_KEY = 'QWEN_AUDIO_AGENT_AUTH_SECRET'
 const USER_CONFIG_TEMPLATE = [
   '# qwen-audio-agent 用户配置',
-  'DASHSCOPE_API_KEY=',
-  'QWEN_AUDIO_REALTIME_PROVIDER=dashscope',
-  '# StepAudio 3 Realtime：将 Provider 改为 stepfun，并填写独立的 API Key',
+  '# 前台 API Key：取消注释并填写；显式留空表示清除凭证',
+  '# 各 Provider 使用独立参数；切换时只需修改 Provider 选择项',
+  '# DASHSCOPE_API_KEY=',
   '# STEPFUN_API_KEY=',
+  'QWEN_AUDIO_REALTIME_PROVIDER=dashscope',
+  '# StepAudio 3 Realtime：将 Provider 改为 stepfun，并填写 STEPFUN_API_KEY',
   '# STEPFUN_REALTIME_URL=wss://api.stepfun.com/v1/realtime',
   '# STEPFUN_REALTIME_MODEL=stepaudio-3-realtime-preview',
   '# STEPFUN_REALTIME_VOICE=',
@@ -26,7 +29,6 @@ const USER_CONFIG_TEMPLATE = [
   '# SPEECH_TO_SPEECH_REALTIME_URL=ws://127.0.0.1:8765/v1/realtime',
   '# MiniCPM-o 4.5：将 Provider 改为 minicpm-o，并先启动本地 Realtime 服务',
   '# MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=audio',
-  '# MINICPM_O_AUTH_TOKEN=',
   '',
   '# 可选目录：QWAUDIO_DATA_DIR / QWAUDIO_STATE_DIR / QWAUDIO_CACHE_DIR',
   '# 所有后台默认工作区：QWAUDIO_WORKSPACE=/absolute/path/to/projects',
@@ -100,7 +102,7 @@ const MEMORY_TEMPLATE = [
 function loadFile(path, env) {
   let values
   try {
-    values = parseEnv(readFileSync(path, 'utf8'))
+    values = migrateRealtimeFileEnvironment(parseEnv(readFileSync(path, 'utf8')))
   } catch (error) {
     if (error.code === 'ENOENT') return false
     throw error
@@ -260,7 +262,22 @@ export function loadRuntimeEnvironment({
     resolve(root, '.env'),
     resolve(configDirectory, 'config.env'),
   ]
-  const loadedFiles = candidates.filter(path => loadFile(path, env))
+  // Merge complete configuration sources from low to high priority. A
+  // provider change discards the previous source's unified connection slots,
+  // while provider-owned variables remain available only to their owner.
+  let configuredEnvironment = {}
+  const loadedPaths = new Set()
+  for (const path of [...candidates].reverse()) {
+    const values = {}
+    if (!loadFile(path, values)) continue
+    loadedPaths.add(path)
+    configuredEnvironment = mergeRealtimeEnvironment(configuredEnvironment, values)
+  }
+  const explicitEnvironment = Object.fromEntries(
+    Object.entries(env).filter(([, value]) => value !== undefined),
+  )
+  Object.assign(env, mergeRealtimeEnvironment(configuredEnvironment, explicitEnvironment))
+  const loadedFiles = candidates.filter(path => loadedPaths.has(path))
   // Config location is bootstrap input; directory settings inside that file
   // are resolved only after loading it, then forwarded as absolute paths.
   const paths = resolveRuntimePaths({
@@ -360,10 +377,8 @@ export function loadRuntimeEnvironment({
 }
 
 export function hasDashScopeCredential(env = process.env) {
-  return Boolean(
-    env.QWEN_AUDIO_REALTIME_API_KEY
-    || env.DASHSCOPE_API_KEY,
-  )
+  const { active, credential } = resolveRealtimeFrontendConfiguration(env)
+  return active.provider === 'dashscope' && Boolean(credential)
 }
 
 export function requireDashScopeCredential(env = process.env) {
@@ -375,6 +390,7 @@ export function requireDashScopeCredential(env = process.env) {
 
 export function requireRealtimeFrontendConfiguration(env = process.env) {
   const frontend = resolveRealtimeFrontendConfiguration(env)
-  if (frontend.configured) return
+  assertRealtimeFrontendModel(frontend.active)
+  if (frontend.active.configured) return
   throw new Error(frontend.missingConfigurationMessage)
 }

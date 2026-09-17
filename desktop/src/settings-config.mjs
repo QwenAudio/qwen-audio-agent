@@ -10,10 +10,12 @@ import {
 } from '../../shared/orb-skin-catalog.mjs'
 import {
   normalizeRealtimeProvider,
+  assertRealtimeFrontendModel,
   resolveRealtimeFrontendConfiguration,
 } from '../../shared/realtime-provider-catalog.mjs'
 import {
-  REALTIME_PROVIDERS, REALTIME_SETTING_KEYS, realtimeSettingsValues,
+  REALTIME_PROVIDERS, REALTIME_SETTING_FIELDS,
+  migrateRealtimeFileEnvironment, realtimeRuntimeEnvironment, realtimeSettingsValues, realtimeSettingsFromEnvironment, mergeRealtimeEnvironment,
 } from '../../shared/realtime-provider-definitions.mjs'
 import { normalizeDesktopLanguage } from './i18n.mjs'
 
@@ -53,7 +55,6 @@ export function clientSettingsPatch(settings) {
 
 const SETTING_KEYS = {
   ...CLIENT_SETTING_KEYS,
-  ...REALTIME_SETTING_KEYS,
   agentProtocol: 'AGENT_PROTOCOL',
   backendModel: 'QWEN_AUDIO_AGENT_BACKEND_MODEL',
   backendOwnership: 'QWEN_AUDIO_AGENT_BACKEND_OWNERSHIP',
@@ -151,16 +152,15 @@ function encoded(value) {
   return `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }
 
-function parseRealtimeSettings(values, fallback, realtimeProvider) {
-  const fields = REALTIME_PROVIDERS.flatMap(provider => provider.settings.map(field => {
-    const keys = [field.env, ...(field.aliases || [])]
-    const key = keys.find(key => Object.hasOwn(values, key))
-    const value = key !== undefined ? values[key]
-      : keys.map(key => fallback[key]).find(Boolean) || field.fallback?.(fallback)
-    return [field.key, String(value || field.default
-      || (provider.key === realtimeProvider ? field.activeDefault : '') || '').trim()]
-  }))
-  return { realtimeProvider, ...Object.fromEntries(fields) }
+function parseRealtimeSettings(values, fallback, realtimeProvider, drafts) {
+  return realtimeSettingsFromEnvironment({
+    ...mergeRealtimeEnvironment(fallback, values),
+    QWEN_AUDIO_REALTIME_PROVIDER: realtimeProvider,
+  }, drafts)
+}
+
+export function hasRealtimeSettingsPatch(settings) {
+  return REALTIME_SETTING_FIELDS.some(field => settings[field] !== undefined)
 }
 
 function normalizeRealtimeSettings(settings, realtimeProvider) {
@@ -178,8 +178,8 @@ function normalizeRealtimeSettings(settings, realtimeProvider) {
   return { ...values, realtimeProvider }
 }
 
-export function parseSettings(content = '', fallback = {}) {
-  const values = parseEnv(content)
+export function parseSettings(content = '', fallback = {}, realtimeDrafts = {}) {
+  const values = migrateRealtimeFileEnvironment(parseEnv(content))
   const agentProtocol = cleanAgentProtocol(configured(
     values,
     'AGENT_PROTOCOL',
@@ -214,7 +214,7 @@ export function parseSettings(content = '', fallback = {}) {
   const realtimeProvider = normalizeRealtimeProvider(configured(
     values,
     'QWEN_AUDIO_REALTIME_PROVIDER',
-    fallback.QWEN_AUDIO_REALTIME_PROVIDER || DEFAULTS.realtimeProvider,
+    fallback.QWEN_AUDIO_REALTIME_PROVIDER || realtimeDrafts.realtimeProvider || DEFAULTS.realtimeProvider,
   ))
   const configuredOrbStyle = configured(
     values,
@@ -263,7 +263,7 @@ export function parseSettings(content = '', fallback = {}) {
         fallback.QWEN_AUDIO_WAKE_WORD_ENABLED || '',
       ),
     ).toLowerCase() === 'true',
-    ...parseRealtimeSettings(values, fallback, realtimeProvider),
+    ...parseRealtimeSettings(values, fallback, realtimeProvider, realtimeDrafts),
     agentProtocol,
     backendModel: String(configured(
       values,
@@ -344,15 +344,14 @@ export function normalizeSettings(settings = {}) {
 }
 
 export function realtimeSettingsConfiguration(settings = {}) {
-  return resolveRealtimeFrontendConfiguration(Object.fromEntries(
-    Object.entries(REALTIME_SETTING_KEYS).map(([field, key]) => [key, settings[field]]),
-  ))
+  return resolveRealtimeFrontendConfiguration(realtimeRuntimeEnvironment(settings))
 }
 
 export function realtimeSettingsConfigured(settings = {}) {
   try {
     const frontend = realtimeSettingsConfiguration(settings)
-    return frontend.configured && Boolean(cleanRealtimeUrl(frontend.endpoint, ''))
+    assertRealtimeFrontendModel(frontend.active)
+    return frontend.active.configured && Boolean(cleanRealtimeUrl(frontend.active.endpoint, ''))
   } catch {
     return false
   }
@@ -364,7 +363,8 @@ export function realtimeSettingsConfigured(settings = {}) {
 // into environment slots that are still unset, so a freshly saved API Key
 // would look ignored until the app itself restarts.
 export function applySettingsEnvironment(settings = {}, env = process.env) {
-  const normalized = normalizeSettings(settings)
+  const realtimeChanged = hasRealtimeSettingsPatch(settings)
+  const normalized = normalizeSettings(realtimeChanged ? { ...parseSettings('', env), ...settings } : settings)
   const backend = backendDefinition(normalized.agentProtocol)
   const entries = Object.entries(SETTING_KEYS)
     .filter(([field]) => settings[field] !== undefined)
@@ -383,16 +383,24 @@ export function applySettingsEnvironment(settings = {}, env = process.env) {
     if (text === '') delete env[key]
     else env[key] = text
   }
+  if (realtimeChanged) {
+    delete env.QWEN_AUDIO_REALTIME_API_KEY
+    delete env.QWEN_AUDIO_REALTIME_ENDPOINT
+    Object.assign(env, realtimeRuntimeEnvironment(normalized))
+  }
   return env
 }
 
 // The form is unified; persistence is not. Gateway settings and client
 // preferences use separate files without duplicating validation or schemas.
-export function updateSettingsContent(content = '', settings = {}, { scope = 'all' } = {}) {
+export function updateSettingsContent(content = '', settings = {}, { scope = 'all', realtimeDrafts = {} } = {}) {
   if (!['all', 'gateway', 'client'].includes(scope)) throw new TypeError('invalid settings scope')
   const accepts = key => scope === 'all'
     || (scope === 'client') === CLIENT_ENVIRONMENT_KEYS.has(key)
-  const normalized = normalizeSettings(settings)
+  const realtimeChanged = scope !== 'client' && hasRealtimeSettingsPatch(settings)
+  const normalized = normalizeSettings(realtimeChanged
+    ? { ...parseSettings(content, {}, realtimeDrafts), ...realtimeDrafts, ...settings }
+    : settings)
   const values = Object.fromEntries(
     Object.entries(SETTING_KEYS)
       .filter(([field, key]) => settings[field] !== undefined && accepts(key))
@@ -401,6 +409,9 @@ export function updateSettingsContent(content = '', settings = {}, { scope = 'al
         encoded(normalized[field]),
       ]),
   )
+  if (realtimeChanged) {
+    for (const [key, value] of Object.entries(realtimeRuntimeEnvironment(normalized))) values[key] = encoded(value)
+  }
   const backend = backendDefinition(normalized.agentProtocol)
   if (scope !== 'client' && settings.backendUrl !== undefined && backend?.baseUrlEnvironment) {
     values[backend.baseUrlEnvironment] = encoded(normalized.backendUrl)
@@ -410,8 +421,6 @@ export function updateSettingsContent(content = '', settings = {}, { scope = 'al
     values[credentialEnvironment] = encoded(normalized.backendCredential)
   }
   const removed = new Set([
-    ['audioRealtimeVoice', 'QWEN_AUDIO_REALTIME_VOICE'],
-    ['omniRealtimeVoice', 'QWEN_OMNI_REALTIME_VOICE'],
     ['backendUrl', backend?.baseUrlEnvironment],
     ['backendCredential', credentialEnvironment],
   ].filter(([field, key]) => (
@@ -423,6 +432,10 @@ export function updateSettingsContent(content = '', settings = {}, { scope = 'al
     'QWEN_AUDIO_SLEEP_TIMEOUT_SECONDS',
     'QWEN_AUDIO_DESKTOP_AUTO_SLEEP_SECONDS',
   ])
+  if (realtimeChanged) {
+    removed.add('QWEN_AUDIO_REALTIME_API_KEY')
+    removed.add('QWEN_AUDIO_REALTIME_ENDPOINT')
+  }
   const seen = new Set()
   const lines = content.split(/\r?\n/).map(line => {
     const match = line.match(/^([A-Z][A-Z0-9_]*)\s*=/)
@@ -430,7 +443,8 @@ export function updateSettingsContent(content = '', settings = {}, { scope = 'al
     if (key && !accepts(key)) return null
     if (key && legacy.has(key)) return null
     if (key && removed.has(key)) return null
-    if (!key || !(key in values) || seen.has(key)) return line
+    if (!key || !(key in values)) return line
+    if (seen.has(key)) return null
     seen.add(key)
     return `${key}=${values[key]}`
   }).filter(line => line !== null)

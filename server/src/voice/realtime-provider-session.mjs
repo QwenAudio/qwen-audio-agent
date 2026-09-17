@@ -1,5 +1,6 @@
 import { createRealtimeFrontend } from './realtime-provider.mjs'
 import { ReconnectBackoff } from './reconnect-backoff.mjs'
+import { RealtimeConfigurationError } from './realtime-errors.mjs'
 import { realtimeConnectionStatus } from './realtime-connection-status.mjs'
 
 /**
@@ -134,6 +135,7 @@ export class RealtimeProviderSession {
   }
 
   appendAudio(audio) {
+    if (this.blockedError) return
     if (this.ready) {
       this.frontend.appendAudio(audio)
       return
@@ -151,6 +153,7 @@ export class RealtimeProviderSession {
   }
 
   appendImage(image) {
+    if (this.blockedError) return false
     if (this.ready) return this.frontend.appendImage(image)
     this.pendingImage = image
     if (!this.connectPromise && !this.scheduledReconnect) {
@@ -168,6 +171,7 @@ export class RealtimeProviderSession {
   }
 
   connectNow() {
+    if (this.blockedError) return Promise.reject(new Error(this.blockedError))
     if (this.ready) return Promise.resolve()
     if (this.connectPromise) return this.connectPromise
     this.onConnectionState({
@@ -216,7 +220,9 @@ export class RealtimeProviderSession {
           durationMs: Date.now() - connectStartedAt,
           error,
         })
-        const classification = createdFrontend.provider.classifyError(error.message)
+        const classification = error instanceof RealtimeConfigurationError
+          ? 'fatal'
+          : createdFrontend.provider.classifyError(error.message)
         if (classification === 'fatal') {
           this.blockedError = error.message
           this.clearPendingAudio()

@@ -26,7 +26,7 @@ QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-flash-realtime
 
 ## 音色与话轮检测
 
-- 默认音色 `Ethan`，可用 `QWEN_OMNI_REALTIME_VOICE` 覆盖。
+- 默认音色 `Ethan`，可用 `QWEN_AUDIO_REALTIME_VOICE` 覆盖。
 - 话轮检测为 `semantic_vad`，由运行时配置。
 
 ## 实时视觉

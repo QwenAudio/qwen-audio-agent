@@ -1,4 +1,4 @@
-import { REALTIME_PROVIDERS, REALTIME_SETTING_SLOTS, realtimeSettingsValues } from '../../shared/realtime-provider-definitions.mjs'
+import { REALTIME_PROVIDERS, REALTIME_SETTING_SLOTS, realtimeSettingsProfileState, realtimeSettingsFromProfileState, realtimeProfileFieldKey } from '../../shared/realtime-provider-definitions.mjs'
 import { realtimeModelCatalog, resolveRealtimeModelProfile } from '../../shared/realtime-model-catalog.mjs'
 import { createSettingsPicker } from './settings-picker.mjs'
 
@@ -25,14 +25,23 @@ export function realtimeSettingsFields(provider, values) {
 
 export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openExternal, translate = text => text }) {
   const document = panel.ownerDocument
-  let values = realtimeSettingsValues()
-  const currentProvider = () => REALTIME_PROVIDERS.find(provider => provider.key === values.realtimeProvider) || REALTIME_PROVIDERS[0]
+  const draft = settings => {
+    const initial = realtimeSettingsProfileState(settings)
+    return { activeProvider: initial.activeProvider, profiles: Object.fromEntries(
+      Object.entries(initial.profiles).map(([key, profile]) => [key, { ...profile }]),
+    ) }
+  }
+  let state = draft()
+  const values = () => realtimeSettingsFromProfileState(state)
+  const currentProvider = () => REALTIME_PROVIDERS.find(provider => provider.key === state.activeProvider) || REALTIME_PROVIDERS[0]
   const picker = createSettingsPicker(pickerRoot, {
     translate,
     onSelect(value) {
-      values.realtimeProvider = value
+      state.activeProvider = value
       for (const field of currentProvider().settings) {
-        if (!values[field.key] && field.activeDefault) values[field.key] = field.activeDefault
+        const profile = state.profiles[value]
+        const key = realtimeProfileFieldKey(field)
+        if (!profile[key] && field.activeDefault) profile[key] = field.activeDefault
       }
       render()
       onChange()
@@ -47,11 +56,11 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
 
   function renderPicker() {
     picker.render({
-      title: translate('选择实时语音引擎'), value: values.realtimeProvider,
+      title: translate('选择实时语音引擎'), value: state.activeProvider,
       options: REALTIME_PROVIDERS.map(provider => ({
         value: provider.key, label: translate(provider.displayLabel || provider.label),
         keywords: `${provider.label} ${translate(provider.description)} ${provider.aliases.join(' ')}`,
-        status: translate(values[provider.requiredConfiguration.field]?.trim() ? '已配置' : '待配置'),
+        status: translate(values()[provider.requiredConfiguration.field]?.trim() ? '已配置' : '待配置'),
       })),
     })
   }
@@ -80,9 +89,9 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
         option.value = profile.id
         input.append(option)
       }
-      if (values[field.key] && ![...input.options].some(option => option.value === values[field.key])) {
-        const option = make('option', '', values[field.key])
-        option.value = values[field.key]
+      if (values()[field.key] && ![...input.options].some(option => option.value === values()[field.key])) {
+        const option = make('option', '', values()[field.key])
+        option.value = values()[field.key]
         input.append(option)
       }
     } else {
@@ -91,14 +100,14 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
       input.spellcheck = false
       input.placeholder = translate(field.placeholder || '')
     }
-    input.value = values[field.key]
+    input.value = values()[field.key]
     input.addEventListener('input', () => {
-      values[field.key] = input.value
+      state.profiles[provider.key][realtimeProfileFieldKey(field)] = input.value
       renderPicker()
       onChange()
     })
     input.addEventListener('change', () => {
-      values[field.key] = input.value
+      state.profiles[provider.key][realtimeProfileFieldKey(field)] = input.value
       if (field.type === 'model') {
         render()
         panel.querySelector(`[data-setting="${field.key}"]`)?.focus()
@@ -119,17 +128,17 @@ export function createRealtimeSettingsForm({ pickerRoot, panel, onChange, openEx
 
   function render() {
     const provider = currentProvider()
-    values.realtimeProvider = provider.key
+    state.activeProvider = provider.key
     renderPicker()
-    const fields = realtimeSettingsFields(provider, values)
+    const fields = realtimeSettingsFields(provider, values())
     const children = fields.map(field => renderField(field, provider))
     children.push(make('p', 'provider-attribution', provider.description))
     panel.replaceChildren(...children)
   }
 
   return {
-    load(settings) { values = realtimeSettingsValues(settings); render() },
-    values() { return { ...values } },
+    load(settings) { state = draft(settings); render() },
+    values,
     render,
   }
 }

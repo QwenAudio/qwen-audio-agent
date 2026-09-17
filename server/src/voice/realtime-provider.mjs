@@ -12,6 +12,7 @@ import {
   realtimeResponseId,
 } from './response-lifecycle.mjs'
 import { frontendInputProjection } from '../../../shared/input-parts.mjs'
+import { RealtimeConfigurationError } from './realtime-errors.mjs'
 
 // Re-export provider-agnostic tools and instructions so existing callers
 // (tests, tool-call-handler, bootstrap) continue to work without changes.
@@ -155,13 +156,13 @@ export class RealtimeFrontend {
 
   connect() {
     if (this.modelProfile?.family === 'unknown') {
-      return Promise.reject(new Error(
+      return Promise.reject(new RealtimeConfigurationError(
         `不支持的 Realtime 模型：${this.modelProfile.id}`
         + `（${this.provider.label}）`,
       ))
     }
     if (!this.provider.isConfigured()) {
-      return Promise.reject(new Error(this.provider.missingConfigurationMessage))
+      return Promise.reject(new RealtimeConfigurationError(this.provider.missingConfigurationMessage))
     }
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.provider.url(), {

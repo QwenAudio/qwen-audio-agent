@@ -55,6 +55,7 @@ function sidebar(prefix = '') {
           items: [
             page('Qwen Audio Realtime', 'Qwen Audio Realtime', 'voice-frontends/qwen-audio-realtime'),
             page('Qwen Omni Realtime', 'Qwen Omni Realtime', 'voice-frontends/qwen-omni-realtime'),
+            page('StepAudio 3 Realtime', 'StepAudio 3 Realtime', 'voice-frontends/stepfun'),
             page('Speech-to-Speech', 'Speech-to-Speech', 'voice-frontends/speech-to-speech'),
             page('MiniCPM-o', 'MiniCPM-o', 'voice-frontends/minicpm-o'),
           ],

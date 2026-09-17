@@ -22,9 +22,7 @@ DASHSCOPE_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 ```
 
-`DASHSCOPE_API_KEY` can be replaced by the higher-priority alias
-`QWEN_AUDIO_REALTIME_API_KEY` when the realtime frontend needs its own
-credential.
+`DASHSCOPE_API_KEY` is used only by DashScope; other providers have their own credentials.
 
 One Gateway owns one active model. Switch it from the Desktop settings
 page or from the CLI, then restart the Gateway:
@@ -73,6 +71,8 @@ the model level, see [Qwen Omni Realtime](qwen-omni-realtime.md).
 
 ## Read next
 
+- [GPT-Live / OpenAI Realtime](gpt-live.md) — OpenAI cloud realtime frontend
+- [Google Gemini Live](google-live.md) — Google cloud realtime frontend
 - [Speech-to-Speech](speech-to-speech.md) — fully local frontend, no cloud key
 - [MiniCPM-o 4.5](minicpm-o.md) — local end-to-end realtime voice
 - [Custom Provider](custom-provider.md) — bring another realtime service

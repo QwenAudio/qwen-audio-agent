@@ -43,7 +43,7 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=
 
 没有现成后台时，可选用支持一键托管的 [OpenCode / OpenClaw](../configuration/backend.zh.md#模型选择)。
 
-> 默认使用 DashScope 实时语音前台；也可切换为 [speech-to-speech 前台](../voice-frontends/speech-to-speech.zh.md)，选择全本地模型链路时无需云端 API Key。
+> 默认使用 DashScope 实时语音前台；也可切换为 [GPT-Live](../voice-frontends/gpt-live.zh.md)、[Google Gemini Live](../voice-frontends/google-live.zh.md) 或 [speech-to-speech 前台](../voice-frontends/speech-to-speech.zh.md)，详见[前台配置](../configuration/frontend.zh.md)。
 
 ### 3. 启动
 

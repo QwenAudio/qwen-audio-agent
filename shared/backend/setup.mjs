@@ -11,6 +11,7 @@ import {
   win32,
 } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import { inspectBackendRuntimePackage } from './runtime-package.mjs'
 import {
   backendDefinition,
   backendNames,
@@ -445,9 +446,11 @@ function inspectBackend(id, {
     }
   }
 
-  const adapter = backend.ready || spec.inspectAdapterIndependently
-    ? inspectAdapter(spec, env, find)
-    : { ready: spec.integration !== 'adapter', source: spec.integration }
+  const adapter = spec.runtimePackage
+    ? inspectBackendRuntimePackage(id, { env })
+    : backend.ready || spec.inspectAdapterIndependently
+      ? inspectAdapter(spec, env, find)
+      : { ready: spec.integration !== 'adapter', source: spec.integration }
   let packages = []
   let packageSetReady = true
   if (
@@ -581,6 +584,7 @@ export async function inspectBackendSetupsAsync({
 }
 
 function integrationText(item) {
+  if (item.integration === 'msp') return '原生 Muse Session Protocol'
   if (item.integration === 'native') return '原生 ACP'
   if (item.integration === 'bridge') return '内置 ACP Bridge'
   if (item.integration === 'generic') return '用户提供的 ACP 命令'

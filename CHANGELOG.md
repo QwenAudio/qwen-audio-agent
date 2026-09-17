@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- 新增实验性 Muse Code MSP 后台适配器，复用统一任务、权限和补充输入接口。
+  Muse SDK 仅在用户安装该后台时单独安装、启用时加载，不加入框架默认依赖。
+
+- 对已确认不兼容的 Qwen3.5 Omni Realtime / Cherry 组合，在连接前提示改用当前模型
+  的默认音色；未知或复刻音色仍交给供应商验证，不自动替换配置。
+
+- WebUI 实时麦克风发送现在遵循 WebSocket 缓冲高水位；网络拥塞时丢弃过期音频块，
+  并在缓冲恢复后继续发送，避免旧音频无限积压。
+
 - 移除 `backend-adapter` 与 `custom-conversation-client` 示例目录及文档入口，保留后台 SDK 与客户端协议能力。
 
 - 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，
@@ -19,6 +28,8 @@
   现在与写入共用跨进程锁，避免读取撞上 Windows 文件替换过程。
 - WebUI 麦克风重采样现在会跨 PCM 分块保留插值相位，并对空输入安全返回空数据，
   减少非整数采样率转换时的累计偏差。
+- WebUI 麦克风采集改用 AudioWorklet 在音频线程处理采样块，主线程继续负责流式重采样
+  和发送；不支持 AudioWorklet 的浏览器会明确报告不支持，而不是静默退回旧处理器。
 - Gateway Client 为 Socket 连接和 Session 握手增加超时与恢复；连接只有在收到
   `session.ready` 后才会重置重连退避。
 - Gateway Client 不再把旧连接中尚未完成的桌面 Action 结果发送到重连后的新连接。

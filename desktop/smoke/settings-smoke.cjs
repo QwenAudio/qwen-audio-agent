@@ -56,6 +56,97 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
       poll()
     })`)
     assert.equal(await evaluate(`document.querySelector('#gateway-pairing-code') === null`), true)
+    // Exercise the actual dynamic form, including provider/model/language
+    // switches. No user settings or provider API are accessed by this fixture.
+    await evaluate(`(() => {
+      window.setRealtimeField = (key, value) => {
+        const field = document.querySelector('[data-setting="' + key + '"]')
+        if (!field) throw new Error('Missing field: ' + key)
+        field.value = value
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+        field.dispatchEvent(new Event('change', { bubbles: true }))
+      }
+      window.selectFrontend = value => {
+        document.querySelector('#realtime-provider > button').click()
+        document.querySelector('#realtime-provider [data-value="' + value + '"]').click()
+      }
+      setRealtimeField('audioRealtimeVoice', 'audio-draft')
+      document.querySelector('#realtime-provider > button').click()
+      const search = document.querySelector('#realtime-provider input[type=search]')
+      search.value = 'step'
+      search.dispatchEvent(new Event('input', { bubbles: true }))
+    })()`)
+    assert.equal(await evaluate(`document.querySelectorAll('#realtime-provider [role=option]').length`), 1)
+    await evaluate(`document.querySelector('#realtime-provider [data-value=stepfun]').click()`)
+    assert.equal(await evaluate(`document.querySelector('[data-setting=stepfunRealtimeModel]').value`), 'stepaudio-3-realtime-preview')
+    assert.equal(await evaluate(`document.querySelector('[data-setting=audioRealtimeVoice]') === null`), true)
+    await evaluate(`(() => {
+      setRealtimeField('stepfunApiKey', 'test-step-key')
+      setRealtimeField('stepfunRealtimeVoice', 'step-voice')
+      selectFrontend('dashscope')
+    })()`)
+    assert.equal(await evaluate(`document.querySelector('[data-setting=audioRealtimeVoice]').value`), 'audio-draft')
+    await evaluate(`setRealtimeField('realtimeModel', 'qwen3.5-omni-plus-realtime')`)
+    assert.equal(await evaluate(`document.querySelector('[data-setting=omniRealtimeVoice]').value`), '')
+    await evaluate(`(() => {
+      setRealtimeField('omniRealtimeVoice', 'omni-draft')
+      selectFrontend('speech-to-speech')
+    })()`)
+    assert.equal(await evaluate(`document.querySelector('[data-setting=speechToSpeechRealtimeUrl]').value`), 'ws://127.0.0.1:8765/v1/realtime')
+    assert.equal(await evaluate(`document.querySelector('#realtime-settings-panel select') === null`), true)
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('#realtime-settings-panel [data-realtime-slot]')].map(input => [input.dataset.realtimeSlot, input.disabled])`), [
+      ['endpoint', false], ['credential', false], ['model', true], ['voice', true],
+    ])
+    // Local/remote ownership must never re-enable a provider's unsupported slots.
+    for (const url of ['https://gateway.example', 'http://127.0.0.1:3101']) {
+      await evaluate(`(() => {
+        const field = document.querySelector('#gateway-url')
+        field.value = ${JSON.stringify(url)}
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+      })()`)
+      assert.equal(await evaluate(`document.querySelector('[data-realtime-slot=model]').disabled && document.querySelector('[data-realtime-slot=voice]').disabled`), true)
+    }
+    await evaluate(`(() => {
+      setRealtimeField('speechToSpeechRealtimeUrl', 'not-a-url')
+      selectFrontend('stepfun')
+      const language = document.querySelector('#desktop-language')
+      language.value = 'en'
+      language.dispatchEvent(new Event('change', { bubbles: true }))
+    })()`)
+    assert.equal(await evaluate(`document.querySelector('[data-setting=stepfunRealtimeVoice]').value`), 'step-voice')
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('#realtime-settings-panel label')].map(label => label.textContent)`), ['Service URL', 'API Key', 'Model', 'Voice'])
+    assert.equal(await evaluate(`document.querySelector('label[for=realtime-provider-trigger]').textContent`), 'Provider')
+    assert.equal(await evaluate(`document.querySelector('#settings-form').checkValidity()`), true, 'Inactive provider drafts cannot block the active provider')
+    await evaluate(`(() => {
+      const language = document.querySelector('#desktop-language')
+      language.value = 'zh-CN'
+      language.dispatchEvent(new Event('change', { bubbles: true }))
+    })()`)
+    if (process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR) {
+      const { writeFile } = require('node:fs/promises')
+      await evaluate(`document.querySelector('#voice-tab').click()`)
+      await new Promise(resolve => setTimeout(resolve, 150))
+      await writeFile(resolve(process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR, 'voice-settings.png'), (await window.webContents.capturePage()).toPNG())
+      await evaluate(`document.querySelector('#realtime-provider > button').click()`)
+      await new Promise(resolve => setTimeout(resolve, 150))
+      await writeFile(resolve(process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR, 'voice-picker.png'), (await window.webContents.capturePage()).toPNG())
+      await evaluate(`document.querySelector('#realtime-provider > button').click()`)
+      await evaluate(`selectFrontend('minicpm-o')`)
+      await new Promise(resolve => setTimeout(resolve, 150))
+      await writeFile(resolve(process.env.QWAUDIO_SMOKE_SCREENSHOT_DIR, 'voice-disabled-fields.png'), (await window.webContents.capturePage()).toPNG())
+      await evaluate(`selectFrontend('stepfun')`)
+    }
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('#realtime-provider > button')).display`), 'flex')
+    assert.equal(await evaluate(`getComputedStyle(document.querySelector('#realtime-provider-popover')).position`), 'absolute')
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('#realtime-settings-panel label')].map(label => label.textContent)`), ['服务地址', 'API Key', '模型', '音色'])
+    assert.equal(await evaluate(`document.querySelector('label[for=realtime-provider-trigger]').textContent`), '供应商')
+    assert.equal(await evaluate(`document.querySelector('#realtime-settings-panel details') === null`), true)
+    await evaluate(`document.querySelector('#voice-tab').click()`)
+    assert.equal(await evaluate(`(() => {
+      const picker = document.querySelector('#realtime-provider-trigger').getBoundingClientRect()
+      const endpoint = document.querySelector('[data-realtime-slot=endpoint]').getBoundingClientRect()
+      return Math.abs(picker.left - endpoint.left) < 1 && Math.abs(picker.width - endpoint.width) < 1
+    })()`), true, 'The provider selector aligns with the four field inputs')
     const legacyCode = { version: 1, gateway_url: 'https://gateway.example', pairing_code: 'test-code', expires_at: Date.now() + 60_000 }
     const links = [
       encodeGatewayPairingCode(legacyCode),

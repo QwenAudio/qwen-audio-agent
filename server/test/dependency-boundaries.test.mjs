@@ -158,7 +158,7 @@ test('generic ACP and process cores do not bind to named backends', () => {
 })
 
 test('protocol-neutral backend core does not import Agent protocol SDKs', () => {
-  const protocolSdk = /from\s+['"](?:@agentclientprotocol\/|@a2a-js\/)/
+  const protocolSdk = /(?:from\s+|import\s*\(\s*)['"](?:@agentclientprotocol\/|@a2a-js\/|@muse-code\/)/
   const violations = sourceFiles(resolve(sourceRoot, 'backend'))
     .filter(file => layerFor(file) === 'backend')
     .filter(file => protocolSdk.test(readFileSync(file, 'utf8')))

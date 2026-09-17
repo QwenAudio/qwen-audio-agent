@@ -284,9 +284,7 @@ export async function main(argv, {
     errorCorrectionLevel: 'L',
   }),
 } = {}) {
-  const processRealtimeModelOverride = String(
-    env.QWEN_AUDIO_REALTIME_MODEL || '',
-  ).trim()
+  const processModelOverrides = { ...env }
   const readOnlyCommand = ['setup', 'install', 'doctor', 'connect', 'disconnect', 'tui', 'webui'].includes(argv[0])
     || argv.includes('--help') || argv.includes('-h')
     || (argv[0] === 'config' && argv[1] === 'show')
@@ -349,13 +347,15 @@ export async function main(argv, {
     } else if (options.configAction === 'show') {
       stdout.write(`${showConfig({ configPath, env })}\n`)
     } else {
-      updateConfig(configPath, options.realtimeModel)
+      const updated = updateConfig(configPath, options.realtimeModel, { env })
+      const modelEnvironment = updated?.environment || 'QWEN_AUDIO_REALTIME_MODEL'
+      const processRealtimeModelOverride = String(processModelOverrides[modelEnvironment] || '').trim()
       if (
         processRealtimeModelOverride
         && processRealtimeModelOverride !== options.realtimeModel
       ) {
         stdout.write(
-          '配置文件已更新；当前 QWEN_AUDIO_REALTIME_MODEL 环境变量仍覆盖该值。'
+          `配置文件已更新；当前 ${modelEnvironment} 环境变量仍覆盖该值。`
           + '请先取消环境变量，再执行 qwenaudio gateway restart\n',
         )
       } else {

@@ -93,6 +93,48 @@ test('example READMEs agree on suite units and point to one accuracy-results pag
   }
 })
 
+test('example README sections, links, commands and contributor lists stay bilingual', () => {
+  const english = read('README.md')
+  const chinese = read('README_ZH.md')
+  const headings = [
+    ['# Qwen Audio Agent Smart Cockpit Example', '# Qwen Audio Agent 智能座舱示例'],
+    ['## Demo', '## 座舱演示'],
+    ['## Architecture', '## 架构'],
+    ['## Benchmark Results', '## 评测结果'],
+    ['### Short cases: full-case pass rate', '### 短用例：整例通过率'],
+    ['### Long dialogue: per-turn tool behavior', '### 长对话：逐轮工具行为准确率'],
+    ['### Tool-return latency: foreground vs. backend placement', '### 工具返回时延：前台直调与后台委托'],
+    ['## Core features', '## 核心特点'],
+    ['## Interaction paths', '## 交互路径'],
+    ['## Quick start', '## 快速开始'],
+    ['## Tool calling', '## 工具调用'],
+    ['## Replace and extend', '## 替换和扩展'],
+    ['## Authors and acknowledgements', '## 作者与致谢'],
+  ]
+  const outline = text => [...text.matchAll(/^#{1,3} [^\r\n]+/gmu)].map(m => m[0])
+  assert.deepEqual(outline(english), headings.map(pair => pair[0]))
+  assert.deepEqual(outline(chinese), headings.map(pair => pair[1]))
+
+  const matches = (text, pattern, group = 0) => [...text.matchAll(pattern)].map(m => m[group])
+  const normalizeLink = link => link.replaceAll('README_ZH.md', 'README.md').replaceAll('.zh.md', '.md')
+  const links = text => matches(text, /\]\(([^)\s]+)\)/gu, 1).map(normalizeLink).sort()
+  const code = text => matches(text, /(?<!`)`([^`\n]+)`(?!`)/gu, 1).sort()
+  const commands = text => matches(text, /```[^\n]*\n([\s\S]*?)```/gu, 1).map(block => block.trim())
+
+  // This catches structural omissions, not mistranslated prose; meaning still
+  // needs human review. Compare per section so a misplaced link cannot hide a gap.
+  for (const [enTitle, zhTitle] of headings) {
+    const en = section(english, enTitle), zh = section(chinese, zhTitle)
+    assert.deepEqual(links(zh), links(en), `${enTitle}: links or contributors differ`)
+    assert.deepEqual(code(zh), code(en), `${enTitle}: technical identifiers differ`)
+    assert.deepEqual(commands(zh), commands(en), `${enTitle}: runnable examples differ`)
+    assert.equal(matches(zh, /^- /gmu).length, matches(en, /^- /gmu).length,
+      `${enTitle}: list items are missing`)
+    assert.deepEqual(tableRows(zh).map(row => row.length), tableRows(en).map(row => row.length),
+      `${enTitle}: table structure differs`)
+  }
+})
+
 test('bilingual headline tables match canonical scores, run subgroups and return timings', () => {
   const shortTable = tableRows(section(results, '## Short cases — full-case pass'))
   const overall = shortTable.find(row => row[0] === 'Overall')

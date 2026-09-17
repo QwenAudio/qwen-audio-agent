@@ -1,5 +1,6 @@
 const RESPONSE_ACTIVITY_TYPES = new Set([
   'response.created',
+  'response.activity',
   'response.done',
   'response.output_item.added',
   'response.output_item.done',

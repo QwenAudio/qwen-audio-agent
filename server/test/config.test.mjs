@@ -136,9 +136,9 @@ test('uses the shared user data workspace for the default Qoder workspace', () =
   )
 })
 
-test('shares one default workspace across additional ACP backends', () => {
+test('shares one default workspace across additional backends', () => {
   const directory = resolve('/home/user/.config/qwaudio')
-  for (const backend of ['hermes', 'kimi', 'codebuddy', 'codex', 'qwen', 'minimax', 'pi']) {
+  for (const backend of ['hermes', 'kimi', 'codebuddy', 'codex', 'qwen', 'minimax', 'pi', 'muse']) {
     assert.equal(
       resolveBackendWorkspace(backend, {}, directory),
       resolve(directory, 'workspace'),
@@ -146,7 +146,7 @@ test('shares one default workspace across additional ACP backends', () => {
   }
 })
 
-test('maps managed provider IDs while preserving standard ACP model IDs', () => {
+test('maps managed provider IDs while preserving backend-native model IDs', () => {
   assert.deepEqual(resolveBackendModels({
     QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen3.7-plus',
   }), {
@@ -162,6 +162,7 @@ test('maps managed provider IDs while preserving standard ACP model IDs', () => 
     codex: 'qwen3.7-plus',
     claude: 'qwen3.7-plus',
     pi: 'qwen3.7-plus',
+    muse: 'qwen3.7-plus',
     deepSeekHarness: '',
     acp: 'qwen3.7-plus',
   })
@@ -184,6 +185,7 @@ test('ignores backend-native model variables as Gateway overrides', () => {
     codex: '',
     claude: '',
     pi: '',
+    muse: '',
     deepSeekHarness: '',
     acp: '',
   })
@@ -205,6 +207,7 @@ test('treats legacy auto as no backend model override', () => {
     codex: '',
     claude: '',
     pi: '',
+    muse: '',
     deepSeekHarness: '',
     acp: '',
   })
@@ -227,19 +230,20 @@ test('uses only the unified backend model override', () => {
     codex: 'qwen3.7-max',
     claude: 'qwen3.7-max',
     pi: 'qwen3.7-max',
+    muse: 'qwen3.7-max',
     deepSeekHarness: '',
     acp: 'qwen3.7-max',
   })
 })
 
-test('preserves opaque ACP model IDs outside managed provisioning', () => {
+test('preserves opaque backend model IDs outside managed provisioning', () => {
   const models = resolveBackendModels({
     QWEN_AUDIO_AGENT_BACKEND_MODEL: 'provider/model-id',
   })
   assert.equal(models.openCode, 'alibaba-cn/model-id')
   assert.equal(models.openClaw, 'bailian/model-id')
   for (const backend of [
-    'qoder', 'qwen', 'minimax', 'kimi', 'hermes', 'codeBuddy', 'codex', 'claude', 'pi', 'acp',
+    'qoder', 'qwen', 'minimax', 'kimi', 'hermes', 'codeBuddy', 'codex', 'claude', 'pi', 'muse', 'acp',
   ]) {
     assert.equal(models[backend], 'provider/model-id')
   }
@@ -270,7 +274,7 @@ test('changes the realtime configuration signature when only the model changes',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
   })
 
-  assert.notEqual(first.signature, second.signature)
+  assert.notEqual(first.active.signature, second.active.signature)
 })
 
 test('selects only the explicit voice override for the active model family', () => {
@@ -278,12 +282,10 @@ test('selects only the explicit voice override for the active model family', () 
     DASHSCOPE_API_KEY: 'same-key',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen-audio-3.0-realtime-plus',
     QWEN_AUDIO_REALTIME_VOICE: 'Cherry',
-    QWEN_OMNI_REALTIME_VOICE: 'Ethan-custom',
   })
   const omni = resolveRealtimeFrontendConfiguration({
     DASHSCOPE_API_KEY: 'same-key',
     QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
-    QWEN_AUDIO_REALTIME_VOICE: 'Cherry',
     QWEN_OMNI_REALTIME_VOICE: 'Ethan-custom',
   })
   const defaults = resolveRealtimeFrontendConfiguration({
@@ -291,7 +293,7 @@ test('selects only the explicit voice override for the active model family', () 
     QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-plus-realtime',
   })
 
-  assert.equal(legacy.dashscopeVoice, 'Cherry')
-  assert.equal(omni.dashscopeVoice, 'Ethan-custom')
-  assert.equal(defaults.dashscopeVoice, '')
+  assert.equal(legacy.active.voice, 'Cherry')
+  assert.equal(omni.active.voice, 'Ethan-custom')
+  assert.equal(defaults.active.voice, '')
 })

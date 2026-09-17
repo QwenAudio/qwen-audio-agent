@@ -912,6 +912,7 @@ export function attachRealtimeGateway(server, {
       ensurePermissionResponseFor,
       reportFrontendError,
       onSpeechStarted: fields => {
+        connectionLogger.info('realtime.provider.speech_started', fields)
         observeSessionAudio({ type: 'speech_started', ...fields })
       },
       onSpeechStopped: fields => {
@@ -1072,6 +1073,18 @@ export function attachRealtimeGateway(server, {
       if (isSleepActivityEvent(event)) sleepController?.recordActivity()
       if (isResponseActivityEvent(event)) presentationRuntime.begin(event)
       if (inputs.handleProviderEvent(event)) return
+      if (event.type === 'response.done') {
+        const responseId = realtimeResponseId(event)
+        const context = presentationRuntime.get(responseId)
+        connectionLogger.info('realtime.response.done', {
+          responseId,
+          turnId: context?.turnId || '',
+          status: event.response?.status || '',
+          hasAudio: Boolean(context?.hasAudio),
+          hasFunctionCall: Boolean(context?.hasFunctionCall),
+          suppressed: Boolean(context?.suppressed),
+        })
+      }
       if (event.type === 'response.function_call_arguments.done') {
         const id = realtimeResponseId(event)
         const callContext = presentationRuntime.get(id)
@@ -1095,6 +1108,7 @@ export function attachRealtimeGateway(server, {
             connectionLogger.warn('realtime.tool_call.failed', {
               ...callFields,
               durationMs: Math.max(0, Date.now() - startedAt),
+              error,
             })
             send(ws, { type: 'error', message: error.message })
           })
@@ -1760,18 +1774,24 @@ export function attachRealtimeGateway(server, {
         }
       } else if (event.type === GatewayClientEvent.PLAYBACK_ENDED) {
         const id = String(event.responseId || '')
-        if (acceptsPlaybackReceipt({
+        const accepted = acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
           responseKnown: presentationRuntime.has(id),
-        })) presentationRuntime.finishPlayback(id)
+        })
+        connectionLogger.info('realtime.playback.ended', { responseId: id, accepted })
+        if (accepted) presentationRuntime.finishPlayback(id)
       } else if (event.type === GatewayClientEvent.PLAYBACK_CANCELLED) {
         const id = String(event.responseId || '')
-        if (acceptsPlaybackReceipt({
+        const accepted = acceptsPlaybackReceipt({
           outputEnabled,
           active: activeVoiceClients.isActive(ownerId, voiceClient),
           responseKnown: presentationRuntime.has(id),
-        })) {
+        })
+        connectionLogger.info('realtime.playback.cancelled', {
+          responseId: id, accepted, reason: String(event.reason || ''),
+        })
+        if (accepted) {
           presentationRuntime.cancelPlayback(id, {
             reason: String(event.reason || ''),
           })

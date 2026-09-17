@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>人工坐席台</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e4e7ee;
+    --dim: #8b93a7; --accent: #5b9dff; --ok: #4caf7d; --warn: #e0a33a; --bad: #e06c5f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.6 -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px; padding: 12px 20px;
+    border-bottom: 1px solid var(--line); background: var(--panel);
+    position: sticky; top: 0; z-index: 10; flex-wrap: wrap; row-gap: 6px;
+  }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .grow { flex: 1; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+  .dot.on { background: var(--ok); }
+  .dot.alert { background: var(--bad); animation: blink 1s infinite; }
+  @keyframes blink { 50% { opacity: 0.3; } }
+  .muted { color: var(--dim); font-size: 12.5px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  main { max-width: 900px; margin: 0 auto; padding: 20px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  .card.alert { border-color: var(--bad); background: #e06c5f14; }
+  h2 { font-size: 13px; color: var(--dim); margin: 22px 0 10px; font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .tag {
+    display: inline-block; padding: 1px 7px; border-radius: 10px;
+    border: 1px solid var(--line); font-size: 11.5px; color: var(--dim);
+  }
+  .tag.bad { border-color: var(--bad); color: var(--bad); }
+  .tag.ok { border-color: var(--ok); color: var(--ok); }
+  .empty { color: var(--dim); font-size: 13px; padding: 28px 0; text-align: center; }
+  .big { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  button {
+    background: #1d2129; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 12px; font: inherit; cursor: pointer;
+  }
+  button.primary { border-color: var(--accent); color: var(--accent); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .audit-line { padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+  .audit-line:last-child { border-bottom: none; }
+  .audit-line.bad { color: var(--bad); }
+</style>
+</head>
+<body>
+<header>
+  <h1>人工坐席台</h1>
+  <span class="tag" id="domain-tag">…</span>
+  <span class="dot" id="dot"></span>
+  <span class="muted" id="status">等待转接…</span>
+  <span class="grow"></span>
+  <button id="accept" class="primary" disabled>接手这通</button>
+</header>
+
+<main>
+  <div id="alert"></div>
+  <h2>客户与上下文</h2>
+  <div id="context"></div>
+  <h2>AI 客服已经做了什么</h2>
+  <div id="audit"></div>
+</main>
+
+<script type="module">
+const $ = id => document.getElementById(id)
+const el = (tag, cls, html) => {
+  const node = document.createElement(tag)
+  if (cls) node.className = cls
+  if (html !== undefined) node.innerHTML = html
+  return node
+}
+const esc = value => String(value ?? '').replace(/[&<>"]/g,
+  ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
+
+const SESSION = new URLSearchParams(location.search).get('sessionId') || 'default'
+const DOMAIN_TEXT = { retail: '零售', airline: '航空' }
+
+// 【这一页只读，不回复客户】
+// 回复要接回语音会话，那需要「人接管语音通道」的机制 —— 不在这个 demo 里。
+// 「接手」按钮只是让坐席标记自己看到了，证明转接确实到达了这一端。
+let taken = false
+
+function renderAlert(state) {
+  const host = $('alert')
+  host.innerHTML = ''
+  const transferred = state.transferred
+  if (!transferred) {
+    $('dot').className = 'dot on'
+    $('status').textContent = '在线，等待转接'
+    $('accept').disabled = true
+    host.append(el('div', 'empty',
+      'AI 客服还在处理这通通话。它调用 transfer_to_human 之后，这里会立刻亮起来。'))
+    return
+  }
+  $('dot').className = taken ? 'dot on' : 'dot alert'
+  $('status').textContent = taken ? '已接手' : '有一通待接'
+  $('accept').disabled = taken
+
+  const card = el('div', taken ? 'card' : 'card alert')
+  card.append(el('div', 'big', taken ? '已接手这通通话' : '客户转接进来了'))
+  card.append(el('div', null, `转接原因：<b>${esc(transferred.reason)}</b>`))
+  card.append(el('div', 'muted',
+    `转接时间：${new Date(transferred.at).toLocaleTimeString('zh-CN')}`))
+  // 【说清这一页的边界】不写的话演示时容易被当成「人工能回话了」
+  card.append(el('div', 'muted',
+    taken
+      ? '坐席已标记接手。这个 demo 里人工不回复客户 —— 回复要接回语音通道，'
+        + '那是另一件事。这一页要证明的是：转接把上下文真的交出来了。'
+      : '点「接手这通」表示坐席看到了。'))
+  host.append(card)
+}
+
+function renderContext(state) {
+  const host = $('context')
+  host.innerHTML = ''
+  const identity = state.identity || {}
+  const isAirline = state.domain === 'airline'
+
+  const card = el('div', 'card')
+  if (!identity.verified) {
+    // 【这一格很重要】未核验就转过来，坐席要自己重新核验 ——
+    // 而那正是「两种方式都不通过」那类转接的样子。
+    card.append(el('div', 'row', '<span class="tag bad">客户未核验</span>'))
+    card.append(el('div', 'muted',
+      'AI 客服没能核验这位客户的身份。坐席接手后要重新核验，'
+      + '不能凭他自己报的订单号办业务。'))
+    host.append(card)
+    return
+  }
+  const user = (state.db?.users || []).find(item => item.userId === identity.userId)
+  card.append(el('div', 'row',
+    `<b>${esc(user?.name || identity.userId)}</b>`
+    + `<span class="tag ok">已核验</span>`
+    + `<span class="tag">${esc(identity.method)}</span>`))
+  if (isAirline && user?.memberTier) {
+    card.append(el('div', 'muted', `会员等级：${esc(user.memberTier)}`))
+  }
+  host.append(card)
+
+  const mine = isAirline
+    ? (state.db?.reservations || []).filter(item => item.userId === identity.userId)
+    : (state.db?.orders || []).filter(item => item.userId === identity.userId)
+  if (!mine.length) return
+  const list = el('div', 'card')
+  list.append(el('div', 'muted', `名下${isAirline ? '预订' : '订单'} ${mine.length} 笔`))
+  for (const item of mine) {
+    const id = item.reservationId || item.orderId
+    list.append(el('div', 'audit-line',
+      `<span class="mono">${esc(id)}</span> `
+      + `<span class="tag">${esc(item.status || '')}</span> `
+      + `<span class="muted">￥${Number(item.total).toFixed(2)}</span>`))
+  }
+  host.append(list)
+}
+
+function renderAudit(state) {
+  const host = $('audit')
+  host.innerHTML = ''
+  const audit = state.audit || []
+  if (!audit.length) {
+    host.append(el('div', 'empty', 'AI 客服还没调用过任何工具。'))
+    return
+  }
+  const card = el('div', 'card')
+  // 【倒序】坐席最关心刚发生了什么
+  for (const entry of audit.slice().reverse()) {
+    const line = el('div', entry.ok ? 'audit-line' : 'audit-line bad')
+    line.innerHTML = `<span class="mono">${esc(entry.tool)}</span> `
+      + `<span class="tag">${esc(entry.surface)}</span> ${esc(entry.summary)}`
+    if (entry.warning) {
+      line.append(el('div', 'muted', `⚠ ${esc(entry.warning)}`))
+    }
+    card.append(line)
+  }
+  host.append(card)
+}
+
+function render(state) {
+  $('domain-tag').textContent = DOMAIN_TEXT[state.domain] || state.domain || '?'
+  renderAlert(state)
+  renderContext(state)
+  renderAudit(state)
+}
+
+$('accept').onclick = () => {
+  taken = true
+  // 只改本地标记 —— 不写回 service。坐席「看到了」不是业务状态，
+  // 写回去反而会让 new-session 之后残留一个假的接手记录。
+  if (latest) render(latest)
+}
+
+let latest = null
+const events = new EventSource(`/api/service/events?sessionId=${SESSION}`)
+events.addEventListener('message', event => {
+  try {
+    latest = JSON.parse(event.data)
+    render(latest)
+  } catch {
+    // 坏帧忽略，下一帧会重画
+  }
+})
+events.addEventListener('error', () => {
+  $('dot').className = 'dot'
+  $('status').textContent = 'service 连不上'
+})
+
+// SSE 首帧可能要等下一次状态变化，所以先主动拉一次。
+try {
+  const response = await fetch(`/api/service/state?sessionId=${SESSION}`)
+  if (response.ok) {
+    latest = await response.json()
+    render(latest)
+  }
+} catch {
+  $('status').textContent = 'service 连不上'
+}
+</script>
+</body>
+</html>

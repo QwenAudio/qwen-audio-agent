@@ -369,5 +369,68 @@ PI_ACP_RUNTIME=auto
 暂不提供 Gateway Session 工具和第三层独立任务委派；Pi 会使用自身工具在当前
 Session 内完成工作。
 
-MiniMax Code、Kimi Code、Hermes、CodeBuddy、Codex、Claude Code 和 Pi 均由 Gateway 直接管理 ACP
+## Muse Code
+
+Muse Code 通过 Meta 官方
+[`@muse-code/sdk`](https://github.com/meta-models/muse-code-sdk) 和 Muse Session
+Protocol（MSP）接入。Gateway 负责启动 `muse serve`，在其生命周期内为每个前台
+用户保留一个 Muse Session，并把 MSP 的执行项、权限请求、补充输入、取消和最终
+消息统一映射到 `BackendPort`。
+
+在 macOS 或 Linux 安装并完成 Muse Code 自身的登录/配置：
+
+```bash
+qwenaudio install muse
+muse
+```
+
+Adapter 代码随框架发布，但 `@muse-code/sdk@0.1.1` **不属于默认依赖**。
+只有显式运行上述安装命令或点击桌面版安装按钮时，SDK 才会安装到
+`<QWAUDIO_DATA_DIR>/backends/muse/runtime`（默认
+`~/.config/qwaudio/data/backends/muse/runtime`）。已有 Muse 本体会跳过重装。
+检测只检查文件，不执行 SDK；仅启动 Muse 后台时才加载。缺少 SDK 或版本不匹配
+时提示安装，不在启动时静默下载。即使 Muse 运行在 WSL 内，SDK 也安装和运行在
+Gateway 所在的宿主系统。
+
+然后选择该后台：
+
+```dotenv
+AGENT_PROTOCOL=muse
+QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE=native
+```
+
+可选设置：
+
+```dotenv
+MUSE_CODE_BIN=muse
+MUSE_CODE_WORKSPACE=
+QWEN_AUDIO_AGENT_BACKEND_MODEL=
+```
+
+如果 Muse Code 部署在 Windows 的 WSL2 中，请把适配器指向 `wsl.exe`，并将
+Windows 进程目录与 Linux 工作区分开：
+
+```dotenv
+MUSE_CODE_BIN=C:\\Windows\\System32\\wsl.exe
+MUSE_CODE_ARGS=["--distribution","Ubuntu-24.04","--user","muse","--","env","HOME=/home/muse","PATH=/home/muse/.local/bin:/usr/local/bin:/usr/bin:/bin","/home/muse/.local/bin/muse","serve"]
+MUSE_CODE_HOST_WORKSPACE=E:\\qwen-audio-agent
+MUSE_CODE_WORKSPACE=/home/muse/workspace
+```
+
+`MUSE_CODE_HOST_WORKSPACE` 是用于启动 WSL 的 Windows 工作目录；
+`MUSE_CODE_WORKSPACE` 是 Muse 在 Linux 内看到的路径，建议使用发行版自身的
+Linux 文件系统。Muse 本体需先在 WSL 内安装并完成认证；配置宿主可执行命令后，
+在 Windows 运行 `qwenaudio install muse`，只安装宿主侧 SDK。
+
+显式后台模型会作为 MSP `modelId` 传入；留空则沿用 Muse Code 自身配置。
+`native` 会把 Muse 提供的权限选项转交给语音/客户端确认流程；`full` 会用 Muse
+预配置的 `allowAll` 模式创建 Session，仅应在可信工作区启用。Gateway 的单任务/
+当前会话授权只选择 Muse 的单次允许选项，不会创建服务商侧持久授权规则。
+
+当前集成固定使用实验性的 Muse SDK `0.1.1`。首版不会跨 Gateway 重启保存 Muse
+Session ID、注入 Gateway MCP Server，也不会读取 MSP `outputRef` 指向的完整字节；
+文件改动仍保留在配置的工作区，最终文字会正常返回。当前 Adapter 只把内联图片
+作为 MSP 附件发送，其他附件类型会明确拒绝。
+
+Muse Code、MiniMax Code、Kimi Code、Hermes、CodeBuddy、Codex、Claude Code 和 Pi 均由 Gateway 直接管理
 子进程，不接受 `--backend-url`。

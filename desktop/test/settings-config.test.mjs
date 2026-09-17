@@ -26,6 +26,14 @@ const REALTIME_DEFAULTS = {
   speechToSpeechAuthToken: '',
   miniCpmORealtimeUrl: '',
   miniCpmOAuthToken: '',
+  openaiApiKey: '',
+  gptLiveRealtimeUrl: 'wss://api.openai.com/v1/realtime',
+  gptLiveRealtimeModel: 'gpt-realtime-2.1',
+  gptLiveRealtimeVoice: '',
+  googleApiKey: '',
+  googleLiveRealtimeUrl: 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent',
+  googleLiveRealtimeModel: 'gemini-3.8-live',
+  googleLiveRealtimeVoice: '',
 }
 
 const BACKEND_CONNECTION_DEFAULTS = {

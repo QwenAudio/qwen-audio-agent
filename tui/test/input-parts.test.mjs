@@ -101,6 +101,32 @@ test('attaches an existing path whose separator precedes an escapable character'
   assert.equal(inline[1]?.source.path, path)
 })
 
+test('recognizes inline UNC paths without changing literal separators', () => {
+  for (const path of [
+    String.raw`\\server\share\report.pdf`,
+    String.raw`\\server\share\(draft)\notes.md`,
+    String.raw`\\server\share\&notes.md`,
+  ]) {
+    const prefix = '总结 '
+    assert.deepEqual(pastedPathReferences(`${prefix}${path} 谢谢`), [{
+      path,
+      start: prefix.length,
+      end: prefix.length + path.length,
+    }])
+  }
+})
+
+test('keeps offsets for multiple drive and UNC paths in one prompt', () => {
+  const drive = String.raw`C:\docs\notes.md`
+  const shared = String.raw`\\server\share\report.pdf`
+  const text = `比较 ${drive} 和 ${shared}`
+  const references = pastedPathReferences(text)
+  assert.deepEqual(references.map(reference => reference.path), [drive, shared])
+  for (const reference of references) {
+    assert.equal(text.slice(reference.start, reference.end), reference.path)
+  }
+})
+
 test('adds a staged attachment reference to the submitted text', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'qaa-tui-input-'))
   const path = join(directory, 'screen.png')

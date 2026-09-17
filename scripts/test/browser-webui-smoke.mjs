@@ -4,6 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
+import { GATEWAY_CLIENT_PROTOCOL_VERSION } from '../../shared/protocol/gateway-client-protocol.mjs'
 
 const projectRoot = resolve(import.meta.dirname, '../..')
 const webRoot = resolve(projectRoot, 'web')
@@ -15,6 +16,7 @@ const baseUrl = `http://127.0.0.1:${port}`
 // permission branch, Web Audio wiring, and cleanup lifecycle.
 const MOCK_BROWSER_APIS = String.raw`
 (() => {
+  const protocolVersion = ${JSON.stringify(GATEWAY_CLIENT_PROTOCOL_VERSION)}
   const state = {
     mediaRequests: 0,
     trackStops: 0,
@@ -96,13 +98,16 @@ const MOCK_BROWSER_APIS = String.raw`
       state.socketMessages += 1
       document.documentElement.dataset.lastSocketMessage = message.type
       if (message.type === 'session.hello') {
+        if (message.protocol?.min !== protocolVersion || message.protocol?.max !== protocolVersion) {
+          throw new Error('Browser smoke received an unexpected Gateway protocol version')
+        }
         setTimeout(() => {
           if (this.readyState !== MockWebSocket.OPEN) return
           increment('sessionReadyEvents')
           serverEvent(this, {
             type: 'session.ready',
             request_event_id: message.event_id,
-            protocol_version: '6.0.0',
+            protocol_version: protocolVersion,
             session_id: 'browser-smoke',
             capabilities: ['session.heartbeat'],
           })

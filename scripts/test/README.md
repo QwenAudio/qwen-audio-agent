@@ -8,6 +8,8 @@ The script starts its own Vite server on loopback port 4174. Set
 Chromium loads the real React page. Gateway, microphone, and AudioContext are
 test doubles: this suite checks client wiring and lifecycle, not physical audio
 devices or native Web Audio rendering. No cloud API key is needed.
+The Gateway double uses the shared protocol version and checks that the client
+requests that version during the handshake.
 
 The reconnect scenario closes the established connection during playback,
 requires a new connection's negotiated heartbeat response, then sends another

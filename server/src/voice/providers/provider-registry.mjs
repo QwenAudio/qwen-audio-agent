@@ -33,7 +33,9 @@ const CAPABILITY_FLAGS = [
   'responseMetadataCorrelation',
   'perResponseInstructions',
   'conversationItemIdEcho',
+  'acknowledgesConversationItems',
   'sessionOutputVoice',
+  'restoreConversationContext',
   'conversationItems',
   'clientResponses',
   'mutableSession',
@@ -141,6 +143,12 @@ export function validateRealtimeProtocol(protocol, providerKey = 'unknown') {
         `Realtime Provider ${providerKey} protocol 缺少 ${method}()`,
       )
     }
+  }
+  if (
+    protocol.responseInstructionsItem !== undefined
+    && typeof protocol.responseInstructionsItem !== 'function'
+  ) {
+    throw new Error(`Realtime Provider ${providerKey} protocol.responseInstructionsItem 必须是函数`)
   }
   if (
     protocol.connectionMessages !== undefined

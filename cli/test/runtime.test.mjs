@@ -63,8 +63,8 @@ function health(overrides = {}, frontendOverrides = {}) {
   return {
     ok: true,
     voiceConfigured: true,
-    realtimeProvider: DEFAULT_FRONTEND.provider,
-    realtimeConfigurationSignature: DEFAULT_FRONTEND.signature,
+    realtimeProvider: DEFAULT_FRONTEND.active.provider,
+    realtimeConfigurationSignature: DEFAULT_FRONTEND.active.signature,
     ...frontendOverrides,
     backend: {
       kind: 'opencode',
@@ -111,14 +111,28 @@ test('reuses one healthy Gateway without starting processes', async () => {
 test('compares an explicitly requested model with health profile identity', () => {
   assert.throws(() => assertRealtimeGatewayCompatibility({
     realtimeProvider: 'dashscope',
-    realtimeConfigurationSignature: DEFAULT_FRONTEND.signature,
+    realtimeConfigurationSignature: DEFAULT_FRONTEND.active.signature,
     realtimeModelProfile: { id: 'qwen3.5-omni-plus-realtime' },
   }, { ...DEFAULT_FRONTEND_ENV, QWEN_AUDIO_REALTIME_MODEL: 'qwen3.5-omni-flash-realtime' }), /Realtime 模型.*不一致/)
   assert.doesNotThrow(() => assertRealtimeGatewayCompatibility({
     realtimeProvider: 'dashscope',
-    realtimeConfigurationSignature: DEFAULT_FRONTEND.signature,
-    realtimeModelProfile: { id: DEFAULT_FRONTEND.dashscopeModel },
+    realtimeConfigurationSignature: DEFAULT_FRONTEND.active.signature,
+    realtimeModelProfile: { id: DEFAULT_FRONTEND.active.model },
   }, DEFAULT_FRONTEND_ENV))
+})
+
+test('compares the selected provider through the provider-owned runtime model field', () => {
+  const env = {
+    QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
+    STEPFUN_API_KEY: 'stepfun-key',
+    STEPFUN_REALTIME_MODEL: 'stepaudio-3-realtime-preview',
+  }
+  const frontend = resolveRealtimeFrontendConfiguration(env)
+  assert.doesNotThrow(() => assertRealtimeGatewayCompatibility({
+    realtimeProvider: frontend.active.provider,
+    realtimeConfigurationSignature: frontend.active.signature,
+    realtimeModelProfile: { id: frontend.active.model },
+  }, env))
 })
 
 test('rejects an existing Gateway using a different realtime frontend', async () => {
@@ -145,15 +159,15 @@ test('reuses an existing Gateway with the same speech-to-speech endpoint', async
     ...dependencies({ env }),
     fetchImpl: async () => ({
       json: async () => health({}, {
-        realtimeProvider: frontend.provider,
-        realtimeConfigurationSignature: frontend.signature,
+        realtimeProvider: frontend.active.provider,
+        realtimeConfigurationSignature: frontend.active.signature,
       }),
     }),
   })
   assert.equal(runtime.ownsProcesses, false)
   assert.doesNotThrow(() => assertRealtimeGatewayCompatibility({
-    realtimeProvider: frontend.provider,
-    realtimeConfigurationSignature: frontend.signature,
+    realtimeProvider: frontend.active.provider,
+    realtimeConfigurationSignature: frontend.active.signature,
   }, env))
 })
 
@@ -169,8 +183,8 @@ test('rejects an existing Gateway using a stale speech-to-speech endpoint', () =
   const running = resolveRealtimeFrontendConfiguration(runningEnv)
 
   assert.throws(() => assertRealtimeGatewayCompatibility({
-    realtimeProvider: running.provider,
-    realtimeConfigurationSignature: running.signature,
+    realtimeProvider: running.active.provider,
+    realtimeConfigurationSignature: running.active.signature,
   }, requestedEnv), /前台参数.*不一致/)
 })
 
@@ -182,12 +196,12 @@ test('reuses MiniCPM-o only when the running Gateway has the same endpoint', () 
   const running = resolveRealtimeFrontendConfiguration(runningEnv)
 
   assert.doesNotThrow(() => assertRealtimeGatewayCompatibility({
-    realtimeProvider: running.provider,
-    realtimeConfigurationSignature: running.signature,
+    realtimeProvider: running.active.provider,
+    realtimeConfigurationSignature: running.active.signature,
   }, runningEnv))
   assert.throws(() => assertRealtimeGatewayCompatibility({
-    realtimeProvider: running.provider,
-    realtimeConfigurationSignature: running.signature,
+    realtimeProvider: running.active.provider,
+    realtimeConfigurationSignature: running.active.signature,
   }, {
     ...runningEnv,
     MINICPM_O_REALTIME_URL: 'ws://127.0.0.1:9000/v1/realtime?mode=audio',
@@ -208,7 +222,7 @@ test('realtime configuration signature changes with Gateway-owned credentials', 
     DASHSCOPE_API_KEY: 'second-key',
   })
 
-  assert.notEqual(first.signature, second.signature)
+  assert.notEqual(first.active.signature, second.active.signature)
 })
 
 test('reuses a managed Gateway after it selected a private free backend port', async () => {
@@ -371,8 +385,8 @@ test('starts and reuses a frontend-only Gateway without a backend', async () => 
   const frontendOnlyHealth = {
     ok: true,
     voiceConfigured: true,
-    realtimeProvider: DEFAULT_FRONTEND.provider,
-    realtimeConfigurationSignature: DEFAULT_FRONTEND.signature,
+    realtimeProvider: DEFAULT_FRONTEND.active.provider,
+    realtimeConfigurationSignature: DEFAULT_FRONTEND.active.signature,
     backend: {
       enabled: false,
       ok: true,
@@ -413,8 +427,8 @@ test('keeps frontend-only mode explicit when spawning the Gateway', async () => 
         json: async () => ({
           ok: true,
           voiceConfigured: true,
-          realtimeProvider: DEFAULT_FRONTEND.provider,
-          realtimeConfigurationSignature: DEFAULT_FRONTEND.signature,
+          realtimeProvider: DEFAULT_FRONTEND.active.provider,
+          realtimeConfigurationSignature: DEFAULT_FRONTEND.active.signature,
           backend: {
             enabled: false,
             ok: true,

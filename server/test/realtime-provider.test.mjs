@@ -2091,6 +2091,8 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     perResponseInstructions: true,
     sessionOutputVoice: true,
     conversationItemIdEcho: true,
+    acknowledgesConversationItems: true,
+    restoreConversationContext: true,
     conversationItems: true,
     clientResponses: true,
     mutableSession: true,

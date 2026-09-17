@@ -1,0 +1,7 @@
+{
+  "_note": "Policy 抽取候选的人工裁决记录。accepted / rejected / policy_gap / data_gap 四种状态由配置台写入。",
+  "version": 1,
+  "domain": "airline",
+  "updatedAt": null,
+  "items": {}
+}

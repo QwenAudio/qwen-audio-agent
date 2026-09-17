@@ -252,7 +252,8 @@ export async function writeCanonicalTables(report, absolute) {
     + '<p>Chitchat and clarification/refusal turns list their raw calls separately and never enter the task latency mean. The original scores stay in the JSON; they are neither shown in this latency table nor used to filter it.</p>'
     + (report.reanalysis ? `<p>Offline recomputation of ${esc(report.reanalysis.source)}. The measured audio timestamps are reused, no model was called again and the source report is unchanged.</p>` : '')
     + (report.recovery ? `<p>Source includes connection/timeout recovery: ${esc(report.recovery.frontend_ids.join(', ')) || 'none'} (frontend); ${esc(report.recovery.backend_ids.join(', ')) || 'none'} (backend). Original attempts are kept and plain scoring failures were not retried.</p>` : '')
-    + '<h2>Mean tool latency per response</h2>' + table(['Domain', 'Task turns', 'Frontend timeable', 'Backend timeable', 'Frontend mean/s', 'Backend mean/s'], summary)
+    + '<p>Test turns (tool-required) counts planned user inputs requiring tools, not case count or steps to complete one task. Valid timing samples are counted separately for each route.</p>'
+    + '<h2>Mean tool latency per response</h2>' + table(['Domain', 'Test turns (tool-required)', 'Frontend timeable', 'Backend timeable', 'Frontend mean/s', 'Backend mean/s'], summary)
     + '<h2>Per-turn responses</h2>' + table(taskHeaders, taskRows)
     + '<h2>Chitchat (frontend should answer directly)</h2>' + table(controlHeaders, controlRows(comparison.chitchat))
     + '<h2>Clarification/refusal: no tool expected</h2>' + table(controlHeaders, controlRows(comparison.no_tool_controls)) + '</html>'
@@ -274,7 +275,7 @@ async function writeDualTables(report, absolute) {
     .map(value => `"${String(value ?? '').replaceAll('"', '""')}"`).join(',')).join('\n') + '\n'
   const phases = [['before', 'Before execution'], ['after', 'After execution']].map(([key, label]) => ({
     key, label,
-    summaryHeads: ['Domain', 'Task turns', `Frontend ${key}/s`, `Backend ${key}/s`,
+    summaryHeads: ['Domain', 'Test turns (tool-required)', `Frontend ${key}/s`, `Backend ${key}/s`,
       'Difference (backend − frontend)/s', 'Frontend valid', 'Backend valid'],
     summaryRows: c.groups.map(g => [g.domain, g.total,
       seconds(g[`frontend_${key}_mean_ms`]), seconds(g[`backend_${key}_mean_ms`]), seconds(g[`${key}_difference_ms`]),
@@ -294,7 +295,7 @@ async function writeDualTables(report, absolute) {
     'Unit: seconds. Before = speech PCM end to the latest service.execute start in the turn; after = the same zero point to the latest resolve/reject once every invoked tool has finished. Neither includes the following MCP response transport, the reply audio or backend task terminal states, and neither means the physical action completed.',
     'Turns count independently and the cold first turn is kept. With several tools in one turn the latest start and latest end are used rather than summed, so the two endpoints may belong to different concurrent tools. Each surface averages its own timestamped responses without filtering on tool match or outcome; the difference is backend minus frontend.',
     'A turn with no tool call or a missing timestamp shows — and is never counted as zero. Failed returns are still timed, so an after value does not imply business success. The surfaces may hold different samples, so read the valid counts as well, especially for small domains.',
-    `${c.tasks.length} task turns; ${c.chitchat.length} chitchat turns and ${c.no_tool_controls.length} clarification/refusal turns stay in the data without entering the task means. Scores, transcripts, tool payloads and process logs are not shown.`,
+    `${c.tasks.length} test turns require tools; ${c.chitchat.length} chitchat turns and ${c.no_tool_controls.length} clarification/refusal turns stay in the data without entering the latency means. Test turns (tool-required) counts planned user inputs, not case count or steps to complete one task; valid timing samples are counted separately for each route. Scores, transcripts, tool payloads and process logs are not shown.`,
   ]
   if (report.recovery) notes.push('This report includes connection/timeout recovery; the original timing attempts are kept in the data.')
   if (report.batch_sources) {
@@ -539,7 +540,7 @@ export async function reanalyzeReport(sourcePath, outPath, { timingOnly = false 
   await writeFile(absolute, `${JSON.stringify(report, null, 2)}\n`, { flag: 'wx' })
   await writeCanonicalTables(report, absolute)
   console.table(report.comparison.groups)
-  console.log(`${comparison.tasks.length} task turns; ${comparison.chitchat.length} chitchat turns; ${comparison.no_tool_controls.length} clarification/refusal turns`)
+  console.log(`${comparison.tasks.length} test turns requiring tools; ${comparison.chitchat.length} chitchat turns; ${comparison.no_tool_controls.length} clarification/refusal turns`)
   console.log(`\nreport: ${absolute}`)
   return report
 }

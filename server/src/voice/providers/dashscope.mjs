@@ -1,6 +1,8 @@
 import { config, realtimeUrl } from '../../core/config.mjs'
 import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mjs'
 import {
+  DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
+  DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
   listDashScopeRealtimeModelProfiles,
   resolveDashScopeRealtimeModelProfile,
 } from '../../../../shared/realtime-provider-catalog.mjs'
@@ -11,7 +13,7 @@ import {
   speakResponseInstructions,
   permissionResponseInstructions,
 } from '../../frontend/frontend-tools.mjs'
-import { isRecoverableRealtimeInactivityError } from '../realtime-errors.mjs'
+import { isRecoverableRealtimeInactivityError, RealtimeConfigurationError } from '../realtime-errors.mjs'
 import { openAiCompatibleProtocol } from './openai-compatible-protocol.mjs'
 
 function classifyError(message) {
@@ -46,6 +48,23 @@ function responseModalities(profile) {
   ].filter(Boolean)
 }
 
+function validateSessionOptions({ sessionOptions = {} } = {}) {
+  const profile = activeModelProfile()
+  const voice = String(sessionOptions.voice || '').trim() || dashscopeProvider.voice()
+  // Known mismatch, not a complete voice allowlist. Cherry belongs to the older
+  // Omni generation and causes silent closes on 3.5 (#334). Unknown/cloned
+  // voices remain the provider's responsibility; do not infer their model from
+  // their IDs. See https://help.aliyun.com/zh/model-studio/omni-voice-list
+  if (
+    voice === 'Cherry'
+    && [DASHSCOPE_OMNI_FLASH_REALTIME_MODEL, DASHSCOPE_OMNI_PLUS_REALTIME_MODEL].includes(profile.id)
+  ) {
+    throw new RealtimeConfigurationError(
+      `音色 ${voice} 不支持模型 ${profile.id}；请改用该模型的默认音色 ${profile.sessionDefaults.voice}`,
+    )
+  }
+}
+
 export const dashscopeProvider = {
   key: 'dashscope',
   label: 'DashScope Realtime',
@@ -73,6 +92,7 @@ export const dashscopeProvider = {
   url: () => realtimeUrl(config.audioRealtimeBaseUrl, config.audioModel),
   headers: () => ({ Authorization: `Bearer ${config.dashscopeApiKey}` }),
   classifyError,
+  validateSessionOptions,
 
   buildSession: ({ configured, agentContext, sessionOptions }) => {
     const profile = activeModelProfile()

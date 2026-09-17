@@ -15,6 +15,11 @@ import {
   resolveRealtimeFrontendConfiguration,
 } from '../../../shared/realtime-provider-catalog.mjs'
 import {
+  REALTIME_PROVIDERS,
+  realtimeSettingsFromEnvironment,
+  realtimeSettingsConnection,
+} from '../../../shared/realtime-provider-definitions.mjs'
+import {
   normalizeMemoryProviderSelection,
 } from '../../../shared/memory-provider-catalog.mjs'
 import {
@@ -78,6 +83,10 @@ export function resolveBackendWorkspace(
 }
 
 export function resolveAcpArgs(value) {
+  return resolveCommandArgs(value, 'ACP_ARGS')
+}
+
+export function resolveCommandArgs(value, label = 'ARGS') {
   const source = String(value || '').trim()
   if (!source) return []
   if (source.startsWith('[')) {
@@ -85,10 +94,10 @@ export function resolveAcpArgs(value) {
     try {
       parsed = JSON.parse(source)
     } catch {
-      throw new Error('ACP_ARGS 不是有效的 JSON 数组')
+      throw new Error(`${label} 不是有效的 JSON 数组`)
     }
     if (!Array.isArray(parsed) || parsed.some(item => typeof item !== 'string')) {
-      throw new Error('ACP_ARGS 必须是字符串组成的 JSON 数组')
+      throw new Error(`${label} 必须是字符串组成的 JSON 数组`)
     }
     return parsed
   }
@@ -123,6 +132,7 @@ export function resolveBackendModels(env = process.env) {
       env.DEEPSEEK_HARNESS_MODEL || '',
     ).trim(),
     pi: common,
+    muse: common,
     acp: common,
   }
 }
@@ -149,6 +159,16 @@ const backendOwnership = configuredAgentProtocol
     })
   : 'owned'
 const backendModels = resolveBackendModels()
+const museArgs = resolveCommandArgs(process.env.MUSE_CODE_ARGS, 'MUSE_CODE_ARGS')
+const museConfiguredWorkspace = String(
+  process.env.MUSE_CODE_WORKSPACE || '',
+).trim()
+const museHostWorkspace = resolveBackendWorkspace('muse')
+const museWorkspaceRoot = museConfiguredWorkspace
+  ? process.platform === 'win32'
+    ? museConfiguredWorkspace
+    : resolve(root, museConfiguredWorkspace)
+  : museHostWorkspace
 const managedOpenClawBailian = (
   configuredAgentProtocol === 'openclaw'
   && Boolean(backendModels.common)
@@ -205,6 +225,12 @@ const frontendProfileConfiguration = resolveFrontendProfileConfiguration({
   baseDirectory: root,
 })
 
+const realtimeSettings = realtimeSettingsFromEnvironment(process.env)
+const realtimeConnections = Object.fromEntries(REALTIME_PROVIDERS.map(provider => [
+  provider.key,
+  realtimeSettingsConnection({ ...realtimeSettings, realtimeProvider: provider.key }),
+]))
+
 export const config = {
   root,
   configDirectory: runtimeEnvironment.configDirectory,
@@ -221,28 +247,44 @@ export const config = {
   port: String(process.env.PORT || '').trim() === '0'
     ? 0
     : numberSetting(process.env.PORT, 3101, { min: 1, max: 65535 }),
-  audioProvider: realtimeFrontend.provider,
-  realtimeConfigSignature: realtimeFrontend.signature,
-  dashscopeApiKey: realtimeFrontend.dashscopeApiKey,
-  audioRealtimeBaseUrl: realtimeFrontend.dashscopeRealtimeUrl,
+  audioProvider: realtimeFrontend.active.provider,
+  realtimeConfigSignature: realtimeFrontend.active.signature,
+  realtimeCredential: realtimeFrontend.credential,
+  realtimeEndpoint: realtimeFrontend.active.endpoint,
+  realtimeModel: realtimeFrontend.active.model,
+  realtimeVoice: realtimeFrontend.active.voice,
   // User-managed huggingface/speech-to-speech OpenAI Realtime endpoint. The
   // pipeline owns its STT, LLM, TTS and voice configuration; Gateway only
   // connects to the endpoint and supplies the shared frontend instructions and
   // tools for each realtime Session.
-  speechToSpeechRealtimeUrl: realtimeFrontend.speechToSpeechRealtimeUrl,
+  speechToSpeechRealtimeUrl: realtimeConnections['speech-to-speech'].endpoint,
   // Do not advertise a local service merely because a default endpoint
   // exists. It becomes selectable when the user explicitly configures it or
   // chooses it as the active frontend.
-  speechToSpeechConfigured: realtimeFrontend.speechToSpeechConfigured,
+  speechToSpeechConfigured: Boolean(realtimeSettings.speechToSpeechRealtimeUrl) || realtimeFrontend.active.provider === 'speech-to-speech',
   // The upstream WebSocket does not require authentication. This optional
   // credential is useful only when users put it behind an authenticated proxy.
-  speechToSpeechAuthToken: realtimeFrontend.speechToSpeechAuthToken,
+  speechToSpeechAuthToken: realtimeConnections['speech-to-speech'].credential,
   // User-managed MiniCPM-o 4.5 audio full-duplex Realtime endpoint.
-  miniCpmORealtimeUrl: realtimeFrontend.miniCpmORealtimeUrl,
-  miniCpmOAuthToken: realtimeFrontend.miniCpmOAuthToken,
-  miniCpmOConfigured: realtimeFrontend.miniCpmOConfigured,
-  audioModel: realtimeFrontend.dashscopeModel,
-  audioVoice: realtimeFrontend.dashscopeVoice,
+  miniCpmORealtimeUrl: realtimeConnections['minicpm-o'].endpoint,
+  miniCpmOAuthToken: realtimeConnections['minicpm-o'].credential,
+  miniCpmOConfigured: Boolean(realtimeSettings.miniCpmORealtimeUrl) || realtimeFrontend.active.provider === 'minicpm-o',
+  audioModel: realtimeConnections['dashscope'].model,
+  audioVoice: realtimeConnections['dashscope'].voice,
+  dashscopeApiKey: realtimeConnections['dashscope'].credential,
+  audioRealtimeBaseUrl: realtimeConnections['dashscope'].endpoint,
+  stepfunApiKey: realtimeConnections['stepfun'].credential,
+  stepfunRealtimeUrl: realtimeConnections['stepfun'].endpoint,
+  stepfunModel: realtimeConnections['stepfun'].model,
+  stepfunVoice: realtimeConnections['stepfun'].voice,
+  openaiApiKey: realtimeConnections['gpt-live'].credential,
+  gptLiveRealtimeUrl: realtimeConnections['gpt-live'].endpoint,
+  gptLiveModel: realtimeConnections['gpt-live'].model,
+  gptLiveVoice: realtimeConnections['gpt-live'].voice,
+  googleApiKey: realtimeConnections['google-live'].credential,
+  googleLiveRealtimeUrl: realtimeConnections['google-live'].endpoint,
+  googleLiveModel: realtimeConnections['google-live'].model,
+  googleLiveVoice: realtimeConnections['google-live'].voice,
   webSearchProvider: webSearch.provider,
   webSearchMcpUrl: webSearch.mcpUrl,
   webSearchMcpToken: webSearch.mcpToken,
@@ -406,6 +448,13 @@ export const config = {
       model: String(backendModels.pi).trim(),
       directory: resolveBackendWorkspace('pi'),
       cliPath: String(process.env.PI_ACP_BIN || '').trim(),
+    },
+    muse: {
+      model: String(backendModels.muse).trim(),
+      directory: museHostWorkspace,
+      workspaceRoot: museWorkspaceRoot,
+      museBin: String(process.env.MUSE_CODE_BIN || 'muse').trim() || 'muse',
+      ...(museArgs.length ? { args: museArgs } : {}),
     },
     acp: {
       model: String(backendModels.acp).trim(),

@@ -11,6 +11,7 @@ import {
   readSkillLock,
   removeSkill,
   runSkillsCli,
+  skillsCliInvocation,
   skillsCliPackage,
   updateSkills,
 } from '../../shared/skill-library.mjs'
@@ -29,6 +30,41 @@ function fakeSpawn({ status = 0, stdout = '', stderr = '', error } = {}) {
   }
   return { calls, spawn }
 }
+
+test('runs npx-cli.js with node instead of npx.cmd on Windows', () => {
+  const args = ['-y', 'skills@1.5.22', 'add', 'https://example.test/a?b=1&c=2']
+  const directory = 'C:\\Program Files\\nodejs'
+  const cli = `${directory}\\node_modules\\npm\\bin\\npx-cli.js`
+  const found = []
+  const find = command => {
+    found.push(command)
+    return command === 'npx.cmd' ? `${directory}\\npx.cmd` : ''
+  }
+  assert.deepEqual(skillsCliInvocation(args, {
+    platform: 'win32',
+    find,
+    exists: path => [cli, `${directory}\\node.exe`].includes(path),
+  }), { command: `${directory}\\node.exe`, args: [cli, ...args] })
+  // npm 生成的无扩展名 npx 是 POSIX 脚本，Windows 上必须查找 npx.cmd。
+  assert.equal(found[0], 'npx.cmd')
+
+  assert.deepEqual(skillsCliInvocation(args, {
+    platform: 'win32',
+    find: command => ({
+      'npx.cmd': 'C:\\npm-global\\npx.cmd',
+      node: 'C:\\nodejs\\node.exe',
+    })[command] || '',
+    exists: path => path === 'C:\\npm-global\\node_modules\\npm\\bin\\npx-cli.js',
+  }), {
+    command: 'C:\\nodejs\\node.exe',
+    args: ['C:\\npm-global\\node_modules\\npm\\bin\\npx-cli.js', ...args],
+  })
+
+  assert.deepEqual(
+    skillsCliInvocation(args, { platform: 'linux', find: () => '/usr/bin/npx' }),
+    { command: 'npx', args },
+  )
+})
 
 test('runs the pinned skills.sh package through npx argv', () => {
   const target = fakeSpawn({ stdout: 'ok\n' })
@@ -55,6 +91,29 @@ test('surfaces skills.sh failures with stderr detail', () => {
     () => runSkillsCli(['list'], { spawn: broken.spawn }),
     /skills CLI 启动失败/,
   )
+})
+
+test('starts npx on Windows without a shell', {
+  skip: process.platform !== 'win32',
+}, () => {
+  // 离线模式下请求不存在的包：npx 能启动时会以 ENOTCACHED 失败，不访问网络。
+  const previous = process.env.npm_config_offline
+  process.env.npm_config_offline = 'true'
+  try {
+    assert.throws(
+      () => runSkillsCli(['--version'], {
+        packageSpec: 'qwen-audio-agent-missing-package@0.0.0',
+      }),
+      error => {
+        assert.doesNotMatch(error.message, /skills CLI 启动失败/)
+        assert.match(error.message, /skills CLI 执行失败/)
+        return true
+      },
+    )
+  } finally {
+    if (previous === undefined) delete process.env.npm_config_offline
+    else process.env.npm_config_offline = previous
+  }
 })
 
 test('installs to every backend installer agent explicitly', () => {

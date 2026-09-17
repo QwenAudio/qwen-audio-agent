@@ -1,4 +1,5 @@
-import { resolveDashScopeRealtimeModelProfile } from '../../shared/realtime-model-catalog.mjs'
+import { realtimeModelCatalog, resolveRealtimeModelProfile } from '../../shared/realtime-model-catalog.mjs'
+import { REALTIME_PROVIDERS, DEFAULT_REALTIME_PROVIDER } from '../../shared/realtime-provider-definitions.mjs'
 
 export function gatewayStatusLabel(value) {
   const text = String(value || '').trim()
@@ -11,28 +12,28 @@ export function gatewayStatusLabel(value) {
 }
 
 export function realtimeStatusLabel(provider) {
-  if (provider === 'speech-to-speech') return 'Speech-to-Speech'
-  if (provider === 'minicpm-o') return '面壁智能'
-  return 'DashScope'
+  const definition = REALTIME_PROVIDERS.find(item => item.key === (provider || DEFAULT_REALTIME_PROVIDER))
+  return definition?.displayLabel || definition?.label || provider
 }
 
-export function realtimeModelStatusLabel(model) {
+export function realtimeModelStatusLabel(model, provider = 'dashscope') {
   const value = String(model || '').trim()
   if (!value) return ''
-  const profile = resolveDashScopeRealtimeModelProfile(value)
+  const profile = resolveRealtimeModelProfile(value, provider)
   return profile.family === 'unknown'
     ? profile.label
     : profile.label.replace(/\s+Realtime\b/i, '')
 }
 
 export function realtimeRuntimeLabel(provider, model) {
-  if (provider === 'minicpm-o') return 'MiniCPM-o 4.5'
-  if (provider !== 'dashscope') return realtimeStatusLabel(provider)
-  return realtimeModelStatusLabel(model) || realtimeStatusLabel(provider)
+  const definition = REALTIME_PROVIDERS.find(item => item.key === provider)
+  if (definition?.modelLabel) return definition.modelLabel
+  if (!realtimeModelCatalog(provider)) return realtimeStatusLabel(provider)
+  return realtimeModelStatusLabel(model, provider) || realtimeStatusLabel(provider)
 }
 
 export function realtimeModelRuntimeStatus(health, expectedModel = '') {
-  if (['speech-to-speech', 'minicpm-o'].includes(health?.realtimeProvider)) {
+  if (health?.realtimeProvider && !realtimeModelCatalog(health.realtimeProvider)) {
     return { label: '', mismatch: false }
   }
   const actualModel = String(
@@ -40,7 +41,7 @@ export function realtimeModelRuntimeStatus(health, expectedModel = '') {
   ).trim()
   const expected = String(expectedModel || '').trim()
   return {
-    label: realtimeModelStatusLabel(actualModel),
+    label: realtimeModelStatusLabel(actualModel, health?.realtimeProvider),
     mismatch: Boolean(expected && actualModel && expected !== actualModel),
   }
 }

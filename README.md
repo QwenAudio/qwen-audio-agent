@@ -131,6 +131,7 @@ changing the Gateway's core voice-session or backend-task logic.
 | Claude Code | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
 | DeepSeek Harness | Native ACP | One-click install, DeepSeek API key required | ★★★★☆ |
 | Pi | External ACP adapter | One-click install (base + adapter), user config required | ★★★★☆ |
+| Muse Code | Native MSP adapter | Install Muse and its optional SDK on demand; user config required | Experimental |
 
 Ratings reflect current integration completeness, compatibility, and
 verification level: five stars indicate a thoroughly tested recommended

@@ -30,6 +30,7 @@ import {
   resolveBackendLifecycle,
 } from './lifecycle.mjs'
 import { findExecutable, inspectBackendSetups } from './setup.mjs'
+import { backendRuntimeDirectory } from './runtime-package.mjs'
 
 const DEFAULT_STEP_TIMEOUT_MS = 10 * 60 * 1000
 const MAX_INSTALL_OUTPUT_CHARS = 64 * 1024
@@ -60,19 +61,24 @@ function stepPackage(step, env) {
   return clean(env[step.packageEnv]) || step.package
 }
 
-function stepDisplay(step, env) {
+function stepDisplay(step, env, id) {
   if (step.kind === 'script') return step.command
+  if (step.scope === 'backend') {
+    return `npm ${npmStepArgs(step, env, id).map(value => JSON.stringify(value)).join(' ')}`
+  }
   const registry = clean(step.registry)
   return `npm install -g${registry ? ` --registry=${registry}` : ''} ${
     stepPackage(step, env)
   }`
 }
 
-function npmStepArgs(step, env) {
+function npmStepArgs(step, env, id) {
   const registry = clean(step.registry)
   return [
     'install',
-    '-g',
+    ...(step.scope === 'backend'
+      ? ['--prefix', backendRuntimeDirectory(id, env), '--no-save', '--package-lock=false', '--ignore-scripts', '--no-audit', '--no-fund']
+      : ['-g']),
     ...(registry ? [`--registry=${registry}`] : []),
     stepPackage(step, env),
   ]
@@ -142,7 +148,7 @@ export function installSupport(id, {
     steps: steps.map((step, index) => ({
       kind: step.kind,
       title: stepTitle(step, index),
-      display: stepDisplay(step, env),
+      display: stepDisplay(step, env, definition.id),
     })),
   }
 }
@@ -517,7 +523,7 @@ export async function installBackend(id, {
   }
 
   for (const [index, step] of steps.entries()) {
-    const display = stepDisplay(step, env)
+    const display = stepDisplay(step, env, definition.id)
     if (!pending.includes(step)) {
       onProgress({
         step: index,
@@ -547,7 +553,7 @@ export async function installBackend(id, {
       }
     }
     const result = step.kind === 'npm'
-      ? await runStep(npmCommand, npmStepArgs(step, env), {
+      ? await runStep(npmCommand, npmStepArgs(step, env, definition.id), {
         env: npmRunEnv(resolvedEnv, npmCommand, platform),
         platform,
         spawnImpl,
@@ -620,7 +626,7 @@ export async function installBackend(id, {
         },
       }
     }
-    if (step.kind === 'npm' && npmCommand) {
+    if (step.kind === 'npm' && step.scope !== 'backend' && npmCommand) {
       // npm install -g 成功后，把全局 bin 目录加入 resolvedEnv.PATH，
       // 否则后续验证步骤找不到刚安装的二进制。
       const prefixResult = spawnSync(npmCommand, ['config', 'get', 'prefix'], {

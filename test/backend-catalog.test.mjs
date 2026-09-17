@@ -23,6 +23,15 @@ test('declares MiniMax Code as a native ACP backend', () => {
   assert.equal(minimax.skills, null)
 })
 
+test('declares Muse Code as a native MSP backend', () => {
+  const muse = backendDefinition('muse')
+  assert.equal(muse.label, 'Muse Code')
+  assert.equal(muse.setup.command, 'muse')
+  assert.equal(muse.setup.integration, 'msp')
+  assert.equal(muse.supportsFullPermission, true)
+  assert.equal(muse.skills, null)
+})
+
 test('effective permission mode normalizes always-full backends', () => {
   assert.equal(effectiveBackendPermissionMode('pi', 'native'), 'full')
   assert.equal(effectiveBackendPermissionMode('pi', 'full'), 'full')

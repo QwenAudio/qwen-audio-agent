@@ -53,6 +53,22 @@ test('parses independent TUI and WebUI client commands', () => {
   assert.equal(web.openBrowser, false)
 })
 
+test('shows help for subcommands that otherwise require arguments', () => {
+  for (const argv of [
+    ['install', '--help'],
+    ['skill', '-h'],
+    ['config', 'set', '--help'],
+    ['gateway', 'revoke', '--help'],
+  ]) {
+    const options = parseArguments(argv, {})
+    assert.equal(options.help, true, argv.join(' '))
+    assert.equal(options.command, argv[0])
+  }
+  // 未请求帮助时仍然报告缺少的参数；未知命令即使带 --help 也不隐藏。
+  assert.throws(() => parseArguments(['install'], {}), /install 缺少后台名称/)
+  assert.throws(() => parseArguments(['unknown', '--help'], {}), /未知命令/)
+})
+
 test('parses remote Gateway connection profile commands', () => {
   const pairingCode = 'qwaudio://connect?payload=abc'
   const connected = parseArguments(['connect', pairingCode], {})

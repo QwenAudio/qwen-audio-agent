@@ -10,7 +10,7 @@ Turns count independently and the cold first turn is kept. With several tools in
 
 A turn with no tool call or a missing timestamp shows — and is never counted as zero. Failed returns are still timed, so an after value does not imply business success. The surfaces may hold different samples, so read the valid counts as well, especially for small domains.
 
-92 task turns; 14 chitchat turns and 5 clarification/refusal turns stay in the data without entering the task means. Scores, transcripts, tool payloads and process logs are not shown.
+92 test turns require tools; 14 chitchat turns and 5 clarification/refusal turns stay in the data without entering the latency means. Test turns (tool-required) counts planned user inputs, not case count or steps to complete one task; valid timing samples are counted separately for each route. Scores, transcripts, tool payloads and process logs are not shown.
 
 Batch sources: this is an offline merge of per-domain runs measured at different times, not one continuous run. Means are recomputed from the responses instead of averaging batch means.
 
@@ -20,7 +20,7 @@ voice-surface-short-navigation-weather-20260911-example-dual.json; 2026-09-11T05
 
 ## Before execution
 
-| Domain | Task turns | Frontend before/s | Backend before/s | Difference (backend − frontend)/s | Frontend valid | Backend valid |
+| Domain | Test turns (tool-required) | Frontend before/s | Backend before/s | Difference (backend − frontend)/s | Frontend valid | Backend valid |
 | --- | --- | --- | --- | --- | --- | --- |
 | all | 92 | 1.317 | 3.363 | 2.046 | 90 | 68 |
 | vehicle | 23 | 1.539 | 3.277 | 1.738 | 23 | 22 |
@@ -32,7 +32,7 @@ voice-surface-short-navigation-weather-20260911-example-dual.json; 2026-09-11T05
 
 ## After execution
 
-| Domain | Task turns | Frontend after/s | Backend after/s | Difference (backend − frontend)/s | Frontend valid | Backend valid |
+| Domain | Test turns (tool-required) | Frontend after/s | Backend after/s | Difference (backend − frontend)/s | Frontend valid | Backend valid |
 | --- | --- | --- | --- | --- | --- | --- |
 | all | 92 | 1.480 | 3.560 | 2.080 | 90 | 68 |
 | vehicle | 23 | 1.539 | 3.277 | 1.738 | 23 | 22 |

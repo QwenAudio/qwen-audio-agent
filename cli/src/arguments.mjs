@@ -62,7 +62,23 @@ function enabled(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
 }
 
+function helpRequested(argv) {
+  return argv.includes('--help') || argv.includes('-h')
+}
+
 export function parseArguments(argv, env = process.env) {
+  try {
+    return parseCommandArguments(argv, env)
+  } catch (error) {
+    // `qwenaudio install --help` 等子命令在缺少位置参数或选项组合无效时仍应显示
+    // 帮助；未请求帮助或命令本身未知时照常报错。
+    const command = argv[0] && !argv[0].startsWith('-') ? argv[0] : 'gateway'
+    if (!helpRequested(argv) || !COMMANDS.has(command)) throw error
+    return { command, help: true }
+  }
+}
+
+function parseCommandArguments(argv, env) {
   const args = [...argv]
   const first = args[0]
   const command = first && !first.startsWith('-') ? args.shift() : 'gateway'

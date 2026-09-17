@@ -31,6 +31,26 @@ test('requires a DashScope credential for the model-powered backend Agent', () =
   }))
 })
 
+test('uses the selected provider credential and model without borrowing the backend key', () => {
+  for (const [provider, key] of [
+    ['stepfun', 'STEPFUN_API_KEY'],
+    ['gpt-live', 'OPENAI_API_KEY'],
+    ['google-live', 'GOOGLE_API_KEY'],
+  ]) {
+    const env = { QWEN_AUDIO_REALTIME_PROVIDER: provider, DASHSCOPE_API_KEY: 'backend-only' }
+    assert.throws(() => assertRealtimeConfigured(env), error => error.message.includes(key))
+    assert.doesNotThrow(() => assertRealtimeConfigured({ ...env, [key]: 'frontend-key' }))
+  }
+  assert.throws(() => assertRealtimeConfigured({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'stepfun',
+    STEPFUN_API_KEY: 'frontend-key',
+    STEPFUN_REALTIME_MODEL: 'qwen-audio-3.0-realtime-plus',
+  }), /STEPFUN_REALTIME_MODEL/)
+  assert.throws(() => assertRealtimeConfigured({
+    QWEN_AUDIO_REALTIME_API_KEY: 'removed-global-key',
+  }), /DASHSCOPE_API_KEY/)
+})
+
 test('validates all four configured endpoints before concurrent startup', async () => {
   const checked = []
   const env = {

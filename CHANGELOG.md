@@ -65,6 +65,9 @@
   校验 ACP MCP 描述的后台无法创建 Session 的问题。
 - 修复 Windows 上位于含空格目录的 `.cmd` / `.bat` ACP 后台命令被 cmd.exe 截断而
   无法启动，以及含空格的 ACP 参数被拆开的问题。
+- 修复 Windows 用户名或安装目录含空格时（如
+  `C:\Users\Li Lei\AppData\Roaming\npm\codex.cmd`），桌面设置页的后台登录状态
+  检测命令被 cmd.exe 截断、已登录的后台一律显示为状态未知的问题。
 - 新增 Pi 后台支持：通过社区 `pi-acp` 适配器接入，并支持一键安装。Pi 没有
   内置沙箱与权限审批机制，始终等效于 `full` 权限，请仅在可信环境中使用。
 - 修复 Windows 上 `qwenaudio skill` 各子命令与 Gateway 启动时的技能补装因直接启动

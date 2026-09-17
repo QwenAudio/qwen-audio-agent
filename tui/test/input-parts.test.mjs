@@ -141,3 +141,24 @@ test('keeps ordinary @mentions as text when they are not paths', async () => {
   const parts = await inputPartsFromText('请问 @designer 的意见')
   assert.deepEqual(parts, [{ type: 'text', text: '请问 @designer 的意见' }])
 })
+
+test('keeps an unavailable Windows share as ordinary text', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  // 本机一定可达，但共享名不存在：Windows 报 ERROR_BAD_NETPATH，
+  // Node 把它映射成 UNKNOWN 而不是 ENOENT。
+  const share = String.raw`\\127.0.0.1\qwen-audio-agent-missing-share\report.pdf`
+  assert.deepEqual(
+    await inputPartsFromText(share),
+    [{ type: 'text', text: share }],
+  )
+  const inline = `请看 ${share} 的数据`
+  assert.deepEqual(
+    await inputPartsFromText(inline),
+    [{ type: 'text', text: inline }],
+  )
+  assert.deepEqual(
+    await inputPartsFromText(`总结 @${share}`),
+    [{ type: 'text', text: `总结 @${share}` }],
+  )
+})

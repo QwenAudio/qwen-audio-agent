@@ -107,6 +107,13 @@ function pastedFilePaths(text) {
   return isAbsolute(value) || /^\.\.?[\\/]/.test(value) ? [value, literal] : []
 }
 
+// 路径取不到，只说明这段文字不是可用附件。Windows 上不可达的主机或不存在的
+// 共享（\\server\share）来自 ERROR_BAD_NETPATH，Node 映射为 UNKNOWN 而非
+// ENOENT，同样不能让普通文字发不出去。
+function unavailablePath(error) {
+  return ['ENOENT', 'ENOTDIR', 'UNKNOWN'].includes(error?.code)
+}
+
 // Windows 路径以 \ 分隔，C:\docs\(draft)\a.md 或 \\server\share 中的 \( 与 \\
 // 并不是 shell 转义。UNC 路径保留原样；其他路径优先按转义解析（如 cat\ image.png），
 // 该路径不存在时再尝试原样粘贴的文本。
@@ -116,7 +123,7 @@ async function filePartFromCandidates(paths, index) {
     try {
       return await filePartFromPath(path, index)
     } catch (error) {
-      if (!['ENOENT', 'ENOTDIR'].includes(error?.code)) throw error
+      if (!unavailablePath(error)) throw error
       missing ??= error
     }
   }
@@ -162,7 +169,7 @@ export async function inputPartsFromText(
     } catch (error) {
       // A missing pasted path may still be intentional text. Existing paths
       // that are directories, too large, or unreadable remain real errors.
-      if (!['ENOENT', 'ENOTDIR'].includes(error?.code)) throw error
+      if (!unavailablePath(error)) throw error
     }
   }
   if (!paths.length) {
@@ -179,7 +186,7 @@ export async function inputPartsFromText(
           value: part.source.text.value,
         })
       } catch (error) {
-        if (!['ENOENT', 'ENOTDIR'].includes(error?.code)) throw error
+        if (!unavailablePath(error)) throw error
       }
     }
     if (replacements.length) {
@@ -208,7 +215,7 @@ export async function inputPartsFromText(
       // A literal @mention is still ordinary text. Only an existing path is
       // promoted into a file part; explicit attachment selection still
       // surfaces invalid paths to the user through filePartFromPath().
-      if (!['ENOENT', 'ENOTDIR'].includes(error?.code)) throw error
+      if (!unavailablePath(error)) throw error
     }
   }
   return withAttachmentAnchors([

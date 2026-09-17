@@ -2,6 +2,9 @@
 
 本文记录 smart-cockpit 示例中的车控 function call 设计。参考 Tesla Fleet API 的车辆状态与车辆命令划分，但工具粒度保持本项目的车机业务语义，而不是逐个暴露 Tesla endpoint 或参考表中的 atomic function。
 
+以下厂商映射是设计参考，不表示示例已接入真实车辆。当前 schema 以
+[`manifest.json`](manifest.json) 为准，默认前后台分流见[工具目录说明](../README.md)。
+
 ## 设计定位
 
 车控工具保持“状态查询独立、控制按能力域聚合”的粒度。
@@ -18,6 +21,7 @@
 
 | 大类 | 工具 | 目标 |
 | --- | --- | --- |
+| 车辆定位 | `vehicle_location_query` | 查询当前城市、区域、地址与坐标 |
 | 状态查询 | `vehicle_state_query` | 查询车辆当前状态，不改变车辆 |
 | 空调/座舱温控 | `vehicle_climate_control`, `vehicle_temperature_control` | 开关空调预处理、设置座舱温度 |
 | 座椅/方向盘舒适控制 | `vehicle_comfort_control` | 座椅加热/通风/自动座椅温控、方向盘加热 |
@@ -29,6 +33,7 @@
 
 | Function | 什么时候调用 | 关键参数 | 状态影响 | 内部对应能力 |
 | --- | --- | --- | --- | --- |
+| `vehicle_location_query` | 用户问“我在哪”“当前位置” | 无 | 读取定位结果 | `services.vehicleLocation()`；未接定位时为带来源标记的 Demo 回退 |
 | `vehicle_state_query` | 用户问“当前状态”“空调多少度”“车窗开了吗”“还在充电吗”等 | `part?` | 只读 | Tesla `vehicle_data` / 本地车辆状态 |
 | `vehicle_climate_control` | 用户要打开/关闭空调本体（`open`/`close`），或开启/关闭空调预处理（`start`/`stop`） | `action` | `open`/`close` 只改 `ac`；`start`/`stop` 同时改 `ac` 与 `preconditioning` | Tesla `auto_conditioning_start`, `auto_conditioning_stop` |
 | `vehicle_temperature_control` | 用户要把温度调到某值，或调高/调低温度 | `zone?`, `action`, `temperature?`, `delta?` | 更新座舱温度 | Tesla `set_temps` |

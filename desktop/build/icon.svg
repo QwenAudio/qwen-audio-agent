@@ -1,31 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" fill="none">
   <defs>
-    <linearGradient id="background" x1="120" y1="80" x2="880" y2="944" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#151A2D"/>
-      <stop offset="1" stop-color="#080A13"/>
+    <linearGradient id="bg" x1="122" y1="70" x2="910" y2="950" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#4585F8"/>
+      <stop offset="1" stop-color="#174CD0"/>
     </linearGradient>
-    <radialGradient id="orb" cx="0" cy="0" r="1" gradientTransform="translate(373 324) rotate(50) scale(532)" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#D8CBFF"/>
-      <stop offset=".29" stop-color="#9175F7"/>
-      <stop offset=".62" stop-color="#4D8EE8"/>
-      <stop offset="1" stop-color="#31D1D0"/>
+    <radialGradient id="halo" cx="0" cy="0" r="1" gradientTransform="translate(512 505) rotate(90) scale(350)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8EB1FF" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#8EB1FF" stop-opacity="0"/>
     </radialGradient>
-    <radialGradient id="highlight" cx="0" cy="0" r="1" gradientTransform="translate(358 302) rotate(48) scale(377)" gradientUnits="userSpaceOnUse">
-      <stop stop-color="white" stop-opacity=".8"/>
-      <stop offset=".5" stop-color="#D7E8FF" stop-opacity=".16"/>
-      <stop offset="1" stop-color="white" stop-opacity="0"/>
-    </radialGradient>
-    <filter id="shadow" x="130" y="130" width="764" height="764" filterUnits="userSpaceOnUse">
-      <feGaussianBlur stdDeviation="34"/>
-    </filter>
-    <filter id="inner" x="188" y="188" width="648" height="648" filterUnits="userSpaceOnUse">
-      <feGaussianBlur stdDeviation="5"/>
-    </filter>
   </defs>
-  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#background)"/>
-  <circle cx="512" cy="526" r="286" fill="#6678E8" fill-opacity=".38" filter="url(#shadow)"/>
-  <circle cx="512" cy="512" r="272" fill="url(#orb)"/>
-  <circle cx="512" cy="512" r="272" fill="url(#highlight)" filter="url(#inner)"/>
-  <path d="M296 513c65-75 124-94 187-35 68 64 126 59 245-34" fill="none" stroke="white" stroke-opacity=".18" stroke-width="30" stroke-linecap="round"/>
-  <circle cx="512" cy="512" r="271" fill="none" stroke="white" stroke-opacity=".34" stroke-width="5"/>
+  <rect x="32" y="32" width="960" height="960" rx="224" fill="url(#bg)"/>
+  <rect x="33" y="33" width="958" height="958" rx="223" stroke="white" stroke-opacity=".14" stroke-width="2"/>
+  <circle cx="512" cy="512" r="350" fill="url(#halo)"/>
+  <path d="M214 544H330L411 356L516 670L611 442L678 544H810" stroke="white" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="512" cy="512" r="294" stroke="white" stroke-opacity=".18" stroke-width="16"/>
 </svg>

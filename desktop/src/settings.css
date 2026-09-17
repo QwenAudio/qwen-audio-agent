@@ -204,7 +204,7 @@ h2 {
 
 .runtime-status dl {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
   margin: 0;
 }
@@ -318,64 +318,18 @@ h2 {
   background: var(--panel);
 }
 
-.provider-segmented {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  margin: 0;
+.realtime-settings-card {
+  overflow: visible;
 }
 
-.provider-segmented legend {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
+.realtime-settings-card .settings-picker-trigger {
+  height: 40px;
 }
 
-.provider-segment {
-  position: relative;
-  min-width: 0;
-}
-
-.provider-segment input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.provider-segment span {
-  display: flex;
-  min-height: 48px;
-  align-items: center;
-  justify-content: center;
-  padding: 8px 16px;
-  border: 1px solid var(--divider);
-  border-radius: 12px;
-  color: var(--text-secondary);
-  background: var(--panel);
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 20px;
-  text-align: center;
-}
-
-.provider-segment input:checked + span {
-  border-color: var(--theme);
-  color: var(--text-primary);
-}
-
-.provider-segment input:focus-visible + span {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.provider-panel {
-  min-width: 0;
+#realtime-settings-panel input:disabled {
+  color: var(--text-auxiliary);
+  background: var(--page);
+  cursor: not-allowed;
 }
 
 .setting-row {
@@ -420,12 +374,6 @@ select {
 
 input::placeholder {
   color: var(--text-note);
-}
-
-input.fixed-model {
-  color: var(--text-secondary);
-  background: var(--page);
-  cursor: default;
 }
 
 input[type="search"]::-webkit-search-cancel-button {
@@ -632,13 +580,13 @@ select {
   align-items: center;
 }
 
-.backend-picker {
+:is(.backend-picker, .settings-picker) {
   position: relative;
   min-width: 0;
   flex: 1;
 }
 
-.backend-picker-trigger {
+:is(.backend-picker-trigger, .settings-picker-trigger) {
   display: flex;
   width: 100%;
   height: 44px;
@@ -654,16 +602,16 @@ select {
   text-align: left;
 }
 
-.backend-picker-trigger:hover,
-.backend-picker-trigger[aria-expanded="true"] {
+:is(.backend-picker-trigger, .settings-picker-trigger):hover,
+:is(.backend-picker-trigger, .settings-picker-trigger)[aria-expanded="true"] {
   border-color: var(--text-auxiliary);
 }
 
-.backend-picker-trigger[aria-expanded="true"] {
+:is(.backend-picker-trigger, .settings-picker-trigger)[aria-expanded="true"] {
   box-shadow: 0 0 0 3px rgb(68 51 255 / 8%);
 }
 
-.backend-picker-selection {
+:is(.backend-picker-selection, .settings-picker-selection) {
   display: flex;
   min-width: 0;
   flex: 1;
@@ -672,7 +620,7 @@ select {
   gap: 12px;
 }
 
-#backend-picker-name {
+:is(#backend-picker-name, .settings-picker-name) {
   overflow: hidden;
   font-size: 14px;
   font-weight: 500;
@@ -681,7 +629,7 @@ select {
   white-space: nowrap;
 }
 
-#backend-picker-status {
+:is(#backend-picker-status, .settings-picker-status) {
   flex: none;
   color: var(--text-auxiliary);
   font-size: 12px;
@@ -689,15 +637,15 @@ select {
   line-height: 16px;
 }
 
-#backend-picker-status.ready {
+:is(#backend-picker-status, .settings-picker-status).ready {
   color: var(--success);
 }
 
-#backend-picker-status.attention {
+:is(#backend-picker-status, .settings-picker-status).attention {
   color: var(--warning);
 }
 
-.backend-picker-chevron {
+:is(.backend-picker-chevron, .settings-picker-chevron) {
   width: 8px;
   height: 8px;
   flex: none;
@@ -707,11 +655,11 @@ select {
   transition: transform 140ms ease;
 }
 
-.backend-picker-trigger[aria-expanded="true"] .backend-picker-chevron {
+:is(.backend-picker-trigger, .settings-picker-trigger)[aria-expanded="true"] :is(.backend-picker-chevron, .settings-picker-chevron) {
   transform: translateY(2px) rotate(225deg);
 }
 
-.backend-picker-popover {
+:is(.backend-picker-popover, .settings-picker-popover) {
   position: absolute;
   z-index: 20;
   top: calc(100% + 8px);
@@ -725,22 +673,22 @@ select {
   box-shadow: 0 16px 40px rgb(4 6 32 / 14%), 0 2px 8px rgb(4 6 32 / 8%);
 }
 
-.backend-search-wrap {
+:is(.backend-search-wrap, .settings-search-wrap) {
   padding: 10px;
   border-bottom: 1px solid var(--divider);
 }
 
-#backend-search {
+:is(#backend-search, .settings-picker-search) {
   height: 36px;
   border-color: transparent;
   background: var(--page);
 }
 
-#backend-search:focus {
+:is(#backend-search, .settings-picker-search):focus {
   border-color: var(--divider);
 }
 
-#backend-list {
+:is(#backend-list, .settings-picker-list) {
   display: grid;
   max-height: min(322px, calc(100vh - 288px));
   min-width: 0;
@@ -946,4 +894,39 @@ footer {
   .runtime-status dt {
     margin-bottom: 0;
   }
+}
+
+.settings-picker-option {
+  display: flex;
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: var(--panel);
+  text-align: left;
+}
+
+.settings-picker-option:hover,
+.settings-picker-option:focus-visible {
+  background: var(--page);
+}
+
+.settings-picker-option[aria-selected="true"] {
+  background: rgb(68 51 255 / 7%);
+}
+
+.settings-picker-option[aria-selected="true"] .settings-picker-name::after {
+  margin-left: 7px;
+  color: var(--accent);
+  content: "✓";
+}
+
+.settings-picker-empty {
+  padding: 12px 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }

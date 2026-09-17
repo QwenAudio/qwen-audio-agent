@@ -1,0 +1,53 @@
+{
+  "domain": "orders",
+  "functions": [
+    {
+      "name": "list_orders",
+      "label": "订单列表",
+      "enabled": true,
+      "description": "列出已核验客户的订单。默认返回最近的几笔，超过三笔时只给出前三笔和剩余数量，需要更多时用 status 收窄范围。必须先核验身份。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["pending", "shipped", "delivered", "cancelled"],
+            "description": "按状态筛选。pending=未发货，shipped=已发货，delivered=已签收，cancelled=已取消。"
+          }
+        }
+      }
+    },
+    {
+      "name": "get_order",
+      "label": "订单详情",
+      "enabled": true,
+      "description": "查一笔订单的完整信息：状态、商品、金额、关键时间。返回内容里包含商品类别与签收天数，判断能不能退换时需要这两项。必须先核验身份，且只能查已核验客户自己的订单。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "orderId": {
+            "type": "string",
+            "description": "订单号，形如 #W2378156。客户只说后四位时也可以传后四位，会自动匹配。"
+          }
+        },
+        "required": ["orderId"]
+      }
+    },
+    {
+      "name": "check_variant",
+      "label": "款式库存",
+      "enabled": true,
+      "description": "查某个商品有哪些款式、各自库存和价格。换货前必须用它确认目标款式有货，不要凭印象承诺库存。",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "productId": {
+            "type": "string",
+            "description": "商品编号，形如 P_KEYBOARD。可以从 get_order 的返回里拿到。"
+          }
+        },
+        "required": ["productId"]
+      }
+    }
+  ]
+}

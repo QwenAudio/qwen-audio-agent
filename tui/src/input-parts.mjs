@@ -83,28 +83,52 @@ function referencedPaths(text) {
   return values
 }
 
-function pastedFilePath(text) {
+function unescapePastedPath(value) {
+  // UNC separators are literal: collapsing the leading pair would turn a
+  // shared path into a different, root-relative path on Windows.
+  if (/^\\\\[^\\]/.test(value)) return value
+  return value.replace(/\\([\\ '"()&;])/g, '$1')
+}
+
+function pastedFilePaths(text) {
   let value = String(text || '').trim()
   const quoted = value.match(/^(?:"([\s\S]*)"|'([\s\S]*)')$/)
   if (quoted) value = quoted[1] ?? quoted[2]
   if (value.startsWith('file://')) {
     try {
-      return fileURLToPath(value)
+      return [fileURLToPath(value)]
     } catch {
-      return ''
+      return []
     }
   }
+  const literal = value
   // Finder and common terminals paste shell-escaped absolute paths.
-  value = value.replace(/\\([\\ '"()&;])/g, '$1')
-  return isAbsolute(value) || /^\.\.?[\\/]/.test(value) ? value : ''
+  value = unescapePastedPath(value)
+  return isAbsolute(value) || /^\.\.?[\\/]/.test(value) ? [value, literal] : []
+}
+
+// Windows 路径以 \ 分隔，C:\docs\(draft)\a.md 或 \\server\share 中的 \( 与 \\
+// 并不是 shell 转义。UNC 路径保留原样；其他路径优先按转义解析（如 cat\ image.png），
+// 该路径不存在时再尝试原样粘贴的文本。
+async function filePartFromCandidates(paths, index) {
+  let missing
+  for (const path of new Set(paths)) {
+    try {
+      return await filePartFromPath(path, index)
+    } catch (error) {
+      if (!['ENOENT', 'ENOTDIR'].includes(error?.code)) throw error
+      missing ??= error
+    }
+  }
+  throw missing
 }
 
 export function pastedPathReferences(text) {
   const references = []
-  const pattern = /(^|\s)((?:file:\/\/|[A-Za-z]:[\\/]|\/|\.\.?[\\/])(?:\\.|[^\s])+)/g
+  const pattern = /(^|\s)((?:file:\/\/|[A-Za-z]:[\\/]|\\\\|\/|\.\.?[\\/])(?:\\.|[^\s])+)/g
   for (const match of String(text || '').matchAll(pattern)) {
     const value = match[2]
-    let path = value.replace(/\\([\\ '"()&;])/g, '$1')
+    let path = unescapePastedPath(value)
     if (path.startsWith('file://')) {
       try {
         path = fileURLToPath(path)
@@ -130,10 +154,10 @@ export async function inputPartsFromText(
     attachmentOffset + parts.length - initialPartCount
   )
   const paths = referencedPaths(content)
-  const directPath = paths.length ? '' : pastedFilePath(content)
-  if (directPath) {
+  const directPaths = paths.length ? [] : pastedFilePaths(content)
+  if (directPaths.length) {
     try {
-      parts.push(await filePartFromPath(directPath, nextAttachmentIndex()))
+      parts.push(await filePartFromCandidates(directPaths, nextAttachmentIndex()))
       return withAttachmentAnchors(parts)
     } catch (error) {
       // A missing pasted path may still be intentional text. Existing paths
@@ -145,8 +169,8 @@ export async function inputPartsFromText(
     const replacements = []
     for (const reference of pastedPathReferences(content)) {
       try {
-        const part = await filePartFromPath(
-          reference.path,
+        const part = await filePartFromCandidates(
+          [reference.path, content.slice(reference.start, reference.end)],
           nextAttachmentIndex(),
         )
         parts.push(part)

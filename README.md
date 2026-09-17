@@ -1,5 +1,8 @@
 # Qwen Audio Agent
 
+**Talk to your coding Agent, and keep talking while it works.** A full-duplex
+realtime voice runtime for AI Agents.
+
 [中文](README_ZH.md) | [English](README.md) | [User Guide](https://qwenaudio.github.io/qwen-audio-agent/) | [Quickstart](https://qwenaudio.github.io/qwen-audio-agent/getting-started/quickstart)
 
 [![CI](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/ci.yml)
@@ -162,10 +165,8 @@ qwenaudio config
 DASHSCOPE_API_KEY=your-key
 # Voice frontend model: optional, defaults to Qwen Audio 3.0 Realtime Plus
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
-# Backend Agent: optional, leave empty or set to none for frontend-only mode
-AGENT_PROTOCOL=openclaw
-# Backend model: optional; explicit values use standard ACP, empty reuses Agent config
-QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
+# Backend Agent: leave empty to start with frontend-only voice chat
+AGENT_PROTOCOL=
 ```
 
 Before starting, create a key from the [Bailian API Key page](https://bailian.console.aliyun.com/?tab=model#/api-key).
@@ -190,6 +191,19 @@ For full configuration options, local voice frontend setup, and TUI platform
 notes, see [quick start](docs/getting-started/quickstart.md),
 [voice frontends](docs/configuration/frontend.md), and
 [TUI notes](docs/getting-started/tui.md).
+
+3. Once voice chat works, connect your coding Agent by picking one from
+   [Frontend and Backend Support](#frontend-and-backend-support) and restarting
+   the Gateway:
+
+```dotenv
+AGENT_PROTOCOL=openclaw
+# Backend model: optional; explicit values use standard ACP, empty reuses Agent config
+QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
+```
+
+From then on, questions are answered in the conversation while code changes,
+file work, and long-running tasks are delegated to that Agent.
 
 ## Desktop App
 

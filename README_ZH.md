@@ -1,5 +1,8 @@
 # Qwen Audio Agent
 
+**用语音指挥你的编程 Agent，它干活时你还能继续说。** 面向 AI Agent 的全双工
+实时语音运行时。
+
 [中文](README_ZH.md) | [English](README.md) | [用户手册](https://qwenaudio.github.io/qwen-audio-agent/zh/) | [快速开始](https://qwenaudio.github.io/qwen-audio-agent/zh/getting-started/quickstart)
 
 [![CI](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/QwenAudio/qwen-audio-agent/actions/workflows/ci.yml)
@@ -151,10 +154,8 @@ qwenaudio config
 DASHSCOPE_API_KEY=your-key
 # 语音前台模型：可选，默认 Qwen Audio 3.0 Realtime Plus
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
-# 后台Agent：可选，不设置或设置为 none 时，启动仅前台模式
-AGENT_PROTOCOL=openclaw
-# 后台模型：可为空；显式设置通过 ACP 标准覆盖，留空沿用 Agent 配置
-QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
+# 后台 Agent：留空即先启动仅前台的语音对话
+AGENT_PROTOCOL=
 ```
 
 开始前请先在[百炼 API Key 页面](https://bailian.console.aliyun.com/?tab=model#/api-key)
@@ -178,6 +179,17 @@ qwenaudio tui    # 终端 2：TUI
 [快速开始](docs/getting-started/quickstart.zh.md)、
 [语音前台](docs/configuration/frontend.zh.md)与
 [TUI 注意](docs/getting-started/tui.zh.md)。
+
+3. 语音对话跑通后，从[前台与后台支持](#前台与后台支持)中选一个后台 Agent 填入，
+   重启 Gateway 即可接入：
+
+```dotenv
+AGENT_PROTOCOL=openclaw
+# 后台模型：可为空；显式设置通过 ACP 标准覆盖，留空沿用 Agent 配置
+QWEN_AUDIO_AGENT_BACKEND_MODEL=qwen3.7-max
+```
+
+此后能直接回答的问题仍在对话中即时回应，改代码、处理文件和长任务则交给该 Agent 执行。
 
 ## 桌面版
 

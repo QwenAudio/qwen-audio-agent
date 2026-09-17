@@ -10,10 +10,14 @@
 
 ```dotenv
 AGENT_PROTOCOL=acp
-ACP_COMMAND=your-agent --acp
+ACP_COMMAND=your-agent
+ACP_ARGS=["--acp"]
 # 可选：逗号分隔、需要透传给 Agent 进程的环境变量名
 QWEN_AUDIO_AGENT_ACP_FORWARD_ENV=MY_AGENT_API_KEY
 ```
+
+`ACP_COMMAND` 只写可执行文件本身，子命令和参数要放进 `ACP_ARGS`
+（字符串组成的 JSON 数组）。
 
 对很多 Agent 来说这就是全部接入工作。
 

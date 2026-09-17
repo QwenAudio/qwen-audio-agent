@@ -5,6 +5,19 @@
 - 桌面设置保留通过环境配置选择的通用 ACP 后台，并显示实际可用状态；
   应用其他设置不再将 `AGENT_PROTOCOL=acp` 静默覆盖为 `none`。
 
+- 后台任务进展改为仅在状态实际变化时合并推送，不再用每秒完整 Task 快照承担连接
+  保活；WebSocket 沿用 Session 心跳，兼容性的 Task SSE 使用不进入回放与 Session
+  Journal 的轻量注释心跳，避免长任务重复写入旧进度文本。
+
+- 新增实验性 Muse Code MSP 后台适配器，复用统一任务、权限和补充输入接口。
+  Muse SDK 仅在用户安装该后台时单独安装、启用时加载，不加入框架默认依赖。
+
+- 对已确认不兼容的 Qwen3.5 Omni Realtime / Cherry 组合，在连接前提示改用当前模型
+  的默认音色；未知或复刻音色仍交给供应商验证，不自动替换配置。
+
+- WebUI 实时麦克风发送现在遵循 WebSocket 缓冲高水位；网络拥塞时丢弃过期音频块，
+  并在缓冲恢复后继续发送，避免旧音频无限积压。
+
 - 移除 `backend-adapter` 与 `custom-conversation-client` 示例目录及文档入口，保留后台 SDK 与客户端协议能力。
 
 - 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，
@@ -12,6 +25,8 @@
 
 - Gateway 接入统一为本机、`--lan` 和 `--tailnet` 三种启动模式；对外连接地址
   独立由 `gateway pair --endpoint` 指定，不再使用启动参数 `--public-url`。
+- 修复 `qwenaudio install --help`、`skill --help`、`config set --help` 与
+  `gateway revoke --help` 等子命令在缺少必需参数时报错、不显示帮助的问题。
 - `gateway pair` 默认只生成一个短连接码和二维码，浏览器、桌面端和移动端
   共享 `http(s)://Gateway/c#d.TOKEN`；原生客户端直接通过单条 WebSocket 认证
   并执行 GCP，浏览器将设备 Token 换为 HttpOnly 会话 Cookie。设备凭证可单独吊销，
@@ -22,10 +37,16 @@
   现在与写入共用跨进程锁，避免读取撞上 Windows 文件替换过程。
 - WebUI 麦克风重采样现在会跨 PCM 分块保留插值相位，并对空输入安全返回空数据，
   减少非整数采样率转换时的累计偏差。
+- WebUI 麦克风采集改用 AudioWorklet 在音频线程处理采样块，主线程继续负责流式重采样
+  和发送；不支持 AudioWorklet 的浏览器会明确报告不支持，而不是静默退回旧处理器。
 - Gateway Client 为 Socket 连接和 Session 握手增加超时与恢复；连接只有在收到
   `session.ready` 后才会重置重连退避。
 - Gateway Client 不再把旧连接中尚未完成的桌面 Action 结果发送到重连后的新连接。
 - 修复回答后台 Agent 任务追问后，Gateway Client 仍等待并显示请求超时的问题。
+- 修复 TUI 中粘贴 Windows 路径时，目录名以 `(`、`'`、`&` 等字符开头
+  （如 `C:\docs\(draft)\a.md`）或 `\\server\share` 共享路径被误当作 shell 转义、
+  文件没有作为附件发送的问题；转义解析找不到文件时会改用原样粘贴的路径，
+  并支持在文字中识别共享路径、保留其原始分隔符。
 - WebUI 与共享移动端现在会在后台任务卡片中展示类型化 Artifact；支持远程媒体
   的显式加载、内联图片预览、结构化数据和可打开或下载的文件产物，并在语音播报
   完成或 Gateway 重连后继续保留产物入口。
@@ -37,13 +58,21 @@
   会生成下一周期的独立任务，并按客户端时区保留本地时间。
 - 新增 MiniMax Code 后台支持：通过官方 `mcode acp` 原生 ACP 接入并支持一键安装；
   登录、模型与 Provider 配置仍由 MiniMax Code 自己管理。
+- 修复 Windows 上 Node.js 位于含空格目录（如默认的 `C:\Program Files\nodejs`）时，
+  一键安装后台的 npm 步骤被 cmd.exe 截断命令路径而失败的问题；安装后也会正确读取
+  npm 全局前缀。
 - 后台 Session 模型覆盖统一使用 ACP `configOptions` 与
   `session/set_config_option`，不再调用私有模型接口或生成后台配置文件；未声明标准
   模型选项的 Agent 将沿用自身配置。OpenCode/OpenClaw 一键托管初始化保持不变。
 - 修复内置 `open-computer-use` MCP 缺少 `stdio` 传输类型，导致 Kimi Code 等严格
   校验 ACP MCP 描述的后台无法创建 Session 的问题。
+- 修复 Windows 上位于含空格目录的 `.cmd` / `.bat` ACP 后台命令被 cmd.exe 截断而
+  无法启动，以及含空格的 ACP 参数被拆开的问题。
 - 新增 Pi 后台支持：通过社区 `pi-acp` 适配器接入，并支持一键安装。Pi 没有
   内置沙箱与权限审批机制，始终等效于 `full` 权限，请仅在可信环境中使用。
+- 修复 Windows 上 `qwenaudio skill` 各子命令与 Gateway 启动时的技能补装因直接启动
+  `npx` 报 `spawnSync npx ENOENT` 而失败的问题；现在与 `npx.cmd` 一致，用 node 运行
+  npm 自带的 `npx-cli.js`，来源参数不经 cmd.exe 解释。
 
 ## 1.11.0
 

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { backendNames } from '../../shared/backend/catalog.mjs'
 import {
@@ -483,6 +486,50 @@ test('resolves npm.cmd on Windows', async () => {
   })
   assert.equal(result.ok, true)
   assert.equal(found[0], 'npm.cmd')
+})
+
+test('runs npm.cmd from a Windows directory containing spaces', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'qwen-audio-install-'))
+  try {
+    const directory = join(root, 'Program Files', 'nodejs')
+    mkdirSync(directory, { recursive: true })
+    const npm = join(directory, 'npm.cmd')
+    writeFileSync(npm, [
+      '@echo off',
+      'if "%1"=="config" (',
+      '  echo %~dp0prefix',
+      '  exit /b 0',
+      ')',
+      'echo %*> "%~dp0install-args.txt"',
+      'exit /b 0',
+      '',
+    ].join('\r\n'))
+    const inspectedPaths = []
+    const result = await installBackend('opencode', {
+      env: { ...process.env },
+      platform: 'win32',
+      find: () => npm,
+      inspect: async options => {
+        inspectedPaths.push(options.env.PATH)
+        return inspectedPaths.length > 1
+          ? readyReport('opencode')
+          : { backends: [{ id: 'opencode', ready: false }] }
+      },
+    })
+    assert.equal(result.ok, true, JSON.stringify(result.error))
+    assert.match(
+      readFileSync(join(directory, 'install-args.txt'), 'utf8'),
+      /^install -g opencode-ai@/,
+    )
+    assert.ok(
+      inspectedPaths[1].toLowerCase().includes(`${directory}\\prefix`.toLowerCase()),
+      '安装后应使用 npm 报告的全局前缀更新 PATH',
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('normalizes a Windows Path key without borrowing the host PATH', async () => {

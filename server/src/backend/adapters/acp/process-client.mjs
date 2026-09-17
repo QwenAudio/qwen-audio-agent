@@ -186,7 +186,13 @@ export class AcpProcessClient {
     // cmd.exe 将第一个空格前的内容误解析为命令名。
     const commandExt = isWindows ? extname(String(this.command)).toLowerCase() : ''
     const useShell = isWindows && commandExt !== '.exe'
-    const child = this.spawn(this.command, this.args, {
+    // cmd.exe 只把命令与参数按空格拼接：含空格的 .cmd/.bat 路径或参数需要加引号，
+    // 否则命令会在第一个空格处被截断，参数也会被拆开。
+    const shellArgument = value => {
+      const text = String(value)
+      return useShell && /\s/.test(text) && !/^".*"$/.test(text) ? `"${text}"` : text
+    }
+    const child = this.spawn(shellArgument(this.command), this.args.map(shellArgument), {
         cwd: this.cwd,
         env: this.env,
         stdio: ['pipe', 'pipe', 'pipe'],

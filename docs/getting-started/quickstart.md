@@ -43,7 +43,7 @@ QWEN_AUDIO_AGENT_BACKEND_MODEL=
 
 Without an existing backend, see [OpenCode / OpenClaw managed setup](../configuration/backend.md#model-selection).
 
-> The default uses the DashScope real-time voice frontend; you can also switch to [speech-to-speech](../voice-frontends/speech-to-speech.md). An all-local model pipeline does not require a cloud API Key.
+> The default uses the DashScope real-time voice frontend. Other choices include [GPT-Live](../voice-frontends/gpt-live.md), [Google Gemini Live](../voice-frontends/google-live.md), and [speech-to-speech](../voice-frontends/speech-to-speech.md); see [Frontend Configuration](../configuration/frontend.md).
 
 ### 3. Start
 

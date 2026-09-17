@@ -67,6 +67,7 @@ import {
 import {
   projectGatewayTaskEventForFormat,
 } from '../transport/agui-event-projector.mjs'
+import { startSseKeepAlive } from '../transport/sse-keepalive.mjs'
 import {
   gatewayDeviceConnectionResponse,
   parseGatewayConnectionEndpoint,
@@ -843,6 +844,7 @@ app.get('/api/tasks/:id/events', (req, res) => {
   res.flushHeaders()
   const write = event => res.write(`data: ${JSON.stringify(event)}\n\n`)
   write(projectEvent(projectGatewayTaskSnapshot(task)))
+  startSseKeepAlive(res)
   const unsubscribe = taskManager.subscribe(event => {
     if (event.ownerId === req.identity.ownerId && event.task.id === req.params.id) {
       const publicEvent = projectGatewayTaskEvent(event)

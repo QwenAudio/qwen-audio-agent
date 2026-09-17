@@ -86,6 +86,47 @@ test('recognizes an escaped Windows path inside a prompt', () => {
   }])
 })
 
+test('attaches an existing path whose separator precedes an escapable character', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'qaa-tui-input-'))
+  // Windows 路径分隔符后紧跟 ( 时，形如 shell 转义的 \( 实际是目录分隔。
+  const folder = await mkdtemp(join(directory, '(draft)'))
+  const path = join(folder, 'notes.md')
+  await writeFile(path, '# notes')
+
+  const pasted = await inputPartsFromText(path)
+  assert.equal(pasted[1]?.source.path, path)
+
+  const inline = await inputPartsFromText(`总结 ${path}`)
+  assert.equal(inline[0].text, `总结 @${path}`)
+  assert.equal(inline[1]?.source.path, path)
+})
+
+test('recognizes inline UNC paths without changing literal separators', () => {
+  for (const path of [
+    String.raw`\\server\share\report.pdf`,
+    String.raw`\\server\share\(draft)\notes.md`,
+    String.raw`\\server\share\&notes.md`,
+  ]) {
+    const prefix = '总结 '
+    assert.deepEqual(pastedPathReferences(`${prefix}${path} 谢谢`), [{
+      path,
+      start: prefix.length,
+      end: prefix.length + path.length,
+    }])
+  }
+})
+
+test('keeps offsets for multiple drive and UNC paths in one prompt', () => {
+  const drive = String.raw`C:\docs\notes.md`
+  const shared = String.raw`\\server\share\report.pdf`
+  const text = `比较 ${drive} 和 ${shared}`
+  const references = pastedPathReferences(text)
+  assert.deepEqual(references.map(reference => reference.path), [drive, shared])
+  for (const reference of references) {
+    assert.equal(text.slice(reference.start, reference.end), reference.path)
+  }
+})
+
 test('adds a staged attachment reference to the submitted text', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'qaa-tui-input-'))
   const path = join(directory, 'screen.png')

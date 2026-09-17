@@ -22,6 +22,8 @@ test('uses compact realtime provider labels in the desktop status card', () => {
     'Speech-to-Speech',
   )
   assert.equal(realtimeStatusLabel('minicpm-o'), '面壁智能')
+  assert.equal(realtimeStatusLabel('stepfun'), 'StepFun')
+  assert.equal(realtimeRuntimeLabel('stepfun', 'stepaudio-3-realtime-preview'), 'StepAudio 3 Preview')
 })
 
 test('uses compact gateway and realtime runtime identities', () => {

@@ -137,6 +137,48 @@ test('coalesces streaming backend activity and messages into bounded progress ev
   assert.equal(manager.get(task.id).message, '正在处理 100')
 })
 
+test('publishes progress only after backend state changes, not as a liveness heartbeat', async () => {
+  const manager = new TaskManager({ progressEventIntervalMs: 50 })
+  const events = []
+  const started = Promise.withResolvers()
+  const release = Promise.withResolvers()
+  manager.subscribe(event => events.push(event))
+  const task = manager.create({
+    objective: 'A',
+    ownerId: 'owner',
+    runner: async (_objective, { onEvent }) => {
+      started.resolve(onEvent)
+      await release.promise
+      return { content: 'done' }
+    },
+  })
+
+  const onEvent = await started.promise
+  await new Promise(resolve => setTimeout(resolve, 120))
+  assert.equal(
+    events.filter(event => event.type === 'task.progress').length,
+    0,
+  )
+
+  onEvent({
+    type: 'backend.activity',
+    activity: { id: 'thinking', kind: 'thinking', status: 'running' },
+  })
+  await new Promise(resolve => setTimeout(resolve, 120))
+  assert.equal(
+    events.filter(event => event.type === 'task.progress').length,
+    1,
+  )
+
+  await new Promise(resolve => setTimeout(resolve, 120))
+  assert.equal(
+    events.filter(event => event.type === 'task.progress').length,
+    1,
+  )
+  release.resolve()
+  await manager.wait(task.id)
+})
+
 test('persists normalized backend messages and artifacts as Task updates', async () => {
   const manager = new TaskManager()
   const events = []

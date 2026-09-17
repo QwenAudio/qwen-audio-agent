@@ -450,6 +450,10 @@ Task 快照和更新使用 Gateway 自己的包装，但嵌套形状刻意与 A2
 
 Task 进展可以推送给 Client，但不一定进入 Realtime 模型。Gateway Event Policy 只选择有意义的进展、权限、补充输入、完成和失败事件进行模型投递。`input_required` 仍是活动 Task 状态；回答会恢复同一 Task，而不是新建一项工作。
 
+`task.progress` 只在后台活动实际变化时合并发送，不承担连接保活。WebSocket Client
+使用 `session.ping` / `session.pong`（旧客户端使用 WebSocket 控制帧）；兼容性的
+Task SSE 路由只写传输层注释心跳。这些注释不会进入 Task 回放或 Session Journal。
+
 ### 5.6 回执与决策
 
 | 事件 | 方向 | 语义 |

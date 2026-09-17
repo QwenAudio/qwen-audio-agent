@@ -34,6 +34,15 @@ Markdown text.
 
 ## View, Edit, and Remove
 
+Automatic reconciliation learns only from newly recorded conversation, not history restored
+after a restart. Repeated disconnects do not reuse the same batch. Successful client/API or
+memory-tool edits discard pending pre-edit evidence and invalidate stale learning results.
+Built-in learning commits and explicit edits are serialized per user: an already-issued write
+finishes first, while superseded queued evidence cannot commit after the edit succeeds.
+The visible chat history stays intact, and later new conversation can still be learned.
+Exact Markdown edits preserve unrelated entries, including identical text in other sections;
+only append-only requests retain the existing whole-document cleanup behavior.
+
 Ask “What do you remember about me?” to inspect stored information, or “Change my address to…”
 and “Forget that entry” to update it. With the default implementation, you can also edit
 `USER.md` and `MEMORY.md` in the shared data directory. Direct file edits apply to the next

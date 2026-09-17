@@ -6,7 +6,6 @@ export default function MemoryTab({ items, loading, error, onDelete, onRefresh }
   return (
     <div className="memory-scroll">
       <div className="memory-toolbar">
-        <span>与前台对话共用的长期记忆</span>
         <button className="collapse-link" onClick={onRefresh} disabled={loading}>
           {loading ? '同步中' : '刷新'}
         </button>

@@ -6,7 +6,7 @@ import test from 'node:test'
 import {
   loadFrontendMcpConfiguration,
   normalizeFrontendMcpConfiguration,
-} from '../src/providers/mcp/frontend-mcp-config.mjs'
+} from '../src/frontend/tools/mcp/frontend-mcp-config.mjs'
 
 function configuration(overrides = {}) {
   return {
@@ -52,7 +52,7 @@ test('normalizes explicit server and tool policies', () => {
       tools: {
         search: {
           enabled: true,
-          timeoutMs: 8_000,
+          timeoutMs: 10_000,
           maxResultBytes: 32 * 1024,
           maxCallsPerTurn: 2,
         },
@@ -258,7 +258,7 @@ test('enables selected tools without classifying reads and writes', () => {
   }))
   assert.deepEqual(normalized.servers[0].tools.create_issue, {
     enabled: true,
-    timeoutMs: 8_000,
+    timeoutMs: 10_000,
     maxResultBytes: 32 * 1024,
     maxCallsPerTurn: 2,
   })

@@ -2,7 +2,7 @@ import qqMusicIcon from '../assets/qq_music.png'
 import flashBuyIcon from '../assets/taobao_flashbuy.png'
 import { PLAYLIST } from './MusicPanel'
 
-export default function Dock({ screen, onNavigateHome, onOpenSettings, onToggleChat, carState, musicState, onTogglePlay, onOpenMusic, onOpenFlashBuy }) {
+export default function Dock({ screen, onNavigateHome, onOpenSettings, onToggleChat, carState, musicState, onTogglePlay, onOpenMusic, onOpenFlashBuy, onChangeTemperature, temperaturePending }) {
   const currentTrack = PLAYLIST[musicState?.currentIndex || 0] || PLAYLIST[0]
   return (
     <footer className="dock" aria-label="底部车机控制栏">
@@ -10,7 +10,11 @@ export default function Dock({ screen, onNavigateHome, onOpenSettings, onToggleC
         <button className="dock-btn" aria-label="车辆" onClick={onNavigateHome}>
           <svg className="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17h16v3h-2a2 2 0 0 1-4 0h-4a2 2 0 0 1-4 0H4v-3Zm2-6 2-5h8l2 5 2 2v2H4v-2l2-2Zm2.4-3-1.2 3h9.6l-1.2-3H8.4Z" fill="currentColor" /></svg>
         </button>
-        <span className="temp">{(carState?.acTemp ?? 25).toFixed(1)}°</span>
+        <div className="temperature-control" role="group" aria-label="主驾空调温度">
+          <button aria-label="降低主驾温度" disabled={temperaturePending || carState?.acTemp <= 16} onClick={() => onChangeTemperature?.(-1)}>−</button>
+          <output className="temp" aria-live="polite">{(carState?.acTemp ?? 25).toFixed(1)}°</output>
+          <button aria-label="提高主驾温度" disabled={temperaturePending || carState?.acTemp >= 32} onClick={() => onChangeTemperature?.(1)}>+</button>
+        </div>
         <button className="dock-btn settings" aria-label="设置" onClick={onOpenSettings}>
           <svg className="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13.5c.1-.5.1-1 .1-1.5s0-1-.1-1.5l2-1.5-2-3.4-2.4 1a7 7 0 0 0-2.6-1.5L14 2.5h-4l-.4 2.6A7 7 0 0 0 7 6.6l-2.4-1-2 3.4 2 1.5a7.7 7.7 0 0 0 0 3l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 2.6 1.5l.4 2.6h4l.4-2.6a7 7 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.5ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" fill="currentColor" /></svg>
         </button>

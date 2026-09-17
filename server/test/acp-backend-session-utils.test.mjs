@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   activityFromUpdate,
   applySessionMetadataUpdate,
-} from '../src/agent/acp/backend-session-utils.mjs'
+} from '../src/backend/adapters/acp/backend-session-utils.mjs'
 
 test('projects an ACP plan into stable task progress', () => {
   assert.deepEqual(activityFromUpdate({

@@ -65,14 +65,17 @@ tool calls alone do not require backend execution. Tools have two prompt-ownersh
 
 | Contract | Tools |
 | --- | --- |
-| Core contract | `spawn_thinking`, `get_agent_task_status`, `cancel_agent_task`, `respond_permission`, `respond_agent_input`, `get_current_time`, `memory` |
-| Optional capabilities | `web_search`, `fetch_url`, `knowledge`, `recall`, `notes`, `schedule_reminder`, `enter_sleep`; dynamic MCP tools are also configuration-dependent |
+| Core contract | `spawn_thinking`, `get_agent_task_status`, `cancel_agent_task`, `respond_permission`, `respond_agent_input`, `get_current_time` |
+| Optional capabilities | `memory`, `web_search`, `fetch_url`, `knowledge`, `recall`, `notes`, `schedule_reminder`, `enter_sleep`; dynamic MCP tools are also configuration-dependent |
 
 The fixed `config/frontend-agent/PROMPT.md` may name only core-contract tools.
 It owns stable dialogue, work acknowledgement and results, cancellation,
-confirmation, and memory-persistence workflows. Optional tools carry their own
+and confirmation workflows. Optional tools carry their own
 purposes and invocation conditions; neither the fixed prompt nor core tools
 may refer back to them. Optional tools must not hard-code each other's names either.
+Memory-persistence instructions live in `server/src/memory/PROMPT.md` and are
+included only when its tool is available; the base prompt retains the general
+trust boundary between user preferences and factual context.
 Field meanings and input rules belong in tool schemas; receipt- or delivery-specific
 instructions belong to the corresponding event. The Gateway enforces availability,
 permissions, and execution validation independently of model compliance.
@@ -376,11 +379,41 @@ OpenCode ACP, OpenClaw ACP bridge, Qoder ACP,
 Qwen Code ACP, Kimi Code ACP, or another ACP Agent
 ```
 
-Backend-specific API details belong only in `server/src/agent`. Realtime tools
+Backend-specific API details belong only in `server/src/backend/adapters`. Frontend tools
 must not import backend adapters. The UI consumes only public Task and
 conversation events. Package-level `shared` modules are foundational runtime
 utilities; server `core` and `process` may depend on them, but they must not
 depend on server layers.
+
+### Source layout
+
+Server directories follow feature ownership rather than scattering one feature
+across technical layers:
+
+- `memory/`: the memory contract, runtime, tools, instructions/context, learning pipeline, and Markdown/VoiceMem providers.
+- `knowledge/`: the knowledge contract, tools, retrieval runtime, ingestion service, and built-in local provider.
+- `frontend/`: core chatbot instructions, tool composition/execution, MCP/OpenAPI tools, and web retrieval with its search providers.
+- `voice/`: Realtime provider protocols, connections, audio turns, interruption, and playback delivery.
+- `backend/`: protocol-neutral BackendPort and execution; `backend/adapters/` owns ACP/A2A implementations and adapter selection.
+- `conversation/` and `session/`: conversation context/projections and durable event replay, respectively; neither is a container for all memory features.
+
+`app/` remains the composition root for cross-domain wiring; optional domains
+assemble their own providers and routes. Shared utilities such as operation audit,
+citation normalization and stateless text-model calls live in `core/`.
+Provider implementations stay with their domain.
+Dependency tests distinguish domain cores from concrete adapters: colocating files
+does not allow a runtime to import its provider implementation, or frontend tools
+to import Realtime/backend adapters. Public package export names remain stable
+when internal files move. See [the source map](https://github.com/QwenAudio/qwen-audio-agent/blob/main/server/src/README.md).
+
+Memory and knowledge can be removed by deleting their directory and cancelling
+their import/entry in `app/optional-modules.mjs` and `frontend/optional-features.mjs`.
+Runtime services, tools, routes and feature prompts disappear together. These are
+two explicit composition points, not a new plugin framework. Custom distributions
+also clean up the corresponding package exports, dedicated tests/docs and dependencies.
+Voice transport emits generic session lifecycle facts; memory owns its learning
+observers, and shutdown waits for them before closing providers. Tests physically
+remove either or both domains and verify a Gateway conversation still works.
 
 `server/src/client` owns the northbound Client Event registry, runtime-command
 application service, `ClientActionPort`, and idempotent presence state machine.

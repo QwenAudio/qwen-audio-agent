@@ -1,6 +1,7 @@
 import { createServer } from 'node:net'
 import { pathToFileURL } from 'node:url'
 import { loadCockpitEnvironment } from './environment.mjs'
+import { gatewaySetupStatus } from '../../../shared/gateway/setup.mjs'
 
 function port(env, name, fallback) {
   const source = String(env[name] || '').trim()
@@ -38,19 +39,11 @@ export function cockpitEndpoints(env = process.env) {
 }
 
 export function assertRealtimeConfigured(env = process.env) {
-  const provider = String(
-    env.QWEN_AUDIO_REALTIME_PROVIDER || 'dashscope',
-  ).trim().toLowerCase()
-  if (provider === 'speech-to-speech') {
-    if (env.SPEECH_TO_SPEECH_REALTIME_URL || env.S2S_REALTIME_URL) return
-    throw new Error(
-      '缺少 SPEECH_TO_SPEECH_REALTIME_URL。请配置 examples/smart-cockpit/.env.local。',
-    )
-  }
-  if (env.QWEN_AUDIO_REALTIME_API_KEY || env.DASHSCOPE_API_KEY) return
+  const status = gatewaySetupStatus(env)
+  if (status.ready) return
   throw new Error(
-    '缺少 DASHSCOPE_API_KEY。请复制 examples/smart-cockpit/.env.example 为 '
-    + 'examples/smart-cockpit/.env.local，并填写 Key。',
+    status.missing.map(item => `${item.key}: ${item.message}`).join('；')
+    + ' 请配置 examples/smart-cockpit/.env.local。',
   )
 }
 

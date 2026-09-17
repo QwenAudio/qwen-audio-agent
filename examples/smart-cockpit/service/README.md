@@ -14,10 +14,10 @@ npm run example:smart-cockpit:service
 
 Endpoints:
 
-- `POST /mcp/frontend` — foreground MCP surface; weather, vehicle-state queries,
-  and window, sunroof, headlight, and climate control.
-- `POST /mcp/backend` — complete backend Agent MCP surface for composed work,
-  including custom skill discovery, creation, and loading.
+- `POST /mcp/frontend` — by default, 37 tools for vehicle, navigation, music,
+  weather and custom skills, including route planning and skill creation/loading.
+- `POST /mcp/backend` — by default, the `flashbuy` tool. The Agent's web search
+  and page retrieval are composed separately, not supplied by this endpoint.
 - `GET /api/cockpit/state?cockpitId=default` — current snapshot.
 - `GET /api/cockpit/events?cockpitId=default` — snapshot plus state updates via SSE.
 - `POST /api/cockpit/commands` — direct scenario UI operations using the same tool names.
@@ -26,8 +26,10 @@ Endpoints:
 
 Tool manifests and executors live under [`tools/`](tools/); this service owns
 their shared state, business rules, external integrations, and protocol transports.
-External AMap access is isolated under `integrations/amap/`. The foreground
-consumer allowlist lives with the Gateway in `../gateway/frontend-mcp.json`;
-it does not duplicate the Service executors.
+External AMap access is isolated under `integrations/amap/`. Domain ownership
+comes from `tools/surface-routing.json` and its environment overrides; a domain
+is exposed on one MCP surface at a time. The Gateway generates its runtime
+consumer configuration from the same routing. `../gateway/frontend-mcp.json`
+is the checked-in default, not a second routing source or a second executor.
 Custom skill records live under `../.runtime/custom-skills/`; they are user data
 and remain separate from the transient cockpit state snapshot.

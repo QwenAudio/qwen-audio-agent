@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
+import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
 
 test('correlates a late final transcript with the originating tool turn', async () => {
   const transcripts = new TurnTranscripts({ waitMs: 50 })

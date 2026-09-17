@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   BingWebSearchProvider,
   parseBingHtmlResults,
-} from '../src/providers/search/bing.mjs'
+} from '../src/frontend/retrieval/providers/bing.mjs'
 
 const SEARCH_HTML = `<html><ol id="b_results">
 <li class="b_algo" data-id iid=SERP.5329><div class="b_tpcn">chrome</div>

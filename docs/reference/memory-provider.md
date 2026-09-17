@@ -45,6 +45,28 @@ This is a document control plane, not a second memory store. It is owner-scoped 
 passes writes through `FrontendMemoryRuntime`, and therefore works unchanged with the default
 Markdown provider or an injected provider. Clients should render only the formats they
 understand and preserve exact source text when issuing a delete or replacement.
+The model-context projection omits Markdown template/editing comments so examples are
+not treated as saved facts. Existing observed-preference priority and truncation notices
+retain their original wording. API/tool reads and revisions retain the original document
+for exact edits. Plain-text provider documents are not interpreted as Markdown.
+
+After a successful edit, the runtime notifies active conversations for the same owner.
+For Realtime providers supporting mutable sessions, client/API edits refresh the memory
+instructions at the next idle point without reconnecting; deleted facts must not remain
+in the model's saved-memory snapshot. Same-session tool writes already return the updated
+documents and retain their cache-only refresh. Notifications belong to the runtime wrapper;
+custom providers do not need a new protocol method.
+
+Connected clients also receive `memory.changed` after a runtime write persists an actual
+change, whether it came from the memory tool, the API, or automatic extraction. The event
+is sent only to clients for the same owner. It contains only `type: "memory.changed"`
+plus the normal protocol envelope, never memory content or an owner identifier. Clients
+should reload `GET /api/memory` on this invalidation and whenever the Gateway session
+becomes ready, including after reconnecting. This is independent of model prompt refresh:
+same-session tool writes still notify the UI. No-op and failed writes do not notify it.
+The existing Gateway Client SDK forwards this event through `onEvent`; no new capability
+or provider method is required. Do not infer persistence from assistant text or depend
+only on `memory` tool completion, which misses automatic and API writes.
 
 ## Replacing the Memory Provider
 
@@ -96,7 +118,9 @@ replaceable:
   source, Session, Turn, and Trace separately from model-controlled changes.
 - A provider advertising `semanticQuery` implements `query()` for natural-language recall.
 - A provider advertising `sessionObservation` implements `observe()` to receive completed
-  conversation exchanges. Optional `flush()` completes provider-owned session-boundary work.
+  conversation exchanges recorded since its previous observation, excluding restored history.
+  No new user messages means no observation; optional `flush()` still completes provider-owned
+  session-boundary work. Providers own concurrency between their asynchronous learning and edits.
 - A provider advertising `audioStreamObservation` implements synchronous `observeAudio()`.
   It receives accepted PCM16 chunks plus speech/session boundary events. Because this hook is on
   the input hot path, it must only perform bounded in-memory work; file, network, model, and

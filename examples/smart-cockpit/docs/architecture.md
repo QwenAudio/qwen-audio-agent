@@ -2,11 +2,11 @@
 
 本示例是 qwen-audio-agent 前后台基础架构在智能座舱领域的完整实现：
 
-- **前台对话层**由 `cockpit-client` 与 `cockpit-gateway` 组成。客户端是可替换
-  I/O 组件，Gateway/Realtime 是复用的框架核心。
-- **后台执行层**由 `cockpit-agent` 示范。Qwen3.8-Flash 负责理解任务、选择工具和
-  多轮执行，工具通过后台 MCP 面发现和调用。后台 Agent 也可按需派生独立 Session，
-  形成由第二层扩展出的第三层执行空间；当前示例未采用派生 Session。
+- **前台对话层**由 `cockpit-client` 与 `cockpit-gateway` 组成，既负责实时对话，
+  也直接调用前台工具。客户端是可替换 I/O 组件，Gateway/Realtime 复用框架核心。
+- **后台执行层**由 `cockpit-agent` 示范。默认模型为 `qwen3.8-flash`，处理后台
+  领域工具与新闻检索等异步任务；任务运行期间，前台仍可聊天和使用前台工具。
+  多意图或多途经点本身不意味着必须委托后台。当前示例不派生独立 Agent Session。
 - `cockpit-service` 是 Demo 为同时驱动 UI 和工具而提供的场景基础设施，不属于
   qwen-audio-agent 的层级模型。
 
@@ -33,7 +33,7 @@
 cockpit-client ── GCP 7.0 ──► cockpit-gateway ── A2A ──► cockpit-agent
       │                          │                         │
       │ HTTP/SSE                │ frontend MCP            │ backend MCP
-      │ 业务状态                 │ 天气/车况/车窗/大灯       │ 完整工具面/自定义技能
+      │ 业务状态                 │ 车控/导航/音乐/天气/技能 │ 闪购
       ▼                          ▼                         ▼
                          cockpit-service
                          单一场景状态与工具执行
@@ -51,14 +51,15 @@ cockpit-client ── GCP 7.0 ──► cockpit-gateway ── A2A ──► coc
 
 - `cockpit-service` 是车辆、导航、音乐、天气和闪购状态的唯一来源。
 - UI 通过 HTTP 获取快照、执行面板操作，通过 SSE 接收状态变化。
-- Gateway 的前台 Agent 通过 `/mcp/frontend` 直接使用天气、车辆位置、车况、单次车辆控制、
-  停止导航、导航视图/播报/偏好和音乐播放控制工具；明确的低延迟指令直接执行。
+- Gateway 的前台 Agent 通过 `/mcp/frontend` 直接使用车控、导航、音乐、天气和
+  自定义技能工具，默认共 37 个；路线规划与多途经点导航也在这条路径上。
 - `service/vehicle-location.mjs` 将车机定位收敛为单一适配边界：位置查询、导航起点和
   “当前位置”收藏都使用同一状态，未接真实定位时才使用带来源标记的 Demo 回退。
-- 后台 Agent 通过 `/mcp/backend` 使用完整工具面，支持组合任务以及自定义技能的
-  发现、创建、加载和执行。
-- 两个工具面由 `service/tools/registry.mjs` 显式组合，但共用同一份执行器和座舱状态；
-  前台工具是完整后台能力上的低延迟快路径，不是另一份业务实现。
+- 后台 MCP 面默认只暴露 `flashbuy`。后台 Agent 另行组合框架的 `web_search`
+  与 `fetch_url`，用于新闻简报或资料研究，不计入 Service 的 38 个场景工具。
+- 两个 MCP 工具面按 `service/tools/surface-routing.json` 分领域配置，同一领域
+  一次只暴露在一侧；并非“前台子集 + 后台全集”。它们共用执行器和座舱状态，
+  调整执行位置不需要复制业务实现。详见[工具接入说明](../service/tools/README.md)。
 - Gateway 不接收 `actions[]`，也不理解车辆、路线、媒体或订单结构。
 
 因此后台任务还可以把详细状态发送给客户自己的座舱系统；Gateway 只接收适合继续对话和播报的 Task 进展与结果。
@@ -69,10 +70,13 @@ Gateway `GET/PATCH /api/memory` 控制面，与 Realtime 记忆工具共用同�
 
 ## 自定义技能
 
-座舱自定义技能是用户通过语音保存的场景工作流。记录由 `cockpit-service` 按
-`cockpitId` 持久化，UI 通过场景 HTTP/SSE 展示；前台只负责把创建或运行意图经
-`spawn_thinking` 交给后台。后台 Agent 每次任务读取精简目录，命中后调用
-`custom_skill_load`，再用已有 MCP 工具逐步执行。
+座舱自定义技能由 `cockpit-service` 按 `cockpitId` 持久化，UI 通过场景 HTTP/SSE
+展示。固定的列出、创建和加载工具默认由前台调用；加载工作流后，按步骤的实际工具
+归属执行，仅将需要后台能力的部分委托后台。若显式把技能领域路由到后台，后台 Agent
+才承担目录发现和加载。创建技能只保存定义，不等于立即执行。
+
+温度提醒保存的是结构化条件与提醒内容：Service 检测温度从条件外进入条件内后发出
+事件，由客户端转交前台自然播报，不需要让后台模型持续轮询。
 
 这里不会为每个技能动态注册 MCP Tool，也不会修改 A2A Agent Card。它与通过
 `qwenaudio skill install` 安装给开发者后台的 Agent Skills 是不同概念。

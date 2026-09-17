@@ -6,7 +6,7 @@ import {
   A2ARole,
   A2ATaskState,
   createA2ABackendAdapter,
-} from '../src/agent/a2a/backend-adapter.mjs'
+} from '../src/backend/adapters/a2a/backend-adapter.mjs'
 import {
   verifyBackendAdapterConformance,
 } from '../src/backend/backend-adapter-conformance.mjs'

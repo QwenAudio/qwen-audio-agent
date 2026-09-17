@@ -4,7 +4,7 @@ import {
   builtinMcpServers,
   computerUseMcpServer,
   createBuiltinMcpLifecycle,
-} from '../src/agent/acp/builtin-mcp.mjs'
+} from '../src/backend/adapters/acp/builtin-mcp.mjs'
 
 test('computer-use MCP server resolves as stdio descriptor by default', () => {
   const descriptor = computerUseMcpServer({})

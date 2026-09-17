@@ -3,13 +3,13 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { MemoryAudit } from '../src/conversation/memory-audit.mjs'
+import { OperationAudit } from '../src/core/operation-audit.mjs'
 
 test('appends one JSON line per event with private permissions', t => {
   const directory = mkdtempSync(join(tmpdir(), 'qwen-audio-agent-audit-'))
   t.after(() => rmSync(directory, { recursive: true }))
   const filePath = join(directory, 'state/memory-audit.jsonl')
-  const audit = new MemoryAudit({ filePath, now: () => 1000 })
+  const audit = new OperationAudit({ filePath, now: () => 1000 })
 
   assert.equal(audit.record({ op: 'write', ownerId: 'owner', content: '事实' }), true)
   assert.equal(audit.record({ op: 'skip', ownerId: 'owner', reason: 'duplicate' }), true)
@@ -32,7 +32,7 @@ test('appends one JSON line per event with private permissions', t => {
 })
 
 test('stays silent without a file path', () => {
-  const audit = new MemoryAudit()
+  const audit = new OperationAudit()
   assert.equal(audit.record({ op: 'write' }), false)
   assert.equal(audit.health().configured, false)
 })
@@ -45,7 +45,7 @@ test('disables itself after a write failure instead of throwing', t => {
   t.after(() => rmSync(directory, { recursive: true }))
   const blocker = join(directory, 'blocker')
   writeFileSync(blocker, 'not a directory')
-  const audit = new MemoryAudit({
+  const audit = new OperationAudit({
     filePath: join(blocker, 'nested/memory-audit.jsonl'),
     onWarning: warning => warnings.push(warning),
   })

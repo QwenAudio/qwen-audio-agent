@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { AgentDocumentConverter } from '../src/app/knowledge/document-converter.mjs'
+import { AgentDocumentConverter } from '../src/knowledge/providers/local/document-converter.mjs'
 
 test('converts through isolated backend execution without leaking implementation fields', async () => {
   let received

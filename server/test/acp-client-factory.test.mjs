@@ -3,8 +3,8 @@ import test from 'node:test'
 import {
   ACP_CONNECTION_PROCESS,
   createAcpClient,
-} from '../src/agent/acp/client-factory.mjs'
-import { AcpProcessClient } from '../src/agent/acp/process-client.mjs'
+} from '../src/backend/adapters/acp/client-factory.mjs'
+import { AcpProcessClient } from '../src/backend/adapters/acp/process-client.mjs'
 
 test('creates the local stdio ACP client from a process connection', () => {
   const prepare = () => {}

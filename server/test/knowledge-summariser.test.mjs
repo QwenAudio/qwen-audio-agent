@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { KnowledgeLibrary } from '../src/knowledge/local-library.mjs'
-import { KnowledgeSummariser } from '../src/knowledge/local-summariser.mjs'
+import { KnowledgeLibrary } from '../src/knowledge/providers/local/library.mjs'
+import { KnowledgeSummariser } from '../src/knowledge/providers/local/summariser.mjs'
 
 const OWNER = 'user_personal'
 const MANUAL = [

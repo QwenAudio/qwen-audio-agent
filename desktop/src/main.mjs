@@ -67,6 +67,7 @@ import { createDesktopBackendManagement } from './backend/management.mjs'
 import {
   clientSettingsPatch,
   realtimeSettingsConfigured,
+  realtimeSettingsConfiguration,
   updateSettingsContent,
 } from './settings-config.mjs'
 import { runtimePathEnvironment, userConfigDirectory } from '../../shared/runtime-paths.mjs'
@@ -250,12 +251,6 @@ function readDesktopGatewayHealth(origin) {
 function configuredGatewayEnvironment() {
   const raw = readFileSync(runtimeEnvironment.configPath, 'utf8')
   const configured = parseEnv(raw)
-  // 滤掉空值：config 文件中 KEY=（无值）会解析出 KEY: ''，
-  // 展开为 desktopGatewayEnvironment.merged 时会覆盖 process.env 的同名变量。
-  const configuredNonEmpty = {}
-  for (const [key, value] of Object.entries(configured)) {
-    if (value !== '') configuredNonEmpty[key] = value
-  }
   // 自动休眠超时必须与 orb 前端一致：客户端配置可能缺省（首次安装），
   // 这里总是注入归一化后的有效值，避免前端 60 秒隐藏
   // 而网关 sleepTimeoutMs=0 永不休眠的分歧。
@@ -263,7 +258,7 @@ function configuredGatewayEnvironment() {
   return desktopGatewayEnvironment({
     env: process.env,
     configured: {
-      ...configuredNonEmpty,
+      ...configured,
       ...runtimePathEnvironment(runtimeEnvironment),
       QWEN_AUDIO_DESKTOP_AUTO_HIDE_SECONDS: String(settings.autoHideSeconds),
     },
@@ -1022,7 +1017,7 @@ async function applyDesktopSettings(settings) {
   settings = { ...(remote ? clientSettingsPatch(settings) : settings), gatewayUrl: nextOrigin }
   const current = readFileSync(runtimeEnvironment.configPath, 'utf8')
   const previous = desktopSettingsStore.load()
-  const content = updateSettingsContent(current, settings, { scope: 'gateway' })
+  const content = updateSettingsContent(current, settings, { scope: 'gateway', realtimeDrafts: previous })
   const normalized = desktopSettingsStore.preview(settings)
   const connection = await prepareDesktopGatewayConnection(target, {
     profileStore: desktopGatewayProfiles,
@@ -1032,30 +1027,15 @@ async function applyDesktopSettings(settings) {
   })
   const credentialChanged = connection.credential !== gatewayAccessToken
   if (!remote && !connection.connected && !realtimeSettingsConfigured(normalized)) {
-    throw new Error(normalized.realtimeProvider === 'dashscope'
-      ? '请先填写 DashScope API Key'
-      : '请先填写 Speech-to-Speech 服务地址')
+    throw new Error(realtimeSettingsConfiguration(normalized).missingConfigurationMessage)
   }
   const gatewayChanged = nextOrigin !== configuredGatewayOrigin
-  const apiKeyChanged = previous.dashscopeApiKey !== normalized.dashscopeApiKey
-  const realtimeBaseUrlChanged = (
-    previous.realtimeBaseUrl !== normalized.realtimeBaseUrl
-  )
+  const realtimeChanged = realtimeSettingsConfiguration(previous).active.signature
+    !== realtimeSettingsConfiguration(normalized).active.signature
   const realtimeProviderChanged = (
     previous.realtimeProvider !== normalized.realtimeProvider
   )
   const backendChanged = previous.agentProtocol !== normalized.agentProtocol
-  const realtimeModelChanged = previous.realtimeModel !== normalized.realtimeModel
-  const realtimeVoiceChanged = (
-    previous.audioRealtimeVoice !== normalized.audioRealtimeVoice
-    || previous.omniRealtimeVoice !== normalized.omniRealtimeVoice
-  )
-  const speechToSpeechChanged = (
-    previous.speechToSpeechRealtimeUrl
-      !== normalized.speechToSpeechRealtimeUrl
-    || previous.speechToSpeechAuthToken
-      !== normalized.speechToSpeechAuthToken
-  )
   const backendModelChanged = previous.backendModel !== normalized.backendModel
   const backendConnectionChanged = (
     previous.backendOwnership !== normalized.backendOwnership
@@ -1073,13 +1053,8 @@ async function applyDesktopSettings(settings) {
   const languageChanged = previous.language !== normalized.language
   const gatewayRuntimeChanged = (
     gatewayChanged
-    || apiKeyChanged
-    || realtimeBaseUrlChanged
-    || realtimeProviderChanged
+    || realtimeChanged
     || backendChanged
-    || realtimeModelChanged
-    || realtimeVoiceChanged
-    || speechToSpeechChanged
     || backendModelChanged
     || backendConnectionChanged
   )
@@ -1129,11 +1104,9 @@ async function applyDesktopSettings(settings) {
     remoteGateway: remote,
     changes: {
       gateway: gatewayChanged,
-      apiKey: apiKeyChanged,
+      realtime: realtimeChanged,
       realtimeProvider: realtimeProviderChanged,
       backend: backendChanged,
-      realtimeModel: realtimeModelChanged,
-      speechToSpeech: speechToSpeechChanged,
       backendModel: backendModelChanged,
       backendConnection: backendConnectionChanged,
       orbSkin: orbSkinChanged,

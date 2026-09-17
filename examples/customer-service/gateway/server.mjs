@@ -1,0 +1,198 @@
+// 前台的组装入口。只做场景选择，不搬框架逻辑，也不把客服业务状态放进 Gateway。
+//
+// 四进程里它是最薄的一层：把「用哪份人设、哪些前台工具、后台 Agent 在哪」
+// 三件事拼起来，剩下的都是框架的。
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { loadServiceEnvironment } from '../bootstrap/environment.mjs'
+import { CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION } from './spawn-thinking-tool.mjs'
+import { PolicyKnowledgeProvider } from './policy-knowledge.mjs'
+
+loadServiceEnvironment()
+process.env.QWAUDIO_CONFIG_DIR ||= fileURLToPath(new URL('../.runtime', import.meta.url))
+process.env.QWAUDIO_DATA_DIR ||= process.env.QWAUDIO_CONFIG_DIR
+
+// frontend-mcp.json 里的 url 写成占位符，在这里补成真实地址 ——
+// 导出的配置不该把本机端口写死，否则换环境就得改配置文件。
+//
+// 【sessionId 在进程启动时定下来，这是个已知限制】
+// 核实过 server/src/providers/mcp/frontend-mcp-client.mjs:132：MCP 客户端用的是
+// 配置里的静态 transport.headers，框架【不会】按语音会话注入参数。
+// 所以这里不带 sessionId 的话，所有通话的前台工具都会打到 service 的 default
+// 会话上 —— 而且是隐蔽的：会话隔离看起来支持，实际全串在一起。
+//
+// 座舱那样写是对的，它的 cockpitId 是「哪台车」，一台车一个固定值。
+// 客服的 sessionId 语义上是「哪通电话」，本该每通不同。
+// 真要做到那样，需要框架支持按会话注入 MCP 请求参数 —— 那是框架的事，
+// 不该在示例里用一个假的隔离层糊过去。
+//
+// 当前形态：单通话演示。多通并发时它们共享同一份客服会话状态。
+if (!process.env.CS_FRONTEND_MCP_URL) {
+  const url = new URL(
+    '/mcp/frontend',
+    process.env.CS_SERVICE_ORIGIN || 'http://127.0.0.1:3110',
+  )
+  url.searchParams.set('sessionId', process.env.CS_SESSION_ID || 'default')
+  process.env.CS_FRONTEND_MCP_URL = url.toString()
+}
+process.env.QWEN_AUDIO_FRONTEND_PROFILE ||= fileURLToPath(
+  new URL('./frontend-profile.json', import.meta.url),
+)
+
+// 人设按域选。profile 里的 assistant 字段是相对路径，所以换域要换整份 profile ——
+// 与其为两个域各写一份 profile（两份里只有一行不同、改一处必忘另一份），
+// 不如在这里按域覆盖 assistant 路径。
+// 变量名核实自 server/src/core/frontend-profile.mjs:164。
+process.env.QWEN_AUDIO_AGENT_ASSISTANT_PROFILE_PATH ||= fileURLToPath(
+  new URL(`./assistant/${process.env.CS_DOMAIN || 'retail'}.md`, import.meta.url),
+)
+
+// 前台工具白名单也要按域选。
+//
+// 【这是实测发现的一个严重遗漏】
+// 人设按域换了（上面那行），但 frontend-mcp.json 只有一份而且是零售的，
+// 于是航空会话里模型看到的前台工具是两边的交集：
+//   能用的         verify_identity、identity_status（只剩核验）
+//   白名单有但未实现  list_orders、get_order、check_variant（调了报错）
+//   实现了但未放行  list_reservations、get_reservation、get_flight_status
+//
+// 也就是说航空客服根本查不了预订和航班。
+// 上一轮我宣称「两组域配置真的隔离」时，只验了 policy 检索源和 service
+// 的工具面，没验网关这一层的白名单 —— 结论下得太早。
+//
+// QWEN_AUDIO_FRONTEND_MCP_CONFIG 的优先级比 profile.toolSources.mcp 高
+// （frontend-profile.mjs:176），所以用它覆盖。零售仍用 frontend-mcp.json，
+// 跟 profile 里写的一致；只有航空需要换一份。
+if (!process.env.QWEN_AUDIO_FRONTEND_MCP_CONFIG && process.env.CS_DOMAIN === 'airline') {
+  process.env.QWEN_AUDIO_FRONTEND_MCP_CONFIG = fileURLToPath(
+    new URL('./frontend-mcp.airline.json', import.meta.url),
+  )
+}
+
+const [
+  { createGatewayApplication },
+  { createBackendAgentHost },
+  { createA2ABackendAdapter },
+] = await Promise.all([
+  import('qwen-audio-agent/gateway-application'),
+  import('qwen-audio-agent/backend-adapter-sdk'),
+  import('qwen-audio-agent/a2a-backend-adapter'),
+])
+
+function port(value, fallback) {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 65_535
+    ? parsed
+    : fallback
+}
+
+// Gateway 起来时 Service 可能还没就绪。等它，而不是让第一通电话失败 ——
+// 前台工具全都打在 Service 上，它没起来等于没有工具。
+export async function waitForCustomerService({
+  origin = process.env.CS_SERVICE_ORIGIN || 'http://127.0.0.1:3110',
+  timeoutMs = 8_000,
+  intervalMs = 100,
+  fetchImpl = fetch,
+} = {}) {
+  const deadline = Date.now() + timeoutMs
+  let lastError = null
+  while (Date.now() < deadline) {
+    try {
+      const response = await fetchImpl(new URL('/health', origin))
+      if (response.ok) return
+      lastError = new Error(`Customer Service health returned ${response.status}`)
+    } catch (error) {
+      lastError = error
+    }
+    await new Promise(resolve => setTimeout(resolve, intervalMs))
+  }
+  throw new Error(`Customer Service is not ready: ${lastError?.message || origin}`)
+}
+
+export function startCustomerServiceGateway({
+  host = process.env.CS_GATEWAY_HOST || '127.0.0.1',
+  port: listenPort = port(process.env.CS_GATEWAY_PORT, 18_889),
+  // 一个进程一个域：人设、policy 检索源、guards 都按它选。
+  // 混域会让零售客服查到航空细则 —— 实测过，见 policy-knowledge.mjs 里的说明。
+  domain = process.env.CS_DOMAIN || 'retail',
+  agentCardUrl = process.env.CS_AGENT_CARD_URL
+    || 'http://127.0.0.1:3120/.well-known/agent-card.json',
+} = {}) {
+  const backend = createA2ABackendAdapter({
+    agentCardUrl,
+    label: 'Customer Service Agent',
+  })
+  const agent = createBackendAgentHost(backend, {
+    name: 'Customer Service A2A Agent',
+  })
+  const application = createGatewayApplication({
+    agent,
+    autoStart: false,
+    spawnThinkingDescription: CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION,
+    // 【关掉联网检索】客服的信息边界是封闭的：能说的话只该来自
+    // domains/*/policy.md 和数据库，每句话都要能追到细则第几行或订单某个字段。
+    //
+    // 这不是「用不上所以关掉」，是实测踩过：客户问退货政策，模型调了
+    // web_search，拿回来的是昆明本地宝、法律咨询、书法拍卖（「明远」被搜成
+    // 「明星大侦探」），然后建议客户「自己查阅《明远优选零售客服细则》」——
+    // 而那份细则就在 domains/retail/policy.md 里。
+    //
+    // 更要紧的是：有 web_search 时模型会优先用它（通用、便宜），
+    // 于是永远不会去查 knowledge。关掉它是让 policy 检索被使用的前提。
+    //
+    // 座舱留着这两个是对的 —— 查天气路况本来就需要外部信息。
+    // 客服和它的差别不在场景大小，在信息边界是否封闭。
+    webSearchProvider: null,
+    // urlFetcher 默认是 new SafeUrlFetcher()，恒为真，所以 fetch_url 是
+    // 无条件暴露的，不关掉它光关 web_search 等于没关。
+    urlFetcher: null,
+    // 关掉联网之后必须给个正确的来源，否则模型只剩两条路：
+    // 反问客户，或者凭常识编。实测到过中间状态 ——
+    // 它说「我需要查一下《明远优选零售客服细则》」然后查不到。
+    knowledgeRetrievalProvider: new PolicyKnowledgeProvider({ domain }),
+    // 【关掉用户画像】客服场景里每通电话都是不同的客户。
+    //
+    // 框架默认会建一个 Markdown provider 读写 .runtime/USER.md 与 MEMORY.md，
+    // 而那份内容会进模型上下文（realtime-gateway.mjs:371 的 memories）。
+    // 偏好晋升器（conversation/preference-promoter.mjs）默认是关的，
+    // 所以不会自动写入 —— 但只要有人往 USER.md 里写一句，
+    // 它就会出现在【每一通】客服电话的 prompt 里。那是串号。
+    //
+    // 座舱保留它是对的：一台车对一个车主，「记住我喜欢 24 度」正是它要的。
+    // 客服的会话之间必须互不相识 —— 客户信息只能来自本次核验和数据库。
+    memoryProvider: null,
+  })
+  const server = application.start({ host, port: listenPort })
+  let closePromise = null
+
+  return {
+    application,
+    agent,
+    server,
+    close() {
+      if (closePromise) return closePromise
+      closePromise = (async () => {
+        try {
+          await application.close()
+        } finally {
+          await agent.close()
+        }
+      })()
+      return closePromise
+    },
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await waitForCustomerService()
+  const runtime = startCustomerServiceGateway()
+  runtime.server.once('listening', () => {
+    const address = runtime.server.address()
+    console.log(`Customer Service Gateway listening on http://${address.address}:${address.port}`)
+  })
+  const close = async () => {
+    await runtime.close()
+    process.exit(0)
+  }
+  process.once('SIGINT', close)
+  process.once('SIGTERM', close)
+}

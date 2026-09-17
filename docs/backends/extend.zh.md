@@ -61,7 +61,7 @@ Backend Adapter SDK（`qwen-audio-agent/backend-adapter-sdk`）直接实现
 
 ### 原料二：Agent Driver（必填）
 
-`server/src/agent/acp/drivers/<id>.mjs`，外加 `registry.mjs` 里的一行
+`server/src/backend/adapters/acp/drivers/<id>.mjs`，外加 `registry.mjs` 里的一行
 导入。Driver 声明能力契约并构建运行时档案：
 
 ```js

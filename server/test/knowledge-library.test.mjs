@@ -9,7 +9,7 @@ import {
   KnowledgeImportError,
   KnowledgeLibrary,
   classifySource,
-} from '../src/knowledge/local-library.mjs'
+} from '../src/knowledge/providers/local/library.mjs'
 
 const OWNER = 'user_personal'
 const NOW = Date.parse('2026-08-26T09:00:00Z')
@@ -19,7 +19,7 @@ test('concurrent Gateway imports preserve the shared index', async t => {
   t.after(() => rmSync(root, { recursive: true, force: true }))
   const docs = join(root, 'documents')
   const indexPath = join(root, 'index.json')
-  const moduleUrl = new URL('../src/knowledge/local-library.mjs', import.meta.url).href
+  const moduleUrl = new URL('../src/knowledge/providers/local/library.mjs', import.meta.url).href
   const workers = Array.from({ length: 4 }, (_, worker) => {
     const source = join(root, `source-${worker}.md`)
     writeFileSync(source, `# Document ${worker}`)

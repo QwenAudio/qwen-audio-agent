@@ -1,4 +1,5 @@
-import { MICROPHONE_AUDIO_WORKLET_PROCESSOR_NAME } from './microphone-audio-worklet-constants.js'
+// This is a standalone asset loaded by audioWorklet.addModule(), not a bundled
+// application module. Keep it import-free so Vite may safely inline its URL.
 
 class MicrophoneAudioWorkletProcessor extends AudioWorkletProcessor {
   process(inputs, outputs) {
@@ -18,6 +19,6 @@ class MicrophoneAudioWorkletProcessor extends AudioWorkletProcessor {
 }
 
 registerProcessor(
-  MICROPHONE_AUDIO_WORKLET_PROCESSOR_NAME,
+  'qwen-audio-microphone',
   MicrophoneAudioWorkletProcessor,
 )

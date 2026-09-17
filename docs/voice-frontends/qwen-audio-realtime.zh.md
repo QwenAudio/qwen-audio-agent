@@ -20,8 +20,6 @@ DASHSCOPE_API_KEY=your-key
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 ```
 
-当语音前台需要独立凭据时，`DASHSCOPE_API_KEY` 可以被更高优先级的别名
-`QWEN_AUDIO_REALTIME_API_KEY` 替代。
 
 一个 Gateway 同一时刻只生效一个模型。在桌面版设置页或 CLI 切换后，
 重启 Gateway 生效：
@@ -65,6 +63,8 @@ WebUI 和 TUI 只展示当前生效模型，不单独覆盖。
 
 ## 继续阅读
 
+- [GPT-Live / OpenAI Realtime](gpt-live.zh.md)——OpenAI 云端实时语音前台
+- [Google Gemini Live](google-live.zh.md)——Google 云端实时语音前台
 - [Speech-to-Speech](speech-to-speech.zh.md)——全本地前台，无需云端 Key
 - [MiniCPM-o 4.5](minicpm-o.zh.md)——本地端到端实时语音前台
 - [自定义 Provider](custom-provider.zh.md)——接入其他实时语音服务

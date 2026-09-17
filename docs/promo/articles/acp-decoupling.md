@@ -28,7 +28,7 @@ ACP 接入层（acp/backend-adapter + session-registry + process-client）
 
 ### 组件一：进程客户端
 
-`AcpProcessClient`（`server/src/agent/acp/process-client.mjs`）负责
+`AcpProcessClient`（`server/src/backend/adapters/acp/process-client.mjs`）负责
 把任意 ACP Agent 当作子进程管理：spawn 进程、用 stdio 建立 JSON-RPC
 双向通道、管理请求/响应/通知的生命周期。对上层来说，所有 Agent
 都长一个样：一个可以收发消息的会话。
@@ -36,7 +36,7 @@ ACP 接入层（acp/backend-adapter + session-registry + process-client）
 ### 组件二：Backend Driver——一个 Agent 一个"驱动"
 
 每个产品的连接方式和能力差异由 driver 对象
-（`server/src/agent/acp/drivers/`）描述：
+（`server/src/backend/adapters/acp/drivers/`）描述：
 
 ```js
 export const openCodeBackendDriver = {

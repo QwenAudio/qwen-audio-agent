@@ -3,7 +3,7 @@ import test from 'node:test'
 import { InputAssetRegistry } from '../src/voice/input-asset-registry.mjs'
 import { RealtimeInputRuntime } from '../src/voice/realtime-input-runtime.mjs'
 import { RealtimeTurnState } from '../src/voice/realtime-turn-state.mjs'
-import { TurnTranscripts } from '../src/voice/tools/turn-transcripts.mjs'
+import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
 
 function harness({ responseOutcome } = {}) {
   const events = []

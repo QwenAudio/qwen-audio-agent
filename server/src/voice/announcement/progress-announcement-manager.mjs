@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { createAgentDelivery } from '../../delivery/agent-delivery.mjs'
-import { progressResponseInstructions } from '../frontend-tools.mjs'
+import { progressResponseInstructions } from '../../frontend/frontend-tools.mjs'
 import { RealtimeAgentDeliveryRuntime } from '../realtime-agent-delivery-runtime.mjs'
 
 const DEFAULT_INTERVAL_MS = 60_000

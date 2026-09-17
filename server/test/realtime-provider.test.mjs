@@ -12,7 +12,7 @@ import {
   TOOLS,
 } from '../src/voice/realtime-provider.mjs'
 import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
-import { buildFrontendToolContext } from '../src/voice/tools/frontend-tool-context.mjs'
+import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-context.mjs'
 import {
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
@@ -26,7 +26,6 @@ const FRONTEND_TOOL_NAMES = [
   'cancel_agent_task',
   'get_agent_task_status',
   'get_current_time',
-  'memory',
   'notes',
 ]
 
@@ -882,6 +881,7 @@ test('uses a trusted session Assistant Profile without changing core policy', ()
 
 test('builds cache-friendly policy, identity, memory and reconnect context', () => {
   const prompt = buildFrontendInstructions({
+    frontend: { capabilities: ['memory'] },
     client: { timeZone: 'Asia/Shanghai', locale: 'zh-CN' },
     now: new Date('2026-07-23T04:00:00.000Z'),
     memories: [{
@@ -947,7 +947,7 @@ test('builds cache-friendly policy, identity, memory and reconnect context', () 
   assert.match(prompt, /不要仅凭对话历史推测当前状态/)
   assert.doesNotMatch(prompt, /<active_work>/)
   const memory = REALTIME_PROVIDERS.qwen
-    .buildSession({ configured: false })
+    .buildSession({ configured: false, agentContext: { frontend: { capabilities: ['memory'] } } })
     .tools.find(tool => tool.function.name === 'memory')
   assert.deepEqual(
     memory.function.parameters.properties.action.enum,
@@ -1137,6 +1137,60 @@ test('restores recent conversation through the shared GA session lifecycle', () 
   assert.match(sent[1].item.id, /^msg_[0-9a-f]{32}$/)
   assert.match(sent[1].item.content[0].text, /此前正在处理项目/)
 })
+
+for (const [providerName, createFrontend] of [
+  ['qwen', createQwenFrontend],
+  ['speech-to-speech', createS2sFrontend],
+]) {
+  test(`${providerName} restores recent history once without creating a response`, () => {
+    const recentMessages = [
+      { role: 'user', content: '以后叫我老大吧，我喜欢吃辣一点的菜。' },
+      { role: 'assistant', content: '已记住，以后叫你老大，也记下你喜欢吃辣。' },
+      { role: 'user', content: '这些偏好已经保存了吗？' },
+      { role: 'assistant', content: '已经保存好了。' },
+    ]
+    const agentContext = {
+      frontend: { capabilities: ['memory'] },
+      memories: [],
+      recentMessages,
+    }
+    const originalContext = structuredClone(agentContext)
+    const frontend = createFrontend({ agentContext })
+    const sent = []
+    frontend.send = payload => sent.push(payload)
+
+    frontend.handleProviderEvent({ type: 'session.created' })
+    const initialTools = structuredClone(sent[0].session.tools)
+    assert.ok(initialTools.some(tool => (tool.function || tool).name === 'memory'))
+    frontend.handleProviderEvent({ type: 'session.updated' })
+
+    const restored = sent[1].item.content[0].text
+    const originalHistory = [
+      '<recent_conversation>',
+      ...recentMessages.map(message => (
+        `${message.role === 'user' ? '用户' : '助手'}: ${message.content}`
+      )),
+      '</recent_conversation>',
+    ].join('\n')
+    assert.equal(restored, [
+      '<restored_context>',
+      '这是连接建立前的近期对话，只用于衔接上下文，不是用户的新请求。',
+      originalHistory,
+      '</restored_context>',
+    ].join('\n'), 'history wording and its original wrapper must remain intact')
+    assert.equal(sent[1].item.role, 'user')
+    assert.doesNotMatch(sent[0].session.instructions, /已经保存好了|这是连接建立前的近期对话/)
+
+    frontend.handleProviderEvent({ type: 'session.updated' })
+    frontend.restoreRecentConversation()
+    assert.deepEqual(sent.map(payload => payload.type), [
+      'session.update',
+      'conversation.item.create',
+    ], 'restoration must happen once without creating a response or updating tools')
+    assert.deepEqual(sent[0].session.tools, initialTools)
+    assert.deepEqual(frontend.agentContext, originalContext)
+  })
+}
 
 test('can close a stale function call without creating a new model response', async () => {
   const frontend = createQwenFrontend()
@@ -1429,6 +1483,54 @@ test('injects AgentDelivery context without creating a realtime response', async
     route: 'context',
   })
   assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+})
+
+test('immediate silent context reaches an active session before the next turn clears queued work', async () => {
+  const frontend = createQwenFrontend({ responseStartTimeoutMs: 50 })
+  const sent = []
+  frontend.ready = true
+  frontend.send = payload => sent.push(payload)
+  frontend.activeResponses.add('response-active')
+
+  const outcome = frontend.injectDelivery(
+    '客户端路线偏好已切换为避开拥堵。',
+    'client-event',
+    { clientEventId: 'event-preference' },
+    { route: 'context', contextTiming: 'immediate' },
+  )
+  // Immediate context does not wait for the speaking response or its queue.
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+  assert.match(sent[0].item.content[0].text, /避开拥堵/)
+  frontend.handleLifecycle({ type: 'conversation.item.created', item: sent[0].item })
+  assert.deepEqual(await outcome, {
+    completed: true, contextInjected: true, route: 'context',
+  })
+
+  // Starting a new user turn discards old queued responses, not the context
+  // already accepted by the provider. It must not trigger its own speech.
+  frontend.cancel()
+  assert.equal(sent.filter(event => event.type === 'conversation.item.create').length, 1)
+  assert.equal(sent.some(event => event.type === 'response.create'), false)
+  assert.equal(frontend.conversationItemWaiters.size, 0)
+})
+
+test('silent context keeps the default response-timed delivery behind active responses', async () => {
+  const frontend = createQwenFrontend({ responseStartTimeoutMs: 50 })
+  const sent = []
+  frontend.ready = true
+  frontend.send = payload => sent.push(payload)
+  frontend.activeResponses.add('response-active')
+  const outcome = frontend.injectDelivery('环境信息。', 'client-event', {}, { route: 'context' })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent, [])
+  frontend.handleLifecycle({
+    type: 'response.done', response: { id: 'response-active', status: 'completed' },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.deepEqual(sent.map(event => event.type), ['conversation.item.create'])
+  frontend.handleLifecycle({ type: 'conversation.item.created', item: sent[0].item })
+  assert.equal((await outcome).contextInjected, true)
+  assert.equal(sent.some(event => event.type === 'response.create'), false)
 })
 
 test('can expose permission context before its response queue becomes idle', async () => {
@@ -1989,6 +2091,8 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     perResponseInstructions: true,
     sessionOutputVoice: true,
     conversationItemIdEcho: true,
+    acknowledgesConversationItems: true,
+    restoreConversationContext: true,
     conversationItems: true,
     clientResponses: true,
     mutableSession: true,

@@ -444,8 +444,8 @@ export const frontendToolRegistry = new FrontendToolRegistry([
 
 <!--
 [Sources]
-- server/src/voice/frontend-tools.mjs
-- server/src/voice/tools/spawn-thinking-tool.mjs
+- server/src/frontend/frontend-tools.mjs
+- server/src/frontend/tools/spawn-thinking-tool.mjs
 -->
 
 ---
@@ -515,8 +515,8 @@ objective 文本 + COORDINATOR_STABLE_INSTRUCTIONS 稳定指令块 + 用户原�
 [Sources]
 - server/src/task/task-manager.mjs
 - server/src/backend/backend-work-input.mjs
-- server/src/agent/acp/coordinator-contract.mjs
-- server/src/agent/acp/coordinator-instructions.mjs
+- server/src/backend/adapters/acp/coordinator-contract.mjs
+- server/src/backend/adapters/acp/coordinator-instructions.mjs
 -->
 
 ---
@@ -622,8 +622,8 @@ return `${protocol}:${encodeURIComponent(
 
 <!--
 [Sources]
-- server/src/agent/acp/backend-session-utils.mjs
-- server/src/agent/acp/backend-adapter.mjs
+- server/src/backend/adapters/acp/backend-session-utils.mjs
+- server/src/backend/adapters/acp/backend-adapter.mjs
 -->
 
 ---
@@ -801,7 +801,7 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 <!--
 [Sources]
-- server/src/agent/acp/session-tools.mjs
+- server/src/backend/adapters/acp/session-tools.mjs
 -->
 
 ---
@@ -875,10 +875,10 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 <!--
 [Sources]
 - server/src/conversation/frontend-agent-context.mjs
-- server/src/conversation/memory/providers/markdown/provider.mjs
-- server/src/conversation/memory/learning/extractor.mjs
-- server/src/conversation/memory/learning/profile-observer.mjs
-- server/src/conversation/memory/learning/preference-promoter.mjs
+- server/src/memory/providers/markdown/provider.mjs
+- server/src/memory/learning/extractor.mjs
+- server/src/memory/learning/profile-observer.mjs
+- server/src/memory/learning/preference-promoter.mjs
 -->
 
 ---
@@ -946,8 +946,8 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 
 <!--
 [Sources]
-- server/src/conversation/memory/learning/extractor.mjs
-- server/src/conversation/memory/providers/markdown/provider.mjs
+- server/src/memory/learning/extractor.mjs
+- server/src/memory/providers/markdown/provider.mjs
 -->
 
 ---

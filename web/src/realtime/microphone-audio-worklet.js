@@ -1,4 +1,4 @@
-import { MICROPHONE_AUDIO_WORKLET_PROCESSOR_NAME } from './microphone-audio-worklet-constants.js'
+const MICROPHONE_AUDIO_WORKLET_PROCESSOR_NAME = 'qwen-audio-microphone'
 
 const modulePromises = new WeakMap()
 
@@ -57,6 +57,7 @@ export async function createMicrophoneAudioWorkletNode({
   }
   node.port.addEventListener?.('message', handleMessage)
   if (!node.port.addEventListener) node.port.onmessage = handleMessage
+  node.port.start?.()
 
   return {
     node,

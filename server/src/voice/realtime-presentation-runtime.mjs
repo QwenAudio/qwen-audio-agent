@@ -340,11 +340,12 @@ export class RealtimePresentationRuntime {
     const responseTurnId = context?.turnId || this.turns.turnId
     const responseStatus = event.response?.status
     const failed = ['failed', 'cancelled', 'incomplete'].includes(responseStatus)
-    const suppressToolFollowUp = Boolean(
-      failed
-      || context?.suppressed
-      || context?.hasAudio
-      || context?.assistantTranscript?.trim()
+    const sourceHasSpeech = Boolean(context?.hasAudio || context?.assistantTranscript?.trim())
+    const suppressResponse = Boolean(failed || context?.suppressed)
+    // A spoken task-acceptance receipt needs no second acknowledgement, but
+    // inline tool results still need a summary after execution has finished.
+    const suppressToolFollowUp = suppressResponse || (
+      sourceHasSpeech && !this.toolCalls.requiresToolResultSummary?.(id)
     )
     const toolFollowUpPending = Boolean(
       context?.hasFunctionCall
@@ -353,7 +354,8 @@ export class RealtimePresentationRuntime {
     )
     if (context) context.awaitsToolFollowUp = toolFollowUpPending
     this.toolCalls.finishToolResponse(id, {
-      suppressResponse: suppressToolFollowUp,
+      suppressResponse,
+      sourceHasSpeech,
     }).catch(error => this.send({
       type: GatewayServerEvent.ERROR,
       message: error.message,

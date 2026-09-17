@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { GatewayClient } from '../shared/gateway/client-sdk.mjs'
+import { GatewayServerEvent } from '../shared/protocol/realtime-events.mjs'
 import {
   GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
   GATEWAY_CLIENT_PROTOCOL_VERSION,
@@ -75,6 +76,27 @@ function completeHandshake(socket) {
   })
 }
 
+test('reference Client forwards payload-free memory changes without tool events or a new capability', t => {
+  const received = []
+  const { client, sockets } = createTimedClient(t, {
+    capabilities: [],
+    onEvent: event => received.push(event),
+  })
+  const socket = sockets[0]
+  socket.open()
+  completeHandshake(socket)
+  const notification = {
+    type: GatewayServerEvent.MEMORY_CHANGED,
+    event_id: 'evt_gateway_memory_changed',
+  }
+  socket.receive(notification)
+  assert.deepEqual(received, [notification])
+  assert.deepEqual(client.negotiatedCapabilities, [])
+  assert.equal(client.ready, true)
+  assert.equal(sockets.length, 1)
+  assert.deepEqual(socket.sent.map(event => event.type), ['session.hello'])
+})
+
 test('passes remote credentials below GCP and requests takeover explicitly', () => {
   const socket = new FakeSocket()
   let socketOptions
@@ -101,6 +123,21 @@ test('passes remote credentials below GCP and requests takeover explicitly', () 
   )
   assert.equal(JSON.stringify(socket.sent[0]).includes('device-token'), false)
   client.stop()
+})
+
+test('exposes the underlying transport buffered amount for flow control', () => {
+  const socket = new FakeSocket()
+  const client = new GatewayClient({
+    url: 'ws://gateway.test/api/realtime',
+    createSocket: () => socket,
+    reconnect: false,
+  }).start()
+
+  socket.open()
+  socket.bufferedAmount = 4096
+  assert.equal(client.bufferedAmount, 4096)
+  client.stop()
+  assert.equal(client.bufferedAmount, 0)
 })
 
 test('reference Client negotiates once and correlates runtime commands', async () => {

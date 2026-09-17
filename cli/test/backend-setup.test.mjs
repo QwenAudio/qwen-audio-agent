@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import {
   formatBackendSetup,
@@ -116,6 +119,59 @@ test('detects a native MiniMax Code installation', () => {
   }).backends[0]
   assert.equal(legacy.ready, false)
   assert.match(legacy.issues[0], /最低版本 0\.3\.7/)
+})
+
+test('probes Windows commands stored in a directory with spaces', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'qwen-audio-setup-'))
+  try {
+    const directory = join(root, 'Program Files', 'agents')
+    mkdirSync(directory, { recursive: true })
+    const openCode = join(directory, 'opencode.cmd')
+    writeFileSync(openCode, ['@echo off', 'echo 1.18.6', ''].join('\r\n'))
+    const dsh = join(directory, 'dsh.cmd')
+    writeFileSync(dsh, ['@echo off', 'exit /b 0', ''].join('\r\n'))
+    const npm = join(directory, 'npm.cmd')
+    writeFileSync(npm, ['@echo off', 'type "%~dp0packages.json"', ''].join('\r\n'))
+    writeFileSync(join(directory, 'packages.json'), JSON.stringify({
+      dependencies: { '@deepseek-ai/dsh': { version: '0.1.0-rc.6' } },
+    }))
+    const find = command => ({
+      opencode: openCode,
+      dsh,
+      'npm.cmd': npm,
+    })[command] || ''
+
+    const report = inspectBackendSetups({
+      env: {},
+      platform: 'win32',
+      backend: 'opencode',
+      find,
+    })
+    assert.equal(report.backends[0].backend.version, '1.18.6')
+
+    const asyncReport = await inspectBackendSetupsAsync({
+      env: {},
+      platform: 'win32',
+      backend: 'opencode',
+      find,
+    })
+    assert.equal(asyncReport.backends[0].backend.version, '1.18.6')
+
+    const deepSeek = inspectBackendSetups({
+      env: {},
+      platform: 'win32',
+      backend: 'deepseek',
+      find,
+    }).backends[0]
+    assert.equal(
+      deepSeek.packages.find(item => item.name === '@deepseek-ai/dsh')?.version,
+      '0.1.0-rc.6',
+    )
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('checks independent backend versions concurrently', async () => {

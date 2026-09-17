@@ -6,6 +6,10 @@
   保活；WebSocket 沿用 Session 心跳，兼容性的 Task SSE 使用不进入回放与 Session
   Journal 的轻量注释心跳，避免长任务重复写入旧进度文本。
 
+- 修复 Windows 上 `qwenaudio doctor` / `setup` 与桌面版设置页在后台命令位于含空格目录
+  （如默认的 `C:\Program Files\nodejs\npm.cmd`）时，版本探测与全局包核对被 cmd.exe
+  截断命令路径、误报"无法确认版本"或包缺失的问题。
+
 - 新增实验性 Muse Code MSP 后台适配器，复用统一任务、权限和补充输入接口。
   Muse SDK 仅在用户安装该后台时单独安装、启用时加载，不加入框架默认依赖。
 

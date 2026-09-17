@@ -7,9 +7,8 @@ vehicle and task state.
 
 ## Demo
 
-Use natural voice to start vehicle-control and navigation tasks, showing how
-foreground realtime conversation, backend Agent execution, and cockpit UI state
-work together.
+Use natural voice for vehicle control and navigation, with cockpit UI updates.
+Long-running background work can continue alongside foreground conversation.
 
 <video controls preload="metadata" style="width: 100%; border-radius: 12px;">
   <source src="https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d" type="video/mp4">
@@ -40,10 +39,10 @@ work together.
 
 ![Smart cockpit framework architecture](https://raw.githubusercontent.com/QwenAudio/qwen-audio-agent/main/examples/smart-cockpit/docs/framework-architecture.svg)
 
-The base qwen-audio-agent boundary is foreground conversation plus backend
-execution. The cockpit client and Gateway form the foreground, the cockpit Agent
-handles backend tasks, and the Service supplies scenario state, business rules,
-and the tool execution environment.
+The foreground supports both realtime conversation and direct tool calls;
+long-running or backend-routed work goes to the cockpit Agent without blocking
+conversation. The Service supplies shared scenario state, business rules, and
+tool execution for both paths.
 
 | Component | Example implementation | Main interfaces |
 |---|---|---|
@@ -95,26 +94,25 @@ client together.
 
 ## Benchmark
 
-The cockpit benchmark compares text and Realtime model tool calling with the
-same tools, prompt, deterministic cockpit state, and scorer. It measures tool
-selection, arguments, execution-path routing, and final state.
+The accuracy suites cover vehicle, navigation, music and weather, not flash-buy,
+custom skills or long-running background tasks.
 
-- Short suite: 86 cases across vehicle, navigation, music, and weather.
-- Long-context suite: 10 mixed-domain conversations and 500 total turns,
-  including 250 expected tool calls and 250 no-tool turns.
-- Runners: Gold Replay, text model, controlled Realtime model, and the complete
-  Realtime voice path.
+- **Short cases:** 86 cases and 111 user turns; expected calls cover 34 tools.
+  Results use full-case pass rate.
+- **Long dialogue:** 10 separately designed 50-turn conversations, covering
+  22 of those tools. The results page reports per-turn behavior across 250
+  tool-required and 250 no-tool turns.
+- **Paths:** Text, controlled Realtime, and full Harness. Harness uses production
+  frontend composition, with different prompts, tool outputs and runtime guards.
+- **Tool-placement latency:** direct frontend calls versus backend delegation,
+  with Realtime in both paths. Test turns requiring tools are not steps to
+  finish one task or the number of valid timing samples.
 
-```bash
-node examples/smart-cockpit/bench/runner/run-gold.mjs
-node examples/smart-cockpit/bench/runner/run-text.mjs
-node examples/smart-cockpit/bench/runner/run-realtime.mjs
-node examples/smart-cockpit/bench/runner/run-voice.mjs
-```
-
-See
-[`examples/smart-cockpit/bench/README.md`](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/smart-cockpit/bench/README.md)
-for the latest results, datasets, and scoring details.
+Numerical tables are maintained in the
+[accuracy results](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/smart-cockpit/bench/results/accuracy.md)
+and [recorded latency results](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/smart-cockpit/bench/results/voice-surface-short-20260911.json.md).
+See the [Benchmark guide](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/smart-cockpit/bench/README.md)
+for definitions, provenance, limitations and reproduction commands.
 
 ## Replace and extend
 

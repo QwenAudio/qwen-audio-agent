@@ -19,10 +19,12 @@ import { gatewayReferenceClientCapabilities } from '../../../shared/gateway/clie
 import {
   audioSchedulingLeadSeconds,
   createPcmPlaybackQueue,
+  createRealtimeAudioSendController,
   createStreamingResampler,
   decodePcm,
   pcmBase64,
 } from './audio.js'
+import { createMicrophoneAudioWorkletNode } from './microphone-audio-worklet.js'
 import {
   createMicrophoneCaptureLifecycle,
   microphoneErrorKind,
@@ -37,6 +39,10 @@ import {
 
 const DEFAULT_INPUT_RATE = 16000
 const OUTPUT_RATE = 24000
+const microphoneAudioWorkletProcessorUrl = new URL(
+  './microphone-audio-worklet-processor.js',
+  import.meta.url,
+).href
 
 export function acceptsVoiceState(event, currentTurnId) {
   return acceptsGatewayVoiceState(event, currentTurnId)
@@ -875,63 +881,84 @@ export default function useRealtimeVoice({
         const wakeWordResampler = createStreamingResampler()
         const inputResampler = createStreamingResampler()
         let inputResamplerSocket = null
+        let inputAudioSender = null
         let source
         let processor
+        let closeProcessor = () => {}
+        let captureClosed = false
         try {
           source = context.createMediaStreamSource(media)
-          processor = context.createScriptProcessor(2048, 1, 1)
-          processor.onaudioprocess = event => {
-            const samples = microphoneSamplesDuringManualInput(
-              event.inputBuffer.getChannelData(0),
-              manualInputPendingRef.current,
-            )
-            if (wakeWordOnlyRef.current) {
-              inputResampler.reset()
-              inputResamplerSocket = null
-              const wakeAudio = wakeWordResampler.process(samples, context.sampleRate, 16_000)
-              if (wakeAudio.length) wakeWordAudioRef.current?.(pcmBase64(wakeAudio), 16_000)
-              return
-            }
-            wakeWordResampler.reset()
-            const socket = socketRef.current
-            if (socket?.readyState !== WebSocket.OPEN) {
-              inputResampler.reset()
-              inputResamplerSocket = null
-              return
-            }
-            if (socket !== inputResamplerSocket) {
-              inputResampler.reset()
-              inputResamplerSocket = socket
-            }
-            const audio = inputResampler.process(
-              samples,
-              context.sampleRate,
-              inputSampleRate.current,
-            )
-            if (audio.length) {
-              socket.send({
-                type: GatewayClientEvent.AUDIO_APPEND,
-                audio: pcmBase64(audio),
-              })
-            }
-          }
+          const worklet = await createMicrophoneAudioWorkletNode({
+            context,
+            moduleUrl: microphoneAudioWorkletProcessorUrl,
+            onSamples: rawSamples => {
+              if (captureClosed) return
+              const samples = microphoneSamplesDuringManualInput(
+                rawSamples,
+                manualInputPendingRef.current,
+              )
+              if (wakeWordOnlyRef.current) {
+                inputResampler.reset()
+                inputResamplerSocket = null
+                inputAudioSender?.reset()
+                inputAudioSender = null
+                const wakeAudio = wakeWordResampler.process(samples, context.sampleRate, 16_000)
+                if (wakeAudio.length) wakeWordAudioRef.current?.(pcmBase64(wakeAudio), 16_000)
+                return
+              }
+              wakeWordResampler.reset()
+              const socket = socketRef.current
+              if (socket?.readyState !== WebSocket.OPEN) {
+                inputResampler.reset()
+                inputResamplerSocket = null
+                inputAudioSender?.reset()
+                inputAudioSender = null
+                return
+              }
+              if (socket !== inputResamplerSocket) {
+                inputResampler.reset()
+                inputResamplerSocket = socket
+                inputAudioSender = createRealtimeAudioSendController({
+                  send: event => socket.send(event),
+                  getBufferedAmount: () => socket.bufferedAmount,
+                })
+              }
+              const audio = inputResampler.process(
+                samples,
+                context.sampleRate,
+                inputSampleRate.current,
+              )
+              if (audio.length) {
+                inputAudioSender.send({
+                  type: GatewayClientEvent.AUDIO_APPEND,
+                  audio: pcmBase64(audio),
+                })
+              }
+            },
+          })
+          processor = worklet.node
+          closeProcessor = worklet.close
           source.connect(processor)
           processor.connect(context.destination)
           return {
             media,
             track: media.getAudioTracks()[0],
             close() {
+              captureClosed = true
               media.getTracks().forEach(track => track.stop())
               wakeWordResampler.reset()
               inputResampler.reset()
               inputResamplerSocket = null
-              processor?.disconnect()
+              inputAudioSender?.reset()
+              inputAudioSender = null
+              closeProcessor()
               source?.disconnect()
             },
           }
         } catch (error) {
+          captureClosed = true
           media.getTracks().forEach(track => track.stop())
-          processor?.disconnect()
+          closeProcessor()
           source?.disconnect()
           throw error
         }

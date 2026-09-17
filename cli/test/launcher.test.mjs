@@ -862,6 +862,28 @@ test('atomically preserves config comments and unknown keys', () => {
   }
 })
 
+test('config commands use the selected StepFun model catalog through the provider-owned model setting', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-stepfun-config-'))
+  const path = join(directory, 'config.env')
+  writeFileSync(path, [
+    'QWEN_AUDIO_REALTIME_PROVIDER=stepfun',
+    'STEPFUN_API_KEY=step-secret',
+    'STEPFUN_REALTIME_MODEL=old',
+    'STEPFUN_REALTIME_MODEL=old-duplicate',
+    '',
+  ].join('\n'))
+  const result = updateRealtimeModelConfig(path, 'stepaudio-3-realtime-preview')
+  assert.equal(result.environment, 'STEPFUN_REALTIME_MODEL')
+  const content = readFileSync(path, 'utf8')
+  assert.equal(content.match(/^STEPFUN_REALTIME_MODEL=/gm).length, 1)
+  assert.match(content, /STEPFUN_REALTIME_MODEL=stepaudio-3-realtime-preview/)
+  const shown = showConfig({ configPath: path })
+  assert.match(shown, /Realtime 前台：stepfun/)
+  assert.match(shown, /Realtime 模型：stepaudio-3-realtime-preview/)
+  assert.doesNotMatch(shown, /step-secret/)
+  assert.throws(() => updateRealtimeModelConfig(path, 'qwen3.5-omni-plus-realtime'), /不支持的 Realtime 模型/)
+})
+
 test('changes only the model and preserves both family voice overrides', () => {
   const directory = mkdtempSync(join(tmpdir(), 'qwaudio-config-voice-'))
   const path = join(directory, 'config.env')

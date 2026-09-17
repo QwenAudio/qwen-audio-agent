@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Policy 配置台</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e4e7ee;
+    --dim: #8b93a7; --accent: #5b9dff; --warn: #e0a33a; --danger: #e05c5c;
+    --ok: #4caf7d; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6
+    -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+    border-bottom: 1px solid var(--line); background: var(--panel);
+    position: relative; z-index: 10; flex: 0 0 auto; flex-wrap: wrap; row-gap: 6px;
+  }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .grow { flex: 1; }
+  select, button, input {
+    background: #1e222b; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 6px 10px; font-size: 13px; font-family: inherit;
+  }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #06122b; font-weight: 600; }
+  #search { width: 240px; }
+  .chip {
+    padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line);
+    font-size: 12px; cursor: pointer; user-select: none; color: var(--dim);
+  }
+  .chip.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
+
+  main {
+    display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 0;
+    flex: 1 1 auto; min-height: 0; overflow: hidden;
+  }
+  .col { padding: 16px 20px 60px; }
+  .workspace { min-width: 0; min-height: 0; overflow-y: auto; }
+  aside {
+    border-left: 1px solid var(--line); min-height: 0; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  @media (max-width: 1100px) {
+    html, body { height: auto; }
+    body { overflow: auto; }
+    main { display: block; overflow: visible; }
+    .workspace { overflow: visible; }
+    aside { border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
+    .policy { max-height: 62vh; }
+  }
+
+  section { margin-bottom: 22px; }
+  h2 {
+    font-size: 13px; color: var(--dim); text-transform: uppercase;
+    letter-spacing: .06em; margin: 0 0 10px; font-weight: 600;
+  }
+  h2 .count { color: var(--text); font-weight: 400; text-transform: none; letter-spacing: 0; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px 12px; margin-bottom: 8px;
+  }
+  .card.dispute { border-left: 3px solid var(--warn); }
+  .card.risk { border-left: 3px solid var(--danger); }
+  .card.ok { border-left: 3px solid var(--ok); }
+  .row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .tag {
+    font-size: 11px; padding: 1px 7px; border-radius: 4px; background: #262b36;
+    color: var(--dim); font-family: var(--mono); white-space: nowrap;
+  }
+  .tag.agree { background: #4caf7d22; color: var(--ok); }
+  .tag.warn { background: #e0a33a22; color: var(--warn); }
+  .tag.bad { background: #e05c5c22; color: var(--danger); }
+  .label { font-weight: 500; }
+  .quote {
+    color: var(--dim); font-size: 12.5px; margin-top: 5px; cursor: pointer;
+    border-left: 2px solid var(--line); padding-left: 8px;
+  }
+  .quote:hover { color: var(--accent); border-color: var(--accent); }
+  .variant { margin: 6px 0 0 14px; padding-left: 8px; border-left: 2px dashed var(--warn); font-size: 13px; }
+  .why { color: var(--dim); font-size: 12.5px; margin-top: 4px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 500; font-size: 12px; }
+  td.mono, th.mono { font-family: var(--mono); font-size: 12.5px; }
+  tr.catchall td { background: #e0a33a10; }
+  tr.catchall td:first-child::after { content: ' 兜底'; color: var(--warn); font-size: 11px; }
+
+  .policy {
+    font-family: var(--mono); font-size: 12.5px;
+    flex: 1 1 auto; min-height: 0; max-height: none; overflow: auto;
+  }
+  .policy div { display: flex; gap: 10px; padding: 0 4px; white-space: pre-wrap; }
+  .policy .ln { color: #4a5262; min-width: 30px; text-align: right; user-select: none; }
+  .policy div.hit { background: #5b9dff22; }
+  .quick-nav { display: flex; align-items: center; gap: 5px; }
+  .quick-nav > span { color: var(--dim); font-size: 12px; }
+  .quick-nav button { padding: 4px 8px; font-size: 12px; }
+  .candidate-help {
+    margin-top: 7px; padding: 7px 9px; border-radius: 6px;
+    background: #11151d; color: var(--dim); font-size: 12.5px;
+  }
+  .candidate-help strong { color: var(--text); }
+  .candidate-help.covered { border-left: 2px solid var(--ok); }
+  .candidate-help.pending { border-left: 2px solid var(--warn); }
+  .quote.unverified { cursor: default; border-color: var(--warn); color: var(--warn); }
+  .empty { color: var(--dim); font-size: 13px; padding: 8px 0; }
+  .bar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+  .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s; }
+  details > summary { cursor: pointer; color: var(--dim); font-size: 13px; }
+  .surface-toggle { display: flex; gap: 4px; }
+  .surface-toggle span {
+    font-size: 11px; padding: 2px 8px; border: 1px solid var(--line);
+    border-radius: 4px; cursor: pointer; color: var(--dim);
+  }
+  .surface-toggle span.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
+  .surface-toggle span.moved { border-color: var(--warn); color: var(--warn); background: #e0a33a18; }
+  .row .grow { flex: 1; }
+  .actions { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+  .actions button { padding: 3px 9px; font-size: 12px; }
+  .actions button.on { border-color: var(--accent); color: var(--accent); background: #5b9dff18; }
+  .actions button.reject.on { border-color: var(--danger); color: var(--danger); background: #e05c5c18; }
+  .config-editor {
+    width: 100%; min-height: 170px; margin-top: 9px; padding: 9px;
+    background: #0f1115; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; font: 12px/1.55 var(--mono); resize: vertical;
+  }
+  .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .field-grid label { color: var(--dim); font-size: 11px; }
+  .field-grid input, .field-grid textarea { width: 100%; margin-top: 3px; }
+  .field-grid textarea { min-height: 58px; resize: vertical; }
+  .publish { border-left: 3px solid var(--accent); }
+  .diff-path { font-family: var(--mono); color: var(--accent); font-size: 12px; }
+  .decision-note { color: var(--dim); font-size: 12px; margin-top: 7px; }
+
+  /* 桌面端不让整个页面滚：header 固定占自己的布局空间，下面左右两栏各滚各的。
+     这样点击右侧 policy 行只动右栏，不会把左边正在编辑的卡片带走。
+     窄屏由上面的 media query 恢复普通页面滚动，避免两个很矮的滚动框。 */
+  section { scroll-margin-top: 12px; }
+
+  /* 首屏遮罩 */
+  #gate {
+    position: fixed; inset: 0; z-index: 50; display: flex;
+    align-items: center; justify-content: center;
+    background: var(--bg);
+  }
+  #gate.done { display: none; }
+  .gate-card {
+    max-width: 640px; padding: 32px 36px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  }
+  .gate-card h2 { margin: 0 0 10px; font-size: 20px; }
+  .gate-hint { margin: 0 0 22px; color: var(--dim); font-size: 13px; line-height: 1.7; }
+  .gate-option {
+    display: block; width: 100%; text-align: left; cursor: pointer;
+    padding: 14px 16px; margin-bottom: 10px;
+    background: #1d2129; border: 1px solid var(--line); border-radius: 8px;
+    color: var(--text); font: inherit;
+  }
+  .gate-option:hover { border-color: var(--accent); }
+  .gate-option b { display: block; margin-bottom: 4px; font-size: 15px; }
+  .gate-option span { color: var(--dim); font-size: 12.5px; }
+</style>
+</head>
+<body>
+<!-- 首屏：先选系统。
+     【为什么要一个遮罩而不是只留那个下拉】
+     下拉菜单里默认选中的那一项看上去像「当前就是零售」，
+     而管理员可能根本没注意到还有另一个系统。先选一次把这个选择变成显式的；
+     选完之后头部那个下拉仍然可用，不用反复回首屏。 -->
+<div id="gate">
+  <div class="gate-card">
+    <h2>选一个客服系统</h2>
+    <p class="gate-hint">
+      两套配置跑在同一份代码上 —— 换一份 policy 就换一个业务域，
+      工具集、决策表、人设、数据库全部跟着变。
+    </p>
+    <div id="gate-options"></div>
+  </div>
+</div>
+
+<header>
+  <h1>Policy 配置台</h1>
+  <select id="domain"></select>
+  <input id="search" type="search" placeholder="搜索规则、工具、原文…">
+  <span class="chip on" data-filter="all">全部</span>
+  <span class="chip" data-filter="dispute">只看待决定</span>
+  <span class="chip" data-filter="risk">只看有风险</span>
+  <nav class="quick-nav" aria-label="快速跳转">
+    <span>跳转：</span>
+    <button type="button" data-jump="sec-dispute">候选裁决</button>
+    <button type="button" data-jump="sec-tables">决策表</button>
+    <button type="button" data-jump="sec-flows">Agent 流程</button>
+    <button type="button" data-jump="sec-database" id="jump-database">数据库</button>
+  </nav>
+  <span class="grow"></span>
+  <span id="status" style="color:var(--dim);font-size:12.5px"></span>
+  <button id="extract">抽取 policy（跑 3 次）</button>
+  <button id="export" class="primary" disabled>预览并应用</button>
+</header>
+
+<main>
+  <div class="col workspace" id="workspace">
+    <section id="sec-publish"></section>
+    <section id="sec-dispute"></section>
+    <section id="sec-agreed"></section>
+    <section id="sec-tables"></section>
+    <section id="sec-flows"></section>
+    <section id="sec-surfaces"></section>
+    <section id="sec-coverage"></section>
+    <section id="sec-database"></section>
+  </div>
+  <aside class="col">
+    <h2>policy 原文 <span class="count" id="policy-count"></span></h2>
+    <div class="policy" id="policy"></div>
+  </aside>
+</main>
+
+<script type="module">
+const $ = id => document.getElementById(id)
+
+const el = (tag, cls, html) => {
+  const node = document.createElement(tag)
+  if (cls) node.className = cls
+  if (html !== undefined) node.innerHTML = html
+  return node
+}
+const esc = value => String(value ?? '').replace(/[&<>"]/g,
+  ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
+
+const state = {
+  domain: 'retail',
+  filter: 'all',
+  query: '',
+  extract: null,
+  guards: null,
+  configuration: null,
+  surfaces: null,
+  dirty: false,
+  preview: null,
+  // 管理员把某个工具挪到另一面的记录。不直接改 suggestions ——
+  // 「建议」和「决定」要分开存，否则改回来时不知道原建议是什么。
+  overrides: {},
+}
+
+// —— 每条项目怎么显示 ——
+
+function labelOf(item) {
+  switch (item.kind) {
+    // name 是机器键（如 change_fee_economy），管理员先看到的应该是业务含义。
+    // 机器键仍会在下面的说明里保留，方便和 guards.json 对照。
+    case 'threshold': return `${item.applies_to || item.name} = ${item.value} ${item.unit || ''}`
+    case 'window': return `${item.category} = ${item.days} 天`
+    case 'escalation': return item.trigger
+    case 'order': return `${item.before} → ${item.after}`
+    case 'lookup': return `${item.name}（${(item.inputs || []).join(' × ')}，${(item.rows || []).length} 行）`
+    case 'gap': return item.topic
+    default: return item.name || ''
+  }
+}
+
+const KIND_TEXT = {
+  threshold: '阈值', window: '时限', escalation: '转人工',
+  order: '顺序', lookup: '交叉表', gap: 'policy 缺口',
+}
+const DISPUTE_TEXT = {
+  conflicting_values: '不同轮次结论冲突', partial_agreement: '仅部分轮次出现',
+  stable_but_ambiguous: '每轮都出现，但证据不足',
+}
+const REVIEW_TEXT = {
+  accepted: '已接受', rejected: '已拒绝',
+  policy_gap: 'Policy 缺口', data_gap: '数据缺口',
+}
+
+const FIELD_TEXT = {
+  cabin: '舱位', memberTier: '会员等级', amount: '金额', status: '状态',
+  basic_economy: '特价经济舱', economy: '经济舱', business: '公务舱',
+}
+
+function agreementExplanation(item) {
+  const [seen, total] = String(item.agreement || '').split('/').map(Number)
+  if (!Number.isFinite(seen) || !Number.isFinite(total)) return ''
+  if (item.disputeKind === 'conflicting_values') {
+    return `同一份 Policy 共抽取 ${total} 次，其中 ${seen} 次得到当前结论；其他轮次给出了不同结论。`
+  }
+  if (item.disputeKind === 'stable_but_ambiguous') {
+    return `${total} 次抽取都发现了这个问题，但每次都缺少足够证据，不能自动变成规则。`
+  }
+  if (seen < total) {
+    return `同一份 Policy 共抽取 ${total} 次，仅 ${seen} 次抽到这条；它可能是其他轮次漏抽，也可能是这一次多抽。`
+  }
+  return `${total} 次抽取都得到相同结论，并且能落回 Policy 原文。`
+}
+
+function configuredLanding(item) {
+  if (!state.configuration) return null
+  if (item.kind === 'threshold') {
+    const thresholds = state.configuration.guards.thresholds || {}
+    if (Object.hasOwn(thresholds, item.name)) {
+      return {
+        kind: 'threshold',
+        same: Number(thresholds[item.name]) === Number(item.value),
+        detail: `单值阈值 ${item.name} 当前为 ${thresholds[item.name]}${item.unit || ''}`,
+      }
+    }
+    const tables = state.guards?.tables || []
+    const table = [...tables]
+      .sort((left, right) => right.name.length - left.name.length)
+      .find(candidate => item.name === candidate.name || item.name.startsWith(`${candidate.name}_`))
+    if (table) {
+      const suffix = item.name.slice(table.name.length + 1)
+      const rule = table.rules.find(candidate => {
+        const values = Object.values(candidate.when || {}).map(String)
+        return Number(candidate.then) === Number(item.value)
+          && (!suffix || values.includes(suffix))
+      })
+      if (rule) {
+        const when = Object.entries(rule.when || {})
+          .map(([name, value]) => `${FIELD_TEXT[name] || name}=${FIELD_TEXT[value] || value}`)
+          .join('、') || '兜底'
+        return {
+          kind: 'decision', same: true, policyLine: table.policyLine,
+          detail: `决策表 ${table.name} 已配置「${when} → ${rule.then}${item.unit || ''}」`,
+        }
+      }
+    }
+  }
+  if (item.kind === 'order') {
+    const rule = state.configuration.flows.rules.find(candidate =>
+      candidate.before === item.before && candidate.after === item.after)
+    if (rule) return { kind: 'flow', same: true, policyLine: rule.policyLine, detail: `流程规则 ${rule.id} 已包含相同顺序` }
+  }
+  return null
+}
+
+function candidateMeaning(item) {
+  if (item.kind === 'threshold') {
+    const machineKey = item.name ? `（机器键：${item.name}）` : ''
+    const extra = String(item.name || '').startsWith('change_fee_')
+      ? '这里指固定的改签手续费，不含新旧航班的票价差额。'
+      : '这是工具或决策表会读取的单个数值。'
+    return `含义：${item.applies_to || item.name}取值为 ${item.value}${item.unit || ''}${machineKey}。${extra}`
+  }
+  if (item.kind === 'order') return `含义：后台 Agent 应先完成「${item.before}」，再做「${item.after}」。`
+  if (item.kind === 'gap') return '含义：模型认为 Policy 或演示数据存在空白；确认缺口不会自动创造业务规则。'
+  return ''
+}
+
+function candidateConsequence(item) {
+  const landing = configuredLanding(item)
+  if (landing?.same) {
+    return `当前运行配置已覆盖：${landing.detail}。即使暂不处理，Agent 仍按这份已有配置运行；处理只会留下审核记录。`
+  }
+  if (item.kind === 'order') {
+    return '当前运行配置没有这条顺序。不处理不会改变 Agent；接受并应用后，它才会进入后台 Agent 的流程提示。'
+  }
+  if (item.kind === 'threshold' && landing) {
+    return `当前运行配置是：${landing.detail}。不处理会继续使用旧值；接受并应用后才改成候选值。`
+  }
+  return '不处理不会改变 Agent：运行时继续使用上一次已应用的 guards.json / flows.json；这条候选只会留在“未处理”列表。'
+}
+
+const clone = value => JSON.parse(JSON.stringify(value))
+
+function reviewKey(item) {
+  return item.topicKey || `${item.kind}:${labelOf(item)}`
+}
+
+function markDirty(note = '有尚未应用的修改') {
+  state.dirty = true
+  state.preview = null
+  $('export').disabled = false
+  $('status').textContent = note
+  renderPublish()
+}
+
+function canonicalToDisplay(guards) {
+  const tables = Object.entries(guards.decisions || {})
+    .filter(([name]) => !name.startsWith('_'))
+    .map(([name, table]) => ({
+      name,
+      hitPolicy: table.hitPolicy || 'first',
+      inputs: table.inputs || [],
+      policyLine: table.policyLine ?? null,
+      rules: (table.rules || []).map((rule, index) => ({
+        ...rule,
+        index: index + 1,
+        isCatchAll: !Object.keys(rule.when || {}).length
+          || Object.values(rule.when || {}).every(value => ['', '-', '*'].includes(String(value ?? '').trim())),
+      })),
+    }))
+  const preconditions = Object.entries(guards.preconditions || {})
+    .filter(([name]) => !name.startsWith('_'))
+    .map(([tool, rule]) => ({ tool, ...rule }))
+  return {
+    domain: guards.domain,
+    version: guards.version,
+    tables,
+    preconditions,
+    enums: guards.enums || {},
+    thresholds: guards.thresholds || {},
+  }
+}
+
+function shortHash(text) {
+  let hash = 2166136261
+  for (const char of String(text)) {
+    hash ^= char.codePointAt(0)
+    hash = Math.imul(hash, 16777619)
+  }
+  return (hash >>> 0).toString(36)
+}
+
+function syncAcceptedCandidate(item, key) {
+  const landing = configuredLanding(item)
+  if (landing?.same) return `当前运行配置已覆盖（${landing.detail}）；本次只记录审核结论。`
+  if (item.kind === 'order') {
+    const id = `review-${shortHash(key)}`
+    const rules = state.configuration.flows.rules
+    const existing = rules.find(rule => rule.sourceKey === key)
+    const value = {
+      id,
+      enabled: true,
+      before: item.before,
+      after: item.after,
+      instruction: item.quote || '',
+      policyLine: item.policyLine || undefined,
+      sourceKey: key,
+    }
+    if (existing) Object.assign(existing, value)
+    else rules.push(value)
+    return '已加入下方流程配置；应用后注入后台 Agent。'
+  }
+  if (item.kind === 'threshold' && Object.hasOwn(state.configuration.guards.thresholds || {}, item.name)) {
+    state.configuration.guards.thresholds[item.name] = Number(item.value)
+    state.guards = canonicalToDisplay(state.configuration.guards)
+    return `已更新 guards.thresholds.${item.name}。`
+  }
+  if (item.kind === 'gap') return '已记录缺口；缺口不会自动变成业务规则。'
+  return '已记录裁决；请在下方决策表或执行配置中选择明确落点。'
+}
+
+function decideCandidate(item, status, key = reviewKey(item)) {
+  const review = state.configuration.review
+  review.items[key] = {
+    status,
+    item: clone(item),
+    updatedAt: new Date().toISOString(),
+  }
+  review.updatedAt = new Date().toISOString()
+  let note = `已标记为「${REVIEW_TEXT[status]}」；点击“预览并应用”才会写入。`
+  if (status === 'accepted') note += ` ${syncAcceptedCandidate(item, key)}`
+  markDirty(note)
+  renderExtract()
+  renderTables()
+  renderFlows()
+}
+
+// 搜索命中判定：把一条项目的所有可读字段拼起来搜。
+// 【要包含 quote】管理员常记得的是原文里的说法，而不是我们起的字段名。
+function matches(item, query) {
+  if (!query) return true
+  const haystack = [
+    labelOf(item), item.quote, item.why, item.reason, item.kind,
+    KIND_TEXT[item.kind], item.name, item.topic, item.trigger,
+    ...(item.variants || []).map(labelOf),
+  ].filter(Boolean).join(' ').toLowerCase()
+  return haystack.includes(query.toLowerCase())
+}
+
+function itemCard(item, { dispute = false } = {}) {
+  const key = reviewKey(item)
+  const saved = state.configuration?.review?.items?.[key]
+  if (saved?.item) item = saved.item
+  const card = el('div', `card ${dispute ? 'dispute' : 'ok'}`)
+  const row = el('div', 'row')
+  if (item.agreement) {
+    const bad = Number(String(item.agreement).split('/')[0]) < Number(String(item.agreement).split('/')[1])
+    const agreement = el('span', `tag ${bad ? 'warn' : 'agree'}`, `${esc(item.agreement)} 次抽取`)
+    agreement.title = agreementExplanation(item)
+    row.append(agreement)
+  }
+  row.append(el('span', 'tag', esc(KIND_TEXT[item.kind] || item.kind)))
+  if (item.disputeKind) row.append(el('span', 'tag warn', esc(DISPUTE_TEXT[item.disputeKind])))
+  if (item.rejectedReason) row.append(el('span', 'tag bad', esc(item.rejectedReason)))
+  row.append(el('span', 'label', esc(labelOf(item))))
+  card.append(row)
+
+  if (dispute && item.agreement) {
+    card.append(el('div', 'why', esc(agreementExplanation(item))))
+  }
+  if (item.why) card.append(el('div', 'why', esc(item.why)))
+
+  if (item.quote) {
+    // quote 有两种证据强度：逐字匹配，或「适用范围 + 数值」匹配到表格行。
+    // 后者能把“经济舱改签手续费为 200 元”落回 policy 的表格第 35 行，
+    // 但不能假装模型给的是逐字引用，所以界面明确标出定位方式。
+    const line = item.policyLine
+    const source = line
+      ? item.evidenceMethod === 'structured'
+        ? `第 ${line} 行（按适用范围 + 数值定位）`
+        : `第 ${line} 行`
+      : '未找到 Policy 原文证据'
+    const quote = el('div', `quote ${line ? '' : 'unverified'}`,
+      `${source} · ${line ? '' : '模型给出的说法：'}${esc(item.quote)}`)
+    if (line) quote.onclick = () => highlightPolicy(line)
+    card.append(quote)
+  }
+
+  if (dispute) {
+    const meaning = candidateMeaning(item)
+    const landing = configuredLanding(item)
+    const help = el('div', `candidate-help ${landing?.same ? 'covered' : 'pending'}`)
+    if (meaning) help.append(el('div', null, `<strong>这是什么：</strong>${esc(meaning.replace(/^含义：/, ''))}`))
+    help.append(el('div', null, `<strong>不处理会怎样：</strong>${esc(candidateConsequence(item))}`))
+    card.append(help)
+  }
+
+  for (const other of item.variants || []) {
+    const variant = el('div', 'variant')
+    variant.append(el('span', 'tag warn', `${esc(other.agreement || '')} 次抽取`))
+    variant.append(document.createTextNode(` 另一版本：${labelOf(other)}`))
+    card.append(variant)
+  }
+
+  if (dispute && state.configuration) {
+    const current = saved?.status
+    const actions = el('div', 'actions')
+    const choices = item.kind === 'gap'
+      ? [['policy_gap', '确认为 Policy 缺口'], ['data_gap', '确认为数据缺口'], ['rejected', '模型误判']]
+      : [['accepted', '接受'], ['rejected', '拒绝'], ['policy_gap', '需补 Policy'], ['data_gap', '需补数据']]
+    for (const [status, text] of choices) {
+      const button = document.createElement('button')
+      button.textContent = text
+      button.className = `${status === 'rejected' ? 'reject ' : ''}${current === status ? 'on' : ''}`
+      button.onclick = () => decideCandidate(item, status)
+      actions.append(button)
+    }
+
+    const edit = document.createElement('button')
+    edit.textContent = '编辑候选'
+    edit.onclick = () => {
+      if (card.querySelector('.candidate-editor')) return
+      const editor = document.createElement('textarea')
+      editor.className = 'config-editor candidate-editor'
+      editor.value = JSON.stringify(item, null, 2)
+      const save = document.createElement('button')
+      save.textContent = '保存修改并接受'
+      save.className = 'primary'
+      save.onclick = () => {
+        try {
+          const edited = JSON.parse(editor.value)
+          decideCandidate(edited, 'accepted', key)
+        } catch (error) {
+          $('status').textContent = `候选项 JSON 有误：${error.message}`
+        }
+      }
+      card.append(editor, save)
+    }
+    actions.append(edit)
+
+    if (current) {
+      const reset = document.createElement('button')
+      reset.textContent = '撤销裁决'
+      reset.onclick = () => {
+        delete state.configuration.review.items[key]
+        state.configuration.flows.rules = state.configuration.flows.rules
+          .filter(rule => rule.sourceKey !== key)
+        markDirty('已撤销这条裁决；点击“预览并应用”后落盘。')
+        renderExtract()
+        renderFlows()
+      }
+      actions.append(reset)
+      card.append(el('div', 'decision-note', `当前裁决：${esc(REVIEW_TEXT[current])}`))
+    }
+    card.append(actions)
+  }
+  return card
+}
+
+// —— 渲染 ——
+
+function renderExtract() {
+  const dispute = $('sec-dispute')
+  const agreed = $('sec-agreed')
+  dispute.innerHTML = ''
+  agreed.innerHTML = ''
+  if (!state.extract) {
+    dispute.append(el('h2', null, '抽取结果'))
+    dispute.append(el('div', 'empty', '还没抽取。点右上角「抽取 policy」开始 —— 跑 3 次约需一分钟。'))
+    return
+  }
+  const disputed = state.extract.disputed.filter(item => matches(item, state.query))
+  const stable = state.extract.agreed.filter(item => matches(item, state.query))
+
+  const reviewed = state.extract.disputed.filter(item =>
+    Boolean(state.configuration?.review?.items?.[reviewKey(item)]?.status)).length
+  dispute.append(el('h2', null,
+    `需人工裁决 <span class="count">未处理 ${state.extract.disputed.length - reviewed} · 已处理 ${reviewed} · 共 ${state.extract.disputed.length} 条</span>`))
+  dispute.append(el('div', 'candidate-help pending',
+    '<strong>不处理不会改变当前 Agent。</strong>'
+    + '这些是模型从 Policy 抽出的候选，不是正在执行的规则；运行时继续使用上一次已应用的配置。'
+    + '接受顺序候选会加入流程草稿；guards.thresholds 中已有同名键的阈值会更新草稿；其他候选只记录审核结论。'
+    + '无论选择哪项，都要点“预览并应用”才会写入。'))
+  if (!disputed.length) dispute.append(el('div', 'empty', '没有命中的项。'))
+  for (const item of disputed) dispute.append(itemCard(item, { dispute: true }))
+
+  if (state.filter === 'dispute' || state.filter === 'risk') return
+
+  const details = el('details')
+  details.append(el('summary', null,
+    `${state.extract.runs} 次抽取完全一致，无需人看 · ${stable.length} / ${state.extract.agreed.length} 条`))
+  for (const item of stable) details.append(itemCard(item))
+  agreed.append(el('h2', null, '已确定'))
+  agreed.append(details)
+}
+
+function appendObjectEditor(card, label, value, onSave) {
+  const button = document.createElement('button')
+  button.textContent = `编辑${label}`
+  button.onclick = () => {
+    if (card.querySelector('.config-editor')) return
+    const editor = document.createElement('textarea')
+    editor.className = 'config-editor'
+    editor.value = JSON.stringify(value, null, 2)
+    const actions = el('div', 'actions')
+    const save = document.createElement('button')
+    save.textContent = '更新草稿'
+    save.className = 'primary'
+    save.onclick = () => {
+      try {
+        onSave(JSON.parse(editor.value))
+        markDirty(`${label}已更新到草稿；尚未应用。`)
+        renderTables()
+      } catch (error) {
+        $('status').textContent = `${label} JSON 有误：${error.message}`
+      }
+    }
+    const cancel = document.createElement('button')
+    cancel.textContent = '取消'
+    cancel.onclick = () => { editor.remove(); actions.remove() }
+    actions.append(save, cancel)
+    card.append(editor, actions)
+  }
+  return button
+}
+
+function renderTables() {
+  const host = $('sec-tables')
+  host.innerHTML = ''
+  if (!state.guards || !state.configuration) return
+  if (state.filter === 'dispute' || state.filter === 'risk') return
+
+  const tables = state.guards.tables.filter(table => {
+    if (!state.query) return true
+    const haystack = [
+      table.name, table.hitPolicy, ...(table.inputs || []),
+      ...table.rules.flatMap(rule => [
+        ...Object.entries(rule.when).flat(), rule.then, rule.reason,
+      ]),
+    ].filter(value => value !== null && value !== undefined).join(' ').toLowerCase()
+    return haystack.includes(state.query.toLowerCase())
+  })
+
+  const title = el('h2', null,
+    `决策表配置 <span class="count">${tables.length} / ${state.guards.tables.length} 张 · 草稿可编辑，应用后下一次工具调用生效</span>`)
+  const add = document.createElement('button')
+  add.textContent = '新增决策表'
+  add.style.marginLeft = '8px'
+  add.onclick = () => {
+    const name = prompt('新决策表名称（英文标识）')?.trim()
+    if (!name) return
+    if (state.configuration.guards.decisions[name]) {
+      $('status').textContent = `决策表 ${name} 已存在`
+      return
+    }
+    state.configuration.guards.decisions[name] = {
+      hitPolicy: 'first', inputs: [], policyLine: null,
+      rules: [{ when: {}, then: 'manual_review', reason: '兜底行' }],
+    }
+    state.guards = canonicalToDisplay(state.configuration.guards)
+    markDirty(`已新增决策表 ${name}；请编辑后再应用。`)
+    renderTables()
+  }
+  title.append(add)
+  host.append(title)
+  // 【为什么要在这里讲一遍行序】
+  // 「上移／下移」按钮看起来像排版功能，但在 hit: first 的表里它就是优先级 ——
+  // 把兜底行挪到第一行，整张表会被安静地短路成只返回兜底结果，不报任何错。
+  host.append(el('div', 'decision-note',
+    '<strong>行序 = 优先级。</strong>'
+    + 'hit: first 的表自上而下扫，第一条命中即返回，后面的行不再执行；'
+    + '「上移／下移」就是调整这个优先级，条件有重叠时它决定谁生效。'
+    + '带底色的兜底行匹配任意输入，<strong>必须留在最后一行</strong> —— '
+    + '把它上移会让下面的规则永远不被命中。'
+    + 'hit: unique / collect 的表不靠顺序消歧，调序只影响可读性。'
+    + '所有改动都只写草稿，要点“预览并应用”才生效。'))
+
+  for (const table of tables) {
+    const card = el('div', 'card')
+    const head = el('div', 'row')
+    head.append(el('span', 'label', esc(table.name)))
+    head.append(el('span', 'tag', `hit: ${esc(table.hitPolicy)}`))
+    if (table.inputs.length) head.append(el('span', 'tag', esc(table.inputs.join(' × '))))
+    if (table.policyLine) {
+      const link = el('span', 'tag', `policy 第 ${table.policyLine} 行`)
+      link.style.cursor = 'pointer'
+      link.onclick = () => highlightPolicy(table.policyLine)
+      head.append(link)
+    }
+    head.append(el('span', 'grow', ''))
+    head.append(appendObjectEditor(card, `决策表 ${table.name}`,
+      state.configuration.guards.decisions[table.name], value => {
+        state.configuration.guards.decisions[table.name] = value
+        state.guards = canonicalToDisplay(state.configuration.guards)
+      }))
+    const remove = document.createElement('button')
+    remove.textContent = '删除'
+    remove.onclick = () => {
+      if (!confirm(`删除决策表 ${table.name}？缺表时对应工具会转人工，不会默默放行。`)) return
+      delete state.configuration.guards.decisions[table.name]
+      state.guards = canonicalToDisplay(state.configuration.guards)
+      markDirty(`已从草稿删除决策表 ${table.name}。`)
+      renderTables()
+    }
+    head.append(remove)
+    card.append(head)
+
+    const canonical = state.configuration.guards.decisions[table.name]
+    const columns = table.inputs.length
+      ? table.inputs
+      : [...new Set(table.rules.flatMap(rule => Object.keys(rule.when)))]
+    const grid = el('table')
+    const header = el('tr')
+    header.append(el('th', null, '#'))
+    for (const column of columns) header.append(el('th', 'mono', esc(column)))
+    header.append(el('th', null, '结果'))
+    header.append(el('th', null, '理由'))
+    header.append(el('th', null, '操作'))
+    grid.append(header)
+    const typed = text => {
+      const trimmed = text.trim()
+      if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed)
+      if (trimmed === 'true') return true
+      if (trimmed === 'false') return false
+      return text
+    }
+    for (const [ruleIndex, rule] of table.rules.entries()) {
+      const tr = el('tr', rule.isCatchAll ? 'catchall' : null)
+      tr.append(el('td', null, String(rule.index)))
+      for (const column of columns) {
+        const input = document.createElement('input')
+        input.className = 'mono'
+        input.style.width = '100%'
+        input.placeholder = '–（任意）'
+        input.value = rule.when[column] ?? ''
+        input.oninput = () => {
+          if (input.value.trim()) canonical.rules[ruleIndex].when[column] = input.value
+          else delete canonical.rules[ruleIndex].when[column]
+          markDirty(`决策表 ${table.name} 第 ${ruleIndex + 1} 行已修改。`)
+        }
+        const cell = document.createElement('td')
+        cell.append(input)
+        tr.append(cell)
+      }
+      const outcome = document.createElement('input')
+      outcome.value = rule.then ?? ''
+      outcome.style.width = '100%'
+      outcome.oninput = () => {
+        canonical.rules[ruleIndex].then = typed(outcome.value)
+        markDirty(`决策表 ${table.name} 第 ${ruleIndex + 1} 行结果已修改。`)
+      }
+      const outcomeCell = document.createElement('td')
+      outcomeCell.append(outcome)
+      tr.append(outcomeCell)
+
+      const reason = document.createElement('input')
+      reason.value = rule.reason || ''
+      reason.style.width = '100%'
+      reason.oninput = () => {
+        if (reason.value) canonical.rules[ruleIndex].reason = reason.value
+        else delete canonical.rules[ruleIndex].reason
+        markDirty(`决策表 ${table.name} 第 ${ruleIndex + 1} 行理由已修改。`)
+      }
+      const reasonCell = document.createElement('td')
+      reasonCell.append(reason)
+      tr.append(reasonCell)
+
+      const operations = document.createElement('td')
+      for (const [text, delta] of [['↑', -1], ['↓', 1]]) {
+        const move = document.createElement('button')
+        move.textContent = text
+        move.disabled = ruleIndex + delta < 0 || ruleIndex + delta >= canonical.rules.length
+        move.onclick = () => {
+          const other = ruleIndex + delta
+          ;[canonical.rules[ruleIndex], canonical.rules[other]]
+            = [canonical.rules[other], canonical.rules[ruleIndex]]
+          state.guards = canonicalToDisplay(state.configuration.guards)
+          markDirty(`决策表 ${table.name} 的规则顺序已修改。`)
+          renderTables()
+        }
+        operations.append(move)
+      }
+      const removeRule = document.createElement('button')
+      removeRule.textContent = '删'
+      removeRule.onclick = () => {
+        canonical.rules.splice(ruleIndex, 1)
+        state.guards = canonicalToDisplay(state.configuration.guards)
+        markDirty(`已删除决策表 ${table.name} 第 ${ruleIndex + 1} 行。`)
+        renderTables()
+      }
+      operations.append(removeRule)
+      tr.append(operations)
+      grid.append(tr)
+    }
+    card.append(grid)
+    const addRule = document.createElement('button')
+    addRule.textContent = '新增规则行'
+    addRule.onclick = () => {
+      const catchAll = canonical.rules.findIndex(rule => !Object.keys(rule.when || {}).length)
+      const at = catchAll < 0 ? canonical.rules.length : catchAll
+      canonical.rules.splice(at, 0, { when: {}, then: 'manual_review', reason: '' })
+      state.guards = canonicalToDisplay(state.configuration.guards)
+      markDirty(`已在决策表 ${table.name} 中新增规则行。`)
+      renderTables()
+    }
+    const ruleActions = el('div', 'actions')
+    ruleActions.append(addRule)
+    card.append(ruleActions)
+    host.append(card)
+  }
+
+  const extras = [
+    ['工具前置条件', 'preconditions', '没声明的工具缺省不拦；requires 是会话事实数组。'],
+    ['枚举', 'enums', '限制工具可以接受的业务取值。'],
+    ['单值阈值', 'thresholds', '供工具直接读取，例如每件行李费。'],
+  ]
+  for (const [label, key, hint] of extras) {
+    const card = el('div', 'card')
+    const head = el('div', 'row')
+    head.append(el('span', 'label', label), el('span', 'tag', hint), el('span', 'grow', ''))
+    head.append(appendObjectEditor(card, label,
+      state.configuration.guards[key] || {}, value => {
+        state.configuration.guards[key] = value
+        state.guards = canonicalToDisplay(state.configuration.guards)
+      }))
+    card.append(head)
+    host.append(card)
+  }
+}
+
+function renderSurfaces() {
+  const host = $('sec-surfaces')
+  host.innerHTML = ''
+  if (!state.surfaces) return
+
+  const warned = new Map((state.surfaces.warnings || []).map(item => [item.name, item]))
+  let list = state.surfaces.suggestions
+  if (state.query) {
+    list = list.filter(tool => [tool.name, tool.title, tool.why, tool.ruleId]
+      .filter(Boolean).join(' ').toLowerCase().includes(state.query.toLowerCase()))
+  }
+  if (state.filter === 'risk') list = list.filter(tool => warned.has(tool.name))
+  if (state.filter === 'dispute') list = list.filter(tool => state.overrides[tool.name])
+
+  host.append(el('h2', null,
+    `工具面编排 <span class="count">${list.length} / ${state.surfaces.suggestions.length} 个</span>`))
+
+  for (const tool of list) {
+    const decided = state.overrides[tool.name] || tool.suggested
+    const moved = decided !== tool.suggested
+    const warning = warned.get(tool.name)
+    const severe = warning && warning.severity === 'risk'
+    const card = el('div', `card ${severe ? 'risk' : moved ? 'dispute' : ''}`)
+    const row = el('div', 'row')
+    row.append(el('span', 'label', esc(tool.title || tool.name)))
+    row.append(el('span', 'tag', esc(tool.name)))
+    row.append(el('span', 'tag', esc(tool.ruleId)))
+    row.append(el('span', 'grow', ''))
+
+    const toggle = el('div', 'surface-toggle')
+    for (const surface of ['frontend', 'backend']) {
+      const chosen = decided === surface
+      const option = el('span', chosen ? (moved ? 'on moved' : 'on') : null,
+        surface === 'frontend' ? '前台直出' : '后台 Agent')
+      option.onclick = () => {
+        // 选回建议值就删掩盖，而不是记一个等于建议的掩盖 ——
+        // 否则无法区分「没动过」和「改过又改回来了」。
+        if (surface === tool.suggested) delete state.overrides[tool.name]
+        else state.overrides[tool.name] = surface
+        refreshSurfaces({ dirty: true })
+      }
+      toggle.append(option)
+    }
+    row.append(toggle)
+    card.append(row)
+    card.append(el('div', 'why', esc(tool.why)))
+    if (moved) {
+      // 【警告里的字段叫 detail，不是 message】第一版写错，于是改了开关
+      // 只能看到 undefined。而「改到前台会绕过 auth_required」这句话
+      // 正是管理员拨开关时唯一需要看到的东西。
+      const consequence = warning ? warning.detail : tool.ifOverridden
+      card.append(el('div', 'why',
+        `<span class="tag ${severe ? 'bad' : 'warn'}">`
+        + `改到${decided === 'frontend' ? '前台' : '后台'}的后果</span> `
+        + esc(consequence)))
+    }
+    host.append(card)
+  }
+}
+
+function renderFlows() {
+  const host = $('sec-flows')
+  host.innerHTML = ''
+  if (!state.configuration || state.filter === 'risk') return
+  const flows = state.configuration.flows.rules
+  const title = el('h2', null,
+    `后台 Agent 流程 <span class="count">${flows.filter(rule => rule.enabled !== false).length} 条启用 · 修改后下一个后台任务生效</span>`)
+  const add = document.createElement('button')
+  add.textContent = '新增流程规则'
+  add.style.marginLeft = '8px'
+  add.onclick = () => {
+    flows.push({
+      id: `manual-${Date.now().toString(36)}`,
+      enabled: true,
+      before: '前置步骤',
+      after: '后续步骤',
+      instruction: '',
+    })
+    markDirty('已新增流程规则草稿。')
+    renderFlows()
+  }
+  title.append(add)
+  host.append(title)
+  host.append(el('div', 'decision-note',
+    '这些规则会注入后台 Agent 的 system prompt，只约束步骤先后；资格、金额和最终结果仍由工具与决策表硬判。'
+    + '<strong>「上移／下移」调整的是它们写进 prompt 的先后顺序</strong>，'
+    + '也就是希望 Agent 优先遵循哪一条 —— 但这是 prompt 层的软约束，'
+    + '不像决策表那样是硬判定；停用（取消勾选）的规则不会进 prompt。'))
+
+  flows.forEach((rule, index) => {
+    const card = el('div', `card ${rule.enabled === false ? '' : 'ok'}`)
+    const row = el('div', 'row')
+    const enabled = document.createElement('input')
+    enabled.type = 'checkbox'
+    enabled.checked = rule.enabled !== false
+    enabled.onchange = () => {
+      rule.enabled = enabled.checked
+      markDirty(`流程规则 ${rule.id} 已${enabled.checked ? '启用' : '停用'}。`)
+    }
+    row.append(enabled, el('span', 'label', esc(rule.id)), el('span', 'grow', ''))
+    for (const [text, delta] of [['上移', -1], ['下移', 1]]) {
+      const move = document.createElement('button')
+      move.textContent = text
+      move.disabled = index + delta < 0 || index + delta >= flows.length
+      move.onclick = () => {
+        const other = index + delta
+        ;[flows[index], flows[other]] = [flows[other], flows[index]]
+        markDirty(`已调整流程规则 ${rule.id} 的顺序。`)
+        renderFlows()
+      }
+      row.append(move)
+    }
+    const remove = document.createElement('button')
+    remove.textContent = '删除'
+    remove.onclick = () => {
+      flows.splice(index, 1)
+      markDirty(`已删除流程规则 ${rule.id}。`)
+      renderFlows()
+    }
+    row.append(remove)
+    card.append(row)
+
+    const fields = el('div', 'field-grid')
+    const addField = (label, key, multiline = false) => {
+      const wrapper = document.createElement('label')
+      wrapper.textContent = label
+      const control = document.createElement(multiline ? 'textarea' : 'input')
+      control.value = rule[key] ?? ''
+      control.oninput = () => {
+        rule[key] = key === 'policyLine'
+          ? (control.value ? Number(control.value) : undefined)
+          : control.value
+        markDirty(`流程规则 ${rule.id} 已修改。`)
+      }
+      wrapper.append(control)
+      fields.append(wrapper)
+    }
+    addField('先做什么', 'before')
+    addField('再做什么', 'after')
+    addField('补充说明', 'instruction', true)
+    addField('Policy 行号', 'policyLine')
+    card.append(fields)
+    host.append(card)
+  })
+}
+
+function configurationPayload() {
+  const configuration = clone(state.configuration)
+  configuration.frontendMcp = clone(state.surfaces.frontendMcp)
+  return { domain: state.domain, configuration }
+}
+
+async function runConfigurationPreview() {
+  state.preview = await postJson('/api/configuration/preview', configurationPayload())
+  renderPublish()
+  return state.preview
+}
+
+function renderPublish() {
+  const host = $('sec-publish')
+  host.innerHTML = ''
+  if (!state.configuration) return
+  if (!state.preview) {
+    if (state.dirty) {
+      host.append(el('div', 'card publish',
+        '<b>草稿尚未应用</b><div class="decision-note">点击右上角“预览并应用”，先看逐项差异与校验结果；通过后才能真正写入。</div>'))
+    }
+    return
+  }
+
+  const result = state.preview
+  const card = el('div', `card ${result.ok ? 'publish' : 'risk'}`)
+  card.append(el('div', 'row', `<span class="label">${result.ok ? '配置预览通过' : '配置不能应用'}</span>`
+    + `<span class="tag">${result.changeCount || 0} 项变化</span>`))
+  for (const error of result.errors || []) {
+    card.append(el('div', 'why', `<span class="diff-path">${esc(error.path)}</span> — ${esc(error.message)}`))
+  }
+  for (const group of result.changed || []) {
+    const details = document.createElement('details')
+    details.open = true
+    details.append(el('summary', null, `${esc(group.name)} · ${group.changes.length} 项`))
+    for (const change of group.changes.slice(0, 30)) {
+      details.append(el('div', 'why', `<span class="diff-path">${esc(change.path)}</span>`
+        + `：${esc(change.before)} → ${esc(change.after)}`))
+    }
+    if (group.changes.length > 30) details.append(el('div', 'muted', `另有 ${group.changes.length - 30} 项`))
+    card.append(details)
+  }
+  for (const warning of result.warnings || []) {
+    card.append(el('div', 'why', `<span class="tag ${warning.severity === 'risk' ? 'bad' : 'warn'}">${esc(warning.severity)}</span> ${esc(warning.name)}：${esc(warning.detail)}`))
+  }
+  if (result.coverage) {
+    card.append(el('div', 'decision-note', result.coverage.ok
+      ? '新决策表的数据覆盖度：全部覆盖。'
+      : `新决策表的数据覆盖度：${result.coverage.gaps.length} 处缺口；可以应用，但这些分支暂时演示不到。`))
+  }
+  if (result.effect) {
+    card.append(el('div', 'decision-note',
+      `生效方式：规则 ${esc(result.effect.guards)}；流程 ${esc(result.effect.flows)}；工具面 ${esc(result.effect.frontendMcp)}。`))
+  }
+  if (result.ok && result.changeCount) {
+    const apply = document.createElement('button')
+    apply.className = 'primary'
+    apply.textContent = '确认应用这些变化'
+    apply.onclick = async () => {
+      const hasRisk = (result.warnings || []).some(item => item.severity === 'risk')
+      if (hasRisk && !confirm('这次修改会把受保护工具移到前台，可能绕过 auth_required。仍然应用？')) return
+      const outcome = await postJson('/api/configuration/apply', {
+        ...configurationPayload(), acknowledgeRisks: hasRisk,
+      })
+      if (!outcome.ok) {
+        state.preview = outcome
+        renderPublish()
+        return
+      }
+      state.dirty = false
+      state.preview = null
+      const note = `${outcome.note} 已备份到 ${outcome.backup || '—'}`
+      await loadDomain(state.domain, { keepStatus: true })
+      $('status').textContent = note
+    }
+    const applyActions = el('div', 'actions')
+    applyActions.append(apply)
+    card.append(applyActions)
+  }
+  host.append(card)
+}
+
+function scrollPanelTo(panel, target, { center = false } = {}) {
+  const panelRect = panel.getBoundingClientRect()
+  const targetRect = target.getBoundingClientRect()
+  const top = panel.scrollTop + targetRect.top - panelRect.top
+    - (center ? (panel.clientHeight - targetRect.height) / 2 : 12)
+  panel.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+}
+
+function jumpToSection(id) {
+  const target = $(id)
+  const workspace = $('workspace')
+  if (!target || !workspace) return
+  // 桌面端只滚左栏；窄屏恢复普通页面布局时，才滚浏览器页面。
+  if (getComputedStyle(workspace).overflowY === 'auto') scrollPanelTo(workspace, target)
+  else target.scrollIntoView({ block: 'start', behavior: 'smooth' })
+}
+
+function highlightPolicy(line) {
+  if (!line) return
+  for (const node of document.querySelectorAll('.policy div.hit')) node.classList.remove('hit')
+  let target = document.querySelector(`.policy div[data-line="${line}"]`)
+  if (!target && state.query) {
+    // 搜机器键（如 change_fee_economy）时，右侧原文没有这个词，目标行会被过滤掉。
+    // 点击来源时临时展开完整原文；不清空左侧搜索，避免候选卡片也突然跳走。
+    renderPolicy(policyLines, { ignoreQuery: true })
+    target = document.querySelector(`.policy div[data-line="${line}"]`)
+    $('policy-count').textContent += ' · 为显示引用行已临时展开全部'
+  }
+  if (!target) return
+  target.classList.add('hit')
+  // 不用 scrollIntoView：它会把所有可滚动祖先一起滚，左边正在看的卡片也会跳走。
+  // 右栏本来就是独立滚动容器，只改它自己的 scrollTop。
+  scrollPanelTo($('policy'), target, { center: true })
+}
+
+function renderPolicy(lines, { ignoreQuery = false } = {}) {
+  const host = $('policy')
+  host.innerHTML = ''
+  let shown = 0
+  for (const { line, content } of lines) {
+    // 搜索时原文也跟着筛；点击某条来源时可临时展开完整原文。
+    if (!ignoreQuery && state.query && !content.toLowerCase().includes(state.query.toLowerCase())) continue
+    shown += 1
+    const row = el('div')
+    row.dataset.line = line
+    row.append(el('span', 'ln', String(line)))
+    row.append(el('span', null, esc(content)))
+    host.append(row)
+  }
+  $('policy-count').textContent = state.query && !ignoreQuery
+    ? `${shown} / ${lines.length} 行命中`
+    : `${lines.length} 行`
+  if (!shown) host.append(el('div', 'empty', '原文里没有命中的行。'))
+}
+
+// —— 数据装载 ——
+
+async function api(path) {
+  const response = await fetch(path)
+  if (!response.ok) throw new Error(`${path} → ${response.status}`)
+  return response.json()
+}
+
+// 【422 不能当成错误抛】它带着校验结果，正是界面要展示的东西。
+// 用 api() 那个写法会把它变成 throw，于是管理员只看到一个空白区域。
+async function postJson(path, body) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  return response.json()
+}
+
+async function refreshSurfaces({ fromDisk = false, dirty = false } = {}) {
+  const query = fromDisk
+    ? `/api/surfaces?domain=${state.domain}`
+    : `/api/surfaces?domain=${state.domain}&overrides=${encodeURIComponent(JSON.stringify(state.overrides))}`
+  state.surfaces = await api(query)
+  state.overrides = state.surfaces.overrides || state.overrides
+  if (state.configuration) state.configuration.frontendMcp = clone(state.surfaces.frontendMcp)
+  renderSurfaces()
+  if (dirty) markDirty('工具面草稿已修改；尚未应用。')
+}
+
+let policyLines = []
+
+async function loadDomain(domain, { keepStatus = false } = {}) {
+  state.domain = domain
+  state.extract = null
+  state.dirty = false
+  state.preview = null
+  state.overrides = {}
+  $('domain').value = domain
+  if (!keepStatus) $('status').textContent = '装载中…'
+  const [policy, loaded] = await Promise.all([
+    api(`/api/policy?domain=${domain}`),
+    api(`/api/configuration?domain=${domain}`),
+  ])
+  policyLines = policy.lines
+  state.configuration = loaded.configuration
+  state.guards = canonicalToDisplay(state.configuration.guards)
+  renderPolicy(policyLines)
+  renderTables()
+  renderFlows()
+  renderPublish()
+  await refreshSurfaces({ fromDisk: true })
+  $('export').disabled = true
+  // 这两区不依赖抽取结果，可以先画出来。
+  await refreshCoverage()
+  await loadDatabase()
+
+  // 有缓存就直接显示，不用等一分钟。
+  const cached = await api(`/api/extract?domain=${domain}`)
+  if (cached.cached) {
+    state.extract = cached
+    $('status').textContent = `抽取结果来自缓存 · ${new Date(cached.extractedAt).toLocaleString('zh-CN')}`
+  } else {
+    $('status').textContent = ''
+  }
+  renderExtract()
+}
+
+// ── 覆盖度：这份数据能不能把规则演出来 ──
+
+async function refreshCoverage() {
+  const host = $('sec-coverage')
+  host.innerHTML = ''
+  const result = await api(`/api/coverage?domain=${state.domain}`)
+  const head = el('h2', null,
+    `数据覆盖度 <span class="count">${result.ok ? '全部覆盖' : result.gaps.length + ' 处缺口'}</span>`)
+  host.append(head)
+
+  const card = el('div', result.ok ? 'card' : 'card warn')
+  card.append(el('div', 'muted', esc(result.summary)))
+  if (result.ok) {
+    // 全覆盖时也要说清这一区在查什么 ——
+    // 否则看到一句「没问题」不知道它到底检了啥。
+    card.append(el('div', 'muted',
+      '检的是三件事：决策表里的每个取值库里有没有对应数据、'
+      + '枚举的每个值用到没、时限类规则的边界两侧有没有样本。'))
+  }
+  host.append(card)
+
+  for (const gap of result.gaps) {
+    const item = el('div', 'card warn')
+    item.append(el('div', 'row', `<span class="tag warn">${esc(gap.kind)}</span>`))
+    item.append(el('div', null, esc(gap.detail)))
+    if (gap.fix) item.append(el('div', 'muted', `建议：${esc(gap.fix)}`))
+    if (gap.sources?.length) {
+      item.append(el('div', 'muted', `涉及：${esc(gap.sources.join('、'))}`))
+    }
+    host.append(item)
+  }
+}
+
+// ── 数据库编辑：整份提交 + 强制校验 ──
+//
+// 【为何不做逐字段 CRUD】库里的引用是自洽的（订单行指向商品、
+// 航段指向航班、支付方式指向本人名下的卡）。逐字段编辑要把路径
+// 暴露给管理员，点错一格就写坏；而写坏之后的表现不是报错，
+// 是工具静默返回空值，很难归因。整份 JSON 提交要么全过要么全退。
+
+async function loadDatabase() {
+  const host = $('sec-database')
+  host.innerHTML = ''
+  const result = await api(`/api/database?domain=${state.domain}`)
+
+  host.append(el('h2', null, '数据库 <span class="count">整份提交</span>'))
+  const card = el('div', 'card')
+  card.append(el('div', 'muted',
+    '改完先点【校验】。校不过的写不进去 —— 引用断了之后工具不报错，'
+    + '只会静默返回空值，演示当场废掉而且很难查。'))
+
+  const editor = document.createElement('textarea')
+  editor.id = 'db-editor'
+  editor.value = result.text
+  editor.spellcheck = false
+  editor.style.cssText = 'width:100%;height:280px;margin-top:10px;padding:10px;'
+    + 'background:#0f1115;color:var(--text);border:1px solid var(--line);'
+    + 'border-radius:6px;font:12px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical'
+  card.append(editor)
+
+  const bar = el('div', 'row')
+  bar.style.marginTop = '10px'
+  const validateButton = document.createElement('button')
+  validateButton.textContent = '校验'
+  const applyButton = document.createElement('button')
+  applyButton.textContent = '写入'
+  applyButton.className = 'primary'
+  applyButton.disabled = true
+  const verdict = el('span', 'muted')
+  verdict.style.marginLeft = '4px'
+  bar.append(validateButton, applyButton, verdict)
+  card.append(bar)
+
+  const problems = el('div')
+  card.append(problems)
+
+  const runValidate = async () => {
+    problems.innerHTML = ''
+    const outcome = await postJson('/api/database/validate', {
+      domain: state.domain, text: editor.value,
+    })
+    verdict.textContent = outcome.summary || (outcome.ok ? '通过' : '有问题')
+    verdict.style.color = outcome.ok ? 'var(--ok)' : 'var(--danger)'
+    // 只有校过了才能写 —— 这是界面上的第一道，
+    // 服务端那道（422）是真正拦住它的。
+    applyButton.disabled = !outcome.ok
+    for (const error of outcome.errors || []) {
+      const line = el('div', 'card warn')
+      line.append(el('div', null,
+        `<span class="mono">${esc(error.path || '整份')}</span> — ${esc(error.message)}`))
+      if (error.hint) line.append(el('div', 'muted', `后果：${esc(error.hint)}`))
+      problems.append(line)
+    }
+    return outcome.ok
+  }
+
+  validateButton.onclick = runValidate
+  editor.oninput = () => {
+    // 改了就要重新校 —— 否则校过一次之后随便改都能写。
+    applyButton.disabled = true
+    verdict.textContent = ''
+  }
+  applyButton.onclick = async () => {
+    if (!(await runValidate())) return
+    const outcome = await postJson('/api/database', {
+      domain: state.domain, text: editor.value,
+    })
+    verdict.textContent = outcome.note || '已写入'
+    verdict.style.color = 'var(--ok)'
+    applyButton.disabled = true
+    await refreshCoverage()
+  }
+
+  host.append(card)
+}
+
+function startExtract(force) {
+  const bar = el('div', 'bar', '<i></i>')
+  $('sec-dispute').prepend(bar)
+  const fill = bar.querySelector('i')
+  $('extract').disabled = true
+  $('status').textContent = '抽取中…'
+
+  const source = new EventSource(
+    `/api/extract/stream?domain=${state.domain}&runs=3${force ? '&force=1' : ''}`)
+  source.addEventListener('progress', event => {
+    const { done, total } = JSON.parse(event.data)
+    fill.style.width = `${(done / total) * 100}%`
+    $('status').textContent = `抽取中… 第 ${done + 1} / ${total} 次`
+  })
+  source.addEventListener('done', event => {
+    state.extract = JSON.parse(event.data)
+    $('status').textContent = state.extract.cached
+      ? '来自缓存'
+      : `${state.extract.runs} 次抽取完成`
+    $('extract').disabled = false
+    source.close()
+    renderExtract()
+  })
+  source.addEventListener('failed', event => {
+    const { message } = JSON.parse(event.data)
+    // 最常见的原因是没配 API key。把原始消息显示出来，
+    // 只说「失败」用户无从下手。
+    $('status').textContent = `抽取失败：${message}`
+    $('extract').disabled = false
+    source.close()
+    bar.remove()
+  })
+  source.onerror = () => {
+    $('extract').disabled = false
+    source.close()
+  }
+}
+
+// —— 事件 ——
+
+$('search').oninput = event => {
+  state.query = event.target.value.trim()
+  renderExtract()
+  renderTables()
+  renderSurfaces()
+  renderPolicy(policyLines)
+}
+
+for (const chip of document.querySelectorAll('.chip')) {
+  chip.onclick = () => {
+    for (const other of document.querySelectorAll('.chip')) other.classList.remove('on')
+    chip.classList.add('on')
+    state.filter = chip.dataset.filter
+    renderExtract()
+    renderTables()
+    renderSurfaces()
+  }
+}
+
+for (const jump of document.querySelectorAll('[data-jump]')) {
+  jump.onclick = () => jumpToSection(jump.dataset.jump)
+}
+
+$('extract').onclick = () => startExtract(Boolean(state.extract))
+$('domain').onchange = async event => {
+  const next = event.target.value
+  if (state.dirty && !confirm('当前域有尚未应用的草稿。切换系统会丢掉这些修改，继续吗？')) {
+    event.target.value = state.domain
+    return
+  }
+  await loadDomain(next)
+}
+window.addEventListener('beforeunload', event => {
+  if (!state.dirty) return
+  event.preventDefault()
+  event.returnValue = ''
+})
+
+$('export').onclick = async () => {
+  $('status').textContent = '正在校验并生成差异…'
+  const result = await runConfigurationPreview()
+  $('status').textContent = result.ok
+    ? `预览完成：${result.changeCount} 项变化，请在页面顶部确认`
+    : `校验失败：${(result.errors || []).length} 处问题`
+  jumpToSection('sec-publish')
+}
+
+const DOMAIN_BLURB = {
+  retail: '明远优选 —— 退货、换货、取消订单、改地址。退货时限按商品类别分档。',
+  airline: '云途航空 —— 退票、改签、升降舱、加行李、延误补偿。'
+    + '免费行李额是会员等级×舱位的三乘三交叉表，退票资格看五个条件。',
+}
+
+const domains = await api('/api/domains')
+for (const { id, label } of domains.domains) {
+  const option = document.createElement('option')
+  option.value = id
+  option.textContent = label
+  $('domain').append(option)
+
+  const choice = document.createElement('button')
+  choice.className = 'gate-option'
+  choice.innerHTML = `<b>${esc(label)}</b><span>${esc(DOMAIN_BLURB[id] || '')}</span>`
+  choice.onclick = async () => {
+    // 先收遮罩再装载 —— 装载要几百毫秒，护着遮罩的话看着像点不动。
+    $('gate').classList.add('done')
+    await loadDomain(id)
+  }
+  $('gate-options').append(choice)
+}
+
+// 【不在首屏阶段预装载任何一个域】
+// 预装载会把两个域的抽取缓存都碰一遍，而管理员可能只要其中一个。
+// 选完之后再装。
+if (new URLSearchParams(location.search).get('domain')) {
+  // 带了 ?domain= 就跳过首屏 —— 方便从客服工作台直链过来。
+  const wanted = new URLSearchParams(location.search).get('domain')
+  if (domains.domains.some(item => item.id === wanted)) {
+    $('gate').classList.add('done')
+    await loadDomain(wanted)
+  }
+}
+</script>
+</body>
+</html>

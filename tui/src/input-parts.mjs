@@ -107,11 +107,14 @@ function pastedFilePaths(text) {
   return isAbsolute(value) || /^\.\.?[\\/]/.test(value) ? [value, literal] : []
 }
 
-// 路径取不到，只说明这段文字不是可用附件。Windows 上不可达的主机或不存在的
-// 共享（\\server\share）来自 ERROR_BAD_NETPATH，Node 映射为 UNKNOWN 而非
-// ENOENT，同样不能让普通文字发不出去。
+// Windows 不可用共享的 stat 可能返回 UNKNOWN，而不是 ENOENT。
+// 只放行 UNC 查找失败；本地路径、权限及实际读取错误仍须报告。
 function unavailablePath(error) {
-  return ['ENOENT', 'ENOTDIR', 'UNKNOWN'].includes(error?.code)
+  if (['ENOENT', 'ENOTDIR'].includes(error?.code)) return true
+  return process.platform === 'win32'
+    && error?.code === 'UNKNOWN'
+    && error.syscall === 'stat'
+    && /^\\\\(?![?.]\\)[^\\]+\\[^\\]+(?:\\|$)/.test(error.path || '')
 }
 
 // Windows 路径以 \ 分隔，C:\docs\(draft)\a.md 或 \\server\share 中的 \( 与 \\

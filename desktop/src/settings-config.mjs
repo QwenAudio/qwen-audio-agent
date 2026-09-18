@@ -149,6 +149,13 @@ function cleanWakeShortcut(value) {
 function encoded(value) {
   const text = String(value ?? '')
   if (/^[A-Za-z0-9_./:@+-]*$/.test(text)) return text
+  // Inside double quotes parseEnv expands \n and does not unescape \\ or \",
+  // so a Windows path such as C:\Program Files\nodejs would not read back
+  // unchanged. Single- and backtick-quoted values are read verbatim.
+  if (/[\\"]/.test(text)) {
+    const quote = ["'", '`'].find(mark => !text.includes(mark))
+    if (quote) return `${quote}${text}${quote}`
+  }
   return `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
 }
 

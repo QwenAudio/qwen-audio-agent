@@ -13,6 +13,9 @@
   保活；WebSocket 沿用 Session 心跳，兼容性的 Task SSE 使用不进入回放与 Session
   Journal 的轻量注释心跳，避免长任务重复写入旧进度文本。
 
+- 修复桌面设置保存含反斜杠或双引号的值（如 Windows 上指定的 Node.js 路径
+  `C:\Program Files\nodejs`）后，重新读取时反斜杠翻倍、`\n` 被当成换行而路径失效的问题。
+
 - 修复 Windows 上 `qwenaudio doctor` / `setup` 与桌面版设置页在后台命令位于含空格目录
   （如默认的 `C:\Program Files\nodejs\npm.cmd`）时，版本探测与全局包核对被 cmd.exe
   截断命令路径、误报"无法确认版本"或包缺失的问题。

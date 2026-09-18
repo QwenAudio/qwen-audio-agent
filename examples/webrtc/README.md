@@ -49,4 +49,4 @@ input. The model is selected at startup, not in the UI.
 - Install the extension with the same npm prefix as the Gateway. Browsers and WSS-only users do not need it.
 - Remote access requires HTTPS and reachable media ports, with STUN/TURN if needed.
 
-[Protocol and deployment](../../docs/gateway-webrtc-client.zh.md)
+[Protocol and deployment](../../docs/gateway-webrtc-client.md)

@@ -115,6 +115,9 @@ test('extension tarball is independently publishable without native binaries or 
   assert.equal(lock.name, extensionName)
   assert.equal(lock.packages[''].name, extensionName)
   assert.deepEqual(lock.packages[''].dependencies, manifest.dependencies)
+  for (const [name, dependency] of Object.entries(lock.packages)) {
+    if (dependency.resolved) assert.equal(new URL(dependency.resolved).origin, 'https://registry.npmjs.org', `${name} must use the public registry`)
+  }
   const [packed] = parsePackOutput(npm(['pack', '--dry-run', '--json', '--ignore-scripts'], path, join(path, 'cache')))
   assert.deepEqual(packed.files.map(file => file.path).sort(), ['LICENSE', 'README.md', 'index.cjs', 'package.json'])
 })

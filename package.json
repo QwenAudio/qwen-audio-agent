@@ -111,6 +111,7 @@
     "docs/extensions.zh.md",
     "docs/gateway-protocol.md",
     "docs/gateway-protocol.zh.md",
+    "docs/gateway-webrtc-client.md",
     "docs/gateway-webrtc-client.zh.md",
     "docs/roadmap/gateway-client-protocol.md",
     "docs/roadmap/gateway-client-protocol.zh.md",

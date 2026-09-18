@@ -13,7 +13,7 @@
 
 ## 启动
 
-完整演示与安装指导见 [examples/webrtc](../examples/webrtc/README_ZH.md)。
+完整演示与安装指导见 [examples/webrtc](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/webrtc/README_ZH.md)。
 正式版将使用独立扩展包（尚未发布）：
 
 ```sh

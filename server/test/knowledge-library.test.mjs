@@ -170,6 +170,33 @@ test('keeps two different files that share a name apart', () => {
   })
 })
 
+test('keeps names that differ only in case apart', () => {
+  withDirs(({ root, docs }) => {
+    // Windows 与 macOS 默认文件系统不区分大小写：Guide.md 与 guide.md 是同一个文件
+    const dirA = join(root, 'a')
+    const dirB = join(root, 'b')
+    mkdirSync(dirA, { recursive: true })
+    mkdirSync(dirB, { recursive: true })
+    const first = join(dirA, 'Guide.md')
+    const second = join(dirB, 'guide.md')
+    writeFileSync(first, '# 甲的手册\n')
+    writeFileSync(second, '# 乙的手册\n')
+
+    const shelf = library({ docs, root })
+    const one = shelf.import({ ownerId: OWNER, sourcePath: first })
+    const two = shelf.import({ ownerId: OWNER, sourcePath: second })
+
+    assert.equal(two.filename, 'guide-2.md')
+    assert.match(readFileSync(one.path, 'utf8'), /甲的手册/)
+    assert.match(readFileSync(two.path, 'utf8'), /乙的手册/)
+    const target = shelf.conversionTarget({
+      ownerId: OWNER,
+      sourcePath: join(root, 'GUIDE.pdf'),
+    })
+    assert.equal(target.filename, 'GUIDE-3.md')
+  })
+})
+
 test('rejects what it cannot handle', () => {
   withDirs(({ root, docs }) => {
     const shelf = library({ docs, root })

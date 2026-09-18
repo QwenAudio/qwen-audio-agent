@@ -31,6 +31,9 @@
 - 新增 AI Passport 语音客户端示例：音频小包拆分、有界发送缓冲、心跳与关闭原因透传，
   提供局域网配置、麦克风暂停恢复说明及慢速客户端回归测试，不改动 Gateway 核心。
 
+- 修复资料库导入仅大小写不同的同名文件（如 `Guide.md` 与 `guide.md`）时，在 Windows
+  和 macOS 上后导入的文件覆盖先导入的文件、删除其一会连带删掉另一份的问题。
+
 - Gateway 接入统一为本机、`--lan` 和 `--tailnet` 三种启动模式；对外连接地址
   独立由 `gateway pair --endpoint` 指定，不再使用启动参数 `--public-url`。
 - 修复 `qwenaudio install --help`、`skill --help`、`config set --help` 与

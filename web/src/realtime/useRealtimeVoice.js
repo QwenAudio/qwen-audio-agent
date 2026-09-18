@@ -39,8 +39,9 @@ import {
 
 const DEFAULT_INPUT_RATE = 16000
 const OUTPUT_RATE = 24000
+// Desktop CSP permits same-origin scripts, not inlined data: worklet URLs.
 const microphoneAudioWorkletProcessorUrl = new URL(
-  './microphone-audio-worklet-processor.js',
+  './microphone-audio-worklet-processor.js?no-inline',
   import.meta.url,
 ).href
 

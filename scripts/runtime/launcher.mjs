@@ -96,21 +96,31 @@ export function commandAvailable(command, {
 
 // ── spawn + proxy (inherits stdio, forwards signals, propagates exit code) ───
 
-const CMD_META_CHARS = /([()%!^<>&|])/g
+const CMD_META_CHARS = /["()%!^<>&|]/g
 
+// cmd.exe treats ^ as an escape only outside quotes; inside quotes it is kept
+// literally, e.g. C:\Program Files ^(x86^)\nodejs\npx.cmd would not be found.
+// Follow cmd's quote state and escape only the metacharacters it can see.
 function escapeCmdValue(value) {
-  return String(value).replace(CMD_META_CHARS, '^$1')
+  let quoted = false
+  return value.replace(CMD_META_CHARS, character => {
+    if (character === '"') {
+      quoted = !quoted
+      return character
+    }
+    return quoted ? character : `^${character}`
+  })
 }
 
 function quoteCmdArgument(value) {
-  const quoted = escapeCmdValue(value)
+  const quoted = String(value)
     .replace(/(\\*)"/g, '$1$1\\"')
     .replace(/(\\*)$/g, '$1$1')
-  return `"${quoted}"`
+  return escapeCmdValue(`"${quoted}"`)
 }
 
 function quoteCmdCommand(value) {
-  return `"${escapeCmdValue(value).replace(/"/g, '""')}"`
+  return escapeCmdValue(`"${String(value).replace(/"/g, '""')}"`)
 }
 
 export function spawnAndProxy(command, args = [], {

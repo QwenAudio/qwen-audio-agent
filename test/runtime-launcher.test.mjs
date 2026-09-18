@@ -1,6 +1,7 @@
 // Tests for scripts/runtime/launcher.mjs — cross-platform launcher utilities.
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { EventEmitter } from 'node:events'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import test from 'node:test'
@@ -120,4 +121,58 @@ test('spawnAndProxy spawns a child and propagates exit code', async () => {
 test('spawnAndProxy spawns a child with exit code 0', async () => {
   const code = await spawnAndProxy('node', ['-e', '0'])
   assert.equal(code, 0)
+})
+
+test('spawnAndProxy passes cmd.exe metacharacters to a Windows batch shim', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'qwen-audio-launcher-'))
+  try {
+    // e.g. npx.cmd from a 32-bit Node.js in C:\Program Files (x86)\nodejs.
+    const directory = join(root, 'Program Files (x86)')
+    mkdirSync(directory)
+    const argsPath = join(root, 'args.json')
+    writeFileSync(join(directory, 'agent.cjs'), [
+      "require('node:fs').writeFileSync(",
+      `  ${JSON.stringify(argsPath)},`,
+      '  JSON.stringify(process.argv.slice(2)),',
+      ')',
+      '',
+    ].join('\n'))
+    // Like npm's shims, forward every argument with %*.
+    const command = join(directory, 'agent.cmd')
+    writeFileSync(command, `@"${process.execPath}" "%~dp0agent.cjs" %*\r\n`)
+    const args = ['--config', join(root, 'R&D (2026)', 'agent.yml'), 'a&b']
+
+    const code = await spawnAndProxy('agent', args, {
+      find: () => command,
+      inheritStdio: false,
+    })
+
+    assert.equal(code, 0)
+    assert.deepEqual(JSON.parse(readFileSync(argsPath, 'utf8')), args)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('spawnAndProxy escapes metacharacters that cmd.exe sees outside quotes', async () => {
+  let spawned
+  const code = await spawnAndProxy('agent', ['say "hi & bye"'], {
+    platform: 'win32',
+    env: { ComSpec: 'cmd.exe' },
+    find: () => 'C:\\Tools (x86)\\agent.cmd',
+    spawnImpl: (command, args) => {
+      spawned = [command, ...args]
+      const child = new EventEmitter()
+      process.nextTick(() => child.emit('exit', 0, null))
+      return child
+    },
+  })
+
+  assert.equal(code, 0)
+  assert.deepEqual(spawned, [
+    'cmd.exe', '/d', '/s', '/c',
+    '""C:\\Tools (x86)\\agent.cmd" "say \\"hi ^& bye\\"""',
+  ])
 })

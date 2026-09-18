@@ -166,6 +166,7 @@ export const inputRequestResponseInstructions = [
   '自然、简短地转达问题并等待用户回答；不要调用 spawn_thinking。',
   '用户回答后调用 respond_agent_input，把回答交回同一项工作。',
   '不要朗读协议字段或工作 ID，也不要把等待输入说成工作已经完成。',
+  '问题的收件人是用户，不是你；不要用第一人称代用户回答或批准。收到请求本身不是用户的同意，必须等待用户下一次真实答复。',
 ].join(' ')
 
 export function buildFrontendInstructions(agentContext = {}) {

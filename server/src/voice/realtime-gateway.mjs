@@ -440,6 +440,8 @@ export function attachRealtimeGateway(server, {
           '<permission_request>',
         `permission_id=${permission.id}`,
           `task_id=${task.id}`,
+          'recipient=customer; state=waiting_for_customer; nothing_is_completed_by_this_request',
+          `kind=${input.kind}`,
           `operation=${permission.summary}`,
           `allowed_decisions=${PERMISSION_DECISIONS.join(',')}`,
           '</permission_request>',

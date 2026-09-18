@@ -394,8 +394,8 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
         effect: { totalBags, fee },
       })
       return finish(store, sessionId, surface, name,
-        approvalPrompt(created.preview, created.token), false,
-        { needsApproval: true, fee },
+        approvalPrompt(created.preview), false,
+        { approval: created, needsApproval: true, fee },
         `加行李 ${reservation.reservationId} 待客户批准`, null)
     }
 
@@ -506,8 +506,8 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
         effect: { reason, amount: reservation.total },
       })
       return finish(store, sessionId, surface, name,
-        approvalPrompt(created.preview, created.token), false,
-        { needsApproval: true },
+        approvalPrompt(created.preview), false,
+        { approval: created, needsApproval: true },
         `退票 ${reservation.reservationId} 待客户批准`, null)
     }
 
@@ -622,6 +622,12 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
         false, { blocked: 'over_ceiling' }, null, `改签金额超上限，需转人工`)
     }
 
+    // 同一批准只能提交同一目标、同一原预订及同一报价。
+    // 防止确认时参数漂移，或预览后另一笔操作已经改变预订。
+    const approvalSubject = JSON.stringify([
+      reservation.reservationId, reservation.segments, reservation.cabin,
+      reservation.total, next.flightNo, next.date, fee, diff,
+    ])
     if (!token) {
       const preview = `将把预订 ${reservation.reservationId} 从 `
         + `${current.flightNo}（${current.date} ${current.departure}）改到 `
@@ -630,18 +636,18 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
         + `${differenceNarrative(user, reservation, diff)}。`
       const created = createApproval(session, {
         action: 'update_flights',
-        subject: reservation.reservationId,
+        subject: approvalSubject,
         preview,
         effect: { flightNo: next.flightNo, date: next.date, fee, diff },
       })
       return finish(store, sessionId, surface, name,
-        approvalPrompt(created.preview, created.token), false,
-        { needsApproval: true, fee, diff },
+        approvalPrompt(created.preview), false,
+        { approval: created, needsApproval: true, fee, diff },
         `改签 ${reservation.reservationId} 待客户批准`, null)
     }
 
     const consumed = consumeApproval(session, {
-      action: 'update_flights', subject: reservation.reservationId, token,
+      action: 'update_flights', subject: approvalSubject, token,
     })
     if (consumed.error) {
       return finish(store, sessionId, surface, name,
@@ -723,24 +729,28 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
         false, { blocked: 'over_ceiling' }, null, '改舱位差价超上限，需转人工')
     }
 
+    const approvalSubject = JSON.stringify([
+      reservation.reservationId, reservation.segments, reservation.cabin,
+      reservation.total, cabin, diff,
+    ])
     if (!token) {
       const preview = `将把预订 ${reservation.reservationId} 从`
         + `${CABIN_TEXT[reservation.cabin]}改为${CABIN_TEXT[cabin]}，航班不变。`
         + `${differenceNarrative(user, reservation, diff)}。`
       const created = createApproval(session, {
         action: 'update_cabin',
-        subject: reservation.reservationId,
+        subject: approvalSubject,
         preview,
         effect: { cabin, diff },
       })
       return finish(store, sessionId, surface, name,
-        approvalPrompt(created.preview, created.token), false,
-        { needsApproval: true, diff },
+        approvalPrompt(created.preview), false,
+        { approval: created, needsApproval: true, diff },
         `改舱位 ${reservation.reservationId} 待客户批准`, null)
     }
 
     const consumed = consumeApproval(session, {
-      action: 'update_cabin', subject: reservation.reservationId, token,
+      action: 'update_cabin', subject: approvalSubject, token,
     })
     if (consumed.error) {
       return finish(store, sessionId, surface, name,
@@ -830,8 +840,8 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
         effect: { amount, delayHours: worst },
       })
       return finish(store, sessionId, surface, name,
-        approvalPrompt(created.preview, created.token), false,
-        { needsApproval: true, amount },
+        approvalPrompt(created.preview), false,
+        { approval: created, needsApproval: true, amount },
         `发补偿 ${reservation.reservationId} 待客户批准`, null)
     }
 

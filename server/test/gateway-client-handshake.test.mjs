@@ -210,7 +210,9 @@ test('recovers the client and excludes only the content-safety rejected turn', a
     frontends.push({ frontend, agentContext: options.agentContext })
     return frontend
   }
-  const { server, gateway } = gatewayHarness({ realtimeFrontendFactory })
+  // This fixture emits DashScope's content-safety code; do not inherit the
+  // developer's configured provider (which may classify that code differently).
+  const { server, gateway } = gatewayHarness({ realtimeFrontendFactory, defaultRealtimeProvider: 'dashscope' })
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   t.after(async () => {
     await gateway.close()

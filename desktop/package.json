@@ -9,10 +9,10 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "electron": "^43.6.0"
+    "electron": "^43.7.0"
   },
   "dependencies": {
-    "sherpa-onnx": "1.13.7",
+    "sherpa-onnx": "1.13.8",
     "tar-stream": "3.2.1",
     "unbzip2-stream": "1.4.3",
     "ws": "8.21.3"

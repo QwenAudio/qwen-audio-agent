@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { serviceAgentPrompt } from '../executor.mjs'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { fileURLToPath } from 'node:url'
+import { serviceAgentPrompt, ServiceAgentExecutor } from '../executor.mjs'
 import {
   A2ABackendAdapter,
 } from '../../../../server/src/backend/adapters/a2a/backend-adapter.mjs'
@@ -28,9 +31,7 @@ function toolCall(name, args) {
   }
 }
 
-// 桩模型：从【任何】消息里找 approval_token。第一次取预览时它在 tool 返回里，
-// 恢复执行时 executor 把预览拼进了 user 消息 —— 两处都要认。
-// 真实模型看到的是同一段文本，所以这个读法和真实行为一致。
+// 故意会利用文本里的令牌的桩模型；运行时不得把真实令牌交给它。
 function cancelModel() {
   return {
     async complete({ messages }) {
@@ -46,6 +47,23 @@ function cancelModel() {
     },
   }
 }
+
+test('缺少结构化批准时，即使文本说同意也不进入模型', async () => {
+  let modelCalls = 0
+  const executor = new ServiceAgentExecutor({
+    tools: { list: async () => [], call: async () => assert.fail('不应调用工具') },
+    model: { complete: async () => { modelCalls += 1; assert.fail('不应调用模型') } },
+  })
+  executor.suspended.set('task', { contextId: 'context', objective: '取消订单', preview: '待确认', at: Date.now() })
+  const events = []
+  await executor.execute({
+    taskId: 'task', contextId: 'context', task: { id: 'task' },
+    userMessage: { parts: [{ content: { $case: 'text', value: '同意' } }] },
+  }, { publish: event => events.push(event) })
+  assert.equal(modelCalls, 0)
+  assert.equal(executor.suspended.size, 0)
+  assert.ok(events.length > 0)
+})
 
 // 【用事件回调等待，不要轮询】最初写成 setTimeout 轮询 seen 数组，
 // 结果整个测试挂住不动：submit 没被 await，轮询又持续占着事件循环，
@@ -64,12 +82,13 @@ function pendingInput(backend, seen, t) {
   })
 }
 
-async function harness(t, model) {
+async function harness(t, model, domain = 'retail') {
   const service = new CustomerService()
   // 先核验身份：写库工具在未核验时会拒绝，那条已有单测覆盖，
   // 这里要测的是批准链路，所以把前置条件摆好。
-  await service.execute('verify_identity', { email: 'liming3021@example.com' },
-    { sessionId: 'default', surface: 'frontend' })
+  await service.execute('verify_identity', domain === 'airline'
+    ? { memberId: 'CY10023841' } : { email: 'liming3021@example.com' },
+    { sessionId: 'default', surface: 'frontend', domain })
 
   const http = await startCustomerServiceServer({ service, port: 0 })
   t.after(() => http.close())
@@ -80,38 +99,43 @@ async function harness(t, model) {
   const backend = new A2ABackendAdapter({
     agentCardUrl: agent.agentCardUrl,
     pollIntervalMs: 10,
-    reuseContext: true,
   })
   t.after(() => backend.close())
   return { service, backend, agent }
 }
 
-test('new A2A Tasks retain customer history; reset and new-customer start clean backend conversations', async t => {
-  const seen = []
-  const { service, backend } = await harness(t, {
-    async complete({ messages }) {
-      seen.push(structuredClone(messages))
-      return { content: `结果：${messages.at(-1).content}` }
-    },
+if (process.env.CS_DOMAIN !== 'airline') {
+  test('独立航空进程验证实际 MCP/A2A 部署的接受与拒绝链路', async () => {
+    const env = { ...process.env, CS_DOMAIN: 'airline' }
+    delete env.NODE_TEST_CONTEXT
+    const { stdout } = await promisify(execFile)(process.execPath,
+      ['--test', '--test-reporter=tap', '--test-name-pattern=航空取消预订', fileURLToPath(import.meta.url)],
+      { env, timeout: 45_000 })
+    assert.match(stdout, /# pass 2/)
+    assert.match(stdout, /# fail 0/)
   })
-  let nextId = 0
-  const submit = objective => backend.submit({ id: `history-${++nextId}`, ownerId: 'owner', objective })
-  await submit('上一位客户的订单问题')
-  await submit('继续刚才的事情')
-  assert.equal(seen[1][1].content, '上一位客户的订单问题')
-  assert.equal(seen[1][2].content, '结果：上一位客户的订单问题')
-  const before = service.conversationId('default')
-  service.reset('default')
-  assert.notEqual(service.conversationId('default'), before)
-  await submit('重置后的请求')
-  assert.equal(seen[2].length, 2)
-  service.newCustomer('default')
-  await submit('新客户请求')
-  assert.equal(seen[3].length, 2)
-  await submit('继续新客户请求')
-  assert.equal(seen[4].length, 4)
-  assert.doesNotMatch(JSON.stringify(seen[4]), /上一位客户|重置后的请求/)
-})
+}
+
+for (const action of process.env.CS_DOMAIN === 'airline' ? ['accept', 'decline'] : []) {
+  test(`航空取消预订走真实 MCP/A2A 确认链路：${action}`, async t => {
+    const { service, backend } = await harness(t, {
+      complete: async ({ messages }) => messages.at(-1).role === 'tool'
+        ? { content: messages.at(-1).content }
+        : toolCall('cancel_reservation', { reservationId: 'CYR8801', reason: '不需要了' }),
+    }, 'airline')
+    const waiting = pendingInput(backend, [], t)
+    const running = backend.submit({ id: `air-${action}`, ownerId: 'owner', objective: '取消预订 CYR8801' })
+    const input = await waiting
+    assert.equal(input.kind, 'authorization')
+    assert.doesNotMatch(input.prompt, /approval_token/)
+    const before = service.snapshot('default').db
+    await backend.respondInput(`air-${action}`, input.id, { action })
+    await running
+    const after = service.snapshot('default').db
+    if (action === 'decline') assert.deepEqual(after, before)
+    else assert.equal(after.reservations.find(r => r.reservationId === 'CYR8801').status, 'cancelled')
+  })
+}
 
 test('后台 Agent 用完整工具面（含写库工具）', async t => {
   const { agent } = await harness(t, cancelModel())
@@ -139,6 +163,7 @@ test('需要批准时任务挂起为 auth_required，预览进 InputRequest', as
   // 预览原文要一路传到 InputRequest，金额不能在中途丢失
   assert.match(input.prompt, /将取消订单 #W1082334/)
   assert.match(input.prompt, /￥899\.00/)
+  assert.doesNotMatch(input.prompt, /approval_token|以上内容需要|再调用/)
 
   // 挂起期间数据库不能有变化
   assert.equal(
@@ -159,14 +184,13 @@ test('需要批准时任务挂起为 auth_required，预览进 InputRequest', as
 })
 
 test('客户拒绝时不执行，任务照常收尾', async t => {
+  const model = cancelModel()
+  let modelCalls = 0
   const { service, backend } = await harness(t, {
-    async complete({ messages }) {
-      const last = messages.at(-1)
-      if (last.role === 'tool') return { content: last.content }
-      // 客户拒绝后，objective 里会带上「客户对上述确认的答复」。
-      // 桩模型这时不再调工具，直接回话 —— 真实模型也该这样。
-      if (/答复/u.test(last.content)) return { content: '好的，那这笔订单我先不动。' }
-      return toolCall('cancel_order', { orderId: '#W1082334', reason: '不需要了' })
+    async complete(request) {
+      modelCalls += 1
+      // 若恢复后仍进入模型，这个桩会无视拒绝并用令牌取消订单。
+      return model.complete(request)
     },
   })
   const seen = []
@@ -177,10 +201,13 @@ test('客户拒绝时不执行，任务照常收尾', async t => {
     objective: '帮客户取消订单 #W1082334，原因是不需要了',
   })
   const input = await waitingForInput
-  await backend.respondInput('gateway-task-decline', input.id, { action: 'decline', text: '客户说不用了' })
+  const callsBeforeDecline = modelCalls
+  // 结构化 action 必须优先于文本，不能被“同意”字样覆盖。
+  await backend.respondInput('gateway-task-decline', input.id, { action: 'decline', text: '同意取消订单' })
 
   const output = await running
   assert.ok(output.content)
+  assert.equal(modelCalls, callsBeforeDecline, '拒绝后不得再次调用模型')
   // 【最关键的一条】拒绝之后订单必须保持原样
   assert.equal(
     service.snapshot('default').db.orders.find(o => o.orderId === '#W1082334').status,
@@ -283,11 +310,12 @@ test('基础 prompt 不抄工具的判定话术', () => {
   }
 })
 
-test('prompt 靠 approval_token 判断两段式，而不是靠工具名', () => {
+test('prompt 说明运行时负责两段式批准，而不是让模型填写令牌', () => {
   const prompt = serviceAgentPrompt('airline')
   assert.match(prompt, /approval_token/)
-  // 这是所有两段式工具的共同特征，加新工具不用改 prompt
-  assert.match(prompt, /有没有 approval_token/)
+  // 批准机制由运行时驱动，加新工具不用把工具名写进 prompt。
+  assert.match(prompt, /明确批准后由运行时提交保存的操作/)
+  assert.match(prompt, /不要自己填写 approval_token/)
 })
 
 test('两个域的基础 prompt 只差业务名字，流程由配置产生差异', () => {

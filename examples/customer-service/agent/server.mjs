@@ -76,6 +76,18 @@ export async function startServiceAgentServer({
     executor,
   )
   const app = express()
+  app.post('/api/customer-service/reset', express.json({ limit: '4kb' }), async (request, response) => {
+    if (request.headers.origin && new URL(request.headers.origin).host !== request.headers.host) {
+      response.status(403).end()
+      return
+    }
+    try {
+      await executor.reset()
+      response.json({ ok: true })
+    } catch (error) {
+      response.status(503).json({ error: error.message })
+    }
+  })
   app.get('/health', (_request, response) => {
     response.json({ ok: true, service: 'customer-service-agent', protocol: 'a2a' })
   })
@@ -100,6 +112,7 @@ export async function startServiceAgentServer({
     executor,
     agentCardUrl: `${origin}/${AGENT_CARD_PATH}`,
     close: async () => {
+      await executor.reset()
       await tools.close?.()
       await new Promise((resolve, reject) => {
         server.close(error => error ? reject(error) : resolve())

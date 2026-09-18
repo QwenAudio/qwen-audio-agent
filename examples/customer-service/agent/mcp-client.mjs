@@ -35,18 +35,22 @@ export class ServiceMcpTools {
     return this.definitions
   }
 
-  // Reset/new-customer replaces this ID. Do not carry a previous customer's
-  // model history into the freshly initialized business session.
-  async conversationId({ signal } = {}) {
+  async context({ signal } = {}) {
     const url = new URL('/api/service/context', this.url)
     url.search = this.url.search
     const response = await fetch(url, {
       signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)].filter(Boolean)),
     })
     if (!response.ok) throw new Error(`Customer service context unavailable (${response.status})`)
-    const body = await response.json()
-    if (!body.conversationId) throw new Error('Customer service context is missing')
-    return body.conversationId
+    return response.json()
+  }
+
+  // Reset/new-customer replaces this ID. Do not carry a previous customer's
+  // model history into the freshly initialized business session.
+  async conversationId({ signal } = {}) {
+    const context = await this.context({ signal })
+    if (!context.conversationId) throw new Error('Customer service context is missing')
+    return context.conversationId
   }
 
   async start() {
@@ -92,5 +96,15 @@ export class ServiceMcpTools {
     this.client = null
     this.definitions = null
     await client?.close()
+  }
+
+  async revokeApproval(token) {
+    const url = new URL('/api/service/approvals/revoke', this.url)
+    url.search = this.url.search
+    const response = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }), signal: AbortSignal.timeout(5_000),
+    })
+    if (!response.ok) throw new Error('Failed to revoke customer service approval')
   }
 }

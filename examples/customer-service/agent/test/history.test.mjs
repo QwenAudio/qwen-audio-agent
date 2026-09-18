@@ -2,8 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { ServiceAgentExecutor } from '../executor.mjs'
 
-function request(taskId, text, contextId = 'customer-one', task) {
-  return { taskId, contextId, task, userMessage: { parts: [{ content: { $case: 'text', value: text } }] } }
+function request(taskId, text, contextId = 'customer-one', task, inputResponse) {
+  return { taskId, contextId, task, userMessage: {
+    parts: [{ content: { $case: 'text', value: text } }],
+    ...(inputResponse ? { metadata: { qwenAudioInputResponse: inputResponse } } : {}),
+  } }
 }
 
 function fixture({ complete, tools: extra = {} } = {}) {
@@ -41,16 +44,16 @@ function approvalFixture() {
     tools: {
       list: async () => [{ name: 'modify_order' }],
       call: async (_name, args) => args.approval_token
-        ? { content: '订单已修改', data: {} }
-        : { content: '请确认修改订单 approval_token="private-token"', data: { needsApproval: true } },
+        ? { content: '订单已修改', data: { operationCommitted: true } }
+        : { content: '请确认修改订单', data: { needsApproval: true,
+          approval: { token: 'private-token', preview: '请确认修改订单' } } },
     },
     complete: async ({ messages }) => {
       const last = messages.at(-1)
       if (last.role === 'tool') return { content: last.content }
-      const token = last.content.match(/approval_token="([^"]+)"/)?.[1]
-      if (last.content !== '修改订单' && !token) return { content: '查询完成' }
+      if (last.content !== '修改订单') return { content: last.role === 'tool' ? last.content : '查询完成' }
       return { tool_calls: [{ id: 'call-1', function: {
-        name: 'modify_order', arguments: JSON.stringify(token ? { approval_token: token } : {}),
+        name: 'modify_order', arguments: '{}',
       } }] }
     },
   })
@@ -63,7 +66,7 @@ test('pending approvals resume by Task ID, not shared context, and are not archi
   await h.run('different-task', '先查询另一笔订单')
   assert.doesNotMatch(JSON.stringify(h.seen.at(-1)), /private-token/)
   assert.equal(h.executor.suspended.size, 1)
-  await h.run('pending', '同意', 'customer-one', {})
+  await h.run('pending', '同意', 'customer-one', {}, { kind: 'authorization', action: 'accept' })
   assert.equal(h.executor.suspended.size, 0)
   await h.run('follow-up', '刚才处理得怎么样')
   const messages = h.seen.at(-1)

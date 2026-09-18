@@ -6,11 +6,13 @@ import { loadGuards } from './guards.mjs'
 // 唯一的执行入口。两个 MCP 面都调这里 —— 这是「同一个领域可以跨两个工具面，
 // 但只保留一份 executor 和状态源」的落点。
 export class CustomerService {
-  constructor({ store = new ServiceStateStore() } = {}) {
+  constructor({ store = new ServiceStateStore(), scenarios } = {}) {
     this.store = store
+    this.scenarios = scenarios
   }
 
   snapshot(sessionId, domain) {
+    if (this.scenarios?.owns(sessionId)) return this.scenarios.snapshot(sessionId)
     return this.store.snapshot(sessionId, domain)
   }
 
@@ -19,16 +21,24 @@ export class CustomerService {
   }
 
   subscribe(sessionId, listener) {
+    if (this.scenarios?.owns(sessionId)) throw new Error('Tau snapshots use the test API, not demo SSE')
     return this.store.subscribe(sessionId, listener)
   }
 
   reset(sessionId, domain) {
+    if (this.scenarios?.owns(sessionId)) throw new Error('Load a fresh tau scenario instead of resetting a demo session')
     return this.store.reset(sessionId, domain)
+  }
+
+  revokeApproval(sessionId, token) {
+    if (this.scenarios?.owns(sessionId)) return this.scenarios.revoke(sessionId, token)
+    return this.store.mutable(sessionId).pendingApprovals?.delete(token) || false
   }
 
   // 切换到另一位客户：同一个 sessionId 背后换一份全新的库。
   // 为什么是重绑而不是换 sessionId，见 state-store.mjs 里那段说明。
   newCustomer(sessionId, domain) {
+    if (this.scenarios?.owns(sessionId)) throw new Error('Load a fresh tau scenario instead of switching a demo customer')
     return this.store.newCustomer(sessionId, domain)
   }
 
@@ -49,6 +59,7 @@ export class CustomerService {
   // 实测：get_reservation 返回过 ￥980.00，客服照实说"980元"仍然报违规。
   // 误报比漏报更坏 —— 满屏红字之后没人再当真，真违规也就淹了。
   auditOutput(sessionId, text) {
+    if (this.scenarios?.owns(sessionId)) throw new Error('Demo output audit is not configured for tau scenarios')
     const session = this.store.snapshot(sessionId)
     const guards = loadGuards(session.domain)
     return auditUtterance(text, {
@@ -70,6 +81,7 @@ export class CustomerService {
     if (surface !== 'frontend' && surface !== 'backend') {
       throw new TypeError(`Unknown tool surface: ${surface}`)
     }
+    if (this.scenarios?.owns(sessionId)) return this.scenarios.execute(sessionId, name, args, surface)
     const session = this.store.mutable(sessionId, domain)
     return executeTool(name, args, {
       store: this.store,

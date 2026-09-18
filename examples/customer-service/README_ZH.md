@@ -1,428 +1,209 @@
-# Qwen Audio Agent Customer Service
+# 客服语音助手示例
 
 [English](README.md) | [中文](README_ZH.md)
 
-> **状态：进行中（draft）。** 服务层、后台 A2A Agent 与批准链路已可用，
-> `auth_required` 全链已实测跑通。客户端界面与 Gateway 装配尚未接入。
+一个可运行的零售 / 航空客服 demo：语音前台负责沟通、身份核验与查询，
+通过 A2A 将业务操作交给后台 Agent。前后台通过两个 MCP 工具面访问同一份业务状态，
+资格、金额、库存和批准由服务层校验，不依赖模型自己算或自己记住流程。
 
-## 这个示例要回答什么
+当前适合本地、单通话演示；不是生产客服系统，也不是官方 τ-bench 的完整实现。
 
-后台 Agent 默认在内存中保留最近 50 轮任务请求和最终回复，每次推理最多携带
-49 轮历史和当前轮。示例 Gateway 为同一用户的新任务复用服务端返回的 A2A Context；待确认的
-操作预览仅属于原 Task，不作为历史重放。重置业务会话、换客户或重启后台 Agent
-后重新积累后台历史。这不改变前台既有的聊天记录恢复机制，也不是长期记忆。
+另有独立的 [τ-bench 测试场景接口](benchmark/README.md)，支持加载本地官方 policy、完整数据库及 Python 工具，默认关闭，不改变 demo 默认配置。提供后台单独测试及真实 Realtime / Gateway / A2A / MCP 文本 harness 测试脚本；尚未覆盖 ASR / TTS、物理语音及官方全量调度。
 
-`smart-cockpit` 证明了这套框架能做车机语音助手，但车机的任务彼此独立
-（开车窗与导航无关）。客服不一样：**核验 → 查单 → 判定 → 执行** 是同一条链上的
-连续环节，而每一步的约束来自一份 policy 文本，而不是物理状态。
+后台 Agent 会在内存中保留最多 50 轮已完成任务的请求和最终回复（当前请求之外最多
+携带 49 轮）。Gateway 会为同一客户的后续 Task 复用服务端签发的 A2A Context；
+待确认操作的预览只属于原 Task，不会作为可复用授权写入历史。重置业务会话、换客户
+或重启后台 Agent 后会重新积累历史。
 
-所以这个示例专门压测三件事：
+## 能做什么
 
-1. **policy 能不能约束住模型** —— 会不会跳过身份核验，会不会编造赔付金额。
-2. **不可逆动作的确认能不能变成机制** —— 框架有 `auth_required` 状态但座舱用不到它，
-   这里会是它的第一个真实使用者。
-3. **多步流程的状态一致性** —— 中途挂断再打回来，能不能接上。
+| 场景 | 已实现 |
+|---|---|
+| 零售 | 邮箱或姓名 + 邮编核验、订单查询、商品款式/库存查询、取消订单、整单/部分退货、改收货地址 |
+| 航空 | 会员号或姓名 + 证件后四位核验、预订/航班查询、航班搜索、退票、改签、改舱、加托运行李、按细则发放补偿 |
+| 业务边界 | 未核验拒绝查询私有订单，时限/资格判定，超权限或 policy 缺口转人工 |
+| 确认流程 | 写操作先预览；明确同意后提交原操作，拒绝/取消/超时撤销批准 |
+| 客服工作台 | 语音通话、对话记录、核验状态、订单/预订数据、工具调用审计、重置/换客户 |
+| 人工坐席台 | 查看已转人工的客户状态与上下文 |
+| Policy 配置台 | 抽取与人工裁决、决策表/流程/工具面编辑、覆盖度检查、数据库编辑、变更预览、备份与审计 |
 
-## 架构
+零售换货尚未实现。转人工是 demo 状态交接，不是外部呼叫中心集成。
 
-照 `smart-cockpit` 的四进程分层。当前只实现了 service：
+## 快速启动
 
-```text
-service-client ── GCP 6.0 ──► service-gateway ── A2A ──► service-agent
-      │                          │                         │
-      │ HTTP/SSE                 │ frontend MCP            │ backend MCP
-      │ 业务状态                  │ 核验/查单/查库存          │ 完整工具面
-      ▼                          ▼                         ▼
-                         customer-service（本目录 service/）
-                         单一业务状态源与工具执行
-```
-
-### 单一 executor，两个工具面
-
-这是本示例的核心结构，也是「前后端如何协调办同一件事」的答案：
-
-```text
-service/tools/orders/execute.mjs        ← 唯一的实现
-        ├─→ /mcp/frontend   （白名单里的，前台直出）
-        └─→ /mcp/backend    （完整工具面，后台组合任务用）
-```
-
-两个面调的是同一行代码、同一份状态。**前台面是后台面的子集，不是互斥的两个列表** ——
-所以白名单配错了只是性能退化，不是功能故障。
-
-前台白名单只放核验与只读查询。写库类（取消、退货、改地址、转人工）只在后台面。
-
-### 写库前的确认是数据依赖，不是 prompt 请求
-
-原本打算让写库工具带一个 `user_confirmed` 参数，靠 prompt 要求模型「问过客户再填
-true」。那守不住 —— 模型可以不问就填，我们只能事后在审计里发现，而钱已经出去了。
-
-改成两段式：
-
-```text
-① cancel_order(orderId, reason)
-   → 返回预览「将取消 #W1082334：无线耳机 ×1，￥899.00 将退回招商银行信用卡…」
-     和一枚 approval_token
-   → 不碰数据库
-
-② 把预览念给客户，得到明确同意
-
-③ cancel_order(orderId, reason, approval_token)
-   → 校验令牌 → 真正执行
-```
-
-**模型没有「跳过批准」这个选项 —— 它拿不到令牌就执行不了。**
-
-三处细节：
-
-- 令牌绑定「动作 + 对象」，不是通用通行证。否则能拿取消 A 单的批准去取消 B 单；
-  部分退货还要把款式写进指纹，「退耳机」的批准不能拿去退鼠标。
-- 令牌一次性，取出即删。否则一次批准可被重放成多次退款。
-- 预览里的金额由 executor 算，不经模型的手 —— 模型算错退款金额比它不会算更糟。
-
-**退款超上限时不发令牌**，直接要求转人工。若只在预览里写「金额较大建议转人工」，
-模型照样能往下走。
-
-### policy 拆成三处
-
-| 内容 | 放哪 | 为什么 |
-|---|---|---|
-| 身份、语气、硬边界 | `gateway/assistant/retail.md`（六段式） | 常驻注入，每轮生效，约 40 行 |
-| 什么时候调哪个工具 | MCP `description` / `schema` | 工具自己说明何时用自己；写进 prompt 是冗余，且稀释硬约束 |
-| 业务细则（时限、运费、赔付） | `domains/retail/policy.md` → `knowledge` | 细则长，常驻会挤爆预算 |
-
-## 当前能跑什么
+在仓库根目录执行。Node.js 版本要求以根目录 `package.json` 为准。
 
 ```bash
-# 业务服务（状态源 + 两个 MCP 工具面）
-cd examples/customer-service/service
-npm install && npm test     # 56 条：数据完整性 15 + 服务层 18 + 写库与批准 23
-npm start                   # 默认 http://127.0.0.1:3110
-
-# 后台 A2A Agent（需要 DASHSCOPE_API_KEY）
-cd ../agent
-npm install && npm test     # 5 条：auth_required 全链（含拒绝路径）
-npm start                   # 默认 http://127.0.0.1:3120
+npm install
+npm run example:customer-service:install
 ```
 
-起来之后可以直接打两个 MCP 面：
+创建 `examples/customer-service/.env.local`，参考 [.env.example](.env.example)。
+已有配置不要覆盖。至少填写：
+
+```dotenv
+DASHSCOPE_API_KEY=your_dashscope_api_key
+DASHSCOPE_MODEL=qwen3.8-flash
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
+QWEN_AUDIO_REALTIME_VOICE=longanqian
+```
+
+后台模型使用 DashScope Chat Completions；语音前台使用独立的 Realtime WebSocket API。
+密钥需要相应模型权限。自定义语音端点时填写 `QWEN_AUDIO_REALTIME_BASE_URL`。
+示例会加载本目录与仓库根目录的 `.env.local`，进程环境变量优先，本目录文件优先于根目录文件。
 
 ```bash
-# 未核验就查订单 → 被硬拒
-curl -s -X POST 'http://127.0.0.1:3110/mcp/frontend?sessionId=demo' \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
-       "params":{"name":"list_orders","arguments":{}}}'
-
-# 核验身份
-curl -s -X POST 'http://127.0.0.1:3110/mcp/frontend?sessionId=demo' \
-  -H 'Content-Type: application/json' \
-  -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call",
-       "params":{"name":"verify_identity",
-                 "arguments":{"email":"liming3021@example.com"}}}'
+npm run example:customer-service           # 零售：五个进程
+npm run example:customer-service:airline   # 航空：五个进程
+npm run example:customer-service:both      # 两组同时运行：十个进程
 ```
 
-其它端点：
-
-| 端点 | 用途 |
-|---|---|
-| `GET /health` | 健康检查 |
-| `GET /api/service/state?sessionId=demo` | 业务状态快照（给 UI 投影用） |
-| `GET /api/service/events?sessionId=demo` | SSE 状态变化流 |
-| `POST /api/service/reset` | 一键回到初始状态（Demo 反复演示用） |
-| `POST /mcp/frontend` \| `POST /mcp/backend` | 两个 MCP 工具面 |
-
-## auth_required：已实测跑通
-
-这条链通过 `session-task-coordinator.mjs`、`realtime-task-presentation.mjs` 和
-`tool-call-handler.mjs` 接通，但座舱示例用不到它 —— 开天窗不需要客户批准。
-所以此前没有证据说明它真能跑。现在有了：
-
-```text
-工具返回 needsApproval
-  → executor 发 TASK_STATE_AUTH_REQUIRED + 预览消息
-  → adapter 转成 InputRequest{kind:'authorization', status:'pending'}
-  → respondInput({action:'accept'}) → 任务恢复 → 带令牌执行 → 订单 cancelled
-```
-
-拒绝路径同样测了：`{action:'decline'}` 之后订单保持 `pending`。
-
-### 接这条链时撞到的三个坑
-
-| 坑 | 症状 | 修法 |
+| 页面 / 服务 | 零售 | 航空 |
 |---|---|---|
-| 首个事件不是 Task | `Received statusUpdate before initial 'Message'/'Task' event.` | 先 `publish(AgentEvent.task(...))` |
-| 恢复执行时重发 Task | `Stream ordering violation: received task in task lifecycle stream.` | 只在 `!requestContext.task` 时发 |
-| **恢复时丢了 approval_token** | 客户被问第二遍 —— 模型看不到上一轮的工具返回，只能重新取预览 | 挂起时把预览原文一起存下，恢复时拼进 objective |
+| 客服工作台（从这里开始） | http://127.0.0.1:4620 | http://127.0.0.1:4720 |
+| 人工坐席台 | http://127.0.0.1:4630 | http://127.0.0.1:4730 |
+| Gateway 自带界面 | http://127.0.0.1:18889 | http://127.0.0.1:18989 |
+| 业务服务 | http://127.0.0.1:3110 | http://127.0.0.1:3210 |
+| A2A Agent | http://127.0.0.1:3120 | http://127.0.0.1:3220 |
 
-第三个是设计缺陷而不是测试问题：`runServiceAgent` 每次都是空对话开局，
-真实模型同样看不到上一轮的工具返回。预览是唯一能把令牌送回去的载体。
+工作台需要麦克风授权。不要同时用工作台和 Gateway 自带界面控制同一通话。
+HTTP / WebSocket 请求经工作台同源代理，避免直接跨端口请求 Gateway。
 
-## 零售域的数据与场景
+配置台独立启动，不占通话关键路径：
 
-`domains/retail/db.json` 裁剪自 τ²-bench retail 的结构：5 用户 / 20 订单 / 12 类商品。
-数据不是随手造的，每一项都对应一个要演示的分支：
-
-| 埋点 | 用途 |
-|---|---|
-| 陈静没有邮箱 | 逼出 `姓名 + 邮编` 那条核验分支 |
-| `#W3301887` 金额 2899 元 | 超过 2000 元退款上限 → 转人工 |
-| `#W2378156` 家电已签收 22 天 | 家电窗口 15 天 → 资格判定应拒绝 |
-| `#W5540912` 服饰已签收 4 天 | 服饰窗口 30 天 → 顺利路径 |
-| `#W3376900` 是家具类 | **policy 的时限表里刻意没有家具** → 看模型会不会编造 |
-| 键盘有 4 个变体、恒温器有缺货款 | 换货的库存校验与差价 |
-
-`service/test/db-integrity.test.mjs` 把这些当断言守着：引用自洽、金额自洽，
-且上述场景所需的订单形态必须存在 —— 少一类，对应场景就没法演示。
-
-## 已知缺口
-
-按优先级：
-
-1. **Gateway 装配**（照抄 `smart-cockpit/gateway`）+ 真实语音会话验证。
-   目前 `auth_required` 是用 `A2ABackendAdapter` 直接对接验证的，
-   还没经过 realtime 语音那一层。
-2. **换货**（`exchange_items`）：要先查库存、算差价，比退货多两步。
-4. **客户端界面**：客户档案、订单、流程进度、生效的约束、操作流水五个面板，
-   放 `client/src/projections/`（纯函数 + 单测）。
-5. **航空域**（复用骨架，换 `domains/airline/`）。
-
-> 批准机制与 `auth_required` 是两层，互不替代：令牌保证「没批准就执行不了」，
-> `auth_required` 让后台任务挂起、把问题送到客户耳边。即使 `auth_required`
-> 这条链不通，令牌那层仍然拦得住。
-
-## 与 τ²-bench 的关系，以及一处刻意偏离
-
-工具清单与 policy 条目参考 τ²-bench 的 retail 域，但**不做它的评测框架**
-（simulated user、`pass^k`）—— 这个示例的用户是真人。
-
-有一条 τ² policy 我们刻意不采用：
-
-```text
-You should at most make one tool call at a time, and if you take a tool call,
-you should not respond to the user at the same time.
+```bash
+npm run example:customer-service:console   # http://127.0.0.1:4610
 ```
 
-这条在 τ² 里是为了让评测可判定，**但语音场景里会造成可感知的静默** ——
-调工具期间不说话，客户会以为断线。我们的人设里写的是相反的要求：
-调工具之前先说一句「我查一下」。
+Ctrl+C 结束 bootstrap 启动的进程组。业务状态常驻内存；进程重启不会恢复订单修改。
+
+## 建议这样演示
+
+每条独立场景前，使用工作台的“重置本位客户”或“换一位客户”。
+
+### 零售
+
+1. 提供注册邮箱 `liming3021@example.com`，查询订单。
+2. 请求取消 `#W1082334`，听完商品、退款金额和到账方式的预览。
+3. 先回答“不取消了”：订单应保持未发货；再次请求，回答“同意取消”：订单才变更。
+4. 用“陈静 + 邮编 510620”测试没有邮箱的第二种核验方式。
+
+其他边界：`#W3301887` 涉及超权限金额；`#W3376900` 是 policy 未规定退货窗口的家具。
+先核验相应订单所属客户；可在配置台查看 demo 数据。系统应说明边界并转人工，而不是编造规则。
+
+### 航空
+
+1. 提供会员号 `CY10023841`，查询预订 `CYR8801`。
+2. 搜索同航线航班，请求从 `CY1201` 改到 `CY1203`。
+3. 听完改签手续费与差价，明确同意后检查预订、座位库存和支付记录。
+4. 拒绝批准时不能改变预订；已飞或不符合资格的操作应被业务服务拒绝。
+
+航班日期按 demo 基准平移到当前时间，请查询实际结果，不要照抄固定日期。
+
+## 前后台如何协作
+
+```text
+客服工作台 ── Gateway 协议 ──► Gateway ── A2A ──► 后台 Agent
+    │                            │                    │
+    │ HTTP / SSE                 │ frontend MCP       │ backend MCP
+    └────────────────────────────┴────────────────────┘
+                                 ▼
+                         service：唯一业务状态源
+                                 ▲
+                      人工坐席台读取状态与交接信息
+
+Policy 配置台 ──► domains/<domain> 配置和 gateway 工具面配置
+```
+
+前台面是后台面的子集，包含核验、只读查询和 `transfer_to_human`。
+需要批准的写操作只在后台；两面调同一个 executor，避免前后台各维护一份规则或状态。
+
+`policy.md` 通过当前域的 knowledge 检索源供前台查询；公网搜索和用户画像在本示例中关闭。
+资格、权限和金额规则主要由 `guards.json` 决策表执行。
+`flows.json` 注入后台 prompt 安排步骤顺序，不是强制工作流引擎。
+
+### 批准不是模型填一个 true
+
+1. 写工具第一次调用只生成预览和内部 `data.approval = { token, preview }`，不写库。
+2. executor 保存工具名、原参数、令牌和任务上下文，发布 `auth_required`。
+3. 客户只收到可读预览；令牌与内部调用指令不进入 A2A 确认文本或模型消息。
+4. 前台通过 `respond_agent_input` 返回决定，A2A adapter 在消息 metadata 中携带
+   `qwenAudioInputResponse = { kind: 'authorization', action }`。
+5. 授权必须明确为 `accept` / `decline` / `cancel`，缺失或非法动作报错。
+   只有明确 accept 才由 executor 提交保存的工具与参数；拒绝、取消、超时清理并撤销令牌。
+6. 提交结果交回模型继续原任务。后续写操作逐笔取得新批准，不共用同意。
+   最终结果不再混入历史进度和旧确认问题。
+
+批准按 taskId 隔离，有效期五分钟，一次性消费，绑定动作与对象。
+改签 / 改舱进一步绑定目标、原预订状态和报价；确认参数漂移或预订变化则拒绝提交。
+令牌保护不能代替真实客户同意识别：语音前台仍需正确理解客户答复。
+当前本地 A2A 服务没有生产级鉴权，不应暴露到公网。
+
+### 重置与换客户
+
+工作台先停止音频并关闭旧连接，再通过 `POST /api/customer-service/reset` 协调：
+
+- 取消旧对话的 Gateway 任务；
+- 清理后台挂起任务、撤销批准，等待运行中的任务退出；
+- 重置业务库与核验状态；
+- 用新的对话 ID 重连，旧历史不再进入新对话。
+
+新对话 ID 保存在当前标签页的 sessionStorage，刷新可继续；MCP 业务 sessionId 仍固定不变。
+旧历史文件保留，不执行删除。清理失败时暂停通话并提示重试，不假装已换客户。
+直接调用 service 的 `reset` / `new-customer` 只清业务状态，不执行跨进程协调。
 
 ## Policy 配置台
 
-```bash
-cd console && npm start          # http://127.0.0.1:4610
-```
+管理员可以修改决策表、流程、前后台工具归属和 demo 数据。
+抽取运行三次，用结果分歧辅助人工裁决，而不是只相信模型自评 confidence。
+缺口、冲突和无法定位到 policy 原文的候选需要人工处理。
 
-管理员在这里把 `policy.md` 变成 `guards.json`、`flows.json` 与 `frontend-mcp.json`，
-并且不用手改文件就能改变 Agent 的行为。
+“预览并应用”先校验、显示 diff 和覆盖度，再写入域配置。
+配置变更备份到 `.runtime-console/backups/`，并记录审计；中途写入失败会回滚。
 
-**抽取跑 3 次而不是 1 次。** 实测过：同一份 policy 连抽三次（temperature: 0），
-模型给每条都标 `certain`，但顺序类规则每次都不同，其中两次对同一句原文抽出
-**相反的顺序**。所以判据不用模型的自评，用多次运行的一致性：
-
-| 一致性 | 处置 |
+| 改动 | 生效方式 |
 |---|---|
-| 3/3 且每次都是确定项 | 折叠，不打扰 |
-| 3/3 但每次都判为模糊 | 稳定地需要人看（policy 缺口属于这类） |
-| 同主题不同结论 | 并排显示各版本，人选一个 |
-| 只有部分运行抽出 | 可能漏抽，也可能是幻觉 |
+| 决策表 / guards | 下一次工具调用 |
+| 流程 / flows | 下一个后台任务 |
+| Gateway 工具面 | 重启对应域的 Gateway |
+| demo 数据库 | 重置业务会话或重启服务 |
 
-界面上五件事，前四件都能改、能应用：
-
-- **需人工裁决** —— 按分歧程度排序，最可疑的在最前。每条的灰色引文标着
-  policy 第几行，点一下右侧原文跳到那一行并高亮。落不回原文的会明说，
-  那通常意味着模型编了一条 policy 里没有的规则。
-  每条给四个裁决：接受 / 拒绝 / 需补 Policy / 需补数据，也可以先改候选再接受。
-  接受一条顺序类候选会落成一条流程规则；接受一条阈值类候选会改对应阈值。
-  裁决记在 `review.json` 里，所以下次打开还在，不用重新看一遍。
-- **决策表** —— 摊平成表格，兜底行有底色。条件、结果、理由都能逐格改，
-  还能加行、删行、调整行序、新增或删除整张表。改完应用，executor
-  下一次执行就用新表。
-- **流程配置** —— 「先做 A 再做 B」这类顺序约束，能增删改、能停用。
-  它们注入后台 Agent 的 prompt，下一个任务就生效。
-  **这不是工作流引擎**：它只安排步骤先后，资格、金额与最终结果仍由决策表和工具判定。
-- **工具面编排** —— 每个工具的归属由规则推出（不调模型），可以推翻。
-  推翻时显示后果：`cancel_order` 改到前台会标红，说明它会绕过 `auth_required`；
-  只读工具改到后台只标橙，说明只是多 1~3 秒静默。
-- **搜索与筛选** —— 关键词同时筛规则、决策表、工具和 policy 原文；
-  再加「只看待决定」「只看有风险」两个开关。
-
-改动先进草稿，不直接落盘。点「预览并应用」会先校验再给出逐字段的 diff
-（改了哪条、从什么变成什么）、新决策表的数据覆盖度，以及每类改动的生效方式。
-校验不过就拒绝写入 —— 比如某张表被删掉兜底行，会在这里挡下来，
-而不是等到通话中某个未覆盖的输入走到它才炸。移动受保护工具这类高风险改动
-要额外确认一次。
-
-应用会按域写四个文件：`domains/<domain>/guards.json`、`flows.json`、
-`review.json` 和 `gateway/frontend-mcp{,.airline}.json`。写之前备份到
-`.runtime-console/backups/<时间戳>-<域>/`，并追加一条 `audit.jsonl`。
-多文件中途失败会回滚已写的，不会留下 guards 和 flows 半新半旧的状态。
-
-生效时机三类不同：决策表下一次工具调用生效，流程下一个后台任务生效，
-工具面要重启对应域的 gateway（预览里会写明）。
-
-配置台不参与执行 —— 它挂了通话照常，只是改不了配置。
-
-## 四进程跑起来
+## 测试与评测
 
 ```bash
-cd service && npm start     # :3110  状态源 + 两个 MCP 工具面
-cd agent   && npm start     # :3120  后台 A2A Agent
-node gateway/server.mjs     # :18889 前台网关
-cd console && npm start     # :4610  Policy 配置台
+npm run test:customer-service             # 自动安装示例依赖，再跑各组件测试
+npm run test:customer-service:smoke       # 核心内存回归，不需要模型 Key 或本地端口
+npm run example:customer-service:lint
+node --test server/test/a2a*.test.mjs     # 框架 A2A adapter 回归
 ```
 
-前台白名单 5 个（`verify_identity` / `identity_status` / `list_orders` /
-`get_order` / `check_variant`），其余经 `spawn_thinking` 交后台。
+自动测试覆盖核验、工具面、决策表、写操作、MCP / A2A 批准、任务取消/超时、
+多步骤逐笔批准、换客户协调、语音客户端控制、配置应用和输出审计函数。
+集成测试使用桩模型和临时本地端口，不调用付费模型；单测通过不代表真实语音已端到端通过。
 
-## auth_required 在真实语音网关里的实测
+与 τ-bench 的关系：工具和零售数据参考其结构，但本示例裁剪并本地化了数据与 policy，
+默认 demo 不接官方模拟用户与评分器；可选测试接口与脚本见 benchmark 说明，不能将桩模型回归成功率当成官方分数。
+正式评测需固定版本，对齐官方环境，并覆盖前台核验、委派、批准和任务恢复，而不是只测后台模型。
 
-链路是核实过代码的，不是推测的：
+## 已知限制
 
-| 步 | 发生什么 | 位置 |
-|---|---|---|
-| 1 | 客户说要取消 → 模型调 `spawn_thinking` | — |
-| 2 | 后台取到写库预览发现要批准 → 任务挂起 | `service/tools/approval.mjs` |
-| 3 | `inputRequest.kind = 'authorization'` → `workState = auth_required` | `server/src/task/task-state.mjs:97` |
-| 4 | 网关包成 `<backend_input_request>` 交给 realtime 模型 | `voice/realtime-task-presentation.mjs` |
-| 5 | 模型**口头**转达问题 | `frontend-tools.mjs:498` |
-| 6 | 客户口头回答 → 模型调 `respond_agent_input` 交回同一项工作 | `frontend-tools.mjs:29` |
+- 每个域仍是单通话 demo：前后台 MCP 使用进程固定的 `CS_SESSION_ID`。
+  新对话 ID 防止旧上下文进入新客户，但不提供多客户并发业务隔离。
+- 业务库、任务和批准主要在内存中，进程重启后的恢复、幂等事务和持久化未完善。
+- 前台语音识别、客户同意识别、工具选择和措辞仍需真实语音回归与模拟用户评测。
+- 零售换货、完整官方 τ-bench 工具和任务集未覆盖。
+- 出口审计函数和 HTTP 端点已实现，但尚未自动接到实时语音输出链路，也不是播报前拦截器。
+- 工作台、Agent、业务 API 和配置台是本地开发服务，包含管理与重置能力，无生产级访问控制。
 
-**第 5、6 步一开始以为要自己做批准 UI。** 查了 `GatewayClientEvent` 全部枚举
-—— 没有任何「应答 input」的类型，应答只能由模型调工具完成。
-所以客户端做不出直接回 `inputRequest` 的按钮；`/api/permissions/:id` 那条路
-走的是 permission 机制，和 `inputRequest` 是两套东西。
-第 6 步的工具只在有挂起请求时动态暴露（`hasPendingBackendInput()`）。
+## 目录
 
-### 实测到第 4 步，第 6 步未复现
-
-用文字消息代替语音跑 `runtime/gateway-auth-probe.mjs`，拿到过一次完整证据：
-
+```text
+bootstrap/     环境加载、两域进程组启动
+client/        客服工作台、同源代理、换客户协调、音频控制
+desk/          人工坐席台
+gateway/       A2A 装配、人设、前台工具面、policy 检索
+agent/         模型、后台 MCP 客户端、任务和批准生命周期
+service/       内存状态、HTTP / SSE / MCP、业务工具、输出审计
+console/       Policy 抽取、裁决、配置和数据库编辑
+domains/       retail / airline 的 policy、guards、flows 和 demo 数据
 ```
-task.accepted         objective="取消订单 #W1082334…客户已确认取消。"
-task.input.requested  workState=auth_required  inputKind=authorization
-```
-
-**前四步成立。** 但之后多次重跑（含清 `.runtime`、重启三进程）都没能让模型
-再次提交任务，因此第 6 步（`respond_agent_input` → 订单真的取消）
-**目前只有代码依据，没有运行证据**。
-
-三条排查中确认的干扰因素，都写进了探针的注释：
-
-- `sessionId` 必须与网关启动时那个一致。原因见下一节。
-- `.runtime/` 里的对话历史会被恢复（日志里的 `conversation_history.restored`），
-  模型看到「这单已经在办」就不再提交。
-- **助手侧的 transcript 不回传** —— 只有 `role=user` 的 `transcript.final`，
-  模型的语音输出走 `audio.delta`。所以看不到它说了什么，
-  只能靠 `task.*` 事件判断它有没有调工具。
-
-## 一个已知限制：sessionId 在进程启动时定下来
-
-`server/src/providers/mcp/frontend-mcp-client.mjs:132` 用的是配置里的静态
-`transport.headers`，框架不会按语音会话注入 MCP 请求参数。
-所以 `gateway/server.mjs` 把 `sessionId` 烘进了 `CS_FRONTEND_MCP_URL`。
-
-座舱那样写是对的 —— 它的 `cockpitId` 是「哪台车」，一台车一个固定值。
-客服的 `sessionId` 语义上是「哪通电话」，本该每通不同。要做到那样需要框架支持
-按会话注入，那是框架的事，不该在示例里加一个假的隔离层糊过去。
-
-**当前形态是单通话演示。** 多通并发会共享同一份客服会话状态。
-
-## 客服细则的检索
-
-关掉联网之后必须给个正确的来源，否则模型只剩两条路：反问客户，或者凭常识编。
-`gateway/policy-knowledge.mjs` 把 `domains/<domain>/policy.md` 按 `##` 章节切开，
-挂成框架的 knowledge 检索源。
-
-**原文一字不改地交给模型**，不做摘要 —— 摘要一次就多一次失真机会，
-而这份文本的全部价值在于它是权威原文。每段开头带着出处：
-
-```
-《明远优选零售客服细则》二、退货时限（第 16 行起）
-
-| 类别 | 代码 | 退货窗口 |
-| 服饰鞋包 | apparel | 30 天 |
-...
-```
-
-行号写在 content 里而不是走 citation 协议 —— `normalizeCitation` 要求公开 URL，
-没有 url 就返回 null（`citation.mjs:21`），而 policy 是本机私有文件。
-
-**一个进程只服务一个域**（`CS_DOMAIN`，默认 retail）。第一版把两个域都装进来，
-实测零售会话查「运费谁承担」时第二条返回了航空的「免费托运行李额」——
-混域不只是排序噪声，零售客服可能拿航空规则答零售问题。
-
-### 三次对照实验
-
-同一句「你好，我想问一下退货政策」，问了三次：
-
-| | 联网开启 | 联网关闭 | 挂上细则检索 |
-|---|---|---|---|
-| 外部引用 | 5 条（昆明本地宝、书法拍卖） | 零条 | 零条 |
-| 具体天数 | 30 天（来自公网） | 没有 | **30 / 7 / 15，按类别分对** |
-| 说法 | 「建议您查看细则」 | 「我需要查一下细则」（查不到） | 直接给出内容 |
-
-再追问两个问题：
-
-- 「数码产品多少天内可以退货」→ **7 天**，正确
-- 「家具类商品多少天内可以退货」→ **「家具类商品在政策里没有单独列出类别」**
-
-最后一条是关键。之前是在 executor 里靠「工具给不出数字」硬拦，
-现在**模型自己就说不出来** —— 因为检索回来的原文里确实没有家具类。
-
-## 客服工作台
-
-```bash
-cd client && npm start      # http://127.0.0.1:4620
-```
-
-左边替客户说话，右边三个面板显示同一通话在服务端留下的痕迹：
-身份核验状态、订单数据、每一次工具调用的审计。
-
-实测走完一遍（核验 → 查单 → 问退货）：
-
-| 面板 | 实测结果 |
-|---|---|
-| 客户 | 核验后显示「已核验 · 李明 · 邮箱」与地址 |
-| 订单 | 出现 5 笔，`#W2378156` 卡片列出机械键盘（数码电子）、智能恒温器（家用电器），并标「签收于 2026-08-10，距今 24 天」 |
-| 审计 | `verify_identity` ✓ / `list_orders` ✓，各带时间与前后台标记 |
-
-**签收天数摆在卡片上是有意的** —— 它是退货资格判定的输入，
-放在这里能一眼看出模型说的「超期」对不对。
-
-### 两个限制，都是框架的有意设计
-
-**一、网关一次只接一个客户端**（`transport/gateway-client-transport.mjs`）。
-工作台和网关自带的 web 界面（`:18889`）不能同时开。
-这个错误在界面上会明确提示 —— 不提示的话页面看起来完全正常
-（状态灯是绿的、消息发得出去），只是永远等不到回复。第一次实测就卡在这里两分钟。
-
-**二、必须代理，不能直连**。页面所有请求走同源相对路径，由 `client/server.mjs`
-转发给网关与 service。直连 `:18889` 会被拒：
-
-```
-WebSocket ws://127.0.0.1:18889/api/realtime → 403
-fetch     http://127.0.0.1:18889/api/...    → {"error":"origin not allowed"}
-```
-
-根因在 `server/src/core/request-security.mjs` —— DNS rebinding 防护，
-判据是「origin 的 host 必须等于请求的 host」，跨端口无论如何都过不了，
-连 `config.allowedOrigins` 也绕不开（它同样要求 host 相等）。
-框架自带的 web 界面挂在网关的 `/` 上，天然同源，所以碰不到这个问题。
-
-### 一个未解决的问题
-
-**客服的回复在工作台里看不到文字。** 工具调用、身份核验、订单变化都实时反映在
-右侧面板 —— 那些是服务端事实，可靠；但对话区只有客户的气泡。
-
-已经排除的：代理层正常（WebSocket 帧和 REST 请求都验证过转发无误）、
-框架确实支持助手侧转写（`realtime-presentation-runtime.mjs:20-25` 监听六种
-转写事件，`web/src/App.jsx:567` 在消费它）、模型能力表 `textOutput: true`。
-
-还没查清的：为什么同一个网关下，自带 web 界面能拿到 `role: 'assistant'` 的
-消息，而工作台拿不到。两边 `connect` 的差异只剩 `inputEnabled`
-（WebUI 传 false，工作台传 true）。
-
-要看客服说什么，暂时用网关自带的界面。

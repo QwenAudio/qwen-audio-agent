@@ -27,7 +27,7 @@ function message(text, options = {}) {
     taskId: options.taskId || '',
     role: options.role ?? A2ARole.ROLE_AGENT,
     parts: options.parts || [textPart(text)],
-    metadata: undefined,
+    metadata: options.metadata,
     extensions: [],
     referenceTaskIds: [],
   }
@@ -40,7 +40,7 @@ function task(state, options = {}) {
     status: {
       state,
       message: options.statusText
-        ? message(options.statusText, { taskId: options.id || 'a2a-task-one' })
+        ? message(options.statusText, { taskId: options.id || 'a2a-task-one', metadata: options.statusMetadata })
         : undefined,
       timestamp: new Date().toISOString(),
     },
@@ -357,7 +357,7 @@ test('projects A2A messages and task artifacts into public outcomes', async () =
 
   const outcome = await backend.submit(work())
   assert.equal(outcome.presentation, undefined)
-  assert.match(outcome.content, /分析过程/)
+  assert.doesNotMatch(outcome.content, /分析过程/)
   assert.match(outcome.content, /# 结果/)
   assert.deepEqual(outcome.artifacts, [{
     artifactId: 'report',
@@ -532,6 +532,56 @@ test('resumes the same A2A task after input is supplied', async () => {
   assert.equal(client.sent[1].message.contextId, 'context-one')
   assert.equal(client.sent[1].message.parts[0].content.value, 'Markdown')
   assert.ok(events.some(event => event.type === 'backend.input.resolved'))
+  await backend.close()
+})
+
+test('authorization requires an explicit valid decision and final output excludes old prompts', async () => {
+  const client = fakeClient()
+  client.sendMessage = async request => {
+    client.sent.push(request)
+    return client.sent.length === 1
+      ? task(A2ATaskState.TASK_STATE_AUTH_REQUIRED, { statusText: '请确认取消。' })
+      : task(A2ATaskState.TASK_STATE_COMPLETED, {
+          statusText: '已取消。', history: [message('请确认取消。'), message('正在执行工具')],
+        })
+  }
+  const backend = new A2ABackendAdapter({
+    agentCard: { name: 'Authorization Agent' }, clientFactory: async () => ({ client }),
+  })
+  const events = []
+  backend.subscribe(event => events.push(event))
+  const pending = backend.submit(work())
+  await new Promise(resolve => setImmediate(resolve))
+  const input = events.find(event => event.type === 'backend.input.requested').input
+  for (const response of [{}, { action: 'oops' }, { text: '同意' }]) {
+    await assert.rejects(backend.respondInput('task_1', input.id, response), {
+      code: 'INPUT_ACTION_REQUIRED',
+    })
+  }
+  await backend.respondInput('task_1', input.id, { action: 'accept' })
+  assert.equal((await pending).content, '已取消。')
+  assert.deepEqual(client.sent[1].message.metadata.qwenAudioInputResponse, {
+    kind: 'authorization', action: 'accept',
+  })
+  await backend.close()
+})
+
+test('expired authorization resolves the frontend input and ends the task without an answer', async () => {
+  const client = fakeClient()
+  client.sendMessage = async () => task(A2ATaskState.TASK_STATE_AUTH_REQUIRED, {
+    statusText: '请确认。', statusMetadata: { qwenAudioApprovalExpiresAt: Date.now() + 30 },
+  })
+  let cancellations = 0
+  const cancel = client.cancelTask.bind(client)
+  client.cancelTask = async request => { cancellations += 1; return cancel(request) }
+  const backend = new A2ABackendAdapter({
+    agentCard: { name: 'Expiring Agent' }, clientFactory: async () => ({ client }),
+  })
+  const events = []
+  backend.subscribe(event => events.push(event))
+  await assert.rejects(backend.submit(work()), { code: 'INPUT_EXPIRED' })
+  assert.equal(cancellations, 1)
+  assert.ok(events.some(e => e.type === 'backend.input.resolved' && e.input.status === 'cancelled'))
   await backend.close()
 })
 

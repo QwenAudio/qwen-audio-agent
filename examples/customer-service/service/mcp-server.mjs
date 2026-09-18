@@ -28,19 +28,20 @@ export function createCustomerServiceMcpServer({
   if (surface !== 'frontend' && surface !== 'backend') {
     throw new TypeError(`Unknown tool surface: ${surface}`)
   }
-  const tools = toolDefinitions(surface, domain)
+  const definitions = () => service.scenarios?.owns(sessionId)
+    ? service.scenarios.definitions(sessionId, surface) : toolDefinitions(surface, domain)
   const server = new Server({
     name: `qwen-audio-agent-customer-service-${surface}`,
     version: '1.0.0',
   }, { capabilities: { tools: {} } })
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }))
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: definitions() }))
 
   server.setRequestHandler(CallToolRequestSchema, async request => {
     try {
       // 【面内校验，不能只靠 tools/list】客户端可以直接 call 一个没列出来的名字。
       // 少了这道检查，前台就能调到后台独有的写库工具 —— 白名单形同虚设。
-      if (!tools.some(tool => tool.name === request.params.name)) {
+      if (!definitions().some(tool => tool.name === request.params.name)) {
         throw new Error(`Tool is not available on this MCP surface: ${request.params.name}`)
       }
       const output = await service.execute(

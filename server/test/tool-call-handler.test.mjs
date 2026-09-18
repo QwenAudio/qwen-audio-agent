@@ -1345,6 +1345,29 @@ test('returns a backend answer to the same pending task', async () => {
   await manager.wait(task.id)
 })
 
+for (const kind of ['input', 'authorization']) test(`pending ${kind} cannot be queued as a new task`, async t => {
+  const manager = new TaskManager()
+  const done = Promise.withResolvers()
+  t.after(() => done.resolve({ content: 'done' }))
+  const task = manager.create({ objective: 'existing work', ownerId: 'owner', sessionId: 'voice',
+    runner: async (_objective, { onEvent }) => {
+      onEvent({ type: 'backend.input.requested', input: { id: 'pending-input', status: 'pending',
+        kind, mode: 'text', prompt: 'Customer question' } })
+      return done.promise
+    } })
+  await new Promise(resolve => setImmediate(resolve))
+  const kit = harness({ manager })
+  await kit.handler.handle({ call_id: 'wrong-spawn', name: 'spawn_thinking',
+    arguments: '{"objective":"yes, continue"}' })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'input_response_required')
+  assert.equal(kit.outputs.at(-1)[1].pending_inputs[0].task_id, task.id)
+  assert.equal(kit.outputs.at(-1)[1].pending_inputs[0].kind, kind)
+  assert.match(kit.outputs.at(-1)[3].response.instructions, /respond_agent_input/)
+  assert.equal(manager.list({ ownerId: 'owner', sessionId: 'voice' }).length, 1)
+  done.resolve({ content: 'done' })
+  await manager.wait(task.id)
+})
+
 test('deduplicates the same turn after a realtime handler reconnect', async () => {
   const manager = new TaskManager()
   let runs = 0

@@ -8,6 +8,7 @@ import {
 import { CustomerService } from './service.mjs'
 import { createCustomerServiceMcpServer } from './mcp-server.mjs'
 import { loadServiceEnvironment } from '../bootstrap/environment.mjs'
+import { TauScenarios } from '../benchmark/tau-scenarios.mjs'
 
 const MAX_JSON_BYTES = 64 * 1024
 
@@ -30,13 +31,13 @@ function json(response, status, value) {
   response.end(body)
 }
 
-async function readJson(request) {
+async function readJson(request, maxBytes = MAX_JSON_BYTES) {
   let total = 0
   const chunks = []
   for await (const chunk of request) {
     total += chunk.length
     // 上限先于拼接生效：先 concat 再判断的话，一个超大请求已经进了内存。
-    if (total > MAX_JSON_BYTES) throw new Error('Request body is too large')
+    if (total > maxBytes) throw new Error('Request body is too large')
     chunks.push(chunk)
   }
   if (!chunks.length) return {}
@@ -44,10 +45,19 @@ async function readJson(request) {
 }
 
 class CustomerServiceServer {
-  constructor({ host = '127.0.0.1', port = 3110, service } = {}) {
+  constructor({ host = '127.0.0.1', port = 3110, service,
+    testMode = process.env.CS_TEST_MODE === '1', testToken = process.env.CS_TEST_TOKEN,
+    tauRoot = process.env.CS_TAU2_ROOT, tauPython = process.env.CS_TAU2_PYTHON } = {}) {
     this.host = host
     this.port = port
     this.service = service || new CustomerService()
+    if (testMode) {
+      if (!['127.0.0.1', 'localhost', '::1'].includes(host) || !testToken) {
+        throw new Error('Test mode requires loopback binding and CS_TEST_TOKEN')
+      }
+      this.service.scenarios ||= new TauScenarios({ root: tauRoot, python: tauPython })
+      this.testToken = testToken
+    }
     this.server = createServer((request, response) => {
       this.#route(request, response).catch(error => {
         if (!response.headersSent) json(response, 500, { error: error.message })
@@ -68,10 +78,40 @@ class CustomerServiceServer {
 
   async close() {
     await new Promise(resolve => this.server.close(resolve))
+    this.service.scenarios?.close()
   }
 
   async #route(request, response) {
     const url = new URL(request.url, this.origin)
+
+    if (url.pathname.startsWith('/api/test/')) {
+      if (!this.testToken) { json(response, 404, { error: 'Test mode disabled' }); return }
+      if (request.headers.authorization !== `Bearer ${this.testToken}` || request.headers.origin) {
+        json(response, 403, { error: 'Test authorization required; browser origins are not allowed' }); return
+      }
+      try {
+        let result
+        if (url.pathname === '/api/test/scenarios/load' && request.method === 'POST') {
+          result = await this.service.scenarios.load(await readJson(request, 16 * 1024 * 1024))
+        } else if (url.pathname === '/api/test/scenarios/snapshot' && request.method === 'GET') {
+          result = await this.service.scenarios.snapshot(url.searchParams.get('sessionId'))
+        } else if (url.pathname === '/api/test/scenarios' && request.method === 'DELETE') {
+          result = await this.service.scenarios.release(url.searchParams.get('sessionId'))
+        } else { json(response, 404, { error: 'Unknown test endpoint' }); return }
+        json(response, 200, result)
+      } catch (error) { json(response, 400, { error: error.message }) }
+      return
+    }
+
+    if (url.pathname === '/api/service/context' && request.method === 'GET') {
+      const sessionId = sessionOf(request, url)
+      const context = this.service.scenarios?.owns(sessionId) ? this.service.scenarios.context(sessionId) : null
+      json(response, 200, context ? { domain: context.domain, policy: context.policy,
+        toolset: context.toolset, version: context.version, conversationId: sessionId,
+        verifiedIdentity: context.verifiedIdentity || null }
+        : { conversationId: this.service.conversationId(sessionId) })
+      return
+    }
 
     if (request.method === 'OPTIONS') {
       response.writeHead(204, {
@@ -91,13 +131,8 @@ class CustomerServiceServer {
 
     // 业务状态投影面：给 UI 用。对话状态走 GCP，两条通道分离 ——
     // Gateway 不接收也不理解订单结构。
-    if (url.pathname === '/api/service/context' && request.method === 'GET') {
-      json(response, 200, { conversationId: this.service.conversationId(sessionOf(request, url)) })
-      return
-    }
-
     if (url.pathname === '/api/service/state' && request.method === 'GET') {
-      json(response, 200, this.service.snapshot(
+      json(response, 200, await this.service.snapshot(
         sessionOf(request, url), url.searchParams.get('domain') || undefined,
       ))
       return
@@ -105,6 +140,12 @@ class CustomerServiceServer {
 
     if (url.pathname === '/api/service/events' && request.method === 'GET') {
       this.#events(request, response, sessionOf(request, url))
+      return
+    }
+
+    if (url.pathname === '/api/service/approvals/revoke' && request.method === 'POST') {
+      const body = await readJson(request)
+      json(response, 200, { revoked: this.service.revokeApproval(sessionOf(request, url, body), body.token) })
       return
     }
 

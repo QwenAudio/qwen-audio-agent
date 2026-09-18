@@ -157,8 +157,8 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
         effect: { reason },
       })
       return finish(store, sessionId, surface, name,
-        approvalPrompt(created.preview, created.token), false,
-        { needsApproval: true }, `取消 ${order.orderId} 待客户批准`, null)
+        approvalPrompt(created.preview), false,
+        { approval: created, needsApproval: true }, `取消 ${order.orderId} 待客户批准`, null)
     }
 
     const consumed = consumeApproval(session, {
@@ -270,8 +270,8 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
         effect: { itemIds: targets.map(item => item.itemId), amount },
       })
       return finish(store, sessionId, surface, name,
-        approvalPrompt(created.preview, created.token), false,
-        { needsApproval: true, amount }, `退货 ${order.orderId} 待客户批准`, null)
+        approvalPrompt(created.preview), false,
+        { approval: created, needsApproval: true, amount }, `退货 ${order.orderId} 待客户批准`, null)
     }
 
     const consumed = consumeApproval(session, { action: 'return_items', subject, token })
@@ -314,8 +314,8 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
         action: 'modify_address', subject: order.orderId, preview, effect: { address },
       })
       return finish(store, sessionId, surface, name,
-        approvalPrompt(created.preview, created.token), false,
-        { needsApproval: true }, `改地址 ${order.orderId} 待客户确认`, null)
+        approvalPrompt(created.preview), false,
+        { approval: created, needsApproval: true }, `改地址 ${order.orderId} 待客户确认`, null)
     }
 
     const consumed = consumeApproval(session, {

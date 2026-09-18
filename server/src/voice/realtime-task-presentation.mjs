@@ -79,6 +79,8 @@ export function createRealtimeTaskPresentation({
           '<permission_request>',
           `permission_id=${request.id}`,
           `task_id=${task.id}`,
+          'recipient=customer; state=waiting_for_customer; nothing_is_completed_by_this_request',
+          'kind=authorization',
           `operation=${request.summary}`,
           `allowed_decisions=${PERMISSION_DECISIONS.join(',')}`,
           '</permission_request>',

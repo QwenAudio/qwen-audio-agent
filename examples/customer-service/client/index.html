@@ -151,11 +151,10 @@ const el = (tag, cls, html) => {
 const esc = value => String(value ?? '').replace(/[&<>"]/g,
   ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
 
-// 【sessionId 必须和网关启动时那个一致】
-// 网关把它烘进了 CS_FRONTEND_MCP_URL（见 gateway/server.mjs 里的说明），
-// 换一个只会换掉 WebSocket 那一侧：模型的前台工具还打在 default，
-// 于是它看到「尚未核验」，连订单都查不到。
+// MCP 业务 sessionId 必须与进程配置一致；对话 ID 可以单独轮换，隔离历史。
 const SESSION = new URLSearchParams(location.search).get('sessionId') || 'default'
+const CONVERSATION_KEY = `customer-service-conversation:${SESSION}`
+let conversationId = sessionStorage.getItem(CONVERSATION_KEY) || SESSION
 // 【全部走同源相对路径】server.mjs 把 /api/* 代理给网关与 service。
 // 直连 18889 会被网关的 DNS rebinding 防护拓回（origin not allowed）——
 // 它要求 origin 的 host 等于请求的 host，跳端口绕不过去。
@@ -203,10 +202,13 @@ function renderTurn({ role, content, source }) {
 // 我一开始只连了 WS，什么都没看到，据此写下「助手 transcript 不回传」——
 // 那是错的，web 界面一直好好显示着它。
 async function pullMessages() {
+  if (customerResetting) return
+  const requestedConversation = conversationId
   try {
-    const response = await fetch(`${API}/api/conversations/${SESSION}/messages`)
+    const response = await fetch(`${API}/api/conversations/${encodeURIComponent(requestedConversation)}/messages`)
     if (!response.ok) return
     const payload = await response.json()
+    if (customerResetting || requestedConversation !== conversationId) return
     const messages = Array.isArray(payload) ? payload : (payload.messages || [])
     for (const message of messages) {
       const key = message.id || `${message.seq}:${message.role}:${message.content}`
@@ -495,11 +497,13 @@ let playback = null
 let reconnecting = false
 let reconnectTimer = null
 let voiceRequest = 0
+let customerResetting = false
 
 function connect() {
+  if (customerResetting) return
   const url = new URL('/api/realtime', location.origin)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  url.searchParams.set('sessionId', SESSION)
+  url.searchParams.set('sessionId', conversationId)
   socket = new WebSocket(url)
   const opened = socket
 
@@ -708,38 +712,59 @@ $('talk').onclick = async () => {
   reconnectWith(true)
 }
 
-$('reset').onclick = async () => {
-  await fetch(`${API}/api/service/reset?sessionId=${SESSION}`, { method: 'POST' })
-  // 只重置业务状态。对话历史在网关的 .runtime 里，清它要重启网关 ——
-  // 这一点值得说明：否则会以为「重置」了却发现模型还记得上一轮。
-  $('log').innerHTML = ''
-  seenMessages.clear()
-  renderTurn({
-    role: 'assistant',
-    content: '本位客户的操作已全部撒回。注意对话历史仍在网关侧，模型还记得刚才聊过什么。',
-  })
-}
+$('reset').onclick = () => resetCustomer('reset')
+$('new-customer').onclick = () => resetCustomer('new-customer')
 
-// 【换一位客户】同一个 sessionId 背后换一份全新的库。
-// 不换 sessionId 的理由：它在网关启动时被烘进了 CS_FRONTEND_MCP_URL，
-// 换了只会换掉 WebSocket 那一侧 —— 模型的前台工具还打在原来那个会话上，
-// 于是它看到「尚未核验」而客户明明刚核验过。详见 state-store.mjs。
-$('new-customer').onclick = async () => {
-  const response = await fetch(`${API}/api/service/new-customer?sessionId=${SESSION}`, {
-    method: 'POST',
-  })
-  const result = await response.json().catch(() => ({}))
-  playing = null
-  $('log').innerHTML = ''
-  seenMessages.clear()
-  renderTurn({
-    role: 'assistant',
-    content: '已换一位客户，数据库回到初始状态。'
-      + (result.conversationRetained
-        ? '\n\n【注意】对话历史清不掉 —— 它在网关的 .runtime 里，而网关没有清空接口。'
-          + '模型还会记得上一位客户聊过什么。要彻底干净，重启网关进程。'
-        : ''),
-  })
+async function resetCustomer(mode) {
+  if (customerResetting) return
+  customerResetting = true
+  $('reset').disabled = $('new-customer').disabled = $('talk').disabled = true
+  voiceRequest += 1
+  voiceWanted = false
+  mic?.stop()
+  mic = null
+  playback?.close()
+  playback = null
+  reconnecting = true
+  clearTimeout(reconnectTimer)
+  const oldSocket = socket
+  socket = null
+  let resetSucceeded = false
+  try {
+    if (oldSocket && oldSocket.readyState !== WebSocket.CLOSED) {
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('旧通话未能关闭，请稍后重试。')), 5_000)
+        oldSocket.addEventListener('close', () => { clearTimeout(timer); resolve() }, { once: true })
+        oldSocket.close()
+      })
+    }
+    const response = await fetch(`${API}/api/customer-service/reset`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, sessionId: SESSION, conversationId }),
+    })
+    const result = await response.json()
+    if (!response.ok || !result.conversationId) throw new Error(result.error || '重置失败')
+    conversationId = result.conversationId
+    sessionStorage.setItem(CONVERSATION_KEY, conversationId)
+    resetSucceeded = true
+    playing = null
+    $('log').innerHTML = ''
+    seenMessages.clear()
+    renderTurn({ role: 'assistant', content: mode === 'reset'
+      ? '本位客户的操作已撤回，对话已重置，请重新核验身份。'
+      : '已换一位客户，新对话已就绪，请核验身份。' })
+  } catch (error) {
+    renderTurn({ role: 'assistant', content: `未完成重置：${error.message}` })
+  } finally {
+    customerResetting = false
+    reconnecting = false
+    $('reset').disabled = $('new-customer').disabled = false
+    $('talk').disabled = !resetSucceeded
+    $('talk').innerHTML = '开始语音通话'
+    $('talk').className = ''
+    if (resetSucceeded) connect()
+    else $('status').textContent = '重置未完成，请重试；通话已暂停'
+  }
 }
 
 subscribeState()

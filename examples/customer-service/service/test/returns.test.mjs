@@ -13,10 +13,9 @@ function backend(service, sessionId) {
   return (name, args) => service.execute(name, args, { sessionId, surface: 'backend' })
 }
 
-// 从工具返回的文本里抠出令牌。模型看到的是同一段文本，
-// 所以这里怎么抠得到，模型就能怎么读得到。
-function tokenFrom(text) {
-  return text.match(/approval_token="([^"]+)"/)?.[1] || null
+// 令牌只在内部结构化数据里，客户预览不能包含它。
+function tokenFrom(result) {
+  return result.data.approval?.token || null
 }
 
 test('写库工具只在后台面，不在前台面', () => {
@@ -54,7 +53,8 @@ test('第一次调用只给预览，不碰数据库', async () => {
   assert.equal(preview.data.needsApproval, true)
   assert.match(preview.content, /将取消订单 #W1082334/)
   assert.match(preview.content, /￥899\.00/)
-  assert.ok(tokenFrom(preview.content), '预览里必须带出令牌')
+  assert.ok(tokenFrom(preview), '结构化批准数据里必须带出令牌')
+  assert.doesNotMatch(preview.content, /approval_token|以上内容需要/)
 
   const { db } = service.snapshot('c1')
   assert.equal(db.orders.find(o => o.orderId === '#W1082334').status, 'pending')
@@ -65,7 +65,7 @@ test('带令牌的第二次调用才真正执行', async () => {
   const call = backend(service, 'c2')
   const preview = await call('cancel_order', { orderId: '#W1082334', reason: '买错了' })
   const done = await call('cancel_order', {
-    orderId: '#W1082334', reason: '买错了', approval_token: tokenFrom(preview.content),
+    orderId: '#W1082334', reason: '买错了', approval_token: tokenFrom(preview),
   })
   assert.equal(done.data.cancelled, true)
   assert.equal(done.data.refund, 899)
@@ -97,7 +97,7 @@ test('令牌一次性 —— 同一枚不能用第二次', async () => {
   const preview = await call('modify_address', {
     orderId: '#W6613075', address: '成都市高新区天府大道 500 号',
   })
-  const token = tokenFrom(preview.content)
+  const token = tokenFrom(preview)
 
   const first = await call('modify_address', {
     orderId: '#W6613075', address: '成都市高新区天府大道 500 号', approval_token: token,
@@ -120,7 +120,7 @@ test('取消后订单状态变化本身也能拦住重复退款', async () => {
   const service = await verified('c4b')
   const call = backend(service, 'c4b')
   const preview = await call('cancel_order', { orderId: '#W1082334', reason: '不需要了' })
-  const token = tokenFrom(preview.content)
+  const token = tokenFrom(preview)
   await call('cancel_order', { orderId: '#W1082334', reason: '不需要了', approval_token: token })
   const replay = await call('cancel_order', {
     orderId: '#W1082334', reason: '不需要了', approval_token: token,
@@ -136,7 +136,7 @@ test('令牌绑定具体订单，不能挪用到另一笔', async () => {
   const service = await verified('c5')
   const call = backend(service, 'c5')
   const preview = await call('cancel_order', { orderId: '#W1082334', reason: '不需要了' })
-  const token = tokenFrom(preview.content)
+  const token = tokenFrom(preview)
   // 李明还有另一笔 pending 单 #W1155602 属于刘洋，换成他自己的 shipped 单来试
   const misuse = await call('modify_address', {
     orderId: '#W6613075', address: '换个地址试试', approval_token: token,
@@ -219,7 +219,7 @@ test('部分退货只退指定款式，金额按选中项算', async () => {
 
   const done = await call('return_items', {
     orderId: '#W2094558', itemIds: ['HP_WHITE_ANC'],
-    approval_token: tokenFrom(preview.content),
+    approval_token: tokenFrom(preview),
   })
   assert.equal(done.data.refund, 1299)
   const order = service.snapshot('r4').db.orders.find(o => o.orderId === '#W2094558')
@@ -232,7 +232,7 @@ test('同一件商品不能退两次', async () => {
   const preview = await call('return_items', { orderId: '#W2094558', itemIds: ['HP_WHITE_ANC'] })
   await call('return_items', {
     orderId: '#W2094558', itemIds: ['HP_WHITE_ANC'],
-    approval_token: tokenFrom(preview.content),
+    approval_token: tokenFrom(preview),
   })
   const again = await call('return_items', { orderId: '#W2094558', itemIds: ['HP_WHITE_ANC'] })
   assert.equal(again.data.blocked, 'already_returned')
@@ -256,7 +256,7 @@ test('礼品卡付款的退款即时退回余额', async () => {
     .find(m => m.id === 'gift_card_4402').balance
   const preview = await call('return_items', { orderId: '#W5540912' })
   assert.match(preview.content, /即时退回礼品卡/)
-  await call('return_items', { orderId: '#W5540912', approval_token: tokenFrom(preview.content) })
+  await call('return_items', { orderId: '#W5540912', approval_token: tokenFrom(preview) })
   const after = service.snapshot('r7').db.users
     .find(u => u.userId === 'li_ming_3021').paymentMethods
     .find(m => m.id === 'gift_card_4402').balance
@@ -279,7 +279,7 @@ test('改地址走两段式，第二次才落库', async () => {
   )
   const done = await call('modify_address', {
     orderId: '#W6613075', address: '成都市高新区天府大道 500 号 12 栋',
-    approval_token: tokenFrom(preview.content),
+    approval_token: tokenFrom(preview),
   })
   assert.equal(done.data.updated, true)
   assert.match(
@@ -325,7 +325,7 @@ test('批准与执行都进审计流水，并标明来自哪个面', async () =>
   const call = backend(service, 'u1')
   const preview = await call('cancel_order', { orderId: '#W1082334', reason: '不需要了' })
   await call('cancel_order', {
-    orderId: '#W1082334', reason: '不需要了', approval_token: tokenFrom(preview.content),
+    orderId: '#W1082334', reason: '不需要了', approval_token: tokenFrom(preview),
   })
   const { audit } = service.snapshot('u1')
   const cancels = audit.filter(entry => entry.tool === 'cancel_order')

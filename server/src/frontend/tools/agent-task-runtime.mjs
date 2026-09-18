@@ -200,6 +200,31 @@ export class AgentTaskRuntime {
     event,
     callContext,
   }) {
+    const pendingInputTasks = this.host.taskOperations.list({
+      ownerId: this.host.ownerId,
+      sessionId: this.host.sessionId,
+      active: true,
+    }).filter(task => task.status !== 'cancelling' && task.inputRequest?.status === 'pending')
+    if (pendingInputTasks.length) {
+      // A waiting task retains the serial backend lane. A new work item cannot
+      // resume it and would remain queued indefinitely. Never infer approval
+      // from a spawn objective: return the actual pending request.
+      await this.host.sendOutput(callId, {
+        status: 'input_pending', error: true, error_code: 'input_response_required',
+        pending_inputs: pendingInputTasks.map(task => ({ task_id: task.id,
+          kind: task.inputRequest.kind, prompt: task.inputRequest.prompt })),
+        user_message: '当前有任务等待客户答复，未创建新任务。请回答或取消原任务后再派单。',
+        retryable: true,
+      }, turnId, pendingInputTasks.length === 1 ? pendingInputTasks[0].id : null, {
+        response: { instructions: [
+          'No new task was created. The existing task is waiting for CUSTOMER input.',
+          'If the latest real customer reply answers the pending request, call respond_agent_input with that task_id and the customer reply.',
+          'Do not invent an answer or approve on behalf of the customer. If the customer has not answered, convey the pending question and wait.',
+          'Do not call spawn_thinking again or claim any operation completed. Multiple pending requests require clarification of which one the customer is answering.',
+        ].join(' ') },
+      })
+      return
+    }
     const pendingPermissionTask = this.host.taskOperations.list({
       ownerId: this.host.ownerId,
       sessionId: this.host.sessionId,

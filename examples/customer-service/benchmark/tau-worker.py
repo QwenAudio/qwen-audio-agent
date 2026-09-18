@@ -17,6 +17,7 @@ sessions = {}
 tasks = {}
 trajectories = {}
 users = {}
+agents = {}
 
 
 def dispatch(request):
@@ -79,8 +80,40 @@ def dispatch(request):
         tasks.pop(session_id, None)
         trajectories.pop(session_id, None)
         users.pop(session_id, None)
+        agents.pop(session_id, None)
         return {"ok": True}
     env = sessions[session_id]
+    if method == "agent-init":
+        from tau2.agent.llm_agent import LLMAgent
+
+        agent = LLMAgent(
+            tools=env.get_tools(), domain_policy=env.get_policy(),
+            llm=f"openai/{request['model']}",
+            llm_args={"api_key": os.environ["DASHSCOPE_API_KEY"],
+                      "api_base": request["baseURL"], "timeout": 90,
+                      "num_retries": 0,
+                      "extra_body": {"enable_thinking": True}},
+        )
+        agents[session_id] = (agent, agent.get_init_state(), None)
+        return {"ok": True}
+    if method == "agent-step":
+        from tau2.data_model.message import UserMessage, MultiToolMessage
+
+        agent, state, pending = agents[session_id]
+        message = UserMessage(role="user", content=request["content"]) if "content" in request else pending
+        if message is None:
+            raise ValueError("No pending tool response")
+        reply, state = agent.generate_next_message(message, state)
+        responses = []
+        if reply.tool_calls:
+            trajectories[session_id].append(reply)
+            for call in reply.tool_calls:
+                response = env.get_response(call)
+                trajectories[session_id].append(response)
+                responses.append(response)
+        pending = MultiToolMessage(role="tool", tool_messages=responses) if responses else None
+        agents[session_id] = (agent, state, pending)
+        return {"content": reply.content or "", "toolCalls": len(responses)}
     if method == "user-init":
         from tau2.user.user_simulator import UserSimulator
         from tau2.user.user_simulator_base import is_valid_user_history_message

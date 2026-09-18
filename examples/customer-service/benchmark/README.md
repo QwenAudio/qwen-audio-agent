@@ -1,8 +1,44 @@
 # Customer service harness tests
 
 Tests cover the demo's approval lifecycle and an opt-in adapter for a trusted local
-tau2-bench checkout. Keep A2A/MCP unchanged. No run logs, result JSON or model scores
+tau2-bench checkout. Keep A2A/MCP unchanged. No raw run logs or result JSON
 are committed here.
+
+The aggregate full-airline comparison is documented in
+[AIRLINE_RESULTS.md](AIRLINE_RESULTS.md); it contains no raw run artifacts.
+
+## Full three-way comparison
+
+With the tau2 environment variables above and a configured DashScope key:
+
+```sh
+CS_TAU_OUTPUT_DIR=/path/to/local-results \
+  node examples/customer-service/benchmark/run-full.mjs
+```
+
+This runs every base retail/airline task once in each of three modes:
+`realtime-only`, `harness` (Realtime plus Max backend), and `max-only` (native
+tau2 `LLMAgent`, without Realtime, A2A, or demo approval logic). Defaults use
+`qwen3.8-max` for the tested Max agent/backend and the same `qwen3.8-flash` user
+simulator and assertion judge across all groups. Override them with
+`CS_TAU_BACKEND_MODEL`, `CS_TAU_USER_MODEL`, and `CS_TAU_JUDGE_MODEL` before starting.
+
+The runner executes three cases concurrently, one per group. `manifest.json`
+records the source fingerprint, completed cases, errors and denominators. Restart
+with the same configuration/output directory to continue pending cases; completed
+cases are never rerun or selected by best reward. Interrupted cases without a
+unique result count as infrastructure failures, not silent retries. Use a new
+directory for a new experiment or changed code/configuration.
+
+Scores use the official evaluator (including communication/assertion criteria,
+not just DB equality) and verify live/replayed DB hashes. This is a text-only
+adapted tau2 experiment: one trial per task, at most 16 user turns and 300 seconds
+per case. Harness execution keeps its eight-model-round limit per execution;
+native Max permits up to 100 model rounds per user turn within the case deadline.
+These are not the native benchmark's default step/trial settings or a voice test.
+User-simulator drift can affect all groups; inspect failure traces rather than
+attributing every zero reward to the tested agent. Full runs take hours and consume
+paid agent, simulator and (where required) assertion-judge API calls.
 
 ## Quick regression tests (no model key)
 

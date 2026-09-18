@@ -138,6 +138,7 @@ function parseCommandArguments(argv, env) {
     deviceId,
     deviceLabel: '',
     legacyPairing: false,
+    webrtc: ['1', 'true'].includes(env.QWAUDIO_WEBRTC_ENABLED),
     lan: enabled(env.QWEN_AUDIO_GATEWAY_LAN),
     lanSpecified: false,
     tailnet: enabled(env.QWEN_AUDIO_GATEWAY_TAILNET),
@@ -218,6 +219,11 @@ function parseCommandArguments(argv, env) {
       options.lan = true
       options.lanSpecified = true
       options.tailnet = false
+    } else if (argument === '--webrtc') {
+      if (command !== 'gateway' || !['run', 'install'].includes(gatewayAction)) {
+        throw new Error('--webrtc 只适用于 gateway run 或 gateway install')
+      }
+      options.webrtc = true
     } else if (argument === '--tailnet') {
       if (command !== 'gateway') throw new Error('--tailnet 只适用于 gateway')
       options.lan = false
@@ -427,6 +433,8 @@ export function helpText() {
     '  --backend-url URL      后台 Server 地址',
     '  --backend-agent ID     指定协调 Agent',
     '  --lan                  监听局域网并自动发布 ws://局域网IP:端口',
+    '  --webrtc               额外开启 WebRTC，保留 WSS；先 npm install -g qwen-audio-agent-webrtc',
+    '                         用于 gateway run/install；也可设置 QWAUDIO_WEBRTC_ENABLED=1',
     '  --tailnet              通过系统 Tailscale Serve 发布到私有 Tailnet',
     '  gateway pair --endpoint URL  覆盖连接码中的地址（例如反向代理 HTTPS Origin）',
     '',

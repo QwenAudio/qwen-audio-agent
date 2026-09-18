@@ -1,5 +1,5 @@
-// This is a standalone asset loaded by audioWorklet.addModule(), not a bundled
-// application module. Keep it import-free so Vite may safely inline its URL.
+// This standalone, import-free asset is loaded by audioWorklet.addModule().
+// Emit it as a same-origin script so the desktop's strict CSP allows it.
 
 class MicrophoneAudioWorkletProcessor extends AudioWorkletProcessor {
   process(inputs, outputs) {

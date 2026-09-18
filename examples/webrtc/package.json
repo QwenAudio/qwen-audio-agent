@@ -1,0 +1,12 @@
+{
+  "name": "@qwen-audio-agent/example-webrtc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser WebRTC demo with explicitly installed Gateway media dependencies",
+  "scripts": {
+    "setup": "npm ci --prefix ../../packages/webrtc --no-audit --no-fund",
+    "start": "node start.mjs",
+    "start:omni": "node start.mjs --omni"
+  }
+}

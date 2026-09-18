@@ -5,6 +5,7 @@ import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { chromium } from 'playwright'
 import { build } from 'vite'
+import { startDesktopRendererServer } from '../../desktop/src/renderer-server.mjs'
 import { GATEWAY_CLIENT_PROTOCOL_VERSION } from '../../shared/protocol/gateway-client-protocol.mjs'
 
 const projectRoot = resolve(import.meta.dirname, '../..')
@@ -347,7 +348,7 @@ async function waitForAttribute(page, name, predicate, timeoutMs = 5_000) {
   throw new Error(`Timed out waiting for ${name}`)
 }
 
-async function preparePage(context, path, diagnostics) {
+async function preparePage(context, path, diagnostics, pageBaseUrl = `${baseUrl}/`) {
   const page = await context.newPage()
   page.on('pageerror', error => diagnostics.push({
     type: 'pageerror',
@@ -368,7 +369,7 @@ async function preparePage(context, path, diagnostics) {
     }),
   }))
   await page.addInitScript({ content: MOCK_BROWSER_APIS })
-  await page.goto(`${baseUrl}/${path}`, { waitUntil: 'domcontentloaded' })
+  await page.goto(new URL(path, pageBaseUrl).href, { waitUntil: 'domcontentloaded' })
   if (process.env.QWEN_BROWSER_SMOKE_INJECT_ERROR === '1') {
     await page.evaluate(() => { setTimeout(() => { throw new Error('smoke diagnostic probe') }, 0) })
   }
@@ -461,8 +462,8 @@ async function testPermissionDenied(context, diagnostics) {
   await finishPage(page, diagnostics)
 }
 
-async function testNativeAudioWorklet(context, diagnostics) {
-  const page = await preparePage(context, '?browser-smoke=real-audio', diagnostics)
+async function testNativeAudioWorklet(context, diagnostics, pageBaseUrl) {
+  const page = await preparePage(context, '?browser-smoke=real-audio', diagnostics, pageBaseUrl)
   await page.getByRole('button', { name: '开启麦克风', exact: true }).click()
   await page.getByRole('button', { name: '麦克风静音', exact: true })
     .waitFor({ state: 'visible' })
@@ -484,6 +485,25 @@ async function testNativeAudioWorklet(context, diagnostics) {
   assert.equal(await page.locator('html').getAttribute('data-audio-appends'), stopped,
     'Muted capture must not forward queued worklet samples')
   await finishPage(page, diagnostics)
+}
+
+async function testDesktopAudioWorklet(context, diagnostics) {
+  const renderer = await startDesktopRendererServer({
+    webRoot: resolve(webRoot, 'dist'),
+    target: baseUrl,
+  })
+  try {
+    const response = await fetch(renderer.baseUrl)
+    assert.equal(response.status, 200)
+    const scriptPolicy = response.headers.get('content-security-policy')
+      ?.split(';').map(directive => directive.trim())
+      .find(directive => directive.startsWith('script-src '))
+    assert.equal(scriptPolicy, "script-src 'self'",
+      'Desktop audio capture must work without relaxing the script policy')
+    await testNativeAudioWorklet(context, diagnostics, renderer.baseUrl)
+  } finally {
+    await renderer.close()
+  }
 }
 
 let server
@@ -508,11 +528,12 @@ try {
   await testEndedTrackIsReacquired(context, diagnostics)
   await testPermissionDenied(context, diagnostics)
   await testNativeAudioWorklet(context, diagnostics)
+  await testDesktopAudioWorklet(context, diagnostics)
   await context.tracing.stop()
   tracingActive = false
   await context.close()
   context = null
-  console.log('Browser WebUI voice smoke passed: happy path, reconnect continuation, track recovery, permission denial, and native AudioWorklet capture with backpressure in the production build.')
+  console.log('Browser WebUI voice smoke passed: happy path, reconnect continuation, track recovery, permission denial, and native AudioWorklet capture with backpressure in both WebUI and desktop CSP production builds.')
 } catch (error) {
   await mkdir(diagnosticsDirectory, { recursive: true })
   const pages = context?.pages?.() || []

@@ -5,9 +5,17 @@
 - 桌面设置保留通过环境配置选择的通用 ACP 后台，并显示实际可用状态；
   应用其他设置不再将 `AGENT_PROTOCOL=acp` 静默覆盖为 `none`。
 
+- 修复桌面端 AudioWorklet 脚本被打包为 `data:` URL 后遭安全策略拦截，导致
+  麦克风采集失败并误报未检测到设备的问题；音频处理脚本改为独立同源资源，
+  保持现有内容安全策略不变，并补充桌面加载路径下的真实音频采集回归测试。
+
 - 后台任务进展改为仅在状态实际变化时合并推送，不再用每秒完整 Task 快照承担连接
   保活；WebSocket 沿用 Session 心跳，兼容性的 Task SSE 使用不进入回放与 Session
   Journal 的轻量注释心跳，避免长任务重复写入旧进度文本。
+
+- 修复 Windows 上 `qwenaudio doctor` / `setup` 与桌面版设置页在后台命令位于含空格目录
+  （如默认的 `C:\Program Files\nodejs\npm.cmd`）时，版本探测与全局包核对被 cmd.exe
+  截断命令路径、误报"无法确认版本"或包缺失的问题。
 
 - 新增实验性 Muse Code MSP 后台适配器，复用统一任务、权限和补充输入接口。
   Muse SDK 仅在用户安装该后台时单独安装、启用时加载，不加入框架默认依赖。
@@ -47,6 +55,10 @@
   （如 `C:\docs\(draft)\a.md`）或 `\\server\share` 共享路径被误当作 shell 转义、
   文件没有作为附件发送的问题；转义解析找不到文件时会改用原样粘贴的路径，
   并支持在文字中识别共享路径、保留其原始分隔符。
+- 修复 TUI 中提到不可达主机或不存在共享的 Windows 路径（如 `\\server\share\a.pdf`）
+  时整条消息报 `UNKNOWN: unknown error` 发不出去的问题；取不到的共享路径与本地
+  缺失路径一样按普通文字发送；仅放行 Windows UNC 的 stat 查找失败，实际读取和
+  权限错误仍正常提示。
 - WebUI 与共享移动端现在会在后台任务卡片中展示类型化 Artifact；支持远程媒体
   的显式加载、内联图片预览、结构化数据和可打开或下载的文件产物，并在语音播报
   完成或 Gateway 重连后继续保留产物入口。
@@ -68,6 +80,9 @@
   校验 ACP MCP 描述的后台无法创建 Session 的问题。
 - 修复 Windows 上位于含空格目录的 `.cmd` / `.bat` ACP 后台命令被 cmd.exe 截断而
   无法启动，以及含空格的 ACP 参数被拆开的问题。
+- 修复 Windows 用户名或安装目录含空格时（如
+  `C:\Users\Li Lei\AppData\Roaming\npm\codex.cmd`），桌面设置页的后台登录状态
+  检测命令被 cmd.exe 截断、已登录的后台一律显示为状态未知的问题。
 - 新增 Pi 后台支持：通过社区 `pi-acp` 适配器接入，并支持一键安装。Pi 没有
   内置沙箱与权限审批机制，始终等效于 `full` 权限，请仅在可信环境中使用。
 - 修复 Windows 上 `qwenaudio skill` 各子命令与 Gateway 启动时的技能补装因直接启动

@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 
@@ -144,6 +146,38 @@ test('detects an OpenClaw installation that has not been onboarded', async () =>
     env: { HOME: '/home/user' },
     pathExists: () => false,
   })).status, 'unauthenticated')
+})
+
+test('runs Windows authentication commands stored in a directory with spaces', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'qwen-audio-auth-'))
+  try {
+    const directory = join(root, 'Program Files', 'codex')
+    mkdirSync(directory, { recursive: true })
+    const command = join(directory, 'codex.cmd')
+    writeFileSync(command, [
+      '@echo off',
+      'echo Logged in using ChatGPT',
+      '',
+    ].join('\r\n'))
+    assert.equal((await inspectBackendAuthentication('codex', {
+      command,
+      env: process.env,
+      platform: 'win32',
+    })).status, 'authenticated')
+
+    // 不含空格的路径保持原样传入，行为不变。
+    const plain = join(root, 'codex.cmd')
+    writeFileSync(plain, ['@echo off', 'echo Not logged in', ''].join('\r\n'))
+    assert.equal((await inspectBackendAuthentication('codex', {
+      command: plain,
+      env: process.env,
+      platform: 'win32',
+    })).status, 'unauthenticated')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })
 
 test('passes the requested platform into command probes', async () => {

@@ -10,6 +10,9 @@ scenarios also use controlled microphone and AudioContext doubles, with native
 MessageChannels for worklet messages. A separate scenario uses Chromium's fake
 microphone and native Web Audio/AudioWorklet to verify production module loading,
 non-silent PCM delivery, socket backpressure/recovery, and microphone mute.
+The native-audio scenario also runs through the real desktop renderer server,
+including its token-prefixed asset paths and unchanged `script-src 'self'` CSP.
+This catches worklet assets accidentally inlined as blocked `data:` URLs.
 No physical microphone or cloud API key is needed.
 The Gateway double uses the shared protocol version and checks that the client
 requests that version during the handshake.

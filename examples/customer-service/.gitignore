@@ -14,3 +14,7 @@ console/.cache/
 .runtime-console/
 # 数据库编辑前的自动备份
 domains/*/db.backup.json
+
+# Optional evaluation output; keep scripts/cases, not generated runs.
+benchmark/results/
+benchmark/artifacts/

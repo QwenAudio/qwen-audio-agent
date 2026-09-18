@@ -25,6 +25,68 @@ const air = () => {
   }
 }
 
+for (const name of ['update_flights', 'update_cabin']) {
+  test(`${name} 预览后余量耗尽，不能提交或修改任何业务数据`, async () => {
+    const { call, service, session, snapshot } = air()
+    await call('verify_identity', { memberId: 'CY10023841' })
+    const args = name === 'update_flights'
+      ? { reservationId: 'CYR8801', flightNo: 'CY1203' }
+      : { reservationId: 'CYR8801', cabin: 'economy' }
+    const preview = await call(name, args)
+    assert.equal(preview.data.needsApproval, true)
+    const db = service.store.mutable(session).db
+    const reservation = db.reservations.find(r => r.reservationId === args.reservationId)
+    const segment = reservation.segments[0]
+    const flight = db.flights.find(f => name === 'update_flights'
+      ? f.flightNo === args.flightNo
+      : f.flightNo === segment.flightNo && f.date === segment.date)
+    flight.seats[args.cabin || reservation.cabin] = 0
+    const before = snapshot().db
+    const done = await call(name, { ...args, approval_token: tokenFrom(preview) })
+    assert.equal(done.data.blocked, 'no_seat')
+    assert.deepEqual(snapshot().db, before)
+  })
+}
+
+test('改签批准不能用于另一个目标航班，不能扣错库存', async () => {
+  const { call, snapshot } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const preview = await call('update_flights', { reservationId: 'CYR8801', flightNo: 'CY1203' })
+  assert.equal(preview.data.needsApproval, true)
+  const before = snapshot().db
+  const done = await call('update_flights', {
+    reservationId: 'CYR8801', flightNo: 'CY1205', approval_token: tokenFrom(preview),
+  })
+  assert.equal(done.data.approvalError, 'mismatched_subject')
+  assert.deepEqual(snapshot().db, before, '预订、库存和支付记录都必须保持不变')
+})
+
+test('改舱批准不能用于另一个舱位', async () => {
+  const { call, snapshot } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const preview = await call('update_cabin', { reservationId: 'CYR8801', cabin: 'economy' })
+  assert.equal(preview.data.needsApproval, true)
+  const before = snapshot().db
+  const done = await call('update_cabin', {
+    reservationId: 'CYR8801', cabin: 'basic_economy', approval_token: tokenFrom(preview),
+  })
+  assert.equal(done.data.approvalError, 'mismatched_subject')
+  assert.deepEqual(snapshot().db, before)
+})
+
+test('预览后原预订发生变化，旧改签批准必须失效', async () => {
+  const { call, service, session, snapshot } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const preview = await call('update_flights', { reservationId: 'CYR8801', flightNo: 'CY1203' })
+  service.store.mutable(session).db.reservations.find(r => r.reservationId === 'CYR8801').total += 1
+  const before = snapshot().db
+  const done = await call('update_flights', {
+    reservationId: 'CYR8801', flightNo: 'CY1203', approval_token: tokenFrom(preview),
+  })
+  assert.equal(done.data.approvalError, 'mismatched_subject')
+  assert.deepEqual(snapshot().db, before)
+})
+
 // ── 工具集按域分开 ──
 
 test('两个域的工具面只共用身份核验与转人工', () => {
@@ -273,7 +335,7 @@ const flightDate = (service, session, flightNo) => service
   .snapshot(session, 'airline').db.flights
   .find(item => item.flightNo === flightNo)?.date
 
-const tokenFrom = text => text.match(/approval_token="([^"]+)"/)?.[1] || null
+const tokenFrom = result => result.data.approval?.token || null
 
 test('已飞的订单不能退票 —— 已飞优先于一切', async () => {
   // 五输入表的第一行。排错就会把「公务舱已飞」判成全额退款。
@@ -294,7 +356,7 @@ test('航司取消 → 全额退，且优先于 24 小时窗口', async () => {
 
   const done = await call('cancel_reservation', {
     reservationId: 'CYR8804',
-    approval_token: tokenFrom(preview.content),
+    approval_token: tokenFrom(preview),
   })
   assert.equal(done.data.cancelled, true)
   assert.equal(done.data.amount, 880)
@@ -363,7 +425,7 @@ test('令牌一次性，第二次用同一枚会被拒', async () => {
   const preview = await call('cancel_reservation', {
     reservationId: 'CYR8806', reason: '健康原因',
   })
-  const token = tokenFrom(preview.content)
+  const token = tokenFrom(preview)
   const first = await call('cancel_reservation', {
     reservationId: 'CYR8806', reason: '健康原因', approval_token: token,
   })
@@ -390,7 +452,7 @@ test('令牌绑定预订号，换一笔用不了', async () => {
   await call('verify_identity', { memberId: 'CY10077390' })
 
   const preview = await call('cancel_reservation', { reservationId: 'CYR8804' })
-  const token = tokenFrom(preview.content)
+  const token = tokenFrom(preview)
   assert.ok(token, '应该发出令牌')
 
   const crossUse = await call('cancel_reservation', {
@@ -474,7 +536,7 @@ test('超出免费额度按件收费，额度走 3×3 表', async () => {
   assert.match(preview.content, /普通会员经济舱/)
 
   const done = await call('update_baggages', {
-    reservationId: 'CYR8803', totalBags: 3, approval_token: tokenFrom(preview.content),
+    reservationId: 'CYR8803', totalBags: 3, approval_token: tokenFrom(preview),
   })
   assert.equal(done.data.totalBags, 3)
   assert.equal(done.data.fee, 160)
@@ -495,7 +557,7 @@ test('加行李后总额与交易流水都变了', async () => {
   const before = snapshot().db.reservations.find(item => item.reservationId === 'CYR8803').total
   const preview = await call('update_baggages', { reservationId: 'CYR8803', totalBags: 3 })
   await call('update_baggages', {
-    reservationId: 'CYR8803', totalBags: 3, approval_token: tokenFrom(preview.content),
+    reservationId: 'CYR8803', totalBags: 3, approval_token: tokenFrom(preview),
   })
   const after = snapshot().db.reservations.find(item => item.reservationId === 'CYR8803')
   assert.equal(Math.round((after.total - before) * 100) / 100, 160)
@@ -532,7 +594,7 @@ test('经济舱改签收 200 手续费', async () => {
   assert.equal(preview.data.diff, 30)
 
   const done = await call('update_flights', {
-    reservationId: 'CYR8803', flightNo: 'CY2312', approval_token: tokenFrom(preview.content),
+    reservationId: 'CYR8803', flightNo: 'CY2312', approval_token: tokenFrom(preview),
   })
   // 手续费 200 + 差价 30 = 230
   assert.match(done.content, /共收取 ￥230\.00/)
@@ -547,7 +609,7 @@ test('公务舱改签免手续费，只收差价', async () => {
   assert.equal(preview.data.fee, 0, '公务舱改签手续费应为 0')
   assert.equal(preview.data.diff, 200, 'CY1201 2600 → CY1203 2800')
   const done = await call('update_flights', {
-    reservationId: 'CYR8801', flightNo: 'CY1203', approval_token: tokenFrom(preview.content),
+    reservationId: 'CYR8801', flightNo: 'CY1203', approval_token: tokenFrom(preview),
   })
   assert.equal(done.data.flightNo, 'CY1203')
 })
@@ -575,7 +637,7 @@ test('改签后余量一加一减', async () => {
     reservationId: 'CYR8801', flightNo: 'CY1203',
   })
   await call('update_flights', {
-    reservationId: 'CYR8801', flightNo: 'CY1203', approval_token: tokenFrom(preview.content),
+    reservationId: 'CYR8801', flightNo: 'CY1203', approval_token: tokenFrom(preview),
   })
   assert.equal(seatsOf('CY1201'), before.from + 1, '原航班余量应加回')
   assert.equal(seatsOf('CY1203'), before.to - 1, '新航班余量应减掉')
@@ -606,7 +668,7 @@ test('改舱位比改签宽松：特价经济舱也能改', async () => {
   assert.equal(preview.data.diff, 360)
 
   const done = await call('update_cabin', {
-    reservationId: 'CYR8802', cabin: 'economy', approval_token: tokenFrom(preview.content),
+    reservationId: 'CYR8802', cabin: 'economy', approval_token: tokenFrom(preview),
   })
   assert.equal(done.data.cabin, 'economy')
 })
@@ -651,7 +713,7 @@ test('延误 5 小时发 400 元，走档位表', async () => {
   assert.match(preview.content, /余额不可退现/)
 
   const done = await call('send_certificate', {
-    reservationId: 'CYR8803', approval_token: tokenFrom(preview.content),
+    reservationId: 'CYR8803', approval_token: tokenFrom(preview),
   })
   assert.equal(done.data.amount, 400)
 })
@@ -663,7 +725,7 @@ test('同一预订只能发一次补偿', async () => {
   await call('verify_identity', { memberId: 'CY10091455' })
   const preview = await call('send_certificate', { reservationId: 'CYR8803' })
   await call('send_certificate', {
-    reservationId: 'CYR8803', approval_token: tokenFrom(preview.content),
+    reservationId: 'CYR8803', approval_token: tokenFrom(preview),
   })
   const again = await call('send_certificate', { reservationId: 'CYR8803' })
   assert.equal(again.data.blocked, 'already_issued')

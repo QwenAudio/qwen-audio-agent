@@ -57,11 +57,8 @@ function prune(session) {
 
 // 【给模型的话要说「下一步做什么」，不能只说「参数缺失」】
 // 后者会让模型原地重试同一个空调用；前者它会去念给客户听。
-export function approvalPrompt(preview, token) {
-  return `${preview}\n\n`
-    + '以上内容需要客户明确同意才能执行。请把要做的事和金额念给客户，'
-    + `得到明确同意后，带上 approval_token="${token}" 再调用一次本工具。`
-    + '客户没有明确表示同意时不要调用。'
+export function approvalPrompt(preview) {
+  return `${preview}\n确认为您办理吗？`
 }
 
 export const APPROVAL_ERROR_TEXT = Object.freeze({

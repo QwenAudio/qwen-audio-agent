@@ -21,6 +21,7 @@ import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { connect } from 'node:net'
+import { resetCustomer } from './customer-reset.mjs'
 
 const PAGE = new URL('./index.html', import.meta.url)
 // 【必须显式列出来】下面那条"其余路径一律发同一页"的兜底会把 /voice.mjs
@@ -32,18 +33,20 @@ const MODULES = Object.freeze({
 
 const GATEWAY = process.env.CS_GATEWAY_ORIGIN || 'http://127.0.0.1:18889'
 const SERVICE = process.env.CS_SERVICE_ORIGIN || 'http://127.0.0.1:3110'
+const AGENT = process.env.CS_AGENT_ORIGIN
+  || new URL(process.env.CS_AGENT_CARD_URL || 'http://127.0.0.1:3120/.well-known/agent-card.json').origin
 
 // /api/service/* 归 service，其余 /api/* 与 WebSocket 归网关。
-function upstreamFor(pathname) {
-  return pathname.startsWith('/api/service/') ? SERVICE : GATEWAY
+function upstreamFor(pathname, origins) {
+  return pathname.startsWith('/api/service/') ? origins.serviceOrigin : origins.gatewayOrigin
 }
 
 function isProxied(pathname) {
   return pathname.startsWith('/api/')
 }
 
-async function proxyHttp(request, response, url) {
-  const target = new URL(url.pathname + url.search, upstreamFor(url.pathname))
+async function proxyHttp(request, response, url, origins) {
+  const target = new URL(url.pathname + url.search, upstreamFor(url.pathname, origins))
   // 【不转发 Origin】转发了就等于把跨源问题原样带给网关。
   // 代理的作用正是让上游看到一个同源请求。
   const headers = {}
@@ -96,8 +99,8 @@ async function proxyHttp(request, response, url) {
 
 // WebSocket 升级：直接在 TCP 层对接，不解析帧。
 // 【去掉 Origin 头】和 HTTP 那边同一个理由。
-function proxyUpgrade(request, socket, head) {
-  const upstream = new URL(GATEWAY)
+function proxyUpgrade(request, socket, head, gatewayOrigin) {
+  const upstream = new URL(gatewayOrigin)
   const target = connect(
     { host: upstream.hostname, port: Number(upstream.port || 80) },
     () => {
@@ -120,12 +123,44 @@ function proxyUpgrade(request, socket, head) {
   socket.on('error', () => target.destroy())
 }
 
-export function createClientServer() {
+export function createClientServer({ gatewayOrigin = GATEWAY, serviceOrigin = SERVICE, agentOrigin = AGENT } = {}) {
+  let resetting = false
   const server = createServer(async (request, response) => {
     const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`)
 
+    if (url.pathname === '/api/customer-service/reset' && request.method === 'POST') {
+      if (request.headers.origin && new URL(request.headers.origin).host !== request.headers.host) {
+        response.writeHead(403).end(); return
+      }
+      if (resetting) { response.writeHead(409).end(); return }
+      resetting = true
+      try {
+        const chunks = []
+        let length = 0
+        for await (const chunk of request) {
+          length += chunk.length
+          if (length > 4096) throw new Error('Reset request too large')
+          chunks.push(chunk)
+        }
+        const body = JSON.parse(Buffer.concat(chunks).toString())
+        const sessionId = process.env.CS_SESSION_ID || 'default'
+        if (body.sessionId !== sessionId) throw new Error('Unknown business session')
+        const result = await resetCustomer({
+          gatewayOrigin, serviceOrigin, agentOrigin,
+          headers: request.headers.cookie ? { cookie: request.headers.cookie } : {},
+          sessionId, conversationId: body.conversationId, mode: body.mode,
+        })
+        response.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+        response.end(JSON.stringify(result))
+      } catch (error) {
+        response.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' })
+        response.end(JSON.stringify({ error: error.message }))
+      } finally { resetting = false }
+      return
+    }
+
     if (isProxied(url.pathname)) {
-      await proxyHttp(request, response, url)
+      await proxyHttp(request, response, url, { gatewayOrigin, serviceOrigin })
       return
     }
     if (request.method !== 'GET') {
@@ -168,7 +203,7 @@ export function createClientServer() {
     response.end(html)
   })
 
-  server.on('upgrade', proxyUpgrade)
+  server.on('upgrade', (request, socket, head) => proxyUpgrade(request, socket, head, gatewayOrigin))
   return server
 }
 

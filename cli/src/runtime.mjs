@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
+import { requireWebRtcDependencies } from '../../shared/gateway/webrtc.mjs'
 import {
   backendDefinition,
   backendNames,
@@ -34,6 +35,24 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
 
 export function isLocalGateway(baseUrl) {
   return LOOPBACK_HOSTS.has(new URL(baseUrl).hostname)
+}
+
+export async function readWebRtcConfiguration(baseUrl, {
+  fetchImpl = fetch,
+  accessToken = '',
+} = {}) {
+  const response = await fetchImpl(new URL('/api/v1/webrtc/config', baseUrl), {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    signal: AbortSignal.timeout(5000),
+  })
+  if (response.status === 404) {
+    throw new Error('现有 Gateway 未开启 WebRTC；请先停止后再使用 --webrtc 启动')
+  }
+  const configuration = await response.json().catch(() => null)
+  if (!response.ok || typeof configuration?.model !== 'string') {
+    throw new Error(configuration?.error?.message || 'Gateway WebRTC 配置不可用；请检查模型和访问凭证')
+  }
+  return configuration
 }
 
 function normalizedOrigin(value) {
@@ -416,8 +435,10 @@ export async function ensureRuntime(options, {
   platform = process.platform,
   loadEnvironment = () => loadRuntimeEnvironment({ root, env }),
   requireCredential = () => requireRealtimeFrontendConfiguration(env),
+  requireWebRtc = requireWebRtcDependencies,
 } = {}) {
   const runtimeEnvironment = loadEnvironment()
+  if (options.webrtc) env.QWAUDIO_WEBRTC_ENABLED = '1'
   const runtime = new ManagedRuntime([], { platform })
   const local = isLocalGateway(options.url)
   const backend = resolveBackend(options, env)
@@ -442,6 +463,7 @@ export async function ensureRuntime(options, {
   try {
     if (!health) {
       if (!local) throw new Error(`无法连接远程 Gateway：${options.url}`)
+      if (['1', 'true'].includes(env.QWAUDIO_WEBRTC_ENABLED)) requireWebRtc()
       if (options.allowMissingCredential !== true) requireCredential()
       const target = new URL(options.url)
       if (target.protocol !== 'http:') {

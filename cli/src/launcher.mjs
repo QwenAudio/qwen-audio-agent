@@ -1,5 +1,6 @@
 import { dirname, resolve } from 'node:path'
 import { runtimePathEnvironment } from '../../shared/runtime-paths.mjs'
+import { requireWebRtcDependencies } from '../../shared/gateway/webrtc.mjs'
 import { tuiClientDirectory } from '../../shared/client-paths.mjs'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -32,6 +33,7 @@ import {
   ensureRuntime,
   isLocalGateway,
   readGatewayHealth,
+  readWebRtcConfiguration,
   waitForGateway,
 } from './runtime.mjs'
 import {
@@ -76,6 +78,7 @@ async function runMinimal(options) {
 }
 
 function applyGatewayOptions(env, options) {
+  if (options.webrtc) env.QWAUDIO_WEBRTC_ENABLED = '1'
   // Keep an explicit empty value so the environment loader cannot restore a
   // backend from config.env after --backend none selected frontend-only mode.
   env.AGENT_PROTOCOL = options.backend || ''
@@ -166,6 +169,7 @@ function gatewayServiceEnvironment(url, options = {}) {
   }
   if (options.lan) serviceEnvironment.QWEN_AUDIO_GATEWAY_LAN = '1'
   if (options.tailnet) serviceEnvironment.QWEN_AUDIO_GATEWAY_TAILNET = '1'
+  if (options.webrtc) serviceEnvironment.QWAUDIO_WEBRTC_ENABLED = '1'
   return serviceEnvironment
 }
 
@@ -248,6 +252,8 @@ export async function main(argv, {
   },
   runMinimalTui = runMinimal,
   prepareRuntime = options => ensureRuntime(options, { root, env }),
+  checkWebRtcDependencies = requireWebRtcDependencies,
+  inspectWebRtc = (url, accessToken) => readWebRtcConfiguration(url, { accessToken }),
   inspectGateway = (url, accessToken = '') => readGatewayHealth(
     url,
     fetch,
@@ -522,6 +528,7 @@ export async function main(argv, {
     (options.command === 'gateway' && options.gatewayAction !== 'run')
     || options.command === 'status'
   ) {
+    if (options.gatewayAction === 'install' && options.webrtc) checkWebRtcDependencies()
     const serviceEnvironment = [
       'install',
       'start',
@@ -543,6 +550,7 @@ export async function main(argv, {
         url: options.url,
         ...(options.lan ? { lan: true } : {}),
         ...(options.tailnet ? { tailnet: true } : {}),
+        ...(options.webrtc ? { webrtc: true } : {}),
       },
     }
     if (options.gatewayAction === 'status') {
@@ -584,6 +592,9 @@ export async function main(argv, {
       const ready = await waitForService(serviceUrl, {
         requireBackend: Boolean(options.backend),
       })
+      if (options.webrtc || service.installedMetadata?.webrtc) {
+        await inspectWebRtc(serviceUrl, options.accessToken)
+      }
       stdout.write(
         `Gateway 后台服务已${
           options.gatewayAction === 'restart' ? '重启' : '启动'
@@ -632,6 +643,7 @@ export async function main(argv, {
         return await stopped
       }
       let health = await inspectGateway(options.url)
+      if (options.webrtc) await inspectWebRtc(options.url, options.accessToken)
       if (
         !runtime.ownsProcesses
         && options.lan
@@ -651,6 +663,7 @@ export async function main(argv, {
       stdout.write(
         `Gateway ${runtime.ownsProcesses ? '已启动' : '已在运行'}：${options.url}\n`
         + `WebUI：${options.url}/\n`
+        + (options.webrtc ? `WebRTC：${options.url}/api/realtime/webrtc/example\n` : '')
         + (publicEndpoint ? `对外地址：${publicEndpoint}\n` : '')
         + `${gatewaySummary(health)}\n`,
       )

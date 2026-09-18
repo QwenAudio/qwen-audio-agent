@@ -2,16 +2,34 @@
 
 [English](README.md) | 中文
 
-基于 Qwen3.5 Omni Realtime 的独立多模态对话示例：围绕摄像头、共享屏幕或图片
-自然交流，也可以明确要求它关注画面条件、解说变化，同时继续聊天。
-视觉工具、采集策略和观察调度均放在本示例中，不写入标准桌面端或网关全局 Prompt。
+基于 qwen-audio-agent 的实时多模态交互参考实现，通过框架的 Gateway 与 Realtime
+Provider 接口，提供视觉对话、按需识图，以及用户主动开启的视觉观察能力。
+
+Qwen3.5 Omni 是默认配置，而非客户端架构的限定。面壁 MiniCPM-o 可通过已有适配器
+进行持续视听对话；其他 Omni 服务可根据其传输协议与工具能力扩展接入。
+视觉工具、采集策略和观察调度均位于本示例内，不写入标准客户端或网关全局 Prompt。
 
 ## 核心能力
 
-- **第一阶段——视觉对话：** 摄像头、屏幕和图片输入，支持持续画面与按需采集。
-- **第二阶段——可选观察：** 有时限的条件提醒和变化解说，支持取消、去重、超时与并发限制。
+- **视觉对话：** 摄像头、屏幕和图片输入，支持持续画面与按需采集。
+- **可选观察：** 有时限的条件提醒和变化解说，支持取消、去重、超时与并发限制。
 - **复用对话链路：** 使用现有 WebUI 语音 Hook 与 Gateway Client Protocol，复用音频、打断、播放回执和客户端动作。
 - **可选后台：** 截图获得普通 `input_N` 引用，可由 `spawn_thinking` 交给已安装的后台；观察功能本身不需要后台。
+
+## 模型兼容性
+
+| 前台服务 | 持续视听对话 | 按需识图 / 视觉观察 | 验证范围 |
+| --- | --- | --- | --- |
+| Qwen3.5 Omni Realtime | 支持 | 通过示例内置的 DashScope 视觉读取器支持 | Plus 已通过真实服务验证；有协议与浏览器自动化测试 |
+| 面壁 MiniCPM-o 4.5 | 使用 `mode=video` 时支持 | 当前公开 Realtime 接口不支持 | 有协议与浏览器自动化测试；实际部署的推理效果需另行验证 |
+| 其他 Omni 服务 | 需要支持图像缓冲输入的 Gateway 适配器 | 需要结构化工具调用、主动触发回复及对应视觉读取器 | 不作已验证声明 |
+
+MiniCPM-o 当前适配接口未提供结构化工具调用与主动触发回复能力，因此示例会禁用
+文字输入、按需识图和观察控件，不模拟这些能力，也不会自动回退到云端服务。
+详见 [MiniCPM-o 接入指南](../../docs/voice-frontends/minicpm-o.zh.md)。
+
+Qwen 配置支持 `qwen3.5-omni-plus-realtime`（默认）和
+`qwen3.5-omni-flash-realtime`。Flash 使用同一适配器；此处记录的真实服务验证针对 Plus。
 
 ## 快速开始
 
@@ -22,7 +40,16 @@ npm ci
 cp examples/x-omni/.env.example examples/x-omni/.env.local
 ```
 
-在该文件填写 `DASHSCOPE_API_KEY`，然后启动：
+使用默认 Qwen 配置时，在 `.env.local` 填写：
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=dashscope
+QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-plus-realtime
+DASHSCOPE_API_KEY=your-key
+AGENT_PROTOCOL=none
+```
+
+启动示例：
 
 ```bash
 npm run example:x-omni
@@ -32,15 +59,36 @@ npm run example:x-omni
 默认配置、状态和记忆保存在被 Git 忽略的 `examples/x-omni/.runtime/`，
 不连接桌面版 Gateway。显式设置的 `QWAUDIO_*` 目录仍会生效。
 
-API Key 只留在 Node.js 进程，不进入浏览器构建产物。
-支持 `qwen3.5-omni-plus-realtime`（默认）与 `qwen3.5-omni-flash-realtime`。
-可选的 `QWEN_AUDIO_REALTIME_BASE_URL` 同时设置对话和视觉读取的 Omni WebSocket 地址。
+凭据只留在 Node.js 进程，不进入浏览器构建产物。使用 DashScope 时，可选的
+`QWEN_AUDIO_REALTIME_BASE_URL` 同时设置对话和视觉读取的 WebSocket 地址。
+
+### MiniCPM-o 配置
+
+先按 [官方部署说明](https://github.com/OpenBMB/MiniCPM-o-Demo) 安装并启动 MiniCPM-o，
+再将 `.env.local` 中的前台配置替换为：
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o
+MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+AGENT_PROTOCOL=none
+# MINICPM_O_AUTH_TOKEN=your-token
+```
+
+地址以实际部署为准；上述本机地址假设服务在回环地址以 HTTP 模式启动。
+服务要求认证时再配置 `MINICPM_O_AUTH_TOKEN`，无需 DashScope Key。
+使用同一启动命令，选择视觉来源并开启麦克风，客户端会自动采用**持续画面**模式。
+示例不负责模型推理服务的安装、启动和进程管理。
+
+### 可选后台
 
 默认仅前台模式（`AGENT_PROTOCOL=none`）。需要体验后台办事时，可在自行安装并配置
 Qwen Code 后设置 `AGENT_PROTOCOL=qwen`。后台权限、模型选择沿用框架机制；
 示例不会自动安装 Agent。
 
-## 体验步骤
+## 使用方式
+
+以下步骤针对功能完整的 Qwen 配置。使用 MiniCPM-o 时，可选择来源并进行持续视听对话，
+不支持依赖工具的步骤和文字请求。
 
 1. 选择**摄像头**、**共享屏幕**或**打开图片**，仅授权你想观察的来源。
 2. 使用**按需采集**，输入“看看当前画面里有什么”，或开启麦克风后说话。
@@ -61,14 +109,16 @@ Qwen Code 后设置 `AGENT_PROTOCOL=qwen`。后台权限、模型选择沿用框
 | 组件 | 职责 |
 | --- | --- |
 | `client/` | 来源授权、预览、JPEG 采集，复用 WebUI 语音运行时。 |
-| `gateway.mjs` | 注册示例工具、采集动作和来源状态事件。 |
+| `gateway.mjs` | 解析所配置的 Provider，注册其支持的示例工具、采集动作和来源状态事件。 |
+| `vision/features.mjs` | 宿主与 UI 共用的能力判断规则。 |
 | `vision/tools.mjs` | `capture_visual`、`visual_observation`；返回简短文字与附件引用。 |
-| `vision/omni-reader.mjs` | 每次检查开启短时、只输出文字的 Omni 视觉连接。 |
+| `vision/dashscope-reader.mjs` | 供应商专属视觉读取器，每次检查开启短时、只输出文字的 Qwen Omni 连接。 |
 | `vision/observers.mjs` | 采样、事件边沿/冷却策略、取消和 Agent Delivery 通知。 |
 
-持续画面直接进入主 Omni 会话。按需检查通过**独立视觉读取会话**获得描述，
-再把文字观察交回主对话；不是将图片藏在工具结果字符串中让主模型“看见”。
-读取会话发送合成静音 PCM 和一张 JPEG，再手动提交。
+持续画面通过 Gateway 配置的 Realtime 适配器进入主对话。
+Qwen 配置下的按需检查通过**独立视觉读取会话**获得描述，
+再把文字观察交回主对话。主模型收到的是文字工具结果，原始图片由视觉读取器处理，
+并登记为附件。读取会话发送合成静音 PCM 和一张 JPEG，再手动提交。
 它不会改动主会话的 VAD，也不会提交用户正在录制的麦克风音频。
 参见官方 [Omni 客户端事件](https://help.aliyun.com/zh/model-studio/client-events)。
 
@@ -89,9 +139,23 @@ Qwen Code 后设置 `AGENT_PROTOCOL=qwen`。后台权限、模型选择沿用框
 示例复用同一源码版本的 WebUI Hook 和摄像头编码器，不复制音视频传输实现。
 当前使用 WebSocket，而不是 WebRTC。
 
+### 接入其他 Omni 服务
+
+复用或实现框架的 Realtime Provider 适配器，并准确声明模型与传输能力。
+持续视觉沿用 Gateway 的 `input_image_buffer.append` 消息，供应商适配器负责转换
+实际传输格式。仅修改模型名不能使不兼容的 API 自动可用。
+
+如需工具驱动的识图与观察，在 `vision/` 内增加提供
+`read(frame, question, { signal, structured })` 与 `close()` 的读取器。
+普通读取返回文字，结构化读取返回 `{ match: boolean, summary: string }`。
+在 `gateway.mjs` 中接入，并在验证主前台的工具调用和主动回复能力后更新
+`vision/features.mjs`。采集与调度保持供应商无关；不要将新协议写入 UI，
+也不要将 DashScope 读取器直接连接到不兼容的接口。
+
 ## 限制、隐私与费用
 
-- 预览在本地。按需图片、持续画面及观察采样按上述策略发送到配置的 Omni 服务。
+- 预览在本地。按需图片、持续画面及观察采样按上述策略发送到配置的服务。
+  MiniCPM-o 模式只向其配置地址发送画面，不创建 DashScope 读取连接。
 - 视觉读取会产生**额外推理费用和延迟**。最多同时两个推理请求、两个观察；
   首次采样后每 10 秒采样，默认 120 秒，可设置 10–600 秒。不做无限重试或重连。
 - 条件默认只提醒一次。重复提醒需要条件从不满足变为满足，且间隔至少 20 秒。
@@ -116,4 +180,6 @@ npm run test:x-omni-browser
 ```
 
 测试使用合成画面和模拟模型回包，不需要云端 Key 或真实摄像头。
-浏览器检查另需 Playwright Chromium。正式使用前还应手动验证实际云端模型行为。
+浏览器检查另需 Playwright Chromium，覆盖 Qwen 采集/工具完整链路，以及 MiniCPM-o
+视频传输和不支持控件的禁用行为。这些测试验证集成链路，不代表模型感知质量；
+部署前仍需验证实际服务与所选模型。

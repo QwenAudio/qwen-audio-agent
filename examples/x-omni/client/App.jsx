@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import useRealtimeVoice from '../../../web/src/realtime/useRealtimeVoice.js'
 import { VisualCapture } from './capture.js'
+import { visualFeatures } from '../vision/features.mjs'
+import { gatewayFetch } from '../../../web/src/gateway-transport.js'
 
 const CAPABILITY = 'client.actions.xomni.visual.capture'
 const ACTION = 'xomni.visual.capture'
@@ -16,6 +18,7 @@ export default function App() {
   const [preview, setPreview] = useState('')
   const [captureBusy, setCaptureBusy] = useState(false)
   const [frameCount, setFrameCount] = useState(0)
+  const [features, setFeatures] = useState(null)
   const videoRef = useRef(null)
   const captureRef = useRef(null)
   const handleEvent = useCallback(event => {
@@ -47,6 +50,18 @@ export default function App() {
   const publishRef = useRef(voice.publishClientEvent)
   publishRef.current = voice.publishClientEvent
   useEffect(() => {
+    const controller = new AbortController()
+    gatewayFetch('/api/health', { signal: controller.signal }).then(async response => {
+      if (!response.ok) throw new Error('无法读取 Gateway 能力')
+      const health = await response.json()
+      if (controller.signal.aborted) return
+      const next = visualFeatures({ provider: health.realtimeProvider, modelProfile: health.realtimeModelProfile })
+      setFeatures(next)
+      if (!next.visualTools) setMode('continuous')
+    }).catch(reason => { if (!controller.signal.aborted) setError(reason.message) })
+    return () => controller.abort()
+  }, [])
+  useEffect(() => {
     const controller = new VisualCapture(videoRef.current, state => {
       setVisual(state)
       setPreview('')
@@ -55,9 +70,9 @@ export default function App() {
     return () => controller.stop()
   }, [])
   useEffect(() => {
-    if (voice.connectionState !== 'connected') return
+    if (voice.connectionState !== 'connected' || !features?.visualTools) return
     publishRef.current('xomni.visual.state', { ...visual, mode })
-  }, [visual, mode, voice.connectionState])
+  }, [visual, mode, voice.connectionState, features])
   useEffect(() => {
     if (mode !== 'continuous' || !visual.active || !enabled || !imageBufferAvailable) return
     let pending = false
@@ -78,7 +93,7 @@ export default function App() {
     catch (reason) { setError(reason.message) }
   }
   const send = text => {
-    if (!text.trim()) return
+    if (!text.trim() || !features?.textInput) return
     voice.activateAudio()
     if (!voice.sendInput([{ type: 'text', text: text.trim() }])) { setError('Gateway 尚未连接'); return }
     setDraft('')
@@ -113,28 +128,29 @@ export default function App() {
           {!visual.active && <p>先选择来源并授权。尚未采集或发送任何画面。</p>}
         </div>
         <div className="modes" role="group" aria-label="采集模式">
-          <button className={mode === 'on-demand' ? 'selected' : ''} onClick={() => setMode('on-demand')}>按需采集</button>
-          <button className={mode === 'continuous' ? 'selected' : ''} onClick={() => setMode('continuous')}>持续画面</button>
+          <button disabled={!features?.visualTools} className={mode === 'on-demand' ? 'selected' : ''} onClick={() => setMode('on-demand')}>按需采集</button>
+          <button disabled={!features?.continuous} className={mode === 'continuous' ? 'selected' : ''} onClick={() => setMode('continuous')}>持续画面</button>
         </div>
         <p className="hint">{mode === 'on-demand'
           ? '平时仅本地预览。询问画面时，短时 Omni 视觉会话读取一帧，并把观察结果交回主对话。'
           : `麦克风开启时，每秒向主 Omni 会话发送一帧。已发送 ${frameCount} 帧。`}</p>
-        <details><summary>观察与解说</summary>
+        {!features?.visualTools && features && <p className="hint">当前接口仅支持持续画面与语音对话，未开放按需识图和观察工具。</p>}
+        {features?.visualTools && <details><summary>观察与解说</summary>
           <p>明确提出观察条件或要求持续解说后才启动。每 10 秒采样，默认 2 分钟，最多 10 分钟、2 个观察；会产生额外模型费用。</p>
           <button onClick={() => send('请列出当前视觉观察状态。')}>查看观察状态</button>
           <button onClick={() => send('停止所有视觉观察和解说。')}>停止所有观察</button>
           <p>关闭或切换来源、断开页面会停止观察。这不是录像、音频监听或安全告警系统。</p>
-        </details>
+        </details>}
       </article>
       <article className="conversation panel"><h2>对话</h2>
         <div className="messages" role="log" aria-live="polite">
-          {!messages.length && <div className="empty"><p>可以试着说：</p><p>“看看当前画面里有什么。”</p><p>“这个进度条完成时提醒我，观察两分钟。”</p><p>“接下来一分钟，讲解画面中有意义的变化。”</p></div>}
+          {!messages.length && <div className="empty"><p>可以试着说：</p><p>“看看当前画面里有什么。”</p>{features?.visualTools && <><p>“这个进度条完成时提醒我，观察两分钟。”</p><p>“接下来一分钟，讲解画面中有意义的变化。”</p></>}</div>}
           {messages.map(message => <div key={message.key} className={`message ${message.role}`}>
             <small>{message.role === 'user' ? '你' : 'X-Omni'}</small><p>{message.text}</p></div>)}
         </div>
         <form onSubmit={event => { event.preventDefault(); send(draft) }}>
-          <input aria-label="消息" placeholder="输入问题，或开启麦克风交流…" value={draft} onChange={event => setDraft(event.target.value)} />
-          <button type="submit">发送</button>
+          <input aria-label="消息" disabled={!features?.textInput} placeholder={features?.textInput ? '输入问题，或开启麦克风交流…' : '当前接口请使用麦克风交流'} value={draft} onChange={event => setDraft(event.target.value)} />
+          <button type="submit" disabled={!features?.textInput}>发送</button>
         </form>
       </article>
     </section>

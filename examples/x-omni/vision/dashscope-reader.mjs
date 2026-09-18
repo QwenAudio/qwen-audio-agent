@@ -3,7 +3,7 @@ import WebSocket from 'ws'
 // The main conversation never changes VAD or commits the user's microphone.
 // A bounded, text-only Omni request reads the requested frame. This helper is
 // perception inside the example, not a Backend Agent or a second speaker.
-export class OmniReader {
+export class DashScopeVisualReader {
   constructor({ apiKey, model = 'qwen3.5-omni-plus-realtime',
     endpoint = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime',
     timeoutMs = 30_000, maxConcurrent = 2,

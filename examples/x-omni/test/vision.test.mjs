@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
 import test from 'node:test'
-import { OmniReader } from '../vision/omni-reader.mjs'
+import { DashScopeVisualReader } from '../vision/dashscope-reader.mjs'
 import { validateFrame } from '../vision/frame.mjs'
 import { VisualObservers } from '../vision/observers.mjs'
 import { createVisionTools } from '../vision/tools.mjs'
@@ -23,7 +23,7 @@ class Socket extends EventEmitter {
 }
 function readerFixture(options = {}) {
   const sockets = []
-  const reader = new OmniReader({ apiKey: 'test-only', timeoutMs: 200, ...options,
+  const reader = new DashScopeVisualReader({ apiKey: 'test-only', timeoutMs: 200, ...options,
     connect: () => { const socket = new Socket(); sockets.push(socket); return socket } })
   return { reader, sockets }
 }

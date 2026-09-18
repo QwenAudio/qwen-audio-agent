@@ -230,6 +230,11 @@ footer {
   color: #8390a2;
   margin-top: 24px;
 }
+button:disabled,
+input:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
 @media(max-width:860px) {
   main {
     padding: 24px 16px;

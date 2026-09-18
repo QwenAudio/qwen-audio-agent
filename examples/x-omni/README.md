@@ -2,22 +2,45 @@
 
 English | [中文](README_ZH.md)
 
-A standalone multimodal conversation example using Qwen3.5 Omni Realtime:
-talk about a camera, a shared screen, or an image; explicitly ask it to watch
-for a visible condition or narrate changes while conversation continues.
-Visual tools, capture policy, and observation scheduling live here, not in the
-standard desktop client or the Gateway's built-in prompt.
+A standalone reference implementation for realtime multimodal interaction with
+qwen-audio-agent. It combines visual conversation, on-demand image inspection,
+and user-requested visual observation through the framework's Gateway and
+Realtime Provider interfaces.
+
+Qwen3.5 Omni is the default configuration, not a requirement of the client
+architecture. ModelBest MiniCPM-o supports continuous audiovisual conversation
+through its existing adapter. Additional Omni services can be integrated
+according to their transport and tool capabilities. Scenario tools, capture
+policy, and observation scheduling remain inside this example.
 
 ## Core features
 
-- **Phase 1 — visual conversation:** camera/screen selection, image loading,
+- **Visual conversation:** camera/screen selection, image loading,
   continuous frames, and on-demand inspection.
-- **Phase 2 — optional observation:** bounded condition reminders and change
+- **Optional observation:** bounded condition reminders and change
   narration, with cancellation, deduplication, deadlines, and concurrency limits.
 - **Existing conversation runtime:** reuses the WebUI voice hook and Gateway
   Client Protocol for audio, interruption, playback receipts, and client actions.
 - **Optional backend:** captured images have ordinary `input_N` references that
   `spawn_thinking` can pass to an installed backend; observation itself needs no backend.
+
+## Model compatibility
+
+| Frontend | Continuous audiovisual conversation | On-demand inspection / observation | Validation |
+| --- | --- | --- | --- |
+| Qwen3.5 Omni Realtime | Supported | Supported through the bundled DashScope visual reader | Plus verified against the live service; automated protocol and browser tests |
+| ModelBest MiniCPM-o 4.5 | Supported with `mode=video` | Unavailable through the current public Realtime interface | Automated protocol and browser tests; deployment-specific inference requires verification |
+| Other Omni services | Requires a Gateway adapter with image-buffer input | Requires structured tool calling, client-triggered replies, and a compatible visual reader | Not claimed as verified |
+
+The MiniCPM-o adapter currently exposes neither structured function calls nor
+client-triggered responses. The example therefore disables typed input,
+on-demand inspection, and observation controls for this provider. It does not
+simulate these features or silently fall back to a cloud service. See the
+[MiniCPM-o integration guide](../../docs/voice-frontends/minicpm-o.md).
+
+The Qwen configuration accepts `qwen3.5-omni-plus-realtime` (default) and
+`qwen3.5-omni-flash-realtime`. Flash uses the same adapter; the live-service
+validation recorded here applies to Plus.
 
 ## Quick start
 
@@ -29,7 +52,16 @@ npm ci
 cp examples/x-omni/.env.example examples/x-omni/.env.local
 ```
 
-Set `DASHSCOPE_API_KEY` in that file, then run:
+For the default Qwen configuration, set the following in `.env.local`:
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=dashscope
+QWEN_AUDIO_REALTIME_MODEL=qwen3.5-omni-plus-realtime
+DASHSCOPE_API_KEY=your-key
+AGENT_PROTOCOL=none
+```
+
+Start the example:
 
 ```bash
 npm run example:x-omni
@@ -40,17 +72,41 @@ port **18890**. Its default configuration, state, and memory live under the
 git-ignored `examples/x-omni/.runtime/`; it does not connect to the desktop
 Gateway. Explicit `QWAUDIO_*` directory overrides still apply.
 
-The key stays in Node.js, never in the browser bundle. Supported models are
-`qwen3.5-omni-plus-realtime` (default) and `qwen3.5-omni-flash-realtime`.
-An optional `QWEN_AUDIO_REALTIME_BASE_URL` changes the Omni WebSocket endpoint
-for both conversation and the visual reader.
+Credentials stay in Node.js, never in the browser bundle. For DashScope,
+`QWEN_AUDIO_REALTIME_BASE_URL` optionally changes the WebSocket endpoint for
+both conversation and the visual reader.
+
+### MiniCPM-o configuration
+
+Install and start MiniCPM-o separately using its
+[official deployment instructions](https://github.com/OpenBMB/MiniCPM-o-Demo).
+Replace the provider configuration in `.env.local` with:
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=minicpm-o
+MINICPM_O_REALTIME_URL=ws://127.0.0.1:8006/v1/realtime?mode=video
+AGENT_PROTOCOL=none
+# MINICPM_O_AUTH_TOKEN=your-token
+```
+
+Use the actual endpoint of your deployment; the local URL above assumes HTTP
+mode on loopback. Set `MINICPM_O_AUTH_TOKEN` only if the service requires one.
+No DashScope key is required. Start the same command, select a visual source,
+and enable the microphone. The client automatically uses **Continuous frames**.
+The example does not install, start, or manage model inference services.
+
+### Optional backend
 
 The default is frontend-only (`AGENT_PROTOCOL=none`). To try backend work, set
 `AGENT_PROTOCOL=qwen`, for example, after installing and configuring Qwen Code
 yourself. Backend permissions and model selection follow the framework's
 existing behavior. No Agent is installed by this example.
 
-## Try it
+## Usage
+
+The following workflow describes the full Qwen configuration. With MiniCPM-o,
+use source selection and continuous audiovisual conversation; tool-based
+steps and typed requests are unavailable.
 
 1. Choose **Camera**, **Share screen**, or **Open image**, granting permission
    only for the source you want to inspect.
@@ -76,15 +132,18 @@ or stopping the example cancels observations. Reload creates a new conversation.
 | Component | Responsibility |
 | --- | --- |
 | `client/` | Source permission, preview, JPEG capture, and shared WebUI voice runtime. |
-| `gateway.mjs` | Registers example tools, the capture action, and source-state event. |
+| `gateway.mjs` | Resolves the configured Provider; registers supported example tools, capture action, and source-state event. |
+| `vision/features.mjs` | Central capability policy used by both the host and UI. |
 | `vision/tools.mjs` | `capture_visual` and `visual_observation`; small textual results and attachment references. |
-| `vision/omni-reader.mjs` | A short-lived, text-only Omni connection per inspection. |
+| `vision/dashscope-reader.mjs` | Provider-specific visual reader; a short-lived, text-only Qwen Omni connection per inspection. |
 | `vision/observers.mjs` | Sampling, edge/cooldown policy, cancellation, and Agent Delivery notifications. |
 
-Continuous frames go directly to the main Omni session. On-demand inspection
+Continuous frames go through the Gateway's configured Realtime adapter to the
+main conversation. On-demand inspection in the Qwen configuration
 uses a **separate visual reader**, then returns its textual observation to the
-main conversation; the main model is not secretly given pixels via a tool-result
-string. The reader sends synthetic silent PCM with one JPEG and performs a
+main conversation. The main model receives a textual tool result, while the
+original image is processed by the reader and registered as an attachment.
+The reader sends synthetic silent PCM with one JPEG and performs a
 manual commit. It never changes the main conversation's VAD or commits the
 user's live microphone. See the official
 [Omni client events](https://help.aliyun.com/zh/model-studio/client-events).
@@ -110,10 +169,26 @@ or backend adapters. The example imports the same checkout's WebUI hook and
 camera encoder rather than copying an audio/vision transport implementation.
 It uses WebSocket transport, not WebRTC.
 
+### Integrating another Omni service
+
+Reuse or implement a framework Realtime Provider adapter and declare its actual
+model and transport capabilities. Continuous vision uses the existing
+`input_image_buffer.append` Gateway message; the provider adapter owns wire
+format conversion. A model name alone cannot make an incompatible API work.
+
+For tool-driven inspection and observation, add a reader inside `vision/` with
+`read(frame, question, { signal, structured })` and `close()`. Plain reads return
+text; structured reads return `{ match: boolean, summary: string }`. Wire it
+in `gateway.mjs` and update `vision/features.mjs` only after validating the
+main frontend's tool calls and proactive replies. Capture and scheduling stay
+provider-independent; do not put another provider's protocol in the UI or reuse
+the DashScope reader against an incompatible endpoint.
+
 ## Limits, privacy, and cost
 
 - Preview is local. On-demand frames, continuous frames, and observation samples
-  are sent to the configured Omni service only as described above.
+  are sent to the configured services only as described above. With MiniCPM-o,
+  frames go only to its configured endpoint; no DashScope reader is created.
 - Visual-reader requests incur **additional inference cost and latency**.
   Up to two requests and two observations run concurrently. Sampling is every
   10 seconds after an initial sample; observations default to 120 seconds and
@@ -146,5 +221,7 @@ npm run test:x-omni-browser
 ```
 
 Tests use synthetic media and mocked model responses; no cloud key or real
-camera is required. Browser checks additionally require Playwright Chromium.
-Cloud model behavior must also be checked manually before relying on a deployment.
+camera is required. Browser checks require Playwright Chromium and cover both
+the Qwen capture/tool round trip and MiniCPM-o video transport with unsupported
+controls disabled. These tests verify integration, not model perception quality;
+validate the actual service and chosen model before deployment.

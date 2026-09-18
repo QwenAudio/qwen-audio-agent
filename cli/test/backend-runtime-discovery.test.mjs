@@ -387,6 +387,55 @@ test('package mode uses pinned, configurable npm package versions', {
   }
 })
 
+test('OpenClaw package mode resolves the package binary on Windows', {
+  skip: process.platform !== 'win32',
+}, () => {
+  const target = fixture()
+  try {
+    // Like npm's .bin: an extensionless shell shim beside the .cmd shim.
+    const packageBin = resolve(target.directory, 'package-bin')
+    mkdirSync(packageBin)
+    writeFileSync(resolve(packageBin, 'openclaw'), '#!/bin/sh\n')
+    const capture = resolve(target.directory, 'capture.cjs')
+    writeFileSync(capture, [
+      "require('node:fs').writeFileSync(process.env.CAPTURE,",
+      "  ['openclaw.cmd', ...process.argv.slice(2)].join('\\n'))",
+      '',
+    ].join('\n'))
+    writeFileSync(
+      resolve(packageBin, 'openclaw.cmd'),
+      `@"${process.execPath}" "${capture}" %*\r\n`,
+    )
+    // Like `npx --package`: run the command after `--` through cmd.exe with
+    // the package's .bin directory on PATH.
+    const npx = resolve(target.directory, 'npx.cjs')
+    writeFileSync(npx, [
+      "const { spawnSync } = require('node:child_process')",
+      'const args = process.argv.slice(2)',
+      "const result = spawnSync(args.slice(args.indexOf('--') + 1).join(' '), {",
+      "  shell: true, stdio: 'inherit',",
+      `  env: { ...process.env, PATH: ${JSON.stringify(`${packageBin};`)} + process.env.PATH },`,
+      '})',
+      'process.exit(result.status ?? 1)',
+      '',
+    ].join('\n'))
+    writeFileSync(
+      resolve(target.bin, 'npx.cmd'),
+      `@"${process.execPath}" "${npx}" %*\r\n`,
+    )
+    assert.deepEqual(run('scripts/runtime/openclaw.mjs', target, {
+      OPENCLAW_RUNTIME: 'package',
+      PATH: `${target.bin};${resolve(process.env.SystemRoot || 'C:\\Windows', 'System32')}`,
+    }, ['acp', '--verbose']), [
+      'openclaw.cmd',
+      'acp',
+      '--verbose',
+    ])
+  } finally {
+    target.close()
+  }
+})
+
 test('Codex ACP prefers an installed adapter and pins its package fallback', {
   skip: process.platform === 'win32',
 }, () => {

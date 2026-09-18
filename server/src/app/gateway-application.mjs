@@ -33,6 +33,7 @@ import {
   GATEWAY_PROTOCOL_VERSION,
 } from '../core/gateway-protocol.mjs'
 import { attachRealtimeGateway } from '../voice/realtime-gateway.mjs'
+import { registerWebRtcIngress } from '../transport/webrtc/routes.mjs'
 import {
   defaultRealtimeProviderRegistry,
   describeActiveRealtime,
@@ -114,6 +115,7 @@ export function createGatewayApplication({
   spawnThinkingDescription = '',
   gatewayAccess = null,
   publicEndpoint = undefined,
+  webrtc = undefined,
 } = {}) {
 const workBackend = backendRuntime || new BackendWorkRuntime({ backend: agent })
 const sessionJournalRuntime = sessionJournal || new SessionJournalRegistry({
@@ -855,6 +857,13 @@ app.get('/api/tasks/:id/events', (req, res) => {
 })
 
 // Omitted feature routes stay absent; unknown API paths must not serve the SPA.
+const webRtcIngress = registerWebRtcIngress(app, {
+  options: webrtc,
+  logger,
+  getGateway: () => realtimeGateway,
+  providerRegistry: realtimeProviderRegistry,
+  providerName: realtimeProvider,
+})
 app.use('/api', (_req, res) => res.status(404).json({ error: 'not found' }))
 
 const webDist = webDistributionPath()
@@ -974,6 +983,7 @@ const close = () => {
     // A Gateway that stops serving cannot honour a resume, so held state must
     // not survive into the next run.
     inputArbitration.close()
+    await webRtcIngress?.close()
     await realtimeGateway?.close?.()
     await frontendMcpRuntime?.close?.()
     await frontendOpenApiRuntime?.close?.()
@@ -1020,6 +1030,7 @@ return {
     notesStore,
     permissionPolicy,
     realtimeGateway,
+    webRtcIngress,
     sessionDigests,
     sessionSummariser,
     taskManager,

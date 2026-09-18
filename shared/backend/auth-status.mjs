@@ -121,6 +121,15 @@ function cleanOutput(value) {
   return String(value || '').replace(ANSI_PATTERN, '').trim()
 }
 
+// Windows 上后台 CLI 多为 .cmd 批处理，必须经 cmd.exe 执行；cmd.exe 会在第一个
+// 空格处截断未加引号的命令路径（如 C:\Users\Li Lei\AppData\Roaming\npm\codex.cmd）。
+function windowsShellCommand(command, platform) {
+  const value = String(command || '')
+  return platform === 'win32' && /\s/.test(value) && !/^".*"$/.test(value)
+    ? `"${value}"`
+    : value
+}
+
 async function codeBuddyCredentialFiles({
   env,
   platform,
@@ -204,7 +213,7 @@ function runStatus(command, args, {
       resolve({ ...result, output: cleanOutput(output) })
     }
     try {
-      child = spawnImpl(command, args, {
+      child = spawnImpl(windowsShellCommand(command, platform), args, {
         env,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],

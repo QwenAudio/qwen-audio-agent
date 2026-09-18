@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdtemp, writeFile } from 'node:fs/promises'
+import fs from 'node:fs/promises'
+import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -140,4 +142,62 @@ test('adds a staged attachment reference to the submitted text', async () => {
 test('keeps ordinary @mentions as text when they are not paths', async () => {
   const parts = await inputPartsFromText('请问 @designer 的意见')
   assert.deepEqual(parts, [{ type: 'text', text: '请问 @designer 的意见' }])
+})
+
+test('only tolerates UNKNOWN for Windows UNC stat failures', async t => {
+  let failure
+  t.mock.method(fs, 'stat', async () => {
+    if (failure.syscall === 'stat') throw failure
+    return { isFile: () => true, size: 12 }
+  })
+  t.mock.method(fs, 'readFile', async () => { throw failure })
+  syncBuiltinESMExports()
+  t.after(() => {
+    t.mock.restoreAll()
+    syncBuiltinESMExports()
+  })
+
+  const local = join(tmpdir(), 'qwa-input-error.pdf')
+  const share = String.raw`\\server\share\report.pdf`
+  for (const path of [local, share]) {
+    for (const syscall of ['stat', 'read']) {
+      for (const code of ['UNKNOWN', 'EACCES']) {
+        failure = Object.assign(new Error('simulated filesystem error'), {
+          code, syscall, path,
+        })
+        // Cover direct paste, inline paste and explicit @mention on every OS.
+        for (const text of [local, `总结 ${local}`, `总结 @${local}`]) {
+          if (process.platform === 'win32' && path === share
+            && syscall === 'stat' && code === 'UNKNOWN') {
+            assert.deepEqual(await inputPartsFromText(text), [{ type: 'text', text }])
+          } else {
+            await assert.rejects(inputPartsFromText(text), error => error === failure)
+          }
+        }
+      }
+    }
+  }
+})
+
+test('keeps an unavailable Windows share as ordinary text', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  // 本机一定可达，但共享名不存在：Windows 报 ERROR_BAD_NETPATH，
+  // Node 把它映射成 UNKNOWN 而不是 ENOENT。
+  const share = String.raw`\\127.0.0.1\qwen-audio-agent-missing-share\report.pdf`
+  assert.deepEqual(
+    await inputPartsFromText(share),
+    [{ type: 'text', text: share }],
+  )
+  const inline = `请看 ${share} 的数据`
+  assert.deepEqual(
+    await inputPartsFromText(inline),
+    [{ type: 'text', text: inline }],
+  )
+  assert.deepEqual(
+    await inputPartsFromText(`总结 @${share}`),
+    [{ type: 'text', text: `总结 @${share}` }],
+  )
+  // Explicit attachment selection must still surface the missing share.
+  await assert.rejects(filePartFromPath(share))
 })

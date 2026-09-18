@@ -628,3 +628,19 @@ test('a cleared setting releases its environment slot', () => {
   applySettingsEnvironment({ backendModel: '' }, env)
   assert.equal('QWEN_AUDIO_AGENT_BACKEND_MODEL' in env, false)
 })
+
+test('saved values with backslashes or quotes read back unchanged', () => {
+  for (const nodePath of [
+    'C:\\Program Files\\nodejs',
+    "C:\\Users\\O'Brien\\nodejs",
+    'D:\\tools\\node "lts"',
+  ]) {
+    const content = updateSettingsContent('', { nodePath })
+    assert.equal(parseSettings(content).nodePath, nodePath)
+    // Saving what the settings page read back must not grow the value.
+    const again = updateSettingsContent(content, {
+      nodePath: parseSettings(content).nodePath,
+    })
+    assert.equal(parseSettings(again).nodePath, nodePath)
+  }
+})

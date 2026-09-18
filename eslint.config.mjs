@@ -13,7 +13,7 @@ export default [
       '**/coverage/**',
       'docs/.vitepress/cache/**',
       'docs/.vitepress/.site/**',
-      'examples/!(lightrag)/**',
+      'examples/!(lightrag|x-omni)/**',
       'tui/native/**',
       'mobile/android/app/src/main/assets/public/**',
       'mobile/ios/App/App/public/**',
@@ -65,7 +65,7 @@ export default [
     },
   },
   {
-    files: ['web/src/**/*.{js,jsx}', 'mobile/src/**/*.{js,jsx}'],
+    files: ['web/src/**/*.{js,jsx}', 'mobile/src/**/*.{js,jsx}', 'examples/x-omni/client/**/*.{js,jsx}'],
     plugins: {
       'react-hooks': reactHooks,
     },

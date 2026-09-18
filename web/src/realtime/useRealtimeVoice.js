@@ -213,6 +213,7 @@ export default function useRealtimeVoice({
   onEvent,
   onInputError,
   onClientAction,
+  additionalCapabilities = [],
   onWakeWordAudio,
 }) {
   const [clientState, dispatchClientState] = useReducer(
@@ -222,6 +223,7 @@ export default function useRealtimeVoice({
   )
   const [inputReady, setInputReady] = useState(false)
   const [imageBufferAvailable, setImageBufferAvailable] = useState(false)
+  const additionalCapabilitiesSignature = JSON.stringify(additionalCapabilities)
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState(false)
   const [connectionAttempt, setConnectionAttempt] = useState(0)
@@ -685,7 +687,7 @@ export default function useRealtimeVoice({
       clientLabel,
       clientInstanceId: clientInstanceId.current,
       takeover: takeoverRef.current,
-      capabilities: gatewayClientCapabilities({ clientType }),
+      capabilities: [...new Set([...gatewayClientCapabilities({ clientType }), ...JSON.parse(additionalCapabilitiesSignature)])],
       locale: navigator.language,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       configure: () => {
@@ -796,6 +798,7 @@ export default function useRealtimeVoice({
       releaseManualInputGuard()
     }
   }, [
+    additionalCapabilitiesSignature,
     clientLabel,
     connectionAttempt,
     clientStatesSignature,

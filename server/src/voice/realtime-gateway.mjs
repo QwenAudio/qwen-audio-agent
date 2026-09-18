@@ -3,6 +3,7 @@ import { SessionObservers } from './session-observers.mjs'
 import { PERMISSION_DECISIONS } from '../../../shared/permission-decisions.mjs'
 import { selectGatewayWebSocketProtocol } from '../../../shared/gateway/websocket-auth.mjs'
 import { randomUUID } from 'node:crypto'
+import { normalizeInputParts } from '../../../shared/input-parts.mjs'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
@@ -75,6 +76,7 @@ import { RealtimeAgentDeliveryRuntime } from './realtime-agent-delivery-runtime.
 import {
   ClientActionName,
   ClientActionPort,
+  clientActionCapabilities as defineClientActionCapabilities,
 } from '../client/client-action-port.mjs'
 import { PresenceController } from '../client/presence-controller.mjs'
 import { GatewayClientReplayBuffer } from '../transport/gateway-client-replay-buffer.mjs'
@@ -188,6 +190,7 @@ export function attachRealtimeGateway(server, {
   frontendRetrieval = null,
   frontendKnowledge = null,
   frontendToolSources = [],
+  clientActionNames = [],
   spawnThinkingDescription = '',
   taskAnnouncementFactory = createTaskAnnouncementRuntime,
   clientCommandRuntime = null,
@@ -198,7 +201,11 @@ export function attachRealtimeGateway(server, {
     maxPayload: 20 * 1024 * 1024,
     handleProtocols: selectGatewayWebSocketProtocol,
   })
-  const supportedClientCapabilities = GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES
+  const actionCapabilities = defineClientActionCapabilities(clientActionNames)
+  const supportedClientCapabilities = [...new Set([
+    ...GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
+    ...Object.values(actionCapabilities),
+  ])]
     .filter(capability => {
       if (capability === GatewayClientCapability.CLIENT_EVENTS) {
         return Boolean(clientEventRouter)
@@ -325,9 +332,11 @@ export function attachRealtimeGateway(server, {
     let waking = false
     let sleepController
     const clientActionCapabilities = new Set()
+    const toolScope = new AbortController()
     const clientActions = new ClientActionPort({
       send: event => send(ws, event),
       getCapabilities: () => [...clientActionCapabilities],
+      capabilityForAction: name => actionCapabilities[name],
     })
     const presenceController = new PresenceController({
       clientActions,
@@ -832,6 +841,20 @@ export function attachRealtimeGateway(server, {
       frontendKnowledge,
       disabledTools: config.frontendDisabledTools || [],
       frontendToolSources,
+      externalToolContext: {
+        ownerId,
+        sessionId,
+        signal: toolScope.signal,
+        supportsClientAction: name => clientActions.supports(name),
+        requestClientAction: (name, args, options) => clientActions.request(name, args, {
+          ...options,
+          signal: options?.signal || toolScope.signal,
+        }),
+        registerInputs: (parts, turnId) => inputAssets.metadataForParts(inputAssets.registerParts({
+          ownerId, sessionId, turnId, parts: normalizeInputParts(parts),
+        })),
+        deliver: (delivery, options) => agentDeliveries.deliver(delivery, options),
+      },
       turnCitations,
       sessionDigests,
     })
@@ -1626,6 +1649,9 @@ export function attachRealtimeGateway(server, {
           && event.clientStates.includes('sleeping')
         ) ? ['sleeping'] : []
         clientActionCapabilities.clear()
+        for (const capability of Object.values(actionCapabilities)) {
+          if (clientProtocol.capabilities.includes(capability)) clientActionCapabilities.add(capability)
+        }
         if (
           clientProtocol.capabilities.includes(
             GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
@@ -1636,11 +1662,7 @@ export function attachRealtimeGateway(server, {
             GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
           )
         }
-        clientContext.actions = [
-          ...(clientActions.supports(ClientActionName.ENTER_SLEEP)
-            ? [ClientActionName.ENTER_SLEEP]
-            : []),
-        ]
+        clientContext.actions = Object.keys(actionCapabilities).filter(name => clientActions.supports(name))
         clientContext.inputCapabilities = (
           event.inputCapabilities
           && typeof event.inputCapabilities === 'object'
@@ -1835,6 +1857,7 @@ export function attachRealtimeGateway(server, {
     })
 
     ws.on('close', (code, reason) => {
+      toolScope.abort(new Error('Client disconnected'))
       activeClientLeases.release(
         ownerId,
         leaseParticipant,

@@ -23,6 +23,7 @@ import {
 } from '../src/client/client-event-router.mjs'
 import { attachRealtimeGateway } from '../src/voice/realtime-gateway.mjs'
 import { IdentityManager } from '../src/core/identity.mjs'
+import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
 
 const ACCESS_SECRET = 'gateway-client-access-test-secret-over-thirty-two-characters'
 const REMOTE_ACCESS_TOKEN = 'gateway-client-remote-token-over-twenty-four-chars'
@@ -108,6 +109,70 @@ test('a muted voice-capable client can claim voice after unmute', async t => {
   client.socket.send(JSON.stringify({ type: 'unmute' }))
   await waitUntil(() => gateway.status().activeOwners === 1)
   client.socket.close()
+})
+
+test('host tool sources use negotiated actions, scoped assets and disconnect cancellation', async t => {
+  let frontend
+  let executionContext
+  let output
+  const source = {
+    initialize: async () => {},
+    tools: () => [{ name: 'example_capture', policy: {}, definition: {
+      type: 'function', function: { name: 'example_capture', parameters: { type: 'object', properties: {} } },
+    } }],
+    execute: async (_name, _args, context) => {
+      executionContext = context
+      assert.equal(context.isCurrent(), true)
+      assert.equal(context.supportsClientAction('example.capture'), true)
+      const result = await context.requestClientAction('example.capture')
+      const inputs = context.registerInputs([{
+        type: 'file', mime: 'image/jpeg', filename: 'capture.jpg',
+        url: 'data:image/jpeg;base64,/9j/2Q==',
+      }], context.turnId)
+      return { observed: result.output.value, refs: inputs.map(item => item.ref) }
+    },
+  }
+  const { server, gateway } = gatewayHarness({
+    clientActionNames: ['example.capture'],
+    conversationSync: new ConversationSync(),
+    frontendToolSources: [source],
+    realtimeFrontendFactory: options => {
+      frontend = {
+        provider: options.providerRegistry.resolve(options.providerName),
+        ready: false,
+        connect: async () => { frontend.ready = true },
+        close: () => { frontend.ready = false },
+        cancel() {}, updateAgentContext() {}, ensureResponse: async () => {},
+        appendAudio() {}, injectContext: async () => {}, whenIdle: async () => {},
+        sendFunctionOutput: async (_id, value) => { output = value },
+        sendUserInput: async () => {
+          options.onEvent({ type: 'response.created', response: { id: 'example-response' } })
+          options.onEvent({ type: 'response.function_call_arguments.done', response_id: 'example-response',
+            call_id: 'example-call', name: 'example_capture', arguments: '{}' })
+          return {}
+        },
+      }
+      return frontend
+    },
+  })
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
+  t.after(async () => { await gateway.close(); await new Promise(resolve => server.close(resolve)) })
+  const client = await connect(server, createGatewaySessionHello({
+    capabilities: ['input.text', 'client.actions.example.capture'],
+    connection: { text_only: true },
+  }))
+  const ready = await waitFor(client.received, event => event.type === 'session.ready')
+  assert.ok(ready.capabilities.includes('client.actions.example.capture'))
+  client.socket.send(JSON.stringify({ type: 'conversation.item.create', event_id: 'evt-inspect', parts: [{ type: 'text', text: 'Inspect image' }] }))
+  const request = await waitFor(client.received, event => event.type === 'client.action.request')
+  client.socket.send(JSON.stringify({ type: 'client.action.result', event_id: 'evt-capture-result',
+    request_event_id: request.event_id, status: 'completed', output: { value: 'fresh image' } }))
+  await waitUntil(() => output != null).catch(error => {
+    throw new Error(error.message + JSON.stringify(client.received))
+  })
+  assert.deepEqual(output, { observed: 'fresh image', refs: ['input_1'] })
+  client.socket.close()
+  await waitUntil(() => executionContext.signal.aborted)
 })
 
 test('recovers the client and excludes only the content-safety rejected turn', async t => {

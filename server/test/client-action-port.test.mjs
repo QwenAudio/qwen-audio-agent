@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   ClientActionName,
   ClientActionPort,
+  clientActionCapabilities,
 } from '../src/client/client-action-port.mjs'
 import {
   PresenceController,
@@ -12,6 +13,24 @@ import {
   GatewayClientCapability,
   GatewayClientProtocolEvent,
 } from '../../shared/protocol/gateway-client-protocol.mjs'
+
+test('custom action names negotiate capabilities and cancellation clears pending correlations', async () => {
+  const capabilities = clientActionCapabilities(['example.capture'])
+  assert.equal(capabilities['example.capture'], 'client.actions.example.capture')
+  assert.throws(() => clientActionCapabilities(['INVALID']), /Invalid/)
+  const controller = new AbortController()
+  const port = new ClientActionPort({
+    getCapabilities: () => ['client.actions.example.capture'],
+    capabilityForAction: name => capabilities[name],
+    send() {},
+  })
+  const pending = port.request('example.capture', {}, { signal: controller.signal, idempotencyKey: 'frame' })
+  controller.abort()
+  await assert.rejects(pending)
+  assert.equal(port.pendingById.size, 0)
+  assert.equal(port.pendingByKey.size, 0)
+  await assert.rejects(port.request('example.capture', {}, { signal: controller.signal }))
+})
 
 test('correlates a supported Client Action request and result', async () => {
   const sent = []

@@ -104,6 +104,7 @@ function sidebar(prefix = '') {
         page('AI Passport 语音客户端', 'AI Passport Voice Client', 'scenarios/ai-passport'),
         page('VoiceMem', 'VoiceMem', 'scenarios/voicemem'),
         page('LightRAG', 'LightRAG', 'scenarios/lightrag'),
+        page('X-Omni 视觉对话', 'X-Omni Visual Conversation', 'scenarios/x-omni'),
         page('演示文稿', 'Presentations', 'resources/presentations'),
         page('规划记录', 'Planning Records', 'resources/planning'),
         page('参考论文', 'Papers', 'resources/papers'),

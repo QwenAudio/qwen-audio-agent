@@ -224,7 +224,7 @@ test('validates runtime commands, Client Actions and correlated results', () => 
   assert.equal(actionResult.request_event_id, action.event_id)
   assert.equal(
     gatewayClientProtocolCapabilityFor(actionResult.type),
-    GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+    null, // The pending request owns the capability, not the generic result.
   )
   assert.throws(() => parseGatewayClientProtocolMessage({
     type: GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,

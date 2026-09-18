@@ -16,6 +16,18 @@ export function clientActionCapability(name) {
   return ACTION_CAPABILITIES[String(name || '')] || null
 }
 
+// Product hosts register names, not handlers: environment operations remain
+// owned by the negotiated Client. No scenario actions are built into Gateway.
+export function clientActionCapabilities(names = []) {
+  const result = { ...ACTION_CAPABILITIES }
+  for (const name of names) {
+    if (typeof name !== 'string' || !/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/.test(name)
+      || name.length > 100) throw new TypeError('Invalid Client Action name')
+    result[name] = `client.actions.${name}`
+  }
+  return Object.freeze(result)
+}
+
 function actionError(code, message, details = {}) {
   const error = new Error(message)
   error.code = code
@@ -57,7 +69,9 @@ export class ClientActionPort {
   request(name, argumentsValue = {}, {
     idempotencyKey = '',
     timeoutMs = this.timeoutMs,
+    signal,
   } = {}) {
+    if (signal?.aborted) return Promise.reject(signal.reason || new Error('Client Action cancelled'))
     const actionName = String(name || '').trim()
     const capability = this.capabilityForAction(actionName)
     if (!capability || !this.supports(actionName)) {
@@ -84,6 +98,8 @@ export class ClientActionPort {
       resolve: deferred.resolve,
       reject: deferred.reject,
       timer: null,
+      signal,
+      onAbort: null,
       promise: deferred.promise,
     }
     pending.timer = setTimeout(() => {
@@ -95,6 +111,9 @@ export class ClientActionPort {
     pending.timer.unref?.()
     this.pendingById.set(requestId, pending)
     if (key) this.pendingByKey.set(key, pending)
+    pending.onAbort = () => this.#settle(pending, null,
+      signal.reason || actionError('client_action_cancelled', 'Client Action cancelled'))
+    signal?.addEventListener('abort', pending.onAbort, { once: true })
     try {
       this.send({
         type: GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
@@ -134,6 +153,7 @@ export class ClientActionPort {
   #settle(pending, result, error = null) {
     if (this.pendingById.get(pending.requestId) !== pending) return
     clearTimeout(pending.timer)
+    pending.signal?.removeEventListener('abort', pending.onAbort)
     this.pendingById.delete(pending.requestId)
     if (pending.key && this.pendingByKey.get(pending.key) === pending) {
       this.pendingByKey.delete(pending.key)

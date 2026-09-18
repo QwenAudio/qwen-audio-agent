@@ -222,6 +222,7 @@ chat naturally and get real work done.
 | --- | --- | --- | --- |
 | Desktop | Voice chat, progress follow-up, tools, and background tasks. | [Docs][desktop-docs] | Available |
 | Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][smart-cockpit-example] | Available |
+| X-Omni | Visual conversation, on-demand capture, optional observation and narration. | [Example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/x-omni/README.md) | Available |
 | AI Passport | Qwen Voice Bean on a hardware card, with voice conversation and backend tasks. Currently half-duplex only. | [Example][ai-passport-example] | Available |
 | Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
 | Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |

@@ -41,11 +41,16 @@ jobs:
         run: node --test .gitlab/sync-github.test.mjs
       - run: npm ci
       - run: npm test
+      - run: npm run test:x-omni
       - run: npm run build
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run example:x-omni:build
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: npx playwright install --with-deps chromium
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: npm run test:web-browser
+      - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run test:x-omni-browser
       - if: ${{ failure() && matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

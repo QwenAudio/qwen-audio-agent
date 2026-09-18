@@ -104,6 +104,7 @@ export class ToolCallHandler {
     frontendKnowledge = null,
     disabledTools = [],
     frontendToolSources = [],
+    externalToolContext = {},
     turnCitations = null,
     sessionDigests = null,
   }) {
@@ -133,6 +134,7 @@ export class ToolCallHandler {
     this.frontendKnowledge = frontendKnowledge
     this.disabledTools = [...disabledTools]
     this.frontendToolSources = frontendToolSources
+    this.externalToolContext = externalToolContext
     this.turnCitations = turnCitations
     this.agentTaskRuntime = new AgentTaskRuntime(this)
     this.activeToolEntries = new Map()
@@ -189,11 +191,15 @@ export class ToolCallHandler {
     }).some(task => task.inputRequest?.status === 'pending')
   }
 
-  async executeExternalSource(external, args) {
+  async executeExternalSource(external, args, context = {}) {
     const { source, tool } = external
     let output
     try {
-      output = await source.execute(tool.name, args)
+      output = await source.execute(tool.name, args, {
+        ...this.externalToolContext,
+        turnId: context.turnId,
+        isCurrent: () => !this.isStale(context.turnId, context.turnGeneration),
+      })
     } catch {
       output = failure(
         'external_tool_unavailable',
@@ -234,7 +240,7 @@ export class ToolCallHandler {
       )
       return { handled: true, executed: false, limit }
     }
-    const output = await this.executeExternalSource(external, context.args)
+    const output = await this.executeExternalSource(external, context.args, context)
     await this.sendOutput(context.callId, output, context.turnId)
     return { handled: true, executed: true, value: output }
   }

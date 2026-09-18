@@ -647,6 +647,22 @@ test('constructs an injectable Gateway without binding a port on import', async 
   assert.equal(openApiClosed, true)
 })
 
+test('host-owned frontend sources share validation and application teardown', async () => {
+  let closed = 0
+  const source = {
+    describe: () => ({ key: 'host-tools', label: 'Host tools' }),
+    initialize: async () => {}, tools: () => [],
+    execute: async () => ({}), health: () => ({ ok: true }), close: () => { closed++ },
+  }
+  const app = createTestGatewayApplication({
+    autoStart: false, parentPort: null, frontendMcp: null, frontendOpenApi: null,
+    frontendToolSources: [source], clientActionNames: ['host.capture'],
+  })
+  await app.close()
+  await app.close()
+  assert.equal(closed, 1)
+})
+
 test('serves the bounded conversation projection without exposing journal records', async () => {
   const calls = []
   let closed = false

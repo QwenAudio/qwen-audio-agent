@@ -106,6 +106,8 @@ export function createGatewayApplication({
   knowledgeRuntimeOptions = {},
   frontendMcp = undefined,
   frontendOpenApi = undefined,
+  frontendToolSources: additionalToolSources = [],
+  clientActionNames = [],
   sessionJournal = null,
   conversationHistory = null,
   taskAnnouncementFactory = undefined,
@@ -206,6 +208,7 @@ const unsubscribeSessionTaskJournal = taskManager.subscribe(event => {
 const frontendToolSources = [
   frontendMcpRuntime,
   frontendOpenApiRuntime,
+  ...additionalToolSources,
 ].filter(Boolean).map(source => assertFrontendToolSource(source))
 const identityManager = new IdentityManager({
   secret: config.authSecret,
@@ -935,6 +938,7 @@ realtimeGateway = attachRealtimeGateway(server, {
   frontendRetrieval: retrievalRuntime,
   frontendKnowledge: frontendKnowledgeRuntime,
   frontendToolSources,
+  clientActionNames,
   spawnThinkingDescription,
   taskAnnouncementFactory,
   clientCommandRuntime: runtimeCommands,
@@ -987,6 +991,7 @@ const close = () => {
     await realtimeGateway?.close?.()
     await frontendMcpRuntime?.close?.()
     await frontendOpenApiRuntime?.close?.()
+    for (const source of additionalToolSources) await source.close()
     for (const module of [...optionalModules].reverse()) await module.close?.()
     await publicEndpointRuntime?.close?.()
     unsubscribeSessionTaskJournal?.()

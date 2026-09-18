@@ -379,7 +379,8 @@ const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
   [GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR]: GatewayClientCapability.INPUT_IMAGE_BUFFER,
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientCapability.CLIENT_EVENTS,
   [GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE]: GatewayClientCapability.SESSION_OUTPUT_VOICE,
-  [GatewayClientProtocolEvent.CLIENT_ACTION_RESULT]: GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+  // Results are matched to an outstanding, capability-checked action request
+  // by ClientActionPort. A generic result must not require the sleep action.
   [GatewayClientProtocolEvent.TASK_CREATE]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.TASK_GET]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.TASK_LIST]: GatewayClientCapability.TASK_COMMANDS,

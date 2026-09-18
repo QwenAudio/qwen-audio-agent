@@ -1,0 +1,247 @@
+:root {
+  font-family: Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  color: #1d2631;
+  background: #f3f5f8;
+  font-synthesis: none;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+main {
+  max-width: 1280px;
+  margin: auto;
+  padding: 42px 28px;
+}
+header {
+  position: relative;
+  margin-bottom: 28px;
+}
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #64748b;
+}
+h1 {
+  font-size: 44px;
+  letter-spacing: -2px;
+  margin: 10px 0;
+}
+h2 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0;
+}
+p {
+  line-height: 1.65;
+}
+header>p {
+  color: #64748b;
+  margin: 0;
+}
+.status {
+  position: absolute;
+  right: 0;
+  top: 30px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+  color: #64748b;
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #aaa;
+}
+.online {
+  background: #20a278;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 22px;
+}
+.panel {
+  background: #fff;
+  border: 1px solid #e4e8ee;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 6px 30px #24344405;
+}
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+}
+.section-heading span {
+  font-size: 12px;
+  color: #64748b;
+}
+button,.button {
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid #dce2e9;
+  border-radius: 9px;
+  padding: 9px 12px;
+  background: #fff;
+  color: #344255;
+  cursor: pointer;
+  display: inline-block;
+}
+button:hover,.button:hover {
+  background: #f2f6fc;
+}
+button:focus-visible,input:focus-visible,summary:focus-visible {
+  outline: 2px solid #617bdf;
+  outline-offset: 2px;
+}
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.button input {
+  display: none;
+}
+.preview {
+  background: #edf1f5;
+  border-radius: 12px;
+  aspect-ratio: 16/10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.preview video,.preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.preview video[hidden] {
+  display: none;
+}
+.preview p {
+  font-size: 13px;
+  padding: 28px;
+  color: #788393;
+}
+.modes {
+  display: flex;
+  gap: 6px;
+  background: #f3f5f8;
+  border-radius: 10px;
+  padding: 4px;
+  margin-top: 18px;
+}
+.modes button {
+  flex: 1;
+  border: 0;
+  background: transparent;
+}
+.modes .selected {
+  background: white;
+  box-shadow: 0 1px 5px #172d4915;
+}
+.hint,details p {
+  font-size: 12px;
+  color: #657184;
+}
+details {
+  border-top: 1px solid #edf0f4;
+  padding-top: 18px;
+  margin-top: 22px;
+}
+summary {
+  font-size: 13px;
+  cursor: pointer;
+}
+details button {
+  margin: 0 6px 6px 0;
+}
+.conversation {
+  display: flex;
+  flex-direction: column;
+  min-height: 620px;
+}
+.messages {
+  flex: 1;
+  max-height: 560px;
+  overflow: auto;
+  padding: 24px 0;
+}
+.message {
+  padding: 12px 15px;
+  border-radius: 12px;
+  background: #f3f6fa;
+  margin-bottom: 12px;
+}
+.message.user {
+  background: #eaf0ff;
+  margin-left: 30px;
+}
+.message small {
+  font-size: 11px;
+  color: #718099;
+}
+.message p {
+  margin: 7px 0 0;
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.empty {
+  color: #8290a3;
+  padding: 25px 5px;
+  font-size: 14px;
+}
+form {
+  display: flex;
+  gap: 8px;
+}
+form input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid #dce2e9;
+  border-radius: 9px;
+  padding: 12px;
+  font: inherit;
+  font-size: 13px;
+}
+form button {
+  background: #395cc1;
+  color: white;
+  border-color: #395cc1;
+}
+.error {
+  padding: 14px 18px;
+  background: #fff0ed;
+  color: #a14437;
+  border-radius: 10px;
+  margin-top: 18px;
+  font-size: 13px;
+}
+footer {
+  text-align: center;
+  font-size: 11px;
+  color: #8390a2;
+  margin-top: 24px;
+}
+@media(max-width:860px) {
+  main {
+    padding: 24px 16px;
+  }
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .status {
+    position: static;
+    margin-top: 18px;
+  }
+  .conversation {
+    min-height: 400px;
+  }
+}

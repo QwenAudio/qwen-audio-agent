@@ -269,13 +269,14 @@ export class KnowledgeLibrary {
     if (existing) return existing.filename
     const extension = extname(sourcePath).toLowerCase()
     const stem = safeFilename(basename(sourcePath, extname(sourcePath)))
+    // Windows 与 macOS 默认不区分大小写：Guide.md 与 guide.md 会落到同一个文件。
     const taken = new Set()
     for (const entries of this.owners.values()) {
-      for (const entry of entries) taken.add(entry.filename)
+      for (const entry of entries) taken.add(entry.filename.toLowerCase())
     }
     let candidate = `${stem}${extension}`
     let index = 2
-    while (taken.has(candidate)) {
+    while (taken.has(candidate.toLowerCase())) {
       candidate = `${stem}-${index}${extension}`
       index += 1
     }
@@ -299,11 +300,11 @@ export class KnowledgeLibrary {
     const stem = safeFilename(basename(absolute, extname(absolute)))
     const taken = new Set()
     for (const entries of this.owners.values()) {
-      for (const entry of entries) taken.add(entry.filename)
+      for (const entry of entries) taken.add(entry.filename.toLowerCase())
     }
     let filename = `${stem}.md`
     let index = 2
-    while (taken.has(filename)) {
+    while (taken.has(filename.toLowerCase())) {
       filename = `${stem}-${index}.md`
       index += 1
     }

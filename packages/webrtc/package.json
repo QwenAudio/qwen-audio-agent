@@ -1,0 +1,30 @@
+{
+  "name": "qwen-audio-agent-webrtc",
+  "version": "0.1.0",
+  "description": "Optional WebRTC media extension for qwen-audio-agent",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/QwenAudio/qwen-audio-agent.git",
+    "directory": "packages/webrtc"
+  },
+  "type": "commonjs",
+  "main": "index.cjs",
+  "exports": {
+    ".": "./index.cjs",
+    "./package.json": "./package.json"
+  },
+  "files": ["index.cjs", "README.md", "LICENSE"],
+  "qwaudioWebrtcApiVersion": 1,
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "dependencies": {
+    "@roamhq/wrtc": "0.10.0",
+    "sharp": "0.35.4"
+  }
+}

@@ -153,6 +153,14 @@ if (isMain) {
   }
   const required = [
     'cli/bin/qwenaudio.mjs',
+    'examples/webrtc/README.md',
+    'examples/webrtc/README_ZH.md',
+    'examples/webrtc/package.json',
+    'examples/webrtc/start.mjs',
+    'examples/webrtc/index.html',
+    'examples/webrtc/client.mjs',
+    'examples/webrtc/styles.css',
+    'shared/gateway/webrtc.mjs',
     'config/backends/deepseek-harness/cordis.yml',
     'config/backends/openclaw/openclaw.json5',
     'CONTRIBUTING.md',
@@ -247,6 +255,8 @@ if (isMain) {
     || file.endsWith('.pyc')
     || file.includes('/node_modules/')
     || file.startsWith('scripts/manual/')
+    || file.startsWith('packages/webrtc/')
+    || file.startsWith('server/src/transport/webrtc/native/')
     || (file.startsWith('desktop/src/') && !publishedDesktopModules.has(file))
   ))
   if (forbidden.length) {

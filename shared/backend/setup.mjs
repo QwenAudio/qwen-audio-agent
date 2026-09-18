@@ -21,6 +21,15 @@ function clean(value) {
   return String(value || '').trim()
 }
 
+// Windows 上 .cmd/.bat 必须经 cmd.exe 执行；cmd.exe 会在第一个空格处截断未加
+// 引号的命令路径（如 C:\Program Files\nodejs\npm.cmd）。
+function windowsShellCommand(command, platform) {
+  const value = String(command || '')
+  return platform === 'win32' && /\s/.test(value) && !/^".*"$/.test(value)
+    ? `"${value}"`
+    : value
+}
+
 function environmentValue(env, names) {
   for (const name of [names].flat()) {
     const value = clean(env[name])
@@ -107,7 +116,7 @@ function versionAtLeast(actual, minimum) {
 }
 
 function defaultReadVersion(command, { env, platform }) {
-  const result = spawnSync(command, ['--version'], {
+  const result = spawnSync(windowsShellCommand(command, platform), ['--version'], {
     env,
     encoding: 'utf8',
     timeout: 5000,
@@ -134,7 +143,7 @@ function defaultReadVersionAsync(command, {
     }
     let child
     try {
-      child = spawn(command, ['--version'], {
+      child = spawn(windowsShellCommand(command, platform), ['--version'], {
         env,
         windowsHide: true,
         shell: platform === 'win32',
@@ -168,13 +177,17 @@ function packageIdentity(packageSpec) {
 
 function defaultReadGlobalPackages(command, { env, platform }) {
   if (!command) return { known: false, packages: {} }
-  const result = spawnSync(command, ['list', '-g', '--depth=0', '--json'], {
-    env,
-    encoding: 'utf8',
-    timeout: 5_000,
-    shell: platform === 'win32',
-    windowsHide: true,
-  })
+  const result = spawnSync(
+    windowsShellCommand(command, platform),
+    ['list', '-g', '--depth=0', '--json'],
+    {
+      env,
+      encoding: 'utf8',
+      timeout: 5_000,
+      shell: platform === 'win32',
+      windowsHide: true,
+    },
+  )
   try {
     const parsed = JSON.parse(result.stdout || '{}')
     return {

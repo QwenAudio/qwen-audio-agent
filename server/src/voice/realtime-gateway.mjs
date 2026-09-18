@@ -212,6 +212,7 @@ export function attachRealtimeGateway(server, {
       return true
     })
   const activeVoiceClients = new ActiveVoiceClients()
+  const attachedClients = new Set()
   const activeClientLeases = new ActiveClientLeases()
   const voiceConnections = new Map()
   const replayBuffers = new Map()
@@ -269,7 +270,7 @@ export function attachRealtimeGateway(server, {
     })
   })
 
-  wss.on('connection', (ws, url, identity) => {
+  const attachClient = (ws, url, identity) => {
     ws.isAlive = true
     ws.gatewayCredentialId = identity.access === 'remote'
       ? identity.credentialId
@@ -1114,6 +1115,14 @@ export function attachRealtimeGateway(server, {
           })
           .finally(() => toolCallTimings.delete(callFields.callId))
       } else if (presentationRuntime.handle(event)) {
+        // Alternative transports distinguish generation from audio delivery.
+        // Existing WebSocket messages stay unchanged.
+        if (event.type === 'response.done') {
+          ws.onResponseDone?.({
+            id: realtimeResponseId(event),
+            status: event.response?.status || 'unknown',
+          })
+        }
         return
       } else if (event.type === 'error') {
         // A response refused by a busy single-slot provider is retried by the
@@ -1860,10 +1869,11 @@ export function attachRealtimeGateway(server, {
       observeSessionAudio({ type: 'session_ended' })
       observers.emit('onSessionClosed', { ownerId, sessionId, logger: connectionLogger })
     })
-  })
+  }
+  wss.on('connection', attachClient)
 
   const heartbeat = setInterval(() => {
-    for (const ws of wss.clients) {
+    for (const ws of [...wss.clients, ...attachedClients]) {
       if (ws.isAlive === false) {
         ws.terminate()
         continue
@@ -1880,11 +1890,25 @@ export function attachRealtimeGateway(server, {
   heartbeat.unref?.()
 
   return {
+    // Internal authenticated transport port, never a public auth bypass.
+    attachClient(connection, { identity, sessionId = 'main' }) {
+      if (!identity?.ownerId) throw new TypeError('authenticated identity required')
+      const url = new URL('http://localhost/api/realtime')
+      url.searchParams.set('sessionId', sessionId)
+      attachedClients.add(connection)
+      connection.once('close', () => attachedClients.delete(connection))
+      try {
+        attachClient(connection, url, identity)
+      } catch (error) {
+        connection.close(1011, 'session initialization failed')
+        throw error
+      }
+    },
     disconnectCredential(credentialId) {
       const target = String(credentialId || '').trim()
       if (!target) return 0
       let disconnected = 0
-      for (const client of wss.clients) {
+      for (const client of [...wss.clients, ...attachedClients]) {
         if (client.gatewayCredentialId !== target) continue
         disconnected += 1
         client.close(GATEWAY_CLIENT_REVOKED_CLOSE_CODE, 'credential_revoked')
@@ -1893,7 +1917,7 @@ export function attachRealtimeGateway(server, {
     },
     async close() {
       clearInterval(heartbeat)
-      for (const client of wss.clients) client.close()
+      for (const client of [...wss.clients, ...attachedClients]) client.close()
       await new Promise(resolveClose => {
         wss.close(() => resolveClose())
       })

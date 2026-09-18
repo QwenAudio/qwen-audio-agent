@@ -6,6 +6,10 @@
   保活；WebSocket 沿用 Session 心跳，兼容性的 Task SSE 使用不进入回放与 Session
   Journal 的轻量注释心跳，避免长任务重复写入旧进度文本。
 
+- 修复 Windows 上 `qwenaudio doctor` / `setup` 与桌面版设置页在后台命令位于含空格目录
+  （如默认的 `C:\Program Files\nodejs\npm.cmd`）时，版本探测与全局包核对被 cmd.exe
+  截断命令路径、误报"无法确认版本"或包缺失的问题。
+
 - 新增实验性 Muse Code MSP 后台适配器，复用统一任务、权限和补充输入接口。
   Muse SDK 仅在用户安装该后台时单独安装、启用时加载，不加入框架默认依赖。
 
@@ -68,6 +72,9 @@
   校验 ACP MCP 描述的后台无法创建 Session 的问题。
 - 修复 Windows 上位于含空格目录的 `.cmd` / `.bat` ACP 后台命令被 cmd.exe 截断而
   无法启动，以及含空格的 ACP 参数被拆开的问题。
+- 修复 Windows 用户名或安装目录含空格时（如
+  `C:\Users\Li Lei\AppData\Roaming\npm\codex.cmd`），桌面设置页的后台登录状态
+  检测命令被 cmd.exe 截断、已登录的后台一律显示为状态未知的问题。
 - 新增 Pi 后台支持：通过社区 `pi-acp` 适配器接入，并支持一键安装。Pi 没有
   内置沙箱与权限审批机制，始终等效于 `full` 权限，请仅在可信环境中使用。
 - 修复 Windows 上 `qwenaudio skill` 各子命令与 Gateway 启动时的技能补装因直接启动

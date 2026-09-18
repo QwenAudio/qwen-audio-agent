@@ -7,6 +7,7 @@ import { startCustomerServiceServer } from '../service/server.mjs'
 import { startServiceAgentServer } from '../agent/server.mjs'
 import { DashScopeServiceModel } from '../agent/model.mjs'
 import { createRealtimeOnly, createFullHarness, withTauPolicy } from './realtime-harness.mjs'
+import { createMaxOnly } from './max-only.mjs'
 
 loadServiceEnvironment()
 const runtimeRoot = mkdtempSync(join(tmpdir(), 'qwen-tau-harness-'))
@@ -18,7 +19,7 @@ const root = process.env.CS_TAU2_ROOT
 const python = process.env.CS_TAU2_PYTHON
 if (!root || !python) throw new Error('Set CS_TAU2_ROOT and CS_TAU2_PYTHON')
 const mode = process.env.CS_TAU_MODE || 'harness'
-if (!['realtime-only', 'harness'].includes(mode)) throw new Error('Invalid CS_TAU_MODE')
+if (!['realtime-only', 'harness', 'max-only'].includes(mode)) throw new Error('Invalid CS_TAU_MODE')
 const outputDir = resolve(process.env.CS_TAU_OUTPUT_DIR || 'examples/customer-service/.runtime/tau-harness')
 mkdirSync(outputDir, { recursive: true })
 const [{ config }, { resolveRealtimeProvider }] = await Promise.all([
@@ -31,7 +32,7 @@ const backendModel = process.env.CS_TAU_BACKEND_MODEL || 'qwen3.8-max'
 const baseURL = process.env.DASHSCOPE_BASE_URL || 'https://dashscope.aliyuncs.com/compatible-mode/v1'
 const cases = process.argv.slice(2)
 if (!cases.length) cases.push('retail:0', 'airline:8')
-console.log(JSON.stringify({ mode, realtimeModel: originalProvider.model(), backendModel: mode === 'harness' ? backendModel : null,
+console.log(JSON.stringify({ mode, realtimeModel: mode === 'max-only' ? null : originalProvider.model(), backendModel: mode !== 'realtime-only' ? backendModel : null,
   userModel, judgeModel, input: 'text', output: 'text', cases, runtimeRoot }))
 
 async function runCase(domain, taskId) {
@@ -57,6 +58,9 @@ async function runCase(domain, taskId) {
       mkdirSync(directory, { recursive: true })
       client = await createFullHarness({ provider, agentServer: agent, serviceOrigin: server.origin,
         sessionId: loaded.sessionId, definitions: context.definitions, directory, config, signal, events })
+    } else if (mode === 'max-only') {
+      client = await createMaxOnly({ scenarios, sessionId: loaded.sessionId,
+        model: backendModel, baseURL, signal })
     } else {
       client = await createRealtimeOnly({ provider, scenarios, sessionId: loaded.sessionId, signal, events })
     }
@@ -88,10 +92,13 @@ async function runCase(domain, taskId) {
   } catch (error) { scoringFailure = error.message }
   const result = { mode, scope: mode === 'harness'
     ? 'text-input/output: Realtime WebSocket -> real Gateway/TaskManager/MCP/A2A/approval -> backend -> Realtime response'
+    : mode === 'max-only' ? 'text-input/output: native tau2 LLMAgent -> official tau tools; no Realtime/Gateway/A2A/approval runtime'
     : 'text-input/output: Realtime WebSocket -> official tau tools; no Gateway/backend/extra approval runtime',
-  domain, taskId, realtimeModel: originalProvider.model(), backendModel: mode === 'harness' ? backendModel : null,
+  domain, taskId, realtimeModel: mode === 'max-only' ? null : originalProvider.model(), backendModel: mode !== 'realtime-only' ? backendModel : null,
   userModel, judgeModel, sourceCommit: loaded?.sourceCommit, sourceDirty: loaded?.sourceDirty,
-  limits: { maxUserTurns: 16, timeoutSeconds: 300, backendModelRoundsPerExecution: 8 },
+  limits: { maxUserTurns: 16, timeoutSeconds: 300,
+    backendModelRoundsPerExecution: mode === 'harness' ? 8 : null,
+    maxModelRoundsPerUserTurn: mode === 'max-only' ? 100 : null },
   terminationReason, failure, failureStage: failure ? stage : undefined, scoringFailure,
   userTurns, backendModelCalls, ...counts,
   executedToolCalls: scored?.messages?.reduce((sum, message) => sum + (message.tool_calls?.length || 0), 0),

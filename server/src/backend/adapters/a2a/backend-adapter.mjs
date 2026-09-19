@@ -290,7 +290,10 @@ function taskSummary(task) {
     .flatMap(artifact => artifact.parts)
     .map(part => clean(part.text))
     .filter(Boolean)
-  const lines = uniqueLines([status, ...history, ...artifactText])
+  // Progress and earlier confirmation requests are not the final answer.
+  const lines = uniqueLines(status || artifactText.length
+    ? [status, ...artifactText]
+    : [history.at(-1)])
   return {
     content: bounded(lines.join('\n\n'), MAX_TEXT_CHARS),
     fallback: status || history.at(-1) || '',
@@ -417,7 +420,7 @@ function outgoingMessage(work) {
   }
 }
 
-function continuationMessage(text, task) {
+function continuationMessage(text, task, inputResponse) {
   return {
     messageId: randomUUID(),
     contextId: clean(task?.contextId),
@@ -429,7 +432,7 @@ function continuationMessage(text, task) {
       filename: '',
       mediaType: 'text/plain',
     }],
-    metadata: undefined,
+    metadata: inputResponse ? { qwenAudioInputResponse: inputResponse } : undefined,
     extensions: [],
     referenceTaskIds: [],
   }
@@ -755,10 +758,33 @@ export class A2ABackendAdapter {
         input: request,
       }), record)
     }
-    const answer = await waitForDeferred(
-      record.pendingInput.pending.promise,
-      signal,
-    )
+    // Optional example extension: let the frontend stop waiting when an
+    // approval expires, rather than leaving an obsolete input request active.
+    const expiresAt = task?.status?.message?.metadata?.qwenAudioApprovalExpiresAt
+    let expiryTimer
+    let answer
+    try {
+      const waiting = waitForDeferred(record.pendingInput.pending.promise, signal)
+      answer = kind === 'authorization' && Number.isFinite(expiresAt)
+        ? await Promise.race([waiting, new Promise((_, reject) => {
+            expiryTimer = setTimeout(() => reject(new A2ABackendError('客户确认已过期，请重新发起操作。', {
+              code: 'INPUT_EXPIRED',
+            })), Math.max(0, Math.min(expiresAt - Date.now(), 2_147_483_647)))
+          })])
+        : await waiting
+    } catch (error) {
+      if (error.code === 'INPUT_EXPIRED') {
+        record.pendingInput.pending.resolve({ action: 'cancel' })
+        record.pendingInput = null
+        this.publish(backendEvent(BackendEventType.INPUT_RESOLVED, {
+          input: resolveInputRequest(request, InputRequestStatus.CANCELLED),
+        }), record)
+        await this.bestEffortCancel(record)
+      }
+      throw error
+    } finally {
+      clearTimeout(expiryTimer)
+    }
     const resolved = resolveInputRequest(request, answer.action === 'accept'
       ? InputRequestStatus.ACCEPTED
       : answer.action === 'decline'
@@ -779,7 +805,7 @@ export class A2ABackendAdapter {
           ? JSON.stringify(answer.values)
           : '用户已确认，请继续处理。')
     const result = await record.client.sendMessage({
-      message: continuationMessage(text, task),
+      message: continuationMessage(text, task, { kind, action: answer.action }),
       configuration: {
         acceptedOutputModes: this.acceptedOutputModes,
         historyLength: 20,
@@ -1079,6 +1105,12 @@ export class A2ABackendAdapter {
     if (record.pendingInput.settled) {
       throw new A2ABackendError('Input response was already submitted', {
         code: 'INPUT_ALREADY_SUBMITTED',
+      })
+    }
+    if (record.pendingInput.input.kind === 'authorization'
+      && !['accept', 'decline', 'cancel'].includes(response.action)) {
+      throw new A2ABackendError('Authorization requires an explicit accept, decline, or cancel action', {
+        code: 'INPUT_ACTION_REQUIRED',
       })
     }
     const action = ['accept', 'decline', 'cancel'].includes(response.action)

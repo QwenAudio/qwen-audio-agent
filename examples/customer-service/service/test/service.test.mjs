@@ -67,7 +67,8 @@ test('零售 MCP 前台不能取消，后台先预览、确认后才退款', asy
   assert.equal(preview.structuredContent.needsApproval, true)
   const order = () => service.snapshot('retail-approval').db.orders.find(o => o.orderId === args.orderId)
   assert.equal(order().status, 'pending')
-  const token = preview.content[0].text.match(/approval_token="([^"]+)"/)?.[1]
+  const token = preview.structuredContent.approval.token
+  assert.doesNotMatch(preview.content[0].text, /approval_token|以上内容需要/)
   assert.ok(token)
   const done = await backend.callTool({ name: 'cancel_order', arguments: { ...args, approval_token: token } })
   assert.equal(done.structuredContent.cancelled, true)

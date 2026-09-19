@@ -35,6 +35,14 @@ export class ServiceMcpTools {
     return this.definitions
   }
 
+  async context({ signal } = {}) {
+    const url = new URL('/api/service/context', this.url)
+    url.search = this.url.search
+    const response = await fetch(url, { signal: signal || AbortSignal.timeout(5_000) })
+    if (!response.ok) throw new Error('Failed to load customer service context')
+    return response.json()
+  }
+
   async start() {
     if (this.client) return this
     if (this.connecting) return this.connecting
@@ -78,5 +86,15 @@ export class ServiceMcpTools {
     this.client = null
     this.definitions = null
     await client?.close()
+  }
+
+  async revokeApproval(token) {
+    const url = new URL('/api/service/approvals/revoke', this.url)
+    url.search = this.url.search
+    const response = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }), signal: AbortSignal.timeout(5_000),
+    })
+    if (!response.ok) throw new Error('Failed to revoke customer service approval')
   }
 }

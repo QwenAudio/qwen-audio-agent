@@ -52,5 +52,5 @@ input. The model is selected at startup, not in the UI.
 [Protocol and deployment](../../docs/gateway-webrtc-client.md)
 
 For screen/image input, on-demand inspection and observation reminders, try
-the [X-Omni example](../x-omni/README.md) with its optional WebRTC transport.
+the [X-Omni example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/x-omni/README.md) with its optional WebRTC transport.
 Both examples share the browser connection and Gateway media implementation.

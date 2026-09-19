@@ -81,7 +81,11 @@ test('example assets are served from examples/webrtc with authentication, not as
   assert.match(await page.text(), /examples\/webrtc/)
   const client = await fetch(`${h.base}/api/realtime/webrtc/example.mjs`, { headers: h.headers })
   assert.equal(client.status, 200)
-  assert.match(await client.text(), /new RTCPeerConnection/)
+  assert.match(await client.text(), /BrowserWebRtcConnection/)
+  for (const name of ['webrtc-browser.mjs', 'webrtc-message.mjs']) {
+    assert.equal((await fetch(`${h.base}/api/realtime/webrtc/${name}`, { headers: h.headers })).status, 200)
+    assert.equal((await fetch(`${h.base}/api/realtime/webrtc/${name}`)).status, 401)
+  }
   assert.equal((await fetch(`${h.base}/api/realtime/webrtc/example`)).status, 401)
   assert.equal((await fetch(`${h.base}/api/realtime/webrtc/example/.env`, { headers: h.headers })).status, 404)
 })

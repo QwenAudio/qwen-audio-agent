@@ -59,6 +59,8 @@ test('npm pack keeps the usable example but excludes installed media, SDKs and p
     'examples/webrtc/styles.css',
     'examples/webrtc/.env.example',
     'shared/gateway/webrtc.mjs',
+    'shared/gateway/webrtc-browser.mjs',
+    'shared/gateway/webrtc-message.mjs',
   ]
   for (const path of [...required, '.npmignore', 'examples/webrtc/.npmignore', `${nativePath}/package.json`, `${nativePath}/index.cjs`]) {
     const target = join(fixture, path)

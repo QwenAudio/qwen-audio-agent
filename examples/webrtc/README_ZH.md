@@ -48,3 +48,6 @@ npm run example:webrtc:omni
 - 远程访问需要 HTTPS 和可达的媒体端口，必要时配置 STUN/TURN。
 
 [协议与部署说明](../../docs/gateway-webrtc-client.zh.md)
+
+如需屏幕、图片、按需识图和观察提醒，可体验同样支持 WebRTC 的
+[X-Omni 示例](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/x-omni/README_ZH.md)。两个示例共用浏览器连接与网关媒体实现。

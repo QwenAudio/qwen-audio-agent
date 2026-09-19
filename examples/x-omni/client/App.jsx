@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import useRealtimeVoice from '../../../web/src/realtime/useRealtimeVoice.js'
+import useWebRtcVoice from './useWebRtcVoice.js'
 import { VisualCapture } from './capture.js'
 import { visualFeatures } from '../vision/features.mjs'
 import { gatewayFetch } from '../../../web/src/gateway-transport.js'
@@ -7,6 +8,8 @@ import { gatewayFetch } from '../../../web/src/gateway-transport.js'
 const CAPABILITY = 'client.actions.xomni.visual.capture'
 const ACTION = 'xomni.visual.capture'
 const SESSION = `xomni-${crypto.randomUUID()}`
+const TRANSPORT = import.meta.env.VITE_X_OMNI_TRANSPORT || 'websocket'
+const useVoice = TRANSPORT === 'webrtc' ? useWebRtcVoice : useRealtimeVoice
 
 export default function App() {
   const [enabled, setEnabled] = useState(false)
@@ -44,7 +47,7 @@ export default function App() {
     try { return { status: 'completed', output: await capture() } }
     catch (reason) { return { status: 'failed', error: { code: 'capture_failed', message: reason.message } } }
   }, [capture])
-  const voice = useRealtimeVoice({ sessionId: SESSION, enabled, inputOnlyMute: true,
+  const voice = useVoice({ sessionId: SESSION, enabled, inputOnlyMute: true,
     clientLabel: 'X-Omni', additionalCapabilities: [CAPABILITY], onEvent: handleEvent, onClientAction: handleAction })
   const { imageBufferAvailable, sendImageFrame, clearImageBuffer } = voice
   const publishRef = useRef(voice.publishClientEvent)
@@ -92,9 +95,10 @@ export default function App() {
     try { setError(''); await captureRef.current.open(source) }
     catch (reason) { setError(reason.message) }
   }
-  const send = text => {
+  const send = async text => {
     if (!text.trim() || !features?.textInput) return
-    voice.activateAudio()
+    try { await voice.activateAudio(); setError('') }
+    catch (reason) { setError(reason.message); return }
     if (!voice.sendInput([{ type: 'text', text: text.trim() }])) { setError('Gateway 尚未连接'); return }
     setDraft('')
   }
@@ -102,7 +106,8 @@ export default function App() {
     <header><span className="eyebrow">QWEN AUDIO AGENT · EXAMPLE</span><h1>X-Omni</h1>
       <p>看见，交流，持续关注。实时多模态助手参考示例。</p>
       <div className="status"><span className={`dot ${voice.connectionState === 'connected' ? 'online' : ''}`} />
-        {voice.connectionState} · {voice.state}
+        {voice.connectionState} · {voice.state} · {TRANSPORT === 'webrtc' ? 'WebRTC' : 'WebSocket'}
+        {TRANSPORT === 'webrtc' && voice.connectionState === 'disconnected' && <button onClick={voice.reconnect}>重新连接</button>}
         <button onClick={async () => {
           try { await voice.activateAudio(); setEnabled(value => !value) }
           catch (reason) { setError(reason.message) }

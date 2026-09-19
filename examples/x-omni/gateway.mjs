@@ -6,10 +6,11 @@ import { CAPTURE_ACTION } from './vision/frame.mjs'
 import { DashScopeVisualReader } from './vision/dashscope-reader.mjs'
 import { createVisionTools } from './vision/tools.mjs'
 import { visualFeatures } from './vision/features.mjs'
+import { validateTransport, xOmniTransport } from './transport.mjs'
 
 const directory = fileURLToPath(new URL('.', import.meta.url))
 
-export async function startXOmni({ port = 18_890, host = '127.0.0.1', envFile = `${directory}.env.local` } = {}) {
+export async function startXOmni({ port = 18_890, host = '127.0.0.1', envFile = `${directory}.env.local`, transport = 'websocket' } = {}) {
   if (envFile && existsSync(envFile)) process.loadEnvFile(envFile)
   // Isolated state: never read/write a running desktop's conversation or config.
   process.env.QWAUDIO_CONFIG_DIR ||= `${directory}.runtime`
@@ -23,6 +24,12 @@ export async function startXOmni({ port = 18_890, host = '127.0.0.1', envFile = 
   // every multimodal service implements tool calls or manual text responses.
   const { resolveRealtimeProvider } = await import('../../server/src/voice/providers/registry.mjs')
   const provider = resolveRealtimeProvider()
+  validateTransport(transport, provider.key)
+  process.env.QWAUDIO_WEBRTC_ENABLED = transport === 'webrtc' ? '1' : '0'
+  if (transport === 'webrtc') {
+    const { requireWebRtcDependencies } = await import('../../shared/gateway/webrtc.mjs')
+    requireWebRtcDependencies()
+  }
   const features = visualFeatures({ provider: provider.key, modelProfile: provider.modelProfile?.() })
   if (!features.continuous && !features.visualTools) {
     throw new Error('X-Omni requires a visual Realtime provider. For MiniCPM-o, configure the mode=video endpoint.')
@@ -65,7 +72,7 @@ export async function startXOmni({ port = 18_890, host = '127.0.0.1', envFile = 
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const application = await startXOmni({ port: Number(process.env.X_OMNI_GATEWAY_PORT) || 18_890 })
+  const application = await startXOmni({ port: Number(process.env.X_OMNI_GATEWAY_PORT) || 18_890, transport: xOmniTransport(process.argv.slice(2)) })
   const shutdown = async () => { await application.close(); process.exit(0) }
   process.once('SIGINT', shutdown)
   process.once('SIGTERM', shutdown)

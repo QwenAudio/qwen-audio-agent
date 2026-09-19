@@ -19,8 +19,8 @@ policy, and observation scheduling remain inside this example.
   continuous frames, and on-demand inspection.
 - **Optional observation:** bounded condition reminders and change
   narration, with cancellation, deduplication, deadlines, and concurrency limits.
-- **Existing conversation runtime:** reuses the WebUI voice hook and Gateway
-  Client Protocol for audio, interruption, playback receipts, and client actions.
+- **Selectable transport:** the same UI supports WebSocket or WebRTC, sharing
+  Gateway conversation, interruption, playback receipts, and client actions.
 - **Optional backend:** captured images have ordinary `input_N` references that
   `spawn_thinking` can pass to an installed backend; observation itself needs no backend.
 
@@ -75,6 +75,30 @@ Gateway. Explicit `QWAUDIO_*` directory overrides still apply.
 Credentials stay in Node.js, never in the browser bundle. For DashScope,
 `QWEN_AUDIO_REALTIME_BASE_URL` optionally changes the WebSocket endpoint for
 both conversation and the visual reader.
+
+### Choose WebRTC
+
+The default command uses WebSocket. Keep the same Qwen configuration, stop the
+running example, and run:
+
+```bash
+npm run example:webrtc:install  # optional media dependencies; install once
+npm run example:x-omni:webrtc
+```
+
+The URL remains **http://127.0.0.1:5178**; the UI shows the selected transport.
+On-demand inspection, continuous frames, observation, and backend calls share
+one implementation and the same model configuration. Restart the example and
+reload the page to switch transports. There is no automatic fallback or second
+simultaneous conversation connection.
+
+The current WebRTC ingress supports **Qwen Omni**. Use the default WebSocket
+command for MiniCPM-o. Only client-to-Gateway transport changes; upstream model
+connections still use the existing Provider. Real-browser tests use synthetic
+media and mocked models, not a claim of public-network stability or live-model
+validation. Remote deployment needs HTTPS and reachable media ports, with
+STUN/TURN where necessary; an HTTP reverse proxy alone is insufficient.
+See [WebRTC deployment](../../docs/gateway-webrtc-client.md).
 
 ### MiniCPM-o configuration
 
@@ -131,7 +155,7 @@ or stopping the example cancels observations. Reload creates a new conversation.
 
 | Component | Responsibility |
 | --- | --- |
-| `client/` | Source permission, preview, JPEG capture, and shared WebUI voice runtime. |
+| `client/` | Shared UI, source permission and capture; the WebUI hook for WebSocket, a small hook adapter for WebRTC. |
 | `gateway.mjs` | Resolves the configured Provider; registers supported example tools, capture action, and source-state event. |
 | `vision/features.mjs` | Central capability policy used by both the host and UI. |
 | `vision/tools.mjs` | `capture_visual` and `visual_observation`; small textual results and attachment references. |
@@ -165,9 +189,20 @@ The generic host extension is intentionally small:
   `client.action.request`; `xomni.visual.state` updates context without speaking.
 
 No visual scenario is added to the global prompt, protocol event enumeration,
-or backend adapters. The example imports the same checkout's WebUI hook and
-camera encoder rather than copying an audio/vision transport implementation.
-It uses WebSocket transport, not WebRTC.
+or backend adapters. The example imports the same checkout's WebUI hook,
+camera encoder, and `shared/gateway/webrtc-browser.mjs` connection shared with
+the WebRTC example. Visual business logic stays out of the transport layer.
+
+| Path | WebSocket | WebRTC |
+| --- | --- | --- |
+| Voice | PCM messages | Audio track |
+| Continuous frames | One JPEG per second | Captures enter a Canvas video track; Gateway samples at most once per second |
+| Text, source state and capture actions | Gateway Client Protocol messages | DataChannel carries the same Gateway commands and events |
+| On-demand capture result | Client action result | Same result, returned in size/time-bounded chunks |
+
+Preview alone sends no video. Leaving continuous mode removes the sending
+track and clears pending images. Muting the microphone keeps the connection
+and audio playback alive, without cancelling explicitly started observations.
 
 ### Integrating another Omni service
 
@@ -218,6 +253,8 @@ npm run example:x-omni:build
 npx eslint examples/x-omni
 npx playwright install chromium
 npm run test:x-omni-browser
+npm run example:webrtc:install
+npm run test:x-omni-webrtc
 ```
 
 Tests use synthetic media and mocked model responses; no cloud key or real
@@ -225,3 +262,6 @@ camera is required. Browser checks require Playwright Chromium and cover both
 the Qwen capture/tool round trip and MiniCPM-o video transport with unsupported
 controls disabled. These tests verify integration, not model perception quality;
 validate the actual service and chosen model before deployment.
+WebRTC tests use real PeerConnections, DataChannels and isolated media workers,
+covering capture fragmentation, playback receipts, continuous video, mute,
+observation cancellation and explicit reconnect. CI runs them on baseline Linux.

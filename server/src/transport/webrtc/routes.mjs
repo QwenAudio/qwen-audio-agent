@@ -8,6 +8,17 @@ import { WebRtcConnection } from './protocol.mjs'
 const ROOT = '/api/v1/webrtc'
 const EXAMPLE = new URL('../../../../examples/webrtc/', import.meta.url)
 
+export function parseClientActions(value) {
+  if (value === undefined) return []
+  let actions
+  try { if (typeof value === 'string' && value.length <= 2048) actions = JSON.parse(value) } catch {}
+  if (!Array.isArray(actions) || actions.length > 16 || new Set(actions).size !== actions.length
+    || actions.some(name => typeof name !== 'string' || name.length > 100 || !/^[a-z][a-z0-9_-]*(\.[a-z][a-z0-9_-]*)+$/.test(name))) {
+    throw rtcError(400, 'client_actions', 'client_actions must be a JSON array of up to 16 distinct action names')
+  }
+  return actions
+}
+
 export function validateOffer(sdp, { video }) {
   if (typeof sdp !== 'string' || !sdp.startsWith('v=0') || Buffer.byteLength(sdp) > 65536) throw rtcError(400, 'invalid_sdp', 'SDP offer required (max 64 KiB)')
   const media = sdp.split(/\r?\n/).filter(line => /^m=/.test(line) && !/^m=\S+ 0 /.test(line))
@@ -46,6 +57,9 @@ export function registerWebRtcIngress(app, { options, getGateway, providerRegist
   app.get('/api/realtime/webrtc/example', (_req, res) => res.sendFile(fileURLToPath(new URL('index.html', EXAMPLE))))
   app.get('/api/realtime/webrtc/example.mjs', (_req, res) => res.sendFile(fileURLToPath(new URL('client.mjs', EXAMPLE))))
   app.get('/api/realtime/webrtc/example.css', (_req, res) => res.sendFile(fileURLToPath(new URL('styles.css', EXAMPLE))))
+  for (const name of ['webrtc-browser.mjs', 'webrtc-message.mjs']) {
+    app.get(`/api/realtime/webrtc/${name}`, (_req, res) => res.sendFile(fileURLToPath(new URL(`../../../../shared/gateway/${name}`, import.meta.url))))
+  }
   app.post(`${ROOT}/realtime`, express.text({ type: 'application/sdp', limit: '64kb' }), async (req, res) => {
     let connectionId
     let connection
@@ -58,13 +72,14 @@ export function registerWebRtcIngress(app, { options, getGateway, providerRegist
       const sessionId = req.query.sessionId || 'main'
       if (typeof sessionId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(sessionId)) throw rtcError(400, 'session_id', 'invalid sessionId')
       if (req.query.takeover && req.query.takeover !== 'true') throw rtcError(400, 'takeover', 'takeover must be true or omitted')
+      const clientActions = parseClientActions(req.query.client_actions)
       validateOffer(req.body, { video })
       if (!provider.isConfigured()) throw rtcError(503, 'provider_not_configured', 'Configure the Gateway provider credential first')
       const media = factory({
         ...options, video, inputSampleRate: provider.inputSampleRate,
         onDiagnostic: fields => logger?.warn('webrtc.media_worker_failed', fields),
       })
-      connection = new WebRtcConnection({ media, sessionId, provider, takeover: req.query.takeover === 'true' })
+      connection = new WebRtcConnection({ media, sessionId, provider, takeover: req.query.takeover === 'true', clientActions })
       connectionId = randomUUID()
       const record = { connection, ownerId: req.identity.ownerId }
       connections.set(connectionId, record)

@@ -22,6 +22,21 @@ npm run example:x-omni
 打开 **http://127.0.0.1:5178**。示例使用端口 18890 的独立 Gateway，
 默认仅前台模式，不复用桌面版 Gateway。
 
+### 可选 WebRTC 接入
+
+默认使用 WebSocket。使用 Qwen Omni 时，也可停止示例后运行：
+
+```bash
+npm run example:webrtc:install  # 仅首次安装
+npm run example:x-omni:webrtc
+```
+
+访问地址和界面不变，按需识图、持续画面及观察功能共用同一套实现。
+仅客户端与 Gateway 间改用 WebRTC；上游模型连接不变。切换方式后刷新页面，
+不会自动回退或建立第二条对话连接。MiniCPM-o 目前请使用 WebSocket。
+远程 WebRTC 还需要 HTTPS、可达媒体端口及必要的 STUN/TURN，
+见 [WebRTC 接入说明](../gateway-webrtc-client.zh.md)。
+
 ## 模型配置
 
 Qwen 默认使用 `qwen3.5-omni-plus-realtime`；也可通过

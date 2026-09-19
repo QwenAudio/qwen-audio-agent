@@ -95,6 +95,8 @@ v=0
 - `model` 可省略；提供时必须等于网关配置，错误不会静默切换供应商。
 - `sessionId` 默认 `main`；支持 1–128 位字母、数字、`_ . : -`。
 - `takeover=true` 显式接管已有客户端。默认不挤掉桌面端或 WSS 客户端。
+- 可选 `client_actions` 是 JSON 数组（例如 `["xomni.visual.capture"]`），声明客户端实际实现的动作。
+  最多 16 个不同名称；运行时仍与宿主注册的能力取交集，不允许客户端注入工具或 Prompt。
 - 收集完 ICE 候选后发送 `pc.localDescription.sdp`。本版不支持 trickle ICE、重新协商、ICE restart。
 
 ### 结束连接
@@ -168,6 +170,18 @@ await pc.setRemoteDescription({ type: 'answer', sdp: await response.text() })
 任务、权限、历史等 GCP 控制可用 `qwaudio.command` 的 `event` 字段发送原有受支持命令。
 权限、owner 校验与能力协商仍在现有运行时执行，不把命令直接转发给供应商。
 
+客户端动作沿用 GCP：`client.action.request` 放在 `qwaudio.event` 中下发，
+`client.action.result` 通过 `qwaudio.command` 回传，保留 `request_event_id`。
+`client.event.publish` 也通过同一命令通道发送，不另建 WebSocket 会话。
+
+截图等较大入站 JSON 可使用 `qwaudio.transport.chunk` 分片：
+`{type, id, index, total, data}`，其中 `index` 从 0 连续递增，`data` 为 JSON 文本片段。
+每片最多 8,192 个 UTF-16 代码单元，单帧最多 64 KiB，重组后最多 512 KiB；
+同一连接仅允许一个待重组消息，5 秒超时后丢弃，不接受嵌套分片。
+重组后仍走原有消息校验与权限检查。普通小消息不需要分片。
+浏览器可复用 `shared/gateway/webrtc-browser.mjs` 和 `webrtc-message.mjs`，
+不要直接发送超过 SCTP 单消息限制的图片。
+
 ### 播放回执与打断
 
 生成结束、服务器发完 RTP 与客户端真正播放完成是三件不同的事。
@@ -233,5 +247,7 @@ QWAUDIO_TEST_WEBRTC_NATIVE=1 node --test server/test/webrtc-native.test.mjs
 - `pcm.mjs`：PCM 字节序、流式重采样和声道转换。
 - `realtime-gateway.mjs`：提供内部已认证连接端口；WSS 和 RTC 共用同一业务路径。
 - `shared/gateway/webrtc.mjs`：定位已安装扩展，检查 API 版本与依赖；不加载原生库。
+- `shared/gateway/webrtc-browser.mjs`：两个示例共用的浏览器连接、轨道管理与播放回执；不含场景工具。
+- `shared/gateway/webrtc-message.mjs`：有大小/时限限制的入站分片，不改变 GCP 业务语义。
 - `packages/webrtc/`：独立 npm 扩展包，提供延迟加载的媒体依赖，不进入默认 workspace 或主包。
 - `examples/webrtc/`：按需安装指导、启动脚本和纯浏览器 Web UI，与网关协议实现分离。

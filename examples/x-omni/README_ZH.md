@@ -13,7 +13,7 @@ Qwen3.5 Omni 是默认配置，而非客户端架构的限定。面壁 MiniCPM-o
 
 - **视觉对话：** 摄像头、屏幕和图片输入，支持持续画面与按需采集。
 - **可选观察：** 有时限的条件提醒和变化解说，支持取消、去重、超时与并发限制。
-- **复用对话链路：** 使用现有 WebUI 语音 Hook 与 Gateway Client Protocol，复用音频、打断、播放回执和客户端动作。
+- **可选传输：** 同一界面可使用 WebSocket 或 WebRTC，复用 Gateway 的对话、打断、播放回执和客户端动作。
 - **可选后台：** 截图获得普通 `input_N` 引用，可由 `spawn_thinking` 交给已安装的后台；观察功能本身不需要后台。
 
 ## 模型兼容性
@@ -62,6 +62,25 @@ npm run example:x-omni
 凭据只留在 Node.js 进程，不进入浏览器构建产物。使用 DashScope 时，可选的
 `QWEN_AUDIO_REALTIME_BASE_URL` 同时设置对话和视觉读取的 WebSocket 地址。
 
+### 选择 WebRTC
+
+默认启动命令使用 WebSocket。使用同一份 Qwen 配置，停止当前示例后运行：
+
+```bash
+npm run example:webrtc:install  # 仅首次安装可选媒体依赖
+npm run example:x-omni:webrtc
+```
+
+访问地址仍是 **http://127.0.0.1:5178**，界面会显示当前传输方式。
+按需识图、持续画面、观察提醒与后台调用共用同一套实现，不需要另配模型。
+切换传输需要重启示例并刷新页面；不会自动回退，也不会同时占用两条对话连接。
+
+当前 WebRTC 入口支持 **Qwen Omni**；MiniCPM-o 请使用默认 WebSocket 命令。
+这只切换客户端与 Gateway 之间的传输，Gateway 到模型仍使用现有 Provider 连接。
+WebRTC 已覆盖合成媒体与模拟模型的真实浏览器测试；不代表已验证公网稳定性或真实模型效果。
+远程使用需要 HTTPS、可达媒体端口，必要时配置 STUN/TURN；仅 HTTP 反向代理不够。
+详见 [WebRTC 部署说明](../../docs/gateway-webrtc-client.zh.md)。
+
 ### MiniCPM-o 配置
 
 先按 [官方部署说明](https://github.com/OpenBMB/MiniCPM-o-Demo) 安装并启动 MiniCPM-o，
@@ -108,7 +127,7 @@ Qwen Code 后设置 `AGENT_PROTOCOL=qwen`。后台权限、模型选择沿用框
 
 | 组件 | 职责 |
 | --- | --- |
-| `client/` | 来源授权、预览、JPEG 采集，复用 WebUI 语音运行时。 |
+| `client/` | 共用界面、来源授权与采集；WebSocket 复用 WebUI Hook，WebRTC 使用轻量 Hook 适配。 |
 | `gateway.mjs` | 解析所配置的 Provider，注册其支持的示例工具、采集动作和来源状态事件。 |
 | `vision/features.mjs` | 宿主与 UI 共用的能力判断规则。 |
 | `vision/tools.mjs` | `capture_visual`、`visual_observation`；返回简短文字与附件引用。 |
@@ -136,8 +155,18 @@ Qwen 配置下的按需检查通过**独立视觉读取会话**获得描述，
   `xomni.visual.state` 仅同步上下文，不触发播报。
 
 没有向全局 Prompt、协议事件枚举或后台 Adapter 加入视觉业务。
-示例复用同一源码版本的 WebUI Hook 和摄像头编码器，不复制音视频传输实现。
-当前使用 WebSocket，而不是 WebRTC。
+示例复用同一源码版本的 WebUI Hook、摄像头编码器，以及 WebRTC 示例共用的
+`shared/gateway/webrtc-browser.mjs` 浏览器连接。视觉业务不进入通用传输层。
+
+| 链路 | WebSocket | WebRTC |
+| --- | --- | --- |
+| 语音 | PCM 消息 | 音频轨道 |
+| 持续画面 | 每秒一张 JPEG | 采集帧进入 Canvas 视频轨道，Gateway 每秒最多抽一帧 |
+| 文本、来源状态和采集动作 | Gateway Client Protocol 消息 | DataChannel 承载相同的网关命令与事件 |
+| 按需截图结果 | 客户端动作结果 | 同一结果，经有大小/时限限制的分片回传 |
+
+仅预览不会发送视频；退出持续模式会移除发送轨道并清空待处理画面。
+麦克风静音保留连接和音频播放，也不取消用户主动开启的视觉观察。
 
 ### 接入其他 Omni 服务
 
@@ -177,9 +206,13 @@ npm run example:x-omni:build
 npx eslint examples/x-omni
 npx playwright install chromium
 npm run test:x-omni-browser
+npm run example:webrtc:install
+npm run test:x-omni-webrtc
 ```
 
 测试使用合成画面和模拟模型回包，不需要云端 Key 或真实摄像头。
 浏览器检查另需 Playwright Chromium，覆盖 Qwen 采集/工具完整链路，以及 MiniCPM-o
 视频传输和不支持控件的禁用行为。这些测试验证集成链路，不代表模型感知质量；
 部署前仍需验证实际服务与所选模型。
+WebRTC 测试使用真实 PeerConnection、DataChannel 和独立媒体进程，覆盖截图分片、
+音频播放回执、持续画面、静音、观察取消及显式重连。CI 在 Linux 基线任务运行。

@@ -161,6 +161,8 @@ if (isMain) {
     'examples/webrtc/client.mjs',
     'examples/webrtc/styles.css',
     'shared/gateway/webrtc.mjs',
+    'shared/gateway/webrtc-browser.mjs',
+    'shared/gateway/webrtc-message.mjs',
     'config/backends/deepseek-harness/cordis.yml',
     'config/backends/openclaw/openclaw.json5',
     'CONTRIBUTING.md',

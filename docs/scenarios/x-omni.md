@@ -24,6 +24,22 @@ npm run example:x-omni
 Open **http://127.0.0.1:5178**. The example uses a separate Gateway on port 18890
 and defaults to frontend-only mode. It does not reuse your desktop Gateway.
 
+### Optional WebRTC transport
+
+WebSocket is the default. With Qwen Omni, stop the example and optionally run:
+
+```bash
+npm run example:webrtc:install  # install once
+npm run example:x-omni:webrtc
+```
+
+The URL and UI stay the same; on-demand inspection, continuous frames and
+observation share one implementation. Only client-to-Gateway transport changes,
+not the upstream model connection. Reload after switching; there is no automatic
+fallback or second conversation connection. MiniCPM-o currently uses WebSocket.
+Remote WebRTC requires HTTPS, reachable media ports and STUN/TURN where needed;
+see [WebRTC integration](../gateway-webrtc-client.md).
+
 ## Model configuration
 
 The default Qwen model is `qwen3.5-omni-plus-realtime`; Flash can also be selected

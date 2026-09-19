@@ -2,7 +2,8 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define: { 'import.meta.env.VITE_X_OMNI_TRANSPORT': JSON.stringify(mode === 'webrtc' ? 'webrtc' : 'websocket') },
   root: fileURLToPath(new URL('./client', import.meta.url)),
   plugins: [react()],
   resolve: { dedupe: ['react', 'react-dom'] },
@@ -10,4 +11,4 @@ export default defineConfig({
     fs: { allow: [fileURLToPath(new URL('../../', import.meta.url))] },
     proxy: { '/api': { target: 'http://127.0.0.1:18890', ws: true } } },
   build: { outDir: '../dist', emptyOutDir: true },
-})
+}))

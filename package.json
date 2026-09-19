@@ -250,9 +250,11 @@
   ],
   "scripts": {
     "example:x-omni": "node examples/x-omni/dev.mjs",
+    "example:x-omni:webrtc": "node examples/x-omni/dev.mjs --webrtc",
     "example:x-omni:build": "vite build --config examples/x-omni/vite.config.mjs",
     "test:x-omni": "node --test examples/x-omni/test/*.test.mjs",
     "test:x-omni-browser": "node examples/x-omni/test/browser-smoke.mjs && node examples/x-omni/test/browser-smoke.mjs --minicpm",
+    "test:x-omni-webrtc": "node examples/x-omni/test/browser-smoke.mjs --webrtc",
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev --workspace server\" \"npm run dev --workspace web\"",
     "build": "npm run build --workspace web --no-global",
     "prepare": "node scripts/prepare-build.mjs",

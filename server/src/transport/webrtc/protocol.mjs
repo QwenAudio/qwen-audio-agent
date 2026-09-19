@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { randomUUID } from 'node:crypto'
+import { WebRtcMessageReader } from '../../../../shared/gateway/webrtc-message.mjs'
 import {
   createGatewaySessionHello,
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
@@ -12,12 +13,14 @@ const id = () => `evt_rtc_${randomUUID()}`
 // The runtime sees the same connection contract as WebSocket. Neither the
 // media engine nor vendor-shaped wire events own sessions, tools or history.
 export class WebRtcConnection extends EventEmitter {
-  constructor({ media, sessionId, provider, takeover = false }) {
+  constructor({ media, sessionId, provider, takeover = false, clientActions = [] }) {
     super()
     this.media = media
     this.sessionId = sessionId
     this.provider = provider
     this.takeover = takeover
+    this.clientActions = clientActions
+    this.messages = new WebRtcMessageReader()
     this.readyState = 1
     this.voice = provider.voice?.() || ''
     this.ready = false
@@ -32,10 +35,10 @@ export class WebRtcConnection extends EventEmitter {
       clientType: 'web',
       clientInstanceId: randomUUID(),
       clientLabel: 'WebRTC',
-      capabilities: GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.filter(capability => (
+      capabilities: [...new Set([...GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES.filter(capability => (
         ![GatewayClientCapability.SESSION_HEARTBEAT, GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP].includes(capability)
         && (this.video || capability !== GatewayClientCapability.INPUT_IMAGE_BUFFER)
-      )),
+      )), ...this.clientActions.map(name => `client.actions.${name}`)])],
       connection: { provider: this.provider.key, voice_enabled: true, input_enabled: true, output_enabled: true },
       takeover: this.takeover,
     }))
@@ -68,7 +71,8 @@ export class WebRtcConnection extends EventEmitter {
   receive(raw) {
     let event
     try {
-      if (typeof raw !== 'string' || Buffer.byteLength(raw) > 65536) throw new Error('event must be JSON text, max 64 KiB')
+      raw = this.messages.read(raw)
+      if (raw === null) return
       event = JSON.parse(raw)
       if (!event || typeof event.type !== 'string') throw new Error('event type required')
       if (event.type === 'session.update') {
@@ -202,6 +206,7 @@ export class WebRtcConnection extends EventEmitter {
     // Sending the final event can synchronously report a media failure and
     // re-enter close(). Fence it before any callback, not after notification.
     this.closing = true
+    this.messages.clear()
     try {
       this.output({ type: 'qwaudio.connection.closed', code, reason })
     } catch {

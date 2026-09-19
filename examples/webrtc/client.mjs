@@ -1,4 +1,5 @@
 // Browser-only WebRTC client. The model is selected when starting the Gateway.
+import { BrowserWebRtcConnection } from './webrtc-browser.mjs'
 const $ = id => document.getElementById(id)
 let active = null
 let closing = null
@@ -35,17 +36,9 @@ function controls() {
   $('takeover').disabled = Boolean(active) || busy
 }
 function send(event) {
-  const channel = active?.channel
-  if (channel?.readyState !== 'open') return false
-  channel.send(JSON.stringify({ event_id: crypto.randomUUID(), ...event }))
-  return true
+  return active?.send(event) || false
 }
 function receipt(type, responseId) { send({ type: `qwaudio.playback.${type}`, response_id: responseId }) }
-function enableTracks(current) {
-  for (const track of current.stream?.getTracks() || []) {
-    track.enabled = current.ready && !current.suspended && (track.kind !== 'audio' || !muted)
-  }
-}
 function listening() { if (active?.ready) state('listening', muted ? '麦克风已静音' : '可以说话了') }
 function messageText(content) {
   if (typeof content === 'string') return content
@@ -112,13 +105,9 @@ async function disconnect() {
   active = null
   if (!current) return
   closing = (async () => {
-    current.abort.abort()
     clearInterval(current.meter)
-    clearTimeout(current.unmute)
-    for (const track of current.stream?.getTracks() || []) track.stop()
-    current.pc?.close()
-    await current.context?.close().catch(() => {})
-    $('remote').srcObject = null
+    for (const track of current.camera?.getTracks() || []) track.stop()
+    await current.close()
     $('preview').srcObject = null
     $('camera-panel').hidden = true
     $('ack').disabled = true
@@ -126,7 +115,6 @@ async function disconnect() {
     $('app').style.setProperty('--level', 0)
     for (const message of messages) message.live = false
     renderMessages()
-    if (current.location) await fetch(current.location, { method: 'DELETE', headers: current.headers, signal: AbortSignal.timeout(3000) }).catch(() => {})
     state('idle', '已断开')
   })()
   controls()
@@ -137,8 +125,6 @@ function received(current, event) {
   if (active !== current) return
   log(event)
   if (event.type === 'session.updated') {
-    current.ready = true
-    enableTracks(current)
     listening()
     controls()
     if (!current.historyRequested) {
@@ -149,21 +135,11 @@ function received(current, event) {
   if (event.type.includes('audio_transcription.') || event.type.startsWith('response.audio_transcript.')) transcript(event)
   if (event.type === 'response.created') state('processing', '正在思考')
   if (event.type === 'qwaudio.output.started') {
-    current.outputs.set(event.response_id, { started: false, drained: 0, quiet: 0 })
     $('ack').disabled = false
   }
-  if (event.type === 'qwaudio.output.drained') {
-    const output = current.outputs.get(event.response_id)
-    if (output) output.drained = performance.now()
-  }
   if (event.type === 'output_audio_buffer.cleared') {
-    for (const responseId of current.outputs.keys()) receipt('cancelled', responseId)
-    current.outputs.clear()
     for (const message of messages) if (message.live && message.role === 'assistant') { message.live = false; message.interrupted = true }
     renderMessages()
-    $('remote').muted = true
-    clearTimeout(current.unmute)
-    current.unmute = setTimeout(() => { if (active === current) $('remote').muted = false }, 400)
     listening()
   }
   if (event.type === 'response.done' && event.response?.status === 'failed') notice('本次模型回复失败，请查看连接详情或重试。')
@@ -177,7 +153,6 @@ function received(current, event) {
       messages = [...history, ...pending.filter(message => !history.some(saved => saved.role === message.role && saved.content === message.content))]
       renderMessages()
     }
-    if (['input.suspend', 'input.resume'].includes(item.type)) { current.suspended = item.type === 'input.suspend'; enableTracks(current) }
     if (item.type === 'voice.connection' && item.state === 'unavailable') notice(item.message || '语音服务暂不可用')
     if (item.type === 'voice.ownership' && item.state === 'busy') notice('当前账号的语音正在被其他客户端使用，可在连接设置中选择接管。')
     if (item.type === 'transcript.discard') {
@@ -189,18 +164,6 @@ function received(current, event) {
   if (event.type === 'qwaudio.connection.closed') void disconnect()
 }
 
-async function gather(pc) {
-  if (pc.iceGatheringState === 'complete') return
-  await new Promise((resolve, reject) => {
-    const changed = () => {
-      if (pc.iceGatheringState !== 'complete') return
-      clearTimeout(timer); pc.removeEventListener('icegatheringstatechange', changed); resolve()
-    }
-    const timer = setTimeout(() => { pc.removeEventListener('icegatheringstatechange', changed); reject(new Error('ICE gathering timeout')) }, 12000)
-    pc.addEventListener('icegatheringstatechange', changed)
-    changed()
-  })
-}
 function analyser(context, stream) {
   const source = context.createMediaStreamSource(stream)
   const node = context.createAnalyser()
@@ -218,25 +181,24 @@ function meter(current) {
   const input = current.inputLevel?.() || 0
   const output = current.outputLevel?.() || 0
   $('app').style.setProperty('--level', Math.min(1, Math.max(muted ? 0 : input, output) * 5))
-  if ($('remote').paused || $('remote').muted || current.context.state !== 'running') return
-  const first = current.outputs.entries().next().value
-  if (!first) return
-  const [responseId, playback] = first
-  const now = performance.now()
-  if (output > 0.002) {
-    playback.quiet = 0
-    if (!playback.started) { playback.started = true; receipt('started', responseId); state('speaking', '正在说话') }
-  } else playback.quiet ||= now
-  if (playback.started && playback.drained && now - playback.drained > 500 && playback.quiet && now - playback.quiet > 300) {
-    receipt('ended', responseId)
-    current.outputs.delete(responseId)
-    if (!current.outputs.size) { $('ack').disabled = true; listening() }
-  }
 }
 
 async function connect() {
   if (active || closing || connecting) return
-  const current = { headers: headers(), sessionId: $('session').value.trim(), abort: new AbortController(), outputs: new Map(), ready: false, startedAt: performance.now() }
+  const auth = headers()
+  const current = new BrowserWebRtcConnection({ sessionId: $('session').value.trim(), takeover: $('takeover').checked,
+    audio: $('remote'),
+    fetch: (url, init = {}) => fetch(url, { ...init, headers: { ...auth, ...init.headers } }),
+    onEvent: event => received(current, event),
+    onState: value => { if (active === current && value === 'disconnected') void disconnect() },
+    onError: error => { notice(error.message); log(error.message) },
+    onPlayback: value => {
+      if (active !== current) return
+      if (value === 'speaking') state('speaking', '正在说话')
+      else { $('ack').disabled = true; listening() }
+    },
+  })
+  current.startedAt = performance.now()
   active = current
   connecting = true
   controls()
@@ -244,54 +206,24 @@ async function connect() {
   state('connecting', '正在建立连接')
   try {
     if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(current.sessionId)) throw new Error('会话 ID 仅支持字母、数字、点、冒号、下划线和横线')
-    current.context = new AudioContext()
-    await current.context.resume()
     const config = await loadConfiguration()
     if (active !== current) return
     try { localStorage.setItem(historyKey, current.sessionId) } catch {}
-    current.pc = new RTCPeerConnection({ iceServers: config.iceServers, iceTransportPolicy: config.iceTransportPolicy })
-    current.pc.onconnectionstatechange = () => {
-      if (active !== current) return
-      log(`peer: ${current.pc.connectionState}`)
-      if (current.pc.connectionState === 'failed') { notice('媒体连接中断，请重新连接'); void disconnect() }
+    await current.connect()
+    if (active !== current || current.closed) return
+    await current.activateAudio()
+    await current.setMicrophoneEnabled(!muted)
+    if (active !== current) return
+    if (current.microphone) current.inputLevel = analyser(current.context, current.microphone)
+    if ($('camera').checked && config.video_input) {
+      const camera = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 10, max: 15 } } })
+      if (active !== current) { camera.getTracks().forEach(track => track.stop()); return }
+      current.camera = camera
+      await current.setVideoTrack(camera.getVideoTracks()[0])
+      $('preview').srcObject = camera
     }
-    current.pc.ondatachannel = ({ channel }) => {
-      if (channel.label !== 'txt') return
-      current.channel = channel
-      channel.onmessage = ({ data }) => { try { received(current, JSON.parse(data)) } catch (error) { log(error.message) } }
-      channel.onclose = () => { if (active === current) void disconnect() }
-    }
-    current.pc.createDataChannel('oai-events', { ordered: true })
-    current.pc.ontrack = async ({ track }) => {
-      if (track.kind !== 'audio' || active !== current) return
-      const stream = new MediaStream([track])
-      $('remote').srcObject = stream
-      $('remote').muted = false
-      current.outputLevel = analyser(current.context, stream)
-      try { await $('remote').play() }
-      catch { $('diagnostics').open = true; notice('浏览器阻止了自动播放，请点击下方播放器的播放按钮。') }
-    }
-    current.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 },
-      video: $('camera').checked && config.video_input ? { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 10, max: 15 } } : false,
-    })
-    if (active !== current) { current.stream.getTracks().forEach(track => track.stop()); return }
-    current.inputLevel = analyser(current.context, current.stream)
-    for (const track of current.stream.getTracks()) { track.enabled = false; current.pc.addTrack(track, current.stream) }
-    $('camera-panel').hidden = !current.stream.getVideoTracks().length
-    $('preview').srcObject = current.stream
+    $('camera-panel').hidden = !current.camera
     current.meter = setInterval(() => { if (active === current) meter(current) }, 50)
-    await current.pc.setLocalDescription(await current.pc.createOffer())
-    await gather(current.pc)
-    const query = new URLSearchParams({ sessionId: current.sessionId, model: config.model })
-    if ($('takeover').checked) query.set('takeover', 'true')
-    const answer = await fetch(`/api/v1/webrtc/realtime?${query}`, {
-      method: 'POST', headers: { ...current.headers, 'Content-Type': 'application/sdp' },
-      body: current.pc.localDescription.sdp, signal: current.abort.signal,
-    })
-    if (!answer.ok) throw new Error((await answer.json()).error?.message || `HTTP ${answer.status}`)
-    current.location = answer.headers.get('Location')
-    await current.pc.setRemoteDescription({ type: 'answer', sdp: await answer.text() })
   } catch (error) {
     if (active === current) {
       await disconnect()
@@ -303,13 +235,13 @@ async function connect() {
 
 $('connect').onclick = () => void connect()
 $('disconnect').onclick = () => void disconnect()
-$('interrupt').onclick = () => send({ type: 'response.cancel' })
-$('orb').onclick = () => { if (!active) void connect(); else if (active.ready) send({ type: 'response.cancel' }) }
+$('interrupt').onclick = () => active?.interrupt()
+$('orb').onclick = () => { if (!active) void connect(); else if (active.ready) active.interrupt() }
 $('mute').onclick = () => {
   muted = !muted
   $('mute').setAttribute('aria-pressed', String(muted))
   $('mute').querySelector('span').textContent = muted ? '麦克风已静音' : '麦克风开启'
-  if (active) enableTracks(active)
+  active?.setMicrophoneEnabled(!muted).catch(error => notice(error.message))
   listening()
 }
 $('camera').onchange = async () => { if (active) { await disconnect(); await connect() } }
@@ -345,6 +277,6 @@ $('ack').onclick = () => {
   for (const [responseId, output] of active?.outputs || []) { if (!output.started) receipt('started', responseId); receipt('ended', responseId) }
   active?.outputs.clear(); $('ack').disabled = true; listening()
 }
-window.addEventListener('pagehide', () => { active?.pc?.close(); active?.stream?.getTracks().forEach(track => track.stop()); clearInterval(active?.meter) })
+window.addEventListener('pagehide', () => { void disconnect() })
 controls()
 void loadConfiguration().catch(error => { log(error.message); $('model-note').textContent = '无法读取模型信息，请检查网关状态或在连接设置中填写访问凭证。' })

@@ -105,6 +105,8 @@ Local or paired browsers can use existing authentication without an explicit Bea
 - `model` is optional but must match the configured model when provided.
 - `sessionId` defaults to `main` and accepts 1-128 letters, digits, or `_ . : -`.
 - `takeover=true` explicitly takes over the current owner's voice connection; takeover is not automatic.
+- Optional `client_actions` is a JSON array (for example `["xomni.visual.capture"]`) declaring implemented client actions.
+  Up to 16 distinct names are allowed. Runtime negotiation intersects them with host-registered capabilities; clients cannot inject tools or prompts.
 - Send `pc.localDescription.sdp` after gathering ICE candidates. Trickle ICE, renegotiation, and ICE restart are not supported in this preview.
 
 ### Close a connection
@@ -187,6 +189,21 @@ Use the `event` field of `qwaudio.command` for supported GCP task, permission,
 and history commands. Existing capability, permission, and owner checks still
 apply; commands are not forwarded directly to the provider.
 
+Client actions retain GCP semantics: `client.action.request` arrives inside
+`qwaudio.event`; return `client.action.result` through `qwaudio.command`, keeping
+`request_event_id`. Send `client.event.publish` through the same command channel,
+without opening a second WebSocket session.
+
+Large inbound JSON, such as capture results, can use `qwaudio.transport.chunk`:
+`{type, id, index, total, data}`. Indices are consecutive from zero; `data` is a
+JSON text fragment. Each fragment holds at most 8,192 UTF-16 code units, each
+wire frame at most 64 KiB, and each reassembled message at most 512 KiB. Only one
+partial message per connection is allowed; it expires after five seconds.
+Nested chunks are rejected. Reassembled events undergo the same validation
+and authorization as ordinary messages. Small events need no fragmentation.
+Reuse `shared/gateway/webrtc-browser.mjs` and `webrtc-message.mjs` instead of
+sending images larger than the SCTP single-message limit.
+
 ### Playback receipts and interruption
 
 Generation completion, server RTP drain, and client playback completion are distinct:
@@ -257,5 +274,7 @@ questions. Disable WebRTC afterwards and repeat the original WSS flow.
 - `pcm.mjs`: PCM encoding, streaming resampling, and channel conversion.
 - `realtime-gateway.mjs`: shared authenticated connection attachment for WSS and RTC.
 - `shared/gateway/webrtc.mjs`: extension discovery and API/dependency checks without loading native addons.
+- `shared/gateway/webrtc-browser.mjs`: shared browser connection, track lifecycle and playback receipts for both examples; no scenario tools.
+- `shared/gateway/webrtc-message.mjs`: size/time-bounded inbound fragmentation without changing GCP semantics.
 - `packages/webrtc/`: independently published extension with a lazy native factory, excluded from default workspace installs and the main package.
 - `examples/webrtc/`: installation instructions, launch scripts, and plain browser UI.

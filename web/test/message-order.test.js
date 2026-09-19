@@ -422,3 +422,43 @@ test('does not reorder a later voice turn above earlier text history', () => {
 
   assert.deepEqual(turns.map(turn => turn.id), ['text_a', 'voice-200-1'])
 })
+
+test('keeps tool calls with their originating turn and orders them by arrival time', () => {
+  const messages = [
+    {
+      id: 'user',
+      role: 'user',
+      turnId: 'voice-100-1',
+      content: '查一下天气',
+      createdAt: 100,
+    },
+    {
+      id: 'reply',
+      role: 'assistant',
+      turnId: 'voice-100-1',
+      content: '我来查一下。',
+      createdAt: 300,
+    },
+  ]
+  const toolCalls = [{
+    callId: 'call-weather',
+    name: 'web_search',
+    surface: 'frontend',
+    status: 'completed',
+    turnId: 'voice-100-1',
+    createdAt: 200,
+  }]
+
+  const turns = buildConversationTurns(messages, [], toolCalls)
+  assert.equal(turns.length, 1)
+  assert.deepEqual(turns[0].beforeEvents.map(item => item.type), [
+    'message',
+    'tool-call',
+    'message',
+  ])
+  assert.deepEqual(
+    buildConversationTimeline(messages, [], toolCalls).map(item => item.type),
+    ['message', 'tool-call', 'message'],
+  )
+  assert.equal(turns[0].beforeEvents[1].value.callId, 'call-weather')
+})

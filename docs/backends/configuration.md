@@ -214,26 +214,6 @@ KIMI_WORKSPACE=
 KIMI_CODE_HOME=
 ```
 
-Other Agents that support ACP stdio can use the generic entry point:
-
-```dotenv
-AGENT_PROTOCOL=acp
-ACP_COMMAND=your-agent
-ACP_ARGS=["--acp"]
-ACP_LABEL=Your Agent
-ACP_WORKSPACE=
-```
-
-The generic entry point has the Gateway directly manage the ACP subprocess. `ACP_ARGS` is
-recommended to be written as a JSON string array so that arguments containing spaces can still
-be parsed accurately. It uses standard ACP Sessions and Gateway-provided Session MCP tools, and
-does not assume any Agent's private startup, permission, or UI capabilities.
-
-Action systems without ACP can implement `BackendPort` in a custom Node
-launcher; see the [Backend Adapter SDK](../reference/backend-adapter-sdk.md). SDK
-composition does not add an `AGENT_PROTOCOL` name or let configuration files
-dynamically load arbitrary code.
-
 ## Hermes
 
 Hermes Agent ([nousresearch/hermes-agent](https://github.com/nousresearch/hermes-agent))
@@ -339,6 +319,26 @@ CLAUDE_CONFIG_DIR=
 Setting `CLAUDE_CONFIG_DIR` switches to a separate configuration directory, requiring separate
 authentication in that directory. `CLAUDE_CODE_EXECUTABLE` is only used to override the Claude
 Code executable used by the adapter by default.
+
+## DeepSeek
+
+The integration uses local DeepSeek Harness ACP components. Install them, then configure credentials through DeepSeek:
+
+```bash
+qwenaudio install deepseek
+dsh web
+```
+
+Save an API key for `deepseek-official` in DeepSeek Web's “Settings → Models”, then select the backend in Gateway configuration:
+
+```dotenv
+AGENT_PROTOCOL=deepseek
+DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
+```
+
+You can also supply credentials through `DEEPSEEK_API_KEY`. The launcher defaults to `deepseek-v4-pro`, with `deepseek-v4-flash` as an alternative; it does not inherit the model from a Web session. This integration does not declare ACP Session model configuration, so do not substitute the generic model override for its dedicated startup setting.
+
+It supports ordinary work, permission requests, cancellation, and results. It does not expose Gateway Session tools, independent task delegation, or native Session history restoration. Capabilities depend on the Harness version; do not infer them from other ACP backends.
 
 ## Pi
 
@@ -469,3 +469,76 @@ attachments through this adapter; other attachment types are rejected clearly.
 
 Muse Code, MiniMax Code, Kimi Code, Hermes, CodeBuddy, Codex, Claude Code, and Pi all have their subprocesses
 directly managed by the Gateway, and do not accept `--backend-url`.
+
+## OpenCode / OpenClaw Runtime Selection
+
+OpenCode and OpenClaw use a consistent user environment priority order:
+
+1. The executable explicitly specified by `OPENCODE_BIN` / `OPENCLAW_BIN`.
+2. The source directory explicitly specified by `OPENCODE_SOURCE_DIR` / `OPENCLAW_SOURCE_DIR`.
+3. The `opencode` / `openclaw` already installed by the user in PATH.
+4. When no compatible installation is found, a fixed npm package with the current verified
+   version is automatically used via `npx`.
+
+Source directories are only used when explicitly configured by the user, without inferring
+adjacent project directories. To force a particular launch method, configure:
+
+```dotenv
+# auto (default), binary, source, installed, or package
+OPENCODE_RUNTIME=auto
+OPENCLAW_RUNTIME=auto
+```
+
+To temporarily verify other fixed package versions or internal mirrors, you can explicitly
+override the full package specifier:
+
+```dotenv
+OPENCODE_PACKAGE=opencode-ai@1.18.5
+OPENCLAW_PACKAGE=openclaw@2026.6.33
+```
+
+The OpenCode ACP integration currently requires OpenCode `1.18.0` or higher. In `auto` mode,
+when an older version is discovered, a fixed compatible package is used without modifying the
+user's installation; when `installed` is explicitly set, it directly errors.
+The minimum version can be overridden by `OPENCODE_MIN_VERSION` for validating other
+compatible versions.
+
+The OpenCode started by qwen-audio-agent inherits the user's original global configuration by
+default (usually `~/.config/opencode/opencode.json`), so already installed MCPs, Skills,
+permissions, models, and plugins can continue to be used. The coordination rules and
+available Session tools are provided through the Gateway's backend integration,
+without additionally installing or overwriting the OpenCode Agent.
+
+If the user's configuration or third-party plugins conflict with qwen-audio-agent, you can
+temporarily enable isolation mode for troubleshooting:
+
+```dotenv
+QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
+```
+
+You can also specify a different OpenCode user configuration directory via
+`QWEN_AUDIO_AGENT_OPENCODE_XDG_CONFIG_HOME`. After isolation, MCPs and plugins from the
+original global configuration are not automatically loaded.
+
+
+## Other ACP Agents
+
+Other Agents that support ACP stdio can use the generic entry point:
+
+```dotenv
+AGENT_PROTOCOL=acp
+ACP_COMMAND=your-agent
+ACP_ARGS=["--acp"]
+ACP_LABEL=Your Agent
+ACP_WORKSPACE=
+```
+
+The generic entry point has the Gateway directly manage the ACP subprocess. `ACP_ARGS` is
+recommended to be written as a JSON string array so that arguments containing spaces can still
+be parsed accurately. It uses standard ACP Sessions and Gateway-provided Session MCP tools, and
+does not assume any Agent's private startup, permission, or UI capabilities.
+
+Action systems without ACP can implement `BackendPort` in a custom Node
+launcher; see the [Backend Adapter SDK](../reference/backend-adapter-sdk.md). SDK
+composition does not add an `AGENT_PROTOCOL` name or let configuration files
+dynamically load arbitrary code.

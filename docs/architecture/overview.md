@@ -1,8 +1,8 @@
 # Architecture Overview
 
 qwen-audio-agent is a realtime voice runtime that keeps AI agents talking,
-working, and present. It is organized as three layers with exactly two
-protocol surfaces between them.
+working, and present. Clients and backends connect to the Gateway through
+separate boundaries.
 
 ![Three-layer architecture](../qwen-audio-agent-three-layer-architecture-en.png)
 
@@ -32,19 +32,19 @@ protocol surfaces between them.
    internal tools, skills, and sub-sessions are backend-private and never
    become new layers.
 
-## Two protocol surfaces, nothing else
+## Client and backend boundaries
 
 - **Client ↔ Gateway** — the [Gateway contract](../contract.md) and the
   [client protocol](../gateway-protocol.md): typed events over a single
-  WebSocket.
+  WebSocket by default. Optional [WebRTC transport](../gateway-webrtc-client.md)
+  reuses Gateway control and lifecycle behavior.
 - **Gateway ↔ Backend** — the `BackendPort`. Protocol details stay inside
   ACP, A2A, or custom adapters; launch and capability behavior lives in
   registered drivers. See [Supported backends](../backends/overview.md)
   and the [Backend Adapter SDK](../reference/backend-adapter-sdk.md).
 
-Adapting the runtime to a new scenario means swapping the client (the
-environment) and the backend (the tools for that environment). The Gateway
-changes only through declarative seams: persona files, announcement
+A new scenario can replace the client, the backend, or both. The Gateway
+provides separate extension points: persona files, announcement
 policy, frontend MCP tools and OpenAPI operations, and knowledge/memory
 providers. See the [scenario examples](../scenarios/smart-cockpit.md).
 
@@ -53,8 +53,8 @@ providers. See the [scenario examples](../scenarios/smart-cockpit.md).
 When a request needs real work, the frontend calls `spawn_thinking` and
 the conversation continues immediately — the work runs as an async task in
 the backend session, and its result flows back into the same conversation
-at a safe insertion point. Nothing in the voice path ever waits for the
-backend.
+at a safe insertion point. Backend execution does not block conversation;
+permissions and results are presented according to the current interaction state.
 
 ## Read next
 

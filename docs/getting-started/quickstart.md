@@ -1,86 +1,83 @@
 # Quickstart
 
-Choose how you want to use the assistant. Desktop does not require the CLI installation steps.
+Complete one conversation first, then add a backend, tools, or remote access. Desktop does not require a CLI installation.
 
-| I want to… | Start here |
+| How you want to use it | Next step |
 | --- | --- |
-| Open an app and talk | [Desktop](../desktop/overview.md#first-run): install, configure, and start talking. |
-| Use a terminal or browser | Follow the command-line steps below, then connect TUI or WebUI. |
-| Connect from a phone or another computer | [Remote connections](../operations/remote-access.md): the Gateway runs on a computer or server. |
-| Build a client or adapter | [Developer extension overview](../extensions.md). |
+| Desktop app | [Download and open Desktop](../desktop/overview.md#first-run), then configure it in Settings. |
+| Terminal or browser | Start a Gateway below, then connect TUI or WebUI. |
+| Phone or another computer | Start a Gateway on a computer or server, then [generate a connection code](../operations/remote-access.md). |
+| Custom client or adapter | Read the [extension overview](../extensions.md). |
 
-## Command-line Quickstart
+## Command-line quickstart
 
-If the CLI is not installed yet, start with [Installation](install.md#one-line-install).
+If not yet installed, see [Install & Update](install.md).
 
-### 1. Create Configuration
+### 1. Create configuration
 
 ```bash
 qwenaudio config
 ```
 
-The command will display the configuration file path and create a `config.env` template with comments.
+Open the reported `config.env` file. Its default location is `~/.config/qwaudio/config.env`.
 
-### 2. Fill in Configuration
+### 2. Add credentials
 
-The minimal configuration only requires a DashScope API Key:
-
-```dotenv
-DASHSCOPE_API_KEY=your-key
-```
-
-For backend work, select an Agent you have already installed and configured (Qwen Code below). The backend model is optional:
+Start in frontend-only mode to verify voice conversation:
 
 ```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=dashscope
 DASHSCOPE_API_KEY=your-key
-# Voice frontend model: flash for lower latency and cost savings, plus (default) for better quality
 QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
-# Backend agent: leave empty or set to none to start in frontend-only mode
-AGENT_PROTOCOL=qwen
-# Backend model: explicit values use standard ACP; empty reuses Agent config
-QWEN_AUDIO_AGENT_BACKEND_MODEL=
+AGENT_PROTOCOL=none
 ```
 
-Without an existing backend, see [OpenCode / OpenClaw managed setup](../configuration/backend.md#model-selection).
+[Get a DashScope API Key](install.md#obtain-a-dashscope-api-key). For another cloud or local service, replace these settings using the [voice frontend guide](../configuration/frontend.md).
 
-> The default uses the DashScope real-time voice frontend. Other choices include [GPT-Live](../voice-frontends/gpt-live.md), [Google Gemini Live](../voice-frontends/google-live.md), and [speech-to-speech](../voice-frontends/speech-to-speech.md); see [Frontend Configuration](../configuration/frontend.md).
-
-### 3. Start
-
-Start the Gateway in one terminal:
+### 3. Start the Gateway
 
 ```bash
 qwenaudio
 ```
 
-Open another terminal and start the TUI:
-
-```bash
-qwenaudio tui
-```
-
-You can also use the browser interface (default `http://127.0.0.1:3101`):
+Keep this terminal running. In another terminal, open the browser client:
 
 ```bash
 qwenaudio webui
 ```
 
-## Verify the Setup
+Or use the terminal client:
 
-Allow microphone access and say “Hello”. Confirm that a transcript appears and you hear a reply.
-With a configured backend, try “Check this computer’s memory capacity” and follow its work card
-and result. If there is no audio or a connection error, see [Troubleshooting](../operations/troubleshooting.md).
+```bash
+qwenaudio tui
+```
 
-A user can have only one active client on a Gateway. Another client can take over after
-confirmation, disconnecting the previous one. Press `Ctrl-C` to end a foreground terminal run.
+See the [TUI guide](tui.md) for audio dependencies and platform differences.
 
-## Frontend-Only Mode
+## Verify the first conversation
 
-When `AGENT_PROTOCOL` is not set (or set to `none`), the Gateway does not start a Backend Agent; chat and enabled frontend tools remain available.
-Requests that require backend execution will return a clear explanation and will not create tasks or guess execution results. You can also
-explicitly start in frontend-only mode with `qwenaudio --backend none`.
+1. Confirm that the client shows the Gateway and voice frontend as connected.
+2. Allow microphone access, enable input, and say “Hello.”
+3. Check that you see a transcript and hear a reply.
 
-For selecting, one-click installing, permission modes, and persistent service of backend agents, see
-[Backend Agents](../backends/overview.md). For more configuration options, see
-[Configuration](../configuration.md). For TUI platform differences, see
-[TUI Notes](tui.md); for the browser client, see [WebUI](webui.md).
+For missing audio or connection failures, see [Troubleshooting](../operations/troubleshooting.md). Each user has one active client per Gateway; taking over from a new client disconnects the previous one.
+
+## Add a Backend Agent
+
+A backend operates the computer, writes code, and performs other work. Install and configure a [supported backend](../backends/overview.md), such as Qwen Code, then change:
+
+```dotenv
+AGENT_PROTOCOL=qwen
+QWEN_AUDIO_AGENT_BACKEND_MODEL=
+```
+
+Leave the backend model empty to use the Agent's configuration. Stop and restart the Gateway, then ask “Check this computer's memory capacity” and inspect the work card and result.
+
+Without an existing backend, you can use [managed OpenCode / OpenClaw initialization](../configuration/backend.md#model-selection). An unset `AGENT_PROTOCOL` or `AGENT_PROTOCOL=none` does not start a backend; chat and enabled frontend tools still work. Use `qwenaudio --backend none` for a temporary override.
+
+## Next steps
+
+- [How It Fits Together](concepts.md): clients, Gateway, frontend, and backend.
+- [Conversation & Attachments](../guides/conversation.md): text, speech, images, and files.
+- [Work & Permissions](../guides/tasks.md): status, follow-ups, cancellation, and approval.
+- [Run the Gateway](../operations/gateway.md): exit, restart, and background services.

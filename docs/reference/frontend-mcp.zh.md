@@ -1,4 +1,4 @@
-# 前台 MCP Client
+# 前台 MCP 工具
 
 前台 MCP Client 是 Chatbot 工具的标准化扩展边界：它不绑定具体
 Realtime Provider，也不绑定后台 Agent。它与专用 Web Search Provider
@@ -10,7 +10,7 @@ Realtime Provider，也不绑定后台 Agent。它与专用 Web Search Provider
 Gateway 在启动时发现显式启用的工具，为其分配稳定名称，并通过共用的前台工具
 注册表和执行器把它们加入每个 Realtime Session。
 
-## 配置
+## 1. 配置远程工具
 
 用 `QWEN_AUDIO_FRONTEND_MCP_CONFIG` 指定一个带版本的 JSON 文件：
 
@@ -51,7 +51,9 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 }
 ```
 
-本地 MCP Server 可以使用标准输入输出：
+## 2. 或使用本地 stdio 工具
+
+先安装 MCP 服务需要的运行环境。下面示例通过 `npx` 启动文件服务，并只公开列目录工具。将 `/absolute/path/to/documents` 换成实际允许访问的目录：
 
 ```json
 {
@@ -62,11 +64,7 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
       "transport": {
         "type": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "${FILES_ROOT}"],
-        "env": {
-          "SERVICE_TOKEN": "${SERVICE_TOKEN}"
-        },
-        "cwd": "${MCP_WORKING_DIRECTORY}"
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/path/to/documents"]
       },
       "tools": {
         "list_directory": { "enabled": true }
@@ -84,7 +82,13 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 `mcp__<server>__<tool>`。未写入 `tools` 或未设置 `enabled: true`
 的工具不会暴露。
 
-## 当前策略
+## 3. 应用并验证
+
+将其中一份 JSON 保存为配置指定的文件，填写真实服务地址、工具名称和凭据，然后[重启 Gateway](../operations/gateway.zh.md#修改配置后生效)。先测试一个简单调用，再增加其他工具。连接失败时查看 `qwenaudio doctor` 和 Gateway 日志。
+
+仅配置文件存在还不够：服务必须可达，且 `tools` 中的名称必须与服务实际提供的名称一致。远程示例域名仅作占位。
+
+## 支持范围与安全
 
 - 支持 Streamable HTTP 和 stdio Transport；不支持旧版独立 SSE Transport。
 - 工具发现和连接有超时边界，默认 8 秒。

@@ -28,7 +28,7 @@ qwenaudio webui
 - **文本与附件**——输入文字、添加图片或文件；普通附件可交后台处理，不要求语音模型直接看图。
 - **任务视图**——跟随派发给后台 Agent 的后台任务，包括进度与最终结果。
 
-普通附件与实时视觉采集的区别见[对话与附件](../guides/conversation.zh.md)。
+支持视觉输入的前台还可使用摄像头，步骤见[视觉输入](../guides/vision.zh.md)。普通附件的处理方式见[对话与附件](../guides/conversation.zh.md)。
 顶部“资料库”入口用于[导入本机文档](../guides/knowledge.zh.md)，不是聊天附件上传。
 
 ## 与其他客户端的关系
@@ -38,5 +38,6 @@ TUI、WebUI、桌面悬浮球都使用同一套 Gateway Client Protocol。一个
 桌面版也可以运行自己的 Gateway 进程，并与 CLI 共享用户配置。桌面版的对话窗口
 复用同一套 WebUI 页面，因此各端的展示行为保持一致。
 
-> 把 WebUI 暴露到本机之外会跨越信任边界：请在前面加带认证的 HTTPS 反向
-> 代理，并遵循[远程访问安全](../configuration/advanced.zh.md#远程访问安全)。
+## 从远程浏览器访问
+
+使用[远程连接](../operations/remote-access.zh.md)生成的完整链接，可通过 Tailnet 或自有 HTTPS 入口访问。远程收音要求可信 HTTPS；不要直接公开本机端口，也不要仅为收音问题关闭浏览器安全设置。

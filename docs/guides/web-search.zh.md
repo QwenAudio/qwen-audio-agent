@@ -6,7 +6,7 @@
 ## 默认搜索与自定义服务
 
 语音前台的 `web_search` 工具返回可核验的来源链接，不会创建后台 Agent 工作，也不会
-额外调用文本大模型。用户未配置时，默认使用无需 Key、国内可访问的简易 360 搜索
+额外调用文本大模型。用户未配置时，默认使用无需 Key 的简易 360 搜索
 Adapter，只解析一次公开搜索结果页。该基础兜底属于实验性实现，可能被拦截、结果质量
 不稳定或受上游变化影响；稳定使用时应配置自己的 Provider。
 
@@ -27,7 +27,11 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-设置 `QWEN_AUDIO_WEB_SEARCH_PROVIDER=none` 可以关闭前台联网搜索。
+可选 `so360`（默认）、`bing`、`bailian`、`mcp` 或 `none`。设置 `none` 只关闭搜索，网页读取工具仍可用；同时关闭搜索和网页读取时设置：
+
+```dotenv
+QWEN_AUDIO_WEB_TOOLS_ENABLED=false
+```
 
 ## 结果与引用
 

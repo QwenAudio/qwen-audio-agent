@@ -1,91 +1,53 @@
 # Long-Term Memory
 
-The Gateway exposes memory through two logical documents: `user` for explicit long-term
-personalization and `memory` for durable facts and decisions. The default provider stores them
-as `USER.md` and `MEMORY.md`; an external provider may use a different physical model while
-preserving the same public semantics. For the four context layers and conflict ordering, see
-[Personalization and Memory](personalization.md).
+Long-term memory helps the assistant remember you across conversations. The default implementation uses Markdown files without a separate database.
 
-## Default Markdown provider
+## Remember, Inspect, and Delete
 
-`MEMORY.md` stores durable facts and decisions about the user—such as location, habits,
-interests, relationships, projects, goals, and plans—in ordinary Markdown. It informs
-understanding and answers but carries no behavioral authority. Content comes from two sources:
+Try:
 
-- **Explicitly requested**: When you say "remember, change, no longer" etc., the assistant
-  generates precise Markdown edits. Multiple durable items in one utterance are handled as
-  separate atomic operations in the same turn, followed by one final response.
-- **Automatic reconciliation**: After a session ends, a lightweight text model fills gaps by
-  routing explicit long-term interaction directives to `USER.md` and stable facts or decisions
-  to `MEMORY.md`. Automatic reconciliation uses DashScope's `qwen-flash` model by default (reusing
-  `DASHSCOPE_API_KEY`); it is automatically disabled when no API Key is available, and
-  explicitly requested memory is unaffected. Set `QWEN_AUDIO_MEMORY_AUTO=off` to disable
-  it globally; `QWEN_AUDIO_MEMORY_MODEL`, `QWEN_AUDIO_MEMORY_BASE_URL`, and
-  `QWEN_AUDIO_MEMORY_API_KEY` can point to any OpenAI-compatible endpoint (including
-  local Ollama).
+- “Remember that I now live in Hangzhou.”
+- “What have you remembered about me?”
+- “Change my home city to Suzhou.”
+- “Forget that address.”
 
-Realtime and automatic reconciliation submit constrained Markdown changes through the same
-memory service; neither writes the files directly. Reconciliation may recover a form of address
-or reply preference the user explicitly stated, but never infer one, and it can never modify
-`ASSISTANT.md`. Sensitive content is intercepted by dual filtering. `memory-audit.jsonl` records
-patch outcomes, revisions, and errors without copying the full memory text. If something is
-wrong, say "that one is wrong" or "forget it"; the assistant edits or removes the matching
-Markdown text.
+Preferences are stored in `<data-dir>/USER.md`; facts and decisions in `<data-dir>/MEMORY.md`. A new conversation does not clear these files. Conversation edits apply immediately; direct file edits apply in the next voice session.
 
-## View, Edit, and Remove
+Lists and reference documents have separate features: [Lists and Reminders](../guides/notes-reminders.md), [Knowledge Library](../guides/knowledge.md).
 
-Automatic reconciliation learns only from newly recorded conversation, not history restored
-after a restart. Repeated disconnects do not reuse the same batch. Successful client/API or
-memory-tool edits discard pending pre-edit evidence and invalidate stale learning results.
-Built-in learning commits and explicit edits are serialized per user: an already-issued write
-finishes first, while superseded queued evidence cannot commit after the edit succeeds.
-The visible chat history stays intact, and later new conversation can still be learned.
-Exact Markdown edits preserve unrelated entries, including identical text in other sections;
-only append-only requests retain the existing whole-document cleanup behavior.
+## Automatic Extraction
 
-Ask “What do you remember about me?” to inspect stored information, or “Change my address to…”
-and “Forget that entry” to update it. With the default implementation, you can also edit
-`USER.md` and `MEMORY.md` in the shared data directory. Direct file edits apply to the next
-voice session; tool edits apply immediately. A new conversation does not clear long-term memory.
+After a session ends, the default Markdown provider can use a text model to save missing long-term information: explicit interaction preferences in `USER.md` and stable facts or decisions in `MEMORY.md`. It cannot change `ASSISTANT.md`.
 
-## The `memory` tool
+The default is DashScope `qwen-flash` using `DASHSCOPE_API_KEY`. Without an available key, automatic extraction is disabled; explicit memory-tool requests remain available. Disable extraction or configure another OpenAI-compatible text service:
 
-See [Memory Provider](memory-provider.md#the-memory-tool) for operations and developer parameters.
+```dotenv
+QWEN_AUDIO_MEMORY_AUTO=off
+```
 
-## Client Control Plane
+| Setting | Purpose |
+| --- | --- |
+| `QWEN_AUDIO_MEMORY_MODEL` | Text model for extraction |
+| `QWEN_AUDIO_MEMORY_BASE_URL` | OpenAI-compatible service endpoint |
+| `QWEN_AUDIO_MEMORY_API_KEY` | Credentials for that service |
 
-See [Memory Provider](memory-provider.md#client-control-plane) for custom-client read/write interfaces.
+Extraction incurs additional model usage. It learns only from new conversation, not replayed history. After a successful memory edit through a tool or client, stale learning results cannot restore the old content. Extraction can still make mistakes; review and correct memories periodically.
 
-## Session Digests and Recall (off by default)
+## Recall Earlier Conversations
 
-With `QWEN_AUDIO_SESSION_DIGEST=on`, each finished session records its topics and
-a gist of at most 50 characters, retained for 90 days, so the `recall` tool can
-answer "that thing we discussed the other day".
+Disabled by default. Enable topic summaries after sessions; the default retention is 90 days:
 
-Digests are **not injected** into `instructions`: they change every session, and
-injecting them would change the prompt prefix every session and invalidate the
-prefix cache. They are an on-demand tool, not part of the context.
+```dotenv
+QWEN_AUDIO_SESSION_DIGEST=on
+```
 
-`recall` answers only "what we discussed" and "what work was dispatched". Personal facts and
-preferences are read through the `memory` tool; user-provided reference documents use the
-`knowledge` tool — see [Knowledge Retrieval Provider](./knowledge.md).
-Named lists use `notes`; they are neither long-term memories nor backend work state.
+Ask “What was the project we discussed a few days ago?” Summaries are retrieved on demand; they are not recordings or verbatim transcripts.
 
-A digest freezes the objective of dispatched work but **never its status**: status
-is live, and a stored copy silently becomes wrong within days. Status is always
-read from the task ledger at retrieval time. The ledger keeps terminal tasks for
-three days; for older work the answer states that it was dispatched without
-claiming a status.
+A summary may record earlier work, but does not freeze its status. Available status comes from the current task ledger. Once a record expires, recall can describe what was discussed or requested, not verify current progress.
 
-Work still in the ledger includes a `task_id` that `get_agent_task_status` can use to retrieve
-current details, including work from earlier sessions. Pruned or inaccessible records omit the ID;
-the assistant must not invent a query target from the summary.
+## VoiceMem and Custom Providers
 
-## Optional VoiceMem Connector
-
-The package ships only a Node.js `MemoryProvider` connector. VoiceMem itself, its Python
-dependencies, and the small integration sidecar stay outside the core npm package. After
-installing them through the setup example, select the connector in `config.env`:
+Optional [VoiceMem](../scenarios/voicemem.md) takes over memory, retrieval, and session learning. Install it separately; the core npm package does not include it:
 
 ```dotenv
 QWEN_AUDIO_MEMORY_PROVIDER=voicemem
@@ -94,26 +56,12 @@ VOICEMEM_SIDECAR=/absolute/path/to/voicemem-sidecar.py
 VOICEMEM_INPUT_MODE=text
 ```
 
-`text` reuses Realtime transcripts. `audio` sends per-turn audio to VoiceMem's own ASR and
-acoustic perception. Because VoiceMem advertises `sessionObservation`, it exclusively owns the
-`user` and `memory` layers, semantic recall, and session-end learning; Markdown reconciliation
-does not run in parallel. State defaults to `memory/voicemem/` under the user data directory.
-Switching back to `markdown` neither deletes VoiceMem state nor migrates data between providers.
-See the [VoiceMem setup example](../scenarios/voicemem.md) for external installation, the sidecar,
-and recommended Model Studio configuration.
+`text` reuses transcription; `audio` sends turn-scoped user audio to VoiceMem. Switching providers does not migrate or delete the other provider's data. Back up first.
 
-Embedded hosts may also import `VoiceMemProvider` from
-`qwen-audio-agent/voicemem-provider` and inject it into `createGatewayApplication` explicitly.
+See [Memory Provider](memory-provider.md) for developer interfaces.
 
-## Replacing the Memory Provider
+## Privacy and Diagnostics
 
-See [Memory Provider](memory-provider.md) for interfaces, lifecycle, and optional audio observation.
-Switching Providers does not automatically migrate another store; back up according to that system's requirements.
+Relevant memories become voice-model context. Automatic extraction also sends conversation to the configured text service. Do not store passwords, API keys, verification codes, or tokens.
 
-## Logs
-
-Logs use JSON Lines format. API Keys, Tokens, Authorization headers, Cookies, passwords,
-and Secret fields are redacted before writing. By default, microphone audio, user
-transcription text, model reply text, and task results are not logged. In the desktop
-edition, you can open the log directory via "Settings → App → Logs." See
-[configuration guide](../configuration/advanced.md#local-logs) for details.
+`<state-dir>/memory-audit.jsonl` contains learning diagnostics. Review logs before sharing. See [Local Logs](../configuration/advanced.md#local-logs) for standard log locations and rotation.

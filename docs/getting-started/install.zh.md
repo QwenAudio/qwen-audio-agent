@@ -43,9 +43,21 @@ npm install -g git+https://github.com/QwenAudio/qwen-audio-agent.git
 ```bash
 git clone https://github.com/QwenAudio/qwen-audio-agent.git
 cd qwen-audio-agent
-npm install
-npm run install:global
+npm ci
+npm run build
 ```
+
+在仓库根目录直接启动，无需全局安装：
+
+```bash
+npm run cli -- config
+npm run gateway
+# 另一个终端
+npm run cli -- webui
+```
+
+如需在任意目录使用 `qwenaudio`，再执行 `npm run install:global`。
+启动桌面开发版用 `npm run desktop`；它不是系统中已安装的正式版应用。
 
 ## 升级
 
@@ -78,15 +90,7 @@ CLI 与桌面版默认共享 `~/.config/qwaudio/config.env`，运行时状态分
 
 ## 获取 DashScope API Key
 
-阿里云百炼为符合条件的新用户自动发放
-[新人免费额度](https://help.aliyun.com/zh/model-studio/new-free-quota)，通常不需要另行领取。
-可以在官方的[免费额度说明](https://help.aliyun.com/zh/model-studio/new-free-quota)中查看
-领取、地域、有效期和用完即停规则，也可以打开[模型用量页面](https://help.aliyun.com/zh/model-studio/model-usage-statistics)
-查看剩余额度。免费额度和计费规则可能随地域、模型及账号状态变化，请以百炼官方页面为准。
+1. 打开百炼控制台的 [API Key 页面](https://bailian.console.aliyun.com/?tab=model#/api-key)，登录并创建 Key。
+2. 将 Key 填入桌面设置，或写入 `config.env` 的 `DASHSCOPE_API_KEY`。
 
-1. 打开百炼控制台的 [API Key 页面](https://bailian.console.aliyun.com/?tab=model#/api-key)，
-   登录账号，单击**创建 API Key**。
-2. 复制生成的 Key，稍后填入 `config.env`。请勿公开或提交 API Key。
-
-详细说明见[获取与配置 API Key](https://help.aliyun.com/zh/model-studio/get-api-key)；
-如果账号已完成实名认证，免费额度用完后可能继续按量付费，建议按需开启免费额度用完即停。
+免费额度及适用条件以[百炼官方说明](https://help.aliyun.com/zh/model-studio/new-free-quota)为准。开始前确认账户可用额度与计费设置，不要公开 Key 或提交配置文件。

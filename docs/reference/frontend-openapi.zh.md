@@ -32,10 +32,6 @@ WEATHER_AUTHORIZATION=Bearer replace-me
         "getWeather": {
           "enabled": true,
           "description": "读取指定城市的当前天气。"
-        },
-        "createAlert": {
-          "enabled": true,
-          "description": "创建天气提醒。"
         }
       }
     }
@@ -45,6 +41,32 @@ WEATHER_AUTHORIZATION=Bearer replace-me
 
 模型可见名称稳定为 `openapi__<api>__<operationId>`。设置 `baseUrl` 时，
 它会覆盖文档中的第一个 `servers` 地址。
+
+## 准备 API 描述并验证
+
+上面的域名是占位地址，需替换成你的服务。将其实际 OpenAPI 描述保存为 `weather.openapi.yaml`，并确保工具名对应真实的 `operationId`。最小描述示例：
+
+```yaml
+openapi: 3.0.3
+info:
+  title: Weather API
+  version: 1.0.0
+paths:
+  /weather:
+    get:
+      operationId: getWeather
+      parameters:
+        - name: city
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current weather
+```
+
+两份文件放在同一目录，填写凭据并[重启 Gateway](../operations/gateway.zh.md#修改配置后生效)。先测试查询，再开放写入操作。这里只公开 `getWeather`，不会自动开放文档里的其他 API。
 
 ## 支持边界
 

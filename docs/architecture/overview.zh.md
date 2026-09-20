@@ -1,7 +1,7 @@
 # 架构总览
 
 qwen-audio-agent 是一个实时语音运行时，让 AI Agent 持续交流、持续工作、持续在场。
-整体分为三层，层与层之间只有两个协议面。
+整体分为三层，客户端与后台分别通过独立边界接入网关。
 
 ![三层架构](../qwen-audio-agent-three-layer-architecture.png)
 
@@ -24,23 +24,23 @@ qwen-audio-agent 是一个实时语音运行时，让 AI Agent 持续交流、�
    Adapter SDK 编写的自定义适配器。ACP 接入通过固定协调 Session 保持工作的
    连续性；后台内部的工具、技能、子会话都是后台私有实现，不会变成新的层。
 
-## 只有两个协议面
+## 客户端与后台边界
 
 - **客户端 ↔ 网关**——[稳定性契约](../contract.zh.md)与
-  [客户端协议](../gateway-protocol.zh.md)：单条 WebSocket 上的类型化事件。
+  [客户端协议](../gateway-protocol.zh.md)：默认使用单条 WebSocket 上的类型化事件；可选 [WebRTC 传输](../gateway-webrtc-client.zh.md)复用网关控制与生命周期。
 - **网关 ↔ 后台**——`BackendPort`。协议细节留在 ACP、A2A 或自定义适配器
   内部；启动与能力行为由注册的 driver 承载。见[支持的后台](../backends/overview.zh.md)
   与 [Backend Adapter SDK](../reference/backend-adapter-sdk.zh.md)。
 
-把运行时适配到新场景 = 换客户端（环境）+ 换后台（操作环境的工具）。
-网关只通过声明式接缝变化：人设文件、播报策略、前台 MCP 工具与 OpenAPI
+接入新场景时，可以替换客户端、后台，或两者。
+网关提供独立的扩展入口：人设文件、播报策略、前台 MCP 工具与 OpenAPI
 操作、知识/记忆 Provider。见[场景示例](../scenarios/smart-cockpit.zh.md)。
 
 ## 非阻塞循环
 
 当请求需要真正干活时，前台调用 `spawn_thinking`，对话立即继续——
 任务在后台会话里异步执行，结果在安全的插入窗口自然回流到同一场对话。
-语音链路上的任何环节都不会等待后台。
+后台执行不阻塞继续对话；权限与结果通过网关进入前台，按当前交互状态安排呈现。
 
 ## 继续阅读
 

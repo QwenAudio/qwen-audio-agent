@@ -19,6 +19,7 @@ function sidebar(prefix = '') {
       items: [
         page('选择使用方式', 'Choose Your Setup', 'getting-started/quickstart'),
         page('安装与升级', 'Install & Update', 'getting-started/install'),
+        page('基本概念', 'How It Fits Together', 'getting-started/concepts'),
       ],
     },
     {
@@ -35,14 +36,14 @@ function sidebar(prefix = '') {
       text: t('功能指南', 'Features'), collapsed: true,
       items: [
         page('对话与附件', 'Conversation & Attachments', 'guides/conversation'),
+        page('视觉输入', 'Visual Input', 'guides/vision'),
         page('后台工作与授权', 'Work & Permissions', 'guides/tasks'),
         page('联网搜索', 'Web Search', 'guides/web-search'),
         page('资料库', 'Knowledge Library', 'guides/knowledge'),
         page('助手画像与偏好', 'Personalization', 'reference/personalization'),
         page('长期记忆', 'Memory', 'reference/memory'),
+        page('清单与提醒', 'Lists & Reminders', 'guides/notes-reminders'),
         page('后台 Skills', 'Backend Skills', 'guides/skills'),
-        page('MCP 工具配置', 'MCP Tools', 'reference/frontend-mcp'),
-        page('OpenAPI 工具配置', 'OpenAPI Tools', 'reference/frontend-openapi'),
       ],
     },
     {
@@ -56,6 +57,8 @@ function sidebar(prefix = '') {
             page('Qwen Audio Realtime', 'Qwen Audio Realtime', 'voice-frontends/qwen-audio-realtime'),
             page('Qwen Omni Realtime', 'Qwen Omni Realtime', 'voice-frontends/qwen-omni-realtime'),
             page('StepAudio 3 Realtime', 'StepAudio 3 Realtime', 'voice-frontends/stepfun'),
+            page('GPT-Live', 'GPT-Live', 'voice-frontends/gpt-live'),
+            page('Google Live', 'Google Live', 'voice-frontends/google-live'),
             page('Speech-to-Speech', 'Speech-to-Speech', 'voice-frontends/speech-to-speech'),
             page('MiniCPM-o', 'MiniCPM-o', 'voice-frontends/minicpm-o'),
           ],
@@ -70,7 +73,16 @@ function sidebar(prefix = '') {
         },
         page('Gateway 运行与常驻', 'Run the Gateway', 'operations/gateway'),
         page('远程连接与配对', 'Remote Connections', 'operations/remote-access'),
-        page('高级设置与日志', 'Advanced Settings & Logs', 'configuration/advanced'),
+        page('日志与诊断', 'Logs & Diagnostics', 'configuration/advanced'),
+        page('CLI 命令速查', 'CLI Reference', 'reference/cli'),
+      ],
+    },
+    {
+      text: t('扩展前台工具', 'Frontend Tools'), collapsed: true,
+      items: [
+        page('MCP 工具', 'MCP Tools', 'reference/frontend-mcp'),
+        page('OpenAPI 工具', 'OpenAPI Tools', 'reference/frontend-openapi'),
+        page('前台 Profile', 'Frontend Profile', 'reference/frontend-profile'),
       ],
     },
     {
@@ -92,7 +104,7 @@ function sidebar(prefix = '') {
         page('Realtime Provider', 'Realtime Provider', 'voice-frontends/custom-provider'),
         page('Memory Provider', 'Memory Provider', 'reference/memory-provider'),
         page('Knowledge Provider', 'Knowledge Provider', 'reference/knowledge'),
-        page('前台 Profile', 'Frontend Profile', 'reference/frontend-profile'),
+        page('WebRTC 传输', 'WebRTC Transport', 'gateway-webrtc-client'),
         page('偏好学习机制', 'Preference Learning', 'reference/preference-learning'),
         page('运行时评估', 'Runtime Evaluations', 'reference/frontend-evaluations'),
       ],
@@ -100,14 +112,13 @@ function sidebar(prefix = '') {
     {
       text: t('示例与参考', 'Examples & Resources'), collapsed: true,
       items: [
+        page('选择示例', 'Example Index', 'scenarios/index'),
         page('智能座舱', 'Smart Cockpit', 'scenarios/smart-cockpit'),
         page('AI Passport 语音客户端', 'AI Passport Voice Client', 'scenarios/ai-passport'),
         page('VoiceMem', 'VoiceMem', 'scenarios/voicemem'),
         page('LightRAG', 'LightRAG', 'scenarios/lightrag'),
         page('X-Omni 视觉对话', 'X-Omni Visual Conversation', 'scenarios/x-omni'),
         page('演示文稿', 'Presentations', 'resources/presentations'),
-        page('规划记录', 'Planning Records', 'resources/planning'),
-        page('参考论文', 'Papers', 'resources/papers'),
       ],
     },
   ]
@@ -134,12 +145,13 @@ function nav(prefix = '') {
 
 export default defineConfig({
   title: 'Qwen Audio Agent',
-  description: 'A realtime voice assistant connected to your own action-taking Agent.',
+  description: 'Realtime conversation and asynchronous Agent execution. Setup, features, configuration, and integration guides.',
   base: process.env.DOCS_BASE || '/qwen-audio-agent/',
   cleanUrls: true,
   srcDir: '.vitepress/.site',
   themeConfig: {
     socialLinks: [{ icon: 'github', link: repoUrl }],
+    outline: { level: [2, 3] },
     search: {
       provider: 'local',
       options: {
@@ -170,7 +182,7 @@ export default defineConfig({
     },
     zh: {
       label: '简体中文', lang: 'zh-CN', link: '/zh/',
-      description: '一个可连接你自己的办事 Agent 的实时语音助手。',
+      description: '融合实时对话与 Agent 执行能力的开放框架。安装、使用、配置与扩展指南。',
       themeConfig: {
         nav: nav('/zh'), sidebar: sidebar('/zh'),
         editLink: { pattern: editPattern, text: '在 GitHub 上编辑此页' },

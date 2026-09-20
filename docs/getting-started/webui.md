@@ -30,7 +30,7 @@ Options:
 - **Task view** — follow background tasks dispatched to the backend agent,
   including progress and final results.
 
-See [Conversation & Attachments](../guides/conversation.md) for the difference between ordinary files and realtime visual capture.
+With a vision-capable frontend, follow [Visual Input](../guides/vision.md) to use the camera. See [Conversation & Attachments](../guides/conversation.md) for ordinary file handling.
 The top “Knowledge Library” button [imports host documents](../guides/knowledge.md), not chat attachments.
 
 ## Relationship to other clients
@@ -41,6 +41,6 @@ Gateway process while sharing user configuration with the CLI. The same WebUI
 page powers the desktop conversation window, so presentation behavior stays
 consistent across surfaces.
 
-> Exposing the WebUI beyond your own machine crosses a trust boundary: put an
-> HTTPS reverse proxy with authentication in front and follow
-> [Remote Access Security](../configuration/advanced.md#remote-access-security).
+## Remote Browser Access
+
+Open the full link from [Remote Connections](../operations/remote-access.md) through Tailnet or your HTTPS endpoint. Remote microphone access requires trusted HTTPS. Do not expose the local port directly or disable browser security to work around microphone failures.

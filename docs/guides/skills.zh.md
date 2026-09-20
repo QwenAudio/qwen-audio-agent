@@ -1,61 +1,48 @@
 # 后台 Skills
 
+Skills 是包含 `SKILL.md` 的标准技能目录，由后台 Agent 读取和执行。它们不会安装给语音前台，也不会给前台增加 Shell 或文件执行环境。
 
-后台 Agent 负责执行实际任务，因此标准 Agent Skills（开放格式的
-`SKILL.md` 目录）是为后台安装的。`qwenaudio skill` 是社区标准
-[skills.sh](https://skills.sh) 安装器（`npx skills`）的品牌入口：每条命令都是
-1:1 透传，只有一点不同——安装目标是本机实际存在的后台（CLI 探测）加上
-当前配置的后台，而不是依赖 skills.sh 自己的 Agent 探测。
+## 安装与管理
+
+`qwenaudio skill` 调用社区 [skills.sh](https://skills.sh) 安装器，自动选择已探测到及当前配置的受支持后台作为安装目标。
+
+先查看来源包含哪些技能，再安装需要的项：
 
 ```bash
-qwenaudio skill install <来源> --skill <名称>   # 安装到各后台
-qwenaudio skill install <来源> --list           # 列出来源中的技能
-qwenaudio skill list                            # 列出已安装技能
-qwenaudio skill remove <名称>                   # 移除技能
-qwenaudio skill update                          # 更新已安装技能
+qwenaudio skill install vercel-labs/agent-skills --list
+qwenaudio skill install vercel-labs/agent-skills --skill web-design-guidelines
 ```
 
-支持的来源形式与 skills.sh 一致：
+也可以使用 Git 仓库 URL 或本地目录：
 
-| 来源形式 | 示例 |
-| --- | --- |
-| GitHub 简写 | `qwenaudio skill install vercel-labs/agent-skills --skill web-design-guidelines` |
-| 仓库 URL（GitHub/GitLab/任意 git） | `qwenaudio skill install https://github.com/alirezarezvani/claude-skills --skill skill-security-auditor` |
-| Tree URL（技能子目录） | `qwenaudio skill install https://github.com/o/r/tree/main/skills/x --skill x` |
-| Hub 技能页 URL | `qwenaudio skill install https://clawhub.ai/thcjp/skills/excel-formula-tool-free --skill excel-formula-tool-free` |
-| 本地目录 | `qwenaudio skill install ./my-skill --skill my-skill` |
+```bash
+qwenaudio skill install ./my-skill --skill my-skill
+```
 
-多技能仓库必须带 `--skill`（重复可装多个）；先用 `--list` 查看来源提供的技能。
-刻意不支持一次安装整个大型目录——每个技能描述都会注入后台系统提示词。
+`--skill` 可重复指定。只安装你需要且信任的技能，不会默认安装整个技能仓库。
 
-技能落到已声明 skills.sh 安装器的后台 CLI 自己的用户级目录（`~/.claude/skills/`、
-`~/.qwen/skills/`、`~/.openclaw/skills/`、`~/.agents/skills/` 等），因此直接使用这些
-CLI 时也生效，桌面版与 CLI 共享同一套技能。MiniMax Code 的 Skill/Plugin 存储由
-其自身管理，当前不会由 `qwenaudio skill` 写入其私有目录。
+```bash
+qwenaudio skill list
+qwenaudio skill remove <名称>
+qwenaudio skill update
+```
 
-切换到——或新安装——缺少已安装技能的后台时，Gateway 会在启动时同步补齐：
-先对 skills.sh 锁文件（`~/.agents/.skill-lock.json`）做毫秒级本地检查，仅在确实
-缺失时才在后台进程启动前跑一次 skills.sh（数秒），保证后台首次扫描即看到完整
-技能集。失败（例如离线）只记日志，绝不阻塞语音网关。
+## 安装到哪里
 
-钉住的 skills.sh 版本可用 `QWEN_AUDIO_AGENT_SKILLS_CLI_PACKAGE` 覆盖（例如
-`skills@latest`）。如果新后台尚未被 skills.sh 支持，可以向它的 `src/agents.ts`
-提交 Agent 定义——那是官方扩展点。
+技能写入后台支持的用户级目录，例如 `~/.qwen/skills/`、`~/.claude/skills/` 或 `~/.agents/skills/`。直接启动这些 Agent 时也能使用；桌面版和 CLI 无需各装一份。
 
-### 技能何时生效
+只有声明支持该安装器的后台会被选为目标。MiniMax Code 的 Skill / Plugin 存储由它自己管理，当前不会写入其私有目录。
 
-文件立即同步，但各后台按自己的节奏发现新技能：
+切换后台后，Gateway 会在启动时根据安装器锁文件检查并尝试同步缺失技能。同步失败会记录日志，不会将安装成功当作既成事实。离线时可稍后重新安装或启动。
 
-| 后台 | 发现机制 | 新技能可见时机 |
-| --- | --- | --- |
-| Claude Code、Qwen Code、Hermes、DeepSeek | 热加载（watcher 或按需读取） | 立即，无需操作 |
-| Qoder | 会话开始时；原生会话内可 `/skills reload` | 下一个后台会话 |
-| OpenCode、OpenClaw、Kimi Code、CodeBuddy、Codex | 进程或会话启动时快照 | 后台进程重启后 |
+## 让技能生效
 
-如果新装的技能没被发现，按[实际运行方式重启 Gateway](../operations/gateway.zh.md#修改配置后生效)，让后台重新加载技能。
+各后台的重新加载机制不同。安装后未发现新技能时，[重启实际使用的 Gateway](../operations/gateway.zh.md#修改配置后生效)，让它重新启动后台。再明确要求使用该技能，并检查工作结果；技能可用不表示每次都会被模型选中。
 
-### 共享后台 workspace
+前台按请求调用后台执行，不会读取后台的全部技能内容作为自己的提示词。技能需要的工具、凭据和依赖仍需在后台环境准备好。
 
-所有后台现在共享同一个默认工作目录 `<data-dir>/workspace`，切换后台时
-无缝衔接同一批文件。按后台覆盖（例如 `OPENCODE_WORKSPACE`）在显式设置时仍然
-可以隔离特定后台。
+## 高级配置
+
+可用 `QWEN_AUDIO_AGENT_SKILLS_CLI_PACKAGE` 覆盖安装器包版本。通常保留默认值即可。
+
+技能安装目录与工作目录不同。后台默认在共享的 `<data-dir>/workspace` 处理文件；覆盖方式见[后台通用设置](../configuration/backend.zh.md)。

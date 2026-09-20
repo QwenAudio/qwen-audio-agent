@@ -47,7 +47,7 @@ qwenaudio setup
 
 - 后台执行失败：用 `qwenaudio setup --backend <名称>` 检查安装；再用后台自己的入口检查登录和模型配置。
 - 没指定后台模型：Gateway 不负责猜测默认模型，使用 Agent 自身配置。
-- 显式模型覆盖失败：后台必须提供 ACP 标准模型配置且接受目标值，否则应按错误提示处理；不要假设静默回退。
+- 显式模型覆盖失败：ACP 后台必须提供标准模型配置且接受目标值，否则按错误提示处理，不会静默回退。DeepSeek / Muse 等接入的专属设置见[后台配置](../configuration/backend.zh.md#模型选择)。
 - MCP 命令找不到：检查 `command` 与 PATH。新装命令后重新启动 Gateway；后台服务执行 `gateway restart` 刷新路径缓存。
 - MCP 变量缺失：放入该 Gateway 使用的 `config.env`，不要依赖另一个终端的临时 `export`。
 - 资料库打不开或导入失败：确认已开启，路径属于 Gateway 主机；复杂文档还要求可用的隔离转换能力。

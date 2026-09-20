@@ -1,98 +1,85 @@
-# Frontend Configuration
+# Voice Frontends
 
-The voice frontend is the realtime speech model the Gateway connects to. All
-settings on this page live in the user configuration file
-(`~/.config/qwaudio/config.env`, see [Configuration](../configuration.md));
-[apply changes for your run mode](../operations/gateway.md#applying-configuration-changes): restart foreground runs, use `gateway restart` for an installed service, or click Apply in Desktop.
+The voice frontend handles realtime conversation; the backend Agent executes work. You can choose them independently.
 
-## Credentials and endpoint
+Put these settings in the `config.env` shown by `qwenaudio config`, or select a service and enter credentials in Desktop's voice frontend settings.
 
-The default provider is DashScope (`QWEN_AUDIO_REALTIME_PROVIDER=dashscope`):
+## Choose a Service
+
+| Service | Provider value | Required configuration or preparation | Guide |
+| --- | --- | --- | --- |
+| Qwen Audio / Omni | `dashscope` (default) | `DASHSCOPE_API_KEY` | [Audio](../voice-frontends/qwen-audio-realtime.md) / [Omni vision](../voice-frontends/qwen-omni-realtime.md) |
+| StepAudio 3 | `stepfun` | `STEPFUN_API_KEY` | [StepFun](../voice-frontends/stepfun.md) |
+| OpenAI Realtime | `gpt-live` | `OPENAI_API_KEY` | [GPT-Live](../voice-frontends/gpt-live.md) |
+| Gemini Live | `google-live` | `GOOGLE_API_KEY` | [Google Live](../voice-frontends/google-live.md) |
+| Hugging Face speech-to-speech | `speech-to-speech` | Start the service; default: `ws://127.0.0.1:8765/v1/realtime` | [Local model pipeline](../voice-frontends/speech-to-speech.md) |
+| MiniCPM-o 4.5 | `minicpm-o` | Start the service; default: `ws://127.0.0.1:8006/v1/realtime?mode=audio` | [Audio/video modes and limits](../voice-frontends/minicpm-o.md) |
+
+For the default frontend:
 
 ```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=dashscope
 DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 ```
 
-| Provider | Credential | Endpoint | Model / voice |
+To switch to StepFun, select it and supply its own credentials:
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=stepfun
+STEPFUN_API_KEY=your-stepfun-key
+```
+
+You can keep all provider settings in the same file. Switch using `QWEN_AUDIO_REALTIME_PROVIDER`; the Gateway does not reuse another provider's key, model, or voice.
+
+## Model, Voice, and Endpoint
+
+| Provider | Model | Voice | Endpoint |
 | --- | --- | --- | --- |
-| DashScope (default, alias `qwen`) | `DASHSCOPE_API_KEY` | `QWEN_AUDIO_REALTIME_BASE_URL` (alias `QWEN_AUDIO_REALTIME_URL`) | `QWEN_AUDIO_REALTIME_MODEL`; Audio: `QWEN_AUDIO_REALTIME_VOICE`; Omni: `QWEN_OMNI_REALTIME_VOICE` |
-| StepFun | `STEPFUN_API_KEY` | `STEPFUN_REALTIME_URL` | `STEPFUN_REALTIME_MODEL`, `STEPFUN_REALTIME_VOICE` |
-| GPT-Live | `OPENAI_API_KEY` (alias `GPT_LIVE_API_KEY`) | `GPT_LIVE_REALTIME_URL` (alias `OPENAI_REALTIME_URL`) | `GPT_LIVE_REALTIME_MODEL`, `GPT_LIVE_REALTIME_VOICE` (aliases `OPENAI_REALTIME_*`) |
-| Google Live | `GOOGLE_API_KEY` (aliases `GEMINI_API_KEY`, `GOOGLE_LIVE_API_KEY`) | `GOOGLE_LIVE_REALTIME_URL` (alias `GEMINI_LIVE_REALTIME_URL`) | `GOOGLE_LIVE_REALTIME_MODEL`, `GOOGLE_LIVE_REALTIME_VOICE` (aliases `GEMINI_LIVE_REALTIME_*`) |
-| speech-to-speech (alias `s2s`) | `SPEECH_TO_SPEECH_AUTH_TOKEN` (alias `S2S_API_KEY`) | `SPEECH_TO_SPEECH_REALTIME_URL` (alias `S2S_REALTIME_URL`) | Managed by the service |
-| minicpm-o (alias `minicpmo`) | `MINICPM_O_AUTH_TOKEN` | `MINICPM_O_REALTIME_URL` | Managed by the service |
+| DashScope | `QWEN_AUDIO_REALTIME_MODEL` | Audio: `QWEN_AUDIO_REALTIME_VOICE`; Omni: `QWEN_OMNI_REALTIME_VOICE` | `QWEN_AUDIO_REALTIME_BASE_URL` |
+| StepFun | `STEPFUN_REALTIME_MODEL` | `STEPFUN_REALTIME_VOICE` | `STEPFUN_REALTIME_URL` |
+| GPT-Live | `GPT_LIVE_REALTIME_MODEL` | `GPT_LIVE_REALTIME_VOICE` | `GPT_LIVE_REALTIME_URL` |
+| Google Live | `GOOGLE_LIVE_REALTIME_MODEL` | `GOOGLE_LIVE_REALTIME_VOICE` | `GOOGLE_LIVE_REALTIME_URL` |
+| speech-to-speech | Configure upstream | Configure upstream | `SPEECH_TO_SPEECH_REALTIME_URL` |
+| MiniCPM-o | Configure upstream | Configure upstream | `MINICPM_O_REALTIME_URL` |
 
-Only `QWEN_AUDIO_REALTIME_PROVIDER` is shared. Configure each provider once, then change
-only the selector to switch. Credentials, endpoints, models and voices never cross providers.
-An explicitly empty credential clears it. Empty models/endpoints use provider defaults;
-empty voices use service/model defaults. Primary names take precedence over aliases.
+Empty endpoint and model fields use provider defaults. For self-hosted services behind Bearer authentication, set `SPEECH_TO_SPEECH_AUTH_TOKEN` or `MINICPM_O_AUTH_TOKEN`. Aliases and protocol details are listed in each service guide.
 
-There is no global runtime override. `QWEN_AUDIO_REALTIME_MODEL` and
-`QWEN_AUDIO_REALTIME_VOICE` belong to DashScope only. The removed
-`QWEN_AUDIO_REALTIME_API_KEY` and `QWEN_AUDIO_REALTIME_ENDPOINT` are ignored in process environments.
+Current built-in DashScope model profiles:
 
-CLI source priority remains process environment, project `.env.local`, project `.env`,
-then user `config.env`. Desktop saves provider-owned fields together in `config.env`;
-`realtime-profiles.json` remains a private draft fallback. Explicit file fields win over drafts,
-including cleared credentials and inactive providers edited with the CLI.
+| Model ID | Realtime input |
+| --- | --- |
+| `qwen-audio-3.0-realtime-plus` (default) | Text, audio |
+| `qwen-audio-3.0-realtime-flash` | Text, audio |
+| `qwen3.5-omni-flash-realtime` | Text, audio, live visual frames |
+| `qwen3.5-omni-plus-realtime` | Text, audio, live visual frames |
 
-Transitional saved files containing removed unified fields are imported using the provider
-recorded in that file, before merging other sources. The next Desktop realtime settings save
-writes provider fields and removes the retired names. Different legacy/native credentials
-for the same provider cause a migration error rather than silently replacing a key; keep the
-intended native credential and remove the retired field. Reading configuration never rewrites files.
+All four profiles support tool calls. Live vision also requires client and transport support; see [Visual Input](../guides/vision.md).
 
+## Apply and Verify
 
-Other frontends include [StepAudio 3 Realtime](../voice-frontends/stepfun.md)
-(with its own StepFun API key), [GPT-Live / OpenAI Realtime](../voice-frontends/gpt-live.md),
-[Google Gemini Live](../voice-frontends/google-live.md),
-[Speech-to-Speech](../voice-frontends/speech-to-speech.md), and
-[ModelBest](../voice-frontends/minicpm-o.md), whose MiniCPM-o 4.5 endpoint may be local or hosted.
-A custom provider implements
-the provider contract; see [Custom Provider](../voice-frontends/custom-provider.md).
+1. Click Apply in Desktop. For a terminal Gateway, stop and restart it. For an installed background service, run `qwenaudio gateway restart`.
+2. Connect a client and check that the voice frontend is connected.
+3. Speak and confirm that audio plays. If you need tools, also test search or a simple backend request.
 
-MiniCPM-o's public audio Realtime transport currently supports continuous
-audio input and text/audio output, but not conversation items, structured
-Function Calling, or input transcription. It is therefore a realtime voice-chat
-frontend rather than a frontend for backend-Agent orchestration.
-
-Frontend tools are configured separately: Web Search (`QWEN_AUDIO_WEB_SEARCH_PROVIDER`,
-see [Configuration](../configuration.md)), and general chatbot tools through the
-[Frontend MCP client](../reference/frontend-mcp.md), the
-[Frontend OpenAPI adapter](../reference/frontend-openapi.md), or a
-[Frontend Profile](../reference/frontend-profile.md).
-
-## Realtime model selection
-
-One Gateway owns one active Realtime model. The Desktop settings page can configure the model
-for a locally owned Gateway, and the CLI provides the equivalent commands:
+To inspect the configured provider and supported models:
 
 ```bash
 qwenaudio config show
-qwenaudio config set --realtime-model qwen3.5-omni-flash-realtime
-# For an installed user background service only:
-qwenaudio gateway restart
+qwenaudio config set --realtime-model qwen-audio-3.0-realtime-flash
 ```
 
-The exact supported DashScope IDs are:
+`config set` changes the current provider's model; it neither switches providers nor restarts the Gateway. Remote clients use the remote Gateway's settings, not local model settings.
 
-| Model | Model input | Model output | Realtime transport |
-| --- | --- | --- | --- |
-| `qwen3.5-omni-flash-realtime` | text, audio, image/video frames | text, audio | text, audio, live JPEG frames |
-| `qwen3.5-omni-plus-realtime` | text, audio, image/video frames | text, audio | text, audio, live JPEG frames |
-| `qwen-audio-3.0-realtime-plus` (default) | text, audio | text, audio | text, audio |
-| `qwen-audio-3.0-realtime-flash` | text, audio | text, audio | text, audio |
+## Service Differences
 
-Provider-specific pages list the corresponding non-DashScope IDs:
-[StepAudio 3 Realtime](../voice-frontends/stepfun.md),
-[GPT-Live](../voice-frontends/gpt-live.md), and
-[Google Gemini Live](../voice-frontends/google-live.md).
+- **MiniCPM-o:** the current adapter does not support text input, structured tool calls, proactive replies, or conversation context restoration. It supports voice/visual chat, not backend orchestration.
+- **speech-to-speech:** recognition languages, voices, and tool-call quality depend on the STT, LLM, and TTS you configure.
+- **Google Live:** the current adapter does not restore conversation context into a reconnected upstream session. Visible chat history does not mean the model received that history.
+- Other supported features and limits are documented in the service-specific guides.
 
-All four profiles support Function Calling. Model capability remains distinct from transport:
-Omni accepts the WebUI's capability-negotiated live JPEG stream, while ordinary uploaded images
-continue through the attachment path. Desktop and TUI do not capture live frames. Clients read
-the authoritative profile from Gateway health. Separate
-clients cannot select conflicting models on one Gateway. A Desktop attached to a borrowed
-Gateway, or a later CLI runtime using a conflicting configured model, refuses the mismatch
-instead of silently changing the running service. To roll back, set the legacy ID above and
-restart the Gateway.
+Configure frontend tools separately: [Search](../guides/web-search.md), [MCP](../reference/frontend-mcp.md), [OpenAPI](../reference/frontend-openapi.md).
+
+## Older Configuration
+
+Use provider-specific fields for new configurations. `QWEN_AUDIO_REALTIME_API_KEY` and `QWEN_AUDIO_REALTIME_ENDPOINT` are no longer process-environment overrides. Older files are converted when read; if conversion reports a conflict, keep the intended provider field and remove the obsolete field. See [configuration priority](../configuration.md#configuration-priority).

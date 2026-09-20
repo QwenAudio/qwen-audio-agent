@@ -9,7 +9,7 @@ capabilities; search itself does not require a Backend Agent.
 The frontend `web_search` tool returns verifiable source links, does not create
 backend Agent work, and does not invoke another text model. Without explicit
 configuration it uses a small, key-free 360 search adapter that parses one
-public search results page and is reachable in mainland China. This basic
+public search results page. This basic
 fallback is experimental: it may be blocked, return weak results, or break
 with upstream changes. Configure your own provider for reliable search.
 
@@ -30,7 +30,11 @@ QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN=your-token
 QWEN_AUDIO_WEB_SEARCH_MCP_TOOL=web_search
 ```
 
-Set `QWEN_AUDIO_WEB_SEARCH_PROVIDER=none` to disable frontend web search.
+Choose `so360` (default), `bing`, `bailian`, `mcp`, or `none`. Setting `none` disables search, not page fetching. Disable both search and page fetching with:
+
+```dotenv
+QWEN_AUDIO_WEB_TOOLS_ENABLED=false
+```
 
 ## Results and Citations
 

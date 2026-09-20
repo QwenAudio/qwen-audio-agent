@@ -13,7 +13,7 @@ The Gateway discovers the explicitly enabled tools at startup, gives them
 stable names, and adds them to each Realtime session through the shared
 frontend tool registry and executor.
 
-## Configuration
+## 1. Configure Remote Tools
 
 Set `QWEN_AUDIO_FRONTEND_MCP_CONFIG` to a versioned JSON file:
 
@@ -54,7 +54,9 @@ DOCUMENT_MCP_AUTHORIZATION=Bearer replace-me
 }
 ```
 
-Local MCP servers can use standard input and output:
+## 2. Or Use Local stdio Tools
+
+Install the MCP server's required runtime first. This example starts a filesystem server with `npx` and exposes only directory listing. Replace `/absolute/path/to/documents` with an actual allowed directory:
 
 ```json
 {
@@ -65,11 +67,7 @@ Local MCP servers can use standard input and output:
       "transport": {
         "type": "stdio",
         "command": "npx",
-        "args": ["-y", "@modelcontextprotocol/server-filesystem", "${FILES_ROOT}"],
-        "env": {
-          "SERVICE_TOKEN": "${SERVICE_TOKEN}"
-        },
-        "cwd": "${MCP_WORKING_DIRECTORY}"
+        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/absolute/path/to/documents"]
       },
       "tools": {
         "list_directory": { "enabled": true }
@@ -87,7 +85,13 @@ Each exposed tool receives a stable model-visible name:
 `mcp__<server>__<tool>`. Tools omitted from `tools`, or without
 `enabled: true`, are never exposed.
 
-## Current policy
+## 3. Apply and Verify
+
+Save one of these JSON configurations at the configured path, supply real server/tool names and credentials, then [restart the Gateway](../operations/gateway.md#applying-configuration-changes). Test a simple call before enabling more tools. Use `qwenaudio doctor` and Gateway logs for connection failures.
+
+A configuration file alone is not enough: the service must be reachable, and the names in `tools` must match its actual tools. The remote domain above is a placeholder.
+
+## Support and Security
 
 - Streamable HTTP and stdio transports are supported. The legacy standalone SSE
   transport is not supported.

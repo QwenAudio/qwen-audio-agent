@@ -46,9 +46,21 @@ npm install -g git+https://github.com/QwenAudio/qwen-audio-agent.git
 ```bash
 git clone https://github.com/QwenAudio/qwen-audio-agent.git
 cd qwen-audio-agent
-npm install
-npm run install:global
+npm ci
+npm run build
 ```
+
+Run directly from the repository root without a global installation:
+
+```bash
+npm run cli -- config
+npm run gateway
+# In another terminal
+npm run cli -- webui
+```
+
+To use `qwenaudio` from any directory, also run `npm run install:global`.
+Use `npm run desktop` for the development Desktop app; this is separate from an installed release.
 
 ## Upgrade
 
@@ -85,18 +97,7 @@ for overrides and storage details.
 
 ## Obtain a DashScope API Key
 
-Alibaba Cloud Model Studio (Bailian) automatically provides eligible new users with a
-[new-user free quota](https://help.aliyun.com/zh/model-studio/new-free-quota), which normally does not require a separate claim.
-See the official [free-quota guide](https://help.aliyun.com/zh/model-studio/new-free-quota)
-for current eligibility, region, validity, and stop-when-exhausted rules. You can also
-open the [model usage page](https://help.aliyun.com/zh/model-studio/model-usage-statistics)
-to check remaining quota. Quota and billing rules can vary by region, model, and account
-status; follow the official Bailian pages for the current rules.
+1. Open the [Bailian API Key page](https://bailian.console.aliyun.com/?tab=model#/api-key), sign in, and create a key.
+2. Enter it in Desktop settings or as `DASHSCOPE_API_KEY` in `config.env`.
 
-1. Open the [API Key page](https://bailian.console.aliyun.com/?tab=model#/api-key) in the Bailian console,
-   log in to your account, and click **Create API Key**.
-2. Copy the generated Key and fill it into `config.env` later. Do not publicly share or commit your API Key.
-
-For detailed instructions, see [Get and configure an API Key](https://help.aliyun.com/zh/model-studio/get-api-key).
-After quota is exhausted, verified accounts may continue with pay-as-you-go billing, so
-enable the official stop-when-exhausted option when appropriate.
+See the [official free-quota guide](https://help.aliyun.com/zh/model-studio/new-free-quota) for eligibility and conditions. Check available quota and billing settings before use. Do not expose keys or commit configuration files.

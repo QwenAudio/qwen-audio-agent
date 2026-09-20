@@ -1,12 +1,4 @@
-# 高级设置
-
-## 远程访问安全
-
-连接方式、Tailnet、HTTPS 反向代理与配对命令已集中在[远程连接与配对](../operations/remote-access.zh.md)。
-
-## Gateway 运行方式
-
-终端运行、后台常驻、桌面内置 Gateway 与重启方式见[Gateway 运行与常驻](../operations/gateway.zh.md)。
+# 日志与诊断
 
 ## 本地日志
 
@@ -78,107 +70,16 @@ qwenaudio doctor --turn <turnId>
 会话文件、总计 64 MiB，跳过超过 8 MiB 的文件，并标记未检查部分；异常退出留下的末尾残片
 会报告为可恢复问题，在该会话下次打开写入时修复，已提交记录损坏不会被静默删除。
 
-TUI、WebUI 和桌面版只连接 Gateway，不直接连接、启动或停止任何后台 Agent。
-桌面设置中的核心配置会保存到用户配置文件，在下次启动 Gateway 时生效；
-Gateway 地址会立即验证并切换。
+## 其他运行设置
 
-OpenCode 和 OpenClaw 使用一致的用户环境优先顺序：
+网络、后台启动、音频模式与工具开关各自集中维护：
 
-1. `OPENCODE_BIN` / `OPENCLAW_BIN` 明确指定的可执行文件。
-2. `OPENCODE_SOURCE_DIR` / `OPENCLAW_SOURCE_DIR` 明确指定的源码目录。
-3. PATH 中用户已经安装的 `opencode` / `openclaw`。
-4. 找不到兼容安装时，通过 `npx` 自动使用当前版本验证过的固定 npm 包。
-
-源码目录只在用户明确配置后使用，不再推测相邻项目目录。需要强制选择某种启动
-方式时可配置：
-
-```dotenv
-# auto（默认）、binary、source、installed 或 package
-OPENCODE_RUNTIME=auto
-OPENCLAW_RUNTIME=auto
-```
-
-需要临时验证其他固定包版本或内部镜像时，可以显式覆盖完整 package specifier：
-
-```dotenv
-OPENCODE_PACKAGE=opencode-ai@1.18.5
-OPENCLAW_PACKAGE=openclaw@2026.6.33
-```
-
-OpenCode ACP 接入当前要求 OpenCode `1.18.0` 或更高版本。`auto` 模式发现更旧
-版本时会使用固定兼容包，不修改用户安装；显式设置 `installed` 时直接报错。
-最低版本可由 `OPENCODE_MIN_VERSION` 覆盖，用于验证其他兼容版本。
-
-qwen-audio-agent 启动的 OpenCode 默认继承用户原有的全局配置（通常是
-`~/.config/opencode/opencode.json`），因此已经安装的 MCP、Skill、权限、模型和
-插件可以继续使用。协调规则和可用的 Session 工具由 Gateway 通过后台接入层提供，不会额外安装或覆盖 OpenCode Agent。
-
-如果用户配置或第三方插件与 qwen-audio-agent 冲突，可以临时启用隔离模式排查：
-
-```dotenv
-QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
-```
-
-也可以通过 `QWEN_AUDIO_AGENT_OPENCODE_XDG_CONFIG_HOME` 指定另一套 OpenCode 用户
-配置目录。隔离后，原全局配置中的 MCP 和插件不会自动加载。
-
-
-## 高级设置
-
-以下设置都有稳定默认值，普通用户不需要写入配置文件：
-
-| 设置 | 默认值 |
+| 设置 | 文档 |
 | --- | --- |
-| `HOST` / `PORT` | `127.0.0.1` / `3101` |
-| `QWEN_AUDIO_AGENT_ALLOWED_ORIGINS` | 空；只允许 loopback |
-| `QWEN_AUDIO_GATEWAY_LAN` | 空；设为 `1` 后监听 LAN (`0.0.0.0`) |
-| `QWEN_AUDIO_GATEWAY_LAN_HOST` | 自动选择物理网卡 IPv4；可显式指定 LAN Endpoint 主机 |
-| `QWEN_AUDIO_GATEWAY_TAILNET` | 空；设为 `1` 后使用系统 Tailscale Serve |
-| `QWEN_AUDIO_TAILSCALE_BINARY` | 自动发现；系统 Tailscale CLI 的可选绝对路径 |
-| `OPENCODE_WORKSPACE` | 共享数据目录下的 `workspace` |
-| `QODER_WORKSPACE` | 共享数据目录下的 `workspace` |
-| `QWEN_AUDIO_AGENT_BACKEND_MODEL` | 空；显式值仅通过 ACP 标准覆盖 Session；OpenCode/OpenClaw 托管初始化除外 |
-| `QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE` | `native` |
-| `QWEN_AUDIO_AGENT_ACP_FORWARD_ENV` | 空；仅供通用 ACP 显式传递的环境变量名，逗号分隔 |
-| `QWEN_AUDIO_REALTIME_MODEL` | `qwen-audio-3.0-realtime-plus` |
-| `QWEN_AUDIO_REALTIME_PROVIDER` | `dashscope` |
-| `QWEN_AUDIO_WEB_SEARCH_PROVIDER` | `so360`；可选 `bailian`、`bing`、`mcp` 或 `none` |
-| `QWEN_AUDIO_WEB_SEARCH_MCP_URL` | 空；`mcp` Provider 使用的自定义 Streamable HTTP 地址 |
-| `QWEN_AUDIO_WEB_SEARCH_MCP_TOKEN` | 显式选择 `bailian` 时复用 `DASHSCOPE_API_KEY`；自定义地址默认空 |
-| `QWEN_AUDIO_WEB_SEARCH_MCP_TOOL` | `bailian` 为 `bailian_web_search`，其他地址为 `web_search` |
-| `QWEN_AUDIO_SCHEDULE_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `schedule_reminder` |
-| `QWEN_AUDIO_WEB_TOOLS_ENABLED` | `true`；设为 `false` 时不向前台 Agent 提供 `web_search` 和 `fetch_url` |
-| `QWEN_AUDIO_KNOWLEDGE_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `knowledge` |
-| `QWEN_AUDIO_NOTES_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `notes` |
-| `QWEN_AUDIO_RECALL_TOOL_ENABLED` | `true`；设为 `false` 时隐藏 `recall` |
-| `QWEN_AUDIO_FRONTEND_PROFILE` | 空；轻量 Frontend Profile JSON 文件路径 |
-| `QWEN_AUDIO_FRONTEND_MCP_CONFIG` | 空；前台 MCP 版本化 JSON 文件的绝对路径 |
-| `QWEN_AUDIO_FRONTEND_OPENAPI_CONFIG` | 空；前台 OpenAPI 版本化 JSON 配置文件的绝对路径 |
-| `QWEN_AUDIO_REALTIME_VOICE` | 空；Audio 模型族的可选覆盖，未设置时运行时使用 `longanqian` |
-| `QWEN_OMNI_REALTIME_VOICE` | 空；Omni 模型族的可选覆盖，未设置时运行时使用 `Ethan` |
-| `SPEECH_TO_SPEECH_REALTIME_URL` | `ws://127.0.0.1:8765/v1/realtime` |
-| `SPEECH_TO_SPEECH_AUTH_TOKEN` | 空；仅用于带 Bearer 认证的代理 |
-| `MINICPM_O_REALTIME_URL` | `ws://127.0.0.1:8006/v1/realtime?mode=audio` |
-| `MINICPM_O_AUTH_TOKEN` | 空；仅用于带 Bearer 认证的代理 |
-| `QWEN_AUDIO_AGENT_IDENTITY_MODE` | `personal` |
-| `QWEN_AUDIO_AGENT_TUI_AUDIO_MODE` | `half` |
-| `AGENT_TIMEOUT_MS` | `300000`；ACP 连接初始化与有界控制请求的超时，不限制正在执行的 Agent 轮次 |
+| 监听地址、Tailnet、配对与访问控制 | [远程连接](../operations/remote-access.zh.md) |
+| 后台启动来源、模型、权限与工作目录 | [后台通用设置](backend.zh.md)、[各后台详细配置](../backends/configuration.zh.md) |
+| 语音前台、模型与音色 | [前台配置](frontend.zh.md) |
+| 终端半双工 / 全双工 | [TUI](../getting-started/tui.zh.md) |
+| 搜索、资料库、记忆、提醒 | [功能指南](../guides/conversation.zh.md)、[配置总览](../configuration.zh.md#按需求配置) |
 
-macOS TUI 的 CoreAudio 辅助程序默认编译到
-`~/Library/Caches/qwaudio/tui/macos-voice-io`，无需额外配置。它在播报期间
-持续收音，只支持语音打断。
-Linux 和 Windows 的 minimal TUI 通过随包提供的 Python 音频桥接使用
-`sounddevice`/PortAudio 半双工；播放回复时麦克风会暂停，通过 `/interrupt`
-手动打断，播放结束或手动打断后恢复。
-
-Linux 和 Windows 可通过 `qwenaudio tui --audio-mode full` 或设置
-`QWEN_AUDIO_AGENT_TUI_AUDIO_MODE=full` 明确开启 PortAudio 全双工。此模式没有
-回声消除，只支持直接说话打断；推荐佩戴耳机，避免扬声器回声触发误识别或误打断。
-macOS 始终使用 CoreAudio AEC 全双工，不受该选项影响。
-
-如果 PortAudio 全双工持续报告输入溢出、输出欠载或设备错误，请退出 TUI 并改用
-`qwenaudio tui --audio-mode half`。不同 Linux/Windows 声卡和蓝牙耳机对同时使用
-不同采样率的输入、输出流支持程度不同，半双工是兼容性兜底。
-
-任务状态、通知重试、记忆容量与保留时间等运行参数同样使用内置默认值。只有明确
-进行容量规划或故障诊断时才建议覆盖。
+`AGENT_TIMEOUT_MS` 默认 `300000`，用于 ACP 初始化和有界控制请求，不限制正在执行的 Agent 轮次。无需为了长任务任意增大它。

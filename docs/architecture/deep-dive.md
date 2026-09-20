@@ -122,13 +122,14 @@ content, records outcomes in a local audit file, and silently disables itself wh
 text-model API key is configured.
 
 `notes` manages user-named lists (shopping lists, todos, reading lists) as
-frontend-owned volatile collections: single-call add, show, match-remove,
+frontend-owned persistent collections: single-call add, show, match-remove,
 clear, and drop with no backend involvement. Lists are item data, not memory;
 stable facts remain in `memory`, and list items are never written into the
 user preferences or factual memory. Item and list resolution matches exact text first, then a
 unique case-insensitive substring, and otherwise reports ambiguity with the
-candidate names back to the model for clarification. `clear` and `drop`
-additionally require an explicit destructive intent in the current turn.
+candidate names back to the model for clarification. Lists persist in
+`frontend-notes.json` under the shared data directory. Cross-process file transactions
+prevent separate Gateways from overwriting concurrent changes.
 
 `get_agent_task_status` is the single Realtime entry point for lifecycle,
 progress, and interim-result questions. The Gateway reads its own Task record
@@ -281,10 +282,11 @@ conversation, resource, and voice presentation for each client.
 Completed results prefer the originating conversation. On a fresh connection,
 unfinished results from older conversations may be recovered for the same
 owner. A renewable claim prevents two live frontends from presenting the same
-result. Results are injected into Realtime context and marked delivered only
-after playback finishes. If the user interrupts, is speaking, or another
-response is pending, delivery waits and retries without duplicating context.
-Retries are bounded so one malformed result cannot block later completions.
+result. The client's `playback.started` receipt acknowledges the start of audio delivery;
+server-side generation alone does not. Delivery waits for a safe window while the user
+is speaking or another response is active. Once playback starts, interruption does not
+cause repeated replay. Context injection and playback acknowledgement are managed
+separately, with bounded retries.
 
 When the backend Agent calls `session_start` or `session_send`, delegation is
 established only after the Session tool creates or continues the target work
@@ -316,11 +318,10 @@ timeouts so an unavailable backend cannot block Gateway startup indefinitely.
 
 Cancellation is confirmed rather than optimistic. `queued` Task is cancelled
 locally. `running` or `finalizing` Task aborts its active backend request. For
-`delegated` Task, an idle coordinator is first asked to call
-`session_cancel`; if the coordinator Session is occupied, the ACP adapter
-directly sends `session/cancel` to the exact correlated target Session. The Task remains
-`cancelling` until one of those paths confirms the stop, then becomes
-`cancelled`. A failed stop becomes `failed` with the cancellation error.
+`delegated` Task, the adapter uses its recorded correlation to cancel the target execution,
+without first asking the coordinator model to select a tool. The Task stays `cancelling`
+while the cancellation request is processed; the Gateway updates the final state from
+the result, not from a spoken claim.
 After a direct adapter abort, the Gateway records a cancellation fact and
 injects it once into the next safe coordinator turn. This reconciles the
 coordinator's history without delaying cancellation or repeating the stop.

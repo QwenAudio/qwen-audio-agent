@@ -1,87 +1,85 @@
-# 前台配置
+# 语音前台
 
-语音前台是 Gateway 连接的实时语音模型。本页设置都写在用户配置文件中
-（`~/.config/qwaudio/config.env`，见[配置总览](../configuration.zh.md)），
-修改后按[实际运行方式应用设置](../operations/gateway.zh.md#修改配置后生效)：终端退出重启、后台服务执行 `gateway restart`，桌面版点击应用。
+语音前台负责实时交流；后台 Agent 负责执行工作。二者可独立选择。
 
-## 凭据与端点
+本页配置写入 `qwenaudio config` 显示的 `config.env`。桌面版也可在“语音前台”设置中选择服务并填写凭据。
 
-默认 Provider 是 DashScope（`QWEN_AUDIO_REALTIME_PROVIDER=dashscope`）：
+## 选择服务
+
+| 服务 | Provider 值 | 必填或首次使用配置 | 使用说明 |
+| --- | --- | --- | --- |
+| Qwen Audio / Omni | `dashscope`（默认） | `DASHSCOPE_API_KEY` | [Audio 语音](../voice-frontends/qwen-audio-realtime.zh.md) / [Omni 视觉](../voice-frontends/qwen-omni-realtime.zh.md) |
+| StepAudio 3 | `stepfun` | `STEPFUN_API_KEY` | [StepFun](../voice-frontends/stepfun.zh.md) |
+| OpenAI Realtime | `gpt-live` | `OPENAI_API_KEY` | [GPT-Live](../voice-frontends/gpt-live.zh.md) |
+| Gemini Live | `google-live` | `GOOGLE_API_KEY` | [Google Live](../voice-frontends/google-live.zh.md) |
+| Hugging Face speech-to-speech | `speech-to-speech` | 先启动服务；默认 `ws://127.0.0.1:8765/v1/realtime` | [本地模型链路](../voice-frontends/speech-to-speech.zh.md) |
+| MiniCPM-o 4.5 | `minicpm-o` | 先启动服务；默认 `ws://127.0.0.1:8006/v1/realtime?mode=audio` | [音频 / 视频模式及限制](../voice-frontends/minicpm-o.zh.md) |
+
+例如，使用默认前台：
 
 ```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=dashscope
 DASHSCOPE_API_KEY=your-key
+QWEN_AUDIO_REALTIME_MODEL=qwen-audio-3.0-realtime-plus
 ```
 
-| Provider | 凭证 | 地址 | 模型 / 音色 |
+切换到 StepFun 时，改选服务并填写它自己的凭据：
+
+```dotenv
+QWEN_AUDIO_REALTIME_PROVIDER=stepfun
+STEPFUN_API_KEY=your-stepfun-key
+```
+
+各家的配置可以同时保留，切换只需改 `QWEN_AUDIO_REALTIME_PROVIDER`。Gateway 不会把另一家的 Key、模型或音色拿来使用。
+
+## 模型、音色与地址
+
+| Provider | 模型 | 音色 | 服务地址 |
 | --- | --- | --- | --- |
-| DashScope（默认，别名 `qwen`） | `DASHSCOPE_API_KEY` | `QWEN_AUDIO_REALTIME_BASE_URL`（别名 `QWEN_AUDIO_REALTIME_URL`） | `QWEN_AUDIO_REALTIME_MODEL`；Audio：`QWEN_AUDIO_REALTIME_VOICE`；Omni：`QWEN_OMNI_REALTIME_VOICE` |
-| StepFun | `STEPFUN_API_KEY` | `STEPFUN_REALTIME_URL` | `STEPFUN_REALTIME_MODEL`、`STEPFUN_REALTIME_VOICE` |
-| speech-to-speech（别名 `s2s`） | `SPEECH_TO_SPEECH_AUTH_TOKEN`（别名 `S2S_API_KEY`） | `SPEECH_TO_SPEECH_REALTIME_URL`（别名 `S2S_REALTIME_URL`） | 由服务管理 |
-| minicpm-o（别名 `minicpmo`） | `MINICPM_O_AUTH_TOKEN` | `MINICPM_O_REALTIME_URL` | 由服务管理 |
+| DashScope | `QWEN_AUDIO_REALTIME_MODEL` | Audio：`QWEN_AUDIO_REALTIME_VOICE`；Omni：`QWEN_OMNI_REALTIME_VOICE` | `QWEN_AUDIO_REALTIME_BASE_URL` |
+| StepFun | `STEPFUN_REALTIME_MODEL` | `STEPFUN_REALTIME_VOICE` | `STEPFUN_REALTIME_URL` |
+| GPT-Live | `GPT_LIVE_REALTIME_MODEL` | `GPT_LIVE_REALTIME_VOICE` | `GPT_LIVE_REALTIME_URL` |
+| Google Live | `GOOGLE_LIVE_REALTIME_MODEL` | `GOOGLE_LIVE_REALTIME_VOICE` | `GOOGLE_LIVE_REALTIME_URL` |
+| speech-to-speech | 在上游服务设置 | 在上游服务设置 | `SPEECH_TO_SPEECH_REALTIME_URL` |
+| MiniCPM-o | 在上游服务设置 | 在上游服务设置 | `MINICPM_O_REALTIME_URL` |
 
-只有 `QWEN_AUDIO_REALTIME_PROVIDER` 是公共选择项。各家参数配置一次后，切换只需改
-Provider；密钥、地址、模型和音色互不串用。显式清空凭证表示删除；模型、地址为空时使用
-该 Provider 默认值，音色为空时使用模型或服务默认值。同一家变量的主名称优先于别名。
+地址和模型留空使用该 Provider 的默认值。自建服务如需 Bearer 认证，分别设置 `SPEECH_TO_SPEECH_AUTH_TOKEN` 或 `MINICPM_O_AUTH_TOKEN`。可用别名与协议细节见各服务页面。
 
-不再提供统一覆盖。`QWEN_AUDIO_REALTIME_MODEL` 和 `QWEN_AUDIO_REALTIME_VOICE`
-恢复为 DashScope 专属。进程环境中的 `QWEN_AUDIO_REALTIME_API_KEY` 和
-`QWEN_AUDIO_REALTIME_ENDPOINT` 不再生效。
+DashScope 当前内置以下模型档案：
 
-CLI 来源优先级保持：进程环境变量、项目 `.env.local`、项目 `.env`、用户 `config.env`。
-桌面端把各家独立字段共同写入 `config.env`，`realtime-profiles.json` 只作为私密草稿回退。
-文件中明确指定的值优先于草稿，包括清空的密钥，以及通过 CLI 修改的非当前 Provider 参数。
+| 模型 ID | 实时输入 |
+| --- | --- |
+| `qwen-audio-3.0-realtime-plus`（默认） | 文字、语音 |
+| `qwen-audio-3.0-realtime-flash` | 文字、语音 |
+| `qwen3.5-omni-flash-realtime` | 文字、语音、实时视觉帧 |
+| `qwen3.5-omni-plus-realtime` | 文字、语音、实时视觉帧 |
 
-过渡版本保存的统一字段只在读取配置文件时，按该文件原来的 Provider 转换，再合并其他来源。
-下次在桌面保存前台设置时，会写入供应商字段并删除废弃字段。若同一家同时保存了不同的旧统一
-密钥和供应商密钥，会明确报迁移冲突而非静默替换：保留需要的供应商密钥并删除废弃字段即可。
-只读加载不会修改文件。
+这些档案均支持工具调用。模型能否接收视觉帧，还取决于客户端和传输通道，见[视觉输入](../guides/vision.zh.md)。
 
-其他前台可选择 [StepAudio 3 Realtime](../voice-frontends/stepfun.zh.md)（使用独立的 StepFun API Key）、
-[GPT-Live / OpenAI Realtime](../voice-frontends/gpt-live.zh.md)、
-[Google Gemini Live](../voice-frontends/google-live.zh.md)、
-[Speech-to-Speech](../voice-frontends/speech-to-speech.zh.md)，或通过
-[面壁智能](../voice-frontends/minicpm-o.zh.md)连接本地及云端 MiniCPM-o 4.5 服务；自定义 Provider 需实现
-Provider 契约，见[自定义 Provider](../voice-frontends/custom-provider.zh.md)。
+## 应用并验证
 
-MiniCPM-o 当前公开的 Audio Realtime 传输支持连续音频输入及文本、音频输出，
-但不提供对话项、结构化 Function Calling 或输入转写。因此它目前定位为实时语音
-聊天前台，不用于编排后台 Agent。
+1. 桌面版修改后点击“应用”。终端 Gateway 退出后重新启动；已安装的后台服务执行 `qwenaudio gateway restart`。
+2. 连接客户端，确认“语音前台”已连接。
+3. 说一句话，确认能听到回答。需要工具时，再测试搜索或一个简单后台请求。
 
-前台工具单独配置：Web 搜索（`QWEN_AUDIO_WEB_SEARCH_PROVIDER`，见
-[配置总览](../configuration.zh.md)）；通用对话工具见
-[前台 MCP 客户端](../reference/frontend-mcp.zh.md)、
-[前台 OpenAPI 适配器](../reference/frontend-openapi.zh.md)或
-[前台 Profile](../reference/frontend-profile.zh.md)。
-
-## Realtime 模型选择
-
-一个 Gateway 只拥有一个当前生效的 Realtime 模型。桌面设置页可以配置本地自有
-Gateway 的模型，CLI 提供等价命令：
+CLI 可查看当前配置及支持的模型：
 
 ```bash
 qwenaudio config show
-qwenaudio config set --realtime-model qwen3.5-omni-flash-realtime
-# 以下仅用于已安装的用户后台服务：
-qwenaudio gateway restart
+qwenaudio config set --realtime-model qwen-audio-3.0-realtime-flash
 ```
 
-精确支持的 DashScope 模型 ID 如下：
+`config set` 修改当前 Provider 的模型，不切换 Provider，也不自动重启 Gateway。远程客户端沿用远端配置；不能通过本机配置切换远端模型。
 
-| 模型 | 模型输入 | 模型输出 | Realtime 传输 |
-| --- | --- | --- | --- |
-| `qwen3.5-omni-flash-realtime` | 文本、音频、图像/视频帧 | 文本、音频 | 文本、音频、实时 JPEG 帧 |
-| `qwen3.5-omni-plus-realtime` | 文本、音频、图像/视频帧 | 文本、音频 | 文本、音频、实时 JPEG 帧 |
-| `qwen-audio-3.0-realtime-plus`（默认） | 文本、音频 | 文本、音频 | 文本、音频 |
-| `qwen-audio-3.0-realtime-flash` | 文本、音频 | 文本、音频 | 文本、音频 |
+## 服务差异
 
-其他云端前台的模型 ID 见各自页面：
-[StepAudio 3 Realtime](../voice-frontends/stepfun.zh.md)、
-[GPT-Live](../voice-frontends/gpt-live.zh.md)、
-[Google Gemini Live](../voice-frontends/google-live.zh.md)。
+- **MiniCPM-o** 当前适配不支持文字输入、结构化工具调用、主动播报或会话上下文恢复；适合语音 / 视觉聊天，不用于后台编排。
+- **speech-to-speech** 的语言识别、音色、工具调用质量取决于你配置的 STT、LLM 与 TTS。
+- **Google Live** 当前不向重连后的上游会话恢复历史上下文；界面保留记录不等于模型已收到历史。
+- 其他服务的已支持能力和限制，以各自接入页面为准。
 
-四个档案都支持 Function Calling。模型能力仍与传输能力分离：Omni 可以接收 WebUI
-经过 capability 协商的实时 JPEG 帧，普通上传图片继续走附件链路；Desktop 与 TUI
-暂不采集实时画面。客户端从 Gateway health 读取权威档案；同一 Gateway 上的不同客户端不能选择互相冲突的模型。桌面版附着到借用的
-Gateway 时，或后续 CLI 运行时使用了冲突的已配置模型时，会拒绝不一致，而不会静默
-修改运行中服务。回滚时设置上表的旧版模型 ID 并重启 Gateway。| GPT-Live | `OPENAI_API_KEY`（别名 `GPT_LIVE_API_KEY`） | `GPT_LIVE_REALTIME_URL`（别名 `OPENAI_REALTIME_URL`） | `GPT_LIVE_REALTIME_MODEL`、`GPT_LIVE_REALTIME_VOICE`（支持 `OPENAI_REALTIME_*` 别名） |
-| Google Live | `GOOGLE_API_KEY`（别名 `GEMINI_API_KEY`、`GOOGLE_LIVE_API_KEY`） | `GOOGLE_LIVE_REALTIME_URL`（别名 `GEMINI_LIVE_REALTIME_URL`） | `GOOGLE_LIVE_REALTIME_MODEL`、`GOOGLE_LIVE_REALTIME_VOICE`（支持 `GEMINI_LIVE_REALTIME_*` 别名） |
+前台扩展工具另行配置：[搜索](../guides/web-search.zh.md)、[MCP](../reference/frontend-mcp.zh.md)、[OpenAPI](../reference/frontend-openapi.zh.md)。
+
+## 旧配置排查
+
+新配置只使用上面的供应商字段。`QWEN_AUDIO_REALTIME_API_KEY` 和 `QWEN_AUDIO_REALTIME_ENDPOINT` 不再作为进程环境覆盖项。旧文件读取时会转换；若提示迁移冲突，保留正确的供应商字段并移除旧字段。更多优先级规则见[配置总览](../configuration.zh.md#配置优先级)。

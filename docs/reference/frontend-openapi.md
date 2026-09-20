@@ -33,10 +33,6 @@ WEATHER_AUTHORIZATION=Bearer replace-me
         "getWeather": {
           "enabled": true,
           "description": "Read the current weather for one city."
-        },
-        "createAlert": {
-          "enabled": true,
-          "description": "Create a weather alert."
         }
       }
     }
@@ -46,6 +42,32 @@ WEATHER_AUTHORIZATION=Bearer replace-me
 
 Model-visible names are stable: `openapi__<api>__<operationId>`. `baseUrl`
 overrides the first `servers` URL in the document when set.
+
+## Prepare the API Document and Verify
+
+Replace the placeholder domain with your service. Save its actual OpenAPI document as `weather.openapi.yaml`, and match tool names to real `operationId` values. Minimal document example:
+
+```yaml
+openapi: 3.0.3
+info:
+  title: Weather API
+  version: 1.0.0
+paths:
+  /weather:
+    get:
+      operationId: getWeather
+      parameters:
+        - name: city
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Current weather
+```
+
+Keep both files in the same directory, configure credentials, and [restart the Gateway](../operations/gateway.md#applying-configuration-changes). Test queries before enabling writes. Only `getWeather` is exposed here; other operations are not automatically enabled.
 
 ## Supported boundary
 

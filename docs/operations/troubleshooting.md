@@ -48,7 +48,7 @@ to the voice frontend while retaining the Realtime connection. Wake-word detecti
 
 - Backend execution fails: check installation with `qwenaudio setup --backend <name>`, then verify authentication and models in the backend's own interface.
 - No backend model specified: the Gateway does not guess a default; it uses the Agent's configuration.
-- Explicit model override fails: the backend must expose standard ACP model configuration and accept that value. Follow the error; do not assume silent fallback.
+- Explicit model override fails: ACP backends must expose standard model configuration and accept the value, otherwise the override fails explicitly. See [backend configuration](../configuration/backend.md#model-selection) for integration-specific settings such as DeepSeek / Muse.
 - MCP command missing: check `command` and PATH. Restart after installing commands; `gateway restart` refreshes the path cache for a background service.
 - MCP environment variable missing: put it in that Gateway's `config.env`, not a temporary export in another terminal.
 - Library unavailable or import fails: enable it and use a Gateway-host path. Complex documents also require isolated conversion support.

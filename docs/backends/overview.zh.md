@@ -24,7 +24,7 @@
 
 通过 `qwenaudio skill install` 安装一次标准 Agent Skill 后，会自动写入上表中声明
 skills.sh 安装器的后台用户级目录；MiniMax Code 和 Muse Code 的扩展由自身管理。详见
-[技能管理](../configuration/backend.zh.md#技能管理)。
+[技能管理](../guides/skills.zh.md)。
 
 推荐指数综合反映当前集成完整度、兼容性和实际验证程度：五星表示已经过充分测试的
 推荐集成，四星表示正在开发或尚未完成同等范围验证。
@@ -95,11 +95,11 @@ ACP_ARGS=["--acp"]
 
 `QWEN_AUDIO_AGENT_BACKEND_PERMISSION_MODE` 可设为：
 
-- `native`（默认）：权限由后台 Agent 自己判断和询问，Gateway 只负责原样转发。
+- `native`（默认）：权限由后台 Agent 自己判断和询问，Gateway 转发真实请求并执行已授予的任务 / 会话授权。
 - `full`：启动时明确授予最高权限，后台可直接执行命令、读写文件，不再逐次确认。
 
 `full` 当前支持 OpenCode、Qoder、Qwen Code、MiniMax Code、Kimi Code、Hermes、CodeBuddy、
-Codex、Claude Code 和 Muse Code，Gateway 会自动批准这些后台发起的权限请求。OpenClaw 的执行授权受
+Codex、Claude Code、DeepSeek 和 Muse Code，Gateway 会自动批准这些后台发起的权限请求。OpenClaw 的执行授权受
 exec approvals、elevated 等配置约束，无法由统一开关表达，选择 `full` 时
 Gateway 会明确拒绝启动。最高权限会放大误操作风险，只应在可信项目中启用。
 

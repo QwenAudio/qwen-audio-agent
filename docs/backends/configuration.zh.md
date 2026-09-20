@@ -196,24 +196,6 @@ KIMI_WORKSPACE=
 KIMI_CODE_HOME=
 ```
 
-其他支持 ACP stdio 的 Agent 可使用通用入口：
-
-```dotenv
-AGENT_PROTOCOL=acp
-ACP_COMMAND=your-agent
-ACP_ARGS=["--acp"]
-ACP_LABEL=Your Agent
-ACP_WORKSPACE=
-```
-
-通用入口由 Gateway 直接管理 ACP 子进程。`ACP_ARGS` 推荐写成
-JSON 字符串数组，以便参数中包含空格时仍能准确解析。它使用标准 ACP Session 和
-Gateway 提供的 Session MCP 工具，不假设某个 Agent 私有的启动、权限或 UI 能力。
-
-不提供 ACP 的办事系统可以在自定义 Node 启动器中实现 `BackendPort`，详见
-[Backend Adapter SDK](../reference/backend-adapter-sdk.zh.md)。SDK 接入不新增
-`AGENT_PROTOCOL` 名称，也不会让配置文件动态加载任意代码。
-
 ## Hermes
 
 Hermes Agent（[nousresearch/hermes-agent](https://github.com/nousresearch/hermes-agent)）
@@ -315,6 +297,26 @@ CLAUDE_CONFIG_DIR=
 
 设置 `CLAUDE_CONFIG_DIR` 会改用独立配置目录，需要在该目录中单独完成认证。
 `CLAUDE_CODE_EXECUTABLE` 只用于覆盖适配器默认使用的 Claude Code 可执行文件。
+
+## DeepSeek
+
+当前使用 DeepSeek Harness 的本地 ACP 运行组件。先安装，再在 DeepSeek 自身设置中配置凭据：
+
+```bash
+qwenaudio install deepseek
+dsh web
+```
+
+在 DeepSeek Web 的“设置 → Models”为 `deepseek-official` 保存 API Key，然后在 Gateway 配置中选择：
+
+```dotenv
+AGENT_PROTOCOL=deepseek
+DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
+```
+
+也可通过 `DEEPSEEK_API_KEY` 提供凭据。当前启动器默认使用 `deepseek-v4-pro`，可改为 `deepseek-v4-flash`；这不是从 Web 会话继承模型。该接入未声明 ACP Session 模型设置能力，不应使用通用模型覆盖代替专属启动设置。
+
+支持普通工作、权限确认、取消与结果回传；不提供 Gateway Session 工具、独立任务委派或原生 Session 历史恢复。完整能力随 Harness 版本变化，不能按其他 ACP 后台推断。
 
 ## Pi
 
@@ -434,3 +436,66 @@ Session ID、注入 Gateway MCP Server，也不会读取 MSP `outputRef` 指向�
 
 Muse Code、MiniMax Code、Kimi Code、Hermes、CodeBuddy、Codex、Claude Code 和 Pi 均由 Gateway 直接管理
 子进程，不接受 `--backend-url`。
+
+## OpenCode / OpenClaw 启动来源
+
+OpenCode 和 OpenClaw 使用一致的用户环境优先顺序：
+
+1. `OPENCODE_BIN` / `OPENCLAW_BIN` 明确指定的可执行文件。
+2. `OPENCODE_SOURCE_DIR` / `OPENCLAW_SOURCE_DIR` 明确指定的源码目录。
+3. PATH 中用户已经安装的 `opencode` / `openclaw`。
+4. 找不到兼容安装时，通过 `npx` 自动使用当前版本验证过的固定 npm 包。
+
+源码目录只在用户明确配置后使用，不再推测相邻项目目录。需要强制选择某种启动
+方式时可配置：
+
+```dotenv
+# auto（默认）、binary、source、installed 或 package
+OPENCODE_RUNTIME=auto
+OPENCLAW_RUNTIME=auto
+```
+
+需要临时验证其他固定包版本或内部镜像时，可以显式覆盖完整 package specifier：
+
+```dotenv
+OPENCODE_PACKAGE=opencode-ai@1.18.5
+OPENCLAW_PACKAGE=openclaw@2026.6.33
+```
+
+OpenCode ACP 接入当前要求 OpenCode `1.18.0` 或更高版本。`auto` 模式发现更旧
+版本时会使用固定兼容包，不修改用户安装；显式设置 `installed` 时直接报错。
+最低版本可由 `OPENCODE_MIN_VERSION` 覆盖，用于验证其他兼容版本。
+
+qwen-audio-agent 启动的 OpenCode 默认继承用户原有的全局配置（通常是
+`~/.config/opencode/opencode.json`），因此已经安装的 MCP、Skill、权限、模型和
+插件可以继续使用。协调规则和可用的 Session 工具由 Gateway 通过后台接入层提供，不会额外安装或覆盖 OpenCode Agent。
+
+如果用户配置或第三方插件与 qwen-audio-agent 冲突，可以临时启用隔离模式排查：
+
+```dotenv
+QWEN_AUDIO_AGENT_OPENCODE_ISOLATE_USER_CONFIG=true
+```
+
+也可以通过 `QWEN_AUDIO_AGENT_OPENCODE_XDG_CONFIG_HOME` 指定另一套 OpenCode 用户
+配置目录。隔离后，原全局配置中的 MCP 和插件不会自动加载。
+
+
+## 其他 ACP Agent
+
+其他支持 ACP stdio 的 Agent 可使用通用入口：
+
+```dotenv
+AGENT_PROTOCOL=acp
+ACP_COMMAND=your-agent
+ACP_ARGS=["--acp"]
+ACP_LABEL=Your Agent
+ACP_WORKSPACE=
+```
+
+通用入口由 Gateway 直接管理 ACP 子进程。`ACP_ARGS` 推荐写成
+JSON 字符串数组，以便参数中包含空格时仍能准确解析。它使用标准 ACP Session 和
+Gateway 提供的 Session MCP 工具，不假设某个 Agent 私有的启动、权限或 UI 能力。
+
+不提供 ACP 的办事系统可以在自定义 Node 启动器中实现 `BackendPort`，详见
+[Backend Adapter SDK](../reference/backend-adapter-sdk.zh.md)。SDK 接入不新增
+`AGENT_PROTOCOL` 名称，也不会让配置文件动态加载任意代码。

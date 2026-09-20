@@ -6,6 +6,9 @@
 
 本文件中的每一条承诺都有测试锁定；各节表格中注明了对应测试。
 
+这里的 Gateway 指框架的服务宿主，不等于编排运行时这个逻辑组件，也不是协议名。
+本索引分别列出客户端通信、宿主管理和可嵌入应用接口；核心职责划分见[架构总览](architecture/overview.zh.md)。
+
 ## 协议版本与能力位
 
 `GET /api/health` 返回 `protocolVersion` 与 `capabilities`。客户端应按能力位

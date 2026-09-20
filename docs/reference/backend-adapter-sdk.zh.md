@@ -4,6 +4,8 @@ Backend Adapter SDK 用于把非 ACP 办事系统接到 qwen-audio-agent。手�
 Agent、HTTP 服务或其他任务运行时只需实现统一 `BackendPort`；前台语音、Task 队列、
 权限转述和结果交付不需要修改。
 
+`BackendPort` 是编排运行时到后台的内部边界，不是客户端接入协议。下面的 Gateway 示例展示如何将 Adapter 装配进服务宿主；`BackendWorkRuntime` 只负责后台调用，不代表整个编排运行时。
+
 ## 导入
 
 ```js

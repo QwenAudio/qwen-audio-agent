@@ -266,9 +266,11 @@ style: |
 
 <!-- _class: diagram -->
 
-# 系统总览：实时语音与后台 Agent 协同
+# 交互原理：实时语音与后台 Agent 协同
 
-![前台与后台二级架构](./architecture-overview.png)
+![前后台交互原理示意，省略编排运行时](./architecture-overview.png)
+
+此图只展示交互思路；图中的 Agent Runtime 指后台执行环境，不是框架的编排运行时。
 
 <!--
 [Sources]
@@ -326,28 +328,30 @@ style: |
 
 ---
 
-<!-- _class: diagram -->
+# 前后台交互：ACP 接入示例
 
-# 两级运行架构：实时前台与后台协调
+| 环节 | 职责 |
+| --- | --- |
+| 前台 Agent | 理解请求，调用 `spawn_thinking`，继续与用户交流 |
+| 编排运行时 | 创建任务、管理权限和状态，通过 BackendPort 调用后台 |
+| ACP Adapter 与后台 Agent | 在协调 Session 中处理，或使用独立 Session 执行委派工作 |
+| 编排运行时与前台 Agent | 安排结果投递，由前台自然表达结果 |
 
-![三级架构的前两级](./qwen-audio-agent-two-layer-architecture.png)
-
-<!--
-[Sources]
-- docs/qwen-audio-agent-two-layer-architecture.png
--->
+Gateway 承载运行时与模型接入；客户端只负责输入输出与环境交互。
 
 ---
 
-# 两级架构划分为六个职责域
+# 三个核心组件与实现职责
+
+**前台 Agent — 编排运行时 — 后台 Agent**。Gateway 是服务宿主，客户端负责 I/O；下表是实现职责，不是六个架构层。
 
 | 职责域 | 组件 | 架构职责 |
 | --- | --- | --- |
 | 实时对话 | Realtime Frontstage | 理解对话、决定直接回答或提交异步任务，承接后台结果 |
-| 语音控制 | Realtime Gateway | 管理客户端接入（GCP）、语音连接、回合、打断、Realtime 协议、响应关联与播放状态 |
+| 语音控制 | 前台会话运行时 | 管理模型连接、回合、打断与播放；GCP 接入由独立传输层处理 |
 | 任务账本 | TaskManager | 记录任务是否排队、运行、完成或取消 |
 | 后台接入 | BackendPort / Adapter | 将 ACP、A2A 与自定义后台 Agent 归一为统一事件与状态 |
-| 持续协调 | Coordinator Session | 维持用户上下文，决定直接完成或继续委派 |
+| 持续协调 | ACP Coordinator Session | 后台的持久执行上下文，不是编排运行时；决定直接完成或继续委派 |
 | 结果播报 | AnnouncementManager | 等到合适时机，再让前台自然说出结果 |
 
 **具体实现可以替换，职责边界必须保持稳定。**
@@ -382,7 +386,7 @@ style: |
   </div>
 </div>
 
-> <strong>Gateway 服务统一承载并编排任务链路：</strong> Realtime Gateway 维护语音交互状态；TaskManager、后台协调器与 AnnouncementManager 分别负责受理、执行和交付。
+> <strong>编排运行时衔接前后台，Gateway 将这些能力作为服务提供：</strong> TaskManager 负责受理，后台 Agent 负责执行，播报模块负责结果交付。
 
 ---
 
@@ -700,9 +704,9 @@ if (outcome?.completed) {
 
 ---
 
-# 独立执行层：动态衍生的“第三层”
+# 后台内部：独立执行 Session
 
-后台执行 Agent 具备**自主衍生能力**：可单独创建子 Agent （新 Session），形成类似“第三层”的独立执行空间。
+具备委派能力的后台 Agent 可创建子 Agent 或新 Session，形成独立执行空间。这属于后台内部组织，不增加新的核心架构层。
 
 
 <div class="two-col">
@@ -734,16 +738,16 @@ if (outcome?.completed) {
 
 ---
 
-<!-- _class: diagram-only -->
-<!-- _footer: "" -->
-<!-- _paginate: false -->
+# 独立工作如何保持可控
 
-![bg contain](./qwen-audio-agent-three-layer-architecture.png)
+| 操作 | 责任方 |
+| --- | --- |
+| 创建与关联 | Adapter 保存委派关系，运行时以统一 Task ID 跟踪 |
+| 状态查询 | 运行时读取任务状态与后台归一化活动，不要求协调模型再次查询 |
+| 取消工作 | 运行时发起取消，Adapter 映射到对应后台执行 |
+| 完成与交付 | Adapter 确认执行结束，运行时安排结果回到前台对话 |
 
-<!--
-[Sources]
-- docs/qwen-audio-agent-three-layer-architecture.png
--->
+协调 Session 与独立 Session 都是后台内部上下文，不构成额外的核心架构层。
 
 ---
 
@@ -1000,7 +1004,7 @@ ConversationSync 是 Gateway 内的短期会话账本，记录用户说了什么
 ### 职责边界
 
 - 前台工具越少，实时路径越稳定
-- Gateway 管事实，模型管表达
+- 编排运行时管事实，模型管表达
 - 协调会话和执行 Session 分开
 - 事实记忆和行为偏好分开
 - 权限绑定用户身份与 Session
@@ -1028,8 +1032,8 @@ ConversationSync 是 Gateway 内的短期会话账本，记录用户说了什么
 # 总结：七项架构设计原则
 
 1. **用异步协议连接不同时间尺度。**
-2. **Gateway 管系统事实，模型管理解与表达。**
-3. **协调 Session 维持连续性，独立 Session 承担长任务执行。**
+2. **编排运行时管系统事实，模型管理解与表达；Gateway 提供服务接入。**
+3. **ACP 后台用协调 Session 维持连续性，独立 Session 承担委派工作。**
 4. **后台任务完成不等于结果已交付，交付需要独立调度与确认。**
 5. **记忆按权威分层，个性化不能突破安全边界。**
 6. **跨会话能力必须可查询、可取消、可恢复、可审计。**

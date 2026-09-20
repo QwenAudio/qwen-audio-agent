@@ -21,7 +21,7 @@ features:
     link: /zh/getting-started/quickstart#命令行快速开始
     linkText: 命令行快速开始
   - title: 开发者接入
-    details: 复用 Gateway，接入新的语音服务、办事 Agent、知识库或客户端。
+    details: 复用编排运行时，扩展语音服务、后台 Agent 与知识库，或通过 Gateway 接入自定义客户端。
     link: /zh/extensions
     linkText: 查看扩展接口
 ---
@@ -29,7 +29,7 @@ features:
 ## 手册阅读路线
 
 1. [快速开始](./getting-started/quickstart.zh.md)：选桌面版或命令行，完成第一次对话。
-2. [基本概念](./getting-started/concepts.zh.md)：区分客户端、Gateway、前台模型与后台 Agent。
+2. [基本概念](./getting-started/concepts.zh.md)：了解前台、编排运行时与后台，以及 Gateway 和客户端的作用。
 3. [配置语音前台](./configuration/frontend.zh.md)：选云端或本地服务，确认支持的输入与工具。
 4. [功能指南](./guides/conversation.zh.md)：使用文字、附件、后台工作和个人数据。
 

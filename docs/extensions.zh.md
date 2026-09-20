@@ -3,6 +3,8 @@
 本节面向开发者：通过已有扩展接口接入不同客户端、语音服务、后台 Agent 或知识系统。
 只想配置现成能力时，先看[配置总览](configuration.zh.md)与[快速开始](getting-started/quickstart.zh.md)。
 
+核心逻辑组件是前台 Agent、编排运行时和后台 Agent；Gateway 将运行时能力作为服务提供，客户端负责 I/O 与环境交互。扩展时分别使用模型 Provider、工具、BackendPort 或客户端协议，不把业务逻辑写进传输层。详见[架构总览](architecture/overview.zh.md)。
+
 ## 前台工具：MCP、OpenAPI、Profile
 
 不碰语音链路即可给对话加工具：通过前台 MCP 客户端接入 MCP 服务、从
@@ -22,7 +24,7 @@ Provider 注册表。
 
 ## 知识：检索 Provider
 
-网关通过简洁的 Provider 接口提供基础资料库。可以直接使用，也可以接入你已经在运营的
+运行时通过简洁的 Provider 接口接入知识模块。可以直接使用内置基础资料库，也可以接入你已经在运营的
 知识系统。
 
 → [知识检索 Provider](reference/knowledge.zh.md)

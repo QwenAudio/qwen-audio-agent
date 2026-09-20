@@ -1,6 +1,6 @@
 # 扩展 Realtime Provider
 
-业务宿主可以注入自定义 Realtime Provider，而不必修改 Gateway 的语音会话与后台 Agent 逻辑。
+Realtime Provider 是运行时与实时模型服务之间的适配器，不是客户端，也不是编排运行时本身。业务宿主可以注入自定义 Provider，而不必修改通用会话与后台工作逻辑。下面通过 Gateway 应用入口进行装配。
 
 ```js
 import { createGatewayApplication } from 'qwen-audio-agent/gateway-application'

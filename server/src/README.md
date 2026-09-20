@@ -7,6 +7,15 @@ injection. Moving code does not change public package exports or wire protocols.
 按功能归属组织目录，模块内部区分接口、运行时和具体实现；`app/` 负责装配与依赖
 注入。源码位置不等于公共接口，扩展方应使用包导出的入口。
 
+The logical architecture is **Frontend Agent — Orchestration Runtime — Backend Agent**.
+Gateway is the service host that assembles runtime capabilities and exposes client access,
+not another peer component or a protocol. Runtime responsibilities span several domains;
+`orchestration/` is not the entire runtime, and an ACP backend's coordination Session is not the runtime.
+
+核心逻辑架构是**前台 Agent — 编排运行时 — 后台 Agent**。Gateway 是装配运行时能力、
+提供客户端接入的服务宿主，不是另一个并列组件或协议。运行时职责分布在多个功能模块中；
+`orchestration/` 不等于全部编排运行时，ACP 后台的协调 Session 也不是编排运行时。
+
 | Directory / 目录 | Responsibility / 职责 |
 | --- | --- |
 | `app/` | Application assembly, lifecycle and cross-domain wiring / 应用装配、生命周期与跨模块连接 |

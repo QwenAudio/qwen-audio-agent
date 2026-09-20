@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { parseArguments } from '../cli/src/arguments.mjs'
 import { REALTIME_PROVIDERS } from '../shared/realtime-provider-definitions.mjs'
+import { GATEWAY_CLIENT_PROTOCOL_VERSION } from '../shared/protocol/gateway-client-protocol.mjs'
 
 const root = fileURLToPath(new URL('../docs/', import.meta.url))
 // Git may check out Markdown with CRLF on Windows; examples are unchanged.
@@ -24,6 +25,18 @@ const files = markdownFiles()
 // Maintainer-only, unpaired pages are outside the published manual.
 const pairs = files.filter(file => !file.endsWith('.zh.md')
   && files.includes(file.replace(/\.md$/, '.zh.md')))
+
+test('client protocol references match the implemented wire version', () => {
+  const release = GATEWAY_CLIENT_PROTOCOL_VERSION.split('.').slice(0, 2).join('.')
+  for (const suffix of ['md', 'zh.md']) {
+    const file = `gateway-protocol.${suffix}`
+    const document = read(file)
+    const wireVersion = /^> (?:Wire version|线协议版本)[:：]\s*\*\*([^*]+)\*\*/m.exec(document)?.[1]
+    const status = /^> (?:Status|状态)[:：]\s*\*\*Stable ([^*]+)\*\*/m.exec(document)?.[1]
+    assert.equal(wireVersion, GATEWAY_CLIENT_PROTOCOL_VERSION, `${file}: wire version`)
+    assert.equal(status, release, `${file}: stable release`)
+  }
+})
 
 test('bilingual manual pairs document the same configuration identifiers', () => {
   const identifiers = text => [...new Set(text.match(

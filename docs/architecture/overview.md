@@ -1,59 +1,52 @@
 # Architecture Overview
 
-qwen-audio-agent is a realtime voice runtime that keeps AI agents talking,
-working, and present. Clients and backends connect to the Gateway through
-separate boundaries.
+qwen-audio-agent connects realtime conversation with asynchronous execution.
+Its logical components and service deployment describe different aspects of the architecture.
 
-![Three-layer architecture](../qwen-audio-agent-three-layer-architecture-en.png)
+## Core logical architecture
 
-## The three layers
+| Component | Responsibility | Boundary |
+| --- | --- | --- |
+| Frontend Agent | Understand input, converse naturally, call chat tools or `spawn_thinking`, and compose responses from results. | Combines a realtime model, instructions, context, and tools; does not handle backend-native protocols or execution details. |
+| Orchestration Runtime | Manage task lifecycles, permissions, sessions, events, and result delivery so work and conversation can proceed together. | Runs scheduling and policy in code, without adding a coordinating model or choosing the backend's internal execution steps. |
+| Backend Agent | Work in its own execution environment with its own model, tools, MCP servers, and Skills. | Connects through `BackendPort`; ACP, A2A, or custom protocol details stay inside the adapter. |
 
-1. **Client — the environment.** TUI, WebUI, the desktop orb, or your own
-   client. The client owns I/O and presentation, publishes environment
-   state (window focus, presence, sleep/wake), and carries user signals.
-   How the user wakes the assistant (wake word, hotkey, tap) is entirely a
-   client concern. Clients hold no memory; they only forward signals.
+These are three logical components, not three required processes. Backend sub-agents and independent Sessions do not add core architecture layers.
 
-2. **Gateway — the conversation layer and the state plane.** Two parts
-   share one process:
-   - The **Realtime frontend** is a lightweight voice agent: full-duplex
-     speech, instant answers, and a deliberately small set of conversation
-     tools, including search, memory, reminders, and work control.
-   - The **Gateway control plane** is deterministic — no additional LLM sits
-     in the routing path. It owns the task ledger, permission arbitration,
-     announcement policy, and the injection defense between frontend and
-     backend.
+## Gateway and clients
 
-3. **Backend — the execution layer.** Anything behind the `BackendPort`:
-   an ACP agent (OpenCode, OpenClaw, Qoder, Qwen Code, MiniMax Code, Kimi Code, Claude
-   Code, Codex, DeepSeek, Pi, or your own), a remote A2A agent, or a
-   custom adapter built with the Backend Adapter SDK. ACP integrations keep
-   a persistent coordination Session for continuous work; the backend's
-   internal tools, skills, and sub-sessions are backend-private and never
-   become new layers.
+**The Gateway is the framework's service host.** It assembles the Orchestration Runtime and frontend/backend integrations, and provides listening endpoints, authentication, connection management, and protocol entry points. The runtime describes how the system works; the Gateway describes how those capabilities are served. The Gateway is not itself a protocol: clients use the Gateway Client Protocol.
 
-## Client and backend boundaries
+**A client is an interaction and environment endpoint, not the Frontend Agent.** Desktop, WebUI, TUI, mobile, and custom clients own I/O, presentation, user actions, and environment events. Wake words, hotkeys, windows, and local devices belong to clients; long-term memory belongs to the memory module integrated with the runtime.
+
+Desktop can start its bundled Gateway or, like mobile, WebUI, and TUI, connect to a separately deployed Gateway. The backend can be a managed local process or an external service supported by its adapter. These deployment choices do not change the core component responsibilities.
+
+## Interface boundaries
 
 - **Client ↔ Gateway** — the [Gateway contract](../contract.md) and the
   [client protocol](../gateway-protocol.md): typed events over a single
   WebSocket by default. Optional [WebRTC transport](../gateway-webrtc-client.md)
   reuses Gateway control and lifecycle behavior.
-- **Gateway ↔ Backend** — the `BackendPort`. Protocol details stay inside
+- **Orchestration Runtime ↔ Backend** — the `BackendPort`. Protocol details stay inside
   ACP, A2A, or custom adapters; launch and capability behavior lives in
   registered drivers. See [Supported backends](../backends/overview.md)
   and the [Backend Adapter SDK](../reference/backend-adapter-sdk.md).
+- **Runtime ↔ realtime model service** — the [Realtime Provider](../voice-frontends/custom-provider.md). Independent adapters handle vendor protocols, authentication, and event conversion without changing task or client semantics.
 
-A new scenario can replace the client, the backend, or both. The Gateway
-provides separate extension points: persona files, announcement
-policy, frontend MCP tools and OpenAPI operations, and knowledge/memory
-providers. See the [scenario examples](../scenarios/smart-cockpit.md).
+The framework also exposes persona, announcement policy, frontend MCP/OpenAPI tools, and knowledge/memory providers. Product hosts assemble these through the existing application entry point; clients connect through the Gateway. See [Extensions](../extensions.md) and [Examples](../scenarios/index.md).
+
+## Runtime and Session terminology
+
+- **Orchestration Runtime** is a logical framework component. Its responsibilities currently span `task/`, `orchestration/`, `voice/`, and other modules assembled by `app/`. It is neither a single class of that name nor just the `orchestration/` directory.
+- A **frontend session runtime** manages one realtime conversation's model connection, context, tools, and presentation. It is part of the runtime implementation.
+- A **backend coordination Session** is persistent execution context used by the ACP adapter, not the Orchestration Runtime. A2A and custom backends need not use this Session structure.
 
 ## The nonblocking loop
 
-When a request needs real work, the frontend calls `spawn_thinking` and
-the conversation continues immediately — the work runs as an async task in
-the backend session, and its result flows back into the same conversation
-at a safe insertion point. Backend execution does not block conversation;
+When a request needs backend execution, the frontend calls `spawn_thinking`.
+The Orchestration Runtime acknowledges acceptance so conversation can continue.
+The configured backend executes asynchronously, and results return to the same
+conversation at a safe insertion point. Backend execution does not block conversation;
 permissions and results are presented according to the current interaction state.
 
 ## Read next

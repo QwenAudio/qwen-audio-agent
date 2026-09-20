@@ -5,7 +5,7 @@
 
 ## Current baseline
 
-Reviewed against GitHub main `7aba34d3` on 2026-09-20:
+Reviewed against GitHub main `b02a8d7e` on 2026-09-20:
 
 - Gateway health contract `5.9.0`;
 - stable Gateway Client Protocol wire version `7.0.0`;
@@ -18,6 +18,12 @@ The refresh covers navigation, setup, clients, features, configuration, operatio
 and developer references. New concept, vision, lists/reminders, CLI, and example-index
 pages have language companions. This is a documentation/source review, not a claim that
 every external service or operating system was live-tested.
+
+The architecture terminology review separates the three logical components
+(Frontend Agent, Orchestration Runtime, Backend Agent) from Gateway service
+hosting and client I/O. Both languages distinguish the framework runtime,
+frontend session runtime, and backend ACP coordination Session. Protocol reference
+text uses wire version 7.0; historical migration versions and capability IDs remain unchanged.
 
 ## Build-time guard
 

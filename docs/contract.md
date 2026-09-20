@@ -9,6 +9,9 @@ formats) is not contract and may change in any release.
 Every promise in this file is locked by a test; the table in each section
 names it.
 
+Gateway here means the framework's service host, not the logical Orchestration Runtime or a protocol name.
+This index distinguishes client communication, host management, and embeddable application APIs; see the [Architecture Overview](architecture/overview.md) for component responsibilities.
+
 ## Protocol version and capabilities
 
 `GET /api/health` reports `protocolVersion` and `capabilities`. Clients should

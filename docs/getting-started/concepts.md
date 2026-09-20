@@ -2,13 +2,21 @@
 
 Qwen Audio Agent separates realtime conversation from background execution. You can keep talking while progress and results return to the conversation.
 
-| Component | Responsibility | Runs in |
-| --- | --- | --- |
-| Client | Capture and play audio, accept text and attachments, display conversation | Desktop, browser, TUI, or phone |
-| Gateway | Connect models, manage tools and background work, persist state | Your computer or server |
-| Backend Agent | Act using its own model, tools, MCP servers, and Skills | A Gateway-managed process or an existing service connected through an adapter |
+## Three Core Components
 
-The **voice frontend** is the realtime model service connected by the Gateway—not the desktop interface. It interprets input, responds, and calls available tools. Desktop bundles a Gateway; mobile and remote clients do not need a local backend Agent.
+| Component | Responsibility |
+| --- | --- |
+| Frontend Agent | Use a realtime model to understand input, respond naturally, and call available tools. |
+| Orchestration Runtime | Connect frontend and backend, manage tasks, permissions, sessions, and events, and deliver results into the conversation. |
+| Backend Agent | Execute work with its own model, tools, MCP servers, and Skills. |
+
+**The Frontend Agent is neither the client nor just a model API.** It combines a realtime model with instructions, context, and tools. Desktop, WebUI, TUI, and mobile clients handle audio capture, playback, input, and display.
+
+## What Is the Gateway?
+
+The Gateway is the framework's **service host**: it hosts the Orchestration Runtime on a computer or server and exposes it to clients through a protocol. It is not a fourth core component alongside frontend, runtime, and backend, nor is it a protocol name. Clients use the Gateway Client Protocol.
+
+Desktop bundles a Gateway and can also connect to a remote one. Mobile and other remote clients do not need a local Backend Agent. Components describe responsibilities; deployment determines where they run.
 
 ## Frontend and Backend Models
 

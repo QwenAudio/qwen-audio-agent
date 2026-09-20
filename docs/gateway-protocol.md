@@ -1,27 +1,21 @@
 # Gateway Client Protocol
 
-> Status: **Stable 6.0**<br>
+> Status: **Stable 7.0**<br>
 > Wire version: **7.0.0**<br>
 > Roadmap: [GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > Current implementation sources of truth: `shared/protocol/gateway-client-protocol.mjs`, `server/src/client/client-event-router.mjs`, `server/src/client/client-command-runtime.mjs`, `shared/protocol/realtime-events.mjs`, `shared/protocol/gateway-events.mjs`, and `server/src/core/gateway-protocol.mjs`
 
-This specification defines the implemented northbound boundary between qwen-audio-agent's Gateway and one active Client Environment per authenticated owner. Current first-party clients use the 6.0 wire protocol; health-contract 5.x aliases remain temporarily available for compatibility.
+This specification defines the implemented northbound boundary between qwen-audio-agent's Gateway and one active Client Environment per authenticated owner. Current first-party clients use wire version 7.0. Legacy `connect` and runtime REST routes remain compatibility aliases, not entry points for new clients. The health contract and wire protocol are versioned separately; see the [Gateway contract](contract.md).
 
 ## 1. Product boundary
 
-```text
-Client Environment
-        ↕ Gateway Client Protocol
-Gateway Core + Realtime Frontend Agent
-        ↕ BackendPort
-Backend Agent
-```
+The core logical architecture consists of the **Frontend Agent, Orchestration Runtime, and Backend Agent**. This protocol defines client access to the service, not a different component model. See the [Architecture Overview](architecture/overview.md).
 
-The three roles are intentionally independent:
+- The **Frontend Agent** uses a realtime model, context, and tools to understand input and compose responses.
+- The **Orchestration Runtime** manages tasks, permissions, sessions, event routing, result delivery, and recovery, reaching the backend through `BackendPort`.
+- The **Backend Agent** is the user's execution environment, integrated through an ACP, A2A, or custom adapter.
 
-- **Gateway Core** owns the Realtime frontend agent, conversation, tools, Task lifecycle, authorization, routing, presentation, and recovery.
-- **Backend Agent** is the user's execution environment. Gateway reaches it only through `BackendPort`, implemented by ACP, A2A, or a custom adapter.
-- **Client Environment** owns I/O, rendering, playback, local UX, sensors, client state, user behavior, and actions available in the surrounding environment.
+The **Gateway** hosts the runtime and frontend/backend integrations as a service, providing authentication, connection management, and this protocol's entry point. The **Client Environment** owns I/O, rendering, playback, local UX, sensors, user behavior, and environment actions, and communicates with the Gateway through this protocol. References to Gateway behavior below include its hosted runtime behavior; they do not move business logic into transport.
 
 TUI, WebUI, and Desktop Orb are first-party reference clients. OpenCode, Qwen Code, MiniMax Code, Pi, OpenClaw, remote A2A agents, and other integrations are reference backends. Neither list limits the framework.
 
@@ -159,17 +153,17 @@ Rules:
 - Owners are independent. Each owner still has exactly one active Client.
 - The lease is released when the socket closes or its heartbeat expires. Lease-generation fencing prevents a stale socket from releasing or mutating a newer lease.
 - A Client that negotiates `session.heartbeat` must answer each Gateway `session.ping` with a correlated `session.pong`. Application traffic also refreshes the lease. This avoids relying on WebSocket control frames that some reverse proxies do not preserve reliably.
-- No observer connection or concurrent multi-Client control exists in 6.0.
+- No observer connection or concurrent multi-Client control exists in 7.0.
 - The Client must branch on negotiated capabilities, not product versions.
 - Protocol version, Client identity, and capabilities cannot change without reconnecting.
-- Version 6.0 defines no `context_source`, `integration`, or observer connection role. Vehicle buses, CRM feeds, sensors, and other context sources attach to the active Client Environment through client-side adapters; that Client validates and relays registered semantic events.
+- Version 7.0 defines no `context_source`, `integration`, or observer connection role. Vehicle buses, CRM feeds, sensors, and other context sources attach to the active Client Environment through client-side adapters; that Client validates and relays registered semantic events.
 
 ### 3.1 GCP1 compatibility rollout
 
 GCP1 implements the envelope and handshake without forking Gateway business
-logic. A 6.0 Client starts with `session.hello`; Gateway returns
+logic. A current 7.0 Client starts with `session.hello`; Gateway returns
 `session.ready`, adds `event_id` to subsequent outbound events, and normalizes
-6.0 input aliases into the existing internal event model. A 5.x Client may
+protocol inputs into the existing internal event model. A legacy 5.x Client may
 continue to start with `connect` and receives the unchanged legacy event shape.
 Only capabilities with working runtimes are negotiated. GCP2 Client Event and
 runtime-command capabilities, GCP3 Agent Delivery, GCP4 Client Actions, and
@@ -257,7 +251,7 @@ Immediate results and errors are not replayed. Media deltas, incremental transcr
 
 The naming resemblance is intentional, but the schemas in this specification are authoritative. Reusing a standard's field name or compatible shape does not import that standard's object type or claim wire compatibility.
 
-All control messages are UTF-8 JSON text frames. Version 6.0 carries PCM audio as base64 in JSON; a future binary media capability may replace that without changing semantic event routing.
+All control messages are UTF-8 JSON text frames. Version 7.0 carries PCM audio as base64 in JSON. Optional [WebRTC media transport](gateway-webrtc-client.md) leaves semantic event routing unchanged.
 
 ## 5. Protocol planes
 
@@ -653,7 +647,7 @@ Event definitions impose payload, rate, retention, and coalescing limits. Latest
 - Built-in actions are capability-gated. Extension actions require an installed and trusted Client/host extension.
 - One active Client may aggregate many local sensors or environment sources without opening more Gateway sockets.
 
-The base API is the existing WebSocket. Version 6.0 does not expose an independent HTTP, `context_source`, or integration connection that bypasses the active Client. A future deployment that needs direct machine-to-Gateway event ingestion requires an explicit protocol decision; it cannot silently become a second Client role.
+The base API is the existing WebSocket. Version 7.0 does not expose an independent HTTP, `context_source`, or integration connection that bypasses the active Client. A future deployment that needs direct machine-to-Gateway event ingestion requires an explicit protocol decision; it cannot silently become a second Client role.
 
 ## 10. Relationship to external standards
 
@@ -664,7 +658,7 @@ The Gateway protocol defines its own types. The following alignment is deliberat
 | `input_audio_buffer.*`, `conversation.item.create`, response and audio event names | [OpenAI Realtime](https://platform.openai.com/docs/api-reference/realtime-client-events) media, conversation, response, and cancellation vocabulary | Gateway schemas, handshake, extensions, and lifecycle remain authoritative; full wire compatibility is not claimed |
 | `task_id`, `status.state`, `status.message.parts`, `artifacts[].parts` | [A2A](https://a2a-protocol.org/latest/specification/) Task, status, Message, and Artifact semantics | A2A transport, JSON-RPC objects, remote Task IDs, and Agent Card objects remain inside the A2A Backend adapter |
 | normalized authorization and backend activity | ACP permission, Session update, Tool Call, and plan semantics | ACP request/update objects and Session IDs remain inside the ACP Backend adapter |
-| optional read-only activity projection | AG-UI activity semantics | AG-UI is not the 6.0 base transport or command plane |
+| optional read-only activity projection | AG-UI activity semantics | AG-UI is not the GCP base transport or command plane |
 | frontend tools and external services | MCP / OpenAPI tool semantics | They do not replace Client Event, Client Action, or the Gateway runtime command plane |
 
 ## 11. Migration from 5.x
@@ -682,7 +676,7 @@ Health checks, static assets, installation, and settings remain host/operations 
 
 ## 12. Conformance requirements
 
-The stable 6.0 behavior is locked by tests covering:
+The current wire protocol's stable behavior is locked by tests covering:
 
 - owner-scoped single-Client ownership, explicit takeover, generation fencing, release, and heartbeat expiry;
 - version and capability negotiation;
@@ -701,9 +695,9 @@ The stable 6.0 behavior is locked by tests covering:
 ## 13. Non-goals
 
 - Concurrent controlling Clients for the same owner, observers, and arbitrary kick semantics.
-- Exposing Electron, React, CoreAudio, or a specific Client implementation in Gateway Core.
+- Depending on Electron, React, CoreAudio, or a specific Client implementation in the Orchestration Runtime.
 - Treating ACP as the only backend protocol.
 - Allowing arbitrary Client data to become model instructions.
 - Requiring every Client Event or Task progress update to reach the model or produce speech.
-- Implementing wake-word detection, window layout, or local mute in Gateway Core.
+- Implementing wake-word detection, window layout, or local mute in the Orchestration Runtime.
 - Removing recovery APIs before replay is proven reliable.

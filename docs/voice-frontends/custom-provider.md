@@ -1,6 +1,6 @@
 # Extending Realtime Providers
 
-A product host can inject a custom Realtime Provider without changing the Gateway voice session or backend Agent logic.
+A Realtime Provider adapts a realtime model service to the runtime; it is neither the client nor the Orchestration Runtime itself. A product host can inject a custom provider without changing shared session or backend-work logic. The example below assembles it through the Gateway application entry point.
 
 ```js
 import { createGatewayApplication } from 'qwen-audio-agent/gateway-application'

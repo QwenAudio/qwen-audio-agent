@@ -1,27 +1,21 @@
 # Gateway Client Protocol
 
-> 状态：**Stable 6.0**<br>
+> 状态：**Stable 7.0**<br>
 > 线协议版本：**7.0.0**<br>
 > Roadmap：[GitHub issue #251](https://github.com/QwenAudio/qwen-audio-agent/issues/251)<br>
 > 当前实现事实源：`shared/protocol/gateway-client-protocol.mjs`、`server/src/client/client-event-router.mjs`、`server/src/client/client-command-runtime.mjs`、`shared/protocol/realtime-events.mjs`、`shared/protocol/gateway-events.mjs` 与 `server/src/core/gateway-protocol.mjs`
 
-本文档定义 qwen-audio-agent Gateway 与每个已认证用户的一个活动 Client Environment 之间已经落地的北向协议。当前第一方客户端使用 6.0 线协议；健康契约 5.x 的旧入口仅作为临时兼容别名保留。
+本文档定义 qwen-audio-agent Gateway 与每个已认证用户的一个活动 Client Environment 之间已经落地的北向协议。当前第一方客户端使用 7.0 线协议；旧 `connect` 与运行时 REST 入口仍作为兼容别名保留，不用于新客户端接入。健康契约与线协议独立版本化，见[Gateway 契约](contract.zh.md)。
 
 ## 1. 产品边界
 
-```text
-Client Environment
-        ↕ Gateway Client Protocol
-Gateway Core + Realtime Frontend Agent
-        ↕ BackendPort
-Backend Agent
-```
+核心逻辑架构是**前台 Agent、编排运行时、后台 Agent**。本协议定义客户端如何接入服务，不改变这三个组件的划分，详见[架构总览](architecture/overview.zh.md)。
 
-三个角色相互独立：
+- **前台 Agent** 通过实时模型、上下文和工具理解输入、组织回复。
+- **编排运行时** 管理任务、权限、会话、事件路由、结果投递与恢复，通过 `BackendPort` 对接后台。
+- **后台 Agent** 是用户提供的执行环境，ACP、A2A 或自定义 Adapter 实现其接入。
 
-- **Gateway Core** 管理 Realtime 前台 Agent、对话、工具、Task 生命周期、权限、路由、Presentation 与恢复。
-- **Backend Agent** 是用户提供的执行环境。Gateway 只通过 `BackendPort` 访问，由 ACP、A2A 或自定义 Adapter 实现。
-- **Client Environment** 负责 I/O、显示、播放、本地 UX、传感器、客户端状态、用户行为和外部环境动作。
+**Gateway** 是承载运行时与前后台接入的服务宿主，提供认证、连接管理和本协议入口。**Client Environment** 负责 I/O、显示、播放、本地 UX、传感器、用户行为和环境动作，通过本协议与 Gateway 通信。下文的“Gateway 处理”包含其承载的运行时行为，不表示把业务逻辑放进传输层。
 
 TUI、WebUI 和桌面悬浮球是第一方参考客户端；OpenCode、Qwen Code、MiniMax Code、Pi、OpenClaw、远程 A2A Agent 等是参考后台。两者都不限制框架可接入的实现。
 
@@ -145,16 +139,16 @@ Gateway 返回协商后的版本与能力交集：
 - 不同用户彼此独立，但每个用户仍只有一个活动 Client。
 - WebSocket 关闭或心跳超时后释放租约；租约代次 fencing 会阻止旧 Socket 释放或修改新租约。
 - 协商了 `session.heartbeat` 的 Client 必须使用关联的 `session.pong` 回复 Gateway 的每个 `session.ping`；正常业务消息同样会续租。这避免依赖某些反向代理无法可靠保留的 WebSocket 控制帧。
-- 6.0 不提供 Observer 连接或同一用户下的并发多 Client 控制。
+- 7.0 不提供 Observer 连接或同一用户下的并发多 Client 控制。
 - Client 必须依据协商后的 capabilities 判断能力，不能只比较产品版本。
 - 协议版本、Client 身份和能力不能在当前连接中改变；需要改变时重连。
-- 6.0 不定义 `context_source`、`integration` 或 Observer 连接角色。车辆总线、CRM、传感器等上下文来源通过客户端侧 Adapter 接入当前活动 Client Environment，再由该 Client 校验并转发已注册的语义事件。
+- 7.0 不定义 `context_source`、`integration` 或 Observer 连接角色。车辆总线、CRM、传感器等上下文来源通过客户端侧 Adapter 接入当前活动 Client Environment，再由该 Client 校验并转发已注册的语义事件。
 
 ### 3.1 GCP1 兼容落地
 
-GCP1 在不分叉 Gateway 业务逻辑的前提下实现信封与握手。6.0 Client 以
+GCP1 在不分叉 Gateway 业务逻辑的前提下实现信封与握手。当前 7.0 Client 以
 `session.hello` 开始；Gateway 返回 `session.ready`，为后续下行事件补充
-`event_id`，并把 6.0 输入别名归一化到现有内部事件模型。5.x Client 仍可使用
+`event_id`，并把协议输入归一化到现有内部事件模型。旧 5.x Client 仍可使用
 `connect`，收到的旧事件形状保持不变。握手只协商已有运行时实现的能力。GCP2 的
 Client Event 与运行时命令 capability、GCP3 Agent Delivery、GCP4 Client Action
 以及 GCP5 参考 Client 与有限回放均已实现。
@@ -229,7 +223,7 @@ Gateway 采用扁平的 OpenAI Realtime 风格信封：
 
 命名相似是有意为之，但本文定义的 Schema 才是权威契约。复用标准字段名或兼容形状，不代表引入该标准的对象类型，也不宣称线兼容。
 
-所有控制消息使用 UTF-8 JSON 文本帧。6.0 在 JSON 中以 base64 承载 PCM 音频；未来可以通过能力协商增加二进制媒体帧，而不改变语义事件路由。
+所有控制消息使用 UTF-8 JSON 文本帧。7.0 在 JSON 中以 base64 承载 PCM 音频；可选 WebRTC 媒体传输见[WebRTC 客户端](gateway-webrtc-client.zh.md)，不改变语义事件路由。
 
 ## 5. 协议面
 
@@ -609,7 +603,7 @@ internal
 - 内置 Action 需要 capability；扩展 Action 需要已安装且可信的 Client/Host 扩展。
 - 一个活动 Client 可以聚合多个本地传感器和环境来源，不需要增加 Gateway Socket。
 
-基础 API 使用现有 WebSocket。6.0 不提供绕过活动 Client 的独立 HTTP、`context_source` 或 Integration 连接。未来部署若需要机器直接向 Gateway 投递事件，必须重新做出明确协议决策，不能悄悄演变成第二种 Client 角色。
+基础 API 使用现有 WebSocket。7.0 不提供绕过活动 Client 的独立 HTTP、`context_source` 或 Integration 连接。未来部署若需要机器直接向 Gateway 投递事件，必须重新做出明确协议决策，不能悄悄演变成第二种 Client 角色。
 
 ## 10. 与外部标准的关系
 
@@ -620,7 +614,7 @@ Gateway 协议定义自己的类型。下表是刻意且非规范性的语义对
 | `input_audio_buffer.*`、`conversation.item.create`、回复与音频事件名 | [OpenAI Realtime](https://platform.openai.com/docs/api-reference/realtime-client-events) 的媒体、对话、回复与取消词汇 | Gateway Schema、握手、扩展和生命周期才是权威契约；不宣称完整线兼容 |
 | `task_id`、`status.state`、`status.message.parts`、`artifacts[].parts` | [A2A](https://a2a-protocol.org/latest/specification/) 的 Task、状态、Message 与 Artifact 语义 | A2A 传输、JSON-RPC 对象、远程 Task ID 和 Agent Card 留在 A2A Backend Adapter 内部 |
 | 规范化权限和后台活动 | ACP 的权限、Session Update、Tool Call 与计划语义 | ACP 请求/更新对象与 Session ID 留在 ACP Backend Adapter 内部 |
-| 可选的只读活动投影 | AG-UI 活动语义 | AG-UI 不作为 6.0 基线传输或命令面 |
+| 可选的只读活动投影 | AG-UI 活动语义 | AG-UI 不作为 GCP 基线传输或命令面 |
 | 前台工具和外部服务 | MCP / OpenAPI 工具语义 | 不替代 Client Event、Client Action 或 Gateway 运行时命令面 |
 
 ## 11. 从 5.x 迁移
@@ -638,7 +632,7 @@ Gateway 协议定义自己的类型。下表是刻意且非规范性的语义对
 
 ## 12. Conformance 要求
 
-6.0 的稳定行为由以下测试范围锁定：
+当前线协议的稳定行为由以下测试范围锁定：
 
 - 按用户单 Client 占用、显式接管、租约代次 fencing、释放与心跳超时；
 - 版本与 capability 协商；
@@ -657,9 +651,9 @@ Gateway 协议定义自己的类型。下表是刻意且非规范性的语义对
 ## 13. 明确不做
 
 - 同一用户下的并发控制 Client、Observer 与任意踢出语义。
-- 在 Gateway Core 中依赖 Electron、React、CoreAudio 或具体 Client。
+- 在编排运行时中依赖 Electron、React、CoreAudio 或具体 Client。
 - 将 ACP 规定为唯一后台协议。
 - 允许任意 Client 数据成为模型指令。
 - 强制每个 Client Event 或 Task 进展进入模型或产生播报。
-- 在 Gateway Core 实现唤醒词、窗口布局或本地静音。
+- 在编排运行时中实现唤醒词、窗口布局或本地静音。
 - 在可靠回放完成前删除恢复接口。

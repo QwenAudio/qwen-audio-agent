@@ -3,23 +3,24 @@
 This document defines the product boundary. Changes that contradict these
 invariants are architecture changes, not local feature work.
 
-See the
+For the historical refactoring plan, see the
 [Realtime Voice Chatbot Runtime Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/frontend-chatbot-runtime.md)
-for the target boundary and staged refactor of the Realtime Voice Chatbot,
-asynchronous Task bridge, and single user-configured backend agent. Until each
-roadmap stage lands, this document remains the tested description of current
-runtime behavior.
+document. This page describes current, tested runtime behavior; see the
+[Architecture Overview](overview.md) for concepts and deployment relationships.
 
 ## 1. User-visible model
 
-The user talks to one qwen-audio assistant. Internally there are two qwen-audio-agent
-layers:
+The user talks to one qwen-audio assistant. The logical architecture has three core components:
 
-1. **Realtime frontend** — full-duplex speech, natural conversation, time and
-   memory, plus configurable lightweight tools such as retrieval.
-2. **Backend Agent** — one configured action Agent that handles requests
+1. **Frontend Agent** — combines a realtime model, instructions, context, and tools for natural conversation and lightweight tool requests.
+2. **Orchestration Runtime** — manages tasks, permissions, sessions, and events, schedules backend execution, and delivers results without adding a separate reasoning Agent.
+3. **Backend Agent** — one configured action Agent that handles requests
    requiring operations in the user's environment, sustained execution, or
    deliverable creation.
+
+The Gateway hosts these capabilities as a service, assembling the application and exposing network access. It is not a fourth core component.
+Clients own I/O and presentation and use the service through the Gateway Client Protocol; they are not the Frontend Agent.
+Where this document says the Gateway manages or delivers something, the business behavior belongs to the Orchestration Runtime it hosts.
 
 The backend may be an ACP Agent such as OpenCode, OpenClaw, Qoder, Qwen Code,
 MiniMax Code, Kimi Code, or Pi; a remote A2A Agent; or a custom BackendPort adapter.
@@ -194,6 +195,9 @@ not repeated in every prompt; protocol or backend runtime context owns them.
 
 ## 4. Fixed Backend Agent Session
 
+The coordination Session here belongs to the ACP backend integration, not the framework's Orchestration Runtime.
+The runtime manages work through `BackendPort`; A2A and custom backends need not use the same Session structure.
+
 The ACP adapter owns one persistent coordinator Session identity per owner and
 backend:
 
@@ -365,20 +369,11 @@ state, never delegation IDs, target Session IDs, directories, or raw events.
 
 ## 9. Dependency direction
 
-```text
-WebUI / TUI / Desktop
-   ↓ WebSocket and HTTP
-Realtime Gateway
-   ↓ spawn_thinking
-Task queue
-   ↓
-structured BackendPort Task
-   ↓
-Adapter projection: natural instruction + native attachment parts
-   ↓
-OpenCode ACP, OpenClaw ACP bridge, Qoder ACP,
-Qwen Code ACP, Kimi Code ACP, or another ACP Agent
-```
+Logical calls and network access follow separate boundaries:
+
+- The Frontend Agent requests execution through `spawn_thinking`. The Orchestration Runtime manages the task and calls `BackendPort`; the adapter projects the internal task into backend-supported input. This applies to ACP, A2A, and custom backends.
+- Realtime model services connect through Realtime Providers. Vendor events and protocols must not enter generic task logic.
+- Clients connect to the Gateway through the Gateway Client Protocol. Transport delivers decoded events to the runtime and projects runtime results into client events; HTTP host-management APIs are not conversation tool calls.
 
 Backend-specific API details belong only in `server/src/backend/adapters`. Frontend tools
 must not import backend adapters. The UI consumes only public Task and
@@ -387,6 +382,8 @@ utilities; server `core` and `process` may depend on them, but they must not
 depend on server layers.
 
 ### Source layout
+
+Orchestration Runtime describes logical responsibilities, not one directory or class. `orchestration/` owns shared task operations and session-scoped delivery coordination; `task/` owns task state, and `voice/` owns model sessions and presentation. `app/` assembles these modules into a Gateway application.
 
 Server directories follow feature ownership rather than scattering one feature
 across technical layers:
@@ -431,7 +428,7 @@ is introduced.
 Each frontend connection also owns a `SessionTaskCoordinator`. It observes only
 the relevant owner's/session's user Tasks, coordinates pending permissions and
 input requests, and claims final-result notifications from TaskManager. It neither
-runs a model nor interprets protocol frames. `voice/realtime-task-presentation.mjs`
+runs a model nor interprets protocol frames, and it is not the ACP backend's coordination Session. `voice/realtime-task-presentation.mjs`
 formats model-visible requests and adapts delivery to the existing announcement
 managers; `taskAnnouncementFactory` remains the scenario extension point.
 
@@ -493,7 +490,7 @@ protocol.
 
 ## 10. Process ownership
 
-The Gateway is the only core product service. Backend lifecycles use one shared
+The standard deployment uses the Gateway as the framework's service host. Logical components do not require separate processes. Backend lifecycles use one shared
 `owned/external` ownership model:
 
 - `owned`: Gateway starts the required local backend processes and stops them
@@ -569,13 +566,11 @@ to update its appearance without upgrading the running Gateway frontend.
 Before merging a change, verify:
 
 1. Can Realtime still converse while backend work is queued or running?
-2. Does every executable request enter the same persistent backend Agent
-   Session?
-3. Did any frontend API gain knowledge of Session, subagent, permission, or
-   execution mode?
+2. Does work go through BackendPort, with the adapter preserving the correct continuation context, such as an ACP coordination Session?
+3. Does the frontend depend only on generic tasks and permissions, not backend-private Sessions, sub-agents, or execution modes?
 4. Are tool events used only for generic UI progress?
 5. Is completion spoken only from a final backend Agent result?
-6. Did any UI begin managing a Gateway or backend process?
+6. Does the UI use host lifecycle APIs for its local Gateway, without bypassing it to manage backend processes directly?
 7. Can interruption postpone speech without cancelling submitted Task?
 8. Do tests cover FIFO serialization, fixed Session reuse, tool animation, and
    delivery retry?

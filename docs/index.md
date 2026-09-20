@@ -21,7 +21,7 @@ features:
     link: /getting-started/quickstart#command-line-quickstart
     linkText: Command-line quickstart
   - title: Build an Integration
-    details: Reuse the Gateway with a new voice service, action-taking Agent, knowledge system, or client.
+    details: Reuse the Orchestration Runtime with new voice services, Backend Agents, and knowledge systems, or connect a custom client through the Gateway.
     link: /extensions
     linkText: Explore extension interfaces
 ---
@@ -29,7 +29,7 @@ features:
 ## Reading path
 
 1. [Quickstart](./getting-started/quickstart.md): choose Desktop or CLI and complete a conversation.
-2. [How It Fits Together](./getting-started/concepts.md): distinguish the client, Gateway, voice model, and Backend Agent.
+2. [How It Fits Together](./getting-started/concepts.md): understand the frontend, Orchestration Runtime, and backend, plus the roles of the Gateway and clients.
 3. [Voice Frontend Configuration](./configuration/frontend.md): choose a cloud or local service and check input/tool support.
 4. [Feature Guides](./guides/conversation.md): use text, attachments, backend work, and personal data.
 

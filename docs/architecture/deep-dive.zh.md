@@ -2,17 +2,21 @@
 
 本文档定义产品边界。违反这些不变性的变更属于架构变更，而非局部功能开发。
 
-前台 Realtime Voice Chatbot、异步 Task Bridge 与单一用户后台 Agent 的目标边界及
-分阶段重构计划见
+历史重构计划见
 [Realtime Voice Chatbot Runtime Roadmap](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/roadmap/frontend-chatbot-runtime.zh.md)。
-在 Roadmap 分阶段落地期间，本文继续描述当前已实现并受测试保护的运行时行为。
+本文描述当前已实现并受测试保护的运行时行为；概念与部署关系见[架构总览](overview.zh.md)。
 
 ## 1. 用户可见模型
 
-用户与一个 qwen-audio 助手对话。内部存在两个 qwen-audio-agent 层：
+用户与一个 qwen-audio 助手对话。逻辑架构由三个核心组件组成：
 
-1. **实时前端** — 全双工语音、自然对话、时间与记忆，以及按配置提供的检索等轻量工具。
-2. **后端 Agent** — 一个用户配置的办事 Agent，负责处理需要操作用户环境、持续执行或制作交付物的请求。
+1. **前台 Agent** — 通过实时模型、提示词、上下文和工具进行自然交流，处理对话及轻量工具请求。
+2. **编排运行时（Orchestration Runtime）** — 管理任务、权限、会话和事件，调度后台执行与结果投递，不增加一个负责推理的协调 Agent。
+3. **后台 Agent** — 一个用户配置的办事 Agent，负责处理需要操作用户环境、持续执行或制作交付物的请求。
+
+Gateway 是承载这些能力的服务化运行形态，负责应用装配与网络接入，不是第四个核心组件。
+客户端负责 I/O 与展示，通过 Gateway Client Protocol 使用服务，不等于前台 Agent。
+下文在服务部署语境中使用“Gateway 管理/投递”等表述时，业务行为由其承载的编排运行时完成。
 
 后端可以是 OpenCode、OpenClaw、Qoder、Qwen Code、MiniMax Code、Kimi Code、Pi 等 ACP Agent，
 也可以是远程 A2A Agent 或自定义 BackendPort Adapter。
@@ -149,6 +153,9 @@ Gateway/BackendPort 的结构化数据，不进入后台 Agent 的任务指令�
 
 ## 4. 固定后端 Agent Session
 
+这里的“协调 Session”属于 ACP 后台接入，不是框架的编排运行时。
+编排运行时通过 `BackendPort` 管理工作，不要求 A2A 或自定义后台提供同样的 Session 结构。
+
 ACP 适配器为每个 owner 和后端拥有一个持久协调器 Session 身份：
 
 ```text
@@ -281,26 +288,19 @@ MCP。项目 Session 不会连接协调 MCP Server。
 
 ## 9. 依赖方向
 
-```text
-WebUI / TUI / Desktop
-   ↓ WebSocket and HTTP
-Realtime Gateway
-   ↓ spawn_thinking
-Task queue
-   ↓
-结构化 BackendPort Task
-   ↓
-Adapter 投影：自然任务指令 + 原生附件 Part
-   ↓
-OpenCode ACP, OpenClaw ACP bridge, Qoder ACP,
-Qwen Code ACP, Kimi Code ACP, or another ACP Agent
-```
+逻辑调用与网络接入分别遵守以下边界：
+
+- 前台 Agent 通过 `spawn_thinking` 请求执行，编排运行时管理任务并调用 `BackendPort`；Adapter 将内部任务投影为后台支持的输入，适用于 ACP、A2A 和自定义后台。
+- 实时模型服务通过 Realtime Provider 接入。模型供应商的事件与协议细节不能进入通用任务逻辑。
+- 客户端通过 Gateway Client Protocol 接入 Gateway。传输层把协议事件交给运行时，并把运行时结果投影为客户端事件；HTTP 宿主管理接口不等于对话工具调用。
 
 后端特定的 API 细节仅属于 `server/src/backend/adapters`。前台工具不得导入后端适配器。
 UI 仅消费公共 Task 与对话事件。包级别的 `shared` 模块是基础运行时
 工具；server `core` 和 `process` 可以依赖它们，但它们不得依赖 server 层。
 
 ### 源码目录
+
+编排运行时是逻辑职责的集合，不与单个目录或类一一对应。`orchestration/` 负责共用任务操作与会话级投递协调，任务状态仍由 `task/` 管理，模型会话与播报由 `voice/` 管理；`app/` 将这些模块装配成 Gateway 应用。
 
 服务端按功能归属组织目录，避免同一个功能分散在多个技术层目录中：
 
@@ -335,7 +335,7 @@ BackendWorkRuntime 只负责把执行请求转换为 BackendPort 调用，系统
 
 每条前台连接还拥有独立的 `SessionTaskCoordinator`，按 owner/session 观察用户任务、
 协调待确认权限与补充输入，并从 TaskManager 领取最终结果通知。它不运行模型，也不解析
-协议帧。`voice/realtime-task-presentation.mjs` 生成模型可见文本并接入已有播报管理器，
+协议帧，更不是 ACP 后台的协调 Session。`voice/realtime-task-presentation.mjs` 生成模型可见文本并接入已有播报管理器，
 场景仍通过 `taskAnnouncementFactory` 定制播报。
 
 权限/补充输入投递前先暴露对应工具；前台忙碌或暂时不可用不会消耗待处理请求，
@@ -380,7 +380,7 @@ Gateway 源码不得导入 UI 组件、呈现文本、样式、终端行为或�
 
 ## 10. 进程所有权
 
-Gateway 是唯一的核心产品服务。后台生命周期由共享的 `owned/external` 归属模型管理：
+当前标准部署以 Gateway 作为框架的服务宿主。逻辑组件不要求各自成为独立进程；后台生命周期由共享的 `owned/external` 归属模型管理：
 
 - `owned`：Gateway 启动后端所需的本地进程，并在退出时停止它们。后台原生进程负责
   加载自己的用户配置、模型、工具和 MCP；适配器只提供协议参数和必要的公共能力。
@@ -436,10 +436,10 @@ macOS 桌面渲染器打包在应用程序内部。Electron 从私有的随机�
 合并变更前，请验证：
 
 1. 后端工作排队或运行时，实时前端是否仍能对话？
-2. 每个可执行请求是否进入同一个持久后端 Agent Session？
-3. 任何前端 API 是否获得了 Session、子 Agent、权限或执行模式的知识？
+2. 工作是否经由 BackendPort 执行，并由 Adapter 保持正确的续办上下文（如 ACP 协调 Session）？
+3. 前台是否只依赖通用任务与授权语义，而不依赖后台私有 Session、子 Agent 或执行模式？
 4. 工具事件是否仅用于通用 UI 进度？
 5. 完成播报是否仅来自最终后端 Agent 结果？
-6. 任何 UI 是否开始管理 Gateway 或后端进程？
+6. UI 是否通过宿主生命周期接口管理本机 Gateway，且不绕过它直接管理后台进程？
 7. 打断是否能在不取消已提交 Task 的情况下推迟语音？
 8. 测试是否覆盖 FIFO 串行化、固定 Session 复用、工具动画和交付重试？

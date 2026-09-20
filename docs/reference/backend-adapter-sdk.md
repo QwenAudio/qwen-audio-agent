@@ -5,6 +5,8 @@ A phone agent, hardware agent, HTTP service, or other task runtime implements
 the protocol-neutral `BackendPort`; voice interaction, the Task queue,
 authorization relay, and result delivery remain unchanged.
 
+`BackendPort` is the internal boundary from the Orchestration Runtime to the backend, not a client protocol. The Gateway example below assembles an adapter into the service host; `BackendWorkRuntime` handles backend calls, not the entire Orchestration Runtime.
+
 ## Import
 
 ```js

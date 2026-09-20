@@ -80,10 +80,38 @@ async function harness(t, model) {
   const backend = new A2ABackendAdapter({
     agentCardUrl: agent.agentCardUrl,
     pollIntervalMs: 10,
+    reuseContext: true,
   })
   t.after(() => backend.close())
   return { service, backend, agent }
 }
+
+test('new A2A Tasks retain customer history; reset and new-customer start clean backend conversations', async t => {
+  const seen = []
+  const { service, backend } = await harness(t, {
+    async complete({ messages }) {
+      seen.push(structuredClone(messages))
+      return { content: `结果：${messages.at(-1).content}` }
+    },
+  })
+  let nextId = 0
+  const submit = objective => backend.submit({ id: `history-${++nextId}`, ownerId: 'owner', objective })
+  await submit('上一位客户的订单问题')
+  await submit('继续刚才的事情')
+  assert.equal(seen[1][1].content, '上一位客户的订单问题')
+  assert.equal(seen[1][2].content, '结果：上一位客户的订单问题')
+  const before = service.conversationId('default')
+  service.reset('default')
+  assert.notEqual(service.conversationId('default'), before)
+  await submit('重置后的请求')
+  assert.equal(seen[2].length, 2)
+  service.newCustomer('default')
+  await submit('新客户请求')
+  assert.equal(seen[3].length, 2)
+  await submit('继续新客户请求')
+  assert.equal(seen[4].length, 4)
+  assert.doesNotMatch(JSON.stringify(seen[4]), /上一位客户|重置后的请求/)
+})
 
 test('后台 Agent 用完整工具面（含写库工具）', async t => {
   const { agent } = await harness(t, cancelModel())

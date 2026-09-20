@@ -3,6 +3,7 @@ import { Role, TaskState } from '@a2a-js/sdk'
 import { AgentEvent } from '@a2a-js/sdk/server'
 import { DashScopeServiceModel } from './model.mjs'
 import { flowPrompt } from './flows.mjs'
+import { AgentHistory } from '../../shared/agent-history.mjs'
 
 const MAX_AGENT_ROUNDS = 8
 
@@ -33,6 +34,7 @@ export function serviceAgentPrompt(domain = process.env.CS_DOMAIN || 'retail') {
   return `你是${DOMAIN_LABEL[domain] || '客服'}的后台 Agent，负责执行前台交给你的业务操作。
 
 规则：
+- 可以根据此前任务及回复理解后续要求；历史结果不是当前业务状态，也不代表本次操作已获客户批准。
 - 身份核验和只读查询由前台低延迟处理。你收到的是需要改动数据的任务。
 - 必须用提供的工具真实执行，不得假装已完成，也不得凭常识判断时限、资格或金额。
 - 改动数据的工具是两段式：第一次调用会返回一段预览和一个 approval_token，
@@ -135,13 +137,14 @@ class ApprovalNeeded extends Error {
   }
 }
 
-async function runServiceAgent({ objective, model, tools, signal, onToolCall }) {
+async function runServiceAgent({ objective, history, model, tools, signal, onToolCall }) {
   const definitions = (await tools.list({ signal })).map(openAiTool)
   const allowed = new Set(definitions.map(tool => tool.function.name))
   const messages = [
     // 【运行时取，不用模块加载时的快照】SERVICE_AGENT_PROMPT 是导入那一刻
     // 就定下的，而测试会在导入之后改 CS_DOMAIN 来验分域。
     { role: 'system', content: serviceAgentPrompt() },
+    ...history,
     { role: 'user', content: objective },
   ]
   let lastContent = ''
@@ -150,6 +153,7 @@ async function runServiceAgent({ objective, model, tools, signal, onToolCall }) 
   for (let round = 0; round < MAX_AGENT_ROUNDS; round += 1) {
     if (signal.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
     const message = await model.complete({ messages, tools: definitions, signal })
+    signal.throwIfAborted()
     const calls = Array.isArray(message.tool_calls) ? message.tool_calls : []
     if (!calls.length) {
       return {
@@ -170,6 +174,7 @@ async function runServiceAgent({ objective, model, tools, signal, onToolCall }) 
       const args = toolArguments(call)
       onToolCall?.({ name, args })
       const result = await tools.call(name, args, { signal })
+      signal.throwIfAborted()
       lastContent = result.content
       lastData = result.data || lastData
       if (result.data?.needsApproval) throw new ApprovalNeeded(result.content)
@@ -192,9 +197,9 @@ export class ServiceAgentExecutor {
     this.tools = tools
     this.model = model
     this.controllers = new Map()
-    // 挂起中的任务：客户批准之后要从这里接着往下走，而不是重新开始。
-    // 上下文（objective + 已走过的工具调用）留在后台，这是 auth_required
-    // 相对「让前台重新派活」的全部价值所在。
+    this.history = new AgentHistory()
+    this.conversationId = null
+    // Approval belongs to a Task, not its shared conversation context.
     this.suspended = new Map()
   }
 
@@ -204,16 +209,9 @@ export class ServiceAgentExecutor {
     this.controllers.set(taskId, controller)
     const objective = inputText(requestContext.userMessage)
 
-    // 挂起的任务被再次调用 = 客户已经回答。把回答拼进 objective 继续。
-    const pending = this.suspended.get(contextId)
-    const resumed = Boolean(pending)
-    if (resumed) this.suspended.delete(contextId)
-
+    let history = null
+    let historyObjective = objective
     try {
-      // 【首个事件必须是 Task，但只在任务真正新建时发】
-      // 不发：客户端报 Received statusUpdate before initial 'Message'/'Task' event.
-      // 重发：客户端报 Stream ordering violation: received task in task lifecycle stream.
-      // 恢复执行时 requestContext.task 已经在流里了，这时只能发 statusUpdate。
       if (!requestContext.task) {
         eventBus.publish(AgentEvent.task({
           id: taskId,
@@ -228,14 +226,33 @@ export class ServiceAgentExecutor {
           metadata: requestContext.userMessage.metadata,
         }))
       }
-
+      if (this.tools.conversationId) {
+        const id = await this.tools.conversationId({ signal: controller.signal })
+        controller.signal.throwIfAborted()
+        if (this.conversationId !== null && this.conversationId !== id) {
+          this.history = new AgentHistory()
+          this.suspended.clear()
+          for (const [otherTaskId, other] of this.controllers) {
+            if (otherTaskId !== taskId) other.abort()
+          }
+        }
+        this.conversationId = id
+      }
+      history = this.history
+      const pending = this.suspended.get(taskId)
+      if (pending && pending.contextId !== contextId) {
+        throw new Error('Pending approval belongs to another conversation')
+      }
+      const resumed = Boolean(pending)
+      if (resumed) {
+        this.suspended.delete(taskId)
+        historyObjective = `${pending.objective}\n\n客户补充：${objective}`
+      }
       eventBus.publish(statusUpdate(taskId, contextId, TaskState.TASK_STATE_WORKING,
         resumed ? '收到客户答复，继续处理。' : '正在处理。'))
 
-      // 【恢复时必须把预览原文交回给模型】预览里含 approval_token，
-      // 而 runServiceAgent 每次都是空对话开局 —— 不把它带回来，模型只能
-      // 重新取一次预览，于是又挂起一次，客户会被问第二遍。
-      // 这不是测试问题：真实模型同样看不到上一轮的工具返回。
+      // Only the resumed Task receives its approval preview. Completed history
+      // contains requests and final replies, never this internal continuation.
       const finalObjective = resumed
         ? `${pending.objective}
 
@@ -250,6 +267,7 @@ ${pending.preview}
 
       const output = await runServiceAgent({
         objective: finalObjective,
+        history: history.messages(contextId),
         model: this.model,
         tools: this.tools,
         signal: controller.signal,
@@ -258,15 +276,17 @@ ${pending.preview}
             TaskState.TASK_STATE_WORKING, `正在执行 ${name}`))
         },
       })
-
+      history.append(contextId, historyObjective, output.content)
       eventBus.publish(statusUpdate(taskId, contextId,
         TaskState.TASK_STATE_COMPLETED, output.content))
     } catch (error) {
-      if (error instanceof ApprovalNeeded) {
+      if (error instanceof ApprovalNeeded && !controller.signal.aborted && history === this.history) {
         // 预览要一起存：它是恢复时唯一能把 approval_token 交回模型的载体。
-        this.suspended.set(contextId, {
-          objective,
+        this.suspended.set(taskId, {
+          contextId,
+          objective: historyObjective,
           preview: error.preview,
+          history,
           at: Date.now(),
         })
         // 【关键一步】TASK_STATE_AUTH_REQUIRED + 一条带预览的消息。
@@ -277,10 +297,12 @@ ${pending.preview}
         return
       }
       if (controller.signal.aborted) {
+        history?.append(contextId, historyObjective, '任务已取消；已执行操作的当前状态需通过工具核实。')
         eventBus.publish(statusUpdate(taskId, contextId,
           TaskState.TASK_STATE_CANCELED, '任务已取消。'))
         return
       }
+      history?.append(contextId, historyObjective, `任务未完成：${error.message || '处理失败'}。已执行操作的当前状态需通过工具核实。`)
       eventBus.publish(statusUpdate(taskId, contextId,
         TaskState.TASK_STATE_FAILED, error.message || '处理失败。'))
     } finally {
@@ -290,5 +312,10 @@ ${pending.preview}
 
   async cancelTask(taskId) {
     this.controllers.get(taskId)?.abort()
+    const pending = this.suspended.get(taskId)
+    if (pending) {
+      this.suspended.delete(taskId)
+      pending.history.append(pending.contextId, pending.objective, '客户取消了待确认任务，未继续执行该操作。')
+    }
   }
 }

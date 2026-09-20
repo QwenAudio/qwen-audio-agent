@@ -120,6 +120,7 @@ export function startCustomerServiceGateway({
   const backend = createA2ABackendAdapter({
     agentCardUrl,
     label: 'Customer Service Agent',
+    reuseContext: true,
   })
   const agent = createBackendAgentHost(backend, {
     name: 'Customer Service A2A Agent',

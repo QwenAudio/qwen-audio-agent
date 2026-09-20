@@ -131,6 +131,136 @@ test('A2A adapter passes the reusable BackendPort conformance suite', async () =
   await verifyBackendAdapterConformance({ createFixture: fixture })
 })
 
+test('A2A conversation continuity is opt-in, owner-scoped, and bypassed for isolated work', async t => {
+  for (const reuseContext of [false, true]) {
+    const client = fakeClient()
+    client.sendMessage = async request => {
+      client.sent.push(request)
+      return message('完成', { contextId: request.message.contextId || `server-context-${client.sent.length}` })
+    }
+    const adapter = new A2ABackendAdapter({
+      agentCard: { name: 'History test' },
+      clientFactory: async () => ({ client }),
+      reuseContext,
+    })
+    t.after(() => adapter.close())
+    await adapter.submit(work(1))
+    await adapter.submit(work(2))
+    await adapter.submit({ ...work(3), ownerId: 'owner-two' })
+    await adapter.submit({ ...work(4), continuity: 'isolated' })
+    await adapter.submit(work(5))
+    const sent = client.sent.map(request => request.message)
+    assert.ok(sent.every(item => item.taskId === ''))
+    assert.equal(new Set(sent.map(item => item.messageId)).size, 5)
+    assert.equal(sent[0].contextId, '')
+    assert.equal(sent[2].contextId, '')
+    assert.equal(sent[3].contextId, '')
+    if (reuseContext) {
+      assert.equal(sent[1].contextId, 'server-context-1')
+      assert.equal(sent[4].contextId, 'server-context-1')
+      assert.equal(adapter.contexts.get('owner-two').id, 'server-context-3')
+    } else {
+      assert.ok(sent.every(item => item.contextId === ''))
+    }
+  }
+})
+
+test('concurrent submissions wait for server context discovery, not task completion', async t => {
+  const firstSent = Promise.withResolvers()
+  const secondSent = Promise.withResolvers()
+  const discover = Promise.withResolvers()
+  const finish = Promise.withResolvers()
+  const sent = []
+  const client = {
+    async sendMessage() { throw new Error('Expected streaming') },
+    async *sendMessageStream(request) {
+      sent.push(request.message)
+      if (sent.length === 1) {
+        firstSent.resolve()
+        await discover.promise
+        yield task(A2ATaskState.TASK_STATE_WORKING, { contextId: 'opaque-server-context' })
+        await finish.promise
+      } else secondSent.resolve()
+      yield task(A2ATaskState.TASK_STATE_COMPLETED, { contextId: 'opaque-server-context' })
+    },
+  }
+  const card = { name: 'Context test', capabilities: { streaming: true } }
+  const adapter = new A2ABackendAdapter({ agentCard: card, clientFactory: async () => ({ client, agentCard: card }), reuseContext: true })
+  t.after(() => adapter.close())
+  const first = adapter.submit(work(1))
+  await firstSent.promise
+  const second = adapter.submit(work(2))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(sent.length, 1)
+  discover.resolve()
+  await secondSent.promise
+  await second
+  assert.equal(adapter.active.has('task_1'), true)
+  assert.equal(sent[0].contextId, '')
+  assert.equal(sent[1].contextId, 'opaque-server-context')
+  finish.resolve()
+  await first
+})
+
+test('failed context discovery releases waiters; cancelling a waiter never sends a request', async t => {
+  const firstSent = Promise.withResolvers()
+  const fail = Promise.withResolvers()
+  const sent = []
+  const client = { async sendMessage(request) {
+    sent.push(request.message)
+    if (sent.length === 1) {
+      firstSent.resolve()
+      await fail.promise
+      throw new Error('connection failed')
+    }
+    return message('done', { contextId: 'retry-context' })
+  } }
+  const adapter = new A2ABackendAdapter({ agentCard: { name: 'Context test' }, clientFactory: async () => ({ client }), reuseContext: true })
+  t.after(() => adapter.close())
+  const first = assert.rejects(adapter.submit(work(1)), /connection failed/u)
+  await firstSent.promise
+  const controller = new AbortController()
+  const cancelled = assert.rejects(adapter.submit(work(2), { signal: controller.signal }), { code: 'WORK_CANCELLED' })
+  const next = adapter.submit(work(3))
+  await new Promise(resolve => setImmediate(resolve))
+  controller.abort()
+  await cancelled
+  assert.equal(sent.length, 1)
+  fail.resolve()
+  await first
+  await next
+  assert.equal(sent[1].contextId, '')
+  await adapter.submit(work(4))
+  assert.equal(sent[2].contextId, 'retry-context')
+})
+
+test('absent context IDs stay optional; unexpected changes cannot replace an established context', async t => {
+  const sent = []
+  const replies = ['', 'original', 'unexpected', 'original']
+  const client = { async sendMessage(request) {
+    sent.push(request.message)
+    return { ...message('done'), contextId: replies.shift() }
+  } }
+  const adapter = new A2ABackendAdapter({ agentCard: { name: 'Context test' }, clientFactory: async () => ({ client }), reuseContext: true })
+  t.after(() => adapter.close())
+  await adapter.submit(work(1))
+  await adapter.submit(work(2))
+  await assert.rejects(adapter.submit(work(3)), { code: 'A2A_CONTEXT_MISMATCH' })
+  await adapter.submit(work(4))
+  assert.deepEqual(sent.map(item => item.contextId), ['', '', 'original', 'original'])
+})
+
+test('context reuse bounds inactive owners and discards the mapping on close', async () => {
+  const client = { async sendMessage(request) { return message('done', { contextId: request.message.contextId || `context-${request.message.messageId}` }) } }
+  const adapter = new A2ABackendAdapter({ agentCard: { name: 'Context test' }, clientFactory: async () => ({ client }), reuseContext: true })
+  for (let i = 0; i < 105; i++) await adapter.submit({ ...work(i), ownerId: `owner-${i}` })
+  assert.equal(adapter.contexts.size, 100)
+  assert.equal(adapter.contexts.has('owner-0'), false)
+  assert.equal(adapter.contexts.has('owner-104'), true)
+  await adapter.close()
+  assert.equal(adapter.contexts.size, 0)
+})
+
 test('leaves Task duration unbounded by default and supports an explicit deadline', async () => {
   const unbounded = new A2ABackendAdapter({
     agentCard: { name: 'Long-running Agent' },

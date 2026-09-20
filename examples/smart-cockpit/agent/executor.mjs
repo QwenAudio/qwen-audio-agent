@@ -6,6 +6,7 @@ import {
 import { AgentEvent } from '@a2a-js/sdk/server'
 import { DashScopeCockpitModel } from './model.mjs'
 import { COCKPIT_SURFACE_ROUTING } from '../service/tools/registry.mjs'
+import { AgentHistory } from '../../shared/agent-history.mjs'
 
 const MAX_AGENT_ROUNDS = 10
 const MAX_TOOL_CALLS = 32
@@ -30,6 +31,7 @@ function domainLabels(routing, surface) {
 export const BASE_COCKPIT_AGENT_PROMPT = `你是智能座舱的后台 Agent，负责理解并执行座舱任务。
 
 规则：
+- 可以根据此前任务及回复理解后续要求；历史操作结果不代表当前状态，需要时用工具核实。
 - 单次车况查询及车窗、天窗、灯光、空调、温度、开闭件、舒适控制、声音和充电操作通常由前台低延迟处理；当车辆操作属于后台收到的组合任务或自定义技能时，仍须使用提供的工具真实执行。
 - 导航、音乐、闪购、自定义技能及后台收到的车辆操作必须使用提供的工具，不得假装已经执行。
 - 复杂请求可以连续调用多个工具；严格按照用户表达的先后顺序执行。
@@ -160,7 +162,7 @@ function systemPrompt(skills, now) {
 ${catalog}`
 }
 
-function reportResult(content, sources, retrievalAttempted, failures) {
+function reportResult(content, sources, retrievalAttempted, failures, reusedSources = false) {
   const report = content.match(/<cockpit_report>([\s\S]*?)<\/cockpit_report>/u)?.[1]?.trim()
   const summary = content.match(/<cockpit_summary>([\s\S]*?)<\/cockpit_summary>/u)?.[1]?.trim()
   if (!retrievalAttempted && !report) return { content }
@@ -174,6 +176,7 @@ function reportResult(content, sources, retrievalAttempted, failures) {
     + `发布日期：${source.published_at || '未核实'}；检索时间：${source.retrieved_at}`
   )).join('\n')
   const limitations = [
+    ...(reusedSources ? ['本次沿用此前任务的资料整理，未重新检索或核验最新信息。'] : []),
     ...(![...sources.values()].some(source => source.read)
       ? ['尚未成功读取原文，以下仅基于搜索摘要，不能视为已核验的最新新闻报告。']
       : []),
@@ -183,17 +186,18 @@ function reportResult(content, sources, retrievalAttempted, failures) {
     ? `\n\n## 未完成的检索\n${failures.map(item => `- ${item.tool}：${item.input}（${item.code}）`).join('\n')}`
     : ''
   return {
-    content: `${limitations ? `> ${limitations}\n\n` : ''}${report || content}\n\n## 实际检索来源\n${sourceList}${failureDetails}`,
+    content: `${limitations ? `> ${limitations}\n\n` : ''}${report || content}\n\n## ${reusedSources ? '此前任务的来源' : '实际检索来源'}\n${sourceList}${failureDetails}`,
     summary: [limitations, summary?.slice(0, 500) || '相关来源已整理，具体内容及核验情况见详细结果。'].filter(Boolean).join(' '),
   }
 }
 
-async function runCockpitAgent({ objective, model, tools, signal, onToolCall, now }) {
+async function runCockpitAgent({ objective, history, previousReports, model, tools, signal, onToolCall, now }) {
   const definitions = (await tools.list({ signal })).map(openAiTool)
   const allowed = new Set(definitions.map(tool => tool.function.name))
   const skills = await customSkillCatalog(tools, definitions, signal)
   const messages = [
     { role: 'system', content: systemPrompt(skills, now) },
+    ...history,
     { role: 'user', content: objective },
   ]
   let lastContent = ''
@@ -205,12 +209,23 @@ async function runCockpitAgent({ objective, model, tools, signal, onToolCall, no
 
   function finish(content, finalizing = false) {
     signal.throwIfAborted()
+    // A follow-up can edit a previous report without repeating retrieval.
+    // Preserve source provenance, but never use old evidence to hide a failed
+    // fresh lookup or describe historical material as newly verified.
+    const reusedSources = !retrievalAttempted && /<cockpit_report>/u.test(content)
+      && previousReports.length > 0
+    if (reusedSources) {
+      const referenced = previousReports.flat().filter(source => content.includes(source.url))
+      for (const source of referenced.length ? referenced : previousReports.at(-1)) {
+        sources.set(source.url, source)
+      }
+    }
     const fallback = retrievalAttempted
       ? '已整理检索到的来源，具体内容及核验情况见下方清单。'
       : lastContent || (finalizing ? '本次未取得可展示的操作结果。' : '座舱任务已处理')
     return {
-      ...reportResult(String(content || '').trim() || fallback, sources, retrievalAttempted, retrievalFailures),
-      data: retrievalAttempted ? { sources: [...sources.values()], retrieval_failures: retrievalFailures } : lastData,
+      ...reportResult(String(content || '').trim() || fallback, sources, retrievalAttempted, retrievalFailures, reusedSources),
+      data: retrievalAttempted || reusedSources ? { sources: [...sources.values()], retrieval_failures: retrievalFailures } : lastData,
     }
   }
 
@@ -294,10 +309,12 @@ export class CockpitAgentExecutor {
     this.tools = tools
     this.model = model
     this.controllers = new Map()
+    this.history = new AgentHistory()
   }
 
   async execute(requestContext, eventBus) {
     const { taskId, contextId } = requestContext
+    const objective = inputText(requestContext.userMessage)
     const task = requestContext.task || {
       id: taskId,
       contextId,
@@ -325,7 +342,9 @@ export class CockpitAgentExecutor {
     this.controllers.set(taskId, controller)
     try {
       const result = await runCockpitAgent({
-        objective: inputText(requestContext.userMessage),
+        objective,
+        history: this.history.messages(contextId),
+        previousReports: this.history.metadata(contextId).map(item => item.sources).filter(items => items?.length),
         model: this.model,
         tools: this.tools,
         signal: controller.signal,
@@ -337,6 +356,7 @@ export class CockpitAgentExecutor {
           `正在执行座舱能力：${name}`,
         )),
       })
+      this.history.append(contextId, objective, result.content, { sources: result.data?.sources || [] })
       eventBus.publish(AgentEvent.artifactUpdate({
         taskId,
         contextId,
@@ -361,6 +381,9 @@ export class CockpitAgentExecutor {
     } catch (error) {
       const timedOut = controller.signal.reason === timeoutError
       const cancelled = !timedOut && (controller.signal.aborted || error?.name === 'AbortError')
+      this.history.append(contextId, objective, cancelled
+        ? '任务已取消；已执行操作的当前状态需通过工具核实。'
+        : `任务未完成：${error?.message || error}。已执行操作的当前状态需通过工具核实。`)
       eventBus.publish(statusUpdate(
         taskId,
         contextId,

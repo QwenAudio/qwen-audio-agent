@@ -59,6 +59,22 @@ Card 的声明顺序选择首个兼容接口。官方 SDK 的 A2A 0.3 兼容默�
 Gateway `taskId` 不会成为远程 Task 身份。二者映射只在当前提交执行期间存在，远程 ID
 不会越过 `BackendPort`。
 
+## 会话连续性
+
+适配器默认每个新任务使用独立上下文。设置 `reuseContext: true` 后，同一
+`ownerId` 的首次请求不带 `contextId`，后续新任务原样复用服务端返回的 ID，
+但仍各自创建新 Task；只有继续被中断的 Task 才传 `taskId`。并发的首次请求
+仅等待 Context 分配，不必等第一个任务完成。
+
+历史保留由远端 Agent 实现：`contextId` 不携带历史，`historyLength` 仅限制
+A2A 响应返回的历史条数。前台聊天记录不会自动转发。
+`continuity: 'isolated'` 的系统独立任务始终使用全新上下文，不改变原用户的映射。
+
+映射保存在内存中，最多缓存 100 个用户的 Context（执行中的 Context 不淘汰，
+可临时超过上限），关闭适配器时清空。服务端不返回 Context ID 时，后续请求仍
+使用全新上下文。座舱和客服示例默认启用复用，并由 Agent 保留最多 50 轮；
+其他接入默认不变。
+
 ## 状态映射
 
 | A2A Task 状态 | Backend 状态 |
@@ -84,6 +100,7 @@ A2A 不为 `AUTH_REQUIRED` 后的凭据或审批决定规定统一语义。因�
 - `timeoutMs`：可选的单 Task 超时；默认关闭，由协议完成或显式取消结束长任务；
 - `requestTimeoutMs`：Agent Card 发现等无 Task 信号请求的超时，默认 30 秒；
 - `legacyCompat`：官方 A2A 0.3 兼容，默认开启；
+- `reuseContext`：为同一用户的新任务复用 Context，默认 `false`；
 - `clientFactory`：测试或高级传输注入。
 
 派生 Adapter 仍应运行公共 Backend Adapter conformance suite。内置 A2A Adapter 已覆盖

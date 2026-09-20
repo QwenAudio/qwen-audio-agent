@@ -67,6 +67,25 @@ enabled by default through the official SDK and can be disabled with
 The Gateway `taskId` never becomes a remote task identity. The mapping exists only
 while a submission is active and remote IDs do not cross `BackendPort`.
 
+## Conversation continuity
+
+By default, each new Task starts a separate context. With `reuseContext: true`,
+the first request omits `contextId`; subsequent Tasks for the same `ownerId`
+reuse the opaque ID returned by the server. New work still starts a new Task;
+`taskId` is sent only to continue an interrupted Task. Concurrent first requests
+wait for context discovery, not for the first Task to finish.
+
+The remote Agent implements history retention; `contextId` does not carry
+history, and `historyLength` only limits history returned by A2A responses.
+Frontend chat history is not forwarded. Work with `continuity: 'isolated'`
+always starts a fresh context without changing the owner's mapping.
+
+The in-memory cache targets 100 owner contexts; active contexts are not evicted
+and can temporarily exceed this limit. Closing the adapter clears the mapping.
+Servers that return no context ID continue to receive fresh requests. The
+cockpit and customer-service examples enable reuse and retain up to 50 turns
+inside their Agents; other integrations remain opt-in.
+
 ## State mapping
 
 | A2A Task state | Backend state |
@@ -96,6 +115,7 @@ the Gateway keeps the original Task active.
 - `requestTimeoutMs`: timeout for unscoped requests such as Agent Card
   discovery, default 30 seconds;
 - `legacyCompat`: official A2A 0.3 compatibility, default enabled;
+- `reuseContext`: reuse an owner-scoped Context across new Tasks, default `false`;
 - `clientFactory`: test or advanced transport injection.
 
 Run the public Backend Adapter conformance suite for any derived adapter. The

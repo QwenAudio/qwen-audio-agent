@@ -10,6 +10,14 @@ tool calling, and a replaceable backend Agent with the framework.
 
 ## Demo
 
+The backend Agent retains up to 50 turns of task requests and final replies in
+memory, so follow-up tasks can refer to earlier results. Each request includes
+at most 49 previous turns plus the current turn; tool traces are not replayed.
+The example Gateway reuses the server-issued A2A Context per owner while creating a new Task
+for each request. Independent system tasks and other owners remain isolated.
+Restarting the backend Agent clears this short-term history; it is separate from
+the foreground's long-term memory and the Service's vehicle state.
+
 Use natural voice for vehicle control and navigation, with cockpit UI updates.
 Long-running background work can continue alongside foreground conversation.
 

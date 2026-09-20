@@ -70,6 +70,7 @@ export function startCockpitGateway({
   const backend = createA2ABackendAdapter({
     agentCardUrl,
     label: 'Cockpit Agent',
+    reuseContext: true,
   })
   const agent = createBackendAgentHost(backend, {
     name: 'Cockpit A2A Agent',

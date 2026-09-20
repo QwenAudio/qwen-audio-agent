@@ -37,8 +37,8 @@ export class BackendWorkRuntime {
 
   /**
    * Run system-owned utility work without placing it in the user's persistent
-   * coordinator context. ACP adapters open a fresh Session; task-oriented
-   * adapters such as A2A already provide isolation per submission.
+   * coordinator context. Adapters must also bypass any optional conversation
+   * continuity (for example, ACP Sessions or reusable A2A contexts).
    */
   runIsolated(input, options = {}) {
     return this.run(input, { ...options, continuity: 'isolated' })

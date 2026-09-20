@@ -8,6 +8,14 @@
 
 ## What this example is for
 
+The backend Agent retains up to 50 turns of task requests and final replies in
+memory (at most 49 previous turns plus the current request). The example Gateway
+reuses the server-issued A2A Context per owner across new Tasks. Approval previews stay with
+their pending Task and are not replayed as conversation history. Resetting the
+business session, switching customers, or restarting the backend Agent starts
+fresh backend history. This does not change the foreground's existing chat-history
+restoration behavior or add persistent memory.
+
 `smart-cockpit` proved the framework can drive an in-car voice assistant, but cockpit
 tasks are independent of each other (opening a window has nothing to do with navigation).
 Customer service is different: **verify → look up → assess → execute** are consecutive

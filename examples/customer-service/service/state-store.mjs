@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 
 // 唯一的业务状态源。两个 MCP 面（/mcp/frontend 与 /mcp/backend）都通过
 // service.execute() 落到这里 —— 这是「同一个领域可以跨两个工具面，但只保留
@@ -105,6 +106,7 @@ export class ServiceStateStore {
     if (!session || session.domain !== wanted) {
       session = {
         id,
+        conversationId: randomUUID(),
         domain: wanted,
         version: 0,
         // 身份是【会话级事实】，不是任务级参数：前端核验一次，
@@ -134,6 +136,7 @@ export class ServiceStateStore {
     const session = this.#session(sessionId, domain)
     return Object.freeze(structuredClone({
       sessionId: session.id,
+      conversationId: session.conversationId,
       domain: session.domain,
       version: session.version,
       identity: session.identity,

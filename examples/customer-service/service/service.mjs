@@ -14,6 +14,10 @@ export class CustomerService {
     return this.store.snapshot(sessionId, domain)
   }
 
+  conversationId(sessionId) {
+    return this.store.mutable(sessionId).conversationId
+  }
+
   subscribe(sessionId, listener) {
     return this.store.subscribe(sessionId, listener)
   }

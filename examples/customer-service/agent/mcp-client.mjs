@@ -35,6 +35,20 @@ export class ServiceMcpTools {
     return this.definitions
   }
 
+  // Reset/new-customer replaces this ID. Do not carry a previous customer's
+  // model history into the freshly initialized business session.
+  async conversationId({ signal } = {}) {
+    const url = new URL('/api/service/context', this.url)
+    url.search = this.url.search
+    const response = await fetch(url, {
+      signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)].filter(Boolean)),
+    })
+    if (!response.ok) throw new Error(`Customer service context unavailable (${response.status})`)
+    const body = await response.json()
+    if (!body.conversationId) throw new Error('Customer service context is missing')
+    return body.conversationId
+  }
+
   async start() {
     if (this.client) return this
     if (this.connecting) return this.connecting

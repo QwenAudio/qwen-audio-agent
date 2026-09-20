@@ -25,6 +25,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 const MAX_TEXT_CHARS = 1_000_000
 const MAX_ARTIFACTS = 32
 const MAX_ARTIFACT_PARTS = 64
+const MAX_CACHED_CONTEXTS = 100
 const DEFAULT_OUTPUT_MODES = Object.freeze([
   'text/plain',
   'text/markdown',
@@ -392,7 +393,7 @@ function outgoingPart(part) {
   }
 }
 
-function outgoingMessage(work) {
+function outgoingMessage(work, contextId = '') {
   const text = outgoingText(work)
   const parts = [{
     content: { $case: 'text', value: text },
@@ -407,7 +408,8 @@ function outgoingMessage(work) {
   )
   return {
     messageId: randomUUID(),
-    contextId: '',
+    // Reuse only a server-issued context; each new work item starts a new Task.
+    contextId,
     taskId: '',
     role: Role.ROLE_USER,
     parts,
@@ -518,6 +520,7 @@ export class A2ABackendAdapter {
     timeoutMs = DEFAULT_TIMEOUT_MS,
     requestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
     legacyCompat = true,
+    reuseContext = false,
     label = 'A2A Agent',
   } = {}) {
     if (!agentCard && !clean(agentCardUrl)) {
@@ -545,6 +548,7 @@ export class A2ABackendAdapter {
       requestTimeoutMs: this.requestTimeoutMs,
     })
     this.legacyCompat = legacyCompat !== false
+    this.reuseContext = reuseContext === true
     this.label = clean(agentCard?.name || label) || 'A2A Agent'
     this.client = null
     this.agentCard = null
@@ -553,6 +557,7 @@ export class A2ABackendAdapter {
     this.closed = false
     this.failure = null
     this.active = new Map()
+    this.contexts = new Map()
     this.listeners = new Set()
   }
 
@@ -662,7 +667,56 @@ export class A2ABackendAdapter {
     }
   }
 
+  async acquireContext(record, signal) {
+    // Concurrent first submissions wait only for context discovery, not for
+    // the first task to finish. Otherwise they would fork the conversation.
+    while (true) {
+      signal.throwIfAborted()
+      let entry = this.contexts.get(record.ownerId)
+      if (!entry) {
+        entry = { id: '', ready: deferred() }
+        this.contexts.set(record.ownerId, entry)
+        record.contextEntry = entry
+        return ''
+      }
+      if (entry.id) {
+        this.contexts.delete(record.ownerId)
+        this.contexts.set(record.ownerId, entry)
+        record.contextEntry = entry
+        return entry.id
+      }
+      await waitForDeferred(entry.ready.promise, signal)
+    }
+  }
+
+  rememberContext(record, value) {
+    const entry = record.contextEntry
+    const id = clean(value?.contextId)
+    if (!entry || !id) return
+    if (entry.id && entry.id !== id) {
+      throw new A2ABackendError('A2A agent changed the conversation context', {
+        code: 'A2A_CONTEXT_MISMATCH',
+      })
+    }
+    entry.id = id
+    entry.ready.resolve()
+  }
+
+  releaseContext(record) {
+    const entry = record.contextEntry
+    if (entry && !entry.id) {
+      if (this.contexts.get(record.ownerId) === entry) this.contexts.delete(record.ownerId)
+      entry.ready.resolve()
+    }
+    const activeEntries = new Set([...this.active.values()].map(item => item.contextEntry))
+    for (const [ownerId, cached] of this.contexts) {
+      if (this.contexts.size <= MAX_CACHED_CONTEXTS) break
+      if (!activeEntries.has(cached)) this.contexts.delete(ownerId)
+    }
+  }
+
   update(record, task) {
+    this.rememberContext(record, task)
     record.task = task
     record.remoteTaskId = clean(task?.id) || record.remoteTaskId
     const state = publicState(taskState(task))
@@ -787,6 +841,7 @@ export class A2ABackendAdapter {
       },
       metadata: undefined,
     }, { signal })
+    this.rememberContext(record, result)
     if (taskLike(result)) return result
     if (messageLike(result)) return { __outcome: this.outcomeFromMessage(result) }
     throw new A2ABackendError('A2A agent returned an invalid continuation response', {
@@ -834,6 +889,7 @@ export class A2ABackendAdapter {
     for await (const rawEvent of stream) {
       if (signal?.aborted) throw signal.reason
       const event = streamValue(rawEvent)
+      this.rememberContext(record, event)
       if (taskLike(event)) {
         task = event
         this.update(record, task)
@@ -858,6 +914,7 @@ export class A2ABackendAdapter {
         task = {
           ...(task || record.task || {}),
           id: clean(event.taskId) || record.remoteTaskId,
+          contextId: clean(event.contextId) || task?.contextId || record.task?.contextId || '',
           status: event.status,
         }
         this.update(record, task)
@@ -873,6 +930,7 @@ export class A2ABackendAdapter {
         if (!artifact) continue
         task ||= record.task || {
           id: clean(event.taskId) || record.remoteTaskId,
+          contextId: clean(event.contextId),
           status: { state: TaskState.TASK_STATE_WORKING },
           artifacts: [],
         }
@@ -961,8 +1019,12 @@ export class A2ABackendAdapter {
     }
     this.active.set(taskId, record)
     try {
+      const contextId = this.reuseContext && work.continuity !== 'isolated'
+        ? await this.acquireContext(record, workSignal)
+        : ''
+      workSignal.throwIfAborted()
       const request = {
-        message: outgoingMessage(work),
+        message: outgoingMessage(work, contextId),
         configuration: {
           acceptedOutputModes: this.acceptedOutputModes,
           historyLength: 20,
@@ -985,6 +1047,7 @@ export class A2ABackendAdapter {
         request,
         { signal: workSignal },
       )
+      this.rememberContext(record, result)
       if (taskLike(result)) {
         record.remoteTaskId = clean(result.id)
         return await this.awaitTask(record, result, workSignal)
@@ -1008,6 +1071,7 @@ export class A2ABackendAdapter {
     } finally {
       timeout?.dispose()
       if (this.active.get(taskId) === record) this.active.delete(taskId)
+      this.releaseContext(record)
     }
   }
 
@@ -1117,6 +1181,7 @@ export class A2ABackendAdapter {
       record.controller.abort(cancellationError(record.gatewayTaskId))
     }
     this.active.clear()
+    this.contexts.clear()
     this.listeners.clear()
     this.ready = false
     this.client = null

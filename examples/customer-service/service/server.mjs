@@ -91,6 +91,11 @@ class CustomerServiceServer {
 
     // 业务状态投影面：给 UI 用。对话状态走 GCP，两条通道分离 ——
     // Gateway 不接收也不理解订单结构。
+    if (url.pathname === '/api/service/context' && request.method === 'GET') {
+      json(response, 200, { conversationId: this.service.conversationId(sessionOf(request, url)) })
+      return
+    }
+
     if (url.pathname === '/api/service/state' && request.method === 'GET') {
       json(response, 200, this.service.snapshot(
         sessionOf(request, url), url.searchParams.get('domain') || undefined,

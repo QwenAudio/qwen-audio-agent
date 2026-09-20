@@ -1,0 +1,11 @@
+{
+  "name": "qwen-audio-agent-memcode-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test provider.test.mjs"
+  },
+  "dependencies": {
+    "memcode-sdk": "^2.4.1"
+  }
+}

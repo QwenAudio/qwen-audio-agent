@@ -9,6 +9,7 @@ Examples demonstrate extension points; they are not the only way to enable a cap
 | Vehicle events, device controls, and a business Agent | [Smart Cockpit](smart-cockpit.md). |
 | A hardware voice client | [AI Passport](ai-passport.md). |
 | External long-term memory | [VoiceMem](voicemem.md). |
+| Hosted API-backed memory | [Memcode](memcode.md). |
 | An external knowledge system | [LightRAG](lightrag.md). |
 | Customer service and human operators | [Customer Service](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/customer-service): retail and airline scenarios. |
 | Frontend and full-system evaluation | [Benchmark](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/benchmark). |

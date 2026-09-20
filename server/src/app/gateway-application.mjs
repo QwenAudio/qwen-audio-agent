@@ -33,7 +33,8 @@ import {
   GATEWAY_CAPABILITIES,
   GATEWAY_PROTOCOL_VERSION,
 } from '../core/gateway-protocol.mjs'
-import { attachRealtimeGateway } from '../voice/realtime-gateway.mjs'
+import { attachGatewayClientTransport } from '../transport/gateway-client-transport.mjs'
+import { createFrontendRuntime } from './frontend-runtime.mjs'
 import { registerWebRtcIngress } from '../transport/webrtc/routes.mjs'
 import {
   defaultRealtimeProviderRegistry,
@@ -905,8 +906,7 @@ const backendAvailability = new BackendAvailability({
   },
 })
 backendAvailability.refresh()
-realtimeGateway = attachRealtimeGateway(server, {
-  identityManager: gatewayAccessRuntime,
+const frontendRuntime = createFrontendRuntime({
   memoryService: frontendMemoryRuntime,
   sessionDigests,
   sessionObservers: [
@@ -925,20 +925,25 @@ realtimeGateway = attachRealtimeGateway(server, {
   ),
   permissionPolicy,
   inputAssets: inputAssetRegistry,
-  inputArbitration,
   realtimeProviderRegistry,
   defaultRealtimeProvider: realtimeProvider,
   frontendRetrieval: retrievalRuntime,
   frontendKnowledge: frontendKnowledgeRuntime,
   frontendToolSources,
-  clientActionNames,
   spawnThinkingDescription,
   taskAnnouncementFactory,
-  clientCommandRuntime: runtimeCommands,
-  clientEventRouter: gatewayEventRouter,
   taskManager,
   conversationSync,
   config,
+  logger,
+})
+realtimeGateway = attachGatewayClientTransport(server, {
+  identityManager: gatewayAccessRuntime,
+  frontendRuntime,
+  inputArbitration,
+  clientActionNames,
+  clientCommandRuntime: runtimeCommands,
+  clientEventRouter: gatewayEventRouter,
   logger,
 })
 const start = ({ host = config.host, port = config.port } = {}) => {
@@ -982,6 +987,7 @@ const close = () => {
     inputArbitration.close()
     await webRtcIngress?.close()
     await realtimeGateway?.close?.()
+    await frontendRuntime.close()
     await frontendMcpRuntime?.close?.()
     await frontendOpenApiRuntime?.close?.()
     for (const source of additionalToolSources) await source.close()
@@ -1028,6 +1034,7 @@ return {
     notesStore,
     permissionPolicy,
     realtimeGateway,
+    frontendRuntime,
     webRtcIngress,
     sessionDigests,
     sessionSummariser,

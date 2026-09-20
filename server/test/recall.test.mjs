@@ -170,7 +170,7 @@ test('survives a throwing digest pool', async () => {
 
 test('the tool is only exposed when session digests are enabled', () => {
   // 暴露与否由 registry 的 capability 策略决定，不再由 gateway 手工拼工具数组 ——
-  // 手工拼会绕过策略过滤。capability 由 realtime-gateway 与 tool-call-handler
+  // 手工拼会绕过策略过滤。capability 由 realtime-session-runtime 与 tool-call-handler
   // 用【同一个判据】给出（sessionDigests 存在），两处必须一致。
   const names = context => frontendTools(context).map(tool => tool.function.name)
   assert.ok(!names({}).includes(RECALL_TOOL_NAME))

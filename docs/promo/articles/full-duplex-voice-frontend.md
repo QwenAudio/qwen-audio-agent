@@ -34,7 +34,7 @@ qwen-audio-agent 把系统切成两层：
 └────────────────────────────────────────────┘
 ```
 
-前台的核心编排入口是 `server/src/voice/realtime-gateway.mjs`；输入、展示和连接
+前台的核心编排入口是 `server/src/voice/realtime-session-runtime.mjs`；输入、展示和连接
 生命周期分别由 `realtime-input-runtime.mjs`、`realtime-presentation-runtime.mjs`
 和 `realtime-provider-session.mjs` 管理。后台复用用户已有的 Agent，通过
 `server/src/backend/adapters/acp/` 中统一的 ACP 边界接入。两层没有产品级强耦合：

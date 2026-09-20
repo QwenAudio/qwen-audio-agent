@@ -62,6 +62,12 @@ function enabled(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase())
 }
 
+function defaultGatewayUrl(env) {
+  const host = String(env.HOST || '127.0.0.1').replace(/^\[|\]$/g, '')
+  const probeHost = ['0.0.0.0', '::'].includes(host) ? '127.0.0.1' : host
+  return `http://${probeHost.includes(':') ? `[${probeHost}]` : probeHost}:${env.PORT || '3101'}`
+}
+
 function helpRequested(argv) {
   return argv.includes('--help') || argv.includes('-h')
 }
@@ -144,7 +150,7 @@ function parseCommandArguments(argv, env) {
     tailnet: enabled(env.QWEN_AUDIO_GATEWAY_TAILNET),
     tailnetSpecified: false,
     endpoint: '',
-    url: env.QWEN_AUDIO_AGENT_URL || 'http://127.0.0.1:3101',
+    url: env.QWEN_AUDIO_AGENT_URL || '',
     accessToken: String(
       env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN
       || env.QWEN_AUDIO_AGENT_ACCESS_TOKEN
@@ -181,6 +187,7 @@ function parseCommandArguments(argv, env) {
     urlSpecified: Boolean(env.QWEN_AUDIO_AGENT_URL),
   }
   let audioModeSpecified = false
+  const backendOptions = []
 
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index]
@@ -189,15 +196,18 @@ function parseCommandArguments(argv, env) {
       options.urlSpecified = true
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--backend') {
+      backendOptions.push(argument)
       options.backend = normalizeBackendProtocol(
         nextValue(args, index++, '--backend'),
       )
       options.backendSpecified = true
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--backend-agent') {
+      backendOptions.push(argument)
       options.backendAgent = nextValue(args, index++, '--backend-agent').trim()
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--backend-permission-mode') {
+      backendOptions.push(argument)
       options.backendPermissionMode = nextValue(
         args,
         index++,
@@ -205,6 +215,7 @@ function parseCommandArguments(argv, env) {
       ).toLowerCase()
       options.gatewayConfigurationSpecified = true
     } else if (argument === '--backend-url') {
+      backendOptions.push(argument)
       options.backendUrl = nextValue(args, index++, '--backend-url')
       options.backendUrlSpecified = true
       options.gatewayConfigurationSpecified = true
@@ -246,6 +257,15 @@ function parseCommandArguments(argv, env) {
     else if (argument === '--yes' || argument === '-y') options.yes = true
     else if (argument === '--help' || argument === '-h') options.help = true
     else throw new Error(`未知参数：${argument}`)
+  }
+
+  for (const option of backendOptions) {
+    if (command === 'gateway' && gatewayAction === 'run') continue
+    if (command === 'setup' && option === '--backend') continue
+    if (command === 'gateway' && ['install', 'start', 'stop', 'restart', 'uninstall'].includes(gatewayAction)) {
+      throw new Error('Gateway 后台服务从 config.env 读取配置；请先修改配置，再执行服务命令')
+    }
+    throw new Error(`${option} 只适用于 gateway run${option === '--backend' ? ' 或 setup' : ''}；客户端不会修改 Gateway 的后台配置`)
   }
 
   if ((command !== 'config' || configAction !== 'set') && options.realtimeModel) {
@@ -372,7 +392,10 @@ function parseCommandArguments(argv, env) {
       'Gateway 后台服务从 config.env 读取配置；请先修改配置，再执行服务命令',
     )
   }
-  options.url = cleanOrigin(options.url, ' Gateway URL')
+  options.url = cleanOrigin(options.url || defaultGatewayUrl(env), ' Gateway URL')
+  if (!options.urlSpecified && env.HOST) {
+    options.listenHost = String(env.HOST).replace(/^\[|\]$/g, '')
+  }
   const configuredBackendUrl = definition?.baseUrlEnvironment
     ? env[definition.baseUrlEnvironment] || definition.defaultBaseUrl
     : ''
@@ -402,7 +425,7 @@ export function helpText() {
     '  qwenaudio [gateway] [run] [选项]  前台运行 Gateway（默认）',
     '  qwenaudio gateway install         安装并启动后台常驻服务',
     '  qwenaudio gateway start           启动后台服务',
-    '  qwenaudio gateway status          查看 Gateway 状态',
+    '  qwenaudio gateway status          查看网关可达性与本机常驻服务状态',
     '  qwenaudio gateway pair [--name 名称] [--endpoint URL]  创建直连码与二维码',
     '  qwenaudio gateway devices         列出已配对客户端',
     '  qwenaudio gateway revoke ID       撤销客户端',
@@ -427,7 +450,8 @@ export function helpText() {
     '  qwenaudio skill update        更新已安装技能',
     '',
     'Gateway 选项：',
-    '  --url URL              Gateway 地址（默认 http://127.0.0.1:3101）',
+    '  --url URL              Gateway 地址（覆盖 QWEN_AUDIO_AGENT_URL、HOST/PORT）',
+    '                         默认 http://127.0.0.1:3101；后台参数仅用于 gateway run',
     `  --backend NAME         可选：${backendNames().join('、')} 或 none；不设置或使用 none 时仅前台聊天`,
     '  --backend-permission-mode MODE  native（默认）或 full（最高权限）',
     '  --backend-url URL      后台 Server 地址',

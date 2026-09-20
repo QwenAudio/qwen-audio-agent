@@ -31,7 +31,7 @@
 
 现有 `session.update` 不支持数字人字段，也没有公共 Avatar Provider SPI。不能只安装一个 example 就宣称这些能力已经存在。
 
-实现定位参考：`realtime-presentation-runtime.mjs`、`realtime-gateway.mjs`、`transport/webrtc/{routes,protocol,media,media-process,media-worker}.mjs`。这些模块的职责可复用，不能把厂商逻辑直接塞进其中。
+实现定位参考：`voice/realtime-presentation-runtime.mjs`、`voice/realtime-session-runtime.mjs`、`transport/gateway-client-transport.mjs`、`transport/webrtc/{routes,protocol,media,media-process,media-worker}.mjs`。这些模块的职责可复用，不能把厂商逻辑直接塞进其中。
 
 ## 3. 分层与部署
 

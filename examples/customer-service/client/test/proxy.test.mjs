@@ -236,7 +236,7 @@ test('页面声明了语音能力，且客户选择器有自己的样式', () =>
 })
 
 test('页面处理了「网关已被占用」这个错误', () => {
-  // 网关一次只接一个客户端（realtime-gateway.mjs:241）。
+  // 网关一次只接一个客户端（gateway-client-transport.mjs 的连接租约）。
   // 不显式处理的话，页面看起来一切正常 —— 状态灯绿的、消息发得出去 ——
   // 只是永远等不到回复。第一次实测就卡在这里。
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')

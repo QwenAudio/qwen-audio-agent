@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   ActiveVoiceClients,
   clientVoiceCapabilities,
-} from '../src/voice/active-voice-clients.mjs'
+} from '../src/client/active-voice-clients.mjs'
 
 test('does not implicitly replace the active voice client', () => {
   const clients = new ActiveVoiceClients()

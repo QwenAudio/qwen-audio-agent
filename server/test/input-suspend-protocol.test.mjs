@@ -3,7 +3,7 @@
 // the client declared itself muted. The chain under test is
 //   POST /api/input/suspend
 //     -> InputArbitration
-//     -> realtime-gateway broadcasts playback.clear + input.suspend
+//     -> realtime-session-runtime emits playback.clear + input.suspend
 //     -> a late-joining client learns about the suspension on connect.
 
 import assert from 'node:assert/strict'
@@ -18,7 +18,7 @@ process.env.QWAUDIO_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'qwaudio-input-'))
 process.env.QWEN_AUDIO_AGENT_AUTH_SECRET = 'test-secret-that-is-long-enough-1234567890'
 process.env.DASHSCOPE_API_KEY = 'sk-fake'
 
-const { attachRealtimeGateway } = await import('../src/voice/realtime-gateway.mjs')
+const { attachTestGateway } = await import('./fixtures/gateway-runtime.mjs')
 const { InputArbitration } = await import('../src/voice/input-arbitration.mjs')
 const { IdentityManager } = await import('../src/core/identity.mjs')
 
@@ -45,7 +45,7 @@ function fakeNotesStore() {
 async function startGateway() {
   const server = createServer()
   const inputArbitration = new InputArbitration()
-  attachRealtimeGateway(server, {
+  attachTestGateway(server, {
     identityManager: new IdentityManager({
       secret: process.env.QWEN_AUDIO_AGENT_AUTH_SECRET,
       mode: 'personal',

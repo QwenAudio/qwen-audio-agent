@@ -3,8 +3,8 @@ import test from 'node:test'
 import {
   acceptsPlaybackReceipt,
   confirmsTaskNotificationOnPlaybackStart,
-  rejectUnsupportedRealtimeUpgrade,
-} from '../src/voice/realtime-gateway.mjs'
+} from '../src/voice/realtime-presentation-runtime.mjs'
+import { rejectUnsupportedRealtimeUpgrade } from '../src/transport/gateway-client-transport.mjs'
 import { isResponseActivityEvent } from '../src/voice/response-lifecycle.mjs'
 
 test('closes websocket upgrades outside the realtime endpoint', () => {

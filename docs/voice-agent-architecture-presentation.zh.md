@@ -693,7 +693,9 @@ if (outcome?.completed) {
 <!--
 [Sources]
 - server/src/voice/announcement/announcement-manager.mjs
-- server/src/voice/realtime-gateway.mjs
+- server/src/transport/gateway-client-transport.mjs
+- server/src/app/frontend-runtime.mjs
+- server/src/voice/realtime-session-runtime.mjs
 -->
 
 ---

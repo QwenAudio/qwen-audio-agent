@@ -1,7 +1,7 @@
 // Reproduces the user report: desktop orb asks the voice front end which tools
 // it has, and enter_sleep is missing. The registration chain is:
 // web CONNECT (clientType=desktop, clientStates=['sleeping'])
-//   -> realtime-gateway sets clientContext.states
+//   -> realtime-session-runtime sets clientContext.states
 //   -> createRealtimeFrontend receives agentContext.client
 //   -> provider.buildSession -> frontendTools adds enter_sleep.
 // This test drives the real gateway over WebSocket against a fake realtime
@@ -41,7 +41,7 @@ process.env.QWEN_AUDIO_REALTIME_BASE_URL = (
   `ws://127.0.0.1:${providerServer.address().port}`
 )
 
-const { attachRealtimeGateway } = await import('../src/voice/realtime-gateway.mjs')
+const { attachTestGateway } = await import('./fixtures/gateway-runtime.mjs')
 const { IdentityManager } = await import('../src/core/identity.mjs')
 
 function fakeMemoryStore() {
@@ -66,7 +66,7 @@ function fakeNotesStore() {
 
 async function startGateway() {
   const server = createServer()
-  attachRealtimeGateway(server, {
+  attachTestGateway(server, {
     identityManager: new IdentityManager({
       secret: process.env.QWEN_AUDIO_AGENT_AUTH_SECRET,
       mode: 'personal',

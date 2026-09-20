@@ -1,7 +1,7 @@
 import express from 'express'
 import { createServer } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { attachRealtimeGateway } from '../../src/voice/realtime-gateway.mjs'
+import { attachTestGateway } from './gateway-runtime.mjs'
 import { registerWebRtcIngress } from '../../src/transport/webrtc/routes.mjs'
 import { ProcessWebRtcMedia } from '../../src/transport/webrtc/media-process.mjs'
 
@@ -58,7 +58,7 @@ export async function rtcHarness(t, { video = false, options = {}, realMedia = f
     next()
   })
   const server = createServer(app)
-  const gateway = attachRealtimeGateway(server, {
+  const gateway = attachTestGateway(server, {
     identityManager: { resolveUpgrade: req => req.headers.authorization === 'Bearer test-only-credential'
       ? { ownerId: req.headers['x-test-owner'] || ownerId, access: 'remote', credentialId: 'rtc-credential', clientType: 'client' }
       : null },

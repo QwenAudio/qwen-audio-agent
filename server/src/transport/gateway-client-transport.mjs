@@ -1,19 +1,11 @@
 import { WebSocket, WebSocketServer } from 'ws'
-import { SessionObservers } from './session-observers.mjs'
+import { ActiveVoiceClients } from '../client/active-voice-clients.mjs'
 import { selectGatewayWebSocketProtocol } from '../../../shared/gateway/websocket-auth.mjs'
 import { GatewayClientEvent } from '../../../shared/protocol/realtime-events.mjs'
-import { createTaskAnnouncementRuntime } from './announcement/task-announcement-runtime.mjs'
-import { config as defaultConfig } from '../core/config.mjs'
 import { logger as defaultLogger } from '../core/logger.mjs'
-import { conversationSync as defaultConversationSync } from '../conversation/conversation-sync.mjs'
-import { InputAssetRegistry } from './input-asset-registry.mjs'
-import { defaultRealtimeProviderRegistry } from './realtime-provider.mjs'
 import { isAllowedOrigin } from '../core/request-security.mjs'
-import { TaskManager } from '../task/task-manager.mjs'
-import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
-import { ActiveVoiceClients } from './active-voice-clients.mjs'
-import { createRealtimeSessionRuntime } from './realtime-session-runtime.mjs'
-import { GatewayClientProtocolSession } from '../transport/gateway-client-protocol-session.mjs'
+import { projectGatewayTaskEvent } from './gateway-task-event-projector.mjs'
+import { GatewayClientProtocolSession } from './gateway-client-protocol-session.mjs'
 import {
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
   GATEWAY_CLIENT_OCCUPIED_CLOSE_CODE,
@@ -24,29 +16,12 @@ import {
   GatewaySessionPongSchema,
 } from '../../../shared/protocol/gateway-client-protocol.mjs'
 import { clientActionCapabilities as defineClientActionCapabilities } from '../client/client-action-port.mjs'
-import { GatewayClientReplayBuffer } from '../transport/gateway-client-replay-buffer.mjs'
+import { GatewayClientReplayBuffer } from './gateway-client-replay-buffer.mjs'
 import { ActiveClientLeases } from '../client/active-client-leases.mjs'
-
-export { isSleepActivityEvent } from './realtime-session-runtime.mjs'
-export {
-  acceptsPlaybackReceipt,
-  confirmsTaskNotificationOnPlaybackStart,
-} from './realtime-presentation-runtime.mjs'
 
 const MAX_CLIENT_REPLAY_SESSIONS = 32
 const CLIENT_HEARTBEAT_MS = 30_000
 const clientProtocolSessions = new WeakMap()
-
-function providerSupportsImageBuffer(registry, providerName) {
-  try {
-    return registry.resolve(providerName)
-      .modelProfile?.()
-      ?.transportCapabilities
-      ?.imageBufferInput === true
-  } catch {
-    return false
-  }
-}
 
 function send(ws, event) {
   if (ws.readyState !== WebSocket.OPEN) return
@@ -78,37 +53,18 @@ function clientDescriptor(event = {}) {
     instanceId: String(event.clientInstanceId || '').trim().slice(0, 80) || null,
   }
 }
-
-export function attachRealtimeGateway(server, {
+export function attachGatewayClientTransport(server, {
   identityManager,
-  memoryService,
-  sessionObservers = [],
-  sessionDigests = null,
-  notesStore,
-  backendRuntime,
-  taskOperations,
-  backendAvailability = null,
-  respondAuthorization,
-  respondInput,
-  permissionPolicy,
-  inputAssets = new InputAssetRegistry(),
+  frontendRuntime,
   inputArbitration = null,
-  taskManager = new TaskManager(),
-  conversationSync = defaultConversationSync,
-  config = defaultConfig,
   logger = defaultLogger,
-  realtimeProviderRegistry = defaultRealtimeProviderRegistry,
-  defaultRealtimeProvider = config.audioProvider,
-  realtimeFrontendFactory = undefined,
-  frontendRetrieval = null,
-  frontendKnowledge = null,
-  frontendToolSources = [],
   clientActionNames = [],
-  spawnThinkingDescription = '',
-  taskAnnouncementFactory = createTaskAnnouncementRuntime,
   clientCommandRuntime = null,
   clientEventRouter = null,
 }) {
+  if (typeof frontendRuntime?.createSession !== 'function') {
+    throw new TypeError('frontendRuntime.createSession is required')
+  }
   const wss = new WebSocketServer({
     noServer: true,
     maxPayload: 20 * 1024 * 1024,
@@ -136,28 +92,10 @@ export function attachRealtimeGateway(server, {
   const activeClientLeases = new ActiveClientLeases()
   const voiceConnections = new Map()
   const replayBuffers = new Map()
-  const observers = new SessionObservers(sessionObservers)
-  const frontendToolSourcesReady = Promise.all(
-    frontendToolSources.map(source => source.initialize()),
-  ).catch(error => {
-    logger.warn('frontend_tools.initialization_failed', {
-      error: error.message,
-    })
-  })
-
-  const frontendOptions = {
-    memoryService, sessionDigests, notesStore, taskManager, taskOperations,
-    backendRuntime, backendAvailability, respondAuthorization, respondInput,
-    permissionPolicy, inputAssets, conversationSync, config,
-    realtimeProviderRegistry, defaultRealtimeProvider, realtimeFrontendFactory,
-    frontendRetrieval, frontendKnowledge, frontendToolSources, frontendToolSourcesReady,
-    spawnThinkingDescription, taskAnnouncementFactory, actionCapabilities, observers,
-  }
-
   // A suspension is global, not per owner: the host is taking the machine's
   // microphone, so every connected client has to let go of it. The subscription
   // lives as long as this WebSocket server.
-  inputArbitration?.subscribe(status => {
+  const unsubscribeInput = inputArbitration?.subscribe(status => {
     for (const clients of voiceConnections.values()) {
       for (const client of clients) {
         client.applyInputSuspension?.(status)
@@ -223,10 +161,7 @@ export function attachRealtimeGateway(server, {
       sessionId,
       supportedCapabilities: hello => supportedClientCapabilities.filter(capability => (
         capability !== GatewayClientCapability.INPUT_IMAGE_BUFFER
-        || providerSupportsImageBuffer(
-          realtimeProviderRegistry,
-          hello.connection?.provider || defaultRealtimeProvider,
-        )
+        || frontendRuntime.supportsImageInput(hello.connection?.provider)
       )),
       replayBuffer,
     })
@@ -244,13 +179,13 @@ export function attachRealtimeGateway(server, {
     const voiceClient = {
       ws,
       descriptor,
-      applyInputSuspension: status => frontendRuntime.applyInputSuspension(status),
-      realtimeStatus: () => frontendRuntime.status(),
+      applyInputSuspension: status => sessionRuntime.applyInputSuspension(status),
+      realtimeStatus: () => sessionRuntime.status(),
       isAlive: () => ws.readyState === WebSocket.OPEN,
-      deactivate: replacement => frontendRuntime.deactivate(replacement?.descriptor),
+      deactivate: replacement => sessionRuntime.deactivate(replacement?.descriptor),
     }
-    const frontendRuntime = createRealtimeSessionRuntime({
-      ...frontendOptions,
+    const sessionRuntime = frontendRuntime.createSession({
+      actionCapabilities,
       ownerId,
       sessionId,
       send: event => send(ws, event),
@@ -276,7 +211,7 @@ export function attachRealtimeGateway(server, {
     })
     if (!voiceConnections.has(ownerId)) voiceConnections.set(ownerId, new Set())
     voiceConnections.get(ownerId).add(voiceClient)
-    frontendRuntime.start()
+    sessionRuntime.start()
     const runtimeSource = () => ({
       ownerId,
       sessionId,
@@ -286,7 +221,7 @@ export function attachRealtimeGateway(server, {
     const leaseParticipant = {
       isAlive: () => ws.readyState === WebSocket.OPEN,
       deactivate: replacement => {
-        frontendRuntime.deactivate(replacement?.client?.descriptor)
+        sessionRuntime.deactivate(replacement?.client?.descriptor)
         ws.close(GATEWAY_CLIENT_REPLACED_CLOSE_CODE, 'client_replaced')
       },
       descriptor,
@@ -350,7 +285,7 @@ export function attachRealtimeGateway(server, {
         )
       ) return
       if (message.type === GatewayClientProtocolEvent.CLIENT_ACTION_RESULT) {
-        if (!frontendRuntime.receiveActionResult(message)) {
+        if (!sessionRuntime.receiveActionResult(message)) {
           connectionLogger.debug('client_action.result_stale', {
             requestEventId: message.request_event_id,
           })
@@ -358,7 +293,7 @@ export function attachRealtimeGateway(server, {
         return
       }
       if (message.type === GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE) {
-        const result = frontendRuntime.updateOutputVoice(message.voice)
+        const result = sessionRuntime.updateOutputVoice(message.voice)
         send(ws, {
           type: GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED,
           request_event_id: message.event_id,
@@ -379,7 +314,7 @@ export function attachRealtimeGateway(server, {
               // Only a server-registered Client Event handler can reach this
               // effect. The Client supplies a schema-validated identifier,
               // while the handler owns the actual profile content.
-              frontendRuntime.setAssistantProfile(profile)
+              sessionRuntime.setAssistantProfile(profile)
             },
           },
         })
@@ -394,7 +329,7 @@ export function attachRealtimeGateway(server, {
           name: result.name,
           ...(result.duplicate ? { duplicate: true } : {}),
         })
-        frontendRuntime.handleClientDelivery(result)
+        sessionRuntime.handleClientDelivery(result)
         return
       }
       if (!clientCommandRuntime) {
@@ -487,7 +422,7 @@ export function attachRealtimeGateway(server, {
         descriptor = clientDescriptor(event)
         voiceClient.descriptor = descriptor
       }
-      frontendRuntime.handleClientEvent(event, {
+      sessionRuntime.handleClientEvent(event, {
         descriptor,
         capabilities: clientProtocol.capabilities,
       })
@@ -505,7 +440,7 @@ export function attachRealtimeGateway(server, {
         closeCode: Number(code),
         closeReason: reason?.toString() || undefined,
       })
-      frontendRuntime.close()
+      sessionRuntime.close()
       const connections = voiceConnections.get(ownerId)
       connections?.delete(voiceClient)
       if (!connections?.size) voiceConnections.delete(ownerId)
@@ -558,11 +493,11 @@ export function attachRealtimeGateway(server, {
     },
     async close() {
       clearInterval(heartbeat)
+      unsubscribeInput?.()
       for (const client of [...wss.clients, ...attachedClients]) client.close()
       await new Promise(resolveClose => {
         wss.close(() => resolveClose())
       })
-      await observers.drain()
     },
     status() {
       const byType = { desktop: 0, cli: 0, web: 0 }

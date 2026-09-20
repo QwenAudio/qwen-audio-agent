@@ -11,7 +11,7 @@ injection. Moving code does not change public package exports or wire protocols.
 | --- | --- |
 | `app/` | Application assembly, lifecycle and cross-domain wiring / 应用装配、生命周期与跨模块连接 |
 | `frontend/` | Chatbot instructions, tools and web retrieval / 前台指令、工具与网页检索 |
-| `voice/` | Frontend session runtime, audio turns and presentation; Gateway transport entry / 前台会话运行时、音频轮次与播报；网关传输入口 |
+| `voice/` | Frontend session runtime, audio turns and presentation / 前台会话运行时、音频轮次与播报 |
 | `orchestration/` | Shared user Task operations and session-scoped delivery coordination / 共用用户任务操作与会话级投递协调 |
 | `backend/` | BackendPort and protocol-neutral execution / 后台通用接口与执行；`adapters/` 实现 ACP、A2A |
 | `memory/` | Long-term memory, preference learning and providers / 长期记忆、偏好学习与记忆 Provider |
@@ -20,7 +20,7 @@ injection. Moving code does not change public package exports or wire protocols.
 | `session/` | Durable event journal and replay / 会话事件持久化与回放 |
 | `task/` | Task lifecycle, scheduling and permission policy / 任务生命周期、调度与授权策略 |
 | `client/` | Client commands, actions, presence and connection ownership / 客户端命令、动作、在线状态与连接归属 |
-| `transport/` | Gateway Client Protocol encoding and projections / 网关客户端协议编解码与投影 |
+| `transport/` | Client connections, Gateway Client Protocol encoding and projections / 客户端连接、网关客户端协议编解码与投影 |
 | `delivery/` | Provider-neutral AgentDelivery values / 与供应商无关的消息投递数据 |
 | `access/` | Authentication, pairing and public endpoints / 访问认证、配对与公开地址 |
 | `process/` | Local backend process ownership and launch drivers / 本机后台进程生命周期与启动驱动 |
@@ -67,7 +67,7 @@ playback confirmation still controls when a notification becomes delivered.
 
 ## Frontend session and transport / 前台会话与传输
 
-`voice/realtime-gateway.mjs` owns authentication, capability negotiation, connection
+`transport/gateway-client-transport.mjs` owns authentication, capability negotiation, connection
 ownership, heartbeats, wire encoding and public event projection. Each admitted
 connection uses its own `createRealtimeSessionRuntime` from
 `voice/realtime-session-runtime.mjs`: model connection/context, tools, audio turns,
@@ -75,10 +75,19 @@ playback, recovery and client presence. The runtime receives decoded events and
 trusted identity, emitting internal events through callbacks; it does not own a
 socket, credentials or the Gateway Client Protocol handshake.
 
-`voice/realtime-gateway.mjs` 负责鉴权、能力协商、连接归属、心跳、协议编解码与公开事件投影。
+`transport/gateway-client-transport.mjs` 负责鉴权、能力协商、连接归属、心跳、协议编解码与公开事件投影。
 每条接入连接使用独立的 `voice/realtime-session-runtime.mjs` 前台会话运行时，管理模型连接与
 上下文、工具、音频轮次、播放、恢复和客户端休眠状态。运行时接收解码后的事件与可信身份，
 通过回调发出内部事件，不持有 Socket、凭据或网关客户端协议握手。
+
+`app/frontend-runtime.mjs` assembles the shared dependencies, initializes tool sources
+once, creates per-connection sessions and drains lifecycle observers at shutdown.
+The transport receives this runtime; it neither assembles tools nor resolves providers.
+Tool-source services remain owned and closed by the application.
+
+`app/frontend-runtime.mjs` 装配共用依赖、一次性初始化工具源，为每条连接创建独立会话，
+退出时关闭会话并等待生命周期观察器完成。传输层只使用注入的运行时，不装配工具或解析
+Provider；工具源服务仍由应用层持有和关闭。
 
 Frontend interruption, mute, sleep and disconnection do not cancel accepted backend
 work. Closing a runtime clears its timers, pending tools, subscriptions and delivery

@@ -46,7 +46,7 @@ test('前台不装配用户画像', async () => {
   // 【客服的会话之间必须互不相识】每通电话是不同的客户。
   //
   // 框架默认建一个 Markdown provider 读写 .runtime/USER.md 与 MEMORY.md，
-  // 而那份内容会进模型上下文（realtime-gateway.mjs:371 的 memories）。
+  // 而那份内容会进模型上下文（realtime-session-runtime.mjs 的 memories）。
   // 偏好晋升器默认是关的，所以不会自动写入 —— 但只要有人往 USER.md 里写一句，
   // 它就出现在【每一通】电话的 prompt 里。那是串号。
   //

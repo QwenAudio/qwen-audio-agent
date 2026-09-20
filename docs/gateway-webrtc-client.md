@@ -272,7 +272,7 @@ questions. Disable WebRTC afterwards and repeat the original WSS flow.
 - `media.mjs`: PeerConnection, PCM pacing, JPEG sampling, and backpressure.
 - `media-process.mjs` / `media-worker.mjs`: controlled processes, bounded IPC, cleanup acknowledgement, and crash isolation.
 - `pcm.mjs`: PCM encoding, streaming resampling, and channel conversion.
-- `realtime-gateway.mjs`: shared authenticated connection attachment for WSS and RTC.
+- `transport/gateway-client-transport.mjs`: shared authenticated connection attachment for WSS and RTC.
 - `shared/gateway/webrtc.mjs`: extension discovery and API/dependency checks without loading native addons.
 - `shared/gateway/webrtc-browser.mjs`: shared browser connection, track lifecycle and playback receipts for both examples; no scenario tools.
 - `shared/gateway/webrtc-message.mjs`: size/time-bounded inbound fragmentation without changing GCP semantics.

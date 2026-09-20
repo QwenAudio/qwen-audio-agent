@@ -441,7 +441,7 @@ notification claims without cancelling backend work. Reconnection can reclaim re
 without executing work again; result availability and playback confirmation remain
 separate. Public Task events still pass through the transport projector.
 
-`voice/realtime-gateway.mjs` now keeps transport responsibilities: authentication,
+`transport/gateway-client-transport.mjs` keeps transport responsibilities: authentication,
 capability negotiation, connection ownership, heartbeats, protocol encoding and
 public event projection. It connects each client to an independent
 `createRealtimeSessionRuntime` in `voice/realtime-session-runtime.mjs`. That runtime
@@ -449,6 +449,11 @@ owns the model session and context, tool calls, audio turns, playback, recovery 
 client presence, reusing the existing components. It accepts decoded events and
 trusted identity, and emits internal events through callbacks; it does not own a
 socket, credentials or a protocol handshake.
+
+`app/frontend-runtime.mjs` owns frontend assembly: shared dependencies, one-time
+tool-source initialization, per-connection session creation and observer draining
+on shutdown. The transport receives this runtime instead of assembling tools or
+resolving model providers. Tool-source services are closed by their application owner.
 
 Mute, voice interruption, sleep and frontend disconnection do not cancel accepted
 backend work. Closing the frontend clears its timers, pending tools, subscriptions

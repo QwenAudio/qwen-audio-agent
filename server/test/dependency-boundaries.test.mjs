@@ -54,7 +54,7 @@ const allowedDependencies = {
   conversation: new Set(['conversation', 'core', 'shared']),
   session: new Set(['session', 'shared']),
   task: new Set(['backend', 'core', 'session', 'task']),
-  transport: new Set(['shared', 'task', 'transport']),
+  transport: new Set(['client', 'core', 'shared', 'task', 'transport']),
   voice: new Set([
     'client',
     'conversation',
@@ -210,7 +210,7 @@ test('task orchestration has no transport, provider SDK or model receipt depende
 })
 
 test('Realtime wiring delegates Task subscription and request/claim policy to orchestration', () => {
-  const gateway = readFileSync(resolve(sourceRoot, 'voice/realtime-gateway.mjs'), 'utf8')
+  const gateway = readFileSync(resolve(sourceRoot, 'transport/gateway-client-transport.mjs'), 'utf8')
   assert.doesNotMatch(gateway, /taskManager\.(?:subscribe|claimNotifications|markNotificationsDelivered|releaseNotificationClaims)\(/u)
   assert.doesNotMatch(gateway, /announcedPermissions|announcedInputs|<permission_request>|<backend_input_request>/u)
   const presentation = readFileSync(resolve(sourceRoot, 'voice/realtime-task-presentation.mjs'), 'utf8')
@@ -218,9 +218,10 @@ test('Realtime wiring delegates Task subscription and request/claim policy to or
 })
 
 test('Gateway transport does not assemble frontend state and frontend runtime owns no connection protocol', () => {
-  const gateway = readFileSync(resolve(sourceRoot, 'voice/realtime-gateway.mjs'), 'utf8')
+  const gateway = readFileSync(resolve(sourceRoot, 'transport/gateway-client-transport.mjs'), 'utf8')
   assert.doesNotMatch(gateway, /new (?:RealtimeProviderSession|RealtimeTurnState|ToolCallHandler|TurnTranscripts|SessionTaskCoordinator|PresenceController)\b/u)
   assert.doesNotMatch(gateway, /response\.function_call_arguments\.done|response\.done|sessionAssistantProfile|sessionOutputVoice/u)
+  assert.doesNotMatch(gateway, /frontendToolSources|SessionObservers|createRealtimeSessionRuntime|realtimeProviderRegistry/u)
   const runtime = readFileSync(resolve(sourceRoot, 'voice/realtime-session-runtime.mjs'), 'utf8')
   assert.doesNotMatch(runtime, /from ['"](?:ws|express|[^'"]*\/transport\/)/u)
   assert.doesNotMatch(runtime, /\b(?:WebSocket|GatewayClientProtocolSession|GatewayClientProtocolEvent|activeClientLeases|clientProtocol|identityManager)\b/u)
@@ -231,7 +232,7 @@ test('Gateway Work consumers use BackendPort instead of ACP coordinator APIs', (
   const consumers = [
     resolve(sourceRoot, 'backend/backend-work-runtime.mjs'),
     resolve(sourceRoot, 'app/gateway-application.mjs'),
-    resolve(sourceRoot, 'voice/realtime-gateway.mjs'),
+    resolve(sourceRoot, 'transport/gateway-client-transport.mjs'),
     resolve(sourceRoot, 'frontend/tools/tool-call-handler.mjs'),
   ]
   const privateAcpApi = /\b(?:runCoordinator|cancelWork|queryDelegatedWork|coordinatorUsesMcpInstructions)\b|from\s+['"][^'"]*acp-/

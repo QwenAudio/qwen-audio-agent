@@ -144,8 +144,8 @@ Other endpoints:
 
 ## auth_required: verified end-to-end
 
-The chain has always been wired on the framework's realtime side (6 sites in
-`realtime-gateway.mjs`, 2 in `tool-call-handler.mjs`), but the cockpit example never needs
+The chain is wired through `session-task-coordinator.mjs`,
+`realtime-task-presentation.mjs`, and `tool-call-handler.mjs`, but the cockpit example never needs
 it — opening a sunroof requires no customer approval. So there was no evidence it actually
 worked. Now there is:
 
@@ -315,7 +315,7 @@ The chain below was read out of the framework source, not guessed:
 | 1 | Customer asks to cancel → model calls `spawn_thinking` | — |
 | 2 | Backend gets a write preview needing approval → task suspends | `service/tools/approval.mjs` |
 | 3 | `inputRequest.kind = 'authorization'` → `workState = auth_required` | `server/src/task/task-state.mjs:97` |
-| 4 | Gateway wraps it as `<backend_input_request>` for the realtime model | `realtime-gateway.mjs:946` |
+| 4 | Gateway wraps it as `<backend_input_request>` for the realtime model | `voice/realtime-task-presentation.mjs` |
 | 5 | Model relays the question **out loud** | `frontend-tools.mjs:498` |
 | 6 | Customer answers → model calls `respond_agent_input` | `frontend-tools.mjs:29` |
 
@@ -438,7 +438,7 @@ model's "expired" claim is right.
 ### Two limitations, both intentional in the framework
 
 **One: the gateway accepts a single client at a time**
-(`realtime-gateway.mjs:241`). This console and the gateway's own web UI
+(`transport/gateway-client-transport.mjs`). This console and the gateway's own web UI
 (`:18889`) cannot both be open. The page surfaces that error explicitly —
 without it everything looks fine (green status light, messages send) and replies
 simply never arrive. That cost two minutes of confusion on the first run.

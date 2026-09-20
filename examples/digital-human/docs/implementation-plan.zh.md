@@ -56,7 +56,7 @@ examples/digital-human/
 
 `node_modules`、`.venv`、`.env.local`、模型、上游 checkout、缓存、测试录像和生成媒体均在 example 内独立管理并忽略提交。不要提交真实密钥、个人音频或未获许可的肖像。
 
-主框架的未来开发项只包含 SPI/编排及媒体扩展，具体落点由 M0 确认，建议新增独立的 `presentation/digital-human` 模块，避免继续扩张 `realtime-gateway.mjs`。本轮不创建这些代码目录。
+主框架的未来开发项只包含 SPI/编排及媒体扩展，具体落点由 M0 确认，建议新增独立的 `presentation/digital-human` 模块，避免继续扩张 `voice/realtime-session-runtime.mjs`。本轮不创建这些代码目录。
 
 ## 3. 依赖清单与锁定
 

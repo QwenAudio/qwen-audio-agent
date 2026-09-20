@@ -131,8 +131,8 @@ curl -s -X POST 'http://127.0.0.1:3110/mcp/frontend?sessionId=demo' \
 
 ## auth_required：已实测跑通
 
-这条链在框架的 realtime 侧代码一直是接通的（`realtime-gateway.mjs` 6 处、
-`tool-call-handler.mjs` 2 处），但座舱示例用不到它 —— 开天窗不需要客户批准。
+这条链通过 `session-task-coordinator.mjs`、`realtime-task-presentation.mjs` 和
+`tool-call-handler.mjs` 接通，但座舱示例用不到它 —— 开天窗不需要客户批准。
 所以此前没有证据说明它真能跑。现在有了：
 
 ```text
@@ -281,7 +281,7 @@ cd console && npm start     # :4610  Policy 配置台
 | 1 | 客户说要取消 → 模型调 `spawn_thinking` | — |
 | 2 | 后台取到写库预览发现要批准 → 任务挂起 | `service/tools/approval.mjs` |
 | 3 | `inputRequest.kind = 'authorization'` → `workState = auth_required` | `server/src/task/task-state.mjs:97` |
-| 4 | 网关包成 `<backend_input_request>` 交给 realtime 模型 | `realtime-gateway.mjs:946` |
+| 4 | 网关包成 `<backend_input_request>` 交给 realtime 模型 | `voice/realtime-task-presentation.mjs` |
 | 5 | 模型**口头**转达问题 | `frontend-tools.mjs:498` |
 | 6 | 客户口头回答 → 模型调 `respond_agent_input` 交回同一项工作 | `frontend-tools.mjs:29` |
 
@@ -389,7 +389,7 @@ cd client && npm start      # http://127.0.0.1:4620
 
 ### 两个限制，都是框架的有意设计
 
-**一、网关一次只接一个客户端**（`realtime-gateway.mjs:241`）。
+**一、网关一次只接一个客户端**（`transport/gateway-client-transport.mjs`）。
 工作台和网关自带的 web 界面（`:18889`）不能同时开。
 这个错误在界面上会明确提示 —— 不提示的话页面看起来完全正常
 （状态灯是绿的、消息发得出去），只是永远等不到回复。第一次实测就卡在这里两分钟。

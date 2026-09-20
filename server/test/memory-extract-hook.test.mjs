@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import test from 'node:test'
 import WebSocket from 'ws'
-import { attachRealtimeGateway } from '../src/voice/realtime-gateway.mjs'
+import { attachTestGateway } from './fixtures/gateway-runtime.mjs'
 import { MemorySessionObserver } from '../src/memory/session-observer.mjs'
 
 // End-to-end wiring of the invisible-memory close hook: a real WebSocket
@@ -11,7 +11,7 @@ import { MemorySessionObserver } from '../src/memory/session-observer.mjs'
 // failure must never break the close path.
 function gatewayHarness({ memoryExtractor, memoryService = { list: () => [] } }) {
   const server = createServer()
-  attachRealtimeGateway(server, {
+  attachTestGateway(server, {
     identityManager: {
       resolveUpgrade: () => ({ ownerId: 'owner-hook' }),
     },

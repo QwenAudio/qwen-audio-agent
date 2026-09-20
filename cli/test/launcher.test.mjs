@@ -459,6 +459,71 @@ test('reports a configured frontend MCP failure in Gateway status', async () => 
   assert.match(output, /前台 MCP 异常/)
 })
 
+test('Gateway status succeeds for a reachable foreground instance without an OS service', async () => {
+  for (const argv of [['gateway', 'status'], ['status']]) {
+    const target = harness()
+    target.dependencies.manageService = async () => ({ installed: false, running: false })
+    target.dependencies.prepareEnvironment = options => {
+      assert.equal(options.readOnly, true)
+      return { configDirectory: '/unused', stateDirectory: '/unused' }
+    }
+    assert.equal(await main(argv, target.dependencies), 0)
+    const output = target.calls.find(call => call[0] === 'stdout')[1]
+    assert.match(output, /Gateway 连接：可达/)
+    assert.match(output, /本机常驻服务：未安装/)
+    assert.equal(target.calls.some(call => call[0] === 'runtime'), false)
+  }
+})
+
+test('Gateway status fails when unreachable even if the OS service claims to run', async () => {
+  const target = harness()
+  target.dependencies.inspectGateway = async () => null
+  assert.equal(await main(['gateway', 'status'], target.dependencies), 1)
+  const output = target.calls.find(call => call[0] === 'stdout')[1]
+  assert.match(output, /Gateway 连接：不可达/)
+  assert.match(output, /本机常驻服务：运行中/)
+})
+
+test('remote Gateway status uses its credential and never inspects a local OS service', async () => {
+  const target = harness()
+  target.dependencies.env.QWEN_AUDIO_GATEWAY_CLIENT_TOKEN = 'test-token'
+  target.dependencies.inspectGateway = async (url, token) => {
+    assert.equal(url, 'https://voice.example.test')
+    assert.equal(token, 'test-token')
+    return { backend: { enabled: false } }
+  }
+  assert.equal(await main(['gateway', 'status', '--url', 'https://voice.example.test'], target.dependencies), 0)
+  assert.equal(target.calls.some(call => call[0] === 'service'), false)
+  assert.match(target.calls.find(call => call[0] === 'stdout')[1], /不适用（远程 Gateway）/)
+})
+
+test('an explicit status URL overrides installed service metadata', async () => {
+  for (const explicit of [false, true]) {
+    const target = harness()
+    target.dependencies.manageService = async () => ({ installed: true, running: true, installedMetadata: { url: 'http://127.0.0.1:4201' } })
+    target.dependencies.inspectGateway = async url => {
+      assert.equal(url, explicit ? 'http://127.0.0.1:4301' : 'http://127.0.0.1:4201')
+      return { backend: { enabled: false } }
+    }
+    assert.equal(await main(['gateway', 'status', ...(explicit ? ['--url', 'http://127.0.0.1:4301'] : [])], target.dependencies), 0)
+  }
+})
+
+test('HOST and PORT configure both foreground and service launches without binding probes to a wildcard', async () => {
+  const target = harness()
+  Object.assign(target.dependencies.env, { HOST: '0.0.0.0', PORT: '3301' })
+  assert.equal(await main(['gateway'], target.dependencies), 0)
+  const options = target.calls.find(call => call[0] === 'runtime')[1]
+  assert.equal(options.url, 'http://127.0.0.1:3301')
+  assert.equal(options.listenHost, '0.0.0.0')
+  target.dependencies.manageService = async (_action, { serviceEnvironment }) => {
+    assert.equal(serviceEnvironment.HOST, '0.0.0.0')
+    assert.equal(serviceEnvironment.PORT, '3301')
+    return { installed: true, running: true }
+  }
+  assert.equal(await main(['gateway', 'install'], target.dependencies), 0)
+})
+
 test('reports the public endpoint through the unified Gateway status', async () => {
   const target = harness()
   target.dependencies.inspectGateway = async () => ({

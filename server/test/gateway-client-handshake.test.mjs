@@ -21,7 +21,7 @@ import {
   ClientEventDefinitionRegistry,
   GatewayEventRouter,
 } from '../src/client/client-event-router.mjs'
-import { attachRealtimeGateway } from '../src/voice/realtime-gateway.mjs'
+import { attachTestGateway } from './fixtures/gateway-runtime.mjs'
 import { IdentityManager } from '../src/core/identity.mjs'
 import { ConversationSync } from '../src/conversation/conversation-sync.mjs'
 
@@ -30,7 +30,7 @@ const REMOTE_ACCESS_TOKEN = 'gateway-client-remote-token-over-twenty-four-chars'
 
 function gatewayHarness(overrides = {}) {
   const server = createServer()
-  const gateway = attachRealtimeGateway(server, {
+  const gateway = attachTestGateway(server, {
     identityManager: {
       resolveUpgrade: () => ({ ownerId: 'owner-protocol-test' }),
     },

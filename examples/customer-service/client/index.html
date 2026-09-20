@@ -532,8 +532,8 @@ function connect() {
     }
     const type = payload.type || ''
 
-    // 【网关一次只接一个客户端】realtime-gateway.mjs:241 —— activeClientSockets
-    // 非空就直接拒。所以这个工作台和网关自带的 web 界面（18889 的 /）
+    // 【网关一次只接一个客户端】gateway-client-transport.mjs 使用连接租约
+    // 拒绝并发接入。所以这个工作台和网关自带的 web 界面（18889 的 /）
     // 不能同时开着。
     //
     // 这个错误必须显眼：不显示的话，页面看起来一切正常（状态灯是绿的，
@@ -617,7 +617,7 @@ function reportVoiceError(error) {
   stopVoice()
 }
 
-// 播放进度回报。网关按 responseId 认这句话（realtime-gateway.mjs 读的就是
+// 播放进度回报。网关按 responseId 认这句话（realtime-session-runtime.mjs 读的就是
 // event.responseId），没有它就 acceptsPlaybackReceipt 不过、直接丢弃。
 function sendPlayback(type, responseId, reason = '') {
   if (!responseId || socket?.readyState !== WebSocket.OPEN) return

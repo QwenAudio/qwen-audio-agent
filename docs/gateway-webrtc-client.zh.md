@@ -245,7 +245,7 @@ QWAUDIO_TEST_WEBRTC_NATIVE=1 node --test server/test/webrtc-native.test.mjs
 - `media.mjs`：原生 PeerConnection、音频 pacing、JPEG 抽帧和背压。
 - `media-process.mjs` / `media-worker.mjs`：受控 Node 子进程、有限 IPC 缓冲、退出确认与崩溃隔离。
 - `pcm.mjs`：PCM 字节序、流式重采样和声道转换。
-- `realtime-gateway.mjs`：提供内部已认证连接端口；WSS 和 RTC 共用同一业务路径。
+- `transport/gateway-client-transport.mjs`：提供内部已认证连接端口；WSS 和 RTC 共用同一业务路径。
 - `shared/gateway/webrtc.mjs`：定位已安装扩展，检查 API 版本与依赖；不加载原生库。
 - `shared/gateway/webrtc-browser.mjs`：两个示例共用的浏览器连接、轨道管理与播放回执；不含场景工具。
 - `shared/gateway/webrtc-message.mjs`：有大小/时限限制的入站分片，不改变 GCP 业务语义。

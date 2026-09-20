@@ -152,7 +152,7 @@ export function startCustomerServiceGateway({
     // 【关掉用户画像】客服场景里每通电话都是不同的客户。
     //
     // 框架默认会建一个 Markdown provider 读写 .runtime/USER.md 与 MEMORY.md，
-    // 而那份内容会进模型上下文（realtime-gateway.mjs:371 的 memories）。
+    // 而那份内容会进模型上下文（realtime-session-runtime.mjs 的 memories）。
     // 偏好晋升器（conversation/preference-promoter.mjs）默认是关的，
     // 所以不会自动写入 —— 但只要有人往 USER.md 里写一句，
     // 它就会出现在【每一通】客服电话的 prompt 里。那是串号。

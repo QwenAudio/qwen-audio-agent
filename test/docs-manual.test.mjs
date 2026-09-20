@@ -7,7 +7,8 @@ import { parseArguments } from '../cli/src/arguments.mjs'
 import { REALTIME_PROVIDERS } from '../shared/realtime-provider-definitions.mjs'
 
 const root = fileURLToPath(new URL('../docs/', import.meta.url))
-const read = file => readFileSync(join(root, file), 'utf8')
+// Git may check out Markdown with CRLF on Windows; examples are unchanged.
+const read = file => readFileSync(join(root, file), 'utf8').replace(/\r\n/g, '\n')
 
 function markdownFiles(directory = root, prefix = '') {
   return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {

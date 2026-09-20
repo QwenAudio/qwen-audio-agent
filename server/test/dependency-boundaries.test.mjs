@@ -61,6 +61,7 @@ const allowedDependencies = {
     'core',
     'delivery',
     'frontend',
+    'orchestration',
     'shared',
     'task',
     'transport',
@@ -206,6 +207,14 @@ test('task orchestration has no transport, provider SDK or model receipt depende
     const source = readFileSync(resolve(sourceRoot, path), 'utf8')
     assert.doesNotMatch(source, /taskManager\.create\(|backendRuntime\.(?:run|cancel)\(|permissionPolicy\.(?:applyDecision|forwardBackendEvent)\(/u)
   }
+})
+
+test('Realtime wiring delegates Task subscription and request/claim policy to orchestration', () => {
+  const gateway = readFileSync(resolve(sourceRoot, 'voice/realtime-gateway.mjs'), 'utf8')
+  assert.doesNotMatch(gateway, /taskManager\.(?:subscribe|claimNotifications|markNotificationsDelivered|releaseNotificationClaims)\(/u)
+  assert.doesNotMatch(gateway, /announcedPermissions|announcedInputs|<permission_request>|<backend_input_request>/u)
+  const presentation = readFileSync(resolve(sourceRoot, 'voice/realtime-task-presentation.mjs'), 'utf8')
+  assert.doesNotMatch(presentation, /taskManager|backendRuntime|WebSocket|TaskDomainEvent/u)
 })
 
 test('Gateway Work consumers use BackendPort instead of ACP coordinator APIs', () => {

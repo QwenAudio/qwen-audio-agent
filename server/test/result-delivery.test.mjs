@@ -1,104 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { TaskManager } from '../src/task/task-manager.mjs'
-import { AnnouncementManager } from '../src/voice/announcement/announcement-manager.mjs'
-import { recordTaskResult } from '../src/conversation/task-result-projector.mjs'
-
-/**
- * Simulates the realtime-gateway subscriber for task completion delivery.
- *
- * In production this logic lives inside `attachRealtimeGateway`'s
- * `wss.on('connection')` handler.  The harness extracts only the
- * delivery-relevant path so we can verify that a factual Task result reaches
- * AnnouncementManager → frontend.injectResult exactly once — never duplicated by the
- * subsequent `task.notification.pending` event.
- */
-function createDeliveryHarness() {
-  const injectCalls = []
-  const speakCalls = []
-
-  const frontend = {
-    ready: true,
-    async injectResult(text, origin, context, options) {
-      injectCalls.push({ text, origin, context, options })
-      return { completed: true, contextInjected: true }
-    },
-    async speak(text, origin, context, options) {
-      speakCalls.push({ text, origin, context, options })
-      return { completed: true }
-    },
-    cancelResponses() {},
-  }
-
-  const conversationSync = {
-    record() { return null },
-    hasEquivalentAssistantSpeech() { return false },
-  }
-
-  const taskManager = new TaskManager()
-  const ownerId = 'owner-1'
-  const sessionId = 'session-1'
-
-  const announcements = new AnnouncementManager({
-    getFrontend: () => frontend,
-    isDeliveryBlocked: () => false,
-    batchWindowMs: 0,
-    maxBatchItems: 1,
-    onDelivered: taskIds =>
-      taskManager.markNotificationsDelivered(taskIds, { claimantId: 'test' }),
-  })
-
-  const recordResult = task =>
-    recordTaskResult({ conversationSync, ownerId, sessionId, task })
-
-  const claimPendingNotifications = taskIds => {
-    const claimed = taskManager.claimNotifications({
-      ownerId,
-      sessionId,
-      includeOtherSessions: false,
-      claimantId: 'test',
-      taskIds,
-    })
-    claimed.forEach(task => {
-      recordResult(task)
-      if (task.status === 'completed') announcements.completed(task)
-      if (task.status === 'failed') announcements.failed(task)
-    })
-  }
-
-  // --- Replicate the gateway subscriber (delivery-relevant paths only) ---
-  taskManager.subscribe(event => {
-    const task = event.task
-    if (event.ownerId !== ownerId) return
-
-    if (event.type === 'task.notification.pending') {
-      if (task.sessionId === sessionId) {
-        claimPendingNotifications([task.id])
-      }
-      return
-    }
-
-    if (task.sessionId !== sessionId) return
-
-    if (['task.completed', 'task.failed'].includes(event.type)) {
-      claimPendingNotifications([task.id])
-    }
-  })
-
-  return {
-    taskManager,
-    announcements,
-    injectCalls,
-    speakCalls,
-    ownerId,
-    sessionId,
-  }
-}
-
-async function flush() {
-  // Let the AnnouncementManager's setTimeout(0) delivery fire.
-  await new Promise(resolve => setTimeout(resolve, 10))
-}
+import { createDeliveryHarness, flush } from './helpers/task-session-harness.mjs'
 
 test('delegation does not produce a premature voice announcement', async () => {
   const h = createDeliveryHarness()
@@ -128,7 +30,7 @@ test('delegation does not produce a premature voice announcement', async () => {
   release({ content: '完成', metadata: {} })
   await h.taskManager.wait(taskId)
   await flush()
-  h.announcements.close()
+  h.coordinator.close()
 })
 
 // ---------------------------------------------------------------------------
@@ -159,7 +61,7 @@ test('programming task delivers its factual result exactly once', async () => {
   // --- speak should not be used (announcement uses injectResult) ---
   assert.equal(h.speakCalls.length, 0, 'speak should not be called for announcements')
 
-  h.announcements.close()
+  h.coordinator.close()
 })
 
 test('result-only task injects its factual result once', async () => {
@@ -181,7 +83,7 @@ test('result-only task injects its factual result once', async () => {
   assert.equal(h.injectCalls.length, 1, 'injectResult called once for result-only task')
   assert.match(h.injectCalls[0].text, /今天晴/)
 
-  h.announcements.close()
+  h.coordinator.close()
 })
 
 test('no duplication: task.completed and task.notification.pending both fire but injectResult called once', async () => {
@@ -206,7 +108,7 @@ test('no duplication: task.completed and task.notification.pending both fire but
   assert.equal(h.injectCalls.length, 1,
     'injectResult must be called exactly once despite two events')
 
-  h.announcements.close()
+  h.coordinator.close()
 })
 
 test('multiple programming tasks each get one injected result', async () => {
@@ -248,7 +150,7 @@ test('multiple programming tasks each get one injected result', async () => {
   assert.match(h.injectCalls[0].text, /冒泡排序/)
   assert.match(h.injectCalls[1].text, /归并排序/)
 
-  h.announcements.close()
+  h.coordinator.close()
 })
 
 test('failed task delivers its error via injectResult once', async () => {
@@ -269,5 +171,5 @@ test('failed task delivers its error via injectResult once', async () => {
   assert.match(h.injectCalls[0].text, /你先前异步执行工作的最终更新/)
   assert.match(h.injectCalls[0].text, /syntax error/)
 
-  h.announcements.close()
+  h.coordinator.close()
 })

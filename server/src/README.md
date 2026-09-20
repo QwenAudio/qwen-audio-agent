@@ -12,7 +12,7 @@ injection. Moving code does not change public package exports or wire protocols.
 | `app/` | Application assembly, lifecycle and cross-domain wiring / 应用装配、生命周期与跨模块连接 |
 | `frontend/` | Chatbot instructions, tools and web retrieval / 前台指令、工具与网页检索 |
 | `voice/` | Realtime connections, audio turns and presentation / Realtime 连接、音频轮次与播报 |
-| `orchestration/` | Shared user Task operations across frontend tools and client commands / 前台工具与客户端命令共用的用户任务操作 |
+| `orchestration/` | Shared user Task operations and session-scoped delivery coordination / 共用用户任务操作与会话级投递协调 |
 | `backend/` | BackendPort and protocol-neutral execution / 后台通用接口与执行；`adapters/` 实现 ACP、A2A |
 | `memory/` | Long-term memory, preference learning and providers / 长期记忆、偏好学习与记忆 Provider |
 | `knowledge/` | Knowledge contracts, retrieval and ingestion / 知识库接口、检索与入库；`providers/local/` 为内置实现 |
@@ -53,14 +53,24 @@ Tool receipts and public command responses stay in their respective entry layers
 资料入库保留各自入口。`task/` 仍是状态、持久化和调度的唯一权威，工具回执与公开
 命令响应分别留在各自入口层。
 
-This is the first stage of [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477).
-Connection-scoped frontend assembly and result-delivery coordination still live
-in `voice/realtime-gateway.mjs`; extracting them is a separate stage, not a new
-process or public protocol.
+Each frontend connection owns a `SessionTaskCoordinator`: scoped Task observation,
+pending permission/input delivery, notification claims and cleanup. It delegates
+model text and response/playback behavior to `voice/realtime-task-presentation.mjs`
+and the existing announcement managers. Task events reach the client only through
+the transport projector. Closing a coordinator releases delivery claims, not work;
+playback confirmation still controls when a notification becomes delivered.
 
-这是 [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477) 的第一阶段。
-连接级前台装配与结果回流协调暂时仍位于 `voice/realtime-gateway.mjs`，后续单独提取，
-不引入新进程或公开协议。
+每条前台连接拥有独立的 `SessionTaskCoordinator`，负责按 owner/session 观察任务、
+协调权限与补充输入投递、领取结果通知和清理。模型文本与回复/播放行为留在
+`voice/realtime-task-presentation.mjs` 和已有播报管理器中；任务事件经传输投影器发给客户端。
+协调器关闭仅释放投递领取，不取消工作；通知仍由播放确认标记为已送达。
+
+These are the first two increments of [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477).
+Connection-level frontend/session assembly remains in `voice/realtime-gateway.mjs`
+for a subsequent extraction; no new process or public protocol is introduced.
+
+以上是 [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477) 的前两个增量。
+连接级前台/会话装配仍在 `voice/realtime-gateway.mjs`，后续单独提取；不引入新进程或公开协议。
 
 ## Removing an optional domain / 裁剪可选模块
 

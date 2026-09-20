@@ -394,7 +394,7 @@ across technical layers:
 - `knowledge/`: the knowledge contract, tools, retrieval runtime, ingestion service, and built-in local provider.
 - `frontend/`: core chatbot instructions, tool composition/execution, MCP/OpenAPI tools, and web retrieval with its search providers.
 - `voice/`: Realtime provider protocols, connections, audio turns, interruption, and playback delivery.
-- `orchestration/`: transport-neutral user Task operations shared by frontend tools and client commands.
+- `orchestration/`: transport-neutral user Task operations and session-scoped delivery coordination.
 - `backend/`: protocol-neutral BackendPort and execution; `backend/adapters/` owns ACP/A2A implementations and adapter selection.
 - `conversation/` and `session/`: conversation context/projections and durable event replay, respectively; neither is a container for all memory features.
 
@@ -427,9 +427,24 @@ wait for the same decision's backend acknowledgement. Model receipts and public
 protocol responses remain entry-specific. No new LLM, transport or state machine
 is introduced.
 
-This is the shared-task-entry stage of [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477).
-Per-connection frontend assembly and result-delivery coordination still reside in
-`realtime-gateway.mjs`; moving them behind runtime boundaries is the next stage.
+Each frontend connection also owns a `SessionTaskCoordinator`. It observes only
+the relevant owner's/session's user Tasks, coordinates pending permissions and
+input requests, and claims final-result notifications from TaskManager. It neither
+runs a model nor interprets protocol frames. `voice/realtime-task-presentation.mjs`
+formats model-visible requests and adapts delivery to the existing announcement
+managers; `taskAnnouncementFactory` remains the scenario extension point.
+
+Request tools are exposed before a permission/input request is presented. Busy or
+unavailable presentation does not consume the pending request; resolution invalidates
+queued responses. Closing the connection removes observers/retries and releases
+notification claims without cancelling backend work. Reconnection can reclaim results
+without executing work again; result availability and playback confirmation remain
+separate. Public Task events still pass through the transport projector.
+
+These are the first two increments of [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477).
+Per-connection frontend/session assembly remains in `realtime-gateway.mjs` for a
+subsequent extraction. The coordinator's tests exercise this production path with
+a fake model boundary, not a duplicate of the gateway subscriber.
 
 `server/src/client` owns the northbound Client Event registry, command translation
 into task operations, `ClientActionPort`, and idempotent presence state machine.

@@ -1,6 +1,5 @@
 import { WebSocket, WebSocketServer } from 'ws'
 import { SessionObservers } from './session-observers.mjs'
-import { PERMISSION_DECISIONS } from '../../../shared/permission-decisions.mjs'
 import { selectGatewayWebSocketProtocol } from '../../../shared/gateway/websocket-auth.mjs'
 import { randomUUID } from 'node:crypto'
 import { normalizeInputParts } from '../../../shared/input-parts.mjs'
@@ -11,7 +10,6 @@ import {
 import { AnnouncementWindow } from './announcement/announcement-window.mjs'
 import {
   createTaskAnnouncementRuntime,
-  resolveTaskAnnouncementRuntime,
 } from './announcement/task-announcement-runtime.mjs'
 import { config as defaultConfig } from '../core/config.mjs'
 import { logger as defaultLogger } from '../core/logger.mjs'
@@ -24,7 +22,8 @@ import {
 } from './realtime-provider.mjs'
 import { isAllowedOrigin } from '../core/request-security.mjs'
 import { TaskManager } from '../task/task-manager.mjs'
-import { TaskDomainEvent } from '../task/task-events.mjs'
+import { SessionTaskCoordinator } from '../orchestration/session-task-coordinator.mjs'
+import { createRealtimeTaskPresentation } from './realtime-task-presentation.mjs'
 import { recordTaskResult } from '../conversation/task-result-projector.mjs'
 import { projectGatewayTaskEvent } from '../transport/gateway-task-event-projector.mjs'
 import { ToolCallHandler } from '../frontend/tools/tool-call-handler.mjs'
@@ -53,10 +52,6 @@ import {
 import {
   frontendSourceToolDefinitions,
 } from '../frontend/tools/frontend-tool-source.mjs'
-import {
-  permissionResponseInstructions,
-  inputRequestResponseInstructions,
-} from '../frontend/frontend-tools.mjs'
 import { GatewayClientProtocolSession } from '../transport/gateway-client-protocol-session.mjs'
 import {
   GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
@@ -67,7 +62,6 @@ import {
   GatewayClientProtocolEvent,
   GatewaySessionPongSchema,
 } from '../../../shared/protocol/gateway-client-protocol.mjs'
-import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
 import {
   createGatewaySystemEventDelivery,
   GatewaySystemEvent,
@@ -104,22 +98,6 @@ function providerSupportsImageBuffer(registry, providerName) {
 
 function gatewayTurnId() {
   return `gateway_${randomUUID().replaceAll('-', '')}`
-}
-
-function inputSchemaSummary(schema) {
-  const properties = schema?.properties
-  if (!properties || typeof properties !== 'object') return ''
-  const required = new Set(Array.isArray(schema.required) ? schema.required : [])
-  const fields = Object.entries(properties).slice(0, 32).map(([name, field]) => ({
-    name: String(name).slice(0, 160),
-    type: String(field?.type || 'string').slice(0, 40),
-    required: required.has(name),
-    ...(field?.title ? { title: String(field.title).slice(0, 200) } : {}),
-    ...(Array.isArray(field?.enum)
-      ? { options: field.enum.slice(0, 32).map(value => String(value).slice(0, 200)) }
-      : {}),
-  }))
-  return fields.length ? JSON.stringify(fields) : ''
 }
 
 function send(ws, event) {
@@ -352,16 +330,12 @@ export function attachRealtimeGateway(server, {
       }),
     })
     const announcementWindow = new AnnouncementWindow()
-    const notificationClaimantId = `voice_${randomUUID()}`
     let clientContext = normalizeClientContext()
     let sessionAssistantProfile = ''
     let sessionOutputVoice = ''
     const turns = new RealtimeTurnState()
     const transcripts = new TurnTranscripts()
     const turnCitations = new TurnCitations()
-    const announcedPermissions = new Set()
-    const announcedInputs = new Set()
-    let permissionRetryTimer = null
     let realtimeSession
     let visualInput
     const clearVisualInput = () => {
@@ -378,17 +352,6 @@ export function attachRealtimeGateway(server, {
       ),
     })
     let runtimeMessageChain = Promise.resolve()
-    const activeSessionTasks = () => taskManager.list({
-      ownerId,
-      sessionId,
-      active: true,
-    })
-    const hasPendingBackendPermission = () => activeSessionTasks().some(task => (
-      task.authorization?.status === 'pending'
-    ))
-    const hasPendingBackendInput = () => activeSessionTasks().some(task => (
-      task.inputRequest?.status === 'pending'
-    ))
     const observeSessionAudio = event => observers.emit('onAudio', {
       ownerId, sessionId, event, logger: connectionLogger,
     })
@@ -409,8 +372,8 @@ export function attachRealtimeGateway(server, {
           frontendKnowledge,
           memoryService,
           sessionDigests,
-          permissionPending: hasPendingBackendPermission(),
-          inputPending: hasPendingBackendInput(),
+          permissionPending: taskCoordinator.hasPendingPermission(),
+          inputPending: taskCoordinator.hasPendingInput(),
         }),
         tools: frontendSourceToolDefinitions(frontendToolSources),
       },
@@ -420,187 +383,37 @@ export function attachRealtimeGateway(server, {
         ? { assistantProfile: sessionAssistantProfile }
         : {}),
     })
-    const schedulePermissionRetry = () => {
-      if (permissionRetryTimer || !outputEnabled || !realtimeSession?.ready) return
-      permissionRetryTimer = setTimeout(() => {
-        permissionRetryTimer = null
-        announcePendingPermissions()
-      }, Math.max(100, config.announcementQuietMs))
-      permissionRetryTimer.unref?.()
-    }
-    const announcePermission = task => {
-      const permission = task?.authorization
-      if (
-        !outputEnabled
-        || !realtimeSession?.ready
-        || permission?.status !== 'pending'
-        || announcedPermissions.has(permission.id)
-      ) return
-      if (turns.userSpeaking || announcementWindow.isBlocked()) {
-        schedulePermissionRetry()
-        return
-      }
-      announcedPermissions.add(permission.id)
-      agentDeliveries.deliver(createAgentDelivery({
-        id: `permission_${permission.id}`,
-        causeEventId: permission.id,
-        mode: 'respond',
-        origin: 'permission',
-        text: [
-          '<permission_request>',
-        `permission_id=${permission.id}`,
-          `task_id=${task.id}`,
-          `operation=${permission.summary}`,
-          `allowed_decisions=${PERMISSION_DECISIONS.join(',')}`,
-          '</permission_request>',
-        ].join('\n'),
-        // A permission prompt is a new model input and response. taskId keeps
-        // it correlated with the work without reusing the user's old turn.
-        correlation: {
-          turnId: gatewayTurnId(),
-          taskId: task.id,
-          authorizationId: permission.id,
-        },
-        presentation: {
-          instructions: permissionResponseInstructions,
-          contextTiming: 'immediate',
-        },
-      }), {
-        shouldDeliver: () => activeSessionTasks().some(activeTask => (
-          activeTask.authorization?.id === permission.id
-          && activeTask.authorization.status === 'pending'
-        )),
-      }).then(outcome => {
-        if (outcome?.completed) return
-        announcedPermissions.delete(permission.id)
-        schedulePermissionRetry()
-      }).catch(error => {
-        announcedPermissions.delete(permission.id)
-        schedulePermissionRetry()
-        send(ws, {
-          type: 'error',
-          message: `暂时无法询问权限：${error.message}`,
-        })
-      })
-    }
-    const announcePendingPermissions = () => {
-      const activeTasks = activeSessionTasks()
-      const pendingIds = new Set(activeTasks
-        .filter(task => task.authorization?.status === 'pending')
-        .map(task => task.authorization.id))
-      for (const id of announcedPermissions) {
-        if (!pendingIds.has(id)) announcedPermissions.delete(id)
-      }
-      activeTasks.forEach(announcePermission)
-    }
-    const announceInputRequest = task => {
-      const input = task?.inputRequest
-      if (
-        !outputEnabled
-        || !realtimeSession?.ready
-        || input?.status !== 'pending'
-        || announcedInputs.has(input.id)
-      ) return
-      const fields = inputSchemaSummary(input.schema)
-      announcedInputs.add(input.id)
-      agentDeliveries.deliver(createAgentDelivery({
-        id: `input_${input.id}`,
-        causeEventId: input.id,
-        mode: 'respond',
-        origin: 'backend-input',
-        text: [
-          '<backend_input_request>',
-          `task_id=${task.id}`,
-          `request=${input.prompt}`,
-          ...(fields ? [`fields=${fields}`] : []),
-          ...(input.mode === 'url' && input.url ? [`url=${input.url}`] : []),
-          '</backend_input_request>',
-        ].join('\n'),
-        correlation: {
-          turnId: gatewayTurnId(),
-          taskId: task.id,
-          inputRequestId: input.id,
-        },
-        presentation: {
-          instructions: inputRequestResponseInstructions,
-          contextTiming: 'immediate',
-        },
-      }), {
-        shouldDeliver: () => activeSessionTasks().some(activeTask => (
-          activeTask.inputRequest?.id === input.id
-          && activeTask.inputRequest.status === 'pending'
-        )),
-      }).catch(error => {
-        announcedInputs.delete(input.id)
-        send(ws, {
-          type: 'error',
-          message: `暂时无法转达后台问题：${error.message}`,
-        })
-      })
-    }
-    const announcePendingInputs = () => {
-      for (const task of activeSessionTasks()) announceInputRequest(task)
-    }
-    const taskAnnouncements = resolveTaskAnnouncementRuntime(
-      taskAnnouncementFactory,
-      {
-        resultOptions: {
-          getFrontend: () => realtimeSession?.frontend,
-          deliveryRuntime: agentDeliveries,
-          isDeliveryBlocked: () => (
-            sleeping
-            || waking
-            || !outputEnabled
-            || announcementWindow.isBlocked()
-          ),
-          announceIntoContext: config.announceIntoContext,
-          resultContextMaxChars: config.resultContextMaxChars,
-          maxBatchItems: config.announcementMaxBatchItems,
-          batchWindowMs: config.announcementBatchMs,
-          acknowledgementTimeoutMs: config.announcementAcknowledgementTimeoutMs,
-          maxRetryAttempts: config.announcementMaxRetryAttempts,
-          leaseRenewIntervalMs: Math.max(
-            1000,
-            Math.floor(config.taskNotificationClaimTtlMs / 3),
-          ),
-          onDelivered: taskIds => taskManager.markNotificationsDelivered(taskIds, {
-            claimantId: notificationClaimantId,
-          }),
-          onLeaseRenew: taskIds => taskManager.renewNotificationClaims(taskIds, {
-            claimantId: notificationClaimantId,
-          }),
-          onRelease: taskIds => taskManager.releaseNotificationClaims(taskIds, {
-            claimantId: notificationClaimantId,
-          }),
-          onError: error => send(ws, {
-            type: 'error',
-            message: `后台结果暂时无法播报，正在自动重试：${error.message}`,
-          }),
-        },
-        progressOptions: {
-          getFrontend: () => realtimeSession?.frontend,
-          deliveryRuntime: agentDeliveries,
-          isDeliveryBlocked: () => (
-            sleeping
-            || waking
-            || !outputEnabled
-            || !realtimeSession?.ready
-            || turns.userSpeaking
-            || announcementWindow.isBlocked()
-          ),
-          isTaskActive: taskId => activeSessionTasks().some(task => (
-            task.id === taskId
-          )),
-          intervalMs: 60_000,
-          quietMs: config.announcementQuietMs,
-          onError: error => connectionLogger.warn('progress.injection_failed', {
-            error: error.message,
-          }),
-        },
+    const taskCoordinator = new SessionTaskCoordinator({
+      taskManager,
+      ownerId,
+      sessionId,
+      retryMs: config.announcementQuietMs,
+      presentation: createRealtimeTaskPresentation({
+        getState: () => ({
+          ready: realtimeSession?.ready === true,
+          outputEnabled, sleeping, waking,
+          windowBlocked: announcementWindow.isBlocked(),
+          busy: turns.userSpeaking || announcementWindow.isBlocked(),
+        }),
+        getFrontend: () => realtimeSession?.frontend,
+        deliveryRuntime: agentDeliveries,
+        updateContext: () => realtimeSession.updateAgentContext(getAgentContext()),
+        cancelPermission: id => presentationRuntime.cancelPermission(id),
+        taskAnnouncementFactory,
+        config,
+        onError: message => send(ws, { type: 'error', message }),
+        onProgressError: error => connectionLogger.warn('progress.injection_failed', {
+          error: error.message,
+        }),
+      }),
+      onTaskEvent: event => {
+        const publicEvent = projectGatewayTaskEvent(event)
+        if (publicEvent) send(ws, publicEvent)
       },
-    )
-    const announcements = taskAnnouncements.results
-    const progressAnnouncements = taskAnnouncements.progress
+      onResult: task => recordTaskResult({ conversationSync, ownerId, sessionId, task }),
+      onWake: () => wakeFromSleep(),
+    })
+    const { results: announcements, progress: progressAnnouncements } = taskCoordinator.announcements
     const reportFrontendError = error => {
       if (error?.realtimeConnectionReported) return
       if (error) error.realtimeConnectionReported = true
@@ -620,13 +433,13 @@ export function attachRealtimeGateway(server, {
         connectionLogger.warn(event, fields)
       },
       onConnected: () => {
-        announcePendingPermissions()
-        announcePendingInputs()
+        taskCoordinator.announcePendingPermissions()
+        taskCoordinator.announcePendingInputs()
       },
       onReady: createdFrontend => {
         const resumedFromSleep = waking
         waking = false
-        if (outputEnabled) claimPendingNotifications()
+        if (outputEnabled) taskCoordinator.claimPendingNotifications()
         send(ws, {
           type: GatewayServerEvent.VOICE_READY,
           inputSampleRate: createdFrontend.provider.inputSampleRate,
@@ -640,8 +453,9 @@ export function attachRealtimeGateway(server, {
             type: GatewayServerEvent.VOICE_SLEEP,
             state: 'awake',
           })
-          announcePendingPermissions()
-          claimPendingNotifications()
+          taskCoordinator.announcePendingPermissions()
+          taskCoordinator.announcePendingInputs()
+          taskCoordinator.claimPendingNotifications()
           announcements.flush()
         }
       },
@@ -812,8 +626,7 @@ export function attachRealtimeGateway(server, {
           authorizationId,
           error,
         })
-        announcedPermissions.delete(authorizationId)
-        announcePendingPermissions()
+        taskCoordinator.retryPermission(authorizationId)
       },
       onToolResultReady: ({ callId, turnId, toolName }) => {
         const timing = toolCallTimings.get(callId)
@@ -870,9 +683,7 @@ export function attachRealtimeGateway(server, {
 
     const ensurePermissionResponseFor = context => {
       clearTimeout(permissionResponseTimer)
-      const hasPendingPermission = () => activeSessionTasks().some(task => (
-        task.authorization?.status === 'pending'
-      ))
+      const hasPendingPermission = () => taskCoordinator.hasPendingPermission()
       if (!hasPendingPermission()) return
       permissionResponseTimer = setTimeout(() => {
         permissionResponseTimer = null
@@ -966,134 +777,7 @@ export function attachRealtimeGateway(server, {
       turnCitations,
     })
 
-    const queueNotification = task => {
-      if (task.status === 'completed') {
-        announcements.completed(task)
-      }
-      if (task.status === 'failed') announcements.failed(task)
-    }
-
-    const recordResult = task => recordTaskResult({
-      conversationSync,
-      ownerId,
-      sessionId,
-      task,
-    })
-
-    const claimPendingNotifications = (
-      taskIds,
-      { includeOtherSessions = !taskIds?.length } = {},
-    ) => {
-      if (!outputEnabled || !realtimeSession.ready) return
-      const claimed = taskManager.claimNotifications({
-        ownerId,
-        sessionId,
-        includeOtherSessions,
-        claimantId: notificationClaimantId,
-        taskIds,
-      })
-      claimed.forEach(task => {
-        recordResult(task)
-        queueNotification(task)
-      })
-    }
-
-    const unsubscribeTasks = taskManager.subscribe(event => {
-      const task = event.task
-      if (event.ownerId !== ownerId) return
-      if (event.type === TaskDomainEvent.NOTIFICATION_PENDING) {
-        if (sleeping) {
-          wakeFromSleep()
-          return
-        }
-        if (task.sessionId === sessionId) {
-          claimPendingNotifications([task.id])
-        }
-        return
-      }
-      if (task.sessionId !== sessionId) return
-      const publicEvent = projectGatewayTaskEvent(event)
-      if (publicEvent) send(ws, publicEvent)
-      if (
-        event.type === TaskDomainEvent.UPDATED
-        && event.message
-        && outputEnabled
-        && !sleeping
-        && !waking
-      ) {
-        progressAnnouncements.offer({
-          taskId: task.id,
-          startedAt: task.startedAt,
-          message: event.message,
-        })
-      }
-      if (event.type === TaskDomainEvent.PERMISSION_REQUESTED) {
-        // Queue tool exposure before the permission delivery. The model can
-        // answer a real request on the next user turn, while ordinary turns
-        // cannot fabricate permission protocol state.
-        realtimeSession.updateAgentContext(getAgentContext())
-        if (sleeping) {
-          wakeFromSleep()
-          return
-        }
-        announcePermission(task)
-      }
-      if (event.type === TaskDomainEvent.PERMISSION_RESOLVED) {
-        realtimeSession.updateAgentContext(getAgentContext())
-        const authorizationId = event.permission?.id
-        // A permission confirmation already tells the user that work resumes.
-        // Drop progress queued before the decision so it cannot immediately
-        // repeat the same “still working” information after that confirmation.
-        progressAnnouncements.remove(task.id)
-        if (authorizationId) {
-          // 已进入对话的权限询问被其它通道（如 WebUI 按钮）处理后，把结果
-          // 静默回注模型上下文：避免模型不知情而重复追问，或把用户随后的
-          // 口头确认误报为“请求已失效”。
-          if (announcedPermissions.has(authorizationId) && realtimeSession.ready) {
-            realtimeSession.frontend.appendUserInputContext([{
-              type: 'text',
-              text: '（系统提示：刚才的后台权限请求已处理完毕，任务继续执行；'
-                + '无需再询问或回应该请求。）',
-            }]).catch(() => {})
-          }
-          announcedPermissions.delete(authorizationId)
-          realtimeSession.frontend?.cancelResponses((context, origin) => (
-            origin === 'permission'
-            && context?.authorizationId === authorizationId
-          ))
-          presentationRuntime.cancelPermission(authorizationId)
-        }
-      }
-      if (event.type === TaskDomainEvent.INPUT_REQUESTED) {
-        realtimeSession.updateAgentContext(getAgentContext())
-        if (sleeping) wakeFromSleep()
-        announceInputRequest(task)
-      }
-      if (event.type === TaskDomainEvent.INPUT_RESOLVED) {
-        realtimeSession.updateAgentContext(getAgentContext())
-        const inputId = event.input?.id
-        if (inputId) {
-          announcedInputs.delete(inputId)
-          realtimeSession.frontend?.cancelResponses((context, origin) => (
-            origin === 'backend-input'
-            && context?.inputRequestId === inputId
-          ))
-        }
-      }
-      if ([
-        TaskDomainEvent.COMPLETED,
-        TaskDomainEvent.FAILED,
-        TaskDomainEvent.CANCELLED,
-      ].includes(event.type)) {
-        progressAnnouncements.remove(task.id)
-      }
-      if ([
-        TaskDomainEvent.COMPLETED,
-        TaskDomainEvent.FAILED,
-      ].includes(event.type)) {
-        claimPendingNotifications([task.id])
-      }
-    })
+    taskCoordinator.start()
 
     const handleEvent = event => {
       if (isSleepActivityEvent(event)) sleepController?.recordActivity()
@@ -1284,9 +968,9 @@ export function attachRealtimeGateway(server, {
         type: GatewayServerEvent.VOICE_SLEEP,
         state: 'awake',
       })
-      announcePendingPermissions()
-      announcePendingInputs()
-      claimPendingNotifications()
+      taskCoordinator.announcePendingPermissions()
+      taskCoordinator.announcePendingInputs()
+      taskCoordinator.claimPendingNotifications()
       announcements.flush()
       progressAnnouncements.flush()
     }
@@ -1708,8 +1392,9 @@ export function attachRealtimeGateway(server, {
         }
         realtimeSession.ensure()
           .then(() => {
-            announcePendingPermissions()
-            claimPendingNotifications()
+            taskCoordinator.announcePendingPermissions()
+            taskCoordinator.announcePendingInputs()
+            taskCoordinator.claimPendingNotifications()
             announcements.flush()
           })
           .catch(reportFrontendError)
@@ -1727,8 +1412,9 @@ export function attachRealtimeGateway(server, {
         }
         realtimeSession.ensure()
           .then(() => {
-            announcePendingPermissions()
-            claimPendingNotifications()
+            taskCoordinator.announcePendingPermissions()
+            taskCoordinator.announcePendingInputs()
+            taskCoordinator.claimPendingNotifications()
             announcements.flush()
           })
           .catch(reportFrontendError)
@@ -1875,7 +1561,7 @@ export function attachRealtimeGateway(server, {
       const connections = voiceConnections.get(ownerId)
       connections?.delete(voiceClient)
       if (!connections?.size) voiceConnections.delete(ownerId)
-      unsubscribeTasks()
+      taskCoordinator.close()
       unsubscribeMemory()
       clearResponseCandidate()
       turns.close()
@@ -1883,11 +1569,7 @@ export function attachRealtimeGateway(server, {
       turnCitations.clear()
       announcementWindow.reset()
       presentationRuntime.clear()
-      announcements.close()
-      progressAnnouncements.close()
       clearVisualInput()
-      clearTimeout(permissionRetryTimer)
-      permissionRetryTimer = null
       sleepController?.close()
       presenceController.close()
       realtimeSession.close()

@@ -310,7 +310,7 @@ UI 仅消费公共 Task 与对话事件。包级别的 `shared` 模块是基础�
 - `knowledge/`：知识库接口、工具、检索运行时、入库服务与内置本地 Provider。
 - `frontend/`：核心前台指令、工具装配与执行、MCP/OpenAPI 工具，以及网页检索和搜索 Provider。
 - `voice/`：Realtime Provider 协议、连接、音频轮次、打断与播报投递。
-- `orchestration/`：前台工具与客户端命令共用、与传输无关的用户任务操作。
+- `orchestration/`：与传输无关的共用用户任务操作与会话级投递协调。
 - `backend/`：协议无关的 BackendPort 与执行逻辑；`backend/adapters/` 管理 ACP/A2A 实现及适配器选择。
 - `conversation/` 与 `session/`：分别管理对话上下文与投影、持久化事件回放，不作为全部记忆能力的容器。
 
@@ -335,8 +335,19 @@ BackendWorkRuntime 只负责把执行请求转换为 BackendPort 调用，系统
 语音授权工具立即返回本地受理回执，客户端卡片等待同一决定的后台确认。模型工具回执
 和公开协议响应仍由各自入口生成，不引入额外 LLM、传输协议或任务状态机。
 
-这是 [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477) 的共享任务入口阶段。
-每连接的前台装配与结果回流协调仍位于 `realtime-gateway.mjs`，后续再单独提取运行时边界。
+每条前台连接还拥有独立的 `SessionTaskCoordinator`，按 owner/session 观察用户任务、
+协调待确认权限与补充输入，并从 TaskManager 领取最终结果通知。它不运行模型，也不解析
+协议帧。`voice/realtime-task-presentation.mjs` 生成模型可见文本并接入已有播报管理器，
+场景仍通过 `taskAnnouncementFactory` 定制播报。
+
+权限/补充输入投递前先暴露对应工具；前台忙碌或暂时不可用不会消耗待处理请求，
+请求解决后排队中的对应回复失效。断开连接清理订阅与重试、释放通知领取，但不取消后台工作。
+重连可重新领取结果，不会再次执行工作；结果可用与播放确认仍是两个独立阶段。
+公开任务事件继续经过传输投影器发给客户端。
+
+以上是 [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477) 的前两个增量。
+连接级前台/会话装配仍位于 `realtime-gateway.mjs`，后续单独提取。协调器测试仅模拟模型边界，
+直接覆盖生产投递路径，不再复制网关订阅逻辑。
 
 `server/src/client` 管理北向 Client Event Registry、客户端命令到任务操作的转换、
 `ClientActionPort` 与幂等 Presence 状态机。Client Action 描述一次环境操作并等待

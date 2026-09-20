@@ -310,6 +310,7 @@ UI 仅消费公共 Task 与对话事件。包级别的 `shared` 模块是基础�
 - `knowledge/`：知识库接口、工具、检索运行时、入库服务与内置本地 Provider。
 - `frontend/`：核心前台指令、工具装配与执行、MCP/OpenAPI 工具，以及网页检索和搜索 Provider。
 - `voice/`：Realtime Provider 协议、连接、音频轮次、打断与播报投递。
+- `orchestration/`：前台工具与客户端命令共用、与传输无关的用户任务操作。
 - `backend/`：协议无关的 BackendPort 与执行逻辑；`backend/adapters/` 管理 ACP/A2A 实现及适配器选择。
 - `conversation/` 与 `session/`：分别管理对话上下文与投影、持久化事件回放，不作为全部记忆能力的容器。
 
@@ -327,10 +328,20 @@ UI 仅消费公共 Task 与对话事件。包级别的 `shared` 模块是基础�
 管理学习观察器，退出时先等待观察完成再关闭 Provider。测试会真实删除其中一个或
 两个模块，验证网关仍能完成对话。
 
-`server/src/client` 管理北向 Client Event Registry、运行时命令应用服务、
+`server/src/orchestration/` 中的 `TaskOperations`（`task-operations.mjs`）统一任务
+提交、查询、取消、权限决定和补充输入。`app/` 将同一个实例注入前台工具与客户端命令，
+定时后台工作复用其执行和权限链路。TaskManager 仍是任务状态的唯一权威；
+BackendWorkRuntime 只负责把执行请求转换为 BackendPort 调用，系统作业不并入用户工作。
+语音授权工具立即返回本地受理回执，客户端卡片等待同一决定的后台确认。模型工具回执
+和公开协议响应仍由各自入口生成，不引入额外 LLM、传输协议或任务状态机。
+
+这是 [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477) 的共享任务入口阶段。
+每连接的前台装配与结果回流协调仍位于 `realtime-gateway.mjs`，后续再单独提取运行时边界。
+
+`server/src/client` 管理北向 Client Event Registry、客户端命令到任务操作的转换、
 `ClientActionPort` 与幂等 Presence 状态机。Client Action 描述一次环境操作并等待
 当前 Client 回传结果，不导入 Electron 或任何 UI 实现。该层只能依赖公开 `shared`
-协议值、与供应商无关的 `delivery` 值和协议无关的 Task 层。
+协议值、与供应商无关的 `delivery` 值，以及协议无关的 Task 与 Orchestration 层。
 `server/src/delivery` 只管理 `AgentDelivery` 值，不依赖 Client、Realtime 或 Backend
 具体实现。`server/src/app` 组合根把这些服务注入
 Realtime Transport；语音链路与 Client 代码都不能导入其具体实现。

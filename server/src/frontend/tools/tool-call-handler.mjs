@@ -14,6 +14,7 @@ import { personalToolHandlers } from './features/personal-tools.mjs'
 import { retrievalToolHandlers } from './features/retrieval-tools.mjs'
 import { scheduleToolHandlers } from './features/schedule-tools.mjs'
 import { AgentTaskRuntime } from './agent-task-runtime.mjs'
+import { TaskOperations } from '../../orchestration/task-operations.mjs'
 import {
   findFrontendSourceTool,
 } from './frontend-tool-source.mjs'
@@ -86,6 +87,7 @@ export class ToolCallHandler {
     getTurnId,
     getTurnGeneration,
     backendRuntime,
+    taskOperations,
     backendAvailability = null,
     memoryService,
     notesStore,
@@ -115,15 +117,14 @@ export class ToolCallHandler {
     this.getFrontend = getFrontend
     this.getTurnId = getTurnId
     this.getTurnGeneration = getTurnGeneration
-    this.backendRuntime = backendRuntime
+    this.taskOperations = taskOperations || (taskManager ? new TaskOperations({
+      taskManager, backendRuntime, respondAuthorization, respondInput, permissionPolicy,
+    }) : null)
     this.backendAvailability = backendAvailability
     this.memoryService = memoryService
     this.notesStore = notesStore
     this.getClientContext = getClientContext
     this.onMemoryChanged = onMemoryChanged
-    this.respondAuthorization = respondAuthorization
-    this.respondInput = respondInput
-    this.permissionPolicy = permissionPolicy
     this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
     this.onToolResultReady = onToolResultReady
     this.onToolCallDebug = onToolCallDebug
@@ -156,7 +157,6 @@ export class ToolCallHandler {
     this.cancelResponseByTurn = new Map()
     this.terminalToolResponses = new Set()
     this.deferredToolResponses = new Map()
-    this.pendingBackendPermissions = new Map()
     this.submittedBackendPermissions = new Set()
   }
 
@@ -173,13 +173,7 @@ export class ToolCallHandler {
   }
 
   hasPendingBackendPermission() {
-    if (this.pendingBackendPermissions.size) return true
-    if (!this.taskManager?.list) return false
-    return this.taskManager.list({
-      ownerId: this.ownerId,
-      sessionId: this.sessionId,
-      active: true,
-    }).some(task => task.authorization?.status === 'pending')
+    return (this.taskOperations?.pendingPermissions(this).size || 0) > 0
   }
 
   hasPendingBackendInput() {
@@ -449,10 +443,6 @@ export class ToolCallHandler {
       null,
       { createResponse: false },
     )
-  }
-
-  forwardBackendEvent(...args) {
-    return this.agentTaskRuntime.forwardBackendEvent(...args)
   }
 
   createWork(...args) {

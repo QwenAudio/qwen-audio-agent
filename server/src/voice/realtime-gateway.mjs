@@ -174,6 +174,7 @@ export function attachRealtimeGateway(server, {
   sessionDigests = null,
   notesStore,
   backendRuntime,
+  taskOperations,
   backendAvailability = null,
   respondAuthorization,
   respondInput,
@@ -773,6 +774,7 @@ export function attachRealtimeGateway(server, {
       : () => {}
     const toolCalls = new ToolCallHandler({
       taskManager,
+      taskOperations,
       ownerId,
       sessionId,
       transcripts,

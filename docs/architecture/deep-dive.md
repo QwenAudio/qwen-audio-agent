@@ -394,6 +394,7 @@ across technical layers:
 - `knowledge/`: the knowledge contract, tools, retrieval runtime, ingestion service, and built-in local provider.
 - `frontend/`: core chatbot instructions, tool composition/execution, MCP/OpenAPI tools, and web retrieval with its search providers.
 - `voice/`: Realtime provider protocols, connections, audio turns, interruption, and playback delivery.
+- `orchestration/`: transport-neutral user Task operations shared by frontend tools and client commands.
 - `backend/`: protocol-neutral BackendPort and execution; `backend/adapters/` owns ACP/A2A implementations and adapter selection.
 - `conversation/` and `session/`: conversation context/projections and durable event replay, respectively; neither is a container for all memory features.
 
@@ -415,12 +416,27 @@ Voice transport emits generic session lifecycle facts; memory owns its learning
 observers, and shutdown waits for them before closing providers. Tests physically
 remove either or both domains and verify a Gateway conversation still works.
 
-`server/src/client` owns the northbound Client Event registry, runtime-command
-application service, `ClientActionPort`, and idempotent presence state machine.
+`TaskOperations` in `server/src/orchestration/task-operations.mjs`
+unifies task submission, lookup, cancellation, permission decisions and input
+responses. `app/` injects one instance into frontend tools and client commands;
+scheduled backend work reuses its execution and permission path. TaskManager
+remains the single state authority, while BackendWorkRuntime only translates
+execution into BackendPort calls. System jobs are not folded into user work.
+Voice permission tools acknowledge local acceptance immediately; client cards
+wait for the same decision's backend acknowledgement. Model receipts and public
+protocol responses remain entry-specific. No new LLM, transport or state machine
+is introduced.
+
+This is the shared-task-entry stage of [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477).
+Per-connection frontend assembly and result-delivery coordination still reside in
+`realtime-gateway.mjs`; moving them behind runtime boundaries is the next stage.
+
+`server/src/client` owns the northbound Client Event registry, command translation
+into task operations, `ClientActionPort`, and idempotent presence state machine.
 Client Actions describe an environment operation and wait for the active Client
 to report its result; they never import Electron or another UI implementation.
 This layer may depend only on public `shared` protocol values, provider-neutral
-`delivery` values, and the protocol-neutral Task layer.
+`delivery` values, and the protocol-neutral Task and Orchestration layers.
 `server/src/delivery` owns the `AgentDelivery` value and has no dependency on
 Client, Realtime, or Backend implementations. The composition root in
 `server/src/app` injects those services into the Realtime transport; neither

@@ -194,7 +194,7 @@ test('applies the shared attachment safety policy to explicit Task commands', as
 
 test('rolls back session permission policy when the adapter rejects a response', async () => {
   const permissionTask = task({
-    authorization: { id: 'permission-1' },
+    authorization: { id: 'permission-1', status: 'pending' },
   })
   const taskManager = {
     create: () => permissionTask,

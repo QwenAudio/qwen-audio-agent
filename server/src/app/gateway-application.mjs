@@ -8,6 +8,7 @@ import { resolve } from 'path'
 import { agent as defaultAgent } from '../backend/adapters/agent-client.mjs'
 import { BackendAvailability } from '../backend/availability.mjs'
 import { BackendWorkRuntime } from '../backend/backend-work-runtime.mjs'
+import { TaskOperations } from '../orchestration/task-operations.mjs'
 import { config as defaultConfig } from '../core/config.mjs'
 import { logger as defaultLogger, runWithLogContext } from '../core/logger.mjs'
 import { conversationSync as defaultConversationSync } from '../conversation/conversation-sync.mjs'
@@ -144,6 +145,13 @@ const permissionPolicy = new PermissionPolicy({
 const respondAuthorization = (taskId, id, decision, options) => (
   agent.respondAuthorization(taskId, id, decision, options)
 )
+const taskOperations = new TaskOperations({
+  taskManager,
+  backendRuntime: workBackend,
+  permissionPolicy,
+  respondAuthorization,
+  respondInput: (taskId, id, response, options) => agent.respondInput(taskId, id, response, options),
+})
 const conversationHistoryRuntime = conversationHistory || new SessionConversationHistory({
   conversationSync,
   sessionJournal: sessionJournalRuntime,
@@ -272,18 +280,7 @@ conversationSync.configureRetention({
 // Restored scheduled tasks submit the same self-contained Work input as live
 // requests. Frontend conversation history and memory stay at the frontend.
 taskManager.configureScheduledTaskRunner(
-  async (objective, context) => workBackend.run({
-    objective,
-  }, {
-    ownerId: context.ownerId,
-    sessionId: context.sessionId,
-    turnId: context.turnId,
-    taskId: context.taskId,
-    signal: context.signal,
-    onEvent: event => permissionPolicy.forwardBackendEvent(
-      context, event, context.onEvent, respondAuthorization,
-    ),
-  }),
+  (objective, context) => taskOperations.runScheduled(objective, context),
 )
 // ReminderScheduler: setTimeout-driven, no polling. Handles overdue
 // stagger on restart and re-arming after each fire.
@@ -359,13 +356,8 @@ if (config.sessionDigestEnabled) {
 const app = express()
 const runtimeCommands = clientCommandRuntime || new GatewayClientCommandRuntime({
   taskManager,
-  backendRuntime: workBackend,
+  taskOperations,
   conversationHistory: conversationHistoryRuntime,
-  respondAuthorization,
-  respondInput: (taskId, id, response, options) => (
-    agent.respondInput(taskId, id, response, options)
-  ),
-  permissionPolicy,
   logger,
 })
 const gatewayEventRouter = clientEventRouter || new GatewayEventRouter({
@@ -924,6 +916,7 @@ realtimeGateway = attachRealtimeGateway(server, {
     }] : []),
   ],
   notesStore,
+  taskOperations,
   backendRuntime: workBackend,
   backendAvailability,
   respondAuthorization,

@@ -12,6 +12,7 @@ injection. Moving code does not change public package exports or wire protocols.
 | `app/` | Application assembly, lifecycle and cross-domain wiring / 应用装配、生命周期与跨模块连接 |
 | `frontend/` | Chatbot instructions, tools and web retrieval / 前台指令、工具与网页检索 |
 | `voice/` | Realtime connections, audio turns and presentation / Realtime 连接、音频轮次与播报 |
+| `orchestration/` | Shared user Task operations across frontend tools and client commands / 前台工具与客户端命令共用的用户任务操作 |
 | `backend/` | BackendPort and protocol-neutral execution / 后台通用接口与执行；`adapters/` 实现 ACP、A2A |
 | `memory/` | Long-term memory, preference learning and providers / 长期记忆、偏好学习与记忆 Provider |
 | `knowledge/` | Knowledge contracts, retrieval and ingestion / 知识库接口、检索与入库；`providers/local/` 为内置实现 |
@@ -37,6 +38,29 @@ Business runtimes must not import concrete backend adapters or Realtime provider
 具体 Provider 跟随功能模块，不再设置跨业务的顶层 `providers/`。记忆不依赖对话或
 语音实现，记忆与知识库各自提供工具入口；工具不依赖 Realtime 实现，通用后台不依赖
 ACP/A2A Adapter。跨模块通过接口、参数和事件交互，不通过反向导入完成装配。
+
+## Task orchestration / 任务协调
+
+`app/` injects one `TaskOperations` into frontend tools and client commands.
+It assembles owner queues, backend execution/cancellation, permission decisions
+and input responses. Scheduled backend work uses the same execution and permission
+path; system jobs and knowledge ingestion keep their own entry points.
+`task/` remains the sole authority for state, persistence and scheduling.
+Tool receipts and public command responses stay in their respective entry layers.
+
+`app/` 将同一个 `TaskOperations` 注入前台工具和客户端命令，统一 owner 队列、
+后台执行与取消、权限决定及补充输入。定时后台工作复用执行和权限链路；系统作业与
+资料入库保留各自入口。`task/` 仍是状态、持久化和调度的唯一权威，工具回执与公开
+命令响应分别留在各自入口层。
+
+This is the first stage of [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477).
+Connection-scoped frontend assembly and result-delivery coordination still live
+in `voice/realtime-gateway.mjs`; extracting them is a separate stage, not a new
+process or public protocol.
+
+这是 [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477) 的第一阶段。
+连接级前台装配与结果回流协调暂时仍位于 `voice/realtime-gateway.mjs`，后续单独提取，
+不引入新进程或公开协议。
 
 ## Removing an optional domain / 裁剪可选模块
 

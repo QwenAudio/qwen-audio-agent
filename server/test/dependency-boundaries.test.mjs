@@ -20,6 +20,7 @@ const allowedDependencies = {
     'frontend',
     'frontend-provider',
     'optional-module-assembly',
+    'orchestration',
     'session',
     'task',
     'transport',
@@ -30,7 +31,7 @@ const allowedDependencies = {
   core: new Set(['core', 'shared']),
   frontend: new Set([
     'client', 'conversation', 'core', 'frontend', 'optional-frontend-assembly',
-    'tool-support', 'shared', 'task',
+    'tool-support', 'shared', 'task', 'orchestration',
   ]),
   'frontend-provider': new Set(['core', 'frontend', 'frontend-provider', 'shared']),
   'tool-support': new Set(['tool-support']),
@@ -47,7 +48,8 @@ const allowedDependencies = {
   'memory-provider': new Set(['core', 'memory', 'memory-provider', 'shared']),
   'backend-adapter': new Set(['backend-adapter', 'backend', 'core', 'shared']),
   backend: new Set(['backend', 'core', 'shared']),
-  client: new Set(['client', 'delivery', 'shared', 'task']),
+  client: new Set(['client', 'delivery', 'shared', 'task', 'orchestration']),
+  orchestration: new Set(['orchestration', 'backend', 'core', 'shared', 'task', 'delivery']),
   delivery: new Set(['delivery']),
   conversation: new Set(['conversation', 'core', 'shared']),
   session: new Set(['session', 'shared']),
@@ -180,12 +182,29 @@ test('domain grouping keeps provider implementations behind their contracts', ()
     ['frontend/frontend-tools.mjs', 'knowledge/tools.mjs'],
     ['frontend/tools/tool-call-handler.mjs', 'voice/realtime-provider.mjs'],
     ['frontend/tools/tool-call-handler.mjs', 'backend/adapters/acp/backend-adapter.mjs'],
+    ['orchestration/task-operations.mjs', 'voice/realtime-provider.mjs'],
+    ['orchestration/task-operations.mjs', 'transport/gateway-client-protocol-session.mjs'],
+    ['orchestration/task-operations.mjs', 'client/client-command-runtime.mjs'],
+    ['orchestration/task-operations.mjs', 'backend/adapters/acp/backend-adapter.mjs'],
   ]
   for (const [consumer, implementation] of cases) {
     const sourceLayer = layerFor(resolve(sourceRoot, consumer))
     const targetLayer = layerFor(resolve(sourceRoot, implementation))
     assert.equal(allowedDependencies[sourceLayer].has(targetLayer), false,
       `${consumer} must not depend on ${implementation}`)
+  }
+})
+
+test('task orchestration has no transport, provider SDK or model receipt dependency', () => {
+  const files = sourceFiles(resolve(sourceRoot, 'orchestration'))
+  for (const file of files) {
+    const source = readFileSync(file, 'utf8')
+    assert.doesNotMatch(source, /(?:from\s+|import\s*\(\s*)['"](?:ws|express|(?:node:)?https?|@agentclientprotocol\/|@a2a-js\/)/u)
+    assert.doesNotMatch(source, /\b(?:sendOutput|response_id|call_id|tool_choice|WebSocket|GatewayClientProtocolEvent)\b/u)
+  }
+  for (const path of ['frontend/tools/agent-task-runtime.mjs', 'client/client-command-runtime.mjs']) {
+    const source = readFileSync(resolve(sourceRoot, path), 'utf8')
+    assert.doesNotMatch(source, /taskManager\.create\(|backendRuntime\.(?:run|cancel)\(|permissionPolicy\.(?:applyDecision|forwardBackendEvent)\(/u)
   }
 })
 

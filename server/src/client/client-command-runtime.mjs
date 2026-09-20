@@ -1,7 +1,7 @@
 import { GatewayClientProtocolEvent } from '../../../shared/protocol/gateway-client-protocol.mjs'
-import { backendPermissionDecision } from '../../../shared/permission-decisions.mjs'
 import { normalizeInputParts } from '../../../shared/input-parts.mjs'
 import { isTaskCancellable } from '../task/task-state.mjs'
+import { TaskOperations } from '../orchestration/task-operations.mjs'
 
 function clean(value) {
   return String(value || '').trim()
@@ -44,17 +44,17 @@ export class GatewayClientCommandRuntime {
     respondAuthorization,
     respondInput,
     permissionPolicy,
+    taskOperations,
     logger = null,
   } = {}) {
     if (!taskManager) throw new TypeError('taskManager is required')
-    if (!backendRuntime) throw new TypeError('backendRuntime is required')
+    if (!taskOperations && !backendRuntime) throw new TypeError('backendRuntime is required')
     if (!conversationHistory) throw new TypeError('conversationHistory is required')
     this.taskManager = taskManager
-    this.backendRuntime = backendRuntime
     this.conversationHistory = conversationHistory
-    this.respondAuthorization = respondAuthorization
-    this.respondInput = respondInput
-    this.permissionPolicy = permissionPolicy
+    this.taskOperations = taskOperations || new TaskOperations({
+      taskManager, backendRuntime, respondAuthorization, respondInput, permissionPolicy,
+    })
     this.logger = logger
   }
 
@@ -126,48 +126,23 @@ export class GatewayClientCommandRuntime {
       throw new RuntimeCommandError('bad_event', 'task.create requires content')
     }
     const inputParts = inputPartsFromMessage(normalizedMessage)
-    let taskId = ''
-    const task = this.taskManager.create({
-      objective,
-      ownerId,
-      sessionId,
-      submissionKey: clean(message.event_id),
-      laneKey: `backend:${clean(ownerId)}`,
-      laneLimit: 1,
-      runner: async (_ignored, { onEvent, signal }) => this.backendRuntime.run({
-        objective,
-        inputParts,
-      }, {
-        ownerId,
-        sessionId,
-        taskId,
-        signal,
-        onEvent: event => this.permissionPolicy
-          ? this.permissionPolicy.forwardBackendEvent({ taskId, ownerId, sessionId }, event, onEvent, this.respondAuthorization)
-          : onEvent(event),
-      }),
-      canceler: async ({ abort }) => {
-        const result = await this.backendRuntime.cancel(taskId, { ownerId })
-        abort()
-        return result
-      },
-    })
-    taskId = task.id
+    const task = this.taskOperations.submit({
+      objective, inputParts, submissionKey: clean(message.event_id),
+    }, { ownerId, sessionId })
     const publicTask = { ...task }
     delete publicTask.reused
     return publicTask
   }
 
   getTask(taskId, { ownerId } = {}) {
-    const task = this.taskManager.get(clean(taskId), { ownerId })
+    const task = this.taskOperations.get(clean(taskId), { ownerId })
     if (!task) throw new RuntimeCommandError('task_not_found', 'task not found')
     return task
   }
 
   listTasks(message = {}, { ownerId, sessionId = 'main', allSessions = false } = {}) {
     const limit = Number(message.limit) || 50
-    return this.taskManager.list({
-      ownerId,
+    return this.taskOperations.list({ ownerId }, {
       sessionId: message.session_id || (allSessions ? undefined : sessionId),
       active: message.active === true,
     }).slice(0, limit)
@@ -179,61 +154,22 @@ export class GatewayClientCommandRuntime {
     if (!isTaskCancellable(existing.status) && existing.status !== 'cancelling') {
       throw new RuntimeCommandError('task_not_cancellable', 'task is no longer active')
     }
-    const pending = this.taskManager.cancel(id, { ownerId })
+    const pending = this.taskOperations.cancel(id, { ownerId })
     if (wait) return pending
     pending.catch(error => {
       this.logger?.warn('task.cancel_async_failed', { taskId: id, error })
     })
-    return this.taskManager.get(id, { ownerId }) || existing
+    return this.taskOperations.get(id, { ownerId }) || existing
   }
 
   async respondPermission(message, { ownerId } = {}) {
-    if (!this.respondAuthorization) {
-      throw new RuntimeCommandError('permission_not_found', 'permission runtime unavailable')
-    }
-    const permissionId = clean(message.permission_id)
-    const permissionTask = this.taskManager.list({
-      ownerId,
-      active: true,
-    }).find(task => task.authorization?.id === permissionId)
-    if (!permissionTask || permissionTask.status === 'cancelling') {
-      throw new RuntimeCommandError('permission_not_found', 'permission request not found')
-    }
-    const rollbackPermission = this.permissionPolicy?.applyDecision(
-      ownerId,
-      permissionTask.sessionId,
-      message.decision,
-      permissionTask.id,
-    )
-    try {
-      const permission = await this.respondAuthorization(
-        permissionTask.id,
-        permissionId,
-        backendPermissionDecision(message.decision),
-        { ownerId },
-      )
-      this.permissionPolicy?.settle(permissionId)
-      this.permissionPolicy?.flushPending(ownerId, permissionTask.sessionId)
-      return permission
-    } catch (error) {
-      rollbackPermission?.()
-      throw error
-    }
+    return this.taskOperations.submitPermission(
+      clean(message.permission_id), message.decision, { ownerId },
+    ).acknowledged
   }
 
   async respondToInput(message, { ownerId } = {}) {
-    if (!this.respondInput) {
-      throw new RuntimeCommandError('input_not_found', 'input runtime unavailable')
-    }
-    const task = this.taskManager.get(clean(message.task_id), { ownerId })
-    if (
-      !task
-      || task.inputRequest?.id !== clean(message.input_request_id)
-      || task.inputRequest.status !== 'pending'
-    ) {
-      throw new RuntimeCommandError('input_not_found', 'input request not found')
-    }
-    return this.respondInput(task.id, task.inputRequest.id, {
+    return this.taskOperations.respondToInput(clean(message.task_id), clean(message.input_request_id), {
       action: message.action,
       text: message.text,
       values: message.values,

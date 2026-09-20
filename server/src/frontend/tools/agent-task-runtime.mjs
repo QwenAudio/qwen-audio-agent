@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
-import { PERMISSION_DECISIONS, backendPermissionDecision } from '../../../../shared/permission-decisions.mjs'
+import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
-import { BackendEventType } from '../../core/backend-events.mjs'
 import { isTaskCancellable } from '../../task/task-state.mjs'
 import { toolFailure as failure } from './tool-result.mjs'
 
@@ -65,24 +64,7 @@ export class AgentTaskRuntime {
   }
 
   pendingPermissions() {
-    const tasks = new Map(this.host.taskManager.list({
-      ownerId: this.host.ownerId,
-      sessionId: this.host.sessionId,
-      active: true,
-    }).filter(task => task.status !== 'cancelling').map(task => [task.id, task]))
-    const permissions = new Map()
-    for (const [id, entry] of this.host.pendingBackendPermissions) {
-      const task = tasks.get(entry.taskId)
-      if (task && entry.permission.status === 'pending') {
-        permissions.set(id, { task, permission: entry.permission })
-      }
-    }
-    // A reconnected frontend may not have observed the original backend event.
-    for (const task of tasks.values()) {
-      if (task.authorization?.status === 'pending') {
-        permissions.set(task.authorization.id, { task, permission: task.authorization })
-      }
-    }
+    const permissions = this.host.taskOperations.pendingPermissions(this.host)
     for (const id of this.host.submittedBackendPermissions) permissions.delete(id)
     return permissions
   }
@@ -107,85 +89,10 @@ export class AgentTaskRuntime {
     return undefined
   }
 
-  forwardBackendEvent(taskId, event, onEvent) {
-    const publish = event => {
-      const permission = event?.permission
-      if (event?.type === BackendEventType.AUTHORIZATION_RESOLVED && permission?.id) {
-        this.host.pendingBackendPermissions.delete(permission.id)
-        this.host.submittedBackendPermissions.delete(permission.id)
-      }
-      if (
-        event?.type === BackendEventType.AUTHORIZATION_REQUESTED
-        && permission?.id
-      ) {
-        this.host.pendingBackendPermissions.set(permission.id, {
-          taskId,
-          permission,
-        })
-      }
-      onEvent(event)
-    }
-    if (this.host.permissionPolicy) {
-      this.host.permissionPolicy.forwardBackendEvent({
-        taskId, ownerId: this.host.ownerId, sessionId: this.host.sessionId,
-      }, event, publish, this.host.respondAuthorization)
-    } else {
-      publish(event)
-    }
-  }
-
-  createWork({
-    turnId,
-    objective,
-    submissionKey,
-    inputParts = [],
-  }) {
-    let taskId = ''
-    const task = this.host.taskManager.create({
-      objective,
-      ownerId: this.host.ownerId,
-      sessionId: this.host.sessionId,
-      turnId,
-      submissionKey,
-      laneKey: `backend:${this.host.ownerId}`,
-      laneLimit: 1,
-      runner: async (_ignored, { onEvent, signal }) => {
-        try {
-          return await this.host.backendRuntime.run({
-            objective,
-            inputParts,
-          }, {
-            ownerId: this.host.ownerId,
-            sessionId: this.host.sessionId,
-            turnId,
-            taskId,
-            signal,
-            onEvent: event => this.host.forwardBackendEvent(taskId, event, onEvent),
-          })
-        } finally {
-          for (const [id, entry] of this.host.pendingBackendPermissions) {
-            if (entry.taskId !== taskId) continue
-            this.host.pendingBackendPermissions.delete(id)
-            this.host.submittedBackendPermissions.delete(id)
-          }
-        }
-      },
-      canceler: async ({ previousStatus, abort }) => {
-        const result = await this.host.backendRuntime.cancel(
-          taskId,
-          { ownerId: this.host.ownerId },
-        )
-        abort()
-        return {
-          ...result,
-          layer: previousStatus === 'finalizing'
-            ? 'finalizing'
-            : result?.layer || 'backend',
-        }
-      },
+  createWork({ turnId, ...input }) {
+    return this.host.taskOperations.submit(input, {
+      ownerId: this.host.ownerId, sessionId: this.host.sessionId, turnId,
     })
-    taskId = task.id
-    return task
   }
 
   async executeCancelToolCall({
@@ -293,7 +200,7 @@ export class AgentTaskRuntime {
     event,
     callContext,
   }) {
-    const pendingPermissionTask = this.host.taskManager.list({
+    const pendingPermissionTask = this.host.taskOperations.list({
       ownerId: this.host.ownerId,
       sessionId: this.host.sessionId,
       active: true,
@@ -409,7 +316,7 @@ export class AgentTaskRuntime {
       : null
     if (responseId && firstSpawnResponse && firstSpawnResponse !== responseId) {
       this.host.markTerminalToolResponse(responseId)
-      const existing = this.host.taskManager.list({
+      const existing = this.host.taskOperations.list({
         ownerId: this.host.ownerId,
         sessionId: this.host.sessionId,
       }).find(item => item.turnId === turnId)
@@ -624,7 +531,7 @@ export class AgentTaskRuntime {
         )
         return
       }
-      if (!this.host.respondAuthorization) {
+      if (!this.host.taskOperations.respondAuthorization) {
         await this.host.sendOutput(
           callId,
           failure('permission_unavailable', '当前后台无法接收权限决定。'),
@@ -634,62 +541,29 @@ export class AgentTaskRuntime {
         )
         return
       }
-      const rollbackPermission = this.host.permissionPolicy?.applyDecision(
-        this.host.ownerId,
-        this.host.sessionId,
-        decision,
-        pendingTask.id,
-      )
-      // Receipt-based: the local policy takes effect immediately and the backend
-      // round trip must not delay the spoken confirmation. Task approval also
-      // settles permissions that arrived concurrently for this same task.
-      const permissions = decision !== 'reject'
-        ? [...this.host.pendingBackendPermissions.entries()]
-            .filter(([id, entry]) => (
-              entry.taskId === pendingTask.id
-              && !this.host.submittedBackendPermissions.has(id)
-            ))
-            .map(([id, entry]) => ({ id, taskId: entry.taskId }))
-        : [{ id: authorizationId, taskId: pendingTask.id }]
-      if (!permissions.some(permission => permission.id === authorizationId)) {
-        permissions.push({ id: authorizationId, taskId: pendingTask.id })
-      }
-      permissions.forEach(permission => {
-        this.host.submittedBackendPermissions.add(permission.id)
-        this.rememberPermissionReceipt(permission.id, {
-          permissionId: permission.id,
-          taskId: permission.taskId,
-          decision,
-          turnId,
-        })
-      })
-      Promise.all(permissions.map(async permission => {
-        try {
-          await this.host.respondAuthorization(
-            permission.taskId,
-            permission.id,
-            backendPermissionDecision(decision),
-            { ownerId: this.host.ownerId },
-          )
-          this.host.permissionPolicy?.settle(permission.id)
-        } catch (error) {
-          this.host.submittedBackendPermissions.delete(permission.id)
-          this.permissionReceipts.delete(permission.id)
-          try {
+      const admission = this.host.taskOperations.submitPermission(
+        authorizationId, decision, this.host, {
+          onFailure: ({ permissionId, taskId, decision, error }) => {
+            this.host.submittedBackendPermissions.delete(permissionId)
+            this.permissionReceipts.delete(permissionId)
             this.host.onPermissionDeliveryFailed({
-              authorizationId: permission.id,
-              decision,
-              taskId: permission.taskId,
+              authorizationId: permissionId, taskId, decision,
               error: String(error?.message || error),
             })
-          } catch {
-            // Delivery diagnostics must not break the voice session.
-          }
-          throw error
-        }
-      })).then(() => {
-        this.host.permissionPolicy?.flushPending(this.host.ownerId, this.host.sessionId)
-      }).catch(() => rollbackPermission?.())
+          },
+        },
+      )
+      for (const id of admission.permissionIds) {
+        this.host.submittedBackendPermissions.add(id)
+        this.rememberPermissionReceipt(id, {
+          permissionId: id, taskId: admission.taskId, decision: admission.decision, turnId,
+        })
+      }
+      // Voice confirms local acceptance without blocking on the backend. Client
+      // commands await their request's acknowledgement before replying to the card.
+      admission.completion.catch(() => {}).finally(() => {
+        for (const id of admission.permissionIds) this.host.submittedBackendPermissions.delete(id)
+      })
       const outputOptions = responseOptions(response.instructions)
       await this.host.sendOutput(callId, {
         status: 'submitted',
@@ -710,7 +584,7 @@ export class AgentTaskRuntime {
     const action = ['accept', 'decline', 'cancel'].includes(args.action)
       ? args.action
       : ''
-    const task = taskId ? this.host.taskManager.getByTaskId(taskId, {
+    const task = taskId ? this.host.taskOperations.get(taskId, {
       ownerId: this.host.ownerId,
     }) : null
     const request = task?.inputRequest
@@ -728,14 +602,14 @@ export class AgentTaskRuntime {
       })
       return
     }
-    if (!this.host.respondInput) {
+    if (!this.host.taskOperations.respondInput) {
       await this.host.sendOutput(callId, failure(
         'input_unavailable',
         '当前后台无法接收补充输入。',
       ), turnId)
       return
     }
-    await this.host.respondInput(task.id, request.id, {
+    await this.host.taskOperations.respondToInput(task.id, request.id, {
       action,
       text: String(args.text || '').trim(),
       values: args.values,
@@ -754,7 +628,7 @@ export class AgentTaskRuntime {
 
   async cancelAgentTask(callId, turnId, args, responseOptions) {
     if (args.all === true) {
-      const targets = this.host.taskManager.list({
+      const targets = this.host.taskOperations.list({
         ownerId: this.host.ownerId,
         sessionId: this.host.sessionId,
       }).filter(task => isTaskCancellable(task.status))
@@ -766,7 +640,7 @@ export class AgentTaskRuntime {
         return
       }
       const results = await Promise.all(targets.map(target => (
-        this.host.taskManager.cancel(target.id, { ownerId: this.host.ownerId })
+        this.host.taskOperations.cancel(target.id, { ownerId: this.host.ownerId })
       )))
       const cancelledCount = results.filter(result => (
         result?.status === 'cancelled'
@@ -783,7 +657,7 @@ export class AgentTaskRuntime {
     }
     const requestedSeriesId = String(args.series_id || '').trim()
     if (requestedSeriesId) {
-      const existing = this.host.taskManager.list({ ownerId: this.host.ownerId })
+      const existing = this.host.taskOperations.list({ ownerId: this.host.ownerId })
         .filter(task => task.seriesId === requestedSeriesId)
       if (!existing.length) {
         await this.host.sendOutput(callId, {
@@ -793,7 +667,7 @@ export class AgentTaskRuntime {
         }, turnId, null, responseOptions)
         return
       }
-      const results = await this.host.taskManager.cancelSeries(requestedSeriesId, {
+      const results = await this.host.taskOperations.cancelSeries(requestedSeriesId, {
         ownerId: this.host.ownerId,
       })
       const cancelledCount = results.filter(result => (
@@ -814,8 +688,8 @@ export class AgentTaskRuntime {
     }
     const requestedTaskId = String(args.task_id || '').trim()
     const target = requestedTaskId
-      ? this.host.taskManager.getByTaskId(requestedTaskId, { ownerId: this.host.ownerId })
-      : this.host.taskManager.list({
+      ? this.host.taskOperations.get(requestedTaskId, { ownerId: this.host.ownerId })
+      : this.host.taskOperations.list({
         ownerId: this.host.ownerId,
         sessionId: this.host.sessionId,
         }).find(task => isTaskCancellable(task.status))
@@ -826,7 +700,7 @@ export class AgentTaskRuntime {
       }, turnId, null, responseOptions)
       return
     }
-    const task = await this.host.taskManager.cancel(target.id, {
+    const task = await this.host.taskOperations.cancel(target.id, {
       ownerId: this.host.ownerId,
     })
     if (!task) {
@@ -852,7 +726,7 @@ export class AgentTaskRuntime {
     if (args.list_all === true) {
       // 不限定 sessionId：用户问「上周让你整理的那个报告呢」时已是新会话，
       // 限定当前会话会让历史工作永远查不到。
-      const tasks = this.host.taskManager.list({
+      const tasks = this.host.taskOperations.list({
         ownerId: this.host.ownerId,
       }).slice(0, 20).map(task => ({
         task_id: task.id,
@@ -874,12 +748,12 @@ export class AgentTaskRuntime {
       return
     }
     const requestedTaskId = String(args.task_id || '').trim()
-    const sessionTasks = this.host.taskManager.list({
+    const sessionTasks = this.host.taskOperations.list({
       ownerId: this.host.ownerId,
       sessionId: this.host.sessionId,
     })
     const task = requestedTaskId
-      ? this.host.taskManager.getByTaskId(requestedTaskId, { ownerId: this.host.ownerId })
+      ? this.host.taskOperations.get(requestedTaskId, { ownerId: this.host.ownerId })
       : sessionTasks.find(item => [
           'scheduled',
           'queued',

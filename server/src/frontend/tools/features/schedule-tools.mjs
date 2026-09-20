@@ -86,16 +86,8 @@ async function scheduleReminder(runtime, callId, turnId, args) {
     return
   }
   const recurrence = normalizeRecurrence(args.recurrence)
-  const backendRuntime = runtime.backendRuntime
   const runner = type === 'task'
-    ? async (objective, context) => backendRuntime.run({ objective }, {
-        ownerId: context.ownerId,
-        sessionId: context.sessionId,
-        turnId: context.turnId,
-        taskId: context.taskId,
-        signal: context.signal,
-        onEvent: event => runtime.forwardBackendEvent(context.taskId, event, context.onEvent),
-      })
+    ? (objective, context) => runtime.taskOperations.runScheduled(objective, context)
     : null
 
   const task = runtime.taskManager.createScheduled({

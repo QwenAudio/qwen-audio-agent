@@ -733,7 +733,9 @@ async function permissionHarness({
     ...kit,
     task,
     onPermission: permission => {
-      kit.handler.forwardBackendEvent(task.id, {
+      kit.handler.taskOperations.forwardBackendEvent({
+        taskId: task.id, ownerId: 'owner', sessionId: 'voice',
+      }, {
         type: `backend.permission.${permission.status === 'pending' ? 'requested' : 'resolved'}`,
         permission,
       }, backendEvent)
@@ -1381,7 +1383,7 @@ test('cancels the most recently submitted active work', async () => {
   const kit = harness()
   let release
   const cancellations = []
-  kit.handler.backendRuntime = {
+  kit.handler.taskOperations.backendRuntime = {
     run: async (_input, { signal }) => new Promise((resolve, reject) => {
       release = resolve
       signal.addEventListener('abort', () => reject(signal.reason), {
@@ -1753,7 +1755,7 @@ test('a sole permission needs only a natural decision, not permission_id or task
         respondPermission: async (id, value) => calls.push([id, value]),
       })
       // Recovery path: this handler did not receive the original permission event.
-      assert.equal(kit.handler.pendingBackendPermissions.size, 0)
+      assert.equal(kit.handler.taskOperations.permissions.size, 0)
       await kit.handler.handle({
         call_id: 'decision-only', name: 'respond_permission',
         arguments: JSON.stringify({ decision }),
@@ -1889,7 +1891,9 @@ test('foreign owner or session permissions cannot be resolved through the tracke
         await kit.handler.handle({
           call_id: JSON.stringify(args), name: 'respond_permission', arguments: JSON.stringify(args),
         })
-        assert.equal(kit.outputs.at(-1)[1].error_code, 'permission_not_pending')
+        // Foreign requests do not even expose the permission tool now that
+        // capability discovery and execution use the same scoped operations.
+        assert.equal(kit.outputs.at(-1)[1].error_code, 'tool_unavailable')
       }
       assert.equal(calls.length, 0)
       await kit.finish()

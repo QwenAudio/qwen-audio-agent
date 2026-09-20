@@ -387,6 +387,35 @@ test('package mode uses pinned, configurable npm package versions', {
   }
 })
 
+test('OpenClaw package mode resolves a pinned package Windows shim without Unix tools', {
+  skip: process.platform !== 'win32',
+}, t => {
+  const target = fixture()
+  t.after(() => target.close())
+  const packageBin = resolve(target.directory, 'package-bin')
+  mkdirSync(packageBin)
+  writeFileSync(resolve(packageBin, 'openclaw'), '#!/bin/sh\n')
+  const capture = resolve(target.directory, 'capture.cjs')
+  writeFileSync(capture, "require('node:fs').writeFileSync(process.env.CAPTURE, ['openclaw.cmd', ...process.argv.slice(2)].join('\\n'))")
+  writeFileSync(resolve(packageBin, 'openclaw.cmd'), `@"${process.execPath}" "${capture}" %*\r\n`)
+  // Fake npx executes only our fixture; it never installs or runs OpenClaw.
+  const npx = resolve(target.directory, 'npx.cjs')
+  writeFileSync(npx, [
+    "const { spawnSync } = require('node:child_process')",
+    'const args = process.argv.slice(2)',
+    "const result = spawnSync(args.slice(args.indexOf('--') + 1).join(' '), {",
+    "  shell: true, stdio: 'inherit',",
+    `  env: { ...process.env, PATH: ${JSON.stringify(`${packageBin};`)} + process.env.PATH },`,
+    '})',
+    'process.exit(result.status ?? 1)',
+  ].join('\n'))
+  writeFileSync(resolve(target.bin, 'npx.cmd'), `@"${process.execPath}" "${npx}" %*\r\n`)
+  assert.deepEqual(run('scripts/runtime/openclaw.mjs', target, {
+    OPENCLAW_RUNTIME: 'package',
+    PATH: `${target.bin};${resolve(process.env.SystemRoot || 'C:\\Windows', 'System32')}`,
+  }, ['acp', '--verbose']), ['openclaw.cmd', 'acp', '--verbose'])
+})
+
 test('Codex ACP prefers an installed adapter and pins its package fallback', {
   skip: process.platform === 'win32',
 }, () => {

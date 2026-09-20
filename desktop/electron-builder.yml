@@ -1,6 +1,7 @@
 appId: ai.qwenaudio.agent
 productName: Qwen Audio Agent
-electronVersion: 43.2.0
+# Resolve Electron from the installed, lockfile-pinned desktop dependency.
+afterPack: scripts/desktop-after-pack.mjs
 asar: true
 npmRebuild: false
 asarUnpack:
@@ -39,9 +40,6 @@ files:
   - THIRD_PARTY_NOTICES.md
 
 extraResources:
-  # Pure path policy is also used by backend launchers outside app.asar.
-  - from: shared/runtime-paths.mjs
-    to: runtime/shared/runtime-paths.mjs
   - from: scripts
     to: runtime/scripts
     filter:
@@ -67,7 +65,7 @@ mac:
   artifactName: qwen-audio-agent-${version}-mac-${arch}.${ext}
 
 linux:
-  # 官方 Release 只发布 macOS 产物；Linux 用户可用 npm run desktop:build:linux
+  # 官方 Release 发布 macOS 和 Windows 产物；Linux 用户可用 npm run desktop:build:linux
   # 自行打包。AppImage/deb 无需代码签名证书即可本地安装运行。
   icon: desktop/build/icon.png
   category: Utility

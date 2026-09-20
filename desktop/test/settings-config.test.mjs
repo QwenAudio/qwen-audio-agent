@@ -628,3 +628,26 @@ test('a cleared setting releases its environment slot', () => {
   applySettingsEnvironment({ backendModel: '' }, env)
   assert.equal('QWEN_AUDIO_AGENT_BACKEND_MODEL' in env, false)
 })
+
+test('saved settings preserve literal backslashes, quotes and comment characters', () => {
+  for (const nodePath of [
+    String.raw`C:\Program Files\nodejs\node.exe`,
+    String.raw`\\server\工具 (x64)\node.exe`,
+    "C:\\Users\\O'Brien\\nodejs",
+    'D:\\tools\\node "lts"',
+    '/Users/a/`node` "lts"',
+    '/tools/node #release',
+  ]) {
+    let content = ''
+    for (let save = 0; save < 3; save += 1) {
+      content = updateSettingsContent(content, { nodePath })
+      assert.equal(parseSettings(content).nodePath, nodePath)
+    }
+  }
+})
+
+test('settings reject unrepresentable dotenv values rather than corrupting them', () => {
+  for (const nodePath of ["/a'\"`b", 'a\nb', 'a\rb', 'a\0b']) {
+    assert.throws(() => updateSettingsContent('', { nodePath }), /无法保存/)
+  }
+})

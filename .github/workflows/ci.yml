@@ -75,6 +75,10 @@ jobs:
         run: npm run example:smart-cockpit:build
       - if: ${{ matrix.os == 'macos-latest' && matrix.node == '22.22.2' }}
         run: npm run test:desktop-smoke
+      # Validate the delivered runtime and ASAR as well as source-level tests.
+      # This builds unsigned into a temporary directory and uses isolated data.
+      - if: ${{ matrix.os != 'ubuntu-latest' && matrix.node == '22.22.2' }}
+        run: npm run test:desktop-package
       # 真实消费者验收：打包 → 装进只含已声明依赖的裸消费者 → CLI 与
       # Gateway 契约全链路。跑在基线 Node 上，一并证明基线可用。
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}

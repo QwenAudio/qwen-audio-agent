@@ -141,7 +141,10 @@ async function runSource() {
 }
 async function resolvePackageBinary(pkg, binaryName) {
   let stdout = ''
-  const code = await spawnAndProxy('npx', ['--yes', '--package', pkg, '--', 'which', binaryName], {
+  // cmd.exe has no `which`. findExecutable resolves an extensionless result
+  // from `where` to the corresponding Windows shim through PATHEXT.
+  const lookup = IS_WIN ? 'where' : 'which'
+  const code = await spawnAndProxy('npx', ['--yes', '--package', pkg, '--', lookup, binaryName], {
     inheritStdio: false,
     onStdout: chunk => { stdout += chunk },
   })

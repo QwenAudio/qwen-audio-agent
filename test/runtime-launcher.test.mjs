@@ -1,6 +1,7 @@
 // Tests for scripts/runtime/launcher.mjs — cross-platform launcher utilities.
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { EventEmitter } from 'node:events'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import test from 'node:test'
@@ -120,4 +121,38 @@ test('spawnAndProxy spawns a child and propagates exit code', async () => {
 test('spawnAndProxy spawns a child with exit code 0', async () => {
   const code = await spawnAndProxy('node', ['-e', '0'])
   assert.equal(code, 0)
+})
+
+test('Windows quoted paths and arguments do not gain literal caret escapes', async () => {
+  let actual
+  const code = await spawnAndProxy('agent', ['a&b', 'say "hi & bye"', ''], {
+    platform: 'win32', env: { ComSpec: 'cmd.exe' },
+    find: () => 'C:\\Tools (x86)\\agent.cmd',
+    spawnImpl: (command, args) => {
+      actual = [command, ...args]
+      const child = new EventEmitter()
+      process.nextTick(() => child.emit('exit', 0))
+      return child
+    },
+  })
+  assert.equal(code, 0)
+  assert.deepEqual(actual, ['cmd.exe', '/d', '/s', '/c',
+    '""C:\\Tools (x86)\\agent.cmd" "a&b" "say \\"hi ^& bye\\"" """'])
+})
+
+test('Windows batch shims preserve special characters through a real cmd.exe', {
+  skip: process.platform !== 'win32',
+}, async t => {
+  const root = mkdtempSync(join(tmpdir(), 'qwa-launcher-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const directory = join(root, '工具 Program Files (x86)')
+  mkdirSync(directory)
+  const output = join(root, 'args.json')
+  writeFileSync(join(directory, 'agent.cjs'),
+    `require('node:fs').writeFileSync(${JSON.stringify(output)}, JSON.stringify(process.argv.slice(2)))`)
+  const command = join(directory, 'agent.cmd')
+  writeFileSync(command, `@"${process.execPath}" "%~dp0agent.cjs" %*\r\n`)
+  const args = ['--config', join(root, 'R&D (2026)', '文件.yml'), 'a&b', 'x|y', 'a^b', '', 'trailing\\']
+  assert.equal(await spawnAndProxy(command, args, { inheritStdio: false }), 0)
+  assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), args)
 })

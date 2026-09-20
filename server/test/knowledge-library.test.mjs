@@ -170,6 +170,36 @@ test('keeps two different files that share a name apart', () => {
   })
 })
 
+test('keeps case-insensitive document names and conversion targets separate after restart', () => {
+  withDirs(({ root, docs }) => {
+    const a = join(root, 'a')
+    const b = join(root, 'b')
+    mkdirSync(a)
+    mkdirSync(b)
+    const first = sourceFile(a, 'Guide.md', '# First document')
+    const second = sourceFile(b, 'guide.md', '# Second document')
+    const one = library({ docs, root }).import({ ownerId: OWNER, sourcePath: first })
+    const shelf = library({ docs, root })
+    const two = shelf.import({ ownerId: OWNER, sourcePath: second })
+    assert.equal(two.filename, 'guide-2.md')
+    assert.equal(readFileSync(one.path, 'utf8'), '# First document')
+    assert.equal(readFileSync(two.path, 'utf8'), '# Second document')
+    assert.equal(shelf.conversionTarget({ ownerId: OWNER, sourcePath: join(a, 'GUIDE.pdf') }).filename, 'GUIDE-3.md')
+    shelf.remove({ ownerId: OWNER, id: one.id })
+    assert.equal(readFileSync(two.path, 'utf8'), '# Second document')
+    assert.equal(shelf.list(OWNER).length, 1)
+  })
+})
+
+test('managed filenames also avoid Unicode-normalization collisions', () => {
+  withDirs(({ root, docs }) => {
+    const shelf = library({ docs, root })
+    shelf.import({ ownerId: OWNER, sourcePath: sourceFile(root, 'café.md') })
+    assert.equal(shelf.uniqueFilename(OWNER, 'cafe\u0301.md'), 'cafe\u0301-2.md')
+    assert.equal(shelf.conversionTarget({ ownerId: OWNER, sourcePath: 'CAFÉ.pdf' }).filename, 'CAFÉ-2.md')
+  })
+})
+
 test('rejects what it cannot handle', () => {
   withDirs(({ root, docs }) => {
     const shelf = library({ docs, root })

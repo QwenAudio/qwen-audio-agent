@@ -9,7 +9,7 @@
     "test": "node --test"
   },
   "devDependencies": {
-    "electron": "^43.6.0"
+    "electron": "43.6.0"
   },
   "dependencies": {
     "sherpa-onnx": "1.13.7",

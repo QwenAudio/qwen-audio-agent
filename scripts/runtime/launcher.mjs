@@ -96,21 +96,29 @@ export function commandAvailable(command, {
 
 // ── spawn + proxy (inherits stdio, forwards signals, propagates exit code) ───
 
-const CMD_META_CHARS = /([()%!^<>&|])/g
+const CMD_META_CHARS = /["()%!^<>&|]/g
 
 function escapeCmdValue(value) {
-  return String(value).replace(CMD_META_CHARS, '^$1')
+  // Carets inside cmd.exe quotes are literal characters, not escapes.
+  let quoted = false
+  return value.replace(CMD_META_CHARS, character => {
+    if (character === '"') {
+      quoted = !quoted
+      return character
+    }
+    return quoted ? character : `^${character}`
+  })
 }
 
 function quoteCmdArgument(value) {
-  const quoted = escapeCmdValue(value)
+  const quoted = String(value)
     .replace(/(\\*)"/g, '$1$1\\"')
     .replace(/(\\*)$/g, '$1$1')
-  return `"${quoted}"`
+  return escapeCmdValue(`"${quoted}"`)
 }
 
 function quoteCmdCommand(value) {
-  return `"${escapeCmdValue(value).replace(/"/g, '""')}"`
+  return escapeCmdValue(`"${String(value).replace(/"/g, '""')}"`)
 }
 
 export function spawnAndProxy(command, args = [], {

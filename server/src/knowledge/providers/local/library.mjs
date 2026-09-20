@@ -83,6 +83,12 @@ function safeFilename(name) {
   return [...(cleaned || fallback)].slice(0, 120).join('')
 }
 
+// Keep managed filenames portable across case-insensitive filesystems and
+// Unicode normalization on macOS, regardless of the host doing the import.
+function filenameKey(name) {
+  return String(name).normalize('NFC').toLowerCase()
+}
+
 export class KnowledgeLibrary {
   constructor({
     // 资料本体落这里，必须是后端读得到的目录
@@ -271,11 +277,11 @@ export class KnowledgeLibrary {
     const stem = safeFilename(basename(sourcePath, extname(sourcePath)))
     const taken = new Set()
     for (const entries of this.owners.values()) {
-      for (const entry of entries) taken.add(entry.filename)
+      for (const entry of entries) taken.add(filenameKey(entry.filename))
     }
     let candidate = `${stem}${extension}`
     let index = 2
-    while (taken.has(candidate)) {
+    while (taken.has(filenameKey(candidate))) {
       candidate = `${stem}-${index}${extension}`
       index += 1
     }
@@ -299,11 +305,11 @@ export class KnowledgeLibrary {
     const stem = safeFilename(basename(absolute, extname(absolute)))
     const taken = new Set()
     for (const entries of this.owners.values()) {
-      for (const entry of entries) taken.add(entry.filename)
+      for (const entry of entries) taken.add(filenameKey(entry.filename))
     }
     let filename = `${stem}.md`
     let index = 2
-    while (taken.has(filename)) {
+    while (taken.has(filenameKey(filename))) {
       filename = `${stem}-${index}.md`
       index += 1
     }

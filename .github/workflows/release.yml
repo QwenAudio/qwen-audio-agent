@@ -130,7 +130,8 @@ jobs:
           fi
 
   npm:
-    needs: [plan, tag]
+    # Do not publish npm while a desktop package is still unverified.
+    needs: [plan, tag, macos, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -212,6 +213,8 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Verify packaged macOS Gateway
+        run: node scripts/test/desktop-package-smoke.mjs "dist/desktop/mac-universal/Qwen Audio Agent.app"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: macos-dmg
@@ -240,6 +243,8 @@ jobs:
       - run: npm ci
       - name: Build Windows NSIS installer
         run: npm run desktop:build:win
+      - name: Verify packaged Windows Gateway
+        run: node scripts/test/desktop-package-smoke.mjs dist/desktop/win-unpacked
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-exe

@@ -149,7 +149,17 @@ function cleanWakeShortcut(value) {
 function encoded(value) {
   const text = String(value ?? '')
   if (/^[A-Za-z0-9_./:@+-]*$/.test(text)) return text
-  return `"${text.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
+  // These settings are single-line fields. Node's parseEnv does not support
+  // JavaScript-style escaping: double quotes expand \\n but preserve \\\\ and \\".
+  // Choose a literal delimiter and verify round-trip semantics before saving.
+  if (!/[\r\n\0]/.test(text)) {
+    for (const quote of ['"', "'", '`']) {
+      if (text.includes(quote)) continue
+      const result = `${quote}${text}${quote}`
+      if (parseEnv(`VALUE=${result}`).VALUE === text) return result
+    }
+  }
+  throw new TypeError('设置值包含无法保存的换行、控制字符或引号组合')
 }
 
 function parseRealtimeSettings(values, fallback, realtimeProvider, drafts) {

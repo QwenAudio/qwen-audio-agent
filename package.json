@@ -264,6 +264,7 @@
     "gateway": "node cli/bin/qwenaudio.mjs gateway",
     "desktop": "npm run start --workspace desktop",
     "test:desktop-smoke": "node scripts/electron-smoke.mjs",
+    "test:desktop-package": "npm run build && node scripts/test/desktop-package-smoke.mjs",
     "test:web-browser": "node scripts/test/browser-webui-smoke.mjs",
     "desktop:build": "node scripts/check-desktop-release-env.mjs && npm run build && electron-builder --config desktop/electron-builder.yml --mac dmg zip",
     "desktop:build:local": "npm run build && electron-builder --config desktop/electron-builder.yml --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false --mac dmg",

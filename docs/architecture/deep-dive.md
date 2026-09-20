@@ -412,7 +412,7 @@ their import/entry in `app/optional-modules.mjs` and `frontend/optional-features
 Runtime services, tools, routes and feature prompts disappear together. These are
 two explicit composition points, not a new plugin framework. Custom distributions
 also clean up the corresponding package exports, dedicated tests/docs and dependencies.
-Voice transport emits generic session lifecycle facts; memory owns its learning
+The frontend runtime emits generic session lifecycle facts; memory owns its learning
 observers, and shutdown waits for them before closing providers. Tests physically
 remove either or both domains and verify a Gateway conversation still works.
 

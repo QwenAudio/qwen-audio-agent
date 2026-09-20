@@ -124,12 +124,12 @@ remain as unavailable capabilities; no changes to clients are required for basic
 还应清理相应的包导出、专属测试/文档和闲置依赖。公共协议和配置字段可保留为未配置
 能力，基本聊天不要求修改客户端。
 
-Memory learning uses injected `onAudio` / `onSessionClosed` observers. The voice
-transport publishes lifecycle facts without knowing learning policy; shutdown
+Memory learning uses injected `onAudio` / `onSessionClosed` observers. The frontend
+runtime publishes lifecycle facts without knowing learning policy; shutdown
 drains asynchronous hooks before closing modules. This extraction currently
 covers memory and knowledge, not arbitrary deletion of every source directory.
 
-记忆学习通过注入的 `onAudio` / `onSessionClosed` 观察器工作。语音传输层只发布
+记忆学习通过注入的 `onAudio` / `onSessionClosed` 观察器工作。前台运行时只发布
 生命周期事实，不了解学习策略；关闭时先等待异步观察完成，再关闭模块。
 目前已落实并验证的是记忆和知识库，不表示任意源码目录都可以直接删除。
 

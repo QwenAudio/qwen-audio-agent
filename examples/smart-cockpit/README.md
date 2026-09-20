@@ -15,7 +15,7 @@ Long-running background work can continue alongside foreground conversation.
 
 > Turn on sound for the full experience.
 
-https://github.com/user-attachments/assets/0136b6ec-2ff8-49ba-8f07-55e7006d2e7d
+https://github.com/user-attachments/assets/29375a62-d5d0-46e8-a963-e00118688002
 
 ## Architecture
 

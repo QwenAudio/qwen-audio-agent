@@ -386,11 +386,17 @@ export default function App() {
   }, [])
 
   useLayoutEffect(() => {
+    // The orb does not mount the message list. Opening a panel (or a new
+    // session) should follow the latest message, even if history is unchanged.
+    stickToBottom.current = true
+  }, [desktopSurfaceMode, sessionId])
+
+  useLayoutEffect(() => {
     const container = messagesRef.current
     if (container && stickToBottom.current) {
       container.scrollTop = container.scrollHeight
     }
-  }, [messages, agentTasks])
+  }, [messages, agentTasks, desktopSurfaceMode, sessionId])
 
   useEffect(() => () => {
     taskDismissTimers.current.forEach(timer => clearTimeout(timer))

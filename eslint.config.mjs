@@ -59,6 +59,14 @@ export default [
     },
   },
   {
+    files: [
+      'server/src/voice/realtime-gateway.mjs',
+      'server/src/voice/realtime-session-runtime.mjs',
+      'server/src/orchestration/*.mjs',
+    ],
+    rules: { 'no-undef': 'error' },
+  },
+  {
     files: ['**/test/**/*.{js,mjs,cjs,jsx}', 'test/**/*.{js,mjs,cjs,jsx}'],
     rules: {
       'no-useless-escape': 'off',

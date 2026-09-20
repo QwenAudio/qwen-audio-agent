@@ -217,6 +217,16 @@ test('Realtime wiring delegates Task subscription and request/claim policy to or
   assert.doesNotMatch(presentation, /taskManager|backendRuntime|WebSocket|TaskDomainEvent/u)
 })
 
+test('Gateway transport does not assemble frontend state and frontend runtime owns no connection protocol', () => {
+  const gateway = readFileSync(resolve(sourceRoot, 'voice/realtime-gateway.mjs'), 'utf8')
+  assert.doesNotMatch(gateway, /new (?:RealtimeProviderSession|RealtimeTurnState|ToolCallHandler|TurnTranscripts|SessionTaskCoordinator|PresenceController)\b/u)
+  assert.doesNotMatch(gateway, /response\.function_call_arguments\.done|response\.done|sessionAssistantProfile|sessionOutputVoice/u)
+  const runtime = readFileSync(resolve(sourceRoot, 'voice/realtime-session-runtime.mjs'), 'utf8')
+  assert.doesNotMatch(runtime, /from ['"](?:ws|express|[^'"]*\/transport\/)/u)
+  assert.doesNotMatch(runtime, /\b(?:WebSocket|GatewayClientProtocolSession|GatewayClientProtocolEvent|activeClientLeases|clientProtocol|identityManager)\b/u)
+  assert.doesNotMatch(runtime, /JSON\.parse|\.readyState|\.handleUpgrade\(/u)
+})
+
 test('Gateway Work consumers use BackendPort instead of ACP coordinator APIs', () => {
   const consumers = [
     resolve(sourceRoot, 'backend/backend-work-runtime.mjs'),

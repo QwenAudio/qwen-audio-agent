@@ -11,7 +11,7 @@ injection. Moving code does not change public package exports or wire protocols.
 | --- | --- |
 | `app/` | Application assembly, lifecycle and cross-domain wiring / 应用装配、生命周期与跨模块连接 |
 | `frontend/` | Chatbot instructions, tools and web retrieval / 前台指令、工具与网页检索 |
-| `voice/` | Realtime connections, audio turns and presentation / Realtime 连接、音频轮次与播报 |
+| `voice/` | Frontend session runtime, audio turns and presentation; Gateway transport entry / 前台会话运行时、音频轮次与播报；网关传输入口 |
 | `orchestration/` | Shared user Task operations and session-scoped delivery coordination / 共用用户任务操作与会话级投递协调 |
 | `backend/` | BackendPort and protocol-neutral execution / 后台通用接口与执行；`adapters/` 实现 ACP、A2A |
 | `memory/` | Long-term memory, preference learning and providers / 长期记忆、偏好学习与记忆 Provider |
@@ -65,12 +65,38 @@ playback confirmation still controls when a notification becomes delivered.
 `voice/realtime-task-presentation.mjs` 和已有播报管理器中；任务事件经传输投影器发给客户端。
 协调器关闭仅释放投递领取，不取消工作；通知仍由播放确认标记为已送达。
 
-These are the first two increments of [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477).
-Connection-level frontend/session assembly remains in `voice/realtime-gateway.mjs`
-for a subsequent extraction; no new process or public protocol is introduced.
+## Frontend session and transport / 前台会话与传输
 
-以上是 [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477) 的前两个增量。
-连接级前台/会话装配仍在 `voice/realtime-gateway.mjs`，后续单独提取；不引入新进程或公开协议。
+`voice/realtime-gateway.mjs` owns authentication, capability negotiation, connection
+ownership, heartbeats, wire encoding and public event projection. Each admitted
+connection uses its own `createRealtimeSessionRuntime` from
+`voice/realtime-session-runtime.mjs`: model connection/context, tools, audio turns,
+playback, recovery and client presence. The runtime receives decoded events and
+trusted identity, emitting internal events through callbacks; it does not own a
+socket, credentials or the Gateway Client Protocol handshake.
+
+`voice/realtime-gateway.mjs` 负责鉴权、能力协商、连接归属、心跳、协议编解码与公开事件投影。
+每条接入连接使用独立的 `voice/realtime-session-runtime.mjs` 前台会话运行时，管理模型连接与
+上下文、工具、音频轮次、播放、恢复和客户端休眠状态。运行时接收解码后的事件与可信身份，
+通过回调发出内部事件，不持有 Socket、凭据或网关客户端协议握手。
+
+Frontend interruption, mute, sleep and disconnection do not cancel accepted backend
+work. Closing a runtime clears its timers, pending tools, subscriptions and delivery
+claims; late provider callbacks cannot start new work. Only explicit task control
+uses `TaskOperations.cancel`. `app/` remains the composition root; this is an internal
+boundary, not a new service, wire protocol or shared model session.
+
+前台打断、静音、休眠和断连不取消已受理的后台工作。关闭运行时会清理定时器、未完成的前台
+工具调用、订阅和投递领取，迟到的模型回调不能再启动新工作；只有显式任务控制走
+`TaskOperations.cancel`。`app/` 仍是组合根；这是内部边界，不新增服务、线上协议或共享模型会话。
+
+[#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477) is covered by direct
+production-runtime tests with fake model/backend boundaries, plus existing
+WebSocket/WebRTC integration tests. See
+[`realtime-session-runtime.test.mjs`](https://github.com/QwenAudio/qwen-audio-agent/blob/main/server/test/realtime-session-runtime.test.mjs).
+
+[#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477) 的测试直接调用生产运行时，仅模拟
+模型与后台边界，并保留 WebSocket/WebRTC 集成测试；详见上述运行时测试。
 
 ## Removing an optional domain / 裁剪可选模块
 

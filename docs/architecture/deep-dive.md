@@ -441,10 +441,25 @@ notification claims without cancelling backend work. Reconnection can reclaim re
 without executing work again; result availability and playback confirmation remain
 separate. Public Task events still pass through the transport projector.
 
-These are the first two increments of [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477).
-Per-connection frontend/session assembly remains in `realtime-gateway.mjs` for a
-subsequent extraction. The coordinator's tests exercise this production path with
-a fake model boundary, not a duplicate of the gateway subscriber.
+`voice/realtime-gateway.mjs` now keeps transport responsibilities: authentication,
+capability negotiation, connection ownership, heartbeats, protocol encoding and
+public event projection. It connects each client to an independent
+`createRealtimeSessionRuntime` in `voice/realtime-session-runtime.mjs`. That runtime
+owns the model session and context, tool calls, audio turns, playback, recovery and
+client presence, reusing the existing components. It accepts decoded events and
+trusted identity, and emits internal events through callbacks; it does not own a
+socket, credentials or a protocol handshake.
+
+Mute, voice interruption, sleep and frontend disconnection do not cancel accepted
+backend work. Closing the frontend clears its timers, pending tools, subscriptions
+and delivery claims; late provider callbacks cannot create new work. Explicit task
+cancellation remains in TaskOperations. `app/` stays the composition root, with no
+new service, wire protocol or shared model session.
+
+The three increments of [#477](https://github.com/QwenAudio/qwen-audio-agent/issues/477)
+are tested through the production task operations, coordinator and frontend runtime,
+with fake model/backend boundaries and no network required. Existing WebSocket and
+WebRTC integration tests cover the transport connections to those same runtimes.
 
 `server/src/client` owns the northbound Client Event registry, command translation
 into task operations, `ClientActionPort`, and idempotent presence state machine.

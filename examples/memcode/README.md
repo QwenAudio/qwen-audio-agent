@@ -23,7 +23,9 @@ the default Gateway.
 ## Run from source
 
 Requirements: the Node.js version declared by qwen-audio-agent and a Memcode
-API key.
+API key. Create the key from the [Memcode API-key dashboard](https://app.memcode.in/dashboard?section=api-keys&integration=qwen-audio-agent)
+with **Qwen Audio Agent** selected under integration attribution. Memcode binds
+the integration identity when issuing the key; this provider sends no override.
 
 ```bash
 cd examples/memcode

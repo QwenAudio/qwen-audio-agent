@@ -17,6 +17,8 @@ Memcode。默认 Gateway 不会因此增加凭据或网络请求。
 
 ## 从源码运行
 
+请在 [Memcode API key 控制台](https://app.memcode.in/dashboard?section=api-keys&integration=qwen-audio-agent) 创建密钥，并在集成归因中选择 **Qwen Audio Agent**。集成身份由 Memcode 在签发密钥时绑定，Provider 不发送归因覆盖字段。
+
 ```bash
 cd examples/memcode
 npm install

@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 import { FrontendKnowledgeRuntime } from '../src/knowledge/runtime.mjs'
+import { KnowledgeLibrary } from '../src/knowledge/providers/local/library.mjs'
 import {
   LocalKnowledgeProvider,
 } from '../src/knowledge/providers/local/provider.mjs'
@@ -115,6 +119,37 @@ test('rejects rich documents clearly when no isolated converter is configured', 
     provider.ingest({ source: { path: '/docs/manual.pdf' } }, { ownerId: 'owner' }),
     error => error.code === 'document_converter_unavailable',
   )
+})
+
+test('ingestion preserves existing conversion files and refuses a full library before calling agents', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'qwa-local-knowledge-capacity-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const retained = join(root, 'manual.md')
+  writeFileSync(retained, '# Retained original')
+  const shelf = new KnowledgeLibrary({ documentDirectory: root, maxPerOwner: 1 })
+  let conversions = 0
+  let summaries = 0
+  const provider = new LocalKnowledgeProvider({
+    library: shelf,
+    documentConverter: {
+      async convert({ targetPath }) {
+        conversions += 1
+        assert.equal(targetPath, join(root, 'manual-2.md'))
+        writeFileSync(targetPath, '# Converted document')
+      },
+    },
+    summariser: { async maybeRun() { summaries += 1 } },
+  })
+  const { document } = await provider.ingest({ source: { path: '/docs/manual.pdf' } }, { ownerId: 'owner' })
+  assert.equal(document.filename, 'manual-2.md')
+  assert.equal(readFileSync(retained, 'utf8'), '# Retained original')
+  await assert.rejects(
+    provider.ingest({ source: { path: '/docs/another.pdf' } }, { ownerId: 'owner' }),
+    error => error.code === 'library_full',
+  )
+  assert.equal(conversions, 1)
+  assert.equal(summaries, 1)
+  assert.deepEqual(readdirSync(root).sort(), ['manual-2.md', 'manual.md'])
 })
 
 test('refuses a library-less construction instead of failing at retrieval time', () => {

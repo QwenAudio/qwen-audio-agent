@@ -7,7 +7,9 @@ updates:
       day: monday
       time: "09:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 3
+    # 2.0 release freeze: pause version updates, not security updates.
+    # Restore to 3 after the 2.0 release has been verified.
+    open-pull-requests-limit: 0
     groups:
       npm-minor-and-patch:
         patterns:
@@ -27,7 +29,8 @@ updates:
       day: monday
       time: "09:00"
       timezone: Asia/Shanghai
-    open-pull-requests-limit: 1
+    # 2.0 release freeze; restore to 1 after release verification.
+    open-pull-requests-limit: 0
     groups:
       github-actions:
         patterns:

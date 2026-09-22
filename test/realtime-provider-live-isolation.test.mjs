@@ -8,6 +8,7 @@ import { REALTIME_PROVIDERS, realtimeRuntimeEnvironment, realtimeSettingsFromEnv
 import { resolveRealtimeFrontendConfiguration } from '../shared/realtime-provider-catalog.mjs'
 
 const profiles = [
+  { provider: 'doubao-seeduplex', alias: 'seeduplex', credential: 'DOUBAO_API_KEY', credentialAlias: 'SEEDUPLEX_API_KEY', model: 'DOUBAO_SEEDUPLEX_REALTIME_MODEL', modelValue: '1.2.6.1', voice: 'DOUBAO_SEEDUPLEX_REALTIME_VOICE', voiceAlias: 'DOUBAO_SEEDUPLEX_REALTIME_VOICE', endpoint: 'DOUBAO_SEEDUPLEX_REALTIME_URL', endpointAlias: 'DOUBAO_SEEDUPLEX_REALTIME_URL' },
   { provider: 'gpt-live', alias: 'openai', credential: 'OPENAI_API_KEY', credentialAlias: 'GPT_LIVE_API_KEY', model: 'GPT_LIVE_REALTIME_MODEL', modelValue: 'gpt-realtime-2.1', voice: 'GPT_LIVE_REALTIME_VOICE', voiceAlias: 'OPENAI_REALTIME_VOICE', endpoint: 'GPT_LIVE_REALTIME_URL', endpointAlias: 'OPENAI_REALTIME_URL' },
   { provider: 'google-live', alias: 'gemini-live', credential: 'GOOGLE_API_KEY', credentialAlias: 'GEMINI_API_KEY', model: 'GOOGLE_LIVE_REALTIME_MODEL', modelValue: 'gemini-3.8-live', voice: 'GOOGLE_LIVE_REALTIME_VOICE', voiceAlias: 'GEMINI_LIVE_REALTIME_VOICE', endpoint: 'GOOGLE_LIVE_REALTIME_URL', endpointAlias: 'GEMINI_LIVE_REALTIME_URL' },
 ]
@@ -34,8 +35,9 @@ for(const entry of profiles) {
   })
 }
 
-test('all six providers declare independent native environment bindings', () => {
-  assert.equal(REALTIME_PROVIDERS.length, 6)
+test('all registered providers declare independent native environment bindings', () => {
+  assert.ok(REALTIME_PROVIDERS.length > 0)
+  for (const provider of REALTIME_PROVIDERS) assert.ok(provider.settings.length > 0, provider.key)
   const bindings = REALTIME_PROVIDERS.flatMap(provider => provider.settings.map(field => field.environment[0]))
   assert.ok(bindings.every(Boolean))
   assert.equal(new Set(bindings).size, bindings.length)

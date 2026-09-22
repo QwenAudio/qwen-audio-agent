@@ -108,6 +108,9 @@ if (process.env.CS_DOMAIN !== 'airline') {
   test('独立航空进程验证实际 MCP/A2A 部署的接受与拒绝链路', async () => {
     const env = { ...process.env, CS_DOMAIN: 'airline' }
     delete env.NODE_TEST_CONTEXT
+    // This isolated runner selects TAP explicitly; inherited reporter options
+    // would append a second reporter and fail before executing any tests.
+    delete env.NODE_OPTIONS
     const { stdout } = await promisify(execFile)(process.execPath,
       ['--test', '--test-reporter=tap', '--test-name-pattern=航空取消预订', fileURLToPath(import.meta.url)],
       { env, timeout: 45_000 })

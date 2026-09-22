@@ -41,6 +41,11 @@ jobs:
         run: node --test .gitlab/sync-github.test.mjs
       - run: npm ci
       - run: npm test
+        env:
+          # The default spec reporter omits test-file exitCode/signal (#413).
+          # TAP preserves them, including in nested workspace test commands.
+          # Do not retry or change the exit status of a failing test run.
+          NODE_OPTIONS: ${{ runner.os == 'Windows' && '--test-reporter=tap' || '' }}
       - run: npm run test:x-omni
       - run: npm run build
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}

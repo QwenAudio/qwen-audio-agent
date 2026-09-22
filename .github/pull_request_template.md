@@ -15,4 +15,5 @@
 
 - [ ] 未提交密钥、用户数据、日志或内部地址
 - [ ] 配置、用户可见行为和依赖变化已同步更新文档
+- [ ] 示例变更已按[示例贡献规范](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/README_ZH.md)（[English](https://github.com/QwenAudio/qwen-audio-agent/blob/main/examples/README.md)）核对中英文 README；不适用时请注明
 - [ ] 已说明网络、权限、隐私、持久化或发布流程影响；不适用时请注明

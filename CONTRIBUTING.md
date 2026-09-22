@@ -38,6 +38,10 @@ npm run release:check
 
 ## Pull Request
 
+新增或更新 `examples/` 时，请遵循[示例贡献规范](examples/README_ZH.md)
+（[English](examples/README.md)）。规范统一规定八项 README 内容、中英文对齐要求
+及审核清单，作为示例贡献的明确审核依据。
+
 请在 PR 中说明问题、修复方式、验证命令和兼容性影响。涉及网络、权限、持久化、
 进程管理或发布流程的变更，应明确列出安全影响和回滚方式。
 

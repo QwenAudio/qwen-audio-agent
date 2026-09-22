@@ -40,6 +40,8 @@ jobs:
       - if: ${{ matrix.os == 'ubuntu-latest' && matrix.node == '22.22.2' }}
         run: node --test .gitlab/sync-github.test.mjs
       - run: npm ci
+      - run: npm ci --prefix examples/memcode --ignore-scripts
+      - run: npm test --prefix examples/memcode
       - run: npm test
       - run: npm run test:x-omni
       - run: npm run build

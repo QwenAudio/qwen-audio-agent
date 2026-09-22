@@ -224,7 +224,7 @@ chat naturally and get real work done.
 | Smart cockpit | Vehicle control, navigation, music, weather, and services. | [Example][smart-cockpit-example] | Available |
 | X-Omni | Visual conversation, on-demand capture, optional observation and narration. | [Example](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/x-omni/README.md) | Available |
 | AI Passport | Qwen Voice Bean on a hardware card, with voice conversation and backend tasks. Currently half-duplex only. | [Example][ai-passport-example] | Available |
-| Customer support | Issue clarification, order lookup, tickets, and human handoff. | TBD | Planned |
+| Customer Service | Voice customer service for retail and airline scenarios. | [Example](examples/customer-service/README.md) | Available |
 | Embodied intelligence | Voice commands, action execution, inspection, and exception feedback. | TBD | Planned |
 | Livestream assistant | Audience interaction, product explanation, coupons, and risk reminders. | TBD | Planned |
 

@@ -206,7 +206,7 @@ npm run desktop:build:linux      # Linux（AppImage + deb，无需签名）
 | 智能座舱 | 车控、导航、音乐、天气和生活服务。 | [示例][smart-cockpit-example] | 已提供 |
 | X-Omni | 视觉对话、按需采集、可选画面观察与解说。 | [示例](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/x-omni/README_ZH.md) | 已提供 |
 | AI Passport | 在硬件卡片上运行千问语音豆，进行语音对话与后台任务交互；目前仅开放半双工。 | [示例][ai-passport-example] | 已提供 |
-| 客服助手 | 问题澄清、订单查询、工单处理和人工转接。 | 待补充 | 规划中 |
+| 客服助手 | 零售与航空场景的语音客服。 | [示例](examples/customer-service/README_ZH.md) | 已提供 |
 | 具身智能 | 语音指令、动作执行、巡检和异常反馈。 | 待补充 | 规划中 |
 | 直播助手 | 弹幕互动、商品讲解、优惠发放和风险提醒。 | 待补充 | 规划中 |
 

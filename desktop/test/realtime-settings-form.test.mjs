@@ -47,6 +47,21 @@ test('every provider presents the same four slots in the same order', () => {
   }
 })
 
+test('Omni 3.8 uses the existing model, endpoint and voice settings', () => {
+  const provider = REALTIME_PROVIDERS.find(provider => provider.key === 'dashscope')
+  const values = realtimeSettingsValues({
+    realtimeModel: 'qwen3.8-omni-flash-realtime',
+    realtimeBaseUrl: 'wss://workspace.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime',
+  })
+  const fields = realtimeSettingsFields(provider, values)
+  assert.equal(fields.length, 4)
+  assert.equal(fields[0].key, 'realtimeBaseUrl')
+  assert.equal(fields[2].key, 'realtimeModel')
+  assert.equal(fields[3].key, 'omniRealtimeVoice')
+  assert.equal(fields[3].placeholder, 'Tina')
+  assert.deepEqual(realtimeSettingsFromProfileState(realtimeSettingsProfileState(values)), values)
+})
+
 test('service-owned model and voice rows stay visible but have no writable binding', () => {
   for (const provider of REALTIME_PROVIDERS.filter(provider => !provider.settings.some(field => field.type === 'model'))) {
     const fields = realtimeSettingsFields(provider, realtimeSettingsValues())

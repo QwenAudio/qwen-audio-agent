@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { t } from '../src/i18n.js'
+import { setRuntimeLanguage, syncDocumentLanguage, t } from '../src/i18n.js'
 
 function withLang(lang, run) {
-  const previous = globalThis.localStorage
-  globalThis.localStorage = {
-    getItem: key => (key === 'qwen-audio-lang' ? lang : null),
-  }
+  setRuntimeLanguage(lang)
   try {
     run()
   } finally {
-    globalThis.localStorage = previous
+    setRuntimeLanguage('')
   }
 }
 
@@ -49,24 +46,28 @@ test('unknown strings pass through unchanged', () => {
   })
 })
 
-test('localStorage override wins over navigator.language', () => {
-  withLang('zh-CN', () => {
-    assert.equal(t('开启语音'), '开启语音')
-  })
-  withLang('fr-FR', () => {
-    assert.equal(t('开启语音'), 'Enable voice')
-  })
-})
-
-test('falls back to navigator.language without an override', () => {
-  const previous = globalThis.localStorage
-  globalThis.localStorage = undefined
-  try {
-    const expected = /^zh(-|$)/i.test(globalThis.navigator?.language || 'zh-CN')
-      ? '开启语音'
-      : 'Enable voice'
-    assert.equal(t('开启语音'), expected)
-  } finally {
-    globalThis.localStorage = previous
+test('browser language wins over legacy storage, URL and desktop overrides remain explicit', tctx => {
+  for (const [key, value] of Object.entries({
+    navigator: { language: 'zh-CN', languages: ['en-US', 'zh-CN'] },
+    localStorage: { getItem: () => 'zh-CN' },
+    location: { search: '' },
+    document: { documentElement: {} },
+  })) {
+    const previous = Object.getOwnPropertyDescriptor(globalThis, key)
+    Object.defineProperty(globalThis, key, { configurable: true, value })
+    tctx.after(() => {
+      if (previous) Object.defineProperty(globalThis, key, previous)
+      else delete globalThis[key]
+    })
   }
+  assert.equal(t('开启麦克风'), 'Enable microphone')
+  syncDocumentLanguage()
+  assert.equal(document.documentElement.lang, 'en')
+  navigator.languages = ['zh-CN']
+  syncDocumentLanguage()
+  assert.equal(t('开启麦克风'), '开启麦克风')
+  assert.equal(document.documentElement.lang, 'zh-CN')
+  location.search = '?lang=en'
+  assert.equal(t('开启麦克风'), 'Enable microphone')
+  withLang('zh-CN', () => assert.equal(t('开启麦克风'), '开启麦克风'))
 })

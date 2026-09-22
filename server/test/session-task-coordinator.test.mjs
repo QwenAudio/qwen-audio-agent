@@ -71,7 +71,8 @@ test('explicit input requests retry after a busy turn, stay correlated and resol
   run.emit({ type: 'backend.input.resolved', input: { id: 'input_1', status: 'accepted', mode: 'form' } })
   assert.equal(h.coordinator.hasPendingInput(), false)
   assert.equal(call.options.shouldRespond(), false)
-  assert.equal(h.cancellations[0]({ inputRequestId: 'input_1' }, 'backend-input'), true)
+  assert.ok(h.cancellations.some(value => typeof value === 'function'
+    && value({ inputRequestId: 'input_1' }, 'backend-input')))
   assert.equal(h.taskManager.list({}).length, 1)
 })
 
@@ -131,6 +132,52 @@ test('a blocked or failed request delivery remains pending and can be retried', 
   await flush()
   assert.equal(h.injectCalls.length, 1)
   assert.equal(h.taskManager.get(run.task.id).inputRequest.status, 'pending')
+})
+
+test('reconnecting re-delivers unresolved permission/input without re-executing Tasks', async t => {
+  const h = harness(t)
+  const run = await startTask(h)
+  permission(run)
+  input(run)
+  await flush()
+  assert.equal(h.injectCalls.length, 2)
+  const old = h.injectCalls.map(call => call.options)
+  h.state.ready = false
+  h.coordinator.resetPresentation()
+  assert.ok(old.every(options => !options.shouldRespond()))
+  h.state.ready = true
+  h.coordinator.announcePendingPermissions()
+  h.coordinator.announcePendingInputs()
+  await flush()
+  assert.equal(h.injectCalls.length, 4)
+  h.coordinator.announcePendingPermissions()
+  h.coordinator.announcePendingInputs()
+  await flush()
+  assert.equal(h.injectCalls.length, 4)
+  assert.equal(h.taskManager.list({}).length, 1)
+  assert.equal(h.coordinator.hasPendingPermission(), true)
+  assert.equal(h.coordinator.hasPendingInput(), true)
+})
+
+test('waiting for permission/input discards old progress and blocks new execution progress', async t => {
+  const h = harness(t)
+  const run = await startTask(h)
+  h.coordinator.announcements.progress.offer({ taskId: run.task.id, message: 'reading memory' })
+  permission(run)
+  await flush()
+  assert.equal(h.coordinator.announcements.progress.candidates.size, 0)
+  run.emit({ type: 'backend.message', message: 'still reading' })
+  h.coordinator.handleEvent({
+    type: 'task.updated', task: h.taskManager.get(run.task.id), message: 'still reading',
+  })
+  await flush()
+  assert.equal(h.coordinator.announcements.progress.candidates.size, 0)
+  assert.ok(h.injectCalls.every(call => call.origin === 'permission'))
+  run.emit({ type: 'backend.permission.resolved', permission: { id: 'auth_1', status: 'approved' } })
+  h.coordinator.announcements.progress.offer({ taskId: run.task.id, message: 'resumed' })
+  input(run)
+  await flush()
+  assert.equal(h.coordinator.announcements.progress.candidates.size, 0)
 })
 
 test('pending input survives unready/waking/output-disabled presentation until activation', async t => {

@@ -3,7 +3,6 @@ import test from 'node:test'
 import {
   PERMISSION_RESPONSE_CAPABILITY,
   BACKEND_INPUT_RESPONSE_CAPABILITY,
-  ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
@@ -186,24 +185,9 @@ test('exposes backend input response only for a real pending request', () => {
   })), [...DEFAULT_TOOL_NAMES, 'respond_agent_input'])
 })
 
-test('exposes Client Action tools only when the client advertises support', () => {
-  assert.equal(frontendToolRegistry.isEnabled(ENTER_SLEEP_TOOL_NAME), false)
-  assert.equal(
-    frontendToolRegistry.isEnabled(ENTER_SLEEP_TOOL_NAME, {
-      client: { actions: ['desktop.presence.enter_sleep'] },
-    }),
-    true,
-  )
-  assert.deepEqual(
-    names(frontendTools({
-      client: { actions: ['desktop.presence.enter_sleep'] },
-    })),
-    [...DEFAULT_TOOL_NAMES, ENTER_SLEEP_TOOL_NAME],
-  )
-  assert.deepEqual(
-    names(frontendTools({ client: { actions: ['unknown'] } })),
-    DEFAULT_TOOL_NAMES,
-  )
+test('client action capability alone cannot create a model-visible tool', () => {
+  assert.equal(frontendToolRegistry.has('enter_sleep'), false)
+  assert.deepEqual(names(frontendTools({ client: { actions: ['desktop.presence.enter_sleep'] } })), DEFAULT_TOOL_NAMES)
 })
 
 test('exposes retrieval tools only when the frontend advertises each capability', () => {
@@ -348,13 +332,8 @@ test('exposes the knowledge tool only with the frontend knowledge capability', (
   )
 })
 
-test('keeps visibility policy separate from runtime execution checks', () => {
-  const entry = frontendToolRegistry.get(ENTER_SLEEP_TOOL_NAME)
-  assert.deepEqual(entry.policy, {
-    requiredClientActions: ['desktop.presence.enter_sleep'],
-  })
-  assert.equal(Object.isFrozen(entry.policy), true)
-  assert.equal(Object.isFrozen(entry.policy.requiredClientActions), true)
+test('keeps client tool definitions outside the fixed registry', () => {
+  assert.equal(frontendToolRegistry.has('enter_sleep'), false)
 })
 
 test('rejects unnamed and duplicate tool registrations', () => {

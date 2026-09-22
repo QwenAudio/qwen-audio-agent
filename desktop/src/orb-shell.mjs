@@ -134,7 +134,7 @@ export function bindOrbShell({
     if (!fromOrbWindow(event)) {
       throw new Error('无权读取桌面状态')
     }
-    return { state: presence.state }
+    return { state: presence.state, ...(presence.reason ? { reason: presence.reason } : {}) }
   })
 
   handle(ORB_CHANNELS.enterHide, (event, options = {}) => {
@@ -148,8 +148,11 @@ export function bindOrbShell({
     if (!explicit && onLoadSurface?.() === 'panel') {
       return { state: presence.state }
     }
-    if (explicit && onLoadSurface?.() === 'panel') onSetSurface?.('orb')
-    return { state: presence.hide(explicit ? 'requested' : 'inactivity') }
+    const state = presence.hide(explicit ? 'requested' : 'inactivity')
+    // Never resize a visible panel before hiding succeeds. Otherwise a
+    // rejected sleep leaves panel content squeezed into an orb-sized window.
+    if (state === 'hidden' && explicit && onLoadSurface?.() === 'panel') onSetSurface?.('orb')
+    return { state, ...(presence.reason ? { reason: presence.reason } : {}) }
   })
 
   handle(ORB_CHANNELS.surfaceLoad, event => {

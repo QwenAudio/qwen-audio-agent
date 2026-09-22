@@ -20,10 +20,6 @@ import {
   SPAWN_THINKING_TOOL_NAME,
 } from './tools/features/agent-task-tools.mjs'
 import {
-  clientToolEntries,
-  ENTER_SLEEP_TOOL_NAME,
-} from './tools/features/client-tools.mjs'
-import {
   coreToolEntries,
   GET_CURRENT_TIME_TOOL_NAME,
 } from './tools/features/core-tools.mjs'
@@ -47,7 +43,6 @@ import {
 export {
   BACKEND_INPUT_RESPONSE_CAPABILITY,
   CANCEL_AGENT_TASK_TOOL_NAME,
-  ENTER_SLEEP_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   FRONTEND_RECALL_CAPABILITY,
   GET_AGENT_TASK_STATUS_TOOL_NAME,
@@ -68,7 +63,6 @@ const featureEntries = [
   ...coreToolEntries,
   ...personalToolEntries,
   ...retrievalToolEntries,
-  ...clientToolEntries,
   ...optionalFrontendFeatures.flatMap(feature => feature.entries),
 ]
 const entriesByName = new Map(featureEntries.map(entry => [
@@ -87,7 +81,6 @@ const toolOrder = [
   RESPOND_AGENT_INPUT_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
-  ENTER_SLEEP_TOOL_NAME,
   ...optionalFrontendFeatures.flatMap(feature => (
     feature.entries.map(entry => entry.definition.function.name)
   )),

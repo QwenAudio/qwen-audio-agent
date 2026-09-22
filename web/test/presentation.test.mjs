@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-globalThis.localStorage = {
-  getItem: key => (key === 'qwen-audio-lang' ? 'zh-CN' : null),
-}
+import { setRuntimeLanguage } from '../src/i18n.js'
+setRuntimeLanguage('zh-CN')
 import { resultLabel } from '../src/presentation.js'
 
 test('uses the backend presentation title for a result card', () => {

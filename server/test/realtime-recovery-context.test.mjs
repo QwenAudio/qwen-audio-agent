@@ -20,7 +20,7 @@ test('restores prior conversation while excluding only the rejected turn', () =>
   )
 })
 
-test('falls back to excluding the latest user message without response correlation', () => {
+test('quarantines an uncorrelated snapshot without deleting history or excluding new turns', () => {
   const recovery = new RealtimeRecoveryContext()
   const messages = [
     { id: 'u1', role: 'user', content: '正常问题' },
@@ -32,8 +32,27 @@ test('falls back to excluding the latest user message without response correlati
 
   assert.deepEqual(
     recovery.project(messages).map(message => message.id),
-    ['u1', 'a1'],
+    [],
   )
+  assert.equal(messages.length, 3)
+  assert.deepEqual(recovery.project([...messages, { id: 'u3', role: 'user' }]), [
+    { id: 'u3', role: 'user' },
+  ])
+})
+
+test('bounds recovery and only a successful user turn resets its budget', () => {
+  const recovery = new RealtimeRecoveryContext()
+  const messages = [
+    { id: 'u1', turnId: 'turn-1' },
+    { id: 'u2', turnId: 'turn-2' },
+  ]
+  assert.equal(recovery.beginRecovery({ turnId: 'turn-2' }, messages), true)
+  assert.deepEqual(recovery.project(messages).map(m => m.id), ['u1'])
+  assert.equal(recovery.beginRecovery({ turnId: 'turn-2' }, messages), true)
+  assert.deepEqual(recovery.project(messages), [])
+  assert.equal(recovery.beginRecovery({}, messages), false)
+  recovery.recordSuccessfulTurn()
+  assert.equal(recovery.beginRecovery({ turnId: 'turn-3' }, messages), true)
 })
 
 test('excludes a rejected task presentation without removing adjacent dialogue', () => {

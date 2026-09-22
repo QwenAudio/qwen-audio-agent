@@ -184,7 +184,7 @@ test('the tool is only exposed when session digests are enabled', () => {
     client: { actions: ['desktop.presence.enter_sleep'] },
   })
   assert.ok(both.includes(RECALL_TOOL_NAME))
-  assert.ok(both.includes('enter_sleep'))
+  assert.ok(!both.includes('enter_sleep'), 'an action capability alone does not declare a tool')
 })
 
 test('the tool description separates summaries from task details and other sources', () => {

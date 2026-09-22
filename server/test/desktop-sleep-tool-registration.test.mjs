@@ -1,19 +1,12 @@
-// Reproduces the user report: desktop orb asks the voice front end which tools
-// it has, and enter_sleep is missing. The registration chain is:
-// web CONNECT (clientType=desktop, clientStates=['sleeping'])
-//   -> realtime-session-runtime sets clientContext.states
-//   -> createRealtimeFrontend receives agentContext.client
-//   -> provider.buildSession -> frontendTools adds enter_sleep.
-// This test drives the real gateway over WebSocket against a fake realtime
-// provider and asserts the session that reaches the provider contains the
-// sleep tool.
-
+// Drives client-owned tool discovery through a real Gateway WebSocket and a fake provider.
 import assert from 'node:assert/strict'
 import { mkdtempSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { createGatewaySessionHello } from '../../shared/protocol/gateway-client-protocol.mjs'
+import { desktopClientTools } from '../../web/src/desktop/client-tools.js'
 import { WebSocket, WebSocketServer } from 'ws'
 
 const providerServer = createServer()
@@ -92,25 +85,19 @@ function connectDesktopClient(server) {
   const socket = new WebSocket(`ws://127.0.0.1:${port}/api/realtime?sessionId=main`)
   return new Promise((resolve, reject) => {
     socket.on('open', () => {
-      socket.send(JSON.stringify({
-        type: 'connect',
-        timeZone: 'Asia/Shanghai',
-        locale: 'zh-CN',
-        voiceEnabled: true,
-        inputEnabled: false,
-        outputEnabled: true,
-        clientType: 'desktop',
-        clientLabel: '桌面端',
-        clientStates: ['sleeping'],
-        clientInstanceId: 'repro-instance',
-      }))
+      socket.send(JSON.stringify(createGatewaySessionHello({
+        clientType: 'desktop', clientInstanceId: 'repro-instance',
+        capabilities: ['input.audio', 'client.tools', 'client.presence'],
+        tools: desktopClientTools,
+        connection: { input_enabled: false, output_enabled: true },
+      })))
       resolve(socket)
     })
     socket.on('error', reject)
   })
 }
 
-test('desktop CONNECT registers enter_sleep in the realtime session', async t => {
+test('desktop tool declaration registers enter_sleep in the realtime session', async t => {
   const server = await startGateway()
   t.after(() => {
     server.close()

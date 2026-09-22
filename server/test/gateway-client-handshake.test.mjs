@@ -319,6 +319,7 @@ test('5.x connect and 7.0 session.hello share one Gateway business path', async 
 
 test('routes negotiated live visual frames through the provider-neutral Gateway path', async t => {
   const images = []
+  const deliveries = []
   let clearedImages = 0
   const visualProvider = {
     key: 'visual-test',
@@ -342,6 +343,10 @@ test('routes negotiated live visual frames through the provider-neutral Gateway 
       close: () => { frontend.ready = false },
       appendAudio: () => {},
       appendImage: image => images.push(image),
+      injectDelivery: async (text, origin, context, options) => {
+        deliveries.push({ text, origin, context, options })
+        return { completed: true }
+      },
       clearPendingImage: () => { clearedImages += 1 },
       cancel: () => {},
       updateAgentContext: () => {},
@@ -350,6 +355,7 @@ test('routes negotiated live visual frames through the provider-neutral Gateway 
   }
   const { server, gateway } = gatewayHarness({
     defaultRealtimeProvider: visualProvider.key,
+    clientEventRouter: new GatewayEventRouter(),
     realtimeProviderRegistry,
     realtimeFrontendFactory,
   })
@@ -366,6 +372,7 @@ test('routes negotiated live visual frames through the provider-neutral Gateway 
     capabilities: [
       GatewayClientCapability.INPUT_AUDIO,
       GatewayClientCapability.INPUT_IMAGE_BUFFER,
+      GatewayClientCapability.CLIENT_EVENTS,
     ],
     connection: {
       provider: visualProvider.key,
@@ -379,6 +386,7 @@ test('routes negotiated live visual frames through the provider-neutral Gateway 
   assert.deepEqual(ready.capabilities, [
     GatewayClientCapability.INPUT_AUDIO,
     GatewayClientCapability.INPUT_IMAGE_BUFFER,
+    GatewayClientCapability.CLIENT_EVENTS,
   ])
   await waitFor(client.received, event => event.type === 'voice.ready')
 
@@ -397,6 +405,26 @@ test('routes negotiated live visual frames through the provider-neutral Gateway 
     event_id: 'evt-visual-clear',
   }))
   await waitUntil(() => clearedImages === 1)
+  assert.equal(deliveries.length, 0, 'image append/clear is independent of environment state')
+  for (const state of ['active', 'inactive']) {
+    const eventId = `visual-environment-${state}`
+    client.socket.send(JSON.stringify({
+      type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
+      event_id: eventId,
+      name: 'media.visual_input.changed',
+      text: state === 'active' ? '已开启实时视觉输入' : '已停止实时视觉输入',
+      delivery_hint: 'context',
+    }))
+    const result = await waitFor(client.received, event => event.request_event_id === eventId)
+    assert.equal(result.type, GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT)
+    assert.equal(result.accepted, true)
+  }
+  await waitUntil(() => deliveries.length === 2)
+  assert.ok(deliveries.every(delivery => delivery.options.route === 'context'))
+  assert.ok(deliveries.every(delivery => delivery.origin === 'client-event'))
+  assert.match(deliveries[1].text, /已停止实时视觉输入/)
+  assert.equal(images.length, 1, 'state events cannot capture or send an image')
+  assert.equal(clearedImages, 1, 'state events do not mutate the image buffer')
   client.socket.close()
 })
 
@@ -404,11 +432,10 @@ test('routes negotiated GCP2 commands and Client Events with correlated results'
   const commands = []
   const routed = []
   const registry = new ClientEventDefinitionRegistry()
-  const definition = registry.get('desktop.presence.sleep_requested')
-  registry.definitions.set(definition.name, Object.freeze({
-    ...definition,
+  registry.register({ name: 'desktop.presence.sleep_requested',
+    schema: { safeParse: data => ({ success: true, data }) },
     handle: event => routed.push(event),
-  }))
+  })
   const { server, gateway } = gatewayHarness({
     clientEventRouter: new GatewayEventRouter({ registry }),
     clientCommandRuntime: {
@@ -603,7 +630,7 @@ test('commits sleep only after the negotiated Client Action completes', async t 
   modern.socket.close()
 })
 
-test('client inactivity enters sleep without asking the model to call a tool', async t => {
+test('client presence reports sleep without another environment operation', async t => {
   const { server, gateway } = gatewayHarness({
     clientEventRouter: new GatewayEventRouter(),
   })
@@ -619,7 +646,7 @@ test('client inactivity enters sleep without asking the model to call a tool', a
     clientInstanceId: 'desktop-auto-sleep-test',
     capabilities: [
       GatewayClientCapability.CLIENT_EVENTS,
-      GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
+      GatewayClientCapability.CLIENT_PRESENCE,
     ],
   }))
   await waitFor(modern.received, event => event.type === 'session.ready')
@@ -627,8 +654,7 @@ test('client inactivity enters sleep without asking the model to call a tool', a
   modern.socket.send(JSON.stringify({
     type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
     event_id: 'evt-client-inactivity',
-    name: 'desktop.presence.sleep_requested',
-    data: { idle_ms: 60_000 },
+    text: '客户端已因空闲进入休眠。',
   }))
   const published = await waitFor(
     modern.received,
@@ -636,17 +662,10 @@ test('client inactivity enters sleep without asking the model to call a tool', a
   )
   assert.equal(published.accepted, true)
 
-  const action = await waitFor(
-    modern.received,
-    event => event.type === GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST,
-  )
-  assert.equal(action.name, 'desktop.presence.enter_sleep')
+  assert.equal(modern.received.some(event => event.type === 'client.action.request'), false)
   modern.socket.send(JSON.stringify({
-    type: GatewayClientProtocolEvent.CLIENT_ACTION_RESULT,
-    event_id: 'evt-auto-sleep-result',
-    request_event_id: action.event_id,
-    status: 'completed',
-    output: { state: 'hidden' },
+    type: GatewayClientProtocolEvent.CLIENT_PRESENCE_UPDATE,
+    event_id: 'evt-presence', state: 'sleeping',
   }))
   await waitFor(modern.received, event => (
     event.type === 'voice.sleep' && event.state === 'sleeping'

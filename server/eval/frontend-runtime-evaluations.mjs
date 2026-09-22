@@ -33,14 +33,12 @@ async function evaluateRoutingContract() {
   const prompt = loadFrontendPrompt()
   const names = toolNames({
     frontend: { capabilities: ['web-search', 'url-fetch', 'knowledge'] },
-    client: { actions: ['desktop.presence.enter_sleep'] },
   })
   const required = [
     'spawn_thinking',
     'web_search',
     'fetch_url',
     'knowledge',
-    'enter_sleep',
   ]
   requireCondition(
     required.every(name => names.includes(name)),

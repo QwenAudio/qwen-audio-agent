@@ -156,7 +156,7 @@ Rules:
 - No observer connection or concurrent multi-Client control exists in 7.0.
 - The Client must branch on negotiated capabilities, not product versions.
 - Protocol version, Client identity, and capabilities cannot change without reconnecting.
-- Version 7.0 defines no `context_source`, `integration`, or observer connection role. Vehicle buses, CRM feeds, sensors, and other context sources attach to the active Client Environment through client-side adapters; that Client validates and relays registered semantic events.
+- Version 7.0 defines no `context_source`, `integration`, or observer connection role. Vehicle buses, CRM feeds, sensors, and other context sources attach to the active Client Environment through client-side adapters; that Client validates and relays information events.
 
 ### 3.1 GCP1 compatibility rollout
 
@@ -176,26 +176,13 @@ history commands in section 5.4 to the negotiated WebSocket. Immediate results
 and errors correlate through `request_event_id`. Existing REST routes call the
 same runtime command service and remain temporary compatibility aliases.
 
-Client Event definitions are registered at Gateway composition time. The
-registry owns payload Schema, size, rate, retention, coalescing, maximum route,
-and an optional deterministic handler. Gateway stamps owner, Session, Client
-type, and Client instance from the authenticated connection; none of those
-trusted fields are accepted from event data. The first built-in definition is
-`desktop.presence.sleep_requested`. GCP2 accepts, validates, retains, and
-handles the event without pretending it is user input; GCP3 now projects it
-through the shared Agent Delivery boundary.
-
-A deterministic handler may use narrow effects supplied by its Gateway host,
-such as selecting one deployment-owned Assistant Profile for the current
-Realtime Session. The Client still sends only schema-validated identifiers:
-event data never becomes instructions, and arbitrary prompt text is not an
-allowed effect input.
+Ordinary Client information events carry text and delivery intent without registration. Only host extensions needing deterministic handling register definitions. Identity comes from the authenticated connection; information delivery and operations are separate. See sections 5.2 and 5.3.
 
 ### 3.3 GCP3 delivery rollout
 
 GCP3 implements the provider-neutral value and all four routing modes from
 section 6. Task results, low-frequency meaningful progress, permission prompts,
-and registered Client Event projections use one `RealtimeAgentDeliveryRuntime`.
+and Client Event projections use one `RealtimeAgentDeliveryRuntime`.
 Realtime providers encode only the resulting context item and optional response;
 raw Client or backend protocol objects never enter the model. Existing Task
 announcement batching, safe-window retry, notification claims, and playback
@@ -203,14 +190,11 @@ acknowledgement remain the reliable lifecycle around that shared projection.
 
 ### 3.4 GCP4 Client Action rollout
 
-GCP4 implements correlated `client.action.request/result` messages and a
-protocol-neutral `ClientActionPort`. The active Client capability-gates
-action-derived Realtime tools. `enter_sleep`, the desktop idle event,
-and the legacy Gateway timeout converge on one idempotent
-`PresenceController`; an action-capable Client is marked sleeping only after it
-reports that the environment transition completed. The first-party desktop now
-negotiates and returns Action results through `session.hello`; the 5.x
-`connect` path remains only as a deprecated compatibility alias.
+GCP4 implements correlated `client.action.request/result` and the
+protocol-neutral `ClientActionPort`. The current desktop supplies its own tool
+catalog at handshake. Client-owned inactivity, actual presence synchronization,
+and model-visible information are separate paths; see section 7. Host-defined
+actions remain available to installed extensions.
 
 ### 3.5 GCP5 reference Client and replay rollout
 
@@ -235,7 +219,7 @@ Gateway follows the flat OpenAI Realtime envelope style:
   "type": "client.event.publish",
   "event_id": "evt_client_42",
   "name": "user.object.touched",
-  "data": { "object_id": "cup" }
+  "text": "The user touched the cup."
 }
 ```
 
@@ -295,100 +279,122 @@ Version 1 accepts JPEG only, limits the Base64 body to 256 KiB, and admits at
 most one frame per second. Frames update live visual context; they do not
 create a user turn, trigger a response, enter conversation history, or become
 backend attachments. A client sends `input_image_buffer.clear` when the user
-stops live vision or closes the camera so a provider cannot consume the last
-frame later. A transient disconnect or microphone state change only pauses
-client frame transmission; the client resumes it when transport is ready while
-preserving the user's live-vision intent. Session disconnect, sleep, input
-suspension, microphone mute, and provider replacement still clear Gateway-side
-pending visual state so a stale frame cannot survive the transport boundary.
+stops live vision or closes the camera to discard pending frames, not historical
+frames already received by the model. Image buffering does not describe camera
+state. Clients separately publish `media.visual_input.changed` through
+`client.event.publish` to update context without triggering a reply; providers
+without context injection skip the notification. Microphone mute does
+not clear visual input. A transient disconnect pauses client frame transmission,
+which resumes when transport is ready. Session disconnect, sleep, input suspension,
+and provider replacement still clear pending visual state.
 
 The Gateway event shape is provider-neutral. The Qwen Omni adapter maps it to
-the provider image buffer after audio has started; the MiniCPM-o adapter puts
+the provider image buffer, priming the audio timeline with 20 ms of silence if
+no audio has arrived yet, without opening the microphone. The MiniCPM-o adapter puts
 the latest frame in the next audio `input.append` as `video_frames`.
 
-### 5.2 Client semantic events
+### 5.2 Client information events
 
-The public, extensible Client-to-Gateway API is:
+Use `client.event.publish` for environment information, observations, or user
+actions that are not typed/spoken input. No business-name registration is needed:
 
-```text
-client.event.publish
-client.event.publish.result
-```
-
-```jsonc
+```json
 {
   "type": "client.event.publish",
-  "event_id": "evt_client_17",
-  "occurred_at": 1787880000000,
-  "name": "user.object.touched",
-  "data": {
-    "object_id": "cup",
-    "object_name": "水杯"
-  }
+  "event_id": "evt_visual_1",
+  "name": "media.visual_input.changed",
+  "text": "The camera is off. Earlier images are historical, not a live view.",
+  "delivery_hint": "context"
 }
 ```
 
-```jsonc
+- `type` selects the protocol operation; `event_id` correlates its receipt and
+  provides bounded, connection-identity-scoped deduplication.
+- `text` is required for this self-contained form. `name` is an optional label,
+  never a handler selector. Even a label such as `task.completed` cannot change
+  a Task or create an internal event.
+- `delivery_hint` defaults to `context` (no reply). `respond` schedules a reply;
+  `interrupt` interrupts the current response before requesting a reply.
+  Provider capability, connection readiness and playback policy still apply.
+- Limits: 16,000 characters / 32 KiB payload, and 20 events per 10 seconds per
+  source across all labels. Gateway stamps source identity from the connection.
+- A correlated `client.event.publish.result` with `accepted: true` means the
+  Gateway accepted the event, **not** that the model consumed or spoke it.
+  This is not a durable message queue; disconnected or unavailable delivery can
+  be skipped and is logged.
+
+Gateway projects the text as client-provided context through `AgentDelivery`.
+It does not expose the incoming envelope as a system instruction or execute
+operations described in that text. Context-only delivery never creates a response.
+With `respond`/`interrupt`, the model may respond or use its already available
+tools. This does not bypass tool permissions or execute an operation by event name.
+
+WebUI publishes camera state at actual start/stop/failure boundaries, not per
+frame. It caches only the latest state and republishes it after `voice.ready`.
+`input_image_buffer.clear` remains a separate buffer operation.
+
+**Host extensions:** existing deployments that need schema-validated structured
+data or deterministic handling can still install `clientEventDefinitions` in
+`createGatewayApplication`. Their form is `{name, data}`, without `text`.
+Unknown names fail closed. An extension owns its schema, limits, handler and
+projection; `delivery_hint` cannot exceed its registered maximum. This optional
+extension path is not required for ordinary information events. Mixing `text`
+with `data` or `handle` is rejected; a text event can never invoke an extension.
+
+### 5.3 Client-owned tools
+
+Clients declare tools in `session.hello` with the `client.tools` capability:
+
+```json
 {
-  "type": "client.event.publish.result",
-  "event_id": "evt_gateway_31",
-  "request_event_id": "evt_client_17",
-  "accepted": true,
-  "name": "user.object.touched"
+  "capabilities": ["client.tools", "client.presence"],
+  "tools": [{
+    "name": "enter_sleep",
+    "description": "Hide and mute the current client when the user requests rest.",
+    "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
+    "response_on_success": "none"
+  }]
 }
 ```
 
-`name` must be registered by the Gateway protocol or an installed extension. Registration defines:
+This fragment supplements the normal handshake. Definitions use
+`name` / `description` / JSON Schema `inputSchema`; this is **GCP tool
+discovery and transport, not an MCP server**. Configured MCP tools retain their
+existing standard MCP transport.
 
-- payload schema and size limits;
-- transient or latest-value retention;
-- deduplication or coalescing key when needed;
-- default routing policy;
-- deterministic handler, if any;
-- provider-neutral model projection, if any;
-- replay and client-presentation behavior.
+The catalog is connection-local, limited to 32 tools, and cannot shadow Gateway
+or configured tool-source names. Disconnect/takeover removes its reachability.
+The client validates arguments and owns the operation; Gateway exposes definitions
+to the model and forwards calls through the existing action request/result pair:
 
-Suggested namespaces include `desktop.*`, `environment.*`, `vehicle.*`, `hardware.*`, and an extension-owned prefix. Unknown names return `client_event_unsupported`; malformed data returns `client_event_invalid`.
-
-The caller does not choose the final model behavior. An optional `delivery_hint` may be accepted for an event definition that permits it, but Gateway may downgrade and never upgrades the requested urgency.
-
-### 5.3 Client actions
-
-Gateway-to-Client operations use a request/result pair:
-
-```text
-client.action.request
-client.action.result
-```
-
-```jsonc
+```json
 {
   "type": "client.action.request",
-  "event_id": "evt_gateway_51",
-  "name": "desktop.presence.enter_sleep",
+  "event_id": "evt_call_1",
+  "name": "client.tool.enter_sleep",
   "arguments": {}
 }
 ```
 
-```jsonc
+```json
 {
   "type": "client.action.result",
-  "event_id": "evt_client_52",
-  "request_event_id": "evt_gateway_51",
+  "event_id": "evt_result_1",
+  "request_event_id": "evt_call_1",
   "status": "completed",
-  "output": null
+  "output": { "state": "hidden" }
 }
 ```
 
-`status` is `completed`, `failed`, or `unsupported`. Failure includes a bounded `{code, message}` object. Gateway exposes an action-derived Realtime tool only when the active Client negotiated the corresponding capability.
+Gateway manages capability checks, correlation, deadlines and disconnection
+errors. Failures use `failed` or `unsupported` with `error.code/message`.
+`response_on_success` defaults to `auto`; `none` records a successful tool
+result without requesting another response. Failures still request a response.
+Tool results are bounded by the shared frontend tool budget.
 
-The first implemented action is `desktop.presence.enter_sleep`. Its tool,
-automatic Client Event fallback, timeout handling, and duplicate requests share
-one Presence state machine. The legacy `client.state` sleeping message remains
-accepted by current clients as a migration alias, but is no longer the execution
-boundary.
-
-Client Action is not a replacement for MCP, OpenAPI, ACP, or A2A. It covers capabilities owned by the connected Client Environment. Other external systems continue to use the appropriate tool or backend adapter.
+Host-defined actions such as `xomni.visual.capture` continue to use the same
+transport for Gateway-hosted tools. They remain distinct from information events:
+`client.event.publish` does not execute client actions.
 
 ### 5.4 Runtime commands and queries
 
@@ -570,43 +576,42 @@ time, recurrence, and timezone. Task and series identifiers remain in
 
 ## 7. Presence and sleep
 
-Both sleep modes converge on the same PresenceController and Client Action path, but only user-requested sleep requires a model Tool Call.
+User-requested sleep: model calls the client-declared `enter_sleep` → Gateway
+forwards the call → Client mutes and hides → returns a tool result. Success
+does not request a follow-up response; failure can still be explained.
 
-### User-requested sleep
+Automatic sleep: the Client's local idle timer expires → Client mutes and hides
+itself → publishes a context-only `client.event.publish` notification. It does
+not ask the model to call a tool or Gateway to hide the window by event name.
 
-```text
-user input → Realtime → optional acknowledgement → enter_sleep
-           → PresenceController → ClientActionPort
-           → desktop.presence.enter_sleep → Client action result
-           → Gateway enters sleeping
+Both paths report actual state using the separate `client.presence.update` command:
+
+```json
+{
+  "type": "client.presence.update",
+  "event_id": "evt_presence_1",
+  "state": "sleeping"
+}
 ```
 
-The model may speak before the Tool Call or call it directly. The protocol does not mandate farewell text or a playback gate. Tool failures remain Tool Call results and do not proactively trigger speech.
+Negotiate `client.presence`; `state` is `sleeping` or `active`. This command
+updates Gateway input/announcement gating. It does not hide a client or replace
+model context notification. Report only actual transitions and resynchronize
+current state on reconnect.
 
-### Client automatic sleep
+The desktop Client also publishes sleep/wake context text through
+`client.event.publish` with `delivery_hint: "context"`. It retains the latest
+cause in the text: idle timeout, an explicit sleep request, or waking up. All
+use the same event channel, with no new tool or protocol type; the Gateway does
+not execute actions based on that cause. The Client retains the latest
+snapshot, deduplicates unchanged state, and resends it when Realtime reconnects,
+without requesting a reply. This gives the model current presence rather than
+only a historical sleep tool result.
 
-```text
-client.event.publish(desktop.presence.sleep_requested)
-           → GatewayEventRouter → AgentDelivery(context)
-           → Realtime learns that the Client is about to sleep
-             (no response and no Tool Call)
-           → Gateway → PresenceController → ClientActionPort
-           → Client mutes and hides → Gateway enters sleeping
-```
-
-After its local inactivity timeout expires, the Client publishes the event with bounded state such as idle duration and reason. Gateway injects it as Realtime context and then deterministically enters sleep. Automatic sleep does not depend on model generation and never asks the model to call `enter_sleep` again.
-
-The state machine is:
-
-```text
-active → sleep_requested → sleeping
-```
-
-Only the first transition issues a Client Action. Duplicate requests reuse the pending transition or return the already-sleeping state. Gateway marks the state `sleeping` only after a successful Client action result. Sleep does not cancel backend Tasks or discard pending results.
-
-Wake mechanism is a Client concern. Gateway retains the Realtime provider
-connection while sleeping and stops forwarding Client audio. A wake event
-restores presence and microphone input, then delivers pending notifications.
+Sleep neither cancels backend work, discards pending results, nor deliberately
+disconnects Realtime. Clients own wake-up; restoring `active` resumes pending
+notifications. Existing host-initiated PresenceController actions remain
+available, but no longer handle automatic-sleep information events.
 
 ## 8. Replay, errors, and limits
 

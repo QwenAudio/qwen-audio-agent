@@ -1,6 +1,7 @@
 import { config, realtimeUrl } from '../../core/config.mjs'
 import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mjs'
 import {
+  DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
   listDashScopeRealtimeModelProfiles,
@@ -19,6 +20,9 @@ import { openAiCompatibleProtocol } from './openai-compatible-protocol.mjs'
 function classifyError(message) {
   if (isRecoverableRealtimeInactivityError(message)) return 'inactivity'
   if (/user is speaking/i.test(message)) return 'input_busy'
+  if (/already has (?:a pending response request|an active response)|another response is in progress/i.test(message)) {
+    return 'response_slot_busy'
+  }
   if (/no active response/i.test(message)) return 'no_active_response'
   if (
     /data[_ -]?inspection[_ -]?failed|ip[_ -]?infringement[_ -]?suspect/i.test(message)
@@ -50,6 +54,21 @@ function responseModalities(profile) {
 
 function validateSessionOptions({ sessionOptions = {} } = {}) {
   const profile = activeModelProfile()
+  if (profile.id === DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL) {
+    // 3.8 requires a workspace endpoint. Reject the known incompatible public
+    // endpoints, but allow user-managed proxies instead of enforcing a host allowlist.
+    let endpoint
+    try {
+      endpoint = new URL(config.audioRealtimeBaseUrl)
+    } catch {
+      throw new RealtimeConfigurationError('请配置有效的 QWEN_AUDIO_REALTIME_BASE_URL WebSocket 服务地址')
+    }
+    if (['dashscope.aliyuncs.com', 'dashscope-intl.aliyuncs.com', 'dashscope-us.aliyuncs.com'].includes(endpoint.hostname)) {
+      throw new RealtimeConfigurationError(
+        `${profile.id} 需要百炼业务空间专属地址；请将 QWEN_AUDIO_REALTIME_BASE_URL（桌面版“服务地址”）设为该业务空间的 WebSocket 地址，并使用对应的 API Key`,
+      )
+    }
+  }
   const voice = String(sessionOptions.voice || '').trim() || dashscopeProvider.voice()
   // Known mismatch, not a complete voice allowlist. Cherry belongs to the older
   // Omni generation and causes silent closes on 3.5 (#334). Unknown/cloned
@@ -76,8 +95,10 @@ export const dashscopeProvider = {
   get capabilities() {
     return {
       perResponseInstructions: true,
+      singleResponseSlot: true,
       sessionOutputVoice: true,
       conversationItemIdEcho: activeModelProfile().family !== 'omni',
+      imageRequiresAudioStart: true,
     }
   },
 
@@ -105,12 +126,24 @@ export const dashscopeProvider = {
     }
     if (!configured) {
       session.modalities = responseModalities(profile)
-      if (profile.modelCapabilities.audioOutput) {
-        session.voice = sessionVoice || dashscopeProvider.voice()
-        session.output_audio_format = 'pcm'
-      }
-      if (profile.transportCapabilities.audioInput) {
-        session.input_audio_format = 'pcm'
+      if (profile.id === DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL) {
+        // Keep the client audio contract unchanged: mono PCM16, 16 kHz in /
+        // 24 kHz out. 3.8 uses the nested audio configuration on first setup only.
+        session.audio = {
+          input: { format: { type: 'pcm', sample_rate: dashscopeProvider.inputSampleRate } },
+          output: {
+            format: { type: 'pcm', sample_rate: dashscopeProvider.outputSampleRate },
+            voice: sessionVoice || dashscopeProvider.voice(),
+          },
+        }
+      } else {
+        if (profile.modelCapabilities.audioOutput) {
+          session.voice = sessionVoice || dashscopeProvider.voice()
+          session.output_audio_format = 'pcm'
+        }
+        if (profile.transportCapabilities.audioInput) {
+          session.input_audio_format = 'pcm'
+        }
       }
       session.turn_detection = profile.transportCapabilities.audioInput
         ? profile.sessionDefaults.turnDetection

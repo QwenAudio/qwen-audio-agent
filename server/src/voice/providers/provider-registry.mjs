@@ -39,6 +39,7 @@ const CAPABILITY_FLAGS = [
   'conversationItems',
   'clientResponses',
   'mutableSession',
+  'imageRequiresAudioStart',
 ]
 
 const MODEL_CAPABILITY_FLAGS = [

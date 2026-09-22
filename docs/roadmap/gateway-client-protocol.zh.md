@@ -84,7 +84,7 @@ Backend Agent
 - [x] 即时命令结果通过 `request_event_id` 关联；后续 Task 与权限变化继续通过普通事件流发布，并在 GCP5 具备回放能力。
 - [x] 在连接边界填写可信来源身份。
 - [x] 执行 Schema、大小、频率、保存、去重与合并 Policy。
-- [x] 以 `desktop.presence.sleep_requested` 完成首个端到端事件。
+- [x] 支持自包含客户端信息事件；客户端工具与 Presence 操作保持独立。
 
 完成条件：Client 可以发布已注册的环境或用户行为事件，不需要伪装成用户文本，也不需要给 Gateway 增加新的条件分支；第一方运行时命令都有内部 REST 路径的 WebSocket 替代方案。
 

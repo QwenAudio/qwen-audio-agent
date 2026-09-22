@@ -125,6 +125,35 @@ test('passes session options into every provider connection attempt', async () =
   })
 })
 
+test('late events from a detached provider cannot affect its replacement', async () => {
+  const { runtime, frontends, calls } = harness({ connectMode: 'resolve' })
+  await runtime.ensure()
+  const stale = frontends[0]
+  runtime.detach()
+  await runtime.ensure()
+  stale.options.onEvent({ type: 'error', error: { message: 'stale rejection' } })
+  frontends[1].options.onEvent({ type: 'response.created' })
+  assert.deepEqual(calls.filter(([name]) => name === 'event'), [
+    ['event', { type: 'response.created' }],
+  ])
+  runtime.close()
+})
+
+test('a rejected initial session configuration enters the shared content recovery path', async () => {
+  const { runtime, frontends, calls } = harness()
+  const pending = runtime.ensure()
+  frontends[0].provider.classifyError = () => 'content_safety'
+  const error = Object.assign(new Error('data_inspection_failed'), { realtimeEvent: true })
+  frontends[0].triggerError(error)
+  assert.deepEqual(calls.filter(([name]) => name === 'event'), [[
+    'event', { type: 'error', error: { message: error.message }, __voiceOrigin: 'session' },
+  ]])
+  assert.equal(calls.some(([name]) => name === 'error'), false)
+  frontends[0].rejectConnect(error)
+  await assert.rejects(pending, /data_inspection_failed/)
+  runtime.close()
+})
+
 test('reads fresh session options when an upstream provider Session is rebuilt', async () => {
   let outputVoice = 'longanqian'
   const { runtime, frontends } = harness({

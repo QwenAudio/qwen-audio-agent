@@ -9,6 +9,8 @@ import { TaskManager } from '../src/task/task-manager.mjs'
 import { TaskOperations } from '../src/orchestration/task-operations.mjs'
 import { clientActionCapabilities, ClientActionName } from '../src/client/client-action-port.mjs'
 import { GatewayClientEvent as Input } from '../../shared/protocol/realtime-events.mjs'
+import { GatewayEventRouter } from '../src/client/client-event-router.mjs'
+import { desktopClientTools } from '../../web/src/desktop/client-tools.js'
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
 async function until(predicate) {
@@ -77,7 +79,7 @@ function harness(t, { backend = true, ...overrides } = {}) {
         appendImage(value) { this.images.push(value) },
         updateAgentContext(context, settings) { this.updates.push({ context, settings }) },
         async sendUserInput(parts, context) { this.inputs.push({ parts, context }); return {} },
-        async sendFunctionOutput(callId, result, settings) { this.outputs.push({ callId, result, settings }) },
+        async sendFunctionOutput(callId, result, context, settings) { this.outputs.push({ callId, result, context, settings }) },
         async injectDelivery(text, origin, context, settings) {
           if (settings.shouldRespond && !settings.shouldRespond()) return { completed: false }
           this.deliveries.push({ text, origin, context, settings })
@@ -85,6 +87,8 @@ function harness(t, { backend = true, ...overrides } = {}) {
         },
         async appendUserInputContext() {}, async ensureResponse() {}, async whenIdle() {},
         emit: options.onEvent,
+        settle: options.onResponseSettled,
+        disconnect() { this.ready = false; options.onClose() },
       }
       frontends.push(f)
       return f
@@ -174,6 +178,68 @@ test('microphone mute and host suspension do not close the model or cancel work'
   assert.equal(h.manager.get(task.id).status, 'cancelled', 'only explicit Task cancellation stops work')
 })
 
+test('image buffering does not infer client state; only explicit environment events update context', async t => {
+  const h = harness(t)
+  const f = await h.connect({ inputEnabled: false })
+  const frame = { type: Input.IMAGE_APPEND, image: Buffer.from([0xff, 0xd8, 0xff, 0xd9]).toString('base64') }
+  h.send({ type: Input.IMAGE_APPEND, image: 'invalid-frame' })
+  await tick()
+  assert.equal(f.deliveries.length, 0, 'invalid frames must not announce active vision')
+  h.send(frame)
+  await tick()
+  assert.equal(f.images.length, 1)
+  assert.equal(f.audio.length, 0)
+  assert.equal(f.deliveries.length, 0, 'a frame is not an environment state event')
+  const router = new GatewayEventRouter()
+  const publish = async state => {
+    const result = await router.publish({
+      event_id: `visual-${state}`, text: state === 'active' ? '已开启实时视觉输入' : '已停止实时视觉输入，当前无法看到新的画面',
+    })
+    h.runtime.handleClientDelivery(result)
+    await tick()
+  }
+  await publish('active')
+  assert.match(f.deliveries[0].text, /已开启实时视觉输入/)
+  h.send({ type: Input.INPUT_MUTE })
+  await tick()
+  assert.equal(f.deliveries.length, 1, 'muting audio must not stop vision')
+  h.send({ type: Input.IMAGE_CLEAR })
+  h.send({ type: Input.IMAGE_CLEAR })
+  await tick()
+  assert.equal(f.deliveries.length, 1, 'clearing a buffer must not report camera shutdown')
+  await publish('inactive')
+  assert.equal(f.deliveries.length, 2)
+  assert.match(f.deliveries[1].text, /已停止实时视觉输入/)
+  assert.ok(f.deliveries.every(value => value.settings.route === 'context'))
+  assert.equal(f.cancels, 0)
+  h.send(frame)
+  await tick()
+  assert.equal(f.images.length, 2)
+  assert.equal(f.deliveries.length, 2, 'new frames do not substitute for explicit state changes')
+  h.runtime.applyInputSuspension({ suspended: true, owner: 'test' })
+  h.send(frame)
+  await tick()
+  assert.equal(f.images.length, 2, 'host suspension still gates camera frames')
+  assert.equal(f.deliveries.length, 2)
+})
+
+test('a tool continuation ending without a response releases the permission announcement window', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  f.emit({ type: 'input_audio_buffer.speech_started', item_id: 'input-pending' })
+  f.emit({ type: 'input_audio_buffer.speech_stopped', item_id: 'input-pending' })
+  const turnId = h.events.findLast(event => event.type === 'turn.started').turnId
+  const task = h.request('read file')
+  await until(() => h.runs.has(task.id))
+  h.runs.get(task.id).onEvent({ type: 'backend.permission.requested', permission: {
+    id: 'auth-pending', status: 'pending', summary: 'read a file',
+  } })
+  await tick()
+  assert.equal(f.deliveries.some(delivery => delivery.origin === 'permission'), false)
+  f.settle({ origin: 'agent', context: { turnId }, outcome: { timedOut: true, phase: 'start' } })
+  await until(() => f.deliveries.some(delivery => delivery.origin === 'permission'))
+})
+
 test('pending permission tool exposure and input-busy retry use the production coordinator', async t => {
   const h = harness(t)
   const f = await h.connect()
@@ -189,6 +255,24 @@ test('pending permission tool exposure and input-busy retry use the production c
   assert.ok(!h.events.some(event => event.type === 'error'))
   h.runs.get(task.id).onEvent({ type: 'backend.permission.resolved', permission: { id: 'auth_1', status: 'approved' } })
   assert.equal(h.manager.get(task.id).authorization, null)
+})
+
+test('a transport reconnect restores an unresolved permission without restarting backend work', async t => {
+  const h = harness(t)
+  const f = await h.connect()
+  const task = h.request('read memory')
+  await until(() => h.runs.has(task.id))
+  h.runs.get(task.id).onEvent({ type: 'backend.permission.requested', permission: {
+    id: 'auth-reconnect', status: 'pending', summary: 'read memory',
+  } })
+  await until(() => f.deliveries.some(delivery => delivery.origin === 'permission'))
+  const old = f.deliveries.find(delivery => delivery.origin === 'permission')
+  f.disconnect()
+  assert.equal(old.settings.shouldRespond(), false)
+  await until(() => h.frontends.length === 2 && h.frontends[1].deliveries.some(delivery => delivery.origin === 'permission'))
+  assert.ok(h.frontends[1].initialContext.frontend.capabilities.includes('permission.respond'))
+  assert.equal(h.manager.get(task.id).authorization.status, 'pending')
+  assert.equal(h.runs.size, 1)
 })
 
 test('deactivation receives only holder metadata and stops frontend activity, not backend work', async t => {
@@ -251,6 +335,43 @@ test('client sleep actions retain the model session and wake without rebuilding 
   assert.equal(h.frontends.length, 1)
 })
 
+test('client-owned sleep tool forwards once, records success silently, and presence gates input independently', async t => {
+  const h = harness(t)
+  h.runtime.start()
+  h.send({ type: Input.CONNECT, inputEnabled: true, outputEnabled: true, clientTools: desktopClientTools }, {
+    descriptor: { type: 'desktop', instanceId: 'desktop' }, capabilities: ['client.tools', 'client.presence'],
+  })
+  await until(() => h.frontends.length === 1 && h.runtime.status().state === 'connected')
+  const f = h.frontends[0]
+  assert.equal(f.initialContext.frontend.tools[0].function.name, 'enter_sleep')
+  h.send({ type: Input.TEXT_MESSAGE, text: '请休息' })
+  await until(() => f.inputs.length === 1)
+  f.emit({ type: 'response.created', response: { id: 'sleep-response' } })
+  f.emit({ type: 'response.function_call_arguments.done', response_id: 'sleep-response',
+    call_id: 'sleep-call', name: 'enter_sleep', arguments: '{}' })
+  await until(() => h.events.some(event => event.type === 'client.action.request'))
+  const action = h.events.find(event => event.type === 'client.action.request')
+  assert.equal(action.name, 'client.tool.enter_sleep')
+  assert.equal(h.runtime.status().state, 'connected', 'a request is not a successful operation')
+  h.runtime.receiveActionResult({ type: 'client.action.result', event_id: 'sleep-result',
+    request_event_id: action.event_id, status: 'completed', output: { state: 'hidden' } })
+  await until(() => f.outputs.length === 1)
+  assert.equal(f.outputs[0].settings.createResponse, false)
+  h.runtime.updateClientPresence('sleeping')
+  assert.equal(h.runtime.status().state, 'sleeping')
+  h.send({ type: Input.AUDIO_APPEND, audio: 'asleep' })
+  assert.deepEqual(f.audio, [])
+  assert.equal(f.ready, true)
+  const notice = await new GatewayEventRouter().publish({ event_id: 'sleep-info', text: '客户端已休眠。' })
+  h.runtime.handleClientDelivery(notice)
+  await tick()
+  assert.match(f.deliveries.at(-1).text, /客户端已休眠/)
+  h.runtime.updateClientPresence('active')
+  assert.equal(h.runtime.status().state, 'connected')
+  assert.equal(h.frontends.length, 1)
+  assert.equal(h.events.filter(event => event.type === 'client.action.request').length, 1)
+})
+
 test('closing before tool discovery or inactivity timeout cannot start a new model or action', async t => {
   let ready
   const h = harness(t, { frontendToolSourcesReady: new Promise(resolve => { ready = resolve }) })
@@ -271,8 +392,34 @@ test('content-safety reconnect recovers frontend context without rerunning backe
   const task = h.request('continue working')
   await until(() => h.runs.has(task.id))
   f.emit({ type: 'error', error: { message: 'unsafe' } })
+  assert.equal(h.events.some(event => event.message?.includes('已自动恢复')), false)
   await until(() => h.frontends.length === 2 && h.frontends[1].deliveries.length > 0)
   assert.equal(h.runs.size, 1)
   assert.equal(h.manager.get(task.id).status, 'running')
   assert.ok(h.events.some(event => event.reason === 'provider_content_safety'))
+  assert.ok(h.events.some(event => event.message?.includes('已自动恢复')))
+})
+
+test('rejected restoration quarantines only replay context and stops repeated reconnects', async t => {
+  const h = harness(t)
+  h.conversationSync.restore({ ownerId: h.ownerId, sessionId: h.sessionId, messages: [
+    { id: 'u1', role: 'user', source: 'text-user', content: 'previous question' },
+    { id: 'a1', role: 'assistant', source: 'realtime-direct', content: 'previous answer' },
+  ] })
+  const first = await h.connect()
+  assert.equal(first.initialContext.recentMessages.length, 2)
+  first.emit({ type: 'error', __voiceOrigin: 'restore', error: { message: 'unsafe' } })
+  await until(() => h.frontends.length === 2)
+  assert.deepEqual(h.frontends[1].initialContext.recentMessages, [])
+  assert.equal(h.conversationSync.frontendContext(h).length, 2)
+  h.frontends[1].emit({ type: 'error', error: { message: 'unsafe' } })
+  await until(() => h.frontends.length === 3)
+  h.frontends[2].emit({ type: 'error', error: { message: 'unsafe' } })
+  assert.equal(h.runtime.status().state, 'unavailable')
+  // Even incoming microphone data and late errors cannot reopen a blocked session.
+  first.emit({ type: 'error', error: { message: 'unsafe' } })
+  h.send({ type: Input.AUDIO_APPEND, audio: 'AAAA' })
+  await new Promise(resolve => setTimeout(resolve, 600))
+  assert.equal(h.frontends.length, 3)
+  assert.ok(h.events.some(e => e.message?.includes('自动恢复已停止')))
 })

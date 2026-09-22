@@ -14,6 +14,15 @@ The native-audio scenario also runs through the real desktop renderer server,
 including its token-prefixed asset paths and unchanged `script-src 'self'` CSP.
 This catches worklet assets accidentally inlined as blocked `data:` URLs.
 No physical microphone or cloud API key is needed.
+Video-call scenarios use Chromium's fake camera and microphone with native
+capture: separate video/microphone controls, video before microphone permission,
+camera off/on without muting voice, microphone mute without stopping video,
+responsive preview placement, reconnect, permission denial/retry, and a late
+permission grant after the panel closes. Audio-only transports retain the
+microphone entry; camera capture never starts merely from loading the page.
+Visual state uses `client.event.publish` independently of image buffers. Tests
+check state edges, no per-frame duplicates, camera disconnects, and republishing
+inactive state after an upstream reconnect with the preview already closed.
 The Gateway double uses the shared protocol version and checks that the client
 requests that version during the handshake.
 

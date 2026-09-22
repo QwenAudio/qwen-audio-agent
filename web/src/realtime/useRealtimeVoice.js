@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { ClientEventState } from './client-event-state.js'
 import {
   GatewayClientEvent,
   GatewayServerEvent,
@@ -210,6 +211,8 @@ export default function useRealtimeVoice({
   clientLabel = 'WebUI',
   clientInstanceId: configuredClientInstanceId = '',
   clientStates = [],
+  clientTools = [],
+  clientPresence,
   onEvent,
   onInputError,
   onClientAction,
@@ -224,6 +227,9 @@ export default function useRealtimeVoice({
   const [inputReady, setInputReady] = useState(false)
   const [imageBufferAvailable, setImageBufferAvailable] = useState(false)
   const additionalCapabilitiesSignature = JSON.stringify(additionalCapabilities)
+  const clientToolsSignature = JSON.stringify(clientTools)
+  const clientPresenceRef = useRef(clientPresence)
+  clientPresenceRef.current = clientPresence
   const [error, setError] = useState('')
   const [visualError, setVisualError] = useState(false)
   const [connectionAttempt, setConnectionAttempt] = useState(0)
@@ -317,12 +323,37 @@ export default function useRealtimeVoice({
       // GatewayClient owns the wire envelope and supplies event_id for every
       // client event. Keeping that responsibility in the SDK prevents audio,
       // microphone, playback, and lifecycle events from drifting out of GCP.
-      socket.send(event)
+      socket.send(event.type === GatewayClientEvent.SLEEP && socket.supports?.(GatewayClientCapability.CLIENT_PRESENCE)
+        ? { type: GatewayClientProtocolEvent.CLIENT_PRESENCE_UPDATE, state: 'sleeping' }
+        : event)
       return true
     } catch {
       return false
     }
   }, [])
+
+  const publishClientEvent = useCallback((name, data = {}, deliveryHint) => (
+    sendSocketEvent({
+      type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
+      event_id: createGatewayProtocolEventId('client'),
+      ...(typeof name === 'object' ? name : { name, data }),
+      ...(deliveryHint ? { delivery_hint: deliveryHint } : {}),
+    })
+  ), [sendSocketEvent])
+  const environmentState = useMemo(() => new ClientEventState((name, text) => (
+    socketRef.current?.supports?.(GatewayClientCapability.CLIENT_EVENTS) === true
+      && publishClientEvent({ name, text }, undefined, 'context')
+  )), [publishClientEvent])
+  const publishClientState = useCallback((name, data) => (
+    environmentState.set(name, data)
+  ), [environmentState])
+
+  const publishPresence = useCallback(() => {
+    if (clientPresenceRef.current && socketRef.current?.supports?.(GatewayClientCapability.CLIENT_PRESENCE)) {
+      sendSocketEvent({ type: GatewayClientProtocolEvent.CLIENT_PRESENCE_UPDATE, state: clientPresenceRef.current })
+    }
+  }, [sendSocketEvent])
+  useEffect(() => { publishPresence() }, [clientPresence, publishPresence])
 
   const flushPendingManualInputs = useCallback(() => {
     const pending = pendingManualInputsRef.current
@@ -606,23 +637,23 @@ export default function useRealtimeVoice({
 
   useEffect(() => {
     if (!suspended) return
+    // Suspension is local capture/presentation state, not a disconnection.
+    // The retained Realtime session may never emit another connected event
+    // on wake, so replacing its status with "hidden" strands wake readiness.
     dispatchClientState({
       type: GatewayServerEvent.VOICE_STATE,
       state: 'idle',
     })
-    dispatchClientState({
-      type: GatewayServerEvent.VOICE_CONNECTION,
-      state: 'hidden',
-    })
-    setInputReady(false)
-    setError('')
-    setVisualError(false)
   }, [suspended])
 
   useEffect(() => {
     const mutedResponses = mutedPlaybackResponses.current
     const handleEvent = event => {
       dispatchClientState(event)
+      if (event.type === GatewayServerEvent.VOICE_READY) environmentState.setReady(true)
+      if (event.type === GatewayServerEvent.VOICE_CONNECTION && event.state !== 'connected') {
+        environmentState.setReady(false)
+      }
       if (event.type === GatewayServerEvent.VOICE_READY && event.inputSampleRate) {
         inputSampleRate.current = event.inputSampleRate
         hasConnectedRef.current = true
@@ -687,7 +718,10 @@ export default function useRealtimeVoice({
       clientLabel,
       clientInstanceId: clientInstanceId.current,
       takeover: takeoverRef.current,
-      capabilities: [...new Set([...gatewayClientCapabilities({ clientType }), ...JSON.parse(additionalCapabilitiesSignature)])],
+      capabilities: [...new Set([...gatewayClientCapabilities({ clientType }), ...JSON.parse(additionalCapabilitiesSignature),
+        ...(clientType === 'desktop' ? [GatewayClientCapability.CLIENT_PRESENCE] : []),
+      ])],
+      tools: JSON.parse(clientToolsSignature),
       locale: navigator.language,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       configure: () => {
@@ -722,6 +756,7 @@ export default function useRealtimeVoice({
         ...recovery,
       }),
       onStatus: status => {
+        if (!['ready', 'connected'].includes(status.state)) environmentState.setReady(false)
         if (status.state === 'connected') {
           setError('')
           setVisualError(false)
@@ -730,6 +765,7 @@ export default function useRealtimeVoice({
           eventRef.current?.(connectedEvent)
         } else if (status.state === 'ready') {
           takeoverRef.current = false
+          publishPresence()
           setImageBufferAvailable(
             status.event?.capabilities?.includes(
               GatewayClientCapability.INPUT_IMAGE_BUFFER,
@@ -790,6 +826,7 @@ export default function useRealtimeVoice({
     client.start()
 
     return () => {
+      environmentState.setReady(false)
       stopPlayback('connection_closed')
       client.stop()
       socketRef.current = null
@@ -799,10 +836,13 @@ export default function useRealtimeVoice({
     }
   }, [
     additionalCapabilitiesSignature,
+    clientToolsSignature,
+    publishPresence,
     clientLabel,
     connectionAttempt,
     clientStatesSignature,
     clientType,
+    environmentState,
     consumeMutedAudio,
     finishMutedAudio,
     inputOnlyMute,
@@ -1040,16 +1080,6 @@ export default function useRealtimeVoice({
     sendSocketEvent({ type: GatewayClientEvent.WAKE })
   ), [sendSocketEvent])
 
-  const publishClientEvent = useCallback((name, data = {}, deliveryHint) => (
-    sendSocketEvent({
-      type: GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH,
-      event_id: createGatewayProtocolEventId('client'),
-      name,
-      data,
-      ...(deliveryHint ? { delivery_hint: deliveryHint } : {}),
-    })
-  ), [sendSocketEvent])
-
   const requestGateway = useCallback((type, payload = {}) => {
     const client = socketRef.current
     if (!client?.request) {
@@ -1137,6 +1167,7 @@ export default function useRealtimeVoice({
     interrupt,
     wake,
     publishClientEvent,
+    publishClientState,
     sendInput,
     sendImageFrame,
     clearImageBuffer,

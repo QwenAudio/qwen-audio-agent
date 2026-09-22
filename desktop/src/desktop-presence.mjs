@@ -8,6 +8,7 @@ export class DesktopPresence {
     this.globalShortcut = globalShortcut
     this.logger = logger
     this.state = 'active'
+    this.reason = ''
     this.shortcut = ''
     this.shortcutRegistered = false
     this.shortcutPaused = false
@@ -15,6 +16,7 @@ export class DesktopPresence {
 
   send(state, reason = '') {
     this.state = state
+    this.reason = reason
     const window = this.getWindow?.()
     if (window && !window.isDestroyed()) {
       window.webContents.send('qwen-audio-agent:lifecycle', { state, reason })
@@ -24,6 +26,7 @@ export class DesktopPresence {
   wake(reason = 'shortcut') {
     const window = this.getWindow?.()
     if (!window || window.isDestroyed()) return false
+    this.logger?.info('desktop.wake_requested', { reason, previousState: this.state })
     if (window.isMinimized()) window.restore()
     window.show()
     window.focus()
@@ -40,11 +43,16 @@ export class DesktopPresence {
 
   hide(reason = 'inactivity') {
     const window = this.getWindow?.()
-    if (!window || window.isDestroyed() || this.state !== 'active') {
+    if (!window || window.isDestroyed()) {
+      throw new Error('Desktop window is unavailable')
+    }
+    // Explicit sleep can interrupt waking; only automatic idle hiding waits
+    // for readiness. A late ready acknowledgement must not undo this choice.
+    if (this.state !== 'active' && !(reason === 'requested' && this.state === 'waking')) {
       return this.state
     }
-    this.send('hidden', reason)
     window.hide()
+    this.send('hidden', reason)
     this.logger?.info('desktop.hidden', { reason })
     return this.state
   }

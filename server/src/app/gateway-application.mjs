@@ -78,7 +78,6 @@ import {
 import { replaySession } from '../session/session-replay.mjs'
 import { GatewayClientCommandRuntime } from '../client/client-command-runtime.mjs'
 import {
-  BUILTIN_CLIENT_EVENT_DEFINITIONS,
   ClientEventDefinitionRegistry,
   GatewayEventRouter,
 } from '../client/client-event-router.mjs'
@@ -363,10 +362,7 @@ const runtimeCommands = clientCommandRuntime || new GatewayClientCommandRuntime(
 })
 const gatewayEventRouter = clientEventRouter || new GatewayEventRouter({
   registry: new ClientEventDefinitionRegistry({
-    definitions: [
-      ...BUILTIN_CLIENT_EVENT_DEFINITIONS,
-      ...clientEventDefinitions,
-    ],
+    definitions: clientEventDefinitions,
   }),
 })
 const publicEndpointRuntime = publicEndpoint === undefined

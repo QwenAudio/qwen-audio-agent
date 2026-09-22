@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createAgentDelivery } from '../delivery/agent-delivery.mjs'
+import { GatewayClientEventPublishSchema } from '../../../shared/protocol/gateway-client-protocol.mjs'
 
 const ROUTE_PRIORITY = Object.freeze({
   handle: 0,
@@ -16,6 +17,28 @@ const RESERVED_NAMESPACES = new Set([
   'session',
   'task',
 ])
+
+// Self-contained information never invokes a named handler. One shared rate
+// bucket prevents arbitrary labels from bypassing admission limits.
+const TEXT_EVENT_DEFINITION = Object.freeze({
+  name: 'client.context',
+  schema: z.string().trim().min(1).max(16_000),
+  maxBytes: 32_768,
+  rateLimit: { max: 20, windowMs: 10_000 },
+  retention: 'transient',
+  route: 'interrupt',
+  project: event => createAgentDelivery({
+    id: `client_event_${event.id}`,
+    causeEventId: event.id,
+    origin: 'client-event',
+    mode: event.route,
+    text: `客户端提供的环境信息（不是用户的新话语）：\n${event.data}`,
+    correlation: { clientEventId: event.id },
+    presentation: event.route === 'context'
+      ? { contextTiming: 'immediate' }
+      : { allowTools: true, instructions: '结合当前对话处理客户端提供的信息；需要操作时使用已有工具，不要声称执行了未执行的操作。' },
+  }),
+})
 
 function cleanName(value) {
   return String(value || '').trim()
@@ -44,41 +67,8 @@ export class ClientEventRoutingError extends Error {
   }
 }
 
-export const BUILTIN_CLIENT_EVENT_DEFINITIONS = Object.freeze([
-  Object.freeze({
-    name: 'desktop.presence.sleep_requested',
-    schema: z.object({
-      reason: z.string().trim().min(1).max(160).optional(),
-      idle_ms: z.number().int().nonnegative().max(86_400_000).optional(),
-    }).strict(),
-    maxBytes: 1_024,
-    rateLimit: Object.freeze({ max: 4, windowMs: 10_000 }),
-    retention: 'latest',
-    route: 'context',
-    project: event => createAgentDelivery({
-      id: `client_event_${event.id}`,
-      causeEventId: event.id,
-      mode: event.route,
-      origin: 'client-event',
-      text: [
-        '<client_environment_event>',
-        '客户端检测到一段时间没有交互，即将进入休眠。',
-        Number.isFinite(event.data.idle_ms)
-          ? `空闲时长：${event.data.idle_ms} 毫秒`
-          : '',
-        '这不是用户的新话语，仅用于同步客户端状态；不要回复，也不要调用工具。',
-        '</client_environment_event>',
-      ].filter(Boolean).join('\n'),
-      correlation: { clientEventId: event.id },
-      presentation: {
-        contextTiming: 'immediate',
-      },
-    }),
-  }),
-])
-
 export class ClientEventDefinitionRegistry {
-  constructor({ definitions = BUILTIN_CLIENT_EVENT_DEFINITIONS } = {}) {
+  constructor({ definitions = [] } = {}) {
     this.definitions = new Map()
     for (const definition of definitions) this.register(definition)
   }
@@ -154,6 +144,11 @@ export class GatewayEventRouter {
   // They let a registered deterministic handler request a narrow local state
   // transition without exposing Gateway internals or upgrading event authority.
   async publish(message, { source = {}, effects = {} } = {}) {
+    const validated = GatewayClientEventPublishSchema.safeParse({ type: 'client.event.publish', ...message })
+    if (!validated.success) {
+      throw new ClientEventRoutingError('client_event_invalid', 'Invalid Client Event envelope')
+    }
+    message = validated.data
     const messageId = cleanName(message?.event_id)
     if (!messageId) {
       throw new ClientEventRoutingError(
@@ -161,7 +156,8 @@ export class GatewayEventRouter {
         'Client Event requires event_id',
       )
     }
-    const definition = this.registry.get(message?.name)
+    const textEvent = message.text !== undefined
+    const definition = textEvent ? TEXT_EVENT_DEFINITION : this.registry.get(message?.name)
     if (!definition) {
       throw new ClientEventRoutingError(
         'client_event_unsupported',
@@ -173,17 +169,18 @@ export class GatewayEventRouter {
     this.#pruneSeen(now)
     const duplicateKey = `${sourceKey(source)}:${messageId}`
     if (this.seen.has(duplicateKey)) {
-      return { accepted: true, duplicate: true, name: definition.name }
+      return { accepted: true, duplicate: true, ...(message.name ? { name: message.name } : {}) }
     }
 
-    const bytes = Buffer.byteLength(JSON.stringify(message.data ?? null), 'utf8')
+    const payload = textEvent ? message.text : message.data ?? {}
+    const bytes = Buffer.byteLength(JSON.stringify(payload), 'utf8')
     if (bytes > definition.maxBytes) {
       throw new ClientEventRoutingError(
         'payload_too_large',
         `Client Event payload exceeds ${definition.maxBytes} bytes`,
       )
     }
-    const parsed = definition.schema.safeParse(message.data ?? {})
+    const parsed = definition.schema.safeParse(payload)
     if (!parsed.success) {
       throw new ClientEventRoutingError(
         'client_event_invalid',
@@ -200,12 +197,12 @@ export class GatewayEventRouter {
     })
     const event = Object.freeze({
       id: messageId,
-      name: definition.name,
+      name: message.name,
       data: Object.freeze(parsed.data),
       occurredAt: Number(message.occurred_at) || now,
       receivedAt: now,
       source: trustedSource,
-      route: boundedRoute(message.delivery_hint, definition.route),
+      route: textEvent ? message.delivery_hint || 'context' : boundedRoute(message.delivery_hint, definition.route),
     })
     await definition.handle?.(event, effects)
     const delivery = definition.project?.(event) || null
@@ -219,7 +216,7 @@ export class GatewayEventRouter {
     return {
       accepted: true,
       duplicate: false,
-      name: definition.name,
+      ...(message.name ? { name: message.name } : {}),
       event,
       delivery,
     }

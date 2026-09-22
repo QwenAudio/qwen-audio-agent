@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { ClientToolSource } from '../src/frontend/tools/client-tool-source.mjs'
+import { desktopClientTools } from '../../web/src/desktop/client-tools.js'
 import test from 'node:test'
 import { WebSocketServer } from 'ws'
 import { config } from '../src/core/config.mjs'
@@ -15,6 +17,7 @@ import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
 import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-context.mjs'
 import {
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
+  DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
@@ -169,6 +172,7 @@ test('carries originating turn metadata to a created realtime response', () => {
   frontend.pendingResponses.push({
     origin: 'agent',
     context: { turnId: 'voice-100-1', taskId: 'job_1' },
+    responseRequested: true,
     resolve: () => {},
   })
   const event = { type: 'response.created', response: { id: 'response_1' } }
@@ -285,12 +289,11 @@ test('cancels and diagnoses a response only after output becomes inactive', asyn
     responseId: 'response-stalled',
   })
   assert.equal(sent.at(-1).type, 'response.cancel')
-  assert.equal(diagnostics.length, 1)
-  assert.equal(diagnostics[0].event, 'realtime.response_timeout')
-  assert.equal(diagnostics[0].provider, 'dashscope')
-  assert.equal(diagnostics[0].responseId, 'response-stalled')
-  assert.equal(diagnostics[0].phase, 'inactivity')
-  assert.ok(diagnostics[0].inactivityMs >= 10)
+  const timeout = diagnostics.find(event => event.event === 'realtime.response_timeout')
+  assert.equal(timeout.provider, 'dashscope')
+  assert.equal(timeout.responseId, 'response-stalled')
+  assert.equal(timeout.phase, 'inactivity')
+  assert.ok(timeout.inactivityMs >= 10)
 })
 
 test('skips a queued response when its late deduplication guard rejects it', async () => {
@@ -652,6 +655,7 @@ test('publishes the active DashScope profile without assigning one to s2s', t =>
     active.providers.find(provider => provider.key === 'dashscope')
       ?.realtimeModelIds,
     [
+      DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
       DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
       DASHSCOPE_OMNI_PLUS_REALTIME_MODEL,
       DEFAULT_DASHSCOPE_REALTIME_MODEL,
@@ -688,17 +692,23 @@ test('client text-only hints do not change the Qwen Realtime session', () => {
   )
 })
 
-test('offers the sleep tool only to a client that advertises the action', () => {
+test('offers the sleep tool only when the client supplies its definition', () => {
   const ordinary = REALTIME_PROVIDERS.qwen.buildSession({
     configured: false,
     agentContext: { client: { actions: [] } },
   })
   const desktop = REALTIME_PROVIDERS.qwen.buildSession({
     configured: false,
-    agentContext: { client: { actions: ['desktop.presence.enter_sleep'] } },
+    agentContext: { frontend: { tools: (() => {
+      const source = new ClientToolSource({ actions: {} })
+      source.configure(desktopClientTools)
+      return source.tools().map(tool => tool.definition)
+    })() } },
   })
   const s2sDesktop = REALTIME_PROVIDERS['speech-to-speech'].buildSession({
-    agentContext: { client: { actions: ['desktop.presence.enter_sleep'] } },
+    agentContext: { frontend: { tools: desktopClientTools.map(tool => ({ type: 'function', function: {
+      name: tool.name, description: tool.description, parameters: tool.inputSchema,
+    } })) } },
   })
 
   assert.equal(
@@ -767,7 +777,7 @@ test('adds an event id to realtime client events', () => {
   assert.equal(sent.audio, 'pcm')
 })
 
-test('sends an Omni image only after audio has established the realtime timeline', t => {
+test('Omni can start video with a muted microphone using one silent audio prefix', t => {
   const originalModel = config.audioModel
   t.after(() => {
     config.audioModel = originalModel
@@ -781,14 +791,33 @@ test('sends an Omni image only after audio has established the realtime timeline
   }
 
   assert.equal(frontend.appendImage('jpeg-frame'), true)
-  assert.deepEqual(sent, [])
-  frontend.appendAudio('pcm')
-
   assert.deepEqual(sent.map(event => event.type), [
     'input_audio_buffer.append',
     'input_image_buffer.append',
   ])
+  const silence = Buffer.from(sent[0].audio, 'base64')
+  assert.equal(silence.length, 640)
+  assert.ok(silence.every(value => value === 0))
   assert.equal(sent[1].image, 'jpeg-frame')
+  frontend.appendImage('next-frame')
+  assert.equal(sent.filter(event => event.type === 'input_audio_buffer.append').length, 1)
+  frontend.appendAudio('microphone')
+  assert.equal(sent.at(-1).audio, 'microphone')
+
+  for (const imageRequiresAudioStart of [false, true]) {
+    const other = new RealtimeFrontend({ provider: {
+      ...REALTIME_PROVIDERS.qwen,
+      key: 'video-test',
+      capabilities: { imageRequiresAudioStart },
+    } })
+    const messages = []
+    other.ws = { readyState: 1, send: value => messages.push(JSON.parse(value)) }
+    if (imageRequiresAudioStart) other.appendAudio('existing-audio')
+    other.appendImage('frame')
+    assert.deepEqual(messages.map(event => event.type), imageRequiresAudioStart
+      ? ['input_audio_buffer.append', 'input_image_buffer.append']
+      : ['input_image_buffer.append'])
+  }
 })
 
 test('isolates a provider with a different wire message shape', () => {
@@ -836,6 +865,7 @@ test('isolates a provider with a different wire message shape', () => {
   frontend.pendingResponses.push({
     origin: 'agent',
     context: { turnId: 'turn-custom' },
+    responseRequested: true,
     resolve: () => {},
     settled: false,
     timer: null,
@@ -1118,6 +1148,7 @@ test('restores recent conversation once after configuring a fresh session', () =
 
   frontend.handleProviderEvent({ type: 'session.updated' })
   assert.equal(sent.length, 2)
+  frontend.handleProviderEvent({ type: 'conversation.item.created', item: sent[1].item })
 })
 
 test('restores recent conversation through the shared GA session lifecycle', () => {
@@ -1136,6 +1167,7 @@ test('restores recent conversation through the shared GA session lifecycle', () 
   assert.equal(sent[1].type, 'conversation.item.create')
   assert.match(sent[1].item.id, /^msg_[0-9a-f]{32}$/)
   assert.match(sent[1].item.content[0].text, /此前正在处理项目/)
+  frontend.handleProviderEvent({ type: 'conversation.item.created', item: sent[1].item })
 })
 
 for (const [providerName, createFrontend] of [
@@ -1189,8 +1221,82 @@ for (const [providerName, createFrontend] of [
     ], 'restoration must happen once without creating a response or updating tools')
     assert.deepEqual(sent[0].session.tools, initialTools)
     assert.deepEqual(frontend.agentContext, originalContext)
+    frontend.handleProviderEvent({ type: 'conversation.item.created', item: sent[1].item })
   })
 }
+
+test('restored context must be acknowledged before becoming ready', async () => {
+  let ready = 0
+  const frontend = createQwenFrontend({
+    agentContext: { recentMessages: [{ role: 'user', content: 'earlier conversation' }] },
+  })
+  const sent = []
+  frontend.send = payload => sent.push(payload)
+  frontend.handleProviderEvent({ type: 'session.updated' }, { onSessionReady: () => ready++ })
+  assert.equal(frontend.ready, false)
+  assert.equal(ready, 0)
+  frontend.handleProviderEvent({ type: 'session.updated' }, { onSessionReady: () => ready++ })
+  assert.equal(frontend.ready, false)
+  assert.equal(sent.length, 1)
+  frontend.handleProviderEvent({ type: 'conversation.item.created', item: sent[0].item })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(frontend.ready, true)
+  assert.equal(ready, 1)
+})
+
+test('rejected restoration identifies its origin and never reports ready', async () => {
+  const events = [], errors = []
+  const frontend = createQwenFrontend({
+    agentContext: { recentMessages: [{ role: 'user', content: 'earlier conversation' }] },
+    onEvent: event => events.push(event),
+  })
+  frontend.send = () => {}
+  frontend.handleProviderEvent({ type: 'session.updated' }, {
+    onSessionReady: () => assert.fail('rejected restoration cannot be ready'),
+    onSessionError: error => errors.push(error),
+  })
+  frontend.handleProviderEvent({ type: 'error', error: {
+    code: 'data_inspection_failed', message: 'Content rejected',
+  } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(frontend.ready, false)
+  assert.equal(events.at(-1).__voiceOrigin, 'restore')
+  assert.match(errors[0].message, /data_inspection_failed/)
+  assert.equal(frontend.conversationItemWaiters.size, 0)
+})
+
+test('closing during history restoration cannot resurrect a ready session', async () => {
+  const errors = []
+  const frontend = createQwenFrontend({
+    agentContext: { recentMessages: [{ role: 'user', content: 'earlier conversation' }] },
+  })
+  frontend.send = () => {}
+  frontend.handleProviderEvent({ type: 'session.updated' }, {
+    onSessionReady: () => assert.fail('closed session cannot become ready'),
+    onSessionError: error => errors.push(error),
+  })
+  frontend.close()
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(frontend.ready, false)
+  assert.equal(frontend.conversationItemWaiters.size, 0)
+  assert.equal(errors.length, 1)
+})
+
+test('providers without conversation acknowledgements can still restore and become ready', async () => {
+  let ready = false
+  const frontend = createQwenFrontend({
+    agentContext: { recentMessages: [{ role: 'user', content: 'earlier conversation' }] },
+  })
+  frontend.capabilities.acknowledgesConversationItems = false
+  frontend.send = () => {}
+  frontend.handleProviderEvent({ type: 'session.updated' }, {
+    onSessionReady: () => { ready = true },
+  })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(ready, true)
+  assert.equal(frontend.ready, true)
+  assert.equal(frontend.conversationItemWaiters.size, 0)
+})
 
 test('can close a stale function call without creating a new model response', async () => {
   const frontend = createQwenFrontend()
@@ -1235,9 +1341,10 @@ test('accepts an Omni conversation item receipt with a provider-assigned id', as
     role: 'user',
     content: [{ type: 'input_text', text: 'hi' }],
   })
+  await new Promise(resolve => setImmediate(resolve))
   frontend.handleLifecycle({
     type: 'conversation.item.created',
-    item: { id: 'item_provider_assigned', type: 'message', role: 'user' },
+    item: { ...sent[0].item, id: 'item_provider_assigned' },
   })
 
   assert.equal((await created).id, 'item_provider_assigned')
@@ -1641,7 +1748,7 @@ test('cancelling a response before response.created releases its queue entry', a
   assert.equal(frontend.pendingResponses.length, 0)
 })
 
-test('cancelling an active response releases queued input without response.done', async () => {
+test('cancelling an active response releases queued input after cancellation acknowledgement', async () => {
   const frontend = createQwenFrontend({
     responseCancelGraceMs: 1,
     responseStartTimeoutMs: 50,
@@ -1663,6 +1770,10 @@ test('cancelling an active response releases queued input without response.done'
   assert.deepEqual(await interrupted, {
     cancelled: true,
     phase: 'completion',
+  })
+
+  frontend.handleLifecycle({
+    type: 'error', error: { message: 'no active response' },
   })
 
   await new Promise(resolve => setTimeout(resolve, 5))
@@ -2065,6 +2176,7 @@ test('retries a response refused by an occupied single response slot', async () 
 
 test('surfaces a refusal a compliant provider cannot retry', async () => {
   const frontend = createQwenFrontend()
+  frontend.capabilities.singleResponseSlot = false
   frontend.ready = true
   frontend.send = () => {}
 
@@ -2086,7 +2198,7 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
 
   assert.deepEqual(qwen.capabilities, {
     acknowledgesSessionUpdate: true,
-    singleResponseSlot: false,
+    singleResponseSlot: true,
     responseMetadataCorrelation: false,
     perResponseInstructions: true,
     sessionOutputVoice: true,
@@ -2096,6 +2208,7 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     conversationItems: true,
     clientResponses: true,
     mutableSession: true,
+    imageRequiresAudioStart: true,
   })
 })
 

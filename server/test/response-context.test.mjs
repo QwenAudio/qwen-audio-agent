@@ -127,3 +127,14 @@ test('late provider correlation replaces only explicitly supplied fields', () =>
     consumesTaskNotification: true,
   })
 })
+
+test('obsolete output remains suppressed even when later provider metadata is empty', () => {
+  const contexts = new Map()
+  const first = responseActivityContextPatch({
+    event: { __voiceContext: { suppressed: true } }, fallback: { origin: 'agent' },
+  })
+  mergeResponseContext(contexts, 'late', first)
+  const existing = contexts.get('late')
+  const next = responseActivityContextPatch({ existing, event: { __voiceContext: {} } })
+  assert.equal(mergeResponseContext(contexts, 'late', next).suppressed, true)
+})

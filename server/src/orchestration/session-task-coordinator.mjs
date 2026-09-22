@@ -29,7 +29,8 @@ export class SessionTaskCoordinator {
     this.retryTimer = null
     this.unsubscribe = null
     this.announcements = presentation.createAnnouncements({
-      isTaskActive: id => this.activeTasks().some(task => task.id === id),
+      isTaskActive: id => this.activeTasks().some(task => task.id === id
+        && task.authorization?.status !== 'pending' && task.inputRequest?.status !== 'pending'),
       onDelivered: ids => taskManager.markNotificationsDelivered(ids, {
         claimantId: this.claimantId,
       }),
@@ -131,6 +132,15 @@ export class SessionTaskCoordinator {
   announcePendingPermissions() { this.announcePending('permission') }
   announcePendingInputs() { this.announcePending('input') }
 
+  resetPresentation() {
+    // Requests belong to Tasks, but their delivery receipts belong to one
+    // frontend connection. Invalidate old attempts before reconnecting.
+    if (this.retryTimer) clearTimeout(this.retryTimer)
+    this.retryTimer = null
+    this.requests.permission.clear()
+    this.requests.input.clear()
+  }
+
   retryPermission(id) {
     this.requests.permission.delete(id)
     this.announcePendingPermissions()
@@ -167,6 +177,7 @@ export class SessionTaskCoordinator {
     this.onTaskEvent(event)
     const state = this.presentation.state()
     if (event.type === TaskDomainEvent.UPDATED && event.message
+      && task.authorization?.status !== 'pending' && task.inputRequest?.status !== 'pending'
       && state.outputEnabled && !state.sleeping && !state.waking) {
       this.announcements.progress.offer({
         taskId: task.id, startedAt: task.startedAt, message: event.message,
@@ -175,6 +186,7 @@ export class SessionTaskCoordinator {
     const requested = event.type === TaskDomainEvent.PERMISSION_REQUESTED ? 'permission'
       : event.type === TaskDomainEvent.INPUT_REQUESTED ? 'input' : null
     if (requested) {
+      this.announcements.progress.remove(task.id)
       // Expose the response tool before the corresponding model input.
       this.presentation.updateContext()
       if (state.sleeping) this.onWake()
@@ -206,10 +218,7 @@ export class SessionTaskCoordinator {
     this.closed = true
     this.unsubscribe?.()
     this.unsubscribe = null
-    clearTimeout(this.retryTimer)
-    this.retryTimer = null
-    this.requests.permission.clear()
-    this.requests.input.clear()
+    this.resetPresentation()
     this.announcements.results.close()
     this.announcements.progress.close()
   }

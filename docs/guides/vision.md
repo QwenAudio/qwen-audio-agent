@@ -11,13 +11,13 @@ You can send files for backend processing or provide live visual context to a vo
 ## WebUI Camera
 
 1. Select [Qwen Omni](../voice-frontends/qwen-omni-realtime.md), [Google Live](../voice-frontends/google-live.md), or [MiniCPM-o](../voice-frontends/minicpm-o.md) with `mode=video`.
-2. Start the Gateway, open WebUI, connect, and grant microphone permission.
-3. Open the camera preview and grant camera permission. Enable the microphone, then select “Start live vision” before asking about the scene.
-4. Turn the camera off when finished.
+2. Start the Gateway and open WebUI. The header keeps “Enable microphone” and adds “Enable video” for video-capable configurations.
+3. Select “Enable video” and grant camera permission. The preview opens and starts sending live frames. Enable the microphone separately to ask a question by voice.
+4. Select “Disable video” or close the preview to stop capture and transmission, clear pending frames, and release the camera without changing microphone state. The camera icon inside the preview also toggles visual input independently.
 
 Controls depend on capabilities negotiated with the Gateway. Enabling a camera does not add vision to an audio-only model. Remote browsers need trusted HTTPS; local use can use `localhost` or `127.0.0.1`.
 
-Preview alone sends no frames. Muting the microphone pauses live vision; unmuting resumes it. Stop live vision to stop transmission, or close the camera to also release the device.
+Microphone and video controls are independent: muting does not close video, and voice remains available if camera permission is denied. The client reports visual-input state through the common environment-event API; Gateway updates the model's context where supported without triggering a reply. Previously seen frames remain historical context, not evidence of the current environment. The client reports its current state again after reconnecting.
 
 Live input sends rate-limited JPEG frames, not video files. A frame does not create a user message or trigger a reply on its own; ask your question by voice. Frames are not automatically saved as attachments, chat history, or knowledge-library documents.
 
@@ -25,7 +25,7 @@ Live input sends rate-limited JPEG frames, not video files. A frame does not cre
 
 - Standard WebUI supports live camera input. Desktop's orb and conversation panel, and TUI, do not currently capture live frames.
 - Mobile reuses WebUI; camera availability also depends on OS permissions and WebView support.
-- MiniCPM-o video mode supports audiovisual chat, but its current adapter has no tool calls or text input and cannot orchestrate backend work.
+- MiniCPM-o video mode supports audiovisual chat, but frames travel in audio batches and are not delivered independently while muted. Its current adapter has no tool calls, text input, or context-state injection and cannot orchestrate backend work.
 
 ## Screen Inspection and Observation
 

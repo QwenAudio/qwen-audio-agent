@@ -21,7 +21,7 @@ export class RealtimeAgentDeliveryRuntime {
     if (delivery.mode === AgentDeliveryMode.HANDLE) {
       return { completed: true, handled: true, mode: delivery.mode }
     }
-    if (this.isDeliveryBlocked()) {
+    if (this.isDeliveryBlocked(delivery)) {
       return { completed: false, blocked: true, mode: delivery.mode }
     }
     const frontend = this.getFrontend?.()

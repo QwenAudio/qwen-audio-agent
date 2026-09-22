@@ -84,7 +84,7 @@ Exit criteria: a 5.x and a 6.0 reference Client can connect to the same Gateway 
 - [x] Keep each immediate command result correlated by `request_event_id`; publish later Task and permission changes through the normal event stream, which becomes replayable in GCP5.
 - [x] Stamp trusted source identity at the connection boundary.
 - [x] Enforce schema, size, rate, retention, deduplication, and coalescing policy.
-- [x] Add `desktop.presence.sleep_requested` as the first end-to-end event.
+- [x] Support self-contained client information events; keep client tools and presence operations separate.
 
 Exit criteria: a Client can publish a registered environment or user-behavior event without pretending it is user text or adding a new Gateway branch, and first-party runtime commands have a WebSocket replacement for their internal REST path.
 

@@ -37,7 +37,6 @@
 }
 
 .composer-attach,
-.composer-camera,
 .composer-send {
   min-width: 42px;
   height: 42px;
@@ -48,23 +47,7 @@
   cursor: pointer;
 }
 
-.composer-camera {
-  display: grid;
-  place-items: center;
-  min-width: 42px;
-  height: 42px;
-  border: 0;
-  border-radius: 13px;
-  color: inherit;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.composer-camera:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.composer-camera svg {
+.camera-stream svg {
   width: 21px;
   height: 21px;
   fill: none;
@@ -77,6 +60,7 @@
 }
 
 .visual-stream-dock:not(:empty) {
+  flex-shrink: 0;
   width: min(300px, 100%);
   margin: 0 0 10px auto;
 }
@@ -90,7 +74,8 @@
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.42);
 }
 
-.camera-stream video {
+.camera-stream video,
+.camera-placeholder {
   display: block;
   width: 100%;
   max-height: 220px;
@@ -99,6 +84,49 @@
   border-radius: 12px;
   background: #030405;
 }
+
+.camera-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  color: #aaa7b4;
+  font-size: 12px;
+}
+
+.camera-heading,
+.camera-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.camera-heading {
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.camera-controls { margin-top: 10px; }
+
+.camera-icon-button {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: #ffffff12;
+  cursor: pointer;
+}
+
+.camera-icon-button:hover { background: #ffffff24; }
+.camera-icon-button.active { color: #50dfab; background: #50dfab1a; }
+.camera-icon-button:focus-visible { outline: 2px solid #a99bff; outline-offset: 3px; }
 
 .camera-stream-docked {
   position: fixed;
@@ -122,7 +150,7 @@
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 10px 2px 4px;
+  padding: 0;
   color: #aaa7b4;
 }
 
@@ -136,29 +164,6 @@
 .camera-status.active .camera-status-dot {
   background: #50dfab;
   box-shadow: 0 0 10px #50dfab;
-}
-
-.camera-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 8px;
-}
-
-.camera-actions button {
-  min-height: 34px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 11px;
-  color: inherit;
-  background: rgba(255, 255, 255, 0.1);
-  font-size: 12px;
-}
-
-.camera-actions .composer-send,
-.camera-actions .camera-live.active {
-  background: #6d5dfc;
-  color: white;
 }
 
 .composer-send {
@@ -400,7 +405,7 @@ header {
 .status i.speaking { background: #9a7dff; box-shadow: 0 0 12px #9a7dff; }
 .status i.error { background: #ff6f78; box-shadow: 0 0 12px #ff6f78; }
 header button { padding: 9px 13px; border-radius: 10px; color: #ddd; border: 1px solid #ffffff18; background: #ffffff08; }
-header .voice.active { color: white; border-color: #785cf4; background: #785cf4; }
+header .voice.active, header .video-toggle.active { color: white; border-color: #785cf4; background: #785cf4; }
 header .voice.waiting { color: #ded5ff; border-color: #927cf480; }
 header .ghost.active { color: white; border-color: #785cf480; background: #785cf42e; }
 

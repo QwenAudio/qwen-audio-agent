@@ -292,6 +292,10 @@ export function attachGatewayClientTransport(server, {
         }
         return
       }
+      if (message.type === GatewayClientProtocolEvent.CLIENT_PRESENCE_UPDATE) {
+        sessionRuntime.updateClientPresence(message.state)
+        return
+      }
       if (message.type === GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE) {
         const result = sessionRuntime.updateOutputVoice(message.voice)
         send(ws, {

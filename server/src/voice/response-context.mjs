@@ -34,6 +34,8 @@ export function responseActivityContextPatch({
   if (typeof event?.__voiceOrigin === 'string' && event.__voiceOrigin) {
     patch.origin = event.__voiceOrigin
   }
+  // Cancellation/obsolescence is sticky, including on later output deltas.
+  if (event?.__voiceContext?.suppressed === true) patch.suppressed = true
   return patch
 }
 

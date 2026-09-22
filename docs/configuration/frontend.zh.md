@@ -8,7 +8,7 @@
 
 | 服务 | Provider 值 | 必填或首次使用配置 | 使用说明 |
 | --- | --- | --- | --- |
-| Qwen Audio / Omni | `dashscope`（默认） | `DASHSCOPE_API_KEY` | [Audio 语音](../voice-frontends/qwen-audio-realtime.zh.md) / [Omni 视觉](../voice-frontends/qwen-omni-realtime.zh.md) |
+| Qwen Audio / Omni 3.5 / Omni 3.8 | `dashscope`（默认） | `DASHSCOPE_API_KEY`；Omni 3.8 还需将 `QWEN_AUDIO_REALTIME_BASE_URL` 设为业务空间专属地址 | [Audio 语音](../voice-frontends/qwen-audio-realtime.zh.md) / [Omni 视觉](../voice-frontends/qwen-omni-realtime.zh.md) |
 | StepAudio 3 | `stepfun` | `STEPFUN_API_KEY` | [StepFun](../voice-frontends/stepfun.zh.md) |
 | OpenAI Realtime | `gpt-live` | `OPENAI_API_KEY` | [GPT-Live](../voice-frontends/gpt-live.zh.md) |
 | Gemini Live | `google-live` | `GOOGLE_API_KEY` | [Google Live](../voice-frontends/google-live.zh.md) |
@@ -43,7 +43,7 @@ STEPFUN_API_KEY=your-stepfun-key
 | speech-to-speech | 在上游服务设置 | 在上游服务设置 | `SPEECH_TO_SPEECH_REALTIME_URL` |
 | MiniCPM-o | 在上游服务设置 | 在上游服务设置 | `MINICPM_O_REALTIME_URL` |
 
-地址和模型留空使用该 Provider 的默认值。自建服务如需 Bearer 认证，分别设置 `SPEECH_TO_SPEECH_AUTH_TOKEN` 或 `MINICPM_O_AUTH_TOKEN`。可用别名与协议细节见各服务页面。
+地址和模型留空使用该 Provider 的默认值；Qwen3.8 Omni 例外，必须填写[业务空间专属地址](../voice-frontends/qwen-omni-realtime.zh.md#配置)。自建服务如需 Bearer 认证，分别设置 `SPEECH_TO_SPEECH_AUTH_TOKEN` 或 `MINICPM_O_AUTH_TOKEN`。可用别名与协议细节见各服务页面。
 
 DashScope 当前内置以下模型档案：
 
@@ -53,6 +53,7 @@ DashScope 当前内置以下模型档案：
 | `qwen-audio-3.0-realtime-flash` | 文字、语音 |
 | `qwen3.5-omni-flash-realtime` | 文字、语音、实时视觉帧 |
 | `qwen3.5-omni-plus-realtime` | 文字、语音、实时视觉帧 |
+| `qwen3.8-omni-flash-realtime` | 文字、语音、实时视觉帧 |
 
 这些档案均支持工具调用。模型能否接收视觉帧，还取决于客户端和传输通道，见[视觉输入](../guides/vision.zh.md)。
 

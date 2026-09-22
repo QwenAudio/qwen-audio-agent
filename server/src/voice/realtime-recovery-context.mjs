@@ -14,6 +14,20 @@ export class RealtimeRecoveryContext {
     this.excludedTurnIds = new Set()
     this.excludedMessageIds = new Set()
     this.excludedTaskIds = new Set()
+    this.attempts = 0
+  }
+
+  beginRecovery(context, messages) {
+    // Do not reset on a successful handshake or the recovery announcement:
+    // neither proves that a new user turn can actually complete.
+    this.attempts += 1
+    if (this.attempts > 2) return false
+    this.excludeFailure(this.attempts === 1 ? context : {}, messages)
+    return true
+  }
+
+  recordSuccessfulTurn() {
+    this.attempts = 0
   }
 
   project(messages = []) {
@@ -39,10 +53,11 @@ export class RealtimeRecoveryContext {
     }
     if (scoped) return
 
-    // A provider can reject before emitting response.created, leaving no
-    // response context to correlate. Exclude only the latest user message as a
-    // conservative fallback instead of discarding the whole recent history.
-    const latestUser = [...messages].reverse().find(message => message.role === 'user')
-    if (latestUser?.id) this.excludedMessageIds.add(latestUser.id)
+    // A restored history is a single provider input. Without correlation we
+    // cannot identify the offending line. Quarantine that snapshot, not just
+    // its last user message; visible/durable history and future turns survive.
+    for (const message of messages) {
+      if (message.id) this.excludedMessageIds.add(message.id)
+    }
   }
 }

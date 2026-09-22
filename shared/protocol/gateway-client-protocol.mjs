@@ -31,6 +31,7 @@ export const GatewayClientProtocolEvent = Object.freeze({
   CLIENT_EVENT_PUBLISH_RESULT: 'client.event.publish.result',
   CLIENT_ACTION_REQUEST: 'client.action.request',
   CLIENT_ACTION_RESULT: 'client.action.result',
+  CLIENT_PRESENCE_UPDATE: 'client.presence.update',
   TASK_CREATE: 'task.create',
   TASK_CREATE_RESULT: 'task.create.result',
   TASK_GET: 'task.get',
@@ -61,6 +62,8 @@ export const GatewayClientCapability = Object.freeze({
   INPUT_RESPOND: 'tasks.input.respond',
   CONVERSATION_HISTORY: 'conversation.history',
   CLIENT_EVENTS: 'client.events',
+  CLIENT_TOOLS: 'client.tools',
+  CLIENT_PRESENCE: 'client.presence',
   SESSION_OUTPUT_VOICE: 'session.output_voice',
   CLIENT_ACTION_ENTER_SLEEP: 'client.actions.desktop.presence.enter_sleep',
   SESSION_REPLAY: 'session.replay',
@@ -92,6 +95,8 @@ export const GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES = Object.freeze([
   GatewayClientCapability.INPUT_RESPOND,
   GatewayClientCapability.CONVERSATION_HISTORY,
   GatewayClientCapability.CLIENT_EVENTS,
+  GatewayClientCapability.CLIENT_TOOLS,
+  GatewayClientCapability.CLIENT_PRESENCE,
   GatewayClientCapability.SESSION_OUTPUT_VOICE,
   GatewayClientCapability.CLIENT_ACTION_ENTER_SLEEP,
   GatewayClientCapability.SESSION_REPLAY,
@@ -117,6 +122,19 @@ export const GatewayServerEnvelopeSchema = GatewayClientEnvelopeSchema.extend({
   sequence: z.number().int().positive().optional(),
 })
 
+// Tool descriptions reuse name/description/inputSchema. GCP is the transport,
+// not an MCP server; response_on_success is a GCP presentation policy.
+export const GatewayClientToolSchema = z.object({
+  name: z.string().regex(/^[a-z][a-z0-9_]{0,63}$/),
+  description: z.string().trim().min(1).max(4_000),
+  inputSchema: z.object({ type: z.literal('object') }).passthrough()
+    .refine(value => new TextEncoder().encode(JSON.stringify(value)).length <= 16_384, 'Tool schema too large'),
+  response_on_success: z.enum(['auto', 'none']).optional(),
+}).strict()
+
+export const GatewayClientToolsSchema = z.array(GatewayClientToolSchema).max(32)
+  .refine(tools => new Set(tools.map(tool => tool.name)).size === tools.length, 'Duplicate client tool')
+
 export const GatewaySessionHelloSchema = GatewayClientEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.SESSION_HELLO),
   protocol: z.object({
@@ -130,6 +148,7 @@ export const GatewaySessionHelloSchema = GatewayClientEnvelopeSchema.extend({
     label: z.string().min(1).max(80).optional(),
   }),
   capabilities: z.array(CapabilitySchema).max(64),
+  tools: GatewayClientToolsSchema.optional(),
   locale: z.string().min(2).max(40).optional(),
   time_zone: z.string().min(1).max(80).optional(),
   connection: z.object({
@@ -145,6 +164,9 @@ export const GatewaySessionHelloSchema = GatewayClientEnvelopeSchema.extend({
     takeover: z.boolean().optional(),
   }).optional(),
 }).superRefine((value, context) => {
+  if (value.tools?.length && !value.capabilities.includes(GatewayClientCapability.CLIENT_TOOLS)) {
+    context.addIssue({ code: 'custom', path: ['tools'], message: 'tools require client.tools capability' })
+  }
   if (new Set(value.capabilities).size !== value.capabilities.length) {
     context.addIssue({
       code: 'custom',
@@ -201,16 +223,24 @@ const EventNameSchema = z.string()
 
 export const GatewayClientEventPublishSchema = GatewayClientEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH),
-  name: EventNameSchema,
+  name: EventNameSchema.optional(),
+  text: z.string().trim().min(1).max(16_000).optional(),
   data: z.unknown().optional(),
   delivery_hint: z.enum(['handle', 'context', 'respond', 'interrupt']).optional(),
+}).superRefine((value, context) => {
+  if (!value.text && !value.name) {
+    context.addIssue({ code: 'custom', message: 'Client Event requires text or a registered extension name' })
+  }
+  if (value.text && (value.data !== undefined || value.delivery_hint === 'handle')) {
+    context.addIssue({ code: 'custom', message: 'Text events cannot invoke handlers or carry handler data' })
+  }
 })
 
 export const GatewayClientEventPublishResultSchema = GatewayServerEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH_RESULT),
   request_event_id: IdentifierSchema,
   accepted: z.boolean(),
-  name: EventNameSchema,
+  name: EventNameSchema.optional(),
   duplicate: z.boolean().optional(),
 })
 
@@ -347,6 +377,10 @@ export const GatewaySessionReplayResultSchema = GatewayServerEnvelopeSchema.exte
 })
 
 const GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
+  [GatewayClientProtocolEvent.CLIENT_PRESENCE_UPDATE]: GatewayClientEnvelopeSchema.extend({
+    type: z.literal(GatewayClientProtocolEvent.CLIENT_PRESENCE_UPDATE),
+    state: z.enum(['active', 'sleeping']),
+  }),
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientEventPublishSchema,
   [GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE]: GatewaySessionOutputVoiceUpdateSchema,
   [GatewayClientProtocolEvent.CLIENT_ACTION_RESULT]: GatewayClientActionResultSchema,
@@ -375,6 +409,7 @@ const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
 })
 
 const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
+  [GatewayClientProtocolEvent.CLIENT_PRESENCE_UPDATE]: GatewayClientCapability.CLIENT_PRESENCE,
   [GatewayClientProtocolEvent.INPUT_IMAGE_APPEND]: GatewayClientCapability.INPUT_IMAGE_BUFFER,
   [GatewayClientProtocolEvent.INPUT_IMAGE_CLEAR]: GatewayClientCapability.INPUT_IMAGE_BUFFER,
   [GatewayClientProtocolEvent.CLIENT_EVENT_PUBLISH]: GatewayClientCapability.CLIENT_EVENTS,
@@ -456,6 +491,7 @@ export function gatewayHelloAsLegacyConnect(hello) {
   return parseGatewayClientMessage({
     type: GatewayClientEvent.CONNECT,
     event_id: parsed.event_id,
+    clientTools: parsed.tools || [],
     clientType: parsed.client.type,
     clientLabel: parsed.client.label,
     clientInstanceId: parsed.client.instance_id,
@@ -511,6 +547,7 @@ export function createGatewaySessionHello({
   clientInstanceId = createGatewayProtocolEventId('instance'),
   clientLabel,
   capabilities = GATEWAY_CLIENT_IMPLEMENTED_CAPABILITIES,
+  tools,
   locale,
   timeZone,
   connection,
@@ -533,6 +570,7 @@ export function createGatewaySessionHello({
       label: clientLabel,
     },
     capabilities,
+    tools,
     locale,
     time_zone: timeZone,
     connection: connectionValue,

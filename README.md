@@ -106,6 +106,7 @@ tasks. They integrate independently and can be combined as needed.
 | [GPT-Live / OpenAI Realtime](docs/voice-frontends/gpt-live.md) | Cloud | OpenAI API Key | OpenAI GA Realtime dialect |
 | [Google Gemini Live](docs/voice-frontends/google-live.md) | Cloud | Google API Key | Native Gemini Live WebSocket |
 | [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.md) | Cloud | Bailian API Key | Video input |
+| [Qwen3.8 Omni Flash Realtime](docs/voice-frontends/qwen-omni-realtime.md) | Cloud | Bailian API Key + workspace-specific endpoint | Video input and tool calling |
 | [StepAudio 3 Realtime](docs/voice-frontends/stepfun.md) | Cloud | StepFun API Key | Preview model |
 | [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.md) | Local | Start the service and set its URL | Configurable components |
 | [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.md) | Local or cloud | Compatible service URL | Backend delegation not yet supported |

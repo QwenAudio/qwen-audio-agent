@@ -68,6 +68,7 @@ test('PORT=0 binds a random port and reports the origin to the parent host', asy
     assert.deepEqual(
       health.realtimeModelCatalog.map(profile => profile.id),
       [
+        'qwen3.8-omni-flash-realtime',
         'qwen3.5-omni-flash-realtime',
         'qwen3.5-omni-plus-realtime',
         'qwen-audio-3.0-realtime-plus',

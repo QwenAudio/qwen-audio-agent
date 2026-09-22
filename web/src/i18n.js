@@ -74,19 +74,18 @@ const translations = {
   '打开 {label}': 'Open {label}',
   '模型信息不可用': 'Model information unavailable',
   '模型能力信息不可用': 'Model capability information unavailable',
-  '开启实时视觉': 'Enable live vision',
-  '打开相机预览': 'Open camera preview',
-  '实时视觉': 'Live vision',
-  '开始实时视觉': 'Start live vision',
-  '停止实时视觉': 'Stop live vision',
-  '关闭相机': 'Close camera',
+  '视频通话': 'Video call',
+  '开启视频': 'Enable video',
+  '关闭视频': 'Disable video',
+  '开启摄像头': 'Enable camera',
+  '关闭摄像头': 'Disable camera',
+  '摄像头已关闭': 'Camera off',
+  '正在开启摄像头': 'Starting camera',
+  '关闭视频，保留语音': 'Close video, keep voice',
   '相机预览': 'Camera preview',
-  '画面仅在开启实时视觉后发送': 'Frames are sent only while live vision is enabled',
   '实时视觉已开启 · 已发送 {count} 帧': 'Live vision enabled · {count} frames sent',
   '实时视觉已暂停，连接恢复后将自动继续': 'Live vision paused · reconnecting automatically',
-  '实时视觉已暂停，请恢复麦克风': 'Live vision paused · resume the microphone to continue',
   '请先开启麦克风': 'Enable the microphone first',
-  '请先开启麦克风，再开始实时视觉': 'Enable the microphone before starting live vision',
   '当前浏览器无法使用相机': 'Camera access is unavailable in this browser',
   '无法打开相机': 'Could not open the camera',
   '相机连接已断开': 'Camera disconnected',
@@ -180,8 +179,12 @@ let runtimeLanguage = ''
 
 export function setRuntimeLanguage(language = '') {
   runtimeLanguage = String(language || '').trim()
-  if (typeof document !== 'undefined' && runtimeLanguage) {
-    document.documentElement.lang = isChinese(runtimeLanguage) ? 'zh-CN' : 'en'
+  syncDocumentLanguage()
+}
+
+export function syncDocumentLanguage() {
+  if (typeof document !== 'undefined') {
+    document.documentElement.lang = isChinese(currentLanguage()) ? 'zh-CN' : 'en'
   }
 }
 
@@ -193,13 +196,9 @@ function currentLanguage() {
   } catch {
     // Ignore malformed or unavailable locations.
   }
-  try {
-    const stored = globalThis.localStorage?.getItem('qwen-audio-lang')
-    if (stored) return stored
-  } catch {
-    // localStorage can throw in privacy modes; fall through to navigator
-  }
-  return globalThis.navigator?.language || 'zh-CN'
+  // WebUI has no language preference control. An old/debug localStorage value
+  // must not silently override the browser's current preferred language.
+  return globalThis.navigator?.languages?.[0] || globalThis.navigator?.language || 'zh-CN'
 }
 
 function isChinese(language) {
@@ -214,6 +213,4 @@ export function t(zh, params) {
   ))
 }
 
-if (typeof document !== 'undefined' && !isChinese(currentLanguage())) {
-  document.documentElement.lang = 'en'
-}
+syncDocumentLanguage()

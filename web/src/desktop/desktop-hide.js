@@ -80,6 +80,24 @@ export function desktopCanFinishWaking(connectionState) {
   return connectionState === 'connected' || connectionState === 'unavailable'
 }
 
+// Model context reflects the client surface, independently of transport and
+// microphone readiness. Waking already means the window is visible.
+export function desktopPresenceContext(lifecycle, reason = '') {
+  if (lifecycle === 'hidden') {
+    if (reason === 'inactivity') {
+      return '因空闲超时，桌面客户端已自动进入休眠，已暂停对话收音并隐藏。后台工作不受影响。'
+    }
+    if (reason === 'requested') {
+      return '桌面客户端已执行休眠请求，已暂停对话收音并隐藏。后台工作不受影响。'
+    }
+    return '桌面客户端已进入休眠，已暂停对话收音并隐藏。后台工作不受影响。'
+  }
+  if (lifecycle === 'active' || lifecycle === 'waking') {
+    return '桌面客户端当前已显示，可继续交互，不在休眠状态；此前的休眠状态已结束。'
+  }
+  return ''
+}
+
 export function desktopHideDeadline({
   lastInteractionAt,
   workSettledAt,
@@ -96,6 +114,16 @@ export function desktopHideDeadline({
 // （随后的 voice.wake 会重新唤醒 Gateway）。
 export const DESKTOP_WAKE_GRACE_MS = 5000
 
+// Automatic hiding is entirely client policy. Information publication must
+// neither cause the operation nor report success before the window is hidden.
+export async function enterDesktopIdleSleep({ bridge, onLifecycle = () => {} }) {
+  if (typeof bridge?.enterHide !== 'function') return false
+  const lifecycle = await bridge.enterHide()
+  if (lifecycle?.state !== 'hidden') return false
+  onLifecycle(lifecycle.state, lifecycle.reason)
+  return true
+}
+
 export async function performDesktopClientAction(event, {
   desktop = false,
   bridge,
@@ -104,7 +132,7 @@ export async function performDesktopClientAction(event, {
   if (event?.type !== GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST) return null
   if (
     !desktop
-    || event.name !== GatewayClientActionName.ENTER_SLEEP
+    || ![GatewayClientActionName.ENTER_SLEEP, 'client.tool.enter_sleep'].includes(event.name)
     || typeof bridge?.enterHide !== 'function'
   ) {
     return {
@@ -116,10 +144,13 @@ export async function performDesktopClientAction(event, {
     }
   }
   try {
+    if (event.name === 'client.tool.enter_sleep' && Object.keys(event.arguments || {}).length) {
+      return { status: 'failed', error: { code: 'invalid_arguments', message: 'enter_sleep takes no arguments' } }
+    }
     // A Client Action is an explicit model/user request. It must not be
     // blocked by the grace period used only for stale automatic sleep events.
     const lifecycle = await bridge.enterHide({ explicit: true })
-    if (lifecycle?.state) onLifecycle(lifecycle.state)
+    if (lifecycle?.state) onLifecycle(lifecycle.state, lifecycle.reason)
     if (lifecycle?.state !== 'hidden') {
       return {
         status: 'failed',
@@ -157,6 +188,6 @@ export async function applyDesktopClientState(event, {
   ) return false
 
   const lifecycle = await bridge.enterHide()
-  if (lifecycle?.state) onLifecycle(lifecycle.state)
+  if (lifecycle?.state) onLifecycle(lifecycle.state, lifecycle.reason)
   return lifecycle?.state === 'hidden'
 }

@@ -196,7 +196,7 @@ export class RealtimePresentationRuntime {
       this.turns.commit(automaticTurn)
       this.clearResponseCandidate()
     }
-    if (!context.responseStarted) {
+    if (!context.responseStarted && !context.suppressed) {
       context.responseStarted = true
       this.send({
         type: GatewayServerEvent.RESPONSE_STARTED,
@@ -381,6 +381,8 @@ export class RealtimePresentationRuntime {
           origin: context?.origin || 'model',
         })
       }
+    } else if (!context.hasAudio && responseTurnId === this.turns.committedTurnId && !this.turns.userSpeaking) {
+      this.send({ type: GatewayServerEvent.VOICE_STATE, state: 'idle', turnId: responseTurnId })
     }
     if (context?.hasAudio && !failed) {
       context.responseDone = true

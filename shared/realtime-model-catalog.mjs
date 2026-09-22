@@ -6,6 +6,7 @@ export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL = '1.2.6.1'
 export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE = 'zh_female_vv_jupiter_bigtts'
 
 export const DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL = 'qwen-audio-3.0-realtime-flash'
+export const DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL = 'qwen3.8-omni-flash-realtime'
 export const DASHSCOPE_OMNI_FLASH_REALTIME_MODEL = 'qwen3.5-omni-flash-realtime'
 export const DASHSCOPE_OMNI_PLUS_REALTIME_MODEL = 'qwen3.5-omni-plus-realtime'
 export const DEFAULT_STEPFUN_REALTIME_MODEL = 'stepaudio-3-realtime-preview'
@@ -48,6 +49,17 @@ const UNKNOWN_SESSION_DEFAULTS = Object.freeze({
 })
 
 export const DASHSCOPE_REALTIME_MODEL_PROFILES = Object.freeze([
+  Object.freeze({
+    id: DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
+    label: 'Qwen3.8 Omni Flash Realtime',
+    family: 'omni',
+    sessionDefaults: Object.freeze({
+      voice: 'Tina',
+      turnDetection: OMNI_SESSION_DEFAULTS.turnDetection,
+    }),
+    modelCapabilities: OMNI_MODEL_CAPABILITIES,
+    transportCapabilities: OMNI_TRANSPORT_CAPABILITIES,
+  }),
   Object.freeze({
     id: DASHSCOPE_OMNI_FLASH_REALTIME_MODEL,
     label: 'Qwen3.5 Omni Flash Realtime',

@@ -19,7 +19,7 @@ module.exports = async function conversationSmoke({ BrowserWindow }) {
             id: 'test', label: 'Test', modelInputModes: [], transportInputModes: [],
           })
           export const shouldClaimReleasedVoice = () => false
-          const voice = { state: 'idle', connectionState: 'connected', ownership: {} }
+          const voice = { state: 'idle', connectionState: 'connected', ownership: {}, publishClientState() {} }
           export default function useRealtimeVoice({ onEvent }) {
             useEffect(() => {
               window.conversationRenderRevision = (window.conversationRenderRevision || 0) + 1

@@ -6,6 +6,8 @@ import { FrontendNotesStore } from '../src/conversation/frontend-notes.mjs'
 import { PermissionPolicy } from '../src/task/permission-policy.mjs'
 import { TurnTranscripts } from '../src/frontend/tools/turn-transcripts.mjs'
 import { REALTIME_PROVIDERS, RealtimeFrontend } from '../src/voice/realtime-provider.mjs'
+import { ClientToolSource } from '../src/frontend/tools/client-tool-source.mjs'
+import { desktopClientTools } from '../../web/src/desktop/client-tools.js'
 
 function harness({
   coordinator,
@@ -34,6 +36,16 @@ function harness({
   const toolResultsReady = []
   const ensuredResponses = []
   const transcripts = new TurnTranscripts({ waitMs: 5 })
+  if (presenceController) {
+    const source = new ClientToolSource({ actions: {
+      async request() {
+        await presenceController.requestSleep({ source: 'realtime_tool' })
+        return { output: { status: 'sleeping' } }
+      },
+    } })
+    source.configure(desktopClientTools)
+    frontendToolSources = [...(frontendToolSources || []), source]
+  }
   const frontend = {
     sendFunctionOutput: async (...args) => outputs.push(args),
     ensureResponse: async (...args) => ensuredResponses.push(args),
@@ -206,6 +218,7 @@ test('executes an explicitly enabled state-changing external tool inline', async
     callId: 'window-control',
     turnId: 'turn-one',
     toolName: 'mcp__cockpit__vehicle_window_control',
+    failed: false,
   }])
 })
 
@@ -654,8 +667,8 @@ test('rejects sleep when the client does not advertise the action', async () => 
     arguments: '{}',
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
-  assert.equal(kit.outputs[0][1].error_code, 'client_action_unsupported')
-  assert.equal(kit.outputs[0][3].createResponse, true)
+  assert.equal(kit.outputs[0][1].error_code, 'unsupported_tool')
+  assert.notEqual(kit.outputs[0][3].createResponse, false)
 })
 
 test('fails closed for tools absent from the frontend registry', async () => {
@@ -773,7 +786,7 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
     '工作已受理，请自然确认一次，不要再次调用工具。',
   )
   assert.equal(kit.outputs[0][1].marker, undefined)
-  assert.deepEqual(kit.outputs[0][3], {})
+  assert.equal(typeof kit.outputs[0][3].shouldRespond, 'function')
   assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 1)
   await waitForTask(kit.manager, kit.outputs[0][1].task_id)
   assert.equal('originalRequest' in received, false)
@@ -932,7 +945,8 @@ test('accepts distinct spawn_thinking calls from one realtime response', async (
   )))
   assert.equal(kit.ensuredResponses.length, 1)
   assert.equal(kit.ensuredResponses[0][1].response, undefined)
-  assert.equal(kit.ensuredResponses[0][1].shouldCreate(), true)
+  // Both fake works finish immediately: their accepted-only speech is stale.
+  assert.equal(kit.ensuredResponses[0][1].shouldCreate(), false)
   await Promise.all(kit.manager.list({ ownerId: 'owner' }).map(task => (
     kit.manager.wait(task.id)
   )))
@@ -1766,7 +1780,10 @@ test('allows the current task without enabling session-wide automatic approval',
   )
   assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice'), false)
   assert.equal(permissionPolicy.shouldAutoAllow('owner', 'voice', kit.task.id), true)
+  const isCurrent = kit.outputs.at(-1)[3].shouldRespond
+  assert.equal(isCurrent(), true)
   await kit.finish()
+  assert.equal(isCurrent(), false, 'do not speak a delayed authorization receipt after work completes')
 })
 
 test('a sole permission needs only a natural decision, not permission_id or task_id', async t => {

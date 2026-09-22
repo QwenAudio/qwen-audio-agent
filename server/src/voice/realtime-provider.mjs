@@ -348,6 +348,13 @@ export class RealtimeFrontend {
     this.protocol.clearImageBuffer?.()
   }
 
+  setInputMuted(muted) {
+    if (!this.ready) return
+    this.send(muted
+      ? this.protocol.inputMute?.()
+      : this.protocol.inputUnmute?.())
+  }
+
   sendUserText(text, context = {}, { modalities } = {}) {
     const content = String(text || '').trim()
     if (!content) return Promise.resolve()

@@ -265,6 +265,7 @@ export function createRealtimeSessionRuntime({
     if (suspend) {
       // Buffered audio predates the suspension and is no longer wanted.
       realtimeSession.clearPendingAudio()
+      realtimeSession.setInputMuted(true)
       clearVisualInput()
       sleepController?.disable()
       realtimeSession.cancelResponse()
@@ -277,6 +278,7 @@ export function createRealtimeSessionRuntime({
       })
       return
     }
+    if (inputEnabled) realtimeSession.setInputMuted(false)
     emit({ type: GatewayServerEvent.INPUT_RESUME })
   }
   const deactivate = holder => {
@@ -922,6 +924,7 @@ export function createRealtimeSessionRuntime({
       } else {
         activateVoiceClient()
       }
+      realtimeSession.setInputMuted(false)
       realtimeSession.ensure()
         .then(() => {
           taskCoordinator.announcePendingPermissions()
@@ -939,6 +942,7 @@ export function createRealtimeSessionRuntime({
       } else {
         activateVoiceClient()
       }
+      realtimeSession.setInputMuted(false)
       if (sleeping) {
         return
       }
@@ -1061,6 +1065,7 @@ export function createRealtimeSessionRuntime({
     } else if (event.type === GatewayClientEvent.INPUT_MUTE) {
       inputEnabled = false
       realtimeSession.clearPendingAudio()
+      realtimeSession.setInputMuted(true)
       clearVisualInput()
     } else if (event.type === GatewayClientEvent.SLEEP) {
       requestExplicitSleep('client')

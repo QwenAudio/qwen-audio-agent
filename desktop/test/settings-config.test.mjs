@@ -34,6 +34,10 @@ const REALTIME_DEFAULTS = {
   googleLiveRealtimeUrl: 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent',
   googleLiveRealtimeModel: 'gemini-3.8-live',
   googleLiveRealtimeVoice: '',
+  doubaoApiKey: '',
+  doubaoSeeduplexRealtimeUrl: 'wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue',
+  doubaoSeeduplexRealtimeModel: '1.2.6.1',
+  doubaoSeeduplexRealtimeVoice: 'zh_female_vv_jupiter_bigtts',
 }
 
 const BACKEND_CONNECTION_DEFAULTS = {
@@ -354,6 +358,30 @@ test('imports legacy provider settings without sharing their endpoints or creden
   const switched = parseSettings('QWEN_AUDIO_REALTIME_PROVIDER=stepfun\n' + content)
   assert.equal(switched.stepfunRealtimeUrl, 'wss://api.stepfun.com/v1/realtime')
   assert.equal(switched.stepfunApiKey, 'legacy-step')
+})
+
+test('reads and updates the Doubao Seeduplex desktop configuration', () => {
+  const settings = parseSettings([
+    'QWEN_AUDIO_REALTIME_PROVIDER=doubao',
+    'DOUBAO_API_KEY=doubao-key',
+    'DOUBAO_SEEDUPLEX_REALTIME_URL=wss://doubao.example/realtime',
+    'DOUBAO_SEEDUPLEX_REALTIME_MODEL=1.2.6.1',
+    'DOUBAO_SEEDUPLEX_REALTIME_VOICE=doubao-voice',
+    '',
+  ].join('\n'))
+
+  assert.equal(settings.realtimeProvider, 'doubao-seeduplex')
+  assert.equal(settings.doubaoApiKey, 'doubao-key')
+  assert.equal(settings.doubaoSeeduplexRealtimeUrl, 'wss://doubao.example/realtime')
+  assert.equal(settings.doubaoSeeduplexRealtimeModel, '1.2.6.1')
+  assert.equal(settings.doubaoSeeduplexRealtimeVoice, 'doubao-voice')
+  assert.equal(realtimeSettingsConfigured(settings), true)
+
+  const content = updateSettingsContent('', settings)
+  assert.match(content, /QWEN_AUDIO_REALTIME_PROVIDER=doubao-seeduplex/)
+  assert.match(content, /DOUBAO_API_KEY=doubao-key/)
+  assert.match(content, /DOUBAO_SEEDUPLEX_REALTIME_URL=wss:\/\/doubao\.example\/realtime/)
+  assert.match(content, /DOUBAO_SEEDUPLEX_REALTIME_VOICE=doubao-voice/)
 })
 
 test('reads and updates the Speech-to-Speech desktop configuration', () => {

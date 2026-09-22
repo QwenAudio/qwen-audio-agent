@@ -5,6 +5,7 @@ import {
 import { dashscopeProvider } from './dashscope.mjs'
 import { gptLiveProvider } from './gpt-live.mjs'
 import { googleLiveProvider } from './google-live.mjs'
+import { doubaoSeeduplexProvider } from './doubao-seeduplex.mjs'
 import { s2sProvider } from './s2s.mjs'
 import { miniCpmOProvider } from './minicpm-o.mjs'
 import { stepfunProvider } from './stepfun.mjs'
@@ -23,6 +24,7 @@ export const defaultRealtimeProviderRegistry = createRealtimeProviderRegistry({
     stepfunProvider,
     gptLiveProvider,
     googleLiveProvider,
+    doubaoSeeduplexProvider,
     s2sProvider,
     miniCpmOProvider,
   ],
@@ -94,6 +96,10 @@ export const REALTIME_PROVIDERS = Object.freeze({
   'google-live': googleLiveProvider,
   google: googleLiveProvider,
   'gemini-live': googleLiveProvider,
+  'doubao-seeduplex': doubaoSeeduplexProvider,
+  doubao: doubaoSeeduplexProvider,
+  seeduplex: doubaoSeeduplexProvider,
+  volcengine: doubaoSeeduplexProvider,
   'speech-to-speech': s2sProvider,
   qwen: dashscopeProvider,
   s2s: s2sProvider,

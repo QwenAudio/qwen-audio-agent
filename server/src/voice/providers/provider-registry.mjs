@@ -158,6 +158,14 @@ export function validateRealtimeProtocol(protocol, providerKey = 'unknown') {
       `Realtime Provider ${providerKey} protocol.connectionMessages 必须是函数`,
     )
   }
+  for (const method of ['inputMute', 'inputUnmute', 'sessionClose']) {
+    if (
+      protocol[method] !== undefined
+      && typeof protocol[method] !== 'function'
+    ) {
+      throw new Error(`Realtime Provider ${providerKey} protocol.${method} 必须是函数`)
+    }
+  }
   return protocol
 }
 

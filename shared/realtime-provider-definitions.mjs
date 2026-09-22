@@ -4,6 +4,8 @@ import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   DEFAULT_GPT_LIVE_REALTIME_MODEL,
   DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
+  DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
+  DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
   DEFAULT_STEPFUN_REALTIME_MODEL,
   resolveDashScopeRealtimeModelProfile,
 } from './realtime-model-catalog.mjs'
@@ -15,6 +17,7 @@ export const DEFAULT_SPEECH_TO_SPEECH_REALTIME_URL = 'ws://127.0.0.1:8765/v1/rea
 export const DEFAULT_MINICPM_O_REALTIME_URL = 'ws://127.0.0.1:8006/v1/realtime?mode=audio'
 export const DEFAULT_GPT_LIVE_REALTIME_URL = 'wss://api.openai.com/v1/realtime'
 export const DEFAULT_GOOGLE_LIVE_REALTIME_URL = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent'
+export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_URL = 'wss://openspeech.bytedance.com/api/v3/duplex/realtime/dialogue'
 
 // The desktop always presents these four slots, in this order. Providers
 // only bind the slots they can configure; absent bindings render disabled.
@@ -102,6 +105,22 @@ export const REALTIME_PROVIDERS = Object.freeze([
         slot: 'voice', placeholder: '留空使用服务默认音色' },
       { key: 'googleLiveRealtimeUrl', environment: ['GOOGLE_LIVE_REALTIME_URL', 'GEMINI_LIVE_REALTIME_URL'],
         slot: 'endpoint', default: DEFAULT_GOOGLE_LIVE_REALTIME_URL },
+    ],
+  }),
+  defineProvider({
+    key: 'doubao-seeduplex', label: 'Doubao Seeduplex', aliases: ['doubao', 'seeduplex', 'volcengine'],
+    description: '豆包实时语音模型 3.0（Seeduplex）· 端到端全双工',
+    requiredConfiguration: { field: 'doubaoApiKey', key: 'DOUBAO_API_KEY' },
+    settings: [
+      { key: 'doubaoApiKey', slot: 'credential', placeholder: '火山引擎豆包语音 API Key',
+        environment: ['DOUBAO_API_KEY', 'SEEDUPLEX_API_KEY', 'VOLCENGINE_DOUBAO_API_KEY'],
+        helpUrl: 'https://console.volcengine.com/speech/app' },
+      { key: 'doubaoSeeduplexRealtimeModel', slot: 'model', default: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
+        environment: ['DOUBAO_SEEDUPLEX_REALTIME_MODEL'] },
+      { key: 'doubaoSeeduplexRealtimeVoice', slot: 'voice', default: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
+        environment: ['DOUBAO_SEEDUPLEX_REALTIME_VOICE'] },
+      { key: 'doubaoSeeduplexRealtimeUrl', slot: 'endpoint', default: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_URL,
+        environment: ['DOUBAO_SEEDUPLEX_REALTIME_URL'] },
     ],
   }),
   defineProvider({

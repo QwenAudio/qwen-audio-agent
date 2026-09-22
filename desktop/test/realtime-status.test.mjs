@@ -23,7 +23,9 @@ test('uses compact realtime provider labels in the desktop status card', () => {
   )
   assert.equal(realtimeStatusLabel('minicpm-o'), '面壁智能')
   assert.equal(realtimeStatusLabel('stepfun'), 'StepFun')
+  assert.equal(realtimeStatusLabel('doubao-seeduplex'), 'Doubao Seeduplex')
   assert.equal(realtimeRuntimeLabel('stepfun', 'stepaudio-3-realtime-preview'), 'StepAudio 3 Preview')
+  assert.equal(realtimeRuntimeLabel('doubao-seeduplex', '1.2.6.1'), 'Doubao Seeduplex 3.0')
 })
 
 test('uses compact gateway and realtime runtime identities', () => {

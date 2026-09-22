@@ -2,6 +2,8 @@ export const DEFAULT_DASHSCOPE_REALTIME_MODEL = 'qwen-audio-3.0-realtime-plus'
 export const DEFAULT_DASHSCOPE_REALTIME_VOICE = 'longanqian'
 export const DEFAULT_GPT_LIVE_REALTIME_MODEL = 'gpt-realtime-2.1'
 export const DEFAULT_GOOGLE_LIVE_REALTIME_MODEL = 'gemini-3.8-live'
+export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL = '1.2.6.1'
+export const DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE = 'zh_female_vv_jupiter_bigtts'
 
 export const DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL = 'qwen-audio-3.0-realtime-flash'
 export const DASHSCOPE_OMNI_FLASH_REALTIME_MODEL = 'qwen3.5-omni-flash-realtime'
@@ -149,6 +151,20 @@ const GOOGLE_LIVE_PROFILES = Object.freeze([
   }),
 ])
 
+const DOUBAO_SEEDUPLEX_PROFILES = Object.freeze([
+  Object.freeze({
+    id: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
+    label: 'Doubao Seeduplex 3.0 Realtime',
+    family: 'doubao-seeduplex',
+    sessionDefaults: Object.freeze({
+      voice: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
+      turnDetection: Object.freeze({ type: 'server_vad' }),
+    }),
+    modelCapabilities: LEGACY_MODEL_CAPABILITIES,
+    transportCapabilities: LEGACY_TRANSPORT_CAPABILITIES,
+  }),
+])
+
 const MODEL_CATALOGS = Object.freeze({
   dashscope: Object.freeze({
     environment: 'QWEN_AUDIO_REALTIME_MODEL',
@@ -169,6 +185,11 @@ const MODEL_CATALOGS = Object.freeze({
     environment: 'GOOGLE_LIVE_REALTIME_MODEL',
     defaultModel: DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
     profiles: GOOGLE_LIVE_PROFILES,
+  }),
+  'doubao-seeduplex': Object.freeze({
+    environment: 'DOUBAO_SEEDUPLEX_REALTIME_MODEL',
+    defaultModel: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
+    profiles: DOUBAO_SEEDUPLEX_PROFILES,
   }),
 })
 

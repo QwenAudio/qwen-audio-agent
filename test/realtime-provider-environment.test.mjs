@@ -12,6 +12,7 @@ import {
 } from '../shared/realtime-provider-definitions.mjs'
 import {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
   DEFAULT_STEPFUN_REALTIME_MODEL,
   resolveDashScopeRealtimeVoiceOverride,
   resolveRealtimeFrontendConfiguration,
@@ -36,6 +37,18 @@ const providerCases = [
     },
     credential: 'step-key', endpoint: 'wss://step.example/realtime',
     model: DEFAULT_STEPFUN_REALTIME_MODEL, voice: 'step-voice',
+  },
+  {
+    provider: 'doubao-seeduplex',
+    env: {
+      DOUBAO_API_KEY: 'doubao-key',
+      DOUBAO_SEEDUPLEX_REALTIME_URL: 'wss://doubao.example/realtime',
+      DOUBAO_SEEDUPLEX_REALTIME_MODEL: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
+      DOUBAO_SEEDUPLEX_REALTIME_VOICE: 'doubao-voice',
+      DASHSCOPE_API_KEY: 'not-the-doubao-key',
+    },
+    credential: 'doubao-key', endpoint: 'wss://doubao.example/realtime',
+    model: DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL, voice: 'doubao-voice',
   },
   {
     provider: 'speech-to-speech',
@@ -83,7 +96,7 @@ for (const entry of providerCases) {
   })
 
   test(`${entry.provider}: removed global overrides are ignored and own credentials can be cleared`, () => {
-    const keys = { dashscope: 'DASHSCOPE_API_KEY', stepfun: 'STEPFUN_API_KEY', 'speech-to-speech': 'SPEECH_TO_SPEECH_AUTH_TOKEN', 'minicpm-o': 'MINICPM_O_AUTH_TOKEN' }
+    const keys = { dashscope: 'DASHSCOPE_API_KEY', stepfun: 'STEPFUN_API_KEY', 'doubao-seeduplex': 'DOUBAO_API_KEY', 'speech-to-speech': 'SPEECH_TO_SPEECH_AUTH_TOKEN', 'minicpm-o': 'MINICPM_O_AUTH_TOKEN' }
     const env = {
       ...entry.env, QWEN_AUDIO_REALTIME_PROVIDER: entry.provider,
       QWEN_AUDIO_REALTIME_API_KEY: 'must-not-use',
@@ -110,7 +123,7 @@ test('legacy DashScope key works without a provider setting and supports endpoin
 })
 
 test('provider credentials are never borrowed by another provider', () => {
-  for (const provider of ['stepfun', 'speech-to-speech', 'minicpm-o']) {
+  for (const provider of ['stepfun', 'doubao-seeduplex', 'speech-to-speech', 'minicpm-o']) {
     assert.equal(resolveRealtimeFrontendConfiguration({
       QWEN_AUDIO_REALTIME_PROVIDER: provider, DASHSCOPE_API_KEY: 'dash-only',
     }).credential, '')

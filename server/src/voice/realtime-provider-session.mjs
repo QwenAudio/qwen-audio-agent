@@ -58,6 +58,7 @@ export class RealtimeProviderSession {
     this.scheduledReconnect = null
     this.connectedAt = 0
     this.blockedError = ''
+    this.inputMuted = false
   }
 
   get ready() {
@@ -121,6 +122,11 @@ export class RealtimeProviderSession {
   clearPendingImage() {
     this.pendingImage = null
     this.frontend?.clearPendingImage?.()
+  }
+
+  setInputMuted(muted) {
+    this.inputMuted = muted === true
+    this.frontend?.setInputMuted?.(this.inputMuted)
   }
 
   cancelResponse() {
@@ -211,6 +217,7 @@ export class RealtimeProviderSession {
         this.pendingAudio = []
         if (this.pendingImage) createdFrontend.appendImage(this.pendingImage)
         this.pendingImage = null
+        createdFrontend.setInputMuted?.(this.inputMuted)
         this.onReady(createdFrontend)
       })
       .catch(error => {

@@ -3,6 +3,8 @@ import test from 'node:test'
 import {
   DASHSCOPE_REALTIME_MODEL_PROFILES,
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
+  DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
+  DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
   resolveDashScopeRealtimeVoiceOverride,
   listDashScopeRealtimeModelProfiles,
   resolveDashScopeRealtimeModelProfile,
@@ -61,6 +63,27 @@ test('GPT-Live and Google Live resolve independent credentials and models', () =
   assert.equal(google.credential, 'google-test')
   assert.equal(google.active.model, 'gemini-3.8-live')
   assert.equal(resolveRealtimeModelProfile(google.active.model, 'google-live').family, 'google-live')
+})
+
+test('Doubao Seeduplex resolves aliases, endpoint, model and voice independently', () => {
+  const configuration = resolveRealtimeFrontendConfiguration({
+    QWEN_AUDIO_REALTIME_PROVIDER: 'doubao',
+    DOUBAO_API_KEY: 'doubao-test',
+  })
+
+  assert.equal(configuration.active.provider, 'doubao-seeduplex')
+  assert.equal(configuration.active.configured, true)
+  assert.equal(configuration.credential, 'doubao-test')
+  assert.equal(configuration.active.model, DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL)
+  assert.equal(configuration.active.voice, DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE)
+  assert.equal(resolveRealtimeModelProfile(
+    configuration.active.model,
+    'doubao-seeduplex',
+  ).family, 'doubao-seeduplex')
+  assert.equal(
+    resolveRealtimeModelProfile('1.2.6.2', 'doubao-seeduplex').family,
+    'unknown',
+  )
 })
 
 const omniModelCapabilities = {

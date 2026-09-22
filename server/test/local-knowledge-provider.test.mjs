@@ -152,6 +152,30 @@ test('ingestion preserves existing conversion files and refuses a full library b
   assert.deepEqual(readdirSync(root).sort(), ['manual-2.md', 'manual.md'])
 })
 
+test('unwraps quoted Explorer paths before converting a document', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'qwa-quoted-convert-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const pdf = join(root, 'manual.pdf')
+  writeFileSync(pdf, '%PDF-1.7 fake')
+  const shelf = new KnowledgeLibrary({ documentDirectory: root })
+  let converted
+  const provider = new LocalKnowledgeProvider({
+    library: shelf,
+    documentConverter: {
+      async convert({ sourcePath, targetPath }) {
+        converted = { sourcePath, targetPath }
+        writeFileSync(targetPath, '# Converted document')
+      },
+    },
+  })
+  const { document } = await provider.ingest(
+    { source: { path: `"${pdf}"` } },
+    { ownerId: 'owner' },
+  )
+  assert.equal(converted.sourcePath, pdf)
+  assert.equal(document.filename, 'manual.md')
+})
+
 test('refuses a library-less construction instead of failing at retrieval time', () => {
   assert.throws(
     () => new LocalKnowledgeProvider({}),

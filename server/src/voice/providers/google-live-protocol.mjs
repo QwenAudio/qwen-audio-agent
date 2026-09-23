@@ -42,6 +42,8 @@ export function createGoogleLiveProtocol() {
   const responseIds = new Set()
   const callNames = new Map()
   let activeResponseId = ''
+  let interrupted = false
+  let automaticResponsePending = false
 
   const ensureResponse = events => {
     if (!activeResponseId) activeResponseId = id('response')
@@ -59,10 +61,12 @@ export function createGoogleLiveProtocol() {
     if (!activeResponseId) return
     events.push({
       type: 'response.done',
-      response: { id: activeResponseId, status: 'completed' },
+      response: { id: activeResponseId, status: interrupted ? 'cancelled' : 'completed' },
     })
     responseIds.delete(activeResponseId)
     activeResponseId = ''
+    interrupted = false
+    automaticResponsePending = false
   }
 
   return Object.freeze({
@@ -80,6 +84,7 @@ export function createGoogleLiveProtocol() {
       const events = []
       const serverContent = event?.serverContent
       if (serverContent) {
+        if (serverContent.interrupted) interrupted = true
         const responseId = (
           serverContent.modelTurn
           || serverContent.outputTranscription
@@ -123,7 +128,9 @@ export function createGoogleLiveProtocol() {
             delta: serverContent.outputTranscription.text,
           })
         }
-        if (serverContent.turnComplete || serverContent.generationComplete) {
+        // generationComplete can precede playback/turn completion. Keep the
+        // response slot occupied until the service actually closes the turn.
+        if (serverContent.turnComplete) {
           finishResponse(events)
         }
       }
@@ -188,15 +195,18 @@ export function createGoogleLiveProtocol() {
 
     conversationItemId: () => id('msg'),
 
-    conversationItemCreate: item => {
+    conversationItemCreate: (item, { contextOnly = true } = {}) => {
       if (item?.type === 'function_call_output') {
+        automaticResponsePending = true // toolResponse resumes generation itself.
         const output = parseJson(item.output, item.output)
         const callId = String(item.call_id || '')
+        const name = callNames.get(callId) || ''
+        callNames.delete(callId)
         return {
           toolResponse: {
             functionResponses: [{
               id: callId,
-              name: callNames.get(callId) || '',
+              name,
               response: output && typeof output === 'object'
                 ? output
                 : { result: output },
@@ -205,18 +215,30 @@ export function createGoogleLiveProtocol() {
         }
       }
       const text = textFromItem(item)
-      return text ? { realtimeInput: { text } } : null
+      if (!text) return null
+      automaticResponsePending = !contextOnly
+      if (!contextOnly) return { realtimeInput: { text } }
+      // Realtime text counts as user activity; only clientContent can append
+      // history without starting a reply. See the Live WebSockets API contract.
+      return { clientContent: {
+        turns: [{ role: item.role === 'assistant' ? 'model' : 'user', parts: [{ text }] }],
+        turnComplete: false,
+      } }
     },
 
     responseCreate: response => {
       const text = String(response?.instructions || '').trim()
-      return text ? { realtimeInput: { text } } : null
+      const automatic = automaticResponsePending
+      automaticResponsePending = false
+      if (text) return { realtimeInput: { text } }
+      return automatic ? null : { clientContent: { turnComplete: true } }
     },
 
     correlateResponseCreate: payload => payload,
     responseCorrelationId: () => '',
 
-    responseCancel: () => null,
+    // clientContent interrupts generation; false prevents another response.
+    responseCancel: () => ({ clientContent: { turnComplete: false } }),
 
     userTextItem: text => ({
       type: 'message',

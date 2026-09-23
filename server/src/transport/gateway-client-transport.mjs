@@ -1,7 +1,8 @@
 import { WebSocket, WebSocketServer } from 'ws'
 import { ActiveVoiceClients } from '../client/active-voice-clients.mjs'
 import { selectGatewayWebSocketProtocol } from '../../../shared/gateway/websocket-auth.mjs'
-import { GatewayClientEvent } from '../../../shared/protocol/realtime-events.mjs'
+import { GatewayClientEvent, GatewayServerEvent } from '../../../shared/protocol/realtime-events.mjs'
+import { sendBoundedWebSocket } from '../core/websocket-send.mjs'
 import { logger as defaultLogger } from '../core/logger.mjs'
 import { isAllowedOrigin } from '../core/request-security.mjs'
 import { projectGatewayTaskEvent } from './gateway-task-event-projector.mjs'
@@ -27,7 +28,12 @@ function send(ws, event) {
   if (ws.readyState !== WebSocket.OPEN) return
   const protocol = clientProtocolSessions.get(ws)
   const wireEvent = protocol ? protocol.encode(event) : event
-  if (wireEvent) ws.send(JSON.stringify(wireEvent))
+  if (wireEvent) sendBoundedWebSocket(ws, JSON.stringify(wireEvent), {
+    audio: event.type === GatewayServerEvent.AUDIO_DELTA,
+    onFailure: ({ code, bufferedBytes, messageBytes, limit }) => {
+      defaultLogger.warn('voice_client.send_failed', { code, bufferedBytes, messageBytes, limit })
+    },
+  })
 }
 
 function rejectUpgrade(socket, status, message) {
@@ -138,6 +144,14 @@ export function attachGatewayClientTransport(server, {
   })
 
   const attachClient = (ws, url, identity) => {
+    // ws emits protocol/size/socket failures as `error`, not just `close`.
+    // Keep them connection-local, including failures before session.hello.
+    ws.on('error', error => {
+      logger.warn('client_transport.socket_failed', {
+        code: String(error?.code || 'socket_error'),
+      })
+      ws.terminate()
+    })
     ws.isAlive = true
     ws.gatewayCredentialId = identity.access === 'remote'
       ? identity.credentialId
@@ -354,6 +368,11 @@ export function attachGatewayClientTransport(server, {
       try {
         event = JSON.parse(raw.toString())
       } catch {
+        ws.close(1007, 'invalid JSON')
+        return
+      }
+      if (!event || typeof event !== 'object' || Array.isArray(event)) {
+        ws.close(1008, 'message must be an object')
         return
       }
       if (

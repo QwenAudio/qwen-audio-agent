@@ -3,7 +3,7 @@ layout: home
 hero:
   name: Qwen Audio Agent
   text: Agent，始终在场
-  tagline: 融合实时语音对话与 Agent 执行能力的开放框架，让交流与工作同步进行，执行结果自然融入对话。
+  tagline: 让语音 Agent 持续对话，后台任务并行处理，结果自然回到对话中。
   actions:
     - theme: brand
       text: 开始使用

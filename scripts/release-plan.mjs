@@ -14,6 +14,19 @@ function changelogHasVersion(changelog, version) {
     .some(line => line.trim() === `## ${version}`)
 }
 
+export function resolveReleaseRevision({ headRevision, tagRevision = '', manual = false }) {
+  for (const revision of [headRevision, tagRevision].filter(Boolean)) {
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(revision)) {
+      throw new Error('Release revision must be a full commit SHA')
+    }
+  }
+  if (!headRevision) throw new Error('Release HEAD is required')
+  if (tagRevision && tagRevision !== headRevision && !manual) {
+    throw new Error('Release tag does not match the triggering commit')
+  }
+  return tagRevision || headRevision
+}
+
 export function createReleasePlan({
   currentVersion,
   previousVersion = '',
@@ -65,6 +78,7 @@ function writeOutputs(path, plan) {
     `tag=${plan.tag}`,
     `previous_version=${plan.previousVersion}`,
     `manual=${plan.manual}`,
+    `revision=${plan.revision || ''}`,
     '',
   ].join('\n'))
 }
@@ -95,6 +109,21 @@ if (isMain) {
         'utf8',
       ),
     })
+    if (plan.release) {
+      const git = args => execFileSync('git', args, { cwd: SCRIPT_ROOT, encoding: 'utf8' }).trim()
+      let tagRevision = ''
+      try { tagRevision = git(['rev-parse', '--verify', '--quiet', `refs/tags/${plan.tag}^{commit}`]) } catch (error) {
+        if (error.status !== 1) throw error
+      }
+      plan.revision = resolveReleaseRevision({
+        headRevision: git(['rev-parse', 'HEAD']), tagRevision, manual: plan.manual,
+      })
+      // Recovery verifies the immutable tagged source, not the current branch.
+      if (versionAtRevision(SCRIPT_ROOT, plan.revision) !== plan.version
+        || !changelogHasVersion(git(['show', `${plan.revision}:CHANGELOG.md`]), plan.version)) {
+        throw new Error('Release source version or changelog does not match the requested version')
+      }
+    }
     writeOutputs(process.env.GITHUB_OUTPUT, plan)
     process.stdout.write(
       plan.release

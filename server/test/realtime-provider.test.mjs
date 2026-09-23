@@ -2206,6 +2206,7 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     acknowledgesConversationItems: true,
     restoreConversationContext: true,
     conversationItems: true,
+    automaticToolResponses: false,
     clientResponses: true,
     mutableSession: true,
     imageRequiresAudioStart: true,

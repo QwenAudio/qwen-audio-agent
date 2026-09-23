@@ -14,6 +14,7 @@ import {
 import { frontendInputProjection } from '../../../shared/input-parts.mjs'
 import { RealtimeConfigurationError } from './realtime-errors.mjs'
 import { RealtimeResponseSlot } from './realtime-response-slot.mjs'
+import { sendBoundedWebSocket } from '../core/websocket-send.mjs'
 
 // Re-export provider-agnostic tools and instructions so existing callers
 // (tests, tool-call-handler, bootstrap) continue to work without changes.
@@ -95,6 +96,9 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   restoreConversationContext: true,
   // Accepts conversation.item.create and acknowledges created items.
   conversationItems: true,
+  // Tool receipts resume the service's current interaction without an explicit
+  // response request. They must be sent even while that interaction is active.
+  automaticToolResponses: false,
   // Accepts response.create and response.cancel initiated by the client.
   clientResponses: true,
   // Allows session instructions to be refreshed after initial setup.
@@ -237,7 +241,7 @@ export class RealtimeFrontend {
             }),
           )
           for (const message of messages) {
-            ws.send(JSON.stringify(message))
+            if (!this.sendWireMessage(message)) break
           }
         } catch (error) {
           this.onError?.(error)
@@ -370,7 +374,7 @@ export class RealtimeFrontend {
   }
 
   appendAudio(audio) {
-    this.send(this.protocol.audioAppend(audio))
+    this.send(this.protocol.audioAppend(audio), { audio: true })
     this.audioInputStarted = true
   }
 
@@ -408,7 +412,7 @@ export class RealtimeFrontend {
       ))
     }
     return this.enqueueResponse('model', context, async () => {
-      await this.createConversationItem(this.protocol.userTextItem(content))
+      await this.createConversationItem(this.protocol.userTextItem(content), { contextOnly: false })
       return this.sendResponse(
         modalities ? { modalities } : undefined,
       )
@@ -435,7 +439,9 @@ export class RealtimeFrontend {
     if (!projection) return false
     for (const event of projection.beforeEvents || []) this.send(event)
     if (projection.conversationItem) {
-      await this.createConversationItem(projection.conversationItem)
+      await this.createConversationItem(projection.conversationItem, {
+        contextOnly: options.contextOnly !== false,
+      })
     }
     for (const event of projection.afterEvents || []) this.send(event)
     return true
@@ -448,7 +454,7 @@ export class RealtimeFrontend {
       ))
     }
     return this.enqueueResponse('model', context, async () => {
-      if (!await this.applyUserInput(parts)) return false
+      if (!await this.applyUserInput(parts, { contextOnly: false })) return false
       return this.sendResponse(
         modalities ? { modalities } : undefined,
       )
@@ -469,9 +475,14 @@ export class RealtimeFrontend {
     ))
   }
 
-  ensureResponse(context = {}, { shouldCreate, response } = {}) {
+  ensureResponse(context = {}, { shouldCreate, response, afterToolResults = false } = {}) {
     if (!this.capabilities.clientResponses) {
       return Promise.resolve({ skipped: true, unsupported: true })
+    }
+    if (afterToolResults && this.capabilities.automaticToolResponses) {
+      // Results have already resumed native generation. Do not enqueue a
+      // second reply, or wait for a response we never requested.
+      return Promise.resolve({ skipped: true, automatic: true })
     }
     return this.enqueueResponse('agent', context, pending => {
       pending.isCurrent = shouldCreate
@@ -493,6 +504,13 @@ export class RealtimeFrontend {
     const sendOutput = () => this.createConversationItem(
       this.protocol.functionOutputItem(callId, output),
     )
+    if (this.capabilities.automaticToolResponses) {
+      if (!this.ready) return Promise.resolve({ cancelled: true })
+      // In native tool loops response.done can arrive only AFTER the result.
+      // Queueing this behind whenIdle() would deadlock service and runtime.
+      // This acknowledges delivery, not completion of the ensuing speech.
+      return sendOutput().then(() => ({ delivered: true, automatic: true }))
+    }
     if (!createResponse) return this.enqueueAction(sendOutput)
     return this.enqueueResponse('agent', context, async pending => {
       pending.isCurrent = shouldRespond
@@ -501,13 +519,13 @@ export class RealtimeFrontend {
     })
   }
 
-  createConversationItem(item) {
+  createConversationItem(item, { contextOnly = true } = {}) {
     if (!this.capabilities.conversationItems) {
       return Promise.reject(new Error(
         `${this.provider.label} 不支持创建对话项`,
       ))
     }
-    if (this.capabilities.conversationItemIdEcho) return this.sendConversationItem(item)
+    if (this.capabilities.conversationItemIdEcho) return this.sendConversationItem(item, { contextOnly })
     // Without echoed IDs, only one client-created item may await a receipt.
     // This queue is independent of responses: permissions/environment context
     // can still arrive while speech is being generated.
@@ -516,14 +534,14 @@ export class RealtimeFrontend {
       if (generation !== this.conversationItemGeneration) {
         throw new Error('Realtime 会话已重置')
       }
-      return this.sendConversationItem(item)
+      return this.sendConversationItem(item, { contextOnly })
     }
     const result = this.conversationItemQueue.then(send, send)
     this.conversationItemQueue = result.catch(() => {})
     return result
   }
 
-  sendConversationItem(item) {
+  sendConversationItem(item, { contextOnly = true } = {}) {
     // Id namespaces are dialect-specific (the GA dialect derives them from the
     // item type), so the protocol adapter mints the id.
     const id = item.id || this.protocol.conversationItemId(item)
@@ -546,7 +564,7 @@ export class RealtimeFrontend {
         }, this.responseStartTimeoutMs),
       }
       this.conversationItemWaiters.set(id, waiter)
-      waiter.eventId = this.send(this.protocol.conversationItemCreate({ id, ...item }))?.event_id
+      waiter.eventId = this.send(this.protocol.conversationItemCreate({ id, ...item }, { contextOnly }))?.event_id
       if (!this.capabilities.acknowledgesConversationItems) {
         clearTimeout(waiter.timer)
         this.conversationItemWaiters.delete(id)
@@ -1201,7 +1219,21 @@ export class RealtimeFrontend {
     this.resetResponses()
   }
 
-  send(payload) {
+  sendWireMessage(body, options = {}) {
+    return sendBoundedWebSocket(this.ws, JSON.stringify(body), {
+      ...options,
+      onFailure: ({ code, bufferedBytes, messageBytes, limit }) => {
+        this.ready = false
+        this.resetResponses()
+        this.diagnose({
+          event: 'realtime.send_failed', provider: this.provider.key,
+          code, bufferedBytes, messageBytes, limit,
+        })
+      },
+    })
+  }
+
+  send(payload, options = {}) {
     if (!payload) return
     if (this.ws?.readyState === WebSocket.OPEN) {
       let outgoing = payload
@@ -1224,8 +1256,7 @@ export class RealtimeFrontend {
       }
       const body = this.protocol.encodeOutgoing(outgoing)
       if (body == null) return
-      this.ws.send(JSON.stringify(body))
-      return body
+      if (this.sendWireMessage(body, options)) return body
     }
   }
 }

@@ -3,7 +3,7 @@ layout: home
 hero:
   name: Qwen Audio Agent
   text: Agent Presence
-  tagline: An open framework combining realtime voice conversation with Agent execution, so conversation and work can happen together and results flow naturally into the dialogue.
+  tagline: Build voice agents that keep talking while tasks run and results flow back into the conversation.
   actions:
     - theme: brand
       text: Get Started

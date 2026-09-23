@@ -6,6 +6,7 @@
 [![npm](https://img.shields.io/npm/v/qwen-audio-agent)](https://www.npmjs.com/package/qwen-audio-agent)
 [![node](https://img.shields.io/badge/node-%E2%89%A522.22.2-brightgreen)](https://nodejs.org/)
 [![license](https://img.shields.io/github/license/QwenAudio/qwen-audio-agent)](LICENSE)
+[![arXiv](https://img.shields.io/badge/arXiv-2609.25195-b31b1b)](https://arxiv.org/abs/2609.25195)
 [![WeChat](https://img.shields.io/badge/WeChat-%E5%8A%A0%E5%85%A5%E8%AE%A8%E8%AE%BA-07C160?logo=wechat&logoColor=white)](#交流与分享)
 
 ## Agent，始终在场
@@ -94,14 +95,15 @@
 
 | 语音前台 | 部署方式 | 接入准备 | 特点 |
 | --- | --- | --- | --- |
-| [Qwen Audio 3.0 Realtime](docs/voice-frontends/qwen-audio-realtime.zh.md) | 云端 | 百炼 API Key | 默认前台 |
-| [GPT-Live / OpenAI Realtime](docs/voice-frontends/gpt-live.zh.md) | 云端 | OpenAI API Key | OpenAI GA Realtime 协议 |
-| [Google Gemini Live](docs/voice-frontends/google-live.zh.md) | 云端 | Google API Key | 原生 Gemini Live WebSocket |
-| [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.zh.md) | 云端 | 百炼 API Key | 支持视频输入 |
-| [Qwen3.8 Omni Flash Realtime](docs/voice-frontends/qwen-omni-realtime.zh.md) | 云端 | 百炼 API Key + 业务空间专属地址 | 支持视频输入与工具调用 |
-| [StepAudio 3 Realtime](docs/voice-frontends/stepfun.zh.md) | 云端 | StepFun API Key | 预览模型 |
-| [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) | 本地 | 启动服务并填写地址 | 可自由配置组件 |
-| [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md) | 本地或云端 | 提供兼容服务地址 | 暂不支持后台委托 |
+| [Qwen Audio 3.0 Realtime](docs/voice-frontends/qwen-audio-realtime.zh.md) | 云端 | 百炼 API Key | 双工语音、工具调用 |
+| [GPT-Live / OpenAI Realtime](docs/voice-frontends/gpt-live.zh.md) | 云端 | OpenAI API Key | — |
+| [Google Gemini Live](docs/voice-frontends/google-live.zh.md) | 云端 | Google API Key | 实时视频输入 |
+| [Qwen3.5-Omni Realtime](docs/voice-frontends/qwen-omni-realtime.zh.md) | 云端 | 百炼 API Key | 实时视频输入 |
+| [Qwen3.8 Omni Flash Realtime](docs/voice-frontends/qwen-omni-realtime.zh.md) | 云端 | 百炼 API Key + 业务空间专属地址 | 实时视频输入 |
+| [豆包 Seeduplex 3.0 Realtime](docs/configuration/frontend.zh.md#选择服务) | 云端 | 火山引擎语音 API Key | — |
+| [StepAudio 3 Realtime](docs/voice-frontends/stepfun.zh.md) | 云端 | StepFun API Key | — |
+| [Hugging Face Speech-to-Speech](docs/voice-frontends/speech-to-speech.zh.md) | 本地 | 启动服务并填写地址 | 可配置 STT / LLM / TTS |
+| [MiniCPM-o 4.5](docs/voice-frontends/minicpm-o.zh.md) | 本地或云端 | 提供兼容服务地址 | 实时视频输入、不支持工具调用 |
 
 需要接入其他语音服务时，可实现 [Realtime Provider 接口](docs/voice-frontends/custom-provider.zh.md)，
 无需修改 Gateway 的核心语音会话与后台任务逻辑。

@@ -17,6 +17,23 @@ function fakeClient({ tools, result }, calls) {
   }
 }
 
+test('search discovers its configured tool on a later MCP page', async () => {
+  const calls = []
+  const remote = fakeClient({ result: { structuredContent: {
+    results: [{ title: 'Facts', url: 'https://example.com/facts', snippet: 'Verified facts.' }],
+  }, content: [] } }, calls)
+  remote.listTools = async params => params?.cursor === 'second'
+    ? { tools: [{ name: 'search_web', inputSchema: { type: 'object', properties: { query: { type: 'string' } } } }] }
+    : { tools: [], nextCursor: 'second' }
+  const provider = new McpWebSearchProvider({
+    url: 'https://search.example/mcp', toolName: 'search_web',
+    clientFactory: () => remote, transportFactory: () => ({}),
+  })
+  await provider.search('facts')
+  assert.equal(calls.find(([type]) => type === 'callTool')[1].name, 'search_web')
+  assert.equal(calls.at(-1)[0], 'close')
+})
+
 test('projects structured MCP search output behind the Web Search port', async () => {
   const calls = []
   const transports = []

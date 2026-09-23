@@ -242,6 +242,18 @@ test('Gateway Work consumers use BackendPort instead of ACP coordinator APIs', (
   assert.deepEqual(violations, [])
 })
 
+test('Gateway application assembles services while HTTP adapters own route registration', () => {
+  const application = readFileSync(resolve(sourceRoot, 'app/gateway-application.mjs'), 'utf8')
+  assert.match(application, /registerGatewayHttpRoutes\(app,/u)
+  assert.doesNotMatch(application, /app\.(?:get|post|put|patch|delete|use)\(/u)
+  const routes = readFileSync(resolve(sourceRoot, 'app/gateway-http-routes.mjs'), 'utf8')
+  assert.doesNotMatch(routes, /new (?:TaskManager|SessionJournalRegistry|GatewayAccessManager|BackendWorkRuntime)\b/u)
+  assert.ok(routes.indexOf("app.post('/api/access/session'") < routes.indexOf('resolveHttp(req, res)'))
+  assert.ok(routes.indexOf('resolveHttp(req, res)') < routes.indexOf("app.get('/api/health'"))
+  assert.ok(routes.indexOf('module.mountRoutes?.(app)') < routes.indexOf("app.use('/api'"))
+  assert.ok(routes.indexOf("app.use('/api'") < routes.indexOf('express.static(webDist)'))
+})
+
 test('UI source code does not import Gateway or another client implementation', () => {
   const roots = [
     resolve(projectRoot, 'web/src'),

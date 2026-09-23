@@ -70,6 +70,17 @@ Desktop exposes its log directory in Settings → App → Logs. CLI logs default
 `~/.config/qwaudio/state/logs`; desktop-hosted Gateway logs use `~/.config/qwaudio/state/desktop/logs`.
 Desktop Client logs use the `logs/` subdirectory of its application data directory.
 
+### Session history retention
+
+`state/sessions/` contains recovery records, separate from diagnostic logs. Journals are not permanent audit archives:
+
+- Each journal is compacted at 2,000 events or 8 MiB. Compaction prioritizes unfinished/scheduled tasks, undelivered results, recent messages and latest task snapshots. Sequence numbers are never reset.
+- Up to 8 idle journals stay cached. The write queue is bounded as well; overload is reported rather than buffering indefinitely.
+- Maintenance runs on writes, at most once every 10 minutes. Inactive journals expire after 30 days; oldest eligible files are also removed above 256 files or 128 MiB per Gateway state directory.
+- Files containing recoverable work or undelivered results, and unreadable/corrupt files, are not removed automatically. They can keep the directory above its budget; `session_journal.retention_protected` reports this condition. If essential recovery data exceeds a single journal's budget, the append is rejected and logged, rather than deleting recovery state. Task persistence remains separate.
+
+Compaction replaces files atomically and reports omitted history in the header's `retention.discardedEvents`. Deduplication covers retained events. Old removed history cannot be recovered from the journal; back up `state/sessions/` separately if you need a permanent archive. Embedding applications can override these defaults when constructing `SessionJournalRegistry`.
+
 Development builds can summarize a recorded turn:
 
 ```bash

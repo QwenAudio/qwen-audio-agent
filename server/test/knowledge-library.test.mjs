@@ -258,7 +258,7 @@ test('rejects an empty path with invalid_path rather than not_a_file', () => {
   })
 })
 
-// WebUI / 桌面资料库入口是「粘贴本机路径」。Windows 资源管理器「复制文件地址」
+// WebUI 资料库入口是「粘贴本机路径」。Windows 资源管理器「复制文件地址」
 // 会带上引号；浏览器或部分文件管理器会给出 file:// URL。引号必须在 resolve
 // 之前剥掉，否则会被当成相对路径的一部分。
 test('imports Explorer-quoted paths and file URLs as the same local file', () => {
@@ -295,10 +295,45 @@ test('imports Explorer-quoted paths and file URLs as the same local file', () =>
       shelf.conversionTarget({ ownerId: OWNER, sourcePath: `"${pdf}"` }).filename,
       '手册-2.md',
     )
+  })
+})
+
+test('rejects root and malformed file URLs as invalid paths on every platform', () => {
+  withDirs(({ root, docs }) => {
+    const shelf = library({ docs, root })
+    // POSIX resolves file:// to /; Windows rejects its missing drive/share.
+    // Neither identifies a file to import.
+    for (const sourcePath of [
+      'file://', 'file:///', '"file://"',
+      'file:///invalid%ZZ.md', 'file:///encoded%2Fseparator.md', 'file://[invalid',
+    ]) {
+      assert.throws(
+        () => shelf.import({ ownerId: OWNER, sourcePath }),
+        error => error instanceof KnowledgeImportError && error.code === 'invalid_path',
+        sourcePath,
+      )
+    }
     assert.throws(
-      () => shelf.import({ ownerId: OWNER, sourcePath: 'file://' }),
+      () => shelf.import({
+        ownerId: OWNER,
+        sourcePath: pathToFileURL(join(root, 'missing.md')).href,
+      }),
       error => error instanceof KnowledgeImportError && error.code === 'not_found',
     )
+    assert.equal(shelf.list(OWNER).length, 0)
+  })
+})
+
+test('preserves spaces, Unicode and literal URL characters in pasted filenames', () => {
+  withDirs(({ root, docs }) => {
+    const source = sourceFile(root, '中文 #100%.md', '# literal filename\n')
+    const shelf = library({ docs, root })
+    for (const sourcePath of [source, `  '${source}'  `, `"${pathToFileURL(source).href}"`]) {
+      const entry = shelf.import({ ownerId: OWNER, sourcePath })
+      assert.equal(entry.source, source)
+      assert.equal(readFileSync(entry.path, 'utf8'), '# literal filename\n')
+    }
+    assert.equal(shelf.list(OWNER).length, 1)
   })
 })
 

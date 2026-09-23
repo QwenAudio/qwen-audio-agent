@@ -62,7 +62,7 @@ export function normalizeSourcePath(value) {
     try {
       raw = fileURLToPath(raw)
     } catch {
-      // Keep the pasted value; import() still reports not_found.
+      throw new KnowledgeImportError('invalid_path', '文件 URL 无法转换为本机路径。')
     }
   }
   return raw

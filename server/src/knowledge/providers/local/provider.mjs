@@ -140,7 +140,7 @@ export class LocalKnowledgeProvider {
 
   async ingest(request, context = {}) {
     const ownerId = clean(context.ownerId)
-    const sourcePath = normalizeSourcePath(clean(request?.source?.path ?? request?.path))
+    const sourcePath = normalizeSourcePath(request?.source?.path ?? request?.path)
     let entry
     if (classifySource(sourcePath) === 'convertible') {
       if (!this.documentConverter) {

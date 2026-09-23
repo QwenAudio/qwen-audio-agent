@@ -23,6 +23,9 @@ The voice Provider must support tool calls.
 2. Paste an **absolute file path on the Gateway host**, such as `/Users/me/Documents/handbook.md`.
 3. Click “Add to library” and wait for import completion. Ask questions once the document appears in the list.
 
+The built-in library accepts quoted paths copied from file managers and `file://` URLs.
+Both refer to files on the Gateway host. Invalid file URLs are rejected, not treated as ordinary paths.
+
 This is not a file uploader. A path on a remote phone does not refer to a file on the computer;
 place the document on the Gateway host first. The Desktop orb and conversation panel do not
 currently expose a library-management button.

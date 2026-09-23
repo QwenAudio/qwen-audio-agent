@@ -19,6 +19,35 @@ const MAX_STDERR_CHARS = 12_000
 // logger cleanup after escalating an unresponsive process tree.
 const PROCESS_TREE_GRACE_MS = 750
 const PROCESS_TREE_POLL_MS = 25
+// Keep cmd.exe quoting in sync with scripts/runtime/launcher.mjs. Carets
+// inside quotes are literal, so metacharacters are escaped only outside them.
+const CMD_META_CHARS = /["()%!^<>&|]/g
+
+function escapeCmdValue(value) {
+  let quoted = false
+  return value.replace(CMD_META_CHARS, character => {
+    if (character === '"') {
+      quoted = !quoted
+      return character
+    }
+    return quoted ? character : `^${character}`
+  })
+}
+
+function quoteCmdArgument(value) {
+  const quoted = String(value)
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\*)$/g, '$1$1')
+  return escapeCmdValue(`"${quoted}"`)
+}
+
+function quoteCmdCommand(value) {
+  return escapeCmdValue(`"${String(value).replace(/"/g, '""')}"`)
+}
+
+function windowsComSpec(env) {
+  return clean(env?.ComSpec || env?.COMSPEC) || 'cmd.exe'
+}
 
 function clean(value) {
   return String(value || '').trim()
@@ -182,23 +211,33 @@ export class AcpProcessClient {
     this.stderr = ''
     await this.prepare?.()
     const isWindows = this.platform === 'win32'
-    // .exe 文件不需要 cmd.exe 包装；直接 spawn 避免路径含空格时
-    // cmd.exe 将第一个空格前的内容误解析为命令名。
+    // .exe 不经 cmd.exe；.cmd/.bat 以及无扩展名的 Windows 命令必须走 cmd.exe，
+    // 否则 Node 无法启动批处理，PATHEXT 解析也会失败。
     const commandExt = isWindows ? extname(String(this.command)).toLowerCase() : ''
-    const useShell = isWindows && commandExt !== '.exe'
-    // cmd.exe 只把命令与参数按空格拼接：含空格的 .cmd/.bat 路径或参数需要加引号，
-    // 否则命令会在第一个空格处被截断，参数也会被拆开。
-    const shellArgument = value => {
-      const text = String(value)
-      return useShell && /\s/.test(text) && !/^".*"$/.test(text) ? `"${text}"` : text
+    const useCmd = isWindows && commandExt !== '.exe'
+    let spawnCommand = this.command
+    let spawnArgs = this.args
+    const spawnOptions = {
+      cwd: this.cwd,
+      env: this.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: false,
+      detached: !isWindows,
+      windowsHide: true,
     }
-    const child = this.spawn(shellArgument(this.command), this.args.map(shellArgument), {
-        cwd: this.cwd,
-        env: this.env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: useShell,
-        detached: !isWindows,
-      })
+    if (useCmd) {
+      // shell:true 只按空格拼接。C:\R&D\agent.cmd 或参数 a&b 即使没有空格
+      // 也会被 cmd.exe 拆成多条命令。这里与 runtime launcher 一样显式
+      // 调用 cmd.exe /d /s /c，并按 Windows 规则引用每个参数。
+      const commandLine = [
+        quoteCmdCommand(this.command),
+        ...this.args.map(quoteCmdArgument),
+      ].join(' ')
+      spawnCommand = windowsComSpec(this.env)
+      spawnArgs = ['/d', '/s', '/c', `"${commandLine}"`]
+      spawnOptions.windowsVerbatimArguments = true
+    }
+    const child = this.spawn(spawnCommand, spawnArgs, spawnOptions)
     const processLogger = logger.child({ subsystem: 'acp', backend: this.label })
     processLogger.info('acp.process_started', {
       pid: child.pid,

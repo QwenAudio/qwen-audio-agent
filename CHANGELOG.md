@@ -140,6 +140,9 @@
   校验 ACP MCP 描述的后台无法创建 Session 的问题。
 - 修复 Windows 上位于含空格目录的 `.cmd` / `.bat` ACP 后台命令被 cmd.exe 截断而
   无法启动，以及含空格的 ACP 参数被拆开的问题。
+- 修复 Windows 上路径或参数含 `&`、`|`、`^` 等 cmd.exe 元字符时（如 `C:\R&D\qwen.cmd`
+  或 `ACP_ARGS=["a&b"]`），Qwen Code、Qoder、通用 ACP 等直接启动的后台仍被拆成多条
+  命令而无法启动的问题；批处理改为显式 `cmd.exe /d /s /c` 引用，不再依赖 `shell: true`。
 - 修复 Windows 用户名或安装目录含空格时（如
   `C:\Users\Li Lei\AppData\Roaming\npm\codex.cmd`），桌面设置页的后台登录状态
   检测命令被 cmd.exe 截断、已登录的后台一律显示为状态未知的问题。

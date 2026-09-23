@@ -1,7 +1,9 @@
-import { readdirSync, readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readdirSync } from 'node:fs'
+import { stat, unlink, rmdir, utimes } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
 import { SessionJournal } from './session-journal.mjs'
-import { decodeSessionJournal } from './session-journal-format.mjs'
+import { readSessionJournalSync } from './session-journal-reader.mjs'
+import { journalRetention, latestJournalTasks, needsJournalRecovery, recordBytes } from './session-journal-retention.mjs'
 
 function pathSegment(value, fallback) {
   const text = String(value || '').trim()
@@ -13,11 +15,27 @@ function pathSegment(value, fallback) {
 
 /** Owns per-owner/per-session journals without coupling them to a domain model. */
 export class SessionJournalRegistry {
-  constructor({ directory, logger = null } = {}) {
+  constructor({
+    directory, logger = null, retention,
+    maxCachedJournals = 8, maxFiles = 256, maxTotalBytes = 128 * 1024 * 1024,
+    maxAgeMs = 30 * 24 * 60 * 60 * 1000, maintenanceIntervalMs = 10 * 60 * 1000,
+    maxQueuedOperations = 256, maxQueuedBytes = 16 * 1024 * 1024,
+    now = () => Date.now(),
+  } = {}) {
     if (!directory) throw new TypeError('directory is required')
     this.directory = resolve(directory)
     this.logger = logger
     this.journals = new Map()
+    this.retention = journalRetention(retention)
+    for (const [key, value] of Object.entries({ maxCachedJournals, maxFiles, maxTotalBytes, maxAgeMs, maintenanceIntervalMs, maxQueuedOperations, maxQueuedBytes })) {
+      if (!Number.isSafeInteger(value) || value < 1) throw new TypeError(`invalid journal limit ${key}`)
+      this[key] = value
+    }
+    this.now = now
+    this.lastMaintenance = -Infinity
+    this.operationQueue = Promise.resolve()
+    this.queuedOperations = 0
+    this.queuedBytes = 0
   }
 
   key(ownerId, sessionId) {
@@ -34,15 +52,48 @@ export class SessionJournalRegistry {
         filePath: resolve(this.directory, owner, session, 'session.jsonl'),
         sessionId: String(sessionId || 'main'),
         metadata: { ownerId: String(ownerId || 'personal') },
+        retention: this.retention,
       })
       this.journals.set(key, journal)
     }
+    this.journals.delete(key)
+    this.journals.set(key, journal)
+    this.trimCache(journal)
     return journal
   }
 
+  trimCache(keep = null) {
+    for (const [key, journal] of this.journals) {
+      if (this.journals.size <= this.maxCachedJournals) break
+      if (journal !== keep && !journal.pendingWrites && !journal.openPromise) this.journals.delete(key)
+    }
+  }
+
+  enqueue(operation, bytes = 0) {
+    if (this.queuedOperations >= this.maxQueuedOperations || this.queuedBytes + bytes > this.maxQueuedBytes) {
+      return Promise.reject(Object.assign(new Error('Session journal write queue is full'), { code: 'SESSION_JOURNAL_BUSY' }))
+    }
+    this.queuedOperations += 1
+    this.queuedBytes += bytes
+    const result = this.operationQueue.then(operation).finally(() => {
+      this.queuedOperations -= 1
+      this.queuedBytes -= bytes
+    })
+    this.operationQueue = result.catch(() => {})
+    return result
+  }
+
   append({ ownerId, sessionId = 'main', event } = {}) {
-    const journal = this.get(ownerId, sessionId)
-    return journal.append(event).catch(error => {
+    let bytes
+    try { bytes = recordBytes(event) } catch (error) { return Promise.reject(error) }
+    return this.enqueue(async () => {
+      const journal = this.get(ownerId, sessionId)
+      const result = await journal.append(event)
+      if (this.now() - this.lastMaintenance >= this.maintenanceIntervalMs) {
+        await this.prune(journal.filePath)
+      }
+      return result
+    }, bytes).catch(error => {
       this.logger?.warn('session_journal.append_failed', {
         ownerId,
         sessionId,
@@ -54,14 +105,81 @@ export class SessionJournalRegistry {
   }
 
   async flush() {
+    await this.operationQueue
     await Promise.all([...this.journals.values()].map(journal => journal.flush()))
+    this.trimCache()
   }
 
   async read(ownerId, sessionId = 'main') {
-    const journal = this.get(ownerId, sessionId)
-    await journal.flush()
-    await journal.open()
-    return journal.list()
+    return this.enqueue(async () => {
+      const journal = this.get(ownerId, sessionId)
+      await journal.flush()
+      await journal.open()
+      return journal.list()
+    })
+  }
+
+  maintain() { return this.enqueue(() => this.prune()) }
+
+  async prune(keepPath = null) {
+    this.lastMaintenance = this.now()
+    const candidates = []
+    let totalBytes = 0
+    let files = 0
+    for (const path of this.paths()) {
+      try {
+        const info = await stat(path)
+        files += 1
+        totalBytes += info.size
+        const cached = [...this.journals.values()].find(journal => journal.filePath === path)
+        if (path === keepPath || cached?.pendingWrites || cached?.openPromise) continue
+        candidates.push({ path, info, cached })
+      } catch (error) {
+        // Never remove unreadable/corrupt files as part of retention.
+        this.logger?.warn('session_journal.maintenance_failed', { path, error })
+      }
+    }
+    candidates.sort((a, b) => a.info.mtimeMs - b.info.mtimeMs)
+    let removed = 0
+    for (const candidate of candidates) {
+      const expired = this.now() - candidate.info.mtimeMs > this.maxAgeMs
+      const overBudget = () => files > this.maxFiles || totalBytes > this.maxTotalBytes
+      // Normal maintenance only stats retained files; do not parse the entire
+      // history every ten minutes just to find that no cleanup is needed.
+      if (!expired && !overBudget() && candidate.info.size <= this.retention.maxBytes) continue
+      try {
+        const decoded = readSessionJournalSync(candidate.path, { retention: this.retention })
+        if (decoded.removed) {
+          const journal = candidate.cached || new SessionJournal({
+            filePath: candidate.path, sessionId: decoded.header.sessionId, retention: this.retention,
+          })
+          await journal.open()
+          await utimes(candidate.path, candidate.info.atime, candidate.info.mtime)
+          const updated = await stat(candidate.path)
+          totalBytes += updated.size - candidate.info.size
+          candidate.info = updated
+        }
+        if (!expired && !overBudget()) continue
+        if (latestJournalTasks(decoded.events).some(needsJournalRecovery)) continue
+        await unlink(candidate.path)
+        files -= 1
+        totalBytes -= candidate.info.size
+        removed += 1
+        for (const [key, journal] of this.journals) {
+          if (journal.filePath === candidate.path) this.journals.delete(key)
+        }
+        // Remove only empty session directories, never recursively delete state.
+        await rmdir(dirname(candidate.path)).catch(() => {})
+      } catch (error) {
+        this.logger?.warn('session_journal.prune_failed', { path: candidate.path, error })
+      }
+    }
+    this.trimCache()
+    if (removed) this.logger?.info('session_journal.pruned', { removed, files, bytes: totalBytes })
+    if (files > this.maxFiles || totalBytes > this.maxTotalBytes) {
+      this.logger?.warn('session_journal.retention_protected', { files, bytes: totalBytes })
+    }
+    return { removed, files, bytes: totalBytes }
   }
 
   readAllSync() {
@@ -89,7 +207,7 @@ export class SessionJournalRegistry {
   *iterateSync() {
     for (const target of this.paths()) {
       try {
-        const decoded = decodeSessionJournal(readFileSync(target))
+        const decoded = readSessionJournalSync(target, { retention: this.retention })
         if (decoded.discardedBytes) {
           this.logger?.warn('session_journal.torn_tail', {
             path: target,

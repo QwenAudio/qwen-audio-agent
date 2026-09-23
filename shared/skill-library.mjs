@@ -18,34 +18,68 @@ function clean(value) {
   return String(value || '').trim()
 }
 
+function npmBinFile(directory, name) {
+  return directory
+    ? win32.join(directory, 'node_modules', 'npm', 'bin', name)
+    : ''
+}
+
+function defaultReadNpmPrefix(node, script) {
+  if (!node || !script) return ''
+  try {
+    const result = spawnSync(node, [script], {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 5000,
+    })
+    if (result.status !== 0) return ''
+    return clean(result.stdout).split(/\r?\n/)[0]
+  } catch {
+    return ''
+  }
+}
+
+function windowsNodeExecutable(directory, find, exists, execPath) {
+  const bundled = directory ? win32.join(directory, 'node.exe') : ''
+  if (bundled && exists(bundled)) return bundled
+  const found = find('node')
+  if (found) return found
+  return /\bnode\.exe$/i.test(execPath) ? execPath : 'node'
+}
+
 export function skillsCliPackage(env = process.env) {
   return clean(env.QWEN_AUDIO_AGENT_SKILLS_CLI_PACKAGE)
     || DEFAULT_SKILLS_CLI_PACKAGE
 }
 
 // Windows 上 npx 是 npx.cmd 批处理：不经 shell 无法启动（ENOENT），经 cmd.exe
-// 又会重新解释来源 URL 里的 &、% 等字符。与 npx.cmd 自身一致，直接用 node
-// 运行 npm 自带的 npx-cli.js，参数原样传递。
+// 又会重新解释来源 URL 里的 &、% 等字符。与官方 npx.cmd 一致，用 node 运行
+// npx-cli.js，并读取 npm prefix；Volta 等 shim 再回退到 node.exe 旁的副本。
 export function skillsCliInvocation(args, {
   env = process.env,
   platform = process.platform,
   find = findExecutable,
   exists = existsSync,
+  execPath = process.execPath,
+  readPrefix = defaultReadNpmPrefix,
 } = {}) {
   if (platform !== 'win32') return { command: 'npx', args }
-  const npx = find('npx.cmd', { env, platform })
+  const locate = command => find(command, { env, platform })
+  const npx = locate('npx.cmd')
   const directory = npx ? win32.dirname(npx) : ''
-  const cli = directory
-    ? win32.join(directory, 'node_modules', 'npm', 'bin', 'npx-cli.js')
+  const node = windowsNodeExecutable(directory, locate, exists, execPath)
+  const prefixScript = npmBinFile(directory, 'npm-prefix.js')
+  const prefix = prefixScript && exists(prefixScript)
+    ? readPrefix(node, prefixScript)
     : ''
-  if (!cli || !exists(cli)) return { command: 'npx', args }
-  const bundledNode = win32.join(directory, 'node.exe')
-  return {
-    command: exists(bundledNode)
-      ? bundledNode
-      : find('node', { env, platform }) || 'node',
-    args: [cli, ...args],
-  }
+  const cli = [
+    prefix ? npmBinFile(prefix, 'npx-cli.js') : '',
+    npmBinFile(directory, 'npx-cli.js'),
+    node ? npmBinFile(win32.dirname(node), 'npx-cli.js') : '',
+    /\bnode\.exe$/i.test(execPath) ? npmBinFile(win32.dirname(execPath), 'npx-cli.js') : '',
+  ].find(path => path && exists(path))
+  if (!cli) return { command: 'npx', args }
+  return { command: node, args: [cli, ...args] }
 }
 
 function defaultSpawn(args) {

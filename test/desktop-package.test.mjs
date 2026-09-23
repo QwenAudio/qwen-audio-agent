@@ -42,3 +42,25 @@ test('release verifies both desktop artifacts before publishing npm', () => {
     assert.ok(workflow.jobs[platform].steps.some(step => step.run?.includes('scripts/test/desktop-package-smoke.mjs')))
   }
 })
+
+test('macOS release imports the certificate separately and requires a signed build', () => {
+  const workflow = parse(readFileSync(new URL('../.github/workflows/release.yml', import.meta.url), 'utf8'))
+  const steps = workflow.jobs.macos.steps
+  const signing = steps.find(step => step.id === 'signing')
+  // These are different secrets. Partition access requires the keychain password,
+  // whereas importing the encrypted P12 requires the certificate password.
+  assert.match(signing.run, /create-keychain -p "\$KEYCHAIN_PASSWORD"/)
+  assert.match(signing.run, /-P "\$CSC_KEY_PASSWORD"/)
+  assert.match(signing.run, /set-key-partition-list[^]*-k "\$KEYCHAIN_PASSWORD"/)
+  assert.match(signing.run, /CSC_KEYCHAIN=.*GITHUB_ENV/)
+  assert.match(signing.run, /CSC_NAME=.*GITHUB_ENV/)
+  assert.match(signing.run, /trap 'rm -f "\$CERTIFICATE_PATH"' EXIT/)
+  const build = steps.find(step => step.run?.startsWith('npm run desktop:build --'))
+  assert.equal(build.env.CSC_LINK, undefined)
+  assert.equal(build.env.CSC_KEY_PASSWORD, undefined)
+  assert.match(build.run, /--config.forceCodeSigning=true/)
+  assert.ok(steps.indexOf(signing) < steps.indexOf(build))
+  const cleanup = steps.find(step => step.run?.includes('delete-keychain'))
+  assert.match(cleanup.if, /always\(\)/)
+  assert.ok(steps.indexOf(cleanup) > steps.indexOf(build))
+})

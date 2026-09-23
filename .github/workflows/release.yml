@@ -203,14 +203,52 @@ jobs:
             echo "Missing GitHub Actions secrets:${MISSING}" >&2
             exit 1
           fi
-      - name: Build, sign and notarize universal macOS DMG
-        run: npm run desktop:build -- --universal --publish never
+      # Own the temporary keychain explicitly: electron-builder 26.16.0 uses
+      # the P12 password instead of the keychain password for partition access.
+      # Keep this in the workflow so recovery can package an existing tag.
+      - name: Import signing certificate into an isolated keychain
+        id: signing
         env:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          SIGNING_DIR=$(mktemp -d "$RUNNER_TEMP/qwa-signing.XXXXXX")
+          echo "directory=$SIGNING_DIR" >> "$GITHUB_OUTPUT"
+          KEYCHAIN_PATH="$SIGNING_DIR/release.keychain-db"
+          CERTIFICATE_PATH="$SIGNING_DIR/certificate.p12"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          trap 'rm -f "$CERTIFICATE_PATH"' EXIT
+          umask 077
+          printf '%s' "$CSC_LINK" | /usr/bin/base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -k "$KEYCHAIN_PATH" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild -P "$CSC_KEY_PASSWORD"
+          security set-key-partition-list -S apple-tool:,apple: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | awk '/"Developer ID Application:/ { print $2; exit }')
+          if [[ ! "$SIGNING_IDENTITY" =~ ^[A-Fa-f0-9]{40}$ ]]; then
+            echo "No valid Developer ID Application identity in the signing certificate" >&2
+            exit 1
+          fi
+          echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          echo "CSC_NAME=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
+      - name: Build, sign and notarize universal macOS DMG
+        run: npm run desktop:build -- --universal --publish never --config.forceCodeSigning=true
+        env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Remove temporary signing keychain
+        if: ${{ always() && steps.signing.outputs.directory != '' }}
+        env:
+          SIGNING_DIR: ${{ steps.signing.outputs.directory }}
+        run: |
+          security delete-keychain "$SIGNING_DIR/release.keychain-db"
       - name: Verify packaged macOS Gateway
         run: node scripts/test/desktop-package-smoke.mjs "dist/desktop/mac-universal/Qwen Audio Agent.app"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

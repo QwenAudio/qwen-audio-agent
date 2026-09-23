@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { runtimePathEnvironment } from '../../shared/runtime-paths.mjs'
 import { requireWebRtcDependencies } from '../../shared/gateway/webrtc.mjs'
@@ -63,6 +64,14 @@ import {
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const gatewayPath = resolve(root, 'server/src/index.mjs')
+
+function readCliVersion() {
+  return JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).version
+}
+
+function isVersionRequest(argv) {
+  return argv.length === 1 && (argv[0] === '--version' || argv[0] === '-v')
+}
 
 async function runMinimal(options) {
   const moduleUrl = pathToFileURL(resolve(root, 'tui/src/index.mjs'))
@@ -290,6 +299,10 @@ export async function main(argv, {
     errorCorrectionLevel: 'L',
   }),
 } = {}) {
+  if (isVersionRequest(argv)) {
+    stdout.write(`${readCliVersion()}\n`)
+    return 0
+  }
   const processModelOverrides = { ...env }
   const readOnlyCommand = ['setup', 'install', 'doctor', 'connect', 'disconnect', 'tui', 'webui', 'status'].includes(argv[0])
     || (argv[0] === 'gateway' && argv[1] === 'status')

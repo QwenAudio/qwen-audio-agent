@@ -3,7 +3,7 @@ import { Role, TaskState } from '@a2a-js/sdk'
 import { AgentEvent } from '@a2a-js/sdk/server'
 import { DashScopeServiceModel } from './model.mjs'
 import { flowPrompt } from './flows.mjs'
-import { AgentHistory } from '../../shared/agent-history.mjs'
+import { AgentHistory } from './agent-history.mjs'
 
 const MAX_AGENT_ROUNDS = 8
 

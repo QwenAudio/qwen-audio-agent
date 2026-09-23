@@ -153,7 +153,11 @@ export class LocalKnowledgeProvider {
         sourcePath,
         targetPath: target.path,
       }, context)
-      entry = this.library.import({ ownerId, sourcePath: target.path })
+      entry = this.library.import({
+        ownerId,
+        sourcePath: target.path,
+        originalSource: sourcePath,
+      })
     } else {
       entry = this.library.import({ ownerId, sourcePath })
     }

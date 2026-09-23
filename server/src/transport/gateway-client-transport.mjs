@@ -138,6 +138,14 @@ export function attachGatewayClientTransport(server, {
   })
 
   const attachClient = (ws, url, identity) => {
+    // ws emits protocol/size/socket failures as `error`, not just `close`.
+    // Keep them connection-local, including failures before session.hello.
+    ws.on('error', error => {
+      logger.warn('client_transport.socket_failed', {
+        code: String(error?.code || 'socket_error'),
+      })
+      ws.terminate()
+    })
     ws.isAlive = true
     ws.gatewayCredentialId = identity.access === 'remote'
       ? identity.credentialId
@@ -354,6 +362,11 @@ export function attachGatewayClientTransport(server, {
       try {
         event = JSON.parse(raw.toString())
       } catch {
+        ws.close(1007, 'invalid JSON')
+        return
+      }
+      if (!event || typeof event !== 'object' || Array.isArray(event)) {
+        ws.close(1008, 'message must be an object')
         return
       }
       if (

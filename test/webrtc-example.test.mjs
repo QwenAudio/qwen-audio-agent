@@ -74,6 +74,12 @@ test('npm pack keeps the usable example but excludes installed media, SDKs and p
     'examples/webrtc/node_modules/playwright/index.js',
     'examples/webrtc/.env', 'examples/webrtc/.env.local',
     'examples/webrtc/debug.log',
+    'examples/ai-passport/device-relay.test.mjs',
+    'examples/ai-passport/test/fixture.json',
+    'examples/customer-service/assets/demo.mp4',
+    'examples/voicemem/server.py',
+    'examples/lightrag/.env',
+    'examples/digital-human/node_modules/sdk/index.js',
   ]) {
     const target = join(fixture, path)
     await mkdir(dirname(target), { recursive: true })
@@ -94,6 +100,8 @@ test('npm pack keeps the usable example but excludes installed media, SDKs and p
   for (const path of required) assert.ok(files.includes(path), `missing ${path}`)
   assert.deepEqual(files.filter(path => path.startsWith(`${nativePath}/`)), [])
   assert.deepEqual(files.filter(path => path.includes('/node_modules/')), [])
+  assert.deepEqual(files.filter(path => path.endsWith('.test.mjs') || path.split('/').includes('test')), [])
+  assert.deepEqual(files.filter(path => /^examples\/(customer-service|voicemem|lightrag|digital-human)\//.test(path)), [])
   assert.deepEqual(files.filter(path => /\/(?:\.env(?:\..+)?|[^/]+\.log)$/.test(path) && !path.endsWith('/.env.example')), [])
   assert.ok(packed.unpackedSize < 250000, `unexpected demo size ${packed.unpackedSize}`)
 })

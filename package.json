@@ -238,6 +238,8 @@
     "README.md",
     "!**/node_modules",
     "!**/node_modules/**",
+    "!**/test/**",
+    "!**/*.test.mjs",
     "!**/*.log",
     "!**/.env",
     "!**/.env.*",

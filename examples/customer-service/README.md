@@ -15,9 +15,7 @@ This is a local, single-call demo—not a production support system or a complet
 identity verification with a spoken correction, order lookup, a cancellation/refund preview,
 and the result after the customer's confirmation.
 
-<!-- Keep the GitHub video attachment in its own paragraph for inline playback. -->
-
-https://github.com/user-attachments/assets/247b4703-5cc7-42e6-8cdb-666e24e01900
+[![Customer service demo](assets/customer-service-demo-poster.jpg)](assets/customer-service-demo.mp4?raw=true)
 
 ## Example Scope
 

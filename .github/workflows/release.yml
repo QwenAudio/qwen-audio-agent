@@ -229,12 +229,24 @@ jobs:
             -T /usr/bin/codesign -T /usr/bin/productbuild -P "$CSC_KEY_PASSWORD"
           security set-key-partition-list -S apple-tool:,apple: -s \
             -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          # codesign also resolves identities through the user search list.
+          security list-keychains -d user > "$SIGNING_DIR/search-list.txt"
+          SEARCH_KEYCHAINS=()
+          while read -r ENTRY; do
+            SEARCH_KEYCHAINS+=("${ENTRY//\"/}")
+          done < "$SIGNING_DIR/search-list.txt"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" "${SEARCH_KEYCHAINS[@]}"
           SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
             | awk '/"Developer ID Application:/ { print $2; exit }')
           if [[ ! "$SIGNING_IDENTITY" =~ ^[A-Fa-f0-9]{40}$ ]]; then
             echo "No valid Developer ID Application identity in the signing certificate" >&2
             exit 1
           fi
+          # Fail before packaging if codesign cannot actually use the private key.
+          cp /usr/bin/true "$SIGNING_DIR/signing-probe"
+          codesign --force --sign "$SIGNING_IDENTITY" --keychain "$KEYCHAIN_PATH" \
+            --timestamp "$SIGNING_DIR/signing-probe"
+          codesign --verify --strict "$SIGNING_DIR/signing-probe"
           echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
           echo "CSC_NAME=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
       - name: Build, sign and notarize universal macOS DMG
@@ -248,6 +260,13 @@ jobs:
         env:
           SIGNING_DIR: ${{ steps.signing.outputs.directory }}
         run: |
+          if [ -f "$SIGNING_DIR/search-list.txt" ]; then
+            SEARCH_KEYCHAINS=()
+            while read -r ENTRY; do
+              SEARCH_KEYCHAINS+=("${ENTRY//\"/}")
+            done < "$SIGNING_DIR/search-list.txt"
+            security list-keychains -d user -s "${SEARCH_KEYCHAINS[@]}"
+          fi
           security delete-keychain "$SIGNING_DIR/release.keychain-db"
       - name: Verify packaged macOS Gateway
         run: node scripts/test/desktop-package-smoke.mjs "dist/desktop/mac-universal/Qwen Audio Agent.app"

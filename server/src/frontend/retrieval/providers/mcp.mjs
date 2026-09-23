@@ -3,6 +3,7 @@ import {
   StreamableHTTPClientTransport,
 } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { PACKAGE_VERSION } from '../../../core/package-version.mjs'
+import { listMcpTools } from '../../mcp-tool-discovery.mjs'
 
 const MAX_TOOL_TEXT_LENGTH = 24_000
 const QUERY_FIELDS = ['query', 'q', 'search_query']
@@ -232,7 +233,7 @@ export class McpWebSearchProvider {
     })
     try {
       await client.connect(transport, { signal })
-      const { tools = [] } = await client.listTools(undefined, { signal })
+      const tools = await listMcpTools(client, { signal })
       const tool = tools.find(item => item.name === this.toolName)
       if (!tool) {
         throw new McpWebSearchError(

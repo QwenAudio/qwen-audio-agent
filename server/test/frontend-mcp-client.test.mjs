@@ -68,6 +68,28 @@ function harness({ remoteTools, result, listError } = {}) {
   }
 }
 
+test('discovers explicitly enabled tools on later MCP pages', async () => {
+  const mocks = harness()
+  const client = new FrontendMcpClient({
+    configuration: configuration(),
+    clientFactory: server => {
+      const remote = mocks.clientFactory(server)
+      const original = remote.listTools
+      remote.listTools = async params => params?.cursor === 'second'
+        ? original()
+        : { tools: [], nextCursor: 'second' }
+      return remote
+    },
+    transportFactory: mocks.transportFactory,
+  })
+  try {
+    await client.initialize()
+    assert.equal(client.health().ok, true)
+    assert.equal(client.tools()[0].name, 'mcp__documents__search')
+    assert.equal((await client.execute('mcp__documents__search')).status, 'ok')
+  } finally { await client.close() }
+})
+
 test('discovers only explicitly enabled tools under stable namespaced names', async () => {
   const mocks = harness({
     remoteTools: [

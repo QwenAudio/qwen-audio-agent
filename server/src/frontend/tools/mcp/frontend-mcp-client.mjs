@@ -4,6 +4,7 @@ import {
 } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { PACKAGE_VERSION } from '../../../core/package-version.mjs'
+import { listMcpTools } from '../../mcp-tool-discovery.mjs'
 
 const PUBLIC_TOOL_NAME = /^[a-zA-Z0-9_]{1,128}$/u
 
@@ -190,10 +191,9 @@ export class FrontendMcpClient {
     const discoverySignal = AbortSignal.timeout(server.connectTimeoutMs)
     try {
       await client.connect(transport, { signal: discoverySignal })
-      const response = await client.listTools(undefined, {
+      const remoteTools = await listMcpTools(client, {
         signal: discoverySignal,
       })
-      const remoteTools = Array.isArray(response?.tools) ? response.tools : []
       const discovered = []
       for (const [toolName, policy] of Object.entries(server.tools)) {
         if (!policy.enabled) continue

@@ -15,7 +15,6 @@ This is a local, single-call demo—not a production support system or a complet
 identity verification with a spoken correction, order lookup, a cancellation/refund preview,
 and the result after the customer's confirmation.
 
-<!-- Keep the GitHub video attachment in its own paragraph for inline playback. -->
 
 https://github.com/user-attachments/assets/e0f9fefa-f24b-47e5-bc2c-8402fc107df4
 

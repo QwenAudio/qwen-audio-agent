@@ -60,7 +60,7 @@ VoiceMem 安装与配置示例：
 或通过稳定性契约把助手嵌入宿主页面——桌面悬浮球、TUI、WebUI 用的都是
 同一条通道。
 
-[AI Passport 语音客户端示例](scenarios/ai-passport.zh.md)展示了千问语音豆通过局域网转发器
+[AI Passport 示例](scenarios/ai-passport.zh.md)展示了千问语音豆通过局域网转发器
 接入 Gateway 的方式；当前仅开放半双工，固件和音频驱动在外部项目维护。
 
 → [Gateway 客户端协议](gateway-protocol.zh.md) ·

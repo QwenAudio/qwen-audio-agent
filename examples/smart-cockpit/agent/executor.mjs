@@ -6,7 +6,7 @@ import {
 import { AgentEvent } from '@a2a-js/sdk/server'
 import { DashScopeCockpitModel } from './model.mjs'
 import { COCKPIT_SURFACE_ROUTING } from '../service/tools/registry.mjs'
-import { AgentHistory } from '../../shared/agent-history.mjs'
+import { AgentHistory } from './agent-history.mjs'
 
 const MAX_AGENT_ROUNDS = 10
 const MAX_TOOL_CALLS = 32

@@ -63,7 +63,7 @@ HTTPS Endpoint 检查证书、反向代理与 WebSocket 转发。连接码只显
 
 ## 日志与反馈
 
-桌面版从“设置 → 应用 → 日志”打开日志目录。CLI 默认日志在
+桌面版从“设置 → 应用程序 → 日志”打开日志目录。CLI 默认日志在
 `~/.config/qwaudio/state/logs`；桌面代管的 Gateway 在 `~/.config/qwaudio/state/desktop/logs`，
 桌面客户端日志在其应用数据目录的 `logs/` 下。
 

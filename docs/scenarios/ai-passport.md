@@ -1,4 +1,4 @@
-# AI Passport Voice Client
+# AI Passport
 
 Run Qwen Voice Bean on an AI Passport (ESP32-C3) card to use qwen-audio-agent over
 the LAN. The card captures speech, plays replies, and displays character animation;

@@ -1,7 +1,7 @@
 {
   "name": "@qwen-audio-agent/mobile",
   "private": true,
-  "version": "1.11.0",
+  "version": "2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",

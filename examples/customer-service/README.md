@@ -17,7 +17,7 @@ and the result after the customer's confirmation.
 
 <!-- Keep the GitHub video attachment in its own paragraph for inline playback. -->
 
-https://github.com/user-attachments/assets/e0f9fefa-f24b-47e5-bc2c-8402fc107df4
+https://github.com/user-attachments/assets/247b4703-5cc7-42e6-8cdb-666e24e01900
 
 ## Example Scope
 

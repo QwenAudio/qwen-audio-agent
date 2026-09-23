@@ -26,6 +26,7 @@ import {
   statSync,
 } from 'node:fs'
 import { basename, dirname, extname, join, parse, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { withFileTransaction } from '../../../../../shared/file-transaction-lock.mjs'
 import { JsonSnapshotStore } from '../../../core/json-snapshot-store.mjs'
 
@@ -50,11 +51,28 @@ const CONVERTIBLE_EXTENSIONS = new Set([
   '.pdf', '.doc', '.docx', '.ppt', '.pptx', '.odt', '.rtf', '.epub',
 ])
 
+// WebUI 资料库入口是粘贴本机路径。资源管理器「复制文件地址」会带上引号，
+// 浏览器会给出 file:// URL。必须在 resolve / extname 之前还原，否则引号会
+// 变成相对路径的一部分，扩展名也会对不上。
+export function normalizeSourcePath(value) {
+  let raw = String(value || '').trim()
+  const quoted = raw.match(/^(?:"([\s\S]*)"|'([\s\S]*)')$/)
+  if (quoted) raw = String(quoted[1] ?? quoted[2]).trim()
+  if (/^file:/i.test(raw)) {
+    try {
+      raw = fileURLToPath(raw)
+    } catch {
+      throw new KnowledgeImportError('invalid_path', '文件 URL 无法转换为本机路径。')
+    }
+  }
+  return raw
+}
+
 // text        → 直接收
 // convertible → 上层先转成文本，再收转换产物
 // unsupported → 明确拒收
 export function classifySource(sourcePath) {
-  const extension = extname(String(sourcePath || '')).toLowerCase()
+  const extension = extname(normalizeSourcePath(sourcePath)).toLowerCase()
   if (TEXT_EXTENSIONS.has(extension)) return 'text'
   if (CONVERTIBLE_EXTENSIONS.has(extension)) return 'convertible'
   return 'unsupported'
@@ -190,7 +208,7 @@ export class KnowledgeLibrary {
     // 空输入必须在 resolve 之前拦掉：resolve('') 返回的是进程 cwd，那是个存在的
     // 目录，会一路走到 statSync 才因为「不是文件」被拒，错误信息变成 not_a_file
     // —— 用户看到的提示就对不上他实际做错的事。
-    const raw = String(sourcePath || '').trim()
+    const raw = normalizeSourcePath(sourcePath)
     if (!raw) {
       throw new KnowledgeImportError('invalid_path', '需要一个具体的文件路径。')
     }
@@ -327,7 +345,7 @@ export class KnowledgeLibrary {
     if (!this.configured()) {
       throw new KnowledgeImportError('library_unavailable', '资料库未配置存放目录。')
     }
-    const absolute = resolve(String(sourcePath || '').trim())
+    const absolute = resolve(normalizeSourcePath(sourcePath))
     if (classifySource(absolute) !== 'convertible') {
       throw new KnowledgeImportError('not_convertible', '这类文件不需要复杂文档转换。')
     }

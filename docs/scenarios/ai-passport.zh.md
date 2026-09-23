@@ -1,4 +1,4 @@
-# AI Passport 语音客户端
+# AI Passport
 
 AI Passport（ESP32-C3）卡片运行“千问语音豆（Qwen Voice Bean）”，通过局域网使用
 qwen-audio-agent。卡片负责录音、播放回复和角色动画，电脑上的 Gateway 负责实时对话、

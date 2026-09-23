@@ -1,5 +1,5 @@
 import { KNOWLEDGE_PROVIDER_PROTOCOL_VERSION } from '../../provider.mjs'
-import { classifySource } from './library.mjs'
+import { classifySource, normalizeSourcePath } from './library.mjs'
 
 const MAX_SEARCH_DOCUMENT_CHARS = 240_000
 const MAX_CHUNK_CHARS = 1_600
@@ -140,7 +140,7 @@ export class LocalKnowledgeProvider {
 
   async ingest(request, context = {}) {
     const ownerId = clean(context.ownerId)
-    const sourcePath = clean(request?.source?.path ?? request?.path)
+    const sourcePath = normalizeSourcePath(request?.source?.path ?? request?.path)
     let entry
     if (classifySource(sourcePath) === 'convertible') {
       if (!this.documentConverter) {

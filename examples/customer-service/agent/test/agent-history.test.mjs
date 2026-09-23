@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { AgentHistory } from '../examples/shared/agent-history.mjs'
+import { AgentHistory } from '../agent-history.mjs'
 
-test('example history keeps 50 complete turns and reserves space for the next request', () => {
+test('history keeps 50 complete turns and reserves space for the next request', () => {
   const history = new AgentHistory()
   for (let i = 0; i < 55; i++) history.append('one', `request-${i}`, `reply-${i}`)
   assert.equal(history.contexts.get('one').length, 50)
@@ -16,7 +16,7 @@ test('example history keeps 50 complete turns and reserves space for the next re
   }
 })
 
-test('example history isolates contexts, returns copies, and bounds inactive contexts', () => {
+test('history isolates contexts, returns copies, and bounds inactive contexts', () => {
   const history = new AgentHistory({ maxTurns: 2, maxContexts: 2 })
   history.append('one', 'one', 'answer-one')
   history.append('two', 'two', 'answer-two')

@@ -114,11 +114,12 @@ function sidebar(prefix = '') {
       items: [
         page('选择示例', 'Example Index', 'scenarios/index'),
         page('智能座舱', 'Smart Cockpit', 'scenarios/smart-cockpit'),
-        page('AI Passport 语音客户端', 'AI Passport Voice Client', 'scenarios/ai-passport'),
+        page('客服语音助手', 'Customer Service', 'scenarios/customer-service'),
+        page('AI Passport', 'AI Passport', 'scenarios/ai-passport'),
         page('VoiceMem', 'VoiceMem', 'scenarios/voicemem'),
         page('LightRAG', 'LightRAG', 'scenarios/lightrag'),
         page('X-Omni 视觉对话', 'X-Omni Visual Conversation', 'scenarios/x-omni'),
-        page('演示文稿', 'Presentations', 'resources/presentations'),
+        page('技术资料', 'Technical Resources', 'resources/presentations'),
       ],
     },
   ]

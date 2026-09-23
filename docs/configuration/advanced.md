@@ -33,7 +33,7 @@ For foreground-tool latency analysis, correlate `realtime.provider.speech_stoppe
 not the user's physical last speech sample. Measuring the earlier acoustic-to-endpoint interval
 requires a Client-side capture timestamp or a controlled real-time PCM replay.
 
-The desktop edition can open the log directory in "Settings → App → Logs". The default
+The desktop edition can open the log directory in "Settings → Application → Logs". The default
 log level is `info`; individual files rotate after reaching 10 MiB, with a total of 5 files
 retained. These can be adjusted via the following environment variables:
 

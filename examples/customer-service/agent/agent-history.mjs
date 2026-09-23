@@ -1,5 +1,5 @@
-// Short-term conversation history for the example Agents, not long-term memory.
-// Keep complete request/reply pairs only: tool traces and approval capabilities
+// Example-local short-term task history, not the frontend's conversation memory.
+// Keep only completed request/reply pairs; tool traces and approval capabilities
 // belong to the active task and must not be replayed into an unrelated task.
 export class AgentHistory {
   constructor({ maxTurns = 50, maxContexts = 100 } = {}) {

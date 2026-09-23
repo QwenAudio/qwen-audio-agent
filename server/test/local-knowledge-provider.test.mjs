@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
+import { pathToFileURL } from 'node:url'
 import { FrontendKnowledgeRuntime } from '../src/knowledge/runtime.mjs'
 import { KnowledgeLibrary } from '../src/knowledge/providers/local/library.mjs'
 import {
@@ -150,6 +151,61 @@ test('ingestion preserves existing conversion files and refuses a full library b
   assert.equal(conversions, 1)
   assert.equal(summaries, 1)
   assert.deepEqual(readdirSync(root).sort(), ['manual-2.md', 'manual.md'])
+})
+
+test('unwraps quoted Explorer paths before converting a document', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'qwa-quoted-convert-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const pdf = join(root, 'manual.pdf')
+  writeFileSync(pdf, '%PDF-1.7 fake')
+  const shelf = new KnowledgeLibrary({ documentDirectory: root })
+  let converted
+  const provider = new LocalKnowledgeProvider({
+    library: shelf,
+    documentConverter: {
+      async convert({ sourcePath, targetPath }) {
+        converted = { sourcePath, targetPath }
+        writeFileSync(targetPath, '# Converted document')
+      },
+    },
+  })
+  const { document } = await provider.ingest(
+    { source: { path: `"${pdf}"` } },
+    { ownerId: 'owner' },
+  )
+  assert.equal(converted.sourcePath, pdf)
+  assert.equal(document.filename, 'manual.md')
+})
+
+test('decodes quoted file URLs before converting documents', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'qwa-url-convert-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const pdf = join(root, '中文 #100%.pdf')
+  writeFileSync(pdf, '%PDF-1.7 fake')
+  let calls = 0
+  const provider = new LocalKnowledgeProvider({
+    library: new KnowledgeLibrary({ documentDirectory: root }),
+    documentConverter: {
+      async convert({ sourcePath, targetPath }) {
+        calls += 1
+        assert.equal(sourcePath, pdf)
+        writeFileSync(targetPath, '# Converted URL document')
+      },
+    },
+  })
+  const { document } = await provider.ingest(
+    { source: { path: `"${pathToFileURL(pdf).href}"` } },
+    { ownerId: 'owner' },
+  )
+  assert.equal(document.filename, '中文 #100%.md')
+  assert.equal(readFileSync(document.path, 'utf8'), '# Converted URL document')
+  for (const path of ['file:///invalid%ZZ.pdf', 'file:///encoded%2Fseparator.pdf']) {
+    await assert.rejects(
+      provider.ingest({ source: { path } }, { ownerId: 'owner' }),
+      { code: 'invalid_path' },
+    )
+  }
+  assert.equal(calls, 1)
 })
 
 test('refuses a library-less construction instead of failing at retrieval time', () => {

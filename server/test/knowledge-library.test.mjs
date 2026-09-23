@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join, posix, win32 } from 'node:path'
 import test from 'node:test'
 import { spawn } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
 import {
   KNOWLEDGE_LIMITS,
   KnowledgeImportError,
@@ -247,13 +248,92 @@ test('rejects a file over the size limit', () => {
 test('rejects an empty path with invalid_path rather than not_a_file', () => {
   withDirs(({ root, docs }) => {
     const shelf = library({ docs, root })
-    for (const input of ['', '   ', null, undefined]) {
+    for (const input of ['', '   ', null, undefined, '""', "''"]) {
       assert.throws(
         () => shelf.import({ ownerId: OWNER, sourcePath: input }),
         error => error instanceof KnowledgeImportError && error.code === 'invalid_path',
         `输入 ${JSON.stringify(input)} 应当报 invalid_path`,
       )
     }
+  })
+})
+
+// WebUI 资料库入口是「粘贴本机路径」。Windows 资源管理器「复制文件地址」
+// 会带上引号；浏览器或部分文件管理器会给出 file:// URL。引号必须在 resolve
+// 之前剥掉，否则会被当成相对路径的一部分。
+test('imports Explorer-quoted paths and file URLs as the same local file', () => {
+  withDirs(({ root, docs }) => {
+    const source = sourceFile(root, '手册.md', '# pasted guide\n')
+    const shelf = library({ docs, root })
+    const quoted = shelf.import({ ownerId: OWNER, sourcePath: `"${source}"` })
+    assert.equal(quoted.filename, '手册.md')
+    assert.equal(quoted.source, source)
+    assert.equal(readFileSync(quoted.path, 'utf8'), '# pasted guide\n')
+
+    const other = sourceFile(root, 'another.md', '# file url\n')
+    const viaUrl = library({ docs, root }).import({
+      ownerId: OWNER,
+      sourcePath: pathToFileURL(other).href,
+    })
+    assert.equal(viaUrl.filename, 'another.md')
+    assert.equal(viaUrl.source, other)
+    assert.equal(readFileSync(viaUrl.path, 'utf8'), '# file url\n')
+
+    const spaced = sourceFile(root, 'My File.md', '# spaced\n')
+    const viaQuotedUrl = library({ docs, root }).import({
+      ownerId: OWNER,
+      sourcePath: `"${pathToFileURL(spaced).href}"`,
+    })
+    assert.equal(viaQuotedUrl.filename, 'My File.md')
+    assert.equal(readFileSync(viaQuotedUrl.path, 'utf8'), '# spaced\n')
+
+    const pdf = join(root, '手册.pdf')
+    writeFileSync(pdf, '%PDF-1.7 fake')
+    assert.equal(classifySource(`"${pdf}"`), 'convertible')
+    assert.equal(classifySource(`'${pdf}'`), 'convertible')
+    assert.equal(
+      shelf.conversionTarget({ ownerId: OWNER, sourcePath: `"${pdf}"` }).filename,
+      '手册-2.md',
+    )
+  })
+})
+
+test('rejects root and malformed file URLs as invalid paths on every platform', () => {
+  withDirs(({ root, docs }) => {
+    const shelf = library({ docs, root })
+    // POSIX resolves file:// to /; Windows rejects its missing drive/share.
+    // Neither identifies a file to import.
+    for (const sourcePath of [
+      'file://', 'file:///', '"file://"',
+      'file:///invalid%ZZ.md', 'file:///encoded%2Fseparator.md', 'file://[invalid',
+    ]) {
+      assert.throws(
+        () => shelf.import({ ownerId: OWNER, sourcePath }),
+        error => error instanceof KnowledgeImportError && error.code === 'invalid_path',
+        sourcePath,
+      )
+    }
+    assert.throws(
+      () => shelf.import({
+        ownerId: OWNER,
+        sourcePath: pathToFileURL(join(root, 'missing.md')).href,
+      }),
+      error => error instanceof KnowledgeImportError && error.code === 'not_found',
+    )
+    assert.equal(shelf.list(OWNER).length, 0)
+  })
+})
+
+test('preserves spaces, Unicode and literal URL characters in pasted filenames', () => {
+  withDirs(({ root, docs }) => {
+    const source = sourceFile(root, '中文 #100%.md', '# literal filename\n')
+    const shelf = library({ docs, root })
+    for (const sourcePath of [source, `  '${source}'  `, `"${pathToFileURL(source).href}"`]) {
+      const entry = shelf.import({ ownerId: OWNER, sourcePath })
+      assert.equal(entry.source, source)
+      assert.equal(readFileSync(entry.path, 'utf8'), '# literal filename\n')
+    }
+    assert.equal(shelf.list(OWNER).length, 1)
   })
 })
 

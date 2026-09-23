@@ -11,7 +11,7 @@ Examples demonstrate extension points; they are not the only way to enable a cap
 | External long-term memory | [VoiceMem](voicemem.md). |
 | Hosted API-backed memory | [Memcode](memcode.md). |
 | An external knowledge system | [LightRAG](lightrag.md). |
-| Customer service and human operators | [Customer Service](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/customer-service): retail and airline scenarios. |
+| Customer service and human operators | [Customer Service](customer-service.md): retail and airline scenarios. |
 | Frontend and full-system evaluation | [Benchmark](https://github.com/QwenAudio/qwen-audio-agent/tree/main/examples/benchmark). |
 
 ## Choose an extension point

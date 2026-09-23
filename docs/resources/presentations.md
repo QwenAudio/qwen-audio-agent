@@ -1,8 +1,17 @@
-# Presentations
+# Technical Resources
 
-## 面向持续对话与长时任务的语音 Agent 架构 (Chinese)
+## Technical report
 
-[Architecture slide deck](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/voice-agent-architecture-presentation.zh.md) (Marp) — walks through the two-tier architecture, task lifecycle, delegation, result delivery, and the memory system.
+[Qwen-Audio-Agent Technical Report](https://arxiv.org/abs/2609.25195)
+([PDF](https://arxiv.org/pdf/2609.25195)) covers the foreground–background
+voice Agent architecture, ongoing conversation alongside asynchronous work,
+and implementations and evaluations for desktop, smart cockpit, and customer service.
+
+## Presentation
+
+[Voice Agent Architecture for Continuous Conversation and Long-Running Tasks](https://github.com/QwenAudio/qwen-audio-agent/blob/main/docs/voice-agent-architecture-presentation.zh.md)
+(Marp, in Chinese) walks through the two-tier architecture, task lifecycle,
+delegation, result delivery, and the memory system.
 
 Preview with the Marp for VS Code extension, or export with the CLI:
 

@@ -59,7 +59,7 @@ These are animation examples of the built-in appearances:
 
 ## Skins
 
-In Settings → App → Appearance, click “Import Skin…” and select a skin directory, `pet.json`,
+In Settings → Application → Appearance, click “Import Skin…” and select a skin directory, `pet.json`,
 or a zip archive. Imported skins can be selected or deleted; built-in appearances cannot be deleted.
 
 Codex pet packages and optional animation-frame descriptions are supported; Codex is not required.
@@ -102,5 +102,5 @@ See [configuration directories](../configuration.md#configuration-and-data-direc
 Check for updates in Settings, then restart after download. Quitting stops the Gateway and backend
 processes started by this app, not borrowed or remote services.
 
-Open this Desktop runtime's log directory through Settings → App → Logs. Logs are redacted and
+Open this Desktop runtime's log directory through Settings → Application → Logs. Logs are redacted and
 rotated. See [local logs](../configuration/advanced.md#local-logs) for configuration.

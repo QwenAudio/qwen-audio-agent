@@ -180,6 +180,13 @@ export function createDoubaoSeeduplexProtocol() {
 
     normalizeIncoming(event) {
       if (event?.type === 'error') return event
+      if (event?.type === 'response.canceled') {
+        return normalizeResponseEvent({
+          ...event,
+          type: 'response.done',
+          response: { ...event.response, status: 'cancelled' },
+        })
+      }
       return normalizeResponseEvent(event)
     },
 

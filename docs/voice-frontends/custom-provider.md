@@ -42,6 +42,14 @@ A Provider must implement the full contract — `model()`, `voice()`, `isConfigu
 
 Provider and Protocol contracts are validated during registration and connection setup, so missing methods or invalid values fail immediately.
 
+## Behavior verification
+
+Run `node --test server/test/realtime-provider-behavior.test.mjs` from the repository root. The same suite exercises every built-in Provider through the real session runtime and a local WebSocket service: context-only updates, tool continuation, permissions, cancellation, queued asynchronous replies, and reconnect/context restoration. Unsupported features must return an explicit unsupported result or error; the suite does not treat them as successful delivery.
+
+The fixtures implement native wire behavior rather than calling the adapters to construct mock replies. When adding a dialect, add its fixture and run the shared suite. This is deterministic contract coverage, not a substitute for live service validation or audio/device testing.
+
+For [Google Live](https://ai.google.dev/api/live), context-only history uses `clientContent` with `turnComplete: false`; committing the turn starts a reply. Unlike passive history insertion in some protocols, Google documents that `clientContent` also interrupts active generation. Queued context waits for idle, while an immediate permission/context delivery can interrupt. Tool responses resume generation natively, and `generationComplete` does not release the response slot until `turnComplete` arrives.
+
 ## Desktop settings
 
 Built-in frontend settings live in `shared/realtime-provider-definitions.mjs`, a browser-safe catalog without credentials or connection implementations. Declare a provider's name, fields, environment mappings, and defaults there; maintain `shared/realtime-model-catalog.mjs` when selectable models are available. The desktop chooser, form, configuration persistence, and status labels consume these definitions without provider-specific HTML panels.

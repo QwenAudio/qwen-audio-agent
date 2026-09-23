@@ -49,9 +49,9 @@ test('configures GPT-Live against the OpenAI Realtime WebSocket contract', t => 
 test('maps Google Live WebSocket messages into the shared realtime lifecycle', () => {
   const protocol = createGoogleLiveProtocol()
   assert.deepEqual(protocol.connectionMessages({
-    session: { model: 'models/gemini-3.8-live', responseModalities: ['AUDIO'] },
+    session: { model: 'models/gemini-3.8-live', generationConfig: { responseModalities: ['AUDIO'] } },
   }), [{
-    setup: { model: 'models/gemini-3.8-live', responseModalities: ['AUDIO'] },
+    setup: { model: 'models/gemini-3.8-live', generationConfig: { responseModalities: ['AUDIO'] } },
   }])
   assert.deepEqual(protocol.audioAppend('AAAA'), {
     realtimeInput: {
@@ -153,8 +153,22 @@ test('connects to a Google Live mock service with setup and text input', async t
   await frontend.connect()
   assert.equal(frontend.ready, true)
   assert.equal(received[0].setup.model, 'models/gemini-3.8-live')
+  assert.deepEqual(received[0].setup.generationConfig.responseModalities, ['AUDIO'])
+  assert.equal(received[0].setup.responseModalities, undefined)
 
   await frontend.sendUserText('你好')
   assert.ok(received.some(message => message.realtimeInput?.text === '你好'))
   assert.ok(events.some(event => event.type === 'response.audio.delta'))
+})
+
+test('Google Live waits for turnComplete and preserves interruption status', () => {
+  const protocol = createGoogleLiveProtocol()
+  const started = protocol.normalizeIncoming({ serverContent: { modelTurn: { parts: [{ text: 'hello' }] } } })
+  const responseId = started[0].response.id
+  const generation = protocol.normalizeIncoming({ serverContent: { generationComplete: true } })
+  assert.equal([generation].flat().some(event => event.type === 'response.done'), false)
+  protocol.normalizeIncoming({ serverContent: { interrupted: true } })
+  assert.deepEqual(protocol.normalizeIncoming({ serverContent: { turnComplete: true } }), [{
+    type: 'response.done', response: { id: responseId, status: 'cancelled' },
+  }])
 })

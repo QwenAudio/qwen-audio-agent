@@ -41,6 +41,14 @@ Provider 必须实现完整契约——`model()`、`voice()`、`isConfigured()`�
 
 Provider 和 Protocol 会在注册与建连时校验；缺少方法或返回无效结构会立即报错。
 
+## 行为验证
+
+在仓库根目录运行 `node --test server/test/realtime-provider-behavior.test.mjs`。同一套测试通过真实会话运行时和本地 WebSocket 服务，覆盖全部内置 Provider 的上下文投递、工具续答、授权、取消、异步播报排队与重连恢复。不支持的能力必须明确返回 unsupported 或报错，不能视作投递成功。
+
+模拟服务按原生协议返回消息，不调用适配器生成模拟回复。新增协议时补充对应 fixture，再运行共享测试。这是可重复的契约验证，不能替代真实服务联调或音频设备测试。
+
+[Google Live](https://ai.google.dev/api/live) 使用 `clientContent` 和 `turnComplete: false` 写入上下文，提交 turn 才触发回复。与部分协议的被动历史注入不同，Google 规定 `clientContent` 也会打断当前生成：排队投递会等待空闲，立即投递的授权或上下文则可能打断。工具结果由服务原生续答；`generationComplete` 不代表该轮结束，收到 `turnComplete` 后才释放回复槽位。
+
 ## 桌面设置
 
 仓库内置前台的设置统一定义在 `shared/realtime-provider-definitions.mjs`，它不依赖 Node.js，也不包含密钥值或连接实现。新增内置前台时，在这里声明名称、字段、环境变量映射和默认值；有可选模型时，同时维护 `shared/realtime-model-catalog.mjs`。桌面选择器、表单、配置读写和状态名称会消费这些定义，无需新增供应商 HTML 面板。

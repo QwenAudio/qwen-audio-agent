@@ -61,7 +61,6 @@ export const googleLiveProvider = {
   createProtocol: createGoogleLiveProtocol,
   capabilities: {
     acknowledgesConversationItems: false,
-    restoreConversationContext: false,
     singleResponseSlot: true,
     conversationItemIdEcho: false,
     perResponseInstructions: false,
@@ -93,14 +92,16 @@ export const googleLiveProvider = {
       model: config.googleLiveModel.startsWith('models/')
         ? config.googleLiveModel
         : `models/${config.googleLiveModel}`,
-      responseModalities: ['AUDIO'],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        ...(configuredSpeech ? { speechConfig: configuredSpeech } : {}),
+      },
       systemInstruction: {
         parts: [{ text: buildFrontendInstructions(agentContext) }],
       },
       tools: googleToolDeclarations(agentContext),
       outputAudioTranscription: {},
       inputAudioTranscription: {},
-      ...(configuredSpeech ? { speechConfig: configuredSpeech } : {}),
     }
   },
 

@@ -1,3 +1,7 @@
+
+
+https://github.com/user-attachments/assets/ddb4cc30-e02c-4b3c-ba2a-63b3933cdaed
+
 # Customer Service Voice Agent Example
 
 [English](README.md) | [中文](README_ZH.md)

@@ -408,7 +408,7 @@ export class RealtimeFrontend {
       ))
     }
     return this.enqueueResponse('model', context, async () => {
-      await this.createConversationItem(this.protocol.userTextItem(content))
+      await this.createConversationItem(this.protocol.userTextItem(content), { contextOnly: false })
       return this.sendResponse(
         modalities ? { modalities } : undefined,
       )
@@ -435,7 +435,9 @@ export class RealtimeFrontend {
     if (!projection) return false
     for (const event of projection.beforeEvents || []) this.send(event)
     if (projection.conversationItem) {
-      await this.createConversationItem(projection.conversationItem)
+      await this.createConversationItem(projection.conversationItem, {
+        contextOnly: options.contextOnly !== false,
+      })
     }
     for (const event of projection.afterEvents || []) this.send(event)
     return true
@@ -448,7 +450,7 @@ export class RealtimeFrontend {
       ))
     }
     return this.enqueueResponse('model', context, async () => {
-      if (!await this.applyUserInput(parts)) return false
+      if (!await this.applyUserInput(parts, { contextOnly: false })) return false
       return this.sendResponse(
         modalities ? { modalities } : undefined,
       )
@@ -501,13 +503,13 @@ export class RealtimeFrontend {
     })
   }
 
-  createConversationItem(item) {
+  createConversationItem(item, { contextOnly = true } = {}) {
     if (!this.capabilities.conversationItems) {
       return Promise.reject(new Error(
         `${this.provider.label} 不支持创建对话项`,
       ))
     }
-    if (this.capabilities.conversationItemIdEcho) return this.sendConversationItem(item)
+    if (this.capabilities.conversationItemIdEcho) return this.sendConversationItem(item, { contextOnly })
     // Without echoed IDs, only one client-created item may await a receipt.
     // This queue is independent of responses: permissions/environment context
     // can still arrive while speech is being generated.
@@ -516,14 +518,14 @@ export class RealtimeFrontend {
       if (generation !== this.conversationItemGeneration) {
         throw new Error('Realtime 会话已重置')
       }
-      return this.sendConversationItem(item)
+      return this.sendConversationItem(item, { contextOnly })
     }
     const result = this.conversationItemQueue.then(send, send)
     this.conversationItemQueue = result.catch(() => {})
     return result
   }
 
-  sendConversationItem(item) {
+  sendConversationItem(item, { contextOnly = true } = {}) {
     // Id namespaces are dialect-specific (the GA dialect derives them from the
     // item type), so the protocol adapter mints the id.
     const id = item.id || this.protocol.conversationItemId(item)
@@ -546,7 +548,7 @@ export class RealtimeFrontend {
         }, this.responseStartTimeoutMs),
       }
       this.conversationItemWaiters.set(id, waiter)
-      waiter.eventId = this.send(this.protocol.conversationItemCreate({ id, ...item }))?.event_id
+      waiter.eventId = this.send(this.protocol.conversationItemCreate({ id, ...item }, { contextOnly }))?.event_id
       if (!this.capabilities.acknowledgesConversationItems) {
         clearTimeout(waiter.timer)
         this.conversationItemWaiters.delete(id)

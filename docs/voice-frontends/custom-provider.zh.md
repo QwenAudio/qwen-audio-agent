@@ -29,6 +29,7 @@ createGatewayApplication({
 - `connectionMessages()` 在 WebSocket 打开后、`session.update` 之前发送原始握手帧。
 - 其余事件通过 `encodeOutgoing()` 与 `normalizeIncoming()` 转换，Gateway 的工具调用、任务和客户端协议保持不变。
 - 不支持临时回复指令的协议可实现 `responseInstructionsItem(response)`，将内部回复指令转为普通对话项。Gateway 等待确认后调用 `responseCreate(response)`，后者负责去掉上游不支持的参数。此时 `perResponseInstructions` 为 `false`，指令会进入会话历史。
+- `conversationItemCreate(item, { contextOnly })` 区分上下文投递和用户交互输入。对于消息项，`contextOnly: true` 必须写入上下文且不触发回复，不能只缓存到下一次 `responseCreate`；用户主动发送文本或文件时，Gateway 传入 `false`。工具回执仍遵循供应商原生的续答语义。
 - 只表示响应仍在进行的事件可转换为带 `response_id` 的 `response.activity`，无需转发原始思考内容。
 - 服务端确认对话项时会重分配 ID 的 Provider，应声明 `conversationItemIdEcho: false`；网关按唯一待确认项关联，无需增加延时或跳过确认。
 - 仅当服务要求首帧视频之前必须先有音频时，声明 `imageRequiresAudioStart: true`；网关用 20 毫秒 PCM16 静音初始化时间线，视频输入无需开启麦克风。

@@ -30,6 +30,7 @@ The extension boundary is:
 - `connectionMessages()` emits raw handshake frames after the WebSocket opens and before `session.update`.
 - All later events pass through `encodeOutgoing()` and `normalizeIncoming()`, leaving Gateway tools, tasks, and client protocols unchanged.
 - Protocols without transient response instructions can implement `responseInstructionsItem(response)`. Gateway creates and awaits that conversation item before calling `responseCreate(response)`, which strips unsupported wire parameters. Set `perResponseInstructions: false`; these instructions remain in history.
+- `conversationItemCreate(item, { contextOnly })` distinguishes context delivery from interactive user input. For message items, `contextOnly: true` must write context without triggering a reply; it must not merely cache the text for a later `responseCreate`. Gateway passes `false` for interactive text/file input. Tool receipts keep the provider's native continuation semantics.
 - Normalize events that only prove liveness to `response.activity` with a `response_id`, without forwarding thinking text.
 - Set `conversationItemIdEcho: false` when the service assigns new IDs to acknowledged conversation items. Gateway correlates the single pending item without delays or skipping acknowledgment.
 - Set `imageRequiresAudioStart: true` only if the service requires audio before the first video frame. Gateway primes that timeline with 20 ms of PCM16 silence so camera input does not require opening the microphone.

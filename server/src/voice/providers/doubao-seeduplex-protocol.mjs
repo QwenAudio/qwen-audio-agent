@@ -214,9 +214,12 @@ export function createDoubaoSeeduplexProtocol() {
 
     conversationItemId: () => id('item'),
 
-    conversationItemCreate: item => {
+    conversationItemCreate: (item, { contextOnly = true } = {}) => {
       const text = textFromItem(item)
-      if (item?.role === 'user' && text && !text.includes('<restored_context>')) {
+      // Only interactive user input is deferred to speech_text_buffer.commit.
+      // Context, restoration and permission identities must reach the service
+      // immediately, even when no response is requested afterwards.
+      if (!contextOnly && item?.role === 'user' && text) {
         pendingUserText = text
         return null
       }

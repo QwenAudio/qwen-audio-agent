@@ -13,7 +13,7 @@
 **从自然对话，到业务办结。** 通过语音取消订单，展示身份核验与口头纠错、订单查询、
 取消与退款预览，以及客户确认后的结果反馈。
 
-[![客服演示](assets/customer-service-demo-poster.jpg)](assets/customer-service-demo.mp4?raw=true)
+https://private-user-images.githubusercontent.com/62833389/657120963-35d6063b-56bc-4f60-837a-a7530591c1b5.mp4
 
 ## 示例范围
 

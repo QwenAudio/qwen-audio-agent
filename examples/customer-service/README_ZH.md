@@ -8,6 +8,15 @@
 
 当前适合本地、单通话演示；不是生产客服系统，也不是官方 τ-bench 的完整实现。
 
+## 客服演示
+
+**从自然对话，到业务办结。** 通过语音取消订单，展示身份核验与口头纠错、订单查询、
+取消与退款预览，以及客户确认后的结果反馈。
+
+<a href="assets/customer-service-demo.mp4"><img src="assets/customer-service-demo-poster.jpg" alt="客服语音演示：取消订单前向客户展示预览并征求确认" width="320"></a>
+
+## 示例范围
+
 另有独立的 [τ-bench 测试场景接口](benchmark/README.md)，支持加载本地官方 policy、完整数据库及 Python 工具，默认关闭，不改变 demo 默认配置。提供后台单独测试及真实 Realtime / Gateway / A2A / MCP 文本 harness 测试脚本；尚未覆盖 ASR / TTS、物理语音及官方全量调度。
 
 后台 Agent 会在内存中保留最多 50 轮已完成任务的请求和最终回复（当前请求之外最多

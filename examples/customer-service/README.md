@@ -9,6 +9,16 @@ eligibility, amounts, inventory and approval rather than relying on the model to
 
 This is a local, single-call demo—not a production support system or a complete official τ-bench implementation.
 
+## Demo
+
+**From conversation to resolution: voice-driven order cancellation.** The recording shows
+identity verification with a spoken correction, order lookup, a cancellation/refund preview,
+and the result after the customer's confirmation.
+
+<a href="assets/customer-service-demo.mp4"><img src="assets/customer-service-demo-poster.jpg" alt="Customer service voice demo: reviewing an order cancellation before confirmation" width="320"></a>
+
+## Example Scope
+
 An opt-in [τ-bench scenario API](benchmark/README.md) loads official policies, full databases and
 Python tools from a trusted local checkout. Text runners connect the official user simulator
 and evaluator to the backend-only chain or the real Realtime/Gateway/A2A/MCP harness.

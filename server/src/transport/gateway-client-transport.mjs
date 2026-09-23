@@ -1,7 +1,8 @@
 import { WebSocket, WebSocketServer } from 'ws'
 import { ActiveVoiceClients } from '../client/active-voice-clients.mjs'
 import { selectGatewayWebSocketProtocol } from '../../../shared/gateway/websocket-auth.mjs'
-import { GatewayClientEvent } from '../../../shared/protocol/realtime-events.mjs'
+import { GatewayClientEvent, GatewayServerEvent } from '../../../shared/protocol/realtime-events.mjs'
+import { sendBoundedWebSocket } from '../core/websocket-send.mjs'
 import { logger as defaultLogger } from '../core/logger.mjs'
 import { isAllowedOrigin } from '../core/request-security.mjs'
 import { projectGatewayTaskEvent } from './gateway-task-event-projector.mjs'
@@ -27,7 +28,12 @@ function send(ws, event) {
   if (ws.readyState !== WebSocket.OPEN) return
   const protocol = clientProtocolSessions.get(ws)
   const wireEvent = protocol ? protocol.encode(event) : event
-  if (wireEvent) ws.send(JSON.stringify(wireEvent))
+  if (wireEvent) sendBoundedWebSocket(ws, JSON.stringify(wireEvent), {
+    audio: event.type === GatewayServerEvent.AUDIO_DELTA,
+    onFailure: ({ code, bufferedBytes, messageBytes, limit }) => {
+      defaultLogger.warn('voice_client.send_failed', { code, bufferedBytes, messageBytes, limit })
+    },
+  })
 }
 
 function rejectUpgrade(socket, status, message) {

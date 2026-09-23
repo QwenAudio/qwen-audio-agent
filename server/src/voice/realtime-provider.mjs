@@ -14,6 +14,7 @@ import {
 import { frontendInputProjection } from '../../../shared/input-parts.mjs'
 import { RealtimeConfigurationError } from './realtime-errors.mjs'
 import { RealtimeResponseSlot } from './realtime-response-slot.mjs'
+import { sendBoundedWebSocket } from '../core/websocket-send.mjs'
 
 // Re-export provider-agnostic tools and instructions so existing callers
 // (tests, tool-call-handler, bootstrap) continue to work without changes.
@@ -237,7 +238,7 @@ export class RealtimeFrontend {
             }),
           )
           for (const message of messages) {
-            ws.send(JSON.stringify(message))
+            if (!this.sendWireMessage(message)) break
           }
         } catch (error) {
           this.onError?.(error)
@@ -370,7 +371,7 @@ export class RealtimeFrontend {
   }
 
   appendAudio(audio) {
-    this.send(this.protocol.audioAppend(audio))
+    this.send(this.protocol.audioAppend(audio), { audio: true })
     this.audioInputStarted = true
   }
 
@@ -1201,7 +1202,21 @@ export class RealtimeFrontend {
     this.resetResponses()
   }
 
-  send(payload) {
+  sendWireMessage(body, options = {}) {
+    return sendBoundedWebSocket(this.ws, JSON.stringify(body), {
+      ...options,
+      onFailure: ({ code, bufferedBytes, messageBytes, limit }) => {
+        this.ready = false
+        this.resetResponses()
+        this.diagnose({
+          event: 'realtime.send_failed', provider: this.provider.key,
+          code, bufferedBytes, messageBytes, limit,
+        })
+      },
+    })
+  }
+
+  send(payload, options = {}) {
     if (!payload) return
     if (this.ws?.readyState === WebSocket.OPEN) {
       let outgoing = payload
@@ -1224,8 +1239,7 @@ export class RealtimeFrontend {
       }
       const body = this.protocol.encodeOutgoing(outgoing)
       if (body == null) return
-      this.ws.send(JSON.stringify(body))
-      return body
+      if (this.sendWireMessage(body, options)) return body
     }
   }
 }

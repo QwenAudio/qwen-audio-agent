@@ -92,5 +92,5 @@ test('Doubao tool receipts keep their native automatic continuation without a se
   assert.equal(sent[0].items[0].role, 'tool')
   assert.equal(sent[0].items[0].call_id, 'call_1')
   complete(frontend)
-  assert.equal((await reply).completed, true)
+  assert.deepEqual(await reply, { delivered: true, automatic: true })
 })

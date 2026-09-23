@@ -36,6 +36,7 @@ export const doubaoSeeduplexProvider = {
     singleResponseSlot: true,
     conversationItemIdEcho: false,
     acknowledgesConversationItems: false,
+    automaticToolResponses: true,
     perResponseInstructions: false,
     sessionOutputVoice: true,
   },

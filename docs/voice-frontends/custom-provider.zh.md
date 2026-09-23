@@ -30,6 +30,7 @@ createGatewayApplication({
 - 其余事件通过 `encodeOutgoing()` 与 `normalizeIncoming()` 转换，Gateway 的工具调用、任务和客户端协议保持不变。
 - 不支持临时回复指令的协议可实现 `responseInstructionsItem(response)`，将内部回复指令转为普通对话项。Gateway 等待确认后调用 `responseCreate(response)`，后者负责去掉上游不支持的参数。此时 `perResponseInstructions` 为 `false`，指令会进入会话历史。
 - `conversationItemCreate(item, { contextOnly })` 区分上下文投递和用户交互输入。对于消息项，`contextOnly: true` 必须写入上下文且不触发回复，不能只缓存到下一次 `responseCreate`；用户主动发送文本或文件时，Gateway 传入 `false`。工具回执仍遵循供应商原生的续答语义。
+- 仅当工具结果会由服务原生续答时声明 `automaticToolResponses: true`（豆包 Seeduplex、Google Live）。运行时发送这类回执不等待当前响应结束；工具批次结束时通过 `ensureResponse(..., { afterToolResults: true })` 避免再次请求回复。`sendFunctionOutput` 返回 `{ delivered: true, automatic: true }` 只表示回执已投递，不表示播报完成。`createResponse: false` 不能禁止服务原生续答，单次回复指令也不能控制它。其他 Provider 保持显式请求回复和完成跟踪。
 - 只表示响应仍在进行的事件可转换为带 `response_id` 的 `response.activity`，无需转发原始思考内容。
 - 服务端确认对话项时会重分配 ID 的 Provider，应声明 `conversationItemIdEcho: false`；网关按唯一待确认项关联，无需增加延时或跳过确认。
 - 仅当服务要求首帧视频之前必须先有音频时，声明 `imageRequiresAudioStart: true`；网关用 20 毫秒 PCM16 静音初始化时间线，视频输入无需开启麦克风。
@@ -46,6 +47,8 @@ Provider 和 Protocol 会在注册与建连时校验；缺少方法或返回无�
 在仓库根目录运行 `node --test server/test/realtime-provider-behavior.test.mjs`。同一套测试通过真实会话运行时和本地 WebSocket 服务，覆盖全部内置 Provider 的上下文投递、工具续答、授权、取消、异步播报排队与重连恢复。不支持的能力必须明确返回 unsupported 或报错，不能视作投递成功。
 
 模拟服务按原生协议返回消息，不调用适配器生成模拟回复。新增协议时补充对应 fixture，再运行共享测试。这是可重复的契约验证，不能替代真实服务联调或音频设备测试。
+
+`server/test/native-tool-continuation.test.mjs` 进一步覆盖 MCP 结果归一化、`ToolCallHandler` 和本地原生协议服务的完整链路，包括工具失败、请求异常与混合结果。[豆包 Seeduplex](https://docs.volcengine.com/docs/DoubaoVoice/endtoend-realtime-voice-full-duplex-version?lang=zh) 的工具调用可能先于 `response.done`，服务要收到匹配的工具结果后才结束该轮交互；测试不能为了发送回执而提前模拟终止事件。
 
 [Google Live](https://ai.google.dev/api/live) 使用 `clientContent` 和 `turnComplete: false` 写入上下文，提交 turn 才触发回复。与部分协议的被动历史注入不同，Google 规定 `clientContent` 也会打断当前生成：排队投递会等待空闲，立即投递的授权或上下文则可能打断。工具结果由服务原生续答；`generationComplete` 不代表该轮结束，收到 `turnComplete` 后才释放回复槽位。
 

@@ -439,6 +439,7 @@ export class ToolCallHandler {
         } : {}),
       },
       {
+        afterToolResults: true,
         shouldCreate: () => !this.isStale(batch.turnId, batch.turnGeneration)
           && (!batch.responseGuards.length || batch.responseGuards.some(check => check())),
         ...(instructions.length ? {

@@ -96,6 +96,9 @@ const DEFAULT_CAPABILITIES = Object.freeze({
   restoreConversationContext: true,
   // Accepts conversation.item.create and acknowledges created items.
   conversationItems: true,
+  // Tool receipts resume the service's current interaction without an explicit
+  // response request. They must be sent even while that interaction is active.
+  automaticToolResponses: false,
   // Accepts response.create and response.cancel initiated by the client.
   clientResponses: true,
   // Allows session instructions to be refreshed after initial setup.
@@ -472,9 +475,14 @@ export class RealtimeFrontend {
     ))
   }
 
-  ensureResponse(context = {}, { shouldCreate, response } = {}) {
+  ensureResponse(context = {}, { shouldCreate, response, afterToolResults = false } = {}) {
     if (!this.capabilities.clientResponses) {
       return Promise.resolve({ skipped: true, unsupported: true })
+    }
+    if (afterToolResults && this.capabilities.automaticToolResponses) {
+      // Results have already resumed native generation. Do not enqueue a
+      // second reply, or wait for a response we never requested.
+      return Promise.resolve({ skipped: true, automatic: true })
     }
     return this.enqueueResponse('agent', context, pending => {
       pending.isCurrent = shouldCreate
@@ -496,6 +504,13 @@ export class RealtimeFrontend {
     const sendOutput = () => this.createConversationItem(
       this.protocol.functionOutputItem(callId, output),
     )
+    if (this.capabilities.automaticToolResponses) {
+      if (!this.ready) return Promise.resolve({ cancelled: true })
+      // In native tool loops response.done can arrive only AFTER the result.
+      // Queueing this behind whenIdle() would deadlock service and runtime.
+      // This acknowledges delivery, not completion of the ensuing speech.
+      return sendOutput().then(() => ({ delivered: true, automatic: true }))
+    }
     if (!createResponse) return this.enqueueAction(sendOutput)
     return this.enqueueResponse('agent', context, async pending => {
       pending.isCurrent = shouldRespond

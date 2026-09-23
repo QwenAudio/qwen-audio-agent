@@ -61,6 +61,7 @@ export const googleLiveProvider = {
   createProtocol: createGoogleLiveProtocol,
   capabilities: {
     acknowledgesConversationItems: false,
+    automaticToolResponses: true,
     singleResponseSlot: true,
     conversationItemIdEcho: false,
     perResponseInstructions: false,

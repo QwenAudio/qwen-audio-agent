@@ -176,7 +176,9 @@ for (const key of defaultRealtimeProviderRegistry.list().map(provider => provide
       const before = peer.replies
       const result = await frontend.sendFunctionOutput(call.call_id, { value: 42 })
       await flush()
-      assert.equal(result.completed, true)
+      if (frontend.capabilities.automaticToolResponses) {
+        assert.deepEqual(result, { delivered: true, automatic: true })
+      } else assert.equal(result.completed, true)
       assert.equal(peer.replies, before + 1)
       assert.ok(peer.messages.some(message => JSON.stringify(message).includes('call_contract') && JSON.stringify(message).includes('42')))
       assert.equal(frontend.pendingResponses.length, 0)

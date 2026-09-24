@@ -23,18 +23,48 @@ tau2 `LLMAgent`, without Realtime, A2A, or demo approval logic). Defaults use
 simulator and assertion judge across all groups. Override them with
 `CS_TAU_BACKEND_MODEL`, `CS_TAU_USER_MODEL`, and `CS_TAU_JUDGE_MODEL` before starting.
 
-The runner executes three cases concurrently, one per group. `manifest.json`
-records the source fingerprint, completed cases, errors and denominators. Restart
+The runner executes cases with bounded concurrency (one at a time by default).
+`manifest.json` records the source fingerprint, completed cases, errors and denominators. Restart
 with the same configuration/output directory to continue pending cases; completed
 cases are never rerun or selected by best reward. Interrupted cases without a
-unique result count as infrastructure failures, not silent retries. Use a new
-directory for a new experiment or changed code/configuration.
+unique result count as infrastructure failures. Use a new directory for a new
+experiment or changed code/configuration.
+
+The harness frontend now waits up to 180 seconds per turn by default
+(`CS_TAU_HARNESS_TURN_TIMEOUT_SECONDS` overrides it); the overall case limit
+remains 300 seconds. The full runner retries a timed-out case in any mode **once** by default
+(`CS_TAU_TIMEOUT_RETRIES=0` disables this). It retries only a turn timeout,
+an overall case timeout, or a worker killed by the outer timeout—not a normally
+completed zero reward. Each attempt has a separate log/result file. The manifest's
+`passed` and `successRate` remain first-attempt scores; `retryAdjustedPassed` and
+`retryAdjustedSuccessRate` separately show recoveries after a timeout retry.
+These adjusted numbers are operational diagnostics, not a replacement tau2 score.
+
+For a harness-only refresh, set `CS_TAU_MODES=harness` and use a new output
+directory. `CS_TAU_CONCURRENCY=3` runs up to three independent cases at once
+(default 1; maximum 8). Keep concurrency modest to avoid provider rate limits;
+the chosen modes and concurrency are recorded in the manifest and must not
+change when resuming that directory.
+
+For a paired prompt check, set `CS_TAU_CASES` to the same comma-separated
+`domain:taskId` list for two harness-only runs in separate output directories.
+Set `CS_TAU_HARNESS_PROMPT_VARIANT=legacy` for the former generic-plus-policy
+prompt and `compact` (the default) for the policy-first prompt. The manifest
+records both the case selection and prompt variant. Each run has an independent
+tau2 user simulator, so matching task IDs do not guarantee identical dialogue;
+small score differences need trace inspection or repeated trials.
 
 Scores use the official evaluator (including communication/assertion criteria,
 not just DB equality) and verify live/replayed DB hashes. This is a text-only
-adapted tau2 experiment: one trial per task, at most 16 user turns and 300 seconds
+adapted tau2 experiment: one trial per task, no fixed user-turn cap, and 300 seconds
 per case. Harness execution keeps its eight-model-round limit per execution;
 native Max permits up to 100 model rounds per user turn within the case deadline.
+The harness frontend's initial system instructions use the full official domain
+policy plus a short benchmark-specific tool/approval bridge. They do not load
+the demo's generic voice-assistant prompt or `gateway/assistant/retail.md`;
+the standalone example is unchanged. Realtime-only retains its own baseline
+instructions. Tool descriptions and per-response input requests are separate
+from these initial system instructions.
 These are not the native benchmark's default step/trial settings or a voice test.
 User-simulator drift can affect all groups; inspect failure traces rather than
 attributing every zero reward to the tested agent. Full runs take hours and consume
@@ -156,9 +186,9 @@ replayed DB hashes. Hidden instructions go only to simulator/evaluator. Inspect
 simulator drift when interpreting failures.
 
 Input/output is text over real Realtime, **not ASR/TTS, physical audio or interruption
-evaluation**. Cases have isolated temporary Gateway state. Limits: 16 user replies,
+evaluation**. Cases have isolated temporary Gateway state. Limits: no fixed user-reply cap,
 five minutes overall, eight backend model rounds per execution/resumption, and
-90/120 seconds per frontend turn for baseline/harness. Preserve frontend tool budget.
+90/180 seconds per frontend turn for baseline/harness by default. Preserve frontend tool budget.
 Failures remain in the denominator; never silently select repeated trials.
 Runtime receipts/prompts cannot guarantee models never misreport results.
 
@@ -169,3 +199,24 @@ instead of mixing selected trials.
 Backend-only diagnostics remain available as
 `npm run eval:customer-service:tau -- retail:0 airline:8`; these are not full harness
 scores. `summarize.mjs` summarizes their per-domain batch directories.
+
+## EVA Airline text harness
+
+`eva-harness-bridge.mjs` is the JSON-lines adapter used by the separate
+EVA-bench-mix checkout. It runs the same Realtime frontend, Gateway, A2A backend,
+frontend/backend MCP split and approval runtime as the tau harness. EVA's Python
+process remains the only owner of its policy tools and scenario database; the local
+HTTP bridge previews writes on a copied database and commits only an exactly approved
+operation against the same DB hash.
+
+Run it from EVA-bench-mix so that the original EVA simulator and DB-based scorer stay
+in control:
+
+```sh
+HARNESS_ROOT=/path/to/qwen-audio-agent \
+  TARGET=harness RECORD_IDS=1.1.2 bash run_airline_text.sh
+```
+
+This path is text-in/text-out. It requires `DASHSCOPE_API_KEY` for both the Realtime
+frontend and the configured backend model; simulator and judge credentials remain EVA
+configuration. Runtime traces belong in EVA's output directory and are not source files.

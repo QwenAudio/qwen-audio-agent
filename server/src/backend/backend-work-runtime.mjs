@@ -26,6 +26,9 @@ export class BackendWorkRuntime {
       instruction: input?.instruction,
       objective: input?.objective,
       inputParts: input?.inputParts || [],
+      ...(input?.conversationContext?.length
+        ? { conversationContext: input.conversationContext }
+        : {}),
       ...(options.continuity === 'isolated' ? { continuity: 'isolated' } : {}),
     }
     work.instruction = backendInstructionFromWork(work)

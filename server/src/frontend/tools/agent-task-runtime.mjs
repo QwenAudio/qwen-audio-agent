@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto'
+import { isApprovalForPreview } from '../../../../shared/authorization-reply.mjs'
 import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { isTaskCancellable } from '../../task/task-state.mjs'
 import { toolFailure as failure } from './tool-result.mjs'
+import { recentDelegationHistory } from './delegation-history.mjs'
 
 const CANCEL_RECEIPT_INSTRUCTIONS = [
   '根据本次响应中的全部取消结果，只作一次简短自然的确认。',
@@ -383,6 +385,9 @@ export class AgentTaskRuntime {
         objective,
         submissionKey,
         inputParts: delegatedInputParts,
+        conversationContext: recentDelegationHistory(
+          this.host.getConversationContext(), this.host.delegationHistoryTurns,
+        ),
       })
     } catch (error) {
       const message = String(error?.message || error || '')
@@ -634,6 +639,30 @@ export class AgentTaskRuntime {
       ), turnId)
       return
     }
+    if (request.kind === 'authorization' && action === 'accept') {
+      // Validate the real customer turn, not only the model-produced tool call.
+      const customerReply = String(await this.host.transcripts.transcript(turnId)).trim()
+      if (!isApprovalForPreview(customerReply, request.prompt)) {
+        await this.host.taskOperations.respondToInput(task.id, request.id, {
+          // Reject this saved operation, but do not cancel the whole A2A task.
+          // The remote task may already have committed earlier operations and
+          // must be allowed to publish its final/partial execution receipt.
+          action: 'decline', text: customerReply,
+        }, { ownerId: this.host.ownerId })
+        await this.host.sendOutput(callId, {
+          status: 'preview_declined', task_id: task.id,
+          error_code: 'authorization_changed_or_ambiguous',
+          user_message: '原操作预览已拒绝，未执行。客户如修改了需求，必须重新生成预览。',
+        }, turnId, task.id, { response: { instructions: [
+          'The current authorization preview was declined and that write was not approved; the whole task was not cancelled.',
+          'Wait for the original task to finish so any earlier committed operations and its execution receipt are preserved.',
+          'If the customer changed the request, then call spawn_thinking with their latest actual request to create a NEW operation and preview.',
+          'Do not claim completion. If their intent is unclear, ask for clarification.',
+        ].join(' ') } })
+        return
+      }
+      args = { ...args, text: customerReply }
+    }
     await this.host.taskOperations.respondToInput(task.id, request.id, {
       action,
       text: String(args.text || '').trim(),
@@ -646,6 +675,15 @@ export class AgentTaskRuntime {
       response: {
         instructions: action === 'accept'
           ? '回答已交给原来的后台工作。只简短自然地说明会继续处理，不要新建工作或重复问题。'
+          : request.kind === 'authorization' && action === 'decline'
+            ? [
+              '当前操作预览已拒绝，没有批准这次写入；整项后台工作没有因此被取消。',
+              '若客户提出了更新后的业务诉求，待原任务结束后，保留已知身份、订单及客户的新条件，调用 spawn_thinking 新建工作并生成新预览。',
+              '可由后台查询的商品、订单或支付方式不要反复要求客户提供。',
+              '若客户只是拒绝当前操作而没有新诉求，简短确认未执行即可；不要声称新操作已经完成。',
+            ].join(' ')
+            : request.kind === 'authorization' && action === 'cancel'
+              ? '客户已明确终止整项后台工作。简短确认任务已取消，不要声称任何待确认操作已经执行。'
           : '用户没有提供这次补充信息。只作简短自然确认，不要声称工作已经完成。',
       },
     })

@@ -29,6 +29,8 @@ function harness({
   frontendKnowledge,
   frontendToolSources,
   disabledTools,
+  getConversationContext = () => [],
+  delegationHistoryTurns = 0,
   getTurnId = () => 'turn-one',
   getTurnGeneration = () => 1,
 } = {}) {
@@ -75,6 +77,8 @@ function harness({
     permissionPolicy,
     onPermissionDeliveryFailed,
     getClientContext: () => clientContext,
+    getConversationContext,
+    delegationHistoryTurns,
     presenceController,
     onAgentActivity,
     inputAssets,
@@ -800,6 +804,30 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
   )
 })
 
+test('snapshots opt-in frontend history when spawning, including earlier turns', async () => {
+  let received
+  const messages = [
+    { role: 'user', content: '我要改订单 W123' },
+    { role: 'assistant', content: '查到订单状态是待发货' },
+    { role: 'user', content: '改成新地址' },
+  ]
+  const kit = harness({
+    getConversationContext: () => messages,
+    delegationHistoryTurns: 10,
+    coordinator: { run: async input => { received = input; return { content: '完成' } } },
+  })
+  await kit.handler.handle({ call_id: 'call-history', name: 'spawn_thinking',
+    arguments: JSON.stringify({ objective: '把订单 W123 改成新地址' }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+  messages.push({ role: 'assistant', content: '派单后才出现的回复' })
+  await waitForTask(kit.manager, kit.outputs[0][1].task_id)
+  assert.deepEqual(received.conversationContext, [
+    { role: 'user', content: '我要改订单 W123' },
+    { role: 'assistant', content: '查到订单状态是待发货' },
+    { role: 'user', content: '改成新地址' },
+  ])
+})
+
 test('automatically carries current-turn attachments into spawned work', async () => {
   let received
   const kit = harness({
@@ -1357,6 +1385,73 @@ test('returns a backend answer to the same pending task', async () => {
   assert.equal(kit.outputs[0][1].status, 'submitted')
   release()
   await manager.wait(task.id)
+})
+
+test('changed customer request declines only the old write preview even if the frontend calls accept', async t => {
+  const manager = new TaskManager()
+  const done = Promise.withResolvers()
+  t.after(() => done.resolve({ content: 'done' }))
+  const task = manager.create({ objective: 'return the cheaper tablet to the credit card',
+    ownerId: 'owner', sessionId: 'voice', runner: async (_objective, { onEvent }) => {
+      onEvent({ type: 'backend.input.requested', input: { id: 'approval', status: 'pending',
+        kind: 'authorization', mode: 'text', prompt: 'Approve this exact return?' } })
+      return done.promise
+    } })
+  await new Promise(resolve => setImmediate(resolve))
+  const submitted = []
+  const kit = harness({ manager, respondInput: async (...args) => submitted.push(args) })
+  kit.transcripts.record('turn-one', 'Wait, return the more expensive tablet to a gift card instead.')
+  await kit.handler.handle({ call_id: 'changed', name: 'respond_agent_input',
+    arguments: JSON.stringify({ task_id: task.id, action: 'accept', text: 'Yes' }) },
+  { turnId: 'turn-one', turnGeneration: 1 })
+  assert.equal(submitted.length, 1)
+  assert.equal(submitted[0][2].action, 'decline')
+  assert.equal(kit.outputs.at(-1)[1].status, 'preview_declined')
+  assert.match(kit.outputs.at(-1)[3].response.instructions, /whole task was not cancelled/)
+  assert.match(kit.outputs.at(-1)[3].response.instructions, /NEW operation and preview/)
+})
+
+test('plain customer approval still reaches the pending write preview', async t => {
+  const manager = new TaskManager()
+  const done = Promise.withResolvers()
+  t.after(() => done.resolve({ content: 'done' }))
+  const task = manager.create({ objective: 'return item', ownerId: 'owner', sessionId: 'voice',
+    runner: async (_objective, { onEvent }) => {
+      onEvent({ type: 'backend.input.requested', input: { id: 'approval', status: 'pending',
+        kind: 'authorization', mode: 'text', prompt: 'Approve this exact return?' } })
+      return done.promise
+    } })
+  await new Promise(resolve => setImmediate(resolve))
+  const submitted = []
+  const kit = harness({ manager, respondInput: async (...args) => submitted.push(args) })
+  kit.transcripts.record('turn-one', 'Yes, I approve.')
+  await kit.handler.handle({ call_id: 'approved', name: 'respond_agent_input',
+    arguments: JSON.stringify({ task_id: task.id, action: 'accept', text: 'I approve.' }) },
+  { turnId: 'turn-one', turnGeneration: 1 })
+  assert.equal(submitted[0][2].action, 'accept')
+  assert.equal(submitted[0][2].text, 'Yes, I approve.')
+  assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
+})
+
+test('cancelling an authorization preview tells the frontend to re-delegate a changed request', async t => {
+  const manager = new TaskManager()
+  const done = Promise.withResolvers()
+  t.after(() => done.resolve({ content: 'done' }))
+  const task = manager.create({ objective: 'refund to credit card', ownerId: 'owner', sessionId: 'voice',
+    runner: async (_objective, { onEvent }) => {
+      onEvent({ type: 'backend.input.requested', input: { id: 'approval', status: 'pending',
+        kind: 'authorization', mode: 'text', prompt: 'Approve credit-card refund?' } })
+      return done.promise
+    } })
+  await new Promise(resolve => setImmediate(resolve))
+  const submitted = []
+  const kit = harness({ manager, respondInput: async (...args) => submitted.push(args) })
+  await kit.handler.handle({ call_id: 'cancel-old', name: 'respond_agent_input',
+    arguments: JSON.stringify({ task_id: task.id, action: 'cancel' }) },
+  { turnId: 'turn-one', turnGeneration: 1 })
+  assert.equal(submitted[0][2].action, 'cancel')
+  assert.match(kit.outputs.at(-1)[3].response.instructions, /整项后台工作/)
+  assert.doesNotMatch(kit.outputs.at(-1)[3].response.instructions, /spawn_thinking/)
 })
 
 for (const kind of ['input', 'authorization']) test(`pending ${kind} cannot be queued as a new task`, async t => {

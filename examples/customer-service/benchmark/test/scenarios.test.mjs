@@ -251,7 +251,8 @@ test('真实 HTTP/MCP/A2A 补充输入恢复同一任务，原核验可用且信
         calls += 1
         assert.match(messages[0].content, /ALREADY been authenticated/)
         if (calls === 1) return { tool_calls: [{ id: 'ask', function: {
-          name: 'ask_customer', arguments: '{"question":"Original card or gift card?"}' } }] }
+          name: 'ask_customer', arguments: JSON.stringify({ purpose: 'business_choice',
+            options: ['Original card', 'Gift card'], question: 'Original card or gift card?' }) } }] }
         assert.match(messages.at(-1).content, /original card/)
         return { tool_calls: [{ id: 'write', function: {
           name: operation.name, arguments: JSON.stringify(operation.arguments) } }] }

@@ -4,8 +4,10 @@ import { AgentEvent } from '@a2a-js/sdk/server'
 import { DashScopeServiceModel } from './model.mjs'
 import { flowPrompt } from './flows.mjs'
 import { AgentHistory } from './agent-history.mjs'
+import { isApprovalForPreview } from '../../../shared/authorization-reply.mjs'
 
 const MAX_AGENT_ROUNDS = 8
+const EXECUTION_RECEIPT_SCHEMA = 'qwen-audio-agent/customer-service-execution-receipt@1'
 
 // 【为什么这份 prompt 是域无关的】
 // 第一版写死成零售：「你是零售客服的后台 Agent」「查订单、查款式库存由前台处理」
@@ -40,6 +42,18 @@ export function serviceAgentPrompt(domain = process.env.CS_DOMAIN || 'retail') {
 - 改动数据的工具是两段式：第一次调用会取得预览，此时数据没有变化。
   运行时会挂起任务，向客户展示预览；明确批准后由运行时提交保存的操作。
   不要自己填写 approval_token，也不要尝试跳过确认。
+- 收齐执行所需信息与客户的真实业务选择后，直接调用写工具取得预览。
+  预览后的运行时授权就是该具体操作的最终确认；不要先单独询问一次
+  “确定要办理吗”，再让客户为同一操作确认预览。若客户尚未选定方案、
+  支付方式或政策明确要求先作独立选择，才用 ask_customer 补齐。
+- 一项诉求包含多笔改动时，先核对每笔操作的前置状态与执行后的状态。
+  如果先做一笔会使另一笔不再符合政策，任何一笔都不要先提交；先说明
+  冲突并请客户选择可执行的方案，不能擅自只完成其中一笔。
+- 把交接中的【目标】【硬约束】【默认保持】【未决事项】当作完成清单：
+  每次操作后更新哪些已经完成、拒绝或仍待处理；不能因为完成了第一笔操作
+  就结束整项请求，也不能擅自改变“默认保持”的属性。
+- 准备结束前，使用可用的只读工具重新核对被修改记录的当前状态；如果实际
+  状态仍不满足目标，继续处理、询问必要选择或如实说明阻碍，不要只复述工具话术。
 - 工具返回的业务判定（不符合条件、细则未覆盖、超出权限等）照实转达，
   不要换个说法再试一次，也不要自己估算天数、差价或补偿金额。
 - 需要转人工时调用 transfer_to_human，并写清原因。
@@ -49,10 +63,8 @@ export function serviceAgentPrompt(domain = process.env.CS_DOMAIN || 'retail') {
 这套系统的内部结构。不要说"后台"、"前台"、"后台客服"、"提交后台处理"、
 "Agent"、"系统"、"工单"、"接口"、"我这边转给"这类话 —— 客户听到"提交后台客服"
 会以为要换个人接手，而实际上从头到尾就是你在办。
-- 要客户确认时，直接说清【要办的是什么事、金额多少】，然后问他同不同意。
-  不要解释为什么需要确认，也不要描述这件事在内部怎么流转。
-  ✗ "这个操作涉及金额，我需要提交后台客服处理，您确定吗？"
-  ✓ "这笔会退还 120 元到您的原支付账户，确认为您办理吗？"
+- 缺少业务选择或参数时，只问缺少的内容；不要为将由运行时展示的
+  同一笔操作另起一次泛化确认。预览中说明具体操作与金额，由运行时询问批准。
 - 只有真的要把客户交给人类坐席时（调 transfer_to_human），才可以提"人工客服"。
   那时说"我帮您转接人工客服"，别的情况都不要提转接。${flowPrompt(domain)}`
 }
@@ -67,6 +79,79 @@ function textPart(text) {
     filename: '',
     mediaType: 'text/plain',
   }
+}
+
+function dataPart(data) {
+  return {
+    content: { $case: 'data', value: data },
+    metadata: undefined,
+    filename: '',
+    mediaType: 'application/json',
+  }
+}
+
+function operationEffect(name, result) {
+  const content = String(result?.content || 'Operation committed.').trim()
+  let structuredResult
+  try {
+    const parsed = JSON.parse(content)
+    if (parsed && typeof parsed === 'object'
+      && JSON.stringify(parsed).length <= 32_000) structuredResult = parsed
+  } catch {}
+  return {
+    operation: String(name || 'unknown').slice(0, 160),
+    status: 'committed',
+    ...(structuredResult === undefined
+      ? { summary: content.slice(0, 4_000) }
+      : { result: structuredResult }),
+  }
+}
+
+function executionReceipt(outcome, committedEffects = [], detail = '') {
+  const operations = committedEffects.map(effect => ({ ...effect }))
+  const summaries = {
+    committed: `${operations.length} data-changing operation(s) actually committed.`,
+    no_change: 'No data-changing operation was committed by this task.',
+    partial: `${operations.length} data-changing operation(s) committed before the task stopped; verify current state before continuing.`,
+    failed: 'The task failed before any data-changing operation was committed.',
+    cancelled: 'The task was cancelled before any data-changing operation was committed.',
+    declined: 'The pending operation was declined and was not committed.',
+  }
+  return {
+    schema: EXECUTION_RECEIPT_SCHEMA,
+    outcome,
+    committedCount: operations.length,
+    committedOperations: operations,
+    requiresStateVerification: outcome === 'partial' || outcome === 'failed',
+    summary: summaries[outcome] || 'Execution state recorded by the runtime.',
+    ...(detail && ['partial', 'failed'].includes(outcome)
+      ? { detail: String(detail).trim().slice(0, 1_000) }
+      : {}),
+  }
+}
+
+function publishExecutionReceipt(eventBus, taskId, contextId, receipt) {
+  eventBus.publish(AgentEvent.artifactUpdate({
+    taskId,
+    contextId,
+    artifact: {
+      artifactId: 'customer-service-execution-receipt',
+      name: 'Customer service execution receipt',
+      description: 'Runtime-authored evidence of data-changing operations actually committed by this task.',
+      parts: [dataPart(receipt)],
+      metadata: undefined,
+      extensions: [],
+    },
+    append: false,
+    lastChunk: true,
+    metadata: undefined,
+  }))
+}
+
+function publishCompleted(eventBus, taskId, contextId, output) {
+  publishExecutionReceipt(eventBus, taskId, contextId, output.receipt)
+  eventBus.publish(statusUpdate(taskId, contextId,
+    TaskState.TASK_STATE_COMPLETED, output.content))
 }
 
 function agentMessage(text, { taskId, contextId, metadata } = {}) {
@@ -148,93 +233,183 @@ class CustomerInputNeeded extends Error {
   }
 }
 
+// The retail policy makes both actions terminal for a delivered order. This
+// conservative gate applies only when the request explicitly names both
+// actions and exactly one order; ambiguous/multi-order requests stay with the
+// agent for normal investigation. It never guesses a customer's priority.
+function exclusiveRetailChoice(objective, toolset) {
+  if (toolset !== 'tau-retail') return null
+  const actions = [/(?:\breturns?\b|退货)/iu, /(?:\bexchanges?\b|换货)/iu]
+  const orders = new Set((String(objective).match(/#[a-z0-9-]+/giu) || []).map(order => order.toUpperCase()))
+  return orders.size === 1 && actions.every(pattern => pattern.test(objective)) ? [...orders][0] : null
+}
+
+function selectedRetailAction(answer) {
+  const wantsReturn = /(?:\breturns?\b|退货)/iu.test(answer)
+  const wantsExchange = /(?:\bexchanges?\b|换货)/iu.test(answer)
+  return wantsReturn === wantsExchange ? null : wantsReturn ? 'return' : 'exchange'
+}
+
+function isBenchmarkToolset(toolset) {
+  return toolset?.startsWith('tau-') || toolset?.startsWith('benchmark-')
+}
+
+function retailChoicePrompt() {
+  return 'For this delivered order, a return changes its status to return requested and an exchange changes it to exchange requested. The policy requires delivered status for both, so I cannot complete both on the same order. Which ONE should I process: the return or the exchange? Neither has been submitted.'
+}
+
 const customerInputTool = {
   type: 'function', function: {
     name: 'ask_customer',
-    description: 'Request missing information, a choice, or policy confirmation from the customer and suspend this same task. Use this tool instead of ending with a question. This is NOT database authorization; write tools still require runtime approval.',
-    parameters: { type: 'object', properties: { question: { type: 'string', minLength: 1 } },
-      required: ['question'], additionalProperties: false },
+    description: 'Suspend for a missing factual field or a genuine business/policy choice. This tool cannot authorize a write or ask for generic permission to proceed: invoke the write tool for its exact runtime approval preview.',
+    parameters: { type: 'object', properties: {
+      purpose: { type: 'string', enum: ['missing_information', 'business_choice'] },
+      question: { type: 'string', minLength: 1 },
+      field: { type: 'string', description: 'For missing_information: the specific unknown field needed to continue.' },
+      options: { type: 'array', items: { type: 'string' }, minItems: 2,
+        description: 'For business_choice: distinct business alternatives, not yes/no approval of a write.' },
+    }, required: ['purpose', 'question'], additionalProperties: false },
   },
 }
 
+function customerQuestion(args) {
+  const question = typeof args.question === 'string' ? args.question.trim() : ''
+  if (!question) throw new Error('Missing customer question')
+  if (args.purpose === 'missing_information') {
+    if (typeof args.field !== 'string' || !args.field.trim() || args.options !== undefined) {
+      throw new Error('Missing-information request requires a field and no options')
+    }
+  } else if (args.purpose === 'business_choice') {
+    const options = args.options
+    if (args.field !== undefined || !Array.isArray(options) || options.length < 2
+      || options.some(option => typeof option !== 'string' || !option.trim())
+      || new Set(options.map(option => option.trim().toLowerCase())).size !== options.length) {
+      throw new Error('Business-choice request requires distinct options and no field')
+    }
+  } else {
+    throw new Error('Customer input must be missing_information or business_choice; use write preview for authorization')
+  }
+  return question
+}
+
 async function runServiceAgent({ objective, model, tools, signal, onToolCall,
-  history = [], initialMessages, initialCalls = [], initialOutput, committedOperations = 0 }) {
-  const definitions = (await tools.list({ signal })).map(openAiTool)
+  history = [], initialMessages, initialCalls = [], initialOutput, committedOperations = 0,
+  committedEffects = [], operationChoice = null }) {
+  const availableTools = await tools.list({ signal })
+  const definitions = availableTools.map(openAiTool)
   definitions.push(customerInputTool)
   const allowed = new Set(definitions.map(tool => tool.function.name))
   const context = await tools.context?.({ signal })
-  const prompt = context?.toolset?.startsWith('tau-')
-    ? `${context.policy}\n\nRuntime: tools execute the official tau environment. Writes require explicit customer approval.\nDo not supply approval_token; the runtime previews and commits saved operations after authorization.\nIdentity checks and read tools may be used here when needed. Follow the policy and never claim an action was completed without a tool result.`
+  const prompt = isBenchmarkToolset(context?.toolset)
+    ? `${context.policy}\n\nRuntime: tools execute the official tau environment. Writes require explicit customer approval.\nDo not supply approval_token; the runtime previews and commits saved operations after authorization.\nOnce required facts and genuine business choices are known, call the write tool to obtain that exact approval preview; do not first ask a generic 'may I proceed?' for the same operation. Before the FIRST write in a multi-action request, check all requested changes against the policy and the resulting entity states. If committing one change would make another requested change ineligible, do not commit either one or silently perform only a subset; explain the conflict and use ask_customer for a genuine choice. Do not treat a user's general agreement to multiple changes as a choice between them. Treat the delegated goal, hard constraints, preserve-by-default fields, and unresolved items as a completion checklist. After every operation, continue until every requested outcome is completed, explicitly declined, or blocked by a stated policy reason. Do not change an existing attribute merely because a broader search exposes another option. Before finishing, use available read tools to verify the current state of changed records against that checklist. Use ask_customer only for missing information or a distinct policy/business choice. Identity checks and read tools may be used here when needed. Follow the policy and never claim an action was completed without a tool result.`
     : serviceAgentPrompt()
   const identity = context?.verifiedIdentity
   const sharedContext = identity ? `\n\nTrusted session context: the customer has ALREADY been authenticated in this SAME conversation by the official tool ${identity.method}, with arguments ${JSON.stringify(identity.arguments)}, returning user_id ${JSON.stringify(identity.userId)}. This is a continuation, not a new conversation. Do not require authentication again or act on another customer's account. This identity is NOT authorization to update data.` : ''
   const messages = initialMessages || [
     // 【运行时取，不用模块加载时的快照】SERVICE_AGENT_PROMPT 是导入那一刻
     // 就定下的，而测试会在导入之后改 CS_DOMAIN 来验分域。
-    { role: 'system', content: `${prompt}${sharedContext}\nWhen customer information, selection, or confirmation is missing, call ask_customer. Do not end a task with a question. A task ending is not evidence of a database update. Never claim a write succeeded without its committed tool result.` },
+    { role: 'system', content: `${prompt}${sharedContext}\nWhen a required fact or a distinct policy/business choice is missing, call ask_customer. Do not use ask_customer for generic pre-write confirmation; the runtime approval preview is the confirmation for the exact write. Do not end a task with a question. A task ending is not evidence of a database update. Never claim a write succeeded without its committed tool result.` },
     ...history,
     { role: 'user', content: objective },
   ]
+  const exclusiveOrderId = !initialMessages && exclusiveRetailChoice(objective, context?.toolset)
+  if (exclusiveOrderId) {
+    const input = new CustomerInputNeeded(retailChoicePrompt(), messages, null, [])
+    input.choiceRequest = true
+    input.choiceOrderId = exclusiveOrderId
+    throw input
+  }
   let lastContent = initialOutput?.content || ''
   let lastData = initialOutput?.data || {}
 
-  for (let round = 0; round < MAX_AGENT_ROUNDS; round += 1) {
-    if (signal.aborted) throw signal.reason || new DOMException('Aborted', 'AbortError')
-    const queued = round === 0 && initialCalls.length > 0
-    const message = queued ? { tool_calls: initialCalls }
-      : await model.complete({ messages, tools: definitions, signal })
-    signal.throwIfAborted()
-    const calls = Array.isArray(message.tool_calls) ? message.tool_calls : []
-    if (!calls.length) {
-      return {
-        content: context?.toolset?.startsWith('tau-')
-          ? `<execution_receipt committed_operations="${committedOperations}" authority="runtime">${committedOperations ? 'Operation tool(s) actually committed after approval.' : 'No data-changing operation was committed by this task. Do NOT report any update as completed.'}</execution_receipt>\n${String(message.content || lastContent || '已处理').trim()}`
-          : String(message.content || lastContent || '已处理').trim(),
-        data: lastData,
-      }
-    }
-    if (!queued) messages.push({
-      role: 'assistant',
-      content: message.content || null,
-      tool_calls: calls,
-    })
-    for (const [index, call] of calls.entries()) {
+  try {
+    for (let round = 0; round < MAX_AGENT_ROUNDS; round += 1) {
       signal.throwIfAborted()
-      const name = String(call?.function?.name || '')
-      if (!allowed.has(name)) {
-        throw new Error(`Customer service Agent selected unknown tool: ${name}`)
-      }
-      const args = toolArguments(call)
-      if (name === 'ask_customer') {
-        if (typeof args.question !== 'string' || !args.question.trim()) throw new Error('Missing customer question')
-        const input = new CustomerInputNeeded(args.question.trim(), messages, call.id, calls.slice(index + 1))
-        input.committedOperations = committedOperations
-        throw input
-      }
-      onToolCall?.({ name, args })
-      const result = await tools.call(name, args, { signal })
-      lastContent = result.content
-      lastData = result.data || lastData
+      const queued = round === 0 && initialCalls.length > 0
+      const message = queued ? { tool_calls: initialCalls }
+        : await model.complete({ messages, tools: definitions, signal })
       signal.throwIfAborted()
-      if (result.data?.needsApproval) {
-        const approval = result.data.approval
-        if (!approval?.token || !approval.preview) throw new Error('Missing structured approval')
-        const approvalNeeded = new ApprovalNeeded(result.content, {
-          name, args, token: approval.token, toolCallId: call.id,
-          remainingCalls: calls.slice(index + 1),
-        }, messages)
-        approvalNeeded.committedOperations = committedOperations
-        throw approvalNeeded
+      const calls = Array.isArray(message.tool_calls) ? message.tool_calls : []
+      if (!calls.length) {
+        const content = String(message.content || lastContent || '已处理').trim()
+        return {
+          content,
+          data: lastData,
+          receipt: executionReceipt(
+            committedOperations ? 'committed' : 'no_change',
+            committedEffects,
+            content,
+          ),
+        }
       }
-      if (result.data?.operationCommitted || result.data?.changed === true) committedOperations += 1
-      messages.push({
-        role: 'tool',
-        tool_call_id: call.id,
-        content: result.content,
+      if (!queued) messages.push({
+        role: 'assistant',
+        content: message.content || null,
+        tool_calls: calls,
       })
+      for (const [index, call] of calls.entries()) {
+        signal.throwIfAborted()
+        const name = String(call?.function?.name || '')
+        if (!allowed.has(name)) {
+          throw new Error(`Customer service Agent selected unknown tool: ${name}`)
+        }
+        const args = toolArguments(call)
+        if (name === 'ask_customer') {
+          let question
+          try { question = customerQuestion(args) } catch (error) {
+            // A malformed model tool call is not a failed customer task. Give the
+            // model the contract error so it can correct the request, while still
+            // refusing to suspend or interpret it as write authorization.
+            messages.push({ role: 'tool', tool_call_id: call.id,
+              content: `ask_customer rejected: ${error.message}. Provide a valid purpose and its required field or distinct options; do not request write authorization here.` })
+            continue
+          }
+          const input = new CustomerInputNeeded(question, messages, call.id, calls.slice(index + 1))
+          input.committedOperations = committedOperations
+          input.committedEffects = committedEffects
+          input.operationChoice = operationChoice
+          throw input
+        }
+        if (operationChoice && availableTools.find(tool => tool.name === name)?.annotations?.readOnlyHint === false
+          && !name.startsWith('transfer_to_human')
+          && (name !== `${operationChoice.action}_delivered_order_items`
+            || String(args.order_id || '').toUpperCase() !== operationChoice.orderId)) {
+          throw new Error(`The customer selected ${operationChoice.action} for ${operationChoice.orderId}; another write requires a separate customer decision`)
+        }
+        onToolCall?.({ name, args })
+        const result = await tools.call(name, args, { signal })
+        lastContent = result.content
+        lastData = result.data || lastData
+        signal.throwIfAborted()
+        if (result.data?.needsApproval) {
+          const approval = result.data.approval
+          if (!approval?.token || !approval.preview) throw new Error('Missing structured approval')
+          const approvalNeeded = new ApprovalNeeded(result.content, {
+            name, args, token: approval.token, toolCallId: call.id,
+            remainingCalls: calls.slice(index + 1),
+          }, messages)
+          approvalNeeded.committedOperations = committedOperations
+          approvalNeeded.committedEffects = committedEffects
+          approvalNeeded.operationChoice = operationChoice
+          throw approvalNeeded
+        }
+        if (result.data?.operationCommitted || result.data?.changed === true) {
+          committedOperations += 1
+          committedEffects = [...committedEffects, operationEffect(name, result)]
+        }
+        messages.push({
+          role: 'tool',
+          tool_call_id: call.id,
+          content: result.content,
+        })
+      }
     }
+    throw new Error(`Customer service Agent exceeded ${MAX_AGENT_ROUNDS} model rounds`)
+  } catch (error) {
+    if (error.committedOperations === undefined) error.committedOperations = committedOperations
+    if (error.committedEffects === undefined) error.committedEffects = committedEffects
+    throw error
   }
-  throw new Error(`Customer service Agent exceeded ${MAX_AGENT_ROUNDS} model rounds`)
 }
 
 export class ServiceAgentExecutor {
@@ -323,10 +498,19 @@ export class ServiceAgentExecutor {
       // 授权是协议层的决定，不让模型从自然语言里猜测。
       // 缺少结构化同意也按未批准处理（fail closed）。
       const inputResponse = requestContext.userMessage?.metadata?.qwenAudioInputResponse
-      if (resumed && pending.kind !== 'customer-input' && (inputResponse?.kind !== 'authorization' || inputResponse.action !== 'accept')) {
+      if (resumed && pending.kind !== 'customer-input' && (
+        inputResponse?.kind !== 'authorization'
+        || inputResponse.action !== 'accept'
+        || !isApprovalForPreview(objective, pending.preview)
+      )) {
         await this.tools.revokeApproval?.(pending.operation?.token)
         history.append(contextId, `${pending.objective}\n\n客户补充：${objective}`,
           '客户未批准待确认操作，未执行数据变更。')
+        publishExecutionReceipt(eventBus, taskId, contextId, executionReceipt(
+          pending.committedEffects?.length ? 'partial' : 'declined',
+          pending.committedEffects,
+          '客户未批准待确认操作，未执行该项数据变更。',
+        ))
         eventBus.publish(statusUpdate(taskId, contextId,
           TaskState.TASK_STATE_COMPLETED, '未获得客户批准，这笔操作没有执行。'))
         return
@@ -338,16 +522,36 @@ export class ServiceAgentExecutor {
         if (inputResponse?.action === 'cancel') {
           history.append(contextId, `${pending.objective}\n\n客户补充：${objective}`,
             '客户取消了待补充信息的任务。')
+          publishExecutionReceipt(eventBus, taskId, contextId, executionReceipt(
+            pending.committedEffects?.length ? 'partial' : 'cancelled',
+            pending.committedEffects,
+            '客户取消了待补充信息的任务。',
+          ))
           eventBus.publish(statusUpdate(taskId, contextId, TaskState.TASK_STATE_CANCELED, '任务已取消。'))
           return
         }
-        pending.messages.push({ role: 'tool', tool_call_id: pending.callId,
-          content: `Customer response (information only, NOT write authorization): ${objective}` })
+        let operationChoice = pending.operationChoice || null
+        if (pending.choiceRequest) {
+          const selected = selectedRetailAction(objective)
+          if (!selected) {
+            const input = new CustomerInputNeeded(retailChoicePrompt(), pending.messages, null, [])
+            input.choiceRequest = true
+            input.choiceOrderId = pending.choiceOrderId
+            throw input
+          }
+          operationChoice = { action: selected, orderId: pending.choiceOrderId }
+          pending.messages.push({ role: 'user', content: `Customer selected ONLY ${selected} for order ${pending.choiceOrderId}; the other requested operation must not be performed. This is a business choice, NOT write authorization.` })
+        } else {
+          pending.messages.push({ role: 'tool', tool_call_id: pending.callId,
+            content: `Customer response (information only, NOT write authorization): ${objective}` })
+        }
         const output = await runServiceAgent({ objective: pending.objective, model: this.model,
           tools: this.tools, signal: controller.signal, initialMessages: pending.messages,
-          initialCalls: pending.remainingCalls, committedOperations: pending.committedOperations })
+          initialCalls: pending.remainingCalls, committedOperations: pending.committedOperations,
+          committedEffects: pending.committedEffects,
+          operationChoice })
         history.append(contextId, `${pending.objective}\n\n客户补充：${objective}`, output.content)
-        eventBus.publish(statusUpdate(taskId, contextId, TaskState.TASK_STATE_COMPLETED, output.content))
+        publishCompleted(eventBus, taskId, contextId, output)
         return
       }
       if (resumed) {
@@ -370,9 +574,14 @@ export class ServiceAgentExecutor {
           signal: controller.signal, initialMessages: messages,
           initialCalls: pending.operation.remainingCalls, initialOutput: output,
           committedOperations: (pending.committedOperations || 0) + 1,
+          committedEffects: [
+            ...(pending.committedEffects || []),
+            operationEffect(name, output),
+          ],
+          operationChoice: pending.operationChoice,
         })
         history.append(contextId, `${pending.objective}\n\n客户补充：${objective}`, finalOutput.content)
-        eventBus.publish(statusUpdate(taskId, contextId, TaskState.TASK_STATE_COMPLETED, finalOutput.content))
+        publishCompleted(eventBus, taskId, contextId, finalOutput)
         return
       }
 
@@ -390,14 +599,17 @@ export class ServiceAgentExecutor {
       })
 
       history.append(contextId, objective, output.content)
-      eventBus.publish(statusUpdate(taskId, contextId,
-        TaskState.TASK_STATE_COMPLETED, output.content))
+      publishCompleted(eventBus, taskId, contextId, output)
     } catch (error) {
       if (error instanceof CustomerInputNeeded) {
         const entry = { kind: 'customer-input', contextId, eventBus,
           objective: pending?.objective || objective, messages: error.messages,
           committedOperations: error.committedOperations,
+          committedEffects: error.committedEffects,
           callId: error.callId, remainingCalls: error.remainingCalls, at: Date.now() }
+        entry.choiceRequest = error.choiceRequest || false
+        entry.choiceOrderId = error.choiceOrderId || pending?.choiceOrderId || null
+        entry.operationChoice = error.operationChoice || pending?.operationChoice || null
         entry.timer = setTimeout(() => { this.cancelTask(taskId).catch(() => {}) }, this.approvalTtlMs)
         entry.timer.unref?.()
         this.suspended.set(taskId, entry)
@@ -411,6 +623,8 @@ export class ServiceAgentExecutor {
           eventBus,
           objective: pending?.objective || objective,
           committedOperations: error.committedOperations,
+          committedEffects: error.committedEffects,
+          operationChoice: error.operationChoice || pending?.operationChoice || null,
           preview: error.preview,
           operation: error.operation,
           messages: error.messages,
@@ -432,12 +646,22 @@ export class ServiceAgentExecutor {
       if (controller.signal.aborted) {
         history?.append(contextId, pending?.objective || objective,
           '任务已取消；已执行操作的当前状态需通过工具核实。')
+        publishExecutionReceipt(eventBus, taskId, contextId, executionReceipt(
+          (error.committedEffects || pending?.committedEffects)?.length ? 'partial' : 'cancelled',
+          error.committedEffects || pending?.committedEffects,
+          '任务已取消；已执行操作的当前状态需通过工具核实。',
+        ))
         eventBus.publish(statusUpdate(taskId, contextId,
           TaskState.TASK_STATE_CANCELED, '任务已取消。'))
         return
       }
       history?.append(contextId, pending?.objective || objective,
         `任务未完成：${error.message || '处理失败'}。已执行操作的当前状态需通过工具核实。`)
+      publishExecutionReceipt(eventBus, taskId, contextId, executionReceipt(
+        (error.committedEffects || pending?.committedEffects)?.length ? 'partial' : 'failed',
+        error.committedEffects || pending?.committedEffects,
+        error.message || '处理失败。',
+      ))
       eventBus.publish(statusUpdate(taskId, contextId,
         TaskState.TASK_STATE_FAILED, error.message || '处理失败。'))
     } finally {
@@ -458,6 +682,11 @@ export class ServiceAgentExecutor {
         this.history.append(pending.contextId, pending.objective,
           '客户取消了待确认任务，未继续执行该操作。')
         const bus = eventBus || pending.eventBus
+        if (bus) publishExecutionReceipt(bus, taskId, pending.contextId, executionReceipt(
+          pending.committedEffects?.length ? 'partial' : 'cancelled',
+          pending.committedEffects,
+          '客户取消了待确认任务，未继续执行该操作。',
+        ))
         bus?.publish(statusUpdate(taskId, pending.contextId,
           TaskState.TASK_STATE_CANCELED, '任务已取消。'))
       }

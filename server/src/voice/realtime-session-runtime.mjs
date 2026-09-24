@@ -64,7 +64,7 @@ export function createRealtimeSessionRuntime({
   inputAssets, conversationSync, config, realtimeProviderRegistry,
   defaultRealtimeProvider, realtimeFrontendFactory,
   frontendRetrieval, frontendKnowledge, frontendToolSources,
-  spawnThinkingDescription, taskAnnouncementFactory,
+  spawnThinkingDescription, delegationHistoryTurns = 0, taskAnnouncementFactory,
 }) {
   let closed = false
   let started = false
@@ -374,6 +374,7 @@ export function createRealtimeSessionRuntime({
       ownerId,
       sessionId,
     }),
+    delegationHistoryTurns,
     // 记忆写入只刷新缓存，不重发 session.update：改 instructions 等于改 prompt
     // 前缀，会让整场会话的前缀缓存失效，而用户刚说过的内容本来就在上下文里，
     // 不必靠 instructions 再讲一遍。新值在下一个新会话生效。

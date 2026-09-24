@@ -50,6 +50,45 @@ test('passes backend-provided error content through for realtime interpretation'
   assert.match(text, /backend supplied detail/)
 })
 
+test('projects a structured customer-service execution receipt into the frontend result context', async () => {
+  const inputs = []
+  const manager = new AnnouncementManager({
+    getFrontend: () => ({
+      ready: true,
+      injectResult: async input => {
+        inputs.push(input)
+        return { completed: true, contextInjected: true }
+      },
+    }),
+    isDeliveryBlocked: () => false,
+    batchWindowMs: 0,
+  })
+  manager.completed({
+    id: 'customer-service-task',
+    objective: '改签并保留行李',
+    result: '全部都已经办好了。',
+    artifacts: [{
+      artifactId: 'customer-service-execution-receipt',
+      parts: [{ data: {
+        schema: 'qwen-audio-agent/customer-service-execution-receipt@1',
+        outcome: 'partial',
+        committedCount: 1,
+        committedOperations: [{ operation: 'rebook_flight', status: 'committed' }],
+        requiresStateVerification: true,
+        summary: 'One operation committed; verify current state.',
+      } }],
+    }],
+  })
+  await waitFor(() => inputs.length === 1)
+  assert.match(inputs[0], /执行回执（运行时事实，优先于自然语言结果）/u)
+  assert.match(inputs[0], /"outcome":"partial"/u)
+  assert.match(inputs[0], /"operation":"rebook_flight"/u)
+  assert.match(inputs[0], /不能说成全部完成/u)
+  assert.match(inputs[0], /通知承诺/u)
+  assert.match(inputs[0], /只能使用 committedOperations 的 result\/summary/u)
+  manager.close()
+})
+
 test('waits while duplex speech blocks delivery', async () => {
   let blocked = true
   let spoken = 0

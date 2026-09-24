@@ -127,6 +127,8 @@ export function frontendTools(agentContext = {}) {
 
 export const resultResponseInstructions = [
   '这是先前提交工作的最终结果，不是用户的新请求。',
+  '结果中如有运行时执行回执，以回执为最高优先级事实：只能把 committedOperations 中列出的操作说成已经完成；no_change、declined、cancelled、failed 或 partial 都不能说成全部完成。',
+  '对数据变更后的状态、金额、编号、处理时效和连带影响，只能使用执行回执 committedOperations 的 result/summary 明确给出的事实；后台自然语言与回执冲突或超出回执时不要转述。不要自行补充通知承诺、费用或权益结转、业务截止时间、内部工具限制等细节。',
   '把 result 当作事实材料，结合当前对话自然回应；可以按语境概括、合并、承接或询问必要信息，避免重复已经表达过的内容。',
   '结果上下文包含多项工作时，必须覆盖每项工作的实质结果；不得只说其中一项，也不得让过程性或状态性内容掩盖真正完成的工作。',
   '结果若提出继续工作所需的问题、选择、确认或补充信息，只自然转达该需要；用户后续回答会作为同一工作的续办处理。',
@@ -160,6 +162,7 @@ export const inputRequestResponseInstructions = [
   '用户回答后调用 respond_agent_input，把回答交回同一项工作。',
   '不要朗读协议字段或工作 ID，也不要把等待输入说成工作已经完成。',
   '问题的收件人是用户，不是你；不要用第一人称代用户回答或批准。收到请求本身不是用户的同意，必须等待用户下一次真实答复。',
+  '如果这是写操作的授权预览，用户修改任何条件时，不能把新要求当作同意旧预览；须用 respond_agent_input 的 decline 拒绝当前预览，不要 cancel 整项任务；待原任务收尾后按更新后的要求重新派单。',
 ].join(' ')
 
 export function buildFrontendInstructions(agentContext = {}) {

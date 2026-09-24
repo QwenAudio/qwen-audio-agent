@@ -37,7 +37,6 @@ test('submits structured Gateway Work with one model-facing instruction', async 
   const result = await runtime.run({
     originalRequest: '检查项目',
     objective: '检查项目',
-    conversationContext: [{ role: 'user', content: '不应转发的历史' }],
     userMemories: [{ scope: 'memory', content: '不应转发的记忆' }],
     workingDirectory: '/project',
     inputParts: [],
@@ -71,6 +70,19 @@ test('keeps model-visible input to one explicit semantic instruction', () => {
 
   assert.equal(instruction, '继续修改首页')
   assert.doesNotMatch(instruction, /task_1|owner-one/u)
+})
+
+test('forwards explicitly supplied recent conversation without unrelated context', async () => {
+  let submitted
+  const runtime = new BackendWorkRuntime({ backend: backend({
+    async submit(work) { submitted = work; return { content: '完成', artifacts: [] } },
+  }) })
+  const history = [{ role: 'user', content: '请查这笔订单' }]
+  await runtime.run({ objective: '处理订单', conversationContext: history }, {
+    ownerId: 'owner-one', taskId: 'task_9',
+  })
+  assert.deepEqual(submitted.conversationContext, history)
+  assert.equal(submitted.instruction, '处理订单')
 })
 
 test('lets a custom adapter provide an explicit semantic instruction', () => {

@@ -19,6 +19,16 @@ export function truncateForVoice(items, limit = 3) {
   return { shown: items.slice(0, limit), rest: items.length - limit }
 }
 
+// Keep spoken results short without hiding candidates from subsequent reads.
+export function pageForVoice(items, rawPage, limit = 3) {
+  const page = rawPage === undefined ? 1 : Number(rawPage)
+  if (!Number.isSafeInteger(page) || page < 1) return null
+  const start = (page - 1) * limit
+  const shown = items.slice(start, start + limit)
+  return { page, shown, rest: Math.max(0, items.length - start - shown.length),
+    total: items.length, hasMore: start + shown.length < items.length }
+}
+
 // 曾经这里有个 guardVerified，写死「必须已核验身份」。
 // 前置条件已经搬到 domains/*/guards.json，由 guards.mjs 的
 // checkPreconditions 求值 —— 管理员改配置就能改变哪些工具需要先核验什么。

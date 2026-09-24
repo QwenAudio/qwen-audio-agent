@@ -1,4 +1,4 @@
-import { clean, toolResult, truncateForVoice } from '../shared.mjs'
+import { clean, pageForVoice, toolResult } from '../shared.mjs'
 import { checkPreconditions, decide, enumValues, loadGuards, threshold } from '../../guards.mjs'
 import {
   APPROVAL_ERROR_TEXT,
@@ -165,32 +165,49 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
   }
 
   if (name === 'list_reservations') {
-    const mine = db.reservations.filter(item => item.userId === identity.userId)
+    const from = clean(args.from).toUpperCase()
+    const to = clean(args.to).toUpperCase()
+    const date = clean(args.date)
+    const matchingSegments = reservation => reservation.segments.filter(segment => {
+      const { flight } = flightOf(db, segment.flightNo, segment.date)
+      return (!date || segment.date === date)
+        && (!from || flight?.from === from)
+        && (!to || flight?.to === to)
+    })
+    const mine = db.reservations.filter(item => item.userId === identity.userId
+      && matchingSegments(item).length > 0)
     if (!mine.length) {
-      const content = '这位客户名下没有预订记录。'
+      const content = from || to || date
+        ? '这位客户名下没有符合日期或航线的预订，请核对行程线索。'
+        : '这位客户名下没有预订记录。'
       store.appendAudit(sessionId, { tool: name, surface, ok: true, summary: content })
       return toolResult(content, session, false, { count: 0 })
     }
     // 语音里念不了长列表。裁到三条并告知总数 —— 让模型有话可说
     // （「还有两笔，要听吗」），而不是自己决定念几个。
-    const { shown, rest } = truncateForVoice(mine)
+    const page = pageForVoice(mine, args.page)
+    if (!page) return toolResult('页码须为从 1 开始的整数。', session, false, { blocked: 'invalid_page' })
+    const { shown, rest } = page
+    if (!shown.length) return toolResult(`共 ${mine.length} 笔预订，没有第 ${page.page} 页。`,
+      session, false, { count: mine.length, page: page.page, hasMore: false })
     const lines = shown.map(item => {
-      const first = item.segments[0]
-      const { flight } = flightOf(db, first.flightNo, first.date)
-      const route = flight ? `${flight.from} → ${flight.to}` : first.flightNo
-      return `${item.reservationId}  ${route}  ${first.date}`
+      const matched = matchingSegments(item)[0]
+      const { flight } = flightOf(db, matched.flightNo, matched.date)
+      const route = flight ? `${flight.from} → ${flight.to}` : matched.flightNo
+      return `${item.reservationId}  ${route}  ${matched.date}`
         + `  ${CABIN_TEXT[item.cabin] || item.cabin}  ￥${item.total.toFixed(2)}`
     })
     const content = rest
-      ? `${lines.join('\n')}\n还有 ${rest} 笔，共 ${mine.length} 笔。`
-      : lines.join('\n')
+      ? `共 ${mine.length} 笔，第 ${page.page} 页：\n${lines.join('\n')}\n还有 ${rest} 笔，可查第 ${page.page + 1} 页。`
+      : `共 ${mine.length} 笔，第 ${page.page} 页：\n${lines.join('\n')}`
     store.appendAudit(sessionId, {
       tool: name,
       surface,
       ok: true,
       summary: `列出 ${mine.length} 笔预订`,
     })
-    return toolResult(content, session, false, { count: mine.length })
+    return toolResult(content, session, false, { count: mine.length, page: page.page,
+      hasMore: page.hasMore })
   }
 
   if (name === 'get_reservation') {
@@ -322,16 +339,23 @@ export function executeReservationsTool(name, args, { store, sessionId, surface 
         `${from} 到 ${to}${date ? ` ${date}` : ''} 没有${CABIN_TEXT[cabin] || cabin}的可订航班。`
         + '可以问客户是否接受别的日期。', false, { count: 0 }, null, null)
     }
-    const { shown, rest } = truncateForVoice(options)
+    const page = pageForVoice(options, args.page)
+    if (!page) return finish(store, sessionId, surface, name,
+      '页码须为从 1 开始的整数。', false, { blocked: 'invalid_page' }, null, null)
+    const { shown, rest } = page
+    if (!shown.length) return finish(store, sessionId, surface, name,
+      `共 ${options.length} 班，没有第 ${page.page} 页。`, false,
+      { count: options.length, page: page.page, hasMore: false }, null, null)
     const lines = shown.map(flight => (
       `${flight.flightNo}  ${flight.date} ${flight.departure}-${flight.arrival}`
       + `  ￥${flight.prices[cabin].toFixed(2)}  余 ${flight.seats[cabin]} 座`
     ))
     const content = rest
-      ? `${lines.join('\n')}\n还有 ${rest} 班，共 ${options.length} 班。`
-      : lines.join('\n')
+      ? `共 ${options.length} 班，第 ${page.page} 页：\n${lines.join('\n')}\n还有 ${rest} 班，可查第 ${page.page + 1} 页。`
+      : `共 ${options.length} 班，第 ${page.page} 页：\n${lines.join('\n')}`
     return finish(store, sessionId, surface, name, content, false,
-      { count: options.length }, `搜到 ${options.length} 班 ${from}-${to}`, null)
+      { count: options.length, page: page.page, hasMore: page.hasMore },
+      `搜到 ${options.length} 班 ${from}-${to}`, null)
   }
 
   if (name === 'update_baggages') {

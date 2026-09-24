@@ -129,6 +129,7 @@ export function startCustomerServiceGateway({
     agent,
     autoStart: false,
     spawnThinkingDescription: CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION,
+    delegationHistoryTurns: 10,
     // 【关掉联网检索】客服的信息边界是封闭的：能说的话只该来自
     // domains/*/policy.md 和数据库，每句话都要能追到细则第几行或订单某个字段。
     //

@@ -1,4 +1,4 @@
-import { clean, toolResult, truncateForVoice } from '../shared.mjs'
+import { clean, pageForVoice, toolResult } from '../shared.mjs'
 import { checkPreconditions, loadGuards } from '../../guards.mjs'
 
 const STATUS_TEXT = Object.freeze({
@@ -45,6 +45,7 @@ function describeOrder(order, db) {
     const options = variant ? Object.values(variant.options).join('/') : ''
     lines.push(`  · ${product?.name || item.productId}${options ? `（${options}）` : ''}`
       + `  ×${item.quantity}  ￥${item.price.toFixed(2)}`
+      + `  商品编号：${item.productId}  款式编号：${item.itemId}`
       // 类别与签收天数是【判定退换资格的两个必要输入】，
       // 所以在订单详情里直接给出，省掉一次「这是什么类别」的往返。
       + `  类别：${CATEGORY_TEXT[product?.category] || product?.category || '未知'}`)
@@ -81,30 +82,49 @@ export function executeOrdersTool(name, args, { store, sessionId, surface }) {
 
   if (name === 'list_orders') {
     const status = clean(args.status)
+    const productQuery = clean(args.product).toLocaleLowerCase()
     let mine = db.orders.filter(order => order.userId === ownerId)
     if (status) mine = mine.filter(order => order.status === status)
+    const matchingItems = order => order.items.filter(item => {
+      const product = db.products.find(entry => entry.productId === item.productId)
+      const variant = product?.variants.find(entry => entry.itemId === item.itemId)
+      return [product?.name, item.productId, item.itemId, ...Object.values(variant?.options || {})]
+        .some(value => String(value || '').toLocaleLowerCase().includes(productQuery))
+    })
+    if (productQuery) mine = mine.filter(order => matchingItems(order).length > 0)
     mine.sort((left, right) => new Date(right.placedAt) - new Date(left.placedAt))
 
     if (!mine.length) {
-      const content = status
+      const content = productQuery
+        ? '这位客户名下没有符合商品线索的订单，请核对商品名称或款式编号。'
+        : status
         ? `没有${STATUS_TEXT[status]}的订单。`
         : '这位客户名下没有订单。'
       store.appendAudit(sessionId, { tool: name, surface, ok: true, summary: content })
       return toolResult(content, session, false, { count: 0 })
     }
 
-    const { shown, rest } = truncateForVoice(mine)
+    const page = pageForVoice(mine, args.page)
+    if (!page) return toolResult('页码须为从 1 开始的整数。', session, false, { blocked: 'invalid_page' })
+    const { shown, rest } = page
+    if (!shown.length) return toolResult(`共 ${mine.length} 笔订单，没有第 ${page.page} 页。`,
+      session, false, { count: mine.length, page: page.page, hasMore: false })
     const body = shown
       .map(order => `${order.orderId}  ${STATUS_TEXT[order.status]}  ￥${order.total.toFixed(2)}`
-        + `  下单于 ${order.placedAt.slice(0, 10)}`)
+        + `  下单于 ${order.placedAt.slice(0, 10)}`
+        + (productQuery ? `  匹配商品：${matchingItems(order).map(item => {
+          const product = db.products.find(entry => entry.productId === item.productId)
+          return `${product?.name || item.productId}（${item.itemId}）￥${item.price.toFixed(2)}`
+        }).join('、')}` : ''))
       .join('\n')
     const content = rest
-      ? `共 ${mine.length} 笔，先说最近三笔：\n${body}\n还有 ${rest} 笔，需要的话再往下报。`
-      : `共 ${mine.length} 笔：\n${body}`
+      ? `共 ${mine.length} 笔，第 ${page.page} 页：\n${body}\n还有 ${rest} 笔，可查第 ${page.page + 1} 页。`
+      : `共 ${mine.length} 笔，第 ${page.page} 页：\n${body}`
     store.appendAudit(sessionId, {
       tool: name, surface, ok: true, summary: `列出 ${mine.length} 笔订单`,
     })
-    return toolResult(content, session, false, { count: mine.length })
+    return toolResult(content, session, false, { count: mine.length, page: page.page,
+      hasMore: page.hasMore })
   }
 
   if (name === 'get_order') {
@@ -146,7 +166,7 @@ export function executeOrdersTool(name, args, { store, sessionId, surface }) {
       return toolResult(content, session, false, { found: false })
     }
     const body = product.variants
-      .map(variant => `  · ${Object.values(variant.options).join('/')}`
+      .map(variant => `  · ${Object.values(variant.options).join('/')}（${variant.itemId}）`
         + `  ￥${variant.price.toFixed(2)}`
         + `  ${variant.stock > 0 ? `有货（${variant.stock}）` : '无货'}`)
       .join('\n')

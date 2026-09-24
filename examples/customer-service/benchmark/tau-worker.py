@@ -20,6 +20,17 @@ users = {}
 agents = {}
 
 
+def role_api_key(request):
+    """Resolve a role-specific credential without putting the secret in JSON IPC."""
+    env_name = request.get("apiKeyEnv", "DASHSCOPE_API_KEY")
+    if not isinstance(env_name, str) or not env_name.replace("_", "").isalnum():
+        raise ValueError("Invalid API key environment variable name")
+    key = os.environ.get(env_name)
+    if not key:
+        raise ValueError(f"Missing API key environment variable: {env_name}")
+    return key
+
+
 def dispatch(request):
     """Load isolated official environments and execute their original tools."""
     method = request["method"]
@@ -122,12 +133,18 @@ def dispatch(request):
         if task is None:
             raise ValueError("A task is required for user simulation")
         model = request["model"]
+        simulator_args = {
+            "api_key": role_api_key(request),
+            "api_base": request["baseURL"],
+            "timeout": 90,
+            "num_retries": 0,
+        }
+        if model.startswith("qwen"):
+            simulator_args["temperature"] = 0.7
+            simulator_args["extra_body"] = {"enable_thinking": False}
         simulator = UserSimulator(
             llm=f"openai/{model}", instructions=str(task.user_scenario),
-            llm_args={"api_key": os.environ["DASHSCOPE_API_KEY"],
-                      "api_base": request["baseURL"], "temperature": 0.7,
-                      "timeout": 90, "num_retries": 0,
-                      "extra_body": {"enable_thinking": False}},
+            llm_args=simulator_args,
         )
         history = [m for m in trajectories[session_id] if is_valid_user_history_message(m)]
         users[session_id] = (simulator, simulator.get_init_state(history))
@@ -160,11 +177,14 @@ def dispatch(request):
             if not request.get("judgeModel"):
                 raise ValueError("A judge model is required for NL assertions")
             nl.DEFAULT_LLM_NL_ASSERTIONS = f"openai/{request['judgeModel']}"
-            nl.DEFAULT_LLM_NL_ASSERTIONS_ARGS = {
-                "api_key": os.environ["DASHSCOPE_API_KEY"], "api_base": request["baseURL"],
-                "temperature": 0, "timeout": 90, "num_retries": 0,
-                "extra_body": {"enable_thinking": False},
+            judge_args = {
+                "api_key": role_api_key(request), "api_base": request["baseURL"],
+                "timeout": 90, "num_retries": 0,
             }
+            if request["judgeModel"].startswith("qwen"):
+                judge_args["temperature"] = 0
+                judge_args["extra_body"] = {"enable_thinking": False}
+            nl.DEFAULT_LLM_NL_ASSERTIONS_ARGS = judge_args
         reward = evaluate_simulation(simulation, task, EvaluationType.ALL, False, env.get_domain_name())
         # Verify that the scorer's replay exactly reproduces our live DB.
         module = importlib.import_module(f"tau2.domains.{env.get_domain_name()}.environment")
@@ -233,6 +253,10 @@ for line in sys.stdin:
         key = os.environ.get("DASHSCOPE_API_KEY")
         if key:
             message = message.replace(key, "[REDACTED]")
+        for env_name in ("LUNA_API_KEY", "OPENAI_API_KEY"):
+            key = os.environ.get(env_name)
+            if key:
+                message = message.replace(key, "[REDACTED]")
         result = {"id": request["id"], "error": message}
     protocol.write(json.dumps(result) + "\n")
     protocol.flush()

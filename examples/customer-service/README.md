@@ -134,6 +134,10 @@ Policy console ──► domains/<domain> configuration and Gateway tool surface
 
 The frontend surface is a subset of the backend surface: verification, read-only lookups and
 `transfer_to_human`. Approval-requiring writes remain backend-only. Both use the same executor and state.
+On each `spawn_thinking`, the Gateway also snapshots up to ten recent customer turns and their
+assistant replies for the new A2A task. This dialogue is context, not an authoritative tool log:
+frontend function-call arguments/results are not included. The objective must still carry key
+identifiers and findings, and the backend must re-check current business state before writes.
 
 The frontend retrieves the current domain's `policy.md` through knowledge retrieval.
 Public web search and user-profile memory are disabled.

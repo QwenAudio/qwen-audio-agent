@@ -21,6 +21,18 @@ function reminderDueData(announcements) {
   }
 }
 
+const EXECUTION_RECEIPT_SCHEMA = 'qwen-audio-agent/customer-service-execution-receipt@1'
+
+function executionReceiptFromArtifacts(artifacts = []) {
+  for (const artifact of artifacts) {
+    if (artifact?.artifactId !== 'customer-service-execution-receipt') continue
+    for (const part of artifact.parts || []) {
+      if (part?.data?.schema === EXECUTION_RECEIPT_SCHEMA) return part.data
+    }
+  }
+  return null
+}
+
 function formatAnnouncements(announcements) {
   if (announcements.length && announcements.every(isReminderDue)) {
     return createGatewaySystemEventDelivery(
@@ -138,6 +150,7 @@ export class AnnouncementManager {
       kind: task.kind,
       objective: task.objective,
       result: task.result,
+      executionReceipt: executionReceiptFromArtifacts(task.artifacts),
       completedAt: task.completedAt,
       scheduledAt: task.schedule?.at,
       recurrence: task.schedule?.recurrence,
@@ -152,6 +165,7 @@ export class AnnouncementManager {
       status: 'failed',
       objective: task.objective,
       error: task.error,
+      executionReceipt: executionReceiptFromArtifacts(task.artifacts),
       completedAt: task.completedAt,
     })
   }
@@ -467,9 +481,12 @@ export function formatWorkResults(announcements) {
     item.status === 'completed'
       ? `结果: ${String(item.result || '').trim()}`
       : `错误: ${String(item.error || '').trim()}`,
+    item.executionReceipt
+      ? `执行回执（运行时事实，优先于自然语言结果）: ${JSON.stringify(item.executionReceipt)}`
+      : '',
   ].filter(Boolean).join('\n'))
   return [
-    '以下是你先前异步执行工作的最终更新，不是用户的新请求。请作为自己的工作结果自然告知用户，不要提后台 Agent、协议或 Task，也不要读出 task_id。',
+    '以下是你先前异步执行工作的最终更新，不是用户的新请求。请作为自己的工作结果自然告知用户，不要提后台 Agent、协议或 Task，也不要读出 task_id。有执行回执时，以回执为准：只能把 committedOperations 中列出的操作说成已经完成；no_change、declined、cancelled、failed 或 partial 不能说成全部完成。对变更后的状态、金额、编号、处理时效和连带影响，只能使用 committedOperations 的 result/summary 明确给出的事实；不要从自然语言结果补充通知承诺、费用或权益结转、业务截止时间、内部工具限制等未经回执证明的细节。',
     ...blocks.map(block => `\n${block}`),
   ].join('\n')
 }

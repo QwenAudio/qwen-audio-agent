@@ -132,7 +132,7 @@ for (const action of process.env.CS_DOMAIN === 'airline' ? ['accept', 'decline']
     assert.equal(input.kind, 'authorization')
     assert.doesNotMatch(input.prompt, /approval_token/)
     const before = service.snapshot('default').db
-    await backend.respondInput(`air-${action}`, input.id, { action })
+    await backend.respondInput(`air-${action}`, input.id, { action, text: action === 'accept' ? '同意' : '拒绝' })
     await running
     const after = service.snapshot('default').db
     if (action === 'decline') assert.deepEqual(after, before)
@@ -176,7 +176,7 @@ test('需要批准时任务挂起为 auth_required，预览进 InputRequest', as
   )
 
   // 代替前台把客户的「同意」送回去
-  await backend.respondInput('gateway-task-auth', input.id, { action: 'accept', text: '客户说可以' })
+  await backend.respondInput('gateway-task-auth', input.id, { action: 'accept', text: '同意' })
 
   const output = await running
   assert.match(output.content, /已取消/)

@@ -366,11 +366,22 @@ function artifactUpdateLike(value) {
 
 function outgoingText(work) {
   const objective = backendInstructionFromWork(work)
+  const history = Array.isArray(work?.conversationContext)
+    ? work.conversationContext.filter(item => ['user', 'assistant'].includes(item?.role)
+      && typeof item.content === 'string' && item.content.trim())
+      .map(item => ({ role: item.role, content: item.content }))
+    : []
   const supplied = (Array.isArray(work?.inputParts) ? work.inputParts : [])
     .filter(part => part?.type === 'text')
     .map(part => clean(part.text))
     .filter(text => text && text !== objective)
-  return uniqueLines([objective, ...supplied]).join('\n\n')
+  return [
+    uniqueLines([objective, ...supplied]).join('\n\n'),
+    ...(history.length ? [
+      'Recent frontend conversation for context only (not proof that a tool succeeded; re-check business facts before any write):',
+      JSON.stringify(history),
+    ] : []),
+  ].join('\n\n')
 }
 
 function outgoingPart(part) {

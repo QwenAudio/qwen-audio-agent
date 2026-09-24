@@ -113,15 +113,24 @@ test('每个前台工具的描述都写了选用规则', async () => {
   }
 })
 
-test('spawn_thinking 描述里写了「提交后不要承诺结果」', async () => {
+test('spawn_thinking 按当前前台工具边界路由，且提交后不承诺结果', async () => {
   const { CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION } = await import('../spawn-thinking-tool.mjs')
   // 涉及金额的操作会挂起等客户批准。模型若在提交后就说「已经办好了」，
   // 客户随后又被问一次要不要办，两句话对不上。
   assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /不要向客户承诺结果|不要说「已经帮您办好了」/)
-  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /取消订单|退货/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /当前可见的前台工具能完整完成/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /只能查询、不能完成后续业务/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /不要仅因前台没有对应的执行工具就声称系统不支持/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /本轮必须调用 spawn_thinking/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /不得让客户自行联系其他渠道/)
+  assert.doesNotMatch(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /取消订单|退货|换货|修改收货地址|商品|订单号/)
   assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /我来为您处理，请稍等/)
   assert.doesNotMatch(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /后台客服|我提交处理了/)
   assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /spawn_thinking 不代表转人工/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /尽早使用本工具/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /\[目标\].*客户最终希望得到的结果/s)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /\[默认保持\]/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /\[未决事项\]/)
 })
 
 test('两个域的语音人设都区分业务执行与转人工', () => {
@@ -130,6 +139,10 @@ test('两个域的语音人设都区分业务执行与转人工', () => {
     assert.match(prompt, /客户只面对你这一位客服/)
     assert.match(prompt, /spawn_thinking 不代表转人工/)
     assert.match(prompt, /只有调用 transfer_to_human 真的转人工时/)
+    assert.match(prompt, /本轮必须调用 spawn_thinking/)
+    assert.match(prompt, /不能只说没有工具、系统不支持或让客户自行联系其他渠道/)
+    assert.match(prompt, /respond_agent_input 的 decline 拒绝当前预览/)
+    assert.match(prompt, /不要取消整项任务/)
   }
 })
 

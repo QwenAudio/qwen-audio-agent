@@ -80,13 +80,65 @@ test('projects a structured customer-service execution receipt into the frontend
     }],
   })
   await waitFor(() => inputs.length === 1)
-  assert.match(inputs[0], /执行回执（运行时事实，优先于自然语言结果）/u)
+  assert.match(inputs[0], /执行回执（运行时事实）/u)
   assert.match(inputs[0], /"outcome":"partial"/u)
   assert.match(inputs[0], /"operation":"rebook_flight"/u)
   assert.match(inputs[0], /不能说成全部完成/u)
   assert.match(inputs[0], /通知承诺/u)
   assert.match(inputs[0], /只能使用 committedOperations 的 result\/summary/u)
+  assert.doesNotMatch(inputs[0], /全部都已经办好了/u)
+  assert.doesNotMatch(inputs[0], /改签并保留行李/u)
   manager.close()
+})
+
+test('keeps the natural result for a completed no-change task whose receipt has no business answer', () => {
+  const text = formatWorkResults([{
+    event: 'task.completed',
+    taskId: 'read-only-task',
+    objective: '查询可选航班',
+    status: 'completed',
+    result: '找到两个符合时间要求的航班。',
+    executionReceipt: {
+      schema: 'qwen-audio-agent/customer-service-execution-receipt@1',
+      outcome: 'no_change',
+      committedCount: 0,
+      committedOperations: [],
+      requiresStateVerification: false,
+      summary: 'No data-changing operation was committed by this task.',
+    },
+  }])
+
+  assert.match(text, /查询可选航班/u)
+  assert.match(text, /找到两个符合时间要求的航班/u)
+  assert.match(text, /"outcome":"no_change"/u)
+})
+
+test('projects a committed task from its receipt without model-written claims', () => {
+  const text = formatWorkResults([{
+    event: 'task.completed',
+    taskId: 'refund-task',
+    objective: '取消并退款',
+    status: 'completed',
+    result: '退款已经到账，稍后还会发送确认邮件。',
+    executionReceipt: {
+      schema: 'qwen-audio-agent/customer-service-execution-receipt@1',
+      outcome: 'committed',
+      committedCount: 1,
+      committedOperations: [{
+        operation: 'process_refund',
+        status: 'committed',
+        result: { status: 'success', refund_id: 'REF-1', message: 'Refund initiated' },
+      }],
+      requiresStateVerification: false,
+      summary: '1 data-changing operation(s) actually committed.',
+    },
+  }])
+
+  assert.match(text, /"refund_id":"REF-1"/u)
+  assert.match(text, /Refund initiated/u)
+  assert.doesNotMatch(text, /退款已经到账/u)
+  assert.doesNotMatch(text, /确认邮件/u)
+  assert.doesNotMatch(text, /取消并退款/u)
 })
 
 test('waits while duplex speech blocks delivery', async () => {

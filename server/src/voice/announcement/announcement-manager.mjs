@@ -474,19 +474,34 @@ export class AnnouncementManager {
 }
 
 export function formatWorkResults(announcements) {
-  const blocks = announcements.map(item => [
-    `task_id: ${item.taskId}`,
-    `状态: ${item.status}`,
-    item.objective ? `工作: ${item.objective}` : '',
-    item.status === 'completed'
-      ? `结果: ${String(item.result || '').trim()}`
-      : `错误: ${String(item.error || '').trim()}`,
-    item.executionReceipt
-      ? `执行回执（运行时事实，优先于自然语言结果）: ${JSON.stringify(item.executionReceipt)}`
-      : '',
-  ].filter(Boolean).join('\n'))
+  const blocks = announcements.map(item => {
+    const receipt = item.executionReceipt
+    // Once a task has committed an operation (or stopped after entering a
+    // write lifecycle), its model-written result is no longer a trustworthy
+    // presentation source. It can contain plausible but uncommitted IDs,
+    // notification promises, or stale lifecycle wording. Project only the
+    // runtime-authored receipt. A completed no-change task keeps its natural
+    // result because the receipt intentionally contains no business answer.
+    const receiptOnly = Boolean(receipt && (
+      Number(receipt.committedCount) > 0
+      || ['partial', 'failed', 'cancelled', 'declined'].includes(receipt.outcome)
+    ))
+    return [
+      `task_id: ${item.taskId}`,
+      `状态: ${item.status}`,
+      !receiptOnly && item.objective ? `工作: ${item.objective}` : '',
+      !receiptOnly
+        ? item.status === 'completed'
+          ? `结果: ${String(item.result || '').trim()}`
+          : `错误: ${String(item.error || '').trim()}`
+        : '',
+      receipt
+        ? `执行回执（运行时事实）: ${JSON.stringify(receipt)}`
+        : '',
+    ].filter(Boolean).join('\n')
+  })
   return [
-    '以下是你先前异步执行工作的最终更新，不是用户的新请求。请作为自己的工作结果自然告知用户，不要提后台 Agent、协议或 Task，也不要读出 task_id。有执行回执时，以回执为准：只能把 committedOperations 中列出的操作说成已经完成；no_change、declined、cancelled、failed 或 partial 不能说成全部完成。对变更后的状态、金额、编号、处理时效和连带影响，只能使用 committedOperations 的 result/summary 明确给出的事实；不要从自然语言结果补充通知承诺、费用或权益结转、业务截止时间、内部工具限制等未经回执证明的细节。',
+    '以下是你先前异步执行工作的最终更新，不是用户的新请求。请作为自己的工作结果自然告知用户，不要提后台 Agent、协议或 Task，也不要读出 task_id。有执行回执时，运行时已移除不可信的后台自由文本：只能把 committedOperations 中列出的操作说成已经完成；no_change、declined、cancelled、failed 或 partial 都不能说成全部完成。对变更后的状态、金额、编号、处理时效和连带影响，只能使用 committedOperations 的 result/summary 明确给出的事实；不要补充通知承诺、费用或权益结转、业务截止时间、内部工具限制等回执没有证明的细节。',
     ...blocks.map(block => `\n${block}`),
   ].join('\n')
 }

@@ -480,6 +480,7 @@ export function helpText() {
     '  --audio-mode MODE      Linux / Windows 使用 half（默认）或 full',
     '  --takeover             显式接管同一用户的现有活动客户端（仅 TUI）',
     '  --no-open              WebUI 只打印地址，不打开浏览器',
+    '  -v, --version          显示版本',
     '  -h, --help             显示帮助',
     '',
     'TUI 按键：',

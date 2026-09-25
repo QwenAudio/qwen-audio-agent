@@ -41,6 +41,75 @@ test('starts a Windows batch ACP command from a directory containing spaces', {
   }
 })
 
+test('starts a Windows batch ACP command whose path contains cmd.exe metacharacters', {
+  skip: process.platform !== 'win32',
+}, async () => {
+  const root = mkdtempSync(join(tmpdir(), 'qwen-audio-acp-'))
+  try {
+    const directory = join(root, 'R&D')
+    mkdirSync(directory)
+    const argsPath = join(directory, 'args.json')
+    writeFileSync(join(directory, 'agent.mjs'), [
+      "import { writeFileSync } from 'node:fs'",
+      `writeFileSync(${JSON.stringify(argsPath)}, JSON.stringify(process.argv.slice(2)))`,
+      "process.stderr.write('rd agent stopped\\n')",
+      'process.exit(1)',
+      '',
+    ].join('\n'))
+    const command = join(directory, 'agent.cmd')
+    writeFileSync(command, `@"${process.execPath}" "%~dp0agent.mjs" %*\r\n`)
+    const args = ['--acp', 'a&b', 'x|y', 'a^b']
+    const client = new AcpProcessClient({ label: 'RD Agent', command, args })
+
+    await assert.rejects(client.start(), /RD Agent ACP .*rd agent stopped/)
+    assert.deepEqual(JSON.parse(readFileSync(argsPath, 'utf8')), args)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('Windows batch ACP spawn quotes cmd.exe metacharacters without a shell', async () => {
+  let actual
+  const child = new EventEmitter()
+  Object.assign(child, {
+    pid: 4242,
+    exitCode: null,
+    signalCode: null,
+    stdin: new PassThrough(),
+    stdout: new PassThrough(),
+    stderr: new PassThrough(),
+    kill() {},
+  })
+  const client = new AcpProcessClient({
+    label: 'Test Agent',
+    command: 'C:\\R&D\\agent.cmd',
+    args: ['a&b', 'x|y', 'a^b'],
+    platform: 'win32',
+    env: { ComSpec: 'cmd.exe' },
+    spawnImpl(command, args, options) {
+      actual = { command, args, options }
+      process.nextTick(() => {
+        const error = new Error('test spawn failure')
+        error.code = 'ENOENT'
+        child.emit('error', error)
+      })
+      return child
+    },
+  })
+
+  await assert.rejects(client.start(), /进程启动失败/)
+  assert.equal(actual.command, 'cmd.exe')
+  assert.deepEqual(actual.args.slice(0, 3), ['/d', '/s', '/c'])
+  assert.equal(
+    actual.args[3],
+    '""C:\\R&D\\agent.cmd" "a&b" "x|y" "a^b""',
+  )
+  assert.equal(actual.options.shell, false)
+  assert.equal(actual.options.windowsVerbatimArguments, true)
+  assert.equal(actual.options.windowsHide, true)
+  assert.equal(actual.options.detached, false)
+})
+
 test('keeps session object identity stable across re-registration', () => {
   const client = new AcpProcessClient({
     label: 'Test Agent',

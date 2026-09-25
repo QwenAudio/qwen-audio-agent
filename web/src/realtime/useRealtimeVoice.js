@@ -30,7 +30,10 @@ import {
   createMicrophoneCaptureLifecycle,
   microphoneErrorKind,
 } from './microphone-capture.js'
-import { confirmTrackedPlaybackStart } from './playback-lifecycle.js'
+import {
+  confirmTrackedPlaybackStart,
+  createPlaybackOutputFollow,
+} from './playback-lifecycle.js'
 import { t } from '../i18n.js'
 import {
   createGatewayWebSocket,
@@ -857,6 +860,15 @@ export default function useRealtimeVoice({
   useEffect(() => {
     if (outputMuted) stopPlayback()
   }, [outputMuted, stopPlayback])
+
+  useEffect(() => {
+    const outputFollow = createPlaybackOutputFollow({
+      mediaDevices: globalThis.navigator?.mediaDevices,
+      getContext: () => audioRef.current,
+    })
+    outputFollow.start()
+    return () => outputFollow.stop()
+  }, [])
 
   useEffect(() => {
     pendingManualInputsRef.current = []

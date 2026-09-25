@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -64,6 +64,84 @@ test('runs npx-cli.js with node instead of npx.cmd on Windows', () => {
     skillsCliInvocation(args, { platform: 'linux', find: () => '/usr/bin/npx' }),
     { command: 'npx', args },
   )
+})
+
+test('uses npm prefix npx-cli.js the same way Windows npx.cmd does', () => {
+  const args = ['-y', 'skills@1.5.22', 'add', 'https://example.test/a?b=1&c=2']
+  const nodeDir = 'C:\\Program Files\\nodejs'
+  const prefixDir = 'C:\\Users\\x\\AppData\\Roaming\\npm'
+  const siblingCli = `${nodeDir}\\node_modules\\npm\\bin\\npx-cli.js`
+  const prefixCli = `${prefixDir}\\node_modules\\npm\\bin\\npx-cli.js`
+  const prefixScript = `${nodeDir}\\node_modules\\npm\\bin\\npm-prefix.js`
+  const prefixes = []
+  assert.deepEqual(skillsCliInvocation(args, {
+    platform: 'win32',
+    find: command => ({
+      'npx.cmd': `${nodeDir}\\npx.cmd`,
+      node: `${nodeDir}\\node.exe`,
+    })[command] || '',
+    exists: path => [
+      `${nodeDir}\\node.exe`,
+      siblingCli,
+      prefixScript,
+      prefixCli,
+    ].includes(path),
+    readPrefix: (node, script) => {
+      prefixes.push([node, script])
+      return prefixDir
+    },
+  }), { command: `${nodeDir}\\node.exe`, args: [prefixCli, ...args] })
+  assert.deepEqual(prefixes, [[`${nodeDir}\\node.exe`, prefixScript]])
+})
+
+test('finds npx-cli.js next to node.exe when npx.cmd is a Windows shim', () => {
+  const args = ['-y', 'skills@1.5.22', 'list', '-g']
+  const shimDir = 'C:\\Users\\x\\AppData\\Local\\Volta\\bin'
+  const nodeDir = 'C:\\Users\\x\\AppData\\Local\\Volta\\tools\\image\\node\\24.10.0'
+  const cli = `${nodeDir}\\node_modules\\npm\\bin\\npx-cli.js`
+  assert.deepEqual(skillsCliInvocation(args, {
+    platform: 'win32',
+    find: command => ({
+      'npx.cmd': `${shimDir}\\npx.cmd`,
+      node: `${shimDir}\\node.exe`,
+    })[command] || '',
+    exists: path => [
+      `${shimDir}\\node.exe`,
+      cli,
+    ].includes(path),
+    execPath: `${nodeDir}\\node.exe`,
+    readPrefix: () => {
+      throw new Error('shim directories do not ship npm-prefix.js')
+    },
+  }), { command: `${shimDir}\\node.exe`, args: [cli, ...args] })
+})
+
+test('reads npm prefix through npm-prefix.js on Windows', {
+  skip: process.platform !== 'win32',
+}, t => {
+  const root = mkdtempSync(join(tmpdir(), 'qwa-npx-prefix-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const nodeDir = join(root, 'nodejs')
+  const prefixDir = join(root, 'prefix')
+  mkdirSync(join(nodeDir, 'node_modules', 'npm', 'bin'), { recursive: true })
+  mkdirSync(join(prefixDir, 'node_modules', 'npm', 'bin'), { recursive: true })
+  writeFileSync(
+    join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-prefix.js'),
+    `console.log(${JSON.stringify(prefixDir)})\n`,
+  )
+  writeFileSync(join(nodeDir, 'node_modules', 'npm', 'bin', 'npx-cli.js'), '')
+  writeFileSync(join(prefixDir, 'node_modules', 'npm', 'bin', 'npx-cli.js'), '')
+  const args = ['-y', 'skills@1.5.22', 'list', '-g']
+  assert.deepEqual(skillsCliInvocation(args, {
+    platform: 'win32',
+    find: command => command === 'npx.cmd'
+      ? join(nodeDir, 'npx.cmd')
+      : process.execPath,
+    exists: path => existsSync(path) || path === join(nodeDir, 'npx.cmd'),
+  }), { command: process.execPath, args: [
+    join(prefixDir, 'node_modules', 'npm', 'bin', 'npx-cli.js'),
+    ...args,
+  ] })
 })
 
 test('runs the pinned skills.sh package through npx argv', () => {

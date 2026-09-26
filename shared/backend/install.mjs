@@ -3,7 +3,7 @@
 // CLI（qwenaudio install）与桌面版（设置页"安装"按钮）共用同一份逻辑；
 //  spawn / 确认 / 进度回调全部注入，保证纯数据可测。
 //
-// 版本策略：npm 包一律锁定版本（与 scripts/ 下 managed 启动脚本同一口径），
+// 版本策略：缺失组件默认安装官方 latest；已有组件不重装或降级。
 // 可通过各 packageEnv 环境变量覆盖。npm 上的 kimi-code / codebuddy /
 // hermes-agent 等同名包均为第三方或占位包，严禁写入规格。
 
@@ -129,6 +129,7 @@ async function observedAuthentication(item, id, {
 export function installSupport(id, {
   env = process.env,
   platform = process.platform,
+  item,
 } = {}) {
   const definition = backendDefinition(id)
   if (!definition) {
@@ -147,15 +148,17 @@ export function installSupport(id, {
       reason: spec.manualHints?.[platform] || '当前平台暂不支持一键安装',
     }
   }
+  const pending = steps.filter(step => !stepComponentInstalled(step, item))
   return {
     supported: true,
-    requiresConfirmation: steps.some(step => step.kind === 'script'),
+    requiresConfirmation: pending.some(step => step.kind === 'script'),
     authentication: backendAuthenticationSupport(definition.id, {
       env,
       platform,
     }),
-    steps: steps.map((step, index) => ({
+    steps: pending.map((step, index) => ({
       kind: step.kind,
+      component: step.component || 'backend',
       title: stepTitle(step, index),
       display: stepDisplay(step, env, definition.id),
     })),
@@ -177,7 +180,7 @@ export function withBackendLifecycle(report, {
         item.authentication,
         { env, platform },
       )
-      const install = installSupport(item.id, { env, platform })
+      const install = installSupport(item.id, { env, platform, item })
       const configuration = {
         ...backendConfigurationSupport(item.id, { env, platform }),
         required: authentication.required === true,
@@ -341,20 +344,13 @@ function reportItem(report, id) {
     || null
 }
 
-// 某些组件在检测报告中已就绪。报告缺少组件级细节时
-// 保守起见不跳过（执行全部步骤）。
-function stepComponentReady(step, item, env) {
+// 已安装与已就绪分开：兼容性或配置问题不应触发覆盖用户安装。
+// 报告缺少组件级细节时保守地保留安装步骤。
+function stepComponentInstalled(step, item) {
   if (!item || typeof item !== 'object') return false
-  if (Array.isArray(item.packages) && step.kind === 'npm') {
-    const packageSpec = stepPackage(step, env)
-    const separator = packageSpec.lastIndexOf('@')
-    const name = separator > 0 ? packageSpec.slice(0, separator) : packageSpec
-    const observed = item.packages.find(entry => entry.name === name)
-    if (observed) return observed.ready === true
-  }
   const component = step.component === 'adapter' ? item.adapter : item.backend
   if (!component || typeof component !== 'object') return false
-  return component.ready === true
+  return (component.installed ?? component.ready) === true
 }
 
 // 通过 PowerShell 的 Get-Command 定位 npm.cmd。
@@ -480,7 +476,7 @@ export async function installBackend(id, {
   const before = await inspect({ env: resolvedEnv, platform, backend: definition.id })
   const beforeItem = reportItem(before, definition.id)
   const pending = steps.filter(step => (
-    !stepComponentReady(step, beforeItem, resolvedEnv)
+    !stepComponentInstalled(step, beforeItem)
   ))
   if (!pending.length && beforeItem?.ready === true) {
     const observed = await observedAuthentication(beforeItem, definition.id, {

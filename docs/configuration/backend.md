@@ -38,7 +38,7 @@ For ACP backends supporting standard model configuration, when `QWEN_AUDIO_AGENT
 
 An explicit value uses only standard ACP `configOptions` with `category: model` and `session/set_config_option`. Use a model ID offered by the backend. Unsupported overrides, failed settings, or unconfirmed results fail explicitly rather than silently falling back.
 
-DeepSeek Harness uses a separate startup model setting; see [DeepSeek](../backends/configuration.md#deepseek).
+DeepSeek also uses standard ACP model configuration; an empty setting preserves its ACP profile configuration. See [DeepSeek](../backends/configuration.md#deepseek).
 
 Overrides apply to coordinator, new, and restored project Sessions. Non-ACP adapters implement their own declared capability; Muse Code uses MSP `modelId`, not ACP.
 

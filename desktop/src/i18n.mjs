@@ -79,6 +79,7 @@ const ENGLISH = {
   '当前不可用': 'Unavailable',
   '已就绪': 'Ready',
   '安装': 'Install',
+  '安装适配器': 'Install adapter',
   '配置': 'Configure',
   '已安装': 'Installed',
   '可安装': 'Available to install',

@@ -131,6 +131,7 @@ export class AcpProcessClient {
     this.connection = null
     this.context = null
     this.initializeResult = null
+    this.connectionGeneration = 0
     this.startPromise = null
     this.stderr = ''
     this.activePrompts = new Map()
@@ -292,6 +293,7 @@ export class AcpProcessClient {
         this.context = null
         this.initializeResult = null
       }).catch(() => {})
+      this.connectionGeneration += 1
       return this.initializeResult
     } catch (error) {
       // stdout may close a tick before the child 'exit' event. In that race
@@ -426,7 +428,10 @@ export class AcpProcessClient {
     // （onEvent/ownerId/coordinationRunId 等）。若每次 resume 都替换对象，
     // 权限请求会拿到旧闭包快照，被路由到已完成的旧任务上。
     const session = this.sessions.get(id) || {}
-    Object.assign(session, details, { sessionId: id })
+    Object.assign(session, details, {
+      sessionId: id,
+      connectionGeneration: this.connectionGeneration,
+    })
     this.sessions.set(id, session)
     return session
   }

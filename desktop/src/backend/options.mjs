@@ -76,7 +76,10 @@ export function backendOptionStates(report) {
       selectable: ready || item.selected === true,
       // 仅"不可用且支持一键安装"时显示安装按钮；acp 等无安装规格的
       // 后台由 installSupport 标记 supported:false，自然不显示按钮。
-      installable: !ready && install.supported === true,
+      installable: !ready && install.supported === true && install.steps?.length !== 0,
+      installLabel: install.steps?.length && install.steps.every(step => step.component === 'adapter')
+        ? '安装适配器'
+        : '安装',
       requiresConfirmation: install.requiresConfirmation === true,
       configurationRequired,
       configurationReady,

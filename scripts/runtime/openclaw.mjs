@@ -117,7 +117,7 @@ process.env.OPENCLAW_GATEWAY_TOKEN_FILE = tokenFile
 // ── runtime routing ──────────────────────────────────────────────────────────
 
 const RUNTIME = process.env.OPENCLAW_RUNTIME || 'auto'
-const PKG = process.env.OPENCLAW_PACKAGE || 'openclaw@2026.6.33'
+const PKG = process.env.OPENCLAW_PACKAGE || 'openclaw@latest'
 const BUNDLE_BIN = process.env.OPENCLAW_BUNDLE_BIN
   || join(process.env.HOME || process.env.USERPROFILE || '.', '.openclaw-bundle', 'wrapper', 'openclaw')
 
@@ -180,8 +180,9 @@ switch (RUNTIME) {
 if (RUNTIME === 'auto') {
   if (process.env.OPENCLAW_BIN) await runBinary()
   else if (process.env.OPENCLAW_SOURCE_DIR) await runSource()
-  else if (existsSync(BUNDLE_BIN)) await runBundle()
+  else if (process.env.OPENCLAW_BUNDLE_BIN && existsSync(BUNDLE_BIN)) await runBundle()
   else if (commandAvailable('openclaw')) await runInstalled()
+  else if (existsSync(BUNDLE_BIN)) await runBundle()
   else await runManaged()
 }
 

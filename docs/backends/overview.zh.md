@@ -46,11 +46,14 @@ qwenaudio install muse
 的“后台 Agent”列表中，未安装且支持一键安装的后台行尾会显示“安装”按钮，与 CLI
 使用同一份安装逻辑。
 
-DeepSeek Harness 当前处于 Developer Preview。初步接入支持语音发起任务、权限确认、
-取消当前执行和最终结果回传；其 ACP 暂不支持历史 Session 续接、Gateway MCP 注入与
-细粒度工具进度。安装后运行 `dsh web`，在 DeepSeek 的模型设置中配置 API Key；
-`DEEPSEEK_API_KEY` 仍可作为单次运行覆盖。可用
-`DEEPSEEK_HARNESS_MODEL` 选择 `deepseek-v4-pro`（默认）或 `deepseek-v4-flash`。
+优先复用本机已有的 Agent 与配置。安装操作只补齐缺失的本体或适配器，npm 包默认
+使用官方 `latest`，不会自动升级或降级已有安装。仅缺 ACP 适配器时，桌面版显示
+“安装适配器”。最低兼容版本检查仍然保留，不兼容时需用户自行升级。
+
+DeepSeek 使用官方 CLI 的 `dsh --profile acp` 入口（需 0.1.5 系列或更新版本），
+不再需要单独安装 ACP demo。运行 `dsh web` 配置凭据；未指定后台模型时沿用 ACP
+profile 的配置，指定时通过标准 ACP 接口设置。当前不提供 Gateway 独立任务委派或
+原生 Session 历史恢复。
 
 查看当前可用的后台 Agent：
 

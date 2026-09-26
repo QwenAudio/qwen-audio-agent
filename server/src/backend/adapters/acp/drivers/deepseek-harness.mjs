@@ -1,5 +1,4 @@
-import { resolve } from 'node:path'
-import { baseEnvironment, processAcpConnection } from './shared.mjs'
+import { baseEnvironment, clean, processAcpConnection } from './shared.mjs'
 
 export const deepSeekHarnessBackendDriver = {
   id: 'deepseek',
@@ -9,54 +8,31 @@ export const deepSeekHarnessBackendDriver = {
     permissions: true,
     backendUi: false,
     nativeSessionHistory: false,
-    externalMcp: false,
+    externalMcp: true,
     nativeDelegation: false,
-    sessionMcp: false,
+    sessionMcp: true,
     coordinatorMcpInstructions: false,
   },
 
-  createProfile({
-    root,
-    directory,
-    cliPath,
-    model,
-    permissionMode,
-    sessionRoot,
-  }) {
+  createProfile({ directory, cliPath }) {
     return {
       label: this.label,
       acpConnection: processAcpConnection({
-        command: process.execPath,
-        args: [resolve(root, 'scripts/runtime/deepseek-harness-acp.mjs')],
+        command: clean(cliPath) || 'dsh',
+        args: ['--profile', 'acp'],
         cwd: directory,
-        env: {
-          ...baseEnvironment('deepseek'),
-          ELECTRON_RUN_AS_NODE: '1',
-          DEEPSEEK_HARNESS_CONFIG: resolve(
-            root,
-            'config/backends/deepseek-harness/cordis.yml',
-          ),
-          DEEPSEEK_HARNESS_SESSION_ROOT: sessionRoot,
-          DEEPSEEK_HARNESS_ACP_BIN: cliPath,
-          DSH_MODEL: model || 'deepseek-v4-pro',
-          DSH_PERMISSION_MODE: permissionMode === 'full'
-            ? 'danger-full-access'
-            : 'workspace-write',
-        },
+        env: baseEnvironment('deepseek'),
       }),
-      // DeepSeek Harness ACP currently rejects non-empty mcpServers.
-      externalMcp: false,
-      sessionMcp: false,
+      // The official CLI owns ACP initialization and the user's profile.
+      externalMcp: true,
+      sessionMcp: true,
       nativeDelegation: false,
       delegation: false,
       nativeSessionHistory: false,
-      sessionModelConfiguration: false,
       backendUi: false,
       sessionInstructions: [
-        'DeepSeek Harness ACP does not expose project Session management to',
-        'the Gateway. Complete the requested work in this Session with the',
-        'tools available to you. Do not claim to have opened or resumed a',
-        'separate Session.',
+        'Complete the requested work in this Session with the available tools.',
+        'Do not claim to have opened a separate Gateway-managed task Session.',
       ].join(' '),
     }
   },

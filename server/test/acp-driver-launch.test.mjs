@@ -79,22 +79,21 @@ test('Pi driver uses process.execPath + pi-acp.mjs', () => {
   assert.equal(profile.acpConnection.env.PI_ACP_BIN, '/opt/pi-acp')
 })
 
-test('DeepSeek Harness driver isolates its ACP limitations', () => {
+test('DeepSeek starts the installed CLI native ACP profile without overriding its settings', () => {
   const profile = deepSeekHarnessBackendDriver.createProfile({
     root: '/repo',
     directory: '/work',
-    sessionRoot: '/state/deepseek-harness',
+    cliPath: '/user/bin/dsh',
     permissionMode: 'native',
   })
-  assertLauncherPattern(profile, '/repo', 'deepseek-harness-acp.mjs')
-  assert.equal(profile.externalMcp, false)
-  assert.equal(profile.sessionMcp, false)
+  assert.equal(profile.acpConnection.command, '/user/bin/dsh')
+  assert.deepEqual(profile.acpConnection.args, ['--profile', 'acp'])
+  assert.equal(profile.acpConnection.cwd, '/work')
+  assert.equal(profile.externalMcp, true)
+  assert.equal(profile.sessionMcp, true)
   assert.equal(profile.delegation, false)
   assert.equal(profile.nativeSessionHistory, false)
-  assert.equal(profile.acpConnection.env.DSH_PERMISSION_MODE, 'workspace-write')
-  assert.equal(profile.acpConnection.env.DSH_MODEL, 'deepseek-v4-pro')
-  assert.equal(
-    profile.acpConnection.env.DEEPSEEK_HARNESS_CONFIG,
-    resolve('/repo', 'config/backends/deepseek-harness/cordis.yml'),
-  )
+  assert.equal(profile.acpConnection.env.DSH_PERMISSION_MODE, undefined)
+  assert.equal(profile.acpConnection.env.DSH_MODEL, undefined)
+  assert.notEqual(profile.sessionModelConfiguration, false)
 })

@@ -114,7 +114,7 @@ test('OpenCode auto mode prefers the user-installed command', {
   }
 })
 
-test('OpenCode auto mode downloads a pinned package when missing', {
+test('OpenCode auto mode downloads the latest package when missing', {
   skip: process.platform === 'win32',
 }, () => {
   const target = fixture()
@@ -128,7 +128,7 @@ test('OpenCode auto mode downloads a pinned package when missing', {
     }), [
       'npx',
       '--yes',
-      'opencode-ai@1.18.5',
+      'opencode-ai@latest',
       'serve',
       '--hostname',
       '127.0.0.1',
@@ -140,28 +140,22 @@ test('OpenCode auto mode downloads a pinned package when missing', {
   }
 })
 
-test('OpenCode auto mode replaces an incompatible version with the pinned package', {
+test('OpenCode auto mode reports an incompatible installation without downloading a replacement', {
   skip: process.platform === 'win32',
 }, () => {
   const target = fixture()
   try {
     command(resolve(target.bin, 'opencode'), { version: '1.1.53' })
     command(resolve(target.bin, 'npx'))
-    assert.deepEqual(run('scripts/runtime/opencode-server.mjs', target, {
+    const result = execute('scripts/runtime/opencode-server.mjs', target, {
       OPENCODE_RUNTIME: 'auto',
       OPENCODE_PORT: '4321',
       DASHSCOPE_API_KEY: 'test-key',
       QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen3.7-max',
-    }), [
-      'npx',
-      '--yes',
-      'opencode-ai@1.18.5',
-      'serve',
-      '--hostname',
-      '127.0.0.1',
-      '--port',
-      '4321',
-    ])
+    })
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /older than the supported minimum/)
+    assert.equal(existsSync(target.capture), false)
   } finally {
     target.close()
   }
@@ -303,7 +297,7 @@ test('automatic fallback requires explicit Bailian setup', {
   }
 })
 
-test('OpenClaw auto mode downloads a pinned package when missing', {
+test('OpenClaw auto mode downloads the latest package when missing', {
   skip: process.platform === 'win32',
 }, () => {
   const target = fixture()
@@ -330,7 +324,7 @@ test('OpenClaw auto mode downloads a pinned package when missing', {
   }
 })
 
-test('package mode uses pinned, configurable npm package versions', {
+test('package mode uses latest npm packages and honors overrides', {
   skip: process.platform === 'win32',
 }, () => {
   const openCode = fixture()
@@ -353,7 +347,7 @@ test('package mode uses pinned, configurable npm package versions', {
     }), [
       'npx',
       '--yes',
-      'opencode-ai@1.18.5',
+      'opencode-ai@latest',
       'serve',
       '--hostname',
       '127.0.0.1',
@@ -375,7 +369,7 @@ test('package mode uses pinned, configurable npm package versions', {
         'npx',
         '--yes',
         '--package',
-        'openclaw@2026.6.33',
+        'openclaw@latest',
         '--',
         'which',
         'openclaw',
@@ -416,7 +410,7 @@ test('OpenClaw package mode resolves a pinned package Windows shim without Unix 
   }, ['acp', '--verbose']), ['openclaw.cmd', 'acp', '--verbose'])
 })
 
-test('Codex ACP prefers an installed adapter and pins its package fallback', {
+test('Codex ACP prefers an installed adapter and uses latest for its package fallback', {
   skip: process.platform === 'win32',
 }, () => {
   const binary = fixture()
@@ -444,7 +438,7 @@ test('Codex ACP prefers an installed adapter and pins its package fallback', {
     }, ['--help']), [
       'npx',
       '-y',
-      '@agentclientprotocol/codex-acp@1.1.7',
+      '@agentclientprotocol/codex-acp@latest',
       '--help',
     ])
   } finally {
@@ -453,7 +447,7 @@ test('Codex ACP prefers an installed adapter and pins its package fallback', {
   }
 })
 
-test('Claude Code ACP prefers an installed adapter and pins its package fallback', {
+test('Claude Code ACP prefers an installed adapter and uses latest for its package fallback', {
   skip: process.platform === 'win32',
 }, () => {
   const binary = fixture()
@@ -481,7 +475,7 @@ test('Claude Code ACP prefers an installed adapter and pins its package fallback
     }, ['--help']), [
       'npx',
       '-y',
-      '@zed-industries/claude-code-acp@0.16.2',
+      '@zed-industries/claude-code-acp@latest',
       '--help',
     ])
   } finally {
@@ -490,7 +484,7 @@ test('Claude Code ACP prefers an installed adapter and pins its package fallback
   }
 })
 
-test('Pi ACP prefers an installed adapter and pins its package fallback', {
+test('Pi ACP prefers an installed adapter and uses latest for its package fallback', {
   skip: process.platform === 'win32',
 }, () => {
   const binary = fixture()
@@ -539,7 +533,7 @@ test('Pi ACP prefers an installed adapter and pins its package fallback', {
     }, ['--help']), [
       'npx',
       '-y',
-      'pi-acp@0.0.33',
+      'pi-acp@latest',
       '--help',
     ])
   } finally {

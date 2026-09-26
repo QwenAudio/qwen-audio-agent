@@ -7,7 +7,11 @@ import { refreshProcessPath } from '../process-path.mjs'
 function compactComponent(component) {
   if (!component || typeof component !== 'object') return undefined
   // 组件级就绪状态供一键安装判断“只补缺失组件”（如仅缺 ACP 适配器）。
-  return { ready: component.ready === true, source: component.source || '' }
+  return {
+    ready: component.ready === true,
+    installed: component.installed === true,
+    source: component.source || '',
+  }
 }
 
 function compactReport(report) {
@@ -21,7 +25,6 @@ function compactReport(report) {
       issues: item.issues,
       backend: compactComponent(item.backend),
       adapter: compactComponent(item.adapter),
-      packages: item.packages,
       authentication: item.authentication,
     })),
   }

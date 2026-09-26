@@ -12,21 +12,21 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@aparajita/capacitor-secure-storage": "8.0.0",
+    "@aparajita/capacitor-secure-storage": "8.0.1",
     "@capacitor/app": "8.1.1",
     "@capacitor/barcode-scanner": "3.1.2",
-    "@capacitor/core": "8.5.1",
+    "@capacitor/core": "8.5.2",
     "@capacitor/preferences": "8.0.1",
     "@vitejs/plugin-react": "^4.7.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "vite": "^7.0.0"
   },
   "devDependencies": {
-    "@capacitor/android": "8.5.1",
-    "@capacitor/cli": "8.5.1",
-    "@capacitor/ios": "8.5.1"
+    "@capacitor/android": "8.5.2",
+    "@capacitor/cli": "8.5.2",
+    "@capacitor/ios": "8.5.2"
   }
 }

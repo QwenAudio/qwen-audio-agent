@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import { isApprovalForPreview } from '../../../../shared/authorization-reply.mjs'
 import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mjs'
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { isTaskCancellable } from '../../task/task-state.mjs'
@@ -640,28 +639,13 @@ export class AgentTaskRuntime {
       return
     }
     if (request.kind === 'authorization' && action === 'accept') {
-      // Validate the real customer turn, not only the model-produced tool call.
-      const customerReply = String(await this.host.transcripts.transcript(turnId)).trim()
-      if (!isApprovalForPreview(customerReply, request.prompt)) {
-        await this.host.taskOperations.respondToInput(task.id, request.id, {
-          // Reject this saved operation, but do not cancel the whole A2A task.
-          // The remote task may already have committed earlier operations and
-          // must be allowed to publish its final/partial execution receipt.
-          action: 'decline', text: customerReply,
-        }, { ownerId: this.host.ownerId })
-        await this.host.sendOutput(callId, {
-          status: 'preview_declined', task_id: task.id,
-          error_code: 'authorization_changed_or_ambiguous',
-          user_message: '原操作预览已拒绝，未执行。客户如修改了需求，必须重新生成预览。',
-        }, turnId, task.id, { response: { instructions: [
-          'The current authorization preview was declined and that write was not approved; the whole task was not cancelled.',
-          'Wait for the original task to finish so any earlier committed operations and its execution receipt are preserved.',
-          'If the customer changed the request, then call spawn_thinking with their latest actual request to create a NEW operation and preview.',
-          'Do not claim completion. If their intent is unclear, ask for clarification.',
-        ].join(' ') } })
-        return
+      // `action` is chosen by the active conversation model with the complete
+      // dialogue and preview in context. Do not second-guess that semantic
+      // decision with a brittle keyword/regular-expression classifier.
+      args = {
+        ...args,
+        text: String(await this.host.transcripts.transcript(turnId)).trim(),
       }
-      args = { ...args, text: customerReply }
     }
     await this.host.taskOperations.respondToInput(task.id, request.id, {
       action,

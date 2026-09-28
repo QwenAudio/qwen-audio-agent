@@ -409,6 +409,18 @@ function outgoingPart(part) {
 
 function outgoingMessage(work, contextId = '') {
   const text = outgoingText(work)
+  const history = Array.isArray(work?.conversationContext)
+    ? work.conversationContext.filter(item => ['user', 'assistant'].includes(item?.role)
+      && typeof item.content === 'string' && item.content.trim())
+    : []
+  const latest = history.at(-1)
+  const proposal = history.at(-2)
+  const authorizationEvidence = latest?.role === 'user' && proposal?.role === 'assistant'
+    ? {
+        proposal: proposal.content,
+        customerReply: latest.content,
+      }
+    : null
   const parts = [{
     content: { $case: 'text', value: text },
     metadata: undefined,
@@ -427,7 +439,9 @@ function outgoingMessage(work, contextId = '') {
     taskId: '',
     role: Role.ROLE_USER,
     parts,
-    metadata: undefined,
+    metadata: authorizationEvidence
+      ? { qwenAudioAuthorizationEvidence: authorizationEvidence }
+      : undefined,
     extensions: [],
     referenceTaskIds: [],
   }

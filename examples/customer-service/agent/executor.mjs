@@ -4,7 +4,6 @@ import { AgentEvent } from '@a2a-js/sdk/server'
 import { DashScopeServiceModel } from './model.mjs'
 import { flowPrompt } from './flows.mjs'
 import { AgentHistory } from './agent-history.mjs'
-import { isApprovalForPreview } from '../../../shared/authorization-reply.mjs'
 
 const MAX_AGENT_ROUNDS = 8
 const EXECUTION_RECEIPT_SCHEMA = 'qwen-audio-agent/customer-service-execution-receipt@1'
@@ -46,6 +45,9 @@ export function serviceAgentPrompt(domain = process.env.CS_DOMAIN || 'retail') {
   预览后的运行时授权就是该具体操作的最终确认；不要先单独询问一次
   “确定要办理吗”，再让客户为同一操作确认预览。若客户尚未选定方案、
   支付方式或政策明确要求先作独立选择，才用 ask_customer 补齐。
+- policy 要求客户确认目标记录正确、或要求对变更后的对象重新选择偏好时，
+  这些都是写操作前必须完成的检查点。数据库里的旧偏好不能代替本次明确
+  答复；但交接或当前对话已经包含客户本次答复时不得重复询问。
 - 一项诉求包含多笔改动时，先核对每笔操作的前置状态与执行后的状态。
   如果先做一笔会使另一笔不再符合政策，任何一笔都不要先提交；先说明
   冲突并请客户选择可执行的方案，不能擅自只完成其中一笔。
@@ -56,6 +58,11 @@ export function serviceAgentPrompt(domain = process.env.CS_DOMAIN || 'retail') {
   状态仍不满足目标，继续处理、询问必要选择或如实说明阻碍，不要只复述工具话术。
 - 工具返回的业务判定（不符合条件、细则未覆盖、超出权限等）照实转达，
   不要换个说法再试一次，也不要自己估算天数、差价或补偿金额。
+- 严格保留工具结果的生命周期语义：“已发起”“处理中”“待入账”不等于
+  “已到账”或“已结清”。只有工具明确返回 settled、received、到账或等价
+  终态时，才能向客户说款项已经到账。
+- 取消记录、退款资格或一笔退款成功，不能证明其他退款也已发起。fare、
+  ancillary 等多组成结果必须逐笔调用政策要求的工具，并只报告各自真实回执。
 - 需要转人工时调用 transfer_to_human，并写清原因。
 - 最终回复要简短、自然，适合前台语音助手直接念给客户听。金额和单号要写完整。
 
@@ -173,6 +180,19 @@ function inputText(message) {
     .map(part => part.content.value)
     .join('\n')
     .trim()
+}
+
+function priorAuthorizationEvidence(value) {
+  if (!value || typeof value !== 'object') return null
+  const proposal = typeof value.proposal === 'string' ? value.proposal.trim() : ''
+  const customerReply = typeof value.customerReply === 'string'
+    ? value.customerReply.trim()
+    : ''
+  if (!proposal || !customerReply) return null
+  return {
+    proposal: proposal.slice(0, 8_000),
+    customerReply: customerReply.slice(0, 4_000),
+  }
 }
 
 function statusUpdate(taskId, contextId, state, message, metadata) {
@@ -294,14 +314,15 @@ function customerQuestion(args) {
 
 async function runServiceAgent({ objective, model, tools, signal, onToolCall,
   history = [], initialMessages, initialCalls = [], initialOutput, committedOperations = 0,
-  committedEffects = [], operationChoice = null }) {
+  committedEffects = [], operationChoice = null, authorizationEvidence = null }) {
   const availableTools = await tools.list({ signal })
   const definitions = availableTools.map(openAiTool)
   definitions.push(customerInputTool)
   const allowed = new Set(definitions.map(tool => tool.function.name))
   const context = await tools.context?.({ signal })
+  const canReusePriorAuthorization = isBenchmarkToolset(context?.toolset)
   const prompt = isBenchmarkToolset(context?.toolset)
-    ? `${context.policy}\n\nRuntime: tools execute the official tau environment. Writes require explicit customer approval.\nDo not supply approval_token; the runtime previews and commits saved operations after authorization.\nOnce required facts and genuine business choices are known, call the write tool to obtain that exact approval preview; do not first ask a generic 'may I proceed?' for the same operation. Before the FIRST write in a multi-action request, check all requested changes against the policy and the resulting entity states. If committing one change would make another requested change ineligible, do not commit either one or silently perform only a subset; explain the conflict and use ask_customer for a genuine choice. Do not treat a user's general agreement to multiple changes as a choice between them. Treat the delegated goal, hard constraints, preserve-by-default fields, and unresolved items as a completion checklist. After every operation, continue until every requested outcome is completed, explicitly declined, or blocked by a stated policy reason. Do not change an existing attribute merely because a broader search exposes another option. Before finishing, use available read tools to verify the current state of changed records against that checklist. Use ask_customer only for missing information or a distinct policy/business choice. Identity checks and read tools may be used here when needed. Follow the policy and never claim an action was completed without a tool result.`
+    ? `${context.policy}\n\nRuntime: tools execute the official tau environment. Writes require explicit customer approval.\nDo not supply approval_token; the runtime previews and commits saved operations after authorization. A customer's immediately preceding explicit approval of a concrete assistant proposal may cover every write that stays within that proposal; the runtime independently compares each exact preview with that evidence and otherwise pauses for new approval.\nOnce required facts and genuine choices are known, call the write tool to obtain its exact approval preview; do not first ask a generic 'may I proceed?' for the same operation. Before the FIRST write in a multi-action request, check all requested changes against the policy and resulting entity states. If one change would make another requested change ineligible, do not commit either one or silently perform only a subset; explain the conflict and use ask_customer for a genuine choice. Policy-required record confirmation and fresh preference are required facts. A stored preference is not a fresh answer, but an answer already present in the delegated dialogue is sufficient and MUST NOT be asked again. Treat the delegated goal, hard constraints, preserve-by-default fields, and unresolved items as a completion checklist. After every operation, continue until every requested outcome is completed, explicitly declined, or blocked by a stated policy reason. Do not change an existing attribute merely because a broader search exposes another option. Before finishing, use available read tools to verify the changed records against that checklist. Use ask_customer only for missing information or a distinct policy/business choice. Follow the policy and never claim an action succeeded without its committed tool result. Preserve result lifecycle exactly: initiated, pending, or processing never means received, settled, or credited. For multi-part outcomes such as fare plus ancillary refunds, execute every policy-required component separately and report a component only after its own committed result.`
     : serviceAgentPrompt()
   const identity = context?.verifiedIdentity
   const sharedContext = identity ? `\n\nTrusted session context: the customer has ALREADY been authenticated in this SAME conversation by the official tool ${identity.method}, with arguments ${JSON.stringify(identity.arguments)}, returning user_id ${JSON.stringify(identity.userId)}. This is a continuation, not a new conversation. Do not require authentication again or act on another customer's account. This identity is NOT authorization to update data.` : ''
@@ -384,6 +405,36 @@ async function runServiceAgent({ objective, model, tools, signal, onToolCall,
         if (result.data?.needsApproval) {
           const approval = result.data.approval
           if (!approval?.token || !approval.preview) throw new Error('Missing structured approval')
+          const priorDecision = canReusePriorAuthorization
+            && typeof model.authorizePriorPlan === 'function'
+            ? await model.authorizePriorPlan({
+                evidence: authorizationEvidence,
+                operation: { name, arguments: args },
+                preview: approval.preview,
+                signal,
+              })
+            : { authorized: false }
+          signal.throwIfAborted()
+          if (priorDecision?.authorized === true) {
+            const committed = await tools.call(name, {
+              ...args,
+              approval_token: approval.token,
+            }, { signal })
+            signal.throwIfAborted()
+            if (committed.data?.needsApproval) {
+              throw new Error('Prior authorization could not commit the saved operation')
+            }
+            lastContent = committed.content
+            lastData = committed.data || lastData
+            committedOperations += 1
+            committedEffects = [...committedEffects, operationEffect(name, committed)]
+            messages.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: committed.content,
+            })
+            continue
+          }
           const approvalNeeded = new ApprovalNeeded(result.content, {
             name, args, token: approval.token, toolCallId: call.id,
             remainingCalls: calls.slice(index + 1),
@@ -391,6 +442,7 @@ async function runServiceAgent({ objective, model, tools, signal, onToolCall,
           approvalNeeded.committedOperations = committedOperations
           approvalNeeded.committedEffects = committedEffects
           approvalNeeded.operationChoice = operationChoice
+          approvalNeeded.authorizationEvidence = authorizationEvidence
           throw approvalNeeded
         }
         if (result.data?.operationCommitted || result.data?.changed === true) {
@@ -438,6 +490,9 @@ export class ServiceAgentExecutor {
     this.controllers.set(taskId, controller)
     this.activeRuns.set(taskId, { done: done.promise, eventBus, contextId })
     const objective = inputText(requestContext.userMessage)
+    const requestAuthorizationEvidence = priorAuthorizationEvidence(
+      requestContext.userMessage?.metadata?.qwenAudioAuthorizationEvidence,
+    )
     let history = null
 
     // 只允许恢复同一 taskId 的批准，不重新拼接自然语言来决定是否提交。
@@ -495,13 +550,13 @@ export class ServiceAgentExecutor {
         throw new Error('任务上下文不匹配，请重新发起操作。')
       }
 
-      // 授权是协议层的决定，不让模型从自然语言里猜测。
-      // 缺少结构化同意也按未批准处理（fail closed）。
+      // The frontend model resolves the natural-language reply into the
+      // structured inputResponse. The backend only enforces that protocol
+      // decision and never re-classifies the same text with keyword rules.
       const inputResponse = requestContext.userMessage?.metadata?.qwenAudioInputResponse
       if (resumed && pending.kind !== 'customer-input' && (
         inputResponse?.kind !== 'authorization'
         || inputResponse.action !== 'accept'
-        || !isApprovalForPreview(objective, pending.preview)
       )) {
         await this.tools.revokeApproval?.(pending.operation?.token)
         history.append(contextId, `${pending.objective}\n\n客户补充：${objective}`,
@@ -549,7 +604,8 @@ export class ServiceAgentExecutor {
           tools: this.tools, signal: controller.signal, initialMessages: pending.messages,
           initialCalls: pending.remainingCalls, committedOperations: pending.committedOperations,
           committedEffects: pending.committedEffects,
-          operationChoice })
+          operationChoice,
+          authorizationEvidence: pending.authorizationEvidence })
         history.append(contextId, `${pending.objective}\n\n客户补充：${objective}`, output.content)
         publishCompleted(eventBus, taskId, contextId, output)
         return
@@ -579,6 +635,7 @@ export class ServiceAgentExecutor {
             operationEffect(name, output),
           ],
           operationChoice: pending.operationChoice,
+          authorizationEvidence: pending.authorizationEvidence,
         })
         history.append(contextId, `${pending.objective}\n\n客户补充：${objective}`, finalOutput.content)
         publishCompleted(eventBus, taskId, contextId, finalOutput)
@@ -596,6 +653,7 @@ export class ServiceAgentExecutor {
           eventBus.publish(statusUpdate(taskId, contextId,
             TaskState.TASK_STATE_WORKING, '正在查询和处理，请稍等。'))
         },
+        authorizationEvidence: requestAuthorizationEvidence,
       })
 
       history.append(contextId, objective, output.content)
@@ -610,6 +668,9 @@ export class ServiceAgentExecutor {
         entry.choiceRequest = error.choiceRequest || false
         entry.choiceOrderId = error.choiceOrderId || pending?.choiceOrderId || null
         entry.operationChoice = error.operationChoice || pending?.operationChoice || null
+        entry.authorizationEvidence = error.authorizationEvidence
+          || pending?.authorizationEvidence
+          || requestAuthorizationEvidence
         entry.timer = setTimeout(() => { this.cancelTask(taskId).catch(() => {}) }, this.approvalTtlMs)
         entry.timer.unref?.()
         this.suspended.set(taskId, entry)
@@ -628,6 +689,9 @@ export class ServiceAgentExecutor {
           preview: error.preview,
           operation: error.operation,
           messages: error.messages,
+          authorizationEvidence: error.authorizationEvidence
+            || pending?.authorizationEvidence
+            || requestAuthorizationEvidence,
           at: Date.now(),
         }
         suspendedEntry.timer = setTimeout(() => {

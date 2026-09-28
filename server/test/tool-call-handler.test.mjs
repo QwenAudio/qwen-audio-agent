@@ -1387,7 +1387,7 @@ test('returns a backend answer to the same pending task', async () => {
   await manager.wait(task.id)
 })
 
-test('changed customer request declines only the old write preview even if the frontend calls accept', async t => {
+test('authorization runtime honors the frontend model structured decision', async t => {
   const manager = new TaskManager()
   const done = Promise.withResolvers()
   t.after(() => done.resolve({ content: 'done' }))
@@ -1405,10 +1405,9 @@ test('changed customer request declines only the old write preview even if the f
     arguments: JSON.stringify({ task_id: task.id, action: 'accept', text: 'Yes' }) },
   { turnId: 'turn-one', turnGeneration: 1 })
   assert.equal(submitted.length, 1)
-  assert.equal(submitted[0][2].action, 'decline')
-  assert.equal(kit.outputs.at(-1)[1].status, 'preview_declined')
-  assert.match(kit.outputs.at(-1)[3].response.instructions, /whole task was not cancelled/)
-  assert.match(kit.outputs.at(-1)[3].response.instructions, /NEW operation and preview/)
+  assert.equal(submitted[0][2].action, 'accept')
+  assert.equal(submitted[0][2].text, 'Wait, return the more expensive tablet to a gift card instead.')
+  assert.equal(kit.outputs.at(-1)[1].status, 'submitted')
 })
 
 test('plain customer approval still reaches the pending write preview', async t => {

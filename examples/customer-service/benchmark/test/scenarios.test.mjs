@@ -79,6 +79,37 @@ test('身份仅由成功官方核验工具建立，跨会话隔离且拒绝换�
   provider.close()
 })
 
+test('EVA 航空仅在成功查询预订后建立会话身份', async () => {
+  const provider = new TauScenarios({ root: '/unused' })
+  provider.sessions.set('tau-eva', { definitions: [
+    { name: 'get_reservation', annotations: { readOnlyHint: true } },
+  ] })
+  provider.request = async () => ({ content: JSON.stringify({ confirmation_number: 'ABC123' }) })
+  const args = { confirmation_number: 'abc123', last_name: 'Lee' }
+  await provider.execute('tau-eva', 'get_reservation', args, 'frontend')
+  args.last_name = 'changed'
+  assert.deepEqual(provider.context('tau-eva').verifiedIdentity, {
+    userId: 'ABC123', method: 'get_reservation',
+    arguments: { confirmation_number: 'abc123', last_name: 'Lee' },
+  })
+  provider.request = async () => ({ content: 'Reservation not found' })
+  await provider.execute('tau-eva', 'get_reservation',
+    { confirmation_number: 'missing', last_name: 'Lee' }, 'frontend')
+  assert.equal(provider.context('tau-eva').verifiedIdentity.userId, 'ABC123')
+  provider.close()
+})
+
+test('EVA 航空是受支持的 tau domain', async () => {
+  const provider = new TauScenarios({ root: '/unused' })
+  provider.request = async (_method, _sessionId, payload) => ({
+    domain: payload.domain, policy: 'policy', definitions: [], task: null,
+  })
+  const loaded = await provider.load({ domain: 'eva_airline' })
+  assert.equal(loaded.domain, 'eva_airline')
+  assert.equal(loaded.toolset, 'tau-eva_airline')
+  provider.close()
+})
+
 test('官方零售场景：装载、隔离、预览、参数绑定、数据库注入与释放',
   { skip: !configured, timeout: 120_000 }, async t => {
     const provider = new TauScenarios({ root, python })
@@ -153,6 +184,34 @@ test('官方航空场景：全部工具与固定原始时钟；拒绝陈旧数�
     await assert.rejects(provider.execute(loaded.sessionId, action.name,
       { ...action.arguments, approval_token: previews[1].data.approval.token }), /Database changed/)
     assert.equal((await provider.snapshot(loaded.sessionId)).hash, after.hash)
+  })
+
+test('EVA 航空场景：真实装载、鉴权、审批和 gold 轨迹评分',
+  { skip: !configured, timeout: 120_000 }, async t => {
+    const provider = new TauScenarios({ root, python })
+    t.after(() => provider.close())
+    const loaded = await provider.load({ domain: 'eva_airline', taskId: 'eva_airline_1.1.2' })
+    const frontend = provider.definitions(loaded.sessionId, 'frontend').map(tool => tool.name)
+    assert.deepEqual(frontend.sort(), [
+      'get_disruption_info', 'get_flight_status', 'get_reservation', 'search_rebooking_options',
+    ])
+    for (const action of loaded.task.evaluation_criteria.actions) {
+      if (frontend.includes(action.name)) {
+        await provider.execute(loaded.sessionId, action.name, action.arguments, 'frontend')
+      } else {
+        const preview = await provider.execute(loaded.sessionId, action.name, action.arguments)
+        assert.equal(preview.data.needsApproval, true)
+        await provider.execute(loaded.sessionId, action.name,
+          { ...action.arguments, approval_token: preview.data.approval.token })
+      }
+    }
+    assert.equal(provider.context(loaded.sessionId).verifiedIdentity.userId, 'ZK3FFW')
+    const scored = await provider.request('score', loaded.sessionId, {
+      startTime: new Date().toISOString(), endTime: new Date().toISOString(),
+      duration: 0, terminationReason: 'user_stop',
+    })
+    assert.equal(scored.replayMatchesLive, true)
+    assert.equal(scored.reward.reward, 1)
   })
 
 test('Realtime 单独组使用官方工具错误消息语义并记录失败调用，DB 不变',

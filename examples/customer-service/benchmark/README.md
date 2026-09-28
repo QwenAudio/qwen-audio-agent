@@ -6,6 +6,8 @@ are committed here.
 
 The aggregate full-airline comparison is documented in
 [AIRLINE_RESULTS.md](AIRLINE_RESULTS.md); it contains no raw run artifacts.
+The adapted EVA Airline comparison is documented in
+[EVA_AIRLINE_RESULTS.md](EVA_AIRLINE_RESULTS.md).
 
 ## Full three-way comparison
 
@@ -45,6 +47,9 @@ directory. `CS_TAU_CONCURRENCY=3` runs up to three independent cases at once
 (default 1; maximum 8). Keep concurrency modest to avoid provider rate limits;
 the chosen modes and concurrency are recorded in the manifest and must not
 change when resuming that directory.
+
+Use `CS_TAU_DOMAINS` to run every task from one or more loaded domains without
+manually expanding `CS_TAU_CASES`. The two selectors are mutually exclusive.
 
 For a paired prompt check, set `CS_TAU_CASES` to the same comma-separated
 `domain:taskId` list for two harness-only runs in separate output directories.
@@ -116,6 +121,9 @@ Without both `CS_TAU2_*` variables, official Python tests explicitly skip. These
 tests use reference-action model stubs, not accuracy measurements. Coverage includes
 retail/airline tools, argument validation, session isolation, preview/commit, parameter
 and DB-hash binding, shared identity, same-task input, denial/replay and trajectory replay.
+When the tau2 checkout contains the optional `eva_airline` adapter, also set
+`EVA_BENCH_ROOT=/path/to/EVA-bench-mix`; its integration test exercises a complete
+EVA read/write gold trajectory through the same approval boundary and DB scorer.
 
 ## Policy/database injection API
 
@@ -135,7 +143,8 @@ curl -sS http://127.0.0.1:3110/api/test/scenarios/load \
   -d '{"domain":"retail","taskId":"0"}'
 ```
 
-Load accepts `domain` (retail/airline), optional string `taskId`, policy text and an
+Load accepts `domain` (retail/airline, plus `eva_airline` when that adapter is
+installed), optional string `taskId`, policy text and an
 official database JSON object. Defaults use original files; task initialization uses
 original actions/message history. Preserve the official airline clock; arbitrary
 clock overrides are rejected. Request bodies are limited to 16 MiB.
@@ -191,6 +200,34 @@ five minutes overall, eight backend model rounds per execution/resumption, and
 90/180 seconds per frontend turn for baseline/harness by default. Preserve frontend tool budget.
 Failures remain in the denominator; never silently select repeated trials.
 Runtime receipts/prompts cannot guarantee models never misreport results.
+
+### EVA content on the tau2 protocol
+
+The optional tau2 `eva_airline` domain keeps EVA-Bench-mix as the source of truth
+for its 50 airline tasks, per-task databases, policy and 15 function calls, while
+using this runner's tau2 conversation and terminal-state evaluation form. This is
+useful for a like-for-like Realtime/Max/harness comparison without modifying EVA's
+source data:
+
+```sh
+export EVA_BENCH_ROOT=/path/to/EVA-bench-mix
+CS_TAU_DOMAINS=eva_airline CS_TAU_MODES=harness CS_TAU_CONCURRENCY=8 \
+  CS_TAU_OUTPUT_DIR=/private/tmp/eva-on-tau/harness \
+  node examples/customer-service/benchmark/run-full.mjs
+```
+
+For a single smoke case, use `npm run eval:customer-service:harness --
+eva_airline:eva_airline_1.1.2`. For a three-way full comparison, omit
+`CS_TAU_MODES`; each of the 50 tasks then runs once in `realtime-only`, `harness`
+and `max-only` mode.
+
+This is an adapted EVA-on-tau experiment, not an official tau2 or EVA leaderboard
+score. Gold actions are replayed to derive the terminal DB target, so equivalent
+action paths can pass. Successful human transfers receive an adapter audit record;
+privacy/refusal tasks use an unchanged-state target plus semantic policy assertions
+instead of requiring incidental or contradictory reference calls. A customer's
+explicit approval of a concrete proposal may be reused for every internal write
+preview that the model verifies remains inside that proposal's scope.
 
 Artifacts default to `.runtime/tau-harness`, or `CS_TAU_OUTPUT_DIR`; do not commit
 them. The comparison helper accepts another root argument for a complete rerun,

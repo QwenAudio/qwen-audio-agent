@@ -123,6 +123,8 @@ test('spawn_thinking 按当前前台工具边界路由，且提交后不承诺�
   assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /不要仅因前台没有对应的执行工具就声称系统不支持/)
   assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /本轮必须调用 spawn_thinking/)
   assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /不得让客户自行联系其他渠道/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /缺少可查询的内部编号不是业务无法办理/)
+  assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /不负责判断后台能否完成后续组合操作/)
   assert.doesNotMatch(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /取消订单|退货|换货|修改收货地址|商品|订单号/)
   assert.match(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /我来为您处理，请稍等/)
   assert.doesNotMatch(CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION, /后台客服|我提交处理了/)

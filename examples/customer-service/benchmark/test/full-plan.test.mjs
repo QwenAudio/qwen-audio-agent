@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { buildPlan, parseConcurrency, parseTimeoutRetries,
+import { buildPlan, parseDomains, parseConcurrency, parseTimeoutRetries,
   parseHarnessTurnTimeoutSeconds, isTimeoutAttempt, runWithTimeoutRetry, summarize } from '../full-plan.mjs'
 
 test('全量评测并发受上限约束，默认串行', () => {
@@ -8,6 +8,16 @@ test('全量评测并发受上限约束，默认串行', () => {
   assert.equal(parseConcurrency('3'), 3)
   for (const value of ['0', '-1', '1.5', '9', 'many', '']) {
     assert.throws(() => parseConcurrency(value), /CS_TAU_CONCURRENCY/)
+  }
+})
+
+test('可按域选择完整任务集，拒绝未知域与重复域', () => {
+  const available = ['retail', 'airline', 'eva_airline']
+  assert.deepEqual(parseDomains(undefined, available), available)
+  assert.deepEqual(parseDomains('eva_airline', available), ['eva_airline'])
+  assert.deepEqual(parseDomains('airline, retail', available), ['airline', 'retail'])
+  for (const value of ['', 'unknown', 'airline,airline']) {
+    assert.throws(() => parseDomains(value, available), /CS_TAU_DOMAINS/)
   }
 })
 

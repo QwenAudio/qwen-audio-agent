@@ -8,6 +8,8 @@ import sys
 import subprocess
 from pathlib import Path
 
+LLM_TIMEOUT_SECONDS = float(os.environ.get("CS_TAU_LLM_TIMEOUT_SECONDS", "90"))
+
 root = Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(root / "src"))
 # tau2 imports/logging must not corrupt the JSON-lines protocol.
@@ -37,10 +39,15 @@ def dispatch(request):
     session_id = request["sessionId"]
     if method == "load":
         domain = request["domain"]
-        if domain not in ("retail", "airline"):
+        db_types = {
+            "retail": "RetailDB",
+            "airline": "FlightDB",
+            "eva_airline": "EVAAirlineDB",
+        }
+        if domain not in db_types:
             raise ValueError("Unsupported tau domain")
         module = importlib.import_module(f"tau2.domains.{domain}.environment")
-        db_type = module.RetailDB if domain == "retail" else module.FlightDB
+        db_type = getattr(module, db_types[domain])
         database = request.get("database")
         env = module.get_environment(
             db=None if database is None else db_type.model_validate(database)
@@ -68,7 +75,10 @@ def dispatch(request):
                 "name": schema["name"],
                 "description": schema["description"],
                 "inputSchema": schema["parameters"],
-                "annotations": {"readOnlyHint": not env.tools.tool_mutates_state(tool.name)},
+                # Surface exposure follows the business meaning of a tool. Some
+                # read tools update evaluator-only session state so gold replay
+                # can reproduce authentication, but are still safe for frontend.
+                "annotations": {"readOnlyHint": env.tools.tool_type(tool.name).value == "read"},
             })
         commit = subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
@@ -101,7 +111,7 @@ def dispatch(request):
             tools=env.get_tools(), domain_policy=env.get_policy(),
             llm=f"openai/{request['model']}",
             llm_args={"api_key": os.environ["DASHSCOPE_API_KEY"],
-                      "api_base": request["baseURL"], "timeout": 90,
+                      "api_base": request["baseURL"], "timeout": LLM_TIMEOUT_SECONDS,
                       "num_retries": 0,
                       "extra_body": {"enable_thinking": True}},
         )
@@ -136,7 +146,7 @@ def dispatch(request):
         simulator_args = {
             "api_key": role_api_key(request),
             "api_base": request["baseURL"],
-            "timeout": 90,
+            "timeout": LLM_TIMEOUT_SECONDS,
             "num_retries": 0,
         }
         if model.startswith("qwen"):
@@ -179,7 +189,7 @@ def dispatch(request):
             nl.DEFAULT_LLM_NL_ASSERTIONS = f"openai/{request['judgeModel']}"
             judge_args = {
                 "api_key": role_api_key(request), "api_base": request["baseURL"],
-                "timeout": 90, "num_retries": 0,
+                "timeout": LLM_TIMEOUT_SECONDS, "num_retries": 0,
             }
             if request["judgeModel"].startswith("qwen"):
                 judge_args["temperature"] = 0
@@ -222,7 +232,9 @@ def dispatch(request):
         if isinstance(data, dict):
             for key in ("exchange_price_difference", "exchange_payment_method_id",
                         "return_payment_method_id", "amount", "cabin", "flights",
-                        "passengers", "total_baggages", "nonfree_baggages", "insurance"):
+                        "passengers", "total_baggages", "nonfree_baggages", "insurance",
+                        "confirmation_number", "journey_id", "new_journey", "cost_summary",
+                        "seat_assigned", "refund_amount", "refund_type"):
                 if data.get(key) is not None:
                     summary[key] = data[key]
             if data.get("payment_history"):

@@ -1,5 +1,16 @@
 export const modes = ['realtime-only', 'harness', 'max-only']
 
+export function parseDomains(value, availableDomains) {
+  const available = [...availableDomains]
+  if (value === undefined) return available
+  const selected = value.split(',').map(domain => domain.trim()).filter(Boolean)
+  if (!selected.length || new Set(selected).size !== selected.length
+    || selected.some(domain => !available.includes(domain))) {
+    throw new Error(`CS_TAU_DOMAINS must be a comma-separated subset of ${available.join(', ')}`)
+  }
+  return selected
+}
+
 export function parseConcurrency(value) {
   const concurrency = value === undefined ? 1 : Number(value)
   if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 8) {
@@ -51,7 +62,8 @@ export function buildPlan(domains, selectedModes = modes) {
 }
 
 export function summarize(jobs, selectedModes = modes) {
-  return selectedModes.flatMap(mode => ['retail', 'airline'].map(domain => {
+  const domains = [...new Set(jobs.map(job => job.domain))]
+  return selectedModes.flatMap(mode => domains.map(domain => {
     const group = jobs.filter(job => job.mode === mode && job.domain === domain)
     const completed = group.filter(job => job.status === 'completed')
     const passed = completed.filter(job => job.reward === 1).length

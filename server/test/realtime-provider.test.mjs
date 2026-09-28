@@ -87,6 +87,8 @@ test('changed authorization previews are declined without cancelling the whole t
   assert.match(inputRequestResponseInstructions, /respond_agent_input 的 decline 拒绝当前预览/)
   assert.match(inputRequestResponseInstructions, /不要 cancel 整项任务/)
   assert.match(inputRequestResponseInstructions, /待原任务收尾后.*重新派单/)
+  assert.match(inputRequestResponseInstructions, /不要附加示例回答/)
+  assert.match(inputRequestResponseInstructions, /不能生成“我同意”/)
 })
 
 function createQwenFrontend(options = {}) {

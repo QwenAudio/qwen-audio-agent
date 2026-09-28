@@ -45,7 +45,61 @@ test('完整写入参数直接走精确预览授权，不先创建普通补充�
   assert.doesNotMatch(JSON.stringify(events), new RegExp(`"state":${TaskState.TASK_STATE_INPUT_REQUIRED}`))
 })
 
-test('结构化 accept 若夹带新方案，后台也撤销旧预览而不提交', async t => {
+test('用户已明确批准的组合方案可覆盖多个依赖写操作', async t => {
+  const events = [], calls = [], decisions = []
+  const executor = new ServiceAgentExecutor({
+    tools: {
+      context: async () => ({ toolset: 'tau-eva_airline', policy: 'Follow airline policy.' }),
+      list: async () => ['rebook_flight', 'assign_seat'].map(name => ({
+        name, inputSchema: { type: 'object', properties: {} },
+        annotations: { readOnlyHint: false },
+      })),
+      call: async (name, args) => {
+        calls.push({ name, args })
+        return args.approval_token
+          ? { content: JSON.stringify({ status: 'success', operation: name }),
+            data: { operationCommitted: true } }
+          : { content: `Preview ${name}`, data: { needsApproval: true,
+            approval: { token: `token-${name}`, preview: `Preview ${name}` } } }
+      },
+    },
+    model: {
+      complete: async ({ messages }) => messages.some(message => message.role === 'tool')
+        ? { content: 'Rebooked and assigned seat 21A.' }
+        : { tool_calls: [{ id: 'rebook', function: {
+          name: 'rebook_flight', arguments: JSON.stringify({ flight: 'SK703', cost: 115 }),
+        } }, { id: 'seat', function: {
+          name: 'assign_seat', arguments: JSON.stringify({ preference: 'window' }),
+        } }] },
+      authorizePriorPlan: async input => {
+        decisions.push(input)
+        return { authorized: true, reason: 'covered by the approved combined proposal' }
+      },
+    },
+  })
+  t.after(() => executor.reset())
+
+  await executor.execute({ taskId: 'combined-plan', contextId: 'context',
+    userMessage: {
+      parts: [{ content: { $case: 'text', value: 'Rebook and assign the requested window seat.' } }],
+      metadata: { qwenAudioAuthorizationEvidence: {
+        proposal: 'Rebook to SK703 for $115, then assign a window seat. Shall I proceed?',
+        customerReply: 'Go ahead, and assign a window seat.',
+      } },
+    },
+  }, { publish: event => events.push(event) })
+
+  assert.deepEqual(calls.map(call => [call.name, call.args.approval_token || null]), [
+    ['rebook_flight', null], ['rebook_flight', 'token-rebook_flight'],
+    ['assign_seat', null], ['assign_seat', 'token-assign_seat'],
+  ])
+  assert.equal(decisions.length, 2)
+  assert.equal(executor.suspended.has('combined-plan'), false)
+  assert.doesNotMatch(JSON.stringify(events), new RegExp(`"state":${TaskState.TASK_STATE_AUTH_REQUIRED}`))
+  assert.match(JSON.stringify(events), /Rebooked and assigned seat 21A/)
+})
+
+test('后台按前台模型的结构化 accept 提交，不再用文本规则二次分类', async t => {
   const writes = [], revoked = []
   const executor = new ServiceAgentExecutor({
     tools: {
@@ -53,14 +107,18 @@ test('结构化 accept 若夹带新方案，后台也撤销旧预览而不提交
       list: async () => [{ name: 'return_item', inputSchema: { type: 'object', properties: {} } }],
       call: async (_name, args) => {
         writes.push(args)
-        return { content: 'Preview', data: { needsApproval: true,
-          approval: { token: 'old-preview', preview: 'Return cheaper item to credit card?' } } }
+        return args.approval_token
+          ? { content: 'Committed', data: { operationCommitted: true } }
+          : { content: 'Preview', data: { needsApproval: true,
+            approval: { token: 'old-preview', preview: 'Return cheaper item to credit card?' } } }
       },
       revokeApproval: async token => revoked.push(token),
     },
-    model: { complete: async () => ({ tool_calls: [{ id: 'write', function: {
-      name: 'return_item', arguments: '{}',
-    } }] }) },
+    model: { complete: async ({ messages }) => messages.some(message => message.role === 'tool')
+      ? { content: 'Committed' }
+      : { tool_calls: [{ id: 'write', function: {
+        name: 'return_item', arguments: '{}',
+      } }] } },
   })
   t.after(() => executor.reset())
   const events = []
@@ -71,9 +129,10 @@ test('结构化 accept 若夹带新方案，后台也撤销旧预览而不提交
   }, { publish: event => events.push(event) })
   await run('Return the cheaper item to my credit card')
   await run('No, return the more expensive item to a gift card instead', true)
-  assert.equal(writes.length, 1)
-  assert.deepEqual(revoked, ['old-preview'])
-  assert.match(JSON.stringify(events), /未获得客户批准/)
+  assert.equal(writes.length, 2)
+  assert.equal(writes[1].approval_token, 'old-preview')
+  assert.deepEqual(revoked, [])
+  assert.match(JSON.stringify(events), /Committed/)
 })
 
 test('两个客服域都把运行时精确预览作为写操作的唯一最终确认', () => {
@@ -81,6 +140,10 @@ test('两个客服域都把运行时精确预览作为写操作的唯一最终�
     assert.match(serviceAgentPrompt(domain), /预览后的运行时授权就是该具体操作的最终确认/)
     assert.match(serviceAgentPrompt(domain), /不要先单独询问一次/)
     assert.match(serviceAgentPrompt(domain), /任何一笔都不要先提交/)
+    assert.match(serviceAgentPrompt(domain), /旧偏好不能代替本次明确[\s\S]*答复/)
+    assert.match(serviceAgentPrompt(domain), /已发起.*不等于.*已到账/s)
+    assert.match(serviceAgentPrompt(domain), /多组成结果必须逐笔调用/)
+    assert.match(serviceAgentPrompt(domain), /不得重复询问/)
   }
 })
 
@@ -103,7 +166,12 @@ test('官方 policy 后的执行说明包含冲突预检、完成清单和最终
   assert.match(systemPrompt, /use ask_customer for a genuine choice/)
   assert.match(systemPrompt, /preserve-by-default fields, and unresolved items as a completion checklist/)
   assert.match(systemPrompt, /continue until every requested outcome is completed/)
-  assert.match(systemPrompt, /use available read tools to verify the current state/)
+  assert.match(systemPrompt, /use available read tools to verify the changed records/)
+  assert.match(systemPrompt, /Policy-required record confirmation and fresh preference are required facts/)
+  assert.match(systemPrompt, /stored preference is not a fresh answer/)
+  assert.match(systemPrompt, /MUST NOT be asked again/)
+  assert.match(systemPrompt, /initiated, pending, or processing never means received/)
+  assert.match(systemPrompt, /execute every policy-required component separately/)
 })
 
 test('同一零售订单的互斥诉求在写预览前先请客户选择，泛化 yes 不能越过门禁', async t => {

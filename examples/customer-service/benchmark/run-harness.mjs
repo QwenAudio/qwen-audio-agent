@@ -67,7 +67,13 @@ async function runCase(domain, taskId) {
     if (mode === 'harness') {
       const model = new DashScopeServiceModel({ model: backendModel })
       agent = await startServiceAgentServer({ port: 0, serviceOrigin: server.origin, sessionId: loaded.sessionId,
-        model: { complete: options => { backendModelCalls += 1; return model.complete(options) } } })
+        model: {
+          complete: options => { backendModelCalls += 1; return model.complete(options) },
+          authorizePriorPlan: options => {
+            backendModelCalls += 1
+            return model.authorizePriorPlan(options)
+          },
+        } })
       const directory = resolve(runtimeRoot, `${domain}-${taskId}-${randomUUID()}`)
       mkdirSync(directory, { recursive: true })
       client = await createFullHarness({ provider, agentServer: agent, serviceOrigin: server.origin,

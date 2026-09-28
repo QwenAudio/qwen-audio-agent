@@ -418,14 +418,18 @@ test('includes opt-in frontend dialogue as bounded context in a new A2A task', a
     clientFactory: async () => ({ client }),
   })
   await backend.submit({ ...work(), conversationContext: [
-    { role: 'user', content: '我要退较贵的相机' },
     { role: 'assistant', content: '我查到了两笔候选订单' },
+    { role: 'user', content: '我要退较贵的相机' },
   ] })
   const sent = client.sent[0].message
   assert.equal(sent.contextId, '')
   assert.match(sent.parts[0].content.value, /完成请求 1/)
   assert.match(sent.parts[0].content.value, /我要退较贵的相机/)
   assert.match(sent.parts[0].content.value, /not proof that a tool succeeded/)
+  assert.deepEqual(sent.metadata?.qwenAudioAuthorizationEvidence, {
+    proposal: '我查到了两笔候选订单',
+    customerReply: '我要退较贵的相机',
+  })
   await backend.close()
 })
 

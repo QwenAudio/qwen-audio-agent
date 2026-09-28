@@ -3,7 +3,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, createWriteStream, 
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createHash } from 'node:crypto'
-import { buildPlan, modes, parseConcurrency, parseTimeoutRetries,
+import { buildPlan, modes, parseDomains, parseConcurrency, parseTimeoutRetries,
   parseHarnessTurnTimeoutSeconds, isTimeoutAttempt, runWithTimeoutRetry, summarize } from './full-plan.mjs'
 
 const root = process.env.CS_TAU2_ROOT
@@ -24,6 +24,12 @@ const manifestPath = resolve(output, 'manifest.json')
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim()
 const allDomains = Object.fromEntries(['retail', 'airline'].map(domain => [domain,
   JSON.parse(readFileSync(resolve(root, `data/tau2/domains/${domain}/tasks.json`), 'utf8'))]))
+if (process.env.EVA_BENCH_ROOT) {
+  const records = JSON.parse(readFileSync(resolve(
+    process.env.EVA_BENCH_ROOT, 'data/airline_dataset.json'), 'utf8'))
+  allDomains.eva_airline = records.map(record => ({ id: `eva_airline_${record.id}` }))
+}
+const selectedDomains = parseDomains(process.env.CS_TAU_DOMAINS, Object.keys(allDomains))
 const selectedCases = process.env.CS_TAU_CASES
   ? process.env.CS_TAU_CASES.split(',').map(entry => entry.trim()).filter(Boolean)
   : null
@@ -32,16 +38,20 @@ if (selectedCases && (!selectedCases.length || new Set(selectedCases).size !== s
     const [domain, id, extra] = entry.split(':')
     return extra !== undefined || !allDomains[domain]?.some(task => String(task.id) === id)
   }))) throw new Error('CS_TAU_CASES must list distinct existing domain:taskId entries')
+if (selectedCases && process.env.CS_TAU_DOMAINS) {
+  throw new Error('Set either CS_TAU_DOMAINS or CS_TAU_CASES, not both')
+}
 const domains = selectedCases
   ? Object.fromEntries(Object.entries(allDomains).map(([domain, tasks]) => [domain,
       tasks.filter(task => selectedCases.includes(`${domain}:${task.id}`))]))
-  : allDomains
+  : Object.fromEntries(selectedDomains.map(domain => [domain, allDomains[domain]]))
 const signature = createHash('sha256').update(git('diff', 'HEAD')).update(
   ['run-full.mjs', 'full-plan.mjs', 'max-only.mjs', 'tau-worker.py', 'run-harness.mjs']
     .map(name => readFileSync(new URL(name, import.meta.url))).join('\n')).digest('hex')
 const configuration = { agentCommit: git('rev-parse', 'HEAD'), sourceSignature: signature,
   tauCommit: git('-C', root, 'rev-parse', 'HEAD'),
-  modes: selectedModes, cases: selectedCases,
+  modes: selectedModes, domains: process.env.CS_TAU_DOMAINS ? selectedDomains : null,
+  cases: selectedCases,
   harnessPromptVariant: process.env.CS_TAU_HARNESS_PROMPT_VARIANT || 'compact',
   concurrency, timeoutRetries, harnessTurnTimeoutSeconds,
   backendModel: process.env.CS_TAU_BACKEND_MODEL || 'qwen3.8-max',
@@ -52,8 +62,10 @@ const configuration = { agentCommit: git('rev-parse', 'HEAD'), sourceSignature: 
   userApiKeyEnv: process.env.CS_TAU_USER_API_KEY_ENV || 'DASHSCOPE_API_KEY',
   judgeApiKeyEnv: process.env.CS_TAU_JUDGE_API_KEY_ENV || process.env.CS_TAU_USER_API_KEY_ENV || 'DASHSCOPE_API_KEY',
   trialsPerTask: 1, timeoutSeconds: 300,
-  scope: selectedCases ? 'Selected retail/airline tasks; text-only adapted tau2 evaluation, not native leaderboard settings'
-    : 'All base retail/airline tasks; text-only adapted tau2 evaluation, not native leaderboard settings' }
+  scope: selectedCases ? 'Selected tasks; text-only adapted tau2 evaluation, not native leaderboard settings'
+    : process.env.CS_TAU_DOMAINS
+      ? 'All tasks from selected domains; text-only adapted tau2 evaluation, not native leaderboard settings'
+      : 'All loaded domain tasks; text-only adapted tau2 evaluation, not native leaderboard settings' }
 let manifest
 try { manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) }
 catch (error) { if (error.code !== 'ENOENT') throw error }

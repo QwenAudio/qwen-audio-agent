@@ -40,9 +40,10 @@ and do not inherit voice-chat context. Import errors appear in the panel. If no 
 convert the document to Markdown or TXT yourself before importing it.
 
 The built-in library holds up to 40 documents by default. At capacity, it asks you to remove
-unneeded documents instead of silently dropping older entries; existing text documents can still
-be updated. Imports and conversion targets avoid existing filenames on disk, including retained
-copies no longer shown in the list, so new documents do not overwrite them.
+unneeded documents instead of silently dropping older entries; existing documents can still
+be updated, including converted PDF and Word files. Imports and conversion targets avoid
+existing filenames on disk, including retained copies no longer shown in the list, so new
+documents do not overwrite them.
 
 ## 3. Query and Remove
 

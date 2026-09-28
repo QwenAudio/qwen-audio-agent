@@ -109,6 +109,12 @@ function filenameKey(name) {
   return String(name).normalize('NFC').toLowerCase()
 }
 
+function sourceKey(value) {
+  const absolute = resolve(normalizeSourcePath(value))
+  const normalized = absolute.normalize('NFC')
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
 export class KnowledgeLibrary {
   constructor({
     // 资料本体落这里，必须是后端读得到的目录
@@ -197,7 +203,7 @@ export class KnowledgeLibrary {
     return withFileTransaction(this.store?.filePath, () => this.#import(options))
   }
 
-  #import({ ownerId, sourcePath } = {}) {
+  #import({ ownerId, sourcePath, originalSource } = {}) {
     if (!this.configured()) {
       throw new KnowledgeImportError('library_unavailable', '资料库未配置存放目录。')
     }
@@ -218,6 +224,10 @@ export class KnowledgeLibrary {
     if (absolute === parse(absolute).root) {
       throw new KnowledgeImportError('invalid_path', '需要一个具体的文件路径。')
     }
+    const originRaw = originalSource == null || originalSource === ''
+      ? ''
+      : normalizeSourcePath(originalSource)
+    const origin = originRaw ? resolve(originRaw) : absolute
 
     let stats
     try {
@@ -252,9 +262,15 @@ export class KnowledgeLibrary {
     const fingerprint = createHash('sha1')
       .update(readFileSync(absolute))
       .digest('hex')
+    const originKey = sourceKey(origin)
+    const absoluteKey = sourceKey(absolute)
     // 同一份文件重复导入就覆盖，不追加 —— 用户更新了手册再导一次是常见操作。
+    // 复杂文档转换后落盘的是 Markdown，identity 仍按用户原来的 PDF / Word 路径认。
     const existing = entries.find(entry => entry.fingerprint === fingerprint)
-      || entries.find(entry => entry.source === absolute)
+      || entries.find(entry => sourceKey(entry.source) === originKey)
+      || (absoluteKey !== originKey
+        ? entries.find(entry => sourceKey(entry.source) === absoluteKey)
+        : undefined)
     this.assertCapacity(safeOwnerId, existing)
 
     const filename = this.uniqueFilename(safeOwnerId, absolute, existing)
@@ -264,7 +280,7 @@ export class KnowledgeLibrary {
       // Agent conversion may already have written directly to the allocated
       // library target. In that case the source is the destination and there
       // is nothing left to copy.
-      if (absolute !== resolve(destination)) {
+      if (sourceKey(absolute) !== sourceKey(destination)) {
         // The shared index lock serializes Gateway imports. Also protect a new
         // destination from files created outside that lock after name allocation.
         copyFileSync(absolute, destination, existing ? 0 : constants.COPYFILE_EXCL)
@@ -282,7 +298,7 @@ export class KnowledgeLibrary {
       filename,
       bytes: stats.size,
       importedAt: this.now(),
-      source: absolute,
+      source: origin,
       fingerprint,
       // 内容变了就要重新摘要
       summarised: Boolean(existing?.summarised && existing.fingerprint === fingerprint),
@@ -350,8 +366,12 @@ export class KnowledgeLibrary {
       throw new KnowledgeImportError('not_convertible', '这类文件不需要复杂文档转换。')
     }
     this.load()
-    this.assertCapacity(String(ownerId || ''))
-    const filename = this.uniqueFilename(ownerId, absolute, null, '.md')
+    const safeOwnerId = String(ownerId || '')
+    const existing = (this.owners.get(safeOwnerId) || [])
+      .find(entry => sourceKey(entry.source) === sourceKey(absolute))
+    this.assertCapacity(safeOwnerId, existing)
+    mkdirSync(this.documentDirectory, { recursive: true, mode: 0o700 })
+    const filename = this.uniqueFilename(ownerId, absolute, existing, '.md')
     return { filename, path: join(this.documentDirectory, filename), ownerId }
   }
 

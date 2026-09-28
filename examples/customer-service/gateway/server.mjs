@@ -6,6 +6,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { loadServiceEnvironment } from '../bootstrap/environment.mjs'
 import { CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION } from './spawn-thinking-tool.mjs'
 import { PolicyKnowledgeProvider } from './policy-knowledge.mjs'
+import {
+  createCustomerServiceTaskAnnouncementRuntime,
+} from './customer-service-announcement-runtime.mjs'
 
 loadServiceEnvironment()
 process.env.QWAUDIO_CONFIG_DIR ||= fileURLToPath(new URL('../.runtime', import.meta.url))
@@ -128,8 +131,10 @@ export function startCustomerServiceGateway({
   const application = createGatewayApplication({
     agent,
     autoStart: false,
+    // 客服回执是场景私有业务协议；通过框架预留的工厂注入其播报投影，
+    // 不向通用 Gateway/announcement 层泄漏客服 artifact 或 schema。
+    taskAnnouncementFactory: createCustomerServiceTaskAnnouncementRuntime,
     spawnThinkingDescription: CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION,
-    delegationHistoryTurns: 10,
     // 【关掉联网检索】客服的信息边界是封闭的：能说的话只该来自
     // domains/*/policy.md 和数据库，每句话都要能追到细则第几行或订单某个字段。
     //

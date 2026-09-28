@@ -411,28 +411,6 @@ test('sends objective and attachments as standard A2A message parts', async () =
   await backend.close()
 })
 
-test('includes opt-in frontend dialogue as bounded context in a new A2A task', async () => {
-  const client = fakeClient({ result: message('收到。') })
-  const backend = new A2ABackendAdapter({
-    agentCard: { name: 'Customer Agent' },
-    clientFactory: async () => ({ client }),
-  })
-  await backend.submit({ ...work(), conversationContext: [
-    { role: 'assistant', content: '我查到了两笔候选订单' },
-    { role: 'user', content: '我要退较贵的相机' },
-  ] })
-  const sent = client.sent[0].message
-  assert.equal(sent.contextId, '')
-  assert.match(sent.parts[0].content.value, /完成请求 1/)
-  assert.match(sent.parts[0].content.value, /我要退较贵的相机/)
-  assert.match(sent.parts[0].content.value, /not proof that a tool succeeded/)
-  assert.deepEqual(sent.metadata?.qwenAudioAuthorizationEvidence, {
-    proposal: '我查到了两笔候选订单',
-    customerReply: '我要退较贵的相机',
-  })
-  await backend.close()
-})
-
 test('normalizes A2A streaming status messages and artifacts into Task updates', async () => {
   const requests = []
   const client = {

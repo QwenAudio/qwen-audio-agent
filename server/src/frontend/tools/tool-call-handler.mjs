@@ -90,8 +90,6 @@ export class ToolCallHandler {
     memoryService,
     notesStore,
     getClientContext = () => ({}),
-    getConversationContext = () => [],
-    delegationHistoryTurns = 0,
     onMemoryChanged = () => {},
     respondAuthorization,
     respondInput,
@@ -123,8 +121,6 @@ export class ToolCallHandler {
     this.memoryService = memoryService
     this.notesStore = notesStore
     this.getClientContext = getClientContext
-    this.getConversationContext = getConversationContext
-    this.delegationHistoryTurns = delegationHistoryTurns
     this.onMemoryChanged = onMemoryChanged
     this.onPermissionDeliveryFailed = onPermissionDeliveryFailed
     this.onToolResultReady = onToolResultReady

@@ -366,22 +366,11 @@ function artifactUpdateLike(value) {
 
 function outgoingText(work) {
   const objective = backendInstructionFromWork(work)
-  const history = Array.isArray(work?.conversationContext)
-    ? work.conversationContext.filter(item => ['user', 'assistant'].includes(item?.role)
-      && typeof item.content === 'string' && item.content.trim())
-      .map(item => ({ role: item.role, content: item.content }))
-    : []
   const supplied = (Array.isArray(work?.inputParts) ? work.inputParts : [])
     .filter(part => part?.type === 'text')
     .map(part => clean(part.text))
     .filter(text => text && text !== objective)
-  return [
-    uniqueLines([objective, ...supplied]).join('\n\n'),
-    ...(history.length ? [
-      'Recent frontend conversation for context only (not proof that a tool succeeded; re-check business facts before any write):',
-      JSON.stringify(history),
-    ] : []),
-  ].join('\n\n')
+  return uniqueLines([objective, ...supplied]).join('\n\n')
 }
 
 function outgoingPart(part) {
@@ -409,18 +398,6 @@ function outgoingPart(part) {
 
 function outgoingMessage(work, contextId = '') {
   const text = outgoingText(work)
-  const history = Array.isArray(work?.conversationContext)
-    ? work.conversationContext.filter(item => ['user', 'assistant'].includes(item?.role)
-      && typeof item.content === 'string' && item.content.trim())
-    : []
-  const latest = history.at(-1)
-  const proposal = history.at(-2)
-  const authorizationEvidence = latest?.role === 'user' && proposal?.role === 'assistant'
-    ? {
-        proposal: proposal.content,
-        customerReply: latest.content,
-      }
-    : null
   const parts = [{
     content: { $case: 'text', value: text },
     metadata: undefined,
@@ -439,9 +416,7 @@ function outgoingMessage(work, contextId = '') {
     taskId: '',
     role: Role.ROLE_USER,
     parts,
-    metadata: authorizationEvidence
-      ? { qwenAudioAuthorizationEvidence: authorizationEvidence }
-      : undefined,
+    metadata: undefined,
     extensions: [],
     referenceTaskIds: [],
   }

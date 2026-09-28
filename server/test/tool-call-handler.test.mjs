@@ -29,8 +29,6 @@ function harness({
   frontendKnowledge,
   frontendToolSources,
   disabledTools,
-  getConversationContext = () => [],
-  delegationHistoryTurns = 0,
   getTurnId = () => 'turn-one',
   getTurnGeneration = () => 1,
 } = {}) {
@@ -77,8 +75,6 @@ function harness({
     permissionPolicy,
     onPermissionDeliveryFailed,
     getClientContext: () => clientContext,
-    getConversationContext,
-    delegationHistoryTurns,
     presenceController,
     onAgentActivity,
     inputAssets,
@@ -802,30 +798,6 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
     receivedOptions.taskId,
     taskForId(kit.manager, kit.outputs[0][1].task_id).id,
   )
-})
-
-test('snapshots opt-in frontend history when spawning, including earlier turns', async () => {
-  let received
-  const messages = [
-    { role: 'user', content: '我要改订单 W123' },
-    { role: 'assistant', content: '查到订单状态是待发货' },
-    { role: 'user', content: '改成新地址' },
-  ]
-  const kit = harness({
-    getConversationContext: () => messages,
-    delegationHistoryTurns: 10,
-    coordinator: { run: async input => { received = input; return { content: '完成' } } },
-  })
-  await kit.handler.handle({ call_id: 'call-history', name: 'spawn_thinking',
-    arguments: JSON.stringify({ objective: '把订单 W123 改成新地址' }),
-  }, { turnId: 'turn-one', turnGeneration: 1 })
-  messages.push({ role: 'assistant', content: '派单后才出现的回复' })
-  await waitForTask(kit.manager, kit.outputs[0][1].task_id)
-  assert.deepEqual(received.conversationContext, [
-    { role: 'user', content: '我要改订单 W123' },
-    { role: 'assistant', content: '查到订单状态是待发货' },
-    { role: 'user', content: '改成新地址' },
-  ])
 })
 
 test('automatically carries current-turn attachments into spawned work', async () => {

@@ -54,15 +54,14 @@ export class TaskOperations {
     return this.taskManager.list({ sessionId, active, ...filters, ownerId: owner(context) })
   }
 
-  submit({ objective, inputParts = [], conversationContext = [], submissionKey }, context) {
+  submit({ objective, inputParts = [], submissionKey }, context) {
     const ownerId = owner(context)
     const { sessionId = 'main', turnId } = context
     return this.taskManager.create({
       objective, ownerId, sessionId, turnId, submissionKey,
       laneKey: `backend:${ownerId}`,
       laneLimit: 1,
-      runner: (_objective, execution) => this.run({ objective, inputParts,
-        ...(conversationContext.length ? { conversationContext } : {}) }, {
+      runner: (_objective, execution) => this.run({ objective, inputParts }, {
         ...execution, ownerId, sessionId, turnId,
       }),
       canceler: async ({ task, previousStatus, abort }) => {

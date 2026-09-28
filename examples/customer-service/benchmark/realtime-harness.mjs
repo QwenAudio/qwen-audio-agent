@@ -209,7 +209,6 @@ export async function createFullHarness({ provider, agentServer, serviceOrigin, 
     conversationSync: new ConversationSync(), memoryProvider: null,
     knowledgeRetrievalProvider: null, webSearchProvider: null, urlFetcher: null,
     spawnThinkingDescription: CUSTOMER_SERVICE_SPAWN_THINKING_DESCRIPTION,
-    delegationHistoryTurns: 10,
   })
   let ws, failure, lastEventAt = Date.now(), ready = false, responses = 0
   const texts = [], activeResponses = new Set(), tasks = new Map()

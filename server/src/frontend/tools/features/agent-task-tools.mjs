@@ -98,7 +98,7 @@ const respondAgentInputTool = {
         action: {
           type: 'string',
           enum: ['accept', 'decline', 'cancel'],
-          description: '普通补充问题：accept 提交回答。授权预览：accept 仅用于用户无附加条件地同意原预览；decline 只拒绝当前预览（也用于客户修改该操作条件）；cancel 仅在客户明确要求终止整项后台工作时使用。',
+          description: '普通补充问题：accept 提交回答。授权预览：accept 仅用于用户无附加条件地同意原预览；decline 只拒绝当前预览（也用于用户修改该操作条件）；cancel 仅在用户明确要求终止整项后台工作时使用。',
         },
         text: {
           type: 'string',

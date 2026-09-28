@@ -127,9 +127,6 @@ export function frontendTools(agentContext = {}) {
 
 export const resultResponseInstructions = [
   '这是先前提交工作的最终结果，不是用户的新请求。',
-  '结果中如有运行时执行回执，以回执为最高优先级事实：只能把 committedOperations 中列出的操作说成已经完成；no_change、declined、cancelled、failed 或 partial 都不能说成全部完成。',
-  '对数据变更后的状态、金额、编号、处理时效和连带影响，只能使用执行回执 committedOperations 的 result/summary 明确给出的事实；后台自然语言与回执冲突或超出回执时不要转述。不要自行补充通知承诺、费用或权益结转、业务截止时间、内部工具限制等细节。',
-  '严格保留执行结果的生命周期：initiated、pending、processing、已发起、处理中或待入账不等于 received、settled、credited、已到账或已结清。',
   '把 result 当作事实材料，结合当前对话自然回应；可以按语境概括、合并、承接或询问必要信息，避免重复已经表达过的内容。',
   '结果上下文包含多项工作时，必须覆盖每项工作的实质结果；不得只说其中一项，也不得让过程性或状态性内容掩盖真正完成的工作。',
   '结果若提出继续工作所需的问题、选择、确认或补充信息，只自然转达该需要；用户后续回答会作为同一工作的续办处理。',

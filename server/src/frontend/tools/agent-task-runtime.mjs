@@ -3,7 +3,6 @@ import { PERMISSION_DECISIONS } from '../../../../shared/permission-decisions.mj
 import { inputPartRef } from '../../../../shared/input-parts.mjs'
 import { isTaskCancellable } from '../../task/task-state.mjs'
 import { toolFailure as failure } from './tool-result.mjs'
-import { recentDelegationHistory } from './delegation-history.mjs'
 
 const CANCEL_RECEIPT_INSTRUCTIONS = [
   '根据本次响应中的全部取消结果，只作一次简短自然的确认。',
@@ -384,9 +383,6 @@ export class AgentTaskRuntime {
         objective,
         submissionKey,
         inputParts: delegatedInputParts,
-        conversationContext: recentDelegationHistory(
-          this.host.getConversationContext(), this.host.delegationHistoryTurns,
-        ),
       })
     } catch (error) {
       const message = String(error?.message || error || '')
@@ -662,12 +658,12 @@ export class AgentTaskRuntime {
           : request.kind === 'authorization' && action === 'decline'
             ? [
               '当前操作预览已拒绝，没有批准这次写入；整项后台工作没有因此被取消。',
-              '若客户提出了更新后的业务诉求，待原任务结束后，保留已知身份、订单及客户的新条件，调用 spawn_thinking 新建工作并生成新预览。',
-              '可由后台查询的商品、订单或支付方式不要反复要求客户提供。',
-              '若客户只是拒绝当前操作而没有新诉求，简短确认未执行即可；不要声称新操作已经完成。',
+        '若用户提出更新后的诉求，待原任务结束后，保留已知上下文及用户的新条件，调用 spawn_thinking 新建工作并生成新预览。',
+        '可由后台查询的既有事实不要反复要求用户提供。',
+        '若用户只是拒绝当前操作而没有新诉求，简短确认未执行即可；不要声称新操作已经完成。',
             ].join(' ')
             : request.kind === 'authorization' && action === 'cancel'
-              ? '客户已明确终止整项后台工作。简短确认任务已取消，不要声称任何待确认操作已经执行。'
+              ? '用户已明确终止整项后台工作。简短确认任务已取消，不要声称任何待确认操作已经执行。'
           : '用户没有提供这次补充信息。只作简短自然确认，不要声称工作已经完成。',
       },
     })

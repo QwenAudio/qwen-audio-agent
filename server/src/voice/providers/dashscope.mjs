@@ -100,7 +100,6 @@ export const dashscopeProvider = {
 
   get capabilities() {
     return {
-      singleResponseSlot: true,
       perResponseInstructions: true,
       singleResponseSlot: true,
       sessionOutputVoice: true,

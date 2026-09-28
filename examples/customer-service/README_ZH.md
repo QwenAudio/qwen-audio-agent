@@ -8,6 +8,16 @@
 
 当前适合本地、单通话演示；不是生产客服系统，也不是官方 τ-bench 的完整实现。
 
+## 这个示例展示什么
+
+- **低延迟前台：**身份核验和能完整完成的只读查询由 Realtime 直接处理，不额外绕行后台。
+- **业务任务委托：**写操作、涉款、不可逆及组合任务通过 `spawn_thinking`，经 A2A 交给可替换的后台 Agent。
+- **可靠的上下文交接：**每个后台任务自动获得最近最多十轮客户/客服对话；对话里没有的已核实编号和
+  前台查询结果，则由 `objective` 显式交接。
+- **唯一业务事实源：**前后台 MCP 工具面共用 executor、数据库、policy guards 和批准生命周期。
+- **可管理的 Policy：**配置台从 policy 中抽取候选供人工裁决，并通过 diff、备份和审计机制应用
+  决策表、流程提示、工具归属和 demo 数据变更。
+
 ## 客服演示
 
 **从自然对话，到业务办结。** 通过语音取消订单，展示身份核验与口头纠错、订单查询、
@@ -111,17 +121,25 @@ Ctrl+C 结束 bootstrap 启动的进程组。业务状态常驻内存；进程�
 
 ## 前后台如何协作
 
-```text
-客服工作台 ── Gateway 协议 ──► Gateway ── A2A ──► 后台 Agent
-    │                            │                    │
-    │ HTTP / SSE                 │ frontend MCP       │ backend MCP
-    └────────────────────────────┴────────────────────┘
-                                 ▼
-                         service：唯一业务状态源
-                                 ▲
-                      人工坐席台读取状态与交接信息
+```mermaid
+flowchart LR
+    customer([客户]) --> workspace[语音客服工作台]
+    workspace -->|Realtime 对话| gateway[Gateway / 前台]
 
-Policy 配置台 ──► domains/<domain> 配置和 gateway 工具面配置
+    gateway -->|完整核验与查询| fmcp[前台 MCP 工具面]
+    gateway -->|spawn_thinking<br/>objective + 最近十轮对话| a2a[A2A Task]
+    a2a --> agent[后台 Agent]
+    agent --> bmcp[后台 MCP 工具面]
+
+    fmcp --> service[(业务 Service<br/>唯一状态 + executor)]
+    bmcp --> service
+    service -->|状态 / 审计| workspace
+    service --> desk[人工坐席台]
+
+    console[Policy 配置台] -->|guards / flows / 工具归属 / demo 数据| config[领域配置]
+    config --> gateway
+    config --> agent
+    config --> service
 ```
 
 前台面是后台面的子集，包含核验、只读查询和 `transfer_to_human`。
@@ -133,6 +151,35 @@ Policy 配置台 ──► domains/<domain> 配置和 gateway 工具面配置
 `policy.md` 通过当前域的 knowledge 检索源供前台查询；公网搜索和用户画像在本示例中关闭。
 资格、权限和金额规则主要由 `guards.json` 决策表执行。
 `flows.json` 注入后台 prompt 安排步骤顺序，不是强制工作流引擎。
+
+### 默认前后台边界
+
+| 路径 | 判断标准 | 典型工具 |
+|---|---|---|
+| Realtime 前台 | 当前可见工具能够完整回答，并且不涉及受保护的业务写入 | 身份核验、订单/预订查询、库存、航班搜索与状态 |
+| 后台 Agent | 客户目标会改变业务状态、涉及金额、需要批准、不可逆，或需要组合调查 | 取消/退款、退货、改地址、改签、改舱/座位/行李、补偿 |
+| 人工交接 | policy 缺失、金额超权限，或客户明确要求人工 | `transfer_to_human`（保留在前台，避免无意义的 A2A 往返） |
+
+管理员可以在 Policy 配置台调整工具归属；但把受保护的写操作移到前台会被标记为风险，
+因为前台没有可挂起的 `auth_required` 批准生命周期。
+
+## 评测结果
+
+公开的 EVA Airline 适配评测包含 EVA-Bench-mix 的全部 50 条 Airline 任务，并采用
+tau2 风格的对话和终态评分协议，在相同任务内容上比较 Realtime 前台、完整客服 Harness
+和纯文本后台模型。
+
+| 评测路径 | 通过任务 | Task completion |
+|---|---:|---:|
+| 仅 Realtime API | 22 / 50 | **44%** |
+| Realtime API + 客服 Harness + Qwen3.8-Max 后台 | 31 / 50 | **62%** |
+| 仅 Qwen3.8-Max | 34 / 50 | **68%** |
+
+三条路径统一使用 GPT-5.6-Luna 作为用户模拟器与断言 judge。每条任务使用隔离数据库、
+完整 EVA Airline policy 和原始 EVA FC schema。输入输出都是文本，因此不衡量 ASR、TTS、
+打断和物理音频质量。仅当 provider、传输或 worker 超时导致任务无法正常完成时补跑；正常完成但
+得分为零的任务不会重试。这是系统对比，不是官方 EVA 或 tau2 榜单成绩。详细口径和复现命令见
+[评测结果说明](benchmark/EVA_AIRLINE_RESULTS.md)与完整的[评测指南](benchmark/README.md)。
 
 ### 批准不是模型填一个 true
 

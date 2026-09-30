@@ -509,6 +509,23 @@ test('GPT-Live 1 protocol closes a spoken segment once output goes idle', async 
   assert.deepEqual(protocol.normalizeIncoming({ type: 'gpt-live-1.output_idle' }), [])
 })
 
+test('GPT-Live 1 keeps a one-word answer whose transcript lands just after a wordless segment closed', () => {
+  let clock = 0
+  const protocol = createGptLive1Protocol({ now: () => clock })
+  // A sound the service never transcribes; idle closes it without words.
+  protocol.normalizeIncoming({ type: 'session.output_audio.delta', delta: SPEECH, start_ms: 0, end_ms: 100 })
+  assert.deepEqual(protocol.normalizeIncoming({ type: 'gpt-live-1.output_idle' }).map(event => event.type), ['response.done'])
+  // The answer's transcript arrives 50 ms later: a new answer, not a trailing fragment.
+  clock = 50
+  const spoken = protocol.normalizeIncoming({ type: 'session.output_transcript.delta', delta: '二。', start_ms: 1600, end_ms: 1800 })
+  assert.deepEqual(spoken.map(event => event.type), ['response.created', 'response.output_audio_transcript.delta'])
+  assert.equal(spoken[1].delta, '二。')
+  // A fragment this soon after an answer that did speak words still trails it.
+  protocol.normalizeIncoming({ type: 'gpt-live-1.output_idle' })
+  clock = 100
+  assert.deepEqual(protocol.normalizeIncoming({ type: 'session.output_transcript.delta', delta: '嗯', start_ms: 1900, end_ms: 2000 }), [])
+})
+
 test('connects to a GPT-Live 1 mock service with session.start and no session.update', { timeout: 10000 }, async t => {
   withConfig(t, {
     gptLive1ApiKey: 'live-test',

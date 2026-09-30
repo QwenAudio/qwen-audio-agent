@@ -540,12 +540,14 @@ export function createGptLive1Protocol({
       response_id: voiceResponseId,
       __voicePlayback: true,
     })
+    // A late fragment can trail only an answer that spoke words or was muted;
+    // one that closed without a transcript is not what the fragment belongs to.
+    lastFinishAt = transcript || Number.isFinite(interruptedAt) ? now() : -Infinity
     voiceResponseId = ''
     voiceTranscript = ''
     lastOutputEndMs = -Infinity
     interruptedAt = NaN
     explicitCancel = false
-    lastFinishAt = now()
   }
 
   // The user started speaking over the answer, or the Gateway cancelled it.

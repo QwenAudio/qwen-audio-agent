@@ -11,6 +11,7 @@
 | Qwen Audio / Omni 3.5 / Omni 3.8 | `dashscope`（默认） | `DASHSCOPE_API_KEY`；Omni 3.8 还需将 `QWEN_AUDIO_REALTIME_BASE_URL` 设为业务空间专属地址 | [Audio 语音](../voice-frontends/qwen-audio-realtime.zh.md) / [Omni 视觉](../voice-frontends/qwen-omni-realtime.zh.md) |
 | StepAudio 3 | `stepfun` | `STEPFUN_API_KEY` | [StepFun](../voice-frontends/stepfun.zh.md) |
 | OpenAI Realtime | `gpt-live` | `OPENAI_API_KEY` | [GPT-Live](../voice-frontends/gpt-live.zh.md) |
+| OpenAI GPT-Live 1（Live API） | `gpt-live-1` | `OPENAI_API_KEY`，或单独的 `GPT_LIVE_1_API_KEY` | [GPT-Live 1](../voice-frontends/gpt-live-1.zh.md) |
 | Gemini Live | `google-live` | `GOOGLE_API_KEY` | [Google Live](../voice-frontends/google-live.zh.md) |
 | 豆包 Seeduplex | `doubao-seeduplex` | `DOUBAO_API_KEY` | 模型、音色与服务地址配置见下表 |
 | Hugging Face speech-to-speech | `speech-to-speech` | 先启动服务；默认 `ws://127.0.0.1:8765/v1/realtime` | [本地模型链路](../voice-frontends/speech-to-speech.zh.md) |
@@ -40,6 +41,7 @@ STEPFUN_API_KEY=your-stepfun-key
 | DashScope | `QWEN_AUDIO_REALTIME_MODEL` | Audio：`QWEN_AUDIO_REALTIME_VOICE`；Omni：`QWEN_OMNI_REALTIME_VOICE` | `QWEN_AUDIO_REALTIME_BASE_URL` |
 | StepFun | `STEPFUN_REALTIME_MODEL` | `STEPFUN_REALTIME_VOICE` | `STEPFUN_REALTIME_URL` |
 | GPT-Live | `GPT_LIVE_REALTIME_MODEL` | `GPT_LIVE_REALTIME_VOICE` | `GPT_LIVE_REALTIME_URL` |
+| GPT-Live 1 | `GPT_LIVE_1_REALTIME_MODEL` | `GPT_LIVE_1_REALTIME_VOICE` | `GPT_LIVE_1_REALTIME_URL` |
 | Google Live | `GOOGLE_LIVE_REALTIME_MODEL` | `GOOGLE_LIVE_REALTIME_VOICE` | `GOOGLE_LIVE_REALTIME_URL` |
 | 豆包 Seeduplex | `DOUBAO_SEEDUPLEX_REALTIME_MODEL` | `DOUBAO_SEEDUPLEX_REALTIME_VOICE` | `DOUBAO_SEEDUPLEX_REALTIME_URL` |
 | speech-to-speech | 在上游服务设置 | 在上游服务设置 | `SPEECH_TO_SPEECH_REALTIME_URL` |

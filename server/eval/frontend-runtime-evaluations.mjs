@@ -141,6 +141,7 @@ function presentationHarness() {
     getNonVoiceClient: () => false,
     getResponseTurnCandidate: () => null,
     clearResponseCandidate: () => {},
+    clearResponseWatchdog: () => {},
     announcementQuietMs: 60_000,
     responseContextCleanupMs: 60_000,
   })

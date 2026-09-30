@@ -41,6 +41,7 @@ OPENAI_API_KEY=your-openai-key
 
 ## 继续阅读
 
+- [GPT-Live 1（Live API）](gpt-live-1.zh.md)
 - [Google Gemini Live](google-live.zh.md)
 - [前台配置参考](../configuration/frontend.zh.md)
 - [自定义 Provider](custom-provider.zh.md)

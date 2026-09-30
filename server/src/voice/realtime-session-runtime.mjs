@@ -53,6 +53,20 @@ export function isSleepActivityEvent(event = {}) {
  * It never owns a socket, protocol handshake, credential or connection lease.
  * Task policy stays in orchestration; providers, turns and playback stay here.
  */
+// The frontend consults this gate more than once per request: decide once, so
+// a request that went out stays wanted after the backend settles the permission.
+// A refused request never went out and is retried only while the permission is open.
+export function permissionResponseGate({ isCandidate, hasPendingPermission, claim }) {
+  let decided = null
+  return ({ refused = false } = {}) => {
+    if (decided === null) {
+      decided = isCandidate() && hasPendingPermission()
+      if (decided) claim()
+    }
+    return refused ? decided && hasPendingPermission() : decided
+  }
+}
+
 export function createRealtimeSessionRuntime({
   ownerId, sessionId, send, logger: connectionLogger, observers,
   voiceAccess, actionCapabilities, initialInputSuspension = null,
@@ -446,10 +460,13 @@ export function createRealtimeSessionRuntime({
     turnCitations,
     sessionDigests,
   })
-  const clearResponseCandidate = () => {
+  const clearResponseWatchdog = () => {
     clearTimeout(responseStartWatchdog)
-    clearTimeout(permissionResponseTimer)
     responseStartWatchdog = null
+  }
+  const clearResponseCandidate = () => {
+    clearResponseWatchdog()
+    clearTimeout(permissionResponseTimer)
     permissionResponseTimer = null
     responseTurnCandidate = null
   }
@@ -464,14 +481,11 @@ export function createRealtimeSessionRuntime({
         turnId: context.turnId,
         turnGeneration: context.turnGeneration,
       }, {
-        shouldCreate: () => {
-          if (
-            responseTurnCandidate !== context
-            || !hasPendingPermission()
-          ) return false
-          clearResponseCandidate()
-          return true
-        },
+        shouldCreate: permissionResponseGate({
+          isCandidate: () => responseTurnCandidate === context,
+          hasPendingPermission,
+          claim: clearResponseCandidate,
+        }),
       }).catch(error => emit({
         type: 'error',
         message: `暂时无法处理权限回答：${error.message}`,
@@ -545,6 +559,7 @@ export function createRealtimeSessionRuntime({
     getNonVoiceClient: () => nonVoiceClient,
     getResponseTurnCandidate: () => responseTurnCandidate,
     clearResponseCandidate,
+    clearResponseWatchdog,
     announcementQuietMs: config.announcementQuietMs,
     responseContextCleanupMs: RESPONSE_CONTEXT_CLEANUP_MS,
     turnCitations,

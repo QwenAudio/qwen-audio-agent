@@ -74,6 +74,7 @@ export class RealtimePresentationRuntime {
     getNonVoiceClient,
     getResponseTurnCandidate,
     clearResponseCandidate,
+    clearResponseWatchdog,
     announcementQuietMs,
     responseContextCleanupMs,
     turnCitations = null,
@@ -91,6 +92,7 @@ export class RealtimePresentationRuntime {
     this.getNonVoiceClient = getNonVoiceClient
     this.getResponseTurnCandidate = getResponseTurnCandidate
     this.clearResponseCandidate = clearResponseCandidate
+    this.clearResponseWatchdog = clearResponseWatchdog
     this.announcementQuietMs = announcementQuietMs
     this.responseContextCleanupMs = responseContextCleanupMs
     this.turnCitations = turnCitations
@@ -194,7 +196,10 @@ export class RealtimePresentationRuntime {
     }
     if (automaticTurn) {
       this.turns.commit(automaticTurn)
-      this.clearResponseCandidate()
+      // A voice-only reply (concurrentVoicePlayback) shows the model answering,
+      // but only its backend can settle a pending permission: keep that fallback.
+      if (event.__voicePlayback && this.#capability('concurrentVoicePlayback')) this.clearResponseWatchdog()
+      else this.clearResponseCandidate()
     }
     if (!context.responseStarted && !context.suppressed) {
       context.responseStarted = true
@@ -266,10 +271,21 @@ export class RealtimePresentationRuntime {
     })
   }
 
+  #capability(name) {
+    return this.getFrontend()?.capabilities?.[name] === true
+  }
+
+  // With a transcript that trails its audio (transcriptTrailsAudio), a caption
+  // the user cut into keeps filling until the model stops.
+  #transcriptTrails(context) {
+    return Boolean(context.userInterrupted && context.captionShown)
+      && this.#capability('transcriptTrailsAudio')
+  }
+
   #audioTranscriptDelta(event) {
     const id = realtimeResponseId(event)
     const context = this.#contextFor(event)
-    if (context.suppressed) return
+    if (context.suppressed && !this.#transcriptTrails(context)) return
     if (!context.playbackStarted) {
       context.pendingTranscripts.push({
         content: event.delta || '',
@@ -288,7 +304,20 @@ export class RealtimePresentationRuntime {
   #audioTranscriptDone(event) {
     const id = realtimeResponseId(event)
     const context = this.#contextFor(event)
-    if (context.suppressed) return
+    if (context.suppressed) {
+      if (!this.#transcriptTrails(context)) return
+      // The caption closes when the model stops; the interrupted answer is
+      // still not recorded.
+      context.transcriptDone = true
+      this.send({
+        type: GatewayServerEvent.TRANSCRIPT_FINAL,
+        role: 'assistant',
+        content: event.transcript || '',
+        responseId: id,
+        ...this.publicContext(context),
+      })
+      return
+    }
     context.transcriptDone = true
     context.assistantTranscript = event.transcript || ''
     if (!context.playbackStarted) {
@@ -389,14 +418,18 @@ export class RealtimePresentationRuntime {
       this.#finishContextIfComplete(id, context)
     } else {
       const nonVoiceClient = this.getNonVoiceClient()
+      // A full-duplex frontend speaks Gateway-origin responses under a separate
+      // playback id, so response.done is the only signal tied to the announcement.
+      const spokenByVoiceLayer = this.#capability('concurrentVoicePlayback')
+      const confirmsOnResponseDone = nonVoiceClient || spokenByVoiceLayer
       const completedNonVoiceAnnouncement = (
         context?.origin === 'announcement'
-        && nonVoiceClient
+        && confirmsOnResponseDone
         && !failed
       )
       const completedNonVoiceTaskNotification = (
         context?.consumesTaskNotification
-        && nonVoiceClient
+        && confirmsOnResponseDone
         && !failed
       )
       if (
@@ -473,6 +506,7 @@ export class RealtimePresentationRuntime {
   }
 
   #emitTranscript({ id, context, content, final }) {
+    if (!final) context.captionShown = true
     const citations = final && String(content || '').trim()
       ? this.turnCitations?.consume(context.turnId) || []
       : []
@@ -620,6 +654,7 @@ export class RealtimePresentationRuntime {
       }
     }
     if (context?.playbackStarted && reason === 'user_interruption') {
+      context.userInterrupted = true
       this.send({
         type: GatewayServerEvent.RESPONSE_INTERRUPTED,
         responseId: id,

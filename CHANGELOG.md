@@ -2,9 +2,16 @@
 
 ## Unreleased
 
+### 主要更新
+
+- 新增 GPT-Live 1 Realtime Provider（OpenAI Live API，全双工）：语音层持续对话，推理与
+  Gateway 工具调用委托给一个 Responses 模型；启动时以 `session.input` 接续近期历史，
+  后端输入历史按会话额度自动裁剪。默认 Provider 不变，其他 Provider 除下述两处修复外行为不变。
+
 ### 修复与改进
 
 - 后台可用性缓存对「不可达」结果也按 TTL 后台重探，后台恢复后的首个派活回执不再被过期结果拒绝。
+- 修复待答权限的兜底 `response.create` 从未发出的问题：前端在入队和发送前各询问一次 `shouldCreate`，旧实现首次即清除轮次候选、复查时返回 false，现改为一次判定；带自身 `response_id` 的命令错误不再结算无关的后端请求。
 
 ## 2.0.1
 

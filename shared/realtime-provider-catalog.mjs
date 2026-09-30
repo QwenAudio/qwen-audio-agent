@@ -14,6 +14,7 @@ export {
   DEFAULT_DASHSCOPE_REALTIME_MODEL,
   DEFAULT_DASHSCOPE_REALTIME_VOICE,
   DEFAULT_GPT_LIVE_REALTIME_MODEL,
+  DEFAULT_GPT_LIVE_1_REALTIME_MODEL,
   DEFAULT_GOOGLE_LIVE_REALTIME_MODEL,
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_MODEL,
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_VOICE,
@@ -35,6 +36,7 @@ export {
   DEFAULT_REALTIME_PROVIDER,
   DEFAULT_DASHSCOPE_REALTIME_URL,
   DEFAULT_GPT_LIVE_REALTIME_URL,
+  DEFAULT_GPT_LIVE_1_REALTIME_URL,
   DEFAULT_GOOGLE_LIVE_REALTIME_URL,
   DEFAULT_DOUBAO_SEEDUPLEX_REALTIME_URL,
   DEFAULT_STEPFUN_REALTIME_URL,
@@ -99,6 +101,7 @@ export function realtimeProviderDefinition(value) {
 
 export function assertRealtimeFrontendModel(active) {
   const catalog = realtimeModelCatalog(active.provider)
+  if (catalog?.deploymentNames && active.model) return
   if (catalog && !catalog.profiles.some(profile => profile.id === active.model)) {
     throw new Error(`${catalog.environment}=${active.model} 不属于 ${active.provider}；请为当前 Provider 选择正确的模型`)
   }

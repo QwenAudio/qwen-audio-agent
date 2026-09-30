@@ -129,6 +129,18 @@ name a text-model deployment on the same resource. The adapter sends the same
 - Beyond that seeded history no pre-connection context is injected, and live
   visual frames are not negotiated for this provider.
 
+## Cost
+
+- The Live API bills a session by duration, per second, from `session.start`
+  until it closes; silence, muted input and time spent waiting on the backend
+  all count. Backend model and tool usage is billed separately. See OpenAI's
+  pricing page for the current rate.
+- Input-only mute (the microphone toggle in the WebUI and the desktop app)
+  sends `session.input_audio.mute` and keeps the session open; sleep keeps it
+  open as well. Today the session closes only when the voice client
+  disconnects: closing the page or quitting the desktop app.
+- Closing idle sessions automatically is a follow-up.
+
 ## Validation boundary
 
 Local protocol tests cover session configuration, the client event encoding,

@@ -4,6 +4,7 @@ import {
 } from '../../../../shared/realtime-provider-catalog.mjs'
 import { dashscopeProvider } from './dashscope.mjs'
 import { gptLiveProvider } from './gpt-live.mjs'
+import { gptLive1Provider } from './gpt-live-1.mjs'
 import { googleLiveProvider } from './google-live.mjs'
 import { doubaoSeeduplexProvider } from './doubao-seeduplex.mjs'
 import { s2sProvider } from './s2s.mjs'
@@ -23,6 +24,7 @@ export const defaultRealtimeProviderRegistry = createRealtimeProviderRegistry({
     dashscopeProvider,
     stepfunProvider,
     gptLiveProvider,
+    gptLive1Provider,
     googleLiveProvider,
     doubaoSeeduplexProvider,
     s2sProvider,
@@ -93,6 +95,9 @@ export const REALTIME_PROVIDERS = Object.freeze({
   openai: gptLiveProvider,
   gptlive: gptLiveProvider,
   'gpt-realtime': gptLiveProvider,
+  'gpt-live-1': gptLive1Provider,
+  gptlive1: gptLive1Provider,
+  'openai-live': gptLive1Provider,
   'google-live': googleLiveProvider,
   google: googleLiveProvider,
   'gemini-live': googleLiveProvider,

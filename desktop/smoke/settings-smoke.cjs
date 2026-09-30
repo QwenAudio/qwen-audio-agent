@@ -83,9 +83,19 @@ module.exports = async function settingsSmoke({ BrowserWindow, ipcMain }) {
     await evaluate(`(() => {
       setRealtimeField('stepfunApiKey', 'test-step-key')
       setRealtimeField('stepfunRealtimeVoice', 'step-voice')
+      selectFrontend('gpt-live-1')
+    })()`)
+    assert.equal(await evaluate(`document.querySelector('[data-setting=gptLive1RealtimeModel]').value`), 'gpt-live-1')
+    assert.equal(await evaluate(`document.querySelector('[data-setting=gptLive1RealtimeUrl]').value`), 'wss://api.openai.com/v1/live/sessions')
+    assert.deepEqual(await evaluate(`[...document.querySelectorAll('#realtime-settings-panel [data-realtime-slot]')].map(input => input.dataset.realtimeSlot)`), ['endpoint', 'credential', 'model', 'voice'])
+    await evaluate(`(() => {
+      setRealtimeField('gptLive1RealtimeVoice', 'live-draft')
       selectFrontend('dashscope')
     })()`)
     assert.equal(await evaluate(`document.querySelector('[data-setting=audioRealtimeVoice]').value`), 'audio-draft')
+    await evaluate(`selectFrontend('gpt-live-1')`)
+    assert.equal(await evaluate(`document.querySelector('[data-setting=gptLive1RealtimeVoice]').value`), 'live-draft')
+    await evaluate(`selectFrontend('dashscope')`)
     await evaluate(`setRealtimeField('realtimeModel', 'qwen3.5-omni-plus-realtime')`)
     assert.equal(await evaluate(`document.querySelector('[data-setting=omniRealtimeVoice]').value`), '')
     await evaluate(`(() => {

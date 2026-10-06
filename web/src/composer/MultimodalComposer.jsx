@@ -6,6 +6,8 @@ import {
   withAttachmentAnchors,
 } from '../../../shared/input-parts.mjs'
 import { t } from '../i18n.js'
+import PhotoCapture from './PhotoCapture.jsx'
+import { blobToBase64 } from './camera-input.js'
 
 function filePart(file, index, sourceType = 'file') {
   return new Promise((resolve, reject) => {
@@ -37,6 +39,7 @@ export default function MultimodalComposer({
   const [text, setText] = useState('')
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
+  const [photoOpen, setPhotoOpen] = useState(false)
   const picker = useRef(null)
   const updateAttachments = useCallback(next => {
     setAttachments(next)
@@ -92,6 +95,21 @@ export default function MultimodalComposer({
         >×</button>
       </span>)}
     </div>}
+    {photoOpen && <PhotoCapture
+      onClose={() => setPhotoOpen(false)}
+      onCapture={async (blob, isCurrent) => {
+        const image = await blobToBase64(blob)
+        if (!isCurrent()) return false
+        const id = crypto.randomUUID()
+        const filename = `photo-${Date.now()}.jpg`
+        setAttachments(current => isCurrent() ? [...current, {
+          id, part: createInputFilePart({ mime: 'image/jpeg', filename,
+            url: `data:image/jpeg;base64,${image}` }, current.length),
+        }] : current)
+        setError('')
+        return true
+      }}
+    />}
     <div className="composer-row">
       <button
         className="composer-attach"
@@ -100,6 +118,10 @@ export default function MultimodalComposer({
         aria-label={t('添加图片或文件')}
         onClick={() => picker.current?.click()}
       >＋</button>
+      <button className="composer-photo" type="button" title={t('拍照')} aria-label={t('拍照')}
+        onClick={() => setPhotoOpen(true)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 6l2-3h4l2 3h4v15H4V6z" /><circle cx="12" cy="13" r="4" /></svg>
+      </button>
       <input
         ref={picker}
         type="file"

@@ -1152,6 +1152,11 @@ export function createRealtimeSessionRuntime({
     applyInputSuspension,
     deactivate,
     status: () => realtimeSession.status({ sleeping, waking }),
+    inputState: () => ({
+      inputEnabled,
+      inputSuspended,
+      inputActive: inputEnabled && !inputSuspended && !sleeping && !closed && voiceAccess.isActive(),
+    }),
     updateOutputVoice: updateSessionOutputVoice,
     setAssistantProfile(profile) {
       if (closed) return

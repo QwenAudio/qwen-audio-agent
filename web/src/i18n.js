@@ -1,4 +1,9 @@
 const translations = {
+  '拍照': 'Take photo',
+  '拍摄照片': 'Capture photo',
+  '照片预览': 'Photo preview',
+  '重拍': 'Retake',
+  '加入草稿': 'Add to draft',
   '待命': 'Standby',
   '正在听': 'Listening',
   '正在说': 'Speaking',

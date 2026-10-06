@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MAX_INPUT_FILE_BYTES,
   createInputFilePart,
@@ -38,23 +38,27 @@ export default function MultimodalComposer({
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
   const picker = useRef(null)
-  const updateAttachments = useCallback(next => {
-    setAttachments(next)
-  }, [])
+  const draftGeneration = useRef(0)
+  useEffect(() => () => { draftGeneration.current += 1 }, [])
 
   const addFiles = useCallback(async (fileList, sourceType = 'file') => {
     const files = [...fileList]
     if (!files.length) return
+    const generation = draftGeneration.current
     try {
       const next = await Promise.all(files.map((file, index) => (
         filePart(file, attachments.length + index, sourceType)
       )))
-      updateAttachments([...attachments, ...next])
+      if (generation !== draftGeneration.current) return
+      setAttachments(current => generation === draftGeneration.current
+        ? [...current, ...next]
+        : current)
       setError('')
     } catch (reason) {
+      if (generation !== draftGeneration.current) return
       setError(reason?.message || String(reason))
     }
-  }, [attachments, updateAttachments])
+  }, [attachments.length])
 
   const submit = event => {
     event.preventDefault()
@@ -68,8 +72,10 @@ export default function MultimodalComposer({
       setError(t('Gateway 尚未连接'))
       return
     }
+    // Reads started for the submitted draft must not populate the next one.
+    draftGeneration.current += 1
     setText('')
-    updateAttachments([])
+    setAttachments([])
     setError('')
   }
 
@@ -88,7 +94,7 @@ export default function MultimodalComposer({
         <button
           type="button"
           aria-label={t('移除附件')}
-          onClick={() => updateAttachments(attachments.filter(entry => entry.id !== item.id))}
+          onClick={() => setAttachments(current => current.filter(entry => entry.id !== item.id))}
         >×</button>
       </span>)}
     </div>}

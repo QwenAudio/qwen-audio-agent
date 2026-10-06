@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- WebUI 中文输入法确认候选词时不再误发送草稿；保留普通 Enter 发送与 Shift+Enter 换行行为。
+
 ## 2.0.1
 
 ### 修复与改进

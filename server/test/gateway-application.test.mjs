@@ -1533,3 +1533,44 @@ test('wires rolling summary and preference learning when enabled', async () => {
     await app.close()
   }
 })
+
+test('health client-input capability uses authenticated owner scope and local aggregation', async t => {
+  const directory = mkdtempSync(join(tmpdir(), 'qwaudio-input-health-'))
+  const tokens = ['input-health-user-one-token-over-24-chars', 'input-health-user-two-token-over-24-chars']
+  const application = createTestGatewayApplication({
+    config: { ...config, host: '127.0.0.1', port: 0, webSearchProvider: 'none', webSearchMcpUrl: '',
+      gatewayAccessToken: '', gatewayAccessKeys: JSON.stringify(tokens.map((token, index) => ({ token, owner_id: `user_${index + 1}` }))),
+      gatewayDeviceStatePath: join(directory, 'devices.json'),
+    }, parentPort: null, autoStart: false, frontendMcp: null, frontendOpenApi: null,
+  })
+  t.after(async () => { await application.close(); rmSync(directory, { recursive: true, force: true }) })
+  const calls = []
+  application.services.realtimeGateway.inputStatus = ({ ownerId } = {}) => {
+    calls.push(ownerId)
+    const states = [
+      { clientType: 'cli', inputEnabled: false, inputSuspended: false, inputActive: false },
+      { clientType: 'web', inputEnabled: true, inputSuspended: false, inputActive: true },
+    ]
+    const clients = ownerId === undefined ? states : [states[ownerId === 'user_1' ? 0 : 1]]
+    return { clients, inputEnabled: clients.some(client => client.inputEnabled), inputActive: clients.some(client => client.inputActive) }
+  }
+  application.start()
+  if (!application.server.listening) await once(application.server, 'listening')
+  const { port } = application.server.address()
+  const denied = await requestJson({ port, path: '/api/health', headers: { Host: 'gateway.example.test' } })
+  assert.equal(denied.status, 401)
+  assert.deepEqual(calls, [])
+  for (let index = 0; index < tokens.length; index++) {
+    const response = await requestJson({ port, path: '/api/health?ownerId=user_other',
+      headers: { Host: 'gateway.example.test', Authorization: `Bearer ${tokens[index]}` } })
+    assert.equal(response.status, 200)
+    assert.ok(response.body.capabilities.includes('input.client-status'))
+    assert.equal(response.body.protocolVersion, '5.10.0')
+    assert.equal(response.body.voiceInput.clients.length, 1)
+    assert.equal(response.body.voiceInput.inputEnabled, index === 1)
+    assert.equal(calls.at(-1), `user_${index + 1}`)
+  }
+  const local = await requestJson({ port, path: '/api/health', headers: { Host: `127.0.0.1:${port}` } })
+  assert.equal(local.body.voiceInput.clients.length, 2)
+  assert.equal(calls.at(-1), undefined)
+})

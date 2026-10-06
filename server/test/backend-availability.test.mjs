@@ -121,3 +121,44 @@ test('treats startup as unknown and retries until the backend is ready', async (
   })
   availability.close()
 })
+
+test('re-probes an unreachable backend once per TTL until it is back, without a snapshot in between', async () => {
+  let probes = 0
+  const availability = new BackendAvailability({
+    ttlMs: 2,
+    probe: async () => {
+      probes += 1
+      return { configured: true, ok: probes >= 2 }
+    },
+  })
+
+  await availability.refresh()
+  assert.equal(availability.snapshot().ok, false)
+  const deadline = Date.now() + 500
+  while (probes < 2 && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 2))
+  }
+  await availability.refreshing
+  assert.deepEqual(availability.snapshot(), {
+    configured: true,
+    ok: true,
+    known: true,
+  })
+  availability.close()
+})
+
+test('does not re-probe a backend that is not configured', async () => {
+  let probes = 0
+  const availability = new BackendAvailability({
+    ttlMs: 1,
+    probe: async () => {
+      probes += 1
+      return { configured: false, ok: false }
+    },
+  })
+
+  await availability.refresh()
+  await new Promise(resolve => setTimeout(resolve, 10))
+  assert.equal(probes, 1)
+  availability.close()
+})

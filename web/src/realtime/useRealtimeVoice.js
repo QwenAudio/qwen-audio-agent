@@ -323,10 +323,9 @@ export default function useRealtimeVoice({
       // GatewayClient owns the wire envelope and supplies event_id for every
       // client event. Keeping that responsibility in the SDK prevents audio,
       // microphone, playback, and lifecycle events from drifting out of GCP.
-      socket.send(event.type === GatewayClientEvent.SLEEP && socket.supports?.(GatewayClientCapability.CLIENT_PRESENCE)
+      return socket.send(event.type === GatewayClientEvent.SLEEP && socket.supports?.(GatewayClientCapability.CLIENT_PRESENCE)
         ? { type: GatewayClientProtocolEvent.CLIENT_PRESENCE_UPDATE, state: 'sleeping' }
-        : event)
-      return true
+        : event) !== false
     } catch {
       return false
     }

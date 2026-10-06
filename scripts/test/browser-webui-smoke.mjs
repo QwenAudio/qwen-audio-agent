@@ -23,6 +23,7 @@ const MOCK_BROWSER_APIS = String.raw`
   const videoCall = location.search.includes('video-call')
   const realAudio = location.search.includes('browser-smoke=real-audio') || videoCall
   const state = {
+    inputMessages: [],
     mediaRequests: 0,
     cameraRequests: 0,
     cameraStops: 0,
@@ -111,6 +112,13 @@ const MOCK_BROWSER_APIS = String.raw`
       const message = JSON.parse(raw)
       state.socketMessages += 1
       document.documentElement.dataset.lastSocketMessage = message.type
+      if (message.type === 'input.message') {
+        if (location.search.includes('send-failure') && !this.failedInput) {
+          this.failedInput = true
+          throw new Error('controlled input send failure')
+        }
+        state.inputMessages.push(message)
+      }
       if (message.type === 'session.hello') {
         if (message.protocol?.min !== protocolVersion || message.protocol?.max !== protocolVersion) {
           throw new Error('Browser smoke received an unexpected Gateway protocol version')
@@ -366,6 +374,7 @@ const MOCK_BROWSER_APIS = String.raw`
     }
   }
   window.browserSmoke = {
+    inputMessages: () => [...state.inputMessages],
     sleepTool() {
       document.documentElement.dataset.actionResult = ''
       serverEvent(state.activeSocket, { type: 'client.action.request',
@@ -769,6 +778,35 @@ async function testCameraPermission(context, diagnostics) {
   await finishPage(unsupported, diagnostics)
 }
 
+async function testComposerSendFailure(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=send-failure', diagnostics)
+  await waitForAttribute(page, 'data-negotiated-socket', value => Number(value) > 0)
+  const composer = page.locator('.multimodal-composer')
+  const input = composer.locator('textarea')
+  await input.fill('keep this draft')
+  await composer.locator('input[type=file]').setInputFiles({
+    name: 'draft.txt', mimeType: 'text/plain', buffer: Buffer.from('keep this attachment'),
+  })
+  await composer.locator('.composer-attachment').waitFor()
+  await composer.getByRole('button', { name: '发送', exact: true }).click()
+  await composer.getByRole('alert').waitFor({ timeout: 5_000 })
+  assert.equal(await input.inputValue(), 'keep this draft')
+  assert.equal(await composer.locator('.composer-attachment').count(), 1)
+  assert.deepEqual(await page.evaluate(() => window.browserSmoke.inputMessages()), [])
+
+  await composer.getByRole('button', { name: '发送', exact: true }).click()
+  await page.waitForFunction(() => document.querySelector('.multimodal-composer textarea').value === '')
+  assert.equal(await composer.locator('.composer-attachment').count(), 0)
+  assert.equal(await composer.getByRole('alert').count(), 0)
+  const messages = await page.evaluate(() => window.browserSmoke.inputMessages())
+  assert.equal(messages.length, 1, 'Retry must send the retained draft exactly once')
+  assert.ok(messages[0].parts.some(part => part.type === 'text' && part.text.includes('keep this draft')))
+  const file = messages[0].parts.find(part => part.type === 'file')
+  assert.equal(file.filename, 'draft.txt')
+  assert.equal(Buffer.from(file.url.split(',')[1], 'base64').toString(), 'keep this attachment')
+  await finishPage(page, diagnostics)
+}
+
 let server
 let browser
 let context
@@ -786,6 +824,7 @@ try {
   context = await browser.newContext({ locale: 'zh-CN' })
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true })
   tracingActive = true
+  await testComposerSendFailure(context, diagnostics)
   await testHappyPath(context, diagnostics)
   await testBrowserLanguage(context, diagnostics)
   await testReconnectInterruptsPlayback(context, diagnostics)
@@ -801,7 +840,7 @@ try {
   tracingActive = false
   await context.close()
   context = null
-  console.log('Browser WebUI smoke passed: voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
+  console.log('Browser WebUI smoke passed: testComposerSendFailure, voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
 } catch (error) {
   await mkdir(diagnosticsDirectory, { recursive: true })
   const pages = context?.pages?.() || []

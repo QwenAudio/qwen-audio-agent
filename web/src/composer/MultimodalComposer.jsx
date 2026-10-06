@@ -7,7 +7,7 @@ import {
 } from '../../../shared/input-parts.mjs'
 import { t } from '../i18n.js'
 
-function filePart(file, index, sourceType = 'file') {
+function filePart(file, sourceType = 'file') {
   return new Promise((resolve, reject) => {
     if (file.size > MAX_INPUT_FILE_BYTES) {
       reject(new Error(t('文件 {name} 超过 8 MB 限制', { name: file.name })))
@@ -18,12 +18,12 @@ function filePart(file, index, sourceType = 'file') {
     reader.onload = () => {
       resolve({
         id: crypto.randomUUID(),
-        part: createInputFilePart({
+        file: {
           mime: file.type || 'application/octet-stream',
           filename: file.name,
           url: String(reader.result || ''),
           sourceType,
-        }, index),
+        },
       })
     }
     reader.readAsDataURL(file)
@@ -46,19 +46,20 @@ export default function MultimodalComposer({
     if (!files.length) return
     const generation = draftGeneration.current
     try {
-      const next = await Promise.all(files.map((file, index) => (
-        filePart(file, attachments.length + index, sourceType)
-      )))
+      const next = await Promise.all(files.map(file => filePart(file, sourceType)))
       if (generation !== draftGeneration.current) return
       setAttachments(current => generation === draftGeneration.current
-        ? [...current, ...next]
+        ? [...current, ...next.map((item, index) => ({
+            id: item.id,
+            part: createInputFilePart(item.file, current.length + index),
+          }))]
         : current)
       setError('')
     } catch (reason) {
       if (generation !== draftGeneration.current) return
       setError(reason?.message || String(reason))
     }
-  }, [attachments.length])
+  }, [])
 
   const submit = event => {
     event.preventDefault()

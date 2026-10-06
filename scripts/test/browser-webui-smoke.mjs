@@ -808,25 +808,33 @@ async function testComposerAttachments(context, diagnostics) {
   })
   const picker = page.locator('.multimodal-composer input[type=file]')
   const attachments = page.locator('.composer-attachment')
-  const add = name => picker.setInputFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(name) })
+  const add = (name, mimeType = 'text/plain') => picker.setInputFiles({
+    name,
+    mimeType,
+    buffer: mimeType === 'image/png'
+      ? Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhT8AAAAASUVORK5CYII=', 'base64')
+      : Buffer.from(name),
+  })
   const complete = name => page.evaluate(name => window.composerReads.complete(name), name)
   const names = () => attachments.locator(':scope > span').allTextContents()
   const waitForCount = count => page.waitForFunction(count => (
     document.querySelectorAll('.composer-attachment').length === count
-  ), count)
+  ), count, { timeout: 5_000 })
 
   // Finish two independent picker operations in reverse order.
-  await add('first.txt')
-  await add('second.txt')
-  await complete('second.txt')
+  await add('first.png', 'image/png')
+  await add('second.png', 'image/png')
+  await complete('second.png')
   await waitForCount(1)
-  await complete('first.txt')
+  await complete('first.png')
   await waitForCount(2)
-  assert.deepEqual(await names(), ['@second.txt', '@first.txt'])
+  assert.deepEqual(await names(), ['[Image 1]', '[Image 2]'])
   await page.getByRole('button', { name: '发送', exact: true }).click()
   await waitForCount(0)
   assert.deepEqual(await page.evaluate(() => window.composerInputs.at(-1).parts
-    .filter(part => part.type === 'file').map(part => part.filename)), ['second.txt', 'first.txt'])
+    .filter(part => part.type === 'file').map(part => part.filename)), ['second.png', 'first.png'])
+  assert.deepEqual(await page.evaluate(() => window.composerInputs.at(-1).parts
+    .filter(part => part.type === 'file').map(part => part.source.text.value)), ['[Image 1]', '[Image 2]'])
 
   // A completed read must append to the live draft after a removal.
   await add('removed.txt')

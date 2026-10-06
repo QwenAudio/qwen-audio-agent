@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Gateway Client 在连接或 Session 握手超时后通知断开状态，修复 TUI 自行管理重连时只显示连接错误、无法继续恢复的问题。
+
 ## 2.0.1
 
 ### 修复与改进

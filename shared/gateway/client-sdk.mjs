@@ -380,7 +380,11 @@ export class GatewayClient {
     this.#rejectPending('connection_closed', 'Gateway connection closed')
     this.onStatus?.({ state: 'unavailable', phase, error })
     try { socket.close?.() } catch { /* The timeout must still schedule recovery. */ }
-    this.#scheduleReconnect()
+    // The expired socket's close event is ignored after clearing this.socket.
+    // Callers such as the TUI own reconnects and still need the terminal status.
+    if (this.stopped || this.socket !== null) return
+    this.onStatus?.({ state: 'disconnected' })
+    if (this.socket === null) this.#scheduleReconnect()
   }
 
   #receive(event) {

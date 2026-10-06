@@ -195,8 +195,9 @@ test('reference Client times out a socket that never opens and retries', t => {
   assert.deepEqual(statuses.map(status => status.state), ['connecting'])
   t.mock.timers.tick(1)
   assert.equal(sockets[0].readyState, 3)
-  assert.equal(statuses.at(-1).error.code, 'connection_timeout')
-  assert.equal(statuses.at(-1).phase, 'connection')
+  assert.equal(statuses.at(-2).error.code, 'connection_timeout')
+  assert.equal(statuses.at(-2).phase, 'connection')
+  assert.equal(statuses.at(-1).state, 'disconnected')
   assert.equal(client.ready, false)
   t.mock.timers.tick(49)
   assert.equal(sockets.length, 1)
@@ -236,8 +237,9 @@ test('reference Client starts the handshake timeout when the socket opens', t =>
   assert.equal(statuses.at(-1).state, 'connected')
   assert.equal(socket.sent[0].type, GatewayClientProtocolEvent.SESSION_HELLO)
   t.mock.timers.tick(1)
-  assert.equal(statuses.at(-1).error.code, 'handshake_timeout')
-  assert.equal(statuses.at(-1).phase, 'handshake')
+  assert.equal(statuses.at(-2).error.code, 'handshake_timeout')
+  assert.equal(statuses.at(-2).phase, 'handshake')
+  assert.equal(statuses.at(-1).state, 'disconnected')
   assert.equal(socket.readyState, 3)
   assert.equal(client.ready, false)
   t.mock.timers.tick(1_000)
@@ -751,4 +753,80 @@ test('reference Client reports credential revocation without retrying', async ()
   assert.equal(sockets.length, 1)
   assert.equal(client.readyState, 3)
   assert.equal(statuses.at(-1), 'revoked')
+})
+
+for (const phase of ['connection', 'handshake']) {
+  test(`caller-managed recovery runs once after a ${phase} timeout`, t => {
+    const statuses = []
+    let client
+    let retryTimer
+    const timed = createTimedClient(t, {
+      reconnect: false,
+      onStatus(status) {
+        statuses.push(status)
+        if (status.state === 'disconnected') {
+          retryTimer = setTimeout(() => { client.stop(); client.start() }, 50)
+        }
+      },
+    })
+    client = timed.client
+    t.after(() => clearTimeout(retryTimer))
+    const expired = timed.sockets[0]
+    // A real socket may deliver close synchronously or later. Neither should
+    // duplicate the terminal notification or the caller's recovery timer.
+    expired.close = () => { expired.readyState = 3; expired.emit('close', { code: 1000 }) }
+    if (phase === 'handshake') expired.open()
+    t.mock.timers.tick(100)
+    assert.deepEqual(statuses.slice(-2).map(status => status.state), ['unavailable', 'disconnected'])
+    assert.equal(statuses.at(-2).error.code, `${phase}_timeout`)
+    assert.equal(client.socket, null)
+    assert.equal(client.reconnectTimer, null)
+    expired.emit('close', { code: 1006 })
+    t.mock.timers.tick(49)
+    assert.equal(timed.sockets.length, 1)
+    t.mock.timers.tick(1)
+    assert.equal(timed.sockets.length, 2)
+    timed.sockets[1].open()
+    completeHandshake(timed.sockets[1])
+    expired.open()
+    expired.emit('close', { code: 1006 })
+    t.mock.timers.tick(1_000)
+    assert.equal(client.ready, true)
+    assert.equal(timed.sockets.length, 2)
+    assert.equal(statuses.filter(status => status.state === 'disconnected').length, 1)
+  })
+}
+
+test('stopping on a timeout error suppresses later disconnect and retry callbacks', t => {
+  const statuses = []
+  let client
+  const timed = createTimedClient(t, {
+    onStatus(status) {
+      statuses.push(status)
+      if (status.state === 'unavailable') client.stop()
+    },
+  })
+  client = timed.client
+  t.mock.timers.tick(1_000)
+  assert.deepEqual(statuses.map(status => status.state), ['connecting', 'unavailable'])
+  assert.equal(timed.sockets.length, 1)
+  assert.equal(client.reconnectTimer, null)
+})
+
+test('a replacement started by the disconnect callback is not retried again', t => {
+  let client
+  const timed = createTimedClient(t, {
+    onStatus(status) {
+      if (status.state === 'disconnected') { client.stop(); client.start() }
+    },
+  })
+  client = timed.client
+  t.mock.timers.tick(100)
+  assert.equal(timed.sockets.length, 2)
+  assert.equal(client.reconnectTimer, null)
+  timed.sockets[1].open()
+  completeHandshake(timed.sockets[1])
+  t.mock.timers.tick(1_000)
+  assert.equal(client.ready, true)
+  assert.equal(timed.sockets.length, 2)
 })

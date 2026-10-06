@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- 更新根目录、server 工作区及独立示例的 MCP SDK 和受影响锁文件，修复生产依赖审计告警；为 fast-uri 与 shell-quote 固定已修复版本，构建代理链升级为不依赖 sprintf-js 的维护版本，并验证代理及并行命令兼容性。保留现有审计规则与 VitePress 构建链例外。
+
 ## 2.0.1
 
 ### 修复与改进

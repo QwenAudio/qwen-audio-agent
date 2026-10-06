@@ -769,6 +769,108 @@ async function testCameraPermission(context, diagnostics) {
   await finishPage(unsupported, diagnostics)
 }
 
+async function testComposerAttachments(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=composer-attachments', diagnostics)
+  await waitForAttribute(page, 'data-negotiated-socket', value => Number(value) > 0)
+  await page.evaluate(() => {
+    const NativeFileReader = window.FileReader
+    const pending = new Map()
+    window.composerInputs = []
+    const send = WebSocket.prototype.send
+    WebSocket.prototype.send = function(raw) {
+      const event = JSON.parse(raw)
+      if (event.type === 'input.message') {
+        window.composerInputs.push(event)
+      }
+      return send.call(this, raw)
+    }
+    window.FileReader = class {
+      readAsDataURL(file) { pending.set(file.name, { file, reader: this }) }
+    }
+    window.composerReads = {
+      async complete(name) {
+        const { file, reader } = pending.get(name)
+        pending.delete(name)
+        await new Promise((resolve, reject) => {
+          const native = new NativeFileReader()
+          native.onerror = reject
+          native.onload = () => { reader.result = native.result; reader.onload(); resolve() }
+          native.readAsDataURL(file)
+        })
+      },
+      fail(name) {
+        const { reader } = pending.get(name)
+        pending.delete(name)
+        reader.error = new Error('stale attachment read failed')
+        reader.onerror()
+      },
+    }
+  })
+  const picker = page.locator('.multimodal-composer input[type=file]')
+  const attachments = page.locator('.composer-attachment')
+  const add = (name, mimeType = 'text/plain') => picker.setInputFiles({
+    name,
+    mimeType,
+    buffer: mimeType === 'image/png'
+      ? Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhT8AAAAASUVORK5CYII=', 'base64')
+      : Buffer.from(name),
+  })
+  const complete = name => page.evaluate(name => window.composerReads.complete(name), name)
+  const names = () => attachments.locator(':scope > span').allTextContents()
+  const waitForCount = count => page.waitForFunction(count => (
+    document.querySelectorAll('.composer-attachment').length === count
+  ), count, { timeout: 5_000 })
+
+  // Finish two independent picker operations in reverse order.
+  await add('first.png', 'image/png')
+  await add('second.png', 'image/png')
+  await complete('second.png')
+  await waitForCount(1)
+  await complete('first.png')
+  await waitForCount(2)
+  assert.deepEqual(await names(), ['[Image 1]', '[Image 2]'])
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await waitForCount(0)
+  assert.deepEqual(await page.evaluate(() => window.composerInputs.at(-1).parts
+    .filter(part => part.type === 'file').map(part => part.filename)), ['second.png', 'first.png'])
+  assert.deepEqual(await page.evaluate(() => window.composerInputs.at(-1).parts
+    .filter(part => part.type === 'file').map(part => part.source.text.value)), ['[Image 1]', '[Image 2]'])
+
+  // A completed read must append to the live draft after a removal.
+  await add('removed.txt')
+  await complete('removed.txt')
+  await waitForCount(1)
+  await add('kept.txt')
+  await page.getByRole('button', { name: '移除附件', exact: true }).click()
+  await waitForCount(0)
+  await complete('kept.txt')
+  await waitForCount(1)
+  assert.deepEqual(await names(), ['@kept.txt'])
+
+  // Neither a late success nor a late failure may affect a submitted draft.
+  await add('late.txt')
+  await add('late-error.txt')
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await waitForCount(0)
+  await page.locator('.multimodal-composer textarea').fill('new draft')
+  await add('new.txt')
+  await complete('new.txt')
+  await waitForCount(1)
+  await complete('late.txt')
+  await page.evaluate(() => window.composerReads.fail('late-error.txt'))
+  // Wait through a paint so asynchronous React updates have been committed.
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  assert.deepEqual(await names(), ['@new.txt'])
+  assert.equal(await page.locator('.multimodal-composer textarea').inputValue(), 'new draft')
+  assert.equal(await page.locator('.multimodal-composer [role=alert]').count(), 0)
+
+  await page.getByRole('button', { name: '发送', exact: true }).click()
+  await waitForCount(0)
+  assert.deepEqual(await page.evaluate(() => window.composerInputs.at(-1).parts
+    .filter(part => part.type === 'file').map(part => part.filename)), ['new.txt'])
+  await finishPage(page, diagnostics)
+}
+
 let server
 let browser
 let context
@@ -786,6 +888,7 @@ try {
   context = await browser.newContext({ locale: 'zh-CN' })
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true })
   tracingActive = true
+  await testComposerAttachments(context, diagnostics)
   await testHappyPath(context, diagnostics)
   await testBrowserLanguage(context, diagnostics)
   await testReconnectInterruptsPlayback(context, diagnostics)
@@ -801,7 +904,7 @@ try {
   tracingActive = false
   await context.close()
   context = null
-  console.log('Browser WebUI smoke passed: voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
+  console.log('Browser WebUI smoke passed: composer attachment races, voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
 } catch (error) {
   await mkdir(diagnosticsDirectory, { recursive: true })
   const pages = context?.pages?.() || []

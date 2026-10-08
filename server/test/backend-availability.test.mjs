@@ -147,6 +147,43 @@ test('re-probes an unreachable backend once per TTL until it is back, without a 
   availability.close()
 })
 
+test('treats an unreachable result as unknown while its recovery probe is in flight', async () => {
+  let probes = 0
+  let resolveRecovery
+  const recovery = new Promise(resolve => { resolveRecovery = resolve })
+  const availability = new BackendAvailability({
+    ttlMs: 1,
+    probe: async () => {
+      probes += 1
+      if (probes === 1) return { configured: true, ok: false }
+      await recovery
+      return { configured: true, ok: true }
+    },
+  })
+
+  await availability.refresh()
+  const deadline = Date.now() + 500
+  while (probes < 2 && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 2))
+  }
+  assert.equal(probes, 2)
+  const recoveryProbe = availability.refreshing
+  assert.deepEqual(availability.snapshot(), {
+    configured: true,
+    ok: false,
+    known: false,
+  })
+
+  resolveRecovery()
+  await recoveryProbe
+  assert.deepEqual(availability.snapshot(), {
+    configured: true,
+    ok: true,
+    known: true,
+  })
+  availability.close()
+})
+
 test('does not re-probe a backend that is not configured', async () => {
   let probes = 0
   const availability = new BackendAvailability({

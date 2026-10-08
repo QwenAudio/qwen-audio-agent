@@ -31,7 +31,10 @@ export class BackendAvailability {
   snapshot() {
     if (this.now() - this.checkedAt >= this.ttlMs) this.refresh()
     if (!this.last) return { configured: true, ok: true, known: false }
-    return { ...this.last, known: !this.transient }
+    const refreshingNegative = this.refreshing
+      && this.last.ok === false
+      && this.last.configured !== false
+    return { ...this.last, known: !this.transient && !refreshingNegative }
   }
 
   // Starting: re-probe soon. Unreachable: re-probe once per TTL, so a backend that

@@ -31,15 +31,24 @@ export class BackendAvailability {
   snapshot() {
     if (this.now() - this.checkedAt >= this.ttlMs) this.refresh()
     if (!this.last) return { configured: true, ok: true, known: false }
-    return { ...this.last, known: !this.transient }
+    const refreshingNegative = this.refreshing
+      && this.last.ok === false
+      && this.last.configured !== false
+    return { ...this.last, known: !this.transient && !refreshingNegative }
   }
 
+  // Starting: re-probe soon. Unreachable: re-probe once per TTL, so a backend that
+  // came back is seen before the next receipt asks. Not configured: leave it.
   scheduleRetry() {
-    if (this.closed || this.retryTimer || !this.transient) return
+    if (this.closed || this.retryTimer) return
+    const delayMs = this.transient
+      ? this.retryMs
+      : this.last?.ok === false && this.last.configured !== false ? this.ttlMs : 0
+    if (!delayMs) return
     this.retryTimer = setTimeout(() => {
       this.retryTimer = null
       this.refresh()
-    }, this.retryMs)
+    }, delayMs)
     this.retryTimer.unref?.()
   }
 

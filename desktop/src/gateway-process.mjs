@@ -39,11 +39,11 @@ export function desktopExecutablePath({
   const configured = String(env.PATH || '').split(separator)
   if (platform !== 'darwin') return uniquePath(configured, separator)
   return uniquePath([
+    ...configured,
     env.HOME ? posix.join(env.HOME, '.local/bin') : '',
     env.HOME ? posix.join(env.HOME, '.npm-global/bin') : '',
     '/opt/homebrew/bin',
     '/usr/local/bin',
-    ...configured,
   ], separator)
 }
 

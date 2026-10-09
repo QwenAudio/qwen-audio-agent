@@ -163,7 +163,7 @@ test('maps managed provider IDs while preserving backend-native model IDs', () =
     claude: 'qwen3.7-plus',
     pi: 'qwen3.7-plus',
     muse: 'qwen3.7-plus',
-    deepSeekHarness: '',
+    deepSeekHarness: 'qwen3.7-plus',
     acp: 'qwen3.7-plus',
   })
 })
@@ -231,7 +231,7 @@ test('uses only the unified backend model override', () => {
     claude: 'qwen3.7-max',
     pi: 'qwen3.7-max',
     muse: 'qwen3.7-max',
-    deepSeekHarness: '',
+    deepSeekHarness: 'qwen3.7-max',
     acp: 'qwen3.7-max',
   })
 })
@@ -249,14 +249,17 @@ test('preserves opaque backend model IDs outside managed provisioning', () => {
   }
 })
 
-test('uses a DeepSeek-specific model without leaking unrelated overrides', () => {
+test('uses standard ACP model configuration for DeepSeek with its legacy alias as fallback', () => {
   assert.equal(resolveBackendModels({
     DEEPSEEK_HARNESS_MODEL: 'deepseek-v4-flash',
     QWEN_AUDIO_AGENT_BACKEND_MODEL: 'qwen3.7-max',
-  }).deepSeekHarness, 'deepseek-v4-flash')
+  }).deepSeekHarness, 'qwen3.7-max')
   assert.equal(resolveBackendModels({
     QWEN_AUDIO_AGENT_BACKEND_MODEL: 'deepseek-v4-pro',
-  }).deepSeekHarness, '')
+  }).deepSeekHarness, 'deepseek-v4-pro')
+  assert.equal(resolveBackendModels({
+    DEEPSEEK_HARNESS_MODEL: 'deepseek-v4-flash',
+  }).deepSeekHarness, 'deepseek-v4-flash')
 })
 
 test('changes the realtime configuration signature when only the model changes', () => {

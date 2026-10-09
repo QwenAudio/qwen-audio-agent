@@ -68,12 +68,12 @@ test('every catalog backend has an explicit install spec', () => {
   assert.equal(installSupport('unknown', { env: {} }).supported, false)
 })
 
-test('npm steps report locked packages and honor package overrides', () => {
+test('npm steps default to latest and honor package overrides', () => {
   const support = installSupport('opencode', { env: {}, platform: 'linux' })
   assert.equal(support.requiresConfirmation, false)
   assert.deepEqual(
     support.steps.map(step => step.display),
-    ['npm install -g opencode-ai@1.18.5'],
+    ['npm install -g opencode-ai@latest'],
   )
   const overridden = installSupport('opencode', {
     env: { OPENCODE_PACKAGE: 'opencode-ai@9.9.9' },
@@ -88,7 +88,7 @@ test('npm steps report locked packages and honor package overrides', () => {
   const qwen = installSupport('qwen', { env: {}, platform: 'linux' })
   assert.deepEqual(
     qwen.steps.map(step => step.display),
-    ['npm install -g @qwen-code/qwen-code@0.21.6'],
+    ['npm install -g @qwen-code/qwen-code@latest'],
   )
 
   const minimax = installSupport('minimax', { env: {}, platform: 'darwin' })
@@ -96,23 +96,21 @@ test('npm steps report locked packages and honor package overrides', () => {
   assert.equal(minimax.requiresConfirmation, false)
   assert.deepEqual(
     minimax.steps.map(step => step.display),
-    ['npm install -g @minimax-ai/code@0.3.7'],
+    ['npm install -g @minimax-ai/code@latest'],
   )
   const minimaxWin = installSupport('minimax', { env: {}, platform: 'win32' })
   assert.deepEqual(
     minimaxWin.steps.map(step => step.display),
-    ['npm install -g @minimax-ai/code@0.3.7'],
+    ['npm install -g @minimax-ai/code@latest'],
   )
 
   const harness = installSupport('deepseek', {
     env: {},
     platform: 'linux',
   })
-  assert.equal(harness.steps.length, 11)
+  assert.equal(harness.steps.length, 1)
   assert.match(harness.steps[0].display, /--registry=https:\/\/registry\.npmjs\.org\//)
-  assert.match(harness.steps[0].display, /@deepseek-ai\/dsh@0\.1\.0-rc\.6/)
-  assert.match(harness.steps[1].display, /@deepseek-ai\/dsh-llm-deepseek@0\.1\.0-rc\.6/)
-  assert.match(harness.steps.at(-1).display, /@deepseek-ai\/dsh-acp-demo@0\.1\.0-rc\.6/)
+  assert.match(harness.steps[0].display, /@deepseek-ai\/dsh@latest/)
 })
 
 test('Qwen Code authentication launches the CLI without a removed auth subcommand', () => {
@@ -176,13 +174,13 @@ test('installs npm packages globally and verifies readiness', async () => {
   assert.equal(result.authentication.required, false)
   assert.deepEqual(calls, [[
     '/usr/local/bin/npm',
-    ['install', '-g', 'opencode-ai@1.18.5'],
+    ['install', '-g', 'opencode-ai@latest'],
   ]])
   assert.deepEqual(
     events.map(event => event.phase),
     ['start', 'done'],
   )
-  assert.equal(events[0].display, 'npm install -g opencode-ai@1.18.5')
+  assert.equal(events[0].display, 'npm install -g opencode-ai@latest')
 })
 
 test('describes backend-owned authentication actions', () => {
@@ -219,7 +217,7 @@ test('describes backend-owned authentication actions', () => {
   })
 })
 
-test('installs the DeepSeek Harness CLI and ACP components', async () => {
+test('installs only the official DeepSeek CLI with native ACP', async () => {
   const calls = []
   const result = await installBackend('deepseek', {
     env: { DEEPSEEK_API_KEY: 'test-key' },
@@ -229,14 +227,10 @@ test('installs the DeepSeek Harness CLI and ACP components', async () => {
     inspect: async () => readyReport('deepseek'),
   })
   assert.equal(result.ok, true)
-  assert.equal(calls.length, 11)
+  assert.equal(calls.length, 1)
   assert.deepEqual(calls[0][1], [
     'install', '-g', '--registry=https://registry.npmjs.org/',
-    '@deepseek-ai/dsh@0.1.0-rc.6',
-  ])
-  assert.deepEqual(calls.at(-1)[1], [
-    'install', '-g', '--registry=https://registry.npmjs.org/',
-    '@deepseek-ai/dsh-acp-demo@0.1.0-rc.6',
+    '@deepseek-ai/dsh@latest',
   ])
 })
 
@@ -266,42 +260,33 @@ test('adds only the missing DeepSeek Harness CLI after an ACP-only install', asy
     '/usr/local/bin/npm',
     [
       'install', '-g', '--registry=https://registry.npmjs.org/',
-      '@deepseek-ai/dsh@0.1.0-rc.6',
+      '@deepseek-ai/dsh@latest',
     ],
   ]])
 })
 
-test('installs only a missing DeepSeek runtime package from package verification', async () => {
+test('preserves an installed DeepSeek CLI without installing old ACP packages', async () => {
   const calls = []
-  let inspection = 0
-  const packageName = '@deepseek-ai/dsh-llm-deepseek'
   const result = await installBackend('deepseek', {
     env: { DEEPSEEK_API_KEY: 'test-key' },
     platform: 'darwin',
     spawnImpl: fakeSpawn(calls),
     find: () => '/usr/local/bin/npm',
     inspect: async () => {
-      inspection += 1
       return {
         backends: [{
           id: 'deepseek',
-          ready: inspection > 1,
-          backend: { ready: true },
+          ready: true,
+          backend: { ready: true, installed: true },
           adapter: { ready: true },
-          packages: [{ name: packageName, ready: inspection > 1 }],
           issues: [],
         }],
       }
     },
   })
   assert.equal(result.ok, true)
-  assert.deepEqual(calls, [[
-    '/usr/local/bin/npm',
-    [
-      'install', '-g', '--registry=https://registry.npmjs.org/',
-      '@deepseek-ai/dsh-llm-deepseek@0.1.0-rc.6',
-    ],
-  ]])
+  assert.deepEqual(calls, [])
+  assert.equal(result.alreadyInstalled, true)
 })
 
 test('runs multi-step installs in order and stops on failure', async () => {
@@ -327,8 +312,8 @@ test('runs multi-step installs in order and stops on failure', async () => {
   })
   assert.equal(succeeded.ok, true)
   assert.deepEqual(calls.slice(1), [
-    ['/usr/local/bin/npm', ['install', '-g', '@openai/codex@0.146.0']],
-    ['/usr/local/bin/npm', ['install', '-g', '@agentclientprotocol/codex-acp@1.1.7']],
+    ['/usr/local/bin/npm', ['install', '-g', '@openai/codex@latest']],
+    ['/usr/local/bin/npm', ['install', '-g', '@agentclientprotocol/codex-acp@latest']],
   ])
 })
 
@@ -609,7 +594,7 @@ test('skips ready components and installs only the missing adapter', async () =>
   assert.equal(result.ok, true)
   assert.deepEqual(calls, [[
     '/usr/local/bin/npm',
-    ['install', '-g', '@agentclientprotocol/codex-acp@1.1.7'],
+    ['install', '-g', '@agentclientprotocol/codex-acp@latest'],
   ]])
   assert.deepEqual(
     events.map(event => event.phase),
@@ -643,6 +628,82 @@ test('reports alreadyInstalled when every component is ready', async () => {
   assert.equal(result.alreadyInstalled, true)
   assert.equal(calls.length, 0, '已就绪时不执行任何安装命令')
   assert.equal(inspections, 1, '已就绪时不再重复检测')
+})
+
+test('all default npm install steps track latest, including adapters', () => {
+  for (const id of ['opencode', 'openclaw', 'qoder', 'qwen', 'minimax', 'kimi', 'codebuddy', 'codex', 'claude', 'pi', 'deepseek', 'muse']) {
+    const support = installSupport(id, { env: {}, platform: 'darwin' })
+    for (const step of support.steps.filter(step => step.kind === 'npm')) {
+      assert.match(step.display, /@latest"?$/, `${id}: ${step.display}`)
+    }
+  }
+})
+
+for (const [id, adapterPackage] of [
+  ['codex', '@agentclientprotocol/codex-acp'],
+  ['claude', '@zed-industries/claude-code-acp'],
+  ['pi', 'pi-acp'],
+]) {
+  test(`${id}: installed host + managed fallback only installs the missing adapter`, async () => {
+    const calls = []
+    let inspection = 0
+    const initial = {
+      id, ready: true,
+      backend: { ready: true, installed: true, path: '/user/bin/agent' },
+      adapter: { ready: true, installed: false, source: 'managed' },
+    }
+    const support = installSupport(id, { env: {}, platform: 'darwin', item: initial })
+    assert.equal(support.steps.length, 1)
+    assert.equal(support.steps[0].component, 'adapter')
+    const result = await installBackend(id, {
+      env: {}, platform: 'darwin', spawnImpl: fakeSpawn(calls),
+      find: () => '/node/npm',
+      inspectAuthentication: async () => ({ status: 'unknown' }),
+      inspect: async () => ({ backends: [{
+        ...initial,
+        adapter: inspection++ === 0 ? initial.adapter : { ready: true, installed: true },
+      }] }),
+    })
+    assert.equal(result.ok, true)
+    assert.deepEqual(calls, [['/node/npm', ['install', '-g', `${adapterPackage}@latest`]]])
+  })
+}
+
+test('an incompatible existing executable is not overwritten by install', async () => {
+  const item = {
+    id: 'deepseek', ready: false,
+    backend: { ready: false, installed: true, path: '/user/bin/dsh' },
+    adapter: { ready: true }, issues: ['DeepSeek 低于最低版本 0.1.5'],
+  }
+  assert.deepEqual(installSupport('deepseek', { env: {}, item }).steps, [])
+  const result = await installBackend('deepseek', {
+    env: {}, platform: 'darwin',
+    inspect: async () => ({ backends: [item] }),
+    spawnImpl() { throw new Error('Must preserve the existing executable') },
+    find() { throw new Error('No installation needs npm') },
+  })
+  assert.equal(result.ok, false)
+  assert.equal(result.error.code, 'VERIFY_FAILED')
+})
+
+test('preserves an existing adapter while installing only the missing host', async () => {
+  const calls = []
+  let inspection = 0
+  const initial = {
+    id: 'codex', ready: false,
+    backend: { ready: false, installed: false },
+    adapter: { ready: true, installed: true },
+  }
+  const support = installSupport('codex', { env: {}, item: initial })
+  assert.deepEqual(support.steps.map(step => step.component), ['backend'])
+  const result = await installBackend('codex', {
+    env: {}, platform: 'darwin', spawnImpl: fakeSpawn(calls),
+    find: () => '/node/npm',
+    inspectAuthentication: async () => ({ status: 'unknown' }),
+    inspect: async () => ({ backends: [{ ...initial, ready: inspection++ > 0 }] }),
+  })
+  assert.equal(result.ok, true)
+  assert.deepEqual(calls, [['/node/npm', ['install', '-g', '@openai/codex@latest']]])
 })
 
 test('locates the target backend inside a full re-inspection report', async () => {

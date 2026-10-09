@@ -566,6 +566,41 @@ test('authorization requires an explicit valid decision and final output exclude
   await backend.close()
 })
 
+test('declining one A2A authorization does not cancel the whole remote task', async () => {
+  const client = fakeClient()
+  let cancellations = 0
+  client.cancelTask = async () => { cancellations += 1 }
+  client.sendMessage = async request => {
+    client.sent.push(request)
+    return client.sent.length === 1
+      ? task(A2ATaskState.TASK_STATE_AUTH_REQUIRED, { statusText: 'Add optional meal?' })
+      : task(A2ATaskState.TASK_STATE_COMPLETED, {
+          statusText: 'Meal was not added; earlier changes remain complete.',
+        })
+  }
+  const backend = new A2ABackendAdapter({
+    agentCard: { name: 'Authorization Agent' }, clientFactory: async () => ({ client }),
+  })
+  const events = []
+  backend.subscribe(event => events.push(event))
+  const pending = backend.submit(work())
+  await new Promise(resolve => setImmediate(resolve))
+  const input = events.find(event => event.type === 'backend.input.requested').input
+  await backend.respondInput('task_1', input.id, {
+    action: 'decline', text: 'No meal request is needed; finalize the other changes.',
+  }, { ownerId: 'owner-one' })
+  const outcome = await pending
+  assert.equal(cancellations, 0)
+  assert.match(outcome.content, /earlier changes remain complete/)
+  assert.deepEqual(client.sent[1].message.metadata.qwenAudioInputResponse, {
+    kind: 'authorization', action: 'decline',
+  })
+  assert.ok(events.some(event => (
+    event.type === 'backend.input.resolved' && event.input.status === 'declined'
+  )))
+  await backend.close()
+})
+
 test('expired authorization resolves the frontend input and ends the task without an answer', async () => {
   const client = fakeClient()
   client.sendMessage = async () => task(A2ATaskState.TASK_STATE_AUTH_REQUIRED, {

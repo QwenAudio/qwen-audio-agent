@@ -76,26 +76,18 @@ if (manifest.main !== undefined) {
 if (readFileSync('.nvmrc', 'utf8').trim() !== '22.22.2') {
   throw new Error('.nvmrc does not match the minimum supported Node release')
 }
-if (!readFileSync('scripts/runtime/opencode.mjs', 'utf8').includes('opencode-ai@1.18.5')) {
-  throw new Error('OpenCode explicit package mode is not pinned')
-}
-if (!readFileSync('scripts/runtime/openclaw.mjs', 'utf8').includes('openclaw@2026.6.33')) {
-  throw new Error('OpenClaw explicit package mode is not pinned')
-}
-if (!readFileSync('scripts/runtime/codex-acp.mjs', 'utf8').includes(
-  '@agentclientprotocol/codex-acp@1.1.7',
-)) {
-  throw new Error('Codex ACP fallback package is not pinned')
-}
-if (!readFileSync('scripts/runtime/claude-code-acp.mjs', 'utf8').includes(
-  '@zed-industries/claude-code-acp@0.16.2',
-)) {
-  throw new Error('Claude Code ACP fallback package is not pinned')
-}
-if (!readFileSync('scripts/runtime/pi-acp.mjs', 'utf8').includes(
-  'pi-acp@0.0.33',
-)) {
-  throw new Error('Pi ACP fallback package is not pinned')
+// Backend software is user-owned, not a bundled release dependency. Missing
+// components use official latest; the framework/build dependency lock stays fixed.
+for (const [launcher, packageName] of [
+  ['opencode', 'opencode-ai'],
+  ['openclaw', 'openclaw'],
+  ['codex-acp', '@agentclientprotocol/codex-acp'],
+  ['claude-code-acp', '@zed-industries/claude-code-acp'],
+  ['pi-acp', 'pi-acp'],
+]) {
+  if (!readFileSync(`scripts/runtime/${launcher}.mjs`, 'utf8').includes(`${packageName}@latest`)) {
+    throw new Error(`${launcher} must default to the official latest backend package`)
+  }
 }
 if (
   manifest.devDependencies?.['electron-builder'] !== '26.16.0'

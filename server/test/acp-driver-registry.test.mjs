@@ -56,7 +56,6 @@ test('profile construction applies the immutable driver capability contract', ()
   const profile = createBackendProfile('deepseek', {
     root: '/repo',
     directory: '/work',
-    sessionRoot: '/state',
     permissionMode: 'native',
   })
   assert.deepEqual(profile.capabilities, {
@@ -64,9 +63,9 @@ test('profile construction applies the immutable driver capability contract', ()
     permissions: true,
     backendUi: false,
     nativeSessionHistory: false,
-    externalMcp: false,
+    externalMcp: true,
     nativeDelegation: false,
-    sessionMcp: false,
+    sessionMcp: true,
     coordinatorMcpInstructions: false,
   })
   assert.equal(Object.isFrozen(profile.capabilities), true)

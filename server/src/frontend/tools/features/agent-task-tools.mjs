@@ -87,7 +87,7 @@ const respondAgentInputTool = {
   type: 'function',
   function: {
     name: RESPOND_AGENT_INPUT_TOOL_NAME,
-    description: '把用户对当前后台追问的回答交回同一项工作，使其继续执行，也可拒绝回答或取消这次交互。',
+    description: '把用户对当前后台追问的回答交回同一项工作。授权预览只接受用户对该预览无附加条件的明确同意。拒绝当前预览或修改其中条件用 decline；只有用户明确要求终止整项后台工作时才用 cancel。',
     parameters: {
       type: 'object',
       properties: {
@@ -98,7 +98,7 @@ const respondAgentInputTool = {
         action: {
           type: 'string',
           enum: ['accept', 'decline', 'cancel'],
-          description: 'accept 提交回答并继续；decline 拒绝提供；cancel 取消这次交互。',
+          description: '普通补充问题：accept 提交回答。授权预览：accept 仅用于用户无附加条件地同意原预览；decline 只拒绝当前预览（也用于用户修改该操作条件）；cancel 仅在用户明确要求终止整项后台工作时使用。',
         },
         text: {
           type: 'string',

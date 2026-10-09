@@ -76,6 +76,18 @@ test('带令牌的第二次调用才真正执行', async () => {
   assert.ok(order.payment.transactions.some(t => t.type === 'refund' && t.amount === 899))
 })
 
+test('同一订单取消后无法再改地址：多操作必须在首次批准前预检', async () => {
+  const service = await verified('c-conflicting-writes')
+  const call = backend(service, 'c-conflicting-writes')
+  const orderId = '#W1082334'
+  const cancel = await call('cancel_order', { orderId, reason: '不需要了' })
+  assert.equal(cancel.data.needsApproval, true)
+  await call('cancel_order', { orderId, reason: '不需要了', approval_token: tokenFrom(cancel) })
+  const address = await call('modify_address', { orderId, address: '广东省广州市新地址 1 号' })
+  assert.equal(address.data.blocked, 'not_editable')
+  assert.equal(address.data.needsApproval, undefined)
+})
+
 test('没有令牌就执行不了 —— 这是数据依赖，不是 prompt 请求', async () => {
   const service = await verified('c3')
   const call = backend(service, 'c3')
@@ -224,6 +236,18 @@ test('部分退货只退指定款式，金额按选中项算', async () => {
   assert.equal(done.data.refund, 1299)
   const order = service.snapshot('r4').db.orders.find(o => o.orderId === '#W2094558')
   assert.deepEqual(order.returnedItemIds, ['HP_WHITE_ANC'])
+})
+
+test('部分退货混入无效款式时整笔拒绝，不能悄悄只办匹配部分', async () => {
+  const service = await verified('r-mixed-item', 'liuyang@example.com')
+  const call = backend(service, 'r-mixed-item')
+  const result = await call('return_items', {
+    orderId: '#W2094558', itemIds: ['HP_WHITE_ANC', 'NOT_IN_THIS_ORDER'],
+  })
+  assert.equal(result.data.blocked, 'item_not_in_order')
+  assert.equal(result.data.needsApproval, undefined)
+  assert.deepEqual(service.snapshot('r-mixed-item').db.orders
+    .find(item => item.orderId === '#W2094558').returnedItemIds || [], [])
 })
 
 test('同一件商品不能退两次', async () => {

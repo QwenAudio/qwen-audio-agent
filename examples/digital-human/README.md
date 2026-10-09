@@ -1,15 +1,25 @@
 # Digital Human Example
 
-[Chinese overview](README_ZH.md)
+[English](README.md) | [中文](README_ZH.md)
 
-Status: design proposal awaiting review. No runnable demo or installation scripts
-are delivered yet. Baseline: Gateway WebRTC PR #465, main commit `9ad6348f`.
+Status: a recorded demo is available below. The integration design remains a
+proposal; this directory does not yet provide runnable code or installation
+scripts. Design baseline: Gateway WebRTC PR #465, main commit `9ad6348f`.
+
+## Demo
+
+**Natural conversation, brought to life.** Realtime voice conversation with
+audio-driven lip movements and facial expressions.
+
+https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
+
+## Goal
 
 The Gateway remains the client's only integration endpoint. A replaceable
 `DigitalHumanProvider` consumes assistant reply audio, with optional text, and
 produces avatar media. ASR, LLM, TTS/S2S, tools, and history stay outside it.
 
-The first real demo reuses OpenAvatarChat's FlashHead Avatar processor with
+The proposed first integration reuses OpenAvatarChat's FlashHead Avatar processor with
 SoulX-FlashHead Lite in an independent Python GPU service. LiveAvatar Avatar Only
 (LITE) is a second contract reference, not a required demo integration.
 

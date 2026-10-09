@@ -84,7 +84,7 @@ async function runCase(domain, taskId) {
     let reply = await userReply('')
     let task = reply.stop ? null : submit()
     if (reply.stop) terminationReason = 'user_stop'
-    while (task && userTurns < 16) {
+    while (task) {
       signal.throwIfAborted()
       const event = await events.next()
       if (event.type === 'error') throw event.error
@@ -97,7 +97,7 @@ async function runCase(domain, taskId) {
           approvalClassifications += 1
           action = await classifyApproval(model, event.input.prompt, reply.content, signal)
         }
-        while (action === 'clarify' && userTurns < 16) {
+        while (action === 'clarify') {
           reply = await userReply(`Please explicitly confirm or decline this exact operation:\n${event.input.prompt}`)
           failureStage = 'approval-classifier'
           approvalClassifications += 1
@@ -137,7 +137,7 @@ async function runCase(domain, taskId) {
       agentModel: model.model, userModel: process.env.CS_TAU_USER_MODEL || model.model,
       judgeModel: process.env.CS_TAU_JUDGE_MODEL || model.model,
       terminationReason, failure, failureStage: failure ? failureStage : undefined, scoringFailure,
-      limits: { maxUserTurns: 16, timeoutSeconds: 300 },
+      limits: { timeoutSeconds: 300 },
       modelCalls, approvalClassifications, userTurns, approvals,
       executedToolCalls: scored?.messages?.reduce((count, message) => count + (message.tool_calls?.length || 0), 0),
       durationSeconds: (Date.now() - start) / 1000, dialogue, ...scored }

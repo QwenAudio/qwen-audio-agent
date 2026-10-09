@@ -5,7 +5,7 @@
       "name": "list_orders",
       "label": "订单列表",
       "enabled": true,
-      "description": "列出已核验客户的订单。默认返回最近的几笔，超过三笔时只给出前三笔和剩余数量，需要更多时用 status 收窄范围。必须先核验身份。",
+      "description": "列出已核验客户的订单，每页最多三笔。可用 product 按商品名/编号/款式筛选、用 status 按状态筛选；客户说某商品或较贵的商品时，先筛选并查完所有页，比较匹配商品的价格，再确认目标，不可只看第一页或按整单金额代替商品价格。必须先核验身份。",
       "parameters": {
         "type": "object",
         "properties": {
@@ -13,6 +13,15 @@
             "type": "string",
             "enum": ["pending", "shipped", "delivered", "cancelled"],
             "description": "按状态筛选。pending=未发货，shipped=已发货，delivered=已签收，cancelled=已取消。"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "从 1 开始的页码；返回 hasMore=true 时继续查下一页。"
+          },
+          "product": {
+            "type": "string",
+            "description": "按商品名、商品编号、款式编号或款式属性模糊筛选本人订单；返回匹配商品的款式编号与单价。"
           }
         }
       }
@@ -21,7 +30,7 @@
       "name": "get_order",
       "label": "订单详情",
       "enabled": true,
-      "description": "查一笔订单的完整信息：状态、商品、金额、关键时间。返回内容里包含商品类别与签收天数，判断能不能退换时需要这两项。必须先核验身份，且只能查已核验客户自己的订单。",
+      "description": "查一笔订单的完整信息：状态、商品、款式编号、金额、关键时间。按商品特征选择目标时先查全候选订单，不能猜订单号；部分退货所需 itemIds 从这里取得。必须先核验身份，且只能查已核验客户自己的订单。",
       "parameters": {
         "type": "object",
         "properties": {

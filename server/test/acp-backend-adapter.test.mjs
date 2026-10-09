@@ -1070,12 +1070,42 @@ test('keeps a cached coordinator MCP connection valid across turns', async () =>
   assert.equal(tools.registerCalls, 1)
   assert.equal(tools.updateCalls, 1)
   assert.equal(tools.releaseCalls, 0)
-  assert.equal(resumedDescriptors[0].url, cachedDescriptor.url)
+  assert.deepEqual(resumedDescriptors, [])
   assert.equal(second.run.delegation.taskId, 'work-two')
   assert.equal(second.run.delegation.ownerId, 'owner-one')
   await second.run.delegation.promise
   await adapter.close()
   assert.equal(tools.releaseCalls, 1)
+})
+
+test('restores a coordinator only after its ACP connection generation changes', async () => {
+  const tools = fakeToolServer()
+  let newSessions = 0
+  const resumes = []
+  const client = {
+    connectionGeneration: 1,
+    async newSession(options) {
+      newSessions += 1
+      return { sessionId: 'persistent', cwd: options.cwd, response: {}, connectionGeneration: this.connectionGeneration }
+    },
+    async resumeSession(sessionId, options) {
+      resumes.push(options)
+      return { sessionId, cwd: options.cwd, response: {}, connectionGeneration: this.connectionGeneration }
+    },
+    async prompt() { return { content: 'ok', response: { stopReason: 'end_turn' } } },
+    async close() {},
+  }
+  const adapter = new AcpBackendAdapter({ protocol: 'deepseek', directory: '/coordinator', client, sessionToolServer: tools, builtinMcp: [] })
+  try {
+    for (const generation of [1, 1, 2, 2]) {
+      client.connectionGeneration = generation
+      await adapter.coordinatorTurn('connection check', { ownerId: 'owner', coordinationRunId: `work-${generation}` })
+    }
+    assert.equal(newSessions, 1)
+    assert.equal(resumes.length, 1)
+    assert.equal(resumes[0].mcpServers.length, 1)
+    assert.equal(tools.registerCalls, 1)
+  } finally { await adapter.close() }
 })
 
 test('moves stable coordinator rules into MCP instructions for verified backends', async () => {
@@ -1729,9 +1759,8 @@ test('delivers persisted cancellation reconciliation after a Gateway restart', a
       coordinationRequestId: 'job_22',
     })
 
-    // Once to restore the persisted Session and once to re-supply its MCP
-    // definitions before the first prompt after restart.
-    assert.equal(resumes, 2)
+    // Restoring the Session already supplies its MCP definitions.
+    assert.equal(resumes, 1)
     assert.match(prompts[0], /上一请求已取消，不要续接其未完成内容/)
     assert.doesNotMatch(
       prompts[0],

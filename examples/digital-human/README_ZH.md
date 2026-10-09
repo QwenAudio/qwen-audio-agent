@@ -1,15 +1,23 @@
-# 数字人 Example
+# 数字人示例
 
-**状态：待评审的设计方案，尚无可运行 demo。** 本轮只交付文档，确认后再提交、推送，由后续开发者实现。
+[English](README.md) | [中文](README_ZH.md)
+
+**状态：已提供演示视频，接入设计仍为待评审方案。** 当前目录尚未提供可直接运行的代码及安装脚本。
 
 基于 GitHub `main` 的 WebRTC PR #465，基线提交 `9ad6348f`，设计日期 2026-09-18。
+
+## 数字人演示
+
+**自然对话，声形相随。** 语音驱动数字人的口型与表情，展示实时对话的交互效果。
+
+https://github.com/user-attachments/assets/5301ef5e-b674-4561-93bb-e0c7544cf696
 
 ## 目标
 
 - 客户端只连接 qwen-audio-agent 网关。
 - Realtime 模型继续负责理解、对话和回复语音，模型侧仍用 WSS。
 - `DigitalHumanProvider` 只消费助手回复音频，文本是可选增强，不承担 ASR、LLM、TTS 或 S2S。
-- 首个具体 demo 复用 OpenAvatarChat 的 FlashHead Avatar 组件，在独立 Python GPU 服务中运行 SoulX-FlashHead Lite。
+- 首版接入方案复用 OpenAvatarChat 的 FlashHead Avatar 组件，在独立 Python GPU 服务中运行 SoulX-FlashHead Lite。
 - 以 LiveAvatar Avatar Only / LITE 校验抽象，不要求首版实现 LiveAvatar 或引入其 SDK。
 - 专用依赖、适配器、安装脚本及部署文件都放在本 example，不加入主框架默认依赖。
 

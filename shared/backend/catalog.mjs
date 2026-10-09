@@ -17,7 +17,7 @@ const definitions = new Map([
       minimumVersion: '1.18.0',
     },
     lifecycle: {
-      installation: { steps: [{ kind: 'npm', package: 'opencode-ai@1.18.5', packageEnv: 'OPENCODE_PACKAGE' }] },
+      installation: { steps: [{ kind: 'npm', package: 'opencode-ai@latest', packageEnv: 'OPENCODE_PACKAGE' }] },
       configuration: { mode: 'bailian-or-backend-owned' },
     },
     onboarding: {
@@ -48,7 +48,7 @@ const definitions = new Map([
       integration: 'bridge',
     },
     lifecycle: {
-      installation: { steps: [{ kind: 'npm', package: 'openclaw@2026.6.33', packageEnv: 'OPENCLAW_PACKAGE' }] },
+      installation: { steps: [{ kind: 'npm', package: 'openclaw@latest', packageEnv: 'OPENCLAW_PACKAGE' }] },
       configuration: { mode: 'bailian-or-backend-owned' },
     },
     onboarding: {
@@ -91,7 +91,7 @@ const definitions = new Map([
       integration: 'native',
     },
     lifecycle: {
-      installation: { steps: [{ kind: 'npm', package: '@qoder-ai/qodercli@1.1.13', packageEnv: 'QODERCLI_PACKAGE' }] },
+      installation: { steps: [{ kind: 'npm', package: '@qoder-ai/qodercli@latest', packageEnv: 'QODERCLI_PACKAGE' }] },
       configuration: { mode: 'backend-owned' },
     },
     onboarding: {
@@ -114,7 +114,7 @@ const definitions = new Map([
       minimumVersion: '0.21.6',
     },
     lifecycle: {
-      installation: { steps: [{ kind: 'npm', package: '@qwen-code/qwen-code@0.21.6', packageEnv: 'QWEN_CODE_PACKAGE' }] },
+      installation: { steps: [{ kind: 'npm', package: '@qwen-code/qwen-code@latest', packageEnv: 'QWEN_CODE_PACKAGE' }] },
       configuration: { mode: 'backend-owned' },
     },
     onboarding: {
@@ -145,7 +145,7 @@ const definitions = new Map([
       installation: {
         steps: [{
           kind: 'npm',
-          package: '@minimax-ai/code@0.3.7',
+          package: '@minimax-ai/code@latest',
           packageEnv: 'MINIMAX_CODE_PACKAGE',
         }],
       },
@@ -171,7 +171,7 @@ const definitions = new Map([
       minimumVersion: '0.31.0',
     },
     lifecycle: {
-      installation: { steps: [{ kind: 'npm', package: '@moonshot-ai/kimi-code@0.32.0', packageEnv: 'KIMI_CODE_PACKAGE' }] },
+      installation: { steps: [{ kind: 'npm', package: '@moonshot-ai/kimi-code@latest', packageEnv: 'KIMI_CODE_PACKAGE' }] },
       configuration: { mode: 'backend-owned' },
     },
     onboarding: {
@@ -219,7 +219,7 @@ const definitions = new Map([
       integration: 'native',
     },
     lifecycle: {
-      installation: { steps: [{ kind: 'npm', package: '@tencent-ai/codebuddy-code@2.132.0', packageEnv: 'CODEBUDDY_PACKAGE' }] },
+      installation: { steps: [{ kind: 'npm', package: '@tencent-ai/codebuddy-code@latest', packageEnv: 'CODEBUDDY_PACKAGE' }] },
       configuration: { mode: 'backend-owned' },
     },
     onboarding: {
@@ -246,8 +246,8 @@ const definitions = new Map([
     lifecycle: {
       installation: {
         steps: [
-          { kind: 'npm', package: '@openai/codex@0.146.0', packageEnv: 'CODEX_PACKAGE' },
-          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: '@agentclientprotocol/codex-acp@1.1.7', packageEnv: 'CODEX_ACP_PACKAGE' },
+          { kind: 'npm', package: '@openai/codex@latest', packageEnv: 'CODEX_PACKAGE' },
+          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: '@agentclientprotocol/codex-acp@latest', packageEnv: 'CODEX_ACP_PACKAGE' },
         ],
       },
       configuration: { mode: 'backend-owned' },
@@ -279,8 +279,8 @@ const definitions = new Map([
     lifecycle: {
       installation: {
         steps: [
-          { kind: 'npm', package: '@anthropic-ai/claude-code@2.1.221', packageEnv: 'CLAUDE_CODE_PACKAGE' },
-          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: '@zed-industries/claude-code-acp@0.16.2', packageEnv: 'CLAUDE_CODE_ACP_PACKAGE' },
+          { kind: 'npm', package: '@anthropic-ai/claude-code@latest', packageEnv: 'CLAUDE_CODE_PACKAGE' },
+          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: '@zed-industries/claude-code-acp@latest', packageEnv: 'CLAUDE_CODE_ACP_PACKAGE' },
         ],
       },
       configuration: { mode: 'backend-owned' },
@@ -306,44 +306,20 @@ const definitions = new Map([
       command: 'dsh',
       executableEnvironment: 'DEEPSEEK_HARNESS_BIN',
       integration: 'native',
-      adapterCommand: 'dsh-acp-demo',
-      adapterEnvironment: 'DEEPSEEK_HARNESS_ACP_BIN',
-      adapterRuntimeEnvironment: 'DEEPSEEK_HARNESS_ACP_RUNTIME',
-      managedAdapterFallback: false,
-      inspectAdapterIndependently: true,
+      minimumVersion: '0.1.5',
     },
     lifecycle: {
       installation: {
-        verifyInstalledPackages: true,
-        // Keep the ACP executable package last. If an earlier Developer
-        // Preview component fails, setup remains visibly incomplete and a
-        // retry fills the whole composition instead of skipping it.
+        // The current CLI includes the native ACP profile and its dependencies.
         steps: [
           {
             kind: 'npm',
             label: 'DeepSeek CLI',
             component: 'backend',
-            package: '@deepseek-ai/dsh@0.1.0-rc.6',
+            package: '@deepseek-ai/dsh@latest',
+            packageEnv: 'DEEPSEEK_HARNESS_PACKAGE',
             registry: 'https://registry.npmjs.org/',
           },
-          ...[
-          '@deepseek-ai/dsh-llm-deepseek@0.1.0-rc.6',
-          '@deepseek-ai/dsh-sandbox-local@0.1.0-rc.6',
-          '@deepseek-ai/dsh-subprocess-local@0.1.0-rc.6',
-          '@deepseek-ai/dsh-bash-sandbox@0.1.0-rc.6',
-          '@deepseek-ai/dsh-token-meter@0.1.0-rc.6',
-          '@deepseek-ai/dsh-compaction-basic@0.1.0-rc.6',
-          '@deepseek-ai/dsh-fs-sandbox@0.1.0-rc.6',
-          '@deepseek-ai/dsh-fs-observation-policy@0.1.0-rc.6',
-          '@deepseek-ai/dsh-tool-fs@0.1.0-rc.6',
-          '@deepseek-ai/dsh-acp-demo@0.1.0-rc.6',
-          ].map((packageName, index, packages) => ({
-          kind: 'npm',
-          label: index === packages.length - 1 ? 'ACP Runtime' : '运行组件',
-          component: 'adapter',
-          package: packageName,
-          registry: 'https://registry.npmjs.org/',
-          })),
         ],
       },
       configuration: { mode: 'backend-owned' },
@@ -376,8 +352,8 @@ const definitions = new Map([
     lifecycle: {
       installation: {
         steps: [
-          { kind: 'npm', package: '@earendil-works/pi-coding-agent@0.84.1', packageEnv: 'PI_PACKAGE' },
-          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: 'pi-acp@0.0.33', packageEnv: 'PI_ACP_PACKAGE' },
+          { kind: 'npm', package: '@earendil-works/pi-coding-agent@latest', packageEnv: 'PI_PACKAGE' },
+          { kind: 'npm', label: 'ACP 适配器', component: 'adapter', package: 'pi-acp@latest', packageEnv: 'PI_ACP_PACKAGE' },
         ],
       },
       configuration: { mode: 'backend-owned' },
@@ -415,8 +391,7 @@ const definitions = new Map([
       command: 'muse',
       executableEnvironment: 'MUSE_CODE_BIN',
       integration: 'msp',
-      runtimePackage: { name: '@muse-code/sdk', version: '0.1.1' },
-      inspectAdapterIndependently: true,
+      runtimePackage: { name: '@muse-code/sdk' },
     },
     lifecycle: {
       installation: {
@@ -429,7 +404,7 @@ const definitions = new Map([
           label: 'MSP SDK',
           component: 'adapter',
           scope: 'backend',
-          package: '@muse-code/sdk@0.1.1',
+          package: '@muse-code/sdk@latest',
         }],
       },
       configuration: { mode: 'backend-owned' },

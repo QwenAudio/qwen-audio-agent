@@ -517,11 +517,11 @@ test('macOS desktop PATH inherits the expanded process PATH plus common location
     platform: 'darwin',
   })
   assert.deepEqual(path.split(':'), [
+    '/custom/bin',
+    '/usr/bin',
     '/Users/tester/.local/bin',
     '/Users/tester/.npm-global/bin',
     '/opt/homebrew/bin',
     '/usr/local/bin',
-    '/custom/bin',
-    '/usr/bin',
   ])
 })

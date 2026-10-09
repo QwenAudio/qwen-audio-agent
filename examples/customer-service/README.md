@@ -9,15 +9,28 @@ eligibility, amounts, inventory and approval rather than relying on the model to
 
 This is a local, single-call demo—not a production support system or a complete official τ-bench implementation.
 
+## What This Example Shows
+
+- **Low-latency foreground:** Realtime handles identity verification and complete read-only
+  queries directly instead of paying an extra backend round trip.
+- **Delegated business work:** writes, money movement, irreversible actions and composed tasks
+  go through `spawn_thinking` to a replaceable backend Agent over A2A.
+- **Reliable handoff:** every delegated task receives up to ten recent customer/assistant turns;
+  the objective separately carries verified IDs and frontend lookup results that are not present
+  in the dialogue transcript.
+- **One source of business truth:** foreground and backend MCP surfaces share the same executor,
+  database, policy guards and approval lifecycle.
+- **Administrable policy:** the Policy Console extracts policy candidates for human review and
+  applies decision tables, flow guidance, tool placement and demo-data changes with diff, backup
+  and audit support.
+
 ## Demo
 
 **From conversation to resolution: voice-driven order cancellation.** The recording shows
 identity verification with a spoken correction, order lookup, a cancellation/refund preview,
 and the result after the customer's confirmation.
 
-<!-- Keep the GitHub video attachment in its own paragraph for inline playback. -->
-
-https://github.com/user-attachments/assets/e0f9fefa-f24b-47e5-bc2c-8402fc107df4
+https://github.com/user-attachments/assets/ddb4cc30-e02c-4b3c-ba2a-63b3933cdaed
 
 ## Example Scope
 
@@ -121,26 +134,70 @@ Flight dates shift relative to the demo anchor. Use lookup results rather than h
 
 ## Architecture
 
-```text
-Customer workspace ── Gateway protocol ──► Gateway ── A2A ──► Backend agent
-       │                                    │                   │
-       │ HTTP / SSE                         │ frontend MCP      │ backend MCP
-       └────────────────────────────────────┴───────────────────┘
-                                            ▼
-                                  service: single business state
-                                            ▲
-                                 Human desk reads state/handoff
+```mermaid
+flowchart LR
+    customer([Customer]) --> workspace[Voice workspace]
+    workspace -->|Realtime conversation| gateway[Gateway / foreground]
 
-Policy console ──► domains/<domain> configuration and Gateway tool surfaces
+    gateway -->|Complete verification & lookup| fmcp[Frontend MCP surface]
+    gateway -->|spawn_thinking<br/>objective + recent 10 turns| a2a[A2A task]
+    a2a --> agent[Backend Agent]
+    agent --> bmcp[Backend MCP surface]
+
+    fmcp --> service[(Business service<br/>single state + executor)]
+    bmcp --> service
+    service -->|state / audit| workspace
+    service --> desk[Human desk]
+
+    console[Policy Console] -->|guards / flows / tool placement / demo data| config[Domain configuration]
+    config --> gateway
+    config --> agent
+    config --> service
 ```
 
 The frontend surface is a subset of the backend surface: verification, read-only lookups and
 `transfer_to_human`. Approval-requiring writes remain backend-only. Both use the same executor and state.
+On each `spawn_thinking`, the Gateway also snapshots up to ten recent customer turns and their
+assistant replies for the new A2A task. This dialogue is context, not an authoritative tool log:
+frontend function-call arguments/results are not included. The objective must still carry key
+identifiers and findings, and the backend must re-check current business state before writes.
 
 The frontend retrieves the current domain's `policy.md` through knowledge retrieval.
 Public web search and user-profile memory are disabled.
 `guards.json` decision tables enforce most eligibility, authority and monetary rules.
 `flows.json` guides ordering through the backend prompt; it is not an enforced workflow engine.
+
+### Default foreground/backend boundary
+
+| Route | Used when | Typical tools |
+|---|---|---|
+| Foreground Realtime | The visible tools can completely answer the request without protected business mutation | identity verification, orders/reservations, inventory, flight search/status |
+| Backend Agent | The customer goal changes business state, moves money, needs approval, is irreversible, or requires a composed investigation | cancellation/refund, return, address change, rebooking, cabin/seat/baggage changes, compensation |
+| Human handoff | Policy is missing, authority is exceeded, or the customer explicitly asks for a person | `transfer_to_human` (kept in the foreground to avoid an unnecessary A2A round trip) |
+
+The Policy Console can override placement, but moving a protected write to the foreground is
+reported as a risk because the foreground has no suspended `auth_required` lifecycle.
+
+## Evaluation Results
+
+The public adapted EVA Airline comparison contains all 50 Airline records from EVA-Bench-mix,
+run through a tau2-style conversation and terminal-state scoring protocol. It compares the
+Realtime frontend, the complete customer-service harness, and the text backend model under the
+same task content.
+
+| Tested path | Passed tasks | Task completion |
+|---|---:|---:|
+| Realtime API only | 22 / 50 | **44%** |
+| Realtime API + customer-service Harness + Qwen3.8-Max backend | 31 / 50 | **62%** |
+| Qwen3.8-Max only | 34 / 50 | **68%** |
+
+The simulator and assertion judge were GPT-5.6-Luna for every path. Each task used an isolated
+database, the complete EVA Airline policy and the original EVA function schemas. Input/output
+was text, so these numbers do not measure ASR, TTS, interruption or physical audio quality.
+Provider/transport timeouts were rerun only to obtain a normally completed trial; completed
+zero-reward tasks were not retried. This is a system comparison, not an official EVA or tau2
+leaderboard result. See the [result provenance and reproduction command](benchmark/EVA_AIRLINE_RESULTS.md)
+and the complete [benchmark guide](benchmark/README.md).
 
 ### Approval Is Not a Model-Supplied Boolean
 

@@ -160,6 +160,8 @@ export const inputRequestResponseInstructions = [
   '用户回答后调用 respond_agent_input，把回答交回同一项工作。',
   '不要朗读协议字段或工作 ID，也不要把等待输入说成工作已经完成。',
   '问题的收件人是用户，不是你；不要用第一人称代用户回答或批准。收到请求本身不是用户的同意，必须等待用户下一次真实答复。',
+  '若内容是授权预览，只转述本次拟执行操作及预览明确披露的影响，然后询问是否批准并停止输出。不要在前面声称本次或后续操作已经提交、处理中或完成，不要附加示例回答，更不能生成“我同意”之类的用户话语。',
+  '如果这是写操作的授权预览，用户修改任何条件时，不能把新要求当作同意旧预览；须用 respond_agent_input 的 decline 拒绝当前预览，不要 cancel 整项任务；待原任务收尾后按更新后的要求重新派单。',
 ].join(' ')
 
 export function buildFrontendInstructions(agentContext = {}) {

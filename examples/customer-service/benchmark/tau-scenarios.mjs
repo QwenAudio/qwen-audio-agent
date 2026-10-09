@@ -77,7 +77,7 @@ export class TauScenarios {
   }
 
   async load({ domain, policy, database, taskId, clock } = {}) {
-    if (!['retail', 'airline'].includes(domain)) throw new Error('Invalid tau domain')
+    if (!['retail', 'airline', 'eva_airline'].includes(domain)) throw new Error('Invalid tau domain')
     if (policy !== undefined && (typeof policy !== 'string' || !policy.trim())) throw new Error('Invalid policy')
     if (database !== undefined && (!database || typeof database !== 'object' || Array.isArray(database))) {
       throw new Error('Invalid database')
@@ -117,6 +117,20 @@ export class TauScenarios {
         // Official to_json_str returns scalar strings verbatim (not JSON quoted).
         const userId = result.content
         if (typeof userId === 'string' && userId.trim()) {
+          if (context.verifiedIdentity && context.verifiedIdentity.userId !== userId) {
+            throw new Error('Only one authenticated customer is allowed per conversation')
+          }
+          context.verifiedIdentity = { userId, method: name, arguments: structuredClone(operationArgs) }
+        }
+      }
+      // EVA authenticates a booking with confirmation number + surname. The
+      // successful read is the only evidence used here; task fixtures and model
+      // objectives never establish identity.
+      if (name === 'get_reservation') {
+        let reservation
+        try { reservation = JSON.parse(result.content) } catch {}
+        if (reservation && typeof reservation === 'object') {
+          const userId = String(operationArgs.confirmation_number || '').toUpperCase()
           if (context.verifiedIdentity && context.verifiedIdentity.userId !== userId) {
             throw new Error('Only one authenticated customer is allowed per conversation')
           }

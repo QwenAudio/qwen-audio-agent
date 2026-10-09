@@ -43,6 +43,10 @@
 - 修复桌面端和 WebUI 在插拔耳机或切换默认扬声器后，语音仍从旧输出设备播放的问题；
   播放上下文会跟随系统当前默认输出，不中断 Gateway 会话或麦克风采集。
 
+- 修复 Windows 上 `npx.cmd` 旁没有 `npx-cli.js` 时（全局 npm prefix、Volta 等 shim）
+  `qwenaudio skill` 仍回退启动 `npx` 失败的问题；现在与官方 `npx.cmd` 一样读取
+  npm prefix，并回退到 `node.exe` 旁的 `npx-cli.js`。
+
 - 修复资料库导入把 Windows 资源管理器「复制文件地址」的引号和 file:// URL
   当成相对路径、提示找不到文件的问题；粘贴带引号的本机路径或文件 URL 现在
   与直接填写路径一样收录，PDF 等需转换的文档也会按真实路径提取。

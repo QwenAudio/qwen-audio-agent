@@ -37,6 +37,8 @@
 
 ### 修复与实现细节
 
+- WebUI 中文输入法确认候选词时不再误发送草稿；保留普通 Enter 发送与 Shift+Enter 换行行为。
+
 - 修复 `qwenaudio --version` 与 `-v` 报未知参数、无法显示已安装版本的问题；
   安装校验现在输出 package.json 中的版本号，且不初始化 Gateway 运行时。
 

@@ -807,6 +807,35 @@ async function testComposerIme(context, diagnostics) {
   await finishPage(page, diagnostics)
 }
 
+async function testComposerSendFailure(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=send-failure', diagnostics)
+  await waitForAttribute(page, 'data-negotiated-socket', value => Number(value) > 0)
+  const composer = page.locator('.multimodal-composer')
+  const input = composer.locator('textarea')
+  await input.fill('keep this draft')
+  await composer.locator('input[type=file]').setInputFiles({
+    name: 'draft.txt', mimeType: 'text/plain', buffer: Buffer.from('keep this attachment'),
+  })
+  await composer.locator('.composer-attachment').waitFor()
+  await composer.getByRole('button', { name: '发送', exact: true }).click()
+  await composer.getByRole('alert').waitFor({ timeout: 5_000 })
+  assert.equal(await input.inputValue(), 'keep this draft')
+  assert.equal(await composer.locator('.composer-attachment').count(), 1)
+  assert.deepEqual(await page.evaluate(() => window.browserSmoke.inputMessages()), [])
+
+  await composer.getByRole('button', { name: '发送', exact: true }).click()
+  await page.waitForFunction(() => document.querySelector('.multimodal-composer textarea').value === '')
+  assert.equal(await composer.locator('.composer-attachment').count(), 0)
+  assert.equal(await composer.getByRole('alert').count(), 0)
+  const messages = await page.evaluate(() => window.browserSmoke.inputMessages())
+  assert.equal(messages.length, 1, 'Retry must send the retained draft exactly once')
+  assert.ok(messages[0].parts.some(part => part.type === 'text' && part.text.includes('keep this draft')))
+  const file = messages[0].parts.find(part => part.type === 'file')
+  assert.equal(file.filename, 'draft.txt')
+  assert.equal(Buffer.from(file.url.split(',')[1], 'base64').toString(), 'keep this attachment')
+  await finishPage(page, diagnostics)
+}
+
 let server
 let browser
 let context
@@ -825,6 +854,7 @@ try {
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true })
   tracingActive = true
   await testComposerIme(context, diagnostics)
+  await testComposerSendFailure(context, diagnostics)
   await testHappyPath(context, diagnostics)
   await testBrowserLanguage(context, diagnostics)
   await testReconnectInterruptsPlayback(context, diagnostics)
@@ -840,7 +870,7 @@ try {
   tracingActive = false
   await context.close()
   context = null
-  console.log('Browser WebUI smoke passed: testComposerIme, voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
+  console.log('Browser WebUI smoke passed: testComposerIme, testComposerSendFailure, voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
 } catch (error) {
   await mkdir(diagnosticsDirectory, { recursive: true })
   const pages = context?.pages?.() || []

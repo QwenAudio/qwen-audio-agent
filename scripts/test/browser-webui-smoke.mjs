@@ -23,6 +23,7 @@ const MOCK_BROWSER_APIS = String.raw`
   const videoCall = location.search.includes('video-call')
   const realAudio = location.search.includes('browser-smoke=real-audio') || videoCall
   const state = {
+    inputMessages: [],
     mediaRequests: 0,
     cameraRequests: 0,
     cameraStops: 0,
@@ -111,6 +112,13 @@ const MOCK_BROWSER_APIS = String.raw`
       const message = JSON.parse(raw)
       state.socketMessages += 1
       document.documentElement.dataset.lastSocketMessage = message.type
+      if (message.type === 'input.message') {
+        if (location.search.includes('send-failure') && !this.failedInput) {
+          this.failedInput = true
+          throw new Error('controlled input send failure')
+        }
+        state.inputMessages.push(message)
+      }
       if (message.type === 'session.hello') {
         if (message.protocol?.min !== protocolVersion || message.protocol?.max !== protocolVersion) {
           throw new Error('Browser smoke received an unexpected Gateway protocol version')
@@ -366,6 +374,7 @@ const MOCK_BROWSER_APIS = String.raw`
     }
   }
   window.browserSmoke = {
+    inputMessages: () => [...state.inputMessages],
     sleepTool() {
       document.documentElement.dataset.actionResult = ''
       serverEvent(state.activeSocket, { type: 'client.action.request',
@@ -769,6 +778,35 @@ async function testCameraPermission(context, diagnostics) {
   await finishPage(unsupported, diagnostics)
 }
 
+async function testComposerIme(context, diagnostics) {
+  const page = await preparePage(context, '?browser-smoke=composer-ime', diagnostics)
+  await waitForAttribute(page, 'data-negotiated-socket', value => Number(value) > 0)
+  const composer = page.locator('.multimodal-composer')
+  const input = composer.locator('textarea')
+  await input.fill('你好')
+  for (const keyboard of [{ isComposing: true, keyCode: 13 }, { isComposing: false, keyCode: 229 }]) {
+    await input.evaluate((element, keyboard) => {
+      element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, ...keyboard }))
+    }, keyboard)
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+    assert.equal(await input.inputValue(), '你好', 'IME confirmation must retain the draft')
+    assert.deepEqual(await page.evaluate(() => window.browserSmoke.inputMessages()), [])
+  }
+  await input.press('Shift+Enter')
+  assert.equal(await input.inputValue(), '你好\n')
+  assert.deepEqual(await page.evaluate(() => window.browserSmoke.inputMessages()), [])
+  await input.press('Enter')
+  await page.waitForFunction(() => document.querySelector('.multimodal-composer textarea').value === '')
+  assert.equal((await page.evaluate(() => window.browserSmoke.inputMessages())).length, 1)
+  await input.fill('按钮发送')
+  await composer.getByRole('button', { name: '发送', exact: true }).click()
+  const messages = await page.evaluate(() => window.browserSmoke.inputMessages())
+  assert.equal(messages.length, 2)
+  assert.equal(messages[0].parts[0].text, '你好')
+  assert.equal(messages[1].parts[0].text, '按钮发送')
+  await finishPage(page, diagnostics)
+}
+
 let server
 let browser
 let context
@@ -786,6 +824,7 @@ try {
   context = await browser.newContext({ locale: 'zh-CN' })
   await context.tracing.start({ screenshots: true, snapshots: true, sources: true })
   tracingActive = true
+  await testComposerIme(context, diagnostics)
   await testHappyPath(context, diagnostics)
   await testBrowserLanguage(context, diagnostics)
   await testReconnectInterruptsPlayback(context, diagnostics)
@@ -801,7 +840,7 @@ try {
   tracingActive = false
   await context.close()
   context = null
-  console.log('Browser WebUI smoke passed: voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
+  console.log('Browser WebUI smoke passed: testComposerIme, voice lifecycle, native AudioWorklet capture, desktop CSP, sleep/wake cycles, video-call entry, camera toggle, reconnect, responsive dock and permission recovery.')
 } catch (error) {
   await mkdir(diagnosticsDirectory, { recursive: true })
   const pages = context?.pages?.() || []

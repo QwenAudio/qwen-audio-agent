@@ -124,6 +124,8 @@ export default function MultimodalComposer({
           addFiles(files, 'clipboard')
         }}
         onKeyDown={event => {
+          // Enter may confirm an IME candidate instead of sending the draft.
+          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
           if (event.key === 'Enter' && !event.shiftKey) submit(event)
         }}
       />

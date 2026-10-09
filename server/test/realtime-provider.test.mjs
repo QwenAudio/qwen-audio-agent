@@ -15,6 +15,7 @@ import {
 } from '../src/voice/realtime-provider.mjs'
 import { validateRealtimeProvider } from '../src/voice/providers/registry.mjs'
 import { buildFrontendToolContext } from '../src/frontend/tools/frontend-tool-context.mjs'
+import { inputRequestResponseInstructions } from '../src/frontend/frontend-tools.mjs'
 import {
   DASHSCOPE_AUDIO_FLASH_REALTIME_MODEL,
   DASHSCOPE_OMNI_38_FLASH_REALTIME_MODEL,
@@ -80,6 +81,14 @@ test('keeps spawn_thinking as the stable asynchronous work protocol', () => {
   assert.match(instructions, /不支持结构化输入请求的旧后台.*既有工作的续办/s)
   assert.match(instructions, /不要预测、模拟或代替后台提出权限请求/)
   assert.match(instructions, /duplicate.*同一目标此前已提交/)
+})
+
+test('changed authorization previews are declined without cancelling the whole task', () => {
+  assert.match(inputRequestResponseInstructions, /respond_agent_input 的 decline 拒绝当前预览/)
+  assert.match(inputRequestResponseInstructions, /不要 cancel 整项任务/)
+  assert.match(inputRequestResponseInstructions, /待原任务收尾后.*重新派单/)
+  assert.match(inputRequestResponseInstructions, /不要附加示例回答/)
+  assert.match(inputRequestResponseInstructions, /不能生成“我同意”/)
 })
 
 function createQwenFrontend(options = {}) {
@@ -2191,6 +2200,40 @@ test('surfaces a refusal a compliant provider cannot retry', async () => {
   // Without the singleResponseSlot capability the error stays user-facing.
   assert.equal(refusal.__voiceRetried, undefined)
   assert.equal((await outcome).failed, true)
+})
+
+test('Qwen retries a response refused by its occupied session response slot', async () => {
+  const frontend = createQwenFrontend()
+  const sent = []
+  const retried = []
+  frontend.ready = true
+  frontend.ws = {
+    readyState: 1,
+    send: raw => sent.push(JSON.parse(raw)),
+  }
+  frontend.retryRefusedResponse = pending => retried.push(pending)
+
+  frontend.speak('后台结果', 'agent', { taskId: 'task-qwen-race' })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(sent.filter(event => event.type === 'response.create').length, 1)
+
+  const refusal = {
+    type: 'error',
+    error: {
+      code: 'invalid_value',
+      type: 'invalid_request_error',
+      message: 'Cannot create response while another response is in progress.',
+    },
+  }
+  frontend.handleLifecycle(refusal)
+
+  assert.equal(refusal.__voiceRetried, true)
+  assert.equal(retried.length, 1)
+  assert.equal(retried[0].origin, 'agent')
+  assert.equal(retried[0].busyRetries, 1)
+  assert.equal(retried[0].settled, false)
+  assert.equal(retried[0].responsePayload.type, 'response.create')
+  frontend.settlePending(retried[0], { cancelled: true })
 })
 
 test('the Qwen provider exposes its supported realtime capabilities', () => {

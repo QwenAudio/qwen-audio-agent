@@ -634,6 +634,15 @@ export class AgentTaskRuntime {
       ), turnId)
       return
     }
+    if (request.kind === 'authorization' && action === 'accept') {
+      // `action` is chosen by the active conversation model with the complete
+      // dialogue and preview in context. Do not second-guess that semantic
+      // decision with a brittle keyword/regular-expression classifier.
+      args = {
+        ...args,
+        text: String(await this.host.transcripts.transcript(turnId)).trim(),
+      }
+    }
     await this.host.taskOperations.respondToInput(task.id, request.id, {
       action,
       text: String(args.text || '').trim(),
@@ -646,6 +655,15 @@ export class AgentTaskRuntime {
       response: {
         instructions: action === 'accept'
           ? '回答已交给原来的后台工作。只简短自然地说明会继续处理，不要新建工作或重复问题。'
+          : request.kind === 'authorization' && action === 'decline'
+            ? [
+              '当前操作预览已拒绝，没有批准这次写入；整项后台工作没有因此被取消。',
+        '若用户提出更新后的诉求，待原任务结束后，保留已知上下文及用户的新条件，调用 spawn_thinking 新建工作并生成新预览。',
+        '可由后台查询的既有事实不要反复要求用户提供。',
+        '若用户只是拒绝当前操作而没有新诉求，简短确认未执行即可；不要声称新操作已经完成。',
+            ].join(' ')
+            : request.kind === 'authorization' && action === 'cancel'
+              ? '用户已明确终止整项后台工作。简短确认任务已取消，不要声称任何待确认操作已经执行。'
           : '用户没有提供这次补充信息。只作简短自然确认，不要声称工作已经完成。',
       },
     })

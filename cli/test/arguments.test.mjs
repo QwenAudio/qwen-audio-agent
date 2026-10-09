@@ -389,6 +389,7 @@ test('documents the service and client commands', () => {
   assert.match(text, /--backend-permission-mode MODE/)
   assert.doesNotMatch(text, /--mode private/)
   assert.match(text, /--audio-mode MODE/)
+  assert.match(text, /-v, --version/)
   assert.match(text, /x\s+半双工模式下手动打断当前回复/)
 })
 

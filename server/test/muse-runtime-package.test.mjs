@@ -37,12 +37,12 @@ test('framework manifests and lockfile do not install the optional Muse SDK', ()
   assert.equal(lock.includes('@muse-code/sdk'), false)
 })
 
-test('SDK missing or wrong version is actionable; detection never evaluates package code', async t => {
+test('SDK detection accepts newer versions and never evaluates package code', async t => {
   const { env, directory, install } = fixture(t)
   assert.equal(inspectBackendRuntimePackage('muse', { env }).ready, false)
   await assert.rejects(loadMuseSdk(directory), { code: 'MUSE_SDK_NOT_INSTALLED' })
   install('9.9.9')
-  await assert.rejects(loadMuseSdk(directory), /qwenaudio install muse/)
+  assert.equal(inspectBackendRuntimePackage('muse', { env }).ready, true)
   install('0.1.1', 'throw new Error("SDK was evaluated")')
   assert.equal(inspectBackendRuntimePackage('muse', { env }).ready, true)
   const report = inspectBackendSetups({ backend: 'muse', env, find: () => '/installed/muse' })
@@ -91,7 +91,7 @@ test('explicit install adds only a missing private SDK and skips an existing Mus
   assert.equal(calls.length, 1)
   assert.deepEqual(calls[0].args, [
     'install', '--prefix', directory, '--no-save', '--package-lock=false',
-    '--ignore-scripts', '--no-audit', '--no-fund', '@muse-code/sdk@0.1.1',
+    '--ignore-scripts', '--no-audit', '--no-fund', '@muse-code/sdk@latest',
   ])
   const again = await installBackend('muse', {
     env, platform: 'darwin', inspect,

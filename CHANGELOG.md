@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### 修复与改进
+
+- 后台可用性缓存对「不可达」结果也按 TTL 后台重探，后台恢复后的首个派活回执不再被过期结果拒绝。
+
+## 2.0.1
+
+### 修复与改进
+
+- 优先复用本机后台 Agent 与原有配置，修复桌面端命令搜索顺序；只安装缺失的本体或 ACP 适配器，默认使用官方最新版，不覆盖已有安装。
+- DeepSeek Harness 改用官方 CLI 的原生 ACP，移除旧版演示插件与启动配置；未指定模型时保留后台默认选择。
+- 修复连续调用协调会话时重复恢复活动 Session 导致失败的问题；后台进程重启后仍可恢复原会话。
+- 更新中英文后台配置文档与安装状态提示，区分安装完成、原生配置和运行就绪。
+
 ## 2.0.0
 
 ### 主要更新
@@ -22,9 +37,16 @@
 
 ### 修复与实现细节
 
+- 修复 `qwenaudio --version` 与 `-v` 报未知参数、无法显示已安装版本的问题；
+  安装校验现在输出 package.json 中的版本号，且不初始化 Gateway 运行时。
+
+- 修复桌面端和 WebUI 在插拔耳机或切换默认扬声器后，语音仍从旧输出设备播放的问题；
+  播放上下文会跟随系统当前默认输出，不中断 Gateway 会话或麦克风采集。
+
 - 修复 Windows 上 `npx.cmd` 旁没有 `npx-cli.js` 时（全局 npm prefix、Volta 等 shim）
   `qwenaudio skill` 仍回退启动 `npx` 失败的问题；现在与官方 `npx.cmd` 一样读取
   npm prefix，并回退到 `node.exe` 旁的 `npx-cli.js`。
+
 - 修复资料库导入把 Windows 资源管理器「复制文件地址」的引号和 file:// URL
   当成相对路径、提示找不到文件的问题；粘贴带引号的本机路径或文件 URL 现在
   与直接填写路径一样收录，PDF 等需转换的文档也会按真实路径提取。
@@ -143,6 +165,9 @@
   校验 ACP MCP 描述的后台无法创建 Session 的问题。
 - 修复 Windows 上位于含空格目录的 `.cmd` / `.bat` ACP 后台命令被 cmd.exe 截断而
   无法启动，以及含空格的 ACP 参数被拆开的问题。
+- 修复 Windows 上路径或参数含 `&`、`|`、`^` 等 cmd.exe 元字符时（如 `C:\R&D\qwen.cmd`
+  或 `ACP_ARGS=["a&b"]`），Qwen Code、Qoder、通用 ACP 等直接启动的后台仍被拆成多条
+  命令而无法启动的问题；批处理改为显式 `cmd.exe /d /s /c` 引用，不再依赖 `shell: true`。
 - 修复 Windows 用户名或安装目录含空格时（如
   `C:\Users\Li Lei\AppData\Roaming\npm\codex.cmd`），桌面设置页的后台登录状态
   检测命令被 cmd.exe 截断、已登录的后台一律显示为状态未知的问题。

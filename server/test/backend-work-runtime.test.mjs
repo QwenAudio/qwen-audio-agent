@@ -37,7 +37,6 @@ test('submits structured Gateway Work with one model-facing instruction', async 
   const result = await runtime.run({
     originalRequest: '检查项目',
     objective: '检查项目',
-    conversationContext: [{ role: 'user', content: '不应转发的历史' }],
     userMemories: [{ scope: 'memory', content: '不应转发的记忆' }],
     workingDirectory: '/project',
     inputParts: [],

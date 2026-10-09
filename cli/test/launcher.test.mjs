@@ -208,6 +208,27 @@ test('dispatches skill commands straight to the skills CLI', async () => {
   assert.deepEqual(skillCalls, [['update']])
 })
 
+test('prints the package version without loading runtime configuration', async () => {
+  const version = JSON.parse(
+    readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+  ).version
+  for (const flag of ['--version', '-v']) {
+    const target = harness()
+    let prepared = false
+    target.dependencies.prepareEnvironment = () => {
+      prepared = true
+      throw new Error('version must not load runtime')
+    }
+    assert.equal(await main([flag], target.dependencies), 0, flag)
+    assert.equal(prepared, false, flag)
+    assert.deepEqual(
+      target.calls.filter(call => call[0] === 'stdout').map(call => call[1]),
+      [`${version}\n`],
+      flag,
+    )
+  }
+})
+
 test('marks only an explicitly addressed OpenClaw Gateway as external', async () => {
   const managed = harness()
   managed.dependencies.env = { AGENT_PROTOCOL: 'openclaw' }

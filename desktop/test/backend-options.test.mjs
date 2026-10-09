@@ -108,6 +108,7 @@ test('ready backends are selectable and never installable', () => {
     ready: true,
     selectable: true,
     installable: false,
+    installLabel: '安装',
     requiresConfirmation: false,
     configurationRequired: false,
     configurationReady: false,
@@ -147,7 +148,7 @@ test('unavailable installable backends show a short reason and full title', () =
       id: 'claude',
       label: 'Claude Code',
       issues: ['未找到 Claude Code，请先安装并完成原生配置'],
-      install: { supported: true, requiresConfirmation: false, steps: [] },
+      install: { supported: true, requiresConfirmation: false, steps: [{ component: 'backend' }] },
     }),
   ]))
   assert.equal(states[1].label, 'Claude Code')
@@ -163,7 +164,7 @@ test('script-based installs mark the row as requiring confirmation', () => {
       id: 'hermes',
       label: 'Hermes',
       issues: ['未找到 Hermes'],
-      install: { supported: true, requiresConfirmation: true, steps: [] },
+      install: { supported: true, requiresConfirmation: true, steps: [{ component: 'backend' }] },
     }),
   ]))
   assert.equal(states[1].installable, true)
@@ -280,7 +281,7 @@ test('keeps the selected backend selectable even when unavailable', () => {
       id: 'claude',
       selected: true,
       issues: ['未找到 Claude Code，请先安装并完成原生配置'],
-      install: { supported: true, requiresConfirmation: false, steps: [] },
+      install: { supported: true, requiresConfirmation: false, steps: [{ component: 'backend' }] },
     }),
   ]))
   assert.equal(states[1].selectable, true)
@@ -304,6 +305,17 @@ test('never reports an uninstalled backend ready from a stale runtime alone', ()
     selectedBackend: 'codebuddy',
     runtimeBackend: { connected: true },
   }), false)
+})
+
+test('distinguishes adapter-only installation from incompatible existing hosts', () => {
+  const states = backendOptionStates(report([
+    backend({ id: 'codex', install: { supported: true, steps: [{ component: 'adapter' }] } }),
+    backend({ id: 'deepseek', issues: ['低于最低版本'], install: { supported: true, steps: [] } }),
+  ]))
+  assert.equal(states.find(item => item.id === 'codex').installLabel, '安装适配器')
+  assert.equal(states.find(item => item.id === 'codex').installable, true)
+  assert.equal(states.find(item => item.id === 'deepseek').installable, false)
+  assert.equal(states.find(item => item.id === 'deepseek').statusLabel, '版本不兼容')
 })
 
 test('keeps installation, configuration, and runtime phases separate', () => {

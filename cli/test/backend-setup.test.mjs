@@ -13,7 +13,6 @@ function inspector({
   env = {},
   commands = {},
   versions = {},
-  globalPackages,
   backend = '',
 } = {}) {
   return inspectBackendSetups({
@@ -22,9 +21,6 @@ function inspector({
     backend,
     find: command => commands[command] || '',
     readVersion: command => versions[command] || '',
-    ...(globalPackages
-      ? { readGlobalPackages: () => ({ known: true, packages: globalPackages }) }
-      : {}),
   })
 }
 
@@ -57,11 +53,27 @@ test('reports installed backends without probing credentials or changing models'
 test('reports an incompatible installed OpenCode version', () => {
   const report = inspector({
     backend: 'opencode',
-    commands: { opencode: '/bin/opencode' },
+    env: { DASHSCOPE_API_KEY: 'test-key', QWEN_AUDIO_AGENT_BACKEND_MODEL: 'test-model' },
+    commands: { opencode: '/bin/opencode', npx: '/bin/npx' },
     versions: { '/bin/opencode': '1.17.9' },
   })
   assert.equal(report.backends[0].ready, false)
+  assert.equal(report.backends[0].backend.installed, true)
+  assert.equal(report.backends[0].backend.path, '/bin/opencode')
   assert.match(report.backends[0].issues[0], /最低版本 1\.18\.0/)
+})
+
+test('discovers an installed adapter independently of a missing host', () => {
+  for (const [backend, adapter] of [['codex', 'codex-acp'], ['claude', 'claude-code-acp'], ['pi', 'pi-acp']]) {
+    const item = inspector({
+      backend,
+      commands: { [adapter]: `/user/bin/${adapter}` },
+    }).backends[0]
+    assert.equal(item.ready, false)
+    assert.equal(item.backend.installed, false)
+    assert.equal(item.adapter.installed, true)
+    assert.equal(item.adapter.ready, true)
+  }
 })
 
 test('requires a compatible Kimi Code version', () => {
@@ -131,16 +143,10 @@ test('probes Windows commands stored in a directory with spaces', {
     const openCode = join(directory, 'opencode.cmd')
     writeFileSync(openCode, ['@echo off', 'echo 1.18.6', ''].join('\r\n'))
     const dsh = join(directory, 'dsh.cmd')
-    writeFileSync(dsh, ['@echo off', 'exit /b 0', ''].join('\r\n'))
-    const npm = join(directory, 'npm.cmd')
-    writeFileSync(npm, ['@echo off', 'type "%~dp0packages.json"', ''].join('\r\n'))
-    writeFileSync(join(directory, 'packages.json'), JSON.stringify({
-      dependencies: { '@deepseek-ai/dsh': { version: '0.1.0-rc.6' } },
-    }))
+    writeFileSync(dsh, ['@echo off', 'echo 0.1.5-rc.3', ''].join('\r\n'))
     const find = command => ({
       opencode: openCode,
       dsh,
-      'npm.cmd': npm,
     })[command] || ''
 
     const report = inspectBackendSetups({
@@ -166,8 +172,8 @@ test('probes Windows commands stored in a directory with spaces', {
       find,
     }).backends[0]
     assert.equal(
-      deepSeek.packages.find(item => item.name === '@deepseek-ai/dsh')?.version,
-      '0.1.0-rc.6',
+      deepSeek.backend.version,
+      '0.1.5-rc.3',
     )
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -335,14 +341,26 @@ test('detects the DeepSeek Harness ACP runtime', () => {
     backend: 'deepseek',
     commands: {
       dsh: '/bin/dsh',
-      'dsh-acp-demo': '/bin/dsh-acp-demo',
     },
+    versions: { '/bin/dsh': '0.1.5-rc.3' },
   }).backends[0]
   assert.equal(item.ready, true)
   assert.equal(item.integration, 'native')
 })
 
-test('requires both the DeepSeek Harness CLI and ACP runtime', () => {
+test('prefers the user PATH OpenClaw over an implicit bundle fallback', () => {
+  const item = inspector({
+    backend: 'openclaw', env: { HOME: '/user' },
+    commands: {
+      openclaw: '/user/bin/openclaw',
+      '/user/.openclaw-bundle/wrapper/openclaw': '/user/.openclaw-bundle/wrapper/openclaw',
+    },
+  }).backends[0]
+  assert.equal(item.backend.path, '/user/bin/openclaw')
+  assert.equal(item.backend.installed, true)
+})
+
+test('requires a native ACP-capable DeepSeek CLI, not the old ACP demo', () => {
   const missingCli = inspector({
     backend: 'deepseek',
     commands: { 'dsh-acp-demo': '/bin/dsh-acp-demo' },
@@ -353,32 +371,24 @@ test('requires both the DeepSeek Harness CLI and ACP runtime', () => {
   const missingAcp = inspector({
     backend: 'deepseek',
     commands: { dsh: '/bin/dsh', npx: '/bin/npx' },
+    versions: { '/bin/dsh': '0.1.0-rc.6' },
   }).backends[0]
   assert.equal(missingAcp.ready, false)
-  assert.match(missingAcp.issues[0], /dsh-acp-demo/)
+  assert.match(missingAcp.issues[0], /最低版本 0\.1\.5/)
+  assert.equal(missingAcp.backend.installed, true)
 })
 
-test('requires every pinned DeepSeek runtime package', () => {
+test('accepts a newer DeepSeek CLI without separately installed plugins', () => {
   const item = inspector({
     backend: 'deepseek',
     commands: {
       dsh: '/bin/dsh',
-      'dsh-acp-demo': '/bin/dsh-acp-demo',
-      npm: '/bin/npm',
     },
-    globalPackages: {
-      '@deepseek-ai/dsh': '0.1.0-rc.6',
-      '@deepseek-ai/dsh-acp-demo': '0.1.0-rc.6',
-    },
+    versions: { '/bin/dsh': '0.2.0' },
   }).backends[0]
   assert.equal(item.backend.ready, true)
   assert.equal(item.adapter.ready, true)
-  assert.equal(item.ready, false)
-  assert.match(item.issues[0], /dsh-llm-deepseek/)
-  assert.equal(
-    item.packages.find(entry => entry.name === '@deepseek-ai/dsh-llm-deepseek').ready,
-    false,
-  )
+  assert.equal(item.ready, true)
 })
 
 test('honors explicit package and binary runtime requirements', () => {

@@ -37,23 +37,50 @@ export function affectsTurnSettlement(event) {
   return event.type !== 'task.progress' && !['task.snapshot', 'voice.connection', 'agent.activity'].includes(event.type)
 }
 
-export function withTauPolicy(provider, { policy, mode, definitions, onResponse = () => {} }) {
+// Benchmark-only adapter instructions. Business eligibility, confirmation,
+// refund, and transfer rules come exclusively from the official tau2 policy.
+// The generic voice-assistant prompt is intentionally omitted here: its
+// routing rules are for a general assistant, not this two-stage benchmark.
+const TAU_HARNESS_BRIDGE = [
+  'You are the customer-facing agent for <official_policy>. Follow it for all business rules. Speak English; invent nothing and claim no database change without a committed tool result.',
+  'Use frontend tools for reads. For writes or multi-record investigation, call spawn_thinking with verified IDs, the customer’s original selection criteria, and unresolved candidates. If a requested state change, benefit, or human transfer lacks a writable frontend tool, you MUST call spawn_thinking in that same turn. Never claim the service lacks the capability due to a frontend limit. A read limit is NOT a business inability. Delegation is neither human transfer nor a database update.',
+  'A missing internal ID is not a blocker. Resolve targets described by route, date, time, price, preference, or comparison with read tools; then delegate the candidate or the original constraints and unresolved candidates. Do not ask for IDs the tools or backend can find, and do not infer that dependent writes are impossible from frontend limits.',
+  'Delegate once facts and choices are known; do not ask an extra generic confirmation. A customer may approve a just-presented concrete proposal, including dependent changes, once. Delegate so the runtime can compare each exact write preview with that scope; otherwise it requests approval. A confirmation, receipt, or pending task is not completion.',
+  'Ask every policy checkpoint once. Confirm the selected record with the next needed question. Ask a fresh preference after the replacement is known; a stored preference is not a fresh answer. Pass that answer to the backend.',
+  'Relay backend questions and wait. For an authorization preview, relay only the operation and effects, ask for approval, then stop. Never write a sample customer reply or approve for them. Send the real reply with respond_agent_input to the SAME task. If conditions change, decline the current preview with respond_agent_input; do not cancel the whole task. Then delegate the updated request.',
+  'Use result states literally: initiated, pending, or processing means started, never received, settled, or credited. For multi-part refunds, claim each component only after its own committed result.',
+].join('\n')
+
+// Preserve the pre-compact benchmark prompt for paired A/B runs. This is
+// benchmark-only; the customer-service example's production prompt is intact.
+const TAU_HARNESS_LEGACY_BRIDGE = [
+  'You are the customer-facing service agent. Use frontend MCP tools for simple read-only inquiries. Delegate ALL database updates and complex workflows to spawn_thinking, providing all relevant public customer dialogue and identifiers. If the customer explicitly requests a state change, compensation or benefit, or human transfer and no matching writable frontend tool is exposed, you MUST call spawn_thinking in that same turn. Never claim the service lacks the capability, merely promise to handle it, or send the customer to another channel because only the frontend lacks the tool. Looking through multiple orders/reservations is a complex workflow: delegate it rather than iterating beyond the frontend safety budget. If a frontend tool reaches its safety limit, the backend can continue the investigation; do not claim that the business service is unavailable. When the customer describes an item by comparison (for example the more expensive of two matching products), keep that comparison unresolved until all plausible records have been checked. Do not promote the first match or a customer guess to a verified order/item; pass the original selection criterion and remaining candidates to the backend. A delegated task is NOT a human escalation. When an input request is pending, use respond_agent_input to return the customer decision to that SAME task. Never start a new task just to approve a pending operation. Do not approve on behalf of the customer. Clearly convey task questions and final results.',
+  'Once required facts and genuine business choices are known, delegate a requested update without asking a generic "may I proceed?" first. A customer reply may authorize a just-presented concrete multi-step proposal; delegate immediately so the runtime can semantically compare each internal preview with that bounded authorization. Otherwise the runtime will show the exact operation preview and ask the customer to authorize it once. Delegating work, customer confirmation, an operation preview, and task completion are NOT proof of a database update. Until a committed operation result arrives, never say submitted, processed, refunded, exchanged, or modified. Backend input requests are questions for the CUSTOMER, not questions for you to answer as the customer. Read the proposed action naturally, then WAIT for a new customer answer before calling respond_agent_input. If the customer changes the item, refund destination, or any other condition after a preview, DECLINE the current preview with respond_agent_input; do not cancel the whole task. After the old task ends, delegate the new request and obtain a new preview. Never mark a changed request as accept for the old preview. Do not announce completion while a request is pending. When a read tool hits its budget, actually call spawn_thinking; saying you will delegate is not a tool call.',
+  'Respond in English. Do not invent facts. The following is the complete authoritative business policy; it replaces demo business rules. For the airline benchmark, the current time is fixed at 2024-05-15 15:00:00. Do not use the host date for eligibility.',
+].join('\n\n')
+
+export function withTauPolicy(provider, { policy, mode, definitions, promptVariant = 'compact',
+  currentDateTime = '2024-05-15 15:00:00', onResponse = () => {} }) {
+  if (!['legacy', 'compact'].includes(promptVariant)) throw new Error('Invalid tau harness prompt variant')
   const transportState = { activeResponses: new Set(), responseCreates: 0 }
-  const role = mode === 'realtime-only'
-    ? 'You are the customer service agent. Use the supplied official tools to complete the customer request, following the policy. Get explicit confirmation before database updates.'
-    : 'You are the customer-facing service agent. Use frontend MCP tools for simple read-only inquiries. Delegate ALL database updates and complex workflows to spawn_thinking, providing all relevant public customer dialogue and identifiers. Looking through multiple orders/reservations is a complex workflow: delegate it rather than iterating beyond the frontend safety budget. If a frontend tool reaches its safety limit, the backend can continue the investigation; do not claim that the business service is unavailable. A delegated task is NOT a human escalation. When an input request is pending, use respond_agent_input to return the customer decision to that SAME task. Never start a new task just to approve a pending operation. Do not approve on behalf of the customer. Clearly convey task questions and final results.'
   return {
     ...provider,
     benchmarkState: transportState,
     buildSession(options) {
       const session = provider.buildSession(options)
-      session.instructions = [
-        mode === 'harness' ? session.instructions : '',
-        role,
-        ...(mode === 'harness' ? ['Delegating work, customer confirmation, an operation preview, and task completion are NOT proof of a database update. Until a committed operation result arrives, never say submitted, processed, refunded, exchanged, or modified. Backend input requests are questions for the CUSTOMER, not questions for you to answer as the customer. Read the proposed action naturally, then WAIT for a new customer answer before calling respond_agent_input. If the customer already confirmed before a runtime preview was created, do not silently treat that as authorization of the new preview. Do not announce completion while a request is pending. When a read tool hits its budget, actually call spawn_thinking; saying you will delegate is not a tool call.'] : []),
-        'Respond in English. Do not invent facts. The following is the complete authoritative business policy; it replaces demo business rules. For the airline benchmark, the current time is fixed at 2024-05-15 15:00:00. Do not use the host date for eligibility.',
-        '<official_policy>', policy, '</official_policy>',
-      ].filter(Boolean).join('\n\n')
+      session.instructions = mode === 'harness'
+        ? promptVariant === 'legacy'
+          ? [session.instructions, TAU_HARNESS_LEGACY_BRIDGE, '<official_policy>\n\n' + policy + '\n\n</official_policy>'].join('\n\n')
+          : [
+            `The following is the complete authoritative business policy. The benchmark current time is fixed at ${currentDateTime}; do not use the host date for eligibility.`,
+            '<official_policy>', policy, '</official_policy>',
+            TAU_HARNESS_BRIDGE,
+          ].join('\n\n')
+        : [
+            'You are the customer service agent. Use the supplied official tools to complete the customer request, following the policy. Get explicit confirmation before database updates.',
+            `Respond in English. Do not invent facts. The following is the complete authoritative business policy; it replaces demo business rules. The benchmark current time is fixed at ${currentDateTime}. Do not use the host date for eligibility.`,
+            '<official_policy>', policy, '</official_policy>',
+          ].join('\n\n')
       if (mode === 'realtime-only') {
         session.tools = definitions.map(tool => ({ type: 'function', function: {
           name: tool.name, description: tool.description, parameters: tool.inputSchema,
@@ -145,7 +172,7 @@ export async function createRealtimeOnly({ provider, scenarios, sessionId, signa
 }
 
 export async function createFullHarness({ provider, agentServer, serviceOrigin, sessionId,
-  definitions, directory, signal, events, config }) {
+  definitions, directory, signal, events, config, turnTimeoutMs = 180_000 }) {
   const [
     { createGatewayApplication }, { createA2ABackendAdapter }, { createBackendAgentHost },
     { createRealtimeProviderRegistry }, { FrontendMcpClient },
@@ -223,7 +250,7 @@ export async function createFullHarness({ provider, agentServer, serviceOrigin, 
         if (failure) throw failure
         return texts.length > start && !provider.benchmarkState.activeResponses.size
           && ![...tasks.values()].some(isTaskBlocking) && Date.now() - lastEventAt >= 1500
-      }, { signal, timeoutMs: 120_000 })
+      }, { signal, timeoutMs: turnTimeoutMs })
       return texts.slice(start).join('\n')
     },
     counts() { return { realtimeResponses: responses, backendTasks: tasks.size,

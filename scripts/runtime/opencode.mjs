@@ -14,7 +14,7 @@ const EXTRA = process.argv.slice(3)
 // ── defaults ────────────────────────────────────────────────────────────────
 const PORT = process.env.OPENCODE_PORT || '4096'
 const RUNTIME = process.env.OPENCODE_RUNTIME || 'auto'
-const PKG = process.env.OPENCODE_PACKAGE || 'opencode-ai@1.18.5'
+const PKG = process.env.OPENCODE_PACKAGE || 'opencode-ai@latest'
 const MIN_VERSION = process.env.OPENCODE_MIN_VERSION || '1.18.0'
 const COMMAND = MODE === 'acp' ? 'acp' : MODE === 'gateway' ? 'gateway' : 'serve'
 const BACKEND_MODEL = process.env.QWEN_AUDIO_AGENT_BACKEND_MODEL || ''
@@ -117,15 +117,7 @@ if (RUNTIME === 'auto') {
   if (process.env.OPENCODE_BIN) {
     await runBinary()
   } else if (commandAvailable('opencode')) {
-    const ver = await installedVersion()
-    if (versionGte(ver, MIN_VERSION)) {
-      await runInstalled()
-    } else if (DESKTOP_INSTALLED_ONLY === '1') {
-      fatal(`Installed OpenCode ${ver} is older than the supported minimum ${MIN_VERSION}.`)
-    } else {
-      console.error(`Installed OpenCode ${ver} is older than the supported minimum; using ${PKG}.`)
-      await runManagedPackage()
-    }
+    await runInstalled()
   } else {
     await runManagedPackage()
   }

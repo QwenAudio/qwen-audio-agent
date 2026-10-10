@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -151,6 +151,66 @@ test('ingestion preserves existing conversion files and refuses a full library b
   assert.equal(conversions, 1)
   assert.equal(summaries, 1)
   assert.deepEqual(readdirSync(root).sort(), ['manual-2.md', 'manual.md'])
+})
+
+test('updates a converted document in place instead of rejecting at capacity', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'qwa-convert-reimport-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const dirA = join(root, 'a')
+  const dirB = join(root, 'b')
+  mkdirSync(dirA)
+  mkdirSync(dirB)
+  const pdf = join(dirA, '手册.pdf')
+  const other = join(dirB, '手册.pdf')
+  writeFileSync(pdf, '%PDF-1.7 fake v1')
+  writeFileSync(other, '%PDF-1.7 other source')
+  const shelf = new KnowledgeLibrary({ documentDirectory: join(root, 'docs'), maxPerOwner: 2 })
+  mkdirSync(join(root, 'docs'))
+  let conversions = 0
+  const provider = new LocalKnowledgeProvider({
+    library: shelf,
+    documentConverter: {
+      async convert({ sourcePath, targetPath }) {
+        conversions += 1
+        writeFileSync(targetPath, `# converted ${sourcePath} ${conversions}\n`)
+      },
+    },
+  })
+
+  const first = await provider.ingest({ source: { path: pdf } }, { ownerId: 'owner' })
+  assert.equal(first.document.filename, '手册.md')
+
+  const sibling = await provider.ingest({ source: { path: other } }, { ownerId: 'owner' })
+  assert.notEqual(sibling.document.id, first.document.id)
+  assert.equal(sibling.document.filename, '手册-2.md')
+  assert.equal(shelf.list('owner').length, 2)
+
+  writeFileSync(pdf, '%PDF-1.7 fake v2')
+  const updated = await provider.ingest({ source: { path: pdf } }, { ownerId: 'owner' })
+  assert.equal(updated.document.id, first.document.id)
+  assert.equal(updated.document.filename, first.document.filename)
+  assert.equal(updated.document.source, pdf)
+  assert.equal(shelf.list('owner').length, 2)
+  assert.equal(readFileSync(first.document.path, 'utf8'), `# converted ${pdf} 3\n`)
+  assert.equal(readFileSync(sibling.document.path, 'utf8'), `# converted ${other} 2\n`)
+  assert.deepEqual(
+    readdirSync(join(root, 'docs')).sort(),
+    ['手册-2.md', '手册.md'],
+  )
+  assert.equal(conversions, 3)
+
+  if (process.platform === 'win32') {
+    const mixedCase = pdf.replace(/^([a-zA-Z])/, letter => (
+      letter === letter.toUpperCase() ? letter.toLowerCase() : letter.toUpperCase()
+    ))
+    const again = await provider.ingest({ source: { path: mixedCase } }, { ownerId: 'owner' })
+    assert.equal(again.document.id, first.document.id)
+    assert.equal(shelf.list('owner').length, 2)
+    assert.deepEqual(
+      readdirSync(join(root, 'docs')).sort(),
+      ['手册-2.md', '手册.md'],
+    )
+  }
 })
 
 test('unwraps quoted Explorer paths before converting a document', async t => {

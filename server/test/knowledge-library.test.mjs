@@ -657,6 +657,39 @@ test('refuses conversion at capacity before any output is written', () => {
   })
 })
 
+test('reuses a conversion target when the original document is imported again', () => {
+  withDirs(({ root, docs }) => {
+    const shelf = library({ docs, root, maxPerOwner: 1 })
+    const pdf = join(root, '手册.pdf')
+    writeFileSync(pdf, '%PDF-1.7 fake')
+    const first = shelf.conversionTarget({ ownerId: OWNER, sourcePath: pdf })
+    mkdirSync(docs, { recursive: true })
+    writeFileSync(first.path, '# converted v1\n')
+    const entry = shelf.import({
+      ownerId: OWNER,
+      sourcePath: first.path,
+      originalSource: pdf,
+    })
+    assert.equal(entry.filename, '手册.md')
+    assert.equal(shelf.list(OWNER).length, 1)
+
+    const again = shelf.conversionTarget({ ownerId: OWNER, sourcePath: pdf })
+    assert.equal(again.filename, first.filename)
+    assert.equal(again.path, first.path)
+    writeFileSync(again.path, '# converted v2\n')
+    const updated = shelf.import({
+      ownerId: OWNER,
+      sourcePath: again.path,
+      originalSource: pdf,
+    })
+    assert.equal(updated.id, entry.id)
+    assert.equal(updated.source, pdf)
+    assert.equal(shelf.list(OWNER).length, 1)
+    assert.deepEqual(readdirSync(docs), ['手册.md'])
+    assert.equal(readFileSync(entry.path, 'utf8'), '# converted v2\n')
+  })
+})
+
 test('refuses to allocate a target for something not convertible', () => {
   withDirs(({ root, docs }) => {
     const shelf = library({ docs, root })

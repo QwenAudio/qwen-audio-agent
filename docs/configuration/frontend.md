@@ -11,6 +11,7 @@ Put these settings in the `config.env` shown by `qwenaudio config`, or select a 
 | Qwen Audio / Omni 3.5 / Omni 3.8 | `dashscope` (default) | `DASHSCOPE_API_KEY`; Omni 3.8 also requires a workspace-specific `QWEN_AUDIO_REALTIME_BASE_URL` | [Audio](../voice-frontends/qwen-audio-realtime.md) / [Omni vision](../voice-frontends/qwen-omni-realtime.md) |
 | StepAudio 3 | `stepfun` | `STEPFUN_API_KEY` | [StepFun](../voice-frontends/stepfun.md) |
 | OpenAI Realtime | `gpt-live` | `OPENAI_API_KEY` | [GPT-Live](../voice-frontends/gpt-live.md) |
+| OpenAI GPT-Live 1 (Live API) | `gpt-live-1` | `OPENAI_API_KEY`, or a dedicated `GPT_LIVE_1_API_KEY` | [GPT-Live 1](../voice-frontends/gpt-live-1.md) |
 | Gemini Live | `google-live` | `GOOGLE_API_KEY` | [Google Live](../voice-frontends/google-live.md) |
 | Doubao Seeduplex | `doubao-seeduplex` | `DOUBAO_API_KEY` | Configure its model, voice, and endpoint below |
 | Hugging Face speech-to-speech | `speech-to-speech` | Start the service; default: `ws://127.0.0.1:8765/v1/realtime` | [Local model pipeline](../voice-frontends/speech-to-speech.md) |
@@ -40,6 +41,7 @@ You can keep all provider settings in the same file. Switch using `QWEN_AUDIO_RE
 | DashScope | `QWEN_AUDIO_REALTIME_MODEL` | Audio: `QWEN_AUDIO_REALTIME_VOICE`; Omni: `QWEN_OMNI_REALTIME_VOICE` | `QWEN_AUDIO_REALTIME_BASE_URL` |
 | StepFun | `STEPFUN_REALTIME_MODEL` | `STEPFUN_REALTIME_VOICE` | `STEPFUN_REALTIME_URL` |
 | GPT-Live | `GPT_LIVE_REALTIME_MODEL` | `GPT_LIVE_REALTIME_VOICE` | `GPT_LIVE_REALTIME_URL` |
+| GPT-Live 1 | `GPT_LIVE_1_REALTIME_MODEL` | `GPT_LIVE_1_REALTIME_VOICE` | `GPT_LIVE_1_REALTIME_URL` |
 | Google Live | `GOOGLE_LIVE_REALTIME_MODEL` | `GOOGLE_LIVE_REALTIME_VOICE` | `GOOGLE_LIVE_REALTIME_URL` |
 | Doubao Seeduplex | `DOUBAO_SEEDUPLEX_REALTIME_MODEL` | `DOUBAO_SEEDUPLEX_REALTIME_VOICE` | `DOUBAO_SEEDUPLEX_REALTIME_URL` |
 | speech-to-speech | Configure upstream | Configure upstream | `SPEECH_TO_SPEECH_REALTIME_URL` |

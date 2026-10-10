@@ -257,6 +257,9 @@ export class ToolCallHandler {
   }
 
   isStale(turnId, generation) {
+    // A full-duplex frontend keeps its backend working while the user speaks,
+    // so its tool calls are never superseded by a new user turn.
+    if (this.getFrontend?.()?.capabilities?.concurrentVoicePlayback) return false
     return (
       generation !== this.getTurnGeneration()
       || Boolean(turnId && this.getTurnId() && turnId !== this.getTurnId())

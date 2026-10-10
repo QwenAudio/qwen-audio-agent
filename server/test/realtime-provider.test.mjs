@@ -1757,6 +1757,17 @@ test('cancelling a response before response.created releases its queue entry', a
   assert.equal(frontend.pendingResponses.length, 0)
 })
 
+test('cancellation acknowledgement clears playback bookkeeping with the active responses', () => {
+  const frontend = createQwenFrontend()
+  frontend.activeResponses.add('response-1')
+  frontend.playbackResponses.add('response-1')
+  frontend.responseSlot.phase = 'cancelling'
+  frontend.handleLifecycle({ type: 'error', error: { message: 'no active response' } })
+  assert.equal(frontend.activeResponses.size, 0)
+  assert.equal(frontend.playbackResponses.size, 0)
+  assert.equal(frontend.responseSlot.phase, 'idle')
+})
+
 test('cancelling an active response releases queued input after cancellation acknowledgement', async () => {
   const frontend = createQwenFrontend({
     responseCancelGraceMs: 1,
@@ -2253,6 +2264,8 @@ test('the Qwen provider exposes its supported realtime capabilities', () => {
     clientResponses: true,
     mutableSession: true,
     imageRequiresAudioStart: true,
+    concurrentVoicePlayback: false,
+    transcriptTrailsAudio: false,
   })
 })
 

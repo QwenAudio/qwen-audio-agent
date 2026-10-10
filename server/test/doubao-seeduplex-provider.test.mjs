@@ -106,3 +106,76 @@ test('Doubao Seeduplex protocol expands function-call item arrays', () => {
     response: { id: events[0].response.id, status: 'completed' },
   }])
 })
+
+test('Doubao Seeduplex translates ASR transcription events for the Gateway input pipeline', () => {
+  const protocol = createDoubaoSeeduplexProtocol()
+
+  const started = protocol.normalizeIncoming({
+    type: 'conversation.item.input_audio_transcription.started',
+    item_id: 'item_asr_1',
+    event_id: 'event_1',
+  })
+  assert.deepEqual(started, [{
+    type: 'input_audio_buffer.speech_started',
+    item_id: 'item_asr_1',
+    event_id: 'event_1',
+  }])
+
+  const delta = protocol.normalizeIncoming({
+    type: 'conversation.item.input_audio_transcription.delta',
+    item_id: 'item_asr_1',
+    delta: '你好',
+  })
+  assert.equal(delta[0].type, 'conversation.item.input_audio_transcription.delta')
+  assert.equal(delta[0].text, '')
+  assert.equal(delta[0].stash, '你好')
+
+  const completed = protocol.normalizeIncoming({
+    type: 'conversation.item.input_audio_transcription.completed',
+    item_id: 'item_asr_1',
+    text: '你好世界',
+  })
+  assert.equal(completed[0].type, 'conversation.item.input_audio_transcription.completed')
+  assert.equal(completed[0].transcript, '你好世界')
+})
+
+test('Doubao Seeduplex reuses the active ASR item id when delta and completed omit it', () => {
+  const protocol = createDoubaoSeeduplexProtocol()
+
+  protocol.normalizeIncoming({
+    type: 'conversation.item.input_audio_transcription.started',
+    item_id: 'item_asr_9',
+  })
+
+  const delta = protocol.normalizeIncoming({
+    type: 'conversation.item.input_audio_transcription.delta',
+    delta: 'partial',
+  })
+  assert.equal(delta[0].item_id, 'item_asr_9')
+  assert.equal(delta[0].stash, 'partial')
+
+  const completed = protocol.normalizeIncoming({
+    type: 'conversation.item.input_audio_transcription.completed',
+    transcript: 'final text',
+  })
+  assert.equal(completed[0].item_id, 'item_asr_9')
+  assert.equal(completed[0].transcript, 'final text')
+})
+
+test('Doubao Seeduplex synthesizes a speech_started item id and leaves response events untouched', () => {
+  const protocol = createDoubaoSeeduplexProtocol()
+
+  const started = protocol.normalizeIncoming({
+    type: 'conversation.item.input_audio_transcription.started',
+  })
+  assert.equal(started[0].type, 'input_audio_buffer.speech_started')
+  assert.match(started[0].item_id, /^item_/u)
+
+  const text = protocol.normalizeIncoming({
+    type: 'response.output_text.delta',
+    text: 'hi',
+  })
+  assert.equal(text[0].type, 'response.created')
+  assert.equal(text[1].type, 'response.text.delta')
+  assert.equal(text[1].delta, 'hi')
+})

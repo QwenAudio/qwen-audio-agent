@@ -77,6 +77,7 @@ function conversationItem(item) {
 export function createDoubaoSeeduplexProtocol() {
   let activeResponseId = ''
   let pendingUserText = ''
+  let activeAsrItemId = ''
 
   const responseId = event => (
     event.response_id
@@ -186,6 +187,32 @@ export function createDoubaoSeeduplexProtocol() {
           type: 'response.done',
           response: { ...event.response, status: 'cancelled' },
         })
+      }
+      // Doubao ASR events arrive with item_id but the Gateway input pipeline
+      // expects realtime-protocol field names and a speech_started boundary.
+      if (event?.type === 'conversation.item.input_audio_transcription.started') {
+        const itemId = event.item_id || id('item')
+        activeAsrItemId = itemId
+        return [{
+          type: 'input_audio_buffer.speech_started',
+          item_id: itemId,
+          event_id: event.event_id,
+        }]
+      }
+      if (event?.type === 'conversation.item.input_audio_transcription.delta') {
+        return [{
+          ...event,
+          item_id: event.item_id || activeAsrItemId,
+          text: '',
+          stash: String(event.delta || ''),
+        }]
+      }
+      if (event?.type === 'conversation.item.input_audio_transcription.completed') {
+        return [{
+          ...event,
+          item_id: event.item_id || activeAsrItemId,
+          transcript: String(event.text || event.transcript || ''),
+        }]
       }
       return normalizeResponseEvent(event)
     },

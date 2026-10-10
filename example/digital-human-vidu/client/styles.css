@@ -1,0 +1,51 @@
+* { box-sizing: border-box; }
+:root { color-scheme: dark; --line: #293248; --ink: #e4eafa; font: 14px system-ui, sans-serif; color: var(--ink); background: #080b12; }
+body { margin: 0; }
+.app { max-width: 1280px; margin: auto; padding: 24px; }
+.topbar, .brand, .top-actions, .composer-actions { display: flex; align-items: center; gap: 12px; }
+.topbar { justify-content: space-between; margin-bottom: 24px; }
+.brand small { display: block; color: #9ba7bc; font-size: 10px; margin-top: 5px; }
+.brand-mark { border-radius: 12px; padding: 12px; background: #7563bd; }
+button { cursor: pointer; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; color: var(--ink); background: #182033; }
+button.primary { background: #6652bc; }
+button:disabled { opacity: .4; cursor: default; }
+main { display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; }
+.stage { position: relative; min-height: 620px; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+#remote { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.stage-placeholder { position: absolute; inset: 0; display: grid; place-items: center; color: #9ba7bc; pointer-events: none; }
+.stage-placeholder[hidden] { display: none; }
+.stage-status { position: absolute; top: 20px; left: 20px; padding: 8px; border-radius: 8px; background: #080b12cc; }
+.settings-hover-zone { position: absolute; right: 20px; top: 20px; }
+.overlay-settings { position: absolute; inset: 65px 20px auto; z-index: 2; max-height: calc(100% - 90px); overflow: auto; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: #111827f5; }
+.overlay-settings header { display: flex; justify-content: space-between; align-items: center; }
+.overlay-settings label { display: block; margin: 12px 0; }
+input, textarea { display: block; width: 100%; margin-top: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); background: #151b2a; font: inherit; }
+.hint, .intro p { color: #9ba7bc; line-height: 1.6; }
+.rtc-diagnostics pre { max-height: 130px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
+.console { display: flex; flex-direction: column; min-width: 0; }
+.eyebrow { color: #aa93fa; font-size: 11px; letter-spacing: 2px; }
+h1 { font-size: 26px; }
+.conversation { flex: 1; min-height: 220px; max-height: 400px; overflow: auto; margin-bottom: 20px; }
+#messages { display: grid; gap: 12px; }
+#messages p { margin: 0; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+#messages small { display: block; color: #aa93fa; font-size: 11px; }
+#messages .user { justify-self: end; padding: 8px 12px; border-radius: 12px; background: #182033; }
+.composer-actions { justify-content: flex-end; margin-top: 12px; }
+.notice { position: absolute; bottom: 20px; left: 20px; right: 20px; z-index: 3; display: flex; align-items: center; gap: 8px; padding: 12px; border-radius: 8px; background: #471e31; }
+.notice[hidden] { display: none; }
+.notice span { flex: 1; overflow-wrap: anywhere; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+@media (max-width: 760px) { .app { padding: 12px; } main { grid-template-columns: 1fr; } .stage { min-height: 460px; } .topbar { flex-wrap: wrap; } }
+
+html.overlay, html.overlay body { width: 100%; height: 100%; overflow: hidden; background: #0b1120; }
+html.overlay .app { position: relative; width: 100%; height: 100%; padding: 0; }
+html.overlay main { display: block; height: 100%; }
+html.overlay .topbar { position: absolute; right: 12px; bottom: 12px; z-index: 4; margin: 0; }
+html.overlay .brand, html.overlay .console { display: none; }
+html.overlay .stage { position: absolute; inset: 0; min-height: 0; border: 0; border-radius: 0; background: radial-gradient(circle at 50% 34%, #20314b, #0b1120 78%); }
+html.overlay .stage-status { left: 12px; top: 12px; font-size: 11px; }
+html.overlay .settings-hover-zone { right: 12px; top: 12px; z-index: 3; }
+html.overlay .overlay-settings { inset: 65px 12px auto; max-height: calc(100% - 135px); }
+html.overlay .notice { bottom: 62px; left: 12px; right: 12px; font-size: 12px; }
+html.overlay .window-drag-surface { position: absolute; inset: 65px 0 70px; -webkit-app-region: drag; }
+html.overlay button, html.overlay input, html.overlay .overlay-settings { -webkit-app-region: no-drag; }

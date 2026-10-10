@@ -1,0 +1,23 @@
+{
+  "name": "qwen-audio-agent-digital-human-vidu",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env.local dev.mjs",
+    "build": "vite build --config vite.config.mjs",
+    "test": "node --test test/*.test.mjs",
+    "desktop": "electron desktop.mjs",
+    "desktop:orb": "npm run desktop --prefix ../..",
+    "desktop:vidu": "electron desktop.mjs"
+  },
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "dependencies": {
+    "vite": "^7.0.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "electron": "43.6.0"
+  }
+}

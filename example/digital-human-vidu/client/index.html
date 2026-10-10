@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b12">
+  <title>Vidu Avatar · Qwen Audio Agent</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app" id="app" data-state="idle">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">VA</span><span><strong>Vidu Avatar</strong><small>QWEN AUDIO AGENT</small></span></div>
+      <div class="top-actions">
+        <button id="connect" class="primary" disabled>开始对话</button>
+        <button id="disconnect" class="secondary" disabled>结束对话</button>
+        <button id="quit" class="secondary" hidden aria-label="退出浮窗">×</button>
+      </div>
+    </header>
+    <main>
+      <section class="stage" aria-label="数字人视频">
+        <video id="remote" autoplay playsinline muted aria-label="Vidu 数字人视频"></video>
+        <div class="window-drag-surface" aria-hidden="true"></div>
+        <div id="stage-label" class="stage-placeholder">等待数字人视频</div>
+        <div class="stage-status"><span class="status-dot"></span><b id="status">检查配置中</b></div>
+        <div class="settings-hover-zone">
+          <button id="settings-gear" class="settings-gear" aria-label="设置" aria-controls="overlay-settings" aria-expanded="false">⚙</button>
+        </div>
+        <section id="overlay-settings" class="overlay-settings" hidden aria-label="数字人设置">
+          <header><b>数字人设置</b><button id="settings-close" aria-label="关闭设置">×</button></header>
+          <button id="switch-orb" hidden>切换到悬浮球</button>
+          <p class="hint">沿用悬浮球的 Gateway 配置；语音与工具设置可在悬浮球菜单中修改。</p>
+          <label>角色图片 URL<input id="image-url" type="url" placeholder="https://…/avatar.png"></label>
+          <label>或选择本地图片<input id="image-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+          <p class="hint">图片在下次开始对话时生效。开始对话后可能产生 Vidu 和 ARTC 费用。</p>
+          <details class="rtc-diagnostics"><summary>ARTC 远端音频诊断</summary><p id="rtc-audio-status">尚未连接</p><pre id="rtc-audio-events"></pre></details>
+        </section>
+        <div id="notice" class="notice" role="alert" hidden><span id="notice-text"></span><button id="notice-close" type="button" aria-label="关闭通知">×</button></div>
+      </section>
+      <aside class="console">
+        <section class="intro"><p class="eyebrow">REALTIME AVATAR</p><h1>数字人 Agent</h1><p>本地 Agent 负责对话和工具，音视频由 Vidu 经 ARTC 返回。</p></section>
+        <section class="conversation" aria-label="对话记录"><div id="messages" aria-live="polite"></div></section>
+        <form id="chat" class="composer">
+          <label class="sr-only" for="message">输入消息</label>
+          <textarea id="message" rows="2" placeholder="输入消息，或直接开口说话…" disabled></textarea>
+          <div class="composer-actions">
+            <button type="button" id="microphone" class="secondary" disabled>静音麦克风</button>
+            <button type="button" id="interrupt" class="secondary" disabled>打断</button>
+            <button id="send" class="primary" disabled>发送</button>
+          </div>
+        </form>
+      </aside>
+    </main>
+  </div>
+  <script src="https://g.alicdn.com/apsara-media-box/imp-web-rtc/7.1.9/aliyun-rtc-sdk.js"></script>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

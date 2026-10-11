@@ -1,10 +1,14 @@
 import { GatewayVoiceConnection } from './gateway-voice.js'
 import { createStreamingResampler, decodePcm, pcmBase64 } from '../../../../web/src/realtime/audio.js'
+import { installWindowDrag } from './window-drag.mjs'
 import { createTransientNotice } from './notice.mjs'
 
 const $ = id => document.getElementById(id)
 const overlayMode = new URLSearchParams(location.search).get('overlay') === '1'
 document.documentElement.classList.toggle('overlay', overlayMode)
+if (overlayMode) document.querySelectorAll('[data-window-drag]').forEach(element => {
+  installWindowDrag(element, window.viduAvatarDesktop)
+})
 let active = null
 let ending = false
 let configured = false
@@ -52,7 +56,7 @@ async function request(url, options) {
 }
 async function imageUri() {
   const file = $('image-file').files[0]
-  if (!file) return $('image-url').value.trim()
+  if (!file) return $('image-url').value.trim() || $('image-url').defaultValue
   if (file.size > 4 * 1024 * 1024) throw new Error('本地图片请控制在 4 MB 以内')
   return await new Promise((resolve, reject) => {
     const reader = new FileReader()

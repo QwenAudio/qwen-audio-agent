@@ -47,5 +47,10 @@ html.overlay .stage-status { left: 12px; top: 12px; font-size: 11px; }
 html.overlay .settings-hover-zone { right: 12px; top: 12px; z-index: 3; }
 html.overlay .overlay-settings { inset: 65px 12px auto; max-height: calc(100% - 135px); }
 html.overlay .notice { bottom: 62px; left: 12px; right: 12px; font-size: 12px; }
-html.overlay .window-drag-surface { position: absolute; inset: 65px 0 70px; -webkit-app-region: drag; }
+.window-drag-handle, .window-drag-surface { display: none; }
+html.overlay [data-window-drag] { display: block; position: absolute; z-index: 1; cursor: grab; touch-action: none; user-select: none; -webkit-app-region: no-drag; }
+html.overlay .window-drag-surface { inset: 65px 0 70px; }
+html.overlay .window-drag-handle { top: 0; left: 0; right: 60px; height: 65px; }
+html.overlay [data-window-drag].dragging { cursor: grabbing; }
+html.overlay .stage-status { z-index: 2; pointer-events: none; }
 html.overlay button, html.overlay input, html.overlay .overlay-settings { -webkit-app-region: no-drag; }

@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { configureOrbWindow } from '../../desktop/src/orb-shell.mjs'
+import { bindWindowDrag } from './window-drag.mjs'
 import { overlayWindowBounds, overlayWindowOptions } from './desktop-window.mjs'
 
 const pageOrigin = 'http://127.0.0.1:5181'
@@ -13,6 +14,7 @@ const desktopApp = fileURLToPath(new URL('../../desktop', import.meta.url))
 let runtime
 let overlay
 let closing = false
+let dragBinding
 app.setName('Qwen Audio Agent · Vidu')
 // Keep the alternative host separate from the stock desktop singleton.
 const userData = fileURLToPath(new URL('./.desktop', import.meta.url))
@@ -111,12 +113,14 @@ async function start() {
     ...overlayWindowOptions(overlayWindowBounds(screen.getPrimaryDisplay().workArea), preload),
   })
   configureOrbWindow(overlay)
+  dragBinding = bindWindowDrag({ ipc: ipcMain, getWindow: () => overlay })
+  overlay.on('blur', () => dragBinding.cancel())
   overlay.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   overlay.webContents.on('will-navigate', (event, url) => {
     if (!trustedRenderer(null, url)) event.preventDefault()
   })
   overlay.once('ready-to-show', () => overlay.showInactive())
-  overlay.on('closed', () => { overlay = null; app.quit() })
+  overlay.on('closed', () => { dragBinding.dispose(); overlay = null; app.quit() })
   await overlay.loadURL(`${pageOrigin}/?overlay=1`)
   console.log('Vidu Avatar overlay: running at the bottom-right of the primary display')
 }

@@ -460,3 +460,22 @@ test('parses config show and exact realtime model set commands', () => {
     /只适用于 config set/,
   )
 })
+
+test('reports origin validation errors without stray leading whitespace', () => {
+  // 「 Gateway URL只支持…」的历史缺陷：label 为适配「无效的${label}」带了前导空格。
+  assert.throws(
+    () => parseArguments(['gateway', 'run', '--url', 'ftp://example.test'], {}),
+    /^Error: Gateway URL只支持 http 或 https$/,
+  )
+  assert.throws(
+    () => parseArguments(['gateway', 'run', '--url', 'not a url'], {}),
+    /^Error: 无效的 Gateway URL：not a url$/,
+  )
+  assert.throws(
+    () => parseArguments(
+      ['gateway', 'run', '--backend-url', 'not a url'],
+      { AGENT_PROTOCOL: 'openclaw' },
+    ),
+    /^Error: 无效的后台地址：not a url$/,
+  )
+})

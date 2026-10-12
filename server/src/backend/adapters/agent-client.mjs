@@ -187,5 +187,9 @@ export const agent = {
   recoverDelegatedWork: (task, options = {}) =>
     requireAgent().recoverDelegatedWork(task, options),
   uiUrl: (options = {}) => requireAgent().uiUrl(options),
-  close: () => sharedAgent ? sharedAgent.close() : Promise.resolve(),
+  close: () => {
+    const current = sharedAgent
+    sharedAgent = null
+    return current ? current.close() : Promise.resolve()
+  },
 }

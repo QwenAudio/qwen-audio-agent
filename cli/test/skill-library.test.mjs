@@ -66,6 +66,27 @@ test('runs npx-cli.js with node instead of npx.cmd on Windows', () => {
   )
 })
 
+test('does not resolve the node sibling npx-cli.js against the CWD', () => {
+  const args = ['-y', 'skills@1.5.22', 'add', 'owner/repo']
+  // npx.cmd 和 node.exe 均未找到且 execPath 非 node.exe 时，node 回退为裸
+  // 'node'：dirname 会得到 '.'，相对 CWD 的候选即使存在也必须被忽略。
+  assert.deepEqual(skillsCliInvocation(args, {
+    platform: 'win32',
+    find: () => '',
+    exists: path => path === 'node_modules\\npm\\bin\\npx-cli.js',
+    execPath: 'C:\\app\\Qwen Audio.exe',
+  }), { command: 'npx', args })
+
+  // execPath 是 node.exe 时回退锚点仍可用：旁路候选按绝对路径解析。
+  const sibling = 'C:\\nodejs\\node_modules\\npm\\bin\\npx-cli.js'
+  assert.deepEqual(skillsCliInvocation(args, {
+    platform: 'win32',
+    find: () => '',
+    exists: path => path === sibling,
+    execPath: 'C:\\nodejs\\node.exe',
+  }), { command: 'C:\\nodejs\\node.exe', args: [sibling, ...args] })
+})
+
 test('uses npm prefix npx-cli.js the same way Windows npx.cmd does', () => {
   const args = ['-y', 'skills@1.5.22', 'add', 'https://example.test/a?b=1&c=2']
   const nodeDir = 'C:\\Program Files\\nodejs'

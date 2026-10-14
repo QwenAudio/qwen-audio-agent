@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   MAX_INPUT_FILE_BYTES,
   createInputFilePart,
@@ -7,7 +7,7 @@ import {
 } from '../../../shared/input-parts.mjs'
 import { t } from '../i18n.js'
 
-function filePart(file, index, sourceType = 'file') {
+function filePart(file, sourceType = 'file') {
   return new Promise((resolve, reject) => {
     if (file.size > MAX_INPUT_FILE_BYTES) {
       reject(new Error(t('文件 {name} 超过 8 MB 限制', { name: file.name })))
@@ -18,12 +18,12 @@ function filePart(file, index, sourceType = 'file') {
     reader.onload = () => {
       resolve({
         id: crypto.randomUUID(),
-        part: createInputFilePart({
+        file: {
           mime: file.type || 'application/octet-stream',
           filename: file.name,
           url: String(reader.result || ''),
           sourceType,
-        }, index),
+        },
       })
     }
     reader.readAsDataURL(file)
@@ -38,23 +38,28 @@ export default function MultimodalComposer({
   const [attachments, setAttachments] = useState([])
   const [error, setError] = useState('')
   const picker = useRef(null)
-  const updateAttachments = useCallback(next => {
-    setAttachments(next)
-  }, [])
+  const draftGeneration = useRef(0)
+  useEffect(() => () => { draftGeneration.current += 1 }, [])
 
   const addFiles = useCallback(async (fileList, sourceType = 'file') => {
     const files = [...fileList]
     if (!files.length) return
+    const generation = draftGeneration.current
     try {
-      const next = await Promise.all(files.map((file, index) => (
-        filePart(file, attachments.length + index, sourceType)
-      )))
-      updateAttachments([...attachments, ...next])
+      const next = await Promise.all(files.map(file => filePart(file, sourceType)))
+      if (generation !== draftGeneration.current) return
+      setAttachments(current => generation === draftGeneration.current
+        ? [...current, ...next.map((item, index) => ({
+            id: item.id,
+            part: createInputFilePart(item.file, current.length + index),
+          }))]
+        : current)
       setError('')
     } catch (reason) {
+      if (generation !== draftGeneration.current) return
       setError(reason?.message || String(reason))
     }
-  }, [attachments, updateAttachments])
+  }, [])
 
   const submit = event => {
     event.preventDefault()
@@ -68,8 +73,10 @@ export default function MultimodalComposer({
       setError(t('Gateway 尚未连接'))
       return
     }
+    // Reads started for the submitted draft must not populate the next one.
+    draftGeneration.current += 1
     setText('')
-    updateAttachments([])
+    setAttachments([])
     setError('')
   }
 
@@ -88,7 +95,7 @@ export default function MultimodalComposer({
         <button
           type="button"
           aria-label={t('移除附件')}
-          onClick={() => updateAttachments(attachments.filter(entry => entry.id !== item.id))}
+          onClick={() => setAttachments(current => current.filter(entry => entry.id !== item.id))}
         >×</button>
       </span>)}
     </div>}

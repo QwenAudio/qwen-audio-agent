@@ -275,11 +275,13 @@ test('only reports a queued announcement as completed after response.done', asyn
   assert.equal(waitingAfterCreated, true)
 })
 
-test('keeps a long response alive while output activity continues', async () => {
+test('keeps a long response alive while output activity continues', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] })
   const frontend = createQwenFrontend({
     responseStartTimeoutMs: 100,
     responseInactivityTimeoutMs: 80,
   })
+  t.after(() => frontend.close())
   frontend.ready = true
   const sent = []
   frontend.send = event => sent.push(event)
@@ -290,19 +292,19 @@ test('keeps a long response alive while output activity continues', async () => 
     type: 'response.created',
     response: { id: 'response-long' },
   })
-  await new Promise(resolve => setTimeout(resolve, 50))
+  t.mock.timers.tick(50)
   frontend.handleLifecycle({
     type: 'response.audio.delta',
     response_id: 'response-long',
     delta: 'audio-one',
   })
-  await new Promise(resolve => setTimeout(resolve, 50))
+  t.mock.timers.tick(50)
   frontend.handleLifecycle({
     type: 'response.audio_transcript.delta',
     response_id: 'response-long',
     delta: '仍在输出',
   })
-  await new Promise(resolve => setTimeout(resolve, 50))
+  t.mock.timers.tick(50)
   frontend.handleLifecycle({
     type: 'response.done',
     response: { id: 'response-long', status: 'completed' },

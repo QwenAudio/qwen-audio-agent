@@ -11,6 +11,7 @@ import afterPack from '../scripts/desktop-after-pack.mjs'
 test('desktop packaging uses the lockfile-pinned Electron instead of a second version', () => {
   const config = parse(readFileSync(new URL('../desktop/electron-builder.yml', import.meta.url), 'utf8'))
   const manifest = JSON.parse(readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf8'))
+  const rootManifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
   const lock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'))
   const desktopRequire = createRequire(new URL('../desktop/package.json', import.meta.url))
   const installedManifestPath = desktopRequire.resolve('electron/package.json')
@@ -18,6 +19,7 @@ test('desktop packaging uses the lockfile-pinned Electron instead of a second ve
   const lockPath = relative(fileURLToPath(new URL('..', import.meta.url)), dirname(installedManifestPath))
     .split(sep).join('/')
   assert.equal(config.electronVersion, undefined)
+  assert.equal(rootManifest.devDependencies.electron, manifest.devDependencies.electron)
   assert.equal(manifest.devDependencies.electron, installed.version)
   assert.equal(manifest.devDependencies.electron, lock.packages[lockPath]?.version)
   assert.equal(lock.packages.desktop.devDependencies.electron, manifest.devDependencies.electron)

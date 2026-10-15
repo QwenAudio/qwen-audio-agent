@@ -5,11 +5,10 @@ import {
 
 export { SPAWN_THINKING_TOOL_NAME } from '../spawn-thinking-tool.mjs'
 export const CANCEL_AGENT_TASK_TOOL_NAME = 'cancel_agent_task'
+export const UPDATE_AGENT_TASK_TOOL_NAME = 'update_agent_task'
 export const GET_AGENT_TASK_STATUS_TOOL_NAME = 'get_agent_task_status'
 export const RESPOND_PERMISSION_TOOL_NAME = 'respond_permission'
 export const PERMISSION_RESPONSE_CAPABILITY = 'permission.respond'
-export const RESPOND_AGENT_INPUT_TOOL_NAME = 'respond_agent_input'
-export const BACKEND_INPUT_RESPONSE_CAPABILITY = 'backend.input.respond'
 
 const cancelAgentTaskTool = {
   type: 'function',
@@ -32,6 +31,26 @@ const cancelAgentTaskTool = {
           description: '用户明确要求取消当前会话中的全部工作、定时任务和提醒时设为 true；此时不要填写 task_id 或 series_id。',
         },
       },
+      additionalProperties: false,
+    },
+  },
+}
+
+const updateAgentTaskTool = {
+  type: 'function',
+  function: {
+    name: UPDATE_AGENT_TASK_TOOL_NAME,
+    description: '向已有工作补充要求、修改目标或回答追问，也可对已完成成果执行后续操作，保留原工作的关联上下文。',
+    parameters: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string', description: '系统提供的目标工作 ID；指代不明确时先查询或询问，不得猜造。' },
+        instruction: { type: 'string', description: '忠实转达用户的新要求或对后台问题的回答及必要上下文。' },
+        input_request_id: { type: 'string', description: '回答追问时原样使用请求中的 ID，防止回答过期问题；普通工作调整不填。' },
+        values: { type: 'object', description: '可选的表单回答，字段必须来自后台请求提供的 schema。', additionalProperties: true },
+        input_refs: spawnThinkingTool.function.parameters.properties.input_refs,
+      },
+      required: ['task_id', 'instruction'],
       additionalProperties: false,
     },
   },
@@ -83,45 +102,13 @@ const respondPermissionTool = {
   },
 }
 
-const respondAgentInputTool = {
-  type: 'function',
-  function: {
-    name: RESPOND_AGENT_INPUT_TOOL_NAME,
-    description: '把用户对当前后台追问的回答交回同一项工作，使其继续执行，也可拒绝回答或取消这次交互。',
-    parameters: {
-      type: 'object',
-      properties: {
-        task_id: {
-          type: 'string',
-          description: '等待补充输入的工作 ID，必须来自当前后台输入请求。',
-        },
-        action: {
-          type: 'string',
-          enum: ['accept', 'decline', 'cancel'],
-          description: 'accept 提交回答并继续；decline 拒绝提供；cancel 取消这次交互。',
-        },
-        text: {
-          type: 'string',
-          description: '用户要交给后台的自然语言回答。action=accept 时填写。',
-        },
-        values: {
-          type: 'object',
-          description: '可选的结构化表单回答；字段必须来自请求中提供的 schema。',
-          additionalProperties: true,
-        },
-      },
-      required: ['task_id', 'action'],
-      additionalProperties: false,
-    },
-  },
-}
-
 export const agentTaskToolEntries = [
   {
     definition: spawnThinkingTool,
     policy: { repeatHandling: 'handler' },
   },
   { definition: cancelAgentTaskTool },
+  { definition: updateAgentTaskTool, policy: { repeatHandling: 'handler' } },
   { definition: getAgentTaskStatusTool },
   {
     definition: respondPermissionTool,
@@ -129,20 +116,14 @@ export const agentTaskToolEntries = [
       requiredCapabilities: [PERMISSION_RESPONSE_CAPABILITY],
     },
   },
-  {
-    definition: respondAgentInputTool,
-    policy: {
-      requiredCapabilities: [BACKEND_INPUT_RESPONSE_CAPABILITY],
-    },
-  },
 ]
 
 export function agentTaskToolHandlers(runtime) {
   return {
     spawn_thinking: context => runtime.executeSpawnThinkingToolCall(context),
+    [UPDATE_AGENT_TASK_TOOL_NAME]: context => runtime.executeUpdateToolCall(context),
     [CANCEL_AGENT_TASK_TOOL_NAME]: context => runtime.executeCancelToolCall(context),
     [GET_AGENT_TASK_STATUS_TOOL_NAME]: context => runtime.executeStatusToolCall(context),
     [RESPOND_PERMISSION_TOOL_NAME]: context => runtime.respondPermission(context),
-    [RESPOND_AGENT_INPUT_TOOL_NAME]: context => runtime.respondAgentInput(context),
   }
 }

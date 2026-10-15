@@ -61,8 +61,8 @@ export function coordinatorUsesMcpInstructions(profile) {
       <= COORDINATOR_MCP_INSTRUCTIONS_MAX_BYTES
 }
 
-export function coordinatorMeta(profile, ownerId) {
-  return profile.coordinatorMeta?.(ownerId) || null
+export function coordinatorMeta(profile, ownerId, options = {}) {
+  return profile.coordinatorMeta?.(ownerId, options) || null
 }
 
 async function applyProfileSessionConfig({

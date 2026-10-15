@@ -109,7 +109,7 @@ export const openClawBackendDriver = {
       readinessMessage: ownership === 'external'
         ? ''
         : 'OpenClaw Gateway 正在启动',
-      coordinatorMeta(ownerId) {
+      coordinatorMeta(ownerId, { slot = 0 } = {}) {
         if (!clean(coordinatorAgent)) return null
         const owner = encodeURIComponent(
           clean(ownerId) || 'personal',
@@ -117,7 +117,7 @@ export const openClawBackendDriver = {
         return {
           sessionKey: `agent:${
             clean(coordinatorAgent)
-          }:qwen-audio-agent:${owner}:backend`,
+          }:qwen-audio-agent:${owner}:backend${slot ? `:slot:${slot}` : ''}`,
         }
       },
       defaultDelegationTitle: 'OpenClaw 项目任务',

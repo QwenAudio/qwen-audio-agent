@@ -20,8 +20,8 @@ export function inspectBackendRuntimePackage(id, {
   const packageDirectory = resolve(directory, 'node_modules', spec.name)
   try {
     const manifest = JSON.parse(readFileSync(resolve(packageDirectory, 'package.json'), 'utf8'))
-    if (manifest.name !== spec.name || manifest.version !== spec.version) {
-      throw new Error('Package version mismatch')
+    if (manifest.name !== spec.name || !manifest.version) {
+      throw new Error('Invalid runtime package')
     }
     const require = createRequire(resolve(directory, 'loader.cjs'))
     return { ready: true, source: 'installed', path: require.resolve(packageDirectory) }
@@ -29,7 +29,7 @@ export function inspectBackendRuntimePackage(id, {
     return {
       ready: false,
       source: 'missing',
-      issue: `缺少或版本不匹配的 ${spec.name}@${spec.version}；请运行 qwenaudio install ${id}`,
+      issue: `缺少或不可用的 ${spec.name}；请运行 qwenaudio install ${id}`,
     }
   }
 }

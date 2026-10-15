@@ -34,6 +34,8 @@ export const GatewayClientProtocolEvent = Object.freeze({
   CLIENT_PRESENCE_UPDATE: 'client.presence.update',
   TASK_CREATE: 'task.create',
   TASK_CREATE_RESULT: 'task.create.result',
+  TASK_UPDATE: 'task.update',
+  TASK_UPDATE_RESULT: 'task.update.result',
   TASK_GET: 'task.get',
   TASK_GET_RESULT: 'task.get.result',
   TASK_LIST: 'task.list',
@@ -294,6 +296,11 @@ export const GatewayTaskGetSchema = GatewayClientEnvelopeSchema.extend({
   task_id: IdentifierSchema,
 })
 
+export const GatewayTaskUpdateSchema = GatewayTaskCreateSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_UPDATE),
+  task_id: IdentifierSchema,
+})
+
 export const GatewayTaskListSchema = GatewayClientEnvelopeSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.TASK_LIST),
   active: z.boolean().optional(),
@@ -340,6 +347,10 @@ const TaskResultBaseSchema = GatewayServerEnvelopeSchema.extend({
 export const GatewayTaskCreateResultSchema = TaskResultBaseSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.TASK_CREATE_RESULT),
 })
+export const GatewayTaskUpdateResultSchema = TaskResultBaseSchema.extend({
+  type: z.literal(GatewayClientProtocolEvent.TASK_UPDATE_RESULT),
+  status: z.enum(['accepted', 'duplicate']),
+})
 export const GatewayTaskGetResultSchema = TaskResultBaseSchema.extend({
   type: z.literal(GatewayClientProtocolEvent.TASK_GET_RESULT),
 })
@@ -385,6 +396,7 @@ const GATEWAY_RUNTIME_CLIENT_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATE]: GatewaySessionOutputVoiceUpdateSchema,
   [GatewayClientProtocolEvent.CLIENT_ACTION_RESULT]: GatewayClientActionResultSchema,
   [GatewayClientProtocolEvent.TASK_CREATE]: GatewayTaskCreateSchema,
+  [GatewayClientProtocolEvent.TASK_UPDATE]: GatewayTaskUpdateSchema,
   [GatewayClientProtocolEvent.TASK_GET]: GatewayTaskGetSchema,
   [GatewayClientProtocolEvent.TASK_LIST]: GatewayTaskListSchema,
   [GatewayClientProtocolEvent.TASK_CANCEL]: GatewayTaskCancelSchema,
@@ -399,6 +411,7 @@ const GATEWAY_RUNTIME_SERVER_MESSAGE_SCHEMAS = Object.freeze({
   [GatewayClientProtocolEvent.SESSION_OUTPUT_VOICE_UPDATED]: GatewaySessionOutputVoiceUpdatedSchema,
   [GatewayClientProtocolEvent.CLIENT_ACTION_REQUEST]: GatewayClientActionRequestSchema,
   [GatewayClientProtocolEvent.TASK_CREATE_RESULT]: GatewayTaskCreateResultSchema,
+  [GatewayClientProtocolEvent.TASK_UPDATE_RESULT]: GatewayTaskUpdateResultSchema,
   [GatewayClientProtocolEvent.TASK_GET_RESULT]: GatewayTaskGetResultSchema,
   [GatewayClientProtocolEvent.TASK_LIST_RESULT]: GatewayTaskListResultSchema,
   [GatewayClientProtocolEvent.TASK_CANCEL_RESULT]: GatewayTaskCancelResultSchema,
@@ -417,6 +430,7 @@ const GATEWAY_RUNTIME_REQUIRED_CAPABILITIES = Object.freeze({
   // Results are matched to an outstanding, capability-checked action request
   // by ClientActionPort. A generic result must not require the sleep action.
   [GatewayClientProtocolEvent.TASK_CREATE]: GatewayClientCapability.TASK_COMMANDS,
+  [GatewayClientProtocolEvent.TASK_UPDATE]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.TASK_GET]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.TASK_LIST]: GatewayClientCapability.TASK_COMMANDS,
   [GatewayClientProtocolEvent.TASK_CANCEL]: GatewayClientCapability.TASK_COMMANDS,

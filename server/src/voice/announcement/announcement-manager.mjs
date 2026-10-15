@@ -138,6 +138,7 @@ export class AnnouncementManager {
       kind: task.kind,
       objective: task.objective,
       result: task.result,
+      updates: task.updates,
       completedAt: task.completedAt,
       scheduledAt: task.schedule?.at,
       recurrence: task.schedule?.recurrence,
@@ -464,6 +465,8 @@ export function formatWorkResults(announcements) {
     `task_id: ${item.taskId}`,
     `状态: ${item.status}`,
     item.objective ? `工作: ${item.objective}` : '',
+    ...(item.updates || []).filter(update => update.status === 'failed')
+      .slice(-3).map(update => `未确认应用的调整: ${update.instruction}\n原因: ${update.error || '投递失败'}`),
     item.status === 'completed'
       ? `结果: ${String(item.result || '').trim()}`
       : `错误: ${String(item.error || '').trim()}`,

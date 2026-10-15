@@ -38,7 +38,7 @@ qwenaudio install qwen
 
 显式填写时，ACP 后台只通过标准 `configOptions`（`category: model`）与 `session/set_config_option` 覆盖。模型 ID 必须来自后台提供的选项；不支持、设置失败或无法确认生效时会明确报错，不静默回退。
 
-DeepSeek Harness 当前使用独立启动模型设置，见 [DeepSeek](../backends/configuration.zh.md#deepseek)。
+DeepSeek 同样通过标准 ACP 接口设置模型，留空时保留自身 ACP profile 配置，见 [DeepSeek](../backends/configuration.zh.md#deepseek)。
 
 覆盖应用于协调、新建和恢复的项目 Session。非 ACP 适配器按自己的公开能力实现；例如 Muse Code 使用 MSP `modelId`，不是 ACP。
 

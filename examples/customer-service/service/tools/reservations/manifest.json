@@ -6,10 +6,15 @@
       "name": "list_reservations",
       "label": "预订列表",
       "enabled": true,
-      "description": "列出已核验客户名下的所有预订。客户说不清订单号、或者要求「查一下我的机票」时调用。返回条数多时只念前三条并告知总数。核验之前不要调用。",
+      "description": "列出已核验客户名下的预订，每页最多三笔。可按出发地、目的地和航段日期筛选（往返行程匹配任一航段）；筛选后仍要查完所有页，不能把第一页当成全集。核验之前不要调用。",
       "parameters": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "page": { "type": "integer", "minimum": 1, "description": "从 1 开始的页码；hasMore=true 时继续查下一页。" },
+          "from": { "type": "string", "description": "可选，出发机场三字码；与 to/date 同时约束同一个航段。" },
+          "to": { "type": "string", "description": "可选，到达机场三字码；与 from/date 同时约束同一个航段。" },
+          "date": { "type": "string", "description": "可选，航段出发日期 YYYY-MM-DD；往返预订可匹配任一航段。" }
+        }
       }
     },
     {
@@ -95,6 +100,11 @@
           "date": {
             "type": "string",
             "description": "希望的出发日期，形如 2026-09-25。不填时返回该航线所有可订航班。"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "从 1 开始的页码；若客户要比较所有候选航班，hasMore=true 时继续查下一页。"
           }
         },
         "required": ["from", "to", "cabin"]

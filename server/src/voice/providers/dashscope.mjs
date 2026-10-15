@@ -19,6 +19,12 @@ import { openAiCompatibleProtocol } from './openai-compatible-protocol.mjs'
 
 function classifyError(message) {
   if (isRecoverableRealtimeInactivityError(message)) return 'inactivity'
+  // DashScope exposes one response slot per realtime session. A gateway
+  // response can race the tail of another model/tool response before its
+  // lifecycle events reach us; let RealtimeFrontend replay it after idle.
+  if (/another response is in progress|cannot create response while .*response.*in progress/i.test(message)) {
+    return 'response_slot_busy'
+  }
   if (/user is speaking/i.test(message)) return 'input_busy'
   if (/already has (?:a pending response request|an active response)|another response is in progress/i.test(message)) {
     return 'response_slot_busy'

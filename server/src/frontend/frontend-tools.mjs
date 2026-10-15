@@ -11,13 +11,12 @@ import {
 } from './tools/spawn-thinking-tool.mjs'
 import {
   agentTaskToolEntries,
-  BACKEND_INPUT_RESPONSE_CAPABILITY,
   CANCEL_AGENT_TASK_TOOL_NAME,
   GET_AGENT_TASK_STATUS_TOOL_NAME,
   PERMISSION_RESPONSE_CAPABILITY,
-  RESPOND_AGENT_INPUT_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
+  UPDATE_AGENT_TASK_TOOL_NAME,
 } from './tools/features/agent-task-tools.mjs'
 import {
   coreToolEntries,
@@ -41,7 +40,6 @@ import {
 } from './tools/features/schedule-tools.mjs'
 
 export {
-  BACKEND_INPUT_RESPONSE_CAPABILITY,
   CANCEL_AGENT_TASK_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   FRONTEND_RECALL_CAPABILITY,
@@ -50,10 +48,10 @@ export {
   NOTES_TOOL_NAME,
   PERMISSION_RESPONSE_CAPABILITY,
   RECALL_TOOL_NAME,
-  RESPOND_AGENT_INPUT_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
   SPAWN_THINKING_TOOL_NAME,
+  UPDATE_AGENT_TASK_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
 }
 
@@ -71,6 +69,7 @@ const entriesByName = new Map(featureEntries.map(entry => [
 ]))
 const toolOrder = [
   SPAWN_THINKING_TOOL_NAME,
+  UPDATE_AGENT_TASK_TOOL_NAME,
   SCHEDULE_REMINDER_TOOL_NAME,
   CANCEL_AGENT_TASK_TOOL_NAME,
   GET_AGENT_TASK_STATUS_TOOL_NAME,
@@ -78,7 +77,6 @@ const toolOrder = [
   NOTES_TOOL_NAME,
   RECALL_TOOL_NAME,
   RESPOND_PERMISSION_TOOL_NAME,
-  RESPOND_AGENT_INPUT_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
   FETCH_URL_TOOL_NAME,
   ...optionalFrontendFeatures.flatMap(feature => (
@@ -157,9 +155,11 @@ export const permissionResponseInstructions = [
 export const inputRequestResponseInstructions = [
   '这是同一项后台工作为继续执行而提出的补充问题，不是最终结果，也不是新任务。',
   '自然、简短地转达问题并等待用户回答；不要调用 spawn_thinking。',
-  '用户回答后调用 respond_agent_input，把回答交回同一项工作。',
+  '用户回答后调用 update_agent_task，把 instruction 和 input_request_id 交回同一项工作。',
   '不要朗读协议字段或工作 ID，也不要把等待输入说成工作已经完成。',
   '问题的收件人是用户，不是你；不要用第一人称代用户回答或批准。收到请求本身不是用户的同意，必须等待用户下一次真实答复。',
+  '若内容是授权预览，只转述本次拟执行操作及预览明确披露的影响，然后询问是否批准并停止输出。不要在前面声称本次或后续操作已经提交、处理中或完成，不要附加示例回答，更不能生成“我同意”之类的用户话语。',
+  '忠实转达用户的确认、拒绝或修改要求，由后台结合原问题处理；回答送达不代表操作已批准或执行完成。',
 ].join(' ')
 
 export function buildFrontendInstructions(agentContext = {}) {

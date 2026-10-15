@@ -8,14 +8,22 @@
 
 当前适合本地、单通话演示；不是生产客服系统，也不是官方 τ-bench 的完整实现。
 
+## 这个示例展示什么
+
+- **低延迟前台：**身份核验和能完整完成的只读查询由 Realtime 直接处理，不额外绕行后台。
+- **业务任务委托：**写操作、涉款、不可逆及组合任务通过 `spawn_thinking`，经 A2A 交给可替换的后台 Agent。
+- **可靠的上下文交接：**每个后台任务自动获得最近最多十轮客户/客服对话；对话里没有的已核实编号和
+  前台查询结果，则由 `objective` 显式交接。
+- **唯一业务事实源：**前后台 MCP 工具面共用 executor、数据库、policy guards 和批准生命周期。
+- **可管理的 Policy：**配置台从 policy 中抽取候选供人工裁决，并通过 diff、备份和审计机制应用
+  决策表、流程提示、工具归属和 demo 数据变更。
+
 ## 客服演示
 
 **从自然对话，到业务办结。** 通过语音取消订单，展示身份核验与口头纠错、订单查询、
 取消与退款预览，以及客户确认后的结果反馈。
 
-<!-- Keep the GitHub video attachment in its own paragraph for inline playback. -->
-
-https://github.com/user-attachments/assets/e0f9fefa-f24b-47e5-bc2c-8402fc107df4
+https://github.com/user-attachments/assets/ddb4cc30-e02c-4b3c-ba2a-63b3933cdaed
 
 ## 示例范围
 
@@ -25,6 +33,7 @@ https://github.com/user-attachments/assets/e0f9fefa-f24b-47e5-bc2c-8402fc107df4
 携带 49 轮）。Gateway 会为同一客户的后续 Task 复用服务端签发的 A2A Context；
 待确认操作的预览只属于原 Task，不会作为可复用授权写入历史。重置业务会话、换客户
 或重启后台 Agent 后会重新积累历史。
+Gateway 默认一次执行一项用户任务，后续工作排队；回答追问仍继续原任务，前台对话不受阻塞。
 
 ## 能做什么
 
@@ -113,35 +122,76 @@ Ctrl+C 结束 bootstrap 启动的进程组。业务状态常驻内存；进程�
 
 ## 前后台如何协作
 
-```text
-客服工作台 ── Gateway 协议 ──► Gateway ── A2A ──► 后台 Agent
-    │                            │                    │
-    │ HTTP / SSE                 │ frontend MCP       │ backend MCP
-    └────────────────────────────┴────────────────────┘
-                                 ▼
-                         service：唯一业务状态源
-                                 ▲
-                      人工坐席台读取状态与交接信息
+```mermaid
+flowchart LR
+    customer([客户]) --> workspace[语音客服工作台]
+    workspace -->|Realtime 对话| gateway[Gateway / 前台]
 
-Policy 配置台 ──► domains/<domain> 配置和 gateway 工具面配置
+    gateway -->|完整核验与查询| fmcp[前台 MCP 工具面]
+    gateway -->|spawn_thinking<br/>objective + 最近十轮对话| a2a[A2A Task]
+    a2a --> agent[后台 Agent]
+    agent --> bmcp[后台 MCP 工具面]
+
+    fmcp --> service[(业务 Service<br/>唯一状态 + executor)]
+    bmcp --> service
+    service -->|状态 / 审计| workspace
+    service --> desk[人工坐席台]
+
+    console[Policy 配置台] -->|guards / flows / 工具归属 / demo 数据| config[领域配置]
+    config --> gateway
+    config --> agent
+    config --> service
 ```
 
 前台面是后台面的子集，包含核验、只读查询和 `transfer_to_human`。
 需要批准的写操作只在后台；两面调同一个 executor，避免前后台各维护一份规则或状态。
+每次 `spawn_thinking` 时，Gateway 会把最近最多十轮客户发言及对应的客服回复快照给新建的 A2A 任务。
+这只是对话背景，不是可信的工具日志；前台 FC 的参数和结果不会自动包含在内。关键编号和查询发现仍要写入
+`objective`，后台写入前还要重新核查当前业务状态。
 
 `policy.md` 通过当前域的 knowledge 检索源供前台查询；公网搜索和用户画像在本示例中关闭。
 资格、权限和金额规则主要由 `guards.json` 决策表执行。
 `flows.json` 注入后台 prompt 安排步骤顺序，不是强制工作流引擎。
+
+### 默认前后台边界
+
+| 路径 | 判断标准 | 典型工具 |
+|---|---|---|
+| Realtime 前台 | 当前可见工具能够完整回答，并且不涉及受保护的业务写入 | 身份核验、订单/预订查询、库存、航班搜索与状态 |
+| 后台 Agent | 客户目标会改变业务状态、涉及金额、需要批准、不可逆，或需要组合调查 | 取消/退款、退货、改地址、改签、改舱/座位/行李、补偿 |
+| 人工交接 | policy 缺失、金额超权限，或客户明确要求人工 | `transfer_to_human`（保留在前台，避免无意义的 A2A 往返） |
+
+管理员可以在 Policy 配置台调整工具归属；但把受保护的写操作移到前台会被标记为风险，
+因为前台没有可挂起的 `auth_required` 批准生命周期。
+
+## 评测结果
+
+公开的 EVA Airline 适配评测包含 EVA-Bench-mix 的全部 50 条 Airline 任务，并采用
+tau2 风格的对话和终态评分协议，在相同任务内容上比较 Realtime 前台、完整客服 Harness
+和纯文本后台模型。
+
+| 评测路径 | 通过任务 | Task completion |
+|---|---:|---:|
+| 仅 Realtime API | 22 / 50 | **44%** |
+| Realtime API + 客服 Harness + Qwen3.8-Max 后台 | 31 / 50 | **62%** |
+| 仅 Qwen3.8-Max | 34 / 50 | **68%** |
+
+三条路径统一使用 GPT-5.6-Luna 作为用户模拟器与断言 judge。每条任务使用隔离数据库、
+完整 EVA Airline policy 和原始 EVA FC schema。输入输出都是文本，因此不衡量 ASR、TTS、
+打断和物理音频质量。仅当 provider、传输或 worker 超时导致任务无法正常完成时补跑；正常完成但
+得分为零的任务不会重试。这是系统对比，不是官方 EVA 或 tau2 榜单成绩。详细口径和复现命令见
+[评测结果说明](benchmark/EVA_AIRLINE_RESULTS.md)与完整的[评测指南](benchmark/README.md)。
 
 ### 批准不是模型填一个 true
 
 1. 写工具第一次调用只生成预览和内部 `data.approval = { token, preview }`，不写库。
 2. executor 保存工具名、原参数、令牌和任务上下文，发布 `auth_required`。
 3. 客户只收到可读预览；令牌与内部调用指令不进入 A2A 确认文本或模型消息。
-4. 前台通过 `respond_agent_input` 返回决定，A2A adapter 在消息 metadata 中携带
-   `qwenAudioInputResponse = { kind: 'authorization', action }`。
-5. 授权必须明确为 `accept` / `decline` / `cancel`，缺失或非法动作报错。
-   只有明确 accept 才由 executor 提交保存的工具与参数；拒绝、取消、超时清理并撤销令牌。
+4. 前台通过 `update_agent_task` 返回同一 `task_id`，用 `instruction` 原样转达客户答复，
+   不把原话分类为批准决定。A2A 携带答复及 `qwenAudioInputResponse = { kind: 'authorization' }`；
+   显式客户端按钮仍保留协议动作语义。终止整项工作使用 `cancel_agent_task`。
+5. 后台结合保存的预览解释答复，只有真实同意才提交；含糊答复继续澄清。
+   条件变化时撤销旧令牌，在同一任务内按新要求继续规划；拒绝、取消、超时也撤销待确认批准。
 6. 提交结果交回模型继续原任务。后续写操作逐笔取得新批准，不共用同意。
    最终结果不再混入历史进度和旧确认问题。
 

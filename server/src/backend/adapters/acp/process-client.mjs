@@ -3,6 +3,7 @@ import { extname } from 'node:path'
 import { Readable, Writable } from 'node:stream'
 import { stripVTControlCharacters } from 'node:util'
 import * as acp from '@agentclientprotocol/sdk'
+import { z } from 'zod'
 import { PACKAGE_VERSION } from '../../../core/package-version.mjs'
 import { AgentError } from '../../agent-error.mjs'
 import { requestSignal } from './request-signal.mjs'
@@ -19,6 +20,35 @@ const MAX_STDERR_CHARS = 12_000
 // logger cleanup after escalating an unresponsive process tree.
 const PROCESS_TREE_GRACE_MS = 750
 const PROCESS_TREE_POLL_MS = 25
+// Keep cmd.exe quoting in sync with scripts/runtime/launcher.mjs. Carets
+// inside quotes are literal, so metacharacters are escaped only outside them.
+const CMD_META_CHARS = /["()%!^<>&|]/g
+
+function escapeCmdValue(value) {
+  let quoted = false
+  return value.replace(CMD_META_CHARS, character => {
+    if (character === '"') {
+      quoted = !quoted
+      return character
+    }
+    return quoted ? character : `^${character}`
+  })
+}
+
+function quoteCmdArgument(value) {
+  const quoted = String(value)
+    .replace(/(\\*)"/g, '$1$1\\"')
+    .replace(/(\\*)$/g, '$1$1')
+  return escapeCmdValue(`"${quoted}"`)
+}
+
+function quoteCmdCommand(value) {
+  return escapeCmdValue(`"${String(value).replace(/"/g, '""')}"`)
+}
+
+function windowsComSpec(env) {
+  return clean(env?.ComSpec || env?.COMSPEC) || 'cmd.exe'
+}
 
 function clean(value) {
   return String(value || '').trim()
@@ -131,10 +161,12 @@ export class AcpProcessClient {
     this.connection = null
     this.context = null
     this.initializeResult = null
+    this.connectionGeneration = 0
     this.startPromise = null
     this.stderr = ''
     this.activePrompts = new Map()
     this.sessions = new Map()
+    this.midTurnPullSessions = new Set()
     this.processTreeCleanups = new WeakMap()
   }
 
@@ -182,23 +214,33 @@ export class AcpProcessClient {
     this.stderr = ''
     await this.prepare?.()
     const isWindows = this.platform === 'win32'
-    // .exe 文件不需要 cmd.exe 包装；直接 spawn 避免路径含空格时
-    // cmd.exe 将第一个空格前的内容误解析为命令名。
+    // .exe 不经 cmd.exe；.cmd/.bat 以及无扩展名的 Windows 命令必须走 cmd.exe，
+    // 否则 Node 无法启动批处理，PATHEXT 解析也会失败。
     const commandExt = isWindows ? extname(String(this.command)).toLowerCase() : ''
-    const useShell = isWindows && commandExt !== '.exe'
-    // cmd.exe 只把命令与参数按空格拼接：含空格的 .cmd/.bat 路径或参数需要加引号，
-    // 否则命令会在第一个空格处被截断，参数也会被拆开。
-    const shellArgument = value => {
-      const text = String(value)
-      return useShell && /\s/.test(text) && !/^".*"$/.test(text) ? `"${text}"` : text
+    const useCmd = isWindows && commandExt !== '.exe'
+    let spawnCommand = this.command
+    let spawnArgs = this.args
+    const spawnOptions = {
+      cwd: this.cwd,
+      env: this.env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: false,
+      detached: !isWindows,
+      windowsHide: true,
     }
-    const child = this.spawn(shellArgument(this.command), this.args.map(shellArgument), {
-        cwd: this.cwd,
-        env: this.env,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: useShell,
-        detached: !isWindows,
-      })
+    if (useCmd) {
+      // shell:true 只按空格拼接。C:\R&D\agent.cmd 或参数 a&b 即使没有空格
+      // 也会被 cmd.exe 拆成多条命令。这里与 runtime launcher 一样显式
+      // 调用 cmd.exe /d /s /c，并按 Windows 规则引用每个参数。
+      const commandLine = [
+        quoteCmdCommand(this.command),
+        ...this.args.map(quoteCmdArgument),
+      ].join(' ')
+      spawnCommand = windowsComSpec(this.env)
+      spawnArgs = ['/d', '/s', '/c', `"${commandLine}"`]
+      spawnOptions.windowsVerbatimArguments = true
+    }
+    const child = this.spawn(spawnCommand, spawnArgs, spawnOptions)
     const processLogger = logger.child({ subsystem: 'acp', backend: this.label })
     processLogger.info('acp.process_started', {
       pid: child.pid,
@@ -211,6 +253,8 @@ export class AcpProcessClient {
       Readable.toWeb(child.stdout),
     )
     const app = acp.client({ name: 'qwen-audio-agent' })
+      .onRequest('craft/drainMidTurnQueue', z.object({ sessionId: z.string() }).passthrough(),
+        context => this.drainMidTurnQueue(context.params))
       .onRequest(
         acp.methods.client.session.requestPermission,
         context => this.handlePermission(context.params, context.signal),
@@ -291,7 +335,9 @@ export class AcpProcessClient {
         this.connection = null
         this.context = null
         this.initializeResult = null
+        this.midTurnPullSessions.clear()
       }).catch(() => {})
+      this.connectionGeneration += 1
       return this.initializeResult
     } catch (error) {
       // stdout may close a tick before the child 'exit' event. In that race
@@ -368,17 +414,41 @@ export class AcpProcessClient {
     }
   }
 
+  drainMidTurnQueue({ sessionId }) {
+    if (!this.sessions.has(sessionId)) return { items: [], hasQueuedPrompt: false }
+    this.midTurnPullSessions.add(sessionId)
+    return this.activePrompts.get(sessionId)?.onMidTurnDrain?.()
+      || { items: [], hasQueuedPrompt: false }
+  }
+
+  steeringMode(sessionId) {
+    if (this.initializeResult?._meta?.steering?.supported === true) return 'extension'
+    if (this.midTurnPullSessions.has(sessionId)) return 'pull'
+    return 'restart'
+  }
+
+  steerSession(sessionId, prompt, { signal } = {}) {
+    const blocks = normalizeAcpPrompt(prompt)
+    assertPromptCapabilities(blocks, this.capabilities)
+    return this.request('_session/steering', {
+      sessionId, prompt: blocks,
+      _meta: { steering: { idleBehavior: 'promptRequired' } },
+    }, { timeoutMs: 15_000, ...(signal ? { signal } : {}) })
+  }
+
   requestSignal(signal, timeoutMs = this.timeoutMs) {
     return requestSignal(signal, timeoutMs)
   }
 
   async request(method, params, {
     signal,
+    guardSignal,
     timeoutMs = this.timeoutMs,
   } = {}) {
     let processOutputBefore = ''
     try {
       await this.start()
+      guardSignal?.throwIfAborted()
       processOutputBefore = cleanProcessOutput(
         this.stderr,
         this.sanitizeProcessOutput,
@@ -388,6 +458,7 @@ export class AcpProcessClient {
       })
     } catch (error) {
       if (signal?.aborted) throw signal.reason
+      if (guardSignal?.aborted) throw guardSignal.reason
       const isRequestError = error?.name === 'RequestError'
       const processOutput = cleanProcessOutput(
         this.stderr,
@@ -426,7 +497,10 @@ export class AcpProcessClient {
     // （onEvent/ownerId/coordinationRunId 等）。若每次 resume 都替换对象，
     // 权限请求会拿到旧闭包快照，被路由到已完成的旧任务上。
     const session = this.sessions.get(id) || {}
-    Object.assign(session, details, { sessionId: id })
+    Object.assign(session, details, {
+      sessionId: id,
+      connectionGeneration: this.connectionGeneration,
+    })
     this.sessions.set(id, session)
     return session
   }
@@ -525,6 +599,8 @@ export class AcpProcessClient {
     signal,
     timeoutMs = this.timeoutMs,
     onUpdate,
+    onMidTurnDrain,
+    cancelTimeoutMs = 15_000,
   } = {}) {
     const id = String(sessionId)
     if (this.activePrompts.has(id)) {
@@ -534,10 +610,18 @@ export class AcpProcessClient {
       )
     }
     await this.start()
+    signal?.throwIfAborted()
+    if (this.activePrompts.has(id)) {
+      throw new AgentError(`${this.label} Session ${id} 已有正在执行的请求`, {
+        status: 409, protocol: 'acp',
+      })
+    }
     const promptBlocks = normalizeAcpPrompt(prompt)
     assertPromptCapabilities(promptBlocks, this.capabilities)
     const timeoutController = new AbortController()
+    const remoteController = new AbortController()
     let timeoutTimer = null
+    let cancellationTimer = null
     let permissionDepth = 0
     const armTimeout = () => {
       clearTimeout(timeoutTimer)
@@ -555,6 +639,7 @@ export class AcpProcessClient {
       text: [],
       contentBlocks: [],
       onUpdate,
+      onMidTurnDrain,
       pauseTimeout: () => {
         permissionDepth += 1
         clearTimeout(timeoutTimer)
@@ -574,6 +659,16 @@ export class AcpProcessClient {
       this.notify(acp.methods.agent.session.cancel, {
         sessionId: id,
       }).catch(() => {})
+      // Keep the prompt RPC alive until the Agent confirms its terminal result.
+      // Aborting the local RPC immediately would let the next pool tenant start
+      // a prompt while the old execution can still emit updates or permissions.
+      cancellationTimer = setTimeout(() => {
+        const error = new AgentError(`${this.label} 未确认 Session 已停止`, {
+          status: 504, protocol: 'acp',
+        })
+        error.contextUncertain = true
+        remoteController.abort(error)
+      }, cancelTimeoutMs)
     }
     combined?.addEventListener('abort', cancel, { once: true })
     if (combined?.aborted) cancel()
@@ -586,15 +681,18 @@ export class AcpProcessClient {
             sessionId: id,
             prompt: promptBlocks,
           },
-          { signal: combined, timeoutMs: 0 },
+          { signal: remoteController.signal, guardSignal: combined, timeoutMs: 0 },
         )
       } catch (error) {
+        if (error.contextUncertain) throw error
         if (!timeoutController.signal.aborted || signal?.aborted) throw error
         throw new AgentError(
           `${this.label} ACP 请求超时（${timeoutDuration(timeoutMs)}）`,
           { status: 504, protocol: 'acp' },
         )
       }
+      if (remoteController.signal.aborted) throw remoteController.signal.reason
+      signal?.throwIfAborted()
       if (timeoutController.signal.aborted && !signal?.aborted) {
         throw new AgentError(
           `${this.label} ACP 请求超时（${timeoutDuration(timeoutMs)}）`,
@@ -609,6 +707,7 @@ export class AcpProcessClient {
       }
     } finally {
       clearTimeout(timeoutTimer)
+      clearTimeout(cancellationTimer)
       combined?.removeEventListener('abort', cancel)
       if (this.activePrompts.get(id) === active) {
         this.activePrompts.delete(id)
@@ -671,6 +770,7 @@ export class AcpProcessClient {
     this.context = null
     this.initializeResult = null
     connection?.close()
+    this.midTurnPullSessions.clear()
     if (child) await this.stopProcessTree(child)
     this.child = null
   }

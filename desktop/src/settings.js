@@ -472,7 +472,7 @@ function renderBackendOptions(currentValue) {
       button.type = 'button'
       button.dataset.backend = state.id
       button.disabled = Boolean(installingBackend)
-      button.textContent = t('安装')
+      button.textContent = t(state.installLabel || '安装')
       button.title = state.requiresConfirmation
         ? t('该后台需要通过官方脚本安装，执行前会再次确认')
         : t('一键安装到本机')

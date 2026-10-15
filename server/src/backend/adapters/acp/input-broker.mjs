@@ -101,6 +101,8 @@ export class InputBroker {
         protocol: this.protocol,
       })
     }
+    // MCP elicitation's accept means submitting content, not approving an
+    // operation. Keep natural-language replies in content for the agent.
     const action = ['accept', 'decline', 'cancel'].includes(response.action)
       ? response.action
       : 'accept'

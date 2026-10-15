@@ -27,6 +27,8 @@ tells you:
 
 ## News
 
+- **2026-09-26 · [v2.0.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.1)**
+  🔧 Improved local backend discovery and installation: reuse existing Agents, install only missing components from official latest releases, and support DeepSeek Harness native ACP; fixed continued coordinator Session use.
 - **2026-09-23 · [v2.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.0)**
   🏗️ Rebuilt the orchestration runtime with a unified client protocol and ACP / A2A backend integration; 🎙️ expanded [voice and video model support](#voice-frontends); 🧠 enhanced frontend tools, memory, and knowledge libraries; 💬 added a desktop conversation panel and remote mobile access; 🧩 added [customer service, smart cockpit, digital human, and other examples](#examples-and-scenario-expansion); 📄 published the [technical report](https://arxiv.org/pdf/2609.25195).
 - **2026-08-20 · [v1.11.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.11.0)**

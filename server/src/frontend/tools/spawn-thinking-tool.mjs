@@ -6,7 +6,7 @@ export const spawnThinkingTool = {
     name: SPAWN_THINKING_TOOL_NAME,
     // 客户定制点：只修改后台 Agent 的能力描述。固定调用规则位于
     // PROMPT.md，参数协议由下方 schema 定义。
-    description: '调用后台 Agent 访问或操作用户环境、设备、文件、屏幕、应用和代码，进行媒体创作、持续执行和制作交付物；也用于在用户补充信息、作出选择或确认后继续、修改已有工作。',
+    description: '新增一项后台工作：访问或操作用户环境、设备、文件、屏幕、应用和代码，进行媒体创作、持续执行和制作交付物。新增工作不会替换或取消已有工作。',
     parameters: {
       type: 'object',
       properties: {

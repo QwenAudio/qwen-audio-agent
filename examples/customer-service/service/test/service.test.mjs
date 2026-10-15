@@ -218,6 +218,50 @@ test('列表超过三笔时截断并说明剩余数量', async () => {
   assert.ok(list.data.count > 3, '李明的订单应超过三笔，否则测不到截断')
   assert.match(list.content, /还有 \d+ 笔/)
   assert.equal(list.content.split('\n').filter(line => line.startsWith('#W')).length, 3)
+  assert.equal(list.data.hasMore, true)
+  const allIds = new Set()
+  for (let page = 1; ; page += 1) {
+    const result = await service.execute('list_orders', { page },
+      { sessionId: 's8', surface: 'frontend' })
+    for (const [, id] of result.content.matchAll(/^(#W\d+)/gm)) allIds.add(id)
+    if (!result.data.hasMore) break
+  }
+  assert.equal(allIds.size, list.data.count, '后续页必须能找全，不可只看前三笔')
+  assert.ok(allIds.has('#W6120344'), '较早的相似订单不能被截断隐藏')
+})
+
+test('订单详情和库存给出可传入写工具的精确商品与款式编号', async () => {
+  const service = fresh()
+  const sessionId = 's-order-identifiers'
+  await service.execute('verify_identity', { email: 'liming3021@example.com' },
+    { sessionId, surface: 'frontend' })
+  const order = service.snapshot(sessionId).db.orders.find(item => item.orderId === '#W2378156')
+  const detail = await service.execute('get_order', { orderId: order.orderId },
+    { sessionId, surface: 'frontend' })
+  for (const item of order.items) {
+    assert.match(detail.content, new RegExp(item.productId))
+    assert.match(detail.content, new RegExp(item.itemId))
+  }
+  const stock = await service.execute('check_variant', { productId: order.items[0].productId },
+    { sessionId, surface: 'frontend' })
+  assert.match(stock.content, new RegExp(order.items[0].itemId))
+})
+
+test('按商品线索查询本人全部候选，比较单价而非整单金额', async () => {
+  const service = fresh()
+  const sessionId = 's-product-candidates'
+  await service.execute('verify_identity', { email: 'liming3021@example.com' },
+    { sessionId, surface: 'frontend' })
+  const result = await service.execute('list_orders', { product: '恒温器' },
+    { sessionId, surface: 'frontend' })
+  assert.equal(result.data.count, 2)
+  assert.match(result.content, /#W2378156.*恒温器.*￥549\.00/)
+  assert.match(result.content, /#W6120355.*恒温器.*￥499\.00/)
+  assert.doesNotMatch(result.content, /#W3301887/, '不应泄露别人的订单')
+  const absent = await service.execute('list_orders', { product: '不存在的商品' },
+    { sessionId, surface: 'frontend' })
+  assert.equal(absent.data.count, 0)
+  assert.match(absent.content, /没有符合商品线索/)
 })
 
 test('前台面写入的核验状态，后台面立刻可见（同一份状态源）', async () => {

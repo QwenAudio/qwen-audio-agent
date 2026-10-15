@@ -194,7 +194,13 @@ export function executeReturnsTool(name, args, { store, sessionId, surface }) {
         false, { blocked: 'not_returnable' }, null, null)
     }
 
-    const wanted = Array.isArray(args.itemIds) ? args.itemIds.map(clean).filter(Boolean) : []
+    const wanted = Array.isArray(args.itemIds) ? [...new Set(args.itemIds.map(clean).filter(Boolean))] : []
+    const unknown = wanted.filter(itemId => !order.items.some(item => item.itemId === itemId))
+    if (unknown.length) {
+      return finish(store, sessionId, surface, name,
+        `订单中没有款式编号 ${unknown.join('、')}；请用 get_order 核对后再办理，当前没有提交任何退货。`,
+        false, { blocked: 'item_not_in_order', unknown }, null, null)
+    }
     const targets = wanted.length
       ? order.items.filter(item => wanted.includes(item.itemId))
       : order.items

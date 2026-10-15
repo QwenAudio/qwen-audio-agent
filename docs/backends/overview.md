@@ -42,14 +42,17 @@ qwenaudio install muse
 
 Before installation, a detection step runs to **only fill in missing components**: it installs the backend core and, where required, its adapter. Existing components are not reinstalled. Installation does not mean the backend is configured: complete any login and configuration required by the selected backend. In the desktop settings page's "Backend Agent" list, an "Install" button appears at the end of rows for uninstalled backends that support one-click install, using the same installation logic as the CLI.
 
-DeepSeek Harness is currently a Developer Preview. This initial integration
-supports voice-triggered tasks, permission decisions, cancellation of the current
-run, and final-result delivery. Its ACP endpoint does not yet expose historical
-Session resume, Gateway MCP injection, or fine-grained tool progress. After
-installation, run `dsh web` and configure the API key in DeepSeek's model
-settings; `DEEPSEEK_API_KEY` remains available as a per-run override. Optionally
-set `DEEPSEEK_HARNESS_MODEL` to
-`deepseek-v4-pro` (default) or `deepseek-v4-flash`.
+Existing local Agents and their configuration take priority. Installation only
+adds missing hosts or adapters, using the official `latest` tag for npm packages.
+It does not upgrade or downgrade existing installations. When only the ACP adapter
+is missing, the desktop button reads “Install adapter”. Minimum compatibility
+checks remain in place; incompatible installations require a user-managed upgrade.
+
+DeepSeek uses the official CLI's `dsh --profile acp` entry point (0.1.5 series or
+newer), without a separate ACP demo. Run `dsh web` to configure credentials.
+Without a backend model override, the ACP profile keeps its own model settings;
+explicit overrides use the standard ACP interface. Gateway-managed independent
+task delegation and native Session history restoration are not provided yet.
 
 View currently available backend agents:
 

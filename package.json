@@ -1,7 +1,7 @@
 {
   "name": "qwen-audio-agent",
   "desktopName": "qwen-audio-agent.desktop",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A realtime voice runtime that keeps AI agents talking, working, and present.",
   "author": "qwen-audio-agent contributors",
   "license": "Apache-2.0",
@@ -81,7 +81,6 @@
     "cli/package.json",
     "config/frontend-agent/",
     "config/backends/openclaw/openclaw.json5",
-    "config/backends/deepseek-harness/cordis.yml",
     "examples/ai-passport/",
     "examples/webrtc/",
     "docs/architecture/overview.md",
@@ -340,7 +339,7 @@
   "dependencies": {
     "@a2a-js/sdk": "1.1.0",
     "@agentclientprotocol/sdk": "1.4.0",
-    "@modelcontextprotocol/sdk": "1.30.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@qwen-code/open-computer-use": "^0.2.3",
     "electron-updater": "6.8.9",
     "express": "^4.22.2",
@@ -366,8 +365,10 @@
     "@hono/node-server": "2.0.12",
     "@electron/asar": "4.2.1",
     "@electron/universal": "3.0.6",
-    "fast-uri": "3.1.6",
+    "fast-uri": "3.1.8",
     "qs": "6.16.0",
-    "uuid": "11.1.1"
+    "uuid": "11.1.1",
+    "global-agent": "4.1.3",
+    "shell-quote": "1.12.0"
   }
 }

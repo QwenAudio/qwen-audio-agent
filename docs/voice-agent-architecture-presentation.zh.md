@@ -432,6 +432,7 @@ export const frontendToolRegistry = new FrontendToolRegistry([
   { definition: memoryTool },
   { definition: notesTool },
   { definition: cancelAgentTaskTool },
+  { definition: updateAgentTaskTool, policy: { repeatHandling: 'handler' } },
   { definition: getAgentTaskStatusTool },
   // 能力或客户端动作存在时才提供相应工具
   { definition: webSearchTool,         policy: { requiredCapabilities: […] } },
@@ -439,7 +440,6 @@ export const frontendToolRegistry = new FrontendToolRegistry([
   { definition: knowledgeTool,         policy: { requiredCapabilities: […] } },
   { definition: recallTool,            policy: { requiredCapabilities: […] } },
   { definition: respondPermissionTool, policy: { requiredCapabilities: […] } },
-  { definition: respondAgentInputTool, policy: { requiredCapabilities: […] } },
   { definition: enterSleepTool,        policy: { requiredClientActions: […] } },
 ])
 ```
@@ -580,49 +580,44 @@ queued → running ────────────────────�
 
 ### 有界并发
 
-限制同时运行的后台任务，避免本机资源和后台服务过载。
+运行时默认每个 owner 与全局都最多执行 1 项用户任务，后续工作排队；新任务不隐式取消已有工作。
 
 </div>
 
 <div>
 
-### 串行协调
+### 会话内串行
 
-同一协调 Session 一次只处理一项任务，保证上下文顺序。
+ACP 默认使用一个协调槽位顺序处理任务；调整绑定原任务上下文。
 
 </div>
 
 <div>
 
-### 委派释放
+### 委派保留名额
 
-任务进入独立执行层后释放协调槽位，长任务不阻塞后续请求。
-
-</div>
+委派阶段仍保留任务名额和协调 Session 租约，直至整项任务终态；默认后续任务继续排队。
 
 </div>
 
-> <strong>核心约束：</strong> 资源可控、上下文有序、长任务不阻塞持续对话。
+</div>
+
+> <strong>核心约束：</strong> 默认任务串行、上下文有序、长任务不阻塞持续对话；并发上限仍可显式配置。
 
 ---
 
 # 协调 Session 提供可持续续接的后台对话窗口
 
-协调 Session 是 Backend Adapter 为当前用户创建或恢复的一条后台 Agent 原生会话，用于承接跨任务的持续理解与执行协调。
+ACP Backend Adapter 默认用一个持久协调 Session 槽位，顺序承接当前用户的任务理解与执行协调。
 
-- 同一用户反复复用，而不是每次重新开始。
+- 新任务等待槽位空闲，槽位可反复复用。
+- 调整任务仍使用原 Session；该会话被占用时等待，不会调整到另一项工作。
 - 每轮只看到自包含任务指令和当前任务所需的原生附件。
 - 简单后台工作可以自己完成。
 - 复杂、独立或长期工作可以进入独立执行层。
 - 独立任务完成后，它负责校验结果并整理最终表达。
 
-```js
-return `${protocol}:${encodeURIComponent(
-  clean(ownerId) || 'personal'
-)}:backend`
-```
-
-**协调会话负责持续理解；独立 Session 负责长任务执行。**
+**会话上下文分开，不代表文件、工作目录或外部资源隔离。**
 
 <!--
 [Sources]
@@ -820,11 +815,11 @@ MCP Session 工具不暴露给语音前台，仅作为协调会话管理独立�
 | ---: | --- | --- |
 | 1 | 协调会话 | 调用 `session_start` 或 `session_send` |
 | 2 | Adapter | 记录 delegation ID 与目标 Session |
-| 3 | TaskManager | 任务进入 `delegated`，释放协调槽位 |
+| 3 | TaskManager / ACP Adapter | 进入 `delegated`，保留任务并发名额与协调 Session 租约 |
 | 4 | 独立 Session | 使用文件、终端、搜索等能力长期执行 |
 | 5 | Adapter | 等待与当前委派精确匹配的最终结果 |
-| 6 | 协调会话 | 重新取得控制权，校验并整理结果 |
-| 7 | TaskManager | 任务进入 `completed`，等待自然播报 |
+| 6 | 原协调会话 | 在保留的会话中校验并整理结果 |
+| 7 | TaskManager / ACP Adapter | 整项任务终态后释放名额与租约；成功结果等待自然播报 |
 
 > 取消、查询、权限和重启恢复，始终绑定同一项任务与目标 Session。
 
@@ -1017,7 +1012,7 @@ ConversationSync 是 Gateway 内的短期会话账本，记录用户说了什么
 
 - receipt 不等待后台完成
 - transcript 关联不阻塞回执
-- 委派后立即释放协调槽
+- 委派保留名额，整项任务终态后释放
 - 结果等到自然窗口再播报
 - 播放开始才确认交付
 

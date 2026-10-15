@@ -21,6 +21,8 @@
 
 ## News
 
+- **2026-09-26 · [v2.0.1](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.1)**
+  🔧 优化本机后台发现与安装：优先复用已有 Agent，仅补装缺失组件的官方最新版，接入 DeepSeek Harness 原生 ACP；修复协调会话连续调用。
 - **2026-09-23 · [v2.0.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v2.0.0)**
   🏗️ 重构编排运行时，统一客户端协议与 ACP / A2A 后台接入；🎙️ 扩展[语音与视频模型](#语音前台)；🧠 完善前台工具、记忆与资料库；💬 新增桌面对话面板与手机远程连接；🧩 新增[客服、座舱、数字人等示例](#示例与场景扩展)；📄 发布[技术报告](https://arxiv.org/pdf/2609.25195)。
 - **2026-08-20 · [v1.11.0](https://github.com/QwenAudio/qwen-audio-agent/releases/tag/v1.11.0)**

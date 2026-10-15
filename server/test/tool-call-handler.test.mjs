@@ -9,6 +9,19 @@ import { REALTIME_PROVIDERS, RealtimeFrontend } from '../src/voice/realtime-prov
 import { ClientToolSource } from '../src/frontend/tools/client-tool-source.mjs'
 import { desktopClientTools } from '../../web/src/desktop/client-tools.js'
 
+const WORK_ACCEPTED_MESSAGE = '请求已受理，执行结果另行返回。本次只需自然确认受理。'
+
+function assertCurrentReceiptConfirmation(message) {
+  assert.match(message, /本次.*确认/)
+  assert.doesNotMatch(message, /不要再次调用工具|不再调用任何工具/)
+}
+
+function assertDuplicateWorkReceipt(receipt) {
+  assert.equal(receipt.status, 'duplicate')
+  assert.match(receipt.message, /此前已受理/)
+  assertCurrentReceiptConfirmation(receipt.message)
+}
+
 function harness({
   coordinator,
   manager = new TaskManager(),
@@ -783,7 +796,7 @@ test('submits one nonblocking coordinator work item with organized intent', asyn
   assert.equal(kit.outputs[0][1].status, 'accepted')
   assert.equal(
     kit.outputs[0][1].message,
-    '工作已受理，请自然确认一次，不要再次调用工具。',
+    WORK_ACCEPTED_MESSAGE,
   )
   assert.equal(kit.outputs[0][1].marker, undefined)
   assert.equal(typeof kit.outputs[0][3].shouldRespond, 'function')
@@ -909,7 +922,7 @@ test('suppresses the receipt reply when the original response already spoke', as
   assert.equal(kit.outputs[0][1].status, 'accepted')
   assert.equal(
     kit.outputs[0][1].message,
-    '工作已受理，请自然确认一次，不要再次调用工具。',
+    WORK_ACCEPTED_MESSAGE,
   )
   assert.equal(kit.outputs[0][3].createResponse, false)
   assert.equal(kit.ensuredResponses.length, 0)
@@ -941,7 +954,7 @@ test('accepts distinct spawn_thinking calls from one realtime response', async (
   assert.ok(kit.outputs.every(output => output[1].status === 'accepted'))
   assert.ok(kit.outputs.every(output => output[3].createResponse === false))
   assert.ok(kit.outputs.every(output => (
-    output[1].message === '工作已受理，请自然确认一次，不要再次调用工具。'
+    output[1].message === WORK_ACCEPTED_MESSAGE
   )))
   assert.equal(kit.ensuredResponses.length, 1)
   assert.equal(kit.ensuredResponses[0][1].response, undefined)
@@ -950,6 +963,43 @@ test('accepts distinct spawn_thinking calls from one realtime response', async (
   await Promise.all(kit.manager.list({ ownerId: 'owner' }).map(task => (
     kit.manager.wait(task.id)
   )))
+})
+
+test('default spawn admission accepts two independent works but executes them one at a time', async t => {
+  const gates = [Promise.withResolvers(), Promise.withResolvers()]
+  const runs = []
+  t.after(() => gates.forEach(gate => gate.resolve({ content: 'done' })))
+  const kit = harness({ coordinator: {
+    run(input, execution) {
+      runs.push({ input, execution })
+      return gates[runs.length - 1].promise
+    },
+  } })
+  for (const [index, objective] of ['first work', 'second work'].entries()) {
+    await kit.handler.handle({
+      call_id: `serial-spawn-${index}`,
+      response_id: 'serial-work-response',
+      name: 'spawn_thinking',
+      arguments: JSON.stringify({ objective }),
+    }, { turnId: 'turn-one', turnGeneration: 1, responseId: 'serial-work-response' })
+  }
+  await new Promise(resolve => setImmediate(resolve))
+  const [a, b] = kit.outputs.map(output => output[1])
+  assert.equal(a.status, 'accepted')
+  assert.equal(b.status, 'accepted')
+  assert.notEqual(a.task_id, b.task_id)
+  assert.equal(runs.length, 1)
+  assert.equal(runs[0].execution.taskId, a.task_id)
+  assert.equal(kit.manager.get(b.task_id).status, 'queued')
+
+  gates[0].resolve({ content: 'first done' })
+  await kit.manager.wait(a.task_id)
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(runs.length, 2)
+  assert.equal(runs[1].execution.taskId, b.task_id)
+  assert.equal(kit.manager.get(b.task_id).status, 'running')
+  gates[1].resolve({ content: 'second done' })
+  await kit.manager.wait(b.task_id)
 })
 
 test('blocks rewritten spawn_thinking calls from later responses in one turn', async () => {
@@ -1069,11 +1119,7 @@ test('deduplicates the same objective replayed in one realtime turn', async () =
     arguments: '{"objective":"执行一次"}',
   })
   assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 1)
-  assert.equal(kit.outputs.at(-1)[1].status, 'duplicate')
-  assert.equal(
-    kit.outputs.at(-1)[1].message,
-    '同一工作此前已受理，请自然确认一次，不要再次调用工具。',
-  )
+  assertDuplicateWorkReceipt(kit.outputs.at(-1)[1])
 })
 
 test('rejects delegated work immediately when the backend is known to be down', async () => {
@@ -1278,88 +1324,418 @@ test('search and page reading compose inline without a backend or created work',
   assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 0)
 })
 
-test('does not turn a permission answer into a new background task', async () => {
+test('a pending permission permits independent task admission but keeps it queued at default capacity', async t => {
   const kit = await permissionHarness({
-    answer: '可以',
+    answer: '另外整理一下下周的会议日程',
     respondPermission: async () => ({
       id: 'auth-one',
       taskId: 'work-one',
       status: 'approved',
     }),
   })
+  t.after(() => kit.finish())
 
   await kit.handler.handle({
-    call_id: 'wrongly-delegated-permission-answer',
+    call_id: 'independent-work-during-permission',
     name: 'spawn_thinking',
-    arguments: JSON.stringify({ objective: '可以' }),
+    arguments: JSON.stringify({ objective: '整理下周会议日程' }),
   }, { turnId: 'turn-one', turnGeneration: 1 })
 
   const output = kit.outputs.at(-1)
-  assert.equal(output[1].error_code, 'permission_decision_required')
-  assert.equal(output[1].task_id, kit.task.id)
-  assert.match(
-    output[3].response.instructions,
-    /respond_permission/,
-  )
+  assert.equal(output[1].status, 'accepted')
+  assert.notEqual(output[1].task_id, kit.task.id)
+  assert.equal(kit.manager.get(kit.task.id).authorization.status, 'pending')
   assert.equal(
     kit.manager.list({ ownerId: 'owner' }).filter(task => (
-      task.objective === '可以'
+      task.objective === '整理下周会议日程'
     )).length,
-    0,
+    1,
   )
+  assert.equal(kit.manager.get(output[1].task_id).status, 'queued')
   await kit.finish()
+  assert.equal((await kit.manager.wait(output[1].task_id)).status, 'completed')
 })
 
-test('returns a backend answer to the same pending task', async () => {
+async function inputHarness(t, {
+  kind = 'input',
+  ownerId = 'owner',
+  sessionId = 'voice',
+  pending = true,
+  backendAvailability,
+  onRespond,
+} = {}) {
   const manager = new TaskManager()
-  let release
+  const done = Promise.withResolvers()
+  let backendEvent
   const task = manager.create({
     objective: '生成报告',
-    ownerId: 'owner',
-    sessionId: 'voice',
+    ownerId,
+    sessionId,
     runner: async (_objective, { onEvent }) => {
-      onEvent({
+      backendEvent = onEvent
+      if (pending) onEvent({
         type: 'backend.input.requested',
         input: {
           id: 'input-one',
           status: 'pending',
+          kind,
           mode: 'text',
           prompt: '使用中文还是英文？',
         },
       })
-      await new Promise(resolve => { release = resolve })
-      return { content: '完成' }
+      return done.promise
     },
   })
   await new Promise(resolve => setImmediate(resolve))
   const calls = []
   const kit = harness({
     manager,
+    backendAvailability,
+    coordinator: { canUpdate: () => true, update: () => ({ completion: Promise.resolve() }) },
     respondInput: async (...args) => {
       calls.push(args)
-      return { status: 'accepted' }
+      return onRespond ? onRespond(...args) : { status: 'accepted' }
     },
   })
-  await kit.handler.handle({
-    call_id: 'input-answer',
-    name: 'respond_agent_input',
-    arguments: JSON.stringify({
-      task_id: task.id,
-      action: 'accept',
-      text: '中文',
-    }),
-  }, { turnId: 'turn-one', turnGeneration: 1 })
-  assert.deepEqual(calls[0].slice(0, 3), [
-    task.id,
-    'input-one',
-    { action: 'accept', text: '中文', values: undefined },
-  ])
-  assert.equal(kit.outputs[0][1].status, 'submitted')
-  release()
-  await manager.wait(task.id)
+  const updates = []
+  const update = kit.handler.taskOperations.update.bind(kit.handler.taskOperations)
+  kit.handler.taskOperations.update = (...args) => {
+    updates.push(args)
+    return update(...args)
+  }
+  t.after(async () => {
+    done.resolve({ content: '完成' })
+    await manager.wait(task.id)
+    kit.transcripts.close()
+  })
+  return {
+    ...kit, task, calls, updates,
+    emit: event => backendEvent(event),
+    invoke: (args, { callId = 'input-answer', turnId = 'turn-one', responseId } = {}) => kit.handler.handle({
+      call_id: callId,
+      name: 'update_agent_task',
+      ...(responseId ? { response_id: responseId } : {}),
+      arguments: JSON.stringify({ task_id: task.id, instruction: '中文', ...args }),
+    }, { turnId, turnGeneration: 1, ...(responseId ? { responseId } : {}) }),
+  }
+}
+
+test('update automatically answers an ordinary pending question on the same task', async t => {
+  const kit = await inputHarness(t)
+  await kit.invoke({ values: { language: 'zh' } })
+  assert.deepEqual(kit.calls, [[
+    kit.task.id, 'input-one',
+    { text: '中文', values: { language: 'zh' } },
+    { ownerId: 'owner' },
+  ]])
+  assert.equal(kit.outputs.at(-1)[1].status, 'accepted')
+  assert.equal(kit.outputs.at(-1)[1].task_id, kit.task.id)
+  assert.equal(kit.updates.length, 0)
+  assert.equal(kit.manager.list({ ownerId: 'owner' }).length, 1)
 })
 
-for (const kind of ['input', 'authorization']) test(`pending ${kind} cannot be queued as a new task`, async t => {
+for (const [label, instruction] of [
+  ['confirmation', '  Yes, I approve this exact operation.  '],
+  ['refusal', '不要执行当前操作'],
+  ['changed requirements', '改成退回礼品卡，不要退回信用卡'],
+  ['ambiguous answer', '让我再想想，也许吧'],
+]) test(`pending business preview forwards ${label} neutrally without an authorization action`, async t => {
+  const kit = await inputHarness(t, { kind: 'authorization' })
+  kit.transcripts.record('turn-one', 'A different transcript must not replace instruction.')
+  kit.transcripts.transcript = () => { throw new Error('Pending replies must not look up transcripts') }
+  await kit.invoke({ input_request_id: 'input-one', instruction })
+  assert.deepEqual(kit.calls[0].slice(0, 3), [
+    kit.task.id, 'input-one', { text: instruction.trim(), values: undefined },
+  ])
+  assert.equal(kit.calls.length, 1)
+  const receipt = kit.outputs.at(-1)[1]
+  assert.equal(receipt.status, 'accepted')
+  assert.equal(receipt.task_id, kit.task.id)
+  assert.equal(receipt.input_request_id, 'input-one')
+  assert.deepEqual(Object.keys(receipt).sort(), ['input_request_id', 'message', 'status', 'task_id'])
+  assert.match(receipt.message, /回答.*交回/)
+  assert.match(receipt.message, /不代表操作已批准/)
+  assert.match(receipt.message, /执行完成/)
+  assertCurrentReceiptConfirmation(receipt.message)
+  assert.notEqual(kit.manager.get(kit.task.id).status, 'cancelled')
+  assert.equal(kit.updates.length, 0)
+})
+
+test('a business preview reply requires no separate user transcript or authorization evidence', async t => {
+  const kit = await inputHarness(t, { kind: 'authorization' })
+  await kit.invoke({ instruction: '用户要求先确认预计到账时间', values: { paymentMethod: 'gift-card' } })
+  assert.deepEqual(kit.calls[0][2], {
+    text: '用户要求先确认预计到账时间', values: { paymentMethod: 'gift-card' },
+  })
+  assert.equal(kit.outputs.at(-1)[1].status, 'accepted')
+})
+
+for (const [label, instruction] of [
+  ['missing', undefined], ['empty', ''], ['whitespace', '   '],
+  ['non-string', 42], ['too long', 'x'.repeat(16_001)],
+]) test(`pending input rejects ${label} instruction`, async t => {
+  const kit = await inputHarness(t, { kind: 'authorization' })
+  await kit.invoke({ instruction })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'invalid_instruction')
+  assert.equal(kit.calls.length, 0)
+  assert.equal(kit.updates.length, 0)
+})
+
+for (const values of [null, [], 'not-a-form']) {
+  test(`pending input rejects non-object values: ${JSON.stringify(values)}`, async t => {
+    const kit = await inputHarness(t)
+    await kit.invoke({ values })
+    assert.equal(kit.outputs.at(-1)[1].error_code, 'invalid_input_values')
+    assert.equal(kit.calls.length, 0)
+    assert.equal(kit.updates.length, 0)
+  })
+}
+
+test('an in-flight reply stays bound to its original request when a newer request arrives', async t => {
+  const submitted = Promise.withResolvers()
+  t.after(() => submitted.resolve())
+  const kit = await inputHarness(t, { kind: 'authorization', onRespond: () => submitted.promise })
+  const response = kit.invoke({ input_request_id: 'input-one', instruction: '先说明到账时间' })
+  kit.emit({ type: 'backend.input.requested', input: {
+    id: 'new-preview', status: 'pending', kind: 'authorization', mode: 'text', prompt: 'Approve a different operation?',
+  } })
+  submitted.resolve()
+  await response
+  assert.equal(kit.outputs.at(-1)[1].input_request_id, 'input-one')
+  assert.deepEqual(kit.calls[0].slice(0, 3), [
+    kit.task.id, 'input-one', { text: '先说明到账时间', values: undefined },
+  ])
+  assert.equal(kit.calls.length, 1)
+  assert.equal(kit.updates.length, 0)
+  assert.equal(kit.manager.get(kit.task.id).inputRequest.id, 'new-preview')
+})
+
+test('an in-flight input reply can finish after a new voice turn without changing its text or request', async t => {
+  const submitted = Promise.withResolvers()
+  t.after(() => submitted.resolve())
+  const kit = await inputHarness(t, { kind: 'authorization', onRespond: () => submitted.promise })
+  const response = kit.invoke({ input_request_id: 'input-one', instruction: '原来的答复' })
+  kit.handler.getTurnId = () => 'turn-two'
+  kit.handler.getTurnGeneration = () => 2
+  submitted.resolve()
+  await response
+  assert.deepEqual(kit.calls[0].slice(0, 3), [
+    kit.task.id, 'input-one',
+    { text: '原来的答复', values: undefined },
+  ])
+  assert.equal(kit.calls.length, 1)
+  assert.equal(kit.updates.length, 0)
+  assert.equal(kit.outputs.at(-1)[1].status, 'accepted')
+})
+
+test('concurrent replies share one in-flight backend input submission', async t => {
+  const submission = Promise.withResolvers()
+  t.after(() => submission.resolve({ status: 'accepted' }))
+  const kit = await inputHarness(t, { onRespond: () => submission.promise })
+  const first = kit.invoke({}, { callId: 'first-answer', responseId: 'response-one' })
+  const second = kit.invoke({}, { callId: 'overlapping-answer', responseId: 'response-one' })
+  await new Promise(resolve => setImmediate(resolve))
+  const submittedCount = kit.calls.length
+  submission.resolve({ status: 'accepted' })
+  await Promise.all([first, second])
+  assert.equal(submittedCount, 1)
+  assert.equal(kit.calls.length, 1)
+  assert.equal(kit.updates.length, 0)
+  assert.deepEqual(kit.outputs.map(output => output[1].status), ['accepted', 'duplicate'])
+})
+
+test('a reconnected handler reuses the same-turn accepted input receipt after the request resolves', async t => {
+  const kit = await inputHarness(t)
+  await kit.invoke({})
+  kit.emit({ type: 'backend.input.resolved', input: { id: 'input-one', status: 'accepted' } })
+  assert.equal(kit.manager.get(kit.task.id).inputRequest, null)
+
+  const reconnected = harness({
+    manager: kit.manager,
+    coordinator: { canUpdate: () => true, update: () => ({ completion: Promise.resolve() }) },
+    respondInput: async (...args) => kit.calls.push(args),
+  })
+  t.after(() => reconnected.transcripts.close())
+  const update = reconnected.handler.taskOperations.update.bind(reconnected.handler.taskOperations)
+  reconnected.handler.taskOperations.update = (...args) => {
+    kit.updates.push(args)
+    return update(...args)
+  }
+  await reconnected.handler.handle({
+    call_id: 'answer-after-reconnect', name: 'update_agent_task',
+    arguments: JSON.stringify({ task_id: kit.task.id, instruction: '中文' }),
+  }, { turnId: 'turn-one', turnGeneration: 1 })
+
+  assert.equal(reconnected.outputs.at(-1)[1].status, 'duplicate')
+  assert.equal(reconnected.outputs.at(-1)[1].input_request_id, 'input-one')
+  assert.equal(kit.calls.length, 1)
+  assert.equal(kit.updates.length, 0)
+})
+
+for (const kind of ['input', 'authorization']) {
+  test(`explicit input_refs are rejected for a pending ${kind} reply`, async t => {
+    const kit = await inputHarness(t, { kind })
+    await kit.invoke({ input_refs: ['input-file-one'] })
+    assert.equal(kit.outputs.at(-1)[1].error_code, 'input_attachments_unsupported')
+    assert.equal(kit.calls.length, 0)
+    assert.equal(kit.updates.length, 0)
+  })
+
+  test(`implicit current-turn file rejects a pending ${kind} reply without input_refs`, async t => {
+    const kit = await inputHarness(t, { kind })
+    kit.transcripts.record('turn-one', '参考这个附件继续')
+    kit.transcripts.recordParts('turn-one', [{
+      type: 'file', mime: 'image/png', filename: 'reference.png',
+      url: 'data:image/png;base64,aGVsbG8=',
+    }])
+    await kit.invoke({})
+    assert.equal(kit.outputs.at(-1)[1].error_code, 'input_attachments_unsupported')
+    assert.equal(kit.calls.length, 0)
+    assert.equal(kit.updates.length, 0)
+    assert.equal(kit.manager.get(kit.task.id).inputRequest.status, 'pending')
+  })
+}
+
+test('a failed input delivery is not cached as an accepted answer', async t => {
+  let attempt = 0
+  const kit = await inputHarness(t, { onRespond: async () => {
+    if (attempt++ === 0) throw new Error('input delivery failed')
+    return { status: 'accepted' }
+  } })
+  await kit.invoke({})
+  await kit.invoke({}, { callId: 'retry-answer' })
+  assert.equal(kit.calls.length, 2)
+  assert.equal(kit.outputs[0][1].error, true)
+  assert.equal(kit.outputs[1][1].status, 'accepted')
+  assert.equal(kit.updates.length, 0)
+})
+
+test('after answering a question a later turn can still adjust the same work', async t => {
+  const kit = await inputHarness(t)
+  await kit.invoke({})
+  kit.emit({ type: 'backend.input.resolved', input: { id: 'input-one', status: 'accepted' } })
+  kit.handler.getTurnId = () => 'turn-two'
+  await kit.invoke({ instruction: '另外加上财务摘要' }, { callId: 'later-adjustment', turnId: 'turn-two' })
+  assert.equal(kit.calls.length, 1)
+  assert.equal(kit.updates.length, 1)
+  assert.equal(kit.outputs.at(-1)[1].status, 'accepted')
+  assert.equal(kit.outputs.at(-1)[1].message, WORK_ACCEPTED_MESSAGE)
+})
+
+test('work update receipts acknowledge only this request and repeated updates use a duplicate receipt', async t => {
+  const kit = await inputHarness(t, { pending: false })
+  await kit.invoke({ instruction: '为已有报告补充财务摘要' })
+  const receipt = kit.outputs.at(-1)[1]
+  assert.equal(receipt.status, 'accepted')
+  assert.equal(receipt.message, WORK_ACCEPTED_MESSAGE)
+  assertCurrentReceiptConfirmation(receipt.message)
+
+  await kit.invoke({ instruction: '为已有报告补充财务摘要' }, { callId: 'repeat-update' })
+  assertDuplicateWorkReceipt(kit.outputs.at(-1)[1])
+  assert.equal(kit.updates.length, 1)
+  assert.equal(kit.calls.length, 0)
+})
+
+test('work updates deduplicated by task admission also retain the scoped duplicate message', async t => {
+  const kit = await inputHarness(t, { pending: false })
+  kit.handler.taskOperations.update = () => ({ status: 'duplicate', taskId: kit.task.id })
+  await kit.invoke({ instruction: '为已有报告补充财务摘要' })
+  assertDuplicateWorkReceipt(kit.outputs.at(-1)[1])
+  assert.equal(kit.calls.length, 0)
+})
+
+for (const kind of ['input', 'authorization']) {
+  test(`stale ${kind} request cannot fall through to steering`, async t => {
+    const kit = await inputHarness(t, { kind })
+    await kit.invoke({ input_request_id: 'previous-input' })
+    assert.equal(kit.outputs.at(-1)[1].error, true)
+    assert.equal(kit.calls.length, 0)
+    assert.equal(kit.updates.length, 0)
+    assert.equal(kit.manager.get(kit.task.id).inputRequest.id, 'input-one')
+  })
+
+  for (const resolved of [false, true]) {
+    test(`repeated accepted ${kind} answer is deduplicated even when pending is ${!resolved}`, async t => {
+      const kit = await inputHarness(t, { kind })
+      const args = { instruction: '原来的答复', input_request_id: 'input-one' }
+      await kit.invoke(args, { responseId: 'response-one' })
+      if (resolved) kit.emit({ type: 'backend.input.resolved', input: { id: 'input-one', status: 'accepted' } })
+      await kit.invoke(args, { callId: 'repeat-in-response', responseId: 'response-one' })
+      await kit.invoke({ instruction: '原来的答复' }, { callId: 'repeat-without-id', responseId: 'response-two' })
+      assert.equal(kit.calls.length, 1)
+      assert.equal(kit.updates.length, 0)
+      assert.deepEqual(kit.outputs.map(output => output[1].status), ['accepted', 'duplicate', 'duplicate'])
+      for (const output of kit.outputs.slice(1)) {
+        assertDuplicateWorkReceipt(output[1])
+        assert.match(output[1].message, /不代表操作已批准或执行完成/)
+      }
+    })
+  }
+}
+
+for (const extra of [
+  { input_request_id: 'resolved-input' },
+  { values: { language: 'zh' } },
+]) test(`reply-only data without a pending request never becomes steering: ${JSON.stringify(extra)}`, async t => {
+  const kit = await inputHarness(t, { pending: false })
+  await kit.invoke(extra)
+  assert.equal(kit.outputs.at(-1)[1].error, true)
+  assert.equal(kit.calls.length, 0)
+  assert.equal(kit.updates.length, 0)
+})
+
+for (const identity of [{ ownerId: 'other-owner' }, { sessionId: 'other-session' }]) {
+  test(`pending replies cannot cross ${Object.keys(identity)[0]}`, async t => {
+    const kit = await inputHarness(t, identity)
+    await kit.invoke({ input_request_id: 'input-one' })
+    assert.equal(kit.outputs.at(-1)[1].error, true)
+    assert.equal(kit.calls.length, 0)
+    assert.equal(kit.updates.length, 0)
+  })
+}
+
+test('a normal update with no pending request still uses steering', async t => {
+  const kit = await inputHarness(t, { pending: false })
+  await kit.invoke({ instruction: '追加一页执行摘要' })
+  assert.equal(kit.outputs.at(-1)[1].status, 'accepted')
+  assert.equal(kit.calls.length, 0)
+  assert.equal(kit.updates.length, 1)
+  assert.equal(kit.updates[0][0].instruction, '追加一页执行摘要')
+})
+
+test('a pending input can be answered with an explicitly unconfigured backend', async t => {
+  const kit = await inputHarness(t, {
+    backendAvailability: { snapshot: () => ({ configured: false }) },
+  })
+  await kit.invoke({})
+  assert.equal(kit.outputs.at(-1)[1].status, 'accepted')
+  assert.equal(kit.calls.length, 1)
+  assert.equal(kit.updates.length, 0)
+})
+
+test('the removed respond_agent_input tool cannot dispatch a stale model call', async t => {
+  const kit = await inputHarness(t)
+  await kit.handler.handle({
+    call_id: 'obsolete-input-tool', name: 'respond_agent_input',
+    arguments: JSON.stringify({ task_id: kit.task.id, action: 'accept', text: '中文' }),
+  })
+  assert.equal(kit.outputs.at(-1)[1].error_code, 'unsupported_tool')
+  assert.equal(kit.calls.length, 0)
+  assert.equal(kit.updates.length, 0)
+})
+
+test('cancel_agent_task remains the separate way to stop a task with a pending preview', async t => {
+  const kit = await inputHarness(t, { kind: 'authorization' })
+  await kit.handler.handle({
+    call_id: 'stop-work', name: 'cancel_agent_task',
+    arguments: JSON.stringify({ task_id: kit.task.id }),
+  })
+  assert.equal(kit.outputs.at(-1)[1].status, 'cancelled')
+  assert.equal(kit.calls.length, 0)
+  assert.equal(kit.updates.length, 0)
+})
+
+for (const kind of ['input', 'authorization']) test(`pending ${kind} permits independent task admission but keeps it queued at default capacity`, async t => {
   const manager = new TaskManager()
   const done = Promise.withResolvers()
   t.after(() => done.resolve({ content: 'done' }))
@@ -1371,15 +1747,18 @@ for (const kind of ['input', 'authorization']) test(`pending ${kind} cannot be q
     } })
   await new Promise(resolve => setImmediate(resolve))
   const kit = harness({ manager })
-  await kit.handler.handle({ call_id: 'wrong-spawn', name: 'spawn_thinking',
-    arguments: '{"objective":"yes, continue"}' })
-  assert.equal(kit.outputs.at(-1)[1].error_code, 'input_response_required')
-  assert.equal(kit.outputs.at(-1)[1].pending_inputs[0].task_id, task.id)
-  assert.equal(kit.outputs.at(-1)[1].pending_inputs[0].kind, kind)
-  assert.match(kit.outputs.at(-1)[3].response.instructions, /respond_agent_input/)
-  assert.equal(manager.list({ ownerId: 'owner', sessionId: 'voice' }).length, 1)
+  kit.transcripts.record('turn-one', '另外整理明天会议日程')
+  await kit.handler.handle({ call_id: 'independent-spawn', name: 'spawn_thinking',
+    arguments: '{"objective":"整理明天会议日程"}' })
+  const output = kit.outputs.at(-1)[1]
+  assert.equal(output.status, 'accepted')
+  assert.notEqual(output.task_id, task.id)
+  assert.equal(manager.get(task.id).inputRequest.status, 'pending')
+  assert.equal(manager.list({ ownerId: 'owner', sessionId: 'voice' }).length, 2)
+  assert.equal(manager.get(output.task_id).status, 'queued')
   done.resolve({ content: 'done' })
   await manager.wait(task.id)
+  assert.equal((await manager.wait(output.task_id)).status, 'completed')
 })
 
 test('deduplicates the same turn after a realtime handler reconnect', async () => {
@@ -1408,11 +1787,7 @@ test('deduplicates the same turn after a realtime handler reconnect', async () =
   })
   await waitForTask(manager, first.outputs[0][1].task_id)
   assert.equal(manager.list({ ownerId: 'owner' }).length, 1)
-  assert.equal(second.outputs[0][1].status, 'duplicate')
-  assert.equal(
-    second.outputs[0][1].message,
-    '同一工作此前已受理，请自然确认一次，不要再次调用工具。',
-  )
+  assertDuplicateWorkReceipt(second.outputs[0][1])
   assert.equal(runs, 1)
 })
 

@@ -2,6 +2,30 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { BackendWorkRuntime } from '../src/backend/backend-work-runtime.mjs'
 import { backendInstructionFromWork } from '../src/backend/backend-work-input.mjs'
+import { AgentClient } from '../src/backend/adapters/agent-client.mjs'
+import { createBackendAgentHost } from '../src/backend/backend-adapter-sdk.mjs'
+
+test('both built-in and extension hosts preserve optional Task updates', async () => {
+  const calls = []
+  const adapter = backend({
+    describe: () => ({ capabilities: { workUpdates: true } }),
+    update(...args) { calls.push(args); return { completion: Promise.resolve() } },
+  })
+  for (const host of [new AgentClient({ adapter }), createBackendAgentHost(adapter)]) {
+    const runtime = new BackendWorkRuntime({ backend: host })
+    assert.equal(runtime.canUpdate(), true)
+    await runtime.update('task_1', { instruction: 'adjust' }, { ownerId: 'owner' }).completion
+  }
+  assert.deepEqual(calls, Array(2).fill(['task_1', { instruction: 'adjust' }, { ownerId: 'owner' }]))
+  const unsupported = new BackendWorkRuntime({ backend: backend() })
+  assert.equal(unsupported.canUpdate(), false)
+  assert.throws(() => unsupported.update('task_1', { instruction: 'x' }), { code: 'update_unsupported' })
+  const invalid = new BackendWorkRuntime({ backend: backend({
+    describe: () => ({ capabilities: { workUpdates: true } }),
+    update: () => undefined,
+  }) })
+  assert.throws(() => invalid.update('task_1', { instruction: 'x' }), { code: 'update_unconfirmed' })
+})
 
 function backend(overrides = {}) {
   return {
@@ -37,7 +61,6 @@ test('submits structured Gateway Work with one model-facing instruction', async 
   const result = await runtime.run({
     originalRequest: '检查项目',
     objective: '检查项目',
-    conversationContext: [{ role: 'user', content: '不应转发的历史' }],
     userMemories: [{ scope: 'memory', content: '不应转发的记忆' }],
     workingDirectory: '/project',
     inputParts: [],

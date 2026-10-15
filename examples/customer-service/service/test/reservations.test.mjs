@@ -241,6 +241,44 @@ test('列预订只列本人名下的', async () => {
   }
 })
 
+test('预订多于三笔时可逐页找全，且不泄露其他客户的预订', async () => {
+  const { call, service, session } = air()
+  await call('verify_identity', { memberId: 'CY10023841' })
+  const db = service.store.mutable(session).db
+  const original = db.reservations.find(item => item.userId === 'CY10023841')
+  db.reservations.push({ ...structuredClone(original), reservationId: 'CYR-PAGE-TEST' })
+  const first = await call('list_reservations', {})
+  assert.equal(first.data.count, 4)
+  assert.equal(first.data.hasMore, true)
+  const second = await call('list_reservations', { page: 2 })
+  assert.equal(second.data.hasMore, false)
+  assert.match(second.content, /CYR-PAGE-TEST/)
+  assert.doesNotMatch(second.content, /CYR8801/)
+  const invalid = await call('list_reservations', { page: 0 })
+  assert.equal(invalid.data.blocked, 'invalid_page')
+})
+
+test('航线和日期筛选可匹配往返预订的返程航段', async () => {
+  const { call, service, session } = air()
+  await call('verify_identity', { memberId: 'CY10058127' })
+  const db = service.snapshot(session, 'airline').db
+  const reservation = db.reservations.find(item => item.reservationId === 'CYR8810')
+  const returnSegment = reservation.segments[1]
+  const flight = db.flights.find(item => item.flightNo === returnSegment.flightNo
+    && item.date === returnSegment.date)
+  const result = await call('list_reservations', {
+    from: flight.from.toLowerCase(), to: flight.to, date: returnSegment.date,
+  })
+  assert.match(result.content, /CYR8810/)
+  assert.match(result.content, new RegExp(returnSegment.date))
+  assert.ok(result.data.count >= 1)
+  const absent = await call('list_reservations', {
+    from: flight.to, to: flight.from, date: returnSegment.date,
+  })
+  assert.doesNotMatch(absent.content, /CYR8810/,
+    '出发地、目的地和日期必须约束同一航段，不能跨去返程拼凑')
+})
+
 test('拿别人的预订号也查不出来', async () => {
   // 细则第十一条：不得透露其他客户的任何信息。这一条在工具里硬拦。
   const { call } = air()
@@ -360,6 +398,21 @@ test('航司取消 → 全额退，且优先于 24 小时窗口', async () => {
   })
   assert.equal(done.data.cancelled, true)
   assert.equal(done.data.amount, 880)
+})
+
+test('同一预订退票后不能再变更：多操作须在首次批准前预检', async () => {
+  const { call } = air()
+  await call('verify_identity', { memberId: 'CY10077390' })
+  const preview = await call('cancel_reservation', { reservationId: 'CYR8804' })
+  assert.equal(preview.data.needsApproval, true)
+  await call('cancel_reservation', {
+    reservationId: 'CYR8804', approval_token: tokenFrom(preview),
+  })
+  const baggage = await call('update_baggages', {
+    reservationId: 'CYR8804', totalBags: 1,
+  })
+  assert.match(baggage.content, /已经退票，不能再办理变更/)
+  assert.equal(baggage.data.needsApproval, undefined)
 })
 
 test('特价经济舱无保险超 24 小时 → 不可退', async () => {
@@ -784,6 +837,24 @@ test('搜航班只返回有余量且可订的', async () => {
   // CY1203 的 basic_economy 余量是 0，不该出现
   assert.ok(!/CY1203/.test(result.content), '列出了满舱的航班')
   assert.ok(result.data.count > 0)
+})
+
+test('候选航班超过三班时可逐页比较全部结果', async () => {
+  const { call, service, session } = air()
+  await call('verify_identity', { memberId: 'CY10058127' })
+  const db = service.store.mutable(session).db
+  const example = db.flights.find(item => item.from === 'PVG' && item.to === 'PEK')
+  for (let index = 1; index <= 4; index += 1) {
+    db.flights.push({ ...structuredClone(example), flightNo: `PAGE${index}`,
+      date: '2030-01-01', status: 'on_time', seats: { ...example.seats, economy: 4 } })
+  }
+  const args = { from: 'PVG', to: 'PEK', cabin: 'economy', date: '2030-01-01' }
+  const first = await call('search_flights', args)
+  const second = await call('search_flights', { ...args, page: 2 })
+  assert.equal(first.data.count, 4)
+  assert.equal(first.data.hasMore, true)
+  assert.equal(second.data.hasMore, false)
+  assert.match(second.content, /PAGE4/)
 })
 
 test('搜航班排除已飞与已取消', async () => {

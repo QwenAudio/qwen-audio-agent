@@ -363,6 +363,7 @@ WebUI 在实际开始采集、停止、失败时上报视觉状态，不逐帧�
 | 命令 | 方向 | 语义 |
 |---|---|---|
 | `task.create` | C→G | 显式创建异步 Task，不伪装成对话中的用户输入 |
+| `task.update` | C→G | 用 `task_id` 和 `message.parts` 调整指定 Task；返回 `task.update.result`，包含 `status: accepted/duplicate` 与 Task 快照 |
 | `task.get` / `task.list` | C→G | 查询一个 Task，或读取有界、可筛选的 Task 快照 |
 | `task.cancel` | C→G | 请求取消一个 Task；最终状态由后续生命周期事件报告 |
 | `permission.respond` | C→G | 处理当前等待中的授权请求 |
@@ -408,6 +409,17 @@ Realtime Session。Provider 不支持会话音色时返回关联错误
 这是 Client 的运行时控制面。等价的内部 REST/SSE 路由作为迁移别名保留，直到所有第一方 Client 都改用 WebSocket 命令和回放路径。REST 仍适合启动发现、健康检查、静态配置，以及不属于活动 Client Session 的 Host 管理操作。
 
 `task.create` 是显式集成命令，不是常规语音聊天路径。对话请求仍由前台 Agent 通过工具创建 Task，以保留它的路由判断和自然承接行为。
+
+`task.update` 同样要求 `tasks.commands` 能力。`event_id` 在保留的 Task 记录内用于受理去重；
+受理不表示投递或执行完成。Task 可选的 `updates` 包含 `instruction`、`createdAt`、
+`status`（`queued`、`pending`、`delivered`、`failed`）及可选 `error`。
+已结束的 Task 续接时保持 ID、递增 `revision`；后台续接标识只保存在运行时，不进入客户端快照。
+
+前台模型通过 `update_agent_task` 工具转达自然语言答复后，后台输入事件可返回
+`input.status: 'answered'`，不代表批准或完成。
+独立的 `task.input.respond` UI 命令仍要求显式 `action`（`accept`、`decline` 或 `cancel`），
+分别解析为 `accepted`、`declined`、`cancelled`。
+线协议中的 `task.update` 仍是工作调整接口，不是待补充输入的回复接口。
 
 ### 5.5 Gateway 状态与 Presentation
 

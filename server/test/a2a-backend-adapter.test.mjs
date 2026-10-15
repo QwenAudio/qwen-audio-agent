@@ -523,7 +523,6 @@ test('resumes the same A2A task after input is supplied', async () => {
   assert.equal(requested.input.prompt, '请选择输出格式。')
   assert.equal(backend.status('task_1').state, 'input_required')
   await backend.respondInput('task_1', requested.input.id, {
-    action: 'accept',
     text: 'Markdown',
   }, { ownerId: 'owner-one' })
   const outcome = await pending
@@ -531,11 +530,11 @@ test('resumes the same A2A task after input is supplied', async () => {
   assert.equal(client.sent[1].message.taskId, 'a2a-task-one')
   assert.equal(client.sent[1].message.contextId, 'context-one')
   assert.equal(client.sent[1].message.parts[0].content.value, 'Markdown')
-  assert.ok(events.some(event => event.type === 'backend.input.resolved'))
+  assert.ok(events.some(event => event.type === 'backend.input.resolved' && event.input.status === 'answered'))
   await backend.close()
 })
 
-test('authorization requires an explicit valid decision and final output excludes old prompts', async () => {
+test('explicit client decisions remain supported and final output excludes old prompts', async () => {
   const client = fakeClient()
   client.sendMessage = async request => {
     client.sent.push(request)
@@ -553,16 +552,112 @@ test('authorization requires an explicit valid decision and final output exclude
   const pending = backend.submit(work())
   await new Promise(resolve => setImmediate(resolve))
   const input = events.find(event => event.type === 'backend.input.requested').input
-  for (const response of [{}, { action: 'oops' }, { text: '同意' }]) {
-    await assert.rejects(backend.respondInput('task_1', input.id, response), {
-      code: 'INPUT_ACTION_REQUIRED',
-    })
-  }
+  await assert.rejects(backend.respondInput('task_1', input.id, {}), { code: 'INPUT_RESPONSE_REQUIRED' })
+  await assert.rejects(backend.respondInput('task_1', input.id, { action: 'oops', text: '同意' }), {
+    code: 'INVALID_INPUT_ACTION',
+  })
   await backend.respondInput('task_1', input.id, { action: 'accept' })
   assert.equal((await pending).content, '已取消。')
   assert.deepEqual(client.sent[1].message.metadata.qwenAudioInputResponse, {
     kind: 'authorization', action: 'accept',
   })
+  await backend.close()
+})
+
+for (const text of ['确认', '不要执行', '改成杭州', '让我想想']) {
+  test(`natural preview reply is forwarded without synthesizing approval: ${text}`, async t => {
+    const client = fakeClient()
+    client.sendMessage = async request => {
+      client.sent.push(request)
+      return client.sent.length === 1
+        ? task(A2ATaskState.TASK_STATE_AUTH_REQUIRED, { statusText: '请确认原操作。' })
+        : task(A2ATaskState.TASK_STATE_COMPLETED, { statusText: '后台已处理用户答复。' })
+    }
+    const backend = new A2ABackendAdapter({
+      agentCard: { name: 'Confirmation Agent' }, clientFactory: async () => ({ client }),
+    })
+    t.after(() => backend.close())
+    const events = []
+    backend.subscribe(event => events.push(event))
+    const pending = backend.submit(work())
+    await new Promise(resolve => setImmediate(resolve))
+    const input = events.find(event => event.type === 'backend.input.requested').input
+    await assert.rejects(backend.respondInput('task_1', input.id, { text }, { ownerId: 'other-owner' }), {
+      code: 'WORK_NOT_FOUND',
+    })
+    await assert.rejects(backend.respondInput('task_1', 'old-request', { text }), { code: 'INPUT_NOT_PENDING' })
+    const resolved = await backend.respondInput('task_1', input.id, { text }, { ownerId: 'owner-one' })
+    assert.equal(resolved.status, 'answered')
+    await pending
+    assert.equal(client.sent.length, 2)
+    const continuation = client.sent[1].message
+    assert.equal(continuation.taskId, 'a2a-task-one')
+    assert.equal(continuation.contextId, 'context-one')
+    assert.equal(continuation.parts[0].content.value, text)
+    assert.deepEqual(continuation.metadata.qwenAudioInputResponse, { kind: 'authorization' })
+    assert.equal(events.find(event => event.type === 'backend.input.resolved').input.status, 'answered')
+  })
+}
+
+test('a backend can clarify a natural answer without ending the work or reusing its input ID', async t => {
+  const client = fakeClient()
+  client.sendMessage = async request => {
+    client.sent.push(request)
+    return client.sent.length < 3
+      ? task(A2ATaskState.TASK_STATE_AUTH_REQUIRED, { statusText: '是否执行原操作？' })
+      : task(A2ATaskState.TASK_STATE_COMPLETED, { statusText: '已确认并执行。' })
+  }
+  const backend = new A2ABackendAdapter({
+    agentCard: { name: 'Clarifying Agent' }, clientFactory: async () => ({ client }),
+  })
+  t.after(() => backend.close())
+  const events = []
+  backend.subscribe(event => events.push(event))
+  const pending = backend.submit(work())
+  await new Promise(resolve => setImmediate(resolve))
+  const first = events.find(event => event.type === 'backend.input.requested').input
+  await backend.respondInput('task_1', first.id, { text: '也许' })
+  await new Promise(resolve => setImmediate(resolve))
+  const second = events.filter(event => event.type === 'backend.input.requested')[1].input
+  assert.notEqual(second.id, first.id)
+  await assert.rejects(backend.respondInput('task_1', first.id, { text: '确认' }), { code: 'INPUT_NOT_PENDING' })
+  await backend.respondInput('task_1', second.id, { text: '确认执行原操作' })
+  assert.equal((await pending).content, '已确认并执行。')
+  assert.ok(client.sent.slice(1).every(request => request.message.taskId === 'a2a-task-one'))
+})
+
+test('declining one A2A authorization does not cancel the whole remote task', async () => {
+  const client = fakeClient()
+  let cancellations = 0
+  client.cancelTask = async () => { cancellations += 1 }
+  client.sendMessage = async request => {
+    client.sent.push(request)
+    return client.sent.length === 1
+      ? task(A2ATaskState.TASK_STATE_AUTH_REQUIRED, { statusText: 'Add optional meal?' })
+      : task(A2ATaskState.TASK_STATE_COMPLETED, {
+          statusText: 'Meal was not added; earlier changes remain complete.',
+        })
+  }
+  const backend = new A2ABackendAdapter({
+    agentCard: { name: 'Authorization Agent' }, clientFactory: async () => ({ client }),
+  })
+  const events = []
+  backend.subscribe(event => events.push(event))
+  const pending = backend.submit(work())
+  await new Promise(resolve => setImmediate(resolve))
+  const input = events.find(event => event.type === 'backend.input.requested').input
+  await backend.respondInput('task_1', input.id, {
+    action: 'decline', text: 'No meal request is needed; finalize the other changes.',
+  }, { ownerId: 'owner-one' })
+  const outcome = await pending
+  assert.equal(cancellations, 0)
+  assert.match(outcome.content, /earlier changes remain complete/)
+  assert.deepEqual(client.sent[1].message.metadata.qwenAudioInputResponse, {
+    kind: 'authorization', action: 'decline',
+  })
+  assert.ok(events.some(event => (
+    event.type === 'backend.input.resolved' && event.input.status === 'declined'
+  )))
   await backend.close()
 })
 

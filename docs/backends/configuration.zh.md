@@ -57,8 +57,8 @@ OpenClaw 私有 `sessions.patch` 接口修改模型。
 ## OpenCode
 
 Gateway 通过 `opencode acp` 与它交互，并管理用于打开原生 Session
-界面的本地服务。没有兼容安装时会自动使用固定 npm 包，用户不需要另行安装或
-启动服务。`OPENCODE_BASE_URL` 是该本地 Session UI 服务的地址，并不是可供
+界面的本地服务。优先使用本机安装；CLI 在缺失且已配置百炼 Key 和后台模型时
+可通过 `npx` 下载最新包，桌面版需点击安装。`OPENCODE_BASE_URL` 是该本地 Session UI 服务的地址，并不是可供
 qwen-audio-agent 连接的远程 ACP 执行地址：
 
 ```dotenv
@@ -249,7 +249,7 @@ CODEBUDDY_MODEL_URL=https://dashscope.aliyuncs.com/compatible-mode/v1/chat/compl
 Codex（[openai/codex](https://github.com/openai/codex)）通过 ACP 项目维护的
 [codex-acp](https://github.com/agentclientprotocol/codex-acp) 接入。启动脚本优先
 绑定用户环境中已安装的 `codex`，并优先使用已安装的 `codex-acp`；缺少 Adapter
-时通过 `npx` 使用固定版本。
+时 CLI 通过 `npx` 使用最新版本，桌面版提供单独的“安装适配器”按钮。
 
 ```dotenv
 AGENT_PROTOCOL=codex
@@ -274,8 +274,9 @@ CODEX_BASE_URL=
 
 Claude Code 通过 Zed 维护的
 [@zed-industries/claude-code-acp](https://github.com/zed-industries/claude-code-acp)
-接入。启动脚本优先使用已经安装的 `claude-code-acp`，否则通过 `npx` 使用固定
-版本；无需单独安装 ACP 适配器，但需要先安装并认证 Claude Code。
+接入。启动脚本优先使用已安装的 `claude-code-acp`；缺失时 CLI 可通过 `npx`
+使用最新版本，桌面版提供“安装适配器”按钮，不重装已有的 Claude Code。
+Claude Code 本体仍需完成认证。
 
 ```dotenv
 AGENT_PROTOCOL=claude
@@ -300,7 +301,7 @@ CLAUDE_CONFIG_DIR=
 
 ## DeepSeek
 
-当前使用 DeepSeek Harness 的本地 ACP 运行组件。先安装，再在 DeepSeek 自身设置中配置凭据：
+使用本机 DeepSeek CLI 的原生 `dsh --profile acp` 入口。已有兼容版本无需重装；缺失时安装，再在 DeepSeek 自身设置中配置凭据：
 
 ```bash
 qwenaudio install deepseek
@@ -311,12 +312,12 @@ dsh web
 
 ```dotenv
 AGENT_PROTOCOL=deepseek
-DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
+QWEN_AUDIO_AGENT_BACKEND_MODEL=
 ```
 
-也可通过 `DEEPSEEK_API_KEY` 提供凭据。当前启动器默认使用 `deepseek-v4-pro`，可改为 `deepseek-v4-flash`；这不是从 Web 会话继承模型。该接入未声明 ACP Session 模型设置能力，不应使用通用模型覆盖代替专属启动设置。
+也可通过 `DEEPSEEK_API_KEY` 提供凭据。后台模型留空时，保留用户 ACP profile 的配置；显式指定时通过标准 ACP 模型设置接口覆盖，后端不接受时会报错。旧的 `DEEPSEEK_HARNESS_MODEL` 仅在未设置通用模型时作为兼容别名。
 
-支持普通工作、权限确认、取消与结果回传；不提供 Gateway Session 工具、独立任务委派或原生 Session 历史恢复。完整能力随 Harness 版本变化，不能按其他 ACP 后台推断。
+支持普通工作、MCP 注入、权限确认、取消与结果回传；暂不提供 Gateway 独立任务委派或原生 Session 历史恢复。完整能力随 Harness 版本变化。
 
 ## Pi
 
@@ -386,7 +387,7 @@ qwenaudio install muse
 muse
 ```
 
-Adapter 代码随框架发布，但 `@muse-code/sdk@0.1.1` **不属于默认依赖**。
+Adapter 代码随框架发布，但 `@muse-code/sdk` **不属于默认依赖**。
 只有显式运行上述安装命令或点击桌面版安装按钮时，SDK 才会安装到
 `<QWAUDIO_DATA_DIR>/backends/muse/runtime`（默认
 `~/.config/qwaudio/data/backends/muse/runtime`）。已有 Muse 本体会跳过重装。
@@ -429,7 +430,7 @@ Linux 文件系统。Muse 本体需先在 WSL 内安装并完成认证；配置�
 预配置的 `allowAll` 模式创建 Session，仅应在可信工作区启用。Gateway 的单任务/
 当前会话授权只选择 Muse 的单次允许选项，不会创建服务商侧持久授权规则。
 
-当前集成固定使用实验性的 Muse SDK `0.1.1`。首版不会跨 Gateway 重启保存 Muse
+安装操作会补装最新 Muse SDK，已有 SDK 不会被自动替换。当前不会跨 Gateway 重启保存 Muse
 Session ID、注入 Gateway MCP Server，也不会读取 MSP `outputRef` 指向的完整字节；
 文件改动仍保留在配置的工作区，最终文字会正常返回。当前 Adapter 只把内联图片
 作为 MSP 附件发送，其他附件类型会明确拒绝。
@@ -444,7 +445,8 @@ OpenCode 和 OpenClaw 使用一致的用户环境优先顺序：
 1. `OPENCODE_BIN` / `OPENCLAW_BIN` 明确指定的可执行文件。
 2. `OPENCODE_SOURCE_DIR` / `OPENCLAW_SOURCE_DIR` 明确指定的源码目录。
 3. PATH 中用户已经安装的 `opencode` / `openclaw`。
-4. 找不到兼容安装时，通过 `npx` 自动使用当前版本验证过的固定 npm 包。
+4. OpenClaw 的本机 Bundle（显式指定 `OPENCLAW_BUNDLE_BIN` 时优先于 PATH）。
+5. 未安装且配置百炼 Key 和后台模型时，CLI 可通过 `npx` 使用最新 npm 包；桌面版需点击安装。
 
 源码目录只在用户明确配置后使用，不再推测相邻项目目录。需要强制选择某种启动
 方式时可配置：
@@ -462,8 +464,8 @@ OPENCODE_PACKAGE=opencode-ai@1.18.5
 OPENCLAW_PACKAGE=openclaw@2026.6.33
 ```
 
-OpenCode ACP 接入当前要求 OpenCode `1.18.0` 或更高版本。`auto` 模式发现更旧
-版本时会使用固定兼容包，不修改用户安装；显式设置 `installed` 时直接报错。
+OpenCode ACP 接入当前要求 OpenCode `1.18.0` 或更高版本。发现更旧版本时会提示
+用户升级，不会自动替换已有安装或悄悄切换到另一份下载的运行时。
 最低版本可由 `OPENCODE_MIN_VERSION` 覆盖，用于验证其他兼容版本。
 
 qwen-audio-agent 启动的 OpenCode 默认继承用户原有的全局配置（通常是

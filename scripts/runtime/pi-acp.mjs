@@ -3,7 +3,7 @@
 import { spawnAndProxy, commandAvailable, findExecutable } from './launcher.mjs'
 
 const RUNTIME = process.env.PI_ACP_RUNTIME || 'auto'
-const PKG = process.env.PI_ACP_PACKAGE || 'pi-acp@0.0.33'
+const PKG = process.env.PI_ACP_PACKAGE || 'pi-acp@latest'
 const DESKTOP_INSTALLED_ONLY = process.env.QWEN_AUDIO_AGENT_DESKTOP_INSTALLED_ONLY
 const ARGS = process.argv.slice(2)
 

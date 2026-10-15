@@ -64,8 +64,9 @@ external OpenClaw Gateway, a Session model override requires its ACP bridge to a
 ## OpenCode
 
 The Gateway interacts with it via `opencode acp` and manages the local service used
-to open the native Session interface. When there is no compatible installation, it automatically
-uses a fixed npm package; users do not need to separately install or start the service.
+to open the native Session interface. Existing local installations take priority. The CLI
+uses the latest npm package via `npx` only when no local installation exists and a Bailian key
+and backend model are configured. The desktop app requires an explicit install action.
 `OPENCODE_BASE_URL` names that local Session UI service; it is not a remote ACP execution
 endpoint that qwen-audio-agent can attach to:
 
@@ -267,8 +268,8 @@ changed; the returned ACP `configOptions` remain authoritative.
 Codex ([openai/codex](https://github.com/openai/codex)) connects via
 [codex-acp](https://github.com/agentclientprotocol/codex-acp) maintained by the ACP project.
 The launcher script preferentially binds the `codex` already installed in the user environment,
-and preferentially uses the installed `codex-acp`; when the adapter is missing, it uses a fixed
-version via `npx`.
+and preferentially uses the installed `codex-acp`; when the adapter is missing, it uses the latest
+version via `npx` in the CLI. The desktop app offers a separate “Install adapter” button.
 
 ```dotenv
 AGENT_PROTOCOL=codex
@@ -294,8 +295,8 @@ CODEX_BASE_URL=
 Claude Code connects via
 [@zed-industries/claude-code-acp](https://github.com/zed-industries/claude-code-acp)
 maintained by Zed. The launcher script preferentially uses the already installed
-`claude-code-acp`, otherwise uses a fixed version via `npx`; no separate installation of the
-ACP adapter is needed, but Claude Code must be installed and authenticated first.
+`claude-code-acp`. If missing, the CLI can use the latest version via `npx`; the desktop app
+offers “Install adapter” without reinstalling Claude Code. Claude Code must still be authenticated.
 
 ```dotenv
 AGENT_PROTOCOL=claude
@@ -322,7 +323,7 @@ Code executable used by the adapter by default.
 
 ## DeepSeek
 
-The integration uses local DeepSeek Harness ACP components. Install them, then configure credentials through DeepSeek:
+The integration uses the local DeepSeek CLI's native `dsh --profile acp` entry point. Keep an existing compatible installation; otherwise install it, then configure credentials through DeepSeek:
 
 ```bash
 qwenaudio install deepseek
@@ -333,12 +334,12 @@ Save an API key for `deepseek-official` in DeepSeek Web's “Settings → Models
 
 ```dotenv
 AGENT_PROTOCOL=deepseek
-DEEPSEEK_HARNESS_MODEL=deepseek-v4-pro
+QWEN_AUDIO_AGENT_BACKEND_MODEL=
 ```
 
-You can also supply credentials through `DEEPSEEK_API_KEY`. The launcher defaults to `deepseek-v4-pro`, with `deepseek-v4-flash` as an alternative; it does not inherit the model from a Web session. This integration does not declare ACP Session model configuration, so do not substitute the generic model override for its dedicated startup setting.
+You can also supply credentials through `DEEPSEEK_API_KEY`. Leave the backend model empty to preserve the user's ACP profile settings. Explicit overrides use the standard ACP model configuration interface and fail clearly if rejected. The legacy `DEEPSEEK_HARNESS_MODEL` is only used when the common model setting is empty.
 
-It supports ordinary work, permission requests, cancellation, and results. It does not expose Gateway Session tools, independent task delegation, or native Session history restoration. Capabilities depend on the Harness version; do not infer them from other ACP backends.
+It supports ordinary work, MCP injection, permission requests, cancellation, and results. Gateway-managed independent task delegation and native Session history restoration are not provided yet. Capabilities depend on the Harness version.
 
 ## Pi
 
@@ -414,7 +415,7 @@ qwenaudio install muse
 muse
 ```
 
-The Adapter ships with the framework, but `@muse-code/sdk@0.1.1` is **not a
+The Adapter ships with the framework, but `@muse-code/sdk` is **not a
 default dependency**. The explicit install command (or desktop Install button)
 installs it under `<QWAUDIO_DATA_DIR>/backends/muse/runtime`; by default this is
 `~/.config/qwaudio/data/backends/muse/runtime`. An existing Muse executable is
@@ -461,7 +462,7 @@ preconfigured `allowAll` mode and should be used only in a trusted workspace.
 Gateway task/session grants select only a one-shot Muse choice and never create a
 provider-persistent approval rule.
 
-This integration pins the experimental Muse SDK `0.1.1`. The first version does
+Installation adds the latest Muse SDK if missing and preserves existing SDK installations. It does
 not persist Muse Session IDs across Gateway restarts, inject Gateway MCP servers,
 or fetch full bytes behind MSP `outputRef`; file changes remain in the configured
 workspace and final text is returned normally. MSP currently accepts inline image
@@ -477,8 +478,9 @@ OpenCode and OpenClaw use a consistent user environment priority order:
 1. The executable explicitly specified by `OPENCODE_BIN` / `OPENCLAW_BIN`.
 2. The source directory explicitly specified by `OPENCODE_SOURCE_DIR` / `OPENCLAW_SOURCE_DIR`.
 3. The `opencode` / `openclaw` already installed by the user in PATH.
-4. When no compatible installation is found, a fixed npm package with the current verified
-   version is automatically used via `npx`.
+4. The local OpenClaw Bundle (an explicit `OPENCLAW_BUNDLE_BIN` takes priority over PATH).
+5. If not installed and a Bailian key and backend model are configured, the CLI can use the
+   latest npm package via `npx`. The desktop app requires an explicit install action.
 
 Source directories are only used when explicitly configured by the user, without inferring
 adjacent project directories. To force a particular launch method, configure:
@@ -497,9 +499,8 @@ OPENCODE_PACKAGE=opencode-ai@1.18.5
 OPENCLAW_PACKAGE=openclaw@2026.6.33
 ```
 
-The OpenCode ACP integration currently requires OpenCode `1.18.0` or higher. In `auto` mode,
-when an older version is discovered, a fixed compatible package is used without modifying the
-user's installation; when `installed` is explicitly set, it directly errors.
+The OpenCode ACP integration currently requires OpenCode `1.18.0` or higher. An older installation
+produces an upgrade prompt; it is neither overwritten nor silently replaced by a downloaded runtime.
 The minimum version can be overridden by `OPENCODE_MIN_VERSION` for validating other
 compatible versions.
 

@@ -32,6 +32,7 @@ createGatewayApplication({
 - `conversationItemCreate(item, { contextOnly })` 区分上下文投递和用户交互输入。对于消息项，`contextOnly: true` 必须写入上下文且不触发回复，不能只缓存到下一次 `responseCreate`；用户主动发送文本或文件时，Gateway 传入 `false`。工具回执仍遵循供应商原生的续答语义。
 - 仅当工具结果会由服务原生续答时声明 `automaticToolResponses: true`（豆包 Seeduplex、Google Live）。运行时发送这类回执不等待当前响应结束；工具批次结束时通过 `ensureResponse(..., { afterToolResults: true })` 避免再次请求回复。`sendFunctionOutput` 返回 `{ delivered: true, automatic: true }` 只表示回执已投递，不表示播报完成。`createResponse: false` 不能禁止服务原生续答，单次回复指令也不能控制它。其他 Provider 保持显式请求回复和完成跟踪。
 - 只表示响应仍在进行的事件可转换为带 `response_id` 的 `response.activity`，无需转发原始思考内容。
+- 带 `response_id` 的 `error` 只结算它点名的那个回复；失败属于前端正在等待的请求时不要带 id，以回落到唯一等待者。
 - 服务端确认对话项时会重分配 ID 的 Provider，应声明 `conversationItemIdEcho: false`；网关按唯一待确认项关联，无需增加延时或跳过确认。
 - 仅当服务要求首帧视频之前必须先有音频时，声明 `imageRequiresAudioStart: true`；网关用 20 毫秒 PCM16 静音初始化时间线，视频输入无需开启麦克风。
 - 服务接受输入或工具结果但不返回 conversation-item 确认事件时，应声明 `acknowledgesConversationItems: false`；Gateway 写出 frame 后即完成本次发送。
